@@ -49,10 +49,27 @@ class SignalAggregator:
         ticker: str,
         company_name: str,
         agent_outputs: dict[str, AgentOutput],
+        learned_weights: dict[str, float] | None = None,
     ) -> FinalReport:
+        """
+        Parameters
+        ----------
+        learned_weights : dict | None
+            If provided (from WeightMemory), overrides settings.AGENT_WEIGHTS for
+            this run only.  Used by generate_forecast.py and daily_review.py to
+            inject ticker-specific earned weights without mutating global config.
+        """
         logger.info("[SignalAggregator] Aggregating %d agent signals for %s", len(agent_outputs), ticker)
 
-        weights = settings.AGENT_WEIGHTS
+        if learned_weights:
+            weights = learned_weights
+            logger.info(
+                "[SignalAggregator] Using learned weights for %s: %s",
+                ticker,
+                {k: round(v, 4) for k, v in learned_weights.items()},
+            )
+        else:
+            weights = settings.AGENT_WEIGHTS
         weighted_scores: dict[str, WeightedAgentScore] = {}
         weighted_sum = 0.0
         weight_total = 0.0

@@ -68,6 +68,9 @@ class AutomobileAgentOrchestrator:
             timeout=settings.LLM_TIMEOUT_SECONDS,
         )
         self._aggregator = SignalAggregator()
+        # Optional: set by generate_forecast.py / daily_review.py to inject
+        # ticker-specific learned weights without mutating global settings.
+        self._aggregator_weights: dict[str, float] | None = None
 
     # ------------------------------------------------------------------
     # Public API
@@ -100,11 +103,12 @@ class AutomobileAgentOrchestrator:
         # Step 2: Run all sub-agents in parallel
         agent_outputs = self._run_agents_parallel(query)
 
-        # Step 3: Aggregate
+        # Step 3: Aggregate (pass learned weights if set by caller)
         report = self._aggregator.run(
             ticker=query.ticker,
             company_name=query.company_name,
             agent_outputs=agent_outputs,
+            learned_weights=self._aggregator_weights,
         )
 
         pipeline_run.report = report

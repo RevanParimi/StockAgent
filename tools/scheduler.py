@@ -107,21 +107,85 @@ class AutomobileScheduler:
         )
 
         logger.info(
-            "[Scheduler] Job scheduled: cron='%s' tickers=%s",
+            "[Scheduler] Analysis job scheduled: cron='%s' tickers=%s",
             settings.SCHEDULER_CRON,
             settings.SCHEDULER_TICKERS,
         )
+
+        # ── Phase 5: Daily RL feedback review job ────────────────────────
+        # Runs after market close (4:30pm IST = 11:00 UTC) on weekdays
+        feedback_parts = settings.FEEDBACK_CRON.split()
+        if len(feedback_parts) == 5:
+            fb_minute, fb_hour, fb_day, fb_month, fb_dow = feedback_parts
+            fb_trigger = CronTrigger(
+                minute=fb_minute,
+                hour=fb_hour,
+                day=fb_day,
+                month=fb_month,
+                day_of_week=fb_dow,
+                timezone="Asia/Kolkata",
+            )
+            scheduler.add_job(
+                func=self._daily_review_job,
+                trigger=fb_trigger,
+                id="rl_feedback_daily_review",
+                name="Automobile Agent — RL daily review",
+                misfire_grace_time=3600,   # 1h grace (market may close late)
+                coalesce=True,
+            )
+            logger.info(
+                "[Scheduler] RL feedback job scheduled: cron='%s'",
+                settings.FEEDBACK_CRON,
+            )
+        else:
+            logger.warning(
+                "[Scheduler] Invalid FEEDBACK_CRON '%s' — daily review job not registered",
+                settings.FEEDBACK_CRON,
+            )
+
         return scheduler
 
     def _scheduled_job(self) -> None:
-        """Called automatically by APScheduler on each trigger."""
+        """Called automatically by APScheduler on each analysis trigger."""
         logger.info(
-            "[Scheduler] === Scheduled run started at %s ===",
+            "[Scheduler] === Scheduled analysis run started at %s ===",
             datetime.now().strftime("%Y-%m-%d %H:%M:%S IST"),
         )
         for ticker in settings.SCHEDULER_TICKERS:
             _run_single_ticker(ticker, self._store, self._alerter)
-        logger.info("[Scheduler] === Scheduled run complete ===")
+        logger.info("[Scheduler] === Scheduled analysis run complete ===")
+
+    def _daily_review_job(self) -> None:
+        """
+        Called automatically by APScheduler after market close each weekday.
+        Runs the RL feedback review for all configured tickers.
+        """
+        from datetime import date, timedelta
+        from scripts.daily_review import run_daily_review
+
+        # Review yesterday's trading session (today's close is now available)
+        review_date = date.today() - timedelta(days=1)
+        while review_date.weekday() >= 5:
+            review_date -= timedelta(days=1)
+
+        logger.info(
+            "[Scheduler] === RL daily review started — reviewing %s ===",
+            review_date.isoformat(),
+        )
+        for ticker in settings.SCHEDULER_TICKERS:
+            try:
+                summary = run_daily_review(ticker, review_date)
+                logger.info(
+                    "[Scheduler] RL review %s %s — status=%s direction_correct=%s",
+                    ticker, review_date,
+                    summary.get("status"),
+                    summary.get("direction_correct"),
+                )
+            except Exception as exc:
+                logger.error(
+                    "[Scheduler] RL review failed for %s: %s", ticker, exc, exc_info=True
+                )
+        logger.info("[Scheduler] === RL daily review complete ===")
 
     # ------------------------------------------------------------------
     # Public methods

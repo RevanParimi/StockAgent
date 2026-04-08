@@ -195,3 +195,32 @@ ALERT_LOG_FILE: str = os.getenv("ALERT_LOG_FILE", "outputs/alerts.log")
 # How many past run records to retain per ticker in the DB
 SCORE_HISTORY_MAX_ROWS: int = int(os.getenv("SCORE_HISTORY_MAX_ROWS", "90"))  # ~3 months daily
 
+# ---------------------------------------------------------------------------
+# Phase 5 – RL Feedback / Adaptive Prediction Loop
+# ---------------------------------------------------------------------------
+
+# Root directory for all prediction JSON files
+PREDICTION_DATA_DIR: str = os.getenv("PREDICTION_DATA_DIR", "data/predictions")
+
+# How many trading days forward to forecast on month-start
+FORECAST_HORIZON_DAYS: int = int(os.getenv("FORECAST_HORIZON_DAYS", "30"))
+
+# Maximum weight change applied in a single daily adaptation step (per agent)
+WEIGHT_MAX_STEP: float = float(os.getenv("WEIGHT_MAX_STEP", "0.05"))
+
+# Maximum total drift any agent weight is allowed to move from its base value
+WEIGHT_MAX_DRIFT: float = float(os.getenv("WEIGHT_MAX_DRIFT", "0.15"))
+
+# Minimum rolling days required before weight adaptation kicks in
+WEIGHT_MIN_OBSERVATIONS: int = int(os.getenv("WEIGHT_MIN_OBSERVATIONS", "3"))
+
+# Accuracy window: how many recent days are used to judge agent direction accuracy
+WEIGHT_ACCURACY_WINDOW: int = int(os.getenv("WEIGHT_ACCURACY_WINDOW", "7"))
+
+# Thresholds for weight boost / penalty
+WEIGHT_BOOST_HIT_RATE: float = float(os.getenv("WEIGHT_BOOST_HIT_RATE", "0.70"))   # ≥70% → +boost
+WEIGHT_PENALTY_HIT_RATE: float = float(os.getenv("WEIGHT_PENALTY_HIT_RATE", "0.40"))  # ≤40% → −penalty
+
+# Cron expression for the daily feedback review job (default: weekdays 4:30pm IST = 11:00 UTC)
+FEEDBACK_CRON: str = os.getenv("FEEDBACK_CRON", "0 11 * * 1-5")
+

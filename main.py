@@ -26,6 +26,8 @@ import json
 import logging
 import os
 import sys
+import threading
+import time
 from datetime import date
 from pathlib import Path
 
@@ -108,6 +110,75 @@ def _format_markdown(report) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Micro search loop
+# ---------------------------------------------------------------------------
+
+# Automobile sector macro queries — sector-level (not per-stock).
+# These answer the same questions regardless of which ticker is being analysed.
+# Results are cached in tools/macro_cache.py and consumed by
+# ContextBuilder._build_risk_macro() to skip 3 Serper calls per stock analysis.
+_MICRO_QUERIES = [
+    # Query 1: Nifty Auto momentum + crude oil + commodity input costs
+    "Nifty Auto index India automobile sector outlook crude oil steel aluminium commodity prices",
+    # Query 2: demand-side and policy signals
+    "India EV policy electric vehicle incentives FADA retail dispatch RBI repo rate auto loan EMI",
+]
+
+
+def _micro_search_loop() -> None:
+    """
+    Background daemon thread: pre-fetches automobile sector macro news
+    on a configurable schedule and stores it in the in-memory macro cache.
+
+    Configuration (.env):
+        MICRO_CYCLES_PER_DAY   default 6  → runs every 4 hours
+        MICRO_QUERIES_PER_RUN  default 2  → 2 Serper calls per run
+
+    Monthly Serper budget from this loop:
+        6 cycles × 2 queries × 30 days = 360 calls/month
+
+    Each cache HIT saves 3 Serper calls from risk_macro agent.
+    For 5 tickers/day: 3 × 5 × 30 = 450 calls/month saved.
+    """
+    from config import settings
+    from tools.news_fetcher import fetch_news_context
+    from tools.macro_cache import set_macro_cache
+
+    queries = _MICRO_QUERIES[: settings.MICRO_QUERIES_PER_RUN]
+    interval = (24 * 3600) / settings.MICRO_CYCLES_PER_DAY
+
+    _log = logging.getLogger(__name__)
+    _log.info(
+        "[micro_loop] Starting — %d cycles/day (every %.0fm)  %d queries/run",
+        settings.MICRO_CYCLES_PER_DAY,
+        interval / 60,
+        len(queries),
+    )
+
+    while True:
+        try:
+            _log.info("[micro_loop] Fetching automobile macro context...")
+            text = fetch_news_context(queries, max_queries=len(queries))
+            set_macro_cache("automobile", text)
+            _log.info("[micro_loop] Cache refreshed (%d chars)", len(text))
+        except Exception as exc:
+            _log.warning("[micro_loop] Pre-fetch failed: %s", exc)
+        time.sleep(interval)
+
+
+def start_micro_loop() -> threading.Thread:
+    """
+    Launch the micro search loop as a daemon thread.
+
+    Daemon threads die automatically when the main process exits.
+    Call this before the main analysis loop when running in scheduler/daemon mode.
+    """
+    t = threading.Thread(target=_micro_search_loop, name="micro-search-loop", daemon=True)
+    t.start()
+    return t
+
+
+# ---------------------------------------------------------------------------
 # Save to disk
 # ---------------------------------------------------------------------------
 
@@ -155,6 +226,15 @@ def main() -> None:
         choices=["DEBUG", "INFO", "WARNING", "ERROR"],
         help="Logging verbosity",
     )
+    parser.add_argument(
+        "--micro-loop",
+        action="store_true",
+        help=(
+            "Start the micro search loop in a background thread before running analysis. "
+            "Pre-fetches automobile sector macro news and caches it to save Serper calls. "
+            "Useful when running multiple tickers in sequence."
+        ),
+    )
 
     args = parser.parse_args()
     _setup_logging(args.log_level)
@@ -169,6 +249,12 @@ def main() -> None:
     if not args.ticker:
         parser.print_help()
         sys.exit(1)
+
+    # Start micro search loop if requested (background daemon thread)
+    if args.micro_loop:
+        start_micro_loop()
+        # Give the first run a moment to complete before analysis starts
+        time.sleep(2)
 
     # Lazy import here so logging is configured first
     from agents.orchestrator import AutomobileAgentOrchestrator

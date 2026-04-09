@@ -127,8 +127,23 @@ class ContextBuilder:
     def _build_risk_macro(self, query: StockQuery) -> str:
         from tools.macro_fetcher import get_macro_context
         from tools.news_fetcher import fetch_news_context
+        from tools.macro_cache import get_macro_cache
         from prompts.risk_macro import CONTEXT_SEARCH_QUERIES
 
+        # yfinance macro data — always free, fetch fresh every time
+        macro = get_macro_context()
+
+        # Check cache first — populated by micro_search_loop() in main.py.
+        # risk_macro queries (INR/USD, commodities, RBI repo) are sector-level:
+        # same answer for MARUTI as for TATAMOTORS on the same day.
+        cached_news = get_macro_cache("automobile")
+        if cached_news:
+            logger.debug(
+                "[ContextBuilder] risk_macro: cache HIT — skipping 3 Serper calls"
+            )
+            return f"{macro}\n\n[Macro news — from micro search cache]\n{cached_news}"
+
+        # Cache miss: fetch fresh (up to SERPER_MAX_QUERIES calls)
         today = date.today()
         queries = [
             q.format(
@@ -140,7 +155,6 @@ class ContextBuilder:
             )
             for q in CONTEXT_SEARCH_QUERIES
         ]
-        macro = get_macro_context()
         news = fetch_news_context(queries)
         return f"{macro}\n\n{news}"
 

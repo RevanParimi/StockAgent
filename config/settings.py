@@ -155,6 +155,22 @@ PEER_TICKERS: list[str] = [
 RAG_DOCUMENTS_BASE_DIR: str = os.getenv("RAG_DOCUMENTS_BASE_DIR", "data")
 
 # ---------------------------------------------------------------------------
+# Micro Search Loop — API efficiency
+# ---------------------------------------------------------------------------
+# Background loop that pre-fetches automobile sector macro news on a schedule.
+# Populates tools/macro_cache.py; consumed by ContextBuilder._build_risk_macro().
+#
+# Budget (Serper free tier = 2,500 queries/month):
+#   micro search:        MICRO_CYCLES_PER_DAY × MICRO_QUERIES_PER_RUN × 30 = 360/month
+#   per-stock (5 ticks): 9 calls × 5 × 30 = 1,350/month  (cache HIT steady-state)
+#   Total:               1,710/month  (well within free tier)
+#
+# Cache HIT saves 3 Serper calls per stock analysis (risk_macro agent).
+MICRO_CYCLES_PER_DAY: int = int(os.getenv("MICRO_CYCLES_PER_DAY", "6"))   # every 4h
+MICRO_QUERIES_PER_RUN: int = int(os.getenv("MICRO_QUERIES_PER_RUN", "2"))  # 2 combined queries
+MACRO_CACHE_TTL_HOURS: int = int(os.getenv("MACRO_CACHE_TTL_HOURS", "2"))  # matches interval
+
+# ---------------------------------------------------------------------------
 # Phase 4 – Scheduler
 # ---------------------------------------------------------------------------
 

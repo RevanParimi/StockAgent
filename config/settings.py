@@ -39,6 +39,7 @@ LLM_TIMEOUT_SECONDS: int = int(os.getenv("LLM_TIMEOUT_SECONDS", "60"))
 # Data / Search APIs
 # ---------------------------------------------------------------------------
 SERPER_API_KEY: str = os.getenv("SERPER_API_KEY", "")        # Google search via Serper
+TAVILY_API_KEY: str = os.getenv("TAVILY_API_KEY", "")        # Full-page extraction (Policy agent)
 ALPHA_VANTAGE_API_KEY: str = os.getenv("ALPHA_VANTAGE_API_KEY", "")
 NEWSAPI_KEY: str = os.getenv("NEWSAPI_KEY", "")
 TWITTER_BEARER_TOKEN: str = os.getenv("TWITTER_BEARER_TOKEN", "")
@@ -65,11 +66,14 @@ RETRY_DELAY_SECONDS: float = float(os.getenv("RETRY_DELAY_SECONDS", "2.0"))
 # Signal Aggregator – agent weights (must sum to 1.0)
 # ---------------------------------------------------------------------------
 AGENT_WEIGHTS: dict[str, float] = {
-    "sales_demand":     0.20,
-    "fundamentals":     0.25,
-    "pattern_analysis": 0.20,
-    "sentiment":        0.15,
-    "risk_macro":       0.20,
+    "sales_demand":      0.18,
+    "raw_materials":     0.10,
+    "fundamentals":      0.20,
+    "pattern_analysis":  0.13,
+    "sentiment":         0.04,   # legacy — kept for backward compat
+    "policy_regulatory": 0.10,
+    "competitive_intel": 0.10,
+    "risk_macro":        0.15,
 }
 
 # Score thresholds for the final Automobile Stock Score
@@ -139,9 +143,12 @@ BB_STD: float = 2.0
 # yfinance tickers for macro data (no API key needed)
 CRUDE_OIL_TICKER: str = "CL=F"          # WTI Crude Oil Futures
 INR_USD_TICKER: str = "INR=X"           # INR per USD
-STEEL_TICKER: str = "SLX"              # Steel ETF (proxy)
+STEEL_TICKER: str = "SLX"               # Steel ETF (proxy)
 ALUMINIUM_TICKER: str = "AA"            # Alcoa (proxy for aluminium price)
 RUBBER_TICKER: str = "^TOCOM_RUBBER"    # Tokyo Commodity Exchange rubber (fallback: scrape)
+PLATINUM_TICKER: str = "PPLT"           # Aberdeen Platinum ETF (catalytic converters)
+PALLADIUM_TICKER: str = "PALL"          # Aberdeen Palladium ETF (catalytic converters)
+BRENT_TICKER: str = "BZ=F"             # Brent Crude Futures (polymer cost proxy)
 
 # Peer OEM tickers for correlation (NSE .NS suffix applied automatically)
 PEER_TICKERS: list[str] = [

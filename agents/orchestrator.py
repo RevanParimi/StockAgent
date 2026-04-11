@@ -33,21 +33,27 @@ from models.schemas import AgentOutput, FinalReport, PipelineRun, StockQuery
 from prompts import orchestrator as P
 
 from agents.sales_demand import SalesDemandAgent
+from agents.raw_materials import RawMaterialsAgent
 from agents.fundamentals import FundamentalsAgent
 from agents.pattern_analysis import PatternAnalysisAgent
 from agents.sentiment import SentimentAgent
+from agents.policy_regulatory import PolicyRegulatoryAgent
+from agents.competitive_intel import CompetitiveIntelAgent
 from agents.risk_macro import RiskMacroAgent
 from agents.signal_aggregator import SignalAggregator
 
 logger = logging.getLogger(__name__)
 
-# All five sub-agents instantiated once (they are stateless per .run() call)
+# All sub-agents instantiated once (they are stateless per .run() call)
 _SUB_AGENTS = {
-    "sales_demand":     SalesDemandAgent(),
-    "fundamentals":     FundamentalsAgent(),
-    "pattern_analysis": PatternAnalysisAgent(),
-    "sentiment":        SentimentAgent(),
-    "risk_macro":       RiskMacroAgent(),
+    "sales_demand":      SalesDemandAgent(),
+    "raw_materials":     RawMaterialsAgent(),
+    "fundamentals":      FundamentalsAgent(),
+    "pattern_analysis":  PatternAnalysisAgent(),
+    "sentiment":         SentimentAgent(),
+    "policy_regulatory": PolicyRegulatoryAgent(),
+    "competitive_intel": CompetitiveIntelAgent(),
+    "risk_macro":        RiskMacroAgent(),
 }
 
 

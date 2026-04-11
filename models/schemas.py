@@ -82,6 +82,30 @@ class RiskMacroSubScores(BaseModel):
     geopolitical_china_risk: float = Field(ge=0.0, le=1.0)
 
 
+class RawMaterialsSubScores(BaseModel):
+    steel_aluminium: float = Field(ge=0.0, le=1.0)
+    platinum_palladium: float = Field(ge=0.0, le=1.0)
+    crude_oil_polymer: float = Field(ge=0.0, le=1.0)
+    power_tariff: float = Field(ge=0.0, le=1.0)
+    commodities_trend: float = Field(ge=0.0, le=1.0)
+
+
+class PolicyRegulatorySubScores(BaseModel):
+    fame_ev_subsidy: float = Field(ge=0.0, le=1.0)
+    emission_norms: float = Field(ge=0.0, le=1.0)
+    union_budget_duties: float = Field(ge=0.0, le=1.0)
+    pli_scheme: float = Field(ge=0.0, le=1.0)
+    state_ev_incentives: float = Field(ge=0.0, le=1.0)
+
+
+class CompetitiveIntelSubScores(BaseModel):
+    ev_market_share: float = Field(ge=0.0, le=1.0)
+    new_model_pipeline: float = Field(ge=0.0, le=1.0)
+    jv_acquisitions: float = Field(ge=0.0, le=1.0)
+    adas_safety_ratings: float = Field(ge=0.0, le=1.0)
+    competitive_position: float = Field(ge=0.0, le=1.0)
+
+
 # ---------------------------------------------------------------------------
 # Individual agent outputs
 # ---------------------------------------------------------------------------
@@ -122,6 +146,21 @@ class SentimentOutput(AgentOutput):
 class RiskMacroOutput(AgentOutput):
     agent: str = "risk_macro"
     sub_scores: RiskMacroSubScores | None = None
+
+
+class RawMaterialsOutput(AgentOutput):
+    agent: str = "raw_materials"
+    sub_scores: RawMaterialsSubScores | None = None
+
+
+class PolicyRegulatoryOutput(AgentOutput):
+    agent: str = "policy_regulatory"
+    sub_scores: PolicyRegulatorySubScores | None = None
+
+
+class CompetitiveIntelOutput(AgentOutput):
+    agent: str = "competitive_intel"
+    sub_scores: CompetitiveIntelSubScores | None = None
 
 
 # ---------------------------------------------------------------------------

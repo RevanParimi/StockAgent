@@ -24,10 +24,20 @@ logger = logging.getLogger(__name__)
 
 # Map of macro indicator → yfinance ticker
 _MACRO_TICKERS: dict[str, str] = {
-    "crude_oil_usd":   settings.CRUDE_OIL_TICKER,  # WTI Crude Futures
-    "inr_usd":         settings.INR_USD_TICKER,     # INR per 1 USD
-    "steel_etf":       settings.STEEL_TICKER,       # SLX Steel ETF (USD proxy)
-    "aluminium_stock": settings.ALUMINIUM_TICKER,   # Alcoa as aluminium proxy
+    "crude_oil_usd":   settings.CRUDE_OIL_TICKER,   # WTI Crude Futures
+    "inr_usd":         settings.INR_USD_TICKER,      # INR per 1 USD
+    "steel_etf":       settings.STEEL_TICKER,        # SLX Steel ETF (USD proxy)
+    "aluminium_stock": settings.ALUMINIUM_TICKER,    # Alcoa as aluminium proxy
+}
+
+# Raw material tickers for the Raw Materials agent
+_RAW_MATERIAL_TICKERS: dict[str, str] = {
+    "steel_etf":       settings.STEEL_TICKER,        # SLX — body/frame cost
+    "aluminium_stock": settings.ALUMINIUM_TICKER,    # AA (Alcoa) — structural cost
+    "platinum_etf":    settings.PLATINUM_TICKER,     # PPLT — catalytic converters
+    "palladium_etf":   settings.PALLADIUM_TICKER,    # PALL — catalytic converters
+    "crude_oil_wti":   settings.CRUDE_OIL_TICKER,   # CL=F — polymer cost proxy
+    "crude_oil_brent": settings.BRENT_TICKER,        # BZ=F — global benchmark
 }
 
 _LOOKBACK_DAYS = 90  # 3 months for trend
@@ -98,6 +108,52 @@ def get_commodity_prices() -> dict[str, dict[str, float]]:
         result["rubber_futures"] = rubber
 
     return result
+
+
+def get_raw_material_prices() -> dict[str, dict[str, float]]:
+    """
+    Returns latest price + 3-month change for raw materials relevant to auto OEMs.
+
+    Covers:
+      Steel (SLX ETF), Aluminium (Alcoa proxy), Platinum (PPLT ETF),
+      Palladium (PALL ETF), WTI Crude (CL=F), Brent Crude (BZ=F)
+    """
+    result: dict[str, dict[str, float]] = {}
+    for name, ticker in _RAW_MATERIAL_TICKERS.items():
+        result[name] = _fetch_latest(ticker)
+    return result
+
+
+def get_raw_materials_context() -> str:
+    """
+    Returns a formatted string summarising raw material prices for prompt injection.
+    Used by ContextBuilder._build_raw_materials().
+    """
+    prices = get_raw_material_prices()
+
+    steel     = prices.get("steel_etf", {})
+    aluminium = prices.get("aluminium_stock", {})
+    platinum  = prices.get("platinum_etf", {})
+    palladium = prices.get("palladium_etf", {})
+    wti       = prices.get("crude_oil_wti", {})
+    brent     = prices.get("crude_oil_brent", {})
+
+    def fmt(d: dict, prefix: str = "$") -> str:
+        cur = d.get("current", "N/A")
+        chg = d.get("change_3m_pct", "N/A")
+        if isinstance(chg, float):
+            return f"{prefix}{cur} (3m: {chg:+.2f}%)"
+        return f"{prefix}{cur} (3m: {chg})"
+
+    return (
+        f"=== Raw Material Prices ===\n"
+        f"Steel (SLX ETF):         {fmt(steel)}\n"
+        f"Aluminium (Alcoa proxy): {fmt(aluminium)}\n"
+        f"Platinum (PPLT ETF):     {fmt(platinum)}\n"
+        f"Palladium (PALL ETF):    {fmt(palladium)}\n"
+        f"Crude Oil WTI:           {fmt(wti)}/bbl\n"
+        f"Crude Oil Brent:         {fmt(brent)}/bbl"
+    )
 
 
 def get_rbi_repo_rate() -> dict[str, str]:

@@ -158,6 +158,81 @@ class ContextBuilder:
         news = fetch_news_context(queries)
         return f"{macro}\n\n{news}"
 
+    def _build_raw_materials(self, query: StockQuery) -> str:
+        from tools.macro_fetcher import get_raw_materials_context
+        from tools.news_fetcher import fetch_news_context
+        from prompts.raw_materials import CONTEXT_SEARCH_QUERIES
+
+        today = date.today()
+        queries = [
+            q.format(
+                ticker=query.ticker,
+                company_name=query.company_name,
+                year=today.year,
+            )
+            for q in CONTEXT_SEARCH_QUERIES
+        ]
+        raw_prices = get_raw_materials_context()
+        news = fetch_news_context(queries, max_queries=1)
+        return (
+            f"Stock: {query.ticker} | Company: {query.company_name} | "
+            f"Date: {query.analysis_date}\n\n"
+            f"{raw_prices}\n\n"
+            f"{news}"
+        )
+
+    def _build_policy_regulatory(self, query: StockQuery) -> str:
+        from tools.tavily_fetcher import fetch_tavily_context
+        from tools.news_fetcher import fetch_news_context
+        from prompts.policy_regulatory import TAVILY_SEARCH_QUERIES, CONTEXT_SEARCH_QUERIES
+
+        today = date.today()
+        tavily_queries = [
+            q.format(
+                ticker=query.ticker,
+                company_name=query.company_name,
+                year=today.year,
+            )
+            for q in TAVILY_SEARCH_QUERIES
+        ]
+        serper_queries = [
+            q.format(
+                ticker=query.ticker,
+                company_name=query.company_name,
+                year=today.year,
+            )
+            for q in CONTEXT_SEARCH_QUERIES
+        ]
+        tavily_text = fetch_tavily_context(tavily_queries, max_queries=2)
+        news = fetch_news_context(serper_queries)
+        return (
+            f"Stock: {query.ticker} | Company: {query.company_name} | "
+            f"Date: {query.analysis_date}\n\n"
+            f"[Policy Documents — full text via Tavily]\n{tavily_text}\n\n"
+            f"[Policy News — snippets via Serper]\n{news}"
+        )
+
+    def _build_competitive_intel(self, query: StockQuery) -> str:
+        from tools.news_fetcher import fetch_news_context
+        from prompts.competitive_intel import CONTEXT_SEARCH_QUERIES
+
+        today = date.today()
+        queries = [
+            q.format(
+                ticker=query.ticker,
+                company_name=query.company_name,
+                month=today.strftime("%B"),
+                year=today.year,
+            )
+            for q in CONTEXT_SEARCH_QUERIES
+        ]
+        news = fetch_news_context(queries)
+        return (
+            f"Stock: {query.ticker} | Company: {query.company_name} | "
+            f"Date: {query.analysis_date}\n\n"
+            f"{news}"
+        )
+
     def _build_generic(self, query: StockQuery) -> str:
         return (
             f"Stock: {query.ticker} | Company: {query.company_name} | "

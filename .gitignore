@@ -1,0 +1,41 @@
+.auto/*
+
+# Environment / secrets
+.env
+*.env
+.env.*
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyd
+*.pyo
+*.so
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+env/
+
+# Test / coverage
+.pytest_cache/
+.coverage
+htmlcov/
+
+# IDE
+.vscode/
+.idea/
+
+# Data / outputs
+data/chroma_db/
+outputs/
+*.db
+*.sqlite
+
+# C++ build artifacts
+cpp/build/
+
+# OS
+.DS_Store
+Thumbs.db

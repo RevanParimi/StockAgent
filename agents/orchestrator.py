@@ -5,7 +5,7 @@ Top-level Automobile Agent orchestrator.
 
 Execution flow:
   1. Resolve ticker → company name via LLM
-  2. Dispatch all 5 sub-agents IN PARALLEL using asyncio + ThreadPoolExecutor
+  2. Dispatch all 8 sub-agents IN PARALLEL using asyncio + ThreadPoolExecutor
   3. Collect structured outputs
   4. Pass to SignalAggregator
   5. Return FinalReport
@@ -25,13 +25,13 @@ import time
 import uuid
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import date
-
-from openai import OpenAI
+from datetime import date, datetime, timezone
 
 from config import settings
 from models.schemas import AgentOutput, FinalReport, PipelineRun, StockQuery
 from prompts import orchestrator as P
+from tools.llm_client import get_llm_client
+from tools.run_logger import log_llm_call, log_run_summary
 
 from agents.sales_demand import SalesDemandAgent
 from agents.raw_materials import RawMaterialsAgent
@@ -70,11 +70,7 @@ class AutomobileAgentOrchestrator:
     """
 
     def __init__(self) -> None:
-        self._llm = OpenAI(
-            api_key=settings.OPENROUTER_API_KEY,
-            base_url=settings.OPENROUTER_BASE_URL,
-            timeout=settings.LLM_TIMEOUT_SECONDS,
-        )
+        self._llm = get_llm_client()
         self._aggregator = SignalAggregator()
         # Optional: set by generate_forecast.py / daily_review.py to inject
         # ticker-specific learned weights without mutating global settings.
@@ -97,17 +93,18 @@ class AutomobileAgentOrchestrator:
         """
         run_id = str(uuid.uuid4())[:8]
         start = time.time()
+        started_at = datetime.now(timezone.utc)
         logger.info("[Orchestrator] Async run %s started for '%s'", run_id, user_input)
 
         # Ticker resolution is a single sync LLM call — offload to a thread
         # so the event loop isn't blocked.
-        query = await asyncio.to_thread(self._resolve_ticker, user_input)
+        query = await asyncio.to_thread(self._resolve_ticker, user_input, run_id)
         logger.info("[Orchestrator] Resolved: %s → %s", user_input, query)
 
         pipeline_run = PipelineRun(run_id=run_id, query=query, status="running")
 
         agent_outputs = await self._run_agents_parallel_async(
-            query, progress_callback=progress_callback
+            query, run_id=run_id, progress_callback=progress_callback
         )
 
         report = self._aggregator.run(
@@ -115,12 +112,22 @@ class AutomobileAgentOrchestrator:
             company_name=query.company_name,
             agent_outputs=agent_outputs,
             learned_weights=self._aggregator_weights,
+            run_id=run_id,
         )
 
         pipeline_run.report = report
         pipeline_run.status = "completed"
         pipeline_run.duration_seconds = round(time.time() - start, 2)
 
+        errors = [f"{n}: {o.error}" for n, o in agent_outputs.items() if o.error]
+        log_run_summary(
+            run_id=run_id, ticker=query.ticker, company_name=query.company_name,
+            started_at=started_at, duration_seconds=pipeline_run.duration_seconds,
+            final_score=report.final_score, verdict=report.verdict,
+            total_prompt_tokens=0, total_completion_tokens=0, total_cost_usd=0.0,
+            agent_scores={n: o.overall_score for n, o in agent_outputs.items()},
+            errors=errors,
+        )
         logger.info(
             "[Orchestrator] Async run %s complete in %.1fs – verdict=%s score=%.3f",
             run_id,
@@ -152,17 +159,20 @@ class AutomobileAgentOrchestrator:
         """
         run_id = str(uuid.uuid4())[:8]
         start = time.time()
+        started_at = datetime.now(timezone.utc)
 
         logger.info("[Orchestrator] Run %s started for '%s'", run_id, user_input)
 
         # Step 1: Resolve ticker
-        query = self._resolve_ticker(user_input)
+        query = self._resolve_ticker(user_input, run_id=run_id)
         logger.info("[Orchestrator] Resolved: %s → %s", user_input, query)
 
         pipeline_run = PipelineRun(run_id=run_id, query=query, status="running")
 
         # Step 2: Run all sub-agents in parallel
-        agent_outputs = self._run_agents_parallel(query, progress_callback=progress_callback)
+        agent_outputs = self._run_agents_parallel(
+            query, run_id=run_id, progress_callback=progress_callback
+        )
 
         # Step 3: Aggregate (pass learned weights if set by caller)
         report = self._aggregator.run(
@@ -170,12 +180,22 @@ class AutomobileAgentOrchestrator:
             company_name=query.company_name,
             agent_outputs=agent_outputs,
             learned_weights=self._aggregator_weights,
+            run_id=run_id,
         )
 
         pipeline_run.report = report
         pipeline_run.status = "completed"
         pipeline_run.duration_seconds = round(time.time() - start, 2)
 
+        errors = [f"{n}: {o.error}" for n, o in agent_outputs.items() if o.error]
+        log_run_summary(
+            run_id=run_id, ticker=query.ticker, company_name=query.company_name,
+            started_at=started_at, duration_seconds=pipeline_run.duration_seconds,
+            final_score=report.final_score, verdict=report.verdict,
+            total_prompt_tokens=0, total_completion_tokens=0, total_cost_usd=0.0,
+            agent_scores={n: o.overall_score for n, o in agent_outputs.items()},
+            errors=errors,
+        )
         logger.info(
             "[Orchestrator] Run %s complete in %.1fs – verdict=%s score=%.3f",
             run_id,
@@ -189,8 +209,9 @@ class AutomobileAgentOrchestrator:
     # Ticker resolution
     # ------------------------------------------------------------------
 
-    def _resolve_ticker(self, user_input: str) -> StockQuery:
+    def _resolve_ticker(self, user_input: str, run_id: str = "") -> StockQuery:
         prompt = P.TICKER_RESOLUTION_PROMPT.format(user_input=user_input)
+        t0 = time.time()
         try:
             response = self._llm.chat.completions.create(
                 model=settings.LLM_MODEL,
@@ -203,6 +224,15 @@ class AutomobileAgentOrchestrator:
                 response_format={"type": "json_object"},
             )
             data = json.loads(response.choices[0].message.content or "{}")
+            if response.usage:
+                pt, ct = response.usage.prompt_tokens, response.usage.completion_tokens
+                cost = (pt * settings.LLM_INPUT_COST_PER_M + ct * settings.LLM_OUTPUT_COST_PER_M) / 1_000_000
+                log_llm_call(
+                    run_id=run_id, ticker=user_input.upper(), phase="ticker_resolution",
+                    agent_name=None, model=settings.LLM_MODEL,
+                    prompt_tokens=pt, completion_tokens=ct,
+                    duration_ms=(time.time() - t0) * 1000, cost_usd=cost,
+                )
             return StockQuery(
                 ticker=data.get("ticker", user_input.upper()),
                 company_name=data.get("company_name", user_input),
@@ -211,7 +241,6 @@ class AutomobileAgentOrchestrator:
             )
         except Exception as exc:
             logger.warning("[Orchestrator] Ticker resolution failed: %s", exc)
-            # Fallback: treat the input as a ticker directly
             return StockQuery(
                 ticker=user_input.upper(),
                 company_name=user_input,
@@ -225,13 +254,14 @@ class AutomobileAgentOrchestrator:
     def _run_agents_parallel(
         self,
         query: StockQuery,
+        run_id: str = "",
         progress_callback: Callable[[str, float], None] | None = None,
     ) -> dict[str, AgentOutput]:
         results: dict[str, AgentOutput] = {}
 
         with ThreadPoolExecutor(max_workers=max(1, len(_SUB_AGENTS))) as pool:
             future_to_name = {
-                pool.submit(agent.run, query): name
+                pool.submit(agent.run, query, run_id): name
                 for name, agent in _SUB_AGENTS.items()
             }
             for future in as_completed(
@@ -268,6 +298,7 @@ class AutomobileAgentOrchestrator:
     async def _run_agents_parallel_async(
         self,
         query: StockQuery,
+        run_id: str = "",
         progress_callback: Callable[[str, float], None] | None = None,
     ) -> dict[str, AgentOutput]:
         """
@@ -283,7 +314,7 @@ class AutomobileAgentOrchestrator:
             )
             try:
                 output = await asyncio.wait_for(
-                    agent.run_async(query),
+                    agent.run_async(query, run_id),
                     timeout=settings.AGENT_TIMEOUT_SECONDS,
                 )
                 logger.info(

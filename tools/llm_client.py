@@ -10,13 +10,22 @@ Token usage and cost tracking is handled by tools/run_logger.py.
 
 from __future__ import annotations
 
-from openai import OpenAI
+from openai import AsyncOpenAI, OpenAI
 from config import settings
 
 
 def get_llm_client() -> OpenAI:
-    """Return a configured OpenAI client pointed at OpenRouter."""
+    """Return a configured sync OpenAI client pointed at OpenRouter."""
     return OpenAI(
+        api_key=settings.OPENROUTER_API_KEY,
+        base_url=settings.OPENROUTER_BASE_URL,
+        timeout=settings.LLM_TIMEOUT_SECONDS,
+    )
+
+
+def get_async_llm_client() -> AsyncOpenAI:
+    """Return a configured async OpenAI client pointed at OpenRouter."""
+    return AsyncOpenAI(
         api_key=settings.OPENROUTER_API_KEY,
         base_url=settings.OPENROUTER_BASE_URL,
         timeout=settings.LLM_TIMEOUT_SECONDS,

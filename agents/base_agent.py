@@ -20,10 +20,12 @@ import time
 from abc import ABC, abstractmethod
 from typing import Any
 
-from openai import AsyncOpenAI, OpenAI, APIError, APITimeoutError, RateLimitError
+from openai import APIError, APITimeoutError, RateLimitError
 
 from config import settings
 from models.schemas import AgentOutput, StockQuery
+from tools.llm_client import get_llm_client, get_async_llm_client
+from tools.run_logger import log_llm_call
 
 logger = logging.getLogger(__name__)
 
@@ -39,46 +41,50 @@ class BaseAgent(ABC):
     """
 
     def __init__(self) -> None:
-        self._client = OpenAI(
-            api_key=settings.OPENROUTER_API_KEY,
-            base_url=settings.OPENROUTER_BASE_URL,
-            timeout=settings.LLM_TIMEOUT_SECONDS,
-        )
-        # Async client is created lazily on first use (avoids creating it in
-        # test environments that only exercise the sync path).
-        self._async_client: AsyncOpenAI | None = None
+        self._client = get_llm_client()
+        # Async client created lazily — avoids instantiation in sync-only test paths.
+        self._async_client = None
+        # Populated by LLM call methods; read by run()/run_async() for logging.
+        self._last_usage: dict[str, int] = {"prompt_tokens": 0, "completion_tokens": 0}
 
-    def _get_async_client(self) -> AsyncOpenAI:
+    def _get_async_client(self):
         if self._async_client is None:
-            self._async_client = AsyncOpenAI(
-                api_key=settings.OPENROUTER_API_KEY,
-                base_url=settings.OPENROUTER_BASE_URL,
-                timeout=settings.LLM_TIMEOUT_SECONDS,
-            )
+            self._async_client = get_async_llm_client()
         return self._async_client
 
     # ------------------------------------------------------------------
     # Public interface
     # ------------------------------------------------------------------
 
-    def run(self, query: StockQuery) -> AgentOutput:
+    def run(self, query: StockQuery, run_id: str = "") -> AgentOutput:
         """
         Synchronous entry point.  Used by CLI, scheduler, and sync tests.
         """
         logger.info("[%s] Starting analysis for %s", self.agent_name, query.ticker)
         context = self._gather_context(query)
         system_prompt, user_prompt = self._build_prompt(query, context)
+        t0 = time.time()
         raw = self._call_llm_with_retry(system_prompt, user_prompt)
+        duration_ms = (time.time() - t0) * 1000
         output = self._safe_parse(raw, query.ticker)
+
+        pt = self._last_usage["prompt_tokens"]
+        ct = self._last_usage["completion_tokens"]
+        cost = (pt * settings.LLM_INPUT_COST_PER_M + ct * settings.LLM_OUTPUT_COST_PER_M) / 1_000_000
+        log_llm_call(
+            run_id=run_id, ticker=query.ticker, phase="agent",
+            agent_name=self.agent_name, model=settings.LLM_MODEL,
+            prompt_tokens=pt, completion_tokens=ct,
+            duration_ms=duration_ms, cost_usd=cost,
+            score=output.overall_score, error=output.error,
+        )
         logger.info(
-            "[%s] Done – score=%.3f for %s",
-            self.agent_name,
-            output.overall_score,
-            query.ticker,
+            "[%s] Done – score=%.3f tokens=%d cost=$%.5f",
+            self.agent_name, output.overall_score, pt + ct, cost,
         )
         return output
 
-    async def run_async(self, query: StockQuery) -> AgentOutput:
+    async def run_async(self, query: StockQuery, run_id: str = "") -> AgentOutput:
         """
         Async entry point.  Uses AsyncOpenAI — no threads for LLM I/O.
         Context gathering (yfinance / news APIs) is offloaded via asyncio.to_thread
@@ -87,13 +93,24 @@ class BaseAgent(ABC):
         logger.info("[%s] Starting async analysis for %s", self.agent_name, query.ticker)
         context = await asyncio.to_thread(self._gather_context, query)
         system_prompt, user_prompt = self._build_prompt(query, context)
+        t0 = time.time()
         raw = await self._call_llm_async(system_prompt, user_prompt)
+        duration_ms = (time.time() - t0) * 1000
         output = self._safe_parse(raw, query.ticker)
+
+        pt = self._last_usage["prompt_tokens"]
+        ct = self._last_usage["completion_tokens"]
+        cost = (pt * settings.LLM_INPUT_COST_PER_M + ct * settings.LLM_OUTPUT_COST_PER_M) / 1_000_000
+        log_llm_call(
+            run_id=run_id, ticker=query.ticker, phase="agent",
+            agent_name=self.agent_name, model=settings.LLM_MODEL,
+            prompt_tokens=pt, completion_tokens=ct,
+            duration_ms=duration_ms, cost_usd=cost,
+            score=output.overall_score, error=output.error,
+        )
         logger.info(
-            "[%s] Done (async) – score=%.3f for %s",
-            self.agent_name,
-            output.overall_score,
-            query.ticker,
+            "[%s] Done (async) – score=%.3f tokens=%d cost=$%.5f",
+            self.agent_name, output.overall_score, pt + ct, cost,
         )
         return output
 
@@ -143,6 +160,11 @@ class BaseAgent(ABC):
                 )
                 content = response.choices[0].message.content or ""
                 logger.debug("[%s] Raw LLM response: %s", self.agent_name, content[:200])
+                if response.usage:
+                    self._last_usage = {
+                        "prompt_tokens": response.usage.prompt_tokens,
+                        "completion_tokens": response.usage.completion_tokens,
+                    }
                 return content
 
             except RateLimitError as e:
@@ -195,6 +217,11 @@ class BaseAgent(ABC):
                 )
                 content = response.choices[0].message.content or ""
                 logger.debug("[%s] Raw async LLM response: %s", self.agent_name, content[:200])
+                if response.usage:
+                    self._last_usage = {
+                        "prompt_tokens": response.usage.prompt_tokens,
+                        "completion_tokens": response.usage.completion_tokens,
+                    }
                 return content
 
             except RateLimitError as e:

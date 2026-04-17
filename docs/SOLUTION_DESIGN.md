@@ -16,8 +16,10 @@ Legend: `✓` built  ·  `~` partial  ·  `○` not yet wired
 ```
 AUTOMOBILE AGENT
 │   Orchestrator: AutomobileAgentOrchestrator in agents/orchestrator.py      ✓ built
+│   LLM: OpenRouter → Qwen 2.5 72B via tools/llm_client.py (Helicone proxy)  ✓ built
+│   Observability: JSONL token/cost logging via tools/run_logger.py           ✓ built
 │   Trigger: SCHEDULER_ENABLED / CLI (main.py)                               ✓ built
-│   Parallel dispatch: ThreadPoolExecutor (5 workers)                         ✓ built
+│   Parallel dispatch: ThreadPoolExecutor (8 workers)                         ✓ built
 │   Micro search loop: micro_search_loop() in main.py                        ✓ built
 │
 ├── Sales & Demand Agent  (agents/sales_demand.py)                           ✓ built
@@ -108,6 +110,31 @@ AUTOMOBILE AGENT
 │         Gap: correlation not computed in yfinance_fetcher.py yet
 │         Discuss: ~10 lines with yfinance multi-ticker fetch + df.corr(). Free.
 │
+├── Raw Materials Agent  (agents/raw_materials.py)                           ✓ built
+│   │   Context: macro_fetcher.get_raw_materials_context() (yfinance) + news_fetcher (Serper, 1 call)
+│   │   Serper calls per run: 1 (power tariff — sector-level news)
+│   │   yfinance tickers: SLX (steel), AA (aluminium), PPLT (platinum), PALL (palladium),
+│   │                      CL=F (WTI crude), BZ=F (Brent crude)
+│   │
+│   ├── Steel HRC & Aluminium LME/MCX          ✓ yfinance (SLX ETF, Alcoa AA proxy)
+│   │     Built: get_raw_material_prices() → SLX, AA in macro_fetcher.py
+│   │     Limitation: SLX/AA are US-listed ETFs; proxy for directional cost signal only
+│   │
+│   ├── Platinum & Palladium — catalytic        ✓ yfinance (PPLT, PALL ETFs)
+│   │     Built: PPLT (Aberdeen Platinum ETF), PALL (Aberdeen Palladium ETF)
+│   │     Relevant for ICE-heavy OEMs (Maruti, Bajaj Auto, Hero MotoCorp)
+│   │
+│   ├── Crude oil / Brent — polymer costs       ✓ yfinance (CL=F, BZ=F)
+│   │     Built: WTI + Brent futures via yfinance in _RAW_MATERIAL_TICKERS
+│   │
+│   ├── Power tariff — EV TCO impact            ~ Serper search proxy (1 call)
+│   │     Built: "India electricity power tariff EV charging cost {year}"
+│   │     Gap: state-wise tariff data varies; Serper fetches news-level summaries
+│   │
+│   └── ~~Lithium / Battery $/kWh~~             ✗ dropped — BloombergNEF paid only
+│         ~~Rubber RSS4~~                        ✗ dropped — TOCOM not on yfinance
+│         ~~Cobalt / Nickel / Manganese~~        ✗ dropped — no reliable free ETF proxy
+│
 ├── Sentiment Agent  (agents/sentiment.py)                                   ✓ built
 │   │   Context: fetch_news_context() via ContextBuilder._build_sentiment()
 │   │   Serper calls per run: up to SERPER_MAX_QUERIES (default 3)
@@ -141,6 +168,50 @@ AUTOMOBILE AGENT
 │   └── Dealer / consumer feedback signals      ~ Serper search proxy
 │         Built: "{company_name} dealer consumer feedback complaints {year}"
 │         Gap: no structured source — Serper fetches news articles about complaints
+│
+├── Policy & Regulatory Agent  (agents/policy_regulatory.py)                 ✓ built
+│   │   Context: tavily_fetcher (2 calls, full doc) + news_fetcher (Serper, 3 calls)
+│   │   Tavily calls: 2 (FAME circulars, BS7/CAFE standards — full text extraction)
+│   │   Serper calls: 3 (Union Budget duties, PLI scheme, state EV incentives)
+│   │   WHY Tavily here: MoHI policy PDFs and regulatory standards need full content,
+│   │   not just 2-line snippets. Tavily's page extraction materially improves LLM accuracy.
+│   │
+│   ├── FAME / EV subsidy disbursements         ✓ Tavily (full MoHI circular text)
+│   │     Built: fetch_tavily_context() in context_builder._build_policy_regulatory()
+│   │     Query: "FAME II III EV subsidy disbursement India automobile {year} MoHI notification"
+│   │
+│   ├── Emission norms BS7 / CAFE standards     ✓ Tavily (full regulatory doc)
+│   │     Built: Tavily query 2 in TAVILY_SEARCH_QUERIES (prompts/policy_regulatory.py)
+│   │
+│   ├── Union Budget — auto component duties    ~ Serper search proxy
+│   │     Built: "India Union Budget automobile component import duty {ticker} {year}"
+│   │
+│   ├── PLI scheme utilization by OEMs          ~ Serper search proxy
+│   │     Built: "PLI scheme automobile OEM {company_name} utilization incentive {year}"
+│   │
+│   └── State EV incentives (varies)            ~ Serper search proxy
+│         Built: "India state EV incentive electric vehicle subsidy registration waiver {year}"
+│         Gap: state-level data is fragmented — Serper captures news about incentive changes
+│
+├── Competitive Intel Agent  (agents/competitive_intel.py)                   ✓ built
+│   │   Context: news_fetcher (Serper, 4 calls — all company-specific)
+│   │   Serper calls per run: 4 (EV share, model launches, JV/M&A, ADAS/NCAP)
+│   │   Note: all 4 queries are company-specific — cannot be cached like risk_macro
+│   │
+│   ├── EV market share — Tata/BYD/Ather/Ola    ~ Serper search proxy
+│   │     Built: "India EV market share {company_name} Tata Motors BYD Ather Ola {month} {year}"
+│   │
+│   ├── New model launch pipeline & pricing     ~ Serper search proxy
+│   │     Built: "{company_name} new model launch pipeline EV product roadmap {year}"
+│   │
+│   ├── JV / acquisition announcements          ~ Serper search proxy
+│   │     Built: "{company_name} joint venture acquisition partnership {year}"
+│   │
+│   ├── ADAS milestones BNAP/NCAP ratings       ~ Serper search proxy
+│   │     Built: "{ticker} BNAP NCAP safety rating ADAS autonomous feature {year}"
+│   │
+│   └── ~~Alternate signals~~                   ✗ dropped per team lead decision
+│         (parking lot satellite, test drive scraping, job postings, earnings call NLP)
 │
 ├── Risk & Macro Agent  (agents/risk_macro.py)                               ✓ built
 │   │   Context: macro_fetcher.py (yfinance, free) + news_fetcher (Serper, cached)
@@ -181,8 +252,10 @@ AUTOMOBILE AGENT
     │   RL adaptive weight learning (Phase 5)
     │
     ├── Base weights                            ✓ AGENT_WEIGHTS in settings.py
-    │     sales_demand 0.20 · fundamentals 0.25 · pattern 0.20
-    │     sentiment 0.15 · risk_macro 0.20
+    │     sales_demand 0.18 · raw_materials 0.10 · fundamentals 0.20
+    │     pattern_analysis 0.13 · sentiment 0.04 (legacy)
+    │     policy_regulatory 0.10 · competitive_intel 0.10 · risk_macro 0.15
+    │     sum = 1.00
     │
     ├── Conflict resolution                     ✓ built in signal_aggregator.py
     │     Detects bull/bear conflicts across agent scores, logs resolution
@@ -201,21 +274,25 @@ AUTOMOBILE AGENT
 
 ### 9.1 Call Count per Full Analysis
 
-`SERPER_MAX_QUERIES = 3` (default). Each agent calls `fetch_news_context()` which
-runs up to this many Serper searches.
+`SERPER_MAX_QUERIES = 3` (default). Each Serper-using agent calls `fetch_news_context()`
+which runs up to this many searches. Tavily is called directly in `_build_policy_regulatory()`.
 
-| Agent | Serper calls | Query type | Cacheable? |
-|-------|-------------|-----------|-----------|
-| sales_demand | 3 | Stock-specific (FADA, SIAM, EV reg) | No — per ticker |
-| fundamentals | 3 | Stock-specific (earnings, margins) | No — per ticker |
-| pattern_analysis | **0** | yfinance only | n/a |
-| sentiment | 3 | Stock-specific (news NLP, social) | No — per ticker |
-| risk_macro | **3 → 0** | **Sector-level** (INR/USD, commodities, RBI) | **Yes — shared** |
-| **Total** | **12 (cold) / 9 (warm)** | | |
+| Agent | Serper calls | Tavily calls | Query type | Cacheable? |
+|-------|-------------|-------------|-----------|-----------|
+| sales_demand | 3 | 0 | Stock-specific (FADA, SIAM, EV reg) | No — per ticker |
+| raw_materials | 1 | 0 | Sector-level (power tariff) | Partly |
+| fundamentals | 2 | 0 | Stock-specific (earnings, margins) | No — per ticker |
+| pattern_analysis | **0** | 0 | yfinance only | n/a |
+| sentiment | 3 | 0 | Stock-specific (news NLP, social) | No — per ticker |
+| policy_regulatory | 3 | **2** | Sector + company mix | Partly |
+| competitive_intel | 4 | 0 | Stock-specific (EV share, launches) | No — per ticker |
+| risk_macro | **3 → 0** | 0 | **Sector-level** (INR/USD, commodities, RBI) | **Yes — shared** |
+| **Total** | **19 (cold) / 16 (warm)** | **2** | | |
 
-**Key insight:** `risk_macro`'s 3 queries (INR/USD, steel/aluminium/rubber, RBI repo rate)
-return the same answer for every automobile stock on any given day. They are sector-level
-signals, not per-stock signals. All three are captured by the micro search loop.
+**Key insight:** `risk_macro`'s 3 Serper queries are sector-level — same answer for
+every automobile stock on any given day. Captured by micro search loop (cache HIT = 0 calls).
+`policy_regulatory`'s Tavily calls (2/analysis) are the only Tavily usage in the system,
+reserved for full document extraction of FAME circulars and BS7/CAFE regulatory texts.
 
 ### 9.2 Overlap Analysis
 
@@ -224,7 +301,9 @@ signals, not per-stock signals. All three are captured by the micro search loop.
 | INR/USD news | risk_macro | Sector-level | **Cached** via micro_search_loop |
 | Commodity prices news | risk_macro | Sector-level | **Cached** via micro_search_loop |
 | RBI repo rate news | risk_macro | Sector-level | **Cached** via micro_search_loop |
-| General company news | sentiment + fundamentals | Per-stock, different angle | Not merged — sentiment focuses on tone, fundamentals on numbers |
+| General company news | sentiment + fundamentals | Per-stock, different angle | Not merged — sentiment = tone, fundamentals = numbers |
+| Steel/aluminium prices | risk_macro + raw_materials | Both use yfinance (free) | No dedup needed — yfinance is free and fast |
+| Policy/emission norms | risk_macro + policy_regulatory | Overlapping angle | risk_macro uses Serper snippet; policy_regulatory uses Tavily full text — different depth |
 
 ### 9.3 Macro Cache Architecture
 
@@ -313,20 +392,22 @@ Max micro cycles before hitting 2,500 free limit:
 
 | Dimension | StockAI (IT sector) | Automobile Agent |
 |-----------|--------------------|--------------------|
-| Search API | Tavily (1,000 credits/month) | Serper (2,500 calls/month) |
-| Calls per stock (cold) | 1 Tavily | 12 Serper |
-| Calls per stock (warm) | 0 Tavily (cache hit) | 9 Serper |
+| Search API | Tavily (1,000 credits/month) | Serper (2,500/month) + Tavily (1,000/month) |
+| Calls per stock (cold) | 1 Tavily | 19 Serper + 2 Tavily |
+| Calls per stock (warm) | 0 Tavily (cache hit) | 16 Serper + 2 Tavily |
+| Tavily usage | All agents | Policy & Regulatory agent only |
 | Micro loop queries | 2 per run (IT + RBI/Fed) | 2 per run (Nifty Auto + EV/FADA) |
 | Macro cache | sector key in graph.py | sector key in tools/macro_cache.py |
 | Cache TTL | 2h | 2h (MACRO_CACHE_TTL_HOURS) |
-| Agent architecture | 3-stage async (POC) | 5 dedicated classes + orchestrator (v2) |
-| Monthly budget target | 660 Tavily credits | 1,710 Serper calls |
+| Agent architecture | 3-stage async (POC) | 8 dedicated classes + orchestrator |
+| Monthly budget (Serper) | n/a | ~1,350 / 2,500 (54% used) |
+| Monthly budget (Tavily) | 660 credits | ~220 / 1,000 (22% used) |
 
-The automobile repo uses Serper (not Tavily) and has a more generous free tier,
-so the per-stock call count (12 cold, 9 warm) is acceptable. The same macro cache
-pattern from StockAI is applied to deduplicate the sector-level risk_macro queries.
+Automobile repo uses Serper as primary (larger free tier) and adds Tavily selectively
+for the Policy & Regulatory agent where full document content matters (FAME circulars,
+BS7/CAFE regulatory texts). Both APIs stay well within free tiers.
 
 ---
 
-*Generated: 2026-04-09. Update this document when adding new agents, changing
-SERPER_MAX_QUERIES, or wiring new search API fetchers.*
+*Generated: 2026-04-09. Updated: 2026-04-12 — added Raw Materials, Policy & Regulatory,
+Competitive Intel agents; added Tavily fetcher; updated weights and call count tables.*

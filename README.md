@@ -1,7 +1,7 @@
 # Automobile Agent
 
 > AI-powered Indian automobile stock analyser using a multi-agent architecture.
-> Built with Groq LLM, Pydantic v2, and asyncio parallel execution.
+> Built with OpenRouter (Qwen 2.5 72B), Pydantic v2, and asyncio parallel execution.
 
 ---
 
@@ -19,11 +19,11 @@ User Input (ticker / company name)
   AutomobileAgentOrchestrator
   (resolves ticker, dispatches agents in parallel)
           │
-   ┌──────┼──────┬───────────────┬────────────┐
-   ▼      ▼      ▼               ▼            ▼
-Sales &  Fund-  Pattern      Sentiment   Risk &
-Demand  amentals Analysis               Macro
-   └──────┴──────┴───────────────┴────────────┘
+   ┌──────┬──────┬──────┬────────┬──────┬──────┬──────┐
+   ▼      ▼      ▼      ▼        ▼      ▼      ▼      ▼
+Sales& Raw   Fund-  Pattern  Senti- Policy Comp.  Risk&
+Demand Mat.  ament. Analysis  ment  &Reg.  Intel  Macro
+   └──────┴──────┴──────┴────────┴──────┴──────┴──────┘
                           │
                           ▼
                   Signal Aggregator
@@ -38,13 +38,16 @@ Demand  amentals Analysis               Macro
 
 ## Agent Overview
 
-| Agent | Weight | Dimensions analysed |
-|---|---|---|
-| Sales & Demand | 20% | FADA/SIAM dispatch, EV Vahan data, dealer inventory, DGFT exports, used car price index |
-| Fundamentals | 25% | Revenue/EBITDA delta, margin vs peers, order book, headcount, FII/DII flow |
-| Pattern Analysis | 20% | 10-yr price cycle, seasonal patterns, RSI/MACD/BB, support/resistance, Nifty Auto correlation |
-| Sentiment | 15% | News NLP, earnings call tone, Twitter/Reddit, YouTube spikes, dealer feedback |
-| Risk & Macro | 20% | INR/USD/crude exposure, commodities, RBI repo rate, emission norms, China supply risk |
+| Agent | Weight | Data Source | Dimensions analysed |
+|---|---|---|---|
+| Sales & Demand | 18% | Serper | FADA/SIAM dispatch, EV Vahan data, dealer inventory, DGFT exports, used car price index |
+| Raw Materials | 10% | yfinance + Serper | Steel/aluminium, platinum/palladium (catalytic), crude oil/polymer, power tariff |
+| Fundamentals | 20% | yfinance + Serper | Revenue/EBITDA delta, margin vs peers, order book, headcount, FII/DII flow |
+| Pattern Analysis | 13% | yfinance only | 10-yr price cycle, seasonal patterns, RSI/MACD/BB, support/resistance, Nifty Auto correlation |
+| Sentiment | 4% | Serper | News NLP, earnings call tone, Twitter/Reddit, YouTube spikes, dealer feedback |
+| Policy & Regulatory | 10% | Tavily + Serper | FAME/EV subsidies, BS7/CAFE norms, Union Budget duties, PLI scheme, state EV incentives |
+| Competitive Intel | 10% | Serper | EV market share, new model pipeline, JV/acquisitions, ADAS/NCAP ratings |
+| Risk & Macro | 15% | yfinance + Serper (cached) | INR/USD/crude exposure, commodities, RBI repo rate, China supply risk |
 
 **Signal Aggregator** (0% own score) applies weights, detects conflicts
 (score delta ≥ 0.30 between any two agents), asks the LLM to resolve them,
@@ -61,29 +64,39 @@ automobile_agent/
 │   └── rag_config.py        ← RAG pipeline config (disabled by default)
 ├── prompts/
 │   ├── sales_demand.py      ← System + analysis prompts for Sales & Demand agent
+│   ├── raw_materials.py     ← Prompts for Raw Materials agent
 │   ├── fundamentals.py      ← Prompts for Fundamentals agent
 │   ├── pattern_analysis.py  ← Prompts for Pattern Analysis agent
 │   ├── sentiment.py         ← Prompts for Sentiment agent
+│   ├── policy_regulatory.py ← Prompts + Tavily/Serper queries for Policy & Regulatory agent
+│   ├── competitive_intel.py ← Prompts for Competitive Intel agent
 │   ├── risk_macro.py        ← Prompts for Risk & Macro agent
 │   ├── signal_aggregator.py ← Prompts for Signal Aggregator
 │   └── orchestrator.py      ← Prompts for ticker resolution + error handling
 ├── agents/
 │   ├── base_agent.py        ← Abstract base: Groq LLM caller, retry, context routing
 │   ├── sales_demand.py      ← Sales & Demand sub-agent
+│   ├── raw_materials.py     ← Raw Materials Cost sub-agent (new)
 │   ├── fundamentals.py      ← Fundamentals sub-agent
 │   ├── pattern_analysis.py  ← Pattern Analysis sub-agent
 │   ├── sentiment.py         ← Sentiment sub-agent
+│   ├── policy_regulatory.py ← Policy & Regulatory sub-agent (new)
+│   ├── competitive_intel.py ← Competitive Intel sub-agent (new)
 │   ├── risk_macro.py        ← Risk & Macro sub-agent
 │   ├── signal_aggregator.py ← Weighted fusion + conflict resolution
-│   └── orchestrator.py      ← Top-level dispatcher (parallel via ThreadPoolExecutor)
+│   └── orchestrator.py      ← Top-level dispatcher (parallel via ThreadPoolExecutor, 8 workers)
 ├── models/
 │   └── schemas.py           ← All Pydantic v2 models (StockQuery, AgentOutput, FinalReport)
 ├── tools/
 │   ├── yfinance_fetcher.py  ← OHLCV, RSI/MACD/BB, peer correlation (Phase 2)
 │   ├── fundamentals_fetcher.py ← Quarterly P&L, margins, shareholding (Phase 2)
 │   ├── news_fetcher.py      ← Serper + NewsAPI search (Phase 2)
-│   ├── macro_fetcher.py     ← INR/USD, crude, commodities via yfinance (Phase 2)
+│   ├── macro_fetcher.py     ← INR/USD, crude, steel/Pt/Pd, raw material prices (Phase 2)
+│   ├── macro_cache.py       ← In-memory TTL cache for sector-level macro news
+│   ├── tavily_fetcher.py    ← Tavily full-page content extraction (Policy agent)
 │   ├── context_builder.py   ← Routes each agent to the right fetchers (Phase 2)
+│   ├── llm_client.py        ← OpenAI client factory (OpenRouter + Helicone toggle)
+│   ├── run_logger.py        ← Structured JSONL logging: token usage + cost per call
 │   ├── score_store.py       ← SQLite historical score persistence (Phase 4)
 │   ├── scheduler.py         ← APScheduler cron trigger + run dispatch (Phase 4)
 │   ├── alerting.py          ← Score/verdict change alerts: console/file/webhook (Phase 4)
@@ -131,7 +144,10 @@ pip install -r requirements.txt
 
 ```bash
 cp .env.example .env
-# Edit .env and add your GROQ_API_KEY
+# Edit .env — minimum required keys:
+#   OPENROUTER_API_KEY=sk-or-v1-...       (required — openrouter.ai)
+#   SERPER_API_KEY=...                    (optional — 2,500 free searches/month)
+#   TAVILY_API_KEY=...                    (optional — 1,000 free extractions/month)
 ```
 
 ### 3. Run analysis
@@ -160,8 +176,10 @@ All customisation lives in two files — **no code changes needed** for most adj
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `GROQ_API_KEY` | env var | Groq API key |
-| `LLM_MODEL` | `llama-3.3-70b-versatile` | Groq model ID |
+| `OPENROUTER_API_KEY` | env var | OpenRouter API key (required) |
+| `LLM_MODEL` | `qwen/qwen3.5-flash-02-23` | OpenRouter model ID |
+| `LLM_INPUT_COST_PER_M` | `0.065` | USD per million input tokens (for run_logger cost tracking) |
+| `LLM_OUTPUT_COST_PER_M` | `0.26` | USD per million output tokens |
 | `LLM_TEMPERATURE` | `0.2` | LLM creativity (0 = deterministic) |
 | `LLM_MAX_TOKENS` | `2048` | Max tokens per LLM response |
 | `AGENT_WEIGHTS` | see file | Per-agent score weights (must sum to 1.0) |
@@ -241,16 +259,20 @@ Each agent now receives real data via `tools/context_builder.py`:
 
 | Agent | Data source | Tool file |
 |---|---|---|
-| Pattern Analysis | yfinance OHLCV, RSI/MACD/BB, peer correlation | [tools/yfinance_fetcher.py](tools/yfinance_fetcher.py) |
-| Fundamentals | yfinance quarterly P&L, shareholding | [tools/fundamentals_fetcher.py](tools/fundamentals_fetcher.py) |
-| Risk & Macro | yfinance: crude, INR/USD, steel, aluminium | [tools/macro_fetcher.py](tools/macro_fetcher.py) |
-| Sales & Demand | Serper + NewsAPI news search | [tools/news_fetcher.py](tools/news_fetcher.py) |
-| Sentiment | Serper + NewsAPI news search | [tools/news_fetcher.py](tools/news_fetcher.py) |
+| Sales & Demand | Serper (3 calls) | [tools/news_fetcher.py](tools/news_fetcher.py) |
+| Raw Materials | yfinance (SLX, AA, PPLT, PALL, CL=F, BZ=F) + Serper (1 call) | [tools/macro_fetcher.py](tools/macro_fetcher.py) |
+| Fundamentals | yfinance quarterly P&L, shareholding + Serper (2 calls) | [tools/fundamentals_fetcher.py](tools/fundamentals_fetcher.py) |
+| Pattern Analysis | yfinance OHLCV, RSI/MACD/BB, peer correlation (0 Serper) | [tools/yfinance_fetcher.py](tools/yfinance_fetcher.py) |
+| Sentiment | Serper (3 calls) | [tools/news_fetcher.py](tools/news_fetcher.py) |
+| Policy & Regulatory | **Tavily (2 calls)** full doc + Serper (3 calls) | [tools/tavily_fetcher.py](tools/tavily_fetcher.py) |
+| Competitive Intel | Serper (4 calls) | [tools/news_fetcher.py](tools/news_fetcher.py) |
+| Risk & Macro | yfinance macro tickers + Serper cached via macro_cache | [tools/macro_fetcher.py](tools/macro_fetcher.py) |
 
-**API keys needed for Phase 2:**
-- `GROQ_API_KEY` — required
-- `SERPER_API_KEY` — optional (news search, get at serper.dev)
-- `NEWSAPI_KEY` — optional (news articles, get at newsapi.org)
+**API keys needed:**
+- `OPENROUTER_API_KEY` — required (openrouter.ai, pay-as-you-go ~$0.006/run)
+- `SERPER_API_KEY` — optional (2,500 free/month — serper.dev)
+- `TAVILY_API_KEY` — optional (1,000 free/month — tavily.com)
+- `NEWSAPI_KEY` — optional (fallback for Serper — newsapi.org)
 - yfinance / macro data — **no API key needed**
 
 **Context priority (in `base_agent.py`):**
@@ -356,7 +378,7 @@ python main.py MARUTI
    only requires editing its prompt file. Changing LLM or API keys only requires
    editing `config/settings.py` or `.env`. No agent code needs to change.
 
-2. **Parallel execution** — All 5 sub-agents run concurrently via
+2. **Parallel execution** — All 8 sub-agents run concurrently via
    `ThreadPoolExecutor` in `orchestrator.py`. Total latency ≈ slowest agent,
    not sum of all agents.
 
@@ -367,8 +389,12 @@ python main.py MARUTI
 4. **Pydantic v2 validation** — All LLM outputs are parsed into typed models.
    Score bounds (0.0–1.0) are enforced at the model layer.
 
-5. **LLM JSON mode** — All Groq calls use `response_format={"type": "json_object"}`
+5. **LLM JSON mode** — All LLM calls use `response_format={"type": "json_object"}`
    to reduce parse failures.
+
+6. **Structured observability** — Every LLM call logs token counts and cost to
+   `logs/agent_calls.jsonl`. Full run summaries go to `logs/run_summaries.jsonl`.
+   Queryable with plain Python — no extra LLM needed to analyse cost/usage.
 
 ---
 
@@ -397,7 +423,7 @@ python main.py MARUTI --output markdown
 |---|---|
 | Config & prompts | Done |
 | Pydantic schemas | Done |
-| BaseAgent + 5 sub-agents | Done |
+| BaseAgent + 8 sub-agents | Done |
 | Signal Aggregator | Done |
 | Orchestrator (parallel) | Done |
 | CLI (main.py) | Done |
@@ -405,13 +431,34 @@ python main.py MARUTI --output markdown
 | Live data feeds (yfinance + Serper + NewsAPI) | Done (Phase 2) |
 | RAG pipeline (ChromaDB + sentence-transformers) | Done (Phase 3) |
 | Scheduled / periodic trigger + alerting | Done (Phase 4) |
+| Structured JSONL logging + token/cost tracking | Done |
+| Helicone observability dashboard (optional) | Done |
 | Web UI / dashboard | Planned (Phase 5) |
 
 ---
 
 ## LLM / Model
 
-- **Provider:** [Groq](https://console.groq.com/)
-- **Default model:** `llama-3.3-70b-versatile`
-- **Playground:** https://console.groq.com/playground
+- **Provider:** [OpenRouter](https://openrouter.ai/) — OpenAI-compatible API, pay-as-you-go
+- **Default model:** `qwen/qwen-2.5-72b-instruct` (~$0.01/full run)
+- **Alternative models:** `meta-llama/llama-3.3-70b-instruct`, `qwen/qwen-2.5-32b-instruct`
 - Change the model in `config/settings.py → LLM_MODEL` or set `LLM_MODEL=` in `.env`
+- Update `LLM_INPUT_COST_PER_M` / `LLM_OUTPUT_COST_PER_M` if switching models for accurate cost tracking
+
+## Observability
+
+All LLM calls are logged to `logs/` as newline-delimited JSON:
+
+```python
+import json
+# Cost breakdown by agent
+calls = [json.loads(l) for l in open("logs/agent_calls.jsonl")]
+by_agent = {}
+for c in calls:
+    by_agent[c["agent"]] = by_agent.get(c["agent"], 0) + c["cost_usd"]
+
+# Total spend this month
+total = sum(c["cost_usd"] for c in calls)
+```
+
+Token/cost data is always written to `logs/` regardless of any external service.

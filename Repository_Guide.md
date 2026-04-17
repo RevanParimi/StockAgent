@@ -9,7 +9,7 @@ This guide is intended for product owners, designers, and IT professionals who n
 ## Project Purpose
 
 - **Input**: A stock ticker or company name (e.g., "MARUTI" or "Maruti Suzuki")
-- **Process**: Parallel analysis by five specialist AI agents
+- **Process**: Parallel analysis by eight specialist AI agents
 - **Output**: A consolidated investment score (0.0–1.0) with a verdict and supporting thesis
 
 The system emphasizes specialization, parallelism, and conflict-aware fusion to deliver deep, balanced insights.
@@ -23,12 +23,15 @@ User Input
     ↓
 Orchestrator (Ticker Resolution & Dispatch)
     ↓
-Parallel Agent Execution
-├── Sales & Demand Agent (20% weight)
-├── Fundamentals Agent (25% weight)
-├── Pattern Analysis Agent (20% weight)
-├── Sentiment Agent (15% weight)
-└── Risk & Macro Agent (20% weight)
+Parallel Agent Execution  [ThreadPoolExecutor — 8 workers]
+├── Sales & Demand Agent       (18% weight) — Serper
+├── Raw Materials Agent        (10% weight) — yfinance + Serper
+├── Fundamentals Agent         (20% weight) — yfinance + Serper
+├── Pattern Analysis Agent     (13% weight) — yfinance only
+├── Sentiment Agent            ( 4% weight) — Serper  [legacy]
+├── Policy & Regulatory Agent  (10% weight) — Tavily + Serper
+├── Competitive Intel Agent    (10% weight) — Serper
+└── Risk & Macro Agent         (15% weight) — yfinance + Serper (cached)
     ↓
 Signal Aggregator (Weighted Fusion & Conflict Resolution)
     ↓
@@ -37,10 +40,10 @@ Final Score & Verdict Output
 
 ### Key Components
 
-- **Orchestrator**: Manages the overall flow, resolves inputs, and coordinates agents.
-- **Agents**: Specialized modules each focusing on a specific analysis dimension.
+- **Orchestrator**: Manages the overall flow, resolves inputs, and coordinates all 8 agents.
+- **Agents**: 8 specialized modules each focusing on a specific analysis dimension.
 - **Signal Aggregator**: Combines agent outputs, resolves conflicts, and produces the final verdict.
-- **Tools**: Supporting utilities for data fetching, RAG (Retrieval-Augmented Generation), scheduling, and storage.
+- **Tools**: Data fetchers (yfinance, Serper, Tavily, NewsAPI), macro cache, LLM client factory, JSONL observability logger, RAG, scheduling, and storage.
 - **Configuration & Prompts**: Centralized settings and AI prompts for easy customization.
 
 ## Repository Structure
@@ -62,7 +65,10 @@ The repository is organized into logical folders to separate concerns and facili
   - Each agent has its own prompt file (e.g., `fundamentals.py` in prompts/) for easy editing and versioning.
 
 - **`tools/`**: Utility modules for data handling and system operations.
-  - Data fetchers (e.g., `yfinance_fetcher.py`, `news_fetcher.py`).
+  - Data fetchers: `yfinance_fetcher.py`, `fundamentals_fetcher.py`, `macro_fetcher.py`, `news_fetcher.py`, `tavily_fetcher.py`.
+  - Cache: `macro_cache.py` — in-memory TTL cache for sector-level macro news.
+  - LLM client: `llm_client.py` — single factory for the OpenRouter client; swap model or provider here without touching agent code.
+  - Observability: `run_logger.py` — writes structured JSONL logs (`logs/agent_calls.jsonl`, `logs/run_summaries.jsonl`) with token counts and cost per LLM call.
   - RAG components (`rag/embedder.py`, `rag/retriever.py`).
   - Supporting tools like `scheduler.py` for automated runs and `alerting.py` for notifications.
 
@@ -97,8 +103,8 @@ All paths lead to the `AutomobileAgentOrchestrator.analyse()` method.
 
 ### Core Pipeline Phases
 1. **Ticker Resolution**: Normalize user input to a standard NSE ticker.
-2. **Context Assembly**: Gather relevant data and context for analysis.
-3. **Parallel Agent Execution**: Run all five agents simultaneously for efficiency.
+2. **Context Assembly**: Gather relevant data per agent (yfinance / Serper / Tavily).
+3. **Parallel Agent Execution**: Run all 8 agents simultaneously via ThreadPoolExecutor.
 4. **Signal Aggregation**: Combine results with weighted scoring and resolve any conflicts.
 5. **Output Generation**: Produce the final score, verdict, and explanatory thesis.
 
@@ -126,6 +132,15 @@ Settings are managed hierarchically:
 - Defaults in `config/settings.py`
 
 This allows easy customization without code changes.
+
+**Key `.env` variables:**
+
+| Variable | Required | Purpose |
+|---|---|---|
+| `OPENROUTER_API_KEY` | Yes | LLM provider (OpenRouter) |
+| `NEWSAPI_KEY` | No | Fallback news source if Serper quota runs out (newsapi.org) |
+| `SERPER_API_KEY` | No | Google search (2,500 free/month) |
+| `TAVILY_API_KEY` | No | Full-page extraction for Policy agent (1,000 free/month) |
 
 ## Error Handling & Fallbacks
 

@@ -1,1 +1,39 @@
+# Virtual environment / tooling
 .auto/*
+.venv/
+venv/
+env/
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+
+# Environment / secrets — NEVER commit these
+.env
+.env.*
+!.env.example
+
+# Logs and generated data
+logs/
+*.jsonl
+*.log
+
+# Word / Office temp files
+~$*
+*.tmp
+
+# Stray pip output files
+=*
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+
+# Distribution / build
+dist/
+build/
+*.egg-info/

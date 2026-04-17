@@ -24,13 +24,13 @@ import logging
 import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import date
-
-from groq import Groq
+from datetime import date, datetime, timezone
 
 from config import settings
 from models.schemas import AgentOutput, FinalReport, PipelineRun, StockQuery
 from prompts import orchestrator as P
+from tools.llm_client import get_llm_client
+from tools.run_logger import log_llm_call, log_run_summary
 
 from agents.sales_demand import SalesDemandAgent
 from agents.raw_materials import RawMaterialsAgent
@@ -69,10 +69,7 @@ class AutomobileAgentOrchestrator:
     """
 
     def __init__(self) -> None:
-        self._llm = Groq(
-            api_key=settings.GROQ_API_KEY,
-            timeout=settings.LLM_TIMEOUT_SECONDS,
-        )
+        self._llm = get_llm_client()
         self._aggregator = SignalAggregator()
         # Optional: set by generate_forecast.py / daily_review.py to inject
         # ticker-specific learned weights without mutating global settings.
@@ -97,17 +94,18 @@ class AutomobileAgentOrchestrator:
         """
         run_id = str(uuid.uuid4())[:8]
         start = time.time()
+        started_at = datetime.now(timezone.utc)
 
         logger.info("[Orchestrator] Run %s started for '%s'", run_id, user_input)
 
         # Step 1: Resolve ticker
-        query = self._resolve_ticker(user_input)
+        query = self._resolve_ticker(user_input, run_id=run_id)
         logger.info("[Orchestrator] Resolved: %s → %s", user_input, query)
 
         pipeline_run = PipelineRun(run_id=run_id, query=query, status="running")
 
         # Step 2: Run all sub-agents in parallel
-        agent_outputs = self._run_agents_parallel(query)
+        agent_outputs = self._run_agents_parallel(query, run_id=run_id)
 
         # Step 3: Aggregate (pass learned weights if set by caller)
         report = self._aggregator.run(
@@ -115,11 +113,37 @@ class AutomobileAgentOrchestrator:
             company_name=query.company_name,
             agent_outputs=agent_outputs,
             learned_weights=self._aggregator_weights,
+            run_id=run_id,
         )
 
         pipeline_run.report = report
         pipeline_run.status = "completed"
         pipeline_run.duration_seconds = round(time.time() - start, 2)
+
+        # Log run summary with totals aggregated from agent_calls.jsonl
+        errors = [
+            f"{name}: {out.error}"
+            for name, out in agent_outputs.items()
+            if out.error
+        ]
+        log_run_summary(
+            run_id=run_id,
+            ticker=query.ticker,
+            company_name=query.company_name,
+            started_at=started_at,
+            duration_seconds=pipeline_run.duration_seconds,
+            final_score=report.final_score,
+            verdict=report.verdict,
+            # Token totals are not accumulated here to avoid complexity;
+            # query agent_calls.jsonl and filter by run_id for per-run totals.
+            total_prompt_tokens=0,
+            total_completion_tokens=0,
+            total_cost_usd=0.0,
+            agent_scores={
+                name: out.overall_score for name, out in agent_outputs.items()
+            },
+            errors=errors,
+        )
 
         logger.info(
             "[Orchestrator] Run %s complete in %.1fs – verdict=%s score=%.3f",
@@ -134,8 +158,9 @@ class AutomobileAgentOrchestrator:
     # Ticker resolution
     # ------------------------------------------------------------------
 
-    def _resolve_ticker(self, user_input: str) -> StockQuery:
+    def _resolve_ticker(self, user_input: str, run_id: str = "") -> StockQuery:
         prompt = P.TICKER_RESOLUTION_PROMPT.format(user_input=user_input)
+        t0 = time.time()
         try:
             response = self._llm.chat.completions.create(
                 model=settings.LLM_MODEL,
@@ -148,6 +173,16 @@ class AutomobileAgentOrchestrator:
                 response_format={"type": "json_object"},
             )
             data = json.loads(response.choices[0].message.content or "{}")
+            # Log ticker resolution call
+            if response.usage:
+                pt, ct = response.usage.prompt_tokens, response.usage.completion_tokens
+                cost = (pt * settings.LLM_INPUT_COST_PER_M + ct * settings.LLM_OUTPUT_COST_PER_M) / 1_000_000
+                log_llm_call(
+                    run_id=run_id, ticker=user_input.upper(), phase="ticker_resolution",
+                    agent_name=None, model=settings.LLM_MODEL,
+                    prompt_tokens=pt, completion_tokens=ct,
+                    duration_ms=(time.time() - t0) * 1000, cost_usd=cost,
+                )
             return StockQuery(
                 ticker=data.get("ticker", user_input.upper()),
                 company_name=data.get("company_name", user_input),
@@ -156,7 +191,6 @@ class AutomobileAgentOrchestrator:
             )
         except Exception as exc:
             logger.warning("[Orchestrator] Ticker resolution failed: %s", exc)
-            # Fallback: treat the input as a ticker directly
             return StockQuery(
                 ticker=user_input.upper(),
                 company_name=user_input,
@@ -168,13 +202,13 @@ class AutomobileAgentOrchestrator:
     # ------------------------------------------------------------------
 
     def _run_agents_parallel(
-        self, query: StockQuery
+        self, query: StockQuery, run_id: str = ""
     ) -> dict[str, AgentOutput]:
         results: dict[str, AgentOutput] = {}
 
         with ThreadPoolExecutor(max_workers=len(_SUB_AGENTS)) as pool:
             future_to_name = {
-                pool.submit(agent.run, query): name
+                pool.submit(agent.run, query, run_id): name
                 for name, agent in _SUB_AGENTS.items()
             }
             for future in as_completed(

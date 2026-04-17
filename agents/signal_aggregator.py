@@ -14,9 +14,8 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 from datetime import date
-
-from groq import Groq
 
 from config import settings
 from models.schemas import (
@@ -25,6 +24,8 @@ from models.schemas import (
     WeightedAgentScore,
 )
 from prompts import signal_aggregator as P
+from tools.llm_client import get_llm_client
+from tools.run_logger import log_llm_call
 
 logger = logging.getLogger(__name__)
 
@@ -39,10 +40,7 @@ class SignalAggregator:
     """
 
     def __init__(self) -> None:
-        self._client = Groq(
-            api_key=settings.GROQ_API_KEY,
-            timeout=settings.LLM_TIMEOUT_SECONDS,
-        )
+        self._client = get_llm_client()
 
     def run(
         self,
@@ -50,6 +48,7 @@ class SignalAggregator:
         company_name: str,
         agent_outputs: dict[str, AgentOutput],
         learned_weights: dict[str, float] | None = None,
+        run_id: str = "",
     ) -> FinalReport:
         """
         Parameters
@@ -110,8 +109,23 @@ class SignalAggregator:
             report_date=str(date.today()),
         )
 
+        t0 = time.time()
         raw = self._call_llm(system_prompt, user_prompt)
-        return self._parse(raw, ticker, company_name, weighted_scores, agent_outputs)
+        duration_ms = (time.time() - t0) * 1000
+        report = self._parse(raw, ticker, company_name, weighted_scores, agent_outputs)
+
+        # Log aggregation LLM call
+        pt = getattr(self, "_last_prompt_tokens", 0)
+        ct = getattr(self, "_last_completion_tokens", 0)
+        cost = (pt * settings.LLM_INPUT_COST_PER_M + ct * settings.LLM_OUTPUT_COST_PER_M) / 1_000_000
+        log_llm_call(
+            run_id=run_id, ticker=ticker, phase="aggregation",
+            agent_name="signal_aggregator", model=settings.LLM_MODEL,
+            prompt_tokens=pt, completion_tokens=ct,
+            duration_ms=duration_ms, cost_usd=cost,
+            score=report.final_score,
+        )
+        return report
 
     # ------------------------------------------------------------------
     # Conflict detection
@@ -146,6 +160,9 @@ class SignalAggregator:
             ],
             response_format={"type": "json_object"},
         )
+        if response.usage:
+            self._last_prompt_tokens = response.usage.prompt_tokens
+            self._last_completion_tokens = response.usage.completion_tokens
         return response.choices[0].message.content or "{}"
 
     # ------------------------------------------------------------------

@@ -96,7 +96,7 @@ normalise this to a canonical NSE ticker before any analysis can start.
 User input: "Maruti Suzuki"
       │
       ▼
-LLM call (Groq, temperature=0.0 for determinism)
+LLM call (OpenRouter/Qwen, temperature=0.0 for determinism)
   Prompt: TICKER_RESOLUTION_PROMPT (from prompts/orchestrator.py)
   Known ticker table embedded in prompt
       │
@@ -164,27 +164,30 @@ _gather_context(query) called by each agent
 StockQuery
       │
       ▼
-ThreadPoolExecutor(max_workers=5)
+ThreadPoolExecutor(max_workers=8)
       │
-      ├──► SalesDemandAgent.run(query)    ──┐
-      ├──► FundamentalsAgent.run(query)   ──┤
-      ├──► PatternAnalysisAgent.run(query)──┤──► as_completed()
-      ├──► SentimentAgent.run(query)      ──┤    collects results
-      └──► RiskMacroAgent.run(query)      ──┘
-                                             │
-                                             ▼
-                              dict[agent_name → AgentOutput]
+      ├──► SalesDemandAgent.run(query)       ──┐
+      ├──► RawMaterialsAgent.run(query)      ──┤
+      ├──► FundamentalsAgent.run(query)      ──┤
+      ├──► PatternAnalysisAgent.run(query)   ──┤──► as_completed()
+      ├──► SentimentAgent.run(query)         ──┤    collects results
+      ├──► PolicyRegulatoryAgent.run(query)  ──┤
+      ├──► CompetitiveIntelAgent.run(query)  ──┤
+      └──► RiskMacroAgent.run(query)         ──┘
+                                                │
+                                                ▼
+                               dict[agent_name → AgentOutput]
 ```
 
 **Why parallel?**
 Each agent makes one LLM API call (~1-3 seconds). Sequential execution
-would take 5-15 seconds. Parallel execution takes ~max(all agents)
-≈ 2-4 seconds. This matters for user experience and scheduled runs.
+would take 8-24 seconds. Parallel execution takes ~max(all agents)
+≈ 3-5 seconds. This matters for user experience and scheduled runs.
 
 **Why ThreadPoolExecutor and not asyncio?**
-The Groq SDK is synchronous. ThreadPoolExecutor lets us parallelise
+The OpenAI SDK is synchronous. ThreadPoolExecutor lets us parallelise
 blocking I/O calls without rewriting the SDK. For future async support,
-swap to `asyncio.gather()` with an async Groq client.
+swap to `asyncio.gather()` with an async OpenAI client.
 
 **Timeout handling:**
 `as_completed()` has a `timeout=AGENT_TIMEOUT_SECONDS` (default 120s).
@@ -212,8 +215,9 @@ agent.run(query)
       │
       ▼
 3. _call_llm_with_retry(system_prompt, user_prompt)
-   → Groq API call
+   → OpenRouter API call (via tools/llm_client.py)
    → response_format={"type": "json_object"} (forces valid JSON)
+   → captures response.usage → logs tokens + cost to logs/agent_calls.jsonl
    → retry up to MAX_RETRIES=3 times on RateLimit/Timeout
    → exponential backoff between retries
       │
@@ -345,26 +349,47 @@ each agent needs. It reads the agent name and calls the right fetchers.
 ```
 ContextBuilder().build(agent_name, query)
       │
-      ├── "sales_demand"     → news_fetcher (Serper + NewsAPI)
-      │                         queries: FADA/SIAM, Vahan, dealer inventory...
+      ├── "sales_demand"        → news_fetcher (Serper × 3)
+      │                           queries: FADA/SIAM, Vahan, dealer inventory...
       │
-      ├── "fundamentals"     → fundamentals_fetcher (yfinance)
-      │                       + news_fetcher (earnings, FII flow...)
+      ├── "raw_materials"       → macro_fetcher.get_raw_materials_context() (yfinance)
+      │                           tickers: SLX, AA, PPLT, PALL, CL=F, BZ=F
+      │                         + news_fetcher (Serper × 1: power tariff)
       │
-      ├── "pattern_analysis" → yfinance_fetcher (OHLCV, RSI, MACD, BB,
-      │                         support/resistance, seasonal, correlation)
+      ├── "fundamentals"        → fundamentals_fetcher (yfinance quarterly P&L)
+      │                         + news_fetcher (Serper × 2: earnings, market share)
       │
-      ├── "sentiment"        → news_fetcher (Serper + NewsAPI)
-      │                         queries: news NLP, earnings call, Reddit...
+      ├── "pattern_analysis"    → yfinance_fetcher (OHLCV, RSI, MACD, BB,
+      │                           support/resistance, seasonal, correlation)
+      │                           [ZERO Serper calls — most API-efficient agent]
       │
-      └── "risk_macro"       → macro_fetcher (INR/USD, crude, steel...)
-                             + news_fetcher (RBI, emission norms, China...)
+      ├── "sentiment"           → news_fetcher (Serper × 3)
+      │                           queries: news NLP, earnings call, Reddit...
+      │
+      ├── "policy_regulatory"   → tavily_fetcher (Tavily × 2, full page text)
+      │                           queries: FAME III circular, BS7/CAFE standards
+      │                         + news_fetcher (Serper × 3: budget, PLI, state EV)
+      │
+      ├── "competitive_intel"   → news_fetcher (Serper × 4)
+      │                           queries: EV share, model launches, JV/M&A, ADAS
+      │
+      └── "risk_macro"          → macro_fetcher (INR/USD, crude, steel — yfinance)
+                                + macro_cache check:
+                                    HIT  → skip Serper × 3 (sector cached)
+                                    MISS → news_fetcher (Serper × 3)
 ```
 
 **Why not give every agent all data?**
 Token limits. Each agent gets ~2048 tokens for its response. Stuffing
 irrelevant data (e.g., RSI data into the Fundamentals agent) wastes
 tokens and dilutes the signal. Specialisation applies to data too.
+
+**Why Tavily only for Policy & Regulatory?**
+FAME circulars and BS7/CAFE regulatory standards are published as dense
+government documents. A 2-line Serper snippet misses the critical numbers
+(disbursement amounts, compliance thresholds). Tavily's full-page extraction
+costs 2 calls (22% of 1,000/month free tier) and materially improves
+LLM scoring accuracy for this agent.
 
 ---
 
@@ -414,22 +439,42 @@ get_company_info(ticker)
   → Market cap, P/E, P/B, employees, sector description
 ```
 
-#### macro_fetcher (Risk & Macro Agent)
+#### macro_fetcher (Risk & Macro Agent + Raw Materials Agent)
 
 ```
-get_inr_usd_rate()     → yf.download("INR=X")
-get_crude_oil_price()  → yf.download("CL=F")   [WTI futures]
-get_commodity_prices() → SLX (steel ETF), AA (aluminium proxy),
-                          RBc1 (rubber futures if available)
-get_rbi_repo_rate()    → static dict (no yfinance feed for RBI)
-                          → update manually or automate via RBI website scrape
+get_inr_usd_rate()          → yf.download("INR=X")
+get_crude_oil_price()       → yf.download("CL=F")   [WTI futures]
+get_commodity_prices()      → SLX (steel ETF), AA (aluminium proxy),
+                               RBc1 (rubber futures if available)
+get_raw_material_prices()   → SLX, AA, PPLT (platinum ETF), PALL (palladium ETF),
+                               CL=F (WTI), BZ=F (Brent)
+get_raw_materials_context() → formatted string for Raw Materials agent prompt
+get_rbi_repo_rate()         → static dict (no yfinance feed for RBI)
+                               → update manually or automate via RBI website scrape
 
 WHY these commodities?
-  Steel    → 60-70% of vehicle body weight; input cost driver
-  Aluminium → engine components, wheels; rising trend = margin pressure
-  Rubber   → tyres; dominated by Southeast Asian supply chains
-  Crude    → petrol/diesel demand proxy + logistics cost
-  INR/USD  → export revenue (Bajaj, Hero export heavily) vs import cost
+  Steel       → 60-70% of vehicle body weight; input cost driver
+  Aluminium   → engine components, wheels; rising trend = margin pressure
+  Platinum    → catalytic converters (ICE OEMs: Maruti, Bajaj, Hero)
+  Palladium   → catalytic converters; supply concentrated in Russia/S.Africa
+  Crude/Brent → polymer costs (bumpers, dashboards) + fuel price signal
+  INR/USD     → export revenue (Bajaj, Hero export heavily) vs import cost
+```
+
+#### tavily_fetcher (Policy & Regulatory Agent)
+
+```
+search_tavily(query, max_results=2, search_depth="advanced")
+  → POST https://api.tavily.com/search
+  → Tavily visits each result URL, strips HTML, extracts readable text
+  → Returns: title, content (~600 chars), url per result
+  → WHY not Serper here: FAME circulars and BS7 standards are dense
+    government documents — a 2-line snippet is insufficient
+
+fetch_tavily_context(queries, max_queries=2)
+  → Budget guard: max 2 calls (220/month for 110 analyses = 22% of 1,000 free)
+  → Content truncated to 600 chars each to control token usage
+  → Falls back gracefully if TAVILY_API_KEY not set (returns empty)
 ```
 
 #### news_fetcher (Sales & Demand + Sentiment Agents)
@@ -757,15 +802,15 @@ The `error` field on `AgentOutput` makes failures visible in the report.
               │                         │                             │
               ▼                         ▼                             ▼
    ┌──────────────────┐    ┌──────────────────────┐    ┌─────────────────────┐
-   │ Phase 2 Fetchers │    │    Groq LLM (API)    │    │  Phase 3 ChromaDB   │
-   │                  │    │                      │    │  (if RAG_ENABLED)   │
-   │ yfinance:        │    │  All LLM calls go    │    │                     │
-   │  OHLCV, P&L,     │    │  through Groq with   │    │  Embedder queries   │
-   │  shareholding,   │    │  JSON mode enabled   │    │  vector store for   │
-   │  macro/FX        │    │                      │    │  relevant chunks    │
+   │ Phase 2 Fetchers │    │  OpenRouter LLM API  │    │  Phase 3 ChromaDB   │
+   │                  │    │  (Qwen 2.5 72B)      │    │  (if RAG_ENABLED)   │
+   │ yfinance:        │    │                      │    │                     │
+   │  OHLCV, P&L,     │    │  Routed via          │    │  Embedder queries   │
+   │  shareholding,   │    │  llm_client.py       │    │  vector store for   │
+   │  macro/FX        │    │  (OpenRouter only)   │    │  relevant chunks    │
    │                  │    │                      │    │                     │
-   │ Serper/NewsAPI:  │    │                      │    │                     │
-   │  news articles   │    │                      │    │                     │
+   │ Serper/NewsAPI:  │    │  Tokens+cost logged  │    │                     │
+   │  news articles   │    │  → agent_calls.jsonl │    │                     │
    └────────┬─────────┘    └──────────────────────┘    └──────────┬──────────┘
             │                         ▲                           │
             │                         │ prompts                   │
@@ -838,14 +883,17 @@ Example — Pattern Analysis Agent scoring MARUTI:
 ```
 Final composite = Σ (agent_score × agent_weight) / Σ(weights)
 
-Example:
-  sales_demand     0.72 × 0.20 = 0.144
-  fundamentals     0.68 × 0.25 = 0.170
-  pattern_analysis 0.63 × 0.20 = 0.126
-  sentiment        0.70 × 0.15 = 0.105
-  risk_macro       0.58 × 0.20 = 0.116
-                              ──────────
-  composite = 0.661 / 1.00 = 0.661
+Example (MARUTI):
+  sales_demand       0.72 × 0.18 = 0.1296
+  raw_materials      0.65 × 0.10 = 0.0650
+  fundamentals       0.76 × 0.20 = 0.1520
+  pattern_analysis   0.63 × 0.13 = 0.0819
+  sentiment          0.58 × 0.04 = 0.0232
+  policy_regulatory  0.71 × 0.10 = 0.0710
+  competitive_intel  0.55 × 0.10 = 0.0550
+  risk_macro         0.60 × 0.15 = 0.0900
+                                 ──────────
+  composite = 0.6677 / 1.00 = 0.668  → BUY
 ```
 
 ### Verdict mapping
@@ -864,14 +912,16 @@ Score Range    Verdict          Meaning
 upward or downward after conflict resolution. The final verdict is
 derived from the LLM-confirmed score, not the raw composite.
 
-### Why fundamentals gets the highest weight (0.25)?
+### Why fundamentals gets the highest weight (0.20)?
 
 Fundamentals (revenue growth, EBITDA margins, FII flows) are the most
 reliable predictor of medium-term stock performance in Indian markets.
 Sales data is a leading indicator but can be noisy month-to-month.
-Technical patterns are short-term. Sentiment is highly volatile.
-Macro risk is real but often priced in. Fundamentals remain the
-ground truth anchor.
+Technical patterns are short-term. Sentiment is low-weight (0.04) — kept
+for legacy compatibility but de-emphasised as social signal is noisy.
+Raw materials, policy, and competitive intel are new dimensions each at
+0.10 — meaningful but secondary to financial reality. Macro risk at 0.15
+acknowledges that sector-level headwinds can override all company signals.
 
 ---
 
@@ -880,15 +930,24 @@ ground truth anchor.
 ```
 WHAT YOU WANT TO CHANGE              WHERE TO CHANGE IT
 ──────────────────────────────────── ────────────────────────────
-LLM model (e.g. llama → mixtral)    config/settings.py → LLM_MODEL
-Add a new API key                   .env + config/settings.py
-Change agent weights                config/settings.py → AGENT_WEIGHTS
+LLM model / provider                config/settings.py → LLM_MODEL (OpenRouter model ID)
+View token/cost logs                logs/agent_calls.jsonl (plain Python, no external service)
+Update cost rates for new model     config/settings.py → LLM_INPUT_COST_PER_M / LLM_OUTPUT_COST_PER_M
+Add OpenRouter API key              .env → OPENROUTER_API_KEY
+Add Serper API key                  .env → SERPER_API_KEY
+Add Tavily API key                  .env → TAVILY_API_KEY
+Change agent weights                config/settings.py → AGENT_WEIGHTS (8 keys, sum=1.0)
 Change score → verdict thresholds  config/settings.py → SCORE_THRESHOLDS
 Change cron schedule                .env → SCHEDULER_CRON
 Add a new ticker to schedule        .env → SCHEDULER_TICKERS
 Change what Sales agent analyses    prompts/sales_demand.py → ANALYSIS_PROMPT
+Change Policy agent Tavily queries  prompts/policy_regulatory.py → TAVILY_SEARCH_QUERIES
+Change Policy agent Serper queries  prompts/policy_regulatory.py → CONTEXT_SEARCH_QUERIES
 Change news sources                 config/settings.py → NEWS_SOURCES
 Change RSI period                   config/settings.py → RSI_PERIOD
+Change macro cache TTL              .env → MACRO_CACHE_TTL_HOURS
+Change micro loop frequency         .env → MICRO_CYCLES_PER_DAY
+Add platinum/palladium tickers      config/settings.py → PLATINUM_TICKER, PALLADIUM_TICKER
 Enable RAG                          .env → RAG_ENABLED=true
 Change ChromaDB location            .env → CHROMA_PERSIST_DIR
 Change embedding model              config/rag_config.py → EMBEDDING_MODEL
@@ -897,8 +956,9 @@ Add Slack alerts                    .env → ALERT_CHANNELS=console,file,webhook
 Change alert sensitivity            .env → ALERT_SCORE_CHANGE_THRESHOLD
 Add a new sub-agent dimension       prompts/<agent>.py + agents/<agent>.py
                                     + models/schemas.py (new SubScores field)
-Add a new sub-agent entirely        New files in all three directories above
-                                    + register in orchestrator.py _SUB_AGENTS
+Add a new sub-agent entirely        New files in prompts/, agents/, models/schemas.py
+                                    + context_builder.py (_build_<agent_name>)
+                                    + orchestrator.py _SUB_AGENTS dict
 Index new documents into RAG        python scripts/ingest_documents.py --dir ...
 Run pipeline immediately            python scripts/run_schedule.py run-now
 View score trends                   python scripts/run_schedule.py history --ticker MARUTI
@@ -906,4 +966,4 @@ View score trends                   python scripts/run_schedule.py history --tic
 
 ---
 
-*Last updated: 2026-04-03 | Phases 1–4 complete | Phase 5 (Web UI) planned*
+*Last updated: 2026-04-12 | Phases 1–4 complete | 8 agents | LLM: OpenRouter (Qwen 2.5 72B) | Helicone observability + JSONL logging added | Phase 5 (Web UI) planned*

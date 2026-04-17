@@ -19,10 +19,12 @@ import time
 from abc import ABC, abstractmethod
 from typing import Any
 
-from groq import Groq, APIError, APITimeoutError, RateLimitError
+from openai import APIError, APITimeoutError, RateLimitError
 
 from config import settings
 from models.schemas import AgentOutput, StockQuery
+from tools.llm_client import get_llm_client
+from tools.run_logger import log_llm_call
 
 logger = logging.getLogger(__name__)
 
@@ -38,29 +40,51 @@ class BaseAgent(ABC):
     """
 
     def __init__(self) -> None:
-        self._client = Groq(
-            api_key=settings.GROQ_API_KEY,
-            timeout=settings.LLM_TIMEOUT_SECONDS,
-        )
+        self._client = get_llm_client()
+        # Populated by _call_llm_with_retry; read by run() for logging
+        self._last_usage: dict[str, int] = {"prompt_tokens": 0, "completion_tokens": 0}
 
     # ------------------------------------------------------------------
     # Public interface
     # ------------------------------------------------------------------
 
-    def run(self, query: StockQuery) -> AgentOutput:
+    def run(self, query: StockQuery, run_id: str = "") -> AgentOutput:
         """
         Main entry point.  Gathers context, calls LLM, returns typed output.
         """
         logger.info("[%s] Starting analysis for %s", self.agent_name, query.ticker)
         context = self._gather_context(query)
         system_prompt, user_prompt = self._build_prompt(query, context)
+        t0 = time.time()
         raw = self._call_llm_with_retry(system_prompt, user_prompt)
+        duration_ms = (time.time() - t0) * 1000
         output = self._safe_parse(raw, query.ticker)
+
+        # Log token consumption for this agent call
+        prompt_tok = self._last_usage["prompt_tokens"]
+        completion_tok = self._last_usage["completion_tokens"]
+        cost = (
+            prompt_tok * settings.LLM_INPUT_COST_PER_M
+            + completion_tok * settings.LLM_OUTPUT_COST_PER_M
+        ) / 1_000_000
+        log_llm_call(
+            run_id=run_id,
+            ticker=query.ticker,
+            phase="agent",
+            agent_name=self.agent_name,
+            model=settings.LLM_MODEL,
+            prompt_tokens=prompt_tok,
+            completion_tokens=completion_tok,
+            duration_ms=duration_ms,
+            cost_usd=cost,
+            score=output.overall_score,
+            error=output.error,
+        )
+
         logger.info(
-            "[%s] Done – score=%.3f for %s",
-            self.agent_name,
-            output.overall_score,
-            query.ticker,
+            "[%s] Done – score=%.3f tokens=%d cost=$%.5f",
+            self.agent_name, output.overall_score,
+            prompt_tok + completion_tok, cost,
         )
         return output
 
@@ -110,6 +134,12 @@ class BaseAgent(ABC):
                 )
                 content = response.choices[0].message.content or ""
                 logger.debug("[%s] Raw LLM response: %s", self.agent_name, content[:200])
+                # Capture token usage for run_logger
+                if response.usage:
+                    self._last_usage = {
+                        "prompt_tokens": response.usage.prompt_tokens,
+                        "completion_tokens": response.usage.completion_tokens,
+                    }
                 return content
 
             except RateLimitError as e:

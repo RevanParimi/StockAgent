@@ -20,20 +20,30 @@ from dotenv import load_dotenv
 load_dotenv()  # reads .env in project root if present
 
 # ---------------------------------------------------------------------------
-# LLM  (Groq)
+# LLM  (OpenRouter)
 # ---------------------------------------------------------------------------
-GROQ_API_KEY: str = os.getenv("GROQ_API_KEY", "your-groq-api-key-here")
-GROQ_BASE_URL: str = "https://api.groq.com/openai/v1"
+OPENROUTER_API_KEY: str = os.getenv("OPENROUTER_API_KEY", "your-openrouter-api-key-here")
 
-# Available Groq model IDs (as of 2026-04):
-#   llama-3.3-70b-versatile   – best general quality
-#   llama-3.1-8b-instant      – fastest / lowest latency
-#   mixtral-8x7b-32768        – large context window
-#   gemma2-9b-it              – Google Gemma 2
-LLM_MODEL: str = os.getenv("LLM_MODEL", "llama-3.3-70b-versatile")
+# NOTE: Helicone was removed — they joined Mintlify and disabled new signups.
+# Observability is handled locally via tools/run_logger.py (logs/agent_calls.jsonl).
+OPENROUTER_BASE_URL: str = "https://openrouter.ai/api/v1"
+
+# Available OpenRouter model IDs — change LLM_MODEL in .env to switch:
+#   qwen/qwen3.5-flash-02-23       – DEFAULT: fast, cheap ($0.065/$0.26 per M, ~$0.006/run)
+#   mistralai/mistral-small-2603   – fallback: strong reasoning ($0.15/$0.60 per M, ~$0.013/run)
+#   qwen/qwen-2.5-72b-instruct     – higher quality ($0.35/$0.40 per M, ~$0.017/run)
+#   meta-llama/llama-3.3-70b-instruct – Llama alternative
+LLM_MODEL: str = os.getenv("LLM_MODEL", "qwen/qwen3.5-flash-02-23")
 LLM_TEMPERATURE: float = float(os.getenv("LLM_TEMPERATURE", "0.2"))
 LLM_MAX_TOKENS: int = int(os.getenv("LLM_MAX_TOKENS", "2048"))
 LLM_TIMEOUT_SECONDS: int = int(os.getenv("LLM_TIMEOUT_SECONDS", "60"))
+
+# Token cost rates (USD per million tokens) — update in .env when switching models:
+#   qwen/qwen3.5-flash-02-23:    0.065 / 0.26
+#   mistralai/mistral-small-2603: 0.15  / 0.60
+#   qwen/qwen-2.5-72b-instruct:  0.35  / 0.40
+LLM_INPUT_COST_PER_M: float = float(os.getenv("LLM_INPUT_COST_PER_M", "0.065"))
+LLM_OUTPUT_COST_PER_M: float = float(os.getenv("LLM_OUTPUT_COST_PER_M", "0.26"))
 
 # ---------------------------------------------------------------------------
 # Data / Search APIs

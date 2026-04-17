@@ -1,31 +1,50 @@
+# Virtual environment / tooling
 .auto/*
-
-# Environment / secrets
-.env
-*.env
-.env.*
-
-# Python
-__pycache__/
-*.py[cod]
-*.pyd
-*.pyo
-*.so
-*.egg-info/
-dist/
-build/
 .venv/
 venv/
 env/
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.pyo
+*.so
+.Python
+
+# Environment / secrets — NEVER commit these
+.env
+.env.*
+*.env
+!.env.example
+
+# Logs and generated data
+logs/
+*.jsonl
+*.log
+
+# Word / Office temp files
+~$*
+*.tmp
+
+# Stray pip output files
+=*
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+
+# Distribution / build
+dist/
+build/
+*.egg-info/
 
 # Test / coverage
 .pytest_cache/
 .coverage
 htmlcov/
-
-# IDE
-.vscode/
-.idea/
 
 # Data / outputs
 data/chroma_db/
@@ -36,6 +55,7 @@ outputs/
 # C++ build artifacts
 cpp/build/
 
-# OS
-.DS_Store
-Thumbs.db
+# Node / TypeScript / Frontend
+node_modules/
+typescript/node_modules/
+frontend/node_modules/

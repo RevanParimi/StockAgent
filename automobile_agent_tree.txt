@@ -1,0 +1,46 @@
+
+AUTOMOBILE AGENT
+(Orchestrator · periodic trigger)
+│
+├─────────────────────────────────────────────────────────────────────────────────────────────────┐
+│                                                                                                 │
+▼                           ▼                           ▼                         ▼               ▼
+┌──────────────────┐  ┌──────────────────┐  ┌──────────────────┐  ┌──────────────────┐  ┌──────────────────┐
+│  Sales & Demand  │  │  Fundamentals    │  │ Pattern Analysis │  │   Sentiment      │  │  Risk & Macro    │
+│     (agent)      │  │    (agent)       │  │    (agent)       │  │    (agent)       │  │    (agent)       │
+└────────┬─────────┘  └────────┬─────────┘  └────────┬─────────┘  └────────┬─────────┘  └────────┬─────────┘
+         │                     │                      │                     │                      │
+         ├── FADA/SIAM          ├── Revenue & EBITDA   ├── 10-yr price        ├── News NLP           ├── INR/USD &
+         │   monthly dispatch   │   QoQ / YoY delta    │   history cycle      │   Reuters / ET /     │   crude oil
+         │                     │                      │   detection          │   Bloomberg          │   revenue exposure
+         │                     │                      │                     │                      │
+         ├── EV segment         ├── Margin vs          ├── Seasonal sales     ├── Management tone    ├── Steel /
+         │   Vahan reg. data    │   sector peers       │   window patterns    │   earnings call NLP  │   Aluminium &
+         │                     │                      │                     │                      │   rubber prices
+         │                     │                      │                     │                      │
+         ├── Dealer             ├── Deal wins &        ├── RSI / MACD /       ├── Twitter / Reddit   ├── RBI repo rate
+         │   inventory days     │   order book         │   BB periodic        │   consumer           │   EMI impact
+         │                     │   pipeline           │   refresh            │   sentiment          │
+         │                     │                      │                     │                      │
+         ├── Export/Import      ├── Attrition &        ├── Breakout /         ├── YouTube review     ├── Emission norms
+         │   DGFT data          │   headcount at OEMs  │   support zone       │   view spikes        │   & policy risk
+         │                     │                      │   mapping            │                      │
+         │                     │                      │                     │                      │
+         └── Used car price     └── Promoter holding   └── Peer correl.       └── Dealer /           └── Geopolit.
+             index Cars24,          & FII/DII flow         Nifty Auto vs          consumer               China parts
+             CarDekho                                       stock                 feedback signals        import risk
+         │                     │                      │                     │                      │
+         └─────────────────────┴──────────────────────┴─────────────────────┴──────────────────────┘
+                                                       │
+                                                       ▼
+                                        ┌──────────────────────────┐
+                                        │     Signal Aggregator    │
+                                        │  (weighted fusion ·      │
+                                        │   conflict resolution)   │
+                                        └─────────────┬────────────┘
+                                                       │
+                                                       ▼
+                                        ┌──────────────────────────┐
+                                        │  Automobile Stock Score  │
+                                        │        Output            │
+                                        └──────────────────────────┘

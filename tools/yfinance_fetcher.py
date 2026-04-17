@@ -85,6 +85,8 @@ def get_price_history(ticker: str, years: int = settings.PRICE_HISTORY_YEARS) ->
 # ---------------------------------------------------------------------------
 
 def compute_rsi(close: pd.Series, period: int = settings.RSI_PERIOD) -> float:
+    if _USE_CPP:
+        return _cpp_indicators.compute_rsi(close.tolist(), period)
     delta = close.diff()
     gain = delta.where(delta > 0, 0.0)
     loss = -delta.where(delta < 0, 0.0)
@@ -96,6 +98,10 @@ def compute_rsi(close: pd.Series, period: int = settings.RSI_PERIOD) -> float:
 
 
 def compute_macd(close: pd.Series) -> dict[str, float]:
+    if _USE_CPP:
+        return _cpp_indicators.compute_macd(
+            close.tolist(), settings.MACD_FAST, settings.MACD_SLOW, settings.MACD_SIGNAL
+        )
     ema_fast = close.ewm(span=settings.MACD_FAST, adjust=False).mean()
     ema_slow = close.ewm(span=settings.MACD_SLOW, adjust=False).mean()
     macd_line = ema_fast - ema_slow
@@ -115,6 +121,8 @@ def compute_macd(close: pd.Series) -> dict[str, float]:
 def compute_bollinger_bands(
     close: pd.Series, period: int = settings.BB_PERIOD, std_dev: float = settings.BB_STD
 ) -> dict[str, float]:
+    if _USE_CPP:
+        return _cpp_indicators.compute_bollinger_bands(close.tolist(), period, std_dev)
     ma = close.rolling(period).mean()
     std = close.rolling(period).std()
     upper = ma + std_dev * std

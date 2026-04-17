@@ -1,37 +1,36 @@
-# Automobile Agent
+# StockAgent — Automobile Stock Analyser
 
-> AI-powered Indian automobile stock analyser using a multi-agent architecture.
-> Built with Groq LLM, Pydantic v2, and asyncio parallel execution.
+> AI-powered Indian automobile stock analyser using a **multi-language, multi-agent** architecture.
+> Built with OpenRouter/Qwen LLM, C++ native indicators, TypeScript dashboard, and C# scheduler.
 
 ---
 
 ## What this project does
 
-The **Automobile Agent** analyses any NSE/BSE-listed Indian automobile stock
-and produces a structured **investment score + verdict** by running five
-specialist AI sub-agents in parallel, then fusing their outputs in a
-Signal Aggregator.
+**StockAgent** analyses any NSE/BSE-listed Indian automobile stock and produces a structured
+**investment score + verdict** by running eight specialist AI sub-agents in parallel,
+fusing their outputs in a Signal Aggregator, and persisting results for trend tracking.
 
 ```
 User Input (ticker / company name)
           │
           ▼
   AutomobileAgentOrchestrator
-  (resolves ticker, dispatches agents in parallel)
+  (resolves ticker, dispatches 8 agents in parallel)
           │
-   ┌──────┼──────┬───────────────┬────────────┐
-   ▼      ▼      ▼               ▼            ▼
-Sales &  Fund-  Pattern      Sentiment   Risk &
-Demand  amentals Analysis               Macro
-   └──────┴──────┴───────────────┴────────────┘
-                          │
-                          ▼
-                  Signal Aggregator
-              (weighted fusion + conflict resolution)
-                          │
-                          ▼
-              Automobile Stock Score Output
-              (0.0–1.0 score + verdict + thesis)
+   ┌──────┼──────┬──────────┬──────────┬──────────┬──────────┬──────────┐
+   ▼      ▼      ▼          ▼          ▼          ▼          ▼          ▼
+Sales  Raw    Funda-   Pattern   Sentiment  Policy   Compet.  Risk &
+Demand Mats   mentals  Analysis             Reg.    Intel    Macro
+   └──────┴──────┴──────────┴──────────┴──────────┴──────────┴──────────┘
+                                   │
+                                   ▼
+                           Signal Aggregator
+                       (weighted fusion + conflict resolution)
+                                   │
+                                   ▼
+                       Automobile Stock Score Output
+                       (0.0–1.0 score + verdict + thesis)
 ```
 
 ---
@@ -40,61 +39,140 @@ Demand  amentals Analysis               Macro
 
 | Agent | Weight | Dimensions analysed |
 |---|---|---|
-| Sales & Demand | 20% | FADA/SIAM dispatch, EV Vahan data, dealer inventory, DGFT exports, used car price index |
-| Fundamentals | 25% | Revenue/EBITDA delta, margin vs peers, order book, headcount, FII/DII flow |
-| Pattern Analysis | 20% | 10-yr price cycle, seasonal patterns, RSI/MACD/BB, support/resistance, Nifty Auto correlation |
-| Sentiment | 15% | News NLP, earnings call tone, Twitter/Reddit, YouTube spikes, dealer feedback |
-| Risk & Macro | 20% | INR/USD/crude exposure, commodities, RBI repo rate, emission norms, China supply risk |
+| Sales & Demand | 18% | FADA/SIAM dispatch, EV Vahan data, dealer inventory, DGFT exports, used car price index |
+| Raw Materials | 10% | Steel/aluminium, platinum/palladium, crude/polymer, power tariff, commodities trend |
+| Fundamentals | 20% | Revenue/EBITDA delta, margin vs peers, order book, headcount, FII/DII flow |
+| Pattern Analysis | 13% | 10-yr price cycle, seasonal patterns, RSI/MACD/BB, support/resistance, Nifty Auto correlation |
+| Sentiment | 4% | News NLP, earnings call tone, Twitter/Reddit, YouTube spikes, dealer feedback |
+| Policy & Regulatory | 10% | FAME EV subsidy, emission norms, Union Budget duties, PLI scheme, state EV incentives |
+| Competitive Intel | 10% | EV market share, new model pipeline, JV/acquisitions, ADAS/safety ratings |
+| Risk & Macro | 15% | INR/USD/crude exposure, commodities, RBI repo rate, emission policy risk, China supply |
 
-**Signal Aggregator** (0% own score) applies weights, detects conflicts
-(score delta ≥ 0.30 between any two agents), asks the LLM to resolve them,
-and emits a final verdict: `STRONG BUY / BUY / NEUTRAL / SELL / STRONG SELL`.
+**Signal Aggregator** applies weights, detects conflicts (score delta ≥ 0.30 between any two agents),
+asks the LLM to resolve them, and emits a final verdict: `STRONG BUY / BUY / NEUTRAL / SELL / STRONG SELL`.
+
+---
+
+## Multi-Language Architecture
+
+| Language | Module | Port | Status |
+|---|---|---|---|
+| **Python** | 8 LLM agents, orchestrator, RAG, FastAPI bridge | 8000 | ✅ Complete |
+| **C++** | RSI / MACD / Bollinger Bands via pybind11 | — (in-process .pyd) | ✅ Live |
+| **TypeScript** | Express REST proxy + WebSocket hub | 3000 (REST), 3001 (WS) | ✅ Scaffolded |
+| **C#** | Quartz.NET cron scheduler + EF Core persistence | 5000 | ✅ Scaffolded |
+
+Every language boundary uses **JSON over HTTP** — no shared memory, no cross-language FFI
+(except C++ which runs in-process via pybind11).
 
 ---
 
 ## Project Structure
 
 ```
-automobile_agent/
+StockAgent-main/
+│
 ├── config/
-│   ├── settings.py          ← ALL static config: API keys, LLM, weights, scheduler, alerts
-│   └── rag_config.py        ← RAG pipeline config (disabled by default)
-├── prompts/
-│   ├── sales_demand.py      ← System + analysis prompts for Sales & Demand agent
-│   ├── fundamentals.py      ← Prompts for Fundamentals agent
-│   ├── pattern_analysis.py  ← Prompts for Pattern Analysis agent
-│   ├── sentiment.py         ← Prompts for Sentiment agent
-│   ├── risk_macro.py        ← Prompts for Risk & Macro agent
-│   ├── signal_aggregator.py ← Prompts for Signal Aggregator
-│   └── orchestrator.py      ← Prompts for ticker resolution + error handling
+│   ├── settings.py            ← ALL static config: API keys, LLM, weights, ports, scheduler
+│   └── rag_config.py          ← RAG pipeline config (RAG_ENABLED=false by default)
+│
 ├── agents/
-│   ├── base_agent.py        ← Abstract base: Groq LLM caller, retry, context routing
-│   ├── sales_demand.py      ← Sales & Demand sub-agent
-│   ├── fundamentals.py      ← Fundamentals sub-agent
-│   ├── pattern_analysis.py  ← Pattern Analysis sub-agent
-│   ├── sentiment.py         ← Sentiment sub-agent
-│   ├── risk_macro.py        ← Risk & Macro sub-agent
-│   ├── signal_aggregator.py ← Weighted fusion + conflict resolution
-│   └── orchestrator.py      ← Top-level dispatcher (parallel via ThreadPoolExecutor)
+│   ├── base_agent.py          ← Abstract base: sync+async LLM caller, retry, context routing
+│   ├── orchestrator.py        ← Top-level dispatcher — sync (ThreadPoolExecutor) + async (asyncio.gather)
+│   ├── signal_aggregator.py   ← Weighted fusion + LLM conflict resolution → FinalReport
+│   ├── sales_demand.py
+│   ├── raw_materials.py
+│   ├── fundamentals.py
+│   ├── pattern_analysis.py
+│   ├── sentiment.py
+│   ├── policy_regulatory.py
+│   ├── competitive_intel.py
+│   └── risk_macro.py
+│
 ├── models/
-│   └── schemas.py           ← All Pydantic v2 models (StockQuery, AgentOutput, FinalReport)
+│   └── schemas.py             ← All Pydantic v2 models (StockQuery, AgentOutput, FinalReport)
+│
+├── prompts/
+│   ├── sales_demand.py        ← System + analysis prompts per agent
+│   ├── raw_materials.py
+│   ├── fundamentals.py
+│   ├── pattern_analysis.py
+│   ├── sentiment.py
+│   ├── policy_regulatory.py
+│   ├── competitive_intel.py
+│   ├── risk_macro.py
+│   ├── signal_aggregator.py
+│   └── orchestrator.py        ← Ticker resolution prompt
+│
 ├── tools/
-│   ├── yfinance_fetcher.py  ← OHLCV, RSI/MACD/BB, peer correlation (Phase 2)
-│   ├── fundamentals_fetcher.py ← Quarterly P&L, margins, shareholding (Phase 2)
-│   ├── news_fetcher.py      ← Serper + NewsAPI search (Phase 2)
-│   ├── macro_fetcher.py     ← INR/USD, crude, commodities via yfinance (Phase 2)
-│   ├── context_builder.py   ← Routes each agent to the right fetchers (Phase 2)
-│   ├── score_store.py       ← SQLite historical score persistence (Phase 4)
-│   ├── scheduler.py         ← APScheduler cron trigger + run dispatch (Phase 4)
-│   ├── alerting.py          ← Score/verdict change alerts: console/file/webhook (Phase 4)
+│   ├── yfinance_fetcher.py    ← OHLCV, RSI/MACD/BB (C++ dispatch when _USE_CPP=True, pure-Python fallback)
+│   ├── yfinance_fetcher_pure.py ← Frozen pure-Python reference (parity tests for C++ extension)
+│   ├── fundamentals_fetcher.py  ← Quarterly P&L, margins, shareholding via yfinance
+│   ├── news_fetcher.py          ← Serper + NewsAPI search
+│   ├── macro_fetcher.py         ← INR/USD, crude, commodities via yfinance
+│   ├── context_builder.py       ← Routes each agent to the right fetchers
+│   ├── macro_cache.py           ← In-memory macro news cache (TTL-based, avoids repeat Serper calls)
+│   ├── score_store.py           ← SQLite persistence; proxies to C# when CSHARP_SCHEDULER_ENABLED=true
+│   ├── scheduler.py             ← APScheduler cron daemon (Python-side; replaced by C# Quartz when flag set)
+│   ├── alerting.py              ← Score/verdict change alerts: console / file / webhook
+│   ├── prediction_store.py      ← RL feedback loop — prediction tracking
+│   ├── tavily_fetcher.py        ← Full-page extraction for Policy/Regulatory agent
 │   └── rag/
-│       ├── embedder.py      ← sentence-transformers local embeddings (Phase 3)
-│       ├── vector_store.py  ← ChromaDB CRUD wrapper (Phase 3)
-│       ├── ingestion.py     ← PDF/TXT chunking + indexing (Phase 3)
-│       └── retriever.py     ← Semantic search + optional reranking (Phase 3)
+│       ├── embedder.py          ← sentence-transformers local embeddings
+│       ├── vector_store.py      ← ChromaDB CRUD wrapper
+│       ├── ingestion.py         ← PDF/TXT chunking + indexing
+│       └── retriever.py         ← Semantic search + optional cross-encoder reranking
+│
+├── api/                         ← FastAPI bridge (port 8000)
+│   ├── server.py                ← FastAPI app, CORS for ports 3000/3001/5000
+│   └── routes/
+│       ├── analyse.py           ← POST /analyse → orchestrator.analyse_async(ticker)
+│       ├── history.py           ← GET /history/{ticker}[/latest] → ScoreStore
+│       └── stream.py            ← WS /ws/stream?ticker=MARUTI → async progress events
+│
+├── cpp/                         ← C++ pybind11 extension (Phase 1)
+│   ├── CMakeLists.txt           ← FetchContent pybind11 v2.13.6; installs .pyd to project root
+│   ├── build_ext.ps1            ← PowerShell build helper (VS 2022 + CMake)
+│   └── src/
+│       └── indicators.cpp       ← RSI (EWM adjust=True), MACD (EWM adjust=False), Bollinger Bands (ddof=1)
+│
+├── typescript/                  ← TypeScript dashboard (ports 3000 + 3001)
+│   ├── package.json
+│   ├── tsconfig.json
+│   └── src/
+│       ├── index.ts             ← Express :3000 + HTTP server for WS hub :3001
+│       ├── wsHub.ts             ← WS hub: one upstream per ticker → rebroadcasts to all subscribers
+│       ├── clients/
+│       │   └── pythonClient.ts  ← axios wrappers: postAnalyse, getHistory, getSchedulerStatus
+│       ├── routes/
+│       │   ├── analyse.ts       ← POST /api/analyse  → POST :8000/analyse
+│       │   ├── history.ts       ← GET  /api/history  → GET  :8000/history
+│       │   └── schedule.ts      ← GET  /api/schedule → GET  :5000/scheduler/status
+│       └── types/
+│           └── stockAgent.ts    ← FinalReport, StreamEvent, SchedulerStatus interfaces
+│
+├── csharp/                      ← C# Quartz.NET scheduler + EF Core persistence (port 5000)
+│   └── StockAgent.Scheduler/
+│       ├── StockAgent.Scheduler.csproj  ← Quartz 3.13, EF Core 8, Polly, ASP.NET 8
+│       ├── Program.cs                   ← DI wiring, EF migrations on startup, port 5000
+│       ├── appsettings.json             ← PythonApiUrl, cron, tickers, alert threshold
+│       ├── Jobs/
+│       │   └── AnalyseJob.cs            ← [DisallowConcurrentExecution] Quartz job
+│       ├── Data/
+│       │   └── SchedulerDbContext.cs    ← EF Core DbContext → ScoreRecords table (SQL Server)
+│       ├── Models/
+│       │   ├── FinalReportDto.cs        ← Mirrors Python FinalReport (snake_case JsonPropertyName)
+│       │   ├── ScoreRecord.cs           ← EF entity; ScoreRecord.FromDto(dto)
+│       │   └── SchedulerStatus.cs       ← Response shape for GET /scheduler/status
+│       └── Controllers/
+│           ├── HealthController.cs      ← GET /health → {status, service, next_fire_utc}
+│           ├── SchedulerController.cs   ← GET /scheduler/status
+│           └── ScoresController.cs      ← POST /scores, GET /scores/{ticker}[/latest]
+│
 ├── scripts/
-│   ├── ingest_documents.py  ← CLI: index documents into ChromaDB (Phase 3)
-│   └── run_schedule.py      ← CLI: start/run/status/history for scheduler (Phase 4)
+│   ├── ingest_documents.py     ← CLI: index documents into ChromaDB
+│   └── run_schedule.py         ← CLI: start | run-now | status | history | latest
+│
 ├── tests/
 │   ├── conftest.py
 │   ├── test_config.py
@@ -103,27 +181,30 @@ automobile_agent/
 │   ├── test_signal_aggregator.py
 │   ├── test_orchestrator.py
 │   ├── test_prompts.py
-│   ├── test_data_fetchers.py ← Phase 2 fetcher tests
-│   ├── test_rag.py           ← Phase 3 RAG tests
-│   ├── test_scheduler.py     ← Phase 4 ScoreStore + AlertManager + Scheduler tests
-│   └── TEST_DOCUMENTATION.md
-├── data/                    ← SQLite DB + ChromaDB store + document dirs (git-ignored)
-├── outputs/                 ← Saved reports + alert logs (git-ignored)
-├── logs/                    ← Runtime logs (git-ignored)
-├── main.py                  ← One-off CLI entry point
-├── requirements.txt
-├── .env.example
-└── README.md
+│   ├── test_data_fetchers.py
+│   ├── test_rag.py
+│   ├── test_scheduler.py
+│   ├── test_phase0_llm_migration.py  ← Zero Groq references; OpenRouter/Qwen wiring
+│   ├── test_phase1_indicators.py     ← 25 tests: pure-Python parity + C++ bridge + fallback
+│   ├── test_phase2_api.py            ← FastAPI /analyse /history /ws/stream contracts
+│   ├── test_phase3_typescript.py     ← Python-side JSON shape contracts for TypeScript client
+│   └── test_phase4_csharp.py         ← Python-side C# proxy + JSON + cron contracts
+│
+├── data/                       ← SQLite DB + ChromaDB store (git-ignored)
+├── outputs/                    ← Saved reports + alert logs (git-ignored)
+├── logs/                       ← Runtime logs (git-ignored)
+├── stockindicators.cp313-win_amd64.pyd  ← Compiled C++ extension (built from cpp/)
+├── main.py                     ← One-off CLI entry point (never modified by other phases)
+└── requirements.txt
 ```
 
 ---
 
 ## Quick Start
 
-### 1. Install dependencies
+### 1. Install Python dependencies
 
 ```bash
-cd automobile_agent
 pip install -r requirements.txt
 ```
 
@@ -131,63 +212,152 @@ pip install -r requirements.txt
 
 ```bash
 cp .env.example .env
-# Edit .env and add your GROQ_API_KEY
+# Add your OPENROUTER_API_KEY (required)
+# Optional: SERPER_API_KEY, NEWSAPI_KEY
 ```
 
-### 3. Run analysis
+### 3. Run a one-off analysis (CLI)
 
 ```bash
-# Analyse Maruti Suzuki (JSON output)
+# Analyse Maruti Suzuki
 python main.py MARUTI
 
-# Analyse Tata Motors with Markdown output
-python main.py TATAMOTORS --output markdown
-
-# Save report to outputs/ directory
-python main.py BAJAJ-AUTO --output json --save
+# Markdown output, save to outputs/
+python main.py TATAMOTORS --output markdown --save
 
 # List all supported tickers
 python main.py --list-tickers
 ```
 
+### 4. Start the FastAPI bridge (port 8000)
+
+```bash
+uvicorn api.server:app --reload --port 8000
+# POST http://localhost:8000/analyse        {"ticker": "MARUTI"}
+# GET  http://localhost:8000/history/MARUTI
+# WS   ws://localhost:8000/ws/stream?ticker=MARUTI
+```
+
+### 5. Start the TypeScript dashboard (ports 3000 + 3001)
+
+```bash
+cd typescript
+npm install
+npm run dev          # ts-node src/index.ts
+# REST:  http://localhost:3000/api/analyse
+# WS:    ws://localhost:3001?ticker=MARUTI
+# Sched: http://localhost:3000/api/schedule  (proxies to C# :5000)
+```
+
+### 6. Build and activate the C++ indicators
+
+```bash
+# Requires: Visual Studio 2022 + CMake (Windows)
+#           or GCC/Clang + CMake (Linux/macOS)
+powershell -ExecutionPolicy Bypass -File cpp/build_ext.ps1
+
+# After build, stockindicators.cp313-win_amd64.pyd lands in project root
+# Python automatically uses C++ for RSI/MACD/BB (_USE_CPP=True)
+# Falls back to pure Python silently if .pyd is absent
+```
+
+### 7. Start the C# scheduler (port 5000)
+
+```bash
+# Requires: .NET 8 SDK + SQL Server (or localdb)
+cd csharp/StockAgent.Scheduler
+dotnet run
+# GET  http://localhost:5000/health
+# GET  http://localhost:5000/scheduler/status
+# POST http://localhost:5000/scores          (called by Python when CSHARP_SCHEDULER_ENABLED=true)
+```
+
+---
+
+## Port Map
+
+| Service | Port | Protocol |
+|---|---|---|
+| Python FastAPI | 8000 | HTTP + WebSocket |
+| C# Quartz Scheduler | 5000 | HTTP |
+| TypeScript REST | 3000 | HTTP |
+| TypeScript WebSocket hub | 3001 | WebSocket |
+
 ---
 
 ## Configuration Guide
 
-All customisation lives in two files — **no code changes needed** for most adjustments.
+All configuration lives in `config/settings.py` — override any value with environment variables or `.env`.
 
-### `config/settings.py`
-
-| Variable | Default | Purpose |
-|---|---|---|
-| `GROQ_API_KEY` | env var | Groq API key |
-| `LLM_MODEL` | `llama-3.3-70b-versatile` | Groq model ID |
-| `LLM_TEMPERATURE` | `0.2` | LLM creativity (0 = deterministic) |
-| `LLM_MAX_TOKENS` | `2048` | Max tokens per LLM response |
-| `AGENT_WEIGHTS` | see file | Per-agent score weights (must sum to 1.0) |
-| `SCORE_THRESHOLDS` | see file | Score → verdict mapping |
-| `PRICE_HISTORY_YEARS` | `10` | Years of OHLCV for pattern analysis |
-| `NEWS_SOURCES` | Reuters, ET, Bloomberg, ... | News sources for sentiment NLP |
-| `MAX_RETRIES` | `3` | LLM call retry attempts |
-
-### `config/rag_config.py`
-
-Set `RAG_ENABLED=true` in `.env` to activate the RAG pipeline.
-When disabled (default), agents use LLM training knowledge only.
+### LLM
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `RAG_ENABLED` | `false` | Master switch for RAG |
-| `VECTOR_STORE_PROVIDER` | `chromadb` | chromadb / pinecone / qdrant |
-| `TOP_K_RESULTS` | `5` | Chunks retrieved per query |
-| `CHUNK_SIZE` | `512` | Token chunk size for indexing |
+| `OPENROUTER_API_KEY` | env var | OpenRouter API key |
+| `OPENROUTER_BASE_URL` | `https://openrouter.ai/api/v1` | OpenRouter endpoint |
+| `LLM_MODEL` | `qwen/qwen3-235b-a22b` | Model slug (accuracy-first) |
+| `LLM_TEMPERATURE` | `0.2` | LLM creativity |
+| `LLM_MAX_TOKENS` | `2048` | Max tokens per response |
+| `LLM_TIMEOUT_SECONDS` | `60` | Per-call timeout |
 
-### Adding / changing prompts
+### Agent execution
 
-Edit any file in `prompts/` — for example to change what the Sentiment agent
-analyses, edit [prompts/sentiment.py](prompts/sentiment.py).
-The `SYSTEM_PROMPT`, `ANALYSIS_PROMPT`, and `CONTEXT_SEARCH_QUERIES` are the
-three things you'll want to customise.
+| Variable | Default | Purpose |
+|---|---|---|
+| `AGENT_TIMEOUT_SECONDS` | `120` | Per-agent wall-clock timeout |
+| `MAX_RETRIES` | `3` | LLM retry attempts (exponential back-off) |
+| `AGENT_WEIGHTS` | see settings.py | Per-agent score weights (must sum to 1.0) |
+| `SCORE_THRESHOLDS` | see settings.py | Score → verdict mapping |
+
+### Technical indicators (C++ / pure-Python)
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `RSI_PERIOD` | `14` | RSI lookback period |
+| `MACD_FAST` / `SLOW` / `SIGNAL` | `12 / 26 / 9` | MACD parameters |
+| `BB_PERIOD` / `BB_STD` | `20 / 2.0` | Bollinger Bands parameters |
+| `PRICE_HISTORY_YEARS` | `10` | Years of OHLCV history |
+
+### Python scheduler (APScheduler)
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `SCHEDULER_ENABLED` | `false` | Master switch for the APScheduler daemon |
+| `SCHEDULER_CRON` | `30 8 * * 1-5` | Cron expression (IST, weekdays 8:30am) |
+| `SCHEDULER_TICKERS` | 5 major OEMs | Tickers to run each cycle |
+| `SCORE_DB_PATH` | `data/scores.db` | SQLite database path |
+| `ALERT_SCORE_CHANGE_THRESHOLD` | `0.10` | Min score delta to fire alert |
+| `ALERT_ON_VERDICT_CHANGE` | `true` | Alert when verdict changes |
+| `ALERT_CHANNELS` | `console,file` | `console` / `file` / `webhook` |
+| `ALERT_WEBHOOK_URL` | `` | Slack/Discord/custom webhook |
+| `SCORE_HISTORY_MAX_ROWS` | `90` | Records retained per ticker |
+
+### C# scheduler integration
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `CSHARP_SCHEDULER_ENABLED` | `false` | Routes score_store.save() to C# POST /scores |
+| `CSHARP_API_URL` | `http://localhost:5000` | C# service base URL |
+
+---
+
+## Running Tests
+
+```bash
+# Full suite — no API key needed (LLM is mocked)
+pytest tests/ -v
+
+# Phase-specific
+pytest tests/test_phase1_indicators.py -v   # 25 tests: C++ parity + fallback
+pytest tests/test_phase2_api.py -v          # FastAPI contracts
+pytest tests/test_phase3_typescript.py -v   # TS client JSON shape contracts
+pytest tests/test_phase4_csharp.py -v       # C# proxy + cron contracts
+
+# With coverage
+pytest tests/ --cov=. --cov-report=term-missing
+```
+
+**Baseline:** 292 passed, 0 failed, 38 warnings (all LLM and network calls mocked).
 
 ---
 
@@ -206,188 +376,31 @@ three things you'll want to customise.
 | ESCORTS | Escorts Kubota Ltd |
 | FORCEMOT | Force Motors Ltd |
 
-The orchestrator also accepts free-form company names (e.g. "Tata Motors") —
-it uses the LLM to resolve them to the correct ticker.
-
----
-
-## Running Tests
-
-```bash
-# All tests (no API key needed — LLM is mocked)
-pytest tests/ -v
-
-# With coverage
-pytest tests/ --cov=. --cov-report=term-missing -v
-
-# Single module
-pytest tests/test_config.py -v
-```
-
-See [tests/TEST_DOCUMENTATION.md](tests/TEST_DOCUMENTATION.md) for full details.
-
----
-
-## Data Architecture
-
-### Phase 1 — LLM knowledge only (done)
-- No live data feeds
-- Agents reason from LLM training knowledge
-- Suitable for quick directional analysis
-
-### Phase 2 — Live data feeds (done)
-
-Each agent now receives real data via `tools/context_builder.py`:
-
-| Agent | Data source | Tool file |
-|---|---|---|
-| Pattern Analysis | yfinance OHLCV, RSI/MACD/BB, peer correlation | [tools/yfinance_fetcher.py](tools/yfinance_fetcher.py) |
-| Fundamentals | yfinance quarterly P&L, shareholding | [tools/fundamentals_fetcher.py](tools/fundamentals_fetcher.py) |
-| Risk & Macro | yfinance: crude, INR/USD, steel, aluminium | [tools/macro_fetcher.py](tools/macro_fetcher.py) |
-| Sales & Demand | Serper + NewsAPI news search | [tools/news_fetcher.py](tools/news_fetcher.py) |
-| Sentiment | Serper + NewsAPI news search | [tools/news_fetcher.py](tools/news_fetcher.py) |
-
-**API keys needed for Phase 2:**
-- `GROQ_API_KEY` — required
-- `SERPER_API_KEY` — optional (news search, get at serper.dev)
-- `NEWSAPI_KEY` — optional (news articles, get at newsapi.org)
-- yfinance / macro data — **no API key needed**
-
-**Context priority (in `base_agent.py`):**
-```
-RAG (if enabled) → Live data (Phase 2) → Minimal stub fallback
-```
-
-### Phase 4 — Scheduled / Periodic Trigger (done)
-
-Runs the full pipeline automatically on a cron schedule, stores all scores
-in SQLite, and fires alerts when scores or verdicts change significantly.
-
-```
-tools/
-  score_store.py   ← SQLite: save/query historical scores per ticker
-  scheduler.py     ← APScheduler cron daemon + manual run-now
-  alerting.py      ← Alert on score delta ≥ threshold or verdict change
-
-scripts/
-  run_schedule.py  ← CLI: start | run-now | status | history | latest
-```
-
-**Usage:**
-```bash
-# Run all configured tickers right now (no daemon needed)
-python scripts/run_schedule.py run-now
-
-# Start the persistent cron daemon (weekdays 8:30am IST by default)
-# Requires SCHEDULER_ENABLED=true in .env
-python scripts/run_schedule.py start
-
-# Check database and next run time
-python scripts/run_schedule.py status
-
-# View score history for a ticker
-python scripts/run_schedule.py history --ticker MARUTI --rows 20
-
-# View latest score for every tracked ticker
-python scripts/run_schedule.py latest
-```
-
-**Configurable in `config/settings.py`:**
-
-| Variable | Default | Purpose |
-|---|---|---|
-| `SCHEDULER_ENABLED` | `false` | Master switch for the daemon |
-| `SCHEDULER_CRON` | `30 8 * * 1-5` | Cron expression (IST timezone) |
-| `SCHEDULER_TICKERS` | 5 major OEMs | Tickers to run each cycle |
-| `SCORE_DB_PATH` | `data/scores.db` | SQLite database path |
-| `ALERT_SCORE_CHANGE_THRESHOLD` | `0.10` | Min delta to fire a score alert |
-| `ALERT_ON_VERDICT_CHANGE` | `true` | Alert when verdict changes |
-| `ALERT_CHANNELS` | `console,file` | `console` / `file` / `webhook` |
-| `ALERT_WEBHOOK_URL` | `` | Slack/Discord/custom webhook URL |
-| `SCORE_HISTORY_MAX_ROWS` | `90` | Records retained per ticker |
-
-### Phase 3 — RAG pipeline (done)
-
-Indexes your own documents (earnings transcripts, annual reports, etc.)
-into a local ChromaDB vector store for retrieval-augmented generation.
-
-```
-tools/rag/
-  embedder.py      ← sentence-transformers (local, ~90MB download, no API key)
-  vector_store.py  ← ChromaDB CRUD wrapper
-  ingestion.py     ← PDF/TXT chunking + indexing pipeline
-  retriever.py     ← semantic search + optional cross-encoder reranking
-
-scripts/
-  ingest_documents.py  ← CLI to index documents
-```
-
-**To activate RAG:**
-```bash
-# 1. Set flag
-echo "RAG_ENABLED=true" >> .env
-
-# 2. Create data directories
-mkdir -p data/earnings_transcripts data/annual_reports data/sector_reports
-
-# 3. Drop your PDFs/TXTs into those folders, then index:
-python scripts/ingest_documents.py --ticker MARUTI --doc-type earnings
-
-# 4. Run analysis — agents will now use your documents
-python main.py MARUTI
-```
-
-**Configurable in `config/rag_config.py`:**
-
-| Variable | Default | Purpose |
-|---|---|---|
-| `RAG_ENABLED` | `false` | Master switch |
-| `EMBEDDING_MODEL` | `nomic-embed-text-v1.5` | sentence-transformer model |
-| `CHROMA_PERSIST_DIR` | `data/chroma_db` | Where ChromaDB stores data |
-| `TOP_K_RESULTS` | `5` | Chunks retrieved per query |
-| `CHUNK_SIZE` | `512` | Tokens per chunk |
-| `RERANKER_ENABLED` | `false` | Cross-encoder reranking |
+The orchestrator also accepts free-form names ("Tata Motors") — the LLM resolves them to the correct ticker.
 
 ---
 
 ## Key Design Decisions
 
-1. **Separation of config, prompts, agents** — Changing what an agent analyses
-   only requires editing its prompt file. Changing LLM or API keys only requires
-   editing `config/settings.py` or `.env`. No agent code needs to change.
+1. **Language boundaries via JSON over HTTP** — TypeScript and C# never import Python modules.
+   They call `POST :8000/analyse` and receive a FinalReport JSON. The C++ extension is the only
+   in-process foreign code (pybind11).
 
-2. **Parallel execution** — All 5 sub-agents run concurrently via
-   `ThreadPoolExecutor` in `orchestrator.py`. Total latency ≈ slowest agent,
-   not sum of all agents.
+2. **Two execution paths, same output** — `orchestrator.analyse()` (sync, ThreadPoolExecutor × 8)
+   for CLI/scheduler; `orchestrator.analyse_async()` (async, asyncio.gather) for FastAPI.
+   Both produce an identical `FinalReport`.
 
-3. **Graceful degradation** — If any agent fails (LLM error, parse error),
-   it is replaced with a neutral (0.5) score. The pipeline always produces
-   a final report.
+3. **C++ fallback** — `_USE_CPP=True` when `stockindicators.pyd` is importable; silently falls
+   back to pure Python otherwise. Build failure never breaks the system.
 
-4. **Pydantic v2 validation** — All LLM outputs are parsed into typed models.
-   Score bounds (0.0–1.0) are enforced at the model layer.
+4. **Feature flags** — `CSHARP_SCHEDULER_ENABLED=false` (default) keeps the Python SQLite path
+   active. Set to `true` to route persistence through C# EF Core + SQL Server.
 
-5. **LLM JSON mode** — All Groq calls use `response_format={"type": "json_object"}`
-   to reduce parse failures.
+5. **Specialisation → Parallelism → Conflict-Aware Fusion** — 8 specialist agents each get only
+   the data they need. The Signal Aggregator resolves conflicts with LLM reasoning, not arithmetic.
 
----
-
-## Development Workflow
-
-```bash
-# Make a config change
-edit config/settings.py
-
-# Add / modify an agent's analysis logic
-edit prompts/sentiment.py      # change what it looks for
-# agents/sentiment.py only needs changing if output schema changes
-
-# Run tests to confirm nothing broke
-pytest tests/ -v
-
-# Run end-to-end
-python main.py MARUTI --output markdown
-```
+6. **Graceful degradation** — Every failure has a fallback. Agents return neutral (0.5) on error.
+   The pipeline always produces a final report.
 
 ---
 
@@ -395,23 +408,14 @@ python main.py MARUTI --output markdown
 
 | Component | Status |
 |---|---|
-| Config & prompts | Done |
-| Pydantic schemas | Done |
-| BaseAgent + 5 sub-agents | Done |
-| Signal Aggregator | Done |
-| Orchestrator (parallel) | Done |
-| CLI (main.py) | Done |
-| Unit + integration tests | Done |
-| Live data feeds (yfinance + Serper + NewsAPI) | Done (Phase 2) |
-| RAG pipeline (ChromaDB + sentence-transformers) | Done (Phase 3) |
-| Scheduled / periodic trigger + alerting | Done (Phase 4) |
-| Web UI / dashboard | Planned (Phase 5) |
-
----
-
-## LLM / Model
-
-- **Provider:** [Groq](https://console.groq.com/)
-- **Default model:** `llama-3.3-70b-versatile`
-- **Playground:** https://console.groq.com/playground
-- Change the model in `config/settings.py → LLM_MODEL` or set `LLM_MODEL=` in `.env`
+| 8 LLM agents + Signal Aggregator | ✅ Complete |
+| Orchestrator (sync + async parallel) | ✅ Complete |
+| CLI (`main.py`) | ✅ Complete |
+| Live data feeds (yfinance + Serper + NewsAPI) | ✅ Complete |
+| RAG pipeline (ChromaDB + sentence-transformers) | ✅ Complete |
+| Python scheduler (APScheduler) + alerting | ✅ Complete |
+| **Phase 0** — Groq → OpenRouter/Qwen migration | ✅ Complete |
+| **Phase 1** — C++ RSI/MACD/BB extension (pybind11) | ✅ Live (`_USE_CPP=True`) |
+| **Phase 2** — FastAPI bridge (port 8000) | ✅ Complete |
+| **Phase 3** — TypeScript dashboard scaffold | ✅ Scaffolded (`tsc` clean) |
+| **Phase 4** — C# Quartz.NET + EF Core scheduler | ✅ Scaffolded (needs .NET 8 SDK) |

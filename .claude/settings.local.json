@@ -1,7 +1,14 @@
 {
   "permissions": {
     "allow": [
-      "Read(//e/AI projects/StockAI/**)"
+      "Read(//e/AI projects/StockAI/**)",
+      "Bash(python -c ':*)",
+      "Bash(npm --version)",
+      "Bash(npm create:*)",
+      "Bash(npm install:*)",
+      "Bash(grep -E \"^three$|^framer|^gsap$|^zustand$|^recharts$|^lenis$|^axios$|^date-fns$|^lucide\")",
+      "Bash(npm run:*)",
+      "Bash(curl -s http://localhost:5173)"
     ]
   }
 }

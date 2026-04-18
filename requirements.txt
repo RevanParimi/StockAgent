@@ -1,4 +1,5 @@
 # Core
+langgraph>=0.2.0          # Multi-sector LangGraph flows (graphs/ directory)
 openai>=1.30.0            # OpenAI-compatible SDK — used for OpenRouter (Qwen via OpenRouter)
 pydantic>=2.5.0           # Data models and validation
 python-dotenv>=1.0.0      # .env file loading

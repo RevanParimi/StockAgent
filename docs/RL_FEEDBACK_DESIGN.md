@@ -1,5 +1,8 @@
 # Adaptive Prediction Loop — RL Feedback Layer Design
 
+> Applies to all four sector graphs: **Automobile · Banking/BFSI · IT · Renewable Energy**
+> Each sector and each ticker maintains its own independent memory — weights learned for HDFCBANK do not affect TCS.
+
 > **Plain English first:** Imagine hiring a stock analyst who not only gives you a monthly forecast but also reviews their own calls every single day, writes down *why* they were wrong, and gradually gets better at their job. That's exactly what this system does — automatically.
 
 ---
@@ -99,19 +102,22 @@ Everything saved to JSON files
                         ┌─────────────────────────────────────────────┐
                         │           MONTH START (Day 0)                │
                         │                                              │
-                        │  AutomobileAgentOrchestrator.analyse()       │
-                        │      ↓  runs 5 agents in parallel            │
-                        │  SignalAggregator (uses learned weights       │
+                        │  Sector graph (any of the 4):               │
+                        │    automobile  → AutomobileAgentOrchestrator │
+                        │    banking_bfsi / it_sector /               │
+                        │    renewable_energy → LangGraph graph.invoke │
+                        │      ↓  runs N agents in parallel            │
+                        │  aggregate node (uses learned weights        │
                         │  from agent_weight_memory.json if exists)    │
                         │      ↓                                       │
-                        │  generate_forecast.py                        │
+                        │  generate_forecast.py --sector <name>        │
                         │  → saves prediction_envelope.json            │
                         └─────────────────────────────────────────────┘
 
                         ┌─────────────────────────────────────────────┐
                         │        EVERY DAY (cron, 24h interval)        │
                         │                                              │
-                        │  daily_review.py                             │
+                        │  daily_review.py --sector <name>             │
                         │  1. load prediction_envelope                 │
                         │  2. fetch actual close (yfinance)            │
                         │  3. compute error                            │
@@ -122,19 +128,22 @@ Everything saved to JSON files
                         │  8. append daily_feedback_log entry          │
                         └─────────────────────────────────────────────┘
 
-         ┌──────────────────────┐        ┌─────────────────────────────┐
-         │  5 Existing Agents   │        │  2 New Agents               │
-         │  - sales_demand      │        │  - feedback_agent (6th)     │
-         │  - fundamentals      │        │  - weight_adapter           │
-         │  - pattern_analysis  │        └─────────────────────────────┘
-         │  - sentiment         │
-         │  - risk_macro        │        ┌─────────────────────────────┐
-         └──────────────────────┘        │  4 JSON Memory Files        │
-                                         │  - prediction_envelope      │
-                                         │  - daily_feedback_log       │
-                                         │  - agent_weight_memory      │
-                                         │  - learning_ledger          │
-                                         └─────────────────────────────┘
+  ┌─────────────────────────────┐     ┌─────────────────────────────┐
+  │  Sector Agents (per graph)  │     │  2 Cross-Sector Agents      │
+  │  Automobile  (8 agents)     │     │  - feedback_agent           │
+  │  Banking/BFSI (6 agents)    │     │  - weight_adapter           │
+  │  IT Sector   (8 agents)     │     │  (sector-agnostic —         │
+  │  Renewable   (6 agents)     │     │   same code for all 4)      │
+  └─────────────────────────────┘     └─────────────────────────────┘
+                                      ┌─────────────────────────────┐
+                                      │  4 JSON Memory Files        │
+                                      │  (one set per ticker,       │
+                                      │   sector-tagged in path)    │
+                                      │  - prediction_envelope      │
+                                      │  - daily_feedback_log       │
+                                      │  - agent_weight_memory      │
+                                      │  - learning_ledger          │
+                                      └─────────────────────────────┘
 ```
 
 ---
@@ -523,16 +532,36 @@ The FeedbackAgent is the 6th LLM agent. Here is exactly what it receives and wha
 ```
 data/
   predictions/
-    MARUTI/
-      MARUTI_2026-04_prediction_envelope.json    ← monthly, one per cycle
-      MARUTI_2026-04_daily_feedback_log.json     ← monthly, one per cycle
-      MARUTI_agent_weight_memory.json            ← PERSISTS across all cycles
-      MARUTI_learning_ledger.json                ← PERSISTS across all cycles
-    TATAMOTORS/
-      TATAMOTORS_2026-04_prediction_envelope.json
-      TATAMOTORS_2026-04_daily_feedback_log.json
-      TATAMOTORS_agent_weight_memory.json
-      TATAMOTORS_learning_ledger.json
+    automobile/
+      MARUTI/
+        MARUTI_2026-04_prediction_envelope.json    ← monthly, one per cycle
+        MARUTI_2026-04_daily_feedback_log.json     ← monthly, one per cycle
+        MARUTI_agent_weight_memory.json            ← PERSISTS across all cycles
+        MARUTI_learning_ledger.json                ← PERSISTS across all cycles
+      TATAMOTORS/
+        TATAMOTORS_2026-04_prediction_envelope.json
+        ...
+    banking_bfsi/
+      HDFCBANK/
+        HDFCBANK_2026-04_prediction_envelope.json
+        HDFCBANK_agent_weight_memory.json          ← BFSI weights, separate from auto
+        HDFCBANK_learning_ledger.json
+      SBIN/
+        ...
+    it_sector/
+      TCS/
+        TCS_2026-04_prediction_envelope.json
+        TCS_agent_weight_memory.json               ← IT weights, separate from all others
+        TCS_learning_ledger.json
+      INFY/
+        ...
+    renewable_energy/
+      ADANIGREEN/
+        ADANIGREEN_2026-04_prediction_envelope.json
+        ADANIGREEN_agent_weight_memory.json
+        ADANIGREEN_learning_ledger.json
+      NTPC/
+        ...
 ```
 
 **Critical distinction:**
@@ -722,11 +751,12 @@ The updated `WeightMemory` gets a new version number and a `WeightHistoryEntry` 
 #### `scripts/generate_forecast.py`
 
 Month-start script. Run on the first trading day of each month.
+Accepts `--sector` flag: `automobile` (default) | `banking_bfsi` | `it_sector` | `renewable_energy`.
 
 Flow:
-1. Load `WeightMemory` for the ticker (or bootstrap fresh from config defaults)
-2. Inject learned weights into `AutomobileAgentOrchestrator` via `_aggregator_weights`
-3. Run full 5-agent analysis → `FinalReport`
+1. Load `WeightMemory` for the ticker (or bootstrap fresh from sector defaults)
+2. Inject learned weights — automobile uses `AutomobileAgentOrchestrator._aggregator_weights`; other sectors pass weights to `graph.invoke()` via state override
+3. Run full analysis via the sector graph → `FinalReport`
 4. Fetch actual closing price from yfinance as the day-0 baseline
 5. Generate `DailyForecast` rows for the next 30 trading weekdays:
    - Linear price path interpolated from verdict's implied monthly return
@@ -787,7 +817,7 @@ The new job:
 - Calls `run_daily_review()` for each ticker in `SCHEDULER_TICKERS`
 - Logs success/failure per ticker without crashing the whole job if one ticker fails
 
-The existing analysis job (`automobile_agent_run`) is unchanged.
+The existing analysis job (`automobile_agent_run`) is unchanged. New sector jobs register under their own job IDs (`bfsi_agent_run`, `it_agent_run`, `re_agent_run`) when the respective scheduler tickers are configured.
 
 #### `scripts/run_schedule.py`
 
@@ -857,19 +887,35 @@ All settings can be overridden via `.env` file without touching the code.
 
 ## 14. How to Run
 
+All commands accept `--sector` to select the graph. Defaults to `automobile` if omitted.
+
 ### Month Start — Generate Forecast
 
 Run once on the first trading day of each month per ticker.
 
 ```bash
-# Single ticker
+# Automobile (default)
 python -m scripts.run_schedule forecast --ticker MARUTI
+python -m scripts.run_schedule forecast --ticker MARUTI TATAMOTORS M&M
 
-# All configured tickers (from SCHEDULER_TICKERS in settings)
-python -m scripts.run_schedule forecast
+# Banking / BFSI
+python -m scripts.run_schedule forecast --sector banking_bfsi --ticker HDFCBANK SBIN ICICIBANK
+
+# IT Sector
+python -m scripts.run_schedule forecast --sector it_sector --ticker TCS INFY HCLTECH
+
+# Renewable Energy
+python -m scripts.run_schedule forecast --sector renewable_energy --ticker ADANIGREEN NTPC TATAPOWER
+
+# All configured tickers for all sectors
+python -m scripts.run_schedule forecast --all-sectors
 ```
 
-This creates `data/predictions/MARUTI/MARUTI_2026-04_prediction_envelope.json`.
+Output paths follow the sector-keyed layout:
+- `data/predictions/automobile/MARUTI/MARUTI_2026-04_prediction_envelope.json`
+- `data/predictions/banking_bfsi/HDFCBANK/HDFCBANK_2026-04_prediction_envelope.json`
+- `data/predictions/it_sector/TCS/TCS_2026-04_prediction_envelope.json`
+- `data/predictions/renewable_energy/ADANIGREEN/ADANIGREEN_2026-04_prediction_envelope.json`
 
 ---
 
@@ -878,14 +924,17 @@ This creates `data/predictions/MARUTI/MARUTI_2026-04_prediction_envelope.json`.
 Run after market close (automatically via cron, or manually).
 
 ```bash
-# Yesterday (default)
+# Automobile — yesterday (default)
 python -m scripts.run_schedule daily-review --ticker MARUTI
 
-# Specific date (backfill)
-python -m scripts.run_schedule daily-review --ticker MARUTI --date 2026-04-09
+# BFSI — specific date (backfill)
+python -m scripts.run_schedule daily-review --sector banking_bfsi --ticker HDFCBANK --date 2026-04-09
 
-# All tickers
-python -m scripts.run_schedule daily-review
+# IT — all configured tickers
+python -m scripts.run_schedule daily-review --sector it_sector
+
+# Renewable — all configured tickers
+python -m scripts.run_schedule daily-review --sector renewable_energy
 ```
 
 ---
@@ -893,23 +942,37 @@ python -m scripts.run_schedule daily-review
 ### Check Status
 
 ```bash
+# Automobile
 python -m scripts.run_schedule feedback-status --ticker MARUTI
+
+# BFSI
+python -m scripts.run_schedule feedback-status --sector banking_bfsi --ticker HDFCBANK
+
+# IT
+python -m scripts.run_schedule feedback-status --sector it_sector --ticker TCS
+
+# Renewable
+python -m scripts.run_schedule feedback-status --sector renewable_energy --ticker ADANIGREEN
 ```
 
-Shows: forecast progress, current weights vs base, direction accuracy, last 5 log entries, top lessons learned.
+Shows: forecast progress, current weights vs base, direction accuracy, last 5 log entries, top lessons learned — the same dashboard for all sectors.
 
 ---
 
-### Start Full Daemon (Analysis + Daily Review)
+### Start Full Daemon (Analysis + Daily Review, All Sectors)
 
 ```bash
 # Requires SCHEDULER_ENABLED=true in .env
+# Configure per-sector tickers: AUTOMOBILE_TICKERS, BFSI_TICKERS, IT_TICKERS, RE_TICKERS
 python -m scripts.run_schedule start
 ```
 
-This starts two scheduled jobs:
-- Analysis job on `SCHEDULER_CRON` (default: weekdays 8:30am IST)
-- Daily review job on `FEEDBACK_CRON` (default: weekdays 4:30pm IST)
+Registers one analysis job + one daily-review job per sector that has configured tickers:
+- Automobile: `automobile_agent_run` at `SCHEDULER_CRON` (8:30am IST)
+- BFSI: `bfsi_agent_run` at `SCHEDULER_CRON`
+- IT: `it_agent_run` at `SCHEDULER_CRON`
+- Renewable: `re_agent_run` at `SCHEDULER_CRON`
+- All sectors: daily-review at `FEEDBACK_CRON` (4:30pm IST)
 
 ---
 
@@ -917,10 +980,14 @@ This starts two scheduled jobs:
 
 ```bash
 # generate_forecast.py directly
-python -m scripts.generate_forecast --ticker MARUTI TATAMOTORS
+python -m scripts.generate_forecast --sector automobile --ticker MARUTI TATAMOTORS
+python -m scripts.generate_forecast --sector banking_bfsi --ticker HDFCBANK AXISBANK
+python -m scripts.generate_forecast --sector it_sector --ticker TCS INFY
+python -m scripts.generate_forecast --sector renewable_energy --ticker ADANIGREEN NTPC
 
 # daily_review.py directly
-python -m scripts.daily_review --ticker MARUTI --date 2026-04-09
+python -m scripts.daily_review --sector automobile --ticker MARUTI --date 2026-04-09
+python -m scripts.daily_review --sector banking_bfsi --ticker HDFCBANK --date 2026-04-09
 ```
 
 ---

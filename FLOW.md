@@ -973,3 +973,126 @@ The FastAPI bridge at port 8000 is the single integration point for TypeScript a
 **Test baseline:** 292 Python tests passing (0 failed) | TypeScript: `tsc --noEmit` clean
 
 *Last updated: 2026-04-17 | All 4 integration phases complete*
+
+---
+
+## 16. LangGraph Multi-Sector Flows
+
+Four independent LangGraph `StateGraph` graphs added alongside the existing orchestrator.
+The existing `AutomobileAgentOrchestrator` is **unchanged** — LangGraph is an additive path.
+
+### 16.1 Entry point
+
+```bash
+# Local dev server (serves all 4 graphs via LangGraph Studio)
+langgraph dev
+
+# Programmatic invocation
+from graphs.automobile.graph import graph
+result = graph.invoke({"ticker": "MARUTI"})
+report = result["final_report"]
+
+from graphs.banking_bfsi.graph import graph as bfsi_graph
+result = bfsi_graph.invoke({"ticker": "HDFCBANK"})
+
+from graphs.it_sector.graph import graph as it_graph
+result = it_graph.invoke({"ticker": "TCS"})
+
+from graphs.renewable_energy.graph import graph as re_graph
+result = re_graph.invoke({"ticker": "ADANIGREEN"})
+```
+
+### 16.2 Shared node topology
+
+```
+graph.invoke({"ticker": "<SYMBOL>"})
+      │
+      ▼
+[resolve_ticker]  ←── LLM call (temp=0) → StockQuery
+      │
+      ▼
+[input_rail]  ←── NeMo guard: yfinance existence check, errors → rail_errors
+      │
+      │  conditional_edge → make_dispatch_fn returns list[Send]
+      │
+      ├── Send("run_agent", {..., "current_agent": "agent_A"})  ─┐
+      ├── Send("run_agent", {..., "current_agent": "agent_B"})   │  parallel
+      ├── Send("run_agent", {..., "current_agent": "agent_C"})   │  fan-out
+      └── Send("run_agent", {..., "current_agent": "agent_N"})  ─┘
+                │   (each writes to agent_outputs via _merge_dicts reducer)
+                │   (output_rail sanitizes every AgentOutput before storing)
+                │   RetryPolicy(max_attempts=2) on run_agent node
+                │
+      ▼  LangGraph fan-in: waits for all branches to complete
+[aggregate]  ←── conflict_rail detects spread > 0.35 → LLM re-resolution
+      │         weighted fusion → FinalReport
+      ▼
+     END        state["final_report"] = FinalReport
+```
+
+### 16.3 Sector comparison
+
+| Graph | Agents | Key weight | Unique signal |
+|---|:---:|---|---|
+| `automobile` | 8 | fundamentals 0.20 | sales_demand (FADA/Vahan), competitive_intel |
+| `banking_bfsi` | 6 | fundamentals 0.25 | NPA/NIM/CASA, RBI MPC rate cycle |
+| `it_sector` | 8 | fundamentals 0.25 | US tech spend, visa risk, transcript NLP |
+| `renewable_energy` | 6 | fundamentals 0.30 | CUF/DSCR/EV-MW, MNRE auctions, risk monitor |
+
+### 16.4 Safety layer summary
+
+```
+Three rails, all non-blocking:
+
+input_rail  → before fan-out    → bad ticker flagged, analysis continues
+output_rail → inside run_agent  → clamped score, injected summary
+conflict_rail → inside aggregate → agent divergence > 0.35 triggers LLM re-resolution
+```
+
+### 16.5 Known gaps and backlog
+
+These issues are documented and tracked. They do not block operation — the system falls back gracefully in all cases.
+
+**P0 — Context gap for new sector agents**
+BFSI, IT, and RE agents receive stub context only (`ContextBuilder` not yet extended).
+Agents rely on LLM training knowledge until sector-specific fetchers are wired.
+Fix: add routing branches in `tools/context_builder.py` for new agent names.
+
+**P1 — Sync agent.run() in LangGraph nodes**
+`run_agent` nodes call `agent.run()` synchronously. LangGraph parallelism is via
+threads — the GIL is not a bottleneck for I/O-bound LLM calls, but this should
+migrate to `agent.run_async()` + `async def run_agent` nodes for cleaner coroutine
+concurrency under the FastAPI event loop.
+
+**P1 — No CLI/FastAPI sector routing**
+There is no `--sector` flag on `main.py` and no `/analyse/banking_bfsi` route on the
+FastAPI bridge. Users must invoke LangGraph graphs directly in Python or via
+`langgraph dev`. Add `POST /analyse/{sector}` route and `--sector` CLI flag.
+
+**P2 — RAG retrieval falls back to "automobile India" for new agents**
+`BaseAgent._rag_retrieve` has a hardcoded `prompt_modules` dict covering only
+automobile agents. New sector agents fall through to a generic automobile search
+query. Fix: override `_rag_retrieve` in each new sector agent class, or add a
+`sector` parameter to the method.
+
+**P2 — Agent name collision is benign today but fragile**
+`"fundamentals"` and `"pattern_analysis"` exist in all 4 sector agent registries.
+Within a single graph, names are unique (each graph has its own dict). Cross-sector
+reports or a future unified dashboard that joins FinalReport objects would see
+ambiguous keys. Consider prefixing: `bfsi_fundamentals`, `it_fundamentals`.
+
+### 16.6 File responsibility map (LangGraph additions)
+
+```
+WHAT YOU WANT TO CHANGE                    WHERE TO CHANGE IT
+─────────────────────────────────────────  ─────────────────────────────────────
+Add a new sector graph                     New dir under graphs/, add to langgraph.json
+Change sector agent weights                graphs/<sector>/agents.py → WEIGHTS dict
+Change conflict detection threshold        graphs/_shared/rails.py → CONFLICT_THRESHOLD
+Add new sector agent                       graphs/<sector>/agents.py → new class + AGENTS
+Change shared node logic (all sectors)     graphs/_shared/nodes.py
+Wire live data for new sector agent        tools/context_builder.py → add routing branch
+Run a sector graph locally                 langgraph dev  (reads langgraph.json)
+Invoke a sector graph in code              from graphs.<sector>.graph import graph
+                                           graph.invoke({"ticker": "SYMBOL"})
+```

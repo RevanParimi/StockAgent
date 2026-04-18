@@ -328,5 +328,131 @@ pattern from StockAI is applied to deduplicate the sector-level risk_macro queri
 
 ---
 
-*Generated: 2026-04-09. Update this document when adding new agents, changing
-SERPER_MAX_QUERIES, or wiring new search API fetchers.*
+*Last updated: 2026-04-17. Update when adding new agents, changing SERPER_MAX_QUERIES, or wiring new search API fetchers.*
+
+---
+
+## 10. LangGraph Multi-Sector Graphs
+
+Four independent LangGraph `StateGraph` flows defined in `langgraph.json`.
+Each graph is fully isolated — a failure in one sector's graph never affects another.
+
+### 10.1 Registry (`langgraph.json`)
+
+```json
+{
+  "dependencies": ["."],
+  "graphs": {
+    "automobile":       "./graphs/automobile/graph.py:graph",
+    "banking_bfsi":     "./graphs/banking_bfsi/graph.py:graph",
+    "it_sector":        "./graphs/it_sector/graph.py:graph",
+    "renewable_energy": "./graphs/renewable_energy/graph.py:graph"
+  },
+  "env": ".env"
+}
+```
+
+### 10.2 Shared Infrastructure (`graphs/_shared/`)
+
+| File | Purpose |
+|---|---|
+| `state.py` | `GraphState` TypedDict (`total=False`) with merge reducers for `agent_outputs` and `rail_errors` |
+| `rails.py` | Three NeMo Guardrails-style validators: `input_rail`, `output_rail`, `conflict_rail` |
+| `nodes.py` | Factory functions producing node callables parameterised by sector, agent registry, and weights |
+
+**Why factory functions, not classes?**
+LangGraph nodes must be plain callables. Factories let the same node logic serve all 4 sectors without sub-classing or global state.
+
+### 10.3 Node Topology (identical for all 4 graphs)
+
+```
+graph.invoke({"ticker": "MARUTI"})
+      │
+      ▼
+resolve_ticker          LLM call → StockQuery (ticker, company_name, exchange)
+      │
+      ▼
+input_rail              NeMo input guard — yfinance fast_info check,
+                        errors appended to rail_errors (non-blocking)
+      │
+      ▼ add_conditional_edges → make_dispatch_fn returns list[Send]
+      │
+  ┌───┴────────────────────────────────────┐
+  ▼           ▼          ▼         ▼  (Send fan-out, parallel)
+run_agent  run_agent  run_agent  run_agent  ...
+  │  (each writes {"agent_name": AgentOutput} to agent_outputs via merge reducer)
+  └───┬────────────────────────────────────┘
+      │ fan-in: LangGraph waits for all Send branches
+      ▼
+aggregate               NeMo conflict_rail + weighted fusion + LLM synthesis
+      │
+      ▼
+END                     FinalReport in state["final_report"]
+```
+
+### 10.4 Three-Rail Safety Layer
+
+| Rail | Where | What it catches |
+|---|---|---|
+| `input_rail` | Before fan-out | Empty ticker, non-existent yfinance symbol |
+| `output_rail` | Inside `run_agent` node | Score out of [0,1], empty summary — clamps and injects placeholder |
+| `conflict_rail` | Inside `aggregate` node | Pairwise score spread > 0.35 — triggers LLM re-resolution |
+
+All rails are **non-blocking**: they append to `rail_errors` and continue. No rail terminates the graph.
+
+### 10.5 Resilience Patterns (Agents SDK / Swarm)
+
+```
+run_agent node retry=RetryPolicy(max_attempts=2)
+      │
+      ├── attempt 1: agent.run(query)  ←── normal path
+      ├── attempt 2 (on exception): agent.run(query)  ←── LangGraph retry
+      └── all attempts fail:
+              AgentOutput(overall_score=0.5, error=str(exc))  ←── neutral fallback
+              graph continues — no crash
+```
+
+### 10.6 Automobile Graph — Zero-Duplication Design
+
+The automobile LangGraph graph (`graphs/automobile/graph.py`) does not copy any agent logic.
+It wraps the existing `agents/` sub-agents via `graphs/automobile/agents.py`:
+
+```python
+from agents.sales_demand     import SalesDemandAgent    # existing code
+from agents.fundamentals     import FundamentalsAgent   # existing code
+# ... same for all 8 agents
+AGENTS = {"sales_demand": SalesDemandAgent(), ...}      # thin registry only
+```
+
+The legacy `AutomobileAgentOrchestrator` in `agents/orchestrator.py` remains fully operational for CLI, FastAPI, and C# scheduler paths. The LangGraph graph is an **additive** path, not a replacement.
+
+### 10.7 New Sector Agents — Context Gap (Known Limitation)
+
+BFSI, IT, and Renewable Energy agents inherit `BaseAgent._gather_context()`, which routes by `agent_name` to `ContextBuilder`. The `ContextBuilder` currently only has automobile-sector routing.
+
+**Impact:** New sector agents fall back to the minimal stub context and rely on LLM training knowledge.
+
+**Mitigation path (priority order):**
+
+| Sector | Agent | Recommended data source | Effort |
+|---|---|---|---|
+| BFSI | `fundamentals` | yfinance `quarterly_financials` + RBI DBIE | Low |
+| BFSI | `macro_policy` | RBI website press releases (scrape) | Medium |
+| IT | `fundamentals` | yfinance earnings + Tickertape API | Low |
+| IT | `peer_benchmark` | Multi-ticker yfinance fetch | Low (~1 day) |
+| RE | `fundamentals` | Company investor PDFs + yfinance | Medium |
+| RE | `technical` | yfinance OHLCV only — zero cost | Low |
+
+**Immediate workaround:** Override `_gather_context` in each new sector agent class to call yfinance directly for the fields most relevant to that agent. Pattern Analysis agents across all sectors need only yfinance OHLCV — zero extra wiring.
+
+### 10.8 Known Design Weaknesses & Backlog
+
+| # | Issue | Severity | File | Fix |
+|---|---|---|---|---|
+| 1 | `ContextBuilder` not sector-aware | High | `tools/context_builder.py` | Add routing branches for BFSI/IT/RE agent names |
+| 2 | `BaseAgent._rag_retrieve` falls back to "automobile India" for unknown agents | High | `agents/base_agent.py` | Add `sector` parameter or override per-class |
+| 3 | `run_agent` calls sync `agent.run()` — LangGraph parallel via threading, not asyncio | Medium | `graphs/_shared/nodes.py` | Switch to `agent.run_async()` + make nodes `async def` |
+| 4 | `input_rail` makes blocking yfinance network call before fan-out | Medium | `graphs/_shared/rails.py` | Wrap in `asyncio.to_thread` or skip on `FAST_MODE=true` |
+| 5 | Agent name collisions across sectors (`"fundamentals"` exists in all 4) | Low | All `agents.py` files | No immediate problem (graphs are isolated); prefix names if cross-sector reporting is added |
+| 6 | No CLI / FastAPI entry point for new sector graphs | Medium | `main.py`, `api/routes/` | Add `--sector` flag and `/analyse/{sector}` route |
+| 7 | `resp` usage logging skipped if JSON parse fails post-LLM call | Low | `graphs/_shared/nodes.py` | Move `log_llm_call` before `json.loads` in aggregate node |

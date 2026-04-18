@@ -85,7 +85,7 @@
 
 ### 2.2 Banking & BFSI (6 agents)
 
-> Context status: **stub fallback** until `ContextBuilder` is extended for BFSI agent names. Priority wiring targets noted below.
+> Context status: **wired** — `ContextBuilder` sector routing active (`sector="bfsi"`). All 6 agents receive live Serper + yfinance data. `pattern_analysis` falls through to the shared yfinance technical method. Priority column reflects data depth already fetched (P0 = active in current build).
 
 | Agent | Feature / Signal | Source | Priority | Est. Tokens |
 |---|---|---|:---:|:---:|
@@ -113,7 +113,7 @@
 
 ### 2.3 IT Sector (8 agents)
 
-> Context status: **stub fallback** until `ContextBuilder` is extended for IT agent names. Pattern Analysis and Peer Benchmark can be wired with zero new API dependency.
+> Context status: **wired** — `ContextBuilder` sector routing active (`sector="it"`). All 8 agents receive live data. `pattern_analysis` falls through to shared yfinance method. `transcript_nlp` uses Tavily (2 calls/analysis) for earnings call text. `risk_macro` uses sector-keyed macro cache (`"it"` key) — see budget note on cache population.
 
 | Agent | Feature / Signal | Source | Priority | Est. Tokens |
 |---|---|---|:---:|:---:|
@@ -147,7 +147,7 @@
 
 ### 2.4 Renewable Energy (6 agents)
 
-> Context status: **stub fallback** until `ContextBuilder` is extended. Technical agent needs only yfinance — zero wiring effort.
+> Context status: **wired** — `ContextBuilder` sector routing active (`sector="re"`). All 6 agents receive live data. `technical` uses `_build_technical` (dedicated yfinance OHLCV method, 0 Serper calls). `sentiment_policy` uses Tavily (2 calls/analysis) for MNRE circular text.
 
 | Agent | Feature / Signal | Source | Priority | Est. Tokens |
 |---|---|---|:---:|:---:|
@@ -193,7 +193,8 @@
 ## 4. Monthly API Budget
 
 > Assumption: 5 tickers/day × 22 working days = **110 analyses/month per sector**
-> Budget shown at current stub-context phase; live data wiring will increase Serper/Tavily calls.
+> All 4 sectors are now fully wired. Numbers reflect actual `ContextBuilder` call counts.
+> `SERPER_MAX_QUERIES=3` (configurable) — each agent's `fetch_news_context` runs at most 3 queries.
 
 ### 4.1 Automobile (fully wired, production state)
 
@@ -204,45 +205,60 @@
 | yfinance | ~8 fetches | unlimited | unlimited | **∞** | Free | ✅ |
 | OpenRouter LLM | 9 calls | ~990 calls | 0 | ~990/month | rate-limited | ✅ |
 
-### 4.2 Banking / BFSI (stub context phase → estimated post-wiring)
+### 4.2 Banking / BFSI (wired)
 
-| Source | Calls/Analysis (stub) | Calls/Analysis (wired) | Monthly (wired) | Limit | Status |
-|---|:---:|:---:|:---:|:---:|:---:|
-| Serper | 0 | ~8 | ~880 | 2,500 | 🟡 Phase 2 |
-| Tavily | 0 | ~2 (RBI circulars) | ~220 | 1,000 | 🟡 Phase 2 |
-| yfinance | ~4 (ticker resolution) | ~6 | unlimited | Free | ✅ |
-| OpenRouter LLM | 7 calls (agents + agg) | 7 calls | ~770/month | rate-limited | ✅ |
+> Agents calling Serper: `fundamentals`, `risk`, `macro_policy`, `institutional`, `universe_setup` (5 × 3 = 15 max). `pattern_analysis` → yfinance only.  
+> `macro_policy` checks `macro_cache("bfsi")` first — cache HIT saves 3 calls. Cache populated only when main.py macro loop is extended to BFSI (pending).
 
-### 4.3 IT Sector (stub context phase → estimated post-wiring)
+| Source | Calls/Analysis | Monthly (110 analyses) | Limit | Status |
+|---|:---:|:---:|:---:|:---:|
+| Serper | 12–15 (12 w/ cache HIT) | 1,320–1,650 | 2,500 | ✅ Wired |
+| Tavily | 0 | 0 | 1,000 | ✅ (RBI full-text is P1, not yet active) |
+| yfinance | ~5 (financials + shareholding + technicals) | unlimited | Free | ✅ |
+| OpenRouter LLM | 7 (6 agents + 1 aggregator) | ~770/month | rate-limited | ✅ |
 
-| Source | Calls/Analysis (stub) | Calls/Analysis (wired) | Monthly (wired) | Limit | Status |
-|---|:---:|:---:|:---:|:---:|:---:|
-| Serper | 0 | ~10 | ~1,100 | 2,500 | 🟡 Phase 2 |
-| Tavily | 0 | 0 (no policy agent) | 0 | 1,000 | ✅ |
-| yfinance | ~4 | ~8 (peer basket) | unlimited | Free | ✅ |
-| OpenRouter LLM | 9 calls (agents + agg) | 9 calls | ~990/month | rate-limited | ✅ |
+### 4.3 IT Sector (wired)
 
-> **Note:** IT sector uses Serper generously (global macro, visa news, sentiment, layoffs) but has no Tavily dependency. Peer Benchmark agent uses 4-ticker yfinance batch — free.
+> Agents calling Serper: `fundamentals`, `global_macro`, `risk_macro`, `peer_benchmark`, `sentiment`, `insider_smart_money` (6 × 3 = 18), plus `transcript_nlp` (2 Serper). `pattern_analysis` → yfinance only.  
+> `risk_macro` checks `macro_cache("it")` first — HIT saves 3 calls. Cache populated only when main.py macro loop is extended to IT (pending).  
+> `transcript_nlp` additionally makes 2 Tavily calls for earnings call document text.
 
-### 4.4 Renewable Energy (stub context phase → estimated post-wiring)
+| Source | Calls/Analysis | Monthly (110 analyses) | Limit | Status |
+|---|:---:|:---:|:---:|:---:|
+| Serper | 17–20 (17 w/ cache HIT) | 1,870–2,200 | 2,500 | ✅ Wired |
+| Tavily | 2 (transcript_nlp) | ~220 | 1,000 | ✅ Wired |
+| yfinance | ~7 (financials + peer basket + technicals) | unlimited | Free | ✅ |
+| OpenRouter LLM | 9 (8 agents + 1 aggregator) | ~990/month | rate-limited | ✅ |
 
-| Source | Calls/Analysis (stub) | Calls/Analysis (wired) | Monthly (wired) | Limit | Status |
-|---|:---:|:---:|:---:|:---:|:---:|
-| Serper | 0 | ~7 | ~770 | 2,500 | 🟡 Phase 2 |
-| Tavily | 0 | ~1 (MNRE circulars) | ~110 | 1,000 | 🟡 Phase 2 |
-| yfinance | ~4 | ~5 | unlimited | Free | ✅ |
-| OpenRouter LLM | 7 calls (agents + agg) | 7 calls | ~770/month | rate-limited | ✅ |
+### 4.4 Renewable Energy (wired)
 
-### 4.5 Combined budget at full production (all 4 sectors, same 110 analyses/sector/month)
+> Agents calling Serper: `fundamentals`, `business`, `valuation`, `risk` (4 × 3 = 12). `sentiment_policy` calls Serper (3) + Tavily (2). `technical` → yfinance only (0 API calls).
+
+| Source | Calls/Analysis | Monthly (110 analyses) | Limit | Status |
+|---|:---:|:---:|:---:|:---:|
+| Serper | ~15 | ~1,650 | 2,500 | ✅ Wired |
+| Tavily | 2 (sentiment_policy MNRE circulars) | ~220 | 1,000 | ✅ Wired |
+| yfinance | ~4 (financials + OHLCV) | unlimited | Free | ✅ |
+| OpenRouter LLM | 7 (6 agents + 1 aggregator) | ~770/month | rate-limited | ✅ |
+
+### 4.5 Combined budget at full production (all 4 sectors, 110 analyses/sector/month)
+
+> Numbers below use cache-HIT scenario (macro loop running for all sectors).
 
 | Source | Auto | BFSI | IT | RE | **Total** | Limit | Headroom |
 |---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
-| Serper | 1,350 | 880 | 1,100 | 770 | **4,100** | 2,500 | ⚠️ Over limit |
-| Tavily | 220 | 220 | 0 | 110 | **550** | 1,000 | ✅ 45% |
+| Serper | 1,350 | 1,320 | 1,870 | 1,650 | **6,190** | 2,500 | ⚠️ 148% over |
+| Tavily | 220 | 0 | 220 | 220 | **660** | 1,000 | ✅ 34% |
 | yfinance | ∞ | ∞ | ∞ | ∞ | **∞** | Free | ✅ |
 
-> ⚠️ **Serper budget concern at full production:** Running all 4 sectors at 5 tickers/day will exceed the 2,500/month Serper free tier. Mitigations:
-> 1. **Sector-level macro cache** — extend the existing `macro_cache.py` pattern to all 3 new sectors. RBI, Fed rate, and commodity queries are shared across BFSI and IT — cache once, serve all.
-> 2. **Reduce tickers per sector** — run 2 tickers/day per sector (8 total) instead of 5 each.
-> 3. **Upgrade Serper** — $50/month for 50,000 calls removes this constraint entirely.
-> 4. **Stagger sectors** — run Automobile Mon/Wed/Fri, BFSI/IT/RE Tue/Thu.
+> ⚠️ **Serper budget concern at full production:** Running all 4 sectors simultaneously at 5 tickers/day will exceed the 2,500/month free tier by ~2.5×. Mitigations:
+>
+> **1. Sector-level macro cache — extend `main.py` micro loop to BFSI and IT**
+> `macro_cache.py` already supports arbitrary sector keys (`set_macro_cache("bfsi", text)`). `_build_macro_policy` and `_build_it_risk_macro` already call `get_macro_cache("bfsi")` / `get_macro_cache("it")`. The missing piece is populating those keys from `main.py`. RBI rate, system credit growth, and US Fed queries are shared across all stocks in a sector — fetch once per 4 hours, serve all. Each cache HIT saves 3 Serper calls per analysis. At 5 tickers/day this saves 450 calls/month per sector.
+>
+> **2. Stagger sectors — Automobile Mon/Wed/Fri, BFSI/IT/RE Tue/Thu**
+> Automobile is the most complete sector and benefits from higher frequency. New sectors run less frequently. With staggering: Auto runs 13 days/month (715 analyses), others run 9 days each (495 analyses). Effective Serper: ~590 + ~580 + ~820 + ~725 = **~2,715** — just over limit but manageable with `SERPER_MAX_QUERIES=2`.
+>
+> **3. Reduce `SERPER_MAX_QUERIES`** — Setting it to 2 (from 3) cuts all sectors proportionally and brings combined total under 2,500 with staggering active.
+>
+> **4. Upgrade Serper** — $50/month for 50,000 calls removes this constraint entirely and is the simplest option at scale.

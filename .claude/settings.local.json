@@ -2,6 +2,12 @@
   "permissions": {
     "allow": [
       "Read(//e/AI projects/StockAI/**)",
+      "Bash(python -c ' *)",
+      "Bash(python -c *)",
+      "Bash(python3)",
+      "Bash(file *.docx)",
+      "Bash(powershell -Command ' *)",
+      "WebSearch",
       "Bash(python -c ':*)",
       "Bash(npm --version)",
       "Bash(npm create:*)",
@@ -10,7 +16,13 @@
       "Bash(npm run:*)",
       "Bash(curl -s http://localhost:5173)",
       "Bash(curl -s \"http://localhost:5173/analyze\" -H \"Accept: text/html\")",
-      "Bash(curl -s \"http://localhost:5173/history\" -H \"Accept: text/html\")"
+      "Bash(curl -s \"http://localhost:5173/history\" -H \"Accept: text/html\")",
+      "Bash(python -m pytest tests/ -q --tb=short)",
+      "Bash(python -m pytest tests/test_agents_unit.py::TestSalesDemandAgent::test_run_calls_llm -q --tb=short)",
+      "Bash(sed -n '85,92p' docs/API_SOURCES.md)",
+      "Bash(sed -n '113,118p' docs/API_SOURCES.md)",
+      "Bash(sed -n '147,152p' docs/API_SOURCES.md)",
+      "Bash(sed -n '195,215p' docs/API_SOURCES.md)"
     ]
   }
 }

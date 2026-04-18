@@ -30,6 +30,10 @@ from models.schemas import AgentOutput, StockQuery
 
 class ITFundamentalsAgent(BaseAgent):
     @property
+    def sector(self) -> str:
+        return "it"
+
+    @property
     def agent_name(self) -> str:
         return "fundamentals"
 
@@ -86,6 +90,10 @@ Return:
 # ──────────────────────────────────────────────────────────────────────────
 
 class ITGlobalMacroAgent(BaseAgent):
+    @property
+    def sector(self) -> str:
+        return "it"
+
     @property
     def agent_name(self) -> str:
         return "global_macro"
@@ -144,6 +152,10 @@ Return:
 
 class ITRiskMacroAgent(BaseAgent):
     @property
+    def sector(self) -> str:
+        return "it"
+
+    @property
     def agent_name(self) -> str:
         return "risk_macro"
 
@@ -200,6 +212,10 @@ Return:
 # ──────────────────────────────────────────────────────────────────────────
 
 class ITPeerBenchmarkAgent(BaseAgent):
+    @property
+    def sector(self) -> str:
+        return "it"
+
     @property
     def agent_name(self) -> str:
         return "peer_benchmark"
@@ -258,6 +274,10 @@ Return:
 
 class ITPatternAgent(BaseAgent):
     @property
+    def sector(self) -> str:
+        return "it"
+
+    @property
     def agent_name(self) -> str:
         return "pattern_analysis"
 
@@ -315,6 +335,10 @@ Return:
 
 class ITSentimentAgent(BaseAgent):
     @property
+    def sector(self) -> str:
+        return "it"
+
+    @property
     def agent_name(self) -> str:
         return "sentiment"
 
@@ -371,6 +395,10 @@ Return:
 
 class ITTranscriptNLPAgent(BaseAgent):
     @property
+    def sector(self) -> str:
+        return "it"
+
+    @property
     def agent_name(self) -> str:
         return "transcript_nlp"
 
@@ -426,6 +454,10 @@ Return:
 # ──────────────────────────────────────────────────────────────────────────
 
 class ITInsiderAgent(BaseAgent):
+    @property
+    def sector(self) -> str:
+        return "it"
+
     @property
     def agent_name(self) -> str:
         return "insider_smart_money"

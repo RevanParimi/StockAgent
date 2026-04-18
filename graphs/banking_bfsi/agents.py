@@ -28,6 +28,10 @@ from models.schemas import AgentOutput, StockQuery
 
 class BFSIFundamentalsAgent(BaseAgent):
     @property
+    def sector(self) -> str:
+        return "bfsi"
+
+    @property
     def agent_name(self) -> str:
         return "fundamentals"
 
@@ -86,6 +90,10 @@ Return:
 
 class BFSIRiskAgent(BaseAgent):
     @property
+    def sector(self) -> str:
+        return "bfsi"
+
+    @property
     def agent_name(self) -> str:
         return "risk"
 
@@ -142,6 +150,10 @@ Return:
 # ──────────────────────────────────────────────────────────────────────────
 
 class BFSIMacroPolicyAgent(BaseAgent):
+    @property
+    def sector(self) -> str:
+        return "bfsi"
+
     @property
     def agent_name(self) -> str:
         return "macro_policy"
@@ -200,6 +212,10 @@ Return:
 
 class BFSIInstitutionalAgent(BaseAgent):
     @property
+    def sector(self) -> str:
+        return "bfsi"
+
+    @property
     def agent_name(self) -> str:
         return "institutional"
 
@@ -255,6 +271,10 @@ Return:
 # ──────────────────────────────────────────────────────────────────────────
 
 class BFSIPatternAgent(BaseAgent):
+    @property
+    def sector(self) -> str:
+        return "bfsi"
+
     @property
     def agent_name(self) -> str:
         return "pattern_analysis"
@@ -312,6 +332,10 @@ Return:
 # ──────────────────────────────────────────────────────────────────────────
 
 class BFSIUniverseAgent(BaseAgent):
+    @property
+    def sector(self) -> str:
+        return "bfsi"
+
     @property
     def agent_name(self) -> str:
         return "universe_setup"

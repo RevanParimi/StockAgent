@@ -29,6 +29,10 @@ from models.schemas import AgentOutput, StockQuery
 
 class REFundamentalsAgent(BaseAgent):
     @property
+    def sector(self) -> str:
+        return "re"
+
+    @property
     def agent_name(self) -> str:
         return "fundamentals"
 
@@ -86,6 +90,10 @@ Return:
 
 class REBusinessAgent(BaseAgent):
     @property
+    def sector(self) -> str:
+        return "re"
+
+    @property
     def agent_name(self) -> str:
         return "business"
 
@@ -141,6 +149,10 @@ Return:
 # ──────────────────────────────────────────────────────────────────────────
 
 class REValuationAgent(BaseAgent):
+    @property
+    def sector(self) -> str:
+        return "re"
+
     @property
     def agent_name(self) -> str:
         return "valuation"
@@ -199,6 +211,10 @@ Return:
 
 class RESentimentPolicyAgent(BaseAgent):
     @property
+    def sector(self) -> str:
+        return "re"
+
+    @property
     def agent_name(self) -> str:
         return "sentiment_policy"
 
@@ -256,6 +272,10 @@ Return:
 
 class RETechnicalAgent(BaseAgent):
     @property
+    def sector(self) -> str:
+        return "re"
+
+    @property
     def agent_name(self) -> str:
         return "technical"
 
@@ -311,6 +331,10 @@ Return:
 # ──────────────────────────────────────────────────────────────────────────
 
 class RERiskAgent(BaseAgent):
+    @property
+    def sector(self) -> str:
+        return "re"
+
     @property
     def agent_name(self) -> str:
         return "risk"

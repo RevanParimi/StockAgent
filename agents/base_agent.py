@@ -123,6 +123,11 @@ class BaseAgent(ABC):
     def agent_name(self) -> str:
         """Unique snake_case name, e.g. 'sales_demand'."""
 
+    @property
+    def sector(self) -> str:
+        """Sector identifier passed to ContextBuilder for routing. Override in sector agents."""
+        return ""
+
     @abstractmethod
     def _build_prompt(
         self, query: StockQuery, context: str
@@ -308,7 +313,7 @@ class BaseAgent(ABC):
         # Phase 2: live data via ContextBuilder
         try:
             from tools.context_builder import ContextBuilder
-            context = ContextBuilder().build(self.agent_name, query)
+            context = ContextBuilder().build(self.agent_name, query, sector=self.sector)
             if context:
                 return context
         except Exception as exc:

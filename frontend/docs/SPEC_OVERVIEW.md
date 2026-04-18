@@ -20,8 +20,8 @@ system for Indian automobile stocks (NSE/BSE).
 | Phase | Status | Commit |
 |-------|--------|--------|
 | Phase 1 — Landing + Auth | ✅ Done | e7ba984 |
-| Phase 2 — Dashboard + Watchlist | 🔲 Next | — |
-| Phase 3 — Analyze | 🔲 Pending | — |
+| Phase 2 — Dashboard + Watchlist | ✅ Done | ae90074 |
+| Phase 3 — Analyze | ✅ Done | — |
 | Phase 4 — History + Polish | 🔲 Pending | — |
 
 ## Run

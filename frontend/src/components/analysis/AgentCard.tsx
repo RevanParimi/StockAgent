@@ -1,3 +1,4 @@
+import { memo } from 'react'
 import { motion } from 'framer-motion'
 import { AGENT_LABELS } from '@/types'
 import type { AgentStreamState } from '@/types'
@@ -31,7 +32,7 @@ interface AgentCardProps {
   state: AgentStreamState
 }
 
-export function AgentCard({ agentKey, state }: AgentCardProps) {
+function AgentCardInner({ agentKey, state }: AgentCardProps) {
   const label = AGENT_LABELS[agentKey] ?? agentKey
   const icon = AGENT_ICONS[agentKey] ?? '🤖'
   const { state: status, score } = state
@@ -121,7 +122,14 @@ export function AgentCard({ agentKey, state }: AgentCardProps) {
           </div>
 
           {/* Fill bar */}
-          <div className="h-1.5 rounded-full bg-[rgba(255,255,255,0.08)] overflow-hidden">
+          <div
+            className="h-1.5 rounded-full bg-[rgba(255,255,255,0.08)] overflow-hidden"
+            role="progressbar"
+            aria-valuenow={Math.round(score * 100)}
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-label={`${label} score: ${score.toFixed(2)}`}
+          >
             <motion.div
               className="h-full rounded-full"
               style={{ backgroundColor: scoreColor(score) }}
@@ -135,3 +143,10 @@ export function AgentCard({ agentKey, state }: AgentCardProps) {
     </motion.div>
   )
 }
+
+// Memoize: only re-renders when state or score changes
+export const AgentCard = memo(AgentCardInner, (prev, next) =>
+  prev.agentKey === next.agentKey &&
+  prev.state.state === next.state.state &&
+  prev.state.score === next.state.score
+)

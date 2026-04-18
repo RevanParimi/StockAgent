@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { memo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { MoreVertical, TrendingUp, Trash2 } from 'lucide-react'
 import { VerdictBadge } from '@/components/ui/VerdictBadge'
@@ -29,7 +29,7 @@ function avatarColor(ticker: string) {
 // Pre-built sparkline data (oldest → newest)
 const BASE_SPARK = [...sampleHistory].reverse().slice(0, 20).map(r => ({ score: r.final_score }))
 
-export function StockCard({ ticker, score, verdict, onClick, onRemove }: StockCardProps) {
+export const StockCard = memo(function StockCard({ ticker, score, verdict, onClick, onRemove }: StockCardProps) {
   const cardRef  = useRef<HTMLDivElement>(null)
   const [tilt, setTilt]       = useState('perspective(1000px) rotateX(0deg) rotateY(0deg)')
   const [menuOpen, setMenuOpen] = useState(false)
@@ -133,4 +133,4 @@ export function StockCard({ ticker, score, verdict, onClick, onRemove }: StockCa
       </div>
     </div>
   )
-}
+})

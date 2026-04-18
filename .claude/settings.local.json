@@ -8,7 +8,9 @@
       "Bash(npm install:*)",
       "Bash(grep -E \"^three$|^framer|^gsap$|^zustand$|^recharts$|^lenis$|^axios$|^date-fns$|^lucide\")",
       "Bash(npm run:*)",
-      "Bash(curl -s http://localhost:5173)"
+      "Bash(curl -s http://localhost:5173)",
+      "Bash(curl -s \"http://localhost:5173/analyze\" -H \"Accept: text/html\")",
+      "Bash(curl -s \"http://localhost:5173/history\" -H \"Accept: text/html\")"
     ]
   }
 }

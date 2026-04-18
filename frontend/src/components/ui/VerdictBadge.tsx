@@ -38,6 +38,7 @@ export function VerdictBadge({ verdict, size = 'md', glow = false }: VerdictBadg
     <span
       className={`inline-flex items-center rounded-full border font-semibold tracking-wide
         ${style} ${sizeClass} ${glowClass}`}
+      aria-label={`Verdict: ${verdict}`}
     >
       {verdict}
     </span>

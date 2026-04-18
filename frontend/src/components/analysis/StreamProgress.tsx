@@ -1,3 +1,4 @@
+import { memo } from 'react'
 import { motion } from 'framer-motion'
 import { TICKER_NAMES, AGENT_LABELS } from '@/types'
 import type { AgentStreamState } from '@/types'
@@ -13,7 +14,7 @@ interface StreamProgressProps {
   isMock?: boolean
 }
 
-export function StreamProgress({
+export const StreamProgress = memo(function StreamProgress({
   ticker,
   agentStates,
   completedCount,
@@ -26,7 +27,7 @@ export function StreamProgress({
   const allDone = completedCount >= total
 
   return (
-    <div className="w-full max-w-4xl mx-auto space-y-6">
+    <div className="w-full max-w-4xl mx-auto space-y-6" role="status" aria-live="polite" aria-label={`Analyzing ${ticker}: ${completedCount} of ${total} agents complete`}>
       {/* Demo banner */}
       {isMock && (
         <div className="text-center py-2 px-4 rounded-lg bg-[rgba(245,158,11,0.1)] border border-[rgba(245,158,11,0.3)]">
@@ -94,4 +95,4 @@ export function StreamProgress({
       )}
     </div>
   )
-}
+})

@@ -173,18 +173,22 @@ RAG_DOCUMENTS_BASE_DIR: str = os.getenv("RAG_DOCUMENTS_BASE_DIR", "data")
 # ---------------------------------------------------------------------------
 # Micro Search Loop — API efficiency
 # ---------------------------------------------------------------------------
-# Background loop that pre-fetches automobile sector macro news on a schedule.
-# Populates tools/macro_cache.py; consumed by ContextBuilder._build_risk_macro().
+# Background loop that pre-fetches sector-level macro news on a schedule.
+# Covers: automobile, bfsi, it  (RE excluded — its signals are per-company).
+# Populates tools/macro_cache.py; consumed by:
+#   ContextBuilder._build_risk_macro()    → cache key "automobile"
+#   ContextBuilder._build_macro_policy()  → cache key "bfsi"
+#   ContextBuilder._build_it_risk_macro() → cache key "it"
 #
 # Budget (Serper free tier = 2,500 queries/month):
-#   micro search:        MICRO_CYCLES_PER_DAY × MICRO_QUERIES_PER_RUN × 30 = 360/month
-#   per-stock (5 ticks): 9 calls × 5 × 30 = 1,350/month  (cache HIT steady-state)
-#   Total:               1,710/month  (well within free tier)
+#   micro loop:          3 sectors × MICRO_QUERIES_PER_RUN × MICRO_CYCLES_PER_DAY × 30
+#                        = 3 × 2 × 6 × 30 = 1,080/month
+#   per-stock savings:   3 calls saved × 5 tickers × 3 sectors × 22 days = 990/month saved
 #
-# Cache HIT saves 3 Serper calls per stock analysis (risk_macro agent).
+# Cache HIT saves 3 Serper calls per stock analysis per sector.
 MICRO_CYCLES_PER_DAY: int = int(os.getenv("MICRO_CYCLES_PER_DAY", "6"))   # every 4h
-MICRO_QUERIES_PER_RUN: int = int(os.getenv("MICRO_QUERIES_PER_RUN", "2"))  # 2 combined queries
-MACRO_CACHE_TTL_HOURS: int = int(os.getenv("MACRO_CACHE_TTL_HOURS", "2"))  # matches interval
+MICRO_QUERIES_PER_RUN: int = int(os.getenv("MICRO_QUERIES_PER_RUN", "2"))  # 2 queries per sector per run
+MACRO_CACHE_TTL_HOURS: int = int(os.getenv("MACRO_CACHE_TTL_HOURS", "2"))  # matches loop interval
 
 # ---------------------------------------------------------------------------
 # Phase 4 – Scheduler

@@ -113,56 +113,82 @@ def _format_markdown(report) -> str:
 # Micro search loop
 # ---------------------------------------------------------------------------
 
-# Automobile sector macro queries — sector-level (not per-stock).
-# These answer the same questions regardless of which ticker is being analysed.
-# Results are cached in tools/macro_cache.py and consumed by
-# ContextBuilder._build_risk_macro() to skip 3 Serper calls per stock analysis.
-_MICRO_QUERIES = [
-    # Query 1: Nifty Auto momentum + crude oil + commodity input costs
-    "Nifty Auto index India automobile sector outlook crude oil steel aluminium commodity prices",
-    # Query 2: demand-side and policy signals
-    "India EV policy electric vehicle incentives FADA retail dispatch RBI repo rate auto loan EMI",
-]
+# Per-sector macro query presets.
+# These are sector-level questions — the answer is the same regardless of
+# which individual stock is being analysed within that sector.
+# Results are cached in tools/macro_cache.py under the sector key and consumed
+# by ContextBuilder._build_risk_macro() (auto), _build_macro_policy() (bfsi),
+# and _build_it_risk_macro() (it) to avoid repeating the same Serper queries
+# for every stock in a batch.
+#
+# RE sector is excluded — its macro signals (MNRE auctions, DISCOM payments)
+# are per-company, not sector-wide, so no shared cache benefit exists.
+_SECTOR_MACRO_QUERIES: dict[str, list[str]] = {
+    "automobile": [
+        # Nifty Auto momentum + commodity input costs (steel, aluminium, crude)
+        "Nifty Auto index India automobile sector outlook crude oil steel aluminium commodity prices",
+        # Demand-side + policy signals (EV incentives, FADA dispatch, RBI auto loan EMI)
+        "India EV policy electric vehicle incentives FADA retail dispatch RBI repo rate auto loan EMI",
+    ],
+    "bfsi": [
+        # RBI monetary policy + banking system liquidity (same answer for any bank stock on a given day)
+        "RBI MPC repo rate decision India banking system credit growth CASA deposit liquidity",
+        # Regulatory environment + asset quality signals (sector-wide, not stock-specific)
+        "Indian banking NPA slippage credit quality SEBI RBI regulatory action PSU private NBFC",
+    ],
+    "it": [
+        # US tech spending + Fed rate + USD/INR (primary revenue and margin drivers for Indian IT)
+        "US IT spending enterprise software cloud capex Federal Reserve rate USD INR exchange rate Indian IT",
+        # Visa + AI disruption + sector demand signals (sector-wide, applies to TCS/Infosys/HCL equally)
+        "H1B visa India IT sector GenAI AI deal demand TCS Infosys Wipro HCL quarterly results outlook",
+    ],
+}
 
 
 def _micro_search_loop() -> None:
     """
-    Background daemon thread: pre-fetches automobile sector macro news
-    on a configurable schedule and stores it in the in-memory macro cache.
+    Background daemon thread: pre-fetches sector-level macro news for
+    Automobile, BFSI, and IT on a configurable schedule and stores results
+    in the in-memory macro cache (tools/macro_cache.py).
+
+    Each cycle fetches MICRO_QUERIES_PER_RUN queries per sector sequentially.
+    RE sector is excluded — its signals are per-company, not sector-wide.
 
     Configuration (.env):
         MICRO_CYCLES_PER_DAY   default 6  → runs every 4 hours
-        MICRO_QUERIES_PER_RUN  default 2  → 2 Serper calls per run
+        MICRO_QUERIES_PER_RUN  default 2  → 2 Serper calls per sector per run
 
     Monthly Serper budget from this loop:
-        6 cycles × 2 queries × 30 days = 360 calls/month
+        3 sectors × 2 queries × 6 cycles × 30 days = 1,080 calls/month
 
-    Each cache HIT saves 3 Serper calls from risk_macro agent.
-    For 5 tickers/day: 3 × 5 × 30 = 450 calls/month saved.
+    Each cache HIT saves 3 Serper calls per stock analysis:
+        At 5 tickers/day across 3 sectors: 3 × 5 × 3 sectors × 22 days = 990 calls/month saved
     """
     from config import settings
     from tools.news_fetcher import fetch_news_context
     from tools.macro_cache import set_macro_cache
 
-    queries = _MICRO_QUERIES[: settings.MICRO_QUERIES_PER_RUN]
+    n = settings.MICRO_QUERIES_PER_RUN
     interval = (24 * 3600) / settings.MICRO_CYCLES_PER_DAY
 
     _log = logging.getLogger(__name__)
     _log.info(
-        "[micro_loop] Starting — %d cycles/day (every %.0fm)  %d queries/run",
+        "[micro_loop] Starting — %d sectors × %d cycles/day (every %.0fm) × %d queries/run",
+        len(_SECTOR_MACRO_QUERIES),
         settings.MICRO_CYCLES_PER_DAY,
         interval / 60,
-        len(queries),
+        n,
     )
 
     while True:
-        try:
-            _log.info("[micro_loop] Fetching automobile macro context...")
-            text = fetch_news_context(queries, max_queries=len(queries))
-            set_macro_cache("automobile", text)
-            _log.info("[micro_loop] Cache refreshed (%d chars)", len(text))
-        except Exception as exc:
-            _log.warning("[micro_loop] Pre-fetch failed: %s", exc)
+        for sector, queries in _SECTOR_MACRO_QUERIES.items():
+            try:
+                _log.info("[micro_loop] Fetching %s macro context...", sector)
+                text = fetch_news_context(queries[:n], max_queries=n)
+                set_macro_cache(sector, text)
+                _log.info("[micro_loop] %s cache refreshed (%d chars)", sector, len(text))
+            except Exception as exc:
+                _log.warning("[micro_loop] %s pre-fetch failed: %s", sector, exc)
         time.sleep(interval)
 
 

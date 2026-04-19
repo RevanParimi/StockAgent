@@ -235,7 +235,7 @@ class TestContextBuilder:
         mock_build.return_value = "tech context"
         result = ContextBuilder().build("pattern_analysis", self.query)
         mock_build.assert_called_once_with(self.query)
-        assert result == "tech context"
+        assert result == ("tech context", True)
 
     @patch("services.data.context.builder.ContextBuilder._build_risk_macro")
     def test_routes_to_risk_macro(self, mock_build):
@@ -246,12 +246,14 @@ class TestContextBuilder:
 
     def test_generic_fallback_for_unknown_agent(self):
         from services.data.context.builder import ContextBuilder
-        result = ContextBuilder().build("unknown_agent", self.query)
-        assert "MARUTI" in result
+        context, has_real_data = ContextBuilder().build("unknown_agent", self.query)
+        assert "MARUTI" in context
+        assert has_real_data is False
 
     @patch("services.data.context.builder.ContextBuilder._build_pattern_analysis")
     def test_exception_in_builder_falls_back_to_generic(self, mock_build):
         from services.data.context.builder import ContextBuilder
         mock_build.side_effect = RuntimeError("fetch failed")
-        result = ContextBuilder().build("pattern_analysis", self.query)
-        assert "MARUTI" in result  # generic fallback includes ticker
+        context, has_real_data = ContextBuilder().build("pattern_analysis", self.query)
+        assert "MARUTI" in context  # generic fallback includes ticker
+        assert has_real_data is False

@@ -335,9 +335,9 @@ def mock_all_agent_outputs(mock_sales_demand_output) -> dict:
         "valuation_catalyst": ValuationCatalystOutput(
             ticker="MARUTI", overall_score=0.72,
             sub_scores=ValuationCatalystSubScores(
-                pe_discount_vs_history=0.75, pe_discount_vs_peers=0.70,
-                discount_reason_clarity=0.80, catalyst_strength=0.68,
-                price_target_confidence=0.65,
+                pe_discount_vs_peers=0.70, technical_trend=0.75,
+                mean_reversion_potential=0.68, support_zone_strength=0.65,
+                recovery_signal_confidence=0.72,
             ),
             fair_value_estimate=11500.0,
             current_discount_pct=-18.5,

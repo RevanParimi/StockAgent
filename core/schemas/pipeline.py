@@ -105,14 +105,6 @@ class CompetitiveIntelSubScores(BaseModel):
     competitive_position: float = Field(ge=0.0, le=1.0)
 
 
-class ValuationCatalystSubScores(BaseModel):
-    pe_discount_vs_history: float = Field(ge=0.0, le=1.0)
-    pe_discount_vs_peers: float = Field(ge=0.0, le=1.0)
-    discount_reason_clarity: float = Field(ge=0.0, le=1.0)
-    catalyst_strength: float = Field(ge=0.0, le=1.0)
-    price_target_confidence: float = Field(ge=0.0, le=1.0)
-
-
 # ---------------------------------------------------------------------------
 # Individual agent outputs
 # ---------------------------------------------------------------------------

@@ -29,16 +29,16 @@ import sys
 from datetime import date, timedelta
 
 from config import settings
-from agents.feedback_agent import FeedbackAgent, classify_direction, is_direction_correct
-from agents.orchestrator import AutomobileAgentOrchestrator
-from agents.weight_adapter import WeightAdapter
-from models.feedback_schemas import (
+from intelligence.rl.agents.feedback_agent import FeedbackAgent, classify_direction, is_direction_correct
+from core.pipeline.orchestrator import AutomobileAgentOrchestrator
+from intelligence.rl.agents.weight_adapter import WeightAdapter
+from core.schemas.feedback import (
     FeedbackAgentInput,
     FeedbackEntry,
     MissAnalysis,
 )
-from tools.prediction_store import PredictionStore
-from tools.yfinance_fetcher import get_price_history
+from intelligence.rl.stores.prediction_store import PredictionStore
+from intelligence.algorithms.indicators.fetcher import get_price_history
 
 logging.basicConfig(
     level=settings.LOG_LEVEL,
@@ -224,7 +224,7 @@ def run_daily_review(ticker: str, review_date: date) -> dict:
     # Fetch today's market context from the news fetcher (best-effort)
     market_context = ""
     try:
-        from tools.news_fetcher import get_news_context
+        from services.data.fetchers.news import get_news_context
         market_context = get_news_context(ticker, max_articles=3)
     except Exception as exc:
         logger.debug("[daily_review] News context unavailable: %s", exc)

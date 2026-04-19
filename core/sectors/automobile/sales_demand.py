@@ -15,9 +15,9 @@ from __future__ import annotations
 
 from typing import Any
 
-from agents.base_agent import BaseAgent
-from models.schemas import AgentOutput, SalesDemandOutput, SalesDemandSubScores, StockQuery
-from prompts import sales_demand as P
+from core.pipeline.base_agent import BaseAgent
+from core.schemas.pipeline import AgentOutput, SalesDemandOutput, SalesDemandSubScores, StockQuery
+from config.prompts.automobile import sales_demand as P
 
 
 class SalesDemandAgent(BaseAgent):

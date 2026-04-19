@@ -1,6 +1,6 @@
 """
-config/settings.py
-==================
+config/settings/base.py
+========================
 All static configuration values for the Automobile Agent system.
 Edit this file (or set environment variables) to customize:
   - API keys
@@ -47,8 +47,23 @@ LLM_OUTPUT_COST_PER_M: float = float(os.getenv("LLM_OUTPUT_COST_PER_M", "0.26"))
 # ---------------------------------------------------------------------------
 # Data / Search APIs
 # ---------------------------------------------------------------------------
-SERPER_API_KEY: str = os.getenv("SERPER_API_KEY", "")        # Google search via Serper
+SERPER_API_KEY: str = os.getenv("SERPER_API_KEY", "")        # Google search via Serper — automobile + renewable
+SERPER_API_KEY_2: str = os.getenv("SERPER_API_KEY_2", "")    # Google search via Serper — bfsi + it
 TAVILY_API_KEY: str = os.getenv("TAVILY_API_KEY", "")        # Full-page extraction (Policy agent)
+
+
+def get_serper_key(sector: str) -> str:
+    """
+    Return the Serper API key assigned to the given sector.
+
+    Key 1 (SERPER_API_KEY):   automobile, renewable  (~2,450 calls/month at default load)
+    Key 2 (SERPER_API_KEY_2): bfsi, it               (~1,490 calls/month at default load)
+
+    Falls back to Key 1 if Key 2 is not configured.
+    """
+    if sector in {"bfsi", "it"} and SERPER_API_KEY_2:
+        return SERPER_API_KEY_2
+    return SERPER_API_KEY
 ALPHA_VANTAGE_API_KEY: str = os.getenv("ALPHA_VANTAGE_API_KEY", "")
 NEWSAPI_KEY: str = os.getenv("NEWSAPI_KEY", "")
 TWITTER_BEARER_TOKEN: str = os.getenv("TWITTER_BEARER_TOKEN", "")
@@ -75,15 +90,15 @@ RETRY_DELAY_SECONDS: float = float(os.getenv("RETRY_DELAY_SECONDS", "2.0"))
 # Signal Aggregator – agent weights (must sum to 1.0)
 # ---------------------------------------------------------------------------
 AGENT_WEIGHTS: dict[str, float] = {
-    "sales_demand":        0.16,
-    "raw_materials":       0.09,
-    "fundamentals":        0.18,
-    "pattern_analysis":    0.12,
-    "sentiment":           0.04,
-    "policy_regulatory":   0.09,
-    "competitive_intel":   0.09,
-    "risk_macro":          0.13,
-    "valuation_catalyst":  0.10,
+    "sales_demand":       0.15,
+    "raw_materials":      0.09,
+    "fundamentals":       0.18,
+    "pattern_analysis":   0.11,
+    "sentiment":          0.04,
+    "policy_regulatory":  0.09,
+    "competitive_intel":  0.09,
+    "risk_macro":         0.13,
+    "valuation_catalyst": 0.12,
 }
 
 # Score thresholds for the final Automobile Stock Score
@@ -189,7 +204,7 @@ RAG_DOCUMENTS_BASE_DIR: str = os.getenv("RAG_DOCUMENTS_BASE_DIR", "data")
 # Cache HIT saves 3 Serper calls per stock analysis per sector.
 MICRO_CYCLES_PER_DAY: int = int(os.getenv("MICRO_CYCLES_PER_DAY", "6"))   # every 4h
 MICRO_QUERIES_PER_RUN: int = int(os.getenv("MICRO_QUERIES_PER_RUN", "2"))  # 2 queries per sector per run
-MACRO_CACHE_TTL_HOURS: int = int(os.getenv("MACRO_CACHE_TTL_HOURS", "2"))  # matches loop interval
+MACRO_CACHE_TTL_HOURS: int = int(os.getenv("MACRO_CACHE_TTL_HOURS", "4"))  # matches loop interval (every 4h)
 
 # ---------------------------------------------------------------------------
 # Phase 4 – Scheduler

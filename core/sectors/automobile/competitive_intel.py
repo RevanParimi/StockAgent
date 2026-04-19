@@ -15,9 +15,9 @@ from __future__ import annotations
 
 from typing import Any
 
-from agents.base_agent import BaseAgent
-from models.schemas import AgentOutput, CompetitiveIntelOutput, CompetitiveIntelSubScores, StockQuery
-from prompts import competitive_intel as P
+from core.pipeline.base_agent import BaseAgent
+from core.schemas.pipeline import AgentOutput, CompetitiveIntelOutput, CompetitiveIntelSubScores, StockQuery
+from config.prompts.automobile import competitive_intel as P
 
 
 class CompetitiveIntelAgent(BaseAgent):

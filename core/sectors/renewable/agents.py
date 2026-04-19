@@ -19,8 +19,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from agents.base_agent import BaseAgent
-from models.schemas import AgentOutput, StockQuery
+from core.pipeline.base_agent import BaseAgent
+from core.schemas.pipeline import AgentOutput, StockQuery
 
 
 # ──────────────────────────────────────────────────────────────────────────

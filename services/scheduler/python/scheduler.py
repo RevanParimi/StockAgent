@@ -27,8 +27,8 @@ import time
 from datetime import datetime
 
 from config import settings
-from tools.score_store import ScoreStore
-from tools.alerting import AlertManager
+from services.data.stores.score_store import ScoreStore
+from services.clients.alerting import AlertManager
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +38,7 @@ def _run_single_ticker(ticker: str, store: ScoreStore, alerter: AlertManager) ->
     Execute the full pipeline for one ticker, persist the result, and alert.
     Called by the scheduler job and by run_now().
     """
-    from agents.orchestrator import AutomobileAgentOrchestrator
+    from core.pipeline.orchestrator import AutomobileAgentOrchestrator
 
     logger.info("[Scheduler] Starting run for %s", ticker)
     try:
@@ -161,7 +161,7 @@ class AutomobileScheduler:
         Runs the RL feedback review for all configured tickers.
         """
         from datetime import date, timedelta
-        from scripts.daily_review import run_daily_review
+        from intelligence.rl.workflows.daily_review import run_daily_review
 
         # Review yesterday's trading session (today's close is now available)
         review_date = date.today() - timedelta(days=1)

@@ -14,7 +14,7 @@ import pytest
 from pydantic import ValidationError
 from datetime import date
 
-from models.schemas import (
+from core.schemas.pipeline import (
     AgentOutput,
     FinalReport,
     SalesDemandOutput,

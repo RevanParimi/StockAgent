@@ -31,7 +31,7 @@ import pytest
 # Helpers
 # ---------------------------------------------------------------------------
 
-AGENTS_DIR = Path(__file__).parent.parent / "agents"
+AGENTS_DIR = Path(__file__).parent.parent.parent / "core" / "pipeline"
 AGENT_FILES = [p for p in AGENTS_DIR.glob("*.py") if not p.name.startswith("__")]
 
 
@@ -51,7 +51,7 @@ class TestNoGroqImports:
         )
 
     def test_no_groq_in_settings(self):
-        settings_path = Path(__file__).parent.parent / "config" / "settings.py"
+        settings_path = Path(__file__).parent.parent.parent / "config" / "settings" / "base.py"
         source = settings_path.read_text(encoding="utf-8")
         assert "GROQ_API_KEY" not in source, "settings.py still references GROQ_API_KEY"
         assert "groq.com" not in source, "settings.py still references Groq base URL"
@@ -95,31 +95,31 @@ class TestOpenRouterSettings:
 # ---------------------------------------------------------------------------
 
 class TestBaseAgentUsesOpenAI:
-    @patch("agents.base_agent.OpenAI")
+    @patch("services.clients.llm_client.OpenAI")
     def test_base_agent_instantiates_openai(self, mock_openai_cls):
         mock_openai_cls.return_value = MagicMock()
-        from agents.sales_demand import SalesDemandAgent
+        from core.sectors.automobile.sales_demand import SalesDemandAgent
         # Re-import to trigger __init__
         agent = SalesDemandAgent.__new__(SalesDemandAgent)
         agent.__init__()
         mock_openai_cls.assert_called_once()
 
-    @patch("agents.base_agent.OpenAI")
+    @patch("services.clients.llm_client.OpenAI")
     def test_base_agent_passes_openrouter_base_url(self, mock_openai_cls):
         from config import settings
         mock_openai_cls.return_value = MagicMock()
-        from agents.sales_demand import SalesDemandAgent
+        from core.sectors.automobile.sales_demand import SalesDemandAgent
         SalesDemandAgent()
         _, kwargs = mock_openai_cls.call_args
         assert kwargs.get("base_url") == settings.OPENROUTER_BASE_URL, (
             f"Expected OpenRouter base_url, got: {kwargs.get('base_url')}"
         )
 
-    @patch("agents.base_agent.OpenAI")
+    @patch("services.clients.llm_client.OpenAI")
     def test_base_agent_passes_openrouter_api_key(self, mock_openai_cls):
         from config import settings
         mock_openai_cls.return_value = MagicMock()
-        from agents.sales_demand import SalesDemandAgent
+        from core.sectors.automobile.sales_demand import SalesDemandAgent
         SalesDemandAgent()
         _, kwargs = mock_openai_cls.call_args
         assert kwargs.get("api_key") == settings.OPENROUTER_API_KEY
@@ -130,24 +130,24 @@ class TestBaseAgentUsesOpenAI:
 # ---------------------------------------------------------------------------
 
 class TestOrchestratorUsesOpenAI:
-    @patch("agents.orchestrator.OpenAI")
-    @patch("agents.orchestrator._SUB_AGENTS", {})
-    @patch("agents.orchestrator.SignalAggregator")
+    @patch("services.clients.llm_client.OpenAI")
+    @patch("core.pipeline.orchestrator._SUB_AGENTS", {})
+    @patch("core.pipeline.orchestrator.SignalAggregator")
     def test_orchestrator_instantiates_openai(self, mock_agg, mock_openai_cls):
         mock_openai_cls.return_value = MagicMock()
         mock_agg.return_value = MagicMock()
-        from agents.orchestrator import AutomobileAgentOrchestrator
+        from core.pipeline.orchestrator import AutomobileAgentOrchestrator
         AutomobileAgentOrchestrator()
         mock_openai_cls.assert_called_once()
 
-    @patch("agents.orchestrator.OpenAI")
-    @patch("agents.orchestrator._SUB_AGENTS", {})
-    @patch("agents.orchestrator.SignalAggregator")
+    @patch("services.clients.llm_client.OpenAI")
+    @patch("core.pipeline.orchestrator._SUB_AGENTS", {})
+    @patch("core.pipeline.orchestrator.SignalAggregator")
     def test_orchestrator_uses_openrouter_url(self, mock_agg, mock_openai_cls):
         from config import settings
         mock_openai_cls.return_value = MagicMock()
         mock_agg.return_value = MagicMock()
-        from agents.orchestrator import AutomobileAgentOrchestrator
+        from core.pipeline.orchestrator import AutomobileAgentOrchestrator
         AutomobileAgentOrchestrator()
         _, kwargs = mock_openai_cls.call_args
         assert kwargs.get("base_url") == settings.OPENROUTER_BASE_URL
@@ -158,18 +158,18 @@ class TestOrchestratorUsesOpenAI:
 # ---------------------------------------------------------------------------
 
 class TestSignalAggregatorUsesOpenAI:
-    @patch("agents.signal_aggregator.OpenAI")
+    @patch("services.clients.llm_client.OpenAI")
     def test_signal_aggregator_instantiates_openai(self, mock_openai_cls):
         mock_openai_cls.return_value = MagicMock()
-        from agents.signal_aggregator import SignalAggregator
+        from core.pipeline.signal_aggregator import SignalAggregator
         SignalAggregator()
         mock_openai_cls.assert_called_once()
 
-    @patch("agents.signal_aggregator.OpenAI")
+    @patch("services.clients.llm_client.OpenAI")
     def test_signal_aggregator_uses_openrouter_url(self, mock_openai_cls):
         from config import settings
         mock_openai_cls.return_value = MagicMock()
-        from agents.signal_aggregator import SignalAggregator
+        from core.pipeline.signal_aggregator import SignalAggregator
         SignalAggregator()
         _, kwargs = mock_openai_cls.call_args
         assert kwargs.get("base_url") == settings.OPENROUTER_BASE_URL
@@ -180,10 +180,10 @@ class TestSignalAggregatorUsesOpenAI:
 # ---------------------------------------------------------------------------
 
 class TestFeedbackAgentUsesOpenAI:
-    @patch("agents.feedback_agent.OpenAI")
+    @patch("intelligence.rl.agents.feedback_agent.OpenAI")
     def test_feedback_agent_instantiates_openai(self, mock_openai_cls):
         mock_openai_cls.return_value = MagicMock()
-        from agents.feedback_agent import FeedbackAgent
+        from intelligence.rl.agents.feedback_agent import FeedbackAgent
         FeedbackAgent()
         mock_openai_cls.assert_called_once()
 
@@ -194,25 +194,25 @@ class TestFeedbackAgentUsesOpenAI:
 
 class TestProgressCallback:
     def test_analyse_accepts_progress_callback_param(self):
-        from agents.orchestrator import AutomobileAgentOrchestrator
+        from core.pipeline.orchestrator import AutomobileAgentOrchestrator
         sig = inspect.signature(AutomobileAgentOrchestrator.analyse)
         assert "progress_callback" in sig.parameters, (
             "analyse() must accept progress_callback for WebSocket streaming"
         )
 
     def test_progress_callback_default_is_none(self):
-        from agents.orchestrator import AutomobileAgentOrchestrator
+        from core.pipeline.orchestrator import AutomobileAgentOrchestrator
         sig = inspect.signature(AutomobileAgentOrchestrator.analyse)
         default = sig.parameters["progress_callback"].default
         assert default is None
 
-    @patch("agents.orchestrator.OpenAI")
-    @patch("agents.orchestrator.SignalAggregator")
-    @patch("agents.orchestrator._SUB_AGENTS")
+    @patch("services.clients.llm_client.OpenAI")
+    @patch("core.pipeline.orchestrator.SignalAggregator")
+    @patch("core.pipeline.orchestrator._SUB_AGENTS")
     def test_progress_callback_called_per_agent(self, mock_agents, mock_agg_cls, mock_openai_cls):
         """Callback must fire once per agent that completes."""
-        from agents.orchestrator import AutomobileAgentOrchestrator
-        from models.schemas import AgentOutput, FinalReport, WeightedAgentScore
+        from core.pipeline.orchestrator import AutomobileAgentOrchestrator
+        from core.schemas.pipeline import AgentOutput, FinalReport, WeightedAgentScore
 
         # Setup mock LLM for ticker resolution
         mock_llm = MagicMock()

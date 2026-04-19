@@ -31,9 +31,9 @@ if str(_ROOT) not in sys.path:
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from api.routes.analyse import router as analyse_router
-from api.routes.history import router as history_router
-from api.routes.stream import router as stream_router
+from services.api.routes.analyse import router as analyse_router
+from services.api.routes.history import router as history_router
+from services.api.routes.stream import router as stream_router
 
 logging.basicConfig(
     level=logging.INFO,

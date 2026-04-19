@@ -29,7 +29,7 @@ import json
 
 import pytest
 
-from models.schemas import FinalReport, WeightedAgentScore
+from core.schemas.pipeline import FinalReport, WeightedAgentScore
 
 
 # ---------------------------------------------------------------------------
@@ -239,7 +239,7 @@ class TestClientTimeoutContract:
 
 class TestCORSConfiguration:
     def test_typescript_origin_in_cors_allow_list(self):
-        from api.server import app
+        from services.api.server import app
         from starlette.middleware.cors import CORSMiddleware
 
         cors_middleware = None

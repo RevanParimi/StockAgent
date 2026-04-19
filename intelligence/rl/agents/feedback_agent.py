@@ -27,7 +27,7 @@ from datetime import date
 from openai import OpenAI, APIError, APITimeoutError, RateLimitError
 
 from config import settings
-from models.feedback_schemas import (
+from core.schemas.feedback import (
     FeedbackAgentInput,
     FeedbackAgentOutput,
     LearningLedger,
@@ -35,7 +35,7 @@ from models.feedback_schemas import (
     MissAnalysis,
     RawLesson,
 )
-from prompts.feedback_agent import SYSTEM_PROMPT, format_feedback_prompt
+from config.prompts.shared.feedback_agent import SYSTEM_PROMPT, format_feedback_prompt
 
 logger = logging.getLogger(__name__)
 

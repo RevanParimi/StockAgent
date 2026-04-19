@@ -28,9 +28,9 @@ import pytest
 # ---------------------------------------------------------------------------
 
 class TestEmbedder:
-    @patch("tools.rag.embedder._load_model")
+    @patch("intelligence.rag.core.embedder._load_model")
     def test_embed_returns_list_of_floats(self, mock_load):
-        from tools.rag.embedder import Embedder
+        from intelligence.rag.core.embedder import Embedder
         mock_model = MagicMock()
         import numpy as np
         mock_model.encode.return_value = np.array([0.1, 0.2, 0.3])
@@ -41,9 +41,9 @@ class TestEmbedder:
         assert isinstance(result, list)
         assert all(isinstance(v, float) for v in result)
 
-    @patch("tools.rag.embedder._load_model")
+    @patch("intelligence.rag.core.embedder._load_model")
     def test_embed_batch_returns_correct_length(self, mock_load):
-        from tools.rag.embedder import Embedder
+        from intelligence.rag.core.embedder import Embedder
         import numpy as np
         mock_model = MagicMock()
         mock_model.encode.return_value = np.array([[0.1, 0.2], [0.3, 0.4], [0.5, 0.6]])
@@ -53,9 +53,9 @@ class TestEmbedder:
         result = embedder.embed_batch(["a", "b", "c"])
         assert len(result) == 3
 
-    @patch("tools.rag.embedder._load_model")
+    @patch("intelligence.rag.core.embedder._load_model")
     def test_embed_batch_empty_input(self, mock_load):
-        from tools.rag.embedder import Embedder
+        from intelligence.rag.core.embedder import Embedder
         embedder = Embedder()
         result = embedder.embed_batch([])
         assert result == []
@@ -67,14 +67,14 @@ class TestEmbedder:
 
 class TestChunking:
     def test_chunk_text_basic(self):
-        from tools.rag.ingestion import _chunk_text
+        from intelligence.rag.ingestion.ingestion import _chunk_text
         text = " ".join([f"word{i}" for i in range(1000)])
         chunks = _chunk_text(text, chunk_size=100, overlap=20)
         assert len(chunks) > 1
         assert all(isinstance(c, str) for c in chunks)
 
     def test_chunk_text_overlap_creates_shared_content(self):
-        from tools.rag.ingestion import _chunk_text
+        from intelligence.rag.ingestion.ingestion import _chunk_text
         words = [f"w{i}" for i in range(50)]
         text = " ".join(words)
         chunks = _chunk_text(text, chunk_size=30, overlap=10)
@@ -85,17 +85,17 @@ class TestChunking:
             assert len(words_first & words_second) > 0
 
     def test_chunk_text_empty_returns_empty(self):
-        from tools.rag.ingestion import _chunk_text
+        from intelligence.rag.ingestion.ingestion import _chunk_text
         assert _chunk_text("", chunk_size=100, overlap=10) == []
 
     def test_doc_id_is_deterministic(self):
-        from tools.rag.ingestion import _doc_id
+        from intelligence.rag.ingestion.ingestion import _doc_id
         id1 = _doc_id("same text", "source.pdf", 0)
         id2 = _doc_id("same text", "source.pdf", 0)
         assert id1 == id2
 
     def test_doc_id_differs_for_different_chunks(self):
-        from tools.rag.ingestion import _doc_id
+        from intelligence.rag.ingestion.ingestion import _doc_id
         id1 = _doc_id("text A", "source.pdf", 0)
         id2 = _doc_id("text B", "source.pdf", 1)
         assert id1 != id2
@@ -112,7 +112,7 @@ class TestVectorStore:
     """
 
     def _make_store(self, mock_collection):
-        from tools.rag.vector_store import VectorStore
+        from intelligence.rag.core.vector_store import VectorStore
         with patch.object(VectorStore, "_init_chroma", lambda self: None):
             store = VectorStore()
         store._collection = mock_collection
@@ -131,7 +131,7 @@ class TestVectorStore:
         mock_collection.upsert.assert_called_once()
 
     def test_query_filters_by_similarity_threshold(self):
-        from config import rag_config
+        from intelligence.rag import config as rag_config
         threshold = rag_config.SIMILARITY_THRESHOLD
         mock_collection = MagicMock()
         mock_collection.count.return_value = 2
@@ -158,10 +158,10 @@ class TestVectorStore:
 # ---------------------------------------------------------------------------
 
 class TestDocumentIngester:
-    @patch("tools.rag.ingestion.VectorStore")
-    @patch("tools.rag.ingestion.Embedder")
+    @patch("intelligence.rag.ingestion.ingestion.VectorStore")
+    @patch("intelligence.rag.ingestion.ingestion.Embedder")
     def test_ingest_text_calls_upsert(self, mock_embedder_cls, mock_store_cls):
-        from tools.rag.ingestion import DocumentIngester
+        from intelligence.rag.ingestion.ingestion import DocumentIngester
 
         mock_embedder = MagicMock()
         mock_embedder.embed_batch.return_value = [[0.1, 0.2]] * 5
@@ -177,26 +177,26 @@ class TestDocumentIngester:
         assert n > 0
         mock_store.upsert.assert_called_once()
 
-    @patch("tools.rag.ingestion.VectorStore")
-    @patch("tools.rag.ingestion.Embedder")
+    @patch("intelligence.rag.ingestion.ingestion.VectorStore")
+    @patch("intelligence.rag.ingestion.ingestion.Embedder")
     def test_ingest_empty_text_returns_zero(self, mock_embedder_cls, mock_store_cls):
-        from tools.rag.ingestion import DocumentIngester
+        from intelligence.rag.ingestion.ingestion import DocumentIngester
         ingester = DocumentIngester()
         n = ingester.ingest_text("   ", doc_id="empty")
         assert n == 0
 
-    @patch("tools.rag.ingestion.VectorStore")
-    @patch("tools.rag.ingestion.Embedder")
+    @patch("intelligence.rag.ingestion.ingestion.VectorStore")
+    @patch("intelligence.rag.ingestion.ingestion.Embedder")
     def test_ingest_file_missing_returns_zero(self, mock_embedder_cls, mock_store_cls):
-        from tools.rag.ingestion import DocumentIngester
+        from intelligence.rag.ingestion.ingestion import DocumentIngester
         ingester = DocumentIngester()
         n = ingester.ingest_file(Path("/nonexistent/file.pdf"))
         assert n == 0
 
-    @patch("tools.rag.ingestion.VectorStore")
-    @patch("tools.rag.ingestion.Embedder")
+    @patch("intelligence.rag.ingestion.ingestion.VectorStore")
+    @patch("intelligence.rag.ingestion.ingestion.Embedder")
     def test_ingest_unsupported_extension_returns_zero(self, mock_embedder_cls, mock_store_cls, tmp_path):
-        from tools.rag.ingestion import DocumentIngester
+        from intelligence.rag.ingestion.ingestion import DocumentIngester
         f = tmp_path / "test.docx"
         f.write_text("some content")
         ingester = DocumentIngester()
@@ -209,10 +209,10 @@ class TestDocumentIngester:
 # ---------------------------------------------------------------------------
 
 class TestRAGRetriever:
-    @patch("tools.rag.retriever.VectorStore")
-    @patch("tools.rag.retriever.Embedder")
+    @patch("intelligence.rag.core.retriever.VectorStore")
+    @patch("intelligence.rag.core.retriever.Embedder")
     def test_retrieve_empty_store_returns_empty(self, mock_embedder_cls, mock_store_cls):
-        from tools.rag.retriever import RAGRetriever
+        from intelligence.rag.core.retriever import RAGRetriever
 
         mock_store = MagicMock()
         mock_store.count.return_value = 0
@@ -222,10 +222,10 @@ class TestRAGRetriever:
         result = retriever.retrieve("Maruti earnings")
         assert result == []
 
-    @patch("tools.rag.retriever.VectorStore")
-    @patch("tools.rag.retriever.Embedder")
+    @patch("intelligence.rag.core.retriever.VectorStore")
+    @patch("intelligence.rag.core.retriever.Embedder")
     def test_retrieve_returns_document_texts(self, mock_embedder_cls, mock_store_cls):
-        from tools.rag.retriever import RAGRetriever
+        from intelligence.rag.core.retriever import RAGRetriever
 
         mock_embedder = MagicMock()
         mock_embedder.embed.return_value = [0.1, 0.2, 0.3]

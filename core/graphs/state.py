@@ -15,7 +15,7 @@ import operator
 from typing import Annotated
 from typing_extensions import TypedDict
 
-from models.schemas import AgentOutput, FinalReport, StockQuery
+from core.schemas.pipeline import AgentOutput, FinalReport, StockQuery
 
 
 def _merge_dicts(existing: dict, update: dict) -> dict:

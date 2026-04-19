@@ -67,22 +67,31 @@ _TIMEOUT = 10
 # Serper (Google Search API)
 # ---------------------------------------------------------------------------
 
-def search_serper(query: str, n: int = settings.NEWS_ARTICLES_PER_QUERY) -> list[dict]:
+def search_serper(
+    query: str,
+    n: int = settings.NEWS_ARTICLES_PER_QUERY,
+    api_key: str | None = None,
+) -> list[dict]:
     """
     Search Google via Serper API.
 
     Returns list of dicts: {title, snippet, link, date}
-    Returns [] if SERPER_API_KEY is not set or request fails.
+    Returns [] if no key is available or request fails.
+
+    Parameters
+    ----------
+    api_key : override the default SERPER_API_KEY (use for dual-key routing)
     """
-    if not settings.SERPER_API_KEY:
-        logger.debug("[news] SERPER_API_KEY not set — skipping Serper search")
+    key = api_key or settings.SERPER_API_KEY
+    if not key:
+        logger.debug("[news] No Serper API key — skipping Serper search")
         return []
 
     try:
         resp = requests.post(
             _SERPER_URL,
             headers={
-                "X-API-KEY": settings.SERPER_API_KEY,
+                "X-API-KEY": key,
                 "Content-Type": "application/json",
             },
             json={"q": query, "num": n, "gl": "in", "hl": "en"},
@@ -159,17 +168,22 @@ def search_newsapi(query: str, n: int = settings.NEWS_ARTICLES_PER_QUERY) -> lis
 def fetch_news_context(
     queries: list[str],
     max_queries: int = settings.SERPER_MAX_QUERIES,
+    api_key: str | None = None,
 ) -> str:
     """
     Run up to `max_queries` searches (Serper preferred, NewsAPI fallback)
     and return a formatted string suitable for prompt injection.
+
+    Parameters
+    ----------
+    api_key : Serper key override for dual-key routing (pass via get_serper_key)
     """
     if not queries:
         return "No news queries provided."
 
     lines: list[str] = []
     for query in queries[:max_queries]:
-        results = search_serper(query, n=settings.NEWS_ARTICLES_PER_QUERY)
+        results = search_serper(query, n=settings.NEWS_ARTICLES_PER_QUERY, api_key=api_key)
         if not results:
             results = search_newsapi(query, n=settings.NEWS_ARTICLES_PER_QUERY)
 

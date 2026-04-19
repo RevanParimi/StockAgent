@@ -17,11 +17,11 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from agents.sales_demand import SalesDemandAgent
-from agents.fundamentals import FundamentalsAgent
-from agents.pattern_analysis import PatternAnalysisAgent
-from agents.sentiment import SentimentAgent
-from agents.risk_macro import RiskMacroAgent
+from core.sectors.automobile.sales_demand import SalesDemandAgent
+from core.sectors.automobile.fundamentals import FundamentalsAgent
+from core.sectors.automobile.pattern_analysis import PatternAnalysisAgent
+from core.sectors.automobile.sentiment import SentimentAgent
+from core.sectors.automobile.risk_macro import RiskMacroAgent
 from tests.conftest import (
     make_sales_demand_json,
     make_fundamentals_json,
@@ -74,7 +74,7 @@ class TestSalesDemandAgent:
         output = self.agent._parse_output(data, "MARUTI")
         assert output.sub_scores.ev_segment_vahan == pytest.approx(0.5)
 
-    @patch("agents.base_agent.OpenAI")
+    @patch("services.clients.llm_client.OpenAI")
     def test_run_calls_llm(self, mock_groq_cls, maruti_query):
         mock_instance = MagicMock()
         mock_groq_cls.return_value = mock_instance
@@ -157,4 +157,4 @@ class TestRiskMacroAgent:
         data = json.loads(make_risk_macro_json(0.58))
         output = self.agent._parse_output(data, "MARUTI")
         assert output.overall_score == pytest.approx(0.58)
-        assert output.sub_scores.geopolitical_china_risk == pytest.approx(0.50)
+        assert output.sub_scores.global_geopolitical_risk == pytest.approx(0.50)

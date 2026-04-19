@@ -17,7 +17,7 @@ from __future__ import annotations
 import logging
 from functools import lru_cache
 
-from config import rag_config
+from intelligence.rag import config as rag_config
 
 logger = logging.getLogger(__name__)
 

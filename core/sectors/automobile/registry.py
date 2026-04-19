@@ -1,33 +1,13 @@
 """
-graphs/automobile/agents.py
-============================
-Zero-duplication wrapper — exposes the existing agents/ sub-agents as a
-plain dict keyed by agent name.  The LangGraph run_agent node picks the
-right instance from this registry at runtime.
+core/sectors/automobile/registry.py
+=====================================
+Imports the canonical agent registry from core/pipeline/orchestrator so the
+LangGraph path and the direct orchestrator path share the same instances.
 """
 
-from agents.sales_demand        import SalesDemandAgent
-from agents.raw_materials       import RawMaterialsAgent
-from agents.fundamentals        import FundamentalsAgent
-from agents.pattern_analysis    import PatternAnalysisAgent
-from agents.sentiment           import SentimentAgent
-from agents.policy_regulatory   import PolicyRegulatoryAgent
-from agents.competitive_intel   import CompetitiveIntelAgent
-from agents.risk_macro          import RiskMacroAgent
-from agents.valuation_catalyst  import ValuationCatalystAgent
+from core.pipeline.orchestrator import _SUB_AGENTS
 
-# Instantiated once — all agents are stateless per .run() call
-AGENTS: dict = {
-    "sales_demand":       SalesDemandAgent(),
-    "raw_materials":      RawMaterialsAgent(),
-    "fundamentals":       FundamentalsAgent(),
-    "pattern_analysis":   PatternAnalysisAgent(),
-    "sentiment":          SentimentAgent(),
-    "policy_regulatory":  PolicyRegulatoryAgent(),
-    "competitive_intel":  CompetitiveIntelAgent(),
-    "risk_macro":         RiskMacroAgent(),
-    "valuation_catalyst": ValuationCatalystAgent(),
-}
+AGENTS: dict = _SUB_AGENTS
 
 WEIGHTS: dict[str, float] = {
     "sales_demand":       0.16,

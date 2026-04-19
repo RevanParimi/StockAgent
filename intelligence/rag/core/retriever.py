@@ -13,9 +13,9 @@ from __future__ import annotations
 
 import logging
 
-from config import rag_config
-from tools.rag.embedder import Embedder
-from tools.rag.vector_store import VectorStore
+from intelligence.rag import config as rag_config
+from intelligence.rag.core.embedder import Embedder
+from intelligence.rag.core.vector_store import VectorStore
 
 logger = logging.getLogger(__name__)
 

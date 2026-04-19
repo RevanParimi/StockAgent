@@ -16,6 +16,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 import time
 from abc import ABC, abstractmethod
 from typing import Any
@@ -23,9 +24,9 @@ from typing import Any
 from openai import APIError, APITimeoutError, RateLimitError
 
 from config import settings
-from models.schemas import AgentOutput, StockQuery
-from tools.llm_client import get_llm_client, get_async_llm_client
-from tools.run_logger import log_llm_call
+from core.schemas.pipeline import AgentOutput, StockQuery
+from services.clients.llm_client import get_llm_client, get_async_llm_client
+from services.data.stores.run_logger import log_llm_call
 
 logger = logging.getLogger(__name__)
 
@@ -303,6 +304,15 @@ class BaseAgent(ABC):
         """Parse LLM JSON, falling back to an error output on failure."""
         try:
             data = json.loads(raw)
+            # Thinking models (e.g. qwen3-235b) can return bare strings/numbers
+            # instead of a JSON object even when json_object format is requested.
+            # Extract the first {...} block from the raw string as a fallback.
+            if not isinstance(data, dict):
+                match = re.search(r'\{.*\}', raw, re.DOTALL)
+                if match:
+                    data = json.loads(match.group())
+                else:
+                    raise ValueError(f"LLM returned {type(data).__name__}, expected dict")
             output = self._parse_output(data, ticker)
             output.raw_llm_response = raw
             return output
@@ -344,7 +354,7 @@ class BaseAgent(ABC):
           2. Live data — yfinance + news APIs via ContextBuilder
           3. Stub — no real data; signals caller to skip LLM
         """
-        from config import rag_config
+        from intelligence.rag import config as rag_config
 
         if rag_config.RAG_ENABLED:
             try:
@@ -357,7 +367,7 @@ class BaseAgent(ABC):
 
         # Live data via ContextBuilder
         try:
-            from tools.context_builder import ContextBuilder
+            from services.data.context.builder import ContextBuilder
             context, has_real_data = ContextBuilder().build(
                 self.agent_name, query, sector=self.sector
             )
@@ -378,8 +388,8 @@ class BaseAgent(ABC):
         Retrieve relevant document chunks from ChromaDB for this agent + query.
         Active only when RAG_ENABLED=true in config/rag_config.py.
         """
-        from tools.rag.retriever import RAGRetriever
-        from prompts import sales_demand, fundamentals, pattern_analysis, sentiment, risk_macro, orchestrator
+        from intelligence.rag.core.retriever import RAGRetriever
+        from config.prompts.automobile import sales_demand, fundamentals, pattern_analysis, sentiment, risk_macro, orchestrator
 
         # Map agent name → its search queries template list
         prompt_modules = {

@@ -15,9 +15,9 @@ from __future__ import annotations
 
 from typing import Any
 
-from agents.base_agent import BaseAgent
-from models.schemas import AgentOutput, PolicyRegulatoryOutput, PolicyRegulatorySubScores, StockQuery
-from prompts import policy_regulatory as P
+from core.pipeline.base_agent import BaseAgent
+from core.schemas.pipeline import AgentOutput, PolicyRegulatoryOutput, PolicyRegulatorySubScores, StockQuery
+from config.prompts.automobile import policy_regulatory as P
 
 
 class PolicyRegulatoryAgent(BaseAgent):

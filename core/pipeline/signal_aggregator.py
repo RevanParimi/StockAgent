@@ -18,14 +18,14 @@ import time
 from datetime import date
 
 from config import settings
-from models.schemas import (
+from core.schemas.pipeline import (
     AgentOutput,
     FinalReport,
     WeightedAgentScore,
 )
-from prompts import signal_aggregator as P
-from tools.llm_client import get_llm_client
-from tools.run_logger import log_llm_call
+from config.prompts.shared import signal_aggregator as P
+from services.clients.llm_client import get_llm_client
+from services.data.stores.run_logger import log_llm_call
 
 logger = logging.getLogger(__name__)
 
@@ -181,13 +181,22 @@ class SignalAggregator:
         try:
             data = json.loads(raw)
 
-            # Extract valuation fields from the valuation_catalyst agent output (Gap 3)
-            vc = agent_outputs.get("valuation_catalyst")
-            price_target = getattr(vc, "price_target", None)
-            recovery_quarters = getattr(vc, "recovery_timeline_quarters", None)
-            current_discount = getattr(vc, "current_discount_pct", None)
-            discount_reason = getattr(vc, "discount_reason", None)
-            recovery_catalysts = getattr(vc, "recovery_catalysts", []) or []
+            price_target = None
+            recovery_quarters = None
+            undervalued_pct = None
+            discount_reason = None
+            recovery_catalysts: list[str] = []
+
+            vc_output = agent_outputs.get("valuation_catalyst")
+            if vc_output is not None:
+                vc = vc_output if isinstance(vc_output, dict) else vc_output.model_dump()
+                price_target = vc.get("price_target")
+                recovery_quarters = vc.get("recovery_timeline_quarters")
+                raw_disc = vc.get("current_discount_pct")
+                if raw_disc is not None:
+                    undervalued_pct = -float(raw_disc)
+                discount_reason = vc.get("discount_reason")
+                recovery_catalysts = vc.get("recovery_catalysts", [])
 
             return FinalReport(
                 ticker=ticker,
@@ -200,10 +209,10 @@ class SignalAggregator:
                 top_risks=data.get("top_risks", []),
                 investment_thesis=data.get("investment_thesis", ""),
                 report_date=data.get("report_date", str(date.today())),
-                price_target=price_target,
-                recovery_timeline_quarters=recovery_quarters,
-                undervalued_by_pct=current_discount,
-                discount_reason=discount_reason,
+                price_target=float(price_target) if price_target is not None else None,
+                recovery_timeline_quarters=int(recovery_quarters) if recovery_quarters is not None else None,
+                undervalued_by_pct=float(undervalued_pct) if undervalued_pct is not None else None,
+                discount_reason=str(discount_reason) if discount_reason else None,
                 recovery_catalysts=recovery_catalysts,
                 agent_outputs={k: v.model_dump() for k, v in agent_outputs.items()},
             )

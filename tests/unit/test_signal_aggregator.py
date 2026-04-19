@@ -16,7 +16,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from agents.signal_aggregator import SignalAggregator, CONFLICT_THRESHOLD
+from core.pipeline.signal_aggregator import SignalAggregator, CONFLICT_THRESHOLD
 from config import settings
 from tests.conftest import make_aggregator_json
 
@@ -26,7 +26,7 @@ class TestConflictDetection:
         self.agg = SignalAggregator.__new__(SignalAggregator)  # bypass __init__
 
     def _make_outputs(self, scores: dict) -> dict:
-        from models.schemas import AgentOutput
+        from core.schemas.pipeline import AgentOutput
         return {
             name: AgentOutput(agent=name, ticker="MARUTI", overall_score=s)
             for name, s in scores.items()
@@ -68,7 +68,7 @@ class TestConflictDetection:
 
 
 class TestWeightedScoreComputation:
-    @patch("agents.signal_aggregator.OpenAI")
+    @patch("services.clients.llm_client.OpenAI")
     def test_weighted_score_matches_manual(self, mock_groq_cls, mock_all_agent_outputs):
         mock_instance = MagicMock()
         mock_groq_cls.return_value = mock_instance
@@ -89,7 +89,7 @@ class TestWeightedScoreComputation:
         for name, ws in report.weighted_agent_scores.items():
             assert ws.weighted == pytest.approx(ws.raw * ws.weight, abs=1e-4)
 
-    @patch("agents.signal_aggregator.OpenAI")
+    @patch("services.clients.llm_client.OpenAI")
     def test_final_report_has_verdict(self, mock_groq_cls, mock_all_agent_outputs):
         mock_instance = MagicMock()
         mock_groq_cls.return_value = mock_instance
@@ -102,7 +102,7 @@ class TestWeightedScoreComputation:
 
         assert report.verdict in {"STRONG BUY", "BUY", "NEUTRAL", "SELL", "STRONG SELL"}
 
-    @patch("agents.signal_aggregator.OpenAI")
+    @patch("services.clients.llm_client.OpenAI")
     def test_final_report_score_in_bounds(self, mock_groq_cls, mock_all_agent_outputs):
         mock_instance = MagicMock()
         mock_groq_cls.return_value = mock_instance
@@ -114,7 +114,7 @@ class TestWeightedScoreComputation:
         report = agg.run("MARUTI", "Maruti Suzuki India Ltd", mock_all_agent_outputs)
         assert 0.0 <= report.final_score <= 1.0
 
-    @patch("agents.signal_aggregator.OpenAI")
+    @patch("services.clients.llm_client.OpenAI")
     def test_bad_llm_json_fallback(self, mock_groq_cls, mock_all_agent_outputs):
         """If LLM returns invalid JSON, aggregator should return NEUTRAL fallback."""
         mock_instance = MagicMock()

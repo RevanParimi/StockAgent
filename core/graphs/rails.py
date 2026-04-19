@@ -18,12 +18,12 @@ import logging
 
 import yfinance as yf
 
-from models.schemas import AgentOutput
+from core.schemas.pipeline import AgentOutput
 
 logger = logging.getLogger(__name__)
 
 # ── Thresholds ─────────────────────────────────────────────────────────────
-CONFLICT_THRESHOLD = 0.35   # max score spread before LLM re-resolution fires
+CONFLICT_THRESHOLD = 0.30   # must match agents/signal_aggregator.CONFLICT_THRESHOLD
 SCORE_MIN, SCORE_MAX = 0.0, 1.0
 NEUTRAL_FALLBACK = 0.5
 

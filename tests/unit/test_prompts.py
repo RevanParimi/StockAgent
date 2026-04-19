@@ -13,15 +13,13 @@ What is tested:
 
 import pytest
 
-from prompts import (
-    sales_demand,
-    fundamentals,
-    pattern_analysis,
-    sentiment,
-    risk_macro,
-    signal_aggregator,
-    orchestrator,
-)
+from config.prompts.automobile import sales_demand
+from config.prompts.automobile import fundamentals
+from config.prompts.automobile import pattern_analysis
+from config.prompts.automobile import sentiment
+from config.prompts.automobile import risk_macro
+from config.prompts.shared import signal_aggregator
+from config.prompts.shared import orchestrator
 
 
 SAMPLE_FORMAT_ARGS = dict(

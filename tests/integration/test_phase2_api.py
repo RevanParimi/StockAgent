@@ -31,7 +31,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
-from models.schemas import FinalReport, WeightedAgentScore
+from core.schemas.pipeline import FinalReport, WeightedAgentScore
 
 
 # ---------------------------------------------------------------------------
@@ -56,7 +56,7 @@ def _make_report(ticker: str = "MARUTI", score: float = 0.66, verdict: str = "BU
 @pytest.fixture
 def client():
     """TestClient with no external dependencies."""
-    from api.server import app
+    from services.api.server import app
     with TestClient(app, raise_server_exceptions=False) as c:
         yield c
 
@@ -64,7 +64,7 @@ def client():
 @pytest.fixture
 def mock_orchestrator(mock_final_report):
     """Patch AutomobileAgentOrchestrator so no LLM calls happen."""
-    with patch("api.routes.analyse.AutomobileAgentOrchestrator") as cls:
+    with patch("services.api.routes.analyse.AutomobileAgentOrchestrator") as cls:
         instance = MagicMock()
         instance.analyse_async = AsyncMock(return_value=mock_final_report)
         cls.return_value = instance
@@ -73,7 +73,7 @@ def mock_orchestrator(mock_final_report):
 
 @pytest.fixture
 def mock_score_store():
-    with patch("api.routes.history._get_store") as mock_get:
+    with patch("services.api.routes.history._get_store") as mock_get:
         store = MagicMock()
         mock_get.return_value = store
         yield store
@@ -188,7 +188,7 @@ class TestAnalyseEndpoint:
         assert resp.status_code == 422
 
     def test_orchestrator_failure_returns_503(self, client):
-        with patch("api.routes.analyse.AutomobileAgentOrchestrator") as cls:
+        with patch("services.api.routes.analyse.AutomobileAgentOrchestrator") as cls:
             instance = MagicMock()
             instance.analyse_async = AsyncMock(side_effect=RuntimeError("LLM unreachable"))
             cls.return_value = instance
@@ -196,7 +196,7 @@ class TestAnalyseEndpoint:
         assert resp.status_code == 503
 
     def test_503_body_contains_detail(self, client):
-        with patch("api.routes.analyse.AutomobileAgentOrchestrator") as cls:
+        with patch("services.api.routes.analyse.AutomobileAgentOrchestrator") as cls:
             instance = MagicMock()
             instance.analyse_async = AsyncMock(side_effect=RuntimeError("LLM unreachable"))
             cls.return_value = instance
@@ -287,7 +287,7 @@ class TestWebSocketStream:
             assert "ticker" in msg["detail"].lower()
 
     def test_ws_streams_complete_event(self, client, mock_final_report):
-        with patch("api.routes.stream.AutomobileAgentOrchestrator") as cls:
+        with patch("services.api.routes.stream.AutomobileAgentOrchestrator") as cls:
             instance = MagicMock()
             instance.analyse_async = AsyncMock(return_value=mock_final_report)
             cls.return_value = instance
@@ -304,7 +304,7 @@ class TestWebSocketStream:
         assert "complete" in event_types
 
     def test_ws_complete_event_contains_report(self, client, mock_final_report):
-        with patch("api.routes.stream.AutomobileAgentOrchestrator") as cls:
+        with patch("services.api.routes.stream.AutomobileAgentOrchestrator") as cls:
             instance = MagicMock()
             instance.analyse_async = AsyncMock(return_value=mock_final_report)
             cls.return_value = instance

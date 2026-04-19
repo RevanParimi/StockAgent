@@ -15,7 +15,9 @@ get_price_summary(ticker)        → dict   (latest price + 52w range)
 from __future__ import annotations
 
 import logging
+import sys
 from datetime import date, timedelta
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -24,6 +26,11 @@ import yfinance as yf
 from config import settings
 
 logger = logging.getLogger(__name__)
+
+# Ensure the .pyd sitting next to this file is importable as `stockindicators`.
+_indicators_dir = str(Path(__file__).parent)
+if _indicators_dir not in sys.path:
+    sys.path.insert(0, _indicators_dir)
 
 # Phase 1 C++ extension guard.
 # When the compiled stockindicators module is present (built via cpp/CMakeLists.txt),
@@ -174,7 +181,11 @@ def compute_technicals(df: pd.DataFrame) -> dict:
     if df.empty or len(df) < 30:
         return {"error": "Insufficient price data for technical analysis"}
 
+    # yfinance ≥0.2 returns MultiIndex columns for single-ticker downloads;
+    # squeeze() + iloc fallback ensures we always get a 1-D Series.
     close = df["Close"].squeeze()
+    if isinstance(close, pd.DataFrame):
+        close = close.iloc[:, 0]
 
     yr_high = float(close.tail(252).max())
     yr_low = float(close.tail(252).min())

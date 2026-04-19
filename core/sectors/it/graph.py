@@ -13,15 +13,15 @@ try:
 except ImportError:
     from langgraph.pregel import RetryPolicy  # type: ignore[no-redef]
 
-from graphs._shared.nodes import (
+from core.graphs.nodes import (
     make_aggregate_node,
     make_dispatch_fn,
     make_input_rail_node,
     make_resolve_ticker_node,
     make_run_agent_node,
 )
-from graphs._shared.state import GraphState
-from graphs.it_sector.agents import AGENTS, WEIGHTS
+from core.graphs.state import GraphState
+from core.sectors.it.agents import AGENTS, WEIGHTS
 
 SECTOR = "it_sector"
 

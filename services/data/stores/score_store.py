@@ -31,7 +31,7 @@ from pathlib import Path
 import requests
 
 from config import settings
-from models.schemas import FinalReport
+from core.schemas.pipeline import FinalReport
 
 logger = logging.getLogger(__name__)
 

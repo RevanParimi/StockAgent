@@ -65,7 +65,7 @@ logger = logging.getLogger(__name__)
 
 def cmd_start(args) -> None:
     """Start the blocking scheduler daemon."""
-    from tools.scheduler import AutomobileScheduler
+    from services.scheduler.python.scheduler import AutomobileScheduler
     from config import settings
 
     if not settings.SCHEDULER_ENABLED:
@@ -86,7 +86,7 @@ def cmd_start(args) -> None:
 
 def cmd_run_now(args) -> None:
     """Run one or all tickers immediately."""
-    from tools.scheduler import AutomobileScheduler
+    from services.scheduler.python.scheduler import AutomobileScheduler
 
     tickers = [args.ticker.upper()] if args.ticker else None
     sched = AutomobileScheduler()
@@ -104,7 +104,7 @@ def cmd_run_now(args) -> None:
 
 def cmd_status(args) -> None:
     """Show scheduler and database status."""
-    from tools.scheduler import AutomobileScheduler
+    from services.scheduler.python.scheduler import AutomobileScheduler
     from config import settings
 
     sched = AutomobileScheduler()
@@ -123,7 +123,7 @@ def cmd_status(args) -> None:
 
 def cmd_history(args) -> None:
     """Display score history for a ticker."""
-    from tools.score_store import ScoreStore
+    from services.data.stores.score_store import ScoreStore
 
     if not args.ticker:
         print("Error: --ticker is required for history command.")
@@ -156,7 +156,7 @@ def cmd_history(args) -> None:
 
 def cmd_latest(args) -> None:
     """Display the latest score for every ticker in the database."""
-    from tools.score_store import ScoreStore
+    from services.data.stores.score_store import ScoreStore
 
     store = ScoreStore()
     rows = store.get_all_latest()
@@ -182,7 +182,7 @@ def cmd_latest(args) -> None:
 
 def cmd_forecast(args) -> None:
     """Generate month-start 30-day prediction envelope(s)."""
-    from scripts.generate_forecast import generate_forecast
+    from intelligence.rl.workflows.generate_forecast import generate_forecast
     from config import settings
 
     tickers = [args.ticker.upper()] if args.ticker else settings.SCHEDULER_TICKERS
@@ -203,7 +203,7 @@ def cmd_forecast(args) -> None:
 
 def cmd_daily_review(args) -> None:
     """Run daily RL feedback review for one or all tickers."""
-    from scripts.daily_review import run_daily_review
+    from intelligence.rl.workflows.daily_review import run_daily_review
     from config import settings
     from datetime import date, timedelta
 
@@ -237,7 +237,7 @@ def cmd_daily_review(args) -> None:
 
 def cmd_feedback_status(args) -> None:
     """Show prediction envelope and feedback log summary for a ticker."""
-    from tools.prediction_store import PredictionStore
+    from intelligence.rl.stores.prediction_store import PredictionStore
     from config import settings
 
     if not args.ticker:

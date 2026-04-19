@@ -19,7 +19,7 @@ router = APIRouter()
 
 
 def _get_store():
-    from tools.score_store import ScoreStore
+    from services.data.stores.score_store import ScoreStore
     return ScoreStore()
 
 

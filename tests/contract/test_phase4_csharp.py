@@ -30,7 +30,7 @@ from unittest.mock import MagicMock, patch, call
 
 import pytest
 
-from models.schemas import FinalReport, WeightedAgentScore
+from core.schemas.pipeline import FinalReport, WeightedAgentScore
 
 
 # ---------------------------------------------------------------------------
@@ -94,10 +94,10 @@ class TestCSharpSettings:
 # ---------------------------------------------------------------------------
 
 class TestScoreStoreProxy:
-    @patch("tools.score_store.requests.post")
+    @patch("services.data.stores.score_store.requests.post")
     def test_save_proxies_to_csharp_when_enabled(self, mock_post, tmp_path):
         """When CSHARP_SCHEDULER_ENABLED=True, save() must POST to C# /scores."""
-        from tools.score_store import ScoreStore
+        from services.data.stores.score_store import ScoreStore
         from config import settings
 
         mock_post.return_value = MagicMock(status_code=201)
@@ -112,9 +112,9 @@ class TestScoreStoreProxy:
         call_args = mock_post.call_args
         assert "scores" in call_args[0][0] or "scores" in call_args.kwargs.get("url", "")
 
-    @patch("tools.score_store.requests.post")
+    @patch("services.data.stores.score_store.requests.post")
     def test_save_sends_report_as_json(self, mock_post, tmp_path):
-        from tools.score_store import ScoreStore
+        from services.data.stores.score_store import ScoreStore
         from config import settings
 
         mock_post.return_value = MagicMock(status_code=201)
@@ -130,7 +130,7 @@ class TestScoreStoreProxy:
 
     def test_save_uses_sqlite_when_csharp_disabled(self, tmp_path):
         """With flag off, save() must write to SQLite as usual."""
-        from tools.score_store import ScoreStore
+        from services.data.stores.score_store import ScoreStore
         from config import settings
 
         store = ScoreStore(db_path=str(tmp_path / "test.db"))
@@ -144,10 +144,10 @@ class TestScoreStoreProxy:
         assert latest is not None
         assert abs(latest["final_score"] - 0.70) < 1e-6
 
-    @patch("tools.score_store.requests.post")
+    @patch("services.data.stores.score_store.requests.post")
     def test_proxy_failure_does_not_crash(self, mock_post, tmp_path):
         """C# service being down must not crash the Python pipeline."""
-        from tools.score_store import ScoreStore
+        from services.data.stores.score_store import ScoreStore
         from config import settings
 
         mock_post.side_effect = Exception("Connection refused")

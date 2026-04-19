@@ -8,16 +8,16 @@ Data dimensions covered:
   2. Steel / Aluminium / Rubber prices
   3. RBI repo rate & EMI impact
   4. Emission norms & policy risk
-  5. Geopolitical China parts import risk
+  5. Global geopolitical risk (oil shock, FII outflow, INR depreciation, supply disruption)
 """
 
 from __future__ import annotations
 
 from typing import Any
 
-from agents.base_agent import BaseAgent
-from models.schemas import AgentOutput, RiskMacroOutput, RiskMacroSubScores, StockQuery
-from prompts import risk_macro as P
+from core.pipeline.base_agent import BaseAgent
+from core.schemas.pipeline import AgentOutput, RiskMacroOutput, RiskMacroSubScores, StockQuery
+from config.prompts.automobile import risk_macro as P
 
 
 class RiskMacroAgent(BaseAgent):
@@ -48,8 +48,7 @@ class RiskMacroAgent(BaseAgent):
                 rbi_repo_emi_impact=self._clamp(float(sub.get("rbi_repo_emi_impact", 0.5))),
                 emission_policy_risk=self._clamp(float(sub.get("emission_policy_risk", 0.5))),
                 global_geopolitical_risk=self._clamp(
-                    float(sub.get("global_geopolitical_risk",
-                          sub.get("geopolitical_china_risk", 0.5)))
+                    float(sub.get("global_geopolitical_risk", 0.5))
                 ),
             ),
             key_positives=data.get("key_positives", []),

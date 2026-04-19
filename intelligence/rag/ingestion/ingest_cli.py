@@ -63,7 +63,7 @@ def main() -> None:
     args = parser.parse_args()
 
     # Lazy imports after sys.path fix
-    from config import rag_config
+    from intelligence.rag import config as rag_config
     if not rag_config.RAG_ENABLED:
         print(
             "\nRAG is currently disabled.\n"
@@ -71,8 +71,8 @@ def main() -> None:
         )
         sys.exit(0)
 
-    from tools.rag.ingestion import DocumentIngester
-    from tools.rag.vector_store import VectorStore
+    from intelligence.rag.ingestion.ingestion import DocumentIngester
+    from intelligence.rag.core.vector_store import VectorStore
 
     ingester = DocumentIngester()
 
@@ -111,7 +111,7 @@ def main() -> None:
     else:
         # Default: ingest all configured directories from rag_config
         print("\nIngesting all configured knowledge-base directories...")
-        from config import rag_config as rc
+        from intelligence.rag import config as rag_config as rc
         for dir_path in rc.KB_DOCUMENT_DIRS:
             p = Path(dir_path)
             if p.is_dir():

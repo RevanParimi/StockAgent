@@ -16,7 +16,8 @@ from __future__ import annotations
 import logging
 from datetime import date
 
-from models.schemas import StockQuery
+from config import settings as _settings
+from core.schemas.pipeline import StockQuery
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +49,12 @@ class ContextBuilder:
           2. _build_{agent_name}           — generic / automobile fallback
           3. _build_generic               — no fetcher; stub only
         """
+        # Resolve the Serper key for this sector before calling any builder.
+        # Stored on the instance so builder methods can reference self._serper_key
+        # without needing a parameter change. Build() is always called sequentially
+        # per agent, so this is safe.
+        self._serper_key: str = _settings.get_serper_key(sector)
+
         builder_fn = None
         if sector:
             builder_fn = getattr(self, f"_build_{sector}_{agent_name}", None)
@@ -71,8 +78,8 @@ class ContextBuilder:
     # ------------------------------------------------------------------
 
     def _build_sales_demand(self, query: StockQuery) -> str:
-        from tools.news_fetcher import fetch_news_context
-        from prompts.sales_demand import CONTEXT_SEARCH_QUERIES
+        from services.data.fetchers.news import fetch_news_context
+        from config.prompts.automobile.sales_demand import CONTEXT_SEARCH_QUERIES
 
         today = date.today()
         queries = [
@@ -84,7 +91,7 @@ class ContextBuilder:
             )
             for q in CONTEXT_SEARCH_QUERIES
         ]
-        news = fetch_news_context(queries)
+        news = fetch_news_context(queries, api_key=self._serper_key)
         return (
             f"Stock: {query.ticker} | Company: {query.company_name} | "
             f"Date: {query.analysis_date}\n\n"
@@ -92,9 +99,9 @@ class ContextBuilder:
         )
 
     def _build_fundamentals(self, query: StockQuery) -> str:
-        from tools.fundamentals_fetcher import get_fundamentals_context
-        from tools.news_fetcher import fetch_news_context
-        from prompts.fundamentals import CONTEXT_SEARCH_QUERIES
+        from services.data.fetchers.fundamentals import get_fundamentals_context
+        from services.data.fetchers.news import fetch_news_context
+        from config.prompts.automobile.fundamentals import CONTEXT_SEARCH_QUERIES
 
         today = date.today()
         queries = [
@@ -107,11 +114,11 @@ class ContextBuilder:
             for q in CONTEXT_SEARCH_QUERIES
         ]
         fin_context = get_fundamentals_context(query.ticker)
-        news = fetch_news_context(queries)
+        news = fetch_news_context(queries, api_key=self._serper_key)
         return f"{fin_context}\n\n{news}"
 
     def _build_pattern_analysis(self, query: StockQuery) -> str:
-        from tools.yfinance_fetcher import get_technical_context
+        from intelligence.algorithms.indicators.fetcher import get_technical_context
 
         tech = get_technical_context(query.ticker)
         return (
@@ -121,8 +128,8 @@ class ContextBuilder:
         )
 
     def _build_sentiment(self, query: StockQuery) -> str:
-        from tools.news_fetcher import fetch_news_context
-        from prompts.sentiment import CONTEXT_SEARCH_QUERIES
+        from services.data.fetchers.news import fetch_news_context
+        from config.prompts.automobile.sentiment import CONTEXT_SEARCH_QUERIES
 
         today = date.today()
         queries = [
@@ -135,7 +142,7 @@ class ContextBuilder:
             )
             for q in CONTEXT_SEARCH_QUERIES
         ]
-        news = fetch_news_context(queries)
+        news = fetch_news_context(queries, api_key=self._serper_key)
         return (
             f"Stock: {query.ticker} | Company: {query.company_name} | "
             f"Date: {query.analysis_date}\n\n"
@@ -143,10 +150,10 @@ class ContextBuilder:
         )
 
     def _build_risk_macro(self, query: StockQuery) -> str:
-        from tools.macro_fetcher import get_macro_context
-        from tools.news_fetcher import fetch_news_context
-        from tools.macro_cache import get_macro_cache
-        from prompts.risk_macro import CONTEXT_SEARCH_QUERIES
+        from services.data.fetchers.macro import get_macro_context
+        from services.data.fetchers.news import fetch_news_context
+        from services.data.cache.macro_cache import get_macro_cache
+        from config.prompts.automobile.risk_macro import CONTEXT_SEARCH_QUERIES
 
         # yfinance macro data — always free, fetch fresh every time
         macro = get_macro_context()
@@ -173,13 +180,13 @@ class ContextBuilder:
             )
             for q in CONTEXT_SEARCH_QUERIES
         ]
-        news = fetch_news_context(queries)
+        news = fetch_news_context(queries, api_key=self._serper_key)
         return f"{macro}\n\n{news}"
 
     def _build_raw_materials(self, query: StockQuery) -> str:
-        from tools.macro_fetcher import get_raw_materials_context
-        from tools.news_fetcher import fetch_news_context
-        from prompts.raw_materials import CONTEXT_SEARCH_QUERIES
+        from services.data.fetchers.macro import get_raw_materials_context
+        from services.data.fetchers.news import fetch_news_context
+        from config.prompts.automobile.raw_materials import CONTEXT_SEARCH_QUERIES
 
         today = date.today()
         queries = [
@@ -191,7 +198,7 @@ class ContextBuilder:
             for q in CONTEXT_SEARCH_QUERIES
         ]
         raw_prices = get_raw_materials_context()
-        news = fetch_news_context(queries, max_queries=1)
+        news = fetch_news_context(queries, max_queries=1, api_key=self._serper_key)
         return (
             f"Stock: {query.ticker} | Company: {query.company_name} | "
             f"Date: {query.analysis_date}\n\n"
@@ -200,9 +207,9 @@ class ContextBuilder:
         )
 
     def _build_policy_regulatory(self, query: StockQuery) -> str:
-        from tools.tavily_fetcher import fetch_tavily_context
-        from tools.news_fetcher import fetch_news_context
-        from prompts.policy_regulatory import TAVILY_SEARCH_QUERIES, CONTEXT_SEARCH_QUERIES
+        from services.clients.tavily_fetcher import fetch_tavily_context
+        from services.data.fetchers.news import fetch_news_context
+        from config.prompts.automobile.policy_regulatory import TAVILY_SEARCH_QUERIES, CONTEXT_SEARCH_QUERIES
 
         today = date.today()
         tavily_queries = [
@@ -222,7 +229,7 @@ class ContextBuilder:
             for q in CONTEXT_SEARCH_QUERIES
         ]
         tavily_text = fetch_tavily_context(tavily_queries, max_queries=2)
-        news = fetch_news_context(serper_queries)
+        news = fetch_news_context(serper_queries, api_key=self._serper_key)
         return (
             f"Stock: {query.ticker} | Company: {query.company_name} | "
             f"Date: {query.analysis_date}\n\n"
@@ -231,8 +238,8 @@ class ContextBuilder:
         )
 
     def _build_competitive_intel(self, query: StockQuery) -> str:
-        from tools.news_fetcher import fetch_news_context
-        from prompts.competitive_intel import CONTEXT_SEARCH_QUERIES
+        from services.data.fetchers.news import fetch_news_context
+        from config.prompts.automobile.competitive_intel import CONTEXT_SEARCH_QUERIES
 
         today = date.today()
         queries = [
@@ -244,7 +251,7 @@ class ContextBuilder:
             )
             for q in CONTEXT_SEARCH_QUERIES
         ]
-        news = fetch_news_context(queries)
+        news = fetch_news_context(queries, api_key=self._serper_key)
         return (
             f"Stock: {query.ticker} | Company: {query.company_name} | "
             f"Date: {query.analysis_date}\n\n"
@@ -263,8 +270,8 @@ class ContextBuilder:
     # ------------------------------------------------------------------
 
     def _build_bfsi_fundamentals(self, query: StockQuery) -> str:
-        from tools.fundamentals_fetcher import get_fundamentals_context
-        from tools.news_fetcher import fetch_news_context
+        from services.data.fetchers.fundamentals import get_fundamentals_context
+        from services.data.fetchers.news import fetch_news_context
 
         today = date.today()
         queries = [
@@ -275,11 +282,11 @@ class ContextBuilder:
             f"{query.ticker} retail corporate loan mix MSME {today.year}",
         ]
         fin = get_fundamentals_context(query.ticker)
-        news = fetch_news_context(queries)
+        news = fetch_news_context(queries, api_key=self._serper_key)
         return f"{fin}\n\n{news}"
 
     def _build_bfsi_risk(self, query: StockQuery) -> str:
-        from tools.news_fetcher import fetch_news_context
+        from services.data.fetchers.news import fetch_news_context
 
         today = date.today()
         queries = [
@@ -289,16 +296,16 @@ class ContextBuilder:
             f"{query.ticker} RBI penalty SEBI action regulatory risk {today.year}",
             f"{query.company_name} NIM compression rate sensitivity FX exposure {today.year}",
         ]
-        news = fetch_news_context(queries)
+        news = fetch_news_context(queries, api_key=self._serper_key)
         return (
             f"Stock: {query.ticker} | Company: {query.company_name} | "
             f"Date: {query.analysis_date}\n\n{news}"
         )
 
     def _build_macro_policy(self, query: StockQuery) -> str:
-        from tools.macro_fetcher import get_macro_context
-        from tools.news_fetcher import fetch_news_context
-        from tools.macro_cache import get_macro_cache
+        from services.data.fetchers.macro import get_macro_context
+        from services.data.fetchers.news import fetch_news_context
+        from services.data.cache.macro_cache import get_macro_cache
 
         macro = get_macro_context()
         cached = get_macro_cache("bfsi")
@@ -313,12 +320,12 @@ class ContextBuilder:
             f"RBI circular SEBI IRDAI regulatory action banking {today.year}",
             f"India government borrowing PSU bank recapitalisation IBC {today.year}",
         ]
-        news = fetch_news_context(queries)
+        news = fetch_news_context(queries, api_key=self._serper_key)
         return f"{macro}\n\n{news}"
 
     def _build_institutional(self, query: StockQuery) -> str:
-        from tools.fundamentals_fetcher import get_fundamentals_context
-        from tools.news_fetcher import fetch_news_context
+        from services.data.fetchers.fundamentals import get_fundamentals_context
+        from services.data.fetchers.news import fetch_news_context
 
         today = date.today()
         queries = [
@@ -329,11 +336,11 @@ class ContextBuilder:
             f"{query.ticker} mutual fund holding institutional ownership {today.year}",
         ]
         fin = get_fundamentals_context(query.ticker)
-        news = fetch_news_context(queries)
+        news = fetch_news_context(queries, api_key=self._serper_key)
         return f"{fin}\n\n{news}"
 
     def _build_universe_setup(self, query: StockQuery) -> str:
-        from tools.news_fetcher import fetch_news_context
+        from services.data.fetchers.news import fetch_news_context
 
         today = date.today()
         queries = [
@@ -342,7 +349,7 @@ class ContextBuilder:
             f"{query.ticker} market cap free float classification {today.year}",
             f"{query.company_name} corporate action split bonus rights merger {today.year}",
         ]
-        news = fetch_news_context(queries)
+        news = fetch_news_context(queries, api_key=self._serper_key)
         return (
             f"Stock: {query.ticker} | Company: {query.company_name} | "
             f"Date: {query.analysis_date}\n\n{news}"
@@ -353,8 +360,8 @@ class ContextBuilder:
     # ------------------------------------------------------------------
 
     def _build_it_fundamentals(self, query: StockQuery) -> str:
-        from tools.fundamentals_fetcher import get_fundamentals_context
-        from tools.news_fetcher import fetch_news_context
+        from services.data.fetchers.fundamentals import get_fundamentals_context
+        from services.data.fetchers.news import fetch_news_context
 
         today = date.today()
         quarter = f"Q{((today.month - 1) // 3) + 1} FY{today.year % 100}"
@@ -366,12 +373,12 @@ class ContextBuilder:
             f"{query.ticker} PE EV revenue valuation peers {today.year}",
         ]
         fin = get_fundamentals_context(query.ticker)
-        news = fetch_news_context(queries)
+        news = fetch_news_context(queries, api_key=self._serper_key)
         return f"{fin}\n\n{news}"
 
     def _build_global_macro(self, query: StockQuery) -> str:
-        from tools.macro_fetcher import get_macro_context
-        from tools.news_fetcher import fetch_news_context
+        from services.data.fetchers.macro import get_macro_context
+        from services.data.fetchers.news import fetch_news_context
 
         macro = get_macro_context()
         today = date.today()
@@ -382,13 +389,13 @@ class ContextBuilder:
             f"US China tech war CHIPS Act offshoring Indian IT {today.year}",
             f"global IT M&A deal multiples software consolidation {today.year}",
         ]
-        news = fetch_news_context(queries)
+        news = fetch_news_context(queries, api_key=self._serper_key)
         return f"{macro}\n\n{news}"
 
     def _build_it_risk_macro(self, query: StockQuery) -> str:
-        from tools.macro_fetcher import get_macro_context
-        from tools.news_fetcher import fetch_news_context
-        from tools.macro_cache import get_macro_cache
+        from services.data.fetchers.macro import get_macro_context
+        from services.data.fetchers.news import fetch_news_context
+        from services.data.cache.macro_cache import get_macro_cache
 
         macro = get_macro_context()
         cached = get_macro_cache("it")
@@ -403,12 +410,12 @@ class ContextBuilder:
             f"{query.ticker} INR USD hedge FX derivative revenue mix {today.year}",
             f"Indian IT talent supply campus hiring moonlighting {today.year}",
         ]
-        news = fetch_news_context(queries)
+        news = fetch_news_context(queries, api_key=self._serper_key)
         return f"{macro}\n\n{news}"
 
     def _build_peer_benchmark(self, query: StockQuery) -> str:
-        from tools.fundamentals_fetcher import get_fundamentals_context
-        from tools.news_fetcher import fetch_news_context
+        from services.data.fetchers.fundamentals import get_fundamentals_context
+        from services.data.fetchers.news import fetch_news_context
 
         today = date.today()
         quarter = f"Q{((today.month - 1) // 3) + 1} FY{today.year % 100}"
@@ -420,11 +427,11 @@ class ContextBuilder:
             f"{query.ticker} PE premium discount to IT peer median {today.year}",
         ]
         fin = get_fundamentals_context(query.ticker)
-        news = fetch_news_context(queries)
+        news = fetch_news_context(queries, api_key=self._serper_key)
         return f"{fin}\n\n{news}"
 
     def _build_it_sentiment(self, query: StockQuery) -> str:
-        from tools.news_fetcher import fetch_news_context
+        from services.data.fetchers.news import fetch_news_context
 
         today = date.today()
         quarter = f"Q{((today.month - 1) // 3) + 1} FY{today.year % 100}"
@@ -435,15 +442,15 @@ class ContextBuilder:
             f"{query.company_name} layoff workforce reduction bench utilisation {today.year}",
             f"{query.ticker} investor sentiment Twitter Reddit IT stock {today.year}",
         ]
-        news = fetch_news_context(queries)
+        news = fetch_news_context(queries, api_key=self._serper_key)
         return (
             f"Stock: {query.ticker} | Company: {query.company_name} | "
             f"Date: {query.analysis_date}\n\n{news}"
         )
 
     def _build_transcript_nlp(self, query: StockQuery) -> str:
-        from tools.tavily_fetcher import fetch_tavily_context
-        from tools.news_fetcher import fetch_news_context
+        from services.clients.tavily_fetcher import fetch_tavily_context
+        from services.data.fetchers.news import fetch_news_context
 
         today = date.today()
         quarter = f"Q{((today.month - 1) // 3) + 1} FY{today.year % 100}"
@@ -456,7 +463,7 @@ class ContextBuilder:
             f"{query.ticker} earnings call GenAI AI demand commentary {today.year}",
         ]
         transcript = fetch_tavily_context(tavily_queries, max_queries=2)
-        news = fetch_news_context(news_queries, max_queries=2)
+        news = fetch_news_context(news_queries, max_queries=2, api_key=self._serper_key)
         return (
             f"Stock: {query.ticker} | Company: {query.company_name} | "
             f"Date: {query.analysis_date}\n\n"
@@ -465,8 +472,8 @@ class ContextBuilder:
         )
 
     def _build_insider_smart_money(self, query: StockQuery) -> str:
-        from tools.fundamentals_fetcher import get_fundamentals_context
-        from tools.news_fetcher import fetch_news_context
+        from services.data.fetchers.fundamentals import get_fundamentals_context
+        from services.data.fetchers.news import fetch_news_context
 
         today = date.today()
         queries = [
@@ -477,7 +484,7 @@ class ContextBuilder:
             f"{query.ticker} block deal bulk deal counterparty {today.year}",
         ]
         fin = get_fundamentals_context(query.ticker)
-        news = fetch_news_context(queries)
+        news = fetch_news_context(queries, api_key=self._serper_key)
         return f"{fin}\n\n{news}"
 
     # ------------------------------------------------------------------
@@ -485,8 +492,8 @@ class ContextBuilder:
     # ------------------------------------------------------------------
 
     def _build_re_fundamentals(self, query: StockQuery) -> str:
-        from tools.fundamentals_fetcher import get_fundamentals_context
-        from tools.news_fetcher import fetch_news_context
+        from services.data.fetchers.fundamentals import get_fundamentals_context
+        from services.data.fetchers.news import fetch_news_context
 
         today = date.today()
         queries = [
@@ -497,11 +504,11 @@ class ContextBuilder:
             f"{query.company_name} debt equity leverage project holdco {today.year}",
         ]
         fin = get_fundamentals_context(query.ticker)
-        news = fetch_news_context(queries)
+        news = fetch_news_context(queries, api_key=self._serper_key)
         return f"{fin}\n\n{news}"
 
     def _build_business(self, query: StockQuery) -> str:
-        from tools.news_fetcher import fetch_news_context
+        from services.data.fetchers.news import fetch_news_context
 
         today = date.today()
         queries = [
@@ -510,15 +517,15 @@ class ContextBuilder:
             f"{query.company_name} under construction pipeline commissioning {today.year}",
             f"{query.ticker} state wise MW distribution geography irradiance {today.year}",
         ]
-        news = fetch_news_context(queries)
+        news = fetch_news_context(queries, api_key=self._serper_key)
         return (
             f"Stock: {query.ticker} | Company: {query.company_name} | "
             f"Date: {query.analysis_date}\n\n{news}"
         )
 
     def _build_valuation(self, query: StockQuery) -> str:
-        from tools.fundamentals_fetcher import get_fundamentals_context
-        from tools.news_fetcher import fetch_news_context
+        from services.data.fetchers.fundamentals import get_fundamentals_context
+        from services.data.fetchers.news import fetch_news_context
 
         today = date.today()
         queries = [
@@ -528,12 +535,12 @@ class ContextBuilder:
             f"{query.company_name} equity IRR WACC implied returns {today.year}",
         ]
         fin = get_fundamentals_context(query.ticker)
-        news = fetch_news_context(queries)
+        news = fetch_news_context(queries, api_key=self._serper_key)
         return f"{fin}\n\n{news}"
 
     def _build_sentiment_policy(self, query: StockQuery) -> str:
-        from tools.tavily_fetcher import fetch_tavily_context
-        from tools.news_fetcher import fetch_news_context
+        from services.clients.tavily_fetcher import fetch_tavily_context
+        from services.data.fetchers.news import fetch_news_context
 
         today = date.today()
         tavily_queries = [
@@ -546,7 +553,7 @@ class ContextBuilder:
             f"{query.ticker} green hydrogen investment announcement {today.year}",
         ]
         policy = fetch_tavily_context(tavily_queries, max_queries=2)
-        news = fetch_news_context(news_queries)
+        news = fetch_news_context(news_queries, api_key=self._serper_key)
         return (
             f"Stock: {query.ticker} | Company: {query.company_name} | "
             f"Date: {query.analysis_date}\n\n"
@@ -555,7 +562,7 @@ class ContextBuilder:
         )
 
     def _build_technical(self, query: StockQuery) -> str:
-        from tools.yfinance_fetcher import get_technical_context
+        from intelligence.algorithms.indicators.fetcher import get_technical_context
 
         tech = get_technical_context(query.ticker)
         return (
@@ -564,7 +571,7 @@ class ContextBuilder:
         )
 
     def _build_re_risk(self, query: StockQuery) -> str:
-        from tools.news_fetcher import fetch_news_context
+        from services.data.fetchers.news import fetch_news_context
 
         today = date.today()
         queries = [
@@ -574,7 +581,7 @@ class ContextBuilder:
             f"{query.company_name} transmission bottleneck grid evacuation {today.year}",
             f"solar module steel copper capex cost India {today.year}",
         ]
-        news = fetch_news_context(queries)
+        news = fetch_news_context(queries, api_key=self._serper_key)
         return (
             f"Stock: {query.ticker} | Company: {query.company_name} | "
             f"Date: {query.analysis_date}\n\n{news}"

@@ -27,7 +27,7 @@ import logging
 from datetime import date
 
 from config import settings
-from models.feedback_schemas import (
+from core.schemas.feedback import (
     AgentAccuracy,
     DailyFeedbackLog,
     WeightHistoryEntry,

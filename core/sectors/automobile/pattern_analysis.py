@@ -15,14 +15,14 @@ from __future__ import annotations
 
 from typing import Any
 
-from agents.base_agent import BaseAgent
-from models.schemas import (
+from core.pipeline.base_agent import BaseAgent
+from core.schemas.pipeline import (
     AgentOutput,
     PatternAnalysisOutput,
     PatternAnalysisSubScores,
     StockQuery,
 )
-from prompts import pattern_analysis as P
+from config.prompts.automobile import pattern_analysis as P
 
 
 class PatternAnalysisAgent(BaseAgent):

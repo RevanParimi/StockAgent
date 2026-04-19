@@ -40,7 +40,7 @@ from datetime import date
 from pathlib import Path
 
 from config import settings
-from models.feedback_schemas import (
+from core.schemas.feedback import (
     DailyFeedbackLog,
     FeedbackEntry,
     LearningLedger,

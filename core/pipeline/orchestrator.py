@@ -12,7 +12,7 @@ Execution flow:
 
 The orchestrator is the only public-facing class in the pipeline.
 Usage:
-    from agents.orchestrator import AutomobileAgentOrchestrator
+    from core.pipeline.orchestrator import AutomobileAgentOrchestrator
     report = AutomobileAgentOrchestrator().analyse("MARUTI")
 """
 
@@ -28,36 +28,37 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date, datetime, timezone
 
 from config import settings
-from models.schemas import AgentOutput, FinalReport, PipelineRun, StockQuery
-from prompts import orchestrator as P
-from tools.llm_client import get_llm_client
-from tools.run_logger import log_llm_call, log_run_summary
+from core.schemas.pipeline import AgentOutput, FinalReport, PipelineRun, StockQuery
+from config.prompts.shared import orchestrator as P
+from services.clients.llm_client import get_llm_client
+from services.data.stores.run_logger import log_llm_call, log_run_summary
+from services.data.stores.analysis_logger import log_analysis
 from services.data.stores.api_usage import log_run_api_usage, snapshot_usage
 
-from agents.sales_demand import SalesDemandAgent
-from agents.raw_materials import RawMaterialsAgent
-from agents.fundamentals import FundamentalsAgent
-from agents.pattern_analysis import PatternAnalysisAgent
-from agents.sentiment import SentimentAgent
-from agents.policy_regulatory import PolicyRegulatoryAgent
-from agents.competitive_intel import CompetitiveIntelAgent
-from agents.risk_macro import RiskMacroAgent
-from agents.valuation_catalyst import ValuationCatalystAgent
-from agents.signal_aggregator import SignalAggregator
+from core.sectors.automobile.sales_demand import SalesDemandAgent
+from core.sectors.automobile.raw_materials import RawMaterialsAgent
+from core.sectors.automobile.fundamentals import FundamentalsAgent
+from core.sectors.automobile.pattern_analysis import PatternAnalysisAgent
+from core.sectors.automobile.sentiment import SentimentAgent
+from core.sectors.automobile.policy_regulatory import PolicyRegulatoryAgent
+from core.sectors.automobile.competitive_intel import CompetitiveIntelAgent
+from core.sectors.automobile.risk_macro import RiskMacroAgent
+from core.sectors.automobile.valuation_catalyst import ValuationCatalystAgent
+from core.pipeline.signal_aggregator import SignalAggregator
 
 logger = logging.getLogger(__name__)
 
 # All sub-agents instantiated once (they are stateless per .run() call)
 _SUB_AGENTS = {
-    "sales_demand":      SalesDemandAgent(),
-    "raw_materials":     RawMaterialsAgent(),
-    "fundamentals":      FundamentalsAgent(),
-    "pattern_analysis":  PatternAnalysisAgent(),
-    "sentiment":         SentimentAgent(),
-    "policy_regulatory": PolicyRegulatoryAgent(),
-    "competitive_intel": CompetitiveIntelAgent(),
-    "risk_macro":           RiskMacroAgent(),
-    "valuation_catalyst":   ValuationCatalystAgent(),
+    "sales_demand":        SalesDemandAgent(),
+    "raw_materials":       RawMaterialsAgent(),
+    "fundamentals":        FundamentalsAgent(),
+    "pattern_analysis":    PatternAnalysisAgent(),
+    "sentiment":           SentimentAgent(),
+    "policy_regulatory":   PolicyRegulatoryAgent(),
+    "competitive_intel":   CompetitiveIntelAgent(),
+    "risk_macro":          RiskMacroAgent(),
+    "valuation_catalyst":  ValuationCatalystAgent(),
 }
 
 
@@ -67,7 +68,7 @@ class AutomobileAgentOrchestrator:
 
     Example
     -------
-    >>> from agents.orchestrator import AutomobileAgentOrchestrator
+    >>> from core.pipeline.orchestrator import AutomobileAgentOrchestrator
     >>> report = AutomobileAgentOrchestrator().analyse("MARUTI")
     >>> print(report.verdict, report.final_score)
     """
@@ -133,6 +134,13 @@ class AutomobileAgentOrchestrator:
             errors=errors,
         )
         log_run_api_usage(run_id, query.ticker, api_snapshot)
+        log_analysis(
+            report=report,
+            run_id=run_id,
+            duration_seconds=pipeline_run.duration_seconds,
+            model=settings.LLM_MODEL,
+            agent_outputs=agent_outputs,
+        )
         logger.info(
             "[Orchestrator] Async run %s complete in %.1fs – verdict=%s score=%.3f",
             run_id,
@@ -203,6 +211,13 @@ class AutomobileAgentOrchestrator:
             errors=errors,
         )
         log_run_api_usage(run_id, query.ticker, api_snapshot)
+        log_analysis(
+            report=report,
+            run_id=run_id,
+            duration_seconds=pipeline_run.duration_seconds,
+            model=settings.LLM_MODEL,
+            agent_outputs=agent_outputs,
+        )
         logger.info(
             "[Orchestrator] Run %s complete in %.1fs – verdict=%s score=%.3f",
             run_id,

@@ -22,7 +22,7 @@ from unittest.mock import MagicMock, patch, call
 
 import pytest
 
-from models.schemas import FinalReport, WeightedAgentScore
+from core.schemas.pipeline import FinalReport, WeightedAgentScore
 
 
 # ---------------------------------------------------------------------------
@@ -51,7 +51,7 @@ def _make_report(
 @pytest.fixture
 def db_store(tmp_path):
     """ScoreStore backed by a temp SQLite file."""
-    from tools.score_store import ScoreStore
+    from services.data.stores.score_store import ScoreStore
     return ScoreStore(db_path=str(tmp_path / "test_scores.db"))
 
 
@@ -108,7 +108,7 @@ class TestScoreStore:
         assert db_store.get_verdict_changed("MARUTI") is False
 
     def test_prune_keeps_max_rows(self, tmp_path):
-        from tools.score_store import ScoreStore
+        from services.data.stores.score_store import ScoreStore
         from config import settings
         store = ScoreStore(db_path=str(tmp_path / "prune_test.db"))
 
@@ -147,7 +147,7 @@ class TestScoreStore:
 
 class TestAlertManager:
     def setup_method(self):
-        from tools.alerting import AlertManager
+        from services.clients.alerting import AlertManager
         self.mgr = AlertManager()
 
     def _make_store(self, delta=None, verdict_changed=False, previous=None):
@@ -201,7 +201,7 @@ class TestAlertManager:
         assert len(verdict_alerts) == 1
 
     def test_console_channel_prints(self, capsys):
-        from tools.alerting import Alert
+        from services.clients.alerting import Alert
         alert = Alert(ticker="MARUTI", alert_type="score_change",
                       message="Score up 0.15", severity="warning")
         self.mgr._send_console(alert)
@@ -209,9 +209,9 @@ class TestAlertManager:
         assert "MARUTI" in captured.out
 
     def test_file_channel_writes(self, tmp_path):
-        from tools.alerting import Alert
+        from services.clients.alerting import Alert
         log_file = tmp_path / "alerts.log"
-        with patch("tools.alerting.settings.ALERT_LOG_FILE", str(log_file)):
+        with patch("services.clients.alerting.settings.ALERT_LOG_FILE", str(log_file)):
             alert = Alert(ticker="MARUTI", alert_type="verdict_change",
                           message="BUY → NEUTRAL", severity="warning")
             self.mgr._send_file(alert)
@@ -219,20 +219,20 @@ class TestAlertManager:
         content = log_file.read_text()
         assert "MARUTI" in content
 
-    @patch("tools.alerting.requests.post")
+    @patch("services.clients.alerting.requests.post")
     def test_webhook_channel_posts(self, mock_post):
-        from tools.alerting import Alert
+        from services.clients.alerting import Alert
         mock_post.return_value.raise_for_status = MagicMock()
-        with patch("tools.alerting.settings.ALERT_WEBHOOK_URL", "https://hooks.example.com"):
+        with patch("services.clients.alerting.settings.ALERT_WEBHOOK_URL", "https://hooks.example.com"):
             alert = Alert(ticker="MARUTI", alert_type="score_change",
                           message="Score up", severity="info")
             self.mgr._send_webhook(alert)
         mock_post.assert_called_once()
 
-    @patch("tools.alerting.requests.post")
+    @patch("services.clients.alerting.requests.post")
     def test_webhook_skipped_when_no_url(self, mock_post):
-        from tools.alerting import Alert
-        with patch("tools.alerting.settings.ALERT_WEBHOOK_URL", ""):
+        from services.clients.alerting import Alert
+        with patch("services.clients.alerting.settings.ALERT_WEBHOOK_URL", ""):
             alert = Alert(ticker="MARUTI", alert_type="score_change",
                           message="Score up", severity="info")
             self.mgr._send_webhook(alert)
@@ -244,14 +244,14 @@ class TestAlertManager:
 # ---------------------------------------------------------------------------
 
 class TestAutomobileScheduler:
-    @patch("agents.orchestrator.AutomobileAgentOrchestrator")
-    @patch("tools.score_store.ScoreStore")
-    @patch("tools.alerting.AlertManager")
+    @patch("core.pipeline.orchestrator.AutomobileAgentOrchestrator")
+    @patch("services.data.stores.score_store.ScoreStore")
+    @patch("services.clients.alerting.AlertManager")
     @patch("apscheduler.schedulers.blocking.BlockingScheduler")
     def test_run_now_calls_orchestrator_for_each_ticker(
         self, mock_sched_cls, mock_alert_cls, mock_store_cls, mock_orch_cls
     ):
-        from tools.scheduler import AutomobileScheduler
+        from services.scheduler.python.scheduler import AutomobileScheduler
 
         mock_store = MagicMock()
         mock_store_cls.return_value = mock_store
@@ -264,19 +264,19 @@ class TestAutomobileScheduler:
         mock_orch_cls.return_value = mock_orch
         mock_orch.analyse.return_value = _make_report("MARUTI", 0.70)
 
-        with patch("tools.scheduler.settings.SCHEDULER_TICKERS", ["MARUTI", "TATAMOTORS"]):
+        with patch("services.scheduler.python.scheduler.settings.SCHEDULER_TICKERS", ["MARUTI", "TATAMOTORS"]):
             sched = AutomobileScheduler()
             sched.run_now(["MARUTI"])
 
         assert mock_orch.analyse.call_count == 1
 
-    @patch("tools.score_store.ScoreStore")
-    @patch("tools.alerting.AlertManager")
+    @patch("services.data.stores.score_store.ScoreStore")
+    @patch("services.clients.alerting.AlertManager")
     @patch("apscheduler.schedulers.blocking.BlockingScheduler")
     def test_status_has_required_keys(
         self, mock_sched_cls, mock_alert_cls, mock_store_cls
     ):
-        from tools.scheduler import AutomobileScheduler
+        from services.scheduler.python.scheduler import AutomobileScheduler
 
         mock_store = MagicMock()
         mock_store.total_runs.return_value = 5

@@ -12,7 +12,8 @@ What is tested:
 """
 
 import pytest
-from config import settings, rag_config
+from config import settings
+from intelligence.rag import config as rag_config
 
 
 class TestAgentWeights:
@@ -20,11 +21,11 @@ class TestAgentWeights:
         total = sum(settings.AGENT_WEIGHTS.values())
         assert abs(total - 1.0) < 1e-6, f"Weights sum to {total}, not 1.0"
 
-    def test_all_eight_agents_have_weights(self):
+    def test_all_nine_agents_have_weights(self):
         expected = {
             "sales_demand", "raw_materials", "fundamentals",
             "pattern_analysis", "sentiment", "policy_regulatory",
-            "competitive_intel", "risk_macro",
+            "competitive_intel", "risk_macro", "valuation_catalyst",
         }
         assert set(settings.AGENT_WEIGHTS.keys()) == expected
 

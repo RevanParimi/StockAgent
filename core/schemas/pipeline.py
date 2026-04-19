@@ -33,15 +33,6 @@ class StockQuery(BaseModel):
 # Per-agent sub-scores (shared structure)
 # ---------------------------------------------------------------------------
 
-class SubScores(BaseModel):
-    """Generic 5-dimension sub-score container."""
-    dim1: float = Field(ge=0.0, le=1.0)
-    dim2: float = Field(ge=0.0, le=1.0)
-    dim3: float = Field(ge=0.0, le=1.0)
-    dim4: float = Field(ge=0.0, le=1.0)
-    dim5: float = Field(ge=0.0, le=1.0)
-
-
 class SalesDemandSubScores(BaseModel):
     fada_siam_dispatch: float = Field(ge=0.0, le=1.0)
     ev_segment_vahan: float = Field(ge=0.0, le=1.0)
@@ -112,6 +103,14 @@ class CompetitiveIntelSubScores(BaseModel):
     jv_acquisitions: float = Field(ge=0.0, le=1.0)
     adas_safety_ratings: float = Field(ge=0.0, le=1.0)
     competitive_position: float = Field(ge=0.0, le=1.0)
+
+
+class ValuationCatalystSubScores(BaseModel):
+    pe_discount_vs_history: float = Field(ge=0.0, le=1.0)
+    pe_discount_vs_peers: float = Field(ge=0.0, le=1.0)
+    discount_reason_clarity: float = Field(ge=0.0, le=1.0)
+    catalyst_strength: float = Field(ge=0.0, le=1.0)
+    price_target_confidence: float = Field(ge=0.0, le=1.0)
 
 
 # ---------------------------------------------------------------------------
@@ -205,7 +204,7 @@ class FinalReport(BaseModel):
     investment_thesis: str = ""
     report_date: str = ""
 
-    # Valuation fields (populated from valuation_catalyst agent — Gap 3)
+    # Valuation fields (populated from valuation_catalyst agent)
     price_target: float | None = None
     recovery_timeline_quarters: int | None = None
     undervalued_by_pct: float | None = None

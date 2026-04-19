@@ -165,8 +165,8 @@ def _micro_search_loop() -> None:
         At 5 tickers/day across 3 sectors: 3 × 5 × 3 sectors × 22 days = 990 calls/month saved
     """
     from config import settings
-    from tools.news_fetcher import fetch_news_context
-    from tools.macro_cache import set_macro_cache
+    from services.data.fetchers.news import fetch_news_context
+    from services.data.cache.macro_cache import set_macro_cache
 
     n = settings.MICRO_QUERIES_PER_RUN
     interval = (24 * 3600) / settings.MICRO_CYCLES_PER_DAY
@@ -184,7 +184,8 @@ def _micro_search_loop() -> None:
         for sector, queries in _SECTOR_MACRO_QUERIES.items():
             try:
                 _log.info("[micro_loop] Fetching %s macro context...", sector)
-                text = fetch_news_context(queries[:n], max_queries=n)
+                key = settings.get_serper_key(sector)
+                text = fetch_news_context(queries[:n], max_queries=n, api_key=key)
                 set_macro_cache(sector, text)
                 _log.info("[micro_loop] %s cache refreshed (%d chars)", sector, len(text))
             except Exception as exc:
@@ -283,7 +284,7 @@ def main() -> None:
         time.sleep(2)
 
     # Lazy import here so logging is configured first
-    from agents.orchestrator import AutomobileAgentOrchestrator
+    from core.pipeline.orchestrator import AutomobileAgentOrchestrator
 
     logger = logging.getLogger(__name__)
     logger.info("Starting Automobile Agent for: %s", args.ticker)

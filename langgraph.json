@@ -1,10 +1,10 @@
 {
   "dependencies": ["."],
   "graphs": {
-    "automobile":       "./graphs/automobile/graph.py:graph",
-    "banking_bfsi":     "./graphs/banking_bfsi/graph.py:graph",
-    "it_sector":        "./graphs/it_sector/graph.py:graph",
-    "renewable_energy": "./graphs/renewable_energy/graph.py:graph"
+    "automobile":       "./core/sectors/automobile/graph.py:graph",
+    "banking_bfsi":     "./core/sectors/banking/graph.py:graph",
+    "it_sector":        "./core/sectors/it/graph.py:graph",
+    "renewable_energy": "./core/sectors/renewable/graph.py:graph"
   },
   "env": ".env"
 }

@@ -2,8 +2,9 @@
 tests/conftest.py
 =================
 Shared pytest fixtures used across all test modules.
-Covers all 8 agents: sales_demand, raw_materials, fundamentals,
-pattern_analysis, sentiment, policy_regulatory, competitive_intel, risk_macro.
+Covers all 9 agents: sales_demand, raw_materials, fundamentals,
+pattern_analysis, sentiment, policy_regulatory, competitive_intel, risk_macro,
+valuation_catalyst.
 """
 
 from __future__ import annotations
@@ -14,7 +15,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from models.schemas import (
+from core.schemas.pipeline import (
     AgentOutput,
     CompetitiveIntelOutput,
     CompetitiveIntelSubScores,
@@ -32,6 +33,8 @@ from models.schemas import (
     SalesDemandSubScores,
     SentimentOutput,
     SentimentSubScores,
+    ValuationCatalystOutput,
+    ValuationCatalystSubScores,
     StockQuery,
     WeightedAgentScore,
     FinalReport,
@@ -209,7 +212,7 @@ def make_risk_macro_json(score: float = 0.58) -> str:
             "commodity_prices": 0.60,
             "rbi_repo_emi_impact": 0.65,
             "emission_policy_risk": 0.58,
-            "geopolitical_china_risk": 0.50,
+            "global_geopolitical_risk": 0.50,
         },
         "key_positives": ["Stable INR", "Commodity prices softening"],
         "key_risks": ["China semiconductor risk", "Elevated crude oil"],
@@ -270,7 +273,7 @@ def mock_sales_demand_output() -> SalesDemandOutput:
 
 @pytest.fixture
 def mock_all_agent_outputs(mock_sales_demand_output) -> dict:
-    """All 8 agent outputs with realistic scores for MARUTI."""
+    """All 9 agent outputs with realistic scores for MARUTI."""
     return {
         "sales_demand": mock_sales_demand_output,
         "raw_materials": RawMaterialsOutput(
@@ -326,8 +329,22 @@ def mock_all_agent_outputs(mock_sales_demand_output) -> dict:
             sub_scores=RiskMacroSubScores(
                 inr_usd_crude_exposure=0.55, commodity_prices=0.60,
                 rbi_repo_emi_impact=0.65, emission_policy_risk=0.58,
-                geopolitical_china_risk=0.50,
+                global_geopolitical_risk=0.50,
             ),
+        ),
+        "valuation_catalyst": ValuationCatalystOutput(
+            ticker="MARUTI", overall_score=0.72,
+            sub_scores=ValuationCatalystSubScores(
+                pe_discount_vs_history=0.75, pe_discount_vs_peers=0.70,
+                discount_reason_clarity=0.80, catalyst_strength=0.68,
+                price_target_confidence=0.65,
+            ),
+            fair_value_estimate=11500.0,
+            current_discount_pct=-18.5,
+            discount_reason="MACRO_SHOCK",
+            recovery_catalysts=["Oil price normalisation", "FII return to EMs", "Strong Q1 results"],
+            price_target=11000.0,
+            recovery_timeline_quarters=3,
         ),
     }
 

@@ -29,6 +29,33 @@ from tools.run_logger import log_llm_call
 
 logger = logging.getLogger(__name__)
 
+# Appended to every system prompt when real data is available.
+# Prevents the LLM from filling gaps with training-knowledge hallucinations.
+_DATA_ONLY_INSTRUCTION = (
+    "\n\nCRITICAL: Score ONLY from the context data provided. "
+    "Do NOT use your training knowledge to fill any gaps. "
+    "If a sub-score dimension has no data in the context, return 0.5 for that dimension "
+    "and add 'no real-time data for this dimension' to key_risks. "
+    "Fabricating facts from training knowledge is strictly prohibited."
+)
+
+
+def _date_instruction() -> str:
+    """
+    Returns a date-awareness block injected into every agent system prompt.
+    Converts a runtime today's date so the LLM knows exactly what is fresh.
+    """
+    from datetime import date
+    today = date.today().isoformat()
+    return (
+        f"\n\nDATA FRESHNESS RULES (today is {today}):\n"
+        "Every news/search result in the context has a [Date: YYYY-MM-DD] tag.\n"
+        "RULE 1: When two results contradict each other, trust the one with the more recent date.\n"
+        "RULE 2: Any result with a date older than 14 days — use as background context only, "
+        "not as primary evidence for scoring.\n"
+        "RULE 3: Set data_freshness in your output to the date of the most recent result you used."
+    )
+
 
 class BaseAgent(ABC):
     """
@@ -61,8 +88,15 @@ class BaseAgent(ABC):
         Synchronous entry point.  Used by CLI, scheduler, and sync tests.
         """
         logger.info("[%s] Starting analysis for %s", self.agent_name, query.ticker)
-        context = self._gather_context(query)
+        context, has_real_data = self._gather_context(query)
+        if not has_real_data:
+            logger.warning(
+                "[%s] No real-time data for %s — skipping LLM, returning neutral 0.5",
+                self.agent_name, query.ticker,
+            )
+            return self._no_data_output(query.ticker)
         system_prompt, user_prompt = self._build_prompt(query, context)
+        system_prompt += _DATA_ONLY_INSTRUCTION + _date_instruction()
         t0 = time.time()
         raw = self._call_llm_with_retry(system_prompt, user_prompt)
         duration_ms = (time.time() - t0) * 1000
@@ -91,8 +125,15 @@ class BaseAgent(ABC):
         since those libraries are synchronous.
         """
         logger.info("[%s] Starting async analysis for %s", self.agent_name, query.ticker)
-        context = await asyncio.to_thread(self._gather_context, query)
+        context, has_real_data = await asyncio.to_thread(self._gather_context, query)
+        if not has_real_data:
+            logger.warning(
+                "[%s] No real-time data for %s — skipping LLM, returning neutral 0.5",
+                self.agent_name, query.ticker,
+            )
+            return self._no_data_output(query.ticker)
         system_prompt, user_prompt = self._build_prompt(query, context)
+        system_prompt += _DATA_ONLY_INSTRUCTION + _date_instruction()
         t0 = time.time()
         raw = await self._call_llm_async(system_prompt, user_prompt)
         duration_ms = (time.time() - t0) * 1000
@@ -290,44 +331,47 @@ class BaseAgent(ABC):
     # Context gathering — Phase 2 live data + Phase 3 RAG
     # ------------------------------------------------------------------
 
-    def _gather_context(self, query: StockQuery) -> str:
+    def _gather_context(self, query: StockQuery) -> tuple[str, bool]:
         """
         Assemble context string for the prompt.
 
+        Returns (context_str, has_real_data).
+        has_real_data=False means no live data was fetched — caller must NOT
+        invoke the LLM to prevent training-knowledge hallucinations.
+
         Priority order:
           1. RAG (if RAG_ENABLED=true) — retrieves from vector store
-          2. Live data (Phase 2) — yfinance + news APIs via ContextBuilder
-          3. Minimal stub fallback if both fail
+          2. Live data — yfinance + news APIs via ContextBuilder
+          3. Stub — no real data; signals caller to skip LLM
         """
         from config import rag_config
 
         if rag_config.RAG_ENABLED:
             try:
-                return self._rag_retrieve(query)
+                return self._rag_retrieve(query), True
             except Exception as exc:
                 logger.warning(
                     "[%s] RAG retrieval failed, falling back to live data: %s",
                     self.agent_name, exc,
                 )
 
-        # Phase 2: live data via ContextBuilder
+        # Live data via ContextBuilder
         try:
             from tools.context_builder import ContextBuilder
-            context = ContextBuilder().build(self.agent_name, query, sector=self.sector)
-            if context:
-                return context
-        except Exception as exc:
-            logger.warning(
-                "[%s] ContextBuilder failed, using minimal stub: %s",
-                self.agent_name, exc,
+            context, has_real_data = ContextBuilder().build(
+                self.agent_name, query, sector=self.sector
             )
+            if has_real_data and context:
+                return context, True
+        except Exception as exc:
+            logger.warning("[%s] ContextBuilder failed: %s", self.agent_name, exc)
 
-        # Fallback stub
-        return (
+        # No real data — return stub so caller skips LLM
+        stub = (
             f"Stock: {query.ticker} | Company: {query.company_name} | "
-            f"Exchange: {query.exchange} | Analysis date: {query.analysis_date}\n"
-            "Note: Live data unavailable. LLM will use training knowledge."
+            f"Exchange: {query.exchange} | Analysis date: {query.analysis_date}"
         )
+        return stub, False
 
     def _rag_retrieve(self, query: StockQuery) -> str:
         """
@@ -373,6 +417,22 @@ class BaseAgent(ABC):
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
+
+    def _no_data_output(self, ticker: str) -> AgentOutput:
+        """Neutral output returned when no real-time data is available. No LLM call made."""
+        return AgentOutput(
+            agent=self.agent_name,
+            ticker=ticker,
+            overall_score=0.5,
+            key_positives=[],
+            key_risks=["No real-time data available — score is neutral and excluded from confidence weighting"],
+            summary=(
+                f"[DATA UNAVAILABLE] {self.agent_name} could not fetch real-time data for {ticker}. "
+                "Score held at neutral 0.5 to avoid distorting weighted analysis with stale LLM knowledge."
+            ),
+            error="no_real_time_data",
+            data_freshness="unavailable",
+        )
 
     @staticmethod
     def _clamp(value: float, lo: float = 0.0, hi: float = 1.0) -> float:

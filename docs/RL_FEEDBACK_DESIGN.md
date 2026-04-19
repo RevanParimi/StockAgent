@@ -1,5 +1,8 @@
 # Adaptive Prediction Loop — RL Feedback Layer Design
 
+> ⚠️ **PATH NOTE:** Real implementations are under `intelligence/rl/` not the paths referenced below.
+> See `docs/CODEBASE.md` — Intelligence Layer section for current file locations.
+
 > Applies to all four sector graphs: **Automobile · Banking/BFSI · IT · Renewable Energy**
 > Each sector and each ticker maintains its own independent memory — weights learned for HDFCBANK do not affect TCS.
 

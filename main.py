@@ -303,7 +303,8 @@ def main() -> None:
     else:
         content = _format_json(report)
 
-    print(content)
+    sys.stdout.buffer.write((content + "\n").encode("utf-8", errors="replace"))
+    sys.stdout.buffer.flush()
 
     if args.save:
         path = _save_report(content, report.ticker, args.output)

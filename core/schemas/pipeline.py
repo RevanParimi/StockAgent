@@ -79,7 +79,15 @@ class RiskMacroSubScores(BaseModel):
     commodity_prices: float = Field(ge=0.0, le=1.0)
     rbi_repo_emi_impact: float = Field(ge=0.0, le=1.0)
     emission_policy_risk: float = Field(ge=0.0, le=1.0)
-    geopolitical_china_risk: float = Field(ge=0.0, le=1.0)
+    global_geopolitical_risk: float = Field(ge=0.0, le=1.0)
+
+
+class ValuationCatalystSubScores(BaseModel):
+    pe_discount_vs_peers: float = Field(ge=0.0, le=1.0)
+    technical_trend: float = Field(ge=0.0, le=1.0)
+    mean_reversion_potential: float = Field(ge=0.0, le=1.0)
+    support_zone_strength: float = Field(ge=0.0, le=1.0)
+    recovery_signal_confidence: float = Field(ge=0.0, le=1.0)
 
 
 class RawMaterialsSubScores(BaseModel):
@@ -163,6 +171,17 @@ class CompetitiveIntelOutput(AgentOutput):
     sub_scores: CompetitiveIntelSubScores | None = None
 
 
+class ValuationCatalystOutput(AgentOutput):
+    agent: str = "valuation_catalyst"
+    sub_scores: ValuationCatalystSubScores | None = None
+    fair_value_estimate: float | None = None
+    current_discount_pct: float | None = None
+    discount_reason: str | None = None
+    recovery_catalysts: list[str] = Field(default_factory=list)
+    price_target: float | None = None
+    recovery_timeline_quarters: int | None = None
+
+
 # ---------------------------------------------------------------------------
 # Signal Aggregator output
 # ---------------------------------------------------------------------------
@@ -185,6 +204,13 @@ class FinalReport(BaseModel):
     top_risks: list[str] = Field(default_factory=list)
     investment_thesis: str = ""
     report_date: str = ""
+
+    # Valuation fields (populated from valuation_catalyst agent — Gap 3)
+    price_target: float | None = None
+    recovery_timeline_quarters: int | None = None
+    undervalued_by_pct: float | None = None
+    discount_reason: str | None = None
+    recovery_catalysts: list[str] = Field(default_factory=list)
 
     # Raw agent outputs attached for drill-down
     agent_outputs: dict[str, Any] = Field(default_factory=dict, exclude=False)

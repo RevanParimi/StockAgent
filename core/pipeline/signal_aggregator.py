@@ -180,6 +180,15 @@ class SignalAggregator:
     ) -> FinalReport:
         try:
             data = json.loads(raw)
+
+            # Extract valuation fields from the valuation_catalyst agent output (Gap 3)
+            vc = agent_outputs.get("valuation_catalyst")
+            price_target = getattr(vc, "price_target", None)
+            recovery_quarters = getattr(vc, "recovery_timeline_quarters", None)
+            current_discount = getattr(vc, "current_discount_pct", None)
+            discount_reason = getattr(vc, "discount_reason", None)
+            recovery_catalysts = getattr(vc, "recovery_catalysts", []) or []
+
             return FinalReport(
                 ticker=ticker,
                 company_name=company_name,
@@ -191,6 +200,11 @@ class SignalAggregator:
                 top_risks=data.get("top_risks", []),
                 investment_thesis=data.get("investment_thesis", ""),
                 report_date=data.get("report_date", str(date.today())),
+                price_target=price_target,
+                recovery_timeline_quarters=recovery_quarters,
+                undervalued_by_pct=current_discount,
+                discount_reason=discount_reason,
+                recovery_catalysts=recovery_catalysts,
                 agent_outputs={k: v.model_dump() for k, v in agent_outputs.items()},
             )
         except Exception as exc:

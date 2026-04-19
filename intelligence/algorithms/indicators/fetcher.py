@@ -176,8 +176,8 @@ def compute_technicals(df: pd.DataFrame) -> dict:
 
     close = df["Close"].squeeze()
 
-    yr_high = float(df["Close"].tail(252).max())
-    yr_low = float(df["Close"].tail(252).min())
+    yr_high = float(close.tail(252).max())
+    yr_low = float(close.tail(252).min())
     current = float(close.iloc[-1])
 
     return {
@@ -254,6 +254,248 @@ def get_peer_correlation(
     except Exception as exc:
         logger.error("[yfinance] Correlation failed for %s: %s", yf_ticker, exc)
         return {"correlation": 0.0, "beta": 1.0}
+
+
+# ---------------------------------------------------------------------------
+# Valuation context — deep pattern data, no analyst opinion
+# ---------------------------------------------------------------------------
+
+def get_valuation_context(ticker: str, peer_tickers: list[str] | None = None) -> str:
+    """
+    Build a rich pattern + valuation context for the valuation_catalyst agent.
+
+    Priority: yfinance (structured, free) → Serper (text snippets, API call) for each
+    section that yfinance fails to provide.  No analyst opinions — Serper is used only
+    to recover raw price/ratio facts when yfinance returns nothing.
+
+    Returns a formatted string for prompt injection.
+    """
+    import yfinance as yf
+    from datetime import date as _date
+
+    today = _date.today()
+    yf_ticker = _nse_ticker(ticker)
+
+    # --- 2-year price history for trend analysis ---
+    df = get_price_history(ticker, years=2)
+    lines: list[str] = [f"=== Self-Derived Valuation Data: {ticker} ==="]
+    price_history_available = not df.empty and len(df) >= 30
+
+    if not price_history_available:
+        lines.append("[yfinance] Price history unavailable — falling back to Serper for price data.")
+        try:
+            from services.data.fetchers.news import fetch_news_context
+            fallback = fetch_news_context([
+                f"{ticker} NSE current stock price 52 week high low {today.year}",
+                f"{ticker} share price trend momentum {today.strftime('%B')} {today.year}",
+                f"{ticker} NSE stock performance chart support resistance {today.year}",
+            ], max_queries=3)
+            lines.append(f"[Serper fallback — price/technical]\n{fallback}")
+        except Exception as exc:
+            lines.append(f"Serper price fallback also failed: {exc}")
+    else:
+        close = df["Close"].squeeze()
+        volume = df["Volume"].squeeze() if "Volume" in df.columns else None
+
+        current = float(close.iloc[-1])
+        ath_2yr = float(close.max())
+        atl_2yr = float(close.min())
+
+        # Multi-timeframe price anchors
+        p1m  = float(close.iloc[-21])  if len(close) >= 21  else current
+        p3m  = float(close.iloc[-63])  if len(close) >= 63  else current
+        p6m  = float(close.iloc[-126]) if len(close) >= 126 else current
+        p1y  = float(close.iloc[-252]) if len(close) >= 252 else current
+
+        lines.append(
+            f"Current: {current:.2f} | 1M ago: {p1m:.2f} ({(current/p1m-1)*100:+.1f}%) | "
+            f"3M ago: {p3m:.2f} ({(current/p3m-1)*100:+.1f}%) | "
+            f"6M ago: {p6m:.2f} ({(current/p6m-1)*100:+.1f}%) | "
+            f"1Y ago: {p1y:.2f} ({(current/p1y-1)*100:+.1f}%)"
+        )
+        lines.append(
+            f"2Y High: {ath_2yr:.2f} ({(current/ath_2yr-1)*100:+.1f}% from ATH) | "
+            f"2Y Low: {atl_2yr:.2f} ({(current/atl_2yr-1)*100:+.1f}% from ATL)"
+        )
+
+        # Moving averages and their slopes
+        ma20  = float(close.rolling(20).mean().iloc[-1])
+        ma50  = float(close.rolling(50).mean().iloc[-1])
+        ma200 = float(close.rolling(200).mean().iloc[-1]) if len(close) >= 200 else None
+
+        # Slope: % change in MA over last 20 bars — direction of trend
+        ma50_20d_ago  = float(close.rolling(50).mean().iloc[-21]) if len(close) >= 70  else ma50
+        ma200_20d_ago = float(close.rolling(200).mean().iloc[-21]) if len(close) >= 220 else (ma200 or ma50)
+
+        ma50_slope  = (ma50  - ma50_20d_ago)  / ma50_20d_ago  * 100
+        ma200_slope = ((ma200 or ma50) - ma200_20d_ago) / ma200_20d_ago * 100 if ma200 else 0.0
+
+        ma200_str = f"{ma200:.2f} (slope {ma200_slope:+.2f}%/20d)" if ma200 else "N/A (<200 bars)"
+        lines.append(
+            f"MA20: {ma20:.2f} | MA50: {ma50:.2f} (slope {ma50_slope:+.2f}%/20d) | "
+            f"MA200: {ma200_str}"
+        )
+        lines.append(
+            f"Price vs MA20: {(current/ma20-1)*100:+.1f}% | "
+            f"Price vs MA50: {(current/ma50-1)*100:+.1f}% | "
+            + (f"Price vs MA200: {(current/(ma200)-1)*100:+.1f}%" if ma200 else "Price vs MA200: N/A")
+        )
+
+        # Golden/death cross
+        if ma200:
+            cross = "GOLDEN (MA50>MA200, bullish)" if ma50 > ma200 else "DEATH (MA50<MA200, bearish)"
+            lines.append(f"MA Cross: {cross}")
+
+        # RSI, MACD, BB
+        rsi = round(compute_rsi(close), 2)
+        macd = compute_macd(close)
+        bb = compute_bollinger_bands(close)
+        sr = compute_support_resistance(close)
+
+        lines.append(
+            f"RSI(14): {rsi} {'(oversold<30)' if rsi < 30 else '(overbought>70)' if rsi > 70 else '(neutral)'} | "
+            f"MACD: {macd['macd']:.3f} / Signal: {macd['signal']:.3f} | "
+            f"Histogram: {macd['histogram']:.3f} {'(bullish cross)' if macd['bullish_crossover'] else ''}"
+        )
+        lines.append(
+            f"Bollinger: Upper={bb['upper']:.2f} Mid={bb['middle']:.2f} Lower={bb['lower']:.2f} "
+            f"| %B={bb['pct_b']:.3f} {'(near upper band)' if bb['pct_b'] > 0.8 else '(near lower band)' if bb['pct_b'] < 0.2 else ''}"
+        )
+        lines.append(
+            f"Support: {sr['support']:.2f} ({sr['dist_to_support_pct']:+.1f}%) | "
+            f"Resistance: {sr['resistance']:.2f} ({sr['dist_to_resistance_pct']:+.1f}%)"
+        )
+
+        # Volume trend: 20-day avg vs 90-day avg
+        if volume is not None and len(volume) >= 90:
+            vol_20d = float(volume.tail(20).mean())
+            vol_90d = float(volume.tail(90).mean())
+            vol_trend = (vol_20d / vol_90d - 1) * 100
+            lines.append(
+                f"Volume trend: 20d avg {vol_20d:,.0f} vs 90d avg {vol_90d:,.0f} "
+                f"({vol_trend:+.1f}%) {'(rising volume = confirmation)' if vol_trend > 10 else ''}"
+            )
+
+        # Trend channel estimate: linear regression on 6-month close
+        try:
+            y = close.tail(126).values.astype(float)
+            x = np.arange(len(y))
+            slope, intercept = np.polyfit(x, y, 1)
+            channel_proj_1q = intercept + slope * (len(y) + 63)   # ~1 quarter forward
+            channel_proj_2q = intercept + slope * (len(y) + 126)
+            lines.append(
+                f"6M Linear trend slope: {slope:+.3f}/day | "
+                f"Channel projection: 1Q={channel_proj_1q:.2f}  2Q={channel_proj_2q:.2f}"
+            )
+        except Exception:
+            pass
+
+    # --- Fundamental valuation ratios (yfinance .info) ---
+    lines.append("")
+    lines.append("=== Fundamental Ratios ===")
+    fundamentals_available = False
+    eps_ttm_val: float | None = None
+    try:
+        info = yf.Ticker(yf_ticker).info or {}
+        trailing_pe  = info.get("trailingPE")
+        forward_pe   = info.get("forwardPE")
+        pb           = info.get("priceToBook")
+        eps_ttm      = info.get("trailingEps")
+        eps_fwd      = info.get("forwardEps")
+        mktcap       = info.get("marketCap", 0)
+        ev_ebitda    = info.get("enterpriseToEbitda")
+        price_sales  = info.get("priceToSalesTrailingTwelveMonths")
+
+        fundamentals_available = any(v is not None for v in [trailing_pe, eps_ttm, pb, price_sales])
+        if fundamentals_available:
+            lines.append(
+                f"Trailing P/E: {round(trailing_pe,2) if trailing_pe else 'N/A'} | "
+                f"Forward P/E: {round(forward_pe,2) if forward_pe else 'N/A'} | "
+                f"P/B: {round(pb,2) if pb else 'N/A'} | "
+                f"EV/EBITDA: {round(ev_ebitda,2) if ev_ebitda else 'N/A'} | "
+                f"P/S: {round(price_sales,2) if price_sales else 'N/A'}"
+            )
+            if eps_ttm:
+                eps_ttm_val = eps_ttm
+                lines.append(f"EPS (TTM): {eps_ttm:.2f} | EPS (Fwd): {eps_fwd or 'N/A'}")
+                if trailing_pe:
+                    lines.append(
+                        f"EPS-implied price at P/E 20: {eps_ttm*20:.2f} | "
+                        f"P/E 25: {eps_ttm*25:.2f} | P/E 30: {eps_ttm*30:.2f}"
+                    )
+            if mktcap:
+                lines.append(f"Market Cap: {mktcap/1e7:.0f} Cr")
+    except Exception as exc:
+        logger.warning("[valuation_context] yfinance fundamentals failed for %s: %s", ticker, exc)
+
+    if not fundamentals_available:
+        lines.append("[yfinance] Fundamentals unavailable — falling back to Serper for ratio data.")
+        try:
+            from services.data.fetchers.news import fetch_news_context
+            fallback = fetch_news_context([
+                f"{ticker} NSE PE ratio EPS earnings revenue {today.year}",
+                f"{ticker} P/E price to earnings market cap valuation {today.year}",
+            ], max_queries=2)
+            lines.append(f"[Serper fallback — fundamentals]\n{fallback}")
+        except Exception as exc:
+            lines.append(f"Serper fundamentals fallback also failed: {exc}")
+
+    # --- Peer P/E from yfinance (data-driven, no opinion) ---
+    if peer_tickers:
+        lines.append("")
+        lines.append("=== Peer Valuation (yfinance, no analyst input) ===")
+        peer_pes: list[float] = []
+        for peer in peer_tickers[:6]:
+            try:
+                p_info = yf.Ticker(_nse_ticker(peer)).info or {}
+                p_pe  = p_info.get("trailingPE")
+                p_pb  = p_info.get("priceToBook")
+                p_cur = p_info.get("currentPrice") or p_info.get("previousClose")
+                if p_pe:
+                    peer_pes.append(p_pe)
+                lines.append(
+                    f"  {peer}: Price={round(p_cur,2) if p_cur else 'N/A'} | "
+                    f"P/E={round(p_pe,1) if p_pe else 'N/A'} | "
+                    f"P/B={round(p_pb,2) if p_pb else 'N/A'}"
+                )
+            except Exception:
+                lines.append(f"  {peer}: data unavailable")
+
+        if peer_pes:
+            median_pe = float(np.median(peer_pes))
+            lines.append(f"Peer median P/E: {median_pe:.1f}")
+            if eps_ttm_val and eps_ttm_val > 0:
+                lines.append(
+                    f"Fair value at peer-median P/E ({median_pe:.1f}) = "
+                    f"{eps_ttm_val * median_pe:.2f}"
+                )
+        else:
+            lines.append("[yfinance] No peer P/E data — falling back to Serper for sector valuation.")
+            try:
+                from services.data.fetchers.news import fetch_news_context
+                fallback = fetch_news_context([
+                    f"Indian automobile EV sector PE ratio peer comparison NSE {today.year}",
+                    f"MARUTI TATAMOTORS HEROMOTOCO PE ratio valuation {today.year}",
+                ], max_queries=2)
+                lines.append(f"[Serper fallback — peer P/E]\n{fallback}")
+            except Exception as exc:
+                lines.append(f"Serper peer fallback also failed: {exc}")
+
+    # --- Seasonal pattern ---
+    if not df.empty:
+        seasonal = get_seasonal_pattern(df)
+        today_month = date.today().month
+        strong = [m for m, r in seasonal.items() if r > 1.5]
+        weak   = [m for m, r in seasonal.items() if r < -1.5]
+        cur_avg = seasonal.get(today_month)
+        lines.append("")
+        lines.append(
+            f"Seasonality: Historically strong months={strong} | Weak months={weak} | "
+            f"Current month avg return: {cur_avg:+.2f}%" if cur_avg is not None
+            else f"Seasonality: Historically strong={strong} | Weak={weak}"
+        )
+
+    return "\n".join(lines)
 
 
 # ---------------------------------------------------------------------------

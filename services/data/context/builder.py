@@ -27,7 +27,7 @@ class ContextBuilder:
     returns a single formatted context string for prompt injection.
     """
 
-    def build(self, agent_name: str, query: StockQuery, sector: str = "") -> str:
+    def build(self, agent_name: str, query: StockQuery, sector: str = "") -> tuple[str, bool]:
         """
         Build context for the given agent and stock query.
 
@@ -37,22 +37,34 @@ class ContextBuilder:
         query      : StockQuery
         sector     : str   e.g. "bfsi", "it", "re", "" (automobile/default)
 
+        Returns
+        -------
+        (context_str, has_real_data)
+            has_real_data=True  — a specialised fetcher ran and returned live data
+            has_real_data=False — no fetcher exists or fetcher raised; generic stub returned
+
         Routing order:
           1. _build_{sector}_{agent_name}  — sector-specific override
           2. _build_{agent_name}           — generic / automobile fallback
-          3. _build_generic               — minimal stub
+          3. _build_generic               — no fetcher; stub only
         """
         builder_fn = None
         if sector:
             builder_fn = getattr(self, f"_build_{sector}_{agent_name}", None)
         if builder_fn is None:
-            builder_fn = getattr(self, f"_build_{agent_name}", self._build_generic)
+            builder_fn = getattr(self, f"_build_{agent_name}", None)
+
+        if builder_fn is None:
+            logger.warning("[ContextBuilder] No fetcher for sector=%s agent=%s — returning stub",
+                           sector, agent_name)
+            return self._build_generic(query), False
+
         try:
-            return builder_fn(query)
+            return builder_fn(query), True
         except Exception as exc:
             logger.error("[ContextBuilder] Failed for sector=%s agent=%s ticker=%s: %s",
                          sector, agent_name, query.ticker, exc)
-            return self._build_generic(query)
+            return self._build_generic(query), False
 
     # ------------------------------------------------------------------
     # Per-agent context builders
@@ -238,6 +250,13 @@ class ContextBuilder:
             f"Date: {query.analysis_date}\n\n"
             f"{news}"
         )
+
+    def _build_valuation_catalyst(self, query: StockQuery) -> str:
+        from tools.yfinance_fetcher import get_valuation_context
+        from config import settings
+
+        peers = getattr(settings, "PEER_TICKERS", ["MARUTI", "TATAMOTORS", "M&M", "HEROMOTOCO", "BAJAJ-AUTO"])[:5]
+        return get_valuation_context(query.ticker, peer_tickers=peers)
 
     # ------------------------------------------------------------------
     # Banking & BFSI sector builders

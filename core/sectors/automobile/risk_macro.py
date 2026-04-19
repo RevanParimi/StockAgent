@@ -47,8 +47,9 @@ class RiskMacroAgent(BaseAgent):
                 commodity_prices=self._clamp(float(sub.get("commodity_prices", 0.5))),
                 rbi_repo_emi_impact=self._clamp(float(sub.get("rbi_repo_emi_impact", 0.5))),
                 emission_policy_risk=self._clamp(float(sub.get("emission_policy_risk", 0.5))),
-                geopolitical_china_risk=self._clamp(
-                    float(sub.get("geopolitical_china_risk", 0.5))
+                global_geopolitical_risk=self._clamp(
+                    float(sub.get("global_geopolitical_risk",
+                          sub.get("geopolitical_china_risk", 0.5)))
                 ),
             ),
             key_positives=data.get("key_positives", []),

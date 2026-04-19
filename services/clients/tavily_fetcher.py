@@ -26,6 +26,7 @@ from typing import Optional
 import requests
 
 from config import settings
+from services.data.stores.api_usage import record_call
 
 logger = logging.getLogger(__name__)
 
@@ -79,6 +80,7 @@ def search_tavily(
                 "url":     item.get("url", ""),
                 "score":   item.get("score", 0.0),
             })
+        record_call("tavily")
         return results
     except Exception as exc:
         logger.warning("[tavily] Search failed for '%s': %s", query, exc)

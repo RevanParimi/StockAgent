@@ -14,15 +14,49 @@ fetch_news_context(queries)   → str   (formatted for prompt injection)
 from __future__ import annotations
 
 import logging
+import re
 from datetime import date, timedelta
 
 import requests
 
 from config import settings
+from services.data.stores.api_usage import record_call
 
 logger = logging.getLogger(__name__)
 
 _SERPER_URL = "https://google.serper.dev/search"
+
+
+def _normalize_date(date_str: str) -> str:
+    """
+    Convert Serper's relative or formatted dates to absolute ISO YYYY-MM-DD.
+    Examples: "2 days ago" → "2026-04-17", "Apr 15, 2026" → "2026-04-15"
+    """
+    if not date_str:
+        return "date unknown"
+    today = date.today()
+    s = date_str.strip()
+
+    if re.search(r'\d+\s+(hour|minute|second)s?\s+ago', s, re.I):
+        return today.isoformat()
+
+    m = re.match(r'(\d+)\s+days?\s+ago', s, re.I)
+    if m:
+        return (today - timedelta(days=int(m.group(1)))).isoformat()
+
+    m = re.match(r'(\d+)\s+weeks?\s+ago', s, re.I)
+    if m:
+        return (today - timedelta(weeks=int(m.group(1)))).isoformat()
+
+    m = re.match(r'(\d+)\s+months?\s+ago', s, re.I)
+    if m:
+        return (today - timedelta(days=int(m.group(1)) * 30)).isoformat()
+
+    try:
+        from dateutil import parser as _dp
+        return _dp.parse(s).date().isoformat()
+    except Exception:
+        return s
 _NEWSAPI_URL = "https://newsapi.org/v2/everything"
 
 # Request timeout in seconds
@@ -64,6 +98,7 @@ def search_serper(query: str, n: int = settings.NEWS_ARTICLES_PER_QUERY) -> list
                 "link":    item.get("link", ""),
                 "date":    item.get("date", ""),
             })
+        record_call("serper")
         return results
     except Exception as exc:
         logger.warning("[news] Serper search failed for '%s': %s", query, exc)
@@ -146,7 +181,8 @@ def fetch_news_context(
         for r in results:
             title = r.get("title") or r.get("description", "")
             snippet = r.get("snippet") or r.get("description", "")
-            dt = r.get("date") or r.get("publishedAt", "")
-            lines.append(f"• [{dt}] {title}: {snippet}")
+            raw_dt = r.get("date") or r.get("publishedAt", "")
+            dt = _normalize_date(raw_dt)
+            lines.append(f"• [Date: {dt}] {title}: {snippet}")
 
     return "\n".join(lines) if lines else "No news data available."

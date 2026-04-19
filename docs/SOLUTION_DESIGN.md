@@ -1,9 +1,11 @@
 # Automobile Agent — Solution Design
 
+> ⚠️ **PATH NOTE:** All `agents/`, `models/`, `prompts/`, `tools/` paths in this document are
+> compatibility shims. Real implementations live under `core/`, `services/`, `config/`.
+> See `docs/CODEBASE.md` for the authoritative module map.
+> Agent count is now **9** (valuation_catalyst added). Orchestrator = `core/pipeline/orchestrator.py`.
+
 > Internal reference document.
-> Cross-reference: `E:\AI projects\StockAI\docs\SOLUTION_DESIGN.md` (IT sector reference).
-> This document uses the same section numbering as the StockAI doc for easy cross-referencing.
-> Sections 1–7 are the IT sector reference; Sections 8–9 are automobile-specific.
 
 ---
 

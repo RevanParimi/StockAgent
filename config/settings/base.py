@@ -75,14 +75,15 @@ RETRY_DELAY_SECONDS: float = float(os.getenv("RETRY_DELAY_SECONDS", "2.0"))
 # Signal Aggregator – agent weights (must sum to 1.0)
 # ---------------------------------------------------------------------------
 AGENT_WEIGHTS: dict[str, float] = {
-    "sales_demand":      0.18,
-    "raw_materials":     0.10,
-    "fundamentals":      0.20,
-    "pattern_analysis":  0.13,
-    "sentiment":         0.04,   # legacy — kept for backward compat
-    "policy_regulatory": 0.10,
-    "competitive_intel": 0.10,
-    "risk_macro":        0.15,
+    "sales_demand":        0.16,
+    "raw_materials":       0.09,
+    "fundamentals":        0.18,
+    "pattern_analysis":    0.12,
+    "sentiment":           0.04,
+    "policy_regulatory":   0.09,
+    "competitive_intel":   0.09,
+    "risk_macro":          0.13,
+    "valuation_catalyst":  0.10,
 }
 
 # Score thresholds for the final Automobile Stock Score

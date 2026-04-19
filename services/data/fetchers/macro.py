@@ -61,7 +61,12 @@ def _fetch_latest(yf_ticker: str) -> dict[str, float]:
         if df.empty or len(df) < 2:
             return {"current": 0.0, "change_3m_pct": 0.0}
 
-        close = df["Close"].squeeze()
+        close = df["Close"]
+        if hasattr(close, "columns"):   # DataFrame (multi-ticker or multi-level columns)
+            close = close.iloc[:, 0]
+        close = close.dropna().astype(float)
+        if len(close) < 2:
+            return {"current": 0.0, "change_3m_pct": 0.0}
         current = float(close.iloc[-1])
         start_val = float(close.iloc[0])
         change_pct = (current - start_val) / start_val * 100 if start_val != 0 else 0.0
@@ -102,8 +107,8 @@ def get_commodity_prices() -> dict[str, dict[str, float]]:
     for name, ticker in _MACRO_TICKERS.items():
         result[name] = _fetch_latest(ticker)
 
-    # Try MCX rubber (RBc1 or RUBBER.MCX) — skip gracefully if unavailable
-    rubber = _fetch_latest("RBc1")
+    # Rubber futures (TOCOM proxy) — skip gracefully if unavailable
+    rubber = _fetch_latest(settings.RUBBER_TICKER)
     if rubber["current"] > 0:
         result["rubber_futures"] = rubber
 

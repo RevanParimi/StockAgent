@@ -32,6 +32,7 @@ from models.schemas import AgentOutput, FinalReport, PipelineRun, StockQuery
 from prompts import orchestrator as P
 from tools.llm_client import get_llm_client
 from tools.run_logger import log_llm_call, log_run_summary
+from services.data.stores.api_usage import log_run_api_usage, snapshot_usage
 
 from agents.sales_demand import SalesDemandAgent
 from agents.raw_materials import RawMaterialsAgent
@@ -41,6 +42,7 @@ from agents.sentiment import SentimentAgent
 from agents.policy_regulatory import PolicyRegulatoryAgent
 from agents.competitive_intel import CompetitiveIntelAgent
 from agents.risk_macro import RiskMacroAgent
+from agents.valuation_catalyst import ValuationCatalystAgent
 from agents.signal_aggregator import SignalAggregator
 
 logger = logging.getLogger(__name__)
@@ -54,7 +56,8 @@ _SUB_AGENTS = {
     "sentiment":         SentimentAgent(),
     "policy_regulatory": PolicyRegulatoryAgent(),
     "competitive_intel": CompetitiveIntelAgent(),
-    "risk_macro":        RiskMacroAgent(),
+    "risk_macro":           RiskMacroAgent(),
+    "valuation_catalyst":   ValuationCatalystAgent(),
 }
 
 
@@ -94,6 +97,7 @@ class AutomobileAgentOrchestrator:
         run_id = str(uuid.uuid4())[:8]
         start = time.time()
         started_at = datetime.now(timezone.utc)
+        api_snapshot = snapshot_usage()
         logger.info("[Orchestrator] Async run %s started for '%s'", run_id, user_input)
 
         # Ticker resolution is a single sync LLM call — offload to a thread
@@ -128,6 +132,7 @@ class AutomobileAgentOrchestrator:
             agent_scores={n: o.overall_score for n, o in agent_outputs.items()},
             errors=errors,
         )
+        log_run_api_usage(run_id, query.ticker, api_snapshot)
         logger.info(
             "[Orchestrator] Async run %s complete in %.1fs – verdict=%s score=%.3f",
             run_id,
@@ -160,6 +165,7 @@ class AutomobileAgentOrchestrator:
         run_id = str(uuid.uuid4())[:8]
         start = time.time()
         started_at = datetime.now(timezone.utc)
+        api_snapshot = snapshot_usage()
 
         logger.info("[Orchestrator] Run %s started for '%s'", run_id, user_input)
 
@@ -196,6 +202,7 @@ class AutomobileAgentOrchestrator:
             agent_scores={n: o.overall_score for n, o in agent_outputs.items()},
             errors=errors,
         )
+        log_run_api_usage(run_id, query.ticker, api_snapshot)
         logger.info(
             "[Orchestrator] Run %s complete in %.1fs – verdict=%s score=%.3f",
             run_id,
@@ -210,9 +217,9 @@ class AutomobileAgentOrchestrator:
     # ------------------------------------------------------------------
 
     def _resolve_ticker(self, user_input: str, run_id: str = "") -> StockQuery:
-        prompt = P.TICKER_RESOLUTION_PROMPT.format(user_input=user_input)
         t0 = time.time()
-        try:
+
+        def _llm_call(prompt: str) -> dict:
             response = self._llm.chat.completions.create(
                 model=settings.LLM_MODEL,
                 temperature=0.0,
@@ -223,9 +230,9 @@ class AutomobileAgentOrchestrator:
                 ],
                 response_format={"type": "json_object"},
             )
-            data = json.loads(response.choices[0].message.content or "{}")
             if response.usage:
-                pt, ct = response.usage.prompt_tokens, response.usage.completion_tokens
+                pt = response.usage.prompt_tokens
+                ct = response.usage.completion_tokens
                 cost = (pt * settings.LLM_INPUT_COST_PER_M + ct * settings.LLM_OUTPUT_COST_PER_M) / 1_000_000
                 log_llm_call(
                     run_id=run_id, ticker=user_input.upper(), phase="ticker_resolution",
@@ -233,12 +240,52 @@ class AutomobileAgentOrchestrator:
                     prompt_tokens=pt, completion_tokens=ct,
                     duration_ms=(time.time() - t0) * 1000, cost_usd=cost,
                 )
+            return json.loads(response.choices[0].message.content or "{}")
+
+        try:
+            # Attempt 1: LLM only
+            data = _llm_call(P.TICKER_RESOLUTION_PROMPT.format(user_input=user_input))
+
+            # Fire Serper fallback if:
+            # (a) any core field is None — LLM had no idea, or
+            # (b) resolved ticker fails yfinance verification — likely wrong symbol
+            ticker_candidate = data.get("ticker") or ""
+            needs_fallback = not all([ticker_candidate, data.get("company_name"), data.get("exchange")])
+            if not needs_fallback and ticker_candidate:
+                needs_fallback = not self._verify_ticker(ticker_candidate)
+
+            if needs_fallback:
+                logger.info(
+                    "[Orchestrator] LLM couldn't resolve '%s' — trying Serper fallback",
+                    user_input,
+                )
+                from services.data.fetchers.news import search_serper
+                results = search_serper(
+                    f"{user_input} NSE BSE India stock ticker symbol listed company",
+                    n=3,
+                )
+                if results:
+                    snippets = "\n".join(
+                        f"- {r['title']}: {r['snippet']}" for r in results
+                    )
+                    enriched_prompt = (
+                        P.TICKER_RESOLUTION_PROMPT.format(user_input=user_input)
+                        + f"\n\nWeb search results for '{user_input} NSE ticker':\n{snippets}\n\n"
+                        "IMPORTANT: Extract the exact NSE ticker symbol from the web results above "
+                        "(e.g. if you see 'OLAELEC.NS' or 'OLAELEC' in any result, use OLAELEC). "
+                        "Do NOT guess — use only what is explicitly visible in the web results."
+                    )
+                    # Attempt 2: LLM + Serper context
+                    data = _llm_call(enriched_prompt)
+                    logger.info("[Orchestrator] Serper-assisted resolution result: %s", data)
+
             return StockQuery(
-                ticker=data.get("ticker", user_input.upper()),
-                company_name=data.get("company_name", user_input),
-                exchange=data.get("exchange", settings.DEFAULT_EXCHANGE),
+                ticker=data.get("ticker") or user_input.upper(),
+                company_name=data.get("company_name") or user_input,
+                exchange=data.get("exchange") or settings.DEFAULT_EXCHANGE,
                 analysis_date=date.today(),
             )
+
         except Exception as exc:
             logger.warning("[Orchestrator] Ticker resolution failed: %s", exc)
             return StockQuery(
@@ -246,6 +293,20 @@ class AutomobileAgentOrchestrator:
                 company_name=user_input,
                 exchange=settings.DEFAULT_EXCHANGE,
             )
+
+    def _verify_ticker(self, ticker: str) -> bool:
+        """
+        Quick yfinance check — returns True if the ticker is a valid listed symbol.
+        Uses only .info (no price download) to stay fast and cheap.
+        """
+        try:
+            import yfinance as yf
+            suffix = settings.YFINANCE_SUFFIX  # ".NS"
+            yf_ticker = ticker if ticker.endswith(suffix) else f"{ticker}{suffix}"
+            info = yf.Ticker(yf_ticker).info or {}
+            return bool(info.get("regularMarketPrice") or info.get("currentPrice") or info.get("previousClose"))
+        except Exception:
+            return False
 
     # ------------------------------------------------------------------
     # Parallel sub-agent execution

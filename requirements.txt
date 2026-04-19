@@ -26,6 +26,8 @@ chromadb>=0.5.0           # Local vector store (ChromaDB)
 sentence-transformers>=3.0.0  # Local embeddings (no API key needed)
 pypdf>=4.0.0              # PDF document ingestion
 tiktoken>=0.7.0           # Token counting for chunking
+aiosqlite>=0.20.0         # Async SQLite — needed if /history endpoint uses async DB
+
 
 # Optional cloud vector stores (uncomment if needed)
 # pinecone-client>=4.0.0

@@ -28,6 +28,11 @@ pypdf>=4.0.0              # PDF document ingestion
 tiktoken>=0.7.0           # Token counting for chunking
 aiosqlite>=0.20.0         # Async SQLite — needed if /history endpoint uses async DB
 
+#LLMs 
+openai==2.32.0
+
+#Web
+yfinance==1.3.0
 
 # Optional cloud vector stores (uncomment if needed)
 # pinecone-client>=4.0.0

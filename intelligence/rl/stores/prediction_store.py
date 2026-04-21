@@ -59,9 +59,9 @@ class PredictionStore:
     temp file then renaming, so a crash mid-write never leaves a corrupt file.
     """
 
-    def __init__(self, ticker: str, base_dir: str = settings.PREDICTION_DATA_DIR) -> None:
+    def __init__(self, ticker: str, base_dir: str | None = None) -> None:
         self.ticker = ticker.strip().upper()
-        self._dir = Path(base_dir) / self.ticker
+        self._dir = Path(base_dir or settings.PREDICTION_DATA_DIR) / self.ticker
         self._dir.mkdir(parents=True, exist_ok=True)
 
     # ------------------------------------------------------------------

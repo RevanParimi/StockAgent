@@ -1,6 +1,6 @@
 # Agent Design Reference
 
-> Updated: 2026-04-19 · 9 automobile agents active · 3 other sectors stubbed
+> Updated: 2026-04-21 · 9 automobile agents active · 3 other sectors stubbed
 
 ---
 
@@ -25,6 +25,7 @@ AutomobileAgentOrchestrator.analyse(ticker)
        └─ SignalAggregator.run()  →  FinalReport
 
 Async path (FastAPI/WebSocket): analyse_async() uses asyncio.gather + AsyncOpenAI.
+  HTTP/WS requests arrive via the TypeScript gateway (:3000) which proxies to Python :8001.
 ```
 
 ---
@@ -138,7 +139,11 @@ Sector routing is not yet wired in the orchestrator — all tickers run automobi
 | `agents/feedback_agent.py` | After N days: compares prediction vs actual price move, generates accuracy signal |
 | `agents/weight_adapter.py` | Updates `AGENT_WEIGHTS` based on which agents were most predictive |
 | `workflows/generate_forecast.py` | Pre-injects learned weights into orchestrator before a run |
-| `workflows/daily_review.py` | Scheduled daily: process predictions older than review_window, update weights |
+| `workflows/daily_review.py` | Scheduled daily (4:30pm IST via Python APScheduler): process predictions older than review_window, update weights |
+
+> **Scheduler note:** The RL daily review runs in `services/scheduler/python/scheduler.py` (APScheduler, Python).
+> The analysis cron job has been moved to the TypeScript gateway (`services/gateway/src/jobs/analysis-cron.ts`).
+> The Python scheduler now runs the RL review job only — it must stay Python because it imports `intelligence.rl` directly.
 
 Activate by setting `learned_weights` on the orchestrator:
 ```python

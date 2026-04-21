@@ -1006,3 +1006,226 @@ These existing files were modified — no breaking changes to their existing cal
 | `agents/signal_aggregator.py` | Added optional `learned_weights` param to `run()` | Yes — defaults to None |
 | `tools/scheduler.py` | Added `_daily_review_job()` + second APScheduler job registration | Yes — only fires when daemon is running |
 | `scripts/run_schedule.py` | Added 3 sub-commands: `forecast`, `daily-review`, `feedback-status` | Yes — existing commands unchanged |
+
+---
+
+## 16. Phase 6 — RL Feedback Improvements
+
+> Updated: 2026-04-21 · Applies to all four sectors: automobile · banking_bfsi · it_sector · renewable_energy
+
+The original Phase 5 RL system had one reward signal (direction correct/wrong), one miss label (primary agent), and one sentence of revised context. All six improvements below address that thinness. Every change is backward-compatible — existing JSON files load without migration.
+
+---
+
+### 16.1 Miss Taxonomy (Design 1) — Most Critical Fix
+
+**Problem:** Every miss penalised the primary agent equally regardless of cause. A `data_gap` miss (FADA not yet published) would incorrectly reduce `sales_demand`'s weight even though the model was correct and the input was simply missing.
+
+**Solution:** Classify every miss into one of seven types and apply a penalty multiplier accordingly.
+
+| Miss Type | When to use | Agent penalty |
+|---|---|---|
+| `data_gap` | Input data not yet published at forecast time (e.g. FADA releases on the 10th, forecast on the 5th) | **Zero** |
+| `data_stale` | Hardcoded/outdated data used (e.g. RBI repo rate not updated after MPC decision) | **Zero** |
+| `external_shock` | Unpredictable black-swan event (sudden tariff, exchange circuit breaker) | **Zero** |
+| `timing` | Direction was correct but stock moved earlier/later than predicted | **Half** (0.5×) |
+| `magnitude` | Direction correct but size of move was wrong | **Quarter** (0.25×) |
+| `model_bias` | Agent consistently over/under-estimates a specific signal | **Full** (1.0×) |
+| `direction_flip` | Completely wrong direction, no valid external cause | **Full** (1.0×) |
+
+**`MISS_TYPE_PENALTY_MULTIPLIER`** is defined once in `core/schemas/feedback.py` and imported by `WeightAdapter` — single source of truth.
+
+**`NO_PENALTY_MISS_TYPES`** frozenset `{data_gap, data_stale, external_shock}` used in `_compute_accuracy()` to grant the primary agent a hit credit even on wrong days.
+
+**Files changed:** `core/schemas/feedback.py` · `intelligence/rl/agents/weight_adapter.py`
+
+---
+
+### 16.2 Lesson Scope + Expanded Categories (Design 2)
+
+**Problem:** All lessons were stock-specific. An RBI rate hike pattern learned for MARUTI was silently discarded for HDFCBANK, TATAMOTORS, and every other stock — even though it applies across the whole market.
+
+**Solution:** Every lesson now carries a `scope` field.
+
+| Scope | Meaning |
+|---|---|
+| `stock_specific` | Applies only to this ticker (default) |
+| `sector_wide` | Applies to all stocks in the same sector |
+| `market_wide` | Applies regardless of sector — used for global macro patterns |
+
+**New lesson categories added to `LessonCategory`:**
+
+| Category | When to use |
+|---|---|
+| `global_macro` | Fed rate decisions, China PMI, crude oil spike >5%, USD/INR move >1% in a day. Always use `scope="market_wide"` and prefix pattern with `global_`. |
+| `data_availability` | Patterns about when specific data is or is not yet published. Created automatically when `miss_type="data_gap"` to prevent the same gap next cycle. |
+
+**Scope widening:** `merge_lessons_into_ledger()` automatically widens a lesson's scope if a new observation implies broader applicability (e.g. a pattern first seen as `stock_specific` later confirmed as `sector_wide`).
+
+**Files changed:** `core/schemas/feedback.py` · `intelligence/rl/agents/feedback_agent.py` · `config/prompts/shared/feedback_agent.py`
+
+---
+
+### 16.3 Lesson Confidence Decay (Design 3)
+
+**Problem:** A lesson from six months ago with confidence 0.80 carried the same weight in the prompt as a lesson from last week. Stale patterns from a different macro regime or company phase could mislead the LLM.
+
+**Solution:** `LearningLedger.effective_confidence(lesson)` applies monthly decay to stored confidence based on `last_seen`.
+
+```
+effective_confidence = stored_confidence × (1 - decay_rate) ^ months_inactive
+```
+
+- Default `confidence_decay_rate = 0.02` per month (configurable on `LearningLedger`)
+- Floor at **0.10** — lessons are never fully discarded automatically
+- `active_lessons_summary()` now injects `eff_confidence` (not stored confidence) into the LLM prompt — the model naturally weights recent patterns higher
+- `last_seen` is updated every time a lesson is reinforced in `merge_lessons_into_ledger()`
+
+**Example:** A lesson with confidence 0.80, last seen 6 months ago:
+`0.80 × (0.98^6) ≈ 0.71` effective confidence shown to the LLM.
+
+**Files changed:** `core/schemas/feedback.py` · `intelligence/rl/agents/feedback_agent.py`
+
+---
+
+### 16.4 Timing Accuracy Tracking (Design 4)
+
+**Problem:** The system measured whether direction was right, but not *when* the move happened. A BUY where the stock rose 5 days before the predicted peak and a BUY where it rose 5 days after were both recorded identically as `direction_correct=True`. The timing miss was invisible.
+
+**Solution:** `TimingAccuracy` is computed per day and stored in `FeedbackEntry`.
+
+```python
+class TimingAccuracy(BaseModel):
+    predicted_peak_day: int | None      # day in 30-day envelope with peak/trough
+    actual_move_start_day: int | None   # day the actual move materialised
+    lag_days: int | None                # actual - predicted (negative = early)
+    assessment: "early" | "on_time" | "late" | "no_move"
+```
+
+**How peak day is determined:**
+- For `BUY / STRONG BUY` verdicts: day with the highest `predicted_close` in the envelope
+- For `SELL / STRONG SELL` verdicts: day with the lowest `predicted_close`
+- Threshold: ±1 day = `on_time`; earlier = `early`; later = `late`
+
+**What this enables:** Lessons like *"MARUTI reacts to RBI decisions 2 trading days after the announcement, not the same day"* are now detectable and capturable in the learning ledger.
+
+**Files changed:** `core/schemas/feedback.py` · `intelligence/rl/workflows/daily_review.py`
+
+---
+
+### 16.5 Structured Revised Context (Design 5)
+
+**Problem:** `revised_context_for_remaining_days` was a single sentence baked into the first assumption of each remaining forecast row. With potentially 20 days remaining in a cycle, one sentence is too thin and too lossy to be useful.
+
+**Solution:** Replace the string with `RevisedContext` — a structured model stored in both `FeedbackAgentOutput` and `FeedbackEntry`.
+
+```python
+class RevisedContext(BaseModel):
+    headline: str                          # one-sentence summary
+    risks_next_7_days: list[str]           # max 3 specific risks to watch
+    catalysts_next_7_days: list[str]       # max 3 potential positive triggers
+    watch_signals: list[str]               # what to monitor (e.g. "INR past 84")
+    horizon_confidence_adjustment: float   # delta applied to remaining forecast confidence
+```
+
+**`horizon_confidence_adjustment`** is applied in `_revise_remaining_forecasts()` after the weight-based composite re-calculation:
+```
+new_confidence = clamp(0.70 × old_confidence + 0.30 × new_composite + adjustment, 0.05, 0.99)
+```
+
+A FeedbackAgent that sees a major risk event can set `adjustment = -0.10` to reduce confidence across all remaining days. A resolution of uncertainty can set `+0.03`.
+
+**Files changed:** `core/schemas/feedback.py` · `config/prompts/shared/feedback_agent.py` · `intelligence/rl/agents/feedback_agent.py` · `intelligence/rl/workflows/daily_review.py`
+
+---
+
+### 16.6 Analyst Distrust Rule + Temperature (Design 6)
+
+**Analyst distrust:** An explicit non-negotiable rule added to the system prompt prevents the LLM from citing analyst upgrades, broker price targets, consensus ratings, or EPS estimate revisions as missed factors. The system intentionally excludes analyst opinion — referencing it as a miss would imply it should be added.
+
+Valid missed factors: price action, macro events, sector data, technical signals, company fundamentals, government policy, global commodity moves, regulatory actions.
+
+**Temperature:** Changed from `0.1` to `0.3` in `FeedbackAgent._call_llm()`.
+
+At `0.1` the LLM is too literal — it returns the obvious primary miss and stops. At `0.3` it surfaces non-obvious cross-signal patterns (e.g. *"sentiment was high but market was in risk-off mode due to FII selling — the two signals cancelled"*) while still producing valid structured JSON. `response_format={"type": "json_object"}` prevents hallucination of the output structure regardless of temperature.
+
+**`max_tokens` raised** from `1024` to `1500` to accommodate the structured `revised_context` object.
+
+**Files changed:** `config/prompts/shared/feedback_agent.py` · `intelligence/rl/agents/feedback_agent.py`
+
+---
+
+### 16.7 Sector-Agnostic Design
+
+All Phase 6 components are fully sector-agnostic. The original Phase 5 code hardcoded references to automobile agents and the `AutomobileAgentOrchestrator`. Phase 6 removes this coupling.
+
+**`build_system_prompt(sector, agent_names)`** in `config/prompts/shared/feedback_agent.py` generates a sector-aware prompt dynamically. The agent list is derived from `fb_input.predicted_agent_scores.keys()` at runtime — no hardcoded agent names anywhere in the feedback loop.
+
+**`_run_todays_agent_scores()`** in `daily_review.py` routes by sector:
+- `automobile` → `AutomobileAgentOrchestrator` (existing path)
+- All others → LangGraph `graphs.{sector}.graph` via `importlib`
+
+**`run_daily_review()`** now accepts a `sector` parameter. CLI gains `--sector` flag:
+```bash
+python -m scripts.daily_review --sector banking_bfsi --ticker HDFCBANK SBIN
+python -m scripts.daily_review --sector it_sector --ticker TCS INFY
+python -m scripts.daily_review --sector renewable_energy --ticker ADANIGREEN NTPC
+```
+
+**Persistent files** (`WeightMemory`, `LearningLedger`) now carry a `sector` field. `PredictionEnvelope` and `DailyFeedbackLog` also carry `sector`. Existing files without the field default to `"automobile"` via Pydantic's default.
+
+---
+
+### 16.8 Updated Schema Quick Reference
+
+```
+MissType (new)
+  data_gap | data_stale | external_shock    → 0.0× penalty
+  timing                                    → 0.5× penalty
+  magnitude                                 → 0.25× penalty
+  model_bias | direction_flip               → 1.0× penalty
+
+LessonCategory (expanded)
+  macro | global_macro | technical | sentiment | fundamental | seasonal | data_availability
+
+LessonScope (new)
+  stock_specific | sector_wide | market_wide
+
+TimingAccuracy (new)
+  predicted_peak_day | actual_move_start_day | lag_days | assessment
+
+RevisedContext (new, replaces single string)
+  headline | risks_next_7_days | catalysts_next_7_days | watch_signals | horizon_confidence_adjustment
+
+Lesson (updated fields)
+  + scope: LessonScope
+  + last_seen: str   (ISO date, used for confidence decay)
+
+LearningLedger (updated)
+  + confidence_decay_rate: float = 0.02
+  + effective_confidence(lesson) → float
+  + active_lessons_summary() → uses eff_confidence, not stored confidence
+
+FeedbackAgentInput (updated)
+  + sector: str
+
+FeedbackAgentOutput (updated)
+  revised_context_for_remaining_days → replaced by revised_context: RevisedContext
+  + miss_type: MissType
+
+FeedbackEntry (updated)
+  + timing: TimingAccuracy | None
+  + revised_context: RevisedContext | None
+```
+
+---
+
+### 16.9 Files Changed in Phase 6
+
+| File | Nature of change |
+|---|---|
+| `core/schemas/feedback.py` | New models: `MissType`, `LessonScope`, `TimingAccuracy`, `RevisedContext`. Updated: `MissAnalysis`, `Lesson`, `FeedbackEntry`, `LearningLedger`, `FeedbackAgentInput`, `RawLesson`, `FeedbackAgentOutput`. New constants: `MISS_TYPE_PENALTY_MULTIPLIER`, `NO_PENALTY_MISS_TYPES`. |
+| `config/prompts/shared/feedback_agent.py` | Static `SYSTEM_PROMPT` → `build_system_prompt(sector, agent_names)`. Added analyst distrust rule, global macro rule, miss taxonomy, scope guidance, data_availability category. Updated JSON output contract. `format_feedback_prompt()` gains `sector` param. |
+| `intelligence/rl/agents/feedback_agent.py` | Temperature `0.1→0.3`, `max_tokens` `1024→1500`. Dynamic system prompt from sector. `_parse()` handles `miss_type`, lesson `scope`, `RevisedContext` with string fallback. `merge_lessons_into_ledger()` sets `last_seen`, `scope`, widens scope automatically. |
+| `intelligence/rl/agents/weight_adapter.py` | `update()` gains `todays_miss_type` param. `_compute_accuracy()` grants hit credit for `NO_PENALTY_MISS_TYPES`. `_compute_deltas()` applies `MISS_TYPE_PENALTY_MULTIPLIER` to streak penalty. |
+| `intelligence/rl/workflows/daily_review.py` | `run_daily_review()` gains `sector` param. New `_compute_timing_accuracy()` helper. `_revise_remaining_forecasts()` accepts `RevisedContext`, applies `horizon_confidence_adjustment`. `FeedbackEntry` now stores `timing` and `revised_context`. CLI gets `--sector` flag. |

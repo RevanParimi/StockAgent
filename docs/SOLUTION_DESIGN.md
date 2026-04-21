@@ -9,6 +9,39 @@
 
 ---
 
+## 7. Service Architecture (Current)
+
+```
+Browser / Frontend (Vite :5173)
+         │  /api/*  and  /ws/*
+         ▼
+TypeScript Gateway — Bun + Hono (:3000)          services/gateway/
+         │
+         ├── POST /api/analyse           →  HTTP  Python :8001/analyse
+         ├── GET  /api/history/*         →  HTTP  Python :8001/history/*
+         ├── WS   /ws/stream             →  WS proxy Python :8001/ws/stream
+         ├── GET  /api/scheduler/status  (in-process cron state)
+         ├── POST /api/scheduler/run-now (immediate trigger)
+         └── cron "30 8 * * 1-5" IST    →  HTTP POST :8001/analyse per ticker
+         │
+         ▼
+Python FastAPI — internal (:8001)                 services/api/
+         CORS: only http://localhost:3000
+         POST /analyse  →  AutomobileAgentOrchestrator → FinalReport
+         WS   /ws/stream → agent_progress + complete events
+         GET  /history/* → ScoreStore (SQLite)
+
+Python APScheduler (separate process)             services/scheduler/python/scheduler.py
+         RL daily review ONLY — "0 11 * * 1-5" IST
+         Imports intelligence.rl modules directly (cannot be HTTP)
+         Analysis job removed — replaced by TypeScript gateway cron
+```
+
+**Zod schemas in `services/gateway/src/types/` are the single source of truth for all API types.**
+`frontend/src/types/index.ts` mirrors these types; do not maintain types in both places independently.
+
+---
+
 ## 8. Target Architecture vs Implementation — Full Mapping
 
 Based on `automobile_agent_tree.txt`.
@@ -18,7 +51,7 @@ Legend: `✓` built  ·  `~` partial  ·  `○` not yet wired
 ```
 AUTOMOBILE AGENT
 │   Orchestrator: AutomobileAgentOrchestrator in agents/orchestrator.py      ✓ built
-│   Trigger: SCHEDULER_ENABLED / CLI (main.py)                               ✓ built
+│   Trigger: TypeScript gateway cron (8:30am IST) / CLI (main.py)            ✓ built
 │   Parallel dispatch: ThreadPoolExecutor (5 workers)                         ✓ built
 │   Micro search loop: micro_search_loop() in main.py                        ✓ built
 │
@@ -330,7 +363,7 @@ pattern from StockAI is applied to deduplicate the sector-level risk_macro queri
 
 ---
 
-*Last updated: 2026-04-17. Update when adding new agents, changing SERPER_MAX_QUERIES, or wiring new search API fetchers.*
+*Last updated: 2026-04-21. Update when adding new agents, changing SERPER_MAX_QUERIES, or wiring new search API fetchers.*
 
 ---
 

@@ -59,7 +59,8 @@
       "Bash(python -m pytest tests/unit/test_signal_aggregator.py::TestWeightedScoreComputation::test_weighted_score_matches_manual -q --tb=long)",
       "Bash(python main.py MARUTI)",
       "Bash(ls -d */)",
-      "Bash(ls data/)"
+      "Bash(ls data/)",
+      "Bash(xargs grep *)"
     ]
   }
 }

@@ -2,17 +2,17 @@
 api/server.py
 =============
 FastAPI application — Phase 2 bridge between Python agents and external consumers
-(TypeScript dashboard, C# scheduler).
+(TypeScript gateway on port 3000).
 
 Ports:
-  HTTP  :  0.0.0.0:8000
-  WS    :  0.0.0.0:8000/ws/stream
+  HTTP  :  0.0.0.0:8001  (INTERNAL — not exposed to browser)
+  WS    :  0.0.0.0:8001/ws/stream
 
 Start with:
-    uvicorn api.server:app --host 0.0.0.0 --port 8000 --reload
+    uvicorn services.api.server:app --host 0.0.0.0 --port 8001 --reload
 
 Or via the helper script:
-    python -m api.server
+    python -m services.api.server
 """
 
 from __future__ import annotations
@@ -49,17 +49,17 @@ app = FastAPI(
     title="StockAgent Python API",
     description=(
         "FastAPI bridge exposing the 8-agent automobile stock analysis pipeline. "
-        "Consumed by the TypeScript dashboard (port 3000) and C# scheduler (port 5000)."
+        "Internal service (port 8001) — consumed exclusively by the TypeScript gateway (port 3000)."
     ),
     version="2.0.0",
     docs_url="/docs",
     redoc_url="/redoc",
 )
 
-# Allow TypeScript dashboard (localhost:3000) and C# service (localhost:5000)
+# Internal only — allow only the TypeScript gateway. Browser must never hit this directly.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://localhost:5000", "http://localhost:3001"],
+    allow_origins=["http://localhost:3000"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -97,4 +97,4 @@ async def list_tickers() -> dict:
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("api.server:app", host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run("services.api.server:app", host="0.0.0.0", port=8001, reload=True)

@@ -1,8 +1,14 @@
 # API Sources & Data Reference
 
-> Updated: 2026-04-19 · Automobile sector: 9 agents · All free-tier only
+> Updated: 2026-04-21 · Automobile sector: 9 agents · All free-tier only
 
 ---
+
+## Consumption Layer
+
+External data flows entirely through Python (FastAPI on port 8001, internal).
+The TypeScript gateway on port 3000 proxies browser requests to Python — it does not call
+yfinance, Serper, Tavily, or the LLM directly. All API keys below are Python-side only.
 
 ## Source Summary
 

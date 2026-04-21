@@ -1,7 +1,7 @@
 # Codebase Reference
 
 > Ground-truth map of every module, its real path, and its public API.
-> Updated: 2026-04-19 · reflects post-restructure state (commit eaf52ab) + gap fixes.
+> Updated: 2026-04-21 · reflects post-restructure state (commit eaf52ab) + gap fixes + TypeScript gateway.
 
 ---
 
@@ -39,7 +39,24 @@ automobile_agent/
 │   └── rl/                        # RL feedback loop (feedback_agent, weight_adapter, stores)
 │
 ├── services/
-│   ├── api/                       # FastAPI server (server.py) + routes (analyse, history, stream)
+│   ├── api/                       # FastAPI — port 8001 INTERNAL (not browser-accessible)
+│   │   ├── server.py              # app + CORS (only allows :3000) + health endpoint
+│   │   └── routes/
+│   │       ├── analyse.py         # POST /analyse
+│   │       ├── stream.py          # WS /ws/stream?ticker=X
+│   │       └── history.py         # GET /history/{ticker}[/latest]
+│   ├── gateway/                   # TypeScript gateway — port 3000 (public-facing)
+│   │   ├── package.json           # Bun project: hono, zod, node-cron, ws
+│   │   ├── tsconfig.json
+│   │   ├── .env.example
+│   │   └── src/
+│   │       ├── index.ts           # Hono app + Bun.serve
+│   │       ├── types/             # Zod schemas (report, stream, history, scheduler)
+│   │       ├── client/python.ts   # Typed HTTP client → :8001
+│   │       ├── routes/            # analyse, history, health, scheduler
+│   │       ├── ws/stream.ts       # Bidirectional WS proxy → :8001/ws/stream
+│   │       ├── jobs/analysis-cron.ts  # node-cron 8:30am IST → POST each ticker
+│   │       └── middleware/logger.ts
 │   ├── clients/
 │   │   ├── llm_client.py          # get_llm_client(), get_async_llm_client() → OpenRouter
 │   │   └── tavily_fetcher.py      # search_tavily(), fetch_tavily_context()
@@ -55,7 +72,10 @@ automobile_agent/
 │   │       ├── api_usage.py       # record_call(), get_usage(), log_usage_summary()
 │   │       ├── run_logger.py      # log_llm_call(), log_run_summary() → logs/agent_calls.jsonl
 │   │       └── score_store.py     # persist/retrieve scores for RL loop
-│   └── scheduler/                 # APScheduler wrapper for periodic runs
+│   └── scheduler/python/scheduler.py  # APScheduler — RL daily review ONLY (Job 1 moved to gateway)
+│
+├── frontend/                      # React 19 + Vite — port 5173
+│   └── vite.config.ts             # /api → :3000, /ws → :3000 (both via TS gateway)
 │
 ├── agents/          ← COMPATIBILITY SHIMS ONLY (re-export from core/sectors/automobile/)
 ├── models/          ← COMPATIBILITY SHIMS ONLY (re-export from core/schemas/pipeline.py)
@@ -65,6 +85,43 @@ automobile_agent/
 
 > **Rule**: Never edit files in `agents/`, `models/`, `prompts/`, `tools/` directly — they are shims.
 > Edit the real files under `core/`, `services/`, `config/`.
+
+---
+
+## Runtime Architecture
+
+```
+Browser :5173 (Vite dev)
+    │  /api/*  →  proxy  →  :3000
+    │  /ws/*   →  proxy  →  :3000
+    ▼
+TypeScript Gateway (Bun + Hono)  :3000  — services/gateway/src/index.ts
+    │  POST /api/analyse        → HTTP POST  :8001/analyse
+    │  GET  /api/history/*      → HTTP GET   :8001/history/*
+    │  GET  /health             → HTTP GET   :8001/health
+    │  GET  /api/scheduler/status   (reads cron state in-process)
+    │  POST /api/scheduler/run-now  (fires analysis immediately)
+    │  WS   /ws/stream          → WS proxy   :8001/ws/stream
+    │  cron "30 8 * * 1-5" IST → POST :8001/analyse for each ticker
+    ▼
+Python FastAPI (internal)  :8001  — services/api/server.py
+    │  POST /analyse  →  AutomobileAgentOrchestrator
+    │  WS   /ws/stream
+    │  GET  /history/*  →  ScoreStore (SQLite)
+
+Python APScheduler  — services/scheduler/python/scheduler.py
+    RL daily review only — "0 11 * * 1-5" IST (4:30pm IST = 11:00 UTC)
+    Imports intelligence.rl directly; cannot be an HTTP call.
+    Analysis job (automobile_agent_run) has been removed — now in TypeScript gateway.
+```
+
+**Start order:**
+```bash
+bun run services/gateway/src/index.ts           # TS gateway on :3000
+uvicorn services.api.server:app --port 8001     # Python internal on :8001
+python services/scheduler/python/scheduler.py   # RL review only
+cd frontend && npm run dev                      # Vite on :5173
+```
 
 ---
 

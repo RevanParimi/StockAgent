@@ -60,7 +60,10 @@
       "Bash(python main.py MARUTI)",
       "Bash(ls -d */)",
       "Bash(ls data/)",
-      "Bash(xargs grep *)"
+      "Bash(xargs grep *)",
+      "Bash(python -m pytest tests/unit/test_signal_aggregator.py tests/integration/test_data_fetchers.py::TestContextBuilder -v --tb=short -q)",
+      "Bash(git stash *)",
+      "Bash(git add *)"
     ]
   }
 }

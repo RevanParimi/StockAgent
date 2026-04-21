@@ -141,4 +141,3 @@ class AutomobileScheduler:
             if self._scheduler.running:
                 self._scheduler.shutdown(wait=True)
             logger.info("[Scheduler] Scheduler stopped cleanly.")
-

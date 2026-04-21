@@ -137,7 +137,5 @@ class AutomobileScheduler:
             self._scheduler.start()  # blocks here; raises KeyboardInterrupt on Ctrl+C
         except (KeyboardInterrupt, SystemExit):
             logger.info("[Scheduler] Shutdown signal received.")
-        finally:
-            if self._scheduler.running:
-                self._scheduler.shutdown(wait=True)
+            self._scheduler.shutdown(wait=False)  # don't block on running jobs
             logger.info("[Scheduler] Scheduler stopped cleanly.")

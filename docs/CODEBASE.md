@@ -260,7 +260,7 @@ FinalReport:
 ```
 main.py → AutomobileAgentOrchestrator.analyse(ticker)
   1. _resolve_ticker()      → LLM → StockQuery(ticker, company_name, exchange)
-  2. ThreadPoolExecutor     → 9 agents run in PARALLEL
+  2. LangGraph worker pool  → 9 agents run in PARALLEL (Send fan-out, RetryPolicy, merge reducer)
        BaseAgent.run(query)
          _gather_context()
            priority: RAG (if enabled) → ContextBuilder.build() → generic stub

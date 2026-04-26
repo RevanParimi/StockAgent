@@ -63,7 +63,14 @@
       "Bash(xargs grep *)",
       "Bash(python -m pytest tests/unit/test_signal_aggregator.py tests/integration/test_data_fetchers.py::TestContextBuilder -v --tb=short -q)",
       "Bash(git stash *)",
-      "Bash(git add *)"
+      "Bash(git add *)",
+      "Bash(python -m pytest tests/integration/test_orchestrator.py -v)",
+      "Bash(pip show *)",
+      "Bash(python -m pytest tests/ -v --tb=long)",
+      "Bash(python -m pytest tests/contract/test_phase4_csharp.py::TestCronScheduleContract::test_python_default_cron_is_weekday_0830 tests/contract/test_scheduler.py::TestAutomobileScheduler -v)",
+      "Bash(python -m pytest tests/contract/test_phase4_csharp.py::TestCronScheduleContract::test_python_default_cron_is_weekday_0830 tests/contract/test_scheduler.py::TestAutomobileScheduler -v --tb=long)",
+      "Bash(python -m pytest tests/ -q)",
+      "Bash(pip index *)"
     ]
   }
 }

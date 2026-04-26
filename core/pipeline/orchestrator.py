@@ -5,8 +5,8 @@ Top-level Automobile Agent orchestrator.
 
 Execution flow:
   1. Resolve ticker → company name via LLM
-  2. Dispatch all 8 sub-agents IN PARALLEL using asyncio + ThreadPoolExecutor
-  3. Collect structured outputs
+  2. Dispatch all 9 sub-agents IN PARALLEL via LangGraph worker pool (Send fan-out)
+  3. Collect structured outputs (fan-in via state reducers)
   4. Pass to SignalAggregator
   5. Return FinalReport
 
@@ -24,8 +24,16 @@ import logging
 import time
 import uuid
 from collections.abc import Callable
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date, datetime, timezone
+
+from langgraph.graph import END, START, StateGraph
+try:
+    from langgraph.types import RetryPolicy
+except ImportError:
+    from langgraph.pregel import RetryPolicy  # type: ignore[no-redef]
+
+from core.graphs.nodes import make_dispatch_fn, make_run_agent_node
+from core.graphs.state import GraphState
 
 from config import settings
 from core.schemas.pipeline import AgentOutput, FinalReport, PipelineRun, StockQuery
@@ -47,6 +55,30 @@ from core.sectors.automobile.valuation_catalyst import ValuationCatalystAgent
 from core.pipeline.signal_aggregator import SignalAggregator
 
 logger = logging.getLogger(__name__)
+
+
+def _build_worker_pool_graph(agents: dict):
+    """
+    Compile a minimal LangGraph worker pool:
+        START → [Send × N] → run_agent (parallel) → END
+
+    No ticker resolution, input rail, or aggregation — the orchestrator
+    handles those steps directly.  Built from the shared node factories so
+    the same swarm-fallback and RetryPolicy logic applies as in sector graphs.
+
+    agents_snapshot resolves the dict via .items() at build time so test mocks
+    that configure .items() (not .keys() or __getitem__) are captured correctly.
+    """
+    agents_snapshot = dict(agents.items())
+    _run_agent_node = make_run_agent_node(agents_snapshot, "automobile")
+    _dispatch_fn = make_dispatch_fn(list(agents_snapshot.keys()))
+
+    wf = StateGraph(GraphState)
+    wf.add_node("run_agent", _run_agent_node, retry_policy=RetryPolicy(max_attempts=2))
+    wf.add_conditional_edges(START, _dispatch_fn)
+    wf.add_edge("run_agent", END)
+    return wf.compile()
+
 
 # All sub-agents instantiated once (they are stateless per .run() call)
 _SUB_AGENTS = {
@@ -79,6 +111,8 @@ class AutomobileAgentOrchestrator:
         # Optional: set by generate_forecast.py / daily_review.py to inject
         # ticker-specific learned weights without mutating global settings.
         self._aggregator_weights: dict[str, float] | None = None
+        # Worker pool graph — built here so test patches on _SUB_AGENTS take effect.
+        self._worker_pool_graph = _build_worker_pool_graph(_SUB_AGENTS)
 
     # ------------------------------------------------------------------
     # Public API
@@ -108,7 +142,7 @@ class AutomobileAgentOrchestrator:
 
         pipeline_run = PipelineRun(run_id=run_id, query=query, status="running")
 
-        agent_outputs = await self._run_agents_parallel_async(
+        agent_outputs = await self._run_via_graph_async(
             query, run_id=run_id, progress_callback=progress_callback
         )
 
@@ -183,8 +217,8 @@ class AutomobileAgentOrchestrator:
 
         pipeline_run = PipelineRun(run_id=run_id, query=query, status="running")
 
-        # Step 2: Run all sub-agents in parallel
-        agent_outputs = self._run_agents_parallel(
+        # Step 2: Run all sub-agents in parallel via LangGraph worker pool
+        agent_outputs = self._run_via_graph(
             query, run_id=run_id, progress_callback=progress_callback
         )
 
@@ -324,99 +358,81 @@ class AutomobileAgentOrchestrator:
             return False
 
     # ------------------------------------------------------------------
-    # Parallel sub-agent execution
+    # Parallel sub-agent execution — LangGraph worker pool
     # ------------------------------------------------------------------
 
-    def _run_agents_parallel(
-        self,
-        query: StockQuery,
-        run_id: str = "",
-        progress_callback: Callable[[str, float], None] | None = None,
-    ) -> dict[str, AgentOutput]:
-        results: dict[str, AgentOutput] = {}
-
-        with ThreadPoolExecutor(max_workers=max(1, len(_SUB_AGENTS))) as pool:
-            future_to_name = {
-                pool.submit(agent.run, query, run_id): name
-                for name, agent in _SUB_AGENTS.items()
-            }
-            for future in as_completed(
-                future_to_name,
-                timeout=settings.AGENT_TIMEOUT_SECONDS,
-            ):
-                name = future_to_name[future]
-                try:
-                    results[name] = future.result()
-                    logger.info(
-                        "[Orchestrator] %s done – score=%.3f",
-                        name,
-                        results[name].overall_score,
-                    )
-                except Exception as exc:
-                    logger.error("[Orchestrator] %s failed: %s", name, exc)
-                    # Inject a neutral placeholder so aggregation can still proceed
-                    results[name] = AgentOutput(
-                        agent=name,
-                        ticker=query.ticker,
-                        overall_score=0.5,
-                        error=str(exc),
-                        summary=f"Agent failed: {exc}",
-                    )
-                finally:
-                    if progress_callback and name in results:
-                        try:
-                            progress_callback(name, results[name].overall_score)
-                        except Exception:
-                            pass  # never let a callback crash the pipeline
-
-        return results
-
-    async def _run_agents_parallel_async(
+    def _run_via_graph(
         self,
         query: StockQuery,
         run_id: str = "",
         progress_callback: Callable[[str, float], None] | None = None,
     ) -> dict[str, AgentOutput]:
         """
-        Run all 8 agents concurrently with asyncio.gather + AsyncOpenAI.
-        No threads for LLM calls — each await yields the event loop while
-        waiting for the OpenRouter network response.
-        """
+        Run all agents in parallel using the LangGraph worker pool graph.
+        Each agent is dispatched via Send fan-out; results are merged by the
+        _merge_dicts reducer.  RetryPolicy(max_attempts=2) handles transient
+        failures; swarm-style neutral fallback fires on persistent errors.
 
-        async def _run_one(name: str, agent) -> tuple[str, AgentOutput]:
-            output = AgentOutput(
-                agent=name, ticker=query.ticker, overall_score=0.5,
-                error="did not complete", summary="Agent did not complete",
-            )
-            try:
-                output = await asyncio.wait_for(
-                    agent.run_async(query, run_id),
-                    timeout=settings.AGENT_TIMEOUT_SECONDS,
-                )
-                logger.info(
-                    "[Orchestrator] %s done (async) – score=%.3f",
-                    name, output.overall_score,
-                )
-            except asyncio.TimeoutError:
-                logger.error("[Orchestrator] %s timed out after %ss", name, settings.AGENT_TIMEOUT_SECONDS)
-                output = AgentOutput(
-                    agent=name, ticker=query.ticker, overall_score=0.5,
-                    error="timeout", summary=f"Agent timed out after {settings.AGENT_TIMEOUT_SECONDS}s",
-                )
-            except Exception as exc:
-                logger.error("[Orchestrator] %s failed: %s", name, exc)
-                output = AgentOutput(
-                    agent=name, ticker=query.ticker, overall_score=0.5,
-                    error=str(exc), summary=f"Agent failed: {exc}",
-                )
+        progress_callback fires after all agents complete (sync path is used
+        only by CLI/scheduler, not by the WebSocket route).
+        """
+        initial: GraphState = {
+            "query":         query,
+            "run_id":        run_id,
+            "current_agent": "",
+            "agent_outputs": {},
+            "rail_errors":   [],
+        }
+        result = self._worker_pool_graph.invoke(initial)
+        agent_outputs: dict[str, AgentOutput] = result.get("agent_outputs", {})
+        for name, out in agent_outputs.items():
+            logger.info("[Orchestrator] %s done – score=%.3f", name, out.overall_score)
             if progress_callback:
                 try:
-                    progress_callback(name, output.overall_score)
+                    progress_callback(name, out.overall_score)
                 except Exception:
                     pass
-            return name, output
+        return agent_outputs
 
-        pairs = await asyncio.gather(
-            *[_run_one(name, agent) for name, agent in _SUB_AGENTS.items()]
-        )
-        return dict(pairs)
+    async def _run_via_graph_async(
+        self,
+        query: StockQuery,
+        run_id: str = "",
+        progress_callback: Callable[[str, float], None] | None = None,
+    ) -> dict[str, AgentOutput]:
+        """
+        Async version: streams events from the worker pool graph via
+        astream_events so progress_callback fires as each agent completes —
+        identical real-time behaviour to the previous asyncio.gather approach.
+
+        Called from within the FastAPI event loop; put_nowait in the WebSocket
+        progress_callback remains safe (no call_soon_threadsafe needed).
+        """
+        initial: GraphState = {
+            "query":         query,
+            "run_id":        run_id,
+            "current_agent": "",
+            "agent_outputs": {},
+            "rail_errors":   [],
+        }
+        collected: dict[str, AgentOutput] = {}
+
+        async for event in self._worker_pool_graph.astream_events(
+            initial,
+            version="v2",
+        ):
+            if event["event"] == "on_chain_end" and event["name"] == "run_agent":
+                partial: dict = event["data"]["output"].get("agent_outputs", {})
+                for name, out in partial.items():
+                    collected[name] = out
+                    logger.info(
+                        "[Orchestrator] %s done (graph) – score=%.3f",
+                        name, out.overall_score,
+                    )
+                    if progress_callback:
+                        try:
+                            progress_callback(name, out.overall_score)
+                        except Exception:
+                            pass
+
+        return collected

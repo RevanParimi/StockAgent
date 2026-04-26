@@ -1,6 +1,6 @@
 # Agent Design Reference
 
-> Updated: 2026-04-21 · 9 automobile agents active · 3 other sectors stubbed
+> Updated: 2026-04-25 · 9 automobile agents active · 3 other sectors stubbed
 
 ---
 
@@ -11,7 +11,9 @@ AutomobileAgentOrchestrator.analyse(ticker)
        │
        ├─ _resolve_ticker()  →  LLM  →  StockQuery
        │
-       ├─ ThreadPoolExecutor (9 workers, parallel)
+       ├─ LangGraph worker pool  (START → [Send × 9] → run_agent → END)
+       │     RetryPolicy(max_attempts=2) per node
+       │     Fan-in via _merge_dicts reducer (race-condition-safe)
        │     SalesDemandAgent.run()
        │     RawMaterialsAgent.run()
        │     FundamentalsAgent.run()
@@ -24,7 +26,8 @@ AutomobileAgentOrchestrator.analyse(ticker)
        │
        └─ SignalAggregator.run()  →  FinalReport
 
-Async path (FastAPI/WebSocket): analyse_async() uses asyncio.gather + AsyncOpenAI.
+Async path (FastAPI/WebSocket): analyse_async() uses graph.astream_events() — progress_callback
+  fires as each agent completes (real-time), identical behaviour to the previous asyncio.gather path.
   HTTP/WS requests arrive via the TypeScript gateway (:3000) which proxies to Python :8001.
 ```
 
@@ -144,6 +147,7 @@ Sector routing is not yet wired in the orchestrator — all tickers run automobi
 > **Scheduler note:** The RL daily review runs in `services/scheduler/python/scheduler.py` (APScheduler, Python).
 > The analysis cron job has been moved to the TypeScript gateway (`services/gateway/src/jobs/analysis-cron.ts`).
 > The Python scheduler now runs the RL review job only — it must stay Python because it imports `intelligence.rl` directly.
+> `AutomobileScheduler` exposes `run_now(tickers)` for immediate manual analysis and `status()` for health monitoring.
 
 Activate by setting `learned_weights` on the orchestrator:
 ```python

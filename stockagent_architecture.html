@@ -1,0 +1,1650 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>StockAgent — Full Architecture</title>
+<style>
+:root {
+  --teal:#0BA87E; --navy:#0E1C36; --amber:#C47A0A;
+  --blue:#1A5FBB; --green:#15803D; --purple:#7C3AED;
+  --light:#F0F4F8; --slate:#475569;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{background:#F0F4F8;font-family:'Segoe UI',system-ui,sans-serif;color:#0E1C36}
+
+.diag-slide{
+  background:#F0F4F8;font-family:'Segoe UI',system-ui,sans-serif;
+  min-height:100vh;display:flex;flex-direction:column;align-items:center;
+  padding:22px 20px 60px;color:#0E1C36;
+}
+
+/* ── Header ── */
+.header{width:100%;max-width:1440px;display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:18px}
+.header h1{font-size:24px;font-weight:700;color:#0E1C36;line-height:1.2}
+.header h1 span{color:#0BA87E}
+.eyebrow{font-size:10px;font-weight:600;letter-spacing:2px;color:#6B7A99;text-transform:uppercase;margin-bottom:4px}
+.badges{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;align-items:center}
+.badge{padding:4px 12px;border-radius:20px;font-size:11px;font-weight:600;letter-spacing:.3px}
+.b-teal{background:#E0F7F1;color:#0BA87E;border:1px solid #A8E6D5}
+.b-blue{background:#E6F0FC;color:#1A5FBB;border:1px solid #AECBF5}
+.b-amber{background:#FEF3E0;color:#C47A0A;border:1px solid #F9D98A}
+.b-red{background:#FDECEC;color:#B53333;border:1px solid #F2B6B6}
+.b-purple{background:#F3EEFF;color:#6D28D9;border:1px solid #C4B5FD}
+
+/* ── Runtime strip ── */
+.runtime-strip{
+  width:100%;max-width:1440px;margin-top:14px;
+  display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:center;
+}
+.rt-chip{
+  background:#fff;border:1.5px solid #E2E8F0;border-radius:10px;
+  padding:7px 16px;font-size:11.5px;font-weight:600;color:#1A2740;
+  display:flex;flex-direction:column;align-items:center;gap:1px;
+  cursor:pointer;transition:border-color .2s,box-shadow .2s;position:relative;
+}
+.rt-chip:hover{border-color:var(--lc);box-shadow:0 0 0 3px var(--lf)}
+.rt-chip .rt-role{font-size:9px;font-weight:400;color:#94A3B8;letter-spacing:.5px}
+.rt-chip .rt-dot{width:7px;height:7px;border-radius:50%;background:var(--lc);position:absolute;top:6px;right:8px}
+
+/* ── Main 3-col ── */
+.layout{
+  width:100%;max-width:1440px;
+  display:grid;grid-template-columns:300px 1fr 300px;
+  gap:0;align-items:center;position:relative;
+}
+.side-panel{display:flex;flex-direction:column;gap:12px}
+.side-panel.left{align-items:flex-end}
+.side-panel.right{align-items:flex-start}
+
+/* ── Cluster cards ── */
+.cluster{
+  background:#fff;border-radius:12px;border:1.5px solid #E2E8F0;
+  padding:13px 15px;width:286px;position:relative;cursor:pointer;
+  transition:box-shadow .2s,border-color .2s;
+}
+.cluster:hover{box-shadow:0 4px 20px rgba(0,0,0,.09)}
+.cluster.active{border-color:var(--ac);box-shadow:0 0 0 3px var(--ac-faint)}
+.cluster-stage{font-size:9px;font-weight:700;letter-spacing:2px;text-transform:uppercase;margin-bottom:5px;color:var(--ac)}
+.cluster-title{font-size:13px;font-weight:700;color:#0E1C36;margin-bottom:7px;line-height:1.3}
+.cluster-items{display:flex;flex-direction:column;gap:3px}
+.cluster-item{display:flex;align-items:flex-start;gap:6px;font-size:11px;color:#4A5568;line-height:1.45}
+.cluster-item::before{content:'';width:5px;height:5px;border-radius:50%;background:var(--ac);flex-shrink:0;margin-top:5px}
+.conn-line{position:absolute;height:1.5px;opacity:.25;top:50%;transform:translateY(-50%);pointer-events:none}
+.left .conn-line{right:-32px;width:32px;background:linear-gradient(90deg,var(--ac),transparent)}
+.right .conn-line{left:-32px;width:32px;background:linear-gradient(270deg,var(--ac),transparent)}
+
+/* ── Centre ── */
+.centre-wrap{display:flex;justify-content:center;align-items:center;position:relative}
+
+/* ── Tooltip ── */
+#rich-tip{
+  position:fixed;background:#0E1C36;color:#fff;border-radius:12px;
+  padding:14px 18px;width:260px;font-size:11.5px;line-height:1.6;
+  pointer-events:none;opacity:0;transition:opacity .18s;z-index:9999;
+  box-shadow:0 8px 30px rgba(0,0,0,.25);
+}
+#rich-tip.show{opacity:1}
+#rich-tip .tip-title{font-size:13px;font-weight:700;color:#5CDFC0;margin-bottom:6px;padding-bottom:6px;border-bottom:1px solid rgba(255,255,255,.1)}
+#rich-tip .tip-role{font-size:10px;font-weight:600;letter-spacing:1.5px;color:#94A3B8;margin-bottom:8px;text-transform:uppercase}
+#rich-tip .tip-body{color:#CBD5E1;font-size:11px;line-height:1.65}
+#rich-tip .tip-tags{display:flex;flex-wrap:wrap;gap:5px;margin-top:10px}
+#rich-tip .tip-tag{background:rgba(255,255,255,.08);border-radius:4px;padding:2px 8px;font-size:10px;color:#94A3B8}
+
+/* ── Bottom pipeline ── */
+.tools-layer{
+  width:100%;max-width:1440px;margin-top:22px;background:#fff;
+  border-radius:16px;border:1.5px solid #E2E8F0;padding:20px 28px;
+}
+.tools-header{display:flex;align-items:center;gap:10px;margin-bottom:16px}
+.tools-header h3{font-size:13px;font-weight:700;color:#0E1C36}
+.tools-header .badge-idea{
+  background:#FEF3E0;color:#C47A0A;border:1px solid #F9D98A;
+  border-radius:6px;padding:2px 10px;font-size:10px;font-weight:600;letter-spacing:.5px
+}
+.pipeline-row{display:flex;align-items:stretch;gap:0;overflow-x:auto;padding-bottom:4px}
+.pipe-stage{display:flex;flex-direction:column;align-items:center;position:relative;min-width:0;flex:1}
+.pipe-arrow{display:flex;align-items:center;justify-content:center;padding:0 4px;color:#94A3B8;font-size:18px;flex-shrink:0;align-self:center;margin-top:-18px}
+.pipe-label{font-size:9px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--pc);margin-bottom:6px;text-align:center;white-space:nowrap}
+.pipe-tools{display:flex;flex-direction:column;gap:5px;width:100%;align-items:center}
+.pipe-tool{
+  background:var(--pc-faint);border:1px solid var(--pc-border);border-radius:8px;
+  padding:6px 10px;font-size:10.5px;font-weight:600;color:var(--pc-text);
+  text-align:center;width:100%;max-width:130px;cursor:pointer;
+  transition:box-shadow .15s;white-space:nowrap;
+}
+.pipe-tool:hover{box-shadow:0 2px 12px rgba(0,0,0,.1)}
+.pipe-tool .sub{font-size:9px;font-weight:400;color:var(--pc-sub);display:block;margin-top:1px}
+
+/* ── Legend ── */
+.legend{
+  width:100%;max-width:1440px;display:flex;justify-content:center;
+  align-items:center;gap:22px;margin-top:18px;flex-wrap:wrap;
+}
+.legend-item{display:flex;align-items:center;gap:7px;font-size:11.5px;color:#4A5568}
+.legend-dot{width:9px;height:9px;border-radius:50%}
+
+/* ══════════════════════════════════════════
+   Flow Panel — light theme mini-website
+   ══════════════════════════════════════════ */
+#flow-panel{
+  position:fixed;background:#fff;border-radius:16px;
+  width:700px;max-height:540px;pointer-events:none;opacity:0;
+  transition:opacity .22s ease;z-index:9997;
+  box-shadow:0 20px 60px rgba(14,28,54,.17),0 0 0 1.5px rgba(14,28,54,.07);
+  overflow:hidden;display:flex;flex-direction:column;
+}
+#flow-panel.show{opacity:1}
+/* coloured top accent bar */
+#fp-accent{height:3px;flex-shrink:0;background:var(--fc,#0BA87E);transition:background .2s}
+.fp-hdr{
+  padding:13px 20px 11px;border-bottom:1px solid #EEF2F7;
+  display:flex;align-items:center;gap:12px;flex-shrink:0;background:#fff;
+}
+#fp-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0;transition:all .22s}
+.fp-meta{display:flex;flex-direction:column;gap:2px}
+#fp-stage{font-size:9px;color:#94A3B8;letter-spacing:1.5px;text-transform:uppercase}
+#fp-title{font-size:14px;font-weight:700;color:#0E1C36;letter-spacing:-.2px}
+.fp-body{padding:15px 20px 18px;overflow-y:auto;flex:1;background:#F8FAFC}
+.fp-body::-webkit-scrollbar{width:4px}
+.fp-body::-webkit-scrollbar-thumb{background:#CBD5E1;border-radius:4px}
+
+/* ─ Section label ─ */
+.fps{font-size:9px;font-weight:700;letter-spacing:2px;text-transform:uppercase;
+  color:#94A3B8;margin:14px 0 7px;display:flex;align-items:center;gap:8px}
+.fps:first-child{margin-top:0}
+.fps::after{content:'';flex:1;height:1px;background:#E8EDF5}
+
+/* ─ Arrow ─ */
+.fp-arrow{text-align:center;color:#CBD5E1;font-size:20px;margin:6px 0;line-height:1}
+
+/* ─ Central/accent node ─ */
+.fp-node{
+  background:#fff;border:2px solid var(--fc,#0BA87E);
+  border-radius:10px;padding:10px 16px;text-align:center;
+  display:inline-block;min-width:220px;
+}
+.fp-node-title{font-size:12px;font-weight:700;color:#0E1C36}
+.fp-node-sub{font-size:10px;color:#64748B;margin-top:2px;line-height:1.4}
+
+/* ─ Generic card ─ */
+.fpc{
+  background:#fff;border:1.5px solid #E8EDF5;border-radius:10px;
+  padding:9px 13px;
+}
+.fpc.hi{border-color:var(--fc,#0BA87E);background:color-mix(in srgb,var(--fc) 5%,#fff)}
+.fpc-t{font-size:11px;font-weight:700;color:#0E1C36}
+.fpc-s{font-size:9.5px;color:#64748B;line-height:1.45;margin-top:2px}
+
+/* ─ Agent cards 3×3 grid ─ */
+.agent-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.ag{
+  background:#fff;border:1.5px solid #E8EDF5;
+  border-left:3px solid var(--ac,#1A5FBB);
+  border-radius:8px;padding:8px 10px;
+}
+.ag-name{font-size:10.5px;font-weight:700;color:#0E1C36}
+.ag-src{font-size:8.5px;color:#94A3B8;margin-top:2px}
+.ag-bar{margin-top:6px;height:3px;background:#E8EDF5;border-radius:2px;overflow:hidden}
+.ag-bar-fill{height:100%;border-radius:2px;background:var(--ac,#1A5FBB)}
+
+/* ─ Horizontal weight bar chart ─ */
+.wt-row{display:flex;align-items:center;gap:8px;margin-bottom:5px}
+.wt-label{font-size:10px;font-weight:600;color:#334155;width:90px;flex-shrink:0}
+.wt-track{flex:1;height:16px;background:#F1F5F9;border-radius:5px;overflow:hidden}
+.wt-fill{height:100%;border-radius:5px;display:flex;align-items:center;padding-left:7px;min-width:28px}
+.wt-pct{font-size:9px;font-weight:700;color:#fff;white-space:nowrap}
+
+/* ─ 5-verdict colour strip ─ */
+.verdict-strip{display:flex;border-radius:10px;overflow:hidden;height:46px;gap:2px}
+.vc{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  font-size:8.5px;font-weight:700;color:#fff;gap:2px;border-radius:6px}
+.vc-range{font-size:8px;font-weight:400;opacity:.8}
+
+/* ─ Numbered step flow ─ */
+.flow-steps{display:flex;flex-direction:column;gap:0}
+.flow-step{display:flex;gap:12px;position:relative}
+.flow-step:not(:last-child)::after{
+  content:'';position:absolute;left:14px;top:30px;bottom:0;
+  width:2px;background:#E2E8F0;z-index:0;
+}
+.fs-num{
+  width:28px;height:28px;border-radius:50%;
+  background:var(--fc,#0BA87E);color:#fff;
+  font-size:12px;font-weight:700;display:flex;align-items:center;
+  justify-content:center;flex-shrink:0;z-index:1;position:relative;
+}
+.fs-body{padding-bottom:14px;flex:1}
+.fs-title{font-size:11.5px;font-weight:700;color:#0E1C36;margin-bottom:2px}
+.fs-desc{font-size:9.5px;color:#64748B;line-height:1.5}
+
+/* ─ Miss type taxonomy ─ */
+.miss-row{display:flex;gap:5px;flex-wrap:wrap}
+.mp{border-radius:20px;padding:4px 11px;font-size:9.5px;font-weight:600;
+  border:1.5px solid currentColor;background:color-mix(in srgb,currentColor 8%,#fff)}
+
+/* ─ File tree ─ */
+.file-tree{display:flex;flex-direction:column;gap:5px}
+.file-node{
+  display:flex;align-items:flex-start;gap:10px;
+  padding:8px 12px;background:#fff;border:1.5px solid #E8EDF5;border-radius:9px;
+}
+.file-node.perm{border-color:#C4B5FD;background:#F5F3FF}
+.file-icon{font-size:15px;flex-shrink:0;margin-top:1px}
+.file-name{font-size:10.5px;font-weight:700;color:#0E1C36;font-family:monospace}
+.file-node.perm .file-name{color:#6D28D9}
+.file-desc{font-size:9px;color:#64748B;margin-top:2px;line-height:1.45}
+
+/* ─ Source cards ─ */
+.src-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:7px}
+.src-card{
+  background:#fff;border:1.5px solid #E8EDF5;
+  border-top:3px solid var(--sc,#0BA87E);border-radius:9px;padding:10px 13px;
+}
+.src-name{font-size:11.5px;font-weight:700;color:#0E1C36}
+.src-role{font-size:9.5px;color:#64748B;margin-top:3px;line-height:1.4}
+.src-badge{
+  margin-top:7px;display:inline-block;font-size:8.5px;font-weight:600;
+  padding:2px 8px;border-radius:4px;
+  color:var(--sc,#0BA87E);
+  background:color-mix(in srgb,var(--sc,#0BA87E) 10%,#fff);
+}
+
+/* ─ Stat chips ─ */
+.stat-row{display:flex;gap:5px;flex-wrap:wrap;margin-top:8px}
+.sc-chip{background:#fff;border:1.5px solid #E8EDF5;border-radius:7px;
+  padding:4px 10px;font-size:9px;color:#475569}
+
+/* ─ RAG pipeline steps (horizontal) ─ */
+.rag-pipe{display:flex;align-items:center;gap:5px;flex-wrap:wrap}
+.rag-box{background:#fff;border:1.5px solid #E8EDF5;border-radius:8px;
+  padding:8px 12px;text-align:center}
+.rag-box.hi{border-color:var(--fc);background:color-mix(in srgb,var(--fc) 6%,#fff)}
+.rag-t{font-size:10.5px;font-weight:700;color:#0E1C36}
+.rag-s{font-size:8.5px;color:#94A3B8;margin-top:2px}
+.rag-arr{color:#CBD5E1;font-size:18px;flex-shrink:0}
+
+/* ─ Sector grid (2×2) ─ */
+.sec-grid{display:grid;grid-template-columns:1fr 1fr;gap:7px}
+.sec-card{background:#fff;border:1.5px solid var(--sc,#0BA87E);border-top:3px solid var(--sc,#0BA87E);border-radius:10px;padding:9px 11px}
+.sec-card.muted{opacity:.6;border-style:dashed;border-top-style:solid}
+.sec-hdr{display:flex;align-items:center;gap:5px;margin-bottom:4px}
+.sec-icon{font-size:13px}
+.sec-name{font-size:10.5px;font-weight:700;color:#0E1C36;flex:1}
+.sec-badge{font-size:7.5px;font-weight:700;padding:2px 7px;border-radius:10px;white-space:nowrap}
+.sec-badge.live{background:#ECFDF5;color:#059669;border:1px solid #6EE7B7}
+.sec-badge.road{background:#F5F3FF;color:#6D28D9;border:1px solid #C4B5FD}
+.sec-meta{font-size:8.5px;color:#64748B;margin-bottom:3px;line-height:1.4}
+.sec-dims{font-size:8px;color:#94A3B8;line-height:1.4;border-top:1px solid #EEF2F7;padding-top:4px;margin-top:4px}
+
+/* ─ Memory tiers ─ */
+.mem-tier{border-radius:9px;padding:9px 13px;margin-bottom:5px;background:var(--mtf,#FEF9F9);border:1.5px solid var(--mtb,#FECACA)}
+.mt-label{font-size:9px;font-weight:800;letter-spacing:1.5px;color:var(--mt,#DC2626);text-transform:uppercase;margin-bottom:3px}
+.mt-items{font-size:9.5px;color:#475569;line-height:1.5}
+
+/* ─ RL cycle row ─ */
+.rl-cycle-row{display:flex;align-items:center;gap:4px;overflow-x:auto;padding-bottom:2px;margin-bottom:2px}
+.rl-node{flex:1;min-width:78px;background:#fff;border:2px solid #E8EDF5;border-radius:10px;padding:8px 6px;text-align:center}
+.rl-n-icon{font-size:16px;margin-bottom:2px}
+.rl-n-title{font-size:9.5px;font-weight:700;color:#0E1C36}
+.rl-n-sub{font-size:7.5px;color:#94A3B8;margin-top:2px;line-height:1.3}
+.rl-arr{color:#CBD5E1;font-size:13px;flex-shrink:0}
+</style>
+</head>
+<body>
+<div class="diag-slide">
+
+<!-- Tooltip (orbit dots) -->
+<div id="rich-tip">
+  <div class="tip-role" id="tt-role"></div>
+  <div class="tip-title" id="tt-title"></div>
+  <div class="tip-body" id="tt-body"></div>
+  <div class="tip-tags" id="tt-tags"></div>
+</div>
+
+<!-- Flow Panel (segment / inner-zone hover) -->
+<div id="flow-panel">
+  <div id="fp-accent"></div>
+  <div class="fp-hdr">
+    <div id="fp-dot"></div>
+    <div class="fp-meta">
+      <div id="fp-stage"></div>
+      <div id="fp-title"></div>
+    </div>
+  </div>
+  <div class="fp-body" id="fp-body"></div>
+</div>
+
+<!-- Header -->
+<div class="header">
+  <div>
+    <div class="eyebrow">Multi-Language · Multi-Agent · Adaptive RL · Indian NSE/BSE Automobile Stocks</div>
+    <h1>StockAgent <span>Full Architecture</span> — 9-Agent AI Investment Intelligence</h1>
+  </div>
+  <div class="badges">
+    <div class="badge b-teal">9 specialist agents</div>
+    <div class="badge b-blue">4 sector LangGraphs</div>
+    <div class="badge b-amber">RL feedback loop</div>
+    <div class="badge b-red">C++ indicators</div>
+    <div class="badge b-purple">3-rail safety layer</div>
+  </div>
+</div>
+
+<!-- Runtime Ensemble Strip -->
+<div class="runtime-strip">
+  <span style="font-size:11px;font-weight:600;color:#6B7A99;letter-spacing:1px;text-transform:uppercase;margin-right:4px">Runtime Ensemble →</span>
+
+  <div class="rt-chip" style="--lc:#3776AB;--lf:#EAF2FB"
+    data-tip='{"role":"Core Language · Port 8001","title":"Python 3.13","body":"Core agent runtime. Houses all 9 specialist agent classes, AutomobileAgentOrchestrator (ThreadPoolExecutor 9-way parallel + asyncio.gather async path), SignalAggregator, and BaseAgent ABC with 3-attempt exponential backoff. Every LLM call, context fetch, and RL feedback step runs in Python. FastAPI internal bridge exposes POST /analyse, WS /ws/stream, GET /history on port 8001.","tags":["9 agents","ThreadPoolExecutor","asyncio.gather","FastAPI :8001","BaseAgent ABC"]}'
+    onmouseenter="showTip(this,event)" onmouseleave="hideTip()">
+    <span class="rt-dot"></span>Python 3.13<span class="rt-role">core agents · FastAPI</span>
+  </div>
+
+  <div class="rt-chip" style="--lc:#00599C;--lf:#E8F3FC"
+    data-tip='{"role":"Performance Layer · In-process .pyd","title":"C++ pybind11","body":"High-performance technical indicators compiled via CMake + pybind11 as stockindicators.cp313-win_amd64.pyd. Implements RSI(14) EWM adjust=True, MACD(12,26,9) EWM adjust=False, Bollinger Bands(20,2σ) ddof=1 — output matches pandas-ta to floating-point precision (verified by 25-test parity suite). Loaded by yfinance_fetcher.py. Pure-Python fallback activates silently if .pyd absent — _USE_CPP=False, no code change needed.","tags":["RSI(14) EWM=True","MACD(12,26,9)","BB(20,2σ) ddof=1","pybind11 .pyd","Pure-Python fallback"]}'
+    onmouseenter="showTip(this,event)" onmouseleave="hideTip()">
+    <span class="rt-dot"></span>C++ pybind11<span class="rt-role">RSI · MACD · Bollinger</span>
+  </div>
+
+  <div class="rt-chip" style="--lc:#0BA87E;--lf:#E0F7F1"
+    data-tip='{"role":"Orchestration · State Machine","title":"LangGraph","body":"Four isolated StateGraph flows registered in langgraph.json: automobile, banking_bfsi, it_sector, renewable_energy. Each graph: resolve_ticker → input_rail → parallel Send fan-out → run_agent nodes (one per agent) → aggregate → END. Shared infrastructure in graphs/_shared/: state.py (GraphState TypedDict with merge reducers), rails.py (3 non-blocking validators), nodes.py (factory functions). RetryPolicy(max_attempts=2) on every run_agent node. A failure returns neutral AgentOutput(overall_score=0.5) — graph never crashes.","tags":["4 sector graphs","Send fan-out","RetryPolicy max=2","Shared rails","Neutral 0.5 fallback"]}'
+    onmouseenter="showTip(this,event)" onmouseleave="hideTip()">
+    <span class="rt-dot"></span>LangGraph<span class="rt-role">state machine · 4 graphs</span>
+  </div>
+
+  <div class="rt-chip" style="--lc:#E8A020;--lf:#FEF9ED"
+    data-tip='{"role":"Public Gateway · Port 3000","title":"TypeScript / Bun + Hono","body":"Public-facing API gateway. Hono routes: POST /api/analyse → Python :8001/analyse, GET /api/history, WS /ws/stream bidirectional proxy. Analysis cron (node-cron) triggers per-ticker analysis at 8:30am IST Monday–Friday. Zod schemas in services/gateway/src/types/ are single source of truth for API types — frontend mirrors these, never maintains independently. CSHARP_SCHEDULER_ENABLED flag routes schedule queries to C# :5000.","tags":["Bun runtime","Hono framework","node-cron 8:30am IST","Zod schemas","WebSocket proxy :3000"]}'
+    onmouseenter="showTip(this,event)" onmouseleave="hideTip()">
+    <span class="rt-dot"></span>TypeScript / Hono<span class="rt-role">gateway · cron · :3000</span>
+  </div>
+
+  <div class="rt-chip" style="--lc:#512BD4;--lf:#F0ECFC"
+    data-tip='{"role":"Enterprise Scheduler · Port 5000","title":"C# .NET 8 / Quartz.NET","body":"Enterprise scheduler and persistence layer. Quartz.NET 3.13 with [DisallowConcurrentExecution] fires AnalyseJob at cron 0 30 8 ? * MON-FRI. EF Core 8 persists ScoreRecord entities to SQL Server. ASP.NET 8 controllers: GET /health, GET /scheduler/status, POST/GET /scores. Python score_store.py proxies to this when CSHARP_SCHEDULER_ENABLED=true — otherwise uses SQLite directly. Polly retry policies on all HTTP calls to Python :8001.","tags":["Quartz.NET 3.13","EF Core 8","SQL Server","Polly retries","CSHARP_SCHEDULER_ENABLED"]}'
+    onmouseenter="showTip(this,event)" onmouseleave="hideTip()">
+    <span class="rt-dot"></span>C# .NET 8<span class="rt-role">Quartz.NET · EF Core · :5000</span>
+  </div>
+
+  <div class="rt-chip" style="--lc:#E05A1C;--lf:#FEF0E8"
+    data-tip='{"role":"LLM Provider · All Agents","title":"Qwen3-235B-A22B","body":"Primary LLM via OpenRouter API. 235B MoE model, 22B active parameters per token. Used for all 9 agent analyses, ticker resolution (_resolve_ticker), SignalAggregator conflict resolution synthesis, and FeedbackAgent daily miss analysis. LLM_TEMPERATURE=0.2 for agents, 0.3 for FeedbackAgent. MAX_RETRIES=3 with exponential backoff on APIError, RateLimitError, APITimeoutError. LLM_MAX_TOKENS=2048, LLM_TIMEOUT_SECONDS=60.","tags":["235B MoE","22B active params","OpenRouter API","Temperature=0.2","3-attempt backoff"]}'
+    onmouseenter="showTip(this,event)" onmouseleave="hideTip()">
+    <span class="rt-dot"></span>Qwen3-235B<span class="rt-role">LLM · OpenRouter</span>
+  </div>
+
+  <div class="rt-chip" style="--lc:#7C3AED;--lf:#F3EEFF"
+    data-tip='{"role":"Semantic Memory · RAG Pipeline","title":"ChromaDB + RAG","body":"Local vector database for retrieval-augmented generation. sentence-transformers encode company research PDFs, annual reports, and analyst notes into dense embeddings stored in ChromaDB. Retriever uses cosine similarity search (top-k) with optional cross-encoder reranking for precision. RAG_ENABLED=false by default. Activated by running scripts/ingest_documents.py to index documents. BaseAgent._rag_retrieve() queries ChromaDB as the highest-priority context source.","tags":["sentence-transformers","Cosine similarity","Cross-encoder rerank","RAG_ENABLED=false","scripts/ingest_documents.py"]}'
+    onmouseenter="showTip(this,event)" onmouseleave="hideTip()">
+    <span class="rt-dot"></span>ChromaDB / RAG<span class="rt-role">embeddings · retrieval</span>
+  </div>
+</div>
+
+<!-- Main 3-column -->
+<div class="layout">
+
+  <!-- LEFT PANEL -->
+  <div class="side-panel left">
+
+    <div class="cluster" style="--ac:#0BA87E;--ac-faint:#E0F7F1" data-stage="ingest" onclick="activateStage('ingest')">
+      <div class="conn-line"></div>
+      <div class="cluster-stage">Stage 01 · Ingest</div>
+      <div class="cluster-title">Multi-Source Data Layer</div>
+      <div class="cluster-items">
+        <div class="cluster-item">yfinance — 10yr OHLCV, quarterly P&L, macro spot prices</div>
+        <div class="cluster-item">Serper — up to 12 news queries/stock, 9 with warm cache</div>
+        <div class="cluster-item">Tavily — full-page policy PDFs &amp; government circulars</div>
+        <div class="cluster-item">Macro cache TTL=2h — saves 3 Serper calls per run on HIT</div>
+        <div class="cluster-item">Micro search loop — pre-warms Nifty Auto + EV/RBI context</div>
+        <div class="cluster-item">ContextBuilder — routes each agent to the right fetchers</div>
+      </div>
+    </div>
+
+    <div class="cluster" style="--ac:#1A5FBB;--ac-faint:#E6F0FC" data-stage="analyse" onclick="activateStage('analyse')">
+      <div class="conn-line"></div>
+      <div class="cluster-stage">Stage 02 · Analyse</div>
+      <div class="cluster-title">9 Parallel Specialist Agents</div>
+      <div class="cluster-items">
+        <div class="cluster-item">SalesDemand — FADA/SIAM dispatch, EV Vahan, DGFT exports</div>
+        <div class="cluster-item">RawMaterials — steel/aluminium/crude/platinum/palladium</div>
+        <div class="cluster-item">Fundamentals — revenue/EBITDA/margins/FII/DII flow</div>
+        <div class="cluster-item">PatternAnalysis — C++ RSI/MACD/BB, 10yr cycle, support zones</div>
+        <div class="cluster-item">Sentiment — news NLP, earnings tone, Reddit/Twitter/YouTube</div>
+        <div class="cluster-item">PolicyRegulatory — FAME/BS6/PLI/Union Budget duties</div>
+        <div class="cluster-item">CompetitiveIntel — EV share/model pipeline/JVs/ADAS</div>
+        <div class="cluster-item">RiskMacro — INR/RBI/crude/China semiconductor supply</div>
+        <div class="cluster-item">ValuationCatalyst — P/E discount, fair value, recovery catalysts</div>
+      </div>
+    </div>
+
+    <div class="cluster" style="--ac:#7C3AED;--ac-faint:#F3EEFF" data-stage="learn" onclick="activateStage('learn')">
+      <div class="conn-line"></div>
+      <div class="cluster-stage">Stage 05 · Learn</div>
+      <div class="cluster-title">RL Feedback &amp; Adaptive Memory</div>
+      <div class="cluster-items">
+        <div class="cluster-item">FeedbackAgent (LLM) — daily miss analysis at 4:30pm IST</div>
+        <div class="cluster-item">WeightAdapter — bounded steps ±0.05/day, max drift ±0.15</div>
+        <div class="cluster-item">LearningLedger — accumulated pattern rules, persist forever</div>
+        <div class="cluster-item">Miss taxonomy — 7 types, 3 penalty levels (0× / 0.5× / 1×)</div>
+        <div class="cluster-item">Lesson scope — stock / sector / market-wide propagation</div>
+        <div class="cluster-item">Confidence decay — 2%/month from last_seen, floor 0.10</div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- CENTRE WHEEL SVG -->
+  <div class="centre-wrap">
+    <svg id="wheel" width="580" height="580" viewBox="-310 -310 620 620" style="overflow:visible">
+      <defs>
+        <filter id="csh" x="-30%" y="-30%" width="160%" height="160%">
+          <feDropShadow dx="0" dy="3" stdDeviation="8" flood-color="#0E1C36" flood-opacity="0.13"/>
+        </filter>
+        <marker id="ah" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+          <path d="M0,0 L0,6 L8,3 z" fill="#0E1C36" opacity="0.35"/>
+        </marker>
+      </defs>
+
+      <!-- Orbit guide ring -->
+      <circle r="230" fill="none" stroke="#E8EDF5" stroke-width="1" stroke-dasharray="4 4"/>
+
+      <!-- ── CIRCLE 3: BUSINESS OUTPUT RING r=295 ── -->
+      <circle r="295" fill="none" stroke="#C8D3DE" stroke-width="1.5" stroke-dasharray="5 8" opacity="0.75"/>
+      <!-- Annular sector fills — tie output nodes back to their pipeline stages -->
+      <path d="M 0,-210 A 210,210 0 0,1 199.73,-64.89 L 280.6,-91.2 A 295,295 0 0,0 0,-295 Z" fill="#0BA87E" opacity="0.04"/>
+      <path d="M 199.73,-64.89 A 210,210 0 0,1 123.44,169.89 L 173.5,238.7 A 295,295 0 0,0 280.6,-91.2 Z" fill="#1A5FBB" opacity="0.04"/>
+      <path d="M 123.44,169.89 A 210,210 0 0,1 -123.44,169.89 L -173.5,238.7 A 295,295 0 0,0 173.5,238.7 Z" fill="#C47A0A" opacity="0.04"/>
+      <path d="M -123.44,169.89 A 210,210 0 0,1 -199.73,-64.89 L -280.6,-91.2 A 295,295 0 0,0 -173.5,238.7 Z" fill="#15803D" opacity="0.04"/>
+      <path d="M -199.73,-64.89 A 210,210 0 0,1 0,-210 L 0,-295 A 295,295 0 0,0 -280.6,-91.2 Z" fill="#7C3AED" opacity="0.04"/>
+
+      <!-- ── OUTER SEGMENTS r=210 ── -->
+      <!-- INGEST: -90° → -18° -->
+      <path id="seg-ingest"
+        d="M0,0 L0,-210 A210,210 0 0,1 199.73,-64.89 Z"
+        fill="#0BA87E" opacity="0.13" stroke="#0BA87E" stroke-width="0.8"
+        style="cursor:pointer;transition:opacity .2s"
+        onmouseenter="segHover('ingest',event)" onmouseleave="segLeave()"
+        onclick="activateStage('ingest')"/>
+      <!-- ANALYSE: -18° → 54° -->
+      <path id="seg-analyse"
+        d="M0,0 L199.73,-64.89 A210,210 0 0,1 123.44,169.89 Z"
+        fill="#1A5FBB" opacity="0.13" stroke="#1A5FBB" stroke-width="0.8"
+        style="cursor:pointer;transition:opacity .2s"
+        onmouseenter="segHover('analyse',event)" onmouseleave="segLeave()"
+        onclick="activateStage('analyse')"/>
+      <!-- FUSE: 54° → 126° -->
+      <path id="seg-fuse"
+        d="M0,0 L123.44,169.89 A210,210 0 0,1 -123.44,169.89 Z"
+        fill="#C47A0A" opacity="0.13" stroke="#C47A0A" stroke-width="0.8"
+        style="cursor:pointer;transition:opacity .2s"
+        onmouseenter="segHover('fuse',event)" onmouseleave="segLeave()"
+        onclick="activateStage('fuse')"/>
+      <!-- PERSIST: 126° → 198° -->
+      <path id="seg-persist"
+        d="M0,0 L-123.44,169.89 A210,210 0 0,1 -199.73,-64.89 Z"
+        fill="#15803D" opacity="0.13" stroke="#15803D" stroke-width="0.8"
+        style="cursor:pointer;transition:opacity .2s"
+        onmouseenter="segHover('persist',event)" onmouseleave="segLeave()"
+        onclick="activateStage('persist')"/>
+      <!-- LEARN: 198° → 270° -->
+      <path id="seg-learn"
+        d="M0,0 L-199.73,-64.89 A210,210 0 0,1 0,-210 Z"
+        fill="#7C3AED" opacity="0.13" stroke="#7C3AED" stroke-width="0.8"
+        style="cursor:pointer;transition:opacity .2s"
+        onmouseenter="segHover('learn',event)" onmouseleave="segLeave()"
+        onclick="activateStage('learn')"/>
+
+      <!-- Spokes -->
+      <line x1="0" y1="0" x2="0" y2="-210" stroke="#fff" stroke-width="2.5"/>
+      <line x1="0" y1="0" x2="199.73" y2="-64.89" stroke="#fff" stroke-width="2.5"/>
+      <line x1="0" y1="0" x2="123.44" y2="169.89" stroke="#fff" stroke-width="2.5"/>
+      <line x1="0" y1="0" x2="-123.44" y2="169.89" stroke="#fff" stroke-width="2.5"/>
+      <line x1="0" y1="0" x2="-199.73" y2="-64.89" stroke="#fff" stroke-width="2.5"/>
+
+      <!-- Label band r=175 -->
+      <circle r="178" fill="none" stroke="#F0F4F8" stroke-width="46"/>
+
+      <!-- Stage labels at segment mid-angles -->
+      <text font-family="'Segoe UI',system-ui,sans-serif" font-size="12.5" font-weight="700"
+        fill="#0BA87E" text-anchor="middle"
+        transform="rotate(-54) translate(0,-175) rotate(54)">INGEST</text>
+      <text font-family="'Segoe UI',system-ui,sans-serif" font-size="12.5" font-weight="700"
+        fill="#1A5FBB" text-anchor="middle"
+        transform="rotate(18) translate(0,-175) rotate(-18)">ANALYSE</text>
+      <text font-family="'Segoe UI',system-ui,sans-serif" font-size="12.5" font-weight="700"
+        fill="#C47A0A" text-anchor="middle"
+        transform="rotate(90) translate(0,-175) rotate(-90)">FUSE</text>
+      <text font-family="'Segoe UI',system-ui,sans-serif" font-size="12.5" font-weight="700"
+        fill="#15803D" text-anchor="middle"
+        transform="rotate(162) translate(0,-175) rotate(-162)">PERSIST</text>
+      <text font-family="'Segoe UI',system-ui,sans-serif" font-size="12.5" font-weight="700"
+        fill="#7C3AED" text-anchor="middle"
+        transform="rotate(234) translate(0,-175) rotate(-234)">LEARN</text>
+
+      <!-- Inner ring r=122 -->
+      <circle r="122" fill="#fff" filter="url(#csh)"/>
+      <circle r="122" fill="none" stroke="#E8EDF5" stroke-width="1"/>
+
+      <!-- Inner quadrant wedges (also act as hover targets) -->
+      <path d="M0,0 L0,-122 A122,122 0 0,1 122,0 Z" fill="#0BA87E" opacity="0.1" stroke="#0BA87E" stroke-width="0.5" style="cursor:pointer"
+        onmouseenter="showFlowPanel('rl',event)" onmouseleave="hideFlowPanel()"/>
+      <path d="M0,0 L122,0 A122,122 0 0,1 0,122 Z" fill="#1A5FBB" opacity="0.1" stroke="#1A5FBB" stroke-width="0.5" style="cursor:pointer"
+        onmouseenter="showFlowPanel('agents',event)" onmouseleave="hideFlowPanel()"/>
+      <path d="M0,0 L0,122 A122,122 0 0,1 -122,0 Z" fill="#7C3AED" opacity="0.1" stroke="#7C3AED" stroke-width="0.5" style="cursor:pointer"
+        onmouseenter="showFlowPanel('memory',event)" onmouseleave="hideFlowPanel()"/>
+      <path d="M0,0 L-122,0 A122,122 0 0,1 0,-122 Z" fill="#C47A0A" opacity="0.1" stroke="#C47A0A" stroke-width="0.5" style="cursor:pointer"
+        onmouseenter="showFlowPanel('rag',event)" onmouseleave="hideFlowPanel()"/>
+
+      <!-- Inner spokes -->
+      <line x1="0" y1="-122" x2="0" y2="122" stroke="#fff" stroke-width="2"/>
+      <line x1="-122" y1="0" x2="122" y2="0" stroke="#fff" stroke-width="2"/>
+
+      <!-- Inner zone labels -->
+      <text font-family="'Segoe UI',system-ui,sans-serif" font-size="10.5" font-weight="700" fill="#0BA87E" text-anchor="middle" x="50" y="-62">RL</text>
+      <text font-family="'Segoe UI',system-ui,sans-serif" font-size="9" fill="#0BA87E" text-anchor="middle" x="50" y="-49">Engine</text>
+      <text font-family="'Segoe UI',system-ui,sans-serif" font-size="10.5" font-weight="700" fill="#1A5FBB" text-anchor="middle" x="55" y="50">Agent</text>
+      <text font-family="'Segoe UI',system-ui,sans-serif" font-size="9" fill="#1A5FBB" text-anchor="middle" x="55" y="63">engine</text>
+      <text font-family="'Segoe UI',system-ui,sans-serif" font-size="10.5" font-weight="700" fill="#7C3AED" text-anchor="middle" x="-52" y="50">Memory</text>
+      <text font-family="'Segoe UI',system-ui,sans-serif" font-size="9" fill="#7C3AED" text-anchor="middle" x="-52" y="63">layer</text>
+      <text font-family="'Segoe UI',system-ui,sans-serif" font-size="10.5" font-weight="700" fill="#C47A0A" text-anchor="middle" x="-52" y="-62">RAG</text>
+      <text font-family="'Segoe UI',system-ui,sans-serif" font-size="9" fill="#C47A0A" text-anchor="middle" x="-52" y="-49">retrieval</text>
+
+      <!-- Core centre -->
+      <circle r="46" fill="#0E1C36"/>
+      <text font-family="'Segoe UI',system-ui,sans-serif" font-size="12" font-weight="700" fill="#fff" text-anchor="middle" y="-8">Stock</text>
+      <text font-family="'Segoe UI',system-ui,sans-serif" font-size="12" font-weight="700" fill="#5CDFC0" text-anchor="middle" y="8">Agent</text>
+      <text font-family="'Segoe UI',system-ui,sans-serif" font-size="7.5" fill="#64748B" text-anchor="middle" y="20">9 agents</text>
+      <text font-family="'Segoe UI',system-ui,sans-serif" font-size="7.5" fill="#64748B" text-anchor="middle" y="30">LangGraph</text>
+
+      <!-- ── ORBIT DOTS ── -->
+
+      <!-- yfinance at top (-90°) -->
+      <g class="orbit-dot" style="cursor:pointer"
+        data-tip='{"role":"Stage 01 · Ingest — Market Data","title":"yfinance","body":"Primary free market data. Fetches 10yr OHLCV via period=10y for technical analysis (PatternAnalysisAgent makes zero Serper calls — yfinance only). Quarterly P&L via quarterly_financials for FundamentalsAgent. Macro spot prices: INR=X (INR/USD rate), CL=F (WTI crude), BZ=F (Brent), SLX (steel ETF proxy), AA (Aluminium proxy), PPLT/PALL (platinum/palladium). NSE tickers get .NS suffix automatically. May 404 for newly-listed stocks — graceful fallback to LLM training knowledge.","tags":["10yr OHLCV","Quarterly P&L","INR=X · CL=F","NSE .NS suffix","0 Serper for patterns"]}'
+        onmouseenter="showTip(this,event)" onmouseleave="hideTip()">
+        <circle cx="0" cy="-210" r="8" fill="#0BA87E"/>
+        <circle cx="0" cy="-210" r="13" fill="#0BA87E" opacity="0.12"/>
+        <text font-family="'Segoe UI',system-ui,sans-serif" font-size="9" font-weight="600" fill="#0BA87E" text-anchor="middle" x="0" y="-224">yfinance</text>
+      </g>
+
+      <!-- Serper at -63° (top-right) -->
+      <g class="orbit-dot" style="cursor:pointer"
+        data-tip='{"role":"Stage 01 · Ingest — News Search","title":"Serper API","body":"Web search proxy for news context. Each agent defines CONTEXT_SEARCH_QUERIES — up to SERPER_MAX_QUERIES=3 per agent run. Risk & Macro queries are sector-level (shared across all tickers via macro_cache). Steady-state: 9 Serper calls/stock (cold start: 12). Budget: 2,500 free queries/month, steady-state uses ~1,710. Micro search loop pre-warms sector queries every 4h — saves 450 calls/month net (loop costs 360, saves 450). PatternAnalysisAgent uses 0 Serper calls.","tags":["SERPER_MAX_QUERIES=3","9 calls warm","2500/month free","Saves 450 calls/month","0 calls for patterns"]}'
+        onmouseenter="showTip(this,event)" onmouseleave="hideTip()">
+        <circle cx="108" cy="-186" r="8" fill="#0BA87E" opacity="0.85"/>
+        <circle cx="108" cy="-186" r="13" fill="#0BA87E" opacity="0.1"/>
+        <text font-family="'Segoe UI',system-ui,sans-serif" font-size="9" font-weight="600" fill="#0BA87E" text-anchor="middle" x="108" y="-200">Serper API</text>
+      </g>
+
+      <!-- C++ .pyd at +10° (right) -->
+      <g class="orbit-dot" style="cursor:pointer"
+        data-tip='{"role":"Stage 02 · Analyse — C++ Performance Layer","title":"C++ Indicators (.pyd)","body":"Native extension compiled via CMake + pybind11, loaded as stockindicators.cp313-win_amd64.pyd. Three indicators: RSI(14) with EWM adjust=True, MACD(12/26/9) with EWM adjust=False, Bollinger Bands(20,2σ) with ddof=1. All outputs match pandas-ta to floating-point precision — verified by 25-test parity suite in test_phase1_indicators.py. PatternAnalysisAgent calls yfinance_fetcher.py which dispatches to C++ when _USE_CPP=True. Build: Visual Studio 2022 + CMake on Windows (cpp/build_ext.ps1), or GCC + CMake on Linux/macOS.","tags":["RSI(14)","MACD(12/26/9)","BB(20,2σ) ddof=1","25 parity tests","build_ext.ps1"]}'
+        onmouseenter="showTip(this,event)" onmouseleave="hideTip()">
+        <circle cx="207" cy="-37" r="8" fill="#1A5FBB"/>
+        <circle cx="207" cy="-37" r="13" fill="#1A5FBB" opacity="0.12"/>
+        <text font-family="'Segoe UI',system-ui,sans-serif" font-size="9" font-weight="600" fill="#1A5FBB" text-anchor="middle" x="207" y="-51">C++ .pyd</text>
+      </g>
+
+      <!-- Qwen3 LLM at +35° (bottom-right) -->
+      <g class="orbit-dot" style="cursor:pointer"
+        data-tip='{"role":"Stage 02–03 · Analyse & Fuse — LLM","title":"Qwen3-235B-A22B · 22B Active Params","body":"MoE architecture: 235B total, 22B active per token — used at every intelligence step. (1) _resolve_ticker: normalises user input to NSE ticker + sector tag, temp=0.2. (2) 9 Agent analysis prompts: sector-specific system prompt + enriched live context → structured AgentOutput JSON, temp=0.2, max_tokens=2048. (3) SignalAggregator conflict resolution: full 9-score table + deltas → investment_thesis + conviction_drivers + top_risks, temp=0.2. (4) FeedbackAgent daily miss analysis: predicted vs actual close, existing lesson IDs, today news → 7-type miss classification, temp=0.3. JSON mode enforced via response_format=json_object. Swap any model by changing LLM_MODEL env var — OpenRouter-agnostic.","tags":["235B MoE · 22B active/token","4 distinct LLM personas","temp=0.2 standard · 0.3 feedback","response_format=json_object","3-attempt exponential backoff","OpenRouter swap-ready","60s LLM_TIMEOUT_SECONDS"]}'
+        onmouseenter="showTip(this,event)" onmouseleave="hideTip()">
+        <circle cx="188" cy="112" r="8" fill="#1A5FBB" opacity="0.85"/>
+        <circle cx="188" cy="112" r="13" fill="#1A5FBB" opacity="0.1"/>
+        <text font-family="'Segoe UI',system-ui,sans-serif" font-size="9" font-weight="600" fill="#1A5FBB" text-anchor="middle" x="188" y="126">Qwen3 LLM</text>
+      </g>
+
+      <!-- Signal Aggregator at +90° (bottom) -->
+      <g class="orbit-dot" style="cursor:pointer"
+        data-tip='{"role":"Stage 03 · Fuse — Verdict Engine","title":"Signal Aggregator — 5-Step Fusion","body":"Step 1 — Weighted score: weighted_score = Σ(wᵢ × scoreᵢ) using AGENT_WEIGHTS or RL-injected learned_weights. Step 2 — Conflict detection: any pair with |scoreᵢ − scoreⱼ| ≥ 0.30 triggers a Qwen3 call with the full 9-score table to produce a conflicts_resolved narrative. Step 3 — LLM synthesis: verdict (5 levels, 0.20–1.00 range), final_score, investment_thesis, conviction_drivers[], top_risks[]. Step 4 — ValuationCatalyst bubble-up: fair_value_estimate, current_discount_pct, recovery_catalysts[], price_target, recovery_timeline_quarters injected into FinalReport. Step 5 — FinalReport (Pydantic v2) delivered to REST API, WebSocket stream, alert engine, and RL feedback loop simultaneously.","tags":["Σ(wᵢ × scoreᵢ) fusion","delta ≥ 0.30 conflict detection","Qwen3 LLM synthesis call","5 verdicts · STRONG BUY → STRONG SELL","ValuationCatalyst bubble-up","FinalReport Pydantic v2 schema","RL learned_weights injected at runtime"]}'
+        onmouseenter="showTip(this,event)" onmouseleave="hideTip()">
+        <circle cx="0" cy="210" r="8" fill="#C47A0A"/>
+        <circle cx="0" cy="210" r="13" fill="#C47A0A" opacity="0.12"/>
+        <text font-family="'Segoe UI',system-ui,sans-serif" font-size="9" font-weight="600" fill="#C47A0A" text-anchor="middle" x="0" y="226">SignalAggregator</text>
+      </g>
+
+      <!-- C# Quartz at +145° (bottom-left) -->
+      <g class="orbit-dot" style="cursor:pointer"
+        data-tip='{"role":"Stage 04 · Persist — Enterprise Scheduler","title":"C# Quartz.NET","body":"Enterprise scheduler and SQL persistence layer on port 5000. Quartz.NET 3.13 with [DisallowConcurrentExecution] fires AnalyseJob at cron 0 30 8 ? * MON-FRI (8:30am IST weekdays). EF Core 8 persists ScoreRecord entities to SQL Server via ScoreRecords table (ticker, score, verdict, agent_scores JSON, timestamp). ASP.NET 8 controllers: GET /health (next_fire_utc), GET /scheduler/status, POST /scores, GET /scores/{ticker}[/latest]. CSHARP_SCHEDULER_ENABLED=true routes Python score_store.save() through this service instead of local SQLite.","tags":["Quartz.NET 3.13","EF Core 8 SQL Server","[DisallowConcurrentExecution]","8:30am IST weekdays","Port 5000"]}'
+        onmouseenter="showTip(this,event)" onmouseleave="hideTip()">
+        <circle cx="-172" cy="120" r="8" fill="#15803D"/>
+        <circle cx="-172" cy="120" r="13" fill="#15803D" opacity="0.12"/>
+        <text font-family="'Segoe UI',system-ui,sans-serif" font-size="9" font-weight="600" fill="#15803D" text-anchor="middle" x="-172" y="134">C# Quartz.NET</text>
+      </g>
+
+      <!-- TypeScript/Hono at +175° (left) -->
+      <g class="orbit-dot" style="cursor:pointer"
+        data-tip='{"role":"Stage 04 · Persist — Public API Gateway","title":"TypeScript / Bun + Hono","body":"Public-facing gateway on port 3000. Hono routes: POST /api/analyse proxies to Python :8001/analyse (with 120s timeout), GET /api/history/* → Python :8001/history/*, GET /api/scheduler/status → C# :5000/scheduler/status. WebSocket /ws/stream bidirectionally proxies the Python stream — one upstream WS per ticker rebroadcasts to all subscribers. Analysis cron (node-cron): 8:30am IST Mon-Fri fires POST :8001/analyse for each SCHEDULER_TICKERS entry. Zod schemas in services/gateway/src/types/ are single source of truth.","tags":["Port 3000 public","Bun + Hono","WS one-to-many","node-cron 8:30am IST","Zod single source of truth"]}'
+        onmouseenter="showTip(this,event)" onmouseleave="hideTip()">
+        <circle cx="-209" cy="-37" r="8" fill="#15803D" opacity="0.85"/>
+        <circle cx="-209" cy="-37" r="13" fill="#15803D" opacity="0.1"/>
+        <text font-family="'Segoe UI',system-ui,sans-serif" font-size="9" font-weight="600" fill="#15803D" text-anchor="middle" x="-209" y="-51">TypeScript/Hono</text>
+      </g>
+
+      <!-- SQLite / PredictionStore at +220° -->
+      <g class="orbit-dot" style="cursor:pointer"
+        data-tip='{"role":"Stage 05 · Learn — Structured Persistence","title":"SQLite / PredictionStore","body":"Two persistence layers. ScoreStore (data/scores.db): every FinalReport saved with score, verdict, agent_scores JSON, timestamp — max 90 rows/ticker, oldest pruned. PredictionStore (data/predictions/{sector}/{ticker}/): 4 JSON memory files: prediction_envelope_{cycle}.json (30-day living forecast, revised daily), daily_feedback_log_{cycle}.json (miss entries per day), {ticker}_agent_weight_memory.json (earned weights — persists across all months), {ticker}_learning_ledger.json (pattern rules — never deleted). Atomic writes via .tmp rename — crash-safe. Idempotent appends — safe to re-run daily review for same date.","tags":["data/scores.db","90 rows/ticker","4 JSON memory files","Atomic .tmp rename","Idempotent appends"]}'
+        onmouseenter="showTip(this,event)" onmouseleave="hideTip()">
+        <circle cx="-150" cy="-155" r="8" fill="#7C3AED"/>
+        <circle cx="-150" cy="-155" r="13" fill="#7C3AED" opacity="0.12"/>
+        <text font-family="'Segoe UI',system-ui,sans-serif" font-size="9" font-weight="600" fill="#7C3AED" text-anchor="middle" x="-150" y="-169">SQLite / Store</text>
+      </g>
+
+      <!-- LangGraph at +248° (near top-left) -->
+      <g class="orbit-dot" style="cursor:pointer"
+        data-tip='{"role":"Stage 05 · Learn — Orchestration Engine","title":"LangGraph (4 Sector Graphs)","body":"Four isolated StateGraph flows in langgraph.json: automobile (9 agents), banking_bfsi (6 stubs), it_sector (8 stubs), renewable_energy (6 stubs). Node topology: resolve_ticker → input_rail → conditional edges (make_dispatch_fn returns list[Send]) → parallel run_agent × N → aggregate → END. Shared infrastructure: state.py GraphState TypedDict with merge reducers for agent_outputs dict, rails.py 3 non-blocking validators, nodes.py factory functions that parameterise nodes by sector+weights without subclassing. RetryPolicy(max_attempts=2) on run_agent. Legacy AutomobileAgentOrchestrator stays fully operational — LangGraph is additive path, not replacement.","tags":["4 isolated graphs","Send fan-out","GraphState TypedDict","Factory node functions","Additive — not replacement"]}'
+        onmouseenter="showTip(this,event)" onmouseleave="hideTip()">
+        <circle cx="-60" cy="-204" r="8" fill="#7C3AED" opacity="0.85"/>
+        <circle cx="-60" cy="-204" r="13" fill="#7C3AED" opacity="0.1"/>
+        <text font-family="'Segoe UI',system-ui,sans-serif" font-size="9" font-weight="600" fill="#7C3AED" text-anchor="middle" x="-60" y="-218">LangGraph</text>
+      </g>
+
+      <!-- Flow arrows -->
+      <path d="M70,-202 Q140,-196 168,-148" fill="none" stroke="#0E1C36" stroke-width="2" stroke-opacity="0.25" marker-end="url(#ah)"/>
+      <path d="M-155,170 Q-200,100 -204,-10" fill="none" stroke="#0E1C36" stroke-width="2" stroke-opacity="0.25" marker-end="url(#ah)"/>
+
+      <!-- ── BUSINESS OUTPUT NODES r=295 — hover each for full detail ── -->
+      <!-- Market Context (INGEST midpoint 36°) → (174, -239) -->
+      <g style="cursor:pointer" onmouseenter="showFlowPanel('market_context',event)" onmouseleave="hideFlowPanel()">
+        <circle cx="174" cy="-239" r="17" fill="#0BA87E" opacity="0.12"/>
+        <circle cx="174" cy="-239" r="9" fill="#0BA87E"/>
+        <text font-family="'Segoe UI',system-ui,sans-serif" font-size="8.5" font-weight="700" fill="#0BA87E" text-anchor="middle" x="174" y="-260">Market Context</text>
+        <text font-family="'Segoe UI',system-ui,sans-serif" font-size="7" fill="#94A3B8" text-anchor="middle" x="174" y="-270">Ingest Output ↓</text>
+      </g>
+      <!-- Agent Scores (ANALYSE midpoint 108°) → (280, 91) -->
+      <g style="cursor:pointer" onmouseenter="showFlowPanel('agent_scores',event)" onmouseleave="hideFlowPanel()">
+        <circle cx="280" cy="91" r="17" fill="#1A5FBB" opacity="0.12"/>
+        <circle cx="280" cy="91" r="9" fill="#1A5FBB"/>
+        <text font-family="'Segoe UI',system-ui,sans-serif" font-size="8.5" font-weight="700" fill="#1A5FBB" text-anchor="start" x="300" y="87">Agent Scores</text>
+        <text font-family="'Segoe UI',system-ui,sans-serif" font-size="7" fill="#94A3B8" text-anchor="start" x="300" y="97">Analyse Output</text>
+      </g>
+      <!-- Investment Verdict (FUSE midpoint 180°) → (0, 295) -->
+      <g style="cursor:pointer" onmouseenter="showFlowPanel('investment_verdict',event)" onmouseleave="hideFlowPanel()">
+        <circle cx="0" cy="295" r="17" fill="#C47A0A" opacity="0.12"/>
+        <circle cx="0" cy="295" r="9" fill="#C47A0A"/>
+        <text font-family="'Segoe UI',system-ui,sans-serif" font-size="8.5" font-weight="700" fill="#C47A0A" text-anchor="middle" x="0" y="318">Investment Verdict</text>
+        <text font-family="'Segoe UI',system-ui,sans-serif" font-size="7" fill="#94A3B8" text-anchor="middle" x="0" y="328">Fuse Output</text>
+      </g>
+      <!-- Score History (PERSIST midpoint 252°) → (-280, 91) -->
+      <g style="cursor:pointer" onmouseenter="showFlowPanel('score_history',event)" onmouseleave="hideFlowPanel()">
+        <circle cx="-280" cy="91" r="17" fill="#15803D" opacity="0.12"/>
+        <circle cx="-280" cy="91" r="9" fill="#15803D"/>
+        <text font-family="'Segoe UI',system-ui,sans-serif" font-size="8.5" font-weight="700" fill="#15803D" text-anchor="end" x="-300" y="87">Score History</text>
+        <text font-family="'Segoe UI',system-ui,sans-serif" font-size="7" fill="#94A3B8" text-anchor="end" x="-300" y="97">Persist Output</text>
+      </g>
+      <!-- Adaptive IQ (LEARN midpoint 324°) → (-174, -239) -->
+      <g style="cursor:pointer" onmouseenter="showFlowPanel('adaptive_iq',event)" onmouseleave="hideFlowPanel()">
+        <circle cx="-174" cy="-239" r="17" fill="#7C3AED" opacity="0.12"/>
+        <circle cx="-174" cy="-239" r="9" fill="#7C3AED"/>
+        <text font-family="'Segoe UI',system-ui,sans-serif" font-size="8.5" font-weight="700" fill="#7C3AED" text-anchor="middle" x="-174" y="-260">Adaptive IQ</text>
+        <text font-family="'Segoe UI',system-ui,sans-serif" font-size="7" fill="#94A3B8" text-anchor="middle" x="-174" y="-270">Learn Output ↓</text>
+      </g>
+
+    </svg>
+  </div>
+
+  <!-- RIGHT PANEL -->
+  <div class="side-panel right">
+
+    <div class="cluster" style="--ac:#C47A0A;--ac-faint:#FEF3E0" data-stage="fuse" onclick="activateStage('fuse')">
+      <div class="conn-line"></div>
+      <div class="cluster-stage">Stage 03 · Fuse</div>
+      <div class="cluster-title">Signal Aggregation &amp; Verdict</div>
+      <div class="cluster-items">
+        <div class="cluster-item">AGENT_WEIGHTS — 9 configurable weights that sum to 1.0</div>
+        <div class="cluster-item">Conflict detection — score delta ≥ 0.30 triggers LLM resolution</div>
+        <div class="cluster-item">Qwen3 synthesis — investment_thesis + conviction_drivers</div>
+        <div class="cluster-item">5 verdicts — STRONG BUY / BUY / NEUTRAL / SELL / STRONG SELL</div>
+        <div class="cluster-item">Valuation bubble-up — fair_value, discount%, catalysts, target</div>
+        <div class="cluster-item">FinalReport (Pydantic v2) — single schema for all consumers</div>
+      </div>
+    </div>
+
+    <div class="cluster" style="--ac:#15803D;--ac-faint:#F0FBF4" data-stage="persist" onclick="activateStage('persist')">
+      <div class="conn-line"></div>
+      <div class="cluster-stage">Stage 04 · Persist</div>
+      <div class="cluster-title">Score Store, Alerts &amp; Scheduling</div>
+      <div class="cluster-items">
+        <div class="cluster-item">SQLite ScoreStore — 90 rows/ticker max, trend queries</div>
+        <div class="cluster-item">C# EF Core — SQL Server path via CSHARP_SCHEDULER_ENABLED</div>
+        <div class="cluster-item">Alerting — score Δ≥0.10 or verdict change → webhook/file</div>
+        <div class="cluster-item">Prediction envelope — 30-day living forecast per ticker</div>
+        <div class="cluster-item">TypeScript cron — 8:30am IST auto-analysis for 5 OEM tickers</div>
+        <div class="cluster-item">FastAPI WebSocket — agent_progress events stream real-time</div>
+      </div>
+    </div>
+
+    <div class="cluster" style="--ac:#475569;--ac-faint:#F1F5F9" data-stage="platform" onclick="activateStage('platform')">
+      <div class="conn-line"></div>
+      <div class="cluster-stage">Platform · Stack</div>
+      <div class="cluster-title">Multi-Language Infrastructure</div>
+      <div class="cluster-items">
+        <div class="cluster-item">Orchestrator — sync (ThreadPoolExecutor) + async (asyncio)</div>
+        <div class="cluster-item">FastAPI :8001 internal — POST/analyse · WS/stream · GET/history</div>
+        <div class="cluster-item">TypeScript/Hono :3000 public — REST gateway + WS proxy</div>
+        <div class="cluster-item">C# Quartz.NET :5000 — cron scheduler + EF Core SQL Server</div>
+        <div class="cluster-item">3-rail safety — input / output / conflict (all non-blocking)</div>
+        <div class="cluster-item">4 sector LangGraphs — automobile · BFSI · IT · renewable energy</div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- BOTTOM TECH PIPELINE -->
+<div class="tools-layer">
+  <div class="tools-header">
+    <h3>Module Ownership Map — Full Tech Stack Pipeline</h3>
+    <span class="badge-idea">⚙ Complete System</span>
+    <span style="font-size:11px;color:#94A3B8;margin-left:4px">→ hover each module for implementation details</span>
+  </div>
+
+  <div class="pipeline-row">
+
+    <!-- DATA SOURCES -->
+    <div class="pipe-stage" style="--pc:#0BA87E;--pc-faint:#E8F8F3;--pc-border:#A8E6D5;--pc-text:#065F46;--pc-sub:#6EAD96">
+      <div class="pipe-label">Data Sources</div>
+      <div class="pipe-tools">
+        <div class="pipe-tool"
+          data-tip='{"role":"Data Source · Market Prices","title":"yfinance","body":"Free market data for all agents. PatternAnalysisAgent is the most API-efficient in the system — yfinance only, zero Serper calls. 10yr OHLCV via Ticker.history(period=10y). Macro: INR=X, CL=F (WTI crude), BZ=F (Brent), SLX (steel ETF), AA (Aluminium Alcoa proxy). Rubber (TOCOM) unreliable — graceful skip implemented in macro_fetcher.py. Fundamentals: ticker.quarterly_financials — may 404 for newly listed NSE stocks.","tags":["10yr OHLCV","Quarterly financials","INR=X · CL=F","SLX · AA proxies","Rubber skip graceful"]}'
+          onmouseenter="showTip(this,event)" onmouseleave="hideTip()">
+          yfinance <span class="sub">OHLCV · macro prices</span>
+        </div>
+        <div class="pipe-tool"
+          data-tip='{"role":"Data Source · News Search","title":"Serper API","body":"Search proxy for news context. SERPER_MAX_QUERIES=3 caps calls per agent per run. Sector-level queries (risk_macro: INR/USD, commodities, RBI) are pre-warmed by micro_search_loop every 4h and cached in macro_cache.py with 2h TTL — risk_macro saves 3 calls on cache HIT. 2,500 free queries/month: baseline 1,710 in steady-state, 790 buffer. Two micro loop queries per run (Nifty Auto sector + EV/FADA/RBI combined queries).","tags":["SERPER_MAX_QUERIES=3","2500/month free tier","Macro cache saves 3 calls","Micro loop every 4h","790 monthly buffer"]}'
+          onmouseenter="showTip(this,event)" onmouseleave="hideTip()">
+          Serper <span class="sub">news · 2500/month free</span>
+        </div>
+        <div class="pipe-tool"
+          data-tip='{"role":"Data Source · Policy Documents","title":"Tavily Fetcher","body":"Full-page web extraction used by PolicyRegulatoryAgent for government policy documents. Fetches complete text from FAME subsidy PDFs, emission norms circulars, PLI scheme documents, and state EV incentive pages. Compared to Serper (which returns headlines/snippets), Tavily returns full document content — enabling detailed regulatory analysis. tools/tavily_fetcher.py wraps the Tavily API with retry logic.","tags":["Full-page extraction","PolicyRegulatoryAgent only","FAME / BS6 / PLI","Tavily API key required","tools/tavily_fetcher.py"]}'
+          onmouseenter="showTip(this,event)" onmouseleave="hideTip()">
+          Tavily <span class="sub">policy PDFs · full-page</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="pipe-arrow">→</div>
+
+    <!-- PYTHON CORE -->
+    <div class="pipe-stage" style="--pc:#1A5FBB;--pc-faint:#E6F0FC;--pc-border:#AECBF5;--pc-text:#1E3A6E;--pc-sub:#5B82BE">
+      <div class="pipe-label">Python Core</div>
+      <div class="pipe-tools">
+        <div class="pipe-tool"
+          data-tip='{"role":"Python Core · Data Routing","title":"ContextBuilder","body":"Routes each agent to the correct data fetchers via agent_name switch. automobile sector routing: _build_sales_demand() → Serper news with FADA/SIAM queries, _build_risk_macro() → macro_cache HIT or Serper MISS, _build_pattern_analysis() → yfinance_fetcher only, _build_fundamentals() → yfinance quarterly_financials + Serper. New sector agents (BFSI/IT/RE) fall back to _build_generic() — ContextBuilder routing branches not yet implemented for them. This is documented as Known Design Weakness #1.","tags":["Per-agent routing","automobile sector only","Macro cache check","_build_generic fallback","Known gap for BFSI/IT/RE"]}'
+          onmouseenter="showTip(this,event)" onmouseleave="hideTip()">
+          ContextBuilder <span class="sub">routes data per agent</span>
+        </div>
+        <div class="pipe-tool"
+          data-tip='{"role":"Python Core · Orchestration","title":"AutomobileAgentOrchestrator","body":"Top-level dispatcher in core/pipeline/orchestrator.py. analyse(ticker): 1) _resolve_ticker() — LLM call to normalise any input (\"Tata Motors\" → TATAMOTORS.NS). 2) ThreadPoolExecutor(max_workers=9) dispatches all agents simultaneously with AGENT_TIMEOUT_SECONDS=120. 3) Collects AgentOutput objects. 4) SignalAggregator.run() produces FinalReport. analyse_async() uses asyncio.gather — identical output. _aggregator_weights=None attribute passes learned weights from RL loop.","tags":["_resolve_ticker LLM","ThreadPoolExecutor 9-way","asyncio.gather async","120s per agent timeout","_aggregator_weights RL"]}'
+          onmouseenter="showTip(this,event)" onmouseleave="hideTip()">
+          Orchestrator <span class="sub">9-way parallel dispatch</span>
+        </div>
+        <div class="pipe-tool"
+          data-tip='{"role":"Python Core · Agent Prompts","title":"Prompt Templates","body":"Per-agent prompt files in config/prompts/automobile/ (9 files, one per agent). Each file defines: SYSTEM_PROMPT (analyst role, output JSON schema, domain instructions, output format), ANALYSIS_PROMPT (template with {ticker}, {company_name}, {context} placeholders). Shared prompts in config/prompts/shared/: orchestrator.py (ticker resolution), signal_aggregator.py (fusion synthesis), feedback_agent.py (daily miss analysis with analyst distrust rule). Pure Python strings — no Jinja, no external templating.","tags":["9 prompt files","SYSTEM_PROMPT + ANALYSIS_PROMPT","config/prompts/automobile/","Analyst distrust rule","Pure Python strings"]}'
+          onmouseenter="showTip(this,event)" onmouseleave="hideTip()">
+          Prompt Templates <span class="sub">9 per-agent system prompts</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="pipe-arrow">→</div>
+
+    <!-- C++ LAYER -->
+    <div class="pipe-stage" style="--pc:#C47A0A;--pc-faint:#FEF3E0;--pc-border:#F9D98A;--pc-text:#7C4A00;--pc-sub:#B8870A">
+      <div class="pipe-label">C++ Indicators</div>
+      <div class="pipe-tools">
+        <div class="pipe-tool"
+          data-tip='{"role":"C++ · Technical Indicator","title":"RSI(14) — EWM adjust=True","body":"Relative Strength Index with 14-period lookback using Exponential Weighted Moving Average. EWM adjust=True is the pandas-style calculation that applies correction for the initialisation period — matches pandas-ta RSI exactly. C++ uses rolling std::vector computation. The 25-test parity suite in test_phase1_indicators.py generates random OHLCV arrays and asserts C++ output == pure-Python output to float32 precision. RSI_PERIOD=14 is configurable in config/settings/base.py.","tags":["RSI(14)","EWM adjust=True","pandas-ta parity","float32 precision","RSI_PERIOD configurable"]}'
+          onmouseenter="showTip(this,event)" onmouseleave="hideTip()">
+          RSI(14) <span class="sub">EWM adjust=True</span>
+        </div>
+        <div class="pipe-tool"
+          data-tip='{"role":"C++ · Technical Indicator","title":"MACD(12,26,9) — EWM adjust=False","body":"MACD: fast EMA(12) minus slow EMA(26) gives MACD line; EMA(9) of MACD line gives signal; MACD minus signal gives histogram. EWM adjust=False is the standard recursive financial convention (not the initialisation-corrected variant). C++ implements this as three sequential EWM passes. MACD_FAST=12, MACD_SLOW=26, MACD_SIGNAL=9 are configurable. PatternAnalysisAgent reads the MACD histogram for momentum direction and uses crossovers as breakout signals.","tags":["MACD(12,26,9)","EWM adjust=False","3 sequential EWM passes","MACD_FAST/SLOW/SIGNAL","Histogram for momentum"]}'
+          onmouseenter="showTip(this,event)" onmouseleave="hideTip()">
+          MACD(12,26,9) <span class="sub">EWM adjust=False</span>
+        </div>
+        <div class="pipe-tool"
+          data-tip='{"role":"C++ · Technical Indicator","title":"Bollinger Bands(20,2σ) — ddof=1","body":"Bollinger Bands: middle band = SMA(20), upper = SMA + 2σ, lower = SMA - 2σ. ddof=1 uses sample standard deviation (Bessel correction) — matches pandas default and pandas-ta BB output. C++ uses std::deque for O(1) rolling window. BB_PERIOD=20, BB_STD=2.0 are configurable. PatternAnalysisAgent uses bandwidth and %B to identify consolidation zones and breakout signals for the 10yr price cycle analysis.","tags":["BB(20,2σ)","ddof=1 sample std","SMA(20) middle band","BB_PERIOD/BB_STD config","Rolling window O(1)"]}'
+          onmouseenter="showTip(this,event)" onmouseleave="hideTip()">
+          Bollinger Bands <span class="sub">BB(20,2σ) · ddof=1</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="pipe-arrow">→</div>
+
+    <!-- SIGNAL & PERSIST -->
+    <div class="pipe-stage" style="--pc:#15803D;--pc-faint:#ECFDF5;--pc-border:#86EFAC;--pc-text:#14532D;--pc-sub:#3A8A58">
+      <div class="pipe-label">Signal &amp; Persist</div>
+      <div class="pipe-tools">
+        <div class="pipe-tool"
+          data-tip='{"role":"Signal · Aggregation","title":"SignalAggregator","body":"core/pipeline/signal_aggregator.py. Takes all AgentOutput objects, applies AGENT_WEIGHTS (or learned_weights). Runs conflict detection loop: for every pair (i,j) where |score_i - score_j| ≥ 0.30, flags conflict. If any conflict: LLM call with all scores + conflict context → JSON {verdict, final_score, investment_thesis, conviction_drivers, top_risks, conflicts_resolved}. Pulls valuation_catalyst sub-fields (fair_value_estimate, current_discount_pct, recovery_catalysts[], price_target, recovery_timeline_quarters) into FinalReport. Backward compatible — learned_weights=None uses config defaults.","tags":["AGENT_WEIGHTS","delta ≥ 0.30 conflict","LLM conflict resolution","Valuation fields extraction","FinalReport Pydantic v2"]}'
+          onmouseenter="showTip(this,event)" onmouseleave="hideTip()">
+          SignalAggregator <span class="sub">weighted fusion + verdict</span>
+        </div>
+        <div class="pipe-tool"
+          data-tip='{"role":"Persist · Score History","title":"ScoreStore + FastAPI","body":"tools/score_store.py wraps SQLite (data/scores.db) with two methods: save(ticker, report) inserts row, prunes oldest if count > SCORE_HISTORY_MAX_ROWS=90. get_history(ticker) returns rows sorted by timestamp. When CSHARP_SCHEDULER_ENABLED=true, save() POSTs to C# :5000/scores instead of writing SQLite — same interface, different backend. FastAPI routes in services/api/routes/: POST /analyse → orchestrator → saves to store, GET /history/{ticker}[/latest] → ScoreStore.get_history().","tags":["SQLite data/scores.db","90 rows/ticker max","C# proxy when flag set","POST /analyse saves","GET /history queries"]}'
+          onmouseenter="showTip(this,event)" onmouseleave="hideTip()">
+          ScoreStore <span class="sub">SQLite · 90 rows/ticker</span>
+        </div>
+        <div class="pipe-tool"
+          data-tip='{"role":"Persist · Alerting","title":"Alerting Engine","body":"tools/alerting.py monitors score and verdict changes. Compares latest FinalReport against previous entry from ScoreStore. Fires alert if: abs(new_score - old_score) ≥ ALERT_SCORE_CHANGE_THRESHOLD=0.10, OR verdict changed and ALERT_ON_VERDICT_CHANGE=true. Three simultaneous channels: console (stdout formatted), file (outputs/alerts.log append), webhook (HTTP POST to ALERT_WEBHOOK_URL — Slack/Discord/custom JSON body). ALERT_CHANNELS=console,file controls which fire.","tags":["Score Δ ≥ 0.10 threshold","Verdict change trigger","Console · file · webhook","Slack/Discord JSON POST","outputs/alerts.log"]}'
+          onmouseenter="showTip(this,event)" onmouseleave="hideTip()">
+          Alerting <span class="sub">score · verdict · webhook</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="pipe-arrow">→</div>
+
+    <!-- RL FEEDBACK -->
+    <div class="pipe-stage" style="--pc:#7C3AED;--pc-faint:#F3EEFF;--pc-border:#C4B5FD;--pc-text:#4C1D95;--pc-sub:#8B5CF6">
+      <div class="pipe-label">RL Feedback</div>
+      <div class="pipe-tools">
+        <div class="pipe-tool"
+          data-tip='{"role":"RL · Daily Miss Analysis","title":"FeedbackAgent","body":"intelligence/rl/agents/feedback_agent.py. 6th LLM agent, does not subclass BaseAgent (takes FeedbackAgentInput, not StockQuery). Runs daily at 4:30pm IST after market close. Input: predicted close, actual close, predicted + actual agent scores (both sets), today market news context, existing lesson IDs + ledger summary. Output (structured JSON): primary_miss_agent, miss_type (7 types: data_gap/data_stale/external_shock → 0× penalty, timing → 0.5×, magnitude → 0.25×, model_bias/direction_flip → 1×), missed_factors[], over_weighted_factors[], RevisedContext struct, new_lessons[]. Temperature=0.3 to surface non-obvious cross-signal patterns. Analyst distrust rule: cannot cite broker upgrades or EPS estimates as missed factors.","tags":["4:30pm IST daily","7 miss type taxonomy","RevisedContext struct","Temp=0.3","Analyst distrust rule"]}'
+          onmouseenter="showTip(this,event)" onmouseleave="hideTip()">
+          FeedbackAgent <span class="sub">daily LLM miss analysis</span>
+        </div>
+        <div class="pipe-tool"
+          data-tip='{"role":"RL · Weight Adaptation","title":"WeightAdapter","body":"intelligence/rl/agents/weight_adapter.py. Pure deterministic maths — no LLM call. Three-stage update: (1) Accuracy: rolling last-7-day direction hits per agent; agents in NO_PENALTY_MISS_TYPES get hit credit even on wrong days. (2) Deltas: hit rate ≥ WEIGHT_BOOST_HIT_RATE=0.70 → +0.02; ≤ WEIGHT_PENALTY_HIT_RATE=0.40 → -0.03; consecutive 2-day primary_miss → -0.05 with miss_type multiplier applied. (3) Bounds: clamp each delta to max_single_step=0.05, clamp result to base ± max_total_drift=0.15, re-normalise all to sum=1.0. Appends WeightHistoryEntry with human-readable reason to agent_weight_memory.json.","tags":["7-day rolling window","max step=0.05","max drift=0.15","Always sums to 1.0","Human-readable history"]}'
+          onmouseenter="showTip(this,event)" onmouseleave="hideTip()">
+          WeightAdapter <span class="sub">bounded deterministic steps</span>
+        </div>
+        <div class="pipe-tool"
+          data-tip='{"role":"RL · Pattern Memory","title":"LearningLedger","body":"core/schemas/feedback.py + intelligence/rl/. Each Lesson has: category (7 types including global_macro, data_availability), pattern name, observation, rule, confidence [0,1], occurrences, scope (stock_specific/sector_wide/market_wide), last_seen date. Same pattern increments occurrences + blends confidence via weighted average instead of duplicating. effective_confidence(lesson) = stored × (1-0.02)^months_inactive, floor=0.10. active_lessons_summary() injects effective confidence (not stored) into FeedbackAgent prompt — LLM naturally weights recent patterns higher. market_wide lessons propagate across all tickers automatically.","tags":["7 lesson categories","3 scopes","2%/month decay floor=0.10","Scope auto-widening","market_wide propagation"]}'
+          onmouseenter="showTip(this,event)" onmouseleave="hideTip()">
+          LearningLedger <span class="sub">patterns · decay · propagate</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="pipe-arrow">→</div>
+
+    <!-- PLATFORM & SAFETY -->
+    <div class="pipe-stage" style="--pc:#475569;--pc-faint:#F1F5F9;--pc-border:#CBD5E1;--pc-text:#1E293B;--pc-sub:#64748B">
+      <div class="pipe-label">Platform</div>
+      <div class="pipe-tools">
+        <div class="pipe-tool"
+          data-tip='{"role":"Platform · Safety Layer","title":"3-Rail Safety (LangGraph)","body":"Shared infrastructure in graphs/_shared/rails.py. Three non-blocking validators: input_rail (before fan-out) — checks ticker exists via yfinance fast_info, appends to rail_errors on failure, never blocks graph. output_rail (inside run_agent node) — clamps score to [0,1], injects placeholder summary if empty, ensures every AgentOutput is safe. conflict_rail (inside aggregate node) — detects pairwise score spread > 0.35 across all agent outputs, triggers Qwen3 re-resolution. All rails append to GraphState.rail_errors list. Graph never terminates — a rail firing does not stop execution.","tags":["input_rail: ticker validation","output_rail: score clamp [0,1]","conflict_rail: spread > 0.35","All non-blocking","rail_errors append-only"]}'
+          onmouseenter="showTip(this,event)" onmouseleave="hideTip()">
+          3-Rail Safety <span class="sub">input · output · conflict</span>
+        </div>
+        <div class="pipe-tool"
+          data-tip='{"role":"Platform · Multi-Sector","title":"4 LangGraph Sector Graphs","body":"langgraph.json registers 4 graphs. Automobile: 9 agents fully implemented. Banking/BFSI: 6 stub agents (NPA quality, capital adequacy, CASA ratio, credit growth, margin, macro_policy). IT Sector: 8 stub agents (deal TCV, attrition, margin, offshore mix, cross-sell, competitor, sentiment, risk). Renewable Energy: 6 stub agents (capacity addition, PPA tariff, ISCR, PLF, policy, valuation). All stubs inherit BaseAgent — they fall back to LLM training knowledge when ContextBuilder routing is not yet wired. Known gap: ContextBuilder has no BFSI/IT/RE branches yet.","tags":["Auto: 9 agents","BFSI: 6 stubs","IT: 8 stubs","RE: 6 stubs","ContextBuilder gap known"]}'
+          onmouseenter="showTip(this,event)" onmouseleave="hideTip()">
+          4 Sector Graphs <span class="sub">auto · BFSI · IT · RE</span>
+        </div>
+        <div class="pipe-tool"
+          data-tip='{"role":"Platform · Quality","title":"Test Suite — 292 Passing","body":"Full test suite in tests/. All LLM and network calls mocked — runs fully offline. Phase-specific: test_phase1_indicators.py (25 tests: C++ vs pure-Python parity + fallback when .pyd absent), test_phase2_api.py (FastAPI route contracts: POST /analyse, GET /history, WS stream event shapes), test_phase3_typescript.py (Python-side JSON shape validation matching TypeScript client expectations), test_phase4_csharp.py (C# proxy routing, ScoreRecord JSON, cron schedule validation). Coverage: agents, schemas, orchestrator, signal_aggregator, scheduler, all fetchers.","tags":["292 passing","All LLM mocked","25 C++ parity tests","FastAPI contracts","C# proxy contracts"]}'
+          onmouseenter="showTip(this,event)" onmouseleave="hideTip()">
+          Test Suite <span class="sub">292 passing · fully mocked</span>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- Legend -->
+<div class="legend">
+  <div class="legend-item"><div class="legend-dot" style="background:#0BA87E"></div>Ingest — multi-source data</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#1A5FBB"></div>Analyse — 9 parallel agents</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#C47A0A"></div>Fuse — signal aggregation</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#15803D"></div>Persist — store &amp; schedule</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#7C3AED"></div>Learn — RL feedback loop</div>
+  <div class="legend-item" style="margin-left:12px;border-left:1px solid #E2E8F0;padding-left:12px">
+    <div class="legend-dot" style="background:#475569"></div>Hover any node for deep-dive
+  </div>
+</div>
+
+</div><!-- /diag-slide -->
+
+<script>
+/* ══════════════════════════════════════════
+   Small tooltip — orbit dots only
+   ══════════════════════════════════════════ */
+const tip = document.getElementById('rich-tip');
+let tipTimeout;
+
+function showTip(el, e) {
+  clearTimeout(tipTimeout);
+  const raw = el.dataset.tip;
+  if (!raw) return;
+  let d;
+  try { d = JSON.parse(raw); } catch(_) { return; }
+  document.getElementById('tt-role').textContent  = d.role  || '';
+  document.getElementById('tt-title').textContent = d.title || '';
+  document.getElementById('tt-body').textContent  = d.body  || '';
+  const tags = document.getElementById('tt-tags');
+  tags.innerHTML = '';
+  (d.tags || []).forEach(t => {
+    const s = document.createElement('span');
+    s.className = 'tip-tag'; s.textContent = t;
+    tags.appendChild(s);
+  });
+  tip.classList.add('show');
+  moveTip(e);
+}
+
+function hideTip() {
+  tipTimeout = setTimeout(() => tip.classList.remove('show'), 120);
+}
+
+function moveTip(e) {
+  const x = e.clientX, y = e.clientY;
+  const tw = 270, th = 200;
+  const vw = window.innerWidth, vh = window.innerHeight;
+  let left = x + 16, top = y + 16;
+  if (left + tw > vw - 10) left = x - tw - 10;
+  if (top  + th > vh - 10) top  = y - th - 10;
+  tip.style.left = left + 'px';
+  tip.style.top  = top  + 'px';
+}
+
+/* ══════════════════════════════════════════
+   Flow Panel — segments & inner zones
+   ══════════════════════════════════════════ */
+const fp      = document.getElementById('flow-panel');
+const fpDot   = document.getElementById('fp-dot');
+const fpStage = document.getElementById('fp-stage');
+const fpTitle = document.getElementById('fp-title');
+const fpBody  = document.getElementById('fp-body');
+let fpTimeout;
+
+/* ── Flowchart HTML templates (light-theme mini-website) ── */
+const FLOWS = {
+
+  /* ── INGEST ── */
+  ingest: {
+    color:'#0BA87E', stage:'Stage 01 · Ingest', title:'Multi-Source Data Layer',
+    html:`
+<div class="fps">Data Sources</div>
+<div class="src-grid">
+  <div class="src-card" style="--sc:#0BA87E">
+    <div class="src-name">yfinance</div>
+    <div class="src-role">10yr OHLCV · quarterly P&amp;L · macro spot prices<br>INR=X · CL=F (WTI) · BZ=F (Brent) · SLX · AA</div>
+    <div class="src-badge">free · no API key required</div>
+  </div>
+  <div class="src-card" style="--sc:#1A5FBB">
+    <div class="src-name">Serper API</div>
+    <div class="src-role">News search · SERPER_MAX_QUERIES=3 per agent · sector-level queries cached to avoid repeat calls</div>
+    <div class="src-badge">2,500 queries / month free</div>
+  </div>
+  <div class="src-card" style="--sc:#C47A0A">
+    <div class="src-name">Tavily</div>
+    <div class="src-role">Full-page document extraction · FAME · BS6 · PLI scheme · state EV incentive PDFs</div>
+    <div class="src-badge">PolicyRegulatory agent only</div>
+  </div>
+  <div class="src-card" style="--sc:#7C3AED">
+    <div class="src-name">Macro Cache</div>
+    <div class="src-role">Sector-level risk signals pre-warmed by micro_search_loop every 4h · RiskMacro uses 0 Serper calls on HIT</div>
+    <div class="src-badge">TTL = 2 hours · saves 3 calls/run</div>
+  </div>
+</div>
+<div class="fp-arrow">↓</div>
+<div style="display:flex;justify-content:center">
+  <div class="fp-node">
+    <div class="fp-node-title">ContextBuilder.build(agent_name, query)</div>
+    <div class="fp-node-sub">routes each of 9 agents to exactly the right fetchers</div>
+  </div>
+</div>
+<div class="fps" style="margin-top:14px">Serper API Budget</div>
+<div class="wt-row">
+  <span class="wt-label">Used (steady)</span>
+  <div class="wt-track" style="height:20px">
+    <div class="wt-fill" style="width:68%;background:#1A5FBB"><span class="wt-pct">1,710 / 2,500</span></div>
+  </div>
+</div>
+<div class="wt-row">
+  <span class="wt-label">Buffer left</span>
+  <div class="wt-track" style="height:20px">
+    <div class="wt-fill" style="width:32%;background:#0BA87E"><span class="wt-pct">790 queries free</span></div>
+  </div>
+</div>
+<div class="stat-row">
+  <div class="sc-chip">PatternAnalysis → 0 Serper calls</div>
+  <div class="sc-chip">Micro loop saves ~450 calls/month net</div>
+  <div class="sc-chip">9 cold → 12 warm calls/stock</div>
+</div>`
+  },
+
+  /* ── ANALYSE ── */
+  analyse: {
+    color:'#1A5FBB', stage:'Stage 02 · Analyse', title:'Multi-Sector Stock Intelligence Platform',
+    html:`
+<div class="fps">4-Sector Coverage — Agent Specialisation per Market</div>
+<div class="sec-grid">
+  <div class="sec-card" style="--sc:#0BA87E">
+    <div class="sec-hdr"><span class="sec-icon">🚗</span><span class="sec-name">Automobile</span><span class="sec-badge live">9 Agents · LIVE</span></div>
+    <div class="sec-meta">MARUTI · TATAMOTORS · M&amp;M · BAJAJ-AUTO · HEROMOTOCO · ATHERENERGY</div>
+    <div class="sec-dims">SalesDemand · RawMaterials · Fundamentals · PatternAnalysis · Sentiment · PolicyRegulatory · CompetitiveIntel · RiskMacro · ValuationCatalyst</div>
+  </div>
+  <div class="sec-card muted" style="--sc:#1A5FBB">
+    <div class="sec-hdr"><span class="sec-icon">🏦</span><span class="sec-name">Banking / BFSI</span><span class="sec-badge road">Q3 2026</span></div>
+    <div class="sec-meta">HDFCBANK · ICICIBANK · SBICARD · BAJFINANCE</div>
+    <div class="sec-dims">NPA Trends · CAR · CASA ratio · RBI policy · credit growth · yield spread</div>
+  </div>
+  <div class="sec-card muted" style="--sc:#7C3AED">
+    <div class="sec-hdr"><span class="sec-icon">💻</span><span class="sec-name">IT Sector</span><span class="sec-badge road">Q3 2026</span></div>
+    <div class="sec-meta">TCS · INFY · WIPRO · HCLTECH · TECHM</div>
+    <div class="sec-dims">Deal pipeline · attrition rate · FOREX exposure · cloud ARR · headcount growth</div>
+  </div>
+  <div class="sec-card muted" style="--sc:#15803D">
+    <div class="sec-hdr"><span class="sec-icon">⚡</span><span class="sec-name">Renewable Energy</span><span class="sec-badge road">Q4 2026</span></div>
+    <div class="sec-meta">ADANIGREEN · TATAPOWER · GREENKO · NTPC</div>
+    <div class="sec-dims">MW capacity · DISCOM health · solar tariff · PLI scheme · ESG score</div>
+  </div>
+</div>
+<div class="fps">Orchestration Dispatch — From Ticker to 9 Parallel Agents</div>
+<div style="display:flex;gap:5px;align-items:center">
+  <div class="fpc hi" style="flex:1;text-align:center"><div class="fpc-t">_resolve_ticker()</div><div class="fpc-s">Qwen3 · NSE suffix + sector detect</div></div>
+  <div class="rag-arr">→</div>
+  <div class="fpc" style="flex:1;text-align:center"><div class="fpc-t">ThreadPool / asyncio.gather</div><div class="fpc-s">max_workers=9 · 120s timeout · fault-isolated</div></div>
+  <div class="rag-arr">→</div>
+  <div class="fpc hi" style="flex:1;text-align:center"><div class="fpc-t">AgentOutput × N</div><div class="fpc-s">score[0,1] · sub_scores · LLM summary</div></div>
+</div>
+<div class="fps">What StockAgent Agents Do Differently</div>
+<div class="stat-row">
+  <div class="sc-chip">Sector-specific signal vocabulary per market</div>
+  <div class="sc-chip">C++ RSI / MACD / BB at native speed</div>
+  <div class="sc-chip">RL-adapted weights per ticker over time</div>
+  <div class="sc-chip">LangGraph fan-out · RetryPolicy(max=2)</div>
+  <div class="sc-chip">Qwen3 context repair on score conflict</div>
+  <div class="sc-chip">Neutral 0.5 on any LLM failure — never crashes</div>
+</div>`
+  },
+
+  /* ── FUSE ── */
+  fuse: {
+    color:'#C47A0A', stage:'Stage 03 · Fuse', title:'Signal Aggregation & Verdict Engine',
+    html:`
+<div class="fps">Agent Weight Configuration · sum = 1.0</div>
+<div class="wt-row"><span class="wt-label">Fundamentals</span><div class="wt-track"><div class="wt-fill" style="width:20%;background:#1A5FBB"><span class="wt-pct">20%</span></div></div></div>
+<div class="wt-row"><span class="wt-label">Sales &amp; Demand</span><div class="wt-track"><div class="wt-fill" style="width:18%;background:#0BA87E"><span class="wt-pct">18%</span></div></div></div>
+<div class="wt-row"><span class="wt-label">Risk &amp; Macro</span><div class="wt-track"><div class="wt-fill" style="width:15%;background:#DC2626"><span class="wt-pct">15%</span></div></div></div>
+<div class="wt-row"><span class="wt-label">PatternAnalysis</span><div class="wt-track"><div class="wt-fill" style="width:13%;background:#C47A0A"><span class="wt-pct">13%</span></div></div></div>
+<div class="wt-row"><span class="wt-label">Raw Materials</span><div class="wt-track"><div class="wt-fill" style="width:10%;background:#64748B"><span class="wt-pct">10%</span></div></div></div>
+<div class="wt-row"><span class="wt-label">PolicyRegulatory</span><div class="wt-track"><div class="wt-fill" style="width:10%;background:#15803D"><span class="wt-pct">10%</span></div></div></div>
+<div class="wt-row"><span class="wt-label">CompetitiveIntel</span><div class="wt-track"><div class="wt-fill" style="width:10%;background:#7C3AED"><span class="wt-pct">10%</span></div></div></div>
+<div class="wt-row"><span class="wt-label">Sentiment</span><div class="wt-track"><div class="wt-fill" style="width:4%;background:#06B6D4"><span class="wt-pct">4%</span></div></div></div>
+<div class="fp-arrow">↓ weighted_score = Σ(wᵢ × scoreᵢ) · or RL learned_weights</div>
+<div class="fpc" style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
+  <div style="width:36px;height:36px;border-radius:50%;background:#FEF3E0;border:2px solid #C47A0A;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0">⚡</div>
+  <div><div class="fpc-t">Conflict Detection</div><div class="fpc-s">any pair |scoreᵢ − scoreⱼ| ≥ 0.30 → Qwen3 resolution call with full score table + investment thesis</div></div>
+</div>
+<div class="fps">5 Verdict Levels</div>
+<div class="verdict-strip">
+  <div class="vc" style="background:#14532D"><span>STRONG BUY</span><span class="vc-range">≥ 0.75</span></div>
+  <div class="vc" style="background:#166534"><span>BUY</span><span class="vc-range">0.55–0.75</span></div>
+  <div class="vc" style="background:#374151"><span>NEUTRAL</span><span class="vc-range">0.40–0.55</span></div>
+  <div class="vc" style="background:#9A3412"><span>SELL</span><span class="vc-range">0.20–0.40</span></div>
+  <div class="vc" style="background:#7F1D1D"><span>STRONG SELL</span><span class="vc-range">&lt; 0.20</span></div>
+</div>
+<div class="stat-row">
+  <div class="sc-chip">FinalReport — Pydantic v2 single schema</div>
+  <div class="sc-chip">Valuation fields bubble-up from ValuationCatalyst</div>
+  <div class="sc-chip">learned_weights=None → config defaults</div>
+</div>`
+  },
+
+  /* ── PERSIST ── */
+  persist: {
+    color:'#15803D', stage:'Stage 04 · Persist', title:'From Verdict to Enterprise Delivery',
+    html:`
+<div style="display:flex;justify-content:center;margin-bottom:8px">
+  <div class="fp-node"><div class="fp-node-title">FinalReport (Pydantic v2)</div><div class="fp-node-sub">verdict · score · thesis · conviction_drivers · top_risks · fair_value · price_target</div></div>
+</div>
+<div class="fp-arrow">↓ 3 delivery channels activate simultaneously</div>
+<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:10px">
+  <div class="fpc hi" style="text-align:center">
+    <div style="font-size:20px;margin-bottom:3px">🌐</div>
+    <div class="fpc-t">REST + WebSocket</div>
+    <div class="fpc-s">TypeScript/Hono :3000 · POST /api/analyse · WS /ws/stream per-agent live progress</div>
+  </div>
+  <div class="fpc hi" style="text-align:center">
+    <div style="font-size:20px;margin-bottom:3px">🗄️</div>
+    <div class="fpc-t">Score History</div>
+    <div class="fpc-s">SQLite capped at 90 rows/ticker · SQL Server via C# EF Core 8 enterprise path</div>
+  </div>
+  <div class="fpc" style="text-align:center">
+    <div style="font-size:20px;margin-bottom:3px">🔔</div>
+    <div class="fpc-t">Smart Alerts</div>
+    <div class="fpc-s">score Δ≥0.10 OR verdict flip → webhook · file · console · Slack-ready</div>
+  </div>
+</div>
+<div class="fps">Market-Hours Scheduling — Fully Automated</div>
+<div style="display:flex;gap:6px;margin-bottom:10px">
+  <div class="fpc" style="flex:1"><div class="fpc-t">⏰ TypeScript node-cron</div><div class="fpc-s">8:30am IST Mon–Fri · fires POST /api/analyse per SCHEDULER_TICKERS entry</div></div>
+  <div class="fpc" style="flex:1"><div class="fpc-t">🔷 C# Quartz.NET</div><div class="fpc-s">Enterprise path · [DisallowConcurrentExecution] · cron 0 30 8 ? * MON-FRI · port 5000</div></div>
+</div>
+<div class="fps">What the FinalReport Delivers to Consumers</div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:5px">
+  <div class="fpc"><div class="fpc-t">verdict + final_score</div><div class="fpc-s">STRONG BUY → STRONG SELL · 0.20–1.00 range</div></div>
+  <div class="fpc hi"><div class="fpc-t">investment_thesis</div><div class="fpc-s">Qwen3 narrative synthesis of all 9 agent views</div></div>
+  <div class="fpc"><div class="fpc-t">conviction_drivers[]</div><div class="fpc-s">Ranked supporting factors · weight × score contribution</div></div>
+  <div class="fpc hi"><div class="fpc-t">fair_value_estimate</div><div class="fpc-s">ValuationCatalyst bubble-up · discount% · recovery_timeline_quarters</div></div>
+</div>`
+  },
+
+  /* ── LEARN ── */
+  learn: {
+    color:'#7C3AED', stage:'Stage 05 · Learn', title:'Reinforcement Learning Feedback Loop',
+    html:`
+<div class="flow-steps">
+  <div class="flow-step">
+    <div class="fs-num">1</div>
+    <div class="fs-body">
+      <div class="fs-title">APScheduler fires at 4:30pm IST</div>
+      <div class="fs-desc">Daily trigger after market close · Python scheduler imports intelligence.rl directly</div>
+    </div>
+  </div>
+  <div class="flow-step">
+    <div class="fs-num">2</div>
+    <div class="fs-body">
+      <div class="fs-title">FeedbackAgent — Qwen3-235B (temp=0.3)</div>
+      <div class="fs-desc">Compares predicted vs actual close · all 9 agent scores before and after · today's news context · existing lesson IDs · analyst distrust rule: cannot cite broker upgrades</div>
+    </div>
+  </div>
+  <div class="flow-step">
+    <div class="fs-num">3</div>
+    <div class="fs-body">
+      <div class="fs-title">7 Miss Type Taxonomy → Penalty Level</div>
+      <div class="miss-row" style="margin-top:6px">
+        <span class="mp" style="color:#16a34a">data_gap</span>
+        <span class="mp" style="color:#16a34a">data_stale</span>
+        <span class="mp" style="color:#16a34a">external_shock</span>
+        <span class="mp" style="color:#d97706">magnitude</span>
+        <span class="mp" style="color:#ea580c">timing</span>
+        <span class="mp" style="color:#dc2626">model_bias</span>
+        <span class="mp" style="color:#dc2626">direction_flip</span>
+      </div>
+      <div style="font-size:9px;color:#94A3B8;margin-top:5px">Green=0× penalty · Amber=0.25–0.5× · Red=1× full</div>
+    </div>
+  </div>
+  <div class="flow-step">
+    <div class="fs-num">4</div>
+    <div class="fs-body">
+      <div class="fs-title">WeightAdapter — deterministic, no LLM</div>
+      <div class="fs-desc">7-day rolling hit rate per agent · hit≥70%→+0.02 · hit≤40%→−0.03 · 2× miss→−0.05×multiplier · max step=±0.05 · max drift=±0.15 · always sums=1.0</div>
+    </div>
+  </div>
+  <div class="flow-step">
+    <div class="fs-num">5</div>
+    <div class="fs-body">
+      <div class="fs-title">LearningLedger — patterns persist forever</div>
+      <div class="fs-desc">scope: stock_specific → sector_wide → market_wide · 2%/month confidence decay · floor=0.10 · market_wide lessons auto-propagate to all tickers · compound expertise over months</div>
+    </div>
+  </div>
+</div>`
+  },
+
+  /* ── INNER: RL Engine ── */
+  rl: {
+    color:'#0BA87E', stage:'Inner Zone · RL Engine', title:'Closed-Loop Prediction Intelligence',
+    html:`
+<div class="fps">Self-Correcting Feedback Cycle · Fires 4:30pm IST After Market Close</div>
+<div class="rl-cycle-row">
+  <div class="rl-node" style="border-color:#0BA87E">
+    <div class="rl-n-icon">🎯</div>
+    <div class="rl-n-title">Predict</div>
+    <div class="rl-n-sub">30-day envelope · confidence_pct per ticker</div>
+  </div>
+  <div class="rl-arr">→</div>
+  <div class="rl-node" style="border-color:#1A5FBB">
+    <div class="rl-n-icon">📈</div>
+    <div class="rl-n-title">Observe</div>
+    <div class="rl-n-sub">actual close vs predicted · all 9 agent scores</div>
+  </div>
+  <div class="rl-arr">→</div>
+  <div class="rl-node" style="border-color:#C47A0A">
+    <div class="rl-n-icon">🤖</div>
+    <div class="rl-n-title">Classify</div>
+    <div class="rl-n-sub">Qwen3 temp=0.3 · 7-type miss taxonomy</div>
+  </div>
+  <div class="rl-arr">→</div>
+  <div class="rl-node" style="border-color:#DC2626">
+    <div class="rl-n-icon">⚖️</div>
+    <div class="rl-n-title">Penalize</div>
+    <div class="rl-n-sub">0× / 0.5× / 1× penalty multiplier</div>
+  </div>
+  <div class="rl-arr">→</div>
+  <div class="rl-node" style="border-color:#7C3AED">
+    <div class="rl-n-icon">🔧</div>
+    <div class="rl-n-title">Adapt</div>
+    <div class="rl-n-sub">±0.05/step · ±0.15 drift cap · sums=1.0</div>
+  </div>
+</div>
+<div class="fps">Miss Taxonomy — Penalty Tier Logic</div>
+<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:5px;margin-bottom:6px">
+  <div style="background:#F0FDF4;border:1.5px solid #86EFAC;border-radius:8px;padding:8px;text-align:center">
+    <div style="font-size:9.5px;font-weight:700;color:#16a34a;margin-bottom:3px">ZERO · 0×</div>
+    <div style="font-size:8.5px;color:#64748B">data_gap · data_stale · external_shock</div>
+    <div style="font-size:7.5px;color:#94A3B8;margin-top:3px;font-style:italic">Market at fault — agent absolved</div>
+  </div>
+  <div style="background:#FFFBEB;border:1.5px solid #FCD34D;border-radius:8px;padding:8px;text-align:center">
+    <div style="font-size:9.5px;font-weight:700;color:#d97706;margin-bottom:3px">PARTIAL · 0.25–0.5×</div>
+    <div style="font-size:8.5px;color:#64748B">magnitude · timing</div>
+    <div style="font-size:7.5px;color:#94A3B8;margin-top:3px;font-style:italic">Right direction, wrong quantum</div>
+  </div>
+  <div style="background:#FEF2F2;border:1.5px solid #FCA5A5;border-radius:8px;padding:8px;text-align:center">
+    <div style="font-size:9.5px;font-weight:700;color:#dc2626;margin-bottom:3px">FULL · 1×</div>
+    <div style="font-size:8.5px;color:#64748B">model_bias · direction_flip</div>
+    <div style="font-size:7.5px;color:#94A3B8;margin-top:3px;font-style:italic">Agent misled the verdict</div>
+  </div>
+</div>
+<div class="fps">Lesson Scope — Compound Intelligence Propagation</div>
+<div class="rag-pipe" style="margin-bottom:4px">
+  <div class="rag-box"><div class="rag-t">stock_specific</div><div class="rag-s">MARUTI.NS only</div></div>
+  <div class="rag-arr">→</div>
+  <div class="rag-box"><div class="rag-t">sector_wide</div><div class="rag-s">all auto tickers</div></div>
+  <div class="rag-arr">→</div>
+  <div class="rag-box hi"><div class="rag-t">market_wide</div><div class="rag-s">every tracked stock benefits</div></div>
+</div>
+<div class="stat-row">
+  <div class="sc-chip">Month 6 expertise &gt; Month 1 — compound learning</div>
+  <div class="sc-chip">2%/month decay · floor=0.10 · ledger never deleted</div>
+</div>`
+  },
+
+  /* ── INNER: Agent Engine ── */
+  agents: {
+    color:'#1A5FBB', stage:'Inner Zone · Agent Engine', title:'Sector-Aware Agent Architecture',
+    html:`
+<div class="fps">4-Sector Intelligence Coverage</div>
+<div class="sec-grid">
+  <div class="sec-card" style="--sc:#0BA87E">
+    <div class="sec-hdr"><span class="sec-icon">🚗</span><span class="sec-name">Automobile</span><span class="sec-badge live">9 Agents · LIVE</span></div>
+    <div class="sec-meta">EV share · FADA · BS6 · PLI · FAME II · C++ indicators</div>
+    <div class="sec-dims">SalesDemand · RawMaterials · Fundamentals · PatternAnalysis · Sentiment · PolicyRegulatory · CompetitiveIntel · RiskMacro · ValuationCatalyst</div>
+  </div>
+  <div class="sec-card muted" style="--sc:#1A5FBB">
+    <div class="sec-hdr"><span class="sec-icon">🏦</span><span class="sec-name">Banking / BFSI</span><span class="sec-badge road">Q3 2026</span></div>
+    <div class="sec-meta">NPA · CAR · CASA · credit growth · RBI rates</div>
+    <div class="sec-dims">NPA Agent · CASA Agent · CAR Agent · Macro Agent · Credit Growth · Policy Agent</div>
+  </div>
+  <div class="sec-card muted" style="--sc:#7C3AED">
+    <div class="sec-hdr"><span class="sec-icon">💻</span><span class="sec-name">IT Sector</span><span class="sec-badge road">Q3 2026</span></div>
+    <div class="sec-meta">Deal wins · attrition · FOREX · cloud ARR</div>
+    <div class="sec-dims">DealsAgent · AttritionAgent · ForexAgent · CloudAgent · SentimentAgent · TechSpend · GeopoliticsAgent · Valuation</div>
+  </div>
+  <div class="sec-card muted" style="--sc:#15803D">
+    <div class="sec-hdr"><span class="sec-icon">⚡</span><span class="sec-name">Renewable Energy</span><span class="sec-badge road">Q4 2026</span></div>
+    <div class="sec-meta">MW capacity · DISCOM · solar tariff · ESG</div>
+    <div class="sec-dims">CapacityAgent · TariffAgent · ESGAgent · PolicyAgent · DISCOMAgent · ValuationAgent</div>
+  </div>
+</div>
+<div class="fps">What Every Agent Produces</div>
+<div style="display:flex;gap:6px;margin-bottom:4px">
+  <div class="fpc" style="flex:1;text-align:center"><div class="fpc-t">overall_score</div><div class="fpc-s">0.0 → 1.0 normalised composite</div></div>
+  <div class="fpc hi" style="flex:1;text-align:center"><div class="fpc-t">sub_scores{}</div><div class="fpc-s">5 sector-specific dimensions</div></div>
+  <div class="fpc" style="flex:1;text-align:center"><div class="fpc-t">LLM summary</div><div class="fpc-s">Qwen3 narrative · structured JSON</div></div>
+</div>
+<div class="fps">Adaptive Weight Learning — RL Shifts These Over Time</div>
+<div class="wt-row"><span class="wt-label">Fundamentals</span><div class="wt-track"><div class="wt-fill" style="width:20%;background:#1A5FBB"><span class="wt-pct">20%</span></div></div></div>
+<div class="wt-row"><span class="wt-label">SalesDemand</span><div class="wt-track"><div class="wt-fill" style="width:18%;background:#0BA87E"><span class="wt-pct">18%</span></div></div></div>
+<div class="wt-row"><span class="wt-label">RiskMacro</span><div class="wt-track"><div class="wt-fill" style="width:15%;background:#DC2626"><span class="wt-pct">15%</span></div></div></div>
+<div class="stat-row">
+  <div class="sc-chip">RL shifts weights ±0.05/day per 7-day hit rate</div>
+  <div class="sc-chip">BaseAgent ABC · 3 abstract methods</div>
+  <div class="sc-chip">Neutral 0.5 on any LLM failure</div>
+</div>`
+  },
+
+  /* ── INNER: Memory Layer ── */
+  memory: {
+    color:'#7C3AED', stage:'Inner Zone · Memory Layer', title:'3-Tier Intelligence Memory Stack',
+    html:`
+<div class="fps">Memory Architecture — Hot / Warm / Cold</div>
+<div class="mem-tier" style="--mt:#DC2626;--mtf:#FEF9F9;--mtb:#FECACA">
+  <div class="mt-label">🔴 HOT · Real-time (seconds TTL)</div>
+  <div class="mt-items">Macro cache (2hr expiry) · live yfinance prices · Serper news snippets · Tavily policy PDFs — always fresh, zero latency</div>
+</div>
+<div class="mem-tier" style="--mt:#C47A0A;--mtf:#FFFDF7;--mtb:#FDE68A">
+  <div class="mt-label">🟡 WARM · Session (days)</div>
+  <div class="mt-items">SQLite ScoreStore · 90-row/ticker history · trend queries · score delta detection · SQL Server enterprise path via EF Core 8</div>
+</div>
+<div class="mem-tier" style="--mt:#7C3AED;--mtf:#F8F5FF;--mtb:#DDD6FE">
+  <div class="mt-label">🟣 COLD · Permanent (never deleted)</div>
+  <div class="mt-items">4 JSON files/ticker — prediction envelopes · daily feedback logs · agent weight memory · learning ledger. Written atomically via .tmp rename</div>
+</div>
+<div class="fps">Capabilities You Won't Find in Generic AI Systems</div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
+  <div class="fpc hi" style="display:flex;gap:8px;align-items:flex-start">
+    <div style="font-size:17px">🔒</div>
+    <div><div class="fpc-t">Agents Earn Credibility</div><div class="fpc-s">Consistent accuracy → permanent weight gain. Month 6 expertise beats Month 1 automatically</div></div>
+  </div>
+  <div class="fpc hi" style="display:flex;gap:8px;align-items:flex-start">
+    <div style="font-size:17px">🌍</div>
+    <div><div class="fpc-t">Market-Wide Propagation</div><div class="fpc-s">Lesson from MARUTI auto-applies to TCS if scope=market_wide — zero manual config</div></div>
+  </div>
+  <div class="fpc" style="display:flex;gap:8px;align-items:flex-start">
+    <div style="font-size:17px">🔄</div>
+    <div><div class="fpc-t">Living 30-Day Forecast</div><div class="fpc-s">Not a static prediction — envelope revised daily as context, market, and learned weights evolve</div></div>
+  </div>
+  <div class="fpc" style="display:flex;gap:8px;align-items:flex-start">
+    <div style="font-size:17px">💥</div>
+    <div><div class="fpc-t">Crash-Safe + Idempotent</div><div class="fpc-s">Atomic .tmp rename writes — power-loss proof, safe to re-run same date without duplication</div></div>
+  </div>
+</div>`
+  },
+
+  /* ── INNER: RAG Retrieval ── */
+  rag: {
+    color:'#C47A0A', stage:'Inner Zone · RAG Retrieval', title:'Projected: Domain-Specific Knowledge Layer',
+    html:`
+<div class="fps">Indian Market Intelligence Documents — Bridging the LLM Training Cutoff</div>
+<div class="src-grid">
+  <div class="src-card" style="--sc:#C47A0A">
+    <div class="src-name">SEBI Filings &amp; DRHP</div>
+    <div class="src-role">IPO prospectuses · shareholding patterns · insider trade disclosures · rights issue docs — real-time SEBI database</div>
+    <div class="src-badge">Bridges LLM training cutoff</div>
+  </div>
+  <div class="src-card" style="--sc:#1A5FBB">
+    <div class="src-name">Annual Reports &amp; Concalls</div>
+    <div class="src-role">MD&amp;A sections · management tone · forward guidance · segmental breakdowns — per-cycle ingestion</div>
+    <div class="src-badge">Fundamentals · Sentiment agents</div>
+  </div>
+  <div class="src-card" style="--sc:#7C3AED">
+    <div class="src-name">RBI &amp; MoF Policy PDFs</div>
+    <div class="src-role">Monetary policy circulars · NBFC guidelines · credit risk norms · FAME / PLI scheme documents</div>
+    <div class="src-badge">PolicyRegulatory agent enabler</div>
+  </div>
+  <div class="src-card" style="--sc:#0BA87E">
+    <div class="src-name">Broker Research Notes</div>
+    <div class="src-role">Analyst price targets · sector thematic reports · earnings previews — used as cross-validation signal, not authority</div>
+    <div class="src-badge">Cross-checks LLM reasoning</div>
+  </div>
+</div>
+<div class="fps">Agent-Aware Retrieval — Each Agent Queries Its Own Domain</div>
+<div class="rag-pipe">
+  <div class="rag-box"><div class="rag-t">Agent query</div><div class="rag-s">ticker + dimension</div></div>
+  <div class="rag-arr">→</div>
+  <div class="rag-box hi"><div class="rag-t">cosine search</div><div class="rag-s">TOP_K=5 · sim≥0.75</div></div>
+  <div class="rag-arr">→</div>
+  <div class="rag-box"><div class="rag-t">cross-encoder</div><div class="rag-s">rerank &amp; filter</div></div>
+  <div class="rag-arr">→</div>
+  <div class="rag-box hi"><div class="rag-t">LLM context</div><div class="rag-s">1st priority input</div></div>
+</div>
+<div class="stat-row">
+  <div class="sc-chip">PolicyRegulatory → policy PDFs · Fundamentals → MD&amp;A</div>
+  <div class="sc-chip">Each agent queries its own document domain — not generic search</div>
+  <div class="sc-chip">ChromaDB + sentence-transformers · RAG_ENABLED=false (projecting)</div>
+</div>`
+  },
+
+  /* ── OUTPUT: Market Context (INGEST output node) ── */
+  market_context: {
+    color:'#0BA87E', stage:'Business Output · Ingest Layer', title:'Market Context Package',
+    html:`
+<div class="fps">What Gets Assembled — From Raw Signals to Context Object</div>
+<div class="src-grid">
+  <div class="src-card" style="--sc:#0BA87E">
+    <div class="src-name">yfinance Prices</div>
+    <div class="src-role">10yr OHLCV · quarterly P&amp;L · macro spots (INR=X, CL=F, BZ=F, SLX, AA) — zero API cost</div>
+    <div class="src-badge">PatternAnalysis · RawMaterials · Fundamentals</div>
+  </div>
+  <div class="src-card" style="--sc:#1A5FBB">
+    <div class="src-name">Serper News</div>
+    <div class="src-role">Up to 3 queries/agent · FADA dispatch · EV Vahan · SEBI filings · broker sentiment</div>
+    <div class="src-badge">7 of 9 agents · 2,500/month free</div>
+  </div>
+  <div class="src-card" style="--sc:#C47A0A">
+    <div class="src-name">Tavily Policy Docs</div>
+    <div class="src-role">Full-page extraction: FAME II · BS6/BS8 norms · PLI scheme · state EV incentive circulars</div>
+    <div class="src-badge">PolicyRegulatory agent only</div>
+  </div>
+  <div class="src-card" style="--sc:#7C3AED">
+    <div class="src-name">Macro Cache</div>
+    <div class="src-role">INR/USD · crude · steel · aluminium — warmed every 4h, shared across all tickers in a run</div>
+    <div class="src-badge">TTL 2h · saves 3 Serper calls/run</div>
+  </div>
+</div>
+<div class="fps">ContextBuilder Routing — Each Agent Gets Its Own Context Slice</div>
+<div class="agent-grid">
+  <div class="ag"><div class="ag-name">SalesDemand</div><div class="ag-src">Serper: FADA · SIAM · EV Vahan · DGFT</div></div>
+  <div class="ag"><div class="ag-name">RawMaterials</div><div class="ag-src">yfinance: SLX · AA · PPLT · CL=F + Serper</div></div>
+  <div class="ag"><div class="ag-name">Fundamentals</div><div class="ag-src">yfinance: quarterly_financials + Serper</div></div>
+  <div class="ag"><div class="ag-name">PatternAnalysis</div><div class="ag-src">yfinance: 10yr OHLCV only · zero Serper</div></div>
+  <div class="ag"><div class="ag-name">Sentiment</div><div class="ag-src">Serper: NLP · mgmt tone · social media</div></div>
+  <div class="ag"><div class="ag-name">PolicyRegulatory</div><div class="ag-src">Tavily: FAME/BS6 PDFs + Serper headlines</div></div>
+  <div class="ag"><div class="ag-name">CompetitiveIntel</div><div class="ag-src">Serper: EV share · JV/M&amp;A · ADAS</div></div>
+  <div class="ag"><div class="ag-name">RiskMacro</div><div class="ag-src">macro_cache HIT=0 Serper · MISS=3 Serper</div></div>
+  <div class="ag"><div class="ag-name">ValuationCatalyst</div><div class="ag-src">_build_generic → LLM knowledge (RAG projected)</div></div>
+</div>
+<div class="stat-row">
+  <div class="sc-chip">Steady-state: 9 Serper calls/ticker</div>
+  <div class="sc-chip">Cold start: up to 12 calls</div>
+  <div class="sc-chip">Macro cache saves 3 calls on HIT</div>
+  <div class="sc-chip">PatternAnalysis → 0 Serper · C++ only</div>
+</div>`
+  },
+
+  /* ── OUTPUT: Agent Scores (ANALYSE output node) ── */
+  agent_scores: {
+    color:'#1A5FBB', stage:'Business Output · Analyse Layer', title:'9-Agent Score Matrix',
+    html:`
+<div class="fps">AgentOutput Schema — What Every Agent Returns to the Orchestrator</div>
+<div style="display:flex;gap:6px;margin-bottom:8px">
+  <div class="fpc hi" style="flex:1;text-align:center">
+    <div class="fpc-t">overall_score</div>
+    <div class="fpc-s">float [0.0 → 1.0] normalised from LLM reasoning</div>
+  </div>
+  <div class="fpc" style="flex:1;text-align:center">
+    <div class="fpc-t">sub_scores {}</div>
+    <div class="fpc-s">5 sector-specific dimensions · each [0.0 → 1.0]</div>
+  </div>
+  <div class="fpc hi" style="flex:1;text-align:center">
+    <div class="fpc-t">summary</div>
+    <div class="fpc-s">Qwen3 narrative JSON · structured reasoning</div>
+  </div>
+</div>
+<div class="fps">Live Score Dashboard — Current AGENT_WEIGHTS (Automobile)</div>
+<div class="agent-grid">
+  <div class="ag" style="--ac:#1A5FBB"><div class="ag-name">Fundamentals</div><div class="ag-src">revenue · EBITDA · margins · FII/DII</div><div class="ag-bar"><div class="ag-bar-fill" style="width:20%"></div></div></div>
+  <div class="ag" style="--ac:#0BA87E"><div class="ag-name">SalesDemand</div><div class="ag-src">FADA · Vahan · EV · DGFT exports</div><div class="ag-bar"><div class="ag-bar-fill" style="width:18%"></div></div></div>
+  <div class="ag" style="--ac:#DC2626"><div class="ag-name">RiskMacro</div><div class="ag-src">INR · crude · RBI repo · China chips</div><div class="ag-bar"><div class="ag-bar-fill" style="width:15%"></div></div></div>
+  <div class="ag" style="--ac:#C47A0A"><div class="ag-name">PatternAnalysis</div><div class="ag-src">C++ RSI · MACD · BB · 10yr cycle</div><div class="ag-bar"><div class="ag-bar-fill" style="width:13%"></div></div></div>
+  <div class="ag" style="--ac:#64748B"><div class="ag-name">RawMaterials</div><div class="ag-src">steel · aluminium · crude · platinum</div><div class="ag-bar"><div class="ag-bar-fill" style="width:10%"></div></div></div>
+  <div class="ag" style="--ac:#15803D"><div class="ag-name">PolicyRegulatory</div><div class="ag-src">FAME · BS6 · PLI · import duties</div><div class="ag-bar"><div class="ag-bar-fill" style="width:10%"></div></div></div>
+  <div class="ag" style="--ac:#7C3AED"><div class="ag-name">CompetitiveIntel</div><div class="ag-src">EV market share · JVs · ADAS ratings</div><div class="ag-bar"><div class="ag-bar-fill" style="width:10%"></div></div></div>
+  <div class="ag" style="--ac:#06B6D4"><div class="ag-name">Sentiment</div><div class="ag-src">news NLP · mgmt tone · Reddit/Twitter</div><div class="ag-bar"><div class="ag-bar-fill" style="width:4%"></div></div></div>
+  <div class="ag" style="--ac:#E8A020"><div class="ag-name">ValuationCatalyst</div><div class="ag-src">P/E discount · fair value · catalysts</div><div class="ag-src" style="margin-top:3px;color:#0BA87E">extra fields bubble up to FinalReport</div></div>
+</div>
+<div class="stat-row">
+  <div class="sc-chip">All 9 run in parallel · ThreadPoolExecutor / asyncio.gather</div>
+  <div class="sc-chip">Neutral 0.5 on any LLM timeout — never crashes</div>
+  <div class="sc-chip">RL shifts weights ±0.05/day based on 7-day hit rate</div>
+</div>`
+  },
+
+  /* ── OUTPUT: Investment Verdict (FUSE output node) ── */
+  investment_verdict: {
+    color:'#C47A0A', stage:'Business Output · Fuse Layer', title:'FinalReport — Investment Verdict',
+    html:`
+<div style="display:flex;justify-content:center;margin-bottom:10px">
+  <div class="fp-node">
+    <div class="fp-node-title">FinalReport (Pydantic v2)</div>
+    <div class="fp-node-sub">single schema · consumed by REST API · WebSocket · alert engine · RL loop</div>
+  </div>
+</div>
+<div class="fps">Core Fields</div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-bottom:9px">
+  <div class="fpc hi"><div class="fpc-t">verdict</div><div class="fpc-s">STRONG BUY / BUY / NEUTRAL / SELL / STRONG SELL</div></div>
+  <div class="fpc hi"><div class="fpc-t">final_score</div><div class="fpc-s">weighted Σ(wᵢ × scoreᵢ) · range 0.20 – 1.00</div></div>
+  <div class="fpc"><div class="fpc-t">investment_thesis</div><div class="fpc-s">Qwen3 narrative synthesis of all 9 agent views</div></div>
+  <div class="fpc"><div class="fpc-t">conviction_drivers[]</div><div class="fpc-s">ranked supporting factors · weight × contribution</div></div>
+  <div class="fpc hi"><div class="fpc-t">fair_value_estimate</div><div class="fpc-s">ValuationCatalyst bubble-up · current_discount_pct</div></div>
+  <div class="fpc hi"><div class="fpc-t">price_target</div><div class="fpc-s">recovery_timeline_quarters · recovery_catalysts[]</div></div>
+</div>
+<div class="fps">5 Verdict Thresholds</div>
+<div class="verdict-strip">
+  <div class="vc" style="background:#14532D"><span>STRONG BUY</span><span class="vc-range">≥ 0.75</span></div>
+  <div class="vc" style="background:#166534"><span>BUY</span><span class="vc-range">0.55–0.75</span></div>
+  <div class="vc" style="background:#374151"><span>NEUTRAL</span><span class="vc-range">0.40–0.55</span></div>
+  <div class="vc" style="background:#9A3412"><span>SELL</span><span class="vc-range">0.20–0.40</span></div>
+  <div class="vc" style="background:#7F1D1D"><span>STRONG SELL</span><span class="vc-range">&lt; 0.20</span></div>
+</div>
+<div class="fps">3 Delivery Channels — Fire Simultaneously</div>
+<div style="display:flex;gap:6px">
+  <div class="fpc hi" style="flex:1;text-align:center"><div style="font-size:18px;margin-bottom:3px">🌐</div><div class="fpc-t">REST + WebSocket</div><div class="fpc-s">POST /api/analyse · WS /ws/stream · real-time agent progress</div></div>
+  <div class="fpc" style="flex:1;text-align:center"><div style="font-size:18px;margin-bottom:3px">🗄️</div><div class="fpc-t">Score Store</div><div class="fpc-s">SQLite 90-row/ticker · SQL Server enterprise path</div></div>
+  <div class="fpc hi" style="flex:1;text-align:center"><div style="font-size:18px;margin-bottom:3px">🔔</div><div class="fpc-t">Smart Alerts</div><div class="fpc-s">Δ≥0.10 or verdict flip → webhook · file · Slack-ready</div></div>
+</div>`
+  },
+
+  /* ── OUTPUT: Score History (PERSIST output node) ── */
+  score_history: {
+    color:'#15803D', stage:'Business Output · Persist Layer', title:'Score History & Alert Engine',
+    html:`
+<div class="fps">Storage — Every FinalReport Persisted in Two Paths</div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-bottom:9px">
+  <div class="fpc hi"><div class="fpc-t">SQLite · scores.db</div><div class="fpc-s">ticker · score · verdict · agent_scores JSON · timestamp · capped 90 rows/ticker · oldest pruned</div></div>
+  <div class="fpc hi"><div class="fpc-t">SQL Server (Enterprise)</div><div class="fpc-s">C# EF Core 8 · ScoreRecord entity · activated via CSHARP_SCHEDULER_ENABLED=true · port 5000</div></div>
+  <div class="fpc"><div class="fpc-t">Prediction Envelope</div><div class="fpc-s">30-day living forecast per ticker · prediction_envelope_{cycle}.json · revised daily</div></div>
+  <div class="fpc"><div class="fpc-t">Daily Feedback Log</div><div class="fpc-s">daily_feedback_log_{cycle}.json · miss entries with timestamp · feeds RL WeightAdapter</div></div>
+</div>
+<div class="fps">Alert Engine — Automated Signal Monitoring</div>
+<div class="flow-steps">
+  <div class="flow-step">
+    <div class="fs-num" style="background:#15803D">1</div>
+    <div class="fs-body">
+      <div class="fs-title">Score Delta Trigger</div>
+      <div class="fs-desc">|current_score − previous_score| ≥ 0.10 → alert fires · threshold configurable via ALERT_SCORE_CHANGE_THRESHOLD</div>
+    </div>
+  </div>
+  <div class="flow-step">
+    <div class="fs-num" style="background:#15803D">2</div>
+    <div class="fs-body">
+      <div class="fs-title">Verdict Flip Trigger</div>
+      <div class="fs-desc">BUY → SELL · NEUTRAL → STRONG BUY — any verdict category change fires immediately regardless of score delta</div>
+    </div>
+  </div>
+  <div class="flow-step">
+    <div class="fs-num" style="background:#15803D">3</div>
+    <div class="fs-body">
+      <div class="fs-title">Delivery Channels</div>
+      <div class="fs-desc">console · file (outputs/alerts.log) · webhook URL (Slack/Discord) · configured via ALERT_CHANNELS env var</div>
+    </div>
+  </div>
+</div>
+<div class="fps">Scheduling — Market-Hours Automation</div>
+<div style="display:flex;gap:6px">
+  <div class="fpc" style="flex:1"><div class="fpc-t">⏰ TypeScript node-cron</div><div class="fpc-s">8:30am IST Mon–Fri · fires /api/analyse per SCHEDULER_TICKERS entry</div></div>
+  <div class="fpc hi" style="flex:1"><div class="fpc-t">🔷 C# Quartz.NET</div><div class="fpc-s">[DisallowConcurrentExecution] · enterprise grade · SQL Server persistence</div></div>
+</div>`
+  },
+
+  /* ── OUTPUT: Adaptive IQ (LEARN output node) ── */
+  adaptive_iq: {
+    color:'#7C3AED', stage:'Business Output · Learn Layer', title:'Adaptive Intelligence Package',
+    html:`
+<div style="display:flex;justify-content:center;margin-bottom:8px">
+  <div class="fp-node">
+    <div class="fp-node-title">Injected at Next Run</div>
+    <div class="fp-node-sub">orchestrator._aggregator_weights = weight_adapter.get_weights(ticker)</div>
+  </div>
+</div>
+<div class="fps">Two Permanent Intelligence Stores</div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px">
+  <div class="mem-tier" style="--mt:#7C3AED;--mtf:#F8F5FF;--mtb:#DDD6FE">
+    <div class="mt-label">Agent Weight Memory</div>
+    <div class="mt-items">{ticker}_agent_weight_memory.json · earned per-agent weights · 7-day rolling hit rate · max step ±0.05/day · drift cap ±0.15 from base · always sums=1.0</div>
+  </div>
+  <div class="mem-tier" style="--mt:#1A5FBB;--mtf:#EFF6FF;--mtb:#BFDBFE">
+    <div class="mt-label">Learning Ledger</div>
+    <div class="mt-items">{ticker}_learning_ledger.json · natural language pattern rules · NEVER deleted · 2%/month confidence decay · floor=0.10 · scope: stock→sector→market_wide</div>
+  </div>
+</div>
+<div class="fps">Intelligence Propagation — One Lesson Helps Every Stock</div>
+<div class="rag-pipe" style="margin-bottom:8px">
+  <div class="rag-box"><div class="rag-t">stock_specific</div><div class="rag-s">TATAMOTORS only</div></div>
+  <div class="rag-arr">→</div>
+  <div class="rag-box"><div class="rag-t">sector_wide</div><div class="rag-s">all auto tickers</div></div>
+  <div class="rag-arr">→</div>
+  <div class="rag-box hi"><div class="rag-t">market_wide</div><div class="rag-s">all tracked stocks</div></div>
+</div>
+<div class="fps">Compound Accuracy — Why Month 6 Beats Month 1</div>
+<div class="wt-row"><span class="wt-label">Month 1</span><div class="wt-track" style="height:20px"><div class="wt-fill" style="width:35%;background:#94A3B8"><span class="wt-pct">Config defaults</span></div></div></div>
+<div class="wt-row"><span class="wt-label">Month 3</span><div class="wt-track" style="height:20px"><div class="wt-fill" style="width:62%;background:#7C3AED"><span class="wt-pct">Earned weights · 90 data pts</span></div></div></div>
+<div class="wt-row"><span class="wt-label">Month 6+</span><div class="wt-track" style="height:20px"><div class="wt-fill" style="width:87%;background:#5B21B6"><span class="wt-pct">Deep ledger · cross-sector IQ</span></div></div></div>
+<div class="stat-row">
+  <div class="sc-chip">Atomic .tmp rename — crash-safe writes</div>
+  <div class="sc-chip">Idempotent — safe to re-run same date</div>
+  <div class="sc-chip">4:30pm IST daily · APScheduler Python</div>
+</div>`
+  }
+};
+
+/* ── Show / hide / position ── */
+function showFlowPanel(key, e) {
+  const d = FLOWS[key];
+  if (!d) return;
+  clearTimeout(fpTimeout);
+  fp.style.setProperty('--fc', d.color);
+  document.getElementById('fp-accent').style.background = d.color;
+  fpDot.style.background = d.color;
+  fpDot.style.boxShadow  = '0 0 8px ' + d.color + '80';
+  fpStage.textContent = d.stage;
+  fpTitle.textContent = d.title;
+  fpBody.innerHTML    = d.html;
+  fp.classList.add('show');
+  posFlowPanel(e);
+}
+
+function hideFlowPanel() {
+  fpTimeout = setTimeout(() => fp.classList.remove('show'), 160);
+}
+
+function posFlowPanel(e) {
+  const PW = 630, PH = 500;
+  const vw = window.innerWidth, vh = window.innerHeight;
+  let left = e.clientX + 30;
+  let top  = e.clientY - PH / 2;
+  if (left + PW > vw - 12) left = e.clientX - PW - 24;
+  if (left < 10) left = 10;
+  if (top < 10)  top  = 10;
+  if (top + PH > vh - 10) top = vh - PH - 10;
+  fp.style.left = left + 'px';
+  fp.style.top  = top  + 'px';
+}
+
+/* ── Mousemove: reposition both panels ── */
+document.addEventListener('mousemove', e => {
+  if (tip.classList.contains('show')) moveTip(e);
+  if (fp.classList.contains('show'))  posFlowPanel(e);
+});
+
+/* ── Segment interactions ── */
+let currentStage = null;
+
+function segHover(stage, e) {
+  showFlowPanel(stage, e);
+  document.querySelectorAll('[id^="seg-"]').forEach(s => s.style.opacity = '0.07');
+  const seg = document.getElementById('seg-' + stage);
+  if (seg) seg.style.opacity = '0.38';
+}
+
+function segLeave() {
+  if (!currentStage) {
+    hideFlowPanel();
+    document.querySelectorAll('[id^="seg-"]').forEach(s => s.style.opacity = '0.13');
+  }
+}
+
+function activateStage(stage) {
+  if (currentStage === stage) {
+    currentStage = null;
+    document.querySelectorAll('.cluster').forEach(c => c.classList.remove('active'));
+    document.querySelectorAll('[id^="seg-"]').forEach(s => s.style.opacity = '0.13');
+    fp.classList.remove('show');
+    return;
+  }
+  currentStage = stage;
+  document.querySelectorAll('.cluster').forEach(c => {
+    c.classList.toggle('active', c.dataset.stage === stage);
+  });
+  document.querySelectorAll('[id^="seg-"]').forEach(s => s.style.opacity = '0.07');
+  const seg = document.getElementById('seg-' + stage);
+  if (seg) seg.style.opacity = '0.42';
+}
+</script>
+</body>
+</html>

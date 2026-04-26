@@ -121,6 +121,41 @@ class AutomobileScheduler:
     # Public methods
     # ------------------------------------------------------------------
 
+    def run_now(self, tickers: list[str] | None = None) -> None:
+        """
+        Manually trigger an immediate analysis run for the given tickers
+        (defaults to SCHEDULER_TICKERS).  Useful for ops testing and
+        one-off analysis outside the scheduled cron window.
+        """
+        from core.pipeline.orchestrator import AutomobileAgentOrchestrator
+        tickers_to_run = tickers or settings.SCHEDULER_TICKERS
+        orch = AutomobileAgentOrchestrator()
+        for ticker in tickers_to_run:
+            try:
+                report = orch.analyse(ticker)
+                logger.info(
+                    "[Scheduler] run_now %s – verdict=%s score=%.3f",
+                    ticker, report.verdict, report.final_score,
+                )
+            except Exception as exc:
+                logger.error("[Scheduler] run_now failed for %s: %s", ticker, exc)
+
+    def status(self) -> dict:
+        """
+        Return a health/status snapshot for monitoring and the C# scheduler contract.
+        """
+        from services.data.stores.score_store import ScoreStore
+        store = ScoreStore()
+        jobs = self._scheduler.get_jobs()
+        return {
+            "enabled":         settings.SCHEDULER_ENABLED,
+            "cron":            settings.FEEDBACK_CRON,
+            "tickers":         settings.SCHEDULER_TICKERS,
+            "db_total_runs":   store.total_runs(),
+            "db_ticker_count": store.ticker_count(),
+            "jobs": [{"id": j.id, "name": j.name} for j in jobs],
+        }
+
     def start(self) -> None:
         """
         Start the scheduler. Blocks until Ctrl+C or SIGTERM.

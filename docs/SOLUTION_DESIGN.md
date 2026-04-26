@@ -52,7 +52,7 @@ Legend: `✓` built  ·  `~` partial  ·  `○` not yet wired
 AUTOMOBILE AGENT
 │   Orchestrator: AutomobileAgentOrchestrator in agents/orchestrator.py      ✓ built
 │   Trigger: TypeScript gateway cron (8:30am IST) / CLI (main.py)            ✓ built
-│   Parallel dispatch: ThreadPoolExecutor (5 workers)                         ✓ built
+│   Parallel dispatch: LangGraph worker pool (Send fan-out, RetryPolicy)      ✓ built
 │   Micro search loop: micro_search_loop() in main.py                        ✓ built
 │
 ├── Sales & Demand Agent  (agents/sales_demand.py)                           ✓ built
@@ -459,7 +459,7 @@ from agents.fundamentals     import FundamentalsAgent   # existing code
 AGENTS = {"sales_demand": SalesDemandAgent(), ...}      # thin registry only
 ```
 
-The legacy `AutomobileAgentOrchestrator` in `agents/orchestrator.py` remains fully operational for CLI, FastAPI, and C# scheduler paths. The LangGraph graph is an **additive** path, not a replacement.
+`AutomobileAgentOrchestrator` in `core/pipeline/orchestrator.py` now uses the LangGraph worker pool internally for parallel agent execution — `ThreadPoolExecutor` and `asyncio.gather` have been removed. The sector graphs (`core/sectors/*/graph.py`) remain available for LangGraph Studio / direct `graph.invoke()` use with full ticker resolution and aggregation nodes.
 
 ### 10.7 New Sector Agents — Context Gap (Known Limitation)
 
@@ -486,7 +486,7 @@ BFSI, IT, and Renewable Energy agents inherit `BaseAgent._gather_context()`, whi
 |---|---|---|---|---|
 | 1 | `ContextBuilder` not sector-aware | High | `tools/context_builder.py` | Add routing branches for BFSI/IT/RE agent names |
 | 2 | `BaseAgent._rag_retrieve` falls back to "automobile India" for unknown agents | High | `agents/base_agent.py` | Add `sector` parameter or override per-class |
-| 3 | `run_agent` calls sync `agent.run()` — LangGraph parallel via threading, not asyncio | Medium | `graphs/_shared/nodes.py` | Switch to `agent.run_async()` + make nodes `async def` |
+| 3 | `run_agent` calls sync `agent.run()` — LangGraph parallel via threading, not asyncio | Medium | `graphs/_shared/nodes.py` | Switch to `agent.run_async()` + make nodes `async def` — orchestrator async path already uses `astream_events` |
 | 4 | `input_rail` makes blocking yfinance network call before fan-out | Medium | `graphs/_shared/rails.py` | Wrap in `asyncio.to_thread` or skip on `FAST_MODE=true` |
 | 5 | Agent name collisions across sectors (`"fundamentals"` exists in all 4) | Low | All `agents.py` files | No immediate problem (graphs are isolated); prefix names if cross-sector reporting is added |
 | 6 | No CLI / FastAPI entry point for new sector graphs | Medium | `main.py`, `api/routes/` | Add `--sector` flag and `/analyse/{sector}` route |

@@ -49,6 +49,8 @@ from core.schemas.feedback import (
 )
 from core.intelligence.rl.stores.prediction_store import PredictionStore
 from core.intelligence.algorithms.indicators.fetcher import get_price_history
+from core.intelligence.seasonal.calendar import SeasonalCalendar
+from core.intelligence.seasonal.validator import SeasonalValidator
 
 logging.basicConfig(
     level=settings.LOG_LEVEL,
@@ -325,6 +327,25 @@ def run_daily_review(
     except Exception as exc:
         logger.debug("[daily_review] News context unavailable: %s", exc)
 
+    # Inject seasonal context so FeedbackAgent doesn't "discover" known patterns.
+    # The narrative is appended to market_context_today with a clear [SEASONAL] tag.
+    seasonal_calendar = SeasonalCalendar(sector=sector)
+    seasonal_ctx = seasonal_calendar.get_context(review_date, ledger)
+    if seasonal_ctx.is_seasonal_period:
+        seasonal_note = (
+            f"\n\n[SEASONAL CONTEXT — pre-seeded domain knowledge, not from live news]\n"
+            f"Active patterns: {', '.join(seasonal_ctx.active_pattern_ids)}\n"
+            f"{seasonal_ctx.narrative}\n"
+            f"Agent adjustments applied to this day's forecast: {seasonal_ctx.agent_adjustments}\n"
+            f"Do NOT classify known seasonal patterns as new lessons — "
+            f"they are already seeded and tracked separately."
+        )
+        market_context = (market_context or "Market context unavailable.") + seasonal_note
+        logger.info(
+            "[daily_review] Seasonal patterns active on %s: %s",
+            date_str, seasonal_ctx.active_pattern_ids,
+        )
+
     fb_input = FeedbackAgentInput(
         ticker=ticker,
         sector=sector,
@@ -424,22 +445,50 @@ def run_daily_review(
     )
     store.append_feedback_entry(final_entry, cycle_id)
 
+    # ------------------------------------------------------------------ #
+    # Step 9 (P1): Validate active seasonal patterns against actual result
+    # ------------------------------------------------------------------ #
+    if seasonal_ctx.is_seasonal_period:
+        try:
+            validator = SeasonalValidator(
+                sector=sector,
+                base_dir=settings.PREDICTION_DATA_DIR,
+            )
+            active_seeds = seasonal_calendar.active_patterns_on(review_date)
+            feedback_log_for_validation = store.load_feedback_log(cycle_id)
+            for pattern in active_seeds:
+                validator.validate_pattern(
+                    pattern=pattern,
+                    review_date=review_date,
+                    feedback_log=feedback_log_for_validation,
+                )
+            validator.save_state()
+            logger.info(
+                "[daily_review] Seasonal validation complete for %s on %s",
+                ticker, date_str,
+            )
+        except Exception as exc:
+            logger.warning(
+                "[daily_review] Seasonal validation failed (non-fatal): %s", exc
+            )
+
     summary = {
-        "status":              "completed",
-        "ticker":              ticker,
-        "sector":              sector,
-        "date":                date_str,
-        "predicted_close":     predicted_close,
-        "actual_close":        actual_close,
-        "price_error_pct":     price_error_pct,
-        "direction_correct":   direction_correct,
-        "timing_assessment":   timing.assessment,
-        "miss_type":           fb_output.miss_type,
-        "primary_miss_agent":  fb_output.primary_miss_agent,
-        "lessons_added":       lesson_ids,
-        "weight_version":      new_weight_version,
-        "weights":             updated_wm.effective_weights(),
-        "confidence_adj":      fb_output.revised_context.horizon_confidence_adjustment,
+        "status":                   "completed",
+        "ticker":                   ticker,
+        "sector":                   sector,
+        "date":                     date_str,
+        "predicted_close":          predicted_close,
+        "actual_close":             actual_close,
+        "price_error_pct":          price_error_pct,
+        "direction_correct":        direction_correct,
+        "timing_assessment":        timing.assessment,
+        "miss_type":                fb_output.miss_type,
+        "primary_miss_agent":       fb_output.primary_miss_agent,
+        "lessons_added":            lesson_ids,
+        "weight_version":           new_weight_version,
+        "weights":                  updated_wm.effective_weights(),
+        "confidence_adj":           fb_output.revised_context.horizon_confidence_adjustment,
+        "seasonal_patterns_active": seasonal_ctx.active_pattern_ids,
     }
 
     logger.info(

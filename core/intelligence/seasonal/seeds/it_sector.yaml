@@ -1,0 +1,128 @@
+sector: it_sector
+version: "1.0"
+last_reviewed: "2026-05-01"
+
+# Evidence key:
+#   Nifty IT = NSE IT sector index (^CNXIT)
+#   TCS/Infy = TCS, Infosys quarterly result disclosures
+#   NASSCOM  = National Association of Software and Service Companies
+#   US-BLS   = US Bureau of Labor Statistics (H1B data)
+#
+# Agent name mapping for it_sector (stub — adjust when agents are built):
+#   fundamentals     → revenue growth, EBIT margin, order book, headcount
+#   risk_macro       → USD/INR rate, US economic outlook, visa policy
+#   sentiment        → earnings call tone, client win/loss news, management guidance
+#   sales_demand     → TCV (total contract value) wins, deal pipeline, client budgets
+#   competitive_intel → offshore vs nearshore competitive dynamics
+
+patterns:
+
+  - id: "SEA_IT_001"
+    name: "us_tech_earnings_spillover"
+    evidence: >
+      Nifty IT fell ~10% wiping Rs 2.5 lakh crore in April 2026 following weak
+      US tech Q4 FY26 earnings guidance from major IT firms.
+      HCLTech disappointing Q4 and FY27 guidance "dented sentiment across sector."
+      Mechanism: Indian IT companies derive 60-75% of revenue from US markets.
+      US tech sentiment (Microsoft, Accenture, Cognizant guidance) directly
+      telegraphs Indian IT revenue outlook 1-2 quarters ahead.
+      Quarterly US earnings windows: mid-Jan, mid-Apr, mid-Jul, mid-Oct.
+      Pattern: Indian IT stocks show elevated beta to US tech in earnings weeks,
+      often moving 5-10% on US tech guidance even before Indian results.
+    months: [1, 4, 7, 10]
+    day_range: [8, 25]         # US earnings typically weeks 2-4 of these months
+    direction_bias: "correlated_to_us_tech"
+    confidence: 0.75
+    agents_affected:
+      sentiment: +0.08          # sentiment agent most reactive to US tech news flow
+      risk_macro: +0.06         # macro/sector correlation signal most predictive of spillover
+    narrative: >
+      US tech earnings season (weeks 2-4 of Jan/Apr/Jul/Oct): Indian IT beta to
+      US tech guidance documented — Nifty IT -10% on weak US guidance in Apr 2026.
+      Elevate sentiment and risk_macro signals; elevated volatility expected.
+    scope: "sector_wide"
+    validated_by_rl: false
+    decay_exempt: false         # decay normally — US tech cycle can decouple
+    lunar_dependency: false
+
+  - id: "SEA_IT_002"
+    name: "q1_salary_hike_margin_pressure"
+    evidence: >
+      Infosys Q1 FY26: annual salary hike (second phase, April) dented margins
+      by 100 basis points. Attrition rose to 14.4% from 14.1% previous quarter
+      and 12.7% a year prior — indicating competitive hiring pressure.
+      Industry-wide: 5-8.5% average salary hikes effective Apr-Jun FY25.
+      FY26 expectation: 3-6% hikes (lower due to macro caution).
+      Cost impact timing: hikes effective April → full cost hits Q1 (Apr-Jun).
+      Affects TCS, Infosys, Wipro, HCLTech, Tech Mahindra similarly.
+      Management guidance consistently notes Q1 as the "cost-heavy quarter."
+      Note: some firms defer hikes to Q3 (Sep-Oct) in margin-pressure years —
+      RL should validate which firms defer and adjust stock-specifically.
+    months: [4, 5]
+    day_range: null
+    direction_bias: "negative_margin"
+    confidence: 0.70
+    agents_affected:
+      fundamentals: -0.07       # margin compression from salary hikes documented (-100 bps)
+      sentiment: -0.03          # attrition headlines generate negative sentiment
+    narrative: >
+      Q1 salary increment season (Apr-May): IT sector-wide margin compression.
+      Infosys -100 bps documented in Q1 FY26. Industry hikes 3-8% effective April.
+      Discount fundamentals optimism on margins; management guidance typically cautious.
+    scope: "sector_wide"
+    validated_by_rl: false
+    decay_exempt: true
+    lunar_dependency: false
+
+  - id: "SEA_IT_003"
+    name: "q1_seasonal_client_budget_softness"
+    evidence: >
+      Q1 (Apr-Jun) documented as "weaker quarter for IT due to seasonality."
+      Wipro, Infosys both cite Q1 as soft demand quarter in annual reports.
+      Mechanism: US and European clients finalize annual IT budgets in Q4 (Jan-Mar)
+      and are slow to release new project budgets in Q1 — deal closure lags.
+      NASSCOM: discretionary IT spend typically back-loaded to Q2-Q4.
+      Q3 (Oct-Dec) and Q4 (Jan-Mar) described as "relatively stronger quarters"
+      with "strong demand from fresh contracts and year-end budget utilization."
+      Revenue impact: sequential Q1 growth rate typically 0-2% vs 3-5% in Q3-Q4.
+    months: [4, 5, 6]
+    day_range: null
+    direction_bias: "soft_negative"
+    confidence: 0.60
+    agents_affected:
+      sales_demand: -0.06       # deal closures and TCV wins seasonally soft in Q1
+    narrative: >
+      Q1 client budget softness (Apr-Jun): US/EU clients slow new project approvals
+      post-calendar Q1. NASSCOM and company disclosures confirm Q1 as weakest quarter
+      for deal closures. Discount sales_demand (order intake / TCV signal).
+    scope: "sector_wide"
+    validated_by_rl: false
+    decay_exempt: true
+    lunar_dependency: false
+
+  - id: "SEA_IT_004"
+    name: "h1b_visa_result_season"
+    evidence: >
+      US H1B visa cap: 65,000 regular + 20,000 advanced degree per year.
+      Lottery results: USCIS issues registration results in March-April.
+      Selected individuals notified April-May. Rejections affect onsite delivery.
+      Indian IT companies (TCS, Infosys, Wipro) are among the largest H1B users.
+      2024: H1B cap reached within 5 days of opening — high rejection rates for
+      non-selected applicants. Infosys, TCS each file 5,000-20,000 petitions/year.
+      Impact: higher rejection rates → increased local hiring costs or subcontracting
+      → margin headwind of 20-50 bps for heavily US-onsite firms.
+      Management teams consistently mention visa costs in Q1 guidance calls.
+    months: [4]
+    day_range: [1, 20]          # Lottery notifications: early-to-mid April
+    direction_bias: "negative"
+    confidence: 0.55            # Moderate — impact varies by firm's onsite ratio
+    agents_affected:
+      risk_macro: +0.05         # regulatory/immigration risk signal elevated
+    narrative: >
+      H1B visa notification season (early April): USCIS lottery results affect
+      Indian IT onsite delivery costs. High rejection rates → 20-50 bps margin
+      headwind for onsite-heavy firms. Elevate risk_macro signal this window.
+    scope: "sector_wide"
+    validated_by_rl: false
+    decay_exempt: true
+    lunar_dependency: false

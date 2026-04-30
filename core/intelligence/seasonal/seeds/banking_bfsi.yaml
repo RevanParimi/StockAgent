@@ -1,0 +1,131 @@
+sector: banking_bfsi
+version: "1.0"
+last_reviewed: "2026-05-01"
+
+# Evidence key:
+#   RBI   = Reserve Bank of India study/data
+#   SEBI  = Securities and Exchange Board of India
+#   BSE   = Bombay Stock Exchange (Nifty Bank, Nifty PSU Bank index data)
+#   MPC   = RBI Monetary Policy Committee (bimonthly: Feb/Apr/Jun/Aug/Oct/Dec)
+#
+# Agent name mapping for banking_bfsi sector (stub — adjust when agents are built):
+#   fundamentals     → earnings, NIM, credit growth, NPA
+#   risk_macro       → RBI policy, liquidity, bond yields, FII flows
+#   sentiment        → news tone, management commentary, analyst day reactions
+#   policy_regulatory → RBI regulation, SEBI rules, budget policy
+
+patterns:
+
+  - id: "SEA_BFSI_001"
+    name: "march_year_end_credit_surge"
+    evidence: >
+      RBI study (2026): March is the dominant peak for Indian banking activity.
+      Sequential credit expansion: Rs 6 lakh crore (2.8% QoQ) in period ending Mar 2026.
+      Pattern described as "surprisingly predictable despite recent economic volatility."
+      Drivers: corporate borrowing for year-end tax planning, PSU bank targets,
+      MSME financing peak, vehicle/gold loans peak (festive carry + year-end).
+      Stock impact: large private banks (HDFC, ICICI, Kotak) and PSU banks
+      both benefit from improved loan book metrics; Q4 results tend to beat
+      on disbursement volume. NIM pressure follows in Q1 as rate competition peaks.
+    months: [3]
+    day_range: null
+    direction_bias: "positive"
+    confidence: 0.75
+    agents_affected:
+      fundamentals: +0.07     # credit growth → loan book expansion → revenue positive
+      risk_macro: -0.04       # rate competition risk; watch NIM compression in Q1
+    narrative: >
+      March year-end credit surge: RBI documents 2.8% sequential credit expansion.
+      All bank categories push for FY targets. Positive for Q4 disbursement metrics.
+      Boost fundamentals; note NIM compression risk ahead for Q1.
+    scope: "sector_wide"
+    validated_by_rl: false
+    decay_exempt: true
+    lunar_dependency: false
+
+  - id: "SEA_BFSI_002"
+    name: "rbi_mpc_meeting_week"
+    evidence: >
+      RBI MPC meets bimonthly (Feb, Apr, Jun, Aug, Oct, Dec).
+      April 2026 MPC: Expected Credit Loss (ECL) framework guidelines announced
+      same day — PSU bank stocks sold off 3% intraday.
+      General pattern: "RBI commentary sets the direction for Indian markets for
+      the next 6-8 weeks" (Outlook Money analysis of historical MPC outcomes).
+      Mechanism: rate decisions directly affect bank NIM; liquidity stance affects
+      credit growth; surprise decisions (hold vs cut vs hike) cause sharper moves.
+      Pre-MPC week: Bank Nifty typically ranges, elevated implied volatility.
+      Post-MPC direction depends on whether outcome matches consensus.
+      risk_macro agent is the most reliable signal — captures RBI tone and liquidity data.
+    months: [2, 4, 6, 8, 10, 12]
+    day_range: [1, 10]        # MPC typically concludes in first 10 days of these months
+    direction_bias: "volatile"
+    confidence: 0.75
+    agents_affected:
+      risk_macro: +0.08       # most reliable signal on RBI days — elevate its weight
+      sentiment: -0.05        # sentiment is reactive noise on MPC day — discount it
+    narrative: >
+      RBI MPC meeting week (first ~10 days of Feb/Apr/Jun/Aug/Oct/Dec):
+      Bank stocks highly sensitive to rate/liquidity decisions. risk_macro signal
+      most predictive; sentiment elevated but noisy. Documented -3% same-day moves
+      on surprise MPC outcomes.
+    scope: "sector_wide"
+    validated_by_rl: false
+    decay_exempt: false        # MPC is a live event — decay normally; RL refines this
+    lunar_dependency: false
+
+  - id: "SEA_BFSI_003"
+    name: "union_budget_psu_bank_risk"
+    evidence: >
+      Union Budget 2026 (Feb 1): Nifty PSU Bank index fell 7% on budget day.
+      Individual stocks: BOI, BOM, Indian Bank, BOB, Union Bank, SBI each -3-7%.
+      Primary trigger: no PSU bank recapitalization announcement.
+      Secondary trigger: record government borrowing (Rs 17.2 trillion) announced
+      → bond yield pressure → mark-to-market losses on bank bond portfolios.
+      Banking sector review committee proposal also created regulatory uncertainty.
+      Historical note: not every budget is negative for PSU banks — years with
+      PSU recap announcements (2020-2021) were strongly positive. Direction is
+      event-dependent. The RISK elevated; direction is uncertain pre-budget.
+    months: [2]
+    day_range: [1, 7]          # Budget week (Feb 1 announcement + 5-day reaction)
+    direction_bias: "volatile_negative_for_psu"
+    confidence: 0.65
+    agents_affected:
+      risk_macro: +0.07        # bond yield and fiscal deficit risk signal most informative
+      fundamentals: -0.05      # mark-to-market bond losses risk; discount fundamentals optimism
+    narrative: >
+      Union Budget week (Feb 1-7): PSU banks historically sensitive to fiscal deficit
+      and recap announcements. Budget 2026 caused -7% PSU bank index fall on bond yield
+      pressure and no recap. Elevate risk_macro; discount fundamentals. Direction uncertain.
+    scope: "sector_wide"
+    validated_by_rl: false
+    decay_exempt: true
+    lunar_dependency: false
+
+  - id: "SEA_BFSI_004"
+    name: "q1_npa_recognition_and_results"
+    evidence: >
+      Post-year-end NPA recognition: banks clean up NPAs at FY end (March), then
+      Q1 results (Apr-May reporting) reveal the cleaned-up books but also new slippages.
+      Gross NPA ratio: 9.11% (Mar 2021) → 2.79% (Mar 2025) for PSU banks — secular
+      improvement, but Q1 still sees annual slippage recognition.
+      Q1 pattern: investors watch closely for NIM compression (rate competition peak
+      from March credit push unwinding), and cost-income ratio from salary increments
+      (banking sector hikes also Apr-May like IT).
+      Specific documented data: limited to individual bank result seasons; broad
+      sector-level Q1 NPA-specific seasonality is qualitatively established,
+      not yet quantified with multi-year statistical significance.
+    months: [4, 5]
+    day_range: null
+    direction_bias: "cautious"
+    confidence: 0.55            # Moderate — qualitative pattern; RL will firm up confidence
+    agents_affected:
+      fundamentals: -0.05       # NPA + NIM + salary cost = margin pressure in Q1
+      risk_macro: +0.04         # regulatory risk signal more informative this period
+    narrative: >
+      Q1 results season (Apr-May): post-year-end NPA recognition and NIM normalization.
+      Banking margins under pressure from Q4 credit competition unwinding.
+      Approach Q1 results with fundamentals caution; elevate risk_macro signal.
+    scope: "sector_wide"
+    validated_by_rl: false
+    decay_exempt: true
+    lunar_dependency: false

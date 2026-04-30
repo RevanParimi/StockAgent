@@ -20,10 +20,11 @@ from datetime import date, timedelta
 
 from core.config import settings
 from core.pipeline.orchestrator import AutomobileAgentOrchestrator
-from core.schemas.feedback import DailyForecast, PredictionEnvelope
+from core.schemas.feedback import DailyForecast, LearningLedger, PredictionEnvelope
 from core.schemas.pipeline import FinalReport
 from core.intelligence.rl.stores.prediction_store import PredictionStore
 from core.intelligence.algorithms.indicators.fetcher import get_price_history
+from core.intelligence.seasonal.calendar import SeasonalCalendar
 
 logging.basicConfig(
     level=settings.LOG_LEVEL,
@@ -66,6 +67,8 @@ def _build_daily_forecasts(
     report: FinalReport,
     base_close: float,
     trading_dates: list[date],
+    seasonal_calendar: SeasonalCalendar | None = None,
+    learning_ledger: LearningLedger | None = None,
 ) -> list[DailyForecast]:
     """
     Build per-day forecast rows from the FinalReport.
@@ -75,6 +78,8 @@ def _build_daily_forecasts(
     - We interpolate a linear price path based on the verdict's implied
       monthly return assumption (coarse — the LLM revises this daily).
     - Agent scores are carried forward as the starting assumption for each day.
+    - If a SeasonalCalendar is provided, per-day seasonal adjustments are
+      applied to agent scores and confidence before saving each row.
     """
     verdict_monthly_pct = {
         "STRONG BUY":  8.0,
@@ -86,11 +91,11 @@ def _build_daily_forecasts(
     monthly_pct = verdict_monthly_pct.get(report.verdict, 0.5)
     daily_pct   = monthly_pct / len(trading_dates)   # linear spread
 
-    agent_scores = {
+    base_agent_scores = {
         name: ws.raw
         for name, ws in report.weighted_agent_scores.items()
     }
-    confidence = min(1.0, max(0.1, report.final_score))
+    base_confidence = min(1.0, max(0.1, report.final_score))
 
     forecasts: list[DailyForecast] = []
     running_close = base_close
@@ -101,8 +106,36 @@ def _build_daily_forecasts(
         change_pct    = round((running_close - base_close) / base_close * 100, 4)
 
         # Confidence decays slightly further out (uncertainty grows)
-        day_confidence = round(confidence * (1 - 0.005 * i), 4)
+        day_confidence = round(base_confidence * (1 - 0.005 * i), 4)
         day_confidence = max(0.1, day_confidence)
+
+        # Per-day agent scores start from the base report scores
+        day_agent_scores = dict(base_agent_scores)
+        day_assumptions  = list(report.conviction_drivers[:3])
+
+        # Apply seasonal adjustments if calendar is available
+        if seasonal_calendar is not None:
+            ctx = seasonal_calendar.get_context(td, learning_ledger)
+            if ctx.is_seasonal_period:
+                for agent, delta in ctx.agent_adjustments.items():
+                    if agent in day_agent_scores:
+                        adjusted = day_agent_scores[agent] + delta
+                        day_agent_scores[agent] = round(max(0.0, min(1.0, adjusted)), 4)
+
+                # Apply confidence modifier from seasonal context
+                day_confidence = round(
+                    max(0.05, min(0.99, day_confidence + ctx.confidence_modifier)), 4
+                )
+
+                # Prepend seasonal narrative to key_assumptions (one entry, no duplicates)
+                if ctx.narrative and ctx.narrative not in day_assumptions:
+                    day_assumptions = [f"[Seasonal] {ctx.narrative[:120]}"] + day_assumptions[:2]
+
+                logger.debug(
+                    "[generate_forecast] %s: seasonal patterns active=%s adj=%s conf_mod=%+.3f",
+                    td.isoformat(), ctx.active_pattern_ids,
+                    ctx.agent_adjustments, ctx.confidence_modifier,
+                )
 
         forecasts.append(DailyForecast(
             day=day_num,
@@ -110,9 +143,9 @@ def _build_daily_forecasts(
             predicted_close=running_close,
             predicted_change_pct=change_pct,
             predicted_verdict=report.verdict,
-            predicted_agent_scores=agent_scores,
+            predicted_agent_scores=day_agent_scores,
             confidence=day_confidence,
-            key_assumptions=report.conviction_drivers[:3],
+            key_assumptions=day_assumptions,
             revised=False,
             revision_count=0,
         ))
@@ -152,8 +185,19 @@ def generate_forecast(ticker: str) -> PredictionEnvelope:
     base_close = _fetch_actual_close(ticker) or report.final_score * 10000  # crude fallback
     logger.info("[generate_forecast] Base close for %s: ₹%.2f", ticker, base_close)
 
+    # Load learning ledger for seasonal RL lesson merging (best-effort; non-fatal)
+    ledger = store.load_learning_ledger()
+
+    # SeasonalCalendar injects pre-seeded domain knowledge per trading day.
+    # Currently only automobile is fully seeded; other sectors load what's available.
+    seasonal_calendar = SeasonalCalendar(sector="automobile")
+
     trading_dates = _trading_dates(date.today(), HORIZON)
-    forecasts = _build_daily_forecasts(report, base_close, trading_dates)
+    forecasts = _build_daily_forecasts(
+        report, base_close, trading_dates,
+        seasonal_calendar=seasonal_calendar,
+        learning_ledger=ledger,
+    )
 
     envelope = PredictionEnvelope(
         ticker=ticker,

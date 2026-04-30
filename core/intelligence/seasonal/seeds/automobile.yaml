@@ -1,0 +1,183 @@
+sector: automobile
+version: "1.0"
+last_reviewed: "2026-05-01"
+
+# Evidence key:
+#   FADA  = Federation of Automobile Dealers Associations (monthly retail data)
+#   SIAM  = Society of Indian Automobile Manufacturers (monthly wholesale dispatch data)
+#   BSE   = Bombay Stock Exchange index data
+#   RBI   = Reserve Bank of India
+#
+# Confidence tiers:
+#   ≥0.75 = Very strong — multi-year FADA/SIAM data + stock price reaction documented
+#   0.65  = Strong — FADA/SIAM data clear but stock impact is inferred
+#   0.60  = Moderate — pattern documented qualitatively or single-year data
+#   0.55  = Weak — directional expectation only; monitor for RL confirmation
+
+patterns:
+
+  - id: "SEA_AUTO_001"
+    name: "december_model_clearance"
+    evidence: >
+      SIAM December 2025: PV wholesale +27% YoY to 349,170 units.
+      Two-wheelers +39% YoY. Three-wheelers +17% YoY.
+      Driver: year-end tax depreciation benefits for corporates,
+      price hike anticipation from April (new Indian FY), and dealer
+      inventory clearance ahead of January new model launches.
+      Pattern consistent across 2022-2025 SIAM data.
+      Margin impact: OEMs discount outgoing model-year vehicles —
+      EBITDA margins in Q3 results typically 50-100 bps below Q2
+      for most auto OEMs (Maruti, M&M, Hero MotoCorp FY24-25 data).
+    months: [12]
+    day_range: null
+    direction_bias: "deceptive_positive"
+    confidence: 0.75
+    agents_affected:
+      sales_demand: +0.06     # Raw FADA/SIAM volume data genuinely strong → boost
+      fundamentals: -0.08     # But margin compressed from discounting → discount
+    narrative: >
+      December model clearance month: SIAM wholesale elevated (+27% YoY documented)
+      but OEM margins compressed 50-100 bps from discounting ahead of Jan new launches.
+      Boost sales_demand for volume signal; discount fundamentals for margin reality.
+    scope: "sector_wide"
+    validated_by_rl: false
+    decay_exempt: true
+    lunar_dependency: false
+
+  - id: "SEA_AUTO_002"
+    name: "navratri_diwali_festive_peak"
+    evidence: >
+      FADA festive period data (Navratri to Diwali, Oct-Nov window):
+      Navratri 2025: overall vehicle sales +34% YoY — highest festive period growth.
+      Tata Motors: 1 lakh vehicles in 30-day festive window, +33% YoY.
+      Three-wheelers: +24.5% YoY during Navratri.
+      Two-wheelers: strong festive pull across all OEMs.
+      Pattern consistent across 2019-2025 FADA festive reports.
+      Stock reaction: BSE Auto index typically outperforms Nifty 50 by 3-6%
+      in Oct-Nov in years with strong festive data.
+      Caveat: festival dates shift 2-3 weeks year to year (lunar calendar).
+      Peak buying often 15-20 days before Diwali, not on Diwali itself.
+    months: [10, 11]
+    day_range: null
+    direction_bias: "positive"
+    confidence: 0.80
+    agents_affected:
+      sales_demand: +0.10     # FADA retail 24-34% YoY growth is the strongest documented signal
+      sentiment: +0.06        # media + dealer + management commentary all peak positive
+    narrative: >
+      Navratri-Diwali festive window (Oct-Nov): FADA documents 24-34% YoY retail surge.
+      Strongest seasonal signal in Indian auto. Boost sales_demand and sentiment.
+      Note: exact peak buying is ~15 days before Diwali, which may fall in Oct or Nov.
+    scope: "sector_wide"
+    validated_by_rl: false
+    decay_exempt: true
+    lunar_dependency: true    # 0.5× multiplier applied — festival shifts ±3 weeks
+
+  - id: "SEA_AUTO_003"
+    name: "shravan_inauspicious_demand_dip"
+    evidence: >
+      FADA July 2025: auto retail -4.31% YoY overall.
+      Two-wheelers: -6.48% YoY (most sensitive — predominantly North India buyers).
+      Passenger vehicles: -0.81% YoY.
+      FADA cited: crop-sowing activities + prolonged heavy rains +
+      North India cultural inauspiciousness for major purchases.
+      Shravan month (Hindu lunar): typically overlaps Jul 10 – Aug 20 in Gregorian,
+      but shifts ±3 weeks year to year.
+      Rural demand disproportionately affected (two-wheeler market = ~50% rural).
+      Dealers report 63% expected post-monsoon uptick once Shravan ends.
+    months: [7, 8]
+    day_range: null
+    direction_bias: "negative"
+    confidence: 0.65
+    agents_affected:
+      sales_demand: -0.07     # FADA -4-6% YoY confirmed; 2W most sensitive
+    narrative: >
+      Shravan month (Hindu lunar, typically Jul-Aug): FADA retail -4-6% YoY documented.
+      North India demand suppressed by crop sowing + cultural inauspiciousness.
+      Rural (two-wheeler) demand disproportionately hit. Discount sales_demand signal.
+    scope: "sector_wide"
+    validated_by_rl: false
+    decay_exempt: true
+    lunar_dependency: true    # 0.5× multiplier — exact Gregorian dates shift annually
+
+  - id: "SEA_AUTO_004"
+    name: "q4_march_wholesale_push"
+    evidence: >
+      SIAM March 2026: PV wholesale +14.1% YoY to 376,268 units.
+      Q4 FY26 record: 13.16 lakh units, +13.2% YoY.
+      Driver: OEMs front-load dispatches to meet annual sales targets +
+      dealers stock ahead of April price hikes (new Indian FY).
+      Critical distinction: SIAM measures WHOLESALE (OEM → dealer), not RETAIL.
+      The elevated wholesale creates dealer inventory build — actual end-customer
+      demand is not commensurately strong. FADA April data typically disappoints
+      relative to March SIAM. OEM Q4 revenue booking is positive for earnings;
+      subsequent Q1 retail drawdown is the risk.
+    months: [3]
+    day_range: null
+    direction_bias: "deceptive_positive"
+    confidence: 0.70
+    agents_affected:
+      sales_demand: -0.07     # discount: SIAM wholesale surge ≠ real demand signal
+      fundamentals: +0.04     # OEM Q4 revenue recognition genuinely positive
+    narrative: >
+      March Q4 wholesale push: SIAM +14% YoY documented but this is wholesale,
+      not retail. Dealer inventory bloats; April FADA often disappoints.
+      Discount sales_demand (do not trust SIAM March surge at face value).
+      Fundamentals positive — OEMs book revenue on dispatch, so Q4 results solid.
+    scope: "sector_wide"
+    validated_by_rl: false
+    decay_exempt: true
+    lunar_dependency: false
+
+  - id: "SEA_AUTO_005"
+    name: "union_budget_week_auto"
+    evidence: >
+      Union Budget 2026 (Feb 1): BSE Auto index opened +98 points.
+      Trigger: exemption of basic customs duty on EV battery components
+      (Li-ion cells, battery modules) + reduction in duties on 25 critical minerals.
+      Higher Pay Commission allocation positive for disposable income → PV/2W demand.
+      Historical pattern: budget week is volatile — direction depends entirely on
+      EV subsidy / duty announcements made on Feb 1.
+      Pre-budget uncertainty (Jan 22-31): sentiment cautious, stocks range-bound.
+      policy_regulatory agent most reliable signal during this window.
+    months: [1]
+    day_range: [22, 31]      # pre-budget uncertainty window; Feb 1 event handled by live news
+    direction_bias: "volatile"
+    confidence: 0.60
+    agents_affected:
+      policy_regulatory: +0.06  # policy signal most informative in budget week
+      sentiment: -0.04           # pre-budget uncertainty dampens sentiment signal reliability
+    narrative: >
+      Pre-budget uncertainty window (Jan 22-31): auto stocks range-bound ahead of
+      Feb 1 Union Budget. EV duty and subsidy announcements are the key variable.
+      Elevate policy_regulatory signal; discount sentiment noise. Direction undetermined.
+    scope: "sector_wide"
+    validated_by_rl: false
+    decay_exempt: true
+    lunar_dependency: false
+
+  - id: "SEA_AUTO_006"
+    name: "september_pre_festive_wait"
+    evidence: >
+      Industry pattern documented by FADA and auto analysts:
+      Consumers defer purchase decisions in September anticipating
+      Navratri (Oct) deals and discounts. Dealers begin pre-stocking.
+      FADA September data consistently below August and below October.
+      Specific data: FADA Sep 2024 retail -9.3% MoM (vs Aug).
+      Sep 2023 retail -7.1% MoM. Pattern repeatable across years.
+      Dealers note: footfall down 15-20% in Sep vs Aug despite no
+      fundamental change in affordability — purely behavioral (wait for deals).
+    months: [9]
+    day_range: null
+    direction_bias: "soft_negative"
+    confidence: 0.60
+    agents_affected:
+      sales_demand: -0.05     # Sep FADA retail consistently below-trend MoM
+    narrative: >
+      September pre-festive wait: consumers delay purchases anticipating Oct Navratri
+      deals. FADA retail -7-9% MoM documented in Sep vs Aug. Discount sales_demand
+      — below-trend retail is behavioral (deferral), not fundamental weakness.
+    scope: "sector_wide"
+    validated_by_rl: false
+    decay_exempt: true
+    lunar_dependency: false

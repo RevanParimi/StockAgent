@@ -324,6 +324,51 @@ class LearningLedger(BaseModel):
 # Feedback Agent I/O contracts
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# Seasonal Calendar models
+# ---------------------------------------------------------------------------
+
+class SeasonalPattern(BaseModel):
+    """
+    One pre-seeded seasonal pattern loaded from a YAML seed file.
+
+    agent_adjustments contains signed deltas applied on top of live agent scores.
+    Positive = boost the agent's influence; Negative = discount it.
+    Deltas are intentionally small (±0.04 to ±0.10) — they shift emphasis,
+    not override the agent's actual analysis.
+    """
+    id: str
+    name: str
+    evidence: str                               # source data backing this pattern
+    months: list[int]                           # 1=Jan … 12=Dec
+    day_range: list[int] | None = None          # [start_day, end_day] inclusive; None = whole month
+    direction_bias: str                         # documentation only — not used computationally
+    confidence: float = Field(ge=0.0, le=1.0)
+    agents_affected: dict[str, float]           # agent_name → delta (−0.20 … +0.20)
+    narrative: str                              # one-sentence context injected into FeedbackAgent
+    scope: LessonScope = "sector_wide"
+    validated_by_rl: bool = False               # True once RL confirms ≥2 cycles
+    decay_exempt: bool = True                   # seasonal patterns don't decay (Decembers always happen)
+    lunar_dependency: bool = False              # if True, apply 0.5× delta (Gregorian date uncertainty)
+
+
+class SeasonalContext(BaseModel):
+    """
+    Output of SeasonalCalendar.get_context() for a specific date.
+    Consumed by generate_forecast.py (per-day adjustment) and
+    daily_review.py (narrative injection into FeedbackAgent prompt).
+    """
+    target_date: date
+    active_pattern_ids: list[str] = Field(default_factory=list)
+    active_rl_lesson_ids: list[str] = Field(default_factory=list)
+    # Merged signed deltas to apply to predicted_agent_scores.
+    # Multiple patterns are summed; capped at ±0.20 per agent.
+    agent_adjustments: dict[str, float] = Field(default_factory=dict)
+    narrative: str = ""                         # injected into FeedbackAgent market_context_today
+    confidence_modifier: float = 0.0           # added to base forecast confidence; capped ±0.10
+    is_seasonal_period: bool = False
+
+
 class FeedbackAgentInput(BaseModel):
     """Structured payload passed to the FeedbackAgent LLM."""
     ticker: str

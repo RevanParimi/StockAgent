@@ -1,0 +1,143 @@
+sector: renewable_energy
+version: "1.0"
+last_reviewed: "2026-05-01"
+
+# Evidence key:
+#   IMD   = India Meteorological Department (monsoon data)
+#   MNRE  = Ministry of New and Renewable Energy (capacity/auction data)
+#   CERC  = Central Electricity Regulatory Commission (tariff orders)
+#   SERC  = State Electricity Regulatory Commission (state tariff orders)
+#   GHI   = Global Horizontal Irradiance (solar resource metric, kWh/m²/month)
+#
+# Agent name mapping for renewable_energy (stub):
+#   fundamentals     → PLF (plant load factor), generation volume, PPA revenue
+#   risk_macro       → weather risk, policy/tariff risk, commodity costs (steel, cables)
+#   sentiment        → project commissioning news, order book wins, govt targets
+#   sales_demand     → order book / capacity addition pipeline
+#   policy_regulatory → CERC/SERC tariff orders, MNRE scheme updates, COP commitments
+#
+# IMPORTANT: Renewable energy stock price seasonal data is sparse.
+# Generation impacts are VERY well documented; equity market correlation is INFERRED.
+# Confidence levels reflect this distinction — RL validation is critical here.
+
+patterns:
+
+  - id: "SEA_RE_001"
+    name: "monsoon_solar_generation_dip"
+    evidence: >
+      Strong monsoon 2024: solar generation fell 15% in Sep-Oct (pv-magazine data).
+      North India July 2025: GHI 15-20% below long-term average (LTA).
+      Western states (Rajasthan, Gujarat — highest solar capacity): delayed recovery
+      in August 2025 due to lingering monsoon cloud cover.
+      Study range: -3% to -35% GHI reduction depending on monsoon intensity.
+      Best-case (weak monsoon): -3-5% generation dip.
+      Worst-case (strong/excess monsoon): -25-35% in peak monsoon months.
+      Operational impact: solar PLF falls from ~22-25% annual average to 15-18%
+      during Jun-Sep for northern/western India plants.
+      Revenue impact: PLF-linked PPA revenue falls proportionally.
+      Complementary: wind generation rises in coastal states (Tamil Nadu, Andhra,
+      Gujarat) during monsoon — wind-heavy portfolios partly offset.
+      Note: This impacts GENERATION companies more than pure developers/IPPs.
+    months: [6, 7, 8, 9]
+    day_range: null
+    direction_bias: "negative_solar_neutral_wind"
+    confidence: 0.65            # Generation impact strong; stock price correlation inferred
+    agents_affected:
+      fundamentals: -0.06       # PLF reduction → quarterly generation revenue directly affected
+      risk_macro: +0.04         # weather/generation risk signal more relevant this period
+    narrative: >
+      Monsoon season (Jun-Sep): solar GHI 15-35% below LTA documented. PLF falls
+      15-18% for northern/western India solar plants. Revenue impact for generation
+      companies. Wind-heavy portfolios in coastal states partly offset. Discount
+      fundamentals; elevate risk_macro for weather sensitivity.
+    scope: "sector_wide"
+    validated_by_rl: false
+    decay_exempt: true
+    lunar_dependency: false
+
+  - id: "SEA_RE_002"
+    name: "peak_solar_irradiation_season"
+    evidence: >
+      April-May: maximum GHI across Rajasthan and Gujarat (India's top solar states).
+      GHI values: 900-1,000 kWh/m² per month in these states during Apr-May.
+      Solar PLF peaks at 28-32% vs annual average of 22-25%.
+      Pre-monsoon high temperatures increase panel efficiency issues slightly
+      (temperature coefficient), but net generation is still highest in Apr-May.
+      IMD data: April receives near-zero cloud cover in western India.
+      Revenue impact: highest quarterly generation volume → best PLF-linked PPA revenue.
+      Stock impact: usually priced in for operational companies; surprise upside
+      possible only if actual PLF exceeds PPA-linked payment thresholds.
+    months: [4, 5]
+    day_range: null
+    direction_bias: "positive"
+    confidence: 0.65
+    agents_affected:
+      fundamentals: +0.06       # Peak PLF → peak quarterly generation revenue
+    narrative: >
+      Peak solar irradiation season (Apr-May): GHI peaks across Rajasthan and Gujarat.
+      Solar PLF 28-32% vs 22-25% annual average. Best quarterly generation revenue
+      for solar-heavy portfolios. Boost fundamentals.
+    scope: "sector_wide"
+    validated_by_rl: false
+    decay_exempt: true
+    lunar_dependency: false
+
+  - id: "SEA_RE_003"
+    name: "year_end_government_project_push"
+    evidence: >
+      MNRE data 2024: 59 GW renewable energy auctioned in full year.
+      Q4 2024 (Oct-Dec): 16 GW auctioned in December alone — largest monthly auction.
+      Q4 2024 investment in renewable: $4.66 billion, +91.5% YoY.
+      Total installed capacity reached 209 GW by December 2024.
+      Driver: government and PSU utilities (NTPC, SECI, RECI) push year-end
+      project commissioning to meet Ministry targets. Financial year closing
+      (March for CPSE) or calendar year targets for international investors.
+      Challenge noted: "project execution not keeping pace with auction pipeline" —
+      commissioning lag is real but order book growth is genuine.
+      Stock impact: order book additions are positive for developer stocks;
+      execution delays are a risk (applies more to EPC contractors).
+    months: [10, 11, 12]
+    day_range: null
+    direction_bias: "positive"
+    confidence: 0.65
+    agents_affected:
+      sales_demand: +0.07       # order book additions / capacity auction wins
+      sentiment: +0.05          # government target achievement news flow positive
+    narrative: >
+      Year-end government project push (Oct-Dec): MNRE auctions peak in Q4 —
+      16 GW in Dec 2024 alone, $4.66B investment (+91% YoY). Order book additions
+      positive for developer stocks. Boost sales_demand and sentiment.
+    scope: "sector_wide"
+    validated_by_rl: false
+    decay_exempt: true
+    lunar_dependency: false
+
+  - id: "SEA_RE_004"
+    name: "q1_tariff_order_and_regulatory_cycle"
+    evidence: >
+      CERC and state SERCs (SERC) issue annual tariff orders typically in Jan-Mar.
+      These orders set power purchase tariffs for the upcoming year under long-term
+      PPAs — directly affecting projected revenue for generation companies.
+      Revenue predictability: tariff orders below expectation → stock falls; in-line
+      or above → neutral to positive.
+      Historical: CERC order delays (2023-2024) created uncertainty for Adani Green,
+      Torrent Power. Resolution in Feb 2024 caused a relief rally.
+      Budget (Feb 1) also announces renewable energy incentive updates (GST rates
+      on solar modules, PLI scheme allocations).
+      Combined: Jan-Feb is the highest regulatory uncertainty window for RE stocks.
+    months: [1, 2]
+    day_range: null
+    direction_bias: "volatile_regulatory"
+    confidence: 0.55            # Moderate — tariff order timing varies by state/CERC
+    agents_affected:
+      policy_regulatory: +0.08  # most informative signal — tariff and budget policy dominant
+      risk_macro: +0.05         # regulatory risk elevated this period
+    narrative: >
+      Tariff order season (Jan-Feb): CERC/SERC annual tariff schedules released.
+      PPA revenue certainty affected — tariff surprises documented causing ±5-8%
+      stock moves. Budget (Feb 1) adds RE incentive changes. Elevate
+      policy_regulatory and risk_macro signals; highest regulatory uncertainty window.
+    scope: "sector_wide"
+    validated_by_rl: false
+    decay_exempt: true
+    lunar_dependency: false

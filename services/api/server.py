@@ -1,4 +1,4 @@
-"""
+﻿"""
 api/server.py
 =============
 FastAPI application — Phase 2 bridge between Python agents and external consumers
@@ -87,7 +87,7 @@ async def health() -> dict:
 @app.get("/tickers", tags=["Meta"])
 async def list_tickers() -> dict:
     """Returns the configured scheduler tickers."""
-    from config import settings
+    from core.config import settings
     return {"tickers": getattr(settings, "SCHEDULER_TICKERS", [])}
 
 

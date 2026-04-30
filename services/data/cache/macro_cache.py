@@ -1,4 +1,4 @@
-"""
+﻿"""
 tools/macro_cache.py
 ====================
 In-memory macro news cache with TTL.
@@ -25,7 +25,7 @@ import logging
 from datetime import datetime, timedelta
 from typing import Optional
 
-from config import settings
+from core.config import settings
 
 logger = logging.getLogger(__name__)
 

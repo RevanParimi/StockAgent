@@ -1,4 +1,4 @@
-"""
+﻿"""
 tools/macro_fetcher.py
 ======================
 Macro-economic data via yfinance (no API key needed).
@@ -18,7 +18,7 @@ from datetime import date, timedelta
 
 import yfinance as yf
 
-from config import settings
+from core.config import settings
 
 logger = logging.getLogger(__name__)
 

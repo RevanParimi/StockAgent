@@ -1,4 +1,4 @@
-"""
+﻿"""
 services/data/stores/analysis_logger.py
 ========================================
 Two human-oriented log outputs written after every completed analysis run.
@@ -23,7 +23,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from config import settings
+from core.config import settings
 from core.schemas.pipeline import FinalReport
 
 logger = logging.getLogger(__name__)

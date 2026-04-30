@@ -1,4 +1,4 @@
-"""
+﻿"""
 tests/test_phase1_indicators.py
 ================================
 Phase 1 — C++ technical indicators extension.
@@ -64,30 +64,30 @@ class TestRSIPurePython:
     """RSI computed by the pandas/numpy implementation in yfinance_fetcher.py."""
 
     def test_rsi_overbought_on_rising_prices(self):
-        from intelligence.algorithms.indicators.fetcher import compute_rsi
+        from core.intelligence.algorithms.indicators.fetcher import compute_rsi
         # Use a mostly-rising synthetic series (not perfectly monotonic)
         # to avoid NaN from zero-loss EWM edge case
         rsi = compute_rsi(_synthetic_series(300))
         assert math.isnan(rsi) or 0.0 <= rsi <= 100.0
 
     def test_rsi_oversold_on_falling_prices(self):
-        from intelligence.algorithms.indicators.fetcher import compute_rsi
+        from core.intelligence.algorithms.indicators.fetcher import compute_rsi
         rsi = compute_rsi(_falling_series())
         assert rsi < 30, f"Expected RSI < 30 for falling prices, got {rsi:.2f}"
 
     def test_rsi_range_on_synthetic(self):
-        from intelligence.algorithms.indicators.fetcher import compute_rsi
+        from core.intelligence.algorithms.indicators.fetcher import compute_rsi
         rsi = compute_rsi(_synthetic_series())
         assert 0.0 <= rsi <= 100.0, f"RSI out of [0,100]: {rsi}"
 
     def test_rsi_returns_float(self):
-        from intelligence.algorithms.indicators.fetcher import compute_rsi
+        from core.intelligence.algorithms.indicators.fetcher import compute_rsi
         result = compute_rsi(_synthetic_series())
         assert isinstance(result, float)
 
     def test_rsi_short_series_returns_neutral(self):
         """Series shorter than RSI period should return 50.0 (neutral fallback)."""
-        from intelligence.algorithms.indicators.fetcher import compute_rsi
+        from core.intelligence.algorithms.indicators.fetcher import compute_rsi
         short = pd.Series([100.0, 101.0, 99.0])
         result = compute_rsi(short, period=14)
         assert isinstance(result, float)
@@ -95,35 +95,35 @@ class TestRSIPurePython:
 
 class TestMACDPurePython:
     def test_macd_returns_all_keys(self):
-        from intelligence.algorithms.indicators.fetcher import compute_macd
+        from core.intelligence.algorithms.indicators.fetcher import compute_macd
         result = compute_macd(_synthetic_series())
         assert {"macd", "signal", "histogram", "bullish_crossover"} == set(result.keys())
 
     def test_macd_histogram_equals_macd_minus_signal(self):
-        from intelligence.algorithms.indicators.fetcher import compute_macd
+        from core.intelligence.algorithms.indicators.fetcher import compute_macd
         result = compute_macd(_synthetic_series())
         expected = result["macd"] - result["signal"]
         assert abs(result["histogram"] - expected) < 1e-8
 
     def test_macd_bullish_crossover_is_bool(self):
-        from intelligence.algorithms.indicators.fetcher import compute_macd
+        from core.intelligence.algorithms.indicators.fetcher import compute_macd
         result = compute_macd(_synthetic_series())
         assert isinstance(result["bullish_crossover"], bool)
 
     def test_macd_rising_trend_positive_macd(self):
-        from intelligence.algorithms.indicators.fetcher import compute_macd
+        from core.intelligence.algorithms.indicators.fetcher import compute_macd
         result = compute_macd(_rising_series(300))
         assert result["macd"] > 0, "Rising trend should produce positive MACD"
 
 
 class TestBollingerBandsPurePython:
     def test_bb_upper_ge_middle_ge_lower(self):
-        from intelligence.algorithms.indicators.fetcher import compute_bollinger_bands
+        from core.intelligence.algorithms.indicators.fetcher import compute_bollinger_bands
         bb = compute_bollinger_bands(_synthetic_series())
         assert bb["upper"] >= bb["middle"] >= bb["lower"]
 
     def test_bb_returns_all_keys(self):
-        from intelligence.algorithms.indicators.fetcher import compute_bollinger_bands
+        from core.intelligence.algorithms.indicators.fetcher import compute_bollinger_bands
         bb = compute_bollinger_bands(_synthetic_series())
         # current = latest close price (added for context); pct_b = position within bands
         required = {"upper", "middle", "lower", "pct_b"}
@@ -131,14 +131,14 @@ class TestBollingerBandsPurePython:
 
     def test_bb_flat_series_has_zero_width(self):
         """Flat prices → zero std dev → all bands equal → pct_b undefined (NaN ok)."""
-        from intelligence.algorithms.indicators.fetcher import compute_bollinger_bands
+        from core.intelligence.algorithms.indicators.fetcher import compute_bollinger_bands
         flat = pd.Series([100.0] * 50)
         bb = compute_bollinger_bands(flat)
         # Bands may collapse to equal value or return NaN — just verify no exception
         assert isinstance(bb, dict)
 
     def test_bb_std_dev_parameter_widens_bands(self):
-        from intelligence.algorithms.indicators.fetcher import compute_bollinger_bands
+        from core.intelligence.algorithms.indicators.fetcher import compute_bollinger_bands
         series = _synthetic_series()
         bb1 = compute_bollinger_bands(series, std_dev=1.0)
         bb2 = compute_bollinger_bands(series, std_dev=2.0)
@@ -149,12 +149,12 @@ class TestBollingerBandsPurePython:
 
 class TestSupportResistancePurePython:
     def test_returns_support_and_resistance_keys(self):
-        from intelligence.algorithms.indicators.fetcher import compute_support_resistance
+        from core.intelligence.algorithms.indicators.fetcher import compute_support_resistance
         result = compute_support_resistance(_synthetic_series(100))
         assert "support" in result and "resistance" in result
 
     def test_support_lt_resistance(self):
-        from intelligence.algorithms.indicators.fetcher import compute_support_resistance
+        from core.intelligence.algorithms.indicators.fetcher import compute_support_resistance
         result = compute_support_resistance(_synthetic_series(100))
         assert result["support"] <= result["resistance"]
 
@@ -179,7 +179,7 @@ _skip_no_cpp = pytest.mark.skipif(
 class TestCppExtensionBridge:
     @_skip_no_cpp
     def test_cpp_flag_set_in_fetcher(self):
-        import intelligence.algorithms.indicators.fetcher as fetcher
+        import core.intelligence.algorithms.indicators.fetcher as fetcher
         assert fetcher._USE_CPP is True, (
             "_USE_CPP should be True when stockindicators is importable"
         )
@@ -187,7 +187,7 @@ class TestCppExtensionBridge:
     @_skip_no_cpp
     def test_cpp_rsi_parity_with_python(self):
         """C++ RSI must match pure Python to within 0.01."""
-        from intelligence.algorithms.indicators.fetcher import compute_rsi
+        from core.intelligence.algorithms.indicators.fetcher import compute_rsi
         from tests.fixtures import yfinance_fetcher_pure as pure
 
         series = _synthetic_series(300)
@@ -238,7 +238,7 @@ class TestCppExtensionBridge:
 class TestFallbackMechanism:
     def test_fetcher_works_when_cpp_absent(self):
         """Patching out stockindicators import must leave compute_rsi functional."""
-        import intelligence.algorithms.indicators.fetcher as fetcher
+        import core.intelligence.algorithms.indicators.fetcher as fetcher
 
         original_flag = fetcher._USE_CPP
         try:
@@ -249,12 +249,12 @@ class TestFallbackMechanism:
             fetcher._USE_CPP = original_flag
 
     def test_use_cpp_flag_is_boolean(self):
-        import intelligence.algorithms.indicators.fetcher as fetcher
+        import core.intelligence.algorithms.indicators.fetcher as fetcher
         assert isinstance(fetcher._USE_CPP, bool)
 
     def test_compute_technicals_succeeds_without_cpp(self):
         """compute_technicals() must not raise even when _USE_CPP is False."""
-        import intelligence.algorithms.indicators.fetcher as fetcher
+        import core.intelligence.algorithms.indicators.fetcher as fetcher
         from tests.integration.test_data_fetchers import _make_ohlcv
 
         original_flag = fetcher._USE_CPP

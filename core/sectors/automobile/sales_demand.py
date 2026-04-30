@@ -1,4 +1,4 @@
-"""
+﻿"""
 agents/sales_demand.py
 ======================
 Sales & Demand sub-agent.
@@ -17,7 +17,7 @@ from typing import Any
 
 from core.pipeline.base_agent import BaseAgent
 from core.schemas.pipeline import AgentOutput, SalesDemandOutput, SalesDemandSubScores, StockQuery
-from config.prompts.automobile import sales_demand as P
+from core.config.prompts.automobile import sales_demand as P
 
 
 class SalesDemandAgent(BaseAgent):

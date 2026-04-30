@@ -1,4 +1,4 @@
-"""
+﻿"""
 tools/fundamentals_fetcher.py
 ==============================
 Financial statement data via yfinance (no API key needed).
@@ -19,7 +19,7 @@ from typing import Any
 import pandas as pd
 import yfinance as yf
 
-from config import settings
+from core.config import settings
 
 logger = logging.getLogger(__name__)
 

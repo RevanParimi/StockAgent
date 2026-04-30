@@ -1,4 +1,4 @@
-"""
+﻿"""
 tools/yfinance_fetcher_pure.py
 ==============================
 Frozen pure-Python copy of the technical indicator functions from
@@ -13,7 +13,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from config import settings
+from core.config import settings
 
 
 def compute_rsi(close: pd.Series, period: int = settings.RSI_PERIOD) -> float:

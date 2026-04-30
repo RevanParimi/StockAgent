@@ -1,4 +1,4 @@
-"""
+﻿"""
 tools/llm_client.py
 ====================
 Single factory for the OpenAI-compatible LLM client pointed at OpenRouter.
@@ -11,7 +11,7 @@ Token usage and cost tracking is handled by tools/run_logger.py.
 from __future__ import annotations
 
 from openai import AsyncOpenAI, OpenAI
-from config import settings
+from core.config import settings
 
 
 def get_llm_client() -> OpenAI:

@@ -1,4 +1,4 @@
-"""
+﻿"""
 tests/test_scheduler.py
 ========================
 Unit tests for Phase 4 — ScoreStore, AlertManager, and AutomobileScheduler.
@@ -109,7 +109,7 @@ class TestScoreStore:
 
     def test_prune_keeps_max_rows(self, tmp_path):
         from services.data.stores.score_store import ScoreStore
-        from config import settings
+        from core.config import settings
         store = ScoreStore(db_path=str(tmp_path / "prune_test.db"))
 
         # Override retention limit to 3 for this test

@@ -1,4 +1,4 @@
-"""
+﻿"""
 agents/orchestrator.py
 =======================
 Top-level Automobile Agent orchestrator.
@@ -35,9 +35,9 @@ except ImportError:
 from core.graphs.nodes import make_dispatch_fn, make_run_agent_node
 from core.graphs.state import GraphState
 
-from config import settings
+from core.config import settings
 from core.schemas.pipeline import AgentOutput, FinalReport, PipelineRun, StockQuery
-from config.prompts.shared import orchestrator as P
+from core.config.prompts.shared import orchestrator as P
 from services.clients.llm_client import get_llm_client
 from services.data.stores.run_logger import log_llm_call, log_run_summary
 from services.data.stores.analysis_logger import log_analysis

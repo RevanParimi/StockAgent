@@ -1,4 +1,4 @@
-"""
+﻿"""
 agents/risk_macro.py
 ====================
 Risk & Macro sub-agent.
@@ -17,7 +17,7 @@ from typing import Any
 
 from core.pipeline.base_agent import BaseAgent
 from core.schemas.pipeline import AgentOutput, RiskMacroOutput, RiskMacroSubScores, StockQuery
-from config.prompts.automobile import risk_macro as P
+from core.config.prompts.automobile import risk_macro as P
 
 
 class RiskMacroAgent(BaseAgent):

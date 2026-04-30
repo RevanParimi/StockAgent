@@ -1,4 +1,4 @@
-"""
+﻿"""
 tools/context_builder.py
 ========================
 Assembles the per-agent context string from live data fetchers.
@@ -16,7 +16,7 @@ from __future__ import annotations
 import logging
 from datetime import date
 
-from config import settings as _settings
+from core.config import settings as _settings
 from core.schemas.pipeline import StockQuery
 
 logger = logging.getLogger(__name__)
@@ -79,7 +79,7 @@ class ContextBuilder:
 
     def _build_sales_demand(self, query: StockQuery) -> str:
         from services.data.fetchers.news import fetch_news_context
-        from config.prompts.automobile.sales_demand import CONTEXT_SEARCH_QUERIES
+        from core.config.prompts.automobile.sales_demand import CONTEXT_SEARCH_QUERIES
 
         today = date.today()
         queries = [
@@ -101,7 +101,7 @@ class ContextBuilder:
     def _build_fundamentals(self, query: StockQuery) -> str:
         from services.data.fetchers.fundamentals import get_fundamentals_context
         from services.data.fetchers.news import fetch_news_context
-        from config.prompts.automobile.fundamentals import CONTEXT_SEARCH_QUERIES
+        from core.config.prompts.automobile.fundamentals import CONTEXT_SEARCH_QUERIES
 
         today = date.today()
         queries = [
@@ -118,7 +118,7 @@ class ContextBuilder:
         return f"{fin_context}\n\n{news}"
 
     def _build_pattern_analysis(self, query: StockQuery) -> str:
-        from intelligence.algorithms.indicators.fetcher import get_technical_context
+        from core.intelligence.algorithms.indicators.fetcher import get_technical_context
 
         tech = get_technical_context(query.ticker)
         return (
@@ -129,7 +129,7 @@ class ContextBuilder:
 
     def _build_sentiment(self, query: StockQuery) -> str:
         from services.data.fetchers.news import fetch_news_context
-        from config.prompts.automobile.sentiment import CONTEXT_SEARCH_QUERIES
+        from core.config.prompts.automobile.sentiment import CONTEXT_SEARCH_QUERIES
 
         today = date.today()
         queries = [
@@ -153,7 +153,7 @@ class ContextBuilder:
         from services.data.fetchers.macro import get_macro_context
         from services.data.fetchers.news import fetch_news_context
         from services.data.cache.macro_cache import get_macro_cache
-        from config.prompts.automobile.risk_macro import CONTEXT_SEARCH_QUERIES
+        from core.config.prompts.automobile.risk_macro import CONTEXT_SEARCH_QUERIES
 
         # yfinance macro data — always free, fetch fresh every time
         macro = get_macro_context()
@@ -186,7 +186,7 @@ class ContextBuilder:
     def _build_raw_materials(self, query: StockQuery) -> str:
         from services.data.fetchers.macro import get_raw_materials_context
         from services.data.fetchers.news import fetch_news_context
-        from config.prompts.automobile.raw_materials import CONTEXT_SEARCH_QUERIES
+        from core.config.prompts.automobile.raw_materials import CONTEXT_SEARCH_QUERIES
 
         today = date.today()
         queries = [
@@ -209,7 +209,7 @@ class ContextBuilder:
     def _build_policy_regulatory(self, query: StockQuery) -> str:
         from services.clients.tavily_fetcher import fetch_tavily_context
         from services.data.fetchers.news import fetch_news_context
-        from config.prompts.automobile.policy_regulatory import TAVILY_SEARCH_QUERIES, CONTEXT_SEARCH_QUERIES
+        from core.config.prompts.automobile.policy_regulatory import TAVILY_SEARCH_QUERIES, CONTEXT_SEARCH_QUERIES
 
         today = date.today()
         tavily_queries = [
@@ -239,7 +239,7 @@ class ContextBuilder:
 
     def _build_competitive_intel(self, query: StockQuery) -> str:
         from services.data.fetchers.news import fetch_news_context
-        from config.prompts.automobile.competitive_intel import CONTEXT_SEARCH_QUERIES
+        from core.config.prompts.automobile.competitive_intel import CONTEXT_SEARCH_QUERIES
 
         today = date.today()
         queries = [
@@ -260,7 +260,7 @@ class ContextBuilder:
 
     def _build_valuation_catalyst(self, query: StockQuery) -> str:
         from tools.yfinance_fetcher import get_valuation_context
-        from config import settings
+        from core.config import settings
 
         peers = getattr(settings, "PEER_TICKERS", ["MARUTI", "TATAMOTORS", "M&M", "HEROMOTOCO", "BAJAJ-AUTO"])[:5]
         return get_valuation_context(query.ticker, peer_tickers=peers)
@@ -562,7 +562,7 @@ class ContextBuilder:
         )
 
     def _build_technical(self, query: StockQuery) -> str:
-        from intelligence.algorithms.indicators.fetcher import get_technical_context
+        from core.intelligence.algorithms.indicators.fetcher import get_technical_context
 
         tech = get_technical_context(query.ticker)
         return (

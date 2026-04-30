@@ -1,4 +1,4 @@
-"""
+﻿"""
 tests/test_signal_aggregator.py
 ================================
 Tests for the SignalAggregator — weighted fusion and conflict resolution.
@@ -17,7 +17,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from core.pipeline.signal_aggregator import SignalAggregator, CONFLICT_THRESHOLD
-from config import settings
+from core.config import settings
 from tests.conftest import make_aggregator_json
 
 

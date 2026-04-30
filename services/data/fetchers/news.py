@@ -1,4 +1,4 @@
-"""
+﻿"""
 tools/news_fetcher.py
 =====================
 News and search result fetching via Serper API (Google search)
@@ -19,7 +19,7 @@ from datetime import date, timedelta
 
 import requests
 
-from config import settings
+from core.config import settings
 from services.data.stores.api_usage import record_call
 
 logger = logging.getLogger(__name__)

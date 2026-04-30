@@ -1,4 +1,4 @@
-"""
+﻿"""
 agents/raw_materials.py
 ========================
 Raw Materials Cost sub-agent.
@@ -17,7 +17,7 @@ from typing import Any
 
 from core.pipeline.base_agent import BaseAgent
 from core.schemas.pipeline import AgentOutput, RawMaterialsOutput, RawMaterialsSubScores, StockQuery
-from config.prompts.automobile import raw_materials as P
+from core.config.prompts.automobile import raw_materials as P
 
 
 class RawMaterialsAgent(BaseAgent):

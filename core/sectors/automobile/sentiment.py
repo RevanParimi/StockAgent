@@ -1,4 +1,4 @@
-"""
+﻿"""
 agents/sentiment.py
 ===================
 Sentiment sub-agent.
@@ -17,7 +17,7 @@ from typing import Any
 
 from core.pipeline.base_agent import BaseAgent
 from core.schemas.pipeline import AgentOutput, SentimentOutput, SentimentSubScores, StockQuery
-from config.prompts.automobile import sentiment as P
+from core.config.prompts.automobile import sentiment as P
 
 
 class SentimentAgent(BaseAgent):

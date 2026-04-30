@@ -1,4 +1,4 @@
-"""
+﻿"""
 tests/test_phase4_csharp.py
 ============================
 Phase 4 — C# scheduler + persistence integration contract (Python-side).
@@ -62,28 +62,28 @@ def _make_report(
 
 class TestCSharpSettings:
     def test_csharp_scheduler_enabled_setting_exists(self):
-        from config import settings
+        from core.config import settings
         assert hasattr(settings, "CSHARP_SCHEDULER_ENABLED"), (
             "CSHARP_SCHEDULER_ENABLED missing from settings.py — "
             "add: CSHARP_SCHEDULER_ENABLED: bool = os.getenv('CSHARP_SCHEDULER_ENABLED','false').lower()=='true'"
         )
 
     def test_csharp_api_url_setting_exists(self):
-        from config import settings
+        from core.config import settings
         assert hasattr(settings, "CSHARP_API_URL"), (
             "CSHARP_API_URL missing from settings.py — "
             "add: CSHARP_API_URL: str = os.getenv('CSHARP_API_URL', 'http://localhost:5000')"
         )
 
     def test_csharp_scheduler_disabled_by_default(self):
-        from config import settings
+        from core.config import settings
         assert settings.CSHARP_SCHEDULER_ENABLED is False, (
             "CSHARP_SCHEDULER_ENABLED must default to False — "
             "C# scheduler is opt-in via env var"
         )
 
     def test_csharp_api_url_default_is_port_5000(self):
-        from config import settings
+        from core.config import settings
         assert "5000" in settings.CSHARP_API_URL, (
             f"Expected CSHARP_API_URL to include port 5000, got: {settings.CSHARP_API_URL}"
         )
@@ -98,7 +98,7 @@ class TestScoreStoreProxy:
     def test_save_proxies_to_csharp_when_enabled(self, mock_post, tmp_path):
         """When CSHARP_SCHEDULER_ENABLED=True, save() must POST to C# /scores."""
         from services.data.stores.score_store import ScoreStore
-        from config import settings
+        from core.config import settings
 
         mock_post.return_value = MagicMock(status_code=201)
         store = ScoreStore(db_path=str(tmp_path / "test.db"))
@@ -115,7 +115,7 @@ class TestScoreStoreProxy:
     @patch("services.data.stores.score_store.requests.post")
     def test_save_sends_report_as_json(self, mock_post, tmp_path):
         from services.data.stores.score_store import ScoreStore
-        from config import settings
+        from core.config import settings
 
         mock_post.return_value = MagicMock(status_code=201)
         store = ScoreStore(db_path=str(tmp_path / "test.db"))
@@ -131,7 +131,7 @@ class TestScoreStoreProxy:
     def test_save_uses_sqlite_when_csharp_disabled(self, tmp_path):
         """With flag off, save() must write to SQLite as usual."""
         from services.data.stores.score_store import ScoreStore
-        from config import settings
+        from core.config import settings
 
         store = ScoreStore(db_path=str(tmp_path / "test.db"))
         report = _make_report()
@@ -148,7 +148,7 @@ class TestScoreStoreProxy:
     def test_proxy_failure_does_not_crash(self, mock_post, tmp_path):
         """C# service being down must not crash the Python pipeline."""
         from services.data.stores.score_store import ScoreStore
-        from config import settings
+        from core.config import settings
 
         mock_post.side_effect = Exception("Connection refused")
         store = ScoreStore(db_path=str(tmp_path / "test.db"))
@@ -230,7 +230,7 @@ class TestCSharpJsonContract:
 class TestCronScheduleContract:
     def test_python_default_cron_is_weekday_0830(self):
         """APScheduler default: weekdays at 08:30 IST."""
-        from config import settings
+        from core.config import settings
         cron = getattr(settings, "SCHEDULER_CRON", "30 8 * * 1-5")
         # Should encode 8:30am weekdays
         assert "30" in cron and "8" in cron
@@ -336,5 +336,5 @@ class TestPortIsolation:
         assert "8000" in python_api_url
 
     def test_csharp_api_url_uses_port_5000(self):
-        from config import settings
+        from core.config import settings
         assert "5000" in settings.CSHARP_API_URL

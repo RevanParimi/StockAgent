@@ -1,4 +1,4 @@
-"""
+﻿"""
 agents/competitive_intel.py
 =============================
 Competitive Intelligence sub-agent.
@@ -17,7 +17,7 @@ from typing import Any
 
 from core.pipeline.base_agent import BaseAgent
 from core.schemas.pipeline import AgentOutput, CompetitiveIntelOutput, CompetitiveIntelSubScores, StockQuery
-from config.prompts.automobile import competitive_intel as P
+from core.config.prompts.automobile import competitive_intel as P
 
 
 class CompetitiveIntelAgent(BaseAgent):

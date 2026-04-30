@@ -1,4 +1,4 @@
-"""
+﻿"""
 tests/test_phase0_llm_migration.py
 ====================================
 Phase 0 — LLM migration: Groq → OpenRouter + Qwen.
@@ -51,7 +51,7 @@ class TestNoGroqImports:
         )
 
     def test_no_groq_in_settings(self):
-        settings_path = Path(__file__).parent.parent.parent / "config" / "settings" / "base.py"
+        settings_path = Path(__file__).parent.parent.parent / "core" / "config" / "settings" / "base.py"
         source = settings_path.read_text(encoding="utf-8")
         assert "GROQ_API_KEY" not in source, "settings.py still references GROQ_API_KEY"
         assert "groq.com" not in source, "settings.py still references Groq base URL"
@@ -63,28 +63,28 @@ class TestNoGroqImports:
 
 class TestOpenRouterSettings:
     def test_openrouter_api_key_exists(self):
-        from config import settings
+        from core.config import settings
         assert hasattr(settings, "OPENROUTER_API_KEY"), "OPENROUTER_API_KEY missing from settings"
 
     def test_openrouter_base_url_exists(self):
-        from config import settings
+        from core.config import settings
         assert hasattr(settings, "OPENROUTER_BASE_URL"), "OPENROUTER_BASE_URL missing from settings"
 
     def test_openrouter_base_url_value(self):
-        from config import settings
+        from core.config import settings
         assert "openrouter.ai" in settings.OPENROUTER_BASE_URL, (
             f"Expected openrouter.ai in base URL, got: {settings.OPENROUTER_BASE_URL}"
         )
 
     def test_model_is_qwen(self):
-        from config import settings
+        from core.config import settings
         assert "qwen" in settings.LLM_MODEL.lower(), (
             f"Expected Qwen model, got: {settings.LLM_MODEL}. "
             "Set LLM_MODEL=qwen/qwen3-235b-a22b in .env"
         )
 
     def test_no_groq_api_key_attribute(self):
-        from config import settings
+        from core.config import settings
         assert not hasattr(settings, "GROQ_API_KEY"), (
             "settings still has GROQ_API_KEY — remove it to avoid confusion"
         )
@@ -106,7 +106,7 @@ class TestBaseAgentUsesOpenAI:
 
     @patch("services.clients.llm_client.OpenAI")
     def test_base_agent_passes_openrouter_base_url(self, mock_openai_cls):
-        from config import settings
+        from core.config import settings
         mock_openai_cls.return_value = MagicMock()
         from core.sectors.automobile.sales_demand import SalesDemandAgent
         SalesDemandAgent()
@@ -117,7 +117,7 @@ class TestBaseAgentUsesOpenAI:
 
     @patch("services.clients.llm_client.OpenAI")
     def test_base_agent_passes_openrouter_api_key(self, mock_openai_cls):
-        from config import settings
+        from core.config import settings
         mock_openai_cls.return_value = MagicMock()
         from core.sectors.automobile.sales_demand import SalesDemandAgent
         SalesDemandAgent()
@@ -144,7 +144,7 @@ class TestOrchestratorUsesOpenAI:
     @patch("core.pipeline.orchestrator._SUB_AGENTS", {})
     @patch("core.pipeline.orchestrator.SignalAggregator")
     def test_orchestrator_uses_openrouter_url(self, mock_agg, mock_openai_cls):
-        from config import settings
+        from core.config import settings
         mock_openai_cls.return_value = MagicMock()
         mock_agg.return_value = MagicMock()
         from core.pipeline.orchestrator import AutomobileAgentOrchestrator
@@ -167,7 +167,7 @@ class TestSignalAggregatorUsesOpenAI:
 
     @patch("services.clients.llm_client.OpenAI")
     def test_signal_aggregator_uses_openrouter_url(self, mock_openai_cls):
-        from config import settings
+        from core.config import settings
         mock_openai_cls.return_value = MagicMock()
         from core.pipeline.signal_aggregator import SignalAggregator
         SignalAggregator()
@@ -180,10 +180,10 @@ class TestSignalAggregatorUsesOpenAI:
 # ---------------------------------------------------------------------------
 
 class TestFeedbackAgentUsesOpenAI:
-    @patch("intelligence.rl.agents.feedback_agent.OpenAI")
+    @patch("core.intelligence.rl.agents.feedback_agent.OpenAI")
     def test_feedback_agent_instantiates_openai(self, mock_openai_cls):
         mock_openai_cls.return_value = MagicMock()
-        from intelligence.rl.agents.feedback_agent import FeedbackAgent
+        from core.intelligence.rl.agents.feedback_agent import FeedbackAgent
         FeedbackAgent()
         mock_openai_cls.assert_called_once()
 

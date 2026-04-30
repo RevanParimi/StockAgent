@@ -1,4 +1,4 @@
-"""
+﻿"""
 tests/test_phase3_typescript.py
 ================================
 Phase 3 — TypeScript dashboard integration contract (Python-side).
@@ -219,7 +219,7 @@ class TestClientTimeoutContract:
         Python AGENT_TIMEOUT_SECONDS is 120s.
         120s (agents) + overhead must be < 180s (TS timeout).
         """
-        from config import settings
+        from core.config import settings
         ts_client_timeout = 180
         assert settings.AGENT_TIMEOUT_SECONDS < ts_client_timeout, (
             f"AGENT_TIMEOUT_SECONDS ({settings.AGENT_TIMEOUT_SECONDS}) must be "
@@ -227,7 +227,7 @@ class TestClientTimeoutContract:
         )
 
     def test_llm_timeout_within_agent_timeout(self):
-        from config import settings
+        from core.config import settings
         assert settings.LLM_TIMEOUT_SECONDS <= settings.AGENT_TIMEOUT_SECONDS, (
             "LLM_TIMEOUT_SECONDS must be <= AGENT_TIMEOUT_SECONDS to avoid silent hangs"
         )

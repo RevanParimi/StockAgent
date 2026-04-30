@@ -1,4 +1,4 @@
-"""
+﻿"""
 tests/test_config.py
 ====================
 Tests for configuration correctness and validation.
@@ -12,8 +12,8 @@ What is tested:
 """
 
 import pytest
-from config import settings
-from intelligence.rag import config as rag_config
+from core.config import settings
+from core.intelligence.rag import config as rag_config
 
 
 class TestAgentWeights:

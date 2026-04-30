@@ -1,4 +1,4 @@
-"""
+﻿"""
 agents/valuation_catalyst.py
 =============================
 Valuation & Catalyst sub-agent.
@@ -22,7 +22,7 @@ from core.schemas.pipeline import (
     ValuationCatalystSubScores,
     StockQuery,
 )
-from config.prompts.automobile import valuation_catalyst as P
+from core.config.prompts.automobile import valuation_catalyst as P
 
 
 class ValuationCatalystAgent(BaseAgent):

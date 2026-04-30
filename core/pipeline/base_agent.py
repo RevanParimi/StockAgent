@@ -1,4 +1,4 @@
-"""
+﻿"""
 agents/base_agent.py
 ====================
 Base class shared by all five sub-agents.
@@ -23,7 +23,7 @@ from typing import Any
 
 from openai import APIError, APITimeoutError, RateLimitError
 
-from config import settings
+from core.config import settings
 from core.schemas.pipeline import AgentOutput, StockQuery
 from services.clients.llm_client import get_llm_client, get_async_llm_client
 from services.data.stores.run_logger import log_llm_call
@@ -354,7 +354,7 @@ class BaseAgent(ABC):
           2. Live data — yfinance + news APIs via ContextBuilder
           3. Stub — no real data; signals caller to skip LLM
         """
-        from intelligence.rag import config as rag_config
+        from core.intelligence.rag import config as rag_config
 
         if rag_config.RAG_ENABLED:
             try:
@@ -388,8 +388,8 @@ class BaseAgent(ABC):
         Retrieve relevant document chunks from ChromaDB for this agent + query.
         Active only when RAG_ENABLED=true in config/rag_config.py.
         """
-        from intelligence.rag.core.retriever import RAGRetriever
-        from config.prompts.automobile import sales_demand, fundamentals, pattern_analysis, sentiment, risk_macro, orchestrator
+        from core.intelligence.rag.core.retriever import RAGRetriever
+        from core.config.prompts.automobile import sales_demand, fundamentals, pattern_analysis, sentiment, risk_macro, orchestrator
 
         # Map agent name → its search queries template list
         prompt_modules = {

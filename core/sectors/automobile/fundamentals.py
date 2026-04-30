@@ -1,4 +1,4 @@
-"""
+﻿"""
 agents/fundamentals.py
 ======================
 Fundamentals sub-agent.
@@ -17,7 +17,7 @@ from typing import Any
 
 from core.pipeline.base_agent import BaseAgent
 from core.schemas.pipeline import AgentOutput, FundamentalsOutput, FundamentalsSubScores, StockQuery
-from config.prompts.automobile import fundamentals as P
+from core.config.prompts.automobile import fundamentals as P
 
 
 class FundamentalsAgent(BaseAgent):

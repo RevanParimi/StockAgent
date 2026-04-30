@@ -1,4 +1,4 @@
-"""
+﻿"""
 agents/signal_aggregator.py
 ============================
 Signal Aggregator — the final stage of the Automobile Agent pipeline.
@@ -17,13 +17,13 @@ import logging
 import time
 from datetime import date
 
-from config import settings
+from core.config import settings
 from core.schemas.pipeline import (
     AgentOutput,
     FinalReport,
     WeightedAgentScore,
 )
-from config.prompts.shared import signal_aggregator as P
+from core.config.prompts.shared import signal_aggregator as P
 from services.clients.llm_client import get_llm_client
 from services.data.stores.run_logger import log_llm_call
 

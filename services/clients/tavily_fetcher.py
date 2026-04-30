@@ -1,4 +1,4 @@
-"""
+﻿"""
 tools/tavily_fetcher.py
 =======================
 Full-page content extraction via Tavily API.
@@ -25,7 +25,7 @@ from typing import Optional
 
 import requests
 
-from config import settings
+from core.config import settings
 from services.data.stores.api_usage import record_call
 
 logger = logging.getLogger(__name__)

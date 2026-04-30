@@ -70,7 +70,20 @@
       "Bash(python -m pytest tests/contract/test_phase4_csharp.py::TestCronScheduleContract::test_python_default_cron_is_weekday_0830 tests/contract/test_scheduler.py::TestAutomobileScheduler -v)",
       "Bash(python -m pytest tests/contract/test_phase4_csharp.py::TestCronScheduleContract::test_python_default_cron_is_weekday_0830 tests/contract/test_scheduler.py::TestAutomobileScheduler -v --tb=long)",
       "Bash(python -m pytest tests/ -q)",
-      "Bash(pip index *)"
+      "Bash(pip index *)",
+      "PowerShell(ls \"c:\\\\Users\\\\RevanParimi\\\\OneDrive - IBM\\\\Documents\\\\Gen AI Projects\\\\StockAgent-main\" | Where-Object { $_.PSIsContainer } | Select-Object Name)",
+      "Bash(grep -n 'config\\\\\\\\settings\\\\|config/settings\\\\|settings_path\\\\|config_path' 'c:/Users/RevanParimi/OneDrive - IBM/Documents/Gen AI Projects/StockAgent-main/tests/contract/test_phase0_llm_migration.py')",
+      "WebFetch(domain:lottiefiles.com)",
+      "WebFetch(domain:community.spline.design)",
+      "WebFetch(domain:tympanus.net)",
+      "WebFetch(domain:dribbble.com)",
+      "WebFetch(domain:www.reactbits.dev)",
+      "WebFetch(domain:www.vapiblocks.com)",
+      "WebFetch(domain:smoothui.dev)",
+      "WebFetch(domain:codepen.io)",
+      "WebFetch(domain:github.com)",
+      "Bash(echo \"---EXIT:$?\")",
+      "Bash(git -C \"c:/Users/RevanParimi/OneDrive - IBM/Documents/Gen AI Projects/StockAgent-main\" status --short)"
     ]
   }
 }

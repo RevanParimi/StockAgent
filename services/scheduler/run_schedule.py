@@ -1,4 +1,4 @@
-"""
+﻿"""
 scripts/run_schedule.py
 =======================
 CLI for Phase 4 — scheduled and on-demand pipeline runs.
@@ -66,7 +66,7 @@ logger = logging.getLogger(__name__)
 def cmd_start(args) -> None:
     """Start the blocking scheduler daemon."""
     from services.scheduler.python.scheduler import AutomobileScheduler
-    from config import settings
+    from core.config import settings
 
     if not settings.SCHEDULER_ENABLED:
         print(
@@ -95,7 +95,7 @@ def cmd_run_now(args) -> None:
         print(f"\nRunning pipeline for: {tickers[0]}")
         sched.run_ticker(tickers[0])
     else:
-        from config import settings
+        from core.config import settings
         print(f"\nRunning pipeline for all configured tickers: {settings.SCHEDULER_TICKERS}")
         sched.run_now()
 
@@ -105,7 +105,7 @@ def cmd_run_now(args) -> None:
 def cmd_status(args) -> None:
     """Show scheduler and database status."""
     from services.scheduler.python.scheduler import AutomobileScheduler
-    from config import settings
+    from core.config import settings
 
     sched = AutomobileScheduler()
     status = sched.status()
@@ -182,8 +182,8 @@ def cmd_latest(args) -> None:
 
 def cmd_forecast(args) -> None:
     """Generate month-start 30-day prediction envelope(s)."""
-    from intelligence.rl.workflows.generate_forecast import generate_forecast
-    from config import settings
+    from core.intelligence.rl.workflows.generate_forecast import generate_forecast
+    from core.config import settings
 
     tickers = [args.ticker.upper()] if args.ticker else settings.SCHEDULER_TICKERS
 
@@ -203,8 +203,8 @@ def cmd_forecast(args) -> None:
 
 def cmd_daily_review(args) -> None:
     """Run daily RL feedback review for one or all tickers."""
-    from intelligence.rl.workflows.daily_review import run_daily_review
-    from config import settings
+    from core.intelligence.rl.workflows.daily_review import run_daily_review
+    from core.config import settings
     from datetime import date, timedelta
 
     tickers = [args.ticker.upper()] if args.ticker else settings.SCHEDULER_TICKERS
@@ -237,8 +237,8 @@ def cmd_daily_review(args) -> None:
 
 def cmd_feedback_status(args) -> None:
     """Show prediction envelope and feedback log summary for a ticker."""
-    from intelligence.rl.stores.prediction_store import PredictionStore
-    from config import settings
+    from core.intelligence.rl.stores.prediction_store import PredictionStore
+    from core.config import settings
 
     if not args.ticker:
         print("Error: --ticker is required for feedback-status.")

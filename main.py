@@ -1,4 +1,4 @@
-"""
+﻿"""
 main.py
 =======
 CLI entry point for the Automobile Agent.
@@ -164,7 +164,7 @@ def _micro_search_loop() -> None:
     Each cache HIT saves 3 Serper calls per stock analysis:
         At 5 tickers/day across 3 sectors: 3 × 5 × 3 sectors × 22 days = 990 calls/month saved
     """
-    from config import settings
+    from core.config import settings
     from services.data.fetchers.news import fetch_news_context
     from services.data.cache.macro_cache import set_macro_cache
 

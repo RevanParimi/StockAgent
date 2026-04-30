@@ -1,4 +1,4 @@
-"""
+﻿"""
 graphs/_shared/nodes.py
 =======================
 Factory functions that produce LangGraph node callables shared across
@@ -28,7 +28,7 @@ from typing import Any
 
 from langgraph.types import Send
 
-from config import settings
+from core.config import settings
 from core.schemas.pipeline import AgentOutput, FinalReport, StockQuery, WeightedAgentScore
 from services.clients.llm_client import get_llm_client
 from services.data.stores.run_logger import log_llm_call

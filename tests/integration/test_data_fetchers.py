@@ -1,4 +1,4 @@
-"""
+﻿"""
 tests/test_data_fetchers.py
 ============================
 Unit tests for Phase 2 data fetchers.
@@ -59,25 +59,25 @@ def _make_ohlcv(n: int = 300) -> pd.DataFrame:
 
 class TestYfinanceFetcher:
     def test_nse_suffix_added(self):
-        from intelligence.algorithms.indicators.fetcher import _nse_ticker
+        from core.intelligence.algorithms.indicators.fetcher import _nse_ticker
         assert _nse_ticker("MARUTI") == "MARUTI.NS"
 
     def test_nse_suffix_not_doubled(self):
-        from intelligence.algorithms.indicators.fetcher import _nse_ticker
+        from core.intelligence.algorithms.indicators.fetcher import _nse_ticker
         assert _nse_ticker("MARUTI.NS") == "MARUTI.NS"
 
     def test_mm_special_case(self):
-        from intelligence.algorithms.indicators.fetcher import _nse_ticker
+        from core.intelligence.algorithms.indicators.fetcher import _nse_ticker
         assert _nse_ticker("M&M") == "M&M.NS"
 
     def test_rsi_valid_range(self):
-        from intelligence.algorithms.indicators.fetcher import compute_rsi
+        from core.intelligence.algorithms.indicators.fetcher import compute_rsi
         close = _make_close_series(200)
         rsi = compute_rsi(close)
         assert 0 <= rsi <= 100
 
     def test_rsi_overbought_on_rising(self):
-        from intelligence.algorithms.indicators.fetcher import compute_rsi
+        from core.intelligence.algorithms.indicators.fetcher import compute_rsi
         import math
         # Use a synthetic noisy-but-mostly-rising series to avoid NaN
         # (pure monotonic series can produce NaN due to zero-loss EWM edge case)
@@ -85,13 +85,13 @@ class TestYfinanceFetcher:
         assert math.isnan(rsi) or rsi > 0  # valid float or NaN acceptable
 
     def test_macd_returns_required_keys(self):
-        from intelligence.algorithms.indicators.fetcher import compute_macd
+        from core.intelligence.algorithms.indicators.fetcher import compute_macd
         close = _make_close_series(200)
         result = compute_macd(close)
         assert {"macd", "signal", "histogram", "bullish_crossover"} == set(result.keys())
 
     def test_bollinger_bands_pct_b_range(self):
-        from intelligence.algorithms.indicators.fetcher import compute_bollinger_bands
+        from core.intelligence.algorithms.indicators.fetcher import compute_bollinger_bands
         close = _make_close_series(100)
         bb = compute_bollinger_bands(close)
         # pct_b can go outside [0,1] when price is outside bands
@@ -99,12 +99,12 @@ class TestYfinanceFetcher:
         assert bb["upper"] >= bb["middle"] >= bb["lower"]
 
     def test_compute_technicals_empty_df(self):
-        from intelligence.algorithms.indicators.fetcher import compute_technicals
+        from core.intelligence.algorithms.indicators.fetcher import compute_technicals
         result = compute_technicals(pd.DataFrame())
         assert "error" in result
 
     def test_compute_technicals_full(self):
-        from intelligence.algorithms.indicators.fetcher import compute_technicals
+        from core.intelligence.algorithms.indicators.fetcher import compute_technicals
         df = _make_ohlcv(300)
         result = compute_technicals(df)
         assert "rsi" in result
@@ -113,23 +113,23 @@ class TestYfinanceFetcher:
         assert "support_resistance" in result
 
     def test_seasonal_pattern_returns_monthly_dict(self):
-        from intelligence.algorithms.indicators.fetcher import get_seasonal_pattern
+        from core.intelligence.algorithms.indicators.fetcher import get_seasonal_pattern
         df = _make_ohlcv(500)
         result = get_seasonal_pattern(df)
         assert isinstance(result, dict)
         assert all(1 <= k <= 12 for k in result.keys())
 
-    @patch("intelligence.algorithms.indicators.fetcher.yf.download")
+    @patch("core.intelligence.algorithms.indicators.fetcher.yf.download")
     def test_get_price_history_returns_df(self, mock_dl):
-        from intelligence.algorithms.indicators.fetcher import get_price_history
+        from core.intelligence.algorithms.indicators.fetcher import get_price_history
         mock_dl.return_value = _make_ohlcv(300)
         df = get_price_history("MARUTI", years=1)
         assert not df.empty
         mock_dl.assert_called_once()
 
-    @patch("intelligence.algorithms.indicators.fetcher.yf.download")
+    @patch("core.intelligence.algorithms.indicators.fetcher.yf.download")
     def test_get_price_history_empty_fallback(self, mock_dl):
-        from intelligence.algorithms.indicators.fetcher import get_price_history
+        from core.intelligence.algorithms.indicators.fetcher import get_price_history
         mock_dl.return_value = pd.DataFrame()
         df = get_price_history("MARUTI")
         assert df.empty

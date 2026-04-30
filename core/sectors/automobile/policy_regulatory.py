@@ -1,4 +1,4 @@
-"""
+﻿"""
 agents/policy_regulatory.py
 =============================
 Policy & Regulatory sub-agent.
@@ -17,7 +17,7 @@ from typing import Any
 
 from core.pipeline.base_agent import BaseAgent
 from core.schemas.pipeline import AgentOutput, PolicyRegulatoryOutput, PolicyRegulatorySubScores, StockQuery
-from config.prompts.automobile import policy_regulatory as P
+from core.config.prompts.automobile import policy_regulatory as P
 
 
 class PolicyRegulatoryAgent(BaseAgent):

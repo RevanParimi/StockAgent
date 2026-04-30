@@ -1,4 +1,4 @@
-"""
+﻿"""
 tools/score_store.py
 ====================
 SQLite-backed persistent store for historical automobile stock scores.
@@ -30,7 +30,7 @@ from pathlib import Path
 
 import requests
 
-from config import settings
+from core.config import settings
 from core.schemas.pipeline import FinalReport
 
 logger = logging.getLogger(__name__)

@@ -1,4 +1,4 @@
-"""
+﻿"""
 tests/test_prompts.py
 =====================
 Tests that all prompt templates are well-formed and format without errors.
@@ -13,13 +13,13 @@ What is tested:
 
 import pytest
 
-from config.prompts.automobile import sales_demand
-from config.prompts.automobile import fundamentals
-from config.prompts.automobile import pattern_analysis
-from config.prompts.automobile import sentiment
-from config.prompts.automobile import risk_macro
-from config.prompts.shared import signal_aggregator
-from config.prompts.shared import orchestrator
+from core.config.prompts.automobile import sales_demand
+from core.config.prompts.automobile import fundamentals
+from core.config.prompts.automobile import pattern_analysis
+from core.config.prompts.automobile import sentiment
+from core.config.prompts.automobile import risk_macro
+from core.config.prompts.shared import signal_aggregator
+from core.config.prompts.shared import orchestrator
 
 
 SAMPLE_FORMAT_ARGS = dict(

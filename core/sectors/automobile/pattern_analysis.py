@@ -1,4 +1,4 @@
-"""
+﻿"""
 agents/pattern_analysis.py
 ==========================
 Pattern Analysis sub-agent.
@@ -22,7 +22,7 @@ from core.schemas.pipeline import (
     PatternAnalysisSubScores,
     StockQuery,
 )
-from config.prompts.automobile import pattern_analysis as P
+from core.config.prompts.automobile import pattern_analysis as P
 
 
 class PatternAnalysisAgent(BaseAgent):

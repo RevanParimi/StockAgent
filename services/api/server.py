@@ -24,16 +24,18 @@ from datetime import datetime, timezone
 
 # Ensure repo root is on sys.path so `agents`, `tools`, `config` resolve
 # whether this is run from the project root or the api/ subdirectory.
-_ROOT = pathlib.Path(__file__).parent.parent
+_ROOT = pathlib.Path(__file__).parent.parent.parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from services.api.routes.analyse import router as analyse_router
 from services.api.routes.history import router as history_router
 from services.api.routes.stream import router as stream_router
+from services.api.routes.ui_data import router as ui_router
 
 logging.basicConfig(
     level=logging.INFO,
@@ -48,18 +50,22 @@ logger = logging.getLogger(__name__)
 app = FastAPI(
     title="StockAgent Python API",
     description=(
-        "FastAPI bridge exposing the 8-agent automobile stock analysis pipeline. "
-        "Internal service (port 8001) — consumed exclusively by the TypeScript gateway (port 3000)."
+        "FastAPI bridge exposing the 9-agent automobile stock analysis pipeline. "
+        "Also serves the prototype UI at /app and UI data routes at /ui/*."
     ),
     version="2.0.0",
     docs_url="/docs",
     redoc_url="/redoc",
 )
 
-# Internal only — allow only the TypeScript gateway. Browser must never hit this directly.
+# Allow the TypeScript gateway (3000) AND direct browser access to the prototype (8001).
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=[
+        "http://localhost:3000",
+        "http://localhost:8001",
+        "http://127.0.0.1:8001",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -72,6 +78,14 @@ app.add_middleware(
 app.include_router(analyse_router, tags=["Analysis"])
 app.include_router(history_router, tags=["History"])
 app.include_router(stream_router, tags=["Streaming"])
+app.include_router(ui_router,     tags=["UI"])
+
+
+@app.get("/", tags=["UI"], include_in_schema=False)
+async def root():
+    """Redirect root to the prototype UI."""
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse(url="/app/index.html")
 
 
 @app.get("/health", tags=["Health"])
@@ -94,6 +108,13 @@ async def list_tickers() -> dict:
 # ---------------------------------------------------------------------------
 # Dev entrypoint
 # ---------------------------------------------------------------------------
+
+_PROTO_DIR = _ROOT / "prototypes" / "beginner"
+if _PROTO_DIR.exists():
+    app.mount("/app", StaticFiles(directory=str(_PROTO_DIR), html=True), name="prototype")
+else:
+    logger.warning("[server] Prototype directory not found at %s — /app not mounted", _PROTO_DIR)
+
 
 if __name__ == "__main__":
     import uvicorn

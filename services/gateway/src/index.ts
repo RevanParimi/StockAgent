@@ -5,6 +5,7 @@ import analyseRoute from './routes/analyse.js'
 import historyRoute from './routes/history.js'
 import healthRoute from './routes/health.js'
 import schedulerRoute from './routes/scheduler.js'
+import uiRoute from './routes/ui.js'
 import { streamHandler } from './ws/stream.js'
 import { startAnalysisCron } from './jobs/analysis-cron.js'
 
@@ -18,6 +19,7 @@ app.route('/health', healthRoute)
 app.route('/api/analyse', analyseRoute)
 app.route('/api/history', historyRoute)
 app.route('/api/scheduler', schedulerRoute)
+app.route('/api/ui', uiRoute)
 
 // WebSocket proxy
 app.get('/ws/stream', streamHandler)

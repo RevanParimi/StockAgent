@@ -41,6 +41,9 @@ yfinance==1.3.0
 # Seasonal calendar seed parsing
 pyyaml>=6.0.0
 
+# FastAPI static file serving (prototype UI)
+aiofiles>=23.0.0
+
 # Testing
 pytest>=8.0.0
 pytest-asyncio>=0.23.0

@@ -62,6 +62,8 @@ from core.intelligence.rl.conviction.tracker import (
 from core.intelligence.algorithms.indicators.fetcher import get_price_history
 from core.intelligence.seasonal.calendar import SeasonalCalendar
 from core.intelligence.seasonal.validator import SeasonalValidator
+from core.intelligence.regime.detector import RegimeDetector, apply_regime_multipliers
+from core.schemas.feedback import RegimeSnapshot
 
 logging.basicConfig(
     level=settings.LOG_LEVEL,
@@ -292,6 +294,24 @@ def run_daily_review(
     )
 
     # ------------------------------------------------------------------ #
+    # Step 0 (P5): Detect market regime — non-fatal, falls back to NORMAL
+    # ------------------------------------------------------------------ #
+    regime_snapshot: RegimeSnapshot = RegimeSnapshot()   # safe NORMAL default
+    try:
+        regime_snapshot = RegimeDetector().detect(review_date, sector)
+        logger.info(
+            "[daily_review] Regime detected: %s (VIX=%.1f, FII_proxy=%+.2f%%, RSI=%.1f)",
+            regime_snapshot.regime_label,
+            regime_snapshot.vix_value,
+            regime_snapshot.fii_proxy_5d_pct,
+            regime_snapshot.sector_rsi,
+        )
+    except Exception as exc:
+        logger.warning(
+            "[daily_review] RegimeDetector failed — using NORMAL regime (non-fatal): %s", exc
+        )
+
+    # ------------------------------------------------------------------ #
     # Step 1: Load envelope + find today's prediction row
     # ------------------------------------------------------------------ #
     envelope = store.load_envelope(cycle_id)
@@ -400,6 +420,20 @@ def run_daily_review(
             existing_streak.reversion_prior,
         )
 
+    # P5: Inject regime narrative so FeedbackAgent is aware of current market conditions.
+    if regime_snapshot.regime_label != "NORMAL":
+        regime_note = (
+            f"\n\n[MARKET REGIME — {regime_snapshot.regime_label}]\n"
+            f"{regime_snapshot.narrative}\n"
+            f"Agent weight multipliers active today: "
+            + ", ".join(
+                f"{k}×{v:.2f}"
+                for k, v in regime_snapshot.multipliers.items()
+                if v != 1.0
+            )
+        )
+        market_context = (market_context or "Market context unavailable.") + regime_note
+
     # P2: Build 3-tier combined lessons summary for FeedbackAgent prompt.
     # TIER 1 (top 6): stock-specific from ticker_ledger
     # TIER 2 (top 3): sector-wide from shared sector_ledger
@@ -468,6 +502,25 @@ def run_daily_review(
     new_weight_version = f"v{updated_wm.weight_version}"
 
     # ------------------------------------------------------------------ #
+    # Step 5.5 (P5): Apply regime multipliers to effective weights.
+    # Regime modifiers are ephemeral — NOT written to weight_memory.json.
+    # Effective weights = learned × regime_multiplier, renormalised to 1.0.
+    # ------------------------------------------------------------------ #
+    try:
+        regime_effective_weights = apply_regime_multipliers(
+            updated_wm.effective_weights(), regime_snapshot.multipliers
+        )
+        logger.info(
+            "[daily_review] Regime '%s' effective weights applied for %s",
+            regime_snapshot.regime_label, ticker,
+        )
+    except Exception as exc:
+        logger.warning(
+            "[daily_review] Regime weight application failed (using learned weights, non-fatal): %s", exc
+        )
+        regime_effective_weights = updated_wm.effective_weights()
+
+    # ------------------------------------------------------------------ #
     # Step 6: LearningLedger — merge lessons + propagate to shared ledgers
     # ------------------------------------------------------------------ #
     updated_ledger, lesson_ids = fb_agent.merge_lessons_into_ledger(fb_output, ticker_ledger)
@@ -518,14 +571,14 @@ def run_daily_review(
     )
 
     # ------------------------------------------------------------------ #
-    # Step 7: Revise remaining forecasts with new weights + confidence adj
-    #         + P3 reversion prior dampening + persist updated streak
+    # Step 7: Revise remaining forecasts with regime-adjusted weights
+    #         + confidence adj + P3 reversion prior dampening + persist streak
     # ------------------------------------------------------------------ #
     _revise_remaining_forecasts(
         ticker=ticker,
         store=store,
         reviewed_date=date_str,
-        new_weights=updated_wm.effective_weights(),
+        new_weights=regime_effective_weights,
         revised_context=fb_output.revised_context,
         reversion_prior=final_reversion_prior,
         updated_streak=updated_streak,
@@ -600,6 +653,12 @@ def run_daily_review(
         "conviction_streak_days":   updated_streak.streak_days,
         "conviction_verdict":       updated_streak.current_verdict,
         "reversion_prior":          final_reversion_prior,
+        # P5: regime multiplier state
+        "regime_label":             regime_snapshot.regime_label,
+        "regime_vix":               regime_snapshot.vix_value,
+        "regime_fii_proxy_pct":     regime_snapshot.fii_proxy_5d_pct,
+        "regime_sector_rsi":        regime_snapshot.sector_rsi,
+        "regime_effective_weights": regime_effective_weights,
     }
 
     logger.info(

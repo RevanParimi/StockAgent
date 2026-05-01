@@ -357,6 +357,24 @@ class PredictionStore:
         return ticker_ledger, sector_ledger, market_ledger
 
     # ------------------------------------------------------------------
+    # P4: Prompt Enhancements  (*_{cycle_id}_prompt_enhancements.json)
+    # ------------------------------------------------------------------
+
+    def _enhancements_path(self, cycle_id: str) -> Path:
+        return self._dir / f"{cycle_id}_prompt_enhancements.json"
+
+    def load_enhancements(self, cycle_id: str | None = None) -> dict[str, list[str]]:
+        """
+        Load the prompt_enhancements.json for the given cycle.
+        Returns {} when the file does not exist (first cycle — no miss history yet).
+        """
+        cid  = cycle_id or self.current_cycle_id()
+        data = self._read_json(self._enhancements_path(cid))
+        if data is None:
+            return {}
+        return data.get("agent_enhancements", {})
+
+    # ------------------------------------------------------------------
     # Convenience: list all cycle IDs for this ticker
     # ------------------------------------------------------------------
 

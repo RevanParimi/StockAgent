@@ -286,3 +286,101 @@ WEIGHT_PENALTY_HIT_RATE: float = float(os.getenv("WEIGHT_PENALTY_HIT_RATE", "0.4
 # Cron expression for the daily feedback review job (default: weekdays 4:30pm IST = 11:00 UTC)
 FEEDBACK_CRON: str = os.getenv("FEEDBACK_CRON", "0 11 * * 1-5")
 
+# ---------------------------------------------------------------------------
+# P5 — Regime Detection Thresholds
+# ---------------------------------------------------------------------------
+
+VIX_VOLATILE_THRESHOLD: float = 22.0    # VIX above this → volatile macro
+VIX_LOW_VOL_THRESHOLD: float = 14.0     # VIX below this → low-vol trending
+FII_PROXY_THRESHOLD_PCT: float = 1.0    # Nifty 50 5-day return ±1.0% as FII proxy
+RSI_OVERBOUGHT: float = 70.0
+RSI_OVERSOLD: float = 30.0
+
+VIX_FALLBACK: float = 17.0              # NORMAL regime midpoint; used on yfinance error
+FII_PROXY_FALLBACK: float = 0.0         # Neutral; used on yfinance error
+RSI_FALLBACK: float = 50.0              # Neutral; used on computation error
+
+# Sector index tickers for RSI computation (yfinance symbols)
+REGIME_SECTOR_TICKERS: dict[str, str] = {
+    "automobile":      "^CNXAUTO",
+    "banking_bfsi":    "^NSEBANK",
+    "it_sector":       "^CNXIT",
+    "renewable_energy": "^CNXENERGY",
+}
+REGIME_SECTOR_FALLBACK_TICKER: str = "^NSEI"    # Nifty 50 fallback
+REGIME_VIX_TICKER: str = "^INDIAVIX"
+REGIME_FII_PROXY_TICKER: str = "^NSEI"          # Nifty 50 for 5-day momentum proxy
+
+# P5 — Regime Multiplier Table
+# Applied on top of learned WeightMemory weights (not stored, daily-only modifier).
+# Agents not listed default to 1.0 (passthrough).
+# Columns: MACRO_CRISIS, RISK_OFF, NORMAL, RISK_ON, MOMENTUM_EXTENDED, OVERSOLD
+REGIME_MULTIPLIERS: dict[str, dict[str, float]] = {
+    "MACRO_CRISIS": {
+        "risk_macro":         1.40,
+        "fundamentals":       0.80,
+        "sales_demand":       0.70,
+        "sentiment":          0.80,
+        "pattern_analysis":   0.90,
+        "competitive_intel":  1.00,
+        "valuation_catalyst": 0.90,
+        "raw_materials":      1.00,
+        "policy_regulatory":  1.00,
+    },
+    "RISK_OFF": {
+        "risk_macro":         1.20,
+        "fundamentals":       0.90,
+        "sales_demand":       0.85,
+        "sentiment":          0.90,
+        "pattern_analysis":   0.95,
+        "competitive_intel":  1.00,
+        "valuation_catalyst": 0.95,
+        "raw_materials":      1.00,
+        "policy_regulatory":  1.00,
+    },
+    "NORMAL": {
+        "risk_macro":         1.00,
+        "fundamentals":       1.00,
+        "sales_demand":       1.00,
+        "sentiment":          1.00,
+        "pattern_analysis":   1.00,
+        "competitive_intel":  1.00,
+        "valuation_catalyst": 1.00,
+        "raw_materials":      1.00,
+        "policy_regulatory":  1.00,
+    },
+    "RISK_ON": {
+        "risk_macro":         0.90,
+        "fundamentals":       1.10,
+        "sales_demand":       1.10,
+        "sentiment":          1.15,
+        "pattern_analysis":   0.95,
+        "competitive_intel":  1.00,
+        "valuation_catalyst": 1.10,
+        "raw_materials":      1.00,
+        "policy_regulatory":  1.00,
+    },
+    "MOMENTUM_EXTENDED": {
+        "risk_macro":         0.85,
+        "fundamentals":       1.05,
+        "sales_demand":       0.95,
+        "sentiment":          0.80,
+        "pattern_analysis":   1.20,
+        "competitive_intel":  1.00,
+        "valuation_catalyst": 1.10,
+        "raw_materials":      1.00,
+        "policy_regulatory":  1.00,
+    },
+    "OVERSOLD": {
+        "risk_macro":         1.10,
+        "fundamentals":       1.00,
+        "sales_demand":       1.00,
+        "sentiment":          0.90,
+        "pattern_analysis":   1.30,
+        "competitive_intel":  1.00,
+        "valuation_catalyst": 1.05,
+        "raw_materials":      1.00,
+        "policy_regulatory":  1.00,
+    },
+}
+

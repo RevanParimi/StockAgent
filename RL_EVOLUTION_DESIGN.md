@@ -619,7 +619,14 @@ and reduce horizon_confidence_adjustment.
 
 ---
 
-## 6. Priority 4 — PromptEnhancer: miss_counter → Search Queries
+## 6. Priority 4 — PromptEnhancer: miss_counter → Search Queries ✅ IMPLEMENTED
+
+> **Status:** Complete — 2026-05-01
+> **Files added:** `core/intelligence/prompt_enhancer/__init__.py`, `core/intelligence/prompt_enhancer/enhancer.py`
+> **Files modified:** `core/intelligence/rl/stores/prediction_store.py` (+`_enhancements_path`, +`load_enhancements`),
+> `core/pipeline/base_agent.py` (+`_extra_queries`, +`load_prompt_enhancements`, lazy load in `_rag_retrieve`),
+> `core/intelligence/rl/workflows/generate_forecast.py` (PromptEnhancer call + sector parameter)
+> **Tests:** `tests/unit/test_enhancer.py` (33 assertions across 4 test classes)
 
 ### Problem Statement
 
@@ -774,7 +781,20 @@ This makes the enhancement queries self-regulating.
 
 ---
 
-## 7. Priority 5 — Context-Conditional Regime Multiplier
+## 7. Priority 5 — Context-Conditional Regime Multiplier ✅ IMPLEMENTED
+
+> **Status:** Complete — 2026-05-01
+> **Files added:** `core/intelligence/regime/__init__.py`, `core/intelligence/regime/detector.py`
+> **Files modified:** `core/schemas/feedback.py` (+`RegimeSnapshot`),
+> `core/config/settings/base.py` (+`REGIME_MULTIPLIERS`, +VIX/FII/RSI threshold constants),
+> `core/intelligence/rl/workflows/daily_review.py` (Step 0 regime detection, Step 5.5 weight application,
+> narrative injection, `regime_snapshot` in summary dict)
+> **Tests:** `tests/unit/test_regime.py` (55 assertions across 7 test classes)
+>
+> **FII proxy:** Nifty 50 (^NSEI) 5-day price momentum (Option A, confirmed in prior session).
+> Positive 5-day return → inflow proxy; negative → outflow proxy. Threshold ±1.0%.
+> **RSI:** Wilder smoothing via pandas EWM (no ta-lib). Sector tickers: ^CNXAUTO / ^NSEBANK / ^CNXIT / ^CNXENERGY.
+> **Fallbacks:** VIX=17.0, FII_proxy=0.0, RSI=50.0 on any network/parse error → NORMAL regime.
 
 ### Problem Statement
 
@@ -975,8 +995,8 @@ P5 (Regime Multiplier)
 | P1 SeasonalCalendar | `seasonal/calendar.py`, `seasonal/validator.py`, `seasonal/seeds/*.yaml` | `generate_forecast.py`, `daily_review.py` | `tests/test_seasonal.py` | ✅ Done |
 | P2 Shared Ledger | `stores/ledger_propagator.py` | `prediction_store.py` (+sector + 5 methods), `feedback_agent.py`, `daily_review.py`, `feedback.py` | `tests/test_shared_ledger.py` | ✅ Done |
 | P3 Conviction Duration | `conviction/tracker.py` | `feedback.py` (`ConvictionStreak`), `daily_review.py` (Step 6.5 + `_revise_remaining_forecasts`) | `tests/test_conviction.py` | ✅ Done |
-| P4 PromptEnhancer | `prompt_enhancer/enhancer.py` | `base_agent.py`, `prediction_store.py` | `tests/test_enhancer.py` | ⏳ Pending |
-| P5 Regime Multiplier | `regime/detector.py` | `weight_adapter.py` or `signal_aggregator.py`, `settings.py` | `tests/test_regime.py` | ⏳ Pending |
+| P4 PromptEnhancer | `prompt_enhancer/enhancer.py` | `base_agent.py`, `prediction_store.py`, `generate_forecast.py` | `tests/test_enhancer.py` (33 tests) | ✅ Done |
+| P5 Regime Multiplier | `regime/detector.py` | `feedback.py` (`RegimeSnapshot`), `settings.py` (`REGIME_MULTIPLIERS`), `daily_review.py` (Step 0 + Step 5.5) | `tests/test_regime.py` (55 tests) | ✅ Done |
 
 ### File Tree (Post-Implementation)
 

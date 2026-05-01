@@ -92,7 +92,9 @@
       "Bash(python3 -)",
       "Bash(python -m pytest tests/unit/test_shared_ledger.py -v --tb=short)",
       "Bash(python -m pytest tests/unit/ -v --tb=short)",
-      "Bash(python -m pytest tests/unit/test_conviction.py -v --tb=short)"
+      "Bash(python -m pytest tests/unit/test_conviction.py -v --tb=short)",
+      "Bash(python -m pytest tests/unit/test_regime.py -v --tb=short)",
+      "Bash(python -m scripts.generate_rl_reference)"
     ]
   }
 }

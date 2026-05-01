@@ -422,3 +422,22 @@ class FeedbackAgentOutput(BaseModel):
     agent_score_drift: dict[str, float] = Field(default_factory=dict)
     new_lessons: list[RawLesson] = Field(default_factory=list)
     revised_context: RevisedContext = Field(default_factory=RevisedContext)
+
+
+# ---------------------------------------------------------------------------
+# P5 — Regime Snapshot
+# ---------------------------------------------------------------------------
+
+class RegimeSnapshot(BaseModel):
+    """
+    Output of RegimeDetector.detect() for a specific date.
+    Ephemeral — used only for the daily weight modifier computation.
+    Not written to weight_memory.json.
+    """
+    regime_label: str = "NORMAL"           # one of 6 labels: MACRO_CRISIS, RISK_OFF, NORMAL, RISK_ON, MOMENTUM_EXTENDED, OVERSOLD
+    vix_value: float = 17.0
+    fii_proxy_5d_pct: float = 0.0          # Nifty 50 5-day return % (proxy for FII direction)
+    sector_rsi: float = 50.0
+    multipliers: dict[str, float] = Field(default_factory=dict)   # per-agent regime multipliers
+    narrative: str = ""                    # one-sentence context for LLM injection
+    as_of_date: str = ""                   # ISO date

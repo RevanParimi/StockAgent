@@ -25,6 +25,7 @@ from core.schemas.pipeline import FinalReport
 from core.intelligence.rl.stores.prediction_store import PredictionStore
 from core.intelligence.algorithms.indicators.fetcher import get_price_history
 from core.intelligence.seasonal.calendar import SeasonalCalendar
+from core.intelligence.prompt_enhancer.enhancer import PromptEnhancer
 
 logging.basicConfig(
     level=settings.LOG_LEVEL,
@@ -153,14 +154,21 @@ def _build_daily_forecasts(
     return forecasts
 
 
-def generate_forecast(ticker: str) -> PredictionEnvelope:
+def generate_forecast(ticker: str, sector: str = "automobile") -> PredictionEnvelope:
     """
     Run full analysis + generate 30-day prediction envelope for one ticker.
 
     If a WeightMemory file exists, the orchestrator's SignalAggregator will
     use learned weights (injected via the store before calling orchestrator).
+
+    Parameters
+    ----------
+    ticker : str
+        NSE ticker symbol (e.g. "MARUTI").
+    sector : str
+        Sector graph to use (default: "automobile").
     """
-    store = PredictionStore(ticker)
+    store = PredictionStore(ticker, sector=sector)
     cycle_id = store.current_cycle_id()
 
     logger.info("[generate_forecast] Starting forecast for %s | cycle=%s", ticker, cycle_id)
@@ -188,9 +196,31 @@ def generate_forecast(ticker: str) -> PredictionEnvelope:
     # Load learning ledger for seasonal RL lesson merging (best-effort; non-fatal)
     ledger = store.load_learning_ledger()
 
+    # P4: Generate prompt enhancements from miss_counter and cache for the cycle.
+    # Each agent will load these lazily at run() time via PredictionStore.
+    # Non-fatal: if ledger is empty or enhancer fails, the cycle proceeds normally.
+    try:
+        enhancer = PromptEnhancer()
+        enhancements = enhancer.enhance(ticker, ledger, top_n=3)
+        if enhancements:
+            enhancer.save_enhancements(ticker, sector, enhancements, cycle_id, ledger)
+            logger.info(
+                "[generate_forecast] Prompt enhancements saved for %s cycle %s (%d agents)",
+                ticker, cycle_id, len(enhancements),
+            )
+        else:
+            logger.debug(
+                "[generate_forecast] No prompt enhancements for %s (miss_counter empty or first cycle)",
+                ticker,
+            )
+    except Exception as exc:
+        logger.warning(
+            "[generate_forecast] PromptEnhancer failed (non-fatal): %s", exc
+        )
+
     # SeasonalCalendar injects pre-seeded domain knowledge per trading day.
     # Currently only automobile is fully seeded; other sectors load what's available.
-    seasonal_calendar = SeasonalCalendar(sector="automobile")
+    seasonal_calendar = SeasonalCalendar(sector=sector)
 
     trading_dates = _trading_dates(date.today(), HORIZON)
     forecasts = _build_daily_forecasts(

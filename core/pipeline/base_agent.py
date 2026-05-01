@@ -74,6 +74,9 @@ class BaseAgent(ABC):
         self._async_client = None
         # Populated by LLM call methods; read by run()/run_async() for logging.
         self._last_usage: dict[str, int] = {"prompt_tokens": 0, "completion_tokens": 0}
+        # P4: extra search queries from PromptEnhancer (loaded lazily per cycle).
+        # {agent_name: [query_1, query_2, ...]}
+        self._extra_queries: dict[str, list[str]] = {}
 
     def _get_async_client(self):
         if self._async_client is None:
@@ -414,6 +417,18 @@ class BaseAgent(ABC):
                 )
                 for q in mod.CONTEXT_SEARCH_QUERIES[:3]
             ]
+            # P4: Lazy-load prompt enhancements from PredictionStore if not yet loaded.
+            # Only attempted when self.sector is set (so we can build the correct path).
+            if not self._extra_queries and self.sector:
+                try:
+                    from core.intelligence.rl.stores.prediction_store import PredictionStore
+                    _store = PredictionStore(query.ticker, sector=self.sector)
+                    self.load_prompt_enhancements(_store, _store.current_cycle_id())
+                except Exception as _exc:
+                    logger.debug("[%s] Enhancement lazy-load skipped: %s", self.agent_name, _exc)
+            # Append up to 2 extra queries for this agent (avoid overwhelming RAG)
+            extra = self._extra_queries.get(self.agent_name, [])
+            raw_queries = raw_queries + extra[:2]
             search_query = " ".join(raw_queries[:2])
         else:
             search_query = f"{query.ticker} {query.company_name} automobile India"
@@ -443,6 +458,31 @@ class BaseAgent(ABC):
             error="no_real_time_data",
             data_freshness="unavailable",
         )
+
+    # ------------------------------------------------------------------
+    # P4: Prompt Enhancements
+    # ------------------------------------------------------------------
+
+    def load_prompt_enhancements(
+        self,
+        store: "Any",       # PredictionStore — avoid circular import
+        cycle_id: str,
+    ) -> None:
+        """
+        Pre-load per-cycle prompt enhancements from PredictionStore.
+        Stores all agent queries in self._extra_queries.
+        Called externally (e.g. orchestrator) before run(), or lazily inside
+        _rag_retrieve() when sector is known.
+        """
+        try:
+            enhancements = store.load_enhancements(cycle_id)
+            self._extra_queries = enhancements
+            logger.debug(
+                "[%s] Loaded prompt enhancements for cycle %s (%d agents)",
+                self.agent_name, cycle_id, len(enhancements),
+            )
+        except Exception as exc:
+            logger.debug("[%s] Could not load prompt enhancements: %s", self.agent_name, exc)
 
     @staticmethod
     def _clamp(value: float, lo: float = 0.0, hi: float = 1.0) -> float:

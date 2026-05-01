@@ -51,6 +51,8 @@
 <script type="text/babel" src="auth.jsx"></script>
 <script type="text/babel" src="home.jsx"></script>
 <script type="text/babel" src="agents-page.jsx"></script>
+<script type="text/babel" src="portfolio.jsx"></script>
+<script type="text/babel" src="learn.jsx"></script>
 <script type="text/babel" src="tweaks-panel.jsx"></script>
 
 <script type="text/babel">
@@ -77,9 +79,11 @@ function App() {
   const closeChat = () => setChat(false);
 
   return <>
-    {screen === 'auth'   && <AuthScreen onAuthed={goHome}/>}
-    {screen === 'home'   && <Home goAgents={goAgents} openChat={openChat}/>}
-    {screen === 'agents' && <AgentsPage goHome={goHome} openChat={openChat}/>}
+    {screen === 'auth'      && <AuthScreen onAuthed={goHome}/>}
+    {screen === 'home'      && <Home onNav={setScreen} openChat={openChat}/>}
+    {screen === 'agents'    && <AgentsPage onNav={setScreen} goHome={goHome} openChat={openChat}/>}
+    {screen === 'portfolio' && <PortfolioPage onNav={setScreen} openChat={openChat}/>}
+    {screen === 'learn'     && <LearnPage onNav={setScreen} openChat={openChat}/>}
 
     {screen !== 'auth' && !chat && <SphereOrb onOpen={openChat} mode={tweaks.sphereMode}/>}
     <ChatOverlay open={chat} onClose={closeChat} mode={tweaks.sphereMode}/>
@@ -91,9 +95,11 @@ function App() {
         display:'flex', gap:6, padding:6, background:'var(--bg-surface)',
         border:'1px solid var(--border)', borderRadius:999, boxShadow:'var(--shadow-md)'
       }}>
-        <NavChip active={screen==='home'}   onClick={goHome}              icon={<Icon.Home size={14}/>} label="Home"/>
-        <NavChip active={screen==='agents'} onClick={goAgents}            icon={<Icon.Cpu size={14}/>}  label="Agents"/>
-        <NavChip                            onClick={()=>setScreen('auth')} icon={<Icon.User size={14}/>} label="Sign out"/>
+        <NavChip active={screen==='home'}      onClick={goHome}                    icon={<Icon.Home size={14}/>}      label="Home"/>
+        <NavChip active={screen==='agents'}    onClick={goAgents}                  icon={<Icon.Cpu size={14}/>}       label="Agents"/>
+        <NavChip active={screen==='portfolio'} onClick={()=>setScreen('portfolio')} icon={<Icon.Briefcase size={14}/>} label="Portfolio"/>
+        <NavChip active={screen==='learn'}     onClick={()=>setScreen('learn')}    icon={<Icon.Book size={14}/>}      label="Learn"/>
+        <NavChip                               onClick={()=>setScreen('auth')}     icon={<Icon.User size={14}/>}      label="Sign out"/>
         {window.__LIVE_DATA && (
           <span style={{
             alignSelf:'center', padding:'3px 8px', borderRadius:999, fontSize:10, fontWeight:700,
@@ -120,6 +126,8 @@ function App() {
         <TweakButton onClick={()=>setScreen('auth')}>Auth screen</TweakButton>
         <TweakButton onClick={goHome}>Home</TweakButton>
         <TweakButton onClick={goAgents}>Agents</TweakButton>
+        <TweakButton onClick={()=>setScreen('portfolio')}>Portfolio</TweakButton>
+        <TweakButton onClick={()=>setScreen('learn')}>Learn</TweakButton>
       </TweakSection>
       <TweakSection title="Data">
         <div style={{fontSize:11,color:'var(--ink-3)',padding:'4px 0'}}>

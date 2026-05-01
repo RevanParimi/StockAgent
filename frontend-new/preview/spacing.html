@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<title>StockAgent · Spacing</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@500;700;800&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  body { margin: 0; padding: 32px; background: #050810; color: #f1f5f9; font-family: 'Inter', sans-serif; }
+  .wrap { max-width: 1140px; }
+  .eyebrow { font: 700 10px/1 'JetBrains Mono', monospace; letter-spacing: 0.25em; color: #06b6d4; text-transform: uppercase; }
+  h1 { font-size: 28px; font-weight: 800; letter-spacing: -0.01em; margin: 10px 0 6px; }
+  p.lede { color: #94a3b8; font-size: 14px; max-width: 680px; margin: 0 0 28px; }
+  h2 { font: 700 11px/1 'JetBrains Mono', monospace; letter-spacing: 0.18em; text-transform: uppercase; color: #94a3b8; margin: 32px 0 14px; }
+  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+  .panel { background: rgba(12,17,32,0.7); border: 1px solid #1e293b; border-radius: 16px; padding: 20px; backdrop-filter: blur(20px); }
+  .bar-row { display: flex; align-items: center; gap: 16px; padding: 8px 0; border-bottom: 1px solid rgba(30,41,59,0.5); }
+  .bar-row:last-child { border-bottom: none; }
+  .label { font: 700 11px/1 'JetBrains Mono', monospace; color: #94a3b8; width: 60px; }
+  .bar { height: 14px; background: linear-gradient(90deg, #06b6d4, #3b82f6); border-radius: 7px; box-shadow: 0 0 10px rgba(6,182,212,0.3); }
+  .val { font: 700 11px/1 'JetBrains Mono', monospace; color: #475569; margin-left: auto; }
+  .radius-row { display: flex; gap: 20px; align-items: flex-end; }
+  .r-box { width: 100px; height: 100px; border: 1px solid #334155; background: rgba(6,182,212,0.08); display: flex; align-items: flex-end; justify-content: center; font: 700 11px/1 'JetBrains Mono', monospace; color: #94a3b8; padding: 8px; }
+  .r-label { font: 700 10px/1 'JetBrains Mono', monospace; letter-spacing: 0.1em; text-transform: uppercase; color: #475569; display: block; margin-top: 8px; text-align: center; }
+  .motion-row { display: grid; grid-template-columns: 140px 1fr 80px; gap: 16px; align-items: center; padding: 10px 0; border-bottom: 1px solid rgba(30,41,59,0.5); }
+  .motion-row:last-child { border: none; }
+  .motion-row .name { font: 700 13px/1 'Inter'; color: #f1f5f9; }
+  .motion-row .name small { font-weight: 400; color: #94a3b8; display: block; margin-top: 3px; font-size: 11px; }
+  .motion-row .trk { height: 4px; background: #1e293b; border-radius: 2px; position: relative; overflow: hidden; }
+  .motion-row .trk span { position: absolute; top: 0; bottom: 0; left: 0; background: #06b6d4; border-radius: 2px; box-shadow: 0 0 6px #06b6d4; }
+  .motion-row .dur { font: 700 12px/1 'JetBrains Mono', monospace; color: #06b6d4; text-align: right; }
+  .ease-row { margin-top: 14px; display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .ease-card { background: rgba(12,17,32,0.5); border: 1px solid #1e293b; border-radius: 12px; padding: 14px; }
+  .ease-card .t { font: 700 11px/1 'JetBrains Mono', monospace; color: #94a3b8; letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 8px; }
+  .ease-card .code { font: 700 12px/1.5 'JetBrains Mono', monospace; color: #06b6d4; word-break: break-all; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="eyebrow">Spacing · Radii · Motion</div>
+  <h1>Dense rhythm, restrained motion.</h1>
+  <p class="lede">The grid is a 4px base. Cards breathe at 16–20px internally. Radii are 12 · 16 · 999. Motion is deliberate — every duration maps to a specific kind of feedback.</p>
+
+  <div class="cols">
+    <div class="panel">
+      <h2 style="margin-top:0">Spacing scale (4px base)</h2>
+      <div class="bar-row"><span class="label">sp-1</span><div class="bar" style="width:4px"></div><span class="val">4px</span></div>
+      <div class="bar-row"><span class="label">sp-2</span><div class="bar" style="width:8px"></div><span class="val">8px</span></div>
+      <div class="bar-row"><span class="label">sp-3</span><div class="bar" style="width:12px"></div><span class="val">12px</span></div>
+      <div class="bar-row"><span class="label">sp-4</span><div class="bar" style="width:16px"></div><span class="val">16px · card gap</span></div>
+      <div class="bar-row"><span class="label">sp-5</span><div class="bar" style="width:20px"></div><span class="val">20px · card padding</span></div>
+      <div class="bar-row"><span class="label">sp-6</span><div class="bar" style="width:24px"></div><span class="val">24px · page padding</span></div>
+      <div class="bar-row"><span class="label">sp-8</span><div class="bar" style="width:32px"></div><span class="val">32px · section break</span></div>
+    </div>
+
+    <div class="panel">
+      <h2 style="margin-top:0">Radii</h2>
+      <div class="radius-row">
+        <div>
+          <div class="r-box" style="border-radius:8px">8px</div>
+          <span class="r-label">r-sm · input</span>
+        </div>
+        <div>
+          <div class="r-box" style="border-radius:12px">12px</div>
+          <span class="r-label">r-md · inner tile</span>
+        </div>
+        <div>
+          <div class="r-box" style="border-radius:16px">16px</div>
+          <span class="r-label">r-lg · card</span>
+        </div>
+        <div>
+          <div class="r-box" style="border-radius:999px;width:120px;height:36px">999</div>
+          <span class="r-label">r-full · pill</span>
+        </div>
+      </div>
+
+      <h2>Layout rules</h2>
+      <div style="font-size:13px;color:#94a3b8;line-height:1.8">
+        <div>&bull; Card gutter: 16px desktop, 12px mobile</div>
+        <div>&bull; Agent grid: 4 cols desktop, 2 cols tablet, 1 col mobile</div>
+        <div>&bull; Analyze max-width: 1120px (960 without sidebar)</div>
+        <div>&bull; Dashboard: 28% · 1fr · 28%</div>
+        <div>&bull; Border: always 1px, never 2+</div>
+        <div>&bull; Max hit target: 44px</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel" style="margin-top:24px">
+    <h2 style="margin-top:0">Motion — signature durations</h2>
+    <div class="motion-row"><div class="name">Hover <small>border brighten, opacity</small></div><div class="trk"><span style="width:15%"></span></div><div class="dur">200ms</div></div>
+    <div class="motion-row"><div class="name">State change <small>agent pending → analyzing</small></div><div class="trk"><span style="width:25%"></span></div><div class="dur">300ms</div></div>
+    <div class="motion-row"><div class="name">Spring pop <small>agent complete · scale 1 → 1.05 → 1</small></div><div class="trk"><span style="width:35%"></span></div><div class="dur">400ms</div></div>
+    <div class="motion-row"><div class="name">Card flip <small>VerdictReveal 180° Y-rotation</small></div><div class="trk"><span style="width:55%"></span></div><div class="dur">700ms</div></div>
+    <div class="motion-row"><div class="name">Shimmer loop <small>in-flight agent bar</small></div><div class="trk"><span style="width:80%"></span></div><div class="dur">1200ms</div></div>
+    <div class="motion-row"><div class="name">Score sweep <small>gauge needle + counter</small></div><div class="trk"><span style="width:100%"></span></div><div class="dur">1500ms</div></div>
+
+    <div class="ease-row">
+      <div class="ease-card">
+        <div class="t">Default ease</div>
+        <div class="code">cubic-bezier(0.4, 0, 0.2, 1)</div>
+        <div style="font-size:11px;color:#475569;margin-top:6px">Framer's "easeInOut". Used for 90% of transitions.</div>
+      </div>
+      <div class="ease-card">
+        <div class="t">Score sweep ease-out cubic</div>
+        <div class="code">1 - Math.pow(1 - t, 3)</div>
+        <div style="font-size:11px;color:#475569;margin-top:6px">RAF-driven. Ends cleanly — no overshoot, no bounce.</div>
+      </div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

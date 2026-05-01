@@ -94,7 +94,12 @@
       "Bash(python -m pytest tests/unit/ -v --tb=short)",
       "Bash(python -m pytest tests/unit/test_conviction.py -v --tb=short)",
       "Bash(python -m pytest tests/unit/test_regime.py -v --tb=short)",
-      "Bash(python -m scripts.generate_rl_reference)"
+      "Bash(python -m scripts.generate_rl_reference)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:8001/app/index.html)",
+      "Bash(curl -s http://localhost:8001/app/index.html)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:8001/app/home.jsx)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:8001/app/data.jsx)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:8001/app/auth.jsx)"
     ]
   }
 }

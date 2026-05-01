@@ -33,52 +33,7 @@ const Icon = {
   User:      (p)=> <I {...p}><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></I>,
   Google:    (p)=> <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" {...p} width={p.size||18} height={p.size||18}><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84A11 11 0 0 0 12 23z"/><path fill="#FBBC05" d="M5.84 14.1A6.6 6.6 0 0 1 5.5 12c0-.73.13-1.44.34-2.1V7.07H2.18A11 11 0 0 0 1 12c0 1.77.42 3.45 1.18 4.93l3.66-2.83z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.07.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.83C6.71 7.31 9.14 5.38 12 5.38z"/></svg>,
   Apple:     (p)=> <I {...p} sw={1.5}><path d="M12 20.94c1.5 0 2.75-.67 3.5-1.94 1.5-2.5 1.5-7-1.5-9.94-1-1-1-2-1-3 0-1.5 1-2 1-2-1 0-3 1-4 3-1-2-3-3-4-3 0 0 1 .5 1 2 0 1 0 2-1 3-3 2.94-3 7.44-1.5 9.94.75 1.27 2 1.94 3.5 1.94 1 0 2-.5 3-.5s2 .5 3 .5z"/></I>,
-  Briefcase: (p)=> <I {...p}><rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/><line x1="12" y1="12" x2="12" y2="12"/><path d="M2 12h20"/></I>,
+  Briefcase: (p)=> <I {...p}><rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></I>,
   Book:      (p)=> <I {...p}><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></I>,
 };
 window.Icon = Icon;
-
-// ─── Agent icon component ──────────────────────────────────────────────────
-// Tries to load a real SVG from /app/icons/{key}.svg.
-// The frontend/ directory is mounted at /app by FastAPI, so all static assets
-// inside it are served under that prefix.
-// Falls back to the emoji if the file is missing or fails to load.
-//
-// Usage: <AgentIcon agentKey="sales_demand" emoji="📊" size={48}/>
-
-function AgentIcon({ agentKey, emoji, size = 48 }) {
-  const [useSvg, setUseSvg] = React.useState(true);
-  const svgSrc = `/app/icons/${agentKey}.svg`;
-
-  // If the img fails to load (placeholder or missing file detected as placeholder),
-  // fall back to the emoji. We detect placeholders by checking image natural dimensions —
-  // real icons are typically non-square or larger than 48px internally.
-  const handleLoad = (e) => {
-    // Placeholder SVGs are 48×48. Real downloaded icons are usually fine as-is.
-    // No special handling needed — if it loads, use it.
-  };
-  const handleError = () => setUseSvg(false);
-
-  if (!useSvg) {
-    return (
-      <span style={{ fontSize: size * 0.55, lineHeight: 1, display:'grid', placeItems:'center',
-                     width: size, height: size }}>
-        {emoji}
-      </span>
-    );
-  }
-
-  return (
-    <img
-      src={svgSrc}
-      alt={agentKey}
-      width={size}
-      height={size}
-      onLoad={handleLoad}
-      onError={handleError}
-      style={{ objectFit:'contain', display:'block' }}
-    />
-  );
-}
-
-window.AgentIcon = AgentIcon;

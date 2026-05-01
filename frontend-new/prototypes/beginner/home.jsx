@@ -182,8 +182,8 @@ function SectionHead({ title, subtitle, action }) {
 // ---------- TODAY pane ----------
 function TodayPane({ data }) {
   const [range, setRange] = useStateHome('1M');
-  const ranges = window.NIFTY_AUTO_RANGES || {};
-  const r = ranges[range] || { points: window.NIFTY_AUTO_HISTORY || [], label:'30 days', change: 1.24 };
+  const ranges = window.NIFTY_AUTO_RANGES;
+  const r = ranges[range];
 
   return (
     <div style={{ display:'grid', gridTemplateColumns:'1.5fr 1fr', gap:20 }}>
@@ -533,8 +533,27 @@ function Sparkline({ values, height=60, color='var(--cyan)' }) {
   );
 }
 
+function RangeTabs({ value, onChange, options=['1W','1M','3M','6M','1Y'] }) {
+  return (
+    <div style={{
+      display:'flex', gap:2, padding:3, background:'var(--bg-tinted)', borderRadius:8
+    }}>
+      {options.map(o => (
+        <button key={o} onClick={()=>onChange(o)} style={{
+          padding:'4px 8px', borderRadius:6, border:'none',
+          fontSize:11, fontWeight:700, letterSpacing:'.02em',
+          fontFamily:'var(--font-mono, ui-monospace, monospace)',
+          background: value===o ? 'var(--bg-surface)' : 'transparent',
+          color: value===o ? 'var(--ink-1)' : 'var(--ink-3)',
+          boxShadow: value===o ? 'var(--shadow-sm)' : 'none',
+          cursor:'pointer', transition:'all .15s'
+        }}>{o}</button>
+      ))}
+    </div>
+  );
+}
+
 window.Home = Home;
 window.TopNav = TopNav;
-window.SectionHead = SectionHead;
-window.Sparkline = Sparkline;
 window.RangeTabs = RangeTabs;
+window.Sparkline = Sparkline;

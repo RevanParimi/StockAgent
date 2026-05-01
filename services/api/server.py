@@ -109,11 +109,11 @@ async def list_tickers() -> dict:
 # Dev entrypoint
 # ---------------------------------------------------------------------------
 
-_PROTO_DIR = _ROOT / "prototypes" / "beginner"
-if _PROTO_DIR.exists():
-    app.mount("/app", StaticFiles(directory=str(_PROTO_DIR), html=True), name="prototype")
+_FRONTEND_DIR = _ROOT / "frontend"
+if _FRONTEND_DIR.exists():
+    app.mount("/app", StaticFiles(directory=str(_FRONTEND_DIR), html=True), name="frontend")
 else:
-    logger.warning("[server] Prototype directory not found at %s — /app not mounted", _PROTO_DIR)
+    logger.warning("[server] Frontend directory not found at %s — /app not mounted", _FRONTEND_DIR)
 
 
 if __name__ == "__main__":

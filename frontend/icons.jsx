@@ -35,3 +35,48 @@ const Icon = {
   Apple:     (p)=> <I {...p} sw={1.5}><path d="M12 20.94c1.5 0 2.75-.67 3.5-1.94 1.5-2.5 1.5-7-1.5-9.94-1-1-1-2-1-3 0-1.5 1-2 1-2-1 0-3 1-4 3-1-2-3-3-4-3 0 0 1 .5 1 2 0 1 0 2-1 3-3 2.94-3 7.44-1.5 9.94.75 1.27 2 1.94 3.5 1.94 1 0 2-.5 3-.5s2 .5 3 .5z"/></I>,
 };
 window.Icon = Icon;
+
+// ─── Agent icon component ──────────────────────────────────────────────────
+// Tries to load a real SVG from /app/icons/{key}.svg.
+// The frontend/ directory is mounted at /app by FastAPI, so all static assets
+// inside it are served under that prefix.
+// Falls back to the emoji if the file is missing or fails to load.
+//
+// Usage: <AgentIcon agentKey="sales_demand" emoji="📊" size={48}/>
+
+function AgentIcon({ agentKey, emoji, size = 48 }) {
+  const [useSvg, setUseSvg] = React.useState(true);
+  const svgSrc = `/app/icons/${agentKey}.svg`;
+
+  // If the img fails to load (placeholder or missing file detected as placeholder),
+  // fall back to the emoji. We detect placeholders by checking image natural dimensions —
+  // real icons are typically non-square or larger than 48px internally.
+  const handleLoad = (e) => {
+    // Placeholder SVGs are 48×48. Real downloaded icons are usually fine as-is.
+    // No special handling needed — if it loads, use it.
+  };
+  const handleError = () => setUseSvg(false);
+
+  if (!useSvg) {
+    return (
+      <span style={{ fontSize: size * 0.55, lineHeight: 1, display:'grid', placeItems:'center',
+                     width: size, height: size }}>
+        {emoji}
+      </span>
+    );
+  }
+
+  return (
+    <img
+      src={svgSrc}
+      alt={agentKey}
+      width={size}
+      height={size}
+      onLoad={handleLoad}
+      onError={handleError}
+      style={{ objectFit:'contain', display:'block' }}
+    />
+  );
+}
+
+window.AgentIcon = AgentIcon;

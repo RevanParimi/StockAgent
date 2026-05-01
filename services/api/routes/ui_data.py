@@ -161,11 +161,17 @@ def _score_store():
 
 
 def _fetch_yf_price(yf_ticker: str) -> tuple[float, float]:
-    """Return (current_price, change_pct). Sync — call via asyncio.to_thread."""
+    """
+    Return (current_price, change_pct). Sync — call via asyncio.to_thread.
+
+    Uses period="1mo" instead of "5d" — NSE tickers on yfinance frequently
+    return empty results on short periods due to exchange delays or weekend gaps.
+    1mo is reliable and still gives us the last two trading days we need.
+    """
     try:
         import yfinance as yf
         t = yf.Ticker(yf_ticker)
-        hist = t.history(period="5d", auto_adjust=True)
+        hist = t.history(period="1mo", auto_adjust=True)
         if hist.empty or len(hist) < 1:
             return 0.0, 0.0
         current = float(hist["Close"].iloc[-1])

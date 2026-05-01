@@ -87,7 +87,9 @@
       "Bash(python -m pytest tests/unit/test_seasonal.py -v --tb=short)",
       "Bash(python -m pytest tests/unit/ tests/contract/ -v --tb=short -q)",
       "Bash(git -C \"c:/Users/RevanParimi/OneDrive - IBM/Documents/Gen AI Projects/StockAgent-main\" show HEAD:frontend/index.html)",
-      "Bash(git -C \"c:/Users/RevanParimi/OneDrive - IBM/Documents/Gen AI Projects/StockAgent-main\" show HEAD:frontend/package.json)"
+      "Bash(git -C \"c:/Users/RevanParimi/OneDrive - IBM/Documents/Gen AI Projects/StockAgent-main\" show HEAD:frontend/package.json)",
+      "Bash(git -C \"c:/Users/RevanParimi/OneDrive - IBM/Documents/Gen AI Projects/StockAgent-main\" mv prototypes/beginner frontend)",
+      "Bash(python3 -)"
     ]
   }
 }

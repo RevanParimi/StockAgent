@@ -188,8 +188,8 @@ function AgentCard({ a, onToggle, onOpen }) {
           <div style={{
             width:48, height:48, borderRadius:12,
             background: 'linear-gradient(135deg, var(--cyan-soft), var(--violet-soft))',
-            display:'grid', placeItems:'center', fontSize:24, flexShrink:0
-          }}>{a.icon}</div>
+            display:'grid', placeItems:'center', flexShrink:0, overflow:'hidden'
+          }}><AgentIcon agentKey={a.key} emoji={a.icon} size={32}/></div>
           <div style={{ flex:1, minWidth:0 }}>
             <div style={{ fontSize:14, fontWeight:700, marginBottom:2 }}>{a.name}</div>
             <div style={{ fontSize:11, color:'var(--ink-3)' }} className="mono">{a.key}</div>
@@ -237,7 +237,9 @@ function AgentDrawer({ a, onClose, onToggle, onWeight }) {
           display:'flex', alignItems:'flex-start', gap:14 }}>
           <div style={{ width:52, height:52, borderRadius:13,
             background:'linear-gradient(135deg, var(--cyan-soft), var(--violet-soft))',
-            display:'grid', placeItems:'center', fontSize:26 }}>{a.icon}</div>
+            display:'grid', placeItems:'center', overflow:'hidden' }}>
+            <AgentIcon agentKey={a.key} emoji={a.icon} size={34}/>
+          </div>
           <div style={{ flex:1, minWidth:0 }}>
             <div style={{ fontSize:18, fontWeight:700 }}>{a.name}</div>
             <div className="mono" style={{ fontSize:11, color:'var(--ink-3)' }}>{a.key}</div>

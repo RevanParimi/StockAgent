@@ -129,6 +129,14 @@ class FeedbackAgent:
         )
         system_prompt = build_system_prompt(fb_input.sector, agent_names)
 
+        # P2: use the pre-built 3-tier summary from fb_input when available;
+        # fall back to the single-ledger summary for backward compatibility.
+        active_lessons = (
+            fb_input.active_lessons_summary
+            if fb_input.active_lessons_summary
+            else ledger.active_lessons_summary()
+        )
+
         user_prompt = format_feedback_prompt(
             ticker=fb_input.ticker,
             sector=fb_input.sector,
@@ -141,7 +149,7 @@ class FeedbackAgent:
             todays_agent_scores=fb_input.todays_agent_scores,
             market_context_today=fb_input.market_context_today,
             key_assumptions_made=fb_input.key_assumptions_made,
-            active_lessons_summary=ledger.active_lessons_summary(),
+            active_lessons_summary=active_lessons,
         )
 
         raw = self._call_llm(system_prompt, user_prompt)

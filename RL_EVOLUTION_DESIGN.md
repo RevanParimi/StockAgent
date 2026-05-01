@@ -331,7 +331,13 @@ daily_review.py
 
 ---
 
-## 4. Priority 2 — Shared Sector + Market Ledger Propagation
+## 4. Priority 2 — Shared Sector + Market Ledger Propagation ✅ IMPLEMENTED
+
+> **Status:** Complete — 2026-05-01
+> **Files added:** `core/intelligence/rl/stores/ledger_propagator.py`
+> **Files modified:** `core/schemas/feedback.py`, `core/intelligence/rl/stores/prediction_store.py`,
+> `core/intelligence/rl/agents/feedback_agent.py`, `core/intelligence/rl/workflows/daily_review.py`
+> **Tests:** `tests/unit/test_shared_ledger.py` (48 assertions across 22 test cases)
 
 ### Problem Statement
 
@@ -492,7 +498,13 @@ This prevents single-ticker noise from becoming sector-wide truth too quickly.
 
 ---
 
-## 5. Priority 3 — Conviction Duration & Mean Reversion Prior
+## 5. Priority 3 — Conviction Duration & Mean Reversion Prior ✅ IMPLEMENTED
+
+> **Status:** Complete — 2026-05-01
+> **Files added:** `core/intelligence/rl/conviction/__init__.py`, `core/intelligence/rl/conviction/tracker.py`
+> **Files modified:** `core/schemas/feedback.py` (`ConvictionStreak` + `PredictionEnvelope.conviction_streak`),
+> `core/intelligence/rl/workflows/daily_review.py` (Step 6.5, streak warning injection, `_revise_remaining_forecasts`)
+> **Tests:** `tests/unit/test_conviction.py` (56 assertions across 27 test cases)
 
 ### Problem Statement
 
@@ -958,13 +970,13 @@ P5 (Regime Multiplier)
 
 ### Sprint / Milestone Table
 
-| Priority | New Files | Modified Files | Test File | Estimated Complexity |
+| Priority | New Files | Modified Files | Test File | Status |
 |---|---|---|---|---|
-| P1 SeasonalCalendar | `seasonal/calendar.py`, `seasonal/validator.py`, `seasonal/seeds/*.yaml` | `generate_forecast.py`, `daily_review.py` | `tests/test_seasonal.py` | Medium |
-| P2 Shared Ledger | `stores/prediction_store.py` (+3 methods) | `feedback_agent.py`, `daily_review.py` | `tests/test_shared_ledger.py` | Medium |
-| P3 Conviction Duration | Schema: `ConvictionStreak` | `generate_forecast.py`, `daily_review.py`, `feedback_schemas.py` | `tests/test_conviction.py` | Low |
-| P4 PromptEnhancer | `prompt_enhancer/enhancer.py` | `base_agent.py`, `prediction_store.py` | `tests/test_enhancer.py` | Low |
-| P5 Regime Multiplier | `regime/detector.py` | `weight_adapter.py` or `signal_aggregator.py`, `settings.py` | `tests/test_regime.py` | Medium–High |
+| P1 SeasonalCalendar | `seasonal/calendar.py`, `seasonal/validator.py`, `seasonal/seeds/*.yaml` | `generate_forecast.py`, `daily_review.py` | `tests/test_seasonal.py` | ✅ Done |
+| P2 Shared Ledger | `stores/ledger_propagator.py` | `prediction_store.py` (+sector + 5 methods), `feedback_agent.py`, `daily_review.py`, `feedback.py` | `tests/test_shared_ledger.py` | ✅ Done |
+| P3 Conviction Duration | `conviction/tracker.py` | `feedback.py` (`ConvictionStreak`), `daily_review.py` (Step 6.5 + `_revise_remaining_forecasts`) | `tests/test_conviction.py` | ✅ Done |
+| P4 PromptEnhancer | `prompt_enhancer/enhancer.py` | `base_agent.py`, `prediction_store.py` | `tests/test_enhancer.py` | ⏳ Pending |
+| P5 Regime Multiplier | `regime/detector.py` | `weight_adapter.py` or `signal_aggregator.py`, `settings.py` | `tests/test_regime.py` | ⏳ Pending |
 
 ### File Tree (Post-Implementation)
 

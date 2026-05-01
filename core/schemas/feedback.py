@@ -31,6 +31,22 @@ from pydantic import BaseModel, Field
 # 1. Prediction Envelope
 # ---------------------------------------------------------------------------
 
+class ConvictionStreak(BaseModel):
+    """
+    Tracks consecutive same-direction verdict runs for mean reversion detection (P3).
+
+    The streak counts days where the envelope issues the same directional verdict
+    (BULLISH = BUY/STRONG BUY, BEARISH = SELL/STRONG SELL).  NEUTRAL resets it.
+    A growing streak increases reversion_prior, which dampens remaining forecast
+    confidence to protect against riding a trend into a cliff edge.
+    """
+    current_verdict:   str   = ""    # last issued verdict ("BUY", "STRONG SELL", …)
+    streak_days:       int   = 0     # consecutive days with same verdict direction
+    streak_start_date: str   = ""    # ISO date when this streak began
+    max_streak_seen:   int   = 0     # historical max for this ticker-cycle
+    reversion_prior:   float = 0.0   # 0.0–0.30; updated daily by tracker.py
+
+
 class DailyForecast(BaseModel):
     """One row in the 30-day prediction sheet."""
     day: int                                     # 1-indexed from cycle start
@@ -57,6 +73,7 @@ class PredictionEnvelope(BaseModel):
     base_close: float                            # actual close on day-0
     weight_version_used: int = 0                 # which WeightMemory version was active
     daily_forecasts: list[DailyForecast] = Field(default_factory=list)
+    conviction_streak: ConvictionStreak = Field(default_factory=ConvictionStreak)  # P3
 
     def get_forecast(self, target_date: str) -> DailyForecast | None:
         for f in self.daily_forecasts:
@@ -255,6 +272,7 @@ class Lesson(BaseModel):
     still_valid: bool = True
     scope: LessonScope = "stock_specific"  # how broadly this lesson applies
     last_seen: str = ""                    # ISO date last reinforced (empty = use date_learned)
+    contributing_tickers: list[str] = Field(default_factory=list)  # tickers that independently confirmed this lesson (P2)
 
 
 class LearningLedger(BaseModel):

@@ -89,7 +89,10 @@
       "Bash(git -C \"c:/Users/RevanParimi/OneDrive - IBM/Documents/Gen AI Projects/StockAgent-main\" show HEAD:frontend/index.html)",
       "Bash(git -C \"c:/Users/RevanParimi/OneDrive - IBM/Documents/Gen AI Projects/StockAgent-main\" show HEAD:frontend/package.json)",
       "Bash(git -C \"c:/Users/RevanParimi/OneDrive - IBM/Documents/Gen AI Projects/StockAgent-main\" mv prototypes/beginner frontend)",
-      "Bash(python3 -)"
+      "Bash(python3 -)",
+      "Bash(python -m pytest tests/unit/test_shared_ledger.py -v --tb=short)",
+      "Bash(python -m pytest tests/unit/ -v --tb=short)",
+      "Bash(python -m pytest tests/unit/test_conviction.py -v --tb=short)"
     ]
   }
 }

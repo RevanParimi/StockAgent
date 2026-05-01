@@ -9,17 +9,26 @@ Manages four file types per ticker:
   - agent_weight_memory      (permanent, persists across cycles)
   - learning_ledger          (permanent, persists across cycles)
 
-Directory layout:
+Directory layout (with sector):
+  data/predictions/
+    _market_ledger.json                       ← P2: scope=market_wide across all sectors
+    automobile/
+      _shared_ledger.json                     ← P2: scope=sector_wide for this sector
+      MARUTI/
+        MARUTI_2026-04_prediction_envelope.json
+        MARUTI_2026-04_daily_feedback_log.json
+        MARUTI_agent_weight_memory.json
+        MARUTI_learning_ledger.json
+
+Directory layout (legacy, no sector):
   data/predictions/
     MARUTI/
       MARUTI_2026-04_prediction_envelope.json
-      MARUTI_2026-04_daily_feedback_log.json
-      MARUTI_agent_weight_memory.json
-      MARUTI_learning_ledger.json
+      ...
 
 Public API
 ----------
-PredictionStore(ticker)
+PredictionStore(ticker, sector=None)
   .save_envelope(env)
   .load_envelope(cycle_id)                  → PredictionEnvelope | None
   .save_feedback_log(log)
@@ -29,6 +38,11 @@ PredictionStore(ticker)
   .load_weight_memory()                     → WeightMemory | None
   .save_learning_ledger(ll)
   .load_learning_ledger()                   → LearningLedger
+  .load_sector_ledger()                     → LearningLedger  [P2]
+  .save_sector_ledger(ll)                               [P2]
+  .load_market_ledger()                     → LearningLedger  [P2]
+  .save_market_ledger(ll)                               [P2]
+  .load_all_ledgers()   → tuple[LearningLedger, LearningLedger, LearningLedger]  [P2]
   .current_cycle_id()                       → str  e.g. "MARUTI_2026-04"
 """
 
@@ -57,11 +71,34 @@ class PredictionStore:
 
     All methods are synchronous. Files are written atomically by writing to a
     temp file then renaming, so a crash mid-write never leaves a corrupt file.
+
+    Parameters
+    ----------
+    ticker : str
+        NSE ticker symbol (e.g. "MARUTI").
+    sector : str | None
+        Sector name (e.g. "automobile"). When provided, the ticker directory is
+        placed under {base_dir}/{sector}/{ticker}/ and shared/market ledger
+        methods become available. When None, uses flat {base_dir}/{ticker}/ for
+        backward compatibility.
+    base_dir : str | None
+        Override the predictions root directory (default: settings.PREDICTION_DATA_DIR).
     """
 
-    def __init__(self, ticker: str, base_dir: str | None = None) -> None:
-        self.ticker = ticker.strip().upper()
-        self._dir = Path(base_dir or settings.PREDICTION_DATA_DIR) / self.ticker
+    def __init__(
+        self,
+        ticker: str,
+        sector: str | None = None,
+        base_dir: str | None = None,
+    ) -> None:
+        self.ticker   = ticker.strip().upper()
+        self._sector  = sector
+        self._base_dir = Path(base_dir or settings.PREDICTION_DATA_DIR)
+
+        if sector:
+            self._dir = self._base_dir / sector / self.ticker
+        else:
+            self._dir = self._base_dir / self.ticker
         self._dir.mkdir(parents=True, exist_ok=True)
 
     # ------------------------------------------------------------------
@@ -224,6 +261,100 @@ class PredictionStore:
                 last_updated=date.today().isoformat(),
             )
         return LearningLedger(**data)
+
+    # ------------------------------------------------------------------
+    # P2: Shared sector ledger  (_shared_ledger.json in sector folder)
+    # ------------------------------------------------------------------
+
+    def _shared_ledger_path(self) -> Path:
+        if not self._sector:
+            raise ValueError(
+                "PredictionStore must be initialised with a sector= argument "
+                "to use shared sector ledger methods."
+            )
+        return self._base_dir / self._sector / "_shared_ledger.json"
+
+    def _market_ledger_path(self) -> Path:
+        return self._base_dir / "_market_ledger.json"
+
+    def load_sector_ledger(self) -> LearningLedger:
+        """
+        Load the sector-wide shared ledger from {base_dir}/{sector}/_shared_ledger.json.
+        Returns an empty LearningLedger if the file does not yet exist.
+        Requires the store to be initialised with sector=.
+        """
+        data = self._read_json(self._shared_ledger_path())
+        if data is None:
+            return LearningLedger(
+                ticker=f"_shared_{self._sector}",
+                sector=self._sector or "unknown",
+                last_updated=date.today().isoformat(),
+            )
+        return LearningLedger(**data)
+
+    def save_sector_ledger(self, ledger: LearningLedger) -> None:
+        """Atomically write the sector shared ledger."""
+        if not self._sector:
+            logger.warning(
+                "[PredictionStore] save_sector_ledger called without a sector — skipped."
+            )
+            return
+        ledger.last_updated = date.today().isoformat()
+        path = self._shared_ledger_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        self._write_json(path, ledger.model_dump())
+        logger.info(
+            "[PredictionStore] Saved sector ledger for '%s' (%d lessons)",
+            self._sector, len(ledger.lessons),
+        )
+
+    def load_market_ledger(self) -> LearningLedger:
+        """
+        Load the market-wide shared ledger from {base_dir}/_market_ledger.json.
+        Returns an empty LearningLedger if the file does not yet exist.
+        """
+        data = self._read_json(self._market_ledger_path())
+        if data is None:
+            return LearningLedger(
+                ticker="_market",
+                sector="all",
+                last_updated=date.today().isoformat(),
+            )
+        return LearningLedger(**data)
+
+    def save_market_ledger(self, ledger: LearningLedger) -> None:
+        """Atomically write the market-wide ledger."""
+        ledger.last_updated = date.today().isoformat()
+        self._write_json(self._market_ledger_path(), ledger.model_dump())
+        logger.info(
+            "[PredictionStore] Saved market ledger (%d lessons)", len(ledger.lessons)
+        )
+
+    def load_all_ledgers(
+        self,
+    ) -> tuple[LearningLedger, LearningLedger, LearningLedger]:
+        """
+        Load all three ledger tiers in one call.
+
+        Returns
+        -------
+        (ticker_ledger, sector_ledger, market_ledger)
+          - ticker_ledger  : stock-specific lessons for this ticker
+          - sector_ledger  : sector-wide lessons from all tickers in this sector
+                             (empty if store was created without sector=)
+          - market_ledger  : market-wide cross-sector lessons
+        """
+        ticker_ledger = self.load_learning_ledger()
+        if self._sector:
+            sector_ledger = self.load_sector_ledger()
+        else:
+            sector_ledger = LearningLedger(
+                ticker="_empty_sector",
+                sector="unknown",
+                last_updated=date.today().isoformat(),
+            )
+        market_ledger = self.load_market_ledger()
+        return ticker_ledger, sector_ledger, market_ledger
 
     # ------------------------------------------------------------------
     # Convenience: list all cycle IDs for this ticker

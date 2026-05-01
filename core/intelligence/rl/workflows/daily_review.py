@@ -39,6 +39,7 @@ from core.intelligence.rl.agents.feedback_agent import (
 )
 from core.intelligence.rl.agents.weight_adapter import WeightAdapter
 from core.schemas.feedback import (
+    ConvictionStreak,
     DailyFeedbackLog,
     FeedbackAgentInput,
     FeedbackEntry,
@@ -48,6 +49,16 @@ from core.schemas.feedback import (
     TimingAccuracy,
 )
 from core.intelligence.rl.stores.prediction_store import PredictionStore
+from core.intelligence.rl.stores.ledger_propagator import (
+    build_tiered_lessons_summary,
+    propagate_lessons,
+)
+from core.intelligence.rl.conviction.tracker import (
+    STREAK_WARNING_THRESHOLD,
+    build_streak_warning_block,
+    compute_final_reversion_prior,
+    update_conviction_streak,
+)
 from core.intelligence.algorithms.indicators.fetcher import get_price_history
 from core.intelligence.seasonal.calendar import SeasonalCalendar
 from core.intelligence.seasonal.validator import SeasonalValidator
@@ -180,6 +191,8 @@ def _revise_remaining_forecasts(
     reviewed_date: str,
     new_weights: dict[str, float],
     revised_context: RevisedContext,
+    reversion_prior: float = 0.0,
+    updated_streak: ConvictionStreak | None = None,
 ) -> None:
     """
     Update all remaining (future) forecast rows in the envelope:
@@ -187,6 +200,8 @@ def _revise_remaining_forecasts(
       - Re-weight agent score composite with new weights
       - Apply horizon_confidence_adjustment from RevisedContext
       - Inject revised_context.headline as the leading assumption
+      - P3: Apply reversion_prior dampening to confidence
+      - P3: Persist updated_streak to the envelope
     """
     envelope = store.load_envelope()
     if envelope is None:
@@ -196,6 +211,10 @@ def _revise_remaining_forecasts(
     remaining = envelope.remaining_forecasts(reviewed_date)
     if not remaining:
         logger.info("[daily_review] No remaining forecasts to revise for %s", ticker)
+        # P3: Still persist the updated streak even when no forecasts remain.
+        if updated_streak is not None:
+            envelope.conviction_streak = updated_streak
+            store.save_envelope(envelope)
         return
 
     confidence_adj = revised_context.horizon_confidence_adjustment
@@ -219,14 +238,26 @@ def _revise_remaining_forecasts(
             new_composite = round(weighted_sum / weight_total, 4)
             # Blend old confidence with new composite (don't fully replace)
             blended = round(0.7 * forecast.confidence + 0.3 * new_composite, 4)
-            # Then apply the horizon confidence adjustment from FeedbackAgent
+            # Apply the horizon confidence adjustment from FeedbackAgent
             adjusted = round(blended + confidence_adj, 4)
+
+            # P3: Apply mean reversion dampening when a streak is elevated.
+            # Formula: adjusted × (1.0 - reversion_prior × 0.5)
+            # A prior of 0.25 reduces confidence by 12.5%; 0.30 by 15%.
+            if reversion_prior > 0:
+                adjusted = round(adjusted * (1.0 - reversion_prior * 0.5), 4)
+
             forecast.confidence = max(0.05, min(0.99, adjusted))
+
+    # P3: Persist the updated conviction streak into the envelope before saving.
+    if updated_streak is not None:
+        envelope.conviction_streak = updated_streak
 
     store.save_envelope(envelope)
     logger.info(
-        "[daily_review] Revised %d remaining forecasts for %s (confidence_adj=%+.3f)",
-        len(remaining), ticker, confidence_adj,
+        "[daily_review] Revised %d remaining forecasts for %s "
+        "(confidence_adj=%+.3f, reversion_prior=%.3f)",
+        len(remaining), ticker, confidence_adj, reversion_prior,
     )
 
 
@@ -251,7 +282,7 @@ def run_daily_review(
     sector : str
         Sector graph to use: automobile | banking_bfsi | it_sector | renewable_energy
     """
-    store    = PredictionStore(ticker)
+    store    = PredictionStore(ticker, sector=sector)
     cycle_id = store.current_cycle_id()
     date_str = review_date.isoformat()
 
@@ -279,6 +310,11 @@ def run_daily_review(
             ticker, date_str,
         )
         return {"status": "no_forecast_row", "ticker": ticker, "date": date_str}
+
+    # P3: Snapshot the current streak BEFORE today's update.
+    # The snapshot is injected into the FeedbackAgent prompt (Step 4) and the
+    # streak is then advanced using today's verdict (Step 6.5).
+    existing_streak = envelope.conviction_streak
 
     # ------------------------------------------------------------------ #
     # Step 2: Fetch actual close
@@ -318,7 +354,12 @@ def run_daily_review(
         sector=sector,
         learned_weights=wm_for_scores.effective_weights() if wm_for_scores else None,
     )
-    ledger = store.load_learning_ledger()
+
+    # P2: Load all three ledger tiers in one call.
+    # ticker_ledger = stock-specific lessons for this ticker
+    # sector_ledger = sector-wide shared lessons from all tickers in this sector
+    # market_ledger = cross-sector market-wide lessons
+    ticker_ledger, sector_ledger, market_ledger = store.load_all_ledgers()
 
     market_context = ""
     try:
@@ -330,7 +371,7 @@ def run_daily_review(
     # Inject seasonal context so FeedbackAgent doesn't "discover" known patterns.
     # The narrative is appended to market_context_today with a clear [SEASONAL] tag.
     seasonal_calendar = SeasonalCalendar(sector=sector)
-    seasonal_ctx = seasonal_calendar.get_context(review_date, ledger)
+    seasonal_ctx = seasonal_calendar.get_context(review_date, ticker_ledger)
     if seasonal_ctx.is_seasonal_period:
         seasonal_note = (
             f"\n\n[SEASONAL CONTEXT — pre-seeded domain knowledge, not from live news]\n"
@@ -346,6 +387,25 @@ def run_daily_review(
             date_str, seasonal_ctx.active_pattern_ids,
         )
 
+    # P3: If the system has issued the same directional verdict for ≥ N consecutive
+    # days, inject a structured warning so the FeedbackAgent explicitly checks for
+    # momentum exhaustion (RSI divergence, volume dry-up, etc.).
+    if existing_streak.streak_days >= STREAK_WARNING_THRESHOLD:
+        streak_note = build_streak_warning_block(existing_streak)
+        market_context = (market_context or "Market context unavailable.") + streak_note
+        logger.info(
+            "[daily_review] Conviction streak alert injected: %d days of '%s' (prior=%.2f)",
+            existing_streak.streak_days,
+            existing_streak.current_verdict,
+            existing_streak.reversion_prior,
+        )
+
+    # P2: Build 3-tier combined lessons summary for FeedbackAgent prompt.
+    # TIER 1 (top 6): stock-specific from ticker_ledger
+    # TIER 2 (top 3): sector-wide from shared sector_ledger
+    # TIER 3 (top 2): market-wide from shared market_ledger
+    tiered_summary = build_tiered_lessons_summary(ticker_ledger, sector_ledger, market_ledger)
+
     fb_input = FeedbackAgentInput(
         ticker=ticker,
         sector=sector,
@@ -358,11 +418,11 @@ def run_daily_review(
         todays_agent_scores=todays_scores,
         market_context_today=market_context or "Market context unavailable.",
         key_assumptions_made=today_forecast.key_assumptions,
-        active_lessons_summary=ledger.active_lessons_summary(),
+        active_lessons_summary=tiered_summary,
     )
 
     fb_agent  = FeedbackAgent()
-    fb_output = fb_agent.run(fb_input, ledger)
+    fb_output = fb_agent.run(fb_input, ticker_ledger)
 
     # ------------------------------------------------------------------ #
     # Step 5: WeightAdapter — adjust weights (miss_type-aware), save
@@ -408,13 +468,58 @@ def run_daily_review(
     new_weight_version = f"v{updated_wm.weight_version}"
 
     # ------------------------------------------------------------------ #
-    # Step 6: LearningLedger — merge lessons (with scope + last_seen)
+    # Step 6: LearningLedger — merge lessons + propagate to shared ledgers
     # ------------------------------------------------------------------ #
-    updated_ledger, lesson_ids = fb_agent.merge_lessons_into_ledger(fb_output, ledger)
+    updated_ledger, lesson_ids = fb_agent.merge_lessons_into_ledger(fb_output, ticker_ledger)
     store.save_learning_ledger(updated_ledger)
+
+    # P2: Route sector_wide / market_wide lessons to the shared ledgers.
+    # Only lesson_ids touched in this review cycle are propagated; stale
+    # lessons already in the ledger from previous cycles are left alone.
+    try:
+        updated_sector_ledger, updated_market_ledger = propagate_lessons(
+            ticker=ticker,
+            updated_ledger=updated_ledger,
+            sector_ledger=sector_ledger,
+            market_ledger=market_ledger,
+            lesson_ids=lesson_ids,
+        )
+        store.save_sector_ledger(updated_sector_ledger)
+        store.save_market_ledger(updated_market_ledger)
+    except Exception as exc:
+        logger.warning(
+            "[daily_review] Shared ledger propagation failed (non-fatal): %s", exc
+        )
+
+    # ------------------------------------------------------------------ #
+    # Step 6.5 (P3): Update conviction streak + compute reversion prior
+    # ------------------------------------------------------------------ #
+    # The streak counts consecutive days the envelope issued the same direction.
+    # The reversion prior dampens remaining forecast confidence proportionally.
+    # RSI divergence (pattern_analysis score contradicts verdict) amplifies 1.5×.
+    updated_streak = update_conviction_streak(
+        current_streak=existing_streak,
+        today_verdict=today_forecast.predicted_verdict,
+        today_date=date_str,
+    )
+    final_reversion_prior = compute_final_reversion_prior(
+        streak_days=updated_streak.streak_days,
+        verdict=today_forecast.predicted_verdict,
+        todays_agent_scores=todays_scores,
+    )
+    logger.info(
+        "[daily_review] Conviction streak: '%s' %d day(s) | "
+        "base_prior=%.3f → final=%.3f (max_seen=%d)",
+        updated_streak.current_verdict,
+        updated_streak.streak_days,
+        updated_streak.reversion_prior,
+        final_reversion_prior,
+        updated_streak.max_streak_seen,
+    )
 
     # ------------------------------------------------------------------ #
     # Step 7: Revise remaining forecasts with new weights + confidence adj
+    #         + P3 reversion prior dampening + persist updated streak
     # ------------------------------------------------------------------ #
     _revise_remaining_forecasts(
         ticker=ticker,
@@ -422,6 +527,8 @@ def run_daily_review(
         reviewed_date=date_str,
         new_weights=updated_wm.effective_weights(),
         revised_context=fb_output.revised_context,
+        reversion_prior=final_reversion_prior,
+        updated_streak=updated_streak,
     )
 
     # ------------------------------------------------------------------ #
@@ -489,6 +596,10 @@ def run_daily_review(
         "weights":                  updated_wm.effective_weights(),
         "confidence_adj":           fb_output.revised_context.horizon_confidence_adjustment,
         "seasonal_patterns_active": seasonal_ctx.active_pattern_ids,
+        # P3: conviction streak state
+        "conviction_streak_days":   updated_streak.streak_days,
+        "conviction_verdict":       updated_streak.current_verdict,
+        "reversion_prior":          final_reversion_prior,
     }
 
     logger.info(

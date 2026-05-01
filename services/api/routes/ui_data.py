@@ -13,7 +13,9 @@ Endpoints
 ---------
 GET  /ui/bootstrap           — all data in one shot (agents + tickers + market)
 GET  /ui/agents              — 9 agent definitions + current weights
+PUT  /ui/agents/weights      — persist user-adjusted agent weights
 GET  /ui/tickers             — all tickers with latest score + live price
+GET  /ui/trending            — tickers ranked by score delta between last two runs
 GET  /ui/market/summary      — market pulse, drivers, sector changes, sparkline
 POST /ui/chat                — conversational AI assistant reply
 """
@@ -21,14 +23,20 @@ POST /ui/chat                — conversational AI assistant reply
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/ui", tags=["UI"])
+
+# User-overridden agent weights persisted between server restarts
+_CUSTOM_WEIGHTS_PATH = Path("data/agent_weights.json")
 
 
 # ---------------------------------------------------------------------------
@@ -231,9 +239,22 @@ def _pulse_from_scores(scores: list[float]) -> str:
     return "Caution ahead"
 
 
+def _load_custom_weights() -> dict[str, float]:
+    """Return user-saved weight overrides from data/agent_weights.json (empty dict if none)."""
+    try:
+        if _CUSTOM_WEIGHTS_PATH.exists():
+            raw = json.loads(_CUSTOM_WEIGHTS_PATH.read_text(encoding="utf-8"))
+            return {k: float(v) for k, v in raw.items()}
+    except Exception as exc:
+        logger.debug("[ui_data] Could not load custom weights: %s", exc)
+    return {}
+
+
 def _build_agents_response() -> dict:
     from core.config import settings
-    weights = settings.AGENT_WEIGHTS
+    base_weights = dict(settings.AGENT_WEIGHTS)
+    custom = _load_custom_weights()
+    weights = {**base_weights, **custom}  # custom overrides base
     agents = []
     for meta in _AGENT_META:
         key = meta["key"]
@@ -384,6 +405,94 @@ async def _gather_market_data(db_latest: list[dict]) -> dict:
 @router.get("/agents", summary="All 9 agent definitions + current weights")
 async def get_agents() -> dict:
     return _build_agents_response()
+
+
+class _WeightsBody(BaseModel):
+    weights: dict[str, float]
+
+
+@router.put("/agents/weights", summary="Persist user-adjusted agent weights to data/agent_weights.json")
+async def update_agent_weights(body: _WeightsBody) -> dict:
+    """
+    Accepts {weights: {agent_key: float}} and persists only the changed keys as
+    overrides on top of the base settings.AGENT_WEIGHTS.
+
+    Rules:
+      - Each weight must be 0.00–0.30
+      - All 9 final weights (base merged with overrides) must sum to 0.95–1.05
+      - Only valid agent keys are accepted; unknown keys are silently dropped
+    """
+    from core.config import settings
+    valid_keys = set(settings.AGENT_WEIGHTS.keys())
+    incoming = {k: float(v) for k, v in body.weights.items() if k in valid_keys}
+    if not incoming:
+        raise HTTPException(status_code=422, detail="No valid agent keys in request body")
+
+    for k, v in incoming.items():
+        if not (0.0 <= v <= 0.30):
+            raise HTTPException(
+                status_code=422,
+                detail=f"Weight for '{k}' must be between 0.00 and 0.30, got {v:.4f}",
+            )
+
+    existing_custom = _load_custom_weights()
+    merged_custom = {**existing_custom, **incoming}
+
+    # Check sum over the full set (base + all custom overrides)
+    final = {**dict(settings.AGENT_WEIGHTS), **merged_custom}
+    total = sum(final.values())
+    if not (0.95 <= total <= 1.05):
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"Weights must sum to ~1.0 (got {total:.4f}). "
+                "Adjust other agents so the total stays within 0.95–1.05."
+            ),
+        )
+
+    _CUSTOM_WEIGHTS_PATH.parent.mkdir(parents=True, exist_ok=True)
+    _CUSTOM_WEIGHTS_PATH.write_text(json.dumps(merged_custom, indent=2), encoding="utf-8")
+    logger.info("[ui/agents/weights] Saved custom weights: %s", merged_custom)
+    return _build_agents_response()
+
+
+@router.get("/trending", summary="Tickers ranked by score delta between last two analysis runs")
+async def get_trending() -> dict:
+    """
+    Uses ScoreStore history to compute how much each ticker's composite score
+    moved between its two most recent analysis runs.  Returns top 4 movers.
+
+    Unlike /ui/tickers (which ranks by live price % change), this ranks by
+    agent-score momentum — a different signal useful for spotting conviction shifts.
+    """
+    store = _score_store()
+    results = []
+
+    async def _delta_for(ticker_def: dict) -> dict | None:
+        sym = ticker_def["sym"]
+        latest   = await asyncio.to_thread(store.get_latest,   sym)
+        if latest is None:
+            return None
+        previous = await asyncio.to_thread(store.get_previous, sym)
+        score      = round(float(latest["final_score"]), 4)
+        prev_score = round(float(previous["final_score"]), 4) if previous else score
+        delta      = round(score - prev_score, 4)
+        return {
+            "sym":       sym,
+            "name":      ticker_def["name"],
+            "score":     score,
+            "prevScore": prev_score,
+            "delta":     delta,
+            "verdict":   latest["verdict"],
+            "direction": "up" if delta > 0.01 else "down" if delta < -0.01 else "flat",
+            "why":       f"Score {'+' if delta >= 0 else ''}{delta:.3f} vs previous run · {latest['verdict']}",
+            "runAt":     latest["run_at"],
+        }
+
+    rows = await asyncio.gather(*(_delta_for(t) for t in _ALL_TICKERS))
+    results = [r for r in rows if r is not None]
+    results.sort(key=lambda x: (abs(x["delta"]), x["score"]), reverse=True)
+    return {"trending": results[:4], "all": results}
 
 
 @router.get("/tickers", summary="All tickers with latest score + live price")

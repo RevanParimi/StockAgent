@@ -469,3 +469,36 @@ window.LEARN_TIPS = [
   { title:'One conflicting agent is normal',         body:'When 1\u20132 agents disagree it usually means the move is contested \u2014 size smaller, not zero.' },
   { title:'Crude up = autos down (usually)',         body:'Higher oil hits both input costs and consumer wallet. Watch Brent + INR together.' },
 ];
+
+// ─── Live bootstrap ────────────────────────────────────────────────────────
+// Fetches /ui/bootstrap once on page load and overwrites window.* globals
+// with real prices, scores and market data.  Mock data above stays as the
+// instant first-render fallback so the UI is never blank.
+window.__apiReady = false;
+
+(async function loadFromAPI() {
+  try {
+    const res = await fetch('/ui/bootstrap');
+    if (!res.ok) return;
+    const d = await res.json();
+
+    if (d.AGENTS?.length)             window.AGENTS             = d.AGENTS;
+    if (d.TICKERS?.length)            window.TICKERS            = d.TICKERS;
+    if (d.WATCHLIST?.length)          window.WATCHLIST          = d.WATCHLIST;
+    if (d.MARKET_TODAY)               window.MARKET_TODAY       = d.MARKET_TODAY;
+    if (d.MARKET_MONTH)               window.MARKET_MONTH       = d.MARKET_MONTH;
+    if (d.NIFTY_AUTO_HISTORY?.length) window.NIFTY_AUTO_HISTORY = d.NIFTY_AUTO_HISTORY;
+    if (d.TRENDING?.length)           window.TRENDING           = d.TRENDING;
+    if (d.SUGGESTIONS?.length)        window.SUGGESTIONS        = d.SUGGESTIONS;
+    if (d.CATEGORIES?.length)         window.CATEGORIES         = d.CATEGORIES;
+    if (d.CHAT_SEEDS?.length)         window.CHAT_SEEDS         = d.CHAT_SEEDS;
+
+    window.__apiReady     = true;
+    window.__apiLive      = d._liveData ?? false;
+    window.__apiFetchedAt = d._fetchedAt;
+
+    if (typeof window.__onApiReady === 'function') window.__onApiReady();
+  } catch (e) {
+    console.warn('[StockAgent] Bootstrap API unavailable — using mock data.', e);
+  }
+})();

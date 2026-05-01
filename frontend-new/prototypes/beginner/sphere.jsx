@@ -142,11 +142,24 @@ function ChatOverlay({ open, onClose, mode='wireframe' }) {
   const endRef = useRef(null);
   useEffect(() => { endRef.current?.scrollTo?.(0, 99999); }, [msgs, open]);
 
-  const send = (text) => {
+  const send = async (text) => {
     if (!text.trim()) return;
-    const reply = mockReply(text);
-    setMsgs(m => [...m, {from:'user', text}, {from:'bot', text: reply}]);
     setInput('');
+    // Append user message + thinking placeholder immediately
+    setMsgs(m => [...m, {from:'user', text}, {from:'bot', text:'…', loading:true}]);
+    let reply;
+    try {
+      const res = await fetch('/ui/chat', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({message: text}),
+      });
+      reply = res.ok ? (await res.json()).reply : mockReply(text);
+    } catch {
+      reply = mockReply(text);
+    }
+    // Replace loading placeholder with actual reply
+    setMsgs(m => [...m.slice(0, -1), {from:'bot', text: reply}]);
   };
 
   if (!open) return null;
@@ -177,7 +190,9 @@ function ChatOverlay({ open, onClose, mode='wireframe' }) {
             background: m.from==='user' ? 'var(--cyan)' : 'var(--bg-tinted)',
             color: m.from==='user' ? '#fff' : 'var(--ink-1)',
             borderRadius: m.from==='user' ? '16px 16px 4px 16px' : '16px 16px 16px 4px',
-            fontSize:13, lineHeight:1.55
+            fontSize:13, lineHeight:1.55,
+            animation: m.loading ? 'pulse-soft 1.2s ease-in-out infinite' : 'none',
+            opacity: m.loading ? 0.7 : 1,
           }}>{m.text}</div>
         ))}
         {msgs.length===1 && <div style={{ display:'flex', flexDirection:'column', gap:6, marginTop:8 }}>

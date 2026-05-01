@@ -39,10 +39,18 @@ function App() {
   const [tweaks, setTweak] = useTweaks(TWEAK_DEFAULTS);
   const [screen, setScreen] = useState('auth');
   const [chat, setChat] = useState(false);
+  const [, forceRender] = useState(0);
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', tweaks.theme);
   }, [tweaks.theme]);
+
+  // Re-render with live API data once bootstrap fetch completes
+  useEffect(() => {
+    window.__onApiReady = () => forceRender(n => n + 1);
+    if (window.__apiReady) forceRender(n => n + 1);
+    return () => { window.__onApiReady = null; };
+  }, []);
 
   const goHome = () => setScreen('home');
   const goAgents = () => setScreen('agents');

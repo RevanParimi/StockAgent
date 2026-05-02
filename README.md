@@ -426,7 +426,7 @@ pytest tests/contract/test_phase4_csharp.py -v          # C# proxy contracts
 pytest tests/ --cov=core --cov=services --cov-report=term-missing
 ```
 
-**Baseline:** 285 passed, 7 skipped (calendar/holiday tests), 0 failed.
+**Baseline:** 292 passed, 7 skipped (C++ parity tests — skipped until `.pyd` is compiled), 0 failed.
 
 ---
 
@@ -482,11 +482,11 @@ Agents run as LangGraph `Send` nodes with a `RetryPolicy`. Failed agents return 
 | Phase 4 | C# Quartz.NET scheduler (optional, feature-flagged) | Scaffolded |
 | Phase 5 | RL feedback loop — prediction envelope + daily review + weight adaptation | Complete |
 | Phase 6 | RL improvements — miss taxonomy, lesson scope, timing accuracy, revised context | Complete |
-| **Evolution P1** | SeasonalCalendar — pre-seeded sector patterns (Dec clearance, Diwali, etc.) | Designed |
-| **Evolution P2** | Shared sector + market ledger cross-ticker propagation | Designed |
-| **Evolution P3** | Conviction duration counter + mean-reversion prior | Designed |
-| **Evolution P4** | PromptEnhancer — miss_counter auto-updates agent search queries | Designed |
-| **Evolution P5** | Context-conditional regime multiplier (VIX + FII + RSI) | Designed |
+| **Evolution P1** | SeasonalCalendar — pre-seeded sector patterns (Dec clearance, Diwali, etc.) | Complete |
+| **Evolution P2** | Shared sector + market ledger cross-ticker propagation | Complete |
+| **Evolution P3** | Conviction duration counter + mean-reversion prior | Complete |
+| **Evolution P4** | PromptEnhancer — miss_counter auto-updates agent search queries | Complete |
+| **Evolution P5** | Context-conditional regime multiplier (VIX + FII + RSI) | Complete |
 
 Evolution P1–P5 design: see [RL_EVOLUTION_DESIGN.md](RL_EVOLUTION_DESIGN.md).
 RL system internals (schemas, daily flow, config reference): see [RL_FEEDBACK_DESIGN.md](RL_FEEDBACK_DESIGN.md).
@@ -500,6 +500,8 @@ RL system internals (schemas, daily flow, config reference): see [RL_FEEDBACK_DE
 | [CODEBASE.md](CODEBASE.md) | Authoritative module map, public APIs, runtime architecture, settings reference |
 | [AGENT_DESIGN.md](AGENT_DESIGN.md) | Agent design, LangGraph wiring, parallelism model |
 | [SOLUTION_DESIGN.md](SOLUTION_DESIGN.md) | Service architecture, target vs implementation mapping |
+| [FLOW.md](FLOW.md) | End-to-end system flow: entry points, per-phase internals, error handling, data-flow diagram |
 | [API_SOURCES.md](API_SOURCES.md) | Data sources per agent, yfinance tickers, API limits |
 | [RL_FEEDBACK_DESIGN.md](RL_FEEDBACK_DESIGN.md) | Phase 5+6 RL system: all schemas, daily cron flow, configuration |
 | [RL_EVOLUTION_DESIGN.md](RL_EVOLUTION_DESIGN.md) | Gap analysis + P1–P5 logical design with ASCII trees, schema tables |
+| [RL_REFERENCE.md](RL_REFERENCE.md) | Auto-generated quick-reference: daily loop steps, agent roster, weight bounds, config variables |

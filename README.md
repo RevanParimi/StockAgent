@@ -330,6 +330,141 @@ powershell -ExecutionPolicy Bypass -File core/intelligence/algorithms/cpp/build_
 
 ---
 
+## Cloud Deployment
+
+### Platform
+
+**DigitalOcean Droplet — $24/month** (4 GB RAM / 2 vCPU / 80 GB SSD / 4 TB transfer)
+
+Chosen over Railway, Render, Fly.io, and Google Cloud Run because it is the only option that satisfies every hard constraint without architectural compromise:
+
+| Constraint | Why DO Droplet |
+|---|---|
+| File-based persistence | JSON ledgers + ChromaDB live on Docker named volumes on the Droplet SSD — survive restarts, rebuilds, reboots |
+| Full Docker Compose | `docker-compose.yml` runs verbatim — `depends_on`, named volumes, internal networking, C++ multi-stage build |
+| IST cron (4:30pm NSE close) | `TZ=Asia/Kolkata` in each container env — Quartz.NET fires at the right time, no UTC arithmetic |
+| WebSocket streaming | No timeouts, no restrictions — expose port 3001 in Compose, Caddy proxies it |
+| C++ pybind11 | Multi-stage Dockerfile compiles `stockindicators.so` during `docker compose build` |
+| Predictable cost | Single flat $24/month bill — no per-GB-RAM or per-request surprises |
+
+> **Zero-cost alternative:** Oracle Cloud Always Free A1 (4 OCPU / 24 GB RAM ARM). Docker Compose works identically. Risk: ARM64 images required; idle reclamation if CPU < 10% for 7 days (mitigate with a host keepalive cron). Provision a DO Droplet first, then attempt Oracle in parallel.
+
+---
+
+### Deployment Files
+
+| File | Purpose |
+|---|---|
+| `docker-compose.yml` | All 4 services + named volumes + internal network |
+| `Dockerfile` | Python FastAPI multi-stage — compiles C++ pybind11 in Stage 1, slim runtime in Stage 2 |
+| `services/typescript/Dockerfile` | Node 20 two-stage build |
+| `csharp/StockAgent.Scheduler/Dockerfile` | .NET 8 SDK → runtime |
+| `Caddyfile` | Reverse proxy — replace `YOUR_DOMAIN`, gets auto HTTPS via Let's Encrypt |
+| `.env.production` | Production env template — fill API keys before deploy |
+
+---
+
+### First-Time Droplet Setup
+
+```bash
+# 1. Create Droplet — Ubuntu 24.04 LTS, 4 GB / 2 vCPU
+#    Enable DigitalOcean backups (recommended, +$4.80/month)
+
+# 2. SSH in and install Docker
+ssh root@YOUR_DROPLET_IP
+curl -fsSL https://get.docker.com | sh
+apt-get install -y docker-compose-plugin
+
+# 3. Clone the repo
+git clone https://github.com/YOUR_USERNAME/StockAgent.git
+cd StockAgent
+
+# 4. Configure environment
+cp .env.production .env
+nano .env      # fill in OPENROUTER_API_KEY, SERPER_API_KEY, TAVILY_API_KEY
+
+# 5. Set your domain in Caddyfile
+nano Caddyfile  # replace YOUR_DOMAIN with your domain or Droplet IP
+
+# 6. Build and start everything
+docker compose up -d --build
+
+# 7. Verify all services are healthy
+docker compose ps
+docker compose logs python-api --tail 30
+```
+
+---
+
+### Service URLs (after deploy)
+
+| Service | Internal address | External (via Caddy) |
+|---|---|---|
+| Python FastAPI | `python-api:8000` | `https://yourdomain.com/analyse` |
+| TypeScript Gateway REST | `typescript-gateway:3000` | `https://yourdomain.com/api/*` |
+| WebSocket stream | `typescript-gateway:3001` | `wss://yourdomain.com/ws/*` |
+| C# Scheduler health | `csharp-scheduler:5000` | `https://yourdomain.com/scheduler/*` |
+
+All inter-service communication uses Docker's internal `stockagent-net` network by container name. Nothing is directly exposed to the internet except Caddy on ports 80/443.
+
+---
+
+### Persistent Volumes
+
+All critical data lives in named Docker volumes on the Droplet SSD. A full `docker compose down && docker compose up -d --build` (e.g. after a code push) **does not delete volumes**.
+
+| Volume | Mounted at | Contents |
+|---|---|---|
+| `stockagent_data` | `/app/data` | RL weight memory, learning ledgers, prediction envelopes, feedback logs, ChromaDB, scores.db, RAG knowledge base |
+| `stockagent_logs` | `/app/logs` | Application logs |
+| `stockagent_out` | `/app/outputs` | Analysis reports |
+| `caddy_data` | Caddy internal | TLS certificates (Let's Encrypt) |
+
+```bash
+# Inspect volume contents
+docker run --rm -v stockagent_data:/data alpine ls /data/predictions/automobile/MARUTI/
+
+# Manual backup before a risky migration
+docker run --rm \
+  -v stockagent_data:/data \
+  -v $(pwd)/backup:/backup \
+  alpine tar czf /backup/stockagent_data_$(date +%Y%m%d).tar.gz /data
+```
+
+---
+
+### Cron Schedule (IST)
+
+Both cron jobs run inside containers with `TZ=Asia/Kolkata`:
+
+| Job | Time (IST) | Container | What it does |
+|---|---|---|---|
+| Daily review | 4:30 PM weekdays | `csharp-scheduler` | Fetch actual close, run FeedbackAgent, update weights, revise forecasts |
+| Monthly forecast | 8:30 AM 1st of month | `csharp-scheduler` | Run all agents → generate 30-day PredictionEnvelope |
+
+To trigger manually:
+```bash
+# Daily review for MARUTI (backfill or test)
+docker compose exec python-api \
+  python -m scripts.daily_review --ticker MARUTI --sector automobile
+
+# Generate new monthly forecast
+docker compose exec python-api \
+  python -m scripts.generate_forecast --ticker MARUTI
+```
+
+---
+
+### Updating the Application
+
+```bash
+git pull origin main
+docker compose up -d --build    # rebuilds changed images, volumes untouched
+docker compose logs -f           # watch startup
+```
+
+---
+
 ## Port Map
 
 | Service | Port | Protocol | Visible to |

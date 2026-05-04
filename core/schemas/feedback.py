@@ -368,6 +368,11 @@ class SeasonalPattern(BaseModel):
     validated_by_rl: bool = False               # True once RL confirms ≥2 cycles
     decay_exempt: bool = True                   # seasonal patterns don't decay (Decembers always happen)
     lunar_dependency: bool = False              # if True, apply 0.5× delta (Gregorian date uncertainty)
+    # Per-agent boost/penalty threshold shifts for WeightAdapter during this period.
+    # Positive = raise the bar (agent expected to perform well → harder to earn boost).
+    # Negative = lower the bar (structurally hard period → more forgiving on penalty).
+    # e.g. festive season: {"sales_demand": +0.08}  budget week: {"fundamentals": -0.05}
+    accuracy_threshold_delta: dict[str, float] = Field(default_factory=dict)
 
 
 class SeasonalContext(BaseModel):
@@ -385,6 +390,9 @@ class SeasonalContext(BaseModel):
     narrative: str = ""                         # injected into FeedbackAgent market_context_today
     confidence_modifier: float = 0.0           # added to base forecast confidence; capped ±0.10
     is_seasonal_period: bool = False
+    # Aggregated threshold deltas from all active SeasonalPatterns for this date.
+    # Passed to WeightAdapter.update() as seasonal_threshold_deltas.
+    accuracy_threshold_delta: dict[str, float] = Field(default_factory=dict)
 
 
 class FeedbackAgentInput(BaseModel):

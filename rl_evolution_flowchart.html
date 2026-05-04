@@ -1,0 +1,1536 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>StockAgent — RL Evolution Explained</title>
+<style>
+/* ── Reset & Base ─────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; }
+body {
+  font-family: -apple-system, 'Segoe UI', Roboto, sans-serif;
+  font-size: 14px;
+  line-height: 1.7;
+  color: #1f2328;
+  background: #fff;
+}
+
+/* ── Typography ───────────────────────────────────────────── */
+h1 { font-size: 2rem; font-weight: 800; letter-spacing: -0.5px; }
+h2 { font-size: 1.35rem; font-weight: 800; letter-spacing: -0.3px; }
+h3 { font-size: 1.05rem; font-weight: 700; }
+h4 { font-size: 0.85rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px; color: #57606a; }
+p  { color: #444d56; }
+strong { color: #1f2328; font-weight: 700; }
+code  { font-family: 'SFMono-Regular', Consolas, monospace; font-size: 0.82em;
+        background: #f0f2f5; padding: 1px 5px; border-radius: 4px; color: #6639ba; }
+
+/* ── Layout ───────────────────────────────────────────────── */
+.page { max-width: 1100px; margin: 0 auto; padding: 0 28px 80px; }
+
+/* ── NAV ──────────────────────────────────────────────────── */
+.topnav {
+  position: sticky; top: 0; z-index: 100;
+  background: rgba(255,255,255,0.95);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid #e6e9ed;
+  padding: 10px 28px;
+  display: flex; gap: 4px; flex-wrap: wrap; align-items: center;
+}
+.topnav a {
+  text-decoration: none;
+  font-size: 12px; font-weight: 600;
+  color: #57606a; padding: 3px 10px;
+  border-radius: 20px;
+  transition: all 0.15s;
+}
+.topnav a:hover { background: #f0f2f5; color: #1f2328; }
+.topnav .logo { font-weight: 800; font-size: 14px; color: #0969da; margin-right: 12px; }
+
+/* ── Hero ─────────────────────────────────────────────────── */
+.hero {
+  padding: 56px 0 40px;
+  border-bottom: 1px solid #e6e9ed;
+  margin-bottom: 56px;
+}
+.hero-tag {
+  display: inline-block;
+  background: #ddf4ff; color: #0969da;
+  border: 1px solid #79c0ff;
+  border-radius: 20px; font-size: 11px; font-weight: 700;
+  padding: 3px 12px; margin-bottom: 14px;
+  letter-spacing: 0.5px; text-transform: uppercase;
+}
+.hero h1 { margin-bottom: 12px; }
+.hero p  { font-size: 16px; max-width: 680px; color: #57606a; margin-bottom: 28px; }
+.hero-chips { display: flex; gap: 8px; flex-wrap: wrap; }
+.chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 5px 14px; border-radius: 20px;
+  font-size: 12px; font-weight: 600; border: 1px solid;
+}
+
+/* ── Section ──────────────────────────────────────────────── */
+.section { margin-bottom: 72px; scroll-margin-top: 56px; }
+.section-head {
+  display: flex; align-items: flex-start; gap: 16px;
+  margin-bottom: 28px;
+  padding-bottom: 16px;
+  border-bottom: 2px solid;
+}
+.section-num {
+  min-width: 42px; height: 42px;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 17px; font-weight: 900;
+  flex-shrink: 0;
+}
+.section-head h2 { margin-bottom: 4px; }
+.section-head p  { font-size: 13px; }
+
+/* ── Pills & Tags ─────────────────────────────────────────── */
+.pill {
+  display: inline-block; padding: 2px 9px;
+  border-radius: 20px; font-size: 11px; font-weight: 700;
+  border: 1px solid;
+}
+.tag-p1 { background:#f5f0ff; color:#6639ba; border-color:#c297ff; }
+.tag-p3 { background:#fbefff; color:#8250df; border-color:#d2a8ff; }
+.tag-p5 { background:#fff1e5; color:#bc4c00; border-color:#ffa657; }
+.tag-new { background:#dcffe4; color:#116329; border-color:#82cfaa; font-size:10px; padding:1px 7px; }
+.tag-done { background:#ddf4ff; color:#0969da; border-color:#79c0ff; font-size:10px; }
+.tag-todo { background:#f6f8fa; color:#57606a; border-color:#d0d7de; font-size:10px; }
+
+/* ── Cards ────────────────────────────────────────────────── */
+.card {
+  border-radius: 10px; border: 1px solid #d0d7de;
+  padding: 18px 20px; background: #fff;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+}
+.card-grid { display: grid; gap: 14px; }
+.card-grid-2 { grid-template-columns: 1fr 1fr; }
+.card-grid-3 { grid-template-columns: 1fr 1fr 1fr; }
+.card-grid-4 { grid-template-columns: 1fr 1fr 1fr 1fr; }
+
+/* ── Example callout ──────────────────────────────────────── */
+.example {
+  background: #fffdf0; border: 1px solid #ffd54f;
+  border-left: 4px solid #f59e0b;
+  border-radius: 6px; padding: 14px 16px;
+  margin: 12px 0;
+}
+.example-label {
+  font-size: 10px; font-weight: 800; text-transform: uppercase;
+  letter-spacing: 0.6px; color: #7a4100; margin-bottom: 6px;
+}
+
+/* ── Formula ──────────────────────────────────────────────── */
+.formula {
+  background: #f6f8fa; border: 1px solid #d0d7de;
+  border-left: 3px solid #0969da;
+  border-radius: 6px; padding: 12px 16px; margin: 10px 0;
+  font-family: 'SFMono-Regular', Consolas, monospace;
+  font-size: 12px; color: #0550ae; line-height: 1.8;
+}
+.formula .comment { color: #57606a; font-style: italic; }
+
+/* ── Insight callout ──────────────────────────────────────── */
+.insight {
+  background: #ddf4ff; border: 1px solid #79c0ff;
+  border-left: 4px solid #0969da;
+  border-radius: 6px; padding: 12px 16px; margin: 10px 0;
+  font-size: 13px; color: #0550ae;
+}
+
+/* ── Warning callout ──────────────────────────────────────── */
+.warn {
+  background: #fff1e5; border: 1px solid #ffa657;
+  border-left: 4px solid #bc4c00;
+  border-radius: 6px; padding: 12px 16px; margin: 10px 0;
+  font-size: 13px; color: #7a2e00;
+}
+
+/* ── NEW callout ──────────────────────────────────────────── */
+.new-badge {
+  background: #dcffe4; border: 1px solid #82cfaa;
+  border-left: 4px solid #116329;
+  border-radius: 6px; padding: 12px 16px; margin: 10px 0;
+  font-size: 13px; color: #116329;
+}
+.new-badge strong { color: #116329; }
+
+/* ── Stepper ──────────────────────────────────────────────── */
+.stepper { display: flex; flex-direction: column; gap: 0; }
+.step-row {
+  display: flex; gap: 0; position: relative;
+}
+.step-left {
+  display: flex; flex-direction: column; align-items: center;
+  width: 48px; flex-shrink: 0;
+}
+.step-dot {
+  width: 36px; height: 36px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 13px; font-weight: 800; flex-shrink: 0; z-index: 1;
+}
+.step-line {
+  width: 2px; flex: 1; min-height: 20px;
+  background: #e6e9ed; margin: 3px 0;
+}
+.step-body {
+  flex: 1; padding: 0 0 28px 16px;
+}
+.step-body h3 { margin-bottom: 5px; }
+.step-fn {
+  font-family: monospace; font-size: 11px;
+  color: #6639ba; background: #f5f0ff;
+  padding: 2px 7px; border-radius: 4px;
+  display: inline-block; margin-bottom: 6px;
+}
+.io-row { display: flex; gap: 8px; flex-wrap: wrap; margin: 4px 0; }
+.io-in  { font-size: 11px; color: #0d7377; background: #e6fffb; padding: 2px 8px; border-radius: 20px; border: 1px solid #76e4d8; }
+.io-out { font-size: 11px; color: #7a4100; background: #fff8e1; padding: 2px 8px; border-radius: 20px; border: 1px solid #ffd54f; }
+
+/* ── Horiz stepper ────────────────────────────────────────── */
+.hstepper {
+  display: flex; align-items: flex-start;
+  gap: 0; overflow-x: auto;
+  padding-bottom: 8px;
+}
+.hstep { display: flex; align-items: flex-start; }
+.hstep-box {
+  display: flex; flex-direction: column; align-items: center;
+  text-align: center; width: 110px; flex-shrink: 0;
+}
+.hstep-dot {
+  width: 32px; height: 32px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 12px; font-weight: 800;
+  margin-bottom: 8px;
+}
+.hstep-label { font-size: 11px; font-weight: 600; line-height: 1.3; }
+.hstep-arr {
+  display: flex; align-items: center;
+  padding: 0 4px; margin-top: 14px;
+  color: #9ea8b3; font-size: 18px; flex-shrink: 0;
+}
+
+/* ── Table ────────────────────────────────────────────────── */
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th { text-align: left; padding: 8px 12px; font-size: 11px;
+     text-transform: uppercase; letter-spacing: 0.5px;
+     color: #57606a; border-bottom: 2px solid #e6e9ed; }
+td { padding: 9px 12px; border-bottom: 1px solid #f0f2f5; vertical-align: top; }
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #f6f8fa; }
+
+/* ── Weight bar ───────────────────────────────────────────── */
+.wbar { display: flex; align-items: center; gap: 10px; padding: 5px 0; }
+.wbar-name { width: 130px; font-size: 12px; font-weight: 600; flex-shrink: 0; }
+.wbar-track { flex: 1; height: 8px; background: #e6e9ed; border-radius: 4px; overflow: hidden; }
+.wbar-fill  { height: 100%; border-radius: 4px; }
+.wbar-val   { width: 40px; text-align: right; font-family: monospace; font-size: 12px; font-weight: 700; flex-shrink: 0; }
+
+/* ── Colour palette classes ───────────────────────────────── */
+.blue   { color: #0969da; }
+.green  { color: #1a7f37; }
+.red    { color: #cf222e; }
+.purple { color: #8250df; }
+.amber  { color: #7a4100; }
+.teal   { color: #0d7377; }
+.orange { color: #bc4c00; }
+.violet { color: #6639ba; }
+.muted  { color: #57606a; }
+
+.bg-blue   { background: #ddf4ff;  border-color: #79c0ff; }
+.bg-green  { background: #dafbe1;  border-color: #82cfaa; }
+.bg-red    { background: #ffebe9;  border-color: #ff8182; }
+.bg-purple { background: #fbefff;  border-color: #d2a8ff; }
+.bg-amber  { background: #fff8e1;  border-color: #ffd54f; }
+.bg-teal   { background: #e6fffb;  border-color: #76e4d8; }
+.bg-orange { background: #fff1e5;  border-color: #ffa657; }
+.bg-violet { background: #f5f0ff;  border-color: #c297ff; }
+.bg-gray   { background: #f6f8fa;  border-color: #d0d7de; }
+
+/* ── 2-cycle overview ─────────────────────────────────────── */
+.cycle-overview {
+  display: grid; grid-template-columns: 1fr 40px 1fr;
+  gap: 0; align-items: start; margin: 24px 0;
+}
+.cycle-box {
+  border-radius: 12px; border: 2px solid;
+  padding: 20px;
+}
+.cycle-arrow {
+  display: flex; align-items: center; justify-content: center;
+  font-size: 24px; color: #9ea8b3; padding-top: 40px;
+}
+
+/* ── Conviction waterfall ─────────────────────────────────── */
+.waterfall { display: flex; flex-direction: column; gap: 0; }
+.wfall-step {
+  display: flex; flex-direction: column; align-items: center;
+}
+.wfall-box {
+  width: 100%; border-radius: 8px; padding: 10px 16px;
+  border: 1px solid; text-align: center;
+  font-size: 13px; font-weight: 600;
+}
+.wfall-arrow {
+  font-size: 20px; color: #9ea8b3; margin: 3px 0;
+}
+
+/* ── Miss type rows ───────────────────────────────────────── */
+.miss-row {
+  display: grid; grid-template-columns: 130px 70px 1fr;
+  gap: 12px; align-items: start;
+  padding: 12px 0; border-bottom: 1px solid #f0f2f5;
+}
+.miss-row:last-child { border-bottom: none; }
+.miss-badge {
+  display: inline-block; padding: 3px 10px; border-radius: 6px;
+  font-size: 12px; font-weight: 700; border: 1px solid;
+}
+.miss-penalty {
+  font-family: monospace; font-size: 16px; font-weight: 800;
+  text-align: center; padding-top: 2px;
+}
+.miss-desc { font-size: 13px; }
+.miss-example { font-size: 12px; color: #57606a; margin-top: 4px; font-style: italic; }
+
+/* ── Tier boxes ───────────────────────────────────────────── */
+.tier-box {
+  border-radius: 10px; border: 2px solid;
+  padding: 16px; position: relative;
+}
+.tier-num {
+  position: absolute; top: -14px; left: 16px;
+  font-size: 10px; font-weight: 800; text-transform: uppercase;
+  letter-spacing: 0.5px; padding: 2px 10px;
+  border-radius: 20px; border: 1px solid;
+}
+
+/* ── Scrollable table container ───────────────────────────── */
+.tbl-wrap { overflow-x: auto; border-radius: 8px; border: 1px solid #e6e9ed; }
+
+/* ── Divider ──────────────────────────────────────────────── */
+.divider { border: none; border-top: 1px solid #e6e9ed; margin: 24px 0; }
+
+/* ── Footer ───────────────────────────────────────────────── */
+.footer {
+  text-align: center; padding: 32px 0;
+  color: #8c959f; font-size: 12px;
+  border-top: 1px solid #e6e9ed;
+}
+
+/* ── Changed-this-session banner ──────────────────────────── */
+.session-banner {
+  background: linear-gradient(135deg, #dcffe4, #ddf4ff);
+  border: 1px solid #82cfaa; border-radius: 10px;
+  padding: 16px 20px; margin-bottom: 14px;
+  display: flex; align-items: flex-start; gap: 12px;
+}
+.session-icon { font-size: 22px; flex-shrink: 0; margin-top: 1px; }
+
+/* ── Window comparison ────────────────────────────────────── */
+.win-card {
+  border-radius: 8px; padding: 14px 16px; border: 1px solid;
+  text-align: center;
+}
+.win-days {
+  font-size: 28px; font-weight: 900; line-height: 1;
+  margin-bottom: 4px;
+}
+.win-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
+.win-weight { font-size: 22px; font-weight: 800; margin-top: 8px; }
+.win-wlabel { font-size: 11px; color: #57606a; }
+
+/* ── Responsive ───────────────────────────────────────────── */
+@media (max-width: 768px) {
+  .card-grid-2, .card-grid-3, .card-grid-4 { grid-template-columns: 1fr; }
+  .cycle-overview { grid-template-columns: 1fr; }
+  .cycle-arrow { display: none; }
+  .miss-row { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+
+<!-- ── NAV ──────────────────────────────────────────────────── -->
+<nav class="topnav">
+  <span class="logo">StockAgent RL</span>
+  <a href="#overview">Overview</a>
+  <a href="#monthly">Monthly</a>
+  <a href="#daily">Daily Loop</a>
+  <a href="#circles">3 Circles</a>
+  <a href="#feedback-agent">FeedbackAgent</a>
+  <a href="#miss-types">Miss Types</a>
+  <a href="#weight-adapter">WeightAdapter</a>
+  <a href="#ledger">Ledger</a>
+  <a href="#persistence">Persistence</a>
+  <a href="#rag">RAG</a>
+</nav>
+
+<div class="page">
+
+<!-- ── HERO ─────────────────────────────────────────────────── -->
+<div class="hero">
+  <div class="hero-tag">RL Evolution · Feedback · Reference</div>
+  <h1>How StockAgent Learns Over Time</h1>
+  <p>Every trading day after market close, the system compares what it predicted against what actually happened, figures out who was wrong and why, and updates itself. This document explains the full cycle — from the math to the mistakes.</p>
+  <div class="hero-chips">
+    <span class="chip" style="background:#ddf4ff;color:#0969da;border-color:#79c0ff">8 Specialist Agents</span>
+    <span class="chip" style="background:#dafbe1;color:#1a7f37;border-color:#82cfaa">7 Miss Types</span>
+    <span class="chip" style="background:#fbefff;color:#8250df;border-color:#d2a8ff">3-Tier Ledger</span>
+    <span class="chip" style="background:#fff1e5;color:#bc4c00;border-color:#ffa657">Calendar-Aware Windows</span>
+    <span class="chip" style="background:#f5f0ff;color:#6639ba;border-color:#c297ff">RAG Reference</span>
+    <span class="chip" style="background:#dcffe4;color:#116329;border-color:#82cfaa">3 Redesigns This Session</span>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════
+     SECTION 1 — OVERVIEW
+══════════════════════════════════════════════════════════════ -->
+<section class="section" id="overview">
+  <div class="section-head" style="border-color:#0969da">
+    <div class="section-num" style="background:#ddf4ff;color:#0969da">①</div>
+    <div>
+      <h2 class="blue">The Big Picture</h2>
+      <p>Two cycles running on a calendar. One at the start of every month, one at the end of every trading day.</p>
+    </div>
+  </div>
+
+  <div class="cycle-overview">
+    <div class="cycle-box bg-blue" style="border-color:#79c0ff">
+      <h3 class="blue" style="margin-bottom:10px">📅 Month Start</h3>
+      <p style="font-size:13px;margin-bottom:10px">Run all 8 agents on the stock, fuse their scores, and write a <strong>30-day prediction envelope</strong> — one forecast row per trading day.</p>
+      <p style="font-size:12px" class="muted">File saved: <code>{TICKER}_{YYYY-MM}_prediction_envelope.json</code></p>
+    </div>
+    <div class="cycle-arrow">→</div>
+    <div class="cycle-box" style="background:#fff1e5;border-color:#ffa657">
+      <h3 class="orange" style="margin-bottom:10px">🔁 Every Trading Day</h3>
+      <p style="font-size:13px;margin-bottom:10px">Fetch what the market actually did. Compare to the prediction. Diagnose the miss. Adjust agent weights. Update lessons. Revise the remaining forecasts.</p>
+      <p style="font-size:12px" class="muted">9 steps, all automatic, post-market close at 4:30pm IST.</p>
+    </div>
+  </div>
+
+  <div class="insight">
+    <strong>The key idea:</strong> Nothing resets. Weights earned last month carry into next month. Lessons from MARUTI's Q3 earnings surprise stay in the ledger permanently. The system compounds knowledge, like a trader who remembers every mistake they ever made.
+  </div>
+
+  <div style="margin-top:24px">
+    <h4 style="margin-bottom:14px">The 4 JSON Files That Are Never Deleted</h4>
+    <div class="card-grid card-grid-2">
+      <div class="card" style="border-left:3px solid #ffd54f">
+        <h4 class="amber" style="margin-bottom:6px">Per-Cycle (monthly)</h4>
+        <p style="font-size:12px;margin-bottom:4px"><code>{TICKER}_{YYYY-MM}_prediction_envelope.json</code> — 30 forecast rows, updated daily</p>
+        <p style="font-size:12px"><code>{TICKER}_{YYYY-MM}_daily_feedback_log.json</code> — every miss, root-caused</p>
+      </div>
+      <div class="card" style="border-left:3px solid #82cfaa">
+        <h4 class="green" style="margin-bottom:6px">Permanent (across all cycles)</h4>
+        <p style="font-size:12px;margin-bottom:4px"><code>{TICKER}_agent_weight_memory.json</code> — earned credibility per agent</p>
+        <p style="font-size:12px"><code>{TICKER}_learning_ledger.json</code> — accumulated stock-specific pattern rules</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════
+     SECTION 2 — MONTHLY FORECAST
+══════════════════════════════════════════════════════════════ -->
+<section class="section" id="monthly">
+  <div class="section-head" style="border-color:#0969da">
+    <div class="section-num" style="background:#ddf4ff;color:#0969da">②</div>
+    <div>
+      <h2 class="blue">Monthly Forecast Generation</h2>
+      <p><code>generate_forecast.py</code> — Runs once at month-start per ticker.</p>
+    </div>
+  </div>
+
+  <!-- Horizontal stepper -->
+  <div class="hstepper" style="margin-bottom:28px">
+    <div class="hstep">
+      <div class="hstep-box">
+        <div class="hstep-dot" style="background:#ddf4ff;color:#0969da">1</div>
+        <div class="hstep-label">Load<br>WeightMemory</div>
+      </div>
+    </div>
+    <div class="hstep-arr">→</div>
+    <div class="hstep">
+      <div class="hstep-box">
+        <div class="hstep-dot" style="background:#ddf4ff;color:#0969da">2</div>
+        <div class="hstep-label">Run 8-Agent Orchestrator</div>
+      </div>
+    </div>
+    <div class="hstep-arr">→</div>
+    <div class="hstep">
+      <div class="hstep-box">
+        <div class="hstep-dot" style="background:#ddf4ff;color:#0969da">3</div>
+        <div class="hstep-label">FinalReport + Baseline Close</div>
+      </div>
+    </div>
+    <div class="hstep-arr">→</div>
+    <div class="hstep">
+      <div class="hstep-box">
+        <div class="hstep-dot" style="background:#fff8e1;color:#7a4100">P4</div>
+        <div class="hstep-label">Load Ledger + Prompt Enhancements</div>
+      </div>
+    </div>
+    <div class="hstep-arr">→</div>
+    <div class="hstep">
+      <div class="hstep-box">
+        <div class="hstep-dot" style="background:#f5f0ff;color:#6639ba">P1</div>
+        <div class="hstep-label">Apply Seasonal Adjustments</div>
+      </div>
+    </div>
+    <div class="hstep-arr">→</div>
+    <div class="hstep">
+      <div class="hstep-box">
+        <div class="hstep-dot" style="background:#dafbe1;color:#1a7f37">6</div>
+        <div class="hstep-label">PredictionEnvelope (30 days)</div>
+      </div>
+    </div>
+    <div class="hstep-arr">→</div>
+    <div class="hstep">
+      <div class="hstep-box">
+        <div class="hstep-dot" style="background:#dafbe1;color:#1a7f37">7</div>
+        <div class="hstep-label">Save to Disk (atomic)</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- WeightMemory loading explained -->
+  <div class="card" style="margin-bottom:16px;border-left:3px solid #0969da">
+    <h3 class="blue" style="margin-bottom:8px">Step 1 — Load WeightMemory: file-first, never resets</h3>
+    <p style="font-size:13px;margin-bottom:10px">The very first question: have we done this before? <code>get_or_init_weight_memory(base_weights)</code> checks disk.</p>
+    <div class="formula">
+      existing = load_weight_memory()   <span class="comment"># reads {TICKER}_agent_weight_memory.json from disk</span>
+      if existing is not None:
+          return existing               <span class="comment"># Day 6, Day 30, Day 100 — picks up from last state</span>
+      return init_weight_memory(base_weights)  <span class="comment"># ONLY called on Day 1 when no file exists yet</span>
+    </div>
+    <div class="insight" style="margin-top:10px">
+      <strong>Restart-proof:</strong> When the app restarts, this function finds the saved file and loads all learned weights. Base weights are only used once — the very first time. After that, <code>current_weights</code> reflect everything the system has learned.
+    </div>
+  </div>
+
+  <!-- 8 agents -->
+  <div class="card" style="margin-bottom:16px">
+    <h3 style="margin-bottom:14px">8 Agents — Base Weights (override after first RL cycle)</h3>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 24px">
+      <div class="wbar"><span class="wbar-name">fundamentals</span><div class="wbar-track"><div class="wbar-fill" style="width:100%;background:#0969da"></div></div><span class="wbar-val blue">0.20</span></div>
+      <div class="wbar"><span class="wbar-name">raw_materials</span><div class="wbar-track"><div class="wbar-fill" style="width:50%;background:#0969da"></div></div><span class="wbar-val blue">0.10</span></div>
+      <div class="wbar"><span class="wbar-name">sales_demand</span><div class="wbar-track"><div class="wbar-fill" style="width:90%;background:#0969da"></div></div><span class="wbar-val blue">0.18</span></div>
+      <div class="wbar"><span class="wbar-name">policy_regulatory</span><div class="wbar-track"><div class="wbar-fill" style="width:50%;background:#0969da"></div></div><span class="wbar-val blue">0.10</span></div>
+      <div class="wbar"><span class="wbar-name">pattern_analysis</span><div class="wbar-track"><div class="wbar-fill" style="width:90%;background:#0969da"></div></div><span class="wbar-val blue">0.18</span></div>
+      <div class="wbar"><span class="wbar-name">competitive_intel</span><div class="wbar-track"><div class="wbar-fill" style="width:50%;background:#0969da"></div></div><span class="wbar-val blue">0.10</span></div>
+      <div class="wbar"><span class="wbar-name">risk_macro</span><div class="wbar-track"><div class="wbar-fill" style="width:75%;background:#0969da"></div></div><span class="wbar-val blue">0.15</span></div>
+      <div class="wbar"><span class="wbar-name">sentiment</span><div class="wbar-track"><div class="wbar-fill" style="width:45%;background:#0969da"></div></div><span class="wbar-val blue">0.09</span></div>
+    </div>
+  </div>
+
+  <!-- Confidence decay -->
+  <div class="card">
+    <h3 style="margin-bottom:8px">Confidence Decay in the Envelope</h3>
+    <p style="font-size:13px;margin-bottom:8px">Each of the 30 forecast rows starts with lower confidence than the one before it. The further out you look, the less certain you are.</p>
+    <div class="formula">day_confidence = base_confidence × (1 − 0.005 × day_index)   <span class="comment"># −0.5% per day further out</span>
+day_confidence = max(0.10, day_confidence)               <span class="comment"># never below 10%</span></div>
+    <div class="example">
+      <div class="example-label">Example — MARUTI, BUY verdict, base confidence 0.78</div>
+      Day 1 → 0.78 &nbsp;|&nbsp; Day 5 → 0.76 &nbsp;|&nbsp; Day 15 → 0.72 &nbsp;|&nbsp; Day 30 → 0.67
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════
+     SECTION 3 — DAILY REVIEW LOOP
+══════════════════════════════════════════════════════════════ -->
+<section class="section" id="daily">
+  <div class="section-head" style="border-color:#1a7f37">
+    <div class="section-num" style="background:#dafbe1;color:#1a7f37">③</div>
+    <div>
+      <h2 class="green">The Daily Review Loop</h2>
+      <p><code>daily_review.py</code> — 9 steps per ticker, every trading day after 4:30pm IST.</p>
+    </div>
+  </div>
+
+  <div class="stepper">
+
+    <!-- Step 0 -->
+    <div class="step-row">
+      <div class="step-left">
+        <div class="step-dot" style="background:#fff1e5;color:#bc4c00">P5</div>
+        <div class="step-line"></div>
+      </div>
+      <div class="step-body">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:5px">
+          <h3 class="orange">Step 0 — Regime Detector</h3>
+          <span class="pill tag-p5">Phase 5</span>
+        </div>
+        <div class="io-row"><span class="io-out">→ RegimeSnapshot (regime label + per-agent weight multipliers)</span></div>
+        <p style="font-size:13px;margin-top:6px">Detects current market regime (NORMAL / RISK_OFF / MOMENTUM etc.) before anything else runs. <strong>Non-fatal</strong> — if it fails, the loop continues without regime context. Multipliers are used later at Step 5.5.</p>
+      </div>
+    </div>
+
+    <!-- Step 1 -->
+    <div class="step-row">
+      <div class="step-left">
+        <div class="step-dot" style="background:#ddf4ff;color:#0969da">1</div>
+        <div class="step-line"></div>
+      </div>
+      <div class="step-body">
+        <h3 class="blue" style="margin-bottom:5px">Load Today's Forecast Row</h3>
+        <div class="io-row">
+          <span class="io-in">← {TICKER}_{YYYY-MM}_prediction_envelope.json</span>
+          <span class="io-out">→ DailyForecast (predicted_close, verdict, agent_scores, assumptions)</span>
+        </div>
+        <p style="font-size:13px;margin-top:6px">Pulls the row for today's date from the monthly envelope. This frozen snapshot is what the system predicted at month-start.</p>
+      </div>
+    </div>
+
+    <!-- Step 2 -->
+    <div class="step-row">
+      <div class="step-left">
+        <div class="step-dot" style="background:#ddf4ff;color:#0969da">2</div>
+        <div class="step-line"></div>
+      </div>
+      <div class="step-body">
+        <h3 class="blue" style="margin-bottom:5px">Fetch Actual Closing Price</h3>
+        <div class="step-fn">_fetch_actual_close(ticker, target_date) via yfinance</div>
+        <div class="io-row"><span class="io-out">→ actual_close (float)</span></div>
+      </div>
+    </div>
+
+    <!-- Step 3 -->
+    <div class="step-row">
+      <div class="step-left">
+        <div class="step-dot" style="background:#ddf4ff;color:#0969da">3</div>
+        <div class="step-line"></div>
+      </div>
+      <div class="step-body">
+        <h3 class="blue" style="margin-bottom:5px">Compute Error Metrics</h3>
+        <div class="step-fn">classify_direction(actual, predicted) — threshold ±0.3%</div>
+        <div class="io-row">
+          <span class="io-out">→ price_error_pct</span>
+          <span class="io-out">→ direction_correct (bool)</span>
+          <span class="io-out">→ actual_direction (UP / DOWN / FLAT)</span>
+        </div>
+        <div class="example" style="margin-top:8px">
+          <div class="example-label">How direction_correct is decided</div>
+          Predicted BUY, actual moved +1.2% → direction_correct = <strong>True</strong><br>
+          Predicted BUY, actual moved −2.1% → direction_correct = <strong>False</strong><br>
+          Predicted BUY, actual moved +0.1% → FLAT → direction_correct = <strong>False</strong> (±0.3% threshold)
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 3.5 -->
+    <div class="step-row">
+      <div class="step-left">
+        <div class="step-dot" style="background:#fbefff;color:#8250df">3.5</div>
+        <div class="step-line"></div>
+      </div>
+      <div class="step-body">
+        <h3 class="purple" style="margin-bottom:5px">Re-Run Agents with Today's Live Data</h3>
+        <div class="step-fn">_run_todays_agent_scores(ticker, sector, learned_weights)</div>
+        <div class="io-row"><span class="io-out">→ todays_scores — dict of agent → live score</span></div>
+        <p style="font-size:13px;margin-top:6px">The full orchestrator runs again with <em>today's</em> data. Comparing these scores against the frozen month-start scores reveals which agent's signals changed the most — that drift is what the FeedbackAgent uses to identify who to blame.</p>
+        <div class="formula" style="margin-top:8px">agent_score_drift[agent] = predicted_score − todays_score
+<span class="comment"># positive = agent underestimated the situation
+# negative = agent overestimated it</span></div>
+      </div>
+    </div>
+
+    <!-- Step 4 -->
+    <div class="step-row">
+      <div class="step-left">
+        <div class="step-dot" style="background:#fff8e1;color:#7a4100">4</div>
+        <div class="step-line"></div>
+      </div>
+      <div class="step-body">
+        <h3 class="amber" style="margin-bottom:5px">FeedbackAgent — LLM Root-Cause Analysis</h3>
+        <div class="io-row">
+          <span class="io-in">← 6-section prompt (see Section 5)</span>
+          <span class="io-out">→ miss_type + primary_miss_agent + lessons + revised_context</span>
+        </div>
+        <p style="font-size:13px;margin-top:6px">Qwen 3-235B reads the full picture and outputs a structured JSON diagnosis. This is the only LLM call in the feedback loop — everything else is deterministic.</p>
+      </div>
+    </div>
+
+    <!-- Step 5 -->
+    <div class="step-row">
+      <div class="step-left">
+        <div class="step-dot" style="background:#ffebe9;color:#cf222e">5</div>
+        <div class="step-line"></div>
+      </div>
+      <div class="step-body">
+        <h3 class="red" style="margin-bottom:5px">WeightAdapter — Update Agent Weights</h3>
+        <div class="step-fn">update(weight_memory, feedback_log, primary_miss_agent, miss_type, timing_lag_days, seasonal_threshold_deltas)</div>
+        <div class="io-row">
+          <span class="io-in">← rolling bias score (5/10/21 trading-day windows)</span>
+          <span class="io-out">→ updated WeightMemory saved to disk (weight_version++)</span>
+        </div>
+        <div class="new-badge" style="margin-top:8px">
+          <strong>Redesigned this session:</strong> Replaced brittle consecutive-streak (≥2 days) with a calendar-aware multi-window bias score. See Section 7 for the full algorithm.
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 5.5 -->
+    <div class="step-row">
+      <div class="step-left">
+        <div class="step-dot" style="background:#fff1e5;color:#bc4c00">P5</div>
+        <div class="step-line"></div>
+      </div>
+      <div class="step-body">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:5px">
+          <h3 class="orange">Step 5.5 — Apply Regime Multipliers</h3>
+          <span class="pill tag-p5">Phase 5</span>
+        </div>
+        <div class="formula">effective_weights[agent] = learned_weights[agent] × regime_multiplier[agent]
+<span class="comment"># then re-normalise all weights to sum = 1.0
+# regime_multipliers are EPHEMERAL — not written to weight_memory.json</span></div>
+        <p style="font-size:13px;margin-top:6px">Regime effects are applied on top of learned weights for forecast revision only. The underlying <code>agent_weight_memory.json</code> is never overwritten with regime values — they expire at the next daily review.</p>
+      </div>
+    </div>
+
+    <!-- Step 6 -->
+    <div class="step-row">
+      <div class="step-left">
+        <div class="step-dot" style="background:#e6fffb;color:#0d7377">6</div>
+        <div class="step-line"></div>
+      </div>
+      <div class="step-body">
+        <h3 class="teal" style="margin-bottom:5px">LedgerPropagator — Route Lessons to 3-Tier Ledgers</h3>
+        <div class="step-fn">propagate_lessons(ticker, ticker_ledger, sector_ledger, market_ledger)</div>
+        <div class="io-row">
+          <span class="io-in">← raw lessons from FeedbackAgent (with scope tags)</span>
+          <span class="io-out">→ deduplicated, confidence-blended lessons saved per tier</span>
+        </div>
+        <p style="font-size:13px;margin-top:6px">Every lesson the LLM extracts gets routed to the right ledger based on its scope. See Section 8 for the full routing logic.</p>
+      </div>
+    </div>
+
+    <!-- Step 6.5 -->
+    <div class="step-row">
+      <div class="step-left">
+        <div class="step-dot" style="background:#fbefff;color:#8250df">P3</div>
+        <div class="step-line"></div>
+      </div>
+      <div class="step-body">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:5px">
+          <h3 class="purple">Step 6.5 — Conviction Streak + Reversion Prior</h3>
+          <span class="pill tag-p3">Phase 3</span>
+        </div>
+        <div class="step-fn">compute_final_reversion_prior(streak_days, verdict, todays_agent_scores)</div>
+        <div class="io-row"><span class="io-out">→ reversion_prior (0.0–0.30) — used in Step 7 confidence dampening</span></div>
+        <p style="font-size:13px;margin-top:6px">If the system has been BULLISH for 8+ consecutive days, it starts to worry about momentum exhaustion. See Section 4 for the full formula.</p>
+      </div>
+    </div>
+
+    <!-- Step 7 -->
+    <div class="step-row">
+      <div class="step-left">
+        <div class="step-dot" style="background:#ddf4ff;color:#0969da">7</div>
+        <div class="step-line"></div>
+      </div>
+      <div class="step-body">
+        <h3 class="blue" style="margin-bottom:5px">Revise Remaining Forecasts</h3>
+        <div class="step-fn">_revise_remaining_forecasts(...)</div>
+        <p style="font-size:13px">Updates every future forecast row in the envelope with four things layered together:</p>
+        <div class="card-grid card-grid-2" style="margin-top:10px;gap:8px">
+          <div class="card bg-blue" style="padding:10px 12px;font-size:12px"><strong>New learned weights</strong><br>From Step 5 — agent credibility updated</div>
+          <div class="card bg-orange" style="padding:10px 12px;font-size:12px"><strong>Regime multipliers</strong><br>From Step 5.5 — market context overlay</div>
+          <div class="card bg-purple" style="padding:10px 12px;font-size:12px"><strong>Reversion prior dampening</strong><br>From Step 6.5 — streak caution</div>
+          <div class="card bg-gray" style="padding:10px 12px;font-size:12px"><strong>Horizon decay</strong><br>−0.5% confidence per day further out</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 8 -->
+    <div class="step-row">
+      <div class="step-left">
+        <div class="step-dot" style="background:#dafbe1;color:#1a7f37">8</div>
+        <div class="step-line"></div>
+      </div>
+      <div class="step-body">
+        <h3 class="green" style="margin-bottom:5px">Append FeedbackEntry → daily_feedback_log.json</h3>
+        <div class="step-fn">append_feedback_entry(entry, cycle_id) — atomic write (temp → rename)</div>
+        <div class="io-row"><span class="io-out">→ FeedbackEntry with: actual_close, error_pct, direction_correct, miss_type, timing_accuracy, revised_context, lessons</span></div>
+      </div>
+    </div>
+
+    <!-- Step 9 -->
+    <div class="step-row">
+      <div class="step-left">
+        <div class="step-dot" style="background:#f5f0ff;color:#6639ba">P1</div>
+      </div>
+      <div class="step-body">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:5px">
+          <h3 class="violet">Step 9 — Seasonal Pattern Validation</h3>
+          <span class="pill tag-p1">Phase 1</span>
+        </div>
+        <p style="font-size:13px">Cross-checks the day's actual outcome against what the seasonal calendar expected. If there's a divergence, the seasonal pattern's confidence is updated.</p>
+      </div>
+    </div>
+
+  </div><!-- end stepper -->
+</section>
+
+<!-- ══════════════════════════════════════════════════════════
+     SECTION 4 — THE THREE ADDITIONAL CIRCLES
+══════════════════════════════════════════════════════════════ -->
+<section class="section" id="circles">
+  <div class="section-head" style="border-color:#8250df">
+    <div class="section-num" style="background:#fbefff;color:#8250df">④</div>
+    <div>
+      <h2 class="purple">The Three Additional Circles</h2>
+      <p>Three separate sub-systems that run inside the daily loop, each with its own specific logic. They feed into Steps 0, 6.5, and 9.</p>
+    </div>
+  </div>
+
+  <div class="card-grid card-grid-3" style="align-items:start">
+
+    <!-- P3 Conviction -->
+    <div>
+      <div class="card bg-purple" style="margin-bottom:14px">
+        <div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:8px">
+          <h3 class="purple">Conviction Streak Tracker</h3>
+          <span class="pill tag-p3">P3</span>
+        </div>
+        <p style="font-size:12px" class="muted">conviction/tracker.py</p>
+      </div>
+
+      <div class="waterfall">
+        <div class="wfall-step">
+          <div class="wfall-box bg-purple" style="font-size:12px">Today's verdict: BULLISH / BEARISH / NEUTRAL</div>
+        </div>
+        <div class="wfall-arrow purple">↓</div>
+        <div class="wfall-step">
+          <div class="wfall-box bg-purple" style="font-size:12px">update_conviction_streak()<br><span class="muted" style="font-size:11px">same direction → streak++<br>direction changes → streak = 1</span></div>
+        </div>
+        <div class="wfall-arrow purple">↓</div>
+        <div class="wfall-step">
+          <div class="wfall-box bg-purple" style="font-size:12px">Base Reversion Prior</div>
+        </div>
+      </div>
+      <div class="formula" style="margin:8px 0">min(0.25, max(0, (streak_days − 4) × 0.025))</div>
+      <p style="font-size:12px;margin-bottom:10px" class="muted">Starts building after 4 consecutive same-direction days.</p>
+
+      <div class="waterfall">
+        <div class="wfall-step">
+          <div class="wfall-box bg-purple" style="font-size:12px">RSI Amplifier Check</div>
+        </div>
+      </div>
+      <div class="formula" style="margin:8px 0">BULLISH + pa_score &lt; 0.40 → ×1.5 (overbought signal)
+BEARISH + pa_score &gt; 0.60 → ×1.5 (oversold signal)
+otherwise → ×1.0</div>
+
+      <div class="waterfall">
+        <div class="wfall-arrow purple" style="text-align:center;display:block">↓</div>
+        <div class="wfall-step">
+          <div class="wfall-box bg-purple" style="font-size:12px">Final Prior = base × amplifier<br>capped at 0.30</div>
+        </div>
+        <div class="wfall-arrow purple" style="text-align:center;display:block">↓</div>
+        <div class="wfall-step">
+          <div class="wfall-box bg-purple" style="font-size:12px">Confidence Dampening</div>
+        </div>
+      </div>
+      <div class="formula" style="margin:8px 0">adjusted × (1.0 − reversion_prior × 0.5)</div>
+
+      <div class="example" style="margin-top:10px">
+        <div class="example-label">Example — 10-day BULLISH streak</div>
+        streak=10 → base = min(0.25, (10−4)×0.025) = 0.15<br>
+        pa_score=0.35 (BULLISH+overbought) → ×1.5 → prior = 0.225<br>
+        confidence 0.80 → 0.80 × (1−0.225×0.5) = <strong>0.71</strong>
+      </div>
+
+      <div class="warn" style="margin-top:10px">
+        <strong>Threshold:</strong> At 8+ consecutive days, a warning block is injected into the FeedbackAgent prompt: "Check for momentum exhaustion — RSI divergence, volume dry-up."
+      </div>
+    </div>
+
+    <!-- P5 Regime -->
+    <div>
+      <div class="card bg-orange" style="margin-bottom:14px">
+        <div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:8px">
+          <h3 class="orange">Regime Detector</h3>
+          <span class="pill tag-p5">P5</span>
+        </div>
+        <p style="font-size:12px" class="muted">Step 0 + Step 5.5 of daily loop</p>
+      </div>
+
+      <div class="waterfall">
+        <div class="wfall-step">
+          <div class="wfall-box bg-orange" style="font-size:12px">Market Data Inputs<br><span class="muted" style="font-size:11px">VIX levels, FII daily flows,<br>sector RSI readings</span></div>
+        </div>
+        <div class="wfall-arrow orange">↓</div>
+        <div class="wfall-step">
+          <div class="wfall-box bg-orange" style="font-size:12px">RegimeDetector (Step 0)<br><span style="font-size:11px;color:#bc4c00">non-fatal — failure skipped</span></div>
+        </div>
+        <div class="wfall-arrow orange">↓</div>
+        <div class="wfall-step">
+          <div class="wfall-box bg-orange" style="font-size:12px">RegimeSnapshot<br><span class="muted" style="font-size:11px">regime_label + multipliers per agent</span></div>
+        </div>
+        <div class="wfall-arrow orange">↓</div>
+        <div class="wfall-step">
+          <div class="wfall-box bg-orange" style="font-size:12px">Step 5.5: Apply Multipliers</div>
+        </div>
+      </div>
+      <div class="formula" style="margin:8px 0">effective_weights[agent] =
+  learned_weights[agent] × regime_multiplier[agent]
+<span class="comment"># normalise to sum = 1.0 after</span></div>
+
+      <div class="wfall-arrow orange" style="text-align:center;display:block;margin:4px 0">↓</div>
+      <div class="card bg-orange" style="font-size:12px;padding:10px 12px">
+        <strong>Regime Narrative</strong> also injected into FeedbackAgent prompt with multiplier context: which agents are being upweighted/downweighted today and why.
+      </div>
+
+      <div class="insight" style="margin-top:12px">
+        <strong>Key distinction:</strong> Regime multipliers are <em>ephemeral</em>. They change the effective weights used for forecast revision but never overwrite <code>agent_weight_memory.json</code>. The underlying learned weights are unaffected.
+      </div>
+
+      <div style="margin-top:12px">
+        <h4 style="margin-bottom:8px">Regime Labels</h4>
+        <div style="display:flex;flex-direction:column;gap:4px">
+          <div style="display:flex;align-items:center;gap:8px;font-size:12px"><span class="pill" style="background:#dafbe1;color:#1a7f37;border-color:#82cfaa;width:90px;text-align:center">NORMAL</span> Default — multipliers all 1.0</div>
+          <div style="display:flex;align-items:center;gap:8px;font-size:12px"><span class="pill" style="background:#ffebe9;color:#cf222e;border-color:#ff8182;width:90px;text-align:center">RISK_OFF</span> FII selling, VIX elevated — boost risk_macro</div>
+          <div style="display:flex;align-items:center;gap:8px;font-size:12px"><span class="pill" style="background:#ddf4ff;color:#0969da;border-color:#79c0ff;width:90px;text-align:center">MOMENTUM</span> Trending — boost pattern_analysis</div>
+          <div style="display:flex;align-items:center;gap:8px;font-size:12px"><span class="pill" style="background:#fff8e1;color:#7a4100;border-color:#ffd54f;width:90px;text-align:center">VOLATILE</span> High VIX — dampen all confidence</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- P1 Seasonal -->
+    <div>
+      <div class="card bg-violet" style="margin-bottom:14px">
+        <div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:8px">
+          <h3 class="violet">Seasonal Pattern System</h3>
+          <span class="pill tag-p1">P1</span>
+        </div>
+        <p style="font-size:12px" class="muted">generate_forecast.py + daily_review.py Step 9</p>
+      </div>
+
+      <div class="waterfall">
+        <div class="wfall-step">
+          <div class="wfall-box bg-violet" style="font-size:12px">SeasonalPattern (pre-seeded)<br><span class="muted" style="font-size:11px">months, day_range, agents_affected,<br>direction_bias, confidence</span></div>
+        </div>
+        <div class="wfall-arrow violet">↓</div>
+        <div class="wfall-step">
+          <div class="wfall-box bg-violet" style="font-size:12px">SeasonalCalendar.get_context(date)<br><span class="muted" style="font-size:11px">aggregates all active patterns for that day</span></div>
+        </div>
+        <div class="wfall-arrow violet">↓</div>
+        <div class="wfall-step">
+          <div class="wfall-box bg-violet" style="font-size:12px">SeasonalContext</div>
+        </div>
+      </div>
+      <div class="formula" style="margin:8px 0">agent_score_adjustments: dict[agent → delta]
+confidence_modifier: float
+narrative → prepended as [SEASONAL] tag</div>
+
+      <div class="waterfall">
+        <div class="wfall-arrow violet" style="text-align:center;display:block;margin:4px 0">↓</div>
+        <div class="wfall-step">
+          <div class="wfall-box bg-violet" style="font-size:12px">Applied at forecast build time<br><span class="muted" style="font-size:11px">each DailyForecast row gets per-day seasonal adjustment</span></div>
+        </div>
+        <div class="wfall-arrow violet" style="text-align:center;display:block;margin:4px 0">↓</div>
+        <div class="wfall-step">
+          <div class="wfall-box bg-violet" style="font-size:12px">Step 9 validation daily<br><span class="muted" style="font-size:11px">outcome vs expectation → update confidence</span></div>
+        </div>
+      </div>
+
+      <div class="new-badge" style="margin-top:12px">
+        <strong>New this session — accuracy_threshold_delta</strong><br>
+        Each SeasonalPattern can now define per-agent threshold shifts for the WeightAdapter. During festive season, <code>sales_demand: +0.08</code> means that agent needs 78% hit rate (not 70%) to earn a boost — prevents undeserved weight inflation when predictions are structurally easy.
+      </div>
+
+      <div class="example" style="margin-top:10px">
+        <div class="example-label">Example patterns</div>
+        <strong>Diwali (Oct–Nov):</strong> sales_demand +0.06, sentiment +0.04, confidence +0.05<br>
+        <strong>Budget Week (Feb):</strong> policy_regulatory +0.08, fundamentals −0.04, confidence −0.05<br>
+        <strong>Dec Year-End:</strong> sales_demand −0.05 (inventory flush), confidence −0.03
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════
+     SECTION 5 — FEEDBACK AGENT
+══════════════════════════════════════════════════════════════ -->
+<section class="section" id="feedback-agent">
+  <div class="section-head" style="border-color:#7a4100">
+    <div class="section-num" style="background:#fff8e1;color:#7a4100">⑤</div>
+    <div>
+      <h2 class="amber">FeedbackAgent — The LLM Heart</h2>
+      <p>The only LLM call in the feedback loop. Runs at Step 4. Reads everything, diagnoses the miss, extracts lessons.</p>
+    </div>
+  </div>
+
+  <!-- Model config -->
+  <div class="card-grid card-grid-4" style="margin-bottom:20px">
+    <div class="card bg-amber" style="text-align:center">
+      <h4 class="amber" style="margin-bottom:6px">Model</h4>
+      <p style="font-size:13px;font-weight:700">Qwen 3-235B-A22B</p>
+      <p style="font-size:11px" class="muted">via OpenRouter</p>
+    </div>
+    <div class="card bg-amber" style="text-align:center">
+      <h4 class="amber" style="margin-bottom:6px">Temperature</h4>
+      <p style="font-size:22px;font-weight:800" class="amber">0.3</p>
+      <p style="font-size:11px" class="muted">creativity + determinism</p>
+    </div>
+    <div class="card bg-amber" style="text-align:center">
+      <h4 class="amber" style="margin-bottom:6px">Max Tokens</h4>
+      <p style="font-size:22px;font-weight:800" class="amber">1500</p>
+      <p style="font-size:11px" class="muted">JSON output contract</p>
+    </div>
+    <div class="card bg-amber" style="text-align:center">
+      <h4 class="amber" style="margin-bottom:6px">Retry</h4>
+      <p style="font-size:13px;font-weight:700">On APIError<br>RateLimitError<br>TimeoutError</p>
+    </div>
+  </div>
+
+  <!-- How it knows who to blame -->
+  <div class="card" style="margin-bottom:20px;border-left:3px solid #f59e0b">
+    <h3 style="margin-bottom:10px">How Does It Know Which Agent to Blame?</h3>
+    <p style="font-size:13px;margin-bottom:12px">The LLM doesn't use a code rule. It reads the agent score snapshot in the prompt — frozen scores from month-start vs live re-run scores from today — and reasons about who drifted the most, then cross-references with the news context to understand <em>why</em>.</p>
+    <div class="formula">--- AGENT SCORE SNAPSHOT ---
+Predicted scores (frozen at forecast time):
+  fundamentals:     0.81   pattern_analysis: 0.68
+  sales_demand:     0.72   sentiment:        0.44
+
+Today's re-run scores (live data):
+  fundamentals:     0.79   <span class="comment">← barely changed</span>
+  sales_demand:     0.51   <span class="comment">← drifted −0.21</span>
+  pattern_analysis: 0.35   <span class="comment">← drifted −0.33  ← LLM picks this as primary_miss_agent</span>
+  sentiment:        0.42   <span class="comment">← barely changed</span></div>
+    <div class="insight" style="margin-top:10px">
+      <strong>Credit rule for direction_hits:</strong> When the whole day is correct (direction_correct=True), ALL 8 agents get +1 hit credit — the outcome was good, no one is blamed. When it's wrong, only the one agent the LLM names as <code>primary_miss_agent</code> loses credit. The other 7 still get a hit. This is elimination-based, not individual scoring.
+    </div>
+  </div>
+
+  <!-- 6-section prompt -->
+  <div class="card" style="margin-bottom:20px">
+    <h3 style="margin-bottom:14px">The 6-Section User Prompt</h3>
+    <div style="display:flex;flex-direction:column;gap:6px">
+      <div style="display:grid;grid-template-columns:30px 1fr;gap:12px;align-items:start;padding:8px 0;border-bottom:1px solid #f0f2f5">
+        <div style="width:28px;height:28px;border-radius:50%;background:#ddf4ff;color:#0969da;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:12px;flex-shrink:0">1</div>
+        <div><strong>Header</strong> — Ticker / Sector / Date</div>
+      </div>
+      <div style="display:grid;grid-template-columns:30px 1fr;gap:12px;align-items:start;padding:8px 0;border-bottom:1px solid #f0f2f5">
+        <div style="width:28px;height:28px;border-radius:50%;background:#ddf4ff;color:#0969da;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:12px;flex-shrink:0">2</div>
+        <div><strong>Prediction vs Actual</strong> — forecasted price, actual close, price_error_pct, direction_correct</div>
+      </div>
+      <div style="display:grid;grid-template-columns:30px 1fr;gap:12px;align-items:start;padding:8px 0;border-bottom:1px solid #f0f2f5">
+        <div style="width:28px;height:28px;border-radius:50%;background:#ddf4ff;color:#0969da;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:12px;flex-shrink:0">3</div>
+        <div><strong>Agent Score Delta</strong> — frozen scores vs today's live re-run per agent (this is how blame is determined)</div>
+      </div>
+      <div style="display:grid;grid-template-columns:30px 1fr;gap:12px;align-items:start;padding:8px 0;border-bottom:1px solid #f0f2f5">
+        <div style="width:28px;height:28px;border-radius:50%;background:#ddf4ff;color:#0969da;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:12px;flex-shrink:0">4</div>
+        <div><strong>Market Context Today</strong> — 3 live news articles + [SEASONAL] tag if active + streak warning if ≥8 days + [MARKET REGIME] narrative</div>
+      </div>
+      <div style="display:grid;grid-template-columns:30px 1fr;gap:12px;align-items:start;padding:8px 0;border-bottom:1px solid #f0f2f5">
+        <div style="width:28px;height:28px;border-radius:50%;background:#ddf4ff;color:#0969da;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:12px;flex-shrink:0">5</div>
+        <div><strong>Key Assumptions at Forecast Time</strong> — what the system assumed when it made the prediction at month-start</div>
+      </div>
+      <div style="display:grid;grid-template-columns:30px 1fr;gap:12px;align-items:start;padding:8px 0">
+        <div style="width:28px;height:28px;border-radius:50%;background:#ddf4ff;color:#0969da;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:12px;flex-shrink:0">6</div>
+        <div><strong>Existing Lessons</strong> — 3-tier tiered summary: top 6 stock-specific, top 3 sector-wide, top 2 market-wide</div>
+      </div>
+    </div>
+    <div class="warn" style="margin-top:14px">
+      <strong>Analyst distrust rule (non-negotiable):</strong> The LLM is explicitly forbidden from citing analyst upgrades, broker price targets, consensus ratings, or EPS estimate revisions as missed factors. This system intentionally excludes analyst opinion from all inputs.
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════
+     SECTION 6 — MISS TYPE TAXONOMY
+══════════════════════════════════════════════════════════════ -->
+<section class="section" id="miss-types">
+  <div class="section-head" style="border-color:#cf222e">
+    <div class="section-num" style="background:#ffebe9;color:#cf222e">⑥</div>
+    <div>
+      <h2 class="red">Miss Type Taxonomy</h2>
+      <p>The FeedbackAgent classifies every miss into exactly one type. The type determines the penalty multiplier. Zero-penalty types protect agents from unfair blame.</p>
+    </div>
+  </div>
+
+  <!-- Zero penalty group -->
+  <div class="card" style="margin-bottom:14px;border-left:3px solid #82cfaa">
+    <h3 class="green" style="margin-bottom:12px">Zero Penalty — Model Was Not at Fault</h3>
+    <div class="miss-row">
+      <div><span class="miss-badge bg-green green">data_gap</span></div>
+      <div class="miss-penalty green">0.0×</div>
+      <div class="miss-desc">Required input data wasn't published yet at forecast time.
+        <div class="miss-example">MARUTI example: FADA monthly dispatch data releases on the 10th. A forecast made on the 5th can't know it. Agent gets full hit credit even if direction was wrong.</div>
+      </div>
+    </div>
+    <div class="miss-row">
+      <div><span class="miss-badge bg-green green">data_stale</span></div>
+      <div class="miss-penalty green">0.0×</div>
+      <div class="miss-desc">Hardcoded or outdated data was used in the model.
+        <div class="miss-example">Example: RBI repo rate was 6.50% in the model but had changed to 6.25%. The model used old data — not the agent's fault.</div>
+      </div>
+    </div>
+    <div class="miss-row" style="border-bottom:none">
+      <div><span class="miss-badge bg-green green">external_shock</span></div>
+      <div class="miss-penalty green">0.0×</div>
+      <div class="miss-desc">An unforeseeable black-swan event. No model could have predicted it.
+        <div class="miss-example">Example: NSE trading halted due to exchange circuit breaker. Or crude oil spiked 9% overnight due to sudden Middle East escalation.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Partial penalty group -->
+  <div class="card" style="margin-bottom:14px;border-left:3px solid #ffd54f">
+    <h3 class="amber" style="margin-bottom:12px">Partial Penalty — Right Idea, Wrong Detail</h3>
+    <div class="miss-row">
+      <div><span class="miss-badge bg-amber amber">timing</span></div>
+      <div class="miss-penalty amber">0–0.5×</div>
+      <div class="miss-desc">Direction was CORRECT but the stock moved earlier or later than the predicted peak day.
+        <div class="miss-example">Predicted peak on Day 15. Stock actually moved on Day 8 — 7 trading days early. The bull thesis was right, just the timing was off.</div>
+        <div class="new-badge" style="margin-top:8px;font-size:12px">
+          <strong>Redesigned:</strong> Penalty now scales with lag magnitude. ≤3 trading days off = 0 (within-week noise). ≤7 td = 0.20×. >7 td = 0.50×. Daily markets are volatile — small timing errors aren't the model's fault.
+        </div>
+      </div>
+    </div>
+    <div class="miss-row" style="border-bottom:none">
+      <div><span class="miss-badge bg-amber amber">magnitude</span></div>
+      <div class="miss-penalty amber">0.25×</div>
+      <div class="miss-desc">Direction was CORRECT but the size of the move was much larger or smaller than expected.
+        <div class="miss-example">Predicted BUY, expected +1.5% move. Actual: BUY, moved +6.8%. Right signal, badly underestimated the strength.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Full penalty group -->
+  <div class="card" style="border-left:3px solid #ff8182">
+    <h3 class="red" style="margin-bottom:12px">Full Penalty — Model Was Wrong</h3>
+    <div class="miss-row">
+      <div><span class="miss-badge bg-red red">model_bias</span></div>
+      <div class="miss-penalty red">1.0×</div>
+      <div class="miss-desc">Agent consistently over- or under-estimates a specific signal across multiple days. A structural pattern in the errors, not a one-off.
+        <div class="miss-example">For 4 weeks, the sentiment agent gives scores of 0.78–0.82 even when MARUTI news is consistently negative. The agent has a systematic positive bias in how it reads news.</div>
+        <div class="new-badge" style="margin-top:8px;font-size:12px">
+          <strong>Key difference from direction_flip:</strong> direction_flip = one bad day. model_bias = a pattern across multiple days. Detected by the multi-window bias score (Section 7).
+        </div>
+      </div>
+    </div>
+    <div class="miss-row" style="border-bottom:none">
+      <div><span class="miss-badge bg-red red">direction_flip</span></div>
+      <div class="miss-penalty red">1.0×</div>
+      <div class="miss-desc">Stock moved in the OPPOSITE direction with no valid external excuse.
+        <div class="miss-example">Predicted BULLISH (BUY). Stock fell 3%. No circuit breaker, no shock news, no data gap. The model just got the direction wrong. Full penalty to the primary miss agent.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="insight" style="margin-top:14px">
+    <strong>How the LLM decides the type:</strong> It reads Section 4 (market context today) + Section 5 (what was assumed at forecast time) + Section 6 (existing lessons about known data gaps). It reasons: was the data missing? Was there a shock? Was the direction right? This is entirely LLM judgment — there's no code rule that maps "website down → data_gap". The LLM also learns from the <code>data_availability</code> lesson category — once a gap is logged, future reviews know to expect it.
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════
+     SECTION 7 — WEIGHT ADAPTER
+══════════════════════════════════════════════════════════════ -->
+<section class="section" id="weight-adapter">
+  <div class="section-head" style="border-color:#cf222e">
+    <div class="section-num" style="background:#ffebe9;color:#cf222e">⑦</div>
+    <div>
+      <h2 class="red">WeightAdapter — The Math</h2>
+      <p>Purely deterministic — no LLM. Takes the feedback log and computes exactly how much each agent's weight should move. Three mechanisms, applied in order.</p>
+    </div>
+  </div>
+
+  <!-- Three mechanisms -->
+  <div class="card-grid card-grid-3" style="margin-bottom:28px;align-items:start">
+    <div class="card" style="border-top:3px solid #0969da">
+      <h3 class="blue" style="margin-bottom:8px">① Hit Rate Boost/Penalty</h3>
+      <p style="font-size:13px;margin-bottom:10px">Applied to ALL 8 agents based on their rolling accuracy over the last 7 trading days (calendar-aware).</p>
+      <div class="formula">hit_rate = direction_hits / total
+
+if hit_rate ≥ 0.70 → delta += +0.02
+elif hit_rate ≤ 0.40 → delta += −0.03
+else → delta = 0.0   <span class="comment"># 0.40–0.70: no change</span></div>
+      <div class="new-badge" style="margin-top:10px;font-size:12px">
+        <strong>Seasonal shifts:</strong> Thresholds adjust per agent per season. Festive season → sales_demand needs 78% (not 70%) to earn a boost. Budget week → fundamentals gets penalized at 35% (not 40%) — more forgiving during hard periods.
+      </div>
+    </div>
+
+    <div class="card" style="border-top:3px solid #cf222e">
+      <h3 class="red" style="margin-bottom:8px">② Bias Penalty (Redesigned)</h3>
+      <p style="font-size:13px;margin-bottom:10px">Applied only to the <code>primary_miss_agent</code>. Detects systematic bias across 3 calendar-aware windows — not just consecutive streak.</p>
+      <div class="card-grid card-grid-3" style="gap:8px;margin-bottom:10px">
+        <div class="win-card bg-blue" style="padding:10px">
+          <div class="win-days blue">5</div>
+          <div class="win-label blue">Trading Days</div>
+          <div style="font-size:10px;margin-top:4px" class="muted">≈ 1 week</div>
+          <div class="win-weight blue">50%</div>
+          <div class="win-wlabel">weight</div>
+        </div>
+        <div class="win-card bg-purple" style="padding:10px">
+          <div class="win-days purple">10</div>
+          <div class="win-label purple">Trading Days</div>
+          <div style="font-size:10px;margin-top:4px" class="muted">≈ 2 weeks</div>
+          <div class="win-weight purple">30%</div>
+          <div class="win-wlabel">weight</div>
+        </div>
+        <div class="win-card bg-gray" style="padding:10px">
+          <div class="win-days" style="color:#57606a">21</div>
+          <div class="win-label" style="color:#57606a">Trading Days</div>
+          <div style="font-size:10px;margin-top:4px" class="muted">≈ 1 month</div>
+          <div class="win-weight" style="color:#57606a">20%</div>
+          <div class="win-wlabel">weight</div>
+        </div>
+      </div>
+      <div class="formula">bias_score = Σ (window_weight × miss_rate_in_window)
+             / Σ window_weights_used
+
+if bias_score ≥ 0.55:   <span class="comment"># trigger</span>
+  scale = (bias_score − 0.55) / (0.70 − 0.55)
+  delta += −0.05 × scale × miss_type_multiplier</div>
+      <div class="example" style="margin-top:8px">
+        <div class="example-label">Why this beats streak ≥ 2</div>
+        3 bad → 1 good → 3 bad: old code = streak 0 (broke on good day).<br>
+        New code: 5d miss rate = 3/5 = 0.60 → bias_score ≈ 0.60 → <strong>penalty triggers ✓</strong>
+      </div>
+    </div>
+
+    <div class="card" style="border-top:3px solid #1a7f37">
+      <h3 class="green" style="margin-bottom:8px">③ Apply Deltas with Bounds</h3>
+      <p style="font-size:13px;margin-bottom:10px">After computing deltas, three clamps are applied in order before saving.</p>
+      <div class="formula"><span class="comment"># Clamp 1: single-step cap</span>
+delta = clamp(delta, −0.05, +0.05)
+
+<span class="comment"># Clamp 2: total drift from base (permanent)</span>
+lo = max(0, base_weight − 0.15)
+hi = base_weight + 0.15
+proposed = clamp(w + delta, lo, hi)
+
+<span class="comment"># Clamp 3: normalize to sum = 1.0</span>
+new_weights = {k: v/total for k,v in ...}</div>
+      <div class="example" style="margin-top:8px">
+        <div class="example-label">Example — fundamentals (base=0.20)</div>
+        Floor: 0.20 − 0.15 = <strong>0.05</strong> (can never go below)<br>
+        Ceiling: 0.20 + 0.15 = <strong>0.35</strong> (can never go above)<br>
+        No matter how many consecutive bad days: bounded forever.
+      </div>
+    </div>
+  </div>
+
+  <!-- Calendar-aware windows explained -->
+  <div class="card" style="margin-bottom:16px;border-left:3px solid #0969da">
+    <h3 class="blue" style="margin-bottom:10px">Why "Calendar-Aware Windows" Matter</h3>
+    <div class="card-grid card-grid-2" style="gap:14px">
+      <div>
+        <h4 style="margin-bottom:8px;color:#cf222e">❌ Old Approach (index-based)</h4>
+        <div class="formula" style="border-color:#ff8182;background:#ffebe9">entries[-5:]   <span class="comment"># last 5 array slots</span></div>
+        <p style="font-size:13px;margin-top:8px">If the log has a weekend gap, a holiday, or a skipped day, <code>entries[-5:]</code> silently pulls in older entries. A "5-day window" might actually span 3 weeks.</p>
+      </div>
+      <div>
+        <h4 style="margin-bottom:8px;color:#1a7f37">✅ New Approach (date-based)</h4>
+        <div class="formula">cutoff = today − N trading_days  <span class="comment"># skip Sat/Sun</span>
+entries = [e for e in log.entries
+           if date(e.date) >= cutoff]</div>
+        <p style="font-size:13px;margin-top:8px">Counts backwards through Mon–Fri only. A "5-day window" is always exactly one trading week regardless of gaps, holidays, or backfill entries.</p>
+      </div>
+    </div>
+    <div class="insight" style="margin-top:12px">
+      NSE public holidays are not yet modelled — only weekends are excluded. When that data is available, add them to <code>_TRADING_DAY_SKIP</code> in <code>weight_adapter.py</code>.
+    </div>
+  </div>
+
+  <!-- Timing lag -->
+  <div class="card">
+    <h3 style="margin-bottom:12px">Timing Lag Tolerance — How "Wrong Day" is Penalised</h3>
+    <p style="font-size:13px;margin-bottom:14px">The predicted peak day is the day in the 30-day envelope where the stock was expected to reach its highest (for BUY) or lowest (for SELL) predicted close. <code>lag_days = actual_move_day − predicted_peak_day</code>.</p>
+    <div class="card-grid card-grid-3" style="gap:10px;margin-bottom:12px">
+      <div class="card bg-green" style="text-align:center;padding:14px">
+        <div style="font-size:24px;font-weight:900" class="green">≤ 3 td</div>
+        <div style="font-size:13px;font-weight:700;margin:6px 0">No Penalty</div>
+        <div style="font-size:11px" class="muted">Within-week noise. Daily markets are volatile — a 3-day timing error is market noise, not a model failure.</div>
+        <div style="font-size:16px;font-weight:800;margin-top:8px" class="green">0.0×</div>
+      </div>
+      <div class="card bg-amber" style="text-align:center;padding:14px">
+        <div style="font-size:24px;font-weight:900" class="amber">4–7 td</div>
+        <div style="font-size:13px;font-weight:700;margin:6px 0">Light Signal</div>
+        <div style="font-size:11px" class="muted">Roughly 1–2 weeks off. The analysis was directionally right but significantly early or late.</div>
+        <div style="font-size:16px;font-weight:800;margin-top:8px" class="amber">0.20×</div>
+      </div>
+      <div class="card bg-red" style="text-align:center;padding:14px">
+        <div style="font-size:24px;font-weight:900" class="red">> 7 td</div>
+        <div style="font-size:13px;font-weight:700;margin:6px 0">Real Timing Failure</div>
+        <div style="font-size:11px" class="muted">The predicted peak was more than 1.5 weeks wrong. Meaningful timing error, partial penalty applied.</div>
+        <div style="font-size:16px;font-weight:800;margin-top:8px" class="red">0.50×</div>
+      </div>
+    </div>
+    <div class="insight">
+      <strong>Why not penalise timing daily?</strong> We keep daily granularity for RL learning (20 feedback signals/month vs 4 for weekly). But we don't penalise small timing errors because NSE market moves are noisy — predicting the exact day of a move is much harder than predicting the direction.
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════
+     SECTION 8 — LEDGER PROPAGATOR
+══════════════════════════════════════════════════════════════ -->
+<section class="section" id="ledger">
+  <div class="section-head" style="border-color:#0d7377">
+    <div class="section-num" style="background:#e6fffb;color:#0d7377">⑧</div>
+    <div>
+      <h2 class="teal">LedgerPropagator — 3-Tier Learning</h2>
+      <p>Every lesson the FeedbackAgent extracts gets routed to the right place based on how broadly it applies.</p>
+    </div>
+  </div>
+
+  <div class="card-grid card-grid-3" style="margin-bottom:20px;align-items:start">
+    <!-- Tier 1 -->
+    <div class="tier-box" style="border-color:#1a7f37;background:#dafbe1">
+      <div class="tier-num" style="background:#dafbe1;color:#1a7f37;border-color:#82cfaa">TIER 1</div>
+      <h3 class="green" style="margin-bottom:8px;margin-top:6px">Stock-Specific</h3>
+      <code style="font-size:12px">scope: stock_specific</code>
+      <p style="font-size:13px;margin-top:8px">Applies only to this one stock. Never shared to sector or market ledgers.</p>
+      <div class="formula" style="margin-top:10px">→ MARUTI_learning_ledger.json only
+Max: 6 lessons (highest confidence)</div>
+      <div class="example" style="margin-top:10px;background:#f0fff4;border-color:#82cfaa">
+        <div class="example-label" style="color:#1a7f37">Example lesson</div>
+        "MARUTI dips 2–4% in the week before FADA dispatch day (10th) as traders anticipate weak numbers — buy the dip if RSI &lt; 40."
+      </div>
+    </div>
+
+    <!-- Tier 2 -->
+    <div class="tier-box" style="border-color:#0d7377;background:#e6fffb">
+      <div class="tier-num" style="background:#e6fffb;color:#0d7377;border-color:#76e4d8">TIER 2</div>
+      <h3 class="teal" style="margin-bottom:8px;margin-top:6px">Sector-Wide</h3>
+      <code style="font-size:12px">scope: sector_wide</code>
+      <p style="font-size:13px;margin-top:8px">Applies to all automobile stocks. Propagated to the shared sector ledger read by every ticker in the sector.</p>
+      <div class="formula" style="margin-top:10px">→ MARUTI_learning_ledger.json
+→ automobile/_shared_ledger.json
+Max: 3 lessons per sector</div>
+      <p style="font-size:12px;margin-top:8px" class="muted">A <code>contributing_tickers</code> list tracks which stocks confirmed this pattern. Cross-ticker boost: +0.05 confidence per new confirming ticker (max 1.0).</p>
+      <div class="example" style="margin-top:10px;background:#e6fffb;border-color:#76e4d8">
+        <div class="example-label" style="color:#0d7377">Example lesson</div>
+        "RBI rate cut surprises cause 3–5% same-day rally across all auto stocks — fundamentals agent underweights FII flow response."
+      </div>
+    </div>
+
+    <!-- Tier 3 -->
+    <div class="tier-box" style="border-color:#0969da;background:#ddf4ff">
+      <div class="tier-num" style="background:#ddf4ff;color:#0969da;border-color:#79c0ff">TIER 3</div>
+      <h3 class="blue" style="margin-bottom:8px;margin-top:6px">Market-Wide</h3>
+      <code style="font-size:12px">scope: market_wide</code>
+      <p style="font-size:13px;margin-top:8px">Cross-sector pattern. Propagated to ALL tickers across ALL sectors via the root market ledger.</p>
+      <div class="formula" style="margin-top:10px">→ MARUTI_learning_ledger.json
+→ automobile/_shared_ledger.json
+→ _market_ledger.json (root)
+Max: 2 lessons (broadest scope)</div>
+      <div class="example" style="margin-top:10px;background:#ddf4ff;border-color:#79c0ff">
+        <div class="example-label" style="color:#0969da">Example lesson</div>
+        "Global crude oil spikes >8% in a single day consistently cause 2–4% drawdowns across all NSE sectors within 48 hours."
+      </div>
+    </div>
+  </div>
+
+  <!-- Confidence blending -->
+  <div class="card-grid card-grid-2" style="gap:14px">
+    <div class="card">
+      <h3 style="margin-bottom:10px">Confidence Blending on Merge</h3>
+      <p style="font-size:13px;margin-bottom:10px">When a new lesson matches an existing one (same pattern key), they're blended — not overwritten. This prevents noisy new observations from erasing well-established patterns.</p>
+      <div class="formula">merged_confidence = 0.70 × existing + 0.30 × incoming</div>
+      <div class="example" style="margin-top:10px">
+        <div class="example-label">Example</div>
+        Existing: crude_oil_spike, confidence=0.80 (seen 6 times)<br>
+        New observation: confidence=0.65<br>
+        Merged: 0.70 × 0.80 + 0.30 × 0.65 = <strong>0.755</strong>
+      </div>
+    </div>
+    <div class="card">
+      <h3 style="margin-bottom:10px">Lesson Categories</h3>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px">
+        <span class="pill bg-blue blue">macro</span>
+        <span class="pill bg-purple purple">global_macro</span>
+        <span class="pill bg-amber amber">technical</span>
+        <span class="pill bg-teal teal">sentiment</span>
+        <span class="pill bg-green green">fundamental</span>
+        <span class="pill bg-violet violet">seasonal</span>
+        <span class="pill bg-gray" style="color:#57606a">data_availability</span>
+      </div>
+      <p style="font-size:12px" class="muted"><code>global_macro</code> always uses <code>scope=market_wide</code>. <code>data_availability</code> is created when <code>miss_type=data_gap</code> — so the system remembers the gap exists next time and doesn't get surprised again.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════
+     SECTION 9 — PERSISTENCE
+══════════════════════════════════════════════════════════════ -->
+<section class="section" id="persistence">
+  <div class="section-head" style="border-color:#1a7f37">
+    <div class="section-num" style="background:#dafbe1;color:#1a7f37">⑨</div>
+    <div>
+      <h2 class="green">Persistence — Does Restarting Reset the Weights?</h2>
+      <p>No. Here is the proof chain from the actual code.</p>
+    </div>
+  </div>
+
+  <div class="card" style="margin-bottom:16px">
+    <h3 style="margin-bottom:14px">The Proof Chain</h3>
+    <div style="display:flex;flex-direction:column;gap:16px">
+
+      <div style="display:grid;grid-template-columns:28px 1fr;gap:12px">
+        <div style="width:26px;height:26px;border-radius:50%;background:#dafbe1;color:#1a7f37;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:11px;flex-shrink:0">1</div>
+        <div>
+          <strong>_read_json checks the file exists first</strong>
+          <div class="formula" style="margin-top:6px">def _read_json(path):
+    if not path.exists():
+        return None          <span class="comment"># no file → return None (first ever run)</span>
+    return json.loads(path.read_text())</div>
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:28px 1fr;gap:12px">
+        <div style="width:26px;height:26px;border-radius:50%;background:#dafbe1;color:#1a7f37;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:11px;flex-shrink:0">2</div>
+        <div>
+          <strong>get_or_init_weight_memory only initialises when no file exists</strong>
+          <div class="formula" style="margin-top:6px">def get_or_init_weight_memory(base_weights):
+    existing = load_weight_memory()    <span class="comment"># tries disk</span>
+    if existing is not None:
+        return existing                <span class="comment"># Day 2, Day 100, after restart → returns saved state</span>
+    return init_weight_memory(base_weights)  <span class="comment"># ONLY Day 1</span></div>
+          <p style="font-size:12px;margin-top:6px" class="muted">init_weight_memory docstring: <em>"Only called when no prior weight_memory file exists for this ticker."</em></p>
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:28px 1fr;gap:12px">
+        <div style="width:26px;height:26px;border-radius:50%;background:#dafbe1;color:#1a7f37;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:11px;flex-shrink:0">3</div>
+        <div>
+          <strong>save_weight_memory is called after every single daily review (Step 5)</strong>
+          <div class="formula" style="margin-top:6px">updated_wm = adapter.update(...)    <span class="comment"># line 497 in daily_review.py</span>
+store.save_weight_memory(updated_wm) <span class="comment"># line 501 — immediately written</span></div>
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:28px 1fr;gap:12px">
+        <div style="width:26px;height:26px;border-radius:50%;background:#dafbe1;color:#1a7f37;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:11px;flex-shrink:0">4</div>
+        <div>
+          <strong>The write is atomic — no corruption on crash</strong>
+          <div class="formula" style="margin-top:6px">def _write_json(path, data):
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(json.dumps(data, indent=2))  <span class="comment"># write to temp first</span>
+    tmp.replace(path)                            <span class="comment"># OS-level atomic rename</span></div>
+          <p style="font-size:12px;margin-top:6px" class="muted">If the process crashes mid-write, the <code>.tmp</code> file is the one that's incomplete — the real <code>.json</code> is never partially written.</p>
+        </div>
+      </div>
+
+    </div>
+
+    <div class="new-badge" style="margin-top:16px">
+      <strong>What actually resets weights:</strong> Manually deleting <code>MARUTI_agent_weight_memory.json</code> from <code>data/predictions/automobile/MARUTI/</code>. That file is the single source of truth. Everything else — restarts, rebuilds, docker container recreations — leaves it untouched.
+    </div>
+  </div>
+
+  <div class="card">
+    <h3 style="margin-bottom:12px">File Layout on Disk</h3>
+    <div class="formula">data/
+├── _market_ledger.json              <span class="comment"># scope=market_wide lessons — all sectors read this</span>
+└── predictions/
+    └── automobile/
+        ├── _shared_ledger.json      <span class="comment"># scope=sector_wide lessons — all auto tickers</span>
+        └── MARUTI/
+            ├── MARUTI_2026-05_prediction_envelope.json    <span class="comment"># current cycle</span>
+            ├── MARUTI_2026-05_daily_feedback_log.json     <span class="comment"># current cycle</span>
+            ├── MARUTI_agent_weight_memory.json            <span class="comment"># permanent — never deleted</span>
+            └── MARUTI_learning_ledger.json                <span class="comment"># permanent — never deleted</span></div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════
+     SECTION 10 — RAG REFERENCE SYSTEM
+══════════════════════════════════════════════════════════════ -->
+<section class="section" id="rag">
+  <div class="section-head" style="border-color:#6639ba">
+    <div class="section-num" style="background:#f5f0ff;color:#6639ba">⑩</div>
+    <div>
+      <h2 class="violet">RAG Reference System</h2>
+      <p><code>intelligence/rag/</code> — Optional document retrieval layer. Off by default (<code>RAG_ENABLED=false</code>). When enabled, injects relevant document chunks into agent prompts.</p>
+    </div>
+  </div>
+
+  <!-- Pipeline horizontal -->
+  <div class="hstepper" style="margin-bottom:20px">
+    <div class="hstep"><div class="hstep-box">
+      <div class="hstep-dot" style="background:#f5f0ff;color:#6639ba">📁</div>
+      <div class="hstep-label">Knowledge Base<br><span style="font-size:10px;color:#57606a">earnings, annual reports, sector reports, news archive</span></div>
+    </div></div>
+    <div class="hstep-arr" style="color:#6639ba">→</div>
+    <div class="hstep"><div class="hstep-box">
+      <div class="hstep-dot" style="background:#f5f0ff;color:#6639ba">✂️</div>
+      <div class="hstep-label">Chunker<br><span style="font-size:10px;color:#57606a">512 tokens, 64 overlap</span></div>
+    </div></div>
+    <div class="hstep-arr" style="color:#6639ba">→</div>
+    <div class="hstep"><div class="hstep-box">
+      <div class="hstep-dot" style="background:#f5f0ff;color:#6639ba">🔢</div>
+      <div class="hstep-label">Embedder<br><span style="font-size:10px;color:#57606a">nomic-embed-text-v1.5 dim=768 local</span></div>
+    </div></div>
+    <div class="hstep-arr" style="color:#6639ba">→</div>
+    <div class="hstep"><div class="hstep-box">
+      <div class="hstep-dot" style="background:#f5f0ff;color:#6639ba">🗄️</div>
+      <div class="hstep-label">ChromaDB<br><span style="font-size:10px;color:#57606a">collection: automobile_agent_kb persist: data/chroma_db</span></div>
+    </div></div>
+    <div class="hstep-arr" style="color:#6639ba">→</div>
+    <div class="hstep"><div class="hstep-box">
+      <div class="hstep-dot" style="background:#f5f0ff;color:#6639ba">🔍</div>
+      <div class="hstep-label">Retriever<br><span style="font-size:10px;color:#57606a">TOP_K=5 threshold=0.75</span></div>
+    </div></div>
+    <div class="hstep-arr" style="color:#6639ba">→</div>
+    <div class="hstep"><div class="hstep-box">
+      <div class="hstep-dot" style="background:#f5f0ff;color:#6639ba">📊</div>
+      <div class="hstep-label">Optional Reranker<br><span style="font-size:10px;color:#57606a">CrossEncoder ms-marco-MiniLM-L-6-v2</span></div>
+    </div></div>
+    <div class="hstep-arr" style="color:#6639ba">→</div>
+    <div class="hstep"><div class="hstep-box">
+      <div class="hstep-dot" style="background:#f5f0ff;color:#6639ba">💉</div>
+      <div class="hstep-label">Context Injection<br><span style="font-size:10px;color:#57606a">top-K chunks into agent system prompts</span></div>
+    </div></div>
+  </div>
+
+  <div class="card-grid card-grid-3" style="gap:14px">
+    <div class="card bg-violet">
+      <h4 class="violet" style="margin-bottom:8px">Embedding</h4>
+      <table style="font-size:12px">
+        <tr><td class="muted">Provider</td><td><strong>local</strong> (no API key)</td></tr>
+        <tr><td class="muted">Model</td><td>nomic-embed-text-v1.5</td></tr>
+        <tr><td class="muted">Dimension</td><td>768</td></tr>
+        <tr><td class="muted">First use</td><td>~90MB download</td></tr>
+      </table>
+    </div>
+    <div class="card bg-violet">
+      <h4 class="violet" style="margin-bottom:8px">Retrieval</h4>
+      <table style="font-size:12px">
+        <tr><td class="muted">TOP_K</td><td><strong>5</strong></td></tr>
+        <tr><td class="muted">Similarity floor</td><td>0.75</td></tr>
+        <tr><td class="muted">Chunk size</td><td>512 tokens</td></tr>
+        <tr><td class="muted">Chunk overlap</td><td>64 tokens</td></tr>
+      </table>
+    </div>
+    <div class="card bg-violet">
+      <h4 class="violet" style="margin-bottom:8px">Ingest CLI</h4>
+      <div class="formula" style="font-size:11px">python -m core.intelligence.rag.ingestion.ingest_cli \
+  --dir data/annual_reports \
+  --ticker MARUTI \
+  --doc-type annual_report</div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════
+     FOOTER
+══════════════════════════════════════════════════════════════ -->
+<div class="footer">
+  StockAgent RL Explainer &nbsp;·&nbsp; Built from RL_EVOLUTION_DESIGN.md · RL_FEEDBACK_DESIGN.md · RL_REFERENCE.md &nbsp;·&nbsp; May 2026<br>
+  <span style="color:#82cfaa">■</span> Implemented &nbsp; <span style="color:#ffd54f">■</span> Redesigned this session &nbsp; <span style="color:#d2a8ff">■</span> P1–P5 Evolution
+</div>
+
+</div><!-- end page -->
+</body>
+</html>

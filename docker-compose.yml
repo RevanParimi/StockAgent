@@ -1,0 +1,147 @@
+# ============================================================
+# StockAgent — Production Docker Compose
+# Target: DigitalOcean Droplet (4 GB / 2 vCPU) or Oracle Cloud A1
+#
+# Usage:
+#   cp .env .env.production          # fill in real API keys
+#   docker compose --env-file .env.production up -d --build
+#
+# Volumes (all survive restarts / rebuilds):
+#   stockagent_data  → /app/data   (predictions, chroma_db, scores.db, KB docs)
+#   stockagent_logs  → /app/logs
+#   stockagent_out   → /app/outputs
+#   caddy_data       → TLS certificates (Let's Encrypt)
+#   caddy_config     → Caddy runtime config
+# ============================================================
+
+services:
+
+  # ──────────────────────────────────────────────────────────
+  # Python FastAPI — agent orchestrator + RL feedback loop
+  # Port 8000 (internal only, Caddy proxies to it)
+  # Includes compiled C++ pybind11 indicators (multi-stage build)
+  # ──────────────────────────────────────────────────────────
+  python-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        BUILD_CPP: "true"
+    container_name: stockagent-python
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      TZ: Asia/Kolkata
+      PREDICTION_DATA_DIR: /app/data/predictions
+      SCORE_DB_PATH: /app/data/scores.db
+      LOG_FILE: /app/logs/stockagent.log
+      OUTPUT_DIR: /app/outputs
+      RAG_DOCUMENTS_BASE_DIR: /app/data
+      CHROMA_PERSIST_DIR: /app/data/chroma_db
+    volumes:
+      - stockagent_data:/app/data
+      - stockagent_logs:/app/logs
+      - stockagent_out:/app/outputs
+    expose:
+      - "8000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # ──────────────────────────────────────────────────────────
+  # TypeScript Gateway — REST API + WebSocket hub
+  # Port 3000 (REST), 3001 (WebSocket) — internal only
+  # ──────────────────────────────────────────────────────────
+  typescript-gateway:
+    build:
+      context: services/typescript
+      dockerfile: Dockerfile
+    container_name: stockagent-gateway
+    restart: unless-stopped
+    environment:
+      TZ: Asia/Kolkata
+      NODE_ENV: production
+      PYTHON_INTERNAL_URL: http://python-api:8000
+      PORT: "3000"
+      WS_PORT: "3001"
+    expose:
+      - "3000"
+      - "3001"
+    depends_on:
+      python-api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+  # ──────────────────────────────────────────────────────────
+  # C# Quartz.NET Scheduler — daily + monthly cron jobs
+  # Port 5000 (internal only)
+  # TZ=Asia/Kolkata ensures 4:30pm IST fires correctly
+  # Communicates with python-api via HTTP (score_store proxy pattern)
+  # ──────────────────────────────────────────────────────────
+  csharp-scheduler:
+    build:
+      context: csharp/StockAgent.Scheduler
+      dockerfile: Dockerfile
+    container_name: stockagent-scheduler
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      TZ: Asia/Kolkata
+      ASPNETCORE_URLS: http://+:5000
+      ASPNETCORE_ENVIRONMENT: Production
+      PYTHON_API_URL: http://python-api:8000
+      CSHARP_SCHEDULER_ENABLED: "true"
+    expose:
+      - "5000"
+    depends_on:
+      python-api:
+        condition: service_healthy
+
+  # ──────────────────────────────────────────────────────────
+  # Caddy — reverse proxy + automatic HTTPS (Let's Encrypt)
+  # Replace YOUR_DOMAIN with your actual domain or Droplet IP
+  # ──────────────────────────────────────────────────────────
+  caddy:
+    image: caddy:2-alpine
+    container_name: stockagent-caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - typescript-gateway
+      - python-api
+
+# ============================================================
+# Named volumes — persisted on Droplet SSD across all restarts
+# ============================================================
+volumes:
+  stockagent_data:
+    driver: local
+  stockagent_logs:
+    driver: local
+  stockagent_out:
+    driver: local
+  caddy_data:
+    driver: local
+  caddy_config:
+    driver: local
+
+# ============================================================
+# Internal network — services talk by name, nothing exposed raw
+# ============================================================
+networks:
+  default:
+    name: stockagent-net

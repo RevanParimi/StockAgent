@@ -497,6 +497,8 @@ def run_daily_review(
         feedback_log=feedback_log,
         todays_primary_miss_agent=fb_output.primary_miss_agent,
         todays_miss_type=fb_output.miss_type,
+        timing_lag_days=timing.lag_days if timing and timing.lag_days is not None else 0,
+        seasonal_threshold_deltas=seasonal_ctx.accuracy_threshold_delta or None,
     )
     store.save_weight_memory(updated_wm)
     new_weight_version = f"v{updated_wm.weight_version}"

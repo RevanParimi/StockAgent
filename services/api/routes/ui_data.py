@@ -41,6 +41,8 @@ _CUSTOM_WEIGHTS_PATH = Path("data/agent_weights.json")
 _CUSTOM_TASKS_PATH   = Path("data/agent_tasks.json")
 # User-curated watchlist (overrides the hardcoded default)
 _WATCHLIST_PATH      = Path("data/watchlist.json")
+# User-customised category ticker lists (overrides hardcoded _CATEGORIES tickers)
+_CATEGORY_TICKERS_PATH = Path("data/category_tickers.json")
 
 
 # ---------------------------------------------------------------------------
@@ -354,6 +356,38 @@ def _build_ticker_row(
     }
 
 
+def _rows_since(store, hours: int) -> list[dict]:
+    """Return all DB rows from the last N hours, falling back to all-time latest if empty."""
+    from datetime import datetime, timezone, timedelta
+    since = (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat()
+    rows = store.get_by_date_range(since_iso=since)
+    return rows if rows else store.get_all_latest()
+
+
+def _freshness_label(rows: list[dict]) -> dict:
+    """Return {label, runAt, isStale} based on the most recent run_at in the row set."""
+    if not rows:
+        return {"label": "No data yet", "runAt": None, "isStale": True}
+    latest_run = max(r["run_at"] for r in rows)
+    try:
+        from datetime import datetime, timezone
+        run_dt = datetime.fromisoformat(latest_run.replace("Z", "+00:00"))
+        now = datetime.now(timezone.utc)
+        age_hours = (now - run_dt).total_seconds() / 3600
+        if age_hours < 1:
+            label = "Live"
+        elif age_hours < 6:
+            label = f"Updated {int(age_hours)}h ago"
+        elif age_hours < 24:
+            label = f"Updated {int(age_hours)}h ago"
+        else:
+            days = int(age_hours / 24)
+            label = f"Last analysis {days} day{'s' if days > 1 else ''} ago"
+        return {"label": label, "runAt": latest_run, "isStale": age_hours > 12}
+    except Exception:
+        return {"label": "Updated recently", "runAt": latest_run, "isStale": False}
+
+
 def _build_drivers_from_db(rows: list[dict]) -> list[dict]:
     """
     Derive 'What's moving the market' driver cards from recent FinalReport data.
@@ -635,6 +669,7 @@ async def bootstrap() -> dict:
     a single JSON payload.  The prototype data.jsx calls this once on load
     to populate all window.* variables before React renders.
     """
+    store = _score_store()
     ticker_rows, db_latest = await _gather_ticker_data()
     market_data = await _gather_market_data(db_latest)
 
@@ -644,12 +679,71 @@ async def bootstrap() -> dict:
         (s["pct"] for s in market_data["sector_changes"] if s["name"] == "Auto"), 0.0
     )
 
-    trending = sorted(
-        [t for t in ticker_rows if t["hasData"]],
-        key=lambda t: abs(t["change"]),
-        reverse=True,
-    )[:4]
-    suggestions = [t for t in ticker_rows if t["sym"] not in _WATCHLIST_DEFAULT and t["hasData"]][:3]
+    # Date-filtered row sets for Today (24h) and This Month (current calendar month)
+    today_rows = _rows_since(store, hours=24)
+    month_rows = _rows_since(store, hours=24 * 31)
+    today_freshness = _freshness_label(today_rows)
+    month_freshness = _freshness_label(month_rows)
+
+    # --- Score-delta trending (same logic as GET /ui/trending) ---
+    async def _bootstrap_delta(ticker_def: dict) -> dict | None:
+        sym = ticker_def["sym"]
+        latest = await asyncio.to_thread(store.get_latest, sym)
+        if latest is None:
+            return None
+        prev = await asyncio.to_thread(store.get_previous, sym)
+        score = round(float(latest["final_score"]), 4)
+        prev_score = round(float(prev["final_score"]), 4) if prev else score
+        delta = round(score - prev_score, 4)
+        return {
+            "sym": sym, "name": ticker_def["name"],
+            "score": score, "delta": delta, "verdict": latest["verdict"],
+            "direction": "up" if delta > 0.01 else "down" if delta < -0.01 else "flat",
+            "why": f"Score {'+' if delta >= 0 else ''}{delta:.3f} vs previous run · {latest['verdict']}",
+            "runAt": latest["run_at"],
+        }
+
+    delta_rows = await asyncio.gather(*(_bootstrap_delta(t) for t in _BOOTSTRAP_TICKERS))
+    delta_rows = [r for r in delta_rows if r is not None]
+    delta_rows.sort(key=lambda x: (abs(x["delta"]), x["score"]), reverse=True)
+    trending = delta_rows[:4]
+
+    # --- Smarter suggestions: prefer improving tickers not in watchlist ---
+    user_watchlist = set(_load_watchlist())
+    suggestion_pool = [
+        r for r in delta_rows
+        if r["sym"] not in user_watchlist
+        and r["verdict"] not in ("STRONG SELL", "SELL")
+        and r["score"] >= 0.50
+    ]
+    # Sort by score descending so highest-conviction shows first
+    suggestion_pool.sort(key=lambda x: x["score"], reverse=True)
+
+    def _build_suggestion(r: dict) -> dict:
+        ticker_row = next((t for t in ticker_rows if t["sym"] == r["sym"]), {})
+        # Pull top conviction driver from DB for the "reason" line
+        db_row = store.get_latest(r["sym"]) or {}
+        try:
+            drivers = json.loads(db_row.get("conviction_drivers") or "[]")
+        except Exception:
+            drivers = []
+        reason = drivers[0][:90] if drivers else r["name"]
+        # Pull top agent score for the "why" line
+        try:
+            agent_scores = json.loads(db_row.get("agent_scores") or "{}")
+            top_agent_key = max(agent_scores, key=agent_scores.get)
+            top_agent_name = next((m["name"] for m in _AGENT_META if m["key"] == top_agent_key), top_agent_key)
+            top_score = agent_scores[top_agent_key]
+            why = f"{top_agent_name} at {top_score:.2f} · score {'+' if r['delta'] >= 0 else ''}{r['delta']:.3f} this run"
+        except Exception:
+            why = f"Composite score {r['score']:.2f} · {r['verdict']}"
+        return {
+            "sym": r["sym"], "reason": reason,
+            "score": r["score"], "why": why,
+        }
+
+    suggestions_raw = suggestion_pool[:3]
+    suggestions = [_build_suggestion(r) for r in suggestions_raw]
 
     return {
         # Agent array — matches window.AGENTS shape expected by prototype
@@ -664,43 +758,39 @@ async def bootstrap() -> dict:
         # Agent task overrides — window.AGENT_TASK_FLAGS
         "AGENT_TASK_FLAGS": _load_agent_task_flags(),
 
-        # Market today — window.MARKET_TODAY
+        # Market today — window.MARKET_TODAY (24h filtered, falls back to all-time if empty)
         "MARKET_TODAY": {
-            "pulse":       pulse,
-            "oneLiner":    (db_latest[0].get("investment_thesis", "")[:160] if db_latest
+            "pulse":       _pulse_from_scores([float(r["final_score"]) for r in today_rows if r.get("final_score")]),
+            "oneLiner":    (today_rows[0].get("investment_thesis", "")[:160] if today_rows
                             else "Run your first analysis to see live market intelligence here."),
             "autoChange":  auto_chg,
-            "drivers":     _build_drivers_from_db(db_latest),
+            "drivers":     _build_drivers_from_db(today_rows),
             "sectorChange": market_data["sector_changes"],
+            "freshness":   today_freshness,
         },
 
-        # Market month — window.MARKET_MONTH
+        # Market month — window.MARKET_MONTH (31-day window, falls back to all-time if empty)
         "MARKET_MONTH": {
-            "pulse":      pulse,
-            "oneLiner":   "EV momentum + PLI benefits flowing through margins. Watch crude & INR.",
-            "drivers":    _build_drivers_from_db(db_latest),
-            "agentVotes": _build_month_agent_scores(db_latest),
+            "pulse":      _pulse_from_scores([float(r["final_score"]) for r in month_rows if r.get("final_score")]),
+            "oneLiner":   (month_rows[0].get("investment_thesis", "")[:160] if month_rows
+                           else "EV momentum + PLI benefits flowing through margins. Watch crude & INR."),
+            "drivers":    _build_drivers_from_db(month_rows),
+            "agentVotes": _build_month_agent_scores(month_rows),
+            "freshness":  month_freshness,
         },
 
         # Nifty Auto sparkline — window.NIFTY_AUTO_HISTORY
         "NIFTY_AUTO_HISTORY": market_data["nifty_history"] or _fallback_sparkline(),
 
-        # Trending — window.TRENDING
-        "TRENDING": [
-            {"sym": t["sym"], "delta": f"{t['change']:+.2f}%",
-             "volume": "—", "why": f"Score {t['score']:.2f} · {t['verdict']}"}
-            for t in trending
+        # Trending — window.TRENDING (score-delta movers, not price movers)
+        "TRENDING": trending,
+
+        # Suggestions — window.SUGGESTIONS (personalized, not in watchlist)
+        "SUGGESTIONS": suggestions
         ],
 
-        # Suggestions — window.SUGGESTIONS
-        "SUGGESTIONS": [
-            {"sym": t["sym"], "reason": t["name"],
-             "score": t["score"], "why": "Based on recent agent scores"}
-            for t in suggestions
-        ],
-
-        # Categories + chat seeds (static, no API needed)
-        "CATEGORIES":  _CATEGORIES,
+        # Categories — user-overridable tickers[], count auto-computed
+        "CATEGORIES":  _resolved_categories(),
         "CHAT_SEEDS":  _CHAT_SEEDS,
 
         # Meta
@@ -799,6 +889,73 @@ async def update_watchlist(body: _WatchlistBody) -> dict:
     _WATCHLIST_PATH.write_text(json.dumps(sanitized), encoding="utf-8")
     logger.info("[ui/watchlist] Saved watchlist: %s", sanitized)
     return {"watchlist": sanitized}
+
+
+# ---------------------------------------------------------------------------
+# GET /ui/categories  +  PUT /ui/categories/{key}/tickers
+# ---------------------------------------------------------------------------
+
+def _load_category_overrides() -> dict[str, list[str]]:
+    """Return {category_key: [tickers]} from data/category_tickers.json, or {} if absent."""
+    try:
+        if _CATEGORY_TICKERS_PATH.exists():
+            raw = json.loads(_CATEGORY_TICKERS_PATH.read_text(encoding="utf-8"))
+            if isinstance(raw, dict):
+                return raw
+    except Exception as exc:
+        logger.debug("[ui/categories] Could not load overrides: %s", exc)
+    return {}
+
+
+def _resolved_categories() -> list[dict]:
+    """Merge default _CATEGORIES with any user overrides; compute count from tickers[]."""
+    overrides = _load_category_overrides()
+    result = []
+    for c in _CATEGORIES:
+        tickers = overrides.get(c["key"], c.get("tickers", []))
+        result.append({**c, "tickers": tickers, "count": len(tickers)})
+    return result
+
+
+@router.get("/categories", summary="All categories with their ticker lists")
+async def get_categories() -> dict:
+    return {"categories": _resolved_categories()}
+
+
+class _CategoryTickersBody(BaseModel):
+    add: list[str] = []
+    remove: list[str] = []
+
+
+@router.put("/categories/{key}/tickers", summary="Add or remove tickers from a category")
+async def update_category_tickers(key: str, body: _CategoryTickersBody) -> dict:
+    valid_syms = {t["sym"] for t in _ALL_TICKERS}
+    overrides = _load_category_overrides()
+
+    # Start from the current resolved list for this key
+    base = next((c.get("tickers", []) for c in _CATEGORIES if c["key"] == key), [])
+    current = list(overrides.get(key, base))
+
+    add_syms = [s.strip().upper() for s in body.add if s.strip().upper() in valid_syms]
+    remove_syms = {s.strip().upper() for s in body.remove}
+
+    updated = [s for s in current if s not in remove_syms]
+    for sym in add_syms:
+        if sym not in updated:
+            updated.append(sym)
+
+    overrides[key] = updated
+    _CATEGORY_TICKERS_PATH.parent.mkdir(parents=True, exist_ok=True)
+    _CATEGORY_TICKERS_PATH.write_text(json.dumps(overrides, indent=2), encoding="utf-8")
+    logger.info("[ui/categories] Updated %s tickers: %s", key, updated)
+
+    cats = _resolved_categories()
+    updated_cat = next((c for c in cats if c["key"] == key), None)
+    invalid = [s.strip().upper() for s in body.add if s.strip().upper() not in valid_syms]
+    return {
+        "category": updated_cat,
+        "invalid_syms": invalid,
+    }
 
 
 # ---------------------------------------------------------------------------

@@ -206,6 +206,24 @@ class ScoreStore:
             ).fetchall()
         return [dict(r) for r in rows]
 
+    def get_by_date_range(self, since_iso: str, until_iso: str | None = None) -> list[dict]:
+        """
+        Return all score records with run_at between since_iso and until_iso (inclusive).
+        If until_iso is None, returns everything from since_iso to now.
+        Results are ordered newest first.
+        """
+        until = until_iso or datetime.utcnow().isoformat()
+        with self._conn() as conn:
+            rows = conn.execute(
+                """
+                SELECT * FROM score_history
+                WHERE run_at >= ? AND run_at <= ?
+                ORDER BY run_at DESC
+                """,
+                (since_iso, until),
+            ).fetchall()
+        return [dict(r) for r in rows]
+
     def get_all_latest(self) -> list[dict]:
         """Return the most recent run for every ticker in the database."""
         with self._conn() as conn:

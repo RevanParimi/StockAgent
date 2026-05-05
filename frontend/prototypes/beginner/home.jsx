@@ -336,8 +336,11 @@ function TodayPane({ data, onDriverClick }) {
             <div className="eyebrow" style={{ marginBottom:4 }}>Market pulse · today</div>
             <div style={{ fontSize:18, fontWeight:700 }}>{data.pulse}</div>
           </div>
-          <div style={{ marginLeft:'auto', fontSize:12, color:'var(--ink-3)' }}>
-            Updated 2 min ago
+          <div style={{ marginLeft:'auto', fontSize:12,
+            color: data.freshness?.isStale ? 'var(--neutral)' : 'var(--ink-3)',
+            display:'flex', alignItems:'center', gap:5 }}>
+            {data.freshness?.isStale && <span style={{ width:6, height:6, borderRadius:'50%', background:'var(--neutral)', display:'inline-block' }}/>}
+            {data.freshness?.label || 'Updated recently'}
           </div>
         </div>
 
@@ -552,10 +555,30 @@ function WatchlistPane({ onAnalyze }) {
 }
 
 function TrendingPane({ onAnalyze }) {
-  const items = (window.TRENDING || []).filter(t => window.TICKERS.find(x => x.sym === t.sym));
-  const hasLiveData = window.__apiLive;
+  const [items, setItems] = useStateHome(null); // null = loading
+  const [fetchError, setFetchError] = useStateHome(false);
 
-  if (hasLiveData && items.length === 0) {
+  useEffectHome(() => {
+    fetch('/ui/trending')
+      .then(r => r.ok ? r.json() : Promise.reject())
+      .then(d => setItems(d.trending || []))
+      .catch(() => {
+        // fall back to bootstrap window.TRENDING on network error
+        setItems(window.TRENDING || []);
+        setFetchError(true);
+      });
+  }, []);
+
+  if (items === null) {
+    return (
+      <div className="card" style={{ padding:32, display:'flex', alignItems:'center', gap:12, color:'var(--ink-3)' }}>
+        <div style={{ width:18, height:18, border:'2px solid var(--cyan)', borderTopColor:'transparent', borderRadius:'50%', animation:'spin-ring 1s linear infinite', flexShrink:0 }}/>
+        <span style={{ fontSize:13 }}>Loading score momentum…</span>
+      </div>
+    );
+  }
+
+  if (items.length === 0) {
     return (
       <div className="card" style={{ padding:40, textAlign:'center' }}>
         <div style={{ fontSize:32, marginBottom:12 }}>📊</div>
@@ -573,36 +596,59 @@ function TrendingPane({ onAnalyze }) {
   }
 
   return (
-    <div style={{ display:'grid', gridTemplateColumns:'repeat(2, 1fr)', gap:16 }}>
-      {items.map(t => {
-        const ticker = window.TICKERS.find(x => x.sym === t.sym);
-        return (
-          <div key={t.sym} className="card" style={{ padding:20 }}>
-            <div style={{ display:'flex', alignItems:'flex-start', gap:14 }}>
-              <div style={{
-                width:48, height:48, borderRadius:12, flexShrink:0,
-                background:'linear-gradient(135deg, var(--cyan-soft), var(--violet-soft))',
-                display:'grid', placeItems:'center', fontSize:18, fontWeight:800, color:'var(--cyan)'
-              }}>{t.sym[0]}</div>
-              <div style={{ flex:1, minWidth:0 }}>
-                <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-                  <span className="mono" style={{ fontWeight:700 }}>{t.sym}</span>
-                  <span style={{ fontSize:11, color:ticker.change >= 0 ? 'var(--buy-strong)' : 'var(--sell-strong)', fontWeight:700 }}>{t.delta}</span>
-                </div>
-                <div style={{ fontSize:13, color:'var(--ink-2)', marginTop:4, lineHeight:1.5 }}>{t.why}</div>
-                <div style={{ display:'flex', gap:8, marginTop:10, flexWrap:'wrap' }}>
-                  {t.volume && t.volume !== '—' && <Pill>Volume {t.volume}</Pill>}
-                  <Pill kind="good">Score {ticker.score.toFixed(2)}</Pill>
-                  <button onClick={()=>onAnalyze(t.sym)} style={{
-                    padding:'3px 10px', border:'1px solid var(--border)', borderRadius:6,
-                    background:'var(--bg-surface)', fontSize:11, fontWeight:600, color:'var(--ink-1)', cursor:'pointer'
-                  }}>Analyze</button>
+    <div>
+      {fetchError && (
+        <div style={{ fontSize:11, color:'var(--ink-3)', marginBottom:10, padding:'6px 12px', background:'var(--bg-tinted)', borderRadius:8 }}>
+          Using cached data — live trending unavailable
+        </div>
+      )}
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(2, 1fr)', gap:16 }}>
+        {items.map(t => {
+          const ticker = window.TICKERS.find(x => x.sym === t.sym);
+          const score = t.score ?? ticker?.score ?? 0.5;
+          const delta = typeof t.delta === 'number' ? t.delta : parseFloat(t.delta) || 0;
+          const isUp = t.direction === 'up' || delta > 0;
+          const isDown = t.direction === 'down' || delta < 0;
+          const deltaLabel = typeof t.delta === 'number'
+            ? `${delta >= 0 ? '+' : ''}${(delta * 100).toFixed(1)} pts`
+            : t.delta;
+
+          return (
+            <div key={t.sym} className="card" style={{ padding:20 }}>
+              <div style={{ display:'flex', alignItems:'flex-start', gap:14 }}>
+                <div style={{
+                  width:48, height:48, borderRadius:12, flexShrink:0,
+                  background:'linear-gradient(135deg, var(--cyan-soft), var(--violet-soft))',
+                  display:'grid', placeItems:'center', fontSize:18, fontWeight:800, color:'var(--cyan)'
+                }}>{t.sym[0]}</div>
+                <div style={{ flex:1, minWidth:0 }}>
+                  <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                    <span className="mono" style={{ fontWeight:700 }}>{t.sym}</span>
+                    <span style={{ fontSize:11, fontWeight:700,
+                      color: isUp ? 'var(--buy-strong)' : isDown ? 'var(--sell-strong)' : 'var(--neutral)' }}>
+                      {isUp ? '▲' : isDown ? '▼' : '–'} {deltaLabel}
+                    </span>
+                  </div>
+                  {t.verdict && (
+                    <div style={{ fontSize:11, color:'var(--ink-3)', marginTop:2 }}>
+                      Verdict: <strong style={{ color:'var(--ink-2)' }}>{t.verdict}</strong>
+                      {t.runAt && <span style={{ marginLeft:8 }}>· {new Date(t.runAt).toLocaleDateString('en-IN',{day:'numeric',month:'short'})}</span>}
+                    </div>
+                  )}
+                  <div style={{ fontSize:13, color:'var(--ink-2)', marginTop:6, lineHeight:1.5 }}>{t.why}</div>
+                  <div style={{ display:'flex', gap:8, marginTop:10, flexWrap:'wrap' }}>
+                    <Pill kind="good">Score {score.toFixed(2)}</Pill>
+                    <button onClick={()=>onAnalyze(t.sym)} style={{
+                      padding:'3px 10px', border:'1px solid var(--border)', borderRadius:6,
+                      background:'var(--bg-surface)', fontSize:11, fontWeight:600, color:'var(--ink-1)', cursor:'pointer'
+                    }}>Analyze</button>
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
-        );
-      })}
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -1170,11 +1216,40 @@ function DriverDetailPanel({ driver: d, onClose, onAnalyze }) {
 }
 
 // ── Category Drawer ────────────────────────────────────────────────────────
-function CategoryDrawer({ category: c, onClose, onAnalyze }) {
-  const tickers = (c.tickers || []).map(sym => {
+function CategoryDrawer({ category: initialCat, onClose, onAnalyze }) {
+  const [cat, setCat] = useStateHome(initialCat);
+  const [editOpen, setEditOpen] = useStateHome(false);
+  const [addVal, setAddVal] = useStateHome('');
+  const [editBusy, setEditBusy] = useStateHome(false);
+  const [editError, setEditError] = useStateHome('');
+
+  const tickers = (cat.tickers || []).map(sym => {
     const t = window.TICKERS.find(x => x.sym === sym);
     return t || { sym, name: sym, price: 0, change: 0, score: 0.5, verdict: 'NEUTRAL', hasData: false };
   });
+
+  const mutate = async (add = [], remove = []) => {
+    setEditBusy(true); setEditError('');
+    try {
+      const res = await fetch(`/ui/categories/${cat.key}/tickers`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ add, remove }),
+      });
+      const d = await res.json();
+      if (!res.ok) { setEditError(d.detail || 'Server error'); }
+      else {
+        if (d.invalid_syms?.length) setEditError(`Not in supported list: ${d.invalid_syms.join(', ')}`);
+        if (d.category) {
+          setCat(d.category);
+          // reflect in window.CATEGORIES so other parts of the UI stay in sync
+          window.CATEGORIES = window.CATEGORIES.map(c => c.key === cat.key ? d.category : c);
+        }
+        setAddVal('');
+      }
+    } catch { setEditError('Network error'); }
+    setEditBusy(false);
+  };
 
   return (
     <>
@@ -1186,13 +1261,36 @@ function CategoryDrawer({ category: c, onClose, onAnalyze }) {
         animation:'slide-in .28s cubic-bezier(.2,.8,.2,1)'
       }}>
         <div style={{ padding:'20px 24px', borderBottom:'1px solid var(--border)', display:'flex', alignItems:'center', gap:14 }}>
-          <div style={{ width:44, height:44, borderRadius:11, background:`color-mix(in oklab,${c.color} 12%,transparent)`, color:c.color, display:'grid', placeItems:'center', fontSize:22, flexShrink:0 }}>{c.icon}</div>
+          <div style={{ width:44, height:44, borderRadius:11, background:`color-mix(in oklab,${cat.color} 12%,transparent)`, color:cat.color, display:'grid', placeItems:'center', fontSize:22, flexShrink:0 }}>{cat.icon}</div>
           <div style={{ flex:1 }}>
-            <div className="eyebrow" style={{ marginBottom:2 }}>Category</div>
-            <div style={{ fontSize:17, fontWeight:800 }}>{c.label}</div>
+            <div className="eyebrow" style={{ marginBottom:2 }}>Category · {tickers.length} stocks</div>
+            <div style={{ fontSize:17, fontWeight:800 }}>{cat.label}</div>
           </div>
+          <button onClick={()=>setEditOpen(o=>!o)} style={{
+            padding:'6px 12px', border:'1px dashed var(--border-strong)', borderRadius:8,
+            background:'transparent', fontSize:11, fontWeight:600, color:'var(--ink-2)', cursor:'pointer'
+          }}>{editOpen ? 'Done' : 'Edit list'}</button>
           <button onClick={onClose} style={{ width:32, height:32, borderRadius:8, border:'1px solid var(--border)', background:'transparent', display:'grid', placeItems:'center', color:'var(--ink-2)', cursor:'pointer' }}><Icon.X size={16}/></button>
         </div>
+
+        {/* Inline add-ticker form */}
+        {editOpen && (
+          <div style={{ padding:'12px 24px', borderBottom:'1px solid var(--border)', background:'var(--bg-base)', display:'flex', gap:8, flexWrap:'wrap', alignItems:'center' }}>
+            <input value={addVal} onChange={e=>{setAddVal(e.target.value.toUpperCase()); setEditError('');}}
+              onKeyDown={e=>e.key==='Enter' && mutate([addVal.trim()], [])}
+              placeholder="Add ticker e.g. ESCORTS" style={{
+                padding:'7px 11px', border:'1px solid var(--border)', borderRadius:8,
+                fontSize:12, background:'var(--bg-surface)', outline:'none', minWidth:160
+              }}/>
+            <button onClick={()=>mutate([addVal.trim()], [])} disabled={editBusy || !addVal.trim()} style={{
+              padding:'7px 12px', border:'none', borderRadius:8, background:'var(--cyan)',
+              color:'#fff', fontSize:11, fontWeight:700, cursor:'pointer'
+            }}>{editBusy ? '…' : 'Add'}</button>
+            {editError && <span style={{ fontSize:11, color:'var(--sell-strong)' }}>{editError}</span>}
+            <span style={{ fontSize:10, color:'var(--ink-3)', marginLeft:'auto' }}>Supported tickers only</span>
+          </div>
+        )}
+
         <div style={{ flex:1, overflowY:'auto', padding:24, display:'flex', flexDirection:'column', gap:10 }}>
           {tickers.map(t => {
             const verdictColor = {'STRONG BUY':'var(--buy-strong)','BUY':'var(--buy)','NEUTRAL':'var(--neutral)','SELL':'var(--sell)','STRONG SELL':'var(--sell-strong)'}[t.verdict] || 'var(--neutral)';
@@ -1212,7 +1310,12 @@ function CategoryDrawer({ category: c, onClose, onAnalyze }) {
                     {t.hasData !== false ? `Score ${t.score.toFixed(2)} · ₹${t.price.toLocaleString('en-IN',{minimumFractionDigits:2})}` : t.name}
                   </div>
                 </div>
-                <button onClick={()=>{onClose(); onAnalyze(t.sym);}} style={{ padding:'6px 12px', border:'none', borderRadius:8, background:'linear-gradient(135deg,var(--cyan),var(--violet))', color:'#fff', fontSize:11, fontWeight:700, cursor:'pointer', flexShrink:0 }}>Analyze</button>
+                <div style={{ display:'flex', gap:6, flexShrink:0 }}>
+                  <button onClick={()=>{onClose(); onAnalyze(t.sym);}} style={{ padding:'6px 12px', border:'none', borderRadius:8, background:'linear-gradient(135deg,var(--cyan),var(--violet))', color:'#fff', fontSize:11, fontWeight:700, cursor:'pointer' }}>Analyze</button>
+                  {editOpen && (
+                    <button onClick={()=>mutate([], [t.sym])} disabled={editBusy} title="Remove from category" style={{ width:28, height:28, border:'1px solid var(--border)', borderRadius:7, background:'transparent', display:'grid', placeItems:'center', color:'var(--ink-3)', cursor:'pointer', fontSize:14 }}>×</button>
+                  )}
+                </div>
               </div>
             );
           })}

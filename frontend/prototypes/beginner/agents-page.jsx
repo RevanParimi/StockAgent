@@ -130,7 +130,7 @@ function AgentsPage({ onNav, openChat }) {
         </div>
 
         {/* Pipeline visual */}
-        <Pipeline agents={enabled}/>
+        <Pipeline agents={enabled} onOpenAgent={setDrawerKey}/>
 
         {/* Agent grid */}
         <div style={{ marginTop:32 }}>
@@ -177,24 +177,27 @@ function Stat({ label, value, max, hint }) {
   );
 }
 
-function Pipeline({ agents }) {
+function Pipeline({ agents, onOpenAgent }) {
   return (
     <div className="card" style={{ padding:24, position:'relative', overflow:'hidden' }}>
       <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:18 }}>
         <div className="eyebrow">Live pipeline</div>
-        <span style={{ fontSize:11, color:'var(--ink-3)' }}>How a ticker flows through your agents</span>
+        <span style={{ fontSize:11, color:'var(--ink-3)' }}>How a ticker flows through your agents · <strong style={{color:'var(--cyan)'}}>Click any agent to tune</strong></span>
       </div>
       <div style={{ display:'grid', gridTemplateColumns:'auto 1fr auto', alignItems:'center', gap:24 }}>
         <PipelineNode icon={<Icon.Search size={18}/>} title="Ticker" sub={localStorage.getItem('sa_last_ticker') || 'MARUTI'} color="var(--ink-2)"/>
         <div style={{ position:'relative', minHeight:120 }}>
           <div style={{ display:'grid', gridTemplateColumns:`repeat(${Math.max(agents.length,1)}, 1fr)`, gap:8 }}>
             {agents.map((a,i) => (
-              <div key={a.key} style={{
+              <div key={a.key} onClick={()=>onOpenAgent?.(a.key)} style={{
                 padding:'10px 8px', borderRadius:10,
                 background:'linear-gradient(180deg, var(--bg-surface), var(--bg-tinted))',
                 border:'1px solid var(--border)', textAlign:'center',
-                animation: `float-soft 3s ease-in-out infinite ${i*.15}s`
-              }}>
+                animation: `float-soft 3s ease-in-out infinite ${i*.15}s`,
+                cursor:'pointer', transition:'transform .15s, box-shadow .15s'
+              }}
+                onMouseEnter={e=>{e.currentTarget.style.transform='translateY(-3px)'; e.currentTarget.style.boxShadow='var(--shadow-md)'; e.currentTarget.style.borderColor='var(--cyan)';}}
+                onMouseLeave={e=>{e.currentTarget.style.transform=''; e.currentTarget.style.boxShadow=''; e.currentTarget.style.borderColor='var(--border)';}}>
                 <div style={{ fontSize:18 }}>{a.icon}</div>
                 <div style={{ fontSize:10, color:'var(--ink-2)', fontWeight:600, marginTop:4, lineHeight:1.2 }}>
                   {a.name.split(' ')[0]}
@@ -319,6 +322,12 @@ function AgentCard({ a, tasks=[], onToggle, onOpen }) {
               borderRadius:999 }}/>
           </div>
           <span className="mono" style={{ fontSize:12, fontWeight:700, color:'var(--ink-1)' }}>{(a.weight*100).toFixed(0)}%</span>
+        </div>
+
+        <div style={{ marginTop:10, paddingTop:10, borderTop:'1px solid var(--border)',
+          display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+          <span style={{ fontSize:11, color:'var(--cyan)', fontWeight:600 }}>Tap to tune weight & tasks</span>
+          <Icon.ChevronR size={13} c="var(--cyan)"/>
         </div>
       </div>
     </div>

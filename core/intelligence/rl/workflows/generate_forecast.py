@@ -19,7 +19,7 @@ import sys
 from datetime import date, timedelta
 
 from core.config import settings
-from core.pipeline.orchestrator import AutomobileAgentOrchestrator
+from pipeline.orchestrator import AutomobileAgentOrchestrator
 from core.schemas.feedback import DailyForecast, LearningLedger, PredictionEnvelope
 from core.schemas.pipeline import FinalReport
 from core.intelligence.rl.stores.prediction_store import PredictionStore

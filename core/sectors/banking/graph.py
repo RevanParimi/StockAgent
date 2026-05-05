@@ -23,7 +23,7 @@ from core.graphs.nodes import (
     make_run_agent_node,
 )
 from core.graphs.state import GraphState
-from core.sectors.banking.agents import AGENTS, WEIGHTS
+from sectors.bfsi.registry import AGENTS, WEIGHTS
 
 SECTOR = "banking_bfsi"
 

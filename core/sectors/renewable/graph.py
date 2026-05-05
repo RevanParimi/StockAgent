@@ -21,7 +21,7 @@ from core.graphs.nodes import (
     make_run_agent_node,
 )
 from core.graphs.state import GraphState
-from core.sectors.renewable.agents import AGENTS, WEIGHTS
+from sectors.renewable.registry import AGENTS, WEIGHTS
 
 SECTOR = "renewable_energy"
 

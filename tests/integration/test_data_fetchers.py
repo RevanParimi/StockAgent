@@ -141,20 +141,20 @@ class TestYfinanceFetcher:
 
 class TestNewsFetcher:
     def test_serper_returns_empty_without_key(self):
-        from services.data.fetchers.news import search_serper
+        from data.news import search_serper
         with patch("services.data.fetchers.news.settings.SERPER_API_KEY", ""):
             result = search_serper("Maruti Q3 results")
         assert result == []
 
     def test_newsapi_returns_empty_without_key(self):
-        from services.data.fetchers.news import search_newsapi
+        from data.news import search_newsapi
         with patch("services.data.fetchers.news.settings.NEWSAPI_KEY", ""):
             result = search_newsapi("Maruti sales")
         assert result == []
 
     @patch("services.data.fetchers.news.requests.post")
     def test_serper_parses_response(self, mock_post):
-        from services.data.fetchers.news import search_serper
+        from data.news import search_serper
         mock_resp = MagicMock()
         mock_resp.json.return_value = {
             "organic": [
@@ -172,14 +172,14 @@ class TestNewsFetcher:
 
     @patch("services.data.fetchers.news.requests.post")
     def test_serper_returns_empty_on_exception(self, mock_post):
-        from services.data.fetchers.news import search_serper
+        from data.news import search_serper
         mock_post.side_effect = Exception("Network error")
         with patch("services.data.fetchers.news.settings.SERPER_API_KEY", "fake-key"):
             result = search_serper("test")
         assert result == []
 
     def test_fetch_news_context_no_keys(self):
-        from services.data.fetchers.news import fetch_news_context
+        from data.news import fetch_news_context
         with patch("services.data.fetchers.news.settings.SERPER_API_KEY", ""), \
              patch("services.data.fetchers.news.settings.NEWSAPI_KEY", ""):
             result = fetch_news_context(["Maruti news"])
@@ -193,7 +193,7 @@ class TestNewsFetcher:
 class TestMacroFetcher:
     @patch("services.data.fetchers.macro.yf.download")
     def test_get_inr_usd_rate_returns_dict(self, mock_dl):
-        from services.data.fetchers.macro import get_inr_usd_rate
+        from data.macro import get_inr_usd_rate
         idx = pd.date_range(start="2020-01-01", periods=100, freq="B")
         mock_dl.return_value = pd.DataFrame({"Close": [83.5] * 100}, index=idx)
         result = get_inr_usd_rate()
@@ -202,7 +202,7 @@ class TestMacroFetcher:
 
     @patch("services.data.fetchers.macro.yf.download")
     def test_get_commodity_prices_returns_dict(self, mock_dl):
-        from services.data.fetchers.macro import get_commodity_prices
+        from data.macro import get_commodity_prices
         idx = pd.date_range(start="2020-01-01", periods=100, freq="B")
         mock_dl.return_value = pd.DataFrame({"Close": [75.0] * 100}, index=idx)
         result = get_commodity_prices()
@@ -210,7 +210,7 @@ class TestMacroFetcher:
         assert "crude_oil_usd" in result
 
     def test_get_rbi_repo_rate_static(self):
-        from services.data.fetchers.macro import get_rbi_repo_rate
+        from data.macro import get_rbi_repo_rate
         result = get_rbi_repo_rate()
         assert "repo_rate_pct" in result
         assert float(result["repo_rate_pct"]) > 0

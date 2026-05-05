@@ -295,7 +295,7 @@ def get_valuation_context(ticker: str, peer_tickers: list[str] | None = None) ->
     if not price_history_available:
         lines.append("[yfinance] Price history unavailable — falling back to Serper for price data.")
         try:
-            from services.data.fetchers.news import fetch_news_context
+            from data.news import fetch_news_context
             fallback = fetch_news_context([
                 f"{ticker} NSE current stock price 52 week high low {today.year}",
                 f"{ticker} share price trend momentum {today.strftime('%B')} {today.year}",
@@ -442,7 +442,7 @@ def get_valuation_context(ticker: str, peer_tickers: list[str] | None = None) ->
     if not fundamentals_available:
         lines.append("[yfinance] Fundamentals unavailable — falling back to Serper for ratio data.")
         try:
-            from services.data.fetchers.news import fetch_news_context
+            from data.news import fetch_news_context
             fallback = fetch_news_context([
                 f"{ticker} NSE PE ratio EPS earnings revenue {today.year}",
                 f"{ticker} P/E price to earnings market cap valuation {today.year}",
@@ -483,7 +483,7 @@ def get_valuation_context(ticker: str, peer_tickers: list[str] | None = None) ->
         else:
             lines.append("[yfinance] No peer P/E data — falling back to Serper for sector valuation.")
             try:
-                from services.data.fetchers.news import fetch_news_context
+                from data.news import fetch_news_context
                 fallback = fetch_news_context([
                     f"Indian automobile EV sector PE ratio peer comparison NSE {today.year}",
                     f"MARUTI TATAMOTORS HEROMOTOCO PE ratio valuation {today.year}",

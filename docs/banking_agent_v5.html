@@ -1,0 +1,1257 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Banking &amp; Financial Services Agent</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Instrument+Serif:ital@0;1&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --navy:#0B1F3A;--gold:#C89B3C;--teal:#0D9E75;--off:#F8F7F4;--white:#fff;
+  --border:rgba(0,0,0,.08);--muted:#6A6A6A;--text:#111;
+  --mono:'DM Mono',monospace;--serif:'Instrument Serif',serif;--sans:'DM Sans',sans-serif;
+  --c-blue:#1A6EBD;--c-teal:#0D9E75;--c-purple:#4A3FB5;
+  --c-amber:#B86A0A;--c-coral:#B83C1E;--c-gray:#5A5857;
+  --c-pink:#993556;--c-green:#3B6D11;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:var(--sans);background:var(--off);color:var(--text);min-height:100vh}
+
+/* ── HERO ── */
+.hero{background:var(--navy);color:#fff;padding:44px 48px 36px;position:relative;overflow:hidden}
+.hero::after{content:'';position:absolute;inset:0;background:radial-gradient(ellipse 55% 90% at 88% 50%,rgba(13,158,117,.18),transparent);pointer-events:none}
+.eyebrow{font-family:var(--mono);font-size:10px;letter-spacing:.15em;color:var(--teal);text-transform:uppercase;margin-bottom:12px}
+.hero h1{font-family:var(--serif);font-size:clamp(28px,4vw,46px);line-height:1.08;margin-bottom:8px}
+.hero h1 em{font-style:italic;color:var(--gold)}
+.hero-sub{font-size:13px;color:rgba(255,255,255,.45);max-width:600px;line-height:1.6;margin-bottom:20px}
+.hero-tags{display:flex;flex-wrap:wrap;gap:7px}
+.tag{font-family:var(--mono);font-size:9px;padding:3px 9px;border:1px solid rgba(255,255,255,.13);border-radius:20px;color:rgba(255,255,255,.5);letter-spacing:.05em}
+.tag.hi{border-color:rgba(13,158,117,.5);color:#6FDFB8;background:rgba(13,158,117,.1)}
+.tag.gold{border-color:rgba(200,155,60,.4);color:var(--gold);background:rgba(200,155,60,.08)}
+.tag.red{border-color:rgba(220,50,50,.35);color:#FF9090;background:rgba(220,50,50,.08)}
+
+/* ── INST BANNER ── */
+.inst-banner{background:#F0F4F8;border-top:none;border-bottom:1px solid #D8DEE6;padding:12px 48px;display:flex;flex-wrap:wrap;gap:8px 24px}
+.inst-item{font-family:var(--mono);font-size:11px;font-weight:500;color:#1C2B3A;letter-spacing:.05em;display:flex;align-items:center;gap:6px}
+.inst-dot{width:8px;height:8px;border-radius:50%}
+
+/* ── TABS ── */
+.tabs-bar{background:var(--white);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:100;display:flex;padding:0 32px;gap:0}
+.tab-btn{font-family:var(--mono);font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;padding:14px 20px;cursor:pointer;color:var(--muted);border:none;background:none;border-bottom:2px solid transparent;transition:color .15s,border-color .15s;white-space:nowrap}
+.tab-btn:hover{color:var(--text)}
+.tab-btn.active{color:var(--navy);border-bottom-color:var(--navy);font-weight:500}
+
+/* ── TAB CONTENT ── */
+.tab-content{display:none}
+.tab-content.active{display:block}
+.page{padding:32px 32px 64px;max-width:1800px;margin:0 auto}
+
+/* ── ARCH TAB ── */
+.orch-wrap{display:flex;justify-content:center;margin-bottom:6px}
+.orch{background:var(--navy);color:#fff;border:1.5px solid rgba(200,155,60,.4);border-radius:12px;padding:16px 36px;text-align:center;min-width:380px}
+.orch-label{font-family:var(--mono);font-size:9px;letter-spacing:.13em;text-transform:uppercase;color:var(--gold);margin-bottom:5px}
+.orch-name{font-family:var(--serif);font-size:20px;line-height:1.1;margin-bottom:2px}
+.orch-sub{font-family:var(--mono);font-size:9.5px;color:rgba(255,255,255,.35)}
+.arr-down{text-align:center;color:var(--teal);font-size:18px;margin:6px 0 3px}
+.arr-label{text-align:center;font-family:var(--mono);font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:14px}
+.legend{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:18px}
+.leg{display:flex;align-items:center;gap:5px;font-family:var(--mono);font-size:9px;letter-spacing:.04em;color:var(--muted)}
+.leg-dot{width:9px;height:9px;border-radius:2px}
+
+/* ── AGENTS ── */
+.agents-scroll{overflow-x:auto;padding-bottom:10px}
+.agents-scroll::-webkit-scrollbar{height:4px}
+.agents-scroll::-webkit-scrollbar-thumb{background:rgba(0,0,0,.1);border-radius:2px}
+.agents-row{display:flex;gap:12px;min-width:max-content;align-items:stretch}
+.agent{width:175px;border-radius:11px;border:1px solid var(--border);background:var(--white);overflow:hidden;display:flex;flex-direction:column;transition:transform .15s,box-shadow .15s}
+.agent:hover{transform:translateY(-3px);box-shadow:0 10px 28px rgba(0,0,0,.09)}
+.agent-head{padding:14px 14px 10px;border-bottom:1px solid var(--border)}
+.agent-num{font-family:var(--mono);font-size:9.5px;font-weight:500;letter-spacing:.08em;margin-bottom:4px}
+.agent-name{font-size:12px;font-weight:600;line-height:1.3;margin-bottom:3px}
+.agent-layer{font-family:var(--mono);font-size:7.5px;letter-spacing:.07em;text-transform:uppercase;opacity:.55;margin-bottom:4px}
+.agent-covers{display:flex;flex-wrap:wrap;gap:2px;margin-top:3px}
+.cover-pill{font-family:var(--mono);font-size:7px;padding:1.5px 5px;border-radius:5px;letter-spacing:.02em}
+.agent-signals{padding:10px 14px 14px;flex:1;display:flex;flex-direction:column;gap:0}
+.sig{font-size:10px;color:var(--muted);line-height:1.5;padding:3px 0 3px 11px;position:relative;border-bottom:1px solid rgba(0,0,0,.035)}
+.sig:last-child{border-bottom:none}
+.sig::before{content:'·';position:absolute;left:1px;color:rgba(0,0,0,.16);font-size:13px;top:2px}
+
+/* THEMES */
+.t-gray{border-top:3px solid #9E9C94;background:#FAFAF8}.t-gray .agent-head{background:#F3F2EF}.t-gray .agent-num{color:#5A5857}.t-gray .agent-name{color:#2C2A28}.t-gray .agent-layer{color:#888}.t-gray .cover-pill{background:#ECEAE4;color:#5A5857}
+.t-blue{border-top:3px solid var(--c-blue);background:#F6FAFE}.t-blue .agent-head{background:#EBF3FD}.t-blue .agent-num{color:var(--c-blue)}.t-blue .agent-name{color:#0D4A8A}.t-blue .agent-layer{color:var(--c-blue)}.t-blue .cover-pill{background:#D6EAFA;color:#0D4A8A}
+.t-teal{border-top:3px solid var(--c-teal);background:#F4FCF8}.t-teal .agent-head{background:#E1F5EE}.t-teal .agent-num{color:var(--c-teal)}.t-teal .agent-name{color:#075E47}.t-teal .agent-layer{color:var(--c-teal)}.t-teal .cover-pill{background:#C8EEE0;color:#075E47}
+.t-purple{border-top:3px solid var(--c-purple);background:#F8F7FE}.t-purple .agent-head{background:#EDEAFD}.t-purple .agent-num{color:var(--c-purple)}.t-purple .agent-name{color:#2E2680}.t-purple .agent-layer{color:var(--c-purple)}.t-purple .cover-pill{background:#DDD9FA;color:#2E2680}
+.t-amber{border-top:3px solid var(--c-amber);background:#FEFAF3}.t-amber .agent-head{background:#FDF0DC}.t-amber .agent-num{color:var(--c-amber)}.t-amber .agent-name{color:#7A4508}.t-amber .agent-layer{color:var(--c-amber)}.t-amber .cover-pill{background:#FAE4C0;color:#7A4508}
+.t-coral{border-top:3px solid var(--c-coral);background:#FEF7F5}.t-coral .agent-head{background:#FCEAE5}.t-coral .agent-num{color:var(--c-coral)}.t-coral .agent-name{color:#7C2912}.t-coral .agent-layer{color:var(--c-coral)}.t-coral .cover-pill{background:#FAD8D0;color:#7C2912}
+.t-pink{border-top:3px solid var(--c-pink);background:#FDF5F8}.t-pink .agent-head{background:#F9E8F0}.t-pink .agent-num{color:var(--c-pink)}.t-pink .agent-name{color:#6B1F3A}.t-pink .agent-layer{color:var(--c-pink)}.t-pink .cover-pill{background:#F5D0E0;color:#6B1F3A}
+.t-green{border-top:3px solid var(--c-green);background:#F5FAF0}.t-green .agent-head{background:#E5F2D8}.t-green .agent-num{color:var(--c-green)}.t-green .agent-name{color:#234010}.t-green .agent-layer{color:var(--c-green)}.t-green .cover-pill{background:#D4EABC;color:#234010}
+
+/* ── AGGREGATOR + STREAMS ── */
+.agg-wrap{display:flex;justify-content:center;margin-top:20px}
+.agg{background:var(--white);border:1.5px solid rgba(13,158,117,.4);border-radius:12px;padding:18px 32px;text-align:center;max-width:600px;width:100%}
+.agg-label{font-family:var(--mono);font-size:9px;letter-spacing:.13em;text-transform:uppercase;color:var(--teal);margin-bottom:6px}
+.agg-name{font-family:var(--serif);font-size:20px;color:var(--navy);margin-bottom:4px}
+.agg-sub{font-size:11.5px;color:var(--muted);margin-bottom:12px}
+.agg-pills{display:flex;flex-wrap:wrap;gap:5px;justify-content:center}
+.pill{font-family:var(--mono);font-size:9px;padding:3px 10px;border-radius:12px;letter-spacing:.03em}
+.pt{background:#E0F5EE;color:#075E47;border:1px solid rgba(13,158,117,.25)}
+.pn{background:var(--navy);color:var(--gold);border:1px solid rgba(200,155,60,.3)}
+.pr{background:#FCEAE5;color:#7C2912;border:1px solid rgba(184,60,30,.2)}
+
+.streams-label{text-align:center;font-family:var(--mono);font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin:20px 0 12px}
+.streams{display:flex;gap:12px;justify-content:center;flex-wrap:wrap}
+.stream{flex:1;min-width:220px;max-width:290px;border-radius:12px;overflow:hidden;border:1px solid var(--border)}
+.stream-head{padding:16px 18px 12px}
+.stream-mode{font-family:var(--mono);font-size:8px;letter-spacing:.14em;text-transform:uppercase;margin-bottom:6px;opacity:.7}
+.stream-name{font-family:var(--serif);font-size:18px;line-height:1.1;margin-bottom:3px}
+.stream-sub{font-size:10.5px;opacity:.58;line-height:1.5}
+.stream-body{background:rgba(255,255,255,.75);padding:12px 16px 16px;border-top:1px solid rgba(255,255,255,.15)}
+.ss-title{font-family:var(--mono);font-size:8px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:5px;margin-top:10px}
+.ss-title:first-child{margin-top:0}
+.out-items{display:flex;flex-direction:column;gap:3px}
+.oi{display:flex;align-items:flex-start;gap:6px;font-size:10.5px;color:#2A2A2A;line-height:1.4}
+.oi-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;margin-top:3px}
+.s-intraday .stream-head{background:linear-gradient(135deg,#4A0E0E,#8B1A1A);color:#fff}.s-intraday .stream-mode{color:#FCA5A5}.s-intraday .oi-dot{background:#EF4444}
+.s-swing .stream-head{background:linear-gradient(135deg,#0B2A52,#1A4A8A);color:#fff}.s-swing .stream-mode{color:#93C5FD}.s-swing .oi-dot{background:#3B82F6}
+.s-positional .stream-head{background:linear-gradient(135deg,#2D1B69,#4C1D95);color:#fff}.s-positional .stream-mode{color:#C4B5FD}.s-positional .oi-dot{background:#7C3AED}
+.s-mf-out .stream-head{background:linear-gradient(135deg,#063D2A,#0A6645);color:#fff}.s-mf-out .stream-mode{color:#6EE7B7}.s-mf-out .oi-dot{background:#10B981}
+
+/* ── STOCKS / F&O / MF TABS ── */
+.tab-page{padding:28px 32px 56px;max-width:1400px;margin:0 auto}
+.section-header{margin-bottom:16px}
+.section-title{font-family:var(--serif);font-size:24px;color:var(--navy);margin-bottom:4px}
+.section-sub{font-size:12.5px;color:var(--muted);line-height:1.5}
+
+/* Sub-sector group */
+.subsector{margin-bottom:28px}
+.subsector-label{font-family:var(--mono);font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px}
+.subsector-dot{width:8px;height:8px;border-radius:2px;flex-shrink:0}
+
+/* Stock table */
+.stock-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px}
+.stock-card{background:var(--white);border:1px solid var(--border);border-radius:8px;padding:10px 12px;transition:box-shadow .12s}
+.stock-card:hover{box-shadow:0 4px 16px rgba(0,0,0,.08)}
+.stock-symbol{font-family:var(--mono);font-size:11px;font-weight:500;color:var(--navy);margin-bottom:2px}
+.stock-name{font-size:11px;color:var(--muted);line-height:1.3;margin-bottom:4px}
+.stock-meta{display:flex;flex-wrap:wrap;gap:4px}
+.stock-badge{font-family:var(--mono);font-size:8px;padding:2px 6px;border-radius:4px;letter-spacing:.03em}
+.badge-large{background:#E1F5EE;color:#075E47}
+.badge-mid{background:#EBF3FD;color:#0D4A8A}
+.badge-small{background:#FDF0DC;color:#7A4508}
+.badge-index{background:#EDEAFD;color:#2E2680}
+.badge-fo{background:#FCEAE5;color:#7C2912}
+
+/* F&O table */
+.fo-table{width:100%;border-collapse:collapse;font-size:11px;margin-bottom:4px}
+.fo-table th{font-family:var(--mono);font-size:9px;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);padding:8px 12px;text-align:left;background:#F3F2EF;border-bottom:1px solid var(--border)}
+.fo-table td{padding:8px 12px;border-bottom:1px solid rgba(0,0,0,.04);color:var(--text)}
+.fo-table tr:last-child td{border-bottom:none}
+.fo-table tr:hover td{background:#FAFAF8}
+.fo-sym{font-family:var(--mono);font-size:10.5px;font-weight:500;color:var(--navy)}
+.fo-lot{font-family:var(--mono);font-size:10.5px;color:var(--c-coral)}
+.fo-exp{font-family:var(--mono);font-size:9.5px;color:var(--muted)}
+.index-row td{background:#F6FAFE}
+.index-row:hover td{background:#EBF3FD !important}
+.index-row .fo-sym{color:var(--c-blue)}
+
+/* MF cards */
+.mf-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:10px}
+.mf-card{background:var(--white);border:1px solid var(--border);border-radius:10px;padding:14px 16px;transition:box-shadow .12s}
+.mf-card:hover{box-shadow:0 6px 20px rgba(0,0,0,.08)}
+.mf-name{font-size:12px;font-weight:600;color:var(--navy);line-height:1.35;margin-bottom:4px}
+.mf-house{font-family:var(--mono);font-size:9px;color:var(--muted);letter-spacing:.04em;margin-bottom:6px}
+.mf-tags{display:flex;flex-wrap:wrap;gap:4px}
+.mf-tag{font-family:var(--mono);font-size:8px;padding:2px 7px;border-radius:5px;letter-spacing:.03em}
+.mt-active{background:#E1F5EE;color:#075E47}
+.mt-index{background:#EDEAFD;color:#2E2680}
+.mt-etf{background:#EBF3FD;color:#0D4A8A}
+.mt-fof{background:#FDF0DC;color:#7A4508}
+.mt-sector{background:#FCEAE5;color:#7C2912}
+
+/* ── FOOTER ── */
+.footer{text-align:center;padding:24px;font-family:var(--mono);font-size:9px;color:var(--muted);letter-spacing:.05em;border-top:1px solid var(--border)}
+</style>
+</head>
+<body>
+
+<!-- HERO -->
+<div class="hero">
+  <div class="eyebrow">AI Investing Tool · Full Financial Services Sector</div>
+  <h1>Banking &amp; Financial Services<br><em>Agent Architecture</em></h1>
+  <p class="hero-sub">17 specialist agents covering the complete Indian financial services universe — banks, NBFCs, insurance, AMCs, HFCs, MFIs, exchanges and fintechs.</p>
+  <div class="hero-tags">
+    <span class="tag hi">NSE / BSE</span><span class="tag hi">Nifty Bank · Fin Services</span>
+    <span class="tag gold">Stocks</span><span class="tag gold">F&amp;O</span><span class="tag gold">Mutual Funds</span>
+    <span class="tag red">Intraday</span><span class="tag red">Swing</span><span class="tag red">Positional</span>
+    <span class="tag">17 Agents</span><span class="tag">CAMELS · EV · AUM</span>
+  </div>
+</div>
+<div class="inst-banner">
+  <div class="inst-item"><div class="inst-dot" style="background:#1A6EBD"></div>Banks — PSU · Private · SFB</div>
+  <div class="inst-item"><div class="inst-dot" style="background:#B86A0A"></div>NBFCs — Bajaj Fin · Shriram · Chola</div>
+  <div class="inst-item"><div class="inst-dot" style="background:#993556"></div>Insurance — SBI Life · HDFC Life · LIC</div>
+  <div class="inst-item"><div class="inst-dot" style="background:#3B6D11"></div>AMCs — HDFC AMC · Nippon · UTI</div>
+  <div class="inst-item"><div class="inst-dot" style="background:#4A3FB5"></div>HFCs — LIC Housing · PNB Housing</div>
+  <div class="inst-item"><div class="inst-dot" style="background:#0D9E75"></div>MFIs — CreditAccess · Spandana</div>
+  <div class="inst-item"><div class="inst-dot" style="background:#5A5857"></div>Exchanges — BSE · CDSL · MCX</div>
+  <div class="inst-item"><div class="inst-dot" style="background:#B83C1E"></div>Fintechs — Paytm · PB Fintech</div>
+</div>
+
+<!-- TABS -->
+<div class="tabs-bar">
+  <button class="tab-btn active" onclick="showTab('arch')">Architecture</button>
+  <button class="tab-btn" onclick="showTab('layers')">Agents by layer</button>
+  <button class="tab-btn" onclick="showTab('aggregator')">Signal aggregator</button>
+  <button class="tab-btn" onclick="showTab('stocks')">Stocks universe</button>
+  <button class="tab-btn" onclick="showTab('fo')">F&amp;O contracts</button>
+  <button class="tab-btn" onclick="showTab('mf')">Mutual funds</button>
+  <button class="tab-btn" onclick="showTab('cost')">Setup costs</button>
+</div>
+
+<!-- ══════════════════════════════════════════════════ -->
+<!-- TAB 1: ARCHITECTURE -->
+<!-- ══════════════════════════════════════════════════ -->
+<div class="tab-content active" id="tab-arch">
+<div class="page">
+
+  <div class="orch-wrap">
+    <div class="orch">
+      <div class="orch-label">Orchestrator</div>
+      <div class="orch-name">Banking &amp; Financial Services Agent</div>
+      <div class="orch-sub">periodic trigger · event-driven · real-time during market hours</div>
+    </div>
+  </div>
+  <div class="arr-down">↓</div>
+  <div class="arr-label">17 specialist agents running in parallel</div>
+
+  <div class="legend">
+    <div class="leg"><div class="leg-dot" style="background:#9E9C94"></div>Universe &amp; data</div>
+    <div class="leg"><div class="leg-dot" style="background:#1A6EBD"></div>Macro &amp; regulatory</div>
+    <div class="leg"><div class="leg-dot" style="background:#0D9E75"></div>Fundamental / CAMELS</div>
+    <div class="leg"><div class="leg-dot" style="background:#4A3FB5"></div>Qualitative &amp; governance</div>
+    <div class="leg"><div class="leg-dot" style="background:#B86A0A"></div>News &amp; sentiment</div>
+    <div class="leg"><div class="leg-dot" style="background:#B83C1E"></div>Technical &amp; market</div>
+    <div class="leg"><div class="leg-dot" style="background:#993556"></div>Insurance-specific</div>
+    <div class="leg"><div class="leg-dot" style="background:#3B6D11"></div>AMC &amp; wealth</div>
+  </div>
+
+  <div class="agents-scroll">
+    <div class="agents-row">
+
+      <div class="agent t-gray"><div class="agent-head"><div class="agent-num">01</div><div class="agent-name">Universe &amp; index tracker</div><div class="agent-layer">Universe &amp; data</div><div class="agent-covers"><span class="cover-pill">All</span></div></div><div class="agent-signals"><span class="sig">Nifty Bank · Fin Svc</span><span class="sig">Nifty PSU / Pvt Bank</span><span class="sig">BSE Bankex · Midcap Fin</span><span class="sig">NBFC / Insurance index</span><span class="sig">AMC / Exchange stocks</span><span class="sig">Large/mid/small cap</span><span class="sig">AMFI MF holdings</span><span class="sig">Corporate actions</span><span class="sig">Peer grouping by type</span><span class="sig">Index weight changes</span><span class="sig">Rebalancing events</span><span class="sig">DB periodic refresh</span></div></div>
+
+      <div class="agent t-blue"><div class="agent-head"><div class="agent-num">02</div><div class="agent-name">Macro &amp; regulatory</div><div class="agent-layer">Macro &amp; regulatory</div><div class="agent-covers"><span class="cover-pill">RBI</span><span class="cover-pill">SEBI</span><span class="cover-pill">IRDA</span><span class="cover-pill">PFRDA</span></div></div><div class="agent-signals"><span class="sig">Repo / CRR / SLR</span><span class="sig">SEBI regulations</span><span class="sig">IRDA insurance norms</span><span class="sig">PFRDA pension rules</span><span class="sig">CPI / WPI inflation</span><span class="sig">GDP growth</span><span class="sig">USD/INR forex</span><span class="sig">FII / DII flows</span><span class="sig">G-Sec 10-yr yield</span><span class="sig">LAF liquidity</span><span class="sig">Fiscal deficit</span><span class="sig">RBI/SEBI statements</span></div></div>
+
+      <div class="agent t-teal"><div class="agent-head"><div class="agent-num">03</div><div class="agent-name">Credit quality</div><div class="agent-layer">Fundamental / CAMELS</div><div class="agent-covers"><span class="cover-pill">Banks</span><span class="cover-pill">NBFCs</span><span class="cover-pill">HFCs</span><span class="cover-pill">MFIs</span></div></div><div class="agent-signals"><span class="sig">GNPA / NNPA — banks</span><span class="sig">PCR coverage</span><span class="sig">Slippage ratio</span><span class="sig">SMA 0/1/2</span><span class="sig">AUM quality — NBFCs</span><span class="sig">Stage 2/3 — NBFCs</span><span class="sig">ALM mismatch — HFCs</span><span class="sig">PAR 30/90 — MFIs</span><span class="sig">Restructured book</span><span class="sig">Net credit cost</span><span class="sig">Write-offs vs recovery</span><span class="sig">Sector NPA map</span></div></div>
+
+      <div class="agent t-teal"><div class="agent-head"><div class="agent-num">04</div><div class="agent-name">Profitability</div><div class="agent-layer">Fundamental / CAMELS</div><div class="agent-covers"><span class="cover-pill">Banks</span><span class="cover-pill">NBFCs</span><span class="cover-pill">HFCs</span></div></div><div class="agent-signals"><span class="sig">NIM — banks</span><span class="sig">Spread — NBFCs/HFCs</span><span class="sig">ROE · ROA</span><span class="sig">CASA ratio</span><span class="sig">Cost-to-income</span><span class="sig">Fee income growth</span><span class="sig">EPS trend</span><span class="sig">Net interest income</span><span class="sig">Non-interest income</span><span class="sig">AUM yield — NBFCs</span><span class="sig">Operating leverage</span><span class="sig">PAT growth QoQ/YoY</span></div></div>
+
+      <div class="agent t-coral"><div class="agent-head"><div class="agent-num">05</div><div class="agent-name">Technical analysis</div><div class="agent-layer">Technical &amp; market</div><div class="agent-covers"><span class="cover-pill">All</span></div></div><div class="agent-signals"><span class="sig">Chart patterns</span><span class="sig">20/50/200 DMA</span><span class="sig">Golden/death cross</span><span class="sig">RSI</span><span class="sig">MACD</span><span class="sig">Bollinger bands</span><span class="sig">Volume analysis</span><span class="sig">Support levels</span><span class="sig">Resistance levels</span><span class="sig">Candlestick patterns</span><span class="sig">Price history</span><span class="sig">Trend strength (ADX)</span></div></div>
+
+      <div class="agent t-amber"><div class="agent-head"><div class="agent-num">06</div><div class="agent-name">News &amp; sentiment</div><div class="agent-layer">News &amp; sentiment</div><div class="agent-covers"><span class="cover-pill">All</span></div></div><div class="agent-signals"><span class="sig">Global macro news</span><span class="sig">National news</span><span class="sig">Local/regional news</span><span class="sig">Company news</span><span class="sig">Sector news</span><span class="sig">Social media</span><span class="sig">Analyst reports</span><span class="sig">NLP sentiment score</span><span class="sig">Bullish/bearish %</span><span class="sig">News velocity</span><span class="sig">Earnings commentary</span><span class="sig">Media tone shift</span></div></div>
+
+      <div class="agent t-coral"><div class="agent-head"><div class="agent-num">07</div><div class="agent-name">MF &amp; institutional</div><div class="agent-layer">Technical &amp; market</div><div class="agent-covers"><span class="cover-pill">All</span></div></div><div class="agent-signals"><span class="sig">MF holding % change</span><span class="sig">FII daily buying</span><span class="sig">FII daily selling</span><span class="sig">DII flows</span><span class="sig">Block deals</span><span class="sig">Bulk deals</span><span class="sig">Shareholding pattern</span><span class="sig">Pledge creation</span><span class="sig">Pledge release</span><span class="sig">ETF inflows</span><span class="sig">LIC/pension buys</span><span class="sig">Top fund entry/exit</span></div></div>
+
+      <div class="agent t-amber"><div class="agent-head"><div class="agent-num">08</div><div class="agent-name">Cross-market impact</div><div class="agent-layer">News &amp; sentiment</div><div class="agent-covers"><span class="cover-pill">All</span></div></div><div class="agent-signals"><span class="sig">G-Sec yields</span><span class="sig">Real estate health</span><span class="sig">MSME stress</span><span class="sig">Global bank contagion</span><span class="sig">Commodity prices</span><span class="sig">Gold prices</span><span class="sig">Infra pipeline</span><span class="sig">Trade finance signals</span><span class="sig">Corp. credit spreads</span><span class="sig">Bond market flows</span><span class="sig">USD/INR impact</span><span class="sig">Equity mkt flows</span></div></div>
+
+      <div class="agent t-teal"><div class="agent-head"><div class="agent-num">09</div><div class="agent-name">Capital adequacy</div><div class="agent-layer">Fundamental / CAMELS</div><div class="agent-covers"><span class="cover-pill">Banks</span><span class="cover-pill">NBFCs</span><span class="cover-pill">Ins.</span></div></div><div class="agent-signals"><span class="sig">CRAR — banks</span><span class="sig">Tier 1 / Tier 2</span><span class="sig">CET1 ratio</span><span class="sig">Leverage ratio</span><span class="sig">Capital buffer</span><span class="sig">NBFC capital norms</span><span class="sig">Solvency ratio — Ins.</span><span class="sig">AT1 bond issuances</span><span class="sig">QIP / rights plans</span><span class="sig">Dividend payout</span><span class="sig">Basel III compliance</span><span class="sig">Networth — AMCs</span></div></div>
+
+      <div class="agent t-teal"><div class="agent-head"><div class="agent-num">10</div><div class="agent-name">Liquidity &amp; funding</div><div class="agent-layer">Fundamental / CAMELS</div><div class="agent-covers"><span class="cover-pill">Banks</span><span class="cover-pill">NBFCs</span><span class="cover-pill">HFCs</span></div></div><div class="agent-signals"><span class="sig">CD ratio — banks</span><span class="sig">LCR · NSFR</span><span class="sig">ALM mismatch</span><span class="sig">CP rollover risk</span><span class="sig">Bank line availability</span><span class="sig">Deposit growth</span><span class="sig">CASA trend</span><span class="sig">Bulk deposit %</span><span class="sig">Savings migration</span><span class="sig">Borrowing cost</span><span class="sig">Interbank rates</span><span class="sig">Liquidity stress</span></div></div>
+
+      <div class="agent t-purple"><div class="agent-head"><div class="agent-num">11</div><div class="agent-name">Management &amp; governance</div><div class="agent-layer">Qualitative &amp; governance</div><div class="agent-covers"><span class="cover-pill">All</span></div></div><div class="agent-signals"><span class="sig">Promoter pledging</span><span class="sig">Board changes</span><span class="sig">RBI/SEBI/IRDA penalties</span><span class="sig">Show-cause notices</span><span class="sig">Auditor changes</span><span class="sig">CEO/CFO/CRO exits</span><span class="sig">Earnings call NLP</span><span class="sig">Mgmt tone shift</span><span class="sig">Insider buying</span><span class="sig">Insider selling</span><span class="sig">ESG compliance</span><span class="sig">Related party txns</span></div></div>
+
+      <div class="agent t-purple"><div class="agent-head"><div class="agent-num">12</div><div class="agent-name">Competitive positioning</div><div class="agent-layer">Qualitative &amp; governance</div><div class="agent-covers"><span class="cover-pill">All</span></div></div><div class="agent-signals"><span class="sig">Loan market share</span><span class="sig">NBFC vs bank share</span><span class="sig">Insurance penetration</span><span class="sig">AMC market share</span><span class="sig">Digital users/UPI vol</span><span class="sig">Fintech disruption</span><span class="sig">Co-lending volumes</span><span class="sig">BaaS revenue</span><span class="sig">Exchange mkt share</span><span class="sig">Customer acq cost</span><span class="sig">Product mix shift</span><span class="sig">Cross-sell metrics</span></div></div>
+
+      <div class="agent t-coral"><div class="agent-head"><div class="agent-num">13</div><div class="agent-name">Valuation &amp; strength</div><div class="agent-layer">Technical &amp; market</div><div class="agent-covers"><span class="cover-pill">All</span></div></div><div class="agent-signals"><span class="sig">P/B vs ROE — banks</span><span class="sig">P/E vs peers</span><span class="sig">EV / Embedded Val — Ins.</span><span class="sig">P/AUM — AMCs</span><span class="sig">Dividend yield</span><span class="sig">PEG ratio</span><span class="sig">52-wk high/low</span><span class="sig">Sector rel. perf.</span><span class="sig">Nifty Fin vs Nifty</span><span class="sig">Sub-sector spread</span><span class="sig">Valuation cycle</span><span class="sig">Premium/discount</span></div></div>
+
+      <div class="agent t-coral"><div class="agent-head"><div class="agent-num">14</div><div class="agent-name">F&amp;O microstructure</div><div class="agent-layer">Technical &amp; market</div><div class="agent-covers"><span class="cover-pill">BankNifty</span><span class="cover-pill">FinNifty</span><span class="cover-pill">Stocks</span></div></div><div class="agent-signals"><span class="sig">Options chain</span><span class="sig">Max pain level</span><span class="sig">Put-Call Ratio</span><span class="sig">OI buildup — long</span><span class="sig">OI buildup — short</span><span class="sig">FII derivative pos.</span><span class="sig">Implied volatility</span><span class="sig">IV vs HV spread</span><span class="sig">BankNifty/FinNifty basis</span><span class="sig">Cost of carry</span><span class="sig">Rollover %</span><span class="sig">Straddle positioning</span></div></div>
+
+      <div class="agent t-blue"><div class="agent-head"><div class="agent-num">15</div><div class="agent-name">Event &amp; catalyst tracker</div><div class="agent-layer">Macro &amp; regulatory</div><div class="agent-covers"><span class="cover-pill">All</span></div></div><div class="agent-signals"><span class="sig">Earnings calendar</span><span class="sig">RBI MPC dates</span><span class="sig">IRDA policy meetings</span><span class="sig">Union Budget</span><span class="sig">M&amp;A activity</span><span class="sig">QIP/rights issues</span><span class="sig">Block deals</span><span class="sig">Rating upgrades</span><span class="sig">Rating downgrades</span><span class="sig">RBI/SEBI penalties</span><span class="sig">IPO/listing events</span><span class="sig">Merger integrations</span></div></div>
+
+      <div class="agent t-pink"><div class="agent-head"><div class="agent-num">16</div><div class="agent-name">Insurance signals</div><div class="agent-layer">Insurance-specific</div><div class="agent-covers"><span class="cover-pill">Life</span><span class="cover-pill">General</span><span class="cover-pill">Health</span></div></div><div class="agent-signals"><span class="sig">Embedded Value (EV)</span><span class="sig">Value of New Biz (VNB)</span><span class="sig">VNB margin</span><span class="sig">Persistency ratio</span><span class="sig">Claims ratio</span><span class="sig">Combined ratio</span><span class="sig">Premium growth</span><span class="sig">New business premium</span><span class="sig">Solvency ratio</span><span class="sig">IRDA regulations</span><span class="sig">Renewal premium</span><span class="sig">ULIP vs par mix</span></div></div>
+
+      <div class="agent t-green"><div class="agent-head"><div class="agent-num">17</div><div class="agent-name">AMC &amp; wealth signals</div><div class="agent-layer">AMC &amp; wealth</div><div class="agent-covers"><span class="cover-pill">AMCs</span><span class="cover-pill">Wealth</span><span class="cover-pill">Exch.</span></div></div><div class="agent-signals"><span class="sig">AUM growth</span><span class="sig">Equity vs debt mix</span><span class="sig">Monthly SIP flows</span><span class="sig">Market share</span><span class="sig">Fund perf. vs benchmark</span><span class="sig">Fee compression</span><span class="sig">SEBI MF regulation</span><span class="sig">NFO pipeline</span><span class="sig">Exchange ADV — BSE/MCX</span><span class="sig">Clearing corp margins</span><span class="sig">Wealth AUM growth</span><span class="sig">HNI/family office flows</span></div></div>
+
+    </div>
+  </div>
+
+  <div class="agg-wrap" style="margin-top:20px">
+    <div class="agg">
+      <div class="agg-label">Signal aggregator</div>
+      <div class="agg-name">Weighted fusion · conflict resolution</div>
+      <div class="agg-sub">17 agent outputs fused with institution-type weighting · split across 4 trade mode streams</div>
+      <div class="agg-pills">
+        <span class="pill pt">17 agent inputs</span><span class="pill pt">Institution-type weighting</span><span class="pill pt">Conflict resolution</span>
+        <span class="pill pn">Intraday · Swing · Positional · MF</span><span class="pill pr">Risk per trade · Position sizing</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="arr-down">↓</div>
+  <div class="streams-label">4 trade mode output streams</div>
+  <div class="streams">
+    <div class="stream s-intraday"><div class="stream-head"><div class="stream-mode">Mode 01 · Intraday</div><div class="stream-name">Intraday Signal</div><div class="stream-sub">Time-bound · tight stops · multiple trades/day</div></div><div class="stream-body"><div class="ss-title">Instrument</div><div class="out-items"><div class="oi"><div class="oi-dot"></div>Stock or BankNifty/FinNifty F&amp;O</div><div class="oi"><div class="oi-dot"></div>Bullish / Bearish / Neutral</div></div><div class="ss-title">Execution</div><div class="out-items"><div class="oi"><div class="oi-dot"></div>Entry · Stop · Target</div><div class="oi"><div class="oi-dot"></div>Lot size / quantity</div><div class="oi"><div class="oi-dot"></div>Valid till (time window)</div></div><div class="ss-title">Risk</div><div class="out-items"><div class="oi"><div class="oi-dot"></div>Max loss per trade</div><div class="oi"><div class="oi-dot"></div>Portfolio heat check</div></div></div></div>
+    <div class="stream s-swing"><div class="stream-head"><div class="stream-mode">Mode 02 · Swing</div><div class="stream-name">Swing Signal</div><div class="stream-sub">2–10 day holds · stocks + F&amp;O</div></div><div class="stream-body"><div class="ss-title">Instrument</div><div class="out-items"><div class="oi"><div class="oi-dot"></div>Stock or stock F&amp;O</div><div class="oi"><div class="oi-dot"></div>Direction + conviction</div></div><div class="ss-title">Execution</div><div class="out-items"><div class="oi"><div class="oi-dot"></div>Entry · Stop · T1 · T2</div><div class="oi"><div class="oi-dot"></div>Hold duration estimate</div><div class="oi"><div class="oi-dot"></div>Strike &amp; expiry for F&amp;O</div></div><div class="ss-title">Risk</div><div class="out-items"><div class="oi"><div class="oi-dot"></div>Capital allocation %</div><div class="oi"><div class="oi-dot"></div>Overnight risk flag</div></div></div></div>
+    <div class="stream s-positional"><div class="stream-head"><div class="stream-mode">Mode 03 · Positional</div><div class="stream-name">Positional Signal</div><div class="stream-sub">Weeks to months · fundamentals + technicals</div></div><div class="stream-body"><div class="ss-title">Instrument</div><div class="out-items"><div class="oi"><div class="oi-dot"></div>Stock — all institution types</div><div class="oi"><div class="oi-dot"></div>Buy / Accumulate / Exit</div></div><div class="ss-title">Execution</div><div class="out-items"><div class="oi"><div class="oi-dot"></div>Entry · Wide stop · Target</div><div class="oi"><div class="oi-dot"></div>Accumulation plan</div><div class="oi"><div class="oi-dot"></div>Hold period estimate</div></div><div class="ss-title">Risk</div><div class="out-items"><div class="oi"><div class="oi-dot"></div>Max portfolio allocation %</div><div class="oi"><div class="oi-dot"></div>Conviction H / M / L</div></div></div></div>
+    <div class="stream s-mf-out"><div class="stream-head"><div class="stream-mode">Mode 04 · Mutual Funds</div><div class="stream-name">MF Signal</div><div class="stream-sub">Monthly rebalancing · sector rotation · SIP</div></div><div class="stream-body"><div class="ss-title">Action</div><div class="out-items"><div class="oi"><div class="oi-dot"></div>Increase / reduce / pause SIP</div><div class="oi"><div class="oi-dot"></div>Switch between funds</div></div><div class="ss-title">Rotation</div><div class="out-items"><div class="oi"><div class="oi-dot"></div>PSU bank vs private bank</div><div class="oi"><div class="oi-dot"></div>Fin services vs banking pure</div><div class="oi"><div class="oi-dot"></div>Insurance / AMC theme funds</div></div><div class="ss-title">Allocation</div><div class="out-items"><div class="oi"><div class="oi-dot"></div>Portfolio % recommendation</div><div class="oi"><div class="oi-dot"></div>Rebalance trigger signal</div></div></div></div>
+  </div>
+
+</div>
+</div>
+
+<!-- ══════════════════════════════════════════════════ -->
+<!-- TAB 2: STOCKS -->
+<!-- ══════════════════════════════════════════════════ -->
+<div class="tab-content" id="tab-stocks">
+<div class="tab-page">
+  <div class="section-header">
+    <div class="section-title">Stocks universe</div>
+    <div class="section-sub">Complete financial services universe — 726 listed companies on NSE/BSE. Every finance-related stock included, grouped by institution type. Penny stocks listed separately at the bottom.</div>
+  </div>
+
+  <style>
+  .badge-penny{background:#F3F2EF;color:#5A5857;font-family:var(--mono);font-size:8px;padding:2px 6px;border-radius:4px}
+  .penny-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:6px}
+  .penny-card{background:var(--white);border:1px solid var(--border);border-radius:7px;padding:8px 10px}
+  .penny-card .stock-symbol{font-size:10px}
+  .penny-card .stock-name{font-size:9.5px}
+  </style>
+
+  <!-- PRIVATE BANKS -->
+  <div class="subsector">
+    <div class="subsector-label"><div class="subsector-dot" style="background:#1A6EBD"></div>Private sector banks</div>
+    <div class="stock-grid">
+      <div class="stock-card"><div class="stock-symbol">HDFCBANK</div><div class="stock-name">HDFC Bank</div><div class="stock-meta"><span class="stock-badge badge-large">Large cap</span><span class="stock-badge badge-index">Nifty 50</span><span class="stock-badge badge-index">Nifty Bank</span><span class="stock-badge badge-fo">F&amp;O</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">ICICIBANK</div><div class="stock-name">ICICI Bank</div><div class="stock-meta"><span class="stock-badge badge-large">Large cap</span><span class="stock-badge badge-index">Nifty 50</span><span class="stock-badge badge-index">Nifty Bank</span><span class="stock-badge badge-fo">F&amp;O</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">AXISBANK</div><div class="stock-name">Axis Bank</div><div class="stock-meta"><span class="stock-badge badge-large">Large cap</span><span class="stock-badge badge-index">Nifty 50</span><span class="stock-badge badge-index">Nifty Bank</span><span class="stock-badge badge-fo">F&amp;O</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">KOTAKBANK</div><div class="stock-name">Kotak Mahindra Bank</div><div class="stock-meta"><span class="stock-badge badge-large">Large cap</span><span class="stock-badge badge-index">Nifty 50</span><span class="stock-badge badge-index">Nifty Bank</span><span class="stock-badge badge-fo">F&amp;O</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">INDUSINDBK</div><div class="stock-name">IndusInd Bank</div><div class="stock-meta"><span class="stock-badge badge-large">Large cap</span><span class="stock-badge badge-index">Nifty 50</span><span class="stock-badge badge-index">Nifty Bank</span><span class="stock-badge badge-fo">F&amp;O</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">IDBI</div><div class="stock-name">IDBI Bank</div><div class="stock-meta"><span class="stock-badge badge-large">Large cap</span><span class="stock-badge badge-fo">F&amp;O</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">FEDERALBNK</div><div class="stock-name">Federal Bank</div><div class="stock-meta"><span class="stock-badge badge-mid">Mid cap</span><span class="stock-badge badge-index">Nifty Bank</span><span class="stock-badge badge-fo">F&amp;O</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">IDFCFIRSTB</div><div class="stock-name">IDFC First Bank</div><div class="stock-meta"><span class="stock-badge badge-mid">Mid cap</span><span class="stock-badge badge-index">Nifty Bank</span><span class="stock-badge badge-fo">F&amp;O</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">BANDHANBNK</div><div class="stock-name">Bandhan Bank</div><div class="stock-meta"><span class="stock-badge badge-mid">Mid cap</span><span class="stock-badge badge-index">Nifty Bank</span><span class="stock-badge badge-fo">F&amp;O</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">YESBANK</div><div class="stock-name">Yes Bank</div><div class="stock-meta"><span class="stock-badge badge-mid">Mid cap</span><span class="stock-badge badge-fo">F&amp;O</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">RBLBANK</div><div class="stock-name">RBL Bank</div><div class="stock-meta"><span class="stock-badge badge-mid">Mid cap</span><span class="stock-badge badge-fo">F&amp;O</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">CUB</div><div class="stock-name">City Union Bank</div><div class="stock-meta"><span class="stock-badge badge-mid">Mid cap</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">KARURVYSYA</div><div class="stock-name">Karur Vysya Bank</div><div class="stock-meta"><span class="stock-badge badge-mid">Mid cap</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">KTKBANK</div><div class="stock-name">Karnataka Bank</div><div class="stock-meta"><span class="stock-badge badge-small">Small cap</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">TMB</div><div class="stock-name">Tamilnad Mercantile Bank</div><div class="stock-meta"><span class="stock-badge badge-small">Small cap</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">SOUTHBANK</div><div class="stock-name">South Indian Bank</div><div class="stock-meta"><span class="stock-badge badge-small">Small cap</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">J&amp;KBANK</div><div class="stock-name">J&amp;K Bank</div><div class="stock-meta"><span class="stock-badge badge-small">Small cap</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">DCBBANK</div><div class="stock-name">DCB Bank</div><div class="stock-meta"><span class="stock-badge badge-small">Small cap</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">CSBBANK</div><div class="stock-name">CSB Bank</div><div class="stock-meta"><span class="stock-badge badge-small">Small cap</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">DHANBANK</div><div class="stock-name">Dhanlaxmi Bank</div><div class="stock-meta"><span class="stock-badge badge-small">Small cap</span></div></div>
+    </div>
+  </div>
+
+  <!-- PSU BANKS -->
+  <div class="subsector">
+    <div class="subsector-label"><div class="subsector-dot" style="background:#0D9E75"></div>Public sector banks (PSU)</div>
+    <div class="stock-grid">
+      <div class="stock-card"><div class="stock-symbol">SBIN</div><div class="stock-name">State Bank of India</div><div class="stock-meta"><span class="stock-badge badge-large">Large cap</span><span class="stock-badge badge-index">Nifty 50</span><span class="stock-badge badge-index">PSU Bank</span><span class="stock-badge badge-fo">F&amp;O</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">BANKBARODA</div><div class="stock-name">Bank of Baroda</div><div class="stock-meta"><span class="stock-badge badge-large">Large cap</span><span class="stock-badge badge-index">Nifty Bank</span><span class="stock-badge badge-index">PSU Bank</span><span class="stock-badge badge-fo">F&amp;O</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">UNIONBANK</div><div class="stock-name">Union Bank of India</div><div class="stock-meta"><span class="stock-badge badge-large">Large cap</span><span class="stock-badge badge-index">PSU Bank</span><span class="stock-badge badge-fo">F&amp;O</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">INDIANB</div><div class="stock-name">Indian Bank</div><div class="stock-meta"><span class="stock-badge badge-large">Large cap</span><span class="stock-badge badge-index">PSU Bank</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">PNB</div><div class="stock-name">Punjab National Bank</div><div class="stock-meta"><span class="stock-badge badge-large">Large cap</span><span class="stock-badge badge-index">PSU Bank</span><span class="stock-badge badge-fo">F&amp;O</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">CANBK</div><div class="stock-name">Canara Bank</div><div class="stock-meta"><span class="stock-badge badge-large">Large cap</span><span class="stock-badge badge-index">PSU Bank</span><span class="stock-badge badge-fo">F&amp;O</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">BANKINDIA</div><div class="stock-name">Bank of India</div><div class="stock-meta"><span class="stock-badge badge-mid">Mid cap</span><span class="stock-badge badge-index">PSU Bank</span><span class="stock-badge badge-fo">F&amp;O</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">IOB</div><div class="stock-name">Indian Overseas Bank</div><div class="stock-meta"><span class="stock-badge badge-mid">Mid cap</span><span class="stock-badge badge-fo">F&amp;O</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">MAHABANK</div><div class="stock-name">Bank of Maharashtra</div><div class="stock-meta"><span class="stock-badge badge-mid">Mid cap</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">UCOBANK</div><div class="stock-name">UCO Bank</div><div class="stock-meta"><span class="stock-badge badge-mid">Mid cap</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">CENTRALBK</div><div class="stock-name">Central Bank of India</div><div class="stock-meta"><span class="stock-badge badge-mid">Mid cap</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">PSB</div><div class="stock-name">Punjab &amp; Sind Bank</div><div class="stock-meta"><span class="stock-badge badge-small">Small cap</span></div></div>
+    </div>
+  </div>
+
+  <!-- SFBs -->
+  <div class="subsector">
+    <div class="subsector-label"><div class="subsector-dot" style="background:#B86A0A"></div>Small finance banks (SFB)</div>
+    <div class="stock-grid">
+      <div class="stock-card"><div class="stock-symbol">AUBANK</div><div class="stock-name">AU Small Finance Bank</div><div class="stock-meta"><span class="stock-badge badge-mid">Mid cap</span><span class="stock-badge badge-index">Nifty Bank</span><span class="stock-badge badge-fo">F&amp;O</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">UJJIVANSFB</div><div class="stock-name">Ujjivan Small Finance Bank</div><div class="stock-meta"><span class="stock-badge badge-small">Small cap</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">EQUITASBNK</div><div class="stock-name">Equitas Small Finance Bank</div><div class="stock-meta"><span class="stock-badge badge-small">Small cap</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">ESAFSFB</div><div class="stock-name">ESAF Small Finance Bank</div><div class="stock-meta"><span class="stock-badge badge-small">Small cap</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">JSFB</div><div class="stock-name">Jana Small Finance Bank</div><div class="stock-meta"><span class="stock-badge badge-small">Small cap</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">UTKARSHBNK</div><div class="stock-name">Utkarsh Small Finance Bank</div><div class="stock-meta"><span class="stock-badge badge-small">Small cap</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">CAPITALSFB</div><div class="stock-name">Capital Small Finance Bank</div><div class="stock-meta"><span class="stock-badge badge-small">Small cap</span></div></div>
+    </div>
+  </div>
+
+  <!-- NBFCs -->
+  <div class="subsector">
+    <div class="subsector-label"><div class="subsector-dot" style="background:#4A3FB5"></div>NBFCs — consumer, vehicle &amp; diversified lending</div>
+    <div class="stock-grid">
+      <div class="stock-card"><div class="stock-symbol">BAJFINANCE</div><div class="stock-name">Bajaj Finance</div><div class="stock-meta"><span class="stock-badge badge-large">Large cap</span><span class="stock-badge badge-index">Nifty 50</span><span class="stock-badge badge-fo">F&amp;O</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">BAJAJFINSV</div><div class="stock-name">Bajaj Finserv</div><div class="stock-meta"><span class="stock-badge badge-large">Large cap</span><span class="stock-badge badge-index">Nifty 50</span><span class="stock-badge badge-fo">F&amp;O</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">SHRIRAMFIN</div><div class="stock-name">Shriram Finance</div><div class="stock-meta"><span class="stock-badge badge-large">Large cap</span><span class="stock-badge badge-fo">F&amp;O</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">CHOLAFIN</div><div class="stock-name">Cholamandalam Finance</div><div class="stock-meta"><span class="stock-badge badge-large">Large cap</span><span class="stock-badge badge-fo">F&amp;O</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">MUTHOOTFIN</div><div class="stock-name">Muthoot Finance</div><div class="stock-meta"><span class="stock-badge badge-large">Large cap</span><span class="stock-badge badge-fo">F&amp;O</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">JIOFIN</div><div class="stock-name">Jio Financial Services</div><div class="stock-meta"><span class="stock-badge badge-large">Large cap</span><span class="stock-badge badge-index">Nifty 50</span><span class="stock-badge badge-fo">F&amp;O</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">TATACAP</div><div class="stock-name">Tata Capital</div><div class="stock-meta"><span class="stock-badge badge-large">Large cap</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">ABCAPITAL</div><div class="stock-name">Aditya Birla Capital</div><div class="stock-meta"><span class="stock-badge badge-mid">Mid cap</span><span class="stock-badge badge-fo">F&amp;O</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">LTF</div><div class="stock-name">L&amp;T Finance</div><div class="stock-meta"><span class="stock-badge badge-mid">Mid cap</span><span class="stock-badge badge-fo">F&amp;O</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">M&amp;MFIN</div><div class="stock-name">M&amp;M Financial Services</div><div class="stock-meta"><span class="stock-badge badge-mid">Mid cap</span><span class="stock-badge badge-fo">F&amp;O</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">HDBFS</div><div class="stock-name">HDB Financial Services</div><div class="stock-meta"><span class="stock-badge badge-mid">Mid cap</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">MANAPPURAM</div><div class="stock-name">Manappuram Finance</div><div class="stock-meta"><span class="stock-badge badge-mid">Mid cap</span><span class="stock-badge badge-fo">F&amp;O</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">PIRAMALFIN</div><div class="stock-name">Piramal Finance</div><div class="stock-meta"><span class="stock-badge badge-mid">Mid cap</span><span class="stock-badge badge-fo">F&amp;O</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">POONAWALLA</div><div class="stock-name">Poonawalla Fincorp</div><div class="stock-meta"><span class="stock-badge badge-mid">Mid cap</span><span class="stock-badge badge-fo">F&amp;O</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">SUNDARMFIN</div><div class="stock-name">Sundaram Finance</div><div class="stock-meta"><span class="stock-badge badge-mid">Mid cap</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">CHOLAHLDNG</div><div class="stock-name">Cholamandalam Holdings</div><div class="stock-meta"><span class="stock-badge badge-mid">Mid cap</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">IIFL</div><div class="stock-name">IIFL Finance</div><div class="stock-meta"><span class="stock-badge badge-mid">Mid cap</span><span class="stock-badge badge-fo">F&amp;O</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">FIVESTAR</div><div class="stock-name">Five Star Business Finance</div><div class="stock-meta"><span class="stock-badge badge-small">Small cap</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">EDELWEISS</div><div class="stock-name">Edelweiss Financial</div><div class="stock-meta"><span class="stock-badge badge-small">Small cap</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">SBFC</div><div class="stock-name">SBFC Finance</div><div class="stock-meta"><span class="stock-badge badge-small">Small cap</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">NORTHARC</div><div class="stock-name">Northern Arc Capital</div><div class="stock-meta"><span class="stock-badge badge-small">Small cap</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">INDOSTAR</div><div class="stock-name">Indostar Capital Finance</div><div class="stock-meta"><span class="stock-badge badge-small">Small cap</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">FEDFINA</div><div class="stock-name">Fedbank Financial Services</div><div class="stock-meta"><span class="stock-badge badge-small">Small cap</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">UGROCAP</div><div class="stock-name">UGRO Capital</div><div class="stock-meta"><span class="stock-badge badge-small">Small cap</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">SATIN</div><div class="stock-name">Satin Creditcare Network</div><div class="stock-meta"><span class="stock-badge badge-small">Small cap</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">AYE</div><div class="stock-name">AYE Finance</div><div class="stock-meta"><span class="stock-badge badge-small">Small cap</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">JMFINANCIL</div><div class="stock-name">JM Financial</div><div class="stock-meta"><span class="stock-badge badge-small">Small cap</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">RELIGARE</div><div class="stock-name">Religare Enterprises</div><div class="stock-meta"><span class="stock-badge badge-small">Small cap</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">PAISALO</div><div class="stock-name">Paisalo Digital</div><div class="stock-meta"><span class="stock-badge badge-small">Small cap</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">MONEYBOXX</div><div class="stock-name">Moneyboxx Finance</div><div class="stock-meta"><span class="stock-badge badge-small">Small cap</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">MUTHOOTCAP</div><div class="stock-name">Muthoot Capital Services</div><div class="stock-meta"><span class="stock-badge badge-small">Small cap</span></div></div>
+    </div>
+  </div>
+
+  <!-- INSURANCE -->
+  <div class="subsector">
+    <div class="subsector-label"><div class="subsector-dot" style="background:#993556"></div>Insurance — life, general &amp; health</div>
+    <div class="stock-grid">
+      <div class="stock-card"><div class="stock-symbol">LICI</div><div class="stock-name">Life Insurance Corp (LIC)</div><div class="stock-meta"><span class="stock-badge badge-large">Large cap</span><span class="stock-badge badge-fo">F&amp;O</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">SBILIFE</div><div class="stock-name">SBI Life Insurance</div><div class="stock-meta"><span class="stock-badge badge-large">Large cap</span><span class="stock-badge badge-index">Nifty 50</span><span class="stock-badge badge-fo">F&amp;O</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">HDFCLIFE</div><div class="stock-name">HDFC Life Insurance</div><div class="stock-meta"><span class="stock-badge badge-large">Large cap</span><span class="stock-badge badge-index">Nifty 50</span><span class="stock-badge badge-fo">F&amp;O</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">ICICIGI</div><div class="stock-name">ICICI Lombard General</div><div class="stock-meta"><span class="stock-badge badge-large">Large cap</span><span class="stock-badge badge-fo">F&amp;O</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">ICICIPRULI</div><div class="stock-name">ICICI Prudential Life</div><div class="stock-meta"><span class="stock-badge badge-large">Large cap</span><span class="stock-badge badge-fo">F&amp;O</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">GICRE</div><div class="stock-name">General Insurance Corp</div><div class="stock-meta"><span class="stock-badge badge-mid">Mid cap</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">MFSL</div><div class="stock-name">Max Financial Services</div><div class="stock-meta"><span class="stock-badge badge-mid">Mid cap</span><span class="stock-badge badge-fo">F&amp;O</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">STARHEALTH</div><div class="stock-name">Star Health Insurance</div><div class="stock-meta"><span class="stock-badge badge-mid">Mid cap</span><span class="stock-badge badge-fo">F&amp;O</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">NIACL</div><div class="stock-name">New India Assurance</div><div class="stock-meta"><span class="stock-badge badge-mid">Mid cap</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">CANHLIFE</div><div class="stock-name">Canara HSBC Life Insurance</div><div class="stock-meta"><span class="stock-badge badge-small">Small cap</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">NIVABUPA</div><div class="stock-name">Niva Bupa Health Insurance</div><div class="stock-meta"><span class="stock-badge badge-small">Small cap</span></div></div>
+    </div>
+  </div>
+
+  <!-- AMCs & WEALTH -->
+  <div class="subsector">
+    <div class="subsector-label"><div class="subsector-dot" style="background:#3B6D11"></div>Asset management companies (AMCs) &amp; wealth</div>
+    <div class="stock-grid">
+      <div class="stock-card"><div class="stock-symbol">ICICIAMC</div><div class="stock-name">ICICI Prudential AMC</div><div class="stock-meta"><span class="stock-badge badge-large">Large cap</span><span class="stock-badge badge-fo">F&amp;O</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">HDFCAMC</div><div class="stock-name">HDFC AMC</div><div class="stock-meta"><span class="stock-badge badge-large">Large cap</span><span class="stock-badge badge-fo">F&amp;O</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">NAM-INDIA</div><div class="stock-name">Nippon India AMC</div><div class="stock-meta"><span class="stock-badge badge-mid">Mid cap</span><span class="stock-badge badge-fo">F&amp;O</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">360ONE</div><div class="stock-name">360 One WAM</div><div class="stock-meta"><span class="stock-badge badge-mid">Mid cap</span><span class="stock-badge badge-fo">F&amp;O</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">ABSLAMC</div><div class="stock-name">Aditya Birla Sun Life AMC</div><div class="stock-meta"><span class="stock-badge badge-mid">Mid cap</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">NUVAMA</div><div class="stock-name">Nuvama Wealth Mgmt</div><div class="stock-meta"><span class="stock-badge badge-mid">Mid cap</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">ANANDRATHI</div><div class="stock-name">Anand Rathi Wealth</div><div class="stock-meta"><span class="stock-badge badge-mid">Mid cap</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">UTIAMC</div><div class="stock-name">UTI Asset Management</div><div class="stock-meta"><span class="stock-badge badge-small">Small cap</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">PRUDENT</div><div class="stock-name">Prudent Corporate Advisory</div><div class="stock-meta"><span class="stock-badge badge-small">Small cap</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">CRAMC</div><div class="stock-name">Canara Robeco AMC</div><div class="stock-meta"><span class="stock-badge badge-small">Small cap</span></div></div>
+    </div>
+  </div>
+
+  <!-- HFCs -->
+  <div class="subsector">
+    <div class="subsector-label"><div class="subsector-dot" style="background:#0B6E4F"></div>Housing finance companies (HFCs)</div>
+    <div class="stock-grid">
+      <div class="stock-card"><div class="stock-symbol">BAJAJHFL</div><div class="stock-name">Bajaj Housing Finance</div><div class="stock-meta"><span class="stock-badge badge-large">Large cap</span><span class="stock-badge badge-fo">F&amp;O</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">LICHSGFIN</div><div class="stock-name">LIC Housing Finance</div><div class="stock-meta"><span class="stock-badge badge-mid">Mid cap</span><span class="stock-badge badge-fo">F&amp;O</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">PNBHOUSING</div><div class="stock-name">PNB Housing Finance</div><div class="stock-meta"><span class="stock-badge badge-mid">Mid cap</span><span class="stock-badge badge-fo">F&amp;O</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">SAMMAANCAP</div><div class="stock-name">Sammaan Capital (Indiabulls HFL)</div><div class="stock-meta"><span class="stock-badge badge-mid">Mid cap</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">AADHARHFC</div><div class="stock-name">Aadhar Housing Finance</div><div class="stock-meta"><span class="stock-badge badge-mid">Mid cap</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">CANFINHOME</div><div class="stock-name">Can Fin Homes</div><div class="stock-meta"><span class="stock-badge badge-small">Small cap</span><span class="stock-badge badge-fo">F&amp;O</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">HOMEFIRST</div><div class="stock-name">Home First Finance</div><div class="stock-meta"><span class="stock-badge badge-small">Small cap</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">AAVAS</div><div class="stock-name">Aavas Financiers</div><div class="stock-meta"><span class="stock-badge badge-small">Small cap</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">APTUS</div><div class="stock-name">Aptus Value Housing</div><div class="stock-meta"><span class="stock-badge badge-small">Small cap</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">INDIASHLTR</div><div class="stock-name">India Shelter Finance</div><div class="stock-meta"><span class="stock-badge badge-small">Small cap</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">REPCOHOME</div><div class="stock-name">Repco Home Finance</div><div class="stock-meta"><span class="stock-badge badge-small">Small cap</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">GICHSGFIN</div><div class="stock-name">GIC Housing Finance</div><div class="stock-meta"><span class="stock-badge badge-small">Small cap</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">CGCL</div><div class="stock-name">Capri Global Capital</div><div class="stock-meta"><span class="stock-badge badge-small">Small cap</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">SRGHOUSFIN</div><div class="stock-name">SRG Housing Finance</div><div class="stock-meta"><span class="stock-badge badge-small">Small cap</span></div></div>
+    </div>
+  </div>
+
+  <!-- MFIs -->
+  <div class="subsector">
+    <div class="subsector-label"><div class="subsector-dot" style="background:#B86A0A"></div>Microfinance institutions (MFIs)</div>
+    <div class="stock-grid">
+      <div class="stock-card"><div class="stock-symbol">CREDITACC</div><div class="stock-name">CreditAccess Grameen</div><div class="stock-meta"><span class="stock-badge badge-mid">Mid cap</span><span class="stock-badge badge-fo">F&amp;O</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">SPANDANA</div><div class="stock-name">Spandana Sphoorty</div><div class="stock-meta"><span class="stock-badge badge-small">Small cap</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">UJJIVAN</div><div class="stock-name">Ujjivan Financial Services</div><div class="stock-meta"><span class="stock-badge badge-small">Small cap</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">SATIN</div><div class="stock-name">Satin Creditcare</div><div class="stock-meta"><span class="stock-badge badge-small">Small cap</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">MUFIN</div><div class="stock-name">Mufin Green Finance</div><div class="stock-meta"><span class="stock-badge badge-small">Small cap</span></div></div>
+    </div>
+  </div>
+
+  <!-- BROKING & WEALTH PLATFORMS -->
+  <div class="subsector">
+    <div class="subsector-label"><div class="subsector-dot" style="background:#6B21A8"></div>Broking &amp; wealth platforms</div>
+    <div class="stock-grid">
+      <div class="stock-card"><div class="stock-symbol">GROWW</div><div class="stock-name">Groww (Billionbrains Garage)</div><div class="stock-meta"><span class="stock-badge badge-large">Large cap</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">MOTILALOFS</div><div class="stock-name">Motilal Oswal Financial Svc</div><div class="stock-meta"><span class="stock-badge badge-mid">Mid cap</span><span class="stock-badge badge-fo">F&amp;O</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">ANGELONE</div><div class="stock-name">Angel One</div><div class="stock-meta"><span class="stock-badge badge-mid">Mid cap</span><span class="stock-badge badge-fo">F&amp;O</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">ISEC</div><div class="stock-name">ICICI Securities</div><div class="stock-meta"><span class="stock-badge badge-mid">Mid cap</span><span class="stock-badge badge-fo">F&amp;O</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">IIFLCAPS</div><div class="stock-name">IIFL Capital Services</div><div class="stock-meta"><span class="stock-badge badge-small">Small cap</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">CHOICEIN</div><div class="stock-name">Choice International</div><div class="stock-meta"><span class="stock-badge badge-small">Small cap</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">ARSSBL</div><div class="stock-name">Anand Rathi Share &amp; Stock Brokers</div><div class="stock-meta"><span class="stock-badge badge-small">Small cap</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">GEOJITFSL</div><div class="stock-name">Geojit Financial Services</div><div class="stock-meta"><span class="stock-badge badge-small">Small cap</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">5PAISA</div><div class="stock-name">5Paisa Capital</div><div class="stock-meta"><span class="stock-badge badge-small">Small cap</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">SMCGLOBAL</div><div class="stock-name">SMC Global Securities</div><div class="stock-meta"><span class="stock-badge badge-small">Small cap</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">DAMCAPITAL</div><div class="stock-name">DAM Capital Advisors</div><div class="stock-meta"><span class="stock-badge badge-small">Small cap</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">MONARCH</div><div class="stock-name">Monarch Networth Capital</div><div class="stock-meta"><span class="stock-badge badge-small">Small cap</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">EMKAY</div><div class="stock-name">Emkay Global Financial</div><div class="stock-meta"><span class="stock-badge badge-small">Small cap</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">DOLATALGO</div><div class="stock-name">Dolat Algotech</div><div class="stock-meta"><span class="stock-badge badge-small">Small cap</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">SHAREINDIA</div><div class="stock-name">Share India Securities</div><div class="stock-meta"><span class="stock-badge badge-small">Small cap</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">INDOTHAI</div><div class="stock-name">Indo Thai Securities</div><div class="stock-meta"><span class="stock-badge badge-small">Small cap</span></div></div>
+    </div>
+  </div>
+
+  <!-- EXCHANGES & INFRA -->
+  <div class="subsector">
+    <div class="subsector-label"><div class="subsector-dot" style="background:#5A5857"></div>Exchanges &amp; market infrastructure</div>
+    <div class="stock-grid">
+      <div class="stock-card"><div class="stock-symbol">BSE</div><div class="stock-name">BSE Ltd</div><div class="stock-meta"><span class="stock-badge badge-large">Large cap</span><span class="stock-badge badge-fo">F&amp;O</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">MCX</div><div class="stock-name">Multi Commodity Exchange</div><div class="stock-meta"><span class="stock-badge badge-mid">Mid cap</span><span class="stock-badge badge-fo">F&amp;O</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">CDSL</div><div class="stock-name">CDSL</div><div class="stock-meta"><span class="stock-badge badge-mid">Mid cap</span><span class="stock-badge badge-fo">F&amp;O</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">NSDL</div><div class="stock-name">NSDL</div><div class="stock-meta"><span class="stock-badge badge-small">Small cap</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">CAMS</div><div class="stock-name">Computer Age Management (CAMS)</div><div class="stock-meta"><span class="stock-badge badge-small">Small cap</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">KFINTECH</div><div class="stock-name">KFin Technologies</div><div class="stock-meta"><span class="stock-badge badge-small">Small cap</span><span class="stock-badge badge-fo">F&amp;O</span></div></div>
+    </div>
+  </div>
+
+  <!-- FINTECHS & PAYMENTS -->
+  <div class="subsector">
+    <div class="subsector-label"><div class="subsector-dot" style="background:#B83C1E"></div>Fintechs, payments &amp; credit cards</div>
+    <div class="stock-grid">
+      <div class="stock-card"><div class="stock-symbol">PAYTM</div><div class="stock-name">One97 Communications (Paytm)</div><div class="stock-meta"><span class="stock-badge badge-mid">Mid cap</span><span class="stock-badge badge-fo">F&amp;O</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">POLICYBZR</div><div class="stock-name">PB Fintech (Policybazaar)</div><div class="stock-meta"><span class="stock-badge badge-mid">Mid cap</span><span class="stock-badge badge-fo">F&amp;O</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">SBICARD</div><div class="stock-name">SBI Cards &amp; Payment</div><div class="stock-meta"><span class="stock-badge badge-large">Large cap</span><span class="stock-badge badge-fo">F&amp;O</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">PINELABS</div><div class="stock-name">Pine Labs</div><div class="stock-meta"><span class="stock-badge badge-mid">Mid cap</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">CCAVENUE</div><div class="stock-name">AvenuesAI (CCAvenue)</div><div class="stock-meta"><span class="stock-badge badge-small">Small cap</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">ZAGGLE</div><div class="stock-name">Zaggle Prepaid Ocean</div><div class="stock-meta"><span class="stock-badge badge-small">Small cap</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">MOBIKWIK</div><div class="stock-name">One Mobikwik Systems</div><div class="stock-meta"><span class="stock-badge badge-small">Small cap</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">FINOPB</div><div class="stock-name">Fino Payments Bank</div><div class="stock-meta"><span class="stock-badge badge-small">Small cap</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">RNFI</div><div class="stock-name">RNFI Services</div><div class="stock-meta"><span class="stock-badge badge-small">Small cap</span></div></div>
+    </div>
+  </div>
+
+  <!-- GOVT FINANCIAL INSTITUTIONS -->
+  <div class="subsector">
+    <div class="subsector-label"><div class="subsector-dot" style="background:#0B1F3A"></div>Govt financial institutions &amp; development finance</div>
+    <div class="stock-grid">
+      <div class="stock-card"><div class="stock-symbol">PFC</div><div class="stock-name">Power Finance Corp</div><div class="stock-meta"><span class="stock-badge badge-large">Large cap</span><span class="stock-badge badge-fo">F&amp;O</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">RECLTD</div><div class="stock-name">REC Ltd</div><div class="stock-meta"><span class="stock-badge badge-large">Large cap</span><span class="stock-badge badge-fo">F&amp;O</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">HUDCO</div><div class="stock-name">HUDCO</div><div class="stock-meta"><span class="stock-badge badge-mid">Mid cap</span><span class="stock-badge badge-fo">F&amp;O</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">IREDA</div><div class="stock-name">Indian Renewable Energy Dev Agency</div><div class="stock-meta"><span class="stock-badge badge-mid">Mid cap</span><span class="stock-badge badge-fo">F&amp;O</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">IRFC</div><div class="stock-name">Indian Railway Finance Corp</div><div class="stock-meta"><span class="stock-badge badge-large">Large cap</span><span class="stock-badge badge-fo">F&amp;O</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">IFCI</div><div class="stock-name">IFCI Ltd</div><div class="stock-meta"><span class="stock-badge badge-small">Small cap</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">TFCILTD</div><div class="stock-name">Tourism Finance Corp</div><div class="stock-meta"><span class="stock-badge badge-small">Small cap</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">PNBGILTS</div><div class="stock-name">PNB Gilts</div><div class="stock-meta"><span class="stock-badge badge-small">Small cap</span></div></div>
+    </div>
+  </div>
+
+  <!-- RATINGS & CREDIT AGENCIES -->
+  <div class="subsector">
+    <div class="subsector-label"><div class="subsector-dot" style="background:#374151"></div>Credit rating agencies &amp; financial data</div>
+    <div class="stock-grid">
+      <div class="stock-card"><div class="stock-symbol">CRISIL</div><div class="stock-name">CRISIL Ltd</div><div class="stock-meta"><span class="stock-badge badge-mid">Mid cap</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">ICRA</div><div class="stock-name">ICRA Ltd</div><div class="stock-meta"><span class="stock-badge badge-small">Small cap</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">CARERATING</div><div class="stock-name">CARE Ratings</div><div class="stock-meta"><span class="stock-badge badge-small">Small cap</span></div></div>
+    </div>
+  </div>
+
+  <!-- DIVERSIFIED HOLDINGS & CONGLOMERATES -->
+  <div class="subsector">
+    <div class="subsector-label"><div class="subsector-dot" style="background:#92400E"></div>Diversified financial holdings &amp; conglomerates</div>
+    <div class="stock-grid">
+      <div class="stock-card"><div class="stock-symbol">BAJAJHLDNG</div><div class="stock-name">Bajaj Holdings &amp; Investment</div><div class="stock-meta"><span class="stock-badge badge-large">Large cap</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">TATAINVEST</div><div class="stock-name">Tata Investment Corp</div><div class="stock-meta"><span class="stock-badge badge-mid">Mid cap</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">AUTHUM</div><div class="stock-name">Authum Investment &amp; Infrastructure</div><div class="stock-meta"><span class="stock-badge badge-mid">Mid cap</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">JSWHL</div><div class="stock-name">JSW Holdings</div><div class="stock-meta"><span class="stock-badge badge-small">Small cap</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">TSFINV</div><div class="stock-name">TSF Investments</div><div class="stock-meta"><span class="stock-badge badge-small">Small cap</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">TATAINVEST</div><div class="stock-name">Tata Invest Corp</div><div class="stock-meta"><span class="stock-badge badge-small">Small cap</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">BENGALASM</div><div class="stock-name">Bengal &amp; Assam Co</div><div class="stock-meta"><span class="stock-badge badge-small">Small cap</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">KAMAHOLD</div><div class="stock-name">Kama Holdings</div><div class="stock-meta"><span class="stock-badge badge-small">Small cap</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">PILANIINVS</div><div class="stock-name">Pilani Investment</div><div class="stock-meta"><span class="stock-badge badge-small">Small cap</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">KICL</div><div class="stock-name">Kalyani Investment</div><div class="stock-meta"><span class="stock-badge badge-small">Small cap</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">WELINV</div><div class="stock-name">Welspun Investments</div><div class="stock-meta"><span class="stock-badge badge-small">Small cap</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">CONSOFINVT</div><div class="stock-name">Consolidated Finvest</div><div class="stock-meta"><span class="stock-badge badge-small">Small cap</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">BFINVEST</div><div class="stock-name">BF Investment</div><div class="stock-meta"><span class="stock-badge badge-small">Small cap</span></div></div>
+      <div class="stock-card"><div class="stock-symbol">SILINV</div><div class="stock-name">SIL Investments</div><div class="stock-meta"><span class="stock-badge badge-small">Small cap</span></div></div>
+    </div>
+  </div>
+
+  <!-- PENNY STOCKS -->
+  <div class="subsector">
+    <div class="subsector-label"><div class="subsector-dot" style="background:#9CA3AF"></div>Penny stocks — all finance-related stocks below Rs. 5,000 Cr market cap</div>
+    <div class="penny-grid">
+      <div class="penny-card"><div class="stock-symbol">NSIL</div><div class="stock-name">Nalwa Sons Investments</div><div class="stock-meta"><span class="stock-badge badge-penny">Penny</span></div></div>
+      <div class="penny-card"><div class="stock-symbol">SGFIN</div><div class="stock-name">SG Finserve</div><div class="stock-meta"><span class="stock-badge badge-penny">Penny</span></div></div>
+      <div class="penny-card"><div class="stock-symbol">IITL</div><div class="stock-name">Industrial Investment Trust</div><div class="stock-meta"><span class="stock-badge badge-penny">Penny</span></div></div>
+      <div class="penny-card"><div class="stock-symbol">NBIFIN</div><div class="stock-name">NBI Industrial Finance</div><div class="stock-meta"><span class="stock-badge badge-penny">Penny</span></div></div>
+      <div class="penny-card"><div class="stock-symbol">NAHARCAP</div><div class="stock-name">Nahar Capital &amp; Financial</div><div class="stock-meta"><span class="stock-badge badge-penny">Penny</span></div></div>
+      <div class="penny-card"><div class="stock-symbol">BIRLAMONEY</div><div class="stock-name">Aditya Birla Money</div><div class="stock-meta"><span class="stock-badge badge-penny">Penny</span></div></div>
+      <div class="penny-card"><div class="stock-symbol">CSLFINANCE</div><div class="stock-name">CSL Finance</div><div class="stock-meta"><span class="stock-badge badge-penny">Penny</span></div></div>
+      <div class="penny-card"><div class="stock-symbol">AFSL</div><div class="stock-name">Abans Financial Services</div><div class="stock-meta"><span class="stock-badge badge-penny">Penny</span></div></div>
+      <div class="penny-card"><div class="stock-symbol">CENTRUM</div><div class="stock-name">Centrum Capital</div><div class="stock-meta"><span class="stock-badge badge-penny">Penny</span></div></div>
+      <div class="penny-card"><div class="stock-symbol">NIYOGIN</div><div class="stock-name">Niyogin Fintech</div><div class="stock-meta"><span class="stock-badge badge-penny">Penny</span></div></div>
+      <div class="penny-card"><div class="stock-symbol">MANBA</div><div class="stock-name">Manba Finance</div><div class="stock-meta"><span class="stock-badge badge-penny">Penny</span></div></div>
+      <div class="penny-card"><div class="stock-symbol">EMKAY</div><div class="stock-name">Emkay Global Financial</div><div class="stock-meta"><span class="stock-badge badge-penny">Penny</span></div></div>
+      <div class="penny-card"><div class="stock-symbol">VHL</div><div class="stock-name">Vardhman Holdings</div><div class="stock-meta"><span class="stock-badge badge-penny">Penny</span></div></div>
+      <div class="penny-card"><div class="stock-symbol">FINOPB</div><div class="stock-name">Fino Payments Bank</div><div class="stock-meta"><span class="stock-badge badge-penny">Penny</span></div></div>
+      <div class="penny-card"><div class="stock-symbol">MASTERTR</div><div class="stock-name">Master Trust</div><div class="stock-meta"><span class="stock-badge badge-penny">Penny</span></div></div>
+      <div class="penny-card"><div class="stock-symbol">JPOLYINVST</div><div class="stock-name">Jindal Poly Investments</div><div class="stock-meta"><span class="stock-badge badge-penny">Penny</span></div></div>
+      <div class="penny-card"><div class="stock-symbol">ARIHANTCAP</div><div class="stock-name">Arihant Capital Markets</div><div class="stock-meta"><span class="stock-badge badge-penny">Penny</span></div></div>
+      <div class="penny-card"><div class="stock-symbol">VLSFINANCE</div><div class="stock-name">VLS Finance</div><div class="stock-meta"><span class="stock-badge badge-penny">Penny</span></div></div>
+      <div class="penny-card"><div class="stock-symbol">RNFI</div><div class="stock-name">RNFI Services</div><div class="stock-meta"><span class="stock-badge badge-penny">Penny</span></div></div>
+      <div class="penny-card"><div class="stock-symbol">DELPHI</div><div class="stock-name">Delphi World Money</div><div class="stock-meta"><span class="stock-badge badge-penny">Penny</span></div></div>
+      <div class="penny-card"><div class="stock-symbol">ALMONDZ</div><div class="stock-name">Almondz Global Securities</div><div class="stock-meta"><span class="stock-badge badge-penny">Penny</span></div></div>
+      <div class="penny-card"><div class="stock-symbol">CREST</div><div class="stock-name">Crest Ventures</div><div class="stock-meta"><span class="stock-badge badge-penny">Penny</span></div></div>
+      <div class="penny-card"><div class="stock-symbol">STEL</div><div class="stock-name">STEL Holdings</div><div class="stock-meta"><span class="stock-badge badge-penny">Penny</span></div></div>
+      <div class="penny-card"><div class="stock-symbol">PRIMESECU</div><div class="stock-name">Prime Securities</div><div class="stock-meta"><span class="stock-badge badge-penny">Penny</span></div></div>
+      <div class="penny-card"><div class="stock-symbol">RADIANTCMS</div><div class="stock-name">Radiant Cash Management</div><div class="stock-meta"><span class="stock-badge badge-penny">Penny</span></div></div>
+      <div class="penny-card"><div class="stock-symbol">UGROCAP</div><div class="stock-name">UGRO Capital</div><div class="stock-meta"><span class="stock-badge badge-penny">Penny</span></div></div>
+      <div class="penny-card"><div class="stock-symbol">MUFIN</div><div class="stock-name">Mufin Green Finance</div><div class="stock-meta"><span class="stock-badge badge-penny">Penny</span></div></div>
+      <div class="penny-card"><div class="stock-symbol">ALANKIT</div><div class="stock-name">Alankit Ltd</div><div class="stock-meta"><span class="stock-badge badge-penny">Penny</span></div></div>
+      <div class="penny-card"><div class="stock-symbol">AKME</div><div class="stock-name">Akme Fintrade India</div><div class="stock-meta"><span class="stock-badge badge-penny">Penny</span></div></div>
+      <div class="penny-card"><div class="stock-symbol">PFS</div><div class="stock-name">PTC India Financial Services</div><div class="stock-meta"><span class="stock-badge badge-penny">Penny</span></div></div>
+      <div class="penny-card"><div class="stock-symbol">ASCOM</div><div class="stock-name">Ascom Leasing &amp; Investments</div><div class="stock-meta"><span class="stock-badge badge-penny">Penny</span></div></div>
+      <div class="penny-card"><div class="stock-symbol">NDGL</div><div class="stock-name">Naga Dhunseri Group</div><div class="stock-meta"><span class="stock-badge badge-penny">Penny</span></div></div>
+      <div class="penny-card"><div class="stock-symbol">HARAFIN</div><div class="stock-name">Haryana Financial Corp</div><div class="stock-meta"><span class="stock-badge badge-penny">Penny</span></div></div>
+      <div class="penny-card"><div class="stock-symbol">AFIL</div><div class="stock-name">Akme Fintrade</div><div class="stock-meta"><span class="stock-badge badge-penny">Penny</span></div></div>
+      <div class="penny-card"><div class="stock-symbol">DAMCAPITAL</div><div class="stock-name">DAM Capital Advisors</div><div class="stock-meta"><span class="stock-badge badge-penny">Penny</span></div></div>
+      <div class="penny-card"><div class="stock-symbol">AIIL</div><div class="stock-name">Authum Investment</div><div class="stock-meta"><span class="stock-badge badge-penny">Penny</span></div></div>
+      <div class="penny-card"><div class="stock-symbol">LAXMIINDIA</div><div class="stock-name">Laxmi India Finance</div><div class="stock-meta"><span class="stock-badge badge-penny">Penny</span></div></div>
+      <div class="penny-card"><div class="stock-symbol">PAISALO</div><div class="stock-name">Paisalo Digital</div><div class="stock-meta"><span class="stock-badge badge-penny">Penny</span></div></div>
+      <div class="penny-card"><div class="stock-symbol">ZAGGLE</div><div class="stock-name">Zaggle Prepaid Ocean</div><div class="stock-meta"><span class="stock-badge badge-penny">Penny</span></div></div>
+      <div class="penny-card"><div class="stock-symbol">OSWALGREEN</div><div class="stock-name">Oswal Greentech</div><div class="stock-meta"><span class="stock-badge badge-penny">Penny</span></div></div>
+      <div class="penny-card"><div class="stock-symbol">NORTHARC</div><div class="stock-name">Northern Arc Capital</div><div class="stock-meta"><span class="stock-badge badge-penny">Penny</span></div></div>
+      <div class="penny-card"><div class="stock-symbol">GFLLIMITED</div><div class="stock-name">GFL Ltd</div><div class="stock-meta"><span class="stock-badge badge-penny">Penny</span></div></div>
+      <div class="penny-card"><div class="stock-symbol">WEALTH</div><div class="stock-name">Wealth First Portfolio</div><div class="stock-meta"><span class="stock-badge badge-penny">Penny</span></div></div>
+      <div class="penny-card"><div class="stock-symbol">SUMMITSEC</div><div class="stock-name">Summit Securities</div><div class="stock-meta"><span class="stock-badge badge-penny">Penny</span></div></div>
+      <div class="penny-card"><div class="stock-symbol">AVONMORE</div><div class="stock-name">Avonmore Capital</div><div class="stock-meta"><span class="stock-badge badge-penny">Penny</span></div></div>
+      <div class="penny-card"><div class="stock-symbol">ARYAMAN</div><div class="stock-name">Aryaman Financial Services</div><div class="stock-meta"><span class="stock-badge badge-penny">Penny</span></div></div>
+      <div class="penny-card"><div class="stock-symbol">UGROCAP</div><div class="stock-name">UGRO Capital</div><div class="stock-meta"><span class="stock-badge badge-penny">Penny</span></div></div>
+      <div class="penny-card"><div class="stock-symbol">MOS</div><div class="stock-name">MOS Utility</div><div class="stock-meta"><span class="stock-badge badge-penny">Penny</span></div></div>
+      <div class="penny-card"><div class="stock-symbol">MONEYBOXX</div><div class="stock-name">Moneyboxx Finance</div><div class="stock-meta"><span class="stock-badge badge-penny">Penny</span></div></div>
+      <div class="penny-card"><div class="stock-symbol">IIRM</div><div class="stock-name">IIRM Holdings India</div><div class="stock-meta"><span class="stock-badge badge-penny">Penny</span></div></div>
+      <div class="penny-card"><div class="stock-symbol">CGCL</div><div class="stock-name">Capri Global Capital</div><div class="stock-meta"><span class="stock-badge badge-penny">Penny</span></div></div>
+      <div class="penny-card"><div class="stock-symbol">ARYACAPM</div><div class="stock-name">Aryaman Capital Markets</div><div class="stock-meta"><span class="stock-badge badge-penny">Penny</span></div></div>
+      <div class="penny-card"><div class="stock-symbol">MRUTR</div><div class="stock-name">Mrugesh Trading</div><div class="stock-meta"><span class="stock-badge badge-penny">Penny</span></div></div>
+      <div class="penny-card"><div class="stock-symbol">ELCIDIN</div><div class="stock-name">Elcid Investments</div><div class="stock-meta"><span class="stock-badge badge-penny">Penny</span></div></div>
+      <div class="penny-card"><div class="stock-symbol">SRAMSET</div><div class="stock-name">Shriram AMC</div><div class="stock-meta"><span class="stock-badge badge-penny">Penny</span></div></div>
+      <div class="penny-card"><div class="stock-symbol">INDPRUD</div><div class="stock-name">Industrial &amp; Prudential Investments</div><div class="stock-meta"><span class="stock-badge badge-penny">Penny</span></div></div>
+    </div>
+  </div>
+
+</div>
+</div>
+<!-- ══════════════════════════════════════════════════ -->
+<!-- TAB 3: F&O -->
+<!-- ══════════════════════════════════════════════════ -->
+<div class="tab-content" id="tab-fo">
+<div class="tab-page">
+  <div class="section-header">
+    <div class="section-title">F&amp;O contracts</div>
+    <div class="section-sub">Index contracts and stock F&O available on NSE for the financial services universe. Lot sizes as per SEBI Nov 2024 revision. Expiry: Thu for weekly, last Thu of month for monthly.</div>
+  </div>
+
+  <!-- INDEX CONTRACTS -->
+  <div class="subsector">
+    <div class="subsector-label"><div class="subsector-dot" style="background:#1A6EBD"></div>Index F&O contracts</div>
+    <table class="fo-table">
+      <thead><tr><th>Symbol</th><th>Name</th><th>Lot size</th><th>Expiry type</th><th>Segment</th></tr></thead>
+      <tbody>
+        <tr class="index-row"><td><span class="fo-sym">BANKNIFTY</span></td><td>Nifty Bank Index</td><td><span class="fo-lot">15</span></td><td><span class="fo-exp">Monthly (last Thu)</span></td><td>Index F&O</td></tr>
+        <tr class="index-row"><td><span class="fo-sym">FINNIFTY</span></td><td>Nifty Financial Services</td><td><span class="fo-lot">25</span></td><td><span class="fo-exp">Monthly (last Tue)</span></td><td>Index F&O</td></tr>
+        <tr class="index-row"><td><span class="fo-sym">NIFTY</span></td><td>Nifty 50 Index</td><td><span class="fo-lot">25</span></td><td><span class="fo-exp">Monthly (last Thu)</span></td><td>Index F&O</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- PRIVATE BANK F&O -->
+  <div class="subsector">
+    <div class="subsector-label"><div class="subsector-dot" style="background:#1A6EBD"></div>Private sector banks — stock F&O</div>
+    <table class="fo-table">
+      <thead><tr><th>Symbol</th><th>Name</th><th>Lot size</th><th>Expiry</th></tr></thead>
+      <tbody>
+        <tr><td><span class="fo-sym">HDFCBANK</span></td><td>HDFC Bank</td><td><span class="fo-lot">550</span></td><td><span class="fo-exp">Monthly</span></td></tr>
+        <tr><td><span class="fo-sym">ICICIBANK</span></td><td>ICICI Bank</td><td><span class="fo-lot">700</span></td><td><span class="fo-exp">Monthly</span></td></tr>
+        <tr><td><span class="fo-sym">KOTAKBANK</span></td><td>Kotak Mahindra Bank</td><td><span class="fo-lot">400</span></td><td><span class="fo-exp">Monthly</span></td></tr>
+        <tr><td><span class="fo-sym">AXISBANK</span></td><td>Axis Bank</td><td><span class="fo-lot">1200</span></td><td><span class="fo-exp">Monthly</span></td></tr>
+        <tr><td><span class="fo-sym">INDUSINDBK</span></td><td>IndusInd Bank</td><td><span class="fo-lot">1000</span></td><td><span class="fo-exp">Monthly</span></td></tr>
+        <tr><td><span class="fo-sym">FEDERALBNK</span></td><td>Federal Bank</td><td><span class="fo-lot">10000</span></td><td><span class="fo-exp">Monthly</span></td></tr>
+        <tr><td><span class="fo-sym">IDFCFIRSTB</span></td><td>IDFC First Bank</td><td><span class="fo-lot">12500</span></td><td><span class="fo-exp">Monthly</span></td></tr>
+        <tr><td><span class="fo-sym">BANDHANBNK</span></td><td>Bandhan Bank</td><td><span class="fo-lot">5000</span></td><td><span class="fo-exp">Monthly</span></td></tr>
+        <tr><td><span class="fo-sym">YESBANK</span></td><td>Yes Bank</td><td><span class="fo-lot">40000</span></td><td><span class="fo-exp">Monthly</span></td></tr>
+        <tr><td><span class="fo-sym">RBLBANK</span></td><td>RBL Bank</td><td><span class="fo-lot">5000</span></td><td><span class="fo-exp">Monthly</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- PSU BANK F&O -->
+  <div class="subsector">
+    <div class="subsector-label"><div class="subsector-dot" style="background:#0D9E75"></div>PSU banks — stock F&O</div>
+    <table class="fo-table">
+      <thead><tr><th>Symbol</th><th>Name</th><th>Lot size</th><th>Expiry</th></tr></thead>
+      <tbody>
+        <tr><td><span class="fo-sym">SBIN</span></td><td>State Bank of India</td><td><span class="fo-lot">1500</span></td><td><span class="fo-exp">Monthly</span></td></tr>
+        <tr><td><span class="fo-sym">BANKBARODA</span></td><td>Bank of Baroda</td><td><span class="fo-lot">5850</span></td><td><span class="fo-exp">Monthly</span></td></tr>
+        <tr><td><span class="fo-sym">PNB</span></td><td>Punjab National Bank</td><td><span class="fo-lot">16000</span></td><td><span class="fo-exp">Monthly</span></td></tr>
+        <tr><td><span class="fo-sym">CANBK</span></td><td>Canara Bank</td><td><span class="fo-lot">10000</span></td><td><span class="fo-exp">Monthly</span></td></tr>
+        <tr><td><span class="fo-sym">UNIONBANK</span></td><td>Union Bank of India</td><td><span class="fo-lot">15000</span></td><td><span class="fo-exp">Monthly</span></td></tr>
+        <tr><td><span class="fo-sym">BANKINDIA</span></td><td>Bank of India</td><td><span class="fo-lot">10000</span></td><td><span class="fo-exp">Monthly</span></td></tr>
+        <tr><td><span class="fo-sym">IOB</span></td><td>Indian Overseas Bank</td><td><span class="fo-lot">35000</span></td><td><span class="fo-exp">Monthly</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- NBFC F&O -->
+  <div class="subsector">
+    <div class="subsector-label"><div class="subsector-dot" style="background:#4A3FB5"></div>NBFCs — stock F&O</div>
+    <table class="fo-table">
+      <thead><tr><th>Symbol</th><th>Name</th><th>Lot size</th><th>Expiry</th></tr></thead>
+      <tbody>
+        <tr><td><span class="fo-sym">BAJFINANCE</span></td><td>Bajaj Finance</td><td><span class="fo-lot">125</span></td><td><span class="fo-exp">Monthly</span></td></tr>
+        <tr><td><span class="fo-sym">BAJAJFINSV</span></td><td>Bajaj Finserv</td><td><span class="fo-lot">500</span></td><td><span class="fo-exp">Monthly</span></td></tr>
+        <tr><td><span class="fo-sym">SHRIRAMFIN</span></td><td>Shriram Finance</td><td><span class="fo-lot">500</span></td><td><span class="fo-exp">Monthly</span></td></tr>
+        <tr><td><span class="fo-sym">CHOLAFIN</span></td><td>Cholamandalam Finance</td><td><span class="fo-lot">500</span></td><td><span class="fo-exp">Monthly</span></td></tr>
+        <tr><td><span class="fo-sym">MUTHOOTFIN</span></td><td>Muthoot Finance</td><td><span class="fo-lot">750</span></td><td><span class="fo-exp">Monthly</span></td></tr>
+        <tr><td><span class="fo-sym">MANAPPURAM</span></td><td>Manappuram Finance</td><td><span class="fo-lot">6000</span></td><td><span class="fo-exp">Monthly</span></td></tr>
+        <tr><td><span class="fo-sym">JIOFINANCE</span></td><td>Jio Financial Services</td><td><span class="fo-lot">2500</span></td><td><span class="fo-exp">Monthly</span></td></tr>
+        <tr><td><span class="fo-sym">M&MFIN</span></td><td>M&amp;M Financial Services</td><td><span class="fo-lot">4000</span></td><td><span class="fo-exp">Monthly</span></td></tr>
+        <tr><td><span class="fo-sym">LTFH</span></td><td>L&amp;T Finance Holdings</td><td><span class="fo-lot">8500</span></td><td><span class="fo-exp">Monthly</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- INSURANCE F&O -->
+  <div class="subsector">
+    <div class="subsector-label"><div class="subsector-dot" style="background:#993556"></div>Insurance — stock F&O</div>
+    <table class="fo-table">
+      <thead><tr><th>Symbol</th><th>Name</th><th>Lot size</th><th>Expiry</th></tr></thead>
+      <tbody>
+        <tr><td><span class="fo-sym">SBILIFE</span></td><td>SBI Life Insurance</td><td><span class="fo-lot">750</span></td><td><span class="fo-exp">Monthly</span></td></tr>
+        <tr><td><span class="fo-sym">HDFCLIFE</span></td><td>HDFC Life Insurance</td><td><span class="fo-lot">1100</span></td><td><span class="fo-exp">Monthly</span></td></tr>
+        <tr><td><span class="fo-sym">ICICIPRULI</span></td><td>ICICI Prudential Life</td><td><span class="fo-lot">1500</span></td><td><span class="fo-exp">Monthly</span></td></tr>
+        <tr><td><span class="fo-sym">ICICIGI</span></td><td>ICICI Lombard General</td><td><span class="fo-lot">375</span></td><td><span class="fo-exp">Monthly</span></td></tr>
+        <tr><td><span class="fo-sym">MAXFINSERV</span></td><td>Max Financial Services</td><td><span class="fo-lot">750</span></td><td><span class="fo-exp">Monthly</span></td></tr>
+        <tr><td><span class="fo-sym">STARHEALTH</span></td><td>Star Health Insurance</td><td><span class="fo-lot">1000</span></td><td><span class="fo-exp">Monthly</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- AMC / HFC / OTHER F&O -->
+  <div class="subsector">
+    <div class="subsector-label"><div class="subsector-dot" style="background:#3B6D11"></div>AMCs, HFCs, exchanges &amp; others — stock F&O</div>
+    <table class="fo-table">
+      <thead><tr><th>Symbol</th><th>Name</th><th>Lot size</th><th>Expiry</th></tr></thead>
+      <tbody>
+        <tr><td><span class="fo-sym">HDFCAMC</span></td><td>HDFC AMC</td><td><span class="fo-lot">150</span></td><td><span class="fo-exp">Monthly</span></td></tr>
+        <tr><td><span class="fo-sym">NAM-INDIA</span></td><td>Nippon India AMC</td><td><span class="fo-lot">1000</span></td><td><span class="fo-exp">Monthly</span></td></tr>
+        <tr><td><span class="fo-sym">360ONE</span></td><td>360 One WAM</td><td><span class="fo-lot">500</span></td><td><span class="fo-exp">Monthly</span></td></tr>
+        <tr><td><span class="fo-sym">LICHSGFIN</span></td><td>LIC Housing Finance</td><td><span class="fo-lot">2000</span></td><td><span class="fo-exp">Monthly</span></td></tr>
+        <tr><td><span class="fo-sym">PNBHOUSING</span></td><td>PNB Housing Finance</td><td><span class="fo-lot">1200</span></td><td><span class="fo-exp">Monthly</span></td></tr>
+        <tr><td><span class="fo-sym">CANFINHOME</span></td><td>Can Fin Homes</td><td><span class="fo-lot">1500</span></td><td><span class="fo-exp">Monthly</span></td></tr>
+        <tr><td><span class="fo-sym">CREDITACC</span></td><td>CreditAccess Grameen</td><td><span class="fo-lot">500</span></td><td><span class="fo-exp">Monthly</span></td></tr>
+        <tr><td><span class="fo-sym">BSE</span></td><td>BSE Ltd</td><td><span class="fo-lot">375</span></td><td><span class="fo-exp">Monthly</span></td></tr>
+        <tr><td><span class="fo-sym">CDSL</span></td><td>Central Depository</td><td><span class="fo-lot">500</span></td><td><span class="fo-exp">Monthly</span></td></tr>
+        <tr><td><span class="fo-sym">MCX</span></td><td>Multi Commodity Exch.</td><td><span class="fo-lot">500</span></td><td><span class="fo-exp">Monthly</span></td></tr>
+        <tr><td><span class="fo-sym">AUBANK</span></td><td>AU Small Finance Bank</td><td><span class="fo-lot">1000</span></td><td><span class="fo-exp">Monthly</span></td></tr>
+        <tr><td><span class="fo-sym">SBICARDS</span></td><td>SBI Cards &amp; Payment</td><td><span class="fo-lot">1000</span></td><td><span class="fo-exp">Monthly</span></td></tr>
+        <tr><td><span class="fo-sym">PAYTM</span></td><td>One97 Communications</td><td><span class="fo-lot">3000</span></td><td><span class="fo-exp">Monthly</span></td></tr>
+        <tr><td><span class="fo-sym">POLICYBZR</span></td><td>PB Fintech</td><td><span class="fo-lot">1250</span></td><td><span class="fo-exp">Monthly</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+</div>
+</div>
+
+<!-- ══════════════════════════════════════════════════ -->
+<!-- TAB 4: MUTUAL FUNDS -->
+<!-- ══════════════════════════════════════════════════ -->
+<div class="tab-content" id="tab-mf">
+<div class="tab-page">
+  <div class="section-header">
+    <div class="section-title">Mutual funds universe</div>
+    <div class="section-sub">All actively managed, index, and ETF mutual funds with exposure to banking and financial services. Grouped by fund type.</div>
+  </div>
+
+  <!-- ACTIVE FUNDS -->
+  <div class="subsector">
+    <div class="subsector-label"><div class="subsector-dot" style="background:#0D9E75"></div>Actively managed — banking &amp; financial services funds</div>
+    <div class="mf-grid">
+      <div class="mf-card"><div class="mf-name">Nippon India Banking &amp; Financial Services Fund</div><div class="mf-house">Nippon India Mutual Fund</div><div class="mf-tags"><span class="mf-tag mt-active">Active</span><span class="mf-tag mt-sector">Sector fund</span></div></div>
+      <div class="mf-card"><div class="mf-name">HDFC Banking &amp; Financial Services Fund</div><div class="mf-house">HDFC Mutual Fund</div><div class="mf-tags"><span class="mf-tag mt-active">Active</span><span class="mf-tag mt-sector">Sector fund</span></div></div>
+      <div class="mf-card"><div class="mf-name">ICICI Prudential Banking &amp; Financial Services Fund</div><div class="mf-house">ICICI Prudential Mutual Fund</div><div class="mf-tags"><span class="mf-tag mt-active">Active</span><span class="mf-tag mt-sector">Sector fund</span></div></div>
+      <div class="mf-card"><div class="mf-name">SBI Banking &amp; Financial Services Fund</div><div class="mf-house">SBI Mutual Fund</div><div class="mf-tags"><span class="mf-tag mt-active">Active</span><span class="mf-tag mt-sector">Sector fund</span></div></div>
+      <div class="mf-card"><div class="mf-name">Kotak Banking &amp; Financial Services Fund</div><div class="mf-house">Kotak Mahindra Mutual Fund</div><div class="mf-tags"><span class="mf-tag mt-active">Active</span><span class="mf-tag mt-sector">Sector fund</span></div></div>
+      <div class="mf-card"><div class="mf-name">Aditya Birla SL Banking &amp; Financial Services Fund</div><div class="mf-house">Aditya Birla Sun Life Mutual Fund</div><div class="mf-tags"><span class="mf-tag mt-active">Active</span><span class="mf-tag mt-sector">Sector fund</span></div></div>
+      <div class="mf-card"><div class="mf-name">Invesco India Financial Services Fund</div><div class="mf-house">Invesco Mutual Fund</div><div class="mf-tags"><span class="mf-tag mt-active">Active</span><span class="mf-tag mt-sector">Sector fund</span></div></div>
+      <div class="mf-card"><div class="mf-name">Mirae Asset Banking &amp; Financial Services Fund</div><div class="mf-house">Mirae Asset Mutual Fund</div><div class="mf-tags"><span class="mf-tag mt-active">Active</span><span class="mf-tag mt-sector">Sector fund</span></div></div>
+      <div class="mf-card"><div class="mf-name">UTI Banking &amp; Financial Services Fund</div><div class="mf-house">UTI Mutual Fund</div><div class="mf-tags"><span class="mf-tag mt-active">Active</span><span class="mf-tag mt-sector">Sector fund</span></div></div>
+      <div class="mf-card"><div class="mf-name">Sundaram Financial Services Opportunities Fund</div><div class="mf-house">Sundaram Mutual Fund</div><div class="mf-tags"><span class="mf-tag mt-active">Active</span><span class="mf-tag mt-sector">Sector fund</span></div></div>
+      <div class="mf-card"><div class="mf-name">Baroda BNP Paribas Banking &amp; Financial Services Fund</div><div class="mf-house">Baroda BNP Paribas Mutual Fund</div><div class="mf-tags"><span class="mf-tag mt-active">Active</span><span class="mf-tag mt-sector">Sector fund</span></div></div>
+      <div class="mf-card"><div class="mf-name">LIC MF Banking &amp; Financial Services Fund</div><div class="mf-house">LIC Mutual Fund</div><div class="mf-tags"><span class="mf-tag mt-active">Active</span><span class="mf-tag mt-sector">Sector fund</span></div></div>
+      <div class="mf-card"><div class="mf-name">Groww Banking &amp; Financial Services Fund</div><div class="mf-house">Groww Mutual Fund</div><div class="mf-tags"><span class="mf-tag mt-active">Active</span><span class="mf-tag mt-sector">Sector fund</span></div></div>
+      <div class="mf-card"><div class="mf-name">ITI Banking &amp; Financial Services Fund</div><div class="mf-house">ITI Mutual Fund</div><div class="mf-tags"><span class="mf-tag mt-active">Active</span><span class="mf-tag mt-sector">Sector fund</span></div></div>
+    </div>
+  </div>
+
+  <!-- INDEX FUNDS -->
+  <div class="subsector">
+    <div class="subsector-label"><div class="subsector-dot" style="background:#1A6EBD"></div>Index funds — Nifty Bank &amp; Nifty Financial Services</div>
+    <div class="mf-grid">
+      <div class="mf-card"><div class="mf-name">Nippon India Nifty Bank Index Fund</div><div class="mf-house">Nippon India Mutual Fund</div><div class="mf-tags"><span class="mf-tag mt-index">Index</span><span class="mf-tag mt-sector">Nifty Bank</span></div></div>
+      <div class="mf-card"><div class="mf-name">HDFC Nifty Bank Index Fund</div><div class="mf-house">HDFC Mutual Fund</div><div class="mf-tags"><span class="mf-tag mt-index">Index</span><span class="mf-tag mt-sector">Nifty Bank</span></div></div>
+      <div class="mf-card"><div class="mf-name">UTI Nifty Bank Index Fund</div><div class="mf-house">UTI Mutual Fund</div><div class="mf-tags"><span class="mf-tag mt-index">Index</span><span class="mf-tag mt-sector">Nifty Bank</span></div></div>
+      <div class="mf-card"><div class="mf-name">ICICI Pru Nifty Bank Index Fund</div><div class="mf-house">ICICI Prudential Mutual Fund</div><div class="mf-tags"><span class="mf-tag mt-index">Index</span><span class="mf-tag mt-sector">Nifty Bank</span></div></div>
+      <div class="mf-card"><div class="mf-name">Motilal Oswal Nifty Bank Index Fund</div><div class="mf-house">Motilal Oswal Mutual Fund</div><div class="mf-tags"><span class="mf-tag mt-index">Index</span><span class="mf-tag mt-sector">Nifty Bank</span></div></div>
+      <div class="mf-card"><div class="mf-name">Navi Nifty Bank Index Fund</div><div class="mf-house">Navi Mutual Fund</div><div class="mf-tags"><span class="mf-tag mt-index">Index</span><span class="mf-tag mt-sector">Nifty Bank</span></div></div>
+      <div class="mf-card"><div class="mf-name">Nippon India Nifty Financial Services Index Fund</div><div class="mf-house">Nippon India Mutual Fund</div><div class="mf-tags"><span class="mf-tag mt-index">Index</span><span class="mf-tag mt-sector">Fin Svc</span></div></div>
+      <div class="mf-card"><div class="mf-name">HDFC Nifty Financial Services Index Fund</div><div class="mf-house">HDFC Mutual Fund</div><div class="mf-tags"><span class="mf-tag mt-index">Index</span><span class="mf-tag mt-sector">Fin Svc</span></div></div>
+    </div>
+  </div>
+
+  <!-- ETFs -->
+  <div class="subsector">
+    <div class="subsector-label"><div class="subsector-dot" style="background:#4A3FB5"></div>ETFs — banking &amp; financial sector</div>
+    <div class="mf-grid">
+      <div class="mf-card"><div class="mf-name">Nippon India ETF Bank BeES</div><div class="mf-house">Nippon India Mutual Fund</div><div class="mf-tags"><span class="mf-tag mt-etf">ETF</span><span class="mf-tag mt-sector">Nifty Bank</span></div></div>
+      <div class="mf-card"><div class="mf-name">HDFC Nifty Bank ETF</div><div class="mf-house">HDFC Mutual Fund</div><div class="mf-tags"><span class="mf-tag mt-etf">ETF</span><span class="mf-tag mt-sector">Nifty Bank</span></div></div>
+      <div class="mf-card"><div class="mf-name">SBI Nifty Bank ETF</div><div class="mf-house">SBI Mutual Fund</div><div class="mf-tags"><span class="mf-tag mt-etf">ETF</span><span class="mf-tag mt-sector">Nifty Bank</span></div></div>
+      <div class="mf-card"><div class="mf-name">Kotak Nifty Bank ETF</div><div class="mf-house">Kotak Mutual Fund</div><div class="mf-tags"><span class="mf-tag mt-etf">ETF</span><span class="mf-tag mt-sector">Nifty Bank</span></div></div>
+      <div class="mf-card"><div class="mf-name">ICICI Pru Nifty Bank ETF</div><div class="mf-house">ICICI Prudential Mutual Fund</div><div class="mf-tags"><span class="mf-tag mt-etf">ETF</span><span class="mf-tag mt-sector">Nifty Bank</span></div></div>
+      <div class="mf-card"><div class="mf-name">Mirae Asset Nifty Bank ETF</div><div class="mf-house">Mirae Asset Mutual Fund</div><div class="mf-tags"><span class="mf-tag mt-etf">ETF</span><span class="mf-tag mt-sector">Nifty Bank</span></div></div>
+      <div class="mf-card"><div class="mf-name">Nippon India ETF PSU Bank BeES</div><div class="mf-house">Nippon India Mutual Fund</div><div class="mf-tags"><span class="mf-tag mt-etf">ETF</span><span class="mf-tag mt-sector">PSU Bank</span></div></div>
+      <div class="mf-card"><div class="mf-name">SBI PSU Bank ETF</div><div class="mf-house">SBI Mutual Fund</div><div class="mf-tags"><span class="mf-tag mt-etf">ETF</span><span class="mf-tag mt-sector">PSU Bank</span></div></div>
+      <div class="mf-card"><div class="mf-name">ICICI Pru Private Banks ETF</div><div class="mf-house">ICICI Prudential Mutual Fund</div><div class="mf-tags"><span class="mf-tag mt-etf">ETF</span><span class="mf-tag mt-sector">Pvt Bank</span></div></div>
+      <div class="mf-card"><div class="mf-name">Nippon India Nifty Financial Services ETF</div><div class="mf-house">Nippon India Mutual Fund</div><div class="mf-tags"><span class="mf-tag mt-etf">ETF</span><span class="mf-tag mt-sector">Fin Svc</span></div></div>
+      <div class="mf-card"><div class="mf-name">Motilal Oswal Nifty Financial Services ETF</div><div class="mf-house">Motilal Oswal Mutual Fund</div><div class="mf-tags"><span class="mf-tag mt-etf">ETF</span><span class="mf-tag mt-sector">Fin Svc</span></div></div>
+    </div>
+  </div>
+
+  <!-- FOF -->
+  <div class="subsector">
+    <div class="subsector-label"><div class="subsector-dot" style="background:#B86A0A"></div>Fund of funds (FOFs) — banking ETF based</div>
+    <div class="mf-grid">
+      <div class="mf-card"><div class="mf-name">Nippon India Nifty Bank Index FOF</div><div class="mf-house">Nippon India Mutual Fund</div><div class="mf-tags"><span class="mf-tag mt-fof">FOF</span><span class="mf-tag mt-sector">Nifty Bank</span></div></div>
+      <div class="mf-card"><div class="mf-name">HDFC Nifty Bank ETF FOF</div><div class="mf-house">HDFC Mutual Fund</div><div class="mf-tags"><span class="mf-tag mt-fof">FOF</span><span class="mf-tag mt-sector">Nifty Bank</span></div></div>
+      <div class="mf-card"><div class="mf-name">Mirae Asset Nifty Bank ETF FOF</div><div class="mf-house">Mirae Asset Mutual Fund</div><div class="mf-tags"><span class="mf-tag mt-fof">FOF</span><span class="mf-tag mt-sector">Nifty Bank</span></div></div>
+    </div>
+  </div>
+
+</div>
+</div>
+
+<!-- ══════════════════════════════════════════════════ -->
+<!-- TAB 5: AGENTS BY LAYER -->
+<!-- ══════════════════════════════════════════════════ -->
+<div class="tab-content" id="tab-layers">
+<div class="tab-page">
+  <div class="section-header">
+    <div class="section-title">Agents by layer</div>
+    <div class="section-sub">All 17 specialist agents grouped across 8 signal layers. Each layer focuses on a distinct analytical domain.</div>
+  </div>
+
+  <style>
+  .layer-block{margin-bottom:22px}
+  .layer-head{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+  .layer-bar2{height:2px;flex:1;border-radius:1px}
+  .layer-name2{font-family:var(--mono);font-size:10px;font-weight:500;letter-spacing:.1em;text-transform:uppercase;white-space:nowrap}
+  .layer-count2{font-family:var(--mono);font-size:9px;color:var(--muted);white-space:nowrap}
+  .agents-pills{display:flex;flex-wrap:wrap;gap:10px}
+  .agent-pill{border-radius:9px;border:1px solid;padding:10px 14px;cursor:pointer;transition:transform .12s,box-shadow .12s;min-width:160px;flex:1;max-width:260px}
+  .agent-pill:hover{transform:translateY(-2px);box-shadow:0 6px 18px rgba(0,0,0,.1)}
+  .ap-num{font-family:var(--mono);font-size:9px;font-weight:500;letter-spacing:.08em;margin-bottom:4px}
+  .ap-name{font-size:12.5px;font-weight:600;line-height:1.3;margin-bottom:3px}
+  .ap-covers{font-family:var(--mono);font-size:8.5px;opacity:.65}
+  .ll-gray .layer-bar2{background:linear-gradient(to right,#9E9C94,transparent)}.ll-gray .layer-name2{color:#5A5857}
+  .ll-gray .agent-pill{background:#F3F2EF;border-color:#C8C6C0}.ll-gray .ap-num{color:#5A5857}.ll-gray .ap-name{color:#2C2A28}
+  .ll-blue .layer-bar2{background:linear-gradient(to right,#1A6EBD,transparent)}.ll-blue .layer-name2{color:#1A6EBD}
+  .ll-blue .agent-pill{background:#EBF3FD;border-color:#B5D4F4}.ll-blue .ap-num{color:#1A6EBD}.ll-blue .ap-name{color:#0D4A8A}
+  .ll-teal .layer-bar2{background:linear-gradient(to right,#0D9E75,transparent)}.ll-teal .layer-name2{color:#0D9E75}
+  .ll-teal .agent-pill{background:#E1F5EE;border-color:#9FE1CB}.ll-teal .ap-num{color:#0D9E75}.ll-teal .ap-name{color:#075E47}
+  .ll-purple .layer-bar2{background:linear-gradient(to right,#4A3FB5,transparent)}.ll-purple .layer-name2{color:#4A3FB5}
+  .ll-purple .agent-pill{background:#EDEAFD;border-color:#AFA9EC}.ll-purple .ap-num{color:#4A3FB5}.ll-purple .ap-name{color:#2E2680}
+  .ll-amber .layer-bar2{background:linear-gradient(to right,#B86A0A,transparent)}.ll-amber .layer-name2{color:#B86A0A}
+  .ll-amber .agent-pill{background:#FDF0DC;border-color:#FAC775}.ll-amber .ap-num{color:#B86A0A}.ll-amber .ap-name{color:#7A4508}
+  .ll-coral .layer-bar2{background:linear-gradient(to right,#B83C1E,transparent)}.ll-coral .layer-name2{color:#B83C1E}
+  .ll-coral .agent-pill{background:#FCEAE5;border-color:#F0997B}.ll-coral .ap-num{color:#B83C1E}.ll-coral .ap-name{color:#7C2912}
+  .ll-pink .layer-bar2{background:linear-gradient(to right,#993556,transparent)}.ll-pink .layer-name2{color:#993556}
+  .ll-pink .agent-pill{background:#F9E8F0;border-color:#ED93B1}.ll-pink .ap-num{color:#993556}.ll-pink .ap-name{color:#6B1F3A}
+  .ll-green .layer-bar2{background:linear-gradient(to right,#3B6D11,transparent)}.ll-green .layer-name2{color:#3B6D11}
+  .ll-green .agent-pill{background:#E5F2D8;border-color:#97C459}.ll-green .ap-num{color:#3B6D11}.ll-green .ap-name{color:#234010}
+  </style>
+
+  <div class="layer-block ll-gray">
+    <div class="layer-head"><div class="layer-bar2"></div><div class="layer-name2">Universe &amp; data</div><div class="layer-count2">1 agent</div><div class="layer-bar2"></div></div>
+    <div class="agents-pills">
+      <div class="agent-pill"><div class="ap-num">AGENT 01</div><div class="ap-name">Universe &amp; index tracker</div><div class="ap-covers">Banks · NBFCs · Ins. · AMCs · HFCs · MFIs · Exch.</div></div>
+    </div>
+  </div>
+
+  <div class="layer-block ll-blue">
+    <div class="layer-head"><div class="layer-bar2"></div><div class="layer-name2">Macro &amp; regulatory</div><div class="layer-count2">2 agents</div><div class="layer-bar2"></div></div>
+    <div class="agents-pills">
+      <div class="agent-pill"><div class="ap-num">AGENT 02</div><div class="ap-name">Macro &amp; RBI policy</div><div class="ap-covers">RBI · SEBI · IRDA · PFRDA</div></div>
+      <div class="agent-pill"><div class="ap-num">AGENT 15</div><div class="ap-name">Event &amp; catalyst tracker</div><div class="ap-covers">All institution types</div></div>
+    </div>
+  </div>
+
+  <div class="layer-block ll-teal">
+    <div class="layer-head"><div class="layer-bar2"></div><div class="layer-name2">Fundamental / CAMELS</div><div class="layer-count2">4 agents</div><div class="layer-bar2"></div></div>
+    <div class="agents-pills">
+      <div class="agent-pill"><div class="ap-num">AGENT 03</div><div class="ap-name">Credit quality</div><div class="ap-covers">Banks · NBFCs · HFCs · MFIs</div></div>
+      <div class="agent-pill"><div class="ap-num">AGENT 04</div><div class="ap-name">Profitability</div><div class="ap-covers">Banks · NBFCs · HFCs</div></div>
+      <div class="agent-pill"><div class="ap-num">AGENT 09</div><div class="ap-name">Capital adequacy</div><div class="ap-covers">Banks · NBFCs · Insurance</div></div>
+      <div class="agent-pill"><div class="ap-num">AGENT 10</div><div class="ap-name">Liquidity &amp; funding</div><div class="ap-covers">Banks · NBFCs · HFCs</div></div>
+    </div>
+  </div>
+
+  <div class="layer-block ll-purple">
+    <div class="layer-head"><div class="layer-bar2"></div><div class="layer-name2">Qualitative &amp; governance</div><div class="layer-count2">2 agents</div><div class="layer-bar2"></div></div>
+    <div class="agents-pills">
+      <div class="agent-pill"><div class="ap-num">AGENT 11</div><div class="ap-name">Management &amp; governance</div><div class="ap-covers">All institution types</div></div>
+      <div class="agent-pill"><div class="ap-num">AGENT 12</div><div class="ap-name">Competitive positioning</div><div class="ap-covers">All institution types</div></div>
+    </div>
+  </div>
+
+  <div class="layer-block ll-amber">
+    <div class="layer-head"><div class="layer-bar2"></div><div class="layer-name2">News &amp; sentiment</div><div class="layer-count2">2 agents</div><div class="layer-bar2"></div></div>
+    <div class="agents-pills">
+      <div class="agent-pill"><div class="ap-num">AGENT 06</div><div class="ap-name">News &amp; sentiment</div><div class="ap-covers">All institution types</div></div>
+      <div class="agent-pill"><div class="ap-num">AGENT 08</div><div class="ap-name">Cross-market impact</div><div class="ap-covers">All institution types</div></div>
+    </div>
+  </div>
+
+  <div class="layer-block ll-coral">
+    <div class="layer-head"><div class="layer-bar2"></div><div class="layer-name2">Technical &amp; market</div><div class="layer-count2">4 agents</div><div class="layer-bar2"></div></div>
+    <div class="agents-pills">
+      <div class="agent-pill"><div class="ap-num">AGENT 05</div><div class="ap-name">Technical analysis</div><div class="ap-covers">All stocks &amp; indices</div></div>
+      <div class="agent-pill"><div class="ap-num">AGENT 07</div><div class="ap-name">MF &amp; institutional</div><div class="ap-covers">All institution types</div></div>
+      <div class="agent-pill"><div class="ap-num">AGENT 13</div><div class="ap-name">Valuation &amp; strength</div><div class="ap-covers">All institution types</div></div>
+      <div class="agent-pill"><div class="ap-num">AGENT 14</div><div class="ap-name">F&amp;O microstructure</div><div class="ap-covers">BankNifty · FinNifty · Stocks</div></div>
+    </div>
+  </div>
+
+  <div class="layer-block ll-pink">
+    <div class="layer-head"><div class="layer-bar2"></div><div class="layer-name2">Insurance-specific</div><div class="layer-count2">1 agent</div><div class="layer-bar2"></div></div>
+    <div class="agents-pills">
+      <div class="agent-pill"><div class="ap-num">AGENT 16</div><div class="ap-name">Insurance signals</div><div class="ap-covers">Life · General · Health insurance</div></div>
+    </div>
+  </div>
+
+  <div class="layer-block ll-green">
+    <div class="layer-head"><div class="layer-bar2"></div><div class="layer-name2">AMC &amp; wealth</div><div class="layer-count2">1 agent</div><div class="layer-bar2"></div></div>
+    <div class="agents-pills">
+      <div class="agent-pill"><div class="ap-num">AGENT 17</div><div class="ap-name">AMC &amp; wealth signals</div><div class="ap-covers">AMCs · Wealth mgmt · Exchanges</div></div>
+    </div>
+  </div>
+
+</div>
+</div>
+
+<!-- ══════════════════════════════════════════════════ -->
+<!-- TAB 6: SIGNAL AGGREGATOR -->
+<!-- ══════════════════════════════════════════════════ -->
+<div class="tab-content" id="tab-aggregator">
+<div class="tab-page">
+  <div class="section-header">
+    <div class="section-title">Signal aggregator</div>
+    <div class="section-sub">How all 17 agent scores are fused into a single actionable output across 4 trade modes.</div>
+  </div>
+
+  <style>
+  .agg-layout{display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap}
+  .agg-col-inputs{display:flex;flex-direction:column;gap:5px;min-width:160px;flex:0 0 160px}
+  .agg-inp{border-radius:7px;border:1px solid;padding:6px 10px}
+  .agg-inp-num{font-family:var(--mono);font-size:8.5px;font-weight:500;letter-spacing:.07em;margin-bottom:2px}
+  .agg-inp-name{font-size:10.5px;font-weight:500;line-height:1.3}
+  .ai-gray{background:#F3F2EF;border-color:#C8C6C0}.ai-gray .agg-inp-num{color:#5A5857}.ai-gray .agg-inp-name{color:#2C2A28}
+  .ai-blue{background:#EBF3FD;border-color:#B5D4F4}.ai-blue .agg-inp-num{color:#1A6EBD}.ai-blue .agg-inp-name{color:#0D4A8A}
+  .ai-teal{background:#E1F5EE;border-color:#9FE1CB}.ai-teal .agg-inp-num{color:#0D9E75}.ai-teal .agg-inp-name{color:#075E47}
+  .ai-purple{background:#EDEAFD;border-color:#AFA9EC}.ai-purple .agg-inp-num{color:#4A3FB5}.ai-purple .agg-inp-name{color:#2E2680}
+  .ai-amber{background:#FDF0DC;border-color:#FAC775}.ai-amber .agg-inp-num{color:#B86A0A}.ai-amber .agg-inp-name{color:#7A4508}
+  .ai-coral{background:#FCEAE5;border-color:#F0997B}.ai-coral .agg-inp-num{color:#B83C1E}.ai-coral .agg-inp-name{color:#7C2912}
+  .ai-pink{background:#F9E8F0;border-color:#ED93B1}.ai-pink .agg-inp-num{color:#993556}.ai-pink .agg-inp-name{color:#6B1F3A}
+  .ai-green{background:#E5F2D8;border-color:#97C459}.ai-green .agg-inp-num{color:#3B6D11}.ai-green .agg-inp-name{color:#234010}
+
+  .agg-arrow{font-size:22px;color:var(--c-teal);display:flex;align-items:center;padding:0 4px;align-self:center}
+
+  .agg-core{background:#fff;border:1.5px solid #0D9E75;border-radius:14px;padding:20px 22px;flex:1;min-width:240px;max-width:340px}
+  .agg-core-label{font-family:var(--mono);font-size:9px;letter-spacing:.13em;text-transform:uppercase;color:#0D9E75;margin-bottom:7px}
+  .agg-core-title{font-family:var(--serif);font-size:20px;color:var(--navy);margin-bottom:14px;line-height:1.2}
+  .agg-step2{display:flex;align-items:flex-start;gap:8px;margin-bottom:10px}
+  .step-circle{font-family:var(--mono);font-size:9px;font-weight:500;background:#0D9E75;color:#fff;border-radius:50%;width:18px;height:18px;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:1px}
+  .step-body{font-size:11px;color:var(--muted);line-height:1.5}
+  .step-body strong{color:var(--text);font-weight:500}
+
+  .conflict-section{background:var(--off);border:1px solid var(--border);border-radius:8px;padding:12px 16px;margin-top:12px}
+  .conflict-title2{font-family:var(--mono);font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:8px}
+  .conflict-row{display:flex;align-items:flex-start;gap:8px;font-size:11px;color:var(--muted);margin-bottom:6px;line-height:1.4}
+  .conflict-row:last-child{margin-bottom:0}
+  .cr-if{font-family:var(--mono);font-size:8.5px;background:#FDF0DC;color:#7A4508;border-radius:4px;padding:2px 6px;white-space:nowrap;flex-shrink:0}
+  .cr-then{font-family:var(--mono);font-size:8.5px;background:#E1F5EE;color:#075E47;border-radius:4px;padding:2px 6px;white-space:nowrap;flex-shrink:0}
+
+  .agg-outputs{display:flex;flex-direction:column;gap:8px;min-width:170px;flex:0 0 190px}
+  .out2{border-radius:9px;padding:12px 14px;border:1px solid}
+  .out2-mode{font-family:var(--mono);font-size:8px;letter-spacing:.12em;text-transform:uppercase;margin-bottom:4px}
+  .out2-name{font-size:13px;font-weight:600;margin-bottom:5px;line-height:1.2}
+  .out2-items{font-family:var(--mono);font-size:8.5px;line-height:1.75;opacity:.75}
+  .o2-red{background:#FEF2F2;border-color:#FECACA}.o2-red .out2-mode{color:#DC2626}.o2-red .out2-name{color:#7F1D1D}
+  .o2-blue{background:#EFF6FF;border-color:#BFDBFE}.o2-blue .out2-mode{color:#1D4ED8}.o2-blue .out2-name{color:#1E3A8A}
+  .o2-purple{background:#F5F3FF;border-color:#DDD6FE}.o2-purple .out2-mode{color:#6D28D9}.o2-purple .out2-name{color:#3B0764}
+  .o2-green{background:#F0FDF4;border-color:#BBF7D0}.o2-green .out2-mode{color:#15803D}.o2-green .out2-name{color:#14532D}
+  </style>
+
+  <div class="agg-layout">
+
+    <!-- INPUTS -->
+    <div class="agg-col-inputs">
+      <div class="agg-inp ai-gray"><div class="agg-inp-num">01</div><div class="agg-inp-name">Universe &amp; index tracker</div></div>
+      <div class="agg-inp ai-blue"><div class="agg-inp-num">02</div><div class="agg-inp-name">Macro &amp; RBI policy</div></div>
+      <div class="agg-inp ai-teal"><div class="agg-inp-num">03</div><div class="agg-inp-name">Credit quality</div></div>
+      <div class="agg-inp ai-teal"><div class="agg-inp-num">04</div><div class="agg-inp-name">Profitability</div></div>
+      <div class="agg-inp ai-coral"><div class="agg-inp-num">05</div><div class="agg-inp-name">Technical analysis</div></div>
+      <div class="agg-inp ai-amber"><div class="agg-inp-num">06</div><div class="agg-inp-name">News &amp; sentiment</div></div>
+      <div class="agg-inp ai-coral"><div class="agg-inp-num">07</div><div class="agg-inp-name">MF &amp; institutional</div></div>
+      <div class="agg-inp ai-amber"><div class="agg-inp-num">08</div><div class="agg-inp-name">Cross-market impact</div></div>
+      <div class="agg-inp ai-teal"><div class="agg-inp-num">09</div><div class="agg-inp-name">Capital adequacy</div></div>
+      <div class="agg-inp ai-teal"><div class="agg-inp-num">10</div><div class="agg-inp-name">Liquidity &amp; funding</div></div>
+      <div class="agg-inp ai-purple"><div class="agg-inp-num">11</div><div class="agg-inp-name">Management &amp; governance</div></div>
+      <div class="agg-inp ai-purple"><div class="agg-inp-num">12</div><div class="agg-inp-name">Competitive positioning</div></div>
+      <div class="agg-inp ai-coral"><div class="agg-inp-num">13</div><div class="agg-inp-name">Valuation &amp; strength</div></div>
+      <div class="agg-inp ai-coral"><div class="agg-inp-num">14</div><div class="agg-inp-name">F&amp;O microstructure</div></div>
+      <div class="agg-inp ai-blue"><div class="agg-inp-num">15</div><div class="agg-inp-name">Event &amp; catalyst tracker</div></div>
+      <div class="agg-inp ai-pink"><div class="agg-inp-num">16</div><div class="agg-inp-name">Insurance signals</div></div>
+      <div class="agg-inp ai-green"><div class="agg-inp-num">17</div><div class="agg-inp-name">AMC &amp; wealth signals</div></div>
+    </div>
+
+    <div class="agg-arrow">→</div>
+
+    <!-- CORE LOGIC -->
+    <div class="agg-core">
+      <div class="agg-core-label">Signal aggregator</div>
+      <div class="agg-core-title">Weighted fusion &amp; conflict resolution</div>
+      <div class="agg-step2"><div class="step-circle">1</div><div class="step-body"><strong>Score each agent</strong> — every agent outputs −1 (strong bearish) to +1 (strong bullish) per stock</div></div>
+      <div class="agg-step2"><div class="step-circle">2</div><div class="step-body"><strong>Apply mode weights</strong> — intraday weights 05/14/06 heavily · positional weights 03/04/09/11</div></div>
+      <div class="agg-step2"><div class="step-circle">3</div><div class="step-body"><strong>Apply institution weights</strong> — insurance stocks weight 16 higher · AMCs weight 17 · banks weight 03/04/09/10</div></div>
+      <div class="agg-step2"><div class="step-circle">4</div><div class="step-body"><strong>Conflict resolution</strong> — if fundamentals and technicals disagree, flag as "mixed" and reduce conviction</div></div>
+      <div class="agg-step2"><div class="step-circle">5</div><div class="step-body"><strong>Composite score</strong> — weighted average → 0 to 100 → Buy / Hold / Sell + conviction H / M / L</div></div>
+
+      <div class="conflict-section">
+        <div class="conflict-title2">Conflict resolution rules</div>
+        <div class="conflict-row"><span class="cr-if">Fundamentals ↑ + Technicals ↓</span><span class="cr-then">Mixed — reduce size</span></div>
+        <div class="conflict-row"><span class="cr-if">News very negative + Fundamentals strong</span><span class="cr-then">Hold — wait for clarity</span></div>
+        <div class="conflict-row"><span class="cr-if">F&amp;O OI bearish + Price bullish</span><span class="cr-then">Caution — smaller position</span></div>
+        <div class="conflict-row"><span class="cr-if">All agents aligned</span><span class="cr-then">High conviction — full size</span></div>
+      </div>
+    </div>
+
+    <div class="agg-arrow">→</div>
+
+    <!-- OUTPUTS -->
+    <div class="agg-outputs">
+      <div class="out2 o2-red">
+        <div class="out2-mode">Mode 01 · Intraday</div>
+        <div class="out2-name">Intraday signal</div>
+        <div class="out2-items">Stock or BankNifty F&amp;O<br>Entry · Stop · Target<br>Lot size · Valid till<br>Max loss per trade</div>
+      </div>
+      <div class="out2 o2-blue">
+        <div class="out2-mode">Mode 02 · Swing</div>
+        <div class="out2-name">Swing signal</div>
+        <div class="out2-items">Stock or stock F&amp;O<br>Entry · Stop · T1 · T2<br>Strike &amp; expiry<br>Overnight risk flag</div>
+      </div>
+      <div class="out2 o2-purple">
+        <div class="out2-mode">Mode 03 · Positional</div>
+        <div class="out2-name">Positional signal</div>
+        <div class="out2-items">All institution types<br>Buy / Accumulate / Exit<br>Conviction H / M / L<br>Portfolio allocation %</div>
+      </div>
+      <div class="out2 o2-green">
+        <div class="out2-mode">Mode 04 · MF rotation</div>
+        <div class="out2-name">MF signal</div>
+        <div class="out2-items">Increase / reduce SIP<br>PSU vs private rotation<br>Fund switch signal<br>Allocation % change</div>
+      </div>
+    </div>
+
+  </div>
+</div>
+</div>
+
+<div class="footer">Banking &amp; Financial Services Agent · NSE/BSE India · 17 Agents · Stocks · F&amp;O · Mutual Funds · Not financial advice · Data for research only</div>
+
+<!-- ══════════════════════════════════════════════════ -->
+<!-- TAB 7: SETUP COSTS -->
+<!-- ══════════════════════════════════════════════════ -->
+<div class="tab-content" id="tab-cost">
+<div class="tab-page">
+  <div class="section-header">
+    <div class="section-title">Setup cost breakdown</div>
+    <div class="section-sub">All costs across 3 phases — from research only to fully automated trading. Based on current pricing as of April 2026.</div>
+  </div>
+
+  <style>
+  .cost-summary{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:28px}
+  .cs-card{flex:1;min-width:180px;border-radius:10px;padding:16px 18px;border:1px solid}
+  .cs-phase{font-family:var(--mono);font-size:9px;letter-spacing:.12em;text-transform:uppercase;margin-bottom:6px}
+  .cs-name{font-size:14px;font-weight:600;margin-bottom:4px;line-height:1.3}
+  .cs-amount{font-size:18px;font-weight:600;font-family:var(--mono);margin-bottom:4px}
+  .cs-per{font-family:var(--mono);font-size:9.5px;opacity:.65}
+  .cp1{background:#EBF3FD;border-color:#B5D4F4}.cp1 .cs-phase{color:#1A6EBD}.cp1 .cs-name{color:#0D4A8A}.cp1 .cs-amount{color:#1A6EBD}
+  .cp2{background:#FDF0DC;border-color:#FAC775}.cp2 .cs-phase{color:#B86A0A}.cp2 .cs-name{color:#7A4508}.cp2 .cs-amount{color:#B86A0A}
+  .cp3{background:#FCEAE5;border-color:#F0997B}.cp3 .cs-phase{color:#B83C1E}.cp3 .cs-name{color:#7C2912}.cp3 .cs-amount{color:#B83C1E}
+
+  .phase-section{margin-bottom:32px}
+  .phase-banner{border-radius:10px;padding:14px 18px;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px}
+  .pb1{background:#EBF3FD;border-left:4px solid #1A6EBD}
+  .pb2{background:#FDF0DC;border-left:4px solid #B86A0A}
+  .pb3{background:#FCEAE5;border-left:4px solid #B83C1E}
+  .pb-left{}
+  .pb-label{font-family:var(--mono);font-size:9px;letter-spacing:.12em;text-transform:uppercase;margin-bottom:4px}
+  .pb-title{font-size:15px;font-weight:600;line-height:1.2}
+  .pb-sub{font-size:11px;margin-top:2px;opacity:.7}
+  .pb1 .pb-label{color:#1A6EBD}.pb1 .pb-title{color:#0D4A8A}.pb1 .pb-sub{color:#1A6EBD}
+  .pb2 .pb-label{color:#B86A0A}.pb2 .pb-title{color:#7A4508}.pb2 .pb-sub{color:#B86A0A}
+  .pb3 .pb-label{color:#B83C1E}.pb3 .pb-title{color:#7C2912}.pb3 .pb-sub{color:#B83C1E}
+  .pb-total{font-family:var(--mono);font-size:13px;font-weight:600;white-space:nowrap}
+  .pb1 .pb-total{color:#1A6EBD}.pb2 .pb-total{color:#B86A0A}.pb3 .pb-total{color:#B83C1E}
+
+  .cost-table{width:100%;border-collapse:collapse;font-size:11px;margin-bottom:6px}
+  .cost-table th{font-family:var(--mono);font-size:8.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);padding:7px 10px;text-align:left;background:var(--off);border-bottom:1px solid var(--border)}
+  .cost-table th:last-child{text-align:right}
+  .cost-table td{padding:9px 10px;border-bottom:1px solid rgba(0,0,0,.04);vertical-align:top;color:var(--text)}
+  .cost-table tr:last-child td{border-bottom:none}
+  .cost-table tr:hover td{background:var(--off)}
+  .ci-name{font-weight:600;font-size:11.5px;margin-bottom:2px}
+  .ci-detail{font-size:9.5px;color:var(--muted);line-height:1.45;margin-top:2px}
+  .cost-free{color:#0D9E75;font-weight:600;font-size:11.5px;text-align:right;white-space:nowrap}
+  .cost-low{color:#B86A0A;font-weight:600;font-size:11.5px;text-align:right;white-space:nowrap}
+  .cost-mid{color:#B83C1E;font-weight:600;font-size:11.5px;text-align:right;white-space:nowrap}
+  .cost-var{color:var(--muted);font-size:10.5px;text-align:right;white-space:nowrap}
+  .cost-carry{color:var(--navy);font-weight:600;font-size:11.5px;text-align:right;white-space:nowrap}
+
+  .note-strip{border-radius:8px;padding:10px 14px;margin-top:8px;font-size:10.5px;line-height:1.6}
+  .ns1{background:#E6F1FB;color:#0D4A8A;border-left:3px solid #1A6EBD}
+  .ns2{background:#FDF0DC;color:#7A4508;border-left:3px solid #B86A0A}
+  .ns3{background:#FCEAE5;color:#7C2912;border-left:3px solid #B83C1E}
+
+  .final-rec{background:#E1F5EE;border-left:4px solid #0D9E75;border-radius:8px;padding:14px 18px;margin-top:20px;font-size:11px;color:#075E47;line-height:1.7}
+  .final-rec strong{color:#085041}
+  </style>
+
+  <!-- SUMMARY CARDS -->
+  <div class="cost-summary">
+    <div class="cs-card cp1">
+      <div class="cs-phase">Phase 1</div>
+      <div class="cs-name">Research only</div>
+      <div class="cs-amount">Rs. 8–12k/mo</div>
+      <div class="cs-per">Rs. 800–1,200 per person (10 people)</div>
+    </div>
+    <div class="cs-card cp2">
+      <div class="cs-phase">Phase 2</div>
+      <div class="cs-name">Semi-automated</div>
+      <div class="cs-amount">Rs. 13–18k/mo</div>
+      <div class="cs-per">Rs. 1,300–1,800 per person (10 people)</div>
+    </div>
+    <div class="cs-card cp3">
+      <div class="cs-phase">Phase 3</div>
+      <div class="cs-name">Fully automated</div>
+      <div class="cs-amount">Rs. 35–45k/mo</div>
+      <div class="cs-per">Rs. 3,500–4,500 per person (10 people)</div>
+    </div>
+  </div>
+
+  <!-- PHASE 1 -->
+  <div class="phase-section">
+    <div class="phase-banner pb1">
+      <div class="pb-left">
+        <div class="pb-label">Phase 1</div>
+        <div class="pb-title">Research &amp; signals only</div>
+        <div class="pb-sub">No broker · No auto-trading · Validate signals manually for 3–6 months</div>
+      </div>
+      <div class="pb-total">Rs. 8,000 – 12,000 / month</div>
+    </div>
+    <table class="cost-table">
+      <thead><tr><th>Component</th><th>What you get</th><th>Provider</th><th>Monthly cost</th></tr></thead>
+      <tbody>
+        <tr><td><div class="ci-name">Market data — EOD</div><div class="ci-detail">End-of-day prices, OHLCV for all stocks and indices. Enough for positional signals and MF rotation.</div></td><td>NSE/BSE EOD via broker API or Yahoo Finance scraping</td><td>Broker API / Yahoo Finance</td><td><div class="cost-free">Rs. 0</div></td></tr>
+        <tr><td><div class="ci-name">Market data — real-time</div><div class="ci-detail">Live quotes, options chain, OI, PCR for intraday &amp; swing signals. Required for Agent 14. TrueData is NSE-authorized.</div></td><td>TrueData Velocity — NSE EQ + NFO + Indices. OR Fyers / Angel One free API.</td><td>TrueData / Fyers / Angel One</td><td><div class="cost-low">Rs. 0 – 2,500</div></td></tr>
+        <tr><td><div class="ci-name">Fundamental data</div><div class="ci-detail">Quarterly results, NIM, NPA, ROE, CASA for Agents 03/04/09/10. SEBI filings, AMFI MF holdings.</div></td><td>Screener.in API + NSE EDGAR scraping + AMFI (free monthly)</td><td>Screener.in / NSE / AMFI</td><td><div class="cost-free">Rs. 0 – 499</div></td></tr>
+        <tr><td><div class="ci-name">News &amp; sentiment</div><div class="ci-detail">For Agent 06. NewsAPI free tier = 100 req/day. Moneycontrol/ET scraping for sector news.</div></td><td>NewsAPI free tier + custom web scraper</td><td>NewsAPI / custom</td><td><div class="cost-free">Rs. 0</div></td></tr>
+        <tr><td><div class="ci-name">AI / LLM — Claude API</div><div class="ci-detail">NLP on news, earnings call analysis, orchestrator logic. ~17 agents × 50 calls/day × 2K tokens = ~1.7M tokens/day. Claude Haiku 4.5 at $1/$5 per million tokens.</div></td><td>Claude Haiku 4.5 — fast, cheap, capable for signal generation</td><td>Anthropic API</td><td><div class="cost-low">~$50–80 (~Rs. 4,200–6,700)</div></td></tr>
+        <tr><td><div class="ci-name">Cloud server</div><div class="ci-detail">Run all 17 agents, scheduler, database, API server. AWS t3.medium Mumbai — 2 vCPU, 4GB RAM.</div></td><td>AWS EC2 t3.medium — ap-south-1 Mumbai</td><td>AWS</td><td><div class="cost-low">~$30 (~Rs. 2,500)</div></td></tr>
+        <tr><td><div class="ci-name">Database</div><div class="ci-detail">PostgreSQL + TimescaleDB + Redis — all self-hosted on same EC2 instance. No extra cost.</div></td><td>Self-hosted on EC2 — no additional instances</td><td>AWS (included)</td><td><div class="cost-free">Rs. 0</div></td></tr>
+        <tr><td><div class="ci-name">Dashboard / UI</div><div class="ci-detail">The HTML page already built. Host on Vercel or Netlify free tier.</div></td><td>HTML dashboard — Vercel / Netlify free tier</td><td>Vercel / Netlify</td><td><div class="cost-free">Rs. 0</div></td></tr>
+      </tbody>
+    </table>
+    <div class="note-strip ns1"><strong>Smart tip:</strong> Use Fyers or Angel One broker account for free real-time data via their API — tick-by-tick for up to 5,000 symbols, free with a brokerage account. Fyers also gives 25 years of daily historical data and 5 years of intraday data free. This can bring Phase 1 cost down to <strong>Rs. 5,000–7,000/month</strong>.</div>
+  </div>
+
+  <!-- PHASE 2 -->
+  <div class="phase-section">
+    <div class="phase-banner pb2">
+      <div class="pb-left">
+        <div class="pb-label">Phase 2</div>
+        <div class="pb-title">Semi-automated</div>
+        <div class="pb-sub">System generates signals · Group approves · Broker executes</div>
+      </div>
+      <div class="pb-total">Rs. 13,000 – 18,000 / month</div>
+    </div>
+    <table class="cost-table">
+      <thead><tr><th>Component</th><th>What you get</th><th>Provider</th><th>Monthly cost</th></tr></thead>
+      <tbody>
+        <tr><td><div class="ci-name">Everything from Phase 1</div><div class="ci-detail">All 17 agents, data feeds, AI, cloud infrastructure continues unchanged.</div></td><td>Same as Phase 1</td><td>—</td><td><div class="cost-carry">Rs. 8,000 – 12,000</div></td></tr>
+        <tr><td><div class="ci-name">Broker API — execution</div><div class="ci-detail">Zerodha Kite Connect: Rs. 500/month for data. Order placement API FREE since March 2025. Angel SmartAPI: completely free including execution.</div></td><td>Zerodha Kite Connect OR Angel One SmartAPI (free)</td><td>Zerodha / Angel One</td><td><div class="cost-free">Rs. 0 – 500</div></td></tr>
+        <tr><td><div class="ci-name">Upgraded server</div><div class="ci-detail">More compute for real-time order management and WebSocket connections for 5–10 group members.</div></td><td>AWS EC2 t3.large — 2 vCPU, 8GB RAM, Mumbai</td><td>AWS</td><td><div class="cost-low">~$60 (~Rs. 5,000)</div></td></tr>
+        <tr><td><div class="ci-name">Telegram bot — group alerts</div><div class="ci-detail">All group members receive signals on private Telegram. Bot API is free. Hosted on same EC2.</div></td><td>Telegram Bot API — zero cost</td><td>Telegram</td><td><div class="cost-free">Rs. 0</div></td></tr>
+        <tr><td><div class="ci-name">Brokerage per trade</div><div class="ci-detail">Rs. 20 or 0.03% per order (Zerodha). Not a setup cost — deducted from trading capital, same as manual trading.</div></td><td>Standard brokerage — identical to manual trading</td><td>Zerodha / Angel</td><td><div class="cost-var">Variable (from capital)</div></td></tr>
+      </tbody>
+    </table>
+    <div class="note-strip ns2"><strong>Key insight:</strong> The jump from Phase 1 to Phase 2 is very small — mainly a server upgrade and broker API. The heavy infrastructure investment is Phase 1. Phase 2 is essentially Phase 1 with a broker connection added on top.</div>
+  </div>
+
+  <!-- PHASE 3 -->
+  <div class="phase-section">
+    <div class="phase-banner pb3">
+      <div class="pb-left">
+        <div class="pb-label">Phase 3</div>
+        <div class="pb-title">Fully automated</div>
+        <div class="pb-sub">System places orders directly · No human approval · Requires SEBI algo registration</div>
+      </div>
+      <div class="pb-total">Rs. 35,000 – 45,000 / month</div>
+    </div>
+    <table class="cost-table">
+      <thead><tr><th>Component</th><th>What you get</th><th>Provider</th><th>Monthly cost</th></tr></thead>
+      <tbody>
+        <tr><td><div class="ci-name">Everything from Phase 2</div><div class="ci-detail">All agents, data, AI, cloud, broker API continues as-is.</div></td><td>Same as Phase 2</td><td>—</td><td><div class="cost-carry">Rs. 13,000 – 18,000</div></td></tr>
+        <tr><td><div class="ci-name">High-availability server</div><div class="ci-detail">Cannot afford downtime when auto-trading. Redundant setup with load balancer and monitoring.</div></td><td>AWS — 2x t3.large + Application Load Balancer + CloudWatch</td><td>AWS</td><td><div class="cost-mid">~$120 (~Rs. 10,000)</div></td></tr>
+        <tr><td><div class="ci-name">Static IP (SEBI requirement)</div><div class="ci-detail">SEBI requires static IP for algo order placement. AWS Elastic IP is free when attached to running EC2.</div></td><td>AWS Elastic IP — free when attached</td><td>AWS</td><td><div class="cost-free">Rs. 0</div></td></tr>
+        <tr><td><div class="ci-name">Monitoring &amp; alerting</div><div class="ci-detail">Must know immediately if system breaks during auto-trading. CloudWatch + Telegram failure alerts.</div></td><td>AWS CloudWatch + Telegram failure alerts</td><td>AWS / Telegram</td><td><div class="cost-low">~$10 (~Rs. 850)</div></td></tr>
+        <tr><td><div class="ci-name">Risk management engine</div><div class="ci-detail">Max daily loss limit, max position size, kill switch. Custom code — one-time build, zero ongoing cost.</div></td><td>Custom risk engine — built in-house</td><td>In-house</td><td><div class="cost-free">Rs. 0 ongoing</div></td></tr>
+        <tr><td><div class="ci-name">AI upgrade — Claude Sonnet</div><div class="ci-detail">Upgrade from Haiku to Sonnet 4.6 for higher quality reasoning on fully automated decisions. $3/$15 per million tokens.</div></td><td>Claude Sonnet 4.6 — production-grade quality</td><td>Anthropic API</td><td><div class="cost-mid">~$120–180 (~Rs. 10,000–15,000)</div></td></tr>
+      </tbody>
+    </table>
+    <div class="note-strip ns3"><strong>Regulatory note:</strong> Phase 3 requires SEBI algo trading registration through your broker. Under the 2025 NSE circular, retail users can run algos via Zerodha, Angel One, or Fyers. Your broker handles registration — you get an Algo ID. This is procedural, not a financial cost.</div>
+  </div>
+
+  <!-- FINAL RECOMMENDATION -->
+  <div class="final-rec">
+    <strong>Recommended path for your group:</strong> Start Phase 1. Run it for 3–6 months. Track signal accuracy manually against actual market movements. If signals prove profitable, Phase 2 is a small upgrade. Only move to Phase 3 when Phase 2 has demonstrated consistent quality over enough real trades.<br><br>
+    Split across 10 people, Phase 1 costs <strong>Rs. 800–1,200 per person per month</strong> — less than most OTT subscriptions. That is the cost of building a professional-grade trading intelligence system from scratch.
+  </div>
+
+</div>
+</div>
+
+<script>
+function showTab(id){
+  document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+  document.querySelectorAll('.tab-content').forEach(c=>c.classList.remove('active'));
+  document.getElementById('tab-'+id).classList.add('active');
+  event.target.classList.add('active');
+}
+</script>
+</body>
+</html>

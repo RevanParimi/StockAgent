@@ -1,0 +1,1391 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>Stock Sector Analysis — Deep Explanation Guide</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700;900&family=DM+Sans:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+<style>
+:root{
+  --bg:#0A0C10;
+  --bg2:#12151C;
+  --bg3:#1A1E28;
+  --surface:#202535;
+  --surface2:#272D3F;
+  --border:#2E3650;
+  --border2:#3A4260;
+  --text:#E8EAF0;
+  --text2:#9BA3BF;
+  --text3:#6B7494;
+  --accent:#4F8EF7;
+  --gold:#F0B429;
+  --green:#34D399;
+  --red:#F87171;
+  --purple:#A78BFA;
+  --orange:#FB923C;
+  --teal:#2DD4BF;
+  --pink:#F472B6;
+
+  --c-business:#1D9E75;
+  --c-fundamentals:#534AB7;
+  --c-valuation:#BA7517;
+  --c-technical:#185FA5;
+  --c-macro:#993C1D;
+  --c-risk:#A32D2D;
+}
+
+*{box-sizing:border-box;margin:0;padding:0;}
+html{scroll-behavior:smooth;}
+body{
+  background:var(--bg);
+  color:var(--text);
+  font-family:'DM Sans',sans-serif;
+  font-size:15px;
+  line-height:1.6;
+  min-height:100vh;
+}
+
+/* ─── HEADER ─────────────────────────────── */
+.masthead{
+  background:linear-gradient(135deg,#0A0C10 0%,#131829 50%,#0D1020 100%);
+  border-bottom:1px solid var(--border);
+  padding:48px 40px 36px;
+  position:relative;
+  overflow:hidden;
+}
+.masthead::before{
+  content:'';
+  position:absolute;inset:0;
+  background:radial-gradient(ellipse 60% 80% at 80% 50%, rgba(79,142,247,0.06) 0%,transparent 70%),
+             radial-gradient(ellipse 40% 60% at 20% 30%, rgba(167,139,250,0.05) 0%,transparent 70%);
+  pointer-events:none;
+}
+.masthead-inner{max-width:1300px;margin:0 auto;position:relative;}
+.masthead-eyebrow{
+  font-family:'JetBrains Mono',monospace;
+  font-size:11px;letter-spacing:.12em;
+  color:var(--accent);text-transform:uppercase;
+  margin-bottom:12px;
+}
+.masthead h1{
+  font-family:'Playfair Display',serif;
+  font-size:clamp(28px,4vw,52px);
+  font-weight:900;
+  line-height:1.1;
+  color:#fff;
+  margin-bottom:14px;
+}
+.masthead h1 span{color:var(--gold);}
+.masthead-sub{
+  font-size:16px;color:var(--text2);
+  max-width:640px;line-height:1.7;
+  margin-bottom:28px;
+}
+.pillar-legend{
+  display:flex;flex-wrap:wrap;gap:10px;
+}
+.pl-chip{
+  display:flex;align-items:center;gap:7px;
+  background:var(--surface);
+  border:1px solid var(--border);
+  border-radius:20px;
+  padding:5px 13px;
+  font-size:12px;font-weight:500;
+}
+.pl-dot{width:8px;height:8px;border-radius:50%;}
+
+/* ─── NAV TABS ────────────────────────────── */
+.nav-wrap{
+  background:var(--bg2);
+  border-bottom:1px solid var(--border);
+  position:sticky;top:0;z-index:100;
+}
+.nav-inner{
+  max-width:1300px;margin:0 auto;
+  padding:0 40px;
+  display:flex;align-items:center;gap:0;
+  overflow-x:auto;
+  scrollbar-width:none;
+}
+.nav-inner::-webkit-scrollbar{display:none;}
+.nav-tab{
+  flex-shrink:0;
+  padding:14px 18px;
+  font-size:12px;font-weight:500;
+  color:var(--text3);
+  cursor:pointer;
+  border-bottom:2px solid transparent;
+  transition:all .2s;
+  white-space:nowrap;
+  background:none;border-top:0;border-left:0;border-right:0;
+}
+.nav-tab:hover{color:var(--text2);}
+.nav-tab.active{color:var(--accent);border-bottom-color:var(--accent);}
+
+/* ─── MAIN LAYOUT ─────────────────────────── */
+.page-inner{max-width:1300px;margin:0 auto;padding:40px;}
+
+/* ─── SECTOR PANEL ────────────────────────── */
+.sector-panel{display:none;}
+.sector-panel.active{display:block;}
+
+/* ─── SECTOR HERO ─────────────────────────── */
+.sector-hero{
+  display:grid;grid-template-columns:1fr auto;gap:24px;align-items:start;
+  background:var(--bg2);
+  border:1px solid var(--border);
+  border-radius:16px;
+  padding:28px 32px;
+  margin-bottom:28px;
+  position:relative;overflow:hidden;
+}
+.sector-hero::before{
+  content:'';position:absolute;top:0;right:0;
+  width:300px;height:100%;
+  background:linear-gradient(to left,var(--sector-color-alpha),transparent);
+  pointer-events:none;
+}
+.sh-eyebrow{
+  font-family:'JetBrains Mono',monospace;
+  font-size:10px;letter-spacing:.1em;
+  color:var(--text3);text-transform:uppercase;
+  margin-bottom:8px;
+}
+.sh-name{
+  font-family:'Playfair Display',serif;
+  font-size:32px;font-weight:700;
+  color:#fff;margin-bottom:6px;
+}
+.sh-nature{
+  display:inline-block;
+  font-size:12px;font-weight:600;
+  padding:4px 12px;border-radius:20px;
+  margin-bottom:12px;
+}
+.sh-desc{font-size:14px;color:var(--text2);max-width:600px;line-height:1.7;}
+.sh-examples{
+  font-size:12px;color:var(--text3);
+  margin-top:10px;
+  font-family:'JetBrains Mono',monospace;
+}
+.sh-weights{
+  flex-shrink:0;
+  display:flex;flex-direction:column;gap:7px;
+  min-width:220px;
+}
+.sw-row{display:flex;align-items:center;gap:8px;}
+.sw-label{font-size:11px;color:var(--text2);width:90px;flex-shrink:0;}
+.sw-bar-wrap{flex:1;height:5px;background:var(--surface2);border-radius:3px;}
+.sw-bar{height:5px;border-radius:3px;}
+.sw-pct{font-size:11px;color:var(--text3);width:30px;text-align:right;flex-shrink:0;font-family:'JetBrains Mono',monospace;}
+
+/* ─── PILLARS GRID ────────────────────────── */
+.pillars-grid{
+  display:grid;
+  grid-template-columns:repeat(auto-fill,minmax(380px,1fr));
+  gap:20px;
+  margin-bottom:28px;
+}
+.pillar-card{
+  background:var(--bg2);
+  border:1px solid var(--border);
+  border-radius:14px;
+  padding:24px;
+  position:relative;
+  transition:border-color .2s;
+}
+.pillar-card:hover{border-color:var(--border2);}
+.pc-header{
+  display:flex;align-items:center;gap:10px;
+  margin-bottom:16px;
+}
+.pc-icon{
+  width:36px;height:36px;border-radius:10px;
+  display:flex;align-items:center;justify-content:center;
+  font-size:16px;flex-shrink:0;
+}
+.pc-title{
+  font-family:'Playfair Display',serif;
+  font-size:17px;font-weight:700;color:#fff;
+}
+.pc-subtitle{font-size:11px;color:var(--text3);margin-top:1px;}
+.pc-accent-bar{
+  height:3px;border-radius:2px;
+  margin-bottom:16px;
+  opacity:0.6;
+}
+.step-list{display:flex;flex-direction:column;gap:14px;}
+.step{
+  display:grid;grid-template-columns:28px 1fr;gap:10px;
+  align-items:start;
+}
+.step-num{
+  width:24px;height:24px;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;
+  font-size:11px;font-weight:700;
+  font-family:'JetBrains Mono',monospace;
+  flex-shrink:0;margin-top:1px;
+}
+.step-body{}
+.step-name{font-size:13px;font-weight:600;color:var(--text);margin-bottom:3px;}
+.step-detail{font-size:12px;color:var(--text2);line-height:1.65;}
+.step-detail strong{color:var(--text);font-weight:600;}
+.step-formula{
+  display:inline-block;
+  font-family:'JetBrains Mono',monospace;
+  font-size:11px;
+  background:var(--surface);
+  border:1px solid var(--border);
+  border-radius:6px;
+  padding:3px 8px;
+  margin-top:5px;
+  color:var(--gold);
+}
+
+/* ─── QUICK SUMMARY BOX ───────────────────── */
+.summary-box{
+  background:var(--bg2);
+  border:1px solid var(--border);
+  border-left:4px solid var(--gold);
+  border-radius:14px;
+  padding:24px 28px;
+  margin-bottom:28px;
+}
+.sb-title{
+  font-family:'Playfair Display',serif;
+  font-size:16px;font-weight:700;
+  color:var(--gold);
+  margin-bottom:12px;
+  display:flex;align-items:center;gap:8px;
+}
+.sb-grid{
+  display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));
+  gap:10px;
+}
+.sb-item{
+  background:var(--surface);
+  border-radius:10px;
+  padding:12px 16px;
+}
+.sb-item-label{font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px;font-weight:600;}
+.sb-item-val{font-size:13px;color:var(--text);}
+.sb-item-val.red{color:var(--red);}
+.sb-item-val.blue{color:var(--accent);}
+
+/* ─── WEIGHT BADGE ────────────────────────── */
+.weight-badge{
+  position:absolute;top:16px;right:16px;
+  font-family:'JetBrains Mono',monospace;
+  font-size:11px;font-weight:700;
+  padding:3px 9px;border-radius:8px;
+}
+
+/* ─── RESPONSIVE ──────────────────────────── */
+@media(max-width:768px){
+  .masthead{padding:32px 20px 24px;}
+  .page-inner{padding:20px;}
+  .nav-inner{padding:0 12px;}
+  .sector-hero{grid-template-columns:1fr;}
+  .sh-weights{min-width:unset;width:100%;}
+  .pillars-grid{grid-template-columns:1fr;}
+}
+
+/* animations */
+@keyframes fadeUp{from{opacity:0;transform:translateY(16px);}to{opacity:1;transform:none;}}
+.sector-panel.active .sector-hero,
+.sector-panel.active .pillar-card,
+.sector-panel.active .summary-box{animation:fadeUp .3s ease both;}
+.sector-panel.active .pillar-card:nth-child(2){animation-delay:.05s;}
+.sector-panel.active .pillar-card:nth-child(3){animation-delay:.1s;}
+.sector-panel.active .pillar-card:nth-child(4){animation-delay:.15s;}
+.sector-panel.active .pillar-card:nth-child(5){animation-delay:.2s;}
+.sector-panel.active .pillar-card:nth-child(6){animation-delay:.25s;}
+</style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════
+     MASTHEAD
+════════════════════════════════════════ -->
+<div class="masthead">
+  <div class="masthead-inner">
+    <div class="masthead-eyebrow">🇮🇳 Indian Stock Market · 20 Sectors · Full Framework</div>
+    <h1>Stock Analysis<br/><span>Deep Explanation Guide</span></h1>
+    <p class="masthead-sub">Every analysis pillar, every step — explained in plain language. Understand exactly what each metric measures, why it matters, and how analysts use it to build an investment thesis.</p>
+    <div class="pillar-legend">
+      <div class="pl-chip"><div class="pl-dot" style="background:#1D9E75"></div>Business Quality</div>
+      <div class="pl-chip"><div class="pl-dot" style="background:#534AB7"></div>Fundamentals</div>
+      <div class="pl-chip"><div class="pl-dot" style="background:#BA7517"></div>Valuation</div>
+      <div class="pl-chip"><div class="pl-dot" style="background:#185FA5"></div>Technical</div>
+      <div class="pl-chip"><div class="pl-dot" style="background:#993C1D"></div>Macro</div>
+      <div class="pl-chip"><div class="pl-dot" style="background:#A32D2D"></div>Risk</div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════
+     NAV
+════════════════════════════════════════ -->
+<div class="nav-wrap">
+  <div class="nav-inner" id="navTabs"></div>
+</div>
+
+<!-- ═══════════════════════════════════════
+     CONTENT
+════════════════════════════════════════ -->
+<div class="page-inner" id="pageInner"></div>
+
+<script>
+const PC={Business:"#1D9E75",Fundamentals:"#534AB7",Valuation:"#BA7517",Technical:"#185FA5",Macro:"#993C1D",Risk:"#A32D2D"};
+const ICONS={Business:"🏗️",Fundamentals:"📊",Valuation:"⚖️",Technical:"📈",Macro:"🌐",Risk:"⚠️"};
+
+// ─── SECTOR DATA ────────────────────────────────────────
+const SECTORS=[
+{
+  id:"defence",name:"Defence & Aerospace",nat:"Govt-driven",
+  color:"#185FA5",bg:"#E6F1FB",grp:"Industrial",
+  ex:"HAL, BEL, Mazagon Dock, MTAR, Paras Defence",
+  desc:"India's defence sector is almost entirely funded by government contracts and guided by policies like 'Atmanirbhar Bharat'. Revenue is lumpy but highly visible through multi-year order books. Margins are regulated and growth correlates directly with annual Union Budget allocations.",
+  w:{Business:15,Fundamentals:30,Valuation:20,Technical:10,Macro:15,Risk:10},
+  pillars:{
+    Business:[
+      {n:"Business Model Clarity",d:"Understand whether the company is a <strong>systems integrator</strong> (like HAL, which designs and assembles aircraft) or a <strong>component supplier</strong> (like MTAR, which makes precision parts). Integrators carry more risk but higher margins. Assess the percentage of revenue from defence vs commercial to gauge stability."},
+      {n:"Order Book Analysis",d:"The order backlog (ideally 3–5× annual revenue) is the lifeblood of defence companies. A <strong>book-to-bill ratio above 1.2</strong> means orders are growing faster than revenues — a very positive sign. Examine each order's customer (MoD, Navy, foreign buyer), timeline, and payment structure."},
+      {n:"Indigenisation & IP Ownership",d:"Companies with their own <strong>Intellectual Property (IP)</strong> and design capabilities command higher valuations and are less vulnerable to loss of a single contract. Check if the company can export — export orders diversify away from India's budget cycle risk."},
+      {n:"Manufacturing Capacity & Margins",d:"Assess plant utilisation rates (should be 70%+). Defence margins are often capped by government cost-plus contracts, so efficiency improvements directly flow to profit. Evaluate how cost-efficient the company is vs. government benchmarks."}
+    ],
+    Fundamentals:[
+      {n:"Revenue Recognition Pattern",d:"Defence revenue is <strong>milestone-based</strong>, not monthly recurring. Understand when each order stage triggers revenue. This creates quarterly lumpiness — don't panic at one bad quarter if the order book is intact."},
+      {n:"EBITDA Margin Sustainability",d:"Typical EBITDA margins for defence PSUs are 15–25%. Check if margins are expanding due to operating leverage (more revenue spread over fixed costs) or contracting due to cost overruns or raw-material price increases."},
+      {n:"Return on Capital Employed (RoCE)",d:"For capital-intensive defence manufacturers, RoCE >15% is healthy. A high RoCE means the company converts government contracts into profits efficiently — critical for long-term compounding."},
+      {n:"Working Capital Cycle",d:"Government payments are notoriously slow. Track <strong>debtor days</strong> — if receivables are piling up, the company may need to borrow to fund operations. Debtor days >180 is a red flag for PSU defence companies."},
+      {n:"R&D Expenditure",d:"Companies investing >5% of revenue in R&D are building competitive moats. R&D spending today = new IP, new contracts, and pricing power tomorrow. HAL's R&D on Tejas and helicopter platforms is a prime example."}
+    ],
+    Valuation:[
+      {n:"Price-to-Backlog",d:"Divide the company's market cap by its total order backlog. A ratio below 0.5× suggests undervaluation relative to secured future revenues. This metric is unique to capital-goods and defence — no other sector uses it."},
+      {n:"EV/EBITDA",d:"Enterprise Value divided by EBITDA. For defence companies, 20–30× EV/EBITDA is typical given growth visibility. Compare against peers and historical averages. Paying 50× for slow-growing PSU revenues is a red flag."},
+      {n:"P/E vs. Growth (PEG Ratio)",d:"If earnings are growing 20%+ annually, a P/E of 30× is fair. The PEG ratio (P/E ÷ EPS growth rate) below 1.5× signals a reasonable price for the growth on offer."}
+    ],
+    Technical:[
+      {n:"Trend & Momentum",d:"Defence stocks are <strong>policy-driven</strong>. They move sharply around Budget announcements and geopolitical events. Look for breakouts above key resistance after such catalysts. Moving averages (50-day, 200-day) help identify the underlying trend."},
+      {n:"Volume Confirmation",d:"Price moves on high volume are more reliable. A breakout in HAL or BEL on 3× average volume after a big order win is a strong technical signal of institutional buying."},
+      {n:"Relative Strength",d:"Compare the stock's performance to the Nifty Defence index. Stocks outperforming the sector index in an uptrend are the leaders — the best candidates to hold."}
+    ],
+    Macro:[
+      {n:"Union Budget Defence Capex",d:"India's MoD budget is the single biggest driver. Each Budget sets capital acquisition targets. Track <strong>capital allocation vs. revenue allocation</strong> — capital spending means new equipment purchases, which directly benefit manufacturers."},
+      {n:"Geopolitical Environment",d:"Border tensions with China/Pakistan accelerate indigenous procurement timelines. The Russia-Ukraine war has shown the world why domestic defence capacity matters — this narrative directly benefits Indian defence stocks."},
+      {n:"Atmanirbhar Bharat Policy",d:"The government's 'positive indigenisation list' bans certain defence imports, creating captive demand for Indian manufacturers. Each update to this list is a direct revenue catalyst."},
+      {n:"Export Policy & FDI",d:"India's ambition to achieve ₹35,000 Cr in defence exports creates a completely new revenue stream. Companies approved for export (like Bharat Forge's artillery, BEL's radar) get a valuation re-rating as their revenue base diversifies."}
+    ],
+    Risk:[
+      {n:"Project Cancellation or Delay",d:"Orders worth thousands of crores can be cancelled if geopolitical priorities shift or budget cuts happen. A company with 60% revenue from one project faces severe risk if that project stalls."},
+      {n:"Export Control & Sanctions",d:"Selling advanced defence technology requires government-to-government agreements. A change in India's foreign policy or sanctions from Western countries can block export opportunities overnight."},
+      {n:"Payment Delay Risk",d:"Government payment delays can create serious cash flow stress. If MoD payments are delayed 6+ months, the company must borrow, increasing interest costs and reducing profitability."},
+      {n:"Technology Obsolescence",d:"Defence technology cycles are long (15–20 years) but when disruption comes, it is severe. Check if the company's product lines are future-ready (drones, electronic warfare, space) or dependent on legacy platforms."}
+    ]
+  }
+},
+{
+  id:"renewable",name:"Renewable Energy",nat:"Asset-heavy",
+  color:"#3B6D11",bg:"#EAF3DE",grp:"Energy",
+  ex:"Adani Green, Waaree, NTPC Green, Greenko, SJVN",
+  desc:"Renewable energy companies build and operate solar/wind assets under long-term Power Purchase Agreements (PPAs). Revenue is predictable but the business is highly capital-intensive. Growth is driven by government auction pipelines and the global energy transition narrative.",
+  w:{Business:20,Fundamentals:30,Valuation:20,Technical:10,Macro:15,Risk:10},
+  pillars:{
+    Business:[
+      {n:"Business Model: IPP vs. Manufacturer",d:"Distinguish between <strong>Independent Power Producers (IPPs)</strong> like Adani Green (who own and operate plants) and <strong>manufacturers</strong> like Waaree (who make solar modules). IPPs have stable, bond-like revenues; manufacturers are cyclical and exposed to commodity pricing."},
+      {n:"PPA Coverage Percentage",d:"A Power Purchase Agreement locks in the tariff for 20–25 years. The higher the % of capacity under PPA (ideally 90%+), the more predictable the revenue. Un-contracted capacity is exposed to merchant market price risk."},
+      {n:"Pipeline & Capacity Under Development",d:"Awarded-but-not-yet-built capacity represents future growth. A large pipeline (3–5× current operational capacity) signals strong long-term revenue visibility, provided execution timelines are on track."},
+      {n:"Land Bank & Grid Connectivity",d:"Land acquisition delays and grid evacuation (the ability to transmit generated electricity to consumers) are massive bottlenecks. Companies with pre-approved land and grid connections have a huge execution advantage."}
+    ],
+    Fundamentals:[
+      {n:"Debt Service Coverage Ratio (DSCR)",d:"DSCR = Operating Cash Flow ÷ Total Debt Service. A DSCR above 1.3× means the company generates 30% more cash than needed to service its debt — comfortable. Below 1.1× is dangerous. Renewable companies are highly leveraged, so this metric is critical."},
+      {n:"Capacity Utilisation Factor (CUF)",d:"CUF measures actual generation vs. theoretical maximum generation. For solar, 20–25% CUF is typical; wind varies by site. Low CUF signals poor site selection or equipment underperformance — directly hurting revenue."},
+      {n:"EBITDA Margin per MW",d:"Compare EBITDA per megawatt across companies. Higher margins suggest better tariff rates, lower land costs, or more efficient equipment. This normalises comparisons between companies of different sizes."},
+      {n:"Levelised Cost of Energy (LCOE)",d:"LCOE is the total cost to generate one unit of electricity over the plant's lifetime. Companies with lower LCOE are more competitive in auctions and can bid lower tariffs while maintaining profitability."},
+      {n:"Net Debt/EBITDA",d:"Renewable energy companies typically carry Net Debt/EBITDA of 5–8× due to the asset-heavy nature. Above 10× is concerning. Track this ratio over time — a declining trend signals improving financial health."}
+    ],
+    Valuation:[
+      {n:"EV/MW (Enterprise Value per Megawatt)",d:"This is the industry's primary valuation yardstick. Divide total Enterprise Value by operational MW capacity. Higher EV/MW reflects better quality assets, PPAs at higher tariffs, or premium for pipeline. Compare within peers."},
+      {n:"EV/EBITDA",d:"Typical EV/EBITDA for Indian renewable IPPs is 15–25×. Companies with longer-duration PPAs, better counterparties (central govt vs. state DISCOM), and larger pipelines command premium multiples."},
+      {n:"Pipeline DCF (Discounted Cash Flow)",d:"For growth-stage companies, current EBITDA understates value. A DCF on the full pipeline (applying probability weights to stages: bid, won, under construction) reveals intrinsic value that market prices may not yet reflect."}
+    ],
+    Technical:[
+      {n:"Sector Rotation Signals",d:"Renewable stocks are sensitive to interest rates — they move like long-duration bonds. When RBI signals rate cuts, renewable stocks often re-rate upward. Watch for sector-level breakouts when rate-cut cycles begin."},
+      {n:"Policy Announcement Spikes",d:"MNRE auction results, PLI announcements, or Budget allocations trigger sharp price moves. Technical patterns around these events (e.g., a base forming before a known auction result) offer tactical entry points."}
+    ],
+    Macro:[
+      {n:"MNRE Auction Pipelines",d:"The Ministry of New and Renewable Energy (MNRE) issues tenders for gigawatts of capacity. Companies that win these auctions secure multi-decade revenue streams. Track tender pipelines and award rates."},
+      {n:"RBI Rate Cycles",d:"Since renewable projects are funded by long-term debt, lower interest rates directly reduce financing costs and improve project returns. A 1% fall in interest rates can improve project IRR by 1.5–2%."},
+      {n:"Solar Module Prices",d:"Module prices have fallen 90% over the last decade. When prices fall, projects become cheaper to build, expanding margins and making more auctions viable. Rising module prices (due to polysilicon shortages) squeeze margins."},
+      {n:"State DISCOM Financial Health",d:"Most solar/wind power is purchased by state electricity distribution companies (DISCOMs). If DISCOMs are financially stressed (delayed payments, lower-than-contracted offtake), IPPs face significant cash flow risk."}
+    ],
+    Risk:[
+      {n:"DISCOM Payment Delays",d:"State DISCOMs have historically delayed payments by 6–18 months. This is the #1 operational risk for Indian renewable IPPs. Check the receivable days and whether the government has provided payment guarantees."},
+      {n:"Curtailment Risk",d:"Grid curtailment happens when the grid cannot absorb all generated power — plants are forced to shut down despite generating electricity. Lost generation = lost revenue. This is rising as renewable capacity outpaces grid infrastructure."},
+      {n:"Tariff Renegotiation Risk",d:"State governments have historically attempted to renegotiate PPAs signed at higher tariff rates, citing unforeseen cost declines. While legally difficult, prolonged disputes create uncertainty and stock price pressure."},
+      {n:"Land Acquisition & Litigation",d:"Large solar parks require thousands of acres. Land acquisition disputes, forest clearance delays, or local community opposition can delay projects by 12–36 months, significantly hurting project IRR."}
+    ]
+  }
+},
+{
+  id:"tech",name:"Technology / IT Services",nat:"Growth-led",
+  color:"#534AB7",bg:"#EEEDFE",grp:"Technology",
+  ex:"TCS, Infosys, Wipro, HCL Tech, LTIMindtree",
+  desc:"Indian IT companies provide software development, business process outsourcing, and digital transformation services to global clients — primarily in the US and Europe. Revenue is dollar-denominated, making it naturally hedged against INR weakness. Growth depends heavily on discretionary IT spending in Western markets.",
+  w:{Business:25,Fundamentals:20,Valuation:25,Technical:15,Macro:10,Risk:10},
+  pillars:{
+    Business:[
+      {n:"Service Mix & Vertical Exposure",d:"Understand the revenue split between <strong>Application Development & Maintenance (ADM)</strong>, cloud transformation, BPO, and emerging services (AI/ML, cybersecurity). Companies with higher digital/cloud revenue grow faster and command premium valuations."},
+      {n:"Total Contract Value (TCV) of Deal Wins",d:"New deal wins are the leading indicator of future revenue. A company winning $3–5 billion in TCV per quarter has strong revenue visibility. Watch the mix: large long-duration deals signal stability; smaller deals signal agility."},
+      {n:"Client Concentration & Mining",d:"Revenue from the top 10 clients as a % of total revenue measures concentration risk. More importantly, track whether the company is 'mining' clients — expanding wallet share within existing relationships — vs. relying on new wins."},
+      {n:"Talent Engine & Attrition",d:"IT is a people business. Attrition above 20% is concerning — it signals employee dissatisfaction, increases recruitment/training costs, and disrupts project delivery. Track attrition trends alongside utilisation rates (billable employees/total headcount)."}
+    ],
+    Fundamentals:[
+      {n:"Constant Currency Revenue Growth",d:"Since IT revenues are earned in USD/EUR but reported in INR, currency movements distort growth numbers. Constant currency (CC) growth strips out exchange rate effects, showing the true business momentum."},
+      {n:"EBITDA Margin Trajectory",d:"Tier-1 IT firms maintain EBITDA margins of 20–28%. Margins are pressured by: wage hikes, high attrition, onsite employee costs, and subcontracting. Expanding margins in a growth environment signals excellent operational discipline."},
+      {n:"Free Cash Flow Conversion",d:"IT companies have low capex needs (mainly laptops and offices), so FCF conversion should be 85%+ of net profit. High FCF enables dividends, buybacks, and M&A. Low FCF despite high profits signals working capital issues."}
+    ],
+    Valuation:[
+      {n:"P/E Ratio with Sector Context",d:"IT companies trade at 20–35× P/E. Premium is justified by: high ROE, dollar earnings, low capex, and consistent growth. A P/E of 30× for a company growing EPS at 15% (PEG = 2×) is fair; paying 30× for 5% EPS growth is not."},
+      {n:"EV/Revenue Multiple",d:"Particularly useful when earnings are temporarily depressed. Mid-cap IT companies trade at 2–5× revenue. Higher multiples reflect faster growth and better margins. Compare to US peers (trade at 5–10× revenue) to gauge relative value."},
+      {n:"PEG Ratio",d:"PEG (P/E ÷ EPS growth rate) below 1.5× is attractive for quality IT companies. This normalises valuation for different growth rates — preventing the mistake of paying the same P/E for slow-growing and fast-growing companies."}
+    ],
+    Technical:[
+      {n:"USD/INR Correlation",d:"IT stocks often move inversely to INR strength. When the rupee weakens, IT stocks rally as dollar revenues translate to more rupees. Monitor this relationship during currency volatility."},
+      {n:"Quarterly Result Patterns",d:"IT companies report results quarterly. Historically, stocks move 5–15% on results. Technical analysis of pre-result base formations and post-result momentum can identify high-probability trades."},
+      {n:"Sector Leadership Rotation",d:"Within IT, large-caps (TCS, Infosys) and mid-caps (Coforge, Mphasis) move in different cycles. When large-caps consolidate, mid-caps often outperform and vice versa."}
+    ],
+    Macro:[
+      {n:"US Economic Cycle & IT Spending",d:"80% of IT revenues come from US/Europe. A US recession leads to client budget cuts, project deferrals, and hiring freezes at IT companies. The 2022–23 slowdown in BFSI spending directly hit IT deal flows."},
+      {n:"USD/INR Exchange Rate",d:"Every 1% INR depreciation adds ~0.5–0.8% to IT operating margins (since costs are primarily INR-denominated). Track RBI intervention, current account deficit, and US Fed policy as the key determinants."}
+    ],
+    Risk:[
+      {n:"Client Concentration Risk",d:"If one client contributes 15%+ of revenue and that client faces trouble (bankruptcy, budget cuts, insourcing), the IT company faces immediate revenue risk. Diversification across clients and geographies is crucial."},
+      {n:"AI Disruption",d:"Generative AI is automating routine coding, testing, and BPO tasks. Companies slow to adapt risk revenue compression as clients need fewer person-hours. Track each company's AI strategy — are they a seller of AI solutions or a victim of AI?"},
+      {n:"Visa Policy & Onsite Delivery",d:"H-1B visa restrictions in the US can force IT companies to hire locally (at higher cost) or reduce onsite presence. This directly compresses margins and complicates delivery for clients who require onsite work."}
+    ]
+  }
+},
+{
+  id:"banking",name:"Banking",nat:"Risk-driven",
+  color:"#1D9E75",bg:"#E1F5EE",grp:"Financials",
+  ex:"HDFC Bank, ICICI Bank, Kotak, SBI, Axis Bank",
+  desc:"Banks intermediate between savers and borrowers, earning the spread between lending rates and deposit costs. Their entire business model is built on risk management — lending to the right customers at the right rates. Unlike other sectors, the balance sheet IS the business, making book value and asset quality the primary analytical lens.",
+  w:{Business:15,Fundamentals:25,Valuation:15,Technical:10,Macro:20,Risk:30},
+  pillars:{
+    Business:[
+      {n:"Loan Book Composition",d:"Break down the loan book by segment: retail (home loans, personal loans, auto), corporate, MSME, agriculture. Retail-heavy books are more diversified and typically safer; corporate books can have lumpy NPA risk. Track segment-wise growth trends."},
+      {n:"CASA Ratio",d:"Current Account Savings Account (CASA) deposits are low-cost funds. A CASA ratio >40% means the bank funds a large portion of its loans at near-zero cost, widening net interest margins. HDFC Bank's consistently high CASA is a core competitive advantage."},
+      {n:"Liability Franchise Quality",d:"Assess brand strength in deposit mobilisation. Banks with strong retail deposit networks (branch density, digital channels) have more stable and cheaper funding. Wholesale-funded banks are vulnerable during liquidity squeezes."}
+    ],
+    Fundamentals:[
+      {n:"Net Interest Margin (NIM)",d:"NIM = (Interest Income - Interest Expense) ÷ Earning Assets. This is the bank's core profitability metric. NIMs of 3.5–4.5% are excellent for Indian private banks. Rising rates help NIM if the bank's loans reprice faster than deposits."},
+      {n:"Gross NPA % (Non-Performing Assets)",d:"GNPA is the percentage of loans that have stopped paying. Above 3% is concerning; above 5% signals serious credit quality problems. Track quarter-on-quarter trends — rising GNPAs are an early warning system."},
+      {n:"Credit Cost",d:"Credit cost is the loan-loss provision as % of average loans. A credit cost of 0.5–1% is normal. Spikes in credit cost (2%+) indicate a credit quality deterioration event and directly hit profitability."},
+      {n:"Return on Assets (RoA) & Return on Equity (RoE)",d:"RoA >1.5% and RoE >15% are hallmarks of premium Indian banks. These metrics measure how efficiently the bank converts its asset base and shareholder equity into profits."},
+      {n:"Capital Adequacy Ratio (CAR)",d:"RBI mandates minimum 11.5% CAR. A higher CAR (15%+) signals the bank can absorb losses and grow its loan book without needing to raise equity frequently. Very high CAR may indicate growth opportunities are being missed."}
+    ],
+    Valuation:[
+      {n:"Price-to-Book Value (P/BV)",d:"Banks are valued primarily on P/BV. Premium banks (HDFC, Kotak) trade at 3–5× book; PSU banks trade at 0.5–1.5×. A bank trading below book value (P/BV <1) may signal a value opportunity or deep distress."},
+      {n:"RoA-Based Fair Value",d:"A bank generating 1.8% RoA should trade at a premium P/BV vs. a bank generating 0.8% RoA. Use RoA as a bridge to justify P/BV — if RoA is improving, P/BV re-rating is likely."},
+      {n:"Never Use P/E Alone",d:"P/E is misleading for banks because provisions (non-cash charges for bad loans) can swing earnings dramatically. A bank can show low P/E simply because it under-provisioned. Always anchor valuation to P/BV and RoA."}
+    ],
+    Technical:[
+      {n:"Rate Cycle Positioning",d:"Bank stocks move sharply with RBI policy signals. Rate hike cycles initially benefit NIM (loan rates reprice faster than deposits), but eventually slow credit growth. Rate cut cycles compress NIM initially but boost loan demand."},
+      {n:"RBI Policy Day Volatility",d:"RBI Monetary Policy Committee announcements create immediate price reactions. Technical traders often position ahead of these events by studying historical price patterns around policy days."}
+    ],
+    Macro:[
+      {n:"RBI Rate Cycle",d:"The repo rate is the most important macro variable for banks. When RBI raises rates, banks earn more on floating-rate loans immediately. When it cuts, deposit costs fall with a lag — this creates a temporary margin expansion."},
+      {n:"Credit Growth in the Economy",d:"India's credit-to-GDP ratio is ~55% vs. 150%+ in developed economies — suggesting massive headroom for growth. But short-term credit cycles (boom and bust) drive quarterly NIM and NPA trends."},
+      {n:"Fiscal Health & Govt Borrowing",d:"Heavy government borrowing pushes up long-term bond yields, which affects bank treasury portfolios. Banks holding large government bond books face mark-to-market losses when yields rise."}
+    ],
+    Risk:[
+      {n:"NPA Surge & Asset Quality Deterioration",d:"This is the most critical risk. A sudden spike in NPAs (due to economic slowdown, sector stress, or fraud) can wipe out years of profits through provisioning. GNPA trends are the single most important metric to watch."},
+      {n:"ALM Mismatch",d:"Asset-Liability Mismatch occurs when a bank funds long-term assets (home loans) with short-term liabilities (FDs). If short-term rates spike suddenly, the bank pays more on deposits while earning less on existing loans."},
+      {n:"Regulatory Action Risk",d:"RBI can restrict business activities (as it did with HDFC Bank's new credit card issuance in 2020) or impose penalties. Any RBI action immediately creates uncertainty and depresses the stock."},
+      {n:"Concentration in Vulnerable Sectors",d:"If a bank has 20%+ of its loans in one cyclical sector (real estate, steel, infrastructure), a sectoral downturn can trigger a wave of NPAs simultaneously, as we saw with YES Bank's infrastructure lending."}
+    ]
+  }
+},
+{
+  id:"pharma",name:"Pharma & Healthcare",nat:"Pipeline-led",
+  color:"#993C1D",bg:"#FAECE7",grp:"Healthcare",
+  ex:"Sun Pharma, Dr Reddy's, Cipla, Divi's, Lupin",
+  desc:"Indian pharma companies serve both domestic branded markets and regulated export markets (primarily USA and Europe). The US generics business is high-margin but fiercely competitive and subject to FDA oversight. The domestic business is steady but lower-margin. API (Active Pharmaceutical Ingredient) manufacturers like Divi's are the backbone suppliers to branded drugmakers globally.",
+  w:{Business:25,Fundamentals:20,Valuation:20,Technical:15,Macro:10,Risk:20},
+  pillars:{
+    Business:[
+      {n:"Revenue Mix: US Generic vs. Domestic vs. API",d:"A company earning 50%+ from the US has high growth potential but also high risk (FDA, pricing pressure). Domestic-heavy companies (like Torrent) have more stable, predictable revenues. Pure-play API companies (Divi's, Aarti Pharma) serve as B2B suppliers with stable but volume-driven margins."},
+      {n:"ANDA Pipeline",d:"ANDAs (Abbreviated New Drug Applications) are filings with the US FDA to sell generic versions of branded drugs. A large, diverse ANDA pipeline (200+ filed, 80+ approved) provides revenue visibility. First-to-file status on an ANDA earns <strong>6-month exclusivity</strong> — a potential blockbuster opportunity."},
+      {n:"R&D as % of Revenue",d:"Companies spending 7–12% of revenue on R&D are investing in future competitive advantage — through complex generics, biologics, or specialty drugs. Low R&D spend (<5%) signals commoditisation risk in the generics business."},
+      {n:"Branded vs. Generic Strategy",d:"In the domestic market, branded generics command much higher margins than unbranded generics. Companies with strong prescription brands (like Sun Pharma's Halol plant brands or Abbott India) have pricing power and sustainable margins."}
+    ],
+    Fundamentals:[
+      {n:"US Generics Revenue per ANDA",d:"Calculate revenue per approved ANDA to measure the productivity of the pipeline. High revenue-per-ANDA signals differentiated products (injectables, complex formulations) rather than plain tablet generics competing on price alone."},
+      {n:"Gross Margin Trajectory",d:"Pharma gross margins of 55–70% are normal. Compression signals pricing pressure in the US market or raw material (API) cost increases. Margin expansion signals successful launches of complex or niche products."},
+      {n:"FCF Generation & Working Capital",d:"Pharma companies have high inventory cycles (raw materials → manufacturing → regulatory approval → shipping). Track inventory days and receivable days. A company with 90-day inventory and 60-day receivables needs more working capital than peers."}
+    ],
+    Valuation:[
+      {n:"EV/EBITDA for Regulated Markets",d:"Indian pharma companies with significant US revenue trade at 18–28× EV/EBITDA. Premium reflects pipeline quality and FDA relationship. Companies with recent import alerts or pricing headwinds compress to 10–15×."},
+      {n:"Pipeline DCF",d:"For companies with significant specialty drug pipelines or biosimilar programs, a DCF valuing probability-weighted future launches can reveal hidden value. Assign probabilities (30–60%) to pipeline stages and discount at appropriate rates."},
+      {n:"Domestic Branded Premium",d:"Pure domestic-focused pharma companies trade at 30–40× P/E — premium to the market. This reflects the stable, growing nature of prescription medicine demand in India regardless of economic cycles."}
+    ],
+    Technical:[
+      {n:"FDA Action Volatility",d:"USFDA inspections, import alerts, or Complete Response Letters (CRL) can move pharma stocks 15–30% in a single day. Technical analysis of price behaviour around known inspection dates and PDUFA dates (drug approval deadlines) is key."},
+      {n:"52-Week Range and Recovery Patterns",d:"Post-FDA-warning stocks that successfully remediate manufacturing issues tend to recover sharply. Identifying the technical bottom of an FDA-driven correction and monitoring for recovery signals is a valuable strategy."}
+    ],
+    Macro:[
+      {n:"USFDA Approval Calendar",d:"PDUFA (Prescription Drug User Fee Act) dates are publicly known timelines for FDA drug approval decisions. Tracking these for key pipeline products helps predict potential positive catalysts."},
+      {n:"US Drug Pricing Policy",d:"The US government's drug pricing negotiations under the Inflation Reduction Act can reduce revenue for branded drugs at Indian companies with branded/specialty exposure. Generic pricing is separately driven by competition intensity in each therapeutic category."},
+      {n:"China+1 API Opportunity",d:"Post-COVID, global pharma companies are reducing API dependence on China, creating a massive opportunity for Indian API manufacturers. This structural trend benefits companies like Divi's, Laurus Labs, and Aarti Pharma Labs."}
+    ],
+    Risk:[
+      {n:"USFDA Import Alert",d:"An import alert effectively bans exports from the flagged manufacturing facility to the US market. This can eliminate 20–40% of a company's revenue overnight. The remediation process typically takes 12–24 months."},
+      {n:"US Generic Price Erosion",d:"When multiple companies launch a generic drug, prices fall 80–90% from branded levels within 2–3 years as competitors undercut each other. Companies heavily dependent on a few products face cliff-edge revenue risk when these products genericise."},
+      {n:"Patent Cliff & Pipeline Risk",d:"Branded pharma companies face revenue cliffs when key patents expire. For Indian companies, pipeline delays (failed clinical trials, FDA rejections) can leave significant valuation gaps if a key product doesn't launch on schedule."},
+      {n:"Raw Material & API Cost Spikes",d:"Many APIs are sourced from China. Disruptions (shipping cost spikes, Chinese export restrictions) can compress margins significantly. Companies with backward integration (making their own APIs) are more protected."}
+    ]
+  }
+},
+{
+  id:"fmcg",name:"FMCG",nat:"Brand-led",
+  color:"#BA7517",bg:"#FAEEDA",grp:"Consumer",
+  ex:"HUL, ITC, Nestle, Dabur, Marico, Godrej Consumer",
+  desc:"Fast-Moving Consumer Goods companies sell everyday products — soaps, shampoos, biscuits, packaged foods — through massive distribution networks reaching every town and village in India. Their economic moat is built on brand loyalty, distribution reach, and pricing power. Growth comes from premiumisation and rural penetration.",
+  w:{Business:25,Fundamentals:20,Valuation:25,Technical:10,Macro:15,Risk:10},
+  pillars:{
+    Business:[
+      {n:"Volume Growth vs. Price Growth",d:"Volume growth is the 'real' growth — it means more units sold. Price growth just means charging more for the same unit. Sustainable FMCG companies grow volumes 5–8% annually while also taking periodic price hikes to pass on raw material costs."},
+      {n:"Market Share in Core Categories",d:"In each product category (hair oil, toothpaste, soaps), track market share trends using Nielsen/IQVIA data. Market share gains in a flat category are more valuable than revenue growth in a growing category because they reflect competitive superiority."},
+      {n:"Distribution Depth: Urban vs. Rural",d:"Urban India (~450 million consumers) is saturated; rural India (~900 million consumers) is the growth frontier. Companies reaching kirana stores in Tier 3–4 towns and villages have a structural advantage as rural incomes rise."},
+      {n:"Brand Portfolio & Premiumisation",d:"A portfolio spanning value, mid, and premium segments provides resilience. When rural demand slows, premium urban products cushion revenues. Track the % of revenue from premium products growing over time — it signals margin expansion ahead."}
+    ],
+    Fundamentals:[
+      {n:"Gross Margin Stability",d:"FMCG gross margins are 45–60%. Pressure comes from raw material spikes (palm oil, crude-derived plastics, wheat). The best companies maintain gross margins by hiking prices or reformulating products without consumers noticing."},
+      {n:"Operating Leverage",d:"When revenue grows faster than fixed costs (advertising, distribution infrastructure), EBITDA margins expand. FMCG companies with large distribution networks have high fixed costs but significant operating leverage once scale is achieved."},
+      {n:"Working Capital Excellence",d:"The best FMCG companies (like HUL) have <em>negative</em> working capital — they collect cash from distributors before paying suppliers. This means they use supplier credit to fund growth, requiring zero incremental capital."}
+    ],
+    Valuation:[
+      {n:"Premium P/E: Is it Justified?",d:"HUL trades at 50–60× P/E, Nestle at 70–80×. This premium reflects predictable earnings, strong brands, and capital efficiency. Use the 'quality premium' framework: pay up for companies with 15%+ RoE, 5%+ volume growth, and expanding margins."},
+      {n:"EV/EBITDA vs. Peers",d:"Compare EV/EBITDA across the FMCG universe. Premium over the 5-year historical average of more than 20% warrants caution. FMCG re-ratings happen when rural demand accelerates — watch for monsoon seasons."},
+      {n:"Dividend Yield as a Valuation Signal",d:"Mature FMCG companies pay 2–4% dividend yields. When the dividend yield approaches 3–4%, it often signals the stock is near fair value from an income perspective. Very low dividend yields (<1%) signal expensive valuations."}
+    ],
+    Technical:[
+      {n:"Defensive Accumulation Patterns",d:"FMCG stocks are 'defensive' — they outperform in bear markets as investors seek stable earnings. Watch for accumulation patterns (rising volume on flat/declining prices) when broader markets sell off."},
+      {n:"Monsoon & Result Season Catalysts",d:"Good monsoon forecasts lead to FMCG re-ratings as rural demand is expected to surge. Q3 results (October-December) reflect festive season and rural demand — historically FMCG's strongest quarter."}
+    ],
+    Macro:[
+      {n:"Monsoon & Rural Income",d:"India's rural economy is closely tied to agricultural incomes, which are determined by monsoon rains and crop prices (MSP). A good monsoon = higher farm incomes = higher rural FMCG consumption. FMCG stocks often rally before monsoon season."},
+      {n:"Raw Material Price Cycles",d:"Palm oil, crude oil derivatives (plastics packaging), wheat, sugar — these are the key raw materials. When global commodity prices spike, FMCG gross margins compress. The ability to pass on costs through price hikes without losing volume determines brand strength."},
+      {n:"Inflation vs. Real Wage Growth",d:"High CPI inflation erodes urban consumers' purchasing power, driving them to private-label products. But moderate inflation with rising wages is ideal — consumers can afford branded products and also afford to trade up."}
+    ],
+    Risk:[
+      {n:"Raw Material Inflation",d:"Sharp and sustained commodity price spikes can compress gross margins by 3–5 percentage points. If the company cannot pass on costs (due to competitive pressure), earnings fall sharply. Track palm oil prices, crude, and agricultural commodity futures."},
+      {n:"Private Label Competition",d:"Retailer own-brands (DMart's D-Mart brand, Reliance's Smart Bazaar brands) are gaining share in commoditised categories like detergent and edible oil. This erodes branded FMCG market share in value segments."},
+      {n:"Rural Demand Slowdown",d:"A drought year or agricultural distress can wipe out 2–3 quarters of rural growth. Given that rural India contributes 35–40% of FMCG revenues, a sustained rural slowdown significantly impacts growth."}
+    ]
+  }
+},
+{
+  id:"infra",name:"Infrastructure & EPC",nat:"Project-driven",
+  color:"#5F5E5A",bg:"#F1EFE8",grp:"Industrial",
+  ex:"L&T, IRB Infra, KNR Constructions, NCC, PNC Infra",
+  desc:"EPC (Engineering, Procurement & Construction) companies build roads, bridges, metros, ports, and power plants under fixed-price or cost-plus government contracts. Revenue is project-based and lumpy. The key variables are order inflows, execution pace, and working capital management. L&T is the sector bellwether.",
+  w:{Business:20,Fundamentals:25,Valuation:20,Technical:10,Macro:20,Risk:15},
+  pillars:{
+    Business:[
+      {n:"Order Book Depth",d:"The order book (contracts won but not yet executed) should be 3–4× annual revenue for EPC companies. This gives visibility into the next 3–4 years of revenue. Track order inflow momentum — new orders each quarter must exceed quarterly revenue to maintain order book depth."},
+      {n:"Segment Mix",d:"EPC companies work across roads, metros, buildings, water, power, and defence. Segments with faster payment cycles (buildings) are more working capital-friendly than long-gestation projects (metros, tunnels). Premium margins go to technically complex projects."},
+      {n:"Client Mix & Payment Terms",d:"Central government clients (NHAI for roads, Railways) pay faster and more reliably than state government clients. Private sector clients often pay faster still but with less order consistency. A client mix tilted toward central govt is preferred."}
+    ],
+    Fundamentals:[
+      {n:"Revenue Recognition vs. Billing",d:"EPC revenue is recognised on percentage-of-completion basis. Track whether actual billing matches recognised revenue — large gaps signal disputed work or payment holdups. Watch for 'retention money' (10–15% of each bill held back until project completion)."},
+      {n:"EBITDA Margin Quality",d:"EPC margins of 8–12% are typical. Check whether margins are stable across segments. Margin compression signals cost overruns (commodity prices rose more than estimated), competitive bidding (winning projects at thin margins), or project execution issues."},
+      {n:"Working Capital Days",d:"EPC is notorious for working capital intensity. Track debtor days (how long customers take to pay) and creditor days (how long the company takes to pay suppliers). Net working capital days of 60–90 is manageable; above 120 days signals stress."}
+    ],
+    Valuation:[
+      {n:"EV/EBITDA",d:"EPC companies trade at 12–20× EV/EBITDA depending on order book quality and execution track record. Premium is awarded for consistent execution, low working capital, and diversified order books. Distressed companies trade at 6–8×."},
+      {n:"P/E with Earnings Normalisation",d:"EPC earnings are lumpy. Use a 3-year average P/E rather than trailing 12-month. Also note: companies that aggressively bid low-margin projects can inflate revenue while compressing earnings — making P/E misleading in such periods."},
+      {n:"EV/Order Book",d:"Market cap as a multiple of order book. Typically 0.3–0.6×. Below 0.2× may signal deep undervaluation; above 0.8× suggests the market is pricing significant future order wins that may not materialise."}
+    ],
+    Technical:[
+      {n:"Budget Day Momentum",d:"Infrastructure stocks rally sharply when the Union Budget announces higher capital expenditure. Positioning before the Budget (January–February) and monitoring post-Budget momentum is a classic trade."},
+      {n:"Long-Duration Trend Following",d:"EPC cycles are multi-year. Once in an upcycle (high govt capex, fast awarding), stocks trend for 2–4 years. Technical trend-following strategies (moving averages, ADX) work well in such environments."}
+    ],
+    Macro:[
+      {n:"Government Capital Expenditure",d:"The central government's capex budget is the single biggest demand driver for EPC companies. Track both the Budget announcement and the actual spending pace (monthly controller of accounts data) — announced capex that isn't spent doesn't create orders."},
+      {n:"NITI Aayog & Infrastructure Pipeline",d:"The National Infrastructure Pipeline (NIP) and PM Gati Shakti program outline ₹100+ lakh crore of projects over 5 years. Track projects moving from planning to bidding stage as this creates near-term order opportunities."},
+      {n:"Interest Rates & Financing Costs",d:"EPC companies borrow heavily for working capital. Rising interest rates directly compress profits. A 1% rise in rates on ₹3,000 Cr of debt = ₹30 Cr higher interest cost — potentially 20%+ of profits for mid-cap EPC companies."}
+    ],
+    Risk:[
+      {n:"Working Capital Stress",d:"If clients delay payments, EPC companies must borrow to pay their own suppliers and workers. This can spiral — higher debt → higher interest → further profit erosion. Watch debt-to-equity crossing 1× as an early warning."},
+      {n:"Payment Delays from Govt",d:"State governments (irrigation, buildings) are notorious for delayed payments. Arbitration claims can be significant — if large, they signal disputes that may take years to resolve and represent contingent liabilities."},
+      {n:"Cost Overruns",d:"Fixed-price contracts expose EPC companies to cost inflation risk. If steel prices rise 30% after signing a fixed-price contract, the margin on that project collapses. Most large companies now build price-escalation clauses into contracts."}
+    ]
+  }
+},
+{
+  id:"auto",name:"Auto & Auto Ancillaries",nat:"Cycle-driven",
+  color:"#D85A30",bg:"#FAECE7",grp:"Consumer",
+  ex:"Maruti, Bajaj Auto, M&M, Bosch, Motherson, Minda",
+  desc:"The auto sector spans OEMs (Original Equipment Manufacturers who make vehicles) and ancillaries (component suppliers). It is deeply cyclical, tied to interest rates, fuel prices, and consumer confidence. The EV transition is the decade-defining theme, creating both opportunities (new players, battery suppliers) and disruption (combustion-engine parts makers).",
+  w:{Business:20,Fundamentals:25,Valuation:20,Technical:15,Macro:15,Risk:10},
+  pillars:{
+    Business:[
+      {n:"Volume Growth by Segment",d:"Track monthly retail and wholesale volumes by segment: 2-wheelers (rural demand), passenger vehicles (urban middle class), commercial vehicles (freight/economic activity), and EVs (future). Each segment has different demand drivers and margin profiles."},
+      {n:"Average Selling Price (ASP) Trend",d:"ASP rising faster than volume means the company is premiumising — selling more expensive models. This is highly positive for margins. Falling ASP signals competition-driven discounting or a portfolio shift toward entry-level products."},
+      {n:"EV Transition Positioning",d:"For OEMs, assess the EV portfolio pipeline — models planned, manufacturing investments, and EV revenue as % of total. For ancillaries, evaluate how much of their product revenue comes from ICE-only components (at risk) vs. EV-compatible components (growth)."},
+      {n:"Dealer Health & Inventory",d:"Dealer inventory levels (target: 45–60 days) indicate near-term sales health. High inventory (>75 days) means the wholesale channel is clogged — OEMs will need to cut production or offer discounts to clear stock."}
+    ],
+    Fundamentals:[
+      {n:"EBITDA Margin Cycle Position",d:"Auto margins are highly cyclical. At the peak of a cycle, OEM EBITDA margins reach 12–15%; at the trough, they compress to 6–8%. Understanding where we are in the cycle is critical to buy/sell decisions."},
+      {n:"Return on Capital Employed",d:"Good auto OEMs generate 20%+ RoCE through the cycle. Ancillaries with more diversified customers can maintain steadier RoCE. Watch for capital allocation decisions — companies that over-invest in capacity at cycle peaks often underperform."},
+      {n:"Free Cash Flow in Down Cycles",d:"Companies that remain FCF positive even in cyclical downturns have superior business models (lower fixed cost base, better working capital management). Track FCF across the cycle rather than just at peak earnings."}
+    ],
+    Valuation:[
+      {n:"P/E at Mid-Cycle Earnings",d:"Never value auto stocks on peak or trough earnings. Use mid-cycle normalised EPS. Maruti at 25× mid-cycle earnings is a different story from Maruti at 40× peak earnings — the former is attractive, the latter is risky."},
+      {n:"EV/EBITDA for Ancillaries",d:"Ancillaries trade at 10–20× EV/EBITDA. Those supplying EV-compatible components (wiring harnesses, sensors, BMS) command premium multiples. ICE-only component makers are valued at discounts as EV penetration grows."},
+      {n:"P/FCF for Capital Return Stories",d:"Companies consistently generating high FCF and returning capital (Bajaj Auto via dividends, Bosch via buybacks) deserve premium valuations. P/FCF <15× for such companies is generally attractive."}
+    ],
+    Technical:[
+      {n:"Volume Data as Leading Indicator",d:"Society of Indian Automobile Manufacturers (SIAM) publishes monthly wholesale volume data. Rising sequential volumes 3 months in a row signal a cyclical upturn — often a 2–3 month lead over stock price moves."},
+      {n:"Festive Season Patterns",d:"Auto stocks typically rally ahead of the October–November festive season (Navratri, Diwali) when retail volumes peak. Technical breakouts ahead of festive season on rising volume are common tradeable patterns."}
+    ],
+    Macro:[
+      {n:"Interest Rate Impact on EMIs",d:"Most vehicle purchases in India are financed via EMIs. A 1% rise in auto loan rates increases monthly EMI on a ₹10 lakh car loan by ~₹500–600. This directly reduces the pool of affordable buyers and slows volume growth."},
+      {n:"Fuel Prices",d:"High petrol/diesel prices push consumers toward CNG, electric, and hybrid vehicles. Track fuel price trends as a proxy for the pace of EV adoption and demand for fuel-efficient vehicles in each segment."},
+      {n:"EV Policy & PLI Scheme",d:"Government subsidies (FAME II scheme), PLI for batteries and EVs, and state-level EV policies directly influence the economics of EV manufacturing and adoption. Changes to these policies create sector-wide re-rating events."}
+    ],
+    Risk:[
+      {n:"Commodity Cost Spikes",d:"Steel (bodies), aluminium (engines), copper (wiring), and rare earth metals (EV motors) are all key inputs. A sudden spike in any of these, if not contractually passed on to OEMs, directly hits ancillary margins."},
+      {n:"EV Disruption for ICE Parts",d:"Disc brakes, exhaust systems, fuel injectors, and transmission components become obsolete in a pure EV world. Ancillaries heavily dependent on these ICE-specific components face a multi-year revenue decline risk as EV penetration rises."},
+      {n:"Semiconductor Shortage",d:"Modern vehicles use 1,000–3,000 chips. Any global semiconductor shortage (as seen in 2021–22) can halt vehicle production lines, causing revenue loss for OEMs and abrupt production cuts for ancillaries."}
+    ]
+  }
+},
+{
+  id:"metals",name:"Metals & Mining",nat:"Commodity-driven",
+  color:"#888780",bg:"#F1EFE8",grp:"Materials",
+  ex:"Tata Steel, Hindalco, JSW Steel, NMDC, Vedanta",
+  desc:"Metal companies produce steel, aluminium, copper, and other base metals — pure commodity businesses where the market price is set globally. Their profitability is almost entirely determined by the commodity price cycle, not management decisions. Understanding the global supply-demand balance is more important than analysing individual company financials.",
+  w:{Business:15,Fundamentals:20,Valuation:20,Technical:20,Macro:20,Risk:15},
+  pillars:{
+    Business:[
+      {n:"Cost Curve Position",d:"In a commodity business, the lowest-cost producer wins. Companies in the bottom quartile of the global cost curve can remain profitable even at cycle lows, while high-cost producers run at losses. Understand the company's cost per tonne of steel/aluminium vs. global peers."},
+      {n:"Captive Resources",d:"Companies with captive iron ore mines (Tata Steel's Noamundi mines, NMDC) or captive coal (SAIL's collieries) have structurally lower costs and are less exposed to raw material price volatility. This is the ultimate competitive advantage in metals."},
+      {n:"Capacity Utilisation",d:"Track utilisation rates — companies running at 85%+ utilisation have the most operating leverage. When demand picks up and they run at 95%, fixed costs are spread over more units, dramatically improving margins."}
+    ],
+    Fundamentals:[
+      {n:"EBITDA per Tonne",d:"The primary profitability metric. EBITDA/tonne of steel (typically $80–150/tonne for Indian integrated steelmakers) allows direct comparison across companies and against global benchmarks. When steel prices rise $50/tonne and costs rise $20/tonne, EBITDA/tonne expands by $30."},
+      {n:"Net Debt/EBITDA",d:"Metals companies are capital-intensive and often highly leveraged. During commodity downturns, earnings fall sharply while debt remains fixed — creating leverage risk. Track this ratio at the top of cycles to identify over-leveraged companies vulnerable to downturns."},
+      {n:"Capex Cycle",d:"Large capex programs (new blast furnaces, new smelters) compress FCF for 3–5 years but set up the company for the next upcycle. Understand which companies are mid-capex (FCF drain now, capacity later) vs. post-capex (harvesting returns)."}
+    ],
+    Valuation:[
+      {n:"EV/EBITDA on Mid-Cycle Earnings",d:"Never value metals on peak-cycle EBITDA — it leads to buying at the top. Use a mid-cycle or trough EBITDA scenario. 4–6× EV/EBITDA on trough earnings is a classic value entry point for quality metals companies."},
+      {n:"P/BV vs. RoE",d:"During a commodity trough, metals companies trade at 0.5–1× book value. This signals that the market expects earnings to remain below cost of capital. A recovery to 2–3× P/BV signals a full cycle re-rating."},
+      {n:"Replacement Cost",d:"What would it cost to build the same capacity today? If a steel plant is trading at 30–40% of its replacement cost, the stock market is heavily discounting its value — potentially a bargain."}
+    ],
+    Technical:[
+      {n:"Commodity Price as Primary Driver",d:"Steel, aluminium, and copper prices (LME, SHFE) are more important than the stock chart itself. The stock simply reflects the commodity price with leverage. Track commodity prices weekly and look for turning points."},
+      {n:"China PMI & Inventory Data",d:"China accounts for 55% of global steel and 60% of aluminium consumption. Chinese manufacturing PMI, real estate starts, and Shanghai Futures Exchange inventory levels are the most critical leading indicators for metals prices — and thus stocks."},
+      {n:"Relative Strength Rotation",d:"Within metals, steel, aluminium, copper, and zinc have different cycle timings. Steel follows construction; copper follows manufacturing and EVs; aluminium follows auto and packaging. Sector rotation within metals based on these drivers is a valid strategy."}
+    ],
+    Macro:[
+      {n:"China Demand Cycle",d:"No other single factor matters as much for global metals prices as Chinese demand. Chinese construction activity (steel), automotive production (aluminium, copper), and infrastructure spending collectively set the global price floor for most base metals."},
+      {n:"Global Manufacturing PMI",d:"When global PMI is above 50 (expansion), manufacturing is growing — raising demand for copper (electrical), aluminium (machinery), and steel (capital goods). Metals stocks tend to lead PMI inflections by 2–3 months."},
+      {n:"Import Duties & Anti-Dumping Measures",d:"The Indian government periodically imposes minimum import prices (MIP) on steel to protect domestic producers from cheap Chinese steel. These policy measures can be significant margin tailwinds. Track DGTR (Directorate General of Trade Remedies) decisions."}
+    ],
+    Risk:[
+      {n:"Commodity Price Collapse",d:"A 20% fall in steel prices (not unusual in a global slowdown) can wipe out 60–80% of EBITDA for an integrated steelmaker. Companies with high financial leverage amplify this risk dramatically."},
+      {n:"Import Dumping",d:"Chinese steel or aluminium dumped at below-cost prices devastates domestic metal producers' margins. Without government protection (anti-dumping duties), Indian companies cannot compete against subsidised Chinese capacity."},
+      {n:"Currency Risk for Exporters",d:"Tata Steel (UK operations), Hindalco (Novelis — US operations), and Vedanta (Zambia copper) have significant international operations. Currency movements can materially affect reported earnings even if underlying operations are stable."}
+    ]
+  }
+},
+{
+  id:"oilgas",name:"Oil, Gas & Petrochemicals",nat:"Commodity-driven",
+  color:"#854F0B",bg:"#FAEEDA",grp:"Energy",
+  ex:"Reliance, ONGC, BPCL, Petronet LNG, GAIL",
+  desc:"This sector spans exploration and production (ONGC), refining (BPCL, HPCL), gas distribution (GAIL, IGL, Petronet), and petrochemicals (Reliance, BPCL). Crude oil price is the master variable — it affects upstream revenues, downstream refining margins, and petrochemical feedstock costs simultaneously.",
+  w:{Business:15,Fundamentals:20,Valuation:20,Technical:15,Macro:25,Risk:15},
+  pillars:{
+    Business:[
+      {n:"Value Chain Position",d:"Understand where the company sits: <strong>Upstream</strong> (exploration/production — benefits from high crude prices), <strong>Downstream</strong> (refining/retail — benefits from stable crude and high product demand), or <strong>Midstream</strong> (pipelines, LNG terminals — regulated fees, utility-like business). Each has completely different risk/reward."},
+      {n:"Reserve Replacement Ratio (For E&P)",d:"For exploration companies like ONGC, the Reserve Replacement Ratio (RRR) measures whether discovered reserves replace what's produced. RRR below 1× means the reserve base is shrinking — eventually revenue declines. ONGC's RRR below 1× for years signals structural production decline."},
+      {n:"Refining Complexity (Nelson Index)",d:"More complex refineries can process cheaper heavy or sour crude into high-value petrol/diesel. Reliance's Jamnagar refinery (Nelson Complexity ~21) is one of the world's most complex. Higher complexity = higher and more stable refining margins."}
+    ],
+    Fundamentals:[
+      {n:"Gross Refining Margin (GRM)",d:"GRM = Price of petroleum products sold − Cost of crude oil processed. The primary profitability metric for refiners. Indian refiners target $7–12/barrel GRM. When crude prices fall but product prices hold, GRM expands — a sweet spot for refiners."},
+      {n:"Debt & Capital Allocation",d:"Upstream companies carry significant debt from drilling programs. Downstream companies carry debt from refinery upgrades. In a low crude environment, high leverage becomes dangerous — interest payments must be met even when revenues collapse."},
+      {n:"EBITDA Sensitivity to Crude Prices",d:"Model the company's EBITDA at $60/barrel, $80/barrel, and $100/barrel crude. This 'scenario analysis' reveals the safe investing range. Companies with high breakeven crude prices are risky to own in a commodity downturn."}
+    ],
+    Valuation:[
+      {n:"EV/EBITDA at Mid-Cycle Crude",d:"Use $75–80/barrel as a mid-cycle crude price assumption for valuation. Paying peak-cycle valuations when crude is at $100+ is dangerous. EV/EBITDA of 6–10× on mid-cycle earnings is a reasonable entry zone for integrated oil companies."},
+      {n:"P/E with Subsidy Normalisation",d:"ONGC and HPCL have earnings heavily distorted by government-mandated fuel subsidies. Normalise earnings by removing subsidy burden/benefit to get a cleaner earnings picture before applying a P/E multiple."},
+      {n:"Replacement Value for Refineries",d:"A refinery has a very long life and its replacement cost is enormous. If a company's market cap is significantly below the cost of replacing its refinery assets, it is potentially undervalued on an asset basis."}
+    ],
+    Technical:[
+      {n:"Crude Oil Price Chart Correlation",d:"Oil sector stocks have 0.7–0.9 correlation with Brent crude. Before analysing a stock chart, analyse the crude chart. A technical breakout in Brent crude is the most reliable leading indicator for oil sector stock movement."},
+      {n:"Gas Pipeline Stocks as Defensives",d:"GAIL and IGL (CNG distribution) are more defensive than pure oil plays — they operate regulated monopolies. Technical patterns in these stocks follow broader market cycles more than crude."}
+    ],
+    Macro:[
+      {n:"Brent Crude Price & OPEC",d:"OPEC+ production decisions, US shale supply growth, and global economic growth are the key drivers of crude oil prices. Every $10/barrel move in crude shifts ONGC's EBITDA by ₹4,000–5,000 Cr and BPCL's refining economics significantly."},
+      {n:"Government Pricing Policy",d:"India's government sets petrol/diesel retail prices (with some deregulation) and entirely controls LPG/kerosene prices. Political decisions to absorb crude price rises rather than passing them on to consumers creates massive subsidy losses for OMCs."},
+      {n:"INR vs. USD for Import Bills",d:"India imports 85% of its crude oil. A weaker rupee directly inflates the oil import bill (denominated in USD) and typically widens the fiscal deficit, sometimes triggering government intervention in fuel prices."}
+    ],
+    Risk:[
+      {n:"Crude Price Crash",d:"A sharp crude price decline (as seen in 2020 when Brent went negative) devastates upstream company revenues, inflates inventories at refiners, and compresses petrochemical margins across the board simultaneously."},
+      {n:"Government Pricing Intervention",d:"The government can windfall-profit-tax upstream producers (as done in 2022) or force downstream companies to sell fuel below cost. This regulatory risk makes the entire sector a political economy play, not a pure fundamental one."},
+      {n:"Subsidy Burden",d:"When crude is high, the government asks OMCs (BPCL, HPCL, IOC) to absorb the cost rather than passing it to consumers. This turns profitable refining companies into loss-making entities — a unique risk in the Indian context."}
+    ]
+  }
+},
+{
+  id:"realestate",name:"Real Estate & REITs",nat:"Asset-driven",
+  color:"#D4537E",bg:"#FBEAF0",grp:"Real Estate",
+  ex:"DLF, Godrej Properties, Prestige, Embassy REIT, Macrotech",
+  desc:"Real estate developers convert land into housing and commercial properties. Revenue is recognised when apartments are delivered (not when booked), creating a long lead time between bookings and P&L. REITs (Real Estate Investment Trusts) own rent-generating commercial properties and distribute most income as dividends.",
+  w:{Business:20,Fundamentals:20,Valuation:25,Technical:10,Macro:20,Risk:15},
+  pillars:{
+    Business:[
+      {n:"Pre-sales (Bookings) Velocity",d:"Pre-sales — apartments booked by customers before delivery — is the most important leading indicator. Strong pre-sales today = revenue 2–4 years later. Track quarter-on-quarter pre-sales value and volume. Declining pre-sales signal demand slowdown."},
+      {n:"Land Bank Quality",d:"A developer's land bank (plots ready for development) determines future supply potential. But raw land at cost is not the same as approved, titled, construction-ready land. Assess the proportion of construction-ready land — this is the 'activated' pipeline."},
+      {n:"Geographic & Segment Diversification",d:"Residential vs. commercial vs. retail mix matters. Residential is cyclical; commercial (offices) is more stable with REIT exit options. City concentration (DLF's heavy Delhi NCR focus) creates geographic risk; pan-India developers (Prestige, Godrej) are more diversified."},
+      {n:"RERA Launches",d:"RERA-registered project launches are the regulated new supply. Track launches vs. pre-sales — a company launching but not selling is building unsold inventory. A company with pre-sales well ahead of launches has strong brand pull."}
+    ],
+    Fundamentals:[
+      {n:"Collections vs. Revenue Recognition",d:"Collections (cash received from customers) is a more real-time indicator of financial health than revenue (recognised only on possession). A developer with strong collections but low revenue is building up a 'revenue backlog' — future earnings are secure."},
+      {n:"Net Debt & Debt Reduction",d:"Real estate developers were historically over-leveraged (Unitech, HDIL). The best modern developers (Godrej Properties, Prestige) carry moderate debt and deleverage during good markets. Debt-to-equity above 2× requires careful scrutiny."},
+      {n:"Operating Cash Flow Cycle",d:"Real estate cash flow is lumpy — large customer advance inflows when a project is launched, then construction outflows over 3–4 years, then possession-triggered revenue. Model this project-by-project rather than just looking at consolidated numbers."}
+    ],
+    Valuation:[
+      {n:"Net Asset Value (NAV) per Share",d:"The most important valuation metric. NAV = (Gross Development Value of all projects) − (Construction costs, debt). Stock trading at >10% discount to NAV = potential opportunity; trading at 30%+ premium = expensive. Recalculate NAV quarterly as prices and pipeline change."},
+      {n:"P/NAV",d:"The ratio of market price to per-share NAV. Below 0.8× is deeply discounted; 1.0–1.3× is fair value; above 1.5× is expensive. Premium developers with strong execution and brand (DLF, Godrej) consistently trade at NAV premiums."},
+      {n:"Dividend Yield for REITs",d:"REITs must distribute 90% of net distributable cash flows. Embassy REIT and Mindspace REIT yield 6–8% annually. Evaluate the stability and growth potential of distributions — backed by long-term office leases to blue-chip tenants."}
+    ],
+    Technical:[
+      {n:"Interest Rate Sensitivity",d:"Real estate stocks are the most interest-rate-sensitive equity class in India. When RBI cuts rates, home loan EMIs fall, demand surges, and stocks re-rate. Rate cut cycles are among the most reliable triggers for real estate stock rallies."},
+      {n:"Inventory & Unsold Overhang",d:"Cities with high unsold inventory (years-to-sell ratio >3 years) see slow price appreciation and developer margin pressure. Cities with low inventory (Mumbai, Bengaluru premium segments) see price strength that supports developer margins."}
+    ],
+    Macro:[
+      {n:"Home Loan Interest Rates",d:"The most powerful demand lever. Every 50-basis-point cut in the RBI repo rate eventually reduces home loan rates, reducing EMIs on a ₹80 lakh loan by ₹2,500–3,000/month — directly expanding the pool of qualified buyers."},
+      {n:"Economic Growth & Job Creation",d:"Housing demand is fundamentally a function of income growth and job creation in urban India. When IT hiring slows (as in 2023), Bengaluru housing demand moderates. Strong corporate hiring = strong residential demand."},
+      {n:"Urbanisation & Nuclear Families",d:"India's urbanisation rate is ~36% vs. 56% globally — suggesting decades of urban housing demand ahead. The shift to nuclear families (from joint families) is also a powerful long-term structural demand driver."}
+    ],
+    Risk:[
+      {n:"Interest Rate Sensitivity",d:"Rising interest rates hurt real estate from multiple angles: higher home loan EMIs reduce buyer demand, higher developer borrowing costs compress project returns, and REIT dividend yields become less attractive vs. fixed income."},
+      {n:"Regulatory & RERA Delays",d:"Government approvals (environmental clearances, plan sanctions, OC certificates) can delay project launches by 12–24 months. RERA has increased accountability but also timelines. Regulatory risk is project-specific and hard to model."},
+      {n:"Oversupply in Specific Micro-Markets",d:"Real estate is hyper-local. Even in a booming Mumbai market, specific micro-markets (like Thane or Navi Mumbai) can be oversupplied. Track unsold inventory levels and months-to-sell ratio for each city where the developer operates."}
+    ]
+  }
+},
+{
+  id:"chemicals",name:"Chemicals & Specialty",nat:"Export-driven",
+  color:"#0F6E56",bg:"#E1F5EE",grp:"Materials",
+  ex:"Pidilite, SRF, Aarti Industries, Vinati Organics, Navin Fluorine",
+  desc:"Indian specialty chemicals companies produce adhesives, agrochemicals, dyes, fluorochemicals, and performance chemicals. The global 'China+1' supply chain diversification is the decade-long tailwind. Companies with proprietary chemistry, strong customer relationships, and backward integration command premium valuations.",
+  w:{Business:25,Fundamentals:25,Valuation:20,Technical:10,Macro:15,Risk:10},
+  pillars:{
+    Business:[
+      {n:"Proprietary Chemistry & Customer Stickiness",d:"Companies that develop <strong>custom molecules</strong> for specific customers (contract research and manufacturing — CRAM) are valued at 30–50× earnings because the customer cannot easily switch suppliers. Track the % of revenue from single-source or long-term contract products."},
+      {n:"Capacity Utilisation & Expansion Pipeline",d:"Specialty chemicals plants typically operate at 70–85% utilisation. Rising utilisation (without proportionate capex) = operating leverage. Announced greenfield expansions signal management confidence in demand visibility — typically 2–3 year lead time."},
+      {n:"Export Revenue as % of Total",d:"Companies with high export exposure (40–60%+ of revenue) benefit from the China+1 diversification trend. Export customers are typically global MNCs with rigorous qualification processes — once qualified, relationships are sticky."},
+      {n:"Value Chain Integration",d:"Companies making complex multi-step molecules have higher barriers to entry and wider moats. Backward integration into basic building blocks (like Vinati's isobutyl benzene or Navin's hydrofluoric acid) reduces raw material cost risk."}
+    ],
+    Fundamentals:[
+      {n:"Revenue per Product vs. Volume Mix",d:"Track whether revenue growth is volume-driven (sustainable, capacity-backed) or price-driven (can reverse). Growing volumes in export CRAM products is the highest-quality growth signal in specialty chemicals."},
+      {n:"EBITDA Margin Profile",d:"FMCG-like specialty companies (Pidilite) maintain 20–25% EBITDA margins with brand power. Process chemical companies (SRF's fluorochemicals) target 18–22%. Below 15% signals commoditisation or raw material pass-through issues."},
+      {n:"Return on Capital Employed",d:"Best-in-class specialty companies achieve 20–30% RoCE. Given the capital intensity of chemical plants, this is exceptional. Declining RoCE trends signal either excessive capex, margin erosion, or both."},
+      {n:"R&D Pipeline & New Product Revenue",d:"Track the % of revenue coming from products launched in the last 3 years. A company with 20%+ 'new product revenue' is continuously innovating and reducing its dependence on any single mature product."}
+    ],
+    Valuation:[
+      {n:"P/E with Growth Context",d:"Quality specialty chemical companies (Pidilite, Vinati, Navin Fluorine) historically trade at 40–60× P/E. This is justified by consistent 15–20% EPS growth, high RoCE, and low competition. During industry downturns (2023–24 destocking), multiples compressed to 25–30× — offering entry opportunities."},
+      {n:"EV/EBITDA Comparison",d:"Use EV/EBITDA to compare across the sector since capex and depreciation profiles vary. 20–35× EV/EBITDA for quality names is typical. New entrants or commodity chemical companies trade at 8–15×."},
+      {n:"Price/Sales for Early-Stage Growth",d:"For smaller specialty companies still building scale, P/S (market cap ÷ revenue) is useful when EBITDA is low but the revenue trajectory is clear. 5–8× P/S for a fast-growing specialty chemical company with expanding margins is reasonable."}
+    ],
+    Technical:[
+      {n:"China+1 Sentiment Driver",d:"Any news about global MNCs explicitly reducing China sourcing triggers re-rating of Indian specialty chemicals companies. Monitor pharma MNC supply chain announcements, ESG sourcing policies, and geopolitical events."},
+      {n:"Destocking Cycle Recognition",d:"Global chemical demand goes through 12–18 month destocking cycles (customers burn down inventory before ordering again). Recognising the trough of a destocking cycle (low volumes, compressed inventory) is the best entry signal for specialty chemicals stocks."}
+    ],
+    Macro:[
+      {n:"China+1 Supply Chain Diversification",d:"Western companies' desire to reduce supplier concentration in China is creating a structural multi-decade opportunity for Indian specialty chemicals companies. Track quarterly MNC procurement announcements and India's export data to China's end-markets."},
+      {n:"PLI Scheme for Chemicals",d:"India's Production-Linked Incentive for key chemicals (especially pharma intermediates and specialty chemicals) provides 5–10% production incentive for approved companies, directly boosting margins during the scheme period."},
+      {n:"Global Agrochemical Demand Cycle",d:"For companies like PI Industries (CRAM for agrochemicals), global agrochemical spending (tied to farmer economics, crop prices, and weather) is the key demand driver. Rising crop prices = higher agrochemical spending = higher CRAM volumes."}
+    ],
+    Risk:[
+      {n:"China Dumping",d:"Chinese chemical companies, with massive overcapacity, periodically dump products in India at below-market prices. This directly squeezes margins for Indian producers who cannot compete on price alone and must differentiate on quality or relationships."},
+      {n:"Raw Material Spikes",d:"Specialty chemicals use diverse and often exotic raw materials (toluene, benzene, chlorine, hydrofluoric acid). Supply disruptions or price spikes in any key input, if not contractually passed on, can immediately compress margins."},
+      {n:"Single-Customer Concentration",d:"Some specialty chemical companies derive 30–40% of export revenue from a single large MNC customer. If that customer develops alternative sources, reduces orders, or faces its own problems, the Indian supplier faces severe revenue risk."}
+    ]
+  }
+},
+{
+  id:"telecom",name:"Telecom",nat:"Capex-intensive",
+  color:"#7F77DD",bg:"#EEEDFE",grp:"Technology",
+  ex:"Reliance Jio, Airtel, Indus Towers, HFCL, Tejas Networks",
+  desc:"Telecom is a capital-intensive oligopoly. Jio's 2016 disruption destroyed competitor profits for 5 years, but now the market has consolidated to two dominant players (Jio and Airtel) and one weakened player (Vi). Revenue growth now comes from ARPU (tariff) increases rather than subscriber additions, since the market is near saturation at 1.1 billion subscribers.",
+  w:{Business:20,Fundamentals:20,Valuation:20,Technical:10,Macro:20,Risk:15},
+  pillars:{
+    Business:[
+      {n:"Subscriber Market Share & Quality",d:"Total subscribers matter less than <strong>active subscribers using 4G/5G data</strong>. Jio and Airtel's data subscriber mix is far higher than Vi's — creating a revenue quality gap. Track each operator's active user base rather than total SIMs."},
+      {n:"Average Revenue Per User (ARPU)",d:"ARPU is the most important metric for mature telecom markets. India's ARPU (~₹200/month) is among the world's lowest — a structural opportunity as users upgrade to higher-speed plans. Each ₹10 rise in industry ARPU = ~₹3,000 Cr additional annualised industry revenue."},
+      {n:"5G Strategy & Monetisation",d:"While 5G network rollout is underway (Jio, Airtel have both launched), 5G monetisation through enterprise applications (private 5G networks, fixed wireless access, IoT) is still nascent. Track 5G subscriber additions and whether premium 5G plans are gaining traction."},
+      {n:"Tower Infrastructure",d:"Indus Towers (Airtel + Vi's towers) and Reliance Jio's tower subsidiary are separate from the telcos. These are asset-heavy, relatively predictable 'picks and shovels' plays on telecom growth — valued on EV/EBITDA like utilities."}
+    ],
+    Fundamentals:[
+      {n:"EBITDA Margin Trajectory",d:"Post-consolidation, Jio and Airtel have restored EBITDA margins to 45–55% — healthy for global standards. EBITDA margin improvement signals pricing power (ARPU increases without proportional cost increases) or cost efficiency."},
+      {n:"Free Cash Flow After Capex (FCF Yield)",d:"Telecom is the most capex-intensive sector — 5G rollout requires ₹50,000–1,00,000+ Cr of investment. FCF (after massive capex) is what's left for debt reduction and shareholder returns. Companies moving to positive FCF signal the capex peak has passed."},
+      {n:"Debt Levels & Spectrum Liabilities",d:"Indian telecom companies carry massive debt from spectrum auction payments (paid to government in installments) and 5G capex. Airtel's net debt is ~₹80,000 Cr+; Vi's is even more concerning at ₹2 lakh Cr+. Debt trajectory is critical to monitor."}
+    ],
+    Valuation:[
+      {n:"EV/EBITDA",d:"Globally, telecom companies trade at 6–10× EV/EBITDA. Indian telcos trade at 10–15× given the growth runway in ARPU. Jio commands a premium (still unlisted at the consolidated level); Airtel trades at 14–17× on growth premium."},
+      {n:"EV/Subscriber",d:"A useful metric during consolidation — divides enterprise value by active subscriber base. When compared across operators or to international benchmarks ($100–200/subscriber in mature markets vs. India's $40–60), it reveals relative valuation."},
+      {n:"DCF with ARPU Assumptions",d:"The long-term value of a telecom business is the present value of future cash flows as ARPU trends toward ₹400–500/month over the next decade. Different ARPU trajectory assumptions drive very different DCF values — making this the key modelling choice."}
+    ],
+    Technical:[
+      {n:"Tariff Hike Reaction",d:"When telcos announce tariff hikes (as happened in July 2024), stocks typically react positively immediately, then experience profit-taking. The magnitude and sustainability of the hike determines the medium-term stock direction."},
+      {n:"TRAI Policy Developments",d:"TRAI (Telecom Regulatory Authority of India) decisions on spectrum refarming, floor prices, and interconnect charges move telecom stocks. Track regulatory newsflow as a key catalyst."}
+    ],
+    Macro:[
+      {n:"TRAI Policy & Spectrum Auctions",d:"TRAI's regulatory framework determines whether telcos can raise tariffs (floor price policy), how spectrum is priced (auction results), and infrastructure sharing rules. A constructive regulatory environment is critical for the sector's financial health."},
+      {n:"5G Auction Economics",d:"5G spectrum acquired in 2022 at ₹1.5 lakh Cr by Jio and Airtel creates 20-year payment obligations. The ROI on 5G depends on monetisation speed — premium enterprise and B2B applications are key to generating returns above cost of capital."},
+      {n:"Data Consumption Growth",d:"India's average data consumption (~25 GB/user/month) is among the world's highest and still growing. Rising video streaming, gaming, and WFH-driven usage are structural demand drivers that support both ARPU growth and network investment."}
+    ],
+    Risk:[
+      {n:"Tariff Wars",d:"A new entrant or an aggressive Vi recovery could trigger tariff wars — as Jio did in 2016. While unlikely given the current oligopoly, any pricing aggression would collapse the entire sector's EBITDA simultaneously."},
+      {n:"Spectrum Costs",d:"Future spectrum auctions (5G, satellite spectrum) create unpredictable large payments. These are deferred liabilities — long-term but real obligations that constrain financial flexibility and increase leverage risk."},
+      {n:"Debt from Capex",d:"If 5G monetisation is slower than expected, companies will have taken on massive debt for returns that are years away. A prolonged high-interest-rate environment significantly increases the cost of carrying this debt."}
+    ]
+  }
+},
+{
+  id:"power",name:"Power & Utilities",nat:"Regulated",
+  color:"#EF9F27",bg:"#FAEEDA",grp:"Energy",
+  ex:"NTPC, Power Grid, Tata Power, CESC, Torrent Power",
+  desc:"Power utilities generate (thermal, hydro, nuclear) and transmit electricity under regulated frameworks set by CERC (Central Electricity Regulatory Commission). Revenue is largely guaranteed through long-term PPAs with state utilities. Think of them as bond-like equity — stable dividends, predictable returns, and low business risk. NTPC and Power Grid are the sector's AAA equivalents.",
+  w:{Business:15,Fundamentals:25,Valuation:20,Technical:10,Macro:20,Risk:15},
+  pillars:{
+    Business:[
+      {n:"Regulated vs. Merchant vs. Renewable Mix",d:"Regulated assets (NTPC coal plants, Power Grid transmission) earn fixed, CERC-approved returns (~15.5% RoE on regulated equity) regardless of power prices. Merchant plants earn spot prices — higher upside, higher volatility. Renewable capacity earns PPA tariffs. The higher the regulated proportion, the more predictable the stock."},
+      {n:"Capacity Addition Pipeline",d:"NTPC's plan to expand from 70 GW to 130 GW over the next decade is the growth story. Track commissioned capacity vs. planned — consistent execution upgrades the stock's growth premium. Delays or cancellations depress it."},
+      {n:"Fuel Security",d:"For thermal power plants, fuel (coal, gas) security is crucial. Plants with dedicated coal linkages from Coal India or captive mines have much more stable operating costs than those relying on expensive e-auction or import coal."}
+    ],
+    Fundamentals:[
+      {n:"Plant Load Factor (PLF)",d:"PLF is the actual generation as a percentage of maximum possible generation. For NTPC coal plants, 75–85% PLF is normal. Low PLF signals either technical outages, fuel shortage, or demand-side issues (state DISCOMs not drawing power)."},
+      {n:"Regulated Equity & Returns",d:"CERC allows power companies to earn 15.5% post-tax RoE on their 'regulated equity' (the approved equity invested in each project). As new projects get commissioned and regulated equity grows, so does the allowed earnings."},
+      {n:"Dividend Consistency",d:"Power utilities are 'dividend yield' investments. NTPC has paid dividends consistently for decades. Track dividend per share growth — it should broadly track PAT growth. A dividend yield of 2.5–4% from a regulated utility is attractive."}
+    ],
+    Valuation:[
+      {n:"P/BV for Regulated Utilities",d:"Power utilities are valued on P/BV because RoE is regulated and predictable. NTPC, with a guaranteed 15.5% RoE, should trade at 1.5–2× P/BV if the market believes regulatory continuity. Premium above 2.5× suggests growth expectations embedded."},
+      {n:"Dividend Yield Comparison",d:"Compare the utility's dividend yield against 10-year government bond yields. When dividend yield is within 1% of bond yields, utilities are attractively priced as bond substitutes with equity growth potential."},
+      {n:"EV/Installed Capacity",d:"EV divided by MW of installed capacity. Allows comparison across the sector regardless of fuel type. New renewable capacity commands higher EV/MW than aging thermal capacity."}
+    ],
+    Technical:[
+      {n:"Interest Rate Inverse Correlation",d:"Power utility stocks (like REITs) trade inversely to interest rates — they are de facto long-duration assets. When RBI signals rate cuts, power utility stocks re-rate upward as their stable dividends become more attractive vs. fixed income."},
+      {n:"Seasonal Power Demand",d:"Power demand peaks in summer (May–June: AC season) and rabi crop irrigation season. Electricity prices on merchant exchanges spike during these periods, briefly boosting revenues for merchant plants — often a seasonal catalyst for stocks."}
+    ],
+    Macro:[
+      {n:"Power Demand Growth",d:"India's per-capita electricity consumption (~1,200 kWh/year) is a fraction of China's (5,800 kWh) or US's (12,000 kWh). Rising industrial activity, urban air conditioning penetration, and EV charging will structurally drive power demand for decades."},
+      {n:"Coal Prices & Fuel Costs",d:"For coal-based plants not on regulated tariffs (merchant), coal price spikes directly compress margins. Post-COVID, global coal price volatility has been extreme. Plants on regulated tariffs can pass fuel cost increases to customers through fuel-pass-through mechanisms."},
+      {n:"DISCOM Financial Health",d:"State electricity distribution companies (DISCOMs) owe power generators significant dues. Power Grid collects regulated transmission charges regardless. But generation companies (NTPC, state gencos) face collection risk if DISCOMs are financially stressed."}
+    ],
+    Risk:[
+      {n:"Fuel Supply Disruptions",d:"Coal shortages (as seen in October 2021) can shut down thermal plants, reducing capacity charges recoverable. Natural gas-based plants are even more vulnerable to fuel availability — GAIL/RLNG supply disruptions can idle entire gas-based power plants."},
+      {n:"Regulatory Tariff Risk",d:"CERC and state electricity regulatory commissions periodically revise tariff structures. While regulated RoE is relatively stable, changes to tariff structure (e.g., reducing capacity charges, tightening PLF norms) can reduce earnings below projected levels."},
+      {n:"DISCOM Payment Dues",d:"State DISCOMs owe power generators ₹1–2 lakh Cr in aggregate. NTPC's receivables from state DISCOMs are a persistent concern. The Atmanirbhar package and UDAY 2.0 scheme help, but structural DISCOM health remains a systemic risk."}
+    ]
+  }
+},
+{
+  id:"hospitality",name:"Hospitality & Travel",nat:"Cyclical",
+  color:"#ED93B1",bg:"#FBEAF0",grp:"Consumer",
+  ex:"Indian Hotels (Taj), Lemon Tree, IndiGo, EIH, Chalet Hotels",
+  desc:"Hotels and airlines are classic cyclical businesses — revenues collapse in demand shocks (COVID-19 wiped out the sector in 2020) and recover strongly when the economy normalises. Hotels have high fixed costs and low variable costs, creating massive operating leverage: small revenue changes create large earnings swings.",
+  w:{Business:20,Fundamentals:20,Valuation:20,Technical:15,Macro:20,Risk:15},
+  pillars:{
+    Business:[
+      {n:"Asset-Heavy vs. Asset-Light Strategy",d:"Traditional hotel companies own the real estate (Indian Hotels, EIH). Asset-light operators manage hotels under management contracts — they earn fees without owning the property (like IHCL's Ginger brand expansion). Asset-light = lower risk, lower fixed costs, but lower margin per room."},
+      {n:"Brand Portfolio & Positioning",d:"Premium brands (Taj, Leela, Oberoi) command higher RevPAR and are insulated from budget competition. Mid-market brands (Lemon Tree, Chalet) capture the growing business traveller segment. Budget brands compete on price — thin margins."},
+      {n:"Airlines: Route Network & Fleet Strategy",d:"For IndiGo (aviation), the route network depth (domestic market share ~60%) and cost-efficient fleet (A320 family) are the moat. Track <strong>Cost per Available Seat Kilometre (CASK)</strong> — IndiGo's structural cost advantage vs. Vistara, Air India, and Akasa is its core differentiator."}
+    ],
+    Fundamentals:[
+      {n:"RevPAR (Revenue Per Available Room)",d:"RevPAR = Occupancy Rate × Average Room Rate (ARR). This is the primary hotel profitability metric. Rising RevPAR means either more rooms are occupied OR rooms are priced higher (or both). India's RevPAR has been rising strongly post-COVID."},
+      {n:"Occupancy Rate",d:"Above 70% occupancy is generally healthy for Indian hotels. At 80%+, hotels can drive meaningful ARR increases as supply becomes constrained. During downturns, occupancy can fall to 30–40%, making fixed costs impossible to cover."},
+      {n:"Passenger Load Factor (Airlines)",d:"For IndiGo, load factor (% of available seats filled) is the airline equivalent of RevPAR. 85%+ load factor allows ticket price increases. Below 75%, airlines must discount to fill seats — margin-destructive."},
+      {n:"EBITDA Margin During Down Cycles",d:"The acid test for hotel quality is the trough EBITDA margin — how much profitability is preserved during demand shocks. Asset-light models preserve better. Asset-heavy luxury hotels can remain profitable even at 50% occupancy due to high ARR."}
+    ],
+    Valuation:[
+      {n:"EV/EBITDA with Cycle Normalisation",d:"Use mid-cycle EBITDA (typical stable year occupancy/ARR) rather than peak EBITDA. Hotel companies at 15–20× mid-cycle EV/EBITDA are reasonably priced. The sector is at 12× in a recovery phase."},
+      {n:"EV/Room",d:"Enterprise value divided by total hotel rooms. This real-estate-based metric allows comparison of hotel companies independent of operating performance. Premium brands (Taj) trade at $250,000–400,000/room; budget chains at $50,000–80,000/room."},
+      {n:"P/E with Earnings Normalisation",d:"Hotel P/E is meaningless during demand shocks (when earnings are zero or negative) and inflated at cycle peaks (when margins expand). Use earnings at normalised occupancy (70%) and ARR for a meaningful P/E comparison."}
+    ],
+    Technical:[
+      {n:"Demand Shock Recovery Patterns",d:"After every major demand shock (COVID, demonetisation, SARS), hotel stocks recover sharply. The recovery follows a J-curve — occupancy returns faster than ARR, then ARR catches up. Buying at the first signs of occupancy recovery (3–6 months post-shock) is historically profitable."},
+      {n:"Seasonal Patterns",d:"Domestic tourism peaks in October–March (winter, corporate conferences). Summer is weaker. Airlines see load factor peaks around school holidays and IPL season. These seasonal patterns create predictable short-term trading opportunities."}
+    ],
+    Macro:[
+      {n:"Domestic Tourism & Corporate Travel",d:"Post-COVID, India's domestic tourism has recovered strongly. Rising middle class, 'workcations', and MICE (Meetings, Incentives, Conferences, Events) demand are structural tailwinds. Track airport passenger data monthly as a proxy."},
+      {n:"Fuel Cost for Airlines",d:"ATF (Aviation Turbine Fuel) accounts for 35–40% of IndiGo's operating costs. A $10/barrel rise in crude oil increases IndiGo's annual fuel bill by ₹1,500–2,000 Cr — directly hitting profitability unless offset by higher fares."},
+      {n:"Visa Policy & Foreign Tourism",d:"Ease of tourist visa issuance and bilateral air travel agreements directly influence foreign tourist arrivals — a premium revenue source for luxury hotels. E-visa expansion in 2014 was a significant demand catalyst for the hospitality sector."}
+    ],
+    Risk:[
+      {n:"Demand Shocks",d:"Pandemics, terror attacks, political instability, or severe natural disasters can instantaneously collapse occupancy to near-zero. This is the existential risk for hotels and airlines — they carry massive fixed costs with no revenue for months."},
+      {n:"Fuel Cost Spikes for Airlines",d:"ATF is unhedged for most Indian airlines. A sudden crude spike (as in 2022 when Brent touched $130/barrel) forces airlines to either absorb margin destruction or raise fares faster than demand can support."},
+      {n:"Overcapacity Risk in Hotels",d:"When occupancy is high and hotel companies are profitable, new supply is announced — as happened in 2018–19 in certain Indian markets. New supply coming online during a demand slowdown creates prolonged occupancy and pricing pressure."}
+    ]
+  }
+},
+{
+  id:"capgoods",name:"Capital Goods & Industrials",nat:"Order-driven",
+  color:"#5DCAA5",bg:"#E1F5EE",grp:"Industrial",
+  ex:"Siemens, ABB, Thermax, Cummins, Bharat Forge, Triveni",
+  desc:"Capital goods companies manufacture equipment — turbines, switchgear, motors, industrial machinery, forgings — that other industries use to produce goods or services. Demand is driven by private capex cycles and government infrastructure spending. Unlike EPC contractors who build projects, capital goods companies supply the equipment that goes into those projects.",
+  w:{Business:20,Fundamentals:25,Valuation:20,Technical:15,Macro:20,Risk:10},
+  pillars:{
+    Business:[
+      {n:"Order Inflow Quality",d:"Track both the total quarterly order inflows and the <strong>mix</strong> — which end-markets are ordering? Power generation, process industries, data centres, railways, defence? Diversified order inflow is more resilient. A surge in data centre orders (for Siemens, ABB switchgear) signals a new structural growth cycle."},
+      {n:"Technology & Service Content",d:"Companies like Siemens and ABB compete on technology (automation, digitalisation) rather than price alone. The <strong>services and aftermarket</strong> revenue (typically 25–35% of revenue) is the highest-margin, most predictable component — sticky customers, recurring revenue."},
+      {n:"Manufacturing Capability & Quality Certifications",d:"Global capital goods companies won't source from Indian manufacturers without rigorous quality certification (ISO, ASME, IEC). Companies with these certifications serving export markets have a significant competitive advantage over domestic-only peers."},
+      {n:"Global MNC Parentage",d:"Siemens India, ABB India, Cummins India — these are Indian subsidiaries of global engineering giants. They benefit from parent technology, global customer relationships, and R&D — significant advantages over standalone Indian companies like Thermax or Triveni."}
+    ],
+    Fundamentals:[
+      {n:"Revenue Recognition Pace",d:"Capital goods revenue is recognised on delivery/commissioning milestones. Track whether the company is consistently converting order book to revenue (book-to-bill > 1 is ideal). Slow revenue recognition signals execution bottlenecks or delayed commissioning."},
+      {n:"EBITDA Margin with Order Mix Insight",d:"Higher-complexity orders (large turbines, automation solutions) carry 18–22% EBITDA margins. Simple commodity equipment margins are 8–12%. A company winning more high-complexity orders will see margin expansion even without volume growth."},
+      {n:"Working Capital Management",d:"Capital goods companies often run advance payment cycles (customers pay 10–30% upfront before manufacturing begins) — this is a favourable working capital structure. Track the advance-from-customers line on the balance sheet — declining advances signal lower order quality or bargaining power."},
+      {n:"RoCE Through the Cycle",d:"Best-in-class capital goods companies (Siemens, Cummins India) maintain 20%+ RoCE through the cycle. This signals pricing power and operational efficiency — they don't need to slash prices to maintain volumes during downturns."}
+    ],
+    Valuation:[
+      {n:"P/E with Growth Premium",d:"Siemens India and ABB India trade at 60–80× P/E — seemingly expensive, but justified by technology leadership, global parentage, and consistent 15–20% earnings growth. Use PEG (P/E ÷ growth rate) <3× as the threshold for quality names."},
+      {n:"EV/EBITDA",d:"Mid-cap capital goods companies trade at 20–35× EV/EBITDA. Premium reflects high RoCE and low capital intensity relative to revenues. Compare within the segment — pure machinery companies vs. project-based engineering companies deserve different multiples."},
+      {n:"P/Order Book",d:"Market cap as a multiple of order book. Below 0.3× suggests the market doubts execution. Between 0.5–0.8× is typical. Above 1× signals market is pricing significant future order wins beyond the current book."}
+    ],
+    Technical:[
+      {n:"Private Capex Cycle Indicators",d:"Capital goods stocks lead the private capex cycle by 6–12 months. When business confidence indicators (CEO surveys, bank credit growth for industry) turn up, capital goods stocks often break out before actual order announcements."},
+      {n:"Quarterly Order Inflow Data",d:"Each quarterly result contains order inflow data. If inflows surprise positively (30%+ above consensus estimates), it triggers re-rating. Track analyst consensus expectations vs. actuals — the surprise factor drives short-term price action."}
+    ],
+    Macro:[
+      {n:"Government Capex Cycle",d:"Railways, defence, electricity transmission, and water infrastructure spending by the central government drives order flows for ABB (switchgear), Siemens (railways), Thermax (boilers), and Bharat Forge (forgings). Monitor ministry-wise capex utilisation."},
+      {n:"Private Capex Cycle",d:"When corporate profitability is high and capacity utilisation is 80%+, companies begin investing in new capacity — creating demand for Cummins gensets, Thermax cooling systems, and ABB motors. The private capex cycle typically lags the economic cycle by 12–18 months."},
+      {n:"PLI Scheme & Manufacturing India",d:"The PLI scheme incentivises domestic manufacturing in 14 sectors. This is creating new demand for industrial automation (Siemens, ABB), material handling, and energy efficiency equipment as new factories are built in India."}
+    ],
+    Risk:[
+      {n:"Order Drought in Down Cycles",d:"When private capex or govt capex slows, capital goods order inflows can drop 30–50% in a quarter. Unlike software companies, capital goods manufacturers have significant fixed costs (factories, skilled workforce) that cannot be easily reduced."},
+      {n:"Commodity Cost Pass-Through Lag",d:"Orders are typically priced with price-escalation clauses tied to indices. But there is a lag — rapid steel or copper price rises ahead of clause adjustment periods compress margins on existing orders."},
+      {n:"Execution Delays & Penalties",d:"Large capital goods orders have liquidated damage (LD) clauses — financial penalties for delayed delivery. Supply chain disruptions, sub-vendor issues, or design changes can trigger significant LD deductions, directly hitting margins."}
+    ]
+  }
+},
+{
+  id:"insurance",name:"Insurance",nat:"Float-driven",
+  color:"#993556",bg:"#FBEAF0",grp:"Financials",
+  ex:"LIC, HDFC Life, SBI Life, ICICI Prudential, New India",
+  desc:"Insurance companies collect premiums upfront, invest them (creating 'float' — Buffett's famous concept), and pay claims later. Life insurers have 20–30 year policy durations — a very long investment runway. The business generates enormous free cash flow from premium collection, but valuing it requires understanding embedded value accounting, not traditional P&L.",
+  w:{Business:20,Fundamentals:20,Valuation:25,Technical:10,Macro:15,Risk:20},
+  pillars:{
+    Business:[
+      {n:"Product Mix: Protection vs. Savings vs. ULIP",d:"Pure protection products (term insurance) carry high margins. Savings and pension products are lower margin but high volume. ULIPs (Unit-Linked Insurance Plans) earn lower margins but create AUM for the investment platform. Companies with higher protection mix (ICICI Prudential, HDFC Life) earn higher VNB margins."},
+      {n:"Distribution Channel Strength",d:"Bancassurance (selling through bank branches) generates bulk volume. Agency networks provide reach into smaller towns. Online direct channels are growing for term insurance. Each channel has different costs, margins, and customer stickiness."},
+      {n:"Persistency Ratios",d:"Persistency measures how many policyholders continue paying premiums after Year 1, Year 3, Year 5. The 13th month persistency ratio should be above 80%. Low persistency means policies lapse — the insurer loses future premiums and must return part of the upfront commission paid to agents."},
+      {n:"New Business Premium (NBP) Growth",d:"New business written each quarter indicates the engine of future embedded value creation. NBP growing 15–20% annually, with improving product mix, is the ideal signal of a healthy life insurer."}
+    ],
+    Fundamentals:[
+      {n:"Value of New Business (VNB) & Margin",d:"VNB is the present value of future profits from policies written this year. VNB Margin = VNB ÷ APE (Annualised Premium Equivalent). A VNB margin of 25%+ is excellent (HDFC Life, SBI Life). This metric does not exist in traditional accounting — it's specific to insurance valuation."},
+      {n:"Embedded Value (EV)",d:"EV = Present value of future profits from existing policies + Net Assets (adjusted for intangibles). EV grows as the company writes profitable new business. Annual EV growth should exceed 15% for the company to be value-accretive vs. shareholders' cost of capital."},
+      {n:"Investment Yield & ALM",d:"Life insurers invest premium float in a mix of government bonds, corporate bonds, and equities. Investment yield vs. guaranteed policy returns determines the 'spread' — the insurer's investment profit margin. Rising interest rates typically benefit life insurers (they can lock in higher yields)."},
+      {n:"Claims Ratio (General Insurance)",d:"For general insurers, the combined ratio (Claims + Expenses) ÷ Premiums is the key metric. Below 100% means profitable underwriting. Above 100% requires investment income to break even. India's general insurance sector is still maturing."}
+    ],
+    Valuation:[
+      {n:"Price-to-Embedded Value (P/EV)",d:"The primary valuation multiple for life insurers. Fair value is typically 2–4× EV. Premium over 3× EV is justified only for companies with very high VNB margins and superior growth. HDFC Life typically trades at 2.5–3.5× EV."},
+      {n:"VNB Multiple (Appraisal Value)",d:"More precise valuation = EV + (VNB × multiple reflecting growth and risk). Companies with 25%+ VNB margins and 20%+ growth deserve 40–50× VNB multiple. This is analogous to paying a high P/E for a high-quality growth company."},
+      {n:"P/BV for General Insurers",d:"General insurance companies (New India, ICICI Lombard) are valued on P/BV — similar to banks — since their balance sheets consist of investments and insurance liabilities. 3–5× P/BV for well-run private general insurers."}
+    ],
+    Technical:[
+      {n:"IRDAI Regulation Events",d:"IRDAI (Insurance Regulatory and Development Authority of India) changes to commission structures, surrender values, or product design directly affect insurer profitability. Stocks move sharply on IRDAI circular announcements."},
+      {n:"Interest Rate Sensitivity",d:"Rising interest rates are generally positive for life insurers — they can invest fresh premiums at higher yields, expanding spread income. When bond yields rise, insurance stocks often outperform the broader market."}
+    ],
+    Macro:[
+      {n:"IRDAI Regulatory Changes",d:"IRDAI periodically changes surrender value norms, commission structures, and product designs. The 2023 IRDAI changes to surrender values reduced profitability for savings products — immediately hitting VNB margins of all listed life insurers."},
+      {n:"Interest Rate Environment",d:"Life insurers guarantee returns on some products — if they guaranteed 6% 20 years ago but can only earn 5% investing today, they have a negative spread. Conversely, rising rate environments increase investment returns above guaranteed rates, creating positive spread income."},
+      {n:"Insurance Penetration Opportunity",d:"India's life insurance penetration (~3.2% of GDP) is well below the global average (~7%). As financial awareness grows, formal employment expands, and bancassurance deepens, insurance penetration will rise — a decades-long structural opportunity."}
+    ],
+    Risk:[
+      {n:"Claims Surge (Mortality/Morbidity Risk)",d:"A pandemic, epidemic, or natural disaster causes unexpected surge in death or health claims. COVID-19 caused ₹15,000+ Cr of excess claims in 2021 for the industry — wiping out years of profits. Reinsurance and provisioning discipline mitigate but don't eliminate this risk."},
+      {n:"Interest Rate Risk on Guarantees",d:"Life insurers have sold products with guaranteed returns (6–7%) at a time when they expected to earn 8–9% on investments. If interest rates fall below guaranteed levels, they must cover the shortfall from equity — directly eroding capital."},
+      {n:"Mortality Deviation",d:"Life insurers price term products on mortality tables — expected death rates by age and health status. If actual deaths (due to climate change, emerging diseases, or demographic shifts) exceed modelled rates, claim payouts exceed premium income — an underwriting loss."},
+      {n:"Regulatory Volatility (IRDAI)",d:"IRDAI's frequent changes to product design, pricing, and distribution commissions create significant regulatory uncertainty. A single circular changing surrender value norms or cap commissions can immediately reduce sector-wide VNB margins by 3–5 percentage points."}
+    ]
+  }
+},
+{
+  id:"logistics",name:"Logistics & Supply Chain",nat:"Volume-driven",
+  color:"#1D9E75",bg:"#E1F5EE",grp:"Industrial",
+  ex:"Blue Dart, Delhivery, Container Corp, Gateway Distriparks",
+  desc:"Logistics companies move goods — by air (Blue Dart), road (Delhivery, Ecom Express), or rail (Container Corp, Gateway Distriparks). The sector is being transformed by e-commerce growth, GST-driven supply chain reorganisation, and dedicated freight corridor infrastructure. Asset-heavy players (container trains, warehouses) compete with asset-light express players on different dimensions.",
+  w:{Business:20,Fundamentals:25,Valuation:20,Technical:15,Macro:15,Risk:10},
+  pillars:{
+    Business:[
+      {n:"Network Density & Pincode Coverage",d:"For express parcel companies (Delhivery, Blue Dart), the number of serviceable pincodes and last-mile delivery density determines market reach. Higher coverage → more e-commerce customers → more volume → lower cost per shipment. This is the classic logistics network effect."},
+      {n:"Asset-Heavy vs. Asset-Light",d:"Container Corp and Gateway Distriparks own railway containers and terminals (asset-heavy, high margin on rail, but capex-intensive). Delhivery has a mix of owned and leased trucks (more asset-light, but fuel cost exposed). Asset-heavy rail logistics is significantly more fuel-efficient and has structural cost advantages."},
+      {n:"Volume Growth & Realisation Per Kg",d:"Express logistics companies report volume in tonnes per day. Realisation per kg is the revenue generated per unit weight shipped. Falling realisation despite volume growth signals pricing pressure from competition. Stable or rising realisation signals pricing power."},
+      {n:"E-Commerce Dependence",d:"Delhivery derives 60%+ of volumes from e-commerce (Flipkart, Amazon, Meesho). While e-commerce is growing, these clients are powerful and push for lower rates constantly. Diversification into B2B and SME segments reduces this power."}
+    ],
+    Fundamentals:[
+      {n:"EBITDA Margin Evolution",d:"Express logistics companies are in a scale-building phase. Delhivery's EBITDA margins were negative during its loss-making growth phase; achieving positive EBITDA as volumes scale is the key inflection point investors focus on. Container Corp maintains 30–35% EBITDA margins as a rail monopoly."},
+      {n:"Asset Utilisation",d:"For trucking and container companies, asset utilisation (km driven per truck per day, container turnaround time) directly drives revenue and margin. Idle assets burn cash without generating revenue."},
+      {n:"Fixed vs. Variable Cost Structure",d:"Understanding the cost split between fixed (depots, vehicles, driver salaries) and variable (fuel, per-parcel handling) determines operating leverage. Companies with more variable cost structures are more resilient in volume downturns."}
+    ],
+    Valuation:[
+      {n:"EV/EBITDA",d:"Container Corp (regulated, near-monopoly rail logistics) trades at 25–35× EV/EBITDA. Delhivery and other express companies are valued on forward-looking EV/EBITDA given current losses or thin profits — expectations of margin improvement drive the multiple."},
+      {n:"EV/Volume (Tonnes per Annum)",d:"Divides enterprise value by annual logistics volume handled — useful for comparing express delivery companies at different stages of profitability. Below ₹50 Cr EV/million tonnes is generally considered value territory."},
+      {n:"P/E for Profitable Players",d:"Blue Dart (DHL subsidiary, premium B2B express) is reliably profitable and trades at 40–60× P/E, reflecting its quality and consistency. This compares with Delhivery (still building to profitability) where P/E is not applicable."}
+    ],
+    Technical:[
+      {n:"E-Commerce Volume as Catalyst",d:"Strong e-commerce sales seasons (Diwali, Big Billion Days, end-of-season sales) directly drive express logistics volumes. Stocks like Delhivery tend to perform ahead of festive season announcements. GMV estimates from e-commerce companies are leading indicators."},
+      {n:"Freight Rail Capacity Expansion",d:"Dedicated Freight Corridor (DFC) commissioning news directly boosts Container Corp — more rail capacity means higher volumes at lower cost. Track DFC route activation milestones."}
+    ],
+    Macro:[
+      {n:"E-Commerce Growth in India",d:"India's e-commerce market growing from $80 billion today toward $350 billion by 2030 is the structural driver for express logistics. Each percentage point of e-commerce penetration increase adds massive volume. Track Flipkart, Amazon, and Meesho GMV trends."},
+      {n:"Trade Volumes & Manufacturing India",d:"Container Corp and port-linked logistics companies benefit from rising merchandise exports (driven by PLI, China+1). Track India's merchandise export and import data monthly as a leading indicator of container volumes."},
+      {n:"GST & Supply Chain Optimisation",d:"Post-GST implementation, companies restructured supply chains from state-wise tax-optimised warehouses to efficiency-optimised pan-India hubs. This created a one-time boom in logistics demand — now largely absorbed, but ongoing warehouse consolidation continues."}
+    ],
+    Risk:[
+      {n:"Fuel Cost Spikes",d:"Diesel accounts for 20–35% of express logistics costs. A $15/barrel crude spike can wipe out 3–5 percentage points of EBITDA margin if not offset by surcharges or volume growth. Few Indian logistics companies have formal fuel surcharge mechanisms with customers."},
+      {n:"E-Commerce Platform Competition",d:"Amazon, Flipkart, and Meesho have been building their own first-party logistics networks. If this internationalisation of logistics accelerates, third-party logistics companies (Delhivery, Xpressbees) lose their largest customers."},
+      {n:"Commoditisation of Last-Mile Delivery",d:"The rise of hyperlocal delivery apps and gig-economy workers is commoditising last-mile delivery — lowering barriers to entry and making it difficult for anyone to maintain pricing power in the final delivery leg."}
+    ]
+  }
+},
+{
+  id:"retail",name:"Retail & E-Commerce",nat:"GMV-driven",
+  color:"#D85A30",bg:"#FAECE7",grp:"Consumer",
+  ex:"Trent, Avenue Supermarts (DMart), V-Mart, Nykaa, Zomato",
+  desc:"Physical retailers (DMart, Trent) and digital platforms (Nykaa, Zomato) serve Indian consumers through different channels but share common metrics around same-store growth, customer acquisition cost, and contribution economics. DMart is one of India's most operationally excellent businesses; Trent (Zudio, Westside) is a fast-growing fashion retailer backed by Tata.",
+  w:{Business:25,Fundamentals:15,Valuation:25,Technical:15,Macro:15,Risk:10},
+  pillars:{
+    Business:[
+      {n:"Same-Store Sales Growth (SSSG)",d:"SSSG measures revenue growth from stores/outlets open for at least 12 months — stripping out new store openings. Positive SSSG means the existing store base is attracting more customers or those customers are spending more. Declining SSSG is an early warning of competitive pressure or weak consumer demand."},
+      {n:"Unit Economics per Store",d:"Model revenue, gross margin, operating expenses (rent, staff), and capex per store. What is the average store's payback period? Trent's Zudio stores (₹1.5 Cr capex, 18-month payback) have superior unit economics vs. department stores (₹20+ Cr capex, 5-year payback)."},
+      {n:"Inventory Turnover",d:"How many times per year does the company sell and replenish its entire inventory? DMart's industry-leading inventory turnover (10–12×) means it sells products in 30 days — much faster than peers. Higher turnover = more efficient capital use and fresher products."},
+      {n:"GMV Growth & Take Rate (for E-Commerce)",d:"For Nykaa, Zomato, Zepto: Gross Merchandise Value (GMV) is the total value of orders processed. Take rate = revenue ÷ GMV — the % kept as revenue. Rising GMV and take rates together signal a platform gaining both scale and pricing power."}
+    ],
+    Fundamentals:[
+      {n:"Contribution Margin per Delivery/Transaction",d:"For food delivery (Zomato), contribution margin = delivery fee + platform commission − delivery cost − discounts. Positive contribution margin means each transaction is profitable before corporate overheads. Negative contribution margin (loss per order) signals dangerous unit economics."},
+      {n:"Gross Margin Profile",d:"DMart maintains 14–15% gross margins by demanding the lowest prices from suppliers and passing savings to customers. Fashion retailers like Trent have 50%+ gross margins — much higher, reflecting brand and fashion premium. Never compare gross margins across sub-sectors."},
+      {n:"Operating Leverage from Scale",d:"As retail companies open more stores, corporate overheads (technology, supply chain, marketing) are spread over more revenue — improving margins. Track EBITDA margins vs. revenue growth to measure operating leverage realisation."}
+    ],
+    Valuation:[
+      {n:"EV/Revenue for Early-Stage Platforms",d:"Loss-making platforms (early-stage Zomato, Blinkit) are valued on EV/Revenue since there are no profits to capitalise. Typically 3–8× revenue for high-growth consumer internet companies. As profitability improves, the market transitions to P/E and FCF-based valuation."},
+      {n:"P/S (Price-to-Sales)",d:"For high-growth profitable retailers like Trent, P/S of 8–12× reflects expectations of sustained 25%+ revenue growth and margin expansion. DMart's 5–7× P/S reflects its consistent (if slower) growth and dominant competitive position."},
+      {n:"EV/GMV for Marketplaces",d:"For platforms, EV/GMV normalises valuation for varying take rates. Zomato at 0.3–0.5× GMV compares to global food-delivery peers. Above 1× GMV signals high expectations; below 0.2× may signal deep value if unit economics are improving."}
+    ],
+    Technical:[
+      {n:"Consumer Sentiment & GST Data",d:"Monthly GST e-way bill data, auto registrations, FMCG volume data, and UPI transaction values are real-time proxies for consumer spending. Rising trends drive retail sector outperformance."},
+      {n:"Festive Season Preview Trade",d:"The October–November festive season drives 30–40% of annual GMV for many retailers and platforms. Stocks typically rally ahead of Diwali on expectation of strong results — this seasonal pattern is highly tradeable."}
+    ],
+    Macro:[
+      {n:"Consumer Spending & Urban Income Growth",d:"India's expanding urban middle class (rising to 500 million by 2030) is the fundamental demand driver for organised retail. Track RBI's Consumer Confidence Index, credit card spending data, and consumer goods company volume trends as proxies."},
+      {n:"Urbanisation & Organised Retail Penetration",d:"India's organised retail is only 12% of total retail vs. 85% in the US. As consumers shift from unorganised kirana stores to organised retail (DMart, Trent, Reliance Retail), the sector captures a structural share shift — regardless of overall economic growth."},
+      {n:"Digital Adoption & UPI Penetration",d:"Rising UPI payments, smartphone penetration, and internet access are expanding the addressable market for e-commerce. India added 50 million new internet users in 2023 alone — each a potential new e-commerce customer."}
+    ],
+    Risk:[
+      {n:"Margin Pressure from Competition",d:"Intense competition (Reliance Retail vs. DMart, Blinkit vs. Zepto vs. Swiggy Instamart) forces discounting, marketing spend, and delivery subsidies — all margin-destructive. The winner usually emerges after 3–5 years of attrition, but early investors suffer."},
+      {n:"High Cash Burn for Tech-Led Platforms",d:"Platforms that burn $200–500 million/year (as early Zomato did) need sustained access to capital markets. If investor sentiment turns negative (rate hikes, risk-off markets), funding dries up, forcing painful cost cuts or dilutive fundraises."},
+      {n:"Technology Disruption",d:"Quick commerce (10-minute delivery) is disrupting 2-hour delivery; 2-hour delivery disrupted next-day; social commerce (video-driven shopping) is the emerging next disruptor. Each wave requires significant reinvestment or risks losing customers."}
+    ]
+  }
+},
+{
+  id:"media",name:"Media & Entertainment",nat:"Content-driven",
+  color:"#534AB7",bg:"#EEEDFE",grp:"Consumer",
+  ex:"Zee Entertainment, Sun TV, PVR Inox, Tips Music, Nazara",
+  desc:"Media companies monetise content and audiences through advertising revenue (TV channels, digital) and subscriptions (OTT platforms, gaming). The sector is bifurcated: traditional broadcasters (Zee, Sun TV) face structural OTT disruption, while pure-play content companies and gaming platforms are growing rapidly.",
+  w:{Business:25,Fundamentals:20,Valuation:20,Technical:15,Macro:15,Risk:10},
+  pillars:{
+    Business:[
+      {n:"Content IP & Franchises",d:"The most durable moat in media is owned content IP — South Indian film libraries (Sun TV's library is invaluable), music catalogues (Tips Music owns 30,000+ songs), or sports broadcasting rights. This IP generates revenue for decades through licensing, streaming, and broadcast."},
+      {n:"Subscription vs. Advertising Revenue Mix",d:"Subscription revenue (OTT, gaming) is recurring and more predictable; advertising revenue (TV, digital) is highly cyclical — falling sharply in economic slowdowns. Companies with 60%+ subscription revenue have more defensive earnings profiles."},
+      {n:"OTT Strategy & Direct-to-Consumer Pivot",d:"For traditional broadcasters, the critical question is whether they have a viable OTT strategy. Zee5, SonyLIV — incumbent channels' OTT platforms compete against Netflix, Prime Video, and JioCinema (heavily funded). Assess subscriber growth, content spend efficiency, and ARPU trends."},
+      {n:"Gaming Platform Metrics (Nazara, Winzo)",d:"For gaming companies, track Daily Active Users (DAU), Monthly Active Users (MAU), DAU/MAU ratio (engagement quality), ARPU, and lifetime value (LTV) vs. customer acquisition cost (CAC). Gaming has enormous viral growth potential but also rapid user attrition."}
+    ],
+    Fundamentals:[
+      {n:"Advertising Revenue Cycle",d:"TV advertising revenue is tightly correlated with FMCG, auto, and banking ad spend — all cyclical. In a slowdown, companies cut marketing first. Track BARC (Broadcast Audience Research Council) viewership data as a leading indicator of ad rate trends."},
+      {n:"Content Cost as % of Revenue",d:"Content cost is the largest variable cost for media companies. OTT platforms spend 50–70% of revenue on content. Traditional broadcasters spend 30–45%. Rising content costs without proportional subscriber or ad revenue growth compresses margins."},
+      {n:"EBITDA Margin for Broadcasters",d:"Regional language broadcasters (Sun TV, Zee's regional channels) enjoy 30–40% EBITDA margins due to low content costs (locally produced content is cheaper than Bollywood). National Hindi channels have higher content costs and lower margins (15–25%)."}
+    ],
+    Valuation:[
+      {n:"EV/EBITDA for Profitability-Stage Companies",d:"Zee Entertainment and Sun TV trade at 10–15× EV/EBITDA — at a discount to their historical averages reflecting OTT disruption fears. PVR Inox (multiplex cinema) trades at 12–18× EV/EBITDA based on normalised post-COVID footfall."},
+      {n:"P/E with Earnings Quality Assessment",d:"Media P/Es range widely: Sun TV (consistent profits, 15×), Zee (turnaround story, 10–15×), PVR Inox (recovering post-COVID, 25–35× on normalised earnings). Assess earnings quality — accounting changes, one-time items, and revenue recognition practices."},
+      {n:"EV/Subscriber for OTT Platforms",d:"For subscription streaming companies, EV per paying subscriber benchmarks against global peers (Netflix: ~$100/subscriber in India context). Indian OTT platforms at $20–30/subscriber reflect lower ARPU potential but large addressable markets."}
+    ],
+    Technical:[
+      {n:"IPL & Sports Content Catalysts",d:"Media stocks (particularly digital platforms with sports rights) move ahead of major cricket seasons. Star Sports, Jio Cinema (unlisted), and Sony Sports' viewership data during IPL directly impacts ad revenue and subscriber metrics — creating predictable seasonal patterns."},
+      {n:"Ad Revenue Seasonality",d:"Q2 (July–September, typically the weakest quarter) and Q4 (January–March, festive-adjacent) show clear ad revenue seasonality. Media stocks often see weakness ahead of Q2 results and strength ahead of festive season."}
+    ],
+    Macro:[
+      {n:"Ad Spend Cycle",d:"India's total advertising market is ~₹90,000 Cr annually, growing at ~12% per year. Digital advertising is growing at 25%+ while TV advertising stagnates. Track sector-wise advertising spend (auto, FMCG, BFSI) as it determines broadcaster revenues."},
+      {n:"Digital Penetration & Smartphone Users",d:"India's 650 million+ smartphone users are the OTT and gaming opportunity. As Tier 2–4 cities get cheaper smartphones and affordable data, regional-language OTT content becomes the growth frontier. Track internet user growth in non-metro India."},
+      {n:"Content Consumption Trends",d:"Short-form video (Reels, YouTube Shorts) is reducing time available for long-form content consumption. Simultaneously, podcasts, esports, and interactive gaming are expanding. Companies that adapt content formats to evolving consumption patterns maintain relevance."}
+    ],
+    Risk:[
+      {n:"OTT Disruption of Linear TV",d:"Netflix, Prime Video, and Jio Cinema are pulling premium viewers (and ad budgets) away from cable/satellite TV. The structural decline of traditional TV viewership — particularly urban youth audiences — is irreversible, making traditional broadcaster valuations a question of disruption pace."},
+      {n:"Ad Spend Cyclicality",d:"In any economic slowdown, advertising is the first budget cut across most industries. Companies with 70%+ of revenue from advertising are highly vulnerable to economic cycles — as Zee discovered in 2019–20 when FMCG and auto companies slashed ad budgets."},
+      {n:"Piracy",d:"Digital piracy of films, music, and sports continues to erode monetisable viewership. Telegram channels distributing new Bollywood releases on the day of OTT launch are a persistent challenge. Anti-piracy enforcement is inconsistent."}
+    ]
+  }
+},
+{
+  id:"agrochem",name:"Agrochemicals & Fertilisers",nat:"Seasonal",
+  color:"#639922",bg:"#EAF3DE",grp:"Materials",
+  ex:"PI Industries, Bayer CropScience, Chambal Fertilisers, Coromandel",
+  desc:"Agrochemical companies make pesticides, herbicides, and fungicides that protect crops from pests and disease. Fertiliser companies make urea, DAP, and potash that provide plant nutrition. Both are deeply seasonal — volume and revenue are highly concentrated in the Kharif (June–September) and Rabi (October–February) crop seasons.",
+  w:{Business:20,Fundamentals:25,Valuation:20,Technical:15,Macro:20,Risk:10},
+  pillars:{
+    Business:[
+      {n:"CRAM Business (PI Industries)",d:"Contract Research and Manufacturing (CRAM) involves developing and manufacturing novel agrochemical molecules for global MNCs who own the patents. PI Industries has become India's leading CRAM provider. These contracts are long-term (5–10 years), sticky, and export-denominated — superior revenue quality to domestic distribution."},
+      {n:"Domestic Branded Agrochem vs. Generic",d:"Branded products (Bayer CropScience, Coromandel's branded range) command 30–50% price premiums over generic equivalents. Brand loyalty among farmers — driven by consistent efficacy and agronomist recommendations — is surprisingly strong and durable."},
+      {n:"Fertiliser Business Model",d:"Fertiliser companies operate under heavy government regulation — urea prices are capped and the government pays subsidies to manufacturers. This creates a 'pass-through' business where profits are relatively stable and determined by subsidy policy. Coromandel and Chambal are India's major private urea and complex fertiliser makers."},
+      {n:"Product Registration Pipeline",d:"New agrochemical molecules take 5–10 years to register with the Central Insecticides Board (CIB). Companies with a large pipeline of registered molecules have a sustainable competitive advantage — competitors cannot sell the same product without separate registration."}
+    ],
+    Fundamentals:[
+      {n:"Season-wise Revenue Phasing",d:"Kharif crop season (June–September) is the primary revenue season — companies ship products before farmers apply them. Rabi season (October–February) is the secondary season. This creates extreme quarterly volatility — Q1+Q2 (June–September) and Q3+Q4 (December–March) are strong; adjacent quarters are weak."},
+      {n:"EBITDA Margin Stability",d:"For branded agrochem companies, EBITDA margins of 18–25% are consistent over time, as brand premiums offset raw material fluctuations. Pure generic agrochem companies have much more volatile margins (8–15%) tied to spot prices and competition. CRAM players (PI Industries) maintain 22–28% margins."},
+      {n:"Receivables & Channel Inventory",d:"Agrochem distributors often hold 90–120 days of stock. Track distributor inventory levels — high channel inventory means the next season's primary shipments will be lower (distributors buy less from manufacturers to clear their own stock first)."},
+      {n:"Working Capital Cycle",d:"The agrochem working capital cycle peaks in Q1 and Q3 (pre-season inventory buildup). Companies with strong brands collect dues faster. Track the change in working capital across seasons to assess financial efficiency."}
+    ],
+    Valuation:[
+      {n:"P/E with Seasonal Normalisation",d:"Use annual P/E rather than quarterly — seasonal earnings lumpiness makes quarterly P/E meaningless. PI Industries trades at 40–50× P/E reflecting CRAM growth premium. Bayer CropScience at 35–45× reflects MNC parentage and brand. Pure domestic generic companies trade at 15–25×."},
+      {n:"EV/EBITDA",d:"The sector trades at 20–35× EV/EBITDA for quality names. Fertiliser companies trade at much lower multiples (8–12×) due to regulated, low-growth business models. Premiums are awarded for CRAM revenue, export diversification, and new molecule registrations."},
+      {n:"P/E vs. Growth (PEG Ratio)",d:"PI Industries at 45× P/E growing EPS at 20%+ has a PEG of ~2.2× — reasonable for a CRAM business with high earnings quality and visibility. Domestic-only agrochem companies at 25× P/E growing at 10% (PEG 2.5×) are relatively expensive."}
+    ],
+    Technical:[
+      {n:"Pre-Season Monsoon Anticipation",d:"Agrochem stocks rally 2–3 months before the Kharif season if monsoon forecasts are positive. IMD (India Meteorological Department) forecasts and El Niño/La Niña signals are the key catalysts. A good monsoon forecast = strong sowing intent = strong agrochemical demand."},
+      {n:"Domestic vs. Export Revenue Triggers",d:"CRAM-focused companies like PI Industries move on export order wins and CRAM pipeline announcements. Domestic-focused companies move on monsoon and crop price data. Understanding which driver matters for each company prevents misapplication of catalysts."}
+    ],
+    Macro:[
+      {n:"Monsoon Season",d:"India's Southwest Monsoon (June–September) is the single most important macro variable for agrochemicals. Above-normal rainfall expands sown area and boosts pesticide/fertiliser demand. A deficit monsoon year can reduce agrochem demand by 15–20%."},
+      {n:"Government Subsidy Policy for Fertilisers",d:"The Indian government subsidises urea heavily (market price is ₹242/bag vs. actual cost of ₹3,000+/bag). Changes in subsidy structure, NBS (Nutrient Based Subsidy) rates for complex fertilisers, and import decisions directly impact fertiliser company profitability."},
+      {n:"Crop Prices & Farm Income",d:"When crop prices (wheat, rice, cotton, soybean) are high, farmers can afford more agrochemicals per acre. Strong MSP (Minimum Support Price) increases by the government directly translate to higher rural incomes — a demand multiplier for agrochemicals."},
+      {n:"Food Inflation & Crop Protection Spending",d:"High food inflation motivates farmers to protect crops more aggressively (using more pesticides and fungicides to prevent crop loss). This counterintuitive relationship makes agrochem demand somewhat resilient to economic cycles."}
+    ],
+    Risk:[
+      {n:"Monsoon Failure",d:"A severe drought year (deficit monsoon below 90% of Long Period Average) can wipe out an entire Kharif season's demand. Companies with significant export CRAM revenue (PI Industries) are much less exposed to monsoon risk than domestic-only players."},
+      {n:"Raw Material Cost Spikes",d:"Many agrochem active ingredients are sourced from China (technical grade pesticides). Sharp increases in Chinese raw material prices or export restrictions can compress margins by 3–5 percentage points before prices to farmers can be raised."},
+      {n:"Import Competition & Chinese Dumping",d:"Cheap Chinese generic pesticides (particularly for commoditised products like glyphosate, imidacloprid) create pricing pressure in the domestic market. Companies relying on unregistered, generic pesticides face margin erosion from Chinese competition."}
+    ]
+  }
+}
+];
+
+// ─── QUICK REFERENCE MAPS ────────────────────────────────────
+const KM_MAP = {
+  defence:"Order backlog (3–5× revenue) · book-to-bill >1.2",
+  renewable:"DSCR >1.3× · CUF · EV/MW · PPA coverage %",
+  tech:"Revenue growth · EBITDA margin · deal wins TCV",
+  banking:"GNPA% · NIM · CASA ratio · credit cost",
+  pharma:"ANDA pipeline · R&D as % revenue · US generics",
+  fmcg:"Volume growth · market share · rural penetration",
+  infra:"Order book (3–4× revenue) · execution pace",
+  auto:"Volume growth · ASP trend · EV transition pace",
+  metals:"Commodity price cycle · capacity utilisation %",
+  oilgas:"Crude oil sensitivity · refining margins (GRM)",
+  realestate:"Pre-sales velocity · RERA launches · NAV per unit",
+  chemicals:"Capacity utilisation · export revenue % · R&D pipeline",
+  telecom:"ARPU growth · subscriber market share · 5G rollout",
+  power:"PLF · regulated equity · tariff order",
+  hospitality:"RevPAR · occupancy rate · passenger load factor",
+  capgoods:"Order inflows · revenue recognition pace · margins",
+  insurance:"VNB margin · embedded value (EV) · claims ratio",
+  logistics:"Volume growth · realisation per kg · asset utilisation",
+  retail:"SSSG · GMV growth · take rate · contribution margin",
+  media:"Subscription growth · ad revenue · content cost ratio",
+  agrochem:"Kharif/Rabi season volumes · export order book"
+};
+const VT_MAP={
+  defence:"Price-to-backlog · EV/EBITDA",
+  renewable:"EV/MW · EV/EBITDA · pipeline DCF",
+  tech:"P/E · EV/Revenue · PEG ratio",
+  banking:"P/BV · RoA · RoE — never P/E alone",
+  pharma:"EV/EBITDA · pipeline DCF",
+  fmcg:"Premium P/E · EV/EBITDA",
+  infra:"EV/EBITDA · P/E · EV/order book",
+  auto:"P/E · EV/EBITDA · P/FCF",
+  metals:"EV/EBITDA · P/BV · replacement cost",
+  oilgas:"EV/EBITDA · P/E · replacement value",
+  realestate:"NAV · P/NAV · dividend yield (REIT)",
+  chemicals:"P/E · EV/EBITDA · P/S for niche players",
+  telecom:"EV/EBITDA · EV/subscriber · DCF",
+  power:"P/BV · dividend yield · EV/installed capacity",
+  hospitality:"EV/EBITDA · EV/room · P/E",
+  capgoods:"P/E · EV/EBITDA · P/order book",
+  insurance:"P/EV · VNB multiple · P/BV",
+  logistics:"EV/EBITDA · P/E · EV/volume",
+  retail:"EV/Revenue · P/S · EV/GMV (early stage)",
+  media:"EV/EBITDA · P/E · EV/subscriber",
+  agrochem:"P/E · EV/EBITDA"
+};
+const UR_MAP={
+  defence:"Project cancellation · export control · payment delay",
+  renewable:"DISCOM payment · curtailment · tariff renegotiation",
+  tech:"Client concentration · AI disruption · visa policy",
+  banking:"NPA surge · ALM mismatch · regulatory action",
+  pharma:"USFDA import alert · price erosion · patent cliff",
+  fmcg:"Raw material inflation · private label erosion",
+  infra:"Working capital stress · payment delays · cost overruns",
+  auto:"Commodity cost spikes · EV disruption · chip shortage",
+  metals:"Commodity price collapse · import dumping · China demand",
+  oilgas:"Crude price crash · govt pricing intervention · subsidy burden",
+  realestate:"Interest rate sensitivity · regulatory delays · oversupply",
+  chemicals:"China dumping · raw material spikes · import substitution reversal",
+  telecom:"Tariff war · spectrum costs · debt from capex",
+  power:"Fuel supply disruptions · regulatory tariff risk · DISCOM dues",
+  hospitality:"Demand shocks (pandemic, terror) · fuel cost (airlines)",
+  capgoods:"Order drought · commodity cost pass-through · execution delays",
+  insurance:"Claims surge · interest rate risk · mortality deviation",
+  logistics:"Fuel cost spikes · competition · GST disruption",
+  retail:"Margin pressure · tech disruption · high cash burn",
+  media:"OTT disruption · ad spend cyclicality · piracy",
+  agrochem:"Monsoon failure · raw material cost · import competition"
+};
+const MD_MAP={
+  defence:"Union Budget defence capex · geopolitics",
+  renewable:"MNRE auctions · RBI rate cuts · module prices",
+  tech:"US demand cycle · USD/INR rate",
+  banking:"RBI rate cycle · credit growth",
+  pharma:"USFDA approval calendar · drug pricing policy",
+  fmcg:"Monsoon · rural income · MSP · inflation",
+  infra:"Govt capex budget · NITI Aayog projects",
+  auto:"Interest rates · fuel prices · EV policy",
+  metals:"China steel demand · global commodity cycle",
+  oilgas:"Brent crude · OPEC decisions · govt price policy",
+  realestate:"Home loan rates · economic growth · urbanisation",
+  chemicals:"China+1 strategy · global chemical demand · PLI",
+  telecom:"TRAI policy · 5G auctions · data consumption",
+  power:"Power demand growth · fuel price · regulatory orders",
+  hospitality:"Domestic tourism · corporate travel · visa policy",
+  capgoods:"Govt capex · private capex cycle · PLI manufacturing",
+  insurance:"Regulatory IRDAI changes · interest rates",
+  logistics:"E-commerce growth · trade volumes · infrastructure",
+  retail:"Consumer spending · urbanisation · digital adoption",
+  media:"Ad spend cycle · digital penetration · content trends",
+  agrochem:"Monsoon season · govt subsidy policy · food inflation"
+};
+
+function hexToRgba(hex, alpha) {
+  const r = parseInt(hex.slice(1,3),16);
+  const g = parseInt(hex.slice(3,5),16);
+  const b = parseInt(hex.slice(5,7),16);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+function getKM(id){return KM_MAP[id]||'';}
+function getVT(id){return VT_MAP[id]||'';}
+function getUR(id){return UR_MAP[id]||'';}
+function getMD(id){return MD_MAP[id]||'';}
+function switchTab(id) {
+  document.querySelectorAll('.nav-tab').forEach((t,i) => {
+    t.classList.toggle('active', SECTORS[i].id === id);
+  });
+  document.querySelectorAll('.sector-panel').forEach(p => {
+    p.classList.toggle('active', p.id === 'panel-' + id);
+  });
+  document.querySelector('.nav-wrap').scrollIntoView({behavior:'smooth',block:'start'});
+}
+
+// ─── BUILD TABS & PANELS ─────────────────────────────────────
+const navTabs = document.getElementById('navTabs');
+const pageInner = document.getElementById('pageInner');
+
+SECTORS.forEach((sector, i) => {
+  // NAV TAB
+  const tab = document.createElement('button');
+  tab.className = 'nav-tab' + (i===0?' active':'');
+  tab.textContent = sector.name;
+  tab.onclick = () => switchTab(sector.id);
+  navTabs.appendChild(tab);
+
+  // PANEL
+  const panel = document.createElement('div');
+  panel.className = 'sector-panel' + (i===0?' active':'');
+  panel.id = 'panel-' + sector.id;
+
+  // Hero
+  const alphaColor = hexToRgba(sector.color, 0.07);
+  panel.innerHTML = `
+    <div class="sector-hero" style="--sector-color-alpha:${alphaColor}">
+      <div>
+        <div class="sh-eyebrow">${sector.grp} Sector</div>
+        <div class="sh-name" style="color:${sector.color}">${sector.name}</div>
+        <span class="sh-nature" style="background:${sector.bg};color:${sector.color}">${sector.nat}</span>
+        <div class="sh-desc">${sector.desc}</div>
+        <div class="sh-examples">Key stocks: ${sector.ex}</div>
+      </div>
+      <div class="sh-weights">
+        ${Object.entries(sector.w).map(([k,v]) => `
+          <div class="sw-row">
+            <span class="sw-label">${k}</span>
+            <div class="sw-bar-wrap"><div class="sw-bar" style="width:${Math.round(v*3.3)}%;background:${PC[k]}"></div></div>
+            <span class="sw-pct">${v}%</span>
+          </div>`).join('')}
+      </div>
+    </div>
+  `;
+
+  // Summary Box
+  const km = getKM(sector.id);
+  const vt = getVT(sector.id);
+  const ur = getUR(sector.id);
+  const md = getMD(sector.id);
+  const sumBox = document.createElement('div');
+  sumBox.className = 'summary-box';
+  sumBox.innerHTML = `
+    <div class="sb-title">📋 At a Glance — Critical Numbers</div>
+    <div class="sb-grid">
+      <div class="sb-item"><div class="sb-item-label">Key Metrics to Track</div><div class="sb-item-val blue">${km}</div></div>
+      <div class="sb-item"><div class="sb-item-label">Valuation Tools</div><div class="sb-item-val">${vt}</div></div>
+      <div class="sb-item"><div class="sb-item-label">Unique Risk</div><div class="sb-item-val red">${ur}</div></div>
+      <div class="sb-item"><div class="sb-item-label">Macro Driver</div><div class="sb-item-val">${md}</div></div>
+    </div>
+  `;
+  panel.appendChild(sumBox);
+
+  // Pillars
+  const pillarsGrid = document.createElement('div');
+  pillarsGrid.className = 'pillars-grid';
+
+  Object.entries(sector.pillars).forEach(([pillar, steps]) => {
+    const card = document.createElement('div');
+    card.className = 'pillar-card';
+
+    const weight = sector.w[pillar] || 0;
+    card.innerHTML = `
+      <div class="weight-badge" style="background:${hexToRgba(PC[pillar],0.15)};color:${PC[pillar]}">${weight}%</div>
+      <div class="pc-header">
+        <div class="pc-icon" style="background:${hexToRgba(PC[pillar],0.15)}">${ICONS[pillar]}</div>
+        <div>
+          <div class="pc-title">${pillar} Analysis</div>
+          <div class="pc-subtitle">${weight}% of investment decision weight</div>
+        </div>
+      </div>
+      <div class="pc-accent-bar" style="background:${PC[pillar]}"></div>
+      <div class="step-list">
+        ${steps.map((step, idx) => `
+          <div class="step">
+            <div class="step-num" style="background:${hexToRgba(PC[pillar],0.15)};color:${PC[pillar]}">${idx+1}</div>
+            <div class="step-body">
+              <div class="step-name">${step.n}</div>
+              <div class="step-detail">${step.d}</div>
+            </div>
+          </div>`).join('')}
+      </div>
+    `;
+    pillarsGrid.appendChild(card);
+  });
+
+  panel.appendChild(pillarsGrid);
+  pageInner.appendChild(panel);
+});
+
+
+</script>
+</body>
+</html>

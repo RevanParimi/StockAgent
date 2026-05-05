@@ -109,7 +109,7 @@ def _run_todays_agent_scores(
     """
     try:
         if sector == "automobile":
-            from core.pipeline.orchestrator import AutomobileAgentOrchestrator
+            from pipeline.orchestrator import AutomobileAgentOrchestrator
             orchestrator = AutomobileAgentOrchestrator()
             if learned_weights:
                 orchestrator._aggregator_weights = learned_weights
@@ -391,7 +391,7 @@ def run_daily_review(
 
     market_context = ""
     try:
-        from services.data.fetchers.news import get_news_context
+        from data.news import get_news_context
         market_context = get_news_context(ticker, max_articles=3)
     except Exception as exc:
         logger.debug("[daily_review] News context unavailable: %s", exc)

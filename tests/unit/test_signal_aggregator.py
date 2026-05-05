@@ -16,7 +16,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from core.pipeline.signal_aggregator import SignalAggregator, CONFLICT_THRESHOLD
+from pipeline.signal_aggregator import SignalAggregator, CONFLICT_THRESHOLD
 from core.config import settings
 from tests.conftest import make_aggregator_json
 

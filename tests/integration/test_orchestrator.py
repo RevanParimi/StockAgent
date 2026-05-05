@@ -16,7 +16,7 @@ from unittest.mock import MagicMock, patch, call
 
 import pytest
 
-from core.pipeline.orchestrator import AutomobileAgentOrchestrator
+from pipeline.orchestrator import AutomobileAgentOrchestrator
 from tests.conftest import (
     make_aggregator_json,
     make_sales_demand_json,

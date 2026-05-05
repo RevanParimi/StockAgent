@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Edit(/.claude/skills/software-engineer/**)",
+      "Edit(/.claude/skills/ai-engineer/**)",
+      "Edit(/.claude/skills/signal-engineering/**)",
+      "Edit(/.claude/skills/system-design-engineer/**)",
+      "Edit(/.claude/skills/devops-engineer/**)",
+      "Edit(/.claude/skills/support-engineer/**)",
+      "Bash(git mv *)"
+    ]
+  }
+}

@@ -23,7 +23,7 @@ import logging
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
-from core.pipeline.orchestrator import AutomobileAgentOrchestrator
+from pipeline.orchestrator import AutomobileAgentOrchestrator
 
 logger = logging.getLogger(__name__)
 router = APIRouter()

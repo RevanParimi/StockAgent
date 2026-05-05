@@ -14,7 +14,7 @@ import logging
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from core.pipeline.orchestrator import AutomobileAgentOrchestrator
+from pipeline.orchestrator import AutomobileAgentOrchestrator
 
 logger = logging.getLogger(__name__)
 router = APIRouter()

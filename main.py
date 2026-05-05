@@ -165,8 +165,8 @@ def _micro_search_loop() -> None:
         At 5 tickers/day across 3 sectors: 3 × 5 × 3 sectors × 22 days = 990 calls/month saved
     """
     from core.config import settings
-    from services.data.fetchers.news import fetch_news_context
-    from services.data.cache.macro_cache import set_macro_cache
+    from data.news import fetch_news_context
+    from data.cache import set_macro_cache
 
     n = settings.MICRO_QUERIES_PER_RUN
     interval = (24 * 3600) / settings.MICRO_CYCLES_PER_DAY
@@ -284,7 +284,7 @@ def main() -> None:
         time.sleep(2)
 
     # Lazy import here so logging is configured first
-    from core.pipeline.orchestrator import AutomobileAgentOrchestrator
+    from pipeline.orchestrator import AutomobileAgentOrchestrator
 
     logger = logging.getLogger(__name__)
     logger.info("Starting Automobile Agent for: %s", args.ticker)

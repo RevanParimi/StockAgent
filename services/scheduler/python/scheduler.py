@@ -219,7 +219,7 @@ class AutomobileScheduler:
 
     def run_now(self, tickers: list[str] | None = None) -> None:
         """Manually trigger an immediate analysis run (testing / ops override)."""
-        from core.pipeline.orchestrator import AutomobileAgentOrchestrator
+        from pipeline.orchestrator import AutomobileAgentOrchestrator
         tickers_to_run = tickers or settings.SCHEDULER_TICKERS
         orch = AutomobileAgentOrchestrator()
         for ticker in tickers_to_run:

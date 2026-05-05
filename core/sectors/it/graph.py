@@ -21,7 +21,7 @@ from core.graphs.nodes import (
     make_run_agent_node,
 )
 from core.graphs.state import GraphState
-from core.sectors.it.agents import AGENTS, WEIGHTS
+from sectors.it.registry import AGENTS, WEIGHTS
 
 SECTOR = "it_sector"
 

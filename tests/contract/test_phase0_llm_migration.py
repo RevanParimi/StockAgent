@@ -98,7 +98,7 @@ class TestBaseAgentUsesOpenAI:
     @patch("services.clients.llm_client.OpenAI")
     def test_base_agent_instantiates_openai(self, mock_openai_cls):
         mock_openai_cls.return_value = MagicMock()
-        from core.sectors.automobile.sales_demand import SalesDemandAgent
+        from sectors.automobile.agents.sales_demand import SalesDemandAgent
         # Re-import to trigger __init__
         agent = SalesDemandAgent.__new__(SalesDemandAgent)
         agent.__init__()
@@ -108,7 +108,7 @@ class TestBaseAgentUsesOpenAI:
     def test_base_agent_passes_openrouter_base_url(self, mock_openai_cls):
         from core.config import settings
         mock_openai_cls.return_value = MagicMock()
-        from core.sectors.automobile.sales_demand import SalesDemandAgent
+        from sectors.automobile.agents.sales_demand import SalesDemandAgent
         SalesDemandAgent()
         _, kwargs = mock_openai_cls.call_args
         assert kwargs.get("base_url") == settings.OPENROUTER_BASE_URL, (
@@ -119,7 +119,7 @@ class TestBaseAgentUsesOpenAI:
     def test_base_agent_passes_openrouter_api_key(self, mock_openai_cls):
         from core.config import settings
         mock_openai_cls.return_value = MagicMock()
-        from core.sectors.automobile.sales_demand import SalesDemandAgent
+        from sectors.automobile.agents.sales_demand import SalesDemandAgent
         SalesDemandAgent()
         _, kwargs = mock_openai_cls.call_args
         assert kwargs.get("api_key") == settings.OPENROUTER_API_KEY
@@ -136,7 +136,7 @@ class TestOrchestratorUsesOpenAI:
     def test_orchestrator_instantiates_openai(self, mock_agg, mock_openai_cls):
         mock_openai_cls.return_value = MagicMock()
         mock_agg.return_value = MagicMock()
-        from core.pipeline.orchestrator import AutomobileAgentOrchestrator
+        from pipeline.orchestrator import AutomobileAgentOrchestrator
         AutomobileAgentOrchestrator()
         mock_openai_cls.assert_called_once()
 
@@ -147,7 +147,7 @@ class TestOrchestratorUsesOpenAI:
         from core.config import settings
         mock_openai_cls.return_value = MagicMock()
         mock_agg.return_value = MagicMock()
-        from core.pipeline.orchestrator import AutomobileAgentOrchestrator
+        from pipeline.orchestrator import AutomobileAgentOrchestrator
         AutomobileAgentOrchestrator()
         _, kwargs = mock_openai_cls.call_args
         assert kwargs.get("base_url") == settings.OPENROUTER_BASE_URL
@@ -161,7 +161,7 @@ class TestSignalAggregatorUsesOpenAI:
     @patch("services.clients.llm_client.OpenAI")
     def test_signal_aggregator_instantiates_openai(self, mock_openai_cls):
         mock_openai_cls.return_value = MagicMock()
-        from core.pipeline.signal_aggregator import SignalAggregator
+        from pipeline.signal_aggregator import SignalAggregator
         SignalAggregator()
         mock_openai_cls.assert_called_once()
 
@@ -169,7 +169,7 @@ class TestSignalAggregatorUsesOpenAI:
     def test_signal_aggregator_uses_openrouter_url(self, mock_openai_cls):
         from core.config import settings
         mock_openai_cls.return_value = MagicMock()
-        from core.pipeline.signal_aggregator import SignalAggregator
+        from pipeline.signal_aggregator import SignalAggregator
         SignalAggregator()
         _, kwargs = mock_openai_cls.call_args
         assert kwargs.get("base_url") == settings.OPENROUTER_BASE_URL
@@ -194,14 +194,14 @@ class TestFeedbackAgentUsesOpenAI:
 
 class TestProgressCallback:
     def test_analyse_accepts_progress_callback_param(self):
-        from core.pipeline.orchestrator import AutomobileAgentOrchestrator
+        from pipeline.orchestrator import AutomobileAgentOrchestrator
         sig = inspect.signature(AutomobileAgentOrchestrator.analyse)
         assert "progress_callback" in sig.parameters, (
             "analyse() must accept progress_callback for WebSocket streaming"
         )
 
     def test_progress_callback_default_is_none(self):
-        from core.pipeline.orchestrator import AutomobileAgentOrchestrator
+        from pipeline.orchestrator import AutomobileAgentOrchestrator
         sig = inspect.signature(AutomobileAgentOrchestrator.analyse)
         default = sig.parameters["progress_callback"].default
         assert default is None
@@ -211,7 +211,7 @@ class TestProgressCallback:
     @patch("core.pipeline.orchestrator._SUB_AGENTS")
     def test_progress_callback_called_per_agent(self, mock_agents, mock_agg_cls, mock_openai_cls):
         """Callback must fire once per agent that completes."""
-        from core.pipeline.orchestrator import AutomobileAgentOrchestrator
+        from pipeline.orchestrator import AutomobileAgentOrchestrator
         from core.schemas.pipeline import AgentOutput, FinalReport, WeightedAgentScore
 
         # Setup mock LLM for ticker resolution

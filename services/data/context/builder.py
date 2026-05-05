@@ -78,7 +78,7 @@ class ContextBuilder:
     # ------------------------------------------------------------------
 
     def _build_sales_demand(self, query: StockQuery) -> str:
-        from services.data.fetchers.news import fetch_news_context
+        from data.news import fetch_news_context
         from core.config.prompts.automobile.sales_demand import CONTEXT_SEARCH_QUERIES
 
         today = date.today()
@@ -99,8 +99,8 @@ class ContextBuilder:
         )
 
     def _build_fundamentals(self, query: StockQuery) -> str:
-        from services.data.fetchers.fundamentals import get_fundamentals_context
-        from services.data.fetchers.news import fetch_news_context
+        from data.fundamentals import get_fundamentals_context
+        from data.news import fetch_news_context
         from core.config.prompts.automobile.fundamentals import CONTEXT_SEARCH_QUERIES
 
         today = date.today()
@@ -128,7 +128,7 @@ class ContextBuilder:
         )
 
     def _build_sentiment(self, query: StockQuery) -> str:
-        from services.data.fetchers.news import fetch_news_context
+        from data.news import fetch_news_context
         from core.config.prompts.automobile.sentiment import CONTEXT_SEARCH_QUERIES
 
         today = date.today()
@@ -150,9 +150,9 @@ class ContextBuilder:
         )
 
     def _build_risk_macro(self, query: StockQuery) -> str:
-        from services.data.fetchers.macro import get_macro_context
-        from services.data.fetchers.news import fetch_news_context
-        from services.data.cache.macro_cache import get_macro_cache
+        from data.macro import get_macro_context
+        from data.news import fetch_news_context
+        from data.cache import get_macro_cache
         from core.config.prompts.automobile.risk_macro import CONTEXT_SEARCH_QUERIES
 
         # yfinance macro data — always free, fetch fresh every time
@@ -184,8 +184,8 @@ class ContextBuilder:
         return f"{macro}\n\n{news}"
 
     def _build_raw_materials(self, query: StockQuery) -> str:
-        from services.data.fetchers.macro import get_raw_materials_context
-        from services.data.fetchers.news import fetch_news_context
+        from data.macro import get_raw_materials_context
+        from data.news import fetch_news_context
         from core.config.prompts.automobile.raw_materials import CONTEXT_SEARCH_QUERIES
 
         today = date.today()
@@ -208,7 +208,7 @@ class ContextBuilder:
 
     def _build_policy_regulatory(self, query: StockQuery) -> str:
         from services.clients.tavily_fetcher import fetch_tavily_context
-        from services.data.fetchers.news import fetch_news_context
+        from data.news import fetch_news_context
         from core.config.prompts.automobile.policy_regulatory import TAVILY_SEARCH_QUERIES, CONTEXT_SEARCH_QUERIES
 
         today = date.today()
@@ -238,7 +238,7 @@ class ContextBuilder:
         )
 
     def _build_competitive_intel(self, query: StockQuery) -> str:
-        from services.data.fetchers.news import fetch_news_context
+        from data.news import fetch_news_context
         from core.config.prompts.automobile.competitive_intel import CONTEXT_SEARCH_QUERIES
 
         today = date.today()
@@ -270,8 +270,8 @@ class ContextBuilder:
     # ------------------------------------------------------------------
 
     def _build_bfsi_fundamentals(self, query: StockQuery) -> str:
-        from services.data.fetchers.fundamentals import get_fundamentals_context
-        from services.data.fetchers.news import fetch_news_context
+        from data.fundamentals import get_fundamentals_context
+        from data.news import fetch_news_context
 
         today = date.today()
         queries = [
@@ -286,7 +286,7 @@ class ContextBuilder:
         return f"{fin}\n\n{news}"
 
     def _build_bfsi_risk(self, query: StockQuery) -> str:
-        from services.data.fetchers.news import fetch_news_context
+        from data.news import fetch_news_context
 
         today = date.today()
         queries = [
@@ -303,9 +303,9 @@ class ContextBuilder:
         )
 
     def _build_macro_policy(self, query: StockQuery) -> str:
-        from services.data.fetchers.macro import get_macro_context
-        from services.data.fetchers.news import fetch_news_context
-        from services.data.cache.macro_cache import get_macro_cache
+        from data.macro import get_macro_context
+        from data.news import fetch_news_context
+        from data.cache import get_macro_cache
 
         macro = get_macro_context()
         cached = get_macro_cache("bfsi")
@@ -324,8 +324,8 @@ class ContextBuilder:
         return f"{macro}\n\n{news}"
 
     def _build_institutional(self, query: StockQuery) -> str:
-        from services.data.fetchers.fundamentals import get_fundamentals_context
-        from services.data.fetchers.news import fetch_news_context
+        from data.fundamentals import get_fundamentals_context
+        from data.news import fetch_news_context
 
         today = date.today()
         queries = [
@@ -340,7 +340,7 @@ class ContextBuilder:
         return f"{fin}\n\n{news}"
 
     def _build_universe_setup(self, query: StockQuery) -> str:
-        from services.data.fetchers.news import fetch_news_context
+        from data.news import fetch_news_context
 
         today = date.today()
         queries = [
@@ -360,8 +360,8 @@ class ContextBuilder:
     # ------------------------------------------------------------------
 
     def _build_it_fundamentals(self, query: StockQuery) -> str:
-        from services.data.fetchers.fundamentals import get_fundamentals_context
-        from services.data.fetchers.news import fetch_news_context
+        from data.fundamentals import get_fundamentals_context
+        from data.news import fetch_news_context
 
         today = date.today()
         quarter = f"Q{((today.month - 1) // 3) + 1} FY{today.year % 100}"
@@ -377,8 +377,8 @@ class ContextBuilder:
         return f"{fin}\n\n{news}"
 
     def _build_global_macro(self, query: StockQuery) -> str:
-        from services.data.fetchers.macro import get_macro_context
-        from services.data.fetchers.news import fetch_news_context
+        from data.macro import get_macro_context
+        from data.news import fetch_news_context
 
         macro = get_macro_context()
         today = date.today()
@@ -393,9 +393,9 @@ class ContextBuilder:
         return f"{macro}\n\n{news}"
 
     def _build_it_risk_macro(self, query: StockQuery) -> str:
-        from services.data.fetchers.macro import get_macro_context
-        from services.data.fetchers.news import fetch_news_context
-        from services.data.cache.macro_cache import get_macro_cache
+        from data.macro import get_macro_context
+        from data.news import fetch_news_context
+        from data.cache import get_macro_cache
 
         macro = get_macro_context()
         cached = get_macro_cache("it")
@@ -414,8 +414,8 @@ class ContextBuilder:
         return f"{macro}\n\n{news}"
 
     def _build_peer_benchmark(self, query: StockQuery) -> str:
-        from services.data.fetchers.fundamentals import get_fundamentals_context
-        from services.data.fetchers.news import fetch_news_context
+        from data.fundamentals import get_fundamentals_context
+        from data.news import fetch_news_context
 
         today = date.today()
         quarter = f"Q{((today.month - 1) // 3) + 1} FY{today.year % 100}"
@@ -431,7 +431,7 @@ class ContextBuilder:
         return f"{fin}\n\n{news}"
 
     def _build_it_sentiment(self, query: StockQuery) -> str:
-        from services.data.fetchers.news import fetch_news_context
+        from data.news import fetch_news_context
 
         today = date.today()
         quarter = f"Q{((today.month - 1) // 3) + 1} FY{today.year % 100}"
@@ -450,7 +450,7 @@ class ContextBuilder:
 
     def _build_transcript_nlp(self, query: StockQuery) -> str:
         from services.clients.tavily_fetcher import fetch_tavily_context
-        from services.data.fetchers.news import fetch_news_context
+        from data.news import fetch_news_context
 
         today = date.today()
         quarter = f"Q{((today.month - 1) // 3) + 1} FY{today.year % 100}"
@@ -472,8 +472,8 @@ class ContextBuilder:
         )
 
     def _build_insider_smart_money(self, query: StockQuery) -> str:
-        from services.data.fetchers.fundamentals import get_fundamentals_context
-        from services.data.fetchers.news import fetch_news_context
+        from data.fundamentals import get_fundamentals_context
+        from data.news import fetch_news_context
 
         today = date.today()
         queries = [
@@ -492,8 +492,8 @@ class ContextBuilder:
     # ------------------------------------------------------------------
 
     def _build_re_fundamentals(self, query: StockQuery) -> str:
-        from services.data.fetchers.fundamentals import get_fundamentals_context
-        from services.data.fetchers.news import fetch_news_context
+        from data.fundamentals import get_fundamentals_context
+        from data.news import fetch_news_context
 
         today = date.today()
         queries = [
@@ -508,7 +508,7 @@ class ContextBuilder:
         return f"{fin}\n\n{news}"
 
     def _build_business(self, query: StockQuery) -> str:
-        from services.data.fetchers.news import fetch_news_context
+        from data.news import fetch_news_context
 
         today = date.today()
         queries = [
@@ -524,8 +524,8 @@ class ContextBuilder:
         )
 
     def _build_valuation(self, query: StockQuery) -> str:
-        from services.data.fetchers.fundamentals import get_fundamentals_context
-        from services.data.fetchers.news import fetch_news_context
+        from data.fundamentals import get_fundamentals_context
+        from data.news import fetch_news_context
 
         today = date.today()
         queries = [
@@ -540,7 +540,7 @@ class ContextBuilder:
 
     def _build_sentiment_policy(self, query: StockQuery) -> str:
         from services.clients.tavily_fetcher import fetch_tavily_context
-        from services.data.fetchers.news import fetch_news_context
+        from data.news import fetch_news_context
 
         today = date.today()
         tavily_queries = [
@@ -571,7 +571,7 @@ class ContextBuilder:
         )
 
     def _build_re_risk(self, query: StockQuery) -> str:
-        from services.data.fetchers.news import fetch_news_context
+        from data.news import fetch_news_context
 
         today = date.today()
         queries = [

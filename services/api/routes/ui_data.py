@@ -37,6 +37,10 @@ router = APIRouter(prefix="/ui", tags=["UI"])
 
 # User-overridden agent weights persisted between server restarts
 _CUSTOM_WEIGHTS_PATH = Path("data/agent_weights.json")
+# User-overridden agent task flags persisted between server restarts
+_CUSTOM_TASKS_PATH   = Path("data/agent_tasks.json")
+# User-curated watchlist (overrides the hardcoded default)
+_WATCHLIST_PATH      = Path("data/watchlist.json")
 
 
 # ---------------------------------------------------------------------------
@@ -237,6 +241,30 @@ def _pulse_from_scores(scores: list[float]) -> str:
     if avg >= 0.45:
         return "Mixed signals"
     return "Caution ahead"
+
+
+def _load_watchlist() -> list[str]:
+    """Return user-saved watchlist from data/watchlist.json, or the default."""
+    try:
+        if _WATCHLIST_PATH.exists():
+            raw = json.loads(_WATCHLIST_PATH.read_text(encoding="utf-8"))
+            if isinstance(raw, list) and raw:
+                return raw
+    except Exception as exc:
+        logger.debug("[ui_data] Could not load watchlist: %s", exc)
+    return list(_WATCHLIST_DEFAULT)
+
+
+def _load_agent_task_flags() -> dict[str, dict[str, bool]]:
+    """Return persisted task-enabled flags {agent_key: {task_key: bool}}."""
+    try:
+        if _CUSTOM_TASKS_PATH.exists():
+            raw = json.loads(_CUSTOM_TASKS_PATH.read_text(encoding="utf-8"))
+            if isinstance(raw, dict):
+                return raw
+    except Exception as exc:
+        logger.debug("[ui_data] Could not load task flags: %s", exc)
+    return {}
 
 
 def _load_custom_weights() -> dict[str, float]:
@@ -599,8 +627,11 @@ async def bootstrap() -> dict:
         # Tickers — window.TICKERS
         "TICKERS": ticker_rows,
 
-        # Watchlist — window.WATCHLIST
-        "WATCHLIST": _WATCHLIST_DEFAULT,
+        # Watchlist — window.WATCHLIST (user-persisted or default)
+        "WATCHLIST": _load_watchlist(),
+
+        # Agent task overrides — window.AGENT_TASK_FLAGS
+        "AGENT_TASK_FLAGS": _load_agent_task_flags(),
 
         # Market today — window.MARKET_TODAY
         "MARKET_TODAY": {
@@ -645,6 +676,262 @@ async def bootstrap() -> dict:
         "AGENT_SOURCES": {m["key"]: m["sources"] for m in _AGENT_META},
         "_fetchedAt": datetime.now(timezone.utc).isoformat(),
         "_liveData": bool(db_latest),
+    }
+
+
+# ---------------------------------------------------------------------------
+# T2.1  GET /ui/nifty-ranges — multi-timeframe Nifty Auto sparkline
+# ---------------------------------------------------------------------------
+
+_RANGE_CONFIG = {
+    "1W": {"period": "1mo",  "days": 7,   "label": "1 week"},
+    "1M": {"period": "1mo",  "days": 30,  "label": "1 month"},
+    "3M": {"period": "3mo",  "days": 63,  "label": "3 months"},
+    "6M": {"period": "6mo",  "days": 126, "label": "6 months"},
+    "1Y": {"period": "1y",   "days": 252, "label": "1 year"},
+}
+
+
+@router.get("/nifty-ranges", summary="Nifty Auto sparkline for a given time range")
+async def get_nifty_ranges(range: str = Query(default="1M")) -> dict:
+    cfg = _RANGE_CONFIG.get(range.upper(), _RANGE_CONFIG["1M"])
+    series = await asyncio.to_thread(_fetch_yf_series, "^CNXAUTO", cfg["days"] + 20)
+    series = series[-cfg["days"]:]   # trim to exact count
+
+    change = 0.0
+    if len(series) >= 2:
+        change = round((series[-1] - series[0]) / series[0] * 100, 2)
+
+    return {
+        "range":  range.upper(),
+        "points": series,
+        "label":  cfg["label"],
+        "change": change,
+    }
+
+
+# ---------------------------------------------------------------------------
+# T2.2  GET/PUT /ui/agents/tasks — persist task-enabled flags
+# ---------------------------------------------------------------------------
+
+class _TaskFlagsBody(BaseModel):
+    flags: dict[str, dict[str, bool]]   # {agent_key: {task_key: enabled}}
+
+
+@router.get("/agents/tasks", summary="Get persisted agent task enabled/disabled flags")
+async def get_agent_tasks() -> dict:
+    return {"flags": _load_agent_task_flags()}
+
+
+@router.put("/agents/tasks", summary="Persist user task toggle state to data/agent_tasks.json")
+async def update_agent_tasks(body: _TaskFlagsBody) -> dict:
+    _CUSTOM_TASKS_PATH.parent.mkdir(parents=True, exist_ok=True)
+    _CUSTOM_TASKS_PATH.write_text(json.dumps(body.flags, indent=2), encoding="utf-8")
+    logger.info("[ui/agents/tasks] Saved task flags: %d agents", len(body.flags))
+    return {"status": "ok", "flags": body.flags}
+
+
+# ---------------------------------------------------------------------------
+# T2.3  GET/PUT /ui/watchlist — user watchlist persistence
+# ---------------------------------------------------------------------------
+
+class _WatchlistBody(BaseModel):
+    watchlist: list[str]
+
+
+@router.get("/watchlist", summary="Get current user watchlist")
+async def get_watchlist() -> dict:
+    return {"watchlist": _load_watchlist()}
+
+
+@router.put("/watchlist", summary="Persist user watchlist to data/watchlist.json")
+async def update_watchlist(body: _WatchlistBody) -> dict:
+    valid_syms = {t["sym"] for t in _ALL_TICKERS}
+    sanitized = [s.strip().upper() for s in body.watchlist if s.strip().upper() in valid_syms]
+    sanitized = list(dict.fromkeys(sanitized))   # deduplicate preserving order
+
+    _WATCHLIST_PATH.parent.mkdir(parents=True, exist_ok=True)
+    _WATCHLIST_PATH.write_text(json.dumps(sanitized), encoding="utf-8")
+    logger.info("[ui/watchlist] Saved watchlist: %s", sanitized)
+    return {"watchlist": sanitized}
+
+
+# ---------------------------------------------------------------------------
+# T2.4  GET /ui/search — ticker + thesis text search
+# ---------------------------------------------------------------------------
+
+@router.get("/search", summary="Search tickers by name/symbol and recent thesis text")
+async def search(q: str = Query(default="")) -> dict:
+    q = q.strip().lower()
+    if len(q) < 2:
+        return {"results": [], "query": q}
+
+    results = []
+    for t in _ALL_TICKERS:
+        if q in t["sym"].lower() or q in t["name"].lower():
+            results.append({"sym": t["sym"], "name": t["name"], "type": "ticker"})
+
+    # Also search recent investment theses from score history
+    try:
+        store = _score_store()
+        db_latest = store.get_all_latest()
+        existing_syms = {r["sym"] for r in results}
+        for row in db_latest:
+            thesis = (row.get("investment_thesis") or "").lower()
+            sym = row.get("ticker", "")
+            if q in thesis and sym not in existing_syms:
+                snippet = (row.get("investment_thesis") or "")[:100]
+                results.append({"sym": sym, "name": row.get("company_name", sym), "type": "thesis", "snippet": snippet})
+                existing_syms.add(sym)
+    except Exception as exc:
+        logger.debug("[ui/search] DB search failed: %s", exc)
+
+    return {"results": results[:8], "query": q}
+
+
+# ---------------------------------------------------------------------------
+# T2.5  GET /ui/learnings — RL feedback → lesson cards
+# ---------------------------------------------------------------------------
+
+def _severity_from_score(score: float) -> str:
+    if score < 0.35: return "high"
+    if score < 0.50: return "med"
+    return "low"
+
+
+def _kind_from_verdict_change(prev: str, cur: str) -> str:
+    bullish = {"STRONG BUY", "BUY"}
+    bearish = {"STRONG SELL", "SELL"}
+    if prev in bullish and cur in bearish: return "missed-sell"
+    if prev in bearish and cur in bullish: return "missed-buy"
+    if cur in bullish: return "good-call"
+    if cur in bearish: return "avoided-loss"
+    return "sizing"
+
+
+@router.get("/learnings", summary="Derive lesson cards from RL feedback logs and score history")
+async def get_learnings() -> dict:
+    """
+    Reads from the RL prediction store (if available) and the score history DB
+    to generate actionable lesson cards matching the PORTFOLIO_LEARNINGS shape.
+    Falls back to an empty set if no data exists.
+    """
+    items = []
+    patterns = []
+
+    try:
+        store = _score_store()
+        db_latest   = store.get_all_latest()
+        db_latest_m = {r["ticker"]: r for r in db_latest}
+
+        # Pull up-to-3 historical records per ticker to spot verdict changes
+        for ticker_def in _ALL_TICKERS:
+            sym = ticker_def["sym"]
+            history = await asyncio.to_thread(store.get_history, sym, 3)
+            if len(history) < 2:
+                continue
+            newest, prev = history[0], history[1]
+
+            kind = _kind_from_verdict_change(prev.get("verdict","NEUTRAL"), newest.get("verdict","NEUTRAL"))
+            score = float(newest.get("final_score", 0.5))
+            prev_score = float(prev.get("final_score", 0.5))
+            score_delta = round(score - prev_score, 2)
+
+            # Parse agent scores
+            try:
+                agent_scores_raw = newest.get("agent_scores") or "{}"
+                agent_scores = json.loads(agent_scores_raw) if isinstance(agent_scores_raw, str) else agent_scores_raw
+            except Exception:
+                agent_scores = {}
+
+            top_agents = sorted(agent_scores.items(), key=lambda x: x[1], reverse=True)[:3]
+            agent_snapshot = [
+                {"n": next((m["name"] for m in _AGENT_META if m["key"] == k), k), "v": round(v, 2)}
+                for k, v in top_agents
+            ]
+
+            thesis = (newest.get("investment_thesis") or "")[:160]
+            when   = newest.get("run_at", "")[:10] if newest.get("run_at") else "Recent"
+            verdict_label = newest.get("verdict","NEUTRAL")
+
+            cost_text = (
+                f"Score moved {'+' if score_delta >= 0 else ''}{score_delta:.2f} → now {verdict_label}"
+            )
+
+            items.append({
+                "id":            f"{kind}-{sym.lower()}",
+                "kind":          kind,
+                "severity":      _severity_from_score(score),
+                "sym":           sym,
+                "title":         f"{sym}: {prev.get('verdict','NEUTRAL')} → {verdict_label}",
+                "when":          when,
+                "what":          thesis or f"Composite score {score:.2f}, verdict {verdict_label}",
+                "cost":          cost_text,
+                "costValue":     round(score_delta * 10000),
+                "lesson":        (
+                    f"When score crosses 0.70+, {sym} has shown sustained upside. Watch agent weights." if score >= 0.70
+                    else f"Score below 0.50 on {sym} — tighten stop-loss or reduce position."
+                ),
+                "agentSnapshot": agent_snapshot,
+                "action":        "Review agent details",
+            })
+
+        # Also try reading RL feedback logs from prediction store
+        try:
+            from core.intelligence.rl.stores.prediction_store import PredictionStore
+            from core.schemas.feedback import MissType
+            for ticker_def in _ALL_TICKERS:
+                sym = ticker_def["sym"]
+                ps = PredictionStore(ticker=sym, sector="automobile")
+                cycle = ps.current_cycle_id()
+                fb_log = ps.load_feedback_log(cycle)
+                for entry in (fb_log.entries if fb_log else [])[-5:]:
+                    mt = entry.miss_type if hasattr(entry, "miss_type") else None
+                    if mt and str(mt) not in ("MissType.data_gap", "MissType.external_shock"):
+                        items.append({
+                            "id":            f"rl-{sym.lower()}-{entry.date}",
+                            "kind":          "missed-sell" if str(mt) in ("MissType.model_bias", "MissType.direction_flip") else "sizing",
+                            "severity":      "high" if entry.direction_correct is False else "low",
+                            "sym":           sym,
+                            "title":         f"RL flag: {str(mt).replace('MissType.','').replace('_',' ')} on {sym}",
+                            "when":          str(entry.date),
+                            "what":          f"Agent {entry.primary_miss_agent or 'unknown'} flagged as primary miss. Direction correct: {entry.direction_correct}",
+                            "cost":          f"Miss type: {str(mt).replace('MissType.','')}",
+                            "costValue":     0,
+                            "lesson":        "Review this agent's weight if it consistently misses direction.",
+                            "agentSnapshot": [],
+                            "action":        "Tune agent weight",
+                        })
+        except Exception as exc:
+            logger.debug("[ui/learnings] RL store read skipped: %s", exc)
+
+    except Exception as exc:
+        logger.warning("[ui/learnings] DB read failed: %s", exc)
+
+    # Summarise
+    score_changes = [it["costValue"] for it in items]
+    summary = {
+        "missedGain":      sum(v for v in score_changes if v > 0),
+        "avoidedLoss":     sum(-v for v in score_changes if v < 0),
+        "realizedLoss":    0,
+        "accuracyVsAgent": round(len([i for i in items if i["kind"] == "good-call"]) / max(len(items), 1), 2),
+        "actionsReviewed": len(items),
+    }
+
+    # Simple patterns from items
+    good_count = len([i for i in items if i["kind"] in ("good-call", "avoided-loss")])
+    bad_count  = len([i for i in items if i["kind"] in ("missed-buy", "missed-sell", "missed-sell")])
+    total = max(good_count + bad_count, 1)
+    if items:
+        patterns = [
+            {"id":"p1", "label": "Correct verdict calls this period", "rate": round(good_count/total, 2), "kind": "good" if good_count > bad_count else "bad",
+             "detail": f"{good_count} of {total} verdict changes were in the right direction."},
+        ]
+
+    return {
+        "summary": summary,
+        "items":   items[:10],
+        "patterns": patterns,
     }
 
 

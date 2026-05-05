@@ -493,6 +493,18 @@ window.__apiReady = false;
     if (d.CATEGORIES?.length)         window.CATEGORIES         = d.CATEGORIES;
     if (d.CHAT_SEEDS?.length)         window.CHAT_SEEDS         = d.CHAT_SEEDS;
 
+    // T2.2 — Apply persisted agent task flags on top of the default AGENT_TASKS
+    if (d.AGENT_TASK_FLAGS && Object.keys(d.AGENT_TASK_FLAGS).length > 0) {
+      Object.entries(d.AGENT_TASK_FLAGS).forEach(([agentKey, taskFlags]) => {
+        if (window.AGENT_TASKS[agentKey]) {
+          window.AGENT_TASKS[agentKey] = window.AGENT_TASKS[agentKey].map(t => ({
+            ...t,
+            enabled: taskFlags[t.key] !== undefined ? taskFlags[t.key] : t.enabled,
+          }));
+        }
+      });
+    }
+
     window.__apiReady     = true;
     window.__apiLive      = d._liveData ?? false;
     window.__apiFetchedAt = d._fetchedAt;
@@ -500,5 +512,19 @@ window.__apiReady = false;
     if (typeof window.__onApiReady === 'function') window.__onApiReady();
   } catch (e) {
     console.warn('[StockAgent] Bootstrap API unavailable — using mock data.', e);
+  }
+
+  // T2.5 — Fetch RL-derived learnings separately (not in bootstrap to keep it fast)
+  try {
+    const lr = await fetch('/ui/learnings');
+    if (lr.ok) {
+      const learnings = await lr.json();
+      if (learnings.items?.length > 0) {
+        window.PORTFOLIO_LEARNINGS = learnings;
+        window.__learningsLive = true;
+      }
+    }
+  } catch {
+    // keep mock PORTFOLIO_LEARNINGS
   }
 })();

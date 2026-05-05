@@ -1,9 +1,63 @@
 // Beginner Home screen — tabbed (Today / This month / Watchlist / Trending)
-const { useState: useStateHome, useMemo } = React;
+const { useState: useStateHome, useMemo, useEffect: useEffectHome, useRef: useRefHome } = React;
 
 function Home({ onNav, openChat }) {
   const [tab, setTab] = useStateHome('today');
   const [search, setSearch] = useStateHome('');
+  // analyzeState: { ticker, loading, report, error, agentProgress }
+  const [analyzeState, setAnalyzeState] = useStateHome({ ticker: null, loading: false, report: null, error: null, agentProgress: {} });
+
+  const onAnalyze = (sym) => {
+    setAnalyzeState({ ticker: sym, loading: true, report: null, error: null, agentProgress: {} });
+
+    // T2.6 — WebSocket streaming with POST fallback
+    const wsProto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    let ws;
+    try {
+      ws = new WebSocket(`${wsProto}//${window.location.host}/ws/stream?ticker=${encodeURIComponent(sym)}`);
+    } catch {
+      ws = null;
+    }
+
+    const fallbackPost = () => {
+      fetch('/analyse', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ticker: sym }),
+      })
+        .then(r => r.ok ? r.json() : r.json().then(e => Promise.reject(e.detail || 'Analysis failed')))
+        .then(report => setAnalyzeState(prev => ({ ...prev, loading: false, report })))
+        .catch(err  => setAnalyzeState(prev => ({ ...prev, loading: false, error: String(err) })));
+    };
+
+    if (!ws) { fallbackPost(); return; }
+
+    ws.onmessage = (evt) => {
+      try {
+        const msg = JSON.parse(evt.data);
+        if (msg.event === 'agent_progress') {
+          setAnalyzeState(prev => ({
+            ...prev,
+            agentProgress: { ...prev.agentProgress, [msg.agent]: msg.score },
+          }));
+        } else if (msg.event === 'complete') {
+          setAnalyzeState(prev => ({ ...prev, loading: false, report: msg.report }));
+          ws.close(1000);
+        } else if (msg.event === 'error') {
+          setAnalyzeState(prev => ({ ...prev, loading: false, error: msg.detail || 'Analysis failed' }));
+          ws.close(1000);
+        }
+      } catch {}
+    };
+
+    ws.onerror = () => {
+      // WebSocket failed — fall back to plain POST
+      setAnalyzeState(prev => ({ ...prev, agentProgress: {} }));
+      fallbackPost();
+    };
+  };
+
+  const closeAnalysis = () => setAnalyzeState({ ticker: null, loading: false, report: null, error: null });
 
   return (
     <div style={{ minHeight:'100vh', background:'var(--bg-base)' }}>
@@ -11,7 +65,7 @@ function Home({ onNav, openChat }) {
 
       <main style={{ maxWidth:1280, margin:'0 auto', padding:'24px 32px 96px' }}>
         {/* HERO */}
-        <Hero openChat={openChat}/>
+        <Hero openChat={openChat} onAnalyze={onAnalyze}/>
 
         {/* TAB BAR */}
         <div style={{
@@ -37,8 +91,8 @@ function Home({ onNav, openChat }) {
 
         {tab==='today' && <TodayPane data={window.MARKET_TODAY}/>}
         {tab==='month' && <MonthPane data={window.MARKET_MONTH}/>}
-        {tab==='watch' && <WatchlistPane/>}
-        {tab==='trend' && <TrendingPane/>}
+        {tab==='watch' && <WatchlistPane onAnalyze={onAnalyze}/>}
+        {tab==='trend' && <TrendingPane onAnalyze={onAnalyze}/>}
 
         {/* CATEGORIES */}
         <div style={{ marginTop:36 }}>
@@ -52,15 +106,40 @@ function Home({ onNav, openChat }) {
         <div style={{ marginTop:36 }}>
           <SectionHead title="Suggested for you" subtitle="Picked by your agents based on what you watch"/>
           <div style={{ display:'grid', gridTemplateColumns:'repeat(3, 1fr)', gap:16, marginTop:16 }}>
-            {window.SUGGESTIONS.map(s => <SuggestCard key={s.sym} s={s}/>)}
+            {window.SUGGESTIONS.map(s => <SuggestCard key={s.sym} s={s} onAnalyze={onAnalyze}/>)}
           </div>
         </div>
       </main>
+
+      {/* Analysis result drawer */}
+      {analyzeState.ticker && (
+        <AnalysisResultDrawer state={analyzeState} onClose={closeAnalysis}/>
+      )}
     </div>
   );
 }
 
 function TopNav({ active, onNav, search, setSearch }) {
+  const [results, setResults] = useStateHome([]);
+  const [dropOpen, setDropOpen] = useStateHome(false);
+  const timerRef = useRefHome(null);
+
+  const handleSearch = (val) => {
+    setSearch(val);
+    clearTimeout(timerRef.current);
+    if (val.length < 2) { setResults([]); setDropOpen(false); return; }
+    timerRef.current = setTimeout(async () => {
+      try {
+        const res = await fetch(`/ui/search?q=${encodeURIComponent(val)}`);
+        if (res.ok) {
+          const d = await res.json();
+          setResults(d.results || []);
+          setDropOpen((d.results || []).length > 0);
+        }
+      } catch {}
+    }, 350);
+  };
+
   return (
     <header style={{
       position:'sticky', top:0, zIndex:30, background:'rgba(255,255,255,.85)',
@@ -84,12 +163,47 @@ function TopNav({ active, onNav, search, setSearch }) {
           <NavLink onClick={()=>onNav?.('learn')}     active={active==='learn'}     icon={<Icon.Book size={15}/>}>Learn</NavLink>
         </nav>
 
-        <div style={{ flex:1, position:'relative', maxWidth:420, marginLeft:'auto' }}>
-          <Icon.Search size={16} style={{ position:'absolute', left:12, top:'50%', transform:'translateY(-50%)', color:'var(--ink-3)' }}/>
-          <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search MARUTI, Tata Motors, EV..." style={{
-            width:'100%', padding:'9px 12px 9px 36px', border:'1px solid var(--border)', borderRadius:10,
-            background:'var(--bg-base)', fontSize:13, outline:'none'
-          }}/>
+        {/* T2.4 — Search with live dropdown */}
+        <div style={{ flex:1, position:'relative', maxWidth:420, marginLeft:'auto' }}
+          onBlur={e => { if (!e.currentTarget.contains(e.relatedTarget)) setDropOpen(false); }}>
+          <Icon.Search size={16} style={{ position:'absolute', left:12, top:'50%', transform:'translateY(-50%)', color:'var(--ink-3)', pointerEvents:'none' }}/>
+          <input value={search} onChange={e=>handleSearch(e.target.value)}
+            onFocus={()=>results.length > 0 && setDropOpen(true)}
+            placeholder="Search MARUTI, Tata Motors, EV..." style={{
+              width:'100%', padding:'9px 12px 9px 36px', border:'1px solid var(--border)', borderRadius:10,
+              background:'var(--bg-base)', fontSize:13, outline:'none'
+            }}/>
+          {dropOpen && results.length > 0 && (
+            <div style={{
+              position:'absolute', top:'calc(100% + 6px)', left:0, right:0, zIndex:50,
+              background:'var(--bg-surface)', border:'1px solid var(--border)', borderRadius:12,
+              boxShadow:'var(--shadow-lg)', overflow:'hidden'
+            }}>
+              {results.map((r, i) => (
+                <button key={i} onClick={()=>{setSearch(''); setDropOpen(false);}} style={{
+                  display:'flex', alignItems:'center', gap:10, width:'100%',
+                  padding:'10px 14px', border:'none', background:'transparent', textAlign:'left',
+                  borderBottom: i < results.length-1 ? '1px solid var(--border)' : 'none',
+                  cursor:'pointer'
+                }}
+                  onMouseEnter={e=>e.currentTarget.style.background='var(--bg-tinted)'}
+                  onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
+                  <div style={{
+                    width:30, height:30, borderRadius:8, background:'linear-gradient(135deg,var(--cyan-soft),var(--violet-soft))',
+                    display:'grid', placeItems:'center', fontWeight:800, color:'var(--cyan)', fontSize:12, flexShrink:0
+                  }}>{r.sym[0]}</div>
+                  <div style={{ flex:1, minWidth:0 }}>
+                    <div className="mono" style={{ fontWeight:700, fontSize:12 }}>{r.sym}</div>
+                    <div style={{ fontSize:11, color:'var(--ink-3)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                      {r.snippet || r.name}
+                    </div>
+                  </div>
+                  <span style={{ fontSize:10, color:'var(--ink-3)', flexShrink:0,
+                    padding:'2px 6px', borderRadius:4, background:'var(--bg-tinted)' }}>{r.type}</span>
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         <button style={{ width:36, height:36, borderRadius:'50%', border:'1px solid var(--border)',
@@ -116,7 +230,7 @@ function NavLink({ children, icon, active, onClick }) {
   );
 }
 
-function Hero({ openChat }) {
+function Hero({ openChat, onAnalyze }) {
   return (
     <section style={{
       position:'relative', overflow:'hidden', borderRadius:24,
@@ -149,10 +263,10 @@ function Hero({ openChat }) {
             background:'linear-gradient(135deg,#22d3ee,#a78bfa)', color:'#0a1628',
             fontSize:13, fontWeight:700, display:'flex', alignItems:'center', gap:8, cursor:'pointer'
           }}><Icon.Sparkles size={15}/> Ask the assistant</button>
-          <button style={{
+          <button onClick={()=>onAnalyze('MARUTI')} style={{
             padding:'10px 18px', borderRadius:10, border:'1px solid rgba(255,255,255,.18)',
             background:'rgba(255,255,255,.06)', color:'#f1f5f9',
-            fontSize:13, fontWeight:600, display:'flex', alignItems:'center', gap:8
+            fontSize:13, fontWeight:600, display:'flex', alignItems:'center', gap:8, cursor:'pointer'
           }}><Icon.Star size={15}/> Run on MARUTI</button>
         </div>
       </div>
@@ -182,8 +296,22 @@ function SectionHead({ title, subtitle, action }) {
 // ---------- TODAY pane ----------
 function TodayPane({ data }) {
   const [range, setRange] = useStateHome('1M');
-  const ranges = window.NIFTY_AUTO_RANGES;
-  const r = ranges[range];
+  // T2.1 — fetched range data overrides mock NIFTY_AUTO_RANGES for non-1M tabs
+  const [fetchedRange, setFetchedRange] = useStateHome(null);
+  const [rangeFetching, setRangeFetching] = useStateHome(false);
+
+  const handleRangeChange = async (newRange) => {
+    setRange(newRange);
+    if (newRange === '1M') { setFetchedRange(null); return; } // 1M already in bootstrap
+    setRangeFetching(true);
+    try {
+      const res = await fetch(`/ui/nifty-ranges?range=${newRange}`);
+      if (res.ok) setFetchedRange(await res.json()); // {range, points, label, change}
+    } catch {}
+    setRangeFetching(false);
+  };
+
+  const r = fetchedRange || window.NIFTY_AUTO_RANGES[range];
 
   return (
     <div style={{ display:'grid', gridTemplateColumns:'1.5fr 1fr', gap:20 }}>
@@ -224,7 +352,7 @@ function TodayPane({ data }) {
               </div>
               <div style={{ fontSize:11, color:'var(--ink-3)', marginTop:2 }}>over {r.label}</div>
             </div>
-            <RangeTabs value={range} onChange={setRange}/>
+            <RangeTabs value={range} onChange={handleRangeChange}/>
           </div>
           <Sparkline values={r.points} height={70} color="var(--cyan)"/>
         </div>
@@ -251,29 +379,29 @@ function MonthPane({ data }) {
             <div style={{ fontSize:18, fontWeight:700 }}>{data.pulse}</div>
           </div>
           <div style={{ marginLeft:'auto', fontSize:12, color:'var(--ink-3)' }}>
-            April 2026
+            {new Date().toLocaleString('en-IN', { month:'long', year:'numeric' })}
           </div>
         </div>
         <p style={{ color:'var(--ink-2)', fontSize:14, lineHeight:1.6, margin:'0 0 20px' }}>{data.oneLiner}</p>
-        <div className="eyebrow" style={{ marginBottom:10 }}>Themes shaping April</div>
+        <div className="eyebrow" style={{ marginBottom:10 }}>Themes shaping this month</div>
         <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
           {data.drivers.map((d,i) => <DriverRow key={i} d={d}/>)}
         </div>
       </div>
 
       <div className="card" style={{ padding:20 }}>
-        <div className="eyebrow" style={{ marginBottom:14 }}>How agents are voting · April</div>
+        <div className="eyebrow" style={{ marginBottom:14 }}>How agents are voting</div>
         <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
-          {[
-            {n:'Sales & Demand',     v:0.78, k:'good'},
-            {n:'Fundamentals',       v:0.72, k:'good'},
-            {n:'Pattern Analysis',   v:0.65, k:'good'},
-            {n:'Sentiment',          v:0.61, k:'good'},
-            {n:'Policy & Regulatory',v:0.58, k:'mid'},
-            {n:'Raw Materials',      v:0.55, k:'mid'},
-            {n:'Competitive Intel',  v:0.52, k:'mid'},
-            {n:'Risk & Macro',       v:0.42, k:'bad'},
-          ].map(a => (
+          {(data.agentVotes || [
+            {n:'Sales & Demand',      v:0.78, k:'good'},
+            {n:'Fundamentals',        v:0.72, k:'good'},
+            {n:'Pattern Analysis',    v:0.65, k:'good'},
+            {n:'Sentiment',           v:0.61, k:'good'},
+            {n:'Policy & Regulatory', v:0.58, k:'mid'},
+            {n:'Raw Materials',       v:0.55, k:'mid'},
+            {n:'Competitive Intel',   v:0.52, k:'mid'},
+            {n:'Risk & Macro',        v:0.42, k:'bad'},
+          ]).map(a => (
             <div key={a.n} style={{ display:'grid', gridTemplateColumns:'1fr 80px 50px', alignItems:'center', gap:10 }}>
               <span style={{ fontSize:13, color:'var(--ink-2)' }}>{a.n}</span>
               <div style={{ height:6, background:'var(--bg-tinted)', borderRadius:999, overflow:'hidden' }}>
@@ -290,18 +418,90 @@ function MonthPane({ data }) {
   );
 }
 
-function WatchlistPane() {
-  const tickers = window.WATCHLIST.map(s => window.TICKERS.find(t => t.sym === s));
+function WatchlistPane({ onAnalyze }) {
+  const [watchlist, setWatchlist] = useStateHome(window.WATCHLIST);
+  const [addOpen, setAddOpen] = useStateHome(false);
+  const [addVal, setAddVal] = useStateHome('');
+  const [addError, setAddError] = useStateHome('');
+  const [addBusy, setAddBusy] = useStateHome(false);
+
+  const tickers = watchlist.map(s => window.TICKERS.find(t => t.sym === s)).filter(Boolean);
+  const allSyms = (window.TICKERS || []).map(t => t.sym);
+
+  const handleAdd = async () => {
+    const sym = addVal.trim().toUpperCase();
+    if (!sym) { setAddError('Enter a ticker symbol'); return; }
+    if (!allSyms.includes(sym)) { setAddError(`${sym} not in supported list: ${allSyms.join(', ')}`); return; }
+    if (watchlist.includes(sym)) { setAddError(`${sym} already in watchlist`); return; }
+    setAddBusy(true);
+    const newList = [...watchlist, sym];
+    try {
+      const res = await fetch('/ui/watchlist', {
+        method: 'PUT',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ watchlist: newList }),
+      });
+      if (res.ok) {
+        const d = await res.json();
+        window.WATCHLIST = d.watchlist;
+        setWatchlist(d.watchlist);
+        setAddOpen(false); setAddVal(''); setAddError('');
+      } else {
+        setAddError('Server error — try again');
+      }
+    } catch { setAddError('Network error'); }
+    setAddBusy(false);
+  };
+
+  const handleRemove = async (sym) => {
+    const newList = watchlist.filter(s => s !== sym);
+    try {
+      const res = await fetch('/ui/watchlist', {
+        method: 'PUT',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ watchlist: newList }),
+      });
+      if (res.ok) { window.WATCHLIST = newList; setWatchlist(newList); }
+    } catch {}
+  };
+
   return (
     <div className="card" style={{ overflow:'hidden' }}>
       <div style={{ padding:'18px 24px', borderBottom:'1px solid var(--border)', display:'flex', alignItems:'center', gap:12 }}>
         <div className="eyebrow">Your watchlist · {tickers.length} stocks</div>
-        <button style={{ marginLeft:'auto', padding:'6px 12px', border:'1px dashed var(--border-strong)', borderRadius:8,
+        <button onClick={()=>setAddOpen(o=>!o)} style={{ marginLeft:'auto', padding:'6px 12px',
+          border:'1px dashed var(--border-strong)', borderRadius:8,
           background:'transparent', fontSize:12, fontWeight:600, color:'var(--ink-2)',
-          display:'flex', alignItems:'center', gap:6 }}>
+          display:'flex', alignItems:'center', gap:6, cursor:'pointer' }}>
           <Icon.Plus size={13}/> Add ticker
         </button>
       </div>
+
+      {/* Inline add-ticker form */}
+      {addOpen && (
+        <div style={{ padding:'14px 24px', borderBottom:'1px solid var(--border)', background:'var(--bg-base)',
+          display:'flex', gap:10, alignItems:'center', flexWrap:'wrap' }}>
+          <input value={addVal} onChange={e=>{setAddVal(e.target.value); setAddError('');}}
+            onKeyDown={e=>e.key==='Enter' && handleAdd()}
+            placeholder="e.g. TVSMOTORS" style={{
+              padding:'8px 12px', border:'1px solid var(--border)', borderRadius:8,
+              fontSize:13, background:'var(--bg-surface)', outline:'none', minWidth:180
+            }}/>
+          <button onClick={handleAdd} disabled={addBusy} style={{
+            padding:'8px 14px', border:'none', borderRadius:8,
+            background:'var(--cyan)', color:'#fff', fontSize:12, fontWeight:700, cursor:'pointer'
+          }}>{addBusy ? '…' : 'Add'}</button>
+          <button onClick={()=>{setAddOpen(false); setAddVal(''); setAddError('');}} style={{
+            padding:'8px 12px', border:'1px solid var(--border)', borderRadius:8,
+            background:'transparent', fontSize:12, color:'var(--ink-2)', cursor:'pointer'
+          }}>Cancel</button>
+          {addError && <span style={{ fontSize:12, color:'var(--sell-strong)' }}>{addError}</span>}
+          <span style={{ fontSize:11, color:'var(--ink-3)', marginLeft:'auto' }}>
+            Supported: {allSyms.join(' · ')}
+          </span>
+        </div>
+      )}
+
       <table style={{ width:'100%', borderCollapse:'collapse' }}>
         <thead>
           <tr style={{ fontSize:11, textTransform:'uppercase', color:'var(--ink-3)', letterSpacing:'.1em' }}>
@@ -310,18 +510,23 @@ function WatchlistPane() {
           </tr>
         </thead>
         <tbody>
-          {tickers.map(t => <TickerRow key={t.sym} t={t}/>)}
+          {tickers.map(t => (
+            <TickerRow key={t.sym} t={t}
+              onAnalyze={()=>onAnalyze(t.sym)}
+              onRemove={()=>handleRemove(t.sym)}/>
+          ))}
         </tbody>
       </table>
     </div>
   );
 }
 
-function TrendingPane() {
+function TrendingPane({ onAnalyze }) {
   return (
     <div style={{ display:'grid', gridTemplateColumns:'repeat(2, 1fr)', gap:16 }}>
       {window.TRENDING.map(t => {
         const ticker = window.TICKERS.find(x => x.sym === t.sym);
+        if (!ticker) return null;
         return (
           <div key={t.sym} className="card" style={{ padding:20 }}>
             <div style={{ display:'flex', alignItems:'flex-start', gap:14 }}>
@@ -336,9 +541,13 @@ function TrendingPane() {
                   <span style={{ fontSize:11, color:ticker.change >= 0 ? 'var(--buy-strong)' : 'var(--sell-strong)', fontWeight:700 }}>{t.delta}</span>
                 </div>
                 <div style={{ fontSize:13, color:'var(--ink-2)', marginTop:4, lineHeight:1.5 }}>{t.why}</div>
-                <div style={{ display:'flex', gap:8, marginTop:10 }}>
+                <div style={{ display:'flex', gap:8, marginTop:10, flexWrap:'wrap' }}>
                   <Pill>Volume {t.volume}</Pill>
                   <Pill kind="good">Score {ticker.score.toFixed(2)}</Pill>
+                  <button onClick={()=>onAnalyze(t.sym)} style={{
+                    padding:'3px 10px', border:'1px solid var(--border)', borderRadius:6,
+                    background:'var(--bg-surface)', fontSize:11, fontWeight:600, color:'var(--ink-1)', cursor:'pointer'
+                  }}>Analyze</button>
                 </div>
               </div>
             </div>
@@ -352,11 +561,21 @@ function TrendingPane() {
 const th = { textAlign:'left', padding:'12px 24px', fontSize:11, fontWeight:600, borderBottom:'1px solid var(--border)' };
 const td = { padding:'14px 24px', fontSize:13, borderBottom:'1px solid var(--border)' };
 
-function TickerRow({ t }) {
+function TickerRow({ t, onAnalyze, onRemove }) {
+  const [busy, setBusy] = useStateHome(false);
   const verdictColor = {
     'STRONG BUY':'var(--buy-strong)', 'BUY':'var(--buy)', 'NEUTRAL':'var(--neutral)',
     'SELL':'var(--sell)', 'STRONG SELL':'var(--sell-strong)'
   }[t.verdict];
+
+  const handleAnalyze = () => {
+    if (busy) return;
+    setBusy(true);
+    onAnalyze();
+    // reset busy after the outer state has taken over (drawer shows)
+    setTimeout(() => setBusy(false), 1500);
+  };
+
   return (
     <tr style={{ transition:'background .15s' }} onMouseEnter={e=>e.currentTarget.style.background='var(--bg-tinted)'} onMouseLeave={e=>e.currentTarget.style.background=''}>
       <td style={td}>
@@ -387,8 +606,22 @@ function TickerRow({ t }) {
         </span>
       </td>
       <td style={{...td, textAlign:'right'}}>
-        <button style={{ padding:'6px 12px', border:'1px solid var(--border)', borderRadius:8,
-          background:'var(--bg-surface)', fontSize:12, fontWeight:600, color:'var(--ink-1)' }}>Analyze</button>
+        <div style={{ display:'flex', gap:6, justifyContent:'flex-end' }}>
+          <button onClick={handleAnalyze} disabled={busy} style={{
+            padding:'6px 14px', border:'none', borderRadius:8,
+            background: busy ? 'var(--bg-tinted)' : 'linear-gradient(135deg,var(--cyan),var(--violet))',
+            color: busy ? 'var(--ink-3)' : '#fff',
+            fontSize:12, fontWeight:700, cursor: busy ? 'default' : 'pointer',
+            transition:'all .15s'
+          }}>{busy ? '⟳' : 'Analyze'}</button>
+          {onRemove && (
+            <button onClick={onRemove} title="Remove from watchlist" style={{
+              width:28, height:28, border:'1px solid var(--border)', borderRadius:7,
+              background:'transparent', display:'grid', placeItems:'center',
+              color:'var(--ink-3)', cursor:'pointer', fontSize:14
+            }}>×</button>
+          )}
+        </div>
       </td>
     </tr>
   );
@@ -429,7 +662,7 @@ function DriverRow({ d }) {
           <span>Affects: <strong style={{ color:'var(--ink-2)' }}>{d.impact}</strong></span>
           <span style={{ color:'var(--border-strong)' }}>·</span>
           <span style={{ display:'flex', gap:4 }}>
-            {d.tickers.slice(0,3).map(t => (
+            {(d.tickers||[]).slice(0,3).map(t => (
               <span key={t} className="mono" style={{ padding:'1px 6px', borderRadius:4, background:'var(--bg-tinted)', fontSize:10, fontWeight:700, color:'var(--ink-2)' }}>{t}</span>
             ))}
           </span>
@@ -482,7 +715,7 @@ function CategoryCard({ c }) {
   );
 }
 
-function SuggestCard({ s }) {
+function SuggestCard({ s, onAnalyze }) {
   const ticker = window.TICKERS.find(x => x.sym === s.sym);
   return (
     <div className="card" style={{ padding:20 }}>
@@ -498,10 +731,17 @@ function SuggestCard({ s }) {
           background:'var(--cyan-soft)', color:'var(--cyan)' }}>For you</span>
       </div>
       <div style={{ fontSize:13, color:'var(--ink-2)', lineHeight:1.5, marginBottom:14 }}>{s.reason}</div>
-      <div style={{ padding:10, background:'var(--bg-base)', borderRadius:10, fontSize:11, color:'var(--ink-3)',
-        display:'flex', alignItems:'center', gap:6 }}>
-        <Icon.Sparkles size={12} c="var(--violet)"/>
-        {s.why}
+      <div style={{ display:'flex', gap:8, alignItems:'center' }}>
+        <div style={{ flex:1, padding:10, background:'var(--bg-base)', borderRadius:10, fontSize:11, color:'var(--ink-3)',
+          display:'flex', alignItems:'center', gap:6 }}>
+          <Icon.Sparkles size={12} c="var(--violet)"/>
+          {s.why}
+        </div>
+        <button onClick={()=>onAnalyze(s.sym)} style={{
+          padding:'8px 12px', border:'none', borderRadius:8,
+          background:'linear-gradient(135deg,var(--cyan),var(--violet))', color:'#fff',
+          fontSize:11, fontWeight:700, cursor:'pointer', flexShrink:0
+        }}>Analyze</button>
       </div>
     </div>
   );
@@ -516,6 +756,7 @@ function Pill({ children, kind='neutral' }) {
 }
 
 function Sparkline({ values, height=60, color='var(--cyan)' }) {
+  if (!values || values.length < 2) return null;
   const min = Math.min(...values), max = Math.max(...values);
   const range = max - min || 1;
   const w = 100;
@@ -550,6 +791,255 @@ function RangeTabs({ value, onChange, options=['1W','1M','3M','6M','1Y'] }) {
         }}>{o}</button>
       ))}
     </div>
+  );
+}
+
+// ── Analysis Result Drawer ─────────────────────────────────────────────────
+function AnalysisResultDrawer({ state, onClose }) {
+  const { ticker, loading, report, error } = state;
+  const VERDICT_COLOR = {
+    'STRONG BUY': 'var(--buy-strong)', 'BUY': 'var(--buy)',
+    'NEUTRAL': 'var(--neutral)', 'SELL': 'var(--sell)', 'STRONG SELL': 'var(--sell-strong)',
+  };
+  const vColor = report ? (VERDICT_COLOR[report.verdict] || 'var(--neutral)') : 'var(--ink-3)';
+
+  return (
+    <>
+      <div onClick={onClose} style={{
+        position:'fixed', inset:0, background:'rgba(15,23,42,.5)',
+        backdropFilter:'blur(6px)', zIndex:60, animation:'fade-in .2s'
+      }}/>
+      <style>{`
+        @keyframes fade-in  { from{opacity:0} to{opacity:1} }
+        @keyframes slide-in { from{transform:translateX(100%)} to{transform:translateX(0)} }
+        @keyframes spin-ring { to { transform:rotate(360deg) } }
+      `}</style>
+
+      <aside style={{
+        position:'fixed', top:0, right:0, bottom:0, width:600, zIndex:65,
+        background:'var(--bg-surface)', boxShadow:'-24px 0 80px rgba(15,23,42,.18)',
+        display:'flex', flexDirection:'column', overflow:'hidden',
+        animation:'slide-in .3s cubic-bezier(.2,.8,.2,1)'
+      }}>
+        {/* Header */}
+        <div style={{ padding:'20px 24px', borderBottom:'1px solid var(--border)', display:'flex', alignItems:'center', gap:14 }}>
+          <div style={{
+            width:44, height:44, borderRadius:11,
+            background:'linear-gradient(135deg, var(--cyan-soft), var(--violet-soft))',
+            display:'grid', placeItems:'center', fontWeight:800, fontSize:18, color:'var(--cyan)', flexShrink:0
+          }}>{ticker[0]}</div>
+          <div style={{ flex:1, minWidth:0 }}>
+            <div className="eyebrow" style={{ marginBottom:2 }}>Analysis result</div>
+            <div style={{ fontSize:19, fontWeight:800 }}>{ticker}</div>
+          </div>
+          {report && (
+            <span style={{
+              padding:'6px 14px', borderRadius:999, fontSize:12, fontWeight:800, letterSpacing:'.04em',
+              background:`color-mix(in oklab, ${vColor} 15%, transparent)`, color:vColor
+            }}>{report.verdict}</span>
+          )}
+          <button onClick={onClose} style={{
+            width:32, height:32, borderRadius:8, border:'1px solid var(--border)',
+            background:'transparent', display:'grid', placeItems:'center', color:'var(--ink-2)', cursor:'pointer'
+          }}><Icon.X size={16}/></button>
+        </div>
+
+        {/* Body */}
+        <div style={{ flex:1, overflowY:'auto', padding:24, display:'flex', flexDirection:'column', gap:24 }}>
+
+          {/* ── Loading state — live WebSocket progress ── */}
+          {loading && (
+            <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:20, paddingTop:40 }}>
+              <Sphere size={100} mode="liquid"/>
+              <div>
+                <div style={{ fontSize:17, fontWeight:700, textAlign:'center', marginBottom:6 }}>Analyzing {ticker}…</div>
+                <div style={{ fontSize:13, color:'var(--ink-3)', textAlign:'center' }}>
+                  {Object.keys(state.agentProgress || {}).length > 0
+                    ? `${Object.keys(state.agentProgress).length} / ${(window.AGENTS||[]).length} agents complete`
+                    : '9 agents running concurrently · typically 1–2 min'}
+                </div>
+              </div>
+              <div style={{ width:'100%' }}>
+                {(window.AGENTS||[]).map((a,i) => {
+                  const score = (state.agentProgress || {})[a.key];
+                  const done  = score !== undefined;
+                  const barColor = done
+                    ? (score >= 0.70 ? 'var(--buy)' : score >= 0.50 ? 'var(--neutral)' : 'var(--sell)')
+                    : 'var(--cyan)';
+                  return (
+                    <div key={a.key} style={{ display:'flex', alignItems:'center', gap:10, marginBottom:10 }}>
+                      <span style={{ fontSize:18, width:24, textAlign:'center', flexShrink:0 }}>{a.icon}</span>
+                      <div style={{ flex:1, height:6, background:'var(--bg-tinted)', borderRadius:999, overflow:'hidden', position:'relative' }}>
+                        {done ? (
+                          <div style={{ width:(score*100)+'%', height:'100%', background:barColor, borderRadius:999, transition:'width .5s ease' }}/>
+                        ) : (
+                          <div style={{
+                            position:'absolute', inset:0,
+                            background:`linear-gradient(90deg, transparent, ${barColor}, transparent)`,
+                            backgroundSize:'200% 100%',
+                            animation:`shimmer-move 1.6s ease-in-out infinite ${i*.12}s`
+                          }}/>
+                        )}
+                      </div>
+                      <span className="mono" style={{ fontSize:11, width:34, textAlign:'right', flexShrink:0,
+                        color: done ? 'var(--ink-1)' : 'var(--ink-3)', fontWeight: done ? 700 : 400 }}>
+                        {done ? (score*100).toFixed(0) : '…'}
+                      </span>
+                      <span style={{ fontSize:11, color:'var(--ink-3)', width:110, flexShrink:0, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                        {done ? '✓ ' : ''}{a.name}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* ── Error state ── */}
+          {error && !loading && (
+            <div style={{ padding:20, background:'var(--sell-soft)', borderRadius:12, border:'1px solid var(--sell)' }}>
+              <div style={{ fontSize:14, fontWeight:700, color:'var(--sell-strong)', marginBottom:6 }}>Analysis failed</div>
+              <div style={{ fontSize:13, color:'var(--sell)', lineHeight:1.5 }}>{error}</div>
+              <div style={{ fontSize:11, color:'var(--ink-3)', marginTop:10 }}>Check /docs to test the API directly, or verify your API keys in Railway Variables.</div>
+            </div>
+          )}
+
+          {/* ── Success state ── */}
+          {report && !loading && (
+            <>
+              {/* Score + verdict card */}
+              <div style={{
+                display:'flex', gap:20, alignItems:'center', padding:20,
+                background:'var(--bg-base)', borderRadius:16, border:'1px solid var(--border)'
+              }}>
+                {/* Conic gauge */}
+                <div style={{ flexShrink:0, textAlign:'center' }}>
+                  <div style={{
+                    width:84, height:84, borderRadius:'50%', margin:'0 auto 8px',
+                    background:`conic-gradient(${vColor} ${report.final_score*360}deg, var(--bg-tinted) 0deg)`,
+                    display:'grid', placeItems:'center',
+                    boxShadow:`0 0 0 4px var(--bg-surface), 0 4px 20px rgba(0,0,0,.08)`
+                  }}>
+                    <div style={{
+                      width:62, height:62, borderRadius:'50%', background:'var(--bg-surface)',
+                      display:'grid', placeItems:'center', fontWeight:800, fontSize:18,
+                      fontFamily:'var(--font-mono,ui-monospace,monospace)', color:'var(--ink-1)'
+                    }}>{(report.final_score*100).toFixed(0)}</div>
+                  </div>
+                  <div style={{ fontSize:10, color:'var(--ink-3)' }}>/ 100</div>
+                </div>
+                <div style={{ flex:1, minWidth:0 }}>
+                  <div style={{ fontSize:13, color:'var(--ink-2)', marginBottom:4 }}>{report.company_name}</div>
+                  <div style={{ fontSize:15, fontWeight:700, color: vColor, marginBottom:8 }}>{report.verdict}</div>
+                  {report.price_target && (
+                    <div style={{ display:'flex', gap:12, fontSize:12, flexWrap:'wrap' }}>
+                      <span style={{ color:'var(--ink-3)' }}>Target: <strong style={{ color:'var(--ink-1)' }}>₹{report.price_target.toLocaleString('en-IN')}</strong></span>
+                      {report.undervalued_by_pct != null && (
+                        <span style={{ color:'var(--buy-strong)' }}>Upside {report.undervalued_by_pct.toFixed(1)}%</span>
+                      )}
+                      {report.recovery_timeline_quarters && (
+                        <span style={{ color:'var(--ink-3)' }}>{report.recovery_timeline_quarters}Q horizon</span>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Thesis */}
+              {report.investment_thesis && (
+                <div>
+                  <div className="eyebrow" style={{ marginBottom:8 }}>Investment thesis</div>
+                  <p style={{ fontSize:13, color:'var(--ink-2)', lineHeight:1.7, margin:0,
+                    padding:'14px 16px', background:'var(--bg-base)', borderRadius:12, border:'1px solid var(--border)' }}>
+                    {report.investment_thesis}
+                  </p>
+                </div>
+              )}
+
+              {/* Conviction drivers + top risks */}
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:16 }}>
+                <div>
+                  <div className="eyebrow" style={{ marginBottom:8, color:'var(--buy-strong)' }}>Conviction drivers</div>
+                  <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+                    {(report.conviction_drivers||[]).slice(0,4).map((d,i) => (
+                      <div key={i} style={{ display:'flex', gap:8, alignItems:'flex-start',
+                        padding:'8px 10px', background:'var(--buy-soft)', borderRadius:8 }}>
+                        <span style={{ color:'var(--buy-strong)', fontSize:12, marginTop:1, flexShrink:0 }}>✓</span>
+                        <span style={{ fontSize:12, color:'var(--ink-1)', lineHeight:1.5 }}>{d}</span>
+                      </div>
+                    ))}
+                    {!report.conviction_drivers?.length && (
+                      <div style={{ fontSize:12, color:'var(--ink-3)' }}>None flagged</div>
+                    )}
+                  </div>
+                </div>
+                <div>
+                  <div className="eyebrow" style={{ marginBottom:8, color:'var(--sell-strong)' }}>Top risks</div>
+                  <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+                    {(report.top_risks||[]).slice(0,4).map((r,i) => (
+                      <div key={i} style={{ display:'flex', gap:8, alignItems:'flex-start',
+                        padding:'8px 10px', background:'var(--sell-soft)', borderRadius:8 }}>
+                        <span style={{ color:'var(--sell-strong)', fontSize:12, marginTop:1, flexShrink:0 }}>⚠</span>
+                        <span style={{ fontSize:12, color:'var(--ink-1)', lineHeight:1.5 }}>{r}</span>
+                      </div>
+                    ))}
+                    {!report.top_risks?.length && (
+                      <div style={{ fontSize:12, color:'var(--ink-3)' }}>None flagged</div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Agent score bars */}
+              {report.weighted_agent_scores && Object.keys(report.weighted_agent_scores).length > 0 && (
+                <div>
+                  <div className="eyebrow" style={{ marginBottom:12 }}>Agent breakdown</div>
+                  <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+                    {Object.entries(report.weighted_agent_scores).map(([key, val]) => {
+                      const meta = (window.AGENTS||[]).find(a => a.key === key);
+                      const score = typeof val === 'object' ? (val.raw || 0) : (val || 0);
+                      const color = score >= 0.70 ? 'var(--buy)' : score >= 0.50 ? 'var(--neutral)' : 'var(--sell)';
+                      return (
+                        <div key={key} style={{ display:'grid', gridTemplateColumns:'28px 1fr 40px', gap:10, alignItems:'center' }}>
+                          <span style={{ fontSize:17, textAlign:'center' }}>{meta?.icon || '•'}</span>
+                          <div style={{ height:7, background:'var(--bg-tinted)', borderRadius:999, overflow:'hidden' }}>
+                            <div style={{ width:(score*100)+'%', height:'100%', background:color, borderRadius:999, transition:'width .8s ease' }}/>
+                          </div>
+                          <span className="mono" style={{ fontSize:12, fontWeight:700, color:'var(--ink-2)', textAlign:'right' }}>
+                            {(score*100).toFixed(0)}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Conflicts */}
+              {report.conflicts_resolved?.length > 0 && (
+                <div>
+                  <div className="eyebrow" style={{ marginBottom:8 }}>Conflicts resolved</div>
+                  <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
+                    {report.conflicts_resolved.map((c,i) => (
+                      <div key={i} style={{ fontSize:12, color:'var(--ink-2)', padding:'6px 10px',
+                        background:'var(--neutral-soft)', borderRadius:8, lineHeight:1.5 }}>⟷ {c}</div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+
+        {/* Footer shimmer animation style */}
+        <style>{`
+          @keyframes shimmer-move {
+            0%   { background-position: -200% 0; }
+            100% { background-position:  200% 0; }
+          }
+        `}</style>
+      </aside>
+    </>
   );
 }
 

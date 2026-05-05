@@ -1,23 +1,88 @@
 // Agents page — card grid with toggle on/off + drawer with sliders
-const { useState: useStateAg } = React;
+const { useState: useStateAg, useEffect: useEffectAg } = React;
 
 function AgentsPage({ onNav, openChat }) {
   const [agents, setAgents] = useStateAg(window.AGENTS);
   const [tasks, setTasks] = useStateAg(window.AGENT_TASKS);
   const [drawerKey, setDrawerKey] = useStateAg(null);
   const [search, setSearch] = useStateAg('');
+  const [saveStatus, setSaveStatus] = useStateAg(null); // null | 'saving' | 'saved' | {error}
 
   const enabled = agents.filter(a => a.enabled);
   const totalWeight = enabled.reduce((s,a)=>s+a.weight, 0);
   const allTasks = Object.values(tasks).flat();
   const enabledTasks = allTasks.filter(t => t.enabled).length;
 
-  const toggle = (key) => setAgents(prev => prev.map(a => a.key===key ? {...a, enabled: !a.enabled} : a));
-  const setWeight = (key, w) => setAgents(prev => prev.map(a => a.key===key ? {...a, weight: w} : a));
-  const toggleTask = (agentKey, taskKey) => setTasks(prev => ({
-    ...prev,
-    [agentKey]: prev[agentKey].map(t => t.key===taskKey ? {...t, enabled: !t.enabled} : t)
-  }));
+  // Persist all current weights to the backend
+  const persistWeights = async (updatedAgents) => {
+    setSaveStatus('saving');
+    const weights = {};
+    updatedAgents.forEach(a => { weights[a.key] = parseFloat(a.weight) || 0; });
+    try {
+      const res = await fetch('/ui/agents/weights', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ weights }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        setSaveStatus({ error: err.detail || 'Save failed' });
+        setTimeout(() => setSaveStatus(null), 4000);
+      } else {
+        setSaveStatus('saved');
+        setTimeout(() => setSaveStatus(null), 2000);
+      }
+    } catch {
+      setSaveStatus({ error: 'Network error — weights saved locally only' });
+      setTimeout(() => setSaveStatus(null), 4000);
+    }
+  };
+
+  // Toggle: zero the weight when disabling, restore previous weight when enabling
+  const toggle = (key) => {
+    const updated = agents.map(a => {
+      if (a.key !== key) return a;
+      const nowEnabled = !a.enabled;
+      return {
+        ...a,
+        enabled: nowEnabled,
+        _prevWeight: a.enabled ? a.weight : a._prevWeight,
+        weight: nowEnabled ? (a._prevWeight || 0.10) : 0,
+      };
+    });
+    setAgents(updated);
+    persistWeights(updated);
+  };
+
+  // Visual-only update during slider drag
+  const setWeight = (key, w) =>
+    setAgents(prev => prev.map(a => a.key===key ? { ...a, weight: w } : a));
+
+  // Persist on slider release (mouseUp / touchEnd)
+  const saveWeight = (key, w) => {
+    const updated = agents.map(a => a.key===key ? { ...a, weight: parseFloat(w) } : a);
+    setAgents(updated);
+    persistWeights(updated);
+  };
+
+  const toggleTask = async (agentKey, taskKey) => {
+    const updatedTasks = {
+      ...tasks,
+      [agentKey]: (tasks[agentKey] || []).map(t => t.key===taskKey ? { ...t, enabled: !t.enabled } : t),
+    };
+    setTasks(updatedTasks);
+    // Persist flags to backend
+    const flags = {};
+    Object.entries(updatedTasks).forEach(([aKey, list]) => {
+      flags[aKey] = {};
+      list.forEach(t => { flags[aKey][t.key] = t.enabled; });
+    });
+    fetch('/ui/agents/tasks', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ flags }),
+    }).catch(() => {}); // fire-and-forget; local state already updated
+  };
 
   return (
     <div style={{ minHeight:'100vh', background:'var(--bg-base)' }}>
@@ -40,10 +105,27 @@ function AgentsPage({ onNav, openChat }) {
             </p>
           </div>
 
-          <div style={{ display:'flex', gap:12 }}>
+          <div style={{ display:'flex', gap:12, alignItems:'flex-start' }}>
+            {/* Save status badge */}
+            {saveStatus && (
+              <div style={{
+                padding:'8px 14px', borderRadius:8, fontSize:12, fontWeight:600,
+                background: saveStatus==='saving' ? 'var(--bg-tinted)' :
+                            saveStatus==='saved'  ? 'var(--buy-soft)' : 'var(--sell-soft)',
+                color: saveStatus==='saving' ? 'var(--ink-3)' :
+                       saveStatus==='saved'  ? 'var(--buy-strong)' : 'var(--sell-strong)',
+                border: '1px solid',
+                borderColor: saveStatus==='saving' ? 'var(--border)' :
+                             saveStatus==='saved'  ? 'var(--buy)' : 'var(--sell)',
+              }}>
+                {saveStatus==='saving' ? '⟳ Saving…' :
+                 saveStatus==='saved'  ? '✓ Weights saved' :
+                 '⚠ ' + (saveStatus.error || 'Error')}
+              </div>
+            )}
             <Stat label="Plugged in"   value={enabled.length}    max={agents.length}/>
             <Stat label="Active tasks" value={enabledTasks}      max={allTasks.length} hint="Across all agents"/>
-            <Stat label="Avg latency"  value="11.4s" hint="Last 7 days"/>
+            <Stat label="Total weight" value={(totalWeight*100).toFixed(0)+'%'} hint="Should be ~100%"/>
           </div>
         </div>
 
@@ -72,7 +154,9 @@ function AgentsPage({ onNav, openChat }) {
           onClose={()=>setDrawerKey(null)}
           onToggle={()=>toggle(drawerKey)}
           onWeight={(w)=>setWeight(drawerKey, w)}
+          onWeightSave={(w)=>saveWeight(drawerKey, w)}
           onToggleTask={(taskKey)=>toggleTask(drawerKey, taskKey)}
+          saveStatus={saveStatus}
         />
       )}
     </div>
@@ -101,9 +185,7 @@ function Pipeline({ agents }) {
         <span style={{ fontSize:11, color:'var(--ink-3)' }}>How a ticker flows through your agents</span>
       </div>
       <div style={{ display:'grid', gridTemplateColumns:'auto 1fr auto', alignItems:'center', gap:24 }}>
-        {/* Input */}
         <PipelineNode icon={<Icon.Search size={18}/>} title="Ticker" sub="MARUTI" color="var(--ink-2)"/>
-        {/* Center fan-out */}
         <div style={{ position:'relative', minHeight:120 }}>
           <div style={{ display:'grid', gridTemplateColumns:`repeat(${Math.max(agents.length,1)}, 1fr)`, gap:8 }}>
             {agents.map((a,i) => (
@@ -120,7 +202,6 @@ function Pipeline({ agents }) {
               </div>
             ))}
           </div>
-          {/* arrows hint */}
           <div style={{ position:'absolute', left:-24, top:'50%', transform:'translateY(-50%)', color:'var(--border-strong)' }}>
             <Icon.ChevronR size={14}/>
           </div>
@@ -128,7 +209,6 @@ function Pipeline({ agents }) {
             <Icon.ChevronR size={14}/>
           </div>
         </div>
-        {/* Output */}
         <PipelineNode icon={<Icon.Sparkles size={18}/>} title="Verdict" sub="Aggregator" color="var(--cyan)" highlight/>
       </div>
     </div>
@@ -166,7 +246,6 @@ function AgentCard({ a, tasks=[], onToggle, onOpen }) {
       onClick={onOpen}
       onMouseEnter={e=>{e.currentTarget.style.transform='translateY(-2px)'; e.currentTarget.style.boxShadow='var(--shadow-md)'}}
       onMouseLeave={e=>{e.currentTarget.style.transform=''; e.currentTarget.style.boxShadow='var(--shadow-sm)'}}>
-      {/* Top bar — plug status */}
       <div style={{
         padding:'12px 18px', display:'flex', alignItems:'center', gap:10,
         borderBottom:'1px solid var(--border)',
@@ -193,7 +272,6 @@ function AgentCard({ a, tasks=[], onToggle, onOpen }) {
         </button>
       </div>
 
-      {/* Body */}
       <div style={{ padding:18 }}>
         <div style={{ display:'flex', alignItems:'flex-start', gap:14, marginBottom:14 }}>
           <div style={{
@@ -211,7 +289,6 @@ function AgentCard({ a, tasks=[], onToggle, onOpen }) {
           {a.beginner}
         </div>
 
-        {/* Task chip preview */}
         {tasks.length > 0 && (
           <div style={{ display:'flex', flexWrap:'wrap', gap:4, marginBottom:12, minHeight:24 }}>
             {tasks.slice(0,3).map(t => (
@@ -234,7 +311,6 @@ function AgentCard({ a, tasks=[], onToggle, onOpen }) {
           <span><strong style={{ color:'var(--ink-2)' }}>{activeTasks}/{tasks.length}</strong> tasks active</span>
         </div>
 
-        {/* Weight bar */}
         <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:6 }}>
           <span style={{ fontSize:11, color:'var(--ink-3)', fontWeight:600 }}>Weight</span>
           <div style={{ flex:1, height:5, background:'var(--bg-tinted)', borderRadius:999, overflow:'hidden' }}>
@@ -249,8 +325,54 @@ function AgentCard({ a, tasks=[], onToggle, onOpen }) {
   );
 }
 
-function AgentDrawer({ a, tasks=[], onClose, onToggle, onWeight, onToggleTask }) {
+function _timeAgo(isoStr) {
+  if (!isoStr) return '—';
+  const diff = Date.now() - new Date(isoStr).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return 'Just now';
+  if (mins < 60) return `${mins} min ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs} hr${hrs > 1 ? 's' : ''} ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days} day${days > 1 ? 's' : ''} ago`;
+}
+
+function AgentDrawer({ a, tasks=[], onClose, onToggle, onWeight, onWeightSave, onToggleTask, saveStatus }) {
   const activeCount = tasks.filter(t => t.enabled).length;
+  const [recentRuns, setRecentRuns] = useStateAg([]);
+  const [runsLoading, setRunsLoading] = useStateAg(true);
+
+  // Fetch history for all watchlist tickers on mount / agent change
+  useEffectAg(() => {
+    setRunsLoading(true);
+    const tickers = window.WATCHLIST || ['MARUTI','TATAMOTORS','M&M','BAJAJ-AUTO','EICHERMOT'];
+    Promise.all(
+      tickers.map(sym =>
+        fetch(`/history/${sym}?limit=5`)
+          .then(r => r.ok ? r.json() : [])
+          .catch(() => [])
+      )
+    ).then(results => {
+      const runs = results
+        .flat()
+        .map(row => {
+          let agentScore = null;
+          try {
+            const scores = typeof row.agent_scores === 'string'
+              ? JSON.parse(row.agent_scores)
+              : (row.agent_scores || {});
+            agentScore = scores[a.key];
+          } catch {}
+          return { ticker: row.ticker, score: agentScore, runAt: row.run_at };
+        })
+        .filter(r => r.score != null)
+        .sort((x, y) => new Date(y.runAt) - new Date(x.runAt))
+        .slice(0, 5);
+      setRecentRuns(runs);
+      setRunsLoading(false);
+    });
+  }, [a.key]);
+
   return (
     <>
       <div onClick={onClose} style={{
@@ -307,7 +429,7 @@ function AgentDrawer({ a, tasks=[], onClose, onToggle, onWeight, onToggleTask })
           {/* Tasks */}
           <Section title={`Tasks · ${activeCount} of ${tasks.length} active`}>
             <p style={{ fontSize:12, color:'var(--ink-3)', lineHeight:1.5, margin:'0 0 14px' }}>
-              Each task is one specific signal this agent watches. Toggle off any you don't care about — the agent skips them on its next run, saving time and API calls.
+              Each task is one specific signal this agent watches. Toggle off any you don't care about — the agent skips them on its next run.
             </p>
             <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
               {tasks.map(t => (
@@ -329,12 +451,13 @@ function AgentDrawer({ a, tasks=[], onClose, onToggle, onWeight, onToggleTask })
           {/* Weight slider */}
           <Section title="Weight in the verdict">
             <p style={{ fontSize:12, color:'var(--ink-3)', lineHeight:1.5, margin:'0 0 16px' }}>
-              How much this agent's view counts when fusing the final score.
-              All weights are auto-normalized when you save.
+              How much this agent's view counts in the final score. Drag and release to save — all weights must sum to ~100%.
             </p>
             <div style={{ display:'flex', alignItems:'center', gap:14 }}>
               <input type="range" min="0" max="0.30" step="0.01" value={a.weight}
-                onChange={e=>onWeight(parseFloat(e.target.value))}
+                onChange={e => onWeight(parseFloat(e.target.value))}
+                onMouseUp={e => onWeightSave(parseFloat(e.target.value))}
+                onTouchEnd={e => onWeightSave(parseFloat(e.target.value))}
                 disabled={!a.enabled}
                 style={{ flex:1, accentColor:'var(--cyan)' }}/>
               <div style={{
@@ -347,27 +470,47 @@ function AgentDrawer({ a, tasks=[], onClose, onToggle, onWeight, onToggleTask })
             <div style={{ display:'flex', justifyContent:'space-between', fontSize:10, color:'var(--ink-3)', marginTop:6 }}>
               <span>Off</span><span>Default</span><span>Heavy</span>
             </div>
+            {/* Save status inline */}
+            {saveStatus && (
+              <div style={{
+                marginTop:10, padding:'6px 10px', borderRadius:8, fontSize:11, fontWeight:600,
+                background: saveStatus==='saving' ? 'var(--bg-tinted)' :
+                            saveStatus==='saved'  ? 'var(--buy-soft)'  : 'var(--sell-soft)',
+                color: saveStatus==='saving' ? 'var(--ink-3)' :
+                       saveStatus==='saved'  ? 'var(--buy-strong)' : 'var(--sell-strong)',
+              }}>
+                {saveStatus==='saving' ? '⟳ Saving weights…' :
+                 saveStatus==='saved'  ? '✓ Weights saved to server' :
+                 '⚠ ' + (saveStatus.error || 'Error saving')}
+              </div>
+            )}
           </Section>
 
-          {/* Recent runs */}
+          {/* Recent runs — live from /history/{ticker} */}
           <Section title="Recent runs">
-            <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
-              {[
-                {ticker:'MARUTI',     score:0.78, t:'2 min ago'},
-                {ticker:'TATAMOTORS', score:0.72, t:'8 min ago'},
-                {ticker:'M&M',        score:0.69, t:'14 min ago'},
-                {ticker:'BAJAJ-AUTO', score:0.55, t:'1 hr ago'},
-              ].map(r => (
-                <div key={r.ticker} style={{
-                  display:'grid', gridTemplateColumns:'1fr auto auto', gap:12, alignItems:'center',
-                  padding:'10px 12px', background:'var(--bg-base)', borderRadius:8
-                }}>
-                  <span className="mono" style={{ fontSize:12, fontWeight:700 }}>{r.ticker}</span>
-                  <span className="mono" style={{ fontSize:12, color:'var(--ink-2)' }}>{r.score.toFixed(2)}</span>
-                  <span style={{ fontSize:11, color:'var(--ink-3)' }}>{r.t}</span>
-                </div>
-              ))}
-            </div>
+            {runsLoading ? (
+              <div style={{ color:'var(--ink-3)', fontSize:12, padding:'10px 0' }}>Loading history…</div>
+            ) : recentRuns.length === 0 ? (
+              <div style={{ color:'var(--ink-3)', fontSize:12, padding:'10px 0' }}>
+                No analysis runs found yet. Run an analysis from the Home page.
+              </div>
+            ) : (
+              <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+                {recentRuns.map((r, i) => (
+                  <div key={i} style={{
+                    display:'grid', gridTemplateColumns:'1fr auto auto', gap:12, alignItems:'center',
+                    padding:'10px 12px', background:'var(--bg-base)', borderRadius:8
+                  }}>
+                    <span className="mono" style={{ fontSize:12, fontWeight:700 }}>{r.ticker}</span>
+                    <span className="mono" style={{
+                      fontSize:12, fontWeight:700,
+                      color: r.score >= 0.7 ? 'var(--buy-strong)' : r.score >= 0.5 ? 'var(--neutral)' : 'var(--sell-strong)'
+                    }}>{r.score.toFixed(2)}</span>
+                    <span style={{ fontSize:11, color:'var(--ink-3)' }}>{_timeAgo(r.runAt)}</span>
+                  </div>
+                ))}
+              </div>
+            )}
           </Section>
 
           {/* Data sources */}

@@ -2,4 +2,4 @@
 cmds = ["pip install -r requirements.txt", "pip install -e ."]
 
 [start]
-cmd = "uvicorn services.api.server:app --host 0.0.0.0 --port $PORT"
+cmd = "python run.py"

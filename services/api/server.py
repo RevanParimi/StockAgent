@@ -109,7 +109,7 @@ async def list_tickers() -> dict:
 # Dev entrypoint
 # ---------------------------------------------------------------------------
 
-_FRONTEND_DIR = _ROOT / "frontend-new" / "prototypes" / "beginner"
+_FRONTEND_DIR = _ROOT / "frontend" / "prototypes" / "beginner"
 if _FRONTEND_DIR.exists():
     app.mount("/app", StaticFiles(directory=str(_FRONTEND_DIR), html=True), name="frontend")
 else:

@@ -113,7 +113,9 @@
       "WebFetch(domain:cloudtoolstack.com)",
       "WebFetch(domain:encore.dev)",
       "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\RevanParimi\\\\OneDrive - IBM\\\\Documents\\\\Gen AI Projects\\\\StockAgent-main\" -Force)",
-      "PowerShell(Get-ChildItem -Path \"c:\\\\Users\\\\RevanParimi\\\\OneDrive - IBM\\\\Documents\\\\Gen AI Projects\\\\StockAgent-main\" -Force | Select-Object Name, @{Name=\"Type\"; Expression={if\\($_.PSIsContainer\\){\"Directory\"}else{\"File\"}}} | Format-Table -AutoSize)"
+      "PowerShell(Get-ChildItem -Path \"c:\\\\Users\\\\RevanParimi\\\\OneDrive - IBM\\\\Documents\\\\Gen AI Projects\\\\StockAgent-main\" -Force | Select-Object Name, @{Name=\"Type\"; Expression={if\\($_.PSIsContainer\\){\"Directory\"}else{\"File\"}}} | Format-Table -AutoSize)",
+      "Bash(Select-String \"frontend\")",
+      "PowerShell(Rename-Item -Path \"c:\\\\Users\\\\RevanParimi\\\\OneDrive - IBM\\\\Documents\\\\Gen AI Projects\\\\StockAgent-main\\\\frontend-new\" -NewName \"frontend\")"
     ]
   }
 }

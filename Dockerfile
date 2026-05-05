@@ -21,6 +21,7 @@ COPY core/       ./core/
 COPY services/   ./services/
 COPY scripts/    ./scripts/
 COPY main.py     ./
+COPY frontend/prototypes/beginner/ ./frontend/prototypes/beginner/
 
 # Create data directories — volumes mount here at runtime
 RUN mkdir -p \

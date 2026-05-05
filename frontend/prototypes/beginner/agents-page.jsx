@@ -88,7 +88,7 @@ function AgentsPage({ onNav, openChat }) {
     <div style={{ minHeight:'100vh', background:'var(--bg-base)' }}>
       <TopNav active="agents" onNav={onNav} search={search} setSearch={setSearch}/>
 
-      <main style={{ maxWidth:1280, margin:'0 auto', padding:'24px 32px 96px' }}>
+      <main style={{ maxWidth:1280, margin:'0 auto', padding:'var(--main-py) var(--main-px) 96px' }}>
         {/* Header bar */}
         <div style={{ display:'flex', alignItems:'flex-end', justifyContent:'space-between', gap:24, marginBottom:24 }}>
           <div>
@@ -129,8 +129,10 @@ function AgentsPage({ onNav, openChat }) {
           </div>
         </div>
 
-        {/* Pipeline visual */}
-        <Pipeline agents={enabled} onOpenAgent={setDrawerKey}/>
+        {/* Pipeline visual — hidden on mobile via CSS */}
+        <div className="pipeline-section">
+          <Pipeline agents={enabled} onOpenAgent={setDrawerKey}/>
+        </div>
 
         {/* Agent grid */}
         <div style={{ marginTop:32 }}>
@@ -138,7 +140,7 @@ function AgentsPage({ onNav, openChat }) {
             <h2 style={{ fontSize:18, fontWeight:700, margin:0 }}>All agents</h2>
             <div style={{ fontSize:12, color:'var(--ink-3)' }}>Click any card to tune</div>
           </div>
-          <div style={{ display:'grid', gridTemplateColumns:'repeat(3, 1fr)', gap:16 }}>
+          <div style={{ display:'grid', gridTemplateColumns:'var(--grid-agents)', gap:16 }}>
             {agents.map(a => (
               <AgentCard key={a.key} a={a} tasks={tasks[a.key]||[]}
                 onToggle={()=>toggle(a.key)} onOpen={()=>setDrawerKey(a.key)}/>
@@ -392,12 +394,8 @@ function AgentDrawer({ a, tasks=[], onClose, onToggle, onWeight, onWeightSave, o
         @keyframes fade-in { from { opacity:0; } to { opacity:1; } }
         @keyframes slide-in { from { transform: translateX(100%); } to { transform: translateX(0); } }
       `}</style>
-      <aside style={{
-        position:'fixed', top:0, right:0, bottom:0, width:520, zIndex:55,
-        background:'var(--bg-surface)', boxShadow:'-20px 0 60px rgba(15,23,42,.15)',
-        animation:'slide-in .3s cubic-bezier(.2,.8,.2,1)',
-        display:'flex', flexDirection:'column', overflow:'hidden'
-      }}>
+      <aside className="drawer-panel" style={{ width:520, zIndex:55 }}>
+        <div className="drawer-handle"/>
         {/* header */}
         <div style={{ padding:'20px 24px', borderBottom:'1px solid var(--border)',
           display:'flex', alignItems:'flex-start', gap:14 }}>

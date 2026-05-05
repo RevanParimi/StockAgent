@@ -169,12 +169,11 @@ function ChatOverlay({ open, onClose, mode='wireframe' }) {
 
   if (!open) return null;
   return (
-    <div style={{
-      position:'fixed', right:24, bottom:104, width:400, height:560, zIndex:65,
-      background:'var(--bg-surface)', border:'1px solid var(--border)', borderRadius:20,
-      boxShadow:'var(--shadow-lg)', display:'flex', flexDirection:'column',
-      animation:'chat-in .25s cubic-bezier(.2,.8,.2,1)'
+    <div className="chat-overlay" style={{
+      background:'var(--bg-surface)', border:'1px solid var(--border)',
+      display:'flex', flexDirection:'column'
     }}>
+      <div className="drawer-handle"/>
       <style>{`@keyframes chat-in { from { opacity:0; transform: translateY(12px) scale(.98); } to { opacity:1; transform:none; } }`}</style>
       <div style={{ padding:'14px 16px', borderBottom:'1px solid var(--border)', display:'flex', alignItems:'center', gap:12 }}>
         <Sphere size={36} mode={mode}/>

@@ -1,29 +1,34 @@
-﻿"""
+"""
 api/server.py
 =============
-FastAPI application — Phase 2 bridge between Python agents and external consumers
-(TypeScript gateway on port 3000).
+FastAPI application — StockAgent Python API.
 
-Ports:
-  HTTP  :  0.0.0.0:8001  (INTERNAL — not exposed to browser)
-  WS    :  0.0.0.0:8001/ws/stream
+Startup sequence (lifespan)
+---------------------------
+1. Calendar first-run: if data/nse_holidays.json doesn't exist, fetch it now
+   so the RL system has accurate holiday data before anything else runs.
+2. RL self-heal (background thread): for each configured ticker —
+     a. If no prediction envelope exists for this month → generate_forecast()
+     b. If feedback entries are missing for past trading days → backfill reviews
+   This makes every fresh deployment fully self-bootstrapping.
+3. BackgroundScheduler start: registers the 3 recurring jobs:
+     - Daily RL review       (weekdays 4:30 pm IST)
+     - Monthly forecast      (1st of month 9:00 am IST)
+     - Dec 31 calendar update (Dec 31 11:00 pm IST)
 
-Start with:
-    uvicorn services.api.server:app --host 0.0.0.0 --port 8001 --reload
-
-Or via the helper script:
-    python -m services.api.server
+Shutdown: BackgroundScheduler stopped cleanly.
 """
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import sys
 import pathlib
-from datetime import datetime, timezone
+import threading
+from contextlib import asynccontextmanager
+from datetime import date, timedelta
 
-# Ensure repo root is on sys.path so `agents`, `tools`, `config` resolve
-# whether this is run from the project root or the api/ subdirectory.
 _ROOT = pathlib.Path(__file__).parent.parent.parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
@@ -36,12 +41,174 @@ from services.api.routes.analyse import router as analyse_router
 from services.api.routes.history import router as history_router
 from services.api.routes.stream import router as stream_router
 from services.api.routes.ui_data import router as ui_router
+from services.api.routes.scheduler_api import router as scheduler_router
 
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s — %(message)s",
 )
 logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Scheduler singleton
+# ---------------------------------------------------------------------------
+
+_scheduler_instance = None
+
+def _get_scheduler():
+    global _scheduler_instance
+    if _scheduler_instance is None:
+        from services.scheduler.python.scheduler import AutomobileScheduler
+        _scheduler_instance = AutomobileScheduler()
+    return _scheduler_instance
+
+
+# ---------------------------------------------------------------------------
+# RL self-heal — runs in a background thread so startup isn't blocked
+# ---------------------------------------------------------------------------
+
+def _self_heal_rl() -> None:
+    """
+    Check RL state for each ticker and fill in whatever is missing:
+      - No prediction envelope for this month → run generate_forecast
+      - Missing feedback entries for past trading days → run daily_review backfill
+
+    Called once on server startup in a daemon thread.
+    All errors are caught and logged — never crashes the server.
+    """
+    import time
+    time.sleep(10)   # Let uvicorn finish binding and log its startup banner first
+
+    try:
+        from core.config import settings
+        from core.intelligence.rl.stores.prediction_store import PredictionStore
+        from core.intelligence.rl.nse_calendar import is_trading_day
+        from core.intelligence.rl.workflows.generate_forecast import generate_forecast
+        from core.intelligence.rl.workflows.daily_review import run_daily_review
+    except Exception as exc:
+        logger.warning("[startup] RL imports failed — self-heal skipped: %s", exc)
+        return
+
+    today = date.today()
+    month_start = today.replace(day=1)
+
+    for ticker in settings.SCHEDULER_TICKERS:
+        try:
+            store    = PredictionStore(ticker, sector="automobile")
+            cycle_id = store.current_cycle_id()
+
+            # ── Step a: ensure forecast envelope exists ───────────────────
+            envelope = store.load_envelope(cycle_id)
+            if envelope is None:
+                logger.info(
+                    "[startup] No envelope for %s %s — generating (this takes ~2 min)…",
+                    ticker, cycle_id,
+                )
+                try:
+                    envelope = generate_forecast(ticker)
+                    logger.info(
+                        "[startup] Envelope generated: %s horizon=%dd base=₹%.2f",
+                        ticker, len(envelope.daily_forecasts), envelope.base_close,
+                    )
+                except Exception as exc:
+                    logger.error("[startup] generate_forecast failed for %s: %s", ticker, exc)
+                    continue   # Can't backfill without an envelope
+
+            # ── Step b: backfill missing daily reviews ────────────────────
+            fb_log = store.load_feedback_log(cycle_id)
+            reviewed_dates = {e.date for e in (fb_log.entries if fb_log else [])}
+
+            missing: list[date] = []
+            d = month_start
+            while d < today:
+                if is_trading_day(d) and d.isoformat() not in reviewed_dates:
+                    missing.append(d)
+                d += timedelta(days=1)
+
+            if missing:
+                logger.info(
+                    "[startup] Backfilling %d missing trading days for %s: %s … %s",
+                    len(missing), ticker, missing[0].isoformat(), missing[-1].isoformat(),
+                )
+                for review_date in missing:
+                    try:
+                        summary = run_daily_review(ticker, review_date)
+                        logger.info(
+                            "[startup] Backfill %s %s — status=%s direction=%s",
+                            ticker, review_date,
+                            summary.get("status"), summary.get("direction_correct"),
+                        )
+                    except Exception as exc:
+                        logger.error(
+                            "[startup] Backfill FAILED %s %s: %s", ticker, review_date, exc
+                        )
+            else:
+                logger.info("[startup] %s — feedback log up to date (%d entries)", ticker, len(reviewed_dates))
+
+        except Exception as exc:
+            logger.error("[startup] Self-heal FAILED for %s: %s", ticker, exc, exc_info=True)
+
+    logger.info("[startup] RL self-heal complete")
+
+
+# ---------------------------------------------------------------------------
+# Calendar first-run
+# ---------------------------------------------------------------------------
+
+def _ensure_calendar_file() -> None:
+    """
+    If data/nse_holidays.json doesn't exist yet, fetch it now so the RL
+    system starts with accurate holiday data rather than only the hardcoded fallback.
+    Non-fatal — hardcoded holidays are always the safety net.
+    """
+    holiday_file = _ROOT / "data" / "nse_holidays.json"
+    if holiday_file.exists():
+        return
+    logger.info("[startup] data/nse_holidays.json not found — running first-time calendar fetch…")
+    try:
+        from core.intelligence.rl.calendar_updater import update_calendar
+        result = update_calendar()
+        logger.info("[startup] Calendar file created with %d years: %s", len(result), list(result.keys()))
+    except Exception as exc:
+        logger.warning("[startup] Calendar fetch failed (using hardcoded fallback): %s", exc)
+
+
+# ---------------------------------------------------------------------------
+# Lifespan — startup + shutdown
+# ---------------------------------------------------------------------------
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # ── Startup ──────────────────────────────────────────────────────────────
+    logger.info("[startup] === StockAgent startup sequence ===")
+
+    # 1. Calendar file (sync, fast — just a file check + possible HTTP call)
+    _ensure_calendar_file()
+
+    # 2. RL self-heal (heavy — 9-agent pipeline per ticker)
+    #    Run in a daemon thread so the server accepts requests immediately.
+    heal_thread = threading.Thread(target=_self_heal_rl, name="rl-self-heal", daemon=True)
+    heal_thread.start()
+    logger.info("[startup] RL self-heal thread started (runs in background)")
+
+    # 3. Background scheduler
+    try:
+        _get_scheduler().start()
+    except Exception as exc:
+        logger.warning("[startup] Scheduler failed to start (non-fatal): %s", exc)
+
+    logger.info("[startup] === Startup complete — accepting requests ===")
+
+    yield  # Server is running here
+
+    # ── Shutdown ─────────────────────────────────────────────────────────────
+    logger.info("[shutdown] Stopping scheduler…")
+    try:
+        _get_scheduler().stop()
+    except Exception as exc:
+        logger.warning("[shutdown] Scheduler stop error (non-fatal): %s", exc)
+    logger.info("[shutdown] Clean shutdown complete")
+
 
 # ---------------------------------------------------------------------------
 # App
@@ -56,16 +223,12 @@ app = FastAPI(
     version="2.0.0",
     docs_url="/docs",
     redoc_url="/redoc",
+    lifespan=lifespan,
 )
 
-# Allow the TypeScript gateway (3000) AND direct browser access to the prototype (8001).
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "http://localhost:8001",
-        "http://127.0.0.1:8001",
-    ],
+    allow_origins=["*"],   # Frontend is same-origin; broad allow for API clients
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -75,45 +238,44 @@ app.add_middleware(
 # Routes
 # ---------------------------------------------------------------------------
 
-app.include_router(analyse_router, tags=["Analysis"])
-app.include_router(history_router, tags=["History"])
-app.include_router(stream_router, tags=["Streaming"])
-app.include_router(ui_router,     tags=["UI"])
+app.include_router(analyse_router,   tags=["Analysis"])
+app.include_router(history_router,   tags=["History"])
+app.include_router(stream_router,    tags=["Streaming"])
+app.include_router(ui_router,        tags=["UI"])
+app.include_router(scheduler_router, tags=["Scheduler"])
 
 
 @app.get("/", tags=["UI"], include_in_schema=False)
 async def root():
-    """Redirect root to the prototype UI."""
     from fastapi.responses import RedirectResponse
     return RedirectResponse(url="/app/index.html")
 
 
 @app.get("/health", tags=["Health"])
 async def health() -> dict:
-    """Health check — used by C# scheduler to verify Python API is up before firing jobs."""
+    from datetime import datetime, timezone
     return {
-        "status": "ok",
-        "service": "StockAgent Python API",
+        "status":    "ok",
+        "service":   "StockAgent Python API",
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
 
 
 @app.get("/tickers", tags=["Meta"])
 async def list_tickers() -> dict:
-    """Returns the configured scheduler tickers."""
     from core.config import settings
     return {"tickers": getattr(settings, "SCHEDULER_TICKERS", [])}
 
 
 # ---------------------------------------------------------------------------
-# Dev entrypoint
+# Static frontend
 # ---------------------------------------------------------------------------
 
 _FRONTEND_DIR = _ROOT / "frontend" / "prototypes" / "beginner"
 if _FRONTEND_DIR.exists():
     app.mount("/app", StaticFiles(directory=str(_FRONTEND_DIR), html=True), name="frontend")
 else:
-    logger.warning("[server] Frontend directory not found at %s — /app not mounted", _FRONTEND_DIR)
+    logger.warning("[server] Frontend not found at %s — /app not mounted", _FRONTEND_DIR)
 
 
 if __name__ == "__main__":

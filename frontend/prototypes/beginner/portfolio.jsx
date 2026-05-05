@@ -14,13 +14,13 @@ function PortfolioPage({ onNav, openChat }) {
     <div style={{ minHeight:'100vh', background:'var(--bg-base)' }}>
       <TopNav active="portfolio" onNav={onNav} search={search} setSearch={setSearch}/>
 
-      <main style={{ maxWidth:1280, margin:'0 auto', padding:'24px 32px 96px' }}>
+      <main style={{ maxWidth:1280, margin:'0 auto', padding:'var(--main-py) var(--main-px) 96px' }}>
         {/* Hero strip */}
         <section style={{
           position:'relative', overflow:'hidden', borderRadius:24, marginBottom:24,
           background:'linear-gradient(135deg, #0a1628 0%, #134e5c 50%, #1a4a73 100%)',
           color:'#f1f5f9', padding:'36px 40px',
-          display:'grid', gridTemplateColumns:'1.4fr 1fr', gap:32, alignItems:'center'
+          display:'grid', gridTemplateColumns:'var(--hero-cols)', gap:32, alignItems:'center'
         }}>
           <div style={{ position:'absolute', top:'-30%', right:'-10%', width:520, height:520, borderRadius:'50%',
             background:'radial-gradient(circle, rgba(124,58,237,.32), transparent 65%)', filter:'blur(40px)' }}/>
@@ -67,7 +67,7 @@ function PortfolioPage({ onNav, openChat }) {
           </div>
         </section>
 
-        <div style={{ display:'grid', gridTemplateColumns:'2fr 1fr', gap:20 }}>
+        <div style={{ display:'grid', gridTemplateColumns:'var(--grid-portfolio)', gap:20 }}>
           {/* Holdings + activity column */}
           <div style={{ display:'flex', flexDirection:'column', gap:20 }}>
             <HoldingsTable holdings={p.holdings}/>
@@ -346,7 +346,7 @@ function LearningsSection({ learnings, openChat }) {
           <FilterTabs value={filter} onChange={setFilter}/>
         </div>
 
-        <div style={{ display:'grid', gridTemplateColumns:'repeat(3, 1fr)', gap:10 }}>
+        <div style={{ display:'grid', gridTemplateColumns:'var(--grid-agents)', gap:10 }}>
           <SummaryStat
             label="Missed gain"
             value={'+₹'+learnings.summary.missedGain.toLocaleString('en-IN')}

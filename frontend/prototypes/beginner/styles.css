@@ -61,3 +61,126 @@ button { font-family: inherit; cursor: pointer; }
 ::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 4px; }
 :focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; border-radius: 6px; }
+
+/* ── Responsive CSS variables ─────────────────────────────────────────────── */
+/* Desktop defaults */
+:root {
+  --main-px:          32px;
+  --main-py:          24px;
+  --hero-cols:        1.4fr 1fr;
+  --grid-2col:        1.5fr 1fr;
+  --grid-agents:      repeat(3, 1fr);
+  --grid-categories:  repeat(6, 1fr);
+  --grid-suggestions: repeat(3, 1fr);
+  --grid-trending:    repeat(2, 1fr);
+  --grid-paths:       repeat(3, 1fr);
+  --grid-portfolio:   2fr 1fr;
+}
+/* Tablet */
+@media (min-width: 768px) and (max-width: 1023px) {
+  :root {
+    --main-px:          20px;
+    --grid-agents:      repeat(2, 1fr);
+    --grid-categories:  repeat(4, 1fr);
+    --grid-suggestions: repeat(2, 1fr);
+    --hero-cols:        1fr 1fr;
+  }
+}
+/* Mobile */
+@media (max-width: 767px) {
+  :root {
+    --main-px:          16px;
+    --main-py:          16px;
+    --hero-cols:        1fr;
+    --grid-2col:        1fr;
+    --grid-agents:      1fr;
+    --grid-categories:  repeat(3, 1fr);
+    --grid-suggestions: 1fr;
+    --grid-trending:    1fr;
+    --grid-paths:       repeat(2, 1fr);
+    --grid-portfolio:   1fr;
+  }
+  .card { border-radius: 12px; }
+  body  { font-size: 14px; }
+}
+
+/* ── Show / hide utilities ────────────────────────────────────────────────── */
+@media (max-width: 767px)  { .hide-mobile  { display: none !important; } }
+@media (min-width: 768px)  { .show-mobile  { display: none !important; } }
+
+/* ── TopNav — hamburger on mobile ────────────────────────────────────────── */
+.nav-desktop   { display: flex; gap: 4px; }
+.nav-hamburger { display: none; align-items: center; }
+@media (max-width: 767px) {
+  .nav-desktop   { display: none; }
+  .nav-hamburger { display: flex; }
+}
+/* Full-screen mobile menu overlay */
+.mobile-menu {
+  position: fixed; inset: 0; background: var(--bg-surface);
+  z-index: 200; display: flex; flex-direction: column;
+  padding: 20px 24px; animation: fade-in .15s ease;
+}
+@keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+
+/* ── Drawers — right panel desktop, bottom sheet mobile ──────────────────── */
+.drawer-panel {
+  position: fixed; top: 0; right: 0; bottom: 0;
+  background: var(--bg-surface);
+  display: flex; flex-direction: column; overflow: hidden;
+  box-shadow: -24px 0 80px rgba(15,23,42,.15);
+  animation: slide-in .3s cubic-bezier(.2,.8,.2,1);
+}
+@media (max-width: 767px) {
+  .drawer-panel {
+    top: auto !important; left: 0 !important; right: 0 !important;
+    width: 100% !important; max-height: 92vh;
+    border-radius: 20px 20px 0 0;
+    box-shadow: 0 -12px 40px rgba(15,23,42,.18);
+    animation: slide-up .3s cubic-bezier(.2,.8,.2,1);
+  }
+}
+@keyframes slide-in { from { transform: translateX(100%); } to { transform: translateX(0); } }
+@keyframes slide-up { from { transform: translateY(100%); } to { transform: translateY(0); } }
+
+/* ── Drag handle — visible on bottom sheets ──────────────────────────────── */
+.drawer-handle { display: none; }
+@media (max-width: 767px) {
+  .drawer-handle {
+    display: block; width: 36px; height: 4px; border-radius: 999px;
+    background: var(--border-strong); margin: 10px auto 0;
+  }
+}
+
+/* ── Pipeline — hide on mobile ───────────────────────────────────────────── */
+@media (max-width: 767px) { .pipeline-section { display: none !important; } }
+
+/* ── Watchlist table → card list on mobile ───────────────────────────────── */
+.ticker-table-wrap { display: block; }
+.ticker-cards-wrap { display: none; }
+@media (max-width: 767px) {
+  .ticker-table-wrap { display: none; }
+  .ticker-cards-wrap { display: flex; flex-direction: column; gap: 10px; padding: 12px; }
+}
+
+/* ── Chat overlay ─────────────────────────────────────────────────────────── */
+.chat-overlay {
+  position: fixed; right: 24px; bottom: 104px;
+  width: 400px; height: 560px; z-index: 65;
+  border-radius: 20px; overflow: hidden;
+  box-shadow: var(--shadow-lg);
+  animation: chat-in .25s ease;
+}
+@keyframes chat-in { from { opacity:0; transform:translateY(20px); } to { opacity:1; transform:translateY(0); } }
+@media (max-width: 767px) {
+  .chat-overlay {
+    left: 0 !important; right: 0 !important; bottom: 0 !important;
+    width: 100% !important; height: 72vh !important;
+    border-radius: 20px 20px 0 0;
+  }
+}
+
+/* ── Sphere orb — smaller on mobile ─────────────────────────────────────── */
+@media (max-width: 767px) {
+  .sphere-orb { width: 52px !important; height: 52px !important; right: 16px !important; bottom: 80px !important; }
+}

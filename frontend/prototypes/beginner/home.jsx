@@ -66,7 +66,7 @@ function Home({ onNav, openChat }) {
     <div style={{ minHeight:'100vh', background:'var(--bg-base)' }}>
       <TopNav active="home" onNav={onNav} search={search} setSearch={setSearch}/>
 
-      <main style={{ maxWidth:1280, margin:'0 auto', padding:'24px 32px 96px' }}>
+      <main style={{ maxWidth:1280, margin:'0 auto', padding:'var(--main-py) var(--main-px) 96px' }}>
         {/* HERO */}
         <Hero openChat={openChat} onAnalyze={onAnalyze}/>
 
@@ -100,7 +100,7 @@ function Home({ onNav, openChat }) {
         {/* CATEGORIES */}
         <div style={{ marginTop:36 }}>
           <SectionHead title="Browse by category" subtitle="Pick a slice of the auto sector"/>
-          <div style={{ display:'grid', gridTemplateColumns:'repeat(6, 1fr)', gap:12, marginTop:16 }}>
+          <div style={{ display:'grid', gridTemplateColumns:'var(--grid-categories)', gap:12, marginTop:16 }}>
             {window.CATEGORIES.map(c => <CategoryCard key={c.key} c={c} onClick={()=>setSelectedCategory(c)}/>)}
           </div>
         </div>
@@ -108,7 +108,7 @@ function Home({ onNav, openChat }) {
         {/* SUGGESTIONS */}
         <div style={{ marginTop:36 }}>
           <SectionHead title="Suggested for you" subtitle="Picked by your agents based on what you watch"/>
-          <div style={{ display:'grid', gridTemplateColumns:'repeat(3, 1fr)', gap:16, marginTop:16 }}>
+          <div style={{ display:'grid', gridTemplateColumns:'var(--grid-suggestions)', gap:16, marginTop:16 }}>
             {window.SUGGESTIONS.map(s => <SuggestCard key={s.sym} s={s} onAnalyze={onAnalyze}/>)}
           </div>
         </div>
@@ -135,6 +135,7 @@ function Home({ onNav, openChat }) {
 function TopNav({ active, onNav, search, setSearch }) {
   const [results, setResults] = useStateHome([]);
   const [dropOpen, setDropOpen] = useStateHome(false);
+  const [menuOpen, setMenuOpen] = useStateHome(false);
   const timerRef = useRefHome(null);
 
   const handleSearch = (val) => {
@@ -153,82 +154,123 @@ function TopNav({ active, onNav, search, setSearch }) {
     }, 350);
   };
 
+  const navLinks = [
+    { screen:'home',      label:'Home',      icon:<Icon.Home size={17}/> },
+    { screen:'agents',    label:'Agents',    icon:<Icon.Cpu size={17}/> },
+    { screen:'portfolio', label:'Portfolio', icon:<Icon.Briefcase size={17}/> },
+    { screen:'learn',     label:'Learn',     icon:<Icon.Book size={17}/> },
+  ];
+
   return (
-    <header style={{
-      position:'sticky', top:0, zIndex:30, background:'rgba(255,255,255,.85)',
-      backdropFilter:'blur(12px)', borderBottom:'1px solid var(--border)'
-    }}>
-      <div style={{ maxWidth:1280, margin:'0 auto', padding:'14px 32px',
-        display:'flex', alignItems:'center', gap:24 }}>
-        <div style={{ display:'flex', alignItems:'center', gap:10, cursor:'pointer' }} onClick={()=>onNav?.('home')}>
-          <div style={{
-            width:32, height:32, borderRadius:9,
-            background:'linear-gradient(135deg,#22d3ee,#7c3aed)',
-            display:'grid', placeItems:'center'
-          }}><Icon.Sparkles size={16} c="#fff"/></div>
-          <div style={{ fontWeight:800, letterSpacing:'-0.01em' }}>StockAgent</div>
-        </div>
-
-        <nav style={{ display:'flex', gap:4, marginLeft:24 }}>
-          <NavLink onClick={()=>onNav?.('home')}      active={active==='home'}      icon={<Icon.Home size={15}/>}>Home</NavLink>
-          <NavLink onClick={()=>onNav?.('agents')}    active={active==='agents'}    icon={<Icon.Cpu size={15}/>}>Agents</NavLink>
-          <NavLink onClick={()=>onNav?.('portfolio')} active={active==='portfolio'} icon={<Icon.Briefcase size={15}/>}>Portfolio</NavLink>
-          <NavLink onClick={()=>onNav?.('learn')}     active={active==='learn'}     icon={<Icon.Book size={15}/>}>Learn</NavLink>
-        </nav>
-
-        {/* T2.4 — Search with live dropdown */}
-        <div style={{ flex:1, position:'relative', maxWidth:420, marginLeft:'auto' }}
-          onBlur={e => { if (!e.currentTarget.contains(e.relatedTarget)) setDropOpen(false); }}>
-          <Icon.Search size={16} style={{ position:'absolute', left:12, top:'50%', transform:'translateY(-50%)', color:'var(--ink-3)', pointerEvents:'none' }}/>
-          <input value={search} onChange={e=>handleSearch(e.target.value)}
-            onFocus={()=>results.length > 0 && setDropOpen(true)}
-            placeholder="Search MARUTI, Tata Motors, EV..." style={{
-              width:'100%', padding:'9px 12px 9px 36px', border:'1px solid var(--border)', borderRadius:10,
-              background:'var(--bg-base)', fontSize:13, outline:'none'
-            }}/>
-          {dropOpen && results.length > 0 && (
-            <div style={{
-              position:'absolute', top:'calc(100% + 6px)', left:0, right:0, zIndex:50,
-              background:'var(--bg-surface)', border:'1px solid var(--border)', borderRadius:12,
-              boxShadow:'var(--shadow-lg)', overflow:'hidden'
-            }}>
-              {results.map((r, i) => (
-                <button key={i} onClick={()=>{setSearch(''); setDropOpen(false);}} style={{
-                  display:'flex', alignItems:'center', gap:10, width:'100%',
-                  padding:'10px 14px', border:'none', background:'transparent', textAlign:'left',
-                  borderBottom: i < results.length-1 ? '1px solid var(--border)' : 'none',
-                  cursor:'pointer'
-                }}
-                  onMouseEnter={e=>e.currentTarget.style.background='var(--bg-tinted)'}
-                  onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
-                  <div style={{
-                    width:30, height:30, borderRadius:8, background:'linear-gradient(135deg,var(--cyan-soft),var(--violet-soft))',
-                    display:'grid', placeItems:'center', fontWeight:800, color:'var(--cyan)', fontSize:12, flexShrink:0
-                  }}>{r.sym[0]}</div>
-                  <div style={{ flex:1, minWidth:0 }}>
-                    <div className="mono" style={{ fontWeight:700, fontSize:12 }}>{r.sym}</div>
-                    <div style={{ fontSize:11, color:'var(--ink-3)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
-                      {r.snippet || r.name}
-                    </div>
-                  </div>
-                  <span style={{ fontSize:10, color:'var(--ink-3)', flexShrink:0,
-                    padding:'2px 6px', borderRadius:4, background:'var(--bg-tinted)' }}>{r.type}</span>
-                </button>
-              ))}
+    <>
+      {/* ── Full-screen mobile menu ── */}
+      {menuOpen && (
+        <div className="mobile-menu">
+          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:28 }}>
+            <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+              <div style={{ width:32, height:32, borderRadius:9, background:'linear-gradient(135deg,#22d3ee,#7c3aed)', display:'grid', placeItems:'center' }}>
+                <Icon.Sparkles size={16} c="#fff"/>
+              </div>
+              <div style={{ fontWeight:800 }}>StockAgent</div>
             </div>
-          )}
+            <button onClick={()=>setMenuOpen(false)} style={{ width:36, height:36, borderRadius:9, border:'1px solid var(--border)', background:'transparent', display:'grid', placeItems:'center' }}>
+              <Icon.X size={18}/>
+            </button>
+          </div>
+          {navLinks.map(l => (
+            <button key={l.screen} onClick={()=>{ onNav?.(l.screen); setMenuOpen(false); }} style={{
+              display:'flex', alignItems:'center', gap:14, padding:'16px 14px', borderRadius:12, width:'100%',
+              border:'none', background: active===l.screen ? 'var(--bg-tinted)' : 'transparent',
+              color: active===l.screen ? 'var(--cyan)' : 'var(--ink-1)',
+              fontSize:16, fontWeight:600, textAlign:'left', marginBottom:4
+            }}>{l.icon} {l.label}</button>
+          ))}
+          <div style={{ flex:1 }}/>
+          <button onClick={()=>{ onNav?.('auth'); setMenuOpen(false); }} style={{
+            display:'flex', alignItems:'center', gap:10, padding:'14px', borderRadius:12, width:'100%',
+            border:'1px solid var(--border)', background:'transparent', fontSize:14, fontWeight:600,
+            color:'var(--ink-2)', marginTop:20
+          }}><Icon.User size={16}/> Sign out</button>
         </div>
+      )}
 
-        <button style={{ width:36, height:36, borderRadius:'50%', border:'1px solid var(--border)',
-          background:'var(--bg-surface)', display:'grid', placeItems:'center', position:'relative' }}>
-          <Icon.Bell size={16} c="var(--ink-2)"/>
-          <span style={{ position:'absolute', top:6, right:6, width:8, height:8, borderRadius:'50%', background:'var(--sell-strong)' }}/>
-        </button>
-        <div style={{ width:36, height:36, borderRadius:'50%',
-          background:'linear-gradient(135deg,#22d3ee,#a78bfa)', display:'grid', placeItems:'center',
-          color:'#fff', fontWeight:700, fontSize:13 }}>AS</div>
-      </div>
-    </header>
+      <header style={{
+        position:'sticky', top:0, zIndex:30, background:'rgba(255,255,255,.85)',
+        backdropFilter:'blur(12px)', borderBottom:'1px solid var(--border)'
+      }}>
+        <div style={{ maxWidth:1280, margin:'0 auto', padding:'12px var(--main-px)',
+          display:'flex', alignItems:'center', gap:16 }}>
+
+          {/* Logo */}
+          <div style={{ display:'flex', alignItems:'center', gap:10, cursor:'pointer', flexShrink:0 }} onClick={()=>onNav?.('home')}>
+            <div style={{ width:32, height:32, borderRadius:9, background:'linear-gradient(135deg,#22d3ee,#7c3aed)', display:'grid', placeItems:'center' }}>
+              <Icon.Sparkles size={16} c="#fff"/>
+            </div>
+            <div style={{ fontWeight:800, letterSpacing:'-0.01em' }}>StockAgent</div>
+          </div>
+
+          {/* Desktop nav links */}
+          <nav className="nav-desktop" style={{ marginLeft:16 }}>
+            {navLinks.map(l => (
+              <NavLink key={l.screen} onClick={()=>onNav?.(l.screen)} active={active===l.screen} icon={l.icon}>
+                {l.label}
+              </NavLink>
+            ))}
+          </nav>
+
+          {/* Desktop search */}
+          <div className="nav-desktop" style={{ flex:1, position:'relative', maxWidth:400, marginLeft:'auto' }}
+            onBlur={e => { if (!e.currentTarget.contains(e.relatedTarget)) setDropOpen(false); }}>
+            <Icon.Search size={16} style={{ position:'absolute', left:12, top:'50%', transform:'translateY(-50%)', color:'var(--ink-3)', pointerEvents:'none' }}/>
+            <input value={search} onChange={e=>handleSearch(e.target.value)}
+              onFocus={()=>results.length > 0 && setDropOpen(true)}
+              placeholder="Search MARUTI, Tata Motors..." style={{
+                width:'100%', padding:'9px 12px 9px 36px', border:'1px solid var(--border)', borderRadius:10,
+                background:'var(--bg-base)', fontSize:13, outline:'none'
+              }}/>
+            {dropOpen && results.length > 0 && (
+              <div style={{ position:'absolute', top:'calc(100% + 6px)', left:0, right:0, zIndex:50,
+                background:'var(--bg-surface)', border:'1px solid var(--border)', borderRadius:12,
+                boxShadow:'var(--shadow-lg)', overflow:'hidden' }}>
+                {results.map((r, i) => (
+                  <button key={i} onClick={()=>{setSearch(''); setDropOpen(false);}} style={{
+                    display:'flex', alignItems:'center', gap:10, width:'100%',
+                    padding:'10px 14px', border:'none', background:'transparent', textAlign:'left',
+                    borderBottom: i < results.length-1 ? '1px solid var(--border)' : 'none', cursor:'pointer'
+                  }}
+                    onMouseEnter={e=>e.currentTarget.style.background='var(--bg-tinted)'}
+                    onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
+                    <div style={{ width:30, height:30, borderRadius:8, background:'linear-gradient(135deg,var(--cyan-soft),var(--violet-soft))', display:'grid', placeItems:'center', fontWeight:800, color:'var(--cyan)', fontSize:12, flexShrink:0 }}>{r.sym[0]}</div>
+                    <div style={{ flex:1, minWidth:0 }}>
+                      <div className="mono" style={{ fontWeight:700, fontSize:12 }}>{r.sym}</div>
+                      <div style={{ fontSize:11, color:'var(--ink-3)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{r.snippet || r.name}</div>
+                    </div>
+                    <span style={{ fontSize:10, color:'var(--ink-3)', flexShrink:0, padding:'2px 6px', borderRadius:4, background:'var(--bg-tinted)' }}>{r.type}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Desktop bell + avatar */}
+          <button className="nav-desktop" style={{ width:36, height:36, borderRadius:'50%', border:'1px solid var(--border)', background:'var(--bg-surface)', display:'grid', placeItems:'center', position:'relative', flexShrink:0 }}>
+            <Icon.Bell size={16} c="var(--ink-2)"/>
+            <span style={{ position:'absolute', top:6, right:6, width:8, height:8, borderRadius:'50%', background:'var(--sell-strong)' }}/>
+          </button>
+          <div className="nav-desktop" style={{ width:36, height:36, borderRadius:'50%', background:'linear-gradient(135deg,#22d3ee,#a78bfa)', display:'grid', placeItems:'center', color:'#fff', fontWeight:700, fontSize:13, flexShrink:0 }}>AS</div>
+
+          {/* Mobile: hamburger (right side) */}
+          <div className="nav-hamburger" style={{ marginLeft:'auto', gap:10 }}>
+            <div style={{ width:32, height:32, borderRadius:'50%', background:'linear-gradient(135deg,#22d3ee,#a78bfa)', display:'grid', placeItems:'center', color:'#fff', fontWeight:700, fontSize:12 }}>AS</div>
+            <button onClick={()=>setMenuOpen(true)} style={{ width:36, height:36, borderRadius:9, border:'1px solid var(--border)', background:'var(--bg-surface)', display:'grid', placeItems:'center' }}>
+              <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                <line x1="2" y1="4" x2="16" y2="4"/><line x1="2" y1="9" x2="16" y2="9"/><line x1="2" y1="14" x2="16" y2="14"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+      </header>
+    </>
   );
 }
 
@@ -248,8 +290,8 @@ function Hero({ openChat, onAnalyze }) {
     <section style={{
       position:'relative', overflow:'hidden', borderRadius:24,
       background:'linear-gradient(135deg, #0a1628 0%, #134e5c 50%, #1a4a73 100%)',
-      color:'#f1f5f9', padding:'40px 48px', marginBottom:32,
-      display:'grid', gridTemplateColumns:'1.4fr 1fr', gap:32, alignItems:'center'
+      color:'#f1f5f9', padding:'32px var(--main-px)', marginBottom:32,
+      display:'grid', gridTemplateColumns:'var(--hero-cols)', gap:32, alignItems:'center'
     }}>
       <div style={{ position:'absolute', top:'-30%', right:'-10%', width:600, height:600, borderRadius:'50%',
         background:'radial-gradient(circle, rgba(124,58,237,.35), transparent 65%)', filter:'blur(40px)' }}/>
@@ -327,7 +369,7 @@ function TodayPane({ data, onDriverClick }) {
   const r = fetchedRange || window.NIFTY_AUTO_RANGES[range];
 
   return (
-    <div style={{ display:'grid', gridTemplateColumns:'1.5fr 1fr', gap:20 }}>
+    <div style={{ display:'grid', gridTemplateColumns:'var(--grid-2col)', gap:20 }}>
       {/* Market pulse + drivers */}
       <div className="card" style={{ padding:24 }}>
         <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:16 }}>
@@ -386,7 +428,7 @@ function TodayPane({ data, onDriverClick }) {
 
 function MonthPane({ data, onDriverClick }) {
   return (
-    <div style={{ display:'grid', gridTemplateColumns:'1.5fr 1fr', gap:20 }}>
+    <div style={{ display:'grid', gridTemplateColumns:'var(--grid-2col)', gap:20 }}>
       <div className="card" style={{ padding:24 }}>
         <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:16 }}>
           <PulseDot kind="good"/>
@@ -535,21 +577,51 @@ function WatchlistPane({ onAnalyze }) {
         </div>
       )}
 
-      <table style={{ width:'100%', borderCollapse:'collapse' }}>
-        <thead>
-          <tr style={{ fontSize:11, textTransform:'uppercase', color:'var(--ink-3)', letterSpacing:'.1em' }}>
-            <th style={th}>Ticker</th><th style={th}>Price</th><th style={th}>Change</th>
-            <th style={th}>Score</th><th style={th}>Verdict</th><th style={{...th, textAlign:'right'}}>Action</th>
-          </tr>
-        </thead>
-        <tbody>
-          {tickers.map(t => (
-            <TickerRow key={t.sym} t={t}
-              onAnalyze={()=>onAnalyze(t.sym)}
-              onRemove={()=>handleRemove(t.sym)}/>
-          ))}
-        </tbody>
-      </table>
+      {/* Desktop — full table */}
+      <div className="ticker-table-wrap">
+        <table style={{ width:'100%', borderCollapse:'collapse' }}>
+          <thead>
+            <tr style={{ fontSize:11, textTransform:'uppercase', color:'var(--ink-3)', letterSpacing:'.1em' }}>
+              <th style={th}>Ticker</th><th style={th}>Price</th><th style={th}>Change</th>
+              <th style={th}>Score</th><th style={th}>Verdict</th><th style={{...th, textAlign:'right'}}>Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            {tickers.map(t => (
+              <TickerRow key={t.sym} t={t}
+                onAnalyze={()=>onAnalyze(t.sym)}
+                onRemove={()=>handleRemove(t.sym)}/>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {/* Mobile — card list */}
+      <div className="ticker-cards-wrap">
+        {tickers.map(t => {
+          const verdictColor = {'STRONG BUY':'var(--buy-strong)','BUY':'var(--buy)','NEUTRAL':'var(--neutral)','SELL':'var(--sell)','STRONG SELL':'var(--sell-strong)'}[t.verdict];
+          return (
+            <div key={t.sym} style={{ padding:'14px 16px', background:'var(--bg-base)', borderRadius:12, border:'1px solid var(--border)' }}>
+              <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:10 }}>
+                <div style={{ width:36, height:36, borderRadius:9, background:'linear-gradient(135deg,var(--cyan-soft),var(--violet-soft))', display:'grid', placeItems:'center', fontWeight:800, color:'var(--cyan)', fontSize:14, flexShrink:0 }}>{t.sym[0]}</div>
+                <div style={{ flex:1, minWidth:0 }}>
+                  <div className="mono" style={{ fontWeight:700, fontSize:14 }}>{t.sym}</div>
+                  <div style={{ fontSize:11, color:'var(--ink-3)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{t.name}</div>
+                </div>
+                <span style={{ fontSize:11, fontWeight:700, padding:'3px 8px', borderRadius:999, background:`color-mix(in oklab,${verdictColor} 14%,transparent)`, color:verdictColor }}>{t.verdict}</span>
+              </div>
+              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', fontSize:13 }}>
+                <span className="mono">₹{t.price.toLocaleString('en-IN',{minimumFractionDigits:2})}</span>
+                <span style={{ color: t.change >= 0 ? 'var(--buy-strong)' : 'var(--sell-strong)', fontWeight:700 }}>{t.change >= 0 ? '+' : ''}{t.change.toFixed(2)}%</span>
+                <div style={{ display:'flex', alignItems:'center', gap:6 }}><ScoreDot v={t.score}/><span className="mono" style={{ fontWeight:700 }}>{t.score.toFixed(2)}</span></div>
+                <div style={{ display:'flex', gap:6 }}>
+                  <button onClick={()=>onAnalyze(t.sym)} style={{ padding:'6px 12px', border:'none', borderRadius:8, background:'linear-gradient(135deg,var(--cyan),var(--violet))', color:'#fff', fontSize:12, fontWeight:700, cursor:'pointer' }}>Analyze</button>
+                  <button onClick={()=>handleRemove(t.sym)} style={{ width:30, height:30, border:'1px solid var(--border)', borderRadius:7, background:'transparent', display:'grid', placeItems:'center', color:'var(--ink-3)', fontSize:14, cursor:'pointer' }}>×</button>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -602,7 +674,7 @@ function TrendingPane({ onAnalyze }) {
           Using cached data — live trending unavailable
         </div>
       )}
-      <div style={{ display:'grid', gridTemplateColumns:'repeat(2, 1fr)', gap:16 }}>
+      <div style={{ display:'grid', gridTemplateColumns:'var(--grid-trending)', gap:16 }}>
         {items.map(t => {
           const ticker = window.TICKERS.find(x => x.sym === t.sym);
           const score = t.score ?? ticker?.score ?? 0.5;
@@ -913,12 +985,8 @@ function AnalysisResultDrawer({ state, onClose }) {
         @keyframes spin-ring { to { transform:rotate(360deg) } }
       `}</style>
 
-      <aside style={{
-        position:'fixed', top:0, right:0, bottom:0, width:600, zIndex:65,
-        background:'var(--bg-surface)', boxShadow:'-24px 0 80px rgba(15,23,42,.18)',
-        display:'flex', flexDirection:'column', overflow:'hidden',
-        animation:'slide-in .3s cubic-bezier(.2,.8,.2,1)'
-      }}>
+      <aside className="drawer-panel" style={{ width:600, zIndex:65 }}>
+        <div className="drawer-handle"/>
         {/* Header */}
         <div style={{ padding:'20px 24px', borderBottom:'1px solid var(--border)', display:'flex', alignItems:'center', gap:14 }}>
           <div style={{
@@ -1161,12 +1229,8 @@ function DriverDetailPanel({ driver: d, onClose, onAnalyze }) {
   return (
     <>
       <div onClick={onClose} style={{ position:'fixed', inset:0, background:'rgba(15,23,42,.45)', backdropFilter:'blur(4px)', zIndex:60, animation:'fade-in .2s' }}/>
-      <aside style={{
-        position:'fixed', top:0, right:0, bottom:0, width:420, zIndex:65,
-        background:'var(--bg-surface)', boxShadow:'-24px 0 80px rgba(15,23,42,.18)',
-        display:'flex', flexDirection:'column', overflow:'hidden',
-        animation:'slide-in .28s cubic-bezier(.2,.8,.2,1)'
-      }}>
+      <aside className="drawer-panel" style={{ width:420, zIndex:65 }}>
+        <div className="drawer-handle"/>
         <div style={{ padding:'20px 24px', borderBottom:'1px solid var(--border)', display:'flex', alignItems:'center', gap:14 }}>
           <span style={{ width:40, height:40, borderRadius:10, background: bgMap[d.kind], color: colorMap[d.kind], display:'grid', placeItems:'center', flexShrink:0 }}>
             {d.kind==='good' ? <Icon.Trend size={18}/> : d.kind==='bad' ? <Icon.TrendDown size={18}/> : <Icon.Compass size={18}/>}
@@ -1254,12 +1318,8 @@ function CategoryDrawer({ category: initialCat, onClose, onAnalyze }) {
   return (
     <>
       <div onClick={onClose} style={{ position:'fixed', inset:0, background:'rgba(15,23,42,.45)', backdropFilter:'blur(4px)', zIndex:60, animation:'fade-in .2s' }}/>
-      <aside style={{
-        position:'fixed', top:0, right:0, bottom:0, width:460, zIndex:65,
-        background:'var(--bg-surface)', boxShadow:'-24px 0 80px rgba(15,23,42,.18)',
-        display:'flex', flexDirection:'column', overflow:'hidden',
-        animation:'slide-in .28s cubic-bezier(.2,.8,.2,1)'
-      }}>
+      <aside className="drawer-panel" style={{ width:460, zIndex:65 }}>
+        <div className="drawer-handle"/>
         <div style={{ padding:'20px 24px', borderBottom:'1px solid var(--border)', display:'flex', alignItems:'center', gap:14 }}>
           <div style={{ width:44, height:44, borderRadius:11, background:`color-mix(in oklab,${cat.color} 12%,transparent)`, color:cat.color, display:'grid', placeItems:'center', fontSize:22, flexShrink:0 }}>{cat.icon}</div>
           <div style={{ flex:1 }}>

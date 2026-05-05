@@ -1,11 +1,473 @@
 ---
 name: stockagent-design
-description: Use this skill to generate well-branded interfaces and assets for StockAgent — the AI-powered multi-agent stock analysis product for Indian equities. Produces production code or throwaway prototypes/mocks that match the "Bloomberg Terminal meets Apple Vision Pro" dark-cinematic aesthetic: deep near-black backgrounds, electric-cyan primary accent, green/amber/red verdict system, Inter + JetBrains Mono, 16px glassmorphism cards, restrained purposeful motion. Contains essential design guidelines, colors, type, fonts, assets, and UI kit components for prototyping the Dashboard, Analyze (agent stream + verdict reveal), and shared surfaces.
+description: >
+  Master reference for StockAgent — a Python FastAPI backend with 9 AI agents for Indian auto
+  stock analysis, and a React (Babel standalone, no build step) frontend prototype. Use this skill
+  whenever working on frontend features, backend API wiring, or agent pipeline changes. Contains:
+  full architecture, every API endpoint and its frontend binding, all window.* globals and their
+  sources, real vs mock data map, component tree, and known gotchas. Also covers the
+  "Bloomberg Terminal meets Apple Vision Pro" design system for UI work.
 user-invocable: true
 ---
 
-Read the `README.md` file within this skill, and explore the other available files — `colors_and_type.css` (tokens), `preview/` (design-system cards), `ui_kits/stockagent/` (the Analyze-page UI kit with pixel-faithful recreations of `ScoreGauge`, `VerdictReveal`, `AgentCard`, `StreamProgress`, etc.), and `ui_kits/stockagent/_ref/` (verbatim TSX from the upstream repo for reference).
+# StockAgent — Full System Reference
 
-If creating visual artifacts (slides, mocks, throwaway prototypes, etc), copy assets out and create static HTML files for the user to view. If working on production code, you can copy assets and read the rules here to become an expert in designing with this brand.
+## Deployment
+- **Live URL:** `https://stockagent-ai.up.railway.app/app/index.html`
+  - `/index.html` → 404. The correct path is `/app/index.html`.
+- **API docs:** `https://stockagent-ai.up.railway.app/docs`
+- **Platform:** Railway (Docker). FastAPI + Uvicorn on port 8000.
+- **Local repo:** `e:\AI projects\Stock Startup\StockAI-Main`
 
-If the user invokes this skill without any other guidance, ask them what they want to build or design, ask some questions, and act as an expert designer who outputs HTML artifacts _or_ production code, depending on the need.
+---
+
+## Architecture Overview
+
+```
+Browser (React, no build step)
+  │
+  ├── /app/index.html          ← entry point; loads all .jsx files via Babel standalone
+  ├── data.jsx                 ← sets window.* mock globals, then fetches /ui/bootstrap to overwrite with live data
+  ├── icons.jsx                ← Icon.* component library
+  ├── sphere.jsx               ← 3D sphere + ChatOverlay (POST /ui/chat)
+  ├── auth.jsx                 ← login screen (mock auth, no backend)
+  ├── home.jsx                 ← Home, TopNav, TodayPane, WatchlistPane, TrendingPane, AnalysisResultDrawer,
+  │                               DriverDetailPanel, CategoryDrawer, SuggestCard
+  ├── agents-page.jsx          ← AgentsPage, Pipeline, AgentCard, AgentDrawer
+  ├── portfolio.jsx            ← PortfolioPage (100% mock — no backend wiring yet)
+  ├── learn.jsx                ← LearnPage (100% static educational content, no API calls)
+  └── tweaks-panel.jsx         ← Dev-only floating panel for theme / density / sphere mode
+  
+FastAPI backend (services/)
+  ├── api/routes/ui_data.py    ← all /ui/* endpoints
+  ├── api/routes/analyse.py    ← POST /analyse
+  ├── api/routes/stream.py     ← WS /ws/stream
+  ├── api/routes/history.py    ← GET /history/{ticker}[/latest]
+  ├── api/server.py            ← FastAPI app, mounts /app via StaticFiles
+  │
+  ├── clients/llm_client.py    ← async OpenAI-compatible client (qwen/qwen3-235b-a22b)
+  ├── clients/tavily_fetcher.py
+  │
+  ├── data/stores/score_store.py   ← SQLite: persists FinalReport per ticker per run
+  ├── data/stores/run_logger.py
+  ├── data/fetchers/             ← fundamentals, macro, news
+  │
+  └── scheduler/python/scheduler.py  ← APScheduler; daily RL review only
+                                       (analysis cron is in TypeScript gateway, not in this repo)
+
+Core pipeline (core/)
+  ├── schemas/pipeline.py      ← FinalReport, AgentOutput, all sub-score models
+  ├── pipeline/orchestrator.py ← AutomobileAgentOrchestrator (main entry point)
+  ├── pipeline/signal_aggregator.py  ← SignalAggregator (LLM fusion → FinalReport)
+  ├── graphs/nodes.py          ← LangGraph aggregate node (alternative path)
+  ├── graphs/state.py          ← GraphState
+  └── config/prompts/          ← all system + user prompt templates
+```
+
+---
+
+## Frontend Data Flow
+
+### 1. Initial Render (mock data as fallback)
+`data.jsx` runs synchronously before React renders. It sets every `window.*` global with
+hardcoded mock values so the UI is never blank on first paint.
+
+### 2. Bootstrap (live data hydration)
+`data.jsx` contains an async IIFE that fires immediately after setting mock globals:
+```js
+const res = await fetch('/ui/bootstrap');  // GET /ui/bootstrap
+```
+On success it overwrites `window.*` globals with live data and sets:
+- `window.__apiReady = true`
+- `window.__apiLive = bool` (true if any analysis has run, i.e. DB is non-empty)
+- `window.__apiFetchedAt = ISO timestamp`
+
+Then fires `window.__onApiReady()` which triggers `forceRender` in `App` (index.html:51),
+causing React to re-render with live data.
+
+**Key rule:** `if (Array.isArray(d.TRENDING)) window.TRENDING = d.TRENDING` — always
+overrides TRENDING even if empty (so TrendingPane can show the correct empty state).
+Other globals use `if (d.X?.length)` so empty arrays don't erase mock fallbacks.
+
+### 3. Learnings (separate fetch)
+After bootstrap completes, a second fetch hits `/ui/learnings` and overwrites
+`window.PORTFOLIO_LEARNINGS` if the response contains items.
+
+---
+
+## window.* Globals Map
+
+| Global | Mock source (data.jsx) | Live source | Overwritten? |
+|---|---|---|---|
+| `window.AGENTS` | hardcoded 9 agent objects | `/ui/bootstrap → AGENTS` | yes |
+| `window.TICKERS` | 8 tickers with fake price/score | `/ui/bootstrap → TICKERS` | yes |
+| `window.WATCHLIST` | `["MARUTI","TATAMOTORS","M&M","BAJAJ-AUTO","EICHERMOT"]` | `/ui/bootstrap → WATCHLIST` | yes |
+| `window.AGENT_TASKS` | hardcoded task lists per agent | bootstrap applies `AGENT_TASK_FLAGS` on top | partial |
+| `window.MARKET_TODAY` | fake pulse + drivers | `/ui/bootstrap → MARKET_TODAY` | yes |
+| `window.MARKET_MONTH` | fake pulse + agent votes | `/ui/bootstrap → MARKET_MONTH` | yes |
+| `window.NIFTY_AUTO_HISTORY` | 30-pt procedural series | `/ui/bootstrap → NIFTY_AUTO_HISTORY` | yes (if non-empty) |
+| `window.NIFTY_AUTO_RANGES` | procedural 1W/1M/3M/6M/1Y | `/ui/nifty-ranges?range=X` on tab click | per-tab fetch |
+| `window.TRENDING` | 4 hardcoded tickers | `/ui/bootstrap → TRENDING` | **always** (even empty) |
+| `window.SUGGESTIONS` | 3 hardcoded suggestion cards | `/ui/bootstrap → SUGGESTIONS` | yes (if non-empty) |
+| `window.CATEGORIES` | 6 categories (no tickers list) | `/ui/bootstrap → CATEGORIES` (now includes `tickers[]`) | yes |
+| `window.CHAT_SEEDS` | 4 seed questions | `/ui/bootstrap → CHAT_SEEDS` | yes |
+| `window.PORTFOLIO` | fully hardcoded holdings/P&L | **never overwritten** | ❌ no endpoint |
+| `window.PORTFOLIO_RANGES` | procedural sparklines | **never overwritten** | ❌ no endpoint |
+| `window.PORTFOLIO_LEARNINGS` | detailed lesson cards | `/ui/learnings` (if items > 0) | yes |
+| `window.LEARN_PATHS` | 6 learning paths with progress | **never overwritten** | ❌ no endpoint |
+| `window.GLOSSARY` | 6 terms | **never overwritten** | ❌ no endpoint |
+| `window.LEARN_TIPS` | 3 tips | **never overwritten** | ❌ no endpoint |
+| `window.__apiReady` | false | true after bootstrap success | — |
+| `window.__apiLive` | false | `bool(db_latest)` — true if any analysis run | — |
+
+---
+
+## API Endpoints — Complete Map
+
+### Analysis
+| Method | Path | Frontend caller | Notes |
+|---|---|---|---|
+| `POST` | `/analyse` | `home.jsx:23` — fallback when WebSocket fails | Full 9-agent pipeline. Body: `{ticker}`. Returns `FinalReport`. |
+| `WS` | `/ws/stream?ticker=X` | `home.jsx:17` — primary analysis path | Streams `agent_progress` events then `complete` with FinalReport. |
+
+### History
+| Method | Path | Frontend caller | Notes |
+|---|---|---|---|
+| `GET` | `/history/{ticker}` | `agents-page.jsx:351` — Recent Runs in AgentDrawer | SQLite reads. Shows "No analysis runs found yet" if empty. |
+| `GET` | `/history/{ticker}/latest` | not called from UI | Available via API. |
+
+### UI Data (`/ui/*`)
+| Method | Path | Frontend caller | Returns | Notes |
+|---|---|---|---|---|
+| `GET` | `/ui/bootstrap` | `data.jsx:481` — on page load | All window.* data in one payload | Core 8 tickers fetched from yfinance. ~2-3s cold. |
+| `GET` | `/ui/agents` | not called | Agent defs + weights | Redundant — data comes via bootstrap. |
+| `PUT` | `/ui/agents/weights` | `agents-page.jsx:22` — on slider release or toggle | Updated agents | Persists to `data/agent_weights.json`. Validates 0–0.30 per agent, sum 0.95–1.05. |
+| `GET` | `/ui/agents/tasks` | not called | Task flags | Redundant — flags applied by bootstrap. |
+| `PUT` | `/ui/agents/tasks` | `agents-page.jsx:80` — fire-and-forget on task toggle | `{status, flags}` | Persists to `data/agent_tasks.json`. |
+| `GET` | `/ui/watchlist` | `home.jsx WatchlistPane` — on mount + after add/remove | `{watchlist:[str], tickers:[TickerObj]}` | Returns live yfinance prices for watchlist tickers. |
+| `PUT` | `/ui/watchlist` | `home.jsx:439/459` — on add or remove | `{watchlist:[str]}` | Persists to `data/watchlist.json`. Validates against `_ALL_TICKERS`. |
+| `GET` | `/ui/nifty-ranges?range=` | `home.jsx:308` — on range tab click (1W/3M/6M/1Y) | `{range, points, label, change}` | 1M tab uses bootstrap data. Other tabs fetch live. |
+| `GET` | `/ui/trending` | not called from UI | `{trending, all}` | Computes score deltas from DB. Redundant — trending in bootstrap. |
+| `GET` | `/ui/tickers` | not called | All tickers + prices | Redundant — data comes via bootstrap. |
+| `GET` | `/ui/market/summary` | not called | Market pulse + drivers | Redundant — data comes via bootstrap. |
+| `GET` | `/ui/search?q=` | `home.jsx:133` — 350ms debounce on TopNav | `{results:[{sym,name,type,snippet?}]}` | Searches 16 tickers + DB theses + yfinance fallback for unknown NSE symbols. |
+| `GET` | `/ui/learnings` | `data.jsx:519` — after bootstrap | `{summary, items, patterns}` | RL feedback + score history → lesson cards. |
+| `POST` | `/ui/chat` | `sphere.jsx:152` — on message send | `{reply}` | Body: `{message, history:[{role,content}]}`. History capped at last 6 turns. LLM: qwen/qwen3-235b-a22b. Falls back to `_mock_reply()`. |
+
+### Health / Scheduler
+| Method | Path | Notes |
+|---|---|---|
+| `GET` | `/health` | Railway health check. |
+| `GET` | `/tickers` | Lists configured scheduler tickers. |
+
+---
+
+## Ticker Universe
+
+### Core 8 (fetched in every bootstrap, fully analysable)
+```
+MARUTI, TATAMOTORS, M&M, BAJAJ-AUTO, HEROMOTOCO, EICHERMOT, TVSMOTORS, ASHOKLEY
+```
+**yfinance symbols:** `MARUTI.NS`, `TATAMOTORS.NS`, `M&M.NS`, `BAJAJ-AUTO.NS`,
+`HEROMOTOCO.NS`, `EICHERMOT.NS`, `TVSMOTOR.NS` (**no trailing S** — fixed), `ASHOKLEY.NS`
+
+### Extended 8 (searchable + analysable, NOT fetched in bootstrap)
+```
+APOLLOTYRE, MRF, CEATLTD, MOTHERSON, ESCORTS, BOSCHLTD, BALKRISIND, TIINDIA
+```
+These appear in search results and Category drawers. Watchlist add validates against all 16.
+
+---
+
+## FinalReport Schema (core/schemas/pipeline.py)
+```python
+class FinalReport(BaseModel):
+    ticker: str
+    company_name: str
+    final_score: float          # 0.0–1.0
+    verdict: str                # STRONG BUY | BUY | NEUTRAL | SELL | STRONG SELL
+    weighted_agent_scores: dict[str, WeightedAgentScore]   # {agent_key: {raw, weight, weighted}}
+    conflicts_resolved: list[str]
+    conviction_drivers: list[str]
+    top_risks: list[str]
+    executive_summary: str      # 1-2 plain-English sentences for beginner UI (shown at top of drawer)
+    investment_thesis: str      # 2-3 sentence detailed thesis
+    report_date: str
+    price_target: float | None
+    recovery_timeline_quarters: int | None
+    undervalued_by_pct: float | None
+    discount_reason: str | None
+    recovery_catalysts: list[str]
+    agent_outputs: dict[str, Any]
+```
+
+---
+
+## Component Tree & Responsibilities
+
+### `index.html` (App root)
+- Manages `screen` state: `auth | home | agents | portfolio | learn`
+- Mounts `ChatOverlay` and `SphereOrb` globally (not per-screen)
+- Hooks `window.__onApiReady` → `forceRender` so live data triggers a re-render
+
+### `home.jsx`
+**Key state in `Home`:**
+- `analyzeState` — `{ticker, loading, report, error, agentProgress}` — drives `AnalysisResultDrawer`
+- `selectedDriver` — a driver object from `MARKET_TODAY.drivers` — drives `DriverDetailPanel`
+- `selectedCategory` — a category object from `window.CATEGORIES` — drives `CategoryDrawer`
+- `tab` — `today | month | watch | trend`
+
+**Key callbacks:**
+- `onAnalyze(sym)` — sets `localStorage.sa_last_ticker`, opens WebSocket stream, falls back to POST
+- `closeAnalysis()` — resets analyzeState
+
+**Components (home.jsx exports to window):**
+| Component | What it does |
+|---|---|
+| `TopNav` | Sticky header. Search box: `GET /ui/search` with 350ms debounce. Results clickable (currently only closes dropdown, doesn't navigate to ticker — future improvement). |
+| `TodayPane` | Nifty Auto sparkline + range tabs + sector heatmap + driver cards. Props: `data, onDriverClick`. |
+| `MonthPane` | Monthly pulse + agent vote bars. Props: `data, onDriverClick`. |
+| `WatchlistPane` | Add/remove tickers. Fetches `GET /ui/watchlist` on mount for live prices. Falls back to `window.TICKERS` on error. |
+| `TrendingPane` | Shows top movers by score delta. Shows empty-state CTA if `window.__apiLive && TRENDING.length === 0`. |
+| `AnalysisResultDrawer` | Right-side drawer. Loading: liquid sphere + per-agent progress bars (WebSocket). Success: executive_summary → score gauge → investment_thesis → conviction_drivers / top_risks → agent breakdown → conflicts. |
+| `DriverDetailPanel` | Right-side panel (420px). Triggered by clicking a driver row. Shows affected tickers with score/verdict from `window.TICKERS` + Analyze buttons. No new API call. |
+| `CategoryDrawer` | Right-side drawer (460px). Triggered by clicking a category card. Reads `category.tickers[]` from `window.CATEGORIES`. Looks up each in `window.TICKERS`. Shows "Not analyzed" badge for extended tickers. |
+| `DriverRow` | Clickable driver card. `onClick` prop — calls parent's `onDriverClick`. Hover effect active only when `onClick` provided. |
+| `CategoryCard` | `onClick` prop — calls parent `setSelectedCategory`. |
+| `SuggestCard` | Analyze button calls `onAnalyze(s.sym)`. |
+| `TickerRow` | In WatchlistPane table. Analyze + Remove (×) buttons. |
+
+### `agents-page.jsx`
+**Key state in `AgentsPage`:**
+- `agents` — from `window.AGENTS`, mutated locally on toggle/slider
+- `tasks` — from `window.AGENT_TASKS`, mutated on task toggle
+- `drawerKey` — which agent card is open
+- `saveStatus` — `null | 'saving' | 'saved' | {error}`
+
+**Pipeline component:**
+- Shows `localStorage.getItem('sa_last_ticker') || 'MARUTI'` as the ticker node — updates
+  automatically after any analysis is run from the Home screen.
+- Agent boxes are dynamic: only `enabled` agents (weight > 0) appear.
+
+**Toggle flow:**
+1. `toggle(key)` → sets `enabled=false, weight=0` (or restores prev weight) → calls `persistWeights()`
+2. `persistWeights()` → `PUT /ui/agents/weights {weights: {key: float, ...}}`
+3. Backend validates: each 0.00–0.30, sum 0.95–1.05. 422 if invalid.
+
+**Task toggle flow:**
+1. `toggleTask(agentKey, taskKey)` → local state update → fire-and-forget `PUT /ui/agents/tasks`
+
+### `sphere.jsx`
+- `SphereOrb` — floating bottom-right button (fixed, z=60). Calls `onOpen`.
+- `ChatOverlay` — slide-up panel (fixed, z=65, 400×560px).
+- Chat history: `msgs` state, filtered for non-loading entries, last 8 sent with each request.
+- Seeds shown only when `msgs.length === 1`.
+- Falls back to `mockReply()` if fetch fails.
+
+### `portfolio.jsx`
+- **Fully mock.** Uses `window.PORTFOLIO`, `window.PORTFOLIO_RANGES`, `window.PORTFOLIO_LEARNINGS`.
+- Future: needs Groww / Zerodha API integration. **Do not add real data here yet.**
+
+### `learn.jsx`
+- **Fully static.** Uses `window.LEARN_PATHS`, `window.GLOSSARY`, `window.LEARN_TIPS`.
+- No API calls. Progress percentages are hardcoded.
+- Future: needs user progress tracking endpoint.
+
+---
+
+## Real vs Mock — Master Table
+
+| Feature | Status | Notes |
+|---|---|---|
+| Market Pulse (Today/Month) | ✅ Real | From `window.MARKET_TODAY/MONTH` → bootstrap → DB + yfinance |
+| Driver cards (click → panel) | ✅ Real | Panel uses `window.TICKERS` (live from bootstrap) |
+| Nifty Auto sparkline (1M) | ✅ Real | yfinance `^CNXAUTO` |
+| Nifty Auto range tabs (3M/6M/1Y) | ✅ Real | `GET /ui/nifty-ranges` on click |
+| Sector heatmap | ✅ Real | yfinance NSE sector indices |
+| Watchlist add/remove | ✅ Real | Persisted to `data/watchlist.json` |
+| Watchlist prices | ✅ Real | `GET /ui/watchlist` on mount fetches live yfinance prices |
+| Trending tab | ✅ Real (if analyses run) | Score deltas from DB. Shows empty-state CTA if no analyses yet. |
+| Search dropdown | ✅ Real | 16 tickers + DB theses + yfinance fallback |
+| Category drawer | ✅ Real | Category tickers from `_CATEGORIES.tickers[]`, prices from `window.TICKERS` |
+| Full analysis (WebSocket) | ✅ Real | 9 agents, LLM, yfinance. ~1-2 min per ticker. |
+| Analysis drawer — executive_summary | ✅ Real | LLM-generated, shown at top of drawer |
+| Analysis drawer — score/verdict | ✅ Real | Computed from weighted agent scores |
+| Analysis drawer — thesis/drivers/risks | ✅ Real | LLM-generated |
+| Agent weight sliders | ✅ Real | Persisted to `data/agent_weights.json` |
+| Agent task toggles | ✅ Real | Persisted to `data/agent_tasks.json` |
+| Recent Runs (AgentDrawer) | ✅ Real | `GET /history/{ticker}` — shows "No runs" if DB empty |
+| Chat (sphere) | ✅ Real | LLM with conversation history. Falls back to `mockReply()`. |
+| Live Pipeline ticker | ✅ Real | Reads `localStorage.sa_last_ticker` — set on every `onAnalyze()` |
+| Greeting name ("Good afternoon, Aditi.") | ❌ Hardcoded | `home.jsx:254`. No auth/user profile endpoint. |
+| Nifty Auto live index value ("22,847") | ❌ Hardcoded | `home.jsx:348`. Should read from bootstrap nifty data. |
+| Portfolio holdings / P&L | ❌ Mock | `window.PORTFOLIO` never overwritten. Needs broker API. |
+| Portfolio sparklines | ❌ Mock | `window.PORTFOLIO_RANGES` — procedural. |
+| Learn page progress | ❌ Mock | All percentages hardcoded. No user progress tracking. |
+| Suggestions (Suggested for you) | ⚠️ Semi-real | Real if analyses run (tickers not in watchlist with real scores). Mock otherwise. |
+
+---
+
+## Backend Static Data & Persistence Files
+
+| Path | Purpose |
+|---|---|
+| `data/agent_weights.json` | User-overridden agent weights. Merged on top of `settings.AGENT_WEIGHTS`. |
+| `data/agent_tasks.json` | User-toggled task enabled flags `{agent_key: {task_key: bool}}`. |
+| `data/watchlist.json` | User-saved watchlist `["MARUTI", ...]`. |
+| SQLite (ScoreStore) | All FinalReport results. Powers history, trending, learnings, market pulse. |
+
+---
+
+## Categories — Ticker Mapping
+
+```python
+"ev"      → [TATAMOTORS, M&M, TVSMOTORS, BAJAJ-AUTO, HEROMOTOCO]
+"mass"    → [MARUTI, TATAMOTORS, M&M, BAJAJ-AUTO, HEROMOTOCO, TVSMOTORS, EICHERMOT, ASHOKLEY]
+"premium" → [MARUTI, EICHERMOT, BAJAJ-AUTO, M&M]
+"cv"      → [ASHOKLEY, TATAMOTORS, EICHERMOT]
+"2w"      → [HEROMOTOCO, TVSMOTORS, BAJAJ-AUTO, EICHERMOT]
+"parts"   → [BOSCHLTD, MOTHERSON, APOLLOTYRE, CEATLTD, MRF, BALKRISIND]  ← extended tickers
+```
+
+---
+
+## Agent Pipeline
+
+9 agents run in parallel, then the Signal Aggregator fuses them:
+
+| Key | Name | What it scores |
+|---|---|---|
+| `sales_demand` | Sales & Demand | FADA/SIAM dispatches, EV Vahan, dealer inventory, exports |
+| `fundamentals` | Fundamentals | Revenue/EBITDA delta, margin vs peers, FII/DII flow |
+| `pattern_analysis` | Pattern Analysis | RSI/MACD/Bollinger, support/resistance, 10yr OHLCV |
+| `raw_materials` | Raw Materials | Steel, aluminium, palladium, crude input cost stack |
+| `sentiment` | Sentiment | News NLP, mgmt tone, Twitter/Reddit/YouTube |
+| `policy_regulatory` | Policy & Regulatory | FAME/EV subsidies, BS6, PLI, state incentives |
+| `competitive_intel` | Competitive Intel | EV market share, model pipeline, JV/M&A |
+| `risk_macro` | Risk & Macro | INR/USD, crude, RBI repo, geopolitics, China supply chain |
+| `valuation_catalyst` | Valuation & Catalyst | P/E vs history, fair value, price target |
+
+**Aggregator (two code paths — both produce FinalReport):**
+1. `core/pipeline/signal_aggregator.py` — used by `AutomobileAgentOrchestrator` (main sync/async path)
+2. `core/graphs/nodes.py` — LangGraph node (alternative path, same logic)
+
+**FinalReport fields produced by LLM:**
+- `executive_summary` — 1-2 plain-English sentences for beginners (shown at top of drawer)
+- `investment_thesis` — 2-3 sentence detailed thesis
+- `conviction_drivers` — top 3 bullish signals
+- `top_risks` — top 3 bear risks
+- `verdict` — STRONG BUY | BUY | NEUTRAL | SELL | STRONG SELL
+- `final_score` — 0.0–1.0
+
+---
+
+## Known Gotchas
+
+1. **TVSMOTORS yfinance symbol** — The correct symbol is `TVSMOTOR.NS` (no trailing S).
+   `TVSMOTORS.NS` returns 404 from Yahoo Finance. Fixed in `ui_data.py _ALL_TICKERS`.
+
+2. **Bootstrap timing** — `window.*` globals are set synchronously (mock), then async bootstrap
+   overwrites them. React doesn't re-render on `window.*` changes. The fix: `window.__onApiReady`
+   callback triggers `forceRender` in `App`. If you add new globals hydrated from bootstrap,
+   also call `forceRender` in `App`'s `useEffect`.
+
+3. **Trending empty state** — When DB is empty, bootstrap returns `TRENDING: []`. `data.jsx`
+   uses `if (Array.isArray(d.TRENDING))` so it always overwrites (even with empty). `TrendingPane`
+   checks `window.__apiLive && window.TRENDING.length === 0` to show the "Run first analysis" CTA.
+
+4. **WatchlistPane live prices** — `GET /ui/watchlist` now returns `{watchlist, tickers}` with
+   live yfinance prices. `WatchlistPane` fetches this on mount and stores in `liveTickers` state.
+   Falls back to `window.TICKERS` if fetch fails.
+
+5. **Chat history** — Frontend sends `history: [{role, content}]` (last 8 turns filtered for
+   non-loading messages). Backend caps at 6 turns to limit token usage. History lives in React
+   state only — not persisted across page reloads.
+
+6. **Search fallback** — If query matches no known ticker, `/ui/search` tries
+   `yf.Ticker(query.upper()+'.NS').info`. This adds latency (~1-2s). Only triggered when
+   `results.length === 0 && len(query) >= 3`.
+
+7. **Bootstrap fetches core 8 only** — `_BOOTSTRAP_TICKERS = _ALL_TICKERS[:8]` to keep
+   bootstrap fast. Extended tickers (APOLLOTYRE, MRF, etc.) are searchable and analysable
+   but NOT batch-fetched on load.
+
+8. **Portfolio is fully mock** — `window.PORTFOLIO` is never overwritten. Don't wire it until
+   Groww/Zerodha broker API integration is decided.
+
+9. **Agent weight validation** — Backend enforces: each weight 0.00–0.30, all 9 sum to 0.95–1.05.
+   Toggling an agent off sets its weight to 0. Re-enabling restores `_prevWeight || 0.10`.
+   If weights don't sum correctly, the PUT returns 422 and the frontend shows an error badge.
+
+10. **No auth backend** — `auth.jsx` is a mock login screen. The "AS" avatar and "Aditi" greeting
+    are hardcoded. There is no user session, JWT, or backend auth endpoint.
+
+---
+
+## Design System (for UI work)
+
+**Aesthetic:** Bloomberg Terminal meets Apple Vision Pro. Light mode default with dark mode toggle.
+
+### Colors (CSS variables in `styles.css`)
+```css
+--cyan:          #0891b2   /* primary accent, CTAs, scores */
+--violet:        #7c3aed   /* secondary accent, gradients */
+--buy-strong:    #16a34a
+--buy:           #22c55e
+--buy-soft:      #f0fdf4
+--neutral:       #d97706
+--neutral-soft:  #fffbeb
+--sell:          #ef4444
+--sell-strong:   #dc2626
+--sell-soft:     #fef2f2
+--bg-base:       #f8fafc   /* page background */
+--bg-surface:    #ffffff   /* card background */
+--bg-tinted:     #f1f5f9   /* subtle inset */
+--border:        #e2e8f0
+--border-strong: #94a3b8
+--ink-1:         #0f172a   /* primary text */
+--ink-2:         #475569   /* secondary text */
+--ink-3:         #94a3b8   /* tertiary / labels */
+--shadow-sm / --shadow-md / --shadow-lg
+```
+
+### Typography
+- **Body / UI:** Inter (400, 500, 600, 700, 800)
+- **Mono / numbers:** JetBrains Mono (400, 500, 700) — class `mono`
+- **Labels:** class `eyebrow` → uppercase, tracked, 10-11px
+
+### Card anatomy
+```css
+.card { background: var(--bg-surface); border-radius: 16px; box-shadow: var(--shadow-sm); border: 1px solid var(--border); }
+```
+
+### Verdict color system
+| Verdict | Color |
+|---|---|
+| STRONG BUY | `var(--buy-strong)` |
+| BUY | `var(--buy)` |
+| NEUTRAL | `var(--neutral)` |
+| SELL | `var(--sell)` |
+| STRONG SELL | `var(--sell-strong)` |
+
+Background tint: `color-mix(in oklab, {verdictColor} 14%, transparent)`
+
+### Key UI patterns
+- **Drawers:** `position:fixed; right:0; top:0; bottom:0; width:420–600px` + `slide-in` animation
+- **Overlays:** `position:fixed; inset:0; background:rgba(15,23,42,.45); backdropFilter:blur(4-6px)` + `fade-in` animation
+- **Score gauge:** conic-gradient circle with inner white disk showing score as integer (0-100)
+- **Sparklines:** SVG polyline + polygon fill with gradient
+- **Progress bars:** height 6-7px, border-radius 999, color based on score threshold (≥0.70 buy, ≥0.50 neutral, else sell)
+
+---
+
+## What's Left / Known Future Work
+
+| Feature | Gap |
+|---|---|
+| Nifty Auto live price in hero | `home.jsx:348` shows hardcoded "22,847". Should read from bootstrap `NIFTY_AUTO_HISTORY` last value. |
+| Greeting personalisation | "Aditi" hardcoded. Needs auth/user profile endpoint. |
+| Search result → navigate | Clicking a search result closes dropdown but doesn't navigate or trigger analysis. |
+| Portfolio real data | Needs Groww/Zerodha API. Entire `window.PORTFOLIO` is mock. |
+| Learn progress tracking | All progress % hardcoded. Needs user activity endpoint. |
+| Daily analysis cron | Lives in TypeScript gateway (not in this repo). Populates DB for trending/learnings. |
+| Suggestions quality | "Suggested for you" uses basic score-based ranking. No real personalization logic. |

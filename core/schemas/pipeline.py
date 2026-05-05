@@ -194,6 +194,7 @@ class FinalReport(BaseModel):
     conviction_drivers: list[str] = Field(default_factory=list)
     top_risks: list[str] = Field(default_factory=list)
     investment_thesis: str = ""
+    executive_summary: str = ""  # 1-2 plain-English sentences for beginner UI
     report_date: str = ""
 
     # Valuation fields (populated from valuation_catalyst agent)

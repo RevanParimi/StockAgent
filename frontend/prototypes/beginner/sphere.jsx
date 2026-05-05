@@ -145,6 +145,11 @@ function ChatOverlay({ open, onClose, mode='wireframe' }) {
   const send = async (text) => {
     if (!text.trim()) return;
     setInput('');
+    // Build conversation history from current messages (exclude loading states, last 8 turns)
+    const history = msgs
+      .filter(m => !m.loading)
+      .slice(-8)
+      .map(m => ({ role: m.from === 'user' ? 'user' : 'assistant', content: m.text }));
     // Append user message + thinking placeholder immediately
     setMsgs(m => [...m, {from:'user', text}, {from:'bot', text:'…', loading:true}]);
     let reply;
@@ -152,7 +157,7 @@ function ChatOverlay({ open, onClose, mode='wireframe' }) {
       const res = await fetch('/ui/chat', {
         method: 'POST',
         headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({message: text}),
+        body: JSON.stringify({ message: text, history }),
       });
       reply = res.ok ? (await res.json()).reply : mockReply(text);
     } catch {

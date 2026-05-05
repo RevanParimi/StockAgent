@@ -125,15 +125,28 @@ _AGENT_META: list[dict] = [
 ]
 
 _ALL_TICKERS: list[dict] = [
-    {"sym": "MARUTI",     "name": "Maruti Suzuki India Ltd",  "yf": "MARUTI.NS"},
-    {"sym": "TATAMOTORS", "name": "Tata Motors Ltd",          "yf": "TATAMOTORS.NS"},
-    {"sym": "M&M",        "name": "Mahindra & Mahindra Ltd",  "yf": "M&M.NS"},
-    {"sym": "BAJAJ-AUTO", "name": "Bajaj Auto Ltd",           "yf": "BAJAJ-AUTO.NS"},
-    {"sym": "HEROMOTOCO", "name": "Hero MotoCorp Ltd",        "yf": "HEROMOTOCO.NS"},
-    {"sym": "EICHERMOT",  "name": "Eicher Motors Ltd",        "yf": "EICHERMOT.NS"},
-    {"sym": "TVSMOTORS",  "name": "TVS Motor Company Ltd",    "yf": "TVSMOTORS.NS"},
-    {"sym": "ASHOKLEY",   "name": "Ashok Leyland Ltd",        "yf": "ASHOKLEY.NS"},
+    {"sym": "MARUTI",      "name": "Maruti Suzuki India Ltd",        "yf": "MARUTI.NS"},
+    {"sym": "TATAMOTORS",  "name": "Tata Motors Ltd",                "yf": "TATAMOTORS.NS"},
+    {"sym": "M&M",         "name": "Mahindra & Mahindra Ltd",        "yf": "M&M.NS"},
+    {"sym": "BAJAJ-AUTO",  "name": "Bajaj Auto Ltd",                 "yf": "BAJAJ-AUTO.NS"},
+    {"sym": "HEROMOTOCO",  "name": "Hero MotoCorp Ltd",              "yf": "HEROMOTOCO.NS"},
+    {"sym": "EICHERMOT",   "name": "Eicher Motors Ltd",              "yf": "EICHERMOT.NS"},
+    {"sym": "TVSMOTORS",   "name": "TVS Motor Company Ltd",          "yf": "TVSMOTOR.NS"},  # fixed: was TVSMOTORS.NS
+    {"sym": "ASHOKLEY",    "name": "Ashok Leyland Ltd",              "yf": "ASHOKLEY.NS"},
+    # Extended universe — searchable and analysable, not fetched in every bootstrap
+    {"sym": "APOLLOTYRE",  "name": "Apollo Tyres Ltd",               "yf": "APOLLOTYRE.NS"},
+    {"sym": "MRF",         "name": "MRF Ltd",                        "yf": "MRF.NS"},
+    {"sym": "CEATLTD",     "name": "CEAT Ltd",                       "yf": "CEATLTD.NS"},
+    {"sym": "MOTHERSON",   "name": "Samvardhana Motherson Intl Ltd", "yf": "MOTHERSON.NS"},
+    {"sym": "ESCORTS",     "name": "Escorts Kubota Ltd",             "yf": "ESCORTS.NS"},
+    {"sym": "BOSCHLTD",    "name": "Bosch Ltd",                      "yf": "BOSCHLTD.NS"},
+    {"sym": "BALKRISIND",  "name": "Balkrishna Industries Ltd",      "yf": "BALKRISIND.NS"},
+    {"sym": "TIINDIA",     "name": "Tube Investments of India Ltd",  "yf": "TIINDIA.NS"},
 ]
+
+# Core 8 tickers fetched in every bootstrap (price + score for all UI widgets).
+# Extended tickers above are searchable/analysable but not batch-fetched on load.
+_BOOTSTRAP_TICKERS = _ALL_TICKERS[:8]
 
 _SECTOR_INDICES: list[dict] = [
     {"name": "Auto",    "yf": "^CNXAUTO"},
@@ -147,12 +160,30 @@ _SECTOR_INDICES: list[dict] = [
 _WATCHLIST_DEFAULT = ["MARUTI", "TATAMOTORS", "M&M", "BAJAJ-AUTO", "EICHERMOT"]
 
 _CATEGORIES = [
-    {"key": "ev",      "icon": "⚡", "label": "EV-first",     "count": 5, "color": "#7c3aed"},
-    {"key": "mass",    "icon": "🚗", "label": "Mass-market",  "count": 8, "color": "#0891b2"},
-    {"key": "premium", "icon": "💎", "label": "Premium",      "count": 4, "color": "#d97706"},
-    {"key": "cv",      "icon": "🚛", "label": "Commercial",   "count": 3, "color": "#16a34a"},
-    {"key": "2w",      "icon": "🏍️", "label": "Two-wheelers", "count": 4, "color": "#dc2626"},
-    {"key": "parts",   "icon": "⚙️", "label": "Auto-parts",   "count": 6, "color": "#475569"},
+    {
+        "key": "ev", "icon": "⚡", "label": "EV-first", "count": 5, "color": "#7c3aed",
+        "tickers": ["TATAMOTORS", "M&M", "TVSMOTORS", "BAJAJ-AUTO", "HEROMOTOCO"],
+    },
+    {
+        "key": "mass", "icon": "🚗", "label": "Mass-market", "count": 8, "color": "#0891b2",
+        "tickers": ["MARUTI", "TATAMOTORS", "M&M", "BAJAJ-AUTO", "HEROMOTOCO", "TVSMOTORS", "EICHERMOT", "ASHOKLEY"],
+    },
+    {
+        "key": "premium", "icon": "💎", "label": "Premium", "count": 4, "color": "#d97706",
+        "tickers": ["MARUTI", "EICHERMOT", "BAJAJ-AUTO", "M&M"],
+    },
+    {
+        "key": "cv", "icon": "🚛", "label": "Commercial", "count": 3, "color": "#16a34a",
+        "tickers": ["ASHOKLEY", "TATAMOTORS", "EICHERMOT"],
+    },
+    {
+        "key": "2w", "icon": "🏍️", "label": "Two-wheelers", "count": 4, "color": "#dc2626",
+        "tickers": ["HEROMOTOCO", "TVSMOTORS", "BAJAJ-AUTO", "EICHERMOT"],
+    },
+    {
+        "key": "parts", "icon": "⚙️", "label": "Auto-parts", "count": 6, "color": "#475569",
+        "tickers": ["BOSCHLTD", "MOTHERSON", "APOLLOTYRE", "CEATLTD", "MRF", "BALKRISIND"],
+    },
 ]
 
 _CHAT_SEEDS = [
@@ -413,7 +444,7 @@ async def _gather_ticker_data() -> tuple[list[dict], list[dict]]:
         db_row = db_map.get(t["sym"])
         return _build_ticker_row(t, db_row, price, change)
 
-    ticker_rows = await asyncio.gather(*(fetch_one(t) for t in _ALL_TICKERS))
+    ticker_rows = await asyncio.gather(*(fetch_one(t) for t in _BOOTSTRAP_TICKERS))
     return list(ticker_rows), db_latest
 
 
@@ -739,9 +770,23 @@ class _WatchlistBody(BaseModel):
     watchlist: list[str]
 
 
-@router.get("/watchlist", summary="Get current user watchlist")
+@router.get("/watchlist", summary="Get current user watchlist with live ticker prices")
 async def get_watchlist() -> dict:
-    return {"watchlist": _load_watchlist()}
+    syms = _load_watchlist()
+    store = _score_store()
+    db_latest = store.get_all_latest()
+    db_map = {row["ticker"]: row for row in db_latest}
+
+    async def _fetch_one(sym: str) -> dict:
+        ticker_def = next((t for t in _ALL_TICKERS if t["sym"] == sym), None)
+        if not ticker_def:
+            return {"sym": sym, "name": sym, "price": 0.0, "change": 0.0,
+                    "score": 0.5, "verdict": "NEUTRAL", "trend": "flat", "hasData": False}
+        price, change = await asyncio.to_thread(_fetch_yf_price, ticker_def["yf"])
+        return _build_ticker_row(ticker_def, db_map.get(sym), price, change)
+
+    tickers = await asyncio.gather(*(_fetch_one(s) for s in syms))
+    return {"watchlist": syms, "tickers": list(tickers)}
 
 
 @router.put("/watchlist", summary="Persist user watchlist to data/watchlist.json")
@@ -760,33 +805,57 @@ async def update_watchlist(body: _WatchlistBody) -> dict:
 # T2.4  GET /ui/search — ticker + thesis text search
 # ---------------------------------------------------------------------------
 
+async def _yf_lookup(sym: str) -> dict | None:
+    """Try to resolve an arbitrary NSE ticker via yfinance. Returns name or None."""
+    try:
+        import yfinance as yf
+        t = yf.Ticker(sym.upper() + ".NS")
+        info = await asyncio.to_thread(lambda: t.info)
+        name = info.get("longName") or info.get("shortName")
+        if name:
+            return {"sym": sym.upper(), "name": name, "type": "unanalyzed"}
+    except Exception:
+        pass
+    return None
+
+
 @router.get("/search", summary="Search tickers by name/symbol and recent thesis text")
 async def search(q: str = Query(default="")) -> dict:
-    q = q.strip().lower()
+    q_raw = q.strip()
+    q = q_raw.lower()
     if len(q) < 2:
-        return {"results": [], "query": q}
+        return {"results": [], "query": q_raw}
 
     results = []
+    known_syms: set[str] = set()
+
+    # Search full ticker universe (core + extended)
     for t in _ALL_TICKERS:
         if q in t["sym"].lower() or q in t["name"].lower():
             results.append({"sym": t["sym"], "name": t["name"], "type": "ticker"})
+            known_syms.add(t["sym"])
 
-    # Also search recent investment theses from score history
+    # Search recent investment theses from DB
     try:
         store = _score_store()
         db_latest = store.get_all_latest()
-        existing_syms = {r["sym"] for r in results}
         for row in db_latest:
             thesis = (row.get("investment_thesis") or "").lower()
             sym = row.get("ticker", "")
-            if q in thesis and sym not in existing_syms:
+            if q in thesis and sym not in known_syms:
                 snippet = (row.get("investment_thesis") or "")[:100]
                 results.append({"sym": sym, "name": row.get("company_name", sym), "type": "thesis", "snippet": snippet})
-                existing_syms.add(sym)
+                known_syms.add(sym)
     except Exception as exc:
         logger.debug("[ui/search] DB search failed: %s", exc)
 
-    return {"results": results[:8], "query": q}
+    # If no matches yet, try yfinance for arbitrary NSE symbols (e.g. user types "ATHER")
+    if not results and len(q_raw) >= 3:
+        yf_result = await _yf_lookup(q_raw)
+        if yf_result:
+            results.append(yf_result)
+
+    return {"results": results[:8], "query": q_raw}
 
 
 # ---------------------------------------------------------------------------
@@ -949,11 +1018,12 @@ def _fallback_sparkline() -> list[float]:
 @router.post("/chat", summary="AI assistant chat reply")
 async def chat(body: dict) -> dict:
     """
-    Accepts {message: str, context?: str} and returns {reply: str}.
-    Uses the same LLM client as the analysis agents.
-    Keeps a simple context: recent ticker verdicts injected into the system prompt.
+    Accepts {message: str, history?: [{role, content}]} and returns {reply: str}.
+    History is the last N turns from the frontend — passed directly to the LLM
+    so the assistant can refer back to prior context in the same session.
     """
     message: str = (body.get("message") or "").strip()
+    history: list = body.get("history") or []
     if not message:
         return {"reply": "Please ask me something about Indian auto stocks."}
 
@@ -976,15 +1046,21 @@ async def chat(body: dict) -> dict:
         f"Current verdicts from your agents:\n{ticker_context}"
     )
 
+    # Build messages: system + conversation history + new user message
+    messages: list[dict] = [{"role": "system", "content": system_prompt}]
+    for h in history[-6:]:  # cap at last 6 turns to control token usage
+        role = h.get("role", "")
+        content = h.get("content", "")
+        if role in ("user", "assistant") and content:
+            messages.append({"role": role, "content": content})
+    messages.append({"role": "user", "content": message})
+
     try:
         from services.clients.llm_client import get_async_llm_client
         client = await get_async_llm_client()
         resp = await client.chat.completions.create(
             model="qwen/qwen3-235b-a22b",
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user",   "content": message},
-            ],
+            messages=messages,
             temperature=0.4,
             max_tokens=256,
         )

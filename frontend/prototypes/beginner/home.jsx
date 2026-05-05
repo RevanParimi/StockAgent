@@ -6,8 +6,11 @@ function Home({ onNav, openChat }) {
   const [search, setSearch] = useStateHome('');
   // analyzeState: { ticker, loading, report, error, agentProgress }
   const [analyzeState, setAnalyzeState] = useStateHome({ ticker: null, loading: false, report: null, error: null, agentProgress: {} });
+  const [selectedDriver, setSelectedDriver] = useStateHome(null);
+  const [selectedCategory, setSelectedCategory] = useStateHome(null);
 
   const onAnalyze = (sym) => {
+    localStorage.setItem('sa_last_ticker', sym);
     setAnalyzeState({ ticker: sym, loading: true, report: null, error: null, agentProgress: {} });
 
     // T2.6 — WebSocket streaming with POST fallback
@@ -89,8 +92,8 @@ function Home({ onNav, openChat }) {
           ))}
         </div>
 
-        {tab==='today' && <TodayPane data={window.MARKET_TODAY}/>}
-        {tab==='month' && <MonthPane data={window.MARKET_MONTH}/>}
+        {tab==='today' && <TodayPane data={window.MARKET_TODAY} onDriverClick={setSelectedDriver}/>}
+        {tab==='month' && <MonthPane data={window.MARKET_MONTH} onDriverClick={setSelectedDriver}/>}
         {tab==='watch' && <WatchlistPane onAnalyze={onAnalyze}/>}
         {tab==='trend' && <TrendingPane onAnalyze={onAnalyze}/>}
 
@@ -98,7 +101,7 @@ function Home({ onNav, openChat }) {
         <div style={{ marginTop:36 }}>
           <SectionHead title="Browse by category" subtitle="Pick a slice of the auto sector"/>
           <div style={{ display:'grid', gridTemplateColumns:'repeat(6, 1fr)', gap:12, marginTop:16 }}>
-            {window.CATEGORIES.map(c => <CategoryCard key={c.key} c={c}/>)}
+            {window.CATEGORIES.map(c => <CategoryCard key={c.key} c={c} onClick={()=>setSelectedCategory(c)}/>)}
           </div>
         </div>
 
@@ -114,6 +117,16 @@ function Home({ onNav, openChat }) {
       {/* Analysis result drawer */}
       {analyzeState.ticker && (
         <AnalysisResultDrawer state={analyzeState} onClose={closeAnalysis}/>
+      )}
+
+      {/* Driver detail panel */}
+      {selectedDriver && (
+        <DriverDetailPanel driver={selectedDriver} onClose={()=>setSelectedDriver(null)} onAnalyze={onAnalyze}/>
+      )}
+
+      {/* Category drawer */}
+      {selectedCategory && (
+        <CategoryDrawer category={selectedCategory} onClose={()=>setSelectedCategory(null)} onAnalyze={onAnalyze}/>
       )}
     </div>
   );
@@ -294,7 +307,7 @@ function SectionHead({ title, subtitle, action }) {
 }
 
 // ---------- TODAY pane ----------
-function TodayPane({ data }) {
+function TodayPane({ data, onDriverClick }) {
   const [range, setRange] = useStateHome('1M');
   // T2.1 — fetched range data overrides mock NIFTY_AUTO_RANGES for non-1M tabs
   const [fetchedRange, setFetchedRange] = useStateHome(null);
@@ -334,7 +347,7 @@ function TodayPane({ data }) {
 
         <div className="eyebrow" style={{ marginBottom:10 }}>What's moving the market</div>
         <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
-          {data.drivers.map((d,i) => <DriverRow key={i} d={d}/>)}
+          {data.drivers.map((d,i) => <DriverRow key={i} d={d} onClick={onDriverClick}/>)}
         </div>
       </div>
 
@@ -368,7 +381,7 @@ function TodayPane({ data }) {
   );
 }
 
-function MonthPane({ data }) {
+function MonthPane({ data, onDriverClick }) {
   return (
     <div style={{ display:'grid', gridTemplateColumns:'1.5fr 1fr', gap:20 }}>
       <div className="card" style={{ padding:24 }}>
@@ -385,7 +398,7 @@ function MonthPane({ data }) {
         <p style={{ color:'var(--ink-2)', fontSize:14, lineHeight:1.6, margin:'0 0 20px' }}>{data.oneLiner}</p>
         <div className="eyebrow" style={{ marginBottom:10 }}>Themes shaping this month</div>
         <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
-          {data.drivers.map((d,i) => <DriverRow key={i} d={d}/>)}
+          {data.drivers.map((d,i) => <DriverRow key={i} d={d} onClick={onDriverClick}/>)}
         </div>
       </div>
 
@@ -420,12 +433,24 @@ function MonthPane({ data }) {
 
 function WatchlistPane({ onAnalyze }) {
   const [watchlist, setWatchlist] = useStateHome(window.WATCHLIST);
+  const [liveTickers, setLiveTickers] = useStateHome(null); // null = not yet fetched
   const [addOpen, setAddOpen] = useStateHome(false);
   const [addVal, setAddVal] = useStateHome('');
   const [addError, setAddError] = useStateHome('');
   const [addBusy, setAddBusy] = useStateHome(false);
 
-  const tickers = watchlist.map(s => window.TICKERS.find(t => t.sym === s)).filter(Boolean);
+  // Fetch live prices from GET /ui/watchlist on mount
+  useEffectHome(() => {
+    fetch('/ui/watchlist')
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d?.tickers) setLiveTickers(d.tickers); })
+      .catch(() => {});
+  }, []);
+
+  // Use live ticker data if available, fall back to bootstrap window.TICKERS
+  const tickers = liveTickers
+    ? watchlist.map(s => liveTickers.find(t => t.sym === s)).filter(Boolean)
+    : watchlist.map(s => window.TICKERS.find(t => t.sym === s)).filter(Boolean);
   const allSyms = (window.TICKERS || []).map(t => t.sym);
 
   const handleAdd = async () => {
@@ -446,6 +471,8 @@ function WatchlistPane({ onAnalyze }) {
         window.WATCHLIST = d.watchlist;
         setWatchlist(d.watchlist);
         setAddOpen(false); setAddVal(''); setAddError('');
+        // Refresh live prices for new watchlist
+        fetch('/ui/watchlist').then(r => r.ok ? r.json() : null).then(d2 => { if (d2?.tickers) setLiveTickers(d2.tickers); }).catch(()=>{});
       } else {
         setAddError('Server error — try again');
       }
@@ -461,7 +488,10 @@ function WatchlistPane({ onAnalyze }) {
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({ watchlist: newList }),
       });
-      if (res.ok) { window.WATCHLIST = newList; setWatchlist(newList); }
+      if (res.ok) {
+        window.WATCHLIST = newList; setWatchlist(newList);
+        fetch('/ui/watchlist').then(r => r.ok ? r.json() : null).then(d2 => { if (d2?.tickers) setLiveTickers(d2.tickers); }).catch(()=>{});
+      }
     } catch {}
   };
 
@@ -522,11 +552,30 @@ function WatchlistPane({ onAnalyze }) {
 }
 
 function TrendingPane({ onAnalyze }) {
+  const items = (window.TRENDING || []).filter(t => window.TICKERS.find(x => x.sym === t.sym));
+  const hasLiveData = window.__apiLive;
+
+  if (hasLiveData && items.length === 0) {
+    return (
+      <div className="card" style={{ padding:40, textAlign:'center' }}>
+        <div style={{ fontSize:32, marginBottom:12 }}>📊</div>
+        <div style={{ fontSize:16, fontWeight:700, color:'var(--ink-1)', marginBottom:8 }}>No trending data yet</div>
+        <div style={{ fontSize:13, color:'var(--ink-3)', maxWidth:360, margin:'0 auto 20px', lineHeight:1.6 }}>
+          Run your first analysis on any ticker to start seeing which stocks are moving on agent signals.
+        </div>
+        <button onClick={()=>onAnalyze('MARUTI')} style={{
+          padding:'10px 20px', border:'none', borderRadius:10,
+          background:'linear-gradient(135deg,var(--cyan),var(--violet))', color:'#fff',
+          fontSize:13, fontWeight:700, cursor:'pointer'
+        }}>Run analysis on MARUTI</button>
+      </div>
+    );
+  }
+
   return (
     <div style={{ display:'grid', gridTemplateColumns:'repeat(2, 1fr)', gap:16 }}>
-      {window.TRENDING.map(t => {
+      {items.map(t => {
         const ticker = window.TICKERS.find(x => x.sym === t.sym);
-        if (!ticker) return null;
         return (
           <div key={t.sym} className="card" style={{ padding:20 }}>
             <div style={{ display:'flex', alignItems:'flex-start', gap:14 }}>
@@ -542,7 +591,7 @@ function TrendingPane({ onAnalyze }) {
                 </div>
                 <div style={{ fontSize:13, color:'var(--ink-2)', marginTop:4, lineHeight:1.5 }}>{t.why}</div>
                 <div style={{ display:'flex', gap:8, marginTop:10, flexWrap:'wrap' }}>
-                  <Pill>Volume {t.volume}</Pill>
+                  {t.volume && t.volume !== '—' && <Pill>Volume {t.volume}</Pill>}
                   <Pill kind="good">Score {ticker.score.toFixed(2)}</Pill>
                   <button onClick={()=>onAnalyze(t.sym)} style={{
                     padding:'3px 10px', border:'1px solid var(--border)', borderRadius:6,
@@ -642,14 +691,17 @@ function PulseDot({ kind='good' }) {
   );
 }
 
-function DriverRow({ d }) {
+function DriverRow({ d, onClick }) {
   const colorMap = { good:'var(--buy)', bad:'var(--sell)', mid:'var(--neutral)' };
   const bgMap    = { good:'var(--buy-soft)', bad:'var(--sell-soft)', mid:'var(--neutral-soft)' };
   return (
-    <div style={{
+    <div onClick={()=>onClick?.(d)} style={{
       padding:'12px 14px', borderRadius:12, background:'var(--bg-base)',
-      border:'1px solid var(--border)', display:'grid', gridTemplateColumns:'auto 1fr auto', gap:14, alignItems:'center'
-    }}>
+      border:'1px solid var(--border)', display:'grid', gridTemplateColumns:'auto 1fr auto', gap:14, alignItems:'center',
+      cursor: onClick ? 'pointer' : 'default', transition:'background .15s',
+    }}
+      onMouseEnter={e=>{ if(onClick) e.currentTarget.style.background='var(--bg-tinted)'; }}
+      onMouseLeave={e=>{ e.currentTarget.style.background='var(--bg-base)'; }}>
       <span style={{
         width:32, height:32, borderRadius:9, background: bgMap[d.kind], color: colorMap[d.kind],
         display:'grid', placeItems:'center'
@@ -668,9 +720,9 @@ function DriverRow({ d }) {
           </span>
         </div>
       </div>
-      <button style={{ background:'transparent', border:'none', color:'var(--ink-3)', padding:6 }}>
+      {onClick && <button onClick={e=>{e.stopPropagation(); onClick(d);}} style={{ background:'transparent', border:'none', color:'var(--ink-3)', padding:6 }}>
         <Icon.ChevronR size={16}/>
-      </button>
+      </button>}
     </div>
   );
 }
@@ -696,9 +748,9 @@ function SectorRow({ s }) {
   );
 }
 
-function CategoryCard({ c }) {
+function CategoryCard({ c, onClick }) {
   return (
-    <button className="card" style={{
+    <button className="card" onClick={onClick} style={{
       padding:18, textAlign:'left', cursor:'pointer', border:'1px solid var(--border)',
       transition:'transform .15s, box-shadow .15s'
     }}
@@ -907,6 +959,17 @@ function AnalysisResultDrawer({ state, onClose }) {
           {/* ── Success state ── */}
           {report && !loading && (
             <>
+              {/* Executive summary — plain English for beginners */}
+              {report.executive_summary && (
+                <div style={{
+                  padding:'14px 16px', background:'var(--bg-tinted)', borderRadius:12,
+                  border:'1px solid var(--border)', fontSize:14, color:'var(--ink-1)', lineHeight:1.65,
+                  fontWeight:500
+                }}>
+                  {report.executive_summary}
+                </div>
+              )}
+
               {/* Score + verdict card */}
               <div style={{
                 display:'flex', gap:20, alignItems:'center', padding:20,
@@ -1038,6 +1101,122 @@ function AnalysisResultDrawer({ state, onClose }) {
             100% { background-position:  200% 0; }
           }
         `}</style>
+      </aside>
+    </>
+  );
+}
+
+// ── Driver Detail Panel ────────────────────────────────────────────────────
+function DriverDetailPanel({ driver: d, onClose, onAnalyze }) {
+  const colorMap = { good:'var(--buy)', bad:'var(--sell)', mid:'var(--neutral)' };
+  const bgMap    = { good:'var(--buy-soft)', bad:'var(--sell-soft)', mid:'var(--neutral-soft)' };
+  const affected = (d.tickers || []).map(sym => window.TICKERS.find(t => t.sym === sym)).filter(Boolean);
+
+  return (
+    <>
+      <div onClick={onClose} style={{ position:'fixed', inset:0, background:'rgba(15,23,42,.45)', backdropFilter:'blur(4px)', zIndex:60, animation:'fade-in .2s' }}/>
+      <aside style={{
+        position:'fixed', top:0, right:0, bottom:0, width:420, zIndex:65,
+        background:'var(--bg-surface)', boxShadow:'-24px 0 80px rgba(15,23,42,.18)',
+        display:'flex', flexDirection:'column', overflow:'hidden',
+        animation:'slide-in .28s cubic-bezier(.2,.8,.2,1)'
+      }}>
+        <div style={{ padding:'20px 24px', borderBottom:'1px solid var(--border)', display:'flex', alignItems:'center', gap:14 }}>
+          <span style={{ width:40, height:40, borderRadius:10, background: bgMap[d.kind], color: colorMap[d.kind], display:'grid', placeItems:'center', flexShrink:0 }}>
+            {d.kind==='good' ? <Icon.Trend size={18}/> : d.kind==='bad' ? <Icon.TrendDown size={18}/> : <Icon.Compass size={18}/>}
+          </span>
+          <div style={{ flex:1, minWidth:0 }}>
+            <div className="eyebrow" style={{ marginBottom:2 }}>Market driver</div>
+            <div style={{ fontSize:15, fontWeight:700, lineHeight:1.3 }}>{d.label}</div>
+          </div>
+          <button onClick={onClose} style={{ width:32, height:32, borderRadius:8, border:'1px solid var(--border)', background:'transparent', display:'grid', placeItems:'center', color:'var(--ink-2)', cursor:'pointer' }}><Icon.X size={16}/></button>
+        </div>
+        <div style={{ flex:1, overflowY:'auto', padding:24, display:'flex', flexDirection:'column', gap:20 }}>
+          <div style={{ padding:'12px 14px', background: bgMap[d.kind], borderRadius:10, fontSize:13, color:'var(--ink-1)', lineHeight:1.6 }}>
+            <strong>Affects:</strong> {d.impact}
+          </div>
+
+          {affected.length > 0 ? (
+            <div>
+              <div className="eyebrow" style={{ marginBottom:12 }}>Stocks in this move</div>
+              <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+                {affected.map(t => {
+                  const verdictColor = {'STRONG BUY':'var(--buy-strong)','BUY':'var(--buy)','NEUTRAL':'var(--neutral)','SELL':'var(--sell)','STRONG SELL':'var(--sell-strong)'}[t.verdict] || 'var(--neutral)';
+                  return (
+                    <div key={t.sym} style={{ padding:'14px 16px', borderRadius:12, border:'1px solid var(--border)', background:'var(--bg-base)', display:'flex', alignItems:'center', gap:12 }}>
+                      <div style={{ width:36, height:36, borderRadius:9, background:'linear-gradient(135deg,var(--cyan-soft),var(--violet-soft))', display:'grid', placeItems:'center', fontWeight:800, color:'var(--cyan)', fontSize:13, flexShrink:0 }}>{t.sym[0]}</div>
+                      <div style={{ flex:1, minWidth:0 }}>
+                        <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                          <span className="mono" style={{ fontWeight:700, fontSize:13 }}>{t.sym}</span>
+                          <span style={{ fontSize:11, padding:'2px 7px', borderRadius:999, background:`color-mix(in oklab,${verdictColor} 14%,transparent)`, color:verdictColor, fontWeight:700 }}>{t.verdict}</span>
+                        </div>
+                        <div style={{ fontSize:12, color:'var(--ink-3)', marginTop:2 }}>Score {t.score.toFixed(2)} · ₹{t.price.toLocaleString('en-IN',{minimumFractionDigits:2})}</div>
+                      </div>
+                      <button onClick={()=>{onClose(); onAnalyze(t.sym);}} style={{ padding:'6px 12px', border:'none', borderRadius:8, background:'linear-gradient(135deg,var(--cyan),var(--violet))', color:'#fff', fontSize:11, fontWeight:700, cursor:'pointer', flexShrink:0 }}>Analyze</button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ) : (
+            <div style={{ fontSize:13, color:'var(--ink-3)', textAlign:'center', padding:20 }}>
+              Run analyses on affected tickers to see their scores here.
+            </div>
+          )}
+        </div>
+      </aside>
+    </>
+  );
+}
+
+// ── Category Drawer ────────────────────────────────────────────────────────
+function CategoryDrawer({ category: c, onClose, onAnalyze }) {
+  const tickers = (c.tickers || []).map(sym => {
+    const t = window.TICKERS.find(x => x.sym === sym);
+    return t || { sym, name: sym, price: 0, change: 0, score: 0.5, verdict: 'NEUTRAL', hasData: false };
+  });
+
+  return (
+    <>
+      <div onClick={onClose} style={{ position:'fixed', inset:0, background:'rgba(15,23,42,.45)', backdropFilter:'blur(4px)', zIndex:60, animation:'fade-in .2s' }}/>
+      <aside style={{
+        position:'fixed', top:0, right:0, bottom:0, width:460, zIndex:65,
+        background:'var(--bg-surface)', boxShadow:'-24px 0 80px rgba(15,23,42,.18)',
+        display:'flex', flexDirection:'column', overflow:'hidden',
+        animation:'slide-in .28s cubic-bezier(.2,.8,.2,1)'
+      }}>
+        <div style={{ padding:'20px 24px', borderBottom:'1px solid var(--border)', display:'flex', alignItems:'center', gap:14 }}>
+          <div style={{ width:44, height:44, borderRadius:11, background:`color-mix(in oklab,${c.color} 12%,transparent)`, color:c.color, display:'grid', placeItems:'center', fontSize:22, flexShrink:0 }}>{c.icon}</div>
+          <div style={{ flex:1 }}>
+            <div className="eyebrow" style={{ marginBottom:2 }}>Category</div>
+            <div style={{ fontSize:17, fontWeight:800 }}>{c.label}</div>
+          </div>
+          <button onClick={onClose} style={{ width:32, height:32, borderRadius:8, border:'1px solid var(--border)', background:'transparent', display:'grid', placeItems:'center', color:'var(--ink-2)', cursor:'pointer' }}><Icon.X size={16}/></button>
+        </div>
+        <div style={{ flex:1, overflowY:'auto', padding:24, display:'flex', flexDirection:'column', gap:10 }}>
+          {tickers.map(t => {
+            const verdictColor = {'STRONG BUY':'var(--buy-strong)','BUY':'var(--buy)','NEUTRAL':'var(--neutral)','SELL':'var(--sell)','STRONG SELL':'var(--sell-strong)'}[t.verdict] || 'var(--neutral)';
+            return (
+              <div key={t.sym} style={{ padding:'14px 16px', borderRadius:12, border:'1px solid var(--border)', background:'var(--bg-base)', display:'flex', alignItems:'center', gap:12 }}>
+                <div style={{ width:38, height:38, borderRadius:9, background:'linear-gradient(135deg,var(--cyan-soft),var(--violet-soft))', display:'grid', placeItems:'center', fontWeight:800, color:'var(--cyan)', fontSize:14, flexShrink:0 }}>{t.sym[0]}</div>
+                <div style={{ flex:1, minWidth:0 }}>
+                  <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                    <span className="mono" style={{ fontWeight:700, fontSize:13 }}>{t.sym}</span>
+                    {t.hasData !== false ? (
+                      <span style={{ fontSize:11, padding:'2px 7px', borderRadius:999, background:`color-mix(in oklab,${verdictColor} 14%,transparent)`, color:verdictColor, fontWeight:700 }}>{t.verdict}</span>
+                    ) : (
+                      <span style={{ fontSize:10, padding:'2px 7px', borderRadius:999, background:'var(--bg-tinted)', color:'var(--ink-3)', fontWeight:600 }}>Not analyzed</span>
+                    )}
+                  </div>
+                  <div style={{ fontSize:12, color:'var(--ink-3)', marginTop:2 }}>
+                    {t.hasData !== false ? `Score ${t.score.toFixed(2)} · ₹${t.price.toLocaleString('en-IN',{minimumFractionDigits:2})}` : t.name}
+                  </div>
+                </div>
+                <button onClick={()=>{onClose(); onAnalyze(t.sym);}} style={{ padding:'6px 12px', border:'none', borderRadius:8, background:'linear-gradient(135deg,var(--cyan),var(--violet))', color:'#fff', fontSize:11, fontWeight:700, cursor:'pointer', flexShrink:0 }}>Analyze</button>
+              </div>
+            );
+          })}
+        </div>
       </aside>
     </>
   );

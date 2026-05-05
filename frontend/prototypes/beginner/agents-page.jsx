@@ -185,7 +185,7 @@ function Pipeline({ agents }) {
         <span style={{ fontSize:11, color:'var(--ink-3)' }}>How a ticker flows through your agents</span>
       </div>
       <div style={{ display:'grid', gridTemplateColumns:'auto 1fr auto', alignItems:'center', gap:24 }}>
-        <PipelineNode icon={<Icon.Search size={18}/>} title="Ticker" sub="MARUTI" color="var(--ink-2)"/>
+        <PipelineNode icon={<Icon.Search size={18}/>} title="Ticker" sub={localStorage.getItem('sa_last_ticker') || 'MARUTI'} color="var(--ink-2)"/>
         <div style={{ position:'relative', minHeight:120 }}>
           <div style={{ display:'grid', gridTemplateColumns:`repeat(${Math.max(agents.length,1)}, 1fr)`, gap:8 }}>
             {agents.map((a,i) => (

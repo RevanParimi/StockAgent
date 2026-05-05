@@ -67,6 +67,7 @@ Return ONLY valid JSON:
   "conflicts_resolved": [<string>, ...],
   "conviction_drivers": [<string>, <string>, <string>],
   "top_risks": [<string>, <string>, <string>],
+  "executive_summary": "<1-2 plain-English sentences a beginner investor can act on>",
   "investment_thesis": "<paragraph>",
   "report_date": "{report_date}",
   "price_target": <float or null>,

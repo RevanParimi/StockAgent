@@ -207,6 +207,7 @@ class SignalAggregator:
                 conflicts_resolved=data.get("conflicts_resolved", []),
                 conviction_drivers=data.get("conviction_drivers", []),
                 top_risks=data.get("top_risks", []),
+                executive_summary=data.get("executive_summary", ""),
                 investment_thesis=data.get("investment_thesis", ""),
                 report_date=data.get("report_date", str(date.today())),
                 price_target=float(price_target) if price_target is not None else None,

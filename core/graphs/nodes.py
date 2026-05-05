@@ -240,6 +240,7 @@ Resolve the conflict and return:
   "adjusted_scores": {{"<agent_name>": <0.0-1.0>, ...}},
   "final_score": <0.0-1.0>,
   "verdict": "<STRONG BUY|BUY|NEUTRAL|SELL|STRONG SELL>",
+  "executive_summary": "<1-2 plain-English sentences a beginner investor can act on>",
   "investment_thesis": "<2-3 sentence thesis>",
   "conviction_drivers": ["<driver 1>", ...],
   "top_risks": ["<risk 1>", ...]
@@ -260,6 +261,7 @@ Synthesise a final verdict. Return:
 {{
   "final_score": <0.0-1.0>,
   "verdict": "<STRONG BUY|BUY|NEUTRAL|SELL|STRONG SELL>",
+  "executive_summary": "<1-2 plain-English sentences a beginner investor can act on>",
   "investment_thesis": "<2-3 sentence thesis>",
   "conviction_drivers": ["<driver 1>", ...],
   "top_risks": ["<risk 1>", ...]
@@ -315,6 +317,7 @@ def make_aggregate_node(
         conviction_drivers: list[str] = []
         top_risks: list[str] = []
         investment_thesis = ""
+        executive_summary = ""
         final_score = round(raw_final, 4)
         verdict = _score_to_verdict(final_score)
 
@@ -349,6 +352,7 @@ def make_aggregate_node(
                 verdict = data.get("verdict", verdict)
                 if verdict not in VALID_VERDICTS:
                     verdict = _score_to_verdict(final_score)
+                executive_summary = data.get("executive_summary", "")
                 investment_thesis = data.get("investment_thesis", "")
                 conviction_drivers = data.get("conviction_drivers", [])
                 top_risks = data.get("top_risks", [])
@@ -383,6 +387,7 @@ def make_aggregate_node(
                 verdict = data.get("verdict", verdict)
                 if verdict not in VALID_VERDICTS:
                     verdict = _score_to_verdict(final_score)
+                executive_summary = data.get("executive_summary", "")
                 investment_thesis = data.get("investment_thesis", "")
                 conviction_drivers = data.get("conviction_drivers", [])
                 top_risks = data.get("top_risks", [])
@@ -414,6 +419,7 @@ def make_aggregate_node(
             conviction_drivers=conviction_drivers,
             top_risks=top_risks,
             investment_thesis=investment_thesis,
+            executive_summary=executive_summary,
             report_date=date.today().isoformat(),
             agent_outputs={n: o.model_dump() for n, o in outputs.items()},
         )

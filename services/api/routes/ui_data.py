@@ -786,8 +786,7 @@ async def bootstrap() -> dict:
         "TRENDING": trending,
 
         # Suggestions — window.SUGGESTIONS (personalized, not in watchlist)
-        "SUGGESTIONS": suggestions
-        ],
+        "SUGGESTIONS": suggestions,
 
         # Categories — user-overridable tickers[], count auto-computed
         "CATEGORIES":  _resolved_categories(),

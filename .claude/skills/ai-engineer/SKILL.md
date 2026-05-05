@@ -95,7 +95,7 @@ Parsed by `_safe_parse()` → `_parse_output()` → `AgentOutput`. If parsing fa
 If `ContextBuilder.build()` returns `has_real_data=False`, the LLM is **never called** — `_no_data_output()` is returned immediately. This prevents training-knowledge hallucinations masquerading as scored analysis. Do not bypass this guard.
 
 ### RAG (currently disabled)
-- Vector DB: ChromaDB, `intelligence/rag/`
+- Vector DB: ChromaDB, `core/intelligence/rag/`
 - Enable: `RAG_ENABLED=true` in `.env`
 - **Known gap:** `_rag_retrieve()` in `base_agent.py` is hardcoded to automobile agent names — BFSI/IT/RE agents get wrong retrieval queries if RAG is enabled
 - Embeddings: sentence-transformers (local), no external embedding API cost

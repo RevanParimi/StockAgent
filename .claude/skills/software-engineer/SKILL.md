@@ -50,17 +50,22 @@ Does it do what was asked, no more no less? Are there tests and did they pass? D
 
 | What | Where |
 |---|---|
-| Agent logic (automobile) | `core/sectors/automobile/<agent_name>.py` |
-| Agent logic (other sectors) | `core/sectors/{bfsi,it,renewable}/agents.py` |
+| Agent logic (automobile) | `sectors/automobile/agents/<agent_name>.py` |
+| Agent logic (bfsi) | `sectors/bfsi/agents/<agent_name>.py` |
+| Agent logic (it) | `sectors/it/agents/<agent_name>.py` |
+| Agent logic (renewable) | `sectors/renewable/agents/<agent_name>.py` |
+| Sector registry + weights | `sectors/<sector>/registry.py` |
+| LangGraph graph (automobile) | `sectors/automobile/graph.py` |
 | Pydantic schemas (all) | `core/schemas/pipeline.py` |
 | LangGraph nodes (shared) | `core/graphs/nodes.py` |
 | LangGraph state | `core/graphs/state.py` |
 | Guardrails | `core/graphs/rails.py` |
-| Orchestrator | `core/pipeline/orchestrator.py` |
-| Signal aggregator | `core/pipeline/signal_aggregator.py` |
-| BaseAgent ABC | `core/pipeline/base_agent.py` |
+| Orchestrator | `pipeline/orchestrator.py` |
+| Signal aggregator | `pipeline/signal_aggregator.py` |
+| BaseAgent ABC | `pipeline/base_agent.py` |
 | Context builder (data routing) | `services/data/context/builder.py` |
-| Data fetchers | `services/data/fetchers/{news,fundamentals,macro}.py` |
+| Data fetchers | `data/{news,fundamentals,macro}.py` |
+| Macro/news cache | `data/cache.py` |
 | Score history store | `services/data/stores/score_store.py` |
 | LLM call logger | `services/data/stores/run_logger.py` |
 | Analysis logger | `services/data/stores/analysis_logger.py` |
@@ -68,7 +73,7 @@ Does it do what was asked, no more no less? Are there tests and did they pass? D
 | FastAPI app | `services/api/server.py` |
 | API routes | `services/api/routes/{analyse,history,stream}.py` |
 | TypeScript gateway | `services/gateway/src/index.ts` |
-| Technical indicators | `intelligence/algorithms/indicators/fetcher.py` |
+| Technical indicators | `core/intelligence/algorithms/indicators/fetcher.py` |
 | Prompts (automobile) | `config/prompts/automobile/<agent_name>.py` |
 | Prompts (shared) | `config/prompts/shared/{orchestrator,signal_aggregator}.py` |
 | All settings | `config/settings/base.py` |
@@ -76,12 +81,12 @@ Does it do what was asked, no more no less? Are there tests and did they pass? D
 
 ### How to add a new automobile agent
 
-1. Create `core/sectors/automobile/<agent_name>.py` — subclass `BaseAgent`, implement `agent_name`, `sector`, `_build_prompt()`, `_parse_output()`
+1. Create `sectors/automobile/agents/<agent_name>.py` — subclass `BaseAgent`, implement `agent_name`, `sector`, `_build_prompt()`, `_parse_output()`
 2. Create `config/prompts/automobile/<agent_name>.py` — add `SYSTEM_PROMPT`, `ANALYSIS_PROMPT`, `CONTEXT_SEARCH_QUERIES`
 3. Add a sub-scores Pydantic model to `core/schemas/pipeline.py` (follow `SalesDemandSubScores` pattern)
 4. Add a context builder method `_build_<agent_name>()` to `services/data/context/builder.py`
-5. Register in `core/sectors/automobile/registry.py` — add to `AGENTS` dict and `WEIGHTS` dict (weights must sum to 1.0)
-6. Register in `core/pipeline/orchestrator.py` — add to `_SUB_AGENTS`
+5. Register in `sectors/automobile/registry.py` — add to `AGENTS` dict and `WEIGHTS` dict (weights must sum to 1.0)
+6. Register in `pipeline/orchestrator.py` — add to `_SUB_AGENTS`
 7. Add unit tests in `tests/unit/test_agents_unit.py`
 
 ### Key patterns
@@ -127,4 +132,4 @@ def _parse_output(self, data, ticker):
 
 ### Weight discrepancy to be aware of
 
-`config/settings/base.py` AGENT_WEIGHTS and `core/sectors/automobile/registry.py` WEIGHTS differ slightly. The **registry.py weights are the live ones** used in the LangGraph graph. Settings weights are used only by `SignalAggregator.run()` as fallback when `learned_weights` is None. Reconcile these before the Phase 2 restructure.
+`config/settings/base.py` AGENT_WEIGHTS and `sectors/automobile/registry.py` WEIGHTS differ slightly. The **registry.py weights are the live ones** used in the LangGraph graph. Settings weights are used only by `SignalAggregator.run()` as fallback when `learned_weights` is None. These two sources should be consolidated into one — open item in PROJECT.md.

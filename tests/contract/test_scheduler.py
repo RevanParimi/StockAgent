@@ -244,7 +244,7 @@ class TestAlertManager:
 # ---------------------------------------------------------------------------
 
 class TestAutomobileScheduler:
-    @patch("core.pipeline.orchestrator.AutomobileAgentOrchestrator")
+    @patch("pipeline.orchestrator.AutomobileAgentOrchestrator")
     @patch("services.data.stores.score_store.ScoreStore")
     @patch("services.clients.alerting.AlertManager")
     @patch("apscheduler.schedulers.blocking.BlockingScheduler")

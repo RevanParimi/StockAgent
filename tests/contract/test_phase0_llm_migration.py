@@ -131,8 +131,8 @@ class TestBaseAgentUsesOpenAI:
 
 class TestOrchestratorUsesOpenAI:
     @patch("services.clients.llm_client.OpenAI")
-    @patch("core.pipeline.orchestrator._SUB_AGENTS", {})
-    @patch("core.pipeline.orchestrator.SignalAggregator")
+    @patch("pipeline.orchestrator._SUB_AGENTS", {})
+    @patch("pipeline.orchestrator.SignalAggregator")
     def test_orchestrator_instantiates_openai(self, mock_agg, mock_openai_cls):
         mock_openai_cls.return_value = MagicMock()
         mock_agg.return_value = MagicMock()
@@ -141,8 +141,8 @@ class TestOrchestratorUsesOpenAI:
         mock_openai_cls.assert_called_once()
 
     @patch("services.clients.llm_client.OpenAI")
-    @patch("core.pipeline.orchestrator._SUB_AGENTS", {})
-    @patch("core.pipeline.orchestrator.SignalAggregator")
+    @patch("pipeline.orchestrator._SUB_AGENTS", {})
+    @patch("pipeline.orchestrator.SignalAggregator")
     def test_orchestrator_uses_openrouter_url(self, mock_agg, mock_openai_cls):
         from core.config import settings
         mock_openai_cls.return_value = MagicMock()
@@ -207,8 +207,8 @@ class TestProgressCallback:
         assert default is None
 
     @patch("services.clients.llm_client.OpenAI")
-    @patch("core.pipeline.orchestrator.SignalAggregator")
-    @patch("core.pipeline.orchestrator._SUB_AGENTS")
+    @patch("pipeline.orchestrator.SignalAggregator")
+    @patch("pipeline.orchestrator._SUB_AGENTS")
     def test_progress_callback_called_per_agent(self, mock_agents, mock_agg_cls, mock_openai_cls):
         """Callback must fire once per agent that completes."""
         from pipeline.orchestrator import AutomobileAgentOrchestrator

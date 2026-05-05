@@ -53,8 +53,8 @@ def _make_llm_side_effect(responses: list[str]):
 
 class TestOrchestratorTickerResolution:
     @patch("services.clients.llm_client.OpenAI")
-    @patch("core.pipeline.orchestrator._SUB_AGENTS")
-    @patch("core.pipeline.orchestrator.SignalAggregator")
+    @patch("pipeline.orchestrator._SUB_AGENTS")
+    @patch("pipeline.orchestrator.SignalAggregator")
     def test_valid_ticker_resolved(self, mock_agg_cls, mock_agents, mock_groq_cls):
         # Mock orchestrator LLM for ticker resolution
         mock_llm = MagicMock()
@@ -102,8 +102,8 @@ class TestOrchestratorTickerResolution:
 
 class TestOrchestratorAgentFailure:
     @patch("services.clients.llm_client.OpenAI")
-    @patch("core.pipeline.orchestrator._SUB_AGENTS")
-    @patch("core.pipeline.orchestrator.SignalAggregator")
+    @patch("pipeline.orchestrator._SUB_AGENTS")
+    @patch("pipeline.orchestrator.SignalAggregator")
     def test_single_agent_failure_does_not_crash(
         self, mock_agg_cls, mock_agents, mock_groq_cls
     ):

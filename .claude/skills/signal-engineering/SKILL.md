@@ -111,7 +111,7 @@ StockAgent uses **LLM-as-scorer** — each specialist agent fetches real-time da
 | `risk_macro` | Macro | INR/USD/crude exposure, commodity prices, RBI repo/EMI, emission risk, geopolitical |
 | `valuation_catalyst` | Fundamental/Technical | PE discount vs peers, technical trend, mean reversion, support zone, recovery signal |
 
-### Live weights (from `core/sectors/automobile/registry.py` — authoritative)
+### Live weights (from `sectors/automobile/registry.py` — authoritative)
 
 | Agent | Weight |
 |---|---|
@@ -129,14 +129,14 @@ StockAgent uses **LLM-as-scorer** — each specialist agent fetches real-time da
 
 ### Conflict resolution (live implementation)
 
-- **Threshold:** `CONFLICT_THRESHOLD = 0.30` (in both `core/graphs/rails.py` and `core/pipeline/signal_aggregator.py`)
+- **Threshold:** `CONFLICT_THRESHOLD = 0.30` (in both `core/graphs/rails.py` and `pipeline/signal_aggregator.py`)
 - **Detection:** `conflict_rail()` — all pairs checked, any delta > 0.30 flags a conflict
 - **Resolution:** LLM called with conflict pairs + all agent summaries; produces adjusted scores and explicit reasoning
 - **Output:** `FinalReport.conflicts_resolved[]` — list of conflict explanations surfaced to user
 
 ### Technical indicators (computed, not LLM-scored)
 
-Located in `intelligence/algorithms/indicators/fetcher.py`:
+Located in `core/intelligence/algorithms/indicators/fetcher.py`:
 - RSI(14), MACD(12,26,9), Bollinger Bands(20, 2σ)
 - Support/resistance (rolling 20-period)
 - Seasonal monthly return patterns

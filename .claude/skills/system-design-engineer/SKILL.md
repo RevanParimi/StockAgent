@@ -126,7 +126,7 @@ StockQuery(ticker, company_name, exchange, analysis_date)
 | Run summary log | JSONL (append-only) | `logs/run_summaries.jsonl` | Write: `log_run_summary()` |
 | Human-readable log | Plain text | `logs/analysis_readable.log` | Write: `log_analysis()` |
 | Structured analysis | JSONL | `logs/analysis_rich.jsonl` | Write: `log_analysis()` |
-| Macro news cache | In-memory dict | `services/data/cache/macro_cache.py` | `get_macro_cache(sector)` / `set_macro_cache(sector, text)` — 4h TTL |
+| Macro news cache | In-memory dict | `data/cache.py` | `get_macro_cache(sector)` / `set_macro_cache(sector, text)` — 4h TTL |
 
 ### Known architectural tech debt
 

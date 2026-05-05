@@ -142,17 +142,17 @@ class TestYfinanceFetcher:
 class TestNewsFetcher:
     def test_serper_returns_empty_without_key(self):
         from data.news import search_serper
-        with patch("services.data.fetchers.news.settings.SERPER_API_KEY", ""):
+        with patch("data.news.settings.SERPER_API_KEY", ""):
             result = search_serper("Maruti Q3 results")
         assert result == []
 
     def test_newsapi_returns_empty_without_key(self):
         from data.news import search_newsapi
-        with patch("services.data.fetchers.news.settings.NEWSAPI_KEY", ""):
+        with patch("data.news.settings.NEWSAPI_KEY", ""):
             result = search_newsapi("Maruti sales")
         assert result == []
 
-    @patch("services.data.fetchers.news.requests.post")
+    @patch("data.news.requests.post")
     def test_serper_parses_response(self, mock_post):
         from data.news import search_serper
         mock_resp = MagicMock()
@@ -164,24 +164,24 @@ class TestNewsFetcher:
         mock_resp.raise_for_status = MagicMock()
         mock_post.return_value = mock_resp
 
-        with patch("services.data.fetchers.news.settings.SERPER_API_KEY", "fake-key"):
+        with patch("data.news.settings.SERPER_API_KEY", "fake-key"):
             result = search_serper("Maruti results", n=1)
 
         assert len(result) == 1
         assert result[0]["title"] == "Maruti Q3 results"
 
-    @patch("services.data.fetchers.news.requests.post")
+    @patch("data.news.requests.post")
     def test_serper_returns_empty_on_exception(self, mock_post):
         from data.news import search_serper
         mock_post.side_effect = Exception("Network error")
-        with patch("services.data.fetchers.news.settings.SERPER_API_KEY", "fake-key"):
+        with patch("data.news.settings.SERPER_API_KEY", "fake-key"):
             result = search_serper("test")
         assert result == []
 
     def test_fetch_news_context_no_keys(self):
         from data.news import fetch_news_context
-        with patch("services.data.fetchers.news.settings.SERPER_API_KEY", ""), \
-             patch("services.data.fetchers.news.settings.NEWSAPI_KEY", ""):
+        with patch("data.news.settings.SERPER_API_KEY", ""), \
+             patch("data.news.settings.NEWSAPI_KEY", ""):
             result = fetch_news_context(["Maruti news"])
         assert isinstance(result, str)
 
@@ -191,7 +191,7 @@ class TestNewsFetcher:
 # ---------------------------------------------------------------------------
 
 class TestMacroFetcher:
-    @patch("services.data.fetchers.macro.yf.download")
+    @patch("data.macro.yf.download")
     def test_get_inr_usd_rate_returns_dict(self, mock_dl):
         from data.macro import get_inr_usd_rate
         idx = pd.date_range(start="2020-01-01", periods=100, freq="B")
@@ -200,7 +200,7 @@ class TestMacroFetcher:
         assert "current" in result
         assert "change_3m_pct" in result
 
-    @patch("services.data.fetchers.macro.yf.download")
+    @patch("data.macro.yf.download")
     def test_get_commodity_prices_returns_dict(self, mock_dl):
         from data.macro import get_commodity_prices
         idx = pd.date_range(start="2020-01-01", periods=100, freq="B")

@@ -460,7 +460,7 @@ Background tint: `color-mix(in oklab, {verdictColor} 14%, transparent)`
 
 ---
 
-## What's Left / Known Future Work
+## What's Left / Known Future Work (UI)
 
 | Feature | Gap |
 |---|---|
@@ -470,4 +470,125 @@ Background tint: `color-mix(in oklab, {verdictColor} 14%, transparent)`
 | Portfolio real data | Needs Groww/Zerodha API. Entire `window.PORTFOLIO` is mock. |
 | Learn progress tracking | All progress % hardcoded. Needs user activity endpoint. |
 | Daily analysis cron | Lives in TypeScript gateway (not in this repo). Populates DB for trending/learnings. |
-| Suggestions quality | "Suggested for you" uses basic score-based ranking. No real personalization logic. |
+
+---
+
+## Reinforcement Learning System (`core/intelligence/rl`)
+
+### What It Does
+A closed feedback loop that learns which of the 9 agents makes the most accurate predictions
+and adapts their weights automatically over time. It runs **monthly** (forecast generation)
+and **daily** (feedback + weight update) per ticker.
+
+### Directory Structure
+```
+core/intelligence/rl/
+├── nse_calendar.py              ← NSE trading-day calendar (holidays 2025-2026)
+├── agents/
+│   ├── feedback_agent.py        ← LLM: classifies miss type, extracts lessons
+│   └── weight_adapter.py        ← Deterministic: adjusts agent weights based on hit rates
+├── conviction/
+│   └── tracker.py               ← Mean-reversion prior from consecutive verdict streaks
+├── stores/
+│   ├── prediction_store.py      ← JSON persistence for all 4 RL data files per ticker
+│   └── ledger_propagator.py     ← Routes lessons across 3 tiers (stock/sector/market)
+└── workflows/
+    ├── daily_review.py          ← 8-step daily feedback loop (runs 4:30pm IST weekdays)
+    └── generate_forecast.py     ← Month-start 30-day envelope generation
+```
+
+### 4 Persistent Files Per Ticker
+| File | What it stores |
+|---|---|
+| `MARUTI_2026-05_prediction_envelope.json` | 30-day forecast: predicted close, verdict, agent scores, confidence per day |
+| `MARUTI_2026-05_daily_feedback_log.json` | Each day's actual vs predicted, miss type, lessons generated, weight version applied |
+| `MARUTI_agent_weight_memory.json` | Learned agent weights + full audit trail across all months |
+| `MARUTI_learning_ledger.json` | Pattern lessons ("RBI policy day suppresses sentiment") — persists forever |
+
+All stored under `data/predictions/automobile/{TICKER}/`.
+
+### Data Flow (Closed Loop)
+```
+Month Start → generate_forecast.py
+  Load WeightMemory → inject into orchestrator → run 9 agents
+  → Save 30-day PredictionEnvelope
+
+Daily 4:30pm IST → APScheduler → daily_review.py (8 steps):
+  1. Load today's forecast row from envelope
+  2. Fetch actual close via yfinance
+  3. Compute: price_error_pct, direction_correct, timing_lag
+  4. FeedbackAgent (LLM):
+       → primary_miss_agent (which agent was wrong)
+       → miss_type: data_gap|external_shock|model_bias|direction_flip|timing|magnitude
+       → new_lessons (pattern observations, stock/sector/market scope)
+       → revised_context (risks/catalysts for next 7 days)
+     Inputs: P4 enhancements + 3-tier lessons + seasonal context + streak warning + regime
+  5. WeightAdapter (deterministic, no LLM):
+       → Boost agents with high hit rate (+0.02), penalize bias agents (−0.03 to −0.05)
+       → Miss-type aware: external_shock → zero penalty
+       → Bounds: max ±0.05 per step, max ±0.15 total drift from base weights
+       → Saves WeightMemory v(N+1)
+  5.5 Apply regime multipliers (ephemeral — NOT persisted to WeightMemory)
+  6. Merge lessons into LearningLedger → propagate to sector/market ledgers (P2)
+  6.5 Update ConvictionStreak → compute mean-reversion prior (caps at 0.30)
+  7. Revise remaining forecasts: new weights + confidence_adj + reversion dampening
+  8. Append FeedbackEntry to daily_feedback_log
+  9. Validate seasonal patterns → feed back into LearningLedger (invalidate/boost)
+```
+
+### Critical Connection: Learned Weights → UI Analysis
+**Before (gap):** On-demand UI analyses (`POST /analyse`, `WS /ws/stream`) used only
+`settings.AGENT_WEIGHTS` — the RL system's learned weights were ignored.
+
+**After (fixed in RL-1):** `AutomobileAgentOrchestrator._load_learned_weights(ticker)` is
+called automatically after ticker resolution. It loads `WeightMemory.effective_weights()`
+from `data/predictions/automobile/{TICKER}/` and passes them to `SignalAggregator`.
+Falls back to `settings.AGENT_WEIGHTS` if no WeightMemory exists yet.
+
+**Priority chain:**
+1. Explicitly injected weights (by generate_forecast.py / daily_review.py) — highest
+2. RL WeightMemory (auto-loaded for UI calls) — second
+3. `settings.AGENT_WEIGHTS` defaults — fallback
+
+### Regime Multipliers — Ephemeral by Design
+Regime adjustments (RISK_OFF, HIGH_VIX, FII_SELLING etc.) are intentionally NOT persisted
+to WeightMemory. Reason: WeightMemory tracks long-term accuracy; regime effects are
+short-term noise. Baking them in would contaminate multi-month learned weights. Instead,
+they are applied only to today's forecast revision (Step 7) and discarded each day.
+
+### 3-Tier Lesson System (P2)
+```
+Lesson scope       Storage             Shared with
+---------------------------------------------------------
+stock_specific   → ticker_ledger      → ticker only
+sector_wide      → ticker_ledger      → ticker + sector shared ledger
+market_wide      → ticker_ledger      → ticker + sector + market ledger
+```
+Cross-ticker confidence: if TATAMOTORS confirms a lesson already in MARUTI's ledger,
+the lesson gets +0.05 confidence boost (capped at 1.0).
+
+### RL Gap Status (as of 2026-05)
+| Gap | Status | Fix location |
+|---|---|---|
+| Orchestrator ignores RL weights on UI calls | ✅ **FIXED** | `orchestrator.py:_load_learned_weights` |
+| NSE holiday calendar missing from rolling windows | ✅ **FIXED** | `nse_calendar.py` → WeightAdapter + generate_forecast |
+| P4 PromptEnhancer generated but never loaded | ✅ **FIXED** | `daily_review.py` Step 4 now loads + injects |
+| Seasonal validation disconnected from LearningLedger | ✅ **FIXED** | `daily_review.py` Step 9 updates lesson confidence/validity |
+| Agent re-run failure → FeedbackAgent gets empty drift | ✅ **FIXED** | Falls back to envelope predicted scores |
+| Regime multiplier persistence strategy undocumented | ✅ **DOCUMENTED** | `daily_review.py` Step 5.5 comment |
+| FLAT_THRESHOLD_PCT hardcoded (not per-ticker) | ✅ **FIXED** | Reads `settings.RL_FLAT_THRESHOLD_PCT`, default 0.3 |
+| Month decay uses naive /30 instead of calendar months | ✅ **FIXED** | `feedback.py LearningLedger.effective_confidence` |
+| Lesson scope narrowing (market→sector→stock) not possible | ⚠️ **OPEN** | Design question — lessons only accumulate credibility |
+| Seasonal threshold deltas not persisted in WeightMemory | ⚠️ **OPEN** | In weight_history reason string but not structured |
+| Price split detection in error calculation | ⚠️ **OPEN** | Low priority — yfinance returns split-adjusted prices |
+
+### RL Schemas Quick Reference (`core/schemas/feedback.py`)
+- `PredictionEnvelope` — 30-day forecast sheet per cycle
+- `DailyForecast` — one row: predicted_close, predicted_agent_scores, confidence, revised
+- `ConvictionStreak` — current_verdict, streak_days, reversion_prior (0–0.30)
+- `FeedbackEntry` — one day's actual result + MissAnalysis + lessons_generated
+- `WeightMemory` — current_weights, base_weights, agent_accuracy, weight_history
+- `LearningLedger` — lessons[], miss_counter, confidence_decay_rate (0.02/month)
+- `Lesson` — pattern, rule, confidence, occurrences, scope, still_valid
+- `MissType` — `data_gap|data_stale|external_shock` (no penalty) · `timing|magnitude|model_bias|direction_flip` (penalized)
+- `RegimeSnapshot` — regime_label, multipliers (ephemeral, not persisted)

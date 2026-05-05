@@ -108,8 +108,8 @@ class AutomobileAgentOrchestrator:
     def __init__(self) -> None:
         self._llm = get_llm_client()
         self._aggregator = SignalAggregator()
-        # Optional: set by generate_forecast.py / daily_review.py to inject
-        # ticker-specific learned weights without mutating global settings.
+        # Explicitly injected by generate_forecast.py / daily_review.py.
+        # When None, analyse() auto-loads from RL WeightMemory for the resolved ticker.
         self._aggregator_weights: dict[str, float] | None = None
         # Worker pool graph — built here so test patches on _SUB_AGENTS take effect.
         self._worker_pool_graph = _build_worker_pool_graph(_SUB_AGENTS)
@@ -139,6 +139,13 @@ class AutomobileAgentOrchestrator:
         # so the event loop isn't blocked.
         query = await asyncio.to_thread(self._resolve_ticker, user_input, run_id)
         logger.info("[Orchestrator] Resolved: %s → %s", user_input, query)
+
+        # Auto-load RL learned weights unless a caller (generate_forecast / daily_review)
+        # has already injected them via self._aggregator_weights.
+        if self._aggregator_weights is None:
+            self._aggregator_weights = await asyncio.to_thread(
+                self._load_learned_weights, query.ticker
+            )
 
         pipeline_run = PipelineRun(run_id=run_id, query=query, status="running")
 
@@ -214,6 +221,10 @@ class AutomobileAgentOrchestrator:
         # Step 1: Resolve ticker
         query = self._resolve_ticker(user_input, run_id=run_id)
         logger.info("[Orchestrator] Resolved: %s → %s", user_input, query)
+
+        # Auto-load RL learned weights unless already injected by caller.
+        if self._aggregator_weights is None:
+            self._aggregator_weights = self._load_learned_weights(query.ticker)
 
         pipeline_run = PipelineRun(run_id=run_id, query=query, status="running")
 
@@ -342,6 +353,30 @@ class AutomobileAgentOrchestrator:
                 company_name=user_input,
                 exchange=settings.DEFAULT_EXCHANGE,
             )
+
+    def _load_learned_weights(self, ticker: str) -> dict[str, float] | None:
+        """
+        Load ticker-specific RL-learned agent weights from WeightMemory.
+
+        Called automatically by analyse() / analyse_async() when no weights have
+        been explicitly injected by generate_forecast.py or daily_review.py.
+        Returns None (→ settings.AGENT_WEIGHTS fallback) if no WeightMemory
+        exists yet or if loading fails for any reason.
+        """
+        try:
+            from core.intelligence.rl.stores.prediction_store import PredictionStore
+            ps = PredictionStore(ticker=ticker, sector="automobile")
+            memory = ps.load_weight_memory()
+            if memory and memory.current_weights and memory.weight_version > 0:
+                weights = memory.effective_weights()
+                logger.info(
+                    "[Orchestrator] Using RL weights v%d for %s (learned over %d adj.)",
+                    memory.weight_version, ticker, len(memory.weight_history),
+                )
+                return weights
+        except Exception as exc:
+            logger.debug("[Orchestrator] No RL weights for %s: %s", ticker, exc)
+        return None
 
     def _verify_ticker(self, ticker: str) -> bool:
         """

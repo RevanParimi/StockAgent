@@ -43,8 +43,12 @@ from core.config.prompts.shared.feedback_agent import build_system_prompt, forma
 
 logger = logging.getLogger(__name__)
 
-# ±0.3% threshold to classify direction as FLAT
-FLAT_THRESHOLD_PCT = 0.3
+# ±N% threshold to classify a price move as directional vs FLAT.
+# Override via settings.RL_FLAT_THRESHOLD_PCT for more volatile tickers.
+try:
+    FLAT_THRESHOLD_PCT: float = settings.RL_FLAT_THRESHOLD_PCT
+except AttributeError:
+    FLAT_THRESHOLD_PCT: float = 0.3  # type: ignore[no-redef]
 
 # Temperature for the FeedbackAgent LLM call.
 # 0.3 (vs the previous 0.1) gives enough creativity to surface non-obvious

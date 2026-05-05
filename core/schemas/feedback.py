@@ -312,7 +312,12 @@ class LearningLedger(BaseModel):
         if not ref_date_str:
             return lesson.confidence
         try:
-            months_inactive = (date.today() - date.fromisoformat(ref_date_str)).days / 30.0
+            ref   = date.fromisoformat(ref_date_str)
+            today = date.today()
+            # Calendar-aware: count whole months then add fractional remainder
+            months_inactive = (today.year - ref.year) * 12 + (today.month - ref.month)
+            months_inactive += (today.day - ref.day) / 30.0
+            months_inactive  = max(months_inactive, 0.0)
         except ValueError:
             return lesson.confidence
         decayed = lesson.confidence * ((1.0 - self.confidence_decay_rate) ** months_inactive)

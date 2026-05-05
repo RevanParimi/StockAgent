@@ -171,16 +171,11 @@ class WeightAdapter:
     @staticmethod
     def _trading_days_ago(reference: date, n: int) -> date:
         """
-        Return the calendar date that is exactly N trading days (Mon–Fri) before
-        reference. Weekends are skipped; NSE holidays not yet modelled.
+        Return the calendar date that is exactly N NSE trading days before reference.
+        Uses the shared nse_calendar which excludes weekends + NSE public holidays.
         """
-        count = 0
-        d = reference
-        while count < n:
-            d -= timedelta(days=1)
-            if d.weekday() < 5:   # 0=Mon … 4=Fri; 5=Sat, 6=Sun
-                count += 1
-        return d
+        from core.intelligence.rl.nse_calendar import trading_days_ago
+        return trading_days_ago(reference, n)
 
     def _window_entries(
         self,

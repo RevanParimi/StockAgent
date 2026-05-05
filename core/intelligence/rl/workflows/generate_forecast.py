@@ -36,18 +36,14 @@ logger = logging.getLogger(__name__)
 # Number of trading days to forecast
 HORIZON = settings.FORECAST_HORIZON_DAYS
 
-# Approximate trading day offsets (skip weekends simply with +1/+2 logic)
 def _trading_dates(start: date, n: int) -> list[date]:
-    """
-    Return the next `n` weekday dates after `start` (Mon–Fri only).
-    Does not account for Indian market holidays — a future enhancement.
-    """
+    """Return the next n NSE trading days after start (skips weekends + NSE holidays)."""
+    from core.intelligence.rl.nse_calendar import next_trading_day
     dates: list[date] = []
     current = start
     while len(dates) < n:
-        current += timedelta(days=1)
-        if current.weekday() < 5:    # Mon=0, Fri=4
-            dates.append(current)
+        current = next_trading_day(current)
+        dates.append(current)
     return dates
 
 

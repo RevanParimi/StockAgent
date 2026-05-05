@@ -368,12 +368,20 @@ def run_daily_review(
     # ------------------------------------------------------------------ #
     # Step 4: FeedbackAgent — miss_type + miss analysis + raw lessons
     # ------------------------------------------------------------------ #
-    wm_for_scores   = store.load_weight_memory()
-    todays_scores   = _run_todays_agent_scores(
+    wm_for_scores = store.load_weight_memory()
+    todays_scores = _run_todays_agent_scores(
         ticker,
         sector=sector,
         learned_weights=wm_for_scores.effective_weights() if wm_for_scores else None,
     )
+    # If agent re-run failed (returns {}), fall back to envelope predicted scores
+    # so FeedbackAgent still has agent_score_drift to analyse.
+    if not todays_scores and today_forecast.predicted_agent_scores:
+        todays_scores = dict(today_forecast.predicted_agent_scores)
+        logger.info(
+            "[daily_review] Agent re-run unavailable for %s — "
+            "using envelope predicted scores as fallback for drift analysis", ticker
+        )
 
     # P2: Load all three ledger tiers in one call.
     # ticker_ledger = stock-specific lessons for this ticker
@@ -440,6 +448,23 @@ def run_daily_review(
     # TIER 3 (top 2): market-wide from shared market_ledger
     tiered_summary = build_tiered_lessons_summary(ticker_ledger, sector_ledger, market_ledger)
 
+    # P4: Load prompt enhancements (top missed factors from previous cycles) and
+    # append them to market_context_today so FeedbackAgent is primed on recurring blindspots.
+    try:
+        enhancements = store.load_enhancements(store.current_cycle_id())
+        if enhancements:
+            lines = ["[RECURRING BLINDSPOTS — pay close attention]"]
+            for agent_key, tips in enhancements.items():
+                for tip in tips[:2]:     # cap at 2 per agent to stay concise
+                    lines.append(f"  {agent_key}: {tip}")
+            enhancement_note = "\n".join(lines)
+            market_context = (market_context or "") + "\n\n" + enhancement_note
+            logger.info(
+                "[daily_review] P4 prompt enhancements injected (%d agents)", len(enhancements)
+            )
+    except Exception as exc:
+        logger.debug("[daily_review] P4 enhancements unavailable: %s", exc)
+
     fb_input = FeedbackAgentInput(
         ticker=ticker,
         sector=sector,
@@ -505,8 +530,15 @@ def run_daily_review(
 
     # ------------------------------------------------------------------ #
     # Step 5.5 (P5): Apply regime multipliers to effective weights.
-    # Regime modifiers are ephemeral — NOT written to weight_memory.json.
-    # Effective weights = learned × regime_multiplier, renormalised to 1.0.
+    #
+    # DESIGN DECISION — regime adjustments are intentionally ephemeral:
+    #   - WeightMemory tracks LONG-TERM learned accuracy across many cycles.
+    #   - Regime multipliers reflect SHORT-TERM market conditions (e.g. high VIX,
+    #     FII selling pressure) that may flip within days.
+    # Baking regime effects into WeightMemory would contaminate long-term weights
+    # with transient noise. Instead, regime-adjusted weights are used only for
+    # today's forecast revision (Step 7) and then discarded.
+    # Tomorrow's daily_review loads fresh regime state and applies new multipliers.
     # ------------------------------------------------------------------ #
     try:
         regime_effective_weights = apply_regime_multipliers(
@@ -618,16 +650,46 @@ def run_daily_review(
             )
             active_seeds = seasonal_calendar.active_patterns_on(review_date)
             feedback_log_for_validation = store.load_feedback_log(cycle_id)
+            validation_results = []
             for pattern in active_seeds:
-                validator.validate_pattern(
+                result = validator.validate_pattern(
                     pattern=pattern,
                     review_date=review_date,
                     feedback_log=feedback_log_for_validation,
                 )
+                validation_results.append(result)
             validator.save_state()
+
+            # Feed validation outcomes back into the LearningLedger.
+            # Invalidated patterns → mark matching lessons still_valid=False.
+            # Validated patterns (RL-confirmed) → boost lesson confidence by 0.05.
+            ledger_dirty = False
+            for result in validation_results:
+                if result.direction_matched is None:
+                    continue
+                lesson = ticker_ledger.find_by_pattern(result.pattern_id)
+                if lesson is None:
+                    continue
+                if result.record.invalidated and lesson.still_valid:
+                    lesson.still_valid = False
+                    ledger_dirty = True
+                    logger.info(
+                        "[daily_review] Lesson %s marked invalid — seasonal pattern %s contradicted %d times",
+                        lesson.lesson_id, result.pattern_id, result.record.misses,
+                    )
+                elif result.record.validated_by_rl and result.direction_matched:
+                    lesson.confidence = min(1.0, lesson.confidence + 0.05)
+                    ledger_dirty = True
+                    logger.info(
+                        "[daily_review] Lesson %s confidence boosted to %.2f — seasonal validation confirmed",
+                        lesson.lesson_id, lesson.confidence,
+                    )
+            if ledger_dirty:
+                store.save_learning_ledger(ticker_ledger)
+
             logger.info(
-                "[daily_review] Seasonal validation complete for %s on %s",
-                ticker, date_str,
+                "[daily_review] Seasonal validation complete for %s on %s (%d patterns checked)",
+                ticker, date_str, len(validation_results),
             )
         except Exception as exc:
             logger.warning(

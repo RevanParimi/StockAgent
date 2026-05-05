@@ -125,7 +125,7 @@ function Stat2({ label, value, pct }) {
 
 function HoldingsTable({ holdings }) {
   return (
-    <div className="card" style={{ overflow:'hidden' }}>
+    <div className="card">
       <div style={{ padding:'18px 24px', borderBottom:'1px solid var(--border)', display:'flex', alignItems:'center', gap:12 }}>
         <div className="eyebrow">Your holdings · {holdings.length}</div>
         <button style={{ marginLeft:'auto', padding:'6px 12px', border:'1px dashed var(--border-strong)', borderRadius:8,
@@ -333,11 +333,11 @@ function LearningsSection({ learnings, openChat }) {
         background:'linear-gradient(180deg, var(--bg-tinted) 0%, transparent 100%)',
         borderBottom:'1px solid var(--border)'
       }}>
-        <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:14 }}>
+        <div className="learnings-header" style={{ display:'flex', alignItems:'center', gap:12, marginBottom:14 }}>
           <span style={{
             width:34, height:34, borderRadius:10,
             background:'linear-gradient(135deg, var(--violet-soft), var(--cyan-soft))',
-            color:'var(--violet)', display:'grid', placeItems:'center'
+            color:'var(--violet)', display:'grid', placeItems:'center', flexShrink:0
           }}><Icon.Sparkles size={16}/></span>
           <div style={{ flex:1, minWidth:0 }}>
             <div className="eyebrow" style={{ marginBottom:2 }}>Lessons from your history</div>
@@ -401,7 +401,7 @@ function FilterTabs({ value, onChange }) {
     { k:'wins',     label:'Wins' },
   ];
   return (
-    <div style={{ display:'flex', gap:2, padding:3, background:'var(--bg-base)', borderRadius:9, border:'1px solid var(--border)' }}>
+    <div className="learnings-filter" style={{ display:'flex', gap:2, padding:3, background:'var(--bg-base)', borderRadius:9, border:'1px solid var(--border)' }}>
       {opts.map(o => (
         <button key={o.k} onClick={()=>onChange(o.k)} style={{
           padding:'5px 11px', borderRadius:6, border:'none',

@@ -11,7 +11,7 @@ function AuthScreen({ onAuthed }) {
   const submit = (e) => { e.preventDefault(); onAuthed(); };
 
   return (
-    <div style={{
+    <div className="auth-layout" style={{
       minHeight:'100vh', display:'grid', gridTemplateColumns:'1.05fr 1fr',
       background:'var(--bg-base)'
     }}>
@@ -21,7 +21,7 @@ function AuthScreen({ onAuthed }) {
       `}</style>
 
       {/* LEFT — brand panel */}
-      <div style={{
+      <div className="auth-brand" style={{
         position:'relative', overflow:'hidden',
         background: 'linear-gradient(135deg,#0a1628 0%, #0e3a4a 35%, #134e5c 60%, #1a4a73 100%)',
         backgroundSize:'200% 200%', animation:'auth-grad 18s ease infinite',
@@ -73,7 +73,7 @@ function AuthScreen({ onAuthed }) {
       </div>
 
       {/* RIGHT — auth card */}
-      <div style={{ display:'grid', placeItems:'center', padding:48 }}>
+      <div className="auth-form-col" style={{ display:'grid', placeItems:'center', padding:48 }}>
         <div style={{ width:'100%', maxWidth:420 }}>
           <div style={{ marginBottom:32 }}>
             <h2 style={{ fontSize:28, fontWeight:800, letterSpacing:'-0.02em', margin:'0 0 6px' }}>

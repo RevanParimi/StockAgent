@@ -1,14 +1,14 @@
 """
-Railway entry point.
-Sets PYTHONPATH before uvicorn spawns any worker subprocesses,
-so pipeline/, data/, sectors/ are importable in all processes.
+Railway / local entry point.
+Adds repo root to sys.path before uvicorn imports anything,
+so pipeline/, data/, sectors/ are always importable.
+Single-worker async mode — sufficient for personal use (1-5 runs/day).
 """
 import os
 import sys
 import pathlib
 
 ROOT = pathlib.Path(__file__).parent.resolve()
-os.environ["PYTHONPATH"] = str(ROOT)          # inherited by all subprocesses
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
@@ -20,5 +20,6 @@ if __name__ == "__main__":
         "services.api.server:app",
         host="0.0.0.0",
         port=port,
-        workers=2,
+        # Single worker — no subprocess spawning, sys.path stays correct.
+        # FastAPI/asyncio handles concurrent requests fine at this scale.
     )

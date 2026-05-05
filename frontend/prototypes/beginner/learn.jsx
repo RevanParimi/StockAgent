@@ -13,13 +13,13 @@ function LearnPage({ onNav, openChat }) {
     <div style={{ minHeight:'100vh', background:'var(--bg-base)' }}>
       <TopNav active="learn" onNav={onNav} search={search} setSearch={setSearch}/>
 
-      <main style={{ maxWidth:1280, margin:'0 auto', padding:'24px 32px 96px' }}>
+      <main style={{ maxWidth:1280, margin:'0 auto', padding:'var(--main-py) var(--main-px) 96px' }}>
         {/* Hero */}
         <section style={{
           position:'relative', overflow:'hidden', borderRadius:24, marginBottom:32,
           background:'linear-gradient(135deg, #1a4a73 0%, #0e3a4a 50%, #4a1a73 100%)',
           color:'#f1f5f9', padding:'40px 48px',
-          display:'grid', gridTemplateColumns:'1.5fr 1fr', gap:32, alignItems:'center'
+          display:'grid', gridTemplateColumns:'var(--hero-cols)', gap:32, alignItems:'center'
         }}>
           <div style={{ position:'absolute', top:'-30%', right:'10%', width:480, height:480, borderRadius:'50%',
             background:'radial-gradient(circle, rgba(167,139,250,.35), transparent 65%)', filter:'blur(40px)' }}/>
@@ -58,14 +58,14 @@ function LearnPage({ onNav, openChat }) {
         {/* Continue learning */}
         <SectionHead title="Continue where you left off"
           subtitle="Pick a path and finish in one sitting"/>
-        <div style={{ display:'grid', gridTemplateColumns:'repeat(3, 1fr)', gap:16, marginTop:16, marginBottom:36 }}>
+        <div style={{ display:'grid', gridTemplateColumns:'var(--grid-paths)', gap:16, marginTop:16, marginBottom:36 }}>
           {window.LEARN_PATHS.map(p => (
             <PathCard key={p.key} p={p} onClick={()=>setActivePath(p.key)}/>
           ))}
         </div>
 
         {/* Two-column: Glossary + Tips */}
-        <div style={{ display:'grid', gridTemplateColumns:'1.3fr 1fr', gap:20 }}>
+        <div style={{ display:'grid', gridTemplateColumns:'var(--grid-2col)', gap:20 }}>
           <GlossaryCard openChat={openChat}/>
           <TipsCard tips={window.LEARN_TIPS}/>
         </div>
@@ -74,7 +74,7 @@ function LearnPage({ onNav, openChat }) {
         <div style={{ marginTop:36 }}>
           <SectionHead title="Recommended next"
             subtitle="Picked because you finished 'Reading a verdict'"/>
-          <div style={{ display:'grid', gridTemplateColumns:'repeat(2, 1fr)', gap:16, marginTop:16 }}>
+          <div style={{ display:'grid', gridTemplateColumns:'var(--grid-suggestions)', gap:16, marginTop:16 }}>
             <RecCard
               title="Watch a real verdict happen"
               body="See the 9 agents stream live for MARUTI. 12 seconds, real signals."

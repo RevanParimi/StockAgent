@@ -124,8 +124,8 @@ window.Sphere = Sphere;
 // Floating orb launcher (bottom-right). Click → opens chat overlay.
 function SphereOrb({ onOpen, mode='wireframe' }) {
   return (
-    <button className="sa-orb-button"
-      style={{ position:'fixed', right:24, bottom:24, zIndex:60 }}
+    <button className="sa-orb-button sphere-orb"
+      style={{ position:'fixed', right:24, bottom:24, zIndex:60, width:64, height:64 }}
       onClick={onOpen} aria-label="Open AI assistant">
       <Sphere size={64} mode={mode}/>
     </button>

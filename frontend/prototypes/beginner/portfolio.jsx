@@ -19,7 +19,7 @@ function PortfolioPage({ onNav, openChat }) {
         <section style={{
           position:'relative', overflow:'hidden', borderRadius:24, marginBottom:24,
           background:'linear-gradient(135deg, #0a1628 0%, #134e5c 50%, #1a4a73 100%)',
-          color:'#f1f5f9', padding:'36px 40px',
+          color:'#f1f5f9', padding:'28px var(--main-px)',
           display:'grid', gridTemplateColumns:'var(--hero-cols)', gap:32, alignItems:'center'
         }}>
           <div style={{ position:'absolute', top:'-30%', right:'-10%', width:520, height:520, borderRadius:'50%',
@@ -374,7 +374,7 @@ function LearningsSection({ learnings, openChat }) {
         background:'var(--bg-base)'
       }}>
         <div className="eyebrow" style={{ marginBottom:10 }}>Your patterns</div>
-        <div style={{ display:'grid', gridTemplateColumns:'repeat(2, 1fr)', gap:10 }}>
+        <div style={{ display:'grid', gridTemplateColumns:'var(--grid-suggestions)', gap:10 }}>
           {learnings.patterns.map(p => <PatternChip key={p.id} p={p}/>)}
         </div>
       </div>

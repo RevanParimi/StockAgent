@@ -43,7 +43,7 @@ function PortfolioPage({ onNav, openChat }) {
                 {p.dayChange >= 0 ? '+' : ''}₹{Math.abs(p.dayChange).toLocaleString('en-IN')} ({p.dayChangePct >= 0 ? '+':''}{p.dayChangePct.toFixed(2)}%) today
               </span>
             </div>
-            <div style={{ display:'flex', gap:24, color:'#cbd5e1', fontSize:13 }}>
+            <div className="pf-hero-stats" style={{ display:'flex', gap:24, color:'#cbd5e1', fontSize:13 }}>
               <Stat2 label="Invested"      value={'₹'+p.totalCost.toLocaleString('en-IN')}/>
               <Stat2 label="Total return"  value={(totalReturn>=0?'+':'')+'₹'+totalReturn.toLocaleString('en-IN')} pct={totalReturnPct}/>
               <Stat2 label="Cash"          value={'₹'+p.cash.toLocaleString('en-IN')}/>
@@ -133,7 +133,8 @@ function HoldingsTable({ holdings }) {
           <Icon.Plus size={13}/> Add holding
         </button>
       </div>
-      <table style={{ width:'100%', borderCollapse:'collapse' }}>
+      <div className="holdings-table-scroll">
+      <table style={{ width:'100%', borderCollapse:'collapse', minWidth:600 }}>
         <thead>
           <tr style={{ fontSize:11, textTransform:'uppercase', color:'var(--ink-3)', letterSpacing:'.1em' }}>
             <th style={pfTh}>Ticker</th>
@@ -189,6 +190,7 @@ function HoldingsTable({ holdings }) {
           })}
         </tbody>
       </table>
+      </div>
     </div>
   );
 }

@@ -112,7 +112,7 @@ button { font-family: inherit; cursor: pointer; }
 .nav-desktop   { display: flex; gap: 4px; }
 .nav-hamburger { display: none; align-items: center; }
 @media (max-width: 767px) {
-  .nav-desktop   { display: none; }
+  .nav-desktop   { display: none !important; }
   .nav-hamburger { display: flex; }
 }
 /* Full-screen mobile menu overlay */
@@ -183,4 +183,48 @@ button { font-family: inherit; cursor: pointer; }
 /* ── Sphere orb — smaller on mobile ─────────────────────────────────────── */
 @media (max-width: 767px) {
   .sphere-orb { width: 52px !important; height: 52px !important; right: 16px !important; bottom: 80px !important; }
+}
+
+/* ── Agents page header — stack on mobile ────────────────────────────────── */
+@media (max-width: 767px) {
+  .agents-header {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 14px !important;
+  }
+  .agents-stats {
+    display: grid !important;
+    grid-template-columns: repeat(3, 1fr) !important;
+    gap: 8px !important;
+    width: 100% !important;
+  }
+  .agents-stat-card { min-width: 0 !important; }
+}
+
+/* ── Home tab bar — scrollable on mobile ─────────────────────────────────── */
+@media (max-width: 767px) {
+  .tab-bar {
+    overflow-x: auto !important;
+    width: 100% !important;
+    -webkit-overflow-scrolling: touch;
+  }
+  .tab-bar::-webkit-scrollbar { display: none; }
+  .tab-bar > button { flex-shrink: 0; padding: 9px 12px !important; font-size: 12px !important; }
+}
+
+/* ── Analysis result drawer — conviction grid collapses on mobile ─────────── */
+@media (max-width: 767px) {
+  .analysis-2col { grid-template-columns: 1fr !important; }
+}
+
+/* ── Portfolio hero stats — wrap on mobile ───────────────────────────────── */
+@media (max-width: 767px) {
+  .pf-hero-stats { flex-wrap: wrap !important; gap: 12px !important; }
+  .pf-hero-stats > div { min-width: calc(50% - 6px); }
+}
+
+/* ── Portfolio holdings table — horizontal scroll on mobile ──────────────── */
+.holdings-table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+@media (max-width: 767px) {
+  .holdings-table-scroll::-webkit-scrollbar { height: 4px; }
 }

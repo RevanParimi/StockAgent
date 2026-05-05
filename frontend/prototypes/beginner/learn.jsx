@@ -18,7 +18,7 @@ function LearnPage({ onNav, openChat }) {
         <section style={{
           position:'relative', overflow:'hidden', borderRadius:24, marginBottom:32,
           background:'linear-gradient(135deg, #1a4a73 0%, #0e3a4a 50%, #4a1a73 100%)',
-          color:'#f1f5f9', padding:'40px 48px',
+          color:'#f1f5f9', padding:'40px var(--main-px)',
           display:'grid', gridTemplateColumns:'var(--hero-cols)', gap:32, alignItems:'center'
         }}>
           <div style={{ position:'absolute', top:'-30%', right:'10%', width:480, height:480, borderRadius:'50%',

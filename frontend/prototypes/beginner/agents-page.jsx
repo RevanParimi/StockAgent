@@ -90,7 +90,7 @@ function AgentsPage({ onNav, openChat }) {
 
       <main style={{ maxWidth:1280, margin:'0 auto', padding:'var(--main-py) var(--main-px) 96px' }}>
         {/* Header bar */}
-        <div style={{ display:'flex', alignItems:'flex-end', justifyContent:'space-between', gap:24, marginBottom:24 }}>
+        <div className="agents-header" style={{ display:'flex', alignItems:'flex-end', justifyContent:'space-between', gap:24, marginBottom:24 }}>
           <div>
             <button onClick={()=>onNav?.('home')} style={{
               display:'inline-flex', alignItems:'center', gap:6, padding:'4px 10px 4px 6px',
@@ -105,7 +105,7 @@ function AgentsPage({ onNav, openChat }) {
             </p>
           </div>
 
-          <div style={{ display:'flex', gap:12, alignItems:'flex-start' }}>
+          <div className="agents-stats" style={{ display:'flex', gap:12, alignItems:'flex-start' }}>
             {/* Save status badge */}
             {saveStatus && (
               <div style={{
@@ -167,7 +167,7 @@ function AgentsPage({ onNav, openChat }) {
 
 function Stat({ label, value, max, hint }) {
   return (
-    <div style={{ padding:'10px 16px', background:'var(--bg-surface)', border:'1px solid var(--border)',
+    <div className="agents-stat-card" style={{ padding:'10px 16px', background:'var(--bg-surface)', border:'1px solid var(--border)',
       borderRadius:12, minWidth:120 }}>
       <div className="eyebrow" style={{ fontSize:9, marginBottom:4 }}>{label}</div>
       <div style={{ display:'flex', alignItems:'baseline', gap:4 }}>

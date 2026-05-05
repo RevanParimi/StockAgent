@@ -71,7 +71,7 @@ function Home({ onNav, openChat }) {
         <Hero openChat={openChat} onAnalyze={onAnalyze}/>
 
         {/* TAB BAR */}
-        <div style={{
+        <div className="tab-bar" style={{
           display:'flex', gap:4, padding:4, background:'var(--bg-tinted)', borderRadius:14,
           marginBottom:24, width:'fit-content'
         }}>
@@ -1134,7 +1134,7 @@ function AnalysisResultDrawer({ state, onClose }) {
               )}
 
               {/* Conviction drivers + top risks */}
-              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:16 }}>
+              <div className="analysis-2col" style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:16 }}>
                 <div>
                   <div className="eyebrow" style={{ marginBottom:8, color:'var(--buy-strong)' }}>Conviction drivers</div>
                   <div style={{ display:'flex', flexDirection:'column', gap:6 }}>

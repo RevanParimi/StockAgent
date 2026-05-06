@@ -1375,3 +1375,142 @@ def _mock_reply(q: str) -> str:
     if "agent" in ql and "trust" in ql:
         return "For short-term moves, Pattern Analysis and Sentiment lead. For 3–6 month horizons, Fundamentals and Sales & Demand carry more weight."
     return "Ask me about a specific ticker like MARUTI or BAJAJ-AUTO, or about an agent like Sales & Demand."
+
+
+# ---------------------------------------------------------------------------
+# Managed tickers — GET/PUT/POST/DELETE /ui/tickers/managed
+# ---------------------------------------------------------------------------
+
+_VALID_SECTORS = ["automobile", "banking_bfsi", "it_sector", "renewable_energy"]
+
+
+def _load_mt():
+    from services.api.log_buffer import load_managed_tickers
+    return load_managed_tickers()
+
+
+def _save_mt(tickers: list[dict]) -> None:
+    from services.api.log_buffer import save_managed_tickers
+    save_managed_tickers(tickers)
+
+
+@router.get("/tickers/managed", summary="Get managed ticker list (drives RL scheduling)")
+async def get_managed_tickers() -> dict:
+    """
+    Returns the full managed ticker list from data/managed_tickers.json.
+    Bootstrapped from settings.SCHEDULER_TICKERS on first call.
+    """
+    return {"tickers": _load_mt()}
+
+
+class _ManagedTickerBody(BaseModel):
+    sym:     str
+    name:    str = ""
+    sector:  str = "automobile"
+    enabled: bool = True
+
+
+@router.put("/tickers/managed", summary="Replace the entire managed ticker list")
+async def replace_managed_tickers(body: list[_ManagedTickerBody]) -> dict:
+    tickers = [t.model_dump() for t in body]
+    for t in tickers:
+        if t["sector"] not in _VALID_SECTORS:
+            from fastapi import HTTPException
+            raise HTTPException(status_code=422, detail=f"Unknown sector '{t['sector']}'")
+    _save_mt(tickers)
+    logger.info("[ui/tickers/managed] Replaced list: %d tickers", len(tickers))
+    return {"tickers": tickers}
+
+
+@router.post("/tickers/managed/{sym}", summary="Add a ticker to the managed list")
+async def add_managed_ticker(sym: str, body: _ManagedTickerBody) -> dict:
+    from services.api.log_buffer import _KNOWN_NAMES
+    tickers = _load_mt()
+    sym_up = sym.strip().upper()
+    if any(t["sym"] == sym_up for t in tickers):
+        return {"tickers": tickers, "message": f"{sym_up} already in managed list"}
+    tickers.append({
+        "sym":     sym_up,
+        "name":    body.name or _KNOWN_NAMES.get(sym_up, sym_up),
+        "sector":  body.sector if body.sector in _VALID_SECTORS else "automobile",
+        "enabled": body.enabled,
+    })
+    _save_mt(tickers)
+    logger.info("[ui/tickers/managed] Added %s (%s)", sym_up, body.sector)
+    return {"tickers": tickers}
+
+
+@router.delete("/tickers/managed/{sym}", summary="Remove a ticker from the managed list")
+async def remove_managed_ticker(sym: str) -> dict:
+    sym_up = sym.strip().upper()
+    tickers = [t for t in _load_mt() if t["sym"] != sym_up]
+    _save_mt(tickers)
+    logger.info("[ui/tickers/managed] Removed %s", sym_up)
+    return {"tickers": tickers}
+
+
+@router.patch("/tickers/managed/{sym}/toggle", summary="Enable or disable a managed ticker")
+async def toggle_managed_ticker(sym: str) -> dict:
+    sym_up = sym.strip().upper()
+    tickers = _load_mt()
+    for t in tickers:
+        if t["sym"] == sym_up:
+            t["enabled"] = not t.get("enabled", True)
+            break
+    _save_mt(tickers)
+    return {"tickers": tickers}
+
+
+# ---------------------------------------------------------------------------
+# Live log streaming — GET /ui/logs  and  GET /ui/logs/stream (SSE)
+# ---------------------------------------------------------------------------
+
+@router.get("/logs", summary="Return recent server log entries (polling fallback)")
+async def get_logs(level: str = "INFO", limit: int = 200) -> dict:
+    from services.api.log_buffer import snapshot
+    entries = snapshot(level=level, limit=min(limit, 1000))
+    return {"entries": entries, "count": len(entries)}
+
+
+@router.get("/logs/stream", summary="Server-Sent Events stream of live log entries")
+async def stream_logs(level: str = "INFO"):
+    """
+    Connect via EventSource('/ui/logs/stream').
+    Sends buffered history first, then live entries as they arrive.
+    Keepalive comments are sent every 30 s to prevent proxy timeouts.
+    """
+    import asyncio
+    import queue as _tq
+    from fastapi.responses import StreamingResponse
+    from services.api import log_buffer
+
+    min_ord = log_buffer._LEVEL_ORDER.get(level.upper(), 1)
+
+    async def generate():
+        q = log_buffer.subscribe()
+        try:
+            # 1. Flush history snapshot
+            for entry in log_buffer.snapshot(level=level, limit=500):
+                yield f"data: {json.dumps(entry)}\n\n"
+            # 2. Stream live entries
+            while True:
+                try:
+                    entry = await asyncio.to_thread(q.get, True, 30.0)
+                    if log_buffer._LEVEL_ORDER.get(entry["level"], 0) >= min_ord:
+                        yield f"data: {json.dumps(entry)}\n\n"
+                except _tq.Empty:
+                    yield ": keepalive\n\n"
+                except Exception:
+                    yield ": keepalive\n\n"
+        finally:
+            log_buffer.unsubscribe(q)
+
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control":    "no-cache",
+            "X-Accel-Buffering": "no",
+            "Connection":       "keep-alive",
+        },
+    )

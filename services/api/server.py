@@ -51,6 +51,10 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Register in-memory ring buffer handler so all log records are capturable via /ui/logs
+from services.api.log_buffer import handler as _ring_handler
+logging.getLogger().addHandler(_ring_handler)
+
 # ---------------------------------------------------------------------------
 # Scheduler singleton
 # ---------------------------------------------------------------------------
@@ -91,10 +95,11 @@ def _self_heal_rl() -> None:
         logger.warning("[startup] RL imports failed — self-heal skipped: %s", exc)
         return
 
+    from services.api.log_buffer import get_active_tickers
     today = date.today()
     month_start = today.replace(day=1)
 
-    for ticker in settings.SCHEDULER_TICKERS:
+    for ticker in get_active_tickers():
         try:
             store    = PredictionStore(ticker, sector="automobile")
             cycle_id = store.current_cycle_id()

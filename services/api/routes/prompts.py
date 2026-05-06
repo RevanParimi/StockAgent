@@ -6,20 +6,26 @@ Prompt Management API — read, edit, and deploy agent prompt files.
 Endpoints
 ---------
 GET  /ui/prompts/catalogue              — list all sectors + agent names
-GET  /ui/prompts/{sector}/{agent}       — read SYSTEM_PROMPT, ANALYSIS_PROMPT, CONTEXT_SEARCH_QUERIES
-PUT  /ui/prompts/{sector}/{agent}       — write updated content to disk
-POST /ui/prompts/deploy                 — push all pending changes to GitHub (triggers Railway auto-deploy)
+GET  /ui/prompts/status                 — pending count, next scheduled deploy, last deploy result
 GET  /ui/prompts/pending                — list files modified since last deploy
+GET  /ui/prompts/{sector}/{agent}       — read SYSTEM_PROMPT, ANALYSIS_PROMPT, CONTEXT_SEARCH_QUERIES
+PUT  /ui/prompts/{sector}/{agent}       — write to disk + patch live module in memory (instant effect)
+POST /ui/prompts/deploy                 — manual override: deploy now instead of waiting for midnight
 
 Deploy flow
 -----------
-PUT saves to disk (container-local) AND appends the path to data/prompt_changes.json.
-POST /deploy reads that list, pushes each file to GitHub via the Contents API
-(PUT /repos/{owner}/{repo}/contents/{path}), then clears the pending list.
+Saving (PUT) writes the .py file to disk AND patches the live module object so the
+very next analysis call uses the new prompt without any restart.
+
+The daily scheduler job (midnight IST) batches ALL pending files into one GitHub
+push, triggering a Railway rebuild that persists the changes across restarts.
+
+POST /ui/prompts/deploy is an emergency override — use it when a change must be
+in Git immediately rather than waiting for the scheduled deploy.
 
 Env vars required for deploy:
-  GITHUB_TOKEN — PAT with repo write scope
-  GITHUB_REPO  — e.g. "username/StockAgent-main"  (owner/repo, no trailing slash)
+  GITHUB_TOKEN  — PAT with repo write scope
+  GITHUB_REPO   — e.g. "username/StockAgent-main"  (owner/repo)
   GITHUB_BRANCH — default "main"
 """
 
@@ -101,7 +107,9 @@ _CATALOGUE: dict[str, dict[str, Any]] = {
 }
 
 # Where we persist the list of files edited since the last deploy
-_PENDING_PATH = Path("data/prompt_changes.json")
+_PENDING_PATH       = Path("data/prompt_changes.json")
+# Where we persist the result of the last deploy run (scheduled or manual)
+_DEPLOY_STATUS_PATH = Path("data/prompt_deploy_status.json")
 
 
 # ---------------------------------------------------------------------------
@@ -220,6 +228,131 @@ def _github_path_for(sector: str, agent: str) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Deploy status persistence
+# ---------------------------------------------------------------------------
+
+def _load_deploy_status() -> dict:
+    try:
+        if _DEPLOY_STATUS_PATH.exists():
+            return json.loads(_DEPLOY_STATUS_PATH.read_text(encoding="utf-8"))
+    except Exception:
+        pass
+    return {}
+
+
+def _save_deploy_status(result: dict) -> None:
+    _DEPLOY_STATUS_PATH.parent.mkdir(parents=True, exist_ok=True)
+    _DEPLOY_STATUS_PATH.write_text(json.dumps(result, indent=2), encoding="utf-8")
+
+
+def _next_midnight_ist() -> str:
+    """Return ISO string of the next midnight IST (UTC+5:30)."""
+    from datetime import timedelta, timezone as tz
+    IST = tz(timedelta(hours=5, minutes=30))
+    now_ist = datetime.now(IST)
+    next_mid = (now_ist + timedelta(days=1)).replace(
+        hour=0, minute=0, second=0, microsecond=0
+    )
+    return next_mid.isoformat()
+
+
+# ---------------------------------------------------------------------------
+# Core deploy logic — called by the scheduler job AND the manual override endpoint
+# ---------------------------------------------------------------------------
+
+def run_scheduled_deploy(triggered_by: str = "scheduler") -> dict:
+    """
+    Sync function (safe to call from APScheduler background thread).
+
+    Pushes all files in prompt_changes.json to GitHub in a single batch,
+    one commit per file.  Clears the pending list only if no errors occurred.
+
+    Returns a status dict that is also persisted to data/prompt_deploy_status.json.
+    """
+    token  = os.environ.get("GITHUB_TOKEN", "").strip()
+    repo   = os.environ.get("GITHUB_REPO",  "").strip()
+    branch = os.environ.get("GITHUB_BRANCH", "main").strip()
+
+    timestamp = datetime.now(timezone.utc).isoformat()
+
+    if not token or not repo:
+        result = {
+            "status":       "skipped",
+            "reason":       "GITHUB_TOKEN or GITHUB_REPO env var not set",
+            "deployed":     [],
+            "errors":       [],
+            "triggered_by": triggered_by,
+            "deployed_at":  timestamp,
+        }
+        _save_deploy_status(result)
+        logger.info("[prompts/deploy] Skipped — GITHUB_TOKEN/REPO not configured")
+        return result
+
+    pending = _load_pending()
+    if not pending:
+        result = {
+            "status":       "nothing_to_deploy",
+            "deployed":     [],
+            "errors":       [],
+            "triggered_by": triggered_by,
+            "deployed_at":  timestamp,
+        }
+        _save_deploy_status(result)
+        logger.info("[prompts/deploy] Nothing pending — skipping")
+        return result
+
+    logger.info("[prompts/deploy] Deploying %d file(s) triggered by %s", len(pending), triggered_by)
+
+    deployed: list[str] = []
+    errors:   list[str] = []
+    last_sha  = ""
+
+    ts_label = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+
+    for github_path in pending:
+        try:
+            parts  = github_path.replace("\\", "/").split("/")
+            sector = parts[3]
+            agent  = parts[5].removesuffix(".py")
+            local_path = _locate_prompt_file(sector, agent)
+        except Exception as exc:
+            errors.append(f"{github_path}: cannot resolve local file — {exc}")
+            continue
+
+        try:
+            sha = _deploy_file_to_github(
+                token, repo, branch, github_path, local_path,
+                commit_message=(
+                    f"prompt-lab ({triggered_by}): {sector}/{agent} [{ts_label}]"
+                ),
+            )
+            deployed.append(github_path)
+            last_sha = sha
+            logger.info("[prompts/deploy] Pushed %s → %s", github_path, sha[:7] if sha else "?")
+        except Exception as exc:
+            errors.append(f"{github_path}: {exc}")
+            logger.error("[prompts/deploy] Failed %s: %s", github_path, exc)
+
+    if not errors:
+        _clear_pending()
+
+    result = {
+        "status":       "deployed" if deployed else "error",
+        "deployed":     deployed,
+        "errors":       errors,
+        "commit_sha":   last_sha,
+        "triggered_by": triggered_by,
+        "deployed_at":  timestamp,
+    }
+    _save_deploy_status(result)
+    logger.info(
+        "[prompts/deploy] Done — %d deployed, %d errors",
+        len(deployed), len(errors),
+    )
+    return result
+
+
+# ---------------------------------------------------------------------------
 # Helpers — GitHub REST API
 # ---------------------------------------------------------------------------
 
@@ -331,6 +464,29 @@ async def get_pending() -> dict:
     return {"pending": _load_pending()}
 
 
+@router.get("/status", summary="Pending count, next scheduled deploy time, last deploy result")
+async def get_deploy_status() -> dict:
+    """
+    Used by the Prompt Lab UI to show the deploy schedule indicator.
+
+    Returns:
+      pending_count   — number of files awaiting the next deploy
+      pending         — list of pending file paths
+      next_deploy_at  — ISO datetime of next midnight IST run
+      last_deploy     — result dict from the most recent deploy (or null)
+      scheduler_configured — true if GITHUB_TOKEN + GITHUB_REPO are set
+    """
+    return {
+        "pending_count":         len(_load_pending()),
+        "pending":               _load_pending(),
+        "next_deploy_at":        _next_midnight_ist(),
+        "last_deploy":           _load_deploy_status() or None,
+        "scheduler_configured":  bool(
+            os.environ.get("GITHUB_TOKEN") and os.environ.get("GITHUB_REPO")
+        ),
+    }
+
+
 @router.get("/{sector}/{agent}", summary="Read a prompt file's three sections")
 async def get_prompt(sector: str, agent: str) -> dict:
     if sector not in _CATALOGUE:
@@ -378,8 +534,17 @@ async def put_prompt(sector: str, agent: str, body: PromptBody) -> dict:
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Failed to write prompt file: {exc}")
 
-    # Invalidate the module cache so the next GET returns fresh content
-    sys.modules.pop(f"backend.sectors.{sector}.prompts.{agent}", None)
+    # Patch the live module object in-place so agent modules that already hold a
+    # reference to it (via `from ... import fundamentals as P`) see the new values
+    # immediately — without waiting for a Railway redeploy.
+    # Also remove from sys.modules so a fresh import() rebuilds from the new file.
+    module_name = f"backend.sectors.{sector}.prompts.{agent}"
+    live_mod = sys.modules.get(module_name)
+    if live_mod is not None:
+        live_mod.SYSTEM_PROMPT          = body.system_prompt.strip()
+        live_mod.ANALYSIS_PROMPT        = body.analysis_prompt.strip()
+        live_mod.CONTEXT_SEARCH_QUERIES = [q.strip() for q in body.context_search_queries if q.strip()]
+    sys.modules.pop(module_name, None)
 
     # Track as pending deploy
     _add_pending(_github_path_for(sector, agent))
@@ -394,86 +559,23 @@ async def put_prompt(sector: str, agent: str, body: PromptBody) -> dict:
     }
 
 
-@router.post("/deploy", summary="Push pending prompt changes to GitHub (triggers Railway auto-deploy)")
+@router.post("/deploy", summary="Manual override: deploy now instead of waiting for midnight")
 async def deploy_prompts() -> DeployResult:
     """
-    For each file in data/prompt_changes.json:
-      1. Locate it on disk (via importlib — same path used by PUT)
-      2. Push to GitHub via Contents API (creates a commit on the configured branch)
-      3. Railway auto-deploys on push to main
+    Emergency override — pushes pending changes immediately.
 
-    Requires env vars:
-      GITHUB_TOKEN  — PAT with repo write scope
-      GITHUB_REPO   — e.g. "username/StockAgent-main"
-      GITHUB_BRANCH — default "main"
+    Under normal operation you don't need this: the daily scheduler job at
+    midnight IST batches all pending changes automatically.  Use this only
+    when a prompt fix must be in Git right now (e.g. a broken agent in prod).
+
+    Requires GITHUB_TOKEN + GITHUB_REPO env vars set in Railway.
     """
-    token  = os.environ.get("GITHUB_TOKEN", "").strip()
-    repo   = os.environ.get("GITHUB_REPO",  "").strip()
-    branch = os.environ.get("GITHUB_BRANCH", "main").strip()
-
-    if not token:
-        raise HTTPException(
-            status_code=503,
-            detail="GITHUB_TOKEN env var not set — cannot push to GitHub. "
-                   "Set it in Railway environment variables.",
-        )
-    if not repo:
-        raise HTTPException(
-            status_code=503,
-            detail="GITHUB_REPO env var not set (expected format: 'owner/repo'). "
-                   "Set it in Railway environment variables.",
-        )
-
-    pending = _load_pending()
-    if not pending:
-        return DeployResult(
-            deployed=[], skipped=[], errors=[],
-            deployed_at=datetime.now(timezone.utc).isoformat(),
-        )
-
-    deployed: list[str] = []
-    skipped:  list[str] = []
-    errors:   list[str] = []
-    last_sha  = ""
-
-    timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
-
-    for github_path in pending:
-        # Derive sector/agent from path e.g. src/backend/sectors/banking_bfsi/prompts/fundamentals.py
-        try:
-            parts = github_path.replace("\\", "/").split("/")
-            # expected: src/backend/sectors/{sector}/prompts/{agent}.py
-            sector = parts[3]
-            agent  = parts[5].removesuffix(".py")
-        except (IndexError, ValueError):
-            errors.append(f"{github_path}: cannot parse sector/agent from path")
-            continue
-
-        try:
-            local_path = _locate_prompt_file(sector, agent)
-        except FileNotFoundError:
-            skipped.append(f"{github_path}: local file not found")
-            continue
-
-        try:
-            sha = _deploy_file_to_github(
-                token, repo, branch, github_path, local_path,
-                commit_message=f"prompt-lab: update {sector}/{agent} prompt [{timestamp}]",
-            )
-            deployed.append(github_path)
-            last_sha = sha
-            logger.info("[prompts/deploy] Pushed %s → commit %s", github_path, sha)
-        except Exception as exc:
-            errors.append(f"{github_path}: {exc}")
-            logger.error("[prompts/deploy] Failed to push %s: %s", github_path, exc)
-
-    if not errors:
-        _clear_pending()
-
+    import asyncio
+    result = await asyncio.to_thread(run_scheduled_deploy, "manual")
     return DeployResult(
-        deployed=deployed,
-        skipped=skipped,
-        errors=errors,
-        commit_sha=last_sha,
-        deployed_at=datetime.now(timezone.utc).isoformat(),
+        deployed    = result.get("deployed", []),
+        skipped     = [],
+        errors      = result.get("errors",   []),
+        commit_sha  = result.get("commit_sha", ""),
+        deployed_at = result.get("deployed_at", ""),
     )

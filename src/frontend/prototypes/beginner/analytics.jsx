@@ -260,14 +260,15 @@ function Legend({ items }) {
 // Main AnalyticsPage
 // ---------------------------------------------------------------------------
 function AnalyticsPage({ onNav }) {
-  const [accuracy,    setAccuracy]    = useAnState(null);
-  const [weightDrift, setWeightDrift] = useAnState(null);
-  const [missData,    setMissData]    = useAnState(null);
-  const [conviction,  setConviction]  = useAnState(null);
-  const [sector,      setSectorData]  = useAnState(null);
-  const [loading,     setLoading]     = useAnState(true);
-  const [error,       setError]       = useAnState(null);
-  const [activeTab,   setActiveTab]   = useAnState('overview');
+  const [accuracy,       setAccuracy]       = useAnState(null);
+  const [weightDrift,    setWeightDrift]    = useAnState(null);
+  const [missData,       setMissData]       = useAnState(null);
+  const [conviction,     setConviction]     = useAnState(null);
+  const [sector,         setSectorData]     = useAnState(null);
+  const [managedTickers, setManagedTickers] = useAnState([]);
+  const [loading,        setLoading]        = useAnState(true);
+  const [error,          setError]          = useAnState(null);
+  const [activeTab,      setActiveTab]      = useAnState('overview');
 
   useAnEffect(() => {
     let cancelled = false;
@@ -279,13 +280,15 @@ function AnalyticsPage({ onNav }) {
       fetch('/analytics/miss-breakdown').then(r => r.json()).catch(() => null),
       fetch('/analytics/conviction-outcomes').then(r => r.json()).catch(() => null),
       fetch('/analytics/sector-comparison').then(r => r.json()).catch(() => null),
-    ]).then(([acc, wd, miss, conv, sec]) => {
+      fetch('/ui/tickers/managed').then(r => r.json()).catch(() => null),
+    ]).then(([acc, wd, miss, conv, sec, mt]) => {
       if (cancelled) return;
       setAccuracy(acc);
       setWeightDrift(wd);
       setMissData(miss);
       setConviction(conv);
       setSectorData(sec);
+      setManagedTickers((mt?.tickers || []));
       setLoading(false);
     }).catch(e => {
       if (!cancelled) { setError(String(e)); setLoading(false); }
@@ -409,6 +412,7 @@ function AnalyticsPage({ onNav }) {
             wdTicker={wdTicker}
             weightDrift={weightDrift}
             agentColors={agentColors}
+            managedTickers={managedTickers}
           />
         )}
 
@@ -537,11 +541,23 @@ function ConvictionBucketTable({ buckets }) {
 // ---------------------------------------------------------------------------
 // Tab: Weights
 // ---------------------------------------------------------------------------
-function WeightsTab({ lineSeries, wdTicker, weightDrift, agentColors }) {
-  const [selectedTicker, setSelectedTicker] = useAnState(wdTicker?.ticker || '');
+function WeightsTab({ lineSeries, wdTicker, weightDrift, agentColors, managedTickers }) {
+  const [selectedTicker, setSelectedTicker] = useAnState(wdTicker?.ticker || managedTickers[0]?.sym || '');
+
+  // All managed tickers merged with those that have actual RL data
+  const wdMap = {};
+  (weightDrift?.tickers || []).forEach(t => { wdMap[t.ticker] = t; });
+
+  // Build unified dropdown: managed tickers first, then any unmanaged ones from WD data
+  const managedSyms = new Set(managedTickers.map(t => t.sym));
+  const extraWdTickers = (weightDrift?.tickers || []).filter(t => !managedSyms.has(t.ticker));
+  const allDropdownTickers = [
+    ...managedTickers.map(t => ({ sym: t.sym, sector: t.sector, hasData: !!wdMap[t.sym], enabled: t.enabled })),
+    ...extraWdTickers.map(t => ({ sym: t.ticker, sector: t.sector, hasData: true, enabled: true })),
+  ];
 
   const tickers = weightDrift?.tickers || [];
-  const displayTicker = tickers.find(t => t.ticker === selectedTicker) || wdTicker;
+  const displayTicker = wdMap[selectedTicker] || wdTicker;
 
   const seriesForTicker = displayTicker ? (() => {
     const agentNames = Object.keys(displayTicker.current_weights || {});
@@ -557,27 +573,68 @@ function WeightsTab({ lineSeries, wdTicker, weightDrift, agentColors }) {
 
   return (
     <>
-      {/* Ticker selector */}
-      {tickers.length > 0 && (
-        <div style={{ marginBottom: 16 }}>
+      {/* Ticker selector — sourced from managed list */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
+        {allDropdownTickers.length > 0 ? (
           <select value={selectedTicker} onChange={e => setSelectedTicker(e.target.value)} style={{
             padding: '7px 12px', borderRadius: 8, border: '1px solid var(--border)',
             background: 'var(--bg-surface)', color: 'var(--ink-1)', fontSize: 13,
           }}>
-            {tickers.map(t => (
-              <option key={t.ticker} value={t.ticker}>{t.ticker} ({t.sector})</option>
+            {allDropdownTickers.map(t => (
+              <option key={t.sym} value={t.sym}>
+                {t.sym} ({t.sector}){!t.hasData ? ' — pending first run' : ''}
+              </option>
             ))}
           </select>
-        </div>
-      )}
+        ) : (
+          <span style={{ fontSize: 13, color: 'var(--ink-3)' }}>No managed tickers yet</span>
+        )}
+        <a href="#" onClick={e => { e.preventDefault(); /* handled by onNav in parent */ }}
+           style={{ fontSize: 12, color: 'var(--accent)', textDecoration: 'none' }}
+           title="Go to Logs → Manage Tickers to add/remove">
+          Manage tickers →
+        </a>
+        {selectedTicker && !wdMap[selectedTicker] && (
+          <span style={{
+            fontSize: 11, padding: '3px 10px', borderRadius: 999,
+            background: 'var(--bg-tinted)', color: 'var(--ink-3)', border: '1px solid var(--border)',
+          }}>
+            Awaiting first RL run
+          </span>
+        )}
+      </div>
 
       <ChartPanel
         title="Agent Weight Drift"
-        subtitle={displayTicker ? `${displayTicker.ticker} — how RL has shifted each agent's influence over ${(displayTicker.weight_history || []).length} weight versions` : 'Select a ticker above'}
+        subtitle={
+          displayTicker
+            ? `${displayTicker.ticker} — how RL has shifted each agent's influence over ${(displayTicker.weight_history || []).length} weight versions`
+            : selectedTicker
+              ? `${selectedTicker} — no RL data yet. First run triggered by scheduler at 4:30 PM IST on a trading day.`
+              : 'Select a ticker above'
+        }
       >
-        <LineChart series={seriesForTicker} width={860} height={140} yMin={0} yMax={0.35}/>
-        {seriesForTicker.length > 0 && (
-          <Legend items={seriesForTicker.map(s => ({ label: s.label.replace(/_/g, ' '), color: s.color }))}/>
+        {!displayTicker && selectedTicker ? (
+          <div style={{
+            padding: '24px 0', textAlign: 'center', color: 'var(--ink-3)', fontSize: 13,
+            border: '1px dashed var(--border)', borderRadius: 8,
+          }}>
+            <div style={{ marginBottom: 8, fontSize: 22 }}>⏳</div>
+            <div style={{ fontWeight: 600 }}>Waiting for first RL run</div>
+            <div style={{ fontSize: 12, marginTop: 4 }}>
+              The scheduler runs daily at 4:30 PM IST (weekdays) and monthly on the 1st.
+            </div>
+            <div style={{ fontSize: 12, marginTop: 4, color: 'var(--ink-2)' }}>
+              Check the <strong>Logs</strong> page to watch progress in real-time.
+            </div>
+          </div>
+        ) : (
+          <>
+            <LineChart series={seriesForTicker} width={860} height={140} yMin={0} yMax={0.35}/>
+            {seriesForTicker.length > 0 && (
+              <Legend items={seriesForTicker.map(s => ({ label: s.label.replace(/_/g, ' '), color: s.color }))}/>
+            )}
+          </>
         )}
       </ChartPanel>
 

@@ -41,6 +41,18 @@ from core.config import settings
 logger = logging.getLogger(__name__)
 
 
+def _active_tickers() -> list[str]:
+    """Read enabled tickers from managed_tickers.json; fall back to settings."""
+    try:
+        from services.api.log_buffer import get_active_tickers
+        tickers = get_active_tickers()
+        if tickers:
+            return tickers
+    except Exception:
+        pass
+    return list(settings.SCHEDULER_TICKERS)
+
+
 class AutomobileScheduler:
     """
     BackgroundScheduler wrapper for all RL automation jobs.
@@ -117,6 +129,18 @@ class AutomobileScheduler:
         )
         logger.info("[Scheduler] Calendar update job: Dec 31 at 11:00 pm IST")
 
+        # ── Job 4: Prompt daily deploy (midnight IST = 18:30 UTC) ────────────
+        scheduler.add_job(
+            func=self._prompt_deploy_job,
+            trigger=CronTrigger(hour=0, minute=0, timezone="Asia/Kolkata"),
+            id="prompt_daily_deploy",
+            name="Prompt daily deploy to GitHub",
+            misfire_grace_time=3600,
+            coalesce=True,
+            replace_existing=True,
+        )
+        logger.info("[Scheduler] Prompt deploy job: daily at midnight IST")
+
         return scheduler
 
     # ------------------------------------------------------------------
@@ -134,8 +158,9 @@ class AutomobileScheduler:
         while review_date.weekday() >= 5:
             review_date -= timedelta(days=1)
 
-        logger.info("[Scheduler] === RL daily review — %s ===", review_date.isoformat())
-        for ticker in settings.SCHEDULER_TICKERS:
+        tickers = _active_tickers()
+        logger.info("[Scheduler] === RL daily review — %s (%d tickers) ===", review_date.isoformat(), len(tickers))
+        for ticker in tickers:
             try:
                 summary = run_daily_review(ticker, review_date)
                 logger.info(
@@ -160,10 +185,11 @@ class AutomobileScheduler:
         from core.intelligence.rl.workflows.generate_forecast import generate_forecast
 
         today = date.today()
+        tickers = _active_tickers()
         logger.info(
-            "[Scheduler] === RL monthly forecast — %d-%02d ===", today.year, today.month
+            "[Scheduler] === RL monthly forecast — %d-%02d (%d tickers) ===", today.year, today.month, len(tickers)
         )
-        for ticker in settings.SCHEDULER_TICKERS:
+        for ticker in tickers:
             try:
                 env = generate_forecast(ticker)
                 logger.info(
@@ -176,6 +202,29 @@ class AutomobileScheduler:
                     "[Scheduler] Monthly forecast FAILED for %s: %s", ticker, exc, exc_info=True
                 )
         logger.info("[Scheduler] === RL monthly forecast complete ===")
+
+    def _prompt_deploy_job(self) -> None:
+        """
+        Deploy any pending prompt file changes to GitHub once per day at midnight IST.
+        Skips silently if nothing is pending or GITHUB_TOKEN/REPO are not set.
+        """
+        logger.info("[Scheduler] === Prompt daily deploy ===")
+        try:
+            from services.api.routes.prompts import run_scheduled_deploy
+            result = run_scheduled_deploy(triggered_by="scheduler")
+            if result["status"] == "nothing_to_deploy":
+                logger.info("[Scheduler] Prompt deploy: no pending changes")
+            elif result["status"] == "skipped":
+                logger.info("[Scheduler] Prompt deploy skipped: %s", result.get("reason", ""))
+            else:
+                logger.info(
+                    "[Scheduler] Prompt deploy complete — %d deployed, %d errors",
+                    len(result.get("deployed", [])),
+                    len(result.get("errors", [])),
+                )
+        except Exception as exc:
+            logger.error("[Scheduler] Prompt deploy FAILED: %s", exc, exc_info=True)
+        logger.info("[Scheduler] === Prompt daily deploy done ===")
 
     def _calendar_update_job(self) -> None:
         """Fetch NSE holidays for next year and hot-reload the calendar."""
@@ -220,7 +269,7 @@ class AutomobileScheduler:
     def run_now(self, tickers: list[str] | None = None) -> None:
         """Manually trigger an immediate analysis run (testing / ops override)."""
         from core.pipeline.orchestrator import AutomobileAgentOrchestrator
-        tickers_to_run = tickers or settings.SCHEDULER_TICKERS
+        tickers_to_run = tickers or _active_tickers()
         orch = AutomobileAgentOrchestrator()
         for ticker in tickers_to_run:
             try:
@@ -241,7 +290,7 @@ class AutomobileScheduler:
             "enabled":          settings.SCHEDULER_ENABLED,
             "running":          self._scheduler.running if self._scheduler else False,
             "feedback_cron":    settings.FEEDBACK_CRON,
-            "tickers":          settings.SCHEDULER_TICKERS,
+            "tickers":          _active_tickers(),
             "db_total_runs":    store.total_runs(),
             "db_ticker_count":  store.ticker_count(),
             "jobs": [

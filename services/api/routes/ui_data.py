@@ -1213,7 +1213,7 @@ async def chat(body: dict) -> dict:
 
     try:
         from services.clients.llm_client import get_async_llm_client
-        client = await get_async_llm_client()
+        client = get_async_llm_client()
         resp = await client.chat.completions.create(
             model="qwen/qwen3-235b-a22b",
             messages=messages,

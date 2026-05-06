@@ -27,8 +27,8 @@ class RESentimentPolicyAgentSubScores(BaseModel):
     mnre_auction_health: float = Field(ge=0.0, le=1.0)
     budget_allocation: float = Field(ge=0.0, le=1.0)
     policy_tailwinds: float = Field(ge=0.0, le=1.0)
-    green_hydrogen: float = Field(ge=0.0, le=1.0)
-    news_sentiment: float = Field(ge=0.0, le=1.0)
+    rbi_rate_impact: float = Field(ge=0.0, le=1.0)     # was green_hydrogen
+    module_price: float = Field(ge=0.0, le=1.0)        # was news_sentiment
 
 class RETechnicalAgentSubScores(BaseModel):
     moving_averages: float = Field(ge=0.0, le=1.0)
@@ -39,7 +39,7 @@ class RETechnicalAgentSubScores(BaseModel):
 
 class RERiskAgentSubScores(BaseModel):
     discom_credit: float = Field(ge=0.0, le=1.0)
-    regulatory_change: float = Field(ge=0.0, le=1.0)
-    weather_resource: float = Field(ge=0.0, le=1.0)
-    grid_integration: float = Field(ge=0.0, le=1.0)
-    commodity_input: float = Field(ge=0.0, le=1.0)
+    curtailment_risk: float = Field(ge=0.0, le=1.0)    # was regulatory_change
+    ppa_protection: float = Field(ge=0.0, le=1.0)      # was weather_resource
+    execution_risk: float = Field(ge=0.0, le=1.0)      # was grid_integration
+    promoter_pledge: float = Field(ge=0.0, le=1.0)     # was commodity_input

@@ -25,6 +25,8 @@
 <script type="text/babel" src="portfolio.jsx"></script>
 <script type="text/babel" src="learn.jsx"></script>
 <script type="text/babel" src="tweaks-panel.jsx"></script>
+<script type="text/babel" src="prompt-lab.jsx"></script>
+<script type="text/babel" src="analytics.jsx"></script>
 
 <script type="text/babel">
 const { useState, useEffect } = React;
@@ -63,6 +65,8 @@ function App() {
     {screen === 'agents' && <AgentsPage onNav={setScreen} openChat={openChat}/>}
     {screen === 'portfolio' && <PortfolioPage onNav={setScreen} openChat={openChat}/>}
     {screen === 'learn' && <LearnPage onNav={setScreen} openChat={openChat}/>}
+    {screen === 'prompt-lab' && <PromptLabPage onNav={setScreen}/>}
+    {screen === 'analytics' && <AnalyticsPage onNav={setScreen}/>}
 
     {/* Floating orb on non-auth screens */}
     {screen !== 'auth' && !chat && <SphereOrb onOpen={openChat} mode={tweaks.sphereMode}/>}
@@ -79,6 +83,8 @@ function App() {
         <NavChip active={screen==='agents'} onClick={goAgents} icon={<Icon.Cpu size={14}/>} label="Agents"/>
         <NavChip active={screen==='portfolio'} onClick={()=>setScreen('portfolio')} icon={<Icon.Briefcase size={14}/>} label="Portfolio"/>
         <NavChip active={screen==='learn'} onClick={()=>setScreen('learn')} icon={<Icon.Book size={14}/>} label="Learn"/>
+        <NavChip active={screen==='prompt-lab'} onClick={()=>setScreen('prompt-lab')} icon={<Icon.Settings size={14}/>} label="Prompt Lab"/>
+        <NavChip active={screen==='analytics'} onClick={()=>setScreen('analytics')} icon={<Icon.Trend size={14}/>} label="Analytics"/>
         <NavChip onClick={()=>setScreen('auth')} icon={<Icon.User size={14}/>} label="Sign out"/>
       </div>
     )}
@@ -109,6 +115,8 @@ function App() {
         <TweakButton onClick={goAgents}>Open agents</TweakButton>
         <TweakButton onClick={()=>setScreen('portfolio')}>Open portfolio</TweakButton>
         <TweakButton onClick={()=>setScreen('learn')}>Open learn</TweakButton>
+        <TweakButton onClick={()=>setScreen('prompt-lab')}>Open prompt lab</TweakButton>
+        <TweakButton onClick={()=>setScreen('analytics')}>Open analytics</TweakButton>
       </TweakSection>
     </TweaksPanel>
   </>;

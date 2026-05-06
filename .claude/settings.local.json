@@ -55,7 +55,11 @@
       "Bash(rm core/sectors/banking/graph.py)",
       "Bash(rm core/sectors/it/graph.py)",
       "Bash(rm core/sectors/renewable/graph.py)",
-      "Bash(rm -rf core/intelligence/algorithms/scoring)"
+      "Bash(rm -rf core/intelligence/algorithms/scoring)",
+      "Bash(python3 -c ' *)",
+      "Bash(python3)",
+      "Bash(cat)",
+      "Bash(cp /tmp/re_business.py src/backend/sectors/renewable_energy/prompts/business.py)"
     ]
   }
 }

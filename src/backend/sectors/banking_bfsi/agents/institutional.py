@@ -1,42 +1,48 @@
-"""Auto-generated agent file. Edit prompt strings to customise LLM behaviour."""
+"""
+agents/institutional.py — Banking BFSI
+========================================
+Analyses FII/DII shareholding flow, AMFI MF entry/exit, promoter pledge delta,
+SAST filings (>2% threshold), and BSE bulk/block deal activity.
+Note: PCR/OI derivatives excluded — ToS risk per registry doc.
+"""
 from __future__ import annotations
-from typing import Any
+
 from backend.shared.pipeline.base_agent import BaseAgent
 from backend.shared.schemas.pipeline import AgentOutput, StockQuery
+from backend.sectors.banking_bfsi.prompts import institutional as P
 
 
 class BFSIInstitutionalAgent(BaseAgent):
+
     @property
-    def sector(self) -> str: return "bfsi"
+    def sector(self) -> str:
+        return "bfsi"
+
     @property
-    def agent_name(self) -> str: return "institutional"
+    def agent_name(self) -> str:
+        return "institutional"
 
     def _build_prompt(self, query: StockQuery, context: str) -> tuple[str, str]:
-        system = """Equity analyst tracking smart money flow for Indian banking stocks. Return ONLY valid JSON."""
-        user = """Institutional and insider flow for {ticker} ({company_name}) as of {analysis_date}.
-
-Context:
-{context}
-
-Evaluate:
-1. fii_dii_flow — Net FII/DII buying over 1M and 3M
-2. promoter_holding — Promoter stake change, pledge %
-3. insider_trades — ESOP exercises, open-market purchases/sales
-4. analyst_changes — Rating upgrades/downgrades, target revisions
-5. institutional_conc — Mutual fund holding %, top-10 institutional
-
-Return ONLY valid JSON."""
-        return system, user.format(
+        user = P.ANALYSIS_PROMPT.format(
             ticker=query.ticker,
-            company_name=query.company_name,
-            analysis_date=query.analysis_date,
+            company_name=query.company_name or query.ticker,
             context=context,
         )
+        return P.SYSTEM_PROMPT, user
 
     def _parse_output(self, data: dict, ticker: str) -> AgentOutput:
+        sub = data.get("sub_scores", {})
         return AgentOutput(
-            agent=self.agent_name, ticker=ticker,
+            agent=self.agent_name,
+            ticker=ticker,
             overall_score=self._clamp(float(data.get("overall_score", 0.5))),
+            sub_scores={
+                "fii_dii_flow":     self._clamp(float(sub.get("fii_dii_flow", 0.5))),
+                "promoter_holding": self._clamp(float(sub.get("promoter_holding", 0.5))),
+                "insider_trades":   self._clamp(float(sub.get("insider_trades", 0.5))),
+                "amfi_mf_flow":     self._clamp(float(sub.get("amfi_mf_flow", 0.5))),
+                "bulk_block_deals": self._clamp(float(sub.get("bulk_block_deals", 0.5))),
+            },
             key_positives=data.get("key_positives", []),
             key_risks=data.get("key_risks", []),
             summary=data.get("summary", ""),

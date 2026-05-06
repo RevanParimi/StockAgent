@@ -290,11 +290,59 @@ class ContextBuilder:
 
         today = date.today()
         queries = [
-            f"{query.company_name} NPA slippage SMA restructured book {today.year}",
-            f"{query.ticker} top borrower concentration sectoral exposure {today.year}",
-            f"{query.company_name} CASA wholesale deposit runoff risk {today.year}",
-            f"{query.ticker} RBI penalty SEBI action regulatory risk {today.year}",
-            f"{query.company_name} NIM compression rate sensitivity FX exposure {today.year}",
+            f"{query.company_name} NPA slippage SMA-1 SMA-2 restructured book {today.year}",
+            f"{query.ticker} top borrower sector concentration geography exposure {today.year}",
+            f"{query.company_name} CASA wholesale deposit LCR liquidity {today.year}",
+            f"{query.ticker} RBI penalty enforcement order SEBI PCA {today.year}",
+            f"{query.company_name} cyber fraud incident CERT-In RBI report {today.year}",
+        ]
+        news = fetch_news_context(queries, api_key=self._serper_key)
+        return (
+            f"Stock: {query.ticker} | Company: {query.company_name} | "
+            f"Date: {query.analysis_date}\n\n{news}"
+        )
+
+    def _build_bfsi_pattern_analysis(self, query: StockQuery) -> str:
+        from services.data.fetchers.fundamentals import get_fundamentals_context
+        from services.data.fetchers.news import fetch_news_context
+
+        today = date.today()
+        queries = [
+            f"{query.ticker} technical analysis RSI MACD 52-week high low {today.year}",
+            f"{query.ticker} Nifty Bank relative performance outperform {today.year}",
+            f"RBI rate cut cycle PSU bank private bank rally {today.year}",
+            f"{query.ticker} support resistance breakout price chart {today.year}",
+        ]
+        fin = get_fundamentals_context(query.ticker)
+        news = fetch_news_context(queries, api_key=self._serper_key)
+        return f"{fin}\n\n{news}"
+
+    def _build_bfsi_institutional(self, query: StockQuery) -> str:
+        from services.data.fetchers.fundamentals import get_fundamentals_context
+        from services.data.fetchers.news import fetch_news_context
+
+        today = date.today()
+        queries = [
+            f"{query.ticker} FII DII shareholding change quarterly {today.year}",
+            f"{query.company_name} promoter pledge SAST filing {today.year}",
+            f"AMFI {query.ticker} mutual fund monthly portfolio {today.strftime('%B')} {today.year}",
+            f"{query.ticker} BSE bulk deal block trade {today.strftime('%B')} {today.year}",
+            f"{query.ticker} insider trading SEBI director KMP disclosure {today.year}",
+        ]
+        fin = get_fundamentals_context(query.ticker)
+        news = fetch_news_context(queries, api_key=self._serper_key)
+        return f"{fin}\n\n{news}"
+
+    def _build_bfsi_universe_setup(self, query: StockQuery) -> str:
+        from services.data.fetchers.news import fetch_news_context
+
+        today = date.today()
+        queries = [
+            f"{query.ticker} Nifty Bank PSU Bank index weight constituent {today.year}",
+            f"{query.company_name} peer group PSU private NBFC market cap rank {today.year}",
+            f"AMFI monthly portfolio {query.ticker} mutual fund {today.strftime('%B')} {today.year}",
+            f"{query.company_name} corporate actions dividend rights merger buyback {today.year}",
+            f"NSE Nifty Bank rebalancing reconstitution semi-annual {today.year}",
         ]
         news = fetch_news_context(queries, api_key=self._serper_key)
         return (
@@ -423,8 +471,23 @@ class ContextBuilder:
             f"{query.ticker} vs TCS Infosys HCL Wipro revenue growth {quarter}",
             f"{query.company_name} EBIT margin peer comparison IT sector {today.year}",
             f"{query.company_name} deal wins TCV vs peers Infosys TCS {today.year}",
-            f"{query.ticker} RoCE dividend buyback vs IT peers {today.year}",
+            f"{query.company_name} attrition headcount vs IT peers comparison {today.year}",
             f"{query.ticker} PE premium discount to IT peer median {today.year}",
+        ]
+        fin = get_fundamentals_context(query.ticker)
+        news = fetch_news_context(queries, api_key=self._serper_key)
+        return f"{fin}\n\n{news}"
+
+    def _build_it_pattern_analysis(self, query: StockQuery) -> str:
+        from services.data.fetchers.fundamentals import get_fundamentals_context
+        from services.data.fetchers.news import fetch_news_context
+
+        today = date.today()
+        queries = [
+            f"{query.ticker} technical analysis RSI MACD 52-week high low Nifty IT {today.year}",
+            f"{query.ticker} Nifty IT relative performance alpha beta {today.year}",
+            f"{query.ticker} support resistance breakout price chart {today.strftime('%B')} {today.year}",
+            f"Indian IT sector Nifty IT trend momentum {today.strftime('%B')} {today.year}",
         ]
         fin = get_fundamentals_context(query.ticker)
         news = fetch_news_context(queries, api_key=self._serper_key)
@@ -436,11 +499,11 @@ class ContextBuilder:
         today = date.today()
         quarter = f"Q{((today.month - 1) // 3) + 1} FY{today.year % 100}"
         queries = [
-            f"{query.company_name} news sentiment analyst view {today.strftime('%B')} {today.year}",
-            f"{query.ticker} earnings call management tone guidance {quarter}",
-            f"{query.company_name} GenAI AI deal announcement strategy {today.year}",
-            f"{query.company_name} layoff workforce reduction bench utilisation {today.year}",
-            f"{query.ticker} investor sentiment Twitter Reddit IT stock {today.year}",
+            f"{query.company_name} AI GenAI deal announcement narrative {today.year}",
+            f"{query.company_name} layoff bench utilisation headcount {today.year}",
+            f"{query.ticker} CEO CFO management interview outlook {today.strftime('%B')} {today.year}",
+            f"Indian IT sector Nifty IT analyst rating outlook {today.strftime('%B')} {today.year}",
+            f"{query.ticker} news media coverage {today.strftime('%B')} {today.year}",
         ]
         news = fetch_news_context(queries, api_key=self._serper_key)
         return (
@@ -477,11 +540,11 @@ class ContextBuilder:
 
         today = date.today()
         queries = [
-            f"{query.ticker} promoter open market buy sell ESOP {today.year}",
-            f"{query.company_name} director insider trade pre post results {today.year}",
-            f"{query.ticker} SBI HDFC Mirae mutual fund allocation change {today.year}",
-            f"{query.ticker} put call ratio short interest F&O {today.year}",
-            f"{query.ticker} block deal bulk deal counterparty {today.year}",
+            f"{query.ticker} SAST filing SEBI acquisition promoter pledge {today.year}",
+            f"{query.company_name} director insider trade KMP ESOP exercise {today.year}",
+            f"AMFI {query.ticker} mutual fund monthly portfolio {today.strftime('%B')} {today.year}",
+            f"{query.ticker} FII futures derivative net position {today.year}",
+            f"{query.ticker} BSE bulk deal block trade {today.strftime('%B')} {today.year}",
         ]
         fin = get_fundamentals_context(query.ticker)
         news = fetch_news_context(queries, api_key=self._serper_key)
@@ -544,13 +607,13 @@ class ContextBuilder:
 
         today = date.today()
         tavily_queries = [
-            f"MNRE renewable energy auction {today.year} GW awarded tariff",
-            f"India green hydrogen mission ISTS waiver RPO target {today.year}",
+            f"MNRE renewable energy auction {today.year} GW awarded tariff solar wind",
+            f"India Union Budget renewable energy PLI RPO ISTS waiver {today.year}",
         ]
         news_queries = [
-            f"{query.company_name} MNRE project win auction order {today.year}",
-            f"India Union Budget renewable energy capex solar wind {today.year}",
-            f"{query.ticker} green hydrogen investment announcement {today.year}",
+            f"{query.company_name} MNRE project win auction {today.year}",
+            f"RBI repo rate WACC impact renewable energy {today.year}",
+            f"solar module price BloombergNEF Mercom {today.strftime('%B')} {today.year}",
         ]
         policy = fetch_tavily_context(tavily_queries, max_queries=2)
         news = fetch_news_context(news_queries, api_key=self._serper_key)
@@ -575,11 +638,11 @@ class ContextBuilder:
 
         today = date.today()
         queries = [
-            f"{query.company_name} DISCOM payment delay default UDAY RDSS {today.year}",
-            f"{query.ticker} tariff renegotiation curtailment order regulatory {today.year}",
-            f"monsoon variability hydro solar wind generation impact India {today.year}",
-            f"{query.company_name} transmission bottleneck grid evacuation {today.year}",
-            f"solar module steel copper capex cost India {today.year}",
+            f"{query.ticker} DISCOM payment delay PFC RDSS report {today.year}",
+            f"{query.ticker} curtailment risk CERC MNRE state grid {today.year}",
+            f"{query.company_name} PPA tariff protection force majeure renegotiation {today.year}",
+            f"{query.company_name} commissioning delay execution risk MNRE extension {today.year}",
+            f"{query.ticker} promoter pledge BSE NSE refinancing {today.year}",
         ]
         news = fetch_news_context(queries, api_key=self._serper_key)
         return (

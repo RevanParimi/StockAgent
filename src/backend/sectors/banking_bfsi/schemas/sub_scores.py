@@ -14,7 +14,7 @@ class BFSIRiskAgentSubScores(BaseModel):
     concentration_risk: float = Field(ge=0.0, le=1.0)
     deposit_stability: float = Field(ge=0.0, le=1.0)
     regulatory_risk: float = Field(ge=0.0, le=1.0)
-    macro_sensitivity: float = Field(ge=0.0, le=1.0)
+    cyber_fraud_risk: float = Field(ge=0.0, le=1.0)
 
 class BFSIMacroPolicyAgentSubScores(BaseModel):
     rbi_rate_cycle: float = Field(ge=0.0, le=1.0)
@@ -27,8 +27,8 @@ class BFSIInstitutionalAgentSubScores(BaseModel):
     fii_dii_flow: float = Field(ge=0.0, le=1.0)
     promoter_holding: float = Field(ge=0.0, le=1.0)
     insider_trades: float = Field(ge=0.0, le=1.0)
-    analyst_changes: float = Field(ge=0.0, le=1.0)
-    institutional_conc: float = Field(ge=0.0, le=1.0)
+    amfi_mf_flow: float = Field(ge=0.0, le=1.0)
+    bulk_block_deals: float = Field(ge=0.0, le=1.0)
 
 class BFSIPatternAgentSubScores(BaseModel):
     price_cycle: float = Field(ge=0.0, le=1.0)

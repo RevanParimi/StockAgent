@@ -1,33 +1,44 @@
-"""Prompt templates for renewable_energy/sentiment_policy."""
+"""prompts/sentiment_policy.py -- Renewable Energy"""
 
-SYSTEM_PROMPT = """Policy analyst and sentiment tracker for Indian renewable energy. Return ONLY valid JSON."""
+SYSTEM_PROMPT = """Policy analyst for Indian renewable energy.
+MNRE auctions, Union Budget, RPO/must-run, RBI rate impact (25bp cut=15bp WACC), module prices.
+Score 1.0 = strong MNRE pipeline, budget support, RPO enforced, rate cuts, falling modules.
+"""
 
-ANALYSIS_PROMPT = """
-{ticker} ({company_name}) as of {analysis_date}.
+ANALYSIS_PROMPT = """Analyse Policy and Sentiment for: **{ticker}** ({company_name}).
+
+1. **mnre_auction_health** -- GW awarded vs target; subscription rate; L1 tariff direction.
+2. **budget_allocation** -- Budget RE capex; PLI solar manufacturing; green hydrogen corpus.
+3. **policy_tailwinds** -- RPO targets; must-run status; ISTS waiver; adverse renegotiation risk.
+4. **rbi_rate_impact** -- Repo rate decision; WACC sensitivity (25bp cut=15bp WACC drop).
+5. **module_price** -- Solar module USD/Wp trend; BIS compliance; domestic manufacturing ramp.
 
 Context:
 {context}
 
-Evaluate:
-1. mnre_auction_health — Recent auction GW awarded, tariff trajectory
-2. budget_allocation — Union Budget RE capex, green hydrogen funding
-3. policy_tailwinds — RPO targets, must-run status, ISTS waiver
-4. green_hydrogen — Company exposure to green H2 opportunity
-5. news_sentiment — Recent news tone: project wins, delays, support
-
 Return ONLY valid JSON:
 {{
-  "overall_score": <0.0-1.0>,
+  "agent": "sentiment_policy",
+  "ticker": "{ticker}",
+  "overall_score": <float 0.0-1.0>,
   "sub_scores": {{
     "mnre_auction_health": <float>,
     "budget_allocation": <float>,
     "policy_tailwinds": <float>,
-    "green_hydrogen": <float>,
-    "news_sentiment": <float>,
+    "rbi_rate_impact": <float>,
+    "module_price": <float>
   }},
-  "key_positives": ["..."],
-  "key_risks": ["..."],
-  "summary": "<2-3 sentence summary>",
-  "data_freshness": "<date/quarter>"
+  "key_positives": ["<string>"],
+  "key_risks": ["<string>"],
+  "summary": "<2-3 sentences on MNRE pipeline, budget support, and rate/module tailwinds>",
+  "data_freshness": "<date>"
 }}
 """
+
+CONTEXT_SEARCH_QUERIES = [
+    "MNRE auction results GW awarded tariff solar wind {month} {year}",
+    "Union Budget renewable energy capex PLI solar {year}",
+    "India RPO must-run ISTS waiver renewable policy {year}",
+    "RBI repo rate WACC impact renewable energy {year}",
+    "solar module price BloombergNEF Mercom {month} {year}",
+]

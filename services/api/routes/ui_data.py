@@ -1171,40 +1171,178 @@ def _fallback_sparkline() -> list[float]:
     return out
 
 
+# ---------------------------------------------------------------------------
+# Chat context builders — each fetches one slice of relevant data
+# ---------------------------------------------------------------------------
+
+def _ctx_current_verdicts() -> str:
+    try:
+        rows = _score_store().get_all_latest()
+        if not rows:
+            return ""
+        lines = [
+            f"  {r['ticker']}: {r['verdict']} (score={float(r['final_score']):.2f}, run {r['run_at'][:10]})"
+            for r in rows
+        ]
+        return "CURRENT VERDICTS:\n" + "\n".join(lines)
+    except Exception:
+        return ""
+
+
+def _ctx_recent_history(days: int = 14) -> str:
+    try:
+        from datetime import datetime, timedelta
+        since = (datetime.utcnow() - timedelta(days=days)).isoformat()
+        rows = _score_store().get_by_date_range(since)
+        if not rows:
+            return f"HISTORY (last {days} days): No analyses run in this window."
+        lines = [
+            f"  {r['run_at'][:10]} | {r['ticker']} → {r['verdict']} (score={float(r['final_score']):.2f})"
+            for r in rows[:30]
+        ]
+        return f"ANALYSIS HISTORY (last {days} days):\n" + "\n".join(lines)
+    except Exception:
+        return ""
+
+
+def _ctx_ticker_detail(ticker: str) -> str:
+    try:
+        store = _score_store()
+        rows = store.get_history(ticker.upper(), limit=6)
+        if not rows:
+            return ""
+        lines = [
+            f"  {r['run_at'][:10]}: {r['verdict']} score={float(r['final_score']):.2f}"
+            for r in rows
+        ]
+        delta = store.get_score_delta(ticker.upper())
+        delta_str = f" | Δscore={delta:+.3f} vs prior" if delta is not None else ""
+        return f"{ticker.upper()} HISTORY{delta_str}:\n" + "\n".join(lines)
+    except Exception:
+        return ""
+
+
+def _ctx_rl_learning() -> str:
+    try:
+        from core.intelligence.rl.stores.prediction_store import PredictionStore
+        from core.config import settings as cfg
+        parts = []
+        for ticker in (cfg.SCHEDULER_TICKERS or []):
+            try:
+                ps = PredictionStore(ticker, sector="automobile")
+                cycle_id = ps.current_cycle_id()
+
+                fb_log = ps.load_feedback_log(cycle_id)
+                if fb_log and fb_log.entries:
+                    recent = fb_log.entries[-10:]
+                    correct = sum(1 for e in recent if e.direction_correct)
+                    avg_err = sum(abs(e.price_error_pct) for e in recent) / len(recent)
+                    wrong_dates = [e.date for e in recent if not e.direction_correct][-3:]
+                    wrong_str = f" | missed on: {', '.join(wrong_dates)}" if wrong_dates else ""
+                    parts.append(
+                        f"  {ticker}: {correct}/{len(recent)} correct, "
+                        f"avg price error {avg_err:.1f}%{wrong_str}"
+                    )
+
+                wm = ps.load_weight_memory()
+                if wm and wm.learned_weights:
+                    top = sorted(wm.learned_weights.items(), key=lambda x: x[1], reverse=True)[:3]
+                    top_str = " > ".join(f"{k}({v:.2f})" for k, v in top)
+                    parts.append(f"    {ticker} top-weighted agents: {top_str}")
+            except Exception:
+                continue
+        return ("RL LEARNING STATE:\n" + "\n".join(parts)) if parts else ""
+    except Exception:
+        return ""
+
+
+def _build_chat_context(message: str) -> str:
+    """Gather relevant data context based on intent detected in the message."""
+    import re
+    msg = message.lower()
+    sections: list[str] = []
+
+    # Always: current verdicts
+    cv = _ctx_current_verdicts()
+    if cv:
+        sections.append(cv)
+
+    # Time-based or "missed" → pull recent history
+    time_kws = {
+        "last week", "this week", "yesterday", "this month", "last month",
+        "missed", "past", "recent", "history", "previous", "few days", "days ago",
+        "should have", "should we have", "what happened",
+    }
+    if any(kw in msg for kw in time_kws):
+        rh = _ctx_recent_history(days=14)
+        if rh:
+            sections.append(rh)
+
+    # Any mentioned uppercase tokens that look like NSE tickers
+    candidates = re.findall(r'\b([A-Z][A-Z0-9&\-]{1,14})\b', message)
+    for ticker in dict.fromkeys(candidates):
+        th = _ctx_ticker_detail(ticker)
+        if th:
+            sections.append(th)
+
+    # RL / learning / agent trust questions
+    rl_kws = {
+        "rl", "reinforcement", "learning", "prediction", "accuracy", "weight",
+        "which agent", "trust", "pattern", "missed", "wrong", "correct",
+        "learn", "model", "forecast",
+    }
+    if any(kw in msg for kw in rl_kws):
+        rl = _ctx_rl_learning()
+        if rl:
+            sections.append(rl)
+
+    return "\n\n".join(sections) or "No analysis data yet — run a ticker analysis from the Home screen first."
+
+
+_CHAT_SYSTEM_PROMPT = """\
+You are StockAgent, a conversational AI for Indian stock market analysis.
+
+You specialise in the automobile sector (NSE/BSE) but can intelligently discuss ANY NSE/BSE-listed stock. \
+If asked about an unlisted or private company, clarify that and pivot to its market impact on listed peers.
+
+You have 9 specialist agents that run on analysed tickers:
+  Sales & Demand · Fundamentals · Pattern Analysis · Raw Materials · Sentiment
+  Policy & Regulatory · Competitive Intel · Risk & Macro · Valuation & Catalyst
+
+You also have an RL (Reinforcement Learning) memory that:
+  - Tracks which direction predictions were correct vs wrong each day
+  - Adjusts agent weights based on accuracy (agents that call it right earn more influence)
+  - Accumulates lessons from misses to avoid repeating the same errors
+
+When the user asks about "what we missed", "last week", "should we have bought X", \
+"which agent to trust" — use the data context below to give a specific, grounded answer \
+citing actual scores, dates, and RL accuracy numbers.
+
+Be direct, conversational, and insightful. 3–5 sentences. Cite specific data when available.
+
+{context}"""
+
+
 @router.post("/chat", summary="AI assistant chat reply")
 async def chat(body: dict) -> dict:
     """
-    Accepts {message: str, history?: [{role, content}]} and returns {reply: str}.
-    History is the last N turns from the frontend — passed directly to the LLM
-    so the assistant can refer back to prior context in the same session.
+    Accepts {message, history} and returns {reply}.
+    Context is dynamically enriched based on message intent:
+    - Always: current verdicts for all tracked tickers
+    - Time-based questions: last 14 days of analysis history
+    - Ticker mentioned: recent history + score delta for that ticker
+    - RL/learning questions: feedback accuracy + learned agent weights
     """
     message: str = (body.get("message") or "").strip()
     history: list = body.get("history") or []
     if not message:
-        return {"reply": "Please ask me something about Indian auto stocks."}
+        return {"reply": "Ask me anything — verdicts, what we missed last week, which agent to trust, or any NSE stock."}
 
-    try:
-        store     = _score_store()
-        db_latest = store.get_all_latest()
-        context_lines = [
-            f"{r['ticker']}: {r['verdict']} (score={float(r['final_score']):.2f})"
-            for r in db_latest
-        ]
-        ticker_context = "\n".join(context_lines) if context_lines else "No analyses run yet."
-    except Exception:
-        ticker_context = "No analyses available."
+    context = _build_chat_context(message)
+    system_prompt = _CHAT_SYSTEM_PROMPT.format(context=context)
 
-    system_prompt = (
-        "You are StockAgent, an AI assistant specialising in Indian automobile stocks listed on NSE. "
-        "You have 9 specialist agents: Sales & Demand, Fundamentals, Pattern Analysis, Raw Materials, "
-        "Sentiment, Policy & Regulatory, Competitive Intel, Risk & Macro, and Valuation & Catalyst. "
-        "Answer concisely (2-4 sentences max). Focus on Indian auto sector context (MARUTI, TATAMOTORS, M&M, etc.).\n\n"
-        f"Current verdicts from your agents:\n{ticker_context}"
-    )
-
-    # Build messages: system + conversation history + new user message
     messages: list[dict] = [{"role": "system", "content": system_prompt}]
-    for h in history[-6:]:  # cap at last 6 turns to control token usage
+    for h in history[-8:]:
         role = h.get("role", "")
         content = h.get("content", "")
         if role in ("user", "assistant") and content:
@@ -1217,8 +1355,8 @@ async def chat(body: dict) -> dict:
         resp = await client.chat.completions.create(
             model="qwen/qwen3-235b-a22b",
             messages=messages,
-            temperature=0.4,
-            max_tokens=256,
+            temperature=0.5,
+            max_tokens=400,
         )
         reply = resp.choices[0].message.content.strip()
     except Exception as exc:

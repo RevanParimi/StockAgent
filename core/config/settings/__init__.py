@@ -1,3 +1,5 @@
-﻿# Re-export everything from base so `from core.config import settings` keeps working.
-from core.config.settings.base import *  # noqa: F401, F403
-from core.config.settings import base    # noqa: F401  (allows `settings.LLM_MODEL` style)
+# ── MIGRATION SHIM ────────────────────────────────────────────────────────────
+# Real module: src/backend/shared/config/settings/
+# Keeps `from core.config import settings` and `from core.config.settings.base import *` working.
+from backend.shared.config.settings.base import *   # noqa: F401, F403
+from backend.shared.config.settings import base     # noqa: F401

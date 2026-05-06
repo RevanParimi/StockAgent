@@ -112,6 +112,8 @@ def _self_heal_rl() -> None:
                     ticker, cycle_id,
                 )
                 try:
+                    import time as _t
+                    _t.sleep(3)   # brief stagger so yfinance isn't burst-hit for 5 tickers at once
                     envelope = generate_forecast(ticker)
                     logger.info(
                         "[startup] Envelope generated: %s horizon=%dd base=₹%.2f",

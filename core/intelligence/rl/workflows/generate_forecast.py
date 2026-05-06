@@ -185,8 +185,19 @@ def generate_forecast(ticker: str, sector: str = "automobile") -> PredictionEnve
     orchestrator._aggregator_weights = effective_weights   # picked up in _run_aggregator
     report = orchestrator.analyse(ticker)
 
-    # Fetch actual baseline close
-    base_close = _fetch_actual_close(ticker) or report.final_score * 10000  # crude fallback
+    # Fetch actual baseline close — retry once on failure before raising
+    base_close = _fetch_actual_close(ticker)
+    if base_close is None:
+        import time as _time
+        logger.warning("[generate_forecast] yfinance failed for %s — retrying in 15s…", ticker)
+        _time.sleep(15)
+        base_close = _fetch_actual_close(ticker)
+    if base_close is None:
+        raise RuntimeError(
+            f"[generate_forecast] Cannot fetch base_close for {ticker} after retry. "
+            "yfinance may be rate-limited or NSE data unavailable. "
+            "Will retry on next scheduled run."
+        )
     logger.info("[generate_forecast] Base close for %s: ₹%.2f", ticker, base_close)
 
     # Load learning ledger for seasonal RL lesson merging (best-effort; non-fatal)

@@ -23,7 +23,7 @@ import logging
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
-from core.pipeline.orchestrator import AutomobileAgentOrchestrator
+from backend.sectors import detect_sector, get_orchestrator
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -55,7 +55,9 @@ async def stream(websocket: WebSocket, ticker: str = ""):
         event = json.dumps({"event": "agent_progress", "agent": agent_name, "score": round(score, 4)})
         queue.put_nowait(event)
 
-    orchestrator = AutomobileAgentOrchestrator()
+    sector = detect_sector(ticker)
+    OrchestratorClass = get_orchestrator(sector)
+    orchestrator = OrchestratorClass()
 
     async def run_pipeline() -> None:
         try:

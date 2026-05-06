@@ -1,348 +1,432 @@
 # Codebase Reference
 
 > Ground-truth map of every module, its real path, and its public API.
-> Updated: 2026-04-28 · reflects 4-folder restructure (core / services / frontend / tests)
+> Updated: 2026-05-06 · reflects Phases 0–4 refactor (src/ layout, 4 sectors, BaseSectorOrchestrator)
+> Previous structure at docs/CODEBASE.md (pre-refactor snapshot)
 
 ---
 
-## Directory Layout
+## Directory Layout (current — post Phase 0–4)
 
 ```
-StockAgent-main/
-├── main.py                              # CLI entry point: python main.py <ticker>
+StockAI-Main/
+├── main.py                          # CLI entry: python main.py <ticker>
 ├── requirements.txt
-├── langgraph.json                       # LangGraph graph registry (→ core/sectors/)
+├── pyproject.toml                   # pythonpath=[".", "src"] — both legacy + new imports work
+├── langgraph.json                   # sector graph registry → src/backend/sectors/*/pipeline/graph.py
+├── docs/                            # all .md documentation files
 │
-├── core/                                # All Python backend source
+├── src/                             # NEW home for all refactored Python
+│   └── backend/
+│       ├── shared/                  # cross-sector shared code
+│       │   ├── schemas/
+│       │   │   ├── pipeline.py      # StockQuery, AgentOutput, FinalReport, WeightedAgentScore, PipelineRun
+│       │   │   └── feedback.py      # ALL RL schemas (MissType, Lesson, WeightMemory, etc.)
+│       │   ├── pipeline/
+│       │   │   ├── base_agent.py    # BaseAgent ABC — sector-agnostic
+│       │   │   ├── base_orchestrator.py  # BaseSectorOrchestrator ABC (ticker resolve, LangGraph, RL weights, logging)
+│       │   │   ├── signal_aggregator.py  # SignalAggregator — weighted LLM fusion → FinalReport
+│       │   │   └── graphs/
+│       │   │       ├── nodes.py     # make_dispatch_fn, make_run_agent_node, make_aggregate_node
+│       │   │       ├── rails.py     # conflict_rail, input_rail, output_rail
+│       │   │       └── state.py     # GraphState
+│       │   ├── prompts/
+│       │   │   ├── orchestrator.py       # Ticker resolution prompt
+│       │   │   ├── signal_aggregator.py  # Verdict synthesis prompt
+│       │   │   └── feedback_agent.py     # RL miss analysis prompt
+│       │   ├── config/
+│       │   │   ├── settings/
+│       │   │   │   ├── base.py      # ALL shared constants: LLM, API keys, score thresholds
+│       │   │   │   └── __init__.py
+│       │   │   └── rag_config.py
+│       │   ├── data/                # ← WILL BE POPULATED IN PHASE 7
+│       │   │   ├── fetchers/        # (currently stubs — real files still at services/data/fetchers/)
+│       │   │   ├── stores/          # (currently stubs — real files still at services/data/stores/)
+│       │   │   └── cache/           # (currently stubs — real files still at services/data/cache/)
+│       │   └── clients/             # ← WILL BE POPULATED IN PHASE 7
+│       │                            # (currently stubs — real files still at services/clients/)
+│       │
+│       ├── sectors/
+│       │   ├── __init__.py          # detect_sector(ticker) → sector key; get_orchestrator(sector) → class
+│       │   │
+│       │   ├── automobile/          # ✅ FULLY IMPLEMENTED
+│       │   │   ├── agents/          # 9 files: sales_demand, fundamentals, raw_materials,
+│       │   │   │                    #   pattern_analysis, sentiment, policy_regulatory,
+│       │   │   │                    #   competitive_intel, risk_macro, valuation_catalyst
+│       │   │   ├── prompts/         # 9 matching prompt files with SYSTEM_PROMPT + ANALYSIS_PROMPT
+│       │   │   ├── schemas/
+│       │   │   │   └── sub_scores.py  # 9 sub-score Pydantic models (sector-specific dimensions)
+│       │   │   ├── config/
+│       │   │   │   ├── settings.py  # AGENT_WEIGHTS, TICKERS, PEER_TICKERS, data URLs
+│       │   │   │   └── registry.py  # AGENTS dict + WEIGHTS (9 instances)
+│       │   │   ├── data/
+│       │   │   │   ├── fetchers/    # vahan_fada.py stub (FADA/SIAM/Vahan fetcher — implement in Phase 7)
+│       │   │   │   └── context/
+│       │   │   │       └── builder.py  # AutomobileContextBuilder — 9 _build_* methods
+│       │   │   └── pipeline/
+│       │   │       ├── orchestrator.py  # AutomobileAgentOrchestrator(BaseSectorOrchestrator)
+│       │   │       └── graph.py         # LangGraph StateGraph for automobile
+│       │   │
+│       │   ├── banking_bfsi/        # ✅ SCAFFOLDED — prompts + agents ready, fetchers are stubs
+│       │   │   ├── agents/          # 6 files: fundamentals, risk, macro_policy, institutional,
+│       │   │   │                    #   pattern_analysis, universe_setup
+│       │   │   ├── prompts/         # 6 matching prompt files
+│       │   │   ├── schemas/
+│       │   │   │   └── sub_scores.py  # 6 sub-score models (NPA, NIM, CRAR, etc.)
+│       │   │   ├── config/
+│       │   │   │   ├── settings.py  # HDFC, ICICI, SBIN, KOTAKBANK, AXISBANK tickers; weights
+│       │   │   │   └── registry.py  # AGENTS dict (6 instances)
+│       │   │   ├── data/
+│       │   │   │   ├── fetchers/    # rbi_data.py + npa_metrics.py (stubs — implement in Phase 7)
+│       │   │   │   └── context/
+│       │   │   │       └── builder.py  # BankingBfsiContextBuilder — 6 _build_* methods
+│       │   │   └── pipeline/
+│       │   │       ├── orchestrator.py  # BankingAgentOrchestrator(BaseSectorOrchestrator)
+│       │   │       └── graph.py
+│       │   │
+│       │   ├── it_sector/           # ✅ SCAFFOLDED — prompts + agents ready, fetchers are stubs
+│       │   │   ├── agents/          # 8 files: fundamentals, global_macro, risk_macro, peer_benchmark,
+│       │   │   │                    #   pattern_analysis, sentiment, transcript_nlp, insider_smart_money
+│       │   │   ├── prompts/         # 8 matching prompt files
+│       │   │   ├── schemas/
+│       │   │   │   └── sub_scores.py  # 8 sub-score models (deal_wins, attrition, visa_risk, etc.)
+│       │   │   ├── config/
+│       │   │   │   ├── settings.py  # TCS, INFY, WIPRO, HCLTECH, TECHM, LTIM tickers; weights
+│       │   │   │   └── registry.py  # AGENTS dict (8 instances)
+│       │   │   ├── data/
+│       │   │   │   ├── fetchers/    # deal_wins.py + transcript.py (stubs — implement in Phase 7)
+│       │   │   │   └── context/
+│       │   │   │       └── builder.py  # ItSectorContextBuilder — 8 _build_* methods
+│       │   │   └── pipeline/
+│       │   │       ├── orchestrator.py  # ITAgentOrchestrator(BaseSectorOrchestrator)
+│       │   │       └── graph.py
+│       │   │
+│       │   └── renewable_energy/    # ✅ SCAFFOLDED — prompts + agents ready, fetchers are stubs
+│       │       ├── agents/          # 6 files: fundamentals, business, valuation, sentiment_policy,
+│       │       │                    #   technical, risk
+│       │       ├── prompts/         # 6 matching prompt files
+│       │       ├── schemas/
+│       │       │   └── sub_scores.py  # 6 sub-score models (CUF, DSCR, EV/MW, DISCOM, etc.)
+│       │       ├── config/
+│       │       │   ├── settings.py  # ADANIGREEN, TATAPOWER, TORNTPOWER tickers; weights
+│       │       │   └── registry.py  # AGENTS dict (6 instances)
+│       │       ├── data/
+│       │       │   ├── fetchers/    # mnre_data.py (stub — implement in Phase 7)
+│       │       │   └── context/
+│       │       │       └── builder.py  # Renewable_energyContextBuilder — 6 _build_* methods
+│       │       └── pipeline/
+│       │           ├── orchestrator.py  # RenewableAgentOrchestrator(BaseSectorOrchestrator)
+│       │           └── graph.py
+│       │
+│       ├── intelligence/            # ← WILL BE POPULATED IN PHASE 5
+│       │   ├── rl/
+│       │   │   ├── algorithms/      # EMPTY STUBS — extraction happens in Phase 5
+│       │   │   │   ├── weight_adaptation/  # bias_detector, hit_rate_tracker, penalty_calculator, weight_normalizer
+│       │   │   │   ├── conviction/         # streak_tracker, reversion_prior, rsi_divergence
+│       │   │   │   ├── forecast/           # envelope_builder, confidence_decay, price_interpolator
+│       │   │   │   └── feedback/           # miss_classifier, lesson_extractor, lesson_merger
+│       │   │   ├── agents/          # EMPTY STUBS — real files still at core/intelligence/rl/agents/
+│       │   │   ├── regime/
+│       │   │   │   └── signals/     # EMPTY STUBS — vix, fii_proxy, sector_rsi extraction in Phase 5
+│       │   │   ├── seasonal/
+│       │   │   │   └── seeds/       # EMPTY — YAML seed files created in Phase 5
+│       │   │   ├── calendar/        # EMPTY STUBS — nse_calendar + updater moved in Phase 5
+│       │   │   ├── stores/          # EMPTY STUBS — real files still at core/intelligence/rl/stores/
+│       │   │   └── workflows/       # EMPTY STUBS — real files still at core/intelligence/rl/workflows/
+│       │   ├── chat/                # ← WILL BE POPULATED IN PHASE 6
+│       │   │   ├── engine.py        # (STUB — chat logic extracted in Phase 6)
+│       │   │   ├── context/         # ticker_context.py + history_context.py
+│       │   │   ├── algorithms/      # intent_detector.py + entity_extractor.py
+│       │   │   └── prompts/         # system.py
+│       │   ├── rag/                 # (still at core/intelligence/rag/ — move in later phase)
+│       │   └── technical/           # (still at core/intelligence/algorithms/ — move in later phase)
+│       │
+│       ├── api/                     # ← WILL BE POPULATED IN PHASE 7
+│       │   └── routes/              # (stubs — real files still at services/api/routes/)
+│       │
+│       └── scheduler/               # ← WILL BE POPULATED IN PHASE 7
+│           └── python/              # (stubs — real files still at services/scheduler/)
+│
+├── core/                            # LEGACY — being emptied phase by phase
+│   │                                # Every file here is now a SHIM that re-exports from src/
+│   ├── schemas/
+│   │   ├── pipeline.py              # SHIM → src/backend/shared/schemas/pipeline.py
+│   │   └── feedback.py              # SHIM → src/backend/shared/schemas/feedback.py
 │   ├── config/
 │   │   ├── settings/
-│   │   │   ├── base.py                  # ALL settings/constants (LLM, weights, API keys, limits)
-│   │   │   └── __init__.py              # re-exports base.py so `from core.config import settings` works
-│   │   ├── rag_config.py                # shim → core/intelligence/rag/config.py
-│   │   ├── prompts/
-│   │   │   ├── automobile/              # 9 prompt files (one per agent)
-│   │   │   └── shared/                  # orchestrator.py, signal_aggregator.py, feedback_agent.py
-│   │   └── weights/                     # (stub — future learned weights)
-│   │
-│   ├── graphs/                          # LangGraph infrastructure
-│   │   ├── nodes.py                     # make_dispatch_fn, make_run_agent_node
-│   │   ├── rails.py                     # input_rail, output_rail, conflict_rail
-│   │   └── state.py                     # GraphState
-│   │
+│   │   │   ├── base.py              # SHIM → src/backend/shared/config/settings/base.py
+│   │   │   └── __init__.py          # SHIM
+│   │   ├── rag_config.py            # SHIM → src/backend/shared/config/rag_config.py
+│   │   └── prompts/
+│   │       ├── automobile/          # SHIMS → src/backend/sectors/automobile/prompts/
+│   │       └── shared/              # real files (orchestrator, signal_aggregator, feedback_agent)
+│   ├── graphs/
+│   │   ├── nodes.py                 # SHIM → src/backend/shared/pipeline/graphs/nodes.py
+│   │   ├── rails.py                 # SHIM → src/backend/shared/pipeline/graphs/rails.py
+│   │   └── state.py                 # SHIM → src/backend/shared/pipeline/graphs/state.py
 │   ├── pipeline/
-│   │   ├── base_agent.py                # BaseAgent ABC — run(), run_async(), _gather_context()
-│   │   ├── orchestrator.py              # AutomobileAgentOrchestrator — runs 9 agents in parallel
-│   │   └── signal_aggregator.py         # SignalAggregator — weighted score → FinalReport
-│   │
-│   ├── schemas/
-│   │   ├── pipeline.py                  # ALL Pydantic models (StockQuery, AgentOutput subtypes, FinalReport)
-│   │   └── feedback.py                  # RL schemas: MissType, LessonScope, TimingAccuracy, RevisedContext, etc.
-│   │
+│   │   ├── base_agent.py            # SHIM → src/backend/shared/pipeline/base_agent.py
+│   │   ├── orchestrator.py          # SHIM → src/backend/sectors/automobile/pipeline/orchestrator.py
+│   │   └── signal_aggregator.py     # SHIM → src/backend/shared/pipeline/signal_aggregator.py
 │   ├── sectors/
-│   │   ├── automobile/                  # 9 agent classes + graph.py (registered in langgraph.json)
-│   │   ├── banking/                     # stub agents (agents.py, graph.py)
-│   │   ├── it/                          # stub agents
-│   │   └── renewable/                   # stub agents
-│   │
-│   ├── intelligence/
-│   │   ├── algorithms/indicators/
-│   │   │   └── fetcher.py               # get_technical_context(), RSI/MACD/BB/support
-│   │   ├── rag/
-│   │   │   ├── config.py                # RAG_ENABLED=false by default
-│   │   │   ├── core/embedder.py         # SentenceTransformer embeddings
-│   │   │   ├── core/retriever.py        # ChromaDB / Pinecone / Qdrant
-│   │   │   ├── core/vector_store.py     # Store management
-│   │   │   └── ingestion/ingestion.py   # Ingest PDFs, earnings transcripts
-│   │   └── rl/
-│   │       ├── agents/feedback_agent.py   # 6th agent — daily root-cause LLM call
-│   │       ├── agents/weight_adapter.py   # Deterministic weight adjustment (no LLM)
-│   │       ├── stores/prediction_store.py # Reads/writes all 4 JSON memory files
-│   │       └── workflows/
-│   │           ├── daily_review.py        # Cron entry point — 8-step daily feedback loop
-│   │           └── generate_forecast.py   # Month-start — generates 30-day prediction envelope
-│   │
-│   └── scripts/
-│       ├── make_ppt.py                  # Generate PowerPoint from final report
-│       └── sanity_rl.py                 # Layered RL smoke tests (run: python -m core.scripts.sanity_rl)
+│   │   ├── automobile/
+│   │   │   ├── {agents}.py          # SHIMS → src/backend/sectors/automobile/agents/
+│   │   │   ├── graph.py             # SHIM → src/backend/sectors/automobile/pipeline/graph.py
+│   │   │   └── registry.py          # SHIM → src/backend/sectors/automobile/config/registry.py
+│   │   ├── banking/agents.py        # SHIM → src/backend/sectors/banking_bfsi/config/registry.py
+│   │   ├── it/agents.py             # SHIM → src/backend/sectors/it_sector/config/registry.py
+│   │   └── renewable/agents.py      # SHIM → src/backend/sectors/renewable_energy/config/registry.py
+│   └── intelligence/                # REAL FILES — not yet moved (Phase 5 target)
+│       ├── rl/
+│       │   ├── agents/              # feedback_agent.py, weight_adapter.py  ← Phase 5
+│       │   ├── conviction/          # tracker.py  ← Phase 5
+│       │   ├── stores/              # prediction_store.py, ledger_propagator.py  ← Phase 5
+│       │   ├── workflows/           # generate_forecast.py, daily_review.py  ← Phase 5
+│       │   ├── nse_calendar.py      # ← Phase 5
+│       │   └── calendar_updater.py  # ← Phase 5
+│       ├── regime/detector.py       # ← Phase 5
+│       ├── seasonal/                # calendar.py, validator.py  ← Phase 5
+│       ├── rag/                     # ← later phase
+│       └── algorithms/              # ← later phase
 │
-├── services/
-│   ├── api/                             # FastAPI — port 8001 INTERNAL
-│   │   ├── server.py                    # app + CORS (only allows :3000) + health endpoint
+├── services/                        # LEGACY — being emptied phase by phase
+│   ├── api/
+│   │   ├── server.py                # real — lifespan, startup self-heal, BackgroundScheduler
 │   │   └── routes/
-│   │       ├── analyse.py               # POST /analyse
-│   │       ├── stream.py                # WS /ws/stream?ticker=X
-│   │       └── history.py               # GET /history/{ticker}[/latest]
-│   ├── gateway/                         # TypeScript gateway — port 3000 (public-facing)
-│   │   └── src/
-│   │       ├── index.ts                 # Hono app + Bun.serve
-│   │       ├── routes/                  # analyse, history, health, scheduler
-│   │       ├── ws/stream.ts             # Bidirectional WS proxy → :8001/ws/stream
-│   │       └── jobs/analysis-cron.ts    # node-cron 8:30am IST → POST each ticker
-│   ├── clients/
-│   │   ├── llm_client.py               # get_llm_client(), get_async_llm_client() → OpenRouter
-│   │   └── tavily_fetcher.py           # search_tavily(), fetch_tavily_context()
+│   │       ├── analyse.py           # UPDATED — sector auto-detect via detect_sector()
+│   │       ├── stream.py            # UPDATED — sector routing applied
+│   │       ├── history.py           # real
+│   │       ├── scheduler_api.py     # real
+│   │       └── ui_data.py           # real — /ui/* endpoints + /ui/chat  ← Phase 6 extracts chat
+│   ├── clients/                     # real — llm_client.py, tavily_fetcher.py, alerting.py  ← Phase 7
 │   ├── data/
-│   │   ├── cache/macro_cache.py        # set/get/clear_macro_cache(sector) — in-memory
-│   │   ├── context/builder.py          # ContextBuilder.build(agent_name, query) → str
-│   │   ├── fetchers/
-│   │   │   ├── fundamentals.py         # get_financials(), get_fundamentals_context()
-│   │   │   ├── macro.py                # get_macro_context(), get_raw_materials_context()
-│   │   │   └── news.py                 # search_serper(), fetch_news_context()
-│   │   └── stores/
-│   │       ├── analysis_logger.py      # log_analysis() → logs/analysis_history.jsonl
-│   │       ├── api_usage.py            # record_call(), get_usage(), monthly counters
-│   │       ├── run_logger.py           # log_llm_call(), log_run_summary()
-│   │       └── score_store.py          # SQLite score persistence for RL loop
-│   ├── scheduler/
-│   │   ├── python/scheduler.py         # APScheduler — RL daily review (4:30pm IST weekdays)
-│   │   └── run_schedule.py             # CLI: forecast / daily-review / feedback-status / start
-│   ├── csharp/                          # C# Quartz.NET scheduler (Phase 4)
-│   └── typescript/                      # TypeScript helpers
-│
-├── frontend/                            # React 19 + Vite — port 5173
-│   └── vite.config.ts                   # /api → :3000, /ws → :3000 (both via TS gateway)
+│   │   ├── fetchers/                # real — fundamentals.py, macro.py, news.py  ← Phase 7
+│   │   ├── stores/                  # real — score_store.py, run_logger.py, analysis_logger.py, api_usage.py  ← Phase 7
+│   │   ├── cache/                   # real — macro_cache.py  ← Phase 7
+│   │   └── context/builder.py       # real — ContextBuilder (all sectors _build_* methods)  ← Phase 7
+│   └── scheduler/                   # real — python/scheduler.py + run_schedule.py  ← Phase 7
 │
 └── tests/
-    ├── unit/                            # Pure logic tests (no network/LLM)
-    ├── integration/                     # Tests that hit local services (RAG, data fetchers)
-    └── contract/                        # Cross-layer wiring tests (import paths, schema compat)
-```
-
-> **Runtime folders** (`data/`, `logs/`, `outputs/`) are created at runtime and gitignored.
-> `data/predictions/<sector>/<ticker>/` holds all 4 RL JSON memory files.
-
----
-
-## Runtime Architecture
-
-```
-Browser :5173 (Vite dev)
-    │  /api/*  →  proxy  →  :3000
-    │  /ws/*   →  proxy  →  :3000
-    ▼
-TypeScript Gateway (Bun + Hono)  :3000  — services/gateway/src/index.ts
-    │  POST /api/analyse        → HTTP POST  :8001/analyse
-    │  GET  /api/history/*      → HTTP GET   :8001/history/*
-    │  GET  /health             → HTTP GET   :8001/health
-    │  GET  /api/scheduler/status
-    │  POST /api/scheduler/run-now
-    │  WS   /ws/stream          → WS proxy   :8001/ws/stream
-    │  cron "30 8 * * 1-5" IST  → POST :8001/analyse per ticker
-    ▼
-Python FastAPI (internal)  :8001  — services/api/server.py
-    │  POST /analyse  →  AutomobileAgentOrchestrator
-    │  WS   /ws/stream
-    │  GET  /history/*  →  ScoreStore (SQLite → data/scores.db)
-
-Python APScheduler  — services/scheduler/python/scheduler.py
-    RL daily review only — weekdays 4:30pm IST (11:00 UTC)
-    Imports core.intelligence.rl directly; cannot be an HTTP call.
-```
-
-**Start order:**
-```bash
-bun run services/gateway/src/index.ts           # TS gateway :3000
-uvicorn services.api.server:app --port 8001     # Python internal :8001
-python services/scheduler/python/scheduler.py   # RL review job
-cd frontend && npm run dev                      # Vite :5173
+    ├── unit/                        # 323 tests — all pass
+    ├── integration/
+    └── contract/
 ```
 
 ---
 
-## Key Settings (`core/config/settings/base.py`)
+## Sector Registry (`src/backend/sectors/__init__.py`)
 
 ```python
-LLM_MODEL            = "qwen/qwen3-235b-a22b"        # override via LLM_MODEL env var
-OPENROUTER_BASE_URL  = "https://openrouter.ai/api/v1"
-AGENT_TIMEOUT_SECONDS = 120
-SERPER_MAX_QUERIES   = 3
-NEWS_ARTICLES_PER_QUERY = 5
-PRICE_HISTORY_YEARS  = 10
+detect_sector("HDFCBANK")   → "banking_bfsi"
+detect_sector("TCS")        → "it_sector"
+detect_sector("ADANIGREEN") → "renewable_energy"
+detect_sector("MARUTI")     → "automobile"   # default fallback
 
-AGENT_WEIGHTS = {                  # must sum to 1.0
-    "sales_demand":       0.16,
-    "raw_materials":      0.09,
-    "fundamentals":       0.18,
-    "pattern_analysis":   0.12,
-    "sentiment":          0.04,
-    "policy_regulatory":  0.09,
-    "competitive_intel":  0.09,
-    "risk_macro":         0.13,
-    "valuation_catalyst": 0.10,
-}
+get_orchestrator("banking_bfsi")    → BankingAgentOrchestrator
+get_orchestrator("it_sector")       → ITAgentOrchestrator
+get_orchestrator("renewable_energy")→ RenewableAgentOrchestrator
+get_orchestrator("automobile")      → AutomobileAgentOrchestrator
+```
 
-SCORE_THRESHOLDS = {
-    "strong_buy":  (0.75, 1.00),
-    "buy":         (0.55, 0.75),
-    "neutral":     (0.40, 0.55),
-    "sell":        (0.20, 0.40),
-    "strong_sell": (0.00, 0.20),
-}
+**POST /analyse** and **WS /ws/stream** both call `detect_sector(ticker)` automatically. Pass `sector` in the request body to override.
 
-# Phase 5/6 RL settings
-PREDICTION_DATA_DIR    = "data/predictions"
-FORECAST_HORIZON_DAYS  = 30
-WEIGHT_MIN_OBSERVATIONS = 3      # days before weight adaptation activates
-WEIGHT_ACCURACY_WINDOW  = 7      # rolling window for direction accuracy
-WEIGHT_MAX_STEP         = 0.05
-WEIGHT_MAX_DRIFT        = 0.15
-FEEDBACK_CRON           = "0 11 * * 1-5"   # 4:30pm IST = 11:00 UTC weekdays
+---
+
+## BaseSectorOrchestrator (`src/backend/shared/pipeline/base_orchestrator.py`)
+
+All 4 sector orchestrators extend this. It handles:
+1. `_resolve_ticker()` — LLM + Serper fallback → `StockQuery`
+2. `_load_learned_weights()` — loads `WeightMemory` from RL store per ticker
+3. `analyse()` / `analyse_async()` — full pipeline: resolve → agents → aggregate → log
+4. `_run_via_graph()` / `_run_via_graph_async()` — LangGraph worker pool dispatch
+
+Sector orchestrators only define:
+- `SECTOR_NAME: str`
+- `self._sub_agents: dict`  (set before `super().__init__()`)
+
+---
+
+## Agent Pipeline (per sector)
+
+```
+POST /analyse or WS /ws/stream
+    ↓
+detect_sector(ticker) → OrchestratorClass
+    ↓
+BaseSectorOrchestrator.analyse_async(ticker)
+    1. _resolve_ticker() → StockQuery
+    2. _load_learned_weights(ticker) → dict | None   [from RL WeightMemory]
+    3. LangGraph worker pool → N agents run in PARALLEL
+         BaseAgent.run(query)
+           _gather_context() → sector ContextBuilder.build(agent_name, query)
+           _build_prompt()   → (system, user) from sector prompts/
+           _call_llm()       → OpenRouter JSON
+           _parse_output()   → AgentOutput subtype
+    4. SignalAggregator.run(learned_weights) → FinalReport
+    5. log_run_summary, log_usage, log_analysis
 ```
 
 ---
 
 ## Schemas
 
-### `core/schemas/pipeline.py` — Analysis pipeline models
-
+### `src/backend/shared/schemas/pipeline.py`
 ```
-StockQuery(ticker, company_name, exchange="NSE", analysis_date=today)
-
-AgentOutput:
-  agent, ticker, overall_score (0-1), key_positives[], key_risks[],
-  summary, data_freshness, error, raw_llm_response (excluded from serialisation)
-
-FinalReport:
-  ticker, company_name, final_score, verdict  # STRONG BUY|BUY|NEUTRAL|SELL|STRONG SELL
-  weighted_agent_scores {agent: WeightedAgentScore(raw, weight, weighted)}
-  conflicts_resolved[], conviction_drivers[], top_risks[], investment_thesis, report_date
-  price_target, recovery_timeline_quarters, undervalued_by_pct,
-  discount_reason, recovery_catalysts[]
-  agent_outputs {agent_name: dict}
+StockQuery(ticker, company_name, exchange, analysis_date)
+AgentOutput — base: agent, ticker, overall_score, key_positives, key_risks, summary, data_freshness, error
+FinalReport — ticker, company_name, final_score, verdict, weighted_agent_scores, conflicts_resolved,
+              conviction_drivers, top_risks, executive_summary, investment_thesis, report_date,
+              price_target, recovery_timeline_quarters, undervalued_by_pct, discount_reason,
+              recovery_catalysts, agent_outputs
+WeightedAgentScore — raw, weight, weighted
+PipelineRun — run_id, query, report, status, duration_seconds, errors
 ```
 
-### `core/schemas/feedback.py` — RL feedback loop models
-
+### `src/backend/shared/schemas/feedback.py`
 ```
-MissType            data_gap | data_stale | external_shock (0× penalty)
-                    timing (0.5×) | magnitude (0.25×)
-                    model_bias | direction_flip (1.0×)
-
-LessonScope         stock_specific | sector_wide | market_wide
-
-LessonCategory      macro | global_macro | technical | sentiment
-                    fundamental | seasonal | data_availability
-
-TimingAccuracy      predicted_peak_day, actual_move_start_day, lag_days, assessment
-
-RevisedContext      headline, risks_next_7_days[], catalysts_next_7_days[],
-                    watch_signals[], horizon_confidence_adjustment
-
-PredictionEnvelope  30-day forecast sheet (one per cycle, per ticker)
-DailyFeedbackLog    daily miss analysis entries (one per cycle, per ticker)
-WeightMemory        earned agent credibility — PERSISTS across cycles
-LearningLedger      accumulated pattern lessons — PERSISTS across cycles
+MissType — data_gap | data_stale | external_shock (0×) | timing (0.5×) | magnitude (0.25×)
+           model_bias | direction_flip (1.0×)
+LessonScope — stock_specific | sector_wide | market_wide
+PredictionEnvelope — 30-day forecast sheet per cycle per ticker
+DailyFeedbackLog — daily miss analysis entries per cycle
+WeightMemory — learned agent weights + audit trail — PERSISTS across cycles
+LearningLedger — accumulated pattern lessons — PERSISTS across cycles
+ConvictionStreak — current_verdict, streak_days, reversion_prior (0–0.30)
+RegimeSnapshot — regime_label (6 states), multipliers, narrative
+SeasonalPattern — months, day_range, agents_affected deltas, confidence
 ```
 
----
+### Sector-specific sub-scores (`src/backend/sectors/{sector}/schemas/sub_scores.py`)
 
-## 9 Agents — Execution & Data Sources
-
-| Agent | Class file | Prompt file | Primary data |
-|---|---|---|---|
-| sales_demand | `core/sectors/automobile/sales_demand.py` | `core/config/prompts/automobile/sales_demand.py` | Serper news |
-| raw_materials | `core/sectors/automobile/raw_materials.py` | `core/config/prompts/automobile/raw_materials.py` | yfinance (SLX, AA, PPLT, CL=F) + Serper |
-| fundamentals | `core/sectors/automobile/fundamentals.py` | `core/config/prompts/automobile/fundamentals.py` | yfinance financials + Serper |
-| pattern_analysis | `core/sectors/automobile/pattern_analysis.py` | `core/config/prompts/automobile/pattern_analysis.py` | yfinance OHLCV → RSI/MACD/BB |
-| sentiment | `core/sectors/automobile/sentiment.py` | `core/config/prompts/automobile/sentiment.py` | Serper news |
-| policy_regulatory | `core/sectors/automobile/policy_regulatory.py` | `core/config/prompts/automobile/policy_regulatory.py` | Tavily + Serper |
-| competitive_intel | `core/sectors/automobile/competitive_intel.py` | `core/config/prompts/automobile/competitive_intel.py` | Serper news |
-| risk_macro | `core/sectors/automobile/risk_macro.py` | `core/config/prompts/automobile/risk_macro.py` | yfinance macro + Serper + macro_cache |
-| valuation_catalyst | `core/sectors/automobile/valuation_catalyst.py` | `core/config/prompts/automobile/valuation_catalyst.py` | Serper + fundamentals |
-
----
-
-## Data Flow (per run)
-
-```
-main.py → AutomobileAgentOrchestrator.analyse(ticker)
-  1. _resolve_ticker()      → LLM → StockQuery(ticker, company_name, exchange)
-  2. LangGraph worker pool  → 9 agents run in PARALLEL
-       BaseAgent.run(query)
-         _gather_context() → ContextBuilder.build() → fetchers
-         _build_prompt()   → (system_prompt, user_prompt)
-         _call_llm_with_retry() → OpenRouter → JSON string
-         _parse_output()   → AgentOutput subtype
-         log_llm_call()    → logs/agent_calls.jsonl
-  3. SignalAggregator.run()
-       weighted_scores → composite → LLM → FinalReport
-  4. log_run_summary()      → logs/run_summaries.jsonl
-  5. log_usage_summary()    → logs/api_usage.json
-```
-
----
-
-## RL Feedback Loop — Data Files
-
-```
-data/predictions/
-  <sector>/
-    <TICKER>/
-      <TICKER>_<YYYY-MM>_prediction_envelope.json   ← monthly (archived each cycle)
-      <TICKER>_<YYYY-MM>_daily_feedback_log.json    ← monthly (archived each cycle)
-      <TICKER>_agent_weight_memory.json             ← PERMANENT (persists across cycles)
-      <TICKER>_learning_ledger.json                 ← PERMANENT (persists across cycles)
-```
-
-**CLI commands:**
-```bash
-python -m services.scheduler.run_schedule forecast --ticker MARUTI
-python -m services.scheduler.run_schedule daily-review --ticker MARUTI
-python -m services.scheduler.run_schedule feedback-status --ticker MARUTI
-python -m services.scheduler.run_schedule start          # full daemon
-```
-
----
-
-## ContextBuilder Routing (`services/data/context/builder.py`)
-
-Lookup: `_build_{sector}_{agent_name}` → `_build_{agent_name}` → `_build_generic`
-
-| Method | Fetchers called |
+| Sector | Sub-score models |
 |---|---|
-| `_build_sales_demand` | `fetch_news_context(queries)` |
-| `_build_fundamentals` | `get_fundamentals_context(ticker)` + `fetch_news_context()` |
-| `_build_pattern_analysis` | `get_technical_context(ticker)` → RSI, MACD, BB, support/resistance |
-| `_build_sentiment` | `fetch_news_context(queries)` |
-| `_build_risk_macro` | `get_macro_context()` + macro_cache |
-| `_build_raw_materials` | `get_raw_materials_context()` + `fetch_news_context(max_queries=1)` |
-| `_build_policy_regulatory` | `fetch_tavily_context()` + `fetch_news_context()` |
-| `_build_competitive_intel` | `fetch_news_context(queries)` |
-| `_build_valuation_catalyst` | ⚠ not implemented → falls back to `_build_generic` |
+| automobile | SalesDemandSubScores, FundamentalsSubScores, PatternAnalysisSubScores, SentimentSubScores, RiskMacroSubScores, RawMaterialsSubScores, PolicyRegulatorySubScores, CompetitiveIntelSubScores, ValuationCatalystSubScores |
+| banking_bfsi | BFSIFundamentalsAgentSubScores, BFSIRiskAgentSubScores, BFSIMacroPolicyAgentSubScores, BFSIInstitutionalAgentSubScores, BFSIPatternAgentSubScores, BFSIUniverseAgentSubScores |
+| it_sector | ITFundamentalsAgentSubScores, ITGlobalMacroAgentSubScores, ITRiskMacroAgentSubScores, ITPeerBenchmarkAgentSubScores, ITPatternAgentSubScores, ITSentimentAgentSubScores, ITTranscriptNLPAgentSubScores, ITInsiderAgentSubScores |
+| renewable_energy | REFundamentalsAgentSubScores, REBusinessAgentSubScores, REValuationAgentSubScores, RESentimentPolicyAgentSubScores, RETechnicalAgentSubScores, RERiskAgentSubScores |
 
 ---
 
-## Logs & Observability
+## RL Feedback Loop (core/intelligence/rl/ — Phase 5 target)
 
-| File | Written by | Content |
+### 4 Persistent Files per Ticker
+```
+data/predictions/{sector}/{TICKER}/
+  {TICKER}_{YYYY-MM}_prediction_envelope.json    ← monthly; archived each cycle
+  {TICKER}_{YYYY-MM}_daily_feedback_log.json     ← monthly; archived each cycle
+  {TICKER}_agent_weight_memory.json              ← PERMANENT across cycles
+  {TICKER}_learning_ledger.json                  ← PERMANENT across cycles
+```
+
+### Daily Review Flow (8 steps)
+```
+APScheduler 4:30pm IST weekdays → run_daily_review(ticker, date)
+  1. Load PredictionEnvelope + today's forecast row
+  2. Fetch actual close (yfinance)
+  3. Compute error metrics (price_error_pct, direction_correct, timing_lag)
+  4. P4 PromptEnhancer: load saved blindspots → inject into FeedbackAgentInput
+  5. FeedbackAgent.run() → miss_type, primary_miss_agent, new_lessons, revised_context
+  6. WeightAdapter.update() → WeightMemory v(N+1) [deterministic, no LLM]
+  6.5 (ephemeral) RegimeDetector → apply regime multipliers to today's weights only
+  7. ConvictionTracker → update streak + reversion_prior
+  8. Revise remaining forecasts (confidence × (1 - reversion_prior × 0.5))
+  9. Merge new lessons → LearningLedger → propagate to sector/market ledgers
+  9.5 SeasonalValidator → feed result back to LearningLedger (invalidate/boost)
+```
+
+### Regime Multiplier Design (intentionally ephemeral)
+Regime adjustments are NOT persisted to WeightMemory. They reflect short-term market
+conditions that flip within days. Baking them in would contaminate long-term accuracy.
+Applied to Step 7 (forecast revision) then discarded.
+
+---
+
+## Sector Agent Counts + Weights
+
+| Sector | Agents | Key weights |
 |---|---|---|
-| `logs/agent_calls.jsonl` | `run_logger.log_llm_call()` | per-LLM-call: tokens, cost, score, duration |
-| `logs/run_summaries.jsonl` | `run_logger.log_run_summary()` | per-run: verdict, score, agent_scores, errors |
-| `logs/api_usage.json` | `api_usage.record_call()` | monthly Serper/Tavily counter (auto-resets) |
-| `logs/analysis_history.jsonl` | `analysis_logger.log_analysis()` | full report archive |
+| automobile | 9 | fundamentals 0.18, sales_demand 0.15, risk_macro 0.13 |
+| banking_bfsi | 6 | fundamentals 0.25, risk 0.20, macro_policy 0.20 |
+| it_sector | 8 | fundamentals 0.25, global_macro 0.20, risk_macro 0.15 |
+| renewable_energy | 6 | fundamentals 0.30, business 0.25, valuation 0.20 |
 
 ---
 
-## .env Variables
+## API Endpoints (current — post Phase 0–4)
 
-| Variable | Required | Purpose |
+### Analysis
+| Method | Path | Notes |
 |---|---|---|
-| `OPENROUTER_API_KEY` | Yes | LLM inference |
-| `SERPER_API_KEY` | Yes | Google search (2,500/month free) |
-| `TAVILY_API_KEY` | Yes | Full-page extraction — policy agent (1,000/month free) |
-| `NEWSAPI_KEY` | No | Fallback when Serper fails (100/day free) |
-| `LLM_MODEL` | No | Default `qwen/qwen3-235b-a22b` |
-| `AGENT_TIMEOUT_SECONDS` | No | Default 120s |
-| `SERPER_MONTHLY_LIMIT` | No | Default 2500 |
-| `TAVILY_MONTHLY_LIMIT` | No | Default 1000 |
+| `POST` | `/analyse` | Body: `{ticker, sector?, output_format?}`. Sector auto-detected if omitted. |
+| `WS` | `/ws/stream?ticker=X` | Sector auto-detected. Streams `agent_progress` events + `complete`. |
+
+### History
+| Method | Path | Notes |
+|---|---|---|
+| `GET` | `/history/{ticker}` | SQLite score history. |
+| `GET` | `/history/{ticker}/latest` | Most recent FinalReport for ticker. |
+
+### UI Data (`/ui/*`)
+| Method | Path | Notes |
+|---|---|---|
+| `GET` | `/ui/bootstrap` | All UI data in one shot. |
+| `PUT` | `/ui/agents/weights` | Persist user-tuned weights. |
+| `GET/PUT` | `/ui/agents/tasks` | Persist task enabled/disabled flags. |
+| `GET/PUT` | `/ui/watchlist` | With live yfinance prices on GET. |
+| `GET` | `/ui/nifty-ranges?range=` | Sparkline data (1W/1M/3M/6M/1Y). |
+| `GET` | `/ui/search?q=` | 16 tickers + DB theses + yfinance fallback. |
+| `GET` | `/ui/trending` | Score-delta movers from DB. |
+| `GET` | `/ui/learnings` | RL-derived lesson cards. |
+| `POST` | `/ui/chat` | LLM chat with conversation history. ← Phase 6 extracts to chat engine. |
+| `GET/PUT` | `/ui/categories/{key}/tickers` | Category stock management. |
+
+### Scheduler
+| Method | Path | Notes |
+|---|---|---|
+| `GET` | `/scheduler/status` | Job list + last run times. |
+| `POST` | `/scheduler/forecast` | Trigger manual forecast generation. |
+| `POST` | `/scheduler/daily-review` | Trigger manual daily review. |
+| `GET` | `/health` | Railway health check. |
 
 ---
 
-## Known Issues
+## Key Settings (`src/backend/shared/config/settings/base.py`)
 
-1. **Newly-listed stocks** (e.g. ATHERENERGY): yfinance `.NS` returns 404 — fundamentals and pattern_analysis fall back to LLM hallucination. No fix; add manual ticker override.
-2. **RBI repo rate**: hardcoded static value in `services/data/fetchers/macro.py:get_rbi_repo_rate()` — update manually or wire RBI API.
-3. **Sector mismatch**: Orchestrator always runs automobile agents regardless of ticker sector. Sector routing not implemented.
-4. **valuation_catalyst context**: `_build_valuation_catalyst` missing in `services/data/context/builder.py` — falls back to generic stub.
-5. **Token tracking**: `log_run_summary()` called with `total_tokens=0` hardcoded — per-agent tokens in `agent_calls.jsonl` but not summed into summary.
-6. **Rubber ticker** (`^TOCOM_RUBBER`): not reliably available on yfinance — fails silently.
+```python
+LLM_MODEL            = "qwen/qwen3-235b-a22b"
+OPENROUTER_BASE_URL  = "https://openrouter.ai/api/v1"
+AGENT_TIMEOUT_SECONDS = 120
+YFINANCE_SUFFIX      = ".NS"
+SCORE_DB_PATH        = "data/scores.db"
+PREDICTION_DATA_DIR  = "data/predictions"
+FORECAST_HORIZON_DAYS = 30
+FEEDBACK_CRON        = "0 11 * * 1-5"   # 4:30pm IST weekdays
+RL_FLAT_THRESHOLD_PCT = 0.3              # configurable direction threshold
+```
+
+---
+
+## Shim Convention (backward compatibility during migration)
+
+Every file that has been moved leaves a shim at the old path:
+```python
+# -- MIGRATION SHIM --
+# Real: src/backend/shared/schemas/pipeline.py
+from backend.shared.schemas.pipeline import *  # noqa: F401, F403
+from backend.shared.schemas.pipeline import FinalReport, ...  # explicit re-exports
+```
+
+This means all `from core.schemas.pipeline import ...` statements in tests and legacy code
+continue to work without modification throughout the migration.
+
+---
+
+## Known Issues (from CODEBASE.md pre-refactor)
+
+1. **Newly-listed stocks** (ATHERENERGY): yfinance `.NS` returns 404 — agents fall back to LLM hallucination.
+2. **RBI repo rate**: hardcoded static value in `services/data/fetchers/macro.py` — update manually or wire RBI API.
+3. **valuation_catalyst context**: `_build_valuation_catalyst` in `services/data/context/builder.py` imports from `tools.yfinance_fetcher` which may not exist — verify path.
+4. **Banking/IT/Renewable sector fetcher stubs**: `rbi_data.py`, `npa_metrics.py`, `deal_wins.py`, `transcript.py`, `mnre_data.py` are stubs that raise `NotImplementedError` — implement in Phase 7.
+5. **NSE holidays 2026**: preliminary dates hardcoded — exact dates update via `calendar_updater.py` on Dec 31.
+6. **Seasonal seed YAMLs**: `src/backend/intelligence/rl/seasonal/seeds/` directory exists but all 4 YAML files are empty — populate in Phase 5.
+7. **Phase 7 shims pending removal**: ~30 shims across `core/` and `services/` will be deleted in Phase 7 once all imports updated.

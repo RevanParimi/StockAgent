@@ -164,7 +164,7 @@ def _micro_search_loop() -> None:
     Each cache HIT saves 3 Serper calls per stock analysis:
         At 5 tickers/day across 3 sectors: 3 × 5 × 3 sectors × 22 days = 990 calls/month saved
     """
-    from core.config import settings
+    from backend.shared.config import settings
     from services.data.fetchers.news import fetch_news_context
     from services.data.cache.macro_cache import set_macro_cache
 
@@ -284,13 +284,15 @@ def main() -> None:
         time.sleep(2)
 
     # Lazy import here so logging is configured first
-    from core.pipeline.orchestrator import AutomobileAgentOrchestrator
+    from backend.sectors import detect_sector, get_orchestrator  # sector-aware routing
 
     logger = logging.getLogger(__name__)
     logger.info("Starting Automobile Agent for: %s", args.ticker)
 
     try:
-        orchestrator = AutomobileAgentOrchestrator()
+        sector = detect_sector(args.ticker)
+        OrchestratorClass = get_orchestrator(sector)
+        orchestrator = OrchestratorClass()
         report = orchestrator.analyse(args.ticker)
     except Exception as exc:
         logger.error("Pipeline failed: %s", exc, exc_info=True)

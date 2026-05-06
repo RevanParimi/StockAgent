@@ -19,9 +19,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Note: config/ lives inside core/ — no separate top-level config dir
 COPY core/       ./core/
 COPY services/   ./services/
-COPY scripts/    ./scripts/
+COPY src/backend/ ./backend/
 COPY main.py     ./
-COPY frontend/prototypes/beginner/ ./frontend/prototypes/beginner/
+COPY src/frontend/prototypes/beginner/ ./frontend/prototypes/beginner/
 
 # Create data directories — volumes mount here at runtime
 RUN mkdir -p \

@@ -3,6 +3,7 @@
 .venv/
 venv/
 env/
+.stockai/
 __pycache__/
 *.py[cod]
 *.pyo

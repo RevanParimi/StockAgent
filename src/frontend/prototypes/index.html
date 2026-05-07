@@ -54,8 +54,6 @@ function App() {
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', tweaks.theme);
-    // ThemeToggle calls this to keep tweaks state in sync (it sets the DOM attribute itself)
-    window.__setTheme = (v) => setTweak('theme', v);
   }, [tweaks.theme]);
 
   // Re-render with live API data once bootstrap fetch completes

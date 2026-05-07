@@ -237,6 +237,8 @@ function TopNav({ active, onNav, search, setSearch }) {
                 {l.label}
               </NavLink>
             ))}
+            <div style={{ width:1, background:'rgba(34,211,238,.35)', margin:'6px 4px' }}/>
+            <ThemeToggle/>
           </nav>
 
           {/* Desktop search */}
@@ -273,8 +275,7 @@ function TopNav({ active, onNav, search, setSearch }) {
             )}
           </div>
 
-          {/* Theme toggle + bell + avatar — desktop */}
-          <ThemeToggle className="nav-desktop"/>
+          {/* Bell + avatar — desktop */}
           <button className="nav-desktop" style={{ width:36, height:36, borderRadius:'50%', border:'1px solid var(--border)', background:'var(--bg-surface)', display:'grid', placeItems:'center', position:'relative', flexShrink:0 }}>
             <Icon.Bell size={16} c="var(--ink-2)"/>
             <span style={{ position:'absolute', top:6, right:6, width:8, height:8, borderRadius:'50%', background:'var(--sell-strong)' }}/>
@@ -310,7 +311,7 @@ function NavLink({ children, icon, active, onClick }) {
   );
 }
 
-function ThemeToggle({ className }) {
+function ThemeToggle() {
   const [isDark, setIsDark] = useStateHome(
     () => document.documentElement.getAttribute('data-theme') === 'dark'
   );
@@ -324,9 +325,7 @@ function ThemeToggle({ className }) {
   }, []);
 
   const toggle = () => {
-    const next = !isDark;
-    document.documentElement.setAttribute('data-theme', next ? 'dark' : 'light');
-    if (window.__setTheme) window.__setTheme(next ? 'dark' : 'light');
+    document.documentElement.setAttribute('data-theme', isDark ? 'light' : 'dark');
   };
 
   return (

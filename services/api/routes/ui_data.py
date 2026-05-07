@@ -209,26 +209,42 @@ def _fetch_yf_price(yf_ticker: str) -> tuple[float, float]:
     """
     Return (current_price, change_pct). Sync — call via asyncio.to_thread.
 
-    Uses period="1mo" instead of "5d" — NSE tickers on yfinance frequently
-    return empty results on short periods due to exchange delays or weekend gaps.
-    1mo is reliable and still gives us the last two trading days we need.
+    Uses period="1mo" — NSE tickers on yfinance frequently return empty on
+    short periods due to exchange delays or weekend gaps.
+
+    Fallback chain for NSE tickers (.NS):
+      1. Try .NS with period="1mo"
+      2. Try .BO (BSE) — Yahoo Finance sometimes serves BSE data when NSE is stale
+      3. Return (0.0, 0.0) — caller handles gracefully
     """
-    try:
-        import yfinance as yf
-        t = yf.Ticker(yf_ticker)
-        hist = t.history(period="1mo", auto_adjust=True)
-        if hist.empty or len(hist) < 1:
-            return 0.0, 0.0
-        current = float(hist["Close"].iloc[-1])
-        if len(hist) >= 2:
-            prev = float(hist["Close"].iloc[-2])
-            change = (current - prev) / prev * 100 if prev else 0.0
-        else:
-            change = 0.0
-        return round(current, 2), round(change, 2)
-    except Exception as exc:
-        logger.debug("[ui_data] yfinance price fetch failed for %s: %s", yf_ticker, exc)
-        return 0.0, 0.0
+    import yfinance as yf
+
+    def _try(ticker: str) -> tuple[float, float] | None:
+        try:
+            hist = yf.Ticker(ticker).history(period="1mo", auto_adjust=True)
+            if hist.empty or len(hist) < 1:
+                return None
+            current = float(hist["Close"].iloc[-1])
+            prev    = float(hist["Close"].iloc[-2]) if len(hist) >= 2 else current
+            change  = (current - prev) / prev * 100 if prev else 0.0
+            return round(current, 2), round(change, 2)
+        except Exception:
+            return None
+
+    result = _try(yf_ticker)
+    if result is not None:
+        return result
+
+    # BSE fallback for .NS tickers (Yahoo sometimes 404s NSE, BSE data is equivalent)
+    if yf_ticker.endswith(".NS"):
+        bse_ticker = yf_ticker[:-3] + ".BO"
+        result = _try(bse_ticker)
+        if result is not None:
+            logger.debug("[ui_data] yfinance .NS failed, served %s via .BO fallback", yf_ticker)
+            return result
+
+    logger.debug("[ui_data] yfinance price unavailable for %s", yf_ticker)
+    return 0.0, 0.0
 
 
 def _fetch_yf_series(yf_ticker: str, days: int = 30) -> list[float]:

@@ -242,11 +242,10 @@ function TopNav({ active, onNav, search, setSearch }) {
           {/* Desktop nav links — pill bar */}
           <nav className="nav-desktop nav-top-pill" style={{
             marginLeft:16, display:'flex', gap:3, padding:'5px 6px',
-            background:'linear-gradient(135deg, rgba(34,211,238,.09) 0%, rgba(99,102,241,.07) 100%)',
-            border:'1px solid rgba(34,211,238,.2)',
+            background:'var(--bg-surface)',
+            border:'1px solid var(--border)',
             borderRadius:999,
-            boxShadow:'0 1px 4px rgba(34,211,238,.1), inset 0 1px 0 rgba(255,255,255,.55)',
-            backdropFilter:'blur(6px)',
+            boxShadow:'var(--shadow-sm)',
           }}>
             {navLinks.map(l => (
               <NavLink key={l.screen} onClick={()=>onNav?.(l.screen)} active={active===l.screen} icon={l.icon}>

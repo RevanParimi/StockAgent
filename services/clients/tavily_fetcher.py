@@ -75,10 +75,11 @@ def search_tavily(
         results = []
         for item in data.get("results", [])[:max_results]:
             results.append({
-                "title":   item.get("title", ""),
-                "content": item.get("content", ""),   # full extracted text
-                "url":     item.get("url", ""),
-                "score":   item.get("score", 0.0),
+                "title":          item.get("title", ""),
+                "content":        item.get("content", ""),
+                "url":            item.get("url", ""),
+                "published_date": item.get("published_date", ""),  # e.g. "2026-05-07T10:30:00Z"
+                "score":          item.get("score", 0.0),
             })
         record_call("tavily")
         return results

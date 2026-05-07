@@ -263,17 +263,34 @@ def _verdict_to_trend(verdict: str) -> str:
     return "flat"
 
 
-def _pulse_from_scores(scores: list[float]) -> str:
-    if not scores:
-        return "Neutral"
-    avg = sum(scores) / len(scores)
-    if avg >= 0.70:
-        return "Mostly green"
-    if avg >= 0.55:
-        return "Building strength"
-    if avg >= 0.45:
+def _pulse_from_scores(scores: list[float], sector_changes: list[dict] | None = None) -> str:
+    """Derive market pulse. Uses DB scores when available; falls back to live sector data."""
+    if scores:
+        avg = sum(scores) / len(scores)
+        if avg >= 0.70:
+            return "Mostly green"
+        if avg >= 0.55:
+            return "Building strength"
+        if avg >= 0.45:
+            return "Mixed signals"
+        return "Caution ahead"
+
+    # No DB data — derive from live sector % changes
+    if sector_changes:
+        positives = sum(1 for s in sector_changes if s.get("pct", 0) > 0)
+        negatives = sum(1 for s in sector_changes if s.get("pct", 0) < 0)
+        total = len(sector_changes)
+        if total == 0:
+            return "Market closed"
+        if positives >= total * 0.7:
+            return "Mostly green"
+        if positives >= total * 0.5:
+            return "Building strength"
+        if negatives >= total * 0.6:
+            return "Caution ahead"
         return "Mixed signals"
-    return "Caution ahead"
+
+    return "Market closed"
 
 
 def _load_watchlist() -> list[str]:
@@ -624,8 +641,9 @@ async def get_market_summary() -> dict:
     store     = _score_store()
     db_latest = store.get_all_latest()
 
+    market_data_pre = await _gather_market_data(db_latest)
     scores = [float(r["final_score"]) for r in db_latest if r.get("final_score") is not None]
-    pulse  = _pulse_from_scores(scores)
+    pulse  = _pulse_from_scores(scores, market_data_pre["sector_changes"])
 
     one_liner_today = (
         db_latest[0].get("investment_thesis", "")[:160] if db_latest else
@@ -637,7 +655,7 @@ async def get_market_summary() -> dict:
         "Multiple analyses available — check agent verdicts for the full picture."
     )
 
-    market_data = await _gather_market_data(db_latest)
+    market_data = market_data_pre  # already fetched above
 
     # Auto sector 1-day change for the hero
     auto_change = next(
@@ -674,7 +692,7 @@ async def bootstrap() -> dict:
     market_data = await _gather_market_data(db_latest)
 
     scores    = [float(r["final_score"]) for r in db_latest if r.get("final_score")]
-    pulse     = _pulse_from_scores(scores)
+    pulse     = _pulse_from_scores(scores, market_data["sector_changes"])
     auto_chg  = next(
         (s["pct"] for s in market_data["sector_changes"] if s["name"] == "Auto"), 0.0
     )
@@ -1467,7 +1485,11 @@ async def _chat_tool_search_news(query: str) -> str:
         results = await asyncio.to_thread(search_tavily, query, 3, "basic")
         if not results:
             return "No recent news found for that query."
-        lines = [f"• {r['title']}: {r['content'][:350]}" for r in results]
+        lines = []
+        for r in results:
+            date_str = r.get("published_date", "")
+            date_tag = f" [{date_str[:10]}]" if date_str else ""  # e.g. [2026-05-07]
+            lines.append(f"• {r['title']}{date_tag}: {r['content'][:300]}\n  Source: {r['url']}")
         return "\n".join(lines)
     except Exception as exc:
         return f"News search failed: {exc}"
@@ -1523,6 +1545,11 @@ ALWAYS call search_market_news for forward-looking questions. Use specific queri
 - Base conclusions on: live price + fetched news/analysis. Not training memory.
 - Analyst opinions may be cited as one data point but must not be the conclusion.
 - If search returns nothing useful, say what the live price action itself implies directionally.
+- **PRICE VALUES**: ONLY cite prices from get_live_price() results. NEVER quote a price figure
+  from a news article — article prices are stale the moment they're published. If an article
+  mentions "₹210 target", treat it as analyst opinion only, verify current price via get_live_price.
+- **DATA FRESHNESS**: Each search result includes a [YYYY-MM-DD] publication date. Always note
+  if an article is older than 3 days. Prefer articles dated within the last 48 hours.
 
 ## Output format — always structured markdown
 **Asset: $PRICE ▲/▼CHANGE% today**

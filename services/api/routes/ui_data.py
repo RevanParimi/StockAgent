@@ -1256,47 +1256,11 @@ def _ctx_rl_learning() -> str:
         return ""
 
 
-def _build_chat_context(message: str) -> str:
-    """Gather relevant data context based on intent detected in the message."""
-    import re
-    msg = message.lower()
-    sections: list[str] = []
-
-    # Always: current verdicts
+def _build_chat_context(_message: str) -> str:
+    """Always-available lightweight context: current verdicts only.
+    History and RL data are fetched on-demand via get_analysis_history / get_rl_insights tools."""
     cv = _ctx_current_verdicts()
-    if cv:
-        sections.append(cv)
-
-    # Time-based or "missed" → pull recent history
-    time_kws = {
-        "last week", "this week", "yesterday", "this month", "last month",
-        "missed", "past", "recent", "history", "previous", "few days", "days ago",
-        "should have", "should we have", "what happened",
-    }
-    if any(kw in msg for kw in time_kws):
-        rh = _ctx_recent_history(days=14)
-        if rh:
-            sections.append(rh)
-
-    # Any mentioned uppercase tokens that look like NSE tickers
-    candidates = re.findall(r'\b([A-Z][A-Z0-9&\-]{1,14})\b', message)
-    for ticker in dict.fromkeys(candidates):
-        th = _ctx_ticker_detail(ticker)
-        if th:
-            sections.append(th)
-
-    # RL / learning / agent trust questions
-    rl_kws = {
-        "rl", "reinforcement", "learning", "prediction", "accuracy", "weight",
-        "which agent", "trust", "pattern", "missed", "wrong", "correct",
-        "learn", "model", "forecast",
-    }
-    if any(kw in msg for kw in rl_kws):
-        rl = _ctx_rl_learning()
-        if rl:
-            sections.append(rl)
-
-    return "\n\n".join(sections) or "No analysis data yet — run a ticker analysis from the Home screen first."
+    return cv or "No analysis data yet — run a ticker analysis from the Home screen first."
 
 
 # ---------------------------------------------------------------------------
@@ -1338,14 +1302,16 @@ _CHAT_TOOLS = [
                 "Use this FIRST whenever the user asks about any price, how high/low something is today, "
                 "or what a commodity is doing. "
                 "For NSE stocks pass the ticker (MARUTI, TATAMOTORS, HDFCBANK). "
-                "For global markets use a plain name: silver, gold, crude, copper, nifty, sensex, usd, dxy, bitcoin."
+                "For global markets use a plain name (silver, gold, crude, nifty, usd, bitcoin) "
+                "OR a direct yfinance symbol if you know it (SI=F, GC=F, CL=F, ^NSEI, XAGUSD=X). "
+                "Unknown assets are resolved automatically via live symbol search."
             ),
             "parameters": {
                 "type": "object",
                 "properties": {
                     "symbol": {
                         "type": "string",
-                        "description": "NSE ticker or commodity name e.g. 'MARUTI', 'silver', 'gold', 'crude', 'nifty'."
+                        "description": "Plain name ('silver', 'brent crude'), NSE ticker ('MARUTI'), or yfinance symbol ('SI=F', 'BZ=F', '^NSEI')."
                     }
                 },
                 "required": ["symbol"],
@@ -1394,20 +1360,101 @@ _CHAT_TOOLS = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_analysis_history",
+            "description": (
+                "Get recent analysis history for tracked NSE stocks: verdicts, scores, and changes over time. "
+                "Use when the user asks about past performance, what happened last week/month, "
+                "or how a stock has been trending in our system."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "days": {
+                        "type": "integer",
+                        "description": "How many days back to look (default 14, max 30).",
+                        "default": 14,
+                    }
+                },
+                "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_rl_insights",
+            "description": (
+                "Get reinforcement learning insights: which agents are most accurate, recent prediction misses, "
+                "learned agent weights, and pattern lessons. Use when asked about agent trust, accuracy, "
+                "which agent to believe, or what the system has learned."
+            ),
+            "parameters": {"type": "object", "properties": {}, "required": []},
+        },
+    },
 ]
 
 
-async def _chat_tool_get_live_price(symbol: str) -> str:
+def _looks_like_yf_symbol(s: str) -> bool:
+    """True if the string is already a yfinance symbol (e.g. SI=F, ^NSEI, BTC-USD, XAGUSD=X)."""
+    return "=" in s or s.startswith("^") or ("-" in s and len(s) <= 10)
+
+
+async def _resolve_yf_symbol(symbol: str) -> str | None:
+    """
+    Three-tier symbol resolution:
+    1. Static dict   — instant, covers ~20 known commodities/indices
+    2. Direct symbol — if input already looks like a yfinance ticker
+    3. yfinance.Search — real-time discovery for anything unrecognised
+    Returns the resolved yfinance symbol, or None if all tiers fail.
+    """
     sym_lower = symbol.strip().lower()
-    yf_sym = _COMMODITY_YF.get(sym_lower)
-    if yf_sym is None:
-        yf_sym = symbol.strip().upper() + ".NS"
+    sym_upper = symbol.strip().upper()
+
+    # Tier 1: static dict
+    if sym_lower in _COMMODITY_YF:
+        return _COMMODITY_YF[sym_lower]
+
+    # Tier 2: already a valid yfinance symbol
+    if _looks_like_yf_symbol(sym_upper):
+        return sym_upper
+
+    # Tier 3: yfinance.Search for anything unrecognised (real-time)
+    try:
+        import yfinance as yf
+        def _search():
+            results = yf.Search(symbol, max_results=3, news_count=0)
+            quotes = getattr(results, "quotes", []) or []
+            # Prefer equity/futures/index quotes over ETFs
+            for q in quotes:
+                qtype = (q.get("quoteType") or "").upper()
+                if qtype in ("FUTURE", "INDEX", "CRYPTOCURRENCY", "EQUITY", "CURRENCY"):
+                    return q.get("symbol")
+            return quotes[0].get("symbol") if quotes else None
+        found = await asyncio.to_thread(_search)
+        if found:
+            logger.info("[chat/price] yfinance.Search resolved '%s' → %s", symbol, found)
+            return found
+    except Exception as exc:
+        logger.debug("[chat/price] yfinance.Search failed for '%s': %s", symbol, exc)
+
+    # Final fallback: treat as NSE stock
+    return sym_upper + ".NS"
+
+
+async def _chat_tool_get_live_price(symbol: str) -> str:
+    yf_sym = await _resolve_yf_symbol(symbol)
+    if not yf_sym:
+        return f"Could not resolve a market symbol for '{symbol}'."
 
     try:
         price, change_pct = await asyncio.to_thread(_fetch_yf_price, yf_sym)
         if price == 0.0:
-            return f"No price data returned for '{symbol}' from yfinance."
-        currency = "USD" if any(yf_sym.endswith(s) for s in ("=F", "-USD", "=X")) or yf_sym.startswith("^") else "INR"
+            return f"No price data for '{symbol}' (tried {yf_sym}) — market may be closed or symbol unavailable."
+        is_usd = any(yf_sym.endswith(s) for s in ("=F", "-USD", "=X")) or yf_sym.startswith("^")
+        currency = "USD" if is_usd else "INR"
         arrow = "▲" if change_pct >= 0 else "▼"
         return f"{symbol.title()} ({yf_sym}): {price:.2f} {currency}  {arrow}{abs(change_pct):.2f}% today"
     except Exception as exc:
@@ -1435,6 +1482,11 @@ async def _execute_chat_tool(name: str, args: dict) -> str:
         ticker = args.get("ticker", "").strip().upper()
         result = _ctx_ticker_detail(ticker)
         return result or f"No analysis for {ticker} yet — run it from the Home screen first."
+    if name == "get_analysis_history":
+        days = int(args.get("days", 14))
+        return _ctx_recent_history(days=min(days, 30)) or "No analysis history found."
+    if name == "get_rl_insights":
+        return _ctx_rl_learning() or "No RL data yet — needs at least one full analysis cycle."
     return f"Unknown tool: {name}"
 
 
@@ -1442,22 +1494,27 @@ _CHAT_SYSTEM_PROMPT = """\
 You are StockAgent, a market intelligence assistant with real-time web search and live price tools.
 
 ## Your tools
-- **get_live_price(symbol)** — live price + daily % change for any NSE stock or global commodity
-  (silver, gold, crude, nifty, usd, btc, copper, aluminium, etc.)
-- **search_market_news(query)** — web search returning real headlines, analysis, and data
-- **get_stock_analysis(ticker)** — our proprietary AI verdict + agent scores for tracked NSE stocks
+- **get_live_price(symbol)** — live price for any NSE stock or global commodity/index.
+  Pass a plain name (silver, gold, crude, nifty, usd, bitcoin) OR a yfinance symbol (SI=F, BZ=F, ^NSEI).
+  Unknown assets are resolved automatically — just pass what the user said.
+- **search_market_news(query)** — real-time web search: headlines, data, analysis
+- **get_stock_analysis(ticker)** — our AI verdict + 9-agent scores for tracked NSE stocks
+- **get_analysis_history(days)** — past verdicts and score trends from our database
+- **get_rl_insights()** — agent accuracy, learned weights, and prediction lessons
 
-## When to call tools — be aggressive, never skip
-| User asks about | Call these tools |
+## When to call tools — call first, answer after
+| User asks | Tools to call |
 |---|---|
-| Current price of anything | get_live_price |
-| Why something is moving | get_live_price + search_market_news (parallel) |
-| Outlook / forecast / next week/month | get_live_price + search_market_news("X outlook drivers [year]") |
-| Any NSE stock | get_live_price + get_stock_analysis + search_market_news |
-| Macro event (rates, USD, oil) | search_market_news |
+| Current price | get_live_price |
+| Why moving / what's driving | get_live_price + search_market_news (parallel) |
+| Outlook / forecast / next N days | get_live_price + search_market_news("X outlook [year]") |
+| NSE stock deep dive | get_live_price + get_stock_analysis + search_market_news |
+| What happened last week / history | get_analysis_history |
+| Agent accuracy / which to trust | get_rl_insights |
+| Macro event (Fed, RBI, oil) | search_market_news |
 
-ALWAYS call search_market_news for ANY forward-looking question (outlook, forecast, next month).
-Search query must be specific: e.g. "silver price outlook next 30 days industrial demand 2026"
+ALWAYS call search_market_news for forward-looking questions. Use specific queries:
+"silver price outlook next 30 days supply demand 2026" not just "silver".
 
 ## Hard rules
 - NEVER say "consult market research reports", "check external sources", or "I cannot predict".

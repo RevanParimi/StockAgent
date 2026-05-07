@@ -310,14 +310,11 @@ function NavLink({ children, icon, active, onClick }) {
   );
 }
 
-// Fully self-contained — no props needed except optional className.
-// Reads/writes data-theme directly so it works instantly without waiting for React re-renders.
 function ThemeToggle({ className }) {
   const [isDark, setIsDark] = useStateHome(
     () => document.documentElement.getAttribute('data-theme') === 'dark'
   );
 
-  // Stay in sync if TweaksPanel changes the attribute externally
   useEffectHome(() => {
     const obs = new MutationObserver(() => {
       setIsDark(document.documentElement.getAttribute('data-theme') === 'dark');
@@ -328,33 +325,24 @@ function ThemeToggle({ className }) {
 
   const toggle = () => {
     const next = !isDark;
-    // Set DOM attribute directly — CSS responds instantly, no React state dependency
     document.documentElement.setAttribute('data-theme', next ? 'dark' : 'light');
-    // Sync App's tweaks state (prevents TweaksPanel going out of sync)
     if (window.__setTheme) window.__setTheme(next ? 'dark' : 'light');
-    // setIsDark called by MutationObserver above
   };
 
   return (
     <button
       onClick={toggle}
-      className={className}
       title={isDark ? 'Switch to light' : 'Switch to dark'}
       style={{
         width:36, height:36, borderRadius:'50%', flexShrink:0,
-        border:'1px solid rgba(34,211,238,.4)',
-        background: isDark
-          ? 'linear-gradient(135deg,#1e3d60,#0d2240)'
-          : 'linear-gradient(135deg,rgba(34,211,238,.18),rgba(99,102,241,.12))',
-        display:'grid', placeItems:'center', cursor:'pointer',
-        boxShadow:'0 0 0 2px rgba(34,211,238,.15)',
-        transition:'background .25s',
+        border: isDark ? '1.5px solid #4a9eca' : '1.5px solid #0891b2',
+        background: isDark ? '#0f2544' : '#e0f4fb',
+        display:'flex', alignItems:'center', justifyContent:'center',
+        cursor:'pointer', fontSize:17, lineHeight:1,
+        color: isDark ? '#fde047' : '#0369a1',
       }}
     >
-      {isDark
-        ? <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fde047" strokeWidth="2.2" strokeLinecap="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
-        : <svg width="15" height="15" viewBox="0 0 24 24" fill="rgba(34,211,238,.3)" stroke="#0891b2" strokeWidth="2.2" strokeLinecap="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
-      }
+      {isDark ? '☀' : '☾'}
     </button>
   );
 }

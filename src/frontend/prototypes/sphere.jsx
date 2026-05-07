@@ -133,52 +133,16 @@ function SphereOrb({ onOpen, mode='wireframe' }) {
 }
 window.SphereOrb = SphereOrb;
 
-// Minimal markdown → HTML for bot replies.
-// Handles: **bold**, *italic*, `code`, bullet lists (- / * / •), numbered lists, blank-line paragraphs.
+// Markdown → HTML via marked.js (loaded from CDN in index.html).
+// Falls back to escaped plain text if marked isn't available.
 function renderMd(text) {
-  if (!text || text === '…') return text;
-  // Escape HTML entities first
-  const esc = s => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-
-  const lines = text.split('\n');
-  const out = [];
-  let inUl = false, inOl = false;
-
-  const closeList = () => {
-    if (inUl) { out.push('</ul>'); inUl = false; }
-    if (inOl) { out.push('</ol>'); inOl = false; }
-  };
-
-  const inlineFormat = raw => esc(raw)
-    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-    .replace(/\*(.+?)\*/g,     '<em>$1</em>')
-    .replace(/`(.+?)`/g,       '<code style="background:var(--bg-elevated);padding:1px 5px;border-radius:4px;font-size:.9em">$1</code>');
-
-  lines.forEach(line => {
-    if (line.trim() === '') {
-      closeList();
-      out.push('<br>');
-      return;
-    }
-    const ulMatch = line.match(/^[\s]*[-•]\s+(.*)|^\*\s+(.*)/);
-    const olMatch = line.match(/^[\s]*\d+[.)]\s+(.*)/);
-    if (ulMatch) {
-      if (inOl) { out.push('</ol>'); inOl = false; }
-      if (!inUl) { out.push('<ul style="margin:4px 0 4px 16px;padding:0">'); inUl = true; }
-      out.push(`<li>${inlineFormat(ulMatch[1] || ulMatch[2])}</li>`);
-    } else if (olMatch) {
-      if (inUl) { out.push('</ul>'); inUl = false; }
-      if (!inOl) { out.push('<ol style="margin:4px 0 4px 16px;padding:0">'); inOl = true; }
-      out.push(`<li>${inlineFormat(olMatch[1])}</li>`);
-    } else {
-      closeList();
-      out.push(`<span>${inlineFormat(line)}</span><br>`);
-    }
-  });
-  closeList();
-  // Clean up trailing <br>
-  const html = out.join('').replace(/(<br>)+$/, '');
-  return html;
+  if (!text || text === '…') return text === '…' ? '…' : '';
+  if (window.marked) {
+    return window.marked.parse(text);
+  }
+  // Plain-text fallback — at least escape HTML so nothing breaks
+  return text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+             .replace(/\n/g,'<br>');
 }
 
 // Chat overlay (slide-up panel, anchored bottom-right)
@@ -247,7 +211,7 @@ function ChatOverlay({ open, onClose, mode='wireframe' }) {
             opacity: m.loading ? 0.7 : 1,
           };
           if (m.from === 'bot' && !m.loading) {
-            return <div key={i} style={bubbleStyle} dangerouslySetInnerHTML={{ __html: renderMd(m.text) }}/>;
+            return <div key={i} className="chat-md" style={bubbleStyle} dangerouslySetInnerHTML={{ __html: renderMd(m.text) }}/>;
           }
           return <div key={i} style={bubbleStyle}>{m.text}</div>;
         })}

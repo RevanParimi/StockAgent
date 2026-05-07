@@ -290,11 +290,15 @@ FEEDBACK_CRON: str = os.getenv("FEEDBACK_CRON", "0 11 * * 1-5")
 # P5 — Regime Detection Thresholds
 # ---------------------------------------------------------------------------
 
-VIX_VOLATILE_THRESHOLD: float = 22.0    # VIX above this → volatile macro
-VIX_LOW_VOL_THRESHOLD: float = 14.0     # VIX below this → low-vol trending
-FII_PROXY_THRESHOLD_PCT: float = 1.0    # Nifty 50 5-day return ±1.0% as FII proxy
-RSI_OVERBOUGHT: float = 70.0
-RSI_OVERSOLD: float = 30.0
+# Regime thresholds — overridable via env vars (see STATIC_AUDIT.md #3)
+VIX_VOLATILE_THRESHOLD: float  = float(os.getenv("VIX_VOLATILE_THRESHOLD", "22.0"))
+VIX_LOW_VOL_THRESHOLD: float   = float(os.getenv("VIX_LOW_VOL_THRESHOLD",  "14.0"))
+FII_PROXY_THRESHOLD_PCT: float = float(os.getenv("FII_PROXY_THRESHOLD_PCT", "1.0"))
+RSI_OVERBOUGHT: float          = float(os.getenv("RSI_OVERBOUGHT",          "70.0"))
+RSI_OVERSOLD: float            = float(os.getenv("RSI_OVERSOLD",            "30.0"))
+
+# Direction classification threshold for RL feedback (see STATIC_AUDIT.md #5)
+RL_FLAT_THRESHOLD_PCT: float = float(os.getenv("RL_FLAT_THRESHOLD_PCT", "0.3"))
 
 VIX_FALLBACK: float = 17.0              # NORMAL regime midpoint; used on yfinance error
 FII_PROXY_FALLBACK: float = 0.0         # Neutral; used on yfinance error

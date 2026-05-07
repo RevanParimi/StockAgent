@@ -282,7 +282,7 @@ async def list_tickers() -> dict:
 # Static frontend
 # ---------------------------------------------------------------------------
 
-_FRONTEND_DIR = _ROOT / "frontend" / "prototypes" / "beginner"
+_FRONTEND_DIR = _ROOT / "frontend" / "prototypes"
 if _FRONTEND_DIR.exists():
     app.mount("/app", StaticFiles(directory=str(_FRONTEND_DIR), html=True), name="frontend")
 else:

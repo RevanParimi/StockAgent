@@ -48,7 +48,6 @@
       "Bash(diff csharp/StockAgent.Scheduler/Dockerfile services/csharp/StockAgent.Scheduler/Dockerfile)",
       "Bash(ls services/csharp/StockAgent.Scheduler/Dockerfile)",
       "Bash(mkdir -p src/frontend/prototypes)",
-      "Bash(cp -r frontend/prototypes/beginner src/frontend/prototypes/beginner)",
       "Bash(rm -rf frontend)",
       "Bash(rm -rf csharp)",
       "Bash(rm -rf scripts)",

@@ -33,20 +33,24 @@
   --shadow-glow: 0 0 0 1px rgba(8,145,178,.18), 0 8px 24px rgba(8,145,178,.18);
 }
 [data-theme="dark"] {
-  --bg-base: #0a0e1a;
-  --bg-surface: #111827;
-  --bg-elevated: #1a2235;
-  --bg-tinted: #1a2235;
-  --border: #1e293b;
-  --border-strong: #334155;
-  --ink-1: #f1f5f9;
-  --ink-2: #cbd5e1;
-  --ink-3: #64748b;
-  --cyan-soft: rgba(6,182,212,.12);
-  --buy-soft: rgba(34,197,94,.12);
-  --neutral-soft: rgba(245,158,11,.12);
-  --sell-soft: rgba(239,68,68,.12);
-  --violet-soft: rgba(139,92,246,.12);
+  /* navy-blue dark — warm ocean depth, not pitch black */
+  --bg-base:      #08111f;
+  --bg-surface:   #0d1a2e;
+  --bg-elevated:  #112238;
+  --bg-tinted:    #142948;
+  --border:       #1a3354;
+  --border-strong:#235080;
+  --ink-1: #ddeeff;
+  --ink-2: #7ea8cc;
+  --ink-3: #4a7090;
+  --cyan-soft:    rgba(34,211,238,.14);
+  --buy-soft:     rgba(34,197,94,.14);
+  --neutral-soft: rgba(245,158,11,.14);
+  --sell-soft:    rgba(239,68,68,.14);
+  --violet-soft:  rgba(139,92,246,.14);
+  --shadow-sm: 0 1px 3px rgba(0,8,24,.4);
+  --shadow-md: 0 4px 16px rgba(0,8,24,.5);
+  --shadow-lg: 0 12px 40px rgba(0,8,24,.6), 0 4px 12px rgba(0,8,24,.35);
 }
 * { box-sizing: border-box; }
 body { margin:0; background:var(--bg-base); color:var(--ink-1); font-family:'Inter',ui-sans-serif,system-ui,sans-serif; -webkit-font-smoothing:antialiased; }
@@ -247,5 +251,83 @@ button { font-family: inherit; cursor: pointer; }
   .learnings-filter > div { width: 100%; display: grid !important; grid-template-columns: repeat(3, 1fr) !important; }
 }
 
-/* ── Proto-nav bottom strip — hide on mobile (TopNav hamburger handles nav) ─ */
+/* ── Proto-nav bottom strip — hide on mobile (mobile-bottom-nav handles nav) ─ */
 @media (max-width: 767px) { .proto-nav { display: none !important; } }
+
+/* ── Mobile bottom nav bar ─────────────────────────────────────────────────── */
+.mobile-bottom-nav { display: none; }
+
+@media (max-width: 767px) {
+  .mobile-bottom-nav {
+    display: flex;
+    position: fixed; bottom: 0; left: 0; right: 0; z-index: 55;
+    background: linear-gradient(
+      135deg,
+      rgba(240,252,255,.97) 0%,
+      rgba(245,248,255,.97) 100%
+    );
+    backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px);
+    border-top: 1px solid rgba(34,211,238,.22);
+    box-shadow: 0 -2px 16px rgba(34,211,238,.08), 0 -1px 0 rgba(34,211,238,.12);
+    padding: 8px 6px calc(8px + env(safe-area-inset-bottom, 0px));
+    gap: 2px;
+    justify-content: space-around;
+    align-items: stretch;
+  }
+
+  [data-theme="dark"] .mobile-bottom-nav {
+    background: linear-gradient(
+      135deg,
+      rgba(8,17,31,.97) 0%,
+      rgba(13,26,46,.97) 100%
+    );
+    border-top-color: rgba(34,211,238,.2);
+    box-shadow: 0 -2px 20px rgba(0,8,24,.5), 0 -1px 0 rgba(34,211,238,.14);
+  }
+
+  .mobile-bottom-btn {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 3px; flex: 1; padding: 6px 4px; border: none; background: transparent;
+    font-family: inherit; font-size: 10px; font-weight: 600;
+    color: var(--ink-3); cursor: pointer;
+    border-radius: 14px; transition: background .15s, color .12s;
+    position: relative;
+  }
+
+  .mobile-bottom-btn.active {
+    color: var(--cyan);
+    background: linear-gradient(
+      135deg,
+      rgba(34,211,238,.12) 0%,
+      rgba(99,102,241,.08) 100%
+    );
+  }
+
+  .mobile-bottom-btn.active::before {
+    content: '';
+    position: absolute; top: 0; left: 50%; transform: translateX(-50%);
+    width: 28px; height: 3px; border-radius: 0 0 4px 4px;
+    background: linear-gradient(90deg, #22d3ee, #818cf8);
+  }
+
+  .mobile-bottom-icon { display: flex; align-items: center; }
+  .mobile-bottom-label { line-height: 1; }
+
+  /* push page content above the nav bar */
+  main { padding-bottom: calc(72px + env(safe-area-inset-bottom, 0px)) !important; }
+
+  /* move sphere orb above the nav bar */
+  .sphere-orb { bottom: 84px !important; }
+}
+
+/* ── Dark-mode header & top nav pill overrides ─────────────────────────── */
+[data-theme="dark"] header {
+  background: rgba(8,17,31,.92) !important;
+  border-bottom-color: rgba(34,211,238,.14) !important;
+}
+[data-theme="dark"] .nav-top-pill {
+  background: linear-gradient(135deg, rgba(34,211,238,.1) 0%, rgba(99,102,241,.08) 100%);
+  border-color: rgba(34,211,238,.22);
+  box-shadow: 0 1px 6px rgba(0,8,24,.4), inset 0 1px 0 rgba(255,255,255,.04);
+}

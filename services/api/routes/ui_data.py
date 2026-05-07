@@ -1299,44 +1299,180 @@ def _build_chat_context(message: str) -> str:
     return "\n\n".join(sections) or "No analysis data yet — run a ticker analysis from the Home screen first."
 
 
+# ---------------------------------------------------------------------------
+# Agentic chat — tools the LLM can call
+# ---------------------------------------------------------------------------
+
+_COMMODITY_YF = {
+    "silver": "SI=F",
+    "gold": "GC=F",
+    "crude": "CL=F",
+    "crude oil": "CL=F",
+    "oil": "CL=F",
+    "copper": "HG=F",
+    "aluminium": "ALI=F",
+    "aluminum": "ALI=F",
+    "palladium": "PA=F",
+    "platinum": "PL=F",
+    "nifty": "^NSEI",
+    "nifty50": "^NSEI",
+    "nifty 50": "^NSEI",
+    "nifty auto": "^CNXAUTO",
+    "sensex": "^BSESN",
+    "usd": "USDINR=X",
+    "dollar": "USDINR=X",
+    "usdinr": "USDINR=X",
+    "dxy": "DX-Y.NYB",
+    "us dollar index": "DX-Y.NYB",
+    "bitcoin": "BTC-USD",
+    "btc": "BTC-USD",
+}
+
+_CHAT_TOOLS = [
+    {
+        "type": "function",
+        "function": {
+            "name": "get_live_price",
+            "description": (
+                "Fetch the current live price and 1-day % change for a stock or global commodity/index. "
+                "Use this FIRST whenever the user asks about any price, how high/low something is today, "
+                "or what a commodity is doing. "
+                "For NSE stocks pass the ticker (MARUTI, TATAMOTORS, HDFCBANK). "
+                "For global markets use a plain name: silver, gold, crude, copper, nifty, sensex, usd, dxy, bitcoin."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "symbol": {
+                        "type": "string",
+                        "description": "NSE ticker or commodity name e.g. 'MARUTI', 'silver', 'gold', 'crude', 'nifty'."
+                    }
+                },
+                "required": ["symbol"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "search_market_news",
+            "description": (
+                "Search for the latest news and analyst commentary behind a market move. "
+                "Use this when the user asks WHY something is moving, for recent events, "
+                "or for context about any global or Indian market development. "
+                "Be specific in the query — include the asset name and 'today' or the year."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "Search query e.g. 'silver price surge today reasons 2026', 'MARUTI Q4 results 2026'."
+                    }
+                },
+                "required": ["query"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_stock_analysis",
+            "description": (
+                "Get the latest StockAgent AI analysis for a tracked NSE stock: verdict, composite score, "
+                "agent breakdown, key positives and risks. Use when the user asks about a specific stock's outlook."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "ticker": {
+                        "type": "string",
+                        "description": "NSE ticker e.g. MARUTI, TATAMOTORS, BAJAJ-AUTO."
+                    }
+                },
+                "required": ["ticker"],
+            },
+        },
+    },
+]
+
+
+async def _chat_tool_get_live_price(symbol: str) -> str:
+    sym_lower = symbol.strip().lower()
+    yf_sym = _COMMODITY_YF.get(sym_lower)
+    if yf_sym is None:
+        yf_sym = symbol.strip().upper() + ".NS"
+
+    try:
+        price, change_pct = await asyncio.to_thread(_fetch_yf_price, yf_sym)
+        if price == 0.0:
+            return f"No price data returned for '{symbol}' from yfinance."
+        currency = "USD" if any(yf_sym.endswith(s) for s in ("=F", "-USD", "=X")) or yf_sym.startswith("^") else "INR"
+        arrow = "▲" if change_pct >= 0 else "▼"
+        return f"{symbol.title()} ({yf_sym}): {price:.2f} {currency}  {arrow}{abs(change_pct):.2f}% today"
+    except Exception as exc:
+        return f"Price fetch failed for '{symbol}': {exc}"
+
+
+async def _chat_tool_search_news(query: str) -> str:
+    try:
+        from services.clients.tavily_fetcher import search_tavily
+        results = await asyncio.to_thread(search_tavily, query, 3, "basic")
+        if not results:
+            return "No recent news found for that query."
+        lines = [f"• {r['title']}: {r['content'][:350]}" for r in results]
+        return "\n".join(lines)
+    except Exception as exc:
+        return f"News search failed: {exc}"
+
+
+async def _execute_chat_tool(name: str, args: dict) -> str:
+    if name == "get_live_price":
+        return await _chat_tool_get_live_price(args.get("symbol", ""))
+    if name == "search_market_news":
+        return await _chat_tool_search_news(args.get("query", ""))
+    if name == "get_stock_analysis":
+        ticker = args.get("ticker", "").strip().upper()
+        result = _ctx_ticker_detail(ticker)
+        return result or f"No analysis for {ticker} yet — run it from the Home screen first."
+    return f"Unknown tool: {name}"
+
+
 _CHAT_SYSTEM_PROMPT = """\
-You are StockAgent, a conversational AI for Indian stock market analysis.
+You are StockAgent, an agentic AI assistant for markets — global and Indian.
 
-You specialise in the automobile sector (NSE/BSE) but can intelligently discuss ANY NSE/BSE-listed stock. \
-If asked about an unlisted or private company, clarify that and pivot to its market impact on listed peers.
+You have real-time tools:
+  • get_live_price — fetches live price + daily % change for ANY NSE stock or global commodity/index
+  • search_market_news — searches the web for latest news and reasons behind market moves
+  • get_stock_analysis — retrieves this app's AI verdict, score, and agent breakdown for a tracked NSE stock
 
-You have 9 specialist agents that run on analysed tickers:
+Rules:
+  - ALWAYS call get_live_price before answering any price or "how high/low" question.
+  - ALWAYS call search_market_news when the user asks WHY something is moving.
+  - Call both in parallel when relevant (price + reason for the move).
+  - For NSE stocks: also call get_stock_analysis to add our proprietary verdict.
+  - Never guess prices or recent news from memory — use your tools to get live data.
+  - Be direct and insightful. Lead with the actual number, then the reason. 3–5 sentences.
+  - Always cite the data source (live price, news headline, our agent score).
+
+Your 9 specialist agents (run on analysed tickers):
   Sales & Demand · Fundamentals · Pattern Analysis · Raw Materials · Sentiment
   Policy & Regulatory · Competitive Intel · Risk & Macro · Valuation & Catalyst
 
-You also have an RL (Reinforcement Learning) memory that:
-  - Tracks which direction predictions were correct vs wrong each day
-  - Adjusts agent weights based on accuracy (agents that call it right earn more influence)
-  - Accumulates lessons from misses to avoid repeating the same errors
-
-When the user asks about "what we missed", "last week", "should we have bought X", \
-"which agent to trust" — use the data context below to give a specific, grounded answer \
-citing actual scores, dates, and RL accuracy numbers.
-
-Be direct, conversational, and insightful. 3–5 sentences. Cite specific data when available.
-
+Tracked-ticker context (from our database):
 {context}"""
 
 
 @router.post("/chat", summary="AI assistant chat reply")
 async def chat(body: dict) -> dict:
     """
-    Accepts {message, history} and returns {reply}.
-    Context is dynamically enriched based on message intent:
-    - Always: current verdicts for all tracked tickers
-    - Time-based questions: last 14 days of analysis history
-    - Ticker mentioned: recent history + score delta for that ticker
-    - RL/learning questions: feedback accuracy + learned agent weights
+    Agentic chat: LLM can call get_live_price, search_market_news, get_stock_analysis
+    in a tool loop (max 4 rounds) before composing a grounded reply.
     """
     message: str = (body.get("message") or "").strip()
     history: list = body.get("history") or []
     if not message:
-        return {"reply": "Ask me anything — verdicts, what we missed last week, which agent to trust, or any NSE stock."}
+        return {"reply": "Ask me anything — live prices, why a market is moving, stock verdicts, or what our agents say."}
 
     context = _build_chat_context(message)
     system_prompt = _CHAT_SYSTEM_PROMPT.format(context=context)
@@ -1352,18 +1488,52 @@ async def chat(body: dict) -> dict:
     try:
         from services.clients.llm_client import get_async_llm_client
         client = get_async_llm_client()
+
+        for _ in range(4):
+            resp = await client.chat.completions.create(
+                model="qwen/qwen3-235b-a22b",
+                messages=messages,
+                temperature=0.4,
+                max_tokens=600,
+                tools=_CHAT_TOOLS,
+                tool_choice="auto",
+            )
+            msg = resp.choices[0].message
+            tool_calls = getattr(msg, "tool_calls", None) or []
+
+            if not tool_calls:
+                return {"reply": (msg.content or "").strip()}
+
+            assistant_entry: dict = {"role": "assistant", "content": msg.content or ""}
+            assistant_entry["tool_calls"] = [
+                {
+                    "id": tc.id,
+                    "type": "function",
+                    "function": {"name": tc.function.name, "arguments": tc.function.arguments},
+                }
+                for tc in tool_calls
+            ]
+            messages.append(assistant_entry)
+
+            tool_results = await asyncio.gather(*[
+                _execute_chat_tool(tc.function.name, json.loads(tc.function.arguments or "{}"))
+                for tc in tool_calls
+            ])
+            for tc, result in zip(tool_calls, tool_results):
+                messages.append({"role": "tool", "tool_call_id": tc.id, "content": result})
+
+        # Final synthesis after max tool rounds
         resp = await client.chat.completions.create(
             model="qwen/qwen3-235b-a22b",
             messages=messages,
-            temperature=0.5,
-            max_tokens=400,
+            temperature=0.4,
+            max_tokens=600,
         )
-        reply = resp.choices[0].message.content.strip()
+        return {"reply": (resp.choices[0].message.content or "").strip()}
+
     except Exception as exc:
         logger.warning("[ui/chat] LLM call failed: %s", exc)
-        reply = _mock_reply(message)
-
-    return {"reply": reply}
+        return {"reply": _mock_reply(message)}
 
 
 def _mock_reply(q: str) -> str:

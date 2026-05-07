@@ -1,7 +1,7 @@
 # Codebase Reference
 
 > Ground-truth map of every module, its real path, and its public API.
-> Updated: 2026-05-06 · reflects Phases 0–9 (full refactor complete through frontend + test restructure)
+> Updated: 2026-05-07 · reflects Phases 0–9 + UI changes (agentic chat, nav redesign, dark theme, prototype restructure)
 > Previous snapshot: docs/CODEBASE.md
 
 ---
@@ -170,8 +170,23 @@ StockAI-Main/
 │       │           ├── portfolio/    # stub — pending broker API integration
 │       │           └── learn/        # stub — static educational content
 │       │
-│       └── prototypes/beginner/     # ✅ DEPLOYED BABEL PROTOTYPE — DO NOT MODIFY
-│                                    # Live at: stockagent-ai.up.railway.app/app/index.html
+│       └── prototypes/              # ✅ DEPLOYED BABEL PROTOTYPE (React 18 + Babel, no build step)
+│           │                        # Live at: stockagent-ai.up.railway.app/app/index.html
+│           │                        # Served by services/api/server.py StaticFiles mount at /app
+│           ├── index.html           # App entry — TWEAK_DEFAULTS (theme:'light'), App component
+│           ├── styles.css           # All CSS vars incl. navy dark theme ([data-theme="dark"])
+│           ├── home.jsx             # Home page + TopNav (pill bar, ThemeToggle, mobile bottom nav)
+│           ├── agents-page.jsx      # Agents page
+│           ├── portfolio.jsx        # Portfolio page
+│           ├── learn.jsx            # Learn page
+│           ├── analytics.jsx        # Analytics page (RL performance, Power BI OData)
+│           ├── logs.jsx             # Live log stream (SSE /ui/logs/stream)
+│           ├── prompt-lab.jsx       # Prompt editor + GitHub deploy schedule UI
+│           ├── auth.jsx             # Auth screen
+│           ├── data.jsx             # Bootstrap data fetch + window.* globals
+│           ├── icons.jsx            # SVG icon library
+│           ├── sphere.jsx           # Three.js animated sphere orb
+│           └── tweaks-panel.jsx     # useTweaks hook + TweaksPanel component
 │
 ├── core/                            # LEGACY — being emptied phase by phase
 │   │                                # All moved files are now SHIMS re-exporting from src/
@@ -460,7 +475,7 @@ Regime adjustments (VIX, FII proxy, sector RSI) are **intentionally ephemeral** 
 | `GET` | `/ui/search?q=` | 16 tickers + DB theses + yfinance fallback for unknown NSE symbols. |
 | `GET` | `/ui/trending` | Score-delta movers from DB (not price-change). |
 | `GET` | `/ui/learnings` | RL-derived lesson cards from score history + feedback logs. |
-| `POST` | `/ui/chat` | Body: `{message, history:[{role,content}]}`. LLM with conversation context. |
+| `POST` | `/ui/chat` | Body: `{message, history:[{role,content}]}`. **Agentic** — LLM tool loop (max 4 rounds) with 3 tools: `get_live_price` (yfinance NSE + commodities), `search_market_news` (Tavily), `get_stock_analysis` (local DB). |
 | `GET/PUT` | `/ui/categories/{key}/tickers` | Category stock management (persisted to data/category_tickers.json). |
 | `GET` | `/ui/categories` | All categories with resolved tickers[] and auto-computed count. |
 
@@ -471,6 +486,41 @@ Regime adjustments (VIX, FII proxy, sector RSI) are **intentionally ephemeral** 
 | `POST` | `/scheduler/forecast` | Trigger manual forecast generation. |
 | `POST` | `/scheduler/daily-review` | Trigger manual daily review. |
 | `GET` | `/health` | Railway health check. |
+
+---
+
+## Prototype UI — Key Components (`src/frontend/prototypes/`)
+
+### TopNav (`home.jsx` — shared by all pages)
+- **Desktop**: pill-shaped nav container (`borderRadius:999`) with cyan-blue gradient, white active chip + cyan glow
+- **Mobile**: fixed bottom tab bar (`.mobile-bottom-nav`) — same cyan texture, icon + label tabs, active indicator bar at top edge, `env(safe-area-inset-bottom)` iOS safe area support
+- **ThemeToggle**: sun/moon button beside bell icon (desktop) and beside hamburger (mobile). Calls `window.__toggleTheme` which is wired to `useTweaks` in `App`. `MutationObserver` keeps toggle in sync with TweaksPanel radio.
+- **Theme persistence**: `App` exposes `window.__toggleTheme` and `window.__currentTheme` on every `tweaks.theme` change.
+
+### Dark Theme (`styles.css`)
+Navy-blue palette — not pitch black:
+```
+--bg-base:      #08111f   deep ocean navy
+--bg-surface:   #0d1a2e   card navy
+--bg-elevated:  #112238   raised elements
+--bg-tinted:    #142948   hover/active highlight
+--border:       #1a3354   navy border
+--ink-1:        #ddeeff   cool blue-white text
+--ink-2:        #7ea8cc   steel blue secondary
+--ink-3:        #4a7090   muted blue-grey
+```
+Light theme is the default (`TWEAK_DEFAULTS.theme = "light"`).
+
+### Agentic Chat (`/ui/chat`)
+Tool loop in `services/api/routes/ui_data.py`. Max 4 LLM rounds. Tools run in parallel via `asyncio.gather`:
+
+| Tool | Implementation | Symbols |
+|---|---|---|
+| `get_live_price` | `_chat_tool_get_live_price` → yfinance | NSE tickers + `SI=F` silver, `GC=F` gold, `CL=F` crude, `^NSEI` Nifty, `USDINR=X`, etc. |
+| `search_market_news` | `_chat_tool_search_news` → Tavily `search_depth="basic"` | Any query |
+| `get_stock_analysis` | `_ctx_ticker_detail` → local SQLite | Tracked tickers only |
+
+System prompt enforces: always call `get_live_price` before answering price questions; always call `search_market_news` for "why" questions; never hallucinate prices.
 
 ---
 
@@ -545,4 +595,4 @@ Baseline: 777 passed, 29 skipped (Phase 6 stubs), 0 failed
 5. **Seasonal seed YAMLs**: `src/backend/intelligence/rl/seasonal/seeds/` directory exists but 4 YAML files are empty — populate in Phase 5.
 6. **Phase 7 shims pending removal**: ~30 shims across `core/` and `services/` deleted in Phase 7-11 after full import update.
 7. **Frontend pages are stubs**: `home/`, `agents/`, `portfolio/`, `learn/` pages in `src/frontend/web/` are minimal — need full component wiring.
-8. **Chat engine is stub**: `src/backend/intelligence/chat/engine.py` is empty — Phase 6 wires intent detection + entity extraction + real LLM routing.
+8. **Chat engine is stub**: `src/backend/intelligence/chat/engine.py` is empty — Phase 6 wires intent detection + entity extraction + real LLM routing. Note: `/ui/chat` already has a working agentic tool loop (yfinance + Tavily + DB) independent of this Phase 6 engine.

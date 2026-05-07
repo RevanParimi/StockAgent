@@ -137,6 +137,22 @@ function TopNav({ active, onNav, search, setSearch }) {
   const [dropOpen, setDropOpen] = useStateHome(false);
   const [menuOpen, setMenuOpen] = useStateHome(false);
   const timerRef = useRefHome(null);
+  const [theme, setThemeLocal] = useStateHome(
+    () => document.documentElement.getAttribute('data-theme') || 'light'
+  );
+
+  // Stay in sync when TweaksPanel radio changes the attribute
+  useEffectHome(() => {
+    const obs = new MutationObserver(() => {
+      setThemeLocal(document.documentElement.getAttribute('data-theme') || 'light');
+    });
+    obs.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+    return () => obs.disconnect();
+  }, []);
+
+  const toggleTheme = () => {
+    if (window.__toggleTheme) window.__toggleTheme();
+  };
 
   const handleSearch = (val) => {
     setSearch(val);
@@ -194,6 +210,20 @@ function TopNav({ active, onNav, search, setSearch }) {
         </div>
       )}
 
+      {/* ── Mobile bottom nav bar ── */}
+      <nav className="mobile-bottom-nav">
+        {navLinks.map(l => (
+          <button
+            key={l.screen}
+            onClick={()=>onNav?.(l.screen)}
+            className={'mobile-bottom-btn' + (active===l.screen ? ' active' : '')}
+          >
+            <span className="mobile-bottom-icon">{l.icon}</span>
+            <span className="mobile-bottom-label">{l.label}</span>
+          </button>
+        ))}
+      </nav>
+
       <header style={{
         position:'sticky', top:0, zIndex:30, background:'rgba(255,255,255,.85)',
         backdropFilter:'blur(12px)', borderBottom:'1px solid var(--border)'
@@ -209,8 +239,15 @@ function TopNav({ active, onNav, search, setSearch }) {
             <div style={{ fontWeight:800, letterSpacing:'-0.01em' }}>StockAgent</div>
           </div>
 
-          {/* Desktop nav links */}
-          <nav className="nav-desktop" style={{ marginLeft:16 }}>
+          {/* Desktop nav links — pill bar */}
+          <nav className="nav-desktop nav-top-pill" style={{
+            marginLeft:16, display:'flex', gap:3, padding:'5px 6px',
+            background:'linear-gradient(135deg, rgba(34,211,238,.09) 0%, rgba(99,102,241,.07) 100%)',
+            border:'1px solid rgba(34,211,238,.2)',
+            borderRadius:999,
+            boxShadow:'0 1px 4px rgba(34,211,238,.1), inset 0 1px 0 rgba(255,255,255,.55)',
+            backdropFilter:'blur(6px)',
+          }}>
             {navLinks.map(l => (
               <NavLink key={l.screen} onClick={()=>onNav?.(l.screen)} active={active===l.screen} icon={l.icon}>
                 {l.label}
@@ -252,15 +289,17 @@ function TopNav({ active, onNav, search, setSearch }) {
             )}
           </div>
 
-          {/* Desktop bell + avatar */}
+          {/* Theme toggle + bell + avatar — desktop */}
+          <ThemeToggle theme={theme} onToggle={toggleTheme} className="nav-desktop"/>
           <button className="nav-desktop" style={{ width:36, height:36, borderRadius:'50%', border:'1px solid var(--border)', background:'var(--bg-surface)', display:'grid', placeItems:'center', position:'relative', flexShrink:0 }}>
             <Icon.Bell size={16} c="var(--ink-2)"/>
             <span style={{ position:'absolute', top:6, right:6, width:8, height:8, borderRadius:'50%', background:'var(--sell-strong)' }}/>
           </button>
           <div className="nav-desktop" style={{ width:36, height:36, borderRadius:'50%', background:'linear-gradient(135deg,#22d3ee,#a78bfa)', display:'grid', placeItems:'center', color:'#fff', fontWeight:700, fontSize:13, flexShrink:0 }}>AS</div>
 
-          {/* Mobile: hamburger (right side) */}
-          <div className="nav-hamburger" style={{ marginLeft:'auto', gap:10 }}>
+          {/* Mobile: theme toggle + hamburger */}
+          <div className="nav-hamburger" style={{ marginLeft:'auto', gap:8 }}>
+            <ThemeToggle theme={theme} onToggle={toggleTheme}/>
             <div style={{ width:32, height:32, borderRadius:'50%', background:'linear-gradient(135deg,#22d3ee,#a78bfa)', display:'grid', placeItems:'center', color:'#fff', fontWeight:700, fontSize:12 }}>AS</div>
             <button onClick={()=>setMenuOpen(true)} style={{ width:36, height:36, borderRadius:9, border:'1px solid var(--border)', background:'var(--bg-surface)', display:'grid', placeItems:'center' }}>
               <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
@@ -277,11 +316,35 @@ function TopNav({ active, onNav, search, setSearch }) {
 function NavLink({ children, icon, active, onClick }) {
   return (
     <button onClick={onClick} style={{
-      display:'flex', alignItems:'center', gap:6, padding:'8px 14px', borderRadius:9,
-      border:'none', background: active ? 'var(--bg-tinted)' : 'transparent',
+      display:'flex', alignItems:'center', gap:6, padding:'7px 13px', borderRadius:999,
+      border:'none',
+      background: active ? 'var(--bg-surface)' : 'transparent',
+      boxShadow: active ? '0 1px 5px rgba(34,211,238,.2)' : 'none',
       color: active ? 'var(--ink-1)' : 'var(--ink-2)',
-      fontSize:13, fontWeight:600
+      fontSize:13, fontWeight:600, cursor:'pointer', transition:'background .15s, color .15s',
     }}>{icon} {children}</button>
+  );
+}
+
+function ThemeToggle({ theme, onToggle, className }) {
+  const isDark = theme === 'dark';
+  return (
+    <button
+      onClick={onToggle}
+      className={className}
+      title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+      style={{
+        width:36, height:36, borderRadius:'50%', flexShrink:0,
+        border:'1px solid var(--border)', background:'var(--bg-surface)',
+        display:'grid', placeItems:'center', cursor:'pointer',
+        transition:'background .2s, border-color .2s',
+      }}
+    >
+      {isDark
+        ? /* sun */ <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--ink-2)" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+        : /* moon */ <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--ink-2)" strokeWidth="2" strokeLinecap="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+      }
+    </button>
   );
 }
 

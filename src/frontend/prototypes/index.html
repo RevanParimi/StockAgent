@@ -83,8 +83,9 @@ function App() {
     <ChatOverlay open={chat} onClose={closeChat} mode={tweaks.sphereMode}/>
 
     {/* Secondary nav — Prompt Lab / Analytics / Logs / Sign out */}
+    {/* Desktop: fixed pill bottom-left. Mobile: hidden here, accessible via hamburger menu. */}
     {screen !== 'auth' && (
-      <div style={{
+      <div className="proto-nav" style={{
         position:'fixed', left:24, bottom:24, zIndex:55,
         display:'flex', gap:6, padding:6, background:'var(--bg-surface)',
         border:'1px solid var(--border)', borderRadius:999, boxShadow:'var(--shadow-md)'

@@ -46,9 +46,8 @@ function App() {
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', tweaks.theme);
-    // Expose to TopNav so it can toggle without prop drilling
-    window.__toggleTheme = () => setTweak('theme', tweaks.theme === 'light' ? 'dark' : 'light');
-    window.__currentTheme = tweaks.theme;
+    // ThemeToggle calls this to keep tweaks state in sync (it sets the DOM attribute itself)
+    window.__setTheme = (v) => setTweak('theme', v);
   }, [tweaks.theme]);
 
   // Re-render with live API data once bootstrap fetch completes
@@ -77,19 +76,7 @@ function App() {
     {screen !== 'auth' && !chat && <SphereOrb onOpen={openChat} mode={tweaks.sphereMode}/>}
     <ChatOverlay open={chat} onClose={closeChat} mode={tweaks.sphereMode}/>
 
-    {/* Mini nav strip — quick screen jump for prototype */}
-    {screen !== 'auth' && (
-      <div className="proto-nav" style={{
-        position:'fixed', left:24, bottom:24, zIndex:55,
-        display:'flex', gap:6, padding:6, background:'var(--bg-surface)',
-        border:'1px solid var(--border)', borderRadius:999, boxShadow:'var(--shadow-md)'
-      }}>
-        <NavChip active={screen==='prompt-lab'} onClick={()=>setScreen('prompt-lab')} icon={<Icon.Settings size={14}/>} label="Prompt Lab"/>
-        <NavChip active={screen==='analytics'} onClick={()=>setScreen('analytics')} icon={<Icon.Trend size={14}/>} label="Analytics"/>
-        <NavChip active={screen==='logs'} onClick={()=>setScreen('logs')} icon={<Icon.Layers size={14}/>} label="Logs"/>
-        <NavChip onClick={()=>setScreen('auth')} icon={<Icon.User size={14}/>} label="Sign out"/>
-      </div>
-    )}
+    {/* Secondary screens (Prompt Lab / Analytics / Logs) accessible via TweaksPanel quick jump */}
 
     <TweaksPanel title="Tweaks">
       <TweakSection title="Theme">

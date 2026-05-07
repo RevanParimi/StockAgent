@@ -137,22 +137,6 @@ function TopNav({ active, onNav, search, setSearch }) {
   const [dropOpen, setDropOpen] = useStateHome(false);
   const [menuOpen, setMenuOpen] = useStateHome(false);
   const timerRef = useRefHome(null);
-  const [theme, setThemeLocal] = useStateHome(
-    () => document.documentElement.getAttribute('data-theme') || 'light'
-  );
-
-  // Stay in sync when TweaksPanel radio changes the attribute
-  useEffectHome(() => {
-    const obs = new MutationObserver(() => {
-      setThemeLocal(document.documentElement.getAttribute('data-theme') || 'light');
-    });
-    obs.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
-    return () => obs.disconnect();
-  }, []);
-
-  const toggleTheme = () => {
-    if (window.__toggleTheme) window.__toggleTheme();
-  };
 
   const handleSearch = (val) => {
     setSearch(val);
@@ -290,7 +274,7 @@ function TopNav({ active, onNav, search, setSearch }) {
           </div>
 
           {/* Theme toggle + bell + avatar — desktop */}
-          <ThemeToggle theme={theme} onToggle={toggleTheme} className="nav-desktop"/>
+          <ThemeToggle className="nav-desktop"/>
           <button className="nav-desktop" style={{ width:36, height:36, borderRadius:'50%', border:'1px solid var(--border)', background:'var(--bg-surface)', display:'grid', placeItems:'center', position:'relative', flexShrink:0 }}>
             <Icon.Bell size={16} c="var(--ink-2)"/>
             <span style={{ position:'absolute', top:6, right:6, width:8, height:8, borderRadius:'50%', background:'var(--sell-strong)' }}/>
@@ -299,7 +283,7 @@ function TopNav({ active, onNav, search, setSearch }) {
 
           {/* Mobile: theme toggle + hamburger */}
           <div className="nav-hamburger" style={{ marginLeft:'auto', gap:8 }}>
-            <ThemeToggle theme={theme} onToggle={toggleTheme}/>
+            <ThemeToggle/>
             <div style={{ width:32, height:32, borderRadius:'50%', background:'linear-gradient(135deg,#22d3ee,#a78bfa)', display:'grid', placeItems:'center', color:'#fff', fontWeight:700, fontSize:12 }}>AS</div>
             <button onClick={()=>setMenuOpen(true)} style={{ width:36, height:36, borderRadius:9, border:'1px solid var(--border)', background:'var(--bg-surface)', display:'grid', placeItems:'center' }}>
               <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
@@ -326,27 +310,50 @@ function NavLink({ children, icon, active, onClick }) {
   );
 }
 
-function ThemeToggle({ theme, onToggle, className }) {
-  const isDark = theme === 'dark';
+// Fully self-contained — no props needed except optional className.
+// Reads/writes data-theme directly so it works instantly without waiting for React re-renders.
+function ThemeToggle({ className }) {
+  const [isDark, setIsDark] = useStateHome(
+    () => document.documentElement.getAttribute('data-theme') === 'dark'
+  );
+
+  // Stay in sync if TweaksPanel changes the attribute externally
+  useEffectHome(() => {
+    const obs = new MutationObserver(() => {
+      setIsDark(document.documentElement.getAttribute('data-theme') === 'dark');
+    });
+    obs.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+    return () => obs.disconnect();
+  }, []);
+
+  const toggle = () => {
+    const next = !isDark;
+    // Set DOM attribute directly — CSS responds instantly, no React state dependency
+    document.documentElement.setAttribute('data-theme', next ? 'dark' : 'light');
+    // Sync App's tweaks state (prevents TweaksPanel going out of sync)
+    if (window.__setTheme) window.__setTheme(next ? 'dark' : 'light');
+    // setIsDark called by MutationObserver above
+  };
+
   return (
     <button
-      onClick={onToggle}
+      onClick={toggle}
       className={className}
       title={isDark ? 'Switch to light' : 'Switch to dark'}
       style={{
         width:36, height:36, borderRadius:'50%', flexShrink:0,
-        border:'1px solid rgba(34,211,238,.35)',
+        border:'1px solid rgba(34,211,238,.4)',
         background: isDark
-          ? 'linear-gradient(135deg,#1a3a5c,#0d2240)'
-          : 'linear-gradient(135deg,rgba(34,211,238,.15),rgba(99,102,241,.1))',
+          ? 'linear-gradient(135deg,#1e3d60,#0d2240)'
+          : 'linear-gradient(135deg,rgba(34,211,238,.18),rgba(99,102,241,.12))',
         display:'grid', placeItems:'center', cursor:'pointer',
-        boxShadow:'0 0 0 2px rgba(34,211,238,.12)',
-        transition:'background .2s, box-shadow .2s',
+        boxShadow:'0 0 0 2px rgba(34,211,238,.15)',
+        transition:'background .25s',
       }}
     >
       {isDark
-        ? /* sun */ <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#f6d860" strokeWidth="2.2" strokeLinecap="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
-        : /* moon */ <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#0891b2" strokeWidth="2.2" strokeLinecap="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+        ? <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fde047" strokeWidth="2.2" strokeLinecap="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+        : <svg width="15" height="15" viewBox="0 0 24 24" fill="rgba(34,211,238,.3)" stroke="#0891b2" strokeWidth="2.2" strokeLinecap="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
       }
     </button>
   );

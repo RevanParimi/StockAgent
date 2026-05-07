@@ -1,10 +1,10 @@
 /* Beginner-friendly tokens layered on top of the design system.
  * Same brand DNA (cyan accent, verdict spectrum) but warmer, lighter, more breathing room. */
 :root {
-  --bg-base: #eef3fa;
-  --bg-surface: #f4f8ff;
-  --bg-elevated: #f8fbff;
-  --bg-tinted: #e6f0fb;
+  --bg-base:     #e8f0f9;
+  --bg-surface:  #eef5ff;
+  --bg-elevated: #f4f9ff;
+  --bg-tinted:   #dceaf8;
   --border: #e2e8f0;
   --border-strong: #cbd5e1;
 

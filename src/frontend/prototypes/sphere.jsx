@@ -160,12 +160,12 @@ function renderMd(text) {
       out.push('<br>');
       return;
     }
-    const ulMatch = line.match(/^[\s]*[-*•]\s+(.*)/);
-    const olMatch = line.match(/^[\s]*\d+\.\s+(.*)/);
+    const ulMatch = line.match(/^[\s]*[-•]\s+(.*)|^\*\s+(.*)/);
+    const olMatch = line.match(/^[\s]*\d+[.)]\s+(.*)/);
     if (ulMatch) {
       if (inOl) { out.push('</ol>'); inOl = false; }
       if (!inUl) { out.push('<ul style="margin:4px 0 4px 16px;padding:0">'); inUl = true; }
-      out.push(`<li>${inlineFormat(ulMatch[1])}</li>`);
+      out.push(`<li>${inlineFormat(ulMatch[1] || ulMatch[2])}</li>`);
     } else if (olMatch) {
       if (inUl) { out.push('</ul>'); inUl = false; }
       if (!inOl) { out.push('<ol style="margin:4px 0 4px 16px;padding:0">'); inOl = true; }
@@ -235,24 +235,22 @@ function ChatOverlay({ open, onClose, mode='wireframe' }) {
         <button onClick={onClose} style={{ background:'transparent', border:'none', color:'var(--ink-3)', padding:4 }}><Icon.X size={18}/></button>
       </div>
       <div ref={endRef} style={{ flex:1, padding:16, overflowY:'auto', display:'flex', flexDirection:'column', gap:10 }}>
-        {msgs.map((m,i) => (
-          <div key={i}
-            style={{
-              alignSelf: m.from==='user' ? 'flex-end' : 'flex-start',
-              maxWidth:'82%', padding:'10px 14px',
-              background: m.from==='user' ? 'var(--cyan)' : 'var(--bg-tinted)',
-              color: m.from==='user' ? '#fff' : 'var(--ink-1)',
-              borderRadius: m.from==='user' ? '16px 16px 4px 16px' : '16px 16px 16px 4px',
-              fontSize:13, lineHeight:1.6,
-              animation: m.loading ? 'pulse-soft 1.2s ease-in-out infinite' : 'none',
-              opacity: m.loading ? 0.7 : 1,
-            }}
-            {...(m.from==='bot' && !m.loading
-              ? { dangerouslySetInnerHTML: { __html: renderMd(m.text) } }
-              : { children: m.text }
-            )}
-          />
-        ))}
+        {msgs.map((m,i) => {
+          const bubbleStyle = {
+            alignSelf: m.from==='user' ? 'flex-end' : 'flex-start',
+            maxWidth:'82%', padding:'10px 14px',
+            background: m.from==='user' ? 'var(--cyan)' : 'var(--bg-tinted)',
+            color: m.from==='user' ? '#fff' : 'var(--ink-1)',
+            borderRadius: m.from==='user' ? '16px 16px 4px 16px' : '16px 16px 16px 4px',
+            fontSize:13, lineHeight:1.6,
+            animation: m.loading ? 'pulse-soft 1.2s ease-in-out infinite' : 'none',
+            opacity: m.loading ? 0.7 : 1,
+          };
+          if (m.from === 'bot' && !m.loading) {
+            return <div key={i} style={bubbleStyle} dangerouslySetInnerHTML={{ __html: renderMd(m.text) }}/>;
+          }
+          return <div key={i} style={bubbleStyle}>{m.text}</div>;
+        })}
         {msgs.length===1 && <div style={{ display:'flex', flexDirection:'column', gap:6, marginTop:8 }}>
           {window.CHAT_SEEDS.map(s => (
             <button key={s} onClick={()=>send(s)} style={{

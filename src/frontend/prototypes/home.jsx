@@ -185,11 +185,27 @@ function TopNav({ active, onNav, search, setSearch }) {
               fontSize:16, fontWeight:600, textAlign:'left', marginBottom:4
             }}>{l.icon} {l.label}</button>
           ))}
+
+          {/* Secondary screens */}
+          <div style={{ height:1, background:'var(--border)', margin:'12px 0 8px' }}/>
+          {[
+            { screen:'prompt-lab', label:'Prompt Lab', icon:<Icon.Settings size={16}/> },
+            { screen:'analytics',  label:'Analytics',  icon:<Icon.Trend size={16}/> },
+            { screen:'logs',       label:'Logs',        icon:<Icon.Layers size={16}/> },
+          ].map(l => (
+            <button key={l.screen} onClick={()=>{ onNav?.(l.screen); setMenuOpen(false); }} style={{
+              display:'flex', alignItems:'center', gap:14, padding:'12px 14px', borderRadius:12, width:'100%',
+              border:'none', background: active===l.screen ? 'var(--bg-tinted)' : 'transparent',
+              color: active===l.screen ? 'var(--cyan)' : 'var(--ink-2)',
+              fontSize:14, fontWeight:500, textAlign:'left', marginBottom:2
+            }}>{l.icon} {l.label}</button>
+          ))}
+
           <div style={{ flex:1 }}/>
           <button onClick={()=>{ onNav?.('auth'); setMenuOpen(false); }} style={{
             display:'flex', alignItems:'center', gap:10, padding:'14px', borderRadius:12, width:'100%',
             border:'1px solid var(--border)', background:'transparent', fontSize:14, fontWeight:600,
-            color:'var(--ink-2)', marginTop:20
+            color:'var(--ink-2)', marginTop:16
           }}><Icon.User size={16}/> Sign out</button>
         </div>
       )}

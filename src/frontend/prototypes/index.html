@@ -84,10 +84,6 @@ function App() {
         display:'flex', gap:6, padding:6, background:'var(--bg-surface)',
         border:'1px solid var(--border)', borderRadius:999, boxShadow:'var(--shadow-md)'
       }}>
-        <NavChip active={screen==='home'} onClick={goHome} icon={<Icon.Home size={14}/>} label="Home"/>
-        <NavChip active={screen==='agents'} onClick={goAgents} icon={<Icon.Cpu size={14}/>} label="Agents"/>
-        <NavChip active={screen==='portfolio'} onClick={()=>setScreen('portfolio')} icon={<Icon.Briefcase size={14}/>} label="Portfolio"/>
-        <NavChip active={screen==='learn'} onClick={()=>setScreen('learn')} icon={<Icon.Book size={14}/>} label="Learn"/>
         <NavChip active={screen==='prompt-lab'} onClick={()=>setScreen('prompt-lab')} icon={<Icon.Settings size={14}/>} label="Prompt Lab"/>
         <NavChip active={screen==='analytics'} onClick={()=>setScreen('analytics')} icon={<Icon.Trend size={14}/>} label="Analytics"/>
         <NavChip active={screen==='logs'} onClick={()=>setScreen('logs')} icon={<Icon.Layers size={14}/>} label="Logs"/>

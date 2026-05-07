@@ -133,6 +133,54 @@ function SphereOrb({ onOpen, mode='wireframe' }) {
 }
 window.SphereOrb = SphereOrb;
 
+// Minimal markdown → HTML for bot replies.
+// Handles: **bold**, *italic*, `code`, bullet lists (- / * / •), numbered lists, blank-line paragraphs.
+function renderMd(text) {
+  if (!text || text === '…') return text;
+  // Escape HTML entities first
+  const esc = s => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+
+  const lines = text.split('\n');
+  const out = [];
+  let inUl = false, inOl = false;
+
+  const closeList = () => {
+    if (inUl) { out.push('</ul>'); inUl = false; }
+    if (inOl) { out.push('</ol>'); inOl = false; }
+  };
+
+  const inlineFormat = raw => esc(raw)
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*(.+?)\*/g,     '<em>$1</em>')
+    .replace(/`(.+?)`/g,       '<code style="background:var(--bg-elevated);padding:1px 5px;border-radius:4px;font-size:.9em">$1</code>');
+
+  lines.forEach(line => {
+    if (line.trim() === '') {
+      closeList();
+      out.push('<br>');
+      return;
+    }
+    const ulMatch = line.match(/^[\s]*[-*•]\s+(.*)/);
+    const olMatch = line.match(/^[\s]*\d+\.\s+(.*)/);
+    if (ulMatch) {
+      if (inOl) { out.push('</ol>'); inOl = false; }
+      if (!inUl) { out.push('<ul style="margin:4px 0 4px 16px;padding:0">'); inUl = true; }
+      out.push(`<li>${inlineFormat(ulMatch[1])}</li>`);
+    } else if (olMatch) {
+      if (inUl) { out.push('</ul>'); inUl = false; }
+      if (!inOl) { out.push('<ol style="margin:4px 0 4px 16px;padding:0">'); inOl = true; }
+      out.push(`<li>${inlineFormat(olMatch[1])}</li>`);
+    } else {
+      closeList();
+      out.push(`<span>${inlineFormat(line)}</span><br>`);
+    }
+  });
+  closeList();
+  // Clean up trailing <br>
+  const html = out.join('').replace(/(<br>)+$/, '');
+  return html;
+}
+
 // Chat overlay (slide-up panel, anchored bottom-right)
 function ChatOverlay({ open, onClose, mode='wireframe' }) {
   const [msgs, setMsgs] = useState([
@@ -188,16 +236,22 @@ function ChatOverlay({ open, onClose, mode='wireframe' }) {
       </div>
       <div ref={endRef} style={{ flex:1, padding:16, overflowY:'auto', display:'flex', flexDirection:'column', gap:10 }}>
         {msgs.map((m,i) => (
-          <div key={i} style={{
-            alignSelf: m.from==='user' ? 'flex-end' : 'flex-start',
-            maxWidth:'82%', padding:'10px 14px',
-            background: m.from==='user' ? 'var(--cyan)' : 'var(--bg-tinted)',
-            color: m.from==='user' ? '#fff' : 'var(--ink-1)',
-            borderRadius: m.from==='user' ? '16px 16px 4px 16px' : '16px 16px 16px 4px',
-            fontSize:13, lineHeight:1.55,
-            animation: m.loading ? 'pulse-soft 1.2s ease-in-out infinite' : 'none',
-            opacity: m.loading ? 0.7 : 1,
-          }}>{m.text}</div>
+          <div key={i}
+            style={{
+              alignSelf: m.from==='user' ? 'flex-end' : 'flex-start',
+              maxWidth:'82%', padding:'10px 14px',
+              background: m.from==='user' ? 'var(--cyan)' : 'var(--bg-tinted)',
+              color: m.from==='user' ? '#fff' : 'var(--ink-1)',
+              borderRadius: m.from==='user' ? '16px 16px 4px 16px' : '16px 16px 16px 4px',
+              fontSize:13, lineHeight:1.6,
+              animation: m.loading ? 'pulse-soft 1.2s ease-in-out infinite' : 'none',
+              opacity: m.loading ? 0.7 : 1,
+            }}
+            {...(m.from==='bot' && !m.loading
+              ? { dangerouslySetInnerHTML: { __html: renderMd(m.text) } }
+              : { children: m.text }
+            )}
+          />
         ))}
         {msgs.length===1 && <div style={{ display:'flex', flexDirection:'column', gap:6, marginTop:8 }}>
           {window.CHAT_SEEDS.map(s => (

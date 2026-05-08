@@ -1,0 +1,343 @@
+# StockAgent
+
+> AI-powered Indian stock analyser with a self-learning feedback loop.
+> Analyses NSE/BSE stocks across 4 sectors using up to 9 specialist AI agents in parallel —
+> then reviews its own predictions every trading day to get smarter over time.
+
+**Live app:** [stockagent-ai.up.railway.app/app/index.html](https://stockagent-ai.up.railway.app/app/index.html)
+
+---
+
+## What Is StockAgent?
+
+Most stock research tools give you a one-shot answer and forget it the moment you close the tab. StockAgent works differently.
+
+Every time you run an analysis, nine specialist AI agents examine the stock from completely separate angles — fundamentals, macro risk, technical patterns, sentiment, raw material costs, policy risk, competitive position, valuation, and sector-specific sales data. Each agent scores its dimension independently, then a Signal Aggregator weighs the scores, detects where agents disagree, and asks a final AI model to resolve the conflicts and issue a verdict.
+
+That is the analysis part. The learning part is what makes it unusual.
+
+After every trading day, the system automatically fetches the actual closing price and compares it against what was predicted. It asks: *was the prediction right? If wrong, which agent was responsible? Was it a data gap, a model blind spot, or an external shock no one could have predicted?* The answers get written into a permanent per-stock memory file. The agent that keeps getting it wrong sees its influence quietly reduced. The one that keeps getting it right earns more weight in future predictions. After several months of trading days, the system has accumulated a proprietary rulebook for how a specific stock responds to specific events — something no static research tool can replicate.
+
+---
+
+## Supported Sectors and Stocks
+
+| Sector | Status | Stocks covered |
+|---|---|---|
+| **Automobile** | ✅ Full — all agents + RL loop live | MARUTI, TATAMOTORS, M&M, BAJAJ-AUTO, HEROMOTOCO, EICHERMOT, TVSMOTORS, ASHOKLEY, ESCORTS, FORCEMOT + 6 extended (APOLLOTYRE, MRF, CEATLTD, MOTHERSON, BOSCHLTD, BALKRISIND) |
+| **Banking / BFSI** | 🔶 In progress | HDFCBANK, ICICIBANK, SBIN, KOTAKBANK, AXISBANK, INDUSINDBK, BANDHANBNK, RBLBANK, YESBANK, BAJFINANCE, MUTHOOTFIN and more |
+| **IT Sector** | 🔶 In progress | TCS, INFY, WIPRO, HCLTECH, TECHM, LTIM, COFORGE, MPHASIS, PERSISTENT and more |
+| **Renewable Energy** | 🔶 In progress | ADANIGREEN, TATAPOWER, NTPC, POWERGRID, SJVN, JSWENERGY and more |
+
+You can type either the NSE ticker (`MARUTI`) or the company name (`Maruti Suzuki`) — the system resolves it automatically.
+
+---
+
+## The 9 Specialist Agents (Automobile Sector)
+
+Each agent is a focused AI analyst that looks at only one dimension. This forces depth — an agent that only cares about raw material prices cannot take shortcuts on the technical picture.
+
+### 1. Fundamentals (18% weight)
+Examines the last 4 quarters of P&L data: revenue growth, EBITDA margin vs sector peers, order book pipeline, FII/DII shareholding changes. A company that is growing revenue and expanding margins will score well here even if the stock price has not reacted yet.
+
+### 2. Sales & Demand (16% weight)
+Digs into India-specific demand signals: FADA retail dispatch figures, SIAM wholesale data, Vahan EV registration trends, dealer inventory health, DGFT export volumes. This is the "on-the-ground" signal — wholesale numbers can look good while retail demand is actually weakening, and this agent is designed to catch that gap.
+
+### 3. Risk & Macro (13% weight)
+Assesses macro headwinds and tailwinds: INR/USD exposure, crude oil trajectory, steel and aluminium input cost direction, RBI repo rate outlook, and four global geopolitical risk channels (oil supply shock, FII outflow, INR depreciation pressure, supply chain disruption from China). High risk = low score.
+
+### 4. Pattern Analysis (12% weight)
+Technical analyst. Uses 10 years of price history to identify where the stock sits in its historical cycle, current RSI/MACD/Bollinger Band posture, breakout and support zones, and correlation with the Nifty Auto index. This agent does not use any news data — it talks only to price history.
+
+### 5. Valuation & Catalyst (10% weight)
+Derives a fair value estimate using P/E vs 5-year history and peer median — without using any analyst reports. Estimates the stock's current discount or premium, lists the specific catalysts that could close that gap, and generates a price target with a recovery timeline.
+
+### 6. Policy & Regulatory (9% weight)
+Covers the government policy environment: FAME EV subsidy eligibility, BS-7/CAFE emission norm compliance readiness, Union Budget duties, PLI scheme capture, and state-level EV incentives. For auto stocks, a surprise duty change or subsidy cut can matter more than a quarterly earnings miss.
+
+### 7. Raw Materials (9% weight)
+Steel, aluminium, platinum, palladium, crude oil, and polymer price direction. Every auto OEM has a different input cost mix — this agent scores the commodity environment for the company's specific exposure.
+
+### 8. Competitive Intel (9% weight)
+EV market share trajectory, upcoming model launch pipeline, joint ventures, and ADAS/safety ratings. Is this company gaining share or losing it? Is its product pipeline rich or thin?
+
+### 9. Sentiment (4% weight)
+News NLP across financial media, management tone from earnings calls, social media signals, and dealer feedback. Given the smallest weight — markets can be irrational in the short term, but persistently negative sentiment often precedes a structural problem.
+
+---
+
+## How the Verdict Is Produced
+
+```
+9 agents run in parallel
+      ↓
+Each returns a score 0.0–1.0 with sub-scores and reasoning
+      ↓
+Signal Aggregator applies weighted average
+      ↓
+Detects conflicts: any two agents with score delta ≥ 0.30 flagged
+      ↓
+LLM resolves conflicts: "fundamentals bullish, macro bearish — which matters more right now?"
+      ↓
+Final score + Verdict + Investment thesis + Conviction drivers + Top risks
+```
+
+**Verdict scale:**
+
+| Verdict | Score range | Meaning |
+|---|---|---|
+| STRONG BUY | 0.75 – 1.00 | Strong signals across most dimensions |
+| BUY | 0.55 – 0.75 | Majority positive signals |
+| NEUTRAL | 0.40 – 0.55 | Mixed or uncertain signals |
+| SELL | 0.20 – 0.40 | Majority negative signals |
+| STRONG SELL | 0.00 – 0.20 | Weakness across most dimensions |
+
+The verdict is not a simple average of agent scores. After the weighted composite is computed, an LLM reviews the conflicts and may adjust the final score if it judges that one agent's signal is especially reliable or unreliable in the current context.
+
+---
+
+## Reading an Analysis Result
+
+When an analysis completes, the drawer shows:
+
+**Executive Summary** — 2 sentences for a quick read.
+
+**Score Gauge** — 0–100 visual representation of the final score. 50 is neutral.
+
+**Investment Thesis** — the 2–3 sentence analytical case, combining all agents' views.
+
+**Conviction Drivers** — the top 3–5 specific factors pushing the score positive. These are the things the system is most confident about.
+
+**Top Risks** — the top 3–5 specific factors that could invalidate the bullish case.
+
+**Agent Breakdown** — per-agent scores displayed as a bar chart. This is where you see disagreements. If fundamentals scores 0.72 but risk_macro scores 0.38, the stock might be fundamentally strong but exposed to near-term macro headwinds.
+
+**Conflicts Resolved** — if any two agents disagreed significantly, this shows the conflict and how it was resolved.
+
+**Price Target** — derived by the Valuation agent from P/E normalisation and technical channel analysis. Not from broker reports. May be blank if data is insufficient.
+
+**Recovery Timeline** — estimated quarters to reach fair value. Only shown for SELL/STRONG SELL verdicts where recovery is anticipated.
+
+---
+
+## The Learning System (Why It Gets Smarter Over Time)
+
+Every analysis generates a 30-day forward forecast. Each evening at 4:30 PM IST, after NSE market close, the system automatically:
+
+1. Fetches the actual closing price for every tracked stock
+2. Compares it to what was predicted
+3. Identifies the primary miss — which agent led the call astray
+4. Classifies the type of miss (was it a data gap? model bias? external shock?)
+5. Adjusts that agent's influence weight for future predictions
+6. Writes lessons into a permanent learning ledger for that stock
+7. Revises the remaining days in the current 30-day forecast
+
+**The miss classification matters.** If the stock moved because of a surprise RBI rate decision that nobody predicted, that is classified as an `external_shock` — zero penalty to any agent, because the system could not have known. But if the fundamentals agent consistently overestimates a specific signal month after month, that is classified as `model_bias` — full penalty, weight reduction.
+
+**What the learning ledger looks like after 3 months:**
+
+```
+MARUTI learning ledger — 4 active lessons:
+
+[L001] RBI_policy_day (confidence=0.80, seen=4×, scope=sector_wide)
+       Rule: On RBI announcement days, risk_macro signal dominates — trust it more.
+
+[L002] month_end_inventory_flush (confidence=0.65, seen=2×, scope=stock_specific)
+       Rule: Discount sales_demand score in last 3 trading days of each month.
+
+[L003] crude_oil_spike (confidence=0.72, seen=3×, scope=market_wide)
+       Rule: Crude spike >5% in 5 days → raise risk_macro weight, lower sales_demand.
+
+[L004] shravan_demand_dip (confidence=0.68, seen=1×, scope=sector_wide)
+       Rule: Jul–Aug Shravan period → discount sales_demand for North India-heavy OEMs.
+```
+
+These lessons are applied automatically to every subsequent analysis and forecast. Lessons tagged `sector_wide` (like L001 and L003) propagate to other stocks in the same sector — so a lesson learned from MARUTI's misses automatically helps TATAMOTORS forecasts.
+
+**Agent weight example after 60 days:**
+
+```
+Current weights vs base (MARUTI, weight version v7):
+  risk_macro      0.16 → 0.19  (+0.03)  ← consistently called direction correctly
+  fundamentals    0.18 → 0.20  (+0.02)  ← strong track record on quarterly data
+  sales_demand    0.16 → 0.14  (−0.02)  ← over-optimistic on wholesale dispatch 4× 
+  sentiment       0.04 → 0.03  (−0.01)  ← noise signal; rarely predictive
+```
+
+---
+
+## Market Regime Awareness
+
+The system detects the broad market regime each day from three signals:
+
+| Signal | What it measures |
+|---|---|
+| India VIX | Market fear level |
+| Nifty 50 momentum (5-day) | Whether foreign institutional money is flowing in or out |
+| Sector RSI | Whether the sector is technically overbought or oversold |
+
+The regime label — `MACRO_CRISIS`, `RISK_OFF`, `NORMAL`, `RISK_ON`, `MOMENTUM_EXTENDED`, or `OVERSOLD` — temporarily adjusts which agents carry more weight in that day's forecast revision. In a `MACRO_CRISIS` day (VIX > 22, Nifty falling), the risk_macro agent's weight is boosted by 40%. In a `RISK_ON` day, sentiment and fundamentals are elevated and macro risk is discounted.
+
+These regime adjustments are **ephemeral** — they affect today's forecast but do not permanently change the learned weight memory. The system does not let one bad week of macro volatility permanently silence the fundamentals agent.
+
+---
+
+## Conviction Streak Protection
+
+If the system has issued the same verdict (e.g. `STRONG BUY`) for 10 or more consecutive trading days, it automatically applies a **mean-reversion prior** — a growing uncertainty discount — to future forecast confidence. A streak of 15+ days is flagged as elevated risk.
+
+When the pattern_analysis agent's RSI indicator contradicts the sustained verdict (e.g. RSI showing overbought conditions while the system keeps calling BUY), the reversion warning is amplified further.
+
+This is not a prediction — it is a calibration. The system is telling you: *"We have been bullish for a long time. Markets tend to correct sustained directional trends. Be proportionally cautious."*
+
+---
+
+## The Chat Assistant
+
+The floating orb (bottom-right corner) opens a chat assistant that can answer questions in real time:
+
+- **"What is the current price of MARUTI?"** → fetches live from yfinance
+- **"Why did Tata Motors fall today?"** → searches live news via Tavily
+- **"What is StockAgent's current rating on HDFCBANK?"** → reads from analysis database
+- **"Compare INFY vs TCS"** → fetches latest scores for both
+
+The chat assistant uses a tool loop — before answering any price question, it always fetches the live price first. It never hallucinates numbers. Conversation history is maintained within the session so you can follow up naturally.
+
+---
+
+## Watchlist
+
+Add up to any supported NSE stock to your watchlist. The app fetches live prices for all watchlist stocks on page load and shows them in a compact table with current score and verdict (if an analysis has been run).
+
+Click **Analyze** on any watchlist row to run a fresh 9-agent analysis immediately.
+
+The watchlist persists between sessions. Changes are saved to the server.
+
+---
+
+## Trending
+
+The Trending tab shows stocks sorted by **score delta** — not price change. A stock that moved +3% in price but whose AI analysis score dropped from 0.72 to 0.58 appears as a negative mover here.
+
+This is intentional. Price momentum is a lagging signal. Score changes reflect what the agents are finding in fundamentals, macro, and sentiment — often before the price reacts.
+
+---
+
+## Categories
+
+The Browse by Category section organises stocks into:
+
+| Category | What it covers |
+|---|---|
+| EV | OEMs with significant EV exposure (Tata, M&M, TVS, Bajaj, Hero) |
+| Mass Market | Volume-driven passenger vehicles |
+| Premium | Royal Enfield, Bajaj, Maruti premium segment |
+| Commercial Vehicles | Ashok Leyland, Tata Motors CV |
+| Two-Wheelers | Hero, TVS, Bajaj, Eicher |
+| Auto Parts | Bosch, Motherson, Apollo Tyres, CEAT, MRF, Balkrishna |
+
+Click any category to see all stocks within it and their latest verdicts side by side.
+
+---
+
+## Agent Weight Customisation
+
+On the Agents page, each agent card has a weight slider. You can reduce or increase an agent's influence on the final score — for example, if you believe raw material costs are currently irrelevant for a particular stock, you can lower that agent's weight.
+
+Changes are saved and applied to all future analyses in the current session. Weights must sum to approximately 1.0; the system validates this and will show an error if the total drifts too far.
+
+You can also disable individual agents entirely (weight = 0) if you want to run a leaner analysis.
+
+**Note:** The system also maintains its own *learned* weights per ticker from RL feedback. User-applied slider weights override the learned weights for that session.
+
+---
+
+## Analytics Page
+
+The Analytics page shows the RL system's performance over time:
+
+- **Direction accuracy** — what % of daily predictions got the up/down direction correct
+- **Weight drift** — how far each agent's learned weight has moved from its default
+- **Top missed factors** — which real-world events the system has been most consistently surprised by
+- **Active lessons** — the current contents of the learning ledger, with confidence scores and how many times each pattern has been observed
+
+This page is honest about the system's blind spots. If crude oil spikes keep catching it off guard, that shows up here — and the PromptEnhancer will start injecting crude oil queries into relevant agents automatically to reduce that gap over time.
+
+---
+
+## Logs Page
+
+Live server log stream. Useful for monitoring when a daily review job runs, when a monthly forecast is being generated, or when an analysis is queued.
+
+---
+
+## Understanding the Limitations
+
+**1. This is not financial advice.**
+StockAgent is a research and pattern-recognition tool. Verdicts are AI-generated signals, not professional investment recommendations. Do not make investment decisions solely based on these outputs.
+
+**2. Data gaps exist for some inputs.**
+Some data sources do not have free, structured APIs. FADA/SIAM dispatch numbers, Vahan registrations, and RBI repo rate changes are fetched via web search proxies, not official structured data pipelines. The system is explicit about this in each agent's reasoning.
+
+**3. Newly listed stocks may have limited data.**
+Stocks that listed recently (e.g. ATHERENERGY) may not have enough yfinance history for technical analysis. The system falls back to LLM training knowledge in these cases, which is less reliable.
+
+**4. The RL loop needs time to calibrate.**
+In the first month of tracking a stock, agent weights are the system defaults — no learning has happened yet. The system becomes meaningfully more accurate after 2–3 months of daily feedback, and genuinely useful as a learning tool after 6 months.
+
+**5. Sector coverage is uneven.**
+The Automobile sector has all 9 agents fully implemented with live data fetchers. The Banking/BFSI, IT, and Renewable Energy sectors have agent logic and prompts in place but rely more on LLM training knowledge until sector-specific data fetchers are wired up.
+
+**6. Black-swan events are unforeseeable.**
+A surprise government order, a sudden exchange circuit breaker, or a geopolitical shock that was not in any news feed cannot be predicted. The system classifies these correctly as `external_shock` misses and does not penalise itself for them, but it also cannot warn you in advance.
+
+---
+
+## Technical Stack (for the curious)
+
+| Layer | Technology |
+|---|---|
+| AI model | Qwen 235B via OpenRouter |
+| Analysis framework | LangGraph (parallel agent dispatch) |
+| Backend | Python FastAPI |
+| Data | yfinance (prices), Serper (news search), Tavily (policy docs) |
+| Frontend | React (Babel standalone, no build step) |
+| Database | SQLite (analysis history) + JSON files (RL memory) |
+| Deployment | Railway (Docker) |
+
+All AI reasoning happens server-side. The browser receives structured JSON results.
+
+---
+
+## Frequently Asked Questions
+
+**How long does an analysis take?**
+Typically 60–120 seconds. Nine agents run in parallel, each making one or two LLM calls. The exact time depends on how quickly the LLM API responds.
+
+**How often should I re-run analysis on a stock?**
+For active monitoring, once a week is usually sufficient unless a significant event (earnings, policy announcement, sharp price move) has occurred. The daily RL review updates forward forecasts automatically — you don't need to re-run analysis to get an updated prediction.
+
+**Why does the score sometimes disagree with what I see in the news?**
+The score reflects a weighted view across nine dimensions, including macro risks and technical patterns, not just recent news. A stock with positive news but rising input costs, deteriorating technicals, and policy headwinds will score below what the headlines suggest.
+
+**What does it mean when two agents conflict?**
+A conflict is flagged when two agents' scores differ by 0.30 or more (e.g. fundamentals = 0.70, macro = 0.38). The Signal Aggregator LLM explicitly addresses this conflict and explains which signal it weighted more heavily and why.
+
+**Can I use this for short-term trading?**
+The system is calibrated for 30-day horizon analysis, not intraday or weekly trading. The technical Pattern Analysis agent provides the most short-term-relevant signals, but the overall verdict is a medium-term view.
+
+**Why are some verdicts different from what analysts say?**
+By design. The system explicitly excludes analyst ratings, broker price targets, and consensus EPS estimates from its reasoning. It derives all scores from raw data: price history, financial statements, macro indicators, and news. Analyst consensus is a lagging signal that the system intentionally ignores.
+
+**Is my watchlist saved?**
+Yes. Your watchlist and agent weight preferences are saved on the server. They persist across browser sessions and devices.
+
+---
+
+## Reference Documents
+
+| Document | Purpose |
+|---|---|
+| [CODEBASE.md](CODEBASE.md) | Full module map, all API endpoints, configuration reference |
+| [docs/RL_DESIGN.md](docs/RL_DESIGN.md) | RL feedback loop: formulas, daily flow, schemas, static vs LLM |
+| [docs/AGENTIC_DESIGN.md](docs/AGENTIC_DESIGN.md) | All agents, tasks, data sources, static vs LLM boundary |

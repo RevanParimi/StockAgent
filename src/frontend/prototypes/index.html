@@ -36,6 +36,8 @@
 <script type="text/babel" src="prompt-lab.jsx"></script>
 <script type="text/babel" src="analytics.jsx"></script>
 <script type="text/babel" src="logs.jsx"></script>
+<script type="text/babel" src="rl-data.jsx"></script>
+<script type="text/babel" src="rl-monitor.jsx"></script>
 
 <script type="text/babel">
 const { useState, useEffect } = React;
@@ -77,6 +79,7 @@ function App() {
     {screen === 'prompt-lab' && <PromptLabPage onNav={setScreen}/>}
     {screen === 'analytics' && <AnalyticsPage onNav={setScreen}/>}
     {screen === 'logs'      && <LogsPage onNav={setScreen}/>}
+    {screen === 'rl-monitor' && <RLMonitorPage onNav={setScreen}/>}
 
     {/* Floating orb on non-auth screens */}
     {screen !== 'auth' && !chat && <SphereOrb onOpen={openChat} mode={tweaks.sphereMode}/>}
@@ -93,6 +96,7 @@ function App() {
         <NavChip active={screen==='prompt-lab'} onClick={()=>setScreen('prompt-lab')} icon={<Icon.Settings size={14}/>} label="Prompt Lab"/>
         <NavChip active={screen==='analytics'} onClick={()=>setScreen('analytics')} icon={<Icon.Trend size={14}/>} label="Analytics"/>
         <NavChip active={screen==='logs'} onClick={()=>setScreen('logs')} icon={<Icon.Layers size={14}/>} label="Logs"/>
+        <NavChip active={screen==='rl-monitor'} onClick={()=>setScreen('rl-monitor')} icon={<Icon.Activity size={14}/>} label="RL Monitor"/>
         <NavChip onClick={()=>setScreen('auth')} icon={<Icon.User size={14}/>} label="Sign out"/>
       </div>
     )}
@@ -126,6 +130,7 @@ function App() {
         <TweakButton onClick={()=>setScreen('prompt-lab')}>Open prompt lab</TweakButton>
         <TweakButton onClick={()=>setScreen('analytics')}>Open analytics</TweakButton>
         <TweakButton onClick={()=>setScreen('logs')}>Open logs</TweakButton>
+        <TweakButton onClick={()=>setScreen('rl-monitor')}>Open RL Monitor</TweakButton>
       </TweakSection>
     </TweaksPanel>
   </>;

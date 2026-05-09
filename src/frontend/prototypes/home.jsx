@@ -155,10 +155,11 @@ function TopNav({ active, onNav, search, setSearch }) {
   };
 
   const navLinks = [
-    { screen:'home',      label:'Home',      icon:<Icon.Home size={17}/> },
-    { screen:'agents',    label:'Agents',    icon:<Icon.Cpu size={17}/> },
-    { screen:'portfolio', label:'Portfolio', icon:<Icon.Briefcase size={17}/> },
-    { screen:'learn',     label:'Learn',     icon:<Icon.Book size={17}/> },
+    { screen:'home',       label:'Home',       icon:<Icon.Home size={17}/> },
+    { screen:'agents',     label:'Agents',     icon:<Icon.Cpu size={17}/> },
+    { screen:'portfolio',  label:'Portfolio',  icon:<Icon.Briefcase size={17}/> },
+    { screen:'learn',      label:'Learn',      icon:<Icon.Book size={17}/> },
+    { screen:'rl-monitor', label:'RL Monitor', icon:<Icon.Activity size={17}/> },
   ];
 
   return (

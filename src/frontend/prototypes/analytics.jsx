@@ -337,7 +337,10 @@ function AnalyticsPage({ onNav }) {
 
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg-base)', color: 'var(--ink-1)', paddingBottom: 100 }}>
-      {/* Header */}
+      {/* Use the shared TopNav so navigation to this screen is visually obvious */}
+      <TopNav active="analytics" onNav={onNav} search="" setSearch={() => {}}/>
+
+      {/* Page header */}
       <div style={{
         padding: '18px 24px', borderBottom: '1px solid var(--border)',
         background: 'var(--bg-surface)',
@@ -349,7 +352,7 @@ function AnalyticsPage({ onNav }) {
           }}>
             <Icon.ChevronL size={18}/>
           </button>
-          <Icon.Trend size={20} c="var(--accent)"/>
+          <Icon.Trend size={20} c="var(--cyan)"/>
           <div>
             <div style={{ fontWeight: 700, fontSize: 16 }}>RL Analytics</div>
             <div style={{ fontSize: 12, color: 'var(--ink-3)' }}>Agent accuracy · weight drift · miss patterns · conviction</div>
@@ -392,6 +395,23 @@ function AnalyticsPage({ onNav }) {
         {error && (
           <div style={{ padding: 16, borderRadius: 10, background: '#fef2f2', border: '1px solid #fecaca', color: '#991b1b', fontSize: 13 }}>
             Failed to load analytics: {error}
+          </div>
+        )}
+
+        {/* No-data banner when backend analytics endpoints are unavailable */}
+        {!loading && !error && !accuracy && (
+          <div style={{
+            display:'flex', alignItems:'center', gap:12, padding:'14px 18px',
+            borderRadius:12, marginBottom:20,
+            background:'var(--neutral-soft)', border:'1px solid var(--neutral)',
+          }}>
+            <Icon.AlertTriangle size={18} c="var(--neutral)"/>
+            <div>
+              <div style={{ fontSize:13, fontWeight:700, color:'var(--ink-1)' }}>Backend analytics endpoints not available</div>
+              <div style={{ fontSize:12, color:'var(--ink-2)', marginTop:2 }}>
+                Start the backend and run some analyses to populate this dashboard. Charts will show live data automatically.
+              </div>
+            </div>
           </div>
         )}
 

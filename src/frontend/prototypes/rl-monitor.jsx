@@ -146,7 +146,7 @@ function PredictionChart({ predictions }) {
             <g key={i}>
               <line x1={pad.l} x2={pad.l+iW} y1={t.y} y2={t.y}
                     stroke="var(--border)" strokeDasharray="4 6" strokeWidth={0.8}/>
-              <text x={pad.l-8} y={t.y+4} fontSize="10" textAnchor="end"
+              <text x={pad.l-8} y={t.y+4} fontSize="8" textAnchor="end"
                     fill="var(--ink-3)" fontFamily="JetBrains Mono,monospace">
                 ₹{Math.round(t.val).toLocaleString('en-IN')}
               </text>
@@ -169,9 +169,9 @@ function PredictionChart({ predictions }) {
           {predictions.map((p, i) => {
             if (p.actual == null || p.direction_hit == null) return null;
             return (
-              <circle key={i} cx={xp(i)} cy={yp(p.actual)} r={5}
+              <circle key={i} cx={xp(i)} cy={yp(p.actual)} r={3.5}
                       fill={p.direction_hit ? '#16a34a' : '#dc2626'}
-                      stroke="var(--bg-surface)" strokeWidth={2}/>
+                      stroke="var(--bg-surface)" strokeWidth={1.5}/>
             );
           })}
 

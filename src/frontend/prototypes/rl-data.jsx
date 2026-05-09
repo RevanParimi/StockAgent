@@ -110,6 +110,18 @@ window.RL_PREDICTIONS = {
   'BAJAJ-AUTO': genPredictions(8945, 12),
 };
 
+// Per-agent colors — used in multi-line drift chart and bar chart
+window.RL_AGENT_COLORS = {
+  sales_demand:       '#7c3aed',   // purple
+  fundamentals:       '#06b6d4',   // cyan
+  pattern_analysis:   '#22c55e',   // green
+  raw_materials:      '#f59e0b',   // amber
+  sentiment:          '#f97316',   // orange
+  policy_regulatory:  '#ec4899',   // pink
+  competitive_intel:  '#14b8a6',   // teal
+  risk_macro:         '#a78bfa',   // violet-light
+};
+
 window.RL_WEIGHTS = {
   MARUTI: {
     available: true,
@@ -117,9 +129,14 @@ window.RL_WEIGHTS = {
     base_weights:    { sales_demand:0.18, fundamentals:0.20, pattern_analysis:0.13, raw_materials:0.10, sentiment:0.04, policy_regulatory:0.10, competitive_intel:0.10, risk_macro:0.15 },
     current_weights: { sales_demand:0.20, fundamentals:0.22, pattern_analysis:0.12, raw_materials:0.09, sentiment:0.04, policy_regulatory:0.10, competitive_intel:0.09, risk_macro:0.14 },
     weight_history: [
-      { version:8, date:'2025-04-28', reason:'Upweighted fundamentals after strong Q4 earnings beat.', weights: { sales_demand:0.20, fundamentals:0.22, pattern_analysis:0.12, raw_materials:0.09, sentiment:0.04, policy_regulatory:0.10, competitive_intel:0.09, risk_macro:0.14 } },
-      { version:7, date:'2025-04-14', reason:'Downweighted raw_materials after crude normalised.', weights: { sales_demand:0.19, fundamentals:0.20, pattern_analysis:0.13, raw_materials:0.09, sentiment:0.05, policy_regulatory:0.10, competitive_intel:0.10, risk_macro:0.14 } },
-      { version:6, date:'2025-03-31', reason:'Boosted sales_demand after FADA dispatch beat.', weights: { sales_demand:0.21, fundamentals:0.19, pattern_analysis:0.12, raw_materials:0.10, sentiment:0.05, policy_regulatory:0.10, competitive_intel:0.09, risk_macro:0.14 } },
+      { version:1, date:'2025-03-21', reason:'Initial weights from agent config baseline.', weights:{ sales_demand:0.18, fundamentals:0.20, pattern_analysis:0.13, raw_materials:0.10, sentiment:0.04, policy_regulatory:0.10, competitive_intel:0.10, risk_macro:0.15 } },
+      { version:2, date:'2025-03-28', reason:'Slight boost to sentiment after social media spike.', weights:{ sales_demand:0.18, fundamentals:0.20, pattern_analysis:0.13, raw_materials:0.10, sentiment:0.05, policy_regulatory:0.10, competitive_intel:0.10, risk_macro:0.14 } },
+      { version:3, date:'2025-04-04', reason:'Increased raw_materials weight on crude volatility.', weights:{ sales_demand:0.18, fundamentals:0.19, pattern_analysis:0.13, raw_materials:0.12, sentiment:0.05, policy_regulatory:0.09, competitive_intel:0.10, risk_macro:0.14 } },
+      { version:4, date:'2025-04-11', reason:'Reduced sentiment; news cycle normalised.', weights:{ sales_demand:0.19, fundamentals:0.19, pattern_analysis:0.13, raw_materials:0.11, sentiment:0.04, policy_regulatory:0.10, competitive_intel:0.10, risk_macro:0.14 } },
+      { version:5, date:'2025-04-18', reason:'Pattern analysis downweighted after false RSI signal.', weights:{ sales_demand:0.19, fundamentals:0.20, pattern_analysis:0.11, raw_materials:0.10, sentiment:0.05, policy_regulatory:0.10, competitive_intel:0.11, risk_macro:0.14 } },
+      { version:6, date:'2025-03-31', reason:'Boosted sales_demand after FADA dispatch beat.', weights:{ sales_demand:0.21, fundamentals:0.19, pattern_analysis:0.12, raw_materials:0.10, sentiment:0.05, policy_regulatory:0.10, competitive_intel:0.09, risk_macro:0.14 } },
+      { version:7, date:'2025-04-14', reason:'Downweighted raw_materials after crude normalised.', weights:{ sales_demand:0.19, fundamentals:0.20, pattern_analysis:0.13, raw_materials:0.09, sentiment:0.05, policy_regulatory:0.10, competitive_intel:0.10, risk_macro:0.14 } },
+      { version:8, date:'2025-04-28', reason:'Upweighted fundamentals after strong Q4 earnings beat.', weights:{ sales_demand:0.20, fundamentals:0.22, pattern_analysis:0.12, raw_materials:0.09, sentiment:0.04, policy_regulatory:0.10, competitive_intel:0.09, risk_macro:0.14 } },
     ],
   },
   TATAMOTORS: {
@@ -128,7 +145,14 @@ window.RL_WEIGHTS = {
     base_weights:    { sales_demand:0.18, fundamentals:0.20, pattern_analysis:0.13, raw_materials:0.10, sentiment:0.04, policy_regulatory:0.10, competitive_intel:0.10, risk_macro:0.15 },
     current_weights: { sales_demand:0.17, fundamentals:0.19, pattern_analysis:0.14, raw_materials:0.10, sentiment:0.06, policy_regulatory:0.10, competitive_intel:0.11, risk_macro:0.13 },
     weight_history: [
-      { version:6, date:'2025-04-21', reason:'Boosted competitive_intel on JLR/EV market share data.', weights: { sales_demand:0.17, fundamentals:0.19, pattern_analysis:0.14, raw_materials:0.10, sentiment:0.06, policy_regulatory:0.10, competitive_intel:0.11, risk_macro:0.13 } },
+      { version:1, date:'2025-03-21', reason:'Initial weights from config baseline.', weights:{ sales_demand:0.18, fundamentals:0.20, pattern_analysis:0.13, raw_materials:0.10, sentiment:0.04, policy_regulatory:0.10, competitive_intel:0.10, risk_macro:0.15 } },
+      { version:2, date:'2025-03-28', reason:'EV launch cycle boosted competitive_intel slightly.', weights:{ sales_demand:0.18, fundamentals:0.20, pattern_analysis:0.13, raw_materials:0.10, sentiment:0.05, policy_regulatory:0.10, competitive_intel:0.11, risk_macro:0.13 } },
+      { version:3, date:'2025-04-04', reason:'JLR forex impact — raised risk_macro.', weights:{ sales_demand:0.17, fundamentals:0.19, pattern_analysis:0.13, raw_materials:0.10, sentiment:0.05, policy_regulatory:0.10, competitive_intel:0.11, risk_macro:0.15 } },
+      { version:4, date:'2025-04-11', reason:'Reduced risk_macro after pound stabilised.', weights:{ sales_demand:0.17, fundamentals:0.19, pattern_analysis:0.14, raw_materials:0.10, sentiment:0.06, policy_regulatory:0.10, competitive_intel:0.11, risk_macro:0.13 } },
+      { version:5, date:'2025-04-18', reason:'Sentiment upweighted on Tiago.ev launch media.', weights:{ sales_demand:0.17, fundamentals:0.19, pattern_analysis:0.14, raw_materials:0.10, sentiment:0.07, policy_regulatory:0.10, competitive_intel:0.10, risk_macro:0.13 } },
+      { version:6, date:'2025-04-21', reason:'Boosted competitive_intel on JLR/EV market share.', weights:{ sales_demand:0.17, fundamentals:0.19, pattern_analysis:0.14, raw_materials:0.10, sentiment:0.06, policy_regulatory:0.10, competitive_intel:0.11, risk_macro:0.13 } },
+      { version:7, date:'2025-04-28', reason:'Pattern analysis raised after trend confirmation.', weights:{ sales_demand:0.17, fundamentals:0.19, pattern_analysis:0.15, raw_materials:0.10, sentiment:0.06, policy_regulatory:0.10, competitive_intel:0.10, risk_macro:0.13 } },
+      { version:8, date:'2025-05-05', reason:'Stable cycle — weights held from v7.', weights:{ sales_demand:0.17, fundamentals:0.19, pattern_analysis:0.14, raw_materials:0.10, sentiment:0.06, policy_regulatory:0.10, competitive_intel:0.11, risk_macro:0.13 } },
     ],
   },
 };

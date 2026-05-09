@@ -528,49 +528,147 @@ function MissAttribution({ misses }) {
 }
 
 // ── Agent Weight Drift ────────────────────────────────────────────────────────
-function WeightDrift({ weights }) {
+function WeightDrift({ weights, ticker }) {
   if (!weights) return <p style={{ color:'var(--ink-3)', fontSize:13 }}>No weight data yet for this ticker.</p>;
+
+  const agentColors = window.RL_AGENT_COLORS || {};
   const agents = Object.keys(weights.current_weights);
-  const maxW = Math.max(...Object.values(weights.current_weights), ...Object.values(weights.base_weights), 0.25);
+  // Sort history by version ascending for the chart
+  const history = [...(weights.weight_history || [])].sort((a,b) => a.version - b.version);
+  const numV = history.length;
+
+  // ── Multi-line drift chart ──────────────────────────────────────────────
+  const W = 700, H = 240, pad = { l:44, r:16, t:16, b:52 };
+  const iW = W - pad.l - pad.r, iH = H - pad.t - pad.b;
+  const xV = i => pad.l + (numV > 1 ? (i / (numV-1)) * iW : iW/2);
+  const yW = w => pad.t + (1 - w / 0.30) * iH;  // max 30%
+
+  const yTicks = [0, 0.05, 0.10, 0.15, 0.20, 0.25, 0.30];
+
   return (
-    <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:24 }}>
+    <div>
+      {/* Chart 1: Agent weight drift across versions */}
+      <div style={{ marginBottom:32 }}>
+        <p style={{ fontSize:15, fontWeight:700, color:'var(--ink-1)', marginBottom:4 }}>Agent weight drift across versions</p>
+        <p style={{ fontSize:12, color:'var(--ink-3)', marginBottom:16 }}>
+          How RL has reweighted each agent's voice in <strong style={{color:'var(--ink-1)'}}>{ticker}</strong>'s composite score over {numV} model versions.
+        </p>
+        <div style={{ background:'var(--bg-surface)', border:'1px solid var(--border)', borderRadius:14, padding:'20px 20px 16px' }}>
+          {numV < 2
+            ? <p style={{ color:'var(--ink-3)', fontSize:13, textAlign:'center', padding:32 }}>Need ≥ 2 versions to show drift chart.</p>
+            : <>
+              <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{ display:'block', overflow:'visible' }}>
+                {/* Y grid + labels */}
+                {yTicks.map((t, i) => (
+                  <g key={i}>
+                    <line x1={pad.l} x2={pad.l+iW} y1={yW(t)} y2={yW(t)} stroke="var(--border)" strokeDasharray="4 6" strokeWidth={0.8}/>
+                    <text x={pad.l-6} y={yW(t)+4} fontSize="9" textAnchor="end" fill="var(--ink-3)" fontFamily="JetBrains Mono,monospace">
+                      {(t*100).toFixed(0)}%
+                    </text>
+                  </g>
+                ))}
+                {/* One line per agent */}
+                {agents.map(k => {
+                  const color = agentColors[k] || '#94a3b8';
+                  const pts = history.map((h, i) => `${xV(i).toFixed(1)},${yW(h.weights[k] ?? 0).toFixed(1)}`);
+                  return (
+                    <g key={k}>
+                      <path d={'M ' + pts.join(' L ')} fill="none" stroke={color} strokeWidth="2"
+                            strokeLinejoin="round" strokeLinecap="round"/>
+                      {history.map((h, i) => (
+                        <circle key={i} cx={xV(i)} cy={yW(h.weights[k] ?? 0)} r="3.5"
+                                fill={color} stroke="var(--bg-surface)" strokeWidth="1.5"/>
+                      ))}
+                    </g>
+                  );
+                })}
+                {/* X axis: version + date */}
+                {history.map((h, i) => (
+                  <g key={i}>
+                    <text x={xV(i)} y={pad.t+iH+14} fontSize="9" textAnchor="middle"
+                          fill="var(--ink-1)" fontFamily="JetBrains Mono,monospace" fontWeight="700">
+                      v{h.version}
+                    </text>
+                    <text x={xV(i)} y={pad.t+iH+26} fontSize="8" textAnchor="middle"
+                          fill="var(--ink-3)" fontFamily="JetBrains Mono,monospace">
+                      {h.date?.slice(5)}
+                    </text>
+                  </g>
+                ))}
+              </svg>
+              {/* Legend */}
+              <div style={{ display:'flex', flexWrap:'wrap', gap:'8px 20px', marginTop:10, paddingLeft:pad.l }}>
+                {agents.map(k => (
+                  <div key={k} style={{ display:'flex', alignItems:'center', gap:6 }}>
+                    <span style={{ width:10, height:10, borderRadius:3, background:agentColors[k]||'#94a3b8', display:'inline-block', flexShrink:0 }}/>
+                    <span style={{ fontSize:11, color:'var(--ink-2)' }}>{AGENT_LABELS_RL[k]||k}</span>
+                  </div>
+                ))}
+              </div>
+            </>
+          }
+        </div>
+      </div>
+
+      {/* Chart 2: Current vs base weights (redesigned) */}
       <div>
-        <p style={{ fontSize:13, fontWeight:700, color:'var(--ink-1)', marginBottom:12 }}>Current vs base weights</p>
-        {agents.map(k => {
-          const cur = weights.current_weights[k] ?? 0;
-          const base = weights.base_weights[k] ?? 0;
-          const diff = cur - base;
-          return (
-            <div key={k} style={{ marginBottom:10 }}>
-              <div style={{ display:'flex', justifyContent:'space-between', marginBottom:3 }}>
-                <span style={{ fontSize:11, color:'var(--ink-2)' }}>{AGENT_LABELS_RL[k] || k}</span>
-                <span className="mono" style={{ fontSize:11, color: diff>0.005?'var(--buy-strong)':diff<-0.005?'var(--sell-strong)':'var(--ink-3)' }}>
-                  {diff>=0?'+':''}{(diff*100).toFixed(1)}%
+        <p style={{ fontSize:15, fontWeight:700, color:'var(--ink-1)', marginBottom:4 }}>Current vs base weights</p>
+        <p style={{ fontSize:12, color:'var(--ink-3)', marginBottom:16 }}>
+          Δ shows where RL has learned the most. Positive = RL trusts this agent more than the configured baseline.
+        </p>
+        <div style={{ background:'var(--bg-surface)', border:'1px solid var(--border)', borderRadius:14, padding:'8px 0' }}>
+          {agents.map((k, idx) => {
+            const cur  = weights.current_weights[k] ?? 0;
+            const base = weights.base_weights[k] ?? 0;
+            const diff = cur - base;
+            const color = agentColors[k] || '#94a3b8';
+            const BAR_MAX = 0.30; // 30% = full bar
+            return (
+              <div key={k} style={{
+                display:'grid', gridTemplateColumns:'180px 1fr 60px 70px 60px',
+                alignItems:'center', gap:'0 16px',
+                padding:'10px 20px',
+                borderBottom: idx < agents.length-1 ? '1px solid var(--border)' : 'none',
+              }}>
+                {/* Name + colored dot */}
+                <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                  <span style={{ width:10, height:10, borderRadius:'50%', background:color, flexShrink:0, display:'inline-block' }}/>
+                  <span style={{ fontSize:13, color:'var(--ink-1)', fontWeight:500 }}>{AGENT_LABELS_RL[k]||k}</span>
+                </div>
+                {/* Bar track */}
+                <div style={{ position:'relative', height:10, background:'var(--bg-elevated)', borderRadius:999 }}>
+                  {/* Colored fill = current weight */}
+                  <div style={{
+                    position:'absolute', top:0, left:0, height:'100%', borderRadius:999,
+                    width:`${(cur/BAR_MAX)*100}%`, background:color,
+                    transition:'width .4s ease',
+                  }}/>
+                  {/* Base marker — vertical dark line */}
+                  <div style={{
+                    position:'absolute', top:-3, bottom:-3,
+                    left:`${(base/BAR_MAX)*100}%`,
+                    width:2, background:'var(--ink-2)',
+                    borderRadius:1, transform:'translateX(-50%)',
+                  }}/>
+                </div>
+                {/* Base % */}
+                <span className="mono" style={{ fontSize:12, color:'var(--ink-3)', textAlign:'right' }}>
+                  {(base*100).toFixed(1)}%
+                </span>
+                {/* Current % */}
+                <span className="mono" style={{ fontSize:13, fontWeight:700, color:'var(--ink-1)', textAlign:'right' }}>
+                  {(cur*100).toFixed(1)}%
+                </span>
+                {/* Delta */}
+                <span className="mono" style={{
+                  fontSize:12, fontWeight:600, textAlign:'right',
+                  color: diff > 0.005 ? 'var(--buy-strong)' : diff < -0.005 ? 'var(--sell-strong)' : 'var(--ink-3)',
+                }}>
+                  {diff >= 0 ? '+' : ''}{(diff*100).toFixed(1)}%
                 </span>
               </div>
-              <div style={{ position:'relative', height:12, background:'var(--border)', borderRadius:999 }}>
-                <div style={{ position:'absolute', top:0, left:0, height:'100%', borderRadius:999, width:`${(base/maxW)*100}%`, background:'var(--bg-tinted)' }}/>
-                <div style={{ position:'absolute', top:2, left:0, height:8, borderRadius:999, width:`${(cur/maxW)*100}%`, background:'var(--cyan)' }}/>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-      <div>
-        <p style={{ fontSize:13, fontWeight:700, color:'var(--ink-1)', marginBottom:12 }}>Weight history</p>
-        <div style={{ maxHeight:280, overflowY:'auto' }}>
-          {!weights.weight_history?.length
-            ? <p style={{ color:'var(--ink-3)', fontSize:13 }}>No weight adjustments yet.</p>
-            : [...weights.weight_history].reverse().map(h => (
-              <div key={h.version} style={{ marginBottom:12, paddingBottom:12, borderBottom:'1px solid var(--border)' }}>
-                <div style={{ display:'flex', gap:8, marginBottom:4 }}>
-                  <span className="mono" style={{ fontSize:11, color:'var(--cyan)' }}>v{h.version}</span>
-                  <span className="mono" style={{ fontSize:11, color:'var(--ink-3)' }}>{h.date}</span>
-                </div>
-                <p style={{ fontSize:12, color:'var(--ink-2)', margin:0, lineHeight:1.5 }}>{h.reason}</p>
-              </div>
-            ))
-          }
+            );
+          })}
         </div>
       </div>
     </div>
@@ -731,10 +829,7 @@ function RLMonitorPage({ onNav }) {
                 </div>
               )}
               {activeTab === 'weights' && (
-                <div>
-                  <p style={{ fontSize:15, fontWeight:700, color:'var(--ink-1)', marginBottom:16 }}>Agent weight drift</p>
-                  <WeightDrift weights={weights}/>
-                </div>
+                <WeightDrift weights={weights} ticker={activeTicker}/>
               )}
             </div>
           </>

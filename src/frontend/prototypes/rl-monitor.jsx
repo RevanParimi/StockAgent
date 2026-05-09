@@ -81,7 +81,9 @@ function TickerChip({ t, active, onClick }) {
   );
 }
 
-// ── FIX 2: Predictions chart — area fill, dots on actual, legend below ───────
+// ── Predictions chart ─────────────────────────────────────────────────────────
+// Both lines use var(--violet) — same color family, distinguished by solid vs dashed.
+// Area fill uses violet gradient matching the lines (root cause was cyan mismatch).
 function PredictionChart({ predictions }) {
   if (!predictions || predictions.length < 2) return (
     <div style={{ height:200, display:'flex', alignItems:'center', justifyContent:'center' }}>
@@ -102,33 +104,33 @@ function PredictionChart({ predictions }) {
   const xp = i => pad.l + (i / (n - 1)) * iW;
   const yp = v => pad.t + (1 - (v - minV) / (maxV - minV)) * iH;
 
-  // Actual close path + area fill
-  const actPts = predictions.map((p, i) => p.actual != null ? `${xp(i).toFixed(1)},${yp(p.actual).toFixed(1)}` : null).filter(Boolean);
+  // Build paths
+  const actPts = predictions
+    .map((p, i) => p.actual != null ? `${xp(i).toFixed(1)},${yp(p.actual).toFixed(1)}` : null)
+    .filter(Boolean);
   const actPath = actPts.length > 1 ? 'M ' + actPts.join(' L ') : null;
-  const actFill = actPath ? `${actPath} L ${xp(n-1).toFixed(1)},${(pad.t+iH).toFixed(1)} L ${pad.l},${(pad.t+iH).toFixed(1)} Z` : null;
+  const actFill = actPath
+    ? `${actPath} L ${xp(n-1).toFixed(1)},${(pad.t+iH).toFixed(1)} L ${pad.l},${(pad.t+iH).toFixed(1)} Z`
+    : null;
+  const predPath = 'M ' + predictions.map((p,i) => `${xp(i).toFixed(1)},${yp(p.predicted).toFixed(1)}`).join(' L ');
 
-  // Model prediction path
-  const predPath = 'M ' + predictions.map((p, i) => `${xp(i).toFixed(1)},${yp(p.predicted).toFixed(1)}`).join(' L ');
-
-  // Y-axis tick values
   const yTicks = [0, 0.25, 0.5, 0.75, 1].map(t => ({
     val: minV + t * (maxV - minV),
     y:   pad.t + (1 - t) * iH,
   }));
 
-  const gradId = 'rl-area-grad';
-
   return (
     <div>
       <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{ display:'block', overflow:'visible' }}>
         <defs>
-          <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%"   stopColor="var(--cyan)" stopOpacity="0.18"/>
-            <stop offset="100%" stopColor="var(--cyan)" stopOpacity="0.01"/>
+          {/* ROOT CAUSE FIX: gradient uses violet to match both lines */}
+          <linearGradient id="rl-grad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%"   stopColor="#7c3aed" stopOpacity="0.22"/>
+            <stop offset="100%" stopColor="#7c3aed" stopOpacity="0.02"/>
           </linearGradient>
         </defs>
 
-        {/* Grid lines + Y labels */}
+        {/* Grid + Y labels */}
         {yTicks.map((t, i) => (
           <g key={i}>
             <line x1={pad.l} x2={pad.l+iW} y1={t.y} y2={t.y} stroke="var(--border)" strokeDasharray="3 5" strokeWidth={0.8}/>
@@ -138,20 +140,25 @@ function PredictionChart({ predictions }) {
           </g>
         ))}
 
-        {/* Area fill under actual close */}
-        {actFill && <path d={actFill} fill={`url(#${gradId})`}/>}
+        {/* Area fill — violet gradient under actual close */}
+        {actFill && <path d={actFill} fill="url(#rl-grad)"/>}
 
-        {/* Model prediction — dashed */}
-        <path d={predPath} fill="none" stroke="var(--violet)" strokeWidth="1.5" strokeLinejoin="round" strokeDasharray="6 4" opacity={0.75}/>
+        {/* Model prediction — dashed violet, thinner, semi-transparent */}
+        {/* ROOT CAUSE FIX: was var(--cyan) before, now var(--violet) matching actual */}
+        <path d={predPath} fill="none" stroke="#7c3aed" strokeWidth="1.5"
+              strokeLinejoin="round" strokeDasharray="6 4" opacity={0.65}/>
 
-        {/* Actual close — solid */}
-        {actPath && <path d={actPath} fill="none" stroke="var(--cyan)" strokeWidth="2.5" strokeLinejoin="round"/>}
+        {/* Actual close — solid violet, thicker, full opacity */}
+        {/* ROOT CAUSE FIX: was var(--cyan)/#buy-strong before, now violet same family */}
+        {actPath && (
+          <path d={actPath} fill="none" stroke="#7c3aed" strokeWidth="2.5" strokeLinejoin="round"/>
+        )}
 
         {/* Hit/miss dots on ACTUAL close points */}
         {predictions.map((p, i) => {
           if (p.actual == null || p.direction_hit == null) return null;
           return (
-            <circle key={i} cx={xp(i)} cy={yp(p.actual)} r={4}
+            <circle key={i} cx={xp(i)} cy={yp(p.actual)} r={4.5}
                     fill={p.direction_hit ? 'var(--buy-strong)' : 'var(--sell-strong)'}
                     stroke="var(--bg-surface)" strokeWidth={2}/>
           );
@@ -167,25 +174,73 @@ function PredictionChart({ predictions }) {
         ))}
       </svg>
 
-      {/* Legend BELOW chart */}
+      {/* Legend below chart */}
       <div style={{ display:'flex', gap:20, marginTop:12, flexWrap:'wrap' }}>
         {[
-          { color:'var(--cyan)',       label:'Actual close',       line:'solid' },
-          { color:'var(--violet)',     label:'Model prediction',   line:'dashed' },
-          { color:'var(--buy-strong)', label:'Direction hit',      dot:true },
-          { color:'var(--sell-strong)',label:'Direction miss',     dot:true },
+          { color:'#7c3aed',           label:'Actual close',     line:'solid'  },
+          { color:'#7c3aed',           label:'Model prediction', line:'dashed' },
+          { color:'var(--buy-strong)', label:'Direction hit',    dot:true },
+          { color:'var(--sell-strong)',label:'Direction miss',   dot:true },
         ].map(item => (
           <div key={item.label} style={{ display:'flex', alignItems:'center', gap:6 }}>
             {item.dot
               ? <span style={{ width:10, height:10, borderRadius:'50%', background:item.color, display:'inline-block', flexShrink:0 }}/>
               : <svg width="22" height="8" style={{ flexShrink:0 }}>
-                  <line x1="0" y1="4" x2="22" y2="4" stroke={item.color} strokeWidth="2"
-                        strokeDasharray={item.line==='dashed' ? '5 3' : undefined}/>
+                  <line x1="0" y1="4" x2="22" y2="4" stroke={item.color} strokeWidth={item.line==='solid'?2.5:1.5}
+                        strokeDasharray={item.line==='dashed' ? '6 4' : undefined}
+                        opacity={item.line==='dashed' ? 0.65 : 1}/>
                 </svg>
             }
             <span style={{ fontSize:11, color:'var(--ink-2)' }}>{item.label}</span>
           </div>
         ))}
+      </div>
+
+      {/* Daily log */}
+      <div style={{ marginTop:28 }}>
+        <p style={{ fontSize:14, fontWeight:700, color:'var(--ink-1)', marginBottom:4 }}>Daily log</p>
+        <p style={{ fontSize:12, color:'var(--ink-3)', marginBottom:12 }}>
+          Most recent first · click any row to see the agent snapshot for that prediction (not wired in this prototype)
+        </p>
+        <div style={{ overflowX:'auto' }}>
+          <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12, fontFamily:'JetBrains Mono, monospace' }}>
+            <thead>
+              <tr style={{ borderBottom:'1px solid var(--border)' }}>
+                {['Date','Predicted (₹)','Actual (₹)','Error %','Direction'].map(h => (
+                  <th key={h} style={{ textAlign:'left', padding:'6px 10px', color:'var(--ink-3)', fontWeight:700, fontSize:10, letterSpacing:'0.08em', textTransform:'uppercase' }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {[...predictions].reverse().map((p, i) => {
+                const isHit  = p.direction_hit === true;
+                const isMiss = p.direction_hit === false;
+                return (
+                  <tr key={i} style={{ borderBottom:'1px solid var(--border)', cursor:'default',
+                    transition:'background .12s' }}
+                    onMouseEnter={e => e.currentTarget.style.background='var(--bg-tinted)'}
+                    onMouseLeave={e => e.currentTarget.style.background='transparent'}>
+                    <td style={{ padding:'7px 10px', color:'var(--ink-2)' }}>{p.date}</td>
+                    <td style={{ padding:'7px 10px', color:'var(--ink-1)', fontWeight:600 }}>
+                      {p.predicted?.toLocaleString('en-IN', {minimumFractionDigits:1,maximumFractionDigits:1})}
+                    </td>
+                    <td style={{ padding:'7px 10px', color: p.actual != null ? 'var(--ink-1)' : 'var(--ink-3)', fontWeight: p.actual ? 600 : 400 }}>
+                      {p.actual != null ? p.actual?.toLocaleString('en-IN',{minimumFractionDigits:1,maximumFractionDigits:1}) : '—'}
+                    </td>
+                    <td style={{ padding:'7px 10px', color: parseFloat(p.error_pct) > 0.5 ? 'var(--sell)' : 'var(--ink-2)' }}>
+                      {p.error_pct != null ? `±${p.error_pct}%` : '—'}
+                    </td>
+                    <td style={{ padding:'7px 10px' }}>
+                      {isHit  && <span style={{ color:'var(--buy-strong)', fontWeight:700 }}>✓ Hit</span>}
+                      {isMiss && <span style={{ color:'var(--sell-strong)', fontWeight:700 }}>✗ Miss</span>}
+                      {!isHit && !isMiss && <span style={{ color:'var(--ink-3)' }}>Pending</span>}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );

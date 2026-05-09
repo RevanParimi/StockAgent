@@ -258,14 +258,15 @@ function DailyLog({ predictions }) {
         Most recent first · click any row to see the agent snapshot for that prediction (not wired in this prototype)
       </p>
       <div style={{ overflowX:'auto', borderRadius:12, border:'1px solid var(--border)' }}>
-        <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12, fontFamily:'JetBrains Mono, monospace', minWidth:780 }}>
+        {/* No global fontFamily — only numeric cells get mono. Text cells (date, hit, miss) inherit Inter. */}
+        <table style={{ width:'100%', borderCollapse:'collapse', fontSize:13, minWidth:820 }}>
           <thead>
             <tr style={{ borderBottom:'1px solid var(--border)', background:'var(--bg-elevated)' }}>
               {cols.map(h => (
                 <th key={h} style={{
-                  textAlign:'left', padding:'10px 12px', color:'var(--ink-3)',
+                  textAlign:'left', padding:'10px 14px', color:'var(--ink-3)',
                   fontWeight:700, fontSize:10, letterSpacing:'0.08em', textTransform:'uppercase',
-                  whiteSpace:'nowrap',
+                  whiteSpace:'nowrap', fontFamily:'inherit',
                 }}>{h}</th>
               ))}
             </tr>
@@ -280,22 +281,17 @@ function DailyLog({ predictions }) {
                 ? p.miss_type.split('_').map(w => w.charAt(0).toUpperCase()+w.slice(1)).join(' ')
                 : null;
 
-              // Signed error: (actual - predicted) / predicted * 100
-              // Negative = model over-predicted, Positive = model under-predicted
               const signedErr = (p.actual != null && p.predicted != null)
                 ? (p.actual - p.predicted) / p.predicted * 100
                 : null;
               const errDisplay = signedErr != null
                 ? `${signedErr >= 0 ? '+' : ''}${signedErr.toFixed(2)}%`
                 : '—';
-              const errColor = signedErr == null
-                ? 'var(--ink-3)'
-                : Math.abs(signedErr) > 0.5
-                  ? 'var(--sell)'
-                  : 'var(--ink-2)';
+              const errColor = signedErr == null ? 'var(--ink-3)'
+                : Math.abs(signedErr) > 0.5 ? 'var(--sell)' : 'var(--ink-2)';
 
-              // Row background: subtle tint for miss rows
               const rowBg = isMiss ? 'rgba(239,68,68,0.03)' : 'transparent';
+              const MONO = { fontFamily:'JetBrains Mono, monospace', fontVariantNumeric:'tabular-nums' };
 
               return (
                 <tr key={i}
@@ -304,38 +300,40 @@ function DailyLog({ predictions }) {
                     onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-tinted)'}
                     onMouseLeave={e => e.currentTarget.style.background = rowBg}>
 
-                  {/* Date — muted, monospace */}
-                  <td style={{ padding:'9px 14px', color:'var(--ink-2)', fontWeight:400 }}>{p.date}</td>
+                  {/* Date — Inter, muted, 12px */}
+                  <td style={{ padding:'10px 14px', color:'var(--ink-3)', fontSize:12 }}>{p.date}</td>
 
-                  {/* Predicted ₹ — bold, primary */}
-                  <td style={{ padding:'9px 14px', color:'var(--ink-1)', fontWeight:700 }}>
+                  {/* Predicted ₹ — MONO, bold, 13px */}
+                  <td style={{ padding:'10px 14px', color:'var(--ink-1)', fontWeight:700, ...MONO }}>
                     {p.predicted != null ? p.predicted.toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2}) : '—'}
                   </td>
 
-                  {/* Actual ₹ — bold when available */}
-                  <td style={{ padding:'9px 14px', color: p.actual != null ? 'var(--ink-1)' : 'var(--ink-3)', fontWeight: p.actual ? 700 : 400 }}>
+                  {/* Actual ₹ — MONO, bold when available */}
+                  <td style={{ padding:'10px 14px', fontWeight: p.actual ? 700 : 400, ...MONO,
+                               color: p.actual != null ? 'var(--ink-1)' : 'var(--ink-3)' }}>
                     {p.actual != null ? p.actual.toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2}) : '—'}
                   </td>
 
-                  {/* Error % — signed, colored when large */}
-                  <td style={{ padding:'9px 14px', color: errColor, fontWeight: Math.abs(signedErr||0)>0.5 ? 600 : 400 }}>
+                  {/* Error % — MONO, signed, colored when large */}
+                  <td style={{ padding:'10px 14px', color: errColor,
+                               fontWeight: Math.abs(signedErr||0)>0.5 ? 600 : 400, ...MONO }}>
                     {errDisplay}
                   </td>
 
-                  {/* Pred Dir */}
-                  <td style={{ padding:'9px 12px' }}>
+                  {/* Pred Dir — arrow only, no text */}
+                  <td style={{ padding:'10px 14px' }}>
                     {p.predDir !== null ? <DirArrow up={p.predDir}/> : <span style={{ color:'var(--ink-3)' }}>—</span>}
                   </td>
 
                   {/* Actual Dir */}
-                  <td style={{ padding:'9px 12px' }}>
+                  <td style={{ padding:'10px 14px' }}>
                     {p.actualDir !== null ? <DirArrow up={p.actualDir}/> : <span style={{ color:'var(--ink-3)' }}>—</span>}
                   </td>
 
-                  {/* Hit */}
-                  <td style={{ padding:'9px 12px' }}>
-                    {isHit    && <span style={{ color:'var(--buy-strong)', fontWeight:700 }}>✓ hit</span>}
-                    {isMiss   && <span style={{ color:'var(--sell-strong)', fontWeight:700 }}>✗ miss</span>}
+                  {/* Hit — Inter font, 13px */}
+                  <td style={{ padding:'10px 14px' }}>
+                    {isHit    && <span style={{ color:'var(--buy-strong)', fontWeight:600, fontSize:13 }}>✓ hit</span>}
+                    {isMiss   && <span style={{ color:'var(--sell-strong)', fontWeight:600, fontSize:13 }}>✗ miss</span>}
                     {isPending && <span style={{ color:'var(--ink-3)' }}>—</span>}
                   </td>
 
@@ -349,8 +347,9 @@ function DailyLog({ predictions }) {
                     }
                   </td>
 
-                  {/* Confidence */}
-                  <td style={{ padding:'9px 12px', color:'var(--ink-2)' }}>
+                  {/* Confidence — MONO */}
+                  <td style={{ padding:'10px 14px', color:'var(--ink-2)',
+                               fontFamily:'JetBrains Mono, monospace', fontVariantNumeric:'tabular-nums' }}>
                     {p.confidence != null ? `${Math.round(p.confidence * 100)}%` : '—'}
                   </td>
                 </tr>

@@ -145,10 +145,65 @@ function renderMd(text) {
              .replace(/\n/g,'<br>');
 }
 
+// Intent badge — small chip shown above the bot bubble
+function IntentBadge({ intent }) {
+  if (!intent) return null;
+  const typeColors = {
+    SINGLE_STOCK:    '#0891b2',
+    STOCK_COMPARE:   '#7c3aed',
+    SECTOR_OVERVIEW: '#059669',
+    MULTI_SECTOR:    '#d97706',
+    PRICE_QUERY:     '#dc2626',
+    NEWS_QUERY:      '#2563eb',
+    AGENT_QUERY:     '#9333ea',
+    RL_QUERY:        '#c026d3',
+    GENERAL:         '#64748b',
+  };
+  const color = typeColors[intent.intent_type] || '#64748b';
+  const suffix = intent.display_label ? intent.display_label.replace(/^\[[A-Z_]+\]\s*/, '') : '';
+  return (
+    <div style={{ fontSize:10, fontWeight:700, letterSpacing:'.06em', color, marginBottom:4,
+      display:'flex', alignItems:'center', gap:6, flexWrap:'wrap' }}>
+      <span style={{ padding:'2px 6px', borderRadius:4,
+        background:`${color}22`, border:`1px solid ${color}44` }}>
+        {intent.intent_type}
+      </span>
+      {suffix && <span style={{ color:'var(--ink-3)', fontWeight:500 }}>{suffix}</span>}
+    </div>
+  );
+}
+
+// Tool trace panel — collapsible, shows each tool that ran
+function ToolTracePanel({ trace }) {
+  if (!trace || trace.length === 0) return null;
+  return (
+    <details style={{ marginTop:6, fontSize:11 }}>
+      <summary style={{ cursor:'pointer', color:'var(--ink-3)', userSelect:'none', marginBottom:4 }}>
+        {trace.length} tool{trace.length > 1 ? 's' : ''} used
+      </summary>
+      <div style={{ display:'flex', flexDirection:'column', gap:3, paddingTop:4 }}>
+        {trace.map((t, i) => (
+          <div key={i} style={{
+            display:'flex', gap:8, alignItems:'flex-start',
+            padding:'4px 8px', background:'var(--bg-tinted)', borderRadius:6,
+            fontFamily:'var(--font-mono,monospace)',
+          }}>
+            <span style={{ color:'var(--buy)', flexShrink:0 }}>✓</span>
+            <span style={{ color:'var(--cyan)', flexShrink:0 }}>{t.tool}()</span>
+            <span style={{ color:'var(--ink-3)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+              {t.summary}
+            </span>
+          </div>
+        ))}
+      </div>
+    </details>
+  );
+}
+
 // Chat overlay (slide-up panel, anchored bottom-right)
 function ChatOverlay({ open, onClose, mode='wireframe' }) {
   const [msgs, setMsgs] = useState([
-    { from:'bot', text:"Hi 👋 I'm your StockAgent assistant. Ask me anything about Indian autos." }
+    { from:'bot', text:"Hi I'm your StockAgent assistant. Ask me anything about Indian markets." }
   ]);
   const [input, setInput] = useState('');
   const endRef = useRef(null);
@@ -157,26 +212,90 @@ function ChatOverlay({ open, onClose, mode='wireframe' }) {
   const send = async (text) => {
     if (!text.trim()) return;
     setInput('');
-    // Build conversation history from current messages (exclude loading states, last 8 turns)
     const history = msgs
       .filter(m => !m.loading)
       .slice(-8)
       .map(m => ({ role: m.from === 'user' ? 'user' : 'assistant', content: m.text }));
-    // Append user message + thinking placeholder immediately
-    setMsgs(m => [...m, {from:'user', text}, {from:'bot', text:'…', loading:true}]);
-    let reply;
+
+    setMsgs(m => [...m,
+      { from:'user', text },
+      { from:'bot', text:'', loading:true, intent:null, toolTrace:[] },
+    ]);
+
     try {
-      const res = await fetch('/ui/chat', {
+      const resp = await fetch('/ui/chat/stream', {
         method: 'POST',
-        headers: {'Content-Type':'application/json'},
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: text, history }),
       });
-      reply = res.ok ? (await res.json()).reply : mockReply(text);
+
+      if (!resp.ok || !resp.body) throw new Error('Stream unavailable');
+
+      const reader = resp.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop();  // keep incomplete last line
+
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          try {
+            const evt = JSON.parse(line.slice(6));
+            if (evt.event === 'intent') {
+              setMsgs(m => {
+                const next = [...m];
+                next[next.length - 1] = { ...next[next.length - 1], intent: evt };
+                return next;
+              });
+            } else if (evt.event === 'tool_result') {
+              setMsgs(m => {
+                const next = [...m];
+                const last = next[next.length - 1];
+                next[next.length - 1] = {
+                  ...last,
+                  toolTrace: [...(last.toolTrace || []), { tool: evt.tool, summary: evt.summary }],
+                };
+                return next;
+              });
+            } else if (evt.event === 'token') {
+              setMsgs(m => {
+                const next = [...m];
+                next[next.length - 1] = {
+                  ...next[next.length - 1],
+                  text: (next[next.length - 1].text || '') + evt.text,
+                  loading: false,
+                };
+                return next;
+              });
+            } else if (evt.event === 'done') {
+              setMsgs(m => {
+                const next = [...m];
+                next[next.length - 1] = { ...next[next.length - 1], loading: false };
+                return next;
+              });
+            }
+          } catch {}
+        }
+      }
     } catch {
-      reply = mockReply(text);
+      // Fallback to blocking POST if streaming fails
+      try {
+        const res = await fetch('/ui/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message: text, history }),
+        });
+        const data = res.ok ? await res.json() : {};
+        setMsgs(m => [...m.slice(0, -1), { from:'bot', text: data.reply || 'Error', loading:false, toolTrace:[] }]);
+      } catch {
+        setMsgs(m => [...m.slice(0, -1), { from:'bot', text:'Network error — try again.', loading:false, toolTrace:[] }]);
+      }
     }
-    // Replace loading placeholder with actual reply
-    setMsgs(m => [...m.slice(0, -1), {from:'bot', text: reply}]);
   };
 
   if (!open) return null;
@@ -199,7 +318,7 @@ function ChatOverlay({ open, onClose, mode='wireframe' }) {
         <button onClick={onClose} style={{ background:'transparent', border:'none', color:'var(--ink-3)', padding:4 }}><Icon.X size={18}/></button>
       </div>
       <div ref={endRef} style={{ flex:1, padding:16, overflowY:'auto', display:'flex', flexDirection:'column', gap:10 }}>
-        {msgs.map((m,i) => {
+        {msgs.map((m, i) => {
           const bubbleStyle = {
             alignSelf: m.from==='user' ? 'flex-end' : 'flex-start',
             maxWidth:'82%', padding:'10px 14px',
@@ -207,27 +326,36 @@ function ChatOverlay({ open, onClose, mode='wireframe' }) {
             color: m.from==='user' ? '#fff' : 'var(--ink-1)',
             borderRadius: m.from==='user' ? '16px 16px 4px 16px' : '16px 16px 16px 4px',
             fontSize:13, lineHeight:1.6,
-            animation: m.loading ? 'pulse-soft 1.2s ease-in-out infinite' : 'none',
-            opacity: m.loading ? 0.7 : 1,
+            animation: m.loading && !m.text ? 'pulse-soft 1.2s ease-in-out infinite' : 'none',
+            opacity: m.loading && !m.text ? 0.7 : 1,
           };
-          if (m.from === 'bot' && !m.loading) {
-            return <div key={i} className="chat-md" style={bubbleStyle} dangerouslySetInnerHTML={{ __html: renderMd(m.text) }}/>;
+          if (m.from === 'bot') {
+            return (
+              <div key={i} style={{ alignSelf:'flex-start', maxWidth:'82%' }}>
+                <IntentBadge intent={m.intent}/>
+                <div className="chat-md" style={bubbleStyle}
+                  dangerouslySetInnerHTML={{ __html: m.loading && !m.text ? '…' : renderMd(m.text) }}/>
+                <ToolTracePanel trace={m.toolTrace}/>
+              </div>
+            );
           }
           return <div key={i} style={bubbleStyle}>{m.text}</div>;
         })}
-        {msgs.length===1 && <div style={{ display:'flex', flexDirection:'column', gap:6, marginTop:8 }}>
-          {window.CHAT_SEEDS.map(s => (
-            <button key={s} onClick={()=>send(s)} style={{
-              textAlign:'left', padding:'8px 12px', borderRadius:10, border:'1px solid var(--border)',
-              background:'transparent', color:'var(--ink-2)', fontSize:12
-            }}>{s}</button>
-          ))}
-        </div>}
+        {msgs.length===1 && (
+          <div style={{ display:'flex', flexDirection:'column', gap:6, marginTop:8 }}>
+            {(window.CHAT_SEEDS || []).map(s => (
+              <button key={s} onClick={()=>send(s)} style={{
+                textAlign:'left', padding:'8px 12px', borderRadius:10, border:'1px solid var(--border)',
+                background:'transparent', color:'var(--ink-2)', fontSize:12
+              }}>{s}</button>
+            ))}
+          </div>
+        )}
       </div>
       <form onSubmit={e=>{e.preventDefault(); send(input);}} style={{
         padding:12, borderTop:'1px solid var(--border)', display:'flex', gap:8, alignItems:'center'
       }}>
-        <input value={input} onChange={e=>setInput(e.target.value)} placeholder="Ask about a stock or agent…"
+        <input value={input} onChange={e=>setInput(e.target.value)} placeholder="Ask about a stock or sector…"
           style={{ flex:1, border:'1px solid var(--border)', borderRadius:999, padding:'10px 14px',
                    background:'var(--bg-base)', color:'var(--ink-1)', fontSize:13, outline:'none' }}/>
         <button type="submit" style={{
@@ -239,12 +367,3 @@ function ChatOverlay({ open, onClose, mode='wireframe' }) {
   );
 }
 window.ChatOverlay = ChatOverlay;
-
-function mockReply(q) {
-  const ql = q.toLowerCase();
-  if (ql.includes('maruti')) return "MARUTI is STRONG BUY (0.82). Sales & Demand and Fundamentals are most positive — April dispatches +14% YoY and steel prices easing. Risk & Macro is the lone caution due to a slightly weaker INR.";
-  if (ql.includes('tata')) return "TATAMOTORS is BUY (0.74). The EV order book is the standout — JLR margins recovering. Watch the China supply chain risk flagged by Risk & Macro.";
-  if (ql.includes('agent') && ql.includes('trust')) return "For short-term moves, Pattern Analysis (technicals) and Sentiment tend to lead. For 3-6 month horizons, Fundamentals + Sales & Demand carry more weight — they currently make up 38% of the composite score.";
-  if (ql.includes('compare')) return "TATAMOTORS leads on EV pure-play exposure (Tiago.ev, Punch.ev). M&M has the diversified moat (SUV + tractors + Thar.e). Both BUY-rated; M&M has lower beta.";
-  return "Got it. I'd route this to the relevant agents — try one of the suggestions above, or ask me about a specific ticker like MARUTI or BAJAJ-AUTO.";
-}

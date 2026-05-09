@@ -1326,6 +1326,102 @@ _COMMODITY_YF = {
     "btc": "BTC-USD",
 }
 
+# Sector name → yfinance NSE sector index
+_SECTOR_INDEX_YF: dict[str, str] = {
+    "automobile":       "^CNXAUTO",
+    "banking_bfsi":     "^NSEBANK",
+    "it_sector":        "^CNXIT",
+    "renewable_energy": "^CNXENERGY",
+    "pharma":           "^CNXPHARMA",
+    "fmcg":             "^CNXFMCG",
+}
+
+# Sector → tracked tickers for verdict aggregation
+_SECTOR_TICKERS_MAP: dict[str, list[str]] = {
+    "automobile":       ["MARUTI", "TATAMOTORS", "M&M", "BAJAJ-AUTO", "HEROMOTOCO", "EICHERMOT", "TVSMOTORS", "ASHOKLEY"],
+    "banking_bfsi":     ["HDFCBANK", "ICICIBANK", "SBIN", "KOTAKBANK", "AXISBANK", "INDUSINDBK"],
+    "it_sector":        ["TCS", "INFY", "WIPRO", "HCLTECH", "TECHM", "LTIM"],
+    "renewable_energy": ["ADANIGREEN", "TATAPOWER", "NTPC", "POWERGRID", "JSWENERGY"],
+    "pharma":           [],
+    "fmcg":             [],
+}
+
+_SECTOR_ALIASES: dict[str, str] = {
+    "auto": "automobile",
+    "banking": "banking_bfsi",
+    "it": "it_sector",
+    "energy": "renewable_energy",
+    "renewable": "renewable_energy",
+}
+
+
+async def _chat_tool_get_sector_snapshot(sector: str) -> str:
+    """Fetch NSE sector index price + verdict counts from DB for a given sector."""
+    sector_key = sector.strip().lower().replace(" ", "_")
+    sector_key = _SECTOR_ALIASES.get(sector_key, sector_key)
+
+    yf_sym = _SECTOR_INDEX_YF.get(sector_key)
+    if not yf_sym:
+        return f"Unknown sector '{sector}'. Known: {', '.join(_SECTOR_INDEX_YF)}."
+
+    price, change = await asyncio.to_thread(_fetch_yf_price, yf_sym)
+    arrow = "▲" if change >= 0 else "▼"
+
+    store = _score_store()
+    tickers_in_sector = _SECTOR_TICKERS_MAP.get(sector_key, [])
+    verdicts: list[str] = []
+    for sym in tickers_in_sector:
+        row = await asyncio.to_thread(store.get_latest, sym)
+        if row:
+            verdicts.append(row["verdict"])
+
+    verdict_summary = ""
+    if verdicts:
+        counts: dict[str, int] = {}
+        for v in verdicts:
+            counts[v] = counts.get(v, 0) + 1
+        verdict_summary = " · ".join(f"{k}: {v}" for k, v in sorted(counts.items()))
+        verdict_summary = f" [{len(verdicts)} verdicts: {verdict_summary}]"
+
+    label = sector_key.replace("_", " ").title()
+    if price:
+        return f"{label} index ({yf_sym}): {price:,.0f}  {arrow}{abs(change):.2f}%{verdict_summary}"
+    return f"{label} index: price unavailable{verdict_summary}"
+
+
+async def _chat_tool_run_agent_analysis(ticker: str) -> str:
+    """Return cached analysis from DB; trigger orchestrator with 45s timeout if no cache."""
+    ticker = ticker.strip().upper()
+    store = _score_store()
+    row = await asyncio.to_thread(store.get_latest, ticker)
+    if row:
+        score = float(row["final_score"])
+        verdict = row["verdict"]
+        run_at = (row.get("run_at") or "")[:10]
+        thesis = (row.get("investment_thesis") or "")[:200]
+        return (
+            f"{ticker}: {verdict} (score={score:.2f}, run {run_at})\n"
+            f"Thesis: {thesis}"
+        )
+    try:
+        from backend.sectors import detect_sector, get_orchestrator
+        sector = detect_sector(ticker)
+        OrchestratorClass = get_orchestrator(sector)
+        orchestrator = OrchestratorClass()
+        report = await asyncio.wait_for(
+            orchestrator.analyse_async(ticker),
+            timeout=45.0,
+        )
+        return (
+            f"{ticker}: {report.verdict} (score={report.final_score:.2f}, fresh)\n"
+            f"Thesis: {(report.investment_thesis or '')[:200]}"
+        )
+    except asyncio.TimeoutError:
+        return f"Analysis for {ticker} timed out (45s). Click 'Analyze' on the Home screen to run a full pipeline."
+    except Exception as exc:
+        return f"Could not run analysis for {ticker}: {exc}"
+
+
 _CHAT_TOOLS = [
     {
         "type": "function",
@@ -1428,6 +1524,48 @@ _CHAT_TOOLS = [
             "parameters": {"type": "object", "properties": {}, "required": []},
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_sector_snapshot",
+            "description": (
+                "Fetch the live NSE sector index price and recent agent verdicts for a sector. "
+                "Use when the user asks about a sector (auto, banking, IT, energy, pharma, FMCG). "
+                "Pass the sector name as a plain string."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "sector": {
+                        "type": "string",
+                        "description": "Sector name: automobile, banking_bfsi, it_sector, renewable_energy, pharma, fmcg",
+                    }
+                },
+                "required": ["sector"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "run_agent_analysis",
+            "description": (
+                "Get the latest StockAgent deep analysis for an NSE ticker: verdict, score, thesis, "
+                "agent breakdown. Returns cached result if available, otherwise triggers a fresh analysis. "
+                "Use when the user wants a detailed deep-dive on a specific stock."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "ticker": {
+                        "type": "string",
+                        "description": "NSE ticker symbol e.g. MARUTI, TATAMOTORS.",
+                    }
+                },
+                "required": ["ticker"],
+            },
+        },
+    },
 ]
 
 
@@ -1525,6 +1663,10 @@ async def _execute_chat_tool(name: str, args: dict) -> str:
         return _ctx_recent_history(days=min(days, 30)) or "No analysis history found."
     if name == "get_rl_insights":
         return _ctx_rl_learning() or "No RL data yet — needs at least one full analysis cycle."
+    if name == "get_sector_snapshot":
+        return await _chat_tool_get_sector_snapshot(args.get("sector", ""))
+    if name == "run_agent_analysis":
+        return await _chat_tool_run_agent_analysis(args.get("ticker", ""))
     return f"Unknown tool: {name}"
 
 
@@ -1670,6 +1812,121 @@ def _mock_reply(q: str) -> str:
     if "agent" in ql and "trust" in ql:
         return "For short-term moves, Pattern Analysis and Sentiment lead. For 3–6 month horizons, Fundamentals and Sales & Demand carry more weight."
     return "Ask me about a specific ticker like MARUTI or BAJAJ-AUTO, or about an agent like Sales & Demand."
+
+
+# ---------------------------------------------------------------------------
+# T3: POST /ui/chat/stream — SSE streaming chat with intent + tool trace
+# ---------------------------------------------------------------------------
+
+@router.post("/chat/stream", summary="AI assistant chat — SSE streaming response")
+async def chat_stream(body: dict):
+    """
+    Streaming version of /ui/chat.
+    Returns text/event-stream. Events: intent | tool_start | tool_result | token | done
+    """
+    from fastapi.responses import StreamingResponse as _SR
+    from services.api.chat_intent import classify_intent
+
+    message: str = (body.get("message") or "").strip()
+    history: list = body.get("history") or []
+
+    if not message:
+        async def _empty():
+            yield 'data: {"event":"done"}\n\n'
+        return _SR(_empty(), media_type="text/event-stream")
+
+    async def generate():
+        import json as _json
+
+        # 1. Intent classification — instant, no LLM
+        intent = classify_intent(message, history)
+        yield f"data: {_json.dumps({'event': 'intent', **intent.as_dict()})}\n\n"
+
+        # 2. Build messages list
+        context = _build_chat_context(message)
+        system_prompt = _CHAT_SYSTEM_PROMPT.format(context=context)
+        messages: list[dict] = [{"role": "system", "content": system_prompt}]
+        for h in history[-8:]:
+            role = h.get("role", "")
+            content = h.get("content", "")
+            if role in ("user", "assistant") and content:
+                messages.append({"role": role, "content": content})
+        messages.append({"role": "user", "content": message})
+
+        try:
+            from services.clients.llm_client import get_async_llm_client
+            client = get_async_llm_client()
+
+            # 3. Tool loop — non-streaming for tool calls (max 4 rounds)
+            for _ in range(4):
+                resp = await client.chat.completions.create(
+                    model="qwen/qwen3-235b-a22b",
+                    messages=messages,
+                    temperature=0.4,
+                    max_tokens=600,
+                    tools=_CHAT_TOOLS,
+                    tool_choice="auto",
+                )
+                msg = resp.choices[0].message
+                tool_calls = getattr(msg, "tool_calls", None) or []
+
+                if not tool_calls:
+                    break
+
+                for tc in tool_calls:
+                    try:
+                        args_dict = _json.loads(tc.function.arguments or "{}")
+                    except Exception:
+                        args_dict = {}
+                    yield f"data: {_json.dumps({'event': 'tool_start', 'tool': tc.function.name, 'args': args_dict})}\n\n"
+
+                assistant_entry: dict = {"role": "assistant", "content": msg.content or ""}
+                assistant_entry["tool_calls"] = [
+                    {"id": tc.id, "type": "function",
+                     "function": {"name": tc.function.name, "arguments": tc.function.arguments}}
+                    for tc in tool_calls
+                ]
+                messages.append(assistant_entry)
+
+                tool_results = await asyncio.gather(*[
+                    _execute_chat_tool(tc.function.name, _json.loads(tc.function.arguments or "{}"))
+                    for tc in tool_calls
+                ])
+                for tc, result in zip(tool_calls, tool_results):
+                    messages.append({"role": "tool", "tool_call_id": tc.id, "content": result})
+                    summary = result[:120].replace("\n", " ")
+                    yield f"data: {_json.dumps({'event': 'tool_result', 'tool': tc.function.name, 'summary': summary})}\n\n"
+
+            # 4. Stream final answer token by token
+            stream = await client.chat.completions.create(
+                model="qwen/qwen3-235b-a22b",
+                messages=messages,
+                temperature=0.4,
+                max_tokens=600,
+                stream=True,
+            )
+            async for chunk in stream:
+                delta = chunk.choices[0].delta if chunk.choices else None
+                text = (delta.content or "") if delta else ""
+                if text:
+                    yield f"data: {_json.dumps({'event': 'token', 'text': text})}\n\n"
+
+        except Exception as exc:
+            logger.warning("[ui/chat/stream] Error: %s", exc)
+            fallback = _mock_reply(message)
+            yield f"data: {_json.dumps({'event': 'token', 'text': fallback})}\n\n"
+
+        yield 'data: {"event":"done"}\n\n'
+
+    return _SR(
+        generate(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control":     "no-cache",
+            "X-Accel-Buffering": "no",
+            "Connection":        "keep-alive",
+        },
+    )
 
 
 # ---------------------------------------------------------------------------

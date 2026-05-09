@@ -197,50 +197,137 @@ function PredictionChart({ predictions }) {
       </div>
 
       {/* Daily log */}
-      <div style={{ marginTop:28 }}>
-        <p style={{ fontSize:14, fontWeight:700, color:'var(--ink-1)', marginBottom:4 }}>Daily log</p>
-        <p style={{ fontSize:12, color:'var(--ink-3)', marginBottom:12 }}>
-          Most recent first · click any row to see the agent snapshot for that prediction (not wired in this prototype)
-        </p>
-        <div style={{ overflowX:'auto' }}>
-          <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12, fontFamily:'JetBrains Mono, monospace' }}>
-            <thead>
-              <tr style={{ borderBottom:'1px solid var(--border)' }}>
-                {['Date','Predicted (₹)','Actual (₹)','Error %','Direction'].map(h => (
-                  <th key={h} style={{ textAlign:'left', padding:'6px 10px', color:'var(--ink-3)', fontWeight:700, fontSize:10, letterSpacing:'0.08em', textTransform:'uppercase' }}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {[...predictions].reverse().map((p, i) => {
-                const isHit  = p.direction_hit === true;
-                const isMiss = p.direction_hit === false;
-                return (
-                  <tr key={i} style={{ borderBottom:'1px solid var(--border)', cursor:'default',
-                    transition:'background .12s' }}
-                    onMouseEnter={e => e.currentTarget.style.background='var(--bg-tinted)'}
-                    onMouseLeave={e => e.currentTarget.style.background='transparent'}>
-                    <td style={{ padding:'7px 10px', color:'var(--ink-2)' }}>{p.date}</td>
-                    <td style={{ padding:'7px 10px', color:'var(--ink-1)', fontWeight:600 }}>
-                      {p.predicted?.toLocaleString('en-IN', {minimumFractionDigits:1,maximumFractionDigits:1})}
-                    </td>
-                    <td style={{ padding:'7px 10px', color: p.actual != null ? 'var(--ink-1)' : 'var(--ink-3)', fontWeight: p.actual ? 600 : 400 }}>
-                      {p.actual != null ? p.actual?.toLocaleString('en-IN',{minimumFractionDigits:1,maximumFractionDigits:1}) : '—'}
-                    </td>
-                    <td style={{ padding:'7px 10px', color: parseFloat(p.error_pct) > 0.5 ? 'var(--sell)' : 'var(--ink-2)' }}>
-                      {p.error_pct != null ? `±${p.error_pct}%` : '—'}
-                    </td>
-                    <td style={{ padding:'7px 10px' }}>
-                      {isHit  && <span style={{ color:'var(--buy-strong)', fontWeight:700 }}>✓ Hit</span>}
-                      {isMiss && <span style={{ color:'var(--sell-strong)', fontWeight:700 }}>✗ Miss</span>}
-                      {!isHit && !isMiss && <span style={{ color:'var(--ink-3)' }}>Pending</span>}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+      <DailyLog predictions={predictions}/>
+    </div>
+  );
+}
+
+// Rendered outside PredictionChart so it can reference MISS_COLORS defined above
+function DirArrow({ up }) {
+  return (
+    <svg width="14" height="14" viewBox="0 0 14 14" style={{ display:'inline-block', verticalAlign:'middle' }}>
+      {up
+        ? <polyline points="7,2 12,9 2,9" fill="none" stroke="var(--buy-strong)" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round"/>
+        : <polyline points="7,12 12,5 2,5" fill="none" stroke="var(--sell-strong)" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round"/>
+      }
+    </svg>
+  );
+}
+
+const MISS_PILL_STYLE = {
+  display:'inline-block', padding:'2px 8px', borderRadius:999,
+  fontSize:10, fontWeight:700, fontFamily:'inherit', whiteSpace:'nowrap',
+};
+
+function DailyLog({ predictions }) {
+  if (!predictions || !predictions.length) return null;
+
+  // Derive predicted direction and actual direction for each row
+  const rows = [...predictions].reverse().map((p, i, arr) => {
+    const prev = arr[i + 1]; // previous in reversed array = next day's data
+    // predDir: true=up, false=down — infer from direction_hit and actual dir
+    let actualDir = null;
+    if (p.actual != null && prev?.actual != null) actualDir = p.actual >= prev.actual;
+    // If direction hit, predDir = actualDir; if miss, predDir = opposite
+    let predDir = null;
+    if (actualDir !== null && p.direction_hit === true)  predDir = actualDir;
+    if (actualDir !== null && p.direction_hit === false) predDir = !actualDir;
+    // Fallback: derive from predicted vs prev predicted
+    if (predDir === null && prev?.predicted != null) predDir = p.predicted >= prev.predicted;
+    return { ...p, predDir, actualDir };
+  });
+
+  const cols = ['Date','Predicted ₹','Actual ₹','Error %','Pred Dir','Actual Dir','Hit','Miss Type','Confidence'];
+
+  return (
+    <div style={{ marginTop:28 }}>
+      <p style={{ fontSize:14, fontWeight:700, color:'var(--ink-1)', marginBottom:4 }}>Daily log</p>
+      <p style={{ fontSize:12, color:'var(--ink-3)', marginBottom:12 }}>
+        Most recent first · click any row to see the agent snapshot for that prediction (not wired in this prototype)
+      </p>
+      <div style={{ overflowX:'auto', borderRadius:12, border:'1px solid var(--border)' }}>
+        <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12, fontFamily:'JetBrains Mono, monospace', minWidth:780 }}>
+          <thead>
+            <tr style={{ borderBottom:'1px solid var(--border)', background:'var(--bg-elevated)' }}>
+              {cols.map(h => (
+                <th key={h} style={{
+                  textAlign:'left', padding:'10px 12px', color:'var(--ink-3)',
+                  fontWeight:700, fontSize:10, letterSpacing:'0.08em', textTransform:'uppercase',
+                  whiteSpace:'nowrap',
+                }}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((p, i) => {
+              const isHit    = p.direction_hit === true;
+              const isMiss   = p.direction_hit === false;
+              const isPending = p.direction_hit === null;
+              const missColor = MISS_COLORS[p.miss_type] || '#94a3b8';
+              const missLabel = p.miss_type
+                ? p.miss_type.split('_').map(w => w.charAt(0).toUpperCase()+w.slice(1)).join(' ')
+                : null;
+              const errNum = parseFloat(p.error_pct);
+              return (
+                <tr key={i}
+                    style={{ borderBottom:'1px solid var(--border)', cursor:'pointer', transition:'background .1s' }}
+                    onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-tinted)'}
+                    onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+
+                  {/* Date */}
+                  <td style={{ padding:'9px 12px', color:'var(--cyan)', fontWeight:600 }}>{p.date}</td>
+
+                  {/* Predicted ₹ */}
+                  <td style={{ padding:'9px 12px', color:'var(--ink-1)', fontWeight:600 }}>
+                    {p.predicted?.toFixed(2)}
+                  </td>
+
+                  {/* Actual ₹ */}
+                  <td style={{ padding:'9px 12px', color: p.actual != null ? 'var(--ink-1)' : 'var(--ink-3)', fontWeight: p.actual ? 600 : 400 }}>
+                    {p.actual != null ? p.actual.toFixed(2) : '—'}
+                  </td>
+
+                  {/* Error % */}
+                  <td style={{ padding:'9px 12px', color: !isNaN(errNum) && Math.abs(errNum) > 0.5 ? 'var(--sell)' : 'var(--ink-2)' }}>
+                    {p.error_pct != null ? `${errNum >= 0 ? '+' : ''}${errNum.toFixed(2)}%` : '—'}
+                  </td>
+
+                  {/* Pred Dir */}
+                  <td style={{ padding:'9px 12px' }}>
+                    {p.predDir !== null ? <DirArrow up={p.predDir}/> : <span style={{ color:'var(--ink-3)' }}>—</span>}
+                  </td>
+
+                  {/* Actual Dir */}
+                  <td style={{ padding:'9px 12px' }}>
+                    {p.actualDir !== null ? <DirArrow up={p.actualDir}/> : <span style={{ color:'var(--ink-3)' }}>—</span>}
+                  </td>
+
+                  {/* Hit */}
+                  <td style={{ padding:'9px 12px' }}>
+                    {isHit    && <span style={{ color:'var(--buy-strong)', fontWeight:700 }}>✓ hit</span>}
+                    {isMiss   && <span style={{ color:'var(--sell-strong)', fontWeight:700 }}>✗ miss</span>}
+                    {isPending && <span style={{ color:'var(--ink-3)' }}>—</span>}
+                  </td>
+
+                  {/* Miss Type pill */}
+                  <td style={{ padding:'9px 12px' }}>
+                    {missLabel
+                      ? <span style={{ ...MISS_PILL_STYLE, background:`${missColor}22`, color:missColor, border:`1px solid ${missColor}55` }}>
+                          {missLabel}
+                        </span>
+                      : <span style={{ color:'var(--ink-3)' }}>—</span>
+                    }
+                  </td>
+
+                  {/* Confidence */}
+                  <td style={{ padding:'9px 12px', color:'var(--ink-2)' }}>
+                    {p.confidence != null ? `${Math.round(p.confidence * 100)}%` : '—'}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
       </div>
     </div>
   );

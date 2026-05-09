@@ -241,9 +241,10 @@ function TopNav({ active, onNav, search, setSearch }) {
           </div>
 
           {/* Desktop nav links — pill bar */}
+          {/* Container uses --bg-tinted so active tab (--bg-surface) pops against it */}
           <nav className="nav-desktop nav-top-pill" style={{
             marginLeft:16, display:'flex', gap:3, padding:'5px 6px',
-            background:'var(--bg-surface)',
+            background:'var(--bg-tinted)',
             border:'1px solid var(--border)',
             borderRadius:999,
             boxShadow:'var(--shadow-sm)',
@@ -349,13 +350,16 @@ function ThemeToggle() {
       onClick={toggle}
       title={isDark ? 'Switch to light' : 'Switch to dark'}
       style={{
-        width:36, height:36, borderRadius:'50%', flexShrink:0,
-        border: isDark ? '1.5px solid #4a9eca' : '1.5px solid #0891b2',
-        background: isDark ? '#0f2544' : '#e0f4fb',
+        width:32, height:32, borderRadius:'50%', flexShrink:0,
+        border:'1px solid var(--border)',
+        background:'transparent',
         display:'flex', alignItems:'center', justifyContent:'center',
-        cursor:'pointer', fontSize:17, lineHeight:1,
-        color: isDark ? '#fde047' : '#0369a1',
+        cursor:'pointer', fontSize:15, lineHeight:1,
+        color:'var(--ink-2)',
+        transition:'background .15s, color .15s',
       }}
+      onMouseEnter={e => { e.currentTarget.style.background='var(--bg-surface)'; e.currentTarget.style.color='var(--ink-1)'; }}
+      onMouseLeave={e => { e.currentTarget.style.background='transparent'; e.currentTarget.style.color='var(--ink-2)'; }}
     >
       {isDark ? '☀' : '☾'}
     </button>

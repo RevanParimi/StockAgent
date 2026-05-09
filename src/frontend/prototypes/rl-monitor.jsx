@@ -9,7 +9,7 @@ function scoreColorRL(pct) {
   return 'var(--sell-strong)';
 }
 
-const MISS_COLORS = {
+const RL_MISS_COLORS = {
   direction_flip:  '#dc2626',
   external_shock:  '#64748b',
   model_bias:      '#f97316',
@@ -214,7 +214,7 @@ function PredictionChart({ predictions }) {
   );
 }
 
-// Rendered outside PredictionChart so it can reference MISS_COLORS defined above
+// Rendered outside PredictionChart so it can reference RL_MISS_COLORS defined above
 function DirArrow({ up }) {
   return (
     <svg width="14" height="14" viewBox="0 0 14 14" style={{ display:'inline-block', verticalAlign:'middle' }}>
@@ -276,7 +276,7 @@ function DailyLog({ predictions }) {
               const isHit     = p.direction_hit === true;
               const isMiss    = p.direction_hit === false;
               const isPending = p.direction_hit === null;
-              const missColor = MISS_COLORS[p.miss_type] || '#94a3b8';
+              const missColor = RL_MISS_COLORS[p.miss_type] || '#94a3b8';
               const missLabel = p.miss_type
                 ? p.miss_type.split('_').map(w => w.charAt(0).toUpperCase()+w.slice(1)).join(' ')
                 : null;
@@ -441,7 +441,7 @@ function DirectionCalendar({ predictions }) {
 }
 
 // ── FIX 4: Miss attribution — donut ring + per-type descriptions ──────────────
-function DonutChart({ entries, total, size = 140 }) {
+function RLDonutChart({ entries, total, size = 140 }) {
   const cx = size / 2, cy = size / 2, r = size * 0.38, stroke = size * 0.14;
   let offset = 0;
   const circ = 2 * Math.PI * r;
@@ -456,7 +456,7 @@ function DonutChart({ entries, total, size = 140 }) {
         const dash = frac * circ;
         const seg = (
           <circle key={type} cx={cx} cy={cy} r={r} fill="none"
-                  stroke={MISS_COLORS[type] || '#94a3b8'}
+                  stroke={RL_MISS_COLORS[type] || '#94a3b8'}
                   strokeWidth={stroke}
                   strokeDasharray={`${dash} ${circ}`}
                   strokeDashoffset={-offset}
@@ -493,13 +493,13 @@ function MissAttribution({ misses }) {
       </p>
       <div style={{ display:'flex', gap:32, alignItems:'flex-start', flexWrap:'wrap' }}>
         {/* Donut */}
-        <DonutChart entries={entries} total={total} size={140}/>
+        <RLDonutChart entries={entries} total={total} size={140}/>
 
         {/* Per-type rows */}
         <div style={{ flex:1, minWidth:280 }}>
           {entries.map(([type, count]) => {
             const pct = Math.round((count / total) * 100);
-            const color = MISS_COLORS[type] || '#94a3b8';
+            const color = RL_MISS_COLORS[type] || '#94a3b8';
             const desc = MISS_DESCRIPTIONS[type] || '';
             const label = type.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
             return (

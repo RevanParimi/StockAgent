@@ -260,36 +260,54 @@ function DailyLog({ predictions }) {
           </thead>
           <tbody>
             {rows.map((p, i) => {
-              const isHit    = p.direction_hit === true;
-              const isMiss   = p.direction_hit === false;
+              const isHit     = p.direction_hit === true;
+              const isMiss    = p.direction_hit === false;
               const isPending = p.direction_hit === null;
               const missColor = MISS_COLORS[p.miss_type] || '#94a3b8';
               const missLabel = p.miss_type
                 ? p.miss_type.split('_').map(w => w.charAt(0).toUpperCase()+w.slice(1)).join(' ')
                 : null;
-              const errNum = parseFloat(p.error_pct);
+
+              // Signed error: (actual - predicted) / predicted * 100
+              // Negative = model over-predicted, Positive = model under-predicted
+              const signedErr = (p.actual != null && p.predicted != null)
+                ? (p.actual - p.predicted) / p.predicted * 100
+                : null;
+              const errDisplay = signedErr != null
+                ? `${signedErr >= 0 ? '+' : ''}${signedErr.toFixed(2)}%`
+                : '—';
+              const errColor = signedErr == null
+                ? 'var(--ink-3)'
+                : Math.abs(signedErr) > 0.5
+                  ? 'var(--sell)'
+                  : 'var(--ink-2)';
+
+              // Row background: subtle tint for miss rows
+              const rowBg = isMiss ? 'rgba(239,68,68,0.03)' : 'transparent';
+
               return (
                 <tr key={i}
-                    style={{ borderBottom:'1px solid var(--border)', cursor:'pointer', transition:'background .1s' }}
+                    style={{ borderBottom:'1px solid var(--border)', cursor:'pointer',
+                             background: rowBg, transition:'background .1s' }}
                     onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-tinted)'}
-                    onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+                    onMouseLeave={e => e.currentTarget.style.background = rowBg}>
 
-                  {/* Date */}
-                  <td style={{ padding:'9px 12px', color:'var(--cyan)', fontWeight:600 }}>{p.date}</td>
+                  {/* Date — muted, monospace */}
+                  <td style={{ padding:'9px 14px', color:'var(--ink-2)', fontWeight:400 }}>{p.date}</td>
 
-                  {/* Predicted ₹ */}
-                  <td style={{ padding:'9px 12px', color:'var(--ink-1)', fontWeight:600 }}>
-                    {p.predicted?.toFixed(2)}
+                  {/* Predicted ₹ — bold, primary */}
+                  <td style={{ padding:'9px 14px', color:'var(--ink-1)', fontWeight:700 }}>
+                    {p.predicted != null ? p.predicted.toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2}) : '—'}
                   </td>
 
-                  {/* Actual ₹ */}
-                  <td style={{ padding:'9px 12px', color: p.actual != null ? 'var(--ink-1)' : 'var(--ink-3)', fontWeight: p.actual ? 600 : 400 }}>
-                    {p.actual != null ? p.actual.toFixed(2) : '—'}
+                  {/* Actual ₹ — bold when available */}
+                  <td style={{ padding:'9px 14px', color: p.actual != null ? 'var(--ink-1)' : 'var(--ink-3)', fontWeight: p.actual ? 700 : 400 }}>
+                    {p.actual != null ? p.actual.toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2}) : '—'}
                   </td>
 
-                  {/* Error % */}
-                  <td style={{ padding:'9px 12px', color: !isNaN(errNum) && Math.abs(errNum) > 0.5 ? 'var(--sell)' : 'var(--ink-2)' }}>
-                    {p.error_pct != null ? `${errNum >= 0 ? '+' : ''}${errNum.toFixed(2)}%` : '—'}
+                  {/* Error % — signed, colored when large */}
+                  <td style={{ padding:'9px 14px', color: errColor, fontWeight: Math.abs(signedErr||0)>0.5 ? 600 : 400 }}>
+                    {errDisplay}
                   </td>
 
                   {/* Pred Dir */}

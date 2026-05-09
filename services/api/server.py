@@ -30,8 +30,11 @@ from contextlib import asynccontextmanager
 from datetime import date, timedelta
 
 _ROOT = pathlib.Path(__file__).parent.parent.parent
+_SRC  = _ROOT / "src"
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
+if str(_SRC) not in sys.path:
+    sys.path.insert(0, str(_SRC))
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware

@@ -31,6 +31,12 @@ import time
 from datetime import date
 from pathlib import Path
 
+# Ensure src/ is on sys.path so `backend.*` imports resolve when running
+# directly with `python main.py` (pyproject.toml only sets this for pytest).
+_SRC = Path(__file__).parent / "src"
+if str(_SRC) not in sys.path:
+    sys.path.insert(0, str(_SRC))
+
 # ---------------------------------------------------------------------------
 # Logging setup (must happen before importing agents so their loggers pick it up)
 # ---------------------------------------------------------------------------
@@ -287,11 +293,11 @@ def main() -> None:
     from backend.sectors import detect_sector, get_orchestrator  # sector-aware routing
 
     logger = logging.getLogger(__name__)
-    logger.info("Starting Automobile Agent for: %s", args.ticker)
 
     try:
         sector = detect_sector(args.ticker)
         OrchestratorClass = get_orchestrator(sector)
+        logger.info("Starting %s Agent for: %s", sector.replace("_", " ").title(), args.ticker)
         orchestrator = OrchestratorClass()
         report = orchestrator.analyse(args.ticker)
     except Exception as exc:

@@ -1,0 +1,51 @@
+"""
+sectors/renewable/management.py
+=================================
+Management Quality sub-agent for the Renewable Energy sector.
+
+New agent added from the 8-pillar HTML framework (weight: 0.12).
+Key lesson: Adani Green's 2023 promoter controversy showed that group-level
+governance risk can devastate a RE stock regardless of project fundamentals.
+
+Data dimensions covered:
+  1. Promoter track record & group integrity
+  2. Debt discipline & capital allocation quality
+  3. Related-party EPC and O&M contracts
+  4. Capacity addition guidance vs actual execution
+  5. Promoter holding and pledge status
+"""
+
+from __future__ import annotations
+
+from typing import Any
+
+from core.pipeline.base_agent import BaseAgent
+from core.schemas.pipeline import AgentOutput, StockQuery
+from core.config.prompts.renewable import management as P
+
+
+class REManagementAgent(BaseAgent):
+    """Evaluates corporate governance and management execution quality."""
+
+    @property
+    def agent_name(self) -> str:
+        return "management"
+
+    def _build_prompt(self, query: StockQuery, context: str) -> tuple[str, str]:
+        user_prompt = P.ANALYSIS_PROMPT.format(
+            ticker=query.ticker,
+            company_name=query.company_name or query.ticker,
+            context=context,
+        )
+        return P.SYSTEM_PROMPT, user_prompt
+
+    def _parse_output(self, data: dict[str, Any], ticker: str) -> AgentOutput:
+        return AgentOutput(
+            agent=self.agent_name,
+            ticker=ticker,
+            overall_score=self._clamp(float(data.get("overall_score", 0.5))),
+            key_positives=data.get("key_positives", []),
+            key_risks=data.get("key_risks", []),
+            summary=data.get("summary", ""),
+            data_freshness=data.get("data_freshness", ""),
+        )

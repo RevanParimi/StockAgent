@@ -337,14 +337,13 @@ function AnalyticsPage({ onNav }) {
 
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg-base)', color: 'var(--ink-1)', paddingBottom: 100 }}>
-      {/* Use the shared TopNav so navigation to this screen is visually obvious */}
-      <TopNav active="analytics" onNav={onNav} search="" setSearch={() => {}}/>
-
-      {/* Page header */}
+      {/* Simple page header — no TopNav (ThemeToggle/MutationObserver inside TopNav crashes when nested) */}
       <div style={{
         padding: '18px 24px', borderBottom: '1px solid var(--border)',
         background: 'var(--bg-surface)',
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        position: 'sticky', top: 0, zIndex: 30,
+        backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)',
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <button onClick={() => onNav('home')} style={{
@@ -398,19 +397,17 @@ function AnalyticsPage({ onNav }) {
           </div>
         )}
 
-        {/* No-data banner when backend analytics endpoints are unavailable */}
+        {/* No-data state when backend analytics endpoints are unavailable */}
         {!loading && !error && !accuracy && (
           <div style={{
-            display:'flex', alignItems:'center', gap:12, padding:'14px 18px',
-            borderRadius:12, marginBottom:20,
+            padding:'14px 18px', borderRadius:12, marginBottom:20,
             background:'var(--neutral-soft)', border:'1px solid var(--neutral)',
           }}>
-            <Icon.AlertTriangle size={18} c="var(--neutral)"/>
-            <div>
-              <div style={{ fontSize:13, fontWeight:700, color:'var(--ink-1)' }}>Backend analytics endpoints not available</div>
-              <div style={{ fontSize:12, color:'var(--ink-2)', marginTop:2 }}>
-                Start the backend and run some analyses to populate this dashboard. Charts will show live data automatically.
-              </div>
+            <div style={{ fontSize:13, fontWeight:700, color:'var(--ink-1)', marginBottom:4 }}>
+              ⚠ Backend analytics endpoints not available
+            </div>
+            <div style={{ fontSize:12, color:'var(--ink-2)' }}>
+              Start the backend and run some analyses to populate this dashboard. Charts will show live data automatically.
             </div>
           </div>
         )}

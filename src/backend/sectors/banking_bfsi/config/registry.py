@@ -10,24 +10,24 @@ Banking BFSI sector agent registry — Phase 2 refactor.
 from __future__ import annotations
 
 from backend.shared.agents.universal                          import UniversalAgent
+from backend.shared.agents.prompts.technical                  import BANKING_TECHNICAL
+from backend.shared.agents.prompts.institutional_flow         import BANKING_INSTITUTIONAL
 from backend.sectors.banking_bfsi.agents.universe_setup       import BFSIUniverseAgent
 from backend.sectors.banking_bfsi.prompts import (
-    fundamentals    as _fund,
-    risk            as _risk,
-    macro_policy    as _mac,
-    institutional   as _inst,
-    pattern_analysis as _pat,
+    fundamentals as _fund,
+    risk         as _risk,
+    macro_policy as _mac,
 )
 from backend.sectors.banking_bfsi.config.settings import AGENT_WEIGHTS
 
 _S = "banking_bfsi"
 
 AGENTS: dict = {
-    "fundamentals":    UniversalAgent("fundamentals",    _fund, sector=_S),
-    "risk":            UniversalAgent("risk",            _risk, sector=_S),
-    "macro_policy":    UniversalAgent("macro_policy",    _mac,  sector=_S),
-    "institutional":   UniversalAgent("institutional",   _inst, sector=_S),
-    "pattern_analysis":UniversalAgent("pattern_analysis",_pat,  sector=_S),
+    "fundamentals":    UniversalAgent("fundamentals",    _fund,                sector=_S),
+    "risk":            UniversalAgent("risk",            _risk,                sector=_S),
+    "macro_policy":    UniversalAgent("macro_policy",    _mac,                 sector=_S),
+    "institutional":   UniversalAgent("institutional",   BANKING_INSTITUTIONAL,sector=_S),
+    "pattern_analysis":UniversalAgent("pattern_analysis",BANKING_TECHNICAL,   sector=_S),
     "universe_setup":  BFSIUniverseAgent(),
 }
 

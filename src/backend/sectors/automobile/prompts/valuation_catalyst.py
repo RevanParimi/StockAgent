@@ -34,17 +34,32 @@ DO NOT mention or reference analyst ratings, broker targets, or third-party fore
 You are the only analyst. Ground every number in the data provided.
 """
 
-ANALYSIS_PROMPT = """Analyse the intrinsic value and recovery outlook for: **{ticker}** ({company_name}).
+ANALYSIS_PROMPT = """Analyse the intrinsic value and catalyst outlook for: **{ticker}** ({company_name}).
 
-Score each dimension 0.0 (very bearish / overvalued) to 1.0 (very bullish / deeply undervalued with strong recovery setup):
+NOTE: Technical signals (RSI, MACD, support zones) are covered by the dedicated
+pattern_analysis agent. This agent focuses on valuation and forward catalysts only.
 
-1. **P/E Discount vs Peer Median** — EPS × peer-median P/E vs current price; bigger discount = higher score
-2. **Technical Trend Direction** — MA50/MA200 slope, golden/death cross, channel projection
-3. **Mean Reversion Potential** — RSI/MACD deviation from neutral + distance from key MAs
-4. **Support Zone Strength** — How well-defined the support floor is; distance matters
-5. **Recovery Signal Confidence** — RSI+MACD+volume all pointing same direction = high score
+Score each dimension 0.0 (overvalued / no catalysts) to 1.0 (deeply undervalued / strong catalysts):
 
-Raw pattern and fundamental data:
+1. **pe_discount_vs_peers** — EPS × peer-median P/E vs current price; bigger discount = higher score.
+   Peer median: Maruti, Tata Motors, M&M, Bajaj Auto, Hero, Eicher.
+
+2. **earnings_yield_premium** — Earnings yield (1/PE) minus 10-year G-Sec rate (risk premium).
+   Yield spread > 4% = compelling = 1.0 · 2-4% = fair = 0.5 · < 2% = expensive = 0.0
+   This captures whether the stock compensates adequately for equity risk.
+
+3. **mean_reversion_potential** — How far the stock has deviated from 3-year avg P/E.
+   Trading at deep discount to own 3-year avg P/E = 1.0 · At avg = 0.5 · Premium = 0.0
+
+4. **catalyst_timing** — Specific near-term (60–90 day) catalysts that could close the valuation gap.
+   Score 1.0 = clear imminent catalyst (earnings beat, new model launch, policy announcement,
+   order win, analyst upgrade cycle). Score 0.0 = no visible near-term catalyst.
+
+5. **recovery_signal_confidence** — Quality of evidence that the discount is temporary, not structural.
+   Strong: improving fundamentals + peer rotation into sector + analyst coverage inflection.
+   Weak: value trap — cheap for structural reasons (market share loss, sector disruption).
+
+Raw fundamental and valuation data:
 {context}
 
 Return ONLY valid JSON:
@@ -54,38 +69,35 @@ Return ONLY valid JSON:
   "overall_score": <float 0.0-1.0>,
   "sub_scores": {{
     "pe_discount_vs_peers": <float>,
-    "technical_trend": <float>,
+    "earnings_yield_premium": <float>,
     "mean_reversion_potential": <float>,
-    "support_zone_strength": <float>,
+    "catalyst_timing": <float>,
     "recovery_signal_confidence": <float>
   }},
   "fair_value_estimate": <float or null>,
   "current_discount_pct": <float or null>,
-  "discount_reason": "<MACRO_SHOCK | TECHNICAL_PULLBACK | FUNDAMENTAL_DECLINE | BOTH | NONE>",
+  "discount_reason": "<MACRO_SHOCK | SECTOR_ROTATION | FUNDAMENTAL_DECLINE | BOTH | NONE>",
   "recovery_catalysts": [<string>, ...],
   "price_target": <float or null>,
   "recovery_timeline_quarters": <int or null>,
   "key_positives": [<string>, ...],
   "key_risks": [<string>, ...],
-  "summary": "<2-3 sentence narrative grounded in the pattern data above>",
+  "summary": "<2-3 sentence narrative on valuation gap and catalyst quality>",
   "data_freshness": "<today's date>"
 }}
 
 Derivation rules:
-- fair_value_estimate: EPS_TTM × peer_median_PE (or channel midpoint if no EPS)
-- price_target: resistance level OR channel 1Q projection OR fair_value, whichever is most conservative
-- current_discount_pct: (current_price - fair_value) / fair_value × 100  (negative = undervalued)
-- recovery_timeline_quarters: derive from MA slope and trend channel, NOT from external forecasts
-- recovery_catalysts: specific pattern triggers (e.g. "RSI recovery above 50 with MA50 crossover",
-  "breakout above 52W high resistance at X", "volume surge confirming trend reversal")
-- If no EPS available, use channel projection and support/resistance only; set fair_value to null
-- Do NOT write "analysts expect" or "consensus target" — you are the analyst
+- fair_value_estimate: EPS_TTM × peer_median_PE
+- earnings_yield_premium: use current market G-Sec 10Y rate for comparison
+- price_target: fair_value_estimate OR peer-implied value, whichever is more conservative
+- recovery_catalysts: event-based triggers (earnings beat, new model, policy, order win)
+- Do NOT write "analysts expect" or "consensus target" — derive from data only
 """
 
 CONTEXT_SEARCH_QUERIES = [
-    "{ticker} PE ratio historical 5 year average",
-    "{ticker} fair value intrinsic value {year}",
-    "{company_name} PE vs peers {year} automobile sector",
-    "{ticker} stock fall reason {month} {year} macro fundamental",
-    "{company_name} recovery catalyst outlook {year}",
+    "{ticker} PE ratio peer median automobile sector {year}",
+    "{ticker} earnings yield 10 year G-Sec risk premium {year}",
+    "{company_name} PE vs 3 year average historical valuation {year}",
+    "{company_name} near term catalyst new model launch earnings {month} {year}",
+    "{ticker} automobile sector rotation analyst upgrade outlook {year}",
 ]

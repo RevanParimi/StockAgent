@@ -10,29 +10,29 @@ IT sector agent registry — Phase 2 refactor.
 from __future__ import annotations
 
 from backend.shared.agents.universal                             import UniversalAgent
-from backend.sectors.it_sector.agents.transcript_nlp            import ITTranscriptNLPAgent
+from backend.shared.agents.prompts.technical                     import IT_TECHNICAL
+from backend.shared.agents.prompts.institutional_flow            import IT_INSTITUTIONAL
+from backend.sectors.it_sector.agents.transcript_nlp             import ITTranscriptNLPAgent
 from backend.sectors.it_sector.prompts import (
-    fundamentals         as _fund,
-    global_macro         as _gmac,
-    risk_macro           as _risk,
-    peer_benchmark       as _peer,
-    pattern_analysis     as _pat,
-    sentiment            as _sent,
-    insider_smart_money  as _ins,
+    fundamentals     as _fund,
+    global_macro     as _gmac,
+    risk_macro       as _risk,
+    peer_benchmark   as _peer,
+    sentiment        as _sent,
 )
 from backend.sectors.it_sector.config.settings import AGENT_WEIGHTS
 
 _S = "it_sector"
 
 AGENTS: dict = {
-    "fundamentals":       UniversalAgent("fundamentals",       _fund, sector=_S),
-    "global_macro":       UniversalAgent("global_macro",       _gmac, sector=_S),
-    "risk_macro":         UniversalAgent("risk_macro",         _risk, sector=_S),
-    "peer_benchmark":     UniversalAgent("peer_benchmark",     _peer, sector=_S),
-    "pattern_analysis":   UniversalAgent("pattern_analysis",   _pat,  sector=_S),
-    "sentiment":          UniversalAgent("sentiment",          _sent, sector=_S),
+    "fundamentals":       UniversalAgent("fundamentals",       _fund,          sector=_S),
+    "global_macro":       UniversalAgent("global_macro",       _gmac,          sector=_S),
+    "risk_macro":         UniversalAgent("risk_macro",         _risk,          sector=_S),
+    "peer_benchmark":     UniversalAgent("peer_benchmark",     _peer,          sector=_S),
+    "pattern_analysis":   UniversalAgent("pattern_analysis",   IT_TECHNICAL,   sector=_S),
+    "sentiment":          UniversalAgent("sentiment",          _sent,          sector=_S),
     "transcript_nlp":     ITTranscriptNLPAgent(),
-    "insider_smart_money":UniversalAgent("insider_smart_money",_ins,  sector=_S),
+    "insider_smart_money":UniversalAgent("insider_smart_money",IT_INSTITUTIONAL,sector=_S),
 }
 
 WEIGHTS: dict[str, float] = AGENT_WEIGHTS

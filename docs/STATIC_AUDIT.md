@@ -94,8 +94,10 @@ SCORE_THRESHOLDS = {
 
 ### 9. Sector news search hardcoded to India region
 `"gl": "in"` in Serper queries. IT sector earns 80%+ revenue from US/EU — India-only news misses material events.
-**Fix:** `NEWS_GEO_DEFAULT` and `NEWS_GEO_SECTOR` dict added to `settings/base.py`. IT/pharma/chemicals default to `"us"`. `news.py` now uses `settings.NEWS_GEO_DEFAULT` instead of hardcoded `"in"`.
-**Status:** ✅ Fixed (2026-05-10) — per-sector geo in settings; callers can pass sector for override
+**Fix:** Removed `"gl"` parameter entirely from the Serper request. A specific query like
+`"TCS Q4 2026 deal wins"` lets Google rank results globally by relevance — no country
+restriction means Indian, US, and global sources all surface naturally.
+**Status:** ✅ Fixed (2026-05-10) — `"gl"` param removed from `news.py`; no per-sector config needed
 
 ### 10. Miss type penalty multipliers — `schemas/feedback.py`
 `external_shock: 0.0` — no penalty ever. But an agent that consistently fails to price in geopolitical risk is still a weak agent.

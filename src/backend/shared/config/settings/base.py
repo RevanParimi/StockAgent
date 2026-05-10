@@ -403,25 +403,11 @@ RL_TIMING_FREE_WINDOW: int    = int(os.getenv("RL_TIMING_FREE_WINDOW",    "3"))
 RL_TIMING_PARTIAL_WINDOW: int = int(os.getenv("RL_TIMING_PARTIAL_WINDOW", "7"))
 
 # ---------------------------------------------------------------------------
-# STATIC_AUDIT #9 — Per-sector news geo (IT/pharma need US/EU coverage)
+# STATIC_AUDIT #9 — News geo: removed country filter entirely
+# Serper query now omits "gl" — Google surfaces globally relevant results
+# based on query specificity. A query like "TCS Q4 2026 deal wins" returns
+# Indian + US + global sources ranked by relevance without geo restriction.
 # ---------------------------------------------------------------------------
-
-# Default Google Search geolocation for Serper API
-NEWS_GEO_DEFAULT: str = os.getenv("NEWS_GEO_DEFAULT", "in")
-
-# Override per sector (key = sector canonical name, value = Serper "gl" code)
-NEWS_GEO_SECTOR: dict[str, str] = {
-    "it_sector":        os.getenv("NEWS_GEO_IT",     "us"),   # 80%+ US/EU revenue
-    "pharma":           os.getenv("NEWS_GEO_PHARMA",  "us"),   # FDA, US generics market
-    "chemicals":        os.getenv("NEWS_GEO_CHEM",    "us"),   # global commodity pricing
-    "automobile":       os.getenv("NEWS_GEO_AUTO",    "in"),
-    "banking_bfsi":     os.getenv("NEWS_GEO_BANK",    "in"),
-    "renewable_energy": os.getenv("NEWS_GEO_RE",      "in"),
-    "oilgas":           os.getenv("NEWS_GEO_OIL",     "in"),
-    "fmcg":             os.getenv("NEWS_GEO_FMCG",    "in"),
-    "metals":           os.getenv("NEWS_GEO_METALS",  "in"),
-    "defence":          os.getenv("NEWS_GEO_DEF",     "in"),
-}
 
 # ---------------------------------------------------------------------------
 # STATIC_AUDIT #15 — Serper timeout (moved from news.py _TIMEOUT = 10)

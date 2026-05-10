@@ -95,7 +95,7 @@ def search_serper(
                 "X-API-KEY": key,
                 "Content-Type": "application/json",
             },
-            json={"q": query, "num": n, "gl": _news_settings.NEWS_GEO_DEFAULT, "hl": "en"},
+            json={"q": query, "num": n, "hl": "en"},
             timeout=_TIMEOUT,
         )
         resp.raise_for_status()

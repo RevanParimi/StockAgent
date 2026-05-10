@@ -321,30 +321,128 @@ Step 3: STATIC formulas:
 
 ### Step 5 — WeightAdapter *(STATIC — no LLM)*
 
-Three sequential stages, all deterministic:
+Three sequential stages, all deterministic. All constants are now in `settings/base.py`
+and env-overridable (see settings reference table at end of this doc).
+
+---
 
 **Stage 1 — Accuracy Computation** (`_compute_accuracy`)
-- Looks at last `WEIGHT_ACCURACY_WINDOW = 7` feedback entries
-- Per agent: counts direction hits (agents absolved by `NO_PENALTY_MISS_TYPES` get hit credit even on wrong days)
-- Returns `dict[agent, AgentAccuracy]`
+
+Window: last `WEIGHT_ACCURACY_WINDOW = 7` **trading days** (calendar-aware, weekends excluded).
+
+Hit-credit rules per entry:
+- `direction_correct = True` → **all agents** get a hit
+- `direction_correct = False` AND `miss_type ∈ NO_PENALTY_MISS_TYPES` → **all agents** get a hit (model not at fault)
+- `direction_correct = False` AND miss is penalisable → **non-primary agents** get a hit; **primary miss agent** does not
+
+`NO_PENALTY_MISS_TYPES = {"data_gap", "data_stale", "external_shock"}`
+
+Returns: `dict[agent_name → AgentAccuracy(direction_hits, total, avg_error)]`
+
+---
 
 **Stage 2 — Delta Computation** (`_compute_deltas`)
 
-| Condition | Agent Delta | Constant |
+Three independent mechanisms. All deltas accumulate on the same agent before Stage 3 bounds.
+
+#### Mechanism A — Hit-rate boost / penalty (every agent)
+
+```
+effective_boost_threshold   = WEIGHT_BOOST_HIT_RATE   + seasonal_delta  (default 0.70)
+effective_penalty_threshold = WEIGHT_PENALTY_HIT_RATE + seasonal_delta  (default 0.40)
+
+hit_rate = direction_hits / total   (from Stage 1, last 7 trading days)
+
+if hit_rate >= effective_boost_threshold:    delta += RL_BOOST   (+0.02)
+elif hit_rate <= effective_penalty_threshold: delta += RL_PENALTY (-0.03)
+else:                                         delta  = 0.0
+```
+
+`seasonal_delta` shifts both thresholds by the same amount — raises the bar during easy periods
+(festive season), lowers it during structurally hard ones (budget week, earnings blackout).
+e.g. `sales_demand: +0.08` during festive → boost only if hit_rate ≥ 0.78 instead of 0.70.
+
+#### Mechanism B — Bias penalty (primary miss agent only, penalisable miss types only)
+
+Replaces the old "2 consecutive days" streak. Uses a **weighted rolling miss rate** across
+three trading-day windows so one good day in a bad run doesn't zero out the penalty signal.
+
+```
+bias_score = Σ( window_weight × agent_miss_rate_in_window )
+             ────────────────────────────────────────────────
+                        Σ( window_weight )
+
+Windows and weights (hardcoded in code, not settings):
+  5 td  (~1 week)  → weight 0.50   ← recent performance dominates
+  10 td (~2 weeks) → weight 0.30
+  21 td (~1 month) → weight 0.20
+
+agent_miss_rate_in_window = penalisable_misses_blamed_on_agent / total_penalisable_entries
+
+if bias_score < RL_BIAS_TRIGGER (0.55):
+    bias_penalty = 0.0                               ← noise, no penalty
+
+if RL_BIAS_TRIGGER (0.55) ≤ bias_score < RL_BIAS_FULL (0.70):
+    scale        = (bias_score − 0.55) / (0.70 − 0.55)    ← linear 0→1
+    bias_penalty = RL_MISS_STREAK_PENALTY × scale × miss_type_multiplier
+
+if bias_score ≥ RL_BIAS_FULL (0.70):
+    scale        = 1.0                               ← capped at full penalty
+    bias_penalty = RL_MISS_STREAK_PENALTY × 1.0 × miss_type_multiplier
+```
+
+Worked examples (no seasonal adjustment, miss_type = "direction_flip" → multiplier 1.0):
+
+| bias_score | scale | bias_penalty | what it means |
+|---|---|---|---|
+| 0.40 | — | 0.000 | occasional miss, ignore |
+| 0.55 | 0.00 | 0.000 | just at trigger, no penalty yet |
+| 0.625 | 0.50 | −0.025 | consistent underperformer |
+| 0.70 | 1.00 | −0.050 | full penalty — badly miscalibrated |
+| 0.85 | 1.00 (capped) | −0.050 | full penalty — same cap |
+
+#### Mechanism C — Timing penalty multiplier
+
+Applied to `bias_penalty` when `miss_type = "timing"`. Determines `miss_type_multiplier`:
+
+```
+abs_lag = |timing_lag_days|   (actual price peak − predicted peak, in trading days)
+
+if abs_lag ≤ RL_TIMING_FREE_WINDOW (3):     multiplier = 0.00  → no bias penalty
+if abs_lag ≤ RL_TIMING_PARTIAL_WINDOW (7):  multiplier = 0.20  → light signal
+if abs_lag > RL_TIMING_PARTIAL_WINDOW (7):  multiplier = 0.50  → real timing failure
+```
+
+For non-timing miss types, `multiplier = MISS_TYPE_PENALTY_MULTIPLIER[miss_type]`:
+
+| miss_type | multiplier | Rationale |
 |---|---|---|
-| Hit rate ≥ 70% over last 7 days | +0.02 boost | `WEIGHT_BOOST_HIT_RATE = 0.70` |
-| Hit rate ≤ 40% over last 7 days | −0.03 penalty | `WEIGHT_PENALTY_HIT_RATE = 0.40` |
-| Same `primary_miss_agent` 2 consecutive days | Extra −0.05 streak penalty | consecutive_streak check |
-| Applied `miss_type` multiplier | delta × multiplier | `MISS_TYPE_PENALTY_MULTIPLIER` dict |
+| `direction_flip` | 1.00 | Full penalty — model called direction wrong |
+| `model_bias` | 1.00 | Full penalty — systematic miscalibration |
+| `magnitude` | 0.25 | Partial — direction right, size wrong |
+| `timing` | see tiers above | Depends on lag magnitude |
+| `data_gap` | 0.00 | Not model's fault — no data available |
+| `data_stale` | 0.00 | Not model's fault — stale input |
+| `external_shock` | 0.00 | Not model's fault — unpredictable event |
+
+Final delta for primary miss agent = Mechanism A delta + bias_penalty
+
+---
 
 **Stage 3 — Bound Application + Normalization** (`_apply_deltas`)
 
 ```
 For each agent:
-  1. Clamp delta to ±WEIGHT_MAX_STEP (0.05)
-  2. Clamp resulting weight to base ± WEIGHT_MAX_DRIFT (0.15)
-  3. Re-normalize all weights to sum exactly 1.0
+  1. Clamp delta to ±WEIGHT_MAX_STEP (0.05)           ← largest move in one day
+  2. proposed = current_weight + clamped_delta
+  3. lo = max(0.0, base_weight − WEIGHT_MAX_DRIFT)     ← floor: base − 0.15
+     hi = base_weight + WEIGHT_MAX_DRIFT               ← ceiling: base + 0.15
+  4. proposed = clamp(proposed, lo, hi)
+  5. Re-normalize all agents: weight /= Σ(all weights) ← always sums to 1.0
 ```
+
+`WEIGHT_MAX_STEP = 0.05` prevents a single bad day from catastrophically shifting the model.
+`WEIGHT_MAX_DRIFT = 0.15` keeps weights within ±15 percentage points of the calibrated base.
 
 ### Step 5.5 — Regime Multipliers Applied *(STATIC, EPHEMERAL)*
 
@@ -675,8 +773,15 @@ DailyForecast[day].confidence = base_close_confidence × (1 - decay_per_day × d
 | `WEIGHT_MAX_DRIFT` | 0.15 | Max total drift from base weight |
 | `WEIGHT_MIN_OBSERVATIONS` | 3 | Days before weight adaptation activates |
 | `WEIGHT_ACCURACY_WINDOW` | 7 | Rolling window (days) for hit-rate calc |
-| `WEIGHT_BOOST_HIT_RATE` | 0.70 | Hit rate ≥ this → +0.02 weight boost |
-| `WEIGHT_PENALTY_HIT_RATE` | 0.40 | Hit rate ≤ this → −0.03 weight penalty |
+| `WEIGHT_BOOST_HIT_RATE` | 0.70 | Hit rate ≥ this → weight boost fires (Mechanism A threshold) |
+| `WEIGHT_PENALTY_HIT_RATE` | 0.40 | Hit rate ≤ this → weight penalty fires (Mechanism A threshold) |
+| `RL_BOOST` | +0.02 | Delta added when hit_rate ≥ boost threshold (Mechanism A magnitude) |
+| `RL_PENALTY` | −0.03 | Delta added when hit_rate ≤ penalty threshold (Mechanism A magnitude) |
+| `RL_MISS_STREAK_PENALTY` | −0.05 | Base bias penalty at full bias_score=1.0 (Mechanism B magnitude) |
+| `RL_BIAS_TRIGGER` | 0.55 | Weighted rolling miss rate at which bias penalty starts scaling (Mechanism B) |
+| `RL_BIAS_FULL` | 0.70 | Weighted rolling miss rate at which full `RL_MISS_STREAK_PENALTY` applies (Mechanism B) |
+| `RL_TIMING_FREE_WINDOW` | 3 | Lag ≤ N trading days → 0× timing penalty (within-week noise) (Mechanism C) |
+| `RL_TIMING_PARTIAL_WINDOW` | 7 | Lag ≤ N trading days → 0.20× timing penalty; lag > N → 0.50× (Mechanism C) |
 | `FEEDBACK_CRON` | `0 11 * * 1-5` | Daily review cron (11:00 UTC = 4:30pm IST) |
 | `RL_FLAT_THRESHOLD_PCT` | 0.3 | % change threshold for UP/DOWN/FLAT classification |
 | `VIX_VOLATILE_THRESHOLD` | 22.0 | VIX above = volatile macro |

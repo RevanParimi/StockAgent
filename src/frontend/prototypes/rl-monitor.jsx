@@ -793,14 +793,15 @@ function RLMonitorPage({ onNav }) {
         {/* Tabs + content */}
         {summary && (
           <>
-            <div style={{ display:'flex', gap:0, borderBottom:'1px solid var(--border)', marginBottom:20 }}>
+            <div className="rl-tabs" style={{ display:'flex', gap:0, borderBottom:'1px solid var(--border)', marginBottom:20 }}>
               {tabs.map(t => (
                 <button key={t.k} onClick={()=>setActiveTab(t.k)} style={{
                   display:'flex', alignItems:'center', gap:7, padding:'10px 18px',
                   border:'none', background:'transparent', cursor:'pointer', fontSize:13, fontWeight:600,
+                  flexShrink:0,
                   color: activeTab===t.k ? 'var(--cyan)' : 'var(--ink-3)',
                   borderBottom: activeTab===t.k ? '2px solid var(--cyan)' : '2px solid transparent',
-                  marginBottom:-1, transition:'color .15s',
+                  marginBottom:-1, transition:'color .15s', whiteSpace:'nowrap',
                 }}>{t.icon} {t.label}</button>
               ))}
             </div>

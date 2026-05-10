@@ -221,6 +221,18 @@ button { font-family: inherit; cursor: pointer; }
   .analysis-2col { grid-template-columns: 1fr !important; }
 }
 
+/* ── RL Monitor inner tabs — scrollable on mobile so all 4 tabs are reachable */
+.rl-tabs { overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+.rl-tabs::-webkit-scrollbar { display: none; }
+@media (max-width: 767px) {
+  .rl-tabs button { padding: 10px 14px !important; font-size: 12px !important; }
+}
+
+/* ── Portfolio hero chart — hide on mobile, keep value + stats visible ─────── */
+@media (max-width: 767px) {
+  .pf-hero-chart { display: none !important; }
+}
+
 /* ── Portfolio hero stats — wrap on mobile ───────────────────────────────── */
 @media (max-width: 767px) {
   .pf-hero-stats { flex-wrap: wrap !important; gap: 12px !important; }

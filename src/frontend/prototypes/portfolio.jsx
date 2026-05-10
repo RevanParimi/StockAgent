@@ -51,7 +51,7 @@ function PortfolioPage({ onNav, openChat }) {
             </div>
           </div>
 
-          <div style={{ position:'relative', zIndex:2 }}>
+          <div className="pf-hero-chart" style={{ position:'relative', zIndex:2 }}>
             <div style={{
               display:'flex', alignItems:'center', justifyContent:'space-between', gap:10, marginBottom:8
             }}>

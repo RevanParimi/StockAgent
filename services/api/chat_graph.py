@@ -99,7 +99,9 @@ Intent types (pick exactly one):
 
 Extract entities from the FULL conversation — if user says "what about risks?"
 but prior messages mentioned MARUTI, include MARUTI in tickers.
-Sectors: automobile, banking_bfsi, it_sector, renewable_energy, pharma, fmcg"""
+Known sectors (use canonical key): automobile, banking_bfsi, it_sector, renewable_energy,
+pharma, fmcg, metals, oilgas, capgoods, infra, chemicals, defence, insurance,
+logistics, realestate, retail, agrochem, hospitality, tech, telecom"""
 
 
 PLANNER_SYSTEM_PROMPT = """\
@@ -121,12 +123,17 @@ needs_external — true ONLY when live web news is genuinely required and cannot
 
 Available tools (use ONLY these, in this priority order):
   INTERNAL — always prefer:
-    get_live_price        {"symbol": "MARUTI or silver etc"}
-    get_sector_snapshot   {"sector": "automobile|banking_bfsi|it_sector|renewable_energy|pharma|fmcg"}
+    get_live_price        {"symbol": "MARUTI or silver or crude etc"}
+    get_sector_snapshot   {"sector": "<sector_key>"}
+                          Valid keys: automobile, banking_bfsi, it_sector, renewable_energy,
+                          pharma, fmcg, metals, oilgas, capgoods, infra, chemicals,
+                          defence, insurance, realestate, retail, logistics, telecom,
+                          agrochem, hospitality, tech
     get_stock_analysis    {"ticker": "MARUTI"}
     get_analysis_history  {"days": 14}
     get_rl_insights       {}
-    run_agent_analysis    {"ticker": "MARUTI"}   ← DEEP ONLY, triggers full 9-agent pipeline
+    run_agent_analysis    {"ticker": "MARUTI"}   ← DEEP ONLY; works for ALL sectors
+                          Disabled sectors degrade safely to automobile analysis.
 
   EXTERNAL — include ONLY if needs_external=true:
     search_market_news    {"query": "specific query with year e.g. MARUTI Q4 results 2026"}

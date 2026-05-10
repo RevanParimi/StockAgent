@@ -1,7 +1,7 @@
 # Static Values Audit — StockAgent
 
 > Ownership: Claude (ongoing review responsibility)
-> Last updated: 2026-05-07
+> Last updated: 2026-05-10
 > Scope: All hardcoded/static values that should be dynamic, adaptive, or data-driven.
 > Severity: CRITICAL → HIGH → MEDIUM → LOW
 
@@ -15,8 +15,9 @@
 "last_change":   "2024-02-08",
 ```
 **Problem:** Repo rate drives banking sector macro analysis. 16+ months stale by May 2026.
-**Fix:** Scrape `https://www.rbi.org.in/` or use `fredapi` / RBI press releases. Cache with 24h TTL.
-**Status:** ⬜ Pending
+**Fix:** Set `RBI_REPO_RATE_PCT` env var to override. Staleness warning fires if value is >90 days old.
+Long-term: automate via Serper search or RBI press release scrape.
+**Status:** ✅ Fixed (2026-05-10) — env-override + staleness warning in `get_rbi_repo_rate()`
 
 ---
 
@@ -30,9 +31,10 @@
 | `it_sector/config/settings.py` | `TICKERS` | 7 | 15 |
 | `renewable_energy/config/settings.py` | `TICKERS` | 6 | 12 |
 
-**Problem:** Sector settings lists are a subset of the registry. New tickers added to one place don't flow to others. Agent analysis silently skips tickers not in settings.
-**Fix:** Sector settings should import from `sectors/__init__.py` as single source of truth.
-**Status:** ⬜ Pending
+**Problem:** Sector settings lists are a subset of the registry. New tickers added to one place don't flow to others.
+**Fix:** `TICKER_SECTOR` in `src/backend/sectors/registry.py` is now the single source of truth for routing (~200 tickers, all 27 sectors). The frozensets in `__init__.py` are superseded — `detect_sector()` is now a shim through `SectorRegistry.resolve()`.
+Sector `settings.TICKERS` (for scheduling) remain separate; they are intentionally smaller subsets for scheduler load control.
+**Status:** ✅ Routing fixed (2026-05-10) — `TICKER_SECTOR` is single source; `settings.TICKERS` kept as scheduler subset
 
 ### 3. Regime thresholds & multipliers — `settings/base.py` lines 293–385
 54 hardcoded float values:
@@ -54,9 +56,10 @@ _BIAS_FULL           = 0.70
 _TIMING_FREE_WINDOW  = 3
 _TIMING_PARTIAL_WINDOW = 7
 ```
-**Problem:** Same delta applied to all stocks regardless of volatility. +0.02 is too conservative for high-beta stocks, too aggressive for blue-chips.
-**Fix:** Move all 7 values to `settings/base.py` with env overrides. Long-term: compute per-stock delta based on ATR.
-**Status:** ⬜ Pending
+**Problem:** Same delta applied to all stocks regardless of volatility.
+**Fix:** All 7 constants moved to `settings/base.py` as `RL_BOOST`, `RL_PENALTY`, etc. with env override support.
+`weight_adapter.py` now reads from `settings` instead of hardcoded module globals.
+**Status:** ✅ Fixed (2026-05-10) — env-overridable via `RL_BOOST`, `RL_PENALTY` etc.
 
 ### 5. RL_FLAT_THRESHOLD_PCT missing from base.py
 `feedback_agent.py` references `settings.RL_FLAT_THRESHOLD_PCT` but it's not in `base.py`.
@@ -91,7 +94,8 @@ SCORE_THRESHOLDS = {
 
 ### 9. Sector news search hardcoded to India region
 `"gl": "in"` in Serper queries. IT sector earns 80%+ revenue from US/EU — India-only news misses material events.
-**Fix:** Per-sector `NEWS_GEO` setting: IT/pharma → `"us"` + `"eu"`, banking/auto → `"in"`.
+**Fix:** `NEWS_GEO_DEFAULT` and `NEWS_GEO_SECTOR` dict added to `settings/base.py`. IT/pharma/chemicals default to `"us"`. `news.py` now uses `settings.NEWS_GEO_DEFAULT` instead of hardcoded `"in"`.
+**Status:** ✅ Fixed (2026-05-10) — per-sector geo in settings; callers can pass sector for override
 
 ### 10. Miss type penalty multipliers — `schemas/feedback.py`
 `external_shock: 0.0` — no penalty ever. But an agent that consistently fails to price in geopolitical risk is still a weak agent.
@@ -107,8 +111,9 @@ Managed tickers in `data/managed_tickers.json` are the right source of truth.
 **Status:** ✅ Fixed — `count` is now computed from `_load_category_tickers()` dynamically.
 
 ### 13. Macro cache TTL not derived from loop interval — `settings/base.py`
-`MACRO_CACHE_TTL_HOURS = 4` matches `MICRO_CYCLES_PER_DAY = 6` by coincidence. If one changes, they diverge.
-**Fix:** `MACRO_CACHE_TTL_HOURS = int(24 / MICRO_CYCLES_PER_DAY)`.
+`MACRO_CACHE_TTL_HOURS = 4` matched `MICRO_CYCLES_PER_DAY = 6` by coincidence. If one changed, they diverged.
+**Fix:** `MACRO_CACHE_TTL_HOURS = int(24 // MICRO_CYCLES_PER_DAY)` — derived, not hardcoded.
+**Status:** ✅ Fixed (2026-05-10)
 
 ### 14. Agent parse failure returns 0.5 (silent neutral) — `base_agent.py`
 When LLM JSON is unparseable, agent scores default to 0.5 without alerting.
@@ -120,8 +125,8 @@ When LLM JSON is unparseable, agent scores default to 0.5 without alerting.
 
 | # | Issue | File | Fix |
 |---|---|---|---|
-| 15 | Serper timeout hardcoded 10s | `news.py:63` | Move to `settings.SERPER_TIMEOUT_SECONDS` |
-| 16 | Tavily content truncated at 600 chars | `tavily_fetcher.py:131` | Make `TAVILY_MAX_CONTENT_CHARS` configurable |
+| 15 | Serper timeout hardcoded 10s | `news.py:63` | ✅ Fixed — `settings.SERPER_TIMEOUT_SECONDS` (env override) |
+| 16 | Tavily content truncated at 600 chars | `tavily_fetcher.py:131` | ✅ Fixed — `settings.TAVILY_MAX_CONTENT_CHARS` (env override) |
 | 17 | `data_freshness` field logged but no staleness threshold | `base_agent.py` | Add `DATA_FRESHNESS_WARN_DAYS` to settings |
 | 18 | PRICE_HISTORY_YEARS=10 assumes data exists | `settings/base.py` | Validate against listing date at analysis time |
 | 19 | Fallback weight 0.10 in ui_data.py | `ui_data.py:321` | Use sector base weights as fallback |

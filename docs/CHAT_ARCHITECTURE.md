@@ -180,12 +180,28 @@ it in 4-word chunks as `token` SSE events.
 | Tool | Source | Cost | When used |
 |---|---|---|---|
 | `get_live_price` | yfinance | free | any price query |
-| `get_sector_snapshot` | yfinance + DB | free | sector queries |
+| `get_sector_snapshot` | yfinance + DB | free | sector queries — all 27 sectors supported |
 | `get_stock_analysis` | SQLite DB | free | stock verdict lookup |
 | `get_analysis_history` | SQLite DB | free | trend / history |
 | `get_rl_insights` | SQLite DB | free | agent trust queries |
-| `run_agent_analysis` | sector orchestrators (9 agents) | heavy (45s) | deep mode only |
+| `run_agent_analysis` | SectorRegistry → orchestrator | heavy (45s) | deep mode only; works for ALL 27 sectors |
 | `search_market_news` | Tavily/Serper API | API cost | `needs_external=True` only |
+
+### Sector coverage for run_agent_analysis (Phase 3+4)
+
+`run_agent_analysis` routes through `SectorRegistry` which dispatches to:
+- **Tier-1 sectors** (4): full backend orchestrator (9-agent domain pipeline)
+- **Tier-2 sectors** (23): `CoreSectorAdapter` wrapping 8-pillar LangGraph graph (when toggled on)
+- **Disabled sectors**: degrades to automobile orchestrator with a WARNING log — never crashes
+
+### get_sector_snapshot — extended sector index (Phase 4)
+
+Sector key → NSE index: automobile `^CNXAUTO` · banking_bfsi `^NSEBANK` · it_sector `^CNXIT` ·
+renewable_energy `^CNXENERGY` · pharma `^CNXPHARMA` · fmcg `^CNXFMCG` · metals `^CNXMETAL` ·
+capgoods/infra `^CNXINFRA` · realestate `^CNXREALTY` · media `^CNXMEDIA` · retail `^CNXCONSUMP`
+
+Aliases supported: auto/automotive, bank/banking/bfsi/finance, it/tech/software, energy/renewable/solar,
+pharma/healthcare, fmcg/consumer, metals/steel/mining, oil/gas/petroleum, capgoods/engineering, and 40+ more.
 
 ---
 

@@ -204,7 +204,8 @@ RAG_DOCUMENTS_BASE_DIR: str = os.getenv("RAG_DOCUMENTS_BASE_DIR", "data")
 # Cache HIT saves 3 Serper calls per stock analysis per sector.
 MICRO_CYCLES_PER_DAY: int = int(os.getenv("MICRO_CYCLES_PER_DAY", "6"))   # every 4h
 MICRO_QUERIES_PER_RUN: int = int(os.getenv("MICRO_QUERIES_PER_RUN", "2"))  # 2 queries per sector per run
-MACRO_CACHE_TTL_HOURS: int = int(os.getenv("MACRO_CACHE_TTL_HOURS", "4"))  # matches loop interval (every 4h)
+# STATIC_AUDIT #13: derive TTL from loop interval so they stay in sync automatically
+MACRO_CACHE_TTL_HOURS: int = int(os.getenv("MACRO_CACHE_TTL_HOURS", str(24 // MICRO_CYCLES_PER_DAY)))
 
 # ---------------------------------------------------------------------------
 # Phase 4 – Scheduler
@@ -387,4 +388,46 @@ REGIME_MULTIPLIERS: dict[str, dict[str, float]] = {
         "policy_regulatory":  1.00,
     },
 }
+
+# ---------------------------------------------------------------------------
+# STATIC_AUDIT #4 — RL weight delta constants (moved from weight_adapter.py)
+# All 7 constants are now env-overridable instead of hardcoded module globals.
+# ---------------------------------------------------------------------------
+
+RL_BOOST: float               = float(os.getenv("RL_BOOST",               "+0.02"))
+RL_PENALTY: float             = float(os.getenv("RL_PENALTY",             "-0.03"))
+RL_MISS_STREAK_PENALTY: float = float(os.getenv("RL_MISS_STREAK_PENALTY", "-0.05"))
+RL_BIAS_TRIGGER: float        = float(os.getenv("RL_BIAS_TRIGGER",        "0.55"))
+RL_BIAS_FULL: float           = float(os.getenv("RL_BIAS_FULL",           "0.70"))
+RL_TIMING_FREE_WINDOW: int    = int(os.getenv("RL_TIMING_FREE_WINDOW",    "3"))
+RL_TIMING_PARTIAL_WINDOW: int = int(os.getenv("RL_TIMING_PARTIAL_WINDOW", "7"))
+
+# ---------------------------------------------------------------------------
+# STATIC_AUDIT #9 — Per-sector news geo (IT/pharma need US/EU coverage)
+# ---------------------------------------------------------------------------
+
+# Default Google Search geolocation for Serper API
+NEWS_GEO_DEFAULT: str = os.getenv("NEWS_GEO_DEFAULT", "in")
+
+# Override per sector (key = sector canonical name, value = Serper "gl" code)
+NEWS_GEO_SECTOR: dict[str, str] = {
+    "it_sector":        os.getenv("NEWS_GEO_IT",     "us"),   # 80%+ US/EU revenue
+    "pharma":           os.getenv("NEWS_GEO_PHARMA",  "us"),   # FDA, US generics market
+    "chemicals":        os.getenv("NEWS_GEO_CHEM",    "us"),   # global commodity pricing
+    "automobile":       os.getenv("NEWS_GEO_AUTO",    "in"),
+    "banking_bfsi":     os.getenv("NEWS_GEO_BANK",    "in"),
+    "renewable_energy": os.getenv("NEWS_GEO_RE",      "in"),
+    "oilgas":           os.getenv("NEWS_GEO_OIL",     "in"),
+    "fmcg":             os.getenv("NEWS_GEO_FMCG",    "in"),
+    "metals":           os.getenv("NEWS_GEO_METALS",  "in"),
+    "defence":          os.getenv("NEWS_GEO_DEF",     "in"),
+}
+
+# ---------------------------------------------------------------------------
+# STATIC_AUDIT #15 — Serper timeout (moved from news.py _TIMEOUT = 10)
+# STATIC_AUDIT #16 — Tavily content truncation (moved from tavily_fetcher.py)
+# ---------------------------------------------------------------------------
+
+SERPER_TIMEOUT_SECONDS: int    = int(os.getenv("SERPER_TIMEOUT_SECONDS",    "10"))
+TAVILY_MAX_CONTENT_CHARS: int  = int(os.getenv("TAVILY_MAX_CONTENT_CHARS",  "600"))
 

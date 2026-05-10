@@ -161,18 +161,45 @@ def get_raw_materials_context() -> str:
     )
 
 
+_RBI_RATE_LAST_KNOWN     = "6.50"
+_RBI_RATE_LAST_KNOWN_DATE = "2024-02-08"
+
+
 def get_rbi_repo_rate() -> dict[str, str]:
     """
-    RBI repo rate is not available via yfinance.
-    Returns a static informational dict — update manually or via web scrape.
+    RBI repo rate sourced from env var RBI_REPO_RATE_PCT (preferred) or
+    last-known hardcoded value with a staleness warning.
 
-    In Phase 2+, connect to RBI API or scrape https://www.rbi.org.in/
+    To update: set RBI_REPO_RATE_PCT=6.25 and RBI_RATE_DATE=2025-02-07 in .env
+    Long-term: automate via Serper search or RBI press release scrape.
+    See STATIC_AUDIT.md #1.
     """
+    import os
+    from datetime import date
+
+    rate = os.getenv("RBI_REPO_RATE_PCT", "").strip()
+    rate_date = os.getenv("RBI_RATE_DATE", "").strip()
+
+    if not rate:
+        rate = _RBI_RATE_LAST_KNOWN
+        rate_date = _RBI_RATE_LAST_KNOWN_DATE
+        try:
+            last_dt = date.fromisoformat(rate_date)
+            staleness = (date.today() - last_dt).days
+            if staleness > 90:
+                logger.warning(
+                    "[macro] RBI repo rate is %s days stale (%s = %s%%). "
+                    "Set RBI_REPO_RATE_PCT env var to override.",
+                    staleness, rate_date, rate,
+                )
+        except Exception:
+            pass
+
     return {
-        "repo_rate_pct": "6.50",       # Update manually or automate
-        "last_change":   "2024-02-08", # Last RBI MPC decision date
-        "stance":        "withdrawal of accommodation",
-        "note": "Static value — connect to RBI API for real-time updates",
+        "repo_rate_pct": rate,
+        "last_change":   rate_date or _RBI_RATE_LAST_KNOWN_DATE,
+        "stance":        os.getenv("RBI_RATE_STANCE", "neutral"),
+        "note": "Source: RBI_REPO_RATE_PCT env var (set to override hardcoded fallback)",
     }
 
 

@@ -272,19 +272,37 @@ class _SectorRegistry:
     def get_handler(self, sector: str):
         """
         Returns the orchestrator class for a sector.
-        Disabled or unimplemented sectors fall back to AutomobileAgentOrchestrator.
+
+        Dispatch logic:
+          enabled + tier=backend → BackendOrchestratorClass (lazy-imported)
+          enabled + tier=core   → CoreSectorAdapter subclass (Phase 3)
+          disabled              → AutomobileAgentOrchestrator (safe degradation)
         """
         cfg = _TOGGLES.get(sector, {})
-        if not cfg.get("enabled", False):
+        enabled = cfg.get("enabled", False)
+        tier    = cfg.get("tier", "backend")
+
+        if not enabled:
             if sector not in ("automobile",):
                 logger.warning(
                     "[SectorRegistry] sector '%s' is disabled — falling back to automobile",
                     sector,
                 )
-            sector = "automobile"
+            return _BACKEND_LOADERS["automobile"]()
 
-        loader = _BACKEND_LOADERS.get(sector, _BACKEND_LOADERS["automobile"])
-        return loader()
+        if tier == "backend":
+            loader = _BACKEND_LOADERS.get(sector, _BACKEND_LOADERS["automobile"])
+            return loader()
+
+        if tier == "core":
+            from backend.shared.pipeline.core_adapter import make_core_adapter_class
+            return make_core_adapter_class(sector)
+
+        logger.warning(
+            "[SectorRegistry] unknown tier '%s' for sector '%s' — falling back to automobile",
+            tier, sector,
+        )
+        return _BACKEND_LOADERS["automobile"]()
 
     def is_enabled(self, sector: str) -> bool:
         return bool(_TOGGLES.get(sector, {}).get("enabled", False))

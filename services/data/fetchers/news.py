@@ -59,8 +59,9 @@ def _normalize_date(date_str: str) -> str:
         return s
 _NEWSAPI_URL = "https://newsapi.org/v2/everything"
 
-# Request timeout in seconds
-_TIMEOUT = 10
+# Request timeout — now from settings (STATIC_AUDIT #15)
+from backend.shared.config import settings as _news_settings
+_TIMEOUT = _news_settings.SERPER_TIMEOUT_SECONDS
 
 
 # ---------------------------------------------------------------------------
@@ -94,7 +95,7 @@ def search_serper(
                 "X-API-KEY": key,
                 "Content-Type": "application/json",
             },
-            json={"q": query, "num": n, "gl": "in", "hl": "en"},
+            json={"q": query, "num": n, "gl": _news_settings.NEWS_GEO_DEFAULT, "hl": "en"},
             timeout=_TIMEOUT,
         )
         resp.raise_for_status()

@@ -53,23 +53,25 @@ from core.schemas.feedback import (
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# Weight delta constants
+# Weight delta constants — now sourced from settings (STATIC_AUDIT #4)
+# Override via env vars: RL_BOOST, RL_PENALTY, RL_MISS_STREAK_PENALTY, etc.
 # ---------------------------------------------------------------------------
-_BOOST               = +0.02
-_PENALTY             = -0.03
-_MISS_STREAK_PENALTY = -0.05   # base bias penalty; scales with bias_score and miss_type
+from backend.shared.config import settings as _s
 
-# Multi-window bias detection (trading-day-aware, replaces consecutive streak)
+_BOOST               = _s.RL_BOOST
+_PENALTY             = _s.RL_PENALTY
+_MISS_STREAK_PENALTY = _s.RL_MISS_STREAK_PENALTY  # base bias penalty; scales with bias_score
+
+# Multi-window bias detection (trading-day-aware)
 _BIAS_WINDOWS        = [5, 10, 21]           # trading days: ~1 wk, ~2 wk, ~1 month
 _BIAS_WINDOW_WEIGHTS = [0.50, 0.30, 0.20]    # recent windows weighted more heavily
-_BIAS_TRIGGER        = 0.55                  # weighted miss rate → penalty starts (scales up)
-_BIAS_FULL           = 0.70                  # weighted miss rate → full _MISS_STREAK_PENALTY
+_BIAS_TRIGGER        = _s.RL_BIAS_TRIGGER    # weighted miss rate → penalty starts
+_BIAS_FULL           = _s.RL_BIAS_FULL       # weighted miss rate → full _MISS_STREAK_PENALTY
 
 # Timing lag tolerance tiers (trading days)
-# Rationale: daily markets are noisy; small timing errors are not the model's fault.
-_TIMING_FREE_WINDOW    = 3    # ≤3 trading days off → no penalty (within-week noise)
-_TIMING_PARTIAL_WINDOW = 7    # ≤7 trading days off → 0.20× penalty
-                               # >7 trading days     → 0.50× penalty (real timing failure)
+_TIMING_FREE_WINDOW    = _s.RL_TIMING_FREE_WINDOW    # ≤N days off → no penalty
+_TIMING_PARTIAL_WINDOW = _s.RL_TIMING_PARTIAL_WINDOW # ≤N days off → 0.20× penalty
+                                                      # >N days     → 0.50× penalty
 
 
 class WeightAdapter:

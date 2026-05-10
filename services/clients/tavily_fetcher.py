@@ -126,9 +126,11 @@ def fetch_tavily_context(
             title = r.get("title", "")
             content = r.get("content", "")
             url = r.get("url", "")
-            # Truncate very long content to ~600 chars to control token usage
-            if len(content) > 600:
-                content = content[:600] + "…"
+            # Truncate long content — limit from settings (STATIC_AUDIT #16)
+            from backend.shared.config import settings as _tav_settings
+            _max = _tav_settings.TAVILY_MAX_CONTENT_CHARS
+            if len(content) > _max:
+                content = content[:_max] + "…"
             lines.append(f"• {title}\n  {content}\n  Source: {url}")
 
     return "\n".join(lines) if lines else "No Tavily data available."

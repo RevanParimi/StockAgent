@@ -1327,32 +1327,76 @@ _COMMODITY_YF = {
     "btc": "BTC-USD",
 }
 
-# Sector name → yfinance NSE sector index
+# Sector name → yfinance NSE sector index (all 27 sectors mapped where index exists)
 _SECTOR_INDEX_YF: dict[str, str] = {
+    # Tier-1 (enabled)
     "automobile":       "^CNXAUTO",
     "banking_bfsi":     "^NSEBANK",
     "it_sector":        "^CNXIT",
     "renewable_energy": "^CNXENERGY",
+    # Tier-2 (disabled by default — index available for snapshot even if analysis is off)
     "pharma":           "^CNXPHARMA",
     "fmcg":             "^CNXFMCG",
+    "metals":           "^CNXMETAL",
+    "capgoods":         "^CNXINFRA",
+    "infra":            "^CNXINFRA",
+    "realestate":       "^CNXREALTY",
+    "oilgas":           "^CNXENERGY",    # closest proxy
+    "chemicals":        "^CNXPHARMA",   # closest proxy
+    "defence":          "^CNXPSUBANK",  # PSU proxy
+    "insurance":        "^NSEBANK",     # BFSI proxy
+    "logistics":        "^CNXINFRA",    # infra proxy
+    "media":            "^CNXMEDIA",
+    "retail":           "^CNXCONSUMP",
+    "agrochem":         "^CNXPHARMA",   # specialty chem proxy
+    "telecom":          "^CNXPSE",      # PSE proxy
 }
 
-# Sector → tracked tickers for verdict aggregation
-_SECTOR_TICKERS_MAP: dict[str, list[str]] = {
-    "automobile":       ["MARUTI", "TATAMOTORS", "M&M", "BAJAJ-AUTO", "HEROMOTOCO", "EICHERMOT", "TVSMOTORS", "ASHOKLEY"],
-    "banking_bfsi":     ["HDFCBANK", "ICICIBANK", "SBIN", "KOTAKBANK", "AXISBANK", "INDUSINDBK"],
-    "it_sector":        ["TCS", "INFY", "WIPRO", "HCLTECH", "TECHM", "LTIM"],
-    "renewable_energy": ["ADANIGREEN", "TATAPOWER", "NTPC", "POWERGRID", "JSWENERGY"],
-    "pharma":           [],
-    "fmcg":             [],
-}
+# Sector → tracked tickers for verdict aggregation (derived from registry TICKER_SECTOR)
+def _build_sector_tickers_map() -> dict[str, list[str]]:
+    from backend.sectors.registry import TICKER_SECTOR, SectorRegistry
+    result: dict[str, list[str]] = {}
+    for ticker, sector in TICKER_SECTOR.items():
+        result.setdefault(sector, []).append(ticker)
+    # Only expose tickers for enabled sectors in verdict summaries
+    enabled = set(SectorRegistry.enabled_sectors())
+    return {s: tickers for s, tickers in result.items() if s in enabled}
+
+_SECTOR_TICKERS_MAP: dict[str, list[str]] = _build_sector_tickers_map()
 
 _SECTOR_ALIASES: dict[str, str] = {
-    "auto": "automobile",
-    "banking": "banking_bfsi",
-    "it": "it_sector",
-    "energy": "renewable_energy",
-    "renewable": "renewable_energy",
+    "auto":          "automobile",   "automotive":    "automobile",
+    "banking":       "banking_bfsi", "bank":          "banking_bfsi",
+    "bfsi":          "banking_bfsi", "nbfc":          "banking_bfsi",
+    "finance":       "banking_bfsi",
+    "it":            "it_sector",    "tech":          "it_sector",
+    "software":      "it_sector",
+    "energy":        "renewable_energy", "renewable": "renewable_energy",
+    "solar":         "renewable_energy", "power":     "renewable_energy",
+    "wind":          "renewable_energy",
+    "pharma":        "pharma",       "healthcare":    "pharma",
+    "fmcg":          "fmcg",         "consumer":      "fmcg",
+    "metals":        "metals",       "steel":         "metals",
+    "mining":        "metals",
+    "oil":           "oilgas",       "gas":           "oilgas",
+    "oilgas":        "oilgas",       "petroleum":     "oilgas",
+    "capgoods":      "capgoods",     "engineering":   "capgoods",
+    "capital goods": "capgoods",
+    "infra":         "infra",        "infrastructure":"infra",
+    "construction":  "infra",        "cement":        "infra",
+    "realestate":    "realestate",   "real estate":   "realestate",
+    "reit":          "realestate",
+    "insurance":     "insurance",
+    "defence":       "defence",      "defense":       "defence",
+    "aerospace":     "defence",
+    "chemicals":     "chemicals",    "specialty":     "chemicals",
+    "logistics":     "logistics",    "transport":     "logistics",
+    "media":         "media",        "entertainment": "media",
+    "retail":        "retail",       "ecommerce":     "retail",
+    "agro":          "agrochem",     "agrochem":      "agrochem",
+    "fertiliser":    "agrochem",     "fertilizer":    "agrochem",
+    "hospitality":   "hospitality",  "hotel":         "hospitality",
+    "telecom":       "telecom",      "telco":         "telecom",
 }
 
 

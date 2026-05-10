@@ -216,7 +216,7 @@ function ChatOverlay({ open, onClose, mode='wireframe' }) {
 
     setMsgs(m => [...m,
       { from:'user', text },
-      { from:'bot', text:'', loading:true, intent:null, toolTrace:[] },
+      { from:'bot', text:'', loading:true, streaming:false, intent:null, toolTrace:[] },
     ]);
 
     try {
@@ -267,13 +267,14 @@ function ChatOverlay({ open, onClose, mode='wireframe' }) {
                   ...next[next.length - 1],
                   text: (next[next.length - 1].text || '') + evt.text,
                   loading: false,
+                  streaming: true,
                 };
                 return next;
               });
             } else if (evt.event === 'done') {
               setMsgs(m => {
                 const next = [...m];
-                next[next.length - 1] = { ...next[next.length - 1], loading: false };
+                next[next.length - 1] = { ...next[next.length - 1], loading: false, streaming: false };
                 return next;
               });
             }
@@ -328,11 +329,22 @@ function ChatOverlay({ open, onClose, mode='wireframe' }) {
             opacity: m.loading && !m.text ? 0.7 : 1,
           };
           if (m.from === 'bot') {
+            // Real-time markdown rendering + blinking cursor while streaming.
+            // OpenRouter delivers Qwen3 in ~60-char sentence fragments so markdown
+            // constructs (**bold**, list items) are nearly always complete per chunk.
+            // Any brief flicker on unclosed ** is imperceptible at this chunk cadence.
+            let bubbleHtml;
+            if (m.loading && !m.text) {
+              bubbleHtml = '…';
+            } else {
+              bubbleHtml = renderMd(m.text || '');
+              if (m.streaming) bubbleHtml += '<span class="chat-cursor">▌</span>';
+            }
             return (
               <div key={i} style={{ alignSelf:'flex-start', maxWidth:'82%' }}>
                 <IntentBadge intent={m.intent}/>
                 <div className="chat-md" style={bubbleStyle}
-                  dangerouslySetInnerHTML={{ __html: m.loading && !m.text ? '…' : renderMd(m.text) }}/>
+                  dangerouslySetInnerHTML={{ __html: bubbleHtml }}/>
                 <ToolTracePanel trace={m.toolTrace}/>
               </div>
             );

@@ -390,27 +390,62 @@ async def _synthesize_node(state: ChatState) -> dict:
 
     messages = [{"role": "system", "content": system}] + _to_openai_msgs(state["messages"])
 
+    final_text = ""
     try:
-        resp = await client.chat.completions.create(
+        stream = await client.chat.completions.create(
             model=_MODEL,
             messages=messages,
             temperature=0.4,
             max_tokens=600,
+            stream=True,
         )
-        final_text = (resp.choices[0].message.content or "").strip()
+
+        # Stream tokens, filtering Qwen3 <think>...</think> blocks so they
+        # never appear in the chat bubble.
+        buf       = ""
+        in_think  = False
+        _T_OPEN   = "<think>"
+        _T_CLOSE  = "</think>"
+
+        async for chunk in stream:
+            raw = ""
+            if chunk.choices and chunk.choices[0].delta:
+                raw = chunk.choices[0].delta.content or ""
+            if not raw:
+                continue
+
+            buf += raw
+            visible = ""
+
+            # Flush buf, skipping anything inside <think>…</think>
+            while buf:
+                if in_think:
+                    idx = buf.find(_T_CLOSE)
+                    if idx < 0:
+                        buf = ""      # still waiting for closing tag
+                        break
+                    buf      = buf[idx + len(_T_CLOSE):]
+                    in_think = False
+                else:
+                    idx = buf.find(_T_OPEN)
+                    if idx < 0:
+                        visible += buf
+                        buf = ""
+                        break
+                    visible += buf[:idx]
+                    buf      = buf[idx + len(_T_OPEN):]
+                    in_think = True
+
+            if visible:
+                final_text += visible
+                await adispatch_custom_event("token", {"text": visible})
+
     except Exception as exc:
         logger.warning("[synthesize] %s", exc)
         final_text = "I encountered an error composing the answer. Please try again."
+        await adispatch_custom_event("token", {"text": final_text})
 
-    # Fake-stream: emit in 4-word chunks
-    words = final_text.split()
-    for i in range(0, len(words), 4):
-        chunk = " ".join(words[i : i + 4])
-        if i + 4 < len(words):
-            chunk += " "
-        await adispatch_custom_event("token", {"text": chunk})
-
-    return {"messages": [{"role": "assistant", "content": final_text}]}
+    return {"messages": [{"role": "assistant", "content": final_text.strip()}]}
 
 
 # ---------------------------------------------------------------------------

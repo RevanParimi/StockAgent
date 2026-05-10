@@ -25,6 +25,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -1815,20 +1816,21 @@ def _mock_reply(q: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# T3: POST /ui/chat/stream — SSE streaming chat with intent + tool trace
+# T3: POST /ui/chat/stream — SSE streaming chat via LangGraph + MemorySaver
 # ---------------------------------------------------------------------------
 
 @router.post("/chat/stream", summary="AI assistant chat — SSE streaming response")
 async def chat_stream(body: dict):
     """
-    Streaming version of /ui/chat.
+    Streaming chat via LangGraph pipeline (classify → agent → tools loop → END).
+    Carry-over is handled by MemorySaver keyed on session_id — no client-side history.
     Returns text/event-stream. Events: intent | tool_start | tool_result | token | done
     """
     from fastapi.responses import StreamingResponse as _SR
-    from services.api.chat_intent import classify_intent
+    from services.api.chat_graph import chat_graph
 
     message: str = (body.get("message") or "").strip()
-    history: list = body.get("history") or []
+    session_id: str = body.get("session_id") or str(uuid.uuid4())
 
     if not message:
         async def _empty():
@@ -1838,83 +1840,63 @@ async def chat_stream(body: dict):
     async def generate():
         import json as _json
 
-        # 1. Intent classification — instant, no LLM
-        intent = classify_intent(message, history)
-        yield f"data: {_json.dumps({'event': 'intent', **intent.as_dict()})}\n\n"
-
-        # 2. Build messages list
-        context = _build_chat_context(message)
-        system_prompt = _CHAT_SYSTEM_PROMPT.format(context=context)
-        messages: list[dict] = [{"role": "system", "content": system_prompt}]
-        for h in history[-8:]:
-            role = h.get("role", "")
-            content = h.get("content", "")
-            if role in ("user", "assistant") and content:
-                messages.append({"role": role, "content": content})
-        messages.append({"role": "user", "content": message})
+        config = {"configurable": {"thread_id": session_id}}
+        user_msg = {"role": "user", "content": message}
 
         try:
-            from services.clients.llm_client import get_async_llm_client
-            client = get_async_llm_client()
+            async for event in chat_graph.astream_events(
+                {"messages": [user_msg]},
+                config=config,
+                version="v2",
+            ):
+                if event.get("event") != "on_custom_event":
+                    continue
+                name = event.get("name")
+                data = event.get("data") or {}
 
-            # 3. Tool loop — non-streaming for tool calls (max 4 rounds)
-            for _ in range(4):
-                resp = await client.chat.completions.create(
-                    model="qwen/qwen3-235b-a22b",
-                    messages=messages,
-                    temperature=0.4,
-                    max_tokens=600,
-                    tools=_CHAT_TOOLS,
-                    tool_choice="auto",
-                )
-                msg = resp.choices[0].message
-                tool_calls = getattr(msg, "tool_calls", None) or []
+                if name == "intent":
+                    payload = {
+                        "event": "intent",
+                        "session_id": session_id,
+                        "intent_type": data.get("intent_type", "GENERAL"),
+                        "entities": data.get("entities", {}),
+                        "focus": data.get("focus", ""),
+                    }
+                    yield f"data: {_json.dumps(payload)}\n\n"
 
-                if not tool_calls:
-                    break
+                elif name == "plan":
+                    payload = {
+                        "event": "plan",
+                        "depth": data.get("depth", "shallow"),
+                        "needs_external": data.get("needs_external", False),
+                        "tasks": data.get("tasks", []),
+                    }
+                    yield f"data: {_json.dumps(payload)}\n\n"
 
-                for tc in tool_calls:
-                    try:
-                        args_dict = _json.loads(tc.function.arguments or "{}")
-                    except Exception:
-                        args_dict = {}
-                    yield f"data: {_json.dumps({'event': 'tool_start', 'tool': tc.function.name, 'args': args_dict})}\n\n"
+                elif name == "tool_start":
+                    payload = {
+                        "event": "tool_start",
+                        "tool": data.get("tool"),
+                        "args": data.get("args", {}),
+                    }
+                    yield f"data: {_json.dumps(payload)}\n\n"
 
-                assistant_entry: dict = {"role": "assistant", "content": msg.content or ""}
-                assistant_entry["tool_calls"] = [
-                    {"id": tc.id, "type": "function",
-                     "function": {"name": tc.function.name, "arguments": tc.function.arguments}}
-                    for tc in tool_calls
-                ]
-                messages.append(assistant_entry)
+                elif name == "tool_result":
+                    payload = {
+                        "event": "tool_result",
+                        "tool": data.get("tool"),
+                        "summary": data.get("summary", ""),
+                    }
+                    yield f"data: {_json.dumps(payload)}\n\n"
 
-                tool_results = await asyncio.gather(*[
-                    _execute_chat_tool(tc.function.name, _json.loads(tc.function.arguments or "{}"))
-                    for tc in tool_calls
-                ])
-                for tc, result in zip(tool_calls, tool_results):
-                    messages.append({"role": "tool", "tool_call_id": tc.id, "content": result})
-                    summary = result[:120].replace("\n", " ")
-                    yield f"data: {_json.dumps({'event': 'tool_result', 'tool': tc.function.name, 'summary': summary})}\n\n"
-
-            # 4. Stream final answer token by token
-            stream = await client.chat.completions.create(
-                model="qwen/qwen3-235b-a22b",
-                messages=messages,
-                temperature=0.4,
-                max_tokens=600,
-                stream=True,
-            )
-            async for chunk in stream:
-                delta = chunk.choices[0].delta if chunk.choices else None
-                text = (delta.content or "") if delta else ""
-                if text:
-                    yield f"data: {_json.dumps({'event': 'token', 'text': text})}\n\n"
+                elif name == "token":
+                    payload = {"event": "token", "text": data.get("text", "")}
+                    yield f"data: {_json.dumps(payload)}\n\n"
 
         except Exception as exc:
-            logger.warning("[ui/chat/stream] Error: %s", exc)
+            logger.warning("[ui/chat/stream] Graph error: %s", exc)
             fallback = _mock_reply(message)
-            yield f"data: {_json.dumps({'event': 'token', 'text': fallback})}\n\n"
+            yield f'data: {_json.dumps({"event": "token", "text": fallback})}\n\n'
 
         yield 'data: {"event":"done"}\n\n'
 

@@ -206,16 +206,13 @@ function ChatOverlay({ open, onClose, mode='wireframe' }) {
     { from:'bot', text:"Hi I'm your StockAgent assistant. Ask me anything about Indian markets." }
   ]);
   const [input, setInput] = useState('');
+  const [sessionId, setSessionId] = useState(null);
   const endRef = useRef(null);
   useEffect(() => { endRef.current?.scrollTo?.(0, 99999); }, [msgs, open]);
 
   const send = async (text) => {
     if (!text.trim()) return;
     setInput('');
-    const history = msgs
-      .filter(m => !m.loading)
-      .slice(-8)
-      .map(m => ({ role: m.from === 'user' ? 'user' : 'assistant', content: m.text }));
 
     setMsgs(m => [...m,
       { from:'user', text },
@@ -226,7 +223,7 @@ function ChatOverlay({ open, onClose, mode='wireframe' }) {
       const resp = await fetch('/ui/chat/stream', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: text, history }),
+        body: JSON.stringify({ message: text, session_id: sessionId }),
       });
 
       if (!resp.ok || !resp.body) throw new Error('Stream unavailable');
@@ -247,6 +244,7 @@ function ChatOverlay({ open, onClose, mode='wireframe' }) {
           try {
             const evt = JSON.parse(line.slice(6));
             if (evt.event === 'intent') {
+              if (evt.session_id) setSessionId(evt.session_id);
               setMsgs(m => {
                 const next = [...m];
                 next[next.length - 1] = { ...next[next.length - 1], intent: evt };
@@ -288,7 +286,7 @@ function ChatOverlay({ open, onClose, mode='wireframe' }) {
         const res = await fetch('/ui/chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ message: text, history }),
+          body: JSON.stringify({ message: text }),
         });
         const data = res.ok ? await res.json() : {};
         setMsgs(m => [...m.slice(0, -1), { from:'bot', text: data.reply || 'Error', loading:false, toolTrace:[] }]);

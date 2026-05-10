@@ -45,29 +45,19 @@ _IT_NAMES: tuple[str, ...] = (
 
 
 def detect_sector(ticker: str) -> str:
-    t = ticker.strip().upper()
-    # Exact NSE ticker match (fast path)
-    if t in _BANKING: return "banking_bfsi"
-    if t in _IT:      return "it_sector"
-    if t in _RE:      return "renewable_energy"
-    # Company name / partial input match (slow path — only reached for unknowns)
-    tl = t.lower()
-    if any(name in tl for name in _RE_NAMES):      return "renewable_energy"
-    if any(name in tl for name in _BANKING_NAMES): return "banking_bfsi"
-    if any(name in tl for name in _IT_NAMES):      return "it_sector"
-    return "automobile"
+    """
+    Resolve ticker → sector key.
+    Phase 0+1: routes through SectorRegistry (extended ticker map + toggle awareness).
+    Kept backward-compatible — always returns a usable sector string.
+    """
+    from backend.sectors.registry import SectorRegistry
+    return SectorRegistry.resolve(ticker)
 
 
 def get_orchestrator(sector: str):
-    """Lazy-import and return the orchestrator class for a sector key."""
-    if sector == "banking_bfsi":
-        from backend.sectors.banking_bfsi.pipeline.orchestrator import BankingAgentOrchestrator
-        return BankingAgentOrchestrator
-    if sector == "it_sector":
-        from backend.sectors.it_sector.pipeline.orchestrator import ITAgentOrchestrator
-        return ITAgentOrchestrator
-    if sector == "renewable_energy":
-        from backend.sectors.renewable_energy.pipeline.orchestrator import RenewableAgentOrchestrator
-        return RenewableAgentOrchestrator
-    from backend.sectors.automobile.pipeline.orchestrator import AutomobileAgentOrchestrator
-    return AutomobileAgentOrchestrator
+    """
+    Return the orchestrator class for a sector key.
+    Phase 0: disabled sectors degrade to AutomobileAgentOrchestrator with a log warning.
+    """
+    from backend.sectors.registry import SectorRegistry
+    return SectorRegistry.get_handler(sector)

@@ -1,19 +1,34 @@
-"""Agent registry for banking_bfsi."""
+"""
+src/backend/sectors/banking_bfsi/config/registry.py
+=====================================================
+Banking BFSI sector agent registry — Phase 2 refactor.
+
+5 of 6 agents replaced with UniversalAgent.
+1 sector-specific agent kept:
+  - BFSIUniverseAgent : peer universe setup + sector-specific config logic
+"""
 from __future__ import annotations
-from backend.sectors.banking_bfsi.agents.fundamentals import BFSIFundamentalsAgent
-from backend.sectors.banking_bfsi.agents.risk import BFSIRiskAgent
-from backend.sectors.banking_bfsi.agents.macro_policy import BFSIMacroPolicyAgent
-from backend.sectors.banking_bfsi.agents.institutional import BFSIInstitutionalAgent
-from backend.sectors.banking_bfsi.agents.pattern_analysis import BFSIPatternAgent
-from backend.sectors.banking_bfsi.agents.universe_setup import BFSIUniverseAgent
+
+from backend.shared.agents.universal                          import UniversalAgent
+from backend.sectors.banking_bfsi.agents.universe_setup       import BFSIUniverseAgent
+from backend.sectors.banking_bfsi.prompts import (
+    fundamentals    as _fund,
+    risk            as _risk,
+    macro_policy    as _mac,
+    institutional   as _inst,
+    pattern_analysis as _pat,
+)
 from backend.sectors.banking_bfsi.config.settings import AGENT_WEIGHTS
 
+_S = "banking_bfsi"
+
 AGENTS: dict = {
-    "fundamentals": BFSIFundamentalsAgent(),
-    "risk": BFSIRiskAgent(),
-    "macro_policy": BFSIMacroPolicyAgent(),
-    "institutional": BFSIInstitutionalAgent(),
-    "pattern_analysis": BFSIPatternAgent(),
-    "universe_setup": BFSIUniverseAgent(),
+    "fundamentals":    UniversalAgent("fundamentals",    _fund, sector=_S),
+    "risk":            UniversalAgent("risk",            _risk, sector=_S),
+    "macro_policy":    UniversalAgent("macro_policy",    _mac,  sector=_S),
+    "institutional":   UniversalAgent("institutional",   _inst, sector=_S),
+    "pattern_analysis":UniversalAgent("pattern_analysis",_pat,  sector=_S),
+    "universe_setup":  BFSIUniverseAgent(),
 }
+
 WEIGHTS: dict[str, float] = AGENT_WEIGHTS

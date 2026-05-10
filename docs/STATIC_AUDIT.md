@@ -44,7 +44,7 @@ Sector `settings.TICKERS` (for scheduling) remain separate; they are intentional
 
 **Problem:** NSE VIX behaves differently from CBOE VIX. Values from classical technical analysis, not calibrated to India markets. No audit trail.
 **Fix:** Move to `data/regime_config.json`. Load at startup. Add `/ui/admin/regime` endpoint to hot-update.
-**Status:** ⬜ Pending
+**Status:** ⚠️ Partially done — values are now env-overridable via `settings/base.py` but the `regime_config.json` file and `/ui/admin/regime` hot-update endpoint are NOT yet built. The 54 values remain uncalibrated to NSE.
 
 ### 4. RL weight delta constants — `core/intelligence/rl/agents/weight_adapter.py`
 ```python
@@ -107,6 +107,7 @@ restriction means Indian, US, and global sources all surface naturally.
 Default `SCHEDULER_TICKERS = "MARUTI,TATAMOTORS,M&M,HEROMOTOCO,BAJAJ-AUTO"`.
 Managed tickers in `data/managed_tickers.json` are the right source of truth.
 **Fix:** Scheduler should read from `managed_tickers.json` at runtime, not from env var.
+**Status:** ⚠️ Partially done — `_active_tickers()` in scheduler.py reads managed_tickers.json with fallback to `settings.SCHEDULER_TICKERS`. Fallback still defaults to 5 auto tickers, not the full managed set.
 
 ### 12. Category stock counts hardcoded — `services/api/routes/ui_data.py`
 `"count": 5` etc. hardcoded. When tickers are added/removed via `/ui/categories`, count doesn't update.
@@ -142,7 +143,7 @@ When LLM JSON is unparseable, agent scores default to 0.5 without alerting.
 - `FORECAST_HORIZON_DAYS` — env override
 - `FEEDBACK_CRON` — env override
 - `OPENROUTER_API_KEY`, `SERPER_API_KEY`, `TAVILY_API_KEY` — env
-- `MACRO_CACHE_TTL_HOURS` — env (but see issue #13)
+- `MACRO_CACHE_TTL_HOURS` — derived from `24 // MICRO_CYCLES_PER_DAY` (fixed #13)
 - `SERPER_MAX_QUERIES` — env override
 - NSE holiday calendar — auto-refreshes Dec 31
 - Agent weights — user-adjustable via `/ui/agents/weights`
@@ -157,9 +158,10 @@ When LLM JSON is unparseable, agent scores default to 0.5 without alerting.
 
 | Cadence | Action |
 |---|---|
-| Every deploy | Verify `RL_FLAT_THRESHOLD_PCT` in settings, RBI rate freshness |
-| Monthly | Review regime multiplier table vs actual VIX/FII behaviour |
-| Quarterly | Re-validate technical indicator periods against NSE backtest |
-| Dec 31 | Monitor `calendar_updater.py` run for 2027 holiday fetch |
-| Phase 5 | Move all RL delta constants to `settings/base.py` |
-| Phase 7 | Fix ticker list single-source-of-truth |
+| Every deploy | Verify `RL_FLAT_THRESHOLD_PCT` in settings, RBI rate freshness (set `RBI_REPO_RATE_PCT` env var after each MPC decision) |
+| Monthly | Review regime multiplier table vs actual VIX/FII behaviour (#3) |
+| Quarterly | Re-validate technical indicator periods against NSE backtest (#8) |
+| Dec 31 | Monitor `calendar_updater.py` run for 2027 holiday fetch (#6) |
+| Next sprint | Build `regime_config.json` + `/ui/admin/regime` hot-update endpoint (#3) |
+| Next sprint | Fix agent parse failure to return explicit error state instead of silent 0.5 (#14) |
+| Next sprint | Add sector-specific `SCORE_THRESHOLDS` per sector settings.py (#7) |

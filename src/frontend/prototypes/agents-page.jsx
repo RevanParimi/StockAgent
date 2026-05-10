@@ -1,25 +1,50 @@
 // Agents page — card grid with toggle on/off + drawer with sliders
 const { useState: useStateAg, useEffect: useEffectAg } = React;
 
+const _SECTOR_LABELS = {
+  automobile:       'Automobile',
+  banking_bfsi:     'Banking',
+  it_sector:        'IT',
+  renewable_energy: 'Renewable',
+};
+
 function AgentsPage({ onNav, openChat }) {
+  const [activeSector, setActiveSectorState] = useStateAg('automobile');
   const [agents, setAgents] = useStateAg(window.AGENTS);
   const [tasks, setTasks] = useStateAg(window.AGENT_TASKS);
   const [drawerKey, setDrawerKey] = useStateAg(null);
   const [search, setSearch] = useStateAg('');
   const [saveStatus, setSaveStatus] = useStateAg(null); // null | 'saving' | 'saved' | {error}
+  const [sectorLoading, setSectorLoading] = useStateAg(false);
+
+  const switchSector = async (sector) => {
+    if (sector === activeSector) return;
+    setSectorLoading(true);
+    setDrawerKey(null);
+    try {
+      const res = await fetch(`/ui/agents?sector=${sector}`);
+      if (res.ok) {
+        const data = await res.json();
+        setAgents(data.agents);
+        setTasks(window.AGENT_TASKS_BY_SECTOR?.[sector] || {});
+        setActiveSectorState(sector);
+      }
+    } catch { /* keep existing */ }
+    finally { setSectorLoading(false); }
+  };
 
   const enabled = agents.filter(a => a.enabled);
   const totalWeight = enabled.reduce((s,a)=>s+a.weight, 0);
   const allTasks = Object.values(tasks).flat();
   const enabledTasks = allTasks.filter(t => t.enabled).length;
 
-  // Persist all current weights to the backend
+  // Persist all current weights to the backend (scoped to activeSector)
   const persistWeights = async (updatedAgents) => {
     setSaveStatus('saving');
     const weights = {};
     updatedAgents.forEach(a => { weights[a.key] = parseFloat(a.weight) || 0; });
     try {
-      const res = await fetch('/ui/agents/weights', {
+      const res = await fetch(`/ui/agents/weights?sector=${activeSector}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ weights }),
@@ -127,6 +152,29 @@ function AgentsPage({ onNav, openChat }) {
             <Stat label="Active tasks" value={enabledTasks}      max={allTasks.length} hint="Across all agents"/>
             <Stat label="Total weight" value={(totalWeight*100).toFixed(0)+'%'} hint="Should be ~100%"/>
           </div>
+        </div>
+
+        {/* Sector switcher */}
+        <div style={{ display:'flex', gap:6, marginBottom:24, flexWrap:'wrap' }}>
+          {Object.entries(_SECTOR_LABELS).map(([key, label]) => {
+            const active = key === activeSector;
+            return (
+              <button key={key} onClick={() => switchSector(key)} disabled={sectorLoading} style={{
+                padding:'7px 16px', borderRadius:20, border:'1.5px solid',
+                borderColor: active ? 'var(--cyan)' : 'var(--border)',
+                background: active ? 'var(--cyan-soft)' : 'var(--bg-surface)',
+                color: active ? 'var(--cyan)' : 'var(--ink-2)',
+                fontSize:12, fontWeight:700, cursor:'pointer',
+                opacity: sectorLoading ? 0.6 : 1, transition:'all .15s',
+              }}>
+                {label}
+                {active && <span style={{ marginLeft:6, fontSize:10 }}>●</span>}
+              </button>
+            );
+          })}
+          <span style={{ fontSize:11, color:'var(--ink-3)', alignSelf:'center', marginLeft:4 }}>
+            {agents.length} agents · {activeSector.replace('_',' ')}
+          </span>
         </div>
 
         {/* Pipeline visual — hidden on mobile via CSS */}

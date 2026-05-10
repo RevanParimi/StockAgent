@@ -52,80 +52,139 @@ _CATEGORY_TICKERS_PATH = Path("data/category_tickers.json")
 # even before any analyses have run.
 # ---------------------------------------------------------------------------
 
-_AGENT_META: list[dict] = [
-    {
-        "key": "sales_demand",
-        "name": "Sales & Demand",
-        "icon": "📊",
-        "beginner": "How many cars are actually selling each month.",
-        "desc": "Tracks FADA/SIAM dispatches, EV Vahan registrations, dealer inventory, DGFT exports, used car price index.",
-        "sources": ["Serper news", "FADA", "SIAM", "Vahan"],
-    },
-    {
-        "key": "fundamentals",
-        "name": "Fundamentals",
-        "icon": "📈",
-        "beginner": "Whether the company makes more money each quarter.",
-        "desc": "Revenue & EBITDA delta, margin vs peers, order book, headcount, FII/DII flow.",
-        "sources": ["yfinance", "Serper news", "NSE filings"],
-    },
-    {
-        "key": "pattern_analysis",
-        "name": "Pattern Analysis",
-        "icon": "🔍",
-        "beginner": "Reads the price chart for buying/selling pressure.",
-        "desc": "10-yr OHLCV, RSI/MACD/Bollinger, support/resistance, Nifty Auto correlation.",
-        "sources": ["yfinance OHLCV", "RSI/MACD/BB (C++)"],
-    },
-    {
-        "key": "raw_materials",
-        "name": "Raw Materials",
-        "icon": "⚙️",
-        "beginner": "How costly the metals & oil they buy are right now.",
-        "desc": "Steel, aluminium, palladium, crude — input cost stack.",
-        "sources": ["yfinance commodities", "Serper news"],
-    },
-    {
-        "key": "sentiment",
-        "name": "Sentiment",
-        "icon": "💬",
-        "beginner": "What the news, social media & forums are saying.",
-        "desc": "News tone, mgmt commentary, Twitter/Reddit/YouTube spikes.",
-        "sources": ["Serper news", "Twitter/Reddit", "YouTube"],
-    },
-    {
-        "key": "policy_regulatory",
-        "name": "Policy & Regulatory",
-        "icon": "📋",
-        "beginner": "Government rules helping or hurting the company.",
-        "desc": "FAME/EV subsidies, BS6 emissions, PLI scheme, state incentives.",
-        "sources": ["Tavily", "Serper", "gov circulars"],
-    },
-    {
-        "key": "competitive_intel",
-        "name": "Competitive Intel",
-        "icon": "🎯",
-        "beginner": "How rivals like Tata, Hyundai, Kia are doing.",
-        "desc": "EV market share, model pipeline, JV/M&A, ADAS ratings.",
-        "sources": ["Serper news", "peer baskets"],
-    },
-    {
-        "key": "risk_macro",
-        "name": "Risk & Macro",
-        "icon": "⚠️",
-        "beginner": "Big-picture risks: currency, oil, interest rates.",
-        "desc": "INR/USD, crude, RBI repo, geopolitics, China supply chain.",
-        "sources": ["yfinance INR/crude", "macro cache"],
-    },
-    {
-        "key": "valuation_catalyst",
-        "name": "Valuation & Catalyst",
-        "icon": "💎",
-        "beginner": "Whether the stock is cheap or expensive right now.",
-        "desc": "P/E vs history & peers, fair value, recovery catalysts.",
-        "sources": ["LLM knowledge", "peer P/E", "price targets"],
-    },
-]
+_AGENT_META_BY_SECTOR: dict[str, list[dict]] = {
+
+    "automobile": [
+        {"key":"sales_demand",      "name":"Sales & Demand",      "icon":"📊",
+         "beginner":"How many cars are actually selling each month.",
+         "desc":"Tracks FADA/SIAM dispatches, EV Vahan registrations, dealer inventory, DGFT exports, used car price index.",
+         "sources":["Serper news","FADA","SIAM","Vahan"]},
+        {"key":"fundamentals",      "name":"Fundamentals",        "icon":"📈",
+         "beginner":"Whether the company makes more money each quarter.",
+         "desc":"Revenue & EBITDA delta, margin vs peers, order book, headcount, FII/DII flow.",
+         "sources":["yfinance","Serper news","NSE filings"]},
+        {"key":"pattern_analysis",  "name":"Pattern Analysis",    "icon":"🔍",
+         "beginner":"Reads the price chart for buying/selling pressure.",
+         "desc":"Price cycle, RSI/MACD/Bollinger, support/resistance, Nifty Auto relative strength.",
+         "sources":["yfinance OHLCV","RSI/MACD indicators"]},
+        {"key":"raw_materials",     "name":"Raw Materials",       "icon":"⚙️",
+         "beginner":"How costly the metals & oil they buy are right now.",
+         "desc":"Steel, aluminium, palladium, crude — input cost stack.",
+         "sources":["yfinance commodities","Serper news"]},
+        {"key":"sentiment",         "name":"Sentiment",           "icon":"💬",
+         "beginner":"What the news, social media & forums are saying.",
+         "desc":"News tone, mgmt commentary, Twitter/Reddit/YouTube spikes.",
+         "sources":["Serper news","Twitter/Reddit","YouTube"]},
+        {"key":"policy_regulatory", "name":"Policy & Regulatory", "icon":"📋",
+         "beginner":"Government rules helping or hurting the company.",
+         "desc":"FAME/EV subsidies, BS6 emissions, PLI scheme, state incentives.",
+         "sources":["Tavily","Serper","gov circulars"]},
+        {"key":"competitive_intel", "name":"Competitive Intel",   "icon":"🎯",
+         "beginner":"How rivals like Tata, Hyundai, Kia are doing.",
+         "desc":"EV market share, model pipeline, JV/M&A, ADAS ratings.",
+         "sources":["Serper news","peer baskets"]},
+        {"key":"risk_macro",        "name":"Risk & Macro",        "icon":"⚠️",
+         "beginner":"Big-picture risks: currency, oil, interest rates.",
+         "desc":"INR/USD, crude, RBI repo, geopolitics, China supply chain.",
+         "sources":["yfinance INR/crude","macro cache"]},
+        {"key":"valuation_catalyst","name":"Valuation & Catalyst","icon":"💎",
+         "beginner":"Whether the stock is cheap or expensive right now.",
+         "desc":"P/E vs peers, earnings yield vs G-Sec, 60–90 day event catalysts.",
+         "sources":["LLM knowledge","peer P/E","earnings calendar"]},
+    ],
+
+    "banking_bfsi": [
+        {"key":"fundamentals",    "name":"Fundamentals",        "icon":"📈",
+         "beginner":"Whether the bank earns quality money — not just one-time gains.",
+         "desc":"Earnings quality (NII vs treasury), NIM, CRAR, RoA/RoE, loan book mix.",
+         "sources":["yfinance quarterly","RBI filings","Serper"]},
+        {"key":"risk",            "name":"Credit Risk",         "icon":"⚠️",
+         "beginner":"How many loans are going bad and how fast.",
+         "desc":"GNPA%, slippage ratio, SMA-1/2 build-up, concentration risk, cyber fraud exposure.",
+         "sources":["yfinance","RBI","Serper"]},
+        {"key":"macro_policy",    "name":"Macro & Policy",      "icon":"📋",
+         "beginner":"How RBI's interest rate decisions affect the bank.",
+         "desc":"RBI MPC repo rate cycle, system credit growth, LAF liquidity, regulatory circulars.",
+         "sources":["RBI website","Serper","Tavily"]},
+        {"key":"institutional",   "name":"Institutional Flow",  "icon":"🏦",
+         "beginner":"What big investors and funds are doing with this bank.",
+         "desc":"FII/DII shareholding delta, promoter pledge changes, AMFI MF flows, bulk/block deals.",
+         "sources":["BSE/NSE filings","AMFI","Serper"]},
+        {"key":"pattern_analysis","name":"Pattern Analysis",    "icon":"🔍",
+         "beginner":"Reads the price chart for rate-cycle patterns.",
+         "desc":"Price cycle vs RBI regimes, RSI/MACD, Nifty Bank relative strength.",
+         "sources":["yfinance OHLCV","RSI/MACD indicators"]},
+        {"key":"universe_setup",  "name":"Universe Setup",      "icon":"🗺️",
+         "beginner":"How important this bank is in the Nifty Bank index.",
+         "desc":"Index weight, PSU vs private peer rank, market-cap tier, corporate actions, rebalancing risk.",
+         "sources":["NSE/BSE index data","AMFI"]},
+    ],
+
+    "it_sector": [
+        {"key":"fundamentals",        "name":"Fundamentals",        "icon":"📈",
+         "beginner":"Revenue growth, margins, deals won, and staff turnover.",
+         "desc":"Constant-currency revenue growth, EBIT margins, TCV deal wins, attrition, valuation vs peers.",
+         "sources":["yfinance quarterly","Serper press releases","NSE filings"]},
+        {"key":"global_macro",        "name":"Global Macro",        "icon":"🌐",
+         "beginner":"Whether US and European clients are cutting or spending on tech.",
+         "desc":"US enterprise IT spend cycle, Fed rate impact, USD/INR, CHIPS Act, global M&A activity.",
+         "sources":["Serper","Gartner/IDC headlines","yfinance forex"]},
+        {"key":"risk_macro",          "name":"Risk Factors",        "icon":"⚠️",
+         "beginner":"Specific risks: visa rules, AI disruption, client concentration.",
+         "desc":"H1B/L1 visa denial trends, AI disruption risk, top-client concentration, FX hedging, talent supply.",
+         "sources":["USCIS data","Serper","company filings"]},
+        {"key":"peer_benchmark",      "name":"Peer Benchmark",      "icon":"🎯",
+         "beginner":"How it ranks against TCS, Infosys, HCL, Wipro.",
+         "desc":"Revenue growth rank, margin rank, TCV rank, attrition rank, P/E gap vs peer median.",
+         "sources":["Serper quarterly comparisons","yfinance"]},
+        {"key":"pattern_analysis",    "name":"Pattern Analysis",    "icon":"🔍",
+         "beginner":"Price chart and Nifty IT relative performance.",
+         "desc":"Price cycle, RSI/MACD momentum, support/resistance, Nifty IT beta.",
+         "sources":["yfinance OHLCV","RSI/MACD indicators"]},
+        {"key":"sentiment",           "name":"Sentiment",           "icon":"💬",
+         "beginner":"How the AI narrative and management tone are being received.",
+         "desc":"GenAI deal narrative strength, layoff signals, management tone, sector media coverage.",
+         "sources":["Serper news","LinkedIn","company announcements"]},
+        {"key":"transcript_nlp",      "name":"Transcript NLP",      "icon":"📝",
+         "beginner":"What management actually said on the last earnings call.",
+         "desc":"Guidance raised/cut, vertical mix, geography commentary, AI deal count, analyst pushback.",
+         "sources":["Earnings call transcripts","Serper"]},
+        {"key":"insider_smart_money", "name":"Institutional Flow",  "icon":"🏦",
+         "beginner":"What funds and insiders are doing with this stock.",
+         "desc":"FII F&O futures positioning, promoter SAST filings, AMFI MF holdings, bulk deals, director trades.",
+         "sources":["BSE/NSE filings","AMFI","SEBI disclosures"]},
+    ],
+
+    "renewable_energy": [
+        {"key":"fundamentals",    "name":"Fundamentals",        "icon":"📈",
+         "beginner":"Whether plants produce efficiently and debt is under control.",
+         "desc":"CUF vs benchmark, EBITDA/MW, DSCR (>1.2x healthy), DISCOM receivables, leverage.",
+         "sources":["yfinance quarterly","company filings","Serper"]},
+        {"key":"business",        "name":"Business Quality",    "icon":"🔋",
+         "beginner":"Quality of energy assets and long-term contracts.",
+         "desc":"Solar/wind mix, PPA counterparty quality, pipeline credibility, customer diversification.",
+         "sources":["Serper","MNRE filings","company PPAs"]},
+        {"key":"valuation",       "name":"Valuation",           "icon":"💎",
+         "beginner":"Whether the stock is cheap vs peers on an asset basis.",
+         "desc":"EV/MW vs Solar ₹4-6Cr/MW benchmark, EV/EBITDA 15-25x, implied IRR vs WACC.",
+         "sources":["Serper","BloombergNEF proxies","peer comps"]},
+        {"key":"sentiment_policy","name":"Policy & Sentiment",  "icon":"📋",
+         "beginner":"Government auction health and renewable energy policy support.",
+         "desc":"MNRE auctions awarded GW, Union Budget allocations, RPO/must-run, RBI rate WACC impact, module prices.",
+         "sources":["Tavily","MNRE portal","BloombergNEF","Serper"]},
+        {"key":"technical",       "name":"Pattern Analysis",    "icon":"🔍",
+         "beginner":"Price chart and Nifty Energy index moves.",
+         "desc":"Price cycle, RSI/MACD, support/resistance zones, Nifty Energy relative strength.",
+         "sources":["yfinance OHLCV","RSI/MACD indicators"]},
+        {"key":"risk",            "name":"Risk Monitor",        "icon":"⚠️",
+         "beginner":"Whether DISCOMs are paying and plants are running.",
+         "desc":"DISCOM credit health (PFC ratings), curtailment risk, PPA tariff protection, execution delay, promoter pledge.",
+         "sources":["PFC reports","CERC","BSE/NSE","Serper"]},
+    ],
+}
+
+# Backward-compat alias — existing code that reads _AGENT_META gets automobile agents
+_AGENT_META: list[dict] = _AGENT_META_BY_SECTOR["automobile"]
 
 _ALL_TICKERS: list[dict] = [
     {"sym": "MARUTI",      "name": "Maruti Suzuki India Ltd",        "yf": "MARUTI.NS"},
@@ -334,32 +393,77 @@ def _load_agent_task_flags() -> dict[str, dict[str, bool]]:
     return {}
 
 
-def _load_custom_weights() -> dict[str, float]:
-    """Return user-saved weight overrides from data/agent_weights.json (empty dict if none)."""
+def _get_base_weights(sector: str) -> dict[str, float]:
+    """Return base (uncustomised) weights for a sector from its config/settings.py."""
+    try:
+        if sector == "automobile":
+            from core.config import settings as _s
+            return dict(_s.AGENT_WEIGHTS)
+        if sector == "banking_bfsi":
+            from backend.sectors.banking_bfsi.config.settings import AGENT_WEIGHTS
+            return dict(AGENT_WEIGHTS)
+        if sector == "it_sector":
+            from backend.sectors.it_sector.config.settings import AGENT_WEIGHTS
+            return dict(AGENT_WEIGHTS)
+        if sector == "renewable_energy":
+            from backend.sectors.renewable_energy.config.settings import AGENT_WEIGHTS
+            return dict(AGENT_WEIGHTS)
+    except Exception as exc:
+        logger.warning("[ui_data] Could not load base weights for %s: %s", sector, exc)
+    # Fallback: equal weights across all agents for the sector
+    meta = _AGENT_META_BY_SECTOR.get(sector, _AGENT_META)
+    n = len(meta)
+    return {m["key"]: round(1.0 / n, 4) for m in meta}
+
+
+def _load_custom_weights(sector: str = "automobile") -> dict[str, float]:
+    """
+    Return user-saved weight overrides from data/agent_weights.json.
+    File format: {"automobile": {"key": float}, "banking_bfsi": {...}, ...}
+    Migrates old flat format (all keys at root) as automobile weights.
+    """
     try:
         if _CUSTOM_WEIGHTS_PATH.exists():
             raw = json.loads(_CUSTOM_WEIGHTS_PATH.read_text(encoding="utf-8"))
-            return {k: float(v) for k, v in raw.items()}
+            # Detect old flat format (no sector nesting) → treat as automobile
+            if raw and not any(k in raw for k in _AGENT_META_BY_SECTOR):
+                raw = {"automobile": {k: float(v) for k, v in raw.items()}}
+            sector_data = raw.get(sector, {})
+            return {k: float(v) for k, v in sector_data.items()}
     except Exception as exc:
-        logger.debug("[ui_data] Could not load custom weights: %s", exc)
+        logger.debug("[ui_data] Could not load custom weights for %s: %s", sector, exc)
     return {}
 
 
-def _build_agents_response() -> dict:
-    from core.config import settings
-    base_weights = dict(settings.AGENT_WEIGHTS)
-    custom = _load_custom_weights()
-    weights = {**base_weights, **custom}  # custom overrides base
+def _save_custom_weights(sector: str, overrides: dict[str, float]) -> None:
+    """Persist sector-scoped weight overrides to data/agent_weights.json."""
+    existing: dict = {}
+    try:
+        if _CUSTOM_WEIGHTS_PATH.exists():
+            raw = json.loads(_CUSTOM_WEIGHTS_PATH.read_text(encoding="utf-8"))
+            # Migrate old flat format
+            if raw and not any(k in raw for k in _AGENT_META_BY_SECTOR):
+                existing = {"automobile": {k: float(v) for k, v in raw.items()}}
+            else:
+                existing = raw
+    except Exception:
+        pass
+    existing[sector] = overrides
+    _CUSTOM_WEIGHTS_PATH.parent.mkdir(parents=True, exist_ok=True)
+    _CUSTOM_WEIGHTS_PATH.write_text(json.dumps(existing, indent=2), encoding="utf-8")
+
+
+def _build_agents_response(sector: str = "automobile") -> dict:
+    meta_list = _AGENT_META_BY_SECTOR.get(sector, _AGENT_META)
+    base_weights = _get_base_weights(sector)
+    custom = _load_custom_weights(sector)
+    weights = {**base_weights, **custom}
     agents = []
-    for meta in _AGENT_META:
+    for meta in meta_list:
         key = meta["key"]
-        w = weights.get(key, 0.10)
-        agents.append({
-            **meta,
-            "weight": round(w, 4),
-            "enabled": w > 0,
-        })
-    return {"agents": agents}
+        w = weights.get(key, round(1.0 / len(meta_list), 4))
+        agents.append({**meta, "weight": round(w, 4), "enabled": w > 0})
+    return {"agents": agents, "sector": sector}
 
 
 def _build_ticker_row(
@@ -529,28 +633,37 @@ async def _gather_market_data(db_latest: list[dict]) -> dict:
 # Routes
 # ---------------------------------------------------------------------------
 
-@router.get("/agents", summary="All 9 agent definitions + current weights")
-async def get_agents() -> dict:
-    return _build_agents_response()
+_VALID_SECTORS = set(_AGENT_META_BY_SECTOR.keys())
+
+@router.get("/agents", summary="Agent definitions + current weights for a sector")
+async def get_agents(sector: str = Query(default="automobile", description="Sector key")) -> dict:
+    if sector not in _VALID_SECTORS:
+        sector = "automobile"
+    return _build_agents_response(sector)
 
 
 class _WeightsBody(BaseModel):
     weights: dict[str, float]
 
 
-@router.put("/agents/weights", summary="Persist user-adjusted agent weights to data/agent_weights.json")
-async def update_agent_weights(body: _WeightsBody) -> dict:
+@router.put("/agents/weights", summary="Persist user-adjusted agent weights for a sector")
+async def update_agent_weights(
+    body: _WeightsBody,
+    sector: str = Query(default="automobile", description="Sector key"),
+) -> dict:
     """
     Accepts {weights: {agent_key: float}} and persists only the changed keys as
-    overrides on top of the base settings.AGENT_WEIGHTS.
+    overrides on top of the sector's base AGENT_WEIGHTS.
 
     Rules:
       - Each weight must be 0.00–0.30
-      - All 9 final weights (base merged with overrides) must sum to 0.95–1.05
-      - Only valid agent keys are accepted; unknown keys are silently dropped
+      - All final weights (base merged with overrides) must sum to 0.95–1.05
+      - Only valid agent keys for the sector are accepted; unknown keys dropped
     """
-    from core.config import settings
-    valid_keys = set(settings.AGENT_WEIGHTS.keys())
+    if sector not in _VALID_SECTORS:
+        sector = "automobile"
+
+    valid_keys = set(m["key"] for m in _AGENT_META_BY_SECTOR[sector])
     incoming = {k: float(v) for k, v in body.weights.items() if k in valid_keys}
     if not incoming:
         raise HTTPException(status_code=422, detail="No valid agent keys in request body")
@@ -562,11 +675,11 @@ async def update_agent_weights(body: _WeightsBody) -> dict:
                 detail=f"Weight for '{k}' must be between 0.00 and 0.30, got {v:.4f}",
             )
 
-    existing_custom = _load_custom_weights()
+    existing_custom = _load_custom_weights(sector)
     merged_custom = {**existing_custom, **incoming}
 
-    # Check sum over the full set (base + all custom overrides)
-    final = {**dict(settings.AGENT_WEIGHTS), **merged_custom}
+    # Validate final sum
+    final = {**_get_base_weights(sector), **merged_custom}
     total = sum(final.values())
     if not (0.95 <= total <= 1.05):
         raise HTTPException(
@@ -577,10 +690,9 @@ async def update_agent_weights(body: _WeightsBody) -> dict:
             ),
         )
 
-    _CUSTOM_WEIGHTS_PATH.parent.mkdir(parents=True, exist_ok=True)
-    _CUSTOM_WEIGHTS_PATH.write_text(json.dumps(merged_custom, indent=2), encoding="utf-8")
-    logger.info("[ui/agents/weights] Saved custom weights: %s", merged_custom)
-    return _build_agents_response()
+    _save_custom_weights(sector, merged_custom)
+    logger.info("[ui/agents/weights] Saved %s custom weights: %s", sector, merged_custom)
+    return _build_agents_response(sector)
 
 
 @router.get("/trending", summary="Tickers ranked by score delta between last two analysis runs")
@@ -781,8 +893,18 @@ async def bootstrap() -> dict:
     suggestions = [_build_suggestion(r) for r in suggestions_raw]
 
     return {
-        # Agent array — matches window.AGENTS shape expected by prototype
-        "AGENTS": _build_agents_response()["agents"],
+        # Agent array — always automobile on initial bootstrap (sector switching via /ui/agents?sector=)
+        "AGENTS": _build_agents_response("automobile")["agents"],
+        # Available sectors for the sector switcher
+        "AGENT_SECTORS": [
+            {"key": k, "label": {
+                "automobile":       "Automobile",
+                "banking_bfsi":     "Banking",
+                "it_sector":        "IT",
+                "renewable_energy": "Renewable",
+            }.get(k, k)}
+            for k in _AGENT_META_BY_SECTOR
+        ],
 
         # Tickers — window.TICKERS
         "TICKERS": ticker_rows,

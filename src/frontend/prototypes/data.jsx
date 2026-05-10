@@ -26,6 +26,163 @@ window.TICKERS = [
 window.WATCHLIST = ['MARUTI','TATAMOTORS','M&M','BAJAJ-AUTO','EICHERMOT'];
 
 // Sub-tasks per agent (5 score dimensions per AGENT_DESIGN.md). Each is independently toggleable.
+// All sector task definitions — switch via window.AGENT_TASKS = window.AGENT_TASKS_BY_SECTOR[sector]
+window.AGENT_TASKS_BY_SECTOR = {
+
+  banking_bfsi: {
+    fundamentals: [
+      { key:'earn_qual',  label:'Earnings quality (NII vs one-time)',   source:'yfinance · RBI filings',   enabled:true,  beginner:'Is income from loans/fees — not lucky treasury bets?' },
+      { key:'nim',        label:'NIM & CASA ratio trend',               source:'yfinance quarterly',        enabled:true,  beginner:'Borrowing cheap and lending at good spreads?' },
+      { key:'crar',       label:'Capital adequacy (CRAR / CET1)',       source:'RBI filings · yfinance',    enabled:true,  beginner:'Buffer to absorb bad loans without failing.' },
+      { key:'roa_roe',    label:'RoA & RoE profitability',              source:'yfinance quarterly',        enabled:true,  beginner:'Returns the bank earns on assets and equity.' },
+      { key:'loan_mix',   label:'Loan book: retail vs corporate',       source:'Serper · analyst notes',    enabled:true,  beginner:'Diversified retail book = safer than lumpy corporate.' },
+    ],
+    risk: [
+      { key:'npa',        label:'GNPA% & slippage ratio',               source:'yfinance · RBI',            enabled:true,  beginner:'Bad loan percentage and how fast new ones are forming.' },
+      { key:'conc',       label:'Concentration risk (sector/borrower)', source:'RBI · annual report',       enabled:true,  beginner:'Too much exposure to one sector or big borrower?' },
+      { key:'deposits',   label:'Deposit stability & ALM',              source:'yfinance · Serper',         enabled:true,  beginner:'Can the bank keep funding itself cheaply?' },
+      { key:'regrisk',    label:'RBI enforcement & penalties',          source:'RBI circulars · Serper',    enabled:true,  beginner:'Any regulatory actions that signal deeper issues?' },
+      { key:'cyber',      label:'Cyber & fraud incidents',              source:'CERT-In · Serper',          enabled:false, beginner:'Digital fraud events that erode customer trust.' },
+    ],
+    macro_policy: [
+      { key:'rbi_rate',   label:'RBI repo rate cycle',                  source:'RBI MPC · Serper',          enabled:true,  beginner:'Rate cuts boost NIMs; hikes compress them.' },
+      { key:'credit',     label:'System credit growth',                 source:'RBI weekly data',           enabled:true,  beginner:'Growing economy = more loans = more fee income.' },
+      { key:'liquidity',  label:'LAF / system liquidity',               source:'RBI LAF data',              enabled:true,  beginner:'Tight liquidity = banks borrow at higher cost.' },
+      { key:'regs',       label:'Regulatory circulars (IRAC/LCR)',      source:'RBI · SEBI · Tavily',       enabled:true,  beginner:'New provisioning or capital rules change earnings.' },
+      { key:'fiscal',     label:'PSU recapitalisation / fiscal policy', source:'Budget · Serper',           enabled:false, beginner:'Govt support for public sector banks.' },
+    ],
+    institutional: [
+      { key:'fii_flow',   label:'FII / DII shareholding change',        source:'BSE/NSE quarterly',         enabled:true,  beginner:'Foreign & domestic institutions buying or selling?' },
+      { key:'promoter',   label:'Promoter stake & pledge change',       source:'SAST filings · BSE',        enabled:true,  beginner:'Management adding shares = confidence signal.' },
+      { key:'mf',         label:'AMFI mutual fund holding delta',       source:'AMFI monthly',              enabled:true,  beginner:'Indian MFs adding = smart domestic money following.' },
+      { key:'block',      label:'Bulk / block deals',                   source:'BSE/NSE exchange',          enabled:true,  beginner:'Big institutional trades visible on the exchange.' },
+      { key:'insider',    label:'Director / KMP insider trades',        source:'SEBI disclosures',          enabled:false, beginner:'Board members buying = high-conviction signal.' },
+    ],
+    pattern_analysis: [
+      { key:'cycle',      label:'Price cycle vs RBI rate regime',       source:'yfinance OHLCV',            enabled:true,  beginner:'Rate-cut cycles = bank stock rallies historically.' },
+      { key:'momentum',   label:'RSI / MACD momentum',                  source:'Derived indicators',        enabled:true,  beginner:'Price gathering or losing steam right now.' },
+      { key:'zones',      label:'Support / resistance zones',           source:'52w high/low · yfinance',   enabled:true,  beginner:'Levels where buyers historically step in.' },
+      { key:'rel',        label:'Nifty Bank relative strength',         source:'yfinance ^NSEBANK',         enabled:true,  beginner:'Beating or lagging the Nifty Bank index?' },
+      { key:'vol',        label:'Volume confirmation',                  source:'yfinance volume',           enabled:false, beginner:'Is the price move backed by strong volumes?' },
+    ],
+    universe_setup: [
+      { key:'idx_wt',     label:'Nifty Bank index weight',              source:'NSE constituent data',      enabled:true,  beginner:'Larger weight = more passive fund buying on inflows.' },
+      { key:'peer_rank',  label:'Peer market-cap rank (PSU vs pvt)',    source:'NSE · yfinance',            enabled:true,  beginner:'Tier-1 private vs PSU vs NBFC peer comparison.' },
+      { key:'corp_act',   label:'Corporate actions',                    source:'BSE corporate actions',     enabled:true,  beginner:'Upcoming dividends, rights issues, or mergers.' },
+      { key:'rebal',      label:'Index rebalancing risk',               source:'NSE semi-annual review',    enabled:false, beginner:'Risk of being dropped from or added to an index.' },
+      { key:'mf_hold',    label:'MF portfolio weight',                  source:'AMFI monthly',              enabled:true,  beginner:'How heavily mutual funds are already positioned.' },
+    ],
+  },
+
+  it_sector: {
+    fundamentals: [
+      { key:'cc_rev',     label:'Constant-currency revenue growth',     source:'yfinance quarterly · NSE',  enabled:true,  beginner:'Revenue growth stripping out currency effects.' },
+      { key:'margins',    label:'EBIT margin (8-quarter trend)',         source:'yfinance quarterly',        enabled:true,  beginner:'Improving margins = operational leverage at work.' },
+      { key:'deals',      label:'TCV deal wins (large deals $50M+)',    source:'Serper press releases',     enabled:true,  beginner:'Pipeline of future revenue locked in by contracts.' },
+      { key:'attrition',  label:'LTM attrition & headcount',            source:'Serper · annual reports',   enabled:true,  beginner:'High attrition = rising wage costs + delivery risk.' },
+      { key:'valuation',  label:'P/E & EV/Revenue vs peers',            source:'yfinance · Serper',         enabled:true,  beginner:'Cheap or expensive vs TCS, Infosys, HCL, Wipro?' },
+    ],
+    global_macro: [
+      { key:'us_spend',   label:'US enterprise IT spend cycle',         source:'Serper · Gartner/IDC',      enabled:true,  beginner:'US clients cutting or expanding tech budgets?' },
+      { key:'fed_rate',   label:'Fed rate impact on tech capex',        source:'Serper · Fed releases',     enabled:true,  beginner:'Higher rates → US clients defer big IT projects.' },
+      { key:'usd_inr',    label:'USD/INR forex impact',                 source:'yfinance USDINR=X',         enabled:true,  beginner:'Stronger USD = more INR revenue for IT exporters.' },
+      { key:'geopol',     label:'CHIPS Act / US-China tech policy',     source:'Serper',                    enabled:true,  beginner:'Offshoring trends and tech-sector geopolitics.' },
+      { key:'ma',         label:'Global IT M&A activity',               source:'Serper · deal news',        enabled:false, beginner:'M&A wave signals sector consolidation or growth.' },
+    ],
+    risk_macro: [
+      { key:'visa',       label:'H1B / L1 visa approval rate',          source:'USCIS data · Serper',       enabled:true,  beginner:'Tighter visas = costlier onsite delivery model.' },
+      { key:'ai_disr',    label:'AI / GenAI disruption risk',           source:'Serper',                    enabled:true,  beginner:'Will AI reduce IT services headcount demand?' },
+      { key:'client_conc',label:'Client concentration risk',            source:'Serper · company filings',  enabled:true,  beginner:'Too dependent on one big client = vulnerable.' },
+      { key:'fx_hedge',   label:'FX hedging position',                  source:'Serper · company filings',  enabled:false, beginner:'How much currency risk is hedged away.' },
+      { key:'talent',     label:'STEM talent supply & wage inflation',  source:'Serper',                    enabled:true,  beginner:'India talent supply vs wage pressure on margins.' },
+    ],
+    peer_benchmark: [
+      { key:'rev_rank',   label:'Revenue growth rank vs peers',         source:'Serper quarterly comps',    enabled:true,  beginner:'Faster or slower growth than TCS/Infosys/HCL?' },
+      { key:'margin_rank',label:'EBIT margin rank vs peers',            source:'Serper quarterly comps',    enabled:true,  beginner:'Higher or lower margins than the big four?' },
+      { key:'deal_rank',  label:'TCV deal momentum rank',               source:'Serper deal announcements', enabled:true,  beginner:'Winning more or fewer big contracts than peers?' },
+      { key:'attr_rank',  label:'Attrition rank vs peers',              source:'Serper · HR reports',       enabled:true,  beginner:'Retaining staff better or worse than rivals?' },
+      { key:'val_gap',    label:'P/E valuation gap vs peer median',     source:'yfinance',                  enabled:true,  beginner:'Premium or discount to the sector peer group?' },
+    ],
+    pattern_analysis: [
+      { key:'cycle',      label:'Price cycle (rate-sensitive growth)',  source:'yfinance OHLCV',            enabled:true,  beginner:'IT stocks fall when rates rise, rally when they cut.' },
+      { key:'momentum',   label:'RSI / MACD momentum',                  source:'Derived indicators',        enabled:true,  beginner:'Short-term price momentum signal.' },
+      { key:'zones',      label:'Support / resistance zones',           source:'52w high/low',              enabled:true,  beginner:'Key price levels where buyers step in.' },
+      { key:'rel',        label:'Nifty IT relative strength (beta)',    source:'yfinance ^CNXIT',           enabled:true,  beginner:'Beating or lagging the Nifty IT index?' },
+      { key:'vol',        label:'Volume confirmation',                  source:'yfinance volume',           enabled:false, beginner:'Conviction behind recent price moves.' },
+    ],
+    sentiment: [
+      { key:'ai_narr',    label:'AI / GenAI narrative strength',        source:'Serper news',               enabled:true,  beginner:'Strong AI deal story = higher P/E multiple.' },
+      { key:'layoffs',    label:'Layoff / bench utilisation signals',   source:'Serper · LinkedIn',         enabled:true,  beginner:'Layoffs = cost cutting; bench filling = demand ahead.' },
+      { key:'mgmt_tone',  label:'Management tone (earnings calls)',     source:'Serper transcripts',        enabled:true,  beginner:'Confident or cautious forward commentary.' },
+      { key:'sector_narr',label:'Sector narrative (Nifty IT outlook)',  source:'Serper · analyst notes',    enabled:true,  beginner:'Broad market view on Indian IT sector.' },
+      { key:'news_vol',   label:'News volume & sentiment',              source:'Serper news',               enabled:false, beginner:'Spike in coverage = event risk or catalyst.' },
+    ],
+    transcript_nlp: [
+      { key:'guidance',   label:'Guidance: raised / maintained / cut',  source:'Earnings transcripts',      enabled:true,  beginner:'Did management raise or lower revenue guidance?' },
+      { key:'verticals',  label:'Vertical mix (BFSI/retail/mfg)',       source:'Earnings transcripts',      enabled:true,  beginner:'Which client industries are growing vs slowing?' },
+      { key:'geo',        label:'Geography (Americas / Europe)',         source:'Earnings transcripts',      enabled:true,  beginner:'Where revenue is growing fastest.' },
+      { key:'ai_deals',   label:'AI deal count mentioned',              source:'Earnings transcripts',      enabled:true,  beginner:'How many AI-specific contracts won this quarter.' },
+      { key:'pushback',   label:'Analyst pushback on call',             source:'Earnings transcripts',      enabled:true,  beginner:'Tough analyst questions = market wants more proof.' },
+    ],
+    insider_smart_money: [
+      { key:'fii_fo',     label:'FII F&O net futures position',         source:'NSE F&O data',              enabled:true,  beginner:'FII long futures buildup = forward accumulation.' },
+      { key:'promoter',   label:'Promoter SAST / pledge activity',      source:'SEBI SAST filings',         enabled:true,  beginner:'Promoter buying = high conviction from insiders.' },
+      { key:'mf',         label:'AMFI MF holding change',               source:'AMFI monthly',              enabled:true,  beginner:'Indian MFs adding = domestic smart money signal.' },
+      { key:'block',      label:'Bulk / block deals',                   source:'BSE/NSE exchange',          enabled:true,  beginner:'Large institutional trades direction.' },
+      { key:'insider',    label:'Director / KMP trades',                source:'SEBI disclosures',          enabled:false, beginner:'Board members trading with their own money.' },
+    ],
+  },
+
+  renewable_energy: {
+    fundamentals: [
+      { key:'cuf',        label:'CUF vs technology benchmark',          source:'company reports · Serper',  enabled:true,  beginner:'Are solar/wind plants producing at rated capacity?' },
+      { key:'ebitda_mw',  label:'EBITDA per MW (8-quarter trend)',      source:'yfinance quarterly',        enabled:true,  beginner:'Profitability per unit of power-generation capacity.' },
+      { key:'dscr',       label:'DSCR — debt service coverage',         source:'yfinance · company filings',enabled:true,  beginner:'Can the company pay its loan EMIs from plant cash flow?' },
+      { key:'receivables',label:'DISCOM receivables (payment days)',    source:'PFC reports · Serper',      enabled:true,  beginner:'How long state power utilities take to pay bills.' },
+      { key:'leverage',   label:'Project D/E & holdco leverage',        source:'yfinance · annual report',  enabled:true,  beginner:'Debt load relative to assets — higher = riskier.' },
+    ],
+    business: [
+      { key:'mix',        label:'Solar / wind / hybrid capacity mix',   source:'company filings · Serper',  enabled:true,  beginner:'Diversified generation mix reduces output risk.' },
+      { key:'ppa',        label:'PPA quality (tenor, counterparty)',    source:'Serper · company PPAs',     enabled:true,  beginner:'Long-term power purchase agreements = locked revenue.' },
+      { key:'pipeline',   label:'Pipeline credibility (GW under const)',source:'Serper · MNRE',             enabled:true,  beginner:'How credible is the project construction pipeline?' },
+      { key:'customers',  label:'Customer diversification',             source:'Serper · company filings',  enabled:true,  beginner:'C&I + multiple DISCOMs = safer than single buyer.' },
+      { key:'geography',  label:'State-wise MW spread',                 source:'company filings',           enabled:false, beginner:'Spread across states reduces single-state policy risk.' },
+    ],
+    valuation: [
+      { key:'ev_mw',      label:'EV / MW vs benchmark (₹4-6Cr/MW)',    source:'Serper · peer comps',       enabled:true,  beginner:'Standard infra metric — cheap if below ₹4Cr/MW.' },
+      { key:'ev_ebitda',  label:'EV / EBITDA (15-25x healthy)',         source:'yfinance · Serper',         enabled:true,  beginner:'Earnings multiple — similar to global clean energy.' },
+      { key:'tariff',     label:'Tariff vs current MNRE auction price', source:'Serper · MNRE data',        enabled:true,  beginner:'Projects signed at better-than-market rates = value.' },
+      { key:'irr',        label:'Implied project IRR vs WACC',          source:'Serper · analyst models',   enabled:true,  beginner:'Is the project return above the cost of capital?' },
+      { key:'dcf',        label:'Pipeline DCF value',                   source:'Serper · analyst notes',    enabled:false, beginner:'Discounted value of projects under development.' },
+    ],
+    sentiment_policy: [
+      { key:'mnre',       label:'MNRE auction health (GW awarded)',     source:'MNRE portal · Serper',      enabled:true,  beginner:'Government awarding more auctions = sector growth.' },
+      { key:'budget',     label:'Union Budget capex / PLI allocation',  source:'Budget · Serper',           enabled:true,  beginner:'More budget spend = more renewable projects funded.' },
+      { key:'policy',     label:'RPO / must-run / ISTS waiver',         source:'CERC · Tavily',             enabled:true,  beginner:'Grid access and purchase obligation policies.' },
+      { key:'rbi_rate',   label:'RBI rate → WACC impact',               source:'RBI MPC · yfinance',        enabled:true,  beginner:'25bp rate cut = ~15bp WACC improvement for RE.' },
+      { key:'modules',    label:'Solar module price (BloombergNEF)',    source:'BloombergNEF · Serper',     enabled:true,  beginner:'Cheaper modules = better project economics ahead.' },
+    ],
+    technical: [
+      { key:'cycle',      label:'Price cycle (policy-sensitive)',        source:'yfinance OHLCV',            enabled:true,  beginner:'RE stocks rally on budget/MNRE news cycles.' },
+      { key:'momentum',   label:'RSI / MACD momentum',                  source:'Derived indicators',        enabled:true,  beginner:'Short-term price momentum signal.' },
+      { key:'zones',      label:'Support / resistance zones',           source:'52w high/low',              enabled:true,  beginner:'Key levels where buyers have stepped in historically.' },
+      { key:'rel',        label:'Nifty Energy relative strength',       source:'yfinance ^CNXENERGY',       enabled:true,  beginner:'Beating or lagging the Nifty Energy index?' },
+      { key:'vol',        label:'Volume confirmation',                  source:'yfinance volume',           enabled:false, beginner:'Is price action backed by conviction volumes?' },
+    ],
+    risk: [
+      { key:'discom',     label:'DISCOM credit health (PFC rating)',    source:'PFC reports · Serper',      enabled:true,  beginner:'Weak DISCOM = delayed payments or defaults.' },
+      { key:'curtail',    label:'Curtailment risk (CERC data)',         source:'CERC · MNRE · Serper',      enabled:true,  beginner:'State grids sometimes refuse to buy power generated.' },
+      { key:'ppa_prot',   label:'PPA tariff protection / force majeure',source:'company PPAs · Serper',     enabled:true,  beginner:'Are PPA terms protected from policy changes?' },
+      { key:'exec',       label:'Execution delay risk',                 source:'company filings · Serper',  enabled:true,  beginner:'Construction delays hurt revenue commissioning timelines.' },
+      { key:'pledge',     label:'Promoter pledge %',                   source:'BSE/NSE disclosures',       enabled:true,  beginner:'High pledge = margin call risk on stock correction.' },
+    ],
+  },
+
+};
+
+// Automobile tasks (existing window.AGENT_TASKS is automobile — keep for backward compat)
+window.AGENT_TASKS_BY_SECTOR.automobile = null; // filled below after automobile definition
+
 window.AGENT_TASKS = {
   sales_demand: [
     { key:'fada',     label:'FADA monthly retail dispatch',  source:'Serper · fada.in',          enabled:true,  beginner:'Tracks how many vehicles dealers actually sold last month.' },
@@ -93,6 +250,9 @@ window.AGENT_TASKS = {
     { key:'target',   label:'Price target confidence',        source:'LLM knowledge',              enabled:false, beginner:'How confident the model is in the upside.' },
   ],
 };
+
+// Wire automobile into the by-sector map
+window.AGENT_TASKS_BY_SECTOR.automobile = window.AGENT_TASKS;
 
 window.MARKET_TODAY = {
   pulse: 'Mostly green',

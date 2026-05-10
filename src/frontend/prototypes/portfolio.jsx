@@ -16,7 +16,7 @@ function PortfolioPage({ onNav, openChat }) {
 
       <main style={{ maxWidth:1280, margin:'0 auto', padding:'var(--main-py) var(--main-px) 96px' }}>
         {/* Hero strip */}
-        <section style={{
+        <section className="pf-hero-section" style={{
           position:'relative', overflow:'hidden', borderRadius:24, marginBottom:24,
           background:'linear-gradient(135deg, #0a1628 0%, #134e5c 50%, #1a4a73 100%)',
           color:'#f1f5f9', padding:'28px var(--main-px)',
@@ -31,11 +31,11 @@ function PortfolioPage({ onNav, openChat }) {
             <div style={{ fontSize:11, fontWeight:700, letterSpacing:'.18em', color:'#94a3b8', textTransform:'uppercase', marginBottom:8 }}>
               Portfolio · Live
             </div>
-            <div style={{ display:'flex', alignItems:'baseline', gap:14, marginBottom:12 }}>
-              <span className="mono" style={{ fontSize:44, fontWeight:800, letterSpacing:'-0.02em' }}>
+            <div className="pf-hero-value-row" style={{ display:'flex', alignItems:'baseline', gap:14, marginBottom:12, flexWrap:'wrap' }}>
+              <span className="pf-hero-value mono" style={{ fontSize:44, fontWeight:800, letterSpacing:'-0.02em' }}>
                 ₹{p.totalValue.toLocaleString('en-IN')}
               </span>
-              <span style={{
+              <span className="pf-hero-badge" style={{
                 fontSize:14, fontWeight:700, padding:'4px 10px', borderRadius:8,
                 background: p.dayChange >= 0 ? 'rgba(34,197,94,.18)' : 'rgba(239,68,68,.18)',
                 color: p.dayChange >= 0 ? '#86efac' : '#fca5a5'
@@ -126,7 +126,7 @@ function Stat2({ label, value, pct }) {
 function HoldingsTable({ holdings }) {
   return (
     <div className="card">
-      <div style={{ padding:'18px 24px', borderBottom:'1px solid var(--border)', display:'flex', alignItems:'center', gap:12 }}>
+      <div className="pf-card-header" style={{ padding:'18px 24px', borderBottom:'1px solid var(--border)', display:'flex', alignItems:'center', gap:12 }}>
         <div className="eyebrow">Your holdings · {holdings.length}</div>
         <button style={{ marginLeft:'auto', padding:'6px 12px', border:'1px dashed var(--border-strong)', borderRadius:8,
           background:'transparent', fontSize:12, fontWeight:600, color:'var(--ink-2)', display:'flex', alignItems:'center', gap:6 }}>
@@ -205,7 +205,7 @@ function ActivityCard({ items }) {
     agent: { icon:<Icon.Sparkles size={14}/>, bg:'var(--violet-soft)', fg:'var(--violet)',     label:'Agent' },
   };
   return (
-    <div className="card" style={{ padding:24 }}>
+    <div className="card pf-card-body">
       <div className="eyebrow" style={{ marginBottom:14 }}>Recent activity</div>
       <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
         {items.map((it, i) => {
@@ -224,7 +224,7 @@ function ActivityCard({ items }) {
                 </div>
                 {it.text && <div style={{ fontSize:12, color:'var(--ink-3)', marginTop:2 }}>{it.text}</div>}
               </div>
-              <span style={{ fontSize:11, color:'var(--ink-3)', whiteSpace:'nowrap' }}>{it.t}</span>
+              <span className="pf-activity-time" style={{ fontSize:11, color:'var(--ink-3)', whiteSpace:'nowrap' }}>{it.t}</span>
             </div>
           );
         })}
@@ -235,7 +235,7 @@ function ActivityCard({ items }) {
 
 function AlertsCard({ alerts }) {
   return (
-    <div className="card" style={{ padding:20 }}>
+    <div className="card pf-card-body">
       <div className="eyebrow" style={{ marginBottom:14 }}>What your agents are flagging</div>
       <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
         {alerts.map((a, i) => {
@@ -265,7 +265,7 @@ function AllocationCard({ holdings }) {
   const colors = ['#0891b2','#7c3aed','#16a34a','#d97706','#dc2626','#475569'];
 
   return (
-    <div className="card" style={{ padding:20 }}>
+    <div className="card pf-card-body">
       <div className="eyebrow" style={{ marginBottom:14 }}>Allocation</div>
       <div style={{ display:'flex', height:8, borderRadius:999, overflow:'hidden', marginBottom:14 }}>
         {segments.map((s, i) => (

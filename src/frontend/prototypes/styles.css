@@ -233,16 +233,44 @@ button { font-family: inherit; cursor: pointer; }
   .pf-hero-chart { display: none !important; }
 }
 
-/* ── Portfolio hero stats — wrap on mobile ───────────────────────────────── */
+/* ── Portfolio hero — compact padding + smaller total value on mobile ────── */
 @media (max-width: 767px) {
-  .pf-hero-stats { flex-wrap: wrap !important; gap: 12px !important; }
-  .pf-hero-stats > div { min-width: calc(50% - 6px); }
+  .pf-hero-section {
+    border-radius: 16px !important;
+    padding: 20px 16px !important;
+    margin-bottom: 16px !important;
+  }
+  .pf-hero-value { font-size: 28px !important; letter-spacing: -0.01em !important; }
+  .pf-hero-value-row { gap: 8px !important; align-items: flex-start !important; }
+  .pf-hero-badge { font-size: 12px !important; padding: 3px 8px !important; }
 }
 
-/* ── Portfolio holdings table — horizontal scroll on mobile ──────────────── */
+/* ── Portfolio hero stats — 2×2 grid on mobile ───────────────────────────── */
+@media (max-width: 767px) {
+  .pf-hero-stats {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr !important;
+    gap: 12px !important;
+  }
+}
+
+/* ── Portfolio card header + card bodies — tighter on mobile ─────────────── */
+@media (max-width: 767px) {
+  .pf-card-header { padding: 14px 16px !important; }
+  .pf-card-body   { padding: 16px !important; }
+}
+
+/* ── Portfolio holdings table — horizontal scroll + tighter cell padding ─── */
 .holdings-table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
 @media (max-width: 767px) {
   .holdings-table-scroll::-webkit-scrollbar { height: 4px; }
+  .holdings-table-scroll th { padding: 10px 10px !important; font-size: 10px !important; }
+  .holdings-table-scroll td { padding: 10px 10px !important; font-size: 12px !important; }
+}
+
+/* ── Portfolio activity item timestamp — hide on narrowest screens ───────── */
+@media (max-width: 400px) {
+  .pf-activity-time { display: none !important; }
 }
 
 /* ── Auth screen — single column on mobile, hide brand panel ─────────────── */

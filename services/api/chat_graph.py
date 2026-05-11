@@ -387,6 +387,12 @@ async def _synthesize_node(state: ChatState) -> dict:
         )
     if results_context:
         system += f"\n\nRESEARCH RESULTS (use these as your primary data source):\n{results_context}"
+    else:
+        system += (
+            "\n\nNO TOOL RESULTS: No search or data tools returned results for this query. "
+            "You MUST say so explicitly. Do NOT answer from training knowledge for any "
+            "news, events, or recent market moves — state that live search returned nothing."
+        )
 
     messages = [{"role": "system", "content": system}] + _to_openai_msgs(state["messages"])
 

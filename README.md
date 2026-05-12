@@ -24,10 +24,11 @@ After every trading day, the system automatically fetches the actual closing pri
 
 | Sector | Status | Stocks covered |
 |---|---|---|
-| **Automobile** | ✅ Full — all agents + RL loop live | MARUTI, TATAMOTORS, M&M, BAJAJ-AUTO, HEROMOTOCO, EICHERMOT, TVSMOTORS, ASHOKLEY, ESCORTS, FORCEMOT + 6 extended (APOLLOTYRE, MRF, CEATLTD, MOTHERSON, BOSCHLTD, BALKRISIND) |
-| **Banking / BFSI** | 🔶 In progress | HDFCBANK, ICICIBANK, SBIN, KOTAKBANK, AXISBANK, INDUSINDBK, BANDHANBNK, RBLBANK, YESBANK, BAJFINANCE, MUTHOOTFIN and more |
-| **IT Sector** | 🔶 In progress | TCS, INFY, WIPRO, HCLTECH, TECHM, LTIM, COFORGE, MPHASIS, PERSISTENT and more |
-| **Renewable Energy** | 🔶 In progress | ADANIGREEN, TATAPOWER, NTPC, POWERGRID, SJVN, JSWENERGY and more |
+| **Automobile** | ✅ Full — all 9 agents + RL loop live | MARUTI, TATAMOTORS, M&M, BAJAJ-AUTO, HEROMOTOCO, EICHERMOT, TVSMOTORS, ASHOKLEY, ESCORTS, FORCEMOT + 6 extended (APOLLOTYRE, MRF, CEATLTD, MOTHERSON, BOSCHLTD, BALKRISIND) |
+| **Banking / BFSI** | 🔶 In progress — 6 agents built, data fetchers pending | HDFCBANK, ICICIBANK, SBIN, KOTAKBANK, AXISBANK, INDUSINDBK, BANDHANBNK, RBLBANK, YESBANK, BAJFINANCE, MUTHOOTFIN and more |
+| **IT Sector** | 🔶 In progress — 8 agents built, data fetchers pending | TCS, INFY, WIPRO, HCLTECH, TECHM, LTIM, COFORGE, MPHASIS, PERSISTENT and more |
+| **Renewable Energy** | 🔶 In progress — 6 agents built, data fetchers pending | ADANIGREEN, TATAPOWER, NTPC, POWERGRID, SJVN, JSWENERGY and more |
+| **17 more sectors** | 🔲 Pipeline — prompt templates ready | Pharma, FMCG, Metals, Oil & Gas, Capital Goods, Insurance, Telecom, Defence, Chemicals, Infra, Logistics, Real Estate, Retail, Power, Media, Hospitality, Agro-Chemicals |
 
 You can type either the NSE ticker (`MARUTI`) or the company name (`Maruti Suzuki`) — the system resolves it automatically.
 
@@ -334,10 +335,146 @@ Yes. Your watchlist and agent weight preferences are saved on the server. They p
 
 ---
 
+## Key Terms Reference
+
+A quick guide to every abbreviation, metric, and concept you will encounter in StockAgent's analysis output. Grouped by topic.
+
+---
+
+### How the System Works
+
+| Term | What it means | In plain English |
+|---|---|---|
+| **Agent weight** | A number (0.0–1.0) representing how much influence one agent has on the final score | If `risk_macro` has weight 0.19 and scores 0.30, it pulls the final score down more than `sentiment` at weight 0.03 |
+| **Signal Aggregator** | The component that combines all agent scores and resolves disagreements | "9 experts voted; 6 said BUY, 2 said SELL, 1 was neutral — here's why the BUY camp is right today" |
+| **Conflict** | When two agents' scores differ by 0.30 or more | Fundamentals scores 0.72 (strong BUY) but macro scores 0.38 (near SELL) — flagged and resolved by LLM |
+| **Learning ledger** | Permanent memory of patterns the system has noticed for a specific stock | After 3 months MARUTI has 4 lessons: "On RBI days trust risk_macro more", "Shravan months discount demand", etc. |
+| **RL feedback loop** | The daily process of comparing prediction to reality and updating agent weights | Every evening: system asks "was I right? who was wrong? by how much?" — and quietly adjusts |
+| **Conviction streak** | Consecutive days of the same verdict | 15 straight BUY days triggers caution — markets tend to correct sustained trends |
+| **Market regime** | The system's classification of current broad market conditions | `MACRO_CRISIS` (VIX high, Nifty falling) → risk_macro agent gets 40% extra influence; `RISK_ON` (bull run) → fundamentals and sentiment elevated |
+| **Prediction envelope** | The 30-day forward forecast generated at month start | Contains a predicted price for each of the next 30 trading days, updated daily by the RL loop |
+
+---
+
+### Indian Market Structure
+
+| Term | Full Form | What it means in context |
+|---|---|---|
+| **NSE** | National Stock Exchange | Primary Indian exchange; tickers like `MARUTI`, `HDFCBANK` |
+| **BSE** | Bombay Stock Exchange (BSE Ltd.) | Secondary exchange; block/bulk deals disclosed here |
+| **SEBI** | Securities and Exchange Board of India | Stock market regulator — sets rules on insider trades, takeovers, fund reporting |
+| **RBI** | Reserve Bank of India | Central bank — sets interest rates, regulates banks, manages currency |
+| **MPC** | Monetary Policy Committee | RBI's 6-member panel that votes on repo rate every 2 months |
+| **Repo rate** | Repurchase rate | Rate at which RBI lends overnight to banks. A cut typically boosts markets; a hike tightens credit |
+| **FII** | Foreign Institutional Investor | Foreign fund houses (BlackRock, Nomura etc.). Heavy FII selling = market breadth signal |
+| **DII** | Domestic Institutional Investor | Indian mutual funds, LIC, pension funds. Often cushion FII selling |
+| **AMFI** | Association of Mutual Funds in India | Publishes monthly MF inflow/outflow data by sector category |
+| **VIX** | India Volatility Index | Measures expected market fear. Above 22 = volatile; below 14 = calm. Used to detect market regime |
+| **Nifty 50** | NSE's 50-stock benchmark | Proxy for FII flow direction in the system's regime detection |
+| **SAST** | Substantial Acquisition of Shares and Takeovers | SEBI rule requiring disclosure when anyone buys >2% of a company — tracked as smart money signal |
+
+---
+
+### Fundamental & Valuation Metrics
+
+| Term | What it measures | Quick example |
+|---|---|---|
+| **EBITDA** | Operating profit before interest, tax, depreciation | Maruti EBITDA margin 11.2% = ₹11.20 earned per ₹100 revenue from operations |
+| **EBITDA margin** | EBITDA as % of revenue | Higher margin = more efficient operations vs peers |
+| **P/E ratio** | Price relative to earnings per share | HDFC Bank P/E 22× vs 5-year median 24× = slight discount to history |
+| **EV/EBITDA** | Enterprise value to operating profit | Standard cross-sector comparison: lower = cheaper relative to earnings power |
+| **IRR** | Internal Rate of Return | Solar project IRR 14% vs cost of debt 8% → 6% spread = good project economics |
+| **DSCR** | Debt Service Coverage Ratio | Project cash flow ÷ annual debt payments. DSCR 1.35× = comfortable; below 1.0× = distress |
+| **RoA** | Return on Assets | Profit per ₹100 of total assets. HDFC Bank RoA 2.2% vs industry 1.4% = superior |
+| **RoE** | Return on Equity | Profit per ₹100 of shareholder equity. TCS RoE 52% = very capital-efficient |
+
+---
+
+### Automobile Sector
+
+| Term | Full Form | What it means |
+|---|---|---|
+| **FADA** | Federation of Automobile Dealers Associations | Monthly retail dispatch data (how many cars actually sold to end customers). The "real demand" number |
+| **SIAM** | Society of Indian Automobile Manufacturers | Monthly wholesale data (factory to dealer). SIAM > FADA = dealers building inventory. SIAM < FADA = destocking |
+| **Vahan** | MoRTH national vehicle registration database | Every vehicle registered in India. Key source for EV registration trends |
+| **FADA vs SIAM gap** | Retail − wholesale delta | Large positive gap means dealers are sitting on unsold stock — bearish for near-term wholesale |
+| **DGFT** | Directorate General of Foreign Trade | Export licensing data. Strong export growth can compensate for weak domestic demand |
+| **OEM** | Original Equipment Manufacturer | The vehicle maker itself (Maruti, Tata Motors) — distinct from component makers |
+| **FAME** | Faster Adoption and Manufacturing of Electric Vehicles | Government EV subsidy scheme. Changes to FAME directly affect EV OEM unit economics |
+| **BS norms / CAFE** | Bharat Stage / Corporate Average Fuel Economy | Emission standards. Non-compliance with future norms = penalty risk |
+| **PLI** | Production Linked Incentive | Manufacturing subsidy tied to incremental production. Automobile PLI: ₹26,000 Cr for advanced auto technology |
+| **ADAS** | Advanced Driver Assistance Systems | Safety tech features rated by NCAP. Higher ADAS rating = competitive advantage in premium segment |
+
+---
+
+### Banking & BFSI
+
+| Term | Full Form | What it means |
+|---|---|---|
+| **GNPA** | Gross Non-Performing Assets | Total bad loans ÷ total loan book. HDFC Bank 1.2% vs SBI 2.2% — lower is better |
+| **NPA** | Non-Performing Asset | Any loan overdue more than 90 days |
+| **Slippage** | Fresh NPA formation this quarter | Slippage 2% means 2% of previously "good" loans turned bad this quarter |
+| **PCR** | Provision Coverage Ratio | % of NPAs already set aside as provisions. PCR 80% = ₹80 already written off per ₹100 of bad loans |
+| **NIM** | Net Interest Margin | Lending rate minus deposit rate. 4% NIM = bank earns ₹4 per ₹100 deployed |
+| **CASA** | Current Account Savings Account ratio | % of deposits in low-cost CA/SA accounts. Higher CASA = lower funding cost = better NIM protection |
+| **CRAR** | Capital to Risk-Weighted Assets Ratio | Bank's capital buffer. RBI requires 11.5%; well-run banks maintain 14–16% |
+| **CET1** | Common Equity Tier 1 | Highest-quality capital (retained earnings). Must be ≥ 8% under Basel III rules |
+| **LAF** | Liquidity Adjustment Facility | RBI's daily lending/borrowing window for banks. Banks borrowing heavily via LAF = system liquidity deficit |
+| **IBC** | Insolvency and Bankruptcy Code | Debt resolution law. Successful IBC resolution returns money to bank lenders |
+| **Credit cost** | Provisioning / total advances | Bank's expense to set aside for future bad loans. Rising credit cost = deteriorating book |
+| **ALM mismatch** | Asset-Liability Management mismatch | Bank funds long-term loans with short-term deposits — risk if rates change rapidly |
+
+---
+
+### IT Sector
+
+| Term | Full Form | What it means |
+|---|---|---|
+| **CC growth** | Constant Currency revenue growth | Revenue growth after stripping out currency movements. "TCS grew 4.5% CC" = real business volume grew 4.5% |
+| **TCV** | Total Contract Value | Full value of a new deal including all years. TCS $2.4B TCV in Q2 = $2.4B of future revenue booked |
+| **EBIT margin** | Earnings Before Interest and Tax margin | Operating profitability. IT margins compressed when attrition is high and wages rise |
+| **Attrition** | Annual employee turnover rate | Infosys attrition 12% (down from 28% peak) — stabilising delivery quality and costs |
+| **Vertical mix** | Revenue by industry served | 35% BFSI means 35% of revenue is from banks/financial firms — US banking slowdown hits harder |
+| **Guidance delta** | Reported guidance vs analyst expectations | Company guided 5–6% CC growth; street expected 6.5% → negative delta → stock fell |
+| **H1B visa risk** | US specialty worker visa policy | H1B denial rates affect onsite delivery model economics for Indian IT companies |
+| **AI disruption** | AI automation impact on current service lines | Application maintenance and testing (both large IT revenue segments) are most exposed to AI agent automation |
+
+---
+
+### Renewable Energy
+
+| Term | Full Form | What it means |
+|---|---|---|
+| **PPA** | Power Purchase Agreement | Long-term contract to sell electricity at a fixed tariff. 25-year PPA = revenue certainty for the plant's lifetime |
+| **DISCOM** | Distribution Company | State-owned electricity distributor and buyer. If a DISCOM delays payment, RE company's receivables pile up |
+| **MNRE** | Ministry of New and Renewable Energy | Issues RE tenders, sets RPO targets, runs PLI for solar manufacturing |
+| **RPO** | Renewable Purchase Obligation | Law requiring DISCOMs to buy a % of power from renewables. Creates captive demand for RE projects |
+| **CUF / PLF** | Capacity Utilisation Factor / Plant Load Factor | % of theoretical maximum generation actually achieved. Solar CUF 22% is typical for Rajasthan |
+| **Curtailment risk** | Grid operator backing down generator output | Tamil Nadu curtailed solar 40% in peak summer — contracted MWh not generated, revenue lost |
+| **EV/MW** | Enterprise Value per Megawatt | Standard RE valuation benchmark. ₹8 Cr/MW vs peer ₹12 Cr/MW = discount |
+| **Implied IRR** | Project return implied by current stock price | ADANIGREEN at current price implies 11% IRR — if below WACC, stock may be expensive |
+| **Module price** | Cost per watt of solar panels | Chinese module price collapse in 2024 improved economics for new projects; doesn't help existing ones |
+| **ISTS waiver** | Inter-State Transmission System charge waiver | Centre removed cross-state transmission charges for RE — lowers effective delivered cost |
+| **Green hydrogen** | Hydrogen produced from renewable electricity | Emerging sector; NTPC and Adani building capacity — National Green Hydrogen Mission target 5 MMT by 2030 |
+
+---
+
+### Technical Indicators
+
+| Term | What it measures | How it is used |
+|---|---|---|
+| **RSI** (Relative Strength Index, 0–100) | Momentum — is the stock overbought or oversold? | RSI > 70 = overbought, potential reversal. RSI < 30 = oversold, potential bounce. Used in all sector pattern agents |
+| **MACD** (Moving Average Convergence Divergence) | Trend momentum — signal and histogram | MACD crossing above signal line = bullish momentum. Renewable energy uses weekly MACD to filter sector noise |
+| **Bollinger Bands** (20-day MA ± 2σ) | Volatility envelope | Stock near upper band with declining volume = exhaustion signal. Used in automobile pattern agent |
+| **Golden / Death Cross** | 50-day MA crossing 200-day MA | Golden cross (50 above 200) = bullish; death cross (50 below 200) = bearish. Used in RE technical agent |
+
+---
+
 ## Reference Documents
 
 | Document | Purpose |
 |---|---|
 | [CODEBASE.md](CODEBASE.md) | Full module map, all API endpoints, configuration reference |
 | [docs/RL_DESIGN.md](docs/RL_DESIGN.md) | RL feedback loop: formulas, daily flow, schemas, static vs LLM |
+| [docs/AGENT_DESIGN.md](docs/AGENT_DESIGN.md) | All sector agents, sub-scores, implementation status, full terminology reference |
 | [docs/AGENTIC_DESIGN.md](docs/AGENTIC_DESIGN.md) | All agents, tasks, data sources, static vs LLM boundary |

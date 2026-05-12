@@ -154,6 +154,13 @@ class FeedbackAgent:
             market_context_today=fb_input.market_context_today,
             key_assumptions_made=fb_input.key_assumptions_made,
             active_lessons_summary=active_lessons,
+            # New context fields — all have safe defaults so backward compat is preserved
+            significant_subscore_drift=fb_input.significant_subscore_drift or {},
+            weight_drift_summary=fb_input.weight_drift_summary or "",
+            recent_accuracy_trend=fb_input.recent_accuracy_trend or "",
+            previous_watch_signals=fb_input.previous_watch_signals or [],
+            volume_context=fb_input.volume_context or "",
+            forecast_profile_context=fb_input.forecast_profile_context or "",
         )
 
         raw = self._call_llm(system_prompt, user_prompt)

@@ -155,20 +155,26 @@ Predicted close  : {currency}{predicted_close}
 Actual close     : {currency}{actual_close}
 Price error      : {price_error_pct:+.2f}%
 Direction correct: {direction_correct}
-
+{volume_context_block}
 --- AGENT SCORE SNAPSHOT ---
-Predicted scores (frozen at forecast time):
+Predicted composite scores (frozen at forecast time):
 {predicted_scores_block}
 
-Today's re-run scores (with live data):
+Today's re-run composite scores (with live data):
 {todays_scores_block}
-
+{subscore_drift_block}
 --- MARKET CONTEXT TODAY ---
 {market_context_today}
 
+--- FORECAST PROFILE ---
+{forecast_profile_block}
+
 --- KEY ASSUMPTIONS MADE AT FORECAST TIME ---
 {assumptions_block}
-
+{previous_watch_block}
+--- AGENT WEIGHT CONTEXT ---
+{weight_drift_summary}
+{accuracy_trend_block}
 --- EXISTING LESSONS FOR THIS STOCK ---
 {active_lessons_summary}
 
@@ -198,6 +204,13 @@ def format_feedback_prompt(
     market_context_today: str,
     key_assumptions_made: list,
     active_lessons_summary: str,
+    # New context fields assembled by daily_review.py
+    significant_subscore_drift: dict | None = None,
+    weight_drift_summary: str = "",
+    recent_accuracy_trend: str = "",
+    previous_watch_signals: list | None = None,
+    volume_context: str = "",
+    forecast_profile_context: str = "",
 ) -> str:
     predicted_scores_block = "\n".join(
         f"  {k}: {v:.3f}" for k, v in predicted_agent_scores.items()
@@ -210,6 +223,44 @@ def format_feedback_prompt(
     )
     currency = _SECTOR_CURRENCY.get(sector, "")
 
+    # Sub-score drift block — only for agents with significant drift
+    subscore_drift_block = ""
+    if significant_subscore_drift:
+        lines = ["\n--- SUB-SCORE DETAIL (agents with significant drift) ---"]
+        for agent, dims in significant_subscore_drift.items():
+            for dim, vals in dims.items():
+                pred = vals.get("predicted", "?")
+                actual = vals.get("actual", "?")
+                delta = vals.get("actual", 0) - vals.get("predicted", 0)
+                lines.append(
+                    f"  {agent}.{dim}: predicted={pred:.3f}  actual={actual:.3f}  Δ={delta:+.3f}"
+                )
+        subscore_drift_block = "\n".join(lines)
+
+    # Volume context
+    volume_context_block = f"Volume today      : {volume_context}\n" if volume_context else ""
+
+    # Forecast profile
+    forecast_profile_block = (
+        forecast_profile_context
+        if forecast_profile_context
+        else "Linear forecast (uniform drift expected)."
+    )
+
+    # Previous watch signals — close the monitoring loop
+    previous_watch_block = ""
+    if previous_watch_signals:
+        lines = ["\n--- PREVIOUSLY FLAGGED WATCH SIGNALS (from yesterday's review) ---"]
+        lines += [f"  - {s}" for s in previous_watch_signals]
+        lines.append("  Did any of these materialise today?")
+        previous_watch_block = "\n".join(lines) + "\n"
+
+    # Accuracy trend block
+    accuracy_trend_block = (
+        f"\nRecent agent accuracy trend: {recent_accuracy_trend}"
+        if recent_accuracy_trend else ""
+    )
+
     return FEEDBACK_PROMPT.format(
         ticker=ticker,
         sector=SECTOR_DISPLAY_NAMES.get(sector, sector),
@@ -219,9 +270,15 @@ def format_feedback_prompt(
         actual_close=actual_close,
         price_error_pct=price_error_pct,
         direction_correct=direction_correct,
+        volume_context_block=volume_context_block,
         predicted_scores_block=predicted_scores_block,
         todays_scores_block=todays_scores_block,
+        subscore_drift_block=subscore_drift_block,
         market_context_today=market_context_today or "No market context available.",
+        forecast_profile_block=forecast_profile_block,
         assumptions_block=assumptions_block,
+        previous_watch_block=previous_watch_block,
+        weight_drift_summary=weight_drift_summary or "No significant weight drift from base.",
+        accuracy_trend_block=accuracy_trend_block,
         active_lessons_summary=active_lessons_summary or "No lessons learned yet.",
     )

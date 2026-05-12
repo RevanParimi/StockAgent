@@ -52,9 +52,16 @@ class DailyForecast(BaseModel):
     day: int                                     # 1-indexed from cycle start
     date: str                                    # ISO date string "YYYY-MM-DD"
     predicted_close: float
-    predicted_change_pct: float                  # % change from base_close
+    # predicted_change_pct removed — derivable as (predicted_close - base_close)/base_close*100.
+    # Kept here for backward compat with existing envelope files; computed on write, not stored.
+    predicted_change_pct: float = 0.0
     predicted_verdict: str                       # BUY | SELL | NEUTRAL etc.
     predicted_agent_scores: dict[str, float] = Field(default_factory=dict)
+    # Per-agent sub-scores frozen at forecast time.
+    # Stored so FeedbackAgent can see WHICH sub-dimension drifted, not just the composite.
+    # e.g. {"fundamentals": {"revenue_growth": 0.72, "margin_vs_peers": 0.70, ...}}
+    # Populated by generate_forecast.py when agent sub-scores are available.
+    predicted_agent_subscores: dict[str, dict[str, float]] = Field(default_factory=dict)
     confidence: float = Field(ge=0.0, le=1.0, default=0.5)
     key_assumptions: list[str] = Field(default_factory=list)
     revised: bool = False                        # True after a daily review revises this row
@@ -72,6 +79,11 @@ class PredictionEnvelope(BaseModel):
     generated_at: str                            # ISO datetime
     base_close: float                            # actual close on day-0
     weight_version_used: int = 0                 # which WeightMemory version was active
+    # Forecast profile from PriceInterpolator — stored for hindsight timing evaluation.
+    # "front_loaded" means early move was expected; "back_loaded" means catalyst is 2+ weeks out.
+    forecast_profile_shape: str = "linear"
+    forecast_profile_monthly_pct: float = 0.0
+    forecast_profile_source: str = "static"      # "llm" or "static"
     daily_forecasts: list[DailyForecast] = Field(default_factory=list)
     conviction_streak: ConvictionStreak = Field(default_factory=ConvictionStreak)  # P3
 
@@ -100,6 +112,32 @@ LessonCategory = Literal[
     "seasonal",         # recurring calendar patterns (quarter-end, festive)
     "data_availability",# patterns about when data is/isn't published (e.g. FADA on 10th)
 ]
+
+# ---------------------------------------------------------------------------
+# Per-category base decay rates (confidence lost per month of inactivity).
+#
+# Design: categories with shorter market half-lives decay faster.
+# BUT: as occurrences grow, any lesson becomes more "structural" — confirmed
+# patterns deserve slower decay regardless of category.  The occurrence
+# adjustment applies a sqrt-damping: rate × (1 / sqrt(occurrences)).
+#
+# Example — macro lesson seen 1×: 0.030/month
+#           macro lesson seen 4×: 0.015/month  (confirmed; halved)
+#           macro lesson seen 9×: 0.010/month  (well-established; near structural)
+#
+# Seasonal is always 0.0 (decay-exempt) — calendars don't change.
+# ---------------------------------------------------------------------------
+import math as _math
+
+LESSON_DECAY_RATES: dict[str, float] = {
+    "seasonal":          0.000,  # decay-exempt — repeats annually
+    "data_availability": 0.005,  # data calendar rarely changes
+    "fundamental":       0.008,  # earnings/business cycle patterns — slow
+    "technical":         0.015,  # chart patterns shift with vol regime
+    "sentiment":         0.020,  # sentiment half-life ~50 days
+    "macro":             0.030,  # domestic macro regimes are transitional
+    "global_macro":      0.040,  # global macro moves fastest
+}
 
 MissType = Literal[
     "data_gap",         # input data wasn't published/available at forecast time — zero penalty
@@ -135,7 +173,15 @@ class MissAnalysis(BaseModel):
     miss_type: MissType = "direction_flip"                                # what kind of miss
     missed_factors: list[str] = Field(default_factory=list)               # real-world events not captured
     over_weighted_factors: list[str] = Field(default_factory=list)        # signals trusted too much
-    agent_score_drift: dict[str, float] = Field(default_factory=dict)     # today re-run vs predicted
+    # agent_score_drift: delta only (today_composite - predicted_composite per agent).
+    # Positive = agent underestimated (bullish signal missed); Negative = overestimated.
+    agent_score_drift: dict[str, float] = Field(default_factory=dict)
+    # Sub-scores for the primary miss agent + agents with |drift| > 0.10.
+    # "fundamentals drifted -0.07" is ambiguous; "fundamentals.revenue_growth: 0.75 → 0.42" is not.
+    # Keys: agent_name → {sub_dim: predicted_value} and {sub_dim: actual_value}.
+    # Only populated for significant drifters; empty for routine days.
+    predicted_subscores_significant: dict[str, dict[str, float]] = Field(default_factory=dict)
+    actual_subscores_significant: dict[str, dict[str, float]] = Field(default_factory=dict)
 
 
 class TimingAccuracy(BaseModel):
@@ -155,6 +201,28 @@ class RevisedContext(BaseModel):
     horizon_confidence_adjustment: float = 0.0              # applied to remaining forecast confidence
 
 
+class ThesisReview(BaseModel):
+    """
+    Output of ThesisReviewer — produced only on significant prediction misses.
+
+    Triggered when |price_error_pct| > THESIS_REVIEW_THRESHOLD (2.0%) OR
+    (direction_correct=False AND miss_type in {direction_flip, model_bias}).
+
+    Tells the forecast revision step whether to treat the remaining 30-day
+    thesis as intact (minor re-weighting only) or invalidated (confidence
+    multiplier applied to ALL remaining forecasts, not just adjustment).
+    """
+    assumptions_invalidated: list[str] = Field(default_factory=list)
+    assumptions_still_valid: list[str] = Field(default_factory=list)
+    thesis_intact: bool = True
+    revised_narrative: str = ""
+    # Multiplied into every remaining forecast's confidence.
+    # 1.0 = thesis intact, no extra discount.
+    # 0.75 = one major assumption broken, 25% confidence haircut across the board.
+    # 0.50 = core thesis invalidated, deep uncertainty ahead.
+    horizon_confidence_multiplier: float = Field(ge=0.3, le=1.0, default=1.0)
+
+
 class FeedbackEntry(BaseModel):
     """
     One day's entry in the feedback log.
@@ -166,15 +234,24 @@ class FeedbackEntry(BaseModel):
     actual_close: float
     price_error_pct: float                 # (actual - predicted) / predicted * 100
     predicted_verdict: str
-    actual_direction: Direction            # UP | DOWN | FLAT (±0.3% threshold)
+    actual_direction: Direction            # UP | DOWN | FLAT (±ATR-relative threshold)
     direction_correct: bool
+    # Market regime active at time of review — critical for regime-stratified accuracy analysis.
+    # Enables: "risk_macro is 71% accurate in NORMAL but only 44% in MACRO_CRISIS"
+    regime_label: str = "NORMAL"
+    # Today's volume relative to 20-day average.  >2.0 = institutional activity; <0.5 = noise.
+    # Derived from yfinance volume data already fetched in Step 2; None if unavailable.
+    volume_vs_20d_avg: float | None = None
     miss_analysis: MissAnalysis | None = None
     timing: TimingAccuracy | None = None                              # pickup/fall timing
     revised_context: RevisedContext | None = None                     # structured forward outlook
+    thesis_review: ThesisReview | None = None                        # set only on significant misses
     lessons_generated: list[str] = Field(default_factory=list)       # lesson IDs added to ledger
-    weight_adjustment_applied: str = ""    # e.g. "v4" — which weight version was written
-    remaining_forecasts_revised: bool = False
-    feedback_agent_raw: str = Field(default="", exclude=True)        # raw LLM output, not serialised
+    weight_adjustment_applied: str = ""    # e.g. "v4" — human audit reference
+    # remaining_forecasts_revised removed — always True when entry is finalized.
+    # The revision timestamp can be inferred from revised=True on DailyForecast rows.
+    # feedback_agent_raw: stored to debug/ directory separately, not in main log.
+    feedback_agent_raw: str = Field(default="", exclude=True)
 
 
 class DailyFeedbackLog(BaseModel):
@@ -205,14 +282,37 @@ class DailyFeedbackLog(BaseModel):
 # 3. Weight Memory
 # ---------------------------------------------------------------------------
 
+class MonthlyAccuracySnapshot(BaseModel):
+    """
+    One month's accuracy summary for a single agent.
+    Stored in a rolling 12-entry deque in AgentAccuracy.monthly_snapshot_history.
+    Enables the base-weight recalibration LLM to see a trend, not just today's number.
+    """
+    month: str                   # "YYYY-MM"
+    hit_rate: float              # direction hits / total for that month
+    total: int                   # total evaluated days in that month
+    dominant_regime: str = "NORMAL"   # most frequent regime label in that month
+
+
 class AgentAccuracy(BaseModel):
     """Rolling accuracy record for one sub-agent."""
-    direction_hits: int = 0       # correct direction calls (excluding no-penalty misses)
-    total: int = 0                # total evaluated days
+    direction_hits: int = 0       # correct direction calls in the current rolling window
+    total: int = 0                # total days evaluated in the current rolling window
     avg_error: float = 0.0        # mean absolute price_error_pct (agent sub-score drift)
+    # Rolling 12-month snapshot history (evict oldest at month-13).
+    # Gives the recalibration LLM a trend series: was this agent improving or degrading?
+    monthly_snapshot_history: list[MonthlyAccuracySnapshot] = Field(default_factory=list)
 
     def hit_rate(self) -> float:
         return self.direction_hits / self.total if self.total > 0 else 0.5
+
+    def lifetime_hit_rate(self) -> float:
+        """Compute cumulative hit rate across all stored monthly snapshots."""
+        if not self.monthly_snapshot_history:
+            return self.hit_rate()
+        total_hits = sum(s.hit_rate * s.total for s in self.monthly_snapshot_history)
+        total_days = sum(s.total for s in self.monthly_snapshot_history)
+        return round(total_hits / total_days, 4) if total_days > 0 else 0.5
 
 
 class WeightHistoryEntry(BaseModel):
@@ -220,7 +320,15 @@ class WeightHistoryEntry(BaseModel):
     version: int
     date: str                     # ISO date
     weights: dict[str, float]
-    reason: str
+    reason: str                   # human-readable text explanation
+    # Structured delta applied at this version — parseable without string splitting.
+    # e.g. {"risk_macro": +0.02, "sales_demand": -0.03}
+    deltas: dict[str, float] = Field(default_factory=dict)
+    # Hit rates that triggered this weight update, per agent.
+    # e.g. {"risk_macro": 0.857, "sales_demand": 0.429}
+    accuracy_snapshot: dict[str, float] = Field(default_factory=dict)
+    # Market regime active at time of weight update.
+    regime_at_update: str = "NORMAL"
 
 
 class WeightMemory(BaseModel):
@@ -234,11 +342,18 @@ class WeightMemory(BaseModel):
     weight_version: int = 0
     current_weights: dict[str, float]
     base_weights: dict[str, float]    # original config defaults — never mutated
+    # adjustment_bounds removed from JSON — these are settings constants, not per-ticker data.
+    # Read from settings.WEIGHT_MAX_STEP and settings.WEIGHT_MAX_DRIFT at runtime.
+    # Kept here as a deprecated field for backward compatibility with existing JSON files.
     adjustment_bounds: dict[str, float] = Field(
         default_factory=lambda: {"max_single_step": 0.05, "max_total_drift_from_base": 0.15}
     )
     agent_accuracy: dict[str, AgentAccuracy] = Field(default_factory=dict)
     weight_history: list[WeightHistoryEntry] = Field(default_factory=list)
+    # Per-regime accuracy breakdown — updated at month rollover by scanning FeedbackLog.
+    # Enables: "risk_macro hits 71% in NORMAL but 44% in MACRO_CRISIS → multiplier needs adjustment"
+    # Schema: {regime_label: {agent_name: AgentAccuracy}}
+    regime_accuracy: dict[str, dict[str, AgentAccuracy]] = Field(default_factory=dict)
 
     def effective_weights(self) -> dict[str, float]:
         """Return current_weights normalised to sum exactly to 1.0."""
@@ -246,6 +361,20 @@ class WeightMemory(BaseModel):
         if total == 0:
             return self.base_weights.copy()
         return {k: round(v / total, 6) for k, v in self.current_weights.items()}
+
+    def weight_drift_summary(self) -> str:
+        """
+        One-line summary of how far each agent has drifted from base.
+        Injected into FeedbackAgentInput.weight_drift_summary.
+        Example: "risk_macro +0.06 (base 0.13→current 0.19); sales_demand -0.04"
+        """
+        drifts = []
+        for agent, current in self.current_weights.items():
+            base = self.base_weights.get(agent, current)
+            delta = current - base
+            if abs(delta) >= 0.01:
+                drifts.append(f"{agent} {delta:+.2f} (base {base:.2f} -> {current:.2f})")
+        return "; ".join(drifts) if drifts else "No significant weight drift from base."
 
 
 # ---------------------------------------------------------------------------
@@ -266,13 +395,45 @@ class Lesson(BaseModel):
     category: LessonCategory
     pattern: str                           # short machine-readable key e.g. "RBI_policy_day"
     observation: str                       # human-readable: what was observed
-    rule: str                              # actionable rule applied during forecasts
+    # rule should express INTENT, not a numeric delta.
+    # Good: "Prioritise risk_macro over fundamentals on RBI event days — macro dominates."
+    # Bad:  "Boost risk_macro by +0.05 when RBI event detected."  ← delta goes stale as weights evolve
+    rule: str
     confidence: float = Field(ge=0.0, le=1.0, default=0.5)
     occurrences: int = 1
     still_valid: bool = True
     scope: LessonScope = "stock_specific"  # how broadly this lesson applies
     last_seen: str = ""                    # ISO date last reinforced (empty = use date_learned)
-    contributing_tickers: list[str] = Field(default_factory=list)  # tickers that independently confirmed this lesson (P2)
+    contributing_tickers: list[str] = Field(default_factory=list)
+    # Semantic tags for deduplication beyond exact pattern-string matching.
+    # Two lessons "RBI_policy_day" and "RBI_surprise_hold" share tag "central_bank_event"
+    # and will be merged by the monthly ledger consolidator.
+    # Controlled vocabulary: central_bank_event, fii_flow, crude_price, currency,
+    # earnings_miss, sector_policy, technical_pattern, seasonal, credit_event,
+    # supply_chain, regulatory + sector=<name> qualifier
+    semantic_tags: list[str] = Field(default_factory=list)
+    # How many consecutive cycles contradicted this lesson before invalidation.
+    # invalidation_streak >= 3 → still_valid = False. Allows "degrading" state:
+    # streak=0: healthy, streak=1: warn, streak=2: critical, streak=3: invalidated.
+    invalidation_streak: int = 0
+    # Populated when still_valid is set to False — preserves the reason for audit.
+    invalidation_reason: str = ""
+    invalidation_date: str = ""
+
+
+class MissEvent(BaseModel):
+    """
+    One recorded instance of a missed factor.
+    Replaces the raw miss_counter dict with structured, queryable events.
+
+    Why structured: PromptEnhancer should only generate search queries for
+    penalizable misses (model_bias, direction_flip).  External_shock misses
+    don't need better data — they're unforeseeable.  The old dict[str, int]
+    couldn't distinguish between 5× model_bias and 5× external_shock.
+    """
+    date: str            # ISO date of the miss
+    miss_type: str       # "model_bias", "direction_flip", "external_shock", etc.
+    cycle_id: str        # which monthly cycle this occurred in
 
 
 class LearningLedger(BaseModel):
@@ -284,8 +445,20 @@ class LearningLedger(BaseModel):
     sector: str = "automobile"
     last_updated: str
     lessons: list[Lesson] = Field(default_factory=list)
-    miss_counter: dict[str, int] = Field(default_factory=dict)    # factor → miss count
-    confidence_decay_rate: float = 0.02    # confidence lost per month of inactivity
+    # miss_counter: legacy raw dict preserved for backward compatibility.
+    # New code should use miss_events for structured access.
+    miss_counter: dict[str, int] = Field(default_factory=dict)
+    # Structured miss history — replaces the raw count dict.
+    # {factor_name: [MissEvent, ...]} — last 12 events per factor (evict oldest).
+    # PromptEnhancer reads this to skip external_shock misses when generating queries.
+    miss_events: dict[str, list[MissEvent]] = Field(default_factory=dict)
+    # How many times an active lesson matched today's market context AND direction was correct.
+    # Approximate "lesson effectiveness" = correction_counter[factor] / (correction_counter + miss_count)
+    # Updated by daily_review when direction_correct=True AND lesson pattern in market_context.
+    correction_counter: dict[str, int] = Field(default_factory=dict)
+    # Deprecated — per-category decay rates from LESSON_DECAY_RATES are used instead.
+    # Kept for backward compatibility with existing ledger files.
+    confidence_decay_rate: float = 0.02
 
     def get_lesson(self, lesson_id: str) -> Lesson | None:
         for lesson in self.lessons:
@@ -299,28 +472,87 @@ class LearningLedger(BaseModel):
                 return lesson
         return None
 
+    def find_by_semantic_overlap(self, tags: list[str], min_overlap: int = 2) -> "Lesson | None":
+        """
+        Find an existing lesson that shares at least min_overlap semantic tags.
+        Used by ledger_propagator for semantic deduplication beyond exact pattern matching.
+        """
+        if not tags:
+            return None
+        tag_set = set(tags)
+        best: "Lesson | None" = None
+        best_overlap = 0
+        for lesson in self.lessons:
+            if not lesson.still_valid or not lesson.semantic_tags:
+                continue
+            overlap = len(tag_set & set(lesson.semantic_tags))
+            if overlap >= min_overlap and overlap > best_overlap:
+                best_overlap = overlap
+                best = lesson
+        return best
+
     def next_lesson_id(self) -> str:
         return f"L{len(self.lessons) + 1:03d}"
+
+    def penalizable_miss_count(self, factor: str) -> int:
+        """Count of misses for this factor with penalizable miss types (model_bias, direction_flip)."""
+        events = self.miss_events.get(factor, [])
+        return sum(1 for e in events if e.miss_type in {"model_bias", "direction_flip"})
+
+    def add_miss_event(self, factor: str, miss_type: str, date: str, cycle_id: str) -> None:
+        """Record a miss event and keep the raw miss_counter in sync."""
+        event = MissEvent(date=date, miss_type=miss_type, cycle_id=cycle_id)
+        events = self.miss_events.setdefault(factor, [])
+        events.append(event)
+        if len(events) > 12:
+            self.miss_events[factor] = events[-12:]  # keep last 12
+        self.miss_counter[factor] = self.miss_counter.get(factor, 0) + 1
+
+    def increment_miss(self, factor: str) -> None:
+        """Legacy method — use add_miss_event for new code."""
+        self.miss_counter[factor] = self.miss_counter.get(factor, 0) + 1
 
     def effective_confidence(self, lesson: Lesson) -> float:
         """
         Apply recency decay to confidence.
-        A lesson unseen for N months loses confidence_decay_rate * N of its confidence.
-        Floor is 0.10 — lessons are never fully discarded automatically.
+
+        Decay rate is determined in priority order:
+          1. Seasonal category → always 0.0 (decay-exempt).
+          2. Per-category base rate from LESSON_DECAY_RATES.
+          3. Occurrence damping: rate × (1 / sqrt(occurrences)).
+             A macro lesson confirmed 9 times decays at 0.010/month, not 0.030.
+             This reflects that repeated confirmation makes a pattern structural.
+          4. Fallback: self.confidence_decay_rate (legacy 0.02 default).
+
+        Floor = 0.10 — lessons are never fully discarded automatically.
         """
+        # 1. Seasonal — exempt
+        if lesson.category == "seasonal":
+            return lesson.confidence
+
+        # 2. Category base rate
+        base_rate = LESSON_DECAY_RATES.get(lesson.category, self.confidence_decay_rate)
+
+        # 3. Occurrence damping: the more times a pattern is confirmed, the more
+        #    structural it becomes.  sqrt(n) gives diminishing returns so a single
+        #    extra confirmation doesn't collapse the rate.
+        occ = max(1, lesson.occurrences)
+        effective_rate = base_rate / _math.sqrt(occ)
+        effective_rate = max(0.002, effective_rate)   # floor: never fully static for non-seasonal
+
         ref_date_str = lesson.last_seen or lesson.date_learned
         if not ref_date_str:
             return lesson.confidence
         try:
             ref   = date.fromisoformat(ref_date_str)
             today = date.today()
-            # Calendar-aware: count whole months then add fractional remainder
             months_inactive = (today.year - ref.year) * 12 + (today.month - ref.month)
             months_inactive += (today.day - ref.day) / 30.0
             months_inactive  = max(months_inactive, 0.0)
         except ValueError:
             return lesson.confidence
-        decayed = lesson.confidence * ((1.0 - self.confidence_decay_rate) ** months_inactive)
+
+        decayed = lesson.confidence * ((1.0 - effective_rate) ** months_inactive)
         return round(max(decayed, 0.10), 4)
 
     def active_lessons_summary(self) -> str:
@@ -414,6 +646,29 @@ class FeedbackAgentInput(BaseModel):
     market_context_today: str
     key_assumptions_made: list[str]
     active_lessons_summary: str
+    # --- New context fields that close the gap between stored data and LLM analysis ---
+    # Sub-scores for agents with |drift| > 0.10, injected when available.
+    # Format: {agent: {sub_dim: {"predicted": float, "actual": float}}}
+    # Gives LLM specific sub-dimension signal instead of just composite drift.
+    # Example: {"fundamentals": {"revenue_growth": {"predicted": 0.72, "actual": 0.42}}}
+    significant_subscore_drift: dict[str, dict[str, dict[str, float]]] = Field(
+        default_factory=dict
+    )
+    # Summary of weight drift from base — tells LLM which agents have earned trust over time.
+    # Example: "risk_macro +0.06 (base 0.13→current 0.19); sales_demand -0.04"
+    weight_drift_summary: str = ""
+    # Recent accuracy trend for the primary candidate agents (computed in daily_review).
+    # Example: "risk_macro: 5/7 this week, 4/7 last week, 6/7 two weeks ago"
+    recent_accuracy_trend: str = ""
+    # Watch signals from yesterday's revised_context — closes the monitoring loop.
+    # LLM is told: "You flagged these for monitoring yesterday. Did any of them materialise?"
+    previous_watch_signals: list[str] = Field(default_factory=list)
+    # Volume context — injected only when volume_vs_20d_avg is available.
+    # "Today's volume was 2.8× the 20-day average — institutional-scale activity."
+    volume_context: str = ""
+    # Forecast profile shape from PriceInterpolator — needed for timing accuracy assessment.
+    # "The forecast was front_loaded (60% of expected move in first 10 days)."
+    forecast_profile_context: str = ""
 
 
 class RawLesson(BaseModel):

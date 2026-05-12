@@ -63,7 +63,8 @@ from core.intelligence.algorithms.indicators.fetcher import get_price_history
 from core.intelligence.seasonal.calendar import SeasonalCalendar
 from core.intelligence.seasonal.validator import SeasonalValidator
 from core.intelligence.regime.detector import RegimeDetector, apply_regime_multipliers
-from core.schemas.feedback import RegimeSnapshot
+from core.schemas.feedback import RegimeSnapshot, ThesisReview
+from core.intelligence.rl.agents.thesis_reviewer import ThesisReviewer, THESIS_REVIEW_THRESHOLD
 
 logging.basicConfig(
     level=settings.LOG_LEVEL,
@@ -195,6 +196,7 @@ def _revise_remaining_forecasts(
     revised_context: RevisedContext,
     reversion_prior: float = 0.0,
     updated_streak: ConvictionStreak | None = None,
+    thesis_review: ThesisReview | None = None,
 ) -> None:
     """
     Update all remaining (future) forecast rows in the envelope:
@@ -204,6 +206,7 @@ def _revise_remaining_forecasts(
       - Inject revised_context.headline as the leading assumption
       - P3: Apply reversion_prior dampening to confidence
       - P3: Persist updated_streak to the envelope
+      - Step 7: Apply thesis_review.horizon_confidence_multiplier when thesis broken
     """
     envelope = store.load_envelope()
     if envelope is None:
@@ -248,6 +251,14 @@ def _revise_remaining_forecasts(
             # A prior of 0.25 reduces confidence by 12.5%; 0.30 by 15%.
             if reversion_prior > 0:
                 adjusted = round(adjusted * (1.0 - reversion_prior * 0.5), 4)
+
+            # Step 7: Apply thesis multiplier when a core assumption was invalidated.
+            # This is a global multiplier on ALL remaining forecasts, separate from
+            # the per-day horizon_confidence_adjustment.  A broken thesis (e.g. crude
+            # spike invalidated the low-input-cost assumption) deserves a deeper cut
+            # than a small daily adjustment would provide.
+            if thesis_review is not None and thesis_review.horizon_confidence_multiplier < 1.0:
+                adjusted = round(adjusted * thesis_review.horizon_confidence_multiplier, 4)
 
             forecast.confidence = max(0.05, min(0.99, adjusted))
 
@@ -337,12 +348,30 @@ def run_daily_review(
     existing_streak = envelope.conviction_streak
 
     # ------------------------------------------------------------------ #
-    # Step 2: Fetch actual close
+    # Step 2: Fetch actual close + volume context
     # ------------------------------------------------------------------ #
     actual_close = _fetch_actual_close(ticker, review_date)
     if actual_close is None:
         logger.error("[daily_review] Could not fetch actual close for %s on %s", ticker, date_str)
         return {"status": "no_actual_data", "ticker": ticker, "date": date_str}
+
+    # Volume-vs-20d-avg: tells FeedbackAgent if today's move was institutional or noise.
+    volume_vs_20d_avg: float | None = None
+    try:
+        ohlcv = get_price_history(ticker, years=1)
+        if ohlcv is not None and not ohlcv.empty and "Volume" in ohlcv.columns:
+            vol_series = ohlcv["Volume"].dropna()
+            today_str_for_vol = review_date.isoformat()
+            today_vol_rows = vol_series[vol_series.index.astype(str) == today_str_for_vol]
+            if today_vol_rows.empty:
+                today_vol_rows = vol_series.iloc[-1:]
+            if not today_vol_rows.empty:
+                today_vol = float(today_vol_rows.iloc[-1])
+                avg_20d   = float(vol_series.tail(20).mean()) if len(vol_series) >= 20 else float(vol_series.mean())
+                if avg_20d > 0:
+                    volume_vs_20d_avg = round(today_vol / avg_20d, 2)
+    except Exception as exc:
+        logger.debug("[daily_review] Volume context unavailable (non-fatal): %s", exc)
 
     # ------------------------------------------------------------------ #
     # Step 3: Compute error metrics + timing
@@ -465,6 +494,97 @@ def run_daily_review(
     except Exception as exc:
         logger.debug("[daily_review] P4 enhancements unavailable: %s", exc)
 
+    # ------------------------------------------------------------------ #
+    # Assemble supplementary context for FeedbackAgentInput
+    # ------------------------------------------------------------------ #
+
+    # 1. Significant sub-score drift — agents where |composite drift| > 0.10
+    SUBSCORE_DRIFT_THRESHOLD = 0.10
+    significant_subscore_drift: dict = {}
+    predicted_scores = today_forecast.predicted_agent_scores or {}
+    for agent, today_score in todays_scores.items():
+        predicted_score = predicted_scores.get(agent, today_score)
+        drift = today_score - predicted_score
+        if abs(drift) >= SUBSCORE_DRIFT_THRESHOLD:
+            pred_sub = today_forecast.predicted_agent_subscores.get(agent, {})
+            # today's sub-scores come from agent re-run (not stored separately yet — best-effort)
+            if pred_sub:
+                significant_subscore_drift[agent] = {
+                    dim: {"predicted": val, "actual": val}  # actual sub-scores not available yet
+                    for dim, val in pred_sub.items()
+                }
+
+    # 2. Weight drift summary from WeightMemory
+    wm_loaded = store.load_weight_memory()
+    weight_drift_str = wm_loaded.weight_drift_summary() if wm_loaded else ""
+
+    # 3. Recent accuracy trend — 3-week rolling comparison for top agents
+    def _accuracy_trend(log, agents: list[str]) -> str:
+        """Build "agent: W/7 this week, X/7 last, Y/7 two weeks ago" string."""
+        if not log or not log.entries:
+            return ""
+        lines = []
+        for agent in agents[:3]:
+            windows = []
+            for offset in [0, 7, 14]:
+                start = len(log.entries) - 7 - offset
+                end   = len(log.entries) - offset
+                window = log.entries[max(0, start):max(0, end)]
+                if not window:
+                    continue
+                hits  = sum(1 for e in window if e.direction_correct)
+                windows.append(f"{hits}/{len(window)}")
+            if windows:
+                lines.append(f"  {agent}: {' → '.join(windows)} (this week → -1wk → -2wk)")
+        return "\n".join(lines)
+
+    feedback_log_for_trend = store.load_feedback_log(cycle_id)
+    # Use primary miss candidates: agents with largest drift
+    top_drift_agents = sorted(
+        todays_scores.keys(),
+        key=lambda a: abs(todays_scores.get(a, 0) - predicted_scores.get(a, 0)),
+        reverse=True,
+    )[:3]
+    accuracy_trend_str = _accuracy_trend(feedback_log_for_trend, top_drift_agents)
+
+    # 4. Previous watch signals — from yesterday's FeedbackEntry
+    previous_watch_signals: list[str] = []
+    try:
+        yesterday_entries = [
+            e for e in feedback_log_for_trend.entries
+            if e.date < date_str and e.revised_context
+        ]
+        if yesterday_entries:
+            previous_watch_signals = yesterday_entries[-1].revised_context.watch_signals or []
+    except Exception:
+        pass
+
+    # 5. Volume context string
+    volume_context_str = ""
+    if volume_vs_20d_avg is not None:
+        if volume_vs_20d_avg >= 2.0:
+            vol_label = "high — institutional-scale activity"
+        elif volume_vs_20d_avg <= 0.5:
+            vol_label = "very low — illiquid drift, not conviction"
+        else:
+            vol_label = "normal"
+        volume_context_str = f"{volume_vs_20d_avg:.1f}× 20-day average ({vol_label})"
+
+    # 6. Forecast profile context from envelope
+    forecast_profile_str = ""
+    if hasattr(envelope, "forecast_profile_shape") and envelope.forecast_profile_shape != "linear":
+        forecast_profile_str = (
+            f"Forecast shape: {envelope.forecast_profile_shape} "
+            f"(expected monthly move: {envelope.forecast_profile_monthly_pct:+.1f}%). "
+            f"{'60% of expected move anticipated in first 10 days.' if envelope.forecast_profile_shape == 'front_loaded' else ''}"
+            f"{'80% of expected move anticipated in days 11-30.' if envelope.forecast_profile_shape == 'back_loaded' else ''}"
+        )
+    else:
+        forecast_profile_str = (
+            f"Linear forecast (uniform drift). "
+            f"Expected monthly: {getattr(envelope, 'forecast_profile_monthly_pct', 0.0):+.1f}%."
+        )
+
     fb_input = FeedbackAgentInput(
         ticker=ticker,
         sector=sector,
@@ -478,6 +598,13 @@ def run_daily_review(
         market_context_today=market_context or "Market context unavailable.",
         key_assumptions_made=today_forecast.key_assumptions,
         active_lessons_summary=tiered_summary,
+        # New context fields
+        significant_subscore_drift=significant_subscore_drift,
+        weight_drift_summary=weight_drift_str,
+        recent_accuracy_trend=accuracy_trend_str,
+        previous_watch_signals=previous_watch_signals,
+        volume_context=volume_context_str,
+        forecast_profile_context=forecast_profile_str,
     )
 
     fb_agent  = FeedbackAgent()
@@ -605,8 +732,41 @@ def run_daily_review(
     )
 
     # ------------------------------------------------------------------ #
-    # Step 7: Revise remaining forecasts with regime-adjusted weights
+    # Step 7a (conditional): Thesis review on significant misses.
+    #
+    # Fires only when the miss was large (>2%) OR the model called the
+    # direction completely wrong (direction_flip / model_bias).
+    #
+    # Design: re-weighting alone cannot fix a broken underlying thesis.
+    # If the system assumed "stable crude" but crude spiked 8%, every
+    # remaining forecast is structurally wrong until re-assessed.
+    # The multiplier from ThesisReviewer discounts ALL remaining forecasts
+    # globally, separately from the per-day horizon_confidence_adjustment.
+    # ------------------------------------------------------------------ #
+    thesis_review: ThesisReview | None = None
+    _reviewer = ThesisReviewer()
+    if _reviewer.should_review(price_error_pct, direction_correct, fb_output.miss_type):
+        try:
+            thesis_review = _reviewer.review(
+                ticker=ticker,
+                sector=sector,
+                key_assumptions=today_forecast.key_assumptions,
+                fb_output=fb_output,
+                market_context=market_context or "",
+            )
+            logger.info(
+                "[daily_review] Thesis review: intact=%s multiplier=%.2f invalidated=%s",
+                thesis_review.thesis_intact,
+                thesis_review.horizon_confidence_multiplier,
+                thesis_review.assumptions_invalidated,
+            )
+        except Exception as exc:
+            logger.warning("[daily_review] Thesis review failed (non-fatal): %s", exc)
+
+    # ------------------------------------------------------------------ #
+    # Step 7b: Revise remaining forecasts with regime-adjusted weights
     #         + confidence adj + P3 reversion prior dampening + persist streak
+    #         + thesis multiplier (when thesis broken)
     # ------------------------------------------------------------------ #
     _revise_remaining_forecasts(
         ticker=ticker,
@@ -616,6 +776,7 @@ def run_daily_review(
         revised_context=fb_output.revised_context,
         reversion_prior=final_reversion_prior,
         updated_streak=updated_streak,
+        thesis_review=thesis_review,
     )
 
     # ------------------------------------------------------------------ #
@@ -630,12 +791,14 @@ def run_daily_review(
         predicted_verdict=today_forecast.predicted_verdict,
         actual_direction=actual_direction,
         direction_correct=direction_correct,
+        regime_label=regime_snapshot.regime_label,
+        volume_vs_20d_avg=volume_vs_20d_avg,
         miss_analysis=miss_analysis,
         timing=timing,
         revised_context=fb_output.revised_context,
+        thesis_review=thesis_review,
         lessons_generated=lesson_ids,
         weight_adjustment_applied=new_weight_version,
-        remaining_forecasts_revised=True,
     )
     store.append_feedback_entry(final_entry, cycle_id)
 
@@ -717,6 +880,10 @@ def run_daily_review(
         "conviction_streak_days":   updated_streak.streak_days,
         "conviction_verdict":       updated_streak.current_verdict,
         "reversion_prior":          final_reversion_prior,
+        # Step 7: thesis review state (None when miss was not significant)
+        "thesis_intact":            thesis_review.thesis_intact if thesis_review else None,
+        "thesis_confidence_mult":   thesis_review.horizon_confidence_multiplier if thesis_review else None,
+        "thesis_invalidated":       thesis_review.assumptions_invalidated if thesis_review else [],
         # P5: regime multiplier state
         "regime_label":             regime_snapshot.regime_label,
         "regime_vix":               regime_snapshot.vix_value,

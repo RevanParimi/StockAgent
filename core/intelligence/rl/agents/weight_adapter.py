@@ -149,6 +149,14 @@ class WeightAdapter:
                 reason_parts.append(f"{agent}: Δ{delta:+.2f} (hits={hits})")
         reason = "; ".join(reason_parts) if reason_parts else "No adjustment needed"
 
+        # Build structured accuracy snapshot and delta dict for history entry
+        accuracy_snapshot_dict = {
+            a: round(acc.hit_rate(), 4)
+            for a, acc in accuracy.items()
+            if acc.total > 0
+        }
+        deltas_applied = {a: round(d, 6) for a, d in deltas.items() if d != 0.0}
+
         new_version = weight_memory.weight_version + 1
         weight_memory.current_weights = new_weights
         weight_memory.weight_version  = new_version
@@ -160,6 +168,8 @@ class WeightAdapter:
                 date=today.isoformat(),
                 weights=new_weights.copy(),
                 reason=reason,
+                deltas=deltas_applied,
+                accuracy_snapshot=accuracy_snapshot_dict,
             )
         )
 

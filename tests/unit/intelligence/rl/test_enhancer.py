@@ -85,11 +85,23 @@ class TestPromptEnhancerEnhance:
         # All agents that appear for the top-3 factors should be in result
         assert len(result) >= 1
 
-    def test_unknown_factor_skipped_silently(self):
+    def test_unknown_factor_queues_for_llm_or_returns_empty(self):
+        """
+        Behaviour changed in Section 8: unknown factors now go through LLM
+        query generation instead of being silently skipped.  The contract is:
+          - result is always a dict (never raises)
+          - if LLM generates queries, they are returned
+          - if LLM fails or is unavailable, result is {} (non-fatal)
+        """
         miss = {"completely_unknown_factor_xyz": 99}
         ledger = _make_ledger(miss)
         result = PromptEnhancer().enhance("MARUTI", ledger)
-        assert result == {}
+        assert isinstance(result, dict)
+        # If queries were generated, they must be non-empty strings
+        for agent, queries in result.items():
+            assert isinstance(queries, list)
+            for q in queries:
+                assert isinstance(q, str) and len(q) > 0
 
     @pytest.mark.parametrize("ticker", ["MARUTI", "TATAMOTORS", "HDFCBANK"])
     def test_ticker_placeholder_substituted(self, ticker):

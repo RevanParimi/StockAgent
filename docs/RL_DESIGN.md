@@ -897,7 +897,7 @@ python -m scripts.generate_forecast --sector renewable_energy --ticker ADANIGREE
 | G5 | Weight adaptation is regime-agnostic | Wrong agent amplified during crises | Fixed by P5 |
 | G6 | Forecast path is linear interpolation | Constant drift, misrepresents uncertainty | Open — Phase 8 (Monte Carlo) |
 | G7 | max_total_drift_from_base fixed at 0.15 forever | Too tight after 6+ months of data | Open — consider widening after Month 6 |
-| G8 | Seasonal lesson decay rate same as macro | Seasons don't change; macro regimes do — unfair decay | Open — set `decay_exempt=true` for seasonal lessons |
+| G8 | Seasonal lesson decay rate same as macro | Seasons don't change; macro regimes do — unfair decay | **Fixed** — category-specific decay rates + occurrence damping (Section 20) |
 | — | Probability bands on forecasts (not single price) | Needs volatility modelling | Phase 8 target |
 | — | Off-market signals (block deals, pre-open) | Intraday complexity | Phase 8 target |
 | — | Subscriber prediction feedback loop | Needs frontend + identity layer | Phase 9 target |
@@ -965,6 +965,237 @@ Month 12:  Proprietary seasonal calendar + learned sector rulebook
 | Seasonal seeds (P1) | `core/intelligence/seasonal/seeds/{sector}.yaml` |
 | FeedbackAgent | `core/intelligence/rl/agents/feedback_agent.py` |
 | WeightAdapter | `core/intelligence/rl/agents/weight_adapter.py` |
+| **ThesisReviewer** | `core/intelligence/rl/agents/thesis_reviewer.py` |
+| **PriceInterpolator** | `core/intelligence/rl/algorithms/price_interpolator.py` |
 | All RL schemas | `core/schemas/feedback.py` (real) or `src/backend/shared/schemas/feedback.py` (src path) |
 | NSE calendar | `core/intelligence/rl/nse_calendar.py` |
+
+---
+
+## 20. Section 6 — Category-Specific Lesson Confidence Decay
+
+### Problem with flat 0.02/month
+
+The previous uniform decay rate treated a macro lesson (volatile, half-life ~50 days) identically to a seasonal lesson (calendar-driven, repeats annually) and a fundamental pattern (earnings cycle, semi-structural). A macro lesson about "RBI surprise suppresses demand" would still appear at 70% confidence 18 months after it was last seen — in a completely different rate cycle — while a seasonal pattern about Shravan-period demand weakness was decaying at the same rate despite being calendar-invariant.
+
+### New decay model
+
+**Two factors multiply together:**
+
+```
+effective_rate = LESSON_DECAY_RATES[category] / sqrt(occurrences)
+decayed_confidence = stored_confidence × (1 - effective_rate) ^ months_inactive
+result = max(0.10, decayed_confidence)
+```
+
+**Rate table** — `src/backend/shared/schemas/feedback.py → LESSON_DECAY_RATES`:
+
+| Category | Base rate/month | Rationale |
+|---|---|---|
+| `seasonal` | 0.000 | Decay-exempt — calendar patterns repeat annually unchanged |
+| `data_availability` | 0.005 | Data release calendars rarely change (FADA publishes on 10th, always) |
+| `fundamental` | 0.008 | Earnings/business cycle patterns — semi-structural, quarter-to-quarter |
+| `technical` | 0.015 | Chart patterns shift with volatility regime but are reasonably persistent |
+| `sentiment` | 0.020 | Previous default; sentiment half-life ~50 days |
+| `macro` | 0.030 | Domestic macro regimes (RBI cycle, FII flow) are transitional |
+| `global_macro` | 0.040 | Global macro (Fed, crude, USD) moves fastest, least persistent |
+
+**Occurrence damping — why sqrt(n):**
+
+A macro lesson confirmed 9 independent times is not a transient regime pattern — it has become a structural behavioral observation. The sqrt formula gives diminishing returns: doubling confirmations halves the rate, but each additional confirmation matters less.
+
+```
+macro lesson, confidence=0.75, 3 months inactive:
+  1× confirmed:  rate=0.030, eff_conf = 0.75 × (0.970³) ≈ 0.683
+  4× confirmed:  rate=0.015, eff_conf = 0.75 × (0.985³) ≈ 0.717
+  9× confirmed:  rate=0.010, eff_conf = 0.75 × (0.990³) ≈ 0.728
+
+A macro lesson confirmed 25× reaches the structural band:
+  rate = 0.030/√25 = 0.006/month ≈ equivalent to a fundamental pattern (0.008)
+```
+
+**Floor = 0.10:** Lessons are never fully discarded automatically. A lesson at 0.10 is still injected into the FeedbackAgent prompt but as weak historical background, naturally deprioritised by the T1/T2/T3 effective-confidence ranking.
+
+**Test file:** `tests/unit/intelligence/rl/test_lesson_decay.py` — 28 tests covering all 7 categories, occurrence damping, floor enforcement, and numeric correctness.
+
+---
+
+## 21. Step 7 — Conditional Thesis Review After Significant Miss
+
+### Problem with mechanical re-weighting
+
+After a >2% prediction miss, the existing system re-weights agents and revises remaining forecasts. But if the reason for the miss was a fundamentally broken underlying assumption (e.g., "crude oil stable ~$82" as a key assumption, but crude just spiked 8%), then every subsequent BUY forecast inherits a structurally wrong premise. Re-weighting only adjusts agent influence; it does not re-examine whether the original 30-day thesis is still valid.
+
+### Trigger conditions
+
+```
+ThesisReviewer fires when:
+  abs(price_error_pct) > 2.0%          → large absolute miss
+  OR
+  direction_correct = False             → called direction wrong
+  AND miss_type ∈ {direction_flip, model_bias}  → structural (not external shock)
+```
+
+Specifically NOT triggered by: `timing`, `magnitude`, `external_shock`, `data_gap`, `data_stale` below the 2% threshold. These are partial misses or fault-free events that don't invalidate the thesis.
+
+### LLM input and output
+
+The LLM receives (~250 tokens):
+- Original `key_assumptions` from the prediction envelope (e.g., `["crude stable ~$82", "FADA dispatch +6% MoM"]`)
+- Today's miss analysis: `miss_type`, `missed_factors`, `over_weighted_factors`
+- Current market context (first 400 chars)
+
+The LLM returns `ThesisReview` (~80 tokens):
+
+```json
+{
+  "assumptions_invalidated": ["crude stable ~$82"],
+  "assumptions_still_valid": ["FADA dispatch +6% MoM"],
+  "thesis_intact": false,
+  "revised_narrative": "RBI surprise + crude spike invalidated the low-cost thesis.",
+  "horizon_confidence_multiplier": 0.70
+}
+```
+
+### horizon_confidence_multiplier
+
+This is a global multiplier applied to ALL remaining forecast confidences, separate from `horizon_confidence_adjustment`:
+
+| Multiplier | Meaning | Example trigger |
+|---|---|---|
+| 1.00 | Thesis intact — minor re-weighting only | Small direction error, no assumption broken |
+| 0.85 | One assumption broken, recovery plausible | RBI rate hold (unexpected), but demand trend intact |
+| 0.70 | Core assumption invalidated, high uncertainty | Crude spike +8%, invalidating input-cost stability |
+| 0.50 | Thesis fundamentally wrong | Policy reversal making the entire sector thesis obsolete |
+| 0.30 (floor) | Deep uncertainty — forecasts are unreliable | Cannot go below this floor |
+
+The multiplier compounds with existing dampening: a forecast that was already at `confidence=0.60` after reversion prior and horizon decay becomes `0.60 × 0.70 = 0.42` — NEUTRAL territory. This accurately reflects that a broken-thesis BUY forecast is no longer a high-conviction call.
+
+### Safety contract
+
+`ThesisReviewer.review()` catches all exceptions and returns `ThesisReview(thesis_intact=True, horizon_confidence_multiplier=1.0)` on any failure. The daily review cycle is never blocked by a thesis review failure.
+
+**Schema:** `ThesisReview` in `src/backend/shared/schemas/feedback.py`. Persisted in `FeedbackEntry.thesis_review` — visible in the feedback log for audit.
+
+**Test file:** `tests/unit/intelligence/rl/test_thesis_reviewer.py` — 32 tests covering trigger conditions, schema bounds, JSON parse safety, and revision integration.
+
+---
+
+## 22. Section 8 — PromptEnhancer: Sector Templates + LLM Fallback
+
+### Problem with the original single template map
+
+`MISS_FACTOR_TO_QUERY_TEMPLATE` had 5 entries, all automobile-specific. For Banking/BFSI, IT, and Renewable Energy, every miss factor fell through to "no template → skipped silently". The self-regulating miss_counter loop was effectively disabled for 3 of the 4 active sectors.
+
+### Resolution order (per factor per agent)
+
+```
+1. SECTOR_MISS_FACTOR_TEMPLATES[sector][factor]    ← sector-specific (takes priority)
+2. MISS_FACTOR_TO_QUERY_TEMPLATE[factor]           ← generic cross-sector fallback
+3. _generate_queries_llm(factor, ticker, sector)   ← LLM (only when both maps miss)
+```
+
+The LLM path fires at most once per (factor, agent) pair per month — and only for factors not covered by any template. For a banking ticker with `GNPA_slippage` in its miss_counter, step 1 fires (banking template exists). For a novel factor like `NPA_recognition_cycle_change` that no template covers, the LLM generates 2 date-qualified, sector-appropriate queries.
+
+### Sector template coverage
+
+| Sector | Miss factors covered | Example factor → agent |
+|---|---|---|
+| `banking_bfsi` | 10 factors | `GNPA_slippage` → fundamentals + risk |
+| `it_sector` | 10 factors | `attrition_spike` → fundamentals |
+| `renewable_energy` | 10 factors | `DISCOM_payment_delay` → risk + fundamentals |
+
+All templates include `{ticker}`, `{month}`, `{year}` placeholders substituted at runtime. Time-sensitive queries (dispatch data, NPA slippage) always embed current month/year to prevent Serper returning SEO-optimised 2022 articles.
+
+### _guess_primary_agent heuristic
+
+When the LLM path fires for an unknown factor, the heuristic resolves the primary agent from factor keyword patterns. Priority order (most specific first):
+
+```
+RE-sector policy keywords (mnre, fame, pli, subsidy, tariff) → sentiment_policy
+Banking fundamental keywords (gnpa, nim, npa, slippage, pcr) → fundamentals
+FII/DII/institutional keywords → institutional (banking) | risk_macro (others)
+RBI/rate/repo/mpc keywords → macro_policy (banking) | risk_macro (others)
+Revenue/margin/earnings/attrition/deal/capacity keywords → fundamentals
+DISCOM/curtailment/execution/pledge keywords → risk
+Technical/RSI/MACD/breakout keywords → pattern_analysis
+...
+Sector default → fundamentals (banking/IT/RE) | risk_macro (automobile)
+```
+
+Two bugs were found and fixed during testing: (1) `MNRE_policy_reversal` was routing to `risk_macro` because "policy" matched the generic RBI/policy check before the RE-specific MNRE check; (2) `_generate_queries_llm` exceptions were not caught at the `enhance()` level, allowing a failing monkey-patched function to propagate.
+
+**Test file:** `tests/unit/intelligence/rl/test_enhancer_v2.py` — 47 tests covering sector template structure, resolution priority, date substitution, agent routing, and LLM fallback safety.
+
+---
+
+## 23. Section 9 — LLM-Calibrated Price Interpolator
+
+### Problem with static verdict_monthly_pct
+
+```python
+# Old: universal for every stock in every regime
+{"STRONG BUY": 8.0, "BUY": 4.0, "NEUTRAL": 0.5, "SELL": -3.0, "STRONG SELL": -7.0}
+```
+
+HDFC Bank (14-day ATR ~0.8%, low beta) and ADANIGREEN (14-day ATR ~3.5%, high beta, policy-driven) shared the same +4% BUY expectation. A BUY on ADANIGREEN when MNRE auctions are accelerating is realistically a +8–12% move. A BUY on HDFC Bank in a stable rate environment is realistically +2–3%. The static table is wrong for both.
+
+### ForecastProfile
+
+```python
+class ForecastProfile:
+    monthly_return_pct: float          # [-20, 20] — LLM-calibrated to ATR and sector
+    path_shape: Literal[               # how the move distributes over 30 days
+        "linear",       # uniform drift (fallback)
+        "front_loaded", # 60% of move in first 10 days (near-term catalyst)
+        "back_loaded",  # 80% of move in days 11–30 (catalyst is 2+ weeks away)
+        "volatile",     # linear drift + ±ATR noise per day
+    ]
+    confidence_band_daily_pct: float   # [0.1, 5.0] — daily ±uncertainty width
+    source: Literal["llm", "static"]   # audit field
+```
+
+### LLM inputs (once per month-start per ticker, ~200 tokens)
+
+| Input | Source | Why it matters |
+|---|---|---|
+| `atr_pct` | yfinance 14-day ATR / price | Primary calibration signal — volatile stock needs wider return range |
+| `regime_label` | RegimeDetector | MACRO_CRISIS → narrower expected move; RISK_ON → amplify BUY expectation |
+| `conviction_drivers` | FinalReport.conviction_drivers | Near-term catalyst in drivers → front_loaded shape |
+| `historical_avg_return_pct` | Median of past FeedbackLog entries for same verdict | Ground truth after Month 3 |
+
+### Path shape examples (BUY, +5%, base ₹10,000)
+
+```
+Shape           Day 1    Day 10   Day 20   Day 30   Interpretation
+─────────────────────────────────────────────────────────────────
+linear          10017    10167    10333    10500    Uniform drift
+front_loaded    10100    10357    10429    10500    60% of ₹500 in first 10 days
+back_loaded     10007    10067    10283    10500    80% of ₹500 in last 20 days
+volatile        10045    10255    10390    10448    Drift + ±ATR noise (deterministic seed)
+```
+
+### Static fallback (Month 1, LLM unavailable)
+
+The static dict is preserved but now ATR-scaled, making even the fallback stock-specific:
+
+```
+scaled_pct = base_static_pct × max(0.5, min(2.5, atr_pct / 1.5))
+
+HDFC Bank  ATR=0.8%: BUY → 4.0 × (0.8/1.5=0.53) → 2.12%  (conservative, low-beta)
+ADANIGREEN ATR=3.5%: BUY → 4.0 × (3.5/1.5=2.33, capped 2.5) → 10.0% (volatile RE stock)
+```
+
+### Safety guards in _parse()
+
+- Sign enforcement: BUY with negative LLM output → flipped positive; SELL with positive → flipped negative
+- Bounds clamping: `monthly_return_pct` → `[-20, 20]`; `confidence_band_daily_pct` → `[0.1, 5.0]`
+- Invalid `path_shape` → default `"linear"`
+- Any JSON parse failure → `_static_fallback()` returned, `source="static"`
+
+### compute_historical_avg_return()
+
+After Month 3, this provides empirical calibration. It takes the **median** (not mean) of `price_error_pct` entries in the FeedbackLog where `predicted_verdict` matches the current verdict. Median is used because outlier misses (external shocks) would skew the mean. Returns `None` when fewer than 3 matching entries exist — LLM then calibrates purely from ATR and regime, without historical bias.
+
+**Test file:** `tests/unit/intelligence/rl/test_price_interpolator.py` — 67 tests covering schema bounds, static fallback scaling, all 4 path shapes, LLM parse safety, ATR computation, and historical return calculation.
 | Calendar updater | `core/intelligence/rl/calendar_updater.py` |

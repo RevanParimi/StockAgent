@@ -26,7 +26,7 @@ import asyncio
 import json
 import logging
 import uuid
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -1413,11 +1413,121 @@ def _ctx_rl_learning() -> str:
         return ""
 
 
-def _build_chat_context(_message: str) -> str:
-    """Always-available lightweight context: current verdicts only.
-    History and RL data are fetched on-demand via get_analysis_history / get_rl_insights tools."""
-    cv = _ctx_current_verdicts()
-    return cv or "No analysis data yet — run a ticker analysis from the Home screen first."
+def _nse_market_context() -> str:
+    """
+    Returns a compact block showing today's date, NSE market status, and last
+    trading day.  Injected into every chat prompt so the LLM can reason about
+    why search results may be from a prior day (weekend / holiday).
+    """
+    try:
+        from core.intelligence.rl.nse_calendar import is_trading_day, trading_days_ago
+        today = datetime.now(timezone.utc).date()
+        today_str = today.strftime("%Y-%m-%d (%A)")
+        if is_trading_day(today):
+            return f"TODAY: {today_str} — NSE market OPEN"
+        last_td = trading_days_ago(today, 1)
+        return (
+            f"TODAY: {today_str} — NSE market CLOSED (weekend / holiday)\n"
+            f"Last NSE trading day: {last_td.strftime('%Y-%m-%d (%A)')}"
+        )
+    except Exception:
+        return f"TODAY: {datetime.now(timezone.utc).strftime('%Y-%m-%d (%A)')}"
+
+
+def _result_age_label(published_date: str) -> str:
+    """
+    Convert a Tavily published_date ISO string to a factual age label.
+    Returns only the date and how many days ago — no prescriptive relevance
+    judgement.  The LLM decides relevance based on the question and content;
+    a 4-day-old regulatory announcement can be just as relevant as today's
+    price move depending on what was asked.
+
+    Examples:
+        "2026-05-12T08:00:00Z" → "2026-05-12 (today)"
+        "2026-05-11T..."       → "2026-05-11 (1 day ago)"
+        "2026-05-08T..."       → "2026-05-08 (4 days ago)"
+        "2026-04-01T..."       → "2026-04-01 (41 days ago)"
+        ""                     → "date unknown — treat with caution"
+    """
+    if not published_date:
+        return "date unknown — treat with caution"
+    try:
+        today = datetime.now(timezone.utc).date()
+        pub = date.fromisoformat(published_date[:10])
+        days_ago = (today - pub).days
+        if days_ago < 0:
+            return f"{published_date[:10]} (future-dated — ignore timestamp)"
+        if days_ago == 0:
+            return f"{published_date[:10]} (today)"
+        if days_ago == 1:
+            return f"{published_date[:10]} (1 day ago)"
+        return f"{published_date[:10]} ({days_ago} days ago)"
+    except Exception:
+        return published_date[:10] if published_date else "date unknown — treat with caution"
+
+
+# Intent types that benefit from macro news injection.
+# SINGLE_STOCK / PRICE_QUERY / STOCK_COMPARE only need live prices + verdicts.
+_MACRO_CONTEXT_INTENTS = frozenset({"NEWS_QUERY", "SECTOR_OVERVIEW", "MULTI_SECTOR", "GENERAL"})
+
+
+def _get_macro_context_for_intent(intent_type: str) -> str:
+    """Return formatted HIGH-severity macro news block for broad intents; empty string otherwise."""
+    if intent_type not in _MACRO_CONTEXT_INTENTS:
+        return ""
+    try:
+        from services.background.macro_news_cache import MacroNewsCache
+        from backend.shared.config import settings as _cfg
+        max_items = getattr(_cfg, "MACRO_NEWS_CONTEXT_MAX_ITEMS", 3)
+        return MacroNewsCache().get_formatted_context(max_items=max_items)
+    except Exception:
+        return ""
+
+
+def _chat_tool_get_macro_news() -> str:
+    """Tool implementation: return today's full macro news feed, sorted HIGH → MEDIUM → LOW."""
+    try:
+        from services.background.macro_news_cache import MacroNewsCache
+        entries = MacroNewsCache().get_all_today()
+        if not entries:
+            return (
+                "Macro news cache is empty for today — background feed has not run yet "
+                "or no significant India market news was found. "
+                "Try search_market_news for live results."
+            )
+        lines = [f"INDIA MACRO NEWS TODAY ({len(entries)} items):"]
+        for e in entries:
+            sev   = e.get("severity", "LOW")
+            pub   = e.get("published_date", "")
+            tags  = ", ".join(e.get("impact_tags", []))
+            summ  = e.get("summary", "")
+            url   = e.get("url", "")
+            lines.append(
+                f"[{sev}] [{pub}] {e.get('title', '')}\n"
+                f"  Summary: {summ}\n"
+                f"  Tags: {tags}\n"
+                f"  Source: {url}"
+            )
+        return "\n\n".join(lines)
+    except Exception as exc:
+        return f"Macro news cache unavailable: {exc}"
+
+
+def _build_chat_context(_message: str, intent_type: str = "GENERAL") -> str:
+    """
+    Always-available lightweight context: date/market status, optional macro trending
+    news (broad intents only), and current ticker verdicts.
+    History and RL data are fetched on-demand via get_analysis_history / get_rl_insights tools.
+    """
+    market_ctx = _nse_market_context()
+    macro_ctx  = _get_macro_context_for_intent(intent_type)
+    cv         = _ctx_current_verdicts()
+    db_line    = cv or "No analysis data yet — run a ticker analysis from the Home screen first."
+    parts = [market_ctx]
+    if macro_ctx:
+        parts.append(macro_ctx)
+    parts.append(db_line)
+    return "\n\n".join(parts)
 
 
 # ---------------------------------------------------------------------------
@@ -1801,16 +1911,51 @@ async def _chat_tool_get_live_price(symbol: str) -> str:
 
 
 async def _chat_tool_search_news(query: str) -> str:
+    """
+    Search for news and return results with explicit freshness metadata.
+
+    Strategy:
+    1. Try date-anchored query first (after:TODAY) — best for open-market days.
+    2. Fall back to unanchored query with one extra result — catches weekends/
+       holidays where no articles are published on that specific date.
+    3. Each result is labelled with its publication age so the LLM can reason
+       about freshness without guessing ("3 days ago" vs "today").
+    4. A market-context header tells the LLM whether NSE was open or closed
+       today, so it can say "as of last trading day" instead of "today" when
+       the market was closed.
+    """
     try:
         from services.clients.tavily_fetcher import search_tavily
-        results = await asyncio.to_thread(search_tavily, query, 3, "basic")
+
+        today = datetime.now(timezone.utc).date()
+        anchored_query = f"{query} after:{today.isoformat()}"
+
+        # Pass 1 — date-anchored (most relevant on trading days)
+        results = await asyncio.to_thread(search_tavily, anchored_query, 3, "advanced")
+
+        # Pass 2 — fallback without date anchor (weekends, holidays, niche topics)
         if not results:
-            return "No recent news found for that query."
-        lines = []
-        for r in results:
-            date_str = r.get("published_date", "")
-            date_tag = f" [{date_str[:10]}]" if date_str else ""  # e.g. [2026-05-07]
-            lines.append(f"• {r['title']}{date_tag}: {r['content'][:300]}\n  Source: {r['url']}")
+            results = await asyncio.to_thread(search_tavily, query, 4, "advanced")
+
+        if not results:
+            return (
+                f"No recent news found for: {query}\n"
+                f"{_nse_market_context()}"
+            )
+
+        market_ctx = _nse_market_context()
+        lines = [f"=== NEWS RESULTS ===\n{market_ctx}\n"]
+
+        for i, r in enumerate(results, 1):
+            age = _result_age_label(r.get("published_date", ""))
+            content = r.get("content", "")[:500]
+            lines.append(
+                f"[Result {i} — published: {age}]\n"
+                f"Title: {r['title']}\n"
+                f"Content: {content}\n"
+                f"Source: {r['url']}\n"
+            )
+
         return "\n".join(lines)
     except Exception as exc:
         return f"News search failed: {exc}"
@@ -1819,6 +1964,8 @@ async def _chat_tool_search_news(query: str) -> str:
 async def _execute_chat_tool(name: str, args: dict) -> str:
     if name == "get_live_price":
         return await _chat_tool_get_live_price(args.get("symbol", ""))
+    if name == "get_macro_news":
+        return _chat_tool_get_macro_news()
     if name == "search_market_news":
         return await _chat_tool_search_news(args.get("query", ""))
     if name == "get_stock_analysis":
@@ -1880,8 +2027,19 @@ ALWAYS call search_market_news for forward-looking questions. Use specific queri
 - **PRICE VALUES**: ONLY cite prices from get_live_price() results. NEVER quote a price figure
   from a news article — article prices are stale the moment they're published. If an article
   mentions "₹210 target", treat it as analyst opinion only, verify current price via get_live_price.
-- **DATA FRESHNESS**: Each search result includes a [YYYY-MM-DD] publication date. Always note
-  if an article is older than 3 days. Prefer articles dated within the last 48 hours.
+- **DATA FRESHNESS + TEMPORAL REASONING**: Each news result shows its publication date
+  and age in days: `[published: YYYY-MM-DD (N days ago)]`. Use your judgment — relevance
+  depends on WHAT WAS ASKED, not just the age:
+  - A 4-day-old RBI rate decision is still fully relevant today.
+  - A 4-day-old article explaining "why the market fell on Tuesday" may not explain today.
+  - An earnings result from 3 weeks ago is still the latest quarterly data.
+  - A policy announcement from last week is still in effect unless superseded.
+  Always state the article's date when citing it: "As of [date], ..." not just "currently".
+  The only special case: `date unknown` results — note the missing date and weight accordingly.
+- **NSE MARKET STATUS**: The context block shows whether NSE was OPEN or CLOSED today
+  and the last trading day. When NSE was CLOSED (weekend / holiday):
+  - Do NOT say "today the market fell" — say "as of [last trading day], the market..."
+  - A result from Friday is NOT stale if today is Saturday — it IS the latest trading data.
 
 ## Output format — always structured markdown
 **Asset: $PRICE ▲/▼CHANGE% today**

@@ -417,3 +417,29 @@ RL_TIMING_PARTIAL_WINDOW: int = int(os.getenv("RL_TIMING_PARTIAL_WINDOW", "7"))
 SERPER_TIMEOUT_SECONDS: int    = int(os.getenv("SERPER_TIMEOUT_SECONDS",    "10"))
 TAVILY_MAX_CONTENT_CHARS: int  = int(os.getenv("TAVILY_MAX_CONTENT_CHARS",  "600"))
 
+# ---------------------------------------------------------------------------
+# Chat Reviewer Loop
+# Max number of synthesize→review cycles before accepting the answer as-is.
+# Set to 0 to disable the reviewer entirely (useful for dev / low-latency mode).
+# Reviewer checks: date integrity, price grounding, question relevance.
+# Each extra cycle costs ~300 tokens (reviewer) + ~600 tokens (re-synthesis).
+# ---------------------------------------------------------------------------
+CHAT_MAX_REVIEW_CYCLES: int = int(os.getenv("CHAT_MAX_REVIEW_CYCLES", "3"))
+
+# ---------------------------------------------------------------------------
+# Macro News Background Feed
+# Two APScheduler jobs: market-hours (3×/day) + daily policy (1×/day)
+# ---------------------------------------------------------------------------
+
+# Retain daily JSON feed files for this many days before deleting
+MACRO_NEWS_RETAIN_DAYS: int = int(os.getenv("MACRO_NEWS_RETAIN_DAYS", "90"))
+
+# Max HIGH-severity items injected into the chat context per synthesize call
+MACRO_NEWS_CONTEXT_MAX_ITEMS: int = int(os.getenv("MACRO_NEWS_CONTEXT_MAX_ITEMS", "3"))
+
+# Max HIGH-severity items passed to the reviewer criterion-4 check
+MACRO_NEWS_REVIEWER_MAX_ITEMS: int = int(os.getenv("MACRO_NEWS_REVIEWER_MAX_ITEMS", "5"))
+
+# Set to "false" to disable the macro news scheduler jobs without removing them
+MACRO_NEWS_ENABLED: bool = os.getenv("MACRO_NEWS_ENABLED", "true").lower() == "true"
+

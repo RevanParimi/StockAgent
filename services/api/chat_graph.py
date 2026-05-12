@@ -24,6 +24,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+from datetime import datetime, timezone
 from operator import add
 from typing import Annotated
 
@@ -142,9 +143,56 @@ Rules:
   - Mark external tasks with "external": true
   - run_agent_analysis only for depth=deep and when a specific ticker is in scope
   - PRICE_QUERY: just get_live_price (1 task)
+  - NEWS_QUERY: ALWAYS include get_live_price(entity) as task 1 before search_market_news —
+    this prevents the answer from using training-memory prices instead of live data.
+  - NEWS_QUERY with no specific entity ("any big news", "what happened today"):
+    use get_macro_news first; if it returns empty, also add search_market_news as fallback.
   - GENERAL with no entities: empty tasks list (answer from memory)
   - Order: free/fast internal first → DB reads → heavy (run_agent_analysis) → external last
-  - Avoid redundant tasks: don't call get_stock_analysis AND run_agent_analysis for shallow"""
+  - Avoid redundant tasks: don't call get_stock_analysis AND run_agent_analysis for shallow
+  - get_macro_news  {}  ← use for broad "what's happening", "any big news", "market sentiment today" """
+
+
+REVIEWER_SYSTEM_PROMPT = """\
+You are a factual accuracy reviewer for a stock market assistant response.
+Your job is narrow: check for specific, verifiable errors only.
+Do NOT critique writing style, opinion quality, or depth of analysis.
+
+Check ONLY these three criteria:
+
+1. DATE INTEGRITY
+   Does the answer present information as current/today when the dates say otherwise?
+   Flag: a specific year in the answer (e.g. "2023", "2024") that conflicts with TODAY.
+   Flag: "today" or "right now" claims about market moves when tool results are from a prior day.
+   Do NOT flag: historical background facts stated with their own date ("In 2023, X happened...").
+
+2. PRICE GROUNDING
+   Does the answer cite a specific numeric price for an asset that is NOT present in the tool results?
+   Flag only when get_live_price was called and the answer uses a different price for the same asset.
+   Do NOT flag analyst price targets from news — those are opinions, not live prices.
+
+3. QUESTION RELEVANCE
+   Does the answer address what the user actually asked?
+   Flag only if the answer is completely off-topic or refuses to engage with the question.
+   Do NOT flag if the answer is partial but on-topic.
+
+4. MACRO NEWS COVERAGE (only check if TRENDING MACRO ITEMS block is non-empty in the user message)
+   The user message contains a "TRENDING MACRO ITEMS" block with HIGH-severity India news.
+   The user message also contains "USER ENTITIES" showing what the user asked about.
+   Check: does any HIGH macro item's impact_tags overlap with the user's question topic?
+   Tag overlap examples: user asked about gold → item tagged "gold" → overlap;
+   user asked about Nifty/markets → item tagged "markets" or "economy" → overlap.
+   Flag ONLY if: overlap exists AND the item would materially change the answer AND
+   the answer completely ignores it.
+   Do NOT flag: items with no tag overlap, MEDIUM/LOW items, or if answer already references them.
+
+If ALL four pass, respond with:
+<json>{"pass": true}</json>
+
+If any fail, respond with:
+<json>{"pass": false, "issues": ["specific issue 1", "specific issue 2"], "hint": "one sentence on what to fix"}</json>
+
+Respond ONLY with the JSON inside <json> tags. No other text."""
 
 
 # ---------------------------------------------------------------------------
@@ -152,10 +200,12 @@ Rules:
 # ---------------------------------------------------------------------------
 
 class ChatState(TypedDict):
-    messages:       Annotated[list, add]   # plain OpenAI-format dicts
-    intent:         dict | None
-    todo_list:      list[dict] | None      # [{id, tool, args, external, status, result}]
-    needs_external: bool | None
+    messages:          Annotated[list, add]   # plain OpenAI-format dicts
+    intent:            dict | None
+    todo_list:         list[dict] | None      # [{id, tool, args, external, status, result}]
+    needs_external:    bool | None
+    review_count:      int | None             # how many reviewer cycles have run (None = 0)
+    reviewer_feedback: str | None             # critique from last reviewer pass; None = passed / not yet run
 
 
 # ---------------------------------------------------------------------------
@@ -219,7 +269,8 @@ async def _classify_node(state: ChatState) -> dict:
     from services.clients.llm_client import get_async_llm_client
 
     client = get_async_llm_client()
-    classify_msgs = [{"role": "system", "content": CLASSIFY_SYSTEM_PROMPT}]
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d (%A)")
+    classify_msgs = [{"role": "system", "content": f"Today's date: {today}\n\n{CLASSIFY_SYSTEM_PROMPT}"}]
     classify_msgs.extend(_to_openai_msgs(state["messages"][-6:]))
 
     try:
@@ -250,7 +301,8 @@ async def _planner_node(state: ChatState) -> dict:
     client = get_async_llm_client()
     intent = state.get("intent") or {}
 
-    planner_msgs = [{"role": "system", "content": PLANNER_SYSTEM_PROMPT}]
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d (%A)")
+    planner_msgs = [{"role": "system", "content": f"Today's date: {today}\n\n{PLANNER_SYSTEM_PROMPT}"}]
     planner_msgs.extend(_to_openai_msgs(state["messages"][-8:]))
     planner_msgs.append({
         "role": "system",
@@ -305,7 +357,17 @@ async def _planner_node(state: ChatState) -> dict:
         elif intent_type == "NEWS_QUERY" and (tickers or sectors):
             entity = tickers[0] if tickers else sectors[0]
             needs_external = True
-            todo_list.append(_task("search_market_news", {"query": f"{entity} latest news 2026"}))
+            # Always fetch live price first — prevents synthesize from fabricating it
+            price_sym = tickers[0] if tickers else "nifty"
+            todo_list.append(_task("get_live_price", {"symbol": price_sym}))
+            year = datetime.now(timezone.utc).year
+            todo_list.append(_task("search_market_news", {"query": f"{entity} latest news {year}"}))
+        elif intent_type == "NEWS_QUERY" and not (tickers or sectors):
+            # Broad "any big news / what happened today" — try macro cache first
+            needs_external = True
+            todo_list.append(_task("get_macro_news", {}))
+            # search_market_news as fallback; executor skips if macro cache is sufficient
+            todo_list.append(_task("search_market_news", {"query": "India market news today"}))
         elif intent_type == "RL_QUERY":
             todo_list.append(_task("get_rl_insights", {}))
 
@@ -374,10 +436,11 @@ async def _synthesize_node(state: ChatState) -> dict:
     ]
     results_context = "\n\n".join(results_parts)
 
-    # Build system prompt
-    user_text = _last_user_text(state)
-    context = _build_chat_context(user_text)
-    system = _CHAT_SYSTEM_PROMPT.format(context=context)
+    # Build system prompt — pass intent_type so macro news is only injected for broad intents
+    user_text   = _last_user_text(state)
+    intent_type = intent.get("intent_type", "GENERAL") if intent else "GENERAL"
+    context     = _build_chat_context(user_text, intent_type=intent_type)
+    system      = _CHAT_SYSTEM_PROMPT.format(context=context)
 
     if intent:
         system += (
@@ -392,6 +455,18 @@ async def _synthesize_node(state: ChatState) -> dict:
             "\n\nNO TOOL RESULTS: No search or data tools returned results for this query. "
             "You MUST say so explicitly. Do NOT answer from training knowledge for any "
             "news, events, or recent market moves — state that live search returned nothing."
+        )
+
+    # Inject reviewer critique when this is a re-synthesis pass
+    feedback = state.get("reviewer_feedback")
+    review_count = state.get("review_count") or 0
+    if feedback:
+        from backend.shared.config import settings as _cfg
+        max_cycles = getattr(_cfg, "CHAT_MAX_REVIEW_CYCLES", 3)
+        system += (
+            f"\n\nREVIEWER FEEDBACK (revision {review_count} of {max_cycles}):\n"
+            f"Your previous answer had specific factual issues. Fix ONLY these — do not change "
+            f"anything else:\n{feedback}"
         )
 
     messages = [{"role": "system", "content": system}] + _to_openai_msgs(state["messages"])
@@ -451,7 +526,119 @@ async def _synthesize_node(state: ChatState) -> dict:
         final_text = "I encountered an error composing the answer. Please try again."
         await adispatch_custom_event("token", {"text": final_text})
 
-    return {"messages": [{"role": "assistant", "content": final_text.strip()}]}
+    return {
+        "messages": [{"role": "assistant", "content": final_text.strip()}],
+        "reviewer_feedback": None,   # reset before reviewer runs
+    }
+
+
+async def _reviewer_node(state: ChatState) -> dict:
+    """
+    Cheap factual accuracy check on the latest synthesized answer.
+
+    Checks three concrete, verifiable criteria only:
+      1. Date integrity — year/date claims in answer vs TODAY's actual date
+      2. Price grounding — specific prices in answer vs what get_live_price returned
+      3. Question relevance — does the answer address what was asked at all
+
+    Returns reviewer_feedback=None (pass) or a critique string (fail).
+    Does NOT run when no tools executed (GENERAL intent — nothing to ground-check).
+    """
+    from services.clients.llm_client import get_async_llm_client
+    from backend.shared.config import settings as _cfg
+
+    max_cycles = getattr(_cfg, "CHAT_MAX_REVIEW_CYCLES", 3)
+
+    # --- Skip conditions ---
+    # 1. Feature disabled
+    if max_cycles == 0:
+        return {"reviewer_feedback": None}
+
+    # 2. Already at the review limit — accept current answer
+    count = state.get("review_count") or 0
+    if count >= max_cycles:
+        logger.info("[reviewer] Limit reached (%d/%d) — accepting answer", count, max_cycles)
+        return {"reviewer_feedback": None}
+
+    # 3. No tool results — pure conversational answer, nothing to ground-check
+    done_tasks = [t for t in (state.get("todo_list") or []) if t.get("status") == "done"]
+    if not done_tasks:
+        return {"reviewer_feedback": None}
+
+    # --- Build reviewer input ---
+    last_assistant = next(
+        (m for m in reversed(state["messages"]) if _get_role(m) == "assistant"), None
+    )
+    if not last_assistant:
+        return {"reviewer_feedback": None}
+
+    answer_text = (
+        last_assistant["content"] if isinstance(last_assistant, dict)
+        else getattr(last_assistant, "content", "")
+    )
+
+    tool_results_text = "\n\n".join(
+        f"[{t['tool']}]: {str(t.get('result', ''))[:400]}"
+        for t in done_tasks
+    )
+    user_text = _last_user_text(state)
+    today     = datetime.now(timezone.utc).strftime("%Y-%m-%d (%A)")
+    entities  = json.dumps((state.get("intent") or {}).get("entities", {}))
+
+    # Load HIGH macro items for criterion 4 — empty string if cache not populated yet
+    macro_items_text = ""
+    try:
+        from services.background.macro_news_cache import MacroNewsCache
+        from backend.shared.config import settings as _cfg
+        max_rev = getattr(_cfg, "MACRO_NEWS_REVIEWER_MAX_ITEMS", 5)
+        macro_items_text = MacroNewsCache().get_for_reviewer(max_items=max_rev)
+    except Exception:
+        pass
+
+    user_msg = (
+        f"TODAY: {today}\n\n"
+        f"USER QUESTION: {user_text}\n"
+        f"USER ENTITIES: {entities}\n\n"
+        f"TOOL RESULTS:\n{tool_results_text}\n\n"
+        f"TRENDING MACRO ITEMS (HIGH severity, last 24h):\n{macro_items_text or 'None'}\n\n"
+        f"ANSWER TO REVIEW:\n{answer_text}"
+    )
+
+    try:
+        client = get_async_llm_client()
+        resp = await client.chat.completions.create(
+            model=_MODEL,
+            messages=[
+                {"role": "system", "content": REVIEWER_SYSTEM_PROMPT},
+                {"role": "user",   "content": user_msg},
+            ],
+            temperature=0.0,
+            max_tokens=200,
+        )
+        raw = resp.choices[0].message.content or ""
+        review_data = _extract_json(raw)
+    except Exception as exc:
+        logger.warning("[reviewer] LLM call failed: %s — skipping review", exc)
+        return {"reviewer_feedback": None}
+
+    if not review_data or review_data.get("pass", True):
+        logger.info("[reviewer] Cycle %d — PASS", count + 1)
+        await adispatch_custom_event("review", {"cycle": count + 1, "pass": True})
+        return {"reviewer_feedback": None}
+
+    issues = review_data.get("issues", [])
+    hint   = review_data.get("hint", "")
+    feedback = "\n".join(f"- {i}" for i in issues)
+    if hint:
+        feedback += f"\nHow to fix: {hint}"
+
+    logger.info("[reviewer] Cycle %d — FAIL: %s", count + 1, issues)
+    await adispatch_custom_event("review", {"cycle": count + 1, "pass": False, "issues": issues})
+
+    return {
+        "reviewer_feedback": feedback,
+        "review_count": count + 1,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -466,6 +653,23 @@ def _route_after_executor(state: ChatState) -> str:
     return "synthesize"
 
 
+def _route_after_reviewer(state: ChatState) -> str:
+    """
+    Pass  → END (reviewer_feedback is None)
+    Fail  → synthesize (re-run with critique injected)
+    Limit → END (review_count >= MAX, accept answer as-is)
+    """
+    from backend.shared.config import settings as _cfg
+    max_cycles = getattr(_cfg, "CHAT_MAX_REVIEW_CYCLES", 3)
+
+    feedback = state.get("reviewer_feedback")
+    count    = state.get("review_count") or 0
+
+    if feedback is None or count >= max_cycles:
+        return END
+    return "synthesize"
+
+
 # ---------------------------------------------------------------------------
 # Graph — module-level singleton (one MemorySaver per server process)
 # ---------------------------------------------------------------------------
@@ -475,6 +679,7 @@ _builder.add_node("classify",   _classify_node)
 _builder.add_node("planner",    _planner_node)
 _builder.add_node("executor",   _executor_node)
 _builder.add_node("synthesize", _synthesize_node)
+_builder.add_node("reviewer",   _reviewer_node)
 
 _builder.set_entry_point("classify")
 _builder.add_edge("classify",  "planner")
@@ -484,7 +689,12 @@ _builder.add_conditional_edges(
     _route_after_executor,
     {"executor": "executor", "synthesize": "synthesize"},
 )
-_builder.add_edge("synthesize", END)
+_builder.add_edge("synthesize", "reviewer")
+_builder.add_conditional_edges(
+    "reviewer",
+    _route_after_reviewer,
+    {"synthesize": "synthesize", END: END},
+)
 
 _checkpointer = MemorySaver()
 chat_graph = _builder.compile(checkpointer=_checkpointer)

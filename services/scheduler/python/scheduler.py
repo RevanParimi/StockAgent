@@ -141,6 +141,50 @@ class AutomobileScheduler:
         )
         logger.info("[Scheduler] Prompt deploy job: daily at midnight IST")
 
+        # ── Jobs 5 + 6: Macro news background feed ───────────────────────────
+        try:
+            from backend.shared.config import settings as _macro_cfg
+            macro_enabled = getattr(_macro_cfg, "MACRO_NEWS_ENABLED", True)
+        except Exception:
+            macro_enabled = True
+
+        if macro_enabled:
+            # Job 5: Market-hours run — 9:00, 12:00, 15:00 IST weekdays
+            # Covers real-time Nifty/market news during NSE trading session.
+            scheduler.add_job(
+                func=self._macro_market_news_job,
+                trigger=CronTrigger(
+                    hour="9,12,15", minute=0,
+                    day_of_week="mon-fri",
+                    timezone="Asia/Kolkata",
+                ),
+                id="macro_market_news",
+                name="Macro news — market hours (9/12/15 IST)",
+                misfire_grace_time=1800,   # 30min grace — market moves wait for no one
+                coalesce=True,
+                replace_existing=True,
+            )
+            logger.info("[Scheduler] Macro market-hours news job: 9:00/12:00/15:00 IST weekdays")
+
+            # Job 6: Daily policy/RBI run — 7:30 IST weekdays
+            # Covers overnight policy decisions and top-headlines before market open.
+            scheduler.add_job(
+                func=self._macro_daily_news_job,
+                trigger=CronTrigger(
+                    hour=7, minute=30,
+                    day_of_week="mon-fri",
+                    timezone="Asia/Kolkata",
+                ),
+                id="macro_daily_news",
+                name="Macro news — daily policy/RBI (7:30 IST)",
+                misfire_grace_time=3600,
+                coalesce=True,
+                replace_existing=True,
+            )
+            logger.info("[Scheduler] Macro daily news job: 7:30 IST weekdays")
+        else:
+            logger.info("[Scheduler] Macro news feed disabled (MACRO_NEWS_ENABLED=false)")
+
         return scheduler
 
     # ------------------------------------------------------------------
@@ -235,6 +279,40 @@ class AutomobileScheduler:
             logger.info("[Scheduler] Calendar update complete")
         except Exception as exc:
             logger.error("[Scheduler] Calendar update FAILED: %s", exc, exc_info=True)
+
+    def _macro_market_news_job(self) -> None:
+        """
+        Macro news — market-hours run (9:00 / 12:00 / 15:00 IST weekdays).
+        Queries Serper /news for real-time Nifty/market developments.
+        Non-fatal: errors are logged but never crash the scheduler.
+        """
+        logger.info("[Scheduler] === Macro news — market-hours run ===")
+        try:
+            from services.background.macro_news_fetcher import MacroNewsFetcher
+            result = MacroNewsFetcher().fetch_and_review("market_hours")
+            logger.info(
+                "[Scheduler] Macro market-hours done — new_entries=%d iterations=%d",
+                result.get("new_entries", 0), result.get("iterations", 0),
+            )
+        except Exception as exc:
+            logger.error("[Scheduler] Macro market-hours FAILED: %s", exc, exc_info=True)
+
+    def _macro_daily_news_job(self) -> None:
+        """
+        Macro news — daily pre-market run (7:30 IST weekdays).
+        Queries policy/RBI Serper news + NewsAPI top-headlines.
+        Non-fatal: errors are logged but never crash the scheduler.
+        """
+        logger.info("[Scheduler] === Macro news — daily policy run ===")
+        try:
+            from services.background.macro_news_fetcher import MacroNewsFetcher
+            result = MacroNewsFetcher().fetch_and_review("daily")
+            logger.info(
+                "[Scheduler] Macro daily done — new_entries=%d iterations=%d",
+                result.get("new_entries", 0), result.get("iterations", 0),
+            )
+        except Exception as exc:
+            logger.error("[Scheduler] Macro daily FAILED: %s", exc, exc_info=True)
 
     # ------------------------------------------------------------------
     # Public interface

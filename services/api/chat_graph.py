@@ -35,7 +35,19 @@ from typing_extensions import TypedDict
 
 logger = logging.getLogger(__name__)
 
+# Synthesis model — Qwen3-235B with reasoning for best answer quality.
 _MODEL = "qwen/qwen3-235b-a22b"
+
+# Fast model — used for classify, planner, and reviewer.
+# These nodes output short structured JSON at temperature=0.0 and don't
+# benefit from extended reasoning. qwen-2.5-72b has no think-block overhead:
+# ~0.5-1s per call vs 5-30s for Qwen3-235B.
+# Reads from settings so the user can override via LLM_MODEL in .env.
+try:
+    from backend.shared.config import settings as _chat_cfg
+    _FAST_MODEL: str = _chat_cfg.LLM_MODEL
+except Exception:
+    _FAST_MODEL = "qwen/qwen-2.5-72b-instruct"
 
 # ---------------------------------------------------------------------------
 # Helpers — JSON extraction (Qwen3 emits <think>…</think> before JSON)
@@ -284,7 +296,7 @@ async def _classify_node(state: ChatState) -> dict:
 
     try:
         resp = await client.chat.completions.create(
-            model=_MODEL,
+            model=_FAST_MODEL,
             messages=classify_msgs,
             max_tokens=120,
             temperature=0.0,
@@ -320,7 +332,7 @@ async def _planner_node(state: ChatState) -> dict:
 
     try:
         resp = await client.chat.completions.create(
-            model=_MODEL,
+            model=_FAST_MODEL,
             messages=planner_msgs,
             max_tokens=250,
             temperature=0.0,
@@ -486,10 +498,10 @@ async def _synthesize_node(state: ChatState) -> dict:
     final_text = ""
     try:
         stream = await client.chat.completions.create(
-            model=_MODEL,
+            model=_FAST_MODEL,  # fast model — no thinking phase, ~2-3s vs 20-30s for Qwen3
             messages=messages,
             temperature=0.4,
-            max_tokens=600,
+            max_tokens=350,
             stream=True,
         )
 
@@ -584,6 +596,18 @@ async def _reviewer_node(state: ChatState) -> dict:
     if not done_tasks:
         return {"reviewer_feedback": None}
 
+    # 4. PRICE_QUERY with only get_live_price — answer is a single number, no grounding risk
+    intent_type = (state.get("intent") or {}).get("intent_type", "")
+    if intent_type == "PRICE_QUERY":
+        return {"reviewer_feedback": None}
+
+    # 5. When get_live_price ran, price fabrication risk is already mitigated.
+    #    Skip review if the only remaining risk would be criterion 4 (macro) which
+    #    is conditional anyway. This saves one API round-trip on simple queries.
+    tool_names = {t["tool"] for t in done_tasks}
+    if tool_names == {"get_live_price", "get_macro_news"}:
+        return {"reviewer_feedback": None}
+
     # --- Build reviewer input ---
     last_assistant = next(
         (m for m in reversed(state["messages"]) if _get_role(m) == "assistant"), None
@@ -634,13 +658,13 @@ async def _reviewer_node(state: ChatState) -> dict:
     try:
         client = get_async_llm_client()
         resp = await client.chat.completions.create(
-            model=_MODEL,
+            model=_FAST_MODEL,
             messages=[
                 {"role": "system", "content": REVIEWER_SYSTEM_PROMPT},
                 {"role": "user",   "content": user_msg},
             ],
             temperature=0.0,
-            max_tokens=200,
+            max_tokens=150,
         )
         raw = resp.choices[0].message.content or ""
         review_data = _extract_json(raw)

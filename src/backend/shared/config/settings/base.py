@@ -424,7 +424,7 @@ TAVILY_MAX_CONTENT_CHARS: int  = int(os.getenv("TAVILY_MAX_CONTENT_CHARS",  "600
 # Reviewer checks: date integrity, price grounding, question relevance.
 # Each extra cycle costs ~300 tokens (reviewer) + ~600 tokens (re-synthesis).
 # ---------------------------------------------------------------------------
-CHAT_MAX_REVIEW_CYCLES: int = int(os.getenv("CHAT_MAX_REVIEW_CYCLES", "3"))
+CHAT_MAX_REVIEW_CYCLES: int = int(os.getenv("CHAT_MAX_REVIEW_CYCLES", "1"))
 
 # ---------------------------------------------------------------------------
 # Macro News Background Feed

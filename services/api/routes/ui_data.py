@@ -1969,8 +1969,15 @@ async def _chat_tool_search_news(query: str) -> str:
         raw = []
 
     if raw:
+        # Sort: dated results first, undated last — LLM is told to skip undated ones
+        def _has_date(r: dict) -> bool:
+            d = r.get("date", "")
+            return bool(d) and d.lower() not in ("", "date unknown")
+
+        raw_sorted = sorted(raw, key=lambda r: (not _has_date(r), r.get("date", "")))
+
         lines = [f"=== NEWS RESULTS (Serper News) ===\n{market_ctx}\n"]
-        for i, r in enumerate(raw, 1):
+        for i, r in enumerate(raw_sorted, 1):
             iso_date  = _normalize_date(r.get("date", ""))
             age_label = _result_age_label(iso_date)
             snippet   = (r.get("snippet") or "")[:300]
@@ -2093,24 +2100,28 @@ ALWAYS call search_market_news for forward-looking questions. Use specific queri
   - Do NOT say "today the market fell" — say "as of [last trading day], the market..."
   - A result from Friday is NOT stale if today is Saturday — it IS the latest trading data.
 
-## Output format — always structured markdown
+## Output format — total response under 120 words
 
-**[Asset name] [LIVE PRICE] ▲/▼CHANGE%** — only include this line when get_live_price returned a result.
+**[Asset] [LIVE PRICE] ▲/▼CHANGE%** (omit if get_live_price failed)
 
 **What happened:**
-1. [Copy the EXACT headline from Result 1] — [Source name] — [date label from result]
-   [One sentence: what this specific event means for the market or sector]
-2. [Copy the EXACT headline from Result 2] — [Source name] — [date]
-   [One sentence: market impact]
-3. (continue for all relevant results, most recent first)
+1. "[Exact headline]" — Source — date  →  one-line market impact
+2. "[Exact headline]" — Source — date  →  one-line market impact
+(max 3, most recent first, skip results with no date)
 
-**What this means for you:**
-[2–3 concrete sentences. Name the specific events above and say what investors should watch or do.
-Example: "With IT stocks falling on OpenAI disruption fears, hold TCS/Infosys until their next earnings
-call clarifies AI revenue impact. Watch crude below $78 for broader market recovery."
-NOT: "Consider your risk tolerance." That tells the user nothing.]
+**Watch for:**
+- [specific recovery/risk signal, e.g. "crude below $78", "FII net buying 3 days"]
+- [next catalyst, e.g. "TCS Q1 guidance on AI revenue", "RBI rate decision May 22"]
 
-*Sources: [Source 1 from results] · [Source 2] · ...*
+*Sources: Source1 · Source2*
+
+STRICT RULES — no exceptions:
+- NEVER add "Critical Note", "Important Note", "Final Note", "Revision Note", "Note:", or any
+  data-limitation disclaimers. State facts, not caveats about the data.
+- NEVER say "real-time data required", "for precise causality", or "always verify with" — just
+  state what the fetched data shows and its publication date.
+- Skip undated results entirely; cite only results that have a publication date.
+- Under 120 words. Every sentence must add new specific information.
 
 ## StockAgent's specialist agents (invoked via full analysis, not chat)
 Sales & Demand · Fundamentals · Pattern Analysis · Raw Materials · Sentiment ·

@@ -1914,51 +1914,75 @@ async def _chat_tool_search_news(query: str) -> str:
     """
     Search for news and return results with explicit freshness metadata.
 
-    Strategy:
-    1. Try date-anchored query first (after:TODAY) — best for open-market days.
-    2. Fall back to unanchored query with one extra result — catches weekends/
-       holidays where no articles are published on that specific date.
-    3. Each result is labelled with its publication age so the LLM can reason
-       about freshness without guessing ("3 days ago" vs "today").
-    4. A market-context header tells the LLM whether NSE was open or closed
-       today, so it can say "as of last trading day" instead of "today" when
-       the market was closed.
+    Primary:  Serper /news endpoint — returns actual news articles with
+              relative publication dates ("22 hours ago"). India-focused (gl=in).
+              These are real headlines from ET, Mint, NDTV Profit etc.
+
+    Fallback: Tavily with after:TODAY anchor — full page text extraction.
+              Used when Serper key is exhausted or returns 0 results.
+
+    Both paths include a market-context header (NSE open/closed, last trading day)
+    and per-result age labels so the LLM can reason about freshness.
     """
+    from services.data.fetchers.news import search_serper_news, _normalize_date
+    from services.clients.tavily_fetcher import search_tavily
+
+    market_ctx = _nse_market_context()
+    today      = datetime.now(timezone.utc).date()
+
+    # ── Primary: Serper /news ─────────────────────────────────────────────────
+    _india_terms = {"india", "nifty", "sensex", "bse", "nse", "dalal"}
     try:
-        from services.clients.tavily_fetcher import search_tavily
+        raw = await asyncio.to_thread(search_serper_news, query, 5)
+        if not raw and not any(t in query.lower() for t in _india_terms):
+            # Generic query returned nothing — retry with a short India-specific version.
+            # Take the first 3 meaningful words from the query to keep it punchy.
+            key_words = " ".join(
+                w for w in query.split()[:5]
+                if w.lower() not in {"the","a","an","is","are","was","were","for","of","to","in"}
+            )[:40]
+            india_query = f"India Nifty {key_words}"
+            raw = await asyncio.to_thread(search_serper_news, india_query, 5)
+    except Exception:
+        raw = []
 
-        today = datetime.now(timezone.utc).date()
-        anchored_query = f"{query} after:{today.isoformat()}"
+    if raw:
+        lines = [f"=== NEWS RESULTS (Serper News) ===\n{market_ctx}\n"]
+        for i, r in enumerate(raw, 1):
+            iso_date  = _normalize_date(r.get("date", ""))
+            age_label = _result_age_label(iso_date)
+            snippet   = (r.get("snippet") or "")[:300]
+            lines.append(
+                f"[Result {i} — published: {age_label}]\n"
+                f"Title: {r['title']}\n"
+                f"Source: {r.get('source','')} | {r['link']}\n"
+                f"Snippet: {snippet}\n"
+            )
+        return "\n".join(lines)
 
-        # Pass 1 — date-anchored (most relevant on trading days)
-        results = await asyncio.to_thread(search_tavily, anchored_query, 3, "advanced")
-
-        # Pass 2 — fallback without date anchor (weekends, holidays, niche topics)
+    # ── Fallback: Tavily with date anchor ─────────────────────────────────────
+    try:
+        anchored = f"{query} after:{today.isoformat()}"
+        results  = await asyncio.to_thread(search_tavily, anchored, 3, "advanced")
         if not results:
             results = await asyncio.to_thread(search_tavily, query, 4, "advanced")
+    except Exception:
+        results = []
 
-        if not results:
-            return (
-                f"No recent news found for: {query}\n"
-                f"{_nse_market_context()}"
-            )
+    if not results:
+        return f"No recent news found for: {query}\n{market_ctx}"
 
-        market_ctx = _nse_market_context()
-        lines = [f"=== NEWS RESULTS ===\n{market_ctx}\n"]
-
-        for i, r in enumerate(results, 1):
-            age = _result_age_label(r.get("published_date", ""))
-            content = r.get("content", "")[:500]
-            lines.append(
-                f"[Result {i} — published: {age}]\n"
-                f"Title: {r['title']}\n"
-                f"Content: {content}\n"
-                f"Source: {r['url']}\n"
-            )
-
-        return "\n".join(lines)
-    except Exception as exc:
-        return f"News search failed: {exc}"
+    lines = [f"=== NEWS RESULTS (Tavily) ===\n{market_ctx}\n"]
+    for i, r in enumerate(results, 1):
+        age     = _result_age_label(r.get("published_date", ""))
+        content = (r.get("content") or "")[:400]
+        lines.append(
+            f"[Result {i} — published: {age}]\n"
+            f"Title: {r['title']}\n"
+            f"Source: {r['url']}\n"
+            f"Content: {content}\n"
+        )
+    return "\n".join(lines)
 
 
 async def _execute_chat_tool(name: str, args: dict) -> str:
@@ -2024,6 +2048,12 @@ ALWAYS call search_market_news for forward-looking questions. Use specific queri
 - **NO FABRICATED SOURCES**: NEVER invent source names, publication dates, or article headlines.
   Every citation must come directly from a search_market_news result. If you did not call the
   tool or the tool returned nothing, there are no sources to cite.
+- **SPECIFICITY — CRITICAL**: When search results contain specific numbers and events, use them
+  verbatim. "Sensex fell 1,450 pts; FII sold ₹2,800 crore; IT sector dropped 2.3%" is a good
+  answer. "Markets fell due to global risk aversion and macroeconomic concerns" is a bad answer —
+  it is the same generic sentence that could describe any down day in the last 5 years.
+  If a headline says "Sensex crashes 1,300 points", say exactly that. Do not paraphrase into
+  "broad market weakness". The user can read; give them the actual data from the articles.
 - **PRICE VALUES**: ONLY cite prices from get_live_price() results. NEVER quote a price figure
   from a news article — article prices are stale the moment they're published. If an article
   mentions "₹210 target", treat it as analyst opinion only, verify current price via get_live_price.

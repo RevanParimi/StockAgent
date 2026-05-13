@@ -1,4 +1,4 @@
-﻿"""
+"""
 tools/news_fetcher.py
 =====================
 News and search result fetching via Serper API (Google search)
@@ -112,6 +112,61 @@ def search_serper(
         return results
     except Exception as exc:
         logger.warning("[news] Serper search failed for '%s': %s", query, exc)
+        return []
+
+
+def search_serper_news(
+    query: str,
+    n: int = 5,
+    api_key: str | None = None,
+) -> list[dict]:
+    """
+    Search Google News via Serper /news endpoint.
+
+    Unlike search_serper() which hits /search (web results), this hits /news
+    and returns actual news articles with relative publication dates
+    ("22 hours ago", "1 day ago").  Much better for current-events queries.
+
+    Returns list of dicts: {title, snippet, link, date, source}
+    date is normalised from relative ("22 hours ago") to ISO YYYY-MM-DD by caller.
+    """
+    # Prefer key 2 (bfsi/it key) for chat news — it runs post-market while
+    # key 1 handles automobile/renewable sector agents.  Fall back to key 1.
+    from backend.shared.config import settings as _s
+    key = api_key or _s.SERPER_API_KEY_2 or _s.SERPER_API_KEY
+    if not key:
+        logger.debug("[news] No Serper key for /news search — skipping")
+        return []
+
+    try:
+        resp = requests.post(
+            "https://google.serper.dev/news",
+            headers={"X-API-KEY": key, "Content-Type": "application/json"},
+            json={"q": query, "num": n, "gl": "in", "hl": "en"},
+            timeout=_TIMEOUT,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        results = []
+        for item in data.get("news", [])[:n]:
+            results.append({
+                "title":   item.get("title", ""),
+                "snippet": item.get("snippet", ""),
+                "link":    item.get("link", ""),
+                "date":    item.get("date", ""),    # relative: "22 hours ago"
+                "source":  item.get("source", ""),
+            })
+        record_call("serper")   # counts against same Serper quota as /search calls
+        return results
+    except requests.HTTPError as exc:
+        code = exc.response.status_code if exc.response is not None else "?"
+        if code == 400:
+            logger.warning("[news] Serper /news key exhausted for '%s' — will fall back", query)
+        else:
+            logger.warning("[news] Serper /news HTTP %s for '%s': %s", code, query, exc)
+        return []
+    except Exception as exc:
+        logger.warning("[news] Serper /news failed for '%s': %s", query, exc)
         return []
 
 

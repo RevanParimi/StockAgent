@@ -155,7 +155,11 @@ Rules:
   - get_macro_news  {}  ← use for broad "what's happening", "any big news", "market sentiment today"
   - CRITICAL: Do NOT include date strings (like "2026-05-12") inside search_market_news query
     arguments — the tool handles date anchoring automatically. Write natural language queries:
-    "India Nifty market decline reasons" NOT "India Nifty market decline reasons 2026-05-12" """
+    "India Nifty market decline reasons" NOT "India Nifty market decline reasons 2026-05-12"
+  - CRITICAL: For questions about the Indian stock market (Nifty, Sensex, NSE stocks), the
+    search_market_news query MUST include "India" and at least one of: Nifty, Sensex, NSE.
+    "India Nifty fall reasons" is correct. "stock market decline reasons" will return generic
+    Wikipedia content, not India-specific news. """
 
 
 REVIEWER_SYSTEM_PROMPT = """\
@@ -417,7 +421,9 @@ async def _executor_node(state: ChatState) -> dict:
     except Exception as exc:
         result = f"{tool_name} failed: {exc}"
 
-    summary = result[:120].replace("\n", " ")
+    # Show more for search tools so the UI displays actual headlines, not truncated text
+    limit   = 600 if tool_name in ("search_market_news", "get_macro_news") else 120
+    summary = result[:limit].replace("\n", " ")
     await adispatch_custom_event("tool_result", {"tool": tool_name, "summary": summary})
 
     task["status"] = "done"

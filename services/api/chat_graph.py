@@ -185,23 +185,23 @@ Check ONLY these three criteria:
    Flag only if the answer is completely off-topic or refuses to engage with the question.
    Do NOT flag if the answer is partial but on-topic.
 
-4. MACRO NEWS COVERAGE (only check if TRENDING MACRO ITEMS block is non-empty in the user message)
-   The user message contains a "TRENDING MACRO ITEMS" block with HIGH-severity India news.
-   The user message also contains "USER ENTITIES" showing what the user asked about.
-   Check: does any HIGH macro item's impact_tags overlap with the user's question topic?
-   Tag overlap examples: user asked about gold → item tagged "gold" → overlap;
-   user asked about Nifty/markets → item tagged "markets" or "economy" → overlap.
-   Flag ONLY if: overlap exists AND the item would materially change the answer AND
-   the answer completely ignores it.
-   Do NOT flag: items with no tag overlap, MEDIUM/LOW items, or if answer already references them.
-
-If ALL four pass, respond with:
+If ALL three pass, respond with:
 <json>{"pass": true}</json>
 
 If any fail, respond with:
 <json>{"pass": false, "issues": ["specific issue 1", "specific issue 2"], "hint": "one sentence on what to fix"}</json>
 
 Respond ONLY with the JSON inside <json> tags. No other text."""
+
+# Criterion 4 — appended to the reviewer user message ONLY when macro feed has data.
+# Keeping it out of the static prompt avoids wasting ~100 tokens every request
+# when the background cache is cold (most of the time in current deployment).
+_REVIEWER_CRITERION_4 = """
+ADDITIONAL CHECK — Criterion 4: Macro News Coverage
+The TRENDING MACRO ITEMS block above is non-empty. Check:
+- Does any HIGH-severity item's impact_tags overlap with what the user asked?
+- If yes AND the answer ignores it AND it would materially change the answer → flag it.
+- Do NOT flag: MEDIUM/LOW items, no-overlap items, items the answer already mentions."""
 
 
 # ---------------------------------------------------------------------------
@@ -614,12 +614,20 @@ async def _reviewer_node(state: ChatState) -> dict:
     except Exception:
         pass
 
+    # Append criterion 4 only when macro feed has actual data (avoids dead context tokens)
+    macro_block = ""
+    if macro_items_text:
+        macro_block = (
+            f"\nTRENDING MACRO ITEMS (HIGH severity, last 24h):\n{macro_items_text}"
+            + _REVIEWER_CRITERION_4
+        )
+
     user_msg = (
         f"TODAY: {today}\n\n"
         f"USER QUESTION: {user_text}\n"
         f"USER ENTITIES: {entities}\n\n"
-        f"TOOL RESULTS:\n{tool_results_text}\n\n"
-        f"TRENDING MACRO ITEMS (HIGH severity, last 24h):\n{macro_items_text or 'None'}\n\n"
+        f"TOOL RESULTS:\n{tool_results_text}"
+        f"{macro_block}\n\n"
         f"ANSWER TO REVIEW:\n{answer_text}"
     )
 

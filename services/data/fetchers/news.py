@@ -119,30 +119,34 @@ def search_serper_news(
     query: str,
     n: int = 5,
     api_key: str | None = None,
+    geo: str | None = "in",
 ) -> list[dict]:
     """
     Search Google News via Serper /news endpoint.
 
     Unlike search_serper() which hits /search (web results), this hits /news
-    and returns actual news articles with relative publication dates
-    ("22 hours ago", "1 day ago").  Much better for current-events queries.
+    and returns actual news articles with relative publication dates.
+
+    geo="in"  → India-filtered results (default, for Nifty/NSE queries)
+    geo=None  → global results, no country filter (for OpenAI, Fed, Musk etc.)
 
     Returns list of dicts: {title, snippet, link, date, source}
-    date is normalised from relative ("22 hours ago") to ISO YYYY-MM-DD by caller.
     """
-    # Prefer key 2 (bfsi/it key) for chat news — it runs post-market while
-    # key 1 handles automobile/renewable sector agents.  Fall back to key 1.
     from backend.shared.config import settings as _s
     key = api_key or _s.SERPER_API_KEY_2 or _s.SERPER_API_KEY
     if not key:
         logger.debug("[news] No Serper key for /news search — skipping")
         return []
 
+    params: dict = {"q": query, "num": n, "hl": "en"}
+    if geo:
+        params["gl"] = geo
+
     try:
         resp = requests.post(
             "https://google.serper.dev/news",
             headers={"X-API-KEY": key, "Content-Type": "application/json"},
-            json={"q": query, "num": n, "gl": "in", "hl": "en"},
+            json=params,
             timeout=_TIMEOUT,
         )
         resp.raise_for_status()

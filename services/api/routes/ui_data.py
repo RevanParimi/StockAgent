@@ -1475,6 +1475,12 @@ def _get_macro_context_for_intent(intent_type: str) -> str:
     """Return formatted HIGH-severity macro news block for broad intents; empty string otherwise."""
     if intent_type not in _MACRO_CONTEXT_INTENTS:
         return ""
+    # Short-circuit: if today's feed file doesn't exist, no background job has run yet.
+    # Skip the MacroNewsCache import and disk read entirely — saves ~2ms per request.
+    from pathlib import Path as _Path
+    from datetime import date as _date
+    if not (_Path("data/macro_news") / f"{_date.today().isoformat()}_macro_feed.json").exists():
+        return ""
     try:
         from services.background.macro_news_cache import MacroNewsCache
         from backend.shared.config import settings as _cfg
@@ -1931,18 +1937,34 @@ async def _chat_tool_search_news(query: str) -> str:
     today      = datetime.now(timezone.utc).date()
 
     # ── Primary: Serper /news ─────────────────────────────────────────────────
-    _india_terms = {"india", "nifty", "sensex", "bse", "nse", "dalal"}
+    # Detect whether the query is about India-local events or global events.
+    # India-local: use gl=in so Nifty/NSE queries surface ET, Mint, NDTV Profit.
+    # Global entities (OpenAI, Fed, Musk, US/EU/China): drop the geo filter so
+    # primary sources (Bloomberg, TechCrunch, Reuters) are not suppressed.
+    _india_terms  = {"india", "nifty", "sensex", "bse", "nse", "dalal", "rbi", "sebi"}
+    _global_terms = {"openai", "fed ", "federal reserve", "musk", "china", "us ", "eu ",
+                     "dollar", "trump", "europe", "ukraine", "nasdaq", "s&p"}
+    q_lower = query.lower()
+    has_india  = any(t in q_lower for t in _india_terms)
+    has_global = any(t in q_lower for t in _global_terms)
+    geo = None if (has_global and not has_india) else "in"
+
     try:
-        raw = await asyncio.to_thread(search_serper_news, query, 5)
-        if not raw and not any(t in query.lower() for t in _india_terms):
-            # Generic query returned nothing — retry with a short India-specific version.
-            # Take the first 3 meaningful words from the query to keep it punchy.
+        raw = await asyncio.to_thread(search_serper_news, query, 5, geo=geo)
+
+        # Generic query with no India terms returned nothing — retry with India prefix
+        if not raw and not has_india:
             key_words = " ".join(
-                w for w in query.split()[:5]
-                if w.lower() not in {"the","a","an","is","are","was","were","for","of","to","in"}
-            )[:40]
-            india_query = f"India Nifty {key_words}"
-            raw = await asyncio.to_thread(search_serper_news, india_query, 5)
+                w for w in query.split()[:4]
+                if w.lower() not in {"the","a","an","is","are","was","were","for","of","to"}
+            )[:35]
+            raw = await asyncio.to_thread(search_serper_news, f"India Nifty {key_words}", 5, geo="in")
+
+        # Fewer than 3 results and query has global entity → add global pass without geo filter
+        if len(raw) < 3 and has_global:
+            more = await asyncio.to_thread(search_serper_news, query, 3, geo=None)
+            seen = {r["link"] for r in raw}
+            raw.extend(r for r in more if r.get("link") not in seen)
     except Exception:
         raw = []
 
@@ -2072,16 +2094,23 @@ ALWAYS call search_market_news for forward-looking questions. Use specific queri
   - A result from Friday is NOT stale if today is Saturday — it IS the latest trading data.
 
 ## Output format — always structured markdown
-**Asset: $PRICE ▲/▼CHANGE% today**
 
-One-line context sentence.
+**[Asset name] [LIVE PRICE] ▲/▼CHANGE%** — only include this line when get_live_price returned a result.
 
-**What the data shows:**
-- **Driver 1** — specific detail from fetched data
-- **Driver 2** — specific detail
-- **Near-term signal** — what current price action + news implies for the next period
+**What happened:**
+1. [Copy the EXACT headline from Result 1] — [Source name] — [date label from result]
+   [One sentence: what this specific event means for the market or sector]
+2. [Copy the EXACT headline from Result 2] — [Source name] — [date]
+   [One sentence: market impact]
+3. (continue for all relevant results, most recent first)
 
-*Source: live price · [headline or search result]*
+**What this means for you:**
+[2–3 concrete sentences. Name the specific events above and say what investors should watch or do.
+Example: "With IT stocks falling on OpenAI disruption fears, hold TCS/Infosys until their next earnings
+call clarifies AI revenue impact. Watch crude below $78 for broader market recovery."
+NOT: "Consider your risk tolerance." That tells the user nothing.]
+
+*Sources: [Source 1 from results] · [Source 2] · ...*
 
 ## StockAgent's specialist agents (invoked via full analysis, not chat)
 Sales & Demand · Fundamentals · Pattern Analysis · Raw Materials · Sentiment ·

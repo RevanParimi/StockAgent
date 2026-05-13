@@ -2224,6 +2224,19 @@ async def chat_stream(body: dict):
                     payload = {"event": "token", "text": data.get("text", "")}
                     yield f"data: {_json.dumps(payload)}\n\n"
 
+                elif name == "thinking":
+                    # Qwen3 entered a think block — no tokens for a while, not a hang
+                    yield f'data: {{"event":"thinking"}}\n\n'
+
+                elif name == "review":
+                    payload = {
+                        "event":  "review",
+                        "cycle":  data.get("cycle", 1),
+                        "pass":   data.get("pass", True),
+                        "issues": data.get("issues", []),
+                    }
+                    yield f"data: {_json.dumps(payload)}\n\n"
+
         except Exception as exc:
             logger.warning("[ui/chat/stream] Graph error: %s", exc)
             fallback = _mock_reply(message)

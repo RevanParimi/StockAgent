@@ -145,12 +145,17 @@ Rules:
   - PRICE_QUERY: just get_live_price (1 task)
   - NEWS_QUERY: ALWAYS include get_live_price(entity) as task 1 before search_market_news —
     this prevents the answer from using training-memory prices instead of live data.
-  - NEWS_QUERY with no specific entity ("any big news", "what happened today"):
-    use get_macro_news first; if it returns empty, also add search_market_news as fallback.
+  - NEWS_QUERY with no specific entity ("any big news", "what happened today", "why is market down"):
+    ALWAYS plan: get_live_price(nifty) first, then get_macro_news, then search_market_news.
+    get_live_price is mandatory even when no ticker is mentioned — it anchors the answer to
+    real current price data and prevents the LLM from fabricating prices.
   - GENERAL with no entities: empty tasks list (answer from memory)
   - Order: free/fast internal first → DB reads → heavy (run_agent_analysis) → external last
   - Avoid redundant tasks: don't call get_stock_analysis AND run_agent_analysis for shallow
-  - get_macro_news  {}  ← use for broad "what's happening", "any big news", "market sentiment today" """
+  - get_macro_news  {}  ← use for broad "what's happening", "any big news", "market sentiment today"
+  - CRITICAL: Do NOT include date strings (like "2026-05-12") inside search_market_news query
+    arguments — the tool handles date anchoring automatically. Write natural language queries:
+    "India Nifty market decline reasons" NOT "India Nifty market decline reasons 2026-05-12" """
 
 
 REVIEWER_SYSTEM_PROMPT = """\
@@ -363,11 +368,12 @@ async def _planner_node(state: ChatState) -> dict:
             year = datetime.now(timezone.utc).year
             todo_list.append(_task("search_market_news", {"query": f"{entity} latest news {year}"}))
         elif intent_type == "NEWS_QUERY" and not (tickers or sectors):
-            # Broad "any big news / what happened today" — try macro cache first
+            # Broad "why is market down", "any big news" — live price anchor is mandatory
+            # to prevent LLM from fabricating Nifty/Sensex values from training memory
             needs_external = True
+            todo_list.append(_task("get_live_price", {"symbol": "nifty"}))
             todo_list.append(_task("get_macro_news", {}))
-            # search_market_news as fallback; executor skips if macro cache is sufficient
-            todo_list.append(_task("search_market_news", {"query": "India market news today"}))
+            todo_list.append(_task("search_market_news", {"query": "India Nifty market news"}))
         elif intent_type == "RL_QUERY":
             todo_list.append(_task("get_rl_insights", {}))
 
@@ -483,10 +489,13 @@ async def _synthesize_node(state: ChatState) -> dict:
 
         # Stream tokens, filtering Qwen3 <think>...</think> blocks so they
         # never appear in the chat bubble.
-        buf       = ""
-        in_think  = False
-        _T_OPEN   = "<think>"
-        _T_CLOSE  = "</think>"
+        # Emit a one-time "thinking" event when the model enters a think block —
+        # this tells the frontend the model is reasoning, not hanging.
+        buf            = ""
+        in_think       = False
+        thinking_fired = False   # emit "thinking" event only once per response
+        _T_OPEN        = "<think>"
+        _T_CLOSE       = "</think>"
 
         async for chunk in stream:
             raw = ""
@@ -516,6 +525,10 @@ async def _synthesize_node(state: ChatState) -> dict:
                     visible += buf[:idx]
                     buf      = buf[idx + len(_T_OPEN):]
                     in_think = True
+                    # Notify frontend the model entered a think block (fires once per response)
+                    if not thinking_fired:
+                        thinking_fired = True
+                        await adispatch_custom_event("thinking", {})
 
             if visible:
                 final_text += visible

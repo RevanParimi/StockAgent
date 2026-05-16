@@ -2327,9 +2327,9 @@ def _mock_reply(q: str) -> str:
 @router.post("/chat/stream", summary="AI assistant chat — SSE streaming response")
 async def chat_stream(body: dict):
     """
-    Streaming chat via LangGraph pipeline (classify → agent → tools loop → END).
+    Streaming chat via LangGraph 3-node pipeline (dispatch → executor → synthesize).
     Carry-over is handled by MemorySaver keyed on session_id — no client-side history.
-    Returns text/event-stream. Events: intent | tool_start | tool_result | token | done
+    Returns text/event-stream. Events: dispatch | tool_start | tool_result | thinking | token | done
     """
     from fastapi.responses import StreamingResponse as _SR
     from services.api.chat_graph import chat_graph
@@ -2350,7 +2350,7 @@ async def chat_stream(body: dict):
 
         try:
             async for event in chat_graph.astream_events(
-                {"messages": [user_msg]},
+                {"messages": [user_msg], "session_id": session_id},
                 config=config,
                 version="v2",
             ):
@@ -2402,12 +2402,12 @@ async def chat_stream(body: dict):
                     # Qwen3 entered a think block — no tokens for a while, not a hang
                     yield f'data: {{"event":"thinking"}}\n\n'
 
-                elif name == "review":
+                elif name == "dispatch":
                     payload = {
-                        "event":  "review",
-                        "cycle":  data.get("cycle", 1),
-                        "pass":   data.get("pass", True),
-                        "issues": data.get("issues", []),
+                        "event": "dispatch",
+                        "session_id": session_id,
+                        "tier": data.get("tier", "active"),
+                        "query": data.get("query", ""),
                     }
                     yield f"data: {_json.dumps(payload)}\n\n"
 

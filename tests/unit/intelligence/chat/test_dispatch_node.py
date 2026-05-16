@@ -83,7 +83,7 @@ async def test_dispatch_node_falls_back_on_zero_tasks():
     mock_resp.choices[0].message.content = json.dumps(bad_dispatch)
 
     mock_client = AsyncMock()
-    mock_client.chat.completions.create = AsyncMock(return_value=bad_dispatch)
+    mock_client.chat.completions.create = AsyncMock(return_value=mock_resp)
 
     state = {
         "messages": [{"role": "user", "content": "market news"}],

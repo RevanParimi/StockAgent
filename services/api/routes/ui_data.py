@@ -2014,6 +2014,46 @@ async def _chat_tool_search_news(query: str) -> str:
     return "\n".join(lines)
 
 
+async def _chat_tool_historical_prices(symbol: str, days: int = 5) -> str:
+    """Fetch last N trading days OHLCV for a yfinance symbol."""
+    try:
+        import yfinance as yf
+
+        ticker = yf.Ticker(symbol)
+        hist = ticker.history(period=f"{days + 7}d")  # buffer for weekends/holidays
+        if hist.empty:
+            return f"No historical data for {symbol}"
+
+        hist = hist.tail(days)
+        lines = [f"{symbol} — Last {len(hist)} trading days:"]
+        closes: list[float] = []
+        for dt, row in hist.iterrows():
+            date_str = dt.strftime("%Y-%m-%d (%a)")
+            change_pct = ((row["Close"] - row["Open"]) / row["Open"]) * 100
+            arrow = "▲" if change_pct >= 0 else "▼"
+            lines.append(
+                f"{date_str}  Close: {row['Close']:,.2f}  Change: {arrow}{abs(change_pct):.2f}%"
+            )
+            closes.append(float(row["Close"]))
+
+        if len(closes) >= 2:
+            net = ((closes[-1] - closes[0]) / closes[0]) * 100
+            arrow = "▲" if net >= 0 else "▼"
+            lines.append(f"Net {len(closes)}-day: {arrow}{abs(net):.2f}%")
+            down_streak = 0
+            for i in range(len(closes) - 1, 0, -1):
+                if closes[i] < closes[i - 1]:
+                    down_streak += 1
+                else:
+                    break
+            if down_streak >= 2:
+                lines.append(f"Trend: {down_streak} consecutive down days")
+
+        return "\n".join(lines)
+    except Exception:
+        return f"No historical data for {symbol}"
+
+
 async def _execute_chat_tool(name: str, args: dict) -> str:
     if name == "get_live_price":
         return await _chat_tool_get_live_price(args.get("symbol", ""))
@@ -2034,6 +2074,10 @@ async def _execute_chat_tool(name: str, args: dict) -> str:
         return await _chat_tool_get_sector_snapshot(args.get("sector", ""))
     if name == "run_agent_analysis":
         return await _chat_tool_run_agent_analysis(args.get("ticker", ""))
+    if name == "get_historical_prices":
+        return await _chat_tool_historical_prices(
+            args.get("symbol", "^NSEI"), int(args.get("days", 5))
+        )
     return f"Unknown tool: {name}"
 
 
@@ -2109,9 +2153,11 @@ ALWAYS call search_market_news for forward-looking questions. Use specific queri
 2. "[Exact headline]" — Source — date  →  one-line market impact
 (max 3, most recent first, skip results with no date)
 
-**Watch for:**
-- [specific recovery/risk signal, e.g. "crude below $78", "FII net buying 3 days"]
-- [next catalyst, e.g. "TCS Q1 guidance on AI revenue", "RBI rate decision May 22"]
+**Watch for:** (ONLY include this section when you have signals that were NOT already listed
+in a prior "Watch for:" block earlier in this conversation. Check the message history above.
+If the same signals would repeat word-for-word, omit this section entirely. Only output
+genuinely new signals — things that emerged from THIS response's search results.)
+- [new signal not mentioned before]
 
 *Sources: Source1 · Source2*
 

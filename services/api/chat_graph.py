@@ -38,9 +38,6 @@ from services.clients.llm_client import get_async_llm_client
 
 logger = logging.getLogger(__name__)
 
-# Synthesis model — Qwen3-235B with reasoning for best answer quality.
-_MODEL = "qwen/qwen3-235b-a22b"
-
 # Fast model — used for classify, planner, and reviewer.
 # These nodes output short structured JSON at temperature=0.0 and don't
 # benefit from extended reasoning. qwen-2.5-72b has no think-block overhead:
@@ -292,6 +289,7 @@ class ChatState(TypedDict):
     browsing_strategy:   dict | None            # from dispatch: topics, geo, always_news
     tasks:               list[dict] | None      # from dispatch: [{tool, args, priority}]
     tool_results:        list[dict] | None      # from executor: [{tool, result, error}]
+    session_id:          str | None             # session/thread ID for user profile and memory
     # Legacy fields kept for backward compat with existing nodes (removed in Task 9)
     intent:            dict | None
     todo_list:         list[dict] | None      # [{id, tool, args, external, status, result}]
@@ -614,7 +612,7 @@ async def _new_synthesize_node(state: ChatState) -> dict:
         except Exception as exc:
             logger.warning("[new_synthesize] failed to update profile: %s", exc)
 
-    return {"messages": [{"role": "assistant", "content": final_text}]}
+    return {"messages": [{"role": "assistant", "content": final_text.strip()}]}
 
 
 # ---------------------------------------------------------------------------

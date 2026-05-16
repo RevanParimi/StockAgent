@@ -33,6 +33,8 @@ from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, StateGraph
 from typing_extensions import TypedDict
 
+from services.clients.llm_client import get_async_llm_client
+
 logger = logging.getLogger(__name__)
 
 # Synthesis model — Qwen3-235B with reasoning for best answer quality.
@@ -48,6 +50,68 @@ try:
     _FAST_MODEL: str = _chat_cfg.LLM_MODEL
 except Exception:
     _FAST_MODEL = "qwen/qwen-2.5-72b-instruct"
+
+DISPATCH_SYSTEM_PROMPT = """\
+You are a financial intelligence dispatcher for an Indian stock market assistant.
+
+Decompose what the user actually needs, identify their sophistication tier,
+and plan which tools to call to answer the query.
+
+TOOL CATALOGUE:
+  get_live_price(symbol)               — current price + % change
+  get_historical_prices(symbol, days)  — last N trading days OHLCV + trend
+  get_sector_snapshot(sector)          — all stocks in a sector
+  get_stock_analysis(ticker)           — DB verdict (BUY/SELL/NEUTRAL)
+  get_analysis_history(ticker)         — historical verdicts trend
+  get_rl_prediction(ticker)            — RL verdict + confidence + regime
+  get_rl_insights(ticker)              — agent-level RL breakdown
+  get_macro_news()                     — today's macro news cache
+  search_market_news(query)            — live Serper news search
+  run_agent_analysis(ticker)           — deep 9-agent pipeline (EXPERT ONLY, ~45s)
+
+SYMBOL MAPPING:
+  Sensex → ^BSESN | Nifty 50 → ^NSEI | Nifty Bank → ^NSEBANK
+  Nifty IT → ^CNXIT | Indian stocks → TICKER.NS
+
+TIER DETECTION:
+  casual  — plain language, no jargon ("is market good today", "should I buy X")
+  active  — uses market terms, comparisons ("compare 3 days", "FII data", "sector rotation")
+  expert  — technical signals ("VIX elevated", "RSI oversold", "regime", "conviction")
+
+PLANNING RULES:
+  1. Include get_rl_prediction when a specific stock ticker is mentioned
+  2. Include get_historical_prices when a trend, comparison, or prediction is asked
+  3. Include search_market_news on everything where always_news=true
+  4. Include get_macro_news on broad market/index queries
+  5. run_agent_analysis ONLY when user_tier=expert AND deep multi-signal analysis needed
+  6. Priority 1 = fast/critical, Priority 2 = supporting context
+
+ALWAYS-NEWS RULE:
+  always_news=true  — anything involving a market, stock, sector, event, index, or opinion
+  always_news=false — ONLY pure definitional questions ("what is P/E", "explain SIP")
+
+OUTPUT: Valid JSON only. No text outside the JSON.
+
+{
+  "query_decomposition": "<plain English: what does the user actually need>",
+  "user_tier": "casual|active|expert",
+  "tasks": [
+    {"tool": "<tool_name>", "args": {}, "priority": 1}
+  ],
+  "browsing_strategy": {
+    "topics": ["<topic>"],
+    "geo": "in|global",
+    "always_news": true
+  }
+}
+"""
+
+_DISPATCH_FALLBACK_TASKS = [
+    {"tool": "get_live_price",     "args": {"symbol": "^NSEI"},                         "priority": 1},
+    {"tool": "get_macro_news",     "args": {},                                            "priority": 2},
+    {"tool": "search_market_news", "args": {"query": "India Nifty Sensex market news"},  "priority": 2},
+]
+
 
 # ---------------------------------------------------------------------------
 # Helpers — JSON extraction (Qwen3 emits <think>…</think> before JSON)
@@ -221,7 +285,13 @@ The TRENDING MACRO ITEMS block above is non-empty. Check:
 # ---------------------------------------------------------------------------
 
 class ChatState(TypedDict):
-    messages:          Annotated[list, add]   # plain OpenAI-format dicts
+    messages:            Annotated[list, add]   # MemorySaver key — unchanged
+    query_decomposition: str | None             # from dispatch: what user needs
+    user_tier:           str | None             # casual | active | expert
+    browsing_strategy:   dict | None            # from dispatch: topics, geo, always_news
+    tasks:               list[dict] | None      # from dispatch: [{tool, args, priority}]
+    tool_results:        list[dict] | None      # from executor: [{tool, result, error}]
+    # Legacy fields kept for backward compat with existing nodes (removed in Task 9)
     intent:            dict | None
     todo_list:         list[dict] | None      # [{id, tool, args, external, status, result}]
     needs_external:    bool | None
@@ -283,12 +353,85 @@ def _last_user_text(state: ChatState) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Dispatch node
+# ---------------------------------------------------------------------------
+
+async def _node_dispatch(state: ChatState) -> dict:
+    """Single LLM call: decompose query + detect user tier + plan tasks."""
+    from services.api.user_profile import load_profile
+
+    messages = state.get("messages", [])
+    session_id = state.get("session_id", "")
+
+    profile = load_profile(session_id) if session_id else {}
+    tier_hint = profile.get("detected_tier", "active")
+    sessions = profile.get("sessions_seen", 0)
+    topics = profile.get("topics_seen", [])
+
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d (%A)")
+    try:
+        from services.api.routes.ui_data import _nse_market_context
+        market_ctx = _nse_market_context()
+    except Exception:
+        market_ctx = f"Today: {today}"
+
+    system = (
+        f"{market_ctx}\n"
+        f"User profile: tier={tier_hint}, sessions={sessions}, topics_seen={topics[:10]}\n\n"
+        + DISPATCH_SYSTEM_PROMPT
+    )
+
+    dispatch_msgs = [{"role": "system", "content": system}]
+    dispatch_msgs.extend(_to_openai_msgs(messages[-8:]))
+
+    parsed = None
+    try:
+        client = get_async_llm_client()
+        resp = await client.chat.completions.create(
+            model=_FAST_MODEL,
+            messages=dispatch_msgs,
+            max_tokens=400,
+            temperature=0.0,
+        )
+        parsed = _extract_json(resp.choices[0].message.content or "")
+    except Exception as exc:
+        logger.warning("[dispatch] LLM call failed: %s", exc)
+
+    if not parsed or not parsed.get("tasks"):
+        logger.warning("[dispatch] no tasks returned — using fallback")
+        return {
+            "query_decomposition": "general market query",
+            "user_tier": tier_hint,
+            "browsing_strategy": {"topics": [], "geo": "in", "always_news": True},
+            "tasks": _DISPATCH_FALLBACK_TASKS,
+            "tool_results": [],
+        }
+
+    try:
+        await adispatch_custom_event(
+            "dispatch",
+            {
+                "tier": parsed.get("user_tier", tier_hint),
+                "query": parsed.get("query_decomposition", ""),
+            },
+        )
+    except RuntimeError:
+        pass  # Not inside a LangGraph run (e.g. unit tests) — safe to skip
+
+    return {
+        "query_decomposition": parsed.get("query_decomposition", ""),
+        "user_tier": parsed.get("user_tier", tier_hint),
+        "browsing_strategy": parsed.get("browsing_strategy", {}),
+        "tasks": parsed.get("tasks", []),
+        "tool_results": [],
+    }
+
+
+# ---------------------------------------------------------------------------
 # Nodes
 # ---------------------------------------------------------------------------
 
 async def _classify_node(state: ChatState) -> dict:
-    from services.clients.llm_client import get_async_llm_client
-
     client = get_async_llm_client()
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d (%A)")
     classify_msgs = [{"role": "system", "content": f"Today's date: {today}\n\n{CLASSIFY_SYSTEM_PROMPT}"}]
@@ -317,8 +460,6 @@ async def _classify_node(state: ChatState) -> dict:
 
 
 async def _planner_node(state: ChatState) -> dict:
-    from services.clients.llm_client import get_async_llm_client
-
     client = get_async_llm_client()
     intent = state.get("intent") or {}
 
@@ -447,7 +588,6 @@ async def _executor_node(state: ChatState) -> dict:
 
 async def _synthesize_node(state: ChatState) -> dict:
     from services.api.routes.ui_data import _CHAT_SYSTEM_PROMPT, _build_chat_context
-    from services.clients.llm_client import get_async_llm_client
 
     client = get_async_llm_client()
     intent = state.get("intent") or {}
@@ -575,7 +715,6 @@ async def _reviewer_node(state: ChatState) -> dict:
     Returns reviewer_feedback=None (pass) or a critique string (fail).
     Does NOT run when no tools executed (GENERAL intent — nothing to ground-check).
     """
-    from services.clients.llm_client import get_async_llm_client
     from backend.shared.config import settings as _cfg
 
     max_cycles = getattr(_cfg, "CHAT_MAX_REVIEW_CYCLES", 3)

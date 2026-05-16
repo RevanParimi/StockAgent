@@ -44,6 +44,9 @@ _CUSTOM_TASKS_PATH   = Path("data/agent_tasks.json")
 _WATCHLIST_PATH      = Path("data/watchlist.json")
 # User-customised category ticker lists (overrides hardcoded _CATEGORIES tickers)
 _CATEGORY_TICKERS_PATH = Path("data/category_tickers.json")
+# Root directory where RL prediction envelopes are stored (sector/ticker/cycle.json)
+_PREDICTIONS_DIR = Path("data/predictions")
+_RL_INDEX_NAMES = frozenset({"SENSEX", "NIFTY", "NIFTY50", "NSEI", "BSESN"})
 
 
 # ---------------------------------------------------------------------------
@@ -2054,6 +2057,59 @@ async def _chat_tool_historical_prices(symbol: str, days: int = 5) -> str:
         return f"No historical data for {symbol}"
 
 
+async def _chat_tool_rl_prediction(ticker: str) -> str:
+    """Read today's RL prediction envelope for a ticker. Returns '' if not found."""
+    if ticker.upper() in _RL_INDEX_NAMES:
+        return ""
+
+    ticker_upper = ticker.upper()
+    today = str(date.today())
+    cycle_id = f"{ticker_upper}_{today[:7]}"  # e.g. TCS_2026-05
+
+    try:
+        for sector_dir in _PREDICTIONS_DIR.iterdir():
+            if not sector_dir.is_dir():
+                continue
+            candidate = sector_dir / ticker_upper / f"{cycle_id}_prediction_envelope.json"
+            if not candidate.exists():
+                continue
+
+            envelope = json.loads(candidate.read_text(encoding="utf-8"))
+            forecasts = envelope.get("daily_forecasts", [])
+            today_row = next((d for d in forecasts if d.get("date") == today), None)
+            if not today_row:
+                return ""
+
+            streak = envelope.get("conviction_streak", {})
+            streak_days = streak.get("streak_days", 0)
+            reversion = envelope.get("reversion_prior", 0.0)
+            lines = [
+                f"RL PREDICTION — {ticker_upper} ({today}):",
+                (
+                    f"Verdict: {today_row['predicted_verdict']}"
+                    f"  |  Confidence: {today_row['confidence']:.2f}"
+                    f"  |  Predicted close: ₹{today_row['predicted_close']:,.0f}"
+                ),
+                (
+                    f"Conviction streak: {streak_days} consecutive"
+                    f" {streak.get('current_verdict', '')} days"
+                    f" — reversion prior: {reversion * 100:.0f}%"
+                ),
+            ]
+            assumptions = today_row.get("key_assumptions", [])
+            if assumptions:
+                lines.append(f"Key assumptions: {assumptions}")
+            if today_row.get("revised"):
+                lines.append(
+                    f"Revised: Yes (revision {today_row.get('revision_count', 1)})"
+                )
+            return "\n".join(lines)
+    except Exception:
+        return ""
+
+    return ""
+
+
 async def _execute_chat_tool(name: str, args: dict) -> str:
     if name == "get_live_price":
         return await _chat_tool_get_live_price(args.get("symbol", ""))
@@ -2078,6 +2134,8 @@ async def _execute_chat_tool(name: str, args: dict) -> str:
         return await _chat_tool_historical_prices(
             args.get("symbol", "^NSEI"), int(args.get("days", 5))
         )
+    if name == "get_rl_prediction":
+        return await _chat_tool_rl_prediction(args.get("ticker", ""))
     return f"Unknown tool: {name}"
 
 

@@ -44,3 +44,57 @@ async def test_historical_prices_exception_returns_no_data():
         result = await _chat_tool_historical_prices("^BSESN", days=3)
 
     assert "No historical data" in result
+
+
+@pytest.mark.asyncio
+async def test_rl_prediction_returns_formatted_output(tmp_path):
+    from datetime import date
+    today = str(date.today())
+    cycle_id = f"TCS_{today[:7]}"
+    ticker_dir = tmp_path / "it_sector" / "TCS"
+    ticker_dir.mkdir(parents=True)
+    envelope = {
+        "ticker": "TCS",
+        "sector": "it_sector",
+        "conviction_streak": {"current_verdict": "BUY", "streak_days": 7},
+        "reversion_prior": 0.05,
+        "daily_forecasts": [{
+            "date": today,
+            "predicted_verdict": "BUY",
+            "confidence": 0.64,
+            "predicted_close": 3847.0,
+            "key_assumptions": ["INR stable ~₹84"],
+            "revised": True,
+            "revision_count": 2,
+        }],
+    }
+    (ticker_dir / f"{cycle_id}_prediction_envelope.json").write_text(
+        __import__("json").dumps(envelope)
+    )
+
+    with patch("services.api.routes.ui_data._PREDICTIONS_DIR", tmp_path):
+        from services.api.routes.ui_data import _chat_tool_rl_prediction
+        result = await _chat_tool_rl_prediction("TCS")
+
+    assert "BUY" in result
+    assert "0.64" in result
+    assert "3,847" in result or "3847" in result
+
+
+@pytest.mark.asyncio
+async def test_rl_prediction_missing_envelope_returns_empty(tmp_path):
+    with patch("services.api.routes.ui_data._PREDICTIONS_DIR", tmp_path):
+        from services.api.routes.ui_data import _chat_tool_rl_prediction
+        result = await _chat_tool_rl_prediction("UNKNOWN")
+
+    assert result == ""
+
+
+@pytest.mark.asyncio
+async def test_rl_prediction_index_returns_empty():
+    from services.api.routes.ui_data import _chat_tool_rl_prediction
+    result = await _chat_tool_rl_prediction("SENSEX")
+    assert result == ""
+
+    result2 = await _chat_tool_rl_prediction("NIFTY")
+    assert result2 == ""

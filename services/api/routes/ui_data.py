@@ -2359,26 +2359,7 @@ async def chat_stream(body: dict):
                 name = event.get("name")
                 data = event.get("data") or {}
 
-                if name == "intent":
-                    payload = {
-                        "event": "intent",
-                        "session_id": session_id,
-                        "intent_type": data.get("intent_type", "GENERAL"),
-                        "entities": data.get("entities", {}),
-                        "focus": data.get("focus", ""),
-                    }
-                    yield f"data: {_json.dumps(payload)}\n\n"
-
-                elif name == "plan":
-                    payload = {
-                        "event": "plan",
-                        "depth": data.get("depth", "shallow"),
-                        "needs_external": data.get("needs_external", False),
-                        "tasks": data.get("tasks", []),
-                    }
-                    yield f"data: {_json.dumps(payload)}\n\n"
-
-                elif name == "tool_start":
+                if name == "tool_start":
                     payload = {
                         "event": "tool_start",
                         "tool": data.get("tool"),

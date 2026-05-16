@@ -21,6 +21,7 @@ SSE events dispatched via adispatch_custom_event:
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import re
@@ -428,7 +429,196 @@ async def _node_dispatch(state: ChatState) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# Nodes
+# Task 5: Async Parallel Executor Node
+# ---------------------------------------------------------------------------
+
+async def _run_one_task(task: dict) -> dict:
+    """Run a single tool via _execute_chat_tool. Never raises."""
+    from services.api.routes.ui_data import _execute_chat_tool
+
+    tool_name = task.get("tool", "")
+    args = task.get("args", {})
+    try:
+        result = await _execute_chat_tool(tool_name, args)
+        return {"tool": tool_name, "args": args, "result": result or ""}
+    except Exception as exc:
+        logger.warning("[executor] tool %s failed: %s", tool_name, exc)
+        return {"tool": tool_name, "args": args, "result": "", "error": str(exc)}
+
+
+async def _run_tasks_parallel(tasks: list[dict]) -> list[dict]:
+    """Fire all tasks concurrently. Returns results list (same length as tasks)."""
+    return list(await asyncio.gather(*[_run_one_task(t) for t in tasks]))
+
+
+async def _node_executor(state: ChatState) -> dict:
+    """Parallel async tool executor. Emits tool_start/tool_result SSE per task."""
+    tasks = state.get("tasks") or []
+
+    for task in tasks:
+        try:
+            await adispatch_custom_event("tool_start", {"tool": task["tool"], "args": task.get("args", {})})
+        except RuntimeError:
+            pass
+
+    results = await _run_tasks_parallel(tasks)
+
+    for r in results:
+        summary = str(r["result"])[:600] if r["result"] else "(no result)"
+        try:
+            await adispatch_custom_event("tool_result", {"tool": r["tool"], "summary": summary})
+        except RuntimeError:
+            pass
+
+    return {"tool_results": results}
+
+
+# ---------------------------------------------------------------------------
+# Task 6: Synthesize Node (Tier-Aware)
+# ---------------------------------------------------------------------------
+
+def _build_synthesize_prompt(
+    user_tier: str,
+    query_decomposition: str,
+    tool_results: list[dict],
+    market_context: str,
+) -> str:
+    results_block = "\n\n".join(
+        f"[{r['tool']}]\n{r['result']}"
+        for r in tool_results
+        if r.get("result")
+    ) or "(no tool results — answer from general knowledge)"
+
+    return f"""{market_context}
+
+User tier: {user_tier}
+What the user needs: {query_decomposition}
+
+RESEARCH RESULTS:
+{results_block}
+
+---
+Respond as a sharp Indian market analyst in a direct conversation.
+Format and depth must match the user tier:
+
+CASUAL   → 3-4 plain sentences. One key insight. No jargon. No tables. Friendly tone.
+ACTIVE   → Price + direction + 2-3 dated headlines + what to watch. Use ▲/▼. Under 150 words.
+EXPERT   → Regime, RL signal, conviction streak, key assumptions, raw metrics. Tables if helpful. No word cap.
+
+Rules (always):
+- If market not yet open, say so and reason from last close + pre-market cues
+- Cite exact headlines with source and date — never paraphrase into fabricated summaries
+- RL prediction: casual → "our model says"; active → verdict + confidence; expert → full metrics
+- Historical trend: state what the data shows — never fabricate a predicted price number
+- Never say "real-time data required" — state what you have and its date
+- Never add unsolicited disclaimers or "I cannot predict" hedges
+- If a tool result is empty or says "no data", ignore it silently
+"""
+
+
+async def _new_synthesize_node(state: ChatState) -> dict:
+    """Tier-aware synthesize node. Streams tokens as SSE. Saves user profile."""
+    from services.api.user_profile import save_profile
+
+    user_tier = state.get("user_tier") or "active"
+    query_decomposition = state.get("query_decomposition") or ""
+    tool_results = state.get("tool_results") or []
+    messages = state.get("messages", [])
+    session_id = state.get("session_id", "")
+
+    try:
+        from services.api.routes.ui_data import _nse_market_context
+        market_context = _nse_market_context()
+    except Exception:
+        market_context = f"Today: {datetime.now(timezone.utc).strftime('%Y-%m-%d (%A)')}"
+
+    system_prompt = _build_synthesize_prompt(
+        user_tier, query_decomposition, tool_results, market_context
+    )
+
+    lc_messages = [{"role": "system", "content": system_prompt}]
+    lc_messages.extend(_to_openai_msgs(messages[-8:] if len(messages) > 8 else messages))
+
+    final_text = ""
+    buf = ""
+    in_think = False
+    thinking_fired = False
+    _T_OPEN = "<think>"
+    _T_CLOSE = "</think>"
+
+    try:
+        client = get_async_llm_client()
+        stream = await client.chat.completions.create(
+            model=_FAST_MODEL,
+            messages=lc_messages,
+            temperature=0.4,
+            max_tokens=500,
+            stream=True,
+        )
+
+        async for chunk in stream:
+            raw = ""
+            if chunk.choices and chunk.choices[0].delta:
+                raw = chunk.choices[0].delta.content or ""
+            if not raw:
+                continue
+
+            buf += raw
+            visible = ""
+
+            while buf:
+                if in_think:
+                    idx = buf.find(_T_CLOSE)
+                    if idx < 0:
+                        buf = ""
+                        break
+                    buf = buf[idx + len(_T_CLOSE):]
+                    in_think = False
+                else:
+                    idx = buf.find(_T_OPEN)
+                    if idx < 0:
+                        visible += buf
+                        buf = ""
+                        break
+                    visible += buf[:idx]
+                    buf = buf[idx + len(_T_OPEN):]
+                    in_think = True
+                    if not thinking_fired:
+                        thinking_fired = True
+                        try:
+                            await adispatch_custom_event("thinking", {})
+                        except RuntimeError:
+                            pass
+
+            if visible:
+                final_text += visible
+                try:
+                    await adispatch_custom_event("token", {"text": visible})
+                except RuntimeError:
+                    pass
+
+    except Exception as exc:
+        logger.warning("[new_synthesize] %s", exc)
+        final_text = "I encountered an error composing the answer. Please try again."
+        try:
+            await adispatch_custom_event("token", {"text": final_text})
+        except RuntimeError:
+            pass
+
+    # Save updated user profile
+    if session_id:
+        browsing = state.get("browsing_strategy") or {}
+        topics = browsing.get("topics", [])
+        try:
+            save_profile(session_id, tier=user_tier, tier_confidence=0.75, topics=topics)
+        except Exception as exc:
+            logger.warning("[new_synthesize] failed to update profile: %s", exc)
+
+    return {"messages": [{"role": "assistant", "content": final_text}]}
+
+
+# ---------------------------------------------------------------------------
+# Nodes (legacy — kept as dead code until Task 9 removes them)
 # ---------------------------------------------------------------------------
 
 async def _classify_node(state: ChatState) -> dict:
@@ -861,30 +1051,18 @@ def _route_after_reviewer(state: ChatState) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Graph — module-level singleton (one MemorySaver per server process)
+# Graph — 3-node pipeline: dispatch → executor → synthesize
 # ---------------------------------------------------------------------------
 
 _builder = StateGraph(ChatState)
-_builder.add_node("classify",   _classify_node)
-_builder.add_node("planner",    _planner_node)
-_builder.add_node("executor",   _executor_node)
-_builder.add_node("synthesize", _synthesize_node)
-_builder.add_node("reviewer",   _reviewer_node)
+_builder.add_node("dispatch",   _node_dispatch)
+_builder.add_node("executor",   _node_executor)
+_builder.add_node("synthesize", _new_synthesize_node)
 
-_builder.set_entry_point("classify")
-_builder.add_edge("classify",  "planner")
-_builder.add_edge("planner",   "executor")
-_builder.add_conditional_edges(
-    "executor",
-    _route_after_executor,
-    {"executor": "executor", "synthesize": "synthesize"},
-)
-_builder.add_edge("synthesize", "reviewer")
-_builder.add_conditional_edges(
-    "reviewer",
-    _route_after_reviewer,
-    {"synthesize": "synthesize", END: END},
-)
+_builder.set_entry_point("dispatch")
+_builder.add_edge("dispatch",   "executor")
+_builder.add_edge("executor",   "synthesize")
+_builder.add_edge("synthesize", END)
 
 _checkpointer = MemorySaver()
 chat_graph = _builder.compile(checkpointer=_checkpointer)

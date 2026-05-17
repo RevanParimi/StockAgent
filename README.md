@@ -463,10 +463,17 @@ A quick guide to every abbreviation, metric, and concept you will encounter in S
 
 | Term | What it measures | How it is used |
 |---|---|---|
-| **RSI** (Relative Strength Index, 0–100) | Momentum — is the stock overbought or oversold? | RSI > 70 = overbought, potential reversal. RSI < 30 = oversold, potential bounce. Used in all sector pattern agents |
-| **MACD** (Moving Average Convergence Divergence) | Trend momentum — signal and histogram | MACD crossing above signal line = bullish momentum. Renewable energy uses weekly MACD to filter sector noise |
-| **Bollinger Bands** (20-day MA ± 2σ) | Volatility envelope | Stock near upper band with declining volume = exhaustion signal. Used in automobile pattern agent |
-| **Golden / Death Cross** | 50-day MA crossing 200-day MA | Golden cross (50 above 200) = bullish; death cross (50 below 200) = bearish. Used in RE technical agent |
+| **OHLCV** | Open, High, Low, Close, Volume — the 5 core data points for any trading period | Foundation of all technical analysis. Open = first trade price, Close = last trade price, High/Low = session extremes, Volume = shares traded. StockAgent fetches 10 years of daily OHLCV from yfinance for every tracked stock |
+| **ATR** (Average True Range) | A stock's typical daily price swing over the last 14 trading days | ATR% = ATR ÷ price. HDFCBANK ATR ~0.8% (stable), ADANIGREEN ATR ~3.5% (volatile). Used to calibrate how large a prediction miss needs to be before triggering a thesis review — a 2% miss on a 0.8% ATR stock is serious; the same miss on a 3.5% ATR stock is normal noise |
+| **RSI** (Relative Strength Index, 0–100) | Momentum — is the stock overbought or oversold? | RSI > 70 = overbought, potential reversal. RSI < 30 = oversold, potential bounce. Used in all sector pattern agents and to amplify mean-reversion caution when conviction streak is high |
+| **MACD** (Moving Average Convergence Divergence) | Trend momentum — signal line and histogram | MACD crossing above its signal line = bullish momentum building. Renewable energy uses weekly MACD to filter out short-term sector noise |
+| **Bollinger Bands** (20-day MA ± 2σ) | Volatility envelope around the moving average | Stock near upper band with declining volume = exhaustion signal. Stock touching lower band on high volume = capitulation. Used in automobile pattern agent |
+| **SMA / EMA** | Simple / Exponential Moving Average | SMA gives equal weight to all days in the window. EMA gives more weight to recent days. 50-day and 200-day SMAs are used for trend direction; short-term EMAs for momentum |
+| **Golden / Death Cross** | 50-day SMA crossing the 200-day SMA | Golden cross (50 rises above 200) = long-term bullish shift. Death cross (50 falls below 200) = long-term bearish shift. Used in RE technical agent as a filter for sector-level trend |
+| **Support / Resistance** | Historical price levels where buying or selling has repeatedly stalled | Support = floor where buyers historically stepped in. Resistance = ceiling where sellers historically emerged. Used in pattern analysis to define price targets and stop zones |
+| **Fibonacci retracement** | Key pullback levels derived from the Fibonacci sequence (23.6%, 38.2%, 50%, 61.8%) | After a strong move, stocks often retrace to these levels before resuming. Used in automobile pattern agent to identify entry zones after a rally |
+| **Delivery %** | Proportion of traded volume resulting in actual delivery (not squared off intraday) | High delivery % on a rising stock = genuine accumulation. Low delivery % on a rally = speculative froth. Used as a conviction signal in the conviction streak warning |
+| **Open Interest (OI)** | Total outstanding F&O contracts at any point in time | Rising OI with rising price = new longs being added (bullish). Rising OI with falling price = new shorts (bearish). Used as a supplementary signal in technical pattern analysis |
 
 ---
 

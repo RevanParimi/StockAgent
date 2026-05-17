@@ -30,6 +30,7 @@ from datetime import date
 from openai import OpenAI, APIError, APITimeoutError, RateLimitError
 
 from core.config import settings
+from services.clients.llm_client import record_llm_call
 from core.schemas.feedback import (
     FeedbackAgentInput,
     FeedbackAgentOutput,
@@ -183,6 +184,7 @@ class FeedbackAgent:
         last_error: Exception | None = None
 
         for attempt in range(1, settings.MAX_RETRIES + 1):
+            _t0 = time.monotonic()
             try:
                 response = self._client.chat.completions.create(
                     model=settings.LLM_MODEL,
@@ -194,9 +196,27 @@ class FeedbackAgent:
                     ],
                     response_format={"type": "json_object"},
                 )
+                _latency = int((time.monotonic() - _t0) * 1000)
+                record_llm_call(
+                    caller="FeedbackAgent",
+                    model=response.model or "unknown",
+                    input_tokens=response.usage.prompt_tokens if response.usage else 0,
+                    output_tokens=response.usage.completion_tokens if response.usage else 0,
+                    latency_ms=_latency,
+                    success=True,
+                )
                 return response.choices[0].message.content or "{}"
 
             except RateLimitError as e:
+                _latency = int((time.monotonic() - _t0) * 1000)
+                record_llm_call(
+                    caller="FeedbackAgent",
+                    model="unknown",
+                    input_tokens=0,
+                    output_tokens=0,
+                    latency_ms=_latency,
+                    success=False,
+                )
                 logger.warning(
                     "[FeedbackAgent] Rate limit (attempt %d/%d)", attempt, settings.MAX_RETRIES
                 )
@@ -205,6 +225,15 @@ class FeedbackAgent:
                 delay *= 2
 
             except APITimeoutError as e:
+                _latency = int((time.monotonic() - _t0) * 1000)
+                record_llm_call(
+                    caller="FeedbackAgent",
+                    model="unknown",
+                    input_tokens=0,
+                    output_tokens=0,
+                    latency_ms=_latency,
+                    success=False,
+                )
                 logger.warning(
                     "[FeedbackAgent] Timeout (attempt %d/%d)", attempt, settings.MAX_RETRIES
                 )
@@ -212,6 +241,15 @@ class FeedbackAgent:
                 time.sleep(delay)
 
             except APIError as e:
+                _latency = int((time.monotonic() - _t0) * 1000)
+                record_llm_call(
+                    caller="FeedbackAgent",
+                    model="unknown",
+                    input_tokens=0,
+                    output_tokens=0,
+                    latency_ms=_latency,
+                    success=False,
+                )
                 logger.error("[FeedbackAgent] API error: %s", e)
                 last_error = e
                 break

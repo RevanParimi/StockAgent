@@ -2027,15 +2027,23 @@ async def _chat_tool_historical_prices(symbol: str, days: int = 5) -> str:
         if hist.empty:
             return f"No historical data for {symbol}"
 
+        # Compute close-to-close change BEFORE tail() so the buffer day
+        # provides prev_close for the first visible row.
+        hist["prev_close"] = hist["Close"].shift(1)
         hist = hist.tail(days)
         lines = [f"{symbol} — Last {len(hist)} trading days:"]
         closes: list[float] = []
         for dt, row in hist.iterrows():
             date_str = dt.strftime("%Y-%m-%d (%a)")
-            change_pct = ((row["Close"] - row["Open"]) / row["Open"]) * 100
-            arrow = "▲" if change_pct >= 0 else "▼"
+            import math
+            if math.isnan(row["prev_close"]):
+                change_str = "N/A"
+            else:
+                change_pct = ((row["Close"] - row["prev_close"]) / row["prev_close"]) * 100
+                arrow = "▲" if change_pct >= 0 else "▼"
+                change_str = f"{arrow}{abs(change_pct):.2f}%"
             lines.append(
-                f"{date_str}  Close: {row['Close']:,.2f}  Change: {arrow}{abs(change_pct):.2f}%"
+                f"{date_str}  Close: {row['Close']:,.2f}  Change: {change_str}"
             )
             closes.append(float(row["Close"]))
 

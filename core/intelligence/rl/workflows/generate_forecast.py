@@ -260,8 +260,8 @@ def generate_forecast(ticker: str, sector: str = "automobile") -> PredictionEnve
             pass
 
         # Historical average return for this verdict (from prior cycles)
-        feedback_log = store.load_feedback_log(store.current_cycle_id())
-        hist_avg = compute_historical_avg_return(feedback_log, report.verdict)
+        all_feedback_entries = store.load_recent_feedback_entries(n_cycles=6)
+        hist_avg = compute_historical_avg_return(all_feedback_entries, report.verdict)
 
         # Detect regime for the current date (reuse RegimeDetector — cheap)
         from core.intelligence.regime.detector import RegimeDetector

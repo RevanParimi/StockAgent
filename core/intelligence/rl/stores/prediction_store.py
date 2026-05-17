@@ -185,6 +185,24 @@ class PredictionStore:
             return DailyFeedbackLog(ticker=self.ticker, cycle_id=cid)
         return DailyFeedbackLog(**data)
 
+    def load_recent_feedback_entries(self, n_cycles: int = 6) -> list:
+        """
+        Aggregate FeedbackEntry objects from the last n_cycles completed logs.
+        Returns a flat list — most recent cycle first.
+        Silently skips unreadable files.
+        """
+        from core.schemas.feedback import DailyFeedbackLog
+        pattern = f"{self.ticker}_*_daily_feedback_log.json"
+        log_files = sorted(self._dir.glob(pattern), reverse=True)[:n_cycles]
+        entries = []
+        for path in log_files:
+            try:
+                log = DailyFeedbackLog.model_validate_json(path.read_text(encoding="utf-8"))
+                entries.extend(log.entries)
+            except Exception as exc:
+                logger.debug("[PredictionStore] Skipping unreadable log %s: %s", path.name, exc)
+        return entries
+
     def append_feedback_entry(self, entry: FeedbackEntry, cycle_id: str | None = None) -> None:
         """
         Add one FeedbackEntry to the log for the given cycle.

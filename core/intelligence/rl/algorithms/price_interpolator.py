@@ -426,22 +426,29 @@ def compute_atr_pct(ohlcv_df) -> float:
 # ---------------------------------------------------------------------------
 
 def compute_historical_avg_return(
-    feedback_log,
+    feedback_log_or_entries,
     verdict: str,
     last_n_cycles: int = 6,
 ) -> float | None:
     """
-    Look back through FeedbackLog entries and compute the median observed
-    price_error_pct on days where predicted_verdict matched the given verdict.
-
-    Returns None if fewer than 3 matching entries (insufficient data).
+    Compute median observed price_error_pct for a given verdict.
+    Accepts either a DailyFeedbackLog object or a plain list of FeedbackEntry objects.
+    Returns None if fewer than 3 matching entries.
     """
     try:
-        if feedback_log is None or not feedback_log.entries:
+        if isinstance(feedback_log_or_entries, list):
+            all_entries = feedback_log_or_entries
+        elif feedback_log_or_entries is None:
             return None
+        else:
+            all_entries = feedback_log_or_entries.entries or []
+
+        if not all_entries:
+            return None
+
         matching = [
             e.price_error_pct
-            for e in feedback_log.entries
+            for e in all_entries
             if e.predicted_verdict.upper() == verdict.upper()
         ]
         if len(matching) < 3:

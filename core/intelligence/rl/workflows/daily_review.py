@@ -769,7 +769,7 @@ def run_daily_review(
     # ------------------------------------------------------------------ #
     thesis_review: ThesisReview | None = None
     _reviewer = ThesisReviewer()
-    if _reviewer.should_review(price_error_pct, direction_correct, fb_output.miss_type):
+    if _reviewer.should_review(price_error_pct, direction_correct, fb_output.miss_type, ticker=ticker):
         try:
             thesis_review = _reviewer.review(
                 ticker=ticker,
@@ -777,6 +777,7 @@ def run_daily_review(
                 key_assumptions=today_forecast.key_assumptions,
                 fb_output=fb_output,
                 market_context=market_context or "",
+                price_error_pct=price_error_pct,
             )
             logger.info(
                 "[daily_review] Thesis review: intact=%s multiplier=%.2f invalidated=%s",

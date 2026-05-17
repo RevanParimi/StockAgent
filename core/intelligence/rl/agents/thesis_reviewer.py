@@ -4,11 +4,11 @@ core/intelligence/rl/agents/thesis_reviewer.py
 Conditional thesis review after a significant prediction miss.
 
 WHEN IT FIRES (checked in daily_review.py):
-  |price_error_pct| > THESIS_REVIEW_THRESHOLD (2.0%)
+  |price_error_pct| > ATR-relative threshold (max(1.5%, 1.5 * atr_pct))
   OR (direction_correct=False AND miss_type in {direction_flip, model_bias})
 
 WHY IT EXISTS:
-  After a >2% miss the system mechanically re-weights and re-forecasts the
+  After a large miss the system mechanically re-weights and re-forecasts the
   remaining 30 days.  But if the underlying thesis was wrong (e.g. the stock
   was assumed to benefit from stable crude, and crude just spiked 8%), then
   every remaining forecast carries forward a broken assumption.  Re-weighting
@@ -17,6 +17,12 @@ WHY IT EXISTS:
   ThesisReviewer asks: which of the original key_assumptions are now
   invalidated?  Is the 30-day thesis still intact, or does the remaining
   forecast need a confidence haircut across the board?
+
+ATR-RELATIVE THRESHOLD:
+  A flat 2% threshold was too blunt.  For HDFCBANK (ATR ~0.8%), 2% is a
+  2.5-sigma event.  For ADANIGREEN (ATR ~3.5%), 2% is sub-1-sigma noise.
+  Threshold = max(_ATR_THRESHOLD_FLOOR, _ATR_THRESHOLD_MULTIPLIER * atr_pct)
+  This ensures volatile stocks need proportionally larger misses to trigger.
 
 WHAT IT DOES NOT DO:
   - It does NOT change the verdict direction (that is the FeedbackAgent's job
@@ -27,6 +33,11 @@ WHAT IT DOES NOT DO:
 LLM COST:
   ~250 input tokens, ~80 output tokens.  Fires at most once per ticker per
   significant-miss day — typically 1-3 times per month across all tickers.
+
+CALIBRATION TELEMETRY:
+  Each review appends a jsonl record to data/predictions/<sector>/<ticker>/
+  thesis_calls.jsonl capturing the multiplier, thesis_intact flag, and the
+  price error that triggered the review.  Used for future accuracy analysis.
 """
 
 from __future__ import annotations
@@ -42,8 +53,14 @@ from core.schemas.feedback import FeedbackAgentOutput, ThesisReview
 
 logger = logging.getLogger(__name__)
 
-# Minimum absolute price error to trigger a thesis review.
-THESIS_REVIEW_THRESHOLD: float = 2.0   # percent
+# ATR-relative threshold constants (Task 7: replaces flat THESIS_REVIEW_THRESHOLD).
+# Threshold = max(_ATR_THRESHOLD_FLOOR, _ATR_THRESHOLD_MULTIPLIER * atr_pct)
+_ATR_THRESHOLD_FLOOR: float = 1.5       # minimum trigger threshold regardless of ATR (%)
+_ATR_THRESHOLD_MULTIPLIER: float = 1.5  # threshold multiplier applied to atr_pct
+
+# Backward-compat alias — kept so external imports don't break.
+# Reflects the new floor value; the effective threshold is ATR-relative.
+THESIS_REVIEW_THRESHOLD: float = _ATR_THRESHOLD_FLOOR
 
 # Miss types that warrant thesis review even below the price error threshold.
 THESIS_REVIEW_MISS_TYPES: frozenset[str] = frozenset({"direction_flip", "model_bias"})
@@ -121,13 +138,34 @@ class ThesisReviewer:
     # Public interface
     # ------------------------------------------------------------------
 
-    def should_review(self, price_error_pct: float, direction_correct: bool, miss_type: str) -> bool:
+    def should_review(
+        self,
+        price_error_pct: float,
+        direction_correct: bool,
+        miss_type: str,
+        ticker: str = "",
+    ) -> bool:
         """True when a thesis review is warranted for this day's outcome."""
-        if abs(price_error_pct) > THESIS_REVIEW_THRESHOLD:
-            return True
+        # Structural miss always triggers regardless of size
         if not direction_correct and miss_type in THESIS_REVIEW_MISS_TYPES:
             return True
-        return False
+        # ATR-relative size trigger: volatile stocks need larger misses to trigger
+        try:
+            atr_pct = self._compute_atr_pct(ticker) if ticker else 0.0
+        except Exception:
+            atr_pct = 0.0
+        threshold = max(_ATR_THRESHOLD_FLOOR, _ATR_THRESHOLD_MULTIPLIER * atr_pct)
+        return abs(price_error_pct) > threshold
+
+    def _compute_atr_pct(self, ticker: str = "") -> float:
+        """14-day ATR as % of price. Returns 0.0 on failure (caller uses floor)."""
+        try:
+            from core.intelligence.rl.algorithms.price_interpolator import compute_atr_pct
+            from core.data.fetchers.price import get_price_history
+            ohlcv = get_price_history(ticker, years=1)
+            return compute_atr_pct(ohlcv)
+        except Exception:
+            return 0.0
 
     def review(
         self,
@@ -136,6 +174,7 @@ class ThesisReviewer:
         key_assumptions: list[str],
         fb_output: FeedbackAgentOutput,
         market_context: str,
+        price_error_pct: float = 0.0,
     ) -> ThesisReview:
         """
         Run the thesis review LLM call.
@@ -147,7 +186,26 @@ class ThesisReviewer:
         try:
             user_prompt = _format_prompt(ticker, sector, key_assumptions, fb_output, market_context)
             raw = self._call_llm(user_prompt)
-            return self._parse(raw, key_assumptions)
+            result = self._parse(raw, key_assumptions)
+            # --- calibration telemetry ---
+            try:
+                import json as _json
+                from datetime import date as _date
+                from pathlib import Path as _Path
+                _cal_dir = _Path("data/predictions") / sector / ticker
+                _cal_dir.mkdir(parents=True, exist_ok=True)
+                _entry = _json.dumps({
+                    "date": str(_date.today()),
+                    "ticker": ticker,
+                    "multiplier": result.horizon_confidence_multiplier,
+                    "thesis_intact": result.thesis_intact,
+                    "price_error_at_trigger": round(abs(price_error_pct), 2),
+                })
+                with open(_cal_dir / "thesis_calls.jsonl", "a", encoding="utf-8") as _fh:
+                    _fh.write(_entry + "\n")
+            except Exception:
+                pass
+            return result
         except Exception as exc:
             logger.warning(
                 "[ThesisReviewer] Failed for %s (%s) — returning safe default: %s",

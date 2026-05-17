@@ -106,14 +106,15 @@ class TestShouldReview:
         r = ThesisReviewer()
         assert r.should_review(-2.5, True, "magnitude") is True
 
-    def test_exactly_at_threshold_does_not_trigger(self):
-        """error = exactly 2.0% should NOT trigger (strict >)."""
+    def test_exactly_at_floor_does_not_trigger(self):
+        """error = exactly 1.5% (the ATR floor) should NOT trigger (strict >)."""
         r = ThesisReviewer()
-        assert r.should_review(2.0, True, "magnitude") is False
+        assert r.should_review(1.5, True, "magnitude") is False
 
-    def test_just_above_threshold_triggers(self):
+    def test_just_above_floor_triggers(self):
+        """error = 1.51% just above the ATR floor (no ticker → atr=0) triggers."""
         r = ThesisReviewer()
-        assert r.should_review(2.01, True, "magnitude") is True
+        assert r.should_review(1.51, True, "magnitude") is True
 
     def test_small_error_direction_correct_no_trigger(self):
         """Small miss, direction correct → no review needed."""
@@ -133,8 +134,13 @@ class TestShouldReview:
         r = ThesisReviewer()
         assert r.should_review(0.5, False, miss_type) is False
 
-    def test_threshold_value_is_2_pct(self):
-        assert THESIS_REVIEW_THRESHOLD == 2.0
+    def test_threshold_floor_is_1_5_pct(self):
+        """ATR-relative floor constant equals 1.5%; THESIS_REVIEW_THRESHOLD alias preserved."""
+        from core.intelligence.rl.agents.thesis_reviewer import _ATR_THRESHOLD_FLOOR, _ATR_THRESHOLD_MULTIPLIER
+        assert _ATR_THRESHOLD_FLOOR == 1.5
+        assert _ATR_THRESHOLD_MULTIPLIER == 1.5
+        # Backward-compat alias still importable and reflects the floor
+        assert THESIS_REVIEW_THRESHOLD == _ATR_THRESHOLD_FLOOR
 
     def test_structural_miss_types_set(self):
         assert "direction_flip" in THESIS_REVIEW_MISS_TYPES
@@ -338,3 +344,62 @@ class TestRevisionWithThesisMultiplier:
         )
         for f in saved.daily_forecasts:
             assert f.confidence >= 0.05, f"Confidence {f.confidence} below floor 0.05"
+
+
+# ---------------------------------------------------------------------------
+# ATR-relative threshold (Task 7)
+# ---------------------------------------------------------------------------
+
+def test_should_review_high_atr_stock_2pct_miss_no_trigger():
+    """For ADANIGREEN-like stock (ATR 3.5%), a 2% miss should NOT trigger review.
+    Threshold = max(1.5, 1.5*3.5) = 5.25%, so 2% < 5.25% = no trigger."""
+    reviewer = ThesisReviewer.__new__(ThesisReviewer)
+    with patch.object(reviewer, "_compute_atr_pct", return_value=3.5):
+        result = reviewer.should_review(
+            price_error_pct=2.0,
+            direction_correct=True,
+            miss_type="magnitude",
+            ticker="ADANIGREEN",
+        )
+    assert result is False
+
+
+def test_should_review_low_atr_stock_triggers_at_floor():
+    """For HDFCBANK-like stock (ATR 0.8%), threshold = max(1.5, 1.5*0.8=1.2) = 1.5%.
+    A 1.6% miss exceeds the floor and triggers."""
+    reviewer = ThesisReviewer.__new__(ThesisReviewer)
+    with patch.object(reviewer, "_compute_atr_pct", return_value=0.8):
+        result = reviewer.should_review(
+            price_error_pct=1.6,
+            direction_correct=True,
+            miss_type="magnitude",
+            ticker="HDFCBANK",
+        )
+    assert result is True
+
+
+def test_should_review_structural_miss_always_triggers():
+    """direction_flip always triggers regardless of ATR or error size."""
+    reviewer = ThesisReviewer.__new__(ThesisReviewer)
+    with patch.object(reviewer, "_compute_atr_pct", return_value=5.0):
+        result = reviewer.should_review(
+            price_error_pct=0.5,
+            direction_correct=False,
+            miss_type="direction_flip",
+            ticker="ADANIGREEN",
+        )
+    assert result is True
+
+
+def test_should_review_atr_failure_uses_floor():
+    """If ATR computation fails, threshold falls back to floor 1.5%."""
+    reviewer = ThesisReviewer.__new__(ThesisReviewer)
+    with patch.object(reviewer, "_compute_atr_pct", side_effect=Exception("no data")):
+        result = reviewer.should_review(
+            price_error_pct=2.0,
+            direction_correct=True,
+            miss_type="magnitude",
+            ticker="HDFCBANK",
+        )
+    # floor=1.5, atr=0 (fallback from exception), threshold=max(1.5, 0)=1.5, error=2.0 > 1.5 → True
+    assert result is True

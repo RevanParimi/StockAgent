@@ -19,9 +19,9 @@ Applied to forecast confidence:
     (dampened — prior alone cannot halve confidence; it is a signal, not a verdict)
 
 RSI divergence amplifier:
-    When streak_days ≥ 8 AND pattern_analysis score contradicts the verdict
-    direction, the reversion_prior is amplified by 1.5 (capped at 0.30 total).
-    Uses pattern_analysis overall score as a proxy for rsi_macd_bb sub-score.
+    When streak_days ≥ 8 AND sector RSI contradicts the verdict direction,
+    the reversion_prior is amplified by 1.5 (capped at 0.30 total).
+    Uses actual sector_rsi from RegimeDetector with canonical RSI thresholds 70/30.
 """
 
 from __future__ import annotations
@@ -41,12 +41,11 @@ STREAK_WARNING_THRESHOLD: int = 8
 _BULLISH: frozenset[str] = frozenset({"BUY", "STRONG BUY"})
 _BEARISH: frozenset[str] = frozenset({"SELL", "STRONG SELL"})
 
-# RSI thresholds: pattern_analysis score below/above these when direction
-# contradicts the streak indicates overbought/oversold divergence.
-_RSI_OVERBOUGHT_PROXY: float = 0.40   # pa_score < this while BULLISH → divergence
-_RSI_OVERSOLD_PROXY:   float = 0.60   # pa_score > this while BEARISH → divergence
-_RSI_AMPLIFIER:        float = 1.50   # multiplier when divergence detected
-_MAX_REVERSION_PRIOR:  float = 0.30   # absolute cap including amplifier
+# RSI thresholds: canonical RSI levels for overbought/oversold detection
+_RSI_OVERBOUGHT_THRESHOLD: float = 70.0  # sector_rsi > this while BULLISH → divergence
+_RSI_OVERSOLD_THRESHOLD:   float = 30.0  # sector_rsi < this while BEARISH → divergence
+_RSI_AMPLIFIER:            float = 1.50  # multiplier when divergence detected
+_MAX_REVERSION_PRIOR:      float = 0.30  # absolute cap including amplifier
 
 
 # ---------------------------------------------------------------------------
@@ -103,37 +102,32 @@ def compute_rsi_amplifier(
     verdict: str,
     todays_agent_scores: dict[str, float],
     streak_days: int,
+    sector_rsi: float = 50.0,
 ) -> float:
     """
-    Return 1.5 if the pattern_analysis agent contradicts the streak verdict,
-    otherwise 1.0.  Only activates when streak_days >= STREAK_WARNING_THRESHOLD.
+    Return 1.5 if sector RSI contradicts the streak verdict, otherwise 1.0.
+    Only activates when streak_days >= STREAK_WARNING_THRESHOLD.
 
-    The pattern_analysis overall score is used as a proxy for the rsi_macd_bb
-    sub-score because full sub-scores are not exposed in the daily review
-    context.  Threshold logic:
-
-      BULLISH streak + pa_score < 0.40 → RSI overbought signal → amplify
-      BEARISH streak + pa_score > 0.60 → RSI oversold signal  → amplify
+    Uses sector_rsi from RegimeDetector (computed in daily_review Step 0):
+      BULLISH streak + sector_rsi > 70  → overbought → amplify 1.5×
+      BEARISH streak + sector_rsi < 30  → oversold   → amplify 1.5×
     """
     if streak_days < STREAK_WARNING_THRESHOLD:
         return 1.0
 
     direction = verdict_direction(verdict)
-    pa_score = todays_agent_scores.get("pattern_analysis", 0.5)
 
-    if direction == "BULLISH" and pa_score < _RSI_OVERBOUGHT_PROXY:
+    if direction == "BULLISH" and sector_rsi > _RSI_OVERBOUGHT_THRESHOLD:
         logger.debug(
-            "[ConvictionTracker] RSI divergence (BULLISH streak, pa_score=%.3f < %.2f) "
-            "→ amplifier 1.5×",
-            pa_score, _RSI_OVERBOUGHT_PROXY,
+            "[ConvictionTracker] RSI overbought (BULLISH streak, sector_rsi=%.1f > 70) → amplifier 1.5×",
+            sector_rsi,
         )
         return _RSI_AMPLIFIER
 
-    if direction == "BEARISH" and pa_score > _RSI_OVERSOLD_PROXY:
+    if direction == "BEARISH" and sector_rsi < _RSI_OVERSOLD_THRESHOLD:
         logger.debug(
-            "[ConvictionTracker] RSI divergence (BEARISH streak, pa_score=%.3f > %.2f) "
-            "→ amplifier 1.5×",
-            pa_score, _RSI_OVERSOLD_PROXY,
+            "[ConvictionTracker] RSI oversold (BEARISH streak, sector_rsi=%.1f < 30) → amplifier 1.5×",
+            sector_rsi,
         )
         return _RSI_AMPLIFIER
 
@@ -144,9 +138,12 @@ def compute_final_reversion_prior(
     streak_days: int,
     verdict: str,
     todays_agent_scores: dict[str, float],
+    sector_rsi: float = 50.0,
 ) -> float:
     """
     Convenience wrapper: compute base prior, apply RSI amplifier, cap at 0.30.
+    sector_rsi should come from regime_snapshot.sector_rsi (Step 0 of daily_review).
+    Defaults to 50.0 (neutral RSI) when not provided.
 
     Returns
     -------
@@ -155,7 +152,7 @@ def compute_final_reversion_prior(
     base = compute_reversion_prior(streak_days)
     if base == 0.0:
         return 0.0
-    amplifier = compute_rsi_amplifier(verdict, todays_agent_scores, streak_days)
+    amplifier = compute_rsi_amplifier(verdict, todays_agent_scores, streak_days, sector_rsi)
     return round(min(_MAX_REVERSION_PRIOR, base * amplifier), 4)
 
 

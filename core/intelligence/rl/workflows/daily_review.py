@@ -720,6 +720,7 @@ def run_daily_review(
         streak_days=updated_streak.streak_days,
         verdict=today_forecast.predicted_verdict,
         todays_agent_scores=todays_scores,
+        sector_rsi=regime_snapshot.sector_rsi,
     )
     logger.info(
         "[daily_review] Conviction streak: '%s' %d day(s) | "

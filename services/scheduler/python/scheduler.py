@@ -185,6 +185,23 @@ class AutomobileScheduler:
         else:
             logger.info("[Scheduler] Macro news feed disabled (MACRO_NEWS_ENABLED=false)")
 
+        # ── Job 7: Weekly ledger cleanup (Monday 3:30 am IST) ────────────────
+        scheduler.add_job(
+            func=self._ledger_cleanup_job,
+            trigger=CronTrigger(
+                day_of_week="mon",
+                hour=3,
+                minute=30,
+                timezone="Asia/Kolkata",
+            ),
+            id="ledger_cleanup_weekly",
+            name="Ledger stale-lesson cleanup (weekly)",
+            misfire_grace_time=3600,
+            coalesce=True,
+            replace_existing=True,
+        )
+        logger.info("[Scheduler] Ledger cleanup job: Mondays at 3:30 am IST")
+
         return scheduler
 
     # ------------------------------------------------------------------
@@ -313,6 +330,50 @@ class AutomobileScheduler:
             )
         except Exception as exc:
             logger.error("[Scheduler] Macro daily FAILED: %s", exc, exc_info=True)
+
+    def _ledger_cleanup_job(self) -> None:
+        """
+        Downgrade stale single-ticker market-wide/sector-wide lessons weekly.
+        Runs Monday at 3:30 am IST — well before any market activity.
+        Non-fatal: failures per ticker are logged but never crash the scheduler.
+        """
+        from pathlib import Path
+        from core.intelligence.rl.stores.ledger_propagator import downgrade_stale_lessons
+        from core.intelligence.rl.stores.prediction_store import PredictionStore
+
+        _KNOWN_SECTORS = ["automobile", "banking_bfsi", "it_sector", "renewable_energy"]
+        base_dir = "data/predictions"
+
+        def _sector_for(ticker: str) -> str:
+            return next(
+                (s for s in _KNOWN_SECTORS if Path(f"{base_dir}/{s}/{ticker}").exists()),
+                "automobile",
+            )
+
+        tickers = _active_tickers()
+        logger.info("[Scheduler] === Weekly ledger cleanup — %d tickers ===", len(tickers))
+        for ticker in tickers:
+            try:
+                sector = _sector_for(ticker)
+                store = PredictionStore(ticker, sector=sector)
+                _, sector_ledger, market_ledger = store.load_all_ledgers()
+
+                n_market = downgrade_stale_lessons(market_ledger)
+                n_sector = downgrade_stale_lessons(sector_ledger)
+
+                if n_market:
+                    store.save_market_ledger(market_ledger)
+                if n_sector:
+                    store.save_sector_ledger(sector_ledger)
+
+                if n_market + n_sector:
+                    logger.info(
+                        "[Scheduler] Ledger cleanup %s: %d lessons modified",
+                        ticker, n_market + n_sector,
+                    )
+            except Exception as exc:
+                logger.warning("[Scheduler] Ledger cleanup failed for %s: %s", ticker, exc)
+        logger.info("[Scheduler] === Weekly ledger cleanup complete ===")
 
     # ------------------------------------------------------------------
     # Public interface

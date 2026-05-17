@@ -273,3 +273,51 @@ def build_tiered_lessons_summary(
             )
 
     return "\n".join(lines) if lines else "No lessons learned yet."
+
+
+def downgrade_stale_lessons(
+    ledger: "LearningLedger",
+    staleness_days: int = 30,
+) -> int:
+    """
+    Downgrade scope for lessons confirmed by only ONE ticker that haven't
+    been seen in staleness_days days. Multi-ticker lessons are real signal
+    and are never auto-downgraded.
+
+    Rules:
+      market_wide  + 1 ticker + inactive >  staleness_days  → sector_wide
+      sector_wide  + 1 ticker + inactive > 2×staleness_days → still_valid=False
+
+    Returns number of lessons modified. Mutates ledger in-place.
+    """
+    from datetime import date as _date
+
+    today = _date.today()
+    modified = 0
+    for lesson in ledger.lessons:
+        if not lesson.still_valid:
+            continue
+        if len(lesson.contributing_tickers) > 1:
+            continue  # multi-ticker = real cross-asset signal, never auto-downgrade
+        try:
+            days_inactive = (today - _date.fromisoformat(lesson.last_seen)).days
+        except Exception:
+            continue
+
+        if lesson.scope == "market_wide" and days_inactive > staleness_days:
+            lesson.scope = "sector_wide"
+            modified += 1
+            logger.info(
+                "[ledger_propagator] %s: downgraded market_wide → sector_wide "
+                "(%d days inactive, 1 ticker)",
+                lesson.lesson_id, days_inactive,
+            )
+        elif lesson.scope == "sector_wide" and days_inactive > staleness_days * 2:
+            lesson.still_valid = False
+            modified += 1
+            logger.info(
+                "[ledger_propagator] %s: invalidated sector_wide lesson "
+                "(%d days inactive, 1 ticker)",
+                lesson.lesson_id, days_inactive,
+            )
+    return modified

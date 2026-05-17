@@ -2020,6 +2020,7 @@ async def _chat_tool_search_news(query: str) -> str:
 async def _chat_tool_historical_prices(symbol: str, days: int = 5) -> str:
     """Fetch last N trading days OHLCV for a yfinance symbol."""
     try:
+        import math
         import yfinance as yf
 
         ticker = yf.Ticker(symbol)
@@ -2035,7 +2036,6 @@ async def _chat_tool_historical_prices(symbol: str, days: int = 5) -> str:
         closes: list[float] = []
         for dt, row in hist.iterrows():
             date_str = dt.strftime("%Y-%m-%d (%a)")
-            import math
             if math.isnan(row["prev_close"]):
                 change_str = "N/A"
             else:

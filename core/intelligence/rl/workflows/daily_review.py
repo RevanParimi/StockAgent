@@ -61,7 +61,6 @@ from core.intelligence.rl.conviction.tracker import (
 )
 from core.intelligence.algorithms.indicators.fetcher import get_price_history
 from core.intelligence.seasonal.calendar import SeasonalCalendar
-from core.intelligence.seasonal.validator import SeasonalValidator
 from core.intelligence.regime.detector import RegimeDetector, apply_regime_multipliers
 from core.schemas.feedback import RegimeSnapshot, ThesisReview
 from core.intelligence.rl.agents.thesis_reviewer import ThesisReviewer, THESIS_REVIEW_THRESHOLD
@@ -828,61 +827,25 @@ def run_daily_review(
     store.append_feedback_entry(final_entry, cycle_id)
 
     # ------------------------------------------------------------------ #
-    # Step 9 (P1): Validate active seasonal patterns against actual result
+    # Step 9 (P1): Seasonal validation — month-end only
+    # Runs only on the last trading day of the month to avoid O(seeds×log)
+    # overhead on every daily review.
     # ------------------------------------------------------------------ #
-    if seasonal_ctx.is_seasonal_period:
-        try:
-            validator = SeasonalValidator(
-                sector=sector,
-                base_dir=settings.PREDICTION_DATA_DIR,
-            )
-            active_seeds = seasonal_calendar.active_patterns_on(review_date)
-            feedback_log_for_validation = store.load_feedback_log(cycle_id)
-            validation_results = []
-            for pattern in active_seeds:
-                result = validator.validate_pattern(
-                    pattern=pattern,
-                    review_date=review_date,
-                    feedback_log=feedback_log_for_validation,
-                )
-                validation_results.append(result)
-            validator.save_state()
-
-            # Feed validation outcomes back into the LearningLedger.
-            # Invalidated patterns → mark matching lessons still_valid=False.
-            # Validated patterns (RL-confirmed) → boost lesson confidence by 0.05.
-            ledger_dirty = False
-            for result in validation_results:
-                if result.direction_matched is None:
-                    continue
-                lesson = ticker_ledger.find_by_pattern(result.pattern_id)
-                if lesson is None:
-                    continue
-                if result.record.invalidated and lesson.still_valid:
-                    lesson.still_valid = False
-                    ledger_dirty = True
-                    logger.info(
-                        "[daily_review] Lesson %s marked invalid — seasonal pattern %s contradicted %d times",
-                        lesson.lesson_id, result.pattern_id, result.record.misses,
-                    )
-                elif result.record.validated_by_rl and result.direction_matched:
-                    lesson.confidence = min(1.0, lesson.confidence + 0.05)
-                    ledger_dirty = True
-                    logger.info(
-                        "[daily_review] Lesson %s confidence boosted to %.2f — seasonal validation confirmed",
-                        lesson.lesson_id, lesson.confidence,
-                    )
-            if ledger_dirty:
-                store.save_learning_ledger(ticker_ledger)
-
-            logger.info(
-                "[daily_review] Seasonal validation complete for %s on %s (%d patterns checked)",
-                ticker, date_str, len(validation_results),
-            )
-        except Exception as exc:
-            logger.warning(
-                "[daily_review] Seasonal validation failed (non-fatal): %s", exc
-            )
+    from core.intelligence.rl.workflows.month_end_validation import (
+        _is_last_trading_day_of_month,
+        run_month_end_validation,
+    )
+    if _is_last_trading_day_of_month(review_date):
+        run_month_end_validation(
+            ticker=ticker,
+            sector=sector,
+            store=store,
+            seasonal_ctx=seasonal_ctx,
+            seasonal_calendar=seasonal_calendar,
+            ticker_ledger=ticker_ledger,
+            cycle_id=cycle_id,
+            review_date=review_date,
+        )
 
     summary = {
         "status":                   "completed",

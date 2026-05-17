@@ -23,10 +23,8 @@ from pathlib import Path
 
 import pytest
 
+from core.config import settings
 from core.intelligence.rl.conviction.tracker import (
-    STREAK_WARNING_THRESHOLD,
-    _MAX_REVERSION_PRIOR,
-    _RSI_AMPLIFIER,
     build_streak_warning_block,
     compute_final_reversion_prior,
     compute_reversion_prior,
@@ -34,6 +32,11 @@ from core.intelligence.rl.conviction.tracker import (
     update_conviction_streak,
     verdict_direction,
 )
+
+# Constants now live in settings — alias locally so test assertions stay readable
+STREAK_WARNING_THRESHOLD = settings.RL_STREAK_WARNING_THRESHOLD
+_MAX_REVERSION_PRIOR     = settings.RL_MAX_REVERSION_PRIOR
+_RSI_AMPLIFIER           = settings.RL_RSI_AMPLIFIER
 from core.schemas.feedback import (
     ConvictionStreak,
     DailyForecast,

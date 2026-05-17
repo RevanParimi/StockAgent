@@ -305,6 +305,38 @@ RL_FLAT_THRESHOLD_PCT: float = 0.3     # moves within ±0.3% classified as FLAT
 # Set to 0.0 to disable early exit entirely.
 RL_AGENT_RERUN_THRESHOLD_PCT: float = 0.5
 
+# ---------------------------------------------------------------------------
+# Conviction Streak (P3) — tracker.py
+# ---------------------------------------------------------------------------
+
+# Streak length at which FeedbackAgent prompt receives a streak warning block
+RL_STREAK_WARNING_THRESHOLD: int = 8
+
+# RSI amplifier applied to reversion_prior when sector RSI contradicts verdict
+RL_RSI_AMPLIFIER: float = 1.50
+
+# Absolute cap on reversion_prior including any amplification
+RL_MAX_REVERSION_PRIOR: float = 0.30
+
+# ---------------------------------------------------------------------------
+# ThesisReviewer (Section 21) — thesis_reviewer.py
+# ---------------------------------------------------------------------------
+
+# ATR-relative trigger: threshold = max(floor, multiplier × atr_pct)
+RL_ATR_THRESHOLD_FLOOR: float = 1.5       # minimum trigger % regardless of ATR
+RL_ATR_THRESHOLD_MULTIPLIER: float = 1.5  # multiplier applied to ticker ATR%
+
+# ---------------------------------------------------------------------------
+# Lesson Propagation (P2) — ledger_propagator.py
+# ---------------------------------------------------------------------------
+
+# Confidence blend weights when merging a repeated lesson pattern
+RL_LESSON_BLEND_EXISTING: float = 0.70   # weight given to the accumulated signal
+RL_LESSON_BLEND_INCOMING: float = 0.30   # weight given to the new confirmation
+
+# Confidence bonus per new ticker independently confirming a shared lesson
+RL_CROSS_TICKER_BOOST: float = 0.05
+
 VIX_FALLBACK: float = 17.0              # NORMAL regime midpoint; used on yfinance error
 FII_PROXY_FALLBACK: float = 0.0         # Neutral; used on yfinance error
 RSI_FALLBACK: float = 50.0              # Neutral; used on computation error

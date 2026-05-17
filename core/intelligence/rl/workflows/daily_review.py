@@ -54,7 +54,6 @@ from core.intelligence.rl.stores.ledger_propagator import (
     propagate_lessons,
 )
 from core.intelligence.rl.conviction.tracker import (
-    STREAK_WARNING_THRESHOLD,
     build_streak_warning_block,
     compute_final_reversion_prior,
     update_conviction_streak,
@@ -470,7 +469,7 @@ def run_daily_review(
     # P3: If the system has issued the same directional verdict for ≥ N consecutive
     # days, inject a structured warning so the FeedbackAgent explicitly checks for
     # momentum exhaustion (RSI divergence, volume dry-up, etc.).
-    if existing_streak.streak_days >= STREAK_WARNING_THRESHOLD:
+    if existing_streak.streak_days >= settings.RL_STREAK_WARNING_THRESHOLD:
         streak_note = build_streak_warning_block(existing_streak)
         market_context = (market_context or "Market context unavailable.") + streak_note
         logger.info(

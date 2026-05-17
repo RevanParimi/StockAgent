@@ -29,23 +29,16 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
+from core.config import settings
+
 if TYPE_CHECKING:
     from core.schemas.feedback import ConvictionStreak
 
 logger = logging.getLogger(__name__)
 
-# Minimum streak length before the FeedbackAgent receives a streak warning block.
-STREAK_WARNING_THRESHOLD: int = 8
-
 # Verdict groups for direction classification
 _BULLISH: frozenset[str] = frozenset({"BUY", "STRONG BUY"})
 _BEARISH: frozenset[str] = frozenset({"SELL", "STRONG SELL"})
-
-# RSI thresholds: canonical RSI levels for overbought/oversold detection
-_RSI_OVERBOUGHT_THRESHOLD: float = 70.0  # sector_rsi > this while BULLISH → divergence
-_RSI_OVERSOLD_THRESHOLD:   float = 30.0  # sector_rsi < this while BEARISH → divergence
-_RSI_AMPLIFIER:            float = 1.50  # multiplier when divergence detected
-_MAX_REVERSION_PRIOR:      float = 0.30  # absolute cap including amplifier
 
 
 # ---------------------------------------------------------------------------
@@ -106,30 +99,30 @@ def compute_rsi_amplifier(
 ) -> float:
     """
     Return 1.5 if sector RSI contradicts the streak verdict, otherwise 1.0.
-    Only activates when streak_days >= STREAK_WARNING_THRESHOLD.
+    Only activates when streak_days >= settings.RL_STREAK_WARNING_THRESHOLD.
 
     Uses sector_rsi from RegimeDetector (computed in daily_review Step 0):
       BULLISH streak + sector_rsi > 70  → overbought → amplify 1.5×
       BEARISH streak + sector_rsi < 30  → oversold   → amplify 1.5×
     """
-    if streak_days < STREAK_WARNING_THRESHOLD:
+    if streak_days < settings.RL_STREAK_WARNING_THRESHOLD:
         return 1.0
 
     direction = verdict_direction(verdict)
 
-    if direction == "BULLISH" and sector_rsi > _RSI_OVERBOUGHT_THRESHOLD:
+    if direction == "BULLISH" and sector_rsi > settings.RSI_OVERBOUGHT:
         logger.debug(
             "[ConvictionTracker] RSI overbought (BULLISH streak, sector_rsi=%.1f > 70) → amplifier 1.5×",
             sector_rsi,
         )
-        return _RSI_AMPLIFIER
+        return settings.RL_RSI_AMPLIFIER
 
-    if direction == "BEARISH" and sector_rsi < _RSI_OVERSOLD_THRESHOLD:
+    if direction == "BEARISH" and sector_rsi < settings.RSI_OVERSOLD:
         logger.debug(
             "[ConvictionTracker] RSI oversold (BEARISH streak, sector_rsi=%.1f < 30) → amplifier 1.5×",
             sector_rsi,
         )
-        return _RSI_AMPLIFIER
+        return settings.RL_RSI_AMPLIFIER
 
     return 1.0
 
@@ -153,7 +146,7 @@ def compute_final_reversion_prior(
     if base == 0.0:
         return 0.0
     amplifier = compute_rsi_amplifier(verdict, todays_agent_scores, streak_days, sector_rsi)
-    return round(min(_MAX_REVERSION_PRIOR, base * amplifier), 4)
+    return round(min(settings.RL_MAX_REVERSION_PRIOR, base * amplifier), 4)
 
 
 # ---------------------------------------------------------------------------
@@ -223,7 +216,7 @@ def update_conviction_streak(
 def build_streak_warning_block(streak: "ConvictionStreak") -> str:
     """
     Return a structured warning block for injection into the FeedbackAgent's
-    market_context_today when streak.streak_days >= STREAK_WARNING_THRESHOLD.
+    market_context_today when streak.streak_days >= settings.RL_STREAK_WARNING_THRESHOLD.
 
     This prompts the LLM to actively look for momentum exhaustion evidence
     rather than mechanically extending the existing trend.

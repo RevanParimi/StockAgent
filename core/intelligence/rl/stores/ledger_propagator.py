@@ -35,18 +35,10 @@ from __future__ import annotations
 import logging
 from datetime import date
 
+from core.config import settings
 from core.schemas.feedback import LearningLedger, Lesson
 
 logger = logging.getLogger(__name__)
-
-# Confidence blend weights when merging a repeated pattern from any ticker.
-# 70/30 in favour of the accumulated signal — avoids single-day spikes.
-_BLEND_EXISTING = 0.70
-_BLEND_INCOMING = 0.30
-
-# Per-new-ticker confidence bonus. Requires the confirming ticker to be new
-# (not already in contributing_tickers). Capped at 1.0 after application.
-_CROSS_TICKER_BOOST = 0.05
 
 
 def propagate_lesson_to_ledger(
@@ -69,8 +61,8 @@ def propagate_lesson_to_ledger(
     if existing is not None:
         # Blend confidence — weighted average biased toward accumulated signal
         existing.confidence = round(
-            _BLEND_EXISTING * existing.confidence
-            + _BLEND_INCOMING * lesson.confidence,
+            settings.RL_LESSON_BLEND_EXISTING * existing.confidence
+            + settings.RL_LESSON_BLEND_INCOMING * lesson.confidence,
             4,
         )
         existing.occurrences += 1
@@ -83,12 +75,12 @@ def propagate_lesson_to_ledger(
             existing.contributing_tickers = contributing + [source_ticker]
             existing.confidence = min(
                 1.0,
-                round(existing.confidence + _CROSS_TICKER_BOOST, 4),
+                round(existing.confidence + settings.RL_CROSS_TICKER_BOOST, 4),
             )
             logger.info(
                 "[LedgerPropagator] Cross-ticker boost +%.2f for pattern '%s' "
                 "(confirmed by %s, total tickers: %d)",
-                _CROSS_TICKER_BOOST,
+                settings.RL_CROSS_TICKER_BOOST,
                 lesson.pattern,
                 source_ticker,
                 len(existing.contributing_tickers),

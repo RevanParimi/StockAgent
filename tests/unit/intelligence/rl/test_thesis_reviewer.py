@@ -135,12 +135,12 @@ class TestShouldReview:
         assert r.should_review(0.5, False, miss_type) is False
 
     def test_threshold_floor_is_1_5_pct(self):
-        """ATR-relative floor constant equals 1.5%; THESIS_REVIEW_THRESHOLD alias preserved."""
-        from core.intelligence.rl.agents.thesis_reviewer import _ATR_THRESHOLD_FLOOR, _ATR_THRESHOLD_MULTIPLIER
-        assert _ATR_THRESHOLD_FLOOR == 1.5
-        assert _ATR_THRESHOLD_MULTIPLIER == 1.5
+        """ATR threshold constants live in settings; THESIS_REVIEW_THRESHOLD alias preserved."""
+        from core.config import settings
+        assert settings.RL_ATR_THRESHOLD_FLOOR == 1.5
+        assert settings.RL_ATR_THRESHOLD_MULTIPLIER == 1.5
         # Backward-compat alias still importable and reflects the floor
-        assert THESIS_REVIEW_THRESHOLD == _ATR_THRESHOLD_FLOOR
+        assert THESIS_REVIEW_THRESHOLD == settings.RL_ATR_THRESHOLD_FLOOR
 
     def test_structural_miss_types_set(self):
         assert "direction_flip" in THESIS_REVIEW_MISS_TYPES

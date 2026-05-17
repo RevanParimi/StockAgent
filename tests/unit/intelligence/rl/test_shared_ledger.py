@@ -26,14 +26,17 @@ from pathlib import Path
 import pytest
 
 from core.intelligence.rl.stores.prediction_store import PredictionStore
+from core.config import settings
 from core.intelligence.rl.stores.ledger_propagator import (
-    _BLEND_EXISTING,
-    _BLEND_INCOMING,
-    _CROSS_TICKER_BOOST,
     build_tiered_lessons_summary,
     propagate_lesson_to_ledger,
     propagate_lessons,
 )
+
+# Constants now live in settings — alias locally so test assertions stay readable
+_BLEND_EXISTING   = settings.RL_LESSON_BLEND_EXISTING
+_BLEND_INCOMING   = settings.RL_LESSON_BLEND_INCOMING
+_CROSS_TICKER_BOOST = settings.RL_CROSS_TICKER_BOOST
 from core.schemas.feedback import LearningLedger, Lesson
 
 

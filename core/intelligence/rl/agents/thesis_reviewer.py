@@ -21,7 +21,7 @@ WHY IT EXISTS:
 ATR-RELATIVE THRESHOLD:
   A flat 2% threshold was too blunt.  For HDFCBANK (ATR ~0.8%), 2% is a
   2.5-sigma event.  For ADANIGREEN (ATR ~3.5%), 2% is sub-1-sigma noise.
-  Threshold = max(_ATR_THRESHOLD_FLOOR, _ATR_THRESHOLD_MULTIPLIER * atr_pct)
+  Threshold = max(settings.RL_ATR_THRESHOLD_FLOOR, settings.RL_ATR_THRESHOLD_MULTIPLIER * atr_pct)
   This ensures volatile stocks need proportionally larger misses to trigger.
 
 WHAT IT DOES NOT DO:
@@ -53,14 +53,9 @@ from core.schemas.feedback import FeedbackAgentOutput, ThesisReview
 
 logger = logging.getLogger(__name__)
 
-# ATR-relative threshold constants (Task 7: replaces flat THESIS_REVIEW_THRESHOLD).
-# Threshold = max(_ATR_THRESHOLD_FLOOR, _ATR_THRESHOLD_MULTIPLIER * atr_pct)
-_ATR_THRESHOLD_FLOOR: float = 1.5       # minimum trigger threshold regardless of ATR (%)
-_ATR_THRESHOLD_MULTIPLIER: float = 1.5  # threshold multiplier applied to atr_pct
-
-# Backward-compat alias — kept so external imports don't break.
-# Reflects the new floor value; the effective threshold is ATR-relative.
-THESIS_REVIEW_THRESHOLD: float = _ATR_THRESHOLD_FLOOR
+# Backward-compat alias — external code that imports THESIS_REVIEW_THRESHOLD still works.
+# Effective threshold is ATR-relative: max(RL_ATR_THRESHOLD_FLOOR, RL_ATR_THRESHOLD_MULTIPLIER * atr_pct)
+THESIS_REVIEW_THRESHOLD: float = settings.RL_ATR_THRESHOLD_FLOOR
 
 # Miss types that warrant thesis review even below the price error threshold.
 THESIS_REVIEW_MISS_TYPES: frozenset[str] = frozenset({"direction_flip", "model_bias"})
@@ -154,7 +149,7 @@ class ThesisReviewer:
             atr_pct = self._compute_atr_pct(ticker) if ticker else 0.0
         except Exception:
             atr_pct = 0.0
-        threshold = max(_ATR_THRESHOLD_FLOOR, _ATR_THRESHOLD_MULTIPLIER * atr_pct)
+        threshold = max(settings.RL_ATR_THRESHOLD_FLOOR, settings.RL_ATR_THRESHOLD_MULTIPLIER * atr_pct)
         return abs(price_error_pct) > threshold
 
     def _compute_atr_pct(self, ticker: str = "") -> float:

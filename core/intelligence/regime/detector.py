@@ -42,10 +42,9 @@ from core.schemas.feedback import RegimeSnapshot
 
 logger = logging.getLogger(__name__)
 
-_RSI_PERIOD = 14
 
 
-def _compute_rsi(prices: pd.Series, period: int = _RSI_PERIOD) -> float:
+def _compute_rsi(prices: pd.Series, period: int = settings.RSI_PERIOD) -> float:
     """
     Wilder RSI(period) using pandas EWM.
     Returns the most recent RSI value, or 50.0 on failure.
@@ -160,11 +159,11 @@ class RegimeDetector:
         try:
             import yfinance as yf
             df = yf.Ticker(ticker_sym).history(period="3mo")
-            if df.empty or len(df) < _RSI_PERIOD + 1:
+            if df.empty or len(df) < settings.RSI_PERIOD + 1:
                 # Try fallback ticker if sector ticker gave insufficient data
                 if ticker_sym != settings.REGIME_SECTOR_FALLBACK_TICKER:
                     df = yf.Ticker(settings.REGIME_SECTOR_FALLBACK_TICKER).history(period="3mo")
-                if df.empty or len(df) < _RSI_PERIOD + 1:
+                if df.empty or len(df) < settings.RSI_PERIOD + 1:
                     return settings.RSI_FALLBACK
             return _compute_rsi(df["Close"])
         except Exception as exc:

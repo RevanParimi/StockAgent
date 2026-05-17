@@ -301,6 +301,10 @@ RSI_OVERSOLD: float            = float(os.getenv("RSI_OVERSOLD",            "30.
 # Direction classification threshold for RL feedback (see STATIC_AUDIT.md #5)
 RL_FLAT_THRESHOLD_PCT: float = float(os.getenv("RL_FLAT_THRESHOLD_PCT", "0.3"))
 
+# Early-exit: skip orchestrator re-run when direction correct + error small
+# Set to 0.0 to disable early exit entirely.
+RL_AGENT_RERUN_THRESHOLD_PCT: float = float(os.getenv("RL_AGENT_RERUN_THRESHOLD_PCT", "0.5"))
+
 VIX_FALLBACK: float = 17.0              # NORMAL regime midpoint; used on yfinance error
 FII_PROXY_FALLBACK: float = 0.0         # Neutral; used on yfinance error
 RSI_FALLBACK: float = 50.0              # Neutral; used on computation error

@@ -77,6 +77,22 @@ logger = logging.getLogger(__name__)
 # Helpers
 # ---------------------------------------------------------------------------
 
+def _should_skip_agent_rerun(
+    direction_correct: bool,
+    price_error_pct: float,
+    threshold: float,
+) -> bool:
+    """
+    True when the 9-agent orchestrator re-run can be safely skipped.
+    Skipping is valid when direction is correct and the error is small —
+    WeightAdapter takes no meaningful action on these days anyway.
+    threshold=0.0 disables the early exit.
+    """
+    if threshold <= 0.0:
+        return False
+    return direction_correct and abs(price_error_pct) < threshold
+
+
 def _fetch_actual_close(ticker: str, target_date: date) -> float | None:
     """Fetch the actual closing price for a specific date via yfinance."""
     try:
@@ -398,19 +414,27 @@ def run_daily_review(
     # Step 4: FeedbackAgent — miss_type + miss analysis + raw lessons
     # ------------------------------------------------------------------ #
     wm_for_scores = store.load_weight_memory()
-    todays_scores = _run_todays_agent_scores(
-        ticker,
-        sector=sector,
-        learned_weights=wm_for_scores.effective_weights() if wm_for_scores else None,
-    )
-    # If agent re-run failed (returns {}), fall back to envelope predicted scores
-    # so FeedbackAgent still has agent_score_drift to analyse.
-    if not todays_scores and today_forecast.predicted_agent_scores:
-        todays_scores = dict(today_forecast.predicted_agent_scores)
+    _rerun_threshold = getattr(settings, "RL_AGENT_RERUN_THRESHOLD_PCT", 0.5)
+    if _should_skip_agent_rerun(direction_correct, price_error_pct, _rerun_threshold):
+        todays_scores = dict(today_forecast.predicted_agent_scores) if today_forecast.predicted_agent_scores else {}
         logger.info(
-            "[daily_review] Agent re-run unavailable for %s — "
-            "using envelope predicted scores as fallback for drift analysis", ticker
+            "[daily_review] Early-exit: direction correct + |error| %.2f%% < %.1f%% "
+            "— using predicted scores, skipping orchestrator re-run",
+            abs(price_error_pct),
+            _rerun_threshold,
         )
+    else:
+        todays_scores = _run_todays_agent_scores(
+            ticker,
+            sector=sector,
+            learned_weights=wm_for_scores.effective_weights() if wm_for_scores else None,
+        )
+        if not todays_scores and today_forecast.predicted_agent_scores:
+            todays_scores = dict(today_forecast.predicted_agent_scores)
+            logger.info(
+                "[daily_review] Agent re-run unavailable for %s — "
+                "using envelope predicted scores as fallback for drift analysis", ticker,
+            )
 
     # P2: Load all three ledger tiers in one call.
     # ticker_ledger = stock-specific lessons for this ticker

@@ -266,23 +266,23 @@ CSHARP_API_URL: str = os.getenv("CSHARP_API_URL", "http://localhost:5000")
 PREDICTION_DATA_DIR: str = os.getenv("PREDICTION_DATA_DIR", "data/predictions")
 
 # How many trading days forward to forecast on month-start
-FORECAST_HORIZON_DAYS: int = int(os.getenv("FORECAST_HORIZON_DAYS", "30"))
+FORECAST_HORIZON_DAYS: int = 30
 
 # Maximum weight change applied in a single daily adaptation step (per agent)
-WEIGHT_MAX_STEP: float = float(os.getenv("WEIGHT_MAX_STEP", "0.05"))
+WEIGHT_MAX_STEP: float = 0.05
 
 # Maximum total drift any agent weight is allowed to move from its base value
-WEIGHT_MAX_DRIFT: float = float(os.getenv("WEIGHT_MAX_DRIFT", "0.15"))
+WEIGHT_MAX_DRIFT: float = 0.15
 
 # Minimum rolling days required before weight adaptation kicks in
-WEIGHT_MIN_OBSERVATIONS: int = int(os.getenv("WEIGHT_MIN_OBSERVATIONS", "3"))
+WEIGHT_MIN_OBSERVATIONS: int = 3
 
 # Accuracy window: how many recent days are used to judge agent direction accuracy
-WEIGHT_ACCURACY_WINDOW: int = int(os.getenv("WEIGHT_ACCURACY_WINDOW", "7"))
+WEIGHT_ACCURACY_WINDOW: int = 7
 
 # Thresholds for weight boost / penalty
-WEIGHT_BOOST_HIT_RATE: float = float(os.getenv("WEIGHT_BOOST_HIT_RATE", "0.70"))   # ≥70% → +boost
-WEIGHT_PENALTY_HIT_RATE: float = float(os.getenv("WEIGHT_PENALTY_HIT_RATE", "0.40"))  # ≤40% → −penalty
+WEIGHT_BOOST_HIT_RATE: float = 0.70    # ≥70% hit rate → apply weight boost
+WEIGHT_PENALTY_HIT_RATE: float = 0.40  # ≤40% hit rate → apply weight penalty
 
 # Cron expression for the daily feedback review job (default: weekdays 4:30pm IST = 11:00 UTC)
 FEEDBACK_CRON: str = os.getenv("FEEDBACK_CRON", "0 11 * * 1-5")
@@ -291,19 +291,19 @@ FEEDBACK_CRON: str = os.getenv("FEEDBACK_CRON", "0 11 * * 1-5")
 # P5 — Regime Detection Thresholds
 # ---------------------------------------------------------------------------
 
-# Regime thresholds — overridable via env vars (see STATIC_AUDIT.md #3)
-VIX_VOLATILE_THRESHOLD: float  = float(os.getenv("VIX_VOLATILE_THRESHOLD", "22.0"))
-VIX_LOW_VOL_THRESHOLD: float   = float(os.getenv("VIX_LOW_VOL_THRESHOLD",  "14.0"))
-FII_PROXY_THRESHOLD_PCT: float = float(os.getenv("FII_PROXY_THRESHOLD_PCT", "1.0"))
-RSI_OVERBOUGHT: float          = float(os.getenv("RSI_OVERBOUGHT",          "70.0"))
-RSI_OVERSOLD: float            = float(os.getenv("RSI_OVERSOLD",            "30.0"))
+# Regime detection thresholds — algorithm constants, not env-configurable
+VIX_VOLATILE_THRESHOLD: float  = 22.0   # VIX above this → volatile macro
+VIX_LOW_VOL_THRESHOLD: float   = 14.0   # VIX below this → calm/trending
+FII_PROXY_THRESHOLD_PCT: float = 1.0    # Nifty 5-day move threshold for FII proxy
+RSI_OVERBOUGHT: float          = 70.0   # RSI above this → overbought
+RSI_OVERSOLD: float            = 30.0   # RSI below this → oversold
 
 # Direction classification threshold for RL feedback (see STATIC_AUDIT.md #5)
-RL_FLAT_THRESHOLD_PCT: float = float(os.getenv("RL_FLAT_THRESHOLD_PCT", "0.3"))
+RL_FLAT_THRESHOLD_PCT: float = 0.3     # moves within ±0.3% classified as FLAT
 
-# Early-exit: skip orchestrator re-run when direction correct + error small
+# Early-exit: skip orchestrator re-run when direction correct + error below this %
 # Set to 0.0 to disable early exit entirely.
-RL_AGENT_RERUN_THRESHOLD_PCT: float = float(os.getenv("RL_AGENT_RERUN_THRESHOLD_PCT", "0.5"))
+RL_AGENT_RERUN_THRESHOLD_PCT: float = 0.5
 
 VIX_FALLBACK: float = 17.0              # NORMAL regime midpoint; used on yfinance error
 FII_PROXY_FALLBACK: float = 0.0         # Neutral; used on yfinance error
@@ -395,16 +395,16 @@ REGIME_MULTIPLIERS: dict[str, dict[str, float]] = {
 
 # ---------------------------------------------------------------------------
 # STATIC_AUDIT #4 — RL weight delta constants (moved from weight_adapter.py)
-# All 7 constants are now env-overridable instead of hardcoded module globals.
+# These are algorithm parameters — plain constants, not env-configurable.
 # ---------------------------------------------------------------------------
 
-RL_BOOST: float               = float(os.getenv("RL_BOOST",               "+0.02"))
-RL_PENALTY: float             = float(os.getenv("RL_PENALTY",             "-0.03"))
-RL_MISS_STREAK_PENALTY: float = float(os.getenv("RL_MISS_STREAK_PENALTY", "-0.05"))
-RL_BIAS_TRIGGER: float        = float(os.getenv("RL_BIAS_TRIGGER",        "0.55"))
-RL_BIAS_FULL: float           = float(os.getenv("RL_BIAS_FULL",           "0.70"))
-RL_TIMING_FREE_WINDOW: int    = int(os.getenv("RL_TIMING_FREE_WINDOW",    "3"))
-RL_TIMING_PARTIAL_WINDOW: int = int(os.getenv("RL_TIMING_PARTIAL_WINDOW", "7"))
+RL_BOOST: float               =  0.02   # weight delta when hit_rate ≥ WEIGHT_BOOST_HIT_RATE
+RL_PENALTY: float             = -0.03   # weight delta when hit_rate ≤ WEIGHT_PENALTY_HIT_RATE
+RL_MISS_STREAK_PENALTY: float = -0.05   # base bias penalty at full bias_score
+RL_BIAS_TRIGGER: float        =  0.55   # bias score at which penalty starts scaling
+RL_BIAS_FULL: float           =  0.70   # bias score at which full penalty applies
+RL_TIMING_FREE_WINDOW: int    =  3      # lag ≤ N trading days → 0× timing penalty
+RL_TIMING_PARTIAL_WINDOW: int =  7      # lag ≤ N trading days → 0.20× timing penalty
 
 # ---------------------------------------------------------------------------
 # STATIC_AUDIT #9 — News geo: removed country filter entirely
@@ -418,8 +418,8 @@ RL_TIMING_PARTIAL_WINDOW: int = int(os.getenv("RL_TIMING_PARTIAL_WINDOW", "7"))
 # STATIC_AUDIT #16 — Tavily content truncation (moved from tavily_fetcher.py)
 # ---------------------------------------------------------------------------
 
-SERPER_TIMEOUT_SECONDS: int    = int(os.getenv("SERPER_TIMEOUT_SECONDS",    "10"))
-TAVILY_MAX_CONTENT_CHARS: int  = int(os.getenv("TAVILY_MAX_CONTENT_CHARS",  "600"))
+SERPER_TIMEOUT_SECONDS: int   = 10    # Serper HTTP timeout in seconds
+TAVILY_MAX_CONTENT_CHARS: int = 600  # Truncate Tavily full-page content at this length
 
 # ---------------------------------------------------------------------------
 # Chat Reviewer Loop
@@ -428,7 +428,7 @@ TAVILY_MAX_CONTENT_CHARS: int  = int(os.getenv("TAVILY_MAX_CONTENT_CHARS",  "600
 # Reviewer checks: date integrity, price grounding, question relevance.
 # Each extra cycle costs ~300 tokens (reviewer) + ~600 tokens (re-synthesis).
 # ---------------------------------------------------------------------------
-CHAT_MAX_REVIEW_CYCLES: int = int(os.getenv("CHAT_MAX_REVIEW_CYCLES", "1"))
+CHAT_MAX_REVIEW_CYCLES: int = 0  # Reviewer loop removed in 3-node pipeline redesign
 
 # ---------------------------------------------------------------------------
 # Macro News Background Feed

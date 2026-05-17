@@ -413,7 +413,7 @@ def run_daily_review(
     # Step 4: FeedbackAgent — miss_type + miss analysis + raw lessons
     # ------------------------------------------------------------------ #
     wm_for_scores = store.load_weight_memory()
-    _rerun_threshold = getattr(settings, "RL_AGENT_RERUN_THRESHOLD_PCT", 0.5)
+    _rerun_threshold = settings.RL_AGENT_RERUN_THRESHOLD_PCT
     if _should_skip_agent_rerun(direction_correct, price_error_pct, _rerun_threshold):
         todays_scores = dict(today_forecast.predicted_agent_scores) if today_forecast.predicted_agent_scores else {}
         logger.info(

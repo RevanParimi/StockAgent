@@ -2,7 +2,7 @@
 
 > All agents, tasks, metrics, data sources, static vs LLM responsibilities.
 > Minimize plain text — prefer tables and trees.
-> Updated: 2026-05-08 · Covers automobile (full) + 3 scaffolded sectors + RL + Chat agents.
+> Updated: 2026-05-17 · Covers automobile (full) + 3 live sectors + RL + Chat agents (3-node LangGraph).
 
 ---
 
@@ -12,18 +12,19 @@
 StockAgent Agents
 ├── Analysis Agents  (sector-specific, run monthly + on-demand)
 │   ├── Automobile       9 agents  ✅ FULLY IMPLEMENTED
-│   ├── Banking/BFSI     6 agents  🔶 SCAFFOLDED (prompts ready, fetchers are stubs)
-│   ├── IT Sector        8 agents  🔶 SCAFFOLDED
-│   └── Renewable Energy 6 agents  🔶 SCAFFOLDED
+│   ├── Banking/BFSI     6 agents  ✅ CONTEXT BUILDER EXTENDED
+│   ├── IT Sector        8 agents  ✅ CONTEXT BUILDER EXTENDED
+│   └── Renewable Energy 6 agents  ✅ CONTEXT BUILDER EXTENDED
 │
 ├── RL Agents  (cross-sector, run daily automated post-market)
 │   ├── FeedbackAgent     [LLM]    daily root-cause analysis
-│   └── WeightAdapter     [STATIC] deterministic weight adjustment
+│   ├── WeightAdapter     [STATIC] deterministic weight adjustment
+│   └── ThesisReviewer    [LLM]    conditional post-miss thesis validation
 │
-└── Chat Agent  (on-demand via /ui/chat)
-    ├── IntentDetector    [STATIC] regex + keyword (Phase 6 stubs exist)
-    ├── EntityExtractor   [STATIC] ticker/agent pattern matching (Phase 6 stubs exist)
-    └── ChatEngine        [LLM]    tool loop, max 4 rounds
+└── Chat Agent  (on-demand via /ui/chat)  ✅ REDESIGNED
+    ├── DispatchNode      [LLM]    query decomposition + tier detection
+    ├── ExecutorNode      [STATIC] parallel async tool execution
+    └── SynthesizeNode    [LLM]    tier-adaptive streaming response
 ```
 
 ---
@@ -47,7 +48,7 @@ BaseAgent._gather_context(query)
   ├── Check 1: RAG_ENABLED=true?
   │   → YES: RAGRetriever.retrieve(search_query) → ChromaDB top-K + optional reranker
   ├── Check 2: ContextBuilder.build(agent_name, query) → live data from fetchers
-  └── FALLBACK: "Stock: MARUTI | Date: 2026-05-08 | Note: Live data unavailable."
+  └── FALLBACK: "Stock: MARUTI | Date: 2026-05-17 | Note: Live data unavailable."
 ```
 
 **Retry logic (STATIC):** 3 attempts, exponential backoff on `APIError`, `RateLimitError`, `APITimeoutError`.
@@ -276,18 +277,17 @@ All paths are under `src/backend/sectors/automobile/`.
 |---|---|
 | **5 score dimensions (LLM)** | pe_vs_5yr_history, pe_vs_peer_median, discount_reason_clarity, catalyst_strength, price_target_confidence |
 | **Extra output fields (LLM)** | fair_value_estimate, current_discount_pct, discount_reason, recovery_catalysts[], price_target, recovery_timeline_quarters |
-| **Context** | `_build_generic` — NOT YET IMPLEMENTED in ContextBuilder → LLM knowledge only |
-| **yfinance** | ✗ (via context builder; effectively none until implemented) |
-| **Serper calls** | 0 (context builder fallback means no queries run) |
+| **Context** | `_build_valuation_catalyst` — implemented in ContextBuilder ✅ |
+| **yfinance** | ✓ (via context builder) |
+| **Serper calls** | per ContextBuilder routing |
 | **Schema** | `ValuationCatalystOutput` + `ValuationCatalystSubScores` |
 | **Output bubbles up** | 5 extra fields flow to `FinalReport` via SignalAggregator (price_target, recovery_timeline_quarters, undervalued_by_pct, discount_reason, recovery_catalysts) |
-| **Known gap** | `_build_valuation_catalyst` missing in ContextBuilder — ⚠️ relies entirely on LLM training knowledge |
 
 ---
 
-## 5. Banking/BFSI Sector — 6 Agents 🔶
+## 5. Banking/BFSI Sector — 6 Agents ✅
 
-All agents inherit BaseAgent. CONTEXT_SEARCH_QUERIES defined. ContextBuilder not extended → LLM training knowledge fallback. `rbi_data.py` + `npa_metrics.py` fetchers raise `NotImplementedError` (Phase 7 target).
+All agents inherit BaseAgent. CONTEXT_SEARCH_QUERIES defined. ContextBuilder extended with 6 `_build_bfsi_*` routing methods. `rbi_data.py` + `npa_metrics.py` fetchers raise `NotImplementedError` (Phase 7 target).
 
 | Agent key | Base weight | 5 Score Dimensions (LLM) | Sub-score schema | Key gap |
 |---|---|---|---|---|
@@ -302,9 +302,9 @@ All agents inherit BaseAgent. CONTEXT_SEARCH_QUERIES defined. ContextBuilder not
 
 ---
 
-## 6. IT Sector — 8 Agents 🔶
+## 6. IT Sector — 8 Agents ✅
 
-`deal_wins.py` + `transcript.py` fetchers raise `NotImplementedError` (Phase 7 target).
+`deal_wins.py` + `transcript.py` fetchers raise `NotImplementedError` (Phase 7 target). ContextBuilder extended with 8 `_build_it_*` routing methods.
 
 | Agent key | Base weight | 5 Score Dimensions (LLM) | Sub-score schema |
 |---|---|---|---|
@@ -321,9 +321,9 @@ All agents inherit BaseAgent. CONTEXT_SEARCH_QUERIES defined. ContextBuilder not
 
 ---
 
-## 7. Renewable Energy Sector — 6 Agents 🔶
+## 7. Renewable Energy Sector — 6 Agents ✅
 
-`mnre_data.py` fetcher raises `NotImplementedError` (Phase 7 target).
+`mnre_data.py` fetcher raises `NotImplementedError` (Phase 7 target). ContextBuilder extended with 6 `_build_re_*` routing methods.
 
 | Agent key | Base weight | 5 Score Dimensions (LLM) | Key metrics | Sub-score schema |
 |---|---|---|---|---|
@@ -466,66 +466,105 @@ Three stages (all STATIC):
 Result: WeightMemory gets new version number + WeightHistoryEntry with reason string
 ```
 
+### 9.3 ThesisReviewer *(LLM — conditional)*
+
+**File:** `core/intelligence/rl/agents/thesis_reviewer.py`
+
+| | Detail |
+|---|---|
+| **Trigger** | `should_review()`: `\|price_error\| > max(1.5%, 1.5 × atr_pct)` OR `direction_correct=False AND miss_type in {direction_flip, model_bias}` |
+| **ATR method** | `_compute_atr_pct(ticker)` — 14-day ATR as % via yfinance; returns 0.0 on failure (uses floor) |
+| **Model** | qwen/qwen3-235b-a22b via OpenRouter |
+| **Temperature** | 0.1 |
+| **max_tokens** | 300 |
+| **response_format** | `json_object` |
+| **Output** | `ThesisReview(thesis_intact, horizon_confidence_multiplier [0.3–1.0], assumptions_invalidated, revised_narrative)` |
+| **Safe default** | On any failure: `thesis_intact=True, multiplier=1.0` — never blocks daily review |
+| **Frequency** | ~1-3× per month per ticker (only on significant misses) |
+| **Telemetry** | Appends to `data/predictions/{sector}/{ticker}/thesis_calls.jsonl` |
+| **Calibration** | `multiplier` applied as global discount to all remaining 30-day forecasts |
+
+**Trigger decision tree:**
+
+```
+should_review(price_error_pct, atr_pct, direction_correct, miss_type)
+  ├── |price_error| > max(1.5%, 1.5 × atr_pct)  → True  (size trigger)
+  ├── direction_correct=False
+  │   AND miss_type in {direction_flip, model_bias}  → True  (structural trigger)
+  └── otherwise  → False  (skip — no LLM call)
+```
+
 ---
 
-## 10. Chat Engine (Phase 6)
+## 10. Chat Engine — 3-Node LangGraph Pipeline ✅
 
-Current state: `/ui/chat` endpoint in `services/api/routes/ui_data.py` has a working agentic tool loop. `src/backend/intelligence/chat/` directory exists with stub `__init__.py` files — full extraction is Phase 6.
+**File:** `services/api/chat_graph.py`
 
-### 10.1 Current `/ui/chat` — Agentic Tool Loop *(Implemented)*
+**Pipeline:** `dispatch → executor → synthesize → END`
 
-**File:** `services/api/routes/ui_data.py`
+**Session persistence:** MemorySaver checkpointer, keyed by `thread_id = session_id`
+
+**SSE event stream order:**
 
 ```
-POST /ui/chat
-  body: {message: str, history: [{role, content}]}
-  history capped at last 6 turns for token budget
-
-Max 4 LLM rounds. Tools run in parallel via asyncio.gather:
-
-┌─────────────────────────────────────────────────────────┐
-│  Tool 1: get_live_price [STATIC data fetch]              │
-│    → yfinance for NSE tickers + commodities             │
-│    Symbols: {ticker}.NS, SI=F (silver), GC=F (gold),    │
-│    CL=F (crude), ^NSEI (Nifty), USDINR=X, etc.         │
-│                                                          │
-│  Tool 2: search_market_news [STATIC API call]            │
-│    → Tavily search_depth="basic"                        │
-│    Any natural language query                           │
-│                                                          │
-│  Tool 3: get_stock_analysis [STATIC DB read]             │
-│    → SQLite ScoreStore for tracked tickers              │
-│    Returns latest FinalReport verdict + thesis           │
-└─────────────────────────────────────────────────────────┘
-
-System prompt rules (STATIC enforcement):
-  - ALWAYS call get_live_price before answering price questions
-  - ALWAYS call search_market_news for "why" questions
-  - NEVER hallucinate prices
+dispatch → tool_start → tool_result → thinking → token → done
 ```
 
-### 10.2 Planned Chat Engine (Phase 6) — Extraction from ui_data.py
+### 10.1 Node Details
 
-**IntentDetector** (`chat/algorithms/intent_detector.py`): **STATIC** — pure regex + keyword matching
+**Node 1 — dispatch [LLM]**
 
-| Intent | Detection method (STATIC) |
+| | Detail |
 |---|---|
-| `compare_tickers` | Patterns: "compare X vs Y", "X or Y", "better" between tickers |
-| `explain_agent` | Patterns: "what does {agent_name} do", "explain sales demand" |
-| `score_query` | Keywords: "score", "rating", "verdict" + ticker |
-| `predict` | Keywords: "will X go up", "target price", "forecast" |
-| `analyze` | Keywords: "analyze X", "run analysis", "should I buy" |
-| `generic` | Fallback — no pattern matched |
+| **Model** | qwen, temp=0.0 |
+| **Purpose** | Detects user tier; decomposes query into structured tasks JSON |
+| **Outputs** | `tasks[]`, `user_tier`, `browsing_strategy` |
+| **Fallback** | `_DISPATCH_FALLBACK_TASKS` on LLM failure |
+| **Profile load** | Reads `data/user_profiles/{session_id}.json` (via `user_profile.load_profile()`) |
 
-**EntityExtractor** (`chat/algorithms/entity_extractor.py`): **STATIC** — pattern matching against lists
+**Node 2 — executor [STATIC — 0 LLM tokens]**
 
-```python
-KNOWN_TICKERS = {all NSE tickers from sector settings}
-KNOWN_AGENTS  = {"sales_demand", "fundamentals", "pattern_analysis", "risk_macro", ...}
-# Output: Entities(tickers: list[str], agents: list[str], sector: str | None)
-```
+| | Detail |
+|---|---|
+| **Mechanism** | `asyncio.gather()` — all tasks in parallel |
+| **SSE events emitted** | `tool_start`, `tool_result` |
+| **LLM usage** | None |
 
-**ChatEngine** (`chat/engine.py`): **LLM** — routes based on STATIC intent + entity detection
+**Node 3 — synthesize [LLM]**
+
+| | Detail |
+|---|---|
+| **Model** | qwen, streaming |
+| **SSE events emitted** | `thinking` (filtered `<think>` blocks), `token`, `done` |
+| **Tier-adaptive format** | `casual`: 3-4 plain sentences · `active`: price + direction + headlines ≤150 words · `expert`: regime, conviction, raw metrics, no cap |
+| **Post-turn** | Saves/updates user profile after completion |
+| **Filter** | `<think>` blocks stripped from streaming output |
+
+### 10.2 User Profiling System
+
+**File:** `services/api/user_profile.py`
+
+| | Detail |
+|---|---|
+| **Tiers** | `casual` (plain language) · `active` (market terms) · `expert` (regime/signals) |
+| **Persistence** | `data/user_profiles/{session_id}.json` |
+| **Fields** | `detected_tier`, `tier_confidence`, `sessions_seen`, `topics_seen`, `last_seen` |
+| **Lifecycle** | Loaded by dispatch node; updated by synthesize node after each turn |
+
+### 10.3 Tool Catalogue
+
+| Tool | Type | Data source |
+|---|---|---|
+| `get_live_price` | STATIC | yfinance `fast_info` |
+| `get_historical_prices` | STATIC | yfinance OHLCV, close-to-close % change |
+| `get_sector_snapshot` | STATIC | SQLite ScoreStore |
+| `get_stock_analysis` | STATIC | SQLite ScoreStore, latest verdict |
+| `get_analysis_history` | STATIC | SQLite ScoreStore, last N days |
+| `get_rl_prediction` | STATIC | `data/predictions/{sector}/{ticker}/` JSON |
+| `get_rl_insights` | STATIC | RL weight memory JSON |
+| `get_macro_news` | STATIC | Macro cache + yfinance macros |
+| `search_market_news` | STATIC | Serper (India-biased) |
+| `run_agent_analysis` | LLM | Full 9-agent sector pipeline (~45s) |
 
 ---
 
@@ -534,6 +573,8 @@ KNOWN_AGENTS  = {"sales_demand", "fundamentals", "pattern_analysis", "risk_macro
 **File:** `services/data/context/builder.py`
 
 **Lookup precedence:** `_build_{sector}_{agent_name}` → `_build_{agent_name}` → `_build_generic`
+
+**Automobile methods (9 ✅):**
 
 | Method | Fetchers called | Serper calls |
 |---|---|---|
@@ -545,7 +586,47 @@ KNOWN_AGENTS  = {"sales_demand", "fundamentals", "pattern_analysis", "risk_macro
 | `_build_raw_materials` | `get_raw_materials_context()` + `fetch_news_context(max_queries=1)` | 1 |
 | `_build_policy_regulatory` | `fetch_tavily_context()` + `fetch_news_context()` | 3 + 2 Tavily |
 | `_build_competitive_intel` | `fetch_news_context(queries)` | up to 3 |
-| `_build_valuation_catalyst` | ⚠️ NOT IMPLEMENTED → falls back to `_build_generic` | 0 |
+| `_build_valuation_catalyst` | yfinance financials + `fetch_news_context()` | up to 3 |
+
+**BFSI methods (6 ✅):**
+
+| Method | Purpose |
+|---|---|
+| `_build_bfsi_fundamentals` | NIM/CASA/CRAR context via yfinance + Serper |
+| `_build_bfsi_risk` | Credit/liquidity risk context |
+| `_build_bfsi_pattern_analysis` | yfinance OHLCV technical context |
+| `_build_bfsi_institutional` | Shareholding + FII/DII flows |
+| `_build_bfsi_universe_setup` | Sector overview context |
+| `_build_macro_policy` | RBI policy news via Serper |
+
+**IT methods (8 ✅):**
+
+| Method | Purpose |
+|---|---|
+| `_build_it_fundamentals` | Revenue/deal wins/attrition context |
+| `_build_global_macro` | US tech spend + currency context |
+| `_build_it_risk_macro` | Visa/pricing/concentration risk context |
+| `_build_peer_benchmark` | Peer comparison via Serper |
+| `_build_it_pattern_analysis` | yfinance OHLCV technical context |
+| `_build_it_sentiment` | News/analyst coverage context |
+| `_build_transcript_nlp` | Management tone + guidance context |
+| `_build_insider_smart_money` | Insider + block deal context |
+
+**RE methods (6 ✅):**
+
+| Method | Purpose |
+|---|---|
+| `_build_re_fundamentals` | DSCR/CUF/revenue context |
+| `_build_business` | Order book + MNRE auction context |
+| `_build_valuation` | EV/MW + peer valuation context |
+| `_build_sentiment_policy` | MNRE policy + state offtake context |
+| `_build_technical` | yfinance OHLCV technical context |
+| `_build_re_risk` | DISCOM + regulatory risk context |
+
+**Fallback:**
+
+| Method | Fetchers called | Serper calls |
+|---|---|---|
 | `_build_generic` | Minimal stub: ticker + company name only | 0 |
 
 **Macro cache architecture (STATIC):**
@@ -579,6 +660,9 @@ ContextBuilder._build_risk_macro():
 | `merge_lessons_into_ledger()` | **STATIC** | above | Dedup/blend formula | After LLM returns |
 | `WeightAdapter.update()` | **STATIC** | `rl/agents/weight_adapter.py` | 3-stage math | Fully deterministic |
 | `MISS_TYPE_PENALTY_MULTIPLIER` | **STATIC** | `core/schemas/feedback.py` | Dict lookup | 0.0/0.25/0.5/1.0 |
+| `ThesisReviewer.should_review()` | **STATIC** | `rl/agents/thesis_reviewer.py` | ATR-relative threshold | Fires on structural miss or size trigger |
+| `ThesisReviewer._compute_atr_pct()` | **STATIC** | above | 14-day ATR via yfinance | Returns 0.0 on failure |
+| `ThesisReviewer.review()` | **LLM** | above | qwen, temp=0.1 | Post-miss thesis validation |
 | `RegimeDetector.detect()` | **STATIC** | `regime/detector.py` | VIX/FII/RSI thresholds | No LLM |
 | Regime multiplier table | **STATIC** | `settings/base.py` | Config constant | Never persisted |
 | `ConvictionTracker` | **STATIC** | `rl/conviction/tracker.py` | `min(0.25,(days-4)×0.025)` | Formula |
@@ -591,9 +675,15 @@ ContextBuilder._build_risk_macro():
 | `input_rail` | **STATIC** | `shared/pipeline/graphs/rails.py` | yfinance fast_info | Non-blocking |
 | `output_rail` | **STATIC** | above | Clamp score [0,1] | Non-blocking |
 | `conflict_rail` | **STATIC** | above | Spread > 0.35 | Triggers LLM re-resolution |
-| `IntentDetector.classify()` | **STATIC** | `chat/algorithms/intent_detector.py` | Regex + keywords | Phase 6 (stub) |
-| `EntityExtractor.extract()` | **STATIC** | `chat/algorithms/entity_extractor.py` | KNOWN_TICKERS set | Phase 6 (stub) |
-| `ChatEngine.reply()` | **LLM** | `chat/engine.py` | qwen | With agentic tool loop |
+| `DispatchNode` (chat) | **LLM** | `chat_graph.py` | qwen, temp=0.0 | Query decomposition + tier detection |
+| `ExecutorNode` (chat) | **STATIC** | above | `asyncio.gather()` | Parallel tool execution, 0 LLM tokens |
+| `SynthesizeNode` (chat) | **LLM** | above | qwen, streaming | Tier-aware response |
+| `user_profile.load_profile()` | **STATIC** | `user_profile.py` | JSON file read | Returns defaults if missing |
+| `user_profile.save_profile()` | **STATIC** | above | JSON file write | Merges topics, increments sessions |
+| `_should_skip_agent_rerun()` | **STATIC** | `daily_review.py` | threshold 0.5% | Skip if direction correct + small error |
+| Tavily disk cache | **STATIC** | `tavily_fetcher.py` | MD5 hash + month | Cache key = sorted_queries + YYYY-MM |
+| `record_llm_call()` | **STATIC** | `llm_client.py` | JSONL append | `outputs/llm_log/{date}.jsonl` |
+| `run_month_end_validation()` | **STATIC** | `month_end_validation.py` | Last trading day only | Validates seasonal patterns vs feedback |
 
 ---
 
@@ -611,16 +701,9 @@ ContextBuilder._build_risk_macro():
 | policy_regulatory | 3 | No (per-ticker) |
 | competitive_intel | 3 | No (per-ticker) |
 | raw_materials | 1 | No |
-| valuation_catalyst | 0 | No context builder |
-| **Total (cold)** | **19** | |
-| **Total (warm cache)** | **16** | |
-
-**Monthly budget at 1 run/day, 5 tickers, with macro cache:**
-
-```
-Per-stock: 16 Serper + 2 Tavily
-5 tickers/day × 22 trading days = 1760 Serper / month (70% of 2500 free tier)
-```
+| valuation_catalyst | up to 3 | No (per-ticker) |
+| **Total (cold)** | **22** | |
+| **Total (warm cache)** | **19** | |
 
 **Macro Cache Architecture:**
 
@@ -645,49 +728,60 @@ ContextBuilder._build_risk_macro():
 | `MICRO_QUERIES_PER_RUN` | 2 | Combined Serper calls per cycle |
 | `MACRO_CACHE_TTL_HOURS` | 2 | Cache time-to-live |
 
-**Budget math (5 tickers/day, with macro cache):**
+**Optimized Budget (2026-05-17):**
+
+```
+Early-exit guard: skip 9-agent re-run when direction_correct AND |error| < 0.5%
+  → ~70% of trading days skipped per ticker
+  → Per ticker: 22 days × 0.30 = ~7 agent re-runs/month (down from 22)
+
+Tavily disk cache: monthly cache, ~96% hit rate
+  → Per ticker: 2 Tavily calls × 0.04 hit-miss rate = 0.08 live calls/day
+```
 
 | Usage | Formula | Calls/month |
 |---|---|---|
-| Per-stock analysis (warm) | 16 calls × 5 tickers × 22 days | 1,760 |
-| Micro search overhead | 2 queries × 6 cycles × 22 days | 264 |
-| **Total** | | **2,024 / 2,500** |
-| Saved by macro cache vs no-cache | 3 calls × 5 tickers × 22 days | 330 saved |
+| Per-stock analysis (early-exit, warm cache) | ~7 runs × 19 Serper × 5 tickers | ~665 |
+| Micro search overhead | 2 × 6 cycles × 22 days | 264 |
+| **Serper Total** | | **~929 / 2,500 (37%)** |
+| Tavily (cached) | 2 × 0.04 × 5 tickers × 22 days | **~9 / 1,000 (1%)** |
+
+> Note: Previous estimate (2026-05-08): 2,024 Serper / 220 Tavily per month. Early-exit + caching reduced actual usage by ~60%.
 
 ---
 
 ## 14. Known Gaps Per Sector
 
-**Automobile (live, high priority):**
+**Automobile:**
 
-| Gap | Agent | Fix path |
-|---|---|---|
-| RBI repo rate hardcoded | risk_macro | Scrape rbi.org.in or add Serper micro query |
-| `_build_valuation_catalyst` not implemented | valuation_catalyst | Add to ContextBuilder; use yfinance financials |
-| Vahan/FADA/SIAM structured data | sales_demand | Add `vahan_fada.py` fetcher using Serper proxy (Phase 7) |
-| Nifty Auto peer correlation not computed | pattern_analysis | 10 lines of yfinance multi-ticker + `.corr()` |
-| Emission query 4 skipped (SERPER_MAX=3) | risk_macro | Raise `SERPER_MAX_QUERIES` to 4 or move to dedicated fetcher |
+| Gap | Agent | Fix path | Status |
+|---|---|---|---|
+| RBI repo rate hardcoded | risk_macro | Scrape rbi.org.in | ❌ OPEN |
+| `_build_valuation_catalyst` not implemented | valuation_catalyst | Added to ContextBuilder | ✅ FIXED |
+| Vahan/FADA/SIAM structured data | sales_demand | Serper proxy only | ❌ OPEN |
+| Nifty Auto peer correlation | pattern_analysis | 10 lines of yfinance | ❌ OPEN |
+| Emission query 4 skipped (SERPER_MAX=3) | risk_macro | Raise SERPER_MAX_QUERIES | ❌ OPEN |
 
-**Banking/BFSI (scaffolded):**
+**Banking/BFSI:**
 
-| Gap | Agent | Fix path |
-|---|---|---|
-| `rbi_data.py` is a stub | fundamentals, macro_policy | Implement Serper news proxy for RBI press releases (Phase 7) |
-| `npa_metrics.py` is a stub | fundamentals | Implement Tavily fetch for BSE/NSE quarterly NPA filings |
-| ContextBuilder not extended | all 6 agents | Add `_build_bfsi_{agent}` routing branches in builder.py |
+| Gap | Agent | Fix path | Status |
+|---|---|---|---|
+| `rbi_data.py` stub | fundamentals, macro_policy | Serper news proxy | ❌ OPEN |
+| `npa_metrics.py` stub | fundamentals | Tavily NPA filings | ❌ OPEN |
+| ContextBuilder not extended | all 6 agents | — | ✅ FIXED |
 
-**IT Sector (scaffolded):**
+**IT Sector:**
 
-| Gap | Agent | Fix path |
-|---|---|---|
-| `deal_wins.py` is a stub | fundamentals, transcript_nlp | Implement Serper + Tavily for TCV announcements (Phase 7) |
-| `transcript.py` is a stub | transcript_nlp | Implement Tavily extraction on NSE IR pages |
-| ContextBuilder not extended | all 8 agents | Add `_build_it_{agent}` routing branches |
+| Gap | Agent | Fix path | Status |
+|---|---|---|---|
+| `deal_wins.py` stub | fundamentals, transcript_nlp | Serper + Tavily | ❌ OPEN |
+| `transcript.py` stub | transcript_nlp | Tavily NSE IR pages | ❌ OPEN |
+| ContextBuilder not extended | all 8 agents | — | ✅ FIXED |
 
-**Renewable Energy (scaffolded):**
+**Renewable Energy:**
 
-| Gap | Agent | Fix path |
-|---|---|---|
-| `mnre_data.py` is a stub | business, sentiment_policy | Implement Tavily fetch from mnre.gov.in/tenders |
-| DISCOM payment data | risk | Fetch from PRAAPTI portal news |
-| ContextBuilder not extended | all 6 agents | Add `_build_re_{agent}` routing branches |
+| Gap | Agent | Fix path | Status |
+|---|---|---|---|
+| `mnre_data.py` stub | business, sentiment_policy | Tavily mnre.gov.in | ❌ OPEN |
+| DISCOM payment data | risk | PRAAPTI portal | ❌ OPEN |
+| ContextBuilder not extended | all 6 agents | — | ✅ FIXED |

@@ -1,0 +1,278 @@
+{
+  "before_report": "eval\\reports\\before.json",
+  "after_report": "eval\\reports\\after.json",
+  "before_date": "2026-05-18",
+  "after_date": "2026-05-18",
+  "overall": {
+    "before_hit_rate": 0.6097,
+    "after_hit_rate": 0.6097,
+    "delta_hit_rate": 0.0,
+    "before_price_error": 1.524,
+    "after_price_error": 1.524,
+    "delta_price_error": 0.0
+  },
+  "sectors": [
+    {
+      "sector": "automobile",
+      "before_hit_rate": 0.5944,
+      "after_hit_rate": 0.5944,
+      "delta": 0.0,
+      "change": "~ same"
+    },
+    {
+      "sector": "banking_bfsi",
+      "before_hit_rate": 0.6,
+      "after_hit_rate": 0.6,
+      "delta": 0.0,
+      "change": "~ same"
+    },
+    {
+      "sector": "it_sector",
+      "before_hit_rate": 0.6389,
+      "after_hit_rate": 0.6389,
+      "delta": 0.0,
+      "change": "~ same"
+    },
+    {
+      "sector": "renewable_energy",
+      "before_hit_rate": 0.6056,
+      "after_hit_rate": 0.6056,
+      "delta": 0.0,
+      "change": "~ same"
+    }
+  ],
+  "agents": [
+    {
+      "agent": "competitive_intel",
+      "sector": "automobile",
+      "before_hit_rate": 0.5944,
+      "after_hit_rate": 0.5944,
+      "delta": 0.0,
+      "change": "~"
+    },
+    {
+      "agent": "fundamentals",
+      "sector": "automobile",
+      "before_hit_rate": 0.6056,
+      "after_hit_rate": 0.6056,
+      "delta": 0.0,
+      "change": "~"
+    },
+    {
+      "agent": "pattern_analysis",
+      "sector": "automobile",
+      "before_hit_rate": 0.6111,
+      "after_hit_rate": 0.6111,
+      "delta": 0.0,
+      "change": "~"
+    },
+    {
+      "agent": "policy_regulatory",
+      "sector": "automobile",
+      "before_hit_rate": 0.55,
+      "after_hit_rate": 0.55,
+      "delta": 0.0,
+      "change": "~"
+    },
+    {
+      "agent": "raw_materials",
+      "sector": "automobile",
+      "before_hit_rate": 0.6111,
+      "after_hit_rate": 0.6111,
+      "delta": 0.0,
+      "change": "~"
+    },
+    {
+      "agent": "risk_macro",
+      "sector": "automobile",
+      "before_hit_rate": 0.6056,
+      "after_hit_rate": 0.6056,
+      "delta": 0.0,
+      "change": "~"
+    },
+    {
+      "agent": "sales_demand",
+      "sector": "automobile",
+      "before_hit_rate": 0.6056,
+      "after_hit_rate": 0.6056,
+      "delta": 0.0,
+      "change": "~"
+    },
+    {
+      "agent": "sentiment",
+      "sector": "automobile",
+      "before_hit_rate": 0.5778,
+      "after_hit_rate": 0.5778,
+      "delta": 0.0,
+      "change": "~"
+    },
+    {
+      "agent": "valuation_catalyst",
+      "sector": "automobile",
+      "before_hit_rate": 0.5611,
+      "after_hit_rate": 0.5611,
+      "delta": 0.0,
+      "change": "~"
+    },
+    {
+      "agent": "fundamentals",
+      "sector": "banking_bfsi",
+      "before_hit_rate": 0.5889,
+      "after_hit_rate": 0.5889,
+      "delta": 0.0,
+      "change": "~"
+    },
+    {
+      "agent": "institutional",
+      "sector": "banking_bfsi",
+      "before_hit_rate": 0.6278,
+      "after_hit_rate": 0.6278,
+      "delta": 0.0,
+      "change": "~"
+    },
+    {
+      "agent": "macro_policy",
+      "sector": "banking_bfsi",
+      "before_hit_rate": 0.5778,
+      "after_hit_rate": 0.5778,
+      "delta": 0.0,
+      "change": "~"
+    },
+    {
+      "agent": "pattern_analysis",
+      "sector": "banking_bfsi",
+      "before_hit_rate": 0.6333,
+      "after_hit_rate": 0.6333,
+      "delta": 0.0,
+      "change": "~"
+    },
+    {
+      "agent": "risk",
+      "sector": "banking_bfsi",
+      "before_hit_rate": 0.5722,
+      "after_hit_rate": 0.5722,
+      "delta": 0.0,
+      "change": "~"
+    },
+    {
+      "agent": "universe_setup",
+      "sector": "banking_bfsi",
+      "before_hit_rate": 0.6333,
+      "after_hit_rate": 0.6333,
+      "delta": 0.0,
+      "change": "~"
+    },
+    {
+      "agent": "fundamentals",
+      "sector": "it_sector",
+      "before_hit_rate": 0.6667,
+      "after_hit_rate": 0.6667,
+      "delta": 0.0,
+      "change": "~"
+    },
+    {
+      "agent": "global_macro",
+      "sector": "it_sector",
+      "before_hit_rate": 0.5944,
+      "after_hit_rate": 0.5944,
+      "delta": 0.0,
+      "change": "~"
+    },
+    {
+      "agent": "insider_smart_money",
+      "sector": "it_sector",
+      "before_hit_rate": 0.6389,
+      "after_hit_rate": 0.6389,
+      "delta": 0.0,
+      "change": "~"
+    },
+    {
+      "agent": "pattern_analysis",
+      "sector": "it_sector",
+      "before_hit_rate": 0.6389,
+      "after_hit_rate": 0.6389,
+      "delta": 0.0,
+      "change": "~"
+    },
+    {
+      "agent": "peer_benchmark",
+      "sector": "it_sector",
+      "before_hit_rate": 0.6556,
+      "after_hit_rate": 0.6556,
+      "delta": 0.0,
+      "change": "~"
+    },
+    {
+      "agent": "risk_macro",
+      "sector": "it_sector",
+      "before_hit_rate": 0.6667,
+      "after_hit_rate": 0.6667,
+      "delta": 0.0,
+      "change": "~"
+    },
+    {
+      "agent": "sentiment",
+      "sector": "it_sector",
+      "before_hit_rate": 0.6333,
+      "after_hit_rate": 0.6333,
+      "delta": 0.0,
+      "change": "~"
+    },
+    {
+      "agent": "transcript_nlp",
+      "sector": "it_sector",
+      "before_hit_rate": 0.6278,
+      "after_hit_rate": 0.6278,
+      "delta": 0.0,
+      "change": "~"
+    },
+    {
+      "agent": "business",
+      "sector": "renewable_energy",
+      "before_hit_rate": 0.6056,
+      "after_hit_rate": 0.6056,
+      "delta": 0.0,
+      "change": "~"
+    },
+    {
+      "agent": "fundamentals",
+      "sector": "renewable_energy",
+      "before_hit_rate": 0.5611,
+      "after_hit_rate": 0.5611,
+      "delta": 0.0,
+      "change": "~"
+    },
+    {
+      "agent": "risk",
+      "sector": "renewable_energy",
+      "before_hit_rate": 0.6611,
+      "after_hit_rate": 0.6611,
+      "delta": 0.0,
+      "change": "~"
+    },
+    {
+      "agent": "sentiment_policy",
+      "sector": "renewable_energy",
+      "before_hit_rate": 0.6,
+      "after_hit_rate": 0.6,
+      "delta": 0.0,
+      "change": "~"
+    },
+    {
+      "agent": "technical",
+      "sector": "renewable_energy",
+      "before_hit_rate": 0.6056,
+      "after_hit_rate": 0.6056,
+      "delta": 0.0,
+      "change": "~"
+    },
+    {
+      "agent": "valuation",
+      "sector": "renewable_energy",
+      "before_hit_rate": 0.55,
+      "after_hit_rate": 0.55,
+      "delta": 0.0,
+      "change": "~"
+    }
+  ]
+}

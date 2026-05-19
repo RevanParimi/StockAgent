@@ -178,9 +178,9 @@ BRENT_TICKER: str = "BZ=F"             # Brent Crude Futures (polymer cost proxy
 
 # RBI policy rate — algorithm constant (not an API secret, not in .env)
 # Update here when RBI changes rates; the live-fetch redesign (dynamic Serper) will replace this.
-RBI_REPO_RATE_PCT: str = "6.25"        # Updated: RBI cut 25bps in Feb 2025 MPC
-RBI_REPO_RATE_DATE: str = "2025-02-07"
-RBI_REPO_RATE_STANCE: str = "accommodative"
+RBI_REPO_RATE_PCT: str = "5.25"        # Updated: live Serper fetch confirmed 5.25% (2026); fallback if Serper fails
+RBI_REPO_RATE_DATE: str = "2026-02-07"
+RBI_REPO_RATE_STANCE: str = "neutral"
 
 # Peer OEM tickers for correlation (NSE .NS suffix applied automatically)
 PEER_TICKERS: list[str] = [

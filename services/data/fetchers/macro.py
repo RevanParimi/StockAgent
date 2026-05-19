@@ -14,7 +14,8 @@ get_macro_context()         → str   (formatted for prompt injection)
 from __future__ import annotations
 
 import logging
-from datetime import date, timedelta
+import threading
+from datetime import date, datetime as _dt, timedelta
 
 import yfinance as yf
 
@@ -26,6 +27,17 @@ logger = logging.getLogger(__name__)
 # In-memory cache for RBI repo rate (60-day TTL — MPC meets every ~45 days)
 # ---------------------------------------------------------------------------
 _RBI_CACHE: dict = {}  # {"rbi": {"repo_rate_pct": str, "stance": str, "fetched_at": str, ...}}
+_RBI_CACHE_LOCK = threading.Lock()  # FIX 2: prevents duplicate Serper calls under concurrency
+
+# ---------------------------------------------------------------------------
+# In-memory cache for rubber price (4-hour TTL — market-level, same for all tickers)
+# ---------------------------------------------------------------------------
+_RUBBER_CACHE: dict = {}  # {"rubber": {"change_3m_pct": float, "source": str, "fetched_at": str}}
+
+# ---------------------------------------------------------------------------
+# In-memory daily cache for shared commodity tickers (avoids duplicate yfinance calls)
+# ---------------------------------------------------------------------------
+_COMMODITY_CACHE: dict = {}  # {ticker: {"data": {...}, "date": "YYYY-MM-DD"}}
 
 # Map of macro indicator → yfinance ticker
 _MACRO_TICKERS: dict[str, str] = {
@@ -84,6 +96,17 @@ def _fetch_latest(yf_ticker: str) -> dict[str, float]:
         return {"current": 0.0, "change_3m_pct": 0.0}
 
 
+def _fetch_latest_cached(yf_ticker: str) -> dict[str, float]:
+    """_fetch_latest with daily cache — avoids duplicate yfinance calls for shared tickers."""
+    today = str(date.today())
+    cached = _COMMODITY_CACHE.get(yf_ticker)
+    if cached and cached.get("date") == today:
+        return cached["data"]
+    result = _fetch_latest(yf_ticker)
+    _COMMODITY_CACHE[yf_ticker] = {"data": result, "date": today}
+    return result
+
+
 # ---------------------------------------------------------------------------
 # Public functions
 # ---------------------------------------------------------------------------
@@ -110,7 +133,7 @@ def get_commodity_prices() -> dict[str, dict[str, float]]:
     """
     result: dict[str, dict[str, float]] = {}
     for name, ticker in _MACRO_TICKERS.items():
-        result[name] = _fetch_latest(ticker)
+        result[name] = _fetch_latest_cached(ticker)
 
     # Rubber — yfinance tickers are delisted; use Serper news proxy instead
     rubber = _fetch_rubber_price_via_news()
@@ -130,7 +153,7 @@ def get_raw_material_prices() -> dict[str, dict[str, float]]:
     """
     result: dict[str, dict[str, float]] = {}
     for name, ticker in _RAW_MATERIAL_TICKERS.items():
-        result[name] = _fetch_latest(ticker)
+        result[name] = _fetch_latest_cached(ticker)
     return result
 
 
@@ -139,15 +162,29 @@ def _fetch_rubber_price_via_news() -> dict[str, float]:
     Fetch natural rubber price direction via Serper news search.
     Returns {"current": 0, "change_3m_pct": <direction>} — direction derived from news.
     Falls back to empty dict if no data.
+
+    Result is cached for 4 hours (same as macro cache TTL) because rubber is
+    a market-level indicator — the same for all tickers in a batch, so we only
+    need one Serper call per 4-hour window regardless of batch size.
     """
+    # FIX 1: Check 4-hour in-memory cache before firing a Serper call
+    cached = _RUBBER_CACHE.get("rubber")
+    if cached:
+        try:
+            age_hours = (_dt.now() - _dt.fromisoformat(cached["fetched_at"])).seconds / 3600
+            if age_hours < 4:
+                return cached
+        except Exception:
+            pass  # corrupt cache entry — re-fetch
+
     try:
         from services.data.fetchers.news import search_serper
+        import re as _re
         results = search_serper(
             "natural rubber price India MCX today 2026",
             n=3,
             api_key=settings.SERPER_API_KEY,
         )
-        import re as _re
         for r in results:
             text = r.get("snippet", "") + " " + r.get("title", "")
             # Look for percentage change
@@ -160,7 +197,10 @@ def _fetch_rubber_price_via_news() -> dict[str, float]:
                 direction = 1.0
             if m:
                 pct = float(m.group(1)) * direction
-                return {"current": 0, "change_3m_pct": round(pct, 2), "source": "serper_news"}
+                result = {"current": 0, "change_3m_pct": round(pct, 2), "source": "serper_news",
+                          "fetched_at": _dt.now().isoformat()}
+                _RUBBER_CACHE["rubber"] = result
+                return result
     except Exception as exc:
         logger.debug("[macro] Rubber news fetch failed: %s", exc)
     return {}
@@ -202,69 +242,74 @@ def get_rbi_repo_rate() -> dict[str, str]:
     """
     Live RBI repo rate from Serper, cached in-memory for 60 days.
     Fallback chain: Serper → settings.RBI_REPO_RATE_PCT → log warning.
+
+    The entire function body runs under _RBI_CACHE_LOCK to prevent concurrent
+    orchestrator threads from each hitting the cache miss simultaneously and
+    firing parallel Serper calls for the same rate (FIX 2).
     """
     from datetime import date as _date
     import re as _re
 
-    # Cache check (60-day TTL — MPC meets every ~45 days)
-    cached = _RBI_CACHE.get("rbi")
-    if cached:
+    with _RBI_CACHE_LOCK:
+        # Cache check (60-day TTL — MPC meets every ~45 days)
+        cached = _RBI_CACHE.get("rbi")
+        if cached:
+            try:
+                fetched = _date.fromisoformat(cached["fetched_at"])
+                if (_date.today() - fetched).days < 60:
+                    return cached
+            except Exception:
+                pass  # corrupt cache entry — re-fetch
+
+        # Live fetch via Serper
         try:
-            fetched = _date.fromisoformat(cached["fetched_at"])
-            if (_date.today() - fetched).days < 60:
-                return cached
+            from services.data.fetchers.news import search_serper
+            results = search_serper(
+                "RBI Monetary Policy Committee repo rate India latest decision 2026",
+                n=3,
+                api_key=settings.SERPER_API_KEY,
+            )
+            for r in results:
+                text = (r.get("snippet", "") + " " + r.get("title", "")).lower()
+                # Match "repo rate [at/to/of/unchanged at] X.XX%"
+                m = _re.search(r"repo rate[^\d]*(\d+\.?\d*)\s*%", text)
+                if m:
+                    rate = m.group(1)
+                    # Detect stance
+                    stance = "neutral"
+                    if any(w in text for w in ["cut", "reduce", "lower", "dovish", "accommodative"]):
+                        stance = "accommodative"
+                    elif any(w in text for w in ["hike", "raise", "increase", "hawkish", "withdrawal"]):
+                        stance = "withdrawal of accommodation"
+                    result = {
+                        "repo_rate_pct": rate,
+                        "last_change": r.get("date", settings.RBI_REPO_RATE_DATE),
+                        "stance": stance,
+                        "note": f"Source: Serper live fetch ({_date.today()})",
+                        "fetched_at": _date.today().isoformat(),
+                    }
+                    _RBI_CACHE["rbi"] = result
+                    logger.info("[macro] RBI rate fetched live: %s%% (%s)", rate, stance)
+                    return result
+        except Exception as exc:
+            logger.warning("[macro] RBI live fetch failed: %s — using settings fallback", exc)
+
+        # Fallback to settings
+        fallback = {
+            "repo_rate_pct": settings.RBI_REPO_RATE_PCT,
+            "last_change": settings.RBI_REPO_RATE_DATE,
+            "stance": settings.RBI_REPO_RATE_STANCE,
+            "note": f"Source: settings fallback (live fetch failed; update settings.RBI_REPO_RATE_PCT)",
+            "fetched_at": _date.today().isoformat(),
+        }
+        # Log staleness warning
+        try:
+            staleness = (_date.today() - _date.fromisoformat(settings.RBI_REPO_RATE_DATE)).days
+            if staleness > 90:
+                logger.warning("[macro] RBI settings fallback is %d days stale", staleness)
         except Exception:
-            pass  # corrupt cache entry — re-fetch
-
-    # Live fetch via Serper
-    try:
-        from services.data.fetchers.news import search_serper
-        results = search_serper(
-            "RBI Monetary Policy Committee repo rate India latest decision 2026",
-            n=3,
-            api_key=settings.SERPER_API_KEY,
-        )
-        for r in results:
-            text = (r.get("snippet", "") + " " + r.get("title", "")).lower()
-            # Match "repo rate [at/to/of/unchanged at] X.XX%"
-            m = _re.search(r"repo rate[^\d]*(\d+\.?\d*)\s*%", text)
-            if m:
-                rate = m.group(1)
-                # Detect stance
-                stance = "neutral"
-                if any(w in text for w in ["cut", "reduce", "lower", "dovish", "accommodative"]):
-                    stance = "accommodative"
-                elif any(w in text for w in ["hike", "raise", "increase", "hawkish", "withdrawal"]):
-                    stance = "withdrawal of accommodation"
-                result = {
-                    "repo_rate_pct": rate,
-                    "last_change": r.get("date", settings.RBI_REPO_RATE_DATE),
-                    "stance": stance,
-                    "note": f"Source: Serper live fetch ({_date.today()})",
-                    "fetched_at": _date.today().isoformat(),
-                }
-                _RBI_CACHE["rbi"] = result
-                logger.info("[macro] RBI rate fetched live: %s%% (%s)", rate, stance)
-                return result
-    except Exception as exc:
-        logger.warning("[macro] RBI live fetch failed: %s — using settings fallback", exc)
-
-    # Fallback to settings
-    fallback = {
-        "repo_rate_pct": settings.RBI_REPO_RATE_PCT,
-        "last_change": settings.RBI_REPO_RATE_DATE,
-        "stance": settings.RBI_REPO_RATE_STANCE,
-        "note": f"Source: settings fallback (live fetch failed; update settings.RBI_REPO_RATE_PCT)",
-        "fetched_at": _date.today().isoformat(),
-    }
-    # Log staleness warning
-    try:
-        staleness = (_date.today() - _date.fromisoformat(settings.RBI_REPO_RATE_DATE)).days
-        if staleness > 90:
-            logger.warning("[macro] RBI settings fallback is %d days stale", staleness)
-    except Exception:
-        pass
-    return fallback
+            pass
+        return fallback
 
 
 # ---------------------------------------------------------------------------

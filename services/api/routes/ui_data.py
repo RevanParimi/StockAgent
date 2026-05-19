@@ -636,11 +636,11 @@ async def _gather_market_data(db_latest: list[dict]) -> dict:
 # Routes
 # ---------------------------------------------------------------------------
 
-_VALID_SECTORS = set(_AGENT_META_BY_SECTOR.keys())
+_AGENT_SECTORS = set(_AGENT_META_BY_SECTOR.keys())  # sectors with UI agent definitions
 
 @router.get("/agents", summary="Agent definitions + current weights for a sector")
 async def get_agents(sector: str = Query(default="automobile", description="Sector key")) -> dict:
-    if sector not in _VALID_SECTORS:
+    if sector not in _AGENT_SECTORS:
         sector = "automobile"
     return _build_agents_response(sector)
 
@@ -663,7 +663,7 @@ async def update_agent_weights(
       - All final weights (base merged with overrides) must sum to 0.95–1.05
       - Only valid agent keys for the sector are accepted; unknown keys dropped
     """
-    if sector not in _VALID_SECTORS:
+    if sector not in _AGENT_SECTORS:
         sector = "automobile"
 
     valid_keys = set(m["key"] for m in _AGENT_META_BY_SECTOR[sector])

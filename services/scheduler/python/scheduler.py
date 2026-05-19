@@ -33,6 +33,7 @@ AutomobileScheduler()
 
 from __future__ import annotations
 
+import concurrent.futures as _cf
 import logging
 from datetime import date, timedelta
 
@@ -212,26 +213,35 @@ class AutomobileScheduler:
         """
         Review yesterday's trading session for all configured tickers.
         Steps back over weekends so Monday's job reviews Friday's session.
+        Each ticker has a 3-minute timeout to prevent a stalled LLM call from
+        blocking the entire review loop.
         """
         from core.intelligence.rl.workflows.daily_review import run_daily_review
+        from services.api.log_buffer import get_active_tickers_with_sector
 
         review_date = date.today() - timedelta(days=1)
         while review_date.weekday() >= 5:
             review_date -= timedelta(days=1)
 
-        tickers = _active_tickers()
-        logger.info("[Scheduler] === RL daily review — %s (%d tickers) ===", review_date.isoformat(), len(tickers))
-        for ticker in tickers:
+        ticker_entries = get_active_tickers_with_sector()
+        logger.info("[Scheduler] === RL daily review — %s (%d tickers) ===", review_date.isoformat(), len(ticker_entries))
+        for entry in ticker_entries:
+            ticker = entry["sym"]
+            sector = entry.get("sector", "automobile")
             try:
-                summary = run_daily_review(ticker, review_date)
+                with _cf.ThreadPoolExecutor(max_workers=1) as executor:
+                    future = executor.submit(run_daily_review, ticker, review_date, sector=sector)
+                    summary = future.result(timeout=180)  # 3-minute per-ticker timeout
                 logger.info(
-                    "[Scheduler] %s %s — status=%s direction=%s lessons=%s weights=v%s",
-                    ticker, review_date,
+                    "[Scheduler] %s %s sector=%s — status=%s direction=%s lessons=%s weights=v%s",
+                    ticker, review_date, sector,
                     summary.get("status"),
                     summary.get("direction_correct"),
                     summary.get("lessons_added"),
                     summary.get("weight_version"),
                 )
+            except _cf.TimeoutError:
+                logger.error("[Scheduler] Daily review TIMED OUT for %s after 180s", ticker)
             except Exception as exc:
                 logger.error(
                     "[Scheduler] Daily review FAILED for %s: %s", ticker, exc, exc_info=True
@@ -244,18 +254,21 @@ class AutomobileScheduler:
         Runs the full 9-agent analysis per ticker — takes ~2 min/ticker.
         """
         from core.intelligence.rl.workflows.generate_forecast import generate_forecast
+        from services.api.log_buffer import get_active_tickers_with_sector
 
         today = date.today()
-        tickers = _active_tickers()
+        ticker_entries = get_active_tickers_with_sector()
         logger.info(
-            "[Scheduler] === RL monthly forecast — %d-%02d (%d tickers) ===", today.year, today.month, len(tickers)
+            "[Scheduler] === RL monthly forecast — %d-%02d (%d tickers) ===", today.year, today.month, len(ticker_entries)
         )
-        for ticker in tickers:
+        for entry in ticker_entries:
+            ticker = entry["sym"]
+            sector = entry.get("sector", "automobile")
             try:
-                env = generate_forecast(ticker)
+                env = generate_forecast(ticker, sector=sector)
                 logger.info(
-                    "[Scheduler] Forecast OK: %s cycle=%s horizon=%dd base=₹%.2f weights=v%d",
-                    ticker, env.cycle_id, len(env.daily_forecasts),
+                    "[Scheduler] Forecast OK: %s sector=%s cycle=%s horizon=%dd base=₹%.2f weights=v%d",
+                    ticker, sector, env.cycle_id, len(env.daily_forecasts),
                     env.base_close, env.weight_version_used,
                 )
             except Exception as exc:

@@ -182,3 +182,16 @@ def save_managed_tickers(tickers: list[dict]) -> None:
 def get_active_tickers() -> list[str]:
     """Return only the enabled ticker symbols from the managed list."""
     return [t["sym"] for t in load_managed_tickers() if t.get("enabled", True)]
+
+
+def get_active_tickers_with_sector() -> list[dict]:
+    """
+    Return active tickers with sector metadata.
+    Format: [{"sym": "MARUTI", "sector": "automobile"}, ...]
+    Used by scheduler to pass correct sector to daily_review and generate_forecast.
+    """
+    return [
+        {"sym": t["sym"], "sector": t.get("sector", "automobile")}
+        for t in load_managed_tickers()
+        if t.get("enabled", True)
+    ]

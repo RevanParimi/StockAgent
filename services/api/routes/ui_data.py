@@ -2445,7 +2445,7 @@ async def get_managed_tickers() -> dict:
 
 
 class _ManagedTickerBody(BaseModel):
-    sym:     str
+    sym:     str = ""
     name:    str = ""
     sector:  str = "automobile"
     enabled: bool = True
@@ -2463,22 +2463,54 @@ async def replace_managed_tickers(body: list[_ManagedTickerBody]) -> dict:
     return {"tickers": tickers}
 
 
+async def _generate_envelope_for_new_ticker(sym: str, sector: str) -> None:
+    """Background task: generate forecast envelope for a newly added ticker."""
+    try:
+        from core.intelligence.rl.workflows.generate_forecast import generate_forecast
+        import asyncio as _asyncio
+        logger.info("[tickers/managed] Generating envelope for new ticker %s (%s)...", sym, sector)
+        # Run in thread (generate_forecast is synchronous)
+        env = await _asyncio.to_thread(generate_forecast, sym, sector=sector)
+        logger.info("[tickers/managed] Envelope generated for %s: %s", sym, env.cycle_id if env else "None")
+    except Exception as exc:
+        logger.warning("[tickers/managed] Envelope generation failed for %s: %s", sym, exc)
+        # Non-fatal — scheduler will pick it up on month 1st
+
+
 @router.post("/tickers/managed/{sym}", summary="Add a ticker to the managed list")
-async def add_managed_ticker(sym: str, body: _ManagedTickerBody) -> dict:
+async def add_managed_ticker(sym: str, body: _ManagedTickerBody = _ManagedTickerBody()) -> dict:
+    import asyncio as _asyncio
     from services.api.log_buffer import _KNOWN_NAMES
     tickers = _load_mt()
     sym_up = sym.strip().upper()
     if any(t["sym"] == sym_up for t in tickers):
         return {"tickers": tickers, "message": f"{sym_up} already in managed list"}
+    resolved_sector = body.sector if body.sector in _VALID_SECTORS else "automobile"
     tickers.append({
         "sym":     sym_up,
         "name":    body.name or _KNOWN_NAMES.get(sym_up, sym_up),
-        "sector":  body.sector if body.sector in _VALID_SECTORS else "automobile",
+        "sector":  resolved_sector,
         "enabled": body.enabled,
     })
     _save_mt(tickers)
-    logger.info("[ui/tickers/managed] Added %s (%s)", sym_up, body.sector)
-    return {"tickers": tickers}
+    logger.info("[ui/tickers/managed] Added %s (%s)", sym_up, resolved_sector)
+
+    # Trigger async envelope generation so new ticker doesn't wait until month-end
+    _asyncio.create_task(_generate_envelope_for_new_ticker(sym_up, resolved_sector))
+
+    return {"added": sym_up, "sector": resolved_sector, "note": "Envelope generation started in background", "tickers": tickers}
+
+
+@router.post("/tickers/managed/{sym}/generate-envelope", summary="Trigger immediate envelope generation for a ticker")
+async def trigger_envelope_generation(sym: str, sector: str = "automobile") -> dict:
+    """
+    Immediately generate a forecast envelope for this ticker.
+    Use this when adding a new ticker mid-month and don't want to wait until month-end.
+    """
+    import asyncio as _asyncio
+    sym_up = sym.upper()
+    _asyncio.create_task(_generate_envelope_for_new_ticker(sym_up, sector))
+    return {"triggered": sym_up, "sector": sector, "note": "Generating in background — check /ui/tickers/managed for status"}
 
 
 @router.delete("/tickers/managed/{sym}", summary="Remove a ticker from the managed list")

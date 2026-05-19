@@ -120,6 +120,27 @@ class AgentOutput(BaseModel):
     data_freshness: str = ""
     raw_llm_response: str = Field(default="", exclude=True)  # not serialised in reports
     error: str | None = None
+    # Ticker-specific insight fields — all optional with defaults so existing code is unaffected
+    ticker_vs_peers: str = Field(
+        default="",
+        description="Direct numeric comparison: e.g. 'MARUTI EBITDA 19.2% vs TATA 14.5%, M&M 16.8%'"
+    )
+    bull_case_if: str = Field(
+        default="",
+        description="Specific catalyst for score +0.15: e.g. 'Alto K10 EV captures 8% EV share by FY27'"
+    )
+    bear_case_if: str = Field(
+        default="",
+        description="Specific risk for score -0.15: e.g. 'Crude >$90 compresses margin 100-150bps'"
+    )
+    what_changed: str = Field(
+        default="",
+        description="What is materially different this cycle: e.g. 'FII holding +120bps; attrition fell 2.8%->2.3%'"
+    )
+    data_confidence: float = Field(
+        default=0.5, ge=0.0, le=1.0,
+        description="0.3=sparse data/inference; 0.7=multiple data points; 1.0=direct verified data"
+    )
 
 
 class SalesDemandOutput(AgentOutput):

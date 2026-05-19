@@ -21,6 +21,8 @@ Be concise, data-driven, and India-specific.
 
 ANALYSIS_PROMPT = """Analyse the Raw Material Cost outlook for the Indian automobile company: **{ticker}** ({company_name}).
 
+{business_model_context}
+
 Focus on the following dimensions and score each from 0.0 (very unfavourable / margin headwind)
 to 1.0 (very favourable / margin tailwind):
 
@@ -33,7 +35,13 @@ to 1.0 (very favourable / margin tailwind):
 Context / recent data:
 {context}
 
-Return ONLY valid JSON in this exact schema:
+Return ONLY valid JSON. IMPORTANT: Be ticker-specific. Cite actual commodity prices and margin impacts.
+For key_positives/key_risks: quote specific prices and impacts (e.g. "HRC steel at INR 52,000/tonne, -8% QoQ; saves ~60bps on EBITDA margin").
+For ticker_vs_peers: cite relative commodity exposure vs named peers (e.g. "MARUTI steel ~18% of BOM vs TATAMOTORS ~22% due to higher CV mix").
+For bull_case_if: name the specific commodity threshold + margin benefit (e.g. "If steel falls to INR 48,000/tonne, margin gains ~100bps").
+For bear_case_if: name the specific commodity spike + margin compression (e.g. "If crude >$90/bbl, polymer costs rise 5-7%, compressing margin 80bps").
+For what_changed: cite what shifted in commodity prices this cycle vs last quarter with numbers.
+
 {{
   "agent": "raw_materials",
   "ticker": "{ticker}",
@@ -48,7 +56,12 @@ Return ONLY valid JSON in this exact schema:
   "key_positives": [<string>, ...],
   "key_risks": [<string>, ...],
   "summary": "<2-3 sentence narrative on how raw material costs affect this OEM's margins>",
-  "data_freshness": "<date of most recent data point used>"
+  "data_freshness": "<date of most recent data point used>",
+  "ticker_vs_peers": "<relative commodity exposure vs named peers with specific % BOM or margin figures>",
+  "bull_case_if": "<specific commodity threshold + quantified margin benefit that would add ~0.15 to score>",
+  "bear_case_if": "<specific commodity spike + quantified margin compression that would cut ~0.15 from score>",
+  "what_changed": "<what shifted in commodity prices this cycle vs last quarter, with specific price levels>",
+  "data_confidence": <float 0.3-1.0>
 }}
 """
 

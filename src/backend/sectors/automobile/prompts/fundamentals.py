@@ -18,6 +18,8 @@ and earnings call transcripts as your primary sources.
 
 ANALYSIS_PROMPT = """Analyse the Fundamental outlook for Indian automobile company: **{ticker}** ({company_name}).
 
+{business_model_context}
+
 Score each dimension from 0.0 (very bearish) to 1.0 (very bullish):
 
 1. **Revenue & EBITDA (QoQ / YoY delta)** – Revenue growth trend, EBITDA expansion/contraction
@@ -29,7 +31,13 @@ Score each dimension from 0.0 (very bearish) to 1.0 (very bullish):
 Context / recent data snippets:
 {context}
 
-Return ONLY valid JSON:
+Return ONLY valid JSON. IMPORTANT: Be ticker-specific. Cite actual numbers from the context.
+For key_positives/key_risks: quote specific figures (e.g. "EBITDA margin 19.2%, +80bps YoY vs sector 16.8%").
+For ticker_vs_peers: give numeric comparison (e.g. "MARUTI 19.2% vs TATA 14.5% vs M&M 16.8%").
+For bull_case_if: name the specific catalyst and metric threshold.
+For bear_case_if: name the specific trigger and quantified impact.
+For what_changed: cite what shifted since last quarter with numbers.
+
 {{
   "agent": "fundamentals",
   "ticker": "{ticker}",
@@ -44,7 +52,12 @@ Return ONLY valid JSON:
   "key_positives": [<string>, ...],
   "key_risks": [<string>, ...],
   "summary": "<2-3 sentence narrative>",
-  "data_freshness": "<date of most recent data point used>"
+  "data_freshness": "<date of most recent data point used>",
+  "ticker_vs_peers": "<numeric comparison vs named peers, e.g. 'MARUTI EBITDA 19.2% vs TATA 14.5% vs M&M 16.8%'>",
+  "bull_case_if": "<specific catalyst + metric threshold that would add ~0.15 to score>",
+  "bear_case_if": "<specific trigger + quantified margin/earnings impact that would cut ~0.15 from score>",
+  "what_changed": "<what shifted materially this cycle vs last quarter, with numbers>",
+  "data_confidence": <float 0.3-1.0>
 }}
 """
 

@@ -20,6 +20,8 @@ structured JSON score with reasoning. Be concise, data-driven, and India-specifi
 
 ANALYSIS_PROMPT = """Analyse the Sales & Demand outlook for the Indian automobile company: **{ticker}** ({company_name}).
 
+{business_model_context}
+
 Focus on the following dimensions and score each from 0.0 (very bearish) to 1.0 (very bullish):
 
 1. **FADA/SIAM Monthly Dispatch** – Recent retail vs wholesale trend, YoY growth
@@ -31,7 +33,13 @@ Focus on the following dimensions and score each from 0.0 (very bearish) to 1.0 
 Context / recent data snippets:
 {context}
 
-Return ONLY valid JSON in this exact schema:
+Return ONLY valid JSON. IMPORTANT: Be ticker-specific. Cite actual numbers from the context.
+For key_positives/key_risks: quote specific figures (e.g. "retail dispatch +12% YoY, inventory 28 days vs 35 days last quarter").
+For ticker_vs_peers: give numeric volume/share comparison vs named OEM peers.
+For bull_case_if: name the specific demand catalyst and volume threshold.
+For bear_case_if: name the specific demand risk and volume/inventory trigger.
+For what_changed: cite what shifted in retail/dispatch data this cycle vs last.
+
 {{
   "agent": "sales_demand",
   "ticker": "{ticker}",
@@ -46,7 +54,12 @@ Return ONLY valid JSON in this exact schema:
   "key_positives": [<string>, ...],
   "key_risks": [<string>, ...],
   "summary": "<2-3 sentence narrative>",
-  "data_freshness": "<date of most recent data point used>"
+  "data_freshness": "<date of most recent data point used>",
+  "ticker_vs_peers": "<numeric volume/share comparison vs named OEM peers>",
+  "bull_case_if": "<specific demand catalyst + volume/share threshold that would add ~0.15 to score>",
+  "bear_case_if": "<specific demand risk + inventory/volume trigger that would cut ~0.15 from score>",
+  "what_changed": "<what shifted in retail/dispatch/EV data this cycle vs last quarter, with numbers>",
+  "data_confidence": <float 0.3-1.0>
 }}
 """
 

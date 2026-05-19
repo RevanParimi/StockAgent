@@ -101,11 +101,15 @@ class SignalAggregator:
             )
         agent_scores_block = "\n".join(score_lines)
 
+        # Build narrative block from agent outputs (new: enables cross-agent synthesis)
+        narrative_block = self._build_narrative_block(agent_outputs)
+
         system_prompt = P.SYSTEM_PROMPT
         user_prompt = P.AGGREGATION_PROMPT.format(
             ticker=ticker,
             company_name=company_name,
             agent_scores_block=agent_scores_block,
+            agent_narratives=narrative_block,
             weighted_score=composite,
             conflict_flags=conflicts if conflicts else "None",
             report_date=str(date.today()),
@@ -127,6 +131,33 @@ class SignalAggregator:
             duration_ms=duration_ms, cost_usd=cost,
         )
         return self._parse(raw, ticker, company_name, weighted_scores, agent_outputs)
+
+    # ------------------------------------------------------------------
+    # Narrative block — collates per-agent insights for cross-context synthesis
+    # ------------------------------------------------------------------
+
+    def _build_narrative_block(self, agent_outputs: dict[str, AgentOutput]) -> str:
+        """Collate key insights from each agent for cross-context synthesis in the aggregation prompt."""
+        lines: list[str] = []
+        for name, out in agent_outputs.items():
+            if out.error:
+                continue
+            lines.append(f"\n[{name.upper()}] score={out.overall_score:.2f}")
+            if out.summary:
+                lines.append(f"  Narrative: {out.summary}")
+            ticker_vs_peers = getattr(out, "ticker_vs_peers", "")
+            if ticker_vs_peers:
+                lines.append(f"  vs Peers: {ticker_vs_peers}")
+            bull_case_if = getattr(out, "bull_case_if", "")
+            if bull_case_if:
+                lines.append(f"  Bull if: {bull_case_if}")
+            bear_case_if = getattr(out, "bear_case_if", "")
+            if bear_case_if:
+                lines.append(f"  Bear if: {bear_case_if}")
+            what_changed = getattr(out, "what_changed", "")
+            if what_changed:
+                lines.append(f"  Changed: {what_changed}")
+        return "\n".join(lines) if lines else "No agent narratives available."
 
     # ------------------------------------------------------------------
     # Conflict detection

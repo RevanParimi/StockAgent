@@ -30,6 +30,7 @@ SAMPLE_FORMAT_ARGS = dict(
     year="2026",
     quarter="Q4 FY26",
     date="2026-04-03",
+    business_model_context="TICKER BUSINESS MODEL (MARUTI):\n  Portfolio: 80% PV\n  EV Status: Late to EV\n  Revenue Mix: Domestic 85%\n  Margin Profile: ~19% EBITDA\n  Key Watch: Rural demand\n",
 )
 
 
@@ -98,6 +99,7 @@ class TestSignalAggregatorPrompts:
             ticker="MARUTI",
             company_name="Maruti Suzuki India Ltd",
             agent_scores_block="  sales_demand: raw=0.72, weight=0.20",
+            agent_narratives="[FUNDAMENTALS] score=0.72\n  Narrative: Strong margins.",
             weighted_score=0.66,
             conflict_flags="None",
             report_date="2026-04-03",

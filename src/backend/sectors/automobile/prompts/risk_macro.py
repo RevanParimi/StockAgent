@@ -18,6 +18,8 @@ You provide a risk-adjusted score, where high risk = low score.
 
 ANALYSIS_PROMPT = """Analyse the Risk & Macro outlook for Indian automobile company: **{ticker}** ({company_name}).
 
+{business_model_context}
+
 Score each dimension from 0.0 (high risk / bearish) to 1.0 (low risk / bullish):
 
 1. **INR/USD & Crude Oil Revenue Exposure** – Net forex position; crude impact on input costs
@@ -33,7 +35,13 @@ Score each dimension from 0.0 (high risk / bearish) to 1.0 (low risk / bullish):
 Context / recent data:
 {context}
 
-Return ONLY valid JSON:
+Return ONLY valid JSON. IMPORTANT: Be ticker-specific. Cite actual macro data values.
+For key_positives/key_risks: quote specific levels (e.g. "Crude at $78/bbl; every $10 rise compresses margin ~80bps for MARUTI").
+For ticker_vs_peers: cite relative macro exposure vs named peers (e.g. "MARUTI 15% export revenue vs BAJAJ-AUTO 45%; lower USD exposure").
+For bull_case_if: name the specific macro tailwind + threshold (e.g. "If crude falls to $65/bbl, margin expands 120-150bps").
+For bear_case_if: name the specific macro risk + quantified impact (e.g. "If crude >$90/bbl sustained, EBITDA margin compresses 100-150bps").
+For what_changed: cite what shifted in macro environment this cycle vs last (e.g. "RBI cut 25bps; INR strengthened 2% vs USD").
+
 {{
   "agent": "risk_macro",
   "ticker": "{ticker}",
@@ -48,7 +56,12 @@ Return ONLY valid JSON:
   "key_positives": [<string>, ...],
   "key_risks": [<string>, ...],
   "summary": "<2-3 sentence narrative>",
-  "data_freshness": "<date of most recent data point used>"
+  "data_freshness": "<date of most recent data point used>",
+  "ticker_vs_peers": "<relative macro exposure vs named peers with specific % or bps figures>",
+  "bull_case_if": "<specific macro tailwind + threshold that would add ~0.15 to score>",
+  "bear_case_if": "<specific macro risk + quantified margin/earnings impact that would cut ~0.15 from score>",
+  "what_changed": "<what shifted in macro environment this cycle vs last, with specific numbers>",
+  "data_confidence": <float 0.3-1.0>
 }}
 """
 

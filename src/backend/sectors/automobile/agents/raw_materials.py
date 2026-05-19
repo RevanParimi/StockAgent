@@ -28,10 +28,13 @@ class RawMaterialsAgent(BaseAgent):
         return "raw_materials"
 
     def _build_prompt(self, query: StockQuery, context: str) -> tuple[str, str]:
+        from backend.sectors.automobile.config.settings import get_business_model_context
+        biz_ctx = get_business_model_context(query.ticker)
         user_prompt = P.ANALYSIS_PROMPT.format(
             ticker=query.ticker,
             company_name=query.company_name or query.ticker,
             context=context,
+            business_model_context=biz_ctx,
         )
         return P.SYSTEM_PROMPT, user_prompt
 
@@ -51,4 +54,9 @@ class RawMaterialsAgent(BaseAgent):
             key_risks=data.get("key_risks", []),
             summary=data.get("summary", ""),
             data_freshness=data.get("data_freshness", ""),
+            ticker_vs_peers=data.get("ticker_vs_peers", ""),
+            bull_case_if=data.get("bull_case_if", ""),
+            bear_case_if=data.get("bear_case_if", ""),
+            what_changed=data.get("what_changed", ""),
+            data_confidence=float(data.get("data_confidence", 0.5)),
         )

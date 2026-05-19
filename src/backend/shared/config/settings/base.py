@@ -170,10 +170,17 @@ CRUDE_OIL_TICKER: str = "CL=F"          # WTI Crude Oil Futures
 INR_USD_TICKER: str = "INR=X"           # INR per USD
 STEEL_TICKER: str = "SLX"               # Steel ETF (proxy)
 ALUMINIUM_TICKER: str = "AA"            # Alcoa (proxy for aluminium price)
-RUBBER_TICKER: str = "^TOCOM_RUBBER"    # Tokyo Commodity Exchange rubber (fallback: scrape)
+RUBBER_TICKER: str = "^TOCOM_RUBBER"    # Tokyo Commodity Exchange rubber (may be delisted; macro.py falls back gracefully)
+RUBBER_TICKER_FALLBACKS: list[str] = ["RUBR.L", "SGX:SIR1!", "TOCOM:RSS3"]  # alternatives tried in order
 PLATINUM_TICKER: str = "PPLT"           # Aberdeen Platinum ETF (catalytic converters)
 PALLADIUM_TICKER: str = "PALL"          # Aberdeen Palladium ETF (catalytic converters)
 BRENT_TICKER: str = "BZ=F"             # Brent Crude Futures (polymer cost proxy)
+
+# RBI policy rate — algorithm constant (not an API secret, not in .env)
+# Update here when RBI changes rates; the live-fetch redesign (dynamic Serper) will replace this.
+RBI_REPO_RATE_PCT: str = "6.25"        # Updated: RBI cut 25bps in Feb 2025 MPC
+RBI_REPO_RATE_DATE: str = "2025-02-07"
+RBI_REPO_RATE_STANCE: str = "accommodative"
 
 # Peer OEM tickers for correlation (NSE .NS suffix applied automatically)
 PEER_TICKERS: list[str] = [

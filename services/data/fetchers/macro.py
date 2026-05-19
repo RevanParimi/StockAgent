@@ -161,45 +161,30 @@ def get_raw_materials_context() -> str:
     )
 
 
-_RBI_RATE_LAST_KNOWN     = "6.50"
-_RBI_RATE_LAST_KNOWN_DATE = "2024-02-08"
-
-
 def get_rbi_repo_rate() -> dict[str, str]:
     """
-    RBI repo rate sourced from env var RBI_REPO_RATE_PCT (preferred) or
-    last-known hardcoded value with a staleness warning.
-
-    To update: set RBI_REPO_RATE_PCT=6.25 and RBI_RATE_DATE=2025-02-07 in .env
-    Long-term: automate via Serper search or RBI press release scrape.
-    See STATIC_AUDIT.md #1.
+    RBI repo rate from settings.py (algorithm constant, not an env/API secret).
+    Update settings.RBI_REPO_RATE_PCT when RBI changes rates.
+    Long-term: will be replaced by live Serper fetch from RBI press releases.
     """
-    import os
     from datetime import date
-
-    rate = os.getenv("RBI_REPO_RATE_PCT", "").strip()
-    rate_date = os.getenv("RBI_RATE_DATE", "").strip()
-
-    if not rate:
-        rate = _RBI_RATE_LAST_KNOWN
-        rate_date = _RBI_RATE_LAST_KNOWN_DATE
-        try:
-            last_dt = date.fromisoformat(rate_date)
-            staleness = (date.today() - last_dt).days
-            if staleness > 90:
-                logger.warning(
-                    "[macro] RBI repo rate is %s days stale (%s = %s%%). "
-                    "Set RBI_REPO_RATE_PCT env var to override.",
-                    staleness, rate_date, rate,
-                )
-        except Exception:
-            pass
+    try:
+        last_dt = date.fromisoformat(settings.RBI_REPO_RATE_DATE)
+        staleness = (date.today() - last_dt).days
+        if staleness > 90:
+            logger.warning(
+                "[macro] RBI repo rate is %s days stale (%s = %s%%). "
+                "Update settings.RBI_REPO_RATE_PCT.",
+                staleness, settings.RBI_REPO_RATE_DATE, settings.RBI_REPO_RATE_PCT,
+            )
+    except Exception:
+        pass
 
     return {
-        "repo_rate_pct": rate,
-        "last_change":   rate_date or _RBI_RATE_LAST_KNOWN_DATE,
-        "stance":        os.getenv("RBI_RATE_STANCE", "neutral"),
-        "note": "Source: RBI_REPO_RATE_PCT env var (set to override hardcoded fallback)",
+        "repo_rate_pct": settings.RBI_REPO_RATE_PCT,
+        "last_change":   settings.RBI_REPO_RATE_DATE,
+        "stance":        settings.RBI_REPO_RATE_STANCE,
+        "note": "Source: settings.RBI_REPO_RATE_PCT (update when RBI MPC changes rate)",
     }
 
 

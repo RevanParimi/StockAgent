@@ -73,6 +73,7 @@ def _build_daily_forecasts(
     seasonal_calendar: SeasonalCalendar | None = None,
     learning_ledger: LearningLedger | None = None,
     forecast_profile: ForecastProfile | None = None,
+    agent_predictions: dict | None = None,
 ) -> list[DailyForecast]:
     """
     Build per-day forecast rows from the FinalReport.
@@ -162,6 +163,7 @@ def _build_daily_forecasts(
             key_assumptions=day_assumptions,
             revised=False,
             revision_count=0,
+            predicted_agent_catalysts=agent_predictions or {},
         ))
 
     return forecasts
@@ -296,12 +298,25 @@ def generate_forecast(ticker: str, sector: str = "automobile") -> PredictionEnve
             "[generate_forecast] PriceInterpolator failed (non-fatal, using static): %s", exc
         )
 
+    # Extract per-agent catalyst predictions for RL learning
+    _agent_predictions: dict[str, dict] = {}
+    for _name, _out in (report.agent_outputs or {}).items():
+        _d = _out if isinstance(_out, dict) else (getattr(_out, '__dict__', {}) or {})
+        _agent_predictions[_name] = {
+            "bull_case_if":    str(_d.get("bull_case_if", "")),
+            "bear_case_if":    str(_d.get("bear_case_if", "")),
+            "ticker_vs_peers": str(_d.get("ticker_vs_peers", "")),
+            "what_changed":    str(_d.get("what_changed", "")),
+            "data_confidence": float(_d.get("data_confidence", 0.5)),
+        }
+
     trading_dates = _trading_dates(date.today(), HORIZON)
     forecasts = _build_daily_forecasts(
         report, base_close, trading_dates,
         seasonal_calendar=seasonal_calendar,
         learning_ledger=ledger,
         forecast_profile=forecast_profile,
+        agent_predictions=_agent_predictions,
     )
 
     envelope = PredictionEnvelope(
@@ -315,6 +330,7 @@ def generate_forecast(ticker: str, sector: str = "automobile") -> PredictionEnve
         forecast_profile_monthly_pct=forecast_profile.monthly_return_pct if forecast_profile else 0.0,
         forecast_profile_source=forecast_profile.source if forecast_profile else "static",
         daily_forecasts=forecasts,
+        agent_predictions=_agent_predictions,
     )
 
     store.save_envelope(envelope)

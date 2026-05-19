@@ -162,6 +162,7 @@ class FeedbackAgent:
             previous_watch_signals=fb_input.previous_watch_signals or [],
             volume_context=fb_input.volume_context or "",
             forecast_profile_context=fb_input.forecast_profile_context or "",
+            predicted_catalysts_by_agent=fb_input.predicted_catalysts_by_agent or {},
         )
 
         raw = self._call_llm(system_prompt, user_prompt)

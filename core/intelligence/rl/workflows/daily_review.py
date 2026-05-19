@@ -607,6 +607,13 @@ def run_daily_review(
             f"Expected monthly: {getattr(envelope, 'forecast_profile_monthly_pct', 0.0):+.1f}%."
         )
 
+    # Pull catalyst predictions from the forecast envelope for this day
+    _predicted_catalysts: dict = {}
+    if today_forecast and hasattr(today_forecast, "predicted_agent_catalysts"):
+        _predicted_catalysts = today_forecast.predicted_agent_catalysts or {}
+    elif envelope and hasattr(envelope, "agent_predictions"):
+        _predicted_catalysts = envelope.agent_predictions or {}
+
     fb_input = FeedbackAgentInput(
         ticker=ticker,
         sector=sector,
@@ -627,6 +634,7 @@ def run_daily_review(
         previous_watch_signals=previous_watch_signals,
         volume_context=volume_context_str,
         forecast_profile_context=forecast_profile_str,
+        predicted_catalysts_by_agent=_predicted_catalysts,
     )
 
     fb_agent  = FeedbackAgent()
@@ -823,6 +831,7 @@ def run_daily_review(
         thesis_review=thesis_review,
         lessons_generated=lesson_ids,
         weight_adjustment_applied=new_weight_version,
+        predicted_catalysts_snapshot=_predicted_catalysts,
     )
     store.append_feedback_entry(final_entry, cycle_id)
 

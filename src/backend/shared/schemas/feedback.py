@@ -66,6 +66,10 @@ class DailyForecast(BaseModel):
     key_assumptions: list[str] = Field(default_factory=list)
     revised: bool = False                        # True after a daily review revises this row
     revision_count: int = 0
+    predicted_agent_catalysts: dict[str, dict[str, str | float]] = Field(
+        default_factory=dict,
+        description="Agent catalyst predictions for this forecast day: {agent: {bull_case_if, bear_case_if, data_confidence}}"
+    )
 
 
 class PredictionEnvelope(BaseModel):
@@ -86,6 +90,10 @@ class PredictionEnvelope(BaseModel):
     forecast_profile_source: str = "static"      # "llm" or "static"
     daily_forecasts: list[DailyForecast] = Field(default_factory=list)
     conviction_streak: ConvictionStreak = Field(default_factory=ConvictionStreak)  # P3
+    agent_predictions: dict[str, dict[str, str | float]] = Field(
+        default_factory=dict,
+        description="Per-agent catalyst snapshot at forecast time: {agent: {bull_case_if, bear_case_if, ticker_vs_peers, what_changed, data_confidence}}"
+    )
 
     def get_forecast(self, target_date: str) -> DailyForecast | None:
         for f in self.daily_forecasts:
@@ -252,6 +260,10 @@ class FeedbackEntry(BaseModel):
     # The revision timestamp can be inferred from revised=True on DailyForecast rows.
     # feedback_agent_raw: stored to debug/ directory separately, not in main log.
     feedback_agent_raw: str = Field(default="", exclude=True)
+    predicted_catalysts_snapshot: dict[str, dict[str, str | float]] = Field(
+        default_factory=dict,
+        description="Catalyst predictions from the forecast cycle, stored for audit trail alongside miss_analysis"
+    )
 
 
 class DailyFeedbackLog(BaseModel):
@@ -669,6 +681,10 @@ class FeedbackAgentInput(BaseModel):
     # Forecast profile shape from PriceInterpolator — needed for timing accuracy assessment.
     # "The forecast was front_loaded (60% of expected move in first 10 days)."
     forecast_profile_context: str = ""
+    predicted_catalysts_by_agent: dict[str, dict[str, str | float]] = Field(
+        default_factory=dict,
+        description="Predicted bull/bear catalysts per agent from the envelope, for FeedbackAgent to compare against actual outcome"
+    )
 
 
 class RawLesson(BaseModel):

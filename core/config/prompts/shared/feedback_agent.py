@@ -93,6 +93,12 @@ LESSON CATEGORIES AND SCOPE:
     market_wide    — applies regardless of sector (global macro events)
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+CATALYST REVIEW (when predicted_catalysts are provided):
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  When predicted_catalysts are provided, compare them to what actually happened
+  and name the specific catalyst that failed or succeeded.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 GENERAL GUIDELINES:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   - Be precise and concise. Do not repeat the input data back.
@@ -175,6 +181,7 @@ Today's re-run composite scores (with live data):
 --- AGENT WEIGHT CONTEXT ---
 {weight_drift_summary}
 {accuracy_trend_block}
+{catalyst_block}
 --- EXISTING LESSONS FOR THIS STOCK ---
 {active_lessons_summary}
 
@@ -211,6 +218,7 @@ def format_feedback_prompt(
     previous_watch_signals: list | None = None,
     volume_context: str = "",
     forecast_profile_context: str = "",
+    predicted_catalysts_by_agent: dict | None = None,
 ) -> str:
     predicted_scores_block = "\n".join(
         f"  {k}: {v:.3f}" for k, v in predicted_agent_scores.items()
@@ -261,6 +269,27 @@ def format_feedback_prompt(
         if recent_accuracy_trend else ""
     )
 
+    # Catalyst context block — shows predicted bull/bear triggers for this cycle
+    if predicted_catalysts_by_agent:
+        cat_lines = ["\n--- PREDICTED CATALYSTS FROM LAST CYCLE — did they materialise? ---"]
+        for _ag, _cats in predicted_catalysts_by_agent.items():
+            if _cats.get("bull_case_if"):
+                cat_lines.append(f"  {_ag} bull case: {_cats['bull_case_if']}")
+            if _cats.get("bear_case_if"):
+                cat_lines.append(f"  {_ag} bear case: {_cats['bear_case_if']}")
+            _dc = _cats.get("data_confidence", 0.5)
+            try:
+                if float(_dc) < 0.5:
+                    cat_lines.append(
+                        f"    ^ low confidence prediction (data_confidence={float(_dc):.2f}) "
+                        f"— penalize miss less"
+                    )
+            except (TypeError, ValueError):
+                pass
+        catalyst_block = "\n".join(cat_lines)
+    else:
+        catalyst_block = ""
+
     return FEEDBACK_PROMPT.format(
         ticker=ticker,
         sector=SECTOR_DISPLAY_NAMES.get(sector, sector),
@@ -280,5 +309,6 @@ def format_feedback_prompt(
         previous_watch_block=previous_watch_block,
         weight_drift_summary=weight_drift_summary or "No significant weight drift from base.",
         accuracy_trend_block=accuracy_trend_block,
+        catalyst_block=catalyst_block,
         active_lessons_summary=active_lessons_summary or "No lessons learned yet.",
     )

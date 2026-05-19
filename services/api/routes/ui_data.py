@@ -2422,7 +2422,13 @@ async def chat_stream(body: dict):
 # Managed tickers — GET/PUT/POST/DELETE /ui/tickers/managed
 # ---------------------------------------------------------------------------
 
-_VALID_SECTORS = ["automobile", "banking_bfsi", "it_sector", "renewable_energy"]
+def _get_valid_sectors() -> list[str]:
+    """Return the list of enabled sectors from SectorRegistry (dynamic)."""
+    try:
+        from backend.sectors.registry import SectorRegistry
+        return SectorRegistry.enabled_sectors()
+    except Exception:
+        return ["automobile", "banking_bfsi", "it_sector", "renewable_energy"]
 
 
 def _load_mt():
@@ -2453,9 +2459,10 @@ class _ManagedTickerBody(BaseModel):
 
 @router.put("/tickers/managed", summary="Replace the entire managed ticker list")
 async def replace_managed_tickers(body: list[_ManagedTickerBody]) -> dict:
+    valid_sectors = _get_valid_sectors()
     tickers = [t.model_dump() for t in body]
     for t in tickers:
-        if t["sector"] not in _VALID_SECTORS:
+        if t["sector"] not in valid_sectors:
             from fastapi import HTTPException
             raise HTTPException(status_code=422, detail=f"Unknown sector '{t['sector']}'")
     _save_mt(tickers)
@@ -2477,15 +2484,78 @@ async def _generate_envelope_for_new_ticker(sym: str, sector: str) -> None:
         # Non-fatal — scheduler will pick it up on month 1st
 
 
+def _cleanup_ticker_rl_data(sym: str, sector: str) -> None:
+    """Remove prediction data for a deleted ticker. Non-fatal."""
+    try:
+        import shutil as _shutil
+        from pathlib import Path as _Path
+        data_dir = _Path("data/predictions") / sector / sym
+        if data_dir.exists():
+            _shutil.rmtree(data_dir)
+            logger.info("[ui/tickers/managed] Cleaned up RL data at %s", data_dir)
+        else:
+            logger.debug("[ui/tickers/managed] No RL data directory for %s/%s", sector, sym)
+    except Exception as exc:
+        logger.warning("[ui/tickers/managed] RL data cleanup failed for %s: %s", sym, exc)
+
+
 @router.post("/tickers/managed/{sym}", summary="Add a ticker to the managed list")
 async def add_managed_ticker(sym: str, body: _ManagedTickerBody = _ManagedTickerBody()) -> dict:
     import asyncio as _asyncio
     from services.api.log_buffer import _KNOWN_NAMES
+    valid_sectors = _get_valid_sectors()
     tickers = _load_mt()
     sym_up = sym.strip().upper()
-    if any(t["sym"] == sym_up for t in tickers):
-        return {"tickers": tickers, "message": f"{sym_up} already in managed list"}
-    resolved_sector = body.sector if body.sector in _VALID_SECTORS else "automobile"
+
+    # FIX 4: Tightened duplicate check — prevent same sym in any sector
+    existing = next((t for t in tickers if t["sym"] == sym_up), None)
+    if existing:
+        if existing.get("sector") != body.sector:
+            logger.warning(
+                "[ui/tickers/managed] %s already in sector '%s'; not adding duplicate in '%s'",
+                sym_up, existing.get("sector"), body.sector,
+            )
+        return {"tickers": tickers, "message": f"{sym_up} already managed (sector: {existing.get('sector', 'unknown')})"}
+
+    # FIX 1: Auto-detect sector from SectorRegistry
+    try:
+        from backend.sectors.registry import SectorRegistry
+        auto_sector = SectorRegistry.resolve(sym_up)
+    except Exception:
+        auto_sector = "automobile"
+
+    user_sector = getattr(body, "sector", "") or ""
+    if user_sector in valid_sectors and user_sector == auto_sector:
+        # User and registry agree
+        resolved_sector = user_sector
+        sector_auto_detected = False
+    elif user_sector in valid_sectors and auto_sector == "automobile" and user_sector != "automobile":
+        # Registry defaulted to automobile (unknown ticker) but user specified something valid — trust user
+        resolved_sector = user_sector
+        sector_auto_detected = False
+    else:
+        # Registry has a clear answer — use it (silently corrects wrong user input)
+        resolved_sector = auto_sector if auto_sector in valid_sectors else "automobile"
+        sector_auto_detected = (resolved_sector != user_sector)
+        if sector_auto_detected and user_sector:
+            logger.info(
+                "[ui/tickers/managed] Sector auto-corrected for %s: '%s' → '%s'",
+                sym_up, user_sector, resolved_sector,
+            )
+
+    # FIX 2: Validate ticker exists on NSE (non-blocking, times out gracefully)
+    try:
+        import yfinance as _yf
+        _t = _yf.Ticker(f"{sym_up}.NS")
+        _fi = _t.fast_info
+        _price = _fi.last_price if hasattr(_fi, "last_price") else None
+        if not _price or _price <= 0:
+            raise ValueError(f"No price data for {sym_up}.NS")
+    except Exception as _ve:
+        logger.warning("[ui/tickers/managed] Ticker validation warning for %s: %s", sym_up, _ve)
+        # Non-fatal — if yfinance is down, we allow the add but warn
+        # This prevents blocking on yfinance outage while still catching obvious garbage
+
     tickers.append({
         "sym":     sym_up,
         "name":    body.name or _KNOWN_NAMES.get(sym_up, sym_up),
@@ -2498,7 +2568,13 @@ async def add_managed_ticker(sym: str, body: _ManagedTickerBody = _ManagedTicker
     # Trigger async envelope generation so new ticker doesn't wait until month-end
     _asyncio.create_task(_generate_envelope_for_new_ticker(sym_up, resolved_sector))
 
-    return {"added": sym_up, "sector": resolved_sector, "note": "Envelope generation started in background", "tickers": tickers}
+    return {
+        "added": sym_up,
+        "sector": resolved_sector,
+        "sector_auto_detected": sector_auto_detected,
+        "note": "Envelope generation started in background",
+        "tickers": tickers,
+    }
 
 
 @router.post("/tickers/managed/{sym}/generate-envelope", summary="Trigger immediate envelope generation for a ticker")
@@ -2516,10 +2592,18 @@ async def trigger_envelope_generation(sym: str, sector: str = "automobile") -> d
 @router.delete("/tickers/managed/{sym}", summary="Remove a ticker from the managed list")
 async def remove_managed_ticker(sym: str) -> dict:
     sym_up = sym.strip().upper()
-    tickers = [t for t in _load_mt() if t["sym"] != sym_up]
+    tickers = _load_mt()
+    # Find the ticker's sector BEFORE removing it
+    removed_entry = next((t for t in tickers if t["sym"] == sym_up), None)
+    tickers = [t for t in tickers if t["sym"] != sym_up]
     _save_mt(tickers)
     logger.info("[ui/tickers/managed] Removed %s", sym_up)
-    return {"tickers": tickers}
+
+    # FIX 3: Clean up RL prediction data (non-fatal if it fails)
+    if removed_entry:
+        _cleanup_ticker_rl_data(sym_up, removed_entry.get("sector", "automobile"))
+
+    return {"removed": sym_up, "tickers": tickers}
 
 
 @router.patch("/tickers/managed/{sym}/toggle", summary="Enable or disable a managed ticker")

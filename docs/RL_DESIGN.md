@@ -3,7 +3,7 @@
 > Complete reference for the self-learning RL feedback system.
 > Covers: 4 JSON memory files, full daily loop (Steps 0–9), month-start forecast,
 > all static formulas & multipliers, LLM contracts, schemas, and static-vs-LLM boundary.
-> Updated: 2026-05-17 · Phases 5 + 6 + Evolution P1–P5 complete + 8 optimisations shipped.
+> Updated: 2026-05-19 · Phases 5 + 6 + Evolution P1–P5 complete + 8 optimisations shipped.
 
 ---
 
@@ -115,6 +115,16 @@ data/predictions/
     "max_streak_seen": 8,
     "reversion_prior": 0.025
   },
+  // NEW — per-agent catalyst snapshot at forecast time (all 5 fields are optional, default {})
+  "agent_predictions": {
+    "sales_demand": {
+      "bull_case_if": "FADA dispatch +12% YoY if rural recovery holds",
+      "bear_case_if": "Crude >$90 compresses margin 100-150bps",
+      "ticker_vs_peers": "MARUTI dispatch +8% vs TATA -2% this month",
+      "what_changed": "FII inflow +₹2,000Cr; dealer inventory down 3 days",
+      "data_confidence": 0.82
+    }
+  },
   "daily_forecasts": [{
     "day": 1,
     "date": "2026-04-09",
@@ -128,7 +138,11 @@ data/predictions/
     "confidence": 0.71,
     "key_assumptions": ["crude stable ~$82", "FADA dispatch +6% MoM"],
     "revised": false,
-    "revision_count": 0
+    "revision_count": 0,
+    "predicted_agent_catalysts": {
+      "sales_demand": {"bull_case_if": "FADA +12%", "data_confidence": 0.7},
+      "risk_macro": {"bear_case_if": "Crude >$90", "data_confidence": 0.9}
+    }
   }]
 }
 ```
@@ -169,7 +183,10 @@ data/predictions/
     },
     "lessons_generated": ["L003"],
     "weight_adjustment_applied": "v4",
-    "remaining_forecasts_revised": true
+    "predicted_catalysts_snapshot": {
+      "sales_demand": {"bull_case_if": "FADA +12%", "data_confidence": 0.75},
+      "risk_macro": {"bear_case_if": "Crude >$90", "data_confidence": 0.9}
+    }
   }]
 }
 ```
@@ -343,6 +360,20 @@ Step 3: STATIC formulas:
 - Temperature: `0.3` (surfaces non-obvious cross-signal patterns)
 - `max_tokens: 1500`, `response_format: {"type": "json_object"}`
 - System prompt is dynamically built: `build_system_prompt(sector, agent_names)` — no hardcoded agent names
+
+**Catalyst context (new in 2026-05):**
+`FeedbackAgentInput` now carries `predicted_catalysts_by_agent` — the bull/bear cases that were
+predicted for each agent at forecast time. The FeedbackAgent system prompt has a dedicated section:
+
+```
+[PREDICTED CATALYSTS FROM LAST CYCLE — did they materialise?]
+  sales_demand bull case: FADA dispatch +12% YoY if rural recovery holds
+  risk_macro bear case: Crude >$90 compresses margin 100-150bps (data_confidence: 0.90)
+```
+
+This enables catalyst-level miss attribution: instead of "sales_demand was wrong (unknown why)",
+the agent can reason "We predicted FADA +12%, actual came in at +8% — magnitude miss, not direction."
+Low-confidence predictions (`data_confidence < 0.5`) are flagged to penalise misses less.
 
 ### Step 5 — WeightAdapter *(STATIC — no LLM)*
 
@@ -768,13 +799,13 @@ DailyForecast[day].confidence = base_close_confidence × (1 - decay_per_day × d
 
 | Schema | Purpose | Persistent? |
 |---|---|---|
-| `DailyForecast` | One row in prediction_envelope (predicted_close, verdict, confidence, revised) | Per cycle |
-| `PredictionEnvelope` | Full 30-day forecast sheet + conviction_streak | Per cycle |
+| `DailyForecast` | One row in prediction_envelope (predicted_close, verdict, confidence, revised) + `predicted_agent_catalysts` | Per cycle |
+| `PredictionEnvelope` | Full 30-day forecast sheet + conviction_streak + `agent_predictions` (catalyst snapshot at forecast time) | Per cycle |
 | `ConvictionStreak` | current_verdict, streak_days, reversion_prior (0–0.30) | In envelope |
 | `MissAnalysis` | Root cause: primary_miss_agent, miss_type, missed_factors, agent_score_drift | Per day |
 | `TimingAccuracy` | predicted_peak_day, actual_move_start_day, lag_days, assessment | Per day |
 | `RevisedContext` | headline, risks[], catalysts[], watch_signals[], horizon_confidence_adjustment | Per day |
-| `FeedbackEntry` | One day: actual close, miss_analysis, timing, revised_context, lessons_generated | Per cycle |
+| `FeedbackEntry` | One day: actual close, miss_analysis, timing, revised_context, lessons_generated + `predicted_catalysts_snapshot` | Per cycle |
 | `DailyFeedbackLog` | All FeedbackEntry rows for one cycle | Per cycle |
 | `AgentAccuracy` | direction_hits, total, avg_error (rolling stats per agent) | In WeightMemory |
 | `WeightHistoryEntry` | Version, date, weights, reason (human-readable explanation) | In WeightMemory |
@@ -782,9 +813,19 @@ DailyForecast[day].confidence = base_close_confidence × (1 - decay_per_day × d
 | `Lesson` | pattern, rule, confidence, occurrences, scope, last_seen, contributing_tickers | In ledger |
 | `LearningLedger` | lessons[], miss_counter, confidence_decay_rate | **PERMANENT** |
 | `RegimeSnapshot` | regime_label, vix_value, fii_proxy, sector_rsi, multipliers, narrative | Ephemeral |
-| `FeedbackAgentInput` | Full LLM input: ticker, scores, context, existing_lesson_ids, streak, regime | Ephemeral |
+| `FeedbackAgentInput` | Full LLM input: ticker, scores, context, existing_lesson_ids, streak, regime + `predicted_catalysts_by_agent` | Ephemeral |
 | `FeedbackAgentOutput` | Full LLM output: miss_type, missed_factors, new_lessons, revised_context | Ephemeral |
 | `SeasonalContext` | active_seeds, active_rl_lessons, agent_adjustments, narrative | Ephemeral |
+
+### What RL Currently Sees From Logs
+
+| Signal | Status | Storage location |
+|---|---|---|
+| `bull_case_if` / `bear_case_if` per agent | ✅ stored in `agent_predictions` + `predicted_agent_catalysts` | `PredictionEnvelope` + `DailyForecast` |
+| `data_confidence` per agent | ✅ stored alongside bull/bear; low-confidence penalised less | `PredictionEnvelope.agent_predictions` |
+| `what_changed` per agent | ✅ stored in `agent_predictions` per cycle | `PredictionEnvelope.agent_predictions` |
+| `predicted_catalysts_by_agent` in FeedbackAgent | ✅ injected for catalyst-level attribution | `FeedbackAgentInput.predicted_catalysts_by_agent` |
+| `predicted_catalysts_snapshot` in feedback log | ✅ stored for audit trail alongside `miss_analysis` | `FeedbackEntry.predicted_catalysts_snapshot` |
 
 ---
 
@@ -860,6 +901,51 @@ Runs on every deployment — makes the system self-bootstrapping:
    Job 2: rl_monthly_forecast — 1st of each month 9am IST
    Job 3: rl_calendar_update  — Dec 31 11pm IST (writes next year's NSE holidays)
 ```
+
+**Multi-sector routing (added 2026-05):**
+`_daily_review_job()` and `_monthly_forecast_job()` now call `get_active_tickers_with_sector()`
+(from `services/api/log_buffer.py`) which returns `[{sym: str, sector: str}]`.
+Both jobs pass `sector=` to `run_daily_review()` and `generate_forecast()`.
+
+Result: BFSI, IT, and RE tickers are correctly routed to their sector orchestrators.
+Previously all tickers defaulted to "automobile" regardless of `managed_tickers.json` sector field.
+
+Per-ticker timeout: 180 seconds (ThreadPoolExecutor). ThesisReviewer LLM calls cannot block the loop.
+
+---
+
+## Dynamic Ticker Management (No Redeploy Required)
+
+Tickers are managed at runtime via `data/managed_tickers.json` and the following API endpoints.
+The scheduler reads this file on every run — changes take effect immediately.
+
+### API Endpoints
+
+| Endpoint | Method | Behaviour |
+|---|---|---|
+| `/ui/tickers/managed` | GET | List all managed tickers with sector, enabled flag |
+| `/ui/tickers/managed` | PUT | Replace entire list (validates sectors) |
+| `/ui/tickers/managed/{sym}` | POST | Add ticker: auto-detect sector, validate on NSE, trigger envelope async |
+| `/ui/tickers/managed/{sym}` | DELETE | Remove ticker + clean up `data/predictions/{sector}/{sym}/` |
+| `/ui/tickers/managed/{sym}/toggle` | PATCH | Enable/disable (preserves all RL data) |
+| `/ui/tickers/managed/{sym}/generate-envelope` | POST | Trigger envelope generation immediately (mid-month adds) |
+
+### Sector Auto-Detection
+`SectorRegistry.resolve(ticker)` is the source of truth for sector assignment.
+If the user provides a sector that conflicts with the registry, the registry wins and a warning is logged.
+This prevents wrong orchestrator routing (e.g., HDFCBANK with sector="automobile" would use the wrong agents).
+
+### RL Data Lifecycle
+
+| Action | Effect |
+|---|---|
+| Add ticker | Envelope generated async in background. RL learning starts that night. |
+| Disable ticker | Stops scheduling. All prediction/feedback/ledger data preserved. |
+| Delete ticker | Removes from list AND deletes `data/predictions/{sector}/{sym}/` (shutil.rmtree). |
+
+### Valid Sectors
+`_get_valid_sectors()` reads from `SectorRegistry.enabled_sectors()` — dynamic, no hardcoding.
+Currently enabled: `automobile`, `banking_bfsi`, `it_sector`, `renewable_energy`.
 
 **NSE Calendar:** `nse_calendar.py` loads `data/nse_holidays.json` (dynamic) with hardcoded 2025-2026 fallback. `nse_calendar.reload_holidays()` hot-reloads after `calendar_updater.py` writes new data — no restart needed.
 

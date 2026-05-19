@@ -2,7 +2,7 @@
 
 > All agents, tasks, metrics, data sources, static vs LLM responsibilities.
 > Minimize plain text — prefer tables and trees.
-> Updated: 2026-05-17 · Covers automobile (full) + 3 live sectors + RL + Chat agents (3-node LangGraph).
+> Updated: 2026-05-19 · Covers automobile (full) + 3 live sectors + RL + Chat agents (3-node LangGraph).
 
 ---
 
@@ -198,7 +198,7 @@ All paths are under `src/backend/sectors/automobile/`.
 | **Serper calls** | 3 on cache MISS → 0 on cache HIT |
 | **Cache** | `get_macro_cache("automobile")` — TTL 2h, sector-level (shared across all auto tickers) |
 | **Schema** | `RiskMacroOutput` + `RiskMacroSubScores` |
-| **Known gap** | RBI repo rate is a hardcoded static value in `macro.py:get_rbi_repo_rate()` — needs live MPC scraping |
+| **RBI repo rate** | Serper live fetch (regex from MPC news), 60-day thread-locked cache, fallback to settings.RBI_REPO_RATE_PCT=5.25% (2026-02-07, stance=neutral) | ✅ FIXED 2026-05-19 |
 | **CONTEXT_SEARCH_QUERIES (STATIC)** | `"INR USD exchange rate {date} India automobile exports"`, `"steel aluminium rubber prices India {month} {year}"`, `"RBI repo rate {year} auto loan EMI demand impact"`, `"India emission norms BS6 CAFE {company_name} compliance {year}"`, `"global geopolitical risk oil FII outflow India auto sector {year}"` |
 
 ---
@@ -251,7 +251,8 @@ All paths are under `src/backend/sectors/automobile/`.
 |---|---|
 | **5 score dimensions (LLM)** | steel_aluminium, platinum_palladium, crude_polymer, power_tariff, commodity_trend_3m |
 | **Context** | `get_raw_materials_context()` via yfinance prices + `fetch_news_context(max_queries=1)` |
-| **yfinance tickers** | `SLX` (steel), `AA` (aluminium), `PPLT` (platinum), `PALL` (palladium), `CL=F` (crude), `BZ=F` (Brent), `^TOCOM_RUBBER` (silently skipped if unavailable) |
+| **yfinance tickers** | `SLX` (steel), `AA` (aluminium), `PPLT` (platinum), `PALL` (palladium), `CL=F` (crude), `BZ=F` (Brent) |
+| **Rubber** | ~~^TOCOM_RUBBER~~ (delisted). Now: Serper MCX news search via `_fetch_rubber_price_via_news()`, 4-hour module-level cache (`_RUBBER_CACHE`) | direction-based (up/down %), not absolute price |
 | **Serper calls** | 1 |
 | **Schema** | `RawMaterialsOutput` + `RawMaterialsSubScores` |
 | **CONTEXT_SEARCH_QUERIES (STATIC)** | `"steel aluminium commodity prices India automobile {month} {year}"` (1 query only) |
@@ -282,6 +283,26 @@ All paths are under `src/backend/sectors/automobile/`.
 | **Serper calls** | per ContextBuilder routing |
 | **Schema** | `ValuationCatalystOutput` + `ValuationCatalystSubScores` |
 | **Output bubbles up** | 5 extra fields flow to `FinalReport` via SignalAggregator (price_target, recovery_timeline_quarters, undervalued_by_pct, discount_reason, recovery_catalysts) |
+
+---
+
+### 4.10 Business Model Context Injection (all 9 agents)
+
+All 9 automobile agents receive `{business_model_context}` injected into their prompt via
+`get_business_model_context(ticker)` from `src/backend/sectors/automobile/config/settings.py`.
+
+| Tier | Source | Cache | Quality |
+|---|---|---|---|
+| Known OEM (8 tickers) | Curated `BUSINESS_MODEL_SNAPSHOTS` dict | In-memory (no API) | Highest — manually maintained |
+| Unknown ticker | Serper search: `"{ticker} business model revenue portfolio India automobile 2026"` | 30-day disk cache: `data/oem_profiles/{TICKER}.json` | Good — news-based |
+| Serper fails | `BUSINESS_MODEL_SNAPSHOT_DEFAULT` | N/A | Generic fallback |
+
+**Curated OEMs:** MARUTI, TATAMOTORS, M&M, BAJAJ-AUTO, HEROMOTOCO, EICHERMOT, ASHOKLEY, TVSMOTORS
+
+**Margin anchors are RELATIVE descriptions** (not hardcoded %) to avoid stale data.
+Example: "Industry-leading margins vs peers; rubber/steel/crude are primary levers" not "~19% EBITDA".
+
+**Source tag in prompt:** `[source: curated]` | `[source: news-cache 2026-05-19]` | `[source: generic-default]`
 
 ---
 
@@ -652,6 +673,12 @@ ContextBuilder._build_risk_macro():
 | `_resolve_ticker()` | **LLM** | `base_orchestrator.py` | qwen, temp=0.0 | Free text → NSE ticker |
 | `_load_learned_weights()` | **STATIC** | `base_orchestrator.py` | JSON file read | Returns None if no data yet |
 | Sector analysis agents (×9/8/6) | **LLM** | `sectors/{sector}/agents/*.py` | qwen, temp=0.2 | Score 5 dimensions + overall |
+| `AgentOutput.ticker_vs_peers` | **String field** | `sectors/automobile/agents/*.py` | `_parse_output()` | Numeric peer comparison e.g. "MARUTI EBITDA 8.6% vs TATA 10.5% vs M&M 11.2%" |
+| `AgentOutput.bull_case_if` | **String field** | above | `_parse_output()` | Specific catalyst for +0.15 score: "e-Vitara 8% EV share by FY27" |
+| `AgentOutput.bear_case_if` | **String field** | above | `_parse_output()` | Specific risk for -0.15 score: "Crude >$90 compresses margin 100-150bps" |
+| `AgentOutput.what_changed` | **String field** | above | `_parse_output()` | Material cycle delta: "FII +120bps; attrition 2.8%→2.3%" |
+| `AgentOutput.data_confidence` | **STATIC** `float [0,1]` | above | `_parse_output()` | 0.3=sparse; 0.7=multiple data points; 1.0=direct verified |
+| `SignalAggregator._build_narrative_block()` | **STATIC** | `shared/pipeline/signal_aggregator.py` | Collates agent bull/bear/what_changed | Passed as `{agent_narratives}` to aggregation LLM prompt |
 | `SignalAggregator` weight fusion | **STATIC** | `shared/pipeline/signal_aggregator.py` | Weighted sum | `Σ(score × weight)` |
 | `SignalAggregator` conflict detection | **STATIC** | above | `delta ≥ 0.30` threshold | Fixed constant |
 | `SignalAggregator` verdict synthesis | **LLM** | above | qwen | After conflict detection |
@@ -689,21 +716,24 @@ ContextBuilder._build_risk_macro():
 
 ## 13. Serper API Budget
 
-**Per-run call count (automobile, 9 agents, no macro cache):**
+**Per-run call count (automobile, 9 agents, macro cache warm):**
 
-| Agent | Serper calls | Cacheable? |
+| Agent | Serper calls | Notes |
 |---|---|---|
-| sales_demand | 3 | No (per-ticker) |
-| fundamentals | 3 | No (per-ticker) |
-| pattern_analysis | **0** | n/a (yfinance only) |
-| sentiment | 3 | No (per-ticker) |
-| risk_macro | 3 cold / **0** warm | **Yes** (sector-level, TTL 2h) |
-| policy_regulatory | 3 | No (per-ticker) |
-| competitive_intel | 3 | No (per-ticker) |
-| raw_materials | 1 | No |
-| valuation_catalyst | up to 3 | No (per-ticker) |
-| **Total (cold)** | **22** | |
-| **Total (warm cache)** | **19** | |
+| sales_demand | 3 | Per-ticker news |
+| fundamentals | 3 | Per-ticker news |
+| pattern_analysis | 0 | yfinance only |
+| sentiment | 3 | Per-ticker news |
+| risk_macro | 0 (warm) / 3 (cold) | Sector macro cache (2h TTL) |
+| rubber (NEW) | 0 | Cached 4h in `_RUBBER_CACHE` — 1 Serper/4h shared across all tickers |
+| policy_regulatory | 3 | Per-ticker news + 2 Tavily (96% disk cache) |
+| raw_materials | 1 | 1 Serper + yfinance (CL=F, BZ=F cached daily in `_COMMODITY_CACHE`) |
+| competitive_intel | 3 | Per-ticker news |
+| valuation_catalyst | 0 | yfinance only (`_COMMODITY_CACHE`) |
+| **Total warm** | **16** | Risk_macro cache hit; rubber shared |
+| **Total cold** | **19** | Risk_macro cache miss |
+
+**RBI rate fetch:** 1 Serper/60 days (thread-locked `_RBI_CACHE`) — effectively 0/month.
 
 **Macro Cache Architecture:**
 
@@ -728,25 +758,22 @@ ContextBuilder._build_risk_macro():
 | `MICRO_QUERIES_PER_RUN` | 2 | Combined Serper calls per cycle |
 | `MACRO_CACHE_TTL_HOURS` | 2 | Cache time-to-live |
 
-**Optimized Budget (2026-05-17):**
+**Micro search loop (weekdays only — skips Sat/Sun):**
+  3 sectors × 2 queries × 6 cycles × 22 trading days = **792 Serper/month**
+  (Previous: 1,080/month when running on weekends)
 
-```
-Early-exit guard: skip 9-agent re-run when direction_correct AND |error| < 0.5%
-  → ~70% of trading days skipped per ticker
-  → Per ticker: 22 days × 0.30 = ~7 agent re-runs/month (down from 22)
-
-Tavily disk cache: monthly cache, ~96% hit rate
-  → Per ticker: 2 Tavily calls × 0.04 hit-miss rate = 0.08 live calls/day
-```
+**Monthly budget (5 tickers, 21 trading days):**
 
 | Usage | Formula | Calls/month |
 |---|---|---|
-| Per-stock analysis (early-exit, warm cache) | ~7 runs × 19 Serper × 5 tickers | ~665 |
-| Micro search overhead | 2 × 6 cycles × 22 days | 264 |
-| **Serper Total** | | **~929 / 2,500 (37%)** |
-| Tavily (cached) | 2 × 0.04 × 5 tickers × 22 days | **~9 / 1,000 (1%)** |
+| Pre-market orchestrator (warm) | 16 × 5 tickers × 21 days | 1,680 |
+| RL daily review (30% full rerun) | 0.3 × 16 × 5 × 21 | 504 |
+| Micro loop (weekdays only) | 3 sectors × 2 × 6 × 22 | 792 |
+| **Serper Total** | | **~2,976 / 2,500** ⚠️ |
+| Tavily (disk cache) | 2 × 0.04 × 5 × 21 | **~8 / 1,000 (1%)** |
 
-> Note: Previous estimate (2026-05-08): 2,024 Serper / 220 Tavily per month. Early-exit + caching reduced actual usage by ~60%.
+> ⚠️ Serper at 5 tickers exceeds free tier (2,500). Start with 3 tickers/day or upgrade plan.
+> With 3 tickers: ~1,848 Serper/month (74% of quota).
 
 ---
 
@@ -756,7 +783,8 @@ Tavily disk cache: monthly cache, ~96% hit rate
 
 | Gap | Agent | Fix path | Status |
 |---|---|---|---|
-| RBI repo rate hardcoded | risk_macro | Scrape rbi.org.in | ❌ OPEN |
+| RBI repo rate | risk_macro | Serper live fetch, 60-day cache, settings fallback | ✅ FIXED |
+| Rubber ticker ^TOCOM_RUBBER delisted | raw_materials | Serper MCX news proxy, 4h cache | ✅ FIXED |
 | `_build_valuation_catalyst` not implemented | valuation_catalyst | Added to ContextBuilder | ✅ FIXED |
 | Vahan/FADA/SIAM structured data | sales_demand | Serper proxy only | ❌ OPEN |
 | Nifty Auto peer correlation | pattern_analysis | 10 lines of yfinance | ❌ OPEN |

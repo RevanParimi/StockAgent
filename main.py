@@ -164,12 +164,14 @@ def _micro_search_loop() -> None:
         MICRO_CYCLES_PER_DAY   default 6  → runs every 4 hours
         MICRO_QUERIES_PER_RUN  default 2  → 2 Serper calls per sector per run
 
-    Monthly Serper budget from this loop:
-        3 sectors × 2 queries × 6 cycles × 30 days = 1,080 calls/month
+    Monthly Serper budget from this loop (weekdays only):
+        3 sectors × 2 queries × 6 cycles × 22 trading days = 792 calls/month
+        (Previous: × 30 calendar days = 1,080 — 288 calls/month wasted on weekends)
 
     Each cache HIT saves 3 Serper calls per stock analysis:
         At 5 tickers/day across 3 sectors: 3 × 5 × 3 sectors × 22 days = 990 calls/month saved
     """
+    from datetime import date as _date
     from backend.shared.config import settings
     from services.data.fetchers.news import fetch_news_context
     from services.data.cache.macro_cache import set_macro_cache
@@ -187,6 +189,12 @@ def _micro_search_loop() -> None:
     )
 
     while True:
+        # Skip weekends — macro news is irrelevant when markets are closed
+        if _date.today().weekday() >= 5:  # 5=Saturday, 6=Sunday
+            _log.debug("[micro_loop] Weekend — skipping fetch, sleeping until next cycle")
+            time.sleep(interval)
+            continue
+
         for sector, queries in _SECTOR_MACRO_QUERIES.items():
             try:
                 _log.info("[micro_loop] Fetching %s macro context...", sector)

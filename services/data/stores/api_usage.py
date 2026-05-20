@@ -57,8 +57,11 @@ def _load() -> dict:
     if _USAGE_FILE.exists():
         try:
             return json.loads(_USAGE_FILE.read_text(encoding="utf-8"))
-        except Exception:
-            pass
+        except (json.JSONDecodeError, OSError) as exc:
+            logger.warning(
+                "[api_usage] Failed to load %s: %s — resetting monthly counters",
+                _USAGE_FILE, exc,
+            )
     return {}
 
 

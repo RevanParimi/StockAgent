@@ -136,16 +136,24 @@ class PredictionStore:
     def _write_json(self, path: Path, data: dict) -> None:
         """Write JSON atomically via a temp file to avoid partial writes."""
         tmp = path.with_suffix(".tmp")
-        tmp.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
-        tmp.replace(path)
-        logger.debug("[PredictionStore] Wrote %s", path.name)
+        try:
+            tmp.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+            tmp.replace(path)
+            logger.debug("[PredictionStore] Wrote %s", path.name)
+        except OSError as exc:
+            logger.error("[PredictionStore] Write failed for %s: %s", path.name, exc)
+            try:
+                tmp.unlink(missing_ok=True)
+            except OSError:
+                pass
+            raise RuntimeError(f"Write failed for {path.name}: {exc}") from exc
 
     def _read_json(self, path: Path) -> dict | None:
         if not path.exists():
             return None
         try:
             return json.loads(path.read_text(encoding="utf-8"))
-        except Exception as exc:
+        except (json.JSONDecodeError, OSError) as exc:
             logger.error("[PredictionStore] Failed to read %s: %s", path.name, exc)
             return None
 

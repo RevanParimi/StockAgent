@@ -64,4 +64,4 @@ def record_llm_call(
         with open(log_path, "a", encoding="utf-8") as fh:
             fh.write(entry + "\n")
     except Exception as exc:
-        logger.debug("[llm_client] telemetry write failed (non-fatal): %s", exc)
+        logger.warning("[llm_client] telemetry write failed (non-fatal): %s", exc)

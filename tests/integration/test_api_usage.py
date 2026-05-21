@@ -8,8 +8,7 @@ from __future__ import annotations
 
 import json
 import logging
-from unittest.mock import patch
-from pathlib import Path
+from unittest.mock import patch, MagicMock
 
 import pytest
 
@@ -60,13 +59,14 @@ class TestApiUsageLoad:
         """Verify that OSError (e.g., permission denied) is logged."""
         import services.data.stores.api_usage as au
 
-        usage_file = tmp_path / "api_usage.json"
-        usage_file.write_text("valid json", encoding="utf-8")
+        # Create a mock file object that raises OSError on read_text
+        usage_file = MagicMock()
+        usage_file.exists.return_value = True
+        usage_file.read_text.side_effect = OSError("Permission denied")
 
         with patch.object(au, "_USAGE_FILE", usage_file):
-            with patch.object(Path, "read_text", side_effect=OSError("Permission denied")):
-                with caplog.at_level(logging.WARNING, logger="services.data.stores.api_usage"):
-                    result = au._load()
+            with caplog.at_level(logging.WARNING, logger="services.data.stores.api_usage"):
+                result = au._load()
 
         assert result == {}
         assert any("Failed to load" in r.message for r in caplog.records)

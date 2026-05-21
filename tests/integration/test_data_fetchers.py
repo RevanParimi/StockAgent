@@ -309,3 +309,52 @@ def test_macro_crude_returns_none_on_yfinance_failure():
     if isinstance(result, dict):
         assert result.get("current") is None or "error" in result, \
             f"Expected None sentinel or error key, got {result}"
+
+
+# ---------------------------------------------------------------------------
+# Task 11: fetcher.py — no bare except pass; empty data handled without raise
+# ---------------------------------------------------------------------------
+
+def test_fetcher_no_exception_on_empty_data():
+    """Ensure get_price_history handles empty DataFrame gracefully without raising."""
+    from core.intelligence.algorithms.indicators.fetcher import get_price_history
+    from unittest.mock import patch
+    import pandas as pd
+
+    with patch("core.intelligence.algorithms.indicators.fetcher.yf.download",
+               return_value=pd.DataFrame()):
+        result = get_price_history("FAKEFAKE.NS", years=1)
+        # Should return empty DataFrame, not raise
+        assert result is not None
+        assert isinstance(result, pd.DataFrame)
+
+
+def test_fetcher_polyfit_failure_does_not_raise():
+    """polyfit exception in get_valuation_context must be logged at DEBUG, not raised."""
+    from core.intelligence.algorithms.indicators.fetcher import get_valuation_context
+    from unittest.mock import patch
+    import pandas as pd
+    import numpy as np
+
+    # Build a minimal OHLCV DataFrame with enough rows to reach the polyfit block
+    n = 200
+    idx = pd.date_range(start="2023-01-01", periods=n, freq="B")
+    close = pd.Series(np.linspace(100, 200, n), index=idx, name="Close")
+    df = pd.DataFrame({
+        "Open": close * 0.99,
+        "High": close * 1.01,
+        "Low":  close * 0.98,
+        "Close": close,
+        "Volume": [1_000_000] * n,
+    })
+
+    with patch("core.intelligence.algorithms.indicators.fetcher.get_price_history", return_value=df), \
+         patch("core.intelligence.algorithms.indicators.fetcher.np.polyfit",
+               side_effect=ValueError("polyfit forced fail")), \
+         patch("yfinance.Ticker") as mock_ticker:
+        mock_ticker.return_value.info = {}
+        # Should complete without raising even when polyfit fails
+        result = get_valuation_context("MARUTI")
+
+    assert isinstance(result, str)
+    assert "MARUTI" in result

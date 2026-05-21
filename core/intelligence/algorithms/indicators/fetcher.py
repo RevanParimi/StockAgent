@@ -398,8 +398,10 @@ def get_valuation_context(ticker: str, peer_tickers: list[str] | None = None) ->
                 f"6M Linear trend slope: {slope:+.3f}/day | "
                 f"Channel projection: 1Q={channel_proj_1q:.2f}  2Q={channel_proj_2q:.2f}"
             )
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug(
+                "[fetcher] polyfit trend projection failed for %s (non-fatal): %s", ticker, exc,
+            )
 
     # --- Fundamental valuation ratios (yfinance .info) ---
     lines.append("")
@@ -469,7 +471,10 @@ def get_valuation_context(ticker: str, peer_tickers: list[str] | None = None) ->
                     f"P/E={round(p_pe,1) if p_pe else 'N/A'} | "
                     f"P/B={round(p_pb,2) if p_pb else 'N/A'}"
                 )
-            except Exception:
+            except Exception as exc:
+                logger.debug(
+                    "[fetcher] Peer valuation data unavailable for %s (non-fatal): %s", peer, exc,
+                )
                 lines.append(f"  {peer}: data unavailable")
 
         if peer_pes:

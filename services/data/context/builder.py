@@ -259,7 +259,7 @@ class ContextBuilder:
         )
 
     def _build_valuation_catalyst(self, query: StockQuery) -> str:
-        from tools.yfinance_fetcher import get_valuation_context
+        from core.intelligence.algorithms.indicators.fetcher import get_valuation_context
         from core.config import settings
 
         peers = getattr(settings, "PEER_TICKERS", ["MARUTI", "TATAMOTORS", "M&M", "HEROMOTOCO", "BAJAJ-AUTO"])[:5]

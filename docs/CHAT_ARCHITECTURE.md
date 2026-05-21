@@ -308,3 +308,49 @@ old classify/planner/reviewer nodes, which no longer exist.
 | `src/frontend/prototypes/sphere.jsx` | `ChatOverlay` — session_id state, SSE reader, tier badge from `dispatch` event |
 
 **Layer A — Macro news background feed:** As of 2026-05-21, the background feed uses RSS (ET Top Stories, LiveMint, BusinessLine, Investing.com India) via `feedparser` — free, no API key. Serper `/news` is the fallback only when RSS returns 0 articles. See Section 10 of `AGENTIC_DESIGN.md` for full Layer A + Layer B news architecture.
+
+---
+
+## Analysis Pipeline — API Calls Per Ticker
+
+For a single ticker analysis run (9 automobile agents, macro cache warm):
+
+| Source | Calls | Cost | When |
+|---|---|---|---|
+| yfinance OHLCV (pattern_analysis) | 1 | Free | Pre-graph |
+| yfinance macro tickers (CL=F, INR=X, SLX…) | 3–4 | Free | risk_macro / raw_materials |
+| NseIndiaApi `announcements()` | 1 | Free | Pre-fetch (once, before fan-out) |
+| NseIndiaApi `boardMeetings()` | 1 | Free | Pre-fetch (once, before fan-out) |
+| NseIndiaApi `actions()` | 1 | Free | Pre-fetch (once, before fan-out) |
+| Serper (all agents combined, cache warm) | ~16 | Credits | During fan-out |
+| Tavily (policy_regulatory only, 96% cache hit) | ~0.08 | Credits | policy_regulatory |
+| LLM — 9 agents | 9 | Paid | During fan-out |
+| LLM — SignalAggregator | 1 | Paid | Aggregate node |
+| **Total Serper (cold)** | **~19** | — | Risk_macro cache miss |
+| **Total Serper (warm)** | **~16** | — | Risk_macro cache hit |
+
+**Net reduction from NseIndiaApi pre-fetch:** 4–5 fewer Serper calls (~15%) because NseIndiaApi covers board meeting dates, dividend queries, and results filing queries that Serper previously handled.
+
+**RL daily review (per ticker, per day):**
+
+| Source | Calls | Purpose |
+|---|---|---|
+| Serper `get_news_context(ticker, days=2)` | 1 credit | Editorial market context for FeedbackAgent |
+| NseIndiaApi `announcements(ticker, days=2)` | Free | Official regulatory events for FeedbackAgent |
+| yfinance OHLCV (close + volume) | 1 | Actual close price + volume vs 20d avg |
+| LLM — FeedbackAgent | 1 | Miss classification + lesson generation |
+| LLM — ThesisReviewer (conditional) | 0–1 | Only on significant misses (~1–3×/month) |
+
+**Monthly budget (5 tickers, 21 trading days, automobile sector):**
+
+| Usage type | Formula | Calls/month |
+|---|---|---|
+| Pre-market analysis (warm) | 16 × 5 × 21 | 1,680 Serper |
+| RL daily review (30% full rerun) | 0.3 × 16 × 5 × 21 | 504 Serper |
+| Macro micro-loop (weekdays only) | 3 sectors × 2 × 6 × 22 | 792 Serper |
+| **Total Serper** | | **~2,976** ⚠️ exceeds free 2,500 |
+| Tavily (96% disk cache) | 2 × 0.04 × 5 × 21 | ~8 |
+| NseIndiaApi | Free | No limit (NSE website) |
+| RSS feeds | Free | No limit |
+
+> Start with 3 tickers/day to stay within the 2,500 Serper free quota (~1,848/month).

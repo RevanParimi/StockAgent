@@ -915,6 +915,41 @@ nse_data: dict = Field(default_factory=dict)
 | NseIndiaApi `announcements(ticker, days=2)` | Free | Official regulatory events for yesterday |
 | Combined → `FeedbackAgentInput.market_context_today` | — | FeedbackAgent gets real data (not "unavailable") |
 
+#### Coverage Map — Banking/BFSI (pending NseIndiaApi integration)
+
+| Agent | NseIndiaApi provides | Serper provides | Permanent gap |
+|---|---|---|---|
+| **fundamentals** | Results filings, board meeting dates | NIM/CASA commentary, analyst NPA forecasts | RBI DBIE structured data |
+| **risk** | Regulatory disclosures, SEBI filings | Credit risk headlines, RBI stress test news | Internal stress test data |
+| **macro_policy** | Nothing (macro is sector-wide) | RBI MPC announcements, liquidity data | RBI press release structured feed |
+| **institutional** | Nothing (shareholding quarterly) | FII/DII block deal news | NSE shareholding data API |
+| **pattern_analysis** | Nothing | Nothing (yfinance only) | — |
+| **universe_setup** | Nothing | Peer valuation, sector overview | — |
+
+#### Coverage Map — IT Sector (pending NseIndiaApi integration)
+
+| Agent | NseIndiaApi provides | Serper provides | Permanent gap |
+|---|---|---|---|
+| **fundamentals** | Results filings, board meeting dates | Revenue/deal win commentary, attrition news | Structured deal TCV data |
+| **global_macro** | Nothing (macro is sector-wide) | US tech spend, Fed rate news | ISG/Gartner IT spend data |
+| **risk_macro** | Regulatory filings | Visa quota news, pricing pressure | USCIS H1B approval stats |
+| **peer_benchmark** | Nothing | Peer comparison headlines | Structured peer financials |
+| **pattern_analysis** | Nothing | Nothing (yfinance only) | — |
+| **sentiment** | Nothing | Analyst coverage, news NLP | Earnings call transcripts |
+| **transcript_nlp** | Nothing | Management tone proxy via news | Official earnings call audio/text |
+| **insider_smart_money** | ESOP allotments, promoter filings | Block deal news | Insider buy/sell structured data |
+
+#### Coverage Map — Renewable Energy (pending NseIndiaApi integration)
+
+| Agent | NseIndiaApi provides | Serper provides | Permanent gap |
+|---|---|---|---|
+| **fundamentals** | Results filings, board meeting dates | DSCR/CUF commentary | Structured PPA utilization data |
+| **business** | Project filings, regulatory approvals | MNRE auction news, order book news | PRAAPTI portal DISCOM data |
+| **valuation** | Dividend/split details | Analyst EV/MW commentary | DCF models, broker NAV |
+| **sentiment_policy** | Regulatory filings | MNRE policy news, COP sentiment | State DISCOMs payment history |
+| **technical** | Nothing | Nothing (yfinance only) | — |
+| **risk** | SEBI disclosures | DISCOM payment risk news | PRAAPTI structured payment data |
+
 #### Known Issues
 
 | Issue | Status |
@@ -923,13 +958,17 @@ nse_data: dict = Field(default_factory=dict)
 | NseIndiaApi down / NSE blocks session | `try/except` in `_prefetch_nse_data()` → `nse_data = {"error": str(exc), "announcements": [], ...}` → agents fall back to Serper-only |
 | UI news panel (`ui_data.py`) | Not changed — `search_serper_news()` kept for the frontend live news display |
 
-#### Permanent Gaps — Layer B
+#### Permanent Gaps — Layer B (all sectors)
 
 - Real-time intraday push news (no confirmed India-native API for NSE at any tested price point)
 - Management call transcripts (no source)
-- Social media sentiment (paid APIs only)
+- Social media sentiment (paid APIs only — StockTwits covers Indian stocks but costs ~$200/mo)
 - Analyst research PDFs (Serper catches mentions only)
 - Historical news >7 days (agents only see last 7 days)
+- Vahan vehicle registration data (requires MoRTH authorization; Masters India offers paid proxy)
+- SIAM dispatch structured data (no public API — only monthly PDF press releases)
+- FADA retail sales (monthly PDF at fada.in — no API; requires PDF parser)
+- PRAAPTI DISCOM payment data (portal access, no structured API)
 
 ---
 

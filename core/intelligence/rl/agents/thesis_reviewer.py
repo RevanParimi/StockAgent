@@ -44,6 +44,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import time
 
 from openai import APIError, APITimeoutError, RateLimitError
@@ -248,8 +249,13 @@ class ThesisReviewer:
     # ------------------------------------------------------------------
 
     def _parse(self, raw: str, original_assumptions: list[str]) -> ThesisReview:
+        # Strip markdown code fences that some models add despite json_object format
+        stripped = raw.strip()
+        if stripped.startswith("```"):
+            stripped = re.sub(r"^```(?:json)?\s*", "", stripped)
+            stripped = re.sub(r"\s*```\s*$", "", stripped).strip()
         try:
-            data = json.loads(raw)
+            data = json.loads(stripped)
         except json.JSONDecodeError as exc:
             logger.warning("[ThesisReviewer] JSON parse error: %s — raw: %.200s", exc, raw)
             return ThesisReview(thesis_intact=True, horizon_confidence_multiplier=1.0)

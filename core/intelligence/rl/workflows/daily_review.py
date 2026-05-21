@@ -447,6 +447,13 @@ def run_daily_review(
     try:
         from services.data.fetchers.news import get_news_context
         market_context = get_news_context(ticker, max_articles=3)
+        if market_context and market_context != "Market context unavailable.":
+            logger.info(
+                "[daily_review] %s: News context fetched (%d chars, preview: %.120s)",
+                ticker, len(market_context), market_context.replace("\n", " "),
+            )
+        else:
+            logger.warning("[daily_review] %s: News context unavailable — FeedbackAgent runs without market news", ticker)
     except Exception as exc:
         logger.debug("[daily_review] %s: News context unavailable: %s", ticker, exc)
 

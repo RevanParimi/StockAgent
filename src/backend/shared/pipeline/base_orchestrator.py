@@ -28,6 +28,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 import time
 import uuid
 from abc import ABC, abstractmethod
@@ -258,7 +259,12 @@ class BaseSectorOrchestrator(ABC):
                     prompt_tokens=pt, completion_tokens=ct,
                     duration_ms=(time.time() - t0) * 1000, cost_usd=cost,
                 )
-            return json.loads(response.choices[0].message.content or "{}")
+            raw = response.choices[0].message.content or "{}"
+            # Strip markdown code fences added by some models despite json_object format
+            if raw.strip().startswith("```"):
+                raw = re.sub(r"^```(?:json)?\s*", "", raw.strip())
+                raw = re.sub(r"\s*```\s*$", "", raw).strip()
+            return json.loads(raw)
 
         try:
             data = _llm_call(P.TICKER_RESOLUTION_PROMPT.format(user_input=user_input))

@@ -353,12 +353,13 @@ Respond ONLY with JSON inside <json> tags:
 
         except Exception as exc:
             logger.warning(
-                "[MacroFetcher] ReviewAgent LLM failed: %s — accepting results as LOW-severity", exc
+                "[MacroFetcher] ReviewAgent LLM failed: %s — "
+                "marking unsatisfied so caller may retry with refined queries", exc,
             )
             # Fallback: accept all results without tags (never discard)
             return {
-                "satisfied": True,
-                "missing_topics": [],
+                "satisfied": False,
+                "missing_topics": ["India market news"],
                 "tagged_entries": [
                     {
                         **r,

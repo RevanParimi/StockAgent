@@ -55,7 +55,8 @@ def _normalize_date(date_str: str) -> str:
     try:
         from dateutil import parser as _dp
         return _dp.parse(s).date().isoformat()
-    except Exception:
+    except Exception as exc:
+        logger.debug("[news] Date parse failed for %r: %s", s, exc)
         return s
 _NEWSAPI_URL = "https://newsapi.org/v2/everything"
 
@@ -99,7 +100,11 @@ def search_serper(
             timeout=_TIMEOUT,
         )
         resp.raise_for_status()
-        data = resp.json()
+        try:
+            data = resp.json()
+        except ValueError as exc:
+            logger.warning("[news] Serper returned non-JSON for query %r: %s", query, exc)
+            return []
         results = []
         for item in data.get("organic", [])[:n]:
             results.append({

@@ -114,6 +114,10 @@ class BaseSectorOrchestrator(ABC):
                 self._load_learned_weights, query.ticker
             )
 
+        # Pre-fetch NseIndiaApi data before fan-out — NSE() is sync, run in thread.
+        # All 8 parallel agents share query.nse_data as read-only (set here, never written by agents).
+        await asyncio.to_thread(self._prefetch_nse_data, query)
+
         pipeline_run = PipelineRun(run_id=run_id, query=query, status="running")
         agent_outputs = await self._run_via_graph_async(
             query, run_id=run_id, progress_callback=progress_callback
@@ -170,6 +174,10 @@ class BaseSectorOrchestrator(ABC):
 
         if self._aggregator_weights is None:
             self._aggregator_weights = self._load_learned_weights(query.ticker)
+
+        # Pre-fetch NseIndiaApi data before fan-out — one session, three calls, 0.5s sleep each.
+        # All 8 parallel agents share query.nse_data as read-only.
+        self._prefetch_nse_data(query)
 
         pipeline_run = PipelineRun(run_id=run_id, query=query, status="running")
         agent_outputs = self._run_via_graph(
@@ -230,6 +238,31 @@ class BaseSectorOrchestrator(ABC):
         except Exception as exc:
             logger.debug("[%s] No RL weights for %s: %s", self.SECTOR_NAME, ticker, exc)
         return None
+
+    # ------------------------------------------------------------------
+    # NseIndiaApi pre-fetch (called before LangGraph fan-out)
+    # ------------------------------------------------------------------
+
+    def _prefetch_nse_data(self, query: StockQuery) -> None:
+        """
+        Fetch NseIndiaApi data and store in query.nse_data before fan-out.
+
+        All 8 parallel agents read query.nse_data in their ContextBuilder calls.
+        This method sets it once — agents never write to it (read-only sharing).
+        Non-fatal: on any failure, query.nse_data stays empty and agents use Serper-only.
+        """
+        try:
+            from services.data.fetchers.nse_announcements import prefetch_nse_data
+            from services.data.stores.api_usage import record_call
+            nse_result = prefetch_nse_data(query.ticker)
+            query.nse_data.update(nse_result)
+            if not nse_result.get("error"):
+                record_call("nse_india")
+        except Exception as exc:
+            logger.warning(
+                "[%s] NseIndiaApi prefetch failed for %s (non-fatal): %s",
+                self.SECTOR_NAME, query.ticker, exc,
+            )
 
     # ------------------------------------------------------------------
     # Ticker resolution

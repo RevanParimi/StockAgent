@@ -101,6 +101,7 @@ class ContextBuilder:
     def _build_fundamentals(self, query: StockQuery) -> str:
         from services.data.fetchers.fundamentals import get_fundamentals_context
         from services.data.fetchers.news import fetch_news_context
+        from services.data.fetchers.nse_announcements import format_nse_context
         from core.config.prompts.automobile.fundamentals import CONTEXT_SEARCH_QUERIES
 
         today = date.today()
@@ -115,7 +116,12 @@ class ContextBuilder:
         ]
         fin_context = get_fundamentals_context(query.ticker)
         news = fetch_news_context(queries, api_key=self._serper_key)
-        return f"{fin_context}\n\n{news}"
+        # NseIndiaApi: board meeting dates + results filings (official NSE events)
+        nse_ctx = format_nse_context(query.nse_data, agent_type="fundamentals")
+        parts = [fin_context, news]
+        if nse_ctx:
+            parts.append(nse_ctx)
+        return "\n\n".join(parts)
 
     def _build_pattern_analysis(self, query: StockQuery) -> str:
         from core.intelligence.algorithms.indicators.fetcher import get_technical_context
@@ -260,10 +266,16 @@ class ContextBuilder:
 
     def _build_valuation_catalyst(self, query: StockQuery) -> str:
         from core.intelligence.algorithms.indicators.fetcher import get_valuation_context
+        from services.data.fetchers.nse_announcements import format_nse_context
         from core.config import settings
 
         peers = getattr(settings, "PEER_TICKERS", ["MARUTI", "TATAMOTORS", "M&M", "HEROMOTOCO", "BAJAJ-AUTO"])[:5]
-        return get_valuation_context(query.ticker, peer_tickers=peers)
+        valuation_ctx = get_valuation_context(query.ticker, peer_tickers=peers)
+        # NseIndiaApi: dividend ex-dates, bonus ratio, stock split details
+        nse_ctx = format_nse_context(query.nse_data, agent_type="valuation_catalyst")
+        if nse_ctx:
+            return f"{valuation_ctx}\n\n{nse_ctx}"
+        return valuation_ctx
 
     # ------------------------------------------------------------------
     # Banking & BFSI sector builders

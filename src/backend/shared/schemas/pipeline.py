@@ -22,6 +22,10 @@ class StockQuery(BaseModel):
     company_name: str = Field(default="", description="Full company name (auto-resolved if empty)")
     exchange: str = Field(default="NSE")
     analysis_date: date = Field(default_factory=date.today)
+    # Pre-fetched NseIndiaApi data — set once before LangGraph fan-out, read-only for all agents.
+    # Structure: {"announcements": [...], "board_meetings": [...], "actions": [...],
+    #             "symbol_used": str, "fetched_at": str, "error": str|None}
+    nse_data: dict = Field(default_factory=dict)
 
     @field_validator("ticker")
     @classmethod

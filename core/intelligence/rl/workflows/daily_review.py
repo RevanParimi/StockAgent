@@ -455,7 +455,7 @@ def run_daily_review(
         else:
             logger.warning("[daily_review] %s: News context unavailable — FeedbackAgent runs without market news", ticker)
     except Exception as exc:
-        logger.debug("[daily_review] %s: News context unavailable: %s", ticker, exc)
+        logger.warning("[daily_review] %s: News context fetch failed (import/runtime error): %s", ticker, exc)
 
     # Inject seasonal context so FeedbackAgent doesn't "discover" known patterns.
     # The narrative is appended to market_context_today with a clear [SEASONAL] tag.

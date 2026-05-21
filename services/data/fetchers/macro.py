@@ -76,14 +76,16 @@ def _fetch_latest(yf_ticker: str) -> dict[str, float]:
             auto_adjust=True,
         )
         if df.empty or len(df) < 2:
-            return {"current": 0.0, "change_3m_pct": 0.0}
+            logger.warning("[macro] No price data returned for %s (empty or too short)", yf_ticker)
+            return {"current": None, "change_3m_pct": None, "error": "no data returned"}
 
         close = df["Close"]
         if hasattr(close, "columns"):   # DataFrame (multi-ticker or multi-level columns)
             close = close.iloc[:, 0]
         close = close.dropna().astype(float)
         if len(close) < 2:
-            return {"current": 0.0, "change_3m_pct": 0.0}
+            logger.warning("[macro] Insufficient close prices for %s after dropna", yf_ticker)
+            return {"current": None, "change_3m_pct": None, "error": "insufficient data after dropna"}
         current = float(close.iloc[-1])
         start_val = float(close.iloc[0])
         change_pct = (current - start_val) / start_val * 100 if start_val != 0 else 0.0
@@ -93,7 +95,7 @@ def _fetch_latest(yf_ticker: str) -> dict[str, float]:
         }
     except Exception as exc:
         logger.warning("[macro] Fetch failed for %s: %s", yf_ticker, exc)
-        return {"current": 0.0, "change_3m_pct": 0.0}
+        return {"current": None, "change_3m_pct": None, "error": str(exc)}
 
 
 def _fetch_latest_cached(yf_ticker: str) -> dict[str, float]:

@@ -198,7 +198,12 @@ def _fetch_rubber_price_via_news() -> dict[str, float]:
             elif any(w in tl for w in ["rise", "gain", "up", "rally", "higher"]):
                 direction = 1.0
             if m:
-                pct = float(m.group(1)) * direction
+                try:
+                    pct = float(m.group(1).replace(",", "")) * direction
+                except (ValueError, AttributeError) as exc:
+                    logger.warning("[macro] Failed to parse rubber price from %r: %s",
+                                   m.group(1) if m else None, exc)
+                    continue
                 result = {"current": 0, "change_3m_pct": round(pct, 2), "source": "serper_news",
                           "fetched_at": _dt.now().isoformat()}
                 _RUBBER_CACHE["rubber"] = result

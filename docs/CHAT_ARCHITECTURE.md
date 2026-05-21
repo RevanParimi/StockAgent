@@ -307,4 +307,4 @@ old classify/planner/reviewer nodes, which no longer exist.
 | `services/data/fetchers/news.py` | `search_serper_news(query, n, geo)` — Serper `/news` endpoint |
 | `src/frontend/prototypes/sphere.jsx` | `ChatOverlay` — session_id state, SSE reader, tier badge from `dispatch` event |
 
-See [MACRO_NEWS.md](MACRO_NEWS.md) for the background macro news feed architecture.
+**Layer A — Macro news background feed:** As of 2026-05-21, the background feed uses RSS (ET Top Stories, LiveMint, BusinessLine, Investing.com India) via `feedparser` — free, no API key. Serper `/news` is the fallback only when RSS returns 0 articles. See Section 10 of `AGENTIC_DESIGN.md` for full Layer A + Layer B news architecture.

@@ -1317,3 +1317,68 @@ After Month 3, this provides empirical calibration. It takes the **median** (not
 
 **Test file:** `tests/unit/intelligence/rl/test_price_interpolator.py` — 67 tests covering schema bounds, static fallback scaling, all 4 path shapes, LLM parse safety, ATR computation, and historical return calculation.
 | Calendar updater | `core/intelligence/rl/calendar_updater.py` |
+
+---
+
+## RL Store Schemas — Quick Reference
+
+> Full schemas in `src/backend/shared/schemas/feedback.py`. Serialised by `core/intelligence/rl/stores/prediction_store.py`.
+
+### File layout
+```
+data/predictions/{sector}/{TICKER}/
+├── {TICKER}_{YYYY-MM}_prediction_envelope.json   ← monthly, reset each cycle
+├── {TICKER}_{YYYY-MM}_daily_feedback_log.json    ← monthly, reset each cycle
+├── {TICKER}_agent_weight_memory.json             ← persistent across all cycles
+└── {TICKER}_learning_ledger.json                 ← persistent across all cycles
+```
+
+### FeedbackEntry key fields (daily_feedback_log.json)
+
+| Field | Type | Purpose |
+|---|---|---|
+| `date` | `str` ISO | Trading day under review |
+| `predicted_close` / `actual_close` | `float` | Core comparison pair |
+| `price_error_pct` | `float` | `(actual - predicted) / predicted * 100` |
+| `direction_correct` | `bool` | Primary WeightAdapter hit-rate signal |
+| `regime_label` | `str` | Market regime at time of review (NORMAL / RISK_OFF / MACRO_CRISIS) |
+| `volume_vs_20d_avg` | `float \| None` | `>2.0` = institutional; `<0.5` = noise |
+| `miss_analysis` | `MissAnalysis \| None` | Root-cause from FeedbackAgent |
+| `revised_context` | `RevisedContext \| None` | Forward watch_signals, headline |
+| `thesis_review` | `ThesisReview \| None` | Set only on >2% error or direction_flip |
+| `lessons_generated` | `list[str]` | Lesson IDs added to ledger |
+
+### MissType penalty multipliers
+
+| Miss type | Penalty | Rationale |
+|---|---|---|
+| `data_gap` / `data_stale` / `external_shock` | 0.0× | Not model's fault |
+| `timing` | 0.5× lag-scaled | Right direction, wrong timing |
+| `magnitude` | 0.25× | Right direction, wrong size |
+| `model_bias` / `direction_flip` | 1.0× | Structural failure |
+| `llm_unavailable` | 0.0× | LLM down — degraded output, no penalty applied |
+
+### market_context_today — what FeedbackAgent receives (Step 4)
+
+As of 2026-05-21: combined from two sources per ticker per day:
+
+```
+Serper get_news_context(ticker, days=2)       → editorial reaction, market news
+NseIndiaApi announcements(ticker, days=2)     → official NSE filings (results, SEBI, actions)
+
+Combined → FeedbackAgentInput.market_context_today
+```
+
+Prior to fix (pre-2026-05-21): `get_news_context` import was broken — FeedbackAgent always received `"Market context unavailable."` → all lessons were generated without real context. Fixed in error-handling audit commit `fix(news): log DEBUG on date parse failure`.
+
+### ConvictionStreak
+
+After `RL_STREAK_WARNING_THRESHOLD` (default 8) consecutive same-direction verdicts: inject warning block into FeedbackAgent prompt. `reversion_prior` formula: `min(streak_days × 0.02, 0.30)` applied as confidence discount.
+
+### Error Handling (2026-05-21)
+
+| Issue | Fix |
+|---|---|
+| `_write_json()` OSError leaves orphaned `.tmp` | Cleaned up in `finally` block; raises `RuntimeError` |
+| `_read_json()` corrupt JSON | Narrowed to `JSONDecodeError\|OSError`; logs ERROR, returns `None` |
+| `FeedbackAgent.run()` LLM crash | Returns `FeedbackAgentOutput(miss_type="data_gap")` — daily review does not crash |

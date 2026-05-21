@@ -813,3 +813,173 @@ ContextBuilder._build_risk_macro():
 | `mnre_data.py` stub | business, sentiment_policy | Tavily mnre.gov.in | ❌ OPEN |
 | DISCOM payment data | risk | PRAAPTI portal | ❌ OPEN |
 | ContextBuilder not extended | all 6 agents | — | ✅ FIXED |
+
+---
+
+## 10. News Data Strategy — Layer A (Macro) + Layer B (Per-Ticker)
+
+### Layer A — RSS Macro Feed (background, scheduler-driven)
+
+**Purpose:** Continuously populated macro/policy news cache. Feeds risk_macro, sentiment, policy_regulatory agents and the chat pipeline automatically.
+
+**Sources (confirmed working 2026-05-21):**
+
+| RSS Feed | Fresh articles/48h | Categories covered |
+|---|---|---|
+| ET Top Stories | ~44 | economic policy, budget, RBI/SEBI, global macro |
+| LiveMint | ~35 | markets, economy, company news |
+| BusinessLine | ~60 | markets, sector, policy, commodities |
+| Investing.com India | ~10 | Nifty/Sensex, FII/DII, global signals |
+
+**Architecture:** `MacroNewsFetcher.fetch_and_review(query_type)` → `ReviewAgent` (LLM: severity + impact_tags) → `MacroNewsCache` (`data/macro_news/YYYY-MM-DD_macro_feed.json`)
+
+**Scheduler:** APScheduler inside FastAPI — market_hours runs (9am/12pm/3pm IST weekdays) use ET+LiveMint+BusinessLine; daily run (7:30am) includes all 4 feeds.
+
+**Current fetch method:** RSS via `feedparser` (free, no API key). Fallback to Serper /news if RSS returns 0 articles.
+
+**ReviewAgent (LLM):** Assigns `severity` (HIGH/MEDIUM/LOW) and `impact_tags` per article. `satisfied=False` on LLM failure — retry loop fires with refined queries (fixed 2026-05-21).
+
+**Coverage by category:**
+
+| Category | Articles/run | Status |
+|---|---|---|
+| rbi_policy | 4 | Covered |
+| nifty_sensex | 46 | Covered |
+| economy_budget | 11 | Covered |
+| fii_dii | 7 | Covered |
+| sector_news | 79 | Covered |
+
+**What Layer A cannot cover:** Company-specific news, per-ticker editorial, analyst views.
+
+---
+
+### Layer B — Per-Ticker News (Serper + NseIndiaApi)
+
+**Purpose:** Company-specific context fed into each agent's prompt during analysis.
+
+#### Pre-fetch Architecture
+
+```
+analyse(ticker)
+    │
+    ▼  After _resolve_ticker(), before _run_via_graph()
+_prefetch_nse_data(query)   [new method in base_orchestrator.py]
+    ├── nse.announcements(ticker, days=7)    → regulatory filings, results filings
+    ├── nse.boardMeetings(ticker)            → board meeting dates + subjects
+    ├── nse.actions(ticker)                  → dividends, bonuses, splits with ex-dates
+    └── stored in query.nse_data (dict)      → shared read-only across all 8 parallel agents
+
+Each agent via ContextBuilder.build():
+    ├── reads query.nse_data  (NseIndiaApi — official events)
+    └── calls fetch_news_context(queries)   (Serper — editorial interpretation)
+```
+
+**NseIndiaApi session:** One NSE() instance per analysis run. `try/finally: nse.exit()`. Rate-limited to 3 req/sec — 0.4s sleep between each of the 3 calls. Async path uses `asyncio.to_thread`.
+
+**StockQuery schema addition:**
+```python
+nse_data: dict = Field(default_factory=dict)
+# Structure: {"announcements": [...], "board_meetings": [...], "actions": [...],
+#             "symbol_used": "HDFCBANK", "fetched_at": "...", "error": None}
+```
+
+#### Coverage Map Per Agent
+
+| Agent | NseIndiaApi provides | Serper provides | Serper queries removed | Permanent gap |
+|---|---|---|---|---|
+| **fundamentals** | Results filings (`attchmntText`), board meeting dates | Analyst reaction, revenue commentary, EPS vs estimate | 1–2 quarterly results queries | Analyst earnings models, broker reports |
+| **earnings** | Board meeting date, results filing timestamp | Earnings call tone, management guidance | 1 board meeting date query | Management call transcripts |
+| **valuation_catalyst** | Dividend ex-date, bonus ratio, stock split details | Analyst target prices, P/E commentary, buyback expectations | 1 dividend/bonus news query | DCF models, broker NAV |
+| **risk_macro** | SEBI disclosures, regulatory filings, ESOP allotments | Macro policy impact on company, sector risk headlines, debt news | 0 (supplements, not replaces) | Credit rating events, off-balance items |
+| **sentiment** | Nothing | Brand news, CEO quotes, consumer sentiment | 0 (Serper only) | Twitter/Reddit/YouTube |
+| **sales_demand** | Nothing | FADA dispatch, EV registrations, dealer inventory | 0 (Serper only) | Real-time Vahan portal |
+| **pattern_analysis** | Nothing | Nothing (yfinance only) | 0 | — |
+| **competitive_intel** | Nothing | Peer market share, EV competitors, deal wins | 0 (Serper only) | Proprietary market research |
+| **policy_regulatory** | Regulatory filings (supplement) | SEBI/RBI policy news, compliance updates | 0 (supplements) | SEBI circular PDFs full-text |
+
+#### Call Budget Per Ticker Analysis
+
+| Source | Calls | Cost | Timing |
+|---|---|---|---|
+| NseIndiaApi `announcements()` | 1 | Free | Pre-fetch, once |
+| NseIndiaApi `boardMeetings()` | 1 | Free | Pre-fetch, once |
+| NseIndiaApi `actions()` | 1 | Free | Pre-fetch, once |
+| Serper (after removing covered queries) | ~25–26 | Credits | Per agent, parallel |
+| **Net Serper reduction** | **~4–5 calls saved** | **~15%** | — |
+
+**RL daily review (per ticker per day):**
+
+| Source | Calls | Purpose |
+|---|---|---|
+| Serper `get_news_context(ticker, days=2)` | 1 credit | Editorial market reaction for yesterday |
+| NseIndiaApi `announcements(ticker, days=2)` | Free | Official regulatory events for yesterday |
+| Combined → `FeedbackAgentInput.market_context_today` | — | FeedbackAgent gets real data (not "unavailable") |
+
+#### Known Issues
+
+| Issue | Status |
+|---|---|
+| `TATAMOTORS` announcements returns empty `[]` | `NSE_SYMBOL_OVERRIDES = {"TATAMOTORS": None}` — fallback to Serper-only for this ticker |
+| NseIndiaApi down / NSE blocks session | `try/except` in `_prefetch_nse_data()` → `nse_data = {"error": str(exc), "announcements": [], ...}` → agents fall back to Serper-only |
+| UI news panel (`ui_data.py`) | Not changed — `search_serper_news()` kept for the frontend live news display |
+
+#### Permanent Gaps — Layer B
+
+- Real-time intraday push news (no confirmed India-native API for NSE at any tested price point)
+- Management call transcripts (no source)
+- Social media sentiment (paid APIs only)
+- Analyst research PDFs (Serper catches mentions only)
+- Historical news >7 days (agents only see last 7 days)
+
+---
+
+## 11. Sector Routing
+
+**Entry point:** `SectorRegistry.resolve(ticker)` → `SectorRegistry.get_handler(sector)` → orchestrator class
+
+```
+User ticker input
+    │
+    ▼
+SectorRegistry.resolve(ticker)   [TICKER_SECTOR map, ~200 tickers + name-fragment fallback]
+    │
+    ▼
+tier=backend → BackendOrchestratorClass   (Tier 1 — 4 production sectors)
+tier=core    → CoreSectorAdapter           (Tier 2 — 23 sectors, disabled by default)
+enabled=false → AutomobileAgentOrchestrator (safe degradation)
+```
+
+**Tier 1 — Production (always on):**
+
+| Sector | Key | Agents | Orchestrator |
+|---|---|---|---|
+| Automobile & Auto Ancillaries | `automobile` | 9 | `AutomobileAgentOrchestrator` |
+| Banking & BFSI | `banking_bfsi` | 6 | `BankingAgentOrchestrator` |
+| IT & Technology | `it_sector` | 8 | `ITAgentOrchestrator` |
+| Renewable Energy | `renewable_energy` | 6 | `RenewableAgentOrchestrator` |
+
+**Tier 2 — Core sectors (8-pillar framework, disabled by default):** pharma, fmcg, metals, oilgas, capgoods, chemicals, defence, infra, insurance, realestate, agrochem, hospitality, logistics, media, retail, tech, telecom (23 total). Enable individually via registry. Agents: `business · fundamentals · valuation · technical · macro · risk · management · earnings`.
+
+**Single source of truth for routing:** `TICKER_SECTOR` in `src/backend/sectors/registry.py` (~200 tickers). Sector `settings.TICKERS` (subset) is for scheduler load control only — it is intentionally smaller.
+
+---
+
+## 12. Known Gaps & Technical Backlog
+
+| # | Item | File | Priority | Status |
+|---|---|---|---|---|
+| 1 | RBI repo rate live fetch | `macro.py` | CRITICAL | ✅ Fixed — env override `RBI_REPO_RATE_PCT`, 60-day staleness warning |
+| 2 | Regime thresholds uncalibrated to NSE | `settings/base.py:293–385` | HIGH | ⚠️ Partially done — env-overridable but `regime_config.json` + hot-update endpoint not built |
+| 3 | NSE holiday calendar ends 2026 | `nse_calendar.py` | HIGH | ⚠️ Monitor Dec 31 calendar_updater.py run |
+| 4 | Sector score thresholds identical across sectors | `settings/base.py` | MEDIUM | ⬜ Backlog — add per-sector `SCORE_THRESHOLDS` |
+| 5 | Technical indicator periods not backtested on NSE | `fetcher.py` | MEDIUM | ⬜ Backlog — 14 vs 9 RSI, 12/26 vs 8/17 MACD |
+| 6 | Scheduler reads SCHEDULER_TICKERS env var, not managed_tickers.json | `scheduler.py` | MEDIUM | ⚠️ Partially done — reads managed_tickers.json with fallback to env var |
+| 7 | Agent parse failure returns silent 0.5 | `base_agent.py` | MEDIUM | ⬜ Backlog — return explicit `AgentOutput.error="parse_failed"` |
+| 8 | `external_shock` miss type never penalises | `schemas/feedback.py` | LOW | ⬜ Backlog — after 3 consecutive: apply 0.1× penalty |
+| 9 | Feedback LLM temperature hardcoded 0.3 | `feedback_agent.py:56` | LOW | ⬜ Backlog — move to `settings.FEEDBACK_LLM_TEMPERATURE` |
+| 10 | Error handling: all external calls now guarded | All fetchers/stores | DONE | ✅ Fixed — 14-file audit complete 2026-05-21 |
+
+**Review schedule:**
+- Every deploy: verify RBI rate freshness (`RBI_REPO_RATE_PCT` after each MPC decision)
+- Monthly: review regime multiplier table vs actual VIX/FII behaviour
+- Dec 31: monitor `calendar_updater.py` for 2027 holiday fetch

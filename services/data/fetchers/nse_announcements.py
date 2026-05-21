@@ -106,8 +106,11 @@ _ANN_FILTERS: dict[str, list[str]] = {
         "disclosure",            # promoter pledge / takeover disclosures
     ],
 
-    # Banking/BFSI sector — defined for future sprint
-    "bfsi_fundamentals":  [],
+    # Banking/BFSI sector
+    # fundamentals: only results filings and regulatory press releases — NOT ESOP.
+    # HDFCBANK files ESOP 3-5x/quarter; those are noise for NIM/CASA/NPA scoring.
+    "bfsi_fundamentals":  ["financial results", "press release", "general updates",
+                            "regulatory"],
     "bfsi_institutional": ["esop", "esos", "esps", "sast", "shareholders"],
     "bfsi_risk":          ["regulatory", "press release", "general updates"],
     "bfsi_universe":      ["dividend", "rights", "bonus", "buyback"],

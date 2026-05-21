@@ -55,9 +55,24 @@ class ContextBuilder:
         # per agent, so this is safe.
         self._serper_key: str = _settings.get_serper_key(sector)
 
+        # Short alias map: builder methods use abbreviated prefixes while
+        # UniversalAgent passes the full sector string from the registry.
+        _SECTOR_ALIASES: dict[str, str] = {
+            "banking_bfsi":    "bfsi",
+            "it_sector":       "it",
+            "renewable_energy": "re",
+        }
+
         builder_fn = None
         if sector:
+            # 1. Full sector name: _build_{sector}_{agent_name}
             builder_fn = getattr(self, f"_build_{sector}_{agent_name}", None)
+            # 2. Short alias:  _build_{alias}_{agent_name}
+            if builder_fn is None:
+                alias = _SECTOR_ALIASES.get(sector, "")
+                if alias:
+                    builder_fn = getattr(self, f"_build_{alias}_{agent_name}", None)
+        # 3. Generic (automobile) fallback: _build_{agent_name}
         if builder_fn is None:
             builder_fn = getattr(self, f"_build_{agent_name}", None)
 

@@ -453,6 +453,7 @@ class ContextBuilder:
     def _build_it_fundamentals(self, query: StockQuery) -> str:
         from services.data.fetchers.fundamentals import get_fundamentals_context
         from services.data.fetchers.news import fetch_news_context
+        from services.data.fetchers.nse_announcements import format_nse_context
 
         today = date.today()
         quarter = f"Q{((today.month - 1) // 3) + 1} FY{today.year % 100}"
@@ -465,7 +466,14 @@ class ContextBuilder:
         ]
         fin = get_fundamentals_context(query.ticker)
         news = fetch_news_context(queries, api_key=self._serper_key)
-        return f"{fin}\n\n{news}"
+        # NseIndiaApi: board meeting results dates — anchors when quarterly CC growth and
+        # EBIT margin data was officially filed. IT companies must file results within
+        # 45 days of quarter end; board meeting date is the authoritative timestamp.
+        nse_ctx = format_nse_context(query.nse_data, agent_type="it_fundamentals")
+        parts = [fin, news]
+        if nse_ctx:
+            parts.append(nse_ctx)
+        return "\n\n".join(parts)
 
     def _build_global_macro(self, query: StockQuery) -> str:
         from services.data.fetchers.macro import get_macro_context
@@ -538,6 +546,7 @@ class ContextBuilder:
 
     def _build_it_sentiment(self, query: StockQuery) -> str:
         from services.data.fetchers.news import fetch_news_context
+        from services.data.fetchers.nse_announcements import format_nse_context
 
         today = date.today()
         quarter = f"Q{((today.month - 1) // 3) + 1} FY{today.year % 100}"
@@ -549,14 +558,20 @@ class ContextBuilder:
             f"{query.ticker} news media coverage {today.strftime('%B')} {today.year}",
         ]
         news = fetch_news_context(queries, api_key=self._serper_key)
-        return (
+        # NseIndiaApi: "Analysts/Institutional Investor Meet" board meeting notices and
+        # investor presentation announcements filed to NSE — official tone signals.
+        # These pre-date Serper editorial coverage and give the exact analyst meet date.
+        nse_ctx = format_nse_context(query.nse_data, agent_type="it_sentiment")
+        base = (
             f"Stock: {query.ticker} | Company: {query.company_name} | "
             f"Date: {query.analysis_date}\n\n{news}"
         )
+        return f"{base}\n\n{nse_ctx}" if nse_ctx else base
 
     def _build_transcript_nlp(self, query: StockQuery) -> str:
         from services.clients.tavily_fetcher import fetch_tavily_context
         from services.data.fetchers.news import fetch_news_context
+        from services.data.fetchers.nse_announcements import format_nse_context
 
         today = date.today()
         quarter = f"Q{((today.month - 1) // 3) + 1} FY{today.year % 100}"
@@ -570,16 +585,22 @@ class ContextBuilder:
         ]
         transcript = fetch_tavily_context(tavily_queries, max_queries=2)
         news = fetch_news_context(news_queries, max_queries=2, api_key=self._serper_key)
-        return (
+        # NseIndiaApi: exact board meeting date the earnings call was held.
+        # Anchors Tavily transcript search — knowing the precise date (e.g., April 17)
+        # lets Tavily find the specific call rather than the full quarter window.
+        nse_ctx = format_nse_context(query.nse_data, agent_type="it_transcript")
+        base = (
             f"Stock: {query.ticker} | Company: {query.company_name} | "
             f"Date: {query.analysis_date}\n\n"
             f"[Transcript context — Tavily]\n{transcript}\n\n"
             f"[Earnings news]\n{news}"
         )
+        return f"{base}\n\n{nse_ctx}" if nse_ctx else base
 
     def _build_insider_smart_money(self, query: StockQuery) -> str:
         from services.data.fetchers.fundamentals import get_fundamentals_context
         from services.data.fetchers.news import fetch_news_context
+        from services.data.fetchers.nse_announcements import format_nse_context
 
         today = date.today()
         queries = [
@@ -591,7 +612,16 @@ class ContextBuilder:
         ]
         fin = get_fundamentals_context(query.ticker)
         news = fetch_news_context(queries, api_key=self._serper_key)
-        return f"{fin}\n\n{news}"
+        # NseIndiaApi: ESOP/ESOS/ESPS allotment records (KMP exercise — official, timestamped)
+        # and SAST Reg-29 disclosures (promoter threshold crossings). These are what the
+        # agent currently finds via Serper scraping; NSE is the authoritative primary source.
+        # Replaces queries: "{ticker} SAST filing SEBI acquisition promoter pledge"
+        #                   "{company_name} director insider trade KMP ESOP exercise"
+        nse_ctx = format_nse_context(query.nse_data, agent_type="it_insider")
+        parts = [fin, news]
+        if nse_ctx:
+            parts.append(nse_ctx)
+        return "\n\n".join(parts)
 
     # ------------------------------------------------------------------
     # Renewable Energy sector builders

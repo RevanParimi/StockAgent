@@ -127,7 +127,7 @@ _SHOW_BOARD_MEETINGS: frozenset[str] = frozenset({
     "fundamentals", "earnings", "valuation_catalyst", "general",
     "re_fundamentals", "re_valuation",
     "bfsi_fundamentals", "bfsi_universe",
-    "it_fundamentals", "it_transcript",
+    "it_fundamentals", "it_transcript", "it_sentiment",
 })
 
 # Optional keyword filter on board meeting purpose per agent_type.
@@ -144,6 +144,14 @@ _BM_FILTERS: dict[str, list[str]] = {
                            "audited", "unaudited"],
     # BFSI universe: only dividend/capital action board meetings
     "bfsi_universe":     ["dividend", "rights", "bonus", "fund raising"],
+    # IT fundamentals: results board meetings are the key timing anchor
+    "it_fundamentals":   ["results", "financial results", "dividend", "annual",
+                           "quarterly", "audited", "unaudited"],
+    # IT transcript: show all board meetings (any date gives precise earnings timing)
+    # no BM filter for it_transcript — empty means show all
+    # IT sentiment: board meetings with investor/analyst meet agendas
+    "it_sentiment":      ["analyst", "institutional investor", "investor day",
+                           "conference", "presentation"],
 }
 
 # Agent_types that include the announcements section

@@ -474,5 +474,185 @@
       "desc": "subject",
       "date": "exDate"
     }
+  },
+  "TECHM": {
+    "announcements": {
+      "desc": "desc",
+      "date": "an_dt",
+      "attachment": "attchmntText"
+    },
+    "board_meetings": {
+      "desc": "bm_desc",
+      "date": "bm_date"
+    },
+    "actions": {
+      "desc": "subject",
+      "date": "exDate"
+    }
+  },
+  "COFORGE": {
+    "announcements": {
+      "desc": "desc",
+      "date": "an_dt",
+      "attachment": "attchmntText"
+    },
+    "board_meetings": {
+      "desc": "bm_desc",
+      "date": "bm_date"
+    },
+    "actions": {
+      "desc": "subject",
+      "date": "exDate"
+    }
+  },
+  "MPHASIS": {
+    "announcements": {
+      "desc": "desc",
+      "date": "an_dt",
+      "attachment": "attchmntText"
+    },
+    "board_meetings": {
+      "desc": "bm_desc",
+      "date": "bm_date"
+    },
+    "actions": {
+      "desc": "subject",
+      "date": "exDate"
+    }
+  },
+  "PERSISTENT": {
+    "announcements": {
+      "desc": "desc",
+      "date": "an_dt",
+      "attachment": "attchmntText"
+    },
+    "board_meetings": {
+      "desc": "bm_desc",
+      "date": "bm_date"
+    },
+    "actions": {
+      "desc": "subject",
+      "date": "exDate"
+    }
+  },
+  "LTTS": {
+    "announcements": {
+      "desc": "desc",
+      "date": "an_dt",
+      "attachment": "attchmntText"
+    },
+    "board_meetings": {
+      "desc": "bm_desc",
+      "date": "bm_date"
+    },
+    "actions": {
+      "desc": "subject",
+      "date": "exDate"
+    }
+  },
+  "KPITTECH": {
+    "announcements": {
+      "desc": "desc",
+      "date": "an_dt",
+      "attachment": "attchmntText"
+    },
+    "board_meetings": {
+      "desc": "bm_desc",
+      "date": "bm_date"
+    },
+    "actions": {
+      "desc": "subject",
+      "date": "exDate"
+    }
+  },
+  "TATAELXSI": {
+    "announcements": {
+      "desc": "desc",
+      "date": "an_dt",
+      "attachment": "attchmntText"
+    },
+    "board_meetings": {
+      "desc": "bm_desc",
+      "date": "bm_date"
+    },
+    "actions": {
+      "desc": "subject",
+      "date": "exDate"
+    }
+  },
+  "NIIT": {
+    "announcements": {
+      "desc": "desc",
+      "date": "an_dt",
+      "attachment": "attchmntText"
+    },
+    "board_meetings": {
+      "desc": "bm_desc",
+      "date": "bm_date"
+    },
+    "actions": {
+      "desc": "subject",
+      "date": "exDate"
+    }
+  },
+  "MASTEK": {
+    "announcements": {
+      "desc": "desc",
+      "date": "an_dt",
+      "attachment": "attchmntText"
+    },
+    "board_meetings": {
+      "desc": "bm_desc",
+      "date": "bm_date"
+    },
+    "actions": {
+      "desc": "subject",
+      "date": "exDate"
+    }
+  },
+  "HEXAWARE": {
+    "announcements": {
+      "desc": "desc",
+      "date": "an_dt",
+      "attachment": "attchmntText"
+    },
+    "board_meetings": {
+      "desc": "bm_desc",
+      "date": "bm_date"
+    },
+    "actions": {
+      "desc": "subject",
+      "date": "exDate"
+    }
+  },
+  "INFY": {
+    "announcements": {
+      "desc": "desc",
+      "date": "an_dt",
+      "attachment": "attchmntText"
+    },
+    "board_meetings": {
+      "desc": "bm_desc",
+      "date": "bm_date"
+    },
+    "actions": {
+      "desc": "subject",
+      "date": "exDate"
+    }
+  },
+  "WIPRO": {
+    "announcements": {
+      "desc": "desc",
+      "date": "an_dt",
+      "attachment": "attchmntText"
+    },
+    "board_meetings": {
+      "desc": "bm_desc",
+      "date": "bm_date"
+    },
+    "actions": {
+      "desc": "subject",
+      "date": "exDate"
+    }
   }
 }

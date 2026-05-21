@@ -48,10 +48,30 @@ def _active_tickers() -> list[str]:
         from services.api.log_buffer import get_active_tickers
         tickers = get_active_tickers()
         if tickers:
-            return tickers
+            # Filter out any non-string or blank entries before returning
+            invalid = [t for t in tickers if not isinstance(t, str) or not t.strip()]
+            if invalid:
+                logger.warning("[scheduler] Removed invalid ticker entries: %s", invalid)
+                tickers = [t for t in tickers if isinstance(t, str) and t.strip()]
+            if tickers:
+                return tickers
     except Exception:
         pass
-    return list(settings.SCHEDULER_TICKERS)
+
+    tickers = list(settings.SCHEDULER_TICKERS)
+
+    if not tickers:
+        logger.warning(
+            "[scheduler] _active_tickers() resolved to empty list — "
+            "no analysis will run this cycle. Check SCHEDULER_TICKERS in .env."
+        )
+    else:
+        invalid = [t for t in tickers if not isinstance(t, str) or not t.strip()]
+        if invalid:
+            logger.warning("[scheduler] Removed invalid ticker entries: %s", invalid)
+            tickers = [t for t in tickers if isinstance(t, str) and t.strip()]
+
+    return tickers
 
 
 class AutomobileScheduler:

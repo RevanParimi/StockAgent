@@ -165,7 +165,28 @@ class FeedbackAgent:
             predicted_catalysts_by_agent=fb_input.predicted_catalysts_by_agent or {},
         )
 
-        raw = self._call_llm(system_prompt, user_prompt)
+        try:
+            raw = self._call_llm(system_prompt, user_prompt)
+        except Exception as exc:
+            logger.error(
+                "[FeedbackAgent] LLM call failed for %s on %s: %s — "
+                "returning degraded output; weights and lessons NOT updated",
+                fb_input.ticker, fb_input.date, exc,
+            )
+            return FeedbackAgentOutput(
+                miss_type="data_gap",
+                primary_miss_agent="",
+                missed_factors=[f"LLM unavailable: {exc}"],
+                over_weighted_factors=[],
+                agent_score_drift={},
+                new_lessons=[],
+                revised_context=RevisedContext(
+                    headline=f"LLM unavailable on {fb_input.date} — no analysis performed",
+                    watch_signals=[],
+                    horizon_confidence_adjustment=0.0,
+                ),
+            )
+
         output = self._parse(raw, fb_input)
 
         logger.info(

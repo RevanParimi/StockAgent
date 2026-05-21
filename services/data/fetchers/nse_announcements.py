@@ -7,10 +7,29 @@ Called ONCE per analysis run before LangGraph fan-out.
 Result stored in StockQuery.nse_data and shared read-only
 across all 8 parallel agents via ContextBuilder.
 
+Key-mapping design
+------------------
+NseIndiaApi returns different field names for the same semantic concept
+depending on the endpoint (and sometimes the ticker). Rather than
+maintaining fragile hardcoded fallback chains, we:
+
+  1. On first call for a ticker: inspect the real response, find which
+     actual key name carries each semantic field, save to
+     data/nse/key_registry.json  (via nse_key_registry.update_registry).
+
+  2. Embed the discovered mappings in nse_data["key_mappings"] so all
+     9 parallel agents can use them without re-reading the registry file.
+
+  3. On subsequent calls: get_mapping() returns the cached keys; no
+     discovery overhead.
+
+  4. format_nse_context() uses resolve_field() which tries the cached
+     key first, then the full candidate chain as a last resort.
+
 Public API
 ----------
-prefetch_nse_data(ticker)    → dict  (stored in query.nse_data)
-format_nse_context(nse_data, agent_type) → str  (injected into agent prompt)
+prefetch_nse_data(ticker)                          → dict  (stored in query.nse_data)
+format_nse_context(nse_data, agent_type)           → str   (injected into agent prompt)
 """
 
 from __future__ import annotations
@@ -29,22 +48,18 @@ NSE_SYMBOL_OVERRIDES: dict[str, None] = {
     "TATAMOTORS": None,
 }
 
-_SLEEP_BETWEEN_CALLS = 0.5  # tested: 0.3s works; 0.5s is safe margin
+_SLEEP_BETWEEN_CALLS = 0.5  # tested: 0.3s works; 0.5s is the safe margin
 
 
 def prefetch_nse_data(ticker: str) -> dict:
     """
     Pre-fetch announcements, board meetings, and corporate actions from NseIndiaApi.
 
-    Creates one NSE() session per call, makes 3 sequential requests with 0.5s sleep
-    between each (NSE website rate: ~2-3 req/sec max), then exits cleanly.
+    After each successful fetch, runs key-mapping discovery so the correct
+    field names are embedded in nse_data["key_mappings"] and persisted to
+    data/nse/key_registry.json for future runs.
 
-    Returns a dict — always; never raises. On failure returns the dict with error key set
-    so agents can fall back to Serper-only without crashing.
-
-    Parameters
-    ----------
-    ticker : NSE symbol e.g. "MARUTI", "HDFCBANK"
+    Returns a dict — always; never raises.
     """
     if ticker in NSE_SYMBOL_OVERRIDES:
         logger.warning(
@@ -53,12 +68,16 @@ def prefetch_nse_data(ticker: str) -> dict:
         )
         return {
             "announcements": [], "board_meetings": [], "actions": [],
-            "symbol_used": ticker, "fetched_at": datetime.utcnow().isoformat(), "error": "symbol_override",
+            "key_mappings": {},
+            "symbol_used": ticker, "fetched_at": datetime.utcnow().isoformat(),
+            "error": "symbol_override",
         }
 
     result: dict = {
         "announcements": [], "board_meetings": [], "actions": [],
-        "symbol_used": ticker, "fetched_at": datetime.utcnow().isoformat(), "error": None,
+        "key_mappings": {},
+        "symbol_used": ticker, "fetched_at": datetime.utcnow().isoformat(),
+        "error": None,
     }
 
     try:
@@ -68,42 +87,64 @@ def prefetch_nse_data(ticker: str) -> dict:
         result["error"] = "nse_not_installed"
         return result
 
+    from services.data.fetchers.nse_key_registry import (
+        discover_mapping,
+        get_mapping,
+        update_registry,
+    )
+
     dl_folder = pathlib.Path(tempfile.mkdtemp())
     nse = NSE(download_folder=dl_folder)
 
     try:
         # --- announcements() ---
         raw = nse.announcements(symbol=ticker)
-        if isinstance(raw, list):
-            result["announcements"] = raw[:10]
-        elif isinstance(raw, dict):
-            items = raw.get("data", raw.get("announcements", []))
-            result["announcements"] = items[:10] if isinstance(items, list) else []
+        items = raw if isinstance(raw, list) else raw.get("data", raw.get("announcements", []))
+        if isinstance(items, list):
+            result["announcements"] = items[:10]
+
+        mapping = get_mapping(ticker, "announcements")
+        if not mapping and result["announcements"]:
+            mapping = discover_mapping(result["announcements"], "announcements")
+            update_registry(ticker, "announcements", mapping)
+        result["key_mappings"]["announcements"] = mapping
 
         time.sleep(_SLEEP_BETWEEN_CALLS)
 
         # --- boardMeetings() ---
         raw = nse.boardMeetings(symbol=ticker)
-        if isinstance(raw, list):
-            result["board_meetings"] = raw[:5]
-        elif isinstance(raw, dict):
-            result["board_meetings"] = raw.get("data", [])[:5]
+        items = raw if isinstance(raw, list) else raw.get("data", [])
+        if isinstance(items, list):
+            result["board_meetings"] = items[:5]
+
+        mapping = get_mapping(ticker, "board_meetings")
+        if not mapping and result["board_meetings"]:
+            mapping = discover_mapping(result["board_meetings"], "board_meetings")
+            update_registry(ticker, "board_meetings", mapping)
+        result["key_mappings"]["board_meetings"] = mapping
 
         time.sleep(_SLEEP_BETWEEN_CALLS)
 
-        # --- actions() corporate: dividends, splits, bonuses ---
+        # --- actions() — dividends, splits, bonuses ---
         raw = nse.actions(symbol=ticker)
-        if isinstance(raw, list):
-            result["actions"] = raw[:5]
-        elif isinstance(raw, dict):
-            result["actions"] = raw.get("data", [])[:5]
+        items = raw if isinstance(raw, list) else raw.get("data", [])
+        if isinstance(items, list):
+            result["actions"] = items[:5]
+
+        mapping = get_mapping(ticker, "actions")
+        if not mapping and result["actions"]:
+            mapping = discover_mapping(result["actions"], "actions")
+            update_registry(ticker, "actions", mapping)
+        result["key_mappings"]["actions"] = mapping
 
         logger.info(
-            "[NseIndiaApi] %s: %d announcements, %d board meetings, %d corporate actions fetched",
+            "[NseIndiaApi] %s: %d announcements, %d board meetings, %d actions | "
+            "key_mappings=%s",
             ticker,
             len(result["announcements"]),
             len(result["board_meetings"]),
             len(result["actions"]),
+            {k: v for k, v in result["key_mappings"].items() if v},
         )
 
     except Exception as exc:
@@ -124,9 +165,13 @@ def format_nse_context(nse_data: dict, agent_type: str = "general") -> str:
     """
     Convert pre-fetched NseIndiaApi data to a formatted string for agent prompt injection.
 
+    Uses the key mappings embedded in nse_data["key_mappings"] by prefetch_nse_data()
+    so the correct field name for this ticker is always used. Falls back to the full
+    candidate chain (via resolve_field) if mappings are absent.
+
     Parameters
     ----------
-    nse_data   : dict returned by prefetch_nse_data() (from query.nse_data)
+    nse_data   : dict from query.nse_data (set by prefetch_nse_data)
     agent_type : "fundamentals" | "valuation_catalyst" | "risk_macro" | "earnings" | "general"
 
     Returns "" when nse_data is empty or failed — agents silently skip injection.
@@ -134,36 +179,45 @@ def format_nse_context(nse_data: dict, agent_type: str = "general") -> str:
     if not nse_data or nse_data.get("error") in ("nse_not_installed", "symbol_override"):
         return ""
 
+    from services.data.fetchers.nse_key_registry import resolve_field
+
+    key_mappings: dict[str, dict[str, str]] = nse_data.get("key_mappings", {})
     lines: list[str] = []
 
-    # Board meetings: relevant for fundamentals, earnings, valuation_catalyst
+    # Board meetings — fundamentals / earnings / valuation_catalyst
     if agent_type in ("fundamentals", "earnings", "valuation_catalyst", "general"):
         bm = nse_data.get("board_meetings", [])[:3]
+        bm_mapping = key_mappings.get("board_meetings", {})
         if bm:
             lines.append("[NSE BOARD MEETINGS — official dates]")
             for item in bm:
-                purpose = item.get("purpose", item.get("desc", ""))
-                dt = item.get("bm_date", item.get("meetingDate", ""))
-                lines.append(f"  [{dt}] {str(purpose)[:100]}")
+                desc = resolve_field(item, bm_mapping, "desc", "board_meetings")
+                dt   = resolve_field(item, bm_mapping, "date", "board_meetings")
+                if desc or dt:
+                    lines.append(f"  [{dt}] {desc[:100]}")
 
-    # Announcements: relevant for fundamentals, earnings, risk_macro
+    # Announcements — fundamentals / earnings / risk_macro
     if agent_type in ("fundamentals", "earnings", "risk_macro", "general"):
         ann = nse_data.get("announcements", [])[:5]
+        ann_mapping = key_mappings.get("announcements", {})
         if ann:
             lines.append("[NSE ANNOUNCEMENTS — official filings]")
             for item in ann:
-                desc = item.get("desc", item.get("subject", item.get("description", "")))
-                dt = item.get("an_dt", item.get("date", ""))
-                lines.append(f"  [{dt}] {str(desc)[:100]}")
+                desc = resolve_field(item, ann_mapping, "desc", "announcements")
+                dt   = resolve_field(item, ann_mapping, "date", "announcements")
+                if desc or dt:
+                    lines.append(f"  [{dt}] {desc[:100]}")
 
-    # Corporate actions: dividends, splits — relevant for valuation_catalyst
+    # Corporate actions — valuation_catalyst
     if agent_type in ("valuation_catalyst", "general"):
         act = nse_data.get("actions", [])[:3]
+        act_mapping = key_mappings.get("actions", {})
         if act:
             lines.append("[NSE CORPORATE ACTIONS — dividends / splits / bonuses]")
             for item in act:
-                subject = item.get("subject", item.get("desc", ""))
-                ex_date = item.get("exDate", item.get("ex_date", ""))
-                lines.append(f"  [ex-date: {ex_date}] {str(subject)[:100]}")
+                desc    = resolve_field(item, act_mapping, "desc", "actions")
+                ex_date = resolve_field(item, act_mapping, "date", "actions")
+                if desc or ex_date:
+                    lines.append(f"  [ex-date: {ex_date}] {desc[:100]}")
 
     return "\n".join(lines) if lines else ""

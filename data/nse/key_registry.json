@@ -1,0 +1,47 @@
+{
+  "HDFCBANK": {
+    "announcements": {
+      "desc": "desc",
+      "date": "an_dt",
+      "attachment": "attchmntText"
+    },
+    "board_meetings": {
+      "desc": "bm_desc",
+      "date": "bm_date"
+    },
+    "actions": {
+      "desc": "subject",
+      "date": "exDate"
+    }
+  },
+  "TCS": {
+    "announcements": {
+      "desc": "desc",
+      "date": "an_dt",
+      "attachment": "attchmntText"
+    },
+    "board_meetings": {
+      "desc": "bm_desc",
+      "date": "bm_date"
+    },
+    "actions": {
+      "desc": "subject",
+      "date": "exDate"
+    }
+  },
+  "MARUTI": {
+    "announcements": {
+      "desc": "desc",
+      "date": "an_dt",
+      "attachment": "attchmntText"
+    },
+    "board_meetings": {
+      "desc": "bm_desc",
+      "date": "bm_date"
+    },
+    "actions": {
+      "desc": "subject",
+      "date": "exDate"
+    }
+  }
+}

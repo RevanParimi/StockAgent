@@ -18,7 +18,7 @@ maintaining fragile hardcoded fallback chains, we:
      data/nse/key_registry.json  (via nse_key_registry.update_registry).
 
   2. Embed the discovered mappings in nse_data["key_mappings"] so all
-     9 parallel agents can use them without re-reading the registry file.
+     parallel agents can share them without re-reading the registry file.
 
   3. On subsequent calls: get_mapping() returns the cached keys; no
      discovery overhead.
@@ -26,10 +26,21 @@ maintaining fragile hardcoded fallback chains, we:
   4. format_nse_context() uses resolve_field() which tries the cached
      key first, then the full candidate chain as a last resort.
 
+Category filtering design
+-------------------------
+format_nse_context() accepts an agent_type that controls:
+  • Which sections (board_meetings / announcements / actions) are shown
+  • Which NSE announcement categories are included per section
+  • Whether attachment text (attchmntText) is included
+
+Filtering is case-insensitive substring matching against the announcement
+desc (NSE category label, e.g. "Commencement of commercial production/operations").
+An empty filter list means "show all" for that agent_type.
+
 Public API
 ----------
-prefetch_nse_data(ticker)                          → dict  (stored in query.nse_data)
-format_nse_context(nse_data, agent_type)           → str   (injected into agent prompt)
+prefetch_nse_data(ticker)                 → dict  (stored in query.nse_data)
+format_nse_context(nse_data, agent_type)  → str   (injected into agent prompt)
 """
 
 from __future__ import annotations
@@ -42,6 +53,10 @@ from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
+# ---------------------------------------------------------------------------
+# Tickers with known NseIndiaApi data gaps
+# ---------------------------------------------------------------------------
+
 # Tickers where NseIndiaApi consistently returns 0 announcements.
 # Agents fall back to Serper-only for these tickers.
 NSE_SYMBOL_OVERRIDES: dict[str, None] = {
@@ -50,6 +65,124 @@ NSE_SYMBOL_OVERRIDES: dict[str, None] = {
 
 _SLEEP_BETWEEN_CALLS = 0.5  # tested: 0.3s works; 0.5s is the safe margin
 
+# ---------------------------------------------------------------------------
+# Category-filter configuration per agent_type
+# ---------------------------------------------------------------------------
+
+# Keywords matched against the announcement desc (NSE category label).
+# Case-insensitive substring match.  Empty list = no filter (show all).
+_ANN_FILTERS: dict[str, list[str]] = {
+    # Automobile sector — no filter, show all categories
+    "fundamentals":       [],
+    "earnings":           [],
+    "risk_macro":         [],
+    "valuation_catalyst": [],
+
+    # Renewable Energy sector
+    # commissioning keywords broadened: "trial operation" is the NSE filing
+    # for COD precursor — "Completion of Trial Operation" → same as COD signal
+    "re_fundamentals":    [
+        "commencement of commercial production",
+        "trial operation",
+        "commercial operation",
+        "financial results",
+        "updates",           # catches operational updates that signal COD progress
+    ],
+    "re_business":        [
+        "commencement of commercial production",
+        "trial operation",
+        "commercial operation",
+        "updates",
+        "press release",
+        "acquisition",       # capacity acquisitions / project wins
+    ],
+    "re_valuation":       ["fund raising", "dividend", "rights", "bonus", "financial results"],
+    "re_risk":            [
+        "general updates",
+        "press release",
+        "regulatory",
+        "change in management",  # senior management changes = governance risk signal
+        "acquisition",           # distressed asset acquisitions = leverage risk
+        "disclosure",            # promoter pledge / takeover disclosures
+    ],
+
+    # Banking/BFSI sector — defined for future sprint
+    "bfsi_fundamentals":  [],
+    "bfsi_institutional": ["esop", "esos", "esps", "sast", "shareholders"],
+    "bfsi_risk":          ["regulatory", "press release", "general updates"],
+    "bfsi_universe":      ["dividend", "rights", "bonus", "buyback"],
+
+    # IT sector — defined for future sprint
+    "it_fundamentals":    [],
+    "it_insider":         ["esop", "esos", "esps", "sast", "shareholders"],
+    "it_sentiment":       ["analysts", "institutional investor", "press release", "general updates"],
+    "it_transcript":      [],
+
+    # General passthrough — no filter
+    "general":            [],
+}
+
+# Agent_types that include the board meetings section
+_SHOW_BOARD_MEETINGS: frozenset[str] = frozenset({
+    "fundamentals", "earnings", "valuation_catalyst", "general",
+    "re_fundamentals", "re_valuation",
+    "bfsi_fundamentals",
+    "it_fundamentals", "it_transcript",
+})
+
+# Optional keyword filter on board meeting purpose per agent_type.
+# Empty = show all board meetings for that agent_type.
+_BM_FILTERS: dict[str, list[str]] = {
+    # RE: only results/dividend meetings are useful for fundamentals scoring
+    "re_fundamentals": ["results", "financial", "dividend", "annual"],
+    # RE: fund raising meetings signal equity dilution risk
+    "re_valuation":    ["fund raising", "dividend", "rights", "results", "financial"],
+}
+
+# Agent_types that include the announcements section
+_SHOW_ANNOUNCEMENTS: frozenset[str] = frozenset({
+    "fundamentals", "earnings", "risk_macro", "general",
+    "re_fundamentals", "re_business", "re_valuation", "re_risk",
+    "bfsi_fundamentals", "bfsi_institutional", "bfsi_risk", "bfsi_universe",
+    "it_fundamentals", "it_insider", "it_sentiment",
+})
+
+# Agent_types that include the corporate actions section (actions())
+_SHOW_ACTIONS: frozenset[str] = frozenset({
+    "valuation_catalyst", "general",
+    "re_valuation",
+    "bfsi_universe",
+})
+
+# Agent_types that should append attachment text when present and short.
+# Useful for RE commissioning (MW + location detail) and IT ESOP (tranche detail).
+_SHOW_ATTACHMENT: frozenset[str] = frozenset({
+    "re_fundamentals",
+    "re_business",
+    "it_insider",
+})
+
+_MAX_ANN_ITEMS = 6   # announcements shown per agent context
+_MAX_BM_ITEMS  = 3   # board meeting rows shown
+_MAX_ACT_ITEMS = 3   # corporate action rows shown
+_MAX_ATTACH_LEN = 120  # chars of attchmntText shown when included
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def _matches_filter(value: str, keywords: list[str]) -> bool:
+    """Return True if any keyword is a substring of value (case-insensitive)."""
+    if not keywords:
+        return True
+    v = value.lower()
+    return any(kw.lower() in v for kw in keywords)
+
+
+# ---------------------------------------------------------------------------
+# Pre-fetch
+# ---------------------------------------------------------------------------
 
 def prefetch_nse_data(ticker: str) -> dict:
     """
@@ -161,20 +294,30 @@ def prefetch_nse_data(ticker: str) -> dict:
     return result
 
 
+# ---------------------------------------------------------------------------
+# Context formatter
+# ---------------------------------------------------------------------------
+
 def format_nse_context(nse_data: dict, agent_type: str = "general") -> str:
     """
     Convert pre-fetched NseIndiaApi data to a formatted string for agent prompt injection.
 
-    Uses the key mappings embedded in nse_data["key_mappings"] by prefetch_nse_data()
-    so the correct field name for this ticker is always used. Falls back to the full
-    candidate chain (via resolve_field) if mappings are absent.
+    Uses the key mappings embedded in nse_data["key_mappings"] (set by
+    prefetch_nse_data) so the correct field name for this ticker is always
+    used. Falls back to the full candidate chain via resolve_field if mappings
+    are absent.
+
+    Each agent_type controls which sections appear and which NSE announcement
+    categories are included — see _ANN_FILTERS, _SHOW_BOARD_MEETINGS, etc.
 
     Parameters
     ----------
     nse_data   : dict from query.nse_data (set by prefetch_nse_data)
-    agent_type : "fundamentals" | "valuation_catalyst" | "risk_macro" | "earnings" | "general"
+    agent_type : sector-aware agent identifier, e.g. "re_fundamentals",
+                 "it_insider", "bfsi_risk", or legacy "fundamentals"
 
-    Returns "" when nse_data is empty or failed — agents silently skip injection.
+    Returns "" when nse_data is empty, failed, or all sections filter to zero
+    items — agents silently fall back to Serper-only in that case.
     """
     if not nse_data or nse_data.get("error") in ("nse_not_installed", "symbol_override"):
         return ""
@@ -184,40 +327,89 @@ def format_nse_context(nse_data: dict, agent_type: str = "general") -> str:
     key_mappings: dict[str, dict[str, str]] = nse_data.get("key_mappings", {})
     lines: list[str] = []
 
-    # Board meetings — fundamentals / earnings / valuation_catalyst
-    if agent_type in ("fundamentals", "earnings", "valuation_catalyst", "general"):
-        bm = nse_data.get("board_meetings", [])[:3]
+    # ------------------------------------------------------------------
+    # Board meetings section
+    # ------------------------------------------------------------------
+    if agent_type in _SHOW_BOARD_MEETINGS:
+        bm_all = nse_data.get("board_meetings", [])
         bm_mapping = key_mappings.get("board_meetings", {})
-        if bm:
+        bm_kw = _BM_FILTERS.get(agent_type, [])
+
+        bm_rows = []
+        for item in bm_all:
+            desc = resolve_field(item, bm_mapping, "desc", "board_meetings")
+            dt   = resolve_field(item, bm_mapping, "date", "board_meetings")
+            if not (desc or dt):
+                continue
+            if _matches_filter(desc, bm_kw):
+                bm_rows.append((dt, desc))
+            if len(bm_rows) >= _MAX_BM_ITEMS:
+                break
+
+        if bm_rows:
             lines.append("[NSE BOARD MEETINGS — official dates]")
-            for item in bm:
-                desc = resolve_field(item, bm_mapping, "desc", "board_meetings")
-                dt   = resolve_field(item, bm_mapping, "date", "board_meetings")
-                if desc or dt:
-                    lines.append(f"  [{dt}] {desc[:100]}")
+            for dt, desc in bm_rows:
+                lines.append(f"  [{dt}] {desc[:120]}")
 
-    # Announcements — fundamentals / earnings / risk_macro
-    if agent_type in ("fundamentals", "earnings", "risk_macro", "general"):
-        ann = nse_data.get("announcements", [])[:5]
+    # ------------------------------------------------------------------
+    # Announcements section
+    # ------------------------------------------------------------------
+    if agent_type in _SHOW_ANNOUNCEMENTS:
+        ann_all    = nse_data.get("announcements", [])
         ann_mapping = key_mappings.get("announcements", {})
-        if ann:
-            lines.append("[NSE ANNOUNCEMENTS — official filings]")
-            for item in ann:
-                desc = resolve_field(item, ann_mapping, "desc", "announcements")
-                dt   = resolve_field(item, ann_mapping, "date", "announcements")
-                if desc or dt:
-                    lines.append(f"  [{dt}] {desc[:100]}")
+        ann_kw     = _ANN_FILTERS.get(agent_type, [])
+        show_attach = agent_type in _SHOW_ATTACHMENT
 
-    # Corporate actions — valuation_catalyst
-    if agent_type in ("valuation_catalyst", "general"):
-        act = nse_data.get("actions", [])[:3]
+        ann_rows = []
+        for item in ann_all:
+            desc   = resolve_field(item, ann_mapping, "desc",       "announcements")
+            dt     = resolve_field(item, ann_mapping, "date",       "announcements")
+            attach = resolve_field(item, ann_mapping, "attachment", "announcements") if show_attach else ""
+
+            if not (desc or dt):
+                continue
+            if _matches_filter(desc, ann_kw):
+                ann_rows.append((dt, desc, attach))
+            if len(ann_rows) >= _MAX_ANN_ITEMS:
+                break
+
+        if ann_rows:
+            lines.append("[NSE ANNOUNCEMENTS — official filings]")
+            for dt, desc, attach in ann_rows:
+                line = f"  [{dt}] {desc[:100]}"
+                # Append attachment text when it adds more detail than the category label
+                if attach and attach.lower() != desc.lower() and len(attach.strip()) > 10:
+                    line += f" | {attach[:_MAX_ATTACH_LEN]}"
+                lines.append(line)
+
+    # ------------------------------------------------------------------
+    # Corporate actions section
+    # ------------------------------------------------------------------
+    if agent_type in _SHOW_ACTIONS:
+        act_all    = nse_data.get("actions", [])
         act_mapping = key_mappings.get("actions", {})
-        if act:
+
+        # NSE actions() can include non-financial entries like AGM/EGM.
+        # Only keep genuine financial corporate actions.
+        _NON_FINANCIAL_ACTIONS = {"annual general meeting", "agm", "egm",
+                                   "extraordinary general meeting", "postal ballot"}
+
+        act_rows = []
+        for item in act_all:
+            desc    = resolve_field(item, act_mapping, "desc", "actions")
+            ex_date = resolve_field(item, act_mapping, "date", "actions")
+            if not (desc or ex_date):
+                continue
+            # Skip AGM/EGM entries — not financial corporate actions
+            if any(nf in desc.lower() for nf in _NON_FINANCIAL_ACTIONS):
+                continue
+            act_rows.append((ex_date, desc))
+            if len(act_rows) >= _MAX_ACT_ITEMS:
+                break
+
+        if act_rows:
             lines.append("[NSE CORPORATE ACTIONS — dividends / splits / bonuses]")
-            for item in act:
-                desc    = resolve_field(item, act_mapping, "desc", "actions")
-                ex_date = resolve_field(item, act_mapping, "date", "actions")
-                if desc or ex_date:
-                    lines.append(f"  [ex-date: {ex_date}] {desc[:100]}")
+            for ex_date, desc in act_rows:
+                lines.append(f"  [ex-date: {ex_date}] {desc[:100]}")
 
     return "\n".join(lines) if lines else ""

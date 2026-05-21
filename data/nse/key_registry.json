@@ -43,5 +43,181 @@
       "desc": "subject",
       "date": "exDate"
     }
+  },
+  "ADANIGREEN": {
+    "announcements": {
+      "desc": "desc",
+      "date": "an_dt",
+      "attachment": "attchmntText"
+    },
+    "board_meetings": {
+      "desc": "bm_desc",
+      "date": "bm_date"
+    },
+    "actions": {
+      "desc": "subject",
+      "date": "exDate"
+    }
+  },
+  "TATAPOWER": {
+    "announcements": {
+      "desc": "desc",
+      "date": "an_dt",
+      "attachment": "attchmntText"
+    },
+    "board_meetings": {
+      "desc": "bm_desc",
+      "date": "bm_date"
+    },
+    "actions": {
+      "desc": "subject",
+      "date": "exDate"
+    }
+  },
+  "TORNTPOWER": {
+    "announcements": {
+      "desc": "desc",
+      "date": "an_dt",
+      "attachment": "attchmntText"
+    },
+    "board_meetings": {
+      "desc": "bm_desc",
+      "date": "bm_date"
+    },
+    "actions": {
+      "desc": "subject",
+      "date": "exDate"
+    }
+  },
+  "CESC": {
+    "announcements": {
+      "desc": "desc",
+      "date": "an_dt",
+      "attachment": "attchmntText"
+    },
+    "board_meetings": {
+      "desc": "bm_desc",
+      "date": "bm_date"
+    },
+    "actions": {
+      "desc": "subject",
+      "date": "exDate"
+    }
+  },
+  "SJVN": {
+    "announcements": {
+      "desc": "desc",
+      "date": "an_dt",
+      "attachment": "attchmntText"
+    },
+    "board_meetings": {
+      "desc": "bm_desc",
+      "date": "bm_date"
+    },
+    "actions": {
+      "desc": "subject",
+      "date": "exDate"
+    }
+  },
+  "NHPC": {
+    "announcements": {
+      "desc": "desc",
+      "date": "an_dt",
+      "attachment": "attchmntText"
+    },
+    "board_meetings": {
+      "desc": "bm_desc",
+      "date": "bm_date"
+    },
+    "actions": {
+      "desc": "subject",
+      "date": "exDate"
+    }
+  },
+  "NTPC": {
+    "announcements": {
+      "desc": "desc",
+      "date": "an_dt",
+      "attachment": "attchmntText"
+    },
+    "board_meetings": {
+      "desc": "bm_desc",
+      "date": "bm_date"
+    },
+    "actions": {
+      "desc": "subject",
+      "date": "exDate"
+    }
+  },
+  "POWERGRID": {
+    "announcements": {
+      "desc": "desc",
+      "date": "an_dt",
+      "attachment": "attchmntText"
+    },
+    "board_meetings": {
+      "desc": "bm_desc",
+      "date": "bm_date"
+    },
+    "actions": {
+      "desc": "subject",
+      "date": "exDate"
+    }
+  },
+  "ADANIPOWER": {
+    "announcements": {
+      "desc": "desc",
+      "date": "an_dt",
+      "attachment": "attchmntText"
+    },
+    "board_meetings": {
+      "desc": "bm_desc",
+      "date": "bm_date"
+    },
+    "actions": {
+      "desc": "subject",
+      "date": "exDate"
+    }
+  },
+  "JSWENERGY": {
+    "announcements": {
+      "desc": "desc",
+      "date": "an_dt",
+      "attachment": "attchmntText"
+    },
+    "board_meetings": {
+      "desc": "bm_desc",
+      "date": "bm_date"
+    },
+    "actions": {
+      "desc": "subject",
+      "date": "exDate"
+    }
+  },
+  "INOXGREEN": {
+    "announcements": {
+      "desc": "desc",
+      "date": "an_dt",
+      "attachment": "attchmntText"
+    },
+    "board_meetings": {
+      "desc": "bm_desc",
+      "date": "bm_date"
+    }
+  },
+  "WAAREEENER": {
+    "announcements": {
+      "desc": "desc",
+      "date": "an_dt",
+      "attachment": "attchmntText"
+    },
+    "board_meetings": {
+      "desc": "bm_desc",
+      "date": "bm_date"
+    },
+    "actions": {
+      "desc": "subject",
+      "date": "exDate"
+    }
   }
 }

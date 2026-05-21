@@ -569,6 +569,7 @@ class ContextBuilder:
     def _build_re_fundamentals(self, query: StockQuery) -> str:
         from services.data.fetchers.fundamentals import get_fundamentals_context
         from services.data.fetchers.news import fetch_news_context
+        from services.data.fetchers.nse_announcements import format_nse_context
 
         today = date.today()
         queries = [
@@ -580,10 +581,18 @@ class ContextBuilder:
         ]
         fin = get_fundamentals_context(query.ticker)
         news = fetch_news_context(queries, api_key=self._serper_key)
-        return f"{fin}\n\n{news}"
+        # NseIndiaApi: commissioning milestones (COD events) + board meeting results dates.
+        # RE companies must file "Commencement of commercial production/operations" to NSE
+        # within 24h of COD — official, timestamped, MW detail in attchmntText.
+        nse_ctx = format_nse_context(query.nse_data, agent_type="re_fundamentals")
+        parts = [fin, news]
+        if nse_ctx:
+            parts.append(nse_ctx)
+        return "\n\n".join(parts)
 
     def _build_business(self, query: StockQuery) -> str:
         from services.data.fetchers.news import fetch_news_context
+        from services.data.fetchers.nse_announcements import format_nse_context
 
         today = date.today()
         queries = [
@@ -593,14 +602,20 @@ class ContextBuilder:
             f"{query.ticker} state wise MW distribution geography irradiance {today.year}",
         ]
         news = fetch_news_context(queries, api_key=self._serper_key)
-        return (
+        # NseIndiaApi: commissioning COD filings + PPA/project update announcements.
+        # "Commencement of commercial production/operations" filings give exact COD dates,
+        # location, and MW capacity — directly feeds pipeline_cred and subsector_mix scores.
+        nse_ctx = format_nse_context(query.nse_data, agent_type="re_business")
+        base = (
             f"Stock: {query.ticker} | Company: {query.company_name} | "
             f"Date: {query.analysis_date}\n\n{news}"
         )
+        return f"{base}\n\n{nse_ctx}" if nse_ctx else base
 
     def _build_valuation(self, query: StockQuery) -> str:
         from services.data.fetchers.fundamentals import get_fundamentals_context
         from services.data.fetchers.news import fetch_news_context
+        from services.data.fetchers.nse_announcements import format_nse_context
 
         today = date.today()
         queries = [
@@ -611,7 +626,14 @@ class ContextBuilder:
         ]
         fin = get_fundamentals_context(query.ticker)
         news = fetch_news_context(queries, api_key=self._serper_key)
-        return f"{fin}\n\n{news}"
+        # NseIndiaApi: dividend/bonus/rights from actions() (capital return policy).
+        # Fund raising board meetings (QIP, rights issue) signal equity dilution — critical
+        # for EV/MW denominator and pipeline DCF accretion/dilution calculation.
+        nse_ctx = format_nse_context(query.nse_data, agent_type="re_valuation")
+        parts = [fin, news]
+        if nse_ctx:
+            parts.append(nse_ctx)
+        return "\n\n".join(parts)
 
     def _build_sentiment_policy(self, query: StockQuery) -> str:
         from services.clients.tavily_fetcher import fetch_tavily_context
@@ -647,6 +669,7 @@ class ContextBuilder:
 
     def _build_re_risk(self, query: StockQuery) -> str:
         from services.data.fetchers.news import fetch_news_context
+        from services.data.fetchers.nse_announcements import format_nse_context
 
         today = date.today()
         queries = [
@@ -657,10 +680,15 @@ class ContextBuilder:
             f"{query.ticker} promoter pledge BSE NSE refinancing {today.year}",
         ]
         news = fetch_news_context(queries, api_key=self._serper_key)
-        return (
+        # NseIndiaApi: promoter pledge disclosures and operational risk filings.
+        # Pledge changes are mandatory NSE disclosures — official, timestamped, authoritative.
+        # Replaces the "{ticker} promoter pledge BSE NSE" Serper query for primary source.
+        nse_ctx = format_nse_context(query.nse_data, agent_type="re_risk")
+        base = (
             f"Stock: {query.ticker} | Company: {query.company_name} | "
             f"Date: {query.analysis_date}\n\n{news}"
         )
+        return f"{base}\n\n{nse_ctx}" if nse_ctx else base
 
     def _build_generic(self, query: StockQuery) -> str:
         return (

@@ -321,8 +321,8 @@ class BaseAgent(ABC):
             return output
         except Exception as exc:
             logger.error(
-                "[%s] Failed to parse LLM output: %s\nRaw: %s",
-                self.agent_name, exc, raw[:500],
+                "[%s] Failed to parse LLM output for ticker=%s: %s | raw_preview=%r",
+                self.agent_name, ticker, exc, (raw or "")[:150],
             )
             return self._error_output(ticker, str(exc), raw)
 

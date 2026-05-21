@@ -284,6 +284,7 @@ class ContextBuilder:
     def _build_bfsi_fundamentals(self, query: StockQuery) -> str:
         from services.data.fetchers.fundamentals import get_fundamentals_context
         from services.data.fetchers.news import fetch_news_context
+        from services.data.fetchers.nse_announcements import format_nse_context
 
         today = date.today()
         queries = [
@@ -295,10 +296,18 @@ class ContextBuilder:
         ]
         fin = get_fundamentals_context(query.ticker)
         news = fetch_news_context(queries, api_key=self._serper_key)
-        return f"{fin}\n\n{news}"
+        # NseIndiaApi: board meeting dates when quarterly results were formally approved —
+        # anchors data freshness for NIM/CASA/NPA context (banks must file results within
+        # 45 days of quarter end; board meeting date is the official approval timestamp).
+        nse_ctx = format_nse_context(query.nse_data, agent_type="bfsi_fundamentals")
+        parts = [fin, news]
+        if nse_ctx:
+            parts.append(nse_ctx)
+        return "\n\n".join(parts)
 
     def _build_bfsi_risk(self, query: StockQuery) -> str:
         from services.data.fetchers.news import fetch_news_context
+        from services.data.fetchers.nse_announcements import format_nse_context
 
         today = date.today()
         queries = [
@@ -309,10 +318,16 @@ class ContextBuilder:
             f"{query.company_name} cyber fraud incident CERT-In RBI report {today.year}",
         ]
         news = fetch_news_context(queries, api_key=self._serper_key)
-        return (
+        # NseIndiaApi: regulatory enforcement disclosures filed to NSE.
+        # Banks must disclose material regulatory actions (RBI penalty, SEBI notice, PCA)
+        # to the exchange within 24h — official filing precedes news coverage.
+        # Also catches management change filings that signal governance risk.
+        nse_ctx = format_nse_context(query.nse_data, agent_type="bfsi_risk")
+        base = (
             f"Stock: {query.ticker} | Company: {query.company_name} | "
             f"Date: {query.analysis_date}\n\n{news}"
         )
+        return f"{base}\n\n{nse_ctx}" if nse_ctx else base
 
     def _build_bfsi_pattern_analysis(self, query: StockQuery) -> str:
         from services.data.fetchers.fundamentals import get_fundamentals_context
@@ -332,6 +347,7 @@ class ContextBuilder:
     def _build_bfsi_institutional(self, query: StockQuery) -> str:
         from services.data.fetchers.fundamentals import get_fundamentals_context
         from services.data.fetchers.news import fetch_news_context
+        from services.data.fetchers.nse_announcements import format_nse_context
 
         today = date.today()
         queries = [
@@ -343,10 +359,19 @@ class ContextBuilder:
         ]
         fin = get_fundamentals_context(query.ticker)
         news = fetch_news_context(queries, api_key=self._serper_key)
-        return f"{fin}\n\n{news}"
+        # NseIndiaApi: ESOP allotment records (authoritative KMP exercise data) and
+        # SAST filings (Reg 29 disclosures when promoter/acquirer crosses 2% threshold).
+        # These are official NSE filings — more authoritative than Serper news scraping
+        # for fii_dii_flow and insider_trades sub-scores.
+        nse_ctx = format_nse_context(query.nse_data, agent_type="bfsi_institutional")
+        parts = [fin, news]
+        if nse_ctx:
+            parts.append(nse_ctx)
+        return "\n\n".join(parts)
 
     def _build_bfsi_universe_setup(self, query: StockQuery) -> str:
         from services.data.fetchers.news import fetch_news_context
+        from services.data.fetchers.nse_announcements import format_nse_context
 
         today = date.today()
         queries = [
@@ -357,10 +382,16 @@ class ContextBuilder:
             f"NSE Nifty Bank rebalancing reconstitution semi-annual {today.year}",
         ]
         news = fetch_news_context(queries, api_key=self._serper_key)
-        return (
+        # NseIndiaApi: actions() gives official dividend ex-dates, bonus ratios, splits/rights.
+        # Replaces query 4 "{company_name} corporate actions dividend rights merger buyback"
+        # with authoritative NSE source. Board meetings filtered to dividend/fund raising
+        # meetings surface capital allocation signals for corporate_actions sub-score.
+        nse_ctx = format_nse_context(query.nse_data, agent_type="bfsi_universe")
+        base = (
             f"Stock: {query.ticker} | Company: {query.company_name} | "
             f"Date: {query.analysis_date}\n\n{news}"
         )
+        return f"{base}\n\n{nse_ctx}" if nse_ctx else base
 
     def _build_macro_policy(self, query: StockQuery) -> str:
         from services.data.fetchers.macro import get_macro_context

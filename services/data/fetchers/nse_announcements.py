@@ -126,17 +126,24 @@ _ANN_FILTERS: dict[str, list[str]] = {
 _SHOW_BOARD_MEETINGS: frozenset[str] = frozenset({
     "fundamentals", "earnings", "valuation_catalyst", "general",
     "re_fundamentals", "re_valuation",
-    "bfsi_fundamentals",
+    "bfsi_fundamentals", "bfsi_universe",
     "it_fundamentals", "it_transcript",
 })
 
 # Optional keyword filter on board meeting purpose per agent_type.
 # Empty = show all board meetings for that agent_type.
 _BM_FILTERS: dict[str, list[str]] = {
-    # RE: only results/dividend meetings are useful for fundamentals scoring
+    # RE: only results/dividend meetings useful for fundamentals scoring
     "re_fundamentals": ["results", "financial", "dividend", "annual"],
     # RE: fund raising meetings signal equity dilution risk
     "re_valuation":    ["fund raising", "dividend", "rights", "results", "financial"],
+    # BFSI: results board meetings anchor NIM/CASA/NPA data freshness.
+    # Banks use varied phrasing — include "approve" keywords specific to results
+    # but NOT generic "consider" (which matches every board meeting description).
+    "bfsi_fundamentals": ["results", "financial results", "dividend", "annual", "quarterly",
+                           "audited", "unaudited"],
+    # BFSI universe: only dividend/capital action board meetings
+    "bfsi_universe":     ["dividend", "rights", "bonus", "fund raising"],
 }
 
 # Agent_types that include the announcements section

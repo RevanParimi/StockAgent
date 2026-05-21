@@ -158,7 +158,10 @@ def fetch_tavily_context(
         cache_file.parent.mkdir(parents=True, exist_ok=True)
         cache_file.write_text(result, encoding="utf-8")
         logger.debug("[tavily] Cache written: %s", cache_file.name)
-    except Exception as exc:
-        logger.warning("[tavily] Cache write failed (non-fatal): %s", exc)
+    except OSError as exc:
+        logger.warning(
+            "[tavily] Cache write failed for key %s (non-fatal): %s",
+            cache_file.name, exc,
+        )
 
     return result

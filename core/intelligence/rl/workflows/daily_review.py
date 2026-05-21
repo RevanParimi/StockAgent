@@ -333,7 +333,8 @@ def run_daily_review(
         )
     except Exception as exc:
         logger.warning(
-            "[daily_review] RegimeDetector failed — using NORMAL regime (non-fatal): %s", exc
+            "[daily_review] %s: RegimeDetector failed — using NORMAL regime (non-fatal): %s",
+            ticker, exc,
         )
 
     # ------------------------------------------------------------------ #
@@ -385,7 +386,9 @@ def run_daily_review(
                 if avg_20d > 0:
                     volume_vs_20d_avg = round(today_vol / avg_20d, 2)
     except Exception as exc:
-        logger.debug("[daily_review] Volume context unavailable (non-fatal): %s", exc)
+        logger.debug(
+            "[daily_review] %s: Volume context unavailable (non-fatal): %s", ticker, exc,
+        )
 
     # ------------------------------------------------------------------ #
     # Step 3: Compute error metrics + timing
@@ -445,7 +448,7 @@ def run_daily_review(
         from services.data.fetchers.news import get_news_context
         market_context = get_news_context(ticker, max_articles=3)
     except Exception as exc:
-        logger.debug("[daily_review] News context unavailable: %s", exc)
+        logger.debug("[daily_review] %s: News context unavailable: %s", ticker, exc)
 
     # Inject seasonal context so FeedbackAgent doesn't "discover" known patterns.
     # The narrative is appended to market_context_today with a clear [SEASONAL] tag.
@@ -514,7 +517,7 @@ def run_daily_review(
                 "[daily_review] P4 prompt enhancements injected (%d agents)", len(enhancements)
             )
     except Exception as exc:
-        logger.debug("[daily_review] P4 enhancements unavailable: %s", exc)
+        logger.debug("[daily_review] %s: P4 enhancements unavailable: %s", ticker, exc)
 
     # ------------------------------------------------------------------ #
     # Assemble supplementary context for FeedbackAgentInput
@@ -578,8 +581,11 @@ def run_daily_review(
         ]
         if yesterday_entries:
             previous_watch_signals = yesterday_entries[-1].revised_context.watch_signals or []
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug(
+            "[daily_review] %s: Could not load previous watch signals (non-fatal): %s",
+            ticker, exc,
+        )
 
     # 5. Volume context string
     volume_context_str = ""
@@ -707,7 +713,8 @@ def run_daily_review(
         )
     except Exception as exc:
         logger.warning(
-            "[daily_review] Regime weight application failed (using learned weights, non-fatal): %s", exc
+            "[daily_review] %s: Regime weight application failed (using learned weights, non-fatal): %s",
+            ticker, exc,
         )
         regime_effective_weights = updated_wm.effective_weights()
 
@@ -732,7 +739,8 @@ def run_daily_review(
         store.save_market_ledger(updated_market_ledger)
     except Exception as exc:
         logger.warning(
-            "[daily_review] Shared ledger propagation failed (non-fatal): %s", exc
+            "[daily_review] %s: Shared ledger propagation failed (non-fatal): %s",
+            ticker, exc,
         )
 
     # ------------------------------------------------------------------ #
@@ -793,7 +801,9 @@ def run_daily_review(
                 thesis_review.assumptions_invalidated,
             )
         except Exception as exc:
-            logger.warning("[daily_review] Thesis review failed (non-fatal): %s", exc)
+            logger.warning(
+                "[daily_review] %s: Thesis review failed (non-fatal): %s", ticker, exc,
+            )
 
     # ------------------------------------------------------------------ #
     # Step 7b: Revise remaining forecasts with regime-adjusted weights
@@ -954,7 +964,9 @@ def main() -> None:
             else:
                 print(f"[SKIP] {ticker} {review_date} — {status}")
         except Exception as exc:
-            logger.error("[daily_review] Unhandled error for %s: %s", ticker, exc)
+            logger.error(
+                "[daily_review] Unhandled error for %s: %s", ticker, exc, exc_info=True,
+            )
             errors.append(ticker)
             print(f"[FAIL] {ticker} — {exc}")
 

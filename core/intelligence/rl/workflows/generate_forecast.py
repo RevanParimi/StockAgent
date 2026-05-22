@@ -19,7 +19,7 @@ import sys
 from datetime import date, timedelta
 
 from core.config import settings
-from core.pipeline.orchestrator import AutomobileAgentOrchestrator
+from core.intelligence.rl.workflows.sector_router import get_orchestrator, get_sector_weights
 from core.schemas.feedback import DailyForecast, LearningLedger, PredictionEnvelope
 from core.schemas.pipeline import FinalReport
 from core.intelligence.rl.stores.prediction_store import PredictionStore
@@ -189,7 +189,7 @@ def generate_forecast(ticker: str, sector: str = "automobile") -> PredictionEnve
     logger.info("[generate_forecast] Starting forecast for %s | cycle=%s", ticker, cycle_id)
 
     # Load learned weights for this ticker (or bootstrap from config defaults)
-    wm = store.get_or_init_weight_memory(settings.AGENT_WEIGHTS)
+    wm = store.get_or_init_weight_memory(get_sector_weights(sector))
     effective_weights = wm.effective_weights()
     logger.info(
         "[generate_forecast] Using weight version v%d: %s",
@@ -200,8 +200,8 @@ def generate_forecast(ticker: str, sector: str = "automobile") -> PredictionEnve
     # Run orchestrator — learned weights are injected directly into SignalAggregator
     # via the _aggregator.run() call inside, so no global config mutation needed.
     # We pass them through a subclass override in the orchestrator.
-    orchestrator = AutomobileAgentOrchestrator()
-    orchestrator._aggregator_weights = effective_weights   # picked up in _run_aggregator
+    orchestrator = get_orchestrator(sector)
+    orchestrator._aggregator_weights = effective_weights
     report = orchestrator.analyse(ticker)
 
     # Fetch actual baseline close — retry once on failure before raising

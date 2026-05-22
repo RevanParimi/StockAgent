@@ -22,7 +22,7 @@ import json
 import logging
 import queue as _tq
 import threading
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 # ---------------------------------------------------------------------------
@@ -38,11 +38,12 @@ _SUBSCRIBERS: list[_tq.Queue] = []
 _SUB_LOCK = threading.Lock()
 
 _LEVEL_ORDER = {"DEBUG": 0, "INFO": 1, "WARNING": 2, "ERROR": 3, "CRITICAL": 4}
+_IST = timezone(timedelta(hours=5, minutes=30))
 
 
 def _make_entry(record: logging.LogRecord) -> dict:
     return {
-        "ts":    datetime.fromtimestamp(record.created, tz=timezone.utc).strftime("%H:%M:%S"),
+        "ts":    datetime.fromtimestamp(record.created, tz=_IST).strftime("%Y-%m-%d %H:%M:%S IST"),
         "level": record.levelname,
         "name":  record.name.split(".")[-1][:20],
         "msg":   record.getMessage(),

@@ -26,7 +26,6 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import importlib
 import logging
 import sys
 from datetime import date, timedelta
@@ -168,26 +167,12 @@ def _run_todays_agent_scores(
     Falls back to empty dict on any failure (non-fatal).
     """
     try:
-        if sector == "automobile":
-            from core.pipeline.orchestrator import AutomobileAgentOrchestrator
-            orchestrator = AutomobileAgentOrchestrator()
-            if learned_weights:
-                orchestrator._aggregator_weights = learned_weights
-            report = orchestrator.analyse(ticker)
-            return {name: ws.raw for name, ws in report.weighted_agent_scores.items()}
-
-        # Other sectors: invoke their LangGraph graph
-        # Graph module path follows the pattern: graphs.{sector}.graph
-        sector_module = importlib.import_module(f"graphs.{sector}.graph")
-        graph = getattr(sector_module, "graph")
-        state = graph.invoke({"ticker": ticker})
-        agent_outputs = state.get("agent_outputs", {})
-        return {
-            name: out.overall_score
-            for name, out in agent_outputs.items()
-            if hasattr(out, "overall_score")
-        }
-
+        from core.intelligence.rl.workflows.sector_router import get_orchestrator
+        orchestrator = get_orchestrator(sector)
+        if learned_weights:
+            orchestrator._aggregator_weights = learned_weights
+        report = orchestrator.analyse(ticker)
+        return {name: ws.raw for name, ws in report.weighted_agent_scores.items()}
     except Exception as exc:
         logger.warning(
             "[daily_review] Agent re-run failed for %s (%s): %s", ticker, sector, exc

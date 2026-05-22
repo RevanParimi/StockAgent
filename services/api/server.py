@@ -27,7 +27,7 @@ import sys
 import pathlib
 import threading
 from contextlib import asynccontextmanager
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 
 _ROOT = pathlib.Path(__file__).parent.parent.parent
 _SRC  = _ROOT / "src"
@@ -48,10 +48,21 @@ from services.api.routes.scheduler_api import router as scheduler_router
 from services.api.routes.prompts import router as prompts_router
 from services.api.routes.analytics import router as analytics_router
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s — %(message)s",
-)
+_IST = timezone(timedelta(hours=5, minutes=30))
+
+
+class _ISTFormatter(logging.Formatter):
+    """Formats log timestamps in IST (UTC+5:30) with full date."""
+    def formatTime(self, record, datefmt=None):
+        dt = datetime.fromtimestamp(record.created, tz=_IST)
+        return dt.strftime("%Y-%m-%d %H:%M:%S IST")
+
+
+logging.basicConfig(level=logging.INFO)
+_ist_fmt = _ISTFormatter("%(asctime)s %(levelname)-8s [%(name)s] %(message)s")
+for _h in logging.root.handlers:
+    _h.setFormatter(_ist_fmt)
+
 logger = logging.getLogger(__name__)
 
 # Register in-memory ring buffer handler so all log records are capturable via /ui/logs
@@ -164,6 +175,42 @@ def _self_heal_rl() -> None:
 
 
 # ---------------------------------------------------------------------------
+# Volume / data directory check — run once at startup
+# ---------------------------------------------------------------------------
+
+def _log_volume_check() -> None:
+    """
+    Log the absolute path of data/ and the state of managed_tickers.json.
+    Confirms whether the Railway Volume is correctly mounted at /app/data.
+    """
+    import os, json as _json
+    data_dir = pathlib.Path("data").resolve()
+    mt_path  = pathlib.Path("data/managed_tickers.json").resolve()
+
+    is_mount = os.path.ismount(str(data_dir))
+    logger.info("[startup] data/ abs path  : %s", data_dir)
+    logger.info("[startup] volume mounted  : %s  (os.path.ismount)", is_mount)
+
+    if mt_path.exists():
+        try:
+            raw = _json.loads(mt_path.read_text(encoding="utf-8"))
+            syms = [t.get("sym") for t in raw] if isinstance(raw, list) else []
+            logger.info(
+                "[startup] managed_tickers.json EXISTS — %d tickers on volume: %s",
+                len(syms), syms,
+            )
+        except Exception as exc:
+            logger.warning("[startup] managed_tickers.json unreadable: %s", exc)
+    else:
+        logger.warning(
+            "[startup] managed_tickers.json NOT found at %s — "
+            "will bootstrap from SCHEDULER_TICKERS on first load. "
+            "Volume gap if this is not the very first deploy.",
+            mt_path,
+        )
+
+
+# ---------------------------------------------------------------------------
 # Calendar first-run
 # ---------------------------------------------------------------------------
 
@@ -193,6 +240,9 @@ def _ensure_calendar_file() -> None:
 async def lifespan(app: FastAPI):
     # ── Startup ──────────────────────────────────────────────────────────────
     logger.info("[startup] === StockAgent startup sequence ===")
+
+    # 0. Volume / data directory verification
+    _log_volume_check()
 
     # 1. Calendar file (sync, fast — just a file check + possible HTTP call)
     _ensure_calendar_file()

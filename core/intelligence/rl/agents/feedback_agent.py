@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import time
 from datetime import date
 
@@ -290,7 +291,11 @@ class FeedbackAgent:
 
     def _parse(self, raw: str, fb_input: FeedbackAgentInput) -> FeedbackAgentOutput:
         try:
-            data = json.loads(raw)
+            stripped = (raw or "").strip()
+            if stripped.startswith("```"):
+                stripped = re.sub(r"^```(?:json)?\s*", "", stripped)
+                stripped = re.sub(r"\s*```\s*$", "", stripped).strip()
+            data = json.loads(stripped)
 
             # Parse raw lessons with scope
             raw_lessons = [

@@ -41,6 +41,18 @@ from core.config import settings
 
 logger = logging.getLogger(__name__)
 
+_SEP = "=" * 65
+
+
+def _job_banner(label: str, done: bool = False) -> None:
+    """Emit a visual separator so each scheduled job is easy to spot in Railway logs."""
+    if done:
+        logger.info("%s  DONE: %s  %s", _SEP, label, _SEP)
+    else:
+        logger.info(_SEP)
+        logger.info("  JOB START: %s", label)
+        logger.info(_SEP)
+
 
 def _active_tickers() -> list[str]:
     """Read enabled tickers from managed_tickers.json; fall back to settings."""
@@ -55,10 +67,13 @@ def _active_tickers() -> list[str]:
                 tickers = [t for t in tickers if isinstance(t, str) and t.strip()]
             if tickers:
                 return tickers
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.warning("[scheduler] Could not load tickers from managed_tickers.json: %s", exc, exc_info=True)
 
     tickers = list(settings.SCHEDULER_TICKERS)
+    logger.info(
+        "[scheduler] _active_tickers() fell back to SCHEDULER_TICKERS env var: %s", tickers
+    )
 
     if not tickers:
         logger.warning(
@@ -244,10 +259,15 @@ class AutomobileScheduler:
             review_date -= timedelta(days=1)
 
         ticker_entries = get_active_tickers_with_sector()
-        logger.info("[Scheduler] === RL daily review — %s (%d tickers) ===", review_date.isoformat(), len(ticker_entries))
+        _job_banner(f"RL Daily Review — {review_date.isoformat()} ({len(ticker_entries)} tickers)")
+        logger.info(
+            "[Scheduler] Active tickers for this run: %s",
+            [e["sym"] for e in ticker_entries],
+        )
         for entry in ticker_entries:
             ticker = entry["sym"]
             sector = entry.get("sector", "automobile")
+            logger.info("[Scheduler] Processing %s (sector=%s) ...", ticker, sector)
             try:
                 with _cf.ThreadPoolExecutor(max_workers=1) as executor:
                     future = executor.submit(run_daily_review, ticker, review_date, sector=sector)
@@ -266,7 +286,7 @@ class AutomobileScheduler:
                 logger.error(
                     "[Scheduler] Daily review FAILED for %s: %s", ticker, exc, exc_info=True
                 )
-        logger.info("[Scheduler] === RL daily review complete ===")
+        _job_banner("RL Daily Review", done=True)
 
     def _monthly_forecast_job(self) -> None:
         """
@@ -278,12 +298,15 @@ class AutomobileScheduler:
 
         today = date.today()
         ticker_entries = get_active_tickers_with_sector()
+        _job_banner(f"RL Monthly Forecast — {today.year}-{today.month:02d} ({len(ticker_entries)} tickers)")
         logger.info(
-            "[Scheduler] === RL monthly forecast — %d-%02d (%d tickers) ===", today.year, today.month, len(ticker_entries)
+            "[Scheduler] Active tickers for this run: %s",
+            [e["sym"] for e in ticker_entries],
         )
         for entry in ticker_entries:
             ticker = entry["sym"]
             sector = entry.get("sector", "automobile")
+            logger.info("[Scheduler] Generating forecast for %s (sector=%s) ...", ticker, sector)
             try:
                 env = generate_forecast(ticker, sector=sector)
                 logger.info(
@@ -295,14 +318,14 @@ class AutomobileScheduler:
                 logger.error(
                     "[Scheduler] Monthly forecast FAILED for %s: %s", ticker, exc, exc_info=True
                 )
-        logger.info("[Scheduler] === RL monthly forecast complete ===")
+        _job_banner("RL Monthly Forecast", done=True)
 
     def _prompt_deploy_job(self) -> None:
         """
         Deploy any pending prompt file changes to GitHub once per day at midnight IST.
         Skips silently if nothing is pending or GITHUB_TOKEN/REPO are not set.
         """
-        logger.info("[Scheduler] === Prompt daily deploy ===")
+        _job_banner("Prompt Daily Deploy")
         try:
             from services.api.routes.prompts import run_scheduled_deploy
             result = run_scheduled_deploy(triggered_by="scheduler")
@@ -318,17 +341,18 @@ class AutomobileScheduler:
                 )
         except Exception as exc:
             logger.error("[Scheduler] Prompt deploy FAILED: %s", exc, exc_info=True)
-        logger.info("[Scheduler] === Prompt daily deploy done ===")
+        _job_banner("Prompt Daily Deploy", done=True)
 
     def _calendar_update_job(self) -> None:
         """Fetch NSE holidays for next year and hot-reload the calendar."""
-        logger.info("[Scheduler] === NSE calendar update (Dec 31 annual job) ===")
+        _job_banner("NSE Calendar Update (Dec 31 annual)")
         try:
             from core.intelligence.rl.calendar_updater import run_dec31_update
             run_dec31_update()
             logger.info("[Scheduler] Calendar update complete")
         except Exception as exc:
             logger.error("[Scheduler] Calendar update FAILED: %s", exc, exc_info=True)
+        _job_banner("NSE Calendar Update", done=True)
 
     def _macro_market_news_job(self) -> None:
         """
@@ -336,7 +360,7 @@ class AutomobileScheduler:
         Queries Serper /news for real-time Nifty/market developments.
         Non-fatal: errors are logged but never crash the scheduler.
         """
-        logger.info("[Scheduler] === Macro news — market-hours run ===")
+        _job_banner("Macro News — Market Hours (9/12/15 IST)")
         try:
             from services.background.macro_news_fetcher import MacroNewsFetcher
             result = MacroNewsFetcher().fetch_and_review("market_hours")
@@ -346,6 +370,7 @@ class AutomobileScheduler:
             )
         except Exception as exc:
             logger.error("[Scheduler] Macro market-hours FAILED: %s", exc, exc_info=True)
+        _job_banner("Macro News — Market Hours", done=True)
 
     def _macro_daily_news_job(self) -> None:
         """
@@ -353,7 +378,7 @@ class AutomobileScheduler:
         Queries policy/RBI Serper news + NewsAPI top-headlines.
         Non-fatal: errors are logged but never crash the scheduler.
         """
-        logger.info("[Scheduler] === Macro news — daily policy run ===")
+        _job_banner("Macro News — Daily Policy/RBI (7:30 IST)")
         try:
             from services.background.macro_news_fetcher import MacroNewsFetcher
             result = MacroNewsFetcher().fetch_and_review("daily")
@@ -363,6 +388,7 @@ class AutomobileScheduler:
             )
         except Exception as exc:
             logger.error("[Scheduler] Macro daily FAILED: %s", exc, exc_info=True)
+        _job_banner("Macro News — Daily Policy/RBI", done=True)
 
     def _ledger_cleanup_job(self) -> None:
         """
@@ -384,7 +410,7 @@ class AutomobileScheduler:
             )
 
         tickers = _active_tickers()
-        logger.info("[Scheduler] === Weekly ledger cleanup — %d tickers ===", len(tickers))
+        _job_banner(f"Weekly Ledger Cleanup — {len(tickers)} tickers")
         for ticker in tickers:
             try:
                 sector = _sector_for(ticker)
@@ -405,8 +431,8 @@ class AutomobileScheduler:
                         ticker, n_market + n_sector,
                     )
             except Exception as exc:
-                logger.warning("[Scheduler] Ledger cleanup failed for %s: %s", ticker, exc)
-        logger.info("[Scheduler] === Weekly ledger cleanup complete ===")
+                logger.warning("[Scheduler] Ledger cleanup failed for %s: %s", ticker, exc, exc_info=True)
+        _job_banner("Weekly Ledger Cleanup", done=True)
 
     # ------------------------------------------------------------------
     # Public interface

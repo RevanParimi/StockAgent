@@ -110,9 +110,8 @@ class BaseSectorOrchestrator(ABC):
         logger.info("[%s] Resolved: %s -> %s", self.SECTOR_NAME, user_input, query)
 
         if self._aggregator_weights is None:
-            self._aggregator_weights = await asyncio.to_thread(
-                self._load_learned_weights, query.ticker
-            )
+            learned = await asyncio.to_thread(self._load_learned_weights, query.ticker)
+            self._aggregator_weights = learned or self._get_default_weights()
 
         # Pre-fetch NseIndiaApi data before fan-out — NSE() is sync, run in thread.
         # All 8 parallel agents share query.nse_data as read-only (set here, never written by agents).
@@ -173,7 +172,10 @@ class BaseSectorOrchestrator(ABC):
         logger.info("[%s] Resolved: %s -> %s", self.SECTOR_NAME, user_input, query)
 
         if self._aggregator_weights is None:
-            self._aggregator_weights = self._load_learned_weights(query.ticker)
+            self._aggregator_weights = (
+                self._load_learned_weights(query.ticker)
+                or self._get_default_weights()
+            )
 
         # Pre-fetch NseIndiaApi data before fan-out — one session, three calls, 0.5s sleep each.
         # All 8 parallel agents share query.nse_data as read-only.
@@ -238,6 +240,10 @@ class BaseSectorOrchestrator(ABC):
         except Exception as exc:
             logger.debug("[%s] No RL weights for %s: %s", self.SECTOR_NAME, ticker, exc)
         return None
+
+    def _get_default_weights(self) -> dict[str, float]:
+        """Sector-specific default weights when no RL data exists. Override in sector subclasses."""
+        return settings.AGENT_WEIGHTS
 
     # ------------------------------------------------------------------
     # NseIndiaApi pre-fetch (called before LangGraph fan-out)

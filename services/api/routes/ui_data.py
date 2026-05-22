@@ -2475,13 +2475,23 @@ async def _generate_envelope_for_new_ticker(sym: str, sector: str) -> None:
     try:
         from core.intelligence.rl.workflows.generate_forecast import generate_forecast
         import asyncio as _asyncio
-        logger.info("[tickers/managed] Generating envelope for new ticker %s (%s)...", sym, sector)
-        # Run in thread (generate_forecast is synchronous)
+        logger.info(
+            "[tickers/managed] ENVELOPE START: %s (sector=%s) — running full 9-agent pipeline (~2 min)",
+            sym, sector,
+        )
         env = await _asyncio.to_thread(generate_forecast, sym, sector=sector)
-        logger.info("[tickers/managed] Envelope generated for %s: %s", sym, env.cycle_id if env else "None")
+        if env:
+            logger.info(
+                "[tickers/managed] ENVELOPE DONE: %s  cycle=%s  horizon=%dd  base=%.2f  weights=v%d",
+                sym, env.cycle_id, len(env.daily_forecasts), env.base_close, env.weight_version_used,
+            )
+        else:
+            logger.warning("[tickers/managed] ENVELOPE DONE: %s returned None envelope", sym)
     except Exception as exc:
-        logger.warning("[tickers/managed] Envelope generation failed for %s: %s", sym, exc)
-        # Non-fatal — scheduler will pick it up on month 1st
+        logger.warning(
+            "[tickers/managed] ENVELOPE FAILED: %s: %s — scheduler will retry on 1st of month",
+            sym, exc, exc_info=True,
+        )
 
 
 def _cleanup_ticker_rl_data(sym: str, sector: str) -> None:
@@ -2563,10 +2573,27 @@ async def add_managed_ticker(sym: str, body: _ManagedTickerBody = _ManagedTicker
         "enabled": body.enabled,
     })
     _save_mt(tickers)
-    logger.info("[ui/tickers/managed] Added %s (%s)", sym_up, resolved_sector)
+
+    from pathlib import Path as _P
+    _mt_abs = _P("data/managed_tickers.json").resolve()
+    logger.info(
+        "[tickers/managed] ADD: %s  sector=%s  auto_detected=%s | "
+        "file=%s | total_tickers=%d: %s",
+        sym_up, resolved_sector, sector_auto_detected,
+        _mt_abs, len(tickers), [t["sym"] for t in tickers],
+    )
+    logger.info(
+        "[tickers/managed] Scheduler will pick up %s on next job run "
+        "(daily review / monthly forecast reads managed_tickers.json fresh each time)",
+        sym_up,
+    )
 
     # Trigger async envelope generation so new ticker doesn't wait until month-end
     _asyncio.create_task(_generate_envelope_for_new_ticker(sym_up, resolved_sector))
+    logger.info(
+        "[tickers/managed] Envelope generation queued for %s (%s) in background",
+        sym_up, resolved_sector,
+    )
 
     return {
         "added": sym_up,
@@ -2597,10 +2624,20 @@ async def remove_managed_ticker(sym: str) -> dict:
     removed_entry = next((t for t in tickers if t["sym"] == sym_up), None)
     tickers = [t for t in tickers if t["sym"] != sym_up]
     _save_mt(tickers)
-    logger.info("[ui/tickers/managed] Removed %s", sym_up)
+
+    from pathlib import Path as _P
+    _mt_abs = _P("data/managed_tickers.json").resolve()
+    logger.info(
+        "[tickers/managed] REMOVE: %s | file=%s | remaining=%d: %s",
+        sym_up, _mt_abs, len(tickers), [t["sym"] for t in tickers],
+    )
 
     # FIX 3: Clean up RL prediction data (non-fatal if it fails)
     if removed_entry:
+        logger.info(
+            "[tickers/managed] Cleaning up RL prediction data for %s (sector=%s)",
+            sym_up, removed_entry.get("sector", "automobile"),
+        )
         _cleanup_ticker_rl_data(sym_up, removed_entry.get("sector", "automobile"))
 
     return {"removed": sym_up, "tickers": tickers}
@@ -2610,11 +2647,25 @@ async def remove_managed_ticker(sym: str) -> dict:
 async def toggle_managed_ticker(sym: str) -> dict:
     sym_up = sym.strip().upper()
     tickers = _load_mt()
+    toggled = None
     for t in tickers:
         if t["sym"] == sym_up:
             t["enabled"] = not t.get("enabled", True)
+            toggled = t
             break
     _save_mt(tickers)
+
+    from pathlib import Path as _P
+    _mt_abs = _P("data/managed_tickers.json").resolve()
+    if toggled:
+        logger.info(
+            "[tickers/managed] TOGGLE: %s  enabled=%s | file=%s | active_count=%d",
+            sym_up, toggled["enabled"], _mt_abs,
+            sum(1 for t in tickers if t.get("enabled", True)),
+        )
+    else:
+        logger.warning("[tickers/managed] TOGGLE: %s not found in managed list", sym_up)
+
     return {"tickers": tickers}
 
 

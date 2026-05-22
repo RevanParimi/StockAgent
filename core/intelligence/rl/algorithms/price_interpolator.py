@@ -53,6 +53,7 @@ import json
 import logging
 import math
 import random
+import re
 import time
 from typing import Literal
 
@@ -346,7 +347,11 @@ class PriceInterpolator:
 
     def _parse(self, raw: str, verdict: str, atr_pct: float) -> ForecastProfile:
         try:
-            data = json.loads(raw)
+            stripped = (raw or "").strip()
+            if stripped.startswith("```"):
+                stripped = re.sub(r"^```(?:json)?\s*", "", stripped)
+                stripped = re.sub(r"\s*```\s*$", "", stripped).strip()
+            data = json.loads(stripped)
         except json.JSONDecodeError:
             return self._static_fallback(verdict, atr_pct)
 

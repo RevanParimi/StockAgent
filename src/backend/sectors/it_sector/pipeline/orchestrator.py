@@ -10,3 +10,7 @@ class ITAgentOrchestrator(BaseSectorOrchestrator):
     def __init__(self) -> None:
         self._sub_agents = AGENTS
         super().__init__()
+
+    def _get_default_weights(self) -> dict[str, float]:
+        from backend.sectors.it_sector.config.settings import AGENT_WEIGHTS
+        return AGENT_WEIGHTS

@@ -141,18 +141,33 @@ _KNOWN_NAMES: dict[str, str] = {
 }
 
 
+_log = logging.getLogger(__name__)
+
+
 def load_managed_tickers() -> list[dict]:
     """
     Return the managed ticker list from data/managed_tickers.json.
     If the file doesn't exist, seeds it from settings.SCHEDULER_TICKERS.
     """
+    abs_path = _MANAGED_TICKERS_PATH.resolve()
     if _MANAGED_TICKERS_PATH.exists():
         try:
             raw = json.loads(_MANAGED_TICKERS_PATH.read_text(encoding="utf-8"))
             if isinstance(raw, list) and raw:
+                _log.debug(
+                    "[managed_tickers] Read %d tickers from %s: %s",
+                    len(raw), abs_path, [t.get("sym") for t in raw],
+                )
                 return raw
-        except Exception:
-            pass
+            _log.warning("[managed_tickers] %s is empty or malformed — bootstrapping", abs_path)
+        except Exception as exc:
+            _log.warning("[managed_tickers] Could not parse %s: %s — bootstrapping", abs_path, exc)
+    else:
+        _log.warning(
+            "[managed_tickers] %s NOT FOUND — bootstrapping from SCHEDULER_TICKERS env var. "
+            "If volume is mounted at /app/data this should only happen on first ever deploy.",
+            abs_path,
+        )
 
     # Bootstrap from settings
     try:
@@ -170,6 +185,10 @@ def load_managed_tickers() -> list[dict]:
         }
         for sym in seed
     ]
+    _log.info(
+        "[managed_tickers] Bootstrap seed: %d tickers from SCHEDULER_TICKERS: %s",
+        len(default), [t["sym"] for t in default],
+    )
     save_managed_tickers(default)
     return default
 
@@ -177,6 +196,11 @@ def load_managed_tickers() -> list[dict]:
 def save_managed_tickers(tickers: list[dict]) -> None:
     _MANAGED_TICKERS_PATH.parent.mkdir(parents=True, exist_ok=True)
     _MANAGED_TICKERS_PATH.write_text(json.dumps(tickers, indent=2), encoding="utf-8")
+    abs_path = _MANAGED_TICKERS_PATH.resolve()
+    _log.info(
+        "[managed_tickers] Written %d tickers to %s: %s",
+        len(tickers), abs_path, [t.get("sym") for t in tickers],
+    )
 
 
 def get_active_tickers() -> list[str]:

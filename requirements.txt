@@ -14,6 +14,7 @@ beautifulsoup4>=4.12.0    # HTML parsing for web scraping
 pandas>=2.2.0             # Tabular data handling
 yfinance>=0.2.40          # Yahoo Finance OHLCV data (pattern analysis)
 requests>=2.31.0          # Serper + NewsAPI HTTP calls
+nse>=2.0.0                # NseIndiaApi (BennyThadikaran) — announcements / board meetings / actions
 
 # Phase 4 – Python scheduler (kept as fallback; C# Quartz.NET is primary)
 apscheduler>=3.10.0       # Cron-based periodic trigger

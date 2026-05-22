@@ -92,22 +92,67 @@ def _should_skip_agent_rerun(
 
 
 def _fetch_actual_close(ticker: str, target_date: date) -> float | None:
-    """Fetch the actual closing price for a specific date via yfinance."""
-    try:
-        df = get_price_history(ticker, years=1)
-        if df.empty:
+    """
+    Fetch the actual closing price for a specific date via yfinance.
+
+    Uses yf.download() with a narrow window — it refreshes the crumb automatically
+    and avoids the 401 'Invalid Crumb' errors seen with .history() on long-running processes.
+    Falls back to get_price_history() (C++ fetcher) if download fails.
+    """
+    import yfinance as yf
+    from datetime import timedelta
+
+    suffix = ".NS"
+    yf_sym = ticker if ticker.endswith(suffix) else f"{ticker}{suffix}"
+    # Fetch 7-day window to ensure we catch the target date even with holidays
+    start = (target_date - timedelta(days=7)).isoformat()
+    end   = (target_date + timedelta(days=1)).isoformat()
+
+    def _extract(df) -> float | None:
+        if df is None or df.empty:
             return None
         close = df["Close"].squeeze()
+        if hasattr(close, "columns"):          # multi-level columns — take first
+            close = close.iloc[:, 0]
+        close = close.dropna()
         target_str = target_date.isoformat()
-        if target_str in close.index.astype(str).tolist():
-            return float(close[close.index.astype(str) == target_str].iloc[-1])
+        mask = close.index.astype(str) == target_str
+        if mask.any():
+            return float(close[mask].iloc[-1])
         available = close[close.index.date <= target_date]
-        if available.empty:
-            return None
-        return float(available.iloc[-1])
+        return float(available.iloc[-1]) if not available.empty else None
+
+    # Attempt 1: yf.download() — handles crumb refresh automatically
+    try:
+        df = yf.download(yf_sym, start=start, end=end, progress=False, auto_adjust=True)
+        result = _extract(df)
+        if result is not None:
+            return result
+        logger.debug("[daily_review] yf.download() returned empty for %s on %s", yf_sym, target_date)
     except Exception as exc:
-        logger.warning("[daily_review] Could not fetch close for %s on %s: %s", ticker, target_date, exc)
-        return None
+        logger.warning("[daily_review] yf.download() failed for %s: %s", yf_sym, exc)
+
+    # Attempt 2: BSE fallback (.BO suffix) — Yahoo sometimes serves BSE when NSE is stale
+    bse_sym = ticker if ticker.endswith(".BO") else f"{ticker}.BO"
+    try:
+        df = yf.download(bse_sym, start=start, end=end, progress=False, auto_adjust=True)
+        result = _extract(df)
+        if result is not None:
+            logger.debug("[daily_review] Used .BO fallback price for %s", ticker)
+            return result
+    except Exception as exc:
+        logger.debug("[daily_review] BSE fallback failed for %s: %s", bse_sym, exc)
+
+    # Attempt 3: get_price_history() (C++ fetcher, 1-year window, legacy path)
+    try:
+        df = get_price_history(ticker, years=1)
+        result = _extract(df)
+        if result is not None:
+            return result
+    except Exception as exc:
+        logger.warning("[daily_review] get_price_history() failed for %s on %s: %s", ticker, target_date, exc)
+
+    return None
 
 
 def _run_todays_agent_scores(

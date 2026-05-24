@@ -318,14 +318,21 @@ class FeedbackAgent:
                 # Backward compat: LLM returned a string instead of an object
                 revised_context = RevisedContext(headline=rc_raw)
             else:
+                raw_conf_adj = float(rc_raw.get("horizon_confidence_adjustment", 0.0))
+                # Clamp to [-0.15, +0.05]: thesis_reviewer handles deeper cuts via multiplier
+                clamped_conf_adj = max(-0.15, min(0.05, raw_conf_adj))
+                if clamped_conf_adj != raw_conf_adj:
+                    logger.warning(
+                        "[FeedbackAgent] horizon_confidence_adjustment %.3f out of range "
+                        "[-0.15, +0.05] — clamped to %.3f",
+                        raw_conf_adj, clamped_conf_adj,
+                    )
                 revised_context = RevisedContext(
                     headline=rc_raw.get("headline", ""),
                     risks_next_7_days=rc_raw.get("risks_next_7_days", []),
                     catalysts_next_7_days=rc_raw.get("catalysts_next_7_days", []),
                     watch_signals=rc_raw.get("watch_signals", []),
-                    horizon_confidence_adjustment=float(
-                        rc_raw.get("horizon_confidence_adjustment", 0.0)
-                    ),
+                    horizon_confidence_adjustment=clamped_conf_adj,
                 )
 
             # Validate miss_type

@@ -570,17 +570,31 @@ class LearningLedger(BaseModel):
     def active_lessons_summary(self) -> str:
         """
         Compact text injected into the FeedbackAgent prompt.
-        Uses effective (decay-adjusted) confidence so the LLM naturally
-        weights recent patterns higher than stale ones.
+        Filters out nearly-stale lessons (eff_confidence < 0.20) and sorts
+        by effective confidence descending so the LLM sees the most reliable,
+        recent patterns first.
         """
-        active = [l for l in self.lessons if l.still_valid]
+        _min_eff = 0.20
+        active = [
+            l for l in self.lessons
+            if l.still_valid and self.effective_confidence(l) >= _min_eff
+        ]
         if not active:
             return "No lessons learned yet."
-        lines = [
-            f"{l.lesson_id} [{l.category}|{l.scope}] {l.pattern}: {l.rule} "
-            f"(eff_confidence={self.effective_confidence(l):.2f}, seen={l.occurrences}x)"
-            for l in active
-        ]
+        active.sort(key=lambda l: self.effective_confidence(l), reverse=True)
+        today = date.today()
+        lines = []
+        for l in active:
+            ref_str = l.last_seen or l.date_learned or ""
+            try:
+                days_ago = (today - date.fromisoformat(ref_str)).days
+            except Exception:
+                days_ago = -1
+            age = f"{days_ago}d ago" if days_ago >= 0 else "?"
+            lines.append(
+                f"{l.lesson_id} [{l.category}|{l.scope}] {l.pattern}: {l.rule} "
+                f"(eff_confidence={self.effective_confidence(l):.2f}, seen={l.occurrences}x, last={age})"
+            )
         return "\n".join(lines)
 
     def increment_miss(self, factor: str) -> None:

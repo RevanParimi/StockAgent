@@ -264,28 +264,45 @@ class AutomobileScheduler:
             "[Scheduler] Active tickers for this run: %s",
             [e["sym"] for e in ticker_entries],
         )
-        for entry in ticker_entries:
-            ticker = entry["sym"]
-            sector = entry.get("sector", "automobile")
-            logger.info("[Scheduler] Processing %s (sector=%s) ...", ticker, sector)
+
+        max_w = getattr(settings, "RL_SCHEDULER_MAX_WORKERS", 1)
+        logger.info("[Scheduler] Running with max_workers=%d", max_w)
+
+        def _review_one(entry: dict) -> tuple[str, str, dict | None, Exception | None]:
+            t = entry["sym"]
+            s = entry.get("sector", "automobile")
             try:
-                with _cf.ThreadPoolExecutor(max_workers=1) as executor:
-                    future = executor.submit(run_daily_review, ticker, review_date, sector=sector)
-                    summary = future.result(timeout=180)  # 3-minute per-ticker timeout
-                logger.info(
-                    "[Scheduler] %s %s sector=%s — status=%s direction=%s lessons=%s weights=v%s",
-                    ticker, review_date, sector,
-                    summary.get("status"),
-                    summary.get("direction_correct"),
-                    summary.get("lessons_added"),
-                    summary.get("weight_version"),
-                )
-            except _cf.TimeoutError:
-                logger.error("[Scheduler] Daily review TIMED OUT for %s after 180s", ticker)
+                result = run_daily_review(t, review_date, sector=s)
+                return t, s, result, None
             except Exception as exc:
-                logger.error(
-                    "[Scheduler] Daily review FAILED for %s: %s", ticker, exc, exc_info=True
-                )
+                return t, s, None, exc
+
+        with _cf.ThreadPoolExecutor(max_workers=max_w) as executor:
+            futures = {
+                executor.submit(_review_one, entry): entry
+                for entry in ticker_entries
+            }
+            for future in _cf.as_completed(futures, timeout=180 * len(ticker_entries)):
+                try:
+                    ticker, sector, summary, err = future.result(timeout=180)
+                    if err is not None:
+                        logger.error(
+                            "[Scheduler] Daily review FAILED for %s: %s", ticker, err, exc_info=True
+                        )
+                    else:
+                        logger.info(
+                            "[Scheduler] %s %s sector=%s — status=%s direction=%s lessons=%s weights=v%s",
+                            ticker, review_date, sector,
+                            summary.get("status"),
+                            summary.get("direction_correct"),
+                            summary.get("lessons_added"),
+                            summary.get("weight_version"),
+                        )
+                except _cf.TimeoutError:
+                    logger.error("[Scheduler] Daily review TIMED OUT after 180s")
+                except Exception as exc:
+                    logger.error("[Scheduler] Unexpected error in daily review: %s", exc, exc_info=True)
+
         _job_banner("RL Daily Review", done=True)
 
     def _monthly_forecast_job(self) -> None:
@@ -415,20 +432,48 @@ class AutomobileScheduler:
             try:
                 sector = _sector_for(ticker)
                 store = PredictionStore(ticker, sector=sector)
-                _, sector_ledger, market_ledger = store.load_all_ledgers()
+                ticker_ledger, sector_ledger, market_ledger = store.load_all_ledgers()
 
                 n_market = downgrade_stale_lessons(market_ledger)
                 n_sector = downgrade_stale_lessons(sector_ledger)
+                # Also downgrade the ticker's own ledger — its lessons have only 1
+                # contributing ticker by definition, so stale ones are eligible.
+                n_ticker = downgrade_stale_lessons(ticker_ledger)
+
+                # P3-16: Sync scope downgrades back to the ticker's own ledger.
+                # When a shared lesson is downgraded, the ticker's own copy of the
+                # same lesson (matched by pattern) must be updated too, otherwise
+                # the ticker ledger and shared ledger are out of sync.
+                shared_scope: dict[str, str] = {}
+                for sl in sector_ledger.lessons:
+                    shared_scope[sl.pattern] = sl.scope
+                for ml in market_ledger.lessons:
+                    shared_scope[ml.pattern] = ml.scope  # market takes precedence
+                _rank = {"stock_specific": 0, "sector_wide": 1, "market_wide": 2}
+                for tl in ticker_ledger.lessons:
+                    new_scope = shared_scope.get(tl.pattern)
+                    if new_scope and _rank.get(new_scope, 0) < _rank.get(tl.scope, 0):
+                        logger.info(
+                            "[Scheduler] %s: syncing lesson %s scope %s → %s "
+                            "(shared ledger downgrade)",
+                            ticker, tl.lesson_id, tl.scope, new_scope,
+                        )
+                        tl.scope = new_scope
+                        n_ticker += 1
 
                 if n_market:
                     store.save_market_ledger(market_ledger)
                 if n_sector:
                     store.save_sector_ledger(sector_ledger)
+                if n_ticker:
+                    store.save_learning_ledger(ticker_ledger)
 
-                if n_market + n_sector:
+                total_modified = n_market + n_sector + n_ticker
+                if total_modified:
                     logger.info(
-                        "[Scheduler] Ledger cleanup %s: %d lessons modified",
-                        ticker, n_market + n_sector,
+                        "[Scheduler] Ledger cleanup %s: %d lessons modified "
+                        "(market=%d, sector=%d, ticker=%d)",
+                        ticker, total_modified, n_market, n_sector, n_ticker,
                     )
             except Exception as exc:
                 logger.warning("[Scheduler] Ledger cleanup failed for %s: %s", ticker, exc, exc_info=True)

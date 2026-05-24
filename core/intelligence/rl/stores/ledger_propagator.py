@@ -213,14 +213,27 @@ def build_tiered_lessons_summary(
       TIER 2 — up to 3 sector-wide lessons from the shared sector ledger
       TIER 3 — up to 2 market-wide lessons from the shared market ledger
 
-    The contributing_tickers list is shown for Tier 2/3 so the LLM understands
-    how many independent tickers confirmed each sector/market pattern.
+    Lessons with effective_confidence < 0.20 are excluded — they are nearly
+    stale and their signal has decayed too far to be actionable.
     """
+    from datetime import date as _date
+    today = _date.today()
+    _min_eff = 0.20
+
+    def _age(lesson: Lesson) -> str:
+        ref = lesson.last_seen or lesson.date_learned or ""
+        try:
+            return f"{(today - _date.fromisoformat(ref)).days}d ago"
+        except Exception:
+            return "?"
+
     lines: list[str] = []
 
     # ── TIER 1: stock-specific ────────────────────────────────────────────────
     t1 = sorted(
-        [l for l in ticker_ledger.lessons if l.still_valid and l.scope == "stock_specific"],
+        [l for l in ticker_ledger.lessons
+         if l.still_valid and l.scope == "stock_specific"
+         and ticker_ledger.effective_confidence(l) >= _min_eff],
         key=lambda l: ticker_ledger.effective_confidence(l),
         reverse=True,
     )[:6]
@@ -229,12 +242,15 @@ def build_tiered_lessons_summary(
         for l in t1:
             lines.append(
                 f"  {l.lesson_id} [{l.category}] {l.pattern}: {l.rule} "
-                f"(eff_conf={ticker_ledger.effective_confidence(l):.2f}, seen={l.occurrences}x)"
+                f"(eff_conf={ticker_ledger.effective_confidence(l):.2f}, "
+                f"seen={l.occurrences}x, last={_age(l)})"
             )
 
     # ── TIER 2: sector-wide ───────────────────────────────────────────────────
     t2 = sorted(
-        [l for l in sector_ledger.lessons if l.still_valid],
+        [l for l in sector_ledger.lessons
+         if l.still_valid
+         and sector_ledger.effective_confidence(l) >= _min_eff],
         key=lambda l: sector_ledger.effective_confidence(l),
         reverse=True,
     )[:3]
@@ -245,12 +261,14 @@ def build_tiered_lessons_summary(
             lines.append(
                 f"  {l.lesson_id} [{l.category}] {l.pattern}: {l.rule} "
                 f"(eff_conf={sector_ledger.effective_confidence(l):.2f}, "
-                f"confirmed_by=[{tickers_str}], seen={l.occurrences}x)"
+                f"confirmed_by=[{tickers_str}], seen={l.occurrences}x, last={_age(l)})"
             )
 
     # ── TIER 3: market-wide ───────────────────────────────────────────────────
     t3 = sorted(
-        [l for l in market_ledger.lessons if l.still_valid],
+        [l for l in market_ledger.lessons
+         if l.still_valid
+         and market_ledger.effective_confidence(l) >= _min_eff],
         key=lambda l: market_ledger.effective_confidence(l),
         reverse=True,
     )[:2]
@@ -261,7 +279,7 @@ def build_tiered_lessons_summary(
             lines.append(
                 f"  {l.lesson_id} [{l.category}] {l.pattern}: {l.rule} "
                 f"(eff_conf={market_ledger.effective_confidence(l):.2f}, "
-                f"confirmed_by=[{tickers_str}], seen={l.occurrences}x)"
+                f"confirmed_by=[{tickers_str}], seen={l.occurrences}x, last={_age(l)})"
             )
 
     return "\n".join(lines) if lines else "No lessons learned yet."

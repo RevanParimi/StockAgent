@@ -54,6 +54,9 @@ MISS TYPE TAXONOMY (classify every miss into exactly one):
   external_shock — unpredictable black-swan event (sudden war, exchange circuit breaker,
                    surprise regulatory ban); no model could have foreseen it
                    → zero weight penalty
+                   ⚠ STRICT CAP: external_shock must not exceed 20% of all days analysed
+                   for this stock in the current cycle. If that cap is already reached,
+                   you MUST assign a different miss_type (typically model_bias or direction_flip).
   timing         — direction was CORRECT but the stock moved earlier or later than predicted
                    → half weight penalty
   magnitude      — direction was CORRECT but the size of the move was much larger/smaller

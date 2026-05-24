@@ -434,11 +434,16 @@ def compute_historical_avg_return(
     feedback_log_or_entries,
     verdict: str,
     last_n_cycles: int = 6,
+    regime_label: str | None = None,
 ) -> float | None:
     """
     Compute median observed price_error_pct for a given verdict.
     Accepts either a DailyFeedbackLog object or a plain list of FeedbackEntry objects.
     Returns None if fewer than 3 matching entries.
+
+    regime_label : when provided, first attempts to filter entries to the same regime
+    (same regime = more accurate calibration). Falls back to all-regime entries if
+    fewer than 3 same-regime entries exist (prevents empty result at regime transitions).
     """
     try:
         if isinstance(feedback_log_or_entries, list):
@@ -451,20 +456,37 @@ def compute_historical_avg_return(
         if not all_entries:
             return None
 
-        matching = [
+        verdict_upper = verdict.upper()
+
+        def _median(values: list[float]) -> float:
+            s = sorted(values)
+            mid = len(s) // 2
+            return s[mid] if len(s) % 2 != 0 else (s[mid - 1] + s[mid]) / 2
+
+        # First pass: same-regime entries (most accurate for current market conditions)
+        if regime_label:
+            regime_matching = [
+                e.price_error_pct
+                for e in all_entries
+                if e.predicted_verdict.upper() == verdict_upper
+                and getattr(e, "regime_label", None) == regime_label
+            ]
+            if len(regime_matching) >= 3:
+                logger.debug(
+                    "[PriceInterpolator] Historical avg (regime=%s, verdict=%s): "
+                    "%d entries → %.2f%%",
+                    regime_label, verdict, len(regime_matching), _median(regime_matching),
+                )
+                return round(_median(regime_matching), 2)
+
+        # Fallback: all-regime entries for this verdict
+        all_matching = [
             e.price_error_pct
             for e in all_entries
-            if e.predicted_verdict.upper() == verdict.upper()
+            if e.predicted_verdict.upper() == verdict_upper
         ]
-        if len(matching) < 3:
+        if len(all_matching) < 3:
             return None
-        matching_sorted = sorted(matching)
-        mid = len(matching_sorted) // 2
-        median = (
-            matching_sorted[mid]
-            if len(matching_sorted) % 2 != 0
-            else (matching_sorted[mid - 1] + matching_sorted[mid]) / 2
-        )
-        return round(median, 2)
+        return round(_median(all_matching), 2)
     except Exception:
         return None

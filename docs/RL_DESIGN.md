@@ -3,32 +3,7 @@
 > Complete reference for the self-learning RL feedback system.
 > Covers: 4 JSON memory files, full daily loop (Steps 0–9), month-start forecast,
 > all static formulas & multipliers, LLM contracts, schemas, and static-vs-LLM boundary.
-> Updated: 2026-05-19 · Phases 5 + 6 + Evolution P1–P5 complete + 8 optimisations shipped.
-
----
-
-## Recent Optimisations (2026-05-17)
-
-Eight improvements shipped. Together they cut Tavily calls by 96%, eliminate ~70% of
-daily LLM calls, and fix two silent bugs.
-
-| # | Change | File | Impact |
-|---|---|---|---|
-| 1 | **Bug fix:** `compute_historical_avg_return` now reads last 6 completed cycles (was always reading current month = empty) | `price_interpolator.py`, `prediction_store.py`, `generate_forecast.py` | PriceInterpolator now gets real calibration from Month 2 |
-| 2 | **Bug fix:** Conviction streak RSI proxy now uses actual `regime_snapshot.sector_rsi` with 70/30 thresholds (was using `pattern_analysis.overall_score` with made-up 0.40/0.60 thresholds) | `conviction/tracker.py`, `daily_review.py` | Accurate overbought/oversold detection |
-| 3 | **Early-exit:** Daily review skips full 9-agent orchestrator when `direction_correct AND \|error\| < RL_AGENT_RERUN_THRESHOLD_PCT (0.5%)` | `daily_review.py`, `settings/base.py` | ~70% reduction in daily LLM calls |
-| 4 | **Tavily cache:** `fetch_tavily_context` writes results to `data/tavily_cache/{YYYY-MM}/{hash}.txt` on first call; reads from disk for the rest of the month | `tavily_fetcher.py` | 1,056 → 48 Tavily calls/month |
-| 5 | **LLM telemetry:** Every LLM call appends a JSON line to `outputs/llm_log/{date}.jsonl` (caller, model, tokens, latency, success) | `llm_client.py`, `feedback_agent.py` | Cost visibility — can now measure all savings |
-| 6 | **Seasonal validation → month-end:** Step 9 of daily review now runs only on the last trading day of each month | `daily_review.py`, new `month_end_validation.py` | Removes O(seeds×log) from daily hot path |
-| 7 | **ATR-relative thesis threshold:** `ThesisReviewer.should_review` uses `max(1.5, 1.5 × atr_pct)` instead of flat 2%. Also appends calibration jsonl per call | `thesis_reviewer.py` | Right-sizes reviews: HDFCBANK threshold 1.5%, ADANIGREEN 5.25% |
-| 8 | **Lesson scope downgrade:** Weekly cron downgrades stale single-ticker `market_wide` lessons to `sector_wide` after 30 days inactive | `ledger_propagator.py`, `scheduler.py` | Cleaner Tier 3 FeedbackAgent prompt |
-
-**Settings change:** All algorithm thresholds and RL constants are now plain Python constants
-in `settings/base.py` (no `os.getenv`). Only API keys, URLs, and cron schedules use `os.getenv`.
-The `getattr(settings, "X", default)` anti-pattern has been removed — all settings are now
-accessed directly as `settings.X`.
-
----
+> Updated: 2026-05-24 · Phases 5 + 6 + Evolution P1–P5 complete.
 
 ---
 
@@ -856,6 +831,10 @@ DailyForecast[day].confidence = base_close_confidence × (1 - decay_per_day × d
 | `FII_INFLOW_THRESHOLD` | +5000.0 | ₹Cr 5-day net inflow → RISK_ON flag |
 | `RSI_OVERBOUGHT` | 70.0 | Sector RSI above = OVERBOUGHT |
 | `RSI_OVERSOLD` | 30.0 | Sector RSI below = OVERSOLD |
+| `RL_SCHEDULER_MAX_WORKERS` | 1 | ThreadPoolExecutor workers for parallel ticker review (P2-8) |
+| `RL_WEIGHT_DRIFT_ESCAPE_DAYS` | 14 | Consecutive correct days before drift ceiling expands (P2-11) |
+| `RL_WEIGHT_DRIFT_ESCAPE_MULTIPLIER` | 1.5 | Multiplier on WEIGHT_MAX_DRIFT when escape hatch fires (P2-11) |
+| `SECTOR_AGENT_REGIME_ROLE` | (dict) | Per-sector mapping: agent_name → canonical automobile regime role (P3-12) |
 
 ---
 
@@ -1001,28 +980,15 @@ python -m scripts.generate_forecast --sector renewable_energy --ticker ADANIGREE
 
 | # | Gap | Impact | Status |
 |---|---|---|---|
-| G1 | Seasonal patterns reactive, not pre-seeded | 1-2yr loss before patterns learned for new sectors | Fixed by P1 (seeds exist for all 4 sectors) |
-| G2 | Sector-wide/market-wide lessons not propagated cross-ticker | Knowledge siloed per ticker | Fixed by P2 |
-| G3 | No momentum exhaustion / mean-reversion prior | BUY streak has no counter-signal; subscriber trust risk | Fixed by P3 |
-| G4 | CONTEXT_SEARCH_QUERIES static; miss_counter ignored | Agents don't search for known blind spots | Fixed by P4 |
-| G5 | Weight adaptation is regime-agnostic | Wrong agent amplified during crises | Fixed by P5 |
-| G6 | Forecast path is linear interpolation | Constant drift, misrepresents uncertainty | Open — Phase 8 (Monte Carlo) |
-| G7 | max_total_drift_from_base fixed at 0.15 forever | Too tight after 6+ months of data | Open — revisit Month 6 with weight-history data |
-| G8 | Seasonal lesson decay rate same as macro | Seasons don't change; macro regimes do — unfair decay | **Fixed** — category-specific decay rates + occurrence damping (Section 20) |
-| G9 | Historical avg return always None at month-start | PriceInterpolator LLM had no calibration data | **Fixed 2026-05-17** — now reads last 6 cycles |
-| G10 | Conviction streak RSI proxy was pattern_analysis score | Wrong abstraction — composite score ≠ RSI | **Fixed 2026-05-17** — now uses `regime_snapshot.sector_rsi` |
-| G11 | Tavily called every day (1,056/month) | Over free-tier limit | **Fixed 2026-05-17** — monthly disk cache (48/month) |
-| G12 | Full 9-agent re-run on every correct+small-error day | ~70% of LLM calls were wasted | **Fixed 2026-05-17** — early-exit guard in Step 4 |
-| G13 | ThesisReviewer flat 2% threshold | Over-fires on volatile stocks, under-fires on stable | **Fixed 2026-05-17** — ATR-relative threshold |
-| G14 | Seasonal validation ran every day during seasonal period | O(seeds×log) in daily hot path | **Fixed 2026-05-17** — month-end only |
-| G15 | Stale single-ticker lessons promoted to market_wide permanently | Pollutes Tier 3 FeedbackAgent context | **Fixed 2026-05-17** — weekly downgrade cron |
-| — | Probability bands on forecasts (not single price) | Needs volatility modelling | Phase 8 target |
-| — | Off-market signals (block deals, pre-open) | Intraday complexity | Phase 8 target |
-| — | Subscriber prediction feedback loop | Needs frontend + identity layer | Phase 9 target |
-| — | Backtesting on historical data | No historical envelope data yet | Available naturally after Month 6 |
-| — | F&O expiry effects | Options data sourcing (paid APIs) | Phase 8 target |
-| — | Lesson scope narrowing (market→sector→stock) | Lessons only accumulate credibility, can't narrow | Open — design question |
-| — | Seasonal threshold deltas not structured in WeightMemory | In weight_history reason string only | Open |
+| G1 | Forecast path is linear interpolation | Constant drift, misrepresents uncertainty | Open — Phase 8 (Monte Carlo) |
+| G2 | `max_total_drift_from_base` fixed at 0.15 forever | May be too tight after 6+ months of data | Open — revisit Month 6 with weight-history data |
+| G3 | Probability bands on forecasts (not single price) | Needs volatility modelling | Phase 8 target |
+| G4 | Off-market signals (block deals, pre-open) | Intraday complexity | Phase 8 target |
+| G5 | Subscriber prediction feedback loop | Needs frontend + identity layer | Phase 9 target |
+| G6 | Backtesting on historical data | No historical envelope data yet | Available naturally after Month 6 |
+| G7 | F&O expiry effects | Options data sourcing (paid APIs) | Phase 8 target |
+| G8 | Lesson scope narrowing (market→sector→stock) | Lessons only accumulate credibility, can't narrow scope | Open — design question (ticker sync partially addresses via weekly cleanup) |
+| G9 | Seasonal threshold deltas not structured in WeightMemory | In weight_history reason string only; not machine-readable | Open |
 
 ---
 

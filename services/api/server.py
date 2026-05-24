@@ -87,6 +87,29 @@ def _get_scheduler():
 # RL self-heal — runs in a background thread so startup isn't blocked
 # ---------------------------------------------------------------------------
 
+def _load_self_heal_checkpoint(cycle_id: str) -> set[str]:
+    """Return the set of tickers already processed in this cycle's self-heal run."""
+    import json as _json
+    path = pathlib.Path(f"data/self_heal_checkpoint_{cycle_id}.json")
+    if path.exists():
+        try:
+            return set(_json.loads(path.read_text(encoding="utf-8")).get("completed", []))
+        except Exception:
+            return set()
+    return set()
+
+
+def _save_self_heal_checkpoint(cycle_id: str, completed: set[str]) -> None:
+    """Persist the set of completed tickers so a crash resumes from where it left off."""
+    import json as _json
+    path = pathlib.Path("data/self_heal_checkpoint_{}.json".format(cycle_id))
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(_json.dumps({"completed": sorted(completed)}), encoding="utf-8")
+    except Exception as exc:
+        logger.warning("[startup] Could not write self-heal checkpoint: %s", exc)
+
+
 def _self_heal_rl() -> None:
     """
     Check RL state for each ticker and fill in whatever is missing:
@@ -95,6 +118,8 @@ def _self_heal_rl() -> None:
 
     Called once on server startup in a daemon thread.
     All errors are caught and logged — never crashes the server.
+    Checkpoint file (data/self_heal_checkpoint_{cycle_id}.json) ensures a crash
+    on ticker N resumes from N+1 on next redeploy rather than restarting from ticker 1.
     """
     import time
     time.sleep(10)   # Let uvicorn finish binding and log its startup banner first
@@ -112,8 +137,14 @@ def _self_heal_rl() -> None:
     from services.api.log_buffer import get_active_tickers
     today = date.today()
     month_start = today.replace(day=1)
+    # Use a cycle_id key so the checkpoint resets each month automatically
+    _cycle_key = today.strftime("%Y-%m")
+    _completed: set[str] = _load_self_heal_checkpoint(_cycle_key)
 
     for ticker in get_active_tickers():
+        if ticker in _completed:
+            logger.info("[startup] %s — already processed this cycle, skipping (checkpoint)", ticker)
+            continue
         try:
             store    = PredictionStore(ticker, sector="automobile")
             cycle_id = store.current_cycle_id()
@@ -168,8 +199,13 @@ def _self_heal_rl() -> None:
             else:
                 logger.info("[startup] %s — feedback log up to date (%d entries)", ticker, len(reviewed_dates))
 
+            # Mark ticker as completed and persist checkpoint
+            _completed.add(ticker)
+            _save_self_heal_checkpoint(_cycle_key, _completed)
+
         except Exception as exc:
             logger.error("[startup] Self-heal FAILED for %s: %s", ticker, exc, exc_info=True)
+            # Do NOT add to _completed — next redeploy will retry this ticker
 
     logger.info("[startup] RL self-heal complete")
 

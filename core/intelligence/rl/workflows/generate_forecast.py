@@ -66,6 +66,59 @@ def _fetch_actual_close(ticker: str) -> float | None:
         return None
 
 
+_LESSON_CATEGORY_TO_AGENTS: dict[str, list[str]] = {
+    "macro":         ["risk_macro", "policy_regulatory", "macro_policy"],
+    "global_macro":  ["risk_macro", "global_macro"],
+    "technical":     ["pattern_analysis", "technical"],
+    "sentiment":     ["sentiment", "sentiment_policy"],
+    "fundamental":   ["fundamentals"],
+    # seasonal handled by SeasonalCalendar; data_availability is meta-only
+}
+
+
+def _apply_ledger_micro_adjustments(
+    day_agent_scores: dict[str, float],
+    learning_ledger: LearningLedger | None,
+) -> dict[str, float]:
+    """
+    Apply recency-weighted lesson confidence as micro-adjustments to agent scores.
+
+    High-confidence lessons confirmed recently → +0.01 per lesson (max ±0.05 per agent).
+    This makes the forecast path aware of known patterns without overriding the LLM.
+    Lessons older than 90 days or with <2 occurrences are ignored.
+    """
+    if not learning_ledger or not learning_ledger.lessons:
+        return day_agent_scores
+
+    from datetime import date as _date
+    today = _date.today()
+
+    agent_adj: dict[str, float] = {a: 0.0 for a in day_agent_scores}
+
+    for lesson in learning_ledger.lessons:
+        if not lesson.still_valid or lesson.occurrences < 2:
+            continue
+        try:
+            days_old = (today - _date.fromisoformat(lesson.last_seen)).days
+        except Exception:
+            days_old = 90
+        recency = max(0.0, 1.0 - days_old / 90.0)
+        eff = lesson.confidence * recency
+        if eff < 0.35:
+            continue
+
+        delta = eff * 0.01  # ≤ 0.01 per lesson
+        for agent in _LESSON_CATEGORY_TO_AGENTS.get(lesson.category, []):
+            if agent in agent_adj:
+                agent_adj[agent] += delta
+
+    adjusted = {}
+    for agent, score in day_agent_scores.items():
+        adj = max(-0.05, min(0.05, agent_adj.get(agent, 0.0)))
+        adjusted[agent] = round(max(0.0, min(1.0, score + adj)), 4)
+    return adjusted
+
+
 def _build_daily_forecasts(
     report: FinalReport,
     base_close: float,
@@ -151,6 +204,10 @@ def _build_daily_forecasts(
                     td.isoformat(), ctx.active_pattern_ids,
                     ctx.agent_adjustments, ctx.confidence_modifier,
                 )
+
+        # Apply micro-adjustments from confirmed lessons — closes the architectural gap
+        # where lessons only appear in narrative, not in actual forecast numbers.
+        day_agent_scores = _apply_ledger_micro_adjustments(day_agent_scores, learning_ledger)
 
         forecasts.append(DailyForecast(
             day=day_num,
@@ -261,10 +318,6 @@ def generate_forecast(ticker: str, sector: str = "automobile") -> PredictionEnve
         except Exception:
             pass
 
-        # Historical average return for this verdict (from prior cycles)
-        all_feedback_entries = store.load_recent_feedback_entries(n_cycles=6)
-        hist_avg = compute_historical_avg_return(all_feedback_entries, report.verdict)
-
         # Detect regime for the current date (reuse RegimeDetector — cheap)
         from core.intelligence.regime.detector import RegimeDetector
         regime_label = "NORMAL"
@@ -273,6 +326,13 @@ def generate_forecast(ticker: str, sector: str = "automobile") -> PredictionEnve
             regime_label = snap.regime_label
         except Exception:
             pass
+
+        # Historical average return for this verdict (from prior cycles),
+        # filtered to same-regime entries first (P3-13 regime-segmented returns).
+        all_feedback_entries = store.load_recent_feedback_entries(n_cycles=6)
+        hist_avg = compute_historical_avg_return(
+            all_feedback_entries, report.verdict, regime_label=regime_label
+        )
 
         interpolator = PriceInterpolator()
         forecast_profile = interpolator.get_profile(

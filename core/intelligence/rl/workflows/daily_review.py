@@ -446,8 +446,10 @@ def run_daily_review(
     # ------------------------------------------------------------------ #
     wm_for_scores = store.load_weight_memory()
     _rerun_threshold = settings.RL_AGENT_RERUN_THRESHOLD_PCT
+    _early_exit_used = False
     if _should_skip_agent_rerun(direction_correct, price_error_pct, _rerun_threshold):
         todays_scores = dict(today_forecast.predicted_agent_scores) if today_forecast.predicted_agent_scores else {}
+        _early_exit_used = True
         logger.info(
             "[daily_review] Early-exit: direction correct + |error| %.2f%% < %.1f%% "
             "— using predicted scores, skipping orchestrator re-run",
@@ -560,21 +562,34 @@ def run_daily_review(
     # Assemble supplementary context for FeedbackAgentInput
     # ------------------------------------------------------------------ #
 
+    # If early-exit was used, todays_scores == predicted_agent_scores (identical).
+    # Inject a system note so FeedbackAgent knows not to infer zero drift from them.
+    if _early_exit_used:
+        market_context = (market_context or "") + (
+            "\n\n[SYSTEM NOTE — FROZEN AGENT SCORES]\n"
+            "The agent re-run was skipped today (direction correct + error below threshold). "
+            "The 'Today\\'s re-run composite scores' shown below are IDENTICAL to the predicted "
+            "scores — do NOT interpret them as evidence of zero agent drift. "
+            "Focus your analysis on market_context_today and existing lessons."
+        )
+
     # 1. Significant sub-score drift — agents where |composite drift| > 0.10
+    # Suppressed on early-exit days (scores are frozen, drift would be artifically zero).
     SUBSCORE_DRIFT_THRESHOLD = 0.10
     significant_subscore_drift: dict = {}
-    predicted_scores = today_forecast.predicted_agent_scores or {}
-    for agent, today_score in todays_scores.items():
-        predicted_score = predicted_scores.get(agent, today_score)
-        drift = today_score - predicted_score
-        if abs(drift) >= SUBSCORE_DRIFT_THRESHOLD:
-            pred_sub = today_forecast.predicted_agent_subscores.get(agent, {})
-            # today's sub-scores come from agent re-run (not stored separately yet — best-effort)
-            if pred_sub:
-                significant_subscore_drift[agent] = {
-                    dim: {"predicted": val, "actual": val}  # actual sub-scores not available yet
-                    for dim, val in pred_sub.items()
-                }
+    if not _early_exit_used:
+        predicted_scores = today_forecast.predicted_agent_scores or {}
+        for agent, today_score in todays_scores.items():
+            predicted_score = predicted_scores.get(agent, today_score)
+            drift = today_score - predicted_score
+            if abs(drift) >= SUBSCORE_DRIFT_THRESHOLD:
+                pred_sub = today_forecast.predicted_agent_subscores.get(agent, {})
+                # today's sub-scores come from agent re-run (not stored separately yet — best-effort)
+                if pred_sub:
+                    significant_subscore_drift[agent] = {
+                        dim: {"predicted": val, "actual": val}  # actual sub-scores not available yet
+                        for dim, val in pred_sub.items()
+                    }
 
     # 2. Weight drift summary from WeightMemory
     wm_loaded = store.load_weight_memory()
@@ -684,6 +699,31 @@ def run_daily_review(
     fb_output = fb_agent.run(fb_input, ticker_ledger)
 
     # ------------------------------------------------------------------ #
+    # external_shock rate cap: LLMs tend to over-use external_shock to
+    # avoid assigning blame, effectively disabling learning.  If more than
+    # 20% of penalizable days in this cycle are already classified as
+    # external_shock, override this one to direction_flip.
+    # Only applies when direction was wrong — correct-direction external_shock
+    # is semantically valid (e.g. sudden gap-down on correct UP prediction).
+    # ------------------------------------------------------------------ #
+    if fb_output.miss_type == "external_shock" and not direction_correct:
+        prior_entries = feedback_log.entries[:-1]  # exclude today's provisional
+        if len(prior_entries) >= 5:
+            shock_days = sum(
+                1 for e in prior_entries
+                if e.miss_analysis and e.miss_analysis.miss_type == "external_shock"
+            )
+            if shock_days / len(prior_entries) > 0.20:
+                logger.warning(
+                    "[daily_review] %s: external_shock rate %d/%d=%.0f%% exceeds 20%% cap "
+                    "— overriding to direction_flip to enforce model accountability",
+                    ticker, shock_days, len(prior_entries),
+                    shock_days / len(prior_entries) * 100,
+                )
+                from dataclasses import replace as _replace
+                fb_output = fb_output.model_copy(update={"miss_type": "direction_flip"})
+
+    # ------------------------------------------------------------------ #
     # Step 5: WeightAdapter — adjust weights (miss_type-aware), save
     # ------------------------------------------------------------------ #
     wm           = store.get_or_init_weight_memory(settings.AGENT_WEIGHTS)
@@ -742,7 +782,7 @@ def run_daily_review(
     # ------------------------------------------------------------------ #
     try:
         regime_effective_weights = apply_regime_multipliers(
-            updated_wm.effective_weights(), regime_snapshot.multipliers
+            updated_wm.effective_weights(), regime_snapshot.multipliers, sector=sector
         )
         logger.info(
             "[daily_review] Regime '%s' effective weights applied for %s",

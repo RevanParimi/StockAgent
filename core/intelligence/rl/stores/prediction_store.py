@@ -50,10 +50,27 @@ from __future__ import annotations
 
 import json
 import logging
+import threading
 from datetime import date
 from pathlib import Path
 
 from core.config import settings
+
+# ---------------------------------------------------------------------------
+# Module-level per-path locks — protect shared ledger files from concurrent
+# reads/writes when the scheduler runs multiple tickers in parallel.
+# Per-ticker files don't need this (each ticker has its own directory).
+# ---------------------------------------------------------------------------
+_SHARED_LOCKS: dict[str, threading.Lock] = {}
+_SHARED_LOCKS_META = threading.Lock()
+
+
+def _get_shared_lock(path: Path) -> threading.Lock:
+    key = str(path.resolve())
+    with _SHARED_LOCKS_META:
+        if key not in _SHARED_LOCKS:
+            _SHARED_LOCKS[key] = threading.Lock()
+        return _SHARED_LOCKS[key]
 from core.schemas.feedback import (
     DailyFeedbackLog,
     FeedbackEntry,
@@ -308,8 +325,11 @@ class PredictionStore:
         Load the sector-wide shared ledger from {base_dir}/{sector}/_shared_ledger.json.
         Returns an empty LearningLedger if the file does not yet exist.
         Requires the store to be initialised with sector=.
+        Thread-safe: acquires a per-path lock before reading.
         """
-        data = self._read_json(self._shared_ledger_path())
+        path = self._shared_ledger_path()
+        with _get_shared_lock(path):
+            data = self._read_json(path)
         if data is None:
             return LearningLedger(
                 ticker=f"_shared_{self._sector}",
@@ -319,7 +339,7 @@ class PredictionStore:
         return LearningLedger(**data)
 
     def save_sector_ledger(self, ledger: LearningLedger) -> None:
-        """Atomically write the sector shared ledger."""
+        """Atomically write the sector shared ledger. Thread-safe."""
         if not self._sector:
             logger.warning(
                 "[PredictionStore] save_sector_ledger called without a sector — skipped."
@@ -328,7 +348,8 @@ class PredictionStore:
         ledger.last_updated = date.today().isoformat()
         path = self._shared_ledger_path()
         path.parent.mkdir(parents=True, exist_ok=True)
-        self._write_json(path, ledger.model_dump())
+        with _get_shared_lock(path):
+            self._write_json(path, ledger.model_dump())
         logger.info(
             "[PredictionStore] Saved sector ledger for '%s' (%d lessons)",
             self._sector, len(ledger.lessons),
@@ -338,8 +359,11 @@ class PredictionStore:
         """
         Load the market-wide shared ledger from {base_dir}/_market_ledger.json.
         Returns an empty LearningLedger if the file does not yet exist.
+        Thread-safe: acquires a per-path lock before reading.
         """
-        data = self._read_json(self._market_ledger_path())
+        path = self._market_ledger_path()
+        with _get_shared_lock(path):
+            data = self._read_json(path)
         if data is None:
             return LearningLedger(
                 ticker="_market",
@@ -349,9 +373,11 @@ class PredictionStore:
         return LearningLedger(**data)
 
     def save_market_ledger(self, ledger: LearningLedger) -> None:
-        """Atomically write the market-wide ledger."""
+        """Atomically write the market-wide ledger. Thread-safe."""
         ledger.last_updated = date.today().isoformat()
-        self._write_json(self._market_ledger_path(), ledger.model_dump())
+        path = self._market_ledger_path()
+        with _get_shared_lock(path):
+            self._write_json(path, ledger.model_dump())
         logger.info(
             "[PredictionStore] Saved market ledger (%d lessons)", len(ledger.lessons)
         )

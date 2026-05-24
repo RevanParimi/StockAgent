@@ -313,6 +313,11 @@ RL_FLAT_THRESHOLD_PCT: float = 0.3     # moves within ±0.3% classified as FLAT
 # Set to 0.0 to disable early exit entirely.
 RL_AGENT_RERUN_THRESHOLD_PCT: float = 0.5
 
+# Scheduler parallelism: how many tickers can be reviewed concurrently.
+# Default 1 = sequential (safe without file locking).
+# Set to 2-4 in .env once shared ledger locking (P1-7) is confirmed stable.
+RL_SCHEDULER_MAX_WORKERS: int = int(os.getenv("RL_SCHEDULER_MAX_WORKERS", "1"))
+
 # ---------------------------------------------------------------------------
 # Conviction Streak (P3) — tracker.py
 # ---------------------------------------------------------------------------
@@ -364,6 +369,55 @@ REGIME_FII_PROXY_TICKER: str = "^NSEI"          # Nifty 50 for 5-day momentum pr
 # Applied on top of learned WeightMemory weights (not stored, daily-only modifier).
 # Agents not listed default to 1.0 (passthrough).
 # Columns: MACRO_CRISIS, RISK_OFF, NORMAL, RISK_ON, MOMENTUM_EXTENDED, OVERSOLD
+# ---------------------------------------------------------------------------
+# P3-12 — Sector-Agent → Regime-Multiplier Role Mapping
+#
+# REGIME_MULTIPLIERS uses automobile agent names as canonical keys.
+# For other sectors, map each agent to the automobile role it most closely
+# represents so apply_regime_multipliers() can look up the right multiplier.
+#
+# If an agent is NOT listed here for its sector, it defaults to multiplier 1.0.
+# ---------------------------------------------------------------------------
+SECTOR_AGENT_REGIME_ROLE: dict[str, dict[str, str]] = {
+    "banking_bfsi": {
+        "fundamentals":  "fundamentals",       # earnings quality → fundamentals
+        "risk":          "risk_macro",          # credit risk, NPA → risk_macro
+        "macro_policy":  "policy_regulatory",  # RBI policy → policy_regulatory
+        "institutional": "sentiment",           # FII/DII flows → sentiment
+        "technical":     "pattern_analysis",   # chart patterns → pattern_analysis
+        "business":      "valuation_catalyst", # loan book growth → valuation_catalyst
+    },
+    "it_sector": {
+        "fundamentals":   "fundamentals",
+        "risk_macro":     "risk_macro",
+        "global_macro":   "risk_macro",         # US tech spend risk → risk_macro
+        "peer_benchmark": "competitive_intel",  # TCS vs Infosys → competitive_intel
+        "transcript_nlp": "sentiment",          # earnings call NLP → sentiment
+        "technical":      "pattern_analysis",
+        "valuation":      "valuation_catalyst",
+    },
+    "renewable_energy": {
+        "fundamentals":     "fundamentals",
+        "business":         "sales_demand",      # capacity pipeline → sales_demand
+        "valuation":        "valuation_catalyst",
+        "sentiment_policy": "policy_regulatory", # MNRE/CERC policy → policy_regulatory
+        "technical":        "pattern_analysis",
+        "risk":             "risk_macro",         # DISCOM/curtailment risk → risk_macro
+    },
+    "automobile": {
+        # Identity mapping — automobile agents already match the canonical names
+        "sales_demand":       "sales_demand",
+        "raw_materials":      "raw_materials",
+        "fundamentals":       "fundamentals",
+        "pattern_analysis":   "pattern_analysis",
+        "sentiment":          "sentiment",
+        "policy_regulatory":  "policy_regulatory",
+        "competitive_intel":  "competitive_intel",
+        "risk_macro":         "risk_macro",
+        "valuation_catalyst": "valuation_catalyst",
+    },
+}
+
 REGIME_MULTIPLIERS: dict[str, dict[str, float]] = {
     "MACRO_CRISIS": {
         "risk_macro":         1.40,
@@ -445,6 +499,12 @@ RL_BIAS_TRIGGER: float        =  0.55   # bias score at which penalty starts sca
 RL_BIAS_FULL: float           =  0.70   # bias score at which full penalty applies
 RL_TIMING_FREE_WINDOW: int    =  3      # lag ≤ N trading days → 0× timing penalty
 RL_TIMING_PARTIAL_WINDOW: int =  7      # lag ≤ N trading days → 0.20× timing penalty
+
+# Weight drift ceiling escape hatch: agents with ≥ N consecutive correct days
+# are allowed to drift up to ESCAPE_MULTIPLIER × WEIGHT_MAX_DRIFT.
+# Prevents the 0.15 cap from blocking learning on clearly reliable agents.
+RL_WEIGHT_DRIFT_ESCAPE_DAYS: int = int(os.getenv("RL_WEIGHT_DRIFT_ESCAPE_DAYS", "14"))
+RL_WEIGHT_DRIFT_ESCAPE_MULTIPLIER: float = float(os.getenv("RL_WEIGHT_DRIFT_ESCAPE_MULTIPLIER", "1.5"))
 
 # ---------------------------------------------------------------------------
 # STATIC_AUDIT #9 — News geo: removed country filter entirely

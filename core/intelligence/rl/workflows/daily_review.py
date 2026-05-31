@@ -559,6 +559,73 @@ def run_daily_review(
         logger.debug("[daily_review] %s: P4 enhancements unavailable: %s", ticker, exc)
 
     # ------------------------------------------------------------------ #
+    # ------------------------------------------------------------------ #
+    # G7b: Inject F&O chain context during expiry week (non-fatal).
+    # PCR and max pain help FeedbackAgent understand options-driven moves.
+    # ------------------------------------------------------------------ #
+    try:
+        from core.intelligence.rl.nse_calendar import is_fno_expiry_week
+        if is_fno_expiry_week(review_date):
+            fno_envelope = store.load_envelope(cycle_id)
+            if fno_envelope and fno_envelope.fno_snapshot:
+                fno_ctx_str = fno_envelope.fno_snapshot.to_context_string()
+                if fno_ctx_str:
+                    market_context = (market_context or "") + "\n\n" + fno_ctx_str
+                    logger.info(
+                        "[daily_review] G7b: F&O snapshot injected for %s (expiry week): "
+                        "PCR=%.2f OI=%s MaxPain=₹%.0f",
+                        ticker,
+                        fno_envelope.fno_snapshot.pcr or 0,
+                        fno_envelope.fno_snapshot.oi_buildup_direction,
+                        fno_envelope.fno_snapshot.max_pain_price or 0,
+                    )
+    except Exception as exc:
+        logger.warning("[daily_review] %s: F&O context injection failed (non-fatal): %s", ticker, exc)
+
+    # G4: Load previous trading day's off-market signals (non-fatal).
+    # Injected into market_context before FeedbackAgent so it can
+    # attribute block/bulk deals and pre-open gap to yesterday's move.
+    # ------------------------------------------------------------------ #
+    offmarket_context_str = ""
+    try:
+        from core.intelligence.rl.nse_calendar import trading_days_ago
+        from core.intelligence.rl.stores.offmarket_fetcher import OffMarketFetcher
+        yesterday = trading_days_ago(review_date, 1)
+        prev_signals = store.load_offmarket_signals(yesterday.isoformat())
+        if prev_signals and prev_signals.summary:
+            offmarket_context_str = OffMarketFetcher.build_context_string(prev_signals)
+            market_context = (market_context or "") + "\n\n" + offmarket_context_str
+            logger.info(
+                "[daily_review] G4: Off-market signals from %s injected for %s: %s",
+                yesterday.isoformat(), ticker, prev_signals.summary,
+            )
+    except Exception as exc:
+        logger.warning("[daily_review] %s: Off-market signal load failed (non-fatal): %s", ticker, exc)
+
+    # ------------------------------------------------------------------ #
+    # G8: Inject NSE market intelligence (FII/DII + bulk deals) — non-fatal.
+    # Structured exchange data helps FeedbackAgent attribute moves to
+    # institutional flows rather than guessing from news snippets.
+    # ------------------------------------------------------------------ #
+    try:
+        from services.data.fetchers.nse_market import get_nse_market_data, format_nse_market_context
+        nse_mkt = get_nse_market_data()
+        if not nse_mkt.get("error"):
+            nse_mkt_str = format_nse_market_context(nse_mkt, focus="all", ticker=ticker)
+            if nse_mkt_str:
+                market_context = (market_context or "") + "\n\n" + nse_mkt_str
+                logger.info(
+                    "[daily_review] G8: NSE market intelligence injected for %s: "
+                    "FII=%s Cr / DII=%s Cr",
+                    ticker, nse_mkt.get("fii_net_cr"), nse_mkt.get("dii_net_cr"),
+                )
+    except Exception as exc:
+        logger.warning(
+            "[daily_review] %s: NSE market intelligence injection failed (non-fatal): %s",
+            ticker, exc,
+        )
+
+    # ------------------------------------------------------------------ #
     # Assemble supplementary context for FeedbackAgentInput
     # ------------------------------------------------------------------ #
 
@@ -725,7 +792,23 @@ def run_daily_review(
 
     # ------------------------------------------------------------------ #
     # Step 5: WeightAdapter — adjust weights (miss_type-aware), save
+    #
+    # Pre-load IIMA factor regime for regime-aware penalty scaling.
+    # Non-fatal: missing regime falls back to standard 1.0× scaling.
     # ------------------------------------------------------------------ #
+    _factor_regime_data: dict | None = None
+    try:
+        from core.intelligence.rl.algorithms.factor_regime import get_factor_regime
+        _factor_regime_data = get_factor_regime()
+        if _factor_regime_data:
+            logger.debug(
+                "[daily_review] Factor regime loaded: %s %s (WML avg=%.3f%%)",
+                _factor_regime_data.get("strength"), _factor_regime_data.get("regime"),
+                _factor_regime_data.get("avg_wml_pct", 0),
+            )
+    except Exception as exc:
+        logger.debug("[daily_review] %s: Factor regime unavailable (non-fatal): %s", ticker, exc)
+
     wm           = store.get_or_init_weight_memory(settings.AGENT_WEIGHTS)
     feedback_log = store.load_feedback_log(cycle_id)
 
@@ -764,6 +847,7 @@ def run_daily_review(
         todays_miss_type=fb_output.miss_type,
         timing_lag_days=timing.lag_days if timing and timing.lag_days is not None else 0,
         seasonal_threshold_deltas=seasonal_ctx.accuracy_threshold_delta or None,
+        factor_regime=_factor_regime_data,
     )
     store.save_weight_memory(updated_wm)
     new_weight_version = f"v{updated_wm.weight_version}"
@@ -919,8 +1003,29 @@ def run_daily_review(
         lessons_generated=lesson_ids,
         weight_adjustment_applied=new_weight_version,
         predicted_catalysts_snapshot=_predicted_catalysts,
+        offmarket_context=offmarket_context_str,
     )
     store.append_feedback_entry(final_entry, cycle_id)
+
+    # ------------------------------------------------------------------ #
+    # G4: Fetch today's off-market signals after market close (non-fatal).
+    # Saves to store for injection into tomorrow's daily_review.
+    # ------------------------------------------------------------------ #
+    try:
+        from core.intelligence.rl.stores.offmarket_fetcher import OffMarketFetcher
+        today_signals = OffMarketFetcher().fetch_all(ticker, date_str)
+        store.save_offmarket_signals(today_signals)
+        if today_signals.summary:
+            logger.info(
+                "[daily_review] G4: Off-market signals saved for %s on %s: %s",
+                ticker, date_str, today_signals.summary,
+            )
+        else:
+            logger.debug(
+                "[daily_review] G4: No off-market signals found for %s on %s", ticker, date_str
+            )
+    except Exception as exc:
+        logger.warning("[daily_review] %s: Off-market signal fetch failed (non-fatal): %s", ticker, exc)
 
     # ------------------------------------------------------------------ #
     # Step 9 (P1): Seasonal validation — month-end only

@@ -52,6 +52,8 @@ class DailyForecast(BaseModel):
     day: int                                     # 1-indexed from cycle start
     date: str                                    # ISO date string "YYYY-MM-DD"
     predicted_close: float
+    price_lower: float | None = None             # P10 Monte Carlo band (None when MC unavailable)
+    price_upper: float | None = None             # P90 Monte Carlo band (None when MC unavailable)
     # predicted_change_pct removed — derivable as (predicted_close - base_close)/base_close*100.
     # Kept here for backward compat with existing envelope files; computed on write, not stored.
     predicted_change_pct: float = 0.0
@@ -94,6 +96,7 @@ class PredictionEnvelope(BaseModel):
         default_factory=dict,
         description="Per-agent catalyst snapshot at forecast time: {agent: {bull_case_if, bear_case_if, ticker_vs_peers, what_changed, data_confidence}}"
     )
+    fno_snapshot: FnOSnapshot | None = None   # F&O chain snapshot at month-start (G7b)
 
     def get_forecast(self, target_date: str) -> DailyForecast | None:
         for f in self.daily_forecasts:
@@ -264,6 +267,7 @@ class FeedbackEntry(BaseModel):
         default_factory=dict,
         description="Catalyst predictions from the forecast cycle, stored for audit trail alongside miss_analysis"
     )
+    offmarket_context: str = ""   # previous day's off-market signals injected as LLM context
 
 
 class DailyFeedbackLog(BaseModel):
@@ -636,6 +640,9 @@ class SeasonalPattern(BaseModel):
     # Negative = lower the bar (structurally hard period → more forgiving on penalty).
     # e.g. festive season: {"sales_demand": +0.08}  budget week: {"fundamentals": -0.05}
     accuracy_threshold_delta: dict[str, float] = Field(default_factory=dict)
+    # F&O expiry week patterns cannot use month/day_range (expiry date is dynamic).
+    # When True, _is_active() skips this pattern; _get_fno_expiry_context() handles it instead.
+    fno_week_only: bool = False
 
 
 class SeasonalContext(BaseModel):
@@ -739,3 +746,85 @@ class RegimeSnapshot(BaseModel):
     multipliers: dict[str, float] = Field(default_factory=dict)   # per-agent regime multipliers
     narrative: str = ""                    # one-sentence context for LLM injection
     as_of_date: str = ""                   # ISO date
+
+
+# ---------------------------------------------------------------------------
+# G4 — Off-Market Signals (block deals, bulk deals, pre-open auction)
+# ---------------------------------------------------------------------------
+
+class BlockDeal(BaseModel):
+    """SEBI block deal: ≥500,000 shares OR ≥₹10Cr, executed in the 9:15-9:50am window."""
+    symbol: str
+    client_name: str
+    trade_type: Literal["BUY", "SELL"]
+    quantity: int
+    price: float
+    trade_value_cr: float   # quantity × price / 1e7
+
+
+class BulkDeal(BaseModel):
+    """SEBI bulk deal: single-day quantity > 0.5% of company's equity. Reported by day-end."""
+    symbol: str
+    client_name: str
+    trade_type: Literal["BUY", "SELL"]
+    quantity: int
+    price: float
+    trade_value_cr: float
+
+
+class OffMarketSignals(BaseModel):
+    """
+    Off-market institutional signals for a ticker on a given date.
+    Fetched at end of daily_review day T; injected at start of day T+1.
+    """
+    date: str          # ISO date this data was fetched for
+    ticker: str
+    block_deals: list[BlockDeal] = Field(default_factory=list)
+    bulk_deals: list[BulkDeal] = Field(default_factory=list)
+    pre_open_price: float | None = None
+    pre_open_vs_prev_close_pct: float | None = None   # gap % (pre_open - prev_close)/prev_close*100
+    pre_open_volume: int | None = None
+    net_institutional_direction: Literal["BUY", "SELL", "MIXED", "NONE"] = "NONE"
+    total_trade_value_cr: float = 0.0
+    summary: str = ""
+
+
+# ---------------------------------------------------------------------------
+# G7b — F&O Chain Snapshot
+# ---------------------------------------------------------------------------
+
+class FnOSnapshot(BaseModel):
+    """
+    NSE options chain snapshot for a ticker at month-start.
+    Stored in PredictionEnvelope; injected as context during F&O expiry week.
+    """
+    date: str
+    ticker: str
+    pcr: float | None = None                     # Put-Call Ratio (OI-based)
+    max_pain_price: float | None = None           # strike minimising option buyer payoff
+    oi_buildup_direction: Literal["LONG", "SHORT", "NEUTRAL"] | None = None
+    atm_strike: float | None = None               # nearest strike to current price
+    near_month_expiry: str | None = None          # "YYYY-MM-DD"
+    total_call_oi: int | None = None
+    total_put_oi: int | None = None
+    current_price: float | None = None
+    max_pain_deviation_pct: float | None = None   # (current_price - max_pain) / current_price * 100
+    source: str = "nse_api"
+
+    def to_context_string(self) -> str:
+        if self.pcr is None:
+            return ""
+        lines = [f"[F&O SNAPSHOT — {self.date}]"]
+        pcr_signal = (
+            "bearish (heavy put writing)" if (self.pcr or 0) > 1.5
+            else ("bullish (heavy call writing)" if (self.pcr or 0) < 0.7 else "neutral")
+        )
+        lines.append(f"  PCR: {self.pcr:.2f} → {pcr_signal}")
+        if self.max_pain_price and self.current_price:
+            lines.append(
+                f"  Max Pain: ₹{self.max_pain_price:.0f} "
+                f"(current: ₹{self.current_price:.0f}, "
+                f"deviation: {self.max_pain_deviation_pct or 0:+.1f}%)"
+            )
+        lines.append(f"  OI Buildup: {self.oi_buildup_direction}")
+        return "\n".join(lines)

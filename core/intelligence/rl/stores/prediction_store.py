@@ -427,6 +427,27 @@ class PredictionStore:
         return data.get("agent_enhancements", {})
 
     # ------------------------------------------------------------------
+    # G4: Off-market signals  ({ticker}_{date}_offmarket.json)
+    # ------------------------------------------------------------------
+
+    def save_offmarket_signals(self, signals) -> None:
+        from core.schemas.feedback import OffMarketSignals
+        path = self._dir / f"{self.ticker}_{signals.date}_offmarket.json"
+        self._write_json(path, signals.model_dump())
+        logger.debug("[PredictionStore] Saved offmarket signals for %s on %s", self.ticker, signals.date)
+
+    def load_offmarket_signals(self, date_str: str):
+        from core.schemas.feedback import OffMarketSignals
+        path = self._dir / f"{self.ticker}_{date_str}_offmarket.json"
+        data = self._read_json(path)
+        if data is None:
+            return None
+        try:
+            return OffMarketSignals(**data)
+        except Exception:
+            return None
+
+    # ------------------------------------------------------------------
     # Convenience: list all cycle IDs for this ticker
     # ------------------------------------------------------------------
 

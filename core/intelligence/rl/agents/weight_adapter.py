@@ -90,6 +90,7 @@ class WeightAdapter:
         todays_miss_type: str = "direction_flip",
         timing_lag_days: int = 0,
         seasonal_threshold_deltas: dict[str, float] | None = None,
+        factor_regime: dict | None = None,
     ) -> WeightMemory:
         """
         Compute and apply weight adjustments based on today's feedback.
@@ -111,6 +112,10 @@ class WeightAdapter:
             Per-agent boost/penalty threshold modifiers from SeasonalContext.
             e.g. {"sales_demand": +0.08} during festive season raises the bar
             for that agent to earn a boost (prevents undeserved weight inflation).
+        factor_regime : dict | None
+            IIMA 4-factor regime dict from factor_regime.get_factor_regime().
+            Used to scale bias penalties — agents structurally disadvantaged in the
+            current regime receive lighter penalties (see get_regime_penalty_scale).
         """
         if len(feedback_log.entries) < settings.WEIGHT_MIN_OBSERVATIONS:
             logger.info(
@@ -133,6 +138,7 @@ class WeightAdapter:
             timing_lag_days=timing_lag_days,
             seasonal_threshold_deltas=seasonal_threshold_deltas,
             reference_date=today,
+            factor_regime=factor_regime,
         )
 
         new_weights = self._apply_deltas(
@@ -335,6 +341,7 @@ class WeightAdapter:
         timing_lag_days: int = 0,
         seasonal_threshold_deltas: dict[str, float] | None = None,
         reference_date: date | None = None,
+        factor_regime: dict | None = None,
     ) -> dict[str, float]:
         """
         Compute raw weight delta per agent before bounds are applied.
@@ -396,16 +403,24 @@ class WeightAdapter:
             if agent == todays_primary_miss and todays_miss_type not in NO_PENALTY_MISS_TYPES:
                 bias_score = self._compute_bias_score(feedback_log, agent, ref)
                 if bias_score >= _BIAS_TRIGGER:
-                    scale         = min(1.0, (bias_score - _BIAS_TRIGGER)
-                                            / (_BIAS_FULL - _BIAS_TRIGGER))
-                    bias_penalty  = _MISS_STREAK_PENALTY * scale * penalty_multiplier * prop_scale
+                    scale        = min(1.0, (bias_score - _BIAS_TRIGGER)
+                                           / (_BIAS_FULL - _BIAS_TRIGGER))
+                    # Regime-aware leniency: agents structurally disadvantaged in the
+                    # current long-run factor regime (e.g. momentum agents in reversal
+                    # market) receive lighter bias penalties.
+                    try:
+                        from core.intelligence.rl.algorithms.factor_regime import get_regime_penalty_scale
+                        regime_scale = get_regime_penalty_scale(agent, factor_regime)
+                    except Exception:
+                        regime_scale = 1.0
+                    bias_penalty  = _MISS_STREAK_PENALTY * scale * penalty_multiplier * prop_scale * regime_scale
                     deltas[agent] += bias_penalty
                     if bias_penalty != 0.0:
                         logger.warning(
                             "[WeightAdapter] %s: bias_score=%.2f (type=%s, lag=%+d td, "
-                            "prop_scale=%.2f) → bias Δ%.3f",
+                            "prop_scale=%.2f, regime_scale=%.2f) → bias Δ%.3f",
                             agent, bias_score, todays_miss_type,
-                            timing_lag_days, prop_scale, bias_penalty,
+                            timing_lag_days, prop_scale, regime_scale, bias_penalty,
                         )
                 else:
                     logger.debug(

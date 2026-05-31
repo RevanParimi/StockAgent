@@ -54,6 +54,8 @@ class ContextBuilder:
         # without needing a parameter change. Build() is always called sequentially
         # per agent, so this is safe.
         self._serper_key: str = _settings.get_serper_key(sector)
+        # Sector stored for MF herding and factor regime lookups in builder methods.
+        self._sector: str = sector
 
         # Short alias map: builder methods use abbreviated prefixes while
         # UniversalAgent passes the full sector string from the registry.
@@ -164,11 +166,36 @@ class ContextBuilder:
             for q in CONTEXT_SEARCH_QUERIES
         ]
         news = fetch_news_context(queries, api_key=self._serper_key)
-        return (
+
+        # Structured bulk deal enrichment — replaces "BSE bulk deal" Serper query
+        bulk_ctx = ""
+        try:
+            from services.data.fetchers.nse_market import get_nse_market_data, format_nse_market_context
+            bulk_ctx = format_nse_market_context(
+                get_nse_market_data(), focus="bulk_deals", ticker=query.ticker
+            )
+        except Exception as exc:
+            logger.debug("[ContextBuilder] sentiment: NSE bulk deals unavailable: %s", exc)
+
+        # MF herding signal — sector ETF NAV momentum (not available via Serper)
+        mf_ctx = ""
+        try:
+            from services.data.fetchers.mf_herding import get_sector_mf_herding, format_mf_herding_context
+            sector = self._sector or "automobile"
+            mf_ctx = format_mf_herding_context(get_sector_mf_herding(sector))
+        except Exception as exc:
+            logger.debug("[ContextBuilder] sentiment: MF herding unavailable: %s", exc)
+
+        parts = [
             f"Stock: {query.ticker} | Company: {query.company_name} | "
-            f"Date: {query.analysis_date}\n\n"
-            f"{news}"
-        )
+            f"Date: {query.analysis_date}",
+            news,
+        ]
+        if bulk_ctx:
+            parts.append(bulk_ctx)
+        if mf_ctx:
+            parts.append(mf_ctx)
+        return "\n\n".join(parts)
 
     def _build_risk_macro(self, query: StockQuery) -> str:
         from services.data.fetchers.macro import get_macro_context
@@ -202,7 +229,31 @@ class ContextBuilder:
             for q in CONTEXT_SEARCH_QUERIES
         ]
         news = fetch_news_context(queries, api_key=self._serper_key)
-        return f"{macro}\n\n{news}"
+
+        # Structured FII/DII enrichment — replaces fragile Serper "FII DII net buying" query
+        nse_market_ctx = ""
+        try:
+            from services.data.fetchers.nse_market import get_nse_market_data, format_nse_market_context
+            nse_market_ctx = format_nse_market_context(get_nse_market_data(), focus="fii_dii")
+        except Exception as exc:
+            logger.debug("[ContextBuilder] risk_macro: NSE market data unavailable: %s", exc)
+
+        # IIMA factor regime — long-run momentum/reversal prior for the LLM
+        factor_ctx = ""
+        try:
+            from core.intelligence.rl.algorithms.factor_regime import (
+                get_factor_regime, format_factor_regime_context,
+            )
+            factor_ctx = format_factor_regime_context(get_factor_regime())
+        except Exception as exc:
+            logger.debug("[ContextBuilder] risk_macro: factor regime unavailable: %s", exc)
+
+        parts = [macro, news]
+        if nse_market_ctx:
+            parts.append(nse_market_ctx)
+        if factor_ctx:
+            parts.append(factor_ctx)
+        return "\n\n".join(parts)
 
     def _build_raw_materials(self, query: StockQuery) -> str:
         from services.data.fetchers.macro import get_raw_materials_context
@@ -338,11 +389,23 @@ class ContextBuilder:
         # to the exchange within 24h — official filing precedes news coverage.
         # Also catches management change filings that signal governance risk.
         nse_ctx = format_nse_context(query.nse_data, agent_type="bfsi_risk")
+
+        # Structured FII/DII — authoritative market flow context for risk scoring
+        nse_market_ctx = ""
+        try:
+            from services.data.fetchers.nse_market import get_nse_market_data, format_nse_market_context
+            nse_market_ctx = format_nse_market_context(get_nse_market_data(), focus="fii_dii")
+        except Exception as exc:
+            logger.debug("[ContextBuilder] bfsi_risk: NSE market data unavailable: %s", exc)
+
         base = (
             f"Stock: {query.ticker} | Company: {query.company_name} | "
             f"Date: {query.analysis_date}\n\n{news}"
         )
-        return f"{base}\n\n{nse_ctx}" if nse_ctx else base
+        parts = [f"{base}\n\n{nse_ctx}" if nse_ctx else base]
+        if nse_market_ctx:
+            parts.append(nse_market_ctx)
+        return "\n\n".join(parts)
 
     def _build_bfsi_pattern_analysis(self, query: StockQuery) -> str:
         from services.data.fetchers.fundamentals import get_fundamentals_context
@@ -427,7 +490,19 @@ class ContextBuilder:
             f"India government borrowing PSU bank recapitalisation IBC {today.year}",
         ]
         news = fetch_news_context(queries, api_key=self._serper_key)
-        return f"{macro}\n\n{news}"
+
+        # Structured FII/DII enrichment for BFSI macro context
+        nse_market_ctx = ""
+        try:
+            from services.data.fetchers.nse_market import get_nse_market_data, format_nse_market_context
+            nse_market_ctx = format_nse_market_context(get_nse_market_data(), focus="fii_dii")
+        except Exception as exc:
+            logger.debug("[ContextBuilder] macro_policy: NSE market data unavailable: %s", exc)
+
+        parts = [macro, news]
+        if nse_market_ctx:
+            parts.append(nse_market_ctx)
+        return "\n\n".join(parts)
 
     def _build_institutional(self, query: StockQuery) -> str:
         from services.data.fetchers.fundamentals import get_fundamentals_context
@@ -525,7 +600,19 @@ class ContextBuilder:
             f"Indian IT talent supply campus hiring moonlighting {today.year}",
         ]
         news = fetch_news_context(queries, api_key=self._serper_key)
-        return f"{macro}\n\n{news}"
+
+        # Structured FII/DII enrichment for IT macro risk context
+        nse_market_ctx = ""
+        try:
+            from services.data.fetchers.nse_market import get_nse_market_data, format_nse_market_context
+            nse_market_ctx = format_nse_market_context(get_nse_market_data(), focus="fii_dii")
+        except Exception as exc:
+            logger.debug("[ContextBuilder] it_risk_macro: NSE market data unavailable: %s", exc)
+
+        parts = [macro, news]
+        if nse_market_ctx:
+            parts.append(nse_market_ctx)
+        return "\n\n".join(parts)
 
     def _build_peer_benchmark(self, query: StockQuery) -> str:
         from services.data.fetchers.fundamentals import get_fundamentals_context

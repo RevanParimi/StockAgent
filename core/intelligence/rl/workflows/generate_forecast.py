@@ -127,6 +127,7 @@ def _build_daily_forecasts(
     learning_ledger: LearningLedger | None = None,
     forecast_profile: ForecastProfile | None = None,
     agent_predictions: dict | None = None,
+    regime_label: str = "NORMAL",
 ) -> list[DailyForecast]:
     """
     Build per-day forecast rows from the FinalReport.
@@ -153,25 +154,28 @@ def _build_daily_forecasts(
     }
     base_confidence = min(1.0, max(0.1, report.final_score))
 
-    # Build the LLM-calibrated price path via interpolator
+    # Build the LLM-calibrated price path via interpolator (Monte Carlo GBM primary)
     interpolator = PriceInterpolator()
     if forecast_profile is None:
         # Inline static fallback if caller didn't run the LLM profile step
         atr_pct = 0.0
         forecast_profile = interpolator._static_fallback(report.verdict, atr_pct)
 
-    price_path = interpolator.build_price_path(
+    mc_path = interpolator.build_monte_carlo_paths(
         base_close=base_close,
         profile=forecast_profile,
         n_days=n,
         base_confidence=base_confidence,
+        n_simulations=500,
+        regime_label=regime_label,
     )
 
     forecasts: list[DailyForecast] = []
 
     for i, td in enumerate(trading_dates):
         day_num = i + 1
-        running_close, day_confidence = price_path[i]
+        p50, p10, p90, day_confidence = mc_path[i]
+        running_close = p50
         change_pct = round((running_close - base_close) / base_close * 100, 4)
 
         day_agent_scores = dict(base_agent_scores)
@@ -213,6 +217,8 @@ def _build_daily_forecasts(
             day=day_num,
             date=td.isoformat(),
             predicted_close=running_close,
+            price_lower=p10,
+            price_upper=p90,
             predicted_change_pct=change_pct,
             predicted_verdict=report.verdict,
             predicted_agent_scores=day_agent_scores,
@@ -310,6 +316,7 @@ def generate_forecast(ticker: str, sector: str = "automobile") -> PredictionEnve
     # Non-fatal: falls back to static values if LLM call fails.
     # ------------------------------------------------------------------ #
     forecast_profile = None
+    regime_label = "NORMAL"   # default; overridden below when RegimeDetector succeeds
     try:
         atr_pct = 0.0
         try:
@@ -358,6 +365,36 @@ def generate_forecast(ticker: str, sector: str = "automobile") -> PredictionEnve
             "[generate_forecast] PriceInterpolator failed (non-fatal, using static): %s", exc
         )
 
+    # ------------------------------------------------------------------ #
+    # G7b: Fetch F&O chain snapshot at month-start (non-fatal).
+    # Stored in envelope; injected as market context during expiry week.
+    # ------------------------------------------------------------------ #
+    fno_snapshot = None
+    try:
+        from core.intelligence.fno.fetcher import FnOFetcher
+        from core.intelligence.fno.analyzer import FnOAnalyzer
+        fno_fetcher = FnOFetcher()
+        chain_data = fno_fetcher.fetch_option_chain(ticker)
+        fno_price = fno_fetcher.get_underlying_price(ticker) or base_close
+        if chain_data:
+            fno_snapshot = FnOAnalyzer().analyze(
+                chain_data, fno_price, ticker, date.today().isoformat(),
+                near_month_expiry=fno_fetcher.near_month_expiry,
+            )
+            logger.info(
+                "[generate_forecast] F&O snapshot %s: PCR=%.2f OI=%s "
+                "MaxPain=₹%.0f dev=%+.1f%%",
+                ticker,
+                fno_snapshot.pcr or 0,
+                fno_snapshot.oi_buildup_direction,
+                fno_snapshot.max_pain_price or 0,
+                fno_snapshot.max_pain_deviation_pct or 0,
+            )
+    except Exception as exc:
+        logger.warning(
+            "[generate_forecast] F&O chain fetch failed (non-fatal): %s", exc
+        )
+
     # Extract per-agent catalyst predictions for RL learning
     _agent_predictions: dict[str, dict] = {}
     for _name, _out in (report.agent_outputs or {}).items():
@@ -377,6 +414,7 @@ def generate_forecast(ticker: str, sector: str = "automobile") -> PredictionEnve
         learning_ledger=ledger,
         forecast_profile=forecast_profile,
         agent_predictions=_agent_predictions,
+        regime_label=regime_label,
     )
 
     envelope = PredictionEnvelope(
@@ -391,6 +429,7 @@ def generate_forecast(ticker: str, sector: str = "automobile") -> PredictionEnve
         forecast_profile_source=forecast_profile.source if forecast_profile else "static",
         daily_forecasts=forecasts,
         agent_predictions=_agent_predictions,
+        fno_snapshot=fno_snapshot,
     )
 
     store.save_envelope(envelope)

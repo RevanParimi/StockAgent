@@ -84,7 +84,9 @@ from backend.shared.schemas.feedback import (
 
 def _make_ohlcv(n_rows: int = 30, base_price: float = 10000.0, daily_range_pct: float = 1.5):
     """Create a synthetic OHLCV DataFrame for ATR testing."""
-    dates = pd.date_range(end=date.today(), periods=n_rows, freq="B")
+    # Use a fixed anchor business day to avoid weekend/holiday length mismatches
+    # when end=date.today() is a non-business day under pandas "B" freq.
+    dates = pd.bdate_range(start="2026-01-05", periods=n_rows)
     close = [base_price] * n_rows
     high  = [p * (1 + daily_range_pct / 100) for p in close]
     low   = [p * (1 - daily_range_pct / 100) for p in close]

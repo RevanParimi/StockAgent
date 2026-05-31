@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import json
 import logging
+import calendar as _cal
 from datetime import date, timedelta
 from pathlib import Path
 
@@ -154,3 +155,50 @@ def next_trading_day(d: date) -> date:
     while not is_trading_day(candidate):
         candidate += timedelta(days=1)
     return candidate
+
+
+# ── F&O Monthly Expiry Calendar ──────────────────────────────────────────────
+
+def fno_expiry_date(year: int, month: int) -> date:
+    """Last Thursday of month; if NSE holiday, walks back to Wednesday, then Tuesday."""
+    last_day = _cal.monthrange(year, month)[1]
+    d = date(year, month, last_day)
+    while d.weekday() != 3:   # 3 = Thursday
+        d -= timedelta(days=1)
+    # If NSE holiday, step back day by day until a trading day (max 3 steps)
+    for _ in range(3):
+        if is_trading_day(d):
+            break
+        d -= timedelta(days=1)
+    return d
+
+
+def is_fno_expiry_day(d: date) -> bool:
+    """Return True if d is the monthly F&O expiry date."""
+    return d == fno_expiry_date(d.year, d.month)
+
+
+def is_fno_expiry_week(d: date) -> bool:
+    """True if d is within 5 trading days of (and including) monthly expiry."""
+    expiry = fno_expiry_date(d.year, d.month)
+    if d > expiry:
+        return False
+    count, cur = 0, d
+    while cur <= expiry:
+        if is_trading_day(cur):
+            count += 1
+        cur += timedelta(days=1)
+    return count <= 5
+
+
+def days_to_fno_expiry(d: date) -> int | None:
+    """Trading days to next monthly expiry. None if d is past expiry for this month."""
+    expiry = fno_expiry_date(d.year, d.month)
+    if d > expiry:
+        return None
+    count, cur = 0, d
+    while cur < expiry:
+        if is_trading_day(cur):
+            count += 1
+        cur += timedelta(days=1)
+    return count

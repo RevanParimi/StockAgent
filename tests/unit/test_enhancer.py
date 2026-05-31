@@ -86,9 +86,13 @@ class TestPromptEnhancerEnhance:
         assert len(result) >= 1
 
     def test_unknown_factor_skipped_silently(self):
+        from unittest.mock import patch
         miss = {"completely_unknown_factor_xyz": 99}
         ledger = _make_ledger(miss)
-        result = PromptEnhancer().enhance("MARUTI", ledger)
+        # LLM generation is the fallback for unknown factors; mock it to return []
+        # so the test confirms that when no template AND LLM fails, result is empty.
+        with patch.object(PromptEnhancer, "_generate_queries_llm", return_value=[]):
+            result = PromptEnhancer().enhance("MARUTI", ledger)
         assert result == {}
 
     @pytest.mark.parametrize("ticker", ["MARUTI", "TATAMOTORS", "HDFCBANK"])

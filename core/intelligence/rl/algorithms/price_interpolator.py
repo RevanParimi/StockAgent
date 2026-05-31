@@ -77,6 +77,19 @@ _STATIC_MONTHLY_PCT: dict[str, float] = {
 
 PathShape = Literal["linear", "front_loaded", "back_loaded", "volatile"]
 
+# ---------------------------------------------------------------------------
+# Regime-conditioned volatility scale factors for Monte Carlo GBM.
+# Higher value → wider P10-P90 band (more uncertainty).
+# ---------------------------------------------------------------------------
+REGIME_SIGMA_SCALE: dict[str, float] = {
+    "MACRO_CRISIS":       1.50,   # elevated systemic fear → widen bands significantly
+    "RISK_OFF":           1.20,   # defensive positioning → wider than normal
+    "OVERSOLD":           1.10,   # technically stretched → slight extra uncertainty
+    "NORMAL":             1.00,   # base calibration
+    "MOMENTUM_EXTENDED":  0.90,   # trending strongly → tighter bands (momentum persists)
+    "RISK_ON":            0.80,   # broad participation → tightest bands
+}
+
 
 # ---------------------------------------------------------------------------
 # Schema
@@ -239,6 +252,51 @@ class PriceInterpolator:
 
             result.append((running_close, day_conf))
 
+        return result
+
+    def build_monte_carlo_paths(
+        self,
+        base_close: float,
+        profile: ForecastProfile,
+        n_days: int,
+        base_confidence: float,
+        n_simulations: int = 500,
+        regime_label: str = "NORMAL",
+    ) -> list[tuple[float, float, float, float]]:
+        """
+        Regime-conditioned GBM Monte Carlo. Returns list of (p50, p10, p90, confidence)
+        per day, length = n_days.
+
+        Model: dlog(S) = (μ - σ²/2)dt + σ·dW
+          μ = monthly_return_pct/100 / n_days     (daily drift, LLM-calibrated)
+          σ = confidence_band_daily_pct/100 × regime_scale  (regime-conditioned vol)
+        """
+        import numpy as np
+
+        mu_daily = (profile.monthly_return_pct / 100.0) / max(1, n_days)
+        sigma_daily = (profile.confidence_band_daily_pct / 100.0)
+        sigma_daily *= REGIME_SIGMA_SCALE.get(regime_label, 1.0)
+
+        rng = np.random.default_rng(42)
+        Z = rng.standard_normal((n_simulations, n_days))
+        # Log-normal GBM: log(S_t/S_0) = (μ - σ²/2)t + σ·√t·Z  (cumulative)
+        log_returns = (mu_daily - 0.5 * sigma_daily ** 2) + sigma_daily * Z
+        cum_log = np.cumsum(log_returns, axis=1)
+        price_paths = base_close * np.exp(cum_log)  # shape: (n_sims, n_days)
+
+        conf_decay_per_day = 0.004
+        result: list[tuple[float, float, float, float]] = []
+        for i in range(n_days):
+            day_prices = price_paths[:, i]
+            p10 = float(np.percentile(day_prices, 10))
+            p50 = float(np.percentile(day_prices, 50))
+            p90 = float(np.percentile(day_prices, 90))
+            # Confidence: horizon decay + band-width penalty (wider MC band = less confident)
+            band_width_pct = (p90 - p10) / p50 * 100 if p50 > 0 else 2.0
+            band_penalty = max(0.0, (band_width_pct / 2 - 1.0) * 0.015)
+            horizon_decay = 1.0 - conf_decay_per_day * i
+            day_conf = round(max(0.05, min(0.99, base_confidence * horizon_decay - band_penalty)), 4)
+            result.append((round(p50, 2), round(p10, 2), round(p90, 2), day_conf))
         return result
 
     # ------------------------------------------------------------------

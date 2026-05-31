@@ -1039,6 +1039,74 @@ _RUBBER_CACHE (4-hour in-memory TTL)
 
 ---
 
+## 5.4 New Structured Data Sources — Zero-Credential (May 2026)
+
+Three new data sources integrated alongside the existing Serper/Tavily/yfinance stack. All three require no API keys, no accounts, and are cached to avoid repeated external hits.
+
+### 5.4.1 NSE Market Intelligence — `services/data/fetchers/nse_market.py`
+
+**Source:** National Stock Exchange of India via `nsepython` (community library that handles NSE's Cloudflare cookie handshake).
+
+**Data provided:**
+- FII/DII daily net flows in Cr (structured numbers, not news snippets)
+- Bulk deal net buyers and sellers (>0.5% of listed shares in one transaction)
+- Per-ticker bulk deal activity lookup
+- Upcoming board meeting / earnings dates
+
+**Caching:** In-process dict keyed by date (`_CACHE["YYYY-MM-DD"]`). Zero overhead for repeated calls within one process; NSE hit exactly once per analysis session.
+
+**ContextBuilder integration:**
+
+| Builder method | Focus mode | Replaces Serper query |
+|---|---|---|
+| `_build_risk_macro()` | `"fii_dii"` | `"{ticker} FII DII India net buying today"` |
+| `_build_sentiment()` | `"bulk_deals"` | `"{ticker} BSE bulk deal block trade {month}"` |
+| `_build_bfsi_risk()` | `"fii_dii"` | FII selling pressure in BFSI risk context |
+| `_build_it_risk_macro()` | `"fii_dii"` | FII outflow context for IT macro risk |
+| `_build_macro_policy()` | `"fii_dii"` | FII/DII in BFSI macro policy context |
+
+**daily_review.py integration (G8):** FII/DII + bulk deal context injected into `market_context_today` before `FeedbackAgent` so it can attribute price moves to institutional flows rather than news inference.
+
+**Limitations:** FII/DII data is T-1 (published after 6 PM IST). nsepython can break if NSE changes internal endpoints — wrapped in try/except, falls back silently to Serper-only.
+
+### 5.4.2 AMFI MF Sector Herding — `services/data/fetchers/mf_herding.py`
+
+**Source:** `mfapi.in` (community wrapper around AMFI official NAV data; ~14,000 schemes; AMFI is SEBI-regulated and publishes NAV by regulatory obligation).
+
+**Data provided:**
+- 30-day NAV momentum across sector ETFs (Nifty Auto ETF, Nifty Bank ETF, Nifty IT ETF, New Energy ETF)
+- Institutional flow signal: `INFLOW | OUTFLOW | NEUTRAL`
+
+**Caching:** In-process dict keyed by ISO week (`_CACHE["YYYY-WNN:sector"]`). Weekly cadence — MF NAV changes daily but sector trend is stable across 7 days.
+
+**ContextBuilder integration:** `_build_sentiment()` appends MF herding signal for the current sector. Provides a signal type Serper cannot surface: sector-level institutional accumulation vs distribution pressure before it shows in price.
+
+**Limitations:** NAV is end-of-day, not real-time. Wrapper is community-maintained with no SLA. AMFI publishes NAV daily around 10–11 PM IST, so intraday signal is not available.
+
+### 5.4.3 IIMA 4-Factor Regime — `core/intelligence/rl/algorithms/factor_regime.py`
+
+**Source:** Indian Institute of Management Ahmedabad — `www.iimahd.ernet.in/~iffm/Indian-Fama-French-Momentum/`
+
+**Data provided:**
+- Monthly WML (Winners Minus Losers) momentum factor: `MOMENTUM | REVERSAL` regime
+- SMB (size): `SMALL_CAP | LARGE_CAP` market tilt
+- HML (style): `VALUE | GROWTH` market tilt
+
+**Caching:** 30-day CSV file cache + daily in-process dict. The CSV is ~50 KB and downloaded once per month.
+
+**ContextBuilder integration:** `_build_risk_macro()` appends factor regime as a long-run prior so the LLM understands the structural market background.
+
+**WeightAdapter integration:** `update()` now accepts `factor_regime: dict | None`. `get_regime_penalty_scale(agent, regime)` returns:
+- `0.80` in REVERSAL regime for `pattern_analysis`, `competitive_intel`, `sales_demand` (momentum agents are structurally disadvantaged)
+- `0.85` in MOMENTUM regime for `fundamentals`, `risk_macro` (value/macro agents lag in momentum markets)
+- `1.0` in WEAK regime or for non-disadvantaged agents
+
+**Critical limitation:** Data vintage ends **March 2023** (3 years stale). This is the last CSV available on the IIMA server as of May 2026. Use as a long-run structural prior ONLY — NOT as a live signal. `RegimeDetector` (`core/intelligence/regime/detector.py`) remains the authoritative source for live regime state.
+
+**Trust:** Academic data from IIMA faculty (Profs. Agarwalla, Jacob, Varma — peer-reviewed research, underlying data from CMIE Prowess). TLS cert hostname mismatch on `iimahd.ernet.in` is a government university IT issue, not a security concern; `verify=False` is intentional and documented.
+
+---
+
 ## 6. Chat Pipeline (3-Node LangGraph)
 
 ### 6.1 Architecture Overview

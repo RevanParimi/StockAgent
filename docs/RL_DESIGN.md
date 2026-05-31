@@ -3,7 +3,7 @@
 > Complete reference for the self-learning RL feedback system.
 > Covers: 4 JSON memory files, full daily loop (Steps 0–9), month-start forecast,
 > all static formulas & multipliers, LLM contracts, schemas, and static-vs-LLM boundary.
-> Updated: 2026-05-24 · Phases 5 + 6 + Evolution P1–P5 complete.
+> Updated: 2026-05-26 · Phases 5 + 6 + Evolution P1–P5 + Phase 8 complete.
 
 ---
 
@@ -31,8 +31,8 @@ MONTH START (1st trading day)
     ├── SeasonalCalendar → seasonal context per day         [STATIC: YAML + ledger]
     ├── PromptEnhancer   → extra search queries per agent   [STATIC: template map]
     ├── Run N-agent pipeline via sector orchestrator        [LLM: agents]
-    ├── price_interpolator → 30-day linear price path       [STATIC: formula]
-    ├── confidence_decay  → 0.5% per day horizon decay      [STATIC: formula]
+    ├── price_interpolator → 30-day GBM MC paths (P10/P50/P90) [STATIC: formula + regime scale]
+    ├── confidence_decay  → 0.4% per day + MC band penalty     [STATIC: formula]
     └── Save PredictionEnvelope
 
 DAILY (weekdays 4:30pm IST / 11:00 UTC)
@@ -44,8 +44,10 @@ DAILY (weekdays 4:30pm IST / 11:00 UTC)
     ├── Step 4   FeedbackAgent    → miss analysis + lessons [LLM: qwen, temp=0.3]
     │    ├── Inject streak warning if ConvictionStreak ≥ 8 [STATIC: threshold]
     │    ├── Inject regime narrative (non-NORMAL only)      [STATIC: assembled]
-    │    └── Inject tiered lessons summary (TIER 1/2/3)    [STATIC: assembled]
+    │    ├── Inject tiered lessons summary (TIER 1/2/3)    [STATIC: assembled]
+    │    └── G8: Inject NSE market intelligence (FII/DII + bulk deals) [STATIC: nse_market.py]
     ├── Step 5   WeightAdapter    → update weight_memory    [STATIC: deterministic]
+    │    └── factor_regime scale → lenient penalty for structurally-disadvantaged agents [STATIC: get_regime_penalty_scale]
     ├── Step 5.5 Apply regime multipliers → ephemeral eff. weights [STATIC: NOT persisted]
     ├── Step 6   LearningLedger  → merge lessons + propagate (P2) [STATIC: blend formula]
     ├── Step 6.5 ConvictionTracker → update streak + reversion_prior [STATIC: formula]
@@ -55,6 +57,24 @@ DAILY (weekdays 4:30pm IST / 11:00 UTC)
 ```
 
 **Key invariant:** Regime multipliers (Step 5.5) are ephemeral — applied per-day, NEVER written to `weight_memory.json`. Learned weights drift slowly; regime multipliers are daily overlays only.
+
+### 2.1 New Structured Data Sources (May 2026)
+
+Three zero-credential data sources integrated as pre-fetched enrichments:
+
+| Source | File | Scope | Cache | Serper calls saved |
+|---|---|---|---|---|
+| **NSE FII/DII + Bulk Deals** | `services/data/fetchers/nse_market.py` | Daily | In-process daily | ~3–4 per run |
+| **AMFI Sector ETF Herding** | `services/data/fetchers/mf_herding.py` | Weekly trend | In-process weekly | 0 (new signal) |
+| **IIMA 4-Factor Regime** | `core/intelligence/rl/algorithms/factor_regime.py` | Long-run prior | 30-day CSV + daily | 0 (new signal) |
+
+**Integration pattern** — all three follow the same pre-fetch-then-format architecture used by `nse_announcements.py`:
+- Fetcher module handles caching and graceful degradation (always returns, never raises)
+- `ContextBuilder` calls `format_*()` per relevant agent; returns `""` on failure (agents silently use Serper-only)
+- `daily_review.py` injects FII/DII into `market_context_today` before `FeedbackAgent` (Step 4, tagged G8)
+- `WeightAdapter.update()` accepts `factor_regime` dict; `get_regime_penalty_scale()` scales bias penalties for regime-disadvantaged agents (0.80× in REVERSAL for `pattern_analysis`/`competitive_intel`; 0.85× in MOMENTUM for `fundamentals`/`risk_macro`)
+
+**IIMA data staleness note:** Data ends March 2023. Use as a long-run structural prior (size/style/momentum background), NOT a live signal. RegimeDetector (`core/intelligence/regime/detector.py`) remains the authoritative live regime source.
 
 ---
 
@@ -744,26 +764,38 @@ INVALIDATED (still_valid = false, no longer injected)
 
 ## 9. Month-Start Forecast Generation
 
-**Price Interpolator (STATIC):**
+**Price Interpolator — Regime-Conditioned GBM Monte Carlo (Phase 8):**
 
 ```
-verdict → implied monthly return assumption:
-  STRONG BUY: +8% over 30 days
-  BUY:        +4%
-  NEUTRAL:    ±0%
-  SELL:       -4%
-  STRONG SELL: -8%
+Model: Geometric Brownian Motion with 500 simulations, seed=42
+  dlog(S) = (μ - σ²/2)dt + σ·dW
 
-price_delta = base_close × (monthly_return / 30_trading_days)
-DailyForecast[day].predicted_close = base_close + price_delta × day
+  μ_daily     = monthly_return_pct/100 / n_days   (LLM-calibrated per ticker)
+  σ_daily     = confidence_band_daily_pct/100 × REGIME_SIGMA_SCALE[regime_label]
+
+REGIME_SIGMA_SCALE:
+  MACRO_CRISIS       1.50  ← elevated systemic fear, widen bands
+  RISK_OFF           1.20
+  OVERSOLD           1.10
+  NORMAL             1.00  ← base calibration
+  MOMENTUM_EXTENDED  0.90
+  RISK_ON            0.80  ← trending + broad participation, tightest bands
+
+Per-day output (P10, P50, P90 from 500 paths):
+  predicted_close  = P50  (median path)
+  price_lower      = P10  (pessimistic tail)
+  price_upper      = P90  (optimistic tail)
+  confidence       = base × (1 - 0.004×day) - band_width_penalty
 ```
 
 **Confidence Decay (STATIC):**
 
 ```
-decay_per_day ≈ 0.005 (0.5% per day further out)
+decay_per_day ≈ 0.004 (0.4% per day further out)
+band_width_penalty = max(0, (band_width_pct/2 - 1.0) × 0.015)
+  → wider Monte Carlo band reduces stated confidence automatically
 base_confidence = FinalReport.final_score (from agent pipeline)
-DailyForecast[day].confidence = base_close_confidence × (1 - decay_per_day × day)
+DailyForecast[day].confidence = base_confidence × (1 - 0.004 × day) - band_penalty
 ```
 
 **Envelope builder applies on top:** seasonal agent adjustments from SeasonalCalendar.
@@ -980,13 +1012,14 @@ python -m scripts.generate_forecast --sector renewable_energy --ticker ADANIGREE
 
 | # | Gap | Impact | Status |
 |---|---|---|---|
-| G1 | Forecast path is linear interpolation | Constant drift, misrepresents uncertainty | Open — Phase 8 (Monte Carlo) |
+| G1 | Forecast path is linear interpolation | Constant drift, misrepresents uncertainty | ✅ **Closed Phase 8** — GBM Monte Carlo, P10/P50/P90 bands |
 | G2 | `max_total_drift_from_base` fixed at 0.15 forever | May be too tight after 6+ months of data | Open — revisit Month 6 with weight-history data |
-| G3 | Probability bands on forecasts (not single price) | Needs volatility modelling | Phase 8 target |
-| G4 | Off-market signals (block deals, pre-open) | Intraday complexity | Phase 8 target |
+| G3 | Probability bands on forecasts (not single price) | Needs volatility modelling | ✅ **Closed Phase 8** — `price_lower` / `price_upper` on `DailyForecast` |
+| G4 | Off-market signals (block deals, pre-open) | Intraday complexity | ✅ **Closed Phase 8** — `OffMarketFetcher`, next-day leading signal |
 | G5 | Subscriber prediction feedback loop | Needs frontend + identity layer | Phase 9 target |
 | G6 | Backtesting on historical data | No historical envelope data yet | Available naturally after Month 6 |
-| G7 | F&O expiry effects | Options data sourcing (paid APIs) | Phase 8 target |
+| G7a | F&O monthly expiry week calendar | Expiry-week volatility not modelled | ✅ **Closed Phase 8** — `fno_expiry_date()`, `is_fno_expiry_week()`, SeasonalCalendar overlay |
+| G7b | F&O options chain signals (PCR, max pain, OI) | Institutional positioning not used | ✅ **Closed Phase 8** — `FnOFetcher` + `FnOAnalyzer`, injected during expiry week |
 | G8 | Lesson scope narrowing (market→sector→stock) | Lessons only accumulate credibility, can't narrow scope | Open — design question (ticker sync partially addresses via weekly cleanup) |
 | G9 | Seasonal threshold deltas not structured in WeightMemory | In weight_history reason string only; not machine-readable | Open |
 
@@ -1213,18 +1246,20 @@ Two bugs were found and fixed during testing: (1) `MNRE_policy_reversal` was rou
 
 ---
 
-## 23. Section 9 — LLM-Calibrated Price Interpolator
+## 23. Phase 8 — Algorithm Reference
 
-### Problem with static verdict_monthly_pct
+### 23a. LLM-Calibrated Price Interpolator + GBM Monte Carlo
+
+#### Problem with static verdict_monthly_pct
 
 ```python
 # Old: universal for every stock in every regime
 {"STRONG BUY": 8.0, "BUY": 4.0, "NEUTRAL": 0.5, "SELL": -3.0, "STRONG SELL": -7.0}
 ```
 
-HDFC Bank (14-day ATR ~0.8%, low beta) and ADANIGREEN (14-day ATR ~3.5%, high beta, policy-driven) shared the same +4% BUY expectation. A BUY on ADANIGREEN when MNRE auctions are accelerating is realistically a +8–12% move. A BUY on HDFC Bank in a stable rate environment is realistically +2–3%. The static table is wrong for both.
+HDFC Bank (14-day ATR ~0.8%, low beta) and ADANIGREEN (14-day ATR ~3.5%, high beta, policy-driven) shared the same +4% BUY expectation. The static table is wrong for both in two ways: (1) wrong magnitude, (2) no uncertainty band.
 
-### ForecastProfile
+#### ForecastProfile (LLM output)
 
 ```python
 class ForecastProfile:
@@ -1235,53 +1270,155 @@ class ForecastProfile:
         "back_loaded",  # 80% of move in days 11–30 (catalyst is 2+ weeks away)
         "volatile",     # linear drift + ±ATR noise per day
     ]
-    confidence_band_daily_pct: float   # [0.1, 5.0] — daily ±uncertainty width
+    confidence_band_daily_pct: float   # [0.1, 5.0] — daily ±uncertainty width (=ATR×0.5 as guide)
     source: Literal["llm", "static"]   # audit field
 ```
 
-### LLM inputs (once per month-start per ticker, ~200 tokens)
+#### GBM Monte Carlo (Phase 8)
+
+```
+n_simulations = 500, seed = 42 (reproducible)
+
+For each simulation s, for each day t:
+  Z[s,t]        ~ N(0, 1)
+  log_return    = (μ - σ²/2) + σ·Z
+  cum_log[s,t]  = Σ_{τ=1}^{t} log_return[s,τ]
+  price[s,t]    = base_close × exp(cum_log[s,t])
+
+Per day output:
+  P50 = median(price[:, t])   → predicted_close
+  P10 = 10th percentile        → price_lower  (pessimistic tail)
+  P90 = 90th percentile        → price_upper  (optimistic tail)
+```
+
+#### Regime-conditioned volatility (REGIME_SIGMA_SCALE)
+
+```
+σ_effective = confidence_band_daily_pct/100 × REGIME_SIGMA_SCALE[regime_label]
+
+Regime               Scale   Effect on P10-P90 band
+──────────────────────────────────────────────────
+MACRO_CRISIS         1.50    +50% wider (systemic fear)
+RISK_OFF             1.20    +20% wider (defensive positioning)
+OVERSOLD             1.10    +10% wider (stretched technicals)
+NORMAL               1.00    Base calibration
+MOMENTUM_EXTENDED    0.90    -10% tighter (trend persists)
+RISK_ON              0.80    -20% tighter (broad participation)
+```
+
+#### LLM inputs (once per month-start per ticker, ~200 tokens)
 
 | Input | Source | Why it matters |
 |---|---|---|
-| `atr_pct` | yfinance 14-day ATR / price | Primary calibration signal — volatile stock needs wider return range |
-| `regime_label` | RegimeDetector | MACRO_CRISIS → narrower expected move; RISK_ON → amplify BUY expectation |
-| `conviction_drivers` | FinalReport.conviction_drivers | Near-term catalyst in drivers → front_loaded shape |
+| `atr_pct` | yfinance 14-day ATR / price | Primary calibration — volatile stock needs wider return range |
+| `regime_label` | RegimeDetector | Determines σ scaling via REGIME_SIGMA_SCALE |
+| `conviction_drivers` | FinalReport.conviction_drivers | Near-term catalyst → front_loaded shape |
 | `historical_avg_return_pct` | Median of past FeedbackLog entries for same verdict | Ground truth after Month 3 |
 
-### Path shape examples (BUY, +5%, base ₹10,000)
+#### Static fallback (Month 1, LLM unavailable)
 
-```
-Shape           Day 1    Day 10   Day 20   Day 30   Interpretation
-─────────────────────────────────────────────────────────────────
-linear          10017    10167    10333    10500    Uniform drift
-front_loaded    10100    10357    10429    10500    60% of ₹500 in first 10 days
-back_loaded     10007    10067    10283    10500    80% of ₹500 in last 20 days
-volatile        10045    10255    10390    10448    Drift + ±ATR noise (deterministic seed)
-```
-
-### Static fallback (Month 1, LLM unavailable)
-
-The static dict is preserved but now ATR-scaled, making even the fallback stock-specific:
+The static dict is preserved but ATR-scaled, making even the fallback stock-specific:
 
 ```
 scaled_pct = base_static_pct × max(0.5, min(2.5, atr_pct / 1.5))
 
-HDFC Bank  ATR=0.8%: BUY → 4.0 × (0.8/1.5=0.53) → 2.12%  (conservative, low-beta)
-ADANIGREEN ATR=3.5%: BUY → 4.0 × (3.5/1.5=2.33, capped 2.5) → 10.0% (volatile RE stock)
+HDFC Bank  ATR=0.8%: BUY → 4.0 × (0.8/1.5=0.53) → 2.12%
+ADANIGREEN ATR=3.5%: BUY → 4.0 × (3.5/1.5=2.33, capped 2.5) → 10.0%
 ```
 
-### Safety guards in _parse()
+**Test files:**
+- `tests/unit/intelligence/rl/test_price_interpolator.py` — 67 tests (schema bounds, static fallback, path shapes, LLM parse safety, ATR, historical return)
+- `tests/unit/intelligence/rl/test_monte_carlo.py` — 19 tests (percentile invariants, regime band width, seed reproducibility, DailyForecast schema)
 
-- Sign enforcement: BUY with negative LLM output → flipped positive; SELL with positive → flipped negative
-- Bounds clamping: `monthly_return_pct` → `[-20, 20]`; `confidence_band_daily_pct` → `[0.1, 5.0]`
-- Invalid `path_shape` → default `"linear"`
-- Any JSON parse failure → `_static_fallback()` returned, `source="static"`
+---
 
-### compute_historical_avg_return()
+### 23b. Algorithm Theory Table
 
-After Month 3, this provides empirical calibration. It takes the **median** (not mean) of `price_error_pct` entries in the FeedbackLog where `predicted_verdict` matches the current verdict. Median is used because outlier misses (external shocks) would skew the mean. Returns `None` when fewer than 3 matching entries exist — LLM then calibrates purely from ATR and regime, without historical bias.
+| Algorithm | Formula / Rule | Parameters | Where used |
+|---|---|---|---|
+| **GBM (Geometric Brownian Motion)** | `dS/S = μ dt + σ dW` | μ from LLM, σ from ATR×regime_scale | `build_monte_carlo_paths()` in `price_interpolator.py` |
+| **Regime-GBM** | σ_eff = σ_base × REGIME_SIGMA_SCALE | 6 regime labels, scale 0.8–1.50 | Same; σ widens/narrows based on market regime |
+| **Monte Carlo percentiles** | P10/P50/P90 from 500 paths, seed=42 | n=500, seed=42 | Per-day `price_lower`, `predicted_close`, `price_upper` in `DailyForecast` |
+| **Put-Call Ratio (PCR)** | total_put_OI / total_call_OI | <0.7 bullish, >1.5 bearish | `FnOAnalyzer._compute_pcr()` |
+| **Max Pain** | argmin_K Σ[max(0,K-s)×CE_OI + max(0,s-K)×PE_OI] | All strikes in near-month chain | `FnOAnalyzer._compute_max_pain()` |
+| **OI Buildup Direction** | call_atm / put_atm ratio at ±3% of spot | >1.3 → LONG, <0.77 → SHORT, else NEUTRAL | `FnOAnalyzer._compute_oi_buildup()` |
+| **F&O Expiry Calendar** | Last Thursday of month; walk back if NSE holiday | Max 3 walk-back steps | `nse_calendar.fno_expiry_date()` |
+| **Expiry Week Gate** | ≤5 trading days from (and including) expiry | 5-day window | `is_fno_expiry_week()` |
 
-**Test file:** `tests/unit/intelligence/rl/test_price_interpolator.py` — 67 tests covering schema bounds, static fallback scaling, all 4 path shapes, LLM parse safety, ATR computation, and historical return calculation.
+---
+
+### 23c. Market Microstructure Signals (Phase 8 — G4)
+
+| Signal | SEBI Definition | Fetch source | Architecture |
+|---|---|---|---|
+| **Block Deal** | ≥500,000 shares OR ≥₹10Cr in 9:15–9:50am window | `nse.blockDeals()` | Next-day leading signal |
+| **Bulk Deal** | Single-day quantity > 0.5% of company equity | `nse.bulkDeals()` | Next-day leading signal |
+| **Pre-Open Auction IEP** | Indicative Equilibrium Price at 9:00–9:08am | `nse.quote()` → `preOpenMarket.IEP` | Next-day leading signal |
+| **F&O Expiry Week** | ≤5 trading days from monthly last-Thursday expiry | `is_fno_expiry_week()` in `nse_calendar.py` | Seasonal overlay (conf_modifier −0.05 / −0.08 on expiry day) |
+
+**Next-day leading signal pattern:**
+```
+End of daily_review day T:
+  OffMarketFetcher.fetch_all(ticker, date_T) → save to {ticker}_{date_T}_offmarket.json
+
+Start of daily_review day T+1:
+  store.load_offmarket_signals(date_T-1) → inject as market_context_today
+  FeedbackAgent sees institutional activity from T BEFORE it evaluates T+1 miss
+```
+
+**Net direction logic (`_compute_summary`):**
+```
+buy_val  = Σ trade_value_cr for BUY  deals
+sell_val = Σ trade_value_cr for SELL deals
+
+buy_val > sell_val × 1.5  → "BUY"   (strong institutional accumulation)
+sell_val > buy_val × 1.5  → "SELL"  (strong institutional distribution)
+both > 0, ratio < 1.5     → "MIXED" (both sides active)
+no deals                  → "NONE"
+```
+
+---
+
+### 23d. F&O Expiry Overlay (Phase 8 — G7a + G7b)
+
+**G7a — Seasonal calendar overlay:**
+```
+During expiry week (5 trading days):
+  SeasonalCalendar._get_fno_expiry_context(d) returns:
+    adjustments:  {"risk_macro": +0.04, "pattern_analysis": +0.03}
+    conf_modifier: -0.05  (or -0.08 on expiry day itself)
+
+fno_week_only: true patterns in sector YAMLs:
+  automobile  → SEA_AUTO_007  (risk_macro +0.04, pattern_analysis +0.03)
+  bfsi        → SEA_BFSI_005  (risk_macro +0.05, pattern_analysis +0.03)
+  it_sector   → SEA_IT_005    (risk_macro +0.03, pattern_analysis +0.04)
+  renewable   → SEA_RE_005    (risk_macro +0.03, pattern_analysis +0.02)
+```
+
+**G7b — Options chain context injection:**
+```
+Month-start generate_forecast.py:
+  FnOFetcher.fetch_option_chain(ticker)     → near-month rows only (sorted chronologically)
+  FnOAnalyzer.analyze(chain, price, ...)    → FnOSnapshot(pcr, max_pain, oi_buildup, atm_strike)
+  PredictionEnvelope.fno_snapshot = snap
+
+During expiry week in daily_review.py:
+  if is_fno_expiry_week(review_date):
+    fno_ctx_str = envelope.fno_snapshot.to_context_string()
+    market_context += fno_ctx_str   # injected into FeedbackAgent
+
+FnOSnapshot.to_context_string() example:
+  [F&O SNAPSHOT — 2026-05-01]
+    PCR: 1.82 → bearish (heavy put writing)
+    Max Pain: ₹1900 (current: ₹1950, deviation: +2.6%)
+    OI Buildup: SHORT
+```
+
+**Test files:**
+- `tests/unit/intelligence/rl/test_fno_expiry.py` — 25 tests (expiry date computation, expiry week boundary, SeasonalCalendar overlay)
+- `tests/unit/intelligence/fno/test_fno_analyzer.py` — 33 tests (PCR, max pain, OI buildup, ATM strike, to_context_string)
+- `tests/unit/intelligence/rl/test_offmarket.py` — 20 tests (block deal filtering, direction logic, context string format, store round-trip)
+
 | Calendar updater | `core/intelligence/rl/calendar_updater.py` |
 
 ---

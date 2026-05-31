@@ -33,4 +33,8 @@ from backend.shared.schemas.feedback import (  # explicit re-exports for IDEs
     RawLesson,
     FeedbackAgentOutput,
     RegimeSnapshot,
+    BlockDeal,
+    BulkDeal,
+    OffMarketSignals,
+    FnOSnapshot,
 )

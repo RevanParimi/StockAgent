@@ -47,9 +47,28 @@ All sector analysis agents inherit from `BaseAgent` (`src/backend/shared/pipelin
 BaseAgent._gather_context(query)
   ├── Check 1: RAG_ENABLED=true?
   │   → YES: RAGRetriever.retrieve(search_query) → ChromaDB top-K + optional reranker
+  │          [DISABLED BY DEFAULT — set RAG_ENABLED=true in .env to activate]
   ├── Check 2: ContextBuilder.build(agent_name, query) → live data from fetchers
   └── FALLBACK: "Stock: MARUTI | Date: 2026-05-17 | Note: Live data unavailable."
 ```
+
+**RAG System Status — implemented, disabled by default.**
+
+| Setting | Default | Override via env var |
+|---|---|---|
+| Feature flag | `RAG_ENABLED=false` | `RAG_ENABLED=true` |
+| Vector store | ChromaDB (local, persistent) | `VECTOR_STORE_PROVIDER` |
+| Collection name | `automobile_agent_kb` | `CHROMA_COLLECTION_NAME` |
+| Persist dir | `data/chroma_db` | `CHROMA_PERSIST_DIR` |
+| Embedding model | `nomic-embed-text-v1.5` (Groq) | `EMBEDDING_MODEL`, `EMBEDDING_PROVIDER` |
+| Top-K results | `5` | `RAG_TOP_K` |
+| Similarity threshold | `0.75` | `RAG_SIMILARITY_THRESHOLD` |
+| Reranker | disabled | `RERANKER_ENABLED=true` |
+| Reranker model | `cross-encoder/ms-marco-MiniLM-L-6-v2` | `RERANKER_MODEL` |
+
+Key files: `core/intelligence/rag/config.py` (all settings), `core/intelligence/rag/core/retriever.py` (RAGRetriever), `core/intelligence/rag/core/vector_store.py` (ChromaDB wrapper), `core/intelligence/rag/ingestion/ingest_cli.py` (document ingestion CLI).
+
+To enable: set `RAG_ENABLED=true` in `.env`, then run the ingestion CLI to populate the vector store before starting the server.
 
 **Retry logic (STATIC):** 3 attempts, exponential backoff on `APIError`, `RateLimitError`, `APITimeoutError`.
 
@@ -93,7 +112,7 @@ LangGraph StateGraph (src/backend/sectors/{sector}/pipeline/graph.py)
   │   │  writes {agent_name: AgentOutput} via _merge_dicts reducer    │  │
   │   └──────────────────────────────────────────────── fan-in ───────┘  │
   │                                                                     │
-  │   aggregate  [conflict_rail: spread > 0.35 → LLM re-resolution]    │
+  │   aggregate  [conflict_rail: spread > 0.30 → LLM re-resolution]    │
   │              [SignalAggregator.run(learned_weights) → FinalReport]  │
   └─────────────────────────────────────────────────────────────────────┘
   │
@@ -107,7 +126,7 @@ END → state["final_report"] = FinalReport
 |---|---|---|---|
 | `input_rail` | Before fan-out | Bad ticker / yfinance not found | Append to rail_errors; continue |
 | `output_rail` | Inside `run_agent` | Score out of [0,1], empty summary | Clamp; inject placeholder |
-| `conflict_rail` | Inside `aggregate` | Pairwise score spread > 0.35 | Trigger LLM re-resolution |
+| `conflict_rail` | Inside `aggregate` | Pairwise score spread > 0.30 | Trigger LLM re-resolution |
 
 **Sync vs Async paths:**
 
@@ -701,7 +720,7 @@ ContextBuilder._build_risk_macro():
 | Cross-ticker boost +0.05 | **STATIC** | `rl/stores/ledger_propagator.py` | Per confirming ticker | propagate_to_shared |
 | `input_rail` | **STATIC** | `shared/pipeline/graphs/rails.py` | yfinance fast_info | Non-blocking |
 | `output_rail` | **STATIC** | above | Clamp score [0,1] | Non-blocking |
-| `conflict_rail` | **STATIC** | above | Spread > 0.35 | Triggers LLM re-resolution |
+| `conflict_rail` | **STATIC** | above | Spread > 0.30 | Triggers LLM re-resolution |
 | `DispatchNode` (chat) | **LLM** | `chat_graph.py` | qwen, temp=0.0 | Query decomposition + tier detection |
 | `ExecutorNode` (chat) | **STATIC** | above | `asyncio.gather()` | Parallel tool execution, 0 LLM tokens |
 | `SynthesizeNode` (chat) | **LLM** | above | qwen, streaming | Tier-aware response |
@@ -789,6 +808,15 @@ ContextBuilder._build_risk_macro():
 | Vahan/FADA/SIAM structured data | sales_demand | Serper proxy only | ❌ OPEN |
 | Nifty Auto peer correlation | pattern_analysis | 10 lines of yfinance | ❌ OPEN |
 | Emission query 4 skipped (SERPER_MAX=3) | risk_macro | Raise SERPER_MAX_QUERIES | ❌ OPEN |
+| `TATAMOTORS` NseIndiaApi announcements returns `[]` | all 9 agents | See NSE workaround note below | ⚠️ PERMANENT WORKAROUND |
+
+**NSE TATAMOTORS workaround — detail:**
+
+- **Affected tickers:** `TATAMOTORS` only (confirmed in `NSE_SYMBOL_OVERRIDES` in `services/data/fetchers/nse_announcements.py`).
+- **Root cause:** `NseIndiaApi.announcements(symbol="TATAMOTORS")` consistently returns an empty list `[]`. The exact server-side cause is not documented by NseIndiaApi; the debug script `tests/debug_nse_lookup.py` tested symbol variants (`TATAMOTORS`, `TATAMTRDVR`, `TATAMOTOR`, `TTM`) to determine whether the NSE `announcements()` endpoint silently rejects the symbol or routes to the DVR share class. No variant returned data. `boardMeetings()` and `actions()` may still return data for this ticker — only `announcements()` is observed to be empty.
+- **Current workaround (code-verified):** `prefetch_nse_data()` checks `NSE_SYMBOL_OVERRIDES` before calling NseIndiaApi. If the ticker is in the dict, it returns immediately with `{"announcements": [], "board_meetings": [], "actions": [], "error": "symbol_override"}`. `format_nse_context()` returns `""` when `error == "symbol_override"`, so all 9 agents fall back to Serper-only for TATAMOTORS. No NseIndiaApi calls are made for this ticker.
+- **Resolution path:** To fix properly, test `nse.boardMeetings("TATAMOTORS")` and `nse.actions("TATAMOTORS")` in isolation — if those return data, remove `TATAMOTORS` from `NSE_SYMBOL_OVERRIDES` and accept that only `announcements()` is empty (partial NSE data is still valuable). If the full NseIndiaApi endpoint resolves in a future library version, remove the override entirely and rerun `tests/debug_nse_lookup.py` to confirm. The override dict is designed to be extended if other tickers show the same symptom.
+- **Declared:** Permanent workaround until the NseIndiaApi library or NSE endpoint behaviour changes. Serper provides equivalent coverage for TATAMOTORS announcements.
 
 **Banking/BFSI:**
 
@@ -816,7 +844,7 @@ ContextBuilder._build_risk_macro():
 
 ---
 
-## 10. News Data Strategy — Layer A (Macro) + Layer B (Per-Ticker)
+## 15. News Data Strategy — Layer A (Macro) + Layer B (Per-Ticker)
 
 ### Layer A — RSS Macro Feed (background, scheduler-driven)
 
@@ -972,7 +1000,119 @@ nse_data: dict = Field(default_factory=dict)
 
 ---
 
-## 11. Sector Routing
+### Layer C — May 2026 Structured Data Sources (NSE + AMFI + IIMA)
+
+Three structured data sources were added in May 2026. They are all free (no API key), integrated directly into ContextBuilder, and supplement or replace Serper queries. They are verified against the live code in `services/data/context/builder.py`.
+
+#### Source 1 — NSE Market Intelligence (`services/data/fetchers/nse_market.py`)
+
+**Library:** `nsepython` (no API key — reads NSE exchange directly)
+
+**Data provided:**
+- FII and DII daily net flows (in Crore Rs), plus a pre-computed sentiment signal string
+- NSE bulk/block deals: net institutional buyers and sellers (top 5 each), and per-ticker net quantity with side (BUY/SELL/MIXED)
+- Upcoming NSE corporate events: board meeting dates and purpose strings (up to 15 events)
+
+**Cache TTL:** In-process dict keyed by calendar date (`YYYY-MM-DD`). Single fetch per process per day — all subsequent ContextBuilder calls within one analysis session read from the dict.
+
+**Public functions used by ContextBuilder:**
+- `get_nse_market_data()` — returns the cached dict
+- `format_nse_market_context(data, focus, ticker)` — formats for prompt injection; `focus="fii_dii"` emits only the flows block; `focus="bulk_deals"` emits only the bulk deal block with optional per-ticker detail; `focus="all"` emits both plus the upcoming events list
+
+**ContextBuilder integration — verified call sites:**
+
+| Builder method | Sector | `focus=` | Agents that receive this context |
+|---|---|---|---|
+| `_build_sentiment` | automobile (all sectors via `self._sector`) | `"bulk_deals"` + per-ticker | `sentiment` (all sectors) |
+| `_build_risk_macro` | automobile | `"fii_dii"` | `risk_macro` (automobile) |
+| `_build_bfsi_risk` | banking_bfsi | `"fii_dii"` | `bfsi_risk` |
+| `_build_macro_policy` | banking_bfsi | `"fii_dii"` | `macro_policy` |
+| `_build_it_risk_macro` | it_sector | `"fii_dii"` | `it_risk_macro` |
+
+**Serper queries eliminated:**
+- `"{ticker} FII DII India net buying today"` (was in `risk_macro`)
+- `"{ticker} BSE bulk deal block trade"` (was in `institutional` / `bfsi_institutional`)
+- `"{company_name} next results date"` (upcoming earnings — available via `get_upcoming_earnings_for_ticker()`)
+
+**Graceful degradation:** Returns `""` if `nsepython` is not installed or any sub-fetch fails. All agents fall back to Serper-only context silently.
+
+---
+
+#### Source 2 — AMFI MF Sector Herding (`services/data/fetchers/mf_herding.py`)
+
+**API:** `mfapi.in` community wrapper around AMFI (no API key — end-of-day NAV data)
+
+**Data provided:**
+- 30-day NAV momentum (%) across sector ETFs for a given sector
+- Aggregate `institutional_flow` signal: `INFLOW` (avg ≥ +0.5%), `OUTFLOW` (avg ≤ -0.3%), or `NEUTRAL`
+- Per-fund breakdown: scheme code, name, and individual momentum %
+- Coverage: 4 sectors — `automobile` (3 ETFs), `banking_bfsi` (3 ETFs), `it_sector` (3 ETFs), `renewable_energy` (2 ETFs)
+
+**Cache TTL:** In-process dict keyed by ISO week (`YYYY-WNN:sector`). Single fetch per sector per ISO week — NAV trend is stable across 7 days.
+
+**Public functions used by ContextBuilder:**
+- `get_sector_mf_herding(sector)` — returns the cached weekly dict
+- `format_mf_herding_context(data)` — formats for prompt injection; returns `""` on error or no data
+
+**ContextBuilder integration — verified call sites:**
+
+| Builder method | Sector resolved from | Agents that receive this context |
+|---|---|---|
+| `_build_sentiment` | `self._sector or "automobile"` | `sentiment` (all 4 sectors) |
+
+**Signal value:** Sector ETF NAV momentum reflects net redemption or accumulation pressure on the entire sector — a signal invisible to Serper news scraping. Example: -0.4% average NAV across 3 auto ETFs while Nifty is flat indicates institutional redemption pressure.
+
+**Graceful degradation:** Returns `""` if `mfapi.in` is unreachable or returns no data. Agents fall back to Serper-only context silently.
+
+---
+
+#### Source 3 — IIMA Fama-French 4-Factor Regime (`core/intelligence/rl/algorithms/factor_regime.py`)
+
+**Source:** IIMA (IIM Ahmedabad) Indian Fama-French-Momentum dataset — `www.iimahd.ernet.in/~iffm/Indian-Fama-French-Momentum/`
+
+**Data vintage:** Monthly, October 1993 to March 2023 (last available as of May 2026). This is a structural prior, NOT a live signal.
+
+**Data provided:**
+- `regime`: `MOMENTUM` (avg WML > 0) or `REVERSAL` (avg WML < 0) over trailing 12 months
+- `strength`: `STRONG` / `MODERATE` / `WEAK` based on WML z-score (|z| > 1.5 = STRONG, > 0.5 = MODERATE)
+- `size_tilt`: `SMALL_CAP` or `LARGE_CAP` (sign of avg SMB factor)
+- `style_tilt`: `VALUE` or `GROWTH` (sign of avg HML factor)
+- `z_score`: standardised WML relative to its 12-month mean
+
+**Cache TTL:** In-process dict keyed by calendar date (`YYYY-MM-DD`) plus 30-day CSV file cache at `data/cache/iima_ff/`. CSV is re-downloaded only if > 30 days old or absent.
+
+**Public functions used by ContextBuilder:**
+- `get_factor_regime(lookback_months=12)` — returns cached regime dict, or `None` on failure
+- `format_factor_regime_context(regime)` — formats for prompt injection; returns `""` when `regime is None`
+
+**ContextBuilder integration — verified call sites:**
+
+| Builder method | Sector | Agents that receive this context |
+|---|---|---|
+| `_build_risk_macro` | automobile | `risk_macro` (automobile only) |
+
+**WeightAdapter integration (secondary use):** `get_regime_penalty_scale(agent_name, regime)` is called by `WeightAdapter._compute_deltas()` to modulate RL bias penalties:
+- REVERSAL regime + `{pattern_analysis, competitive_intel, sales_demand}` → 0.80× penalty (20% leniency — momentum agents face structural headwind in reversal)
+- MOMENTUM regime + `{fundamentals, risk_macro}` → 0.85× penalty (15% leniency — value agents lag in momentum markets)
+- WEAK regime or non-matching agent → 1.0× (no adjustment)
+
+**Limitation:** Data ends March 2023. Use as long-run structural background only. For live regime signals, use `core/intelligence/regime/detector.py` (RegimeDetector uses VIX/FII/RSI).
+
+**Graceful degradation:** Returns `None` on any network or parse failure. ContextBuilder and WeightAdapter both handle `None` without raising.
+
+---
+
+#### Layer C — Summary Table
+
+| Source | File | Cache | ContextBuilder methods | Agents receiving context |
+|---|---|---|---|---|
+| NSE market (FII/DII + bulk deals) | `services/data/fetchers/nse_market.py` | Daily (in-process) | `_build_sentiment`, `_build_risk_macro`, `_build_bfsi_risk`, `_build_macro_policy`, `_build_it_risk_macro` | `sentiment` (all sectors), `risk_macro`, `bfsi_risk`, `macro_policy`, `it_risk_macro` |
+| AMFI MF herding | `services/data/fetchers/mf_herding.py` | Weekly ISO (in-process) | `_build_sentiment` | `sentiment` (all 4 sectors) |
+| IIMA factor regime | `core/intelligence/rl/algorithms/factor_regime.py` | Daily (in-process) + 30-day CSV | `_build_risk_macro` | `risk_macro` (automobile); WeightAdapter penalty scaling (all sectors via RL) |
+
+---
+
+## 16. Sector Routing
 
 **Entry point:** `SectorRegistry.resolve(ticker)` → `SectorRegistry.get_handler(sector)` → orchestrator class
 
@@ -1003,7 +1143,7 @@ enabled=false → AutomobileAgentOrchestrator (safe degradation)
 
 ---
 
-## 12. Known Gaps & Technical Backlog
+## 17. Known Gaps & Technical Backlog
 
 | # | Item | File | Priority | Status |
 |---|---|---|---|---|

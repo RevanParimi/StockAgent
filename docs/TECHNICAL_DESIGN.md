@@ -282,7 +282,7 @@ LangGraph StateGraph:
   │   │  writes {agent_name: AgentOutput} via _merge_dicts reducer    │ │
   │   └────────────────────────────────────────── fan-in ─────────────┘ │
   │                                                                     │
-  │   aggregate  [conflict_rail: spread > 0.35 → LLM re-resolution]   │
+  │   aggregate  [conflict_rail: spread > 0.30 → LLM re-resolution]   │
   │              [SignalAggregator.run(learned_weights) → FinalReport] │
   └─────────────────────────────────────────────────────────────────────┘
   │
@@ -296,7 +296,7 @@ END → state["final_report"] = FinalReport
 |---|---|---|---|
 | `input_rail` | Before fan-out | Bad ticker / yfinance not found | Append to `rail_errors`; continue pipeline |
 | `output_rail` | Inside `run_agent` | `overall_score` out of `[0,1]` or empty summary | Clamp score; inject placeholder summary |
-| `conflict_rail` | Inside `aggregate` | Pairwise score spread > 0.35 | Fire LLM re-resolution call |
+| `conflict_rail` | Inside `aggregate` | Pairwise score spread > 0.30 | Fire LLM re-resolution call |
 
 **Sync vs Async Paths:**
 
@@ -352,7 +352,7 @@ User / APScheduler calls analyse_async("MARUTI")
                           ▼
               ┌────────────────────────┐
               │    conflict_rail       │  STATIC: pairwise spread
-              │  spread > 0.35?        │  > 0.35 → LLM re-resolution
+              │  spread > 0.30?        │  > 0.30 → LLM re-resolution
               └──────────┬─────────────┘
                          │
                          ▼
@@ -2167,7 +2167,7 @@ All JSON files use atomic writes (`.tmp` → `os.replace()`).
 | Forecast path is linear interpolation (no Monte Carlo bands) | ❌ Phase 8 |
 | `WEIGHT_MAX_DRIFT = 0.15` too tight after 6+ months | ❌ Revisit Month 6 |
 | Score verdict thresholds identical across all sectors | ❌ Add per-sector thresholds |
-| NSE holiday calendar ends 2026 | ⚠️ Monitor Dec 31 job |
+| NSE holiday calendar hardcoded fallback ends 2026; `calendar_updater.py` auto-fetches next year on Dec 31 via NSE API → yfinance → fixed-holidays chain | ⚠️ Monitor Dec 31 job; if job fails, 2027 moveable feasts will be missing from `_HARDCODED_HOLIDAYS` |
 
 ### 12.7 Serper Budget Warning
 

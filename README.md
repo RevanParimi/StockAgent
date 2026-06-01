@@ -197,10 +197,13 @@ This is not a prediction — it is a calibration. The system is telling you: *"W
 
 The floating orb (bottom-right corner) opens a chat assistant that can answer questions in real time:
 
-- **"What is the current price of MARUTI?"** → fetches live from yfinance
-- **"Why did Tata Motors fall today?"** → searches live news via Tavily
-- **"What is StockAgent's current rating on HDFCBANK?"** → reads from analysis database
-- **"Compare INFY vs TCS"** → fetches latest scores for both
+- **"What is the current price of MARUTI?"** → `get_live_price` — fetches live from yfinance (with auto symbol resolution via yfinance.Search for unlisted assets)
+- **"Why did Tata Motors fall today?"** → `search_market_news` — searches live news via Serper News (primary) with Tavily fallback
+- **"What is StockAgent's current rating on HDFCBANK?"** → `get_stock_analysis` — reads verdict and score from analysis database
+- **"How have scores changed this month?"** → `get_analysis_history` — retrieves past verdicts and score trends
+- **"Which agent should I trust most?"** → `get_rl_insights` — shows learned agent weights and prediction accuracy
+- **"How is the Banking sector today?"** → `get_sector_snapshot` — fetches live NSE sector index price and agent verdicts
+- **"Run a fresh analysis on BAJAJ-AUTO"** → `run_agent_analysis` — returns cached result or triggers full pipeline
 
 The chat assistant uses a tool loop — before answering any price question, it always fetches the live price first. It never hallucinates numbers. Conversation history is maintained within the session so you can follow up naturally.
 
@@ -255,14 +258,17 @@ You can also disable individual agents entirely (weight = 0) if you want to run 
 
 ## Analytics Page
 
-The Analytics page shows the RL system's performance over time:
+The Analytics page and `/analytics` API expose the RL system's performance over time:
 
-- **Direction accuracy** — what % of daily predictions got the up/down direction correct
-- **Weight drift** — how far each agent's learned weight has moved from its default
-- **Top missed factors** — which real-world events the system has been most consistently surprised by
-- **Active lessons** — the current contents of the learning ledger, with confidence scores and how many times each pattern has been observed
+- **Direction accuracy** (`/analytics/agent-accuracy`) — per-agent hit rates and average price prediction error
+- **Weight drift** (`/analytics/weight-drift`) — how far each agent's learned weight has moved from its default, shown as a time-series
+- **Miss breakdown** (`/analytics/miss-breakdown`) — miss type counts by ticker (`direction_flip`, `model_bias`, `timing`, `magnitude`, `data_gap`, `external_shock`)
+- **Conviction outcomes** (`/analytics/conviction-outcomes`) — streak length bucketed against accuracy (are long streaks more or less reliable?)
+- **Sector comparison** (`/analytics/sector-comparison`) — cross-sector average scores and verdict distribution
+- **Full RL export** (`/analytics/rl-export?format=csv|json`) — raw performance rows for external analysis
+- **Power BI feed** (`/analytics/powerbi-feed`) — OData v4 JSON feed with EDMX metadata for direct Power BI Web connector ingestion
 
-This page is honest about the system's blind spots. If crude oil spikes keep catching it off guard, that shows up here — and the PromptEnhancer will start injecting crude oil queries into relevant agents automatically to reduce that gap over time.
+This page is honest about the system's blind spots. If crude oil spikes keep catching it off guard, that shows up in miss-breakdown — and the PromptEnhancer will start injecting crude oil queries into relevant agents automatically to reduce that gap over time.
 
 ---
 
@@ -301,7 +307,11 @@ A surprise government order, a sudden exchange circuit breaker, or a geopolitica
 | AI model | Qwen 235B via OpenRouter |
 | Analysis framework | LangGraph (parallel agent dispatch) |
 | Backend | Python FastAPI |
-| Data | yfinance (prices), Serper (news search), Tavily (policy docs) |
+| Data — prices & OHLCV | yfinance (NSE/BSE prices, 10-year OHLCV, sector indices, commodities) |
+| Data — news & search | Serper News API (primary), Tavily (fallback + policy docs) |
+| Data — NSE exchange | nsepython — live FII/DII flows, bulk deals, upcoming earnings events |
+| Data — MF flows | mfapi.in (AMFI) — sector ETF 30-day NAV momentum (herding signal) |
+| Data — factor regime | IIMA Indian Fama-French 4-Factor dataset — long-run momentum/style regime prior |
 | Frontend | React (Babel standalone, no build step) |
 | Database | SQLite (analysis history) + JSON files (RL memory) |
 | Deployment | Railway (Docker) |
@@ -483,5 +493,5 @@ A quick guide to every abbreviation, metric, and concept you will encounter in S
 |---|---|
 | [CODEBASE.md](CODEBASE.md) | Full module map, all API endpoints, configuration reference |
 | [docs/RL_DESIGN.md](docs/RL_DESIGN.md) | RL feedback loop: formulas, daily flow, schemas, static vs LLM |
-| [docs/AGENT_DESIGN.md](docs/AGENT_DESIGN.md) | All sector agents, sub-scores, implementation status, full terminology reference |
+| [docs/AGENT_DESIGN.md — not yet created] | All sector agents, sub-scores, implementation status, full terminology reference |
 | [docs/AGENTIC_DESIGN.md](docs/AGENTIC_DESIGN.md) | All agents, tasks, data sources, static vs LLM boundary |

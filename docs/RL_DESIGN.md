@@ -1065,7 +1065,7 @@ Month 12:  Proprietary seasonal calendar + learned sector rulebook
 
 ---
 
-## 19. Key File Locations
+## 18. Key File Locations
 
 | Component | File |
 |---|---|
@@ -1089,7 +1089,7 @@ Month 12:  Proprietary seasonal calendar + learned sector rulebook
 
 ---
 
-## 20. Section 6 — Category-Specific Lesson Confidence Decay
+## 19. Section 6 — Category-Specific Lesson Confidence Decay
 
 ### Problem with flat 0.02/month
 
@@ -1137,7 +1137,7 @@ A macro lesson confirmed 25× reaches the structural band:
 
 ---
 
-## 21. Step 7 — Conditional Thesis Review After Significant Miss
+## 20. Step 7 — Conditional Thesis Review After Significant Miss
 
 ### Problem with mechanical re-weighting
 
@@ -1198,7 +1198,7 @@ The multiplier compounds with existing dampening: a forecast that was already at
 
 ---
 
-## 22. Section 8 — PromptEnhancer: Sector Templates + LLM Fallback
+## 21. Section 8 — PromptEnhancer: Sector Templates + LLM Fallback
 
 ### Problem with the original single template map
 
@@ -1246,9 +1246,9 @@ Two bugs were found and fixed during testing: (1) `MNRE_policy_reversal` was rou
 
 ---
 
-## 23. Phase 8 — Algorithm Reference
+## 22. Phase 8 — Algorithm Reference
 
-### 23a. LLM-Calibrated Price Interpolator + GBM Monte Carlo
+### 22a. LLM-Calibrated Price Interpolator + GBM Monte Carlo
 
 #### Problem with static verdict_monthly_pct
 
@@ -1332,7 +1332,7 @@ ADANIGREEN ATR=3.5%: BUY → 4.0 × (3.5/1.5=2.33, capped 2.5) → 10.0%
 
 ---
 
-### 23b. Algorithm Theory Table
+### 22b. Algorithm Theory Table
 
 | Algorithm | Formula / Rule | Parameters | Where used |
 |---|---|---|---|
@@ -1347,7 +1347,7 @@ ADANIGREEN ATR=3.5%: BUY → 4.0 × (3.5/1.5=2.33, capped 2.5) → 10.0%
 
 ---
 
-### 23c. Market Microstructure Signals (Phase 8 — G4)
+### 22c. Market Microstructure Signals (Phase 8 — G4)
 
 | Signal | SEBI Definition | Fetch source | Architecture |
 |---|---|---|---|
@@ -1379,7 +1379,7 @@ no deals                  → "NONE"
 
 ---
 
-### 23d. F&O Expiry Overlay (Phase 8 — G7a + G7b)
+### 22d. F&O Expiry Overlay (Phase 8 — G7a + G7b)
 
 **G7a — Seasonal calendar overlay:**
 ```

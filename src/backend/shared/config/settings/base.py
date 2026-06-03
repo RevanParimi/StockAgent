@@ -154,6 +154,18 @@ NEWS_SOURCES: list[str] = [
 # yfinance: NSE tickers need ".NS" suffix (e.g. MARUTI → MARUTI.NS)
 YFINANCE_SUFFIX: str = ".NS"
 
+# Yahoo symbol overrides — bare NSE ticker → exact yfinance symbol. Used when
+# Yahoo lists a name under a different code, or a corporate action (demerger /
+# rename) drops the old ticker. SINGLE SOURCE OF TRUTH — every NSE→yfinance
+# conversion path consults this (indicators fetcher, chat resolver, ticker
+# verification). Add a line here, not in individual modules.
+YF_SYMBOL_OVERRIDES: dict[str, str] = {
+    "TATAMOTORS": "TMPV.NS",      # Tata Motors demerged 2025 → Passenger Vehicles entity
+    "TVSMOTORS":  "TVSMOTOR.NS",  # NSE symbol is TVSMOTOR (no trailing S)
+    "CANARABANK": "CANBK.NS",     # NSE/Yahoo symbol is CANBK
+    "HEXAWARE":   "HEXT.NS",      # Yahoo lists Hexaware as HEXT
+}
+
 # Number of news articles to fetch per Serper/NewsAPI query
 NEWS_ARTICLES_PER_QUERY: int = int(os.getenv("NEWS_ARTICLES_PER_QUERY", "5"))
 

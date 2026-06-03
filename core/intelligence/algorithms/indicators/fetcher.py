@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import logging
 import sys
+import time
 from datetime import date, timedelta
 from pathlib import Path
 
@@ -45,14 +46,10 @@ except ImportError:
 
 
 def _nse_ticker(ticker: str) -> str:
-    """Convert bare NSE ticker to yfinance format, e.g. MARUTI → MARUTI.NS"""
-    t = ticker.strip().upper()
-    if t.endswith(settings.YFINANCE_SUFFIX):
-        return t
-    # Special cases
-    if t in {"M&M", "MM"}:
-        return f"M&M{settings.YFINANCE_SUFFIX}"
-    return f"{t}{settings.YFINANCE_SUFFIX}"
+    """Convert bare NSE ticker to yfinance format, e.g. MARUTI → MARUTI.NS.
+    Cheap (no network): curated override → learned cache → naive "{TICKER}.NS"."""
+    from backend.shared.data.fetchers.symbol_resolver import resolve_yf_symbol
+    return resolve_yf_symbol(ticker)
 
 
 # ---------------------------------------------------------------------------
@@ -68,23 +65,53 @@ def get_price_history(ticker: str, years: int = settings.PRICE_HISTORY_YEARS) ->
     pd.DataFrame with columns: Open, High, Low, Close, Volume
     Empty DataFrame on failure.
     """
-    yf_ticker = _nse_ticker(ticker)
     end = date.today()
     start = end - timedelta(days=years * 365)
-    try:
-        df = yf.download(
-            yf_ticker,
-            start=start.isoformat(),
-            end=end.isoformat(),
-            progress=False,
-            auto_adjust=True,
-        )
-        if df.empty:
-            logger.warning("[yfinance] No price data for %s", yf_ticker)
+
+    def _download(sym: str) -> tuple[pd.DataFrame, Exception | None]:
+        # Yahoo intermittently rate-limits / returns transient empties even for
+        # valid symbols. Retry with exponential backoff before giving up.
+        exc: Exception | None = None
+        for attempt in range(3):
+            try:
+                df = yf.download(
+                    sym, start=start.isoformat(), end=end.isoformat(),
+                    progress=False, auto_adjust=True,
+                )
+                if not df.empty:
+                    return df, None
+                logger.warning("[yfinance] No price data for %s (attempt %d/3)", sym, attempt + 1)
+            except Exception as e:
+                exc = e
+                logger.warning(
+                    "[yfinance] Price history error for %s (attempt %d/3): %s",
+                    sym, attempt + 1, e,
+                )
+            if attempt < 2:
+                time.sleep(0.5 * (2 ** attempt))   # 0.5s, 1.0s
+        return pd.DataFrame(), exc
+
+    yf_ticker = _nse_ticker(ticker)
+    df, last_exc = _download(yf_ticker)
+    if not df.empty:
         return df
+
+    # Still empty after retries → the symbol may be stale (rename / demerger /
+    # Yahoo code quirk). Self-heal ONCE: search Yahoo, validate, cache, retry.
+    try:
+        from backend.shared.data.fetchers.symbol_resolver import heal_symbol
+        healed = heal_symbol(ticker)
+        if healed and healed != yf_ticker:
+            logger.info("[yfinance] self-healed %s: %s → %s", ticker, yf_ticker, healed)
+            df, last_exc = _download(healed)
+            if not df.empty:
+                return df
     except Exception as exc:
-        logger.error("[yfinance] Price history failed for %s: %s", yf_ticker, exc)
-        return pd.DataFrame()
+        logger.debug("[yfinance] self-heal failed for %s: %s", ticker, exc)
+
+    if last_exc is not None:
+        logger.error("[yfinance] Price history failed for %s: %s", yf_ticker, last_exc)
+    return pd.DataFrame()
 
 
 # ---------------------------------------------------------------------------

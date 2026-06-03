@@ -192,7 +192,7 @@ _AGENT_META: list[dict] = _AGENT_META_BY_SECTOR["automobile"]
 
 _ALL_TICKERS: list[dict] = [
     {"sym": "MARUTI",      "name": "Maruti Suzuki India Ltd",        "yf": "MARUTI.NS"},
-    {"sym": "TATAMOTORS",  "name": "Tata Motors Ltd",                "yf": "TATAMOTORS.NS"},
+    {"sym": "TATAMOTORS",  "name": "Tata Motors (Passenger Veh) Ltd", "yf": "TMPV.NS"},
     {"sym": "M&M",         "name": "Mahindra & Mahindra Ltd",        "yf": "M&M.NS"},
     {"sym": "BAJAJ-AUTO",  "name": "Bajaj Auto Ltd",                 "yf": "BAJAJ-AUTO.NS"},
     {"sym": "HEROMOTOCO",  "name": "Hero MotoCorp Ltd",              "yf": "HEROMOTOCO.NS"},
@@ -2087,16 +2087,12 @@ _NSE_NAME_ALIASES: dict[str, str] = {
 }
 
 
-# NSE ticker → correct yfinance symbol, where it differs from "{TICKER}.NS".
-# (Yahoo lists some NSE names under a different code — e.g. Hexaware is HEXT.NS.)
-_YF_NSE_OVERRIDES: dict[str, str] = {
-    "HEXAWARE": "HEXT.NS",
-}
-
-
+# NSE ticker → correct yfinance symbol via the shared self-healing resolver
+# (curated overrides in settings.YF_SYMBOL_OVERRIDES + the learned cache).
 def _nse_yf(ticker: str) -> str:
-    """Map an NSE ticker to its yfinance symbol, honouring known overrides."""
-    return _YF_NSE_OVERRIDES.get(ticker.upper(), f"{ticker.upper()}.NS")
+    """Map an NSE ticker to its yfinance symbol (override → learned cache → naive)."""
+    from backend.shared.data.fetchers.symbol_resolver import resolve_yf_symbol
+    return resolve_yf_symbol(ticker)
 
 
 def _known_nse_tickers() -> frozenset[str]:
@@ -2459,7 +2455,32 @@ async def _chat_tool_rl_prediction(ticker: str) -> str:
     return ""
 
 
-async def _execute_chat_tool(name: str, args: dict) -> str:
+def _tool_cache_key(name: str, args: dict) -> str:
+    parts = []
+    for k in sorted(args):
+        v = args[k]
+        parts.append(f"{k}={v.strip().lower() if isinstance(v, str) else v}")
+    return f"{name}({','.join(parts)})"
+
+
+async def _execute_chat_tool(name: str, args: dict, cache: dict | None = None) -> str:
+    """
+    Dispatch a chat tool, with an optional per-turn memo cache. The model
+    sometimes re-requests the same sector snapshot / news search inside its loop;
+    caching identical (tool, args) calls for the duration of ONE chat turn avoids
+    duplicate Serper credits and yfinance hits at zero behavioural cost.
+    """
+    if cache is not None:
+        ckey = _tool_cache_key(name, args)
+        if ckey in cache:
+            return cache[ckey]
+        result = await _dispatch_chat_tool(name, args)
+        cache[ckey] = result
+        return result
+    return await _dispatch_chat_tool(name, args)
+
+
+async def _dispatch_chat_tool(name: str, args: dict) -> str:
     if name == "get_live_price":
         return await _chat_tool_get_live_price(args.get("symbol", ""))
     if name == "get_macro_news":
@@ -2521,6 +2542,17 @@ You are StockAgent, a market intelligence assistant with real-time web search an
 
 ALWAYS call search_market_news for forward-looking questions. Use specific queries:
 "silver price outlook next 30 days supply demand 2026" not just "silver".
+
+## Tool budget — be economical (web search costs money)
+- **search_market_news: call it AT MOST ONCE per answer.** One well-phrased query (add
+  "India … [date]") beats several. Never fire it twice for the same answer.
+- **Never call the same tool with the same arguments twice** — you already have that result above.
+- **screen_stocks works ONLY for these sectors:** automobile, IT, banking, renewable energy.
+  Do NOT call screen_stocks for pharma/FMCG/energy/metals (no universe → wasted call); use
+  get_sector_snapshot for those.
+- For a buy question with NO sector named: probe at most the 2 most-relevant screenable sectors
+  with screen_stocks (it is free), pick the most beaten-down, then ONE search_market_news for the
+  catalyst. Do not snapshot every sector.
 
 ## STEP BACK — decide the real intent before calling any tool
 A good answer to an investing question depends on what the user is actually trying to do.
@@ -2590,39 +2622,53 @@ Every pick MUST carry a number (its move + where it sits in its 1-month range) a
 
 The reply renders in a small chat panel, NOT a laptop screen. Wide layouts break.
 RENDERING RULES — no exceptions:
-- **NEVER use markdown tables** (`| col | col |`). They overflow and become unreadable on a
-  phone. Use compact one-line-per-item lists instead.
-- One stock = ONE short line. No line should need horizontal scrolling.
-- Group picks under a short bold sub-header per sector/theme, e.g. `**IT — deep dip**`.
-- No paragraphs in a picks answer. Bullets and short lines only.
+- **NEVER use markdown tables** (`| col | col |`). They overflow and become unreadable on a phone.
+- Each stock is a **2-line stacked block** (see below) — NOT one long line that wraps messily.
+- Group picks under a short bold sub-header per sector/theme, e.g. `📉 IT — heavy dip ▼5.6%`.
+- No paragraphs in a picks answer. Short stacked lines only.
 - Use ▼/▲ for moves, `·` as the in-line separator, `₹` for price. Keep tickers UPPERCASE.
+- A single newline IS a line break here — put each line on its own line, no manual spacing/padding
+  (extra spaces collapse). Use the `└` connector to visually tie the reason to the ticker above it.
 
-**Per-pick line (the unit of a buy / sell / screen answer):**
-`**TICKER** ₹price ▼1d% · 1mo ▼mo% — short reason (catalyst or risk)`
-e.g. `**TCS** ₹2,242 ▼8.4% · 1mo ▼6.5% — oversold; MS overweight India`
+**Per-pick block — EXACTLY two lines (this is the unit of a buy / sell / screen answer):**
+```
+**TICKER** ₹price ▼1d%
+└ 1mo ▼mo% · short reason (catalyst or risk)
+```
+e.g.
+```
+**TCS** ₹2,242 ▼8.4%
+└ 1mo ▼6.5% · oversold; MS overweight India
+```
 
 **Buy / sell / screen answer shape:**
 ```
 🎯 [Headline — e.g. Value picks · buy-the-dip]
 
-**IT — deep correction**
-• **TCS** ₹2,242 ▼8.4% · 1mo ▼6.5% — oversold; MS overweight
-• **LTTS** ₹3,299 ▼6.0% · 1mo ▼10% — sector-worst, near lows
+📉 IT — heavy dip ▼5.6%
+**TCS** ₹2,242 ▼8.4%
+└ 1mo ▼6.5% · oversold bounce candidate
+**LTTS** ₹3,299 ▼6.0%
+└ 1mo ▼10% · worst IT performer, deep value
 
-**Auto — near lows**
-• **ASHOKLEY** ₹146 ▼0.5% · 1mo ▼7.7% — CV cycle turning
+🚗 Auto — near lows
+**ASHOKLEY** ₹146 ▼0.5%
+└ 1mo ▼7.7% · CV cycle turning
 
-📰 [2 short context lines, newest first, with source]
+📰 [1-2 short context lines, newest first, with source]
 ⚠️ Watch: [1-3 short signals]
 ```
-Cap it: max ~5-7 picks total, grouped. Trim ruthlessly — every line carries a number + a reason.
+Cap it: max ~5-7 picks total, grouped. Trim ruthlessly — every block carries a number + a reason.
 
 **Price / news / outlook answer shape (under 120 words):**
 ```
-**[Asset] ₹PRICE ▲/▼CHG%**  (omit if get_live_price failed)
-**What's driving:**
-• "[Exact headline]" — Source, date → one-line impact   (max 3, newest first)
-**Watch:** • [only a genuinely NEW signal not said earlier in this chat]
+**[Asset]** ₹PRICE ▲/▼CHG%   (omit if get_live_price failed)
+
+📰 What's driving:
+"[Exact headline]" — Source, date
+└ one-line impact   (max 3, newest first)
+
+⚠️ Watch: [only a genuinely NEW signal not said earlier in this chat]
 *Sources: S1 · S2*
 ```
 
@@ -2967,6 +3013,7 @@ async def chat_stream(body: dict):
         # ourselves and inject them. This makes the right candidates AND real
         # headlines always reach the model — so it neither mis-routes nor
         # fabricates catalysts when left to its own (unreliable) tool-calling.
+        _tool_cache: dict[str, str] = {}   # per-turn memo → no duplicate Serper/yfinance
         intent = _detect_invest_intent(message)
         if intent:
             _sec_label = {
@@ -2985,6 +3032,8 @@ async def chat_stream(body: dict):
                 return_exceptions=True,
             )
             if isinstance(screen, str) and "screen —" in screen:
+                _tool_cache[_tool_cache_key("screen_stocks",
+                    {"sector": intent["sector"], "mode": intent["mode"]})] = screen
                 yield f'data: {_json.dumps({"event": "tool_result", "tool": "screen_stocks", "summary": screen[:600]})}\n\n'
                 messages.append({
                     "role": "system",
@@ -3043,7 +3092,8 @@ async def chat_stream(body: dict):
                     except Exception:
                         parsed_args.append({})
                 results = await asyncio.gather(*[
-                    _execute_chat_tool(tc.function.name, a) for tc, a in zip(tcs, parsed_args)
+                    _execute_chat_tool(tc.function.name, a, _tool_cache)
+                    for tc, a in zip(tcs, parsed_args)
                 ])
                 for tc, result in zip(tcs, results):
                     messages.append({"role": "tool", "tool_call_id": tc.id, "content": result})

@@ -100,9 +100,12 @@ def _fetch_actual_close(ticker: str, target_date: date) -> float | None:
     """
     import yfinance as yf
     from datetime import timedelta
+    from core.config import settings
 
     suffix = ".NS"
-    yf_sym = ticker if ticker.endswith(suffix) else f"{ticker}{suffix}"
+    yf_sym = settings.YF_SYMBOL_OVERRIDES.get(ticker.upper()) or (
+        ticker if ticker.endswith(suffix) else f"{ticker}{suffix}"
+    )
     # Fetch 7-day window to ensure we catch the target date even with holidays
     start = (target_date - timedelta(days=7)).isoformat()
     end   = (target_date + timedelta(days=1)).isoformat()

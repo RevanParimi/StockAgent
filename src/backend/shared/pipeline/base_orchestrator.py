@@ -345,7 +345,9 @@ class BaseSectorOrchestrator(ABC):
         try:
             import yfinance as yf
             suffix = settings.YFINANCE_SUFFIX
-            yf_ticker = ticker if ticker.endswith(suffix) else f"{ticker}{suffix}"
+            yf_ticker = settings.YF_SYMBOL_OVERRIDES.get(ticker.upper()) or (
+                ticker if ticker.endswith(suffix) else f"{ticker}{suffix}"
+            )
             info = yf.Ticker(yf_ticker).info or {}
             return bool(
                 info.get("regularMarketPrice") or info.get("currentPrice") or info.get("previousClose")

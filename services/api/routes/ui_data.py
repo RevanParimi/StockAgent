@@ -25,6 +25,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 import uuid
 from datetime import date, datetime, timezone
 from pathlib import Path
@@ -1416,25 +1417,68 @@ def _ctx_rl_learning() -> str:
         return ""
 
 
+def _session_state() -> dict:
+    """Current NSE session dict (see nse_calendar.market_session). Never raises."""
+    try:
+        from core.intelligence.rl.nse_calendar import market_session
+        return market_session()
+    except Exception:
+        from datetime import date as _d
+        return {"state": "OPEN", "is_live": True, "date": _d.today(),
+                "last_close_day": _d.today(), "opens_at": "09:15 IST", "closes_at": "15:30 IST"}
+
+
 def _nse_market_context() -> str:
     """
-    Returns a compact block showing today's date, NSE market status, and last
-    trading day.  Injected into every chat prompt so the LLM can reason about
-    why search results may be from a prior day (weekend / holiday).
+    Returns a compact block describing the *current* NSE session in IST — not
+    just whether today is a trading day, but whether the market is actually
+    trading right now (pre-market / pre-open / open / closed / holiday).
+
+    Injected into every chat prompt so the LLM can (a) avoid saying "the market
+    is open" before 09:15 IST, and (b) know whether a quoted price is a live
+    quote or a settled last-close. All reasoning is anchored to IST, since the
+    market trades in IST and a UTC date can be a day behind in early morning.
     """
     try:
-        from core.intelligence.rl.nse_calendar import is_trading_day, trading_days_ago
-        today = datetime.now(timezone.utc).date()
-        today_str = today.strftime("%Y-%m-%d (%A)")
-        if is_trading_day(today):
-            return f"TODAY: {today_str} — NSE market OPEN"
-        last_td = trading_days_ago(today, 1)
+        from core.intelligence.rl.nse_calendar import market_session
+
+        s = market_session()  # current IST moment
+        d = s["date"]
+        today_str = d.strftime("%Y-%m-%d (%A)")
+        last = s["last_close_day"]
+        last_str = last.strftime("%Y-%m-%d (%A)")
+        state = s["state"]
+
+        if state == "OPEN":
+            return (
+                f"TODAY: {today_str} IST — NSE OPEN (live, continuous trading until "
+                f"{s['closes_at']}). Quoted live prices are current."
+            )
+        if state == "PRE_OPEN":
+            return (
+                f"TODAY: {today_str} IST — NSE PRE-OPEN auction (09:00–09:15 IST); "
+                f"continuous trading starts {s['opens_at']}. The market has NOT opened "
+                f"for live trading yet. Prices shown are the LAST CLOSE ({last_str})."
+            )
+        if state == "PRE_MARKET":
+            return (
+                f"TODAY: {today_str} IST — NSE not yet open (opens {s['opens_at']}). "
+                f"The market has NOT opened for live trading yet. Prices shown are the "
+                f"LAST CLOSE ({last_str})."
+            )
+        if state == "CLOSED":
+            return (
+                f"TODAY: {today_str} IST — NSE CLOSED for the day (trading ended "
+                f"{s['closes_at']}). Prices shown are today's CLOSE ({last_str})."
+            )
+        # HOLIDAY (weekend / NSE holiday)
         return (
-            f"TODAY: {today_str} — NSE market CLOSED (weekend / holiday)\n"
-            f"Last NSE trading day: {last_td.strftime('%Y-%m-%d (%A)')}"
+            f"TODAY: {today_str} IST — NSE CLOSED (weekend / holiday). "
+            f"Last trading day: {last_str}. Prices shown are the LAST CLOSE ({last_str})."
         )
     except Exception:
-        return f"TODAY: {datetime.now(timezone.utc).strftime('%Y-%m-%d (%A)')}"
+        from core.intelligence.rl.nse_calendar import now_ist
+        return f"TODAY: {now_ist().strftime('%Y-%m-%d (%A)')} IST"
 
 
 def _result_age_label(published_date: str) -> str:
@@ -1642,7 +1686,12 @@ _SECTOR_ALIASES: dict[str, str] = {
 
 
 async def _chat_tool_get_sector_snapshot(sector: str) -> str:
-    """Fetch NSE sector index price + verdict counts from DB for a given sector."""
+    """
+    Live sector view: index level + per-stock movers (sorted by 1-day % change) +
+    any DB verdicts. The per-stock movers are what let the model answer ranking
+    questions like "which IT stocks to book profit" (top gainers) or "what's cheap
+    after the fall" (top losers) — not just an index number.
+    """
     sector_key = sector.strip().lower().replace(" ", "_")
     sector_key = _SECTOR_ALIASES.get(sector_key, sector_key)
 
@@ -1650,29 +1699,55 @@ async def _chat_tool_get_sector_snapshot(sector: str) -> str:
     if not yf_sym:
         return f"Unknown sector '{sector}'. Known: {', '.join(_SECTOR_INDEX_YF)}."
 
+    label = sector_key.replace("_", " ").title()
+    sess = _session_state()
+    freshness = "live" if sess["state"] == "OPEN" else f"last close {sess['last_close_day'].isoformat()}"
+
+    # Index level
     price, change = await asyncio.to_thread(_fetch_yf_price, yf_sym)
     arrow = "▲" if change >= 0 else "▼"
+    header = (
+        f"{label} index ({yf_sym}): {price:,.0f}  {arrow}{abs(change):.2f}% ({freshness})"
+        if price else f"{label} index: price unavailable"
+    )
 
+    # Per-stock movers — fetch live prices for the sector's tracked tickers concurrently.
+    tickers_in_sector = _SECTOR_TICKERS_MAP.get(sector_key, [])[:16]
+
+    async def _one(sym: str) -> tuple[str, float] | None:
+        try:
+            p, ch = await asyncio.to_thread(_fetch_yf_price, f"{sym}.NS")
+            return (sym, ch) if p else None
+        except Exception:
+            return None
+
+    moves = [m for m in await asyncio.gather(*[_one(s) for s in tickers_in_sector]) if m]
+    moves.sort(key=lambda x: x[1], reverse=True)
+
+    lines = [header]
+    if moves:
+        gainers = [f"▲ {s} +{c:.1f}%" for s, c in moves if c >= 0][:5]
+        losers  = [f"▼ {s} {c:.1f}%" for s, c in moves if c < 0][:5]
+        if gainers:
+            lines.append("Top gainers (" + freshness + "): " + "   ".join(gainers))
+        if losers:
+            lines.append("Top losers (" + freshness + "): " + "   ".join(losers))
+
+    # DB verdicts (if any analyses have been run for this sector)
     store = _score_store()
-    tickers_in_sector = _SECTOR_TICKERS_MAP.get(sector_key, [])
-    verdicts: list[str] = []
-    for sym in tickers_in_sector:
-        row = await asyncio.to_thread(store.get_latest, sym)
-        if row:
-            verdicts.append(row["verdict"])
-
-    verdict_summary = ""
+    verdicts = [
+        row["verdict"]
+        for sym in tickers_in_sector
+        if (row := await asyncio.to_thread(store.get_latest, sym))
+    ]
     if verdicts:
         counts: dict[str, int] = {}
         for v in verdicts:
             counts[v] = counts.get(v, 0) + 1
-        verdict_summary = " · ".join(f"{k}: {v}" for k, v in sorted(counts.items()))
-        verdict_summary = f" [{len(verdicts)} verdicts: {verdict_summary}]"
+        summary = " · ".join(f"{k}: {v}" for k, v in sorted(counts.items()))
+        lines.append(f"StockAgent verdicts [{len(verdicts)}]: {summary}")
 
-    label = sector_key.replace("_", " ").title()
-    if price:
-        return f"{label} index ({yf_sym}): {price:,.0f}  {arrow}{abs(change):.2f}%{verdict_summary}"
-    return f"{label} index: price unavailable{verdict_summary}"
+    return "\n".join(lines)
 
 
 async def _chat_tool_run_agent_analysis(ticker: str) -> str:
@@ -1815,8 +1890,10 @@ _CHAT_TOOLS = [
         "function": {
             "name": "get_sector_snapshot",
             "description": (
-                "Fetch the live NSE sector index price and recent agent verdicts for a sector. "
-                "Use when the user asks about a sector (auto, banking, IT, energy, pharma, FMCG). "
+                "Fetch the live NSE sector index level PLUS per-stock movers — top gainers and "
+                "losers with their live 1-day % change — and our verdicts. Use this whenever the "
+                "user asks which stocks in a sector to buy or book profit on, what's leading/lagging, "
+                "or what to do after a sector crash/rally (auto, banking, IT, energy, pharma, FMCG). "
                 "Pass the sector name as a plain string."
             ),
             "parameters": {
@@ -1860,37 +1937,101 @@ def _looks_like_yf_symbol(s: str) -> bool:
     return "=" in s or s.startswith("^") or ("-" in s and len(s) <= 10)
 
 
+# Common Indian company names → NSE ticker. Keeps the most-asked names instant and
+# correct without a network round-trip (yfinance.Search ranks US tickers above .NS).
+_NSE_NAME_ALIASES: dict[str, str] = {
+    "reliance": "RELIANCE", "ril": "RELIANCE",
+    "tata motors": "TATAMOTORS", "tatamotors": "TATAMOTORS",
+    "tata steel": "TATASTEEL", "tcs": "TCS", "tata consultancy": "TCS",
+    "infosys": "INFY", "infy": "INFY",
+    "hdfc bank": "HDFCBANK", "hdfc": "HDFCBANK",
+    "icici": "ICICIBANK", "icici bank": "ICICIBANK",
+    "sbi": "SBIN", "state bank": "SBIN",
+    "axis": "AXISBANK", "axis bank": "AXISBANK", "kotak": "KOTAKBANK",
+    "maruti": "MARUTI", "maruti suzuki": "MARUTI",
+    "mahindra": "M&M", "m&m": "M&M",
+    "bajaj auto": "BAJAJ-AUTO", "bajaj finance": "BAJFINANCE", "bajaj finserv": "BAJAJFINSV",
+    "hero": "HEROMOTOCO", "hero motocorp": "HEROMOTOCO", "eicher": "EICHERMOT",
+    "wipro": "WIPRO", "hcl": "HCLTECH", "hcl tech": "HCLTECH", "tech mahindra": "TECHM",
+    "adani green": "ADANIGREEN", "adani power": "ADANIPOWER", "tata power": "TATAPOWER",
+    "ntpc": "NTPC", "powergrid": "POWERGRID", "power grid": "POWERGRID",
+    "sun pharma": "SUNPHARMA", "dr reddy": "DRREDDY", "cipla": "CIPLA",
+    "itc": "ITC", "hul": "HINDUNILVR", "hindustan unilever": "HINDUNILVR",
+    "airtel": "BHARTIARTL", "bharti airtel": "BHARTIARTL", "lt": "LT", "l&t": "LT",
+    "larsen": "LT", "ongc": "ONGC", "coal india": "COALINDIA",
+}
+
+
+def _known_nse_tickers() -> frozenset[str]:
+    """Set of all NSE tickers known to the sector registry (cached)."""
+    cached = getattr(_known_nse_tickers, "_cache", None)
+    if cached is not None:
+        return cached
+    tickers: set[str] = set()
+    try:
+        from backend.sectors.registry import TICKER_SECTOR
+        tickers = {t.upper() for t in TICKER_SECTOR}
+    except Exception:
+        pass
+    result = frozenset(tickers)
+    _known_nse_tickers._cache = result  # type: ignore[attr-defined]
+    return result
+
+
 async def _resolve_yf_symbol(symbol: str) -> str | None:
     """
-    Three-tier symbol resolution:
-    1. Static dict   — instant, covers ~20 known commodities/indices
-    2. Direct symbol — if input already looks like a yfinance ticker
-    3. yfinance.Search — real-time discovery for anything unrecognised
-    Returns the resolved yfinance symbol, or None if all tiers fail.
+    NSE-first symbol resolution for an Indian-market assistant.
+
+    Order (first hit wins):
+      1. Static commodity/global-index dict  — silver, gold, crude, nifty, sensex …
+      2. Explicit yfinance symbol             — already has =, ^, or - (SI=F, ^NSEI)
+      3. Known NSE ticker / company-name alias → "{TICKER}.NS"  (instant, no network)
+      4. India-preferred yfinance.Search       — prefers .NS/.BO listings over US tickers
+      5. Final fallback                        → "{SYM}.NS"
+
+    Tiers 3-5 default to NSE because a bare name ("reliance", "infosys") almost always
+    means the Indian listing here. Plain yfinance.Search ranks US tickers (e.g. "RS")
+    above "RELIANCE.NS", which is the bug this ordering fixes.
     """
     sym_lower = symbol.strip().lower()
     sym_upper = symbol.strip().upper()
 
-    # Tier 1: static dict
+    # Tier 1: static commodity / global-index dict
     if sym_lower in _COMMODITY_YF:
         return _COMMODITY_YF[sym_lower]
 
-    # Tier 2: already a valid yfinance symbol
+    # Tier 2: already a valid yfinance symbol (=, ^, or short hyphenated)
     if _looks_like_yf_symbol(sym_upper):
         return sym_upper
 
-    # Tier 3: yfinance.Search for anything unrecognised (real-time)
+    # Tier 3: known NSE ticker or common Indian company-name alias → .NS (no network)
+    if sym_lower in _NSE_NAME_ALIASES:
+        return _NSE_NAME_ALIASES[sym_lower] + ".NS"
+    if sym_upper in _known_nse_tickers():
+        return sym_upper + ".NS"
+
+    # Tier 4: yfinance.Search, but PREFER Indian-listed results (.NS / .BO).
     try:
         import yfinance as yf
+
         def _search():
-            results = yf.Search(symbol, max_results=3, news_count=0)
+            results = yf.Search(symbol, max_results=6, news_count=0)
             quotes = getattr(results, "quotes", []) or []
-            # Prefer equity/futures/index quotes over ETFs
-            for q in quotes:
-                qtype = (q.get("quoteType") or "").upper()
-                if qtype in ("FUTURE", "INDEX", "CRYPTOCURRENCY", "EQUITY", "CURRENCY"):
-                    return q.get("symbol")
+            tradable = [
+                q for q in quotes
+                if (q.get("quoteType") or "").upper()
+                in ("FUTURE", "INDEX", "CRYPTOCURRENCY", "EQUITY", "CURRENCY")
+            ]
+            # 1) Indian listing among tradable quotes wins.
+            for q in tradable:
+                sym = q.get("symbol") or ""
+                if sym.endswith(".NS") or sym.endswith(".BO"):
+                    return sym
+            # 2) Else first tradable quote (genuinely global names: apple, tesla).
+            if tradable:
+                return tradable[0].get("symbol")
             return quotes[0].get("symbol") if quotes else None
+
         found = await asyncio.to_thread(_search)
         if found:
             logger.info("[chat/price] yfinance.Search resolved '%s' → %s", symbol, found)
@@ -1898,7 +2039,7 @@ async def _resolve_yf_symbol(symbol: str) -> str | None:
     except Exception as exc:
         logger.debug("[chat/price] yfinance.Search failed for '%s': %s", symbol, exc)
 
-    # Final fallback: treat as NSE stock
+    # Tier 5: final fallback — assume NSE stock
     return sym_upper + ".NS"
 
 
@@ -1911,10 +2052,27 @@ async def _chat_tool_get_live_price(symbol: str) -> str:
         price, change_pct = await asyncio.to_thread(_fetch_yf_price, yf_sym)
         if price == 0.0:
             return f"No price data for '{symbol}' (tried {yf_sym}) — market may be closed or symbol unavailable."
-        is_usd = any(yf_sym.endswith(s) for s in ("=F", "-USD", "=X")) or yf_sym.startswith("^")
-        currency = "USD" if is_usd else "INR"
+
+        # Classify the instrument so we label units and freshness correctly.
+        is_global = any(yf_sym.endswith(s) for s in ("=F", "-USD", "=X"))
+        is_index  = yf_sym.startswith("^")
+        follows_nse = (
+            yf_sym.endswith(".NS") or yf_sym.endswith(".BO")
+            or (is_index and (yf_sym.startswith("^NSE") or yf_sym.startswith("^CNX") or yf_sym == "^BSESN"))
+        )
+        unit  = "USD" if is_global else ("pts" if is_index else "INR")
         arrow = "▲" if change_pct >= 0 else "▼"
-        return f"{symbol.title()} ({yf_sym}): {price:.2f} {currency}  {arrow}{abs(change_pct):.2f}% today"
+
+        # Freshness: only NSE-listed instruments follow the IST session. When the
+        # market is not in its continuous OPEN session, yfinance returns the last
+        # settled close — say so explicitly so it is never passed off as live.
+        if follows_nse:
+            s = _session_state()
+            freshness = "live" if s["state"] == "OPEN" else f"last close {s['last_close_day'].isoformat()}"
+        else:
+            freshness = "latest"
+
+        return f"{symbol.title()} ({yf_sym}): {price:.2f} {unit}  {arrow}{abs(change_pct):.2f}% ({freshness})"
     except Exception as exc:
         return f"Price fetch failed for '{symbol}': {exc}"
 
@@ -2155,7 +2313,10 @@ You are StockAgent, a market intelligence assistant with real-time web search an
   Pass a plain name (silver, gold, crude, nifty, usd, bitcoin) OR a yfinance symbol (SI=F, BZ=F, ^NSEI).
   Unknown assets are resolved automatically — just pass what the user said.
 - **search_market_news(query)** — real-time web search: headlines, data, analysis
+- **get_sector_snapshot(sector)** — sector index level + LIVE per-stock movers (top gainers/losers)
+  + our verdicts. THIS is how you answer "which stocks in X", "what to book profit / buy in X".
 - **get_stock_analysis(ticker)** — our AI verdict + 9-agent scores for tracked NSE stocks
+- **get_rl_prediction(ticker)** — our model's next-session/30-day predicted direction + confidence
 - **get_analysis_history(days)** — past verdicts and score trends from our database
 - **get_rl_insights()** — agent accuracy, learned weights, and prediction lessons
 
@@ -2165,13 +2326,26 @@ You are StockAgent, a market intelligence assistant with real-time web search an
 | Current price | get_live_price |
 | Why moving / what's driving | get_live_price + search_market_news (parallel) |
 | Outlook / forecast / next N days | get_live_price + search_market_news("X outlook [year]") |
-| NSE stock deep dive | get_live_price + get_stock_analysis + search_market_news |
+| **Tomorrow / will it rise / market prediction** | get_live_price(index) + search_market_news("Nifty Sensex prediction tomorrow [today's date]") + get_rl_prediction (if a tracked ticker) |
+| **Which stocks to buy / book profit / best in a sector** | get_sector_snapshot(sector) + search_market_news("[sector] stocks to buy/book profit today") |
+| **Sector crashed / rallied — what now** | get_sector_snapshot(sector) + search_market_news("why [sector] fell/rose today [date]") |
+| NSE stock deep dive | get_live_price + get_stock_analysis + get_rl_prediction + search_market_news |
 | What happened last week / history | get_analysis_history |
 | Agent accuracy / which to trust | get_rl_insights |
 | Macro event (Fed, RBI, oil) | search_market_news |
 
 ALWAYS call search_market_news for forward-looking questions. Use specific queries:
 "silver price outlook next 30 days supply demand 2026" not just "silver".
+
+## Forward-looking & ranking answers (do not punt these)
+- "Tomorrow's market" / "will it go up": you CANNOT know the future, but you CAN give a grounded
+  lean. Combine: today's index move + direction, the search results (analyst previews, GIFT Nifty
+  cues, global setup), and any get_rl_prediction. State the lean ("cautiously positive / negative /
+  rangebound") WITH the 2-3 concrete reasons behind it and the key risk. Never reply "I can't predict".
+- "Which stocks to book profit / buy now": call get_sector_snapshot to see the actual movers, then
+  NAME specific tickers with their live % move and a one-line reason. Profit-booking = stocks that
+  are UP / extended; bargain-hunting = quality names that are DOWN. Ground every pick in the data
+  you fetched — never invent a recommendation without a number behind it.
 
 ## Hard rules
 - NEVER say "consult market research reports", "check external sources", or "I cannot predict".
@@ -2329,18 +2503,57 @@ def _mock_reply(q: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# T3: POST /ui/chat/stream — SSE streaming chat via LangGraph + MemorySaver
+# Agentic streaming chat — shared helpers
+# ---------------------------------------------------------------------------
+
+_CHAT_MODEL = "qwen/qwen3-235b-a22b"   # strong model for multi-step tool reasoning
+_CHAT_MAX_TOOL_ROUNDS = 4              # max tool rounds before forcing a final answer
+
+# In-process per-session memory (mirrors the old MemorySaver semantics: in-RAM,
+# cleared on restart). Keyed by session_id → list of {role, content} turns.
+_SESSION_HISTORY: dict[str, list[dict]] = {}
+_SESSION_MAX_TURNS = 12               # keep last 12 messages (≈6 exchanges) per session
+
+
+def _session_history_get(session_id: str) -> list[dict]:
+    return list(_SESSION_HISTORY.get(session_id, []))
+
+
+def _session_history_append(session_id: str, user_text: str, assistant_text: str) -> None:
+    hist = _SESSION_HISTORY.setdefault(session_id, [])
+    hist.append({"role": "user", "content": user_text})
+    hist.append({"role": "assistant", "content": assistant_text})
+    if len(hist) > _SESSION_MAX_TURNS:
+        del hist[: len(hist) - _SESSION_MAX_TURNS]
+
+
+def _strip_think(text: str) -> str:
+    """Remove Qwen3 <think>…</think> reasoning blocks from a completed message."""
+    return re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
+
+
+def _chunk_for_stream(text: str):
+    """Yield a completed answer as small word-grouped chunks for a streaming feel."""
+    words = text.split(" ")
+    group = 3
+    for i in range(0, len(words), group):
+        piece = " ".join(words[i : i + group])
+        # Preserve the inter-group space so the reassembled text is exact.
+        yield piece if i + group >= len(words) else piece + " "
+
+
+# ---------------------------------------------------------------------------
+# T3: POST /ui/chat/stream — SSE streaming agentic chat (tool loop)
 # ---------------------------------------------------------------------------
 
 @router.post("/chat/stream", summary="AI assistant chat — SSE streaming response")
 async def chat_stream(body: dict):
     """
-    Streaming chat via LangGraph 3-node pipeline (dispatch → executor → synthesize).
-    Carry-over is handled by MemorySaver keyed on session_id — no client-side history.
-    Returns text/event-stream. Events: dispatch | tool_start | tool_result | thinking | token | done
+    Streaming agentic chat. The model runs a multi-round tool loop (live prices,
+    sector movers, web search, RL predictions) and then streams a grounded answer.
+    Carry-over is in-process per session_id. Events: intent | tool_result | token | done.
     """
     from fastapi.responses import StreamingResponse as _SR
-    from services.api.chat_graph import chat_graph
 
     message: str = (body.get("message") or "").strip()
     session_id: str = body.get("session_id") or str(uuid.uuid4())
@@ -2352,59 +2565,80 @@ async def chat_stream(body: dict):
 
     async def generate():
         import json as _json
+        from services.clients.llm_client import get_async_llm_client
 
-        config = {"configurable": {"thread_id": session_id}}
-        user_msg = {"role": "user", "content": message}
+        # Emit intent first so the client captures/persists session_id.
+        yield f'data: {_json.dumps({"event": "intent", "session_id": session_id, "tier": "active", "query": message[:80]})}\n\n'
 
+        # Strong system prompt (IST market context + grounding rules) + carried history.
+        context = _build_chat_context(message)
+        system_prompt = _CHAT_SYSTEM_PROMPT.format(context=context)
+        messages: list[dict] = [{"role": "system", "content": system_prompt}]
+        messages.extend(_session_history_get(session_id))
+        messages.append({"role": "user", "content": message})
+
+        final_text = ""
         try:
-            async for event in chat_graph.astream_events(
-                {"messages": [user_msg], "session_id": session_id},
-                config=config,
-                version="v2",
-            ):
-                if event.get("event") != "on_custom_event":
-                    continue
-                name = event.get("name")
-                data = event.get("data") or {}
+            client = get_async_llm_client()
 
-                if name == "tool_start":
-                    payload = {
-                        "event": "tool_start",
-                        "tool": data.get("tool"),
-                        "args": data.get("args", {}),
-                    }
-                    yield f"data: {_json.dumps(payload)}\n\n"
+            for _round in range(_CHAT_MAX_TOOL_ROUNDS):
+                resp = await client.chat.completions.create(
+                    model=_CHAT_MODEL,
+                    messages=messages,
+                    temperature=0.4,
+                    max_tokens=700,
+                    tools=_CHAT_TOOLS,
+                    tool_choice="auto",
+                )
+                msg = resp.choices[0].message
+                tcs = getattr(msg, "tool_calls", None) or []
 
-                elif name == "tool_result":
-                    payload = {
-                        "event": "tool_result",
-                        "tool": data.get("tool"),
-                        "summary": data.get("summary", ""),
-                    }
-                    yield f"data: {_json.dumps(payload)}\n\n"
+                if not tcs:
+                    final_text = _strip_think(msg.content or "")
+                    break
 
-                elif name == "token":
-                    payload = {"event": "token", "text": data.get("text", "")}
-                    yield f"data: {_json.dumps(payload)}\n\n"
+                # Record the assistant tool-call turn, then run all calls in parallel.
+                messages.append({
+                    "role": "assistant",
+                    "content": msg.content or "",
+                    "tool_calls": [
+                        {"id": tc.id, "type": "function",
+                         "function": {"name": tc.function.name, "arguments": tc.function.arguments}}
+                        for tc in tcs
+                    ],
+                })
+                parsed_args = []
+                for tc in tcs:
+                    try:
+                        parsed_args.append(_json.loads(tc.function.arguments or "{}"))
+                    except Exception:
+                        parsed_args.append({})
+                results = await asyncio.gather(*[
+                    _execute_chat_tool(tc.function.name, a) for tc, a in zip(tcs, parsed_args)
+                ])
+                for tc, result in zip(tcs, results):
+                    messages.append({"role": "tool", "tool_call_id": tc.id, "content": result})
+                    summary = (result or "")[:600]
+                    yield f'data: {_json.dumps({"event": "tool_result", "tool": tc.function.name, "summary": summary})}\n\n'
+            else:
+                # Hit max rounds with tool context pending → force a final answer (no tools).
+                resp = await client.chat.completions.create(
+                    model=_CHAT_MODEL, messages=messages, temperature=0.4, max_tokens=700,
+                )
+                final_text = _strip_think(resp.choices[0].message.content or "")
 
-                elif name == "thinking":
-                    # Qwen3 entered a think block — no tokens for a while, not a hang
-                    yield f'data: {{"event":"thinking"}}\n\n'
+            if not final_text:
+                final_text = "I couldn't compose a grounded answer from the live data this time — try rephrasing."
 
-                elif name == "dispatch":
-                    payload = {
-                        "event": "dispatch",
-                        "session_id": session_id,
-                        "tier": data.get("tier", "active"),
-                        "query": data.get("query", ""),
-                    }
-                    yield f"data: {_json.dumps(payload)}\n\n"
+            for piece in _chunk_for_stream(final_text):
+                yield f'data: {_json.dumps({"event": "token", "text": piece})}\n\n'
 
         except Exception as exc:
-            logger.warning("[ui/chat/stream] Graph error: %s", exc)
-            fallback = _mock_reply(message)
-            yield f'data: {_json.dumps({"event": "token", "text": fallback})}\n\n'
+            logger.warning("[ui/chat/stream] agentic loop error: %s", exc)
+            final_text = _mock_reply(message)
+            yield f'data: {_json.dumps({"event": "token", "text": final_text})}\n\n'
 
+        _session_history_append(session_id, message, final_text)
         yield 'data: {"event":"done"}\n\n'
 
     return _SR(

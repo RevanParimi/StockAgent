@@ -1,10 +1,22 @@
 # ============================================================
-# StockAgent — Python FastAPI
-# Single-stage build (C++ pybind11 uses pure Python fallback
-# when stockindicators.so is absent — fetcher.py handles it)
+# StockAgent — React frontend (Vite/PWA) + Python FastAPI
+# Stage 1 builds the React PWA; Stage 2 serves it from FastAPI.
+# (C++ pybind11 uses pure-Python fallback when stockindicators.so
+#  is absent — fetcher.py handles it.)
 # ============================================================
-FROM python:3.11-slim
 
+# ---- Stage 1: build the React PWA ----
+FROM node:20-slim AS web
+WORKDIR /web
+# Install deps first (cached unless package files change)
+COPY src/frontend/web/package.json src/frontend/web/package-lock.json ./
+RUN npm ci
+# Build the app -> /web/dist (includes manifest.webmanifest + service worker)
+COPY src/frontend/web/ ./
+RUN npm run build
+
+# ---- Stage 2: Python API that also serves the built PWA ----
+FROM python:3.11-slim
 WORKDIR /app
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -21,7 +33,9 @@ COPY core/       ./core/
 COPY services/   ./services/
 COPY src/backend/ ./backend/
 COPY main.py     ./
-COPY src/frontend/prototypes/ ./frontend/prototypes/
+
+# Built React PWA from stage 1 (served by services/api/server.py)
+COPY --from=web /web/dist ./frontend/dist
 
 # Create data directories — volumes mount here at runtime
 RUN mkdir -p \

@@ -2586,22 +2586,45 @@ Every pick MUST carry a number (its move + where it sits in its 1-month range) a
   - Do NOT say "today the market fell" — say "as of [last trading day], the market..."
   - A result from Friday is NOT stale if today is Saturday — it IS the latest trading data.
 
-## Output format — total response under 120 words
+## Output format — built for a NARROW phone-width chat bubble (~40 chars wide)
 
-**[Asset] [LIVE PRICE] ▲/▼CHANGE%** (omit if get_live_price failed)
+The reply renders in a small chat panel, NOT a laptop screen. Wide layouts break.
+RENDERING RULES — no exceptions:
+- **NEVER use markdown tables** (`| col | col |`). They overflow and become unreadable on a
+  phone. Use compact one-line-per-item lists instead.
+- One stock = ONE short line. No line should need horizontal scrolling.
+- Group picks under a short bold sub-header per sector/theme, e.g. `**IT — deep dip**`.
+- No paragraphs in a picks answer. Bullets and short lines only.
+- Use ▼/▲ for moves, `·` as the in-line separator, `₹` for price. Keep tickers UPPERCASE.
 
-**What happened:**
-1. "[Exact headline]" — Source — date  →  one-line market impact
-2. "[Exact headline]" — Source — date  →  one-line market impact
-(max 3, most recent first, skip results with no date)
+**Per-pick line (the unit of a buy / sell / screen answer):**
+`**TICKER** ₹price ▼1d% · 1mo ▼mo% — short reason (catalyst or risk)`
+e.g. `**TCS** ₹2,242 ▼8.4% · 1mo ▼6.5% — oversold; MS overweight India`
 
-**Watch for:** (ONLY include this section when you have signals that were NOT already listed
-in a prior "Watch for:" block earlier in this conversation. Check the message history above.
-If the same signals would repeat word-for-word, omit this section entirely. Only output
-genuinely new signals — things that emerged from THIS response's search results.)
-- [new signal not mentioned before]
+**Buy / sell / screen answer shape:**
+```
+🎯 [Headline — e.g. Value picks · buy-the-dip]
 
-*Sources: Source1 · Source2*
+**IT — deep correction**
+• **TCS** ₹2,242 ▼8.4% · 1mo ▼6.5% — oversold; MS overweight
+• **LTTS** ₹3,299 ▼6.0% · 1mo ▼10% — sector-worst, near lows
+
+**Auto — near lows**
+• **ASHOKLEY** ₹146 ▼0.5% · 1mo ▼7.7% — CV cycle turning
+
+📰 [2 short context lines, newest first, with source]
+⚠️ Watch: [1-3 short signals]
+```
+Cap it: max ~5-7 picks total, grouped. Trim ruthlessly — every line carries a number + a reason.
+
+**Price / news / outlook answer shape (under 120 words):**
+```
+**[Asset] ₹PRICE ▲/▼CHG%**  (omit if get_live_price failed)
+**What's driving:**
+• "[Exact headline]" — Source, date → one-line impact   (max 3, newest first)
+**Watch:** • [only a genuinely NEW signal not said earlier in this chat]
+*Sources: S1 · S2*
+```
 
 STRICT RULES — no exceptions:
 - NEVER add "Critical Note", "Important Note", "Final Note", "Revision Note", "Note:", or any
@@ -2609,7 +2632,8 @@ STRICT RULES — no exceptions:
 - NEVER say "real-time data required", "for precise causality", or "always verify with" — just
   state what the fetched data shows and its publication date.
 - Skip undated results entirely; cite only results that have a publication date.
-- Under 120 words. Every sentence must add new specific information.
+- "Watch:" only when the signal is genuinely new vs an earlier "Watch:" in this conversation.
+- Every line adds new specific information. No filler, no restating the question.
 
 ## StockAgent's specialist agents (invoked via full analysis, not chat)
 Sales & Demand · Fundamentals · Pattern Analysis · Raw Materials · Sentiment ·
@@ -2842,9 +2866,64 @@ _BANNED_NOTE_RE = re.compile(
 )
 
 
+def _is_table_sep(line: str) -> bool:
+    """A GFM table separator row, e.g. `|---|---|` or `| :-- | --: |`."""
+    s = line.strip()
+    return "-" in s and bool(s) and set(s) <= set("|-: \t")
+
+
+def _table_cells(line: str) -> list[str]:
+    s = line.strip()
+    if s.startswith("|"):
+        s = s[1:]
+    if s.endswith("|"):
+        s = s[:-1]
+    return [c.strip() for c in s.split("|")]
+
+
+def _tables_to_bullets(text: str) -> str:
+    """
+    Convert any markdown table into a compact one-line-per-row bullet list.
+    The chat bubble is phone-width; wide <table> HTML overflows it. The prompt
+    already forbids tables, but models slip — this guarantees a narrow layout.
+    Each data row → `• **col0** col1 · col2 … — lastcol` (first cell bold = the
+    ticker/label, last cell = the reason). The header row is dropped (the cells
+    are self-describing: price, move, catalyst).
+    """
+    if "|" not in text:
+        return text
+    lines = text.split("\n")
+    out: list[str] = []
+    i, n = 0, len(lines)
+    while i < n:
+        line = lines[i]
+        is_header = "|" in line and line.strip().startswith("|")
+        if is_header and i + 1 < n and _is_table_sep(lines[i + 1]):
+            i += 2  # skip header + separator
+            while i < n and lines[i].strip().startswith("|"):
+                cells = [c for c in _table_cells(lines[i])]
+                if cells and any(cells):
+                    first, rest = cells[0], cells[1:]
+                    bullet = f"• **{first}**" if first else "•"
+                    if rest:
+                        last, mid = rest[-1], rest[:-1]
+                        mid_txt = " · ".join(c for c in mid if c)
+                        if mid_txt:
+                            bullet += f" {mid_txt}"
+                        if last:
+                            bullet += f" — {last}"
+                    out.append(bullet)
+                i += 1
+        else:
+            out.append(line)
+            i += 1
+    return "\n".join(out)
+
+
 def _sanitize_answer(text: str) -> str:
-    """Strip trailing data-limitation disclaimer blocks the model sometimes appends."""
+    """Strip disclaimer blocks and flatten any wide tables for the narrow chat bubble."""
     cleaned = _BANNED_NOTE_RE.sub("", text).rstrip()
+    cleaned = _tables_to_bullets(cleaned)
     return cleaned or text
 
 

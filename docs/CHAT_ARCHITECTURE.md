@@ -1,299 +1,166 @@
-# Chat Architecture — 3-Node Open Dispatch Pipeline
+# Chat Architecture — Agentic Streaming Tool-Loop
 
 ## Overview
 
-The chat system uses a **3-node LangGraph pipeline** backed by `MemorySaver` for cross-request
-conversation carry-over. Every HTTP request adds one user message to the graph state; the
-`MemorySaver` automatically restores the full prior conversation for that `session_id`, so
-no client-side history is ever needed.
+The chat assistant is an **agentic streaming tool-loop**: the LLM reasons, calls tools across
+several rounds, and streams a grounded answer. It is served at `POST /ui/chat/stream` (SSE),
+with a non-streaming twin at `POST /ui/chat` that runs the same loop.
 
-The pipeline replaced the old 5-node classify→plan→execute→synthesize→review design.
-Key differences: open query decomposition (no fixed intent categories), parallel async tool
-execution, user-tier-aware response format, and no reviewer loop.
+This replaced the earlier **3-node LangGraph pipeline** (`dispatch → executor → synthesize`,
+`chat_graph.py` — removed 2026-06-03). That fixed DAG had to plan *all* tools up front, before
+it knew (for example) which IT tickers existed, and could not take a follow-up step — so it
+fell back to generic answers. The loop reasons in steps instead, and a **deterministic
+pre-router** guarantees the right data is fetched for buy/sell/momentum questions regardless of
+the model's tool-routing reliability.
+
+The whole implementation lives in `services/api/routes/ui_data.py` — there is no separate graph
+module any more.
 
 ---
 
-## Model Strategy
+## Model Strategy (hybrid)
 
-One model is used for all LLM nodes:
-
-| Constant | Model | Used for | Latency |
+| Role | Constant | Setting | Model |
 |---|---|---|---|
-| `_FAST_MODEL` | `settings.LLM_MODEL` (default: `qwen/qwen-2.5-72b-instruct`) | dispatch, synthesize | ~1–3s per call |
+| Chat loop | `_CHAT_MODEL` | `LLM_MODEL_FAST` | `qwen/qwen3.6-flash` |
+| Fallback (rate-limit / 5xx) | `_CHAT_FALLBACK_MODEL` | `LLM_MODEL_REASONING` | `qwen/qwen3.7-max` |
 
-All nodes use `_FAST_MODEL`. Switch `LLM_MODEL` in `.env` to upgrade quality at cost of latency.
+Chosen from the **2026-06-03 model benchmark** (`scripts/model_bench.py`, 8 models × real
+queries through this exact pipeline): qwen3.6-flash produced the deepest answers, fastest
+(~12s), at low cost. `qwen3-235b` was **retired** (it broke JSON output and was a weak
+function-caller); Gemini 3.5 Flash was rejected (truncated output + 64× the cost); Kimi K2.6
+rejected (empty output + 68s latency).
+
+`_chat_completion()` wraps every call with retry + exponential backoff on transient
+rate-limit/5xx errors, then falls back to the reasoning model before giving up.
 
 ---
 
-## Graph
+## Request Flow
 
 ```
-User message + session_id + user_profile
+user message + session_id
         │
         ▼
-  ┌─────────────────────────────────────┐
-  │  dispatch                           │  _FAST_MODEL (400 tok)
-  │  • Free-form query decomposition    │  → query_decomposition, user_tier
-  │  • User sophistication detection    │  → tasks[], browsing_strategy
-  │  • Parallel task plan               │  (no fixed intent categories)
-  └──────┬──────────────────────────────┘
-         │ fires all tasks simultaneously
-  ┌──────▼──────────────────────────────┐
-  │  executor  (async parallel, 0 LLM)  │  asyncio.gather over all tasks
-  │  get_live_price      ─┐             │  → SSE tool_start for all
-  │  get_historical_prices─┤            │  → SSE tool_result as each arrives
-  │  get_rl_prediction   ─┼─ parallel  │
-  │  get_macro_news      ─┤            │
-  │  search_market_news  ─┘            │
-  └──────┬──────────────────────────────┘
-         │ collected results
-  ┌──────▼──────────────────────────────┐
-  │  synthesize                         │  _FAST_MODEL (500 tok, streamed)
-  │  • Format decided by LLM            │  → tier-adaptive response
-  │  • Depth from user_tier             │  → streams as tokens
-  │  • RL signal injected if available  │  → saves user_profile after
-  └─────────────────────────────────────┘
-                    END
+build prompt  ── _CHAT_SYSTEM_PROMPT  (grounding rules, step-back intent, tool guidance)
+              ├─ _nse_market_context()  (IST session: PRE_OPEN / OPEN / CLOSED / HOLIDAY)
+              └─ carried session history (_SESSION_HISTORY[session_id])
+        │
+        ▼
+DETERMINISTIC PRE-ROUTER  ── _detect_invest_intent(message)
+   buy / sell / momentum + a screenable sector?
+   └─ YES → run screen_stocks(sector, mode) + search_market_news() ourselves,
+            inject BOTH into context, emit their tool_result events
+        │
+        ▼
+AGENTIC TOOL LOOP  (≤ _CHAT_MAX_TOOL_ROUNDS = 4)
+   model picks tools → _execute_chat_tool() in parallel → results fed back → repeat
+        │
+        ▼
+_sanitize_answer()  → stream as word-chunked `token` events → `done`
 ```
 
 ---
 
-## State
+## 1. Deterministic Intent Pre-Router (plan-and-execute)
 
-```python
-class ChatState(TypedDict):
-    messages:            Annotated[list, operator.add]  # MemorySaver key — unchanged
-    session_id:          str | None                     # session identifier
-    query_decomposition: str | None                     # from dispatch: what user needs
-    user_tier:           str | None                     # casual | active | expert
-    browsing_strategy:   dict | None                    # from dispatch: topics, geo, always_news
-    tasks:               list[dict] | None              # from dispatch: [{tool, args, priority}]
-    tool_results:        list[dict] | None              # from executor: [{tool, result, error}]
-```
+`_detect_invest_intent(message)` classifies a screen-type intent from keywords — **buy / sell /
+momentum** — and the target sector. When both are present, the endpoint runs the plan itself
+(`screen_stocks` + `search_market_news`) and injects the results into the prompt **before** the
+model's loop.
 
-`messages` uses `operator.add` reducer — each request appends to the existing list in MemorySaver.
+This is a Tier-1 router (cf. the literature on separating routing from execution): it does not
+rely on the model reliably choosing the right tool. It is what makes *"which IT stocks should I
+buy now"* deterministically return **beaten-down value names** (near 1-month lows) with **real
+catalysts** — instead of today's random gainers, or fabricated headlines when the model skips
+the news search.
 
----
-
-## Nodes
-
-### 1. dispatch
-
-**Model:** `_FAST_MODEL` · **Tokens out:** ~400 · **Temperature:** 0.0
-
-Reads the last 8 messages and the user's profile. Outputs structured task plan via a single
-LLM call — replaces both `classify` and `planner` from the old pipeline.
-
-**Key behaviours:**
-- No fixed intent categories — free-form `query_decomposition` in plain English
-- Detects user tier from vocabulary and specificity: `casual` / `active` / `expert`
-- `always_news=true` for any non-definitional query — news is never gated
-- Includes `get_rl_prediction` whenever a ticker or sector is mentioned
-- Includes `get_historical_prices` for any trend/comparison/prediction query
-- Falls back to `[get_live_price(nifty), get_macro_news, search_market_news]` if LLM returns 0 tasks
-
-**Dispatch output:**
-```json
-{
-  "query_decomposition": "User wants 3-day Sensex trend and direction for today (pre-open)",
-  "user_tier": "active",
-  "tasks": [
-    {"tool": "get_historical_prices", "args": {"symbol": "^BSESN", "days": 5}, "priority": 1},
-    {"tool": "get_live_price",        "args": {"symbol": "^BSESN"},            "priority": 1},
-    {"tool": "search_market_news",    "args": {"query": "Sensex India outlook"},"priority": 2}
-  ],
-  "browsing_strategy": {"topics": ["Sensex trend"], "geo": "in", "always_news": true}
-}
-```
-
-**SSE event emitted:**
-```json
-{"event": "dispatch", "session_id": "...", "tier": "active", "query": "3-day Sensex trend..."}
-```
+| Intent phrase | Action | screen_stocks mode |
+|---|---|---|
+| invest / buy / accumulate / undervalued / oversold | buy | `value` (near 1-mo lows — buy-the-dip) |
+| book profit / trim / take profit / overbought | sell | `profit` (near 1-mo highs — trim) |
+| momentum / leaders / strongest / breakout | momentum | `momentum` (1-week leaders) |
 
 ---
 
-### 2. executor (parallel)
+## 2. Agentic Tool Loop
 
-**Cost:** 0 LLM tokens — purely async I/O via `asyncio.gather`
+Up to 4 rounds. Each round: one `chat.completions.create` (model decides tool calls) →
+all tool calls executed concurrently via `asyncio.gather` → results appended → loop. When the
+model returns no tool calls, that content is the final answer; if rounds are exhausted with
+tools still pending, a final no-tools call composes the answer. The answer is streamed out as
+small word-grouped `token` chunks for a streaming feel.
 
-Fires all tasks from dispatch concurrently. Emits `tool_start` for all tasks immediately,
-then `tool_result` as each completes (in arrival order — fastest tool appears first).
+---
 
-One failure never blocks the rest — `asyncio.gather(return_exceptions=True)` ensures
-a Serper timeout doesn't stop the RL prediction from appearing.
-
-**Tool roster (10 total):**
+## 3. Tool Catalogue (11 tools)
 
 | Tool | Source | Notes |
 |---|---|---|
-| `get_live_price` | yfinance | Current price + % change |
-| `get_historical_prices` | yfinance | Last N days OHLCV + trend summary |
-| `get_sector_snapshot` | yfinance + DB | All stocks in a sector |
-| `get_stock_analysis` | SQLite DB | Verdict lookup |
-| `get_analysis_history` | SQLite DB | Historical verdicts |
-| `get_rl_prediction` | prediction envelope JSON | RL verdict + confidence + conviction |
-| `get_rl_insights` | SQLite DB | Agent-level RL breakdown |
-| `get_macro_news` | `data/macro_news/` cache | Today's HIGH/MEDIUM/LOW macro news |
-| `search_market_news` | Serper /news + Tavily fallback | Live news with geo detection |
-| `run_agent_analysis` | sector orchestrator | Deep mode, expert tier only (~45s) |
-
-**SSE events emitted:**
-```json
-{"event": "tool_start",  "tool": "get_historical_prices", "args": {"symbol": "^BSESN", "days": 5}}
-{"event": "tool_result", "tool": "get_historical_prices", "summary": "^BSESN — Last 5 trading days:\n..."}
-```
+| `screen_stocks(sector, mode)` | yfinance 1-mo windows | **The insight engine.** `value` = beaten-down near lows; `momentum` = leaders; `profit` = extended near highs. Surfaces non-obvious picks, not blue-chips |
+| `get_sector_snapshot(sector)` | yfinance + DB | Sector index **plus per-stock movers** (top gainers/losers, live %) + verdicts |
+| `get_live_price(symbol)` | yfinance | NSE-first resolution; freshness-labelled (`live` vs `last close <date>`) |
+| `get_historical_prices(symbol, days)` | yfinance | Last N days OHLCV + trend |
+| `get_stock_analysis(ticker)` | SQLite | Latest verdict + score |
+| `get_analysis_history(days)` | SQLite | Historical verdict trend |
+| `get_rl_prediction(ticker)` | prediction JSON | RL verdict + confidence + conviction |
+| `get_rl_insights()` | RL weight memory | Agent accuracy + learned weights + lessons |
+| `get_macro_news()` | daily macro cache → **live Serper fallback** | Self-heals when the cache is empty |
+| `search_market_news(query)` | Serper /news + RRF, Tavily fallback | Multi-query fusion (see §4) |
+| `run_agent_analysis(ticker)` | sector orchestrator | Deep 9-agent run (~45s) |
 
 ---
 
-### 3. synthesize
+## 4. Grounding Subsystems
 
-**Model:** `_FAST_MODEL` · **Tokens out:** ~500 · **Temperature:** 0.4 · **Streaming**
+**IST market session** — `_nse_market_context()` → `nse_calendar.market_session()` resolves the
+*current* session in IST (not just whether today is a trading day): `PRE_MARKET`, `PRE_OPEN`,
+`OPEN`, `CLOSED`, `HOLIDAY`. Prices fetched outside the OPEN session are explicitly labelled
+**last close** so a settled price is never passed off as live. This killed the old
+"market is OPEN at 9:16am" contradiction.
 
-Aggregates all tool results and produces a response. Format and depth are decided by the
-LLM based on content and user tier — no rigid 120-word template.
+**NSE-first symbol resolution** — `_resolve_yf_symbol()` resolves a bare name India-first:
+common-name aliases → registry tickers → India-preferred `yfinance.Search` (prefers `.NS`/`.BO`).
+Fixes "reliance" resolving to the US ticker "RS".
 
-**Tier-adaptive format:**
+**Multi-query + Reciprocal Rank Fusion** — `_chat_tool_search_news()` fires 2–3 deterministic
+query variants and fuses the results with RRF (`_rrf_fuse`), surfacing relevant dated sources a
+single phrasing would miss. A noise filter drops horoscope/astrology results.
 
-| Tier | Format |
-|---|---|
-| `casual` | 3–4 plain sentences, one key insight, no jargon, no tables |
-| `active` | Price + direction + 2–3 dated headlines + watch signals. Under 150 words. Uses ▲/▼ |
-| `expert` | Regime, RL signal, conviction streak, key assumptions, raw metrics. Tables if helpful. No word cap |
+**Deterministic answer sanitizer** — `_sanitize_answer()` strips banned data-limitation
+disclaimer labels ("Critical Note", etc.) the model occasionally appends. (An LLM Reflexion
+self-critique gate was trialled and rejected — on qwen it hallucinated or misjudged; the
+grounded pre-router prevents fabrication at the source, which is more reliable.)
 
-**Hard rules in prompt:**
-- If market not yet open, say so and reason from last close + pre-market cues
-- Cite exact headlines with source and date — never paraphrase into fabricated summaries
-- RL prediction: `casual` → "our model says"; `active` → verdict + confidence; `expert` → full metrics
-- Historical trend: state what the data shows — never fabricate a predicted price number
-- Never say "real-time data required" — state what you have and its date
-- Empty tool results are silently ignored
-
-**After synthesis:** saves updated `user_profile` (tier, topics, sessions_seen) to
-`data/user_profiles/{session_id}.json` for tier carry-over across sessions.
-
-**SSE events emitted:**
-```json
-{"event": "thinking"}                 (if model enters think phase)
-{"event": "token", "text": "**Sensex ▼ 3-day trend**..."}
-{"event": "done"}
-```
+**Anti-fabrication contract** — the prompt requires every cited source to come from a fetched
+tool result; with the pre-router injecting real screen + news, the model has no reason to invent.
 
 ---
 
-## User Profile
+## 5. Session Memory
 
-Stored at `data/user_profiles/{session_id}.json`. Written after every synthesis turn.
-
-```json
-{
-  "session_id": "abc-123",
-  "detected_tier": "active",
-  "tier_confidence": 0.82,
-  "sessions_seen": 4,
-  "topics_seen": ["Sensex", "IT sector", "FII flows"],
-  "last_seen": "2026-05-17"
-}
-```
-
-After 3+ sessions the tier stabilises — dispatch reads the stored value instead of re-detecting.
+In-process `_SESSION_HISTORY: dict[session_id → list[turn]]`, capped at the last 12 messages.
+This replaced the LangGraph `MemorySaver` checkpointer — same semantics (in-RAM, cleared on
+restart), no graph dependency. The client sends only `session_id`; no client-side history.
 
 ---
 
-## Available Tools — search_market_news in detail
-
-Primary: Serper `/news` · Fallback: Tavily (only when Serper returns 0)
-
-**Geo detection from query content:**
-
-| Query | India terms? | geo used |
-|---|---|---|
-| "why did Nifty fall" | yes (Nifty) | `"in"` |
-| "OpenAI IT stocks" | no | `None` (global) |
-| "why is market down" | no | `"in"` (default) |
-
-**Retry strategy:**
-1. Serper /news with detected geo, 5 results
-2. Auto-retry if 0 results and no India terms (strip + prefix "India Nifty")
-3. Conditional second query if <3 results and global entity detected
-4. Fallback to Tavily only when all Serper passes return 0
-
----
-
-## Temporal Grounding
-
-Every node that calls an LLM receives today's date + NSE market status.
-
-| Layer | How |
-|---|---|
-| `dispatch` system prompt | `f"{market_ctx}\nUser profile: ..."` — market context first line |
-| `synthesize` system prompt | `_nse_market_context()` first in prompt |
-| `search_market_news` result | `=== NEWS RESULTS ===\nTODAY: ...` header |
-
-**NSE market status** (`_nse_market_context()`):
-```
-TODAY: 2026-05-17 (Sunday) — NSE market CLOSED (weekend / holiday)
-Last NSE trading day: 2026-05-16 (Friday)
-```
-
----
-
-## Carry-Over Mechanism
-
-```python
-# MemorySaver stores state.messages per thread_id
-# operator.add reducer appends new messages on every request
-
-# Session 1, Request 1:  state.messages = [user_msg_1, assistant_msg_1]
-# Session 1, Request 2:  state.messages = [user_msg_1, assistant_msg_1, user_msg_2, ...]
-# Session 2, Request 1:  state.messages = [user_msg_A]   ← completely isolated
-```
-
-When the user says "what about IT?" after discussing Sensex, dispatch sees the full prior
-conversation and understands the context. No client-side history needed.
-
----
-
-## SSE Event Stream (endpoint: POST /ui/chat/stream)
+## SSE Event Stream (`POST /ui/chat/stream`)
 
 ```
-Request:  {"message": "Compare last 3 days Sensex, predict today", "session_id": null}
+Request:  {"message": "Which IT stocks should I buy now?", "session_id": null}
 Response: text/event-stream
 
-data: {"event":"dispatch",    "session_id":"<uuid>", "tier":"active", "query":"3-day Sensex trend..."}
-data: {"event":"tool_start",  "tool":"get_historical_prices", "args":{"symbol":"^BSESN","days":5}}
-data: {"event":"tool_start",  "tool":"get_live_price",        "args":{"symbol":"^BSESN"}}
-data: {"event":"tool_start",  "tool":"search_market_news",    "args":{"query":"Sensex India outlook"}}
-data: {"event":"tool_result", "tool":"get_live_price",        "summary":"Sensex (^BSESN): 79,980 ▼0.65%"}
-data: {"event":"tool_result", "tool":"get_historical_prices", "summary":"^BSESN — Last 5 trading days:..."}
-data: {"event":"tool_result", "tool":"search_market_news",    "summary":"=== NEWS RESULTS (Serper)..."}
-data: {"event":"token",       "text":"**Sensex ▼ 3-day trend**\n\n80,891 → 80,654 → 79,980..."}
+data: {"event":"intent",      "session_id":"<uuid>", "tier":"active", "query":"Which IT stocks..."}
+data: {"event":"tool_result", "tool":"screen_stocks",      "summary":"It Sector screen — VALUE / OVERSOLD..."}
+data: {"event":"tool_result", "tool":"search_market_news", "summary":"=== NEWS RESULTS (Serper + RRF) ..."}
+data: {"event":"token",       "text":"**TCS ₹2,242 ▼8.4% (at 1-month low)** — deep discount on quality..."}
 data: {"event":"done"}
 ```
 
-**Events removed vs old pipeline:** `intent`, `plan`, `review` — these were emitted by the
-old classify/planner/reviewer nodes, which no longer exist.
-
----
-
-## Token Budget per Request
-
-| Node | Model | Tokens in | Tokens out | Notes |
-|---|---|---|---|---|
-| dispatch | `_FAST_MODEL` | ~450 | ~400 | last 8 msgs + profile + system |
-| executor | — | 0 | 0 | async I/O only |
-| synthesize | `_FAST_MODEL` | ~900 | ~500 | history + tool results; streamed |
-| **Total** | | **~1,350** | **~900** | vs ~1,790/~820 in old pipeline |
-
-**Latency breakdown:**
-
-| Step | Time |
-|---|---|
-| dispatch | ~1–2s (1 API call vs 2 in old pipeline) |
-| executor tools | ~2–3s (parallel vs ~3–5s sequential) |
-| synthesize | ~2–4s |
-| reviewer | **0s** (removed) |
-| **Target** | **~5–9s** (vs 8–19s old pipeline) |
+Events: `intent` (sets/persists session_id + tier badge) · `tool_result` · `token` · `done`.
+The frontend (`sphere.jsx`) reads `/ui/chat/stream` as a streaming `fetch`, falling back to the
+blocking `/ui/chat` only if the stream fails.
 
 ---
 
@@ -301,17 +168,21 @@ old classify/planner/reviewer nodes, which no longer exist.
 
 | File | Role |
 |---|---|
-| `services/api/chat_graph.py` | Graph definition: 3 nodes, `_node_dispatch`, `_node_executor`, `_new_synthesize_node`, `_build_synthesize_prompt` |
-| `services/api/routes/ui_data.py` | `/ui/chat/stream` SSE endpoint, all 10 tool implementations, `_nse_market_context`, `_execute_chat_tool` |
-| `services/api/user_profile.py` | Per-session user tier profile: `load_profile`, `save_profile` |
-| `services/data/fetchers/news.py` | `search_serper_news(query, n, geo)` — Serper `/news` endpoint |
-| `src/frontend/prototypes/sphere.jsx` | `ChatOverlay` — session_id state, SSE reader, tier badge from `dispatch` event |
+| `services/api/routes/ui_data.py` | The whole chat loop: `chat_stream`/`chat` endpoints, pre-router, `_CHAT_TOOLS` + all tool implementations, `_chat_completion`, `_nse_market_context`, `_resolve_yf_symbol`, `_rrf_fuse`, `_sanitize_answer`, session memory |
+| `services/data/fetchers/news.py` | `search_serper_news(query, n, geo)` — Serper `/news` |
+| `core/intelligence/rl/nse_calendar.py` | `market_session()` — IST session resolver |
+| `scripts/model_bench.py` | Model-comparison harness (re-runnable; auto-scores fabrication / broken-output / latency / cost) |
+| `src/frontend/prototypes/sphere.jsx` | `ChatOverlay` — SSE reader, session_id state, tool-trace |
 
-**Layer A — Macro news background feed:** As of 2026-05-21, the background feed uses RSS (ET Top Stories, LiveMint, BusinessLine, Investing.com India) via `feedparser` — free, no API key. Serper `/news` is the fallback only when RSS returns 0 articles. See Section 10 of `AGENTIC_DESIGN.md` for full Layer A + Layer B news architecture.
+> `services/api/user_profile.py` (per-session tier detection) is currently **dormant** — it was
+> only used by the removed DAG. Retained for a future tier-adaptive verbosity feature.
 
 ---
 
 ## Analysis Pipeline — API Calls Per Ticker
+
+(The full 9-agent **analysis** pipeline below is separate from chat. It still uses LangGraph for
+parallel agent dispatch; only the chat layer changed.)
 
 For a single ticker analysis run (9 automobile agents, macro cache warm):
 
@@ -324,8 +195,8 @@ For a single ticker analysis run (9 automobile agents, macro cache warm):
 | NseIndiaApi `actions()` | 1 | Free | Pre-fetch (once, before fan-out) |
 | Serper (all agents combined, cache warm) | ~16 | Credits | During fan-out |
 | Tavily (policy_regulatory only, 96% cache hit) | ~0.08 | Credits | policy_regulatory |
-| LLM — 9 agents | 9 | Paid | During fan-out |
-| LLM — SignalAggregator | 1 | Paid | Aggregate node |
+| LLM — 9 agents (BULK: qwen-2.5-72b) | 9 | Paid | During fan-out |
+| LLM — SignalAggregator (REASONING: qwen3.7-max) | 1 | Paid | Aggregate node |
 | **Total Serper (cold)** | **~19** | — | Risk_macro cache miss |
 | **Total Serper (warm)** | **~16** | — | Risk_macro cache hit |
 
@@ -338,8 +209,8 @@ For a single ticker analysis run (9 automobile agents, macro cache warm):
 | Serper `get_news_context(ticker, days=2)` | 1 credit | Editorial market context for FeedbackAgent |
 | NseIndiaApi `announcements(ticker, days=2)` | Free | Official regulatory events for FeedbackAgent |
 | yfinance OHLCV (close + volume) | 1 | Actual close price + volume vs 20d avg |
-| LLM — FeedbackAgent | 1 | Miss classification + lesson generation |
-| LLM — ThesisReviewer (conditional) | 0–1 | Only on significant misses (~1–3×/month) |
+| LLM — FeedbackAgent (REASONING: qwen3.7-max) | 1 | Miss classification + lesson generation |
+| LLM — ThesisReviewer (REASONING, conditional) | 0–1 | Only on significant misses (~1–3×/month) |
 
 **Monthly budget (5 tickers, 21 trading days, automobile sector):**
 

@@ -210,7 +210,7 @@ class FeedbackAgent:
             _t0 = time.monotonic()
             try:
                 response = self._client.chat.completions.create(
-                    model=settings.LLM_MODEL,
+                    model=settings.LLM_MODEL_REASONING,
                     temperature=_FEEDBACK_TEMPERATURE,
                     max_tokens=1500,
                     messages=[

@@ -25,23 +25,28 @@ load_dotenv()  # reads .env in project root if present
 OPENROUTER_API_KEY: str = os.getenv("OPENROUTER_API_KEY", "your-openrouter-api-key-here")
 OPENROUTER_BASE_URL: str = "https://openrouter.ai/api/v1"
 
-# Available OpenRouter model IDs — change LLM_MODEL in .env to switch:
-#   qwen/qwen3-235b-a22b           – DEFAULT: accuracy-first, large MoE (~$0.017/run)
-#   qwen/qwen3.5-flash-02-23       – fast, cheap ($0.065/$0.26 per M, ~$0.006/run)
-#   mistralai/mistral-small-2603   – strong reasoning ($0.15/$0.60 per M, ~$0.013/run)
-#   qwen/qwen-2.5-72b-instruct     – higher quality ($0.35/$0.40 per M, ~$0.017/run)
-#   meta-llama/llama-3.3-70b-instruct – Llama alternative
-LLM_MODEL: str = os.getenv("LLM_MODEL", "qwen/qwen3-235b-a22b")
+# Hybrid model tiers — chosen from the 2026-06-03 benchmark (scripts/model_bench.py).
+# qwen3-235b RETIRED: qwen3.6-flash beat it on depth, speed AND reliability for ~the same cost.
+#   FAST      – chat tool-loop (tools + free text, no json_object): fast, strong tool-use. qwen/qwen3.6-flash
+#   REASONING – judgment calls (aggregator verdict, RL feedback/thesis): deepest answers. qwen/qwen3.7-max
+#               NB validated for response_format=json_object — thinking models (e.g. qwen3-235b) break it.
+#   BULK      – high-volume sector-agent scoring (json_object): the JSON-proven model. qwen-2.5-72b
+#               (the .env-tested workhorse; 235b was retired because it broke JSON output).
+# Override any tier in .env. Gemini 3.5 Flash rejected (broken output + 64× cost); Kimi too (empty + 68s).
+LLM_MODEL_FAST: str      = os.getenv("LLM_MODEL_FAST", "qwen/qwen3.6-flash")
+LLM_MODEL_REASONING: str = os.getenv("LLM_MODEL_REASONING", "qwen/qwen3.7-max")
+LLM_MODEL_BULK: str      = os.getenv("LLM_MODEL_BULK", "qwen/qwen-2.5-72b-instruct")
+# Back-compat catch-all: any call-site still reading LLM_MODEL gets the BULK tier
+# (was qwen3-235b-a22b until 2026-06-03).
+LLM_MODEL: str = os.getenv("LLM_MODEL", LLM_MODEL_BULK)
 LLM_TEMPERATURE: float = float(os.getenv("LLM_TEMPERATURE", "0.2"))
 LLM_MAX_TOKENS: int = int(os.getenv("LLM_MAX_TOKENS", "2048"))
 LLM_TIMEOUT_SECONDS: int = int(os.getenv("LLM_TIMEOUT_SECONDS", "60"))
 
-# Token cost rates (USD per million tokens) — update in .env when switching models:
-#   qwen/qwen3-235b-a22b:        input TBD / output TBD
-#   qwen/qwen3.5-flash-02-23:    0.065 / 0.26
-#   mistralai/mistral-small-2603: 0.15  / 0.60
-LLM_INPUT_COST_PER_M: float = float(os.getenv("LLM_INPUT_COST_PER_M", "0.065"))
-LLM_OUTPUT_COST_PER_M: float = float(os.getenv("LLM_OUTPUT_COST_PER_M", "0.26"))
+# Token cost rates (USD per million tokens) for telemetry — default to the BULK tier
+# (qwen3.6-flash). Override in .env if you repoint the tiers.
+LLM_INPUT_COST_PER_M: float = float(os.getenv("LLM_INPUT_COST_PER_M", "0.1875"))
+LLM_OUTPUT_COST_PER_M: float = float(os.getenv("LLM_OUTPUT_COST_PER_M", "1.125"))
 
 
 # ---------------------------------------------------------------------------

@@ -1537,17 +1537,20 @@ def _get_macro_context_for_intent(intent_type: str) -> str:
         return ""
 
 
-def _chat_tool_get_macro_news() -> str:
-    """Tool implementation: return today's full macro news feed, sorted HIGH → MEDIUM → LOW."""
+async def _chat_tool_get_macro_news() -> str:
+    """
+    Today's macro feed. Primary source is the background daily cache; if that has
+    not been populated yet (dev, or before the scheduler's first run in prod) it
+    self-heals with a live Serper fetch of top India market headlines so the tool
+    is never a dead end.
+    """
     try:
         from services.background.macro_news_cache import MacroNewsCache
         entries = MacroNewsCache().get_all_today()
-        if not entries:
-            return (
-                "Macro news cache is empty for today — background feed has not run yet "
-                "or no significant India market news was found. "
-                "Try search_market_news for live results."
-            )
+    except Exception:
+        entries = []
+
+    if entries:
         lines = [f"INDIA MACRO NEWS TODAY ({len(entries)} items):"]
         for e in entries:
             sev   = e.get("severity", "LOW")
@@ -1562,8 +1565,30 @@ def _chat_tool_get_macro_news() -> str:
                 f"  Source: {url}"
             )
         return "\n\n".join(lines)
+
+    # Fallback: live fetch (background feed not warmed yet today).
+    try:
+        from services.data.fetchers.news import search_serper_news, _normalize_date
+        raw = await asyncio.to_thread(
+            search_serper_news, "India stock market Sensex Nifty FII RBI macro news today", 6, geo="in"
+        )
+        _NOISE = ("horoscope", "astrolog", "zodiac", "numerolog", "tarot", "rashifal")
+        raw = [
+            r for r in raw
+            if not any(n in (r.get("title", "") + r.get("link", "")).lower() for n in _NOISE)
+        ]
+        if raw:
+            lines = ["INDIA MACRO NEWS (live — background feed not yet populated today):"]
+            for r in raw[:6]:
+                iso = _normalize_date(r.get("date", ""))
+                age = _result_age_label(iso) if iso else "recent"
+                lines.append(f"[{age}] {r.get('title', '')} — {r.get('source', '')} | {r.get('link', '')}")
+            return "\n".join(lines)
     except Exception as exc:
-        return f"Macro news cache unavailable: {exc}"
+        logger.debug("[macro] live fallback failed: %s", exc)
+
+    return ("No macro news available right now — background feed is empty and the live fetch "
+            "returned nothing. Use search_market_news for a specific topic.")
 
 
 def _build_chat_context(_message: str, intent_type: str = "GENERAL") -> str:
@@ -1716,7 +1741,7 @@ async def _chat_tool_get_sector_snapshot(sector: str) -> str:
 
     async def _one(sym: str) -> tuple[str, float] | None:
         try:
-            p, ch = await asyncio.to_thread(_fetch_yf_price, f"{sym}.NS")
+            p, ch = await asyncio.to_thread(_fetch_yf_price, _nse_yf(sym))
             return (sym, ch) if p else None
         except Exception:
             return None
@@ -1747,6 +1772,80 @@ async def _chat_tool_get_sector_snapshot(sector: str) -> str:
         summary = " · ".join(f"{k}: {v}" for k, v in sorted(counts.items()))
         lines.append(f"StockAgent verdicts [{len(verdicts)}]: {summary}")
 
+    return "\n".join(lines)
+
+
+def _window_stats(yf_sym: str) -> dict | None:
+    """
+    1-month daily history → multi-window returns + position-in-range. Sync.
+    pos: 0.0 = trading at its 1-month low, 1.0 = at its 1-month high. This is the
+    cheap proxy for 'oversold/beaten-down' (pos→0) vs 'extended/overbought' (pos→1).
+    """
+    import yfinance as yf
+
+    def _try(t: str) -> dict | None:
+        try:
+            h = yf.Ticker(t).history(period="1mo", auto_adjust=True)
+            if h.empty or len(h) < 2:
+                return None
+            close = h["Close"]
+            last = float(close.iloc[-1])
+            d1 = (last / float(close.iloc[-2]) - 1) * 100
+            w1 = (last / float(close.iloc[-6]) - 1) * 100 if len(close) >= 6 else d1
+            m1 = (last / float(close.iloc[0]) - 1) * 100
+            lo, hi = float(close.min()), float(close.max())
+            pos = (last - lo) / (hi - lo) if hi > lo else 0.5
+            return {"last": round(last, 2), "d1": round(d1, 2), "w1": round(w1, 2),
+                    "m1": round(m1, 2), "pos": round(pos, 2)}
+        except Exception:
+            return None
+
+    r = _try(yf_sym)
+    if r is None and yf_sym.endswith(".NS"):
+        r = _try(yf_sym[:-3] + ".BO")
+    return r
+
+
+async def _chat_tool_screen_stocks(sector: str = "", mode: str = "value") -> str:
+    """
+    Multi-factor screen over a sector's stocks — surfaces NON-OBVIOUS ideas, not
+    blue-chips. mode: value (buy-the-dip / near lows), momentum (leaders),
+    profit (extended / near highs → trim). Each row carries real signal so the
+    LLM ranks on data, not memory.
+    """
+    mode = (mode or "value").lower()
+    key = sector.strip().lower().replace(" ", "_")
+    key = _SECTOR_ALIASES.get(key, key)
+    tickers = _SECTOR_TICKERS_MAP.get(key, [])[:16]
+    if not tickers:
+        return (f"No stock universe for sector '{sector}'. "
+                f"Known sectors: {', '.join(list(_SECTOR_INDEX_YF)[:10])} …")
+
+    stats = await asyncio.gather(*[asyncio.to_thread(_window_stats, _nse_yf(t)) for t in tickers])
+    rows = [(t, s) for t, s in zip(tickers, stats) if s]
+    if not rows:
+        return f"Could not fetch screen data for {sector} right now — try again shortly."
+
+    sess = _session_state()
+    fresh = "live" if sess["state"] == "OPEN" else f"close {sess['last_close_day'].isoformat()}"
+
+    if mode == "momentum":
+        rows.sort(key=lambda r: r[1]["w1"], reverse=True)
+        title = "MOMENTUM — leaders (1-week trend, continuation candidates)"
+    elif mode in ("profit", "profit_booking", "book", "trim"):
+        rows.sort(key=lambda r: (r[1]["pos"], r[1]["w1"]), reverse=True)
+        title = "PROFIT-BOOKING — extended names near 1-month highs (candidates to trim)"
+    else:  # value / oversold / buy-the-dip
+        rows.sort(key=lambda r: (r[1]["pos"], r[1]["w1"]))
+        title = "VALUE / OVERSOLD — beaten down near 1-month lows (buy-the-dip candidates)"
+
+    lines = [f"{key.replace('_', ' ').title()} screen — {title}  [{fresh}]"]
+    for t, s in rows[:5]:
+        where = "at lows" if s["pos"] <= 0.25 else ("at highs" if s["pos"] >= 0.75 else "mid-range")
+        lines.append(
+            f"  {t}: ₹{s['last']}  1d {s['d1']:+.1f}%  1w {s['w1']:+.1f}%  1mo {s['m1']:+.1f}%  ({where})"
+        )
+    lines.append("(pos in 1-mo range: 'at lows' = oversold/value, 'at highs' = extended)")
     return "\n".join(lines)
 
 
@@ -1828,6 +1927,32 @@ _CHAT_TOOLS = [
                     }
                 },
                 "required": ["query"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "screen_stocks",
+            "description": (
+                "Screen a sector's stocks by multi-window performance to surface NON-OBVIOUS ideas. "
+                "mode='value' → beaten-down names near their 1-month lows (buy-the-dip: buy now, sell higher later); "
+                "mode='momentum' → leaders trending up; "
+                "mode='profit' → extended names near 1-month highs (candidates to book/trim profit). "
+                "USE THIS for 'which stock to invest/buy', 'good stocks to buy now', 'undervalued/oversold "
+                "stocks', 'what to accumulate' — NEVER answer those from memory or with generic blue-chip names."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "sector": {"type": "string", "description": "auto, banking, IT, energy, pharma, FMCG, …"},
+                    "mode": {
+                        "type": "string",
+                        "enum": ["value", "momentum", "profit"],
+                        "description": "value = buy-the-dip / oversold; momentum = leaders; profit = trim winners",
+                    },
+                },
+                "required": ["sector"],
             },
         },
     },
@@ -1962,6 +2087,18 @@ _NSE_NAME_ALIASES: dict[str, str] = {
 }
 
 
+# NSE ticker → correct yfinance symbol, where it differs from "{TICKER}.NS".
+# (Yahoo lists some NSE names under a different code — e.g. Hexaware is HEXT.NS.)
+_YF_NSE_OVERRIDES: dict[str, str] = {
+    "HEXAWARE": "HEXT.NS",
+}
+
+
+def _nse_yf(ticker: str) -> str:
+    """Map an NSE ticker to its yfinance symbol, honouring known overrides."""
+    return _YF_NSE_OVERRIDES.get(ticker.upper(), f"{ticker.upper()}.NS")
+
+
 def _known_nse_tickers() -> frozenset[str]:
     """Set of all NSE tickers known to the sector registry (cached)."""
     cached = getattr(_known_nse_tickers, "_cache", None)
@@ -2006,9 +2143,9 @@ async def _resolve_yf_symbol(symbol: str) -> str | None:
 
     # Tier 3: known NSE ticker or common Indian company-name alias → .NS (no network)
     if sym_lower in _NSE_NAME_ALIASES:
-        return _NSE_NAME_ALIASES[sym_lower] + ".NS"
+        return _nse_yf(_NSE_NAME_ALIASES[sym_lower])
     if sym_upper in _known_nse_tickers():
-        return sym_upper + ".NS"
+        return _nse_yf(sym_upper)
 
     # Tier 4: yfinance.Search, but PREFER Indian-listed results (.NS / .BO).
     try:
@@ -2077,19 +2214,57 @@ async def _chat_tool_get_live_price(symbol: str) -> str:
         return f"Price fetch failed for '{symbol}': {exc}"
 
 
+def _build_search_variants(query: str, today: date) -> list[str]:
+    """
+    Deterministic multi-query expansion (RAG-Fusion style): a few diverse phrasings
+    of one query surface results any single phrasing would miss. No LLM call.
+    """
+    q = query.strip()
+    ql = q.lower()
+    variants = [q, f"{q} latest news {today.isoformat()}"]
+    if not any(t in ql for t in ("india", "nifty", "sensex", "nse", "bse")):
+        variants.append(f"India {q}")
+    seen: set[str] = set()
+    out: list[str] = []
+    for v in variants:
+        if v.lower() not in seen:
+            seen.add(v.lower())
+            out.append(v)
+    return out[:3]
+
+
+def _rrf_fuse(result_lists: list[list[dict]], k: int = 60) -> list[dict]:
+    """
+    Reciprocal Rank Fusion: merge several ranked result lists into one. A doc's
+    score = Σ 1/(k + rank) across lists, so items that rank high in MULTIPLE
+    queries float to the top — more robust than any single query's ranking.
+    Dedupes by link/url.
+    """
+    def _key(r: dict) -> str:
+        return r.get("link") or r.get("url") or r.get("title", "")
+
+    scores: dict[str, float] = {}
+    items: dict[str, dict] = {}
+    for lst in result_lists:
+        for rank, r in enumerate(lst):
+            key = _key(r)
+            if not key:
+                continue
+            scores[key] = scores.get(key, 0.0) + 1.0 / (k + rank)
+            items.setdefault(key, r)
+    return sorted(items.values(), key=lambda r: scores[_key(r)], reverse=True)
+
+
 async def _chat_tool_search_news(query: str) -> str:
     """
-    Search for news and return results with explicit freshness metadata.
+    Search news with multi-query expansion + Reciprocal Rank Fusion for relevance,
+    then explicit freshness metadata.
 
-    Primary:  Serper /news endpoint — returns actual news articles with
-              relative publication dates ("22 hours ago"). India-focused (gl=in).
-              These are real headlines from ET, Mint, NDTV Profit etc.
+    Primary:  Serper /news — 2-3 deterministic query variants fused via RRF.
+              Real headlines from ET, Mint, NDTV Profit etc., India-focused (gl=in).
+    Fallback: Tavily with after:TODAY anchor when Serper is empty/exhausted.
 
-    Fallback: Tavily with after:TODAY anchor — full page text extraction.
-              Used when Serper key is exhausted or returns 0 results.
-
-    Both paths include a market-context header (NSE open/closed, last trading day)
-    and per-result age labels so the LLM can reason about freshness.
+    Both paths include a market-context header and per-result age labels.
     """
     from services.data.fetchers.news import search_serper_news, _normalize_date
     from services.clients.tavily_fetcher import search_tavily
@@ -2110,34 +2285,42 @@ async def _chat_tool_search_news(query: str) -> str:
     has_global = any(t in q_lower for t in _global_terms)
     geo = None if (has_global and not has_india) else "in"
 
+    # Multi-query expansion → fire variants concurrently → fuse by RRF.
+    variants = _build_search_variants(query, today)
     try:
-        raw = await asyncio.to_thread(search_serper_news, query, 5, geo=geo)
+        lists = await asyncio.gather(
+            *[asyncio.to_thread(search_serper_news, v, 5, geo=geo) for v in variants],
+            return_exceptions=True,
+        )
+        result_lists = [l for l in lists if isinstance(l, list) and l]
+        raw = _rrf_fuse(result_lists)
 
-        # Generic query with no India terms returned nothing — retry with India prefix
-        if not raw and not has_india:
-            key_words = " ".join(
-                w for w in query.split()[:4]
-                if w.lower() not in {"the","a","an","is","are","was","were","for","of","to"}
-            )[:35]
-            raw = await asyncio.to_thread(search_serper_news, f"India Nifty {key_words}", 5, geo="in")
-
-        # Fewer than 3 results and query has global entity → add global pass without geo filter
+        # Global entity but thin India-biased results → add an un-geo'd pass and re-fuse.
         if len(raw) < 3 and has_global:
-            more = await asyncio.to_thread(search_serper_news, query, 3, geo=None)
-            seen = {r["link"] for r in raw}
-            raw.extend(r for r in more if r.get("link") not in seen)
+            more = await asyncio.to_thread(search_serper_news, query, 5, geo=None)
+            if isinstance(more, list) and more:
+                raw = _rrf_fuse(result_lists + [more])
     except Exception:
         raw = []
 
+    # Drop off-topic noise (market-prediction queries on Serper often surface
+    # horoscope/astrology pieces that pollute the grounding context).
+    _NOISE = ("horoscope", "astrolog", "zodiac", "numerolog", "tarot", "rashifal", "panchang")
+    raw = [
+        r for r in raw
+        if not any(n in (r.get("title", "") + " " + r.get("link", "")).lower() for n in _NOISE)
+    ]
+
     if raw:
-        # Sort: dated results first, undated last — LLM is told to skip undated ones
+        # Keep RRF relevance order, but push undated results to the end (stable sort
+        # preserves the fused ranking within the dated group).
         def _has_date(r: dict) -> bool:
             d = r.get("date", "")
             return bool(d) and d.lower() not in ("", "date unknown")
 
-        raw_sorted = sorted(raw, key=lambda r: (not _has_date(r), r.get("date", "")))
+        raw_sorted = sorted(raw, key=lambda r: not _has_date(r))[:8]
 
-        lines = [f"=== NEWS RESULTS (Serper News) ===\n{market_ctx}\n"]
+        lines = [f"=== NEWS RESULTS (Serper News + RRF) ===\n{market_ctx}\n"]
         for i, r in enumerate(raw_sorted, 1):
             iso_date  = _normalize_date(r.get("date", ""))
             age_label = _result_age_label(iso_date)
@@ -2280,7 +2463,7 @@ async def _execute_chat_tool(name: str, args: dict) -> str:
     if name == "get_live_price":
         return await _chat_tool_get_live_price(args.get("symbol", ""))
     if name == "get_macro_news":
-        return _chat_tool_get_macro_news()
+        return await _chat_tool_get_macro_news()
     if name == "search_market_news":
         return await _chat_tool_search_news(args.get("query", ""))
     if name == "get_stock_analysis":
@@ -2294,6 +2477,8 @@ async def _execute_chat_tool(name: str, args: dict) -> str:
         return _ctx_rl_learning() or "No RL data yet — needs at least one full analysis cycle."
     if name == "get_sector_snapshot":
         return await _chat_tool_get_sector_snapshot(args.get("sector", ""))
+    if name == "screen_stocks":
+        return await _chat_tool_screen_stocks(args.get("sector", ""), args.get("mode", "value"))
     if name == "run_agent_analysis":
         return await _chat_tool_run_agent_analysis(args.get("ticker", ""))
     if name == "get_historical_prices":
@@ -2326,7 +2511,7 @@ You are StockAgent, a market intelligence assistant with real-time web search an
 | Current price | get_live_price |
 | Why moving / what's driving | get_live_price + search_market_news (parallel) |
 | Outlook / forecast / next N days | get_live_price + search_market_news("X outlook [year]") |
-| **Tomorrow / will it rise / market prediction** | get_live_price(index) + search_market_news("Nifty Sensex prediction tomorrow [today's date]") + get_rl_prediction (if a tracked ticker) |
+| **Tomorrow / will it rise / market prediction** | get_live_price(index) + search_market_news("Indian stock market outlook GIFT Nifty FII DII analyst view [today's date]") + get_rl_prediction (if a tracked ticker) |
 | **Which stocks to buy / book profit / best in a sector** | get_sector_snapshot(sector) + search_market_news("[sector] stocks to buy/book profit today") |
 | **Sector crashed / rallied — what now** | get_sector_snapshot(sector) + search_market_news("why [sector] fell/rose today [date]") |
 | NSE stock deep dive | get_live_price + get_stock_analysis + get_rl_prediction + search_market_news |
@@ -2336,6 +2521,23 @@ You are StockAgent, a market intelligence assistant with real-time web search an
 
 ALWAYS call search_market_news for forward-looking questions. Use specific queries:
 "silver price outlook next 30 days supply demand 2026" not just "silver".
+
+## STEP BACK — decide the real intent before calling any tool
+A good answer to an investing question depends on what the user is actually trying to do.
+Silently classify the intent, then pick the tool + mode:
+- "which stock to buy / good to invest / accumulate / undervalued / oversold / good for long term"
+  → they want to BUY LOW. You MUST call screen_stocks(sector, mode="value") — get_sector_snapshot
+  alone is NOT acceptable for a buy question, because today's gainers are the WRONG answer for
+  buy-the-dip. screen_stocks(value) finds beaten-down names near their 1-month lows; THEN confirm a
+  recovery catalyst with search_market_news. A stock being down is the *opportunity*, not a reason to
+  avoid it. NEVER recommend today's top gainers or famous blue-chips from memory for a buy question.
+- "book profit / take profit / trim / which to sell / overheated" → they HOLD winners and want exits.
+  Call screen_stocks(sector, mode="profit") — extended names near 1-month highs.
+- "what's leading / strongest / momentum / breakout" → screen_stocks(sector, mode="momentum").
+- If no sector is given for a buy question, check 2-3 sectors with get_sector_snapshot, pick the most
+  beaten-down one, then screen it (that is where the value is). Only ask the user if truly ambiguous.
+Every pick MUST carry a number (its move + where it sits in its 1-month range) and a one-line reason
+(the catalyst or the risk). One sentence with no number = a banned, generic answer.
 
 ## Forward-looking & ranking answers (do not punt these)
 - "Tomorrow's market" / "will it go up": you CANNOT know the future, but you CAN give a grounded
@@ -2446,7 +2648,7 @@ async def chat(body: dict) -> dict:
 
         for _ in range(4):
             resp = await client.chat.completions.create(
-                model="qwen/qwen3-235b-a22b",
+                model=_CHAT_MODEL,
                 messages=messages,
                 temperature=0.4,
                 max_tokens=600,
@@ -2479,7 +2681,7 @@ async def chat(body: dict) -> dict:
 
         # Final synthesis after max tool rounds
         resp = await client.chat.completions.create(
-            model="qwen/qwen3-235b-a22b",
+            model=_CHAT_MODEL,
             messages=messages,
             temperature=0.4,
             max_tokens=600,
@@ -2506,8 +2708,44 @@ def _mock_reply(q: str) -> str:
 # Agentic streaming chat — shared helpers
 # ---------------------------------------------------------------------------
 
-_CHAT_MODEL = "qwen/qwen3-235b-a22b"   # strong model for multi-step tool reasoning
+try:
+    from backend.shared.config import settings as _chat_cfg
+    _CHAT_MODEL = _chat_cfg.LLM_MODEL_FAST            # fast tool-loop model (qwen3.6-flash)
+    _CHAT_FALLBACK_MODEL = _chat_cfg.LLM_MODEL_REASONING  # escalate on rate-limit/5xx
+except Exception:
+    _CHAT_MODEL = "qwen/qwen3.6-flash"
+    _CHAT_FALLBACK_MODEL = "qwen/qwen3.7-max"
 _CHAT_MAX_TOOL_ROUNDS = 4              # max tool rounds before forcing a final answer
+
+
+def _is_transient_llm_error(exc: Exception) -> bool:
+    """True for rate-limit / upstream-5xx errors that are worth retrying."""
+    status = getattr(exc, "status_code", None)
+    msg = str(exc).lower()
+    if status == 429 or (isinstance(status, int) and 500 <= status < 600):
+        return True
+    return any(s in msg for s in ("429", "rate-limit", "rate limit", "502", "503", "temporarily"))
+
+
+async def _chat_completion(client, *, models: tuple[str, ...] | list[str] | None = None, **kwargs):
+    """
+    chat.completions.create with resilience: retry the primary model on transient
+    rate-limit/5xx errors (exponential backoff), then fall back to a lighter model.
+    `models` overrides the model chain (used by the model-comparison harness).
+    Raises the last exception only if every model+retry is exhausted.
+    """
+    last_exc: Exception | None = None
+    for model in (models or (_CHAT_MODEL, _CHAT_FALLBACK_MODEL)):
+        for attempt in range(3):
+            try:
+                return await client.chat.completions.create(model=model, **kwargs)
+            except Exception as exc:  # noqa: BLE001 — inspect then re-raise non-transient
+                last_exc = exc
+                if not _is_transient_llm_error(exc):
+                    raise
+                await asyncio.sleep(0.8 * (2 ** attempt))  # 0.8s, 1.6s, 3.2s
+        logger.warning("[chat] model %s exhausted retries — falling back", model)
+    raise last_exc  # type: ignore[misc]
 
 # In-process per-session memory (mirrors the old MemorySaver semantics: in-RAM,
 # cleared on restart). Keyed by session_id → list of {role, content} turns.
@@ -2540,6 +2778,74 @@ def _chunk_for_stream(text: str):
         piece = " ".join(words[i : i + group])
         # Preserve the inter-group space so the reassembled text is exact.
         yield piece if i + group >= len(words) else piece + " "
+
+
+# ---------------------------------------------------------------------------
+# Deterministic intent pre-router (Tier-1 routing — does not rely on the LLM
+# reliably choosing screen_stocks; cf. BFCL: qwen3-235b is a weak function-caller).
+# When the message is clearly a buy/sell/momentum screen query for a sector we
+# can screen, we run the screen ourselves and inject it, so the right candidate
+# set ALWAYS reaches the model.
+# ---------------------------------------------------------------------------
+
+_INTENT_SELL = ("book profit", "profit booking", "profit-booking", "trim", "take profit",
+                "take gains", "book gains", "overbought", "overheated", " sell ", " exit ")
+_INTENT_MOM  = ("momentum", "leaders", "leading", "strongest", "breakout", "outperform",
+                "top performer", "hot stock")
+_INTENT_BUY  = ("invest", "buy", "accumulate", "undervalued", "oversold", "bargain",
+                "cheap", "buy the dip", "worth buying", "good to buy", "should i buy")
+
+_SECTOR_NL: dict[str, tuple[str, ...]] = {
+    "automobile":       ("auto", "automobile", "car", "vehicle", "two-wheeler", "2-wheeler"),
+    "it_sector":        ("it sector", " it ", "it stock", "tech", "software", "technology"),
+    "banking_bfsi":     ("bank", "bfsi", "lender", "nbfc", "financial", "finance"),
+    "renewable_energy": ("renewable", "solar", "wind", "green energy", "clean energy",
+                         "power sector", "energy"),
+}
+
+
+def _detect_invest_intent(message: str) -> dict | None:
+    """
+    Classify a screen-type intent deterministically. Requires BOTH an action and
+    a screenable sector. Returns {action, mode, sector} or None (→ pure LLM path).
+    """
+    m = f" {message.lower()} "
+    if any(w in m for w in _INTENT_SELL):
+        action, mode = "sell", "profit"
+    elif any(w in m for w in _INTENT_MOM):
+        action, mode = "momentum", "momentum"
+    elif any(w in m for w in _INTENT_BUY):
+        action, mode = "buy", "value"
+    else:
+        return None
+
+    for key, kws in _SECTOR_NL.items():
+        if key in _SECTOR_TICKERS_MAP and any(kw in m for kw in kws):
+            return {"action": action, "mode": mode, "sector": key}
+    return None
+
+
+# ---------------------------------------------------------------------------
+# Deterministic answer sanitizer. We tried an LLM Reflexion self-critique gate
+# here; on qwen3-235b it was unreliable — it either hallucinated numbers (an
+# ungrounded critic "filling in" data) or failed to catch a bad draft. That
+# matches the literature: Reflexion is vulnerable to degeneration-of-thought.
+# Since Task-A grounded pre-fetch already prevents fabrication at the source,
+# we keep only a cheap, reliable rule-based strip for the disclaimer labels the
+# model occasionally sneaks in despite the prompt. (Revisit a *grounded* critic
+# once on a stronger function-calling model.)
+# ---------------------------------------------------------------------------
+
+_BANNED_NOTE_RE = re.compile(
+    r"(?im)^\s*\**\s*(critical note|important note|final note|revision note|disclaimer)\b.*?(?=\n\s*\n|\Z)",
+    re.DOTALL,
+)
+
+
+def _sanitize_answer(text: str) -> str:
+    """Strip trailing data-limitation disclaimer blocks the model sometimes appends."""
+    cleaned = _BANNED_NOTE_RE.sub("", text).rstrip()
+    return cleaned or text
 
 
 # ---------------------------------------------------------------------------
@@ -2577,13 +2883,57 @@ async def chat_stream(body: dict):
         messages.extend(_session_history_get(session_id))
         messages.append({"role": "user", "content": message})
 
+        # Tier-1 deterministic pre-route (plan-and-execute): if this is clearly a
+        # buy/sell/momentum screen query, run BOTH the screen and a news fetch
+        # ourselves and inject them. This makes the right candidates AND real
+        # headlines always reach the model — so it neither mis-routes nor
+        # fabricates catalysts when left to its own (unreliable) tool-calling.
+        intent = _detect_invest_intent(message)
+        if intent:
+            _sec_label = {
+                "automobile": "auto", "it_sector": "IT",
+                "banking_bfsi": "banking", "renewable_energy": "renewable energy",
+            }.get(intent["sector"], intent["sector"])
+            _action_phrase = {"buy": "stocks to buy oversold value",
+                              "sell": "stocks profit booking overvalued",
+                              "momentum": "stocks momentum leaders"}[intent["action"]]
+            from datetime import date as _date
+            news_q = f"India {_sec_label} {_action_phrase} {_date.today().isoformat()}"
+
+            screen, news = await asyncio.gather(
+                _chat_tool_screen_stocks(intent["sector"], intent["mode"]),
+                _chat_tool_search_news(news_q),
+                return_exceptions=True,
+            )
+            if isinstance(screen, str) and "screen —" in screen:
+                yield f'data: {_json.dumps({"event": "tool_result", "tool": "screen_stocks", "summary": screen[:600]})}\n\n'
+                messages.append({
+                    "role": "system",
+                    "content": (
+                        f"PRE-FETCHED SCREEN (action={intent['action']}, sector={intent['sector']}, "
+                        f"mode={intent['mode']}):\n{screen}\n\n"
+                        "Base your stock picks ONLY on this screen. Each pick needs its number + a reason."
+                    ),
+                })
+            if isinstance(news, str) and "NEWS RESULTS" in news:
+                yield f'data: {_json.dumps({"event": "tool_result", "tool": "search_market_news", "summary": news[:600]})}\n\n'
+                messages.append({
+                    "role": "system",
+                    "content": (
+                        f"PRE-FETCHED NEWS:\n{news}\n\n"
+                        "Cite ONLY headlines that appear above, with their real source and date. If a "
+                        "pick has no matching headline here, say 'no specific catalyst in today's news' "
+                        "— NEVER invent a headline, source, or date."
+                    ),
+                })
+
         final_text = ""
         try:
             client = get_async_llm_client()
 
             for _round in range(_CHAT_MAX_TOOL_ROUNDS):
-                resp = await client.chat.completions.create(
-                    model=_CHAT_MODEL,
+                resp = await _chat_completion(
+                    client,
                     messages=messages,
                     temperature=0.4,
                     max_tokens=700,
@@ -2622,20 +2972,27 @@ async def chat_stream(body: dict):
                     yield f'data: {_json.dumps({"event": "tool_result", "tool": tc.function.name, "summary": summary})}\n\n'
             else:
                 # Hit max rounds with tool context pending → force a final answer (no tools).
-                resp = await client.chat.completions.create(
-                    model=_CHAT_MODEL, messages=messages, temperature=0.4, max_tokens=700,
+                resp = await _chat_completion(
+                    client, messages=messages, temperature=0.4, max_tokens=700,
                 )
                 final_text = _strip_think(resp.choices[0].message.content or "")
 
             if not final_text:
                 final_text = "I couldn't compose a grounded answer from the live data this time — try rephrasing."
+            else:
+                final_text = _sanitize_answer(final_text)
 
             for piece in _chunk_for_stream(final_text):
                 yield f'data: {_json.dumps({"event": "token", "text": piece})}\n\n'
 
         except Exception as exc:
             logger.warning("[ui/chat/stream] agentic loop error: %s", exc)
-            final_text = _mock_reply(message)
+            # Be honest on rate-limit instead of a canned (and possibly wrong) mock answer.
+            if _is_transient_llm_error(exc):
+                final_text = ("The market model is briefly rate-limited upstream. "
+                              "Please retry in a few seconds.")
+            else:
+                final_text = _mock_reply(message)
             yield f'data: {_json.dumps({"event": "token", "text": final_text})}\n\n'
 
         _session_history_append(session_id, message, final_text)

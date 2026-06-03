@@ -2,7 +2,7 @@
 
 > All agents, tasks, metrics, data sources, static vs LLM responsibilities.
 > Minimize plain text — prefer tables and trees.
-> Updated: 2026-05-19 · Covers automobile (full) + 3 live sectors + RL + Chat agents (3-node LangGraph).
+> Updated: 2026-06-03 · Covers automobile (full) + 3 live sectors + RL + Chat (agentic tool-loop) + hybrid LLM tiers.
 
 ---
 
@@ -21,10 +21,10 @@ StockAgent Agents
 │   ├── WeightAdapter     [STATIC] deterministic weight adjustment
 │   └── ThesisReviewer    [LLM]    conditional post-miss thesis validation
 │
-└── Chat Agent  (on-demand via /ui/chat)  ✅ REDESIGNED
-    ├── DispatchNode      [LLM]    query decomposition + tier detection
-    ├── ExecutorNode      [STATIC] parallel async tool execution
-    └── SynthesizeNode    [LLM]    tier-adaptive streaming response
+└── Chat Agent  (on-demand via /ui/chat/stream)  ✅ AGENTIC TOOL-LOOP
+    ├── IntentPreRouter   [STATIC] keyword intent → pre-run screen_stocks + news (plan-and-execute)
+    ├── AgenticLoop       [LLM]    model calls tools across ≤4 rounds (FAST tier: qwen3.6-flash)
+    └── Sanitizer         [STATIC] strip banned disclaimer labels → stream
 ```
 
 ---
@@ -394,7 +394,7 @@ Step 3 [LLM]:     LLM call with all scores + weights + composite + conflict list
                   Input: AGGREGATION_PROMPT
                   Output (JSON): {verdict, final_score, conviction_drivers, top_risks,
                                   investment_thesis, conflicts_resolved}
-                  Model: qwen/qwen3-235b-a22b via OpenRouter
+                  Model: REASONING tier — qwen/qwen3.7-max via OpenRouter
 
 Step 4 [STATIC]:  Extract valuation fields from valuation_catalyst agent output
                   → populate FinalReport.price_target, .recovery_timeline_quarters, etc.
@@ -449,7 +449,7 @@ Not a subclass of BaseAgent — takes `FeedbackAgentInput` rather than `StockQue
 
 | | Detail |
 |---|---|
-| **Model** | qwen/qwen3-235b-a22b via OpenRouter |
+| **Model** | REASONING tier — qwen/qwen3.7-max via OpenRouter |
 | **Temperature** | 0.3 (surfaces non-obvious cross-signal patterns) |
 | **max_tokens** | 1500 (structured RevisedContext requires extra space) |
 | **response_format** | `{"type": "json_object"}` (guarantees parseable JSON) |
@@ -514,7 +514,7 @@ Result: WeightMemory gets new version number + WeightHistoryEntry with reason st
 |---|---|
 | **Trigger** | `should_review()`: `\|price_error\| > max(1.5%, 1.5 × atr_pct)` OR `direction_correct=False AND miss_type in {direction_flip, model_bias}` |
 | **ATR method** | `_compute_atr_pct(ticker)` — 14-day ATR as % via yfinance; returns 0.0 on failure (uses floor) |
-| **Model** | qwen/qwen3-235b-a22b via OpenRouter |
+| **Model** | REASONING tier — qwen/qwen3.7-max via OpenRouter |
 | **Temperature** | 0.1 |
 | **max_tokens** | 300 |
 | **response_format** | `json_object` |
@@ -536,75 +536,54 @@ should_review(price_error_pct, atr_pct, direction_correct, miss_type)
 
 ---
 
-## 10. Chat Engine — 3-Node LangGraph Pipeline ✅
+## 10. Chat Engine — Agentic Streaming Tool-Loop ✅
 
-**File:** `services/api/chat_graph.py`
+**File:** `services/api/routes/ui_data.py` (no separate graph module). Full design in
+[`CHAT_ARCHITECTURE.md`](CHAT_ARCHITECTURE.md). Endpoints: `POST /ui/chat/stream` (primary, SSE) +
+`POST /ui/chat` (non-streaming twin).
 
-**Pipeline:** `dispatch → executor → synthesize → END`
+Replaced the old 3-node LangGraph DAG (`dispatch → executor → synthesize`, `chat_graph.py`, removed
+2026-06-03). That fixed pipeline planned all tools once and could not take a follow-up step; the loop
+reasons in steps and a deterministic pre-router guarantees the right data for buy/sell/momentum queries.
 
-**Session persistence:** MemorySaver checkpointer, keyed by `thread_id = session_id`
+**SSE event order:** `intent → tool_result → token → done`
 
-**SSE event stream order:**
+### 10.1 Flow
 
 ```
-dispatch → tool_start → tool_result → thinking → token → done
+build prompt (strong system prompt + IST market context + session history)
+  → DETERMINISTIC PRE-ROUTER  [STATIC]  _detect_invest_intent()
+       buy/sell/momentum + screenable sector? → pre-run screen_stocks + search_market_news, inject both
+  → AGENTIC TOOL LOOP  [LLM]  ≤4 rounds: model picks tools → execute in parallel → feed back → repeat
+  → _sanitize_answer()  [STATIC]  → stream tokens
 ```
 
-### 10.1 Node Details
-
-**Node 1 — dispatch [LLM]**
-
-| | Detail |
-|---|---|
-| **Model** | qwen, temp=0.0 |
-| **Purpose** | Detects user tier; decomposes query into structured tasks JSON |
-| **Outputs** | `tasks[]`, `user_tier`, `browsing_strategy` |
-| **Fallback** | `_DISPATCH_FALLBACK_TASKS` on LLM failure |
-| **Profile load** | Reads `data/user_profiles/{session_id}.json` (via `user_profile.load_profile()`) |
-
-**Node 2 — executor [STATIC — 0 LLM tokens]**
-
-| | Detail |
-|---|---|
-| **Mechanism** | `asyncio.gather()` — all tasks in parallel |
-| **SSE events emitted** | `tool_start`, `tool_result` |
-| **LLM usage** | None |
-
-**Node 3 — synthesize [LLM]**
-
-| | Detail |
-|---|---|
-| **Model** | qwen, streaming |
-| **SSE events emitted** | `thinking` (filtered `<think>` blocks), `token`, `done` |
-| **Tier-adaptive format** | `casual`: 3-4 plain sentences · `active`: price + direction + headlines ≤150 words · `expert`: regime, conviction, raw metrics, no cap |
-| **Post-turn** | Saves/updates user profile after completion |
-| **Filter** | `<think>` blocks stripped from streaming output |
-
-### 10.2 User Profiling System
-
-**File:** `services/api/user_profile.py`
-
-| | Detail |
-|---|---|
-| **Tiers** | `casual` (plain language) · `active` (market terms) · `expert` (regime/signals) |
-| **Persistence** | `data/user_profiles/{session_id}.json` |
-| **Fields** | `detected_tier`, `tier_confidence`, `sessions_seen`, `topics_seen`, `last_seen` |
-| **Lifecycle** | Loaded by dispatch node; updated by synthesize node after each turn |
-
-### 10.3 Tool Catalogue
-
-| Tool | Type | Data source |
+| Stage | Type | Detail |
 |---|---|---|
-| `get_live_price` | STATIC | yfinance `fast_info` |
-| `get_historical_prices` | STATIC | yfinance OHLCV, close-to-close % change |
-| `get_sector_snapshot` | STATIC | SQLite ScoreStore |
-| `get_stock_analysis` | STATIC | SQLite ScoreStore, latest verdict |
-| `get_analysis_history` | STATIC | SQLite ScoreStore, last N days |
-| `get_rl_prediction` | STATIC | `data/predictions/{sector}/{ticker}/` JSON |
-| `get_rl_insights` | STATIC | RL weight memory JSON |
-| `get_macro_news` | STATIC | Macro cache + yfinance macros |
-| `search_market_news` | STATIC | Serper (India-biased) |
-| `run_agent_analysis` | LLM | Full 9-agent sector pipeline (~45s) |
+| Pre-router | **STATIC** | `_detect_invest_intent` → keyword intent + sector → plan-and-execute screen+news |
+| Tool loop | **LLM** | FAST model (`qwen/qwen3.6-flash`), `_CHAT_TOOLS`, `_CHAT_MAX_TOOL_ROUNDS=4` |
+| Fallback | **STATIC** | `_chat_completion` retry/backoff → REASONING model on rate-limit/5xx |
+| Sanitizer | **STATIC** | `_sanitize_answer` strips banned disclaimer labels |
+| Session memory | **STATIC** | in-process `_SESSION_HISTORY` (replaced MemorySaver) |
+
+> A LangGraph DAG, a user-tier profiling system, and an LLM Reflexion self-critique were all trialled and
+> removed/rejected — see CHAT_ARCHITECTURE.md. `user_profile.py` is retained but **dormant**.
+
+### 10.2 Tool Catalogue (11 tools, all STATIC except `run_agent_analysis`)
+
+| Tool | Data source |
+|---|---|
+| `screen_stocks(sector, mode)` | yfinance 1-mo windows — value/momentum/profit screen (**the insight engine**) |
+| `get_sector_snapshot(sector)` | yfinance — index + per-stock movers (gainers/losers) + DB verdicts |
+| `get_live_price(symbol)` | yfinance — NSE-first resolution, freshness-labelled |
+| `get_historical_prices(symbol, days)` | yfinance OHLCV |
+| `get_stock_analysis(ticker)` | SQLite ScoreStore, latest verdict |
+| `get_analysis_history(days)` | SQLite ScoreStore |
+| `get_rl_prediction(ticker)` | `data/predictions/{sector}/{ticker}/` JSON |
+| `get_rl_insights()` | RL weight memory JSON |
+| `get_macro_news()` | macro cache → live Serper fallback when empty |
+| `search_market_news(query)` | Serper /news + multi-query **RRF fusion**, Tavily fallback |
+| `run_agent_analysis(ticker)` **[LLM]** | Full 9-agent sector pipeline (~45s) |
 
 ---
 
@@ -721,11 +700,10 @@ ContextBuilder._build_risk_macro():
 | `input_rail` | **STATIC** | `shared/pipeline/graphs/rails.py` | yfinance fast_info | Non-blocking |
 | `output_rail` | **STATIC** | above | Clamp score [0,1] | Non-blocking |
 | `conflict_rail` | **STATIC** | above | Spread > 0.30 | Triggers LLM re-resolution |
-| `DispatchNode` (chat) | **LLM** | `chat_graph.py` | qwen, temp=0.0 | Query decomposition + tier detection |
-| `ExecutorNode` (chat) | **STATIC** | above | `asyncio.gather()` | Parallel tool execution, 0 LLM tokens |
-| `SynthesizeNode` (chat) | **LLM** | above | qwen, streaming | Tier-aware response |
-| `user_profile.load_profile()` | **STATIC** | `user_profile.py` | JSON file read | Returns defaults if missing |
-| `user_profile.save_profile()` | **STATIC** | above | JSON file write | Merges topics, increments sessions |
+| `_detect_invest_intent()` (chat) | **STATIC** | `ui_data.py` | keyword intent + sector | Pre-router → plan-and-execute screen+news |
+| Agentic tool loop (chat) | **LLM** | `ui_data.py` | FAST tier (qwen3.6-flash) | Multi-round tool calls, then streamed answer |
+| `_sanitize_answer()` (chat) | **STATIC** | above | regex strip | Removes banned "Note"/disclaimer labels |
+| `_rrf_fuse()` (chat search) | **STATIC** | above | reciprocal rank fusion | Merges multi-query news results |
 | `_should_skip_agent_rerun()` | **STATIC** | `daily_review.py` | threshold 0.5% | Skip if direction correct + small error |
 | Tavily disk cache | **STATIC** | `tavily_fetcher.py` | MD5 hash + month | Cache key = sorted_queries + YYYY-MM |
 | `record_llm_call()` | **STATIC** | `llm_client.py` | JSONL append | `outputs/llm_log/{date}.jsonl` |

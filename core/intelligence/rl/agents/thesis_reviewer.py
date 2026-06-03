@@ -220,7 +220,7 @@ class ThesisReviewer:
         for attempt in range(1, settings.MAX_RETRIES + 1):
             try:
                 resp = self._client.chat.completions.create(
-                    model=settings.LLM_MODEL,
+                    model=settings.LLM_MODEL_REASONING,
                     temperature=0.1,        # low temp — we want deterministic validity assessment
                     max_tokens=300,
                     messages=[

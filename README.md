@@ -195,17 +195,20 @@ This is not a prediction — it is a calibration. The system is telling you: *"W
 
 ## The Chat Assistant
 
-The floating orb (bottom-right corner) opens a chat assistant that can answer questions in real time:
+The floating orb (bottom-right corner) opens a chat assistant — an **agentic tool-loop** that reasons,
+calls tools across several rounds, and answers from live data:
 
-- **"What is the current price of MARUTI?"** → `get_live_price` — fetches live from yfinance (with auto symbol resolution via yfinance.Search for unlisted assets)
-- **"Why did Tata Motors fall today?"** → `search_market_news` — searches live news via Serper News (primary) with Tavily fallback
-- **"What is StockAgent's current rating on HDFCBANK?"** → `get_stock_analysis` — reads verdict and score from analysis database
-- **"How have scores changed this month?"** → `get_analysis_history` — retrieves past verdicts and score trends
-- **"Which agent should I trust most?"** → `get_rl_insights` — shows learned agent weights and prediction accuracy
-- **"How is the Banking sector today?"** → `get_sector_snapshot` — fetches live NSE sector index price and agent verdicts
-- **"Run a fresh analysis on BAJAJ-AUTO"** → `run_agent_analysis` — returns cached result or triggers full pipeline
+- **"Which IT stocks should I buy now?"** → `screen_stocks` (value mode) — surfaces the **beaten-down names near 1-month lows** (buy-the-dip), then confirms catalysts with live news. It understands that "good to invest" means *buy low*, not echo today's gainers or famous blue-chips.
+- **"Which auto stocks should I book profit on?"** → `screen_stocks` (profit mode) — the **extended names near 1-month highs**.
+- **"What is the current price of Reliance?"** → `get_live_price` — NSE-first symbol resolution (no more wrong US tickers), labelled `live` or `last close <date>` by the IST market session.
+- **"Why did Tata Motors fall today?"** → `search_market_news` — live news via Serper, fused across multiple query variants (RRF) with a Tavily fallback.
+- **"What is StockAgent's rating on HDFCBANK?"** → `get_stock_analysis` · **"How is the Banking sector today?"** → `get_sector_snapshot` (index + per-stock movers) · **"Which agent should I trust?"** → `get_rl_insights` · **"Run a fresh analysis on BAJAJ-AUTO"** → `run_agent_analysis`.
 
-The chat assistant uses a tool loop — before answering any price question, it always fetches the live price first. It never hallucinates numbers. Conversation history is maintained within the session so you can follow up naturally.
+For buy/sell/momentum questions a **deterministic pre-router** fetches the screen and news *before* the
+model answers — so the right candidates and real, dated sources always reach it. It is grounded to the
+IST market session (it knows whether the market is pre-open, open, or closed), never quotes a price it
+didn't fetch, and never invents a source. Conversation history is kept within the session for natural
+follow-ups. Full design: [`docs/CHAT_ARCHITECTURE.md`](docs/CHAT_ARCHITECTURE.md).
 
 ---
 
@@ -304,7 +307,7 @@ A surprise government order, a sudden exchange circuit breaker, or a geopolitica
 
 | Layer | Technology |
 |---|---|
-| AI model | Qwen 235B via OpenRouter |
+| AI models (hybrid, via OpenRouter) | `qwen3.6-flash` for the chat assistant · `qwen3.7-max` for the verdict + RL reasoning · `qwen-2.5-72b` for the 9 sector agents (tier chosen by a benchmark; Qwen3-235B retired) |
 | Analysis framework | LangGraph (parallel agent dispatch) |
 | Backend | Python FastAPI |
 | Data — prices & OHLCV | yfinance (NSE/BSE prices, 10-year OHLCV, sector indices, commodities) |

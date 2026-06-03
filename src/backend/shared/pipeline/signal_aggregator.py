@@ -126,7 +126,7 @@ class SignalAggregator:
         ) / 1_000_000
         log_llm_call(
             run_id=run_id, ticker=ticker, phase="aggregation",
-            agent_name=None, model=settings.LLM_MODEL,
+            agent_name=None, model=settings.LLM_MODEL_REASONING,
             prompt_tokens=self._last_prompt_tokens,
             completion_tokens=self._last_completion_tokens,
             duration_ms=duration_ms, cost_usd=cost,
@@ -184,7 +184,7 @@ class SignalAggregator:
 
     def _call_llm(self, system_prompt: str, user_prompt: str) -> str:
         response = self._client.chat.completions.create(
-            model=settings.LLM_MODEL,
+            model=settings.LLM_MODEL_REASONING,
             temperature=settings.LLM_TEMPERATURE,
             max_tokens=settings.LLM_MAX_TOKENS,
             messages=[

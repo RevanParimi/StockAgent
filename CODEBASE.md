@@ -13,9 +13,10 @@ StockAgent-main/
 │   ├── api/                       # FastAPI application
 │   │   ├── server.py              # App factory, lifespan, route mounting
 │   │   ├── log_buffer.py          # In-memory ring buffer for /ui/logs
-│   │   ├── user_profile.py        # User profile helpers
-│   │   ├── chat_graph.py          # Chat graph (LangGraph-based chat flow)
+│   │   ├── user_profile.py        # User tier profile helpers (dormant — see CHAT_ARCHITECTURE.md)
 │   │   └── routes/                # All API route files (see Section 2)
+│   │                              # NB: the agentic chat loop lives in routes/ui_data.py
+│   │                              #     (the old chat_graph.py LangGraph DAG was removed 2026-06-03)
 │   ├── background/                # Background jobs
 │   │   ├── macro_news_cache.py    # Daily macro news cache reader/writer
 │   │   └── macro_news_fetcher.py  # Serper/Tavily-based macro news fetcher
@@ -99,7 +100,8 @@ StockAgent-main/
 │   │   └── pipeline.py
 │   └── sectors/                   # Core-layer sector definitions
 ├── scripts/
-│   └── api_exploration/           # Ad-hoc API exploration scripts
+│   ├── api_exploration/           # Ad-hoc API exploration scripts
+│   └── model_bench.py             # Chat-tier model comparison harness (fabrication/latency/cost)
 ├── tests/                         # Test suite
 │   ├── api/                       # API-level tests
 │   ├── contract/                  # Contract tests (C# integration)
@@ -159,7 +161,8 @@ All endpoints are served on port 8001. No global auth middleware — auth is per
 | GET | `/ui/categories` | None | Categories (EV, mass-market, etc.) with ticker lists. |
 | PUT | `/ui/categories/{key}/tickers` | None | Add/remove tickers from a category (body: `{add: [], remove: []}`). |
 | GET | `/ui/learnings` | None | RL-derived lesson cards and portfolio learning summary. |
-| POST | `/ui/chat` | None | Chat with agentic AI assistant. |
+| POST | `/ui/chat/stream` | None | **Primary chat** — agentic streaming tool-loop (SSE). Deterministic intent pre-router pre-fetches screen+news for buy/sell/momentum queries; FAST-tier model. Events: `intent`, `tool_result`, `token`, `done`. |
+| POST | `/ui/chat` | None | Non-streaming twin of the chat loop (blocking JSON reply). Used as the frontend fallback. |
 
 ### Prompt Management (`/ui/prompts/*`)
 
@@ -249,10 +252,16 @@ Source: `src/backend/sectors/registry.py`. Toggle state loaded from `config/sect
 
 ### LLM / OpenRouter (`src/backend/shared/config/settings/base.py`)
 
+Models are tiered (chosen from the 2026-06-03 benchmark, `scripts/model_bench.py`). `qwen3-235b` is
+retired — it broke `json_object` output and was a weak function-caller.
+
 | Name | Default | Description |
 |------|---------|-------------|
 | `OPENROUTER_API_KEY` | `""` (required) | OpenRouter API key |
-| `LLM_MODEL` | `qwen/qwen3-235b-a22b` | Model ID on OpenRouter |
+| `LLM_MODEL_FAST` | `qwen/qwen3.6-flash` | **FAST tier** — the agentic chat tool-loop |
+| `LLM_MODEL_REASONING` | `qwen/qwen3.7-max` | **REASONING tier** — SignalAggregator verdict, RL FeedbackAgent / ThesisReviewer (JSON-validated) |
+| `LLM_MODEL_BULK` | `qwen/qwen-2.5-72b-instruct` | **BULK tier** — the 9 sector agents (proven `json_object` model) |
+| `LLM_MODEL` | `= LLM_MODEL_BULK` | Back-compat catch-all for any call-site not on a named tier |
 | `LLM_TEMPERATURE` | `0.2` | LLM sampling temperature |
 | `LLM_MAX_TOKENS` | `2048` | Max output tokens per LLM call |
 | `LLM_TIMEOUT_SECONDS` | `60` | Per-call LLM timeout |

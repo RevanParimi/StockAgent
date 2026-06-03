@@ -26,7 +26,7 @@ confidentiality: "Internal — Engineering Reference"
 - [3. Sector-by-Sector Agent Reference](#3-sector-by-sector-agent-reference)
 - [4. Business Model Context Injection](#4-business-model-context-injection)
 - [5. Data Fetchers — Serper, Tavily, yfinance](#5-data-fetchers--serper-tavily-yfinance)
-- [6. Chat Pipeline (3-Node LangGraph)](#6-chat-pipeline-3-node-langgraph)
+- [6. Chat Pipeline (Agentic Tool-Loop)](#6-chat-pipeline-agentic-tool-loop)
 - [7. Reinforcement Learning Pipeline](#7-reinforcement-learning-pipeline)
 - [8. Scheduler & Cron Architecture](#8-scheduler--cron-architecture)
 - [9. Dynamic Stock Management](#9-dynamic-stock-management)
@@ -139,11 +139,11 @@ The architecture is deliberately heterogeneous. Static, deterministic computatio
 │             ▼                           ▼                           ▼            │
 │   ┌──────────────────┐     ┌────────────────────────┐   ┌──────────────────┐    │
 │   │  Chat Pipeline   │     │   Analysis Pipeline     │   │  RL Pipeline     │    │
-│   │  (LangGraph      │     │   (LangGraph sector     │   │  daily_review    │    │
-│   │   3-node:        │     │    graphs)              │   │  generate_       │    │
-│   │  dispatch →      │     │                         │   │  forecast        │    │
-│   │  executor →      │     │  automobile (9 agents)  │   │  FeedbackAgent   │    │
-│   │  synthesize)     │     │  banking_bfsi (6)       │   │  WeightAdapter   │    │
+│   │  (agentic        │     │   (LangGraph sector     │   │  daily_review    │    │
+│   │  tool-loop:      │     │    graphs)              │   │  generate_       │    │
+│   │  pre-router →    │     │                         │   │  forecast        │    │
+│   │  tool loop →     │     │  automobile (9 agents)  │   │  FeedbackAgent   │    │
+│   │  sanitize)       │     │  banking_bfsi (6)       │   │  WeightAdapter   │    │
 │   └────────┬─────────┘     │  it_sector (8)          │   │  ThesisReviewer  │    │
 │            │               │  renewable_energy (6)   │   └────────┬─────────┘    │
 │            │               └────────────┬────────────┘            │             │
@@ -189,7 +189,7 @@ Midnight IST (daily) → prompt_daily_deploy
 | Web framework | FastAPI | With APScheduler running inside the same process |
 | Agent orchestration | LangGraph | `StateGraph` with `Send` fan-out; async and sync paths |
 | Schema validation | Pydantic | v2; strict typing throughout |
-| LLM inference | OpenRouter | Qwen3-235B-A22B (default); configurable via `LLM_MODEL` env var |
+| LLM inference | OpenRouter | Hybrid tiers — FAST `qwen3.6-flash` (chat), REASONING `qwen3.7-max` (verdict + RL), BULK `qwen-2.5-72b` (sector agents); set via `LLM_MODEL_FAST/REASONING/BULK` |
 | Price data | yfinance | Free; NSE tickers require `.NS` suffix (e.g. `MARUTI.NS`) |
 | News search | Serper (serper.dev) | Google Search-as-API; 2,500 free queries/month per key |
 | Full-page extraction | Tavily | Monthly disk cache reduces actual API calls to <1% of free tier |
@@ -425,7 +425,7 @@ Step 3 [LLM]:     Full aggregation via AGGREGATION_PROMPT
                           agent_narratives block (from _build_narrative_block())
                   Outputs: {verdict, final_score, conviction_drivers, top_risks,
                             investment_thesis, conflicts_resolved}
-                  Model: qwen/qwen3-235b-a22b via OpenRouter
+                  Model: REASONING tier — qwen/qwen3.7-max via OpenRouter
 
 Step 4 [STATIC]:  Extract valuation fields from valuation_catalyst agent output
                   → populate FinalReport: price_target, recovery_timeline_quarters,
@@ -1107,19 +1107,36 @@ Three new data sources integrated alongside the existing Serper/Tavily/yfinance 
 
 ---
 
-## 6. Chat Pipeline (3-Node LangGraph)
+## 6. Chat Pipeline (Agentic Tool-Loop)
+
+> Canonical reference: [`CHAT_ARCHITECTURE.md`](CHAT_ARCHITECTURE.md). Summary below.
 
 ### 6.1 Architecture Overview
 
-**File:** `services/api/chat_graph.py`
+**File:** `services/api/routes/ui_data.py` — the old `chat_graph.py` 3-node LangGraph DAG
+(`dispatch → executor → synthesize`) was removed 2026-06-03.
 
-The chat system replaced the old 5-node classify→plan→execute→synthesize→review pipeline. Key improvements: open query decomposition (no fixed intent categories), parallel async tool execution, user-tier-aware response depth, and no reviewer loop overhead.
+The chat assistant is an **agentic streaming tool-loop** served at `POST /ui/chat/stream` (SSE), with a
+non-streaming twin at `POST /ui/chat`. Flow:
 
-**Pipeline:** `dispatch → executor → synthesize → END`
+```
+build prompt (strong system prompt + IST market session + session history)
+  → deterministic intent pre-router  (_detect_invest_intent → pre-run screen_stocks + news
+                                       for buy/sell/momentum queries; plan-and-execute)
+  → agentic tool loop  (FAST tier qwen3.6-flash, ≤4 rounds, _CHAT_TOOLS)
+  → _sanitize_answer → stream tokens
+```
 
-**Session persistence:** `MemorySaver` checkpointer, keyed by `thread_id = session_id`. Every request appends to `state.messages` via `operator.add` reducer — no client-side history management needed.
+The pre-router is what guarantees buy/sell/momentum queries get the right candidates and real catalysts
+regardless of the model's tool-routing reliability. The old DAG could only plan tools once, up front.
 
-<details><summary>📊 Chat Pipeline Flowchart with SSE Events</summary>
+**Model:** FAST tier `qwen/qwen3.6-flash`; `_chat_completion` falls back to REASONING `qwen/qwen3.7-max`
+on rate-limit/5xx (retry + backoff first).
+
+**Session memory:** in-process `_SESSION_HISTORY[session_id]` (capped 12 msgs) — replaced the LangGraph
+`MemorySaver`; client sends only `session_id`.
+
+<details><summary>📊 Flowchart — HISTORICAL (the removed 3-node DAG; kept for reference only)</summary>
 
 <div style="font-family: monospace; font-size: 12px; background: #0d1117; color: #e6edf3; padding: 20px; border-radius: 8px;">
 
@@ -1162,51 +1179,36 @@ POST /ui/chat/stream
 </div>
 </details>
 
-**Token budget per request:**
+### 6.2 Deterministic Intent Pre-Router
 
-| Node | Model | Tokens In | Tokens Out | Notes |
-|---|---|---|---|---|
-| `dispatch` | `_FAST_MODEL` | ~450 | ~400 | Last 8 msgs + profile + system prompt |
-| `executor` | — | 0 | 0 | Async I/O only; 0 LLM tokens |
-| `synthesize` | `_FAST_MODEL` | ~900 | ~500 | History + tool results; streamed |
-| **Total** | | **~1,350** | **~900** | vs ~1,790/~820 in old pipeline |
+Before the loop, `_detect_invest_intent(message)` classifies a screen-type intent from keywords and the
+target sector. When both are present it runs the plan itself — `screen_stocks` + `search_market_news` —
+and injects the results, so the right candidates and real headlines reach the model deterministically.
 
-### 6.2 User Tier Detection
+| Intent phrase | Action | `screen_stocks` mode |
+|---|---|---|
+| invest / buy / accumulate / undervalued / oversold | buy | `value` — beaten-down near 1-mo lows (buy-the-dip) |
+| book profit / trim / take profit / overbought | sell | `profit` — extended near 1-mo highs |
+| momentum / leaders / strongest / breakout | momentum | `momentum` — 1-week leaders |
 
-The `dispatch` node detects user sophistication from vocabulary and query specificity. The result persists in `data/user_profiles/{session_id}.json` and is carried across sessions.
+> The earlier user-tier profiling (casual/active/expert via `user_profile.py`) is **dormant** — it was
+> only used by the removed DAG. Retained for a future tier-adaptive verbosity feature.
 
-| Tier | Vocabulary Signals | Response Format | Word Cap |
-|---|---|---|---|
-| `casual` | Plain language ("should I buy", "is it good now") | 3–4 plain sentences, one key insight, no jargon, no tables | ~80 words |
-| `active` | Market terms (Nifty, FII, EBITDA, 52-week) | Price + direction + 2–3 dated headlines + watch signals; uses ▲/▼ | ~150 words |
-| `expert` | Regime/signals/ATR/conviction/spread/IV | Full metrics, regime context, RL signal, conviction streak; tables if helpful | No cap |
+### 6.3 Tool Catalogue (11 tools, all STATIC except `run_agent_analysis`)
 
-**Example: Same MARUTI query, three tier responses:**
-
-*Query: "MARUTI — what's your take?"*
-
-| Tier | Response |
-|---|---|
-| `casual` | "Maruti Suzuki is India's largest carmaker and generally considered a stable long-term hold. Our analysis rates it a BUY right now, driven by strong rural demand and falling raw material costs. The main risk is if crude oil prices spike above $90/barrel." |
-| `active` | "MARUTI: BUY (score 0.66) ▲0.8% today. Tailwinds: FADA dispatch +8% MoM, dealer inventory normalized to 22 days. Headwinds: rubber +18% 3m. RL model expects +3.2% over 30 days. Watch: crude >$85 and FII flows." |
-| `expert` | "MARUTI BUY score 0.656 | Regime: NORMAL (VIX 16.2, Nifty 5d +0.4%). RL: cycle-8, confidence 0.61, streak 5d BUY (reversion_prior 0.05). Weight drift: sales_demand +0.04 from base. AgentNarratives: bull=`e-Vitara 8% EV share FY27`; bear=`crude >$90 → −100–150bps EBITDA`. Key delta: FII +120bps, inventory −6d. ATR 1.4% → ThesisReviewer threshold 2.1%." |
-
-**Tier persistence:** After 3+ sessions the detected tier stabilises. `dispatch` reads the stored value instead of re-detecting every turn.
-
-### 6.3 10-Tool Catalogue
-
-| Tool Name | Type | Data Source | API Calls | Typical Latency | When Used |
-|---|---|---|---|---|---|
-| `get_live_price` | STATIC | yfinance `fast_info` | 0 | <1s | Price/direction questions |
-| `get_historical_prices` | STATIC | yfinance OHLCV (close-to-close %) | 0 | <1s | Trend/comparison/prediction queries |
-| `get_sector_snapshot` | STATIC | SQLite ScoreDB | 0 | <1s | Sector overview questions |
-| `get_stock_analysis` | STATIC | SQLite ScoreDB (latest verdict) | 0 | <1s | "Is MARUTI a buy?" |
-| `get_analysis_history` | STATIC | SQLite ScoreDB (last N verdicts) | 0 | <1s | Historical verdict trend |
-| `get_rl_prediction` | STATIC | `data/predictions/{sector}/{ticker}/` JSON | 0 | <1s | RL forecast/confidence queries |
-| `get_rl_insights` | STATIC | Weight memory JSON | 0 | <1s | Agent weight/accuracy queries |
-| `get_macro_news` | STATIC | `data/macro_news/` daily cache | 0 | <1s | "Any big news today?" |
-| `search_market_news` | STATIC | Serper `/news` (India-biased) + Tavily fallback | 1–2 | 2–4s | News/headline queries |
-| `run_agent_analysis` | LLM | Full N-agent sector pipeline | 16+ Serper | ~45s | Deep analysis (expert tier only) |
+| Tool Name | Data Source | Notes |
+|---|---|---|
+| `screen_stocks(sector, mode)` | yfinance 1-mo windows | **Insight engine** — value/momentum/profit screen |
+| `get_sector_snapshot(sector)` | yfinance + DB | Index + per-stock movers (gainers/losers) + verdicts |
+| `get_live_price(symbol)` | yfinance | NSE-first resolution, freshness-labelled |
+| `get_historical_prices(symbol, days)` | yfinance OHLCV (close-to-close %) | Trend/comparison |
+| `get_stock_analysis(ticker)` | SQLite ScoreDB | Latest verdict |
+| `get_analysis_history(days)` | SQLite ScoreDB | Verdict trend |
+| `get_rl_prediction(ticker)` | prediction JSON | RL verdict + confidence |
+| `get_rl_insights()` | weight memory JSON | Agent weights + accuracy |
+| `get_macro_news()` | macro cache → live Serper fallback | Self-heals when cache empty |
+| `search_market_news(query)` | Serper `/news` + RRF fusion, Tavily fallback | Multi-query (see retry below) |
+| `run_agent_analysis(ticker)` **[LLM]** | Full 9-agent sector pipeline (~45s) | Deep mode |
 
 **`search_market_news` geo detection:**
 
@@ -1239,39 +1241,22 @@ Intraday (old, wrong): (May 13 close − May 13 open) / May 13 open × 100
   = (74,609 − 74,780) / 74,780 × 100 = −0.23%  ← different number, wrong metric
 ```
 
-### 6.5 User Profile Persistence
+### 6.5 Anti-Fabrication & Grounding
 
-**File:** `services/api/user_profile.py`
+The loop is grounded so the model answers only from fetched data:
+- **IST market session** (`_nse_market_context` → `nse_calendar.market_session`) — labels prices `live`
+  vs `last close <date>`; the model is told whether the market is pre-open, open, or closed.
+- **NSE-first symbol resolution** (`_resolve_yf_symbol`) — name aliases → registry → India-preferred search.
+- **Multi-query + RRF** (`_chat_tool_search_news`, `_rrf_fuse`) — fuses several query variants for relevance.
+- **Deterministic sanitizer** (`_sanitize_answer`) — strips banned disclaimer labels. (An LLM Reflexion
+  self-critique was trialled and rejected — on qwen it hallucinated; grounding at the source is more reliable.)
 
-```json
-{
-  "session_id": "abc-123",
-  "detected_tier": "active",
-  "tier_confidence": 0.82,
-  "sessions_seen": 4,
-  "topics_seen": ["MARUTI", "IT sector", "FII flows"],
-  "last_seen": "2026-05-17"
-}
-```
+### 6.6 Session Continuity
 
-**Lifecycle:**
-1. `dispatch` node loads profile from `data/user_profiles/{session_id}.json` (defaults if file absent)
-2. `dispatch` detects tier from current query + stored profile
-3. `synthesize` node saves updated profile (tier, topics, sessions_seen) after each response
-4. After 3+ sessions: `tier_confidence` stabilises and dispatch uses stored tier without re-detection
-
-### 6.6 Session Continuity via MemorySaver
-
-```python
-# MemorySaver stores state.messages per thread_id
-# operator.add reducer appends new messages on every request
-
-Session 1, Request 1:  messages = [user_msg_1, assistant_msg_1]
-Session 1, Request 2:  messages = [user_msg_1, assistant_msg_1, user_msg_2, ...]
-Session 2, Request 1:  messages = [user_msg_A]   ← completely isolated
-```
-
-When the user says "what about the IT sector?" after discussing MARUTI, the `dispatch` node sees the full prior conversation and resolves the referent without requiring the client to resend history.
+In-process `_SESSION_HISTORY: dict[session_id → list[turn]]` (last 12 messages), cleared on restart —
+same semantics as the removed LangGraph `MemorySaver`, no graph dependency. The client sends only
+`session_id`; when the user says "what about IT?" after discussing MARUTI, the carried history resolves
+the referent without resending it.
 
 ---
 
@@ -1495,7 +1480,7 @@ daily_review.py (Day N):
 
 | Parameter | Value |
 |---|---|
-| Model | `qwen/qwen3-235b-a22b` via OpenRouter |
+| Model | REASONING tier — `qwen/qwen3.7-max` via OpenRouter |
 | Temperature | 0.3 (surfaces non-obvious cross-signal patterns) |
 | `max_tokens` | 1500 (structured `RevisedContext` requires extra space) |
 | `response_format` | `{"type": "json_object"}` (guarantees parseable JSON) |
@@ -2053,7 +2038,7 @@ Never: os.getenv() for algorithm constants
 | `SERPER_API_KEY_2` | Banking_bfsi + it_sector Serper calls | `get_serper_key("bfsi")` |
 | `TAVILY_API_KEY` | Full-page extraction (all sectors) | All sectors |
 | `OPENROUTER_API_KEY` | All LLM calls | All agents |
-| `LLM_MODEL` | LLM model ID | Default: `qwen/qwen3-235b-a22b` |
+| `LLM_MODEL_FAST` / `LLM_MODEL_REASONING` / `LLM_MODEL_BULK` | Hybrid model tiers | `qwen3.6-flash` / `qwen3.7-max` / `qwen-2.5-72b` (235b retired) |
 | `SCHEDULER_ENABLED` | Activate APScheduler | `true` in production |
 | `FEEDBACK_CRON` | Daily review trigger | `0 11 * * 1-5` (4:30pm IST) |
 | `MACRO_NEWS_ENABLED` | Toggle macro news feed | `true` / `false` |
@@ -2067,7 +2052,7 @@ Never: os.getenv() for algorithm constants
 **Path:** `outputs/llm_log/{YYYY-MM-DD}.jsonl`
 
 ```json
-{"ts": "2026-05-17T09:45:12Z", "caller": "FeedbackAgent", "model": "qwen/qwen3-235b-a22b",
+{"ts": "2026-05-17T09:45:12Z", "caller": "FeedbackAgent", "model": "qwen/qwen3.7-max",
  "input_tokens": 1240, "output_tokens": 480, "latency_ms": 2340, "success": true}
 ```
 
@@ -2273,9 +2258,8 @@ StockAgent-main/
 │           └── generate_forecast.py
 ├── services/
 │   ├── api/
-│   │   ├── chat_graph.py           ← 3-node LangGraph chat
 │   │   ├── log_buffer.py           ← ring buffer + managed_tickers
-│   │   └── routes/ui_data.py       ← all API endpoints + 10 tools
+│   │   └── routes/ui_data.py       ← all API endpoints + agentic chat loop + 11 tools
 │   ├── background/
 │   │   └── macro_news_fetcher.py   ← FetchAgent + ReviewAgent
 │   ├── data/

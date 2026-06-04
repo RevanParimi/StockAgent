@@ -1,0 +1,27 @@
+# --- VCS / tooling ---
+.git
+.gitignore
+.claude
+.vscode
+.idea
+
+# --- Node (frontend) — rebuilt inside the image ---
+**/node_modules
+src/frontend/web/dist
+
+# --- Python caches / envs ---
+**/__pycache__
+**/*.pyc
+.venv
+venv
+.pytest_cache
+.mypy_cache
+
+# --- Runtime data (created at container start / mounted as volumes) ---
+data
+logs
+outputs
+
+# --- Misc ---
+tests
+docker-compose.yml

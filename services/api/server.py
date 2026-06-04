@@ -345,10 +345,8 @@ app.include_router(prompts_router,   tags=["Prompts"])
 app.include_router(analytics_router, tags=["Analytics"])
 
 
-@app.get("/", tags=["UI"], include_in_schema=False)
-async def root():
-    from fastapi.responses import RedirectResponse
-    return RedirectResponse(url="/app/index.html")
+# NOTE: "/" is served by the SPA catch-all at the bottom of this module
+# (returns the React index.html). No redirect needed.
 
 
 @app.get("/health", tags=["Health"])
@@ -368,14 +366,39 @@ async def list_tickers() -> dict:
 
 
 # ---------------------------------------------------------------------------
-# Static frontend
+# Static frontend — the prototype app, served at the site root as an
+# installable PWA (manifest.json + sw.js + icons). See Dockerfile.
 # ---------------------------------------------------------------------------
+from fastapi.responses import FileResponse  # noqa: E402
 
-_FRONTEND_DIR = _ROOT / "frontend" / "prototypes"
-if _FRONTEND_DIR.exists():
-    app.mount("/app", StaticFiles(directory=str(_FRONTEND_DIR), html=True), name="frontend")
+_DIST_CANDIDATES = [
+    _ROOT / "frontend" / "prototypes",              # Docker image layout
+    _ROOT / "src" / "frontend" / "prototypes",      # local layout
+]
+_FRONTEND_DIR = next((p for p in _DIST_CANDIDATES if (p / "index.html").exists()), None)
+
+if _FRONTEND_DIR is not None:
+    _FRONTEND_ROOT = _FRONTEND_DIR.resolve()
+    _ASSETS_DIR = _FRONTEND_DIR / "assets"
+    if _ASSETS_DIR.exists():
+        app.mount("/assets", StaticFiles(directory=str(_ASSETS_DIR)), name="assets")
+
+    # Catch-all (registered last → all API/docs routes take precedence).
+    # Serves real build files (manifest.webmanifest, sw.js, icons,
+    # /.well-known/assetlinks.json, etc.) and falls back to index.html for
+    # client-side React Router routes.
+    @app.get("/{full_path:path}", include_in_schema=False)
+    async def spa(full_path: str):
+        if full_path:
+            candidate = (_FRONTEND_DIR / full_path).resolve()
+            # Guard against path traversal outside the build dir
+            if str(candidate).startswith(str(_FRONTEND_ROOT)) and candidate.is_file():
+                return FileResponse(candidate)
+        return FileResponse(_FRONTEND_DIR / "index.html")
+
+    logger.info("[server] Serving prototype PWA from %s", _FRONTEND_DIR)
 else:
-    logger.warning("[server] Frontend not found at %s — /app not mounted", _FRONTEND_DIR)
+    logger.warning("[server] React build not found in %s — frontend not served", _DIST_CANDIDATES)
 
 
 if __name__ == "__main__":

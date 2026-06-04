@@ -366,14 +366,14 @@ async def list_tickers() -> dict:
 
 
 # ---------------------------------------------------------------------------
-# Static frontend — React PWA built by Vite (see Dockerfile stage 1)
-# Serves the app at the site root with SPA fallback + PWA assets.
+# Static frontend — the prototype app, served at the site root as an
+# installable PWA (manifest.json + sw.js + icons). See Dockerfile.
 # ---------------------------------------------------------------------------
 from fastapi.responses import FileResponse  # noqa: E402
 
 _DIST_CANDIDATES = [
-    _ROOT / "frontend" / "dist",                    # Docker image layout
-    _ROOT / "src" / "frontend" / "web" / "dist",    # local dev build
+    _ROOT / "frontend" / "prototypes",              # Docker image layout
+    _ROOT / "src" / "frontend" / "prototypes",      # local layout
 ]
 _FRONTEND_DIR = next((p for p in _DIST_CANDIDATES if (p / "index.html").exists()), None)
 
@@ -396,7 +396,7 @@ if _FRONTEND_DIR is not None:
                 return FileResponse(candidate)
         return FileResponse(_FRONTEND_DIR / "index.html")
 
-    logger.info("[server] Serving React PWA from %s", _FRONTEND_DIR)
+    logger.info("[server] Serving prototype PWA from %s", _FRONTEND_DIR)
 else:
     logger.warning("[server] React build not found in %s — frontend not served", _DIST_CANDIDATES)
 

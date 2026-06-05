@@ -1,0 +1,89 @@
+/* StockAgent service worker
+ * Goals: make the app installable (PWA/TWA) and work offline as a shell,
+ * WITHOUT ever serving stale live market data.
+ *   - API / streaming paths  -> network only (not intercepted, never cached)
+ *   - navigations            -> network-first, fall back to cached shell
+ *   - same-origin static GET -> stale-while-revalidate
+ *   - cross-origin CDN libs  -> cache-first
+ */
+const VERSION = 'v1';
+const SHELL_CACHE = `sa-shell-${VERSION}`;
+const RUNTIME_CACHE = `sa-runtime-${VERSION}`;
+
+const SHELL = [
+  '/', '/index.html', '/styles.css', '/manifest.json',
+  '/data.jsx', '/icons.jsx', '/sphere.jsx', '/auth.jsx', '/home.jsx',
+  '/agents-page.jsx', '/portfolio.jsx', '/learn.jsx', '/tweaks-panel.jsx',
+  '/prompt-lab.jsx', '/analytics.jsx', '/logs.jsx', '/rl-data.jsx', '/rl-monitor.jsx',
+  '/icons/pwa-192x192.png', '/icons/pwa-512x512.png', '/icons/pwa-maskable-512x512.png',
+  '/icons/apple-touch-icon.png', '/icons/favicon-32x32.png',
+];
+
+// Always hit the network for these (live data / docs) — never cache.
+const API_PREFIXES = [
+  '/api', '/ui', '/analyse', '/history', '/health', '/tickers',
+  '/scheduler', '/prompts', '/analytics', '/ws', '/docs', '/redoc', '/openapi.json',
+];
+
+self.addEventListener('install', (event) => {
+  event.waitUntil(
+    caches.open(SHELL_CACHE)
+      .then((cache) => cache.addAll(SHELL))
+      .then(() => self.skipWaiting())
+      .catch(() => self.skipWaiting()) // don't block install if an asset 404s
+  );
+});
+
+self.addEventListener('activate', (event) => {
+  event.waitUntil(
+    caches.keys()
+      .then((keys) => Promise.all(
+        keys.filter((k) => k !== SHELL_CACHE && k !== RUNTIME_CACHE).map((k) => caches.delete(k))
+      ))
+      .then(() => self.clients.claim())
+  );
+});
+
+function isApi(pathname) {
+  return API_PREFIXES.some((p) => pathname === p || pathname.startsWith(p + '/'));
+}
+
+self.addEventListener('fetch', (event) => {
+  const req = event.request;
+  if (req.method !== 'GET') return; // POST etc. (API) -> default network
+  const url = new URL(req.url);
+
+  if (url.origin !== self.location.origin) {
+    event.respondWith(cacheFirst(req));
+    return;
+  }
+  if (isApi(url.pathname)) return; // live data -> default network, never cached
+
+  if (req.mode === 'navigate') {
+    event.respondWith(fetch(req).catch(() => caches.match('/index.html')));
+    return;
+  }
+  event.respondWith(staleWhileRevalidate(req));
+});
+
+function cacheFirst(req) {
+  return caches.open(RUNTIME_CACHE).then((cache) =>
+    cache.match(req).then((cached) =>
+      cached || fetch(req).then((res) => {
+        if (res && res.status === 200) cache.put(req, res.clone());
+        return res;
+      })
+    )
+  );
+}
+
+function staleWhileRevalidate(req) {
+  return caches.open(RUNTIME_CACHE).then((cache) =>
+    cache.match(req).then((cached) => {
+      const network = fetch(req)
+        .then((res) => { if (res && res.status === 200) cache.put(req, res.clone()); return res; })
+        .catch(() => cached);
+      return cached || network;
+    })
+  );
+}

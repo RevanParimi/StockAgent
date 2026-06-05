@@ -51,7 +51,13 @@ async def analyse(req: AnalyseRequest) -> dict:
     try:
         report = await orchestrator.analyse_async(ticker)
     except Exception as exc:
-        logger.error("[API /analyse] Pipeline failed for %s (%s): %s", ticker, sector, exc)
-        raise HTTPException(status_code=503, detail=f"Analysis pipeline failed: {exc}")
+        logger.error(
+            "[API /analyse] Pipeline failed for ticker=%s sector=%s: %s",
+            ticker, sector, exc, exc_info=True,
+        )
+        raise HTTPException(
+            status_code=503,
+            detail="Analysis pipeline failed. Please try again or contact support.",
+        )
 
     return report.model_dump()

@@ -90,6 +90,7 @@ class WeightAdapter:
         todays_miss_type: str = "direction_flip",
         timing_lag_days: int = 0,
         seasonal_threshold_deltas: dict[str, float] | None = None,
+        factor_regime: dict | None = None,
     ) -> WeightMemory:
         """
         Compute and apply weight adjustments based on today's feedback.
@@ -111,6 +112,10 @@ class WeightAdapter:
             Per-agent boost/penalty threshold modifiers from SeasonalContext.
             e.g. {"sales_demand": +0.08} during festive season raises the bar
             for that agent to earn a boost (prevents undeserved weight inflation).
+        factor_regime : dict | None
+            IIMA 4-factor regime dict from factor_regime.get_factor_regime().
+            Used to scale bias penalties — agents structurally disadvantaged in the
+            current regime receive lighter penalties (see get_regime_penalty_scale).
         """
         if len(feedback_log.entries) < settings.WEIGHT_MIN_OBSERVATIONS:
             logger.info(
@@ -129,9 +134,11 @@ class WeightAdapter:
             todays_primary_miss=todays_primary_miss_agent,
             todays_miss_type=todays_miss_type,
             agents=agents,
+            current_weights=weight_memory.current_weights,
             timing_lag_days=timing_lag_days,
             seasonal_threshold_deltas=seasonal_threshold_deltas,
             reference_date=today,
+            factor_regime=factor_regime,
         )
 
         new_weights = self._apply_deltas(
@@ -139,6 +146,7 @@ class WeightAdapter:
             base=weight_memory.base_weights,
             deltas=deltas,
             bounds=weight_memory.adjustment_bounds,
+            feedback_log=feedback_log,
         )
 
         reason_parts = []
@@ -329,9 +337,11 @@ class WeightAdapter:
         todays_primary_miss: str,
         todays_miss_type: str,
         agents: list[str],
+        current_weights: dict[str, float] | None = None,
         timing_lag_days: int = 0,
         seasonal_threshold_deltas: dict[str, float] | None = None,
         reference_date: date | None = None,
+        factor_regime: dict | None = None,
     ) -> dict[str, float]:
         """
         Compute raw weight delta per agent before bounds are applied.
@@ -340,10 +350,18 @@ class WeightAdapter:
         1. Hit-rate boost/penalty    — rolling accuracy vs seasonal-adjusted thresholds
         2. Bias penalty              — multi-window weighted miss rate (calendar-aware)
         3. Timing tolerance          — lag_days magnitude determines timing penalty scale
+
+        Deltas are scaled proportionally to each agent's current weight relative to
+        the uniform baseline (1/n_agents). An agent carrying twice its fair share of
+        weight will receive twice the absolute adjustment — large-signal agents earn
+        and lose weight faster than marginal contributors.
         """
         ref             = reference_date or date.today()
         deltas          = {a: 0.0 for a in agents}
         seasonal_deltas = seasonal_threshold_deltas or {}
+        cw              = current_weights or {}
+        n_agents        = max(1, len(agents))
+        uniform_weight  = 1.0 / n_agents  # expected weight if all agents are equal
 
         # Resolve timing penalty multiplier based on lag magnitude
         if todays_miss_type == "timing":
@@ -364,6 +382,12 @@ class WeightAdapter:
 
             hit_rate = acc.hit_rate()
 
+            # Proportional scale: agents at uniform weight → 1.0× delta.
+            # Agents above uniform → larger delta; below → smaller.
+            # Clamped to [0.25, 2.0] to prevent extreme edge cases.
+            agent_w    = cw.get(agent, uniform_weight)
+            prop_scale = max(0.25, min(2.0, agent_w / uniform_weight))
+
             # Seasonal threshold shift — raises bar during easy periods,
             # lowers it during structurally hard ones (budget week, earnings)
             s_adj             = seasonal_deltas.get(agent, 0.0)
@@ -371,24 +395,32 @@ class WeightAdapter:
             effective_penalty = settings.WEIGHT_PENALTY_HIT_RATE + s_adj
 
             if hit_rate >= effective_boost:
-                deltas[agent] += _BOOST
+                deltas[agent] += _BOOST * prop_scale
             elif hit_rate <= effective_penalty:
-                deltas[agent] += _PENALTY
+                deltas[agent] += _PENALTY * prop_scale
 
             # Bias penalty — only for the blamed agent on penalisable misses
             if agent == todays_primary_miss and todays_miss_type not in NO_PENALTY_MISS_TYPES:
                 bias_score = self._compute_bias_score(feedback_log, agent, ref)
                 if bias_score >= _BIAS_TRIGGER:
-                    scale         = min(1.0, (bias_score - _BIAS_TRIGGER)
-                                            / (_BIAS_FULL - _BIAS_TRIGGER))
-                    bias_penalty  = _MISS_STREAK_PENALTY * scale * penalty_multiplier
+                    scale        = min(1.0, (bias_score - _BIAS_TRIGGER)
+                                           / (_BIAS_FULL - _BIAS_TRIGGER))
+                    # Regime-aware leniency: agents structurally disadvantaged in the
+                    # current long-run factor regime (e.g. momentum agents in reversal
+                    # market) receive lighter bias penalties.
+                    try:
+                        from core.intelligence.rl.algorithms.factor_regime import get_regime_penalty_scale
+                        regime_scale = get_regime_penalty_scale(agent, factor_regime)
+                    except Exception:
+                        regime_scale = 1.0
+                    bias_penalty  = _MISS_STREAK_PENALTY * scale * penalty_multiplier * prop_scale * regime_scale
                     deltas[agent] += bias_penalty
                     if bias_penalty != 0.0:
                         logger.warning(
-                            "[WeightAdapter] %s: bias_score=%.2f (type=%s, lag=%+d td) "
-                            "→ bias Δ%.3f",
+                            "[WeightAdapter] %s: bias_score=%.2f (type=%s, lag=%+d td, "
+                            "prop_scale=%.2f, regime_scale=%.2f) → bias Δ%.3f",
                             agent, bias_score, todays_miss_type,
-                            timing_lag_days, bias_penalty,
+                            timing_lag_days, prop_scale, regime_scale, bias_penalty,
                         )
                 else:
                     logger.debug(
@@ -408,10 +440,29 @@ class WeightAdapter:
         base: dict[str, float],
         deltas: dict[str, float],
         bounds: dict[str, float],
+        feedback_log: "DailyFeedbackLog | None" = None,
     ) -> dict[str, float]:
-        """Apply deltas, clamp to bounds, then re-normalise to sum to 1.0."""
+        """Apply deltas, clamp to bounds, then re-normalise to sum to 1.0.
+
+        Escape hatch: agents with ≥ RL_WEIGHT_DRIFT_ESCAPE_DAYS consecutive correct
+        days are allowed to drift up to RL_WEIGHT_DRIFT_ESCAPE_MULTIPLIER × max_drift.
+        """
         max_step  = bounds.get("max_single_step",           settings.WEIGHT_MAX_STEP)
         max_drift = bounds.get("max_total_drift_from_base", settings.WEIGHT_MAX_DRIFT)
+        escape_days = getattr(settings, "RL_WEIGHT_DRIFT_ESCAPE_DAYS", 14)
+        escape_mult = getattr(settings, "RL_WEIGHT_DRIFT_ESCAPE_MULTIPLIER", 1.5)
+
+        # Compute consecutive-correct-day streak per agent (from most recent entries)
+        agent_correct_streak: dict[str, int] = {}
+        if feedback_log and feedback_log.entries:
+            for agent in current:
+                streak = 0
+                for entry in reversed(feedback_log.entries):
+                    if entry.direction_correct:
+                        streak += 1
+                    else:
+                        break
+                agent_correct_streak[agent] = streak
 
         new_weights: dict[str, float] = {}
         for agent, w in current.items():
@@ -420,8 +471,16 @@ class WeightAdapter:
             proposed = w + delta
 
             base_w   = base.get(agent, w)
-            lo       = max(0.0, base_w - max_drift)           # floor: never below base − 0.15
-            hi       = base_w + max_drift                     # ceiling: never above base + 0.15
+            # Allow wider drift when agent has earned it with a long correct streak
+            effective_drift = max_drift
+            if agent_correct_streak.get(agent, 0) >= escape_days:
+                effective_drift = min(max_drift * escape_mult, 0.35)  # hard cap at 0.35
+                logger.debug(
+                    "[WeightAdapter] %s: escape hatch active (streak=%d) — drift %.2f → %.2f",
+                    agent, agent_correct_streak[agent], max_drift, effective_drift,
+                )
+            lo       = max(0.0, base_w - effective_drift)
+            hi       = base_w + effective_drift
             proposed = max(lo, min(hi, proposed))
 
             new_weights[agent] = round(proposed, 6)

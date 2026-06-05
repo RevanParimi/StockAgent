@@ -28,6 +28,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 import time
 import uuid
 from abc import ABC, abstractmethod
@@ -109,9 +110,12 @@ class BaseSectorOrchestrator(ABC):
         logger.info("[%s] Resolved: %s -> %s", self.SECTOR_NAME, user_input, query)
 
         if self._aggregator_weights is None:
-            self._aggregator_weights = await asyncio.to_thread(
-                self._load_learned_weights, query.ticker
-            )
+            learned = await asyncio.to_thread(self._load_learned_weights, query.ticker)
+            self._aggregator_weights = learned or self._get_default_weights()
+
+        # Pre-fetch NseIndiaApi data before fan-out — NSE() is sync, run in thread.
+        # All 8 parallel agents share query.nse_data as read-only (set here, never written by agents).
+        await asyncio.to_thread(self._prefetch_nse_data, query)
 
         pipeline_run = PipelineRun(run_id=run_id, query=query, status="running")
         agent_outputs = await self._run_via_graph_async(
@@ -168,7 +172,14 @@ class BaseSectorOrchestrator(ABC):
         logger.info("[%s] Resolved: %s -> %s", self.SECTOR_NAME, user_input, query)
 
         if self._aggregator_weights is None:
-            self._aggregator_weights = self._load_learned_weights(query.ticker)
+            self._aggregator_weights = (
+                self._load_learned_weights(query.ticker)
+                or self._get_default_weights()
+            )
+
+        # Pre-fetch NseIndiaApi data before fan-out — one session, three calls, 0.5s sleep each.
+        # All 8 parallel agents share query.nse_data as read-only.
+        self._prefetch_nse_data(query)
 
         pipeline_run = PipelineRun(run_id=run_id, query=query, status="running")
         agent_outputs = self._run_via_graph(
@@ -230,6 +241,35 @@ class BaseSectorOrchestrator(ABC):
             logger.debug("[%s] No RL weights for %s: %s", self.SECTOR_NAME, ticker, exc)
         return None
 
+    def _get_default_weights(self) -> dict[str, float]:
+        """Sector-specific default weights when no RL data exists. Override in sector subclasses."""
+        return settings.AGENT_WEIGHTS
+
+    # ------------------------------------------------------------------
+    # NseIndiaApi pre-fetch (called before LangGraph fan-out)
+    # ------------------------------------------------------------------
+
+    def _prefetch_nse_data(self, query: StockQuery) -> None:
+        """
+        Fetch NseIndiaApi data and store in query.nse_data before fan-out.
+
+        All 8 parallel agents read query.nse_data in their ContextBuilder calls.
+        This method sets it once — agents never write to it (read-only sharing).
+        Non-fatal: on any failure, query.nse_data stays empty and agents use Serper-only.
+        """
+        try:
+            from services.data.fetchers.nse_announcements import prefetch_nse_data
+            from services.data.stores.api_usage import record_call
+            nse_result = prefetch_nse_data(query.ticker)
+            query.nse_data.update(nse_result)
+            if not nse_result.get("error"):
+                record_call("nse_india")
+        except Exception as exc:
+            logger.warning(
+                "[%s] NseIndiaApi prefetch failed for %s (non-fatal): %s",
+                self.SECTOR_NAME, query.ticker, exc,
+            )
+
     # ------------------------------------------------------------------
     # Ticker resolution
     # ------------------------------------------------------------------
@@ -258,7 +298,12 @@ class BaseSectorOrchestrator(ABC):
                     prompt_tokens=pt, completion_tokens=ct,
                     duration_ms=(time.time() - t0) * 1000, cost_usd=cost,
                 )
-            return json.loads(response.choices[0].message.content or "{}")
+            raw = response.choices[0].message.content or "{}"
+            # Strip markdown code fences added by some models despite json_object format
+            if raw.strip().startswith("```"):
+                raw = re.sub(r"^```(?:json)?\s*", "", raw.strip())
+                raw = re.sub(r"\s*```\s*$", "", raw).strip()
+            return json.loads(raw)
 
         try:
             data = _llm_call(P.TICKER_RESOLUTION_PROMPT.format(user_input=user_input))
@@ -300,7 +345,9 @@ class BaseSectorOrchestrator(ABC):
         try:
             import yfinance as yf
             suffix = settings.YFINANCE_SUFFIX
-            yf_ticker = ticker if ticker.endswith(suffix) else f"{ticker}{suffix}"
+            yf_ticker = settings.YF_SYMBOL_OVERRIDES.get(ticker.upper()) or (
+                ticker if ticker.endswith(suffix) else f"{ticker}{suffix}"
+            )
             info = yf.Ticker(yf_ticker).info or {}
             return bool(
                 info.get("regularMarketPrice") or info.get("currentPrice") or info.get("previousClose")

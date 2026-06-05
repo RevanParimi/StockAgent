@@ -23,10 +23,8 @@ from pathlib import Path
 
 import pytest
 
+from core.config import settings
 from core.intelligence.rl.conviction.tracker import (
-    STREAK_WARNING_THRESHOLD,
-    _MAX_REVERSION_PRIOR,
-    _RSI_AMPLIFIER,
     build_streak_warning_block,
     compute_final_reversion_prior,
     compute_reversion_prior,
@@ -34,6 +32,11 @@ from core.intelligence.rl.conviction.tracker import (
     update_conviction_streak,
     verdict_direction,
 )
+
+# Constants now live in settings — alias locally so test assertions stay readable
+STREAK_WARNING_THRESHOLD = settings.RL_STREAK_WARNING_THRESHOLD
+_MAX_REVERSION_PRIOR     = settings.RL_MAX_REVERSION_PRIOR
+_RSI_AMPLIFIER           = settings.RL_RSI_AMPLIFIER
 from core.schemas.feedback import (
     ConvictionStreak,
     DailyForecast,
@@ -114,46 +117,89 @@ class TestComputeRsiAmplifier:
     def test_no_amplifier_when_streak_below_threshold(self):
         scores = {"pattern_analysis": 0.30}   # would trigger if streak were high enough
         for days in range(STREAK_WARNING_THRESHOLD):
-            assert compute_rsi_amplifier("BUY", scores, days) == 1.0
+            assert compute_rsi_amplifier("BUY", scores, days, sector_rsi=50.0) == 1.0
+
+    def test_rsi_amplifier_bullish_streak_overbought_triggers(self):
+        """Bullish streak + sector_rsi > 70 → amplifier 1.5."""
+        result = compute_rsi_amplifier(
+            verdict="BUY",
+            todays_agent_scores={"pattern_analysis": 0.8},
+            streak_days=9,
+            sector_rsi=75.0,
+        )
+        assert result == 1.5
+
+    def test_rsi_amplifier_bullish_streak_normal_rsi_no_trigger(self):
+        """Bullish streak + sector_rsi 55 (not overbought) → no amplifier."""
+        result = compute_rsi_amplifier(
+            verdict="BUY",
+            todays_agent_scores={"pattern_analysis": 0.8},
+            streak_days=9,
+            sector_rsi=55.0,
+        )
+        assert result == 1.0
+
+    def test_rsi_amplifier_bearish_streak_oversold_triggers(self):
+        """Bearish streak + sector_rsi < 30 → amplifier 1.5."""
+        result = compute_rsi_amplifier(
+            verdict="SELL",
+            todays_agent_scores={"pattern_analysis": 0.3},
+            streak_days=10,
+            sector_rsi=25.0,
+        )
+        assert result == 1.5
+
+    def test_rsi_amplifier_short_streak_no_trigger(self):
+        """Streak < STREAK_WARNING_THRESHOLD → always 1.0 regardless of RSI."""
+        result = compute_rsi_amplifier(
+            verdict="BUY",
+            todays_agent_scores={"pattern_analysis": 0.1},
+            streak_days=3,
+            sector_rsi=85.0,
+        )
+        assert result == 1.0
 
     def test_bullish_streak_low_pa_score_triggers_amplifier(self):
-        # pa_score < 0.40 with BULLISH streak → divergence
+        # LEGACY TEST: pa_score < 0.40 with BULLISH streak → divergence
+        # Now uses sector_rsi > 70 instead
         scores = {"pattern_analysis": 0.35}
-        result = compute_rsi_amplifier("BUY", scores, streak_days=8)
+        result = compute_rsi_amplifier("BUY", scores, streak_days=8, sector_rsi=75.0)
         assert result == pytest.approx(_RSI_AMPLIFIER)
 
     def test_bullish_streak_high_pa_score_no_amplifier(self):
         # pa_score >= 0.40 → no divergence
         scores = {"pattern_analysis": 0.50}
-        assert compute_rsi_amplifier("BUY", scores, streak_days=10) == 1.0
+        assert compute_rsi_amplifier("BUY", scores, streak_days=10, sector_rsi=50.0) == 1.0
 
     def test_bearish_streak_high_pa_score_triggers_amplifier(self):
-        # pa_score > 0.60 with BEARISH streak → divergence
+        # LEGACY TEST: pa_score > 0.60 with BEARISH streak → divergence
+        # Now uses sector_rsi < 30 instead
         scores = {"pattern_analysis": 0.65}
-        result = compute_rsi_amplifier("SELL", scores, streak_days=9)
+        result = compute_rsi_amplifier("SELL", scores, streak_days=9, sector_rsi=25.0)
         assert result == pytest.approx(_RSI_AMPLIFIER)
 
     def test_bearish_streak_low_pa_score_no_amplifier(self):
         scores = {"pattern_analysis": 0.40}
-        assert compute_rsi_amplifier("SELL", scores, streak_days=9) == 1.0
+        assert compute_rsi_amplifier("SELL", scores, streak_days=9, sector_rsi=50.0) == 1.0
 
     def test_neutral_verdict_no_amplifier(self):
         scores = {"pattern_analysis": 0.10}   # extreme but NEUTRAL wins
-        assert compute_rsi_amplifier("NEUTRAL", scores, streak_days=10) == 1.0
+        assert compute_rsi_amplifier("NEUTRAL", scores, streak_days=10, sector_rsi=75.0) == 1.0
 
     def test_missing_pattern_analysis_defaults_to_05(self):
         # Default 0.5 → neither < 0.40 nor > 0.60 → no amplifier for BUY streak
-        assert compute_rsi_amplifier("BUY", {}, streak_days=10) == 1.0
+        # Now uses sector_rsi, not pattern_analysis
+        assert compute_rsi_amplifier("BUY", {}, streak_days=10, sector_rsi=50.0) == 1.0
 
     def test_boundary_at_exactly_040_no_amplifier(self):
         # Threshold is < 0.40, so exactly 0.40 should NOT trigger
         scores = {"pattern_analysis": 0.40}
-        assert compute_rsi_amplifier("BUY", scores, streak_days=8) == 1.0
+        assert compute_rsi_amplifier("BUY", scores, streak_days=8, sector_rsi=70.0) == 1.0
 
     def test_boundary_at_exactly_060_no_amplifier(self):
         # Threshold is > 0.60, so exactly 0.60 should NOT trigger
         scores = {"pattern_analysis": 0.60}
-        assert compute_rsi_amplifier("SELL", scores, streak_days=8) == 1.0
+        assert compute_rsi_amplifier("SELL", scores, streak_days=8, sector_rsi=30.0) == 1.0
 
 
 # ---------------------------------------------------------------------------
@@ -162,33 +208,45 @@ class TestComputeRsiAmplifier:
 
 class TestComputeFinalReversionPrior:
     def test_zero_when_streak_short(self):
-        result = compute_final_reversion_prior(4, "BUY", {"pattern_analysis": 0.30})
+        result = compute_final_reversion_prior(4, "BUY", {"pattern_analysis": 0.30}, sector_rsi=50.0)
         assert result == 0.0
 
     def test_amplified_prior_capped_at_max(self):
         # streak=14 → base=0.25, amplifier=1.5 → 0.375 → capped at 0.30
         scores = {"pattern_analysis": 0.30}
-        result = compute_final_reversion_prior(14, "BUY", scores)
+        result = compute_final_reversion_prior(14, "BUY", scores, sector_rsi=75.0)
         assert result == pytest.approx(_MAX_REVERSION_PRIOR)
 
     def test_no_amplifier_gives_base_prior(self):
-        # streak=8, pa_score=0.50 → no amplifier → final == base (0.10)
+        # streak=8, sector_rsi=50 (not overbought) → no amplifier → final == base (0.10)
         scores = {"pattern_analysis": 0.50}
-        result = compute_final_reversion_prior(8, "BUY", scores)
+        result = compute_final_reversion_prior(8, "BUY", scores, sector_rsi=50.0)
         assert result == pytest.approx(0.10)
 
     def test_with_amplifier_no_cap(self):
-        # streak=5, base=0.025, pa_score=0.35, amplifier=1.5 → 0.025 × 1.5 = 0.0375
+        # streak=5, base=0.025 → no amplifier (streak < threshold) → 0.025
         scores = {"pattern_analysis": 0.35}
-        result = compute_final_reversion_prior(5, "BUY", scores)
+        result = compute_final_reversion_prior(5, "BUY", scores, sector_rsi=75.0)
         # streak < threshold (8) → amplifier is 1.0, so no amplification
         assert result == pytest.approx(0.025)
 
     def test_amplifier_activates_at_threshold(self):
-        # streak=8, pa_score=0.30 → base=0.10, amplifier=1.5 → 0.15
+        # streak=8, sector_rsi=75 (overbought) → base=0.10, amplifier=1.5 → 0.15
         scores = {"pattern_analysis": 0.30}
-        result = compute_final_reversion_prior(8, "BUY", scores)
+        result = compute_final_reversion_prior(8, "BUY", scores, sector_rsi=75.0)
         assert result == pytest.approx(0.15)
+
+    def test_compute_final_reversion_prior_uses_sector_rsi(self):
+        """compute_final_reversion_prior passes sector_rsi to amplifier."""
+        prior_overbought = compute_final_reversion_prior(
+            streak_days=9, verdict="BUY",
+            todays_agent_scores={}, sector_rsi=80.0
+        )
+        prior_normal = compute_final_reversion_prior(
+            streak_days=9, verdict="BUY",
+            todays_agent_scores={}, sector_rsi=50.0
+        )
+        assert prior_overbought > prior_normal
 
 
 # ---------------------------------------------------------------------------

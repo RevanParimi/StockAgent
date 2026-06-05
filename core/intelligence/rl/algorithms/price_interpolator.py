@@ -53,6 +53,7 @@ import json
 import logging
 import math
 import random
+import re
 import time
 from typing import Literal
 
@@ -75,6 +76,19 @@ _STATIC_MONTHLY_PCT: dict[str, float] = {
 }
 
 PathShape = Literal["linear", "front_loaded", "back_loaded", "volatile"]
+
+# ---------------------------------------------------------------------------
+# Regime-conditioned volatility scale factors for Monte Carlo GBM.
+# Higher value → wider P10-P90 band (more uncertainty).
+# ---------------------------------------------------------------------------
+REGIME_SIGMA_SCALE: dict[str, float] = {
+    "MACRO_CRISIS":       1.50,   # elevated systemic fear → widen bands significantly
+    "RISK_OFF":           1.20,   # defensive positioning → wider than normal
+    "OVERSOLD":           1.10,   # technically stretched → slight extra uncertainty
+    "NORMAL":             1.00,   # base calibration
+    "MOMENTUM_EXTENDED":  0.90,   # trending strongly → tighter bands (momentum persists)
+    "RISK_ON":            0.80,   # broad participation → tightest bands
+}
 
 
 # ---------------------------------------------------------------------------
@@ -240,6 +254,51 @@ class PriceInterpolator:
 
         return result
 
+    def build_monte_carlo_paths(
+        self,
+        base_close: float,
+        profile: ForecastProfile,
+        n_days: int,
+        base_confidence: float,
+        n_simulations: int = 500,
+        regime_label: str = "NORMAL",
+    ) -> list[tuple[float, float, float, float]]:
+        """
+        Regime-conditioned GBM Monte Carlo. Returns list of (p50, p10, p90, confidence)
+        per day, length = n_days.
+
+        Model: dlog(S) = (μ - σ²/2)dt + σ·dW
+          μ = monthly_return_pct/100 / n_days     (daily drift, LLM-calibrated)
+          σ = confidence_band_daily_pct/100 × regime_scale  (regime-conditioned vol)
+        """
+        import numpy as np
+
+        mu_daily = (profile.monthly_return_pct / 100.0) / max(1, n_days)
+        sigma_daily = (profile.confidence_band_daily_pct / 100.0)
+        sigma_daily *= REGIME_SIGMA_SCALE.get(regime_label, 1.0)
+
+        rng = np.random.default_rng(42)
+        Z = rng.standard_normal((n_simulations, n_days))
+        # Log-normal GBM: log(S_t/S_0) = (μ - σ²/2)t + σ·√t·Z  (cumulative)
+        log_returns = (mu_daily - 0.5 * sigma_daily ** 2) + sigma_daily * Z
+        cum_log = np.cumsum(log_returns, axis=1)
+        price_paths = base_close * np.exp(cum_log)  # shape: (n_sims, n_days)
+
+        conf_decay_per_day = 0.004
+        result: list[tuple[float, float, float, float]] = []
+        for i in range(n_days):
+            day_prices = price_paths[:, i]
+            p10 = float(np.percentile(day_prices, 10))
+            p50 = float(np.percentile(day_prices, 50))
+            p90 = float(np.percentile(day_prices, 90))
+            # Confidence: horizon decay + band-width penalty (wider MC band = less confident)
+            band_width_pct = (p90 - p10) / p50 * 100 if p50 > 0 else 2.0
+            band_penalty = max(0.0, (band_width_pct / 2 - 1.0) * 0.015)
+            horizon_decay = 1.0 - conf_decay_per_day * i
+            day_conf = round(max(0.05, min(0.99, base_confidence * horizon_decay - band_penalty)), 4)
+            result.append((round(p50, 2), round(p10, 2), round(p90, 2), day_conf))
+        return result
+
     # ------------------------------------------------------------------
     # Path shape weights
     # ------------------------------------------------------------------
@@ -346,7 +405,11 @@ class PriceInterpolator:
 
     def _parse(self, raw: str, verdict: str, atr_pct: float) -> ForecastProfile:
         try:
-            data = json.loads(raw)
+            stripped = (raw or "").strip()
+            if stripped.startswith("```"):
+                stripped = re.sub(r"^```(?:json)?\s*", "", stripped)
+                stripped = re.sub(r"\s*```\s*$", "", stripped).strip()
+            data = json.loads(stripped)
         except json.JSONDecodeError:
             return self._static_fallback(verdict, atr_pct)
 
@@ -426,33 +489,62 @@ def compute_atr_pct(ohlcv_df) -> float:
 # ---------------------------------------------------------------------------
 
 def compute_historical_avg_return(
-    feedback_log,
+    feedback_log_or_entries,
     verdict: str,
     last_n_cycles: int = 6,
+    regime_label: str | None = None,
 ) -> float | None:
     """
-    Look back through FeedbackLog entries and compute the median observed
-    price_error_pct on days where predicted_verdict matched the given verdict.
+    Compute median observed price_error_pct for a given verdict.
+    Accepts either a DailyFeedbackLog object or a plain list of FeedbackEntry objects.
+    Returns None if fewer than 3 matching entries.
 
-    Returns None if fewer than 3 matching entries (insufficient data).
+    regime_label : when provided, first attempts to filter entries to the same regime
+    (same regime = more accurate calibration). Falls back to all-regime entries if
+    fewer than 3 same-regime entries exist (prevents empty result at regime transitions).
     """
     try:
-        if feedback_log is None or not feedback_log.entries:
+        if isinstance(feedback_log_or_entries, list):
+            all_entries = feedback_log_or_entries
+        elif feedback_log_or_entries is None:
             return None
-        matching = [
+        else:
+            all_entries = feedback_log_or_entries.entries or []
+
+        if not all_entries:
+            return None
+
+        verdict_upper = verdict.upper()
+
+        def _median(values: list[float]) -> float:
+            s = sorted(values)
+            mid = len(s) // 2
+            return s[mid] if len(s) % 2 != 0 else (s[mid - 1] + s[mid]) / 2
+
+        # First pass: same-regime entries (most accurate for current market conditions)
+        if regime_label:
+            regime_matching = [
+                e.price_error_pct
+                for e in all_entries
+                if e.predicted_verdict.upper() == verdict_upper
+                and getattr(e, "regime_label", None) == regime_label
+            ]
+            if len(regime_matching) >= 3:
+                logger.debug(
+                    "[PriceInterpolator] Historical avg (regime=%s, verdict=%s): "
+                    "%d entries → %.2f%%",
+                    regime_label, verdict, len(regime_matching), _median(regime_matching),
+                )
+                return round(_median(regime_matching), 2)
+
+        # Fallback: all-regime entries for this verdict
+        all_matching = [
             e.price_error_pct
-            for e in feedback_log.entries
-            if e.predicted_verdict.upper() == verdict.upper()
+            for e in all_entries
+            if e.predicted_verdict.upper() == verdict_upper
         ]
-        if len(matching) < 3:
+        if len(all_matching) < 3:
             return None
-        matching_sorted = sorted(matching)
-        mid = len(matching_sorted) // 2
-        median = (
-            matching_sorted[mid]
-            if len(matching_sorted) % 2 != 0
-            else (matching_sorted[mid - 1] + matching_sorted[mid]) / 2
-        )
-        return round(median, 2)
+        return round(_median(all_matching), 2)
     except Exception:
         return None

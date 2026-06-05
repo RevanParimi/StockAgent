@@ -93,9 +93,9 @@ INFERENCE RULES:
 
 ANALYSIS_PROMPT = """Analyse the Risk & Macro outlook for Indian automobile company: **{ticker}** ({company_name}).
 
-Score each dimension from 0.0 (high risk / bearish) to 1.0 (low risk / bullish). Apply the scoring
-philosophy from your system instructions. Never assign 0.5 as a default. Quantify macro headwinds
-into demand impact estimates where possible — vague references to macro uncertainty are insufficient.
+{business_model_context}
+
+Score each dimension from 0.0 (high risk / bearish) to 1.0 (low risk / bullish):
 
 DIMENSIONS TO SCORE:
 
@@ -134,21 +134,13 @@ DIMENSIONS TO SCORE:
 Context / recent data:
 {context}
 
-ANALYSIS INSTRUCTIONS:
-- For rbi_repo_emi_impact: score <= 0.35 if repo rate is above 6.5% AND >60% of OEM volume is
-  in retail-financed entry-level segments. Score >= 0.70 if RBI has pivoted to rate cuts OR the
-  OEM's volume is dominated by premium/commercial segments with low EMI sensitivity.
-- For consumer_demand_sensitivity: this is the primary demand-destruction dimension. Score based
-  on the OEM's segment mix vs current affordability stress. An OEM with 80% premium SUV mix
-  should score >= 0.65 even in a weak macro environment. An OEM with 70% entry-level 2W mix
-  should score <= 0.40 during high inflation + high rate periods.
-- For global_geopolitical_risk: use the four transmission channels with weights stated. Assess
-  THIS OEM's specific vulnerability to each channel — do not apply generic sector-level risk.
-- macro_stress_level reflects the aggregate macro environment severity (0.0 = benign, 1.0 = severe
-  multi-factor stress), assessed independently of OEM-specific buffers.
-- If any dimension has insufficient data, record it in missing_data_points and reduce confidence_score.
+Return ONLY valid JSON. IMPORTANT: Be ticker-specific. Cite actual macro data values.
+For key_positives/key_risks: quote specific levels (e.g. "Crude at $78/bbl; every $10 rise compresses margin ~80bps for MARUTI").
+For ticker_vs_peers: cite relative macro exposure vs named peers (e.g. "MARUTI 15% export revenue vs BAJAJ-AUTO 45%; lower USD exposure").
+For bull_case_if: name the specific macro tailwind + threshold (e.g. "If crude falls to $65/bbl, margin expands 120-150bps").
+For bear_case_if: name the specific macro risk + quantified impact (e.g. "If crude >$90/bbl sustained, EBITDA margin compresses 100-150bps").
+For what_changed: cite what shifted in macro environment this cycle vs last (e.g. "RBI cut 25bps; INR strengthened 2% vs USD").
 
-Return ONLY valid JSON in this exact schema:
 {{
   "agent": "risk_macro",
   "ticker": "{ticker}",
@@ -166,8 +158,13 @@ Return ONLY valid JSON in this exact schema:
   "missing_data_points": [<string, each data gap that reduced confidence_score>],
   "key_positives": [<string>, ...],
   "key_risks": [<string>, ...],
-  "summary": "<3-4 sentence narrative: macro environment severity, OEM segment vulnerability, financing risk, key demand-destruction trigger or buffer>",
-  "data_freshness": "<date of most recent data point used>"
+  "summary": "<2-3 sentence narrative>",
+  "data_freshness": "<date of most recent data point used>",
+  "ticker_vs_peers": "<relative macro exposure vs named peers with specific % or bps figures>",
+  "bull_case_if": "<specific macro tailwind + threshold that would add ~0.15 to score>",
+  "bear_case_if": "<specific macro risk + quantified margin/earnings impact that would cut ~0.15 from score>",
+  "what_changed": "<what shifted in macro environment this cycle vs last, with specific numbers>",
+  "data_confidence": <float 0.3-1.0>
 }}
 """
 

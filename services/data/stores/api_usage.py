@@ -40,13 +40,15 @@ _USAGE_FILE = _LOGS_DIR / "api_usage.json"
 _EVENTS_FILE = _LOGS_DIR / "api_usage_events.jsonl"
 _lock = threading.Lock()
 
-# Monthly limits (override via env vars)
+# Monthly limits (override via env vars). 0 = free / unlimited — track volume only.
 _LIMITS: dict[str, int] = {
-    "serper": int(os.getenv("SERPER_MONTHLY_LIMIT", "2500")),
-    "tavily": int(os.getenv("TAVILY_MONTHLY_LIMIT", "1000")),
+    "serper":    int(os.getenv("SERPER_MONTHLY_LIMIT", "2500")),
+    "tavily":    int(os.getenv("TAVILY_MONTHLY_LIMIT", "1000")),
+    "nse_india": 0,   # free — NSE website scraper, no documented limit
+    "rss":       0,   # free — feedparser RSS, no limit
 }
 
-ApiName = Literal["serper", "tavily"]
+ApiName = Literal["serper", "tavily", "nse_india", "rss"]
 
 
 def _current_month() -> str:
@@ -57,8 +59,11 @@ def _load() -> dict:
     if _USAGE_FILE.exists():
         try:
             return json.loads(_USAGE_FILE.read_text(encoding="utf-8"))
-        except Exception:
-            pass
+        except (json.JSONDecodeError, OSError) as exc:
+            logger.warning(
+                "[api_usage] Failed to load %s: %s — resetting monthly counters",
+                _USAGE_FILE, exc,
+            )
     return {}
 
 
@@ -73,9 +78,10 @@ def _save(data: dict) -> None:
 def _ensure_month(data: dict, month: str) -> dict:
     """Reset counters if the stored month differs from the current month."""
     if data.get("month") != month:
-        data = {"month": month, "serper": {"calls": 0}, "tavily": {"calls": 0}}
-    for api in ("serper", "tavily"):
+        data = {"month": month}
+    for api in _LIMITS:
         data.setdefault(api, {"calls": 0})
+    data["month"] = month
     return data
 
 
@@ -161,12 +167,15 @@ def log_run_api_usage(run_id: str, ticker: str, before: dict[str, int]) -> None:
 
     serper = usage["serper"]
     tavily = usage["tavily"]
+    nse    = usage.get("nse_india", {"calls": 0})
+    rss    = usage.get("rss", {"calls": 0})
     logger.info(
-        "[api_usage] %s  |  Serper: %d/%d used (%.1f%% of %d/mo)  |  "
-        "Tavily: %d/%d used (%.1f%% of %d/mo)",
+        "[api_usage] %s  |  Serper: %d/%d (%.1f%%)  |  Tavily: %d/%d (%.1f%%)  "
+        "|  NseIndia: %d (free)  |  RSS: %d (free)",
         usage["month"],
-        serper["calls"], serper["limit"], serper["pct_used"], serper["limit"],
-        tavily["calls"], tavily["limit"], tavily["pct_used"], tavily["limit"],
+        serper["calls"], serper["limit"], serper["pct_used"],
+        tavily["calls"], tavily["limit"], tavily["pct_used"],
+        nse["calls"], rss["calls"],
     )
 
 

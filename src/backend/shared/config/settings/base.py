@@ -25,23 +25,28 @@ load_dotenv()  # reads .env in project root if present
 OPENROUTER_API_KEY: str = os.getenv("OPENROUTER_API_KEY", "your-openrouter-api-key-here")
 OPENROUTER_BASE_URL: str = "https://openrouter.ai/api/v1"
 
-# Available OpenRouter model IDs — change LLM_MODEL in .env to switch:
-#   qwen/qwen3-235b-a22b           – DEFAULT: accuracy-first, large MoE (~$0.017/run)
-#   qwen/qwen3.5-flash-02-23       – fast, cheap ($0.065/$0.26 per M, ~$0.006/run)
-#   mistralai/mistral-small-2603   – strong reasoning ($0.15/$0.60 per M, ~$0.013/run)
-#   qwen/qwen-2.5-72b-instruct     – higher quality ($0.35/$0.40 per M, ~$0.017/run)
-#   meta-llama/llama-3.3-70b-instruct – Llama alternative
-LLM_MODEL: str = os.getenv("LLM_MODEL", "qwen/qwen3-235b-a22b")
+# Hybrid model tiers — chosen from the 2026-06-03 benchmark (scripts/model_bench.py).
+# qwen3-235b RETIRED: qwen3.6-flash beat it on depth, speed AND reliability for ~the same cost.
+#   FAST      – chat tool-loop (tools + free text, no json_object): fast, strong tool-use. qwen/qwen3.6-flash
+#   REASONING – judgment calls (aggregator verdict, RL feedback/thesis): deepest answers. qwen/qwen3.7-max
+#               NB validated for response_format=json_object — thinking models (e.g. qwen3-235b) break it.
+#   BULK      – high-volume sector-agent scoring (json_object): the JSON-proven model. qwen-2.5-72b
+#               (the .env-tested workhorse; 235b was retired because it broke JSON output).
+# Override any tier in .env. Gemini 3.5 Flash rejected (broken output + 64× cost); Kimi too (empty + 68s).
+LLM_MODEL_FAST: str      = os.getenv("LLM_MODEL_FAST", "qwen/qwen3.6-flash")
+LLM_MODEL_REASONING: str = os.getenv("LLM_MODEL_REASONING", "qwen/qwen3.7-max")
+LLM_MODEL_BULK: str      = os.getenv("LLM_MODEL_BULK", "qwen/qwen-2.5-72b-instruct")
+# Back-compat catch-all: any call-site still reading LLM_MODEL gets the BULK tier
+# (was qwen3-235b-a22b until 2026-06-03).
+LLM_MODEL: str = os.getenv("LLM_MODEL", LLM_MODEL_BULK)
 LLM_TEMPERATURE: float = float(os.getenv("LLM_TEMPERATURE", "0.2"))
 LLM_MAX_TOKENS: int = int(os.getenv("LLM_MAX_TOKENS", "2048"))
 LLM_TIMEOUT_SECONDS: int = int(os.getenv("LLM_TIMEOUT_SECONDS", "60"))
 
-# Token cost rates (USD per million tokens) — update in .env when switching models:
-#   qwen/qwen3-235b-a22b:        input TBD / output TBD
-#   qwen/qwen3.5-flash-02-23:    0.065 / 0.26
-#   mistralai/mistral-small-2603: 0.15  / 0.60
-LLM_INPUT_COST_PER_M: float = float(os.getenv("LLM_INPUT_COST_PER_M", "0.065"))
-LLM_OUTPUT_COST_PER_M: float = float(os.getenv("LLM_OUTPUT_COST_PER_M", "0.26"))
+# Token cost rates (USD per million tokens) for telemetry — default to the BULK tier
+# (qwen3.6-flash). Override in .env if you repoint the tiers.
+LLM_INPUT_COST_PER_M: float = float(os.getenv("LLM_INPUT_COST_PER_M", "0.1875"))
+LLM_OUTPUT_COST_PER_M: float = float(os.getenv("LLM_OUTPUT_COST_PER_M", "1.125"))
 
 
 # ---------------------------------------------------------------------------
@@ -66,6 +71,7 @@ def get_serper_key(sector: str) -> str:
     return SERPER_API_KEY
 ALPHA_VANTAGE_API_KEY: str = os.getenv("ALPHA_VANTAGE_API_KEY", "")
 NEWSAPI_KEY: str = os.getenv("NEWSAPI_KEY", "")
+FINNHUB_API_KEY: str = os.getenv("FINNHUB_API_KEY", "")
 TWITTER_BEARER_TOKEN: str = os.getenv("TWITTER_BEARER_TOKEN", "")
 
 # ---------------------------------------------------------------------------
@@ -148,6 +154,18 @@ NEWS_SOURCES: list[str] = [
 # yfinance: NSE tickers need ".NS" suffix (e.g. MARUTI → MARUTI.NS)
 YFINANCE_SUFFIX: str = ".NS"
 
+# Yahoo symbol overrides — bare NSE ticker → exact yfinance symbol. Used when
+# Yahoo lists a name under a different code, or a corporate action (demerger /
+# rename) drops the old ticker. SINGLE SOURCE OF TRUTH — every NSE→yfinance
+# conversion path consults this (indicators fetcher, chat resolver, ticker
+# verification). Add a line here, not in individual modules.
+YF_SYMBOL_OVERRIDES: dict[str, str] = {
+    "TATAMOTORS": "TMPV.NS",      # Tata Motors demerged 2025 → Passenger Vehicles entity
+    "TVSMOTORS":  "TVSMOTOR.NS",  # NSE symbol is TVSMOTOR (no trailing S)
+    "CANARABANK": "CANBK.NS",     # NSE/Yahoo symbol is CANBK
+    "HEXAWARE":   "HEXT.NS",      # Yahoo lists Hexaware as HEXT
+}
+
 # Number of news articles to fetch per Serper/NewsAPI query
 NEWS_ARTICLES_PER_QUERY: int = int(os.getenv("NEWS_ARTICLES_PER_QUERY", "5"))
 
@@ -170,10 +188,17 @@ CRUDE_OIL_TICKER: str = "CL=F"          # WTI Crude Oil Futures
 INR_USD_TICKER: str = "INR=X"           # INR per USD
 STEEL_TICKER: str = "SLX"               # Steel ETF (proxy)
 ALUMINIUM_TICKER: str = "AA"            # Alcoa (proxy for aluminium price)
-RUBBER_TICKER: str = "^TOCOM_RUBBER"    # Tokyo Commodity Exchange rubber (fallback: scrape)
+RUBBER_TICKER: str = "^TOCOM_RUBBER"    # Tokyo Commodity Exchange rubber (may be delisted; macro.py falls back gracefully)
+RUBBER_TICKER_FALLBACKS: list[str] = ["RUBR.L", "SGX:SIR1!", "TOCOM:RSS3"]  # alternatives tried in order
 PLATINUM_TICKER: str = "PPLT"           # Aberdeen Platinum ETF (catalytic converters)
 PALLADIUM_TICKER: str = "PALL"          # Aberdeen Palladium ETF (catalytic converters)
 BRENT_TICKER: str = "BZ=F"             # Brent Crude Futures (polymer cost proxy)
+
+# RBI policy rate — algorithm constant (not an API secret, not in .env)
+# Update here when RBI changes rates; the live-fetch redesign (dynamic Serper) will replace this.
+RBI_REPO_RATE_PCT: str = "5.25"        # Updated: live Serper fetch confirmed 5.25% (2026); fallback if Serper fails
+RBI_REPO_RATE_DATE: str = "2026-02-07"
+RBI_REPO_RATE_STANCE: str = "neutral"
 
 # Peer OEM tickers for correlation (NSE .NS suffix applied automatically)
 PEER_TICKERS: list[str] = [
@@ -266,23 +291,23 @@ CSHARP_API_URL: str = os.getenv("CSHARP_API_URL", "http://localhost:5000")
 PREDICTION_DATA_DIR: str = os.getenv("PREDICTION_DATA_DIR", "data/predictions")
 
 # How many trading days forward to forecast on month-start
-FORECAST_HORIZON_DAYS: int = int(os.getenv("FORECAST_HORIZON_DAYS", "30"))
+FORECAST_HORIZON_DAYS: int = 30
 
 # Maximum weight change applied in a single daily adaptation step (per agent)
-WEIGHT_MAX_STEP: float = float(os.getenv("WEIGHT_MAX_STEP", "0.05"))
+WEIGHT_MAX_STEP: float = 0.05
 
 # Maximum total drift any agent weight is allowed to move from its base value
-WEIGHT_MAX_DRIFT: float = float(os.getenv("WEIGHT_MAX_DRIFT", "0.15"))
+WEIGHT_MAX_DRIFT: float = 0.15
 
 # Minimum rolling days required before weight adaptation kicks in
-WEIGHT_MIN_OBSERVATIONS: int = int(os.getenv("WEIGHT_MIN_OBSERVATIONS", "3"))
+WEIGHT_MIN_OBSERVATIONS: int = 3
 
 # Accuracy window: how many recent days are used to judge agent direction accuracy
-WEIGHT_ACCURACY_WINDOW: int = int(os.getenv("WEIGHT_ACCURACY_WINDOW", "7"))
+WEIGHT_ACCURACY_WINDOW: int = 7
 
 # Thresholds for weight boost / penalty
-WEIGHT_BOOST_HIT_RATE: float = float(os.getenv("WEIGHT_BOOST_HIT_RATE", "0.70"))   # ≥70% → +boost
-WEIGHT_PENALTY_HIT_RATE: float = float(os.getenv("WEIGHT_PENALTY_HIT_RATE", "0.40"))  # ≤40% → −penalty
+WEIGHT_BOOST_HIT_RATE: float = 0.70    # ≥70% hit rate → apply weight boost
+WEIGHT_PENALTY_HIT_RATE: float = 0.40  # ≤40% hit rate → apply weight penalty
 
 # Cron expression for the daily feedback review job (default: weekdays 4:30pm IST = 11:00 UTC)
 FEEDBACK_CRON: str = os.getenv("FEEDBACK_CRON", "0 11 * * 1-5")
@@ -291,15 +316,56 @@ FEEDBACK_CRON: str = os.getenv("FEEDBACK_CRON", "0 11 * * 1-5")
 # P5 — Regime Detection Thresholds
 # ---------------------------------------------------------------------------
 
-# Regime thresholds — overridable via env vars (see STATIC_AUDIT.md #3)
-VIX_VOLATILE_THRESHOLD: float  = float(os.getenv("VIX_VOLATILE_THRESHOLD", "22.0"))
-VIX_LOW_VOL_THRESHOLD: float   = float(os.getenv("VIX_LOW_VOL_THRESHOLD",  "14.0"))
-FII_PROXY_THRESHOLD_PCT: float = float(os.getenv("FII_PROXY_THRESHOLD_PCT", "1.0"))
-RSI_OVERBOUGHT: float          = float(os.getenv("RSI_OVERBOUGHT",          "70.0"))
-RSI_OVERSOLD: float            = float(os.getenv("RSI_OVERSOLD",            "30.0"))
+# Regime detection thresholds — algorithm constants, not env-configurable
+VIX_VOLATILE_THRESHOLD: float  = 22.0   # VIX above this → volatile macro
+VIX_LOW_VOL_THRESHOLD: float   = 14.0   # VIX below this → calm/trending
+FII_PROXY_THRESHOLD_PCT: float = 1.0    # Nifty 5-day move threshold for FII proxy
+RSI_OVERBOUGHT: float          = 70.0   # RSI above this → overbought
+RSI_OVERSOLD: float            = 30.0   # RSI below this → oversold
 
 # Direction classification threshold for RL feedback (see STATIC_AUDIT.md #5)
-RL_FLAT_THRESHOLD_PCT: float = float(os.getenv("RL_FLAT_THRESHOLD_PCT", "0.3"))
+RL_FLAT_THRESHOLD_PCT: float = 0.3     # moves within ±0.3% classified as FLAT
+
+# Early-exit: skip orchestrator re-run when direction correct + error below this %
+# Set to 0.0 to disable early exit entirely.
+RL_AGENT_RERUN_THRESHOLD_PCT: float = 0.5
+
+# Scheduler parallelism: how many tickers can be reviewed concurrently.
+# Default 1 = sequential (safe without file locking).
+# Set to 2-4 in .env once shared ledger locking (P1-7) is confirmed stable.
+RL_SCHEDULER_MAX_WORKERS: int = int(os.getenv("RL_SCHEDULER_MAX_WORKERS", "1"))
+
+# ---------------------------------------------------------------------------
+# Conviction Streak (P3) — tracker.py
+# ---------------------------------------------------------------------------
+
+# Streak length at which FeedbackAgent prompt receives a streak warning block
+RL_STREAK_WARNING_THRESHOLD: int = 8
+
+# RSI amplifier applied to reversion_prior when sector RSI contradicts verdict
+RL_RSI_AMPLIFIER: float = 1.50
+
+# Absolute cap on reversion_prior including any amplification
+RL_MAX_REVERSION_PRIOR: float = 0.30
+
+# ---------------------------------------------------------------------------
+# ThesisReviewer (Section 21) — thesis_reviewer.py
+# ---------------------------------------------------------------------------
+
+# ATR-relative trigger: threshold = max(floor, multiplier × atr_pct)
+RL_ATR_THRESHOLD_FLOOR: float = 1.5       # minimum trigger % regardless of ATR
+RL_ATR_THRESHOLD_MULTIPLIER: float = 1.5  # multiplier applied to ticker ATR%
+
+# ---------------------------------------------------------------------------
+# Lesson Propagation (P2) — ledger_propagator.py
+# ---------------------------------------------------------------------------
+
+# Confidence blend weights when merging a repeated lesson pattern
+RL_LESSON_BLEND_EXISTING: float = 0.70   # weight given to the accumulated signal
+RL_LESSON_BLEND_INCOMING: float = 0.30   # weight given to the new confirmation
+
+# Confidence bonus per new ticker independently confirming a shared lesson
+RL_CROSS_TICKER_BOOST: float = 0.05
 
 VIX_FALLBACK: float = 17.0              # NORMAL regime midpoint; used on yfinance error
 FII_PROXY_FALLBACK: float = 0.0         # Neutral; used on yfinance error
@@ -320,6 +386,55 @@ REGIME_FII_PROXY_TICKER: str = "^NSEI"          # Nifty 50 for 5-day momentum pr
 # Applied on top of learned WeightMemory weights (not stored, daily-only modifier).
 # Agents not listed default to 1.0 (passthrough).
 # Columns: MACRO_CRISIS, RISK_OFF, NORMAL, RISK_ON, MOMENTUM_EXTENDED, OVERSOLD
+# ---------------------------------------------------------------------------
+# P3-12 — Sector-Agent → Regime-Multiplier Role Mapping
+#
+# REGIME_MULTIPLIERS uses automobile agent names as canonical keys.
+# For other sectors, map each agent to the automobile role it most closely
+# represents so apply_regime_multipliers() can look up the right multiplier.
+#
+# If an agent is NOT listed here for its sector, it defaults to multiplier 1.0.
+# ---------------------------------------------------------------------------
+SECTOR_AGENT_REGIME_ROLE: dict[str, dict[str, str]] = {
+    "banking_bfsi": {
+        "fundamentals":  "fundamentals",       # earnings quality → fundamentals
+        "risk":          "risk_macro",          # credit risk, NPA → risk_macro
+        "macro_policy":  "policy_regulatory",  # RBI policy → policy_regulatory
+        "institutional": "sentiment",           # FII/DII flows → sentiment
+        "technical":     "pattern_analysis",   # chart patterns → pattern_analysis
+        "business":      "valuation_catalyst", # loan book growth → valuation_catalyst
+    },
+    "it_sector": {
+        "fundamentals":   "fundamentals",
+        "risk_macro":     "risk_macro",
+        "global_macro":   "risk_macro",         # US tech spend risk → risk_macro
+        "peer_benchmark": "competitive_intel",  # TCS vs Infosys → competitive_intel
+        "transcript_nlp": "sentiment",          # earnings call NLP → sentiment
+        "technical":      "pattern_analysis",
+        "valuation":      "valuation_catalyst",
+    },
+    "renewable_energy": {
+        "fundamentals":     "fundamentals",
+        "business":         "sales_demand",      # capacity pipeline → sales_demand
+        "valuation":        "valuation_catalyst",
+        "sentiment_policy": "policy_regulatory", # MNRE/CERC policy → policy_regulatory
+        "technical":        "pattern_analysis",
+        "risk":             "risk_macro",         # DISCOM/curtailment risk → risk_macro
+    },
+    "automobile": {
+        # Identity mapping — automobile agents already match the canonical names
+        "sales_demand":       "sales_demand",
+        "raw_materials":      "raw_materials",
+        "fundamentals":       "fundamentals",
+        "pattern_analysis":   "pattern_analysis",
+        "sentiment":          "sentiment",
+        "policy_regulatory":  "policy_regulatory",
+        "competitive_intel":  "competitive_intel",
+        "risk_macro":         "risk_macro",
+        "valuation_catalyst": "valuation_catalyst",
+    },
+}
+
 REGIME_MULTIPLIERS: dict[str, dict[str, float]] = {
     "MACRO_CRISIS": {
         "risk_macro":         1.40,
@@ -391,16 +506,22 @@ REGIME_MULTIPLIERS: dict[str, dict[str, float]] = {
 
 # ---------------------------------------------------------------------------
 # STATIC_AUDIT #4 — RL weight delta constants (moved from weight_adapter.py)
-# All 7 constants are now env-overridable instead of hardcoded module globals.
+# These are algorithm parameters — plain constants, not env-configurable.
 # ---------------------------------------------------------------------------
 
-RL_BOOST: float               = float(os.getenv("RL_BOOST",               "+0.02"))
-RL_PENALTY: float             = float(os.getenv("RL_PENALTY",             "-0.03"))
-RL_MISS_STREAK_PENALTY: float = float(os.getenv("RL_MISS_STREAK_PENALTY", "-0.05"))
-RL_BIAS_TRIGGER: float        = float(os.getenv("RL_BIAS_TRIGGER",        "0.55"))
-RL_BIAS_FULL: float           = float(os.getenv("RL_BIAS_FULL",           "0.70"))
-RL_TIMING_FREE_WINDOW: int    = int(os.getenv("RL_TIMING_FREE_WINDOW",    "3"))
-RL_TIMING_PARTIAL_WINDOW: int = int(os.getenv("RL_TIMING_PARTIAL_WINDOW", "7"))
+RL_BOOST: float               =  0.02   # weight delta when hit_rate ≥ WEIGHT_BOOST_HIT_RATE
+RL_PENALTY: float             = -0.03   # weight delta when hit_rate ≤ WEIGHT_PENALTY_HIT_RATE
+RL_MISS_STREAK_PENALTY: float = -0.05   # base bias penalty at full bias_score
+RL_BIAS_TRIGGER: float        =  0.55   # bias score at which penalty starts scaling
+RL_BIAS_FULL: float           =  0.70   # bias score at which full penalty applies
+RL_TIMING_FREE_WINDOW: int    =  3      # lag ≤ N trading days → 0× timing penalty
+RL_TIMING_PARTIAL_WINDOW: int =  7      # lag ≤ N trading days → 0.20× timing penalty
+
+# Weight drift ceiling escape hatch: agents with ≥ N consecutive correct days
+# are allowed to drift up to ESCAPE_MULTIPLIER × WEIGHT_MAX_DRIFT.
+# Prevents the 0.15 cap from blocking learning on clearly reliable agents.
+RL_WEIGHT_DRIFT_ESCAPE_DAYS: int = int(os.getenv("RL_WEIGHT_DRIFT_ESCAPE_DAYS", "14"))
+RL_WEIGHT_DRIFT_ESCAPE_MULTIPLIER: float = float(os.getenv("RL_WEIGHT_DRIFT_ESCAPE_MULTIPLIER", "1.5"))
 
 # ---------------------------------------------------------------------------
 # STATIC_AUDIT #9 — News geo: removed country filter entirely
@@ -414,8 +535,8 @@ RL_TIMING_PARTIAL_WINDOW: int = int(os.getenv("RL_TIMING_PARTIAL_WINDOW", "7"))
 # STATIC_AUDIT #16 — Tavily content truncation (moved from tavily_fetcher.py)
 # ---------------------------------------------------------------------------
 
-SERPER_TIMEOUT_SECONDS: int    = int(os.getenv("SERPER_TIMEOUT_SECONDS",    "10"))
-TAVILY_MAX_CONTENT_CHARS: int  = int(os.getenv("TAVILY_MAX_CONTENT_CHARS",  "600"))
+SERPER_TIMEOUT_SECONDS: int   = 10    # Serper HTTP timeout in seconds
+TAVILY_MAX_CONTENT_CHARS: int = 600  # Truncate Tavily full-page content at this length
 
 # ---------------------------------------------------------------------------
 # Chat Reviewer Loop
@@ -424,7 +545,7 @@ TAVILY_MAX_CONTENT_CHARS: int  = int(os.getenv("TAVILY_MAX_CONTENT_CHARS",  "600
 # Reviewer checks: date integrity, price grounding, question relevance.
 # Each extra cycle costs ~300 tokens (reviewer) + ~600 tokens (re-synthesis).
 # ---------------------------------------------------------------------------
-CHAT_MAX_REVIEW_CYCLES: int = int(os.getenv("CHAT_MAX_REVIEW_CYCLES", "1"))
+CHAT_MAX_REVIEW_CYCLES: int = 0  # Reviewer loop removed in 3-node pipeline redesign
 
 # ---------------------------------------------------------------------------
 # Macro News Background Feed

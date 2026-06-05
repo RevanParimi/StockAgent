@@ -99,9 +99,15 @@ INFERENCE RULES:
 
 ANALYSIS_PROMPT = """Analyse the Sentiment outlook for Indian automobile company: **{ticker}** ({company_name}).
 
+<<<<<<< HEAD
 Score each dimension from 0.0 (very negative) to 1.0 (very positive). Apply the scoring philosophy
 from your system instructions. Never assign 0.5 as a default. Weight management commentary and
 institutional signals 2–3x higher than social media in your overall_score computation.
+=======
+{business_model_context}
+
+Score each dimension from 0.0 (very negative) to 1.0 (very positive):
+>>>>>>> main
 
 DIMENSIONS TO SCORE:
 
@@ -148,6 +154,7 @@ DIMENSIONS TO SCORE:
 Context / recent data:
 {context}
 
+<<<<<<< HEAD
 ANALYSIS INSTRUCTIONS:
 - Score institutional_sentiment and management_tone as the primary anchors of overall_score.
   If both are >= 0.70, overall_score should not fall below 0.55 regardless of social media noise.
@@ -162,6 +169,15 @@ ANALYSIS INSTRUCTIONS:
 - If any dimension has insufficient data, record it in missing_data_points and reduce confidence_score.
 
 Return ONLY valid JSON in this exact schema:
+=======
+Return ONLY valid JSON. IMPORTANT: Be ticker-specific. Cite actual sentiment signals from the context.
+For key_positives/key_risks: quote specific evidence (e.g. "Management guided 15% volume growth in FY27; tone confident").
+For ticker_vs_peers: cite relative sentiment vs named peers (e.g. "MARUTI news sentiment +0.7 vs TATA +0.4 vs M&M +0.6").
+For bull_case_if: name the specific sentiment catalyst (e.g. "If e-Vitara reviews go viral with 5M+ YouTube views at launch").
+For bear_case_if: name the specific sentiment risk (e.g. "If EV recall or quality issue surfaces, dealer NPS drops below 50").
+For what_changed: cite what shifted in sentiment signals this cycle vs last.
+
+>>>>>>> main
 {{
   "agent": "sentiment",
   "ticker": "{ticker}",
@@ -179,8 +195,18 @@ Return ONLY valid JSON in this exact schema:
   "missing_data_points": [<string, each data gap that reduced confidence_score>],
   "key_positives": [<string>, ...],
   "key_risks": [<string>, ...],
+<<<<<<< HEAD
   "summary": "<3-4 sentence narrative: management tone quality, institutional stance, dominant narrative, key sentiment risk or catalyst>",
   "data_freshness": "<date of most recent data point used>"
+=======
+  "summary": "<2-3 sentence narrative>",
+  "data_freshness": "<date of most recent data point used>",
+  "ticker_vs_peers": "<relative sentiment comparison vs named peers with specific signals>",
+  "bull_case_if": "<specific sentiment catalyst + observable metric that would add ~0.15 to score>",
+  "bear_case_if": "<specific sentiment risk + observable trigger that would cut ~0.15 from score>",
+  "what_changed": "<what shifted in news/management/social sentiment this cycle vs last, with evidence>",
+  "data_confidence": <float 0.3-1.0>
+>>>>>>> main
 }}
 """
 

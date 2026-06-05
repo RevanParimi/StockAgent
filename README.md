@@ -195,14 +195,20 @@ This is not a prediction — it is a calibration. The system is telling you: *"W
 
 ## The Chat Assistant
 
-The floating orb (bottom-right corner) opens a chat assistant that can answer questions in real time:
+The floating orb (bottom-right corner) opens a chat assistant — an **agentic tool-loop** that reasons,
+calls tools across several rounds, and answers from live data:
 
-- **"What is the current price of MARUTI?"** → fetches live from yfinance
-- **"Why did Tata Motors fall today?"** → searches live news via Tavily
-- **"What is StockAgent's current rating on HDFCBANK?"** → reads from analysis database
-- **"Compare INFY vs TCS"** → fetches latest scores for both
+- **"Which IT stocks should I buy now?"** → `screen_stocks` (value mode) — surfaces the **beaten-down names near 1-month lows** (buy-the-dip), then confirms catalysts with live news. It understands that "good to invest" means *buy low*, not echo today's gainers or famous blue-chips.
+- **"Which auto stocks should I book profit on?"** → `screen_stocks` (profit mode) — the **extended names near 1-month highs**.
+- **"What is the current price of Reliance?"** → `get_live_price` — NSE-first symbol resolution (no more wrong US tickers), labelled `live` or `last close <date>` by the IST market session.
+- **"Why did Tata Motors fall today?"** → `search_market_news` — live news via Serper, fused across multiple query variants (RRF) with a Tavily fallback.
+- **"What is StockAgent's rating on HDFCBANK?"** → `get_stock_analysis` · **"How is the Banking sector today?"** → `get_sector_snapshot` (index + per-stock movers) · **"Which agent should I trust?"** → `get_rl_insights` · **"Run a fresh analysis on BAJAJ-AUTO"** → `run_agent_analysis`.
 
-The chat assistant uses a tool loop — before answering any price question, it always fetches the live price first. It never hallucinates numbers. Conversation history is maintained within the session so you can follow up naturally.
+For buy/sell/momentum questions a **deterministic pre-router** fetches the screen and news *before* the
+model answers — so the right candidates and real, dated sources always reach it. It is grounded to the
+IST market session (it knows whether the market is pre-open, open, or closed), never quotes a price it
+didn't fetch, and never invents a source. Conversation history is kept within the session for natural
+follow-ups. Full design: [`docs/CHAT_ARCHITECTURE.md`](docs/CHAT_ARCHITECTURE.md).
 
 ---
 
@@ -255,14 +261,17 @@ You can also disable individual agents entirely (weight = 0) if you want to run 
 
 ## Analytics Page
 
-The Analytics page shows the RL system's performance over time:
+The Analytics page and `/analytics` API expose the RL system's performance over time:
 
-- **Direction accuracy** — what % of daily predictions got the up/down direction correct
-- **Weight drift** — how far each agent's learned weight has moved from its default
-- **Top missed factors** — which real-world events the system has been most consistently surprised by
-- **Active lessons** — the current contents of the learning ledger, with confidence scores and how many times each pattern has been observed
+- **Direction accuracy** (`/analytics/agent-accuracy`) — per-agent hit rates and average price prediction error
+- **Weight drift** (`/analytics/weight-drift`) — how far each agent's learned weight has moved from its default, shown as a time-series
+- **Miss breakdown** (`/analytics/miss-breakdown`) — miss type counts by ticker (`direction_flip`, `model_bias`, `timing`, `magnitude`, `data_gap`, `external_shock`)
+- **Conviction outcomes** (`/analytics/conviction-outcomes`) — streak length bucketed against accuracy (are long streaks more or less reliable?)
+- **Sector comparison** (`/analytics/sector-comparison`) — cross-sector average scores and verdict distribution
+- **Full RL export** (`/analytics/rl-export?format=csv|json`) — raw performance rows for external analysis
+- **Power BI feed** (`/analytics/powerbi-feed`) — OData v4 JSON feed with EDMX metadata for direct Power BI Web connector ingestion
 
-This page is honest about the system's blind spots. If crude oil spikes keep catching it off guard, that shows up here — and the PromptEnhancer will start injecting crude oil queries into relevant agents automatically to reduce that gap over time.
+This page is honest about the system's blind spots. If crude oil spikes keep catching it off guard, that shows up in miss-breakdown — and the PromptEnhancer will start injecting crude oil queries into relevant agents automatically to reduce that gap over time.
 
 ---
 
@@ -298,10 +307,14 @@ A surprise government order, a sudden exchange circuit breaker, or a geopolitica
 
 | Layer | Technology |
 |---|---|
-| AI model | Qwen 235B via OpenRouter |
+| AI models (hybrid, via OpenRouter) | `qwen3.6-flash` for the chat assistant · `qwen3.7-max` for the verdict + RL reasoning · `qwen-2.5-72b` for the 9 sector agents (tier chosen by a benchmark; Qwen3-235B retired) |
 | Analysis framework | LangGraph (parallel agent dispatch) |
 | Backend | Python FastAPI |
-| Data | yfinance (prices), Serper (news search), Tavily (policy docs) |
+| Data — prices & OHLCV | yfinance (NSE/BSE prices, 10-year OHLCV, sector indices, commodities) |
+| Data — news & search | Serper News API (primary), Tavily (fallback + policy docs) |
+| Data — NSE exchange | nsepython — live FII/DII flows, bulk deals, upcoming earnings events |
+| Data — MF flows | mfapi.in (AMFI) — sector ETF 30-day NAV momentum (herding signal) |
+| Data — factor regime | IIMA Indian Fama-French 4-Factor dataset — long-run momentum/style regime prior |
 | Frontend | React (Babel standalone, no build step) |
 | Database | SQLite (analysis history) + JSON files (RL memory) |
 | Deployment | Railway (Docker) |
@@ -463,10 +476,17 @@ A quick guide to every abbreviation, metric, and concept you will encounter in S
 
 | Term | What it measures | How it is used |
 |---|---|---|
-| **RSI** (Relative Strength Index, 0–100) | Momentum — is the stock overbought or oversold? | RSI > 70 = overbought, potential reversal. RSI < 30 = oversold, potential bounce. Used in all sector pattern agents |
-| **MACD** (Moving Average Convergence Divergence) | Trend momentum — signal and histogram | MACD crossing above signal line = bullish momentum. Renewable energy uses weekly MACD to filter sector noise |
-| **Bollinger Bands** (20-day MA ± 2σ) | Volatility envelope | Stock near upper band with declining volume = exhaustion signal. Used in automobile pattern agent |
-| **Golden / Death Cross** | 50-day MA crossing 200-day MA | Golden cross (50 above 200) = bullish; death cross (50 below 200) = bearish. Used in RE technical agent |
+| **OHLCV** | Open, High, Low, Close, Volume — the 5 core data points for any trading period | Foundation of all technical analysis. Open = first trade price, Close = last trade price, High/Low = session extremes, Volume = shares traded. StockAgent fetches 10 years of daily OHLCV from yfinance for every tracked stock |
+| **ATR** (Average True Range) | A stock's typical daily price swing over the last 14 trading days | ATR% = ATR ÷ price. HDFCBANK ATR ~0.8% (stable), ADANIGREEN ATR ~3.5% (volatile). Used to calibrate how large a prediction miss needs to be before triggering a thesis review — a 2% miss on a 0.8% ATR stock is serious; the same miss on a 3.5% ATR stock is normal noise |
+| **RSI** (Relative Strength Index, 0–100) | Momentum — is the stock overbought or oversold? | RSI > 70 = overbought, potential reversal. RSI < 30 = oversold, potential bounce. Used in all sector pattern agents and to amplify mean-reversion caution when conviction streak is high |
+| **MACD** (Moving Average Convergence Divergence) | Trend momentum — signal line and histogram | MACD crossing above its signal line = bullish momentum building. Renewable energy uses weekly MACD to filter out short-term sector noise |
+| **Bollinger Bands** (20-day MA ± 2σ) | Volatility envelope around the moving average | Stock near upper band with declining volume = exhaustion signal. Stock touching lower band on high volume = capitulation. Used in automobile pattern agent |
+| **SMA / EMA** | Simple / Exponential Moving Average | SMA gives equal weight to all days in the window. EMA gives more weight to recent days. 50-day and 200-day SMAs are used for trend direction; short-term EMAs for momentum |
+| **Golden / Death Cross** | 50-day SMA crossing the 200-day SMA | Golden cross (50 rises above 200) = long-term bullish shift. Death cross (50 falls below 200) = long-term bearish shift. Used in RE technical agent as a filter for sector-level trend |
+| **Support / Resistance** | Historical price levels where buying or selling has repeatedly stalled | Support = floor where buyers historically stepped in. Resistance = ceiling where sellers historically emerged. Used in pattern analysis to define price targets and stop zones |
+| **Fibonacci retracement** | Key pullback levels derived from the Fibonacci sequence (23.6%, 38.2%, 50%, 61.8%) | After a strong move, stocks often retrace to these levels before resuming. Used in automobile pattern agent to identify entry zones after a rally |
+| **Delivery %** | Proportion of traded volume resulting in actual delivery (not squared off intraday) | High delivery % on a rising stock = genuine accumulation. Low delivery % on a rally = speculative froth. Used as a conviction signal in the conviction streak warning |
+| **Open Interest (OI)** | Total outstanding F&O contracts at any point in time | Rising OI with rising price = new longs being added (bullish). Rising OI with falling price = new shorts (bearish). Used as a supplementary signal in technical pattern analysis |
 
 ---
 
@@ -476,5 +496,5 @@ A quick guide to every abbreviation, metric, and concept you will encounter in S
 |---|---|
 | [CODEBASE.md](CODEBASE.md) | Full module map, all API endpoints, configuration reference |
 | [docs/RL_DESIGN.md](docs/RL_DESIGN.md) | RL feedback loop: formulas, daily flow, schemas, static vs LLM |
-| [docs/AGENT_DESIGN.md](docs/AGENT_DESIGN.md) | All sector agents, sub-scores, implementation status, full terminology reference |
+| [docs/AGENT_DESIGN.md — not yet created] | All sector agents, sub-scores, implementation status, full terminology reference |
 | [docs/AGENTIC_DESIGN.md](docs/AGENTIC_DESIGN.md) | All agents, tasks, data sources, static vs LLM boundary |

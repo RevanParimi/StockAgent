@@ -55,7 +55,8 @@ def _normalize_date(date_str: str) -> str:
     try:
         from dateutil import parser as _dp
         return _dp.parse(s).date().isoformat()
-    except Exception:
+    except Exception as exc:
+        logger.debug("[news] Date parse failed for %r: %s", s, exc)
         return s
 _NEWSAPI_URL = "https://newsapi.org/v2/everything"
 
@@ -99,7 +100,11 @@ def search_serper(
             timeout=_TIMEOUT,
         )
         resp.raise_for_status()
-        data = resp.json()
+        try:
+            data = resp.json()
+        except ValueError as exc:
+            logger.warning("[news] Serper returned non-JSON for query %r: %s", query, exc)
+            return []
         results = []
         for item in data.get("organic", [])[:n]:
             results.append({
@@ -260,3 +265,57 @@ def fetch_news_context(
             lines.append(f"• [Date: {dt}] {title}: {snippet}")
 
     return "\n".join(lines) if lines else "No news data available."
+
+
+# ---------------------------------------------------------------------------
+# RL daily review — per-ticker news context
+# ---------------------------------------------------------------------------
+
+def get_news_context(ticker: str, max_articles: int = 5) -> str:
+    """
+    Fetch recent news for a specific NSE ticker for the RL daily review.
+
+    Called by daily_review.py to populate FeedbackAgentInput.market_context_today.
+    Uses Serper /news with a company-specific query and geo=in for India.
+
+    Returns a formatted string with [Date: YYYY-MM-DD] tags so FeedbackAgent
+    can correlate articles with the trading day under review.
+    Returns "Market context unavailable." on failure — never raises.
+
+    Parameters
+    ----------
+    ticker       : NSE symbol e.g. "TATAMOTORS", "HDFCBANK"
+    max_articles : cap on number of articles returned (default 5)
+    """
+    try:
+        from backend.shared.config import settings as _s
+        key = _s.SERPER_API_KEY_2 or _s.SERPER_API_KEY
+        if not key:
+            logger.debug("[news] get_news_context: no Serper key configured")
+            return "Market context unavailable."
+
+        # Company-specific query — geo=in keeps results India-relevant
+        query   = f"{ticker} NSE India company news results"
+        results = search_serper_news(query, n=max_articles, api_key=key, geo="in")
+
+        if not results:
+            logger.debug("[news] get_news_context: no results for %s", ticker)
+            return "Market context unavailable."
+
+        lines = [f"Recent news for {ticker} (last 48h context):"]
+        for r in results[:max_articles]:
+            date_str = _normalize_date(r.get("date", ""))
+            title    = r.get("title", "").strip()
+            snippet  = r.get("snippet", "").strip()
+            source   = r.get("source", "")
+            if title:
+                lines.append(
+                    f"• [Date: {date_str}] [{source}] {title}"
+                    + (f": {snippet}" if snippet else "")
+                )
+
+        return "\n".join(lines) if len(lines) > 1 else "Market context unavailable."
+
+    except Exception as exc:
+        logger.warning("[news] get_news_context failed for %s: %s", ticker, exc)
+        return "Market context unavailable."

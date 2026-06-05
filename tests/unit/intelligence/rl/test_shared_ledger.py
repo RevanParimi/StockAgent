@@ -26,14 +26,17 @@ from pathlib import Path
 import pytest
 
 from core.intelligence.rl.stores.prediction_store import PredictionStore
+from core.config import settings
 from core.intelligence.rl.stores.ledger_propagator import (
-    _BLEND_EXISTING,
-    _BLEND_INCOMING,
-    _CROSS_TICKER_BOOST,
     build_tiered_lessons_summary,
     propagate_lesson_to_ledger,
     propagate_lessons,
 )
+
+# Constants now live in settings — alias locally so test assertions stay readable
+_BLEND_EXISTING   = settings.RL_LESSON_BLEND_EXISTING
+_BLEND_INCOMING   = settings.RL_LESSON_BLEND_INCOMING
+_CROSS_TICKER_BOOST = settings.RL_CROSS_TICKER_BOOST
 from core.schemas.feedback import LearningLedger, Lesson
 
 
@@ -511,3 +514,71 @@ class TestLessonSchema:
         path.write_text(json.dumps(ledger.model_dump(), indent=2), encoding="utf-8")
         loaded = LearningLedger(**json.loads(path.read_text()))
         assert loaded.lessons[0].contributing_tickers == ["MARUTI", "SBIN"]
+
+
+# ---------------------------------------------------------------------------
+# downgrade_stale_lessons
+# ---------------------------------------------------------------------------
+
+from datetime import date, timedelta
+from core.intelligence.rl.stores.ledger_propagator import downgrade_stale_lessons
+
+
+def _stale_lesson(scope: str, days_inactive: int, n_tickers: int = 1):
+    """Create a Lesson that has been inactive for days_inactive days."""
+    from core.schemas.feedback import Lesson
+    last_seen = (date.today() - timedelta(days=days_inactive)).isoformat()
+    return Lesson(
+        lesson_id="L_TEST",
+        date_learned="2026-01-01",
+        last_seen=last_seen,
+        category="macro",
+        scope=scope,
+        pattern="test_pattern",
+        observation="test observation",
+        rule="test rule",
+        confidence=0.75,
+        occurrences=2,
+        still_valid=True,
+        contributing_tickers=[f"TICK{i}" for i in range(n_tickers)],
+    )
+
+
+def test_downgrade_market_wide_single_ticker_stale():
+    """market_wide + 1 ticker + inactive >30d → downgraded to sector_wide."""
+    from core.schemas.feedback import LearningLedger
+    ledger = LearningLedger(ticker="SHARED", sector="automobile", last_updated="2026-01-01",
+                            lessons=[_stale_lesson("market_wide", days_inactive=35, n_tickers=1)])
+    n = downgrade_stale_lessons(ledger, staleness_days=30)
+    assert n == 1
+    assert ledger.lessons[0].scope == "sector_wide"
+
+
+def test_downgrade_sector_wide_single_ticker_very_stale():
+    """sector_wide + 1 ticker + inactive >60d → still_valid=False."""
+    from core.schemas.feedback import LearningLedger
+    ledger = LearningLedger(ticker="SHARED", sector="automobile", last_updated="2026-01-01",
+                            lessons=[_stale_lesson("sector_wide", days_inactive=65, n_tickers=1)])
+    n = downgrade_stale_lessons(ledger, staleness_days=30)
+    assert n == 1
+    assert ledger.lessons[0].still_valid is False
+
+
+def test_no_downgrade_multi_ticker_lesson():
+    """market_wide + 3 tickers → NOT downgraded even if stale."""
+    from core.schemas.feedback import LearningLedger
+    ledger = LearningLedger(ticker="SHARED", sector="automobile", last_updated="2026-01-01",
+                            lessons=[_stale_lesson("market_wide", days_inactive=45, n_tickers=3)])
+    n = downgrade_stale_lessons(ledger, staleness_days=30)
+    assert n == 0
+    assert ledger.lessons[0].scope == "market_wide"
+
+
+def test_no_downgrade_fresh_lesson():
+    """Lesson seen 5 days ago is not touched."""
+    from core.schemas.feedback import LearningLedger
+    ledger = LearningLedger(ticker="SHARED", sector="automobile", last_updated="2026-01-01",
+                            lessons=[_stale_lesson("market_wide", days_inactive=5, n_tickers=1)])
+    n = downgrade_stale_lessons(ledger, staleness_days=30)
+    assert n == 0
+    assert ledger.lessons[0].scope == "market_wide"

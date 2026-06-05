@@ -306,12 +306,18 @@ class BaseAgent(ABC):
     def _safe_parse(self, raw: str, ticker: str) -> AgentOutput:
         """Parse LLM JSON, falling back to an error output on failure."""
         try:
-            data = json.loads(raw)
+            # Strip markdown code fences that some models add despite json_object format.
+            stripped = (raw or "").strip()
+            if stripped.startswith("```"):
+                stripped = re.sub(r"^```(?:json)?\s*", "", stripped)
+                stripped = re.sub(r"\s*```\s*$", "", stripped).strip()
+
+            data = json.loads(stripped)
             # Thinking models (e.g. qwen3-235b) can return bare strings/numbers
             # instead of a JSON object even when json_object format is requested.
             # Extract the first {...} block from the raw string as a fallback.
             if not isinstance(data, dict):
-                match = re.search(r'\{.*\}', raw, re.DOTALL)
+                match = re.search(r'\{.*\}', stripped, re.DOTALL)
                 if match:
                     data = json.loads(match.group())
                 else:
@@ -321,8 +327,8 @@ class BaseAgent(ABC):
             return output
         except Exception as exc:
             logger.error(
-                "[%s] Failed to parse LLM output: %s\nRaw: %s",
-                self.agent_name, exc, raw[:500],
+                "[%s] Failed to parse LLM output for ticker=%s: %s | raw_preview=%r",
+                self.agent_name, ticker, exc, (raw or "")[:150],
             )
             return self._error_output(ticker, str(exc), raw)
 

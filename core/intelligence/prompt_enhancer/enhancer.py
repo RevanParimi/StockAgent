@@ -81,6 +81,49 @@ MISS_FACTOR_TO_QUERY_TEMPLATE: dict[str, dict[str, str]] = {
 
 SECTOR_MISS_FACTOR_TEMPLATES: dict[str, dict[str, dict[str, str]]] = {
 
+    "automobile": {
+        "FADA_dispatch_miss": {
+            "sales_demand":   "FADA retail dispatch {ticker} {month} {year}",
+            "fundamentals":   "{ticker} wholesale vs retail channel inventory days {month} {year}",
+        },
+        "EV_penetration_spike": {
+            "competitive_intel": "EV electric vehicle sales share India {month} {year}",
+            "risk_macro":        "{ticker} ICE cannibalisation EV market share impact {year}",
+        },
+        "steel_aluminium_cost": {
+            "raw_materials":  "India HRC hot-rolled coil steel price {month} {year}",
+            "risk_macro":     "aluminium LME price India import cost automobile {month}",
+        },
+        "dealer_inventory_flush": {
+            "sales_demand":   "{ticker} dealer inventory channel check days on ground {month} {year}",
+            "competitive_intel": "India two-wheeler four-wheeler inventory FADA channel {month} {year}",
+        },
+        "crude_rubber_cost": {
+            "raw_materials":  "natural rubber price India TOCOM {month} {year}",
+            "risk_macro":     "Brent crude impact India automobile input cost {month}",
+        },
+        "CAFE_regulatory_compliance": {
+            "policy_regulatory": "India CAFE 2.0 norms compliance cost OEM {year}",
+            "risk_macro":        "{ticker} fleet average fuel efficiency regulatory penalty {year}",
+        },
+        "semiconductor_supply": {
+            "risk_macro":     "automotive semiconductor chip shortage India {month} {year}",
+            "fundamentals":   "{ticker} production volume constraint semiconductor {year}",
+        },
+        "OEM_market_share_shift": {
+            "competitive_intel": "India passenger vehicle market share OEM {month} {year} SIAM",
+            "sales_demand":      "{ticker} vs competitors retail market share gain loss {month}",
+        },
+        "export_decline": {
+            "sales_demand":   "{ticker} export sales volume {month} {year} SIAM data",
+            "risk_macro":     "India automobile export demand Middle East Africa {year}",
+        },
+        "FII_outflow_spike": {
+            "risk_macro":     "{ticker} FII DII net flows provisional {date}",
+            "sentiment":      "FII selling India automobile sector {month} {year}",
+        },
+    },
+
     "banking_bfsi": {
         "GNPA_slippage": {
             "fundamentals": "{ticker} GNPA NPA slippage Q quarterly results {month} {year}",

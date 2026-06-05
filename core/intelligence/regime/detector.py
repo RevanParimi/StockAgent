@@ -42,10 +42,9 @@ from core.schemas.feedback import RegimeSnapshot
 
 logger = logging.getLogger(__name__)
 
-_RSI_PERIOD = 14
 
 
-def _compute_rsi(prices: pd.Series, period: int = _RSI_PERIOD) -> float:
+def _compute_rsi(prices: pd.Series, period: int = settings.RSI_PERIOD) -> float:
     """
     Wilder RSI(period) using pandas EWM.
     Returns the most recent RSI value, or 50.0 on failure.
@@ -160,11 +159,11 @@ class RegimeDetector:
         try:
             import yfinance as yf
             df = yf.Ticker(ticker_sym).history(period="3mo")
-            if df.empty or len(df) < _RSI_PERIOD + 1:
+            if df.empty or len(df) < settings.RSI_PERIOD + 1:
                 # Try fallback ticker if sector ticker gave insufficient data
                 if ticker_sym != settings.REGIME_SECTOR_FALLBACK_TICKER:
                     df = yf.Ticker(settings.REGIME_SECTOR_FALLBACK_TICKER).history(period="3mo")
-                if df.empty or len(df) < _RSI_PERIOD + 1:
+                if df.empty or len(df) < settings.RSI_PERIOD + 1:
                     return settings.RSI_FALLBACK
             return _compute_rsi(df["Close"])
         except Exception as exc:
@@ -248,6 +247,7 @@ class RegimeDetector:
 def apply_regime_multipliers(
     learned_weights: dict[str, float],
     multipliers: dict[str, float],
+    sector: str = "automobile",
 ) -> dict[str, float]:
     """
     Apply regime multipliers to learned weights and renormalise to sum=1.0.
@@ -256,14 +256,23 @@ def apply_regime_multipliers(
     ----------
     learned_weights : per-agent learned weights (sum ≈ 1.0)
     multipliers     : per-agent regime multipliers (from RegimeSnapshot.multipliers)
+    sector          : used to look up SECTOR_AGENT_REGIME_ROLE for non-automobile sectors
+
+    For non-automobile sectors, each agent is mapped to its canonical automobile role
+    via SECTOR_AGENT_REGIME_ROLE before the multiplier lookup.  Agents with no mapping
+    entry default to 1.0× (pass-through).
 
     Returns
     -------
     Renormalised effective weights dict. Agents not in multipliers get 1.0×.
     """
+    from core.config import settings as _s
+    role_map: dict[str, str] = getattr(_s, "SECTOR_AGENT_REGIME_ROLE", {}).get(sector, {})
+
     raw: dict[str, float] = {}
     for agent, weight in learned_weights.items():
-        mult = multipliers.get(agent, 1.0)
+        canonical_role = role_map.get(agent, agent)  # fall back to own name
+        mult = multipliers.get(canonical_role, 1.0)
         raw[agent] = weight * mult
 
     total = sum(raw.values())

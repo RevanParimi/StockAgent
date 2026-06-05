@@ -20,7 +20,10 @@ fetch_tavily_context(queries)      → str   (formatted for prompt injection)
 
 from __future__ import annotations
 
+import hashlib
 import logging
+from datetime import date
+from pathlib import Path
 from typing import Optional
 
 import requests
@@ -32,6 +35,15 @@ logger = logging.getLogger(__name__)
 
 _TAVILY_URL = "https://api.tavily.com/search"
 _TIMEOUT = 15  # Tavily fetches pages, so slower than Serper
+_TAVILY_CACHE_DIR = Path("data/tavily_cache")
+
+
+def _cache_path(queries: list[str], max_queries: int) -> Path:
+    """Deterministic cache path keyed on sorted query content + current month."""
+    month = date.today().strftime("%Y-%m")
+    canonical = "|".join(sorted(queries[:max_queries]))
+    q_hash = hashlib.md5(canonical.encode("utf-8")).hexdigest()[:12]
+    return _TAVILY_CACHE_DIR / month / f"{q_hash}.txt"
 
 
 def search_tavily(
@@ -94,11 +106,10 @@ def fetch_tavily_context(
     max_results_per_query: int = 2,
 ) -> str:
     """
-    Run up to `max_queries` Tavily searches and return formatted context
-    suitable for prompt injection.
-
-    Default max_queries=2 to stay within 1,000/month free tier budget
-    (110 analyses/month × 2 = 220 calls/month → 22% of free tier).
+    Run up to `max_queries` Tavily searches and return formatted context.
+    Results are cached to disk for the current calendar month — same query
+    within the same month returns cached result without hitting the API.
+    Default max_queries=2 to stay within 1,000/month free tier.
 
     Parameters
     ----------
@@ -113,6 +124,13 @@ def fetch_tavily_context(
     if not queries:
         return "No Tavily queries provided."
 
+    # --- Cache check ---
+    cache_file = _cache_path(queries, max_queries)
+    if cache_file.exists():
+        logger.debug("[tavily] Cache hit: %s", cache_file.name)
+        return cache_file.read_text(encoding="utf-8")
+
+    # --- Live fetch (existing logic unchanged) ---
     lines: list[str] = []
     for query in queries[:max_queries]:
         results = search_tavily(query, max_results=max_results_per_query)
@@ -133,4 +151,17 @@ def fetch_tavily_context(
                 content = content[:_max] + "…"
             lines.append(f"• {title}\n  {content}\n  Source: {url}")
 
-    return "\n".join(lines) if lines else "No Tavily data available."
+    result = "\n".join(lines) if lines else "No Tavily data available."
+
+    # --- Write to cache ---
+    try:
+        cache_file.parent.mkdir(parents=True, exist_ok=True)
+        cache_file.write_text(result, encoding="utf-8")
+        logger.debug("[tavily] Cache written: %s", cache_file.name)
+    except OSError as exc:
+        logger.warning(
+            "[tavily] Cache write failed for key %s (non-fatal): %s",
+            cache_file.name, exc,
+        )
+
+    return result

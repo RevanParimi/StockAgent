@@ -93,6 +93,8 @@ You are the only analyst. Ground every number in the data provided.
 
 ANALYSIS_PROMPT = """Analyse the intrinsic value and catalyst outlook for: **{ticker}** ({company_name}).
 
+{business_model_context}
+
 NOTE: Technical signals (RSI, MACD, support zones) are covered by the dedicated
 pattern_analysis agent. This agent focuses on valuation, catalyst quality, and re-rating probability.
 
@@ -152,6 +154,7 @@ DIMENSIONS TO SCORE:
 Raw fundamental and valuation data:
 {context}
 
+<<<<<<< HEAD
 ANALYSIS INSTRUCTIONS:
 - Compute fair_value_estimate as: EPS_TTM × peer_median_PE. Use forward EPS if available.
 - Bull case: EPS × (peer_median_PE + 2 turns). Base case: EPS × peer_median_PE.
@@ -170,6 +173,15 @@ ANALYSIS INSTRUCTIONS:
 - Do NOT write "analysts expect" or "consensus target" — derive every number from data only.
 
 Return ONLY valid JSON in this exact schema:
+=======
+Return ONLY valid JSON. IMPORTANT: Be ticker-specific. Cite actual P/E, EPS, and price targets derived from data.
+For key_positives/key_risks: quote specific valuation metrics (e.g. "MARUTI trailing P/E 22x vs peer median 28x; 21% discount").
+For ticker_vs_peers: cite specific P/E and valuation vs named peers (e.g. "MARUTI 22x P/E vs TATA 28x vs M&M 26x vs BAJAJ 34x").
+For bull_case_if: name the specific re-rating catalyst + P/E target (e.g. "If EV launch triggers re-rating to 28x P/E, upside 25%").
+For bear_case_if: name the specific de-rating risk (e.g. "If EV share loss persists, P/E contracts to 18x, downside 18%").
+For what_changed: cite what shifted in valuation this cycle (e.g. "P/E de-rated from 26x to 22x post EV delay; FII sold 120bps").
+
+>>>>>>> main
 {{
   "agent": "valuation_catalyst",
   "ticker": "{ticker}",
@@ -197,8 +209,18 @@ Return ONLY valid JSON in this exact schema:
   "missing_data_points": [<string, each data gap that reduced confidence_score or valuation_confidence>],
   "key_positives": [<string>, ...],
   "key_risks": [<string>, ...],
+<<<<<<< HEAD
   "summary": "<3-4 sentence narrative: valuation gap source (cyclical vs structural), re-rating probability estimate, key catalyst or trap risk, bull/bear scenario balance>",
   "data_freshness": "<today's date>"
+=======
+  "summary": "<2-3 sentence narrative on valuation gap and catalyst quality>",
+  "data_freshness": "<today's date>",
+  "ticker_vs_peers": "<specific P/E and valuation vs named peers with actual numbers>",
+  "bull_case_if": "<specific re-rating catalyst + P/E or price target that would add ~0.15 to score>",
+  "bear_case_if": "<specific de-rating risk + P/E contraction or downside % that would cut ~0.15 from score>",
+  "what_changed": "<what shifted in valuation/ownership this cycle vs last, with specific P/E or bps data>",
+  "data_confidence": <float 0.3-1.0>
+>>>>>>> main
 }}
 """
 

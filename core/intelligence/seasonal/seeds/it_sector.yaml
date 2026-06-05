@@ -126,3 +126,32 @@ patterns:
     validated_by_rl: false
     decay_exempt: true
     lunar_dependency: false
+
+  - id: "SEA_IT_005"
+    name: "fno_monthly_expiry_week"
+    evidence: >
+      NSE F&O monthly expiry falls on the last Thursday of each month.
+      In the final 5 trading days before expiry, OI unwinding and gamma
+      squeeze dynamics increase intraday volatility by 15-30% above
+      monthly average (NSE option analytics, 2023-2025).
+      Max pain convergence: stock prices statistically tend to gravitate
+      toward the strike with maximum option writer profit in expiry week.
+      INFY and TCS are major F&O-active stocks; pattern_analysis is especially
+      relevant for IT due to technical pinning patterns around key strikes.
+      Direction of move is ambiguous — determined by PCR and OI buildup.
+    months: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+    day_range: null
+    direction_bias: "volatile"
+    confidence: 0.70
+    agents_affected:
+      risk_macro: +0.03        # macro/risk signal more relevant near expiry
+      pattern_analysis: +0.04  # IT technical patterns (pinning, gamma) especially meaningful
+    narrative: >
+      F&O monthly expiry week: OI unwinding drives 15-30% above-average intraday
+      volatility. Price may pin near max pain strike. INFY/TCS F&O active; elevate
+      pattern_analysis (most useful for IT pinning dynamics) and risk_macro.
+    scope: "sector_wide"
+    validated_by_rl: false
+    decay_exempt: true
+    lunar_dependency: false
+    fno_week_only: true

@@ -36,12 +36,20 @@ Weighted composite score (pre-calculated): {weighted_score:.3f}
 
 Conflict flags detected: {conflict_flags}
 
-Instructions:
+AGENT NARRATIVES (use for cross-context synthesis):
+{agent_narratives}
+
+SYNTHESIS INSTRUCTIONS:
 1. Confirm or adjust the weighted score if conflicts materially alter the outlook.
 2. Map the final score to a verdict: STRONG BUY / BUY / NEUTRAL / SELL / STRONG SELL.
-3. Write a 3-5 sentence investment thesis.
-4. List top 3 conviction drivers and top 3 risks.
-5. If valuation_catalyst data is present in agent scores, extract and include:
+3. Connect cross-agent dots: if sales_demand sees inventory rising AND raw_materials sees costs stable,
+   ask whether it is demand-driven or supply push — name which.
+4. Identify confirmation: if 3+ agents cite the same risk, it is a conviction driver — elevate it in top_risks.
+5. Identify contradiction: if fundamentals is bullish but macro is bearish, explain why one wins near-term
+   in conflicts_resolved.
+6. For investment_thesis: write 2-3 sentences a sophisticated investor would find actionable,
+   citing specific numbers from the narratives above (e.g. margins, P/E, market share %).
+7. If valuation_catalyst data is present in agent scores, extract and include:
    - price_target (INR, base-case recovery level)
    - recovery_timeline_quarters (integer quarters to reach price target)
    - undervalued_by_pct (positive = undervalued; pull from current_discount_pct, flip sign)

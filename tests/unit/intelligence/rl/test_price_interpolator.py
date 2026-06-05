@@ -84,7 +84,9 @@ from backend.shared.schemas.feedback import (
 
 def _make_ohlcv(n_rows: int = 30, base_price: float = 10000.0, daily_range_pct: float = 1.5):
     """Create a synthetic OHLCV DataFrame for ATR testing."""
-    dates = pd.date_range(end=date.today(), periods=n_rows, freq="B")
+    # Use a fixed anchor business day to avoid weekend/holiday length mismatches
+    # when end=date.today() is a non-business day under pandas "B" freq.
+    dates = pd.bdate_range(start="2026-01-05", periods=n_rows)
     close = [base_price] * n_rows
     high  = [p * (1 + daily_range_pct / 100) for p in close]
     low   = [p * (1 - daily_range_pct / 100) for p in close]
@@ -553,3 +555,95 @@ class TestComputeHistoricalAvgReturn:
         result_b  = compute_historical_avg_return(log, "BUY")
         assert result_sb == 8.0   # only 3 STRONG BUY entries
         assert result_b is None    # only 1 BUY entry → insufficient
+
+
+# ---------------------------------------------------------------------------
+# New tests: load_recent_feedback_entries + cross-cycle compute_historical_avg_return
+# ---------------------------------------------------------------------------
+
+import json, tempfile
+from pathlib import Path
+from unittest.mock import patch, MagicMock
+from core.intelligence.rl.stores.prediction_store import PredictionStore
+
+
+def _make_feedback_log_file(ticker, cycle_id, entries_data, tmp_dir):
+    """Write a minimal feedback log JSON to tmp_dir/{sector}/{ticker}/."""
+    from backend.shared.schemas.feedback import DailyFeedbackLog, FeedbackEntry, MissAnalysis, TimingAccuracy
+    entries = []
+    for i, d in enumerate(entries_data):
+        ma = MissAnalysis(
+            primary_miss_agent="sentiment",
+            miss_type=d.get("miss_type", "magnitude"),
+            missed_factors=[],
+            over_weighted_factors=[],
+            agent_score_drift={},
+        )
+        ta = TimingAccuracy(predicted_peak_day=5, actual_move_start_day=5, lag_days=0, assessment="on_time")
+        entry = FeedbackEntry(
+            day=i + 1,
+            date=d["date"],
+            predicted_close=100.0,
+            actual_close=d["actual_close"],
+            price_error_pct=d["price_error_pct"],
+            direction_correct=d.get("direction_correct", True),
+            actual_direction="UP" if d["price_error_pct"] >= 0 else "DOWN",
+            predicted_verdict=d.get("verdict", "BUY"),
+            miss_analysis=ma,
+            timing=ta,
+        )
+        entries.append(entry)
+    log = DailyFeedbackLog(ticker=ticker, cycle_id=cycle_id, sector="automobile", entries=entries)
+    sector_dir = tmp_dir / "automobile" / ticker
+    sector_dir.mkdir(parents=True, exist_ok=True)
+    log_path = sector_dir / f"{cycle_id}_daily_feedback_log.json"
+    log_path.write_text(log.model_dump_json())
+    return log_path
+
+
+def test_load_recent_feedback_entries_returns_combined(tmp_path):
+    """load_recent_feedback_entries aggregates past cycles, not just current."""
+    _make_feedback_log_file("MARUTI", "MARUTI_2026-03", [
+        {"date": "2026-03-10", "actual_close": 102.0, "price_error_pct": 2.0, "verdict": "BUY"},
+        {"date": "2026-03-11", "actual_close": 98.0,  "price_error_pct": -2.0, "verdict": "BUY"},
+    ], tmp_path)
+    _make_feedback_log_file("MARUTI", "MARUTI_2026-04", [
+        {"date": "2026-04-10", "actual_close": 103.0, "price_error_pct": 3.0, "verdict": "BUY"},
+    ], tmp_path)
+
+    with patch("core.intelligence.rl.stores.prediction_store.settings") as ms:
+        ms.PREDICTION_DATA_DIR = str(tmp_path)
+        store = PredictionStore("MARUTI", sector="automobile")
+        entries = store.load_recent_feedback_entries(n_cycles=6)
+
+    assert len(entries) == 3
+
+
+def test_compute_historical_avg_return_accepts_entry_list():
+    """compute_historical_avg_return works when passed a list of FeedbackEntry objects."""
+    from backend.shared.schemas.feedback import FeedbackEntry, MissAnalysis, TimingAccuracy
+    ma = MissAnalysis(primary_miss_agent="x", miss_type="magnitude", missed_factors=[], over_weighted_factors=[], agent_score_drift={})
+    ta = TimingAccuracy(predicted_peak_day=1, actual_move_start_day=1, lag_days=0, assessment="on_time")
+    entries = [
+        FeedbackEntry(
+            day=i + 1,
+            date=f"2026-03-{10 + i:02d}",
+            predicted_close=100.0,
+            actual_close=102.0,
+            price_error_pct=float(i + 1),
+            direction_correct=True,
+            actual_direction="UP",
+            predicted_verdict="BUY",
+            miss_analysis=ma,
+            timing=ta,
+        )
+        for i in range(5)
+    ]
+    result = compute_historical_avg_return(entries, "BUY")
+    assert result is not None
+    assert isinstance(result, float)
+
+
+def test_compute_historical_avg_return_empty_list_returns_none():
+    result = compute_historical_avg_return([], "BUY")
+    assert result is None

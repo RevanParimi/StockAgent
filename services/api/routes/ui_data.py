@@ -25,6 +25,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 import uuid
 from datetime import date, datetime, timezone
 from pathlib import Path
@@ -44,6 +45,9 @@ _CUSTOM_TASKS_PATH   = Path("data/agent_tasks.json")
 _WATCHLIST_PATH      = Path("data/watchlist.json")
 # User-customised category ticker lists (overrides hardcoded _CATEGORIES tickers)
 _CATEGORY_TICKERS_PATH = Path("data/category_tickers.json")
+# Root directory where RL prediction envelopes are stored (sector/ticker/cycle.json)
+_PREDICTIONS_DIR = Path("data/predictions")
+_RL_INDEX_NAMES = frozenset({"SENSEX", "NIFTY", "NIFTY50", "NSEI", "BSESN"})
 
 
 # ---------------------------------------------------------------------------
@@ -188,7 +192,7 @@ _AGENT_META: list[dict] = _AGENT_META_BY_SECTOR["automobile"]
 
 _ALL_TICKERS: list[dict] = [
     {"sym": "MARUTI",      "name": "Maruti Suzuki India Ltd",        "yf": "MARUTI.NS"},
-    {"sym": "TATAMOTORS",  "name": "Tata Motors Ltd",                "yf": "TATAMOTORS.NS"},
+    {"sym": "TATAMOTORS",  "name": "Tata Motors (Passenger Veh) Ltd", "yf": "TMPV.NS"},
     {"sym": "M&M",         "name": "Mahindra & Mahindra Ltd",        "yf": "M&M.NS"},
     {"sym": "BAJAJ-AUTO",  "name": "Bajaj Auto Ltd",                 "yf": "BAJAJ-AUTO.NS"},
     {"sym": "HEROMOTOCO",  "name": "Hero MotoCorp Ltd",              "yf": "HEROMOTOCO.NS"},
@@ -633,11 +637,11 @@ async def _gather_market_data(db_latest: list[dict]) -> dict:
 # Routes
 # ---------------------------------------------------------------------------
 
-_VALID_SECTORS = set(_AGENT_META_BY_SECTOR.keys())
+_AGENT_SECTORS = set(_AGENT_META_BY_SECTOR.keys())  # sectors with UI agent definitions
 
 @router.get("/agents", summary="Agent definitions + current weights for a sector")
 async def get_agents(sector: str = Query(default="automobile", description="Sector key")) -> dict:
-    if sector not in _VALID_SECTORS:
+    if sector not in _AGENT_SECTORS:
         sector = "automobile"
     return _build_agents_response(sector)
 
@@ -660,7 +664,7 @@ async def update_agent_weights(
       - All final weights (base merged with overrides) must sum to 0.95–1.05
       - Only valid agent keys for the sector are accepted; unknown keys dropped
     """
-    if sector not in _VALID_SECTORS:
+    if sector not in _AGENT_SECTORS:
         sector = "automobile"
 
     valid_keys = set(m["key"] for m in _AGENT_META_BY_SECTOR[sector])
@@ -1413,25 +1417,68 @@ def _ctx_rl_learning() -> str:
         return ""
 
 
+def _session_state() -> dict:
+    """Current NSE session dict (see nse_calendar.market_session). Never raises."""
+    try:
+        from core.intelligence.rl.nse_calendar import market_session
+        return market_session()
+    except Exception:
+        from datetime import date as _d
+        return {"state": "OPEN", "is_live": True, "date": _d.today(),
+                "last_close_day": _d.today(), "opens_at": "09:15 IST", "closes_at": "15:30 IST"}
+
+
 def _nse_market_context() -> str:
     """
-    Returns a compact block showing today's date, NSE market status, and last
-    trading day.  Injected into every chat prompt so the LLM can reason about
-    why search results may be from a prior day (weekend / holiday).
+    Returns a compact block describing the *current* NSE session in IST — not
+    just whether today is a trading day, but whether the market is actually
+    trading right now (pre-market / pre-open / open / closed / holiday).
+
+    Injected into every chat prompt so the LLM can (a) avoid saying "the market
+    is open" before 09:15 IST, and (b) know whether a quoted price is a live
+    quote or a settled last-close. All reasoning is anchored to IST, since the
+    market trades in IST and a UTC date can be a day behind in early morning.
     """
     try:
-        from core.intelligence.rl.nse_calendar import is_trading_day, trading_days_ago
-        today = datetime.now(timezone.utc).date()
-        today_str = today.strftime("%Y-%m-%d (%A)")
-        if is_trading_day(today):
-            return f"TODAY: {today_str} — NSE market OPEN"
-        last_td = trading_days_ago(today, 1)
+        from core.intelligence.rl.nse_calendar import market_session
+
+        s = market_session()  # current IST moment
+        d = s["date"]
+        today_str = d.strftime("%Y-%m-%d (%A)")
+        last = s["last_close_day"]
+        last_str = last.strftime("%Y-%m-%d (%A)")
+        state = s["state"]
+
+        if state == "OPEN":
+            return (
+                f"TODAY: {today_str} IST — NSE OPEN (live, continuous trading until "
+                f"{s['closes_at']}). Quoted live prices are current."
+            )
+        if state == "PRE_OPEN":
+            return (
+                f"TODAY: {today_str} IST — NSE PRE-OPEN auction (09:00–09:15 IST); "
+                f"continuous trading starts {s['opens_at']}. The market has NOT opened "
+                f"for live trading yet. Prices shown are the LAST CLOSE ({last_str})."
+            )
+        if state == "PRE_MARKET":
+            return (
+                f"TODAY: {today_str} IST — NSE not yet open (opens {s['opens_at']}). "
+                f"The market has NOT opened for live trading yet. Prices shown are the "
+                f"LAST CLOSE ({last_str})."
+            )
+        if state == "CLOSED":
+            return (
+                f"TODAY: {today_str} IST — NSE CLOSED for the day (trading ended "
+                f"{s['closes_at']}). Prices shown are today's CLOSE ({last_str})."
+            )
+        # HOLIDAY (weekend / NSE holiday)
         return (
-            f"TODAY: {today_str} — NSE market CLOSED (weekend / holiday)\n"
-            f"Last NSE trading day: {last_td.strftime('%Y-%m-%d (%A)')}"
+            f"TODAY: {today_str} IST — NSE CLOSED (weekend / holiday). "
+            f"Last trading day: {last_str}. Prices shown are the LAST CLOSE ({last_str})."
         )
     except Exception:
-        return f"TODAY: {datetime.now(timezone.utc).strftime('%Y-%m-%d (%A)')}"
+        from core.intelligence.rl.nse_calendar import now_ist
+        return f"TODAY: {now_ist().strftime('%Y-%m-%d (%A)')} IST"
 
 
 def _result_age_label(published_date: str) -> str:
@@ -1490,17 +1537,20 @@ def _get_macro_context_for_intent(intent_type: str) -> str:
         return ""
 
 
-def _chat_tool_get_macro_news() -> str:
-    """Tool implementation: return today's full macro news feed, sorted HIGH → MEDIUM → LOW."""
+async def _chat_tool_get_macro_news() -> str:
+    """
+    Today's macro feed. Primary source is the background daily cache; if that has
+    not been populated yet (dev, or before the scheduler's first run in prod) it
+    self-heals with a live Serper fetch of top India market headlines so the tool
+    is never a dead end.
+    """
     try:
         from services.background.macro_news_cache import MacroNewsCache
         entries = MacroNewsCache().get_all_today()
-        if not entries:
-            return (
-                "Macro news cache is empty for today — background feed has not run yet "
-                "or no significant India market news was found. "
-                "Try search_market_news for live results."
-            )
+    except Exception:
+        entries = []
+
+    if entries:
         lines = [f"INDIA MACRO NEWS TODAY ({len(entries)} items):"]
         for e in entries:
             sev   = e.get("severity", "LOW")
@@ -1515,8 +1565,30 @@ def _chat_tool_get_macro_news() -> str:
                 f"  Source: {url}"
             )
         return "\n\n".join(lines)
+
+    # Fallback: live fetch (background feed not warmed yet today).
+    try:
+        from services.data.fetchers.news import search_serper_news, _normalize_date
+        raw = await asyncio.to_thread(
+            search_serper_news, "India stock market Sensex Nifty FII RBI macro news today", 6, geo="in"
+        )
+        _NOISE = ("horoscope", "astrolog", "zodiac", "numerolog", "tarot", "rashifal")
+        raw = [
+            r for r in raw
+            if not any(n in (r.get("title", "") + r.get("link", "")).lower() for n in _NOISE)
+        ]
+        if raw:
+            lines = ["INDIA MACRO NEWS (live — background feed not yet populated today):"]
+            for r in raw[:6]:
+                iso = _normalize_date(r.get("date", ""))
+                age = _result_age_label(iso) if iso else "recent"
+                lines.append(f"[{age}] {r.get('title', '')} — {r.get('source', '')} | {r.get('link', '')}")
+            return "\n".join(lines)
     except Exception as exc:
-        return f"Macro news cache unavailable: {exc}"
+        logger.debug("[macro] live fallback failed: %s", exc)
+
+    return ("No macro news available right now — background feed is empty and the live fetch "
+            "returned nothing. Use search_market_news for a specific topic.")
 
 
 def _build_chat_context(_message: str, intent_type: str = "GENERAL") -> str:
@@ -1639,7 +1711,12 @@ _SECTOR_ALIASES: dict[str, str] = {
 
 
 async def _chat_tool_get_sector_snapshot(sector: str) -> str:
-    """Fetch NSE sector index price + verdict counts from DB for a given sector."""
+    """
+    Live sector view: index level + per-stock movers (sorted by 1-day % change) +
+    any DB verdicts. The per-stock movers are what let the model answer ranking
+    questions like "which IT stocks to book profit" (top gainers) or "what's cheap
+    after the fall" (top losers) — not just an index number.
+    """
     sector_key = sector.strip().lower().replace(" ", "_")
     sector_key = _SECTOR_ALIASES.get(sector_key, sector_key)
 
@@ -1647,29 +1724,129 @@ async def _chat_tool_get_sector_snapshot(sector: str) -> str:
     if not yf_sym:
         return f"Unknown sector '{sector}'. Known: {', '.join(_SECTOR_INDEX_YF)}."
 
+    label = sector_key.replace("_", " ").title()
+    sess = _session_state()
+    freshness = "live" if sess["state"] == "OPEN" else f"last close {sess['last_close_day'].isoformat()}"
+
+    # Index level
     price, change = await asyncio.to_thread(_fetch_yf_price, yf_sym)
     arrow = "▲" if change >= 0 else "▼"
+    header = (
+        f"{label} index ({yf_sym}): {price:,.0f}  {arrow}{abs(change):.2f}% ({freshness})"
+        if price else f"{label} index: price unavailable"
+    )
 
+    # Per-stock movers — fetch live prices for the sector's tracked tickers concurrently.
+    tickers_in_sector = _SECTOR_TICKERS_MAP.get(sector_key, [])[:16]
+
+    async def _one(sym: str) -> tuple[str, float] | None:
+        try:
+            p, ch = await asyncio.to_thread(_fetch_yf_price, _nse_yf(sym))
+            return (sym, ch) if p else None
+        except Exception:
+            return None
+
+    moves = [m for m in await asyncio.gather(*[_one(s) for s in tickers_in_sector]) if m]
+    moves.sort(key=lambda x: x[1], reverse=True)
+
+    lines = [header]
+    if moves:
+        gainers = [f"▲ {s} +{c:.1f}%" for s, c in moves if c >= 0][:5]
+        losers  = [f"▼ {s} {c:.1f}%" for s, c in moves if c < 0][:5]
+        if gainers:
+            lines.append("Top gainers (" + freshness + "): " + "   ".join(gainers))
+        if losers:
+            lines.append("Top losers (" + freshness + "): " + "   ".join(losers))
+
+    # DB verdicts (if any analyses have been run for this sector)
     store = _score_store()
-    tickers_in_sector = _SECTOR_TICKERS_MAP.get(sector_key, [])
-    verdicts: list[str] = []
-    for sym in tickers_in_sector:
-        row = await asyncio.to_thread(store.get_latest, sym)
-        if row:
-            verdicts.append(row["verdict"])
-
-    verdict_summary = ""
+    verdicts = [
+        row["verdict"]
+        for sym in tickers_in_sector
+        if (row := await asyncio.to_thread(store.get_latest, sym))
+    ]
     if verdicts:
         counts: dict[str, int] = {}
         for v in verdicts:
             counts[v] = counts.get(v, 0) + 1
-        verdict_summary = " · ".join(f"{k}: {v}" for k, v in sorted(counts.items()))
-        verdict_summary = f" [{len(verdicts)} verdicts: {verdict_summary}]"
+        summary = " · ".join(f"{k}: {v}" for k, v in sorted(counts.items()))
+        lines.append(f"StockAgent verdicts [{len(verdicts)}]: {summary}")
 
-    label = sector_key.replace("_", " ").title()
-    if price:
-        return f"{label} index ({yf_sym}): {price:,.0f}  {arrow}{abs(change):.2f}%{verdict_summary}"
-    return f"{label} index: price unavailable{verdict_summary}"
+    return "\n".join(lines)
+
+
+def _window_stats(yf_sym: str) -> dict | None:
+    """
+    1-month daily history → multi-window returns + position-in-range. Sync.
+    pos: 0.0 = trading at its 1-month low, 1.0 = at its 1-month high. This is the
+    cheap proxy for 'oversold/beaten-down' (pos→0) vs 'extended/overbought' (pos→1).
+    """
+    import yfinance as yf
+
+    def _try(t: str) -> dict | None:
+        try:
+            h = yf.Ticker(t).history(period="1mo", auto_adjust=True)
+            if h.empty or len(h) < 2:
+                return None
+            close = h["Close"]
+            last = float(close.iloc[-1])
+            d1 = (last / float(close.iloc[-2]) - 1) * 100
+            w1 = (last / float(close.iloc[-6]) - 1) * 100 if len(close) >= 6 else d1
+            m1 = (last / float(close.iloc[0]) - 1) * 100
+            lo, hi = float(close.min()), float(close.max())
+            pos = (last - lo) / (hi - lo) if hi > lo else 0.5
+            return {"last": round(last, 2), "d1": round(d1, 2), "w1": round(w1, 2),
+                    "m1": round(m1, 2), "pos": round(pos, 2)}
+        except Exception:
+            return None
+
+    r = _try(yf_sym)
+    if r is None and yf_sym.endswith(".NS"):
+        r = _try(yf_sym[:-3] + ".BO")
+    return r
+
+
+async def _chat_tool_screen_stocks(sector: str = "", mode: str = "value") -> str:
+    """
+    Multi-factor screen over a sector's stocks — surfaces NON-OBVIOUS ideas, not
+    blue-chips. mode: value (buy-the-dip / near lows), momentum (leaders),
+    profit (extended / near highs → trim). Each row carries real signal so the
+    LLM ranks on data, not memory.
+    """
+    mode = (mode or "value").lower()
+    key = sector.strip().lower().replace(" ", "_")
+    key = _SECTOR_ALIASES.get(key, key)
+    tickers = _SECTOR_TICKERS_MAP.get(key, [])[:16]
+    if not tickers:
+        return (f"No stock universe for sector '{sector}'. "
+                f"Known sectors: {', '.join(list(_SECTOR_INDEX_YF)[:10])} …")
+
+    stats = await asyncio.gather(*[asyncio.to_thread(_window_stats, _nse_yf(t)) for t in tickers])
+    rows = [(t, s) for t, s in zip(tickers, stats) if s]
+    if not rows:
+        return f"Could not fetch screen data for {sector} right now — try again shortly."
+
+    sess = _session_state()
+    fresh = "live" if sess["state"] == "OPEN" else f"close {sess['last_close_day'].isoformat()}"
+
+    if mode == "momentum":
+        rows.sort(key=lambda r: r[1]["w1"], reverse=True)
+        title = "MOMENTUM — leaders (1-week trend, continuation candidates)"
+    elif mode in ("profit", "profit_booking", "book", "trim"):
+        rows.sort(key=lambda r: (r[1]["pos"], r[1]["w1"]), reverse=True)
+        title = "PROFIT-BOOKING — extended names near 1-month highs (candidates to trim)"
+    else:  # value / oversold / buy-the-dip
+        rows.sort(key=lambda r: (r[1]["pos"], r[1]["w1"]))
+        title = "VALUE / OVERSOLD — beaten down near 1-month lows (buy-the-dip candidates)"
+
+    lines = [f"{key.replace('_', ' ').title()} screen — {title}  [{fresh}]"]
+    for t, s in rows[:5]:
+        where = "at lows" if s["pos"] <= 0.25 else ("at highs" if s["pos"] >= 0.75 else "mid-range")
+        lines.append(
+            f"  {t}: ₹{s['last']}  1d {s['d1']:+.1f}%  1w {s['w1']:+.1f}%  1mo {s['m1']:+.1f}%  ({where})"
+        )
+    lines.append("(pos in 1-mo range: 'at lows' = oversold/value, 'at highs' = extended)")
+    return "\n".join(lines)
 
 
 async def _chat_tool_run_agent_analysis(ticker: str) -> str:
@@ -1756,6 +1933,32 @@ _CHAT_TOOLS = [
     {
         "type": "function",
         "function": {
+            "name": "screen_stocks",
+            "description": (
+                "Screen a sector's stocks by multi-window performance to surface NON-OBVIOUS ideas. "
+                "mode='value' → beaten-down names near their 1-month lows (buy-the-dip: buy now, sell higher later); "
+                "mode='momentum' → leaders trending up; "
+                "mode='profit' → extended names near 1-month highs (candidates to book/trim profit). "
+                "USE THIS for 'which stock to invest/buy', 'good stocks to buy now', 'undervalued/oversold "
+                "stocks', 'what to accumulate' — NEVER answer those from memory or with generic blue-chip names."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "sector": {"type": "string", "description": "auto, banking, IT, energy, pharma, FMCG, …"},
+                    "mode": {
+                        "type": "string",
+                        "enum": ["value", "momentum", "profit"],
+                        "description": "value = buy-the-dip / oversold; momentum = leaders; profit = trim winners",
+                    },
+                },
+                "required": ["sector"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "get_stock_analysis",
             "description": (
                 "Get the latest StockAgent AI analysis for a tracked NSE stock: verdict, composite score, "
@@ -1812,8 +2015,10 @@ _CHAT_TOOLS = [
         "function": {
             "name": "get_sector_snapshot",
             "description": (
-                "Fetch the live NSE sector index price and recent agent verdicts for a sector. "
-                "Use when the user asks about a sector (auto, banking, IT, energy, pharma, FMCG). "
+                "Fetch the live NSE sector index level PLUS per-stock movers — top gainers and "
+                "losers with their live 1-day % change — and our verdicts. Use this whenever the "
+                "user asks which stocks in a sector to buy or book profit on, what's leading/lagging, "
+                "or what to do after a sector crash/rally (auto, banking, IT, energy, pharma, FMCG). "
                 "Pass the sector name as a plain string."
             ),
             "parameters": {
@@ -1857,37 +2062,109 @@ def _looks_like_yf_symbol(s: str) -> bool:
     return "=" in s or s.startswith("^") or ("-" in s and len(s) <= 10)
 
 
+# Common Indian company names → NSE ticker. Keeps the most-asked names instant and
+# correct without a network round-trip (yfinance.Search ranks US tickers above .NS).
+_NSE_NAME_ALIASES: dict[str, str] = {
+    "reliance": "RELIANCE", "ril": "RELIANCE",
+    "tata motors": "TATAMOTORS", "tatamotors": "TATAMOTORS",
+    "tata steel": "TATASTEEL", "tcs": "TCS", "tata consultancy": "TCS",
+    "infosys": "INFY", "infy": "INFY",
+    "hdfc bank": "HDFCBANK", "hdfc": "HDFCBANK",
+    "icici": "ICICIBANK", "icici bank": "ICICIBANK",
+    "sbi": "SBIN", "state bank": "SBIN",
+    "axis": "AXISBANK", "axis bank": "AXISBANK", "kotak": "KOTAKBANK",
+    "maruti": "MARUTI", "maruti suzuki": "MARUTI",
+    "mahindra": "M&M", "m&m": "M&M",
+    "bajaj auto": "BAJAJ-AUTO", "bajaj finance": "BAJFINANCE", "bajaj finserv": "BAJAJFINSV",
+    "hero": "HEROMOTOCO", "hero motocorp": "HEROMOTOCO", "eicher": "EICHERMOT",
+    "wipro": "WIPRO", "hcl": "HCLTECH", "hcl tech": "HCLTECH", "tech mahindra": "TECHM",
+    "adani green": "ADANIGREEN", "adani power": "ADANIPOWER", "tata power": "TATAPOWER",
+    "ntpc": "NTPC", "powergrid": "POWERGRID", "power grid": "POWERGRID",
+    "sun pharma": "SUNPHARMA", "dr reddy": "DRREDDY", "cipla": "CIPLA",
+    "itc": "ITC", "hul": "HINDUNILVR", "hindustan unilever": "HINDUNILVR",
+    "airtel": "BHARTIARTL", "bharti airtel": "BHARTIARTL", "lt": "LT", "l&t": "LT",
+    "larsen": "LT", "ongc": "ONGC", "coal india": "COALINDIA",
+}
+
+
+# NSE ticker → correct yfinance symbol via the shared self-healing resolver
+# (curated overrides in settings.YF_SYMBOL_OVERRIDES + the learned cache).
+def _nse_yf(ticker: str) -> str:
+    """Map an NSE ticker to its yfinance symbol (override → learned cache → naive)."""
+    from backend.shared.data.fetchers.symbol_resolver import resolve_yf_symbol
+    return resolve_yf_symbol(ticker)
+
+
+def _known_nse_tickers() -> frozenset[str]:
+    """Set of all NSE tickers known to the sector registry (cached)."""
+    cached = getattr(_known_nse_tickers, "_cache", None)
+    if cached is not None:
+        return cached
+    tickers: set[str] = set()
+    try:
+        from backend.sectors.registry import TICKER_SECTOR
+        tickers = {t.upper() for t in TICKER_SECTOR}
+    except Exception:
+        pass
+    result = frozenset(tickers)
+    _known_nse_tickers._cache = result  # type: ignore[attr-defined]
+    return result
+
+
 async def _resolve_yf_symbol(symbol: str) -> str | None:
     """
-    Three-tier symbol resolution:
-    1. Static dict   — instant, covers ~20 known commodities/indices
-    2. Direct symbol — if input already looks like a yfinance ticker
-    3. yfinance.Search — real-time discovery for anything unrecognised
-    Returns the resolved yfinance symbol, or None if all tiers fail.
+    NSE-first symbol resolution for an Indian-market assistant.
+
+    Order (first hit wins):
+      1. Static commodity/global-index dict  — silver, gold, crude, nifty, sensex …
+      2. Explicit yfinance symbol             — already has =, ^, or - (SI=F, ^NSEI)
+      3. Known NSE ticker / company-name alias → "{TICKER}.NS"  (instant, no network)
+      4. India-preferred yfinance.Search       — prefers .NS/.BO listings over US tickers
+      5. Final fallback                        → "{SYM}.NS"
+
+    Tiers 3-5 default to NSE because a bare name ("reliance", "infosys") almost always
+    means the Indian listing here. Plain yfinance.Search ranks US tickers (e.g. "RS")
+    above "RELIANCE.NS", which is the bug this ordering fixes.
     """
     sym_lower = symbol.strip().lower()
     sym_upper = symbol.strip().upper()
 
-    # Tier 1: static dict
+    # Tier 1: static commodity / global-index dict
     if sym_lower in _COMMODITY_YF:
         return _COMMODITY_YF[sym_lower]
 
-    # Tier 2: already a valid yfinance symbol
+    # Tier 2: already a valid yfinance symbol (=, ^, or short hyphenated)
     if _looks_like_yf_symbol(sym_upper):
         return sym_upper
 
-    # Tier 3: yfinance.Search for anything unrecognised (real-time)
+    # Tier 3: known NSE ticker or common Indian company-name alias → .NS (no network)
+    if sym_lower in _NSE_NAME_ALIASES:
+        return _nse_yf(_NSE_NAME_ALIASES[sym_lower])
+    if sym_upper in _known_nse_tickers():
+        return _nse_yf(sym_upper)
+
+    # Tier 4: yfinance.Search, but PREFER Indian-listed results (.NS / .BO).
     try:
         import yfinance as yf
+
         def _search():
-            results = yf.Search(symbol, max_results=3, news_count=0)
+            results = yf.Search(symbol, max_results=6, news_count=0)
             quotes = getattr(results, "quotes", []) or []
-            # Prefer equity/futures/index quotes over ETFs
-            for q in quotes:
-                qtype = (q.get("quoteType") or "").upper()
-                if qtype in ("FUTURE", "INDEX", "CRYPTOCURRENCY", "EQUITY", "CURRENCY"):
-                    return q.get("symbol")
+            tradable = [
+                q for q in quotes
+                if (q.get("quoteType") or "").upper()
+                in ("FUTURE", "INDEX", "CRYPTOCURRENCY", "EQUITY", "CURRENCY")
+            ]
+            # 1) Indian listing among tradable quotes wins.
+            for q in tradable:
+                sym = q.get("symbol") or ""
+                if sym.endswith(".NS") or sym.endswith(".BO"):
+                    return sym
+            # 2) Else first tradable quote (genuinely global names: apple, tesla).
+            if tradable:
+                return tradable[0].get("symbol")
             return quotes[0].get("symbol") if quotes else None
+
         found = await asyncio.to_thread(_search)
         if found:
             logger.info("[chat/price] yfinance.Search resolved '%s' → %s", symbol, found)
@@ -1895,7 +2172,7 @@ async def _resolve_yf_symbol(symbol: str) -> str | None:
     except Exception as exc:
         logger.debug("[chat/price] yfinance.Search failed for '%s': %s", symbol, exc)
 
-    # Final fallback: treat as NSE stock
+    # Tier 5: final fallback — assume NSE stock
     return sym_upper + ".NS"
 
 
@@ -1908,27 +2185,82 @@ async def _chat_tool_get_live_price(symbol: str) -> str:
         price, change_pct = await asyncio.to_thread(_fetch_yf_price, yf_sym)
         if price == 0.0:
             return f"No price data for '{symbol}' (tried {yf_sym}) — market may be closed or symbol unavailable."
-        is_usd = any(yf_sym.endswith(s) for s in ("=F", "-USD", "=X")) or yf_sym.startswith("^")
-        currency = "USD" if is_usd else "INR"
+
+        # Classify the instrument so we label units and freshness correctly.
+        is_global = any(yf_sym.endswith(s) for s in ("=F", "-USD", "=X"))
+        is_index  = yf_sym.startswith("^")
+        follows_nse = (
+            yf_sym.endswith(".NS") or yf_sym.endswith(".BO")
+            or (is_index and (yf_sym.startswith("^NSE") or yf_sym.startswith("^CNX") or yf_sym == "^BSESN"))
+        )
+        unit  = "USD" if is_global else ("pts" if is_index else "INR")
         arrow = "▲" if change_pct >= 0 else "▼"
-        return f"{symbol.title()} ({yf_sym}): {price:.2f} {currency}  {arrow}{abs(change_pct):.2f}% today"
+
+        # Freshness: only NSE-listed instruments follow the IST session. When the
+        # market is not in its continuous OPEN session, yfinance returns the last
+        # settled close — say so explicitly so it is never passed off as live.
+        if follows_nse:
+            s = _session_state()
+            freshness = "live" if s["state"] == "OPEN" else f"last close {s['last_close_day'].isoformat()}"
+        else:
+            freshness = "latest"
+
+        return f"{symbol.title()} ({yf_sym}): {price:.2f} {unit}  {arrow}{abs(change_pct):.2f}% ({freshness})"
     except Exception as exc:
         return f"Price fetch failed for '{symbol}': {exc}"
 
 
+def _build_search_variants(query: str, today: date) -> list[str]:
+    """
+    Deterministic multi-query expansion (RAG-Fusion style): a few diverse phrasings
+    of one query surface results any single phrasing would miss. No LLM call.
+    """
+    q = query.strip()
+    ql = q.lower()
+    variants = [q, f"{q} latest news {today.isoformat()}"]
+    if not any(t in ql for t in ("india", "nifty", "sensex", "nse", "bse")):
+        variants.append(f"India {q}")
+    seen: set[str] = set()
+    out: list[str] = []
+    for v in variants:
+        if v.lower() not in seen:
+            seen.add(v.lower())
+            out.append(v)
+    return out[:3]
+
+
+def _rrf_fuse(result_lists: list[list[dict]], k: int = 60) -> list[dict]:
+    """
+    Reciprocal Rank Fusion: merge several ranked result lists into one. A doc's
+    score = Σ 1/(k + rank) across lists, so items that rank high in MULTIPLE
+    queries float to the top — more robust than any single query's ranking.
+    Dedupes by link/url.
+    """
+    def _key(r: dict) -> str:
+        return r.get("link") or r.get("url") or r.get("title", "")
+
+    scores: dict[str, float] = {}
+    items: dict[str, dict] = {}
+    for lst in result_lists:
+        for rank, r in enumerate(lst):
+            key = _key(r)
+            if not key:
+                continue
+            scores[key] = scores.get(key, 0.0) + 1.0 / (k + rank)
+            items.setdefault(key, r)
+    return sorted(items.values(), key=lambda r: scores[_key(r)], reverse=True)
+
+
 async def _chat_tool_search_news(query: str) -> str:
     """
-    Search for news and return results with explicit freshness metadata.
+    Search news with multi-query expansion + Reciprocal Rank Fusion for relevance,
+    then explicit freshness metadata.
 
-    Primary:  Serper /news endpoint — returns actual news articles with
-              relative publication dates ("22 hours ago"). India-focused (gl=in).
-              These are real headlines from ET, Mint, NDTV Profit etc.
+    Primary:  Serper /news — 2-3 deterministic query variants fused via RRF.
+              Real headlines from ET, Mint, NDTV Profit etc., India-focused (gl=in).
+    Fallback: Tavily with after:TODAY anchor when Serper is empty/exhausted.
 
-    Fallback: Tavily with after:TODAY anchor — full page text extraction.
-              Used when Serper key is exhausted or returns 0 results.
-
-    Both paths include a market-context header (NSE open/closed, last trading day)
-    and per-result age labels so the LLM can reason about freshness.
+    Both paths include a market-context header and per-result age labels.
     """
     from services.data.fetchers.news import search_serper_news, _normalize_date
     from services.clients.tavily_fetcher import search_tavily
@@ -1949,34 +2281,42 @@ async def _chat_tool_search_news(query: str) -> str:
     has_global = any(t in q_lower for t in _global_terms)
     geo = None if (has_global and not has_india) else "in"
 
+    # Multi-query expansion → fire variants concurrently → fuse by RRF.
+    variants = _build_search_variants(query, today)
     try:
-        raw = await asyncio.to_thread(search_serper_news, query, 5, geo=geo)
+        lists = await asyncio.gather(
+            *[asyncio.to_thread(search_serper_news, v, 5, geo=geo) for v in variants],
+            return_exceptions=True,
+        )
+        result_lists = [l for l in lists if isinstance(l, list) and l]
+        raw = _rrf_fuse(result_lists)
 
-        # Generic query with no India terms returned nothing — retry with India prefix
-        if not raw and not has_india:
-            key_words = " ".join(
-                w for w in query.split()[:4]
-                if w.lower() not in {"the","a","an","is","are","was","were","for","of","to"}
-            )[:35]
-            raw = await asyncio.to_thread(search_serper_news, f"India Nifty {key_words}", 5, geo="in")
-
-        # Fewer than 3 results and query has global entity → add global pass without geo filter
+        # Global entity but thin India-biased results → add an un-geo'd pass and re-fuse.
         if len(raw) < 3 and has_global:
-            more = await asyncio.to_thread(search_serper_news, query, 3, geo=None)
-            seen = {r["link"] for r in raw}
-            raw.extend(r for r in more if r.get("link") not in seen)
+            more = await asyncio.to_thread(search_serper_news, query, 5, geo=None)
+            if isinstance(more, list) and more:
+                raw = _rrf_fuse(result_lists + [more])
     except Exception:
         raw = []
 
+    # Drop off-topic noise (market-prediction queries on Serper often surface
+    # horoscope/astrology pieces that pollute the grounding context).
+    _NOISE = ("horoscope", "astrolog", "zodiac", "numerolog", "tarot", "rashifal", "panchang")
+    raw = [
+        r for r in raw
+        if not any(n in (r.get("title", "") + " " + r.get("link", "")).lower() for n in _NOISE)
+    ]
+
     if raw:
-        # Sort: dated results first, undated last — LLM is told to skip undated ones
+        # Keep RRF relevance order, but push undated results to the end (stable sort
+        # preserves the fused ranking within the dated group).
         def _has_date(r: dict) -> bool:
             d = r.get("date", "")
             return bool(d) and d.lower() not in ("", "date unknown")
 
-        raw_sorted = sorted(raw, key=lambda r: (not _has_date(r), r.get("date", "")))
+        raw_sorted = sorted(raw, key=lambda r: not _has_date(r))[:8]
 
-        lines = [f"=== NEWS RESULTS (Serper News) ===\n{market_ctx}\n"]
+        lines = [f"=== NEWS RESULTS (Serper News + RRF) ===\n{market_ctx}\n"]
         for i, r in enumerate(raw_sorted, 1):
             iso_date  = _normalize_date(r.get("date", ""))
             age_label = _result_age_label(iso_date)
@@ -2014,11 +2354,137 @@ async def _chat_tool_search_news(query: str) -> str:
     return "\n".join(lines)
 
 
-async def _execute_chat_tool(name: str, args: dict) -> str:
+async def _chat_tool_historical_prices(symbol: str, days: int = 5) -> str:
+    """Fetch last N trading days OHLCV for a yfinance symbol."""
+    try:
+        import math
+        import yfinance as yf
+
+        ticker = yf.Ticker(symbol)
+        hist = ticker.history(period=f"{days + 7}d")  # buffer for weekends/holidays
+        if hist.empty:
+            return f"No historical data for {symbol}"
+
+        # Compute close-to-close change BEFORE tail() so the buffer day
+        # provides prev_close for the first visible row.
+        hist["prev_close"] = hist["Close"].shift(1)
+        hist = hist.tail(days)
+        lines = [f"{symbol} — Last {len(hist)} trading days:"]
+        closes: list[float] = []
+        for dt, row in hist.iterrows():
+            date_str = dt.strftime("%Y-%m-%d (%a)")
+            if math.isnan(row["prev_close"]):
+                change_str = "N/A"
+            else:
+                change_pct = ((row["Close"] - row["prev_close"]) / row["prev_close"]) * 100
+                arrow = "▲" if change_pct >= 0 else "▼"
+                change_str = f"{arrow}{abs(change_pct):.2f}%"
+            lines.append(
+                f"{date_str}  Close: {row['Close']:,.2f}  Change: {change_str}"
+            )
+            closes.append(float(row["Close"]))
+
+        if len(closes) >= 2:
+            net = ((closes[-1] - closes[0]) / closes[0]) * 100
+            arrow = "▲" if net >= 0 else "▼"
+            lines.append(f"Net {len(closes)}-day: {arrow}{abs(net):.2f}%")
+            down_streak = 0
+            for i in range(len(closes) - 1, 0, -1):
+                if closes[i] < closes[i - 1]:
+                    down_streak += 1
+                else:
+                    break
+            if down_streak >= 2:
+                lines.append(f"Trend: {down_streak} consecutive down days")
+
+        return "\n".join(lines)
+    except Exception:
+        return f"No historical data for {symbol}"
+
+
+async def _chat_tool_rl_prediction(ticker: str) -> str:
+    """Read today's RL prediction envelope for a ticker. Returns '' if not found."""
+    if ticker.upper() in _RL_INDEX_NAMES:
+        return ""
+
+    ticker_upper = ticker.upper()
+    today = str(date.today())
+    cycle_id = f"{ticker_upper}_{today[:7]}"  # e.g. TCS_2026-05
+
+    try:
+        for sector_dir in _PREDICTIONS_DIR.iterdir():
+            if not sector_dir.is_dir():
+                continue
+            candidate = sector_dir / ticker_upper / f"{cycle_id}_prediction_envelope.json"
+            if not candidate.exists():
+                continue
+
+            envelope = json.loads(candidate.read_text(encoding="utf-8"))
+            forecasts = envelope.get("daily_forecasts", [])
+            today_row = next((d for d in forecasts if d.get("date") == today), None)
+            if not today_row:
+                return ""
+
+            streak = envelope.get("conviction_streak", {})
+            streak_days = streak.get("streak_days", 0)
+            reversion = envelope.get("reversion_prior", 0.0)
+            lines = [
+                f"RL PREDICTION — {ticker_upper} ({today}):",
+                (
+                    f"Verdict: {today_row['predicted_verdict']}"
+                    f"  |  Confidence: {today_row['confidence']:.2f}"
+                    f"  |  Predicted close: ₹{today_row['predicted_close']:,.0f}"
+                ),
+                (
+                    f"Conviction streak: {streak_days} consecutive"
+                    f" {streak.get('current_verdict', '')} days"
+                    f" — reversion prior: {reversion * 100:.0f}%"
+                ),
+            ]
+            assumptions = today_row.get("key_assumptions", [])
+            if assumptions:
+                lines.append(f"Key assumptions: {assumptions}")
+            if today_row.get("revised"):
+                lines.append(
+                    f"Revised: Yes (revision {today_row.get('revision_count', 1)})"
+                )
+            return "\n".join(lines)
+    except Exception:
+        return ""
+
+    return ""
+
+
+def _tool_cache_key(name: str, args: dict) -> str:
+    parts = []
+    for k in sorted(args):
+        v = args[k]
+        parts.append(f"{k}={v.strip().lower() if isinstance(v, str) else v}")
+    return f"{name}({','.join(parts)})"
+
+
+async def _execute_chat_tool(name: str, args: dict, cache: dict | None = None) -> str:
+    """
+    Dispatch a chat tool, with an optional per-turn memo cache. The model
+    sometimes re-requests the same sector snapshot / news search inside its loop;
+    caching identical (tool, args) calls for the duration of ONE chat turn avoids
+    duplicate Serper credits and yfinance hits at zero behavioural cost.
+    """
+    if cache is not None:
+        ckey = _tool_cache_key(name, args)
+        if ckey in cache:
+            return cache[ckey]
+        result = await _dispatch_chat_tool(name, args)
+        cache[ckey] = result
+        return result
+    return await _dispatch_chat_tool(name, args)
+
+
+async def _dispatch_chat_tool(name: str, args: dict) -> str:
     if name == "get_live_price":
         return await _chat_tool_get_live_price(args.get("symbol", ""))
     if name == "get_macro_news":
-        return _chat_tool_get_macro_news()
+        return await _chat_tool_get_macro_news()
     if name == "search_market_news":
         return await _chat_tool_search_news(args.get("query", ""))
     if name == "get_stock_analysis":
@@ -2032,8 +2498,16 @@ async def _execute_chat_tool(name: str, args: dict) -> str:
         return _ctx_rl_learning() or "No RL data yet — needs at least one full analysis cycle."
     if name == "get_sector_snapshot":
         return await _chat_tool_get_sector_snapshot(args.get("sector", ""))
+    if name == "screen_stocks":
+        return await _chat_tool_screen_stocks(args.get("sector", ""), args.get("mode", "value"))
     if name == "run_agent_analysis":
         return await _chat_tool_run_agent_analysis(args.get("ticker", ""))
+    if name == "get_historical_prices":
+        return await _chat_tool_historical_prices(
+            args.get("symbol", "^NSEI"), int(args.get("days", 5))
+        )
+    if name == "get_rl_prediction":
+        return await _chat_tool_rl_prediction(args.get("ticker", ""))
     return f"Unknown tool: {name}"
 
 
@@ -2045,7 +2519,10 @@ You are StockAgent, a market intelligence assistant with real-time web search an
   Pass a plain name (silver, gold, crude, nifty, usd, bitcoin) OR a yfinance symbol (SI=F, BZ=F, ^NSEI).
   Unknown assets are resolved automatically — just pass what the user said.
 - **search_market_news(query)** — real-time web search: headlines, data, analysis
+- **get_sector_snapshot(sector)** — sector index level + LIVE per-stock movers (top gainers/losers)
+  + our verdicts. THIS is how you answer "which stocks in X", "what to book profit / buy in X".
 - **get_stock_analysis(ticker)** — our AI verdict + 9-agent scores for tracked NSE stocks
+- **get_rl_prediction(ticker)** — our model's next-session/30-day predicted direction + confidence
 - **get_analysis_history(days)** — past verdicts and score trends from our database
 - **get_rl_insights()** — agent accuracy, learned weights, and prediction lessons
 
@@ -2055,13 +2532,54 @@ You are StockAgent, a market intelligence assistant with real-time web search an
 | Current price | get_live_price |
 | Why moving / what's driving | get_live_price + search_market_news (parallel) |
 | Outlook / forecast / next N days | get_live_price + search_market_news("X outlook [year]") |
-| NSE stock deep dive | get_live_price + get_stock_analysis + search_market_news |
+| **Tomorrow / will it rise / market prediction** | get_live_price(index) + search_market_news("Indian stock market outlook GIFT Nifty FII DII analyst view [today's date]") + get_rl_prediction (if a tracked ticker) |
+| **Which stocks to buy / book profit / best in a sector** | get_sector_snapshot(sector) + search_market_news("[sector] stocks to buy/book profit today") |
+| **Sector crashed / rallied — what now** | get_sector_snapshot(sector) + search_market_news("why [sector] fell/rose today [date]") |
+| NSE stock deep dive | get_live_price + get_stock_analysis + get_rl_prediction + search_market_news |
 | What happened last week / history | get_analysis_history |
 | Agent accuracy / which to trust | get_rl_insights |
 | Macro event (Fed, RBI, oil) | search_market_news |
 
 ALWAYS call search_market_news for forward-looking questions. Use specific queries:
 "silver price outlook next 30 days supply demand 2026" not just "silver".
+
+## Tool budget — be economical (web search costs money)
+- **search_market_news: call it AT MOST ONCE per answer.** One well-phrased query (add
+  "India … [date]") beats several. Never fire it twice for the same answer.
+- **Never call the same tool with the same arguments twice** — you already have that result above.
+- **screen_stocks works ONLY for these sectors:** automobile, IT, banking, renewable energy.
+  Do NOT call screen_stocks for pharma/FMCG/energy/metals (no universe → wasted call); use
+  get_sector_snapshot for those.
+- For a buy question with NO sector named: probe at most the 2 most-relevant screenable sectors
+  with screen_stocks (it is free), pick the most beaten-down, then ONE search_market_news for the
+  catalyst. Do not snapshot every sector.
+
+## STEP BACK — decide the real intent before calling any tool
+A good answer to an investing question depends on what the user is actually trying to do.
+Silently classify the intent, then pick the tool + mode:
+- "which stock to buy / good to invest / accumulate / undervalued / oversold / good for long term"
+  → they want to BUY LOW. You MUST call screen_stocks(sector, mode="value") — get_sector_snapshot
+  alone is NOT acceptable for a buy question, because today's gainers are the WRONG answer for
+  buy-the-dip. screen_stocks(value) finds beaten-down names near their 1-month lows; THEN confirm a
+  recovery catalyst with search_market_news. A stock being down is the *opportunity*, not a reason to
+  avoid it. NEVER recommend today's top gainers or famous blue-chips from memory for a buy question.
+- "book profit / take profit / trim / which to sell / overheated" → they HOLD winners and want exits.
+  Call screen_stocks(sector, mode="profit") — extended names near 1-month highs.
+- "what's leading / strongest / momentum / breakout" → screen_stocks(sector, mode="momentum").
+- If no sector is given for a buy question, check 2-3 sectors with get_sector_snapshot, pick the most
+  beaten-down one, then screen it (that is where the value is). Only ask the user if truly ambiguous.
+Every pick MUST carry a number (its move + where it sits in its 1-month range) and a one-line reason
+(the catalyst or the risk). One sentence with no number = a banned, generic answer.
+
+## Forward-looking & ranking answers (do not punt these)
+- "Tomorrow's market" / "will it go up": you CANNOT know the future, but you CAN give a grounded
+  lean. Combine: today's index move + direction, the search results (analyst previews, GIFT Nifty
+  cues, global setup), and any get_rl_prediction. State the lean ("cautiously positive / negative /
+  rangebound") WITH the 2-3 concrete reasons behind it and the key risk. Never reply "I can't predict".
+- "Which stocks to book profit / buy now": call get_sector_snapshot to see the actual movers, then
+  NAME specific tickers with their live % move and a one-line reason. Profit-booking = stocks that
+  are UP / extended; bargain-hunting = quality names that are DOWN. Ground every pick in the data
+  you fetched — never invent a recommendation without a number behind it.
 
 ## Hard rules
 - NEVER say "consult market research reports", "check external sources", or "I cannot predict".
@@ -2100,20 +2618,59 @@ ALWAYS call search_market_news for forward-looking questions. Use specific queri
   - Do NOT say "today the market fell" — say "as of [last trading day], the market..."
   - A result from Friday is NOT stale if today is Saturday — it IS the latest trading data.
 
-## Output format — total response under 120 words
+## Output format — built for a NARROW phone-width chat bubble (~40 chars wide)
 
-**[Asset] [LIVE PRICE] ▲/▼CHANGE%** (omit if get_live_price failed)
+The reply renders in a small chat panel, NOT a laptop screen. Wide layouts break.
+RENDERING RULES — no exceptions:
+- **NEVER use markdown tables** (`| col | col |`). They overflow and become unreadable on a phone.
+- Each stock is a **2-line stacked block** (see below) — NOT one long line that wraps messily.
+- Group picks under a short bold sub-header per sector/theme, e.g. `📉 IT — heavy dip ▼5.6%`.
+- No paragraphs in a picks answer. Short stacked lines only.
+- Use ▼/▲ for moves, `·` as the in-line separator, `₹` for price. Keep tickers UPPERCASE.
+- A single newline IS a line break here — put each line on its own line, no manual spacing/padding
+  (extra spaces collapse). Use the `└` connector to visually tie the reason to the ticker above it.
 
-**What happened:**
-1. "[Exact headline]" — Source — date  →  one-line market impact
-2. "[Exact headline]" — Source — date  →  one-line market impact
-(max 3, most recent first, skip results with no date)
+**Per-pick block — EXACTLY two lines (this is the unit of a buy / sell / screen answer):**
+```
+**TICKER** ₹price ▼1d%
+└ 1mo ▼mo% · short reason (catalyst or risk)
+```
+e.g.
+```
+**TCS** ₹2,242 ▼8.4%
+└ 1mo ▼6.5% · oversold; MS overweight India
+```
 
-**Watch for:**
-- [specific recovery/risk signal, e.g. "crude below $78", "FII net buying 3 days"]
-- [next catalyst, e.g. "TCS Q1 guidance on AI revenue", "RBI rate decision May 22"]
+**Buy / sell / screen answer shape:**
+```
+🎯 [Headline — e.g. Value picks · buy-the-dip]
 
-*Sources: Source1 · Source2*
+📉 IT — heavy dip ▼5.6%
+**TCS** ₹2,242 ▼8.4%
+└ 1mo ▼6.5% · oversold bounce candidate
+**LTTS** ₹3,299 ▼6.0%
+└ 1mo ▼10% · worst IT performer, deep value
+
+🚗 Auto — near lows
+**ASHOKLEY** ₹146 ▼0.5%
+└ 1mo ▼7.7% · CV cycle turning
+
+📰 [1-2 short context lines, newest first, with source]
+⚠️ Watch: [1-3 short signals]
+```
+Cap it: max ~5-7 picks total, grouped. Trim ruthlessly — every block carries a number + a reason.
+
+**Price / news / outlook answer shape (under 120 words):**
+```
+**[Asset]** ₹PRICE ▲/▼CHG%   (omit if get_live_price failed)
+
+📰 What's driving:
+"[Exact headline]" — Source, date
+└ one-line impact   (max 3, newest first)
+
+⚠️ Watch: [only a genuinely NEW signal not said earlier in this chat]
+*Sources: S1 · S2*
+```
 
 STRICT RULES — no exceptions:
 - NEVER add "Critical Note", "Important Note", "Final Note", "Revision Note", "Note:", or any
@@ -2121,7 +2678,8 @@ STRICT RULES — no exceptions:
 - NEVER say "real-time data required", "for precise causality", or "always verify with" — just
   state what the fetched data shows and its publication date.
 - Skip undated results entirely; cite only results that have a publication date.
-- Under 120 words. Every sentence must add new specific information.
+- "Watch:" only when the signal is genuinely new vs an earlier "Watch:" in this conversation.
+- Every line adds new specific information. No filler, no restating the question.
 
 ## StockAgent's specialist agents (invoked via full analysis, not chat)
 Sales & Demand · Fundamentals · Pattern Analysis · Raw Materials · Sentiment ·
@@ -2160,7 +2718,7 @@ async def chat(body: dict) -> dict:
 
         for _ in range(4):
             resp = await client.chat.completions.create(
-                model="qwen/qwen3-235b-a22b",
+                model=_CHAT_MODEL,
                 messages=messages,
                 temperature=0.4,
                 max_tokens=600,
@@ -2193,7 +2751,7 @@ async def chat(body: dict) -> dict:
 
         # Final synthesis after max tool rounds
         resp = await client.chat.completions.create(
-            model="qwen/qwen3-235b-a22b",
+            model=_CHAT_MODEL,
             messages=messages,
             temperature=0.4,
             max_tokens=600,
@@ -2217,18 +2775,216 @@ def _mock_reply(q: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# T3: POST /ui/chat/stream — SSE streaming chat via LangGraph + MemorySaver
+# Agentic streaming chat — shared helpers
+# ---------------------------------------------------------------------------
+
+try:
+    from backend.shared.config import settings as _chat_cfg
+    _CHAT_MODEL = _chat_cfg.LLM_MODEL_FAST            # fast tool-loop model (qwen3.6-flash)
+    _CHAT_FALLBACK_MODEL = _chat_cfg.LLM_MODEL_REASONING  # escalate on rate-limit/5xx
+except Exception:
+    _CHAT_MODEL = "qwen/qwen3.6-flash"
+    _CHAT_FALLBACK_MODEL = "qwen/qwen3.7-max"
+_CHAT_MAX_TOOL_ROUNDS = 4              # max tool rounds before forcing a final answer
+
+
+def _is_transient_llm_error(exc: Exception) -> bool:
+    """True for rate-limit / upstream-5xx errors that are worth retrying."""
+    status = getattr(exc, "status_code", None)
+    msg = str(exc).lower()
+    if status == 429 or (isinstance(status, int) and 500 <= status < 600):
+        return True
+    return any(s in msg for s in ("429", "rate-limit", "rate limit", "502", "503", "temporarily"))
+
+
+async def _chat_completion(client, *, models: tuple[str, ...] | list[str] | None = None, **kwargs):
+    """
+    chat.completions.create with resilience: retry the primary model on transient
+    rate-limit/5xx errors (exponential backoff), then fall back to a lighter model.
+    `models` overrides the model chain (used by the model-comparison harness).
+    Raises the last exception only if every model+retry is exhausted.
+    """
+    last_exc: Exception | None = None
+    for model in (models or (_CHAT_MODEL, _CHAT_FALLBACK_MODEL)):
+        for attempt in range(3):
+            try:
+                return await client.chat.completions.create(model=model, **kwargs)
+            except Exception as exc:  # noqa: BLE001 — inspect then re-raise non-transient
+                last_exc = exc
+                if not _is_transient_llm_error(exc):
+                    raise
+                await asyncio.sleep(0.8 * (2 ** attempt))  # 0.8s, 1.6s, 3.2s
+        logger.warning("[chat] model %s exhausted retries — falling back", model)
+    raise last_exc  # type: ignore[misc]
+
+# In-process per-session memory (mirrors the old MemorySaver semantics: in-RAM,
+# cleared on restart). Keyed by session_id → list of {role, content} turns.
+_SESSION_HISTORY: dict[str, list[dict]] = {}
+_SESSION_MAX_TURNS = 12               # keep last 12 messages (≈6 exchanges) per session
+
+
+def _session_history_get(session_id: str) -> list[dict]:
+    return list(_SESSION_HISTORY.get(session_id, []))
+
+
+def _session_history_append(session_id: str, user_text: str, assistant_text: str) -> None:
+    hist = _SESSION_HISTORY.setdefault(session_id, [])
+    hist.append({"role": "user", "content": user_text})
+    hist.append({"role": "assistant", "content": assistant_text})
+    if len(hist) > _SESSION_MAX_TURNS:
+        del hist[: len(hist) - _SESSION_MAX_TURNS]
+
+
+def _strip_think(text: str) -> str:
+    """Remove Qwen3 <think>…</think> reasoning blocks from a completed message."""
+    return re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
+
+
+def _chunk_for_stream(text: str):
+    """Yield a completed answer as small word-grouped chunks for a streaming feel."""
+    words = text.split(" ")
+    group = 3
+    for i in range(0, len(words), group):
+        piece = " ".join(words[i : i + group])
+        # Preserve the inter-group space so the reassembled text is exact.
+        yield piece if i + group >= len(words) else piece + " "
+
+
+# ---------------------------------------------------------------------------
+# Deterministic intent pre-router (Tier-1 routing — does not rely on the LLM
+# reliably choosing screen_stocks; cf. BFCL: qwen3-235b is a weak function-caller).
+# When the message is clearly a buy/sell/momentum screen query for a sector we
+# can screen, we run the screen ourselves and inject it, so the right candidate
+# set ALWAYS reaches the model.
+# ---------------------------------------------------------------------------
+
+_INTENT_SELL = ("book profit", "profit booking", "profit-booking", "trim", "take profit",
+                "take gains", "book gains", "overbought", "overheated", " sell ", " exit ")
+_INTENT_MOM  = ("momentum", "leaders", "leading", "strongest", "breakout", "outperform",
+                "top performer", "hot stock")
+_INTENT_BUY  = ("invest", "buy", "accumulate", "undervalued", "oversold", "bargain",
+                "cheap", "buy the dip", "worth buying", "good to buy", "should i buy")
+
+_SECTOR_NL: dict[str, tuple[str, ...]] = {
+    "automobile":       ("auto", "automobile", "car", "vehicle", "two-wheeler", "2-wheeler"),
+    "it_sector":        ("it sector", " it ", "it stock", "tech", "software", "technology"),
+    "banking_bfsi":     ("bank", "bfsi", "lender", "nbfc", "financial", "finance"),
+    "renewable_energy": ("renewable", "solar", "wind", "green energy", "clean energy",
+                         "power sector", "energy"),
+}
+
+
+def _detect_invest_intent(message: str) -> dict | None:
+    """
+    Classify a screen-type intent deterministically. Requires BOTH an action and
+    a screenable sector. Returns {action, mode, sector} or None (→ pure LLM path).
+    """
+    m = f" {message.lower()} "
+    if any(w in m for w in _INTENT_SELL):
+        action, mode = "sell", "profit"
+    elif any(w in m for w in _INTENT_MOM):
+        action, mode = "momentum", "momentum"
+    elif any(w in m for w in _INTENT_BUY):
+        action, mode = "buy", "value"
+    else:
+        return None
+
+    for key, kws in _SECTOR_NL.items():
+        if key in _SECTOR_TICKERS_MAP and any(kw in m for kw in kws):
+            return {"action": action, "mode": mode, "sector": key}
+    return None
+
+
+# ---------------------------------------------------------------------------
+# Deterministic answer sanitizer. We tried an LLM Reflexion self-critique gate
+# here; on qwen3-235b it was unreliable — it either hallucinated numbers (an
+# ungrounded critic "filling in" data) or failed to catch a bad draft. That
+# matches the literature: Reflexion is vulnerable to degeneration-of-thought.
+# Since Task-A grounded pre-fetch already prevents fabrication at the source,
+# we keep only a cheap, reliable rule-based strip for the disclaimer labels the
+# model occasionally sneaks in despite the prompt. (Revisit a *grounded* critic
+# once on a stronger function-calling model.)
+# ---------------------------------------------------------------------------
+
+_BANNED_NOTE_RE = re.compile(
+    r"(?im)^\s*\**\s*(critical note|important note|final note|revision note|disclaimer)\b.*?(?=\n\s*\n|\Z)",
+    re.DOTALL,
+)
+
+
+def _is_table_sep(line: str) -> bool:
+    """A GFM table separator row, e.g. `|---|---|` or `| :-- | --: |`."""
+    s = line.strip()
+    return "-" in s and bool(s) and set(s) <= set("|-: \t")
+
+
+def _table_cells(line: str) -> list[str]:
+    s = line.strip()
+    if s.startswith("|"):
+        s = s[1:]
+    if s.endswith("|"):
+        s = s[:-1]
+    return [c.strip() for c in s.split("|")]
+
+
+def _tables_to_bullets(text: str) -> str:
+    """
+    Convert any markdown table into a compact one-line-per-row bullet list.
+    The chat bubble is phone-width; wide <table> HTML overflows it. The prompt
+    already forbids tables, but models slip — this guarantees a narrow layout.
+    Each data row → `• **col0** col1 · col2 … — lastcol` (first cell bold = the
+    ticker/label, last cell = the reason). The header row is dropped (the cells
+    are self-describing: price, move, catalyst).
+    """
+    if "|" not in text:
+        return text
+    lines = text.split("\n")
+    out: list[str] = []
+    i, n = 0, len(lines)
+    while i < n:
+        line = lines[i]
+        is_header = "|" in line and line.strip().startswith("|")
+        if is_header and i + 1 < n and _is_table_sep(lines[i + 1]):
+            i += 2  # skip header + separator
+            while i < n and lines[i].strip().startswith("|"):
+                cells = [c for c in _table_cells(lines[i])]
+                if cells and any(cells):
+                    first, rest = cells[0], cells[1:]
+                    bullet = f"• **{first}**" if first else "•"
+                    if rest:
+                        last, mid = rest[-1], rest[:-1]
+                        mid_txt = " · ".join(c for c in mid if c)
+                        if mid_txt:
+                            bullet += f" {mid_txt}"
+                        if last:
+                            bullet += f" — {last}"
+                    out.append(bullet)
+                i += 1
+        else:
+            out.append(line)
+            i += 1
+    return "\n".join(out)
+
+
+def _sanitize_answer(text: str) -> str:
+    """Strip disclaimer blocks and flatten any wide tables for the narrow chat bubble."""
+    cleaned = _BANNED_NOTE_RE.sub("", text).rstrip()
+    cleaned = _tables_to_bullets(cleaned)
+    return cleaned or text
+
+
+# ---------------------------------------------------------------------------
+# T3: POST /ui/chat/stream — SSE streaming agentic chat (tool loop)
 # ---------------------------------------------------------------------------
 
 @router.post("/chat/stream", summary="AI assistant chat — SSE streaming response")
 async def chat_stream(body: dict):
     """
-    Streaming chat via LangGraph pipeline (classify → agent → tools loop → END).
-    Carry-over is handled by MemorySaver keyed on session_id — no client-side history.
-    Returns text/event-stream. Events: intent | tool_start | tool_result | token | done
+    Streaming agentic chat. The model runs a multi-round tool loop (live prices,
+    sector movers, web search, RL predictions) and then streams a grounded answer.
+    Carry-over is in-process per session_id. Events: intent | tool_result | token | done.
     """
     from fastapi.responses import StreamingResponse as _SR
-    from services.api.chat_graph import chat_graph
 
     message: str = (body.get("message") or "").strip()
     session_id: str = body.get("session_id") or str(uuid.uuid4())
@@ -2240,78 +2996,135 @@ async def chat_stream(body: dict):
 
     async def generate():
         import json as _json
+        from services.clients.llm_client import get_async_llm_client
 
-        config = {"configurable": {"thread_id": session_id}}
-        user_msg = {"role": "user", "content": message}
+        # Emit intent first so the client captures/persists session_id.
+        yield f'data: {_json.dumps({"event": "intent", "session_id": session_id, "tier": "active", "query": message[:80]})}\n\n'
 
+        # Strong system prompt (IST market context + grounding rules) + carried history.
+        context = _build_chat_context(message)
+        system_prompt = _CHAT_SYSTEM_PROMPT.format(context=context)
+        messages: list[dict] = [{"role": "system", "content": system_prompt}]
+        messages.extend(_session_history_get(session_id))
+        messages.append({"role": "user", "content": message})
+
+        # Tier-1 deterministic pre-route (plan-and-execute): if this is clearly a
+        # buy/sell/momentum screen query, run BOTH the screen and a news fetch
+        # ourselves and inject them. This makes the right candidates AND real
+        # headlines always reach the model — so it neither mis-routes nor
+        # fabricates catalysts when left to its own (unreliable) tool-calling.
+        _tool_cache: dict[str, str] = {}   # per-turn memo → no duplicate Serper/yfinance
+        intent = _detect_invest_intent(message)
+        if intent:
+            _sec_label = {
+                "automobile": "auto", "it_sector": "IT",
+                "banking_bfsi": "banking", "renewable_energy": "renewable energy",
+            }.get(intent["sector"], intent["sector"])
+            _action_phrase = {"buy": "stocks to buy oversold value",
+                              "sell": "stocks profit booking overvalued",
+                              "momentum": "stocks momentum leaders"}[intent["action"]]
+            from datetime import date as _date
+            news_q = f"India {_sec_label} {_action_phrase} {_date.today().isoformat()}"
+
+            screen, news = await asyncio.gather(
+                _chat_tool_screen_stocks(intent["sector"], intent["mode"]),
+                _chat_tool_search_news(news_q),
+                return_exceptions=True,
+            )
+            if isinstance(screen, str) and "screen —" in screen:
+                _tool_cache[_tool_cache_key("screen_stocks",
+                    {"sector": intent["sector"], "mode": intent["mode"]})] = screen
+                yield f'data: {_json.dumps({"event": "tool_result", "tool": "screen_stocks", "summary": screen[:600]})}\n\n'
+                messages.append({
+                    "role": "system",
+                    "content": (
+                        f"PRE-FETCHED SCREEN (action={intent['action']}, sector={intent['sector']}, "
+                        f"mode={intent['mode']}):\n{screen}\n\n"
+                        "Base your stock picks ONLY on this screen. Each pick needs its number + a reason."
+                    ),
+                })
+            if isinstance(news, str) and "NEWS RESULTS" in news:
+                yield f'data: {_json.dumps({"event": "tool_result", "tool": "search_market_news", "summary": news[:600]})}\n\n'
+                messages.append({
+                    "role": "system",
+                    "content": (
+                        f"PRE-FETCHED NEWS:\n{news}\n\n"
+                        "Cite ONLY headlines that appear above, with their real source and date. If a "
+                        "pick has no matching headline here, say 'no specific catalyst in today's news' "
+                        "— NEVER invent a headline, source, or date."
+                    ),
+                })
+
+        final_text = ""
         try:
-            async for event in chat_graph.astream_events(
-                {"messages": [user_msg]},
-                config=config,
-                version="v2",
-            ):
-                if event.get("event") != "on_custom_event":
-                    continue
-                name = event.get("name")
-                data = event.get("data") or {}
+            client = get_async_llm_client()
 
-                if name == "intent":
-                    payload = {
-                        "event": "intent",
-                        "session_id": session_id,
-                        "intent_type": data.get("intent_type", "GENERAL"),
-                        "entities": data.get("entities", {}),
-                        "focus": data.get("focus", ""),
-                    }
-                    yield f"data: {_json.dumps(payload)}\n\n"
+            for _round in range(_CHAT_MAX_TOOL_ROUNDS):
+                resp = await _chat_completion(
+                    client,
+                    messages=messages,
+                    temperature=0.4,
+                    max_tokens=700,
+                    tools=_CHAT_TOOLS,
+                    tool_choice="auto",
+                )
+                msg = resp.choices[0].message
+                tcs = getattr(msg, "tool_calls", None) or []
 
-                elif name == "plan":
-                    payload = {
-                        "event": "plan",
-                        "depth": data.get("depth", "shallow"),
-                        "needs_external": data.get("needs_external", False),
-                        "tasks": data.get("tasks", []),
-                    }
-                    yield f"data: {_json.dumps(payload)}\n\n"
+                if not tcs:
+                    final_text = _strip_think(msg.content or "")
+                    break
 
-                elif name == "tool_start":
-                    payload = {
-                        "event": "tool_start",
-                        "tool": data.get("tool"),
-                        "args": data.get("args", {}),
-                    }
-                    yield f"data: {_json.dumps(payload)}\n\n"
+                # Record the assistant tool-call turn, then run all calls in parallel.
+                messages.append({
+                    "role": "assistant",
+                    "content": msg.content or "",
+                    "tool_calls": [
+                        {"id": tc.id, "type": "function",
+                         "function": {"name": tc.function.name, "arguments": tc.function.arguments}}
+                        for tc in tcs
+                    ],
+                })
+                parsed_args = []
+                for tc in tcs:
+                    try:
+                        parsed_args.append(_json.loads(tc.function.arguments or "{}"))
+                    except Exception:
+                        parsed_args.append({})
+                results = await asyncio.gather(*[
+                    _execute_chat_tool(tc.function.name, a, _tool_cache)
+                    for tc, a in zip(tcs, parsed_args)
+                ])
+                for tc, result in zip(tcs, results):
+                    messages.append({"role": "tool", "tool_call_id": tc.id, "content": result})
+                    summary = (result or "")[:600]
+                    yield f'data: {_json.dumps({"event": "tool_result", "tool": tc.function.name, "summary": summary})}\n\n'
+            else:
+                # Hit max rounds with tool context pending → force a final answer (no tools).
+                resp = await _chat_completion(
+                    client, messages=messages, temperature=0.4, max_tokens=700,
+                )
+                final_text = _strip_think(resp.choices[0].message.content or "")
 
-                elif name == "tool_result":
-                    payload = {
-                        "event": "tool_result",
-                        "tool": data.get("tool"),
-                        "summary": data.get("summary", ""),
-                    }
-                    yield f"data: {_json.dumps(payload)}\n\n"
+            if not final_text:
+                final_text = "I couldn't compose a grounded answer from the live data this time — try rephrasing."
+            else:
+                final_text = _sanitize_answer(final_text)
 
-                elif name == "token":
-                    payload = {"event": "token", "text": data.get("text", "")}
-                    yield f"data: {_json.dumps(payload)}\n\n"
-
-                elif name == "thinking":
-                    # Qwen3 entered a think block — no tokens for a while, not a hang
-                    yield f'data: {{"event":"thinking"}}\n\n'
-
-                elif name == "review":
-                    payload = {
-                        "event":  "review",
-                        "cycle":  data.get("cycle", 1),
-                        "pass":   data.get("pass", True),
-                        "issues": data.get("issues", []),
-                    }
-                    yield f"data: {_json.dumps(payload)}\n\n"
+            for piece in _chunk_for_stream(final_text):
+                yield f'data: {_json.dumps({"event": "token", "text": piece})}\n\n'
 
         except Exception as exc:
-            logger.warning("[ui/chat/stream] Graph error: %s", exc)
-            fallback = _mock_reply(message)
-            yield f'data: {_json.dumps({"event": "token", "text": fallback})}\n\n'
+            logger.warning("[ui/chat/stream] agentic loop error: %s", exc)
+            # Be honest on rate-limit instead of a canned (and possibly wrong) mock answer.
+            if _is_transient_llm_error(exc):
+                final_text = ("The market model is briefly rate-limited upstream. "
+                              "Please retry in a few seconds.")
+            else:
+                final_text = _mock_reply(message)
+            yield f'data: {_json.dumps({"event": "token", "text": final_text})}\n\n'
 
+        _session_history_append(session_id, message, final_text)
         yield 'data: {"event":"done"}\n\n'
 
     return _SR(
@@ -2329,7 +3142,13 @@ async def chat_stream(body: dict):
 # Managed tickers — GET/PUT/POST/DELETE /ui/tickers/managed
 # ---------------------------------------------------------------------------
 
-_VALID_SECTORS = ["automobile", "banking_bfsi", "it_sector", "renewable_energy"]
+def _get_valid_sectors() -> list[str]:
+    """Return the list of enabled sectors from SectorRegistry (dynamic)."""
+    try:
+        from backend.sectors.registry import SectorRegistry
+        return SectorRegistry.enabled_sectors()
+    except Exception:
+        return ["automobile", "banking_bfsi", "it_sector", "renewable_energy"]
 
 
 def _load_mt():
@@ -2352,7 +3171,7 @@ async def get_managed_tickers() -> dict:
 
 
 class _ManagedTickerBody(BaseModel):
-    sym:     str
+    sym:     str = ""
     name:    str = ""
     sector:  str = "automobile"
     enabled: bool = True
@@ -2360,9 +3179,10 @@ class _ManagedTickerBody(BaseModel):
 
 @router.put("/tickers/managed", summary="Replace the entire managed ticker list")
 async def replace_managed_tickers(body: list[_ManagedTickerBody]) -> dict:
+    valid_sectors = _get_valid_sectors()
     tickers = [t.model_dump() for t in body]
     for t in tickers:
-        if t["sector"] not in _VALID_SECTORS:
+        if t["sector"] not in valid_sectors:
             from fastapi import HTTPException
             raise HTTPException(status_code=422, detail=f"Unknown sector '{t['sector']}'")
     _save_mt(tickers)
@@ -2370,42 +3190,202 @@ async def replace_managed_tickers(body: list[_ManagedTickerBody]) -> dict:
     return {"tickers": tickers}
 
 
+async def _generate_envelope_for_new_ticker(sym: str, sector: str) -> None:
+    """Background task: generate forecast envelope for a newly added ticker."""
+    try:
+        from core.intelligence.rl.workflows.generate_forecast import generate_forecast
+        import asyncio as _asyncio
+        logger.info(
+            "[tickers/managed] ENVELOPE START: %s (sector=%s) — running full 9-agent pipeline (~2 min)",
+            sym, sector,
+        )
+        env = await _asyncio.to_thread(generate_forecast, sym, sector=sector)
+        if env:
+            logger.info(
+                "[tickers/managed] ENVELOPE DONE: %s  cycle=%s  horizon=%dd  base=%.2f  weights=v%d",
+                sym, env.cycle_id, len(env.daily_forecasts), env.base_close, env.weight_version_used,
+            )
+        else:
+            logger.warning("[tickers/managed] ENVELOPE DONE: %s returned None envelope", sym)
+    except Exception as exc:
+        logger.warning(
+            "[tickers/managed] ENVELOPE FAILED: %s: %s — scheduler will retry on 1st of month",
+            sym, exc, exc_info=True,
+        )
+
+
+def _cleanup_ticker_rl_data(sym: str, sector: str) -> None:
+    """Remove prediction data for a deleted ticker. Non-fatal."""
+    try:
+        import shutil as _shutil
+        from pathlib import Path as _Path
+        data_dir = _Path("data/predictions") / sector / sym
+        if data_dir.exists():
+            _shutil.rmtree(data_dir)
+            logger.info("[ui/tickers/managed] Cleaned up RL data at %s", data_dir)
+        else:
+            logger.debug("[ui/tickers/managed] No RL data directory for %s/%s", sector, sym)
+    except Exception as exc:
+        logger.warning("[ui/tickers/managed] RL data cleanup failed for %s: %s", sym, exc)
+
+
 @router.post("/tickers/managed/{sym}", summary="Add a ticker to the managed list")
-async def add_managed_ticker(sym: str, body: _ManagedTickerBody) -> dict:
+async def add_managed_ticker(sym: str, body: _ManagedTickerBody = _ManagedTickerBody()) -> dict:
+    import asyncio as _asyncio
     from services.api.log_buffer import _KNOWN_NAMES
+    valid_sectors = _get_valid_sectors()
     tickers = _load_mt()
     sym_up = sym.strip().upper()
-    if any(t["sym"] == sym_up for t in tickers):
-        return {"tickers": tickers, "message": f"{sym_up} already in managed list"}
+
+    # FIX 4: Tightened duplicate check — prevent same sym in any sector
+    existing = next((t for t in tickers if t["sym"] == sym_up), None)
+    if existing:
+        if existing.get("sector") != body.sector:
+            logger.warning(
+                "[ui/tickers/managed] %s already in sector '%s'; not adding duplicate in '%s'",
+                sym_up, existing.get("sector"), body.sector,
+            )
+        return {"tickers": tickers, "message": f"{sym_up} already managed (sector: {existing.get('sector', 'unknown')})"}
+
+    # FIX 1: Auto-detect sector from SectorRegistry
+    try:
+        from backend.sectors.registry import SectorRegistry
+        auto_sector = SectorRegistry.resolve(sym_up)
+    except Exception:
+        auto_sector = "automobile"
+
+    user_sector = getattr(body, "sector", "") or ""
+    if user_sector in valid_sectors and user_sector == auto_sector:
+        # User and registry agree
+        resolved_sector = user_sector
+        sector_auto_detected = False
+    elif user_sector in valid_sectors and auto_sector == "automobile" and user_sector != "automobile":
+        # Registry defaulted to automobile (unknown ticker) but user specified something valid — trust user
+        resolved_sector = user_sector
+        sector_auto_detected = False
+    else:
+        # Registry has a clear answer — use it (silently corrects wrong user input)
+        resolved_sector = auto_sector if auto_sector in valid_sectors else "automobile"
+        sector_auto_detected = (resolved_sector != user_sector)
+        if sector_auto_detected and user_sector:
+            logger.info(
+                "[ui/tickers/managed] Sector auto-corrected for %s: '%s' → '%s'",
+                sym_up, user_sector, resolved_sector,
+            )
+
+    # FIX 2: Validate ticker exists on NSE (non-blocking, times out gracefully)
+    try:
+        import yfinance as _yf
+        _t = _yf.Ticker(f"{sym_up}.NS")
+        _fi = _t.fast_info
+        _price = _fi.last_price if hasattr(_fi, "last_price") else None
+        if not _price or _price <= 0:
+            raise ValueError(f"No price data for {sym_up}.NS")
+    except Exception as _ve:
+        logger.warning("[ui/tickers/managed] Ticker validation warning for %s: %s", sym_up, _ve)
+        # Non-fatal — if yfinance is down, we allow the add but warn
+        # This prevents blocking on yfinance outage while still catching obvious garbage
+
     tickers.append({
         "sym":     sym_up,
         "name":    body.name or _KNOWN_NAMES.get(sym_up, sym_up),
-        "sector":  body.sector if body.sector in _VALID_SECTORS else "automobile",
+        "sector":  resolved_sector,
         "enabled": body.enabled,
     })
     _save_mt(tickers)
-    logger.info("[ui/tickers/managed] Added %s (%s)", sym_up, body.sector)
-    return {"tickers": tickers}
+
+    from pathlib import Path as _P
+    _mt_abs = _P("data/managed_tickers.json").resolve()
+    logger.info(
+        "[tickers/managed] ADD: %s  sector=%s  auto_detected=%s | "
+        "file=%s | total_tickers=%d: %s",
+        sym_up, resolved_sector, sector_auto_detected,
+        _mt_abs, len(tickers), [t["sym"] for t in tickers],
+    )
+    logger.info(
+        "[tickers/managed] Scheduler will pick up %s on next job run "
+        "(daily review / monthly forecast reads managed_tickers.json fresh each time)",
+        sym_up,
+    )
+
+    # Trigger async envelope generation so new ticker doesn't wait until month-end
+    _asyncio.create_task(_generate_envelope_for_new_ticker(sym_up, resolved_sector))
+    logger.info(
+        "[tickers/managed] Envelope generation queued for %s (%s) in background",
+        sym_up, resolved_sector,
+    )
+
+    return {
+        "added": sym_up,
+        "sector": resolved_sector,
+        "sector_auto_detected": sector_auto_detected,
+        "note": "Envelope generation started in background",
+        "tickers": tickers,
+    }
+
+
+@router.post("/tickers/managed/{sym}/generate-envelope", summary="Trigger immediate envelope generation for a ticker")
+async def trigger_envelope_generation(sym: str, sector: str = "automobile") -> dict:
+    """
+    Immediately generate a forecast envelope for this ticker.
+    Use this when adding a new ticker mid-month and don't want to wait until month-end.
+    """
+    import asyncio as _asyncio
+    sym_up = sym.upper()
+    _asyncio.create_task(_generate_envelope_for_new_ticker(sym_up, sector))
+    return {"triggered": sym_up, "sector": sector, "note": "Generating in background — check /ui/tickers/managed for status"}
 
 
 @router.delete("/tickers/managed/{sym}", summary="Remove a ticker from the managed list")
 async def remove_managed_ticker(sym: str) -> dict:
     sym_up = sym.strip().upper()
-    tickers = [t for t in _load_mt() if t["sym"] != sym_up]
+    tickers = _load_mt()
+    # Find the ticker's sector BEFORE removing it
+    removed_entry = next((t for t in tickers if t["sym"] == sym_up), None)
+    tickers = [t for t in tickers if t["sym"] != sym_up]
     _save_mt(tickers)
-    logger.info("[ui/tickers/managed] Removed %s", sym_up)
-    return {"tickers": tickers}
+
+    from pathlib import Path as _P
+    _mt_abs = _P("data/managed_tickers.json").resolve()
+    logger.info(
+        "[tickers/managed] REMOVE: %s | file=%s | remaining=%d: %s",
+        sym_up, _mt_abs, len(tickers), [t["sym"] for t in tickers],
+    )
+
+    # FIX 3: Clean up RL prediction data (non-fatal if it fails)
+    if removed_entry:
+        logger.info(
+            "[tickers/managed] Cleaning up RL prediction data for %s (sector=%s)",
+            sym_up, removed_entry.get("sector", "automobile"),
+        )
+        _cleanup_ticker_rl_data(sym_up, removed_entry.get("sector", "automobile"))
+
+    return {"removed": sym_up, "tickers": tickers}
 
 
 @router.patch("/tickers/managed/{sym}/toggle", summary="Enable or disable a managed ticker")
 async def toggle_managed_ticker(sym: str) -> dict:
     sym_up = sym.strip().upper()
     tickers = _load_mt()
+    toggled = None
     for t in tickers:
         if t["sym"] == sym_up:
             t["enabled"] = not t.get("enabled", True)
+            toggled = t
             break
     _save_mt(tickers)
+
+    from pathlib import Path as _P
+    _mt_abs = _P("data/managed_tickers.json").resolve()
+    if toggled:
+        logger.info(
+            "[tickers/managed] TOGGLE: %s  enabled=%s | file=%s | active_count=%d",
+            sym_up, toggled["enabled"], _mt_abs,
+            sum(1 for t in tickers if t.get("enabled", True)),
+        )
+    else:
+        logger.warning("[tickers/managed] TOGGLE: %s not found in managed list", sym_up)
+
     return {"tickers": tickers}
 
 

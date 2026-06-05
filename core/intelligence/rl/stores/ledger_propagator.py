@@ -35,18 +35,10 @@ from __future__ import annotations
 import logging
 from datetime import date
 
+from core.config import settings
 from core.schemas.feedback import LearningLedger, Lesson
 
 logger = logging.getLogger(__name__)
-
-# Confidence blend weights when merging a repeated pattern from any ticker.
-# 70/30 in favour of the accumulated signal — avoids single-day spikes.
-_BLEND_EXISTING = 0.70
-_BLEND_INCOMING = 0.30
-
-# Per-new-ticker confidence bonus. Requires the confirming ticker to be new
-# (not already in contributing_tickers). Capped at 1.0 after application.
-_CROSS_TICKER_BOOST = 0.05
 
 
 def propagate_lesson_to_ledger(
@@ -69,8 +61,8 @@ def propagate_lesson_to_ledger(
     if existing is not None:
         # Blend confidence — weighted average biased toward accumulated signal
         existing.confidence = round(
-            _BLEND_EXISTING * existing.confidence
-            + _BLEND_INCOMING * lesson.confidence,
+            settings.RL_LESSON_BLEND_EXISTING * existing.confidence
+            + settings.RL_LESSON_BLEND_INCOMING * lesson.confidence,
             4,
         )
         existing.occurrences += 1
@@ -83,12 +75,12 @@ def propagate_lesson_to_ledger(
             existing.contributing_tickers = contributing + [source_ticker]
             existing.confidence = min(
                 1.0,
-                round(existing.confidence + _CROSS_TICKER_BOOST, 4),
+                round(existing.confidence + settings.RL_CROSS_TICKER_BOOST, 4),
             )
             logger.info(
                 "[LedgerPropagator] Cross-ticker boost +%.2f for pattern '%s' "
                 "(confirmed by %s, total tickers: %d)",
-                _CROSS_TICKER_BOOST,
+                settings.RL_CROSS_TICKER_BOOST,
                 lesson.pattern,
                 source_ticker,
                 len(existing.contributing_tickers),
@@ -221,14 +213,27 @@ def build_tiered_lessons_summary(
       TIER 2 — up to 3 sector-wide lessons from the shared sector ledger
       TIER 3 — up to 2 market-wide lessons from the shared market ledger
 
-    The contributing_tickers list is shown for Tier 2/3 so the LLM understands
-    how many independent tickers confirmed each sector/market pattern.
+    Lessons with effective_confidence < 0.20 are excluded — they are nearly
+    stale and their signal has decayed too far to be actionable.
     """
+    from datetime import date as _date
+    today = _date.today()
+    _min_eff = 0.20
+
+    def _age(lesson: Lesson) -> str:
+        ref = lesson.last_seen or lesson.date_learned or ""
+        try:
+            return f"{(today - _date.fromisoformat(ref)).days}d ago"
+        except Exception:
+            return "?"
+
     lines: list[str] = []
 
     # ── TIER 1: stock-specific ────────────────────────────────────────────────
     t1 = sorted(
-        [l for l in ticker_ledger.lessons if l.still_valid and l.scope == "stock_specific"],
+        [l for l in ticker_ledger.lessons
+         if l.still_valid and l.scope == "stock_specific"
+         and ticker_ledger.effective_confidence(l) >= _min_eff],
         key=lambda l: ticker_ledger.effective_confidence(l),
         reverse=True,
     )[:6]
@@ -237,12 +242,15 @@ def build_tiered_lessons_summary(
         for l in t1:
             lines.append(
                 f"  {l.lesson_id} [{l.category}] {l.pattern}: {l.rule} "
-                f"(eff_conf={ticker_ledger.effective_confidence(l):.2f}, seen={l.occurrences}x)"
+                f"(eff_conf={ticker_ledger.effective_confidence(l):.2f}, "
+                f"seen={l.occurrences}x, last={_age(l)})"
             )
 
     # ── TIER 2: sector-wide ───────────────────────────────────────────────────
     t2 = sorted(
-        [l for l in sector_ledger.lessons if l.still_valid],
+        [l for l in sector_ledger.lessons
+         if l.still_valid
+         and sector_ledger.effective_confidence(l) >= _min_eff],
         key=lambda l: sector_ledger.effective_confidence(l),
         reverse=True,
     )[:3]
@@ -253,12 +261,14 @@ def build_tiered_lessons_summary(
             lines.append(
                 f"  {l.lesson_id} [{l.category}] {l.pattern}: {l.rule} "
                 f"(eff_conf={sector_ledger.effective_confidence(l):.2f}, "
-                f"confirmed_by=[{tickers_str}], seen={l.occurrences}x)"
+                f"confirmed_by=[{tickers_str}], seen={l.occurrences}x, last={_age(l)})"
             )
 
     # ── TIER 3: market-wide ───────────────────────────────────────────────────
     t3 = sorted(
-        [l for l in market_ledger.lessons if l.still_valid],
+        [l for l in market_ledger.lessons
+         if l.still_valid
+         and market_ledger.effective_confidence(l) >= _min_eff],
         key=lambda l: market_ledger.effective_confidence(l),
         reverse=True,
     )[:2]
@@ -269,7 +279,55 @@ def build_tiered_lessons_summary(
             lines.append(
                 f"  {l.lesson_id} [{l.category}] {l.pattern}: {l.rule} "
                 f"(eff_conf={market_ledger.effective_confidence(l):.2f}, "
-                f"confirmed_by=[{tickers_str}], seen={l.occurrences}x)"
+                f"confirmed_by=[{tickers_str}], seen={l.occurrences}x, last={_age(l)})"
             )
 
     return "\n".join(lines) if lines else "No lessons learned yet."
+
+
+def downgrade_stale_lessons(
+    ledger: "LearningLedger",
+    staleness_days: int = 30,
+) -> int:
+    """
+    Downgrade scope for lessons confirmed by only ONE ticker that haven't
+    been seen in staleness_days days. Multi-ticker lessons are real signal
+    and are never auto-downgraded.
+
+    Rules:
+      market_wide  + 1 ticker + inactive >  staleness_days  → sector_wide
+      sector_wide  + 1 ticker + inactive > 2×staleness_days → still_valid=False
+
+    Returns number of lessons modified. Mutates ledger in-place.
+    """
+    from datetime import date as _date
+
+    today = _date.today()
+    modified = 0
+    for lesson in ledger.lessons:
+        if not lesson.still_valid:
+            continue
+        if len(lesson.contributing_tickers) > 1:
+            continue  # multi-ticker = real cross-asset signal, never auto-downgrade
+        try:
+            days_inactive = (today - _date.fromisoformat(lesson.last_seen)).days
+        except Exception:
+            continue
+
+        if lesson.scope == "market_wide" and days_inactive > staleness_days:
+            lesson.scope = "sector_wide"
+            modified += 1
+            logger.info(
+                "[ledger_propagator] %s: downgraded market_wide → sector_wide "
+                "(%d days inactive, 1 ticker)",
+                lesson.lesson_id, days_inactive,
+            )
+        elif lesson.scope == "sector_wide" and days_inactive > staleness_days * 2:
+            lesson.still_valid = False
+            modified += 1
+            logger.info(
+                "[ledger_propagator] %s: invalidated sector_wide lesson "
+                "(%d days inactive, 1 ticker)",
+                lesson.lesson_id, days_inactive,
+            )
+    return modified

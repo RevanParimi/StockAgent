@@ -52,6 +52,8 @@ class DailyForecast(BaseModel):
     day: int                                     # 1-indexed from cycle start
     date: str                                    # ISO date string "YYYY-MM-DD"
     predicted_close: float
+    price_lower: float | None = None             # P10 Monte Carlo band (None when MC unavailable)
+    price_upper: float | None = None             # P90 Monte Carlo band (None when MC unavailable)
     # predicted_change_pct removed — derivable as (predicted_close - base_close)/base_close*100.
     # Kept here for backward compat with existing envelope files; computed on write, not stored.
     predicted_change_pct: float = 0.0
@@ -66,6 +68,10 @@ class DailyForecast(BaseModel):
     key_assumptions: list[str] = Field(default_factory=list)
     revised: bool = False                        # True after a daily review revises this row
     revision_count: int = 0
+    predicted_agent_catalysts: dict[str, dict[str, str | float]] = Field(
+        default_factory=dict,
+        description="Agent catalyst predictions for this forecast day: {agent: {bull_case_if, bear_case_if, data_confidence}}"
+    )
 
 
 class PredictionEnvelope(BaseModel):
@@ -86,6 +92,11 @@ class PredictionEnvelope(BaseModel):
     forecast_profile_source: str = "static"      # "llm" or "static"
     daily_forecasts: list[DailyForecast] = Field(default_factory=list)
     conviction_streak: ConvictionStreak = Field(default_factory=ConvictionStreak)  # P3
+    agent_predictions: dict[str, dict[str, str | float]] = Field(
+        default_factory=dict,
+        description="Per-agent catalyst snapshot at forecast time: {agent: {bull_case_if, bear_case_if, ticker_vs_peers, what_changed, data_confidence}}"
+    )
+    fno_snapshot: FnOSnapshot | None = None   # F&O chain snapshot at month-start (G7b)
 
     def get_forecast(self, target_date: str) -> DailyForecast | None:
         for f in self.daily_forecasts:
@@ -252,6 +263,11 @@ class FeedbackEntry(BaseModel):
     # The revision timestamp can be inferred from revised=True on DailyForecast rows.
     # feedback_agent_raw: stored to debug/ directory separately, not in main log.
     feedback_agent_raw: str = Field(default="", exclude=True)
+    predicted_catalysts_snapshot: dict[str, dict[str, str | float]] = Field(
+        default_factory=dict,
+        description="Catalyst predictions from the forecast cycle, stored for audit trail alongside miss_analysis"
+    )
+    offmarket_context: str = ""   # previous day's off-market signals injected as LLM context
 
 
 class DailyFeedbackLog(BaseModel):
@@ -558,17 +574,31 @@ class LearningLedger(BaseModel):
     def active_lessons_summary(self) -> str:
         """
         Compact text injected into the FeedbackAgent prompt.
-        Uses effective (decay-adjusted) confidence so the LLM naturally
-        weights recent patterns higher than stale ones.
+        Filters out nearly-stale lessons (eff_confidence < 0.20) and sorts
+        by effective confidence descending so the LLM sees the most reliable,
+        recent patterns first.
         """
-        active = [l for l in self.lessons if l.still_valid]
+        _min_eff = 0.20
+        active = [
+            l for l in self.lessons
+            if l.still_valid and self.effective_confidence(l) >= _min_eff
+        ]
         if not active:
             return "No lessons learned yet."
-        lines = [
-            f"{l.lesson_id} [{l.category}|{l.scope}] {l.pattern}: {l.rule} "
-            f"(eff_confidence={self.effective_confidence(l):.2f}, seen={l.occurrences}x)"
-            for l in active
-        ]
+        active.sort(key=lambda l: self.effective_confidence(l), reverse=True)
+        today = date.today()
+        lines = []
+        for l in active:
+            ref_str = l.last_seen or l.date_learned or ""
+            try:
+                days_ago = (today - date.fromisoformat(ref_str)).days
+            except Exception:
+                days_ago = -1
+            age = f"{days_ago}d ago" if days_ago >= 0 else "?"
+            lines.append(
+                f"{l.lesson_id} [{l.category}|{l.scope}] {l.pattern}: {l.rule} "
+                f"(eff_confidence={self.effective_confidence(l):.2f}, seen={l.occurrences}x, last={age})"
+            )
         return "\n".join(lines)
 
     def increment_miss(self, factor: str) -> None:
@@ -610,6 +640,9 @@ class SeasonalPattern(BaseModel):
     # Negative = lower the bar (structurally hard period → more forgiving on penalty).
     # e.g. festive season: {"sales_demand": +0.08}  budget week: {"fundamentals": -0.05}
     accuracy_threshold_delta: dict[str, float] = Field(default_factory=dict)
+    # F&O expiry week patterns cannot use month/day_range (expiry date is dynamic).
+    # When True, _is_active() skips this pattern; _get_fno_expiry_context() handles it instead.
+    fno_week_only: bool = False
 
 
 class SeasonalContext(BaseModel):
@@ -669,6 +702,10 @@ class FeedbackAgentInput(BaseModel):
     # Forecast profile shape from PriceInterpolator — needed for timing accuracy assessment.
     # "The forecast was front_loaded (60% of expected move in first 10 days)."
     forecast_profile_context: str = ""
+    predicted_catalysts_by_agent: dict[str, dict[str, str | float]] = Field(
+        default_factory=dict,
+        description="Predicted bull/bear catalysts per agent from the envelope, for FeedbackAgent to compare against actual outcome"
+    )
 
 
 class RawLesson(BaseModel):
@@ -709,3 +746,85 @@ class RegimeSnapshot(BaseModel):
     multipliers: dict[str, float] = Field(default_factory=dict)   # per-agent regime multipliers
     narrative: str = ""                    # one-sentence context for LLM injection
     as_of_date: str = ""                   # ISO date
+
+
+# ---------------------------------------------------------------------------
+# G4 — Off-Market Signals (block deals, bulk deals, pre-open auction)
+# ---------------------------------------------------------------------------
+
+class BlockDeal(BaseModel):
+    """SEBI block deal: ≥500,000 shares OR ≥₹10Cr, executed in the 9:15-9:50am window."""
+    symbol: str
+    client_name: str
+    trade_type: Literal["BUY", "SELL"]
+    quantity: int
+    price: float
+    trade_value_cr: float   # quantity × price / 1e7
+
+
+class BulkDeal(BaseModel):
+    """SEBI bulk deal: single-day quantity > 0.5% of company's equity. Reported by day-end."""
+    symbol: str
+    client_name: str
+    trade_type: Literal["BUY", "SELL"]
+    quantity: int
+    price: float
+    trade_value_cr: float
+
+
+class OffMarketSignals(BaseModel):
+    """
+    Off-market institutional signals for a ticker on a given date.
+    Fetched at end of daily_review day T; injected at start of day T+1.
+    """
+    date: str          # ISO date this data was fetched for
+    ticker: str
+    block_deals: list[BlockDeal] = Field(default_factory=list)
+    bulk_deals: list[BulkDeal] = Field(default_factory=list)
+    pre_open_price: float | None = None
+    pre_open_vs_prev_close_pct: float | None = None   # gap % (pre_open - prev_close)/prev_close*100
+    pre_open_volume: int | None = None
+    net_institutional_direction: Literal["BUY", "SELL", "MIXED", "NONE"] = "NONE"
+    total_trade_value_cr: float = 0.0
+    summary: str = ""
+
+
+# ---------------------------------------------------------------------------
+# G7b — F&O Chain Snapshot
+# ---------------------------------------------------------------------------
+
+class FnOSnapshot(BaseModel):
+    """
+    NSE options chain snapshot for a ticker at month-start.
+    Stored in PredictionEnvelope; injected as context during F&O expiry week.
+    """
+    date: str
+    ticker: str
+    pcr: float | None = None                     # Put-Call Ratio (OI-based)
+    max_pain_price: float | None = None           # strike minimising option buyer payoff
+    oi_buildup_direction: Literal["LONG", "SHORT", "NEUTRAL"] | None = None
+    atm_strike: float | None = None               # nearest strike to current price
+    near_month_expiry: str | None = None          # "YYYY-MM-DD"
+    total_call_oi: int | None = None
+    total_put_oi: int | None = None
+    current_price: float | None = None
+    max_pain_deviation_pct: float | None = None   # (current_price - max_pain) / current_price * 100
+    source: str = "nse_api"
+
+    def to_context_string(self) -> str:
+        if self.pcr is None:
+            return ""
+        lines = [f"[F&O SNAPSHOT — {self.date}]"]
+        pcr_signal = (
+            "bearish (heavy put writing)" if (self.pcr or 0) > 1.5
+            else ("bullish (heavy call writing)" if (self.pcr or 0) < 0.7 else "neutral")
+        )
+        lines.append(f"  PCR: {self.pcr:.2f} → {pcr_signal}")
+        if self.max_pain_price and self.current_price:
+            lines.append(
+                f"  Max Pain: ₹{self.max_pain_price:.0f} "
+                f"(current: ₹{self.current_price:.0f}, "
+                f"deviation: {self.max_pain_deviation_pct or 0:+.1f}%)"
+            )
+        lines.append(f"  OI Buildup: {self.oi_buildup_direction}")
+        return "\n".join(lines)

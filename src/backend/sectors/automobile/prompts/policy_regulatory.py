@@ -91,9 +91,16 @@ INFERENCE RULES:
 
 ANALYSIS_PROMPT = """Analyse the Policy & Regulatory outlook for the Indian automobile company: **{ticker}** ({company_name}).
 
+<<<<<<< HEAD
 Score each dimension from 0.0 (very unfavourable / regulatory headwind) to 1.0 (very favourable /
 policy tailwind). Apply the scoring philosophy from your system instructions. Never assign 0.5 as a default.
 Score based on demonstrated execution and confirmed compliance — not just policy headlines.
+=======
+{business_model_context}
+
+Focus on the following dimensions and score each from 0.0 (very unfavourable / regulatory headwind)
+to 1.0 (very favourable / policy tailwind):
+>>>>>>> main
 
 DIMENSIONS TO SCORE:
 
@@ -132,6 +139,7 @@ DIMENSIONS TO SCORE:
 Context / recent data (includes full policy document extracts where available):
 {context}
 
+<<<<<<< HEAD
 ANALYSIS INSTRUCTIONS:
 - Score fame_ev_subsidy and localisation_readiness INDEPENDENTLY. An OEM can be FAME-eligible but
   still have high subsidy dependency risk — capture both the eligibility score and the dependency
@@ -147,6 +155,15 @@ ANALYSIS INSTRUCTIONS:
 - If any dimension has insufficient data, record it in missing_data_points and reduce confidence_score.
 
 Return ONLY valid JSON in this exact schema:
+=======
+Return ONLY valid JSON. IMPORTANT: Be ticker-specific. Cite actual policy details and financial impacts.
+For key_positives/key_risks: quote specific amounts (e.g. "FAME III subsidy INR 10,000 per EV; TATAMOTORS captured ~40% of FY25 disbursements").
+For ticker_vs_peers: cite relative policy benefit vs named peers (e.g. "TATAMOTORS most FAME III eligible vs MARUTI EV <2% of portfolio").
+For bull_case_if: name the specific policy catalyst + financial benefit (e.g. "If PLI disbursement of INR 500Cr realized in H2 FY26").
+For bear_case_if: name the specific regulatory risk + cost impact (e.g. "If BS7 timeline accelerated to FY27, compliance capex INR 800Cr").
+For what_changed: cite what shifted in policy environment this cycle vs last (e.g. "FAME III announced with INR 2,500Cr allocation; TATAMOTORS eligibility confirmed").
+
+>>>>>>> main
 {{
   "agent": "policy_regulatory",
   "ticker": "{ticker}",
@@ -164,8 +181,18 @@ Return ONLY valid JSON in this exact schema:
   "missing_data_points": [<string, each data gap that reduced confidence_score>],
   "key_positives": [<string>, ...],
   "key_risks": [<string>, ...],
+<<<<<<< HEAD
   "summary": "<3-4 sentence narrative: policy tailwinds and structural durability, subsidy dependency risk, localisation position, key near-term regulatory event>",
   "data_freshness": "<date of most recent policy data used>"
+=======
+  "summary": "<2-3 sentence narrative on policy tailwinds and regulatory risks for this OEM>",
+  "data_freshness": "<date of most recent policy data used>",
+  "ticker_vs_peers": "<relative policy benefit vs named peers with specific amounts or eligibility>",
+  "bull_case_if": "<specific policy catalyst + quantified financial benefit that would add ~0.15 to score>",
+  "bear_case_if": "<specific regulatory risk + cost/capex impact that would cut ~0.15 from score>",
+  "what_changed": "<what shifted in policy environment this cycle vs last, with specific amounts or dates>",
+  "data_confidence": <float 0.3-1.0>
+>>>>>>> main
 }}
 """
 

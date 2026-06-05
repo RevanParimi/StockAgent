@@ -26,7 +26,6 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import importlib
 import logging
 import sys
 from datetime import date, timedelta
@@ -54,14 +53,12 @@ from core.intelligence.rl.stores.ledger_propagator import (
     propagate_lessons,
 )
 from core.intelligence.rl.conviction.tracker import (
-    STREAK_WARNING_THRESHOLD,
     build_streak_warning_block,
     compute_final_reversion_prior,
     update_conviction_streak,
 )
 from core.intelligence.algorithms.indicators.fetcher import get_price_history
 from core.intelligence.seasonal.calendar import SeasonalCalendar
-from core.intelligence.seasonal.validator import SeasonalValidator
 from core.intelligence.regime.detector import RegimeDetector, apply_regime_multipliers
 from core.schemas.feedback import RegimeSnapshot, ThesisReview
 from core.intelligence.rl.agents.thesis_reviewer import ThesisReviewer, THESIS_REVIEW_THRESHOLD
@@ -77,23 +74,87 @@ logger = logging.getLogger(__name__)
 # Helpers
 # ---------------------------------------------------------------------------
 
+def _should_skip_agent_rerun(
+    direction_correct: bool,
+    price_error_pct: float,
+    threshold: float,
+) -> bool:
+    """
+    True when the 9-agent orchestrator re-run can be safely skipped.
+    Skipping is valid when direction is correct and the error is small —
+    WeightAdapter takes no meaningful action on these days anyway.
+    threshold=0.0 disables the early exit.
+    """
+    if threshold <= 0.0:
+        return False
+    return direction_correct and abs(price_error_pct) < threshold
+
+
 def _fetch_actual_close(ticker: str, target_date: date) -> float | None:
-    """Fetch the actual closing price for a specific date via yfinance."""
-    try:
-        df = get_price_history(ticker, years=1)
-        if df.empty:
+    """
+    Fetch the actual closing price for a specific date via yfinance.
+
+    Uses yf.download() with a narrow window — it refreshes the crumb automatically
+    and avoids the 401 'Invalid Crumb' errors seen with .history() on long-running processes.
+    Falls back to get_price_history() (C++ fetcher) if download fails.
+    """
+    import yfinance as yf
+    from datetime import timedelta
+    from core.config import settings
+
+    suffix = ".NS"
+    yf_sym = settings.YF_SYMBOL_OVERRIDES.get(ticker.upper()) or (
+        ticker if ticker.endswith(suffix) else f"{ticker}{suffix}"
+    )
+    # Fetch 7-day window to ensure we catch the target date even with holidays
+    start = (target_date - timedelta(days=7)).isoformat()
+    end   = (target_date + timedelta(days=1)).isoformat()
+
+    def _extract(df) -> float | None:
+        if df is None or df.empty:
             return None
         close = df["Close"].squeeze()
+        if hasattr(close, "columns"):          # multi-level columns — take first
+            close = close.iloc[:, 0]
+        close = close.dropna()
         target_str = target_date.isoformat()
-        if target_str in close.index.astype(str).tolist():
-            return float(close[close.index.astype(str) == target_str].iloc[-1])
+        mask = close.index.astype(str) == target_str
+        if mask.any():
+            return float(close[mask].iloc[-1])
         available = close[close.index.date <= target_date]
-        if available.empty:
-            return None
-        return float(available.iloc[-1])
+        return float(available.iloc[-1]) if not available.empty else None
+
+    # Attempt 1: yf.download() — handles crumb refresh automatically
+    try:
+        df = yf.download(yf_sym, start=start, end=end, progress=False, auto_adjust=True)
+        result = _extract(df)
+        if result is not None:
+            return result
+        logger.debug("[daily_review] yf.download() returned empty for %s on %s", yf_sym, target_date)
     except Exception as exc:
-        logger.warning("[daily_review] Could not fetch close for %s on %s: %s", ticker, target_date, exc)
-        return None
+        logger.warning("[daily_review] yf.download() failed for %s: %s", yf_sym, exc)
+
+    # Attempt 2: BSE fallback (.BO suffix) — Yahoo sometimes serves BSE when NSE is stale
+    bse_sym = ticker if ticker.endswith(".BO") else f"{ticker}.BO"
+    try:
+        df = yf.download(bse_sym, start=start, end=end, progress=False, auto_adjust=True)
+        result = _extract(df)
+        if result is not None:
+            logger.debug("[daily_review] Used .BO fallback price for %s", ticker)
+            return result
+    except Exception as exc:
+        logger.debug("[daily_review] BSE fallback failed for %s: %s", bse_sym, exc)
+
+    # Attempt 3: get_price_history() (C++ fetcher, 1-year window, legacy path)
+    try:
+        df = get_price_history(ticker, years=1)
+        result = _extract(df)
+        if result is not None:
+            return result
+    except Exception as exc:
+        logger.warning("[daily_review] get_price_history() failed for %s on %s: %s", ticker, target_date, exc)
+
+    return None
 
 
 def _run_todays_agent_scores(
@@ -109,26 +170,12 @@ def _run_todays_agent_scores(
     Falls back to empty dict on any failure (non-fatal).
     """
     try:
-        if sector == "automobile":
-            from core.pipeline.orchestrator import AutomobileAgentOrchestrator
-            orchestrator = AutomobileAgentOrchestrator()
-            if learned_weights:
-                orchestrator._aggregator_weights = learned_weights
-            report = orchestrator.analyse(ticker)
-            return {name: ws.raw for name, ws in report.weighted_agent_scores.items()}
-
-        # Other sectors: invoke their LangGraph graph
-        # Graph module path follows the pattern: graphs.{sector}.graph
-        sector_module = importlib.import_module(f"graphs.{sector}.graph")
-        graph = getattr(sector_module, "graph")
-        state = graph.invoke({"ticker": ticker})
-        agent_outputs = state.get("agent_outputs", {})
-        return {
-            name: out.overall_score
-            for name, out in agent_outputs.items()
-            if hasattr(out, "overall_score")
-        }
-
+        from core.intelligence.rl.workflows.sector_router import get_orchestrator
+        orchestrator = get_orchestrator(sector)
+        if learned_weights:
+            orchestrator._aggregator_weights = learned_weights
+        report = orchestrator.analyse(ticker)
+        return {name: ws.raw for name, ws in report.weighted_agent_scores.items()}
     except Exception as exc:
         logger.warning(
             "[daily_review] Agent re-run failed for %s (%s): %s", ticker, sector, exc
@@ -319,7 +366,8 @@ def run_daily_review(
         )
     except Exception as exc:
         logger.warning(
-            "[daily_review] RegimeDetector failed — using NORMAL regime (non-fatal): %s", exc
+            "[daily_review] %s: RegimeDetector failed — using NORMAL regime (non-fatal): %s",
+            ticker, exc,
         )
 
     # ------------------------------------------------------------------ #
@@ -371,7 +419,9 @@ def run_daily_review(
                 if avg_20d > 0:
                     volume_vs_20d_avg = round(today_vol / avg_20d, 2)
     except Exception as exc:
-        logger.debug("[daily_review] Volume context unavailable (non-fatal): %s", exc)
+        logger.debug(
+            "[daily_review] %s: Volume context unavailable (non-fatal): %s", ticker, exc,
+        )
 
     # ------------------------------------------------------------------ #
     # Step 3: Compute error metrics + timing
@@ -398,19 +448,29 @@ def run_daily_review(
     # Step 4: FeedbackAgent — miss_type + miss analysis + raw lessons
     # ------------------------------------------------------------------ #
     wm_for_scores = store.load_weight_memory()
-    todays_scores = _run_todays_agent_scores(
-        ticker,
-        sector=sector,
-        learned_weights=wm_for_scores.effective_weights() if wm_for_scores else None,
-    )
-    # If agent re-run failed (returns {}), fall back to envelope predicted scores
-    # so FeedbackAgent still has agent_score_drift to analyse.
-    if not todays_scores and today_forecast.predicted_agent_scores:
-        todays_scores = dict(today_forecast.predicted_agent_scores)
+    _rerun_threshold = settings.RL_AGENT_RERUN_THRESHOLD_PCT
+    _early_exit_used = False
+    if _should_skip_agent_rerun(direction_correct, price_error_pct, _rerun_threshold):
+        todays_scores = dict(today_forecast.predicted_agent_scores) if today_forecast.predicted_agent_scores else {}
+        _early_exit_used = True
         logger.info(
-            "[daily_review] Agent re-run unavailable for %s — "
-            "using envelope predicted scores as fallback for drift analysis", ticker
+            "[daily_review] Early-exit: direction correct + |error| %.2f%% < %.1f%% "
+            "— using predicted scores, skipping orchestrator re-run",
+            abs(price_error_pct),
+            _rerun_threshold,
         )
+    else:
+        todays_scores = _run_todays_agent_scores(
+            ticker,
+            sector=sector,
+            learned_weights=wm_for_scores.effective_weights() if wm_for_scores else None,
+        )
+        if not todays_scores and today_forecast.predicted_agent_scores:
+            todays_scores = dict(today_forecast.predicted_agent_scores)
+            logger.info(
+                "[daily_review] Agent re-run unavailable for %s — "
+                "using envelope predicted scores as fallback for drift analysis", ticker,
+            )
 
     # P2: Load all three ledger tiers in one call.
     # ticker_ledger = stock-specific lessons for this ticker
@@ -422,8 +482,15 @@ def run_daily_review(
     try:
         from services.data.fetchers.news import get_news_context
         market_context = get_news_context(ticker, max_articles=3)
+        if market_context and market_context != "Market context unavailable.":
+            logger.info(
+                "[daily_review] %s: News context fetched (%d chars, preview: %.120s)",
+                ticker, len(market_context), market_context.replace("\n", " "),
+            )
+        else:
+            logger.warning("[daily_review] %s: News context unavailable — FeedbackAgent runs without market news", ticker)
     except Exception as exc:
-        logger.debug("[daily_review] News context unavailable: %s", exc)
+        logger.warning("[daily_review] %s: News context fetch failed (import/runtime error): %s", ticker, exc)
 
     # Inject seasonal context so FeedbackAgent doesn't "discover" known patterns.
     # The narrative is appended to market_context_today with a clear [SEASONAL] tag.
@@ -447,7 +514,7 @@ def run_daily_review(
     # P3: If the system has issued the same directional verdict for ≥ N consecutive
     # days, inject a structured warning so the FeedbackAgent explicitly checks for
     # momentum exhaustion (RSI divergence, volume dry-up, etc.).
-    if existing_streak.streak_days >= STREAK_WARNING_THRESHOLD:
+    if existing_streak.streak_days >= settings.RL_STREAK_WARNING_THRESHOLD:
         streak_note = build_streak_warning_block(existing_streak)
         market_context = (market_context or "Market context unavailable.") + streak_note
         logger.info(
@@ -492,27 +559,107 @@ def run_daily_review(
                 "[daily_review] P4 prompt enhancements injected (%d agents)", len(enhancements)
             )
     except Exception as exc:
-        logger.debug("[daily_review] P4 enhancements unavailable: %s", exc)
+        logger.debug("[daily_review] %s: P4 enhancements unavailable: %s", ticker, exc)
+
+    # ------------------------------------------------------------------ #
+    # ------------------------------------------------------------------ #
+    # G7b: Inject F&O chain context during expiry week (non-fatal).
+    # PCR and max pain help FeedbackAgent understand options-driven moves.
+    # ------------------------------------------------------------------ #
+    try:
+        from core.intelligence.rl.nse_calendar import is_fno_expiry_week
+        if is_fno_expiry_week(review_date):
+            fno_envelope = store.load_envelope(cycle_id)
+            if fno_envelope and fno_envelope.fno_snapshot:
+                fno_ctx_str = fno_envelope.fno_snapshot.to_context_string()
+                if fno_ctx_str:
+                    market_context = (market_context or "") + "\n\n" + fno_ctx_str
+                    logger.info(
+                        "[daily_review] G7b: F&O snapshot injected for %s (expiry week): "
+                        "PCR=%.2f OI=%s MaxPain=₹%.0f",
+                        ticker,
+                        fno_envelope.fno_snapshot.pcr or 0,
+                        fno_envelope.fno_snapshot.oi_buildup_direction,
+                        fno_envelope.fno_snapshot.max_pain_price or 0,
+                    )
+    except Exception as exc:
+        logger.warning("[daily_review] %s: F&O context injection failed (non-fatal): %s", ticker, exc)
+
+    # G4: Load previous trading day's off-market signals (non-fatal).
+    # Injected into market_context before FeedbackAgent so it can
+    # attribute block/bulk deals and pre-open gap to yesterday's move.
+    # ------------------------------------------------------------------ #
+    offmarket_context_str = ""
+    try:
+        from core.intelligence.rl.nse_calendar import trading_days_ago
+        from core.intelligence.rl.stores.offmarket_fetcher import OffMarketFetcher
+        yesterday = trading_days_ago(review_date, 1)
+        prev_signals = store.load_offmarket_signals(yesterday.isoformat())
+        if prev_signals and prev_signals.summary:
+            offmarket_context_str = OffMarketFetcher.build_context_string(prev_signals)
+            market_context = (market_context or "") + "\n\n" + offmarket_context_str
+            logger.info(
+                "[daily_review] G4: Off-market signals from %s injected for %s: %s",
+                yesterday.isoformat(), ticker, prev_signals.summary,
+            )
+    except Exception as exc:
+        logger.warning("[daily_review] %s: Off-market signal load failed (non-fatal): %s", ticker, exc)
+
+    # ------------------------------------------------------------------ #
+    # G8: Inject NSE market intelligence (FII/DII + bulk deals) — non-fatal.
+    # Structured exchange data helps FeedbackAgent attribute moves to
+    # institutional flows rather than guessing from news snippets.
+    # ------------------------------------------------------------------ #
+    try:
+        from services.data.fetchers.nse_market import get_nse_market_data, format_nse_market_context
+        nse_mkt = get_nse_market_data()
+        if not nse_mkt.get("error"):
+            nse_mkt_str = format_nse_market_context(nse_mkt, focus="all", ticker=ticker)
+            if nse_mkt_str:
+                market_context = (market_context or "") + "\n\n" + nse_mkt_str
+                logger.info(
+                    "[daily_review] G8: NSE market intelligence injected for %s: "
+                    "FII=%s Cr / DII=%s Cr",
+                    ticker, nse_mkt.get("fii_net_cr"), nse_mkt.get("dii_net_cr"),
+                )
+    except Exception as exc:
+        logger.warning(
+            "[daily_review] %s: NSE market intelligence injection failed (non-fatal): %s",
+            ticker, exc,
+        )
 
     # ------------------------------------------------------------------ #
     # Assemble supplementary context for FeedbackAgentInput
     # ------------------------------------------------------------------ #
 
+    # If early-exit was used, todays_scores == predicted_agent_scores (identical).
+    # Inject a system note so FeedbackAgent knows not to infer zero drift from them.
+    if _early_exit_used:
+        market_context = (market_context or "") + (
+            "\n\n[SYSTEM NOTE — FROZEN AGENT SCORES]\n"
+            "The agent re-run was skipped today (direction correct + error below threshold). "
+            "The 'Today\\'s re-run composite scores' shown below are IDENTICAL to the predicted "
+            "scores — do NOT interpret them as evidence of zero agent drift. "
+            "Focus your analysis on market_context_today and existing lessons."
+        )
+
     # 1. Significant sub-score drift — agents where |composite drift| > 0.10
+    # Suppressed on early-exit days (scores are frozen, drift would be artifically zero).
     SUBSCORE_DRIFT_THRESHOLD = 0.10
     significant_subscore_drift: dict = {}
-    predicted_scores = today_forecast.predicted_agent_scores or {}
-    for agent, today_score in todays_scores.items():
-        predicted_score = predicted_scores.get(agent, today_score)
-        drift = today_score - predicted_score
-        if abs(drift) >= SUBSCORE_DRIFT_THRESHOLD:
-            pred_sub = today_forecast.predicted_agent_subscores.get(agent, {})
-            # today's sub-scores come from agent re-run (not stored separately yet — best-effort)
-            if pred_sub:
-                significant_subscore_drift[agent] = {
-                    dim: {"predicted": val, "actual": val}  # actual sub-scores not available yet
-                    for dim, val in pred_sub.items()
-                }
+    if not _early_exit_used:
+        predicted_scores = today_forecast.predicted_agent_scores or {}
+        for agent, today_score in todays_scores.items():
+            predicted_score = predicted_scores.get(agent, today_score)
+            drift = today_score - predicted_score
+            if abs(drift) >= SUBSCORE_DRIFT_THRESHOLD:
+                pred_sub = today_forecast.predicted_agent_subscores.get(agent, {})
+                # today's sub-scores come from agent re-run (not stored separately yet — best-effort)
+                if pred_sub:
+                    significant_subscore_drift[agent] = {
+                        dim: {"predicted": val, "actual": val}  # actual sub-scores not available yet
+                        for dim, val in pred_sub.items()
+                    }
 
     # 2. Weight drift summary from WeightMemory
     wm_loaded = store.load_weight_memory()
@@ -556,8 +703,11 @@ def run_daily_review(
         ]
         if yesterday_entries:
             previous_watch_signals = yesterday_entries[-1].revised_context.watch_signals or []
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug(
+            "[daily_review] %s: Could not load previous watch signals (non-fatal): %s",
+            ticker, exc,
+        )
 
     # 5. Volume context string
     volume_context_str = ""
@@ -585,6 +735,13 @@ def run_daily_review(
             f"Expected monthly: {getattr(envelope, 'forecast_profile_monthly_pct', 0.0):+.1f}%."
         )
 
+    # Pull catalyst predictions from the forecast envelope for this day
+    _predicted_catalysts: dict = {}
+    if today_forecast and hasattr(today_forecast, "predicted_agent_catalysts"):
+        _predicted_catalysts = today_forecast.predicted_agent_catalysts or {}
+    elif envelope and hasattr(envelope, "agent_predictions"):
+        _predicted_catalysts = envelope.agent_predictions or {}
+
     fb_input = FeedbackAgentInput(
         ticker=ticker,
         sector=sector,
@@ -605,14 +762,56 @@ def run_daily_review(
         previous_watch_signals=previous_watch_signals,
         volume_context=volume_context_str,
         forecast_profile_context=forecast_profile_str,
+        predicted_catalysts_by_agent=_predicted_catalysts,
     )
 
     fb_agent  = FeedbackAgent()
     fb_output = fb_agent.run(fb_input, ticker_ledger)
 
     # ------------------------------------------------------------------ #
-    # Step 5: WeightAdapter — adjust weights (miss_type-aware), save
+    # external_shock rate cap: LLMs tend to over-use external_shock to
+    # avoid assigning blame, effectively disabling learning.  If more than
+    # 20% of penalizable days in this cycle are already classified as
+    # external_shock, override this one to direction_flip.
+    # Only applies when direction was wrong — correct-direction external_shock
+    # is semantically valid (e.g. sudden gap-down on correct UP prediction).
     # ------------------------------------------------------------------ #
+    if fb_output.miss_type == "external_shock" and not direction_correct:
+        prior_entries = feedback_log.entries[:-1]  # exclude today's provisional
+        if len(prior_entries) >= 5:
+            shock_days = sum(
+                1 for e in prior_entries
+                if e.miss_analysis and e.miss_analysis.miss_type == "external_shock"
+            )
+            if shock_days / len(prior_entries) > 0.20:
+                logger.warning(
+                    "[daily_review] %s: external_shock rate %d/%d=%.0f%% exceeds 20%% cap "
+                    "— overriding to direction_flip to enforce model accountability",
+                    ticker, shock_days, len(prior_entries),
+                    shock_days / len(prior_entries) * 100,
+                )
+                from dataclasses import replace as _replace
+                fb_output = fb_output.model_copy(update={"miss_type": "direction_flip"})
+
+    # ------------------------------------------------------------------ #
+    # Step 5: WeightAdapter — adjust weights (miss_type-aware), save
+    #
+    # Pre-load IIMA factor regime for regime-aware penalty scaling.
+    # Non-fatal: missing regime falls back to standard 1.0× scaling.
+    # ------------------------------------------------------------------ #
+    _factor_regime_data: dict | None = None
+    try:
+        from core.intelligence.rl.algorithms.factor_regime import get_factor_regime
+        _factor_regime_data = get_factor_regime()
+        if _factor_regime_data:
+            logger.debug(
+                "[daily_review] Factor regime loaded: %s %s (WML avg=%.3f%%)",
+                _factor_regime_data.get("strength"), _factor_regime_data.get("regime"),
+                _factor_regime_data.get("avg_wml_pct", 0),
+            )
+    except Exception as exc:
+        logger.debug("[daily_review] %s: Factor regime unavailable (non-fatal): %s", ticker, exc)
+
     wm           = store.get_or_init_weight_memory(settings.AGENT_WEIGHTS)
     feedback_log = store.load_feedback_log(cycle_id)
 
@@ -651,6 +850,7 @@ def run_daily_review(
         todays_miss_type=fb_output.miss_type,
         timing_lag_days=timing.lag_days if timing and timing.lag_days is not None else 0,
         seasonal_threshold_deltas=seasonal_ctx.accuracy_threshold_delta or None,
+        factor_regime=_factor_regime_data,
     )
     store.save_weight_memory(updated_wm)
     new_weight_version = f"v{updated_wm.weight_version}"
@@ -669,7 +869,7 @@ def run_daily_review(
     # ------------------------------------------------------------------ #
     try:
         regime_effective_weights = apply_regime_multipliers(
-            updated_wm.effective_weights(), regime_snapshot.multipliers
+            updated_wm.effective_weights(), regime_snapshot.multipliers, sector=sector
         )
         logger.info(
             "[daily_review] Regime '%s' effective weights applied for %s",
@@ -677,7 +877,8 @@ def run_daily_review(
         )
     except Exception as exc:
         logger.warning(
-            "[daily_review] Regime weight application failed (using learned weights, non-fatal): %s", exc
+            "[daily_review] %s: Regime weight application failed (using learned weights, non-fatal): %s",
+            ticker, exc,
         )
         regime_effective_weights = updated_wm.effective_weights()
 
@@ -702,7 +903,8 @@ def run_daily_review(
         store.save_market_ledger(updated_market_ledger)
     except Exception as exc:
         logger.warning(
-            "[daily_review] Shared ledger propagation failed (non-fatal): %s", exc
+            "[daily_review] %s: Shared ledger propagation failed (non-fatal): %s",
+            ticker, exc,
         )
 
     # ------------------------------------------------------------------ #
@@ -720,6 +922,7 @@ def run_daily_review(
         streak_days=updated_streak.streak_days,
         verdict=today_forecast.predicted_verdict,
         todays_agent_scores=todays_scores,
+        sector_rsi=regime_snapshot.sector_rsi,
     )
     logger.info(
         "[daily_review] Conviction streak: '%s' %d day(s) | "
@@ -745,7 +948,7 @@ def run_daily_review(
     # ------------------------------------------------------------------ #
     thesis_review: ThesisReview | None = None
     _reviewer = ThesisReviewer()
-    if _reviewer.should_review(price_error_pct, direction_correct, fb_output.miss_type):
+    if _reviewer.should_review(price_error_pct, direction_correct, fb_output.miss_type, ticker=ticker):
         try:
             thesis_review = _reviewer.review(
                 ticker=ticker,
@@ -753,6 +956,7 @@ def run_daily_review(
                 key_assumptions=today_forecast.key_assumptions,
                 fb_output=fb_output,
                 market_context=market_context or "",
+                price_error_pct=price_error_pct,
             )
             logger.info(
                 "[daily_review] Thesis review: intact=%s multiplier=%.2f invalidated=%s",
@@ -761,7 +965,9 @@ def run_daily_review(
                 thesis_review.assumptions_invalidated,
             )
         except Exception as exc:
-            logger.warning("[daily_review] Thesis review failed (non-fatal): %s", exc)
+            logger.warning(
+                "[daily_review] %s: Thesis review failed (non-fatal): %s", ticker, exc,
+            )
 
     # ------------------------------------------------------------------ #
     # Step 7b: Revise remaining forecasts with regime-adjusted weights
@@ -799,65 +1005,51 @@ def run_daily_review(
         thesis_review=thesis_review,
         lessons_generated=lesson_ids,
         weight_adjustment_applied=new_weight_version,
+        predicted_catalysts_snapshot=_predicted_catalysts,
+        offmarket_context=offmarket_context_str,
     )
     store.append_feedback_entry(final_entry, cycle_id)
 
     # ------------------------------------------------------------------ #
-    # Step 9 (P1): Validate active seasonal patterns against actual result
+    # G4: Fetch today's off-market signals after market close (non-fatal).
+    # Saves to store for injection into tomorrow's daily_review.
     # ------------------------------------------------------------------ #
-    if seasonal_ctx.is_seasonal_period:
-        try:
-            validator = SeasonalValidator(
-                sector=sector,
-                base_dir=settings.PREDICTION_DATA_DIR,
-            )
-            active_seeds = seasonal_calendar.active_patterns_on(review_date)
-            feedback_log_for_validation = store.load_feedback_log(cycle_id)
-            validation_results = []
-            for pattern in active_seeds:
-                result = validator.validate_pattern(
-                    pattern=pattern,
-                    review_date=review_date,
-                    feedback_log=feedback_log_for_validation,
-                )
-                validation_results.append(result)
-            validator.save_state()
-
-            # Feed validation outcomes back into the LearningLedger.
-            # Invalidated patterns → mark matching lessons still_valid=False.
-            # Validated patterns (RL-confirmed) → boost lesson confidence by 0.05.
-            ledger_dirty = False
-            for result in validation_results:
-                if result.direction_matched is None:
-                    continue
-                lesson = ticker_ledger.find_by_pattern(result.pattern_id)
-                if lesson is None:
-                    continue
-                if result.record.invalidated and lesson.still_valid:
-                    lesson.still_valid = False
-                    ledger_dirty = True
-                    logger.info(
-                        "[daily_review] Lesson %s marked invalid — seasonal pattern %s contradicted %d times",
-                        lesson.lesson_id, result.pattern_id, result.record.misses,
-                    )
-                elif result.record.validated_by_rl and result.direction_matched:
-                    lesson.confidence = min(1.0, lesson.confidence + 0.05)
-                    ledger_dirty = True
-                    logger.info(
-                        "[daily_review] Lesson %s confidence boosted to %.2f — seasonal validation confirmed",
-                        lesson.lesson_id, lesson.confidence,
-                    )
-            if ledger_dirty:
-                store.save_learning_ledger(ticker_ledger)
-
+    try:
+        from core.intelligence.rl.stores.offmarket_fetcher import OffMarketFetcher
+        today_signals = OffMarketFetcher().fetch_all(ticker, date_str)
+        store.save_offmarket_signals(today_signals)
+        if today_signals.summary:
             logger.info(
-                "[daily_review] Seasonal validation complete for %s on %s (%d patterns checked)",
-                ticker, date_str, len(validation_results),
+                "[daily_review] G4: Off-market signals saved for %s on %s: %s",
+                ticker, date_str, today_signals.summary,
             )
-        except Exception as exc:
-            logger.warning(
-                "[daily_review] Seasonal validation failed (non-fatal): %s", exc
+        else:
+            logger.debug(
+                "[daily_review] G4: No off-market signals found for %s on %s", ticker, date_str
             )
+    except Exception as exc:
+        logger.warning("[daily_review] %s: Off-market signal fetch failed (non-fatal): %s", ticker, exc)
+
+    # ------------------------------------------------------------------ #
+    # Step 9 (P1): Seasonal validation — month-end only
+    # Runs only on the last trading day of the month to avoid O(seeds×log)
+    # overhead on every daily review.
+    # ------------------------------------------------------------------ #
+    from core.intelligence.rl.workflows.month_end_validation import (
+        _is_last_trading_day_of_month,
+        run_month_end_validation,
+    )
+    if _is_last_trading_day_of_month(review_date):
+        run_month_end_validation(
+            ticker=ticker,
+            sector=sector,
+            store=store,
+            seasonal_ctx=seasonal_ctx,
+            seasonal_calendar=seasonal_calendar,
+            ticker_ledger=ticker_ledger,
+            cycle_id=cycle_id,
+            review_date=review_date,
+        )
 
     summary = {
         "status":                   "completed",
@@ -957,7 +1149,9 @@ def main() -> None:
             else:
                 print(f"[SKIP] {ticker} {review_date} — {status}")
         except Exception as exc:
-            logger.error("[daily_review] Unhandled error for %s: %s", ticker, exc)
+            logger.error(
+                "[daily_review] Unhandled error for %s: %s", ticker, exc, exc_info=True,
+            )
             errors.append(ticker)
             print(f"[FAIL] {ticker} — {exc}")
 

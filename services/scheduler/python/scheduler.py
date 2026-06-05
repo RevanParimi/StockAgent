@@ -33,12 +33,25 @@ AutomobileScheduler()
 
 from __future__ import annotations
 
+import concurrent.futures as _cf
 import logging
 from datetime import date, timedelta
 
 from core.config import settings
 
 logger = logging.getLogger(__name__)
+
+_SEP = "=" * 65
+
+
+def _job_banner(label: str, done: bool = False) -> None:
+    """Emit a visual separator so each scheduled job is easy to spot in Railway logs."""
+    if done:
+        logger.info("%s  DONE: %s  %s", _SEP, label, _SEP)
+    else:
+        logger.info(_SEP)
+        logger.info("  JOB START: %s", label)
+        logger.info(_SEP)
 
 
 def _active_tickers() -> list[str]:
@@ -47,10 +60,33 @@ def _active_tickers() -> list[str]:
         from services.api.log_buffer import get_active_tickers
         tickers = get_active_tickers()
         if tickers:
-            return tickers
-    except Exception:
-        pass
-    return list(settings.SCHEDULER_TICKERS)
+            # Filter out any non-string or blank entries before returning
+            invalid = [t for t in tickers if not isinstance(t, str) or not t.strip()]
+            if invalid:
+                logger.warning("[scheduler] Removed invalid ticker entries: %s", invalid)
+                tickers = [t for t in tickers if isinstance(t, str) and t.strip()]
+            if tickers:
+                return tickers
+    except Exception as exc:
+        logger.warning("[scheduler] Could not load tickers from managed_tickers.json: %s", exc, exc_info=True)
+
+    tickers = list(settings.SCHEDULER_TICKERS)
+    logger.info(
+        "[scheduler] _active_tickers() fell back to SCHEDULER_TICKERS env var: %s", tickers
+    )
+
+    if not tickers:
+        logger.warning(
+            "[scheduler] _active_tickers() resolved to empty list — "
+            "no analysis will run this cycle. Check SCHEDULER_TICKERS in .env."
+        )
+    else:
+        invalid = [t for t in tickers if not isinstance(t, str) or not t.strip()]
+        if invalid:
+            logger.warning("[scheduler] Removed invalid ticker entries: %s", invalid)
+            tickers = [t for t in tickers if isinstance(t, str) and t.strip()]
+
+    return tickers
 
 
 class AutomobileScheduler:
@@ -185,6 +221,23 @@ class AutomobileScheduler:
         else:
             logger.info("[Scheduler] Macro news feed disabled (MACRO_NEWS_ENABLED=false)")
 
+        # ── Job 7: Weekly ledger cleanup (Monday 3:30 am IST) ────────────────
+        scheduler.add_job(
+            func=self._ledger_cleanup_job,
+            trigger=CronTrigger(
+                day_of_week="mon",
+                hour=3,
+                minute=30,
+                timezone="Asia/Kolkata",
+            ),
+            id="ledger_cleanup_weekly",
+            name="Ledger stale-lesson cleanup (weekly)",
+            misfire_grace_time=3600,
+            coalesce=True,
+            replace_existing=True,
+        )
+        logger.info("[Scheduler] Ledger cleanup job: Mondays at 3:30 am IST")
+
         return scheduler
 
     # ------------------------------------------------------------------
@@ -195,31 +248,62 @@ class AutomobileScheduler:
         """
         Review yesterday's trading session for all configured tickers.
         Steps back over weekends so Monday's job reviews Friday's session.
+        Each ticker has a 3-minute timeout to prevent a stalled LLM call from
+        blocking the entire review loop.
         """
         from core.intelligence.rl.workflows.daily_review import run_daily_review
+        from services.api.log_buffer import get_active_tickers_with_sector
 
         review_date = date.today() - timedelta(days=1)
         while review_date.weekday() >= 5:
             review_date -= timedelta(days=1)
 
-        tickers = _active_tickers()
-        logger.info("[Scheduler] === RL daily review — %s (%d tickers) ===", review_date.isoformat(), len(tickers))
-        for ticker in tickers:
+        ticker_entries = get_active_tickers_with_sector()
+        _job_banner(f"RL Daily Review — {review_date.isoformat()} ({len(ticker_entries)} tickers)")
+        logger.info(
+            "[Scheduler] Active tickers for this run: %s",
+            [e["sym"] for e in ticker_entries],
+        )
+
+        max_w = getattr(settings, "RL_SCHEDULER_MAX_WORKERS", 1)
+        logger.info("[Scheduler] Running with max_workers=%d", max_w)
+
+        def _review_one(entry: dict) -> tuple[str, str, dict | None, Exception | None]:
+            t = entry["sym"]
+            s = entry.get("sector", "automobile")
             try:
-                summary = run_daily_review(ticker, review_date)
-                logger.info(
-                    "[Scheduler] %s %s — status=%s direction=%s lessons=%s weights=v%s",
-                    ticker, review_date,
-                    summary.get("status"),
-                    summary.get("direction_correct"),
-                    summary.get("lessons_added"),
-                    summary.get("weight_version"),
-                )
+                result = run_daily_review(t, review_date, sector=s)
+                return t, s, result, None
             except Exception as exc:
-                logger.error(
-                    "[Scheduler] Daily review FAILED for %s: %s", ticker, exc, exc_info=True
-                )
-        logger.info("[Scheduler] === RL daily review complete ===")
+                return t, s, None, exc
+
+        with _cf.ThreadPoolExecutor(max_workers=max_w) as executor:
+            futures = {
+                executor.submit(_review_one, entry): entry
+                for entry in ticker_entries
+            }
+            for future in _cf.as_completed(futures, timeout=180 * len(ticker_entries)):
+                try:
+                    ticker, sector, summary, err = future.result(timeout=180)
+                    if err is not None:
+                        logger.error(
+                            "[Scheduler] Daily review FAILED for %s: %s", ticker, err, exc_info=True
+                        )
+                    else:
+                        logger.info(
+                            "[Scheduler] %s %s sector=%s — status=%s direction=%s lessons=%s weights=v%s",
+                            ticker, review_date, sector,
+                            summary.get("status"),
+                            summary.get("direction_correct"),
+                            summary.get("lessons_added"),
+                            summary.get("weight_version"),
+                        )
+                except _cf.TimeoutError:
+                    logger.error("[Scheduler] Daily review TIMED OUT after 180s")
+                except Exception as exc:
+                    logger.error("[Scheduler] Unexpected error in daily review: %s", exc, exc_info=True)
+
+        _job_banner("RL Daily Review", done=True)
 
     def _monthly_forecast_job(self) -> None:
         """
@@ -227,32 +311,38 @@ class AutomobileScheduler:
         Runs the full 9-agent analysis per ticker — takes ~2 min/ticker.
         """
         from core.intelligence.rl.workflows.generate_forecast import generate_forecast
+        from services.api.log_buffer import get_active_tickers_with_sector
 
         today = date.today()
-        tickers = _active_tickers()
+        ticker_entries = get_active_tickers_with_sector()
+        _job_banner(f"RL Monthly Forecast — {today.year}-{today.month:02d} ({len(ticker_entries)} tickers)")
         logger.info(
-            "[Scheduler] === RL monthly forecast — %d-%02d (%d tickers) ===", today.year, today.month, len(tickers)
+            "[Scheduler] Active tickers for this run: %s",
+            [e["sym"] for e in ticker_entries],
         )
-        for ticker in tickers:
+        for entry in ticker_entries:
+            ticker = entry["sym"]
+            sector = entry.get("sector", "automobile")
+            logger.info("[Scheduler] Generating forecast for %s (sector=%s) ...", ticker, sector)
             try:
-                env = generate_forecast(ticker)
+                env = generate_forecast(ticker, sector=sector)
                 logger.info(
-                    "[Scheduler] Forecast OK: %s cycle=%s horizon=%dd base=₹%.2f weights=v%d",
-                    ticker, env.cycle_id, len(env.daily_forecasts),
+                    "[Scheduler] Forecast OK: %s sector=%s cycle=%s horizon=%dd base=₹%.2f weights=v%d",
+                    ticker, sector, env.cycle_id, len(env.daily_forecasts),
                     env.base_close, env.weight_version_used,
                 )
             except Exception as exc:
                 logger.error(
                     "[Scheduler] Monthly forecast FAILED for %s: %s", ticker, exc, exc_info=True
                 )
-        logger.info("[Scheduler] === RL monthly forecast complete ===")
+        _job_banner("RL Monthly Forecast", done=True)
 
     def _prompt_deploy_job(self) -> None:
         """
         Deploy any pending prompt file changes to GitHub once per day at midnight IST.
         Skips silently if nothing is pending or GITHUB_TOKEN/REPO are not set.
         """
-        logger.info("[Scheduler] === Prompt daily deploy ===")
+        _job_banner("Prompt Daily Deploy")
         try:
             from services.api.routes.prompts import run_scheduled_deploy
             result = run_scheduled_deploy(triggered_by="scheduler")
@@ -268,17 +358,18 @@ class AutomobileScheduler:
                 )
         except Exception as exc:
             logger.error("[Scheduler] Prompt deploy FAILED: %s", exc, exc_info=True)
-        logger.info("[Scheduler] === Prompt daily deploy done ===")
+        _job_banner("Prompt Daily Deploy", done=True)
 
     def _calendar_update_job(self) -> None:
         """Fetch NSE holidays for next year and hot-reload the calendar."""
-        logger.info("[Scheduler] === NSE calendar update (Dec 31 annual job) ===")
+        _job_banner("NSE Calendar Update (Dec 31 annual)")
         try:
             from core.intelligence.rl.calendar_updater import run_dec31_update
             run_dec31_update()
             logger.info("[Scheduler] Calendar update complete")
         except Exception as exc:
             logger.error("[Scheduler] Calendar update FAILED: %s", exc, exc_info=True)
+        _job_banner("NSE Calendar Update", done=True)
 
     def _macro_market_news_job(self) -> None:
         """
@@ -286,7 +377,7 @@ class AutomobileScheduler:
         Queries Serper /news for real-time Nifty/market developments.
         Non-fatal: errors are logged but never crash the scheduler.
         """
-        logger.info("[Scheduler] === Macro news — market-hours run ===")
+        _job_banner("Macro News — Market Hours (9/12/15 IST)")
         try:
             from services.background.macro_news_fetcher import MacroNewsFetcher
             result = MacroNewsFetcher().fetch_and_review("market_hours")
@@ -296,6 +387,7 @@ class AutomobileScheduler:
             )
         except Exception as exc:
             logger.error("[Scheduler] Macro market-hours FAILED: %s", exc, exc_info=True)
+        _job_banner("Macro News — Market Hours", done=True)
 
     def _macro_daily_news_job(self) -> None:
         """
@@ -303,7 +395,7 @@ class AutomobileScheduler:
         Queries policy/RBI Serper news + NewsAPI top-headlines.
         Non-fatal: errors are logged but never crash the scheduler.
         """
-        logger.info("[Scheduler] === Macro news — daily policy run ===")
+        _job_banner("Macro News — Daily Policy/RBI (7:30 IST)")
         try:
             from services.background.macro_news_fetcher import MacroNewsFetcher
             result = MacroNewsFetcher().fetch_and_review("daily")
@@ -313,6 +405,79 @@ class AutomobileScheduler:
             )
         except Exception as exc:
             logger.error("[Scheduler] Macro daily FAILED: %s", exc, exc_info=True)
+        _job_banner("Macro News — Daily Policy/RBI", done=True)
+
+    def _ledger_cleanup_job(self) -> None:
+        """
+        Downgrade stale single-ticker market-wide/sector-wide lessons weekly.
+        Runs Monday at 3:30 am IST — well before any market activity.
+        Non-fatal: failures per ticker are logged but never crash the scheduler.
+        """
+        from pathlib import Path
+        from core.intelligence.rl.stores.ledger_propagator import downgrade_stale_lessons
+        from core.intelligence.rl.stores.prediction_store import PredictionStore
+
+        _KNOWN_SECTORS = ["automobile", "banking_bfsi", "it_sector", "renewable_energy"]
+        base_dir = "data/predictions"
+
+        def _sector_for(ticker: str) -> str:
+            return next(
+                (s for s in _KNOWN_SECTORS if Path(f"{base_dir}/{s}/{ticker}").exists()),
+                "automobile",
+            )
+
+        tickers = _active_tickers()
+        _job_banner(f"Weekly Ledger Cleanup — {len(tickers)} tickers")
+        for ticker in tickers:
+            try:
+                sector = _sector_for(ticker)
+                store = PredictionStore(ticker, sector=sector)
+                ticker_ledger, sector_ledger, market_ledger = store.load_all_ledgers()
+
+                n_market = downgrade_stale_lessons(market_ledger)
+                n_sector = downgrade_stale_lessons(sector_ledger)
+                # Also downgrade the ticker's own ledger — its lessons have only 1
+                # contributing ticker by definition, so stale ones are eligible.
+                n_ticker = downgrade_stale_lessons(ticker_ledger)
+
+                # P3-16: Sync scope downgrades back to the ticker's own ledger.
+                # When a shared lesson is downgraded, the ticker's own copy of the
+                # same lesson (matched by pattern) must be updated too, otherwise
+                # the ticker ledger and shared ledger are out of sync.
+                shared_scope: dict[str, str] = {}
+                for sl in sector_ledger.lessons:
+                    shared_scope[sl.pattern] = sl.scope
+                for ml in market_ledger.lessons:
+                    shared_scope[ml.pattern] = ml.scope  # market takes precedence
+                _rank = {"stock_specific": 0, "sector_wide": 1, "market_wide": 2}
+                for tl in ticker_ledger.lessons:
+                    new_scope = shared_scope.get(tl.pattern)
+                    if new_scope and _rank.get(new_scope, 0) < _rank.get(tl.scope, 0):
+                        logger.info(
+                            "[Scheduler] %s: syncing lesson %s scope %s → %s "
+                            "(shared ledger downgrade)",
+                            ticker, tl.lesson_id, tl.scope, new_scope,
+                        )
+                        tl.scope = new_scope
+                        n_ticker += 1
+
+                if n_market:
+                    store.save_market_ledger(market_ledger)
+                if n_sector:
+                    store.save_sector_ledger(sector_ledger)
+                if n_ticker:
+                    store.save_learning_ledger(ticker_ledger)
+
+                total_modified = n_market + n_sector + n_ticker
+                if total_modified:
+                    logger.info(
+                        "[Scheduler] Ledger cleanup %s: %d lessons modified "
+                        "(market=%d, sector=%d, ticker=%d)",
+                        ticker, total_modified, n_market, n_sector, n_ticker,
+                    )
+            except Exception as exc:
+                logger.warning("[Scheduler] Ledger cleanup failed for %s: %s", ticker, exc, exc_info=True)
+        _job_banner("Weekly Ledger Cleanup", done=True)
 
     # ------------------------------------------------------------------
     # Public interface

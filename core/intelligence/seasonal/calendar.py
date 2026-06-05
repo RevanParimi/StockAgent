@@ -134,6 +134,9 @@ class SeasonalCalendar:
 
     def _is_active(self, pattern: SeasonalPattern, d: date) -> bool:
         """Return True if the pattern applies to date d."""
+        # F&O expiry week patterns are handled exclusively by _get_fno_expiry_context().
+        if getattr(pattern, "fno_week_only", False):
+            return False
         if d.month not in pattern.months:
             return False
         if pattern.day_range is not None:
@@ -152,6 +155,22 @@ class SeasonalCalendar:
             l for l in ledger.lessons
             if l.still_valid and l.category == "seasonal"
         ]
+
+    # ------------------------------------------------------------------
+    # F&O expiry week context
+    # ------------------------------------------------------------------
+
+    def _get_fno_expiry_context(self, d: date) -> dict | None:
+        """
+        Returns expiry-week adjustment dict if d is in F&O expiry week, else None.
+        Keys: 'adjustments' (dict[str, float]) and 'conf_modifier' (float).
+        """
+        from core.intelligence.rl.nse_calendar import is_fno_expiry_week, is_fno_expiry_day
+        if not is_fno_expiry_week(d):
+            return None
+        adjustments = {"risk_macro": 0.04, "pattern_analysis": 0.03}
+        conf_modifier = -0.08 if is_fno_expiry_day(d) else -0.05
+        return {"adjustments": adjustments, "conf_modifier": conf_modifier}
 
     # ------------------------------------------------------------------
     # Core context assembly
@@ -179,8 +198,9 @@ class SeasonalCalendar:
         """
         active_seeds = [p for p in self._patterns if self._is_active(p, target_date)]
         rl_lessons   = self._active_rl_seasonal_lessons(learning_ledger)
+        fno_ctx      = self._get_fno_expiry_context(target_date)
 
-        if not active_seeds and not rl_lessons:
+        if not active_seeds and not rl_lessons and not fno_ctx:
             return SeasonalContext(target_date=target_date, is_seasonal_period=False)
 
         # ----- merge agent adjustments from seeds -----
@@ -218,6 +238,27 @@ class SeasonalCalendar:
             for l in rl_lessons
         ]
         all_narratives = seed_narratives + rl_narratives
+
+        # ----- F&O expiry week overlay -----
+        if fno_ctx:
+            from core.intelligence.rl.nse_calendar import is_fno_expiry_day
+            for agent, delta in fno_ctx["adjustments"].items():
+                merged[agent] = merged.get(agent, 0.0) + delta
+            # Cap again after adding F&O deltas
+            merged = {
+                agent: max(-MAX_AGENT_DELTA, min(MAX_AGENT_DELTA, delta))
+                for agent, delta in merged.items()
+            }
+            conf_modifier = round(
+                max(-0.10, min(0.10, conf_modifier + fno_ctx["conf_modifier"])), 4
+            )
+            fno_narrative = (
+                "F&O expiry DAY — maximum OI unwinding risk; price pinning near max pain likely."
+                if is_fno_expiry_day(target_date)
+                else "F&O expiry week — elevated volatility, options pinning dynamics active."
+            )
+            all_narratives.append(fno_narrative)
+
         combined = " | ".join(all_narratives) if all_narratives else ""
 
         return SeasonalContext(

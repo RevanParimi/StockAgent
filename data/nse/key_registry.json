@@ -1,0 +1,658 @@
+{
+  "HDFCBANK": {
+    "announcements": {
+      "desc": "desc",
+      "date": "an_dt",
+      "attachment": "attchmntText"
+    },
+    "board_meetings": {
+      "desc": "bm_desc",
+      "date": "bm_date"
+    },
+    "actions": {
+      "desc": "subject",
+      "date": "exDate"
+    }
+  },
+  "TCS": {
+    "announcements": {
+      "desc": "desc",
+      "date": "an_dt",
+      "attachment": "attchmntText"
+    },
+    "board_meetings": {
+      "desc": "bm_desc",
+      "date": "bm_date"
+    },
+    "actions": {
+      "desc": "subject",
+      "date": "exDate"
+    }
+  },
+  "MARUTI": {
+    "announcements": {
+      "desc": "desc",
+      "date": "an_dt",
+      "attachment": "attchmntText"
+    },
+    "board_meetings": {
+      "desc": "bm_desc",
+      "date": "bm_date"
+    },
+    "actions": {
+      "desc": "subject",
+      "date": "exDate"
+    }
+  },
+  "ADANIGREEN": {
+    "announcements": {
+      "desc": "desc",
+      "date": "an_dt",
+      "attachment": "attchmntText"
+    },
+    "board_meetings": {
+      "desc": "bm_desc",
+      "date": "bm_date"
+    },
+    "actions": {
+      "desc": "subject",
+      "date": "exDate"
+    }
+  },
+  "TATAPOWER": {
+    "announcements": {
+      "desc": "desc",
+      "date": "an_dt",
+      "attachment": "attchmntText"
+    },
+    "board_meetings": {
+      "desc": "bm_desc",
+      "date": "bm_date"
+    },
+    "actions": {
+      "desc": "subject",
+      "date": "exDate"
+    }
+  },
+  "TORNTPOWER": {
+    "announcements": {
+      "desc": "desc",
+      "date": "an_dt",
+      "attachment": "attchmntText"
+    },
+    "board_meetings": {
+      "desc": "bm_desc",
+      "date": "bm_date"
+    },
+    "actions": {
+      "desc": "subject",
+      "date": "exDate"
+    }
+  },
+  "CESC": {
+    "announcements": {
+      "desc": "desc",
+      "date": "an_dt",
+      "attachment": "attchmntText"
+    },
+    "board_meetings": {
+      "desc": "bm_desc",
+      "date": "bm_date"
+    },
+    "actions": {
+      "desc": "subject",
+      "date": "exDate"
+    }
+  },
+  "SJVN": {
+    "announcements": {
+      "desc": "desc",
+      "date": "an_dt",
+      "attachment": "attchmntText"
+    },
+    "board_meetings": {
+      "desc": "bm_desc",
+      "date": "bm_date"
+    },
+    "actions": {
+      "desc": "subject",
+      "date": "exDate"
+    }
+  },
+  "NHPC": {
+    "announcements": {
+      "desc": "desc",
+      "date": "an_dt",
+      "attachment": "attchmntText"
+    },
+    "board_meetings": {
+      "desc": "bm_desc",
+      "date": "bm_date"
+    },
+    "actions": {
+      "desc": "subject",
+      "date": "exDate"
+    }
+  },
+  "NTPC": {
+    "announcements": {
+      "desc": "desc",
+      "date": "an_dt",
+      "attachment": "attchmntText"
+    },
+    "board_meetings": {
+      "desc": "bm_desc",
+      "date": "bm_date"
+    },
+    "actions": {
+      "desc": "subject",
+      "date": "exDate"
+    }
+  },
+  "POWERGRID": {
+    "announcements": {
+      "desc": "desc",
+      "date": "an_dt",
+      "attachment": "attchmntText"
+    },
+    "board_meetings": {
+      "desc": "bm_desc",
+      "date": "bm_date"
+    },
+    "actions": {
+      "desc": "subject",
+      "date": "exDate"
+    }
+  },
+  "ADANIPOWER": {
+    "announcements": {
+      "desc": "desc",
+      "date": "an_dt",
+      "attachment": "attchmntText"
+    },
+    "board_meetings": {
+      "desc": "bm_desc",
+      "date": "bm_date"
+    },
+    "actions": {
+      "desc": "subject",
+      "date": "exDate"
+    }
+  },
+  "JSWENERGY": {
+    "announcements": {
+      "desc": "desc",
+      "date": "an_dt",
+      "attachment": "attchmntText"
+    },
+    "board_meetings": {
+      "desc": "bm_desc",
+      "date": "bm_date"
+    },
+    "actions": {
+      "desc": "subject",
+      "date": "exDate"
+    }
+  },
+  "INOXGREEN": {
+    "announcements": {
+      "desc": "desc",
+      "date": "an_dt",
+      "attachment": "attchmntText"
+    },
+    "board_meetings": {
+      "desc": "bm_desc",
+      "date": "bm_date"
+    }
+  },
+  "WAAREEENER": {
+    "announcements": {
+      "desc": "desc",
+      "date": "an_dt",
+      "attachment": "attchmntText"
+    },
+    "board_meetings": {
+      "desc": "bm_desc",
+      "date": "bm_date"
+    },
+    "actions": {
+      "desc": "subject",
+      "date": "exDate"
+    }
+  },
+  "ICICIBANK": {
+    "announcements": {
+      "desc": "desc",
+      "date": "an_dt",
+      "attachment": "attchmntText"
+    },
+    "board_meetings": {
+      "desc": "bm_desc",
+      "date": "bm_date"
+    },
+    "actions": {
+      "desc": "subject",
+      "date": "exDate"
+    }
+  },
+  "SBIN": {
+    "announcements": {
+      "desc": "desc",
+      "date": "an_dt",
+      "attachment": "attchmntText"
+    },
+    "board_meetings": {
+      "desc": "bm_desc",
+      "date": "bm_date"
+    },
+    "actions": {
+      "desc": "subject",
+      "date": "exDate"
+    }
+  },
+  "KOTAKBANK": {
+    "announcements": {
+      "desc": "desc",
+      "date": "an_dt",
+      "attachment": "attchmntText"
+    },
+    "board_meetings": {
+      "desc": "bm_desc",
+      "date": "bm_date"
+    },
+    "actions": {
+      "desc": "subject",
+      "date": "exDate"
+    }
+  },
+  "AXISBANK": {
+    "announcements": {
+      "desc": "desc",
+      "date": "an_dt",
+      "attachment": "attchmntText"
+    },
+    "board_meetings": {
+      "desc": "bm_desc",
+      "date": "bm_date"
+    },
+    "actions": {
+      "desc": "subject",
+      "date": "exDate"
+    }
+  },
+  "INDUSINDBK": {
+    "announcements": {
+      "desc": "desc",
+      "date": "an_dt",
+      "attachment": "attchmntText"
+    },
+    "board_meetings": {
+      "desc": "bm_desc",
+      "date": "bm_date"
+    },
+    "actions": {
+      "desc": "subject",
+      "date": "exDate"
+    }
+  },
+  "BANKBARODA": {
+    "announcements": {
+      "desc": "desc",
+      "date": "an_dt",
+      "attachment": "attchmntText"
+    },
+    "board_meetings": {
+      "desc": "bm_desc",
+      "date": "bm_date"
+    },
+    "actions": {
+      "desc": "subject",
+      "date": "exDate"
+    }
+  },
+  "PNB": {
+    "announcements": {
+      "desc": "desc",
+      "date": "an_dt",
+      "attachment": "attchmntText"
+    },
+    "board_meetings": {
+      "desc": "bm_desc",
+      "date": "bm_date"
+    },
+    "actions": {
+      "desc": "subject",
+      "date": "exDate"
+    }
+  },
+  "FEDERALBNK": {
+    "announcements": {
+      "desc": "desc",
+      "date": "an_dt",
+      "attachment": "attchmntText"
+    },
+    "board_meetings": {
+      "desc": "bm_desc",
+      "date": "bm_date"
+    },
+    "actions": {
+      "desc": "subject",
+      "date": "exDate"
+    }
+  },
+  "IDFCFIRSTB": {
+    "announcements": {
+      "desc": "desc",
+      "date": "an_dt",
+      "attachment": "attchmntText"
+    },
+    "board_meetings": {
+      "desc": "bm_desc",
+      "date": "bm_date"
+    },
+    "actions": {
+      "desc": "subject",
+      "date": "exDate"
+    }
+  },
+  "BANDHANBNK": {
+    "announcements": {
+      "desc": "desc",
+      "date": "an_dt",
+      "attachment": "attchmntText"
+    },
+    "board_meetings": {
+      "desc": "bm_desc",
+      "date": "bm_date"
+    },
+    "actions": {
+      "desc": "subject",
+      "date": "exDate"
+    }
+  },
+  "RBLBANK": {
+    "announcements": {
+      "desc": "desc",
+      "date": "an_dt",
+      "attachment": "attchmntText"
+    },
+    "board_meetings": {
+      "desc": "bm_desc",
+      "date": "bm_date"
+    },
+    "actions": {
+      "desc": "subject",
+      "date": "exDate"
+    }
+  },
+  "YESBANK": {
+    "announcements": {
+      "desc": "desc",
+      "date": "an_dt",
+      "attachment": "attchmntText"
+    },
+    "board_meetings": {
+      "desc": "bm_desc",
+      "date": "bm_date"
+    },
+    "actions": {
+      "desc": "subject",
+      "date": "exDate"
+    }
+  },
+  "HDFCAMC": {
+    "announcements": {
+      "desc": "desc",
+      "date": "an_dt",
+      "attachment": "attchmntText"
+    },
+    "board_meetings": {
+      "desc": "bm_desc",
+      "date": "bm_date"
+    },
+    "actions": {
+      "desc": "subject",
+      "date": "exDate"
+    }
+  },
+  "BAJAJFINSV": {
+    "announcements": {
+      "desc": "desc",
+      "date": "an_dt",
+      "attachment": "attchmntText"
+    },
+    "board_meetings": {
+      "desc": "bm_desc",
+      "date": "bm_date"
+    },
+    "actions": {
+      "desc": "subject",
+      "date": "exDate"
+    }
+  },
+  "BAJFINANCE": {
+    "announcements": {
+      "desc": "desc",
+      "date": "an_dt",
+      "attachment": "attchmntText"
+    },
+    "board_meetings": {
+      "desc": "bm_desc",
+      "date": "bm_date"
+    },
+    "actions": {
+      "desc": "subject",
+      "date": "exDate"
+    }
+  },
+  "MUTHOOTFIN": {
+    "announcements": {
+      "desc": "desc",
+      "date": "an_dt",
+      "attachment": "attchmntText"
+    },
+    "board_meetings": {
+      "desc": "bm_desc",
+      "date": "bm_date"
+    },
+    "actions": {
+      "desc": "subject",
+      "date": "exDate"
+    }
+  },
+  "CHOLAFIN": {
+    "announcements": {
+      "desc": "desc",
+      "date": "an_dt",
+      "attachment": "attchmntText"
+    },
+    "board_meetings": {
+      "desc": "bm_desc",
+      "date": "bm_date"
+    },
+    "actions": {
+      "desc": "subject",
+      "date": "exDate"
+    }
+  },
+  "TECHM": {
+    "announcements": {
+      "desc": "desc",
+      "date": "an_dt",
+      "attachment": "attchmntText"
+    },
+    "board_meetings": {
+      "desc": "bm_desc",
+      "date": "bm_date"
+    },
+    "actions": {
+      "desc": "subject",
+      "date": "exDate"
+    }
+  },
+  "COFORGE": {
+    "announcements": {
+      "desc": "desc",
+      "date": "an_dt",
+      "attachment": "attchmntText"
+    },
+    "board_meetings": {
+      "desc": "bm_desc",
+      "date": "bm_date"
+    },
+    "actions": {
+      "desc": "subject",
+      "date": "exDate"
+    }
+  },
+  "MPHASIS": {
+    "announcements": {
+      "desc": "desc",
+      "date": "an_dt",
+      "attachment": "attchmntText"
+    },
+    "board_meetings": {
+      "desc": "bm_desc",
+      "date": "bm_date"
+    },
+    "actions": {
+      "desc": "subject",
+      "date": "exDate"
+    }
+  },
+  "PERSISTENT": {
+    "announcements": {
+      "desc": "desc",
+      "date": "an_dt",
+      "attachment": "attchmntText"
+    },
+    "board_meetings": {
+      "desc": "bm_desc",
+      "date": "bm_date"
+    },
+    "actions": {
+      "desc": "subject",
+      "date": "exDate"
+    }
+  },
+  "LTTS": {
+    "announcements": {
+      "desc": "desc",
+      "date": "an_dt",
+      "attachment": "attchmntText"
+    },
+    "board_meetings": {
+      "desc": "bm_desc",
+      "date": "bm_date"
+    },
+    "actions": {
+      "desc": "subject",
+      "date": "exDate"
+    }
+  },
+  "KPITTECH": {
+    "announcements": {
+      "desc": "desc",
+      "date": "an_dt",
+      "attachment": "attchmntText"
+    },
+    "board_meetings": {
+      "desc": "bm_desc",
+      "date": "bm_date"
+    },
+    "actions": {
+      "desc": "subject",
+      "date": "exDate"
+    }
+  },
+  "TATAELXSI": {
+    "announcements": {
+      "desc": "desc",
+      "date": "an_dt",
+      "attachment": "attchmntText"
+    },
+    "board_meetings": {
+      "desc": "bm_desc",
+      "date": "bm_date"
+    },
+    "actions": {
+      "desc": "subject",
+      "date": "exDate"
+    }
+  },
+  "NIIT": {
+    "announcements": {
+      "desc": "desc",
+      "date": "an_dt",
+      "attachment": "attchmntText"
+    },
+    "board_meetings": {
+      "desc": "bm_desc",
+      "date": "bm_date"
+    },
+    "actions": {
+      "desc": "subject",
+      "date": "exDate"
+    }
+  },
+  "MASTEK": {
+    "announcements": {
+      "desc": "desc",
+      "date": "an_dt",
+      "attachment": "attchmntText"
+    },
+    "board_meetings": {
+      "desc": "bm_desc",
+      "date": "bm_date"
+    },
+    "actions": {
+      "desc": "subject",
+      "date": "exDate"
+    }
+  },
+  "HEXAWARE": {
+    "announcements": {
+      "desc": "desc",
+      "date": "an_dt",
+      "attachment": "attchmntText"
+    },
+    "board_meetings": {
+      "desc": "bm_desc",
+      "date": "bm_date"
+    },
+    "actions": {
+      "desc": "subject",
+      "date": "exDate"
+    }
+  },
+  "INFY": {
+    "announcements": {
+      "desc": "desc",
+      "date": "an_dt",
+      "attachment": "attchmntText"
+    },
+    "board_meetings": {
+      "desc": "bm_desc",
+      "date": "bm_date"
+    },
+    "actions": {
+      "desc": "subject",
+      "date": "exDate"
+    }
+  },
+  "WIPRO": {
+    "announcements": {
+      "desc": "desc",
+      "date": "an_dt",
+      "attachment": "attchmntText"
+    },
+    "board_meetings": {
+      "desc": "bm_desc",
+      "date": "bm_date"
+    },
+    "actions": {
+      "desc": "subject",
+      "date": "exDate"
+    }
+  }
+}

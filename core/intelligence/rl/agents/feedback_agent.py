@@ -24,12 +24,14 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import time
 from datetime import date
 
 from openai import OpenAI, APIError, APITimeoutError, RateLimitError
 
 from core.config import settings
+from services.clients.llm_client import record_llm_call
 from core.schemas.feedback import (
     FeedbackAgentInput,
     FeedbackAgentOutput,
@@ -161,9 +163,31 @@ class FeedbackAgent:
             previous_watch_signals=fb_input.previous_watch_signals or [],
             volume_context=fb_input.volume_context or "",
             forecast_profile_context=fb_input.forecast_profile_context or "",
+            predicted_catalysts_by_agent=fb_input.predicted_catalysts_by_agent or {},
         )
 
-        raw = self._call_llm(system_prompt, user_prompt)
+        try:
+            raw = self._call_llm(system_prompt, user_prompt)
+        except Exception as exc:
+            logger.error(
+                "[FeedbackAgent] LLM call failed for %s on %s: %s — "
+                "returning degraded output; weights and lessons NOT updated",
+                fb_input.ticker, fb_input.date, exc,
+            )
+            return FeedbackAgentOutput(
+                miss_type="data_gap",
+                primary_miss_agent="",
+                missed_factors=[f"LLM unavailable: {exc}"],
+                over_weighted_factors=[],
+                agent_score_drift={},
+                new_lessons=[],
+                revised_context=RevisedContext(
+                    headline=f"LLM unavailable on {fb_input.date} — no analysis performed",
+                    watch_signals=[],
+                    horizon_confidence_adjustment=0.0,
+                ),
+            )
+
         output = self._parse(raw, fb_input)
 
         logger.info(
@@ -183,9 +207,10 @@ class FeedbackAgent:
         last_error: Exception | None = None
 
         for attempt in range(1, settings.MAX_RETRIES + 1):
+            _t0 = time.monotonic()
             try:
                 response = self._client.chat.completions.create(
-                    model=settings.LLM_MODEL,
+                    model=settings.LLM_MODEL_REASONING,
                     temperature=_FEEDBACK_TEMPERATURE,
                     max_tokens=1500,
                     messages=[
@@ -194,9 +219,27 @@ class FeedbackAgent:
                     ],
                     response_format={"type": "json_object"},
                 )
+                _latency = int((time.monotonic() - _t0) * 1000)
+                record_llm_call(
+                    caller="FeedbackAgent",
+                    model=response.model or "unknown",
+                    input_tokens=response.usage.prompt_tokens if response.usage else 0,
+                    output_tokens=response.usage.completion_tokens if response.usage else 0,
+                    latency_ms=_latency,
+                    success=True,
+                )
                 return response.choices[0].message.content or "{}"
 
             except RateLimitError as e:
+                _latency = int((time.monotonic() - _t0) * 1000)
+                record_llm_call(
+                    caller="FeedbackAgent",
+                    model="unknown",
+                    input_tokens=0,
+                    output_tokens=0,
+                    latency_ms=_latency,
+                    success=False,
+                )
                 logger.warning(
                     "[FeedbackAgent] Rate limit (attempt %d/%d)", attempt, settings.MAX_RETRIES
                 )
@@ -205,6 +248,15 @@ class FeedbackAgent:
                 delay *= 2
 
             except APITimeoutError as e:
+                _latency = int((time.monotonic() - _t0) * 1000)
+                record_llm_call(
+                    caller="FeedbackAgent",
+                    model="unknown",
+                    input_tokens=0,
+                    output_tokens=0,
+                    latency_ms=_latency,
+                    success=False,
+                )
                 logger.warning(
                     "[FeedbackAgent] Timeout (attempt %d/%d)", attempt, settings.MAX_RETRIES
                 )
@@ -212,6 +264,15 @@ class FeedbackAgent:
                 time.sleep(delay)
 
             except APIError as e:
+                _latency = int((time.monotonic() - _t0) * 1000)
+                record_llm_call(
+                    caller="FeedbackAgent",
+                    model="unknown",
+                    input_tokens=0,
+                    output_tokens=0,
+                    latency_ms=_latency,
+                    success=False,
+                )
                 logger.error("[FeedbackAgent] API error: %s", e)
                 last_error = e
                 break
@@ -230,7 +291,11 @@ class FeedbackAgent:
 
     def _parse(self, raw: str, fb_input: FeedbackAgentInput) -> FeedbackAgentOutput:
         try:
-            data = json.loads(raw)
+            stripped = (raw or "").strip()
+            if stripped.startswith("```"):
+                stripped = re.sub(r"^```(?:json)?\s*", "", stripped)
+                stripped = re.sub(r"\s*```\s*$", "", stripped).strip()
+            data = json.loads(stripped)
 
             # Parse raw lessons with scope
             raw_lessons = [
@@ -253,14 +318,21 @@ class FeedbackAgent:
                 # Backward compat: LLM returned a string instead of an object
                 revised_context = RevisedContext(headline=rc_raw)
             else:
+                raw_conf_adj = float(rc_raw.get("horizon_confidence_adjustment", 0.0))
+                # Clamp to [-0.15, +0.05]: thesis_reviewer handles deeper cuts via multiplier
+                clamped_conf_adj = max(-0.15, min(0.05, raw_conf_adj))
+                if clamped_conf_adj != raw_conf_adj:
+                    logger.warning(
+                        "[FeedbackAgent] horizon_confidence_adjustment %.3f out of range "
+                        "[-0.15, +0.05] — clamped to %.3f",
+                        raw_conf_adj, clamped_conf_adj,
+                    )
                 revised_context = RevisedContext(
                     headline=rc_raw.get("headline", ""),
                     risks_next_7_days=rc_raw.get("risks_next_7_days", []),
                     catalysts_next_7_days=rc_raw.get("catalysts_next_7_days", []),
                     watch_signals=rc_raw.get("watch_signals", []),
-                    horizon_confidence_adjustment=float(
-                        rc_raw.get("horizon_confidence_adjustment", 0.0)
-                    ),
+                    horizon_confidence_adjustment=clamped_conf_adj,
                 )
 
             # Validate miss_type

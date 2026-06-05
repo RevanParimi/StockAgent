@@ -40,8 +40,10 @@ STRICT INFERENCE RULES:
 
 ANALYSIS_PROMPT = """Analyse the Competitive Intelligence outlook for the Indian automobile OEM: **{ticker}** ({company_name}).
 
-Score each dimension from 0.0 (severe weakness) to 1.0 (clear leadership), using the scoring philosophy
-in your system instructions. Do not assign 0.5 as a default. Infer from all available indirect signals.
+{business_model_context}
+
+Focus on the following dimensions and score each from 0.0 (very weak competitive position)
+to 1.0 (very strong competitive position):
 
 PEER BENCHMARK SET (compare explicitly against these for every dimension):
   Domestic: Tata Motors, Mahindra & Mahindra, Maruti Suzuki, Hero MotoCorp, Bajaj Auto
@@ -72,16 +74,13 @@ DIMENSIONS TO SCORE:
 Context / recent data:
 {context}
 
-ANALYSIS INSTRUCTIONS:
-- Distinguish clearly between CURRENT STRENGTH (today's market share, current product lineup) and
-  FUTURE SURVIVABILITY (EV readiness, software capability, battery ecosystem access).
-  An OEM can have high current strength but low future readiness — capture both explicitly.
-- If data for any dimension is incomplete, reduce confidence_score and list the gap in missing_data_points.
-  Do not compensate for missing data by assigning neutral scores.
-- The overall_score should be a weighted reflection of all 6 dimensions, with future_readiness carrying
-  meaningful weight (minimum 15%) given the structural EV transition underway in India.
+Return ONLY valid JSON. IMPORTANT: Be ticker-specific. Cite actual market share figures and competitive data.
+For key_positives/key_risks: quote specific figures (e.g. "TATAMOTORS EV share 65% in PV-EV segment; Tiago EV sold 8,000 units/month").
+For ticker_vs_peers: cite specific market share % vs named competitors (e.g. "TATAMOTORS EV 65% vs MG 12% vs BYD 8% of PV-EV market").
+For bull_case_if: name the specific competitive event + share gain (e.g. "If e-Vitara launch captures 8% EV share by FY27, MARUTI re-rated").
+For bear_case_if: name the competitive threat + share loss (e.g. "If BYD/Hyundai takes 15% EV share, TATAMOTORS drops to 50% EV share").
+For what_changed: cite what shifted in competitive landscape this cycle (e.g. "Ola S1 recalls impacted 2W EV share; TVS iQube gained 200bps").
 
-Return ONLY valid JSON in this exact schema:
 {{
   "agent": "competitive_intel",
   "ticker": "{ticker}",
@@ -106,8 +105,13 @@ Return ONLY valid JSON in this exact schema:
   "missing_data_points": [<string, each gap that reduced confidence_score>],
   "key_positives": [<string>, ...],
   "key_risks": [<string>, ...],
-  "summary": "<3-4 sentence narrative: current competitive moat, peer comparison, EV readiness, key risk>",
-  "data_freshness": "<date of most recent competitive data used>"
+  "summary": "<2-3 sentence narrative on competitive positioning and moat strength>",
+  "data_freshness": "<date of most recent competitive data used>",
+  "ticker_vs_peers": "<specific market share % vs named competitors in relevant segments>",
+  "bull_case_if": "<specific competitive event + share gain threshold that would add ~0.15 to score>",
+  "bear_case_if": "<specific competitive threat + share loss that would cut ~0.15 from score>",
+  "what_changed": "<what shifted in competitive landscape this cycle vs last, with specific share/model data>",
+  "data_confidence": <float 0.3-1.0>
 }}
 """
 

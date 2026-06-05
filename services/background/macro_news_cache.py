@@ -179,5 +179,7 @@ class MacroNewsCache:
                 if file_date < cutoff:
                     f.unlink()
                     logger.info("[MacroNewsCache] Deleted old feed: %s", f.name)
-            except Exception:
-                pass
+            except ValueError:
+                logger.debug("[MacroNewsCache] Skipping unparseable filename: %s", f.name)
+            except OSError as exc:
+                logger.warning("[MacroNewsCache] Could not delete %s: %s", f.name, exc)

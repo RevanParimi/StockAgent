@@ -1,5 +1,5 @@
 # ============================================================
-# StockAgent — Python FastAPI
+# StockAgent — Python FastAPI (serves the prototype PWA at root)
 # Single-stage build (C++ pybind11 uses pure Python fallback
 # when stockindicators.so is absent — fetcher.py handles it)
 # ============================================================
@@ -21,6 +21,9 @@ COPY core/       ./core/
 COPY services/   ./services/
 COPY src/backend/ ./backend/
 COPY main.py     ./
+
+# Frontend: the prototype app + PWA assets (manifest.json, sw.js, icons,
+# .well-known/assetlinks.json). Served by services/api/server.py at "/".
 COPY src/frontend/prototypes/ ./frontend/prototypes/
 
 # Create data directories — volumes mount here at runtime

@@ -92,10 +92,16 @@ INFERENCE RULES:
 
 ANALYSIS_PROMPT = """Analyse the Sales & Demand outlook for the Indian automobile company: **{ticker}** ({company_name}).
 
+<<<<<<< HEAD
 Score each dimension from 0.0 (very bearish) to 1.0 (very bullish). Apply the scoring philosophy
 from your system instructions. Never assign 0.5 as a default — earn it with genuinely conflicting
 signals. Infer from indirect evidence (waiting periods, production commentary, Vahan data) when
 direct FADA/SIAM data is unavailable.
+=======
+{business_model_context}
+
+Focus on the following dimensions and score each from 0.0 (very bearish) to 1.0 (very bullish):
+>>>>>>> main
 
 DIMENSIONS TO SCORE:
 
@@ -134,6 +140,7 @@ DIMENSIONS TO SCORE:
 Context / recent data snippets:
 {context}
 
+<<<<<<< HEAD
 ANALYSIS INSTRUCTIONS:
 - Score fada_siam_dispatch and dealer_inventory INDEPENDENTLY — do not let strong wholesale growth
   mask a dealer inventory buildup. Retail-wholesale divergence > 8pp for two months = score
@@ -147,6 +154,15 @@ ANALYSIS INSTRUCTIONS:
 - If any dimension has insufficient data, record it in missing_data_points and reduce confidence_score.
 
 Return ONLY valid JSON in this exact schema:
+=======
+Return ONLY valid JSON. IMPORTANT: Be ticker-specific. Cite actual numbers from the context.
+For key_positives/key_risks: quote specific figures (e.g. "retail dispatch +12% YoY, inventory 28 days vs 35 days last quarter").
+For ticker_vs_peers: give numeric volume/share comparison vs named OEM peers.
+For bull_case_if: name the specific demand catalyst and volume threshold.
+For bear_case_if: name the specific demand risk and volume/inventory trigger.
+For what_changed: cite what shifted in retail/dispatch data this cycle vs last.
+
+>>>>>>> main
 {{
   "agent": "sales_demand",
   "ticker": "{ticker}",
@@ -164,8 +180,18 @@ Return ONLY valid JSON in this exact schema:
   "missing_data_points": [<string, each data gap that reduced confidence_score>],
   "key_positives": [<string>, ...],
   "key_risks": [<string>, ...],
+<<<<<<< HEAD
   "summary": "<3-4 sentence narrative: retail-wholesale alignment, inventory health, forward booking visibility, key demand risk or catalyst>",
   "data_freshness": "<date of most recent data point used>"
+=======
+  "summary": "<2-3 sentence narrative>",
+  "data_freshness": "<date of most recent data point used>",
+  "ticker_vs_peers": "<numeric volume/share comparison vs named OEM peers>",
+  "bull_case_if": "<specific demand catalyst + volume/share threshold that would add ~0.15 to score>",
+  "bear_case_if": "<specific demand risk + inventory/volume trigger that would cut ~0.15 from score>",
+  "what_changed": "<what shifted in retail/dispatch/EV data this cycle vs last quarter, with numbers>",
+  "data_confidence": <float 0.3-1.0>
+>>>>>>> main
 }}
 """
 

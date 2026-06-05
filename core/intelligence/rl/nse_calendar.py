@@ -26,10 +26,19 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import date, timedelta
+import calendar as _cal
+from datetime import date, datetime, time as _time, timedelta, timezone
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
+
+# India Standard Time — fixed UTC+5:30 (India observes no DST).
+IST = timezone(timedelta(hours=5, minutes=30))
+
+# NSE equity-market session boundaries (IST).
+_PRE_OPEN_START = _time(9, 0)    # pre-open auction begins
+_MARKET_OPEN    = _time(9, 15)   # continuous trading begins
+_MARKET_CLOSE   = _time(15, 30)  # continuous trading ends
 
 # Path where calendar_updater.py writes fetched holidays
 _HOLIDAY_FILE = Path("data/nse_holidays.json")
@@ -154,3 +163,143 @@ def next_trading_day(d: date) -> date:
     while not is_trading_day(candidate):
         candidate += timedelta(days=1)
     return candidate
+
+
+def _last_trading_day_on_or_before(d: date) -> date:
+    """Most recent NSE trading day on or before d (d itself if it is one)."""
+    cur = d
+    while not is_trading_day(cur):
+        cur -= timedelta(days=1)
+    return cur
+
+
+# ── Intraday market session (IST-aware) ──────────────────────────────────────
+
+def now_ist() -> datetime:
+    """Current wall-clock time in IST (timezone-aware)."""
+    return datetime.now(IST)
+
+
+def market_session(now: datetime | None = None) -> dict:
+    """
+    Resolve the NSE equity-market session state for a given moment, in IST.
+
+    This is the time-aware companion to ``is_trading_day`` (which only knows the
+    date). Use it anywhere the assistant must reason about whether the market is
+    actually trading *right now* — not merely whether today is a trading day.
+
+    Parameters
+    ----------
+    now : datetime | None
+        The moment to evaluate. ``None`` → current IST time. A naive datetime is
+        interpreted as IST; an aware datetime is converted to IST. Accepting an
+        explicit ``now`` keeps this function deterministic and unit-testable.
+
+    Returns
+    -------
+    dict with keys:
+        state           : "HOLIDAY" | "PRE_MARKET" | "PRE_OPEN" | "OPEN" | "CLOSED"
+        is_live         : bool   — True only during the continuous OPEN session
+        date            : date   — the IST calendar date evaluated
+        last_close_day  : date   — the session whose close is the latest *settled*
+                                   price (today if already closed; else the prior
+                                   trading day)
+        opens_at        : "09:15 IST"   (informational)
+        closes_at       : "15:30 IST"   (informational)
+
+    State definitions
+    -----------------
+        HOLIDAY     today is a weekend / NSE holiday — market does not trade
+        PRE_MARKET  trading day, before 09:00 IST — not yet in pre-open
+        PRE_OPEN    trading day, 09:00–09:15 IST — pre-open auction window
+        OPEN        trading day, 09:15–15:30 IST — continuous trading (live)
+        CLOSED      trading day, after 15:30 IST — session done for the day
+    """
+    if now is None:
+        now = now_ist()
+    elif now.tzinfo is None:
+        now = now.replace(tzinfo=IST)
+    else:
+        now = now.astimezone(IST)
+
+    d = now.date()
+    t = now.time()
+
+    opens_at, closes_at = "09:15 IST", "15:30 IST"
+
+    if not is_trading_day(d):
+        return {
+            "state": "HOLIDAY",
+            "is_live": False,
+            "date": d,
+            "last_close_day": _last_trading_day_on_or_before(d),
+            "opens_at": opens_at,
+            "closes_at": closes_at,
+        }
+
+    prev_td = trading_days_ago(d, 1)  # strictly-before trading day
+
+    if t < _PRE_OPEN_START:
+        state, is_live, last_close = "PRE_MARKET", False, prev_td
+    elif t < _MARKET_OPEN:
+        state, is_live, last_close = "PRE_OPEN", False, prev_td
+    elif t < _MARKET_CLOSE:
+        state, is_live, last_close = "OPEN", True, prev_td
+    else:
+        state, is_live, last_close = "CLOSED", False, d
+
+    return {
+        "state": state,
+        "is_live": is_live,
+        "date": d,
+        "last_close_day": last_close,
+        "opens_at": opens_at,
+        "closes_at": closes_at,
+    }
+
+
+# ── F&O Monthly Expiry Calendar ──────────────────────────────────────────────
+
+def fno_expiry_date(year: int, month: int) -> date:
+    """Last Thursday of month; if NSE holiday, walks back to Wednesday, then Tuesday."""
+    last_day = _cal.monthrange(year, month)[1]
+    d = date(year, month, last_day)
+    while d.weekday() != 3:   # 3 = Thursday
+        d -= timedelta(days=1)
+    # If NSE holiday, step back day by day until a trading day (max 3 steps)
+    for _ in range(3):
+        if is_trading_day(d):
+            break
+        d -= timedelta(days=1)
+    return d
+
+
+def is_fno_expiry_day(d: date) -> bool:
+    """Return True if d is the monthly F&O expiry date."""
+    return d == fno_expiry_date(d.year, d.month)
+
+
+def is_fno_expiry_week(d: date) -> bool:
+    """True if d is within 5 trading days of (and including) monthly expiry."""
+    expiry = fno_expiry_date(d.year, d.month)
+    if d > expiry:
+        return False
+    count, cur = 0, d
+    while cur <= expiry:
+        if is_trading_day(cur):
+            count += 1
+        cur += timedelta(days=1)
+    return count <= 5
+
+
+def days_to_fno_expiry(d: date) -> int | None:
+    """Trading days to next monthly expiry. None if d is past expiry for this month."""
+    expiry = fno_expiry_date(d.year, d.month)
+    if d > expiry:
+        return None
+    count, cur = 0, d
+    while cur < expiry:
+        if is_trading_day(cur):
+            count += 1
+        cur += timedelta(days=1)
+    return count

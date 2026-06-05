@@ -220,13 +220,21 @@ class MacroNewsFetcher:
                 if item.get("title")
             ]
         except requests.HTTPError as exc:
-            if exc.response is not None and exc.response.status_code == 400:
-                logger.warning("[MacroFetcher] Serper key exhausted for query '%s'", query)
+            status = exc.response.status_code if exc.response is not None else "?"
+            body   = (exc.response.text or "")[:200] if exc.response is not None else ""
+            if status == 400:
+                logger.warning(
+                    "[MacroFetcher] Serper key exhausted (HTTP 400) for query '%s' | body: %s",
+                    query, body,
+                )
             else:
-                logger.warning("[MacroFetcher] Serper news error for '%s': %s", query, exc)
+                logger.warning(
+                    "[MacroFetcher] Serper HTTP %s for query '%s': %s | body: %s",
+                    status, query, exc, body,
+                )
             return []
         except Exception as exc:
-            logger.warning("[MacroFetcher] Serper news failed for '%s': %s", query, exc)
+            logger.warning("[MacroFetcher] Serper news failed for '%s': %s", query, exc, exc_info=True)
             return []
 
     def _newsapi_top_headlines(self) -> list[dict]:
@@ -353,12 +361,14 @@ Respond ONLY with JSON inside <json> tags:
 
         except Exception as exc:
             logger.warning(
-                "[MacroFetcher] ReviewAgent LLM failed: %s — accepting results as LOW-severity", exc
+                "[MacroFetcher] ReviewAgent LLM failed: %s — "
+                "marking unsatisfied so caller may retry with refined queries",
+                exc, exc_info=True,
             )
             # Fallback: accept all results without tags (never discard)
             return {
-                "satisfied": True,
-                "missing_topics": [],
+                "satisfied": False,
+                "missing_topics": ["India market news"],
                 "tagged_entries": [
                     {
                         **r,

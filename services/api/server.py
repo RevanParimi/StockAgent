@@ -27,7 +27,7 @@ import sys
 import pathlib
 import threading
 from contextlib import asynccontextmanager
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 
 _ROOT = pathlib.Path(__file__).parent.parent.parent
 _SRC  = _ROOT / "src"
@@ -48,10 +48,21 @@ from services.api.routes.scheduler_api import router as scheduler_router
 from services.api.routes.prompts import router as prompts_router
 from services.api.routes.analytics import router as analytics_router
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s — %(message)s",
-)
+_IST = timezone(timedelta(hours=5, minutes=30))
+
+
+class _ISTFormatter(logging.Formatter):
+    """Formats log timestamps in IST (UTC+5:30) with full date."""
+    def formatTime(self, record, datefmt=None):
+        dt = datetime.fromtimestamp(record.created, tz=_IST)
+        return dt.strftime("%Y-%m-%d %H:%M:%S IST")
+
+
+logging.basicConfig(level=logging.INFO)
+_ist_fmt = _ISTFormatter("%(asctime)s %(levelname)-8s [%(name)s] %(message)s")
+for _h in logging.root.handlers:
+    _h.setFormatter(_ist_fmt)
+
 logger = logging.getLogger(__name__)
 
 # Register in-memory ring buffer handler so all log records are capturable via /ui/logs
@@ -76,6 +87,29 @@ def _get_scheduler():
 # RL self-heal — runs in a background thread so startup isn't blocked
 # ---------------------------------------------------------------------------
 
+def _load_self_heal_checkpoint(cycle_id: str) -> set[str]:
+    """Return the set of tickers already processed in this cycle's self-heal run."""
+    import json as _json
+    path = pathlib.Path(f"data/self_heal_checkpoint_{cycle_id}.json")
+    if path.exists():
+        try:
+            return set(_json.loads(path.read_text(encoding="utf-8")).get("completed", []))
+        except Exception:
+            return set()
+    return set()
+
+
+def _save_self_heal_checkpoint(cycle_id: str, completed: set[str]) -> None:
+    """Persist the set of completed tickers so a crash resumes from where it left off."""
+    import json as _json
+    path = pathlib.Path("data/self_heal_checkpoint_{}.json".format(cycle_id))
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(_json.dumps({"completed": sorted(completed)}), encoding="utf-8")
+    except Exception as exc:
+        logger.warning("[startup] Could not write self-heal checkpoint: %s", exc)
+
+
 def _self_heal_rl() -> None:
     """
     Check RL state for each ticker and fill in whatever is missing:
@@ -84,6 +118,8 @@ def _self_heal_rl() -> None:
 
     Called once on server startup in a daemon thread.
     All errors are caught and logged — never crashes the server.
+    Checkpoint file (data/self_heal_checkpoint_{cycle_id}.json) ensures a crash
+    on ticker N resumes from N+1 on next redeploy rather than restarting from ticker 1.
     """
     import time
     time.sleep(10)   # Let uvicorn finish binding and log its startup banner first
@@ -101,8 +137,14 @@ def _self_heal_rl() -> None:
     from services.api.log_buffer import get_active_tickers
     today = date.today()
     month_start = today.replace(day=1)
+    # Use a cycle_id key so the checkpoint resets each month automatically
+    _cycle_key = today.strftime("%Y-%m")
+    _completed: set[str] = _load_self_heal_checkpoint(_cycle_key)
 
     for ticker in get_active_tickers():
+        if ticker in _completed:
+            logger.info("[startup] %s — already processed this cycle, skipping (checkpoint)", ticker)
+            continue
         try:
             store    = PredictionStore(ticker, sector="automobile")
             cycle_id = store.current_cycle_id()
@@ -157,10 +199,51 @@ def _self_heal_rl() -> None:
             else:
                 logger.info("[startup] %s — feedback log up to date (%d entries)", ticker, len(reviewed_dates))
 
+            # Mark ticker as completed and persist checkpoint
+            _completed.add(ticker)
+            _save_self_heal_checkpoint(_cycle_key, _completed)
+
         except Exception as exc:
             logger.error("[startup] Self-heal FAILED for %s: %s", ticker, exc, exc_info=True)
+            # Do NOT add to _completed — next redeploy will retry this ticker
 
     logger.info("[startup] RL self-heal complete")
+
+
+# ---------------------------------------------------------------------------
+# Volume / data directory check — run once at startup
+# ---------------------------------------------------------------------------
+
+def _log_volume_check() -> None:
+    """
+    Log the absolute path of data/ and the state of managed_tickers.json.
+    Confirms whether the Railway Volume is correctly mounted at /app/data.
+    """
+    import os, json as _json
+    data_dir = pathlib.Path("data").resolve()
+    mt_path  = pathlib.Path("data/managed_tickers.json").resolve()
+
+    is_mount = os.path.ismount(str(data_dir))
+    logger.info("[startup] data/ abs path  : %s", data_dir)
+    logger.info("[startup] volume mounted  : %s  (os.path.ismount)", is_mount)
+
+    if mt_path.exists():
+        try:
+            raw = _json.loads(mt_path.read_text(encoding="utf-8"))
+            syms = [t.get("sym") for t in raw] if isinstance(raw, list) else []
+            logger.info(
+                "[startup] managed_tickers.json EXISTS — %d tickers on volume: %s",
+                len(syms), syms,
+            )
+        except Exception as exc:
+            logger.warning("[startup] managed_tickers.json unreadable: %s", exc)
+    else:
+        logger.warning(
+            "[startup] managed_tickers.json NOT found at %s — "
+            "will bootstrap from SCHEDULER_TICKERS on first load. "
+            "Volume gap if this is not the very first deploy.",
+            mt_path,
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -193,6 +276,9 @@ def _ensure_calendar_file() -> None:
 async def lifespan(app: FastAPI):
     # ── Startup ──────────────────────────────────────────────────────────────
     logger.info("[startup] === StockAgent startup sequence ===")
+
+    # 0. Volume / data directory verification
+    _log_volume_check()
 
     # 1. Calendar file (sync, fast — just a file check + possible HTTP call)
     _ensure_calendar_file()
@@ -259,10 +345,8 @@ app.include_router(prompts_router,   tags=["Prompts"])
 app.include_router(analytics_router, tags=["Analytics"])
 
 
-@app.get("/", tags=["UI"], include_in_schema=False)
-async def root():
-    from fastapi.responses import RedirectResponse
-    return RedirectResponse(url="/app/index.html")
+# NOTE: "/" is served by the SPA catch-all at the bottom of this module
+# (returns the React index.html). No redirect needed.
 
 
 @app.get("/health", tags=["Health"])
@@ -282,14 +366,39 @@ async def list_tickers() -> dict:
 
 
 # ---------------------------------------------------------------------------
-# Static frontend
+# Static frontend — the prototype app, served at the site root as an
+# installable PWA (manifest.json + sw.js + icons). See Dockerfile.
 # ---------------------------------------------------------------------------
+from fastapi.responses import FileResponse  # noqa: E402
 
-_FRONTEND_DIR = _ROOT / "frontend" / "prototypes"
-if _FRONTEND_DIR.exists():
-    app.mount("/app", StaticFiles(directory=str(_FRONTEND_DIR), html=True), name="frontend")
+_DIST_CANDIDATES = [
+    _ROOT / "frontend" / "prototypes",              # Docker image layout
+    _ROOT / "src" / "frontend" / "prototypes",      # local layout
+]
+_FRONTEND_DIR = next((p for p in _DIST_CANDIDATES if (p / "index.html").exists()), None)
+
+if _FRONTEND_DIR is not None:
+    _FRONTEND_ROOT = _FRONTEND_DIR.resolve()
+    _ASSETS_DIR = _FRONTEND_DIR / "assets"
+    if _ASSETS_DIR.exists():
+        app.mount("/assets", StaticFiles(directory=str(_ASSETS_DIR)), name="assets")
+
+    # Catch-all (registered last → all API/docs routes take precedence).
+    # Serves real build files (manifest.webmanifest, sw.js, icons,
+    # /.well-known/assetlinks.json, etc.) and falls back to index.html for
+    # client-side React Router routes.
+    @app.get("/{full_path:path}", include_in_schema=False)
+    async def spa(full_path: str):
+        if full_path:
+            candidate = (_FRONTEND_DIR / full_path).resolve()
+            # Guard against path traversal outside the build dir
+            if str(candidate).startswith(str(_FRONTEND_ROOT)) and candidate.is_file():
+                return FileResponse(candidate)
+        return FileResponse(_FRONTEND_DIR / "index.html")
+
+    logger.info("[server] Serving prototype PWA from %s", _FRONTEND_DIR)
 else:
-    logger.warning("[server] Frontend not found at %s — /app not mounted", _FRONTEND_DIR)
+    logger.warning("[server] React build not found in %s — frontend not served", _DIST_CANDIDATES)
 
 
 if __name__ == "__main__":

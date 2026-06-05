@@ -76,9 +76,15 @@ INFERENCE RULES:
 
 ANALYSIS_PROMPT = """Analyse the Technical / Pattern outlook for Indian automobile stock: **{ticker}** ({company_name}).
 
+<<<<<<< HEAD
 Score each dimension from 0.0 (very bearish) to 1.0 (very bullish).
 Apply the scoring philosophy from your system instructions. Never assign 0.5 as a default.
 Use RSI and MACD together — not independently. Distinguish short-covering from genuine reversals.
+=======
+{business_model_context}
+
+Score each dimension from 0.0 (very bearish) to 1.0 (very bullish):
+>>>>>>> main
 
 DIMENSIONS TO SCORE:
 
@@ -114,6 +120,7 @@ DIMENSIONS TO SCORE:
 Technical data provided:
 {context}
 
+<<<<<<< HEAD
 ANALYSIS INSTRUCTIONS:
 - For multi_timeframe_trend: score >= 0.70 only when price is above all three key MAs (20, 50, 200)
   with aligned weekly and daily trend. Score <= 0.30 when below 200-DMA for >60 trading days.
@@ -126,6 +133,15 @@ ANALYSIS INSTRUCTIONS:
 - State trend_direction and trend_strength explicitly — these are required output fields.
 
 Return ONLY valid JSON in this exact schema:
+=======
+Return ONLY valid JSON. IMPORTANT: Be ticker-specific. Cite actual price levels and indicator values.
+For key_positives/key_risks: quote specific levels (e.g. "RSI 42, approaching oversold; support at 10,200").
+For ticker_vs_peers: give relative strength comparison vs named peers (e.g. "MARUTI -8% vs Nifty Auto -3% last 3M").
+For bull_case_if: name the specific technical trigger (e.g. "If price closes above 12,500 with volume 1.5x avg").
+For bear_case_if: name the breakdown level (e.g. "If 10,200 support breaks, next stop 9,600 (-6%)").
+For what_changed: cite what shifted in technicals this cycle (e.g. "RSI recovered from 28 to 42; MACD crossover imminent").
+
+>>>>>>> main
 {{
   "agent": "pattern_analysis",
   "ticker": "{ticker}",
@@ -144,8 +160,18 @@ Return ONLY valid JSON in this exact schema:
   "missing_data_points": [<string, each data gap that reduced confidence_score>],
   "key_positives": [<string>, ...],
   "key_risks": [<string>, ...],
+<<<<<<< HEAD
   "summary": "<3-4 sentence narrative: trend structure, momentum quality, volume confirmation, key reversal risk or continuation signal>",
   "data_freshness": "<date of most recent data point used>"
+=======
+  "summary": "<2-3 sentence narrative>",
+  "data_freshness": "<date of most recent data point used>",
+  "ticker_vs_peers": "<relative performance vs named peers and Nifty Auto, with % figures>",
+  "bull_case_if": "<specific technical trigger + price level that would add ~0.15 to score>",
+  "bear_case_if": "<specific breakdown level + downside target that would cut ~0.15 from score>",
+  "what_changed": "<what shifted in technical indicators this cycle vs last, with specific values>",
+  "data_confidence": <float 0.3-1.0>
+>>>>>>> main
 }}
 """
 

@@ -48,8 +48,11 @@ build/
 htmlcov/
 
 # Data / outputs (runtime artifacts — created at runtime, not committed)
-data/
-outputs/
+# Anchored to repo root: an unanchored `data/` also matched SOURCE packages
+# named data (src/backend/shared/data, services/data, core/data, sectors/*/data),
+# silently dropping new source files from commits/deploys. Keep these anchored.
+/data/
+/outputs/
 *.db
 *.sqlite
 

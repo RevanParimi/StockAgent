@@ -484,6 +484,29 @@ class PredictionStore:
         return self._dir / f"{self.ticker}_archived_lessons.json"
 
     # ------------------------------------------------------------------
+    # Ticker dossier (PERMANENT — RL knowledge layer)
+    # ------------------------------------------------------------------
+
+    def _dossier_path(self) -> Path:
+        return self._learning_ledger_path().parent / f"{self.ticker}_dossier.json"
+
+    def load_dossier(self):
+        from backend.shared.schemas.dossier import TickerDossier
+        data = self._read_json(self._dossier_path())
+        if not data:
+            return None
+        try:
+            return TickerDossier(**data)
+        except Exception as exc:
+            logger.error("[PredictionStore] Corrupt dossier for %s: %s", self.ticker, exc)
+            return None
+
+    def save_dossier(self, dossier) -> None:
+        from datetime import date as _date
+        dossier.last_updated = _date.today().isoformat()
+        self._write_json(self._dossier_path(), dossier.model_dump())
+
+    # ------------------------------------------------------------------
     # Convenience: list all cycle IDs for this ticker
     # ------------------------------------------------------------------
 

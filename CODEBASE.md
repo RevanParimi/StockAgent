@@ -77,11 +77,12 @@ StockAgent-main/
 │   ├── graphs/                    # LangGraph definitions
 │   ├── intelligence/
 │   │   ├── rl/                    # Reinforcement learning feedback loop
-│   │   │   ├── agents/            # FeedbackAgent, WeightAdapter, ThesisReviewer
-│   │   │   ├── algorithms/        # price_interpolator.py
+│   │   │   ├── agents/            # FeedbackAgent, WeightAdapter, ThesisReviewer, DossierCurator
+│   │   │   ├── algorithms/        # price_interpolator.py, lesson_emphasis.py (executable claims)
 │   │   │   ├── conviction/        # tracker.py (conviction streak)
-│   │   │   ├── stores/            # prediction_store.py, ledger_propagator.py
-│   │   │   ├── workflows/         # generate_forecast.py, daily_review.py
+│   │   │   ├── eval/              # Read-only evaluation harness (metrics, synthetic, run_eval CLI)
+│   │   │   ├── stores/            # prediction_store.py, ledger_propagator.py (archival + resurrection)
+│   │   │   ├── workflows/         # generate_forecast.py, daily_review.py (Step 8.5 = dossier curator)
 │   │   │   ├── nse_calendar.py    # NSE trading day calendar
 │   │   │   └── calendar_updater.py
 │   │   ├── regime/                # Market regime detection
@@ -339,6 +340,28 @@ retired — it broke `json_object` output and was a weak function-caller.
 | `RL_SCHEDULER_MAX_WORKERS` | `1` | Concurrent ticker reviews (keep at 1 without file locking) |
 | `RL_WEIGHT_DRIFT_ESCAPE_DAYS` | `14` | Consecutive correct days to unlock drift ceiling |
 | `RL_WEIGHT_DRIFT_ESCAPE_MULTIPLIER` | `1.5` | Drift ceiling multiplier when escape active |
+| `RL_CALIBRATION_REWARD_ENABLED` | `true` | Per-agent calibration reward (agent scored on its own lean, not just ensemble) |
+| `RL_CALIBRATION_WEIGHT` | `0.5` | Blend of own-calibration vs ensemble-direction in agent hit-rate |
+| `RL_FORGETTING_ENABLED` | `true` | Recency-weighted miss ranking + weighted feedback aggregation |
+| `MISS_RECENCY_HALFLIFE_DAYS` | `21` | Miss-event recency decay half-life |
+| `MISS_PENALIZABLE_DISCOUNT` | `0.3` | Weight of non-penalizable (external_shock) misses in ranking |
+| `ARCHIVE_CONF_FLOOR` / `ARCHIVE_EFFECTIVENESS_FLOOR` / `ARCHIVE_STALE_DAYS` | `0.12` / `0.25` / `60` | Dead-lesson archival criteria (weekly, with resurrection) |
+| `FEEDBACK_HALFLIFE_MONTHS` | `3` | Recency half-life for cross-cycle feedback aggregation |
+
+### RL Knowledge Layer (Ticker Dossier + Executable Claims)
+
+| Name | Default | Description |
+|------|---------|-------------|
+| `RL_DOSSIER_ENABLED` | `true` | Daily dossier curator (Step 8.5) + agent prompt digest injection |
+| `DOSSIER_MAX_OBSERVATIONS` | `30` | Episodic observation buffer cap per dossier |
+| `DOSSIER_DIGEST_MAX_CHARS` | `2500` | Full digest budget (chat tool, curator input) |
+| `DOSSIER_AGENT_DIGEST_CHARS` | `1500` | Digest budget inside agent system prompts |
+| `DOSSIER_MAX_NEW_OBS_PER_DAY` | `3` | Max curator observations merged per day |
+| `DOSSIER_DISTILL_INPUT_MAX_CHARS` | `20000` | Weekly distillation LLM input bound |
+| `RL_CLAIMS_ENABLED` | `true` | Executable claims: tagged lessons fire on matching event days |
+| `RL_LESSON_EMPHASIS_DELTA` | `0.03` | Per-lesson agent-score nudge when a claim fires |
+| `RL_LESSON_EMPHASIS_CAP` | `0.06` | Per-agent total emphasis cap per day |
+| `RL_LESSON_MATCH_MIN_CONF` | `0.45` | Min effective confidence for a claim to fire |
 
 ### Macro News Feed
 
@@ -416,13 +439,17 @@ All paths verified to exist. Paths are relative to project root.
 | `src/backend/sectors/it_sector/pipeline/orchestrator.py` | ITAgentOrchestrator |
 | `src/backend/sectors/renewable_energy/pipeline/orchestrator.py` | RenewableAgentOrchestrator |
 | `core/intelligence/rl/workflows/generate_forecast.py` | Generate 30-day PredictionEnvelope (runs full pipeline) |
-| `core/intelligence/rl/workflows/daily_review.py` | Daily RL feedback: compare actual vs predicted, update weights |
-| `core/intelligence/rl/stores/prediction_store.py` | JSON R/W for envelopes, feedback logs, weight memory, ledgers |
-| `core/intelligence/rl/stores/ledger_propagator.py` | Propagate lessons to sector/market ledgers |
-| `core/intelligence/rl/agents/feedback_agent.py` | LLM-based miss classification and lesson generation |
-| `core/intelligence/rl/agents/weight_adapter.py` | Agent weight adjustment based on feedback |
+| `core/intelligence/rl/workflows/daily_review.py` | Daily RL feedback: compare actual vs predicted, update weights; Step 8.5 dossier curator |
+| `core/intelligence/rl/stores/prediction_store.py` | JSON R/W for envelopes, feedback logs, weight memory, ledgers, ticker dossier |
+| `core/intelligence/rl/stores/ledger_propagator.py` | Propagate lessons to sector/market ledgers; stale-lesson archival + resurrection |
+| `core/intelligence/rl/agents/feedback_agent.py` | LLM-based miss classification and lesson generation (lessons carry trigger_tags) |
+| `core/intelligence/rl/agents/weight_adapter.py` | Agent weight adjustment with per-agent calibration reward (RL_CALIBRATION_REWARD_ENABLED) |
 | `core/intelligence/rl/agents/thesis_reviewer.py` | Conditional thesis review on significant miss (Section 21) |
-| `core/intelligence/rl/algorithms/price_interpolator.py` | Price interpolation for RL feedback |
+| `core/intelligence/rl/agents/dossier_curator.py` | Daily dossier curator (Step 8.5, runs hits AND misses) + weekly distillation |
+| `core/intelligence/rl/algorithms/price_interpolator.py` | Price interpolation for RL feedback (recency-weighted median when RL_FORGETTING_ENABLED) |
+| `core/intelligence/rl/algorithms/lesson_emphasis.py` | Executable claims: tagged lessons nudge agent scores on matching event days |
+| `core/intelligence/rl/eval/` | Read-only eval harness: `python -m core.intelligence.rl.eval.run_eval [--synthetic] [--ablate ...]` |
+| `src/backend/shared/schemas/dossier.py` | TickerDossier schema + budgeted markdown digest (`to_digest`) |
 | `core/intelligence/rl/conviction/tracker.py` | Conviction streak tracking |
 | `core/intelligence/rl/nse_calendar.py` | NSE trading day calendar (holiday-aware) |
 | `core/intelligence/regime/detector.py` | Market regime detection (VIX/FII/RSI-based) |

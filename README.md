@@ -129,9 +129,24 @@ Every analysis generates a 30-day forward forecast. Each evening at 4:30 PM IST,
 2. Compares it to what was predicted
 3. Identifies the primary miss — which agent led the call astray
 4. Classifies the type of miss (was it a data gap? model bias? external shock?)
-5. Adjusts that agent's influence weight for future predictions
-6. Writes lessons into a permanent learning ledger for that stock
+5. Adjusts that agent's influence weight for future predictions — each agent is scored on
+   whether *its own signal* called the move (calibration), not just whether the ensemble won
+6. Writes lessons into a permanent learning ledger for that stock — each lesson carries
+   **trigger tags** (e.g. `central_bank_event`, `crude_price`) so it fires automatically
+   on matching days instead of sitting as advice text
 7. Revises the remaining days in the current 30-day forecast
+8. Updates the stock's **dossier** — a living knowledge file maintained by a daily curator
+   that runs on *every* day, including days the call was right ("what worked"), recording
+   observations, institutional flow trends, management guidance, recurring catalysts, and
+   quantified response signatures ("drops ~2% within 2 sessions of crude > $90")
+
+The dossier is consolidated weekly (episodic observations distilled into durable
+knowledge), injected into every agent's prompt on the next analysis, and exposed to the
+chat assistant — so what the system learns by watching a stock daily is what it uses to
+reason about that stock everywhere. Stale lessons decay, repeatedly-contradicted patterns
+are archived (and resurrected if they start recurring), and a read-only evaluation harness
+(`python -m core.intelligence.rl.eval.run_eval`) measures direction accuracy, Brier score,
+and confidence calibration so improvement is a number, not a feeling.
 
 **The miss classification matters.** If the stock moved because of a surprise RBI rate decision that nobody predicted, that is classified as an `external_shock` — zero penalty to any agent, because the system could not have known. But if the fundamentals agent consistently overestimates a specific signal month after month, that is classified as `model_bias` — full penalty, weight reduction.
 
@@ -203,6 +218,7 @@ calls tools across several rounds, and answers from live data:
 - **"What is the current price of Reliance?"** → `get_live_price` — NSE-first symbol resolution (no more wrong US tickers), labelled `live` or `last close <date>` by the IST market session.
 - **"Why did Tata Motors fall today?"** → `search_market_news` — live news via Serper, fused across multiple query variants (RRF) with a Tavily fallback.
 - **"What is StockAgent's rating on HDFCBANK?"** → `get_stock_analysis` · **"How is the Banking sector today?"** → `get_sector_snapshot` (index + per-stock movers) · **"Which agent should I trust?"** → `get_rl_insights` · **"Run a fresh analysis on BAJAJ-AUTO"** → `run_agent_analysis`.
+- **"What do we know about MARUTI?"** → `get_ticker_dossier` — the stock's accumulated knowledge file: current thesis, learned price-response signatures, open management guidance, recurring catalysts, and institutional flow trend from daily tracking.
 
 For buy/sell/momentum questions a **deterministic pre-router** fetches the screen and news *before* the
 model answers — so the right candidates and real, dated sources always reach it. It is grounded to the
@@ -361,8 +377,9 @@ A quick guide to every abbreviation, metric, and concept you will encounter in S
 | **Agent weight** | A number (0.0–1.0) representing how much influence one agent has on the final score | If `risk_macro` has weight 0.19 and scores 0.30, it pulls the final score down more than `sentiment` at weight 0.03 |
 | **Signal Aggregator** | The component that combines all agent scores and resolves disagreements | "9 experts voted; 6 said BUY, 2 said SELL, 1 was neutral — here's why the BUY camp is right today" |
 | **Conflict** | When two agents' scores differ by 0.30 or more | Fundamentals scores 0.72 (strong BUY) but macro scores 0.38 (near SELL) — flagged and resolved by LLM |
-| **Learning ledger** | Permanent memory of patterns the system has noticed for a specific stock | After 3 months MARUTI has 4 lessons: "On RBI days trust risk_macro more", "Shravan months discount demand", etc. |
-| **RL feedback loop** | The daily process of comparing prediction to reality and updating agent weights | Every evening: system asks "was I right? who was wrong? by how much?" — and quietly adjusts |
+| **Learning ledger** | Permanent memory of patterns the system has noticed for a specific stock | After 3 months MARUTI has 4 lessons: "On RBI days trust risk_macro more", "Shravan months discount demand", etc. Each lesson carries trigger tags so it fires automatically on matching days |
+| **Ticker dossier** | Living knowledge file per stock, updated by a daily curator on every day — hits included | MARUTI's dossier holds the current thesis, response signatures ("drops ~2% within 2 sessions of crude > $90"), open management guidance, recurring catalysts, FII/DII flow trend, and open questions |
+| **RL feedback loop** | The daily process of comparing prediction to reality and updating agent weights | Every evening: system asks "was I right? who was wrong? by how much?" — and quietly adjusts. Agents are scored on their own calibration, not just the ensemble's result |
 | **Conviction streak** | Consecutive days of the same verdict | 15 straight BUY days triggers caution — markets tend to correct sustained trends |
 | **Market regime** | The system's classification of current broad market conditions | `MACRO_CRISIS` (VIX high, Nifty falling) → risk_macro agent gets 40% extra influence; `RISK_ON` (bull run) → fundamentals and sentiment elevated |
 | **Prediction envelope** | The 30-day forward forecast generated at month start | Contains a predicted price for each of the next 30 trading days, updated daily by the RL loop |
@@ -495,6 +512,6 @@ A quick guide to every abbreviation, metric, and concept you will encounter in S
 | Document | Purpose |
 |---|---|
 | [CODEBASE.md](CODEBASE.md) | Full module map, all API endpoints, configuration reference |
-| [docs/RL_DESIGN.md](docs/RL_DESIGN.md) | RL feedback loop: formulas, daily flow, schemas, static vs LLM |
+| [docs/RL_DESIGN.md](docs/RL_DESIGN.md) | RL feedback loop: formulas, daily flow, schemas, static vs LLM, knowledge layer (ticker dossier + executable claims, §23) and measurement phase (eval harness, §24) |
 | [docs/AGENT_DESIGN.md — not yet created] | All sector agents, sub-scores, implementation status, full terminology reference |
 | [docs/AGENTIC_DESIGN.md](docs/AGENTIC_DESIGN.md) | All agents, tasks, data sources, static vs LLM boundary |

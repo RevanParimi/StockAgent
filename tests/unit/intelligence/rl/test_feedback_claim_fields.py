@@ -94,3 +94,108 @@ def test_merge_passes_through_claim_fields_on_new_lesson():
     assert new_lesson.trigger_tags == ["central_bank_event"]
     assert new_lesson.prioritise_agents == ["risk_macro"]
     assert new_lesson.discount_agents == ["sales_demand"]
+
+
+def test_merge_existing_lesson_adopts_missing_claim_fields():
+    """An existing live lesson with no trigger_tags adopts the raw lesson's
+    claim fields on a later occurrence, while bumping occurrences (no
+    duplicate lesson is created)."""
+    from backend.shared.schemas.feedback import (
+        FeedbackAgentOutput, LearningLedger, Lesson, RawLesson, RevisedContext,
+    )
+
+    agent = FeedbackAgent.__new__(FeedbackAgent)
+    ledger = LearningLedger(ticker="MARUTI", sector="automobile", last_updated="2026-06-10")
+    ledger.lessons.append(Lesson(
+        lesson_id="L0001",
+        date_learned="2026-06-01",
+        category="macro",
+        pattern="rbi_day",
+        observation="o",
+        rule="r",
+        confidence=0.6,
+        occurrences=1,
+        still_valid=True,
+        scope="stock_specific",
+        last_seen="2026-06-01",
+        trigger_tags=[],
+        prioritise_agents=[],
+        discount_agents=[],
+    ))
+    output = FeedbackAgentOutput(
+        primary_miss_agent="risk_macro",
+        miss_type="model_bias",
+        missed_factors=[],
+        over_weighted_factors=[],
+        agent_score_drift={},
+        new_lessons=[RawLesson(
+            category="macro", pattern="rbi_day", observation="o2", rule="r2",
+            confidence=0.8, scope="stock_specific",
+            trigger_tags=["central_bank_event"],
+            prioritise_agents=["risk_macro"],
+            discount_agents=[],
+        )],
+        revised_context=RevisedContext(headline="h"),
+    )
+
+    updated_ledger, lesson_ids = agent.merge_lessons_into_ledger(output, ledger)
+
+    assert len(updated_ledger.lessons) == 1
+    lesson = updated_ledger.find_by_pattern("rbi_day")
+    assert lesson is not None
+    assert lesson.lesson_id == "L0001"
+    assert lesson.occurrences == 2
+    assert lesson.trigger_tags == ["central_bank_event"]
+    assert lesson.prioritise_agents == ["risk_macro"]
+    assert lesson.discount_agents == []
+    assert lesson_ids == ["L0001"]
+
+
+def test_merge_existing_lesson_does_not_overwrite_existing_claim_fields():
+    """An existing live lesson that already has trigger_tags keeps them —
+    a later raw lesson's tags must not overwrite already-set claim fields."""
+    from backend.shared.schemas.feedback import (
+        FeedbackAgentOutput, LearningLedger, Lesson, RawLesson, RevisedContext,
+    )
+
+    agent = FeedbackAgent.__new__(FeedbackAgent)
+    ledger = LearningLedger(ticker="MARUTI", sector="automobile", last_updated="2026-06-10")
+    ledger.lessons.append(Lesson(
+        lesson_id="L0001",
+        date_learned="2026-06-01",
+        category="macro",
+        pattern="fii_outflow",
+        observation="o",
+        rule="r",
+        confidence=0.6,
+        occurrences=1,
+        still_valid=True,
+        scope="stock_specific",
+        last_seen="2026-06-01",
+        trigger_tags=["fii_flow"],
+        prioritise_agents=[],
+        discount_agents=[],
+    ))
+    output = FeedbackAgentOutput(
+        primary_miss_agent="risk_macro",
+        miss_type="model_bias",
+        missed_factors=[],
+        over_weighted_factors=[],
+        agent_score_drift={},
+        new_lessons=[RawLesson(
+            category="macro", pattern="fii_outflow", observation="o2", rule="r2",
+            confidence=0.8, scope="stock_specific",
+            trigger_tags=["central_bank_event"],
+            prioritise_agents=["risk_macro"],
+            discount_agents=[],
+        )],
+        revised_context=RevisedContext(headline="h"),
+    )
+
+    updated_ledger, lesson_ids = agent.merge_lessons_into_ledger(output, ledger)
+
+    lesson = updated_ledger.find_by_pattern("fii_outflow")
+    assert lesson is not None
+    assert lesson.trigger_tags == ["fii_flow"]  # not overwritten
+    assert lesson.prioritise_agents == ["risk_macro"]  # was empty, adopted
+    assert lesson.occurrences == 2

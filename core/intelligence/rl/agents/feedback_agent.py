@@ -35,6 +35,7 @@ from core.config import settings
 from services.clients.llm_client import record_llm_call
 from core.intelligence.rl.stores.ledger_propagator import resurrect_lesson
 from core.schemas.feedback import (
+    EVENT_TAGS,
     FeedbackAgentInput,
     FeedbackAgentOutput,
     LearningLedger,
@@ -300,7 +301,6 @@ class FeedbackAgent:
             data = json.loads(stripped)
 
             # Parse raw lessons with scope + executable-claim fields
-            from core.schemas.feedback import EVENT_TAGS
             valid_agents = set(fb_input.predicted_agent_scores.keys())
             raw_lessons = [
                 RawLesson(
@@ -421,6 +421,14 @@ class FeedbackAgent:
                 _scope_rank = {"stock_specific": 0, "sector_wide": 1, "market_wide": 2}
                 if _scope_rank.get(raw.scope, 0) > _scope_rank.get(existing.scope, 0):
                     existing.scope = raw.scope
+                # Adopt claim fields the existing lesson lacks (older lessons predate the
+                # executable-claims contract; never overwrite ones it already has).
+                if not existing.trigger_tags and raw.trigger_tags:
+                    existing.trigger_tags = raw.trigger_tags
+                if not existing.prioritise_agents and raw.prioritise_agents:
+                    existing.prioritise_agents = raw.prioritise_agents
+                if not existing.discount_agents and raw.discount_agents:
+                    existing.discount_agents = raw.discount_agents
                 lesson_ids.append(existing.lesson_id)
                 logger.info(
                     "[FeedbackAgent] Updated %s (pattern=%s occurrences=%d scope=%s)",

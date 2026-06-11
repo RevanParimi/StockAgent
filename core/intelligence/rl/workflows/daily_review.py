@@ -1017,6 +1017,14 @@ def run_daily_review(
     # ------------------------------------------------------------------ #
     # Step 8: Append complete FeedbackEntry to daily_feedback_log
     # ------------------------------------------------------------------ #
+    # Knowledge layer: audit which lessons' claims fired today, using the
+    # post-merge ledger (updated_ledger) consistent with Step-7 emphasis.
+    # Empty list when claims are disabled or there is no ledger/tags.
+    claims_fired: list[str] = []
+    if getattr(settings, "RL_CLAIMS_ENABLED", True) and updated_ledger and today_tags:
+        from core.intelligence.rl.algorithms.lesson_emphasis import matching_lessons
+        claims_fired = [l.lesson_id for l in matching_lessons(updated_ledger, today_tags)]
+
     final_entry = FeedbackEntry(
         day=today_forecast.day,
         date=date_str,
@@ -1028,6 +1036,7 @@ def run_daily_review(
         direction_correct=direction_correct,
         regime_label=regime_snapshot.regime_label,
         event_tags=today_tags,
+        claims_fired=claims_fired,
         volume_vs_20d_avg=volume_vs_20d_avg,
         miss_analysis=miss_analysis,
         timing=timing,
@@ -1106,6 +1115,26 @@ def run_daily_review(
             cycle_id=cycle_id,
             review_date=review_date,
         )
+
+    # ------------------------------------------------------------------ #
+    # Step 10: Control lane (the "duel") — score yesterday's prediction and
+    # make tomorrow's, using a bare LLM with the same close + market_context
+    # StockAgent had at this moment. Flag-gated, never fatal.
+    # ------------------------------------------------------------------ #
+    if getattr(settings, "RL_CONTROL_LANE_ENABLED", True):
+        try:
+            from core.intelligence.rl.agents.control_lane import run_control_lane_step
+            run_control_lane_step(
+                store, ticker, sector, review_date,
+                actual_close=actual_close,
+                actual_direction=final_entry.actual_direction,
+                market_context=market_context or "",
+            )
+        except Exception as exc:
+            logger.warning(
+                "[daily_review] %s: Step 10 control lane failed (non-fatal): %s",
+                ticker, exc,
+            )
 
     summary = {
         "status":                   "completed",

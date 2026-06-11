@@ -187,6 +187,16 @@ def test_run_daily_review_writes_dossier_and_event_tags(tmp_path, monkeypatch):
     monkeypatch.setattr(DossierCurator, "_call_llm",
                          lambda self, *a, **k: json.dumps(dossier_payload))
 
+    # Step 10: Control lane LLM call — fixed prediction payload.
+    import core.intelligence.rl.agents.control_lane as control_lane_mod
+    control_payload = json.dumps({
+        "direction": "FLAT", "confidence": 0.5, "predicted_close": 100.1,
+        "rationale": "Quiet session, no strong catalysts.",
+    })
+    monkeypatch.setattr(
+        control_lane_mod, "_call_llm",
+        lambda *a, **k: (control_payload, "test-control-model"))
+
     # --- Run ---
     summary = dr.run_daily_review(ticker, review_date, sector=sector)
 
@@ -199,9 +209,21 @@ def test_run_daily_review_writes_dossier_and_event_tags(tmp_path, monkeypatch):
     entry = next(e for e in feedback_log.entries if e.date == date_str)
     assert entry.event_tags == ["monsoon"]
 
+    # claims_fired: empty list — no tagged lessons match "monsoon" in this fixture.
+    assert entry.claims_fired == []
+
     # Step 8.5 — dossier written with >=1 observation.
     dossier = store.load_dossier()
     assert dossier is not None
     todays_obs = [o for o in dossier.observations if o.date == date_str]
     assert len(todays_obs) >= 1
     assert todays_obs[0].observation == "seeded obs"
+
+    # Step 10 — control log written with 1 prediction for the next trading day.
+    control_log = store.load_control_log(cycle_id)
+    assert len(control_log.entries) == 1
+    prediction = control_log.entries[0]
+    assert prediction.date == "2026-06-11"
+    assert prediction.made_on == date_str
+    assert prediction.predicted_direction == "FLAT"
+    assert prediction.model == "test-control-model"

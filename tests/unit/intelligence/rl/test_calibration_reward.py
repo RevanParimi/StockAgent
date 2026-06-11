@@ -26,7 +26,11 @@ from datetime import date, timedelta
 
 import pytest
 
-from core.intelligence.rl.agents.weight_adapter import WeightAdapter, AGENT_BULLISH_THRESHOLD
+from core.intelligence.rl.agents.weight_adapter import (
+    WeightAdapter,
+    AGENT_BULLISH_THRESHOLD,
+    _BULLISH_VERDICTS,
+)
 from core.schemas.feedback import (
     AgentAccuracy,
     DailyFeedbackLog,
@@ -46,14 +50,28 @@ def _entry(
     direction_correct: bool,
     predicted_agent_scores: dict[str, float] | None = None,
     primary_miss_agent: str | None = None,
+    actual_direction: str | None = None,
 ) -> FeedbackEntry:
-    """Build a minimal FeedbackEntry for calibration testing."""
+    """Build a minimal FeedbackEntry for calibration testing.
+
+    actual_direction defaults to the direction implied by the verdict and
+    direction_correct, mirroring how daily_review's classify_direction output
+    and direction_correct can never disagree in real data: a correct BUY/STRONG
+    BUY means the stock went UP, a correct SELL/STRONG SELL means it went DOWN
+    (and a miss flips that). Pass actual_direction explicitly (e.g. "FLAT") to
+    test cases where the realized move diverges from the verdict.
+    """
     miss_analysis = None
     if not direction_correct:
         miss_analysis = MissAnalysis(
             primary_miss_agent=primary_miss_agent or "fundamentals",
             miss_type="direction_flip",
         )
+    if actual_direction is None:
+        verdict_bullish = predicted_verdict in _BULLISH_VERDICTS
+        up_if_correct = verdict_bullish
+        actual_up = up_if_correct if direction_correct else not up_if_correct
+        actual_direction = "UP" if actual_up else "DOWN"
     return FeedbackEntry(
         day=day,
         date=iso_date,
@@ -61,7 +79,7 @@ def _entry(
         actual_close=101.0 if direction_correct else 99.0,
         price_error_pct=1.0 if direction_correct else -1.0,
         predicted_verdict=predicted_verdict,
-        actual_direction="UP" if direction_correct else "DOWN",
+        actual_direction=actual_direction,
         direction_correct=direction_correct,
         miss_analysis=miss_analysis,
         predicted_agent_scores=predicted_agent_scores or {},
@@ -89,7 +107,7 @@ class TestAgentBullishThreshold:
 
 class TestCalibrationHitMiss:
     """
-    realized_up = verdict_bullish if direction_correct else not verdict_bullish
+    realized_up = (entry.actual_direction == "UP")
     agent_bullish = predicted_agent_scores[agent] >= AGENT_BULLISH_THRESHOLD
     calibrated = agent_bullish == realized_up
     """
@@ -99,7 +117,7 @@ class TestCalibrationHitMiss:
         self.ref = date(2026, 6, 11)
 
     def test_calibrated_agent_accrues_calibration_hit(self):
-        # BUY verdict, direction_correct=True → realized_up = True (bullish realized).
+        # BUY verdict, direction_correct=True → actual_direction="UP" → realized_up=True.
         # agent score 0.7 >= 0.5 → agent_bullish = True → matches realized_up → hit.
         entries = [
             _entry(
@@ -120,7 +138,7 @@ class TestCalibrationHitMiss:
         assert accuracy["risk_macro"].calibration_hits == 0
 
     def test_anti_calibrated_agent_does_not_accrue_hit(self):
-        # SELL verdict, direction_correct=True → verdict_bullish=False, realized_up=False
+        # SELL verdict, direction_correct=True → actual_direction="DOWN" → realized_up=False
         # (the stock went down as the SELL verdict predicted).
         # agent score 0.8 >= 0.5 → agent_bullish=True → mismatch with realized_up=False → no hit.
         entries = [
@@ -137,13 +155,14 @@ class TestCalibrationHitMiss:
         assert accuracy["pattern_analysis"].calibration_hits == 0
 
     def test_realized_up_flips_on_miss_day(self):
-        # BUY verdict, direction_correct=False → verdict_bullish=True,
-        # realized_up = not True = False (the stock actually went down).
+        # BUY verdict, direction_correct=False → the BUY call missed because the
+        # stock actually went DOWN → actual_direction="DOWN" → realized_up=False.
         # agent score 0.2 (bearish lean) matches realized_up=False → calibrated hit.
         entries = [
             _entry(
                 day=1, iso_date="2026-06-10", predicted_verdict="BUY",
                 direction_correct=False,
+                actual_direction="DOWN",
                 predicted_agent_scores={"risk_macro": 0.20},
                 primary_miss_agent="sales_demand",
             ),
@@ -198,6 +217,38 @@ class TestNeutralExcludedFromCalibration:
         assert accuracy["sales_demand"].calibration_hits == 1
         # But both days still count toward direction totals (existing behavior).
         assert accuracy["sales_demand"].total == 2
+
+
+# ---------------------------------------------------------------------------
+# FLAT realized-direction exclusion
+# ---------------------------------------------------------------------------
+
+class TestFlatExcludedFromCalibration:
+    def test_flat_day_with_directional_verdict_not_counted_in_denominator(self):
+        # Directional (BUY) verdict, but the stock didn't move enough to count
+        # as UP or DOWN — actual_direction="FLAT". FLAT carries no directional
+        # information, so it must be excluded from the calibration denominator
+        # for every agent, exactly like a NEUTRAL verdict.
+        adapter = WeightAdapter()
+        ref = date(2026, 6, 11)
+        entries = [
+            _entry(
+                day=1, iso_date="2026-06-10", predicted_verdict="BUY",
+                direction_correct=False,
+                actual_direction="FLAT",
+                predicted_agent_scores={"sales_demand": 0.70, "risk_macro": 0.30},
+            ),
+        ]
+        log = _log(entries)
+        accuracy = adapter._compute_accuracy(log, ["sales_demand", "risk_macro"], reference_date=ref)
+
+        for agent in ("sales_demand", "risk_macro"):
+            assert accuracy[agent].calibration_total == 0
+            assert accuracy[agent].calibration_hits == 0
+
+        # Direction totals are unaffected by the FLAT calibration exclusion.
+        assert accuracy["sales_demand"].total == 1
+        assert accuracy["risk_macro"].total == 1
 
 
 # ---------------------------------------------------------------------------

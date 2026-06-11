@@ -102,20 +102,19 @@ whether *its own score* predicted the move.
 Introduce a per-agent **calibration hit**: an agent earns credit when its own
 `predicted_agent_scores[agent]` is directionally consistent with the realized outcome.
 
-The realized direction is recovered from fields already on `FeedbackEntry` — no new data and
-no fragile basis-price inference:
+The realized direction is read directly from `FeedbackEntry.actual_direction` — no inference,
+no new data:
 ```
-# predicted_verdict + direction_correct already encode the realized move:
-verdict_bullish = predicted_verdict in {"BUY", "STRONG BUY"}
-realized_up     = verdict_bullish if direction_correct else not verdict_bullish
-# (NEUTRAL verdicts are excluded from calibration — no directional claim was made)
-
-agent_bullish   = predicted_agent_scores[agent] >= AGENT_BULLISH_THRESHOLD   # 0.5
-calibrated      = (agent_bullish == realized_up)        # this agent's lean matched reality
+realized_up   = (actual_direction == "UP")  # only when actual_direction in {"UP", "DOWN"}
+                                             # and predicted_verdict is directional
+agent_bullish = predicted_agent_scores[agent] >= AGENT_BULLISH_THRESHOLD   # 0.5
+calibrated    = (agent_bullish == realized_up)        # this agent's lean matched reality
 ```
-This reuses the system's own realized-direction definition (`classify_direction` semantics
-baked into `direction_correct`), so calibration can never disagree with the direction metric
-about which way the stock actually moved.
+FLAT realized days carry no directional information and are excluded from the calibration
+denominator, exactly like NEUTRAL-verdict days. This reuses the system's own
+realized-direction definition (`actual_direction` is the `classify_direction` output,
+already populated by `daily_review` every day), so calibration can never disagree with the
+direction metric about which way the stock actually moved.
 
 `AgentAccuracy` gains an optional `calibration_hits: int` (default 0, backward-compatible).
 When `RL_CALIBRATION_REWARD_ENABLED` is true, the hit-rate that drives boost/penalty deltas

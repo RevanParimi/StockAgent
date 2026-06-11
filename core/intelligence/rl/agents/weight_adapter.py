@@ -81,9 +81,12 @@ _TIMING_PARTIAL_WINDOW = _s.RL_TIMING_PARTIAL_WINDOW # ≤N days off → 0.20× 
 # definition of "bullish" for an agent's own score — not a tunable policy knob.
 AGENT_BULLISH_THRESHOLD = 0.5
 
-# Verdicts that make a directional claim — used to recover the realized
-# direction (realized_up) for calibration. NEUTRAL (or any other verdict
+# Verdicts that make a directional claim. NEUTRAL (or any other verdict
 # string) makes no directional claim and is excluded from calibration.
+# _BULLISH_VERDICTS is retained for callers/tests that need to classify a
+# verdict's directional lean (e.g. constructing realistic FeedbackEntry
+# fixtures); _compute_accuracy itself reads realized direction directly off
+# entry.actual_direction.
 _BULLISH_VERDICTS = frozenset({"BUY", "STRONG BUY"})
 _DIRECTIONAL_VERDICTS = frozenset({"BUY", "STRONG BUY", "SELL", "STRONG SELL"})
 
@@ -247,12 +250,13 @@ class WeightAdapter:
 
         Per-agent calibration (RL Intelligence Phase, Component 2):
           When RL_CALIBRATION_REWARD_ENABLED, also tracks calibration_hits/total —
-          whether THIS agent's own predicted_agent_scores[agent] lean matched the
-          realized direction, independent of the ensemble verdict. NEUTRAL-verdict
-          days make no directional claim and are excluded from the denominator.
-          When the flag is False, calibration_hits/total stay at 0 (the default),
-          so the returned AgentAccuracy — and hit_rate() — are unchanged from the
-          pre-Component-2 behavior.
+          whether THIS agent's own predicted_agent_scores[agent] lean matched
+          entry.actual_direction, independent of the ensemble verdict.
+          NEUTRAL-verdict days and FLAT-actual_direction days make no directional
+          claim and are excluded from the denominator. When the flag is False,
+          calibration_hits/total stay at 0 (the default), so the returned
+          AgentAccuracy — and hit_rate() — are unchanged from the pre-Component-2
+          behavior.
         """
         ref    = reference_date or date.today()
         recent = self._window_entries(feedback_log, settings.WEIGHT_ACCURACY_WINDOW, ref)
@@ -275,13 +279,18 @@ class WeightAdapter:
             )
             is_no_penalty = miss_type in NO_PENALTY_MISS_TYPES
 
-            # Realized direction for calibration — recovered from fields already
-            # on FeedbackEntry, reusing the system's own direction-correctness
-            # definition. NEUTRAL (non-directional) verdicts are skipped entirely.
+            # Realized direction for calibration — taken directly from
+            # entry.actual_direction (the system's own classify_direction output),
+            # so calibration and the direction metric can never disagree. FLAT
+            # days carry no directional information, so they're excluded from
+            # the calibration denominator exactly like NEUTRAL verdicts.
             realized_up: bool | None = None
-            if calibration_enabled and entry.predicted_verdict in _DIRECTIONAL_VERDICTS:
-                verdict_bullish = entry.predicted_verdict in _BULLISH_VERDICTS
-                realized_up = verdict_bullish if entry.direction_correct else not verdict_bullish
+            if (
+                calibration_enabled
+                and entry.predicted_verdict in _DIRECTIONAL_VERDICTS
+                and entry.actual_direction in ("UP", "DOWN")
+            ):
+                realized_up = entry.actual_direction == "UP"
 
             for agent in agents:
                 total[agent] += 1

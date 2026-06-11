@@ -369,7 +369,11 @@ class AgentAccuracy(BaseModel):
     def lifetime_hit_rate(self) -> float:
         """Compute cumulative hit rate across all stored monthly snapshots."""
         if not self.monthly_snapshot_history:
-            return self.hit_rate()
+            # Monthly snapshots (MonthlyAccuracySnapshot.hit_rate) are direction-only
+            # by definition, so the empty-history fallback must use the direction-only
+            # rate too — not the calibration-blended hit_rate() — to keep both
+            # branches of this method in the same units.
+            return self.direction_hit_rate()
         total_hits = sum(s.hit_rate * s.total for s in self.monthly_snapshot_history)
         total_days = sum(s.total for s in self.monthly_snapshot_history)
         return round(total_hits / total_days, 4) if total_days > 0 else 0.5

@@ -336,7 +336,12 @@ def generate_forecast(ticker: str, sector: str = "automobile") -> PredictionEnve
 
         # Historical average return for this verdict (from prior cycles),
         # filtered to same-regime entries first (P3-13 regime-segmented returns).
-        all_feedback_entries = store.load_recent_feedback_entries(n_cycles=6)
+        # RL Intelligence Phase, Component 3: when RL_FORGETTING_ENABLED, recent
+        # cycles are weighted more heavily (compute_historical_avg_return uses a
+        # weighted median over these (entry, weight) pairs).
+        all_feedback_entries = store.load_recent_feedback_entries(
+            n_cycles=6, recency_weighted=settings.RL_FORGETTING_ENABLED
+        )
         hist_avg = compute_historical_avg_return(
             all_feedback_entries, report.verdict, regime_label=regime_label
         )

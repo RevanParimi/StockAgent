@@ -14,23 +14,28 @@ from datetime import date
 logger = logging.getLogger(__name__)
 
 
-def apply_lesson_emphasis(day_agent_scores: dict, ledger, today_tags: list) -> dict:
-    """Boost/dampen agent scores for still-valid tagged lessons firing today.
+def matching_lessons(ledger, today_tags: list) -> list:
+    """Return still-valid lessons whose trigger_tags fire on today's tags.
+
+    Gates (same as apply_lesson_emphasis's inline loop):
+      - lesson.still_valid is True
+      - lesson.trigger_tags is non-empty
+      - lesson.trigger_tags intersects today_tags
+      - ledger.effective_confidence(lesson) >= settings.RL_LESSON_MATCH_MIN_CONF
 
     Pure with respect to inputs; reads settings at call time; never raises.
+    Returns [] when ledger is None/empty or today_tags is empty. A lesson
+    that raises during gate evaluation is skipped, not propagated.
     """
     from core.config import settings
 
-    if not getattr(settings, "RL_CLAIMS_ENABLED", True):
-        return dict(day_agent_scores)
     if ledger is None or not getattr(ledger, "lessons", None) or not today_tags:
-        return dict(day_agent_scores)
+        return []
 
     tagset = set(today_tags)
-    adj = {a: 0.0 for a in day_agent_scores}
-    delta = settings.RL_LESSON_EMPHASIS_DELTA
     min_conf = settings.RL_LESSON_MATCH_MIN_CONF
 
+    matched = []
     for lesson in ledger.lessons:
         try:
             if not lesson.still_valid or not lesson.trigger_tags:
@@ -41,6 +46,28 @@ def apply_lesson_emphasis(day_agent_scores: dict, ledger, today_tags: list) -> d
                    if hasattr(ledger, "effective_confidence") else lesson.confidence)
             if eff < min_conf:
                 continue
+            matched.append(lesson)
+        except Exception as exc:                       # one bad lesson never blocks the rest
+            logger.debug("[lesson_emphasis] skipped lesson: %s", exc)
+
+    return matched
+
+
+def apply_lesson_emphasis(day_agent_scores: dict, ledger, today_tags: list) -> dict:
+    """Boost/dampen agent scores for still-valid tagged lessons firing today.
+
+    Pure with respect to inputs; reads settings at call time; never raises.
+    """
+    from core.config import settings
+
+    if not getattr(settings, "RL_CLAIMS_ENABLED", True):
+        return dict(day_agent_scores)
+
+    adj = {a: 0.0 for a in day_agent_scores}
+    delta = settings.RL_LESSON_EMPHASIS_DELTA
+
+    for lesson in matching_lessons(ledger, today_tags):
+        try:
             for a in lesson.prioritise_agents:
                 if a in adj:
                     adj[a] += delta

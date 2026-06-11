@@ -74,6 +74,8 @@ class TickerDossier(BaseModel):
     flow_notes: str = ""
     open_questions: list[OpenQuestion] = Field(default_factory=list)
     observations: list[DossierObservation] = Field(default_factory=list)
+    # Event-ingestion watermark — keys of NSE announcements already digested (cap 40 at merge site).
+    ingested_event_keys: list[str] = Field(default_factory=list)
 
     def to_digest(self, max_chars: int = 2500) -> str:
         """Markdown digest for prompt injection. Whole sections only, priority order.

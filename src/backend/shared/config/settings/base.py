@@ -629,6 +629,15 @@ RL_LESSON_EMPHASIS_DELTA: float = float(os.getenv("RL_LESSON_EMPHASIS_DELTA", "0
 RL_LESSON_EMPHASIS_CAP: float = float(os.getenv("RL_LESSON_EMPHASIS_CAP", "0.06"))
 RL_LESSON_MATCH_MIN_CONF: float = float(os.getenv("RL_LESSON_MATCH_MIN_CONF", "0.45"))
 
+# ── RL Phase 3 — Event-driven dossier ingestion (2026-06-12) ───────────────
+# Weekly scan + on-demand CLI: digest qualifying NSE corporate events
+# (results, concalls, guidance, investor presentations) into the existing
+# TickerDossier via the same bounded merge the daily curator uses.
+RL_EVENT_INGEST_ENABLED: bool = os.getenv("RL_EVENT_INGEST_ENABLED", "true").lower() == "true"
+EVENT_INGEST_LOOKBACK_DAYS: int = int(os.getenv("EVENT_INGEST_LOOKBACK_DAYS", "8"))
+EVENT_INGEST_MAX_EVENTS_PER_SCAN: int = int(os.getenv("EVENT_INGEST_MAX_EVENTS_PER_SCAN", "3"))
+EVENT_INGEST_TEXT_MAX_CHARS: int = int(os.getenv("EVENT_INGEST_TEXT_MAX_CHARS", "6000"))
+
 # ---------------------------------------------------------------------------
 # RL Phase 1 — Monthly Scorecard + Baseline Duel (2026-06-12)
 #

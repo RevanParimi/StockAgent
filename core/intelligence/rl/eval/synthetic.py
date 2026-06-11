@@ -75,21 +75,13 @@ _VERDICTS_BULLISH = ["BUY", "STRONG BUY"]
 _VERDICTS_BEARISH = ["SELL", "STRONG SELL"]
 _VERDICT_NEUTRAL = "NEUTRAL"
 
-_FLAT_THRESHOLD_PCT = 0.3  # mirrors settings.RL_FLAT_THRESHOLD_PCT default
+# Single source of truth for direction semantics — keeps synthetic data coupled
+# to the live classifier if settings.RL_FLAT_THRESHOLD_PCT ever changes.
+from core.intelligence.rl.agents.feedback_agent import classify_direction as _classify_direction
+from core.intelligence.rl.agents.feedback_agent import FLAT_THRESHOLD_PCT as _FLAT_THRESHOLD_PCT
+
 _DAYS_PER_CYCLE = 10       # short synthetic cycle keeps generation fast
 _BASE_CLOSE = 1000.0
-
-
-def _classify_direction(actual: float, predicted: float) -> str:
-    """Local copy of feedback_agent.classify_direction's semantics (pure, no settings I/O)."""
-    if predicted == 0:
-        return "FLAT"
-    change_pct = (actual - predicted) / predicted * 100
-    if change_pct > _FLAT_THRESHOLD_PCT:
-        return "UP"
-    if change_pct < -_FLAT_THRESHOLD_PCT:
-        return "DOWN"
-    return "FLAT"
 
 
 class SyntheticLogGenerator:

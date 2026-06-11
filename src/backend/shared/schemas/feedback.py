@@ -266,6 +266,9 @@ class FeedbackEntry(BaseModel):
     regime_label: str = "NORMAL"
     # Static-tagger event tags for the review day (deterministic; see tag_events()).
     event_tags: list[str] = Field(default_factory=list)
+    # lesson_ids whose claims fired in Step-7 revision today (see matching_lessons()).
+    # Populated by daily_review; the scorecard reads it for claim-day accuracy splits.
+    claims_fired: list[str] = Field(default_factory=list)
     # Today's volume relative to 20-day average.  >2.0 = institutional activity; <0.5 = noise.
     # Derived from yfinance volume data already fetched in Step 2; None if unavailable.
     volume_vs_20d_avg: float | None = None

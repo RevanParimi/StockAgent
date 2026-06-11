@@ -495,6 +495,19 @@ class AutomobileScheduler:
                         "(market=%d, sector=%d, ticker=%d, archived=%d)",
                         ticker, total_modified, n_market, n_sector, n_ticker, n_archived,
                     )
+
+                # Weekly dossier distillation (knowledge layer) — same cadence as
+                # stale-lesson cleanup; non-fatal per ticker.
+                try:
+                    from core.config import settings as _settings
+                    if getattr(_settings, "RL_DOSSIER_ENABLED", True):
+                        from core.intelligence.rl.agents.dossier_curator import distill_dossier
+                        dossier = store.load_dossier()
+                        if dossier is not None:
+                            store.save_dossier(distill_dossier(dossier))
+                            logger.info("[Scheduler] Distilled dossier for %s", ticker)
+                except Exception as exc:
+                    logger.warning("[Scheduler] Dossier distillation failed for %s: %s", ticker, exc)
             except Exception as exc:
                 logger.warning("[Scheduler] Ledger cleanup failed for %s: %s", ticker, exc, exc_info=True)
         _job_banner("Weekly Ledger Cleanup", done=True)

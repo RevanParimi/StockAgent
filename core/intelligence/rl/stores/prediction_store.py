@@ -478,38 +478,10 @@ class PredictionStore:
     # ------------------------------------------------------------------
 
     def _archived_lessons_path(self) -> Path:
+        # Cold-store I/O (read/write of this file) lives in
+        # ledger_propagator (archive_stale_lessons / resurrect_lesson);
+        # this helper only supplies the canonical path.
         return self._dir / f"{self.ticker}_archived_lessons.json"
-
-    def load_archived_lessons(self) -> list:
-        """
-        Load the cold-store list of archived (forgotten) lessons for this ticker.
-        Returns [] when the file does not exist.
-        """
-        from core.schemas.feedback import Lesson
-        data = self._read_json(self._archived_lessons_path())
-        if data is None:
-            return []
-        try:
-            return [Lesson(**item) for item in data.get("archived_lessons", [])]
-        except Exception as exc:
-            logger.error(
-                "[PredictionStore] Failed to parse archived lessons for %s: %s",
-                self.ticker, exc,
-            )
-            return []
-
-    def save_archived_lessons(self, lessons: list) -> None:
-        """Atomically write the cold-store archived lessons list for this ticker."""
-        payload = {
-            "ticker": self.ticker,
-            "sector": self._sector or "unknown",
-            "archived_lessons": [lesson.model_dump() for lesson in lessons],
-        }
-        self._write_json(self._archived_lessons_path(), payload)
-        logger.info(
-            "[PredictionStore] Saved %d archived lesson(s) for %s",
-            len(lessons), self.ticker,
-        )
 
     # ------------------------------------------------------------------
     # Convenience: list all cycle IDs for this ticker

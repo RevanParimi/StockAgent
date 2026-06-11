@@ -507,6 +507,35 @@ class MissEvent(BaseModel):
     cycle_id: str        # which monthly cycle this occurred in
 
 
+def _score_miss_events(
+    events: list["MissEvent"], today: date, halflife_days: float, discount: float,
+) -> float:
+    """
+    Sum recency-weighted, type-discounted scores for a list of MissEvents.
+
+    For each event:
+        exp(-age_days / halflife_days) x (1.0 if penalizable else discount)
+
+    where age_days = (today - event.date).days, floored at 0.
+
+    Unparseable event dates fall back to age_days=0 (max recency weight).
+    This is fail-open-to-max-recency by design: dates are always written via
+    date.today().isoformat(), so a parse failure should not silently zero out
+    a real miss — better to over-weight it than to lose it.
+    """
+    total = 0.0
+    for event in events:
+        try:
+            event_date = date.fromisoformat(event.date)
+            age_days = max((today - event_date).days, 0)
+        except ValueError:
+            age_days = 0
+        recency_weight = _math.exp(-age_days / halflife_days) if halflife_days > 0 else 1.0
+        type_weight = 1.0 if event.miss_type in PENALIZABLE_MISS_TYPES else discount
+        total += recency_weight * type_weight
+    return total
+
+
 class LearningLedger(BaseModel):
     """
     All accumulated lessons for a ticker.  Persists across monthly cycles.
@@ -620,17 +649,7 @@ class LearningLedger(BaseModel):
                 scores[factor] = float(count)
                 continue
 
-            total = 0.0
-            for event in events:
-                try:
-                    event_date = date.fromisoformat(event.date)
-                    age_days = max((today - event_date).days, 0)
-                except ValueError:
-                    age_days = 0
-                recency_weight = _math.exp(-age_days / halflife) if halflife > 0 else 1.0
-                type_weight = 1.0 if event.miss_type in PENALIZABLE_MISS_TYPES else discount
-                total += recency_weight * type_weight
-            scores[factor] = total
+            scores[factor] = _score_miss_events(events, today, halflife, discount)
 
         # Factors that only ever appear in miss_events (shouldn't normally
         # happen since add_miss_event keeps miss_counter in sync, but guard
@@ -638,17 +657,7 @@ class LearningLedger(BaseModel):
         for factor, events in self.miss_events.items():
             if factor in scores or not events:
                 continue
-            total = 0.0
-            for event in events:
-                try:
-                    event_date = date.fromisoformat(event.date)
-                    age_days = max((today - event_date).days, 0)
-                except ValueError:
-                    age_days = 0
-                recency_weight = _math.exp(-age_days / halflife) if halflife > 0 else 1.0
-                type_weight = 1.0 if event.miss_type in PENALIZABLE_MISS_TYPES else discount
-                total += recency_weight * type_weight
-            scores[factor] = total
+            scores[factor] = _score_miss_events(events, today, halflife, discount)
 
         return scores
 

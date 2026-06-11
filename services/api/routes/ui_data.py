@@ -1398,6 +1398,9 @@ def _sector_for_ticker(sym: str) -> str:
                 return sector_dir.name
     except Exception:
         pass
+    # Defensive fallback: "automobile" is our most-tracked sector. Real,
+    # tracked tickers should always resolve via managed_tickers.json or the
+    # directory scan above; this only fires for unknown/untracked symbols.
     return "automobile"
 
 
@@ -1929,6 +1932,45 @@ _CHAT_TOOLS = [
     {
         "type": "function",
         "function": {
+            "name": "get_historical_prices",
+            "description": (
+                "Fetch the last N trading days of OHLCV data (close + day-over-day % "
+                "change) for a yfinance symbol. Use when the user asks about recent "
+                "price history, a losing/winning streak, or how a stock/index has "
+                "moved over the past several days."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "symbol": {
+                        "type": "string",
+                        "description": "yfinance symbol, e.g. MARUTI.NS, ^NSEI, SI=F.",
+                    },
+                    "days": {
+                        "type": "integer",
+                        "description": "Number of trailing trading days to fetch (default 5).",
+                        "default": 5,
+                    },
+                },
+                "required": ["symbol"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_macro_news",
+            "description": (
+                "Today's India macro news feed (RBI, Fed, oil, FII/DII flows, GIFT "
+                "Nifty and other market-wide headlines). Use for broad macro context "
+                "questions that aren't about a specific stock or search query."
+            ),
+            "parameters": {"type": "object", "properties": {}, "required": []},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "search_market_news",
             "description": (
                 "Search for the latest news and analyst commentary behind a market move. "
@@ -2066,6 +2108,28 @@ _CHAT_TOOLS = [
                     "ticker": {
                         "type": "string",
                         "description": "NSE ticker symbol e.g. MARUTI, TATAMOTORS.",
+                    }
+                },
+                "required": ["ticker"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_rl_prediction",
+            "description": (
+                "Our RL model's prediction for a tracked NSE ticker today: predicted "
+                "verdict, confidence, predicted close, and conviction streak / "
+                "reversion prior. Use for 'will it rise', forecast, or next-session "
+                "questions about a specific tracked stock."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "ticker": {
+                        "type": "string",
+                        "description": "NSE ticker, e.g. MARUTI",
                     }
                 },
                 "required": ["ticker"],
@@ -2588,6 +2652,8 @@ You are StockAgent, a market intelligence assistant with real-time web search an
 - **get_rl_insights()** — agent accuracy, learned weights, and prediction lessons
 - **get_ticker_dossier(ticker)** — what we've LEARNED about this stock from daily tracking
   (thesis, response signatures, guidance, flows).
+- **get_historical_prices(symbol, days)** — last N trading days of close prices + % change.
+- **get_macro_news()** — today's India macro headlines (RBI, Fed, oil, FII/DII flows).
 
 ## When to call tools — call first, answer after
 | User asks | Tools to call |

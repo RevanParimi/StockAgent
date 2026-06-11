@@ -5,8 +5,8 @@
 > month-start forecast, all static formulas & multipliers, LLM contracts, schemas,
 > static-vs-LLM boundary, and the Knowledge Layer (§23).
 > Updated: 2026-06-11 · Phases 5 + 6 + Evolution P1–P5 + Phase 8 complete.
-> Knowledge Layer (Ticker Dossier + executable claims, §23): **design approved,
-> implementation pending** — plan: `docs/superpowers/plans/2026-06-11-ticker-dossier.md`.
+> Knowledge Layer (Ticker Dossier + executable claims, §23): **IMPLEMENTED 2026-06-11**
+> — plan: `docs/superpowers/plans/2026-06-11-ticker-dossier.md`.
 
 ---
 
@@ -894,10 +894,20 @@ DailyForecast[day].confidence = base_confidence × (1 - 0.004 × day) - band_pen
 | `DOSSIER_DIGEST_MAX_CHARS` | 2500 | Full digest budget — chat tool, curator input (§23) |
 | `DOSSIER_AGENT_DIGEST_CHARS` | 1500 | Digest budget inside the agents' system prompts (§23) |
 | `DOSSIER_MAX_NEW_OBS_PER_DAY` | 3 | Max curator observations merged per day (§23) |
-| `RL_CLAIMS_ENABLED` | True | Executable-claim application on/off — harness ablation key (§23) |
+| `RL_CLAIMS_ENABLED` | True | Executable-claim application on/off — harness ablation key `executable_claims` (§23, §24) |
 | `RL_LESSON_EMPHASIS_DELTA` | 0.03 | Per-lesson agent-score nudge when a tagged lesson fires (§23) |
 | `RL_LESSON_EMPHASIS_CAP` | 0.06 | Per-agent total emphasis cap per day (§23) |
 | `RL_LESSON_MATCH_MIN_CONF` | 0.45 | Min effective confidence for a claim to fire (§23) |
+| `DOSSIER_DISTILL_INPUT_MAX_CHARS` | 20000 | Safety-net cap on dossier JSON size fed to weekly distillation LLM (§23) |
+| `RL_CALIBRATION_REWARD_ENABLED` | True | Per-agent calibration reward blend in WeightAdapter hit_rate — harness ablation key `calibration_reward` (§24) |
+| `RL_CALIBRATION_WEIGHT` | 0.5 | Blend weight for calibration-hit credit vs ensemble hit_rate (§24) |
+| `RL_FORGETTING_ENABLED` | True | Recency-weighted miss ranking, lesson archival w/ resurrection, recency-weighted feedback aggregation — harness ablation key `forgetting` (§24) |
+| `MISS_RECENCY_HALFLIFE_DAYS` | 21 | Half-life (days) for recency decay of miss events (§24) |
+| `MISS_PENALIZABLE_DISCOUNT` | 0.3 | Multiplier on non-penalizable miss types in recency-weighted miss scores (§24) |
+| `ARCHIVE_CONF_FLOOR` | 0.12 | Confidence floor for archiving a stale, invalidated lesson (§24) |
+| `ARCHIVE_EFFECTIVENESS_FLOOR` | 0.25 | Effectiveness floor for archiving a stale, invalidated lesson (§24) |
+| `ARCHIVE_STALE_DAYS` | 60 | Days a lesson must be stale (in addition to conf/effectiveness floors) before archival (§24) |
+| `FEEDBACK_HALFLIFE_MONTHS` | 3 | Half-life (months) for recency-weighted feedback cycle aggregation (§24) |
 
 ---
 
@@ -1059,9 +1069,9 @@ python -m scripts.generate_forecast --sector renewable_energy --ticker ADANIGREE
 | G7b | F&O options chain signals (PCR, max pain, OI) | Institutional positioning not used | ✅ **Closed Phase 8** — `FnOFetcher` + `FnOAnalyzer`, injected during expiry week |
 | G8 | Lesson scope narrowing (market→sector→stock) | Lessons only accumulate credibility, can't narrow scope | Open — design question (ticker sync partially addresses via weekly cleanup) |
 | G9 | Seasonal threshold deltas not structured in WeightMemory | In weight_history reason string only; not machine-readable | Open |
-| G10 | Lesson rules write-only (free text never parsed/applied) | Learned knowledge stored but never executed | **Design closed §23** — `trigger_tags` + `apply_lesson_emphasis`; implementation pending |
-| G11 | No learning on hit days | Positive patterns ("what worked") never captured | **Design closed §23** — DossierCurator runs every day; implementation pending |
-| G12 | No entity-level memory; chat blind to learned knowledge | No "stock story" accumulates; chat used stale defaults + had sector/attr bugs | **Design closed §23** — TickerDossier + agent/chat digest injection; implementation pending |
+| G10 | Lesson rules write-only (free text never parsed/applied) | Learned knowledge stored but never executed | ✅ **Closed (implemented 2026-06-11)** — §23: `trigger_tags` + `apply_lesson_emphasis` |
+| G11 | No learning on hit days | Positive patterns ("what worked") never captured | ✅ **Closed (implemented 2026-06-11)** — §23: DossierCurator runs every day |
+| G12 | No entity-level memory; chat blind to learned knowledge | No "stock story" accumulates; chat used stale defaults + had sector/attr bugs | ✅ **Closed (implemented 2026-06-11)** — §23: TickerDossier + agent/chat digest injection |
 
 ---
 
@@ -1535,7 +1545,11 @@ After `RL_STREAK_WARNING_THRESHOLD` (default 8) consecutive same-direction verdi
 
 ## 23. Knowledge Layer — Ticker Dossier + Executable Claims
 
-> **Status: design approved 2026-06-11 — implementation pending.**
+> **Status: IMPLEMENTED 2026-06-11** — plan executed; see tests
+> `tests/unit/intelligence/rl/test_dossier_*.py`, `test_event_tags.py`,
+> `test_lesson_emphasis.py`, `test_forecast_emphasis.py`,
+> `tests/unit/pipeline/test_agent_dossier_injection.py`,
+> `tests/unit/api/test_chat_dossier_tool.py`.
 > Spec: `docs/superpowers/specs/2026-06-11-ticker-dossier-knowledge-layer-design.md`
 > Plan (18 TDD tasks): `docs/superpowers/plans/2026-06-11-ticker-dossier.md`
 
@@ -1632,3 +1646,31 @@ is byte-identical to the pre-§23 system. All writes atomic via `_write_json`.
 
 No embeddings/vector retrieval (tag matching first), no fine-tuning, no parametric RL,
 no WeightAdapter/regime/conviction changes, no dossier UI (chat tool only).
+
+---
+
+## 24. Measurement Phase (June-10 spec) — IMPLEMENTED
+
+> **Status: IMPLEMENTED 2026-06-11.**
+> Spec: `docs/superpowers/specs/2026-06-10-rl-intelligence-phase-design.md`
+> Code: `core/intelligence/rl/eval/` (`harness.py`, `synthetic.py`, `metrics.py`, `run_eval.py`)
+
+- **Eval harness — read-only CLI**: `python -m core.intelligence.rl.eval.run_eval --synthetic`
+  (or no flag for real recorded `data/predictions/` history) loads/replays/aggregates
+  prediction + feedback logs into `direction_accuracy`, `brier_score`,
+  `reliability_table`, `band_coverage`, and `mae_pct`, per-ticker and per-sector. Never
+  writes to `data/predictions`. `ABLATION_REGISTRY` covers `calibration_reward`,
+  `forgetting`, and `executable_claims` — synthetic runs report a before/after delta;
+  real runs log a no-op warning (recorded history can't be re-run).
+- **Per-agent calibration reward** (Component 2): blend flag `RL_CALIBRATION_REWARD_ENABLED`
+  (+ `RL_CALIBRATION_WEIGHT`) — an agent earns calibration credit when its own
+  `predicted_agent_scores` lean matches the realized direction, blended into the
+  WeightAdapter hit_rate. `False` is byte-identical to pre-Component-2 behavior.
+- **Forgetting trio** (Component 3): flag `RL_FORGETTING_ENABLED` gates (a) recency-weighted
+  miss ranking (`MISS_RECENCY_HALFLIFE_DAYS`, `MISS_PENALIZABLE_DISCOUNT`), (b) stale-lesson
+  archival with resurrection (`ARCHIVE_CONF_FLOOR`, `ARCHIVE_EFFECTIVENESS_FLOOR`,
+  `ARCHIVE_STALE_DAYS`), and (c) recency-weighted feedback cycle aggregation
+  (`FEEDBACK_HALFLIFE_MONTHS`). `False` falls back to the prior raw-counter / unweighted
+  behavior throughout.
+
+See §11 for the full settings reference (rows tagged §24).

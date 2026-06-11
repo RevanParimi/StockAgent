@@ -1,7 +1,7 @@
 # RL Intelligence Phase — Measure → Sharpen → Forget
 
 **Date:** 2026-06-10
-**Status:** Design — awaiting user review before plan
+**Status:** IMPLEMENTED 2026-06-11
 **Author:** Architect (Claude) on behalf of beta tester
 **Scope:** Three tightly-coupled RL improvements that turn the existing RL stack from
 faith-based to evidence-based, fix the highest-leverage learning signal, and stop

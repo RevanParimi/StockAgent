@@ -1,7 +1,7 @@
 # Ticker Dossier — RL Knowledge Layer
 
 **Date:** 2026-06-11
-**Status:** Design — approved direction (Option A), plan follows
+**Status:** IMPLEMENTED 2026-06-11
 **Scope:** Adds the missing *knowledge accumulation* layer on top of the existing RL
 calibration loop, and connects it to the product (forecast agents + chatbot).
 Companion to `2026-06-10-rl-intelligence-phase-design.md` (harness/calibration/forgetting),

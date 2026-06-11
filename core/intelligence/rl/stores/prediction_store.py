@@ -502,8 +502,8 @@ class PredictionStore:
             return None
 
     def save_dossier(self, dossier) -> None:
-        from datetime import date as _date
-        dossier.last_updated = _date.today().isoformat()
+        # NOTE: mutates dossier.last_updated in place (intentional stamp-on-save).
+        dossier.last_updated = date.today().isoformat()
         self._write_json(self._dossier_path(), dossier.model_dump())
 
     # ------------------------------------------------------------------

@@ -75,7 +75,12 @@ class TickerDossier(BaseModel):
     observations: list[DossierObservation] = Field(default_factory=list)
 
     def to_digest(self, max_chars: int = 2500) -> str:
-        """Markdown digest for prompt injection. Whole sections only, priority order."""
+        """Markdown digest for prompt injection. Whole sections only, priority order.
+
+        The header line is always included even if it alone exceeds max_chars —
+        realistic budgets are far larger than a single header, so callers must
+        not pass tiny budgets.
+        """
         sections: list[str] = []
         if self.business_summary:
             sections.append(f"## Business\n{self.business_summary}")

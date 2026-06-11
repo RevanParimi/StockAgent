@@ -25,6 +25,23 @@ def test_tag_events_empty_and_no_match():
     assert tag_events("calm uneventful session") == []
 
 
+def test_tag_events_short_keyword_word_boundary_no_false_positive():
+    ctx = "Arbiter rules in company's favor; carbide maker posts strong Q4"
+    tags = tag_events(ctx)
+    assert "central_bank_event" not in tags
+
+
+def test_tag_events_short_keyword_word_boundary_still_fires():
+    ctx = "RBI holds repo rate steady"
+    tags = tag_events(ctx)
+    assert "central_bank_event" in tags
+
+
+def test_tag_events_fed_keyword_word_boundary():
+    assert "global_macro" in tag_events("Fed signals pause")
+    assert "global_macro" not in tag_events("federal court order")
+
+
 def test_lesson_claim_fields_default_empty():
     l = Lesson(lesson_id="L001", date_learned="2026-06-11", category="macro",
                pattern="rbi_day", observation="x", rule="y")

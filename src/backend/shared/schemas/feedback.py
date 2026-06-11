@@ -22,6 +22,7 @@ These models are used by:
 
 from __future__ import annotations
 
+import re
 from datetime import date
 from typing import Literal
 from pydantic import BaseModel, Field
@@ -490,12 +491,31 @@ _EVENT_KEYWORD_MAP: dict = {
 }
 
 
+# Short keywords (<=4 chars) are prone to false-positive substring matches
+# (e.g. "rbi" inside "arbiter"/"carbide", "macd" inside longer words). Precompile
+# word-boundary regexes for these so tag_events() only fires on whole-word hits.
+# Trailing spaces (e.g. "fed ") are stripped before building the pattern so
+# "\bfed\b" doesn't require a literal space after the word; the map key itself
+# is left unchanged.
+_SHORT_KW_RE = {
+    kw: re.compile(rf"\b{re.escape(kw.strip())}\b")
+    for kw in _EVENT_KEYWORD_MAP if len(kw) <= 4
+}
+
+
 def tag_events(market_context: str) -> list:
     """Deterministic keyword → event-tag mapping. Pure, never raises."""
     if not market_context:
         return []
     low = market_context.lower()
-    return sorted({tag for kw, tag in _EVENT_KEYWORD_MAP.items() if kw in low})
+    tags = set()
+    for kw, tag in _EVENT_KEYWORD_MAP.items():
+        if kw in _SHORT_KW_RE:
+            if _SHORT_KW_RE[kw].search(low):
+                tags.add(tag)
+        elif kw in low:
+            tags.add(tag)
+    return sorted(tags)
 
 
 LessonScope = Literal[

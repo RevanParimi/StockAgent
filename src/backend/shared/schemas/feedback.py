@@ -177,6 +177,13 @@ NO_PENALTY_MISS_TYPES: frozenset[str] = frozenset({
     "data_gap", "data_stale", "external_shock"
 })
 
+# Miss types that represent a genuine model failure (vs. an unforeseeable/
+# data-availability excuse). Used by both `LearningLedger.penalizable_miss_count`
+# and `LearningLedger.recency_weighted_miss_scores` — single source of truth.
+PENALIZABLE_MISS_TYPES: frozenset[str] = frozenset({
+    "model_bias", "direction_flip"
+})
+
 
 class MissAnalysis(BaseModel):
     """Root-cause breakdown of a single day's prediction error."""
@@ -561,7 +568,7 @@ class LearningLedger(BaseModel):
     def penalizable_miss_count(self, factor: str) -> int:
         """Count of misses for this factor with penalizable miss types (model_bias, direction_flip)."""
         events = self.miss_events.get(factor, [])
-        return sum(1 for e in events if e.miss_type in {"model_bias", "direction_flip"})
+        return sum(1 for e in events if e.miss_type in PENALIZABLE_MISS_TYPES)
 
     def add_miss_event(self, factor: str, miss_type: str, date: str, cycle_id: str) -> None:
         """Record a miss event and keep the raw miss_counter in sync."""
@@ -575,6 +582,75 @@ class LearningLedger(BaseModel):
     def increment_miss(self, factor: str) -> None:
         """Legacy method — use add_miss_event for new code."""
         self.miss_counter[factor] = self.miss_counter.get(factor, 0) + 1
+
+    def recency_weighted_miss_scores(self) -> dict[str, float]:
+        """
+        Recency-weighted miss scores per factor (RL Intelligence Phase, Component 3).
+
+        score(factor) = sum over events in miss_events[factor] of:
+            exp(-age_days / MISS_RECENCY_HALFLIFE_DAYS)
+            x (1.0 if event.miss_type in PENALIZABLE_MISS_TYPES else MISS_PENALIZABLE_DISCOUNT)
+
+        where age_days = (today - event.date).days, floored at 0.
+
+        Recent misses dominate; non-penalizable miss types (e.g. external_shock,
+        data_gap) are discounted since they don't reflect a model failure that
+        better search data could fix.
+
+        Falls back to {factor: float(miss_counter[factor])} for any factor with
+        no entries in miss_events (legacy ledgers / factors only ever recorded
+        via the deprecated increment_miss path).
+
+        Behind settings.RL_FORGETTING_ENABLED — when the flag is False, callers
+        should use raw miss_counter ranking instead (this method is still safe
+        to call but callers gate on the flag, not this method).
+        """
+        from core.config import settings
+
+        halflife = getattr(settings, "MISS_RECENCY_HALFLIFE_DAYS", 21)
+        discount = getattr(settings, "MISS_PENALIZABLE_DISCOUNT", 0.3)
+        today = date.today()
+
+        scores: dict[str, float] = {}
+
+        for factor, count in self.miss_counter.items():
+            events = self.miss_events.get(factor)
+            if not events:
+                # Legacy fallback: no structured history for this factor.
+                scores[factor] = float(count)
+                continue
+
+            total = 0.0
+            for event in events:
+                try:
+                    event_date = date.fromisoformat(event.date)
+                    age_days = max((today - event_date).days, 0)
+                except ValueError:
+                    age_days = 0
+                recency_weight = _math.exp(-age_days / halflife) if halflife > 0 else 1.0
+                type_weight = 1.0 if event.miss_type in PENALIZABLE_MISS_TYPES else discount
+                total += recency_weight * type_weight
+            scores[factor] = total
+
+        # Factors that only ever appear in miss_events (shouldn't normally
+        # happen since add_miss_event keeps miss_counter in sync, but guard
+        # for safety/consistency).
+        for factor, events in self.miss_events.items():
+            if factor in scores or not events:
+                continue
+            total = 0.0
+            for event in events:
+                try:
+                    event_date = date.fromisoformat(event.date)
+                    age_days = max((today - event_date).days, 0)
+                except ValueError:
+                    age_days = 0
+                recency_weight = _math.exp(-age_days / halflife) if halflife > 0 else 1.0
+                type_weight = 1.0 if event.miss_type in PENALIZABLE_MISS_TYPES else discount
+                total += recency_weight * type_weight
+            scores[factor] = total
+
+        return scores
 
     def effective_confidence(self, lesson: Lesson) -> float:
         """

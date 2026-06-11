@@ -575,3 +575,43 @@ MACRO_NEWS_REVIEWER_MAX_ITEMS: int = int(os.getenv("MACRO_NEWS_REVIEWER_MAX_ITEM
 # Set to "false" to disable the macro news scheduler jobs without removing them
 MACRO_NEWS_ENABLED: bool = os.getenv("MACRO_NEWS_ENABLED", "true").lower() == "true"
 
+# ---------------------------------------------------------------------------
+# RL Intelligence Phase, Component 3 — Forgetting & Recency
+#
+# (a) Recency-weighted miss ranking (LearningLedger.recency_weighted_miss_scores,
+#     PromptEnhancer.enhance): recent misses should outrank old, frequent ones.
+#     score(factor) = sum over miss_events of exp(-age_days / HALFLIFE) x
+#                      (1.0 if penalizable else PENALIZABLE_DISCOUNT)
+#     Falls back to raw miss_counter ranking when miss_events is empty (legacy
+#     ledgers) or when RL_FORGETTING_ENABLED is False (byte-identical to prior
+#     behavior).
+#
+# (b) Stale-lesson archival with resurrection (ledger_propagator.archive_stale_lessons):
+#     invalidated lessons that are low-confidence, low-effectiveness, and stale
+#     are moved to a per-ticker cold-store JSON. Resurrection restores them if a
+#     matching pattern/semantic-tag lesson is about to be re-created.
+#
+# (c) Recency-weighted feedback aggregation (PredictionStore.load_recent_feedback_entries,
+#     compute_historical_avg_return): more recent monthly cycles are weighted
+#     higher when computing historical average returns.
+#     weight = exp(-cycle_age_months / FEEDBACK_HALFLIFE_MONTHS)
+# ---------------------------------------------------------------------------
+RL_FORGETTING_ENABLED: bool = os.getenv("RL_FORGETTING_ENABLED", "true").lower() == "true"
+
+# Half-life (days) for recency decay of miss events — score halves every N days.
+MISS_RECENCY_HALFLIFE_DAYS: float = float(os.getenv("MISS_RECENCY_HALFLIFE_DAYS", "21"))
+
+# Multiplier applied to non-penalizable miss types (e.g. external_shock) when
+# computing recency-weighted miss scores.
+MISS_PENALIZABLE_DISCOUNT: float = float(os.getenv("MISS_PENALIZABLE_DISCOUNT", "0.3"))
+
+# Archival thresholds — a still_valid=False lesson is archived only when ALL
+# three conditions hold: effective confidence at/below floor, effectiveness
+# below floor, AND stale for longer than ARCHIVE_STALE_DAYS.
+ARCHIVE_CONF_FLOOR: float = float(os.getenv("ARCHIVE_CONF_FLOOR", "0.12"))
+ARCHIVE_EFFECTIVENESS_FLOOR: float = float(os.getenv("ARCHIVE_EFFECTIVENESS_FLOOR", "0.25"))
+ARCHIVE_STALE_DAYS: int = int(os.getenv("ARCHIVE_STALE_DAYS", "60"))
+
+# Half-life (months) for recency-weighted feedback cycle aggregation.
+FEEDBACK_HALFLIFE_MONTHS: float = float(os.getenv("FEEDBACK_HALFLIFE_MONTHS", "3"))
+

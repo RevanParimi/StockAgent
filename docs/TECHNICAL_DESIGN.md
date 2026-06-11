@@ -178,6 +178,11 @@ Dec 31 11:00 PM IST → rl_calendar_update
 Midnight IST (daily) → prompt_daily_deploy
 ```
 
+The `RL Pipeline` box runs `daily_review` and `generate_forecast`, which call `FeedbackAgent`,
+`WeightAdapter`, and `ThesisReviewer` as shown — plus `DossierCurator`, which runs every day
+(Step 8.5) to maintain the per-ticker dossier in JSON Memory. See §7.1 below, AGENTIC_DESIGN.md
+§9.4, and RL_DESIGN.md §23 for the knowledge layer.
+
 </div>
 </details>
 
@@ -197,7 +202,7 @@ Midnight IST (daily) → prompt_daily_deploy
 | Score storage | SQLite | `data/scores.db`; accessed via `ScoreStore` |
 | Technical indicators | C++ via pybind11 | `stockindicators.pyd`; pure-Python fallback when absent |
 | User profile storage | JSON files | `data/user_profiles/{session_id}.json` |
-| RL memory storage | JSON files | `data/predictions/{sector}/{ticker}/…` (4 files per ticker) |
+| RL memory storage | JSON files | `data/predictions/{sector}/{ticker}/…` (5 permanent/cyclical files per ticker, incl. `{TICKER}_dossier.json` — see §7.1, §11.4) |
 
 ### 1.4 Supported Sectors
 
@@ -267,6 +272,8 @@ _resolve_ticker()  [LLM: temp=0.0, deterministic]
   ▼
 _load_learned_weights(ticker)  [STATIC: reads agent_weight_memory.json]
   Returns None if no RL data yet (uses settings.AGENT_WEIGHTS defaults)
+  Weights are scoped per ticker: _resolve_weights_for(ticker) reloads
+  whenever the query ticker differs from the cached _aggregator_weights_ticker
   │
   ▼
 LangGraph StateGraph:
@@ -467,7 +474,9 @@ composite = 0.6559 / 1.00  =  0.656  →  BUY
 
 ```
 1. Explicitly injected by generate_forecast.py / daily_review.py (highest priority)
+   via set_aggregator_weights(weights, ticker) — pins weights to that ticker
 2. RL WeightMemory.effective_weights() — auto-loaded by _load_learned_weights(ticker)
+   via _resolve_weights_for(ticker), which reloads when the ticker changes
 3. settings.AGENT_WEIGHTS config defaults (lowest priority)
 ```
 
@@ -1194,7 +1203,7 @@ and injects the results, so the right candidates and real headlines reach the mo
 > The earlier user-tier profiling (casual/active/expert via `user_profile.py`) is **dormant** — it was
 > only used by the removed DAG. Retained for a future tier-adaptive verbosity feature.
 
-### 6.3 Tool Catalogue (11 tools, all STATIC except `run_agent_analysis`)
+### 6.3 Tool Catalogue (12 tools, all STATIC except `run_agent_analysis`)
 
 | Tool Name | Data Source | Notes |
 |---|---|---|
@@ -1207,8 +1216,13 @@ and injects the results, so the right candidates and real headlines reach the mo
 | `get_rl_prediction(ticker)` | prediction JSON | RL verdict + confidence |
 | `get_rl_insights()` | weight memory JSON | Agent weights + accuracy |
 | `get_macro_news()` | macro cache → live Serper fallback | Self-heals when cache empty |
+| `get_ticker_dossier(ticker)` | `{TICKER}_dossier.json` digest | Accumulated thesis, response signatures, guidance, flow notes |
 | `search_market_news(query)` | Serper `/news` + RRF fusion, Tavily fallback | Multi-query (see retry below) |
 | `run_agent_analysis(ticker)` **[LLM]** | Full 9-agent sector pipeline (~45s) | Deep mode |
+
+> Every dispatched tool — including `get_rl_prediction`, `get_macro_news`, and
+> `get_historical_prices` — now has a matching `_CHAT_TOOLS` schema, enforced by a
+> drift-guard test (previously these three were documented but uncallable).
 
 **`search_market_news` geo detection:**
 
@@ -1266,6 +1280,13 @@ the referent without resending it.
 
 The RL pipeline gives StockAgent persistent memory across months. Every prediction is written to a JSON envelope; every miss is root-caused by the `FeedbackAgent` LLM; agent credibility weights are updated by the deterministic `WeightAdapter`. After six months, the system holds a per-ticker behavioural rulebook.
 
+The 5th permanent memory file, `{TICKER}_dossier.json`, adds a **knowledge layer** on top of
+this numeric loop: `DossierCurator` runs daily (Step 8.5, hit or miss) to maintain a per-ticker
+thesis, response signatures, guidance, recurring catalysts, flow notes, and an episodic
+observation buffer, with a weekly LLM distillation pass. Full schema, merge rules, and
+consumption surfaces (agent prompts + chat `get_ticker_dossier`) are in
+**RL_DESIGN.md §23 (Knowledge Layer)**.
+
 ```
 Month 1:   Forecasts from config defaults + pre-seeded seasonal patterns
 Month 3:   Weights earned from 60 days of real accuracy data
@@ -1273,13 +1294,14 @@ Month 6:   Lessons accumulated, seasonal seeds validated, cross-ticker sector pa
 Month 12:  Proprietary calendar + ledger; miss rate on known patterns approaches near-zero
 ```
 
-**Three RL agents:**
+**Four RL agents:**
 
 | Agent | Type | File | When It Runs |
 |---|---|---|---|
 | `FeedbackAgent` | **LLM** (Qwen, temp=0.3) | `core/intelligence/rl/agents/feedback_agent.py` | Daily post-market; once per ticker per trading day |
-| `WeightAdapter` | **STATIC** (deterministic) | `core/intelligence/rl/agents/weight_adapter.py` | After FeedbackAgent; no LLM |
+| `WeightAdapter` | **STATIC** (deterministic) + per-agent calibration reward blend (`RL_CALIBRATION_REWARD_ENABLED`) | `core/intelligence/rl/agents/weight_adapter.py` | After FeedbackAgent; no LLM |
 | `ThesisReviewer` | **LLM** (Qwen, temp=0.1) | `core/intelligence/rl/agents/thesis_reviewer.py` | Conditional; only on significant misses (~1–3×/month) |
+| `DossierCurator` | **LLM** (Qwen, temp=0.2) | `core/intelligence/rl/agents/dossier_curator.py` | Daily, Step 8.5 (every day, never fatal) + weekly distillation |
 
 <details><summary>📊 RL Monthly Cycle Flowchart</summary>
 
@@ -1313,7 +1335,11 @@ Month Start (1st trading day)
 │  Step 6: LearningLedger → merge lessons         │  STATIC
 │  Step 6.5: ConvictionTracker → streak           │  STATIC
 │  Step 7: Revise remaining forecasts             │  STATIC
+│    + apply_lesson_emphasis (tagged lessons      │  STATIC
+│      fire on today's event_tags)                │
 │  Step 8: Append FeedbackEntry to log            │  STATIC
+│  Step 8.5: DossierCurator → update ticker       │  LLM
+│      dossier (every day, never fatal)           │
 │  Step 9: SeasonalValidator (month-end only)     │  STATIC
 └─────────────────────────────────────────────────┘
            │
@@ -1416,6 +1442,7 @@ Month Start (1st trading day)
 | **6.5** | ConvictionTracker | **STATIC** | Update streak days + `reversion_prior` formula; inject streak warning at `streak ≥ 8` | No |
 | **7** | Revise remaining forecasts | **STATIC** | Re-run `SignalAggregator` with `effective_weights`; apply lesson rules + seasonal adjustments | **YES** → early exit if `direction_correct AND \|error\| < 0.5%` |
 | **8** | Persist FeedbackEntry | **STATIC** | Atomic write (`.tmp` → rename); idempotent (replaces same-date entry) | No |
+| **8.5** | `DossierCurator.run()` | **LLM** | Updates ticker dossier (thesis, signatures, guidance, catalysts, flows, observations); runs **every day, hit or miss**; static merge enforces all bounds; never raises | No |
 | **9** | SeasonalValidator | **STATIC** | Runs **only on last trading day of month** (not daily); validates pattern fire/no-fire | No |
 
 **Step 7 Early Exit (Critical Optimisation — 2026-05-17):**
@@ -1429,6 +1456,11 @@ if direction_correct and abs(price_error_pct) < settings.RL_AGENT_RERUN_THRESHOL
 ```
 
 `RL_AGENT_RERUN_THRESHOLD_PCT = 0.5` (in `settings/base.py`). Set to `0.0` to disable early exit entirely.
+
+**Step 7 lesson emphasis:** `apply_lesson_emphasis()` (STATIC) checks today's `event_tags`
+(from `tag_events()` + `calendar_day_tags()`) against each `Lesson.trigger_tags`; matches with
+`eff_confidence ≥ RL_LESSON_MATCH_MIN_CONF` nudge `prioritise_agents`/`discount_agents` scores by
+±`RL_LESSON_EMPHASIS_DELTA` (capped at ±`RL_LESSON_EMPHASIS_CAP`). See RL_DESIGN.md §23.3.
 
 **Step 9 ThesisReviewer:** When `should_review()` returns `True`, the `ThesisReviewer` LLM fires. [→ Section 7.8]
 
@@ -2089,6 +2121,7 @@ data/predictions/
     {TICKER}_{YYYY-MM}_prompt_enhancements.json   ← monthly, per-cycle
     {TICKER}_agent_weight_memory.json             ← PERMANENT
     {TICKER}_learning_ledger.json                 ← PERMANENT
+    {TICKER}_dossier.json                         ← PERMANENT (5th memory file, RL_DESIGN.md §23)
     thesis_calls.jsonl                            ← append-only audit
 ```
 
@@ -2285,6 +2318,7 @@ StockAgent-main/
 │           ├── {TICKER}_{YYYY-MM}_daily_feedback_log.json
 │           ├── {TICKER}_agent_weight_memory.json  ← PERMANENT
 │           ├── {TICKER}_learning_ledger.json       ← PERMANENT
+│           ├── {TICKER}_dossier.json               ← PERMANENT (5th memory file, RL_DESIGN.md §23)
 │           └── thesis_calls.jsonl
 ├── outputs/llm_log/{YYYY-MM-DD}.jsonl  ← LLM cost telemetry
 └── docs/

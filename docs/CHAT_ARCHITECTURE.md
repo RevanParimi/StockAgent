@@ -93,7 +93,7 @@ small word-grouped `token` chunks for a streaming feel.
 
 ---
 
-## 3. Tool Catalogue (11 tools)
+## 3. Tool Catalogue (12 tools)
 
 | Tool | Source | Notes |
 |---|---|---|
@@ -106,8 +106,13 @@ small word-grouped `token` chunks for a streaming feel.
 | `get_rl_prediction(ticker)` | prediction JSON | RL verdict + confidence + conviction |
 | `get_rl_insights()` | RL weight memory | Agent accuracy + learned weights + lessons |
 | `get_macro_news()` | daily macro cache → **live Serper fallback** | Self-heals when the cache is empty |
+| `get_ticker_dossier(ticker)` | `{TICKER}_dossier.json` digest | Accumulated thesis, response signatures, guidance, flow notes |
 | `search_market_news(query)` | Serper /news + RRF, Tavily fallback | Multi-query fusion (see §4) |
 | `run_agent_analysis(ticker)` | sector orchestrator | Deep 9-agent run (~45s) |
+
+> Every dispatched tool — including `get_rl_prediction`, `get_macro_news`, and
+> `get_historical_prices` — now has a matching `_CHAT_TOOLS` schema, enforced by a
+> drift-guard test (previously these three were documented but uncallable).
 
 ---
 
@@ -211,6 +216,10 @@ For a single ticker analysis run (9 automobile agents, macro cache warm):
 | yfinance OHLCV (close + volume) | 1 | Actual close price + volume vs 20d avg |
 | LLM — FeedbackAgent (REASONING: qwen3.7-max) | 1 | Miss classification + lesson generation |
 | LLM — ThesisReviewer (REASONING, conditional) | 0–1 | Only on significant misses (~1–3×/month) |
+| LLM — DossierCurator (Step 8.5, qwen temp=0.2) | 1 | Updates ticker dossier — runs every day, hit or miss |
+
+**Weekly (per ticker):** `distill_dossier()` adds +1 LLM call/ticker/week, hooked into the
+`ledger_cleanup_weekly` scheduler job. See `RL_DESIGN.md` §23.5.
 
 **Monthly budget (5 tickers, 21 trading days, automobile sector):**
 

@@ -19,7 +19,8 @@ StockAgent Agents
 ├── RL Agents  (cross-sector, run daily automated post-market)
 │   ├── FeedbackAgent     [LLM]    daily root-cause analysis
 │   ├── WeightAdapter     [STATIC] deterministic weight adjustment
-│   └── ThesisReviewer    [LLM]    conditional post-miss thesis validation
+│   ├── ThesisReviewer    [LLM]    conditional post-miss thesis validation
+│   └── DossierCurator    [LLM]    daily knowledge extraction → ticker dossier
 │
 └── Chat Agent  (on-demand via /ui/chat/stream)  ✅ AGENTIC TOOL-LOOP
     ├── IntentPreRouter   [STATIC] keyword intent → pre-run screen_stocks + news (plan-and-execute)
@@ -97,6 +98,8 @@ _resolve_ticker()  [LLM: temp=0.0, deterministic]
   ▼
 _load_learned_weights(ticker)  [STATIC: reads agent_weight_memory.json]
   Returns None if no RL data yet (uses settings.AGENT_WEIGHTS defaults)
+  Weights are scoped per ticker: _resolve_weights_for(ticker) reloads
+  whenever the query ticker differs from the cached _aggregator_weights_ticker
   │
   ▼
 LangGraph StateGraph (src/backend/sectors/{sector}/pipeline/graph.py)
@@ -433,7 +436,9 @@ composite = 0.6559 / 1.00 = 0.656  → BUY
 
 ```
 1. Explicitly injected by generate_forecast.py / daily_review.py
+   via set_aggregator_weights(weights, ticker) — pins weights to that ticker
 2. RL WeightMemory.effective_weights() — auto-loaded by _load_learned_weights(ticker)
+   via _resolve_weights_for(ticker), which reloads when the ticker changes
 3. settings.AGENT_WEIGHTS config defaults
 ```
 
@@ -478,6 +483,11 @@ merge_lessons_into_ledger(output: FeedbackAgentOutput, ledger: LearningLedger)
 | `contributing_tickers boost +0.05` | STATIC | Per new confirming ticker |
 | Analyst distrust enforcement | STATIC | System prompt rule — never cite analyst targets |
 
+> `new_lessons` now also carry `trigger_tags` / `prioritise_agents` / `discount_agents` —
+> validated against the `EVENT_TAGS` controlled vocabulary and the live agent-name list
+> respectively (invalid entries dropped). See §9.4 and RL_DESIGN.md §23.3 for how these
+> executable claims fire.
+
 ### 9.2 WeightAdapter *(STATIC — no LLM)*
 
 **File:** `core/intelligence/rl/agents/weight_adapter.py`
@@ -506,6 +516,12 @@ Three stages (all STATIC):
 Result: WeightMemory gets new version number + WeightHistoryEntry with reason string
 ```
 
+> **Per-agent calibration reward** (flag `RL_CALIBRATION_REWARD_ENABLED`, weight
+> `RL_CALIBRATION_WEIGHT`, default blend w=0.5): an agent's hit_rate in `_compute_accuracy()`
+> is blended with a calibration credit — did its own `predicted_agent_scores` lean match the
+> realized 3-way direction (FLAT/NEUTRAL excluded)? `False` is byte-identical to the prior
+> hit-rate-only behavior. See RL_DESIGN.md §24.
+
 ### 9.3 ThesisReviewer *(LLM — conditional)*
 
 **File:** `core/intelligence/rl/agents/thesis_reviewer.py`
@@ -533,6 +549,23 @@ should_review(price_error_pct, atr_pct, direction_correct, miss_type)
   │   AND miss_type in {direction_flip, model_bias}  → True  (structural trigger)
   └── otherwise  → False  (skip — no LLM call)
 ```
+
+### 9.4 DossierCurator *(LLM — every day)*
+
+**File:** `core/intelligence/rl/agents/dossier_curator.py`
+
+| | Detail |
+|---|---|
+| **Trigger** | Step 8.5 of `daily_review.py` — runs **every day**, hit or miss |
+| **Model** | qwen, temp=0.2, `json_object`, ≤900 tokens |
+| **Input** | Day's `market_context`, predicted vs actual, FeedbackAgent output, current dossier digest |
+| **Output** | Proposed updates to `current_thesis`, `response_signatures`, `guidance`, `recurring_catalysts`, `flow_notes`, `open_questions`, `observations` |
+| **Safety** | Never raises — any failure leaves the dossier untouched (same contract as ThesisReviewer) |
+| **Static merge** | LLM proposes; static code enforces tag whitelist (`EVENT_TAGS`), 3 obs/day cap, 30-obs buffer, confirm/contradict confidence math, list caps |
+| **Weekly distillation** | `distill_dossier()` — hooked into the `ledger_cleanup_weekly` scheduler job; folds observations >7 days old into durable sections, rates catalysts, drops dead signatures, bumps `version`. Static fallback (dead-signature drop + buffer cap) when the LLM is unavailable |
+| **File it owns** | `data/predictions/{sector}/{TICKER}/{TICKER}_dossier.json` (5th permanent memory file) |
+
+Full schema, merge bounds, and consumption surfaces: **RL_DESIGN.md §23 (Knowledge Layer)**.
 
 ---
 
@@ -569,7 +602,7 @@ build prompt (strong system prompt + IST market context + session history)
 > A LangGraph DAG, a user-tier profiling system, and an LLM Reflexion self-critique were all trialled and
 > removed/rejected — see CHAT_ARCHITECTURE.md. `user_profile.py` is retained but **dormant**.
 
-### 10.2 Tool Catalogue (11 tools, all STATIC except `run_agent_analysis`)
+### 10.2 Tool Catalogue (12 tools, all STATIC except `run_agent_analysis`)
 
 | Tool | Data source |
 |---|---|
@@ -582,8 +615,13 @@ build prompt (strong system prompt + IST market context + session history)
 | `get_rl_prediction(ticker)` | `data/predictions/{sector}/{ticker}/` JSON |
 | `get_rl_insights()` | RL weight memory JSON |
 | `get_macro_news()` | macro cache → live Serper fallback when empty |
+| `get_ticker_dossier(ticker)` | `{TICKER}_dossier.json` digest — accumulated thesis, response signatures, guidance, flow notes |
 | `search_market_news(query)` | Serper /news + multi-query **RRF fusion**, Tavily fallback |
 | `run_agent_analysis(ticker)` **[LLM]** | Full 9-agent sector pipeline (~45s) |
+
+> All dispatched tools — including `get_rl_prediction`, `get_macro_news`, and
+> `get_historical_prices` — now have matching `_CHAT_TOOLS` schemas; a drift-guard test
+> enforces dispatch↔schema parity (previously these three were documented but uncallable).
 
 ---
 
@@ -688,6 +726,11 @@ ContextBuilder._build_risk_macro():
 | `ThesisReviewer.should_review()` | **STATIC** | `rl/agents/thesis_reviewer.py` | ATR-relative threshold | Fires on structural miss or size trigger |
 | `ThesisReviewer._compute_atr_pct()` | **STATIC** | above | 14-day ATR via yfinance | Returns 0.0 on failure |
 | `ThesisReviewer.review()` | **LLM** | above | qwen, temp=0.1 | Post-miss thesis validation |
+| `DossierCurator.run()` | **LLM** | `rl/agents/dossier_curator.py` | qwen, temp=0.2, ≤900 tokens | Step 8.5, every day, never fatal |
+| Dossier merge bounds | **STATIC** | above | Tag whitelist, obs caps, confirm/contradict math | Enforces every bound on LLM proposal |
+| `distill_dossier()` | **LLM + static fallback** | above | Weekly, via `ledger_cleanup_weekly` | Static fallback: dead-signature drop + buffer cap |
+| `tag_events()` / `calendar_day_tags()` | **STATIC** | `src/backend/shared/schemas/feedback.py` | Keyword map + calendar lookup → `EVENT_TAGS` | Deterministic, LLM-independent; persisted on `FeedbackEntry.event_tags` |
+| `apply_lesson_emphasis()` | **STATIC** | `core/intelligence/rl/algorithms/lesson_emphasis.py` | ±`RL_LESSON_EMPHASIS_DELTA`, cap ±`RL_LESSON_EMPHASIS_CAP` | Step-7 revision + month-start forecast build |
 | `RegimeDetector.detect()` | **STATIC** | `regime/detector.py` | VIX/FII/RSI thresholds | No LLM |
 | Regime multiplier table | **STATIC** | `settings/base.py` | Config constant | Never persisted |
 | `ConvictionTracker` | **STATIC** | `rl/conviction/tracker.py` | `min(0.25,(days-4)×0.025)` | Formula |
@@ -920,6 +963,10 @@ nse_data: dict = Field(default_factory=dict)
 | Serper `get_news_context(ticker, days=2)` | 1 credit | Editorial market reaction for yesterday |
 | NseIndiaApi `announcements(ticker, days=2)` | Free | Official regulatory events for yesterday |
 | Combined → `FeedbackAgentInput.market_context_today` | — | FeedbackAgent gets real data (not "unavailable") |
+| `DossierCurator.run()` (Step 8.5) | +1 LLM call | Updates ticker dossier — runs every day, hit or miss |
+
+> Weekly: `distill_dossier()` adds +1 LLM call/ticker/week, hooked into the
+> `ledger_cleanup_weekly` scheduler job. See RL_DESIGN.md §23.5.
 
 #### Coverage Map — Banking/BFSI (pending NseIndiaApi integration)
 

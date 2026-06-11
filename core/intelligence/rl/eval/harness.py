@@ -59,6 +59,7 @@ logger = logging.getLogger(__name__)
 ABLATION_REGISTRY: dict[str, str] = {
     "calibration_reward": "RL_CALIBRATION_REWARD_ENABLED",
     "forgetting": "RL_FORGETTING_ENABLED",
+    "executable_claims": "RL_CLAIMS_ENABLED",
 }
 
 

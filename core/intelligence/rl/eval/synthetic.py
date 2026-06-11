@@ -23,8 +23,9 @@ therefore replays synthetic and real data through one identical code path.
 
 Ablation model (synthetic-only — see harness.py for the real-data no-op)
 --------------------------------------------------------------------------
-Components 2 (`calibration_reward`) and 3 (`forgetting`) don't exist yet, so
-there is nothing in the live loop to actually disable. To still let the
+Components 2 (`calibration_reward`), 3 (`forgetting`), and the executable
+claims layer (`executable_claims`) don't have a closed-loop simulation yet,
+so there is nothing in the live loop to actually disable. To still let the
 harness report a meaningful delta on synthetic data, this generator encodes a
 small, documented, deterministic model of what each flag is *expected* to do:
 
@@ -38,8 +39,15 @@ small, documented, deterministic model of what each flag is *expected* to do:
   capped at `FORGETTING_MAX_DECAY`). This represents stale lessons
   accumulating and dragging down later-cycle accuracy when nothing prunes
   them (Component 3).
+- `"executable_claims"`: when ablated, the effective `accuracy_rate` is
+  reduced by a flat `EXECUTABLE_CLAIMS_ACCURACY_PENALTY` (0.02) for every
+  cycle. This represents the small, deterministic boost that
+  `apply_lesson_emphasis()` (trigger-tagged dossier lessons reweighting
+  agent confidence on matching days) is expected to contribute to the
+  ensemble's hit rate. This is a placeholder heuristic until a closed-loop
+  simulation of the dossier/claims pipeline exists.
 
-Both deltas are additive and only ever *reduce* accuracy_rate when the
+All three deltas are additive and only ever *reduce* accuracy_rate when the
 corresponding key is present in `ablate` — i.e. "ablate" means "simulate the
 loop with this improvement turned off", matching the harness's framing of
 ablation deltas as (with-feature minus without-feature).
@@ -62,6 +70,7 @@ from core.schemas.feedback import (
 CALIBRATION_REWARD_ACCURACY_BONUS = 0.05
 FORGETTING_DECAY_PER_CYCLE = 0.03
 FORGETTING_MAX_DECAY = 0.15
+EXECUTABLE_CLAIMS_ACCURACY_PENALTY = 0.02
 
 _SECTORS = ["automobile", "banking_bfsi", "it_sector", "renewable_energy"]
 _TICKERS_BY_SECTOR = {
@@ -125,9 +134,9 @@ class SyntheticLogGenerator:
             [price_lower, price_upper] Monte Carlo band.
         ablate : set[str] | list[str] | None
             Ablation keys to apply to this synthetic run. Recognised keys:
-            "calibration_reward", "forgetting" (see module docstring).
-            Unrecognised keys are accepted and ignored (no-op), so future
-            ablation flags don't break existing callers.
+            "calibration_reward", "forgetting", "executable_claims" (see
+            module docstring). Unrecognised keys are accepted and ignored
+            (no-op), so future ablation flags don't break existing callers.
 
         Returns
         -------
@@ -190,6 +199,8 @@ class SyntheticLogGenerator:
         if "forgetting" in ablate_set:
             decay = min(FORGETTING_DECAY_PER_CYCLE * cycle_idx, FORGETTING_MAX_DECAY)
             rate -= decay
+        if "executable_claims" in ablate_set:
+            rate -= EXECUTABLE_CLAIMS_ACCURACY_PENALTY
         return min(max(rate, 0.0), 1.0)
 
     def _generate_cycle(

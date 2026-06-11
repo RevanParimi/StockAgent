@@ -65,8 +65,10 @@ class TestAblationRegistry:
     def test_registry_has_pre_registered_keys(self):
         assert "calibration_reward" in ABLATION_REGISTRY
         assert "forgetting" in ABLATION_REGISTRY
+        assert "executable_claims" in ABLATION_REGISTRY
         assert ABLATION_REGISTRY["calibration_reward"] == "RL_CALIBRATION_REWARD_ENABLED"
         assert ABLATION_REGISTRY["forgetting"] == "RL_FORGETTING_ENABLED"
+        assert ABLATION_REGISTRY["executable_claims"] == "RL_CLAIMS_ENABLED"
 
     def test_synthetic_ablation_reports_delta(self):
         harness = EvalHarness()
@@ -88,6 +90,19 @@ class TestAblationRegistry:
             ablate=["forgetting"],
         )
         assert "forgetting" in report.ablation_deltas
+
+    def test_synthetic_executable_claims_ablation_reports_delta(self):
+        harness = EvalHarness()
+        report = harness.run_eval(
+            synthetic=True, n_tickers=2, n_cycles=2, seed=42,
+            ablate=["executable_claims"],
+        )
+
+        assert "executable_claims" in report.ablations_run
+        assert "executable_claims" in report.ablation_deltas
+        delta = report.ablation_deltas["executable_claims"]
+        assert "direction_accuracy_delta" in delta
+        assert "brier_score_delta" in delta
 
     def test_unregistered_ablation_key_still_recorded(self):
         """Arbitrary ablation keys should not crash — registry is open-ended."""

@@ -116,6 +116,15 @@ class TestAblation:
 
         assert out_on != out_off
 
+    def test_ablate_executable_claims_changes_output(self):
+        gen_on = SyntheticLogGenerator(seed=42)
+        out_on = gen_on.generate(n_tickers=2, n_cycles=2)
+
+        gen_off = SyntheticLogGenerator(seed=42)
+        out_off = gen_off.generate(n_tickers=2, n_cycles=2, ablate={"executable_claims"})
+
+        assert out_on != out_off
+
     def test_ablate_unknown_key_is_a_noop_but_does_not_error(self):
         gen = SyntheticLogGenerator(seed=42)
         out_known = gen.generate(n_tickers=1, n_cycles=1)

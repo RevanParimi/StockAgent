@@ -920,6 +920,11 @@ class RawLesson(BaseModel):
     rule: str
     confidence: float = Field(ge=0.0, le=1.0, default=0.5)
     scope: LessonScope = "stock_specific"   # LLM declares the scope
+    # Executable-claim fields (2026-06 knowledge layer). Validated against
+    # EVENT_TAGS / known agent names by FeedbackAgent._parse before reaching here.
+    trigger_tags: list[str] = Field(default_factory=list)
+    prioritise_agents: list[str] = Field(default_factory=list)
+    discount_agents: list[str] = Field(default_factory=list)
 
 
 class FeedbackAgentOutput(BaseModel):

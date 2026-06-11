@@ -299,7 +299,9 @@ class FeedbackAgent:
                 stripped = re.sub(r"\s*```\s*$", "", stripped).strip()
             data = json.loads(stripped)
 
-            # Parse raw lessons with scope
+            # Parse raw lessons with scope + executable-claim fields
+            from core.schemas.feedback import EVENT_TAGS
+            valid_agents = set(fb_input.predicted_agent_scores.keys())
             raw_lessons = [
                 RawLesson(
                     category=item.get("category", "macro"),
@@ -310,6 +312,11 @@ class FeedbackAgent:
                     scope=item.get("scope", "stock_specific")
                     if item.get("scope") in self._VALID_SCOPES
                     else "stock_specific",
+                    trigger_tags=[t for t in item.get("trigger_tags", []) if t in EVENT_TAGS],
+                    prioritise_agents=[a for a in item.get("prioritise_agents", [])
+                                        if a in valid_agents],
+                    discount_agents=[a for a in item.get("discount_agents", [])
+                                      if a in valid_agents],
                 )
                 for item in data.get("new_lessons", [])
             ]
@@ -439,6 +446,16 @@ class FeedbackAgent:
                     )
 
             if resurrected is not None:
+                # Resurrected lessons keep their own claim fields (history intact).
+                # Only adopt the new raw's trigger_tags/prioritise_agents/discount_agents
+                # if the resurrected lesson has none of its own (e.g. it predates the
+                # 2026-06 knowledge layer fields).
+                if not resurrected.trigger_tags and raw.trigger_tags:
+                    resurrected.trigger_tags = raw.trigger_tags
+                if not resurrected.prioritise_agents and raw.prioritise_agents:
+                    resurrected.prioritise_agents = raw.prioritise_agents
+                if not resurrected.discount_agents and raw.discount_agents:
+                    resurrected.discount_agents = raw.discount_agents
                 lesson_ids.append(resurrected.lesson_id)
                 logger.info(
                     "[FeedbackAgent] Resurrected %s (pattern=%s occurrences=%d) "
@@ -460,6 +477,9 @@ class FeedbackAgent:
                 still_valid=True,
                 scope=raw.scope,
                 last_seen=today_str,
+                trigger_tags=raw.trigger_tags,
+                prioritise_agents=raw.prioritise_agents,
+                discount_agents=raw.discount_agents,
             )
             ledger.lessons.append(lesson)
             lesson_ids.append(new_id)

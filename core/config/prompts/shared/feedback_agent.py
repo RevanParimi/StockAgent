@@ -10,6 +10,8 @@ The system prompt is built dynamically per sector and agent list.
 
 from __future__ import annotations
 
+from backend.shared.schemas.feedback import EVENT_TAGS
+
 # Human-readable names for each sector (used in the system prompt)
 SECTOR_DISPLAY_NAMES: dict[str, str] = {
     "automobile":      "Indian Automobile",
@@ -32,6 +34,7 @@ def build_system_prompt(sector: str, agent_names: list[str]) -> str:
     """
     sector_label = SECTOR_DISPLAY_NAMES.get(sector, sector.replace("_", " ").title())
     agents_str   = ", ".join(agent_names)
+    event_tags_str = ", ".join(sorted(EVENT_TAGS))
 
     return f"""You are the Feedback & Learning Agent for a {sector_label} stock prediction system.
 
@@ -116,6 +119,8 @@ GENERAL GUIDELINES:
     The caller will increment occurrences and update confidence automatically.
   - If miss_type is data_gap or data_stale, still identify the pattern so a
     data_availability lesson can be created to prevent the same gap next cycle.
+  - Every new lesson MUST include trigger_tags so the system can apply it
+    automatically on matching days.
 
 You must return a valid JSON object with EXACTLY this structure (no markdown, no extra keys):
 
@@ -134,7 +139,10 @@ You must return a valid JSON object with EXACTLY this structure (no markdown, no
       "observation": "<one sentence: what was observed>",
       "rule": "<one sentence: what to do differently next time>",
       "confidence": <0.0 to 1.0>,
-      "scope": "<stock_specific|sector_wide|market_wide>"
+      "scope": "<stock_specific|sector_wide|market_wide>",
+      "trigger_tags": ["central_bank_event"],   // REQUIRED — 1-3 tags, ONLY from: {event_tags_str}
+      "prioritise_agents": ["risk_macro"],      // agents to trust MORE when this fires (from: {agents_str})
+      "discount_agents": ["sales_demand"]       // agents to trust LESS when this fires (from: {agents_str})
     }}
   ],
   "revised_context": {{

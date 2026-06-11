@@ -791,6 +791,12 @@ def run_daily_review(
     fb_agent  = FeedbackAgent()
     fb_output = fb_agent.run(fb_input, ticker_ledger)
 
+    # Hoisted from below (Step 5) so the external_shock rate-cap block can use
+    # it: at this point today's provisional entry has not been appended yet,
+    # so feedback_log.entries already holds only prior-cycle entries. The same
+    # object is reused (not reloaded) at the Step 5 site below.
+    feedback_log = store.load_feedback_log(cycle_id)
+
     # ------------------------------------------------------------------ #
     # external_shock rate cap: LLMs tend to over-use external_shock to
     # avoid assigning blame, effectively disabling learning.  If more than
@@ -800,7 +806,7 @@ def run_daily_review(
     # is semantically valid (e.g. sudden gap-down on correct UP prediction).
     # ------------------------------------------------------------------ #
     if fb_output.miss_type == "external_shock" and not direction_correct:
-        prior_entries = feedback_log.entries[:-1]  # exclude today's provisional
+        prior_entries = feedback_log.entries  # today's provisional not yet appended
         if len(prior_entries) >= 5:
             shock_days = sum(
                 1 for e in prior_entries
@@ -835,8 +841,9 @@ def run_daily_review(
     except Exception as exc:
         logger.debug("[daily_review] %s: Factor regime unavailable (non-fatal): %s", ticker, exc)
 
-    wm           = store.get_or_init_weight_memory(settings.AGENT_WEIGHTS)
-    feedback_log = store.load_feedback_log(cycle_id)
+    wm = store.get_or_init_weight_memory(settings.AGENT_WEIGHTS)
+    # feedback_log was loaded above (before the external_shock rate-cap block);
+    # reuse the same object here rather than reloading.
 
     miss_analysis = None
     if not direction_correct or abs(price_error_pct) > 1.0:

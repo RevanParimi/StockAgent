@@ -140,6 +140,9 @@ class PredictionStore:
     def _feedback_log_path(self, cycle_id: str) -> Path:
         return self._dir / f"{cycle_id}_daily_feedback_log.json"
 
+    def _control_log_path(self, cycle_id: str) -> Path:
+        return self._dir / f"{cycle_id}_control_log.json"
+
     def _weight_memory_path(self) -> Path:
         return self._dir / f"{self.ticker}_agent_weight_memory.json"
 
@@ -264,6 +267,26 @@ class PredictionStore:
         log.entries.append(entry)
         log.entries.sort(key=lambda e: e.date)
         self.save_feedback_log(log)
+
+    # ------------------------------------------------------------------
+    # Control Log  (RL Phase 1 — Monthly Scorecard + Baseline Duel)
+    # ------------------------------------------------------------------
+
+    def save_control_log(self, log) -> None:
+        path = self._control_log_path(log.cycle_id)
+        self._write_json(path, log.model_dump())
+        logger.info(
+            "[PredictionStore] Saved control log for %s (%d entries)",
+            log.cycle_id, len(log.entries),
+        )
+
+    def load_control_log(self, cycle_id: str | None = None):
+        from backend.shared.schemas.scorecard import ControlLog
+        cid = cycle_id or self.current_cycle_id()
+        data = self._read_json(self._control_log_path(cid))
+        if data is None:
+            return ControlLog(ticker=self.ticker, sector=self._sector or "automobile", cycle_id=cid)
+        return ControlLog(**data)
 
     # ------------------------------------------------------------------
     # Weight Memory  (permanent across cycles)

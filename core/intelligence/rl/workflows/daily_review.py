@@ -886,7 +886,9 @@ def run_daily_review(
     # ------------------------------------------------------------------ #
     # Step 6: LearningLedger — merge lessons + propagate to shared ledgers
     # ------------------------------------------------------------------ #
-    updated_ledger, lesson_ids = fb_agent.merge_lessons_into_ledger(fb_output, ticker_ledger)
+    updated_ledger, lesson_ids = fb_agent.merge_lessons_into_ledger(
+        fb_output, ticker_ledger, cold_store_path=store._archived_lessons_path()
+    )
     store.save_learning_ledger(updated_ledger)
 
     # P2: Route sector_wide / market_wide lessons to the shared ledgers.

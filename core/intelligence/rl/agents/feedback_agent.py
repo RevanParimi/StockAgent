@@ -27,11 +27,13 @@ import logging
 import re
 import time
 from datetime import date
+from pathlib import Path
 
 from openai import OpenAI, APIError, APITimeoutError, RateLimitError
 
 from core.config import settings
 from services.clients.llm_client import record_llm_call
+from core.intelligence.rl.stores.ledger_propagator import resurrect_lesson
 from core.schemas.feedback import (
     FeedbackAgentInput,
     FeedbackAgentOutput,
@@ -378,13 +380,20 @@ class FeedbackAgent:
         self,
         output: FeedbackAgentOutput,
         ledger: LearningLedger,
+        cold_store_path: "Path | str | None" = None,
     ) -> tuple[LearningLedger, list[str]]:
         """
         Merge new lessons from FeedbackAgentOutput into the LearningLedger.
 
         - Existing pattern → increment occurrences, blend confidence (weighted avg),
           update last_seen to today, update scope if broader.
-        - New pattern → create Lesson with scope and last_seen set.
+        - New pattern → check the cold store (RL Intelligence Phase, Component 3)
+          for a previously-archived lesson with the same pattern; if found,
+          resurrect it (occurrences/history intact) instead of creating a
+          duplicate. Otherwise create a fresh Lesson with scope and last_seen set.
+
+        `cold_store_path` is optional — when None (default), resurrection is
+        skipped entirely and behavior is unchanged from before Component 3.
 
         Returns (updated_ledger, list_of_lesson_ids_touched).
         """
@@ -410,27 +419,54 @@ class FeedbackAgent:
                     "[FeedbackAgent] Updated %s (pattern=%s occurrences=%d scope=%s)",
                     existing.lesson_id, existing.pattern, existing.occurrences, existing.scope,
                 )
-            else:
-                new_id = ledger.next_lesson_id()
-                lesson = Lesson(
-                    lesson_id=new_id,
-                    date_learned=today_str,
-                    category=raw.category,
-                    pattern=raw.pattern,
-                    observation=raw.observation,
-                    rule=raw.rule,
-                    confidence=raw.confidence,
-                    occurrences=1,
-                    still_valid=True,
-                    scope=raw.scope,
-                    last_seen=today_str,
-                )
-                ledger.lessons.append(lesson)
-                lesson_ids.append(new_id)
+                continue
+
+            # No live lesson with this pattern — check the cold store before
+            # creating a new one (resurrection, Component 3).
+            resurrected = None
+            if cold_store_path is not None:
+                try:
+                    resurrected = resurrect_lesson(
+                        ledger,
+                        cold_store_path,
+                        pattern=raw.pattern,
+                        new_confidence=raw.confidence,
+                    )
+                except Exception as exc:
+                    logger.warning(
+                        "[FeedbackAgent] Lesson resurrection check failed for "
+                        "pattern '%s' (non-fatal): %s", raw.pattern, exc,
+                    )
+
+            if resurrected is not None:
+                lesson_ids.append(resurrected.lesson_id)
                 logger.info(
-                    "[FeedbackAgent] Added %s (pattern=%s scope=%s)",
-                    new_id, raw.pattern, raw.scope,
+                    "[FeedbackAgent] Resurrected %s (pattern=%s occurrences=%d) "
+                    "from cold store instead of creating a duplicate",
+                    resurrected.lesson_id, resurrected.pattern, resurrected.occurrences,
                 )
+                continue
+
+            new_id = ledger.next_lesson_id()
+            lesson = Lesson(
+                lesson_id=new_id,
+                date_learned=today_str,
+                category=raw.category,
+                pattern=raw.pattern,
+                observation=raw.observation,
+                rule=raw.rule,
+                confidence=raw.confidence,
+                occurrences=1,
+                still_valid=True,
+                scope=raw.scope,
+                last_seen=today_str,
+            )
+            ledger.lessons.append(lesson)
+            lesson_ids.append(new_id)
+            logger.info(
+                "[FeedbackAgent] Added %s (pattern=%s scope=%s)",
+                new_id, raw.pattern, raw.scope,
+            )
 
         for factor in output.missed_factors:
             key = factor.strip().replace(" ", "_").replace("-", "_").lower()[:40]

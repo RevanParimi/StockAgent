@@ -210,23 +210,48 @@ class PredictionStore:
             return DailyFeedbackLog(ticker=self.ticker, cycle_id=cid)
         return DailyFeedbackLog(**data)
 
-    def load_recent_feedback_entries(self, n_cycles: int = 6) -> list:
+    def load_recent_feedback_entries(self, n_cycles: int = 6, recency_weighted: bool = False) -> list:
         """
         Aggregate FeedbackEntry objects from the last n_cycles completed logs.
         Returns a flat list — most recent cycle first.
         Silently skips unreadable files.
+
+        recency_weighted (RL Intelligence Phase, Component 3):
+          When False (default), behavior is byte-identical to before — returns
+          a flat list of FeedbackEntry.
+          When True, returns list[tuple[FeedbackEntry, float]] where
+          weight = exp(-cycle_age_months / settings.FEEDBACK_HALFLIFE_MONTHS),
+          cycle_age_months = 0 for the most recent cycle, 1 for the next, etc.
+          (each monthly log file = one cycle).
         """
         from core.schemas.feedback import DailyFeedbackLog
         pattern = f"{self.ticker}_*_daily_feedback_log.json"
         log_files = sorted(self._dir.glob(pattern), reverse=True)[:n_cycles]
-        entries = []
-        for path in log_files:
+
+        if not recency_weighted:
+            entries = []
+            for path in log_files:
+                try:
+                    log = DailyFeedbackLog.model_validate_json(path.read_text(encoding="utf-8"))
+                    entries.extend(log.entries)
+                except Exception as exc:
+                    logger.debug("[PredictionStore] Skipping unreadable log %s: %s", path.name, exc)
+            return entries
+
+        import math as _math
+        halflife = getattr(settings, "FEEDBACK_HALFLIFE_MONTHS", 3)
+
+        weighted_entries: list[tuple] = []
+        for cycle_age_months, path in enumerate(log_files):
             try:
                 log = DailyFeedbackLog.model_validate_json(path.read_text(encoding="utf-8"))
-                entries.extend(log.entries)
             except Exception as exc:
                 logger.debug("[PredictionStore] Skipping unreadable log %s: %s", path.name, exc)
-        return entries
+                continue
+            weight = _math.exp(-cycle_age_months / halflife) if halflife > 0 else 1.0
+            for entry in log.entries:
+                weighted_entries.append((entry, weight))
+        return weighted_entries
 
     def append_feedback_entry(self, entry: FeedbackEntry, cycle_id: str | None = None) -> None:
         """
@@ -446,6 +471,45 @@ class PredictionStore:
             return OffMarketSignals(**data)
         except Exception:
             return None
+
+    # ------------------------------------------------------------------
+    # RL Intelligence Phase, Component 3 — Archived lessons (cold store)
+    # ({ticker}_archived_lessons.json)
+    # ------------------------------------------------------------------
+
+    def _archived_lessons_path(self) -> Path:
+        return self._dir / f"{self.ticker}_archived_lessons.json"
+
+    def load_archived_lessons(self) -> list:
+        """
+        Load the cold-store list of archived (forgotten) lessons for this ticker.
+        Returns [] when the file does not exist.
+        """
+        from core.schemas.feedback import Lesson
+        data = self._read_json(self._archived_lessons_path())
+        if data is None:
+            return []
+        try:
+            return [Lesson(**item) for item in data.get("archived_lessons", [])]
+        except Exception as exc:
+            logger.error(
+                "[PredictionStore] Failed to parse archived lessons for %s: %s",
+                self.ticker, exc,
+            )
+            return []
+
+    def save_archived_lessons(self, lessons: list) -> None:
+        """Atomically write the cold-store archived lessons list for this ticker."""
+        payload = {
+            "ticker": self.ticker,
+            "sector": self._sector or "unknown",
+            "archived_lessons": [lesson.model_dump() for lesson in lessons],
+        }
+        self._write_json(self._archived_lessons_path(), payload)
+        logger.info(
+            "[PredictionStore] Saved %d archived lesson(s) for %s",
+            len(lessons), self.ticker,
+        )
 
     # ------------------------------------------------------------------
     # Convenience: list all cycle IDs for this ticker

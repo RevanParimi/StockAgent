@@ -32,8 +32,10 @@ Confidence blending (for repeated patterns from the same ticker):
 
 from __future__ import annotations
 
+import json
 import logging
 from datetime import date
+from pathlib import Path
 
 from core.config import settings
 from core.schemas.feedback import LearningLedger, Lesson
@@ -331,3 +333,206 @@ def downgrade_stale_lessons(
                 lesson.lesson_id, days_inactive,
             )
     return modified
+
+
+# ---------------------------------------------------------------------------
+# RL Intelligence Phase, Component 3 — Stale-lesson archival with resurrection
+# ---------------------------------------------------------------------------
+
+def _load_cold_store(cold_store_path: Path) -> list[Lesson]:
+    """
+    Load the cold-store list of archived lessons from `cold_store_path`.
+    Returns [] when the file does not exist or cannot be parsed.
+    """
+    path = Path(cold_store_path)
+    if not path.exists():
+        return []
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        return [Lesson(**item) for item in data.get("archived_lessons", [])]
+    except (json.JSONDecodeError, OSError, ValueError) as exc:
+        logger.error("[ledger_propagator] Failed to read cold store %s: %s", path, exc)
+        return []
+
+
+def _save_cold_store(cold_store_path: Path, lessons: list[Lesson], ticker: str = "", sector: str = "") -> None:
+    """
+    Atomically write the cold-store archived lessons list, following the same
+    temp-file-then-rename pattern as PredictionStore._write_json.
+    """
+    path = Path(cold_store_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "ticker": ticker,
+        "sector": sector,
+        "archived_lessons": [lesson.model_dump() for lesson in lessons],
+    }
+    tmp = path.with_suffix(".tmp")
+    try:
+        tmp.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+        tmp.replace(path)
+    except OSError as exc:
+        logger.error("[ledger_propagator] Cold store write failed for %s: %s", path, exc)
+        try:
+            tmp.unlink(missing_ok=True)
+        except OSError:
+            pass
+        raise RuntimeError(f"Cold store write failed for {path}: {exc}") from exc
+
+
+def archive_stale_lessons(
+    ledger: LearningLedger,
+    cold_store_path: Path | str,
+    conf_floor: float | None = None,
+    effectiveness_floor: float | None = None,
+    stale_days: int | None = None,
+) -> int:
+    """
+    Archive invalidated, low-value, stale lessons to a per-ticker cold store.
+
+    A lesson is archived only when ALL of the following hold:
+      1. lesson.still_valid is False (already invalidated — never archive a
+         lesson the system still believes in).
+      2. ledger.effective_confidence(lesson) <= conf_floor
+         (default settings.ARCHIVE_CONF_FLOOR = 0.12).
+      3. effectiveness < effectiveness_floor
+         (default settings.ARCHIVE_EFFECTIVENESS_FLOOR = 0.25), where
+         effectiveness = correction_counter[pattern] / (correction_counter[pattern]
+         + miss_counter[pattern]); 0/0 is treated as 0.0.
+      4. days since (last_seen or date_learned) > stale_days
+         (default settings.ARCHIVE_STALE_DAYS = 60).
+
+    Archived lessons are appended to the cold-store JSON at `cold_store_path`
+    (created if absent) and removed from `ledger.lessons` in-place.
+
+    Returns the number of lessons archived. Mutates `ledger` in-place; does
+    NOT save the ledger — callers are responsible for persisting it.
+    """
+    conf_floor = settings.ARCHIVE_CONF_FLOOR if conf_floor is None else conf_floor
+    effectiveness_floor = (
+        settings.ARCHIVE_EFFECTIVENESS_FLOOR if effectiveness_floor is None else effectiveness_floor
+    )
+    stale_days = settings.ARCHIVE_STALE_DAYS if stale_days is None else stale_days
+
+    today = date.today()
+    to_archive: list[Lesson] = []
+    keep: list[Lesson] = []
+
+    for lesson in ledger.lessons:
+        if lesson.still_valid:
+            keep.append(lesson)
+            continue
+
+        eff_conf = ledger.effective_confidence(lesson)
+        if eff_conf > conf_floor:
+            keep.append(lesson)
+            continue
+
+        correction = ledger.correction_counter.get(lesson.pattern, 0)
+        miss = ledger.miss_counter.get(lesson.pattern, 0)
+        denom = correction + miss
+        effectiveness = (correction / denom) if denom > 0 else 0.0
+        if effectiveness >= effectiveness_floor:
+            keep.append(lesson)
+            continue
+
+        ref_str = lesson.last_seen or lesson.date_learned
+        try:
+            ref_date = date.fromisoformat(ref_str)
+            days_inactive = (today - ref_date).days
+        except (ValueError, TypeError):
+            keep.append(lesson)
+            continue
+
+        if days_inactive <= stale_days:
+            keep.append(lesson)
+            continue
+
+        to_archive.append(lesson)
+        logger.info(
+            "[ledger_propagator] Archiving stale lesson %s (pattern='%s', "
+            "eff_conf=%.3f, effectiveness=%.3f, days_inactive=%d)",
+            lesson.lesson_id, lesson.pattern, eff_conf, effectiveness, days_inactive,
+        )
+
+    if not to_archive:
+        return 0
+
+    cold_store = _load_cold_store(Path(cold_store_path))
+    cold_store.extend(to_archive)
+    _save_cold_store(Path(cold_store_path), cold_store, ticker=ledger.ticker, sector=ledger.sector)
+
+    ledger.lessons = keep
+    logger.info(
+        "[ledger_propagator] %s: archived %d lesson(s) to cold store %s",
+        ledger.ticker, len(to_archive), cold_store_path,
+    )
+    return len(to_archive)
+
+
+def resurrect_lesson(
+    ledger: LearningLedger,
+    cold_store_path: Path | str,
+    pattern: str,
+    semantic_tags: list[str] | None = None,
+    new_confidence: float = 0.5,
+    min_overlap: int = 2,
+) -> Lesson | None:
+    """
+    Check the cold store for a previously-archived lesson matching `pattern`
+    (exact match) or sharing >= min_overlap semantic tags with `semantic_tags`.
+
+    If found:
+      - Remove it from the cold store.
+      - Restore it to `ledger.lessons` (occurrences/history intact).
+      - Set still_valid=True, last_seen=today, invalidation_streak=0,
+        clear invalidation_reason/invalidation_date.
+      - confidence = max(old_confidence * 0.8, new_confidence).
+      - Persist the updated cold store.
+      - Return the restored Lesson.
+
+    If not found, returns None and leaves both ledger and cold store untouched.
+
+    Callers should check this BEFORE creating a brand-new Lesson for `pattern`
+    — a hit here means "restore instead of duplicate".
+    """
+    cold_store = _load_cold_store(Path(cold_store_path))
+    if not cold_store:
+        return None
+
+    semantic_tags = semantic_tags or []
+    tag_set = set(semantic_tags)
+
+    match_idx: int | None = None
+    for idx, archived in enumerate(cold_store):
+        if archived.pattern == pattern:
+            match_idx = idx
+            break
+        if tag_set and archived.semantic_tags:
+            overlap = len(tag_set & set(archived.semantic_tags))
+            if overlap >= min_overlap:
+                match_idx = idx
+                break
+
+    if match_idx is None:
+        return None
+
+    restored = cold_store.pop(match_idx)
+    today_str = date.today().isoformat()
+    restored.still_valid = True
+    restored.last_seen = today_str
+    restored.invalidation_streak = 0
+    restored.invalidation_reason = ""
+    restored.invalidation_date = ""
+    restored.confidence = round(max(restored.confidence * 0.8, new_confidence), 4)
+
+    ledger.lessons.append(restored)
+    _save_cold_store(Path(cold_store_path), cold_store, ticker=ledger.ticker, sector=ledger.sector)
+
+    logger.info(
+        "[ledger_propagator] Resurrected lesson %s (pattern='%s') from cold store "
+        "for %s (confidence=%.3f, occurrences=%d)",
+        restored.lesson_id, restored.pattern, ledger.ticker,
+        restored.confidence, restored.occurrences,
+    )
+    return restored

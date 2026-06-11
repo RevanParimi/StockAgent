@@ -1,7 +1,7 @@
 # Monthly Scorecard + Baseline Duel — RL Phase 1
 
 **Date:** 2026-06-12
-**Status:** Design — approved direction (roadmap Phase 1)
+**Status:** IMPLEMENTED 2026-06-12
 **Depends on:** June-10 measurement phase (eval harness, metrics) + June-11 knowledge layer
 (event_tags, lesson claims) — both IMPLEMENTED and merged.
 

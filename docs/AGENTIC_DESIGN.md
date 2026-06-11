@@ -731,6 +731,8 @@ ContextBuilder._build_risk_macro():
 | `distill_dossier()` | **LLM + static fallback** | above | Weekly, via `ledger_cleanup_weekly` | Static fallback: dead-signature drop + buffer cap |
 | `tag_events()` / `calendar_day_tags()` | **STATIC** | `src/backend/shared/schemas/feedback.py` | Keyword map + calendar lookup → `EVENT_TAGS` | Deterministic, LLM-independent; persisted on `FeedbackEntry.event_tags` |
 | `apply_lesson_emphasis()` | **STATIC** | `core/intelligence/rl/algorithms/lesson_emphasis.py` | ±`RL_LESSON_EMPHASIS_DELTA`, cap ±`RL_LESSON_EMPHASIS_CAP` | Step-7 revision + month-start forecast build |
+| `run_control_lane_step()` | **LLM** | `rl/agents/control_lane.py` | reasoning tier, temp=0.2, ≤300 tokens | Step 10 baseline duel: bare model, same info, no architecture (RL_DESIGN §25) |
+| Scorecard builder + baselines | **STATIC** | `rl/eval/scorecard.py`, `rl/eval/baselines.py` | Read-only over recorded logs | Monthly lanes: agent vs control vs persistence/always-up + MoM deltas |
 | `RegimeDetector.detect()` | **STATIC** | `regime/detector.py` | VIX/FII/RSI thresholds | No LLM |
 | Regime multiplier table | **STATIC** | `settings/base.py` | Config constant | Never persisted |
 | `ConvictionTracker` | **STATIC** | `rl/conviction/tracker.py` | `min(0.25,(days-4)×0.025)` | Formula |
@@ -964,6 +966,7 @@ nse_data: dict = Field(default_factory=dict)
 | NseIndiaApi `announcements(ticker, days=2)` | Free | Official regulatory events for yesterday |
 | Combined → `FeedbackAgentInput.market_context_today` | — | FeedbackAgent gets real data (not "unavailable") |
 | `DossierCurator.run()` (Step 8.5) | +1 LLM call | Updates ticker dossier — runs every day, hit or miss |
+| `run_control_lane_step()` (Step 10) | +1 LLM call | Baseline-duel control prediction for the next session (RL_DESIGN §25) |
 
 > Weekly: `distill_dossier()` adds +1 LLM call/ticker/week, hooked into the
 > `ledger_cleanup_weekly` scheduler job. See RL_DESIGN.md §23.5.

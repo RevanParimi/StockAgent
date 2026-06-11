@@ -1341,6 +1341,9 @@ Month Start (1st trading day)
 │  Step 8.5: DossierCurator → update ticker       │  LLM
 │      dossier (every day, never fatal)           │
 │  Step 9: SeasonalValidator (month-end only)     │  STATIC
+│  Step 10: Control lane — score yesterday's      │  LLM
+│      bare-model call + predict next session     │
+│      (baseline duel, RL_DESIGN §25)             │
 └─────────────────────────────────────────────────┘
            │
            ▼ (end of month)
@@ -1444,6 +1447,7 @@ Month Start (1st trading day)
 | **8** | Persist FeedbackEntry | **STATIC** | Atomic write (`.tmp` → rename); idempotent (replaces same-date entry) | No |
 | **8.5** | `DossierCurator.run()` | **LLM** | Updates ticker dossier (thesis, signatures, guidance, catalysts, flows, observations); runs **every day, hit or miss**; static merge enforces all bounds; never raises | No |
 | **9** | SeasonalValidator | **STATIC** | Runs **only on last trading day of month** (not daily); validates pattern fire/no-fire | No |
+| **10** | Control lane (`run_control_lane_step`) | **LLM** | Baseline duel: scores yesterday's bare-model prediction, then a bare LLM (same info, no agents/weights/dossier) predicts the next session; feeds the monthly scorecard (RL_DESIGN §25); never raises | No |
 
 **Step 7 Early Exit (Critical Optimisation — 2026-05-17):**
 

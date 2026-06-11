@@ -363,6 +363,15 @@ retired — it broke `json_object` output and was a weak function-caller.
 | `RL_LESSON_EMPHASIS_CAP` | `0.06` | Per-agent total emphasis cap per day |
 | `RL_LESSON_MATCH_MIN_CONF` | `0.45` | Min effective confidence for a claim to fire |
 
+### RL Phase 1 — Monthly Scorecard + Baseline Duel
+
+| Name | Default | Description |
+|------|---------|-------------|
+| `RL_CONTROL_LANE_ENABLED` | `true` | Daily control-lane prediction + scoring (daily review Step 10) |
+| `CONTROL_LANE_MODEL` | `""` | Control model; empty → `LLM_MODEL_REASONING` |
+| `SCORECARD_ENABLED` | `true` | Monthly scorecard scheduler job (1st, 02:00 IST) |
+| `SCORECARD_DIR` | `data/eval/scorecards` | Persisted monthly scorecard time series |
+
 ### Macro News Feed
 
 | Name | Default | Description |
@@ -449,7 +458,11 @@ All paths verified to exist. Paths are relative to project root.
 | `core/intelligence/rl/algorithms/price_interpolator.py` | Price interpolation for RL feedback (recency-weighted median when RL_FORGETTING_ENABLED) |
 | `core/intelligence/rl/algorithms/lesson_emphasis.py` | Executable claims: tagged lessons nudge agent scores on matching event days |
 | `core/intelligence/rl/eval/` | Read-only eval harness: `python -m core.intelligence.rl.eval.run_eval [--synthetic] [--ablate ...]` |
+| `core/intelligence/rl/eval/baselines.py` | Naive baselines (persistence, always-up/down) for the monthly duel |
+| `core/intelligence/rl/eval/scorecard.py` | Monthly scorecard builder: agent vs control vs baselines + MoM deltas; CLI `run_schedule scorecard` |
+| `core/intelligence/rl/agents/control_lane.py` | Bare-LLM control lane (daily review Step 10): same info, no architecture |
 | `src/backend/shared/schemas/dossier.py` | TickerDossier schema + budgeted markdown digest (`to_digest`) |
+| `src/backend/shared/schemas/scorecard.py` | ControlPrediction/ControlLog + MonthlyScorecard schemas |
 | `core/intelligence/rl/conviction/tracker.py` | Conviction streak tracking |
 | `core/intelligence/rl/nse_calendar.py` | NSE trading day calendar (holiday-aware) |
 | `core/intelligence/regime/detector.py` | Market regime detection (VIX/FII/RSI-based) |

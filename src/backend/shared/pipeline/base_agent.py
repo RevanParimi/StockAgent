@@ -77,6 +77,10 @@ class BaseAgent(ABC):
         # P4: extra search queries from PromptEnhancer (loaded lazily per cycle).
         # {agent_name: [query_1, query_2, ...]}
         self._extra_queries: dict[str, list[str]] = {}
+        # RL knowledge layer: per-ticker dossier digest cache (lazy).
+        # Scoped to this instance/run — agents are constructed fresh per
+        # analysis run, so this never needs explicit invalidation.
+        self._dossier_digest_cache: dict[str, str] = {}
 
     def _get_async_client(self):
         if self._async_client is None:
@@ -101,6 +105,10 @@ class BaseAgent(ABC):
             return self._no_data_output(query.ticker)
         system_prompt, user_prompt = self._build_prompt(query, context)
         system_prompt += _DATA_ONLY_INSTRUCTION + _date_instruction()
+        digest = self._get_dossier_digest(query.ticker)
+        if digest:
+            system_prompt += ("\n\n[ACCUMULATED TICKER KNOWLEDGE — learned from daily "
+                              "tracking of this stock]\n" + digest)
         t0 = time.time()
         raw = self._call_llm_with_retry(system_prompt, user_prompt)
         duration_ms = (time.time() - t0) * 1000
@@ -138,6 +146,10 @@ class BaseAgent(ABC):
             return self._no_data_output(query.ticker)
         system_prompt, user_prompt = self._build_prompt(query, context)
         system_prompt += _DATA_ONLY_INSTRUCTION + _date_instruction()
+        digest = self._get_dossier_digest(query.ticker)
+        if digest:
+            system_prompt += ("\n\n[ACCUMULATED TICKER KNOWLEDGE — learned from daily "
+                              "tracking of this stock]\n" + digest)
         t0 = time.time()
         raw = await self._call_llm_async(system_prompt, user_prompt)
         duration_ms = (time.time() - t0) * 1000
@@ -464,6 +476,31 @@ class BaseAgent(ABC):
             error="no_real_time_data",
             data_freshness="unavailable",
         )
+
+    # ------------------------------------------------------------------
+    # RL knowledge layer: ticker dossier digest (lazy, cached per ticker)
+    # ------------------------------------------------------------------
+
+    def _fetch_dossier_digest(self, ticker: str) -> str:
+        """Load and render the ticker dossier digest. Never raises."""
+        from core.config import settings
+        try:
+            from core.intelligence.rl.stores.prediction_store import PredictionStore
+            ps = PredictionStore(ticker=ticker, sector=self.sector or "automobile")
+            dossier = ps.load_dossier()
+            if dossier is None:
+                return ""
+            return dossier.to_digest(settings.DOSSIER_AGENT_DIGEST_CHARS)
+        except Exception:
+            return ""
+
+    def _get_dossier_digest(self, ticker: str) -> str:
+        from core.config import settings
+        if not getattr(settings, "RL_DOSSIER_ENABLED", True):
+            return ""
+        if ticker not in self._dossier_digest_cache:
+            self._dossier_digest_cache[ticker] = self._fetch_dossier_digest(ticker)
+        return self._dossier_digest_cache[ticker]
 
     # ------------------------------------------------------------------
     # P4: Prompt Enhancements

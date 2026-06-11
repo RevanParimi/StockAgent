@@ -73,6 +73,23 @@ _TIMING_FREE_WINDOW    = _s.RL_TIMING_FREE_WINDOW    # ≤N days off → no pena
 _TIMING_PARTIAL_WINDOW = _s.RL_TIMING_PARTIAL_WINDOW # ≤N days off → 0.20× penalty
                                                       # >N days     → 0.50× penalty
 
+# Per-agent calibration reward (RL Intelligence Phase, Component 2).
+# An agent's own predicted_agent_scores[agent] is treated as a "bullish lean"
+# when >= this threshold. 0.5 is the natural midpoint of the [0, 1] composite
+# score scale used throughout the system (every sub-agent emits overall_score
+# in [0, 1], where 0.5 is neutral). This is an algorithm constant — the
+# definition of "bullish" for an agent's own score — not a tunable policy knob.
+AGENT_BULLISH_THRESHOLD = 0.5
+
+# Verdicts that make a directional claim. NEUTRAL (or any other verdict
+# string) makes no directional claim and is excluded from calibration.
+# _BULLISH_VERDICTS is retained for callers/tests that need to classify a
+# verdict's directional lean (e.g. constructing realistic FeedbackEntry
+# fixtures); _compute_accuracy itself reads realized direction directly off
+# entry.actual_direction.
+_BULLISH_VERDICTS = frozenset({"BUY", "STRONG BUY"})
+_DIRECTIONAL_VERDICTS = frozenset({"BUY", "STRONG BUY", "SELL", "STRONG SELL"})
+
 
 class WeightAdapter:
     """
@@ -230,14 +247,29 @@ class WeightAdapter:
         Miss-type awareness:
           Entries with miss_type in NO_PENALTY_MISS_TYPES grant the primary agent
           a hit credit even on wrong days — the model was not at fault.
+
+        Per-agent calibration (RL Intelligence Phase, Component 2):
+          When RL_CALIBRATION_REWARD_ENABLED, also tracks calibration_hits/total —
+          whether THIS agent's own predicted_agent_scores[agent] lean matched
+          entry.actual_direction, independent of the ensemble verdict.
+          NEUTRAL-verdict days and FLAT-actual_direction days make no directional
+          claim and are excluded from the denominator. When the flag is False,
+          calibration_hits/total stay at 0 (the default), so the returned
+          AgentAccuracy — and hit_rate() — are unchanged from the pre-Component-2
+          behavior.
         """
         ref    = reference_date or date.today()
         recent = self._window_entries(feedback_log, settings.WEIGHT_ACCURACY_WINDOW, ref)
+
+        # Read the flag at call time so tests can monkeypatch it per-test.
+        calibration_enabled = getattr(settings, "RL_CALIBRATION_REWARD_ENABLED", True)
 
         hits:      dict[str, int]   = {a: 0 for a in agents}
         total:     dict[str, int]   = {a: 0 for a in agents}
         drift_sum: dict[str, float] = {a: 0.0 for a in agents}
         drift_cnt: dict[str, int]   = {a: 0 for a in agents}
+        calib_hits:  dict[str, int] = {a: 0 for a in agents}
+        calib_total: dict[str, int] = {a: 0 for a in agents}
 
         for entry in recent:
             miss_type = (
@@ -246,6 +278,19 @@ class WeightAdapter:
                 else "direction_flip"
             )
             is_no_penalty = miss_type in NO_PENALTY_MISS_TYPES
+
+            # Realized direction for calibration — taken directly from
+            # entry.actual_direction (the system's own classify_direction output),
+            # so calibration and the direction metric can never disagree. FLAT
+            # days carry no directional information, so they're excluded from
+            # the calibration denominator exactly like NEUTRAL verdicts.
+            realized_up: bool | None = None
+            if (
+                calibration_enabled
+                and entry.predicted_verdict in _DIRECTIONAL_VERDICTS
+                and entry.actual_direction in ("UP", "DOWN")
+            ):
+                realized_up = entry.actual_direction == "UP"
 
             for agent in agents:
                 total[agent] += 1
@@ -268,6 +313,12 @@ class WeightAdapter:
                     drift_sum[agent] += abs(entry.miss_analysis.agent_score_drift[agent])
                     drift_cnt[agent] += 1
 
+                if realized_up is not None and agent in entry.predicted_agent_scores:
+                    agent_bullish = entry.predicted_agent_scores[agent] >= AGENT_BULLISH_THRESHOLD
+                    calib_total[agent] += 1
+                    if agent_bullish == realized_up:
+                        calib_hits[agent] += 1
+
         accuracy: dict[str, AgentAccuracy] = {}
         for agent in agents:
             avg_err = (drift_sum[agent] / drift_cnt[agent]) if drift_cnt[agent] > 0 else 0.0
@@ -275,6 +326,8 @@ class WeightAdapter:
                 direction_hits=hits[agent],
                 total=total[agent],
                 avg_error=round(avg_err, 4),
+                calibration_hits=calib_hits[agent],
+                calibration_total=calib_total[agent],
             )
         return accuracy
 

@@ -88,6 +88,10 @@ class BaseSectorOrchestrator(ABC):
         self._aggregator = SignalAggregator()
         # Set by generate_forecast.py / daily_review.py; else auto-loaded from RL WeightMemory.
         self._aggregator_weights: dict[str, float] | None = None
+        # Ticker that _aggregator_weights was resolved/injected for — drives per-ticker
+        # weight scoping so a long-lived orchestrator instance reloads weights when
+        # the ticker changes between analyse()/analyse_async() calls.
+        self._aggregator_weights_ticker: str | None = None
         self._worker_pool_graph = _build_worker_pool_graph(self._sub_agents, self.SECTOR_NAME)
 
     # ------------------------------------------------------------------
@@ -109,9 +113,10 @@ class BaseSectorOrchestrator(ABC):
         query = await asyncio.to_thread(self._resolve_ticker, user_input, run_id)
         logger.info("[%s] Resolved: %s -> %s", self.SECTOR_NAME, user_input, query)
 
-        if self._aggregator_weights is None:
+        if self._aggregator_weights is None or self._aggregator_weights_ticker != query.ticker:
             learned = await asyncio.to_thread(self._load_learned_weights, query.ticker)
             self._aggregator_weights = learned or self._get_default_weights()
+            self._aggregator_weights_ticker = query.ticker
 
         # Pre-fetch NseIndiaApi data before fan-out — NSE() is sync, run in thread.
         # All 8 parallel agents share query.nse_data as read-only (set here, never written by agents).
@@ -171,11 +176,7 @@ class BaseSectorOrchestrator(ABC):
         query = self._resolve_ticker(user_input, run_id=run_id)
         logger.info("[%s] Resolved: %s -> %s", self.SECTOR_NAME, user_input, query)
 
-        if self._aggregator_weights is None:
-            self._aggregator_weights = (
-                self._load_learned_weights(query.ticker)
-                or self._get_default_weights()
-            )
+        self._resolve_weights_for(query.ticker)
 
         # Pre-fetch NseIndiaApi data before fan-out — one session, three calls, 0.5s sleep each.
         # All 8 parallel agents share query.nse_data as read-only.
@@ -244,6 +245,22 @@ class BaseSectorOrchestrator(ABC):
     def _get_default_weights(self) -> dict[str, float]:
         """Sector-specific default weights when no RL data exists. Override in sector subclasses."""
         return settings.AGENT_WEIGHTS
+
+    # ------------------------------------------------------------------
+    # Per-ticker aggregator weight scoping (RL knowledge layer)
+    # ------------------------------------------------------------------
+
+    def set_aggregator_weights(self, weights: dict[str, float], ticker: str) -> None:
+        """Explicit injection (generate_forecast / daily_review). Pins weights to ticker."""
+        self._aggregator_weights = weights
+        self._aggregator_weights_ticker = ticker
+
+    def _resolve_weights_for(self, ticker: str) -> None:
+        """(Re)load learned weights when unset or when the ticker changed."""
+        if self._aggregator_weights is None or self._aggregator_weights_ticker != ticker:
+            learned = self._load_learned_weights(ticker)
+            self._aggregator_weights = learned or self._get_default_weights()
+            self._aggregator_weights_ticker = ticker
 
     # ------------------------------------------------------------------
     # NseIndiaApi pre-fetch (called before LangGraph fan-out)

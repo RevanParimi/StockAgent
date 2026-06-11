@@ -22,6 +22,7 @@ These models are used by:
 
 from __future__ import annotations
 
+import re
 from datetime import date
 from typing import Literal
 from pydantic import BaseModel, Field
@@ -177,6 +178,13 @@ NO_PENALTY_MISS_TYPES: frozenset[str] = frozenset({
     "data_gap", "data_stale", "external_shock"
 })
 
+# Miss types that represent a genuine model failure (vs. an unforeseeable/
+# data-availability excuse). Used by both `LearningLedger.penalizable_miss_count`
+# and `LearningLedger.recency_weighted_miss_scores` — single source of truth.
+PENALIZABLE_MISS_TYPES: frozenset[str] = frozenset({
+    "model_bias", "direction_flip"
+})
+
 
 class MissAnalysis(BaseModel):
     """Root-cause breakdown of a single day's prediction error."""
@@ -247,9 +255,17 @@ class FeedbackEntry(BaseModel):
     predicted_verdict: str
     actual_direction: Direction            # UP | DOWN | FLAT (±ATR-relative threshold)
     direction_correct: bool
+    # Per-agent composite scores frozen at forecast time (copied from the day's
+    # DailyForecast.predicted_agent_scores). Enables per-agent calibration scoring
+    # in WeightAdapter._compute_accuracy — was an agent's own lean (>=0.5 = bullish)
+    # consistent with the realized direction, independent of the ensemble verdict?
+    # Empty dict for entries written before this field existed (backward-compatible).
+    predicted_agent_scores: dict[str, float] = Field(default_factory=dict)
     # Market regime active at time of review — critical for regime-stratified accuracy analysis.
     # Enables: "risk_macro is 71% accurate in NORMAL but only 44% in MACRO_CRISIS"
     regime_label: str = "NORMAL"
+    # Static-tagger event tags for the review day (deterministic; see tag_events()).
+    event_tags: list[str] = Field(default_factory=list)
     # Today's volume relative to 20-day average.  >2.0 = institutional activity; <0.5 = noise.
     # Derived from yfinance volume data already fetched in Step 2; None if unavailable.
     volume_vs_20d_avg: float | None = None
@@ -315,17 +331,59 @@ class AgentAccuracy(BaseModel):
     direction_hits: int = 0       # correct direction calls in the current rolling window
     total: int = 0                # total days evaluated in the current rolling window
     avg_error: float = 0.0        # mean absolute price_error_pct (agent sub-score drift)
+    # Per-agent calibration record (RL Intelligence Phase, Component 2).
+    # calibration_hits: days where this agent's own predicted_agent_scores[agent] lean
+    #   (>=AGENT_BULLISH_THRESHOLD = bullish) matched the realized direction.
+    # calibration_total: denominator for calibration_hits — excludes NEUTRAL-verdict
+    #   days (no directional claim was made) and days with no recorded agent score.
+    # Both default to 0 so existing WeightMemory JSON files load unchanged.
+    calibration_hits: int = 0
+    calibration_total: int = 0
     # Rolling 12-month snapshot history (evict oldest at month-13).
     # Gives the recalibration LLM a trend series: was this agent improving or degrading?
     monthly_snapshot_history: list[MonthlyAccuracySnapshot] = Field(default_factory=list)
 
-    def hit_rate(self) -> float:
+    def direction_hit_rate(self) -> float:
         return self.direction_hits / self.total if self.total > 0 else 0.5
+
+    def calibration_hit_rate(self) -> float:
+        return self.calibration_hits / self.calibration_total if self.calibration_total > 0 else 0.5
+
+    def hit_rate(self) -> float:
+        """
+        Hit rate that drives WeightAdapter boost/penalty decisions.
+
+        When RL_CALIBRATION_REWARD_ENABLED is True and this agent has at least one
+        non-NEUTRAL calibration observation, blends ensemble-direction accuracy with
+        the agent's own calibration accuracy:
+
+            hit_rate = (1 - w) * direction_hit_rate + w * calibration_hit_rate
+            w = RL_CALIBRATION_WEIGHT
+
+        When the flag is False (or there is no calibration data), returns the
+        pre-existing direction_hit_rate unchanged — byte-identical to prior behavior.
+        """
+        direction_rate = self.direction_hit_rate()
+
+        # Late import: lets tests monkeypatch settings per-call and avoids any
+        # import-order coupling between the schema module and config.
+        from core.config import settings
+
+        calibration_enabled = getattr(settings, "RL_CALIBRATION_REWARD_ENABLED", True)
+        if not calibration_enabled or self.calibration_total == 0:
+            return direction_rate
+
+        weight = getattr(settings, "RL_CALIBRATION_WEIGHT", 0.5)
+        return (1 - weight) * direction_rate + weight * self.calibration_hit_rate()
 
     def lifetime_hit_rate(self) -> float:
         """Compute cumulative hit rate across all stored monthly snapshots."""
         if not self.monthly_snapshot_history:
-            return self.hit_rate()
+            # Monthly snapshots (MonthlyAccuracySnapshot.hit_rate) are direction-only
+            # by definition, so the empty-history fallback must use the direction-only
+            # rate too — not the calibration-blended hit_rate() — to keep both
+            # branches of this method in the same units.
+            return self.direction_hit_rate()
         total_hits = sum(s.hit_rate * s.total for s in self.monthly_snapshot_history)
         total_days = sum(s.total for s in self.monthly_snapshot_history)
         return round(total_hits / total_days, 4) if total_days > 0 else 0.5
@@ -397,6 +455,69 @@ class WeightMemory(BaseModel):
 # 4. Learning Ledger
 # ---------------------------------------------------------------------------
 
+# Controlled event-tag vocabulary shared by Lesson.trigger_tags, FeedbackEntry.event_tags
+# and the dossier curator. Superset of the semantic_tags vocabulary.
+EVENT_TAGS: frozenset = frozenset({
+    "central_bank_event", "fii_flow", "crude_price", "currency", "earnings_event",
+    "guidance_change", "sector_policy", "technical_pattern", "seasonal", "credit_event",
+    "supply_chain", "regulatory", "global_macro", "expiry_week", "block_deal",
+    "monsoon", "budget_event",
+})
+
+_EVENT_KEYWORD_MAP: dict = {
+    "rbi": "central_bank_event", "mpc": "central_bank_event",
+    "repo rate": "central_bank_event", "rate cut": "central_bank_event",
+    "rate hike": "central_bank_event",
+    "fed ": "global_macro", "federal reserve": "global_macro", "fomc": "global_macro",
+    "tariff": "global_macro",
+    "fii": "fii_flow", "dii": "fii_flow", "foreign institutional": "fii_flow",
+    "crude": "crude_price", "brent": "crude_price", "opec": "crude_price",
+    "rupee": "currency", "usdinr": "currency", "usd/inr": "currency",
+    "earnings": "earnings_event", "quarterly results": "earnings_event",
+    "net profit": "earnings_event", "dividend": "earnings_event",
+    "guidance": "guidance_change", "outlook revised": "guidance_change",
+    "subsidy": "sector_policy", "pli scheme": "sector_policy", "fame": "sector_policy",
+    "sebi": "regulatory", "penalty": "regulatory", "investigation": "regulatory",
+    "rsi": "technical_pattern", "macd": "technical_pattern",
+    "breakout": "technical_pattern", "support level": "technical_pattern",
+    "npa": "credit_event", "downgrade": "credit_event", "default": "credit_event",
+    "chip shortage": "supply_chain", "semiconductor": "supply_chain",
+    "supply chain": "supply_chain",
+    "expiry": "expiry_week", "max pain": "expiry_week",
+    "block deal": "block_deal", "bulk deal": "block_deal",
+    "monsoon": "monsoon",
+    "budget": "budget_event",
+    "festive": "seasonal", "diwali": "seasonal", "navratri": "seasonal",
+}
+
+
+# Short keywords (<=4 chars) are prone to false-positive substring matches
+# (e.g. "rbi" inside "arbiter"/"carbide", "macd" inside longer words). Precompile
+# word-boundary regexes for these so tag_events() only fires on whole-word hits.
+# Trailing spaces (e.g. "fed ") are stripped before building the pattern so
+# "\bfed\b" doesn't require a literal space after the word; the map key itself
+# is left unchanged.
+_SHORT_KW_RE = {
+    kw: re.compile(rf"\b{re.escape(kw.strip())}\b")
+    for kw in _EVENT_KEYWORD_MAP if len(kw) <= 4
+}
+
+
+def tag_events(market_context: str) -> list:
+    """Deterministic keyword → event-tag mapping. Pure, never raises."""
+    if not market_context:
+        return []
+    low = market_context.lower()
+    tags = set()
+    for kw, tag in _EVENT_KEYWORD_MAP.items():
+        if kw in _SHORT_KW_RE:
+            if _SHORT_KW_RE[kw].search(low):
+                tags.add(tag)
+        elif kw in low:
+            tags.add(tag)
+    return sorted(tags)
+
+
 LessonScope = Literal[
     "stock_specific",   # only applies to this one ticker
     "sector_wide",      # applies to all stocks in the same sector
@@ -428,6 +549,11 @@ class Lesson(BaseModel):
     # earnings_miss, sector_policy, technical_pattern, seasonal, credit_event,
     # supply_chain, regulatory + sector=<name> qualifier
     semantic_tags: list[str] = Field(default_factory=list)
+    # Executable-claim fields (2026-06 knowledge layer). All optional — legacy lessons
+    # without trigger_tags keep the category-based micro-adjustment path.
+    trigger_tags: list[str] = Field(default_factory=list)      # subset of EVENT_TAGS
+    prioritise_agents: list[str] = Field(default_factory=list) # agents to boost when fired
+    discount_agents: list[str] = Field(default_factory=list)   # agents to dampen when fired
     # How many consecutive cycles contradicted this lesson before invalidation.
     # invalidation_streak >= 3 → still_valid = False. Allows "degrading" state:
     # streak=0: healthy, streak=1: warn, streak=2: critical, streak=3: invalidated.
@@ -450,6 +576,35 @@ class MissEvent(BaseModel):
     date: str            # ISO date of the miss
     miss_type: str       # "model_bias", "direction_flip", "external_shock", etc.
     cycle_id: str        # which monthly cycle this occurred in
+
+
+def _score_miss_events(
+    events: list["MissEvent"], today: date, halflife_days: float, discount: float,
+) -> float:
+    """
+    Sum recency-weighted, type-discounted scores for a list of MissEvents.
+
+    For each event:
+        exp(-age_days / halflife_days) x (1.0 if penalizable else discount)
+
+    where age_days = (today - event.date).days, floored at 0.
+
+    Unparseable event dates fall back to age_days=0 (max recency weight).
+    This is fail-open-to-max-recency by design: dates are always written via
+    date.today().isoformat(), so a parse failure should not silently zero out
+    a real miss — better to over-weight it than to lose it.
+    """
+    total = 0.0
+    for event in events:
+        try:
+            event_date = date.fromisoformat(event.date)
+            age_days = max((today - event_date).days, 0)
+        except ValueError:
+            age_days = 0
+        recency_weight = _math.exp(-age_days / halflife_days) if halflife_days > 0 else 1.0
+        type_weight = 1.0 if event.miss_type in PENALIZABLE_MISS_TYPES else discount
+        total += recency_weight * type_weight
+    return total
 
 
 class LearningLedger(BaseModel):
@@ -513,7 +668,7 @@ class LearningLedger(BaseModel):
     def penalizable_miss_count(self, factor: str) -> int:
         """Count of misses for this factor with penalizable miss types (model_bias, direction_flip)."""
         events = self.miss_events.get(factor, [])
-        return sum(1 for e in events if e.miss_type in {"model_bias", "direction_flip"})
+        return sum(1 for e in events if e.miss_type in PENALIZABLE_MISS_TYPES)
 
     def add_miss_event(self, factor: str, miss_type: str, date: str, cycle_id: str) -> None:
         """Record a miss event and keep the raw miss_counter in sync."""
@@ -527,6 +682,55 @@ class LearningLedger(BaseModel):
     def increment_miss(self, factor: str) -> None:
         """Legacy method — use add_miss_event for new code."""
         self.miss_counter[factor] = self.miss_counter.get(factor, 0) + 1
+
+    def recency_weighted_miss_scores(self) -> dict[str, float]:
+        """
+        Recency-weighted miss scores per factor (RL Intelligence Phase, Component 3).
+
+        score(factor) = sum over events in miss_events[factor] of:
+            exp(-age_days / MISS_RECENCY_HALFLIFE_DAYS)
+            x (1.0 if event.miss_type in PENALIZABLE_MISS_TYPES else MISS_PENALIZABLE_DISCOUNT)
+
+        where age_days = (today - event.date).days, floored at 0.
+
+        Recent misses dominate; non-penalizable miss types (e.g. external_shock,
+        data_gap) are discounted since they don't reflect a model failure that
+        better search data could fix.
+
+        Falls back to {factor: float(miss_counter[factor])} for any factor with
+        no entries in miss_events (legacy ledgers / factors only ever recorded
+        via the deprecated increment_miss path).
+
+        Behind settings.RL_FORGETTING_ENABLED — when the flag is False, callers
+        should use raw miss_counter ranking instead (this method is still safe
+        to call but callers gate on the flag, not this method).
+        """
+        from core.config import settings
+
+        halflife = getattr(settings, "MISS_RECENCY_HALFLIFE_DAYS", 21)
+        discount = getattr(settings, "MISS_PENALIZABLE_DISCOUNT", 0.3)
+        today = date.today()
+
+        scores: dict[str, float] = {}
+
+        for factor, count in self.miss_counter.items():
+            events = self.miss_events.get(factor)
+            if not events:
+                # Legacy fallback: no structured history for this factor.
+                scores[factor] = float(count)
+                continue
+
+            scores[factor] = _score_miss_events(events, today, halflife, discount)
+
+        # Factors that only ever appear in miss_events (shouldn't normally
+        # happen since add_miss_event keeps miss_counter in sync, but guard
+        # for safety/consistency).
+        for factor, events in self.miss_events.items():
+            if factor in scores or not events:
+                continue
+            scores[factor] = _score_miss_events(events, today, halflife, discount)
+
+        return scores
 
     def effective_confidence(self, lesson: Lesson) -> float:
         """
@@ -716,6 +920,11 @@ class RawLesson(BaseModel):
     rule: str
     confidence: float = Field(ge=0.0, le=1.0, default=0.5)
     scope: LessonScope = "stock_specific"   # LLM declares the scope
+    # Executable-claim fields (2026-06 knowledge layer). Validated against
+    # EVENT_TAGS / known agent names by FeedbackAgent._parse before reaching here.
+    trigger_tags: list[str] = Field(default_factory=list)
+    prioritise_agents: list[str] = Field(default_factory=list)
+    discount_agents: list[str] = Field(default_factory=list)
 
 
 class FeedbackAgentOutput(BaseModel):

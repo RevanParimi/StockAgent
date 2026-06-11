@@ -524,6 +524,17 @@ RL_WEIGHT_DRIFT_ESCAPE_DAYS: int = int(os.getenv("RL_WEIGHT_DRIFT_ESCAPE_DAYS", 
 RL_WEIGHT_DRIFT_ESCAPE_MULTIPLIER: float = float(os.getenv("RL_WEIGHT_DRIFT_ESCAPE_MULTIPLIER", "1.5"))
 
 # ---------------------------------------------------------------------------
+# RL Intelligence Phase, Component 2 — Per-Agent Calibration Reward
+# An agent earns a "calibration hit" when its own predicted_agent_scores[agent]
+# lean (bullish if >= AGENT_BULLISH_THRESHOLD) matches the realized direction,
+# independent of whether the ensemble verdict was correct. WeightAdapter blends
+# this into the hit_rate that drives boost/penalty deltas. Flag default ON
+# (user-confirmed); when False, behavior is byte-identical to pre-Component-2.
+# ---------------------------------------------------------------------------
+RL_CALIBRATION_REWARD_ENABLED: bool = os.getenv("RL_CALIBRATION_REWARD_ENABLED", "true").lower() == "true"
+RL_CALIBRATION_WEIGHT: float = float(os.getenv("RL_CALIBRATION_WEIGHT", "0.5"))
+
+# ---------------------------------------------------------------------------
 # STATIC_AUDIT #9 — News geo: removed country filter entirely
 # Serper query now omits "gl" — Google surfaces globally relevant results
 # based on query specificity. A query like "TCS Q4 2026 deal wins" returns
@@ -563,4 +574,58 @@ MACRO_NEWS_REVIEWER_MAX_ITEMS: int = int(os.getenv("MACRO_NEWS_REVIEWER_MAX_ITEM
 
 # Set to "false" to disable the macro news scheduler jobs without removing them
 MACRO_NEWS_ENABLED: bool = os.getenv("MACRO_NEWS_ENABLED", "true").lower() == "true"
+
+# ---------------------------------------------------------------------------
+# RL Intelligence Phase, Component 3 — Forgetting & Recency
+#
+# (a) Recency-weighted miss ranking (LearningLedger.recency_weighted_miss_scores,
+#     PromptEnhancer.enhance): recent misses should outrank old, frequent ones.
+#     score(factor) = sum over miss_events of exp(-age_days / HALFLIFE) x
+#                      (1.0 if penalizable else PENALIZABLE_DISCOUNT)
+#     Falls back to raw miss_counter ranking when miss_events is empty (legacy
+#     ledgers) or when RL_FORGETTING_ENABLED is False (byte-identical to prior
+#     behavior).
+#
+# (b) Stale-lesson archival with resurrection (ledger_propagator.archive_stale_lessons):
+#     invalidated lessons that are low-confidence, low-effectiveness, and stale
+#     are moved to a per-ticker cold-store JSON. Resurrection restores them if a
+#     matching pattern/semantic-tag lesson is about to be re-created.
+#
+# (c) Recency-weighted feedback aggregation (PredictionStore.load_recent_feedback_entries,
+#     compute_historical_avg_return): more recent monthly cycles are weighted
+#     higher when computing historical average returns.
+#     weight = exp(-cycle_age_months / FEEDBACK_HALFLIFE_MONTHS)
+# ---------------------------------------------------------------------------
+RL_FORGETTING_ENABLED: bool = os.getenv("RL_FORGETTING_ENABLED", "true").lower() == "true"
+
+# Half-life (days) for recency decay of miss events — score halves every N days.
+MISS_RECENCY_HALFLIFE_DAYS: float = float(os.getenv("MISS_RECENCY_HALFLIFE_DAYS", "21"))
+
+# Multiplier applied to non-penalizable miss types (e.g. external_shock) when
+# computing recency-weighted miss scores.
+MISS_PENALIZABLE_DISCOUNT: float = float(os.getenv("MISS_PENALIZABLE_DISCOUNT", "0.3"))
+
+# Archival thresholds — a still_valid=False lesson is archived only when ALL
+# three conditions hold: effective confidence at/below floor, effectiveness
+# below floor, AND stale for longer than ARCHIVE_STALE_DAYS.
+ARCHIVE_CONF_FLOOR: float = float(os.getenv("ARCHIVE_CONF_FLOOR", "0.12"))
+ARCHIVE_EFFECTIVENESS_FLOOR: float = float(os.getenv("ARCHIVE_EFFECTIVENESS_FLOOR", "0.25"))
+ARCHIVE_STALE_DAYS: int = int(os.getenv("ARCHIVE_STALE_DAYS", "60"))
+
+# Half-life (months) for recency-weighted feedback cycle aggregation.
+FEEDBACK_HALFLIFE_MONTHS: float = float(os.getenv("FEEDBACK_HALFLIFE_MONTHS", "3"))
+
+# ── RL Knowledge Layer — Ticker Dossier + executable claims (2026-06) ──────
+RL_DOSSIER_ENABLED: bool = os.getenv("RL_DOSSIER_ENABLED", "true").lower() == "true"
+DOSSIER_MAX_OBSERVATIONS: int = int(os.getenv("DOSSIER_MAX_OBSERVATIONS", "30"))
+DOSSIER_DIGEST_MAX_CHARS: int = int(os.getenv("DOSSIER_DIGEST_MAX_CHARS", "2500"))
+DOSSIER_AGENT_DIGEST_CHARS: int = int(os.getenv("DOSSIER_AGENT_DIGEST_CHARS", "1500"))
+DOSSIER_MAX_NEW_OBS_PER_DAY: int = int(os.getenv("DOSSIER_MAX_NEW_OBS_PER_DAY", "3"))
+# Post-cap dossiers (30 obs/20 guidance/12 questions/10 catalysts) serialize well under this
+# limit, so this cut is a safety net only — not expected to bite in normal operation.
+DOSSIER_DISTILL_INPUT_MAX_CHARS: int = int(os.getenv("DOSSIER_DISTILL_INPUT_MAX_CHARS", "20000"))
+RL_CLAIMS_ENABLED: bool = os.getenv("RL_CLAIMS_ENABLED", "true").lower() == "true"
+RL_LESSON_EMPHASIS_DELTA: float = float(os.getenv("RL_LESSON_EMPHASIS_DELTA", "0.03"))
+RL_LESSON_EMPHASIS_CAP: float = float(os.getenv("RL_LESSON_EMPHASIS_CAP", "0.06"))
+RL_LESSON_MATCH_MIN_CONF: float = float(os.getenv("RL_LESSON_MATCH_MIN_CONF", "0.45"))
 

@@ -305,7 +305,20 @@ class PromptEnhancer:
         if not miss_counter:
             return {}
 
-        sorted_factors = sorted(miss_counter.items(), key=lambda kv: kv[1], reverse=True)
+        # RL Intelligence Phase, Component 3 — recency-weighted miss ranking.
+        # When enabled, rank factors by recency_weighted_miss_scores() so recent
+        # misses outrank old, frequent ones (and external_shock-type misses are
+        # discounted). Falls back to raw miss_counter ranking when the flag is
+        # off, or when miss_events is empty (legacy ledgers — scores reduce to
+        # the raw counts anyway, but we keep the explicit fallback for clarity
+        # and byte-identical ordering on ties).
+        if getattr(settings, "RL_FORGETTING_ENABLED", True) and learning_ledger.miss_events:
+            scores = learning_ledger.recency_weighted_miss_scores()
+            sorted_factors = sorted(
+                miss_counter.items(), key=lambda kv: scores.get(kv[0], 0.0), reverse=True
+            )
+        else:
+            sorted_factors = sorted(miss_counter.items(), key=lambda kv: kv[1], reverse=True)
         top_factors = [factor for factor, _ in sorted_factors[:top_n]]
 
         today = date.today()

@@ -488,6 +488,30 @@ def compute_atr_pct(ohlcv_df) -> float:
 # Convenience: compute historical average return for a verdict from FeedbackLog
 # ---------------------------------------------------------------------------
 
+def _weighted_median(pairs: list[tuple[float, float]]) -> float:
+    """
+    Weighted median of (value, weight) pairs.
+
+    Sorts by value and walks cumulative weight until it reaches half the
+    total weight — the standard "lower weighted median" definition.
+    Falls back to the plain median if all weights are zero.
+    """
+    total_weight = sum(w for _, w in pairs)
+    if total_weight <= 0:
+        values = sorted(v for v, _ in pairs)
+        mid = len(values) // 2
+        return values[mid] if len(values) % 2 != 0 else (values[mid - 1] + values[mid]) / 2
+
+    ordered = sorted(pairs, key=lambda vw: vw[0])
+    cumulative = 0.0
+    half = total_weight / 2.0
+    for value, weight in ordered:
+        cumulative += weight
+        if cumulative >= half:
+            return value
+    return ordered[-1][0]
+
+
 def compute_historical_avg_return(
     feedback_log_or_entries,
     verdict: str,
@@ -496,16 +520,42 @@ def compute_historical_avg_return(
 ) -> float | None:
     """
     Compute median observed price_error_pct for a given verdict.
-    Accepts either a DailyFeedbackLog object or a plain list of FeedbackEntry objects.
+    Accepts either a DailyFeedbackLog object, a plain list of FeedbackEntry
+    objects, or (RL Intelligence Phase, Component 3) a
+    list[tuple[FeedbackEntry, float]] of (entry, recency_weight) pairs as
+    returned by PredictionStore.load_recent_feedback_entries(recency_weighted=True).
     Returns None if fewer than 3 matching entries.
 
     regime_label : when provided, first attempts to filter entries to the same regime
     (same regime = more accurate calibration). Falls back to all-regime entries if
     fewer than 3 same-regime entries exist (prevents empty result at regime transitions).
+
+    Recency weighting: when settings.RL_FORGETTING_ENABLED is True AND the input
+    is a list of (entry, weight) tuples, the median becomes a weighted median —
+    more recent cycles (higher weight) pull the result toward themselves. When
+    the flag is False, or the input is a plain list/DailyFeedbackLog (no
+    weights), behavior is byte-identical to the original unweighted median.
     """
     try:
+        forgetting_enabled = getattr(settings, "RL_FORGETTING_ENABLED", True)
+
+        weighted_input = False
         if isinstance(feedback_log_or_entries, list):
-            all_entries = feedback_log_or_entries
+            if (
+                feedback_log_or_entries
+                and isinstance(feedback_log_or_entries[0], tuple)
+                and forgetting_enabled
+            ):
+                weighted_input = True
+                all_pairs = feedback_log_or_entries
+                all_entries = [e for e, _ in all_pairs]
+            else:
+                # Plain list — unwrap (entry, weight) tuples to entries if present
+                # so the unweighted path still works when the flag is off.
+                all_entries = [
+                    e[0] if isinstance(e, tuple) else e
+                    for e in feedback_log_or_entries
+                ]
         elif feedback_log_or_entries is None:
             return None
         else:
@@ -521,30 +571,42 @@ def compute_historical_avg_return(
             mid = len(s) // 2
             return s[mid] if len(s) % 2 != 0 else (s[mid - 1] + s[mid]) / 2
 
+        def _aggregate(matching_entries: list) -> float:
+            """Median (or weighted median) of price_error_pct for matching_entries."""
+            if weighted_input:
+                weight_by_id = {id(e): w for e, w in all_pairs}
+                pairs = [
+                    (e.price_error_pct, weight_by_id.get(id(e), 1.0))
+                    for e in matching_entries
+                ]
+                return _weighted_median(pairs)
+            return _median([e.price_error_pct for e in matching_entries])
+
         # First pass: same-regime entries (most accurate for current market conditions)
         if regime_label:
             regime_matching = [
-                e.price_error_pct
+                e
                 for e in all_entries
                 if e.predicted_verdict.upper() == verdict_upper
                 and getattr(e, "regime_label", None) == regime_label
             ]
             if len(regime_matching) >= 3:
+                result = _aggregate(regime_matching)
                 logger.debug(
                     "[PriceInterpolator] Historical avg (regime=%s, verdict=%s): "
                     "%d entries → %.2f%%",
-                    regime_label, verdict, len(regime_matching), _median(regime_matching),
+                    regime_label, verdict, len(regime_matching), result,
                 )
-                return round(_median(regime_matching), 2)
+                return round(result, 2)
 
         # Fallback: all-regime entries for this verdict
         all_matching = [
-            e.price_error_pct
+            e
             for e in all_entries
             if e.predicted_verdict.upper() == verdict_upper
         ]
         if len(all_matching) < 3:
             return None
-        return round(_median(all_matching), 2)
+        return round(_aggregate(all_matching), 2)
     except Exception:
         return None

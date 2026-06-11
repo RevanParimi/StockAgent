@@ -98,6 +98,10 @@ def _apply_ledger_micro_adjustments(
     for lesson in learning_ledger.lessons:
         if not lesson.still_valid or lesson.occurrences < 2:
             continue
+        if lesson.trigger_tags:
+            # Tagged lessons fire via apply_lesson_emphasis() on matching
+            # calendar/event days instead of this legacy category-based path.
+            continue
         try:
             days_old = (today - _date.fromisoformat(lesson.last_seen)).days
         except Exception:
@@ -213,6 +217,17 @@ def _build_daily_forecasts(
         # where lessons only appear in narrative, not in actual forecast numbers.
         day_agent_scores = _apply_ledger_micro_adjustments(day_agent_scores, learning_ledger)
 
+        # Knowledge layer: tagged-lesson emphasis on this day's calendar tags
+        # (e.g. monsoon, budget_event, expiry_week). Applies ±RL_LESSON_EMPHASIS_DELTA
+        # to prioritise/discount agents for still-valid lessons whose trigger_tags
+        # match this row's calendar-derived tags.
+        if learning_ledger is not None:
+            from core.intelligence.rl.algorithms.lesson_emphasis import (
+                apply_lesson_emphasis, calendar_day_tags)
+            day_tags = calendar_day_tags(td)
+            if day_tags:
+                day_agent_scores = apply_lesson_emphasis(day_agent_scores, learning_ledger, day_tags)
+
         forecasts.append(DailyForecast(
             day=day_num,
             date=td.isoformat(),
@@ -264,7 +279,7 @@ def generate_forecast(ticker: str, sector: str = "automobile") -> PredictionEnve
     # via the _aggregator.run() call inside, so no global config mutation needed.
     # We pass them through a subclass override in the orchestrator.
     orchestrator = get_orchestrator(sector)
-    orchestrator._aggregator_weights = effective_weights
+    orchestrator.set_aggregator_weights(effective_weights, ticker)
     report = orchestrator.analyse(ticker)
 
     # Fetch actual baseline close — retry once on failure before raising
@@ -336,7 +351,12 @@ def generate_forecast(ticker: str, sector: str = "automobile") -> PredictionEnve
 
         # Historical average return for this verdict (from prior cycles),
         # filtered to same-regime entries first (P3-13 regime-segmented returns).
-        all_feedback_entries = store.load_recent_feedback_entries(n_cycles=6)
+        # RL Intelligence Phase, Component 3: when RL_FORGETTING_ENABLED, recent
+        # cycles are weighted more heavily (compute_historical_avg_return uses a
+        # weighted median over these (entry, weight) pairs).
+        all_feedback_entries = store.load_recent_feedback_entries(
+            n_cycles=6, recency_weighted=settings.RL_FORGETTING_ENABLED
+        )
         hist_avg = compute_historical_avg_return(
             all_feedback_entries, report.verdict, regime_label=regime_label
         )

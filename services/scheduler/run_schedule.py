@@ -306,6 +306,29 @@ def cmd_feedback_status(args) -> None:
     print()
 
 
+def cmd_dossier_status(args) -> None:
+    """Print per-ticker dossier health: size, version, staleness, counts."""
+    from core.intelligence.rl.stores.prediction_store import PredictionStore
+    from services.api.log_buffer import get_active_tickers_with_sector
+
+    rows = get_active_tickers_with_sector()
+    if getattr(args, "ticker", None):
+        # Case-insensitive match: --ticker maruti should match sym "MARUTI".
+        rows = [r for r in rows if r["sym"].upper() in {t.upper() for t in args.ticker}]
+    for r in rows:
+        store = PredictionStore(ticker=r["sym"], sector=r["sector"])
+        d = store.load_dossier()
+        if d is None:
+            print(f"{r['sym']:12s}  — no dossier yet")
+            continue
+        alive = sum(1 for s in d.response_signatures if s.is_alive)
+        open_q = sum(1 for q in d.open_questions if not q.resolved_on)
+        print(f"{r['sym']:12s}  v{d.version}  updated={d.last_updated}  "
+              f"obs={len(d.observations)}  signatures={alive}  "
+              f"guidance_open={sum(1 for g in d.guidance if g.status == 'open')}  "
+              f"open_questions={open_q}  digest_chars={len(d.to_digest(99999))}")
+
+
 # ---------------------------------------------------------------------------
 # CLI parser
 # ---------------------------------------------------------------------------
@@ -348,6 +371,10 @@ def main() -> None:
     fstatus_p = sub.add_parser("feedback-status", help="Show RL feedback state for a ticker")
     fstatus_p.add_argument("--ticker", required=True, help="NSE ticker, e.g. MARUTI")
 
+    # dossier-status
+    dstatus_p = sub.add_parser("dossier-status", help="RL dossier health per ticker")
+    dstatus_p.add_argument("--ticker", nargs="*", help="One or more NSE tickers (default: all managed)")
+
     args = parser.parse_args()
 
     dispatch = {
@@ -359,6 +386,7 @@ def main() -> None:
         "forecast":        cmd_forecast,
         "daily-review":    cmd_daily_review,
         "feedback-status": cmd_feedback_status,
+        "dossier-status":  cmd_dossier_status,
     }
     dispatch[args.command](args)
 

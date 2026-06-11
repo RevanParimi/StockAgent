@@ -210,23 +210,48 @@ class PredictionStore:
             return DailyFeedbackLog(ticker=self.ticker, cycle_id=cid)
         return DailyFeedbackLog(**data)
 
-    def load_recent_feedback_entries(self, n_cycles: int = 6) -> list:
+    def load_recent_feedback_entries(self, n_cycles: int = 6, recency_weighted: bool = False) -> list:
         """
         Aggregate FeedbackEntry objects from the last n_cycles completed logs.
         Returns a flat list — most recent cycle first.
         Silently skips unreadable files.
+
+        recency_weighted (RL Intelligence Phase, Component 3):
+          When False (default), behavior is byte-identical to before — returns
+          a flat list of FeedbackEntry.
+          When True, returns list[tuple[FeedbackEntry, float]] where
+          weight = exp(-cycle_age_months / settings.FEEDBACK_HALFLIFE_MONTHS),
+          cycle_age_months = 0 for the most recent cycle, 1 for the next, etc.
+          (each monthly log file = one cycle).
         """
         from core.schemas.feedback import DailyFeedbackLog
         pattern = f"{self.ticker}_*_daily_feedback_log.json"
         log_files = sorted(self._dir.glob(pattern), reverse=True)[:n_cycles]
-        entries = []
-        for path in log_files:
+
+        if not recency_weighted:
+            entries = []
+            for path in log_files:
+                try:
+                    log = DailyFeedbackLog.model_validate_json(path.read_text(encoding="utf-8"))
+                    entries.extend(log.entries)
+                except Exception as exc:
+                    logger.debug("[PredictionStore] Skipping unreadable log %s: %s", path.name, exc)
+            return entries
+
+        import math as _math
+        halflife = getattr(settings, "FEEDBACK_HALFLIFE_MONTHS", 3)
+
+        weighted_entries: list[tuple] = []
+        for cycle_age_months, path in enumerate(log_files):
             try:
                 log = DailyFeedbackLog.model_validate_json(path.read_text(encoding="utf-8"))
-                entries.extend(log.entries)
             except Exception as exc:
                 logger.debug("[PredictionStore] Skipping unreadable log %s: %s", path.name, exc)
-        return entries
+                continue
+            weight = _math.exp(-cycle_age_months / halflife) if halflife > 0 else 1.0
+            for entry in log.entries:
+                weighted_entries.append((entry, weight))
+        return weighted_entries
 
     def append_feedback_entry(self, entry: FeedbackEntry, cycle_id: str | None = None) -> None:
         """
@@ -446,6 +471,40 @@ class PredictionStore:
             return OffMarketSignals(**data)
         except Exception:
             return None
+
+    # ------------------------------------------------------------------
+    # RL Intelligence Phase, Component 3 — Archived lessons (cold store)
+    # ({ticker}_archived_lessons.json)
+    # ------------------------------------------------------------------
+
+    def _archived_lessons_path(self) -> Path:
+        # Cold-store I/O (read/write of this file) lives in
+        # ledger_propagator (archive_stale_lessons / resurrect_lesson);
+        # this helper only supplies the canonical path.
+        return self._dir / f"{self.ticker}_archived_lessons.json"
+
+    # ------------------------------------------------------------------
+    # Ticker dossier (PERMANENT — RL knowledge layer)
+    # ------------------------------------------------------------------
+
+    def _dossier_path(self) -> Path:
+        return self._learning_ledger_path().parent / f"{self.ticker}_dossier.json"
+
+    def load_dossier(self):
+        from backend.shared.schemas.dossier import TickerDossier
+        data = self._read_json(self._dossier_path())
+        if not data:
+            return None
+        try:
+            return TickerDossier(**data)
+        except Exception as exc:
+            logger.error("[PredictionStore] Corrupt dossier for %s: %s", self.ticker, exc)
+            return None
+
+    def save_dossier(self, dossier) -> None:
+        # NOTE: mutates dossier.last_updated in place (intentional stamp-on-save).
+        dossier.last_updated = date.today().isoformat()
+        self._write_json(self._dossier_path(), dossier.model_dump())
 
     # ------------------------------------------------------------------
     # Convenience: list all cycle IDs for this ticker

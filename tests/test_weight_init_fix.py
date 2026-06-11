@@ -35,6 +35,8 @@ import re
 import sys
 from datetime import date
 
+import pytest
+
 # ---------------------------------------------------------------------------
 # Sector configuration (ground truth from settings files)
 # ---------------------------------------------------------------------------
@@ -339,6 +341,37 @@ def _rule_based_review(evaluations: dict[str, dict]) -> bool:
         return True
     print("  Rule-based verdict: NEEDS_REVISION")
     return False
+
+
+# ---------------------------------------------------------------------------
+# Per-ticker aggregator weight scoping (RL knowledge layer — Task 13)
+# ---------------------------------------------------------------------------
+
+@pytest.fixture
+def orchestrator_fixture():
+    """A freshly constructed sector orchestrator, built the same way agent_researcher() does."""
+    cls = _import_class(
+        "backend.sectors.automobile.pipeline.orchestrator.AutomobileAgentOrchestrator"
+    )
+    return cls()
+
+
+def test_weights_reload_when_ticker_changes(orchestrator_fixture, monkeypatch):
+    orch = orchestrator_fixture          # reuse the file's existing construction pattern
+    calls = []
+    monkeypatch.setattr(orch, "_load_learned_weights",
+                         lambda t: calls.append(t) or {"risk_macro": 1.0})
+    orch._aggregator_weights = None
+    orch._resolve_weights_for("MARUTI")  # helper added in Step 3
+    orch._resolve_weights_for("TATAMOTORS")
+    assert calls == ["MARUTI", "TATAMOTORS"]   # second ticker NOT served cached weights
+
+
+def test_externally_injected_weights_not_clobbered(orchestrator_fixture):
+    orch = orchestrator_fixture
+    orch.set_aggregator_weights({"risk_macro": 0.9}, ticker="MARUTI")
+    orch._resolve_weights_for("MARUTI")
+    assert orch._aggregator_weights == {"risk_macro": 0.9}
 
 
 # ---------------------------------------------------------------------------

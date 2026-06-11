@@ -414,7 +414,10 @@ class AutomobileScheduler:
         Non-fatal: failures per ticker are logged but never crash the scheduler.
         """
         from pathlib import Path
-        from core.intelligence.rl.stores.ledger_propagator import downgrade_stale_lessons
+        from core.intelligence.rl.stores.ledger_propagator import (
+            archive_stale_lessons,
+            downgrade_stale_lessons,
+        )
         from core.intelligence.rl.stores.prediction_store import PredictionStore
 
         _KNOWN_SECTORS = ["automobile", "banking_bfsi", "it_sector", "renewable_energy"]
@@ -461,6 +464,23 @@ class AutomobileScheduler:
                         tl.scope = new_scope
                         n_ticker += 1
 
+                # RL Intelligence Phase, Component 3 — archive stale, invalidated
+                # lessons from the ticker's own ledger to its cold store.
+                # Non-fatal per ticker: a failure here must never block the
+                # scope-downgrade saves above.
+                n_archived = 0
+                try:
+                    n_archived = archive_stale_lessons(
+                        ticker_ledger, store._archived_lessons_path()
+                    )
+                    if n_archived:
+                        n_ticker += n_archived
+                except Exception as exc:
+                    logger.warning(
+                        "[Scheduler] Lesson archival failed for %s (non-fatal): %s",
+                        ticker, exc, exc_info=True,
+                    )
+
                 if n_market:
                     store.save_market_ledger(market_ledger)
                 if n_sector:
@@ -472,9 +492,22 @@ class AutomobileScheduler:
                 if total_modified:
                     logger.info(
                         "[Scheduler] Ledger cleanup %s: %d lessons modified "
-                        "(market=%d, sector=%d, ticker=%d)",
-                        ticker, total_modified, n_market, n_sector, n_ticker,
+                        "(market=%d, sector=%d, ticker=%d, archived=%d)",
+                        ticker, total_modified, n_market, n_sector, n_ticker, n_archived,
                     )
+
+                # Weekly dossier distillation (knowledge layer) — same cadence as
+                # stale-lesson cleanup; non-fatal per ticker.
+                try:
+                    from core.config import settings as _settings
+                    if getattr(_settings, "RL_DOSSIER_ENABLED", True):
+                        from core.intelligence.rl.agents.dossier_curator import distill_dossier
+                        dossier = store.load_dossier()
+                        if dossier is not None:
+                            store.save_dossier(distill_dossier(dossier))
+                            logger.info("[Scheduler] Distilled dossier for %s", ticker)
+                except Exception as exc:
+                    logger.warning("[Scheduler] Dossier distillation failed for %s: %s", ticker, exc)
             except Exception as exc:
                 logger.warning("[Scheduler] Ledger cleanup failed for %s: %s", ticker, exc, exc_info=True)
         _job_banner("Weekly Ledger Cleanup", done=True)

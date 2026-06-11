@@ -173,7 +173,7 @@ def _run_todays_agent_scores(
         from core.intelligence.rl.workflows.sector_router import get_orchestrator
         orchestrator = get_orchestrator(sector)
         if learned_weights:
-            orchestrator._aggregator_weights = learned_weights
+            orchestrator.set_aggregator_weights(learned_weights, ticker)
         report = orchestrator.analyse(ticker)
         return {name: ws.raw for name, ws in report.weighted_agent_scores.items()}
     except Exception as exc:

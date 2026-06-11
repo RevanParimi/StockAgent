@@ -279,7 +279,7 @@ def generate_forecast(ticker: str, sector: str = "automobile") -> PredictionEnve
     # via the _aggregator.run() call inside, so no global config mutation needed.
     # We pass them through a subclass override in the orchestrator.
     orchestrator = get_orchestrator(sector)
-    orchestrator._aggregator_weights = effective_weights
+    orchestrator.set_aggregator_weights(effective_weights, ticker)
     report = orchestrator.analyse(ticker)
 
     # Fetch actual baseline close — retry once on failure before raising

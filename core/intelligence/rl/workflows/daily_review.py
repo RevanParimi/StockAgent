@@ -244,6 +244,8 @@ def _revise_remaining_forecasts(
     reversion_prior: float = 0.0,
     updated_streak: ConvictionStreak | None = None,
     thesis_review: ThesisReview | None = None,
+    ticker_ledger=None,
+    today_tags: list[str] | None = None,
 ) -> None:
     """
     Update all remaining (future) forecast rows in the envelope:
@@ -254,6 +256,8 @@ def _revise_remaining_forecasts(
       - P3: Apply reversion_prior dampening to confidence
       - P3: Persist updated_streak to the envelope
       - Step 7: Apply thesis_review.horizon_confidence_multiplier when thesis broken
+      - Step 7 (knowledge layer): Apply executable-claim emphasis to
+        predicted_agent_scores for tagged lessons firing on today's tags
     """
     envelope = store.load_envelope()
     if envelope is None:
@@ -275,6 +279,14 @@ def _revise_remaining_forecasts(
     for forecast in remaining:
         forecast.revised        = True
         forecast.revision_count += 1
+
+        # Knowledge layer: tagged-lesson emphasis on today's matching tags.
+        # Applied to predicted_agent_scores BEFORE the composite re-weight below
+        # so the boosted/dampened scores feed into new_composite.
+        if ticker_ledger is not None and today_tags:
+            from core.intelligence.rl.algorithms.lesson_emphasis import apply_lesson_emphasis
+            forecast.predicted_agent_scores = apply_lesson_emphasis(
+                forecast.predicted_agent_scores, ticker_ledger, today_tags)
 
         # Inject revised headline as leading assumption (avoid duplicates)
         if headline and headline not in forecast.key_assumptions:
@@ -629,6 +641,15 @@ def run_daily_review(
         )
 
     # ------------------------------------------------------------------ #
+    # Static event tags for today — deterministic, LLM-independent. Used by
+    # Step-7 claim matching and persisted on the FeedbackEntry.
+    # ------------------------------------------------------------------ #
+    from backend.shared.schemas.feedback import tag_events
+    from core.intelligence.rl.algorithms.lesson_emphasis import calendar_day_tags
+    today_tags = sorted(set(tag_events(market_context or ""))
+                         | set(calendar_day_tags(review_date)))
+
+    # ------------------------------------------------------------------ #
     # Assemble supplementary context for FeedbackAgentInput
     # ------------------------------------------------------------------ #
 
@@ -645,10 +666,12 @@ def run_daily_review(
 
     # 1. Significant sub-score drift — agents where |composite drift| > 0.10
     # Suppressed on early-exit days (scores are frozen, drift would be artifically zero).
+    # predicted_scores is also used below (top_drift_agents) regardless of
+    # early-exit, so it must be defined unconditionally (pre-existing bug fix).
     SUBSCORE_DRIFT_THRESHOLD = 0.10
     significant_subscore_drift: dict = {}
+    predicted_scores = today_forecast.predicted_agent_scores or {}
     if not _early_exit_used:
-        predicted_scores = today_forecast.predicted_agent_scores or {}
         for agent, today_score in todays_scores.items():
             predicted_score = predicted_scores.get(agent, today_score)
             drift = today_score - predicted_score
@@ -838,6 +861,7 @@ def run_daily_review(
         miss_analysis=miss_analysis,
         timing=timing,
         predicted_agent_scores=today_forecast.predicted_agent_scores,
+        event_tags=today_tags,
     )
     feedback_log.entries = [e for e in feedback_log.entries if e.date != date_str]
     feedback_log.entries.append(provisional)
@@ -986,6 +1010,8 @@ def run_daily_review(
         reversion_prior=final_reversion_prior,
         updated_streak=updated_streak,
         thesis_review=thesis_review,
+        ticker_ledger=updated_ledger,
+        today_tags=today_tags,
     )
 
     # ------------------------------------------------------------------ #
@@ -1001,6 +1027,7 @@ def run_daily_review(
         actual_direction=actual_direction,
         direction_correct=direction_correct,
         regime_label=regime_snapshot.regime_label,
+        event_tags=today_tags,
         volume_vs_20d_avg=volume_vs_20d_avg,
         miss_analysis=miss_analysis,
         timing=timing,
@@ -1013,6 +1040,31 @@ def run_daily_review(
         predicted_agent_scores=today_forecast.predicted_agent_scores,
     )
     store.append_feedback_entry(final_entry, cycle_id)
+
+    # ------------------------------------------------------------------ #
+    # Step 8.5: Dossier curator — runs EVERY day (hit or miss), never fatal.
+    # Extracts durable knowledge from today's review into the per-ticker
+    # TickerDossier. Failure here must never block Step 9 below.
+    # ------------------------------------------------------------------ #
+    if getattr(settings, "RL_DOSSIER_ENABLED", True):
+        try:
+            from backend.shared.schemas.dossier import TickerDossier
+            from core.intelligence.rl.agents.dossier_curator import DossierCurator
+            dossier = store.load_dossier() or TickerDossier(
+                ticker=ticker, sector=sector,
+                created_at=final_entry.date, last_updated=final_entry.date)
+            updated_dossier = DossierCurator().run(
+                dossier, final_entry, market_context or "", fb_output)
+            store.save_dossier(updated_dossier)
+            logger.info(
+                "[daily_review] Step 8.5 dossier updated for %s (%d observations)",
+                ticker, len(updated_dossier.observations),
+            )
+        except Exception as exc:
+            logger.warning(
+                "[daily_review] %s: Step 8.5 dossier curator failed (non-fatal): %s",
+                ticker, exc,
+            )
 
     # ------------------------------------------------------------------ #
     # G4: Fetch today's off-market signals after market close (non-fatal).

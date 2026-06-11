@@ -615,3 +615,14 @@ ARCHIVE_STALE_DAYS: int = int(os.getenv("ARCHIVE_STALE_DAYS", "60"))
 # Half-life (months) for recency-weighted feedback cycle aggregation.
 FEEDBACK_HALFLIFE_MONTHS: float = float(os.getenv("FEEDBACK_HALFLIFE_MONTHS", "3"))
 
+# ── RL Knowledge Layer — Ticker Dossier + executable claims (2026-06) ──────
+RL_DOSSIER_ENABLED: bool = os.getenv("RL_DOSSIER_ENABLED", "true").lower() == "true"
+DOSSIER_MAX_OBSERVATIONS: int = int(os.getenv("DOSSIER_MAX_OBSERVATIONS", "30"))
+DOSSIER_DIGEST_MAX_CHARS: int = int(os.getenv("DOSSIER_DIGEST_MAX_CHARS", "2500"))
+DOSSIER_AGENT_DIGEST_CHARS: int = int(os.getenv("DOSSIER_AGENT_DIGEST_CHARS", "1500"))
+DOSSIER_MAX_NEW_OBS_PER_DAY: int = int(os.getenv("DOSSIER_MAX_NEW_OBS_PER_DAY", "3"))
+RL_CLAIMS_ENABLED: bool = os.getenv("RL_CLAIMS_ENABLED", "true").lower() == "true"
+RL_LESSON_EMPHASIS_DELTA: float = float(os.getenv("RL_LESSON_EMPHASIS_DELTA", "0.03"))
+RL_LESSON_EMPHASIS_CAP: float = float(os.getenv("RL_LESSON_EMPHASIS_CAP", "0.06"))
+RL_LESSON_MATCH_MIN_CONF: float = float(os.getenv("RL_LESSON_MATCH_MIN_CONF", "0.45"))
+

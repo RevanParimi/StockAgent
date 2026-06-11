@@ -263,6 +263,8 @@ class FeedbackEntry(BaseModel):
     # Market regime active at time of review — critical for regime-stratified accuracy analysis.
     # Enables: "risk_macro is 71% accurate in NORMAL but only 44% in MACRO_CRISIS"
     regime_label: str = "NORMAL"
+    # Static-tagger event tags for the review day (deterministic; see tag_events()).
+    event_tags: list[str] = Field(default_factory=list)
     # Today's volume relative to 20-day average.  >2.0 = institutional activity; <0.5 = noise.
     # Derived from yfinance volume data already fetched in Step 2; None if unavailable.
     volume_vs_20d_avg: float | None = None
@@ -452,6 +454,50 @@ class WeightMemory(BaseModel):
 # 4. Learning Ledger
 # ---------------------------------------------------------------------------
 
+# Controlled event-tag vocabulary shared by Lesson.trigger_tags, FeedbackEntry.event_tags
+# and the dossier curator. Superset of the semantic_tags vocabulary.
+EVENT_TAGS: frozenset = frozenset({
+    "central_bank_event", "fii_flow", "crude_price", "currency", "earnings_event",
+    "guidance_change", "sector_policy", "technical_pattern", "seasonal", "credit_event",
+    "supply_chain", "regulatory", "global_macro", "expiry_week", "block_deal",
+    "monsoon", "budget_event",
+})
+
+_EVENT_KEYWORD_MAP: dict = {
+    "rbi": "central_bank_event", "mpc": "central_bank_event",
+    "repo rate": "central_bank_event", "rate cut": "central_bank_event",
+    "rate hike": "central_bank_event",
+    "fed ": "global_macro", "federal reserve": "global_macro", "fomc": "global_macro",
+    "tariff": "global_macro",
+    "fii": "fii_flow", "dii": "fii_flow", "foreign institutional": "fii_flow",
+    "crude": "crude_price", "brent": "crude_price", "opec": "crude_price",
+    "rupee": "currency", "usdinr": "currency", "usd/inr": "currency",
+    "earnings": "earnings_event", "quarterly results": "earnings_event",
+    "net profit": "earnings_event", "dividend": "earnings_event",
+    "guidance": "guidance_change", "outlook revised": "guidance_change",
+    "subsidy": "sector_policy", "pli scheme": "sector_policy", "fame": "sector_policy",
+    "sebi": "regulatory", "penalty": "regulatory", "investigation": "regulatory",
+    "rsi": "technical_pattern", "macd": "technical_pattern",
+    "breakout": "technical_pattern", "support level": "technical_pattern",
+    "npa": "credit_event", "downgrade": "credit_event", "default": "credit_event",
+    "chip shortage": "supply_chain", "semiconductor": "supply_chain",
+    "supply chain": "supply_chain",
+    "expiry": "expiry_week", "max pain": "expiry_week",
+    "block deal": "block_deal", "bulk deal": "block_deal",
+    "monsoon": "monsoon",
+    "budget": "budget_event",
+    "festive": "seasonal", "diwali": "seasonal", "navratri": "seasonal",
+}
+
+
+def tag_events(market_context: str) -> list:
+    """Deterministic keyword → event-tag mapping. Pure, never raises."""
+    if not market_context:
+        return []
+    low = market_context.lower()
+    return sorted({tag for kw, tag in _EVENT_KEYWORD_MAP.items() if kw in low})
+
+
 LessonScope = Literal[
     "stock_specific",   # only applies to this one ticker
     "sector_wide",      # applies to all stocks in the same sector
@@ -483,6 +529,11 @@ class Lesson(BaseModel):
     # earnings_miss, sector_policy, technical_pattern, seasonal, credit_event,
     # supply_chain, regulatory + sector=<name> qualifier
     semantic_tags: list[str] = Field(default_factory=list)
+    # Executable-claim fields (2026-06 knowledge layer). All optional — legacy lessons
+    # without trigger_tags keep the category-based micro-adjustment path.
+    trigger_tags: list[str] = Field(default_factory=list)      # subset of EVENT_TAGS
+    prioritise_agents: list[str] = Field(default_factory=list) # agents to boost when fired
+    discount_agents: list[str] = Field(default_factory=list)   # agents to dampen when fired
     # How many consecutive cycles contradicted this lesson before invalidation.
     # invalidation_streak >= 3 → still_valid = False. Allows "degrading" state:
     # streak=0: healthy, streak=1: warn, streak=2: critical, streak=3: invalidated.

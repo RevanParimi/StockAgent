@@ -169,3 +169,68 @@ class DossierCurator:
                         ex.resolved_on = today
                         ex.answer = (qu.get("answer") or "")[:200]
         d.open_questions = d.open_questions[-12:]
+
+
+def distill_dossier(dossier: TickerDossier) -> TickerDossier:
+    """Weekly consolidation: episodic observations → durable sections.
+
+    LLM pass when available; static fallback (dead-signature drop + buffer cap)
+    when not. Never raises.
+    """
+    from core.config import settings
+    d = dossier.model_copy(deep=True)
+
+    # Static hygiene runs in BOTH paths.
+    d.response_signatures = [s for s in d.response_signatures if s.is_alive]
+    if len(d.observations) > settings.DOSSIER_MAX_OBSERVATIONS:
+        d.observations = d.observations[-settings.DOSSIER_MAX_OBSERVATIONS:]
+
+    try:
+        curator = DossierCurator()
+        system = DISTILL_SYSTEM_PROMPT.format(
+            ticker=d.ticker, sector=d.sector, event_tags=", ".join(sorted(EVENT_TAGS)))
+        raw = curator._call_llm(system, json.dumps(d.model_dump(), default=str)[:12000])
+        data = json.loads(_strip_think(raw))
+
+        if data.get("business_summary"):
+            d.business_summary = str(data["business_summary"])[:500]
+        if data.get("flow_notes"):
+            d.flow_notes = str(data["flow_notes"])[:300]
+        fold = set(data.get("observations_to_fold", []))
+        if fold:
+            d.observations = [o for o in d.observations if o.date not in fold]
+        today = _date.today().isoformat()
+        by_id = {s.signature_id: s for s in d.response_signatures}
+        for su in data.get("signature_updates", []):
+            action = su.get("action")
+            if action == "drop" and su.get("signature_id") in by_id:
+                d.response_signatures = [s for s in d.response_signatures
+                                         if s.signature_id != su["signature_id"]]
+            elif action == "create":
+                tags = [t for t in su.get("trigger_tags", []) if t in EVENT_TAGS]
+                resp = (su.get("response") or "").strip()
+                if tags and resp:
+                    next_id = f"RS{len(d.response_signatures) + 1:03d}"
+                    d.response_signatures.append(ResponseSignature(
+                        signature_id=next_id, trigger_tags=tags, response=resp[:200],
+                        occurrences=2, first_seen=today, last_seen=today, confidence=0.55))
+        rates = {r.get("name", "").lower(): r.get("hit_rate", "")
+                 for r in data.get("catalyst_hit_rates", [])}
+        for c in d.recurring_catalysts:
+            if c.name.lower() in rates and rates[c.name.lower()]:
+                c.hit_rate = str(rates[c.name.lower()])[:40]
+        for stale in data.get("stale_guidance", []):
+            for g in d.guidance:
+                if g.status == "open" and str(stale).lower() in g.guidance.lower():
+                    g.status = "withdrawn"
+        for rq in data.get("resolved_questions", []):
+            qtext = (rq.get("question") or "").lower()
+            for q in d.open_questions:
+                if not q.resolved_on and qtext and qtext in q.question.lower():
+                    q.resolved_on = today
+                    q.answer = (rq.get("answer") or "")[:200]
+        d.version += 1
+    except Exception as exc:
+        logger.warning("[distill_dossier] LLM pass failed for %s — static fallback only: %s",
+                       d.ticker, exc)
+    return d

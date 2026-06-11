@@ -306,6 +306,44 @@ def cmd_feedback_status(args) -> None:
     print()
 
 
+def cmd_scorecard(args) -> None:
+    """Build (and persist) the monthly RL scorecard — agent vs control vs baselines."""
+    from datetime import date
+    from core.intelligence.rl.eval.scorecard import (
+        build_scorecard,
+        render_table,
+        save_scorecard,
+        _previous_month,
+    )
+
+    today = date.today()
+    current_month = f"{today.year}-{today.month:02d}"
+
+    if args.month == "current":
+        month = current_month
+        partial = True
+    elif args.month:
+        month = args.month
+        partial = False
+    else:
+        month = _previous_month(current_month)
+        partial = False
+
+    sc = build_scorecard(month, tickers=args.ticker)
+
+    table = render_table(sc)
+    if partial:
+        # Annotate the header line with "(partial)" for an in-progress month.
+        lines = table.splitlines()
+        lines[0] = f"{lines[0]} (partial)"
+        table = "\n".join(lines)
+
+    print(table)
+
+    path = save_scorecard(sc)
+    print(f"\nSaved to {path}")
+
+
 def cmd_dossier_status(args) -> None:
     """Print per-ticker dossier health: size, version, staleness, counts."""
     from core.intelligence.rl.stores.prediction_store import PredictionStore
@@ -375,6 +413,15 @@ def main() -> None:
     dstatus_p = sub.add_parser("dossier-status", help="RL dossier health per ticker")
     dstatus_p.add_argument("--ticker", nargs="*", help="One or more NSE tickers (default: all managed)")
 
+    # scorecard
+    scorecard_p = sub.add_parser("scorecard", help="Build + persist the monthly RL scorecard")
+    scorecard_p.add_argument(
+        "--month",
+        help="YYYY-MM (default: previous calendar month). 'current' = current "
+             "month, marked '(partial)'.",
+    )
+    scorecard_p.add_argument("--ticker", nargs="*", help="One or more NSE tickers (default: all discovered)")
+
     args = parser.parse_args()
 
     dispatch = {
@@ -387,6 +434,7 @@ def main() -> None:
         "daily-review":    cmd_daily_review,
         "feedback-status": cmd_feedback_status,
         "dossier-status":  cmd_dossier_status,
+        "scorecard":       cmd_scorecard,
     }
     dispatch[args.command](args)
 

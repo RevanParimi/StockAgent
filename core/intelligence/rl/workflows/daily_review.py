@@ -837,6 +837,7 @@ def run_daily_review(
         direction_correct=direction_correct,
         miss_analysis=miss_analysis,
         timing=timing,
+        predicted_agent_scores=today_forecast.predicted_agent_scores,
     )
     feedback_log.entries = [e for e in feedback_log.entries if e.date != date_str]
     feedback_log.entries.append(provisional)
@@ -1007,6 +1008,7 @@ def run_daily_review(
         weight_adjustment_applied=new_weight_version,
         predicted_catalysts_snapshot=_predicted_catalysts,
         offmarket_context=offmarket_context_str,
+        predicted_agent_scores=today_forecast.predicted_agent_scores,
     )
     store.append_feedback_entry(final_entry, cycle_id)
 

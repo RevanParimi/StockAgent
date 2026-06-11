@@ -524,6 +524,17 @@ RL_WEIGHT_DRIFT_ESCAPE_DAYS: int = int(os.getenv("RL_WEIGHT_DRIFT_ESCAPE_DAYS", 
 RL_WEIGHT_DRIFT_ESCAPE_MULTIPLIER: float = float(os.getenv("RL_WEIGHT_DRIFT_ESCAPE_MULTIPLIER", "1.5"))
 
 # ---------------------------------------------------------------------------
+# RL Intelligence Phase, Component 2 — Per-Agent Calibration Reward
+# An agent earns a "calibration hit" when its own predicted_agent_scores[agent]
+# lean (bullish if >= AGENT_BULLISH_THRESHOLD) matches the realized direction,
+# independent of whether the ensemble verdict was correct. WeightAdapter blends
+# this into the hit_rate that drives boost/penalty deltas. Flag default ON
+# (user-confirmed); when False, behavior is byte-identical to pre-Component-2.
+# ---------------------------------------------------------------------------
+RL_CALIBRATION_REWARD_ENABLED: bool = os.getenv("RL_CALIBRATION_REWARD_ENABLED", "true").lower() == "true"
+RL_CALIBRATION_WEIGHT: float = float(os.getenv("RL_CALIBRATION_WEIGHT", "0.5"))
+
+# ---------------------------------------------------------------------------
 # STATIC_AUDIT #9 — News geo: removed country filter entirely
 # Serper query now omits "gl" — Google surfaces globally relevant results
 # based on query specificity. A query like "TCS Q4 2026 deal wins" returns

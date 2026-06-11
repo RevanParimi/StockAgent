@@ -247,6 +247,12 @@ class FeedbackEntry(BaseModel):
     predicted_verdict: str
     actual_direction: Direction            # UP | DOWN | FLAT (±ATR-relative threshold)
     direction_correct: bool
+    # Per-agent composite scores frozen at forecast time (copied from the day's
+    # DailyForecast.predicted_agent_scores). Enables per-agent calibration scoring
+    # in WeightAdapter._compute_accuracy — was an agent's own lean (>=0.5 = bullish)
+    # consistent with the realized direction, independent of the ensemble verdict?
+    # Empty dict for entries written before this field existed (backward-compatible).
+    predicted_agent_scores: dict[str, float] = Field(default_factory=dict)
     # Market regime active at time of review — critical for regime-stratified accuracy analysis.
     # Enables: "risk_macro is 71% accurate in NORMAL but only 44% in MACRO_CRISIS"
     regime_label: str = "NORMAL"
@@ -315,12 +321,50 @@ class AgentAccuracy(BaseModel):
     direction_hits: int = 0       # correct direction calls in the current rolling window
     total: int = 0                # total days evaluated in the current rolling window
     avg_error: float = 0.0        # mean absolute price_error_pct (agent sub-score drift)
+    # Per-agent calibration record (RL Intelligence Phase, Component 2).
+    # calibration_hits: days where this agent's own predicted_agent_scores[agent] lean
+    #   (>=AGENT_BULLISH_THRESHOLD = bullish) matched the realized direction.
+    # calibration_total: denominator for calibration_hits — excludes NEUTRAL-verdict
+    #   days (no directional claim was made) and days with no recorded agent score.
+    # Both default to 0 so existing WeightMemory JSON files load unchanged.
+    calibration_hits: int = 0
+    calibration_total: int = 0
     # Rolling 12-month snapshot history (evict oldest at month-13).
     # Gives the recalibration LLM a trend series: was this agent improving or degrading?
     monthly_snapshot_history: list[MonthlyAccuracySnapshot] = Field(default_factory=list)
 
-    def hit_rate(self) -> float:
+    def direction_hit_rate(self) -> float:
         return self.direction_hits / self.total if self.total > 0 else 0.5
+
+    def calibration_hit_rate(self) -> float:
+        return self.calibration_hits / self.calibration_total if self.calibration_total > 0 else 0.5
+
+    def hit_rate(self) -> float:
+        """
+        Hit rate that drives WeightAdapter boost/penalty decisions.
+
+        When RL_CALIBRATION_REWARD_ENABLED is True and this agent has at least one
+        non-NEUTRAL calibration observation, blends ensemble-direction accuracy with
+        the agent's own calibration accuracy:
+
+            hit_rate = (1 - w) * direction_hit_rate + w * calibration_hit_rate
+            w = RL_CALIBRATION_WEIGHT
+
+        When the flag is False (or there is no calibration data), returns the
+        pre-existing direction_hit_rate unchanged — byte-identical to prior behavior.
+        """
+        direction_rate = self.direction_hit_rate()
+
+        # Late import: lets tests monkeypatch settings per-call and avoids any
+        # import-order coupling between the schema module and config.
+        from core.config import settings
+
+        calibration_enabled = getattr(settings, "RL_CALIBRATION_REWARD_ENABLED", True)
+        if not calibration_enabled or self.calibration_total == 0:
+            return direction_rate
+
+        weight = getattr(settings, "RL_CALIBRATION_WEIGHT", 0.5)
+        return (1 - weight) * direction_rate + weight * self.calibration_hit_rate()
 
     def lifetime_hit_rate(self) -> float:
         """Compute cumulative hit rate across all stored monthly snapshots."""

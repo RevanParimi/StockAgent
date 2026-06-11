@@ -313,7 +313,8 @@ def cmd_dossier_status(args) -> None:
 
     rows = get_active_tickers_with_sector()
     if getattr(args, "ticker", None):
-        rows = [r for r in rows if r["sym"] in args.ticker]
+        # Case-insensitive match: --ticker maruti should match sym "MARUTI".
+        rows = [r for r in rows if r["sym"].upper() in {t.upper() for t in args.ticker}]
     for r in rows:
         store = PredictionStore(ticker=r["sym"], sector=r["sector"])
         d = store.load_dossier()

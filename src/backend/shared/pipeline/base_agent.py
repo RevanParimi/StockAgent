@@ -78,6 +78,8 @@ class BaseAgent(ABC):
         # {agent_name: [query_1, query_2, ...]}
         self._extra_queries: dict[str, list[str]] = {}
         # RL knowledge layer: per-ticker dossier digest cache (lazy).
+        # Scoped to this instance/run — agents are constructed fresh per
+        # analysis run, so this never needs explicit invalidation.
         self._dossier_digest_cache: dict[str, str] = {}
 
     def _get_async_client(self):

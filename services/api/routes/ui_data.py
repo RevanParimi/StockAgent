@@ -1268,7 +1268,7 @@ async def get_learnings() -> dict:
             from core.schemas.feedback import MissType
             for ticker_def in _ALL_TICKERS:
                 sym = ticker_def["sym"]
-                ps = PredictionStore(ticker=sym, sector="automobile")
+                ps = PredictionStore(ticker=sym, sector=_sector_for_ticker(sym))
                 cycle = ps.current_cycle_id()
                 fb_log = ps.load_feedback_log(cycle)
                 for entry in (fb_log.entries if fb_log else [])[-5:]:
@@ -1383,6 +1383,24 @@ def _ctx_ticker_detail(ticker: str) -> str:
         return ""
 
 
+def _sector_for_ticker(sym: str) -> str:
+    """Resolve a ticker's sector: managed_tickers.json first, then directory scan."""
+    s = sym.upper().strip()
+    try:
+        for t in _load_mt():
+            if t.get("sym", "").upper() == s and t.get("sector"):
+                return t["sector"]
+    except Exception:
+        pass
+    try:
+        for sector_dir in _PREDICTIONS_DIR.iterdir():
+            if sector_dir.is_dir() and (sector_dir / s).is_dir():
+                return sector_dir.name
+    except Exception:
+        pass
+    return "automobile"
+
+
 def _ctx_rl_learning() -> str:
     try:
         from core.intelligence.rl.stores.prediction_store import PredictionStore
@@ -1390,7 +1408,7 @@ def _ctx_rl_learning() -> str:
         parts = []
         for ticker in (cfg.SCHEDULER_TICKERS or []):
             try:
-                ps = PredictionStore(ticker, sector="automobile")
+                ps = PredictionStore(ticker, sector=_sector_for_ticker(ticker))
                 cycle_id = ps.current_cycle_id()
 
                 fb_log = ps.load_feedback_log(cycle_id)
@@ -1406,8 +1424,8 @@ def _ctx_rl_learning() -> str:
                     )
 
                 wm = ps.load_weight_memory()
-                if wm and wm.learned_weights:
-                    top = sorted(wm.learned_weights.items(), key=lambda x: x[1], reverse=True)[:3]
+                if wm and wm.current_weights:
+                    top = sorted(wm.current_weights.items(), key=lambda x: x[1], reverse=True)[:3]
                     top_str = " > ".join(f"{k}({v:.2f})" for k, v in top)
                     parts.append(f"    {ticker} top-weighted agents: {top_str}")
             except Exception:
@@ -2054,6 +2072,28 @@ _CHAT_TOOLS = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_ticker_dossier",
+            "description": (
+                "Accumulated knowledge dossier for a tracked NSE ticker — thesis, "
+                "learned price-response signatures, open management guidance, "
+                "recurring catalysts, institutional flow trend. Use for any deep "
+                "dive or 'what do we know about X' question."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "ticker": {
+                        "type": "string",
+                        "description": "NSE symbol, e.g. MARUTI",
+                    }
+                },
+                "required": ["ticker"],
+            },
+        },
+    },
 ]
 
 
@@ -2455,6 +2495,25 @@ async def _chat_tool_rl_prediction(ticker: str) -> str:
     return ""
 
 
+async def _chat_tool_ticker_dossier(ticker: str) -> str:
+    """Accumulated daily-tracking knowledge for a ticker (RL dossier digest)."""
+    t = (ticker or "").upper().strip()
+    if not t or t in _RL_INDEX_NAMES:
+        return ""
+    try:
+        for sector_dir in _PREDICTIONS_DIR.iterdir():
+            if not sector_dir.is_dir():
+                continue
+            f = sector_dir / t / f"{t}_dossier.json"
+            if f.exists():
+                from backend.shared.schemas.dossier import TickerDossier
+                d = TickerDossier(**json.loads(f.read_text(encoding="utf-8")))
+                return d.to_digest(2000)
+    except Exception:
+        return ""
+    return ""
+
+
 def _tool_cache_key(name: str, args: dict) -> str:
     parts = []
     for k in sorted(args):
@@ -2508,6 +2567,8 @@ async def _dispatch_chat_tool(name: str, args: dict) -> str:
         )
     if name == "get_rl_prediction":
         return await _chat_tool_rl_prediction(args.get("ticker", ""))
+    if name == "get_ticker_dossier":
+        return await _chat_tool_ticker_dossier(args.get("ticker", ""))
     return f"Unknown tool: {name}"
 
 
@@ -2525,6 +2586,8 @@ You are StockAgent, a market intelligence assistant with real-time web search an
 - **get_rl_prediction(ticker)** — our model's next-session/30-day predicted direction + confidence
 - **get_analysis_history(days)** — past verdicts and score trends from our database
 - **get_rl_insights()** — agent accuracy, learned weights, and prediction lessons
+- **get_ticker_dossier(ticker)** — what we've LEARNED about this stock from daily tracking
+  (thesis, response signatures, guidance, flows).
 
 ## When to call tools — call first, answer after
 | User asks | Tools to call |
@@ -2535,7 +2598,7 @@ You are StockAgent, a market intelligence assistant with real-time web search an
 | **Tomorrow / will it rise / market prediction** | get_live_price(index) + search_market_news("Indian stock market outlook GIFT Nifty FII DII analyst view [today's date]") + get_rl_prediction (if a tracked ticker) |
 | **Which stocks to buy / book profit / best in a sector** | get_sector_snapshot(sector) + search_market_news("[sector] stocks to buy/book profit today") |
 | **Sector crashed / rallied — what now** | get_sector_snapshot(sector) + search_market_news("why [sector] fell/rose today [date]") |
-| NSE stock deep dive | get_live_price + get_stock_analysis + get_rl_prediction + search_market_news |
+| NSE stock deep dive | get_live_price + get_stock_analysis + get_rl_prediction + get_ticker_dossier + search_market_news |
 | What happened last week / history | get_analysis_history |
 | Agent accuracy / which to trust | get_rl_insights |
 | Macro event (Fed, RBI, oil) | search_market_news |

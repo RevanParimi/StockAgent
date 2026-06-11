@@ -28,6 +28,31 @@ def _strip_think(raw: str) -> str:
     return re.sub(r"<think>.*?</think>", "", raw, flags=re.DOTALL).strip()
 
 
+def _next_signature_id(d: TickerDossier) -> str:
+    """Monotonic RS-id. Migrates legacy dossiers (counter still at default 1) by seeding from
+    the max existing numeric suffix."""
+    existing = [int(s.signature_id[2:]) for s in d.response_signatures
+                if s.signature_id.startswith("RS") and s.signature_id[2:].isdigit()]
+    if d.next_signature_id <= max(existing, default=0):
+        d.next_signature_id = max(existing, default=0) + 1
+    sid = f"RS{d.next_signature_id:03d}"
+    d.next_signature_id += 1
+    return sid
+
+
+def _make_signature(d: TickerDossier, su: dict, today: str, *, occurrences: int,
+                     confidence: float, evidence_dates: list[str] | None = None
+                     ) -> ResponseSignature | None:
+    tags = [t for t in su.get("trigger_tags", []) if t in EVENT_TAGS]
+    resp = (su.get("response") or "").strip()
+    if not (tags and resp):
+        return None
+    return ResponseSignature(signature_id=_next_signature_id(d), trigger_tags=tags,
+                             response=resp[:200], occurrences=occurrences,
+                             first_seen=today, last_seen=today, confidence=confidence,
+                             evidence_dates=evidence_dates or [])
+
+
 class DossierCurator:
     """LLM client pattern mirrors FeedbackAgent (json_object, low temp, retry-free)."""
 
@@ -117,14 +142,10 @@ class DossierCurator:
                 s.contradictions += 1
                 s.confidence = max(0.0, round(s.confidence - 0.10, 4))
             elif action == "create":
-                tags = [t for t in su.get("trigger_tags", []) if t in EVENT_TAGS]
-                resp = (su.get("response") or "").strip()
-                if tags and resp:
-                    next_id = f"RS{len(d.response_signatures) + 1:03d}"
-                    d.response_signatures.append(ResponseSignature(
-                        signature_id=next_id, trigger_tags=tags, response=resp[:200],
-                        occurrences=1, first_seen=today, last_seen=today,
-                        confidence=0.5, evidence_dates=[today]))
+                sig = _make_signature(d, su, today, occurrences=1, confidence=0.5,
+                                       evidence_dates=[today])
+                if sig:
+                    d.response_signatures.append(sig)
 
         # 3. Guidance.
         for gu in data.get("guidance_updates", []):
@@ -137,7 +158,7 @@ class DossierCurator:
                 for g in d.guidance:
                     if g.status == "open" and text.lower() in g.guidance.lower():
                         g.status = action
-            d.guidance = d.guidance[-20:]
+        d.guidance = d.guidance[-20:]
 
         # 4. Catalysts (add-only daily; hit_rate is distillation's job).
         known = {c.name.lower() for c in d.recurring_catalysts}
@@ -189,7 +210,8 @@ def distill_dossier(dossier: TickerDossier) -> TickerDossier:
         curator = DossierCurator()
         system = DISTILL_SYSTEM_PROMPT.format(
             ticker=d.ticker, sector=d.sector, event_tags=", ".join(sorted(EVENT_TAGS)))
-        raw = curator._call_llm(system, json.dumps(d.model_dump(), default=str)[:12000])
+        raw = curator._call_llm(
+            system, json.dumps(d.model_dump(), default=str)[:settings.DOSSIER_DISTILL_INPUT_MAX_CHARS])
         data = json.loads(_strip_think(raw))
 
         if data.get("business_summary"):
@@ -207,13 +229,11 @@ def distill_dossier(dossier: TickerDossier) -> TickerDossier:
                 d.response_signatures = [s for s in d.response_signatures
                                          if s.signature_id != su["signature_id"]]
             elif action == "create":
-                tags = [t for t in su.get("trigger_tags", []) if t in EVENT_TAGS]
-                resp = (su.get("response") or "").strip()
-                if tags and resp:
-                    next_id = f"RS{len(d.response_signatures) + 1:03d}"
-                    d.response_signatures.append(ResponseSignature(
-                        signature_id=next_id, trigger_tags=tags, response=resp[:200],
-                        occurrences=2, first_seen=today, last_seen=today, confidence=0.55))
+                # Distill-created signatures start at occurrences=2/confidence=0.55 because
+                # they fold a repeated observed pattern (not a single new occurrence).
+                sig = _make_signature(d, su, today, occurrences=2, confidence=0.55)
+                if sig:
+                    d.response_signatures.append(sig)
         rates = {r.get("name", "").lower(): r.get("hit_rate", "")
                  for r in data.get("catalyst_hit_rates", [])}
         for c in d.recurring_catalysts:

@@ -64,6 +64,7 @@ class TickerDossier(BaseModel):
     created_at: str
     last_updated: str
     version: int = 1
+    next_signature_id: int = 1
     business_summary: str = ""
     current_thesis: str = ""
     thesis_since: str = ""

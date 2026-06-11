@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from backend.shared.schemas.dossier import TickerDossier, ResponseSignature
+from backend.shared.schemas.dossier import GuidanceItem, TickerDossier, ResponseSignature
 from backend.shared.schemas.feedback import FeedbackEntry
 from core.intelligence.rl.agents.dossier_curator import DossierCurator
 
@@ -96,3 +96,36 @@ def test_hit_day_runs_too(monkeypatch):
     out = _curator_with(monkeypatch, payload).run(_dossier(), _entry(True), "ctx", None)
     assert any("materialised" in o.observation for o in out.observations)
     assert [o for o in out.observations if o.date == "2026-06-11"][0].outcome_link == "hit"
+
+
+def test_guidance_cap_applies_even_with_no_updates(monkeypatch):
+    # Fix 2: the [-20:] cap must run unconditionally after the loop, not only
+    # when guidance_updates is non-empty (it was previously nested inside the loop).
+    payload = {
+        "event_tags_today": [], "new_observations": [],
+        "signature_updates": [], "guidance_updates": [], "catalyst_updates": [],
+        "thesis_update": None, "flow_note": "", "open_question_updates": [],
+    }
+    d = _dossier()
+    d.guidance = [GuidanceItem(date=f"2026-05-{i:02d}", source="src", guidance=f"item {i}")
+                   for i in range(1, 26)]                  # 25 pre-existing items
+    out = _curator_with(monkeypatch, payload).run(d, _entry(), "ctx", None)
+    assert len(out.guidance) == 20
+
+
+def test_empty_payload_from_llm_leaves_dossier_unchanged(monkeypatch):
+    # Fix 4(a): {} is valid JSON but has no recognized keys — nothing should crash
+    # and the dossier should be unchanged apart from anything {} legitimately implies.
+    before = _dossier()
+    out = _curator_with(monkeypatch, {}).run(before, _entry(), "ctx", None)
+    assert out.model_dump() == before.model_dump()
+
+
+def test_non_json_llm_response_returns_dossier_unchanged(monkeypatch):
+    # Fix 4(b): garbage (non-JSON) LLM output must be caught by the run() try/except
+    # and return the dossier unchanged, just like an LLM exception would.
+    c = DossierCurator()
+    monkeypatch.setattr(c, "_call_llm", lambda *a, **k: "sorry, I can't help with that")
+    before = _dossier()
+    out = c.run(before, _entry(), "ctx", None)
+    assert out.model_dump() == before.model_dump()

@@ -63,3 +63,17 @@ def test_empty_dossier_digest_is_just_header():
     out = d.to_digest(2500)
     assert out.startswith("# TCS dossier")
     assert "##" not in out
+
+
+def test_next_signature_id_defaults_to_one_and_is_backward_compatible():
+    # Fix 1: new field has a default so legacy dossier JSON without it still loads.
+    d = TickerDossier(ticker="TCS", sector="it_sector",
+                      created_at="2026-06-11", last_updated="2026-06-11")
+    assert d.next_signature_id == 1
+
+    legacy_json = {
+        "ticker": "TCS", "sector": "it_sector",
+        "created_at": "2026-06-11", "last_updated": "2026-06-11",
+    }
+    legacy = TickerDossier.model_validate(legacy_json)
+    assert legacy.next_signature_id == 1

@@ -791,6 +791,12 @@ def run_daily_review(
     fb_agent  = FeedbackAgent()
     fb_output = fb_agent.run(fb_input, ticker_ledger)
 
+    # Hoisted from below (Step 5) so the external_shock rate-cap block can use
+    # it: at this point today's provisional entry has not been appended yet,
+    # so feedback_log.entries already holds only prior-cycle entries. The same
+    # object is reused (not reloaded) at the Step 5 site below.
+    feedback_log = store.load_feedback_log(cycle_id)
+
     # ------------------------------------------------------------------ #
     # external_shock rate cap: LLMs tend to over-use external_shock to
     # avoid assigning blame, effectively disabling learning.  If more than
@@ -800,7 +806,7 @@ def run_daily_review(
     # is semantically valid (e.g. sudden gap-down on correct UP prediction).
     # ------------------------------------------------------------------ #
     if fb_output.miss_type == "external_shock" and not direction_correct:
-        prior_entries = feedback_log.entries[:-1]  # exclude today's provisional
+        prior_entries = feedback_log.entries  # today's provisional not yet appended
         if len(prior_entries) >= 5:
             shock_days = sum(
                 1 for e in prior_entries
@@ -835,8 +841,9 @@ def run_daily_review(
     except Exception as exc:
         logger.debug("[daily_review] %s: Factor regime unavailable (non-fatal): %s", ticker, exc)
 
-    wm           = store.get_or_init_weight_memory(settings.AGENT_WEIGHTS)
-    feedback_log = store.load_feedback_log(cycle_id)
+    wm = store.get_or_init_weight_memory(settings.AGENT_WEIGHTS)
+    # feedback_log was loaded above (before the external_shock rate-cap block);
+    # reuse the same object here rather than reloading.
 
     miss_analysis = None
     if not direction_correct or abs(price_error_pct) > 1.0:
@@ -1017,6 +1024,14 @@ def run_daily_review(
     # ------------------------------------------------------------------ #
     # Step 8: Append complete FeedbackEntry to daily_feedback_log
     # ------------------------------------------------------------------ #
+    # Knowledge layer: audit which lessons' claims fired today, using the
+    # post-merge ledger (updated_ledger) consistent with Step-7 emphasis.
+    # Empty list when claims are disabled or there is no ledger/tags.
+    claims_fired: list[str] = []
+    if getattr(settings, "RL_CLAIMS_ENABLED", True) and updated_ledger and today_tags:
+        from core.intelligence.rl.algorithms.lesson_emphasis import matching_lessons
+        claims_fired = [l.lesson_id for l in matching_lessons(updated_ledger, today_tags)]
+
     final_entry = FeedbackEntry(
         day=today_forecast.day,
         date=date_str,
@@ -1028,6 +1043,7 @@ def run_daily_review(
         direction_correct=direction_correct,
         regime_label=regime_snapshot.regime_label,
         event_tags=today_tags,
+        claims_fired=claims_fired,
         volume_vs_20d_avg=volume_vs_20d_avg,
         miss_analysis=miss_analysis,
         timing=timing,
@@ -1106,6 +1122,26 @@ def run_daily_review(
             cycle_id=cycle_id,
             review_date=review_date,
         )
+
+    # ------------------------------------------------------------------ #
+    # Step 10: Control lane (the "duel") — score yesterday's prediction and
+    # make tomorrow's, using a bare LLM with the same close + market_context
+    # StockAgent had at this moment. Flag-gated, never fatal.
+    # ------------------------------------------------------------------ #
+    if getattr(settings, "RL_CONTROL_LANE_ENABLED", True):
+        try:
+            from core.intelligence.rl.agents.control_lane import run_control_lane_step
+            run_control_lane_step(
+                store, ticker, sector, review_date,
+                actual_close=actual_close,
+                actual_direction=final_entry.actual_direction,
+                market_context=market_context or "",
+            )
+        except Exception as exc:
+            logger.warning(
+                "[daily_review] %s: Step 10 control lane failed (non-fatal): %s",
+                ticker, exc,
+            )
 
     summary = {
         "status":                   "completed",

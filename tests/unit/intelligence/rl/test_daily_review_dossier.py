@@ -187,6 +187,16 @@ def test_run_daily_review_writes_dossier_and_event_tags(tmp_path, monkeypatch):
     monkeypatch.setattr(DossierCurator, "_call_llm",
                          lambda self, *a, **k: json.dumps(dossier_payload))
 
+    # Step 10: Control lane LLM call — fixed prediction payload.
+    import core.intelligence.rl.agents.control_lane as control_lane_mod
+    control_payload = json.dumps({
+        "direction": "FLAT", "confidence": 0.5, "predicted_close": 100.1,
+        "rationale": "Quiet session, no strong catalysts.",
+    })
+    monkeypatch.setattr(
+        control_lane_mod, "_call_llm",
+        lambda *a, **k: (control_payload, "test-control-model"))
+
     # --- Run ---
     summary = dr.run_daily_review(ticker, review_date, sector=sector)
 
@@ -199,9 +209,133 @@ def test_run_daily_review_writes_dossier_and_event_tags(tmp_path, monkeypatch):
     entry = next(e for e in feedback_log.entries if e.date == date_str)
     assert entry.event_tags == ["monsoon"]
 
+    # claims_fired: empty list — no tagged lessons match "monsoon" in this fixture.
+    assert entry.claims_fired == []
+
     # Step 8.5 — dossier written with >=1 observation.
     dossier = store.load_dossier()
     assert dossier is not None
     todays_obs = [o for o in dossier.observations if o.date == date_str]
     assert len(todays_obs) >= 1
     assert todays_obs[0].observation == "seeded obs"
+
+    # Step 10 — control log written with 1 prediction for the next trading day.
+    control_log = store.load_control_log(cycle_id)
+    assert len(control_log.entries) == 1
+    prediction = control_log.entries[0]
+    assert prediction.date == "2026-06-11"
+    assert prediction.made_on == date_str
+    assert prediction.predicted_direction == "FLAT"
+    assert prediction.model == "test-control-model"
+
+
+# ---------------------------------------------------------------------------
+# Regression test for bc1d8ee — external_shock rate-cap NameError fix
+# ---------------------------------------------------------------------------
+
+def test_run_daily_review_external_shock_wrong_direction_no_crash(tmp_path, monkeypatch):
+    """Guards the bc1d8ee hoist: before that fix, the external_shock rate-cap
+    block referenced `feedback_log` ~36 lines before it was loaded, raising
+    NameError on every (miss_type="external_shock", direction wrong) day.
+
+    Reuses the same seam stack as
+    test_run_daily_review_writes_dossier_and_event_tags, but:
+      - the envelope's review-day forecast has predicted_verdict="BUY" so a
+        falling actual close makes direction_correct=False, and
+      - FeedbackAgent.run is monkeypatched directly to return
+        miss_type="external_shock" with direction wrong — exactly the
+        condition that entered the buggy block.
+
+    Asserts the review completes without raising (status == "completed").
+    """
+    ticker, sector = "TESTSHOCK", "automobile"
+    review_date = date(2026, 6, 10)
+    date_str = review_date.isoformat()
+
+    # BUY verdict + falling actual close (98.0 vs predicted 100.0) => DOWN
+    # actual direction => direction_correct=False for a BUY verdict.
+    envelope = PredictionEnvelope(
+        ticker=ticker, sector=sector, cycle_id=f"{ticker}_2026-06",
+        generated_at="2026-06-01T00:00:00", base_close=100.0,
+        daily_forecasts=[
+            DailyForecast(day=1, date="2026-06-10", predicted_close=100.0,
+                           predicted_verdict="BUY",
+                           predicted_agent_scores={"risk_macro": 0.5, "sales_demand": 0.5},
+                           confidence=0.5),
+            DailyForecast(day=2, date="2026-06-11", predicted_close=101.0,
+                           predicted_verdict="BUY",
+                           predicted_agent_scores={"risk_macro": 0.5, "sales_demand": 0.5},
+                           confidence=0.5),
+        ],
+    )
+
+    store = PredictionStore(ticker, sector=sector, base_dir=tmp_path)
+    cycle_id = store.current_cycle_id()
+    store.save_envelope(envelope)
+
+    import core.intelligence.rl.workflows.daily_review as dr
+
+    monkeypatch.setattr(dr.settings, "PREDICTION_DATA_DIR", str(tmp_path))
+
+    # Falling actual close => actual_direction="DOWN" => direction_correct=False
+    # for the BUY verdict above.
+    monkeypatch.setattr(dr, "_fetch_actual_close", lambda t, d: 98.0)
+    monkeypatch.setattr(dr, "get_price_history", lambda *a, **k: None)
+
+    from core.schemas.feedback import RegimeSnapshot
+    monkeypatch.setattr(dr.RegimeDetector, "detect", lambda self, d, s: RegimeSnapshot())
+
+    import services.data.fetchers.news as news_mod
+    monkeypatch.setattr(news_mod, "get_news_context", lambda *a, **k: "Quiet session.")
+
+    import services.data.fetchers.nse_market as nse_mkt_mod
+    monkeypatch.setattr(nse_mkt_mod, "get_nse_market_data", lambda *a, **k: {"error": "skipped"})
+
+    from backend.shared.schemas.feedback import OffMarketSignals
+    import core.intelligence.rl.stores.offmarket_fetcher as offmarket_mod
+    monkeypatch.setattr(
+        offmarket_mod.OffMarketFetcher, "fetch_all",
+        lambda self, t, d: OffMarketSignals(date=d, ticker=t),
+    )
+
+    import core.intelligence.rl.algorithms.factor_regime as factor_regime_mod
+    monkeypatch.setattr(factor_regime_mod, "get_factor_regime", lambda *a, **k: None)
+
+    # FeedbackAgent.run mocked directly — return miss_type="external_shock"
+    # with direction wrong, the exact condition that hit the buggy line.
+    from core.intelligence.rl.agents.feedback_agent import FeedbackAgent
+    from core.schemas.feedback import FeedbackAgentOutput, RevisedContext as _RevisedContext
+    fb_output = FeedbackAgentOutput(
+        primary_miss_agent="risk_macro",
+        miss_type="external_shock",
+        missed_factors=[], over_weighted_factors=[], agent_score_drift={},
+        new_lessons=[],
+        revised_context=_RevisedContext(headline="Unforeseeable shock.",
+                                         horizon_confidence_adjustment=0.0),
+    )
+    monkeypatch.setattr(FeedbackAgent, "run", lambda self, fb_input, ledger: fb_output)
+
+    from core.intelligence.rl.agents.dossier_curator import DossierCurator
+    dossier_payload = {
+        "event_tags_today": [], "new_observations": [],
+        "signature_updates": [], "guidance_updates": [], "catalyst_updates": [],
+        "thesis_update": None, "flow_note": "", "open_question_updates": [],
+    }
+    monkeypatch.setattr(DossierCurator, "_call_llm",
+                         lambda self, *a, **k: json.dumps(dossier_payload))
+
+    import core.intelligence.rl.agents.control_lane as control_lane_mod
+    control_payload = json.dumps({
+        "direction": "FLAT", "confidence": 0.5, "predicted_close": 98.0,
+        "rationale": "Unforeseeable shock, no continuation expected.",
+    })
+    monkeypatch.setattr(
+        control_lane_mod, "_call_llm",
+        lambda *a, **k: (control_payload, "test-control-model"))
+
+    # --- Run: must not raise (NameError pre-bc1d8ee) ---
+    summary = dr.run_daily_review(ticker, review_date, sector=sector)
+
+    assert summary["status"] == "completed"
+    assert summary["direction_correct"] is False
+    assert summary["miss_type"] == "external_shock"

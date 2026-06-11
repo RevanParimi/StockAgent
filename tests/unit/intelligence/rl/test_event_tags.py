@@ -56,3 +56,34 @@ def test_feedback_entry_event_tags_default_empty():
                       predicted_verdict="BUY", actual_direction="UP",
                       direction_correct=True)
     assert e.event_tags == []
+
+
+def test_feedback_entry_claims_fired_default_empty():
+    e = FeedbackEntry(day=1, date="2026-06-11", predicted_close=100.0,
+                      actual_close=101.0, price_error_pct=1.0,
+                      predicted_verdict="BUY", actual_direction="UP",
+                      direction_correct=True)
+    assert e.claims_fired == []
+
+
+def test_feedback_entry_claims_fired_round_trip():
+    e = FeedbackEntry(day=1, date="2026-06-11", predicted_close=100.0,
+                      actual_close=101.0, price_error_pct=1.0,
+                      predicted_verdict="BUY", actual_direction="UP",
+                      direction_correct=True, claims_fired=["L001", "L002"])
+    restored = FeedbackEntry(**e.model_dump())
+    assert restored.claims_fired == ["L001", "L002"]
+
+
+def test_feedback_entry_claims_fired_independent_lists():
+    """Mutable default must not be shared between instances."""
+    e1 = FeedbackEntry(day=1, date="2026-06-11", predicted_close=100.0,
+                       actual_close=101.0, price_error_pct=1.0,
+                       predicted_verdict="BUY", actual_direction="UP",
+                       direction_correct=True)
+    e2 = FeedbackEntry(day=2, date="2026-06-12", predicted_close=100.0,
+                       actual_close=101.0, price_error_pct=1.0,
+                       predicted_verdict="BUY", actual_direction="UP",
+                       direction_correct=True)
+    e1.claims_fired.append("L001")
+    assert e2.claims_fired == []

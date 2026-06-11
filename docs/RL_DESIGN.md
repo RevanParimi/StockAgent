@@ -1674,3 +1674,42 @@ no WeightAdapter/regime/conviction changes, no dossier UI (chat tool only).
   behavior throughout.
 
 See §11 for the full settings reference (rows tagged §24).
+
+---
+
+## 25. Monthly Scorecard + Baseline Duel (Phase 1) — IMPLEMENTED
+
+> **Status: IMPLEMENTED 2026-06-12.**
+> Spec: `docs/superpowers/specs/2026-06-12-monthly-scorecard-baseline-duel-design.md`
+> Code: `core/intelligence/rl/eval/scorecard.py`, `eval/baselines.py`,
+> `core/intelligence/rl/agents/control_lane.py`, `core/config/prompts/shared/control_lane.py`
+
+Makes month-over-month improvement — and the edge over a bare frontier model — a measured
+number instead of a claim.
+
+- **Control lane (the duel)** — daily review **Step 10** (flag `RL_CONTROL_LANE_ENABLED`,
+  never fatal): a bare LLM (`CONTROL_LANE_MODEL`, empty → `LLM_MODEL_REASONING`) gets
+  yesterday's close + the same already-fetched `market_context` — no agents, no learned
+  weights, no lessons, no dossier — and predicts the next session (UP/DOWN/FLAT +
+  confidence, strict JSON). Yesterday's control call is scored against
+  `FeedbackEntry.actual_direction` in the same step. Stored per cycle:
+  `{TICKER}_{YYYY-MM}_control_log.json` (month-boundary predictions land in the predicted
+  date's cycle). Fairness invariant: the control predicts day D+1 during day D's review —
+  the same information and timing as the system's Step-7 revision, so the delta isolates
+  the architecture. Cost: +1 LLM call/ticker/day, zero new fetches.
+- **Naive baselines** (`eval/baselines.py`, pure, backfillable): persistence
+  (predict D = D−1's actual direction), always-up, always-down.
+- **Claim audit**: `FeedbackEntry.claims_fired` records the lesson_ids whose claims fired
+  in Step-7 revision (via `matching_lessons()`, the shared gate extraction that
+  `apply_lesson_emphasis` also uses) — the scorecard splits accuracy on claim-fired days
+  vs other days.
+- **Monthly scorecard** (`eval/scorecard.py`): per-ticker + pooled-aggregate lanes (agent /
+  control / persistence / always-up), edges (`agent − control`, `agent − persistence`),
+  band coverage, MAE, claim split, dossier health, and deltas vs the previous month's
+  persisted scorecard. Saved to `{SCORECARD_DIR}/{YYYY-MM}_scorecard.json` (PERMANENT time
+  series). On demand: `python -m services.scheduler.run_schedule scorecard
+  [--month YYYY-MM|current] [--ticker ...]`; scheduled: `scorecard_monthly` job
+  (1st, 02:00 IST, flag `SCORECARD_ENABLED`).
+
+Settings: `RL_CONTROL_LANE_ENABLED` (True), `CONTROL_LANE_MODEL` (""), `SCORECARD_ENABLED`
+(True), `SCORECARD_DIR` (`data/eval/scorecards`). All flag-off paths byte-identical.

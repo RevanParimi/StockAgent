@@ -629,3 +629,26 @@ RL_LESSON_EMPHASIS_DELTA: float = float(os.getenv("RL_LESSON_EMPHASIS_DELTA", "0
 RL_LESSON_EMPHASIS_CAP: float = float(os.getenv("RL_LESSON_EMPHASIS_CAP", "0.06"))
 RL_LESSON_MATCH_MIN_CONF: float = float(os.getenv("RL_LESSON_MATCH_MIN_CONF", "0.45"))
 
+# ---------------------------------------------------------------------------
+# RL Phase 1 — Monthly Scorecard + Baseline Duel (2026-06-12)
+#
+# Control lane (the duel): a bare-LLM predictor gets the same close +
+# market_context StockAgent has, but none of the architecture (no agents,
+# no learned weights, no lessons, no dossier). Scored against StockAgent and
+# naive baselines (persistence, always-up, always-down) in the monthly
+# scorecard. Everything here is flag-gated — flags off means byte-identical
+# behavior (no Step 10, no monthly job, claims_fired stays []).
+# ---------------------------------------------------------------------------
+
+# Daily control-lane prediction + scoring (daily_review Step 10).
+RL_CONTROL_LANE_ENABLED: bool = os.getenv("RL_CONTROL_LANE_ENABLED", "true").lower() == "true"
+
+# Control-lane model; empty string -> settings.LLM_MODEL_REASONING.
+CONTROL_LANE_MODEL: str = os.getenv("CONTROL_LANE_MODEL", "")
+
+# Monthly scorecard scheduler job (CronTrigger day 1, 02:00 IST).
+SCORECARD_ENABLED: bool = os.getenv("SCORECARD_ENABLED", "true").lower() == "true"
+
+# Persisted scorecard time series (PERMANENT — improvement history; volume).
+SCORECARD_DIR: str = os.getenv("SCORECARD_DIR", "data/eval/scorecards")
+

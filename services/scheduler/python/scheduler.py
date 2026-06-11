@@ -238,6 +238,23 @@ class AutomobileScheduler:
         )
         logger.info("[Scheduler] Ledger cleanup job: Mondays at 3:30 am IST")
 
+        # ── Job 8: Monthly scorecard (1st of month 2:00 am IST) ──────────────
+        if getattr(settings, "SCORECARD_ENABLED", True):
+            scheduler.add_job(
+                func=self._scorecard_monthly_job,
+                trigger=CronTrigger(
+                    day=1, hour=2, minute=0, timezone="Asia/Kolkata",
+                ),
+                id="scorecard_monthly",
+                name="Monthly RL scorecard (baseline duel)",
+                misfire_grace_time=3600,
+                coalesce=True,
+                replace_existing=True,
+            )
+            logger.info("[Scheduler] Monthly scorecard job: 1st of month at 2:00 am IST")
+        else:
+            logger.info("[Scheduler] Monthly scorecard job disabled (SCORECARD_ENABLED=false)")
+
         return scheduler
 
     # ------------------------------------------------------------------
@@ -511,6 +528,33 @@ class AutomobileScheduler:
             except Exception as exc:
                 logger.warning("[Scheduler] Ledger cleanup failed for %s: %s", ticker, exc, exc_info=True)
         _job_banner("Weekly Ledger Cleanup", done=True)
+
+    def _scorecard_monthly_job(self) -> None:
+        """
+        Build + persist the previous month's RL scorecard (agent vs control
+        LLM vs naive baselines, spec 2026-06-12). Runs on the 1st of every
+        month at 2:00 am IST — by then the previous month is fully closed
+        out (last daily review + control-lane scoring already ran).
+        Non-fatal: any failure is logged and the scheduler continues.
+        """
+        from core.intelligence.rl.eval.scorecard import (
+            build_scorecard,
+            save_scorecard,
+            _previous_month,
+        )
+
+        today = date.today()
+        current_month = f"{today.year}-{today.month:02d}"
+        month = _previous_month(current_month)
+
+        _job_banner(f"Monthly Scorecard — {month}")
+        try:
+            sc = build_scorecard(month)
+            path = save_scorecard(sc)
+            logger.info("[Scheduler] Scorecard for %s saved to %s", month, path)
+        except Exception as exc:
+            logger.warning("[Scheduler] Monthly scorecard build failed for %s: %s", month, exc, exc_info=True)
+        _job_banner(f"Monthly Scorecard — {month}", done=True)
 
     # ------------------------------------------------------------------
     # Public interface

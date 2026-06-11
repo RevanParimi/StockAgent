@@ -148,6 +148,14 @@ are archived (and resurrected if they start recurring), and a read-only evaluati
 (`python -m core.intelligence.rl.eval.run_eval`) measures direction accuracy, Brier score,
 and confidence calibration so improvement is a number, not a feeling.
 
+**The system also keeps score against controls.** Every day a *control lane* — the same
+LLM given the same information but none of the agents, learned weights, or dossier — makes
+its own prediction, and naive baselines (persistence, always-up) are computed alongside.
+A monthly scorecard (`python -m services.scheduler.run_schedule scorecard`, auto-generated
+on the 1st) persists the time series: StockAgent vs control vs baselines, month-over-month
+deltas, accuracy on days learned claims fired vs other days, and dossier health. The edge
+over the bare model is a measured number, not a claim.
+
 **The miss classification matters.** If the stock moved because of a surprise RBI rate decision that nobody predicted, that is classified as an `external_shock` — zero penalty to any agent, because the system could not have known. But if the fundamentals agent consistently overestimates a specific signal month after month, that is classified as `model_bias` — full penalty, weight reduction.
 
 **What the learning ledger looks like after 3 months:**

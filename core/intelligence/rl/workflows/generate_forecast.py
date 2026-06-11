@@ -98,6 +98,10 @@ def _apply_ledger_micro_adjustments(
     for lesson in learning_ledger.lessons:
         if not lesson.still_valid or lesson.occurrences < 2:
             continue
+        if lesson.trigger_tags:
+            # Tagged lessons fire via apply_lesson_emphasis() on matching
+            # calendar/event days instead of this legacy category-based path.
+            continue
         try:
             days_old = (today - _date.fromisoformat(lesson.last_seen)).days
         except Exception:
@@ -212,6 +216,17 @@ def _build_daily_forecasts(
         # Apply micro-adjustments from confirmed lessons — closes the architectural gap
         # where lessons only appear in narrative, not in actual forecast numbers.
         day_agent_scores = _apply_ledger_micro_adjustments(day_agent_scores, learning_ledger)
+
+        # Knowledge layer: tagged-lesson emphasis on this day's calendar tags
+        # (e.g. monsoon, budget_event, expiry_week). Applies ±RL_LESSON_EMPHASIS_DELTA
+        # to prioritise/discount agents for still-valid lessons whose trigger_tags
+        # match this row's calendar-derived tags.
+        if learning_ledger is not None:
+            from core.intelligence.rl.algorithms.lesson_emphasis import (
+                apply_lesson_emphasis, calendar_day_tags)
+            day_tags = calendar_day_tags(td)
+            if day_tags:
+                day_agent_scores = apply_lesson_emphasis(day_agent_scores, learning_ledger, day_tags)
 
         forecasts.append(DailyForecast(
             day=day_num,

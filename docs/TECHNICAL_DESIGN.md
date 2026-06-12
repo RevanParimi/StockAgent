@@ -194,7 +194,7 @@ The `RL Pipeline` box runs `daily_review` and `generate_forecast`, which call `F
 | Web framework | FastAPI | With APScheduler running inside the same process |
 | Agent orchestration | LangGraph | `StateGraph` with `Send` fan-out; async and sync paths |
 | Schema validation | Pydantic | v2; strict typing throughout |
-| LLM inference | OpenRouter | Hybrid tiers — FAST `qwen3.6-flash` (chat), REASONING `qwen3.7-max` (verdict synthesis + RL + the automobile Unified Sector Analyst), BULK `qwen-2.5-72b` (per-dimension sector agents for sectors not yet on the unified path); set via `LLM_MODEL_FAST/REASONING/BULK` |
+| LLM inference | OpenRouter | Hybrid tiers — FAST `qwen3.6-flash` (chat), REASONING `qwen3.7-max` (verdict synthesis + RL + the Unified Sector Analyst, all four sectors), BULK `qwen-2.5-72b` (legacy per-dimension agents, fallback path only); set via `LLM_MODEL_FAST/REASONING/BULK` |
 | Price data | yfinance | Free; NSE tickers require `.NS` suffix (e.g. `MARUTI.NS`) |
 | News search | Serper (serper.dev) | Google Search-as-API; 2,500 free queries/month per key |
 | Full-page extraction | Tavily | Monthly disk cache reduces actual API calls to <1% of free tier |
@@ -282,7 +282,8 @@ _prefetch_nse_data(query)  [STATIC: NseIndiaApi announcements/boardMeetings/acti
   ▼
 _run_agents(query, run_id, progress_callback)
   │
-  ├── _unified_enabled()? → SECTOR_NAME in settings.UNIFIED_ANALYST_SECTORS (default: "automobile")
+  ├── _unified_enabled()? → SECTOR_NAME in settings.UNIFIED_ANALYST_SECTORS
+  │     (default: "automobile,banking_bfsi,it_sector,renewable_energy" — all four)
   │
   ├── YES → _run_unified()  ─── UNIFIED PATH (2026-06-12 redesign) ──────────────┐
   │           │                                                                   │
@@ -301,7 +302,8 @@ _run_agents(query, run_id, progress_callback)
   │        [shared/pipeline/unified_analyst.py]                                   │
   │        ONE call, REASONING tier (qwen3.7-max), temp=0.2,                      │
   │        response_format=json_object, max_tokens=UNIFIED_ANALYST_MAX_TOKENS     │
-  │        → dict[str, AgentOutput] — all 9 dimensions, same schemas as legacy    │
+  │        → dict[str, AgentOutput] — all dimensions for that sector (9/6/8/6     │
+  │          per SECTOR_SPECS), same schemas as the legacy per-sector agents      │
   │        Never raises; returns {} on total failure (truncation salvage first)   │
   │           │                                                                    │
   │           ▼                                                                    │
@@ -338,8 +340,8 @@ Both paths produce the **same** `dict[str, AgentOutput]` shape and feed the **sa
 byte-compatible regardless of which path ran — the UI, chat tool, WebSocket stream, and
 RL calibration/lessons/weight-adaptation jobs require zero changes.
 
-**Three-Rail Safety Layer (all STATIC, all non-blocking — legacy worker-pool path:
-banking_bfsi, it_sector, renewable_energy, and the automobile fallback):**
+**Three-Rail Safety Layer (all STATIC, all non-blocking — legacy worker-pool fallback
+path only; every sector defaults to the unified path):**
 
 | Rail | Where | Trigger | Action |
 |---|---|---|---|
@@ -359,15 +361,17 @@ banking_bfsi, it_sector, renewable_energy, and the automobile fallback):**
 | Graph | Agents/Dimensions | Path | Key Weight | Unique Signal |
 |---|---|---|---|---|
 | `automobile` | 9 | **Unified** (one bundle + one analyst call; legacy pool as fallback) | `fundamentals` 0.18 | `sales_demand` (FADA/Vahan dispatch), `competitive_intel` (EV share) |
-| `banking_bfsi` | 6 | Legacy (9-agent-style worker pool, 6 agents) | `fundamentals` 0.25 | NPA/NIM/CASA, RBI MPC rate cycle |
-| `it_sector` | 8 | Legacy worker pool | `fundamentals` 0.25 | US tech spend, H1B visa risk, TCV deal wins |
-| `renewable_energy` | 6 | Legacy worker pool | `fundamentals` 0.30 | CUF/DSCR/EV-MW, MNRE auctions, DISCOM payment risk |
+| `banking_bfsi` | 6 | **Unified** (legacy pool as fallback) | `fundamentals` 0.25 | NPA/NIM/CASA, RBI MPC rate cycle |
+| `it_sector` | 8 | **Unified** (legacy pool as fallback) | `fundamentals` 0.25 | US tech spend, H1B visa risk, transcript NLP |
+| `renewable_energy` | 6 | **Unified** (legacy pool as fallback) | `fundamentals` 0.30 | CUF/DSCR/EV-MW, MNRE auctions, DISCOM payment risk |
 
-Migrating banking_bfsi, it_sector, or renewable_energy to the unified path requires only
-a `prompts/unified.py` module for that sector (mirroring
-`src/backend/sectors/automobile/prompts/unified.py`) plus adding the sector name to the
-`UNIFIED_ANALYST_SECTORS` CSV setting — `BaseSectorOrchestrator` and `UnifiedAnalyst`
-already dispatch generically via `_SECTOR_CLASS_MAPS`.
+All four sectors dispatch through the same generic machinery: per-sector dimension/class
+maps and prompt-module paths live in `SECTOR_SPECS` (`unified_analyst.py`), per-sector
+bundle behavior (news queries, deep-dive Tavily target, commodities applicability, peer
+lists) in `_SECTOR_BUNDLE_CFG` (`bundle_builder.py`). Ticker resolution short-circuits
+for exact managed tickers (each sector's `TICKERS`) — no resolution LLM call — so a
+scheduled/managed run costs **2 LLM calls** (analyst + aggregation); free-text input
+keeps the LLM resolution step (**3 calls**).
 
 ### 2.3 AgentOutput Schema — Full Field Reference
 
@@ -2093,7 +2097,7 @@ Never: os.getenv() for algorithm constants
 | `SERPER_API_KEY_2` | Banking_bfsi + it_sector Serper calls | `get_serper_key("bfsi")` |
 | `TAVILY_API_KEY` | Full-page extraction (all sectors) | All sectors |
 | `OPENROUTER_API_KEY` | All LLM calls | All agents |
-| `LLM_MODEL_FAST` / `LLM_MODEL_REASONING` / `LLM_MODEL_BULK` | Hybrid model tiers — REASONING also powers the automobile Unified Sector Analyst; BULK runs the per-dimension agents for sectors not yet on the unified path | `qwen3.6-flash` / `qwen3.7-max` / `qwen-2.5-72b` (235b retired) |
+| `LLM_MODEL_FAST` / `LLM_MODEL_REASONING` / `LLM_MODEL_BULK` | Hybrid model tiers — REASONING powers the Unified Sector Analyst (all four sectors); BULK runs the legacy per-dimension agents (fallback path only) | `qwen3.6-flash` / `qwen3.7-max` / `qwen-2.5-72b` (235b retired) |
 | `SCHEDULER_ENABLED` | Activate APScheduler | `true` in production |
 | `FEEDBACK_CRON` | Daily review trigger | `0 11 * * 1-5` (4:30pm IST) |
 | `MACRO_NEWS_ENABLED` | Toggle macro news feed | `true` / `false` |

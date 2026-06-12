@@ -2,7 +2,7 @@
 
 > All agents, tasks, metrics, data sources, static vs LLM responsibilities.
 > Minimize plain text — prefer tables and trees.
-> Updated: 2026-06-03 · Covers automobile (full) + 3 live sectors + RL + Chat (agentic tool-loop) + hybrid LLM tiers.
+> Updated: 2026-06-12 · All four sectors (automobile, banking_bfsi, it_sector, renewable_energy) on the Unified Sector Analyst by default + RL + Chat (agentic tool-loop) + hybrid LLM tiers.
 
 ---
 
@@ -10,11 +10,11 @@
 
 ```
 StockAgent Agents
-├── Analysis Agents  (sector-specific, run monthly + on-demand)
-│   ├── Automobile       9 agents  ✅ FULLY IMPLEMENTED
-│   ├── Banking/BFSI     6 agents  ✅ CONTEXT BUILDER EXTENDED
-│   ├── IT Sector        8 agents  ✅ CONTEXT BUILDER EXTENDED
-│   └── Renewable Energy 6 agents  ✅ CONTEXT BUILDER EXTENDED
+├── Analysis Agents  (sector-specific, run monthly + on-demand — ALL FOUR on Unified Sector Analyst)
+│   ├── Automobile       9 dimensions  ✅ UNIFIED (legacy 9-agent pool = fallback only)
+│   ├── Banking/BFSI     6 dimensions  ✅ UNIFIED (legacy 6-agent pool = fallback only)
+│   ├── IT Sector        8 dimensions  ✅ UNIFIED (legacy 8-agent pool = fallback only)
+│   └── Renewable Energy 6 dimensions  ✅ UNIFIED (legacy 6-agent pool = fallback only)
 │
 ├── RL Agents  (cross-sector, run daily automated post-market)
 │   ├── FeedbackAgent     [LLM]    daily root-cause analysis
@@ -91,9 +91,12 @@ BaseAgent.run(query):
 BaseSectorOrchestrator.analyse / analyse_async(ticker)   [src/backend/shared/pipeline/base_orchestrator.py]
   │
   ▼
-_resolve_ticker()  [LLM: temp=0.0, deterministic]
-  "Tata Motors" → StockQuery(ticker="TATAMOTORS", company_name="Tata Motors Ltd", exchange="NSE")
-  Fallback: raw input used as ticker if LLM fails
+_resolve_ticker()  [branch: managed ticker → STATIC; free text → LLM, temp=0.0]
+  Exact match against this sector's TICKERS (uppercased input)?
+    → YES: StockQuery built directly — company_name via yfinance, NO LLM call
+            (fixes a real bug: 'TATAPOWER' was previously LLM-"corrected" to TATAMOTORS)
+    → NO:  LLM resolution — "Tata Motors" → StockQuery(ticker="TATAMOTORS", company_name="Tata Motors Ltd", exchange="NSE")
+            Fallback: raw input used as ticker if LLM fails
   │
   ▼
 _load_learned_weights(ticker) / _resolve_weights_for(ticker)  [STATIC: reads agent_weight_memory.json]
@@ -108,21 +111,25 @@ _prefetch_nse_data(query)  [STATIC: one NseIndiaApi session, non-fatal]
   ▼
 _run_agents(query, run_id, progress_callback)   ← branch point: _unified_enabled()
   │
-  ├── UNIFIED PATH (SECTOR_NAME in settings.UNIFIED_ANALYST_SECTORS — default "automobile")
-  │   │
+  ├── UNIFIED PATH (SECTOR_NAME in settings.UNIFIED_ANALYST_SECTORS — default ALL FOUR:
+  │   │             "automobile,banking_bfsi,it_sector,renewable_energy")
   │   ▼
   │   build_sector_bundle(query, sector)  [services/data/context/bundle_builder.py]
   │     One fetch pass → SectorDataBundle: 10 labeled, individually char-capped
   │     sections (company_news, sector_policy_news, macro_context, policy_deep_dive,
   │     fundamentals, technicals, commodities, flows_sentiment, peers_valuation, dossier).
-  │     ≤3 dedicated Serper + ≤1 Tavily + free NSE/yfinance/dossier. Every fetcher
-  │     non-fatal — failure degrades that section to "unavailable", never raises.
+  │     Sector-aware via _SECTOR_BUNDLE_CFG: per-sector news queries, policy_deep_dive
+  │     Tavily query (IT → earnings-transcript commentary, RE → MNRE auction policy),
+  │     commodities = "not_applicable" outside automobile, peers from sector TICKERS.
+  │     ≤3 dedicated Serper + ≤1 Tavily + free NSE/yfinance/dossier, for EVERY sector.
+  │     Every fetcher non-fatal — failure degrades that section to "unavailable", never raises.
   │   │
   │   ▼
   │   UnifiedAnalyst().run(query, bundle, sector)  [src/backend/shared/pipeline/unified_analyst.py]
   │     ONE LLM call (REASONING tier, temp=0.2, json_object, UNIFIED_ANALYST_MAX_TOKENS)
-  │     → all 9 dimension AgentOutput subclasses (same schemas as the legacy agents:
-  │       SalesDemandOutput, RawMaterialsOutput, ... ValuationCatalystOutput).
+  │     → all dimension AgentOutput subclasses for that sector (9/6/8/6 for
+  │       automobile/banking_bfsi/it_sector/renewable_energy — same schemas as the
+  │       legacy per-sector agents, per SECTOR_SPECS in unified_analyst.py).
   │     Malformed/truncated JSON → salvage partial dimensions; missing dimension →
   │     neutral 0.5 + error flag. NEVER raises — returns {} on total failure.
   │   │
@@ -131,7 +138,8 @@ _run_agents(query, run_id, progress_callback)   ← branch point: _unified_enabl
   │   └─ outputs == {} AND UNIFIED_ANALYST_FALLBACK_LEGACY=true
   │        → falls through to LEGACY PATH below (same run)
   │
-  └── LEGACY PATH (sector not in UNIFIED_ANALYST_SECTORS, or unified-analyst total failure)
+  └── LEGACY PATH (sector not in UNIFIED_ANALYST_SECTORS, or unified-analyst total failure
+                    — automatic fallback only; not the default for any sector)
       │
       ▼
       LangGraph StateGraph worker pool (_build_worker_pool_graph)
@@ -156,14 +164,15 @@ SignalAggregator.run(agent_outputs, learned_weights)
 FinalReport  (verdict, final_score, weighted_agent_scores, agent_outputs, ...)
 ```
 
-**Automobile (unified path) vs other sectors (legacy path):** the diagram above is the
-same `analyse`/`analyse_async` entry point for every sector — only the branch taken
-inside `_run_agents` differs. `FinalReport`, `weighted_agent_scores`, and
-`agent_outputs` are byte-identical in shape regardless of which branch produced them,
-so SignalAggregator, RL calibration/lessons/weight-adaptation, the UI, the chat tool,
-and the WebSocket stream need zero changes either way.
+**Unified path (default for all four sectors) vs legacy fallback path:** the diagram
+above is the same `analyse`/`analyse_async` entry point for every sector — only the
+branch taken inside `_run_agents` differs, and today every sector takes the unified
+branch by default. `FinalReport`, `weighted_agent_scores`, and `agent_outputs` are
+byte-identical in shape regardless of which branch produced them, so SignalAggregator,
+RL calibration/lessons/weight-adaptation, the UI, the chat tool, and the WebSocket
+stream need zero changes either way.
 
-**Three-Rail Safety Layer (all STATIC, all non-blocking — legacy path):**
+**Three-Rail Safety Layer (all STATIC, all non-blocking — legacy fallback path only):**
 
 | Rail | Where | Trigger | Action |
 |---|---|---|---|
@@ -173,29 +182,31 @@ and the WebSocket stream need zero changes either way.
 
 The unified path has its own non-fatal degradation built in (bundle sections fall back
 to `"unavailable"`; the analyst never raises and degrades per-dimension or falls back
-to the legacy path entirely) — the three-rail layer applies to the legacy worker pool.
+to the legacy path entirely) — the three-rail layer applies only to the legacy
+worker-pool fallback, which now runs automatically only on unified-analyst total failure.
 
 **Sync vs Async paths:**
 
 | Path | When | Mechanism | LLM client |
 |---|---|---|---|
-| Sync | CLI / APScheduler | `analyse()` — LangGraph with threading on the legacy path | `openai.OpenAI` (sync) |
-| Async | FastAPI / WebSocket | `analyse_async()` — `graph.astream_events()` on the legacy path | `AsyncOpenAI` coroutine |
+| Sync | CLI / APScheduler | `analyse()` — unified call by default, LangGraph with threading on fallback | `openai.OpenAI` (sync) |
+| Async | FastAPI / WebSocket | `analyse_async()` — unified call by default, `graph.astream_events()` on fallback | `AsyncOpenAI` coroutine |
 
 **Multi-sector comparison:**
 
 | Sector | Dimensions | Path | Key weight | Unique signal / data |
 |---|---|---|---|---|
 | `automobile` | 9 | **Unified** (1 bundle + 1 analyst call) | fundamentals 0.18 | sales_demand (FADA/Vahan), competitive_intel (EV share) |
-| `banking_bfsi` | 6 | Legacy (6 parallel agents) | fundamentals 0.25 | NPA/NIM/CASA, RBI MPC rate cycle |
-| `it_sector` | 8 | Legacy (8 parallel agents) | fundamentals 0.25 | US tech spend, visa risk, transcript NLP |
-| `renewable_energy` | 6 | Legacy (6 parallel agents) | fundamentals 0.30 | CUF/DSCR/EV-MW, MNRE auctions, DISCOM risk |
+| `banking_bfsi` | 6 | **Unified** (1 bundle + 1 analyst call) | fundamentals 0.25 | NPA/NIM/CASA, RBI MPC rate cycle |
+| `it_sector` | 8 | **Unified** (1 bundle + 1 analyst call) | fundamentals 0.25 | US tech spend, visa risk, transcript NLP |
+| `renewable_energy` | 6 | **Unified** (1 bundle + 1 analyst call) | fundamentals 0.30 | CUF/DSCR/EV-MW, MNRE auctions, DISCOM risk |
 
-Banking/BFSI, IT, and Renewable Energy migrate to the unified path later — one
-`prompts/unified.py` per sector plus adding the sector name to
-`UNIFIED_ANALYST_SECTORS`; no orchestrator or aggregator changes needed.
+All four sectors are on the unified path by default (`UNIFIED_ANALYST_SECTORS`). The
+legacy per-sector worker pools (6/8/9 parallel agents) remain in the repo solely as the
+automatic fallback when `UNIFIED_ANALYST_FALLBACK_LEGACY=true` and the unified analyst
+call fails outright for a given run.
 
-**LangGraph known design weaknesses (backlog — legacy worker-pool path: banking_bfsi, it_sector, renewable_energy, and the automobile fallback):**
+**LangGraph known design weaknesses (backlog — legacy worker-pool fallback path only, all four sectors):**
 
 | # | Issue | Severity | Fix |
 |---|---|---|---|
@@ -229,15 +240,15 @@ All paths are under `src/backend/sectors/automobile/`. These weights, the 9 dime
 keys, and their `AgentOutput`/`SubScores` schemas are unchanged by the unified-analyst
 redesign — they are still the contract `SignalAggregator` and the RL loop consume.
 
-**How these 9 dimensions get scored (automobile, `UNIFIED_ANALYST_SECTORS` default):**
-one `UnifiedAnalyst` call (`src/backend/shared/pipeline/unified_analyst.py`, REASONING
-tier) scores all 9 from a single `SectorDataBundle`
-(`services/data/context/bundle_builder.py`) and instantiates the SAME `*Output`
-classes shown per dimension below — `prompts/unified.py` distils each dimension's
-definition, sub-scores, and scoring anchors from the 9 prompt files referenced in the
-table above. The per-agent classes in `agents/*.py` and their individual
-`CONTEXT_SEARCH_QUERIES`/Serper/Tavily/yfinance calls described in 4.1–4.9 below are
-the **legacy path** — still in the repo, used automatically when
+**How these 9 dimensions get scored (automobile is in `UNIFIED_ANALYST_SECTORS` by
+default, along with all other sectors):** one `UnifiedAnalyst` call
+(`src/backend/shared/pipeline/unified_analyst.py`, REASONING tier) scores all 9 from a
+single `SectorDataBundle` (`services/data/context/bundle_builder.py`) and instantiates
+the SAME `*Output` classes shown per dimension below — `prompts/unified.py` distils
+each dimension's definition, sub-scores, and scoring anchors from the 9 prompt files
+referenced in the table above. The per-agent classes in `agents/*.py` and their
+individual `CONTEXT_SEARCH_QUERIES`/Serper/Tavily/yfinance calls described in 4.1–4.9
+below are the **legacy path** — still in the repo, used automatically only when
 `UNIFIED_ANALYST_SECTORS` excludes `automobile` or when the unified analyst call fails
 outright (`UNIFIED_ANALYST_FALLBACK_LEGACY=true`). The bundle sources the same
 underlying data each legacy agent used to fetch for itself, just once per run:
@@ -786,11 +797,11 @@ ContextBuilder._build_risk_macro():
 |---|---|---|---|---|
 | `detect_sector(ticker)` | **STATIC** | `src/backend/sectors/__init__.py` | Hardcoded ticker sets | Default → automobile |
 | `CONTEXT_SEARCH_QUERIES` | **STATIC** | Each `prompts/{agent}.py` | Hardcoded keyword strings | Capped by `SERPER_MAX_QUERIES=3` |
-| `_resolve_ticker()` | **LLM** | `base_orchestrator.py` | qwen, temp=0.0 | Free text → NSE ticker |
+| `_resolve_ticker()` | **STATIC (managed ticker) / LLM (free text)** | `base_orchestrator.py` | Managed ticker (`_managed_tickers()` exact match) → built directly via `_company_name_for()`/`_yf_info()`, no LLM; free text → qwen, temp=0.0 | Scheduled/managed runs: 0 resolution LLM calls (2 total/run); free-text chat: 1 resolution LLM call (3 total/run) |
 | `_load_learned_weights()` | **STATIC** | `base_orchestrator.py` | JSON file read | Returns None if no data yet |
-| `_unified_enabled()` / `_run_agents()` | **STATIC** | `base_orchestrator.py` | `UNIFIED_ANALYST_SECTORS` membership check | Branch: unified analyst vs legacy worker pool |
-| `UnifiedAnalyst.run()` (automobile) | **LLM** | `shared/pipeline/unified_analyst.py` | qwen REASONING tier, temp=0.2, json_object | ONE call → all 9 dimension AgentOutputs; never raises |
-| Sector analysis agents (×9/8/6, legacy path) | **LLM** | `sectors/{sector}/agents/*.py` | qwen BULK tier, temp=0.2 | Score 5 dimensions + overall; one call per agent |
+| `_unified_enabled()` / `_run_agents()` | **STATIC** | `base_orchestrator.py` | `UNIFIED_ANALYST_SECTORS` membership check | Branch: unified analyst vs legacy worker pool — all four sectors unified by default |
+| `UnifiedAnalyst.run()` (all 4 sectors) | **LLM** | `shared/pipeline/unified_analyst.py` | qwen REASONING tier, temp=0.2, json_object | ONE call → all dimension AgentOutputs for that sector (9/6/8/6 per `SECTOR_SPECS`); never raises |
+| Sector analysis agents (×9/8/6, legacy fallback path) | **LLM** | `sectors/{sector}/agents/*.py` | qwen BULK tier, temp=0.2 | Score 5 dimensions + overall; one call per agent; runs only on unified-analyst total failure |
 | `AgentOutput.ticker_vs_peers` | **String field** | `sectors/automobile/agents/*.py` | `_parse_output()` | Numeric peer comparison e.g. "MARUTI EBITDA 8.6% vs TATA 10.5% vs M&M 11.2%" |
 | `AgentOutput.bull_case_if` | **String field** | above | `_parse_output()` | Specific catalyst for +0.15 score: "e-Vitara 8% EV share by FY27" |
 | `AgentOutput.bear_case_if` | **String field** | above | `_parse_output()` | Specific risk for -0.15 score: "Crude >$90 compresses margin 100-150bps" |
@@ -842,10 +853,17 @@ ContextBuilder._build_risk_macro():
 
 ## 13. Serper API Budget
 
-**Per-run call count, automobile (unified path, default — `UNIFIED_ANALYST_SECTORS=automobile`):**
+**Key & credit model (since 2026-06-13):** one paid Serper key (50,000-credit top-up)
+serves all sectors — `SERPER_API_KEY` and `SERPER_API_KEY_2` both point at it. Serper
+credits are a **one-time purchase valid 6 months — there is NO monthly reset** (the old
+free tier was a one-time 2,500-credit signup grant per account, both now exhausted).
+Tavily is the opposite: its free 1,000 credits **reset monthly**, and current usage
+(~500/month) keeps Tavily at $0.
 
-`build_sector_bundle()` makes **≤3 dedicated Serper calls** total per run, regardless
-of how many of the 9 dimensions are scored — one analyst call consumes all of them:
+**Per-run call count, unified path (default for ALL FOUR sectors):**
+
+`build_sector_bundle()` makes **≤3 dedicated Serper calls** total per run for every
+sector, regardless of how many dimensions are scored — one analyst call consumes all of them:
 
 | Bundle section | Serper calls | Notes |
 |---|---|---|
@@ -857,9 +875,9 @@ of how many of the 9 dimensions are scored — one analyst call consumes all of 
 | **Total (cache warm)** | **2** | |
 | **Total (cache miss)** | **3** | |
 
-**Per-run call count, legacy multi-agent path (banking_bfsi, it_sector, renewable_energy;
-also automobile when `UNIFIED_ANALYST_SECTORS` excludes it or the unified analyst call
-fails and `UNIFIED_ANALYST_FALLBACK_LEGACY` engages) — automobile shape shown:**
+**Per-run call count, legacy multi-agent path (automatic fallback only — runs when the
+unified analyst call fails outright and `UNIFIED_ANALYST_FALLBACK_LEGACY` engages, or
+when a sector is removed from `UNIFIED_ANALYST_SECTORS`) — automobile shape shown:**
 
 | Agent | Serper calls | Notes |
 |---|---|---|
@@ -906,22 +924,20 @@ Legacy path   — ContextBuilder._build_risk_macro():
   3 sectors × 2 queries × 6 cycles × 22 trading days = **792 Serper/month**
   (Previous: 1,080/month when running on weekends)
 
-**Monthly budget (5 tickers, 21 trading days, automobile on unified path):**
+**Monthly budget (all four sectors on the unified path, ~5 active tickers/sector, 21 trading days):**
 
 | Usage | Formula | Calls/month |
 |---|---|---|
-| Pre-market orchestrator (unified, warm) | 2 × 5 tickers × 21 days | 210 |
-| RL daily review (30% full rerun) | 0.3 × 2 × 5 × 21 | 63 |
+| Pre-market orchestrator (unified, warm) | 2 × ~5 tickers × 4 sectors × 21 days | ~840 |
+| RL daily review (30% full rerun) | 0.3 × 2 × 5 × 21 (automobile RL tickers) | ~63 |
 | Micro loop (weekdays only) | 3 sectors × 2 × 6 × 22 | 792 |
-| **Serper Total** | | **~1,065 / 2,500** |
-| Tavily (disk cache) | 1 × 0.04 × 5 × 21 | **~4 / 1,000 (<1%)** |
+| **Serper Total** | | **~1,700–2,500 / month** |
+| Tavily | 1 extract/run + event ingestion | **~500 / 1,000 free (resets monthly) → $0** |
 
-Automobile's unified path comfortably fits the free tier even at 5+ tickers/day; the
-792/month micro-loop background fetch is now the dominant cost. Banking/BFSI, IT, and
-Renewable Energy remain on the legacy 16–19/run shape until migrated — their combined
-budget should be sized using the legacy table above (the same ~2,976/2,500 pressure
-the pre-redesign automobile numbers showed applies per migrated sector until it moves
-to the unified path too).
+Against the paid 50,000-credit pool that is **~10–15k consumed over the 6-month credit
+validity** — the pool expires before it empties, so the effective external-data cost is
+~$8–9/month and re-upping ~twice a year is the steady state. Had the legacy 16–19/run
+shape still applied to all four sectors, the same workload would burn ~12k+/month.
 
 ---
 

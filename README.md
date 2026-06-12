@@ -12,7 +12,7 @@
 
 Most stock research tools give you a one-shot answer and forget it the moment you close the tab. StockAgent works differently.
 
-Every time you run an analysis, the stock is scored across nine specialist dimensions — fundamentals, macro risk, technical patterns, sentiment, raw material costs, policy risk, competitive position, valuation, and sector-specific sales data. For the automobile sector, a single reasoning-model call scores all nine dimensions in one pass from one shared data bundle (other sectors still run nine separate per-dimension agent calls). Either way, a Signal Aggregator then weighs the nine scores, detects where dimensions disagree, and asks a final AI model to resolve the conflicts and issue a verdict.
+Every time you run an analysis, the stock is scored across specialist dimensions tailored to its sector — automobile spans nine (fundamentals, macro risk, technical patterns, sentiment, raw material costs, policy risk, competitive position, valuation, and sales data); Banking/BFSI, IT, and Renewable Energy span six, eight, and six of their own. For every sector, a single reasoning-model call scores all dimensions in one pass from one shared data bundle. A Signal Aggregator then weighs the scores, detects where dimensions disagree, and asks a final AI model to resolve the conflicts and issue a verdict.
 
 That is the analysis part. The learning part is what makes it unusual.
 
@@ -25,9 +25,9 @@ After every trading day, the system automatically fetches the actual closing pri
 | Sector | Status | Stocks covered |
 |---|---|---|
 | **Automobile** | ✅ Full — unified single-call analyst + RL loop live | MARUTI, TATAMOTORS, M&M, BAJAJ-AUTO, HEROMOTOCO, EICHERMOT, TVSMOTORS, ASHOKLEY, ESCORTS, FORCEMOT + 6 extended (APOLLOTYRE, MRF, CEATLTD, MOTHERSON, BOSCHLTD, BALKRISIND) |
-| **Banking / BFSI** | 🔶 In progress — 6 agents built, data fetchers pending | HDFCBANK, ICICIBANK, SBIN, KOTAKBANK, AXISBANK, INDUSINDBK, BANDHANBNK, RBLBANK, YESBANK, BAJFINANCE, MUTHOOTFIN and more |
-| **IT Sector** | 🔶 In progress — 8 agents built, data fetchers pending | TCS, INFY, WIPRO, HCLTECH, TECHM, LTIM, COFORGE, MPHASIS, PERSISTENT and more |
-| **Renewable Energy** | 🔶 In progress — 6 agents built, data fetchers pending | ADANIGREEN, TATAPOWER, NTPC, POWERGRID, SJVN, JSWENERGY and more |
+| **Banking / BFSI** | ✅ Unified single-call analyst live (6 dimensions) | HDFCBANK, ICICIBANK, SBIN, KOTAKBANK, AXISBANK, INDUSINDBK, BANDHANBNK, RBLBANK, YESBANK, BAJFINANCE, MUTHOOTFIN and more |
+| **IT Sector** | ✅ Unified single-call analyst live (8 dimensions) | TCS, INFY, WIPRO, HCLTECH, TECHM, LTIM, COFORGE, MPHASIS, PERSISTENT and more |
+| **Renewable Energy** | ✅ Unified single-call analyst live (6 dimensions) | ADANIGREEN, TATAPOWER, NTPC, POWERGRID, SJVN, JSWENERGY and more |
 | **17 more sectors** | 🔲 Pipeline — prompt templates ready | Pharma, FMCG, Metals, Oil & Gas, Capital Goods, Insurance, Telecom, Defence, Chemicals, Infra, Logistics, Real Estate, Retail, Power, Media, Hospitality, Agro-Chemicals |
 
 You can type either the NSE ticker (`MARUTI`) or the company name (`Maruti Suzuki`) — the system resolves it automatically.
@@ -36,7 +36,7 @@ You can type either the NSE ticker (`MARUTI`) or the company name (`Maruti Suzuk
 
 ## The 9 Analysis Dimensions (Automobile Sector)
 
-Every analysis is scored across nine dimensions. For automobile, a single **Unified Sector Analyst** call assesses all nine from one shared data bundle (one set of fetches, one reasoning-model pass) — but each dimension still gets its own focused scoring lens, so a dimension that only cares about raw material prices cannot take shortcuts on the technical picture. (Banking/BFSI, IT, and Renewable Energy still run nine separate per-dimension agent calls, one fetch + one LLM call each, until they migrate to the same unified approach.)
+Every analysis is scored across its sector's dimensions (9 automobile / 6 BFSI / 8 IT / 6 renewable). A single **Unified Sector Analyst** call assesses all of them from one shared data bundle (one set of fetches, one reasoning-model pass) — but each dimension still gets its own focused scoring lens, so a dimension that only cares about raw material prices cannot take shortcuts on the technical picture. The legacy per-dimension agent pool remains in the codebase purely as an automatic fallback.
 
 ### 1. Fundamentals (18% weight)
 Examines the last 4 quarters of P&L data: revenue growth, EBITDA margin vs sector peers, order book pipeline, FII/DII shareholding changes. A company that is growing revenue and expanding margins will score well here even if the stock price has not reacted yet.
@@ -88,11 +88,11 @@ LLM resolves conflicts: "fundamentals bullish, macro bearish — which matters m
 Final score + Verdict + Investment thesis + Conviction drivers + Top risks
 ```
 
-For **Banking/BFSI, IT, and Renewable Energy** (not yet migrated), the same nine
-dimensions are produced by nine separate agents running in parallel, each with its
-own data fetch and LLM call, before the Signal Aggregator step above. If the unified
-analyst call fails outright, automobile automatically falls back to this same
-multi-agent path so a report is always produced.
+This unified flow is the default for **all four sectors** (Banking/BFSI scores 6
+dimensions, IT 8, Renewable Energy 6 — same mechanics, sector-specific prompts and
+data bundle). If the unified analyst call ever fails outright, the sector
+automatically falls back to the legacy multi-agent path (parallel per-dimension
+agents, each with its own data fetch and LLM call) so a report is always produced.
 
 **Verdict scale:**
 
@@ -337,7 +337,7 @@ Stocks that listed recently (e.g. ATHERENERGY) may not have enough yfinance hist
 In the first month of tracking a stock, agent weights are the system defaults — no learning has happened yet. The system becomes meaningfully more accurate after 2–3 months of daily feedback, and genuinely useful as a learning tool after 6 months.
 
 **5. Sector coverage is uneven.**
-The Automobile sector has all 9 dimensions fully implemented with live data fetchers, feeding a single Unified Sector Analyst call. The Banking/BFSI, IT, and Renewable Energy sectors have agent logic and prompts in place but rely more on LLM training knowledge until sector-specific data fetchers are wired up, and still run as nine separate per-dimension agents.
+All four active sectors (Automobile, Banking/BFSI, IT, Renewable Energy) run a single Unified Sector Analyst call over a one-pass, sector-aware data bundle — 9/6/8/6 dimensions respectively. Automobile additionally has the deepest live data fetchers and the full RL loop; the other sectors' fetchers continue to deepen over time.
 
 **6. Black-swan events are unforeseeable.**
 A surprise government order, a sudden exchange circuit breaker, or a geopolitical shock that was not in any news feed cannot be predicted. The system classifies these correctly as `external_shock` misses and does not penalise itself for them, but it also cannot warn you in advance.
@@ -348,8 +348,8 @@ A surprise government order, a sudden exchange circuit breaker, or a geopolitica
 
 | Layer | Technology |
 |---|---|
-| AI models (hybrid, via OpenRouter) | `qwen3.6-flash` for the chat assistant · `qwen3.7-max` for the verdict synthesis, RL reasoning, and the automobile Unified Sector Analyst · `qwen-2.5-72b` for the remaining sectors' per-dimension agents (tier chosen by a benchmark; Qwen3-235B retired) |
-| Analysis framework | LangGraph (parallel agent dispatch); automobile uses a single unified-analyst call instead of per-dimension fan-out |
+| AI models (hybrid, via OpenRouter) | `qwen3.6-flash` for the chat assistant · `qwen3.7-max` for the verdict synthesis, RL reasoning, and the Unified Sector Analyst (all four sectors) · `qwen-2.5-72b` for the legacy per-dimension fallback agents (tier chosen by a benchmark; Qwen3-235B retired) |
+| Analysis framework | Single unified-analyst call per run (all sectors); LangGraph parallel agent dispatch retained as the automatic fallback |
 | Backend | Python FastAPI |
 | Data — prices & OHLCV | yfinance (NSE/BSE prices, 10-year OHLCV, sector indices, commodities) |
 | Data — news & search | Serper News API (primary), Tavily (fallback + policy docs) |
@@ -367,7 +367,7 @@ All AI reasoning happens server-side. The browser receives structured JSON resul
 ## Frequently Asked Questions
 
 **How long does an analysis take?**
-Typically 15–120 seconds. For automobile, one shared data fetch feeds a single reasoning-model call that scores all nine dimensions (~15–20s). For sectors not yet on the unified path, nine agents run in parallel, each making one or two LLM calls (~60–120s). The exact time depends on how quickly the LLM API responds.
+Typically 15–25 seconds for any sector: one shared data fetch feeds a single reasoning-model call that scores all dimensions at once. Only if that call fails outright does the system fall back to the slower parallel multi-agent run (~60–120s). The exact time depends on how quickly the LLM API responds.
 
 **How often should I re-run analysis on a stock?**
 For active monitoring, once a week is usually sufficient unless a significant event (earnings, policy announcement, sharp price move) has occurred. The daily RL review updates forward forecasts automatically — you don't need to re-run analysis to get an updated prediction.

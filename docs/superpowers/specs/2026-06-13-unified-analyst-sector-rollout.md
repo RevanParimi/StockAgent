@@ -1,7 +1,7 @@
 # Unified Analyst — BFSI / IT / Renewable Rollout
 
 **Date:** 2026-06-13
-**Status:** APPROVED — ready for implementation
+**Status:** IMPLEMENTED 2026-06-13 (live-verified: HDFCBANK BUY 0.62, INFY NEUTRAL 0.494, ADANIGREEN 0.59, TATAPOWER 0.575 — all unified path, differentiated dimension scores; includes managed-ticker resolution short-circuit fixing TATAPOWER→TATAMOTORS)
 **Parent spec:** `2026-06-12-unified-sector-analyst-design.md` (automobile, IMPLEMENTED)
 
 ## 1. Goal

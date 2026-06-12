@@ -108,7 +108,7 @@ small word-grouped `token` chunks for a streaming feel.
 | `get_macro_news()` | daily macro cache → **live Serper fallback** | Self-heals when the cache is empty |
 | `get_ticker_dossier(ticker)` | `{TICKER}_dossier.json` digest | Accumulated thesis, response signatures, guidance, flow notes |
 | `search_market_news(query)` | Serper /news + RRF, Tavily fallback | Multi-query fusion (see §4) |
-| `run_agent_analysis(ticker)` | sector orchestrator | Full analysis run — automobile via the Unified Sector Analyst (~15-20s, one bundle + one LLM call); other sectors via the legacy 9-agent pool (~60-120s) |
+| `run_agent_analysis(ticker)` | sector orchestrator | Full analysis run — all four sectors via the Unified Sector Analyst (~15-20s, one bundle + one LLM call); legacy per-agent pool only as automatic fallback |
 
 > Every dispatched tool — including `get_rl_prediction`, `get_macro_news`, and
 > `get_historical_prices` — now has a matching `_CHAT_TOOLS` schema, enforced by a
@@ -187,12 +187,12 @@ blocking `/ui/chat` only if the stream fails.
 ## Analysis Pipeline — API Calls Per Ticker
 
 (The full **analysis** pipeline below is separate from chat — `run_agent_analysis` just invokes it.
-As of the 2026-06-12 Unified Sector Analyst redesign, automobile runs a single shared data-fetch
-pass + one reasoning-model call instead of 9 parallel per-agent LLM calls; banking_bfsi, it_sector,
-and renewable_energy still use the legacy LangGraph worker pool with 9 separate per-agent calls,
-and automobile falls back to that pool if the unified analyst call fails outright.)
+As of the 2026-06-12/13 Unified Sector Analyst redesign, ALL FOUR sectors run a single
+shared data-fetch pass + one reasoning-model call instead of parallel per-agent LLM calls;
+the legacy LangGraph worker pool remains only as automatic fallback when the unified
+analyst call fails outright.)
 
-**Automobile (unified path, default — `build_sector_bundle()` + `UnifiedAnalyst`):**
+**Unified path (default for every sector — `build_sector_bundle()` + `UnifiedAnalyst`):**
 
 | Source | Calls | Cost | When |
 |---|---|---|---|
@@ -200,12 +200,12 @@ and automobile falls back to that pool if the unified analyst call fails outrigh
 | NseIndiaApi `announcements()` / `boardMeetings()` / `actions()` | 1 each | Free | Pre-fetch (once, before bundle) |
 | Serper (`company_news`, `sector_policy_news`, `macro_context`) | 0–2 | Credits | Bundle build (macro_context skipped on cache hit) |
 | Tavily (`policy_deep_dive`) | 0–1 | Credits | Bundle build |
-| LLM — Unified Analyst (REASONING: qwen3.7-max) | 1 | Paid | One call → all 9 dimension scores |
+| LLM — Unified Analyst (REASONING: qwen3.7-max) | 1 | Paid | One call → all dimension scores (9/6/8/6 per sector) |
 | LLM — SignalAggregator (REASONING: qwen3.7-max) | 1 | Paid | Verdict synthesis |
 | **Total Serper (warm)** | **~2** | — | macro cache hit |
 | **Total Serper (cold)** | **~3** | — | macro cache miss |
 
-**Other sectors / automobile legacy fallback (LangGraph worker pool, 9 agents, macro cache warm):**
+**Legacy fallback path (LangGraph worker pool — runs only on unified-analyst total failure; automobile 9-agent shape shown):**
 
 | Source | Calls | Cost | When |
 |---|---|---|---|

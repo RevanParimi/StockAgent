@@ -262,8 +262,8 @@ retired — it broke `json_object` output and was a weak function-caller.
 |------|---------|-------------|
 | `OPENROUTER_API_KEY` | `""` (required) | OpenRouter API key |
 | `LLM_MODEL_FAST` | `qwen/qwen3.6-flash` | **FAST tier** — the agentic chat tool-loop |
-| `LLM_MODEL_REASONING` | `qwen/qwen3.7-max` | **REASONING tier** — SignalAggregator verdict, RL FeedbackAgent / ThesisReviewer, and the automobile Unified Sector Analyst (JSON-validated) |
-| `LLM_MODEL_BULK` | `qwen/qwen-2.5-72b-instruct` | **BULK tier** — the per-dimension sector agents for sectors not yet on the unified path (proven `json_object` model) |
+| `LLM_MODEL_REASONING` | `qwen/qwen3.7-max` | **REASONING tier** — SignalAggregator verdict, RL FeedbackAgent / ThesisReviewer, and the Unified Sector Analyst for all four sectors (JSON-validated) |
+| `LLM_MODEL_BULK` | `qwen/qwen-2.5-72b-instruct` | **BULK tier** — the legacy per-dimension agents, fallback path only (proven `json_object` model) |
 | `LLM_MODEL` | `= LLM_MODEL_BULK` | Back-compat catch-all for any call-site not on a named tier |
 | `LLM_TEMPERATURE` | `0.2` | LLM sampling temperature |
 | `LLM_MAX_TOKENS` | `2048` | Max output tokens per LLM call |
@@ -275,8 +275,8 @@ retired — it broke `json_object` output and was a weak function-caller.
 
 | Name | Default | Description |
 |------|---------|-------------|
-| `SERPER_API_KEY` | `""` | Serper (Google search) — used by automobile + renewable sectors |
-| `SERPER_API_KEY_2` | `""` | Serper — used by banking_bfsi + it_sector |
+| `SERPER_API_KEY` | `""` | Serper (Google search) — since 2026-06-13 one paid 50k-credit key serves all sectors (credits are one-time purchases valid 6 months, no monthly reset) |
+| `SERPER_API_KEY_2` | `""` | Legacy second slot (was banking_bfsi + it_sector free key) — now points at the same paid key |
 | `TAVILY_API_KEY` | `""` | Tavily full-page extraction (Policy agent) |
 | `ALPHA_VANTAGE_API_KEY` | `""` | Alpha Vantage (optional financials) |
 | `NEWSAPI_KEY` | `""` | NewsAPI (optional) |
@@ -315,7 +315,7 @@ retired — it broke `json_object` output and was a weak function-caller.
 
 | Name | Default | Description |
 |------|---------|-------------|
-| `UNIFIED_ANALYST_SECTORS` | `automobile` | CSV of sector names on the one-bundle/one-call path; `""` disables it everywhere (legacy multi-agent path byte-identical) |
+| `UNIFIED_ANALYST_SECTORS` | `automobile,banking_bfsi,it_sector,renewable_energy` | CSV of sector names on the one-bundle/one-call path (all four by default); `""` disables it everywhere (legacy multi-agent path byte-identical) |
 | `UNIFIED_ANALYST_FALLBACK_LEGACY` | `true` | On total Unified Analyst failure, fall back to the legacy multi-agent worker pool |
 | `UNIFIED_ANALYST_MAX_TOKENS` | `6000` | Max output tokens for the single Unified Analyst LLM call |
 | `UNIFIED_SECTION_MAX_CHARS` | `2500` | Per-section cap in `SectorDataBundle` |
@@ -464,10 +464,13 @@ All paths verified to exist. Paths are relative to project root.
 | `src/backend/sectors/registry.py` | `TICKER_SECTOR` dict + `SectorRegistry` singleton (resolve, get_handler, is_enabled) |
 | `src/backend/shared/config/settings/base.py` | All environment variable definitions with defaults |
 | `src/backend/shared/config/rag_config.py` | RAG-specific env vars (mirrors `core/intelligence/rag/config.py`) |
-| `src/backend/shared/pipeline/base_orchestrator.py` | `BaseSectorOrchestrator` — ticker resolution, RL weights, NSE prefetch, `_run_agents`/`_run_unified`/`_unified_enabled` dispatch, SignalAggregator |
-| `services/data/context/bundle_builder.py` | `build_sector_bundle()` — one-pass `SectorDataBundle` (10 labeled, char-capped sections) feeding the Unified Sector Analyst |
-| `src/backend/shared/pipeline/unified_analyst.py` | `UnifiedAnalyst` — one reasoning-model call → all 9 dimension `AgentOutput`s for a unified-path sector; never raises, falls back to legacy on total failure |
-| `src/backend/sectors/automobile/prompts/unified.py` | Unified Sector Analyst system + analysis prompt for automobile (9 dimension definitions in one prompt) |
+| `src/backend/shared/pipeline/base_orchestrator.py` | `BaseSectorOrchestrator` — ticker resolution (managed-ticker short-circuit, no LLM for exact `TICKERS` matches), RL weights, NSE prefetch, `_run_agents`/`_run_unified`/`_unified_enabled` dispatch, SignalAggregator |
+| `services/data/context/bundle_builder.py` | `build_sector_bundle()` — one-pass `SectorDataBundle` (10 labeled, char-capped sections), sector-aware via `_SECTOR_BUNDLE_CFG` (per-sector queries, deep-dive Tavily target, commodities applicability, peer lists) |
+| `src/backend/shared/pipeline/unified_analyst.py` | `UnifiedAnalyst` — one reasoning-model call → all dimension `AgentOutput`s for a sector (9/6/8/6 per `SECTOR_SPECS`); never raises, falls back to legacy on total failure |
+| `src/backend/sectors/automobile/prompts/unified.py` | Unified Sector Analyst prompt for automobile (9 dimensions in one prompt) |
+| `src/backend/sectors/banking_bfsi/prompts/unified.py` | Unified Sector Analyst prompt for BFSI (6 dimensions) |
+| `src/backend/sectors/it_sector/prompts/unified.py` | Unified Sector Analyst prompt for IT (8 dimensions) |
+| `src/backend/sectors/renewable_energy/prompts/unified.py` | Unified Sector Analyst prompt for renewable energy (6 dimensions) |
 | `src/backend/sectors/automobile/pipeline/orchestrator.py` | AutomobileAgentOrchestrator — defines the 9 legacy per-dimension agents, used as the multi-agent fallback path when the unified analyst is off or fails |
 | `src/backend/sectors/banking_bfsi/pipeline/orchestrator.py` | BankingAgentOrchestrator |
 | `src/backend/sectors/it_sector/pipeline/orchestrator.py` | ITAgentOrchestrator |

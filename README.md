@@ -173,6 +173,13 @@ events into the dossier — so management guidance like "expects ~1% growth in F
 the stock's knowledge file straight from the source, the quarter it's said, and is tracked
 to met/missed.
 
+**The monthly forecast isn't set in stone.** If a real shock invalidates the thesis mid-cycle
+— a surprise external shock, a thesis-breaking miss, or the market tipping into a sustained
+crisis regime — the system re-underwrites the remaining days of its 30-day forecast from
+the current price, archiving the old path for the record; and every weekday morning before
+the market opens it runs a quick overnight-news check so a global shock doesn't go unnoticed
+until the evening review.
+
 **The miss classification matters.** If the stock moved because of a surprise RBI rate decision that nobody predicted, that is classified as an `external_shock` — zero penalty to any agent, because the system could not have known. But if the fundamentals agent consistently overestimates a specific signal month after month, that is classified as `model_bias` — full penalty, weight reduction.
 
 **What the learning ledger looks like after 3 months:**

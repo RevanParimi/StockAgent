@@ -387,6 +387,18 @@ retired — it broke `json_object` output and was a weak function-caller.
 | `EVENT_INGEST_MAX_EVENTS_PER_SCAN` | `3` | LLM/Tavily call cap per ticker per scan |
 | `EVENT_INGEST_TEXT_MAX_CHARS` | `6000` | Per-event text bundle truncation |
 
+### Living Envelope (RL Phase 2.5)
+
+| Name | Default | Description |
+|------|---------|-------------|
+| `RL_REFORECAST_ENABLED` | `true` | Shock-triggered mid-month re-forecast (`regenerate_envelope`) on/off |
+| `RL_REFORECAST_MAX_PER_MONTH` | `2` | Hard cap on re-forecasts per ticker per calendar month |
+| `RL_REFORECAST_THESIS_MULT_THRESHOLD` | `0.5` | `thesis_break` trigger fires when `horizon_confidence_multiplier` drops to/below this |
+| `RL_REGIME_STICKY_ENABLED` | `true` | Sticky market-wide regime hysteresis on/off |
+| `RL_REGIME_CALM_DAYS` | `3` | Consecutive milder detections before exiting a severe sticky regime |
+| `RL_PREOPEN_CHECK_ENABLED` | `true` | Pre-open overnight shock check (08:45 IST job + CLI) on/off |
+| `RL_PREOPEN_SHOCK_SEVERITY` | `0.7` | Severity threshold above which contradicted tickers trigger a re-forecast |
+
 ### Macro News Feed
 
 | Name | Default | Description |
@@ -451,7 +463,7 @@ All paths verified to exist. Paths are relative to project root.
 | `services/api/routes/prompts.py` | /ui/prompts/* — live prompt editing and GitHub deploy |
 | `services/api/routes/analytics.py` | /analytics/* — RL performance exports and Power BI feed |
 | `services/api/log_buffer.py` | In-memory ring buffer for real-time log streaming |
-| `services/scheduler/python/scheduler.py` | APScheduler: daily RL review (4:30pm IST), monthly forecast (1st, 9am IST), calendar update (Dec 31) |
+| `services/scheduler/python/scheduler.py` | APScheduler: daily RL review (4:30pm IST), monthly forecast (1st, 9am IST), calendar update (Dec 31), pre-open shock check (`preopen_shock_check`, Mon-Fri 08:45 IST, Living Envelope §27.3) |
 | `services/data/stores/score_store.py` | SQLite score history (read/write/delta/range queries) |
 | `services/background/macro_news_cache.py` | Daily macro news cache read/write |
 | `services/clients/llm_client.py` | Async OpenRouter LLM client |
@@ -469,9 +481,11 @@ All paths verified to exist. Paths are relative to project root.
 | `src/backend/sectors/banking_bfsi/pipeline/orchestrator.py` | BankingAgentOrchestrator |
 | `src/backend/sectors/it_sector/pipeline/orchestrator.py` | ITAgentOrchestrator |
 | `src/backend/sectors/renewable_energy/pipeline/orchestrator.py` | RenewableAgentOrchestrator |
-| `core/intelligence/rl/workflows/generate_forecast.py` | Generate 30-day PredictionEnvelope (runs full pipeline) |
-| `core/intelligence/rl/workflows/daily_review.py` | Daily RL feedback: compare actual vs predicted, update weights; Step 8.5 dossier curator |
-| `core/intelligence/rl/stores/prediction_store.py` | JSON R/W for envelopes, feedback logs, weight memory, ledgers, ticker dossier |
+| `core/intelligence/rl/workflows/generate_forecast.py` | Generate 30-day PredictionEnvelope (runs full pipeline); `regenerate_envelope()` re-runs the pipeline mid-cycle for the remaining days only (Living Envelope, RL_DESIGN §27.2) |
+| `core/intelligence/rl/workflows/daily_review.py` | Daily RL feedback: compare actual vs predicted, update weights; Step 8.5 dossier curator; post-Step-6 trigger block (external_shock/thesis_break/regime_flip) calls `regenerate_envelope()` and skips Step 7 on success (§27.2) |
+| `core/intelligence/rl/workflows/preopen_check.py` | Pre-open overnight shock check (1 Serper + 1 fast LLM, market-wide); contradicted tickers trigger `regenerate_envelope(trigger="preopen_shock")` (§27.3) |
+| `core/intelligence/regime/state.py` | Sticky market-wide regime hysteresis (`update_sticky_regime`, `data/predictions/_regime_state.json`) (§27.1) |
+| `core/intelligence/rl/stores/prediction_store.py` | JSON R/W for envelopes, feedback logs, weight memory, ledgers, ticker dossier; `archive_envelope()` copies the superseded envelope to `{ticker_dir}/archived_envelopes/{YYYY-MM}_v{n}.json` before a re-forecast overwrite (§27.2) |
 | `core/intelligence/rl/stores/ledger_propagator.py` | Propagate lessons to sector/market ledgers; stale-lesson archival + resurrection |
 | `core/intelligence/rl/agents/feedback_agent.py` | LLM-based miss classification and lesson generation (lessons carry trigger_tags) |
 | `core/intelligence/rl/agents/weight_adapter.py` | Agent weight adjustment with per-agent calibration reward (RL_CALIBRATION_REWARD_ENABLED) |

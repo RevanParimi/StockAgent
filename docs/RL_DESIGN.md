@@ -3,10 +3,12 @@
 > Complete reference for the self-learning RL feedback system.
 > Covers: 5 JSON memory files, full daily loop (Steps 0–9 incl. Step 8.5 dossier curator),
 > month-start forecast, all static formulas & multipliers, LLM contracts, schemas,
-> static-vs-LLM boundary, and the Knowledge Layer (§23).
-> Updated: 2026-06-11 · Phases 5 + 6 + Evolution P1–P5 + Phase 8 complete.
+> static-vs-LLM boundary, the Knowledge Layer (§23), and the Living Envelope (§27).
+> Updated: 2026-06-13 · Phases 5 + 6 + Evolution P1–P5 + Phase 8 complete.
 > Knowledge Layer (Ticker Dossier + executable claims, §23): **IMPLEMENTED 2026-06-11**
 > — plan: `docs/superpowers/plans/2026-06-11-ticker-dossier.md`.
+> Living Envelope (sticky regime + shock re-forecast + pre-open check, §27):
+> **IMPLEMENTED 2026-06-13** — spec: `docs/superpowers/specs/2026-06-13-living-envelope-design.md`.
 
 ---
 
@@ -45,6 +47,7 @@ MONTH START (1st trading day)
 DAILY (weekdays 4:30pm IST / 11:00 UTC)
   daily_review.py
     ├── Step 0   RegimeDetector   → classify market regime  [STATIC: VIX/FII/RSI]
+    │    └── update_sticky_regime() → market-wide sticky label (hysteresis) [STATIC, §27.1]
     ├── Step 1   Load today's forecast from PredictionEnvelope
     ├── Step 2   Fetch actual close via yfinance
     ├── Step 3   Compute error metrics                      [STATIC: formulas]
@@ -58,11 +61,24 @@ DAILY (weekdays 4:30pm IST / 11:00 UTC)
     ├── Step 5.5 Apply regime multipliers → ephemeral eff. weights [STATIC: NOT persisted]
     ├── Step 6   LearningLedger  → merge lessons + propagate (P2) [STATIC: blend formula]
     ├── Step 6.5 ConvictionTracker → update streak + reversion_prior [STATIC: formula]
-    ├── Step 7   Revise remaining forecasts                 [STATIC + eff. weights]
+    ├── [Living Envelope] Shock-triggered re-forecast trigger check [STATIC check, §27.2]
+    │    └── first match of external_shock / thesis_break / regime_flip
+    │         → regenerate_envelope() [LLM: fresh pipeline + MC paths for
+    │            remaining days only, archives v_n, capped per month]
+    │         → On success: Step 7 confidence revision SKIPPED for this run
+    ├── Step 7   Revise remaining forecasts (skipped on a re-forecast day) [STATIC + eff. weights]
     │    └── apply_lesson_emphasis → tagged lessons fire on today's event_tags [STATIC, §23]
     ├── Step 8   Append FeedbackEntry to daily_feedback_log (+ event_tags)
     ├── Step 8.5 DossierCurator → update {TICKER}_dossier.json [LLM, EVERY day, §23]
     └── Step 9   SeasonalValidator → update seed validity  [STATIC: state machine]
+
+PRE-OPEN (weekdays 08:45 IST, before 09:15 open)
+  preopen_check.py — run_preopen_check()                    [§27.3]
+    ├── 1 Serper search: overnight India-market / GIFT Nifty / global macro news
+    ├── 1 LLM_MODEL_FAST call → {severity, direction, headline}  [LLM, json_object]
+    └── severity ≥ RL_PREOPEN_SHOCK_SEVERITY (0.7) → per managed ticker, contradiction
+         (predicted UP in risk_off / DOWN in risk_on) → regenerate_envelope(
+         trigger="preopen_shock") — same monthly cap as the daily trigger block
 ```
 
 **Key invariant:** Regime multipliers (Step 5.5) are ephemeral — applied per-day, NEVER written to `weight_memory.json`. Learned weights drift slowly; regime multipliers are daily overlays only.
@@ -1747,3 +1763,184 @@ The dossier learns from corporate *events*, not just the daily tape — the path
 
 Settings: `RL_EVENT_INGEST_ENABLED` (True), `EVENT_INGEST_LOOKBACK_DAYS` (8),
 `EVENT_INGEST_MAX_EVENTS_PER_SCAN` (3), `EVENT_INGEST_TEXT_MAX_CHARS` (6000).
+
+---
+
+## 27. Living Envelope (Phase 2.5) — IMPLEMENTED
+
+> **Status: IMPLEMENTED 2026-06-13.**
+> Spec: `docs/superpowers/specs/2026-06-13-living-envelope-design.md`
+> Code: `core/intelligence/regime/state.py`,
+> `core/intelligence/rl/workflows/generate_forecast.py` (`regenerate_envelope`),
+> `core/intelligence/rl/workflows/daily_review.py` (trigger block after Step 6),
+> `core/intelligence/rl/workflows/preopen_check.py`,
+> `core/intelligence/rl/stores/prediction_store.py` (`archive_envelope`)
+
+### Why
+
+The 30-day envelope was **frozen at month-start**: Monte Carlo price paths built once on
+the 1st with no mid-month regeneration trigger; Step-7 revision adjusted confidence only
+— never price path or direction, so a thesis broken by a macro shock (war, crude spike)
+limped to month-end as "NEUTRAL at 0.45" while the stock moved −6%; regime detection was
+ephemeral (a single calm day flipped MACRO_CRISIS straight back to NORMAL); and nothing
+inspected overnight news pre-open — the loop was entirely post-close. The weight layer
+(±0.05 step / ±0.15 drift caps, external_shock zero-penalty, calibration shock exclusion,
+20% rate-cap) was already shock-safe and is **unchanged**.
+
+Living Envelope makes the envelope a living document: an experienced analyst abandons a
+broken monthly thesis and re-underwrites. Bounded, evidence-gated, fully flag-gated;
+scoring honesty preserved — every prediction is scored against the envelope that was
+active when it was made.
+
+### 27.1 Component 1 — Sticky regime (market-level hysteresis)
+
+`core/intelligence/regime/state.py` adds a market-wide sticky layer on top of
+`RegimeDetector.detect()`'s raw daily label:
+
+```python
+@dataclass
+class RegimeState:
+    label: str           # NORMAL / RISK_OFF / MACRO_CRISIS / ...
+    since: str           # ISO date the sticky label was entered
+    calm_streak: int      # consecutive detections milder than the sticky label
+
+def update_sticky_regime(detected_label: str, today: str) -> RegimeState
+```
+
+- Persisted market-wide (one file, NOT per ticker): `data/predictions/_regime_state.json`.
+- Severity order: `NORMAL/RISK_ON/MOMENTUM_EXTENDED/OVERSOLD (0) < RISK_OFF (1) <
+  MACRO_CRISIS (2)` — only RISK_OFF/MACRO_CRISIS are "severe"; everything else is "calm".
+- A severe label is entered **immediately** on first detection (`since`/`calm_streak`
+  reset).
+- A milder detection while a severe label is sticky increments `calm_streak`; after
+  `RL_REGIME_CALM_DAYS` (default 3) consecutive milder detections the sticky label exits
+  to the milder detected label.
+- Any severe re-detection resets `calm_streak` to 0. Same-day repeat calls are
+  idempotent (tracked via an internal `_last_update` marker in the JSON, outside the
+  `RegimeState` dataclass contract).
+- Flag `RL_REGIME_STICKY_ENABLED` (default true). Disabled → raw label pass-through,
+  never touches disk. Corrupt/missing state file → start fresh from the detected label
+  (never raises).
+- Consumers: daily_review Step 0 now uses the STICKY label (not the raw daily one) for
+  regime-weight multipliers (Step 5.5); `regenerate_envelope` passes it through as
+  `regime_label` so Monte Carlo bands widen for the whole regenerated path.
+
+### 27.2 Component 2 — Shock-triggered re-forecast
+
+**Engine** — `regenerate_envelope(ticker, sector, reason, trigger, review_date=None) ->
+PredictionEnvelope | None` in `generate_forecast.py`:
+
+- Fresh full-pipeline run (same sector orchestrator + effective weights as the monthly
+  path) → new dimension scores/verdict → new `ForecastProfile` → new GBM Monte Carlo
+  paths anchored on **today's actual close**, for the remaining trading days of the
+  current cycle only.
+- Past days' forecasts (`date <= review_date`) and already-logged feedback entries are
+  **byte-identical** — only rows with `date > review_date` are replaced. Remaining
+  `day` numbers are renumbered to continue from the last preserved past day.
+- **Archive before overwrite**: `PredictionStore.archive_envelope(cycle_id)` copies the
+  superseded envelope to
+  `data/predictions/{sector}/{ticker}/archived_envelopes/{YYYY-MM}_v{n}.json` (n =
+  1 + existing archives for that month) before the new envelope is saved.
+- The regenerated envelope carries `reforecast_count` (incremented) and
+  `reforecast_history: [{date, reason, trigger, archived_file}]`.
+- **Hard cap**: `RL_REFORECAST_MAX_PER_MONTH` (default 2) per ticker per calendar month —
+  at cap, `regenerate_envelope` logs and returns `None` with no archive/save side
+  effects.
+- NEVER raises — returns `None` on: flag off, no envelope for the current cycle, cap
+  reached, no remaining days after `review_date`, or any pipeline/close-fetch failure
+  (original envelope left fully intact).
+
+**Triggers** (`daily_review.py`, after Step 6.5 (conviction streak), before Step 7 —
+checked in this order, first match wins and is recorded as `trigger`):
+
+| Trigger | Condition |
+|---|---|
+| `external_shock` | FeedbackAgent `miss_type == "external_shock"` AND direction wrong, **after** the 20% external_shock rate-cap override (`daily_review.py:799-823`) — i.e. the classification survived the cap |
+| `thesis_break` | Step 7a `ThesisReviewer` ran and `horizon_confidence_multiplier <= RL_REFORECAST_THESIS_MULT_THRESHOLD` (default 0.5) |
+| `regime_flip` | Sticky regime TRANSITIONED into `MACRO_CRISIS` today (prior sticky label != `MACRO_CRISIS`, new == `MACRO_CRISIS`) — steady-state MACRO_CRISIS does not re-fire |
+
+- On a successful `regenerate_envelope()`, Step 7b's confidence-only revision is
+  **skipped** for that run — the fresh envelope already supersedes it. The conviction
+  streak computed in Step 6.5 is carried over onto the regenerated envelope and
+  persisted so streak state isn't lost on a re-forecast day.
+- On `None` (flag off / cap reached / pipeline failure), Step 7b proceeds exactly as
+  before.
+- Flag `RL_REFORECAST_ENABLED` (default true); off → today's behavior byte-identical,
+  no new file reads on the hot path.
+
+**Scoring honesty** — `daily_review` reads "today's prediction" from the envelope file
+as of review time, and `regenerate_envelope` only replaces rows with `date >
+review_date`. Every scored day was therefore predicted by the envelope that was active
+when that prediction was made; scorecard/control-lane comparisons (§25) remain fair.
+
+### 27.3 Component 3 — Pre-open sanity check
+
+New scheduler job `preopen_shock_check` (Mon–Fri, **08:45 IST**, before the 09:15 open),
+gated `RL_PREOPEN_CHECK_ENABLED` (default true), plus CLI `python -m
+services.scheduler.run_schedule preopen-check [--ticker ...] [--sector ...]`. Market-level,
+NOT per ticker — exactly **1 Serper + 1 `LLM_MODEL_FAST` call total** per invocation,
+implemented in `core/intelligence/rl/workflows/preopen_check.py`:
+
+1. **1 Serper search**: `fetch_news_context(["India stock market GIFT Nifty global
+   overnight macro news {date}"], max_queries=1)`.
+2. **1 `LLM_MODEL_FAST` call** (json_object, ≤300 tokens, temp 0.2): rates
+   `{"severity": 0.0-1.0, "direction": "risk_off|risk_on|neutral", "headline": "..."}`.
+   Parsed defensively — garbage JSON or LLM failure degrades to severity 0.0 / direction
+   "neutral" (never raises).
+3. `severity < RL_PREOPEN_SHOCK_SEVERITY` (default 0.7) → single log line, no per-ticker
+   work.
+4. `severity >= threshold` → for each (ticker, sector) across all managed sectors
+   (default: all four — automobile, banking_bfsi, it_sector, renewable_energy), load
+   today's envelope forecast direction via `PredictionStore`. A contradiction (predicted
+   UP while overnight `direction == "risk_off"`, or predicted DOWN while `direction ==
+   "risk_on"`) is flagged and triggers `regenerate_envelope(reason="pre-open shock:
+   {headline}", trigger="preopen_shock")` — subject to the same
+   `RL_REFORECAST_MAX_PER_MONTH` cap. Per-ticker failures are isolated; the loop
+   continues.
+5. Serper/LLM failures degrade to neutral and never block the open.
+
+**Cost ceiling**: ~$0.01/day market-wide (1 Serper + 1 fast-tier LLM call regardless of
+ticker count).
+
+### 27.4 Settings (`src/backend/shared/config/settings/base.py`)
+
+| Setting | Default | What it controls |
+|---|---|---|
+| `RL_REFORECAST_ENABLED` | `true` | Master flag for Component 2 (shock-triggered re-forecast) |
+| `RL_REFORECAST_MAX_PER_MONTH` | `2` | Hard cap on `regenerate_envelope()` calls per ticker per calendar month |
+| `RL_REFORECAST_THESIS_MULT_THRESHOLD` | `0.5` | `thesis_break` fires when `horizon_confidence_multiplier` drops to/below this |
+| `RL_REGIME_STICKY_ENABLED` | `true` | Master flag for Component 1 (sticky regime hysteresis) |
+| `RL_REGIME_CALM_DAYS` | `3` | Consecutive milder detections required before exiting a severe sticky regime |
+| `RL_PREOPEN_CHECK_ENABLED` | `true` | Master flag for Component 3 (pre-open sanity check) |
+| `RL_PREOPEN_SHOCK_SEVERITY` | `0.7` | Severity (0.0-1.0) above which contradicted tickers trigger `regenerate_envelope(reason="preopen_shock")` |
+
+### 27.5 Safety
+
+- All three flags off → byte-identical to pre-Phase-2.5 behavior, no new file reads on
+  hot paths.
+- `regenerate_envelope`, `update_sticky_regime`, and `run_preopen_check` never raise.
+- Cost ceilings: re-forecast ≤2 full pipeline runs/ticker/month (~$0.08); pre-open check
+  1 Serper + 1 fast LLM/day market-wide (~$0.01/day).
+- Weight layer, dossier/lessons/calibration flows, and event ingestion (§26) untouched.
+
+### 27.6 Live verification (2026-06-13)
+
+Suite: **~1521 unit passed / 5 skipped**.
+
+- Forced `python -m services.scheduler.run_schedule reforecast --ticker MARUTI` against
+  the real pipeline/market data: archived the existing v1 envelope to
+  `archived_envelopes/2026-06_v1.json`, regenerated the 23 remaining trading days of the
+  current cycle from the real close (base_close ₹13,022 → new path anchored ~₹13,100),
+  `reforecast_count` incremented to 1, and the past 7 already-reviewed days were
+  byte-identical before and after.
+- Live `preopen-check` run detected a real **severity-0.75 risk_on** overnight shock
+  (GIFT Nifty +236 on Trump-Iran oil news) via the real Serper + fast-LLM pipeline, and
+  correctly flagged **nothing** — MARUTI's envelope predicted NEUTRAL for the day, which
+  does not contradict a `risk_on` direction (only predicted-DOWN-in-risk_on or
+  predicted-UP-in-risk_off contradict).
+
+### 27.7 Not in scope
+
+Weight adapter changes; intraday updates beyond the single pre-open check; shock-lesson
+faster decay; Phase 2 signature validation. Weight layer, dossier/lessons/calibration
+flows untouched.

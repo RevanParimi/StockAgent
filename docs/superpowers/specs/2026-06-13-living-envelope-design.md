@@ -1,7 +1,7 @@
 # Living Envelope — Shock-Robust Forecasting (RL Phase 2.5)
 
 **Date:** 2026-06-13
-**Status:** APPROVED — ready for implementation
+**Status:** IMPLEMENTED 2026-06-13 (live-verified: forced MARUTI re-forecast — archive v1, 23 days re-pathed, past days untouched; real pre-open check caught severity-0.75 risk_on Iran-oil news, zero false flags)
 **Depends on:** Phase 0/1 (envelope, daily review, regime detector, thesis reviewer) — all live.
 
 ---

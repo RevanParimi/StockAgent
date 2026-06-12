@@ -20,7 +20,15 @@ StockAgent Agents
 │   ├── FeedbackAgent     [LLM]    daily root-cause analysis
 │   ├── WeightAdapter     [STATIC] deterministic weight adjustment
 │   ├── ThesisReviewer    [LLM]    conditional post-miss thesis validation
-│   └── DossierCurator    [LLM]    daily knowledge extraction → ticker dossier
+│   ├── DossierCurator    [LLM]    daily knowledge extraction → ticker dossier
+│   ├── update_sticky_regime [STATIC] market-wide regime hysteresis (Living Envelope, RL_DESIGN §27.1)
+│   └── regenerate_envelope [LLM]  shock-triggered mid-cycle re-forecast: external_shock /
+│                                  thesis_break / regime_flip / preopen_shock (RL_DESIGN §27.2)
+│
+├── Pre-Open Agent  (cross-sector, runs daily 08:45 IST before market open)
+│   └── run_preopen_check [LLM]    1 Serper + 1 fast-LLM market-level overnight shock
+│                                  rating → contradicted tickers trigger regenerate_envelope
+│                                  (Living Envelope, RL_DESIGN §27.3)
 │
 └── Chat Agent  (on-demand via /ui/chat/stream)  ✅ AGENTIC TOOL-LOOP
     ├── IntentPreRouter   [STATIC] keyword intent → pre-run screen_stocks + news (plan-and-execute)
@@ -829,6 +837,11 @@ ContextBuilder._build_risk_macro():
 | Event scan + bundle | **STATIC** | `rl/agents/event_ingestor.py` | NSE keyword filter + 1 Tavily page/event | Weekly, watermarked, ≤3 events/scan (RL_DESIGN §26) |
 | `EventIngestor.run()` | **LLM** | above | qwen, temp=0.2, ≤900 tokens | Digests filings/concalls into dossier via the SAME curator merge |
 | `RegimeDetector.detect()` | **STATIC** | `regime/detector.py` | VIX/FII/RSI thresholds | No LLM |
+| `update_sticky_regime()` | **STATIC** | `regime/state.py` | Severity hysteresis (NORMAL/RISK_ON/.../OVERSOLD < RISK_OFF < MACRO_CRISIS), `RL_REGIME_CALM_DAYS` | Market-wide `_regime_state.json`; never raises (RL_DESIGN §27.1) |
+| Re-forecast trigger check | **STATIC** | `rl/workflows/daily_review.py` (post Step 6) | external_shock / thesis_break / regime_flip, first match wins | Skips Step 7 on success (RL_DESIGN §27.2) |
+| `regenerate_envelope()` | **LLM** | `rl/workflows/generate_forecast.py` | Same orchestrator + effective weights as month-start | Fresh MC paths for remaining days only; archives v_n; capped `RL_REFORECAST_MAX_PER_MONTH` (RL_DESIGN §27.2) |
+| `archive_envelope()` | **STATIC** | `rl/stores/prediction_store.py` | File copy to `archived_envelopes/{YYYY-MM}_v{n}.json` | Before every re-forecast overwrite (RL_DESIGN §27.2) |
+| `run_preopen_check()` | **LLM** | `rl/workflows/preopen_check.py` | 1 Serper + `LLM_MODEL_FAST` (json_object, temp=0.2, ≤300 tokens) | Market-level, 08:45 IST job + CLI; contradiction → `regenerate_envelope(trigger="preopen_shock")` (RL_DESIGN §27.3) |
 | Regime multiplier table | **STATIC** | `settings/base.py` | Config constant | Never persisted |
 | `ConvictionTracker` | **STATIC** | `rl/conviction/tracker.py` | `min(0.25,(days-4)×0.025)` | Formula |
 | RSI divergence amplifier | **STATIC** | above | ×1.5 when streak≥8 + RSI contrast | Cap 0.30 |

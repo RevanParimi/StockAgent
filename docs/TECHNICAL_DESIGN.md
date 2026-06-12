@@ -1396,7 +1396,7 @@ Month Start (1st trading day)
 
 | Step | Name | Type | What It Does | Early Exit? |
 |---|---|---|---|---|
-| **0** | `RegimeDetector.detect()` | **STATIC** | Fetches `^INDIAVIX`, Nifty 5-day return, sector RSI; classifies into 6 regimes | No |
+| **0** | `RegimeDetector.detect()` + `update_sticky_regime()` | **STATIC** | Fetches `^INDIAVIX`, Nifty 5-day return, sector RSI; classifies into 6 regimes; sticky hysteresis layer (market-wide `_regime_state.json`, RL_DESIGN §27.1) drives Step 5.5 multipliers and the `regime_flip` trigger below | No |
 | **1** | Load forecast row | **STATIC** | `PredictionStore.load_envelope(cycle_id)` → today's `DailyForecast` | Exits if no envelope exists |
 | **2** | Fetch actual close | **STATIC** | `yfinance.download("{TICKER}.NS", period="5d")["Close"]` → `actual_close` | Exits if price unavailable |
 | **3** | Compute error metrics | **STATIC** | `price_error_pct = (actual − predicted) / predicted × 100`; `classify_direction()` → UP/DOWN/FLAT; timing accuracy | No |
@@ -1405,7 +1405,8 @@ Month Start (1st trading day)
 | **5.5** | Regime multipliers | **STATIC** | Apply ephemeral regime multipliers to get `effective_weights`; **NEVER written to weight_memory.json** | No |
 | **6** | LearningLedger merge | **STATIC** | `merge_lessons_into_ledger()`: dedup by pattern, blend confidence, propagate to sector/market ledgers | No |
 | **6.5** | ConvictionTracker | **STATIC** | Update streak days + `reversion_prior` formula; inject streak warning at `streak ≥ 8` | No |
-| **7** | Revise remaining forecasts | **STATIC** | Re-run `SignalAggregator` with `effective_weights`; apply lesson rules + seasonal adjustments | **YES** → early exit if `direction_correct AND \|error\| < 0.5%` |
+| **Living Envelope trigger** | `regenerate_envelope()` check | **STATIC check, LLM re-forecast** | First match of `external_shock` / `thesis_break` / `regime_flip` (RL_DESIGN §27.2) → fresh pipeline + MC paths for remaining days, archives superseded envelope; capped `RL_REFORECAST_MAX_PER_MONTH` | On success, Step 7 confidence revision is **skipped** for this run |
+| **7** | Revise remaining forecasts | **STATIC** | Re-run `SignalAggregator` with `effective_weights`; apply lesson rules + seasonal adjustments | **YES** → early exit if `direction_correct AND \|error\| < 0.5%`; also skipped entirely if Living Envelope re-forecast fired above |
 | **8** | Persist FeedbackEntry | **STATIC** | Atomic write (`.tmp` → rename); idempotent (replaces same-date entry) | No |
 | **8.5** | `DossierCurator.run()` | **LLM** | Updates ticker dossier (thesis, signatures, guidance, catalysts, flows, observations); runs **every day, hit or miss**; static merge enforces all bounds; never raises | No |
 | **9** | SeasonalValidator | **STATIC** | Runs **only on last trading day of month** (not daily); validates pattern fire/no-fire | No |
@@ -1799,6 +1800,9 @@ All jobs run inside the FastAPI process as an APScheduler `BackgroundScheduler` 
 | `macro_market_news` | 9:00/12:00/15:00 IST Mon–Fri | During NSE session ✅ | Fetch real-time Nifty/market news; populate macro cache | Sector-wide | 2 per run | 1 ReviewAgent call |
 | `macro_daily_news` | 7:30 AM Mon–Fri | Pre-market ✅ | Fetch overnight policy/RBI news; populate macro cache | Sector-wide | 2 per run | 1 ReviewAgent call |
 | `ledger_cleanup_weekly` | 3:30 AM Mondays | N/A | Downgrade stale market_wide lessons in ledger | All managed tickers | 0 | 0 |
+| `scorecard_monthly` | 1st of month 2:00 AM | N/A | Build monthly RL scorecard (agent vs control vs baselines) | All managed tickers | 0 | 0 |
+| `event_ingest_weekly` | Saturdays 10:00 AM | N/A | Scan NSE filings/concalls → dossier digestion (RL_DESIGN §26) | All managed tickers | 0 | ≤3 LLM + ≤3 Tavily/ticker |
+| `preopen_shock_check` | 08:45 AM Mon–Fri | Pre-open ✅ | Living Envelope pre-open sanity check; contradicted tickers re-forecast (RL_DESIGN §27.3) | All managed tickers (market-level) | 1 total | 1 fast-tier total |
 
 **Job configuration parameters (all jobs):**
 - `coalesce=True` — if a run was missed (server restart), fire once, not catch-up
@@ -1861,7 +1865,7 @@ On every server start (including Railway deployments):
      b. Find missing trading-day reviews this month → run_daily_review() for each
 
 3. BackgroundScheduler.start():
-   All 7 jobs registered with their CronTriggers
+   All 10 jobs registered with their CronTriggers
 ```
 
 The self-heal runs as a background thread so the server is immediately available to handle API requests while catch-up runs happen in the background.
@@ -2213,6 +2217,9 @@ old 2,500/month free-tier reference point) — see §5.1.5.
 | `ledger_cleanup_weekly` | 3:30am Mondays | 0 | 0 |
 | `rl_calendar_update` | Dec 31 11pm | 0 | 0 |
 | `prompt_daily_deploy` | Midnight IST | 0 | 0 |
+| `scorecard_monthly` | 1st of month 2am | 0 | 0 |
+| `event_ingest_weekly` | Saturdays 10am | 0 | ≤3/ticker |
+| `preopen_shock_check` | 08:45am Mon–Fri | 1 total | 1 fast-tier total |
 
 ---
 

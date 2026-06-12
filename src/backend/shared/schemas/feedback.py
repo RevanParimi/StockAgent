@@ -75,6 +75,18 @@ class DailyForecast(BaseModel):
     )
 
 
+class ReforecastEvent(BaseModel):
+    """
+    One entry in PredictionEnvelope.reforecast_history (Living Envelope, RL
+    Phase 2.5, Component 2). Recorded each time regenerate_envelope() runs
+    for this ticker/cycle.
+    """
+    date: str               # ISO date the re-forecast happened
+    reason: str             # "external_shock" | "thesis_break" | "regime_flip" | "preopen_shock" | "manual_verification" | ...
+    trigger: str = ""       # free-text detail (e.g. which signal fired)
+    archived_file: str = ""  # path to the archived superseded envelope, if any
+
+
 class PredictionEnvelope(BaseModel):
     """
     The living 30-day forecast for a single ticker + monthly cycle.
@@ -98,6 +110,10 @@ class PredictionEnvelope(BaseModel):
         description="Per-agent catalyst snapshot at forecast time: {agent: {bull_case_if, bear_case_if, ticker_vs_peers, what_changed, data_confidence}}"
     )
     fno_snapshot: FnOSnapshot | None = None   # F&O chain snapshot at month-start (G7b)
+    # Living Envelope (RL Phase 2.5, Component 2): mid-month shock re-forecast
+    # bookkeeping. Defaults keep every existing stored envelope loadable.
+    reforecast_count: int = 0
+    reforecast_history: list[ReforecastEvent] = Field(default_factory=list)
 
     def get_forecast(self, target_date: str) -> DailyForecast | None:
         for f in self.daily_forecasts:

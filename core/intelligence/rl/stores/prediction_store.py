@@ -195,6 +195,59 @@ class PredictionStore:
         return PredictionEnvelope(**data)
 
     # ------------------------------------------------------------------
+    # Living Envelope (RL Phase 2.5, Component 2) — archive before re-forecast
+    # ------------------------------------------------------------------
+
+    def _archived_envelopes_dir(self) -> Path:
+        return self._dir / "archived_envelopes"
+
+    def archive_envelope(self, cycle_id: str | None = None) -> str | None:
+        """
+        Copy the current envelope file to
+        {ticker_dir}/archived_envelopes/{month}_v{n}.json, where {month} is
+        the "YYYY-MM" portion of the cycle_id and {n} = 1 + the number of
+        existing archives for that month.
+
+        Returns the archived path (str) on success, or None on any failure
+        (missing envelope, write error, etc.) — logged, never raises.
+        """
+        try:
+            cid = cycle_id or self.current_cycle_id()
+            src = self._envelope_path(cid)
+            if not src.exists():
+                logger.info(
+                    "[PredictionStore] archive_envelope: no envelope to archive for cycle %s", cid,
+                )
+                return None
+
+            # cycle_id is "{TICKER}_{YYYY-MM}" — month is everything after the
+            # first underscore-delimited ticker prefix.
+            month = cid[len(self.ticker) + 1:] if cid.startswith(f"{self.ticker}_") else cid
+
+            archive_dir = self._archived_envelopes_dir()
+            archive_dir.mkdir(parents=True, exist_ok=True)
+
+            existing = list(archive_dir.glob(f"{month}_v*.json"))
+            next_n = len(existing) + 1
+            dest = archive_dir / f"{month}_v{next_n}.json"
+
+            data = self._read_json(src)
+            if data is None:
+                logger.error(
+                    "[PredictionStore] archive_envelope: failed to read envelope for cycle %s", cid,
+                )
+                return None
+
+            self._write_json(dest, data)
+            logger.info(
+                "[PredictionStore] Archived envelope for cycle %s -> %s", cid, dest,
+            )
+            return str(dest)
+        except Exception as exc:
+            logger.error("[PredictionStore] archive_envelope failed: %s", exc)
+            return None
+
+    # ------------------------------------------------------------------
     # Daily Feedback Log
     # ------------------------------------------------------------------
 

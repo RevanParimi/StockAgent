@@ -93,6 +93,70 @@ def _clamp(value: float, lo: float = 0.0, hi: float = 1.0) -> float:
     return max(lo, min(hi, value))
 
 
+def _salvage_truncated_json(raw: str) -> dict:
+    """
+    Best-effort recovery of a partial top-level JSON object from `raw` when
+    `json.loads(raw)` fails (e.g. the response was cut off mid-stream by a
+    max_tokens cap).
+
+    Strategy: walk the string tracking string/escape state and brace depth.
+    Each time depth returns to 1 immediately after a `}` (i.e. a top-level
+    key's object value has just fully closed), record that index as a
+    candidate salvage point. Take the LAST such point, truncate the string
+    there, strip a trailing comma, and append `}` to close the top-level
+    object. Returns {} if nothing salvageable (including on any error, or if
+    `raw` doesn't even open a top-level `{`).
+
+    Safe to call on valid, complete JSON too — it will simply return the
+    parsed dict if the whole string parses after the salvage transform falls
+    back to the full string, or {} if nothing better is found. (In practice
+    `run()` only calls this after `json.loads(raw)` has already failed.)
+    """
+    if not raw:
+        return {}
+
+    depth = 0
+    in_string = False
+    escape = False
+    last_complete_idx: int | None = None
+    started = False
+
+    for i, ch in enumerate(raw):
+        if in_string:
+            if escape:
+                escape = False
+            elif ch == "\\":
+                escape = True
+            elif ch == '"':
+                in_string = False
+            continue
+
+        if ch == '"':
+            in_string = True
+        elif ch == "{":
+            depth += 1
+            started = True
+        elif ch == "}":
+            depth -= 1
+            if started and depth == 1:
+                # A top-level value's object just closed cleanly.
+                last_complete_idx = i
+
+    if last_complete_idx is None:
+        return {}
+
+    candidate = raw[: last_complete_idx + 1].rstrip()
+    candidate = candidate.rstrip(",")
+    candidate += "}"
+
+    try:
+        parsed = json.loads(candidate)
+    except (json.JSONDecodeError, ValueError):
+        return {}
+
+    return parsed if isinstance(parsed, dict) else {}
+
+
 def _resolve_sub_scores_model(output_cls: type[AgentOutput]) -> type | None:
     """
     Resolve the concrete pydantic SubScores model from `output_cls`'s
@@ -175,7 +239,21 @@ class UnifiedAnalyst:
                 stripped = re.sub(r"^```(?:json)?\s*", "", stripped)
                 stripped = re.sub(r"\s*```\s*$", "", stripped).strip()
 
-            data = json.loads(stripped)
+            try:
+                data = json.loads(stripped)
+            except json.JSONDecodeError as exc:
+                salvaged = _salvage_truncated_json(stripped)
+                if not salvaged:
+                    raise
+                n_total = len(class_map)
+                n_present = sum(1 for dim in class_map if isinstance(salvaged.get(dim), dict))
+                logger.warning(
+                    "[UnifiedAnalyst] %s/%s: response truncated (%s) — salvaged %d/%d "
+                    "dimensions from partial JSON; remaining will degrade to neutral",
+                    sector, query.ticker, exc, n_present, n_total,
+                )
+                data = salvaged
+
             if not isinstance(data, dict):
                 raise ValueError(f"LLM returned {type(data).__name__}, expected dict")
 

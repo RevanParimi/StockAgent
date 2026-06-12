@@ -668,7 +668,7 @@ SCORECARD_DIR: str = os.getenv("SCORECARD_DIR", "data/eval/scorecards")
 # ---------------------------------------------------------------------------
 UNIFIED_ANALYST_SECTORS: str = os.getenv("UNIFIED_ANALYST_SECTORS", "automobile")
 UNIFIED_ANALYST_FALLBACK_LEGACY: bool = os.getenv("UNIFIED_ANALYST_FALLBACK_LEGACY", "true").lower() == "true"
-UNIFIED_ANALYST_MAX_TOKENS: int = int(os.getenv("UNIFIED_ANALYST_MAX_TOKENS", "3500"))
+UNIFIED_ANALYST_MAX_TOKENS: int = int(os.getenv("UNIFIED_ANALYST_MAX_TOKENS", "6000"))
 UNIFIED_SECTION_MAX_CHARS: int = int(os.getenv("UNIFIED_SECTION_MAX_CHARS", "2500"))
 UNIFIED_BUNDLE_MAX_CHARS: int = int(os.getenv("UNIFIED_BUNDLE_MAX_CHARS", "18000"))
 

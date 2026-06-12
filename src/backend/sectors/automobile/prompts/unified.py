@@ -35,6 +35,14 @@ CRITICAL GROUNDING RULES (apply to every dimension):
   "unified_analyst".
 - Be ticker-specific: cite real numbers, dates, and named peers from the bundle wherever possible.
 - Output ONLY valid JSON — no markdown fences, no commentary outside the JSON object.
+
+OUTPUT-SIZE RULES (the whole response must fit a fixed token budget — be terse):
+- "summary": at most 2 short sentences.
+- "key_positives" / "key_risks": at most 3 items each, each item at most 10 words.
+- "ticker_vs_peers", "bull_case_if", "bear_case_if", "what_changed": each at most 1 short
+  sentence.
+- Write compact JSON: no extra whitespace beyond what's needed for validity, no markdown, and
+  no keys beyond those specified in the schema below.
 """
 
 
@@ -50,6 +58,12 @@ data/inference, 0.7 multiple data points, 1.0 direct verified data), and fill ti
 (numeric comparison vs named peers), bull_case_if (specific catalyst that would add ~0.15),
 bear_case_if (specific risk that would cut ~0.15), and what_changed (what shifted this cycle vs
 last, with numbers).
+
+BE TERSE — the full response must fit a fixed token budget:
+- summary: at most 2 short sentences.
+- key_positives / key_risks: at most 3 items each, each item at most 10 words.
+- ticker_vs_peers, bull_case_if, bear_case_if, what_changed: each at most 1 short sentence.
+- Compact JSON only — no markdown, no commentary, no keys beyond the schema below.
 
 1. sales_demand (0.0 very bearish demand -> 1.0 very bullish demand):
    FADA/SIAM retail vs wholesale dispatch trend, EV (Vahan) registration share, dealer inventory
@@ -128,7 +142,7 @@ Return ONLY this JSON object (no markdown fences):
 
 {{
   "sales_demand": {{
-    "score": <float 0.0-1.0>, "confidence": <float 0.3-1.0>, "summary": "<2-3 sentences>",
+    "score": <float 0.0-1.0>, "confidence": <float 0.3-1.0>, "summary": "<=2 short sentences, terse>",
     "key_positives": [<string>, ...], "key_risks": [<string>, ...],
     "sub_scores": {{"fada_siam_dispatch": <float>, "ev_segment_vahan": <float>,
       "dealer_inventory": <float>, "export_import": <float>, "used_car_price_index": <float>}},
@@ -136,7 +150,7 @@ Return ONLY this JSON object (no markdown fences):
     "what_changed": "<string>"
   }},
   "raw_materials": {{
-    "score": <float 0.0-1.0>, "confidence": <float 0.3-1.0>, "summary": "<2-3 sentences>",
+    "score": <float 0.0-1.0>, "confidence": <float 0.3-1.0>, "summary": "<=2 short sentences, terse>",
     "key_positives": [<string>, ...], "key_risks": [<string>, ...],
     "sub_scores": {{"steel_aluminium": <float>, "platinum_palladium": <float>,
       "crude_oil_polymer": <float>, "power_tariff": <float>, "commodities_trend": <float>}},
@@ -144,7 +158,7 @@ Return ONLY this JSON object (no markdown fences):
     "what_changed": "<string>"
   }},
   "fundamentals": {{
-    "score": <float 0.0-1.0>, "confidence": <float 0.3-1.0>, "summary": "<2-3 sentences>",
+    "score": <float 0.0-1.0>, "confidence": <float 0.3-1.0>, "summary": "<=2 short sentences, terse>",
     "key_positives": [<string>, ...], "key_risks": [<string>, ...],
     "sub_scores": {{"revenue_ebitda_delta": <float>, "margin_vs_peers": <float>,
       "order_book_pipeline": <float>, "attrition_headcount": <float>,
@@ -153,7 +167,7 @@ Return ONLY this JSON object (no markdown fences):
     "what_changed": "<string>"
   }},
   "pattern_analysis": {{
-    "score": <float 0.0-1.0>, "confidence": <float 0.3-1.0>, "summary": "<2-3 sentences>",
+    "score": <float 0.0-1.0>, "confidence": <float 0.3-1.0>, "summary": "<=2 short sentences, terse>",
     "key_positives": [<string>, ...], "key_risks": [<string>, ...],
     "sub_scores": {{"price_cycle_position": <float>, "seasonal_pattern": <float>,
       "rsi_macd_bb": <float>, "breakout_support_zone": <float>, "peer_correlation": <float>}},
@@ -161,7 +175,7 @@ Return ONLY this JSON object (no markdown fences):
     "what_changed": "<string>"
   }},
   "sentiment": {{
-    "score": <float 0.0-1.0>, "confidence": <float 0.3-1.0>, "summary": "<2-3 sentences>",
+    "score": <float 0.0-1.0>, "confidence": <float 0.3-1.0>, "summary": "<=2 short sentences, terse>",
     "key_positives": [<string>, ...], "key_risks": [<string>, ...],
     "sub_scores": {{"news_nlp": <float>, "management_tone": <float>,
       "twitter_reddit_sentiment": <float>, "youtube_view_spikes": <float>,
@@ -170,7 +184,7 @@ Return ONLY this JSON object (no markdown fences):
     "what_changed": "<string>"
   }},
   "policy_regulatory": {{
-    "score": <float 0.0-1.0>, "confidence": <float 0.3-1.0>, "summary": "<2-3 sentences>",
+    "score": <float 0.0-1.0>, "confidence": <float 0.3-1.0>, "summary": "<=2 short sentences, terse>",
     "key_positives": [<string>, ...], "key_risks": [<string>, ...],
     "sub_scores": {{"fame_ev_subsidy": <float>, "emission_norms": <float>,
       "union_budget_duties": <float>, "pli_scheme": <float>, "state_ev_incentives": <float>}},
@@ -178,7 +192,7 @@ Return ONLY this JSON object (no markdown fences):
     "what_changed": "<string>"
   }},
   "competitive_intel": {{
-    "score": <float 0.0-1.0>, "confidence": <float 0.3-1.0>, "summary": "<2-3 sentences>",
+    "score": <float 0.0-1.0>, "confidence": <float 0.3-1.0>, "summary": "<=2 short sentences, terse>",
     "key_positives": [<string>, ...], "key_risks": [<string>, ...],
     "sub_scores": {{"ev_market_share": <float>, "new_model_pipeline": <float>,
       "jv_acquisitions": <float>, "adas_safety_ratings": <float>,
@@ -187,7 +201,7 @@ Return ONLY this JSON object (no markdown fences):
     "what_changed": "<string>"
   }},
   "risk_macro": {{
-    "score": <float 0.0-1.0>, "confidence": <float 0.3-1.0>, "summary": "<2-3 sentences>",
+    "score": <float 0.0-1.0>, "confidence": <float 0.3-1.0>, "summary": "<=2 short sentences, terse>",
     "key_positives": [<string>, ...], "key_risks": [<string>, ...],
     "sub_scores": {{"inr_usd_crude_exposure": <float>, "commodity_prices": <float>,
       "rbi_repo_emi_impact": <float>, "emission_policy_risk": <float>,
@@ -196,7 +210,7 @@ Return ONLY this JSON object (no markdown fences):
     "what_changed": "<string>"
   }},
   "valuation_catalyst": {{
-    "score": <float 0.0-1.0>, "confidence": <float 0.3-1.0>, "summary": "<2-3 sentences>",
+    "score": <float 0.0-1.0>, "confidence": <float 0.3-1.0>, "summary": "<=2 short sentences, terse>",
     "key_positives": [<string>, ...], "key_risks": [<string>, ...],
     "sub_scores": {{"pe_discount_vs_peers": <float>, "technical_trend": <float>,
       "mean_reversion_potential": <float>, "support_zone_strength": <float>,

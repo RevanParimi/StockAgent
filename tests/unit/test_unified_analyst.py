@@ -27,7 +27,11 @@ from core.schemas.pipeline import (
     ValuationCatalystOutput,
 )
 from services.data.context.bundle_builder import SectorDataBundle
-from backend.shared.pipeline.unified_analyst import UnifiedAnalyst, DIMENSIONS
+from backend.shared.pipeline.unified_analyst import (
+    UnifiedAnalyst,
+    DIMENSIONS,
+    _salvage_truncated_json,
+)
 
 
 DIM_CLASS_MAP = {
@@ -260,3 +264,66 @@ class TestPerDimensionParseError:
         # Other dimensions unaffected.
         assert outs["sales_demand"].overall_score == pytest.approx(0.7)
         assert outs["sales_demand"].error is None
+
+
+class TestTruncatedResponseSalvage:
+    def test_truncated_mid_seventh_block_salvages_first_six(self, analyst):
+        payload = _full_payload(score=0.7)
+        full_json = json.dumps(payload, indent=2)
+
+        # Locate the 7th dimension block (competitive_intel) and cut the
+        # response mid-way through one of its string values, simulating a
+        # max_tokens truncation.
+        dims = DIMENSIONS["automobile"]
+        seventh_dim = dims[6]
+        assert seventh_dim == "competitive_intel"
+
+        marker = f'"{seventh_dim}": {{'
+        marker_idx = full_json.index(marker)
+        # Find a string value inside this block to cut through, e.g. "summary": "Test summary"
+        summary_idx = full_json.index('"summary": "Test summary"', marker_idx)
+        # Cut partway through the summary's string value, leaving an
+        # unterminated string -> json.loads must fail.
+        cut_point = summary_idx + len('"summary": "Test sum')
+        truncated = full_json[:cut_point]
+
+        # Sanity: this must NOT be valid JSON on its own.
+        with pytest.raises(json.JSONDecodeError):
+            json.loads(truncated)
+
+        _set_llm_response(analyst, truncated)
+
+        outs = analyst.run(_make_query(), _make_bundle(), "automobile")
+
+        # NO exception, NO empty dict — all 9 keys present.
+        assert outs != {}
+        assert set(outs.keys()) == set(DIMENSIONS["automobile"])
+
+        # First 6 dimensions (fully present before the cut) parsed normally.
+        for dim in dims[:6]:
+            out = outs[dim]
+            assert out.overall_score == pytest.approx(0.7)
+            assert out.error is None
+
+        # Remaining dimensions (lost to truncation) degrade to neutral+error.
+        for dim in dims[6:]:
+            out = outs[dim]
+            assert out.overall_score == pytest.approx(0.5)
+            assert out.error is not None
+
+
+class TestSalvageTruncatedJsonHelper:
+    def test_garbage_returns_empty_dict(self):
+        assert _salvage_truncated_json("garbage") == {}
+
+    def test_empty_string_returns_empty_dict(self):
+        assert _salvage_truncated_json("") == {}
+
+    def test_valid_full_json_still_works_or_empty(self):
+        # _salvage_truncated_json is only called on json.loads failure in
+        # run(), but it must not raise if called on valid JSON: either it
+        # successfully salvages the full object, or returns {}.
+        payload = _full_payload(score=0.6)
+        full_json = json.dumps(payload)
+        result = _salvage_truncated_json(full_json)
+        assert isinstance(result, dict)

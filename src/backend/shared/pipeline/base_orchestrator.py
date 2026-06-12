@@ -123,9 +123,14 @@ class BaseSectorOrchestrator(ABC):
         await asyncio.to_thread(self._prefetch_nse_data, query)
 
         pipeline_run = PipelineRun(run_id=run_id, query=query, status="running")
-        agent_outputs = await self._run_via_graph_async(
-            query, run_id=run_id, progress_callback=progress_callback
-        )
+        if self._unified_enabled():
+            agent_outputs = await asyncio.to_thread(
+                self._run_agents, query, run_id, progress_callback
+            )
+        else:
+            agent_outputs = await self._run_via_graph_async(
+                query, run_id=run_id, progress_callback=progress_callback
+            )
 
         report = self._aggregator.run(
             ticker=query.ticker,
@@ -183,7 +188,7 @@ class BaseSectorOrchestrator(ABC):
         self._prefetch_nse_data(query)
 
         pipeline_run = PipelineRun(run_id=run_id, query=query, status="running")
-        agent_outputs = self._run_via_graph(
+        agent_outputs = self._run_agents(
             query, run_id=run_id, progress_callback=progress_callback
         )
 
@@ -371,6 +376,70 @@ class BaseSectorOrchestrator(ABC):
             )
         except Exception:
             return False
+
+    # ------------------------------------------------------------------
+    # Unified Sector Analyst (2026-06-12 redesign) — one bundle + one call
+    # ------------------------------------------------------------------
+
+    def _unified_enabled(self) -> bool:
+        """
+        True when this sector is on the unified-analyst path.
+
+        Reads settings.UNIFIED_ANALYST_SECTORS freshly (via the settings
+        module object held by this module) so tests can monkeypatch
+        `base_orchestrator.settings.UNIFIED_ANALYST_SECTORS` directly.
+        """
+        sectors = {s.strip() for s in settings.UNIFIED_ANALYST_SECTORS.split(",") if s.strip()}
+        return self.SECTOR_NAME in sectors
+
+    def _run_unified(
+        self,
+        query: StockQuery,
+        run_id: str = "",
+        progress_callback: Callable[[str, float], None] | None = None,
+    ) -> dict[str, AgentOutput]:
+        """
+        Unified path: one shared data bundle + one reasoning-model call
+        produces all of this sector's dimension AgentOutputs.
+
+        Returns {} (never raises) to signal the caller should fall back to
+        the legacy worker pool when UNIFIED_ANALYST_FALLBACK_LEGACY is set.
+        """
+        from services.data.context.bundle_builder import build_sector_bundle
+        from backend.shared.pipeline.unified_analyst import UnifiedAnalyst
+
+        bundle = build_sector_bundle(query, self.SECTOR_NAME)
+        logger.info(
+            "[%s] unified bundle: api_calls=%s real_data=%s",
+            self.SECTOR_NAME, bundle.api_calls_made, bundle.has_real_data,
+        )
+        outputs = UnifiedAnalyst().run(query, bundle, self.SECTOR_NAME)
+        if outputs and progress_callback:
+            for name, out in outputs.items():
+                try:
+                    progress_callback(name, out.overall_score)
+                except Exception:
+                    pass
+        return outputs
+
+    def _run_agents(
+        self,
+        query: StockQuery,
+        run_id: str = "",
+        progress_callback: Callable[[str, float], None] | None = None,
+    ) -> dict[str, AgentOutput]:
+        """
+        Dispatch: unified path when enabled for this sector, legacy worker
+        pool otherwise (or as a fallback on unified-analyst total failure).
+        """
+        if self._unified_enabled():
+            outputs = self._run_unified(query, run_id, progress_callback)
+            if outputs:
+                return outputs
+            if not settings.UNIFIED_ANALYST_FALLBACK_LEGACY:
+                return outputs
+            logger.warning("[%s] unified analyst failed -> legacy fallback", self.SECTOR_NAME)
+        return self._run_via_graph(query, run_id=run_id, progress_callback=progress_callback)
 
     # ------------------------------------------------------------------
     # Parallel sub-agent execution — LangGraph worker pool

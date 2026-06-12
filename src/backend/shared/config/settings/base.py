@@ -69,10 +69,7 @@ def get_serper_key(sector: str) -> str:
     if sector in {"bfsi", "it"} and SERPER_API_KEY_2:
         return SERPER_API_KEY_2
     return SERPER_API_KEY
-ALPHA_VANTAGE_API_KEY: str = os.getenv("ALPHA_VANTAGE_API_KEY", "")
 NEWSAPI_KEY: str = os.getenv("NEWSAPI_KEY", "")
-FINNHUB_API_KEY: str = os.getenv("FINNHUB_API_KEY", "")
-TWITTER_BEARER_TOKEN: str = os.getenv("TWITTER_BEARER_TOKEN", "")
 
 # ---------------------------------------------------------------------------
 # Stock / Market defaults

@@ -2166,6 +2166,16 @@ def _looks_like_yf_symbol(s: str) -> bool:
     return "=" in s or s.startswith("^") or ("-" in s and len(s) <= 10)
 
 
+def _looks_like_plain_ticker(s: str) -> bool:
+    """
+    True for plain ticker-looking input — uppercase alphanumerics (and the
+    '&'/'-' NSE allows, e.g. M&M, BAJAJ-AUTO), no spaces. Used to decide
+    whether a naive "{SYM}.NS" quotability check should run before trusting
+    a fuzzy yfinance.Search result (validate-naive-first).
+    """
+    return bool(s) and " " not in s and all(c.isalnum() or c in "&-" for c in s)
+
+
 # Common Indian company names → NSE ticker. Keeps the most-asked names instant and
 # correct without a network round-trip (yfinance.Search ranks US tickers above .NS).
 _NSE_NAME_ALIASES: dict[str, str] = {
@@ -2246,6 +2256,20 @@ async def _resolve_yf_symbol(symbol: str) -> str | None:
         return _nse_yf(_NSE_NAME_ALIASES[sym_lower])
     if sym_upper in _known_nse_tickers():
         return _nse_yf(sym_upper)
+
+    # Validate-naive-first: for plain ticker-looking input (uppercase
+    # alnum/&/-, no spaces — e.g. "MARUTI", "ATHER") that reached here
+    # unresolved, check whether the naive "{SYM}.NS" itself quotes BEFORE
+    # trusting a fuzzy yfinance.Search result. A fuzzy search on a real
+    # ticker symbol can match an unrelated company (e.g. "MARUTI" ->
+    # "JAYBARMARU.NS", a different ~Rs 131 company vs Maruti Suzuki's
+    # ~Rs 13,000) — especially while Yahoo is erroring. ONE cheap
+    # quotability call; if naive quotes, it wins outright.
+    if _looks_like_plain_ticker(sym_upper):
+        from backend.shared.data.fetchers.symbol_resolver import _has_price
+        naive = f"{sym_upper}.NS"
+        if await asyncio.to_thread(_has_price, naive):
+            return naive
 
     # Tier 4: yfinance.Search, but PREFER Indian-listed results (.NS / .BO).
     try:

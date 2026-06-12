@@ -95,6 +95,47 @@ def _norm(ticker: str) -> str:
     return ticker.strip().upper()
 
 
+def _symbol_root(yf_symbol: str) -> str:
+    """Strip a .NS/.BO exchange suffix and normalize case, e.g. 'jaybarmaru.bo' -> 'JAYBARMARU'."""
+    s = _norm(yf_symbol)
+    for suffix in (".NS", ".BO"):
+        if s.endswith(suffix):
+            return s[: -len(suffix)]
+    return s
+
+
+def _is_known_indian_ticker(ticker: str) -> bool:
+    """
+    True if `ticker` is a known Indian listing (present in
+    backend.sectors.registry.TICKER_SECTOR). Lazy import; any failure
+    (import error, missing attribute, etc.) degrades to "unknown ticker"
+    (False) — never raises.
+    """
+    try:
+        from backend.sectors.registry import TICKER_SECTOR
+        return _norm(ticker) in {_norm(k) for k in TICKER_SECTOR}
+    except Exception as exc:
+        logger.debug("[symbol_resolver] TICKER_SECTOR lookup failed (treating as unknown): %s", exc)
+        return False
+
+
+def _is_safe_mapping(ticker: str, yf_symbol: str) -> bool:
+    """
+    Guard against learning a wrong-company mapping.
+
+    For KNOWN Indian tickers (present in TICKER_SECTOR), the learned
+    symbol's root MUST match the ticker itself (case/suffix-insensitive) —
+    e.g. MARUTI -> MARUTI.NS or MARUTI.BO is fine, MARUTI -> JAYBARMARU.NS
+    is not.
+
+    For UNKNOWN tickers, any root is allowed — that's the whole point of
+    the fuzzy-search self-heal (e.g. ATHER -> ATHERENERG.NS).
+    """
+    if not _is_known_indian_ticker(ticker):
+        return True
+    return _symbol_root(yf_symbol) == _norm(ticker)
+
+
 def _load_cache() -> dict[str, str]:
     global _cache
     if _cache is not None:
@@ -111,16 +152,41 @@ def _load_cache() -> dict[str, str]:
     return _cache
 
 
-def _persist(ticker: str, yf_symbol: str) -> None:
+def _remove_from_cache_file(ticker: str) -> None:
+    """Delete `ticker` from the in-memory memo AND the on-disk cache file."""
     with _LOCK:
         cache = _load_cache()
-        cache[ticker] = yf_symbol           # mutates the memo in place
+        if ticker not in cache:
+            return
+        del cache[ticker]
         try:
             _CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
             _CACHE_FILE.write_text(
                 json.dumps(cache, indent=2, sort_keys=True), encoding="utf-8"
             )
-            logger.info("[symbol_resolver] learned %s -> %s (cached)", ticker, yf_symbol)
+        except Exception as exc:
+            logger.warning("[symbol_resolver] cache prune-write failed: %s", exc)
+
+
+def _persist(ticker: str, yf_symbol: str) -> None:
+    t = _norm(ticker)
+    if not _is_safe_mapping(t, yf_symbol):
+        logger.warning(
+            "[symbol_resolver] REFUSING to learn %s -> %s: %s is a known Indian "
+            "ticker and the symbol root (%s) does not match — possible wrong-company "
+            "mapping, not cached",
+            t, yf_symbol, t, _symbol_root(yf_symbol),
+        )
+        return
+    with _LOCK:
+        cache = _load_cache()
+        cache[t] = yf_symbol                # mutates the memo in place
+        try:
+            _CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
+            _CACHE_FILE.write_text(
+                json.dumps(cache, indent=2, sort_keys=True), encoding="utf-8"
+            )
+            logger.info("[symbol_resolver] learned %s -> %s (cached)", t, yf_symbol)
         except Exception as exc:
             logger.warning("[symbol_resolver] cache write failed: %s", exc)
 
@@ -192,7 +258,17 @@ def resolve_yf_symbol(ticker: str) -> str:
         return override
     cached = _load_cache().get(t)
     if cached:
-        return cached
+        if _is_safe_mapping(t, cached):
+            return cached
+        # Poisoned entry from before the guard existed (e.g. an old Railway
+        # volume) — prune it on read so production self-heals, and fall
+        # through to the naive symbol below.
+        logger.warning(
+            "[symbol_resolver] pruning poisoned cache entry %s -> %s "
+            "(wrong-company mapping for a known Indian ticker)",
+            t, cached,
+        )
+        _remove_from_cache_file(t)
     return f"{t}{settings.YFINANCE_SUFFIX}"
 
 
@@ -259,6 +335,14 @@ def heal_symbol(ticker: str, company_name: str | None = None) -> str | None:
                  [c for c in candidates if c.endswith(".BO")]):
         valid = [c for c in tier[:5] if _has_price(c)]
         if len(valid) == 1:
+            if not _is_safe_mapping(t, valid[0]):
+                logger.warning(
+                    "[symbol_resolver] refusing fuzzy match %s -> %s for known Indian "
+                    "ticker %s (wrong-company root mismatch)",
+                    t, valid[0], t,
+                )
+                _session_unresolved.add(t)
+                return None
             _persist(t, valid[0])
             return valid[0]
         if len(valid) > 1:

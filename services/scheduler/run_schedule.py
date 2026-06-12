@@ -37,6 +37,10 @@ python scripts/run_schedule.py daily-review --ticker MARUTI --date 2026-04-09
 # Show prediction envelope and feedback log for a ticker
 python scripts/run_schedule.py feedback-status --ticker MARUTI
 
+# Manually trigger a mid-cycle re-forecast (Living Envelope, trigger=manual)
+python scripts/run_schedule.py reforecast --ticker MARUTI
+python scripts/run_schedule.py reforecast --ticker MARUTI --sector automobile --reason "Manual review after earnings"
+
 # Start the full scheduler daemon (analysis cron + daily-review cron)
 python scripts/run_schedule.py start
 """
@@ -379,6 +383,57 @@ def cmd_ingest_events(args) -> None:
                         print(f"    - {g.date} ({g.source}): {g.guidance}")
 
 
+def cmd_reforecast(args) -> None:
+    """Manually trigger a Living Envelope re-forecast for a single ticker.
+
+    Calls regenerate_envelope(trigger="manual") — same engine the daily
+    review's shock/thesis/regime triggers use (RL Phase 2.5, Component 2/3).
+    Subject to the same RL_REFORECAST_ENABLED flag and
+    RL_REFORECAST_MAX_PER_MONTH cap as the automated triggers.
+    """
+    from datetime import date
+    from core.intelligence.rl.workflows.generate_forecast import regenerate_envelope
+    from services.api.log_buffer import get_active_tickers_with_sector
+
+    ticker = args.ticker.upper()
+
+    sector = args.sector
+    if not sector:
+        rows = get_active_tickers_with_sector()
+        match = next((r for r in rows if r["sym"].upper() == ticker), None)
+        sector = match["sector"] if match else "automobile"
+
+    reason = args.reason or f"Manual re-forecast requested for {ticker} via CLI."
+
+    print(f"\nRe-forecasting {ticker} ({sector}) — reason: {reason}\n")
+
+    envelope = regenerate_envelope(
+        ticker=ticker, sector=sector, reason=reason, trigger="manual",
+    )
+
+    if envelope is None:
+        print(
+            "  [SKIP] No re-forecast performed — RL_REFORECAST_ENABLED is "
+            "off, the monthly cap was reached, no remaining forecast days "
+            "exist, or the forecast pipeline failed. Check logs for details."
+        )
+        print()
+        return
+
+    archived_file = envelope.reforecast_history[-1].archived_file if envelope.reforecast_history else ""
+    print(f"  [OK] {ticker} — envelope regenerated (cycle={envelope.cycle_id})")
+    print(f"  Archived previous envelope to: {archived_file or '(n/a)'}")
+    print(f"  reforecast_count: {envelope.reforecast_count}")
+
+    # First 3 remaining (regenerated) days — those after today.
+    today_str = date.today().isoformat()
+    remaining = [f for f in envelope.daily_forecasts if f.date > today_str]
+    print("\n  Next predicted closes:")
+    for f in remaining[:3]:
+        print(f"    {f.date}  day {f.day:>2}  ₹{f.predicted_close:.2f}  {f.predicted_verdict}")
+    print()
+
+
 def cmd_dossier_status(args) -> None:
     """Print per-ticker dossier health: size, version, staleness, counts."""
     from core.intelligence.rl.stores.prediction_store import PredictionStore
@@ -448,6 +503,12 @@ def main() -> None:
     dstatus_p = sub.add_parser("dossier-status", help="RL dossier health per ticker")
     dstatus_p.add_argument("--ticker", nargs="*", help="One or more NSE tickers (default: all managed)")
 
+    # reforecast
+    reforecast_p = sub.add_parser("reforecast", help="Manually re-forecast a ticker's remaining envelope days (Living Envelope, trigger=manual)")
+    reforecast_p.add_argument("--ticker", required=True, help="NSE ticker, e.g. MARUTI")
+    reforecast_p.add_argument("--sector", help="Sector (default: looked up from managed tickers, else 'automobile')")
+    reforecast_p.add_argument("--reason", help="Free-text reason recorded in the envelope's reforecast_history")
+
     # ingest-events
     ingest_p = sub.add_parser("ingest-events", help="Scan NSE events and digest into ticker dossiers")
     ingest_p.add_argument("--ticker", nargs="*", help="One or more NSE tickers (default: all managed)")
@@ -473,6 +534,7 @@ def main() -> None:
         "forecast":        cmd_forecast,
         "daily-review":    cmd_daily_review,
         "feedback-status": cmd_feedback_status,
+        "reforecast":      cmd_reforecast,
         "dossier-status":  cmd_dossier_status,
         "ingest-events":   cmd_ingest_events,
         "scorecard":       cmd_scorecard,

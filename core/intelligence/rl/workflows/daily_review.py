@@ -60,8 +60,10 @@ from core.intelligence.rl.conviction.tracker import (
 from core.intelligence.algorithms.indicators.fetcher import get_price_history
 from core.intelligence.seasonal.calendar import SeasonalCalendar
 from core.intelligence.regime.detector import RegimeDetector, apply_regime_multipliers
+from core.intelligence.regime.state import update_sticky_regime, _read_state, _state_path
 from core.schemas.feedback import RegimeSnapshot, ThesisReview
 from core.intelligence.rl.agents.thesis_reviewer import ThesisReviewer, THESIS_REVIEW_THRESHOLD
+from core.intelligence.rl.workflows.generate_forecast import regenerate_envelope
 
 logging.basicConfig(
     level=settings.LOG_LEVEL,
@@ -381,6 +383,41 @@ def run_daily_review(
             "[daily_review] %s: RegimeDetector failed — using NORMAL regime (non-fatal): %s",
             ticker, exc,
         )
+
+    # ------------------------------------------------------------------ #
+    # Living Envelope, Component 1: sticky regime label (hysteresis).
+    #
+    # The raw RegimeDetector label is ephemeral — a single calm day can flip
+    # MACRO_CRISIS straight back to NORMAL. update_sticky_regime() applies
+    # market-wide hysteresis (enter severe regimes immediately, exit only
+    # after RL_REGIME_CALM_DAYS milder detections). The STICKY label drives
+    # regime weight multipliers and the cycle-log/feedback regime field
+    # below. Never fatal — falls back to the raw detected label.
+    # ------------------------------------------------------------------ #
+    sticky_regime_label = regime_snapshot.regime_label
+    prior_sticky_label: str | None = None
+    try:
+        prior_state = _read_state(_state_path())
+        prior_sticky_label = prior_state.label if prior_state else None
+        new_regime_state = update_sticky_regime(regime_snapshot.regime_label, review_date.isoformat())
+        sticky_regime_label = new_regime_state.label
+        if sticky_regime_label != regime_snapshot.regime_label:
+            logger.info(
+                "[daily_review] Sticky regime: raw=%s sticky=%s (calm_streak=%d)",
+                regime_snapshot.regime_label, sticky_regime_label, new_regime_state.calm_streak,
+            )
+    except Exception as exc:
+        logger.warning(
+            "[daily_review] %s: sticky regime update failed — using raw label (non-fatal): %s",
+            ticker, exc,
+        )
+
+    # Sticky-label-driven regime multipliers: recompute from settings using the
+    # STICKY label (not the raw one) so the weight adjustment reflects the
+    # persisted regime state, not a single noisy day's detection.
+    sticky_regime_multipliers = settings.REGIME_MULTIPLIERS.get(
+        sticky_regime_label, regime_snapshot.multipliers
+    )
 
     # ------------------------------------------------------------------ #
     # Step 1: Load envelope + find today's prediction row
@@ -901,11 +938,11 @@ def run_daily_review(
     # ------------------------------------------------------------------ #
     try:
         regime_effective_weights = apply_regime_multipliers(
-            updated_wm.effective_weights(), regime_snapshot.multipliers, sector=sector
+            updated_wm.effective_weights(), sticky_regime_multipliers, sector=sector
         )
         logger.info(
             "[daily_review] Regime '%s' effective weights applied for %s",
-            regime_snapshot.regime_label, ticker,
+            sticky_regime_label, ticker,
         )
     except Exception as exc:
         logger.warning(
@@ -1004,22 +1041,120 @@ def run_daily_review(
             )
 
     # ------------------------------------------------------------------ #
+    # Living Envelope, Component 2: shock-triggered re-forecast.
+    #
+    # Checked in this order — first match wins (recorded as `trigger`):
+    #   external_shock : FeedbackAgent miss_type == "external_shock" AND
+    #                     direction wrong, AFTER the 20% rate-cap override
+    #                     above (i.e. the classification survived the cap).
+    #   thesis_break   : ThesisReviewer ran (Step 7a) and its
+    #                     horizon_confidence_multiplier <=
+    #                     RL_REFORECAST_THESIS_MULT_THRESHOLD.
+    #   regime_flip    : sticky regime TRANSITIONED into MACRO_CRISIS today
+    #                     (prior sticky label != MACRO_CRISIS, new == MACRO_CRISIS).
+    #
+    # On a successful regenerate_envelope(), Step 7b's confidence-only
+    # revision is SKIPPED for this run — the fresh envelope already
+    # supersedes it. On None (flag off / cap reached / pipeline failure),
+    # Step 7b proceeds exactly as before. Wrapped so a failure here never
+    # blocks the rest of the review.
+    # ------------------------------------------------------------------ #
+    reforecast_envelope: PredictionEnvelope | None = None
+    reforecast_trigger: str | None = None
+    if getattr(settings, "RL_REFORECAST_ENABLED", True):
+        try:
+            thesis_mult_threshold = getattr(settings, "RL_REFORECAST_THESIS_MULT_THRESHOLD", 0.5)
+
+            if fb_output.miss_type == "external_shock" and not direction_correct:
+                reforecast_trigger = "external_shock"
+                reforecast_reason = (
+                    f"External shock on {date_str}: actual direction "
+                    f"({actual_direction}) diverged from predicted verdict "
+                    f"({today_forecast.predicted_verdict}); FeedbackAgent "
+                    f"classified the miss as external_shock."
+                )
+            elif thesis_review is not None and thesis_review.horizon_confidence_multiplier <= thesis_mult_threshold:
+                reforecast_trigger = "thesis_break"
+                reforecast_reason = (
+                    f"Thesis break on {date_str}: horizon_confidence_multiplier="
+                    f"{thesis_review.horizon_confidence_multiplier:.2f} <= "
+                    f"{thesis_mult_threshold:.2f}. Invalidated assumptions: "
+                    f"{', '.join(thesis_review.assumptions_invalidated) or 'n/a'}."
+                )
+            elif (
+                prior_sticky_label is not None
+                and prior_sticky_label != "MACRO_CRISIS"
+                and sticky_regime_label == "MACRO_CRISIS"
+            ):
+                reforecast_trigger = "regime_flip"
+                reforecast_reason = (
+                    f"Regime flip on {date_str}: sticky market regime entered "
+                    f"MACRO_CRISIS (was {prior_sticky_label})."
+                )
+
+            if reforecast_trigger is not None:
+                reforecast_envelope = regenerate_envelope(
+                    ticker=ticker,
+                    sector=sector,
+                    reason=reforecast_reason,
+                    trigger=reforecast_trigger,
+                    review_date=review_date,
+                )
+                if reforecast_envelope is not None:
+                    # Step 7b (skipped below) normally persists the updated
+                    # conviction streak into the envelope. Carry that over
+                    # onto the freshly-regenerated envelope so streak state
+                    # isn't lost on a re-forecast day.
+                    try:
+                        reforecast_envelope.conviction_streak = updated_streak
+                        store.save_envelope(reforecast_envelope)
+                    except Exception as exc:
+                        logger.warning(
+                            "[daily_review] %s: failed to persist conviction "
+                            "streak onto regenerated envelope (non-fatal): %s",
+                            ticker, exc,
+                        )
+                    logger.info(
+                        "[daily_review] %s: re-forecast triggered (%s) — "
+                        "envelope regenerated (reforecast_count=%d); "
+                        "Step 7 confidence revision skipped for %s",
+                        ticker, reforecast_trigger,
+                        reforecast_envelope.reforecast_count, date_str,
+                    )
+                else:
+                    logger.info(
+                        "[daily_review] %s: re-forecast trigger '%s' fired but "
+                        "regenerate_envelope() returned None (cap/flag/failure) "
+                        "— proceeding with Step 7 as usual",
+                        ticker, reforecast_trigger,
+                    )
+        except Exception as exc:
+            logger.warning(
+                "[daily_review] %s: re-forecast trigger block failed (non-fatal): %s",
+                ticker, exc,
+            )
+
+    # ------------------------------------------------------------------ #
     # Step 7b: Revise remaining forecasts with regime-adjusted weights
     #         + confidence adj + P3 reversion prior dampening + persist streak
     #         + thesis multiplier (when thesis broken)
+    #
+    # Skipped when a Living Envelope re-forecast already succeeded above —
+    # the fresh envelope supersedes confidence-only nudging of the dead one.
     # ------------------------------------------------------------------ #
-    _revise_remaining_forecasts(
-        ticker=ticker,
-        store=store,
-        reviewed_date=date_str,
-        new_weights=regime_effective_weights,
-        revised_context=fb_output.revised_context,
-        reversion_prior=final_reversion_prior,
-        updated_streak=updated_streak,
-        thesis_review=thesis_review,
-        ticker_ledger=updated_ledger,
-        today_tags=today_tags,
-    )
+    if reforecast_envelope is None:
+        _revise_remaining_forecasts(
+            ticker=ticker,
+            store=store,
+            reviewed_date=date_str,
+            new_weights=regime_effective_weights,
+            revised_context=fb_output.revised_context,
+            reversion_prior=final_reversion_prior,
+            updated_streak=updated_streak,
+            thesis_review=thesis_review,
+            ticker_ledger=updated_ledger,
+            today_tags=today_tags,
+        )
 
     # ------------------------------------------------------------------ #
     # Step 8: Append complete FeedbackEntry to daily_feedback_log
@@ -1041,7 +1176,7 @@ def run_daily_review(
         predicted_verdict=today_forecast.predicted_verdict,
         actual_direction=actual_direction,
         direction_correct=direction_correct,
-        regime_label=regime_snapshot.regime_label,
+        regime_label=sticky_regime_label,
         event_tags=today_tags,
         claims_fired=claims_fired,
         volume_vs_20d_avg=volume_vs_20d_avg,
@@ -1169,11 +1304,16 @@ def run_daily_review(
         "thesis_confidence_mult":   thesis_review.horizon_confidence_multiplier if thesis_review else None,
         "thesis_invalidated":       thesis_review.assumptions_invalidated if thesis_review else [],
         # P5: regime multiplier state
-        "regime_label":             regime_snapshot.regime_label,
+        "regime_label":             sticky_regime_label,
+        "regime_label_raw":         regime_snapshot.regime_label,
         "regime_vix":               regime_snapshot.vix_value,
         "regime_fii_proxy_pct":     regime_snapshot.fii_proxy_5d_pct,
         "regime_sector_rsi":        regime_snapshot.sector_rsi,
         "regime_effective_weights": regime_effective_weights,
+        # Living Envelope, Component 2: re-forecast trigger/outcome for this run.
+        "reforecast_trigger":       reforecast_trigger,
+        "reforecast_fired":         reforecast_envelope is not None,
+        "reforecast_count":         reforecast_envelope.reforecast_count if reforecast_envelope else None,
     }
 
     logger.info(

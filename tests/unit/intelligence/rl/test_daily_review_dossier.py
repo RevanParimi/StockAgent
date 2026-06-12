@@ -333,6 +333,20 @@ def test_run_daily_review_external_shock_wrong_direction_no_crash(tmp_path, monk
         control_lane_mod, "_call_llm",
         lambda *a, **k: (control_payload, "test-control-model"))
 
+    # Living Envelope (RL Phase 2.5): miss_type="external_shock" with
+    # direction_correct=False now fires the reforecast trigger block, which
+    # would otherwise call regenerate_envelope() -> get_orchestrator(sector)
+    # .analyse(ticker) -- a real 9-agent LLM pipeline. Short-circuit it here;
+    # this test only cares that run_daily_review() completes without raising.
+    monkeypatch.setattr(dr, "regenerate_envelope", lambda **kwargs: None)
+
+    # _run_todays_agent_scores() also calls get_orchestrator(sector).analyse()
+    # whenever direction_correct is False -- short-circuit for the same reason.
+    monkeypatch.setattr(
+        dr, "_run_todays_agent_scores",
+        lambda *a, **k: {"risk_macro": 0.5, "sales_demand": 0.5},
+    )
+
     # --- Run: must not raise (NameError pre-bc1d8ee) ---
     summary = dr.run_daily_review(ticker, review_date, sector=sector)
 

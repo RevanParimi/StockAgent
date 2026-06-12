@@ -52,27 +52,20 @@ LLM_OUTPUT_COST_PER_M: float = float(os.getenv("LLM_OUTPUT_COST_PER_M", "1.125")
 # ---------------------------------------------------------------------------
 # Data / Search APIs
 # ---------------------------------------------------------------------------
-SERPER_API_KEY: str = os.getenv("SERPER_API_KEY", "")        # Google search via Serper — automobile + renewable
-SERPER_API_KEY_2: str = os.getenv("SERPER_API_KEY_2", "")    # Google search via Serper — bfsi + it
+SERPER_API_KEY: str = os.getenv("SERPER_API_KEY", "")        # Google search via Serper — single paid key, all sectors
 TAVILY_API_KEY: str = os.getenv("TAVILY_API_KEY", "")        # Full-page extraction (Policy agent)
 
 
 def get_serper_key(sector: str) -> str:
     """
-    Return the Serper API key assigned to the given sector.
+    Return the Serper API key for the given sector.
 
-    Key 1 (SERPER_API_KEY):   automobile, renewable  (~2,450 calls/month at default load)
-    Key 2 (SERPER_API_KEY_2): bfsi, it               (~1,490 calls/month at default load)
-
-    Falls back to Key 1 if Key 2 is not configured.
+    Single paid key now serves all sectors — `sector` is kept for call-site
+    compatibility (bundle_builder, ContextBuilder both pass it) but no longer
+    affects which key is returned.
     """
-    if sector in {"bfsi", "it"} and SERPER_API_KEY_2:
-        return SERPER_API_KEY_2
     return SERPER_API_KEY
-ALPHA_VANTAGE_API_KEY: str = os.getenv("ALPHA_VANTAGE_API_KEY", "")
 NEWSAPI_KEY: str = os.getenv("NEWSAPI_KEY", "")
-FINNHUB_API_KEY: str = os.getenv("FINNHUB_API_KEY", "")
-TWITTER_BEARER_TOKEN: str = os.getenv("TWITTER_BEARER_TOKEN", "")
 
 # ---------------------------------------------------------------------------
 # Stock / Market defaults
@@ -212,25 +205,17 @@ PEER_TICKERS: list[str] = [
 RAG_DOCUMENTS_BASE_DIR: str = os.getenv("RAG_DOCUMENTS_BASE_DIR", "data")
 
 # ---------------------------------------------------------------------------
-# Micro Search Loop — API efficiency
+# Macro Cache — API efficiency
 # ---------------------------------------------------------------------------
-# Background loop that pre-fetches sector-level macro news on a schedule.
-# Covers: automobile, bfsi, it  (RE excluded — its signals are per-company).
-# Populates tools/macro_cache.py; consumed by:
+# Populates services/data/cache/macro_cache.py; consumed by:
 #   ContextBuilder._build_risk_macro()    → cache key "automobile"
 #   ContextBuilder._build_macro_policy()  → cache key "bfsi"
 #   ContextBuilder._build_it_risk_macro() → cache key "it"
 #
-# Budget (Serper free tier = 2,500 queries/month):
-#   micro loop:          3 sectors × MICRO_QUERIES_PER_RUN × MICRO_CYCLES_PER_DAY × 30
-#                        = 3 × 2 × 6 × 30 = 1,080/month
-#   per-stock savings:   3 calls saved × 5 tickers × 3 sectors × 22 days = 990/month saved
-#
-# Cache HIT saves 3 Serper calls per stock analysis per sector.
-MICRO_CYCLES_PER_DAY: int = int(os.getenv("MICRO_CYCLES_PER_DAY", "6"))   # every 4h
-MICRO_QUERIES_PER_RUN: int = int(os.getenv("MICRO_QUERIES_PER_RUN", "2"))  # 2 queries per sector per run
-# STATIC_AUDIT #13: derive TTL from loop interval so they stay in sync automatically
-MACRO_CACHE_TTL_HOURS: int = int(os.getenv("MACRO_CACHE_TTL_HOURS", str(24 // MICRO_CYCLES_PER_DAY)))
+# Populated on-miss by bundle_builder._fetch_macro_context() (and the legacy
+# context builders, which also fetch-on-miss). Cache HIT saves Serper calls
+# for every subsequent stock analysis in the same sector within the TTL.
+MACRO_CACHE_TTL_HOURS: float = float(os.getenv("MACRO_CACHE_TTL_HOURS", "4"))
 
 # ---------------------------------------------------------------------------
 # Phase 4 – Scheduler

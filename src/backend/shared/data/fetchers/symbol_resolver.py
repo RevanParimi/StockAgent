@@ -39,6 +39,53 @@ _LOCK = threading.Lock()
 _cache: dict[str, str] | None = None     # in-process memo of the JSON file
 _session_unresolved: set[str] = set()    # tickers we already failed to heal this run
 
+# ---------------------------------------------------------------------------
+# Ticker -> company name (curated overrides + learned cache)
+# ---------------------------------------------------------------------------
+
+_COMPANY_NAME_CACHE_FILE = Path("data/company_names.json")
+_COMPANY_NAME_LOCK = threading.Lock()
+_company_name_cache: dict[str, str] | None = None  # in-process memo of the JSON file
+
+# Curated seed — confidently-known long names for the managed tickers across
+# the four active sectors (automobile, banking_bfsi, it_sector,
+# renewable_energy). Anything not listed here is learned on first live
+# yfinance hit via learn_company_name().
+COMPANY_NAME_OVERRIDES: dict[str, str] = {
+    # automobile
+    "MARUTI":     "Maruti Suzuki India Limited",
+    "TATAMOTORS": "Tata Motors Limited",
+    "M&M":        "Mahindra & Mahindra Limited",
+    "HEROMOTOCO": "Hero MotoCorp Limited",
+    "BAJAJ-AUTO": "Bajaj Auto Limited",
+    "EICHERMOT":  "Eicher Motors Limited",
+    "TVSMOTORS":  "TVS Motor Company Limited",
+    "ASHOKLEY":   "Ashok Leyland Limited",
+    # banking_bfsi
+    "HDFCBANK":   "HDFC Bank Limited",
+    "ICICIBANK":  "ICICI Bank Limited",
+    "SBIN":       "State Bank of India",
+    "KOTAKBANK":  "Kotak Mahindra Bank Limited",
+    "AXISBANK":   "Axis Bank Limited",
+    "INDUSINDBK": "IndusInd Bank Limited",
+    "BANKBARODA": "Bank of Baroda",
+    # it_sector
+    "TCS":        "Tata Consultancy Services Limited",
+    "INFY":       "Infosys Limited",
+    "WIPRO":      "Wipro Limited",
+    "HCLTECH":    "HCL Technologies Limited",
+    "TECHM":      "Tech Mahindra Limited",
+    "LTIM":       "LTIMindtree Limited",
+    "COFORGE":    "Coforge Limited",
+    # renewable_energy
+    "ADANIGREEN": "Adani Green Energy Limited",
+    "TATAPOWER":  "Tata Power Company Limited",
+    "TORNTPOWER": "Torrent Power Limited",
+    "CESC":       "CESC Limited",
+    "SJVN":       "SJVN Limited",
+    "NHPC":       "NHPC Limited",
+}
+
 
 # ---------------------------------------------------------------------------
 # Cache (persistent JSON + in-process memo)
@@ -76,6 +123,55 @@ def _persist(ticker: str, yf_symbol: str) -> None:
             logger.info("[symbol_resolver] learned %s -> %s (cached)", ticker, yf_symbol)
         except Exception as exc:
             logger.warning("[symbol_resolver] cache write failed: %s", exc)
+
+
+# ---------------------------------------------------------------------------
+# Ticker -> company name (curated overrides + learned cache)
+# ---------------------------------------------------------------------------
+
+def _load_company_name_cache() -> dict[str, str]:
+    global _company_name_cache
+    if _company_name_cache is not None:
+        return _company_name_cache
+    try:
+        if _COMPANY_NAME_CACHE_FILE.exists():
+            raw = json.loads(_COMPANY_NAME_CACHE_FILE.read_text("utf-8"))
+            _company_name_cache = {str(k).upper(): str(v) for k, v in raw.items()}
+        else:
+            _company_name_cache = {}
+    except Exception as exc:
+        logger.warning("[symbol_resolver] company-name cache load failed: %s", exc)
+        _company_name_cache = {}
+    return _company_name_cache
+
+
+def resolve_company_name(ticker: str) -> str | None:
+    """
+    Curated override -> learned cache -> None (caller fetches live + learns).
+
+    Cheap, zero-network. Never raises.
+    """
+    t = _norm(ticker)
+    override = COMPANY_NAME_OVERRIDES.get(t)
+    if override:
+        return override
+    return _load_company_name_cache().get(t)
+
+
+def learn_company_name(ticker: str, name: str) -> None:
+    """Persist a discovered ticker -> company-name mapping. Never raises."""
+    t = _norm(ticker)
+    with _COMPANY_NAME_LOCK:
+        cache = _load_company_name_cache()
+        cache[t] = name  # mutates the memo in place
+        try:
+            _COMPANY_NAME_CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
+            _COMPANY_NAME_CACHE_FILE.write_text(
+                json.dumps(cache, indent=2, sort_keys=True), encoding="utf-8"
+            )
+            logger.info("[symbol_resolver] learned company name %s -> %s (cached)", t, name)
+        except Exception as exc:
+            logger.warning("[symbol_resolver] company-name cache write failed: %s", exc)
 
 
 # ---------------------------------------------------------------------------

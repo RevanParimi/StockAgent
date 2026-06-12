@@ -138,7 +138,7 @@ def search_serper_news(
     Returns list of dicts: {title, snippet, link, date, source}
     """
     from backend.shared.config import settings as _s
-    key = api_key or _s.SERPER_API_KEY_2 or _s.SERPER_API_KEY
+    key = api_key or _s.SERPER_API_KEY
     if not key:
         logger.debug("[news] No Serper key for /news search — skipping")
         return []
@@ -289,7 +289,7 @@ def get_news_context(ticker: str, max_articles: int = 5) -> str:
     """
     try:
         from backend.shared.config import settings as _s
-        key = _s.SERPER_API_KEY_2 or _s.SERPER_API_KEY
+        key = _s.SERPER_API_KEY
         if not key:
             logger.debug("[news] get_news_context: no Serper key configured")
             return "Market context unavailable."

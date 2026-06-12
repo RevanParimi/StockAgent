@@ -780,8 +780,8 @@ build prompt (strong system prompt + IST market context + session history)
 **Macro cache architecture (STATIC):**
 
 ```
-micro_search_loop() → set_macro_cache("automobile", text)
-                        TTL = MACRO_CACHE_TTL_HOURS (2h)
+Populated on-miss — set_macro_cache("automobile", text)
+                      TTL = MACRO_CACHE_TTL_HOURS (4h)
 
 ContextBuilder._build_risk_macro():
   get_macro_cache("automobile")
@@ -853,8 +853,8 @@ ContextBuilder._build_risk_macro():
 
 ## 13. Serper API Budget
 
-**Key & credit model (since 2026-06-13):** one paid Serper key (50,000-credit top-up)
-serves all sectors — `SERPER_API_KEY` and `SERPER_API_KEY_2` both point at it. Serper
+**Key & credit model (since 2026-06-13):** a single paid Serper key (50,000-credit
+top-up), `SERPER_API_KEY`, serves all sectors via `get_serper_key(sector)`. Serper
 credits are a **one-time purchase valid 6 months — there is NO monthly reset** (the old
 free tier was a one-time 2,500-credit signup grant per account, both now exhausted).
 Tavily is the opposite: its free 1,000 credits **reset monthly**, and current usage
@@ -899,30 +899,16 @@ when a sector is removed from `UNIFIED_ANALYST_SECTORS`) — automobile shape sh
 **Macro Cache Architecture (shared by both paths):**
 
 ```
-micro_search_loop() (main.py, optional --micro-loop flag)
-  ↓ runs 2 combined Serper queries per run (TTL = MACRO_CACHE_TTL_HOURS = 2h)
-  Query 1: "Nifty Auto index India automobile sector outlook crude oil steel aluminium commodity prices"
-  Query 2: "India EV policy electric vehicle incentives FADA retail dispatch RBI repo rate auto loan EMI"
-  ↓ stored in get_macro_cache("automobile")
-
-Unified path  — bundle_builder._fetch_macro_context(): same cache, HIT skips macro_context's Serper call
+Populated on-miss (no background loop):
+Unified path  — bundle_builder._fetch_macro_context():
+  get_macro_cache("automobile")
+    HIT  → skip macro_context's Serper call (TTL = MACRO_CACHE_TTL_HOURS = 4h)
+    MISS → run Serper call(s), populate cache via set_macro_cache()
 Legacy path   — ContextBuilder._build_risk_macro():
   get_macro_cache("automobile")
     HIT  → uses cached text, skips all 3 Serper calls for risk_macro
     MISS → runs 3 Serper calls, populates cache
 ```
-
-**Micro loop configuration:**
-
-| Variable | Default | Purpose |
-|---|---|---|
-| `MICRO_CYCLES_PER_DAY` | 6 | Runs every ~4 hours |
-| `MICRO_QUERIES_PER_RUN` | 2 | Combined Serper calls per cycle |
-| `MACRO_CACHE_TTL_HOURS` | 2 | Cache time-to-live |
-
-**Micro search loop (weekdays only — skips Sat/Sun):**
-  3 sectors × 2 queries × 6 cycles × 22 trading days = **792 Serper/month**
-  (Previous: 1,080/month when running on weekends)
 
 **Monthly budget (all four sectors on the unified path, ~5 active tickers/sector, 21 trading days):**
 
@@ -930,8 +916,7 @@ Legacy path   — ContextBuilder._build_risk_macro():
 |---|---|---|
 | Pre-market orchestrator (unified, warm) | 2 × ~5 tickers × 4 sectors × 21 days | ~840 |
 | RL daily review (30% full rerun) | 0.3 × 2 × 5 × 21 (automobile RL tickers) | ~63 |
-| Micro loop (weekdays only) | 3 sectors × 2 × 6 × 22 | 792 |
-| **Serper Total** | | **~1,700–2,500 / month** |
+| **Serper Total** | | **~900–1,700 / month** |
 | Tavily | 1 extract/run + event ingestion | **~500 / 1,000 free (resets monthly) → $0** |
 
 Against the paid 50,000-credit pool that is **~10–15k consumed over the 6-month credit

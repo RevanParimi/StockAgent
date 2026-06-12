@@ -45,6 +45,7 @@ from backend.shared.config import settings
 from backend.shared.schemas.pipeline import AgentOutput, FinalReport, PipelineRun, StockQuery
 from backend.shared.prompts import orchestrator as P
 from backend.shared.clients.llm_client import get_llm_client
+from backend.shared.data.fetchers.symbol_resolver import learn_company_name, resolve_company_name
 from backend.shared.data.stores.run_logger import log_llm_call, log_run_summary
 from backend.shared.data.stores.analysis_logger import log_analysis
 from backend.shared.data.stores.api_usage import log_run_api_usage, snapshot_usage
@@ -334,12 +335,22 @@ class BaseSectorOrchestrator(ABC):
 
     def _company_name_for(self, ticker: str) -> str:
         """
-        Best-effort company name lookup via yfinance for an already-known
-        managed ticker. Falls back to the ticker itself on any failure.
+        Best-effort company name lookup for an already-known managed ticker.
+
+        Curated override / learned cache hit -> return immediately (no
+        network). On a cache miss, fetch yfinance `.info` once and learn the
+        result for next time. Falls back to the ticker itself on any failure.
         """
+        cached = resolve_company_name(ticker)
+        if cached:
+            return cached
         try:
             info = self._yf_info(ticker)
-            return info.get("longName") or info.get("shortName") or ticker
+            name = info.get("longName") or info.get("shortName")
+            if name:
+                learn_company_name(ticker, name)
+                return name
+            return ticker
         except Exception as exc:
             logger.debug("[%s] _company_name_for failed for %s: %s", self.SECTOR_NAME, ticker, exc)
             return ticker

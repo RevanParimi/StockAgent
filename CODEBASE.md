@@ -275,13 +275,9 @@ retired — it broke `json_object` output and was a weak function-caller.
 
 | Name | Default | Description |
 |------|---------|-------------|
-| `SERPER_API_KEY` | `""` | Serper (Google search) — since 2026-06-13 one paid 50k-credit key serves all sectors (credits are one-time purchases valid 6 months, no monthly reset) |
-| `SERPER_API_KEY_2` | `""` | Legacy second slot (was banking_bfsi + it_sector free key) — now points at the same paid key |
+| `SERPER_API_KEY` | `""` | Serper (Google search) — since 2026-06-13 a single paid 50k-credit key serves all sectors via `get_serper_key(sector)` (credits are one-time purchases valid 6 months, no monthly reset) |
 | `TAVILY_API_KEY` | `""` | Tavily full-page extraction (Policy agent) |
-| `ALPHA_VANTAGE_API_KEY` | `""` | Alpha Vantage (optional financials) |
 | `NEWSAPI_KEY` | `""` | NewsAPI (optional) |
-| `FINNHUB_API_KEY` | `""` | Finnhub news/financials |
-| `TWITTER_BEARER_TOKEN` | `""` | Twitter/X bearer token (optional sentiment) |
 
 ### Agent Execution
 
@@ -307,9 +303,7 @@ retired — it broke `json_object` output and was a weak function-caller.
 | `NEWS_ARTICLES_PER_QUERY` | `5` | Number of news articles per Serper/NewsAPI query |
 | `SERPER_MAX_QUERIES` | `3` | Max Serper queries per agent run |
 | `FINANCIALS_LOOKBACK_QUARTERS` | `4` | Historical quarters to fetch |
-| `MICRO_CYCLES_PER_DAY` | `6` | Macro news background fetch cycles/day (every 4h) |
-| `MICRO_QUERIES_PER_RUN` | `2` | Serper queries per macro news background run |
-| `MACRO_CACHE_TTL_HOURS` | `4` (derived) | Macro cache TTL = 24 / MICRO_CYCLES_PER_DAY |
+| `MACRO_CACHE_TTL_HOURS` | `4` | Macro cache TTL (hours); cache populated on-miss by bundle_builder/ContextBuilder |
 
 ### Unified Sector Analyst (2026-06-12 redesign)
 

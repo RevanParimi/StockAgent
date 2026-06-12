@@ -187,13 +187,11 @@ class MacroNewsFetcher:
 
     def _serper_news(self, query: str) -> list[dict]:
         """
-        Hit Serper /news endpoint.
-        Uses SERPER_API_KEY_2 first (less consumed by RL pipeline during market hours),
-        falls back to SERPER_API_KEY_1.
+        Hit Serper /news endpoint using the single configured Serper key.
         """
         try:
             from backend.shared.config import settings as _s
-            key = _s.SERPER_API_KEY_2 or _s.SERPER_API_KEY
+            key = _s.SERPER_API_KEY
             if not key:
                 logger.debug("[MacroFetcher] No Serper key configured — skipping")
                 return []

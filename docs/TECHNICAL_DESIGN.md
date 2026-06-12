@@ -791,24 +791,21 @@ fetch_news_context(queries: list[str], max_queries: int = 3, api_key: str = "") 
 
 **Critical note from live testing:** Appending date strings like `"2026-05-12"` to Serper queries returns zero results. Serper's `/news` endpoint naturally returns recent articles — no date string needed. All queries in `CONTEXT_SEARCH_QUERIES` use `{month}` and `{year}` template substitution, not ISO dates.
 
-#### 5.1.2 Dual-Key Routing
+#### 5.1.2 Serper Key
 
-To stay within the 2,500 queries/month free tier per key, sectors are distributed across two Serper API keys:
+Since 2026-06-13, a single paid Serper key (50,000-credit top-up, valid 6 months,
+no monthly reset) serves all sectors:
 
 ```python
 # src/backend/shared/config/settings/base.py
 def get_serper_key(sector: str) -> str:
-    if sector in {"bfsi", "it"} and SERPER_API_KEY_2:
-        return SERPER_API_KEY_2
     return SERPER_API_KEY
 ```
 
-| Key | Env Variable | Sectors | Estimated Monthly Usage |
-|---|---|---|---|
-| Key 1 | `SERPER_API_KEY` | `automobile`, `renewable_energy` | ~2,450 calls/month (at 5 tickers) |
-| Key 2 | `SERPER_API_KEY_2` | `banking_bfsi`, `it_sector` | ~1,490 calls/month (at 5 tickers) |
-
-> ⚠️ WARNING: The `macro_news_fetcher.py` (background macro feed) uses `SERPER_API_KEY_2` first (bfsi/it key), falling back to Key 1. The macro feed runs during market hours (9am–3pm IST) while the RL sector agents run post-market (4:30pm IST), so the keys do not compete for the same time window.
+`get_serper_key(sector)` keeps the `sector` parameter for call-site compatibility
+(`bundle_builder.py`, `services/data/context/builder.py`, `macro_news_fetcher.py`
+all pass a sector), but it no longer affects which key is returned — there is
+only one key, `SERPER_API_KEY`.
 
 #### 5.1.3 Complete Serper Call Map
 
@@ -841,25 +838,16 @@ def get_serper_key(sector: str) -> str:
 | `_fetch_rubber_price_via_news` | `raw_materials` | automobile | **1** | Yes | **4h** (`_RUBBER_CACHE`) |
 | `get_rbi_repo_rate` | `risk_macro` | automobile / bfsi | **1** | Yes | **60 days** (`_RBI_CACHE`) |
 | `get_business_model_context` | All automobile agents | automobile | **1** | Yes | **30 days** (`data/oem_profiles/{TICKER}.json`) |
-| `micro_search_loop` | Sector macro pre-fetch | automobile, bfsi, it | 2 per sector per cycle | Yes | 4h (`set_macro_cache`) |
 | `search_market_news` (chat) | Chat executor | All | 1–2 | No | — (on-demand) |
 | `MacroNewsFetcher` | Background macro feed | All | 2 per run | Yes | Daily (`data/macro_news/`) |
 
-#### 5.1.4 Micro Search Loop
+#### 5.1.4 Macro Cache — On-Miss Population
 
-**File:** `main.py` → `_micro_search_loop()` (daemon thread)
-
-The micro search loop pre-fetches sector-level macro news on a configurable schedule so that per-ticker agent runs find a warm cache.
-
-**Sectors covered:** `automobile`, `bfsi`, `it`. Renewable energy is excluded — its primary signals (MNRE auctions, DISCOM payments) are per-company, not sector-wide, so a shared cache provides no benefit.
-
-**Budget calculation (weekdays only — skips Saturday/Sunday via `date.today().weekday() >= 5` guard):**
-
-```
-3 sectors × 2 queries/run × 6 cycles/day × 22 trading days/month = 792 Serper calls/month
-```
-
-**Cache consumption (ContextBuilder):**
+There is no background pre-fetch loop. The sector macro cache
+(`services/data/cache/macro_cache.py`) is populated on-miss by the unified
+`bundle_builder._fetch_macro_context()` (and, on the legacy fallback path, by
+`ContextBuilder._build_risk_macro()` / `_build_macro_policy()` /
+`_build_it_risk_macro()`):
 
 ```python
 # ContextBuilder._build_risk_macro():
@@ -874,67 +862,18 @@ else:
     return text
 ```
 
-Cache Hit saves **3 Serper calls per ticker per day** for `risk_macro`. At 5 tickers, this is 15 calls/day = 330 calls/month saved on the risk_macro agent alone.
-
-**Configuration constants (all in `settings/base.py`):**
-
-| Variable | Default | Purpose |
-|---|---|---|
-| `MICRO_CYCLES_PER_DAY` | 6 | Runs every ~4 hours |
-| `MICRO_QUERIES_PER_RUN` | 2 | Combined Serper calls per sector per cycle |
-| `MACRO_CACHE_TTL_HOURS` | `int(24 // MICRO_CYCLES_PER_DAY)` = 4 | Cache TTL; **derived** from loop interval (Static Audit fix #13) |
+Cache TTL is controlled by `MACRO_CACHE_TTL_HOURS` (default `4`, `settings/base.py`)
+— a direct env-configurable setting, not derived from a loop schedule.
 
 #### 5.1.5 Monthly Budget by Scenario
 
-| Scenario | Pre-market Orchestrator | RL Daily Review (30% rerun) | Micro Loop | Serper Total | % of 2,500 Free Tier |
-|---|---|---|---|---|---|
-| 1 ticker, 21 trading days | 16 × 1 × 21 = 336 | 0.3 × 336 = 101 | 792 | **~1,229** | **49%** ✅ |
-| 3 tickers, 21 trading days | 16 × 3 × 21 = 1,008 | 0.3 × 1,008 = 302 | 792 | **~1,848** | **74%** ✅ |
-| 5 tickers, 21 trading days | 16 × 5 × 21 = 1,680 | 0.3 × 1,680 = 504 | 792 | **~2,976** | **119%** ⚠️ OVER |
-
-> ⚠️ WARNING: At 5 tickers, monthly Serper usage is approximately 2,976 — 19% over the 2,500 free tier. Safe operating point: **3 tickers** (~1,848/month, 74%). Upgrade to a paid plan or split keys further before adding a 4th or 5th ticker.
+| Scenario | Pre-market Orchestrator | RL Daily Review (30% rerun) | Serper Total | % of 2,500 Free Tier |
+|---|---|---|---|---|
+| 1 ticker, 21 trading days | 16 × 1 × 21 = 336 | 0.3 × 336 = 101 | **~437** | **17%** ✅ |
+| 3 tickers, 21 trading days | 16 × 3 × 21 = 1,008 | 0.3 × 1,008 = 302 | **~1,310** | **52%** ✅ |
+| 5 tickers, 21 trading days | 16 × 5 × 21 = 1,680 | 0.3 × 1,680 = 504 | **~2,184** | **87%** ✅ |
 
 **Tavily usage:** 2 calls × 0.04 (monthly cache hit rate) × 5 tickers × 21 days ≈ **8 actual API calls/month** (< 1% of the 1,000/month free tier). [→ Section 5.2.3]
-
-<details><summary>📊 Serper Budget Pie Chart (5 tickers, typical month)</summary>
-
-<div style="padding: 20px; background: #0d1117; border-radius: 8px;">
-
-```svg
-<svg viewBox="0 0 400 280" xmlns="http://www.w3.org/2000/svg" style="background:#0d1117; font-family: monospace;">
-  <text x="200" y="20" text-anchor="middle" fill="#e6edf3" font-size="13" font-weight="bold">Serper Budget: ~2,976 calls/month (5 tickers)</text>
-
-  <!-- Pie chart: Pre-market 56%, RL daily 17%, Micro loop 27% -->
-  <!-- Pre-market 1,680/2,976 = 56.4% → 203° sweep -->
-  <circle cx="140" cy="155" r="90" fill="#1a1a2e"/>
-  <!-- Pre-market slice (56.4%) - starts at top, 203° -->
-  <path d="M140,155 L140,65 A90,90 0 1,1 62.5,205 Z" fill="#2d8cf0"/>
-  <!-- RL daily slice (16.9%) - 60.9° -->
-  <path d="M140,155 L62.5,205 A90,90 0 0,1 85.5,237 Z" fill="#19be6b"/>
-  <!-- Micro loop slice (26.6%) - 95.8° -->
-  <path d="M140,155 L85.5,237 A90,90 0 0,1 140,65 Z" fill="#ff9900"/>
-
-  <!-- Legend -->
-  <rect x="260" y="80" width="14" height="14" fill="#2d8cf0"/>
-  <text x="280" y="92" fill="#e6edf3" font-size="11">Pre-market agents</text>
-  <text x="280" y="106" fill="#8b949e" font-size="10">1,680 calls (56%)</text>
-
-  <rect x="260" y="120" width="14" height="14" fill="#19be6b"/>
-  <text x="280" y="132" fill="#e6edf3" font-size="11">RL daily review</text>
-  <text x="280" y="146" fill="#8b949e" font-size="10">504 calls (17%)</text>
-
-  <rect x="260" y="160" width="14" height="14" fill="#ff9900"/>
-  <text x="280" y="172" fill="#e6edf3" font-size="11">Micro search loop</text>
-  <text x="280" y="186" fill="#8b949e" font-size="10">792 calls (27%)</text>
-
-  <text x="260" y="220" fill="#ff4d4f" font-size="11" font-weight="bold">Total: 2,976 / 2,500</text>
-  <text x="260" y="234" fill="#ff4d4f" font-size="10">⚠ 19% over free tier</text>
-  <text x="260" y="248" fill="#8b949e" font-size="10">3 tickers: ~1,848 (74%) ✅</text>
-</svg>
-```
-
-</div>
-</details>
 
 ---
 
@@ -1968,9 +1907,8 @@ Time (IST)  Event
             → Run FeedbackAgent + WeightAdapter for all tickers
             → Update prediction envelopes with revised forecasts
 
-Every 4h    micro_search_loop (daemon thread, if running)
-            → 3 sectors × 2 Serper queries → populate macro cache
-            → Cache TTL = 4h; consumed by ContextBuilder._build_risk_macro()
+(macro cache: populated on-miss by bundle_builder._fetch_macro_context()
+ / ContextBuilder._build_risk_macro(); TTL = MACRO_CACHE_TTL_HOURS, default 4h)
 ```
 
 </div>
@@ -2079,9 +2017,7 @@ Never: os.getenv() for algorithm constants
 | `SERPER_MAX_QUERIES` | 3 | Max Serper queries per agent run |
 | `SERPER_TIMEOUT_SECONDS` | 10 | Serper HTTP timeout |
 | `TAVILY_MAX_CONTENT_CHARS` | 600 | Tavily content truncation |
-| `MACRO_CACHE_TTL_HOURS` | 4 | Derived: `int(24 // MICRO_CYCLES_PER_DAY)` |
-| `MICRO_CYCLES_PER_DAY` | 6 | Micro search loop runs per day |
-| `MICRO_QUERIES_PER_RUN` | 2 | Serper queries per sector per cycle |
+| `MACRO_CACHE_TTL_HOURS` | 4 | Direct env-configurable macro cache TTL (populated on-miss) |
 | `MACRO_NEWS_RETAIN_DAYS` | 90 | Days before macro news JSON files deleted |
 | `RSI_PERIOD` | 14 | RSI calculation period |
 | `MACD_FAST` / `SLOW` / `SIGNAL` | 12 / 26 / 9 | MACD parameters |
@@ -2093,8 +2029,7 @@ Never: os.getenv() for algorithm constants
 
 | Variable | Purpose | Sector Routing |
 |---|---|---|
-| `SERPER_API_KEY` | Automobile + renewable_energy Serper calls | `get_serper_key("automobile")` |
-| `SERPER_API_KEY_2` | Banking_bfsi + it_sector Serper calls | `get_serper_key("bfsi")` |
+| `SERPER_API_KEY` | All sectors — single paid key | `get_serper_key(sector)` (sector arg kept for compatibility, doesn't change key) |
 | `TAVILY_API_KEY` | Full-page extraction (all sectors) | All sectors |
 | `OPENROUTER_API_KEY` | All LLM calls | All agents |
 | `LLM_MODEL_FAST` / `LLM_MODEL_REASONING` / `LLM_MODEL_BULK` | Hybrid model tiers — REASONING powers the Unified Sector Analyst (all four sectors); BULK runs the legacy per-dimension agents (fallback path only) | `qwen3.6-flash` / `qwen3.7-max` / `qwen-2.5-72b` (235b retired) |
@@ -2214,9 +2149,11 @@ All JSON files use atomic writes (`.tmp` → `os.replace()`).
 | Score verdict thresholds identical across all sectors | ❌ Add per-sector thresholds |
 | NSE holiday calendar hardcoded fallback ends 2026; `calendar_updater.py` auto-fetches next year on Dec 31 via NSE API → yfinance → fixed-holidays chain | ⚠️ Monitor Dec 31 job; if job fails, 2027 moveable feasts will be missing from `_HARDCODED_HOLIDAYS` |
 
-### 12.7 Serper Budget Warning
+### 12.7 Serper Budget Note
 
-> ⚠️ WARNING: At 5 tickers: ~2,976 Serper calls/month (119% of 2,500 free tier). Safe operating point: **3 tickers ≈ 1,848/month (74%)**. Options: upgrade Serper plan, add SERPER_API_KEY_3, or reduce MICRO_CYCLES_PER_DAY from 6 to 4.
+Single paid Serper key (50,000-credit top-up, valid 6 months, no monthly reset)
+serves all sectors. At 5 tickers, monthly usage is ~2,184 calls (~87% of the
+old 2,500/month free-tier reference point) — see §5.1.5.
 
 ---
 
@@ -2283,7 +2220,7 @@ All JSON files use atomic writes (`.tmp` → `os.replace()`).
 
 ```
 StockAgent-main/
-├── main.py                         ← CLI + micro search loop daemon
+├── main.py                         ← CLI entry point
 ├── config/sector_toggles.json      ← 27-sector enable/disable flags
 ├── src/backend/
 │   ├── sectors/

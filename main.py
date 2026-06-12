@@ -26,8 +26,6 @@ import json
 import logging
 import os
 import sys
-import threading
-import time
 from datetime import date
 from pathlib import Path
 
@@ -116,122 +114,6 @@ def _format_markdown(report) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Micro search loop
-# ---------------------------------------------------------------------------
-
-# Per-sector macro query presets.
-# These are sector-level questions — the answer is the same regardless of
-# which individual stock is being analysed within that sector.
-# Results are cached in tools/macro_cache.py under the sector key and consumed
-# by ContextBuilder._build_risk_macro() (auto), _build_macro_policy() (bfsi),
-# and _build_it_risk_macro() (it) to avoid repeating the same Serper queries
-# for every stock in a batch.
-#
-# RE sector is excluded — its macro signals (MNRE auctions, DISCOM payments)
-# are per-company, not sector-wide, so no shared cache benefit exists.
-_SECTOR_MACRO_QUERIES: dict[str, list[str]] = {
-    "automobile": [
-        # Query 1: demand + dispatch (sales_demand agent needs this most)
-        "India automobile FADA retail dispatch sales growth demand EV registration {month} {year}".format(
-            month=date.today().strftime("%B"), year=date.today().year
-        ),
-        # Query 2: input costs + macro (risk_macro + raw_materials agents need this)
-        "India automobile crude oil steel aluminium commodity prices RBI repo EMI auto loan impact {year}".format(
-            year=date.today().year
-        ),
-    ],
-    "bfsi": [
-        # RBI MPC rate decision + credit growth (targeted to the primary sector driver)
-        "RBI MPC repo rate decision India credit growth CASA deposit NIM banking liquidity {month} {year}".format(
-            month=date.today().strftime("%B"), year=date.today().year
-        ),
-        # NPA cycle + regulatory action (asset quality signals, sector-wide)
-        "India banking NPA gross slippage credit cost SEBI RBI regulatory PSU private NBFC recovery {year}".format(
-            year=date.today().year
-        ),
-    ],
-    "it": [
-        # US tech spend + deal TCV (primary revenue driver for Indian IT exporters)
-        "US enterprise IT spending cloud deal wins TCV H1B visa Indian IT sector {month} {year}".format(
-            month=date.today().strftime("%B"), year=date.today().year
-        ),
-        # GenAI disruption + USD/INR + margin outlook (sector-wide margin and demand signals)
-        "India IT GenAI AI deal demand USD INR exchange rate attrition margin TCS Infosys Wipro HCL {year}".format(
-            year=date.today().year
-        ),
-    ],
-}
-
-
-def _micro_search_loop() -> None:
-    """
-    Background daemon thread: pre-fetches sector-level macro news for
-    Automobile, BFSI, and IT on a configurable schedule and stores results
-    in the in-memory macro cache (tools/macro_cache.py).
-
-    Each cycle fetches MICRO_QUERIES_PER_RUN queries per sector sequentially.
-    RE sector is excluded — its signals are per-company, not sector-wide.
-
-    Configuration (.env):
-        MICRO_CYCLES_PER_DAY   default 6  → runs every 4 hours
-        MICRO_QUERIES_PER_RUN  default 2  → 2 Serper calls per sector per run
-
-    Monthly Serper budget from this loop (weekdays only):
-        3 sectors × 2 queries × 6 cycles × 22 trading days = 792 calls/month
-        (Previous: × 30 calendar days = 1,080 — 288 calls/month wasted on weekends)
-
-    Each cache HIT saves 3 Serper calls per stock analysis:
-        At 5 tickers/day across 3 sectors: 3 × 5 × 3 sectors × 22 days = 990 calls/month saved
-    """
-    from datetime import date as _date
-    from backend.shared.config import settings
-    from services.data.fetchers.news import fetch_news_context
-    from services.data.cache.macro_cache import set_macro_cache
-
-    n = settings.MICRO_QUERIES_PER_RUN
-    interval = (24 * 3600) / settings.MICRO_CYCLES_PER_DAY
-
-    _log = logging.getLogger(__name__)
-    _log.info(
-        "[micro_loop] Starting — %d sectors × %d cycles/day (every %.0fm) × %d queries/run",
-        len(_SECTOR_MACRO_QUERIES),
-        settings.MICRO_CYCLES_PER_DAY,
-        interval / 60,
-        n,
-    )
-
-    while True:
-        # Skip weekends — macro news is irrelevant when markets are closed
-        if _date.today().weekday() >= 5:  # 5=Saturday, 6=Sunday
-            _log.debug("[micro_loop] Weekend — skipping fetch, sleeping until next cycle")
-            time.sleep(interval)
-            continue
-
-        for sector, queries in _SECTOR_MACRO_QUERIES.items():
-            try:
-                _log.info("[micro_loop] Fetching %s macro context...", sector)
-                key = settings.get_serper_key(sector)
-                text = fetch_news_context(queries[:n], max_queries=n, api_key=key)
-                set_macro_cache(sector, text)
-                _log.info("[micro_loop] %s cache refreshed (%d chars)", sector, len(text))
-            except Exception as exc:
-                _log.warning("[micro_loop] %s pre-fetch failed: %s", sector, exc)
-        time.sleep(interval)
-
-
-def start_micro_loop() -> threading.Thread:
-    """
-    Launch the micro search loop as a daemon thread.
-
-    Daemon threads die automatically when the main process exits.
-    Call this before the main analysis loop when running in scheduler/daemon mode.
-    """
-    t = threading.Thread(target=_micro_search_loop, name="micro-search-loop", daemon=True)
-    t.start()
-    return t
-
-
-# ---------------------------------------------------------------------------
 # Save to disk
 # ---------------------------------------------------------------------------
 
@@ -279,15 +161,6 @@ def main() -> None:
         choices=["DEBUG", "INFO", "WARNING", "ERROR"],
         help="Logging verbosity",
     )
-    parser.add_argument(
-        "--micro-loop",
-        action="store_true",
-        help=(
-            "Start the micro search loop in a background thread before running analysis. "
-            "Pre-fetches automobile sector macro news and caches it to save Serper calls. "
-            "Useful when running multiple tickers in sequence."
-        ),
-    )
 
     args = parser.parse_args()
     _setup_logging(args.log_level)
@@ -302,12 +175,6 @@ def main() -> None:
     if not args.ticker:
         parser.print_help()
         sys.exit(1)
-
-    # Start micro search loop if requested (background daemon thread)
-    if args.micro_loop:
-        start_micro_loop()
-        # Give the first run a moment to complete before analysis starts
-        time.sleep(2)
 
     # Lazy import here so logging is configured first
     from backend.sectors import detect_sector, get_orchestrator  # sector-aware routing

@@ -34,6 +34,44 @@ logger = logging.getLogger(__name__)
 CONFLICT_THRESHOLD = 0.30
 
 
+def extract_valuation_fields(agent_outputs: dict[str, AgentOutput]) -> dict:
+    """
+    Pull the valuation/price-target extras from agent_outputs["valuation_catalyst"].
+
+    Single extraction point shared by the legacy and unified analyst paths
+    (2026-06-12 redesign) — same keys, same defaults as the previous
+    hardcoded pull in `_parse`. Accepts either AgentOutput instances or
+    plain dicts (e.g. from `model_dump()`).
+
+    Returns a dict with keys: price_target, recovery_timeline_quarters,
+    undervalued_by_pct, discount_reason, recovery_catalysts.
+    """
+    price_target = None
+    recovery_quarters = None
+    undervalued_pct = None
+    discount_reason = None
+    recovery_catalysts: list[str] = []
+
+    vc_output = agent_outputs.get("valuation_catalyst")
+    if vc_output is not None:
+        vc = vc_output if isinstance(vc_output, dict) else vc_output.model_dump()
+        price_target = vc.get("price_target")
+        recovery_quarters = vc.get("recovery_timeline_quarters")
+        raw_disc = vc.get("current_discount_pct")
+        if raw_disc is not None:
+            undervalued_pct = -float(raw_disc)
+        discount_reason = vc.get("discount_reason")
+        recovery_catalysts = vc.get("recovery_catalysts", [])
+
+    return {
+        "price_target": float(price_target) if price_target is not None else None,
+        "recovery_timeline_quarters": int(recovery_quarters) if recovery_quarters is not None else None,
+        "undervalued_by_pct": float(undervalued_pct) if undervalued_pct is not None else None,
+        "discount_reason": str(discount_reason) if discount_reason else None,
+        "recovery_catalysts": recovery_catalysts,
+    }
+
+
 class SignalAggregator:
     """
     Combines outputs from the five sub-agents into a single stock verdict.
@@ -217,22 +255,7 @@ class SignalAggregator:
                 stripped = re.sub(r"\s*```\s*$", "", stripped).strip()
             data = json.loads(stripped)
 
-            price_target = None
-            recovery_quarters = None
-            undervalued_pct = None
-            discount_reason = None
-            recovery_catalysts: list[str] = []
-
-            vc_output = agent_outputs.get("valuation_catalyst")
-            if vc_output is not None:
-                vc = vc_output if isinstance(vc_output, dict) else vc_output.model_dump()
-                price_target = vc.get("price_target")
-                recovery_quarters = vc.get("recovery_timeline_quarters")
-                raw_disc = vc.get("current_discount_pct")
-                if raw_disc is not None:
-                    undervalued_pct = -float(raw_disc)
-                discount_reason = vc.get("discount_reason")
-                recovery_catalysts = vc.get("recovery_catalysts", [])
+            valuation_fields = extract_valuation_fields(agent_outputs)
 
             return FinalReport(
                 ticker=ticker,
@@ -246,11 +269,7 @@ class SignalAggregator:
                 executive_summary=data.get("executive_summary", ""),
                 investment_thesis=data.get("investment_thesis", ""),
                 report_date=data.get("report_date", str(date.today())),
-                price_target=float(price_target) if price_target is not None else None,
-                recovery_timeline_quarters=int(recovery_quarters) if recovery_quarters is not None else None,
-                undervalued_by_pct=float(undervalued_pct) if undervalued_pct is not None else None,
-                discount_reason=str(discount_reason) if discount_reason else None,
-                recovery_catalysts=recovery_catalysts,
+                **valuation_fields,
                 agent_outputs={k: v.model_dump() for k, v in agent_outputs.items()},
             )
         except Exception as exc:

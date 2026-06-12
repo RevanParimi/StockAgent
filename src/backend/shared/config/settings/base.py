@@ -647,6 +647,40 @@ SCORECARD_ENABLED: bool = os.getenv("SCORECARD_ENABLED", "true").lower() == "tru
 SCORECARD_DIR: str = os.getenv("SCORECARD_DIR", "data/eval/scorecards")
 
 # ---------------------------------------------------------------------------
+# Living Envelope (RL Phase 2.5) — shock-robust forecasting (2026-06-13)
+#
+# Sticky regime hysteresis + shock-triggered mid-month re-forecast + pre-open
+# sanity check. All flag-gated; flags off => byte-identical current behavior.
+# ---------------------------------------------------------------------------
+
+# Shock-triggered re-forecast (Component 2): regenerate the envelope mid-month
+# when external_shock / thesis_break / regime_flip fires.
+RL_REFORECAST_ENABLED: bool = os.getenv("RL_REFORECAST_ENABLED", "true").lower() == "true"
+
+# Hard cap on regenerate_envelope() calls per ticker per calendar month.
+RL_REFORECAST_MAX_PER_MONTH: int = int(os.getenv("RL_REFORECAST_MAX_PER_MONTH", "2"))
+
+# thesis_break trigger fires when ThesisReviewer's horizon_confidence_multiplier
+# drops to/below this threshold.
+RL_REFORECAST_THESIS_MULT_THRESHOLD: float = float(os.getenv("RL_REFORECAST_THESIS_MULT_THRESHOLD", "0.5"))
+
+# Sticky regime (Component 1): hysteresis on top of the raw daily RegimeDetector
+# label so a single calm day doesn't immediately exit RISK_OFF/MACRO_CRISIS.
+RL_REGIME_STICKY_ENABLED: bool = os.getenv("RL_REGIME_STICKY_ENABLED", "true").lower() == "true"
+
+# Consecutive milder-than-sticky detections required before exiting to the
+# milder label.
+RL_REGIME_CALM_DAYS: int = int(os.getenv("RL_REGIME_CALM_DAYS", "3"))
+
+# Pre-open sanity check (Component 3): scheduler job at 08:45 IST on trading
+# days, 1 Serper + 1 fast-tier LLM call market-wide.
+RL_PREOPEN_CHECK_ENABLED: bool = os.getenv("RL_PREOPEN_CHECK_ENABLED", "true").lower() == "true"
+
+# Severity threshold (0.0-1.0) above which contradicted tickers trigger
+# regenerate_envelope(reason="preopen_shock").
+RL_PREOPEN_SHOCK_SEVERITY: float = float(os.getenv("RL_PREOPEN_SHOCK_SEVERITY", "0.7"))
+
+# ---------------------------------------------------------------------------
 # Unified Sector Analyst (2026-06-12 redesign) — one data bundle + one
 # reasoning-model call replaces the per-sector parallel agent fan-out.
 # CSV of sector names on the unified path; "" disables it everywhere.

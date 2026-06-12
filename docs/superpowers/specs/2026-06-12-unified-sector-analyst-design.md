@@ -81,7 +81,8 @@ class UnifiedAnalyst:
 ```
 
 - Model: `settings.LLM_MODEL_REASONING` (the good model finally does the analysis),
-  temp 0.2, json_object, `UNIFIED_ANALYST_MAX_TOKENS` (default 3500), retry ×2.
+  temp 0.2, json_object, `UNIFIED_ANALYST_MAX_TOKENS` (default 6000), retry ×2, truncation salvage on
+  cut-off JSON (complete dimensions survive; lost ones degrade to neutral).
 - Prompt: new `src/backend/sectors/automobile/prompts/unified.py` — system prompt with the
   date/data-only/grounding rules ONCE, then per-dimension definitions distilled from the 9
   existing prompt files (each dimension: what to assess, its 5 sub_score names, scoring anchors).
@@ -132,7 +133,7 @@ resolve ticker (unchanged) → load RL weights (unchanged) → prefetch NSE (unc
 |---|---|---|
 | `UNIFIED_ANALYST_SECTORS` | `"automobile"` | CSV of sectors on the unified path; `""` = fully off |
 | `UNIFIED_ANALYST_FALLBACK_LEGACY` | `True` | Total analyst failure → legacy multi-agent run |
-| `UNIFIED_ANALYST_MAX_TOKENS` | `3500` | Analyst output budget |
+| `UNIFIED_ANALYST_MAX_TOKENS` | `6000` | Analyst output budget (3500 truncated live; raised + truncation salvage added) |
 | `UNIFIED_SECTION_MAX_CHARS` | `2500` | Per-section bundle cap |
 | `UNIFIED_BUNDLE_MAX_CHARS` | `18000` | Total bundle cap |
 

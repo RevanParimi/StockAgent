@@ -296,8 +296,65 @@ class BaseSectorOrchestrator(ABC):
     # Ticker resolution
     # ------------------------------------------------------------------
 
+    def _managed_tickers(self) -> set[str]:
+        """
+        Return this sector's managed ticker symbols (uppercased), cached on
+        the instance. Lazy-imports `backend.sectors.{SECTOR_NAME}.config.settings`
+        and reads its TICKERS list. Any failure (missing module, missing
+        attribute, bad shape) yields an empty set — never raises.
+        """
+        cached = getattr(self, "_managed_tickers_cache", None)
+        if cached is not None:
+            return cached
+
+        tickers: set[str] = set()
+        try:
+            import importlib
+            mod = importlib.import_module(f"backend.sectors.{self.SECTOR_NAME}.config.settings")
+            raw = getattr(mod, "TICKERS", None) or getattr(mod, "STOCKS", None) or []
+            tickers = {str(t).strip().upper() for t in raw if str(t).strip()}
+        except Exception as exc:
+            logger.debug("[%s] _managed_tickers lookup failed: %s", self.SECTOR_NAME, exc)
+            tickers = set()
+
+        self._managed_tickers_cache = tickers
+        return tickers
+
+    def _yf_info(self, ticker: str) -> dict:
+        """
+        Fetch yfinance `.info` for a ticker, applying the same symbol-override
+        and exchange-suffix logic used everywhere else. Any failure -> {}.
+        """
+        import yfinance as yf
+        suffix = settings.YFINANCE_SUFFIX
+        yf_ticker = settings.YF_SYMBOL_OVERRIDES.get(ticker.upper()) or (
+            ticker if ticker.endswith(suffix) else f"{ticker}{suffix}"
+        )
+        return yf.Ticker(yf_ticker).info or {}
+
+    def _company_name_for(self, ticker: str) -> str:
+        """
+        Best-effort company name lookup via yfinance for an already-known
+        managed ticker. Falls back to the ticker itself on any failure.
+        """
+        try:
+            info = self._yf_info(ticker)
+            return info.get("longName") or info.get("shortName") or ticker
+        except Exception as exc:
+            logger.debug("[%s] _company_name_for failed for %s: %s", self.SECTOR_NAME, ticker, exc)
+            return ticker
+
     def _resolve_ticker(self, user_input: str, run_id: str = "") -> StockQuery:
         t0 = time.time()
+
+        candidate = user_input.strip().upper()
+        if candidate in self._managed_tickers():
+            return StockQuery(
+                ticker=candidate,
+                company_name=self._company_name_for(candidate),
+                exchange=settings.DEFAULT_EXCHANGE,
+                analysis_date=date.today(),
+            )
 
         def _llm_call(prompt: str) -> dict:
             response = self._llm.chat.completions.create(
@@ -365,12 +422,7 @@ class BaseSectorOrchestrator(ABC):
 
     def _verify_ticker(self, ticker: str) -> bool:
         try:
-            import yfinance as yf
-            suffix = settings.YFINANCE_SUFFIX
-            yf_ticker = settings.YF_SYMBOL_OVERRIDES.get(ticker.upper()) or (
-                ticker if ticker.endswith(suffix) else f"{ticker}{suffix}"
-            )
-            info = yf.Ticker(yf_ticker).info or {}
+            info = self._yf_info(ticker)
             return bool(
                 info.get("regularMarketPrice") or info.get("currentPrice") or info.get("previousClose")
             )

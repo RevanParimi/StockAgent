@@ -255,6 +255,23 @@ class AutomobileScheduler:
         else:
             logger.info("[Scheduler] Monthly scorecard job disabled (SCORECARD_ENABLED=false)")
 
+        # ── Job 9: Weekly event ingestion (Saturday 10:00 am IST) ────────────
+        if getattr(settings, "RL_EVENT_INGEST_ENABLED", True):
+            scheduler.add_job(
+                func=self._event_ingest_job,
+                trigger=CronTrigger(
+                    day_of_week="sat", hour=10, minute=0, timezone="Asia/Kolkata",
+                ),
+                id="event_ingest_weekly",
+                name="Weekly dossier event ingestion",
+                misfire_grace_time=3600,
+                coalesce=True,
+                replace_existing=True,
+            )
+            logger.info("[Scheduler] Event ingest job: Saturdays at 10:00 am IST")
+        else:
+            logger.info("[Scheduler] Event ingest job disabled (RL_EVENT_INGEST_ENABLED=false)")
+
         return scheduler
 
     # ------------------------------------------------------------------
@@ -555,6 +572,44 @@ class AutomobileScheduler:
         except Exception as exc:
             logger.warning("[Scheduler] Monthly scorecard build failed for %s: %s", month, exc, exc_info=True)
         _job_banner(f"Monthly Scorecard — {month}", done=True)
+
+    def _event_ingest_job(self) -> None:
+        """
+        Weekly NSE event-driven dossier ingestion (spec 2026-06-12, section 6).
+        Runs Saturdays at 10:00 am IST — after Friday's filings have settled.
+        Gated on RL_EVENT_INGEST_ENABLED; non-fatal per ticker (mirrors
+        `_ledger_cleanup_job`'s loop style).
+        """
+        from pathlib import Path
+        from core.intelligence.rl.agents.event_ingestor import EventIngestor
+
+        if not getattr(settings, "RL_EVENT_INGEST_ENABLED", True):
+            return
+
+        _KNOWN_SECTORS = ["automobile", "banking_bfsi", "it_sector", "renewable_energy"]
+        base_dir = "data/predictions"
+
+        def _sector_for(ticker: str) -> str:
+            return next(
+                (s for s in _KNOWN_SECTORS if Path(f"{base_dir}/{s}/{ticker}").exists()),
+                "automobile",
+            )
+
+        tickers = _active_tickers()
+        _job_banner(f"Weekly Event Ingestion — {len(tickers)} tickers")
+        total = 0
+        for ticker in tickers:
+            try:
+                sector = _sector_for(ticker)
+                count = EventIngestor().run(ticker, sector)
+                total += count
+                logger.info(
+                    "[Scheduler] Event ingest %s sector=%s — ingested=%d", ticker, sector, count,
+                )
+            except Exception as exc:
+                logger.warning("[Scheduler] Event ingest failed for %s: %s", ticker, exc, exc_info=True)
+        logger.info("[Scheduler] Weekly event ingestion complete — total ingested=%d", total)
+        _job_banner("Weekly Event Ingestion", done=True)
 
     # ------------------------------------------------------------------
     # Public interface

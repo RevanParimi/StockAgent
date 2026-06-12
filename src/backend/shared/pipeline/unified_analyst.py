@@ -20,14 +20,17 @@ UnifiedAnalyst.run(query, bundle, sector) -> dict[str, AgentOutput]
 
 from __future__ import annotations
 
+import importlib
 import json
 import logging
 import re
 import time
 import typing
+from dataclasses import dataclass
 from datetime import date
 
 from openai import APIError, APITimeoutError, RateLimitError
+from pydantic import create_model
 
 from backend.shared.config import settings
 from backend.shared.schemas.pipeline import (
@@ -51,7 +54,39 @@ logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
-# Dimension -> AgentOutput class maps (per sector)
+# Sector spec registry
+# ---------------------------------------------------------------------------
+#
+# Each sector's `classes` dict maps dimension name -> AgentOutput subclass.
+# Dict order defines DIMENSIONS[sector] order (also the order rendered in the
+# unified analyst prompt and the order weights are reported in).
+#
+# automobile: the original hand-written AgentOutput subclasses
+# (SalesDemandOutput, ...), each already declaring its own
+# `sub_scores: <Sector>SubScores | None` field — unchanged from before this
+# refactor.
+#
+# banking_bfsi / it_sector / renewable_energy: on the LEGACY path these
+# dimensions are produced by `UniversalAgent._parse_output` (5-7 of the
+# dimensions) or a sector-specific custom agent (BFSIUniverseAgent,
+# ITTranscriptNLPAgent, REBusinessAgent) — see
+# src/backend/shared/agents/universal/agent.py:70-79 and the three custom
+# agent modules. ALL of these return the BASE `AgentOutput` class,
+# parameterized with `agent=<dimension name>`; none of them declare a
+# `sub_scores` field on the base class (custom agents pass a `sub_scores={...}`
+# dict kwarg, but pydantic v2's default `extra="ignore"` silently drops it —
+# i.e. legacy sub_scores are effectively absent for these 20 dimensions too).
+#
+# To keep `_parse_dimension`/`_missing_output`/`_error_output` working
+# unchanged (they read `output_cls.model_fields["agent"].default` and resolve
+# `sub_scores` via `_resolve_sub_scores_model`), we mint one small AgentOutput
+# subclass per dimension with `agent: str = "<dimension>"` (matching the
+# legacy `agent=` value exactly) and `sub_scores: <Model> | None = None` using
+# the dimension's named sub-score model from that sector's
+# `schemas/sub_scores.py` (the model the legacy custom agents intended to
+# populate). This is additive — `FinalReport.agent_outputs` is
+# `dict[str, Any]` and RL is key-agnostic (per the rollout spec), so richer
+# sub_scores here is a pure improvement, not a contract change.
 # ---------------------------------------------------------------------------
 
 _AUTOMOBILE_CLASSES: dict[str, type[AgentOutput]] = {
@@ -66,13 +101,141 @@ _AUTOMOBILE_CLASSES: dict[str, type[AgentOutput]] = {
     "valuation_catalyst": ValuationCatalystOutput,
 }
 
-DIMENSIONS: dict[str, list[str]] = {
-    "automobile": list(_AUTOMOBILE_CLASSES),
+
+def _make_output_cls(sector_prefix: str, dimension: str, sub_scores_model: type | None) -> type[AgentOutput]:
+    """
+    Mint an `AgentOutput` subclass for `dimension` with
+    `agent: str = dimension` (matches the legacy `agent=` value) and, if
+    `sub_scores_model` is given, `sub_scores: sub_scores_model | None = None`.
+    """
+    fields: dict[str, tuple] = {"agent": (str, dimension)}
+    if sub_scores_model is not None:
+        fields["sub_scores"] = (sub_scores_model | None, None)
+    return create_model(
+        f"{sector_prefix}_{dimension}_Output",
+        __base__=AgentOutput,
+        **fields,
+    )
+
+
+def _build_sector_classes(
+    sector_prefix: str, sub_scores_models: dict[str, type | None]
+) -> dict[str, type[AgentOutput]]:
+    """Build the dimension -> AgentOutput-subclass map for one new sector."""
+    return {
+        dim: _make_output_cls(sector_prefix, dim, model)
+        for dim, model in sub_scores_models.items()
+    }
+
+
+# --- banking_bfsi -----------------------------------------------------------
+from backend.sectors.banking_bfsi.schemas.sub_scores import (
+    BFSIFundamentalsAgentSubScores,
+    BFSIRiskAgentSubScores,
+    BFSIMacroPolicyAgentSubScores,
+    BFSIInstitutionalAgentSubScores,
+    BFSIPatternAgentSubScores,
+    BFSIUniverseAgentSubScores,
+)
+
+_BANKING_BFSI_CLASSES: dict[str, type[AgentOutput]] = _build_sector_classes(
+    "BankingBFSI",
+    {
+        "fundamentals": BFSIFundamentalsAgentSubScores,
+        "risk": BFSIRiskAgentSubScores,
+        "macro_policy": BFSIMacroPolicyAgentSubScores,
+        "institutional": BFSIInstitutionalAgentSubScores,
+        "pattern_analysis": BFSIPatternAgentSubScores,
+        "universe_setup": BFSIUniverseAgentSubScores,
+    },
+)
+
+# --- it_sector ----------------------------------------------------------------
+from backend.sectors.it_sector.schemas.sub_scores import (
+    ITFundamentalsAgentSubScores,
+    ITGlobalMacroAgentSubScores,
+    ITRiskMacroAgentSubScores,
+    ITPeerBenchmarkAgentSubScores,
+    ITPatternAgentSubScores,
+    ITSentimentAgentSubScores,
+    ITTranscriptNLPAgentSubScores,
+    ITInsiderAgentSubScores,
+)
+
+_IT_SECTOR_CLASSES: dict[str, type[AgentOutput]] = _build_sector_classes(
+    "ITSector",
+    {
+        "fundamentals": ITFundamentalsAgentSubScores,
+        "global_macro": ITGlobalMacroAgentSubScores,
+        "risk_macro": ITRiskMacroAgentSubScores,
+        "peer_benchmark": ITPeerBenchmarkAgentSubScores,
+        "pattern_analysis": ITPatternAgentSubScores,
+        "sentiment": ITSentimentAgentSubScores,
+        "transcript_nlp": ITTranscriptNLPAgentSubScores,
+        "insider_smart_money": ITInsiderAgentSubScores,
+    },
+)
+
+# --- renewable_energy -----------------------------------------------------------
+from backend.sectors.renewable_energy.schemas.sub_scores import (
+    REFundamentalsAgentSubScores,
+    REBusinessAgentSubScores,
+    REValuationAgentSubScores,
+    RESentimentPolicyAgentSubScores,
+    RETechnicalAgentSubScores,
+    RERiskAgentSubScores,
+)
+
+_RENEWABLE_ENERGY_CLASSES: dict[str, type[AgentOutput]] = _build_sector_classes(
+    "RenewableEnergy",
+    {
+        "fundamentals": REFundamentalsAgentSubScores,
+        "business": REBusinessAgentSubScores,
+        "valuation": REValuationAgentSubScores,
+        "sentiment_policy": RESentimentPolicyAgentSubScores,
+        "technical": RETechnicalAgentSubScores,
+        "risk": RERiskAgentSubScores,
+    },
+)
+
+
+@dataclass(frozen=True)
+class SectorSpec:
+    """Per-sector configuration for the Unified Analyst."""
+
+    classes: dict[str, type[AgentOutput]]  # dimension -> output class (defines order)
+    prompts_module: str                    # importable module with SYSTEM_PROMPT/ANALYSIS_PROMPT
+    has_valuation_extras: bool = False
+
+
+SECTOR_SPECS: dict[str, SectorSpec] = {
+    "automobile": SectorSpec(
+        classes=_AUTOMOBILE_CLASSES,
+        prompts_module="backend.sectors.automobile.prompts.unified",
+        has_valuation_extras=True,
+    ),
+    "banking_bfsi": SectorSpec(
+        classes=_BANKING_BFSI_CLASSES,
+        prompts_module="backend.sectors.banking_bfsi.prompts.unified",
+        has_valuation_extras=False,
+    ),
+    "it_sector": SectorSpec(
+        classes=_IT_SECTOR_CLASSES,
+        prompts_module="backend.sectors.it_sector.prompts.unified",
+        has_valuation_extras=False,
+    ),
+    "renewable_energy": SectorSpec(
+        classes=_RENEWABLE_ENERGY_CLASSES,
+        prompts_module="backend.sectors.renewable_energy.prompts.unified",
+        has_valuation_extras=False,
+    ),
 }
 
-_SECTOR_CLASS_MAPS: dict[str, dict[str, type[AgentOutput]]] = {
-    "automobile": _AUTOMOBILE_CLASSES,
-}
+DIMENSIONS: dict[str, list[str]] = {s: list(spec.classes) for s, spec in SECTOR_SPECS.items()}
+
+# Dimension that valuation extras (price_target etc.) attach to, per sector
+# with has_valuation_extras=True. Automobile-only today.
+_VALUATION_EXTRA_DIMENSION = "valuation_catalyst"
 
 # Fields copied onto ValuationCatalystOutput when present and not None.
 _VALUATION_EXTRA_FIELDS = [
@@ -208,12 +371,13 @@ class UnifiedAnalyst:
           - any other unexpected error
         """
         try:
-            class_map = _SECTOR_CLASS_MAPS.get(sector)
-            if class_map is None:
-                logger.error("[UnifiedAnalyst] Unknown sector '%s' — no prompt module/class map", sector)
+            spec = SECTOR_SPECS.get(sector)
+            if spec is None:
+                logger.error("[UnifiedAnalyst] Unknown sector '%s' — no sector spec", sector)
                 return {}
+            class_map = spec.classes
 
-            system_prompt, user_prompt = self._build_prompt(query, bundle, sector)
+            system_prompt, user_prompt = self._build_prompt(query, bundle, sector, spec)
             if system_prompt is None:
                 # _build_prompt already logged the error.
                 return {}
@@ -257,7 +421,7 @@ class UnifiedAnalyst:
             if not isinstance(data, dict):
                 raise ValueError(f"LLM returned {type(data).__name__}, expected dict")
 
-            return self._parse_all(data, query.ticker, class_map)
+            return self._parse_all(data, query.ticker, class_map, spec)
 
         except Exception as exc:
             logger.error("[UnifiedAnalyst] run() failed for %s/%s: %s", sector, query.ticker, exc)
@@ -268,21 +432,32 @@ class UnifiedAnalyst:
     # ------------------------------------------------------------------
 
     def _build_prompt(
-        self, query: StockQuery, bundle: SectorDataBundle, sector: str
+        self, query: StockQuery, bundle: SectorDataBundle, sector: str, spec: SectorSpec
     ) -> tuple[str | None, str | None]:
-        if sector == "automobile":
-            from backend.sectors.automobile.prompts import unified as P
-        else:
-            logger.error("[UnifiedAnalyst] No prompt module for sector '%s'", sector)
+        try:
+            P = importlib.import_module(spec.prompts_module)
+        except ImportError as exc:
+            logger.error(
+                "[UnifiedAnalyst] No prompt module for sector '%s' (%s): %s",
+                sector, spec.prompts_module, exc,
+            )
             return None, None
 
-        system_prompt = P.SYSTEM_PROMPT
-        user_prompt = P.ANALYSIS_PROMPT.format(
-            ticker=query.ticker,
-            company_name=query.company_name,
-            report_date=str(date.today()),
-            bundle=bundle.to_prompt_text(),
-        )
+        try:
+            system_prompt = P.SYSTEM_PROMPT
+            user_prompt = P.ANALYSIS_PROMPT.format(
+                ticker=query.ticker,
+                company_name=query.company_name,
+                report_date=str(date.today()),
+                bundle=bundle.to_prompt_text(),
+            )
+        except AttributeError as exc:
+            logger.error(
+                "[UnifiedAnalyst] Prompt module '%s' for sector '%s' missing SYSTEM_PROMPT/ANALYSIS_PROMPT: %s",
+                spec.prompts_module, sector, exc,
+            )
+            return None, None
+
         return system_prompt, user_prompt
 
     # ------------------------------------------------------------------
@@ -348,7 +523,7 @@ class UnifiedAnalyst:
     # ------------------------------------------------------------------
 
     def _parse_all(
-        self, data: dict, ticker: str, class_map: dict[str, type[AgentOutput]]
+        self, data: dict, ticker: str, class_map: dict[str, type[AgentOutput]], spec: SectorSpec
     ) -> dict[str, AgentOutput]:
         outputs: dict[str, AgentOutput] = {}
         for dim, output_cls in class_map.items():
@@ -357,7 +532,7 @@ class UnifiedAnalyst:
                 outputs[dim] = self._missing_output(output_cls, ticker)
                 continue
             try:
-                outputs[dim] = self._parse_dimension(dim, block, output_cls, ticker)
+                outputs[dim] = self._parse_dimension(dim, block, output_cls, ticker, spec)
             except Exception as exc:
                 logger.error("[UnifiedAnalyst] Parse error for dimension '%s' (%s): %s", dim, ticker, exc)
                 outputs[dim] = self._error_output(output_cls, ticker, f"parse_error: {exc}")
@@ -385,7 +560,7 @@ class UnifiedAnalyst:
         )
 
     def _parse_dimension(
-        self, dim: str, block: dict, output_cls: type[AgentOutput], ticker: str
+        self, dim: str, block: dict, output_cls: type[AgentOutput], ticker: str, spec: SectorSpec
     ) -> AgentOutput:
         score = _clamp(float(block.get("score", 0.5)))
 
@@ -428,7 +603,7 @@ class UnifiedAnalyst:
             data_confidence=confidence,
         )
 
-        if output_cls is ValuationCatalystOutput:
+        if spec.has_valuation_extras and dim == _VALUATION_EXTRA_DIMENSION:
             for field_name in _VALUATION_EXTRA_FIELDS:
                 if field_name in block and block[field_name] is not None:
                     kwargs[field_name] = block[field_name]

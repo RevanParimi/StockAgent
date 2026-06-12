@@ -37,6 +37,7 @@ from core.intelligence.rl.algorithms.price_interpolator import (
     compute_atr_pct,
     compute_historical_avg_return,
 )
+from services.data.fetchers.close_verifier import get_verified_close
 
 logging.basicConfig(
     level=settings.LOG_LEVEL,
@@ -59,16 +60,17 @@ def _trading_dates(start: date, n: int) -> list[date]:
 
 
 def _fetch_actual_close(ticker: str) -> float | None:
-    """Fetch the most recent closing price for day-0 baseline."""
-    try:
-        df = get_price_history(ticker, years=1)
-        if df.empty:
-            return None
-        close = df["Close"].squeeze()
-        return float(close.iloc[-1])
-    except Exception as exc:
-        logger.warning("[generate_forecast] Could not fetch close for %s: %s", ticker, exc)
-        return None
+    """Fetch the most recent closing price for day-0 baseline.
+
+    Delegates to close_verifier.get_verified_close(), which cross-checks the
+    yfinance close against NSE's official EOD close (poisoning/outage guard).
+    """
+    close, source = get_verified_close(ticker)
+    if close is None:
+        logger.warning("[generate_forecast] Could not fetch close for %s (source=%s)", ticker, source)
+    elif source != "agree":
+        logger.info("[generate_forecast] Base close for %s sourced from %s: %.2f", ticker, source, close)
+    return close
 
 
 _LESSON_CATEGORY_TO_AGENTS: dict[str, list[str]] = {

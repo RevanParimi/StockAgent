@@ -99,10 +99,16 @@ def _fetch_actual_close(ticker: str, target_date: date) -> float | None:
     Uses yf.download() with a narrow window — it refreshes the crumb automatically
     and avoids the 401 'Invalid Crumb' errors seen with .history() on long-running processes.
     Falls back to get_price_history() (C++ fetcher) if download fails.
+
+    The resulting yfinance close is then cross-checked against NSE's official
+    EOD close (close_verifier.cross_check_close) — a single extra NSE call,
+    no re-fetch of yfinance — guarding against symbol-cache poisoning / stale
+    yfinance data on the RL scoring path.
     """
     import yfinance as yf
     from datetime import timedelta
     from core.config import settings
+    from services.data.fetchers.close_verifier import cross_check_close
 
     suffix = ".NS"
     yf_sym = settings.YF_SYMBOL_OVERRIDES.get(ticker.upper()) or (
@@ -126,37 +132,44 @@ def _fetch_actual_close(ticker: str, target_date: date) -> float | None:
         available = close[close.index.date <= target_date]
         return float(available.iloc[-1]) if not available.empty else None
 
+    yf_close: float | None = None
+
     # Attempt 1: yf.download() — handles crumb refresh automatically
     try:
         df = yf.download(yf_sym, start=start, end=end, progress=False, auto_adjust=True)
-        result = _extract(df)
-        if result is not None:
-            return result
-        logger.debug("[daily_review] yf.download() returned empty for %s on %s", yf_sym, target_date)
+        yf_close = _extract(df)
+        if yf_close is None:
+            logger.debug("[daily_review] yf.download() returned empty for %s on %s", yf_sym, target_date)
     except Exception as exc:
         logger.warning("[daily_review] yf.download() failed for %s: %s", yf_sym, exc)
 
     # Attempt 2: BSE fallback (.BO suffix) — Yahoo sometimes serves BSE when NSE is stale
-    bse_sym = ticker if ticker.endswith(".BO") else f"{ticker}.BO"
-    try:
-        df = yf.download(bse_sym, start=start, end=end, progress=False, auto_adjust=True)
-        result = _extract(df)
-        if result is not None:
-            logger.debug("[daily_review] Used .BO fallback price for %s", ticker)
-            return result
-    except Exception as exc:
-        logger.debug("[daily_review] BSE fallback failed for %s: %s", bse_sym, exc)
+    if yf_close is None:
+        bse_sym = ticker if ticker.endswith(".BO") else f"{ticker}.BO"
+        try:
+            df = yf.download(bse_sym, start=start, end=end, progress=False, auto_adjust=True)
+            yf_close = _extract(df)
+            if yf_close is not None:
+                logger.debug("[daily_review] Used .BO fallback price for %s", ticker)
+        except Exception as exc:
+            logger.debug("[daily_review] BSE fallback failed for %s: %s", bse_sym, exc)
 
     # Attempt 3: get_price_history() (C++ fetcher, 1-year window, legacy path)
-    try:
-        df = get_price_history(ticker, years=1)
-        result = _extract(df)
-        if result is not None:
-            return result
-    except Exception as exc:
-        logger.warning("[daily_review] get_price_history() failed for %s on %s: %s", ticker, target_date, exc)
+    if yf_close is None:
+        try:
+            df = get_price_history(ticker, years=1)
+            yf_close = _extract(df)
+        except Exception as exc:
+            logger.warning("[daily_review] get_price_history() failed for %s on %s: %s", ticker, target_date, exc)
 
-    return None
+    # NSE official-close cross-check (poisoning/outage guard) — single extra
+    # NSE call on top of the yfinance close already fetched above.
+    close, source = cross_check_close(ticker, yf_close, target_date=target_date)
+    if close is None:
+        logger.warning("[daily_review] Could not fetch actual close for %s on %s (source=%s)", ticker, target_date, source)
+    elif source != "agree":
+        logger.info("[daily_review] Actual close for %s on %s sourced from %s: %.2f", ticker, target_date, source, close)
+    return close
 
 
 def _run_todays_agent_scores(

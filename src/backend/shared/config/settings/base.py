@@ -681,6 +681,23 @@ RL_PREOPEN_CHECK_ENABLED: bool = os.getenv("RL_PREOPEN_CHECK_ENABLED", "true").l
 RL_PREOPEN_SHOCK_SEVERITY: float = float(os.getenv("RL_PREOPEN_SHOCK_SEVERITY", "0.7"))
 
 # ---------------------------------------------------------------------------
+# Data integrity — NSE official close cross-check (2026-06)
+#
+# yfinance (get_price_history) is the sole source for RL scoring closes
+# (daily_review actual close + generate_forecast re-forecast base close) but
+# is an unofficial scraper that has served the WRONG COMPANY's price under
+# symbol-cache poisoning and has regular outage days. NSE's official EOD
+# close (fetch_equity_historical_data) is used as a cross-check via
+# services/data/fetchers/close_verifier.get_verified_close().
+# ---------------------------------------------------------------------------
+CLOSE_VERIFY_ENABLED: bool = os.getenv("CLOSE_VERIFY_ENABLED", "true").lower() == "true"
+
+# Max % difference between yfinance and NSE closes considered "agreement".
+# Differences beyond this trigger a WARNING log and use the NSE value
+# (poisoning detector).
+CLOSE_VERIFY_TOLERANCE_PCT: float = float(os.getenv("CLOSE_VERIFY_TOLERANCE_PCT", "1.0"))
+
+# ---------------------------------------------------------------------------
 # Unified Sector Analyst (2026-06-12 redesign) — one data bundle + one
 # reasoning-model call replaces the per-sector parallel agent fan-out.
 # CSV of sector names on the unified path; "" disables it everywhere.

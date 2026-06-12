@@ -142,7 +142,8 @@ def _load_cache() -> dict[str, str]:
         return _cache
     try:
         if _CACHE_FILE.exists():
-            raw = json.loads(_CACHE_FILE.read_text("utf-8"))
+            # utf-8-sig: tolerate a BOM from hand-edits/PowerShell on Windows
+            raw = json.loads(_CACHE_FILE.read_text("utf-8-sig"))
             _cache = {str(k).upper(): str(v) for k, v in raw.items()}
         else:
             _cache = {}
@@ -201,7 +202,8 @@ def _load_company_name_cache() -> dict[str, str]:
         return _company_name_cache
     try:
         if _COMPANY_NAME_CACHE_FILE.exists():
-            raw = json.loads(_COMPANY_NAME_CACHE_FILE.read_text("utf-8"))
+            # utf-8-sig: tolerate a BOM from hand-edits/PowerShell on Windows
+            raw = json.loads(_COMPANY_NAME_CACHE_FILE.read_text("utf-8-sig"))
             _company_name_cache = {str(k).upper(): str(v) for k, v in raw.items()}
         else:
             _company_name_cache = {}

@@ -434,7 +434,8 @@ def cmd_reforecast(args) -> None:
     remaining = [f for f in envelope.daily_forecasts if f.date > today_str]
     print("\n  Next predicted closes:")
     for f in remaining[:3]:
-        print(f"    {f.date}  day {f.day:>2}  ₹{f.predicted_close:.2f}  {f.predicted_verdict}")
+        # ASCII only — the Windows console (cp1252) cannot encode the rupee sign.
+        print(f"    {f.date}  day {f.day:>2}  Rs {f.predicted_close:.2f}  {f.predicted_verdict}")
     print()
 
 

@@ -41,6 +41,10 @@ python scripts/run_schedule.py feedback-status --ticker MARUTI
 python scripts/run_schedule.py reforecast --ticker MARUTI
 python scripts/run_schedule.py reforecast --ticker MARUTI --sector automobile --reason "Manual review after earnings"
 
+# Run the pre-open sanity check (Living Envelope, Component 3)
+python scripts/run_schedule.py preopen-check
+python scripts/run_schedule.py preopen-check --ticker MARUTI --sector automobile
+
 # Start the full scheduler daemon (analysis cron + daily-review cron)
 python scripts/run_schedule.py start
 """
@@ -434,6 +438,43 @@ def cmd_reforecast(args) -> None:
     print()
 
 
+def cmd_preopen_check(args) -> None:
+    """Run the pre-open sanity check (Living Envelope, Component 3).
+
+    Market-level: one Serper search + one FAST-tier LLM call total. If
+    --ticker/--sector are given, only that single ticker is checked for
+    contradictions (severity/direction are still computed market-wide);
+    otherwise all managed tickers across the four sectors are checked.
+    """
+    from core.intelligence.rl.workflows.preopen_check import run_preopen_check
+
+    tickers = None
+    if getattr(args, "ticker", None):
+        sector = args.sector or "automobile"
+        tickers = [(args.ticker.upper(), sector)]
+
+    result = run_preopen_check(tickers=tickers)
+
+    if result.get("skipped"):
+        print(f"\n[SKIP] Pre-open check skipped: {result['skipped']}\n")
+        return
+
+    print("\n=== Pre-open Sanity Check ===")
+    print(f"  Severity  : {result.get('severity', 0.0):.2f}")
+    print(f"  Direction : {result.get('direction', 'neutral')}")
+    if result.get("headline"):
+        print(f"  Headline  : {result['headline']}")
+
+    flagged = result.get("flagged", [])
+    reforecasts = result.get("reforecasts", [])
+    if flagged:
+        print(f"\n  Flagged tickers     : {', '.join(flagged)}")
+        print(f"  Re-forecasted       : {', '.join(reforecasts) if reforecasts else '(none)'}")
+    else:
+        print("\n  No tickers flagged.")
+    print()
+
+
 def cmd_dossier_status(args) -> None:
     """Print per-ticker dossier health: size, version, staleness, counts."""
     from core.intelligence.rl.stores.prediction_store import PredictionStore
@@ -509,6 +550,11 @@ def main() -> None:
     reforecast_p.add_argument("--sector", help="Sector (default: looked up from managed tickers, else 'automobile')")
     reforecast_p.add_argument("--reason", help="Free-text reason recorded in the envelope's reforecast_history")
 
+    # preopen-check
+    preopen_p = sub.add_parser("preopen-check", help="Run the pre-open sanity check (Living Envelope, Component 3)")
+    preopen_p.add_argument("--ticker", help="Single ticker to check for contradictions (default: all managed tickers)")
+    preopen_p.add_argument("--sector", help="Sector for --ticker (default: automobile)")
+
     # ingest-events
     ingest_p = sub.add_parser("ingest-events", help="Scan NSE events and digest into ticker dossiers")
     ingest_p.add_argument("--ticker", nargs="*", help="One or more NSE tickers (default: all managed)")
@@ -535,6 +581,7 @@ def main() -> None:
         "daily-review":    cmd_daily_review,
         "feedback-status": cmd_feedback_status,
         "reforecast":      cmd_reforecast,
+        "preopen-check":   cmd_preopen_check,
         "dossier-status":  cmd_dossier_status,
         "ingest-events":   cmd_ingest_events,
         "scorecard":       cmd_scorecard,

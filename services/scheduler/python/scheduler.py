@@ -272,6 +272,20 @@ class AutomobileScheduler:
         else:
             logger.info("[Scheduler] Event ingest job disabled (RL_EVENT_INGEST_ENABLED=false)")
 
+        # ── Job 10: Pre-open shock check (08:45 IST weekdays, before 09:15 open) ──
+        scheduler.add_job(
+            func=self._preopen_shock_check_job,
+            trigger=CronTrigger(
+                day_of_week="mon-fri", hour=8, minute=45, timezone="Asia/Kolkata",
+            ),
+            id="preopen_shock_check",
+            name="Pre-open shock check (Living Envelope)",
+            misfire_grace_time=900,   # 15min grace — must finish well before 09:15 open
+            coalesce=True,
+            replace_existing=True,
+        )
+        logger.info("[Scheduler] Pre-open shock check job: 8:45 am IST weekdays")
+
         return scheduler
 
     # ------------------------------------------------------------------
@@ -610,6 +624,34 @@ class AutomobileScheduler:
                 logger.warning("[Scheduler] Event ingest failed for %s: %s", ticker, exc, exc_info=True)
         logger.info("[Scheduler] Weekly event ingestion complete — total ingested=%d", total)
         _job_banner("Weekly Event Ingestion", done=True)
+
+    def _preopen_shock_check_job(self) -> None:
+        """
+        Pre-open sanity check (Living Envelope, RL Phase 2.5, Component 3).
+        Runs weekdays at 08:45 IST — before the 09:15 am NSE open.
+
+        Market-level: one Serper search + one FAST-tier LLM call total
+        (NOT per ticker). Gated internally by RL_PREOPEN_CHECK_ENABLED;
+        run_preopen_check() never raises, so this job is non-fatal by
+        construction.
+        """
+        from core.intelligence.rl.workflows.preopen_check import run_preopen_check
+
+        _job_banner("Pre-open Shock Check")
+        try:
+            result = run_preopen_check()
+            if result.get("skipped"):
+                logger.info("[Scheduler] Pre-open check skipped: %s", result["skipped"])
+            else:
+                logger.info(
+                    "[Scheduler] Pre-open check — severity=%.2f direction=%s "
+                    "flagged=%s reforecasts=%s",
+                    result.get("severity", 0.0), result.get("direction", "neutral"),
+                    result.get("flagged", []), result.get("reforecasts", []),
+                )
+        except Exception as exc:
+            logger.error("[Scheduler] Pre-open shock check FAILED: %s", exc, exc_info=True)
+        _job_banner("Pre-open Shock Check", done=True)
 
     # ------------------------------------------------------------------
     # Public interface

@@ -661,3 +661,19 @@ SCORECARD_ENABLED: bool = os.getenv("SCORECARD_ENABLED", "true").lower() == "tru
 # Persisted scorecard time series (PERMANENT — improvement history; volume).
 SCORECARD_DIR: str = os.getenv("SCORECARD_DIR", "data/eval/scorecards")
 
+# ---------------------------------------------------------------------------
+# Unified Sector Analyst (2026-06-12 redesign) — one data bundle + one
+# reasoning-model call replaces the per-sector parallel agent fan-out.
+# CSV of sector names on the unified path; "" disables it everywhere.
+# ---------------------------------------------------------------------------
+UNIFIED_ANALYST_SECTORS: str = os.getenv("UNIFIED_ANALYST_SECTORS", "automobile")
+UNIFIED_ANALYST_FALLBACK_LEGACY: bool = os.getenv("UNIFIED_ANALYST_FALLBACK_LEGACY", "true").lower() == "true"
+UNIFIED_ANALYST_MAX_TOKENS: int = int(os.getenv("UNIFIED_ANALYST_MAX_TOKENS", "3500"))
+UNIFIED_SECTION_MAX_CHARS: int = int(os.getenv("UNIFIED_SECTION_MAX_CHARS", "2500"))
+UNIFIED_BUNDLE_MAX_CHARS: int = int(os.getenv("UNIFIED_BUNDLE_MAX_CHARS", "18000"))
+
+
+def unified_analyst_sectors() -> set[str]:
+    """Parsed UNIFIED_ANALYST_SECTORS; empty set when disabled."""
+    return {s.strip() for s in UNIFIED_ANALYST_SECTORS.split(",") if s.strip()}
+

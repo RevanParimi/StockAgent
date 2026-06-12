@@ -372,6 +372,15 @@ retired — it broke `json_object` output and was a weak function-caller.
 | `SCORECARD_ENABLED` | `true` | Monthly scorecard scheduler job (1st, 02:00 IST) |
 | `SCORECARD_DIR` | `data/eval/scorecards` | Persisted monthly scorecard time series |
 
+### RL Phase 3 — Event-Driven Dossier Ingestion
+
+| Name | Default | Description |
+|------|---------|-------------|
+| `RL_EVENT_INGEST_ENABLED` | `true` | Weekly NSE-event scan → dossier digestion (Sat 10:00 IST + CLI) |
+| `EVENT_INGEST_LOOKBACK_DAYS` | `8` | Scan window |
+| `EVENT_INGEST_MAX_EVENTS_PER_SCAN` | `3` | LLM/Tavily call cap per ticker per scan |
+| `EVENT_INGEST_TEXT_MAX_CHARS` | `6000` | Per-event text bundle truncation |
+
 ### Macro News Feed
 
 | Name | Default | Description |
@@ -461,6 +470,7 @@ All paths verified to exist. Paths are relative to project root.
 | `core/intelligence/rl/eval/baselines.py` | Naive baselines (persistence, always-up/down) for the monthly duel |
 | `core/intelligence/rl/eval/scorecard.py` | Monthly scorecard builder: agent vs control vs baselines + MoM deltas; CLI `run_schedule scorecard` |
 | `core/intelligence/rl/agents/control_lane.py` | Bare-LLM control lane (daily review Step 10): same info, no architecture |
+| `core/intelligence/rl/agents/event_ingestor.py` | Event ingestion: NSE filings → dossier guidance/business (weekly + CLI `ingest-events`) |
 | `src/backend/shared/schemas/dossier.py` | TickerDossier schema + budgeted markdown digest (`to_digest`) |
 | `src/backend/shared/schemas/scorecard.py` | ControlPrediction/ControlLog + MonthlyScorecard schemas |
 | `core/intelligence/rl/conviction/tracker.py` | Conviction streak tracking |

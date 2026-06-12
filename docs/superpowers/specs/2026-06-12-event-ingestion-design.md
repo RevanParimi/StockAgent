@@ -1,7 +1,7 @@
 # Event-Driven Dossier Ingestion — RL Phase 3
 
 **Date:** 2026-06-12
-**Status:** Design — approved direction (roadmap Phase 3)
+**Status:** IMPLEMENTED 2026-06-12
 **Depends on:** June-11 knowledge layer (TickerDossier, DossierCurator merge bounds) — IMPLEMENTED.
 
 ---

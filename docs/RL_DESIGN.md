@@ -1713,3 +1713,37 @@ number instead of a claim.
 
 Settings: `RL_CONTROL_LANE_ENABLED` (True), `CONTROL_LANE_MODEL` (""), `SCORECARD_ENABLED`
 (True), `SCORECARD_DIR` (`data/eval/scorecards`). All flag-off paths byte-identical.
+
+---
+
+## 26. Event-Driven Dossier Ingestion (Phase 3) — IMPLEMENTED
+
+> **Status: IMPLEMENTED 2026-06-12.**
+> Spec: `docs/superpowers/specs/2026-06-12-event-ingestion-design.md`
+> Code: `core/intelligence/rl/agents/event_ingestor.py`, `core/config/prompts/shared/event_ingestor.py`
+
+The dossier learns from corporate *events*, not just the daily tape — the path to
+"knows the company like an employee."
+
+- **Scan (STATIC, free)**: `find_qualifying_events` filters the existing NSE
+  announcements/board-meetings feed by keyword (results, concall, transcript, guidance,
+  investor presentation, dividend, …) within `EVENT_INGEST_LOOKBACK_DAYS` (8). Watermark
+  `TickerDossier.ingested_event_keys` ("{date}|{subject[:60]}", FIFO cap 40) prevents
+  re-ingestion.
+- **Enrich (capped)**: per event, the announcement text + ONE Tavily full-page extraction
+  (cached client; silently skipped without `TAVILY_API_KEY`), bundle ≤
+  `EVENT_INGEST_TEXT_MAX_CHARS` (6000). No Serper spend.
+- **Digest (LLM)**: `EventIngestor` emits the SAME JSON contract as the daily curator and
+  applies it through the SAME `merge_curator_output` bounds (extracted from
+  `DossierCurator._merge` — one merge implementation). Extra key
+  `business_summary_update` refreshes the business summary (≤500 chars). Never raises;
+  per-event failures skip that event only.
+- **Surfaces**: weekly `event_ingest_weekly` job (Sat 10:00 IST, flag
+  `RL_EVENT_INGEST_ENABLED`) + CLI `python -m services.scheduler.run_schedule
+  ingest-events [--ticker ...] [--days N]`.
+- **Cost ceiling**: ≤3 LLM + ≤3 Tavily calls per ticker per week; typically 0 on
+  non-event weeks. Live-verified: 2 real MARUTI con-call events ingested with quantified
+  guidance ("~1% growth FY27"); rerun ingested 0 (watermark).
+
+Settings: `RL_EVENT_INGEST_ENABLED` (True), `EVENT_INGEST_LOOKBACK_DAYS` (8),
+`EVENT_INGEST_MAX_EVENTS_PER_SCAN` (3), `EVENT_INGEST_TEXT_MAX_CHARS` (6000).

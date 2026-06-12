@@ -344,6 +344,41 @@ def cmd_scorecard(args) -> None:
     print(f"\nSaved to {path}")
 
 
+def cmd_ingest_events(args) -> None:
+    """Run event-driven dossier ingestion for one or more tickers (spec 2026-06-12)."""
+    from core.config import settings
+    from core.intelligence.rl.agents.event_ingestor import EventIngestor
+    from core.intelligence.rl.stores.prediction_store import PredictionStore
+    from services.api.log_buffer import get_active_tickers_with_sector
+
+    rows = get_active_tickers_with_sector()
+    if getattr(args, "ticker", None):
+        wanted = {t.upper() for t in args.ticker}
+        rows = [r for r in rows if r["sym"].upper() in wanted]
+
+    days = args.days if args.days is not None else settings.EVENT_INGEST_LOOKBACK_DAYS
+
+    for r in rows:
+        ticker, sector = r["sym"], r["sector"]
+        try:
+            count = EventIngestor().run(ticker, sector, lookback_days=days)
+        except Exception as exc:
+            print(f"{ticker}: ingest failed — {exc}")
+            continue
+
+        print(f"{ticker}: ingested {count} event(s)")
+
+        if count > 0:
+            store = PredictionStore(ticker=ticker, sector=sector)
+            d = store.load_dossier()
+            if d is not None:
+                open_g = [g for g in d.guidance if g.status == "open"][-5:]
+                if open_g:
+                    print("  Open guidance:")
+                    for g in open_g:
+                        print(f"    - {g.date} ({g.source}): {g.guidance}")
+
+
 def cmd_dossier_status(args) -> None:
     """Print per-ticker dossier health: size, version, staleness, counts."""
     from core.intelligence.rl.stores.prediction_store import PredictionStore
@@ -413,6 +448,11 @@ def main() -> None:
     dstatus_p = sub.add_parser("dossier-status", help="RL dossier health per ticker")
     dstatus_p.add_argument("--ticker", nargs="*", help="One or more NSE tickers (default: all managed)")
 
+    # ingest-events
+    ingest_p = sub.add_parser("ingest-events", help="Scan NSE events and digest into ticker dossiers")
+    ingest_p.add_argument("--ticker", nargs="*", help="One or more NSE tickers (default: all managed)")
+    ingest_p.add_argument("--days", type=int, default=None, help="Lookback window in days (default: EVENT_INGEST_LOOKBACK_DAYS)")
+
     # scorecard
     scorecard_p = sub.add_parser("scorecard", help="Build + persist the monthly RL scorecard")
     scorecard_p.add_argument(
@@ -434,6 +474,7 @@ def main() -> None:
         "daily-review":    cmd_daily_review,
         "feedback-status": cmd_feedback_status,
         "dossier-status":  cmd_dossier_status,
+        "ingest-events":   cmd_ingest_events,
         "scorecard":       cmd_scorecard,
     }
     dispatch[args.command](args)

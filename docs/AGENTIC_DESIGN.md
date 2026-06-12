@@ -733,6 +733,8 @@ ContextBuilder._build_risk_macro():
 | `apply_lesson_emphasis()` | **STATIC** | `core/intelligence/rl/algorithms/lesson_emphasis.py` | ±`RL_LESSON_EMPHASIS_DELTA`, cap ±`RL_LESSON_EMPHASIS_CAP` | Step-7 revision + month-start forecast build |
 | `run_control_lane_step()` | **LLM** | `rl/agents/control_lane.py` | reasoning tier, temp=0.2, ≤300 tokens | Step 10 baseline duel: bare model, same info, no architecture (RL_DESIGN §25) |
 | Scorecard builder + baselines | **STATIC** | `rl/eval/scorecard.py`, `rl/eval/baselines.py` | Read-only over recorded logs | Monthly lanes: agent vs control vs persistence/always-up + MoM deltas |
+| Event scan + bundle | **STATIC** | `rl/agents/event_ingestor.py` | NSE keyword filter + 1 Tavily page/event | Weekly, watermarked, ≤3 events/scan (RL_DESIGN §26) |
+| `EventIngestor.run()` | **LLM** | above | qwen, temp=0.2, ≤900 tokens | Digests filings/concalls into dossier via the SAME curator merge |
 | `RegimeDetector.detect()` | **STATIC** | `regime/detector.py` | VIX/FII/RSI thresholds | No LLM |
 | Regime multiplier table | **STATIC** | `settings/base.py` | Config constant | Never persisted |
 | `ConvictionTracker` | **STATIC** | `rl/conviction/tracker.py` | `min(0.25,(days-4)×0.025)` | Formula |

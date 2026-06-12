@@ -53,6 +53,95 @@ def _make_signature(d: TickerDossier, su: dict, today: str, *, occurrences: int,
                              evidence_dates=evidence_dates or [])
 
 
+def merge_curator_output(d: TickerDossier, data: dict, today: str, outcome_link: str = "") -> None:
+    """Deterministic, bounded application of curator-shaped LLM output. Mutates d.
+
+    Shared by DossierCurator._merge (daily review, hit/miss outcome_link) and
+    EventIngestor.run (weekly/on-demand event digestion, outcome_link="").
+    """
+    from core.config import settings
+
+    # 1. Observations — top-N by materiality, valid tags only, cap total buffer.
+    cands = []
+    for o in data.get("new_observations", []):
+        text = (o.get("observation") or "").strip()
+        if not text:
+            continue
+        cands.append(DossierObservation(
+            date=today, observation=text[:300],
+            tags=[t for t in o.get("tags", []) if t in EVENT_TAGS],
+            materiality=max(0.0, min(1.0, float(o.get("materiality", 0.5)))),
+            outcome_link=outcome_link))
+    cands.sort(key=lambda o: o.materiality, reverse=True)
+    d.observations.extend(cands[: settings.DOSSIER_MAX_NEW_OBS_PER_DAY])
+    if len(d.observations) > settings.DOSSIER_MAX_OBSERVATIONS:
+        d.observations = d.observations[-settings.DOSSIER_MAX_OBSERVATIONS:]
+
+    # 2. Signature updates.
+    by_id = {s.signature_id: s for s in d.response_signatures}
+    for su in data.get("signature_updates", []):
+        action = su.get("action")
+        if action == "confirm" and su.get("signature_id") in by_id:
+            s = by_id[su["signature_id"]]
+            s.occurrences += 1
+            s.confidence = min(0.95, round(s.confidence + 0.05, 4))
+            s.last_seen = today
+            s.evidence_dates = (s.evidence_dates + [today])[-10:]
+        elif action == "contradict" and su.get("signature_id") in by_id:
+            s = by_id[su["signature_id"]]
+            s.contradictions += 1
+            s.confidence = max(0.0, round(s.confidence - 0.10, 4))
+        elif action == "create":
+            sig = _make_signature(d, su, today, occurrences=1, confidence=0.5,
+                                   evidence_dates=[today])
+            if sig:
+                d.response_signatures.append(sig)
+
+    # 3. Guidance.
+    for gu in data.get("guidance_updates", []):
+        action, text = gu.get("action"), (gu.get("guidance") or "").strip()
+        if action == "add" and text:
+            d.guidance.append(GuidanceItem(
+                date=today, source=(gu.get("source") or "market context")[:80],
+                guidance=text[:200]))
+        elif action in ("met", "missed", "withdrawn") and text:
+            for g in d.guidance:
+                if g.status == "open" and text.lower() in g.guidance.lower():
+                    g.status = action
+    d.guidance = d.guidance[-20:]
+
+    # 4. Catalysts (add-only daily; hit_rate is distillation's job).
+    known = {c.name.lower() for c in d.recurring_catalysts}
+    for cu in data.get("catalyst_updates", []):
+        name = (cu.get("name") or "").strip()
+        if cu.get("action") == "add" and name and name.lower() not in known:
+            d.recurring_catalysts.append(RecurringCatalyst(
+                name=name[:80],
+                typical_timing=(cu.get("typical_timing") or "")[:60],
+                expected_effect=(cu.get("expected_effect") or "")[:120]))
+    d.recurring_catalysts = d.recurring_catalysts[:10]
+
+    # 5. Thesis + flows.
+    if data.get("thesis_update"):
+        d.current_thesis = str(data["thesis_update"])[:400]
+        d.thesis_since = today
+    if data.get("flow_note"):
+        d.flow_notes = str(data["flow_note"])[:300]
+
+    # 6. Open questions.
+    for qu in data.get("open_question_updates", []):
+        q = (qu.get("question") or "").strip()
+        if qu.get("action") == "raise" and q:
+            if all(q.lower() != ex.question.lower() for ex in d.open_questions):
+                d.open_questions.append(OpenQuestion(question=q[:200], raised_on=today))
+        elif qu.get("action") == "resolve" and q:
+            for ex in d.open_questions:
+                if not ex.resolved_on and q.lower() in ex.question.lower():
+                    ex.resolved_on = today
+                    ex.answer = (qu.get("answer") or "")[:200]
+    d.open_questions = d.open_questions[-12:]
+
+
 class DossierCurator:
     """LLM client pattern mirrors FeedbackAgent (json_object, low temp, retry-free)."""
 
@@ -106,90 +195,14 @@ class DossierCurator:
     # ------------------------------------------------------------------
 
     def _merge(self, d: TickerDossier, data: dict, entry) -> None:
-        """Deterministic, bounded application of curator output. Mutates d."""
-        from core.config import settings
+        """Deterministic, bounded application of curator output. Mutates d.
+
+        Thin delegate to the module-level merge_curator_output (shared with
+        EventIngestor) — preserves the hit/miss outcome_link derived from `entry`.
+        """
         today = entry.date
         outcome = "hit" if entry.direction_correct else "miss"
-
-        # 1. Observations — top-N by materiality, valid tags only, cap total buffer.
-        cands = []
-        for o in data.get("new_observations", []):
-            text = (o.get("observation") or "").strip()
-            if not text:
-                continue
-            cands.append(DossierObservation(
-                date=today, observation=text[:300],
-                tags=[t for t in o.get("tags", []) if t in EVENT_TAGS],
-                materiality=max(0.0, min(1.0, float(o.get("materiality", 0.5)))),
-                outcome_link=outcome))
-        cands.sort(key=lambda o: o.materiality, reverse=True)
-        d.observations.extend(cands[: settings.DOSSIER_MAX_NEW_OBS_PER_DAY])
-        if len(d.observations) > settings.DOSSIER_MAX_OBSERVATIONS:
-            d.observations = d.observations[-settings.DOSSIER_MAX_OBSERVATIONS:]
-
-        # 2. Signature updates.
-        by_id = {s.signature_id: s for s in d.response_signatures}
-        for su in data.get("signature_updates", []):
-            action = su.get("action")
-            if action == "confirm" and su.get("signature_id") in by_id:
-                s = by_id[su["signature_id"]]
-                s.occurrences += 1
-                s.confidence = min(0.95, round(s.confidence + 0.05, 4))
-                s.last_seen = today
-                s.evidence_dates = (s.evidence_dates + [today])[-10:]
-            elif action == "contradict" and su.get("signature_id") in by_id:
-                s = by_id[su["signature_id"]]
-                s.contradictions += 1
-                s.confidence = max(0.0, round(s.confidence - 0.10, 4))
-            elif action == "create":
-                sig = _make_signature(d, su, today, occurrences=1, confidence=0.5,
-                                       evidence_dates=[today])
-                if sig:
-                    d.response_signatures.append(sig)
-
-        # 3. Guidance.
-        for gu in data.get("guidance_updates", []):
-            action, text = gu.get("action"), (gu.get("guidance") or "").strip()
-            if action == "add" and text:
-                d.guidance.append(GuidanceItem(
-                    date=today, source=(gu.get("source") or "market context")[:80],
-                    guidance=text[:200]))
-            elif action in ("met", "missed", "withdrawn") and text:
-                for g in d.guidance:
-                    if g.status == "open" and text.lower() in g.guidance.lower():
-                        g.status = action
-        d.guidance = d.guidance[-20:]
-
-        # 4. Catalysts (add-only daily; hit_rate is distillation's job).
-        known = {c.name.lower() for c in d.recurring_catalysts}
-        for cu in data.get("catalyst_updates", []):
-            name = (cu.get("name") or "").strip()
-            if cu.get("action") == "add" and name and name.lower() not in known:
-                d.recurring_catalysts.append(RecurringCatalyst(
-                    name=name[:80],
-                    typical_timing=(cu.get("typical_timing") or "")[:60],
-                    expected_effect=(cu.get("expected_effect") or "")[:120]))
-        d.recurring_catalysts = d.recurring_catalysts[:10]
-
-        # 5. Thesis + flows.
-        if data.get("thesis_update"):
-            d.current_thesis = str(data["thesis_update"])[:400]
-            d.thesis_since = today
-        if data.get("flow_note"):
-            d.flow_notes = str(data["flow_note"])[:300]
-
-        # 6. Open questions.
-        for qu in data.get("open_question_updates", []):
-            q = (qu.get("question") or "").strip()
-            if qu.get("action") == "raise" and q:
-                if all(q.lower() != ex.question.lower() for ex in d.open_questions):
-                    d.open_questions.append(OpenQuestion(question=q[:200], raised_on=today))
-            elif qu.get("action") == "resolve" and q:
-                for ex in d.open_questions:
-                    if not ex.resolved_on and q.lower() in ex.question.lower():
-                        ex.resolved_on = today
-                        ex.answer = (qu.get("answer") or "")[:200]
-        d.open_questions = d.open_questions[-12:]
+        merge_curator_output(d, data, today, outcome_link=outcome)
 
 
 def distill_dossier(dossier: TickerDossier) -> TickerDossier:

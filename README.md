@@ -156,6 +156,12 @@ on the 1st) persists the time series: StockAgent vs control vs baselines, month-
 deltas, accuracy on days learned claims fired vs other days, and dossier health. The edge
 over the bare model is a measured number, not a claim.
 
+**And it reads the filings, not just the tape.** A weekly event scan watches NSE corporate
+announcements (results, concalls, investor presentations, guidance) and digests qualifying
+events into the dossier — so management guidance like "expects ~1% growth in FY27" enters
+the stock's knowledge file straight from the source, the quarter it's said, and is tracked
+to met/missed.
+
 **The miss classification matters.** If the stock moved because of a surprise RBI rate decision that nobody predicted, that is classified as an `external_shock` — zero penalty to any agent, because the system could not have known. But if the fundamentals agent consistently overestimates a specific signal month after month, that is classified as `model_bias` — full penalty, weight reduction.
 
 **What the learning ledger looks like after 3 months:**

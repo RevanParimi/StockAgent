@@ -152,24 +152,10 @@ class TestNewSectorOutputClassParsing:
 
 
 # ---------------------------------------------------------------------------
-# Missing prompts module -> run() returns {} (never raises)
+# Unknown sector -> run() returns {} (never raises)
 # ---------------------------------------------------------------------------
 
-class TestMissingPromptsModule:
-    @pytest.mark.parametrize("sector", ["banking_bfsi", "it_sector", "renewable_energy"])
-    def test_registered_sector_missing_prompts_module_returns_empty_dict(self, sector):
-        """The 3 new prompts modules don't exist yet (later task). A sector
-        registered in SECTOR_SPECS but whose prompts_module cannot be
-        imported must hit the existing never-raises path: run() returns {}
-        with an error log, NOT an exception."""
-        analyst = UnifiedAnalyst.__new__(UnifiedAnalyst)
-        analyst._client = MagicMock()
-
-        outs = analyst.run(_make_query(), _make_bundle(), sector)
-
-        assert outs == {}
-        analyst._client.chat.completions.create.assert_not_called()
-
+class TestUnknownSector:
     def test_unknown_sector_still_returns_empty_dict(self):
         analyst = UnifiedAnalyst.__new__(UnifiedAnalyst)
         analyst._client = MagicMock()

@@ -666,7 +666,9 @@ SCORECARD_DIR: str = os.getenv("SCORECARD_DIR", "data/eval/scorecards")
 # reasoning-model call replaces the per-sector parallel agent fan-out.
 # CSV of sector names on the unified path; "" disables it everywhere.
 # ---------------------------------------------------------------------------
-UNIFIED_ANALYST_SECTORS: str = os.getenv("UNIFIED_ANALYST_SECTORS", "automobile")
+UNIFIED_ANALYST_SECTORS: str = os.getenv(
+    "UNIFIED_ANALYST_SECTORS", "automobile,banking_bfsi,it_sector,renewable_energy"
+)
 UNIFIED_ANALYST_FALLBACK_LEGACY: bool = os.getenv("UNIFIED_ANALYST_FALLBACK_LEGACY", "true").lower() == "true"
 UNIFIED_ANALYST_MAX_TOKENS: int = int(os.getenv("UNIFIED_ANALYST_MAX_TOKENS", "6000"))
 UNIFIED_SECTION_MAX_CHARS: int = int(os.getenv("UNIFIED_SECTION_MAX_CHARS", "2500"))

@@ -52,22 +52,18 @@ LLM_OUTPUT_COST_PER_M: float = float(os.getenv("LLM_OUTPUT_COST_PER_M", "1.125")
 # ---------------------------------------------------------------------------
 # Data / Search APIs
 # ---------------------------------------------------------------------------
-SERPER_API_KEY: str = os.getenv("SERPER_API_KEY", "")        # Google search via Serper — automobile + renewable
-SERPER_API_KEY_2: str = os.getenv("SERPER_API_KEY_2", "")    # Google search via Serper — bfsi + it
+SERPER_API_KEY: str = os.getenv("SERPER_API_KEY", "")        # Google search via Serper — single paid key, all sectors
 TAVILY_API_KEY: str = os.getenv("TAVILY_API_KEY", "")        # Full-page extraction (Policy agent)
 
 
 def get_serper_key(sector: str) -> str:
     """
-    Return the Serper API key assigned to the given sector.
+    Return the Serper API key for the given sector.
 
-    Key 1 (SERPER_API_KEY):   automobile, renewable  (~2,450 calls/month at default load)
-    Key 2 (SERPER_API_KEY_2): bfsi, it               (~1,490 calls/month at default load)
-
-    Falls back to Key 1 if Key 2 is not configured.
+    Single paid key now serves all sectors — `sector` is kept for call-site
+    compatibility (bundle_builder, ContextBuilder both pass it) but no longer
+    affects which key is returned.
     """
-    if sector in {"bfsi", "it"} and SERPER_API_KEY_2:
-        return SERPER_API_KEY_2
     return SERPER_API_KEY
 NEWSAPI_KEY: str = os.getenv("NEWSAPI_KEY", "")
 

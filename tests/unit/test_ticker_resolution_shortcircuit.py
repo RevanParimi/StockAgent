@@ -139,15 +139,22 @@ class TestManagedTickerShortCircuit:
     # -----------------------------------------------------------------
 
     def test_company_name_for_failure_falls_back_to_ticker(self, orchestrator, monkeypatch):
-        monkeypatch.setattr(orchestrator, "_managed_tickers", lambda: {"TATAPOWER"})
+        # Use a ticker with NO curated override / learned cache entry so the
+        # yfinance failure path is actually exercised (TATAPOWER now resolves
+        # from the curated company-name cache before yfinance is consulted).
+        monkeypatch.setattr(orchestrator, "_managed_tickers", lambda: {"UNCACHEDCO"})
+        monkeypatch.setattr(
+            "backend.shared.pipeline.base_orchestrator.resolve_company_name",
+            lambda ticker: None,
+        )
         monkeypatch.setattr(
             orchestrator, "_yf_info", MagicMock(side_effect=RuntimeError("network down"))
         )
 
-        query = orchestrator._resolve_ticker("TATAPOWER")
+        query = orchestrator._resolve_ticker("UNCACHEDCO")
 
-        assert query.ticker == "TATAPOWER"
-        assert query.company_name == "TATAPOWER"
+        assert query.ticker == "UNCACHEDCO"
+        assert query.company_name == "UNCACHEDCO"
         orchestrator._llm.chat.completions.create.assert_not_called()
 
 

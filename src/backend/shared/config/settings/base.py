@@ -212,25 +212,17 @@ PEER_TICKERS: list[str] = [
 RAG_DOCUMENTS_BASE_DIR: str = os.getenv("RAG_DOCUMENTS_BASE_DIR", "data")
 
 # ---------------------------------------------------------------------------
-# Micro Search Loop — API efficiency
+# Macro Cache — API efficiency
 # ---------------------------------------------------------------------------
-# Background loop that pre-fetches sector-level macro news on a schedule.
-# Covers: automobile, bfsi, it  (RE excluded — its signals are per-company).
-# Populates tools/macro_cache.py; consumed by:
+# Populates services/data/cache/macro_cache.py; consumed by:
 #   ContextBuilder._build_risk_macro()    → cache key "automobile"
 #   ContextBuilder._build_macro_policy()  → cache key "bfsi"
 #   ContextBuilder._build_it_risk_macro() → cache key "it"
 #
-# Budget (Serper free tier = 2,500 queries/month):
-#   micro loop:          3 sectors × MICRO_QUERIES_PER_RUN × MICRO_CYCLES_PER_DAY × 30
-#                        = 3 × 2 × 6 × 30 = 1,080/month
-#   per-stock savings:   3 calls saved × 5 tickers × 3 sectors × 22 days = 990/month saved
-#
-# Cache HIT saves 3 Serper calls per stock analysis per sector.
-MICRO_CYCLES_PER_DAY: int = int(os.getenv("MICRO_CYCLES_PER_DAY", "6"))   # every 4h
-MICRO_QUERIES_PER_RUN: int = int(os.getenv("MICRO_QUERIES_PER_RUN", "2"))  # 2 queries per sector per run
-# STATIC_AUDIT #13: derive TTL from loop interval so they stay in sync automatically
-MACRO_CACHE_TTL_HOURS: int = int(os.getenv("MACRO_CACHE_TTL_HOURS", str(24 // MICRO_CYCLES_PER_DAY)))
+# Populated on-miss by bundle_builder._fetch_macro_context() (and the legacy
+# context builders, which also fetch-on-miss). Cache HIT saves Serper calls
+# for every subsequent stock analysis in the same sector within the TTL.
+MACRO_CACHE_TTL_HOURS: float = float(os.getenv("MACRO_CACHE_TTL_HOURS", "4"))
 
 # ---------------------------------------------------------------------------
 # Phase 4 – Scheduler

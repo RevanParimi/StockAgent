@@ -194,7 +194,7 @@ The `RL Pipeline` box runs `daily_review` and `generate_forecast`, which call `F
 | Web framework | FastAPI | With APScheduler running inside the same process |
 | Agent orchestration | LangGraph | `StateGraph` with `Send` fan-out; async and sync paths |
 | Schema validation | Pydantic | v2; strict typing throughout |
-| LLM inference | OpenRouter | Hybrid tiers — FAST `qwen3.6-flash` (chat), REASONING `qwen3.7-max` (verdict + RL), BULK `qwen-2.5-72b` (sector agents); set via `LLM_MODEL_FAST/REASONING/BULK` |
+| LLM inference | OpenRouter | Hybrid tiers — FAST `qwen3.6-flash` (chat), REASONING `qwen3.7-max` (verdict synthesis + RL + the automobile Unified Sector Analyst), BULK `qwen-2.5-72b` (per-dimension sector agents for sectors not yet on the unified path); set via `LLM_MODEL_FAST/REASONING/BULK` |
 | Price data | yfinance | Free; NSE tickers require `.NS` suffix (e.g. `MARUTI.NS`) |
 | News search | Serper (serper.dev) | Google Search-as-API; 2,500 free queries/month per key |
 | Full-page extraction | Tavily | Monthly disk cache reduces actual API calls to <1% of free tier |
@@ -257,9 +257,10 @@ BaseAgent.run(query):
 
 This is Phase 4 (P4) functionality. The `PromptEnhancer` generates additional Serper queries from the `miss_counter` in `LearningLedger`, giving agents a self-improving search vocabulary for known blind spots.
 
-### 2.2 LangGraph Execution Model
+### 2.2 Orchestrator Execution Model
 
-**File:** `src/backend/sectors/{sector}/pipeline/graph.py` (one per sector)
+**File:** `src/backend/shared/pipeline/base_orchestrator.py` (`BaseSectorOrchestrator`, shared by all sectors)
+plus `src/backend/sectors/{sector}/pipeline/graph.py` (legacy LangGraph worker pool, one per sector)
 
 ```
 BaseSectorOrchestrator.analyse_async(ticker)
@@ -276,28 +277,69 @@ _load_learned_weights(ticker)  [STATIC: reads agent_weight_memory.json]
   whenever the query ticker differs from the cached _aggregator_weights_ticker
   │
   ▼
-LangGraph StateGraph:
-  ┌── resolve_ticker ──────────────────────────────────────────────────┐
-  │                                                                     │
-  │   input_rail  [STATIC: yfinance fast_info check, non-blocking]     │
-  │                                                                     │
-  │   make_dispatch_fn → list[Send]  (conditional_edges, fan-out)      │
-  │   ┌──────┬──────┬──────┬──────────────────────────────────────────┐ │
-  │   ↓      ↓      ↓      ↓                                          │ │
-  │   run_agent × N  [parallel, RetryPolicy(max_attempts=2)]          │ │
-  │   │  output_rail inside each: clamp score [0,1], inject summary   │ │
-  │   │  writes {agent_name: AgentOutput} via _merge_dicts reducer    │ │
-  │   └────────────────────────────────────────── fan-in ─────────────┘ │
-  │                                                                     │
-  │   aggregate  [conflict_rail: spread > 0.30 → LLM re-resolution]   │
-  │              [SignalAggregator.run(learned_weights) → FinalReport] │
-  └─────────────────────────────────────────────────────────────────────┘
+_prefetch_nse_data(query)  [STATIC: NseIndiaApi announcements/boardMeetings/actions, once]
   │
   ▼
-END → state["final_report"] = FinalReport
+_run_agents(query, run_id, progress_callback)
+  │
+  ├── _unified_enabled()? → SECTOR_NAME in settings.UNIFIED_ANALYST_SECTORS (default: "automobile")
+  │
+  ├── YES → _run_unified()  ─── UNIFIED PATH (2026-06-12 redesign) ──────────────┐
+  │           │                                                                   │
+  │           ▼                                                                   │
+  │      build_sector_bundle(query, SECTOR_NAME)  [services/data/context/        │
+  │        bundle_builder.py]                                                     │
+  │        → SectorDataBundle: 10 labeled sections (company_news,                 │
+  │          sector_policy_news, macro_context, policy_deep_dive,                 │
+  │          fundamentals, technicals, commodities, flows_sentiment,              │
+  │          peers_valuation, dossier), each capped at                            │
+  │          UNIFIED_SECTION_MAX_CHARS, total capped at                           │
+  │          UNIFIED_BUNDLE_MAX_CHARS; ≤3 Serper + ≤1 Tavily, rest free            │
+  │           │                                                                    │
+  │           ▼                                                                    │
+  │      UnifiedAnalyst().run(query, bundle, SECTOR_NAME)                         │
+  │        [shared/pipeline/unified_analyst.py]                                   │
+  │        ONE call, REASONING tier (qwen3.7-max), temp=0.2,                      │
+  │        response_format=json_object, max_tokens=UNIFIED_ANALYST_MAX_TOKENS     │
+  │        → dict[str, AgentOutput] — all 9 dimensions, same schemas as legacy    │
+  │        Never raises; returns {} on total failure (truncation salvage first)   │
+  │           │                                                                    │
+  │           ▼                                                                    │
+  │      progress_callback(name, score) fired per dimension (batch, after return) │
+  │           │                                                                    │
+  │           ├── non-empty outputs → proceed to SignalAggregator ────────────────┤
+  │           └── empty AND UNIFIED_ANALYST_FALLBACK_LEGACY=true → fall through ───┤
+  │                 to legacy LangGraph worker pool                               │
+  │                                                                                 │
+  └── NO (or fallback) → _run_via_graph()/_run_via_graph_async()  ── LEGACY PATH ─┘
+              │
+              ▼
+        LangGraph StateGraph:
+          ┌── resolve_ticker ──────────────────────────────────────────────────┐
+          │                                                                     │
+          │   input_rail  [STATIC: yfinance fast_info check, non-blocking]     │
+          │                                                                     │
+          │   make_dispatch_fn → list[Send]  (conditional_edges, fan-out)      │
+          │   ┌──────┬──────┬──────┬──────────────────────────────────────────┐ │
+          │   ↓      ↓      ↓      ↓                                          │ │
+          │   run_agent × N  [parallel, RetryPolicy(max_attempts=2)]          │ │
+          │   │  output_rail inside each: clamp score [0,1], inject summary   │ │
+          │   │  writes {agent_name: AgentOutput} via _merge_dicts reducer    │ │
+          │   └────────────────────────────────────────── fan-in ─────────────┘ │
+          └─────────────────────────────────────────────────────────────────────┘
+  │
+  ▼
+SignalAggregator.run(agent_outputs, learned_weights)  [conflict_rail: spread > 0.30 → LLM re-resolution]
+  → FinalReport
 ```
 
-**Three-Rail Safety Layer (all STATIC, all non-blocking):**
+Both paths produce the **same** `dict[str, AgentOutput]` shape and feed the **same**
+`SignalAggregator`, so `FinalReport`, `weighted_agent_scores`, and `agent_outputs` are
+byte-compatible regardless of which path ran — the UI, chat tool, WebSocket stream, and
+RL calibration/lessons/weight-adaptation jobs require zero changes.
+
+**Three-Rail Safety Layer (all STATIC, all non-blocking — legacy worker-pool path:
+banking_bfsi, it_sector, renewable_energy, and the automobile fallback):**
 
 | Rail | Where | Trigger | Action |
 |---|---|---|---|
@@ -309,75 +351,23 @@ END → state["final_report"] = FinalReport
 
 | Path | When Used | Mechanism | LLM Client |
 |---|---|---|---|
-| Sync | CLI (`main.py`), APScheduler jobs | LangGraph with threading | `openai.OpenAI` (synchronous) |
-| Async | FastAPI request handlers | `graph.astream_events()` | `AsyncOpenAI` coroutine |
+| Sync | CLI (`main.py`), APScheduler jobs | `analyse()` — unified call or LangGraph with threading | `openai.OpenAI` (synchronous) |
+| Async | FastAPI request handlers | `analyse_async()` — unified call or `graph.astream_events()` | `AsyncOpenAI` coroutine |
 
-**Multi-Sector Graph Comparison:**
+**Multi-Sector Comparison:**
 
-| Graph | Agents | Key Weight | Unique Signal |
-|---|---|---|---|
-| `automobile` | 9 | `fundamentals` 0.18 | `sales_demand` (FADA/Vahan dispatch), `competitive_intel` (EV share) |
-| `banking_bfsi` | 6 | `fundamentals` 0.25 | NPA/NIM/CASA, RBI MPC rate cycle |
-| `it_sector` | 8 | `fundamentals` 0.25 | US tech spend, H1B visa risk, TCV deal wins |
-| `renewable_energy` | 6 | `fundamentals` 0.30 | CUF/DSCR/EV-MW, MNRE auctions, DISCOM payment risk |
+| Graph | Agents/Dimensions | Path | Key Weight | Unique Signal |
+|---|---|---|---|---|
+| `automobile` | 9 | **Unified** (one bundle + one analyst call; legacy pool as fallback) | `fundamentals` 0.18 | `sales_demand` (FADA/Vahan dispatch), `competitive_intel` (EV share) |
+| `banking_bfsi` | 6 | Legacy (9-agent-style worker pool, 6 agents) | `fundamentals` 0.25 | NPA/NIM/CASA, RBI MPC rate cycle |
+| `it_sector` | 8 | Legacy worker pool | `fundamentals` 0.25 | US tech spend, H1B visa risk, TCV deal wins |
+| `renewable_energy` | 6 | Legacy worker pool | `fundamentals` 0.30 | CUF/DSCR/EV-MW, MNRE auctions, DISCOM payment risk |
 
-<details><summary>📊 LangGraph Ticker Analysis Cycle Flowchart</summary>
-
-<div style="font-family: monospace; font-size: 12px; background: #0d1117; color: #e6edf3; padding: 20px; border-radius: 8px;">
-
-```
-User / APScheduler calls analyse_async("MARUTI")
-              │
-              ▼
-     ┌────────────────────┐
-     │  _resolve_ticker() │  LLM (temp=0.0)
-     │  "MARUTI" → NSE    │  "Tata Motors" → TATAMOTORS
-     │  ticker + name     │
-     └─────────┬──────────┘
-               │
-               ▼
-     ┌────────────────────┐
-     │  _load_learned_    │  STATIC: reads
-     │   weights(ticker)  │  agent_weight_memory.json
-     │  None if no RL yet │
-     └─────────┬──────────┘
-               │
-               ▼
-     ┌────────────────────┐
-     │    input_rail      │  STATIC: yfinance fast_info
-     │  validate ticker   │  on failure: rail_error, continue
-     └─────────┬──────────┘
-               │ fan-out via Send()
-     ┌─────────┴──────────────────────────────────────┐
-     │         │          │          │         │       │
-     ▼         ▼          ▼          ▼         ▼       ▼
-  run_agent  run_agent  run_agent  run_agent ...  run_agent
-(fundamentals)(sales_demand)(risk_macro)(pattern) (sentiment)
-     │         │          │          │         │       │
-     └─────────┴──────────┴──────────┴─────────┴───────┘
-                          │ fan-in
-                          ▼
-              ┌────────────────────────┐
-              │    conflict_rail       │  STATIC: pairwise spread
-              │  spread > 0.30?        │  > 0.30 → LLM re-resolution
-              └──────────┬─────────────┘
-                         │
-                         ▼
-              ┌────────────────────────┐
-              │  SignalAggregator.run  │  STATIC weighted sum
-              │  + LLM verdict synth   │  + LLM (final verdict/thesis)
-              └──────────┬─────────────┘
-                         │
-                         ▼
-              ┌────────────────────────┐
-              │     FinalReport        │  → ScoreDB, RL pipeline,
-              │  (verdict, score,      │     API response
-              │   thesis, targets)     │
-              └────────────────────────┘
-```
-
-</div>
-</details>
+Migrating banking_bfsi, it_sector, or renewable_energy to the unified path requires only
+a `prompts/unified.py` module for that sector (mirroring
+`src/backend/sectors/automobile/prompts/unified.py`) plus adding the sector name to the
+`UNIFIED_ANALYST_SECTORS` CSV setting — `BaseSectorOrchestrator` and `UnifiedAnalyst`
+already dispatch generically via `_SECTOR_CLASS_MAPS`.
 
 ### 2.3 AgentOutput Schema — Full Field Reference
 
@@ -434,7 +424,9 @@ Step 3 [LLM]:     Full aggregation via AGGREGATION_PROMPT
                             investment_thesis, conflicts_resolved}
                   Model: REASONING tier — qwen/qwen3.7-max via OpenRouter
 
-Step 4 [STATIC]:  Extract valuation fields from valuation_catalyst agent output
+Step 4 [STATIC]:  extract_valuation_fields(agent_outputs) — single extraction point
+                  shared by the unified and legacy paths (2026-06-12 redesign), pulls
+                  from agent_outputs["valuation_catalyst"]
                   → populate FinalReport: price_target, recovery_timeline_quarters,
                     undervalued_by_pct, discount_reason, recovery_catalysts
 
@@ -470,6 +462,11 @@ sentiment         0.70  ×  0.04  =  0.0280
 composite = 0.6559 / 1.00  =  0.656  →  BUY
 ```
 
+This weighted-sum step is identical regardless of how the 9 dimension scores were
+produced. On automobile's default unified path, all 9 come from one `UnifiedAnalyst`
+call over the shared `SectorDataBundle`; on the legacy path (other sectors, or
+automobile's fallback), each score comes from its own per-dimension agent call.
+
 **Weight Priority Chain:**
 
 ```
@@ -484,7 +481,27 @@ composite = 0.6559 / 1.00  =  0.656  →  BUY
 
 ## 3. Sector-by-Sector Agent Reference
 
-### 3.1 Automobile Sector — 9 Agents ✅
+### 3.1 Automobile Sector — 9 Dimensions ✅
+
+As of the 2026-06-12 Unified Sector Analyst redesign, automobile runs on the **unified
+path** by default (`UNIFIED_ANALYST_SECTORS` includes "automobile"): `build_sector_bundle()`
+fetches data once into a `SectorDataBundle`, and `UnifiedAnalyst.run()` makes ONE
+REASONING-tier LLM call that returns all 9 dimension scores below as the same
+`AgentOutput` subclasses the legacy agents produced. The weights, score-dimension keys,
+and output schemas in this section are unchanged — they describe the **scoring contract**,
+which both the unified analyst and the legacy per-agent pool must satisfy. The
+"Serper Calls"/"Tavily Calls"/"yfinance Used" columns below describe the **legacy
+per-agent fetch pattern** (`src/backend/sectors/automobile/pipeline/orchestrator.py`),
+which now runs only as the fallback path (`UNIFIED_ANALYST_FALLBACK_LEGACY=true`, engaged
+if the unified analyst call fails outright) and remains the live path for banking_bfsi,
+it_sector, and renewable_energy.
+
+On the unified path, the equivalent fetches happen once via `bundle_builder.py`'s 10
+sections (`company_news`, `sector_policy_news`, `macro_context`, `policy_deep_dive`,
+`fundamentals`, `technicals`, `commodities`, `flows_sentiment`, `peers_valuation`,
+`dossier`) — e.g. `company_news` (1 Serper) feeds `sales_demand`/`fundamentals`/`sentiment`,
+`sector_policy_news` (1 Serper) feeds `policy_regulatory`/`competitive_intel`, and
+`macro_context` (yfinance + macro cache, ≤1 Serper on cache miss) feeds `risk_macro`.
 
 #### 3.1.1 Agent List
 
@@ -502,9 +519,11 @@ composite = 0.6559 / 1.00  =  0.656  →  BUY
 | `competitive_intel` | **0.09** | ev_market_share, new_model_pipeline, jv_acquisitions, adas_safety_ratings, competitive_position | ≤3 | 0 | ✗ | No ADAS/NCAP structured data |
 | `sentiment` | **0.04** | news_nlp, management_tone, twitter_reddit_sentiment, youtube_view_spikes, dealer_consumer_feedback | ≤3 | 0 | ✗ | No Twitter/Reddit/YouTube API; Serper proxy only |
 
-#### 3.1.2 Context Builder Methods
+#### 3.1.2 Context Builder Methods (legacy path)
 
-**File:** `services/data/context/builder.py`
+**File:** `services/data/context/builder.py` — used by the legacy per-agent pool
+(other sectors, and automobile's fallback). The unified path uses
+`services/data/context/bundle_builder.py` instead (see 2.2).
 
 | Method | Fetchers Called | Serper Calls |
 |---|---|---|
@@ -2074,7 +2093,7 @@ Never: os.getenv() for algorithm constants
 | `SERPER_API_KEY_2` | Banking_bfsi + it_sector Serper calls | `get_serper_key("bfsi")` |
 | `TAVILY_API_KEY` | Full-page extraction (all sectors) | All sectors |
 | `OPENROUTER_API_KEY` | All LLM calls | All agents |
-| `LLM_MODEL_FAST` / `LLM_MODEL_REASONING` / `LLM_MODEL_BULK` | Hybrid model tiers | `qwen3.6-flash` / `qwen3.7-max` / `qwen-2.5-72b` (235b retired) |
+| `LLM_MODEL_FAST` / `LLM_MODEL_REASONING` / `LLM_MODEL_BULK` | Hybrid model tiers — REASONING also powers the automobile Unified Sector Analyst; BULK runs the per-dimension agents for sectors not yet on the unified path | `qwen3.6-flash` / `qwen3.7-max` / `qwen-2.5-72b` (235b retired) |
 | `SCHEDULER_ENABLED` | Activate APScheduler | `true` in production |
 | `FEEDBACK_CRON` | Daily review trigger | `0 11 * * 1-5` (4:30pm IST) |
 | `MACRO_NEWS_ENABLED` | Toggle macro news feed | `true` / `false` |

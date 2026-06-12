@@ -108,7 +108,7 @@ small word-grouped `token` chunks for a streaming feel.
 | `get_macro_news()` | daily macro cache → **live Serper fallback** | Self-heals when the cache is empty |
 | `get_ticker_dossier(ticker)` | `{TICKER}_dossier.json` digest | Accumulated thesis, response signatures, guidance, flow notes |
 | `search_market_news(query)` | Serper /news + RRF, Tavily fallback | Multi-query fusion (see §4) |
-| `run_agent_analysis(ticker)` | sector orchestrator | Deep 9-agent run (~45s) |
+| `run_agent_analysis(ticker)` | sector orchestrator | Full analysis run — automobile via the Unified Sector Analyst (~15-20s, one bundle + one LLM call); other sectors via the legacy 9-agent pool (~60-120s) |
 
 > Every dispatched tool — including `get_rl_prediction`, `get_macro_news`, and
 > `get_historical_prices` — now has a matching `_CHAT_TOOLS` schema, enforced by a
@@ -186,10 +186,26 @@ blocking `/ui/chat` only if the stream fails.
 
 ## Analysis Pipeline — API Calls Per Ticker
 
-(The full 9-agent **analysis** pipeline below is separate from chat. It still uses LangGraph for
-parallel agent dispatch; only the chat layer changed.)
+(The full **analysis** pipeline below is separate from chat — `run_agent_analysis` just invokes it.
+As of the 2026-06-12 Unified Sector Analyst redesign, automobile runs a single shared data-fetch
+pass + one reasoning-model call instead of 9 parallel per-agent LLM calls; banking_bfsi, it_sector,
+and renewable_energy still use the legacy LangGraph worker pool with 9 separate per-agent calls,
+and automobile falls back to that pool if the unified analyst call fails outright.)
 
-For a single ticker analysis run (9 automobile agents, macro cache warm):
+**Automobile (unified path, default — `build_sector_bundle()` + `UnifiedAnalyst`):**
+
+| Source | Calls | Cost | When |
+|---|---|---|---|
+| yfinance (technicals, fundamentals, commodities, peers) | a few | Free | Bundle build |
+| NseIndiaApi `announcements()` / `boardMeetings()` / `actions()` | 1 each | Free | Pre-fetch (once, before bundle) |
+| Serper (`company_news`, `sector_policy_news`, `macro_context`) | 0–2 | Credits | Bundle build (macro_context skipped on cache hit) |
+| Tavily (`policy_deep_dive`) | 0–1 | Credits | Bundle build |
+| LLM — Unified Analyst (REASONING: qwen3.7-max) | 1 | Paid | One call → all 9 dimension scores |
+| LLM — SignalAggregator (REASONING: qwen3.7-max) | 1 | Paid | Verdict synthesis |
+| **Total Serper (warm)** | **~2** | — | macro cache hit |
+| **Total Serper (cold)** | **~3** | — | macro cache miss |
+
+**Other sectors / automobile legacy fallback (LangGraph worker pool, 9 agents, macro cache warm):**
 
 | Source | Calls | Cost | When |
 |---|---|---|---|
@@ -205,7 +221,7 @@ For a single ticker analysis run (9 automobile agents, macro cache warm):
 | **Total Serper (cold)** | **~19** | — | Risk_macro cache miss |
 | **Total Serper (warm)** | **~16** | — | Risk_macro cache hit |
 
-**Net reduction from NseIndiaApi pre-fetch:** 4–5 fewer Serper calls (~15%) because NseIndiaApi covers board meeting dates, dividend queries, and results filing queries that Serper previously handled.
+**Net reduction from NseIndiaApi pre-fetch:** 4–5 fewer Serper calls (~15%) on the legacy path because NseIndiaApi covers board meeting dates, dividend queries, and results filing queries that Serper previously handled.
 
 **RL daily review (per ticker, per day):**
 

@@ -27,7 +27,8 @@ StockAgent-main/
 │   ├── data/                      # Data persistence
 │   │   ├── stores/                # Data store implementations
 │   │   ├── cache/                 # Data caching utilities
-│   │   ├── context/               # Context-building helpers
+│   │   ├── context/               # Context-building helpers + bundle_builder.py
+│   │   │                          # (Unified Sector Analyst — one-pass SectorDataBundle)
 │   │   └── fetchers/              # Market/news data fetchers
 │   └── scheduler/
 │       └── python/
@@ -36,11 +37,11 @@ StockAgent-main/
 │   ├── backend/                   # Python backend agents
 │   │   ├── sectors/               # Per-sector agent implementations
 │   │   │   ├── registry.py        # Unified ticker→sector map + SectorRegistry class
-│   │   │   ├── automobile/        # Automobile agents (9 agents)
-│   │   │   │   ├── agents/        # Individual agent modules
+│   │   │   ├── automobile/        # Automobile agents (9 dimensions)
+│   │   │   │   ├── agents/        # Individual agent modules (legacy multi-agent fallback path)
 │   │   │   │   ├── pipeline/
-│   │   │   │   │   └── orchestrator.py   # AutomobileAgentOrchestrator
-│   │   │   │   ├── prompts/       # SYSTEM_PROMPT / ANALYSIS_PROMPT per agent
+│   │   │   │   │   └── orchestrator.py   # AutomobileAgentOrchestrator (legacy 9-agent pool)
+│   │   │   │   ├── prompts/       # SYSTEM_PROMPT / ANALYSIS_PROMPT per agent + unified.py (Unified Sector Analyst prompt)
 │   │   │   │   ├── config/settings.py    # Automobile-specific config
 │   │   │   │   └── schemas/
 │   │   │   ├── banking_bfsi/      # Banking/BFSI agents (6 agents)
@@ -63,7 +64,8 @@ StockAgent-main/
 │   │       │   ├── settings/base.py   # Master settings file (all env vars)
 │   │       │   └── rag_config.py      # RAG-specific settings
 │   │       ├── data/              # Data helpers
-│   │       ├── pipeline/          # Core adapter (core_adapter.py)
+│   │       ├── pipeline/          # Core adapter (core_adapter.py), base_orchestrator.py,
+│   │       │                      # unified_analyst.py (Unified Sector Analyst — one-call dimension scoring)
 │   │       ├── prompts/           # Shared prompt templates
 │   │       └── schemas/
 │   │           └── feedback.py    # Feedback/RL schemas (src path)
@@ -260,8 +262,8 @@ retired — it broke `json_object` output and was a weak function-caller.
 |------|---------|-------------|
 | `OPENROUTER_API_KEY` | `""` (required) | OpenRouter API key |
 | `LLM_MODEL_FAST` | `qwen/qwen3.6-flash` | **FAST tier** — the agentic chat tool-loop |
-| `LLM_MODEL_REASONING` | `qwen/qwen3.7-max` | **REASONING tier** — SignalAggregator verdict, RL FeedbackAgent / ThesisReviewer (JSON-validated) |
-| `LLM_MODEL_BULK` | `qwen/qwen-2.5-72b-instruct` | **BULK tier** — the 9 sector agents (proven `json_object` model) |
+| `LLM_MODEL_REASONING` | `qwen/qwen3.7-max` | **REASONING tier** — SignalAggregator verdict, RL FeedbackAgent / ThesisReviewer, and the automobile Unified Sector Analyst (JSON-validated) |
+| `LLM_MODEL_BULK` | `qwen/qwen-2.5-72b-instruct` | **BULK tier** — the per-dimension sector agents for sectors not yet on the unified path (proven `json_object` model) |
 | `LLM_MODEL` | `= LLM_MODEL_BULK` | Back-compat catch-all for any call-site not on a named tier |
 | `LLM_TEMPERATURE` | `0.2` | LLM sampling temperature |
 | `LLM_MAX_TOKENS` | `2048` | Max output tokens per LLM call |
@@ -308,6 +310,16 @@ retired — it broke `json_object` output and was a weak function-caller.
 | `MICRO_CYCLES_PER_DAY` | `6` | Macro news background fetch cycles/day (every 4h) |
 | `MICRO_QUERIES_PER_RUN` | `2` | Serper queries per macro news background run |
 | `MACRO_CACHE_TTL_HOURS` | `4` (derived) | Macro cache TTL = 24 / MICRO_CYCLES_PER_DAY |
+
+### Unified Sector Analyst (2026-06-12 redesign)
+
+| Name | Default | Description |
+|------|---------|-------------|
+| `UNIFIED_ANALYST_SECTORS` | `automobile` | CSV of sector names on the one-bundle/one-call path; `""` disables it everywhere (legacy multi-agent path byte-identical) |
+| `UNIFIED_ANALYST_FALLBACK_LEGACY` | `true` | On total Unified Analyst failure, fall back to the legacy multi-agent worker pool |
+| `UNIFIED_ANALYST_MAX_TOKENS` | `6000` | Max output tokens for the single Unified Analyst LLM call |
+| `UNIFIED_SECTION_MAX_CHARS` | `2500` | Per-section cap in `SectorDataBundle` |
+| `UNIFIED_BUNDLE_MAX_CHARS` | `18000` | Total cap on the rendered bundle text passed to the analyst prompt |
 
 ### Scheduler
 
@@ -452,7 +464,11 @@ All paths verified to exist. Paths are relative to project root.
 | `src/backend/sectors/registry.py` | `TICKER_SECTOR` dict + `SectorRegistry` singleton (resolve, get_handler, is_enabled) |
 | `src/backend/shared/config/settings/base.py` | All environment variable definitions with defaults |
 | `src/backend/shared/config/rag_config.py` | RAG-specific env vars (mirrors `core/intelligence/rag/config.py`) |
-| `src/backend/sectors/automobile/pipeline/orchestrator.py` | AutomobileAgentOrchestrator (9 agents, async concurrent) |
+| `src/backend/shared/pipeline/base_orchestrator.py` | `BaseSectorOrchestrator` — ticker resolution, RL weights, NSE prefetch, `_run_agents`/`_run_unified`/`_unified_enabled` dispatch, SignalAggregator |
+| `services/data/context/bundle_builder.py` | `build_sector_bundle()` — one-pass `SectorDataBundle` (10 labeled, char-capped sections) feeding the Unified Sector Analyst |
+| `src/backend/shared/pipeline/unified_analyst.py` | `UnifiedAnalyst` — one reasoning-model call → all 9 dimension `AgentOutput`s for a unified-path sector; never raises, falls back to legacy on total failure |
+| `src/backend/sectors/automobile/prompts/unified.py` | Unified Sector Analyst system + analysis prompt for automobile (9 dimension definitions in one prompt) |
+| `src/backend/sectors/automobile/pipeline/orchestrator.py` | AutomobileAgentOrchestrator — defines the 9 legacy per-dimension agents, used as the multi-agent fallback path when the unified analyst is off or fails |
 | `src/backend/sectors/banking_bfsi/pipeline/orchestrator.py` | BankingAgentOrchestrator |
 | `src/backend/sectors/it_sector/pipeline/orchestrator.py` | ITAgentOrchestrator |
 | `src/backend/sectors/renewable_energy/pipeline/orchestrator.py` | RenewableAgentOrchestrator |

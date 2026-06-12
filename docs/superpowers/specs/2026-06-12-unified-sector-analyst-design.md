@@ -1,7 +1,7 @@
 # Unified Sector Analyst — Automobile Pipeline Redesign
 
 **Date:** 2026-06-12
-**Status:** APPROVED — ready for implementation
+**Status:** IMPLEMENTED 2026-06-12 (live-verified on MARUTI: unified path, 9 differentiated dimension scores, verdict BUY 0.643, with Serper fully unavailable — bundle degraded non-fatally)
 **Scope:** Automobile sector first. BFSI / IT / renewable onboard later via config + one prompt file each.
 
 ---
@@ -145,7 +145,9 @@ resolve ticker (unchanged) → load RL weights (unchanged) → prefetch NSE (unc
 - RL compatibility is a hard invariant: `weighted_agent_scores` keys, `agent_outputs` keys and
   schemas, verdict enum — all unchanged. Calibration, lesson `prioritise_agents`/`discount_agents`,
   weight adaptation, drift detection need zero migration.
-- Cost ceiling per ticker run: 3 LLM calls, ≤3 Serper, ≤1 Tavily.
+- Cost ceiling per ticker run: 3 LLM calls, ≤3 dedicated Serper searches + up to 2
+  Serper calls made internally by the shared macro/commodity helpers (both day-cached
+  and amortised across every ticker analysed that day), ≤1 Tavily.
 
 ## 9. Validation
 

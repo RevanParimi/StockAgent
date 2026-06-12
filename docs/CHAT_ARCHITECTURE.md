@@ -243,10 +243,9 @@ analyst call fails outright.)
 |---|---|---|
 | Pre-market analysis (warm) | 16 × 5 × 21 | 1,680 Serper |
 | RL daily review (30% full rerun) | 0.3 × 16 × 5 × 21 | 504 Serper |
-| Macro micro-loop (weekdays only) | 3 sectors × 2 × 6 × 22 | 792 Serper |
-| **Total Serper** | | **~2,976** ⚠️ exceeds free 2,500 |
+| **Total Serper** | | **~2,184** |
 | Tavily (96% disk cache) | 2 × 0.04 × 5 × 21 | ~8 |
 | NseIndiaApi | Free | No limit (NSE website) |
 | RSS feeds | Free | No limit |
 
-> Start with 3 tickers/day to stay within the 2,500 Serper free quota (~1,848/month).
+> Single paid Serper key (50,000-credit top-up, valid 6 months, no monthly reset) serves all sectors. The macro cache is populated on-miss (no background pre-fetch loop).

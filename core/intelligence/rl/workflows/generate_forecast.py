@@ -20,7 +20,12 @@ from datetime import date, timedelta
 
 from core.config import settings
 from core.intelligence.rl.workflows.sector_router import get_orchestrator, get_sector_weights
-from core.schemas.feedback import DailyForecast, LearningLedger, PredictionEnvelope
+from core.schemas.feedback import (
+    DailyForecast,
+    LearningLedger,
+    PredictionEnvelope,
+    ReforecastEvent,
+)
 from core.schemas.pipeline import FinalReport
 from core.intelligence.rl.stores.prediction_store import PredictionStore
 from core.intelligence.algorithms.indicators.fetcher import get_price_history
@@ -247,6 +252,154 @@ def _build_daily_forecasts(
     return forecasts
 
 
+# ---------------------------------------------------------------------------
+# Shared pipeline helpers — used by both generate_forecast() (month-start)
+# and regenerate_envelope() (Living Envelope mid-month re-forecast).
+# ---------------------------------------------------------------------------
+
+def _run_orchestrator_analysis(
+    ticker: str,
+    sector: str,
+    effective_weights: dict[str, float],
+) -> FinalReport:
+    """
+    Run the sector orchestrator fresh with the given effective weights.
+
+    Learned weights are injected directly into SignalAggregator via the
+    orchestrator's set_aggregator_weights() override, so no global config
+    mutation is needed.
+    """
+    orchestrator = get_orchestrator(sector)
+    orchestrator.set_aggregator_weights(effective_weights, ticker)
+    return orchestrator.analyse(ticker)
+
+
+def _compute_forecast_profile(
+    ticker: str,
+    sector: str,
+    report: FinalReport,
+    store: PredictionStore,
+    as_of: date | None = None,
+) -> tuple[ForecastProfile | None, str]:
+    """
+    Build the LLM-calibrated ForecastProfile + detect the market regime label.
+
+    Non-fatal: returns (None, "NORMAL") if the interpolator/regime path fails,
+    in which case the caller should fall back to PriceInterpolator's static
+    profile (forecast_profile=None is handled by _build_daily_forecasts).
+
+    Parameters
+    ----------
+    as_of : date | None
+        Reference date for regime detection (default: today).
+    """
+    as_of = as_of or date.today()
+    forecast_profile: ForecastProfile | None = None
+    regime_label = "NORMAL"
+    try:
+        atr_pct = 0.0
+        try:
+            ohlcv = get_price_history(ticker, years=1)
+            atr_pct = compute_atr_pct(ohlcv)
+        except Exception:
+            pass
+
+        # Detect regime for the reference date (reuse RegimeDetector — cheap)
+        from core.intelligence.regime.detector import RegimeDetector
+        regime_label = "NORMAL"
+        try:
+            snap = RegimeDetector().detect(as_of, sector)
+            regime_label = snap.regime_label
+        except Exception:
+            pass
+
+        # Historical average return for this verdict (from prior cycles),
+        # filtered to same-regime entries first (P3-13 regime-segmented returns).
+        # RL Intelligence Phase, Component 3: when RL_FORGETTING_ENABLED, recent
+        # cycles are weighted more heavily (compute_historical_avg_return uses a
+        # weighted median over these (entry, weight) pairs).
+        all_feedback_entries = store.load_recent_feedback_entries(
+            n_cycles=6, recency_weighted=settings.RL_FORGETTING_ENABLED
+        )
+        hist_avg = compute_historical_avg_return(
+            all_feedback_entries, report.verdict, regime_label=regime_label
+        )
+
+        interpolator = PriceInterpolator()
+        forecast_profile = interpolator.get_profile(
+            ticker=ticker,
+            sector=sector,
+            verdict=report.verdict,
+            atr_pct=atr_pct,
+            regime_label=regime_label,
+            conviction_drivers=list(report.conviction_drivers or []),
+            historical_avg_return_pct=hist_avg,
+        )
+        logger.info(
+            "[generate_forecast] Forecast profile for %s (%s): "
+            "monthly=%.1f%% shape=%s band=%.2f%% src=%s",
+            ticker, report.verdict,
+            forecast_profile.monthly_return_pct,
+            forecast_profile.path_shape,
+            forecast_profile.confidence_band_daily_pct,
+            forecast_profile.source,
+        )
+    except Exception as exc:
+        logger.warning(
+            "[generate_forecast] PriceInterpolator failed (non-fatal, using static): %s", exc
+        )
+
+    return forecast_profile, regime_label
+
+
+def _fetch_fno_snapshot(ticker: str, base_close: float, as_of: date | None = None):
+    """
+    G7b: Fetch F&O chain snapshot (non-fatal). Returns None on any failure.
+    """
+    as_of = as_of or date.today()
+    try:
+        from core.intelligence.fno.fetcher import FnOFetcher
+        from core.intelligence.fno.analyzer import FnOAnalyzer
+        fno_fetcher = FnOFetcher()
+        chain_data = fno_fetcher.fetch_option_chain(ticker)
+        fno_price = fno_fetcher.get_underlying_price(ticker) or base_close
+        if chain_data:
+            fno_snapshot = FnOAnalyzer().analyze(
+                chain_data, fno_price, ticker, as_of.isoformat(),
+                near_month_expiry=fno_fetcher.near_month_expiry,
+            )
+            logger.info(
+                "[generate_forecast] F&O snapshot %s: PCR=%.2f OI=%s "
+                "MaxPain=₹%.0f dev=%+.1f%%",
+                ticker,
+                fno_snapshot.pcr or 0,
+                fno_snapshot.oi_buildup_direction,
+                fno_snapshot.max_pain_price or 0,
+                fno_snapshot.max_pain_deviation_pct or 0,
+            )
+            return fno_snapshot
+    except Exception as exc:
+        logger.warning(
+            "[generate_forecast] F&O chain fetch failed (non-fatal): %s", exc
+        )
+    return None
+
+
+def _extract_agent_predictions(report: FinalReport) -> dict[str, dict]:
+    """Extract per-agent catalyst predictions from a FinalReport for RL learning."""
+    agent_predictions: dict[str, dict] = {}
+    for _name, _out in (report.agent_outputs or {}).items():
+        _d = _out if isinstance(_out, dict) else (getattr(_out, '__dict__', {}) or {})
+        agent_predictions[_name] = {
+            "bull_case_if":    str(_d.get("bull_case_if", "")),
+            "bear_case_if":    str(_d.get("bear_case_if", "")),
+            "ticker_vs_peers": str(_d.get("ticker_vs_peers", "")),
+            "what_changed":    str(_d.get("what_changed", "")),
+            "data_confidence": float(_d.get("data_confidence", 0.5)),
+        }
+    return agent_predictions
+
+
 def generate_forecast(ticker: str, sector: str = "automobile") -> PredictionEnvelope:
     """
     Run full analysis + generate 30-day prediction envelope for one ticker.
@@ -277,10 +430,7 @@ def generate_forecast(ticker: str, sector: str = "automobile") -> PredictionEnve
 
     # Run orchestrator — learned weights are injected directly into SignalAggregator
     # via the _aggregator.run() call inside, so no global config mutation needed.
-    # We pass them through a subclass override in the orchestrator.
-    orchestrator = get_orchestrator(sector)
-    orchestrator.set_aggregator_weights(effective_weights, ticker)
-    report = orchestrator.analyse(ticker)
+    report = _run_orchestrator_analysis(ticker, sector, effective_weights)
 
     # Fetch actual baseline close — retry once on failure before raising
     base_close = _fetch_actual_close(ticker)
@@ -330,102 +480,16 @@ def generate_forecast(ticker: str, sector: str = "automobile") -> PredictionEnve
     # Provides stock-specific monthly_return_pct, path_shape, confidence band.
     # Non-fatal: falls back to static values if LLM call fails.
     # ------------------------------------------------------------------ #
-    forecast_profile = None
-    regime_label = "NORMAL"   # default; overridden below when RegimeDetector succeeds
-    try:
-        atr_pct = 0.0
-        try:
-            ohlcv = get_price_history(ticker, years=1)
-            atr_pct = compute_atr_pct(ohlcv)
-        except Exception:
-            pass
-
-        # Detect regime for the current date (reuse RegimeDetector — cheap)
-        from core.intelligence.regime.detector import RegimeDetector
-        regime_label = "NORMAL"
-        try:
-            snap = RegimeDetector().detect(date.today(), sector)
-            regime_label = snap.regime_label
-        except Exception:
-            pass
-
-        # Historical average return for this verdict (from prior cycles),
-        # filtered to same-regime entries first (P3-13 regime-segmented returns).
-        # RL Intelligence Phase, Component 3: when RL_FORGETTING_ENABLED, recent
-        # cycles are weighted more heavily (compute_historical_avg_return uses a
-        # weighted median over these (entry, weight) pairs).
-        all_feedback_entries = store.load_recent_feedback_entries(
-            n_cycles=6, recency_weighted=settings.RL_FORGETTING_ENABLED
-        )
-        hist_avg = compute_historical_avg_return(
-            all_feedback_entries, report.verdict, regime_label=regime_label
-        )
-
-        interpolator = PriceInterpolator()
-        forecast_profile = interpolator.get_profile(
-            ticker=ticker,
-            sector=sector,
-            verdict=report.verdict,
-            atr_pct=atr_pct,
-            regime_label=regime_label,
-            conviction_drivers=list(report.conviction_drivers or []),
-            historical_avg_return_pct=hist_avg,
-        )
-        logger.info(
-            "[generate_forecast] Forecast profile for %s (%s): "
-            "monthly=%.1f%% shape=%s band=%.2f%% src=%s",
-            ticker, report.verdict,
-            forecast_profile.monthly_return_pct,
-            forecast_profile.path_shape,
-            forecast_profile.confidence_band_daily_pct,
-            forecast_profile.source,
-        )
-    except Exception as exc:
-        logger.warning(
-            "[generate_forecast] PriceInterpolator failed (non-fatal, using static): %s", exc
-        )
+    forecast_profile, regime_label = _compute_forecast_profile(ticker, sector, report, store)
 
     # ------------------------------------------------------------------ #
     # G7b: Fetch F&O chain snapshot at month-start (non-fatal).
     # Stored in envelope; injected as market context during expiry week.
     # ------------------------------------------------------------------ #
-    fno_snapshot = None
-    try:
-        from core.intelligence.fno.fetcher import FnOFetcher
-        from core.intelligence.fno.analyzer import FnOAnalyzer
-        fno_fetcher = FnOFetcher()
-        chain_data = fno_fetcher.fetch_option_chain(ticker)
-        fno_price = fno_fetcher.get_underlying_price(ticker) or base_close
-        if chain_data:
-            fno_snapshot = FnOAnalyzer().analyze(
-                chain_data, fno_price, ticker, date.today().isoformat(),
-                near_month_expiry=fno_fetcher.near_month_expiry,
-            )
-            logger.info(
-                "[generate_forecast] F&O snapshot %s: PCR=%.2f OI=%s "
-                "MaxPain=₹%.0f dev=%+.1f%%",
-                ticker,
-                fno_snapshot.pcr or 0,
-                fno_snapshot.oi_buildup_direction,
-                fno_snapshot.max_pain_price or 0,
-                fno_snapshot.max_pain_deviation_pct or 0,
-            )
-    except Exception as exc:
-        logger.warning(
-            "[generate_forecast] F&O chain fetch failed (non-fatal): %s", exc
-        )
+    fno_snapshot = _fetch_fno_snapshot(ticker, base_close)
 
     # Extract per-agent catalyst predictions for RL learning
-    _agent_predictions: dict[str, dict] = {}
-    for _name, _out in (report.agent_outputs or {}).items():
-        _d = _out if isinstance(_out, dict) else (getattr(_out, '__dict__', {}) or {})
-        _agent_predictions[_name] = {
-            "bull_case_if":    str(_d.get("bull_case_if", "")),
-            "bear_case_if":    str(_d.get("bear_case_if", "")),
-            "ticker_vs_peers": str(_d.get("ticker_vs_peers", "")),
-            "what_changed":    str(_d.get("what_changed", "")),
-            "data_confidence": float(_d.get("data_confidence", 0.5)),
-        }
+    _agent_predictions = _extract_agent_predictions(report)
 
     trading_dates = _trading_dates(date.today(), HORIZON)
     forecasts = _build_daily_forecasts(
@@ -458,6 +522,166 @@ def generate_forecast(ticker: str, sector: str = "automobile") -> PredictionEnve
         ticker, len(forecasts), report.verdict,
     )
     return envelope
+
+
+# ---------------------------------------------------------------------------
+# Living Envelope (RL Phase 2.5, Component 2) — mid-cycle shock re-forecast
+# ---------------------------------------------------------------------------
+
+def regenerate_envelope(
+    ticker: str,
+    sector: str,
+    reason: str,
+    trigger: str,
+    review_date: date | None = None,
+) -> PredictionEnvelope | None:
+    """
+    Fresh full-pipeline run -> new Monte Carlo paths for the REMAINING trading
+    days of the CURRENT cycle only.
+
+    Archives the superseded envelope first (via PredictionStore.archive_envelope()).
+    Past days' forecasts (date <= review_date) are kept byte-identical; only
+    days strictly after review_date are replaced with a fresh price path
+    anchored on today's actual close.
+
+    NEVER raises — returns None on:
+      - RL_REFORECAST_ENABLED == False (no side effects)
+      - no existing envelope for the current cycle
+      - reforecast_count already at settings.RL_REFORECAST_MAX_PER_MONTH (no
+        archive/save side effects)
+      - any failure in the orchestrator/profile/MC pipeline (original
+        envelope left untouched)
+
+    Parameters
+    ----------
+    ticker, sector : as elsewhere
+    reason  : human-readable sentence describing why this re-forecast fired
+              (stored in ReforecastEvent.reason)
+    trigger : short key — "external_shock" | "thesis_break" | "regime_flip"
+              | "preopen_shock" | "manual" | ...
+    review_date : the trading date that triggered this re-forecast (defaults
+              to today). Forecast rows with date <= review_date are preserved
+              unchanged; rows with date > review_date are regenerated.
+    """
+    if not getattr(settings, "RL_REFORECAST_ENABLED", True):
+        return None
+
+    review_date = review_date or date.today()
+    review_date_str = review_date.isoformat()
+
+    try:
+        store = PredictionStore(ticker, sector=sector)
+        cycle_id = store.current_cycle_id()
+
+        envelope = store.load_envelope(cycle_id)
+        if envelope is None:
+            logger.info(
+                "[regenerate_envelope] No envelope for %s cycle %s — skipping", ticker, cycle_id,
+            )
+            return None
+
+        max_per_month = getattr(settings, "RL_REFORECAST_MAX_PER_MONTH", 2)
+        if envelope.reforecast_count >= max_per_month:
+            logger.warning(
+                "[regenerate_envelope] %s: reforecast cap reached (%d/%d) — skipping",
+                ticker, envelope.reforecast_count, max_per_month,
+            )
+            return None
+
+        # Determine the remaining forecast rows (date > review_date) in the
+        # CURRENT envelope. If there's nothing left to regenerate, bail out
+        # without archiving/mutating anything.
+        remaining_existing = [f for f in envelope.daily_forecasts if f.date > review_date_str]
+        if not remaining_existing:
+            logger.info(
+                "[regenerate_envelope] %s: no remaining forecast days after %s — skipping",
+                ticker, review_date_str,
+            )
+            return None
+
+        # Archive the superseded envelope first. A None result (no envelope
+        # file / write failure) is non-fatal — proceed with archived_file="".
+        archived_file = store.archive_envelope(cycle_id) or ""
+
+        # Fresh orchestrator analysis with the currently-effective weights —
+        # same sector orchestrator the monthly path uses.
+        wm = store.get_or_init_weight_memory(get_sector_weights(sector))
+        effective_weights = wm.effective_weights()
+        report = _run_orchestrator_analysis(ticker, sector, effective_weights)
+
+        # Fresh baseline close — the new MC paths anchor on today's actual
+        # close, not the month-start base_close.
+        base_close = _fetch_actual_close(ticker)
+        if base_close is None:
+            logger.warning(
+                "[regenerate_envelope] %s: could not fetch actual close — aborting "
+                "(original envelope intact)", ticker,
+            )
+            return None
+
+        ledger = store.load_learning_ledger()
+        seasonal_calendar = SeasonalCalendar(sector=sector)
+
+        forecast_profile, regime_label = _compute_forecast_profile(
+            ticker, sector, report, store, as_of=review_date,
+        )
+
+        agent_predictions = _extract_agent_predictions(report)
+
+        # Build new forecast rows for the remaining trading dates only — reuse
+        # the exact dates from the existing envelope so the cycle's day/date
+        # mapping stays consistent.
+        remaining_dates = [date.fromisoformat(f.date) for f in remaining_existing]
+        new_forecasts = _build_daily_forecasts(
+            report, base_close, remaining_dates,
+            seasonal_calendar=seasonal_calendar,
+            learning_ledger=ledger,
+            forecast_profile=forecast_profile,
+            agent_predictions=agent_predictions,
+            regime_label=regime_label,
+        )
+
+        # Re-number `day` to continue from the last preserved past day, and
+        # mark these rows as already-revised (they supersede any pending
+        # Step-7 revision for this run).
+        past_forecasts = [f for f in envelope.daily_forecasts if f.date <= review_date_str]
+        next_day = (past_forecasts[-1].day if past_forecasts else 0) + 1
+        for i, fc in enumerate(new_forecasts):
+            fc.day = next_day + i
+
+        # Past days remain byte-identical; only future days are replaced.
+        envelope.daily_forecasts = past_forecasts + new_forecasts
+        envelope.reforecast_count += 1
+        envelope.reforecast_history.append(ReforecastEvent(
+            date=review_date_str,
+            reason=reason,
+            trigger=trigger,
+            archived_file=archived_file,
+        ))
+
+        # The new forecast profile / weight version describe the regenerated
+        # (future) path — refresh them so the envelope metadata matches the
+        # MC paths actually used for the remaining days.
+        if forecast_profile is not None:
+            envelope.forecast_profile_shape = forecast_profile.path_shape
+            envelope.forecast_profile_monthly_pct = forecast_profile.monthly_return_pct
+            envelope.forecast_profile_source = forecast_profile.source
+        envelope.weight_version_used = wm.weight_version
+
+        store.save_envelope(envelope)
+        logger.info(
+            "[regenerate_envelope] %s: re-forecast complete (trigger=%s, "
+            "reforecast_count=%d, %d days regenerated, archived=%s)",
+            ticker, trigger, envelope.reforecast_count, len(new_forecasts),
+            archived_file or "<none>",
+        )
+        return envelope
+    except Exception as exc:
+        logger.error(
+            "[regenerate_envelope] %s: unhandled failure (non-fatal, original "
+            "envelope intact): %s", ticker, exc,
+        )
+        return None
 
 
 # ---------------------------------------------------------------------------

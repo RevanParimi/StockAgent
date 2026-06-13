@@ -56,6 +56,8 @@ class OpenQuestion(BaseModel):
     raised_on: str
     resolved_on: str = ""
     answer: str = ""
+    attempts: int = 0        # research attempts that found no/partial signal (RL Phase 4)
+    last_attempt: str = ""   # ISO date of the most recent research attempt (RL Phase 4)
 
 
 class TickerDossier(BaseModel):

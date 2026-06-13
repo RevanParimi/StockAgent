@@ -623,6 +623,16 @@ EVENT_INGEST_LOOKBACK_DAYS: int = int(os.getenv("EVENT_INGEST_LOOKBACK_DAYS", "8
 EVENT_INGEST_MAX_EVENTS_PER_SCAN: int = int(os.getenv("EVENT_INGEST_MAX_EVENTS_PER_SCAN", "3"))
 EVENT_INGEST_TEXT_MAX_CHARS: int = int(os.getenv("EVENT_INGEST_TEXT_MAX_CHARS", "6000"))
 
+# ── RL Phase 4 — Research Loop (active open-question resolution) (2026-06-13) ─
+# Weekly per-ticker pass: select unresolved dossier open_questions, run targeted
+# Serper/Tavily searches built from the question text, judge via one batched LLM
+# call, and write results back through the same bounded merge. Stale questions
+# expire after RL_RESEARCH_MAX_ATTEMPTS. Flag off -> zero I/O.
+RL_RESEARCH_LOOP_ENABLED: bool = os.getenv("RL_RESEARCH_LOOP_ENABLED", "true").lower() == "true"
+RL_RESEARCH_MAX_QUESTIONS_PER_RUN: int = int(os.getenv("RL_RESEARCH_MAX_QUESTIONS_PER_RUN", "2"))
+RL_RESEARCH_MAX_ATTEMPTS: int = int(os.getenv("RL_RESEARCH_MAX_ATTEMPTS", "3"))
+RL_RESEARCH_CONTEXT_MAX_CHARS: int = int(os.getenv("RL_RESEARCH_CONTEXT_MAX_CHARS", "6000"))
+
 # ---------------------------------------------------------------------------
 # RL Phase 1 — Monthly Scorecard + Baseline Duel (2026-06-12)
 #

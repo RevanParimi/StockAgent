@@ -272,6 +272,25 @@ class AutomobileScheduler:
         else:
             logger.info("[Scheduler] Event ingest job disabled (RL_EVENT_INGEST_ENABLED=false)")
 
+        # ── Job 9b: Weekly research loop (Saturday 11:00 am IST) ─────────────
+        # One hour after event ingestion, so questions raised by that morning's
+        # filings ingestion are immediately researchable.
+        if getattr(settings, "RL_RESEARCH_LOOP_ENABLED", True):
+            scheduler.add_job(
+                func=self._research_loop_job,
+                trigger=CronTrigger(
+                    day_of_week="sat", hour=11, minute=0, timezone="Asia/Kolkata",
+                ),
+                id="research_loop_weekly",
+                name="Weekly dossier open-question research",
+                misfire_grace_time=3600,
+                coalesce=True,
+                replace_existing=True,
+            )
+            logger.info("[Scheduler] Research loop job: Saturdays at 11:00 am IST")
+        else:
+            logger.info("[Scheduler] Research loop job disabled (RL_RESEARCH_LOOP_ENABLED=false)")
+
         # ── Job 10: Pre-open shock check (08:45 IST weekdays, before 09:15 open) ──
         scheduler.add_job(
             func=self._preopen_shock_check_job,
@@ -624,6 +643,51 @@ class AutomobileScheduler:
                 logger.warning("[Scheduler] Event ingest failed for %s: %s", ticker, exc, exc_info=True)
         logger.info("[Scheduler] Weekly event ingestion complete — total ingested=%d", total)
         _job_banner("Weekly Event Ingestion", done=True)
+
+    def _research_loop_job(self) -> None:
+        """
+        Weekly active research of dossier open_questions (spec 2026-06-13,
+        section 5). Runs Saturdays at 11:00 am IST — one hour after event
+        ingestion, so freshly-raised questions are immediately researchable.
+        Gated on RL_RESEARCH_LOOP_ENABLED; non-fatal per ticker (mirrors
+        `_event_ingest_job`'s loop style).
+        """
+        from pathlib import Path
+        from core.intelligence.rl.agents.question_researcher import QuestionResearcher
+
+        if not getattr(settings, "RL_RESEARCH_LOOP_ENABLED", True):
+            return
+
+        _KNOWN_SECTORS = ["automobile", "banking_bfsi", "it_sector", "renewable_energy"]
+        base_dir = "data/predictions"
+
+        def _sector_for(ticker: str) -> str:
+            return next(
+                (s for s in _KNOWN_SECTORS if Path(f"{base_dir}/{s}/{ticker}").exists()),
+                "automobile",
+            )
+
+        tickers = _active_tickers()
+        _job_banner(f"Weekly Research Loop — {len(tickers)} tickers")
+        answered = expired = 0
+        for ticker in tickers:
+            try:
+                sector = _sector_for(ticker)
+                result = QuestionResearcher().run(ticker, sector)
+                answered += result.get("answered", 0)
+                expired += result.get("expired", 0)
+                logger.info(
+                    "[Scheduler] Research %s sector=%s — selected=%d answered=%d "
+                    "partial=%d expired=%d", ticker, sector,
+                    result.get("selected", 0), result.get("answered", 0),
+                    result.get("partial", 0), result.get("expired", 0),
+                )
+            except Exception as exc:
+                logger.warning("[Scheduler] Research loop failed for %s: %s", ticker, exc, exc_info=True)
+        logger.info(
+            "[Scheduler] Weekly research loop complete — answered=%d expired=%d",
+            answered, expired)
+        _job_banner("Weekly Research Loop", done=True)
 
     def _preopen_shock_check_job(self) -> None:
         """

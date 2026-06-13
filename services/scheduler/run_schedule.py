@@ -387,6 +387,31 @@ def cmd_ingest_events(args) -> None:
                         print(f"    - {g.date} ({g.source}): {g.guidance}")
 
 
+def cmd_research(args) -> None:
+    """Actively research dossier open_questions for one or more tickers (RL Phase 4)."""
+    from core.intelligence.rl.agents.question_researcher import QuestionResearcher
+    from services.api.log_buffer import get_active_tickers_with_sector
+
+    rows = get_active_tickers_with_sector()
+    if getattr(args, "ticker", None):
+        wanted = {t.upper() for t in args.ticker}
+        rows = [r for r in rows if r["sym"].upper() in wanted]
+
+    for r in rows:
+        ticker, sector = r["sym"], r["sector"]
+        try:
+            res = QuestionResearcher().run(ticker, sector)
+        except Exception as exc:
+            print(f"{ticker}: research failed - {exc}")
+            continue
+
+        print(
+            f"{ticker}: selected={res.get('selected', 0)} "
+            f"answered={res.get('answered', 0)} partial={res.get('partial', 0)} "
+            f"expired={res.get('expired', 0)}"
+        )
+
+
 def cmd_reforecast(args) -> None:
     """Manually trigger a Living Envelope re-forecast for a single ticker.
 
@@ -561,6 +586,10 @@ def main() -> None:
     ingest_p.add_argument("--ticker", nargs="*", help="One or more NSE tickers (default: all managed)")
     ingest_p.add_argument("--days", type=int, default=None, help="Lookback window in days (default: EVENT_INGEST_LOOKBACK_DAYS)")
 
+    # research
+    research_p = sub.add_parser("research", help="Actively research dossier open questions via targeted search + LLM")
+    research_p.add_argument("--ticker", nargs="*", help="One or more NSE tickers (default: all managed)")
+
     # scorecard
     scorecard_p = sub.add_parser("scorecard", help="Build + persist the monthly RL scorecard")
     scorecard_p.add_argument(
@@ -585,6 +614,7 @@ def main() -> None:
         "preopen-check":   cmd_preopen_check,
         "dossier-status":  cmd_dossier_status,
         "ingest-events":   cmd_ingest_events,
+        "research":        cmd_research,
         "scorecard":       cmd_scorecard,
     }
     dispatch[args.command](args)

@@ -251,25 +251,34 @@ Source: `src/backend/sectors/registry.py`. Toggle state loaded from `config/sect
 
 ---
 
-## 4. Environment Variables
+## 4. Configuration
 
-### LLM / OpenRouter (`src/backend/shared/config/settings/base.py`)
+Tunable configuration (model tiers, thresholds, RL parameters, crons, feature flags)
+lives in repo-root **`config.yaml`**, resolved by
+`src/backend/shared/config/settings/loader.py` with precedence
+**environment variable > config.yaml > hardcoded fallback in `base.py`**.
+Secrets (API keys, webhook URLs) stay in `.env` only. Structural constants
+(data-source URLs, ticker symbols, indicator periods, file paths) remain in
+`base.py`. All 40+ consumers keep reading `settings.<NAME>` — the YAML layer is
+invisible to them. `CONFIG_FILE` env var points at an alternate YAML.
 
-Models are tiered (chosen from the 2026-06-03 benchmark, `scripts/model_bench.py`). `qwen3-235b` is
-retired — it broke `json_object` output and was a weak function-caller.
+### LLM / OpenRouter (`config.yaml` → `llm.*`)
+
+Models are tiered (2026-06-03 benchmark, `scripts/model_bench.py`; bulk re-benchmarked
+2026-07-02). Retired: `qwen3-235b` (broke `json_object`), `qwen-2.5-72b` (2-4× cost of deepseek).
 
 | Name | Default | Description |
 |------|---------|-------------|
-| `OPENROUTER_API_KEY` | `""` (required) | OpenRouter API key |
+| `OPENROUTER_API_KEY` | `""` (required) | OpenRouter API key (.env only) |
 | `LLM_MODEL_FAST` | `qwen/qwen3.6-flash` | **FAST tier** — the agentic chat tool-loop |
 | `LLM_MODEL_REASONING` | `qwen/qwen3.7-max` | **REASONING tier** — SignalAggregator verdict, RL FeedbackAgent / ThesisReviewer, and the Unified Sector Analyst for all four sectors (JSON-validated) |
-| `LLM_MODEL_BULK` | `qwen/qwen-2.5-72b-instruct` | **BULK tier** — the legacy per-dimension agents, fallback path only (proven `json_object` model) |
+| `LLM_MODEL_BULK` | `deepseek/deepseek-v4-flash` | **BULK tier** — high-volume `json_object` scoring; $0.09/$0.18 per M, reasoning disabled via `JSON_MODE_EXTRA_BODY` |
 | `LLM_MODEL` | `= LLM_MODEL_BULK` | Back-compat catch-all for any call-site not on a named tier |
 | `LLM_TEMPERATURE` | `0.2` | LLM sampling temperature |
 | `LLM_MAX_TOKENS` | `2048` | Max output tokens per LLM call |
 | `LLM_TIMEOUT_SECONDS` | `60` | Per-call LLM timeout |
-| `LLM_INPUT_COST_PER_M` | `0.065` | Cost tracking: USD per 1M input tokens |
-| `LLM_OUTPUT_COST_PER_M` | `0.26` | Cost tracking: USD per 1M output tokens |
+| `LLM_INPUT_COST_PER_M` | `0.09` | Cost tracking: USD per 1M input tokens (bulk tier) |
+| `LLM_OUTPUT_COST_PER_M` | `0.18` | Cost tracking: USD per 1M output tokens (bulk tier) |
 
 ### Data / Search APIs
 

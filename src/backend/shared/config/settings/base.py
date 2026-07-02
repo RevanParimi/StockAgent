@@ -276,23 +276,23 @@ CSHARP_API_URL: str = os.getenv("CSHARP_API_URL", "http://localhost:5000")
 PREDICTION_DATA_DIR: str = os.getenv("PREDICTION_DATA_DIR", "data/predictions")
 
 # How many trading days forward to forecast on month-start
-FORECAST_HORIZON_DAYS: int = 30
+FORECAST_HORIZON_DAYS: int = cfg("rl.forecast_horizon_days", fallback=30)
 
 # Maximum weight change applied in a single daily adaptation step (per agent)
-WEIGHT_MAX_STEP: float = 0.05
+WEIGHT_MAX_STEP: float = cfg("rl.weight_max_step", fallback=0.05)
 
 # Maximum total drift any agent weight is allowed to move from its base value
-WEIGHT_MAX_DRIFT: float = 0.15
+WEIGHT_MAX_DRIFT: float = cfg("rl.weight_max_drift", fallback=0.15)
 
 # Minimum rolling days required before weight adaptation kicks in
-WEIGHT_MIN_OBSERVATIONS: int = 3
+WEIGHT_MIN_OBSERVATIONS: int = cfg("rl.weight_min_observations", fallback=3)
 
 # Accuracy window: how many recent days are used to judge agent direction accuracy
-WEIGHT_ACCURACY_WINDOW: int = 7
+WEIGHT_ACCURACY_WINDOW: int = cfg("rl.weight_accuracy_window", fallback=7)
 
 # Thresholds for weight boost / penalty
-WEIGHT_BOOST_HIT_RATE: float = 0.70    # ≥70% hit rate → apply weight boost
-WEIGHT_PENALTY_HIT_RATE: float = 0.40  # ≤40% hit rate → apply weight penalty
+WEIGHT_BOOST_HIT_RATE: float = cfg("rl.weight_boost_hit_rate", fallback=0.70)    # ≥70% hit rate → apply weight boost
+WEIGHT_PENALTY_HIT_RATE: float = cfg("rl.weight_penalty_hit_rate", fallback=0.40)  # ≤40% hit rate → apply weight penalty
 
 # Cron expression for the daily feedback review job (default: weekdays 4:30pm IST = 11:00 UTC)
 FEEDBACK_CRON: str = cfg("scheduler.feedback_cron", env="FEEDBACK_CRON", fallback="0 11 * * 1-5")
@@ -302,55 +302,55 @@ FEEDBACK_CRON: str = cfg("scheduler.feedback_cron", env="FEEDBACK_CRON", fallbac
 # ---------------------------------------------------------------------------
 
 # Regime detection thresholds — algorithm constants, not env-configurable
-VIX_VOLATILE_THRESHOLD: float  = 22.0   # VIX above this → volatile macro
-VIX_LOW_VOL_THRESHOLD: float   = 14.0   # VIX below this → calm/trending
-FII_PROXY_THRESHOLD_PCT: float = 1.0    # Nifty 5-day move threshold for FII proxy
-RSI_OVERBOUGHT: float          = 70.0   # RSI above this → overbought
-RSI_OVERSOLD: float            = 30.0   # RSI below this → oversold
+VIX_VOLATILE_THRESHOLD: float  = cfg("regime.vix_volatile_threshold", fallback=22.0)   # VIX above this → volatile macro
+VIX_LOW_VOL_THRESHOLD: float   = cfg("regime.vix_low_vol_threshold", fallback=14.0)   # VIX below this → calm/trending
+FII_PROXY_THRESHOLD_PCT: float = cfg("regime.fii_proxy_threshold_pct", fallback=1.0)    # Nifty 5-day move threshold for FII proxy
+RSI_OVERBOUGHT: float          = cfg("regime.rsi_overbought", fallback=70.0)   # RSI above this → overbought
+RSI_OVERSOLD: float            = cfg("regime.rsi_oversold", fallback=30.0)   # RSI below this → oversold
 
 # Direction classification threshold for RL feedback (see STATIC_AUDIT.md #5)
-RL_FLAT_THRESHOLD_PCT: float = 0.3     # moves within ±0.3% classified as FLAT
+RL_FLAT_THRESHOLD_PCT: float = cfg("rl.flat_threshold_pct", fallback=0.3)     # moves within ±0.3% classified as FLAT
 
 # Early-exit: skip orchestrator re-run when direction correct + error below this %
 # Set to 0.0 to disable early exit entirely.
-RL_AGENT_RERUN_THRESHOLD_PCT: float = 0.5
+RL_AGENT_RERUN_THRESHOLD_PCT: float = cfg("rl.agent_rerun_threshold_pct", fallback=0.5)
 
 # Scheduler parallelism: how many tickers can be reviewed concurrently.
 # Default 1 = sequential (safe without file locking).
 # Set to 2-4 in .env once shared ledger locking (P1-7) is confirmed stable.
-RL_SCHEDULER_MAX_WORKERS: int = int(os.getenv("RL_SCHEDULER_MAX_WORKERS", "1"))
+RL_SCHEDULER_MAX_WORKERS: int = cfg("rl.scheduler_max_workers", env="RL_SCHEDULER_MAX_WORKERS", fallback=1)
 
 # ---------------------------------------------------------------------------
 # Conviction Streak (P3) — tracker.py
 # ---------------------------------------------------------------------------
 
 # Streak length at which FeedbackAgent prompt receives a streak warning block
-RL_STREAK_WARNING_THRESHOLD: int = 8
+RL_STREAK_WARNING_THRESHOLD: int = cfg("rl.streak_warning_threshold", fallback=8)
 
 # RSI amplifier applied to reversion_prior when sector RSI contradicts verdict
-RL_RSI_AMPLIFIER: float = 1.50
+RL_RSI_AMPLIFIER: float = cfg("rl.rsi_amplifier", fallback=1.50)
 
 # Absolute cap on reversion_prior including any amplification
-RL_MAX_REVERSION_PRIOR: float = 0.30
+RL_MAX_REVERSION_PRIOR: float = cfg("rl.max_reversion_prior", fallback=0.30)
 
 # ---------------------------------------------------------------------------
 # ThesisReviewer (Section 21) — thesis_reviewer.py
 # ---------------------------------------------------------------------------
 
 # ATR-relative trigger: threshold = max(floor, multiplier × atr_pct)
-RL_ATR_THRESHOLD_FLOOR: float = 1.5       # minimum trigger % regardless of ATR
-RL_ATR_THRESHOLD_MULTIPLIER: float = 1.5  # multiplier applied to ticker ATR%
+RL_ATR_THRESHOLD_FLOOR: float = cfg("rl.atr_threshold_floor", fallback=1.5)       # minimum trigger % regardless of ATR
+RL_ATR_THRESHOLD_MULTIPLIER: float = cfg("rl.atr_threshold_multiplier", fallback=1.5)  # multiplier applied to ticker ATR%
 
 # ---------------------------------------------------------------------------
 # Lesson Propagation (P2) — ledger_propagator.py
 # ---------------------------------------------------------------------------
 
 # Confidence blend weights when merging a repeated lesson pattern
-RL_LESSON_BLEND_EXISTING: float = 0.70   # weight given to the accumulated signal
-RL_LESSON_BLEND_INCOMING: float = 0.30   # weight given to the new confirmation
+RL_LESSON_BLEND_EXISTING: float = cfg("rl.lesson_blend_existing", fallback=0.70)   # weight given to the accumulated signal
+RL_LESSON_BLEND_INCOMING: float = cfg("rl.lesson_blend_incoming", fallback=0.30)   # weight given to the new confirmation
 
 # Confidence bonus per new ticker independently confirming a shared lesson
-RL_CROSS_TICKER_BOOST: float = 0.05
+RL_CROSS_TICKER_BOOST: float = cfg("rl.cross_ticker_boost", fallback=0.05)
 
 VIX_FALLBACK: float = 17.0              # NORMAL regime midpoint; used on yfinance error
 FII_PROXY_FALLBACK: float = 0.0         # Neutral; used on yfinance error
@@ -380,7 +380,7 @@ REGIME_FII_PROXY_TICKER: str = "^NSEI"          # Nifty 50 for 5-day momentum pr
 #
 # If an agent is NOT listed here for its sector, it defaults to multiplier 1.0.
 # ---------------------------------------------------------------------------
-SECTOR_AGENT_REGIME_ROLE: dict[str, dict[str, str]] = {
+_DEFAULT_SECTOR_AGENT_REGIME_ROLE: dict[str, dict[str, str]] = {
     "banking_bfsi": {
         "fundamentals":  "fundamentals",       # earnings quality → fundamentals
         "risk":          "risk_macro",          # credit risk, NPA → risk_macro
@@ -420,7 +420,11 @@ SECTOR_AGENT_REGIME_ROLE: dict[str, dict[str, str]] = {
     },
 }
 
-REGIME_MULTIPLIERS: dict[str, dict[str, float]] = {
+SECTOR_AGENT_REGIME_ROLE: dict[str, dict[str, str]] = cfg(
+    "sector_agent_regime_role", fallback=_DEFAULT_SECTOR_AGENT_REGIME_ROLE,
+)
+
+_DEFAULT_REGIME_MULTIPLIERS: dict[str, dict[str, float]] = {
     "MACRO_CRISIS": {
         "risk_macro":         1.40,
         "fundamentals":       0.80,
@@ -488,25 +492,28 @@ REGIME_MULTIPLIERS: dict[str, dict[str, float]] = {
         "policy_regulatory":  1.00,
     },
 }
+REGIME_MULTIPLIERS: dict[str, dict[str, float]] = cfg(
+    "regime_multipliers", fallback=_DEFAULT_REGIME_MULTIPLIERS,
+)
 
 # ---------------------------------------------------------------------------
 # STATIC_AUDIT #4 — RL weight delta constants (moved from weight_adapter.py)
 # These are algorithm parameters — plain constants, not env-configurable.
 # ---------------------------------------------------------------------------
 
-RL_BOOST: float               =  0.02   # weight delta when hit_rate ≥ WEIGHT_BOOST_HIT_RATE
-RL_PENALTY: float             = -0.03   # weight delta when hit_rate ≤ WEIGHT_PENALTY_HIT_RATE
-RL_MISS_STREAK_PENALTY: float = -0.05   # base bias penalty at full bias_score
-RL_BIAS_TRIGGER: float        =  0.55   # bias score at which penalty starts scaling
-RL_BIAS_FULL: float           =  0.70   # bias score at which full penalty applies
-RL_TIMING_FREE_WINDOW: int    =  3      # lag ≤ N trading days → 0× timing penalty
-RL_TIMING_PARTIAL_WINDOW: int =  7      # lag ≤ N trading days → 0.20× timing penalty
+RL_BOOST: float               =  cfg("rl.boost", fallback=0.02)   # weight delta when hit_rate ≥ WEIGHT_BOOST_HIT_RATE
+RL_PENALTY: float             = cfg("rl.penalty", fallback=-0.03)   # weight delta when hit_rate ≤ WEIGHT_PENALTY_HIT_RATE
+RL_MISS_STREAK_PENALTY: float = cfg("rl.miss_streak_penalty", fallback=-0.05)   # base bias penalty at full bias_score
+RL_BIAS_TRIGGER: float        =  cfg("rl.bias_trigger", fallback=0.55)   # bias score at which penalty starts scaling
+RL_BIAS_FULL: float           =  cfg("rl.bias_full", fallback=0.70)   # bias score at which full penalty applies
+RL_TIMING_FREE_WINDOW: int    =  cfg("rl.timing_free_window", fallback=3)      # lag ≤ N trading days → 0× timing penalty
+RL_TIMING_PARTIAL_WINDOW: int =  cfg("rl.timing_partial_window", fallback=7)      # lag ≤ N trading days → 0.20× timing penalty
 
 # Weight drift ceiling escape hatch: agents with ≥ N consecutive correct days
 # are allowed to drift up to ESCAPE_MULTIPLIER × WEIGHT_MAX_DRIFT.
 # Prevents the 0.15 cap from blocking learning on clearly reliable agents.
-RL_WEIGHT_DRIFT_ESCAPE_DAYS: int = int(os.getenv("RL_WEIGHT_DRIFT_ESCAPE_DAYS", "14"))
-RL_WEIGHT_DRIFT_ESCAPE_MULTIPLIER: float = float(os.getenv("RL_WEIGHT_DRIFT_ESCAPE_MULTIPLIER", "1.5"))
+RL_WEIGHT_DRIFT_ESCAPE_DAYS: int = cfg("rl.weight_drift_escape_days", env="RL_WEIGHT_DRIFT_ESCAPE_DAYS", fallback=14)
+RL_WEIGHT_DRIFT_ESCAPE_MULTIPLIER: float = cfg("rl.weight_drift_escape_multiplier", env="RL_WEIGHT_DRIFT_ESCAPE_MULTIPLIER", fallback=1.5)
 
 # ---------------------------------------------------------------------------
 # RL Intelligence Phase, Component 2 — Per-Agent Calibration Reward
@@ -516,8 +523,8 @@ RL_WEIGHT_DRIFT_ESCAPE_MULTIPLIER: float = float(os.getenv("RL_WEIGHT_DRIFT_ESCA
 # this into the hit_rate that drives boost/penalty deltas. Flag default ON
 # (user-confirmed); when False, behavior is byte-identical to pre-Component-2.
 # ---------------------------------------------------------------------------
-RL_CALIBRATION_REWARD_ENABLED: bool = os.getenv("RL_CALIBRATION_REWARD_ENABLED", "true").lower() == "true"
-RL_CALIBRATION_WEIGHT: float = float(os.getenv("RL_CALIBRATION_WEIGHT", "0.5"))
+RL_CALIBRATION_REWARD_ENABLED: bool = cfg("rl.calibration_reward_enabled", env="RL_CALIBRATION_REWARD_ENABLED", fallback=True)
+RL_CALIBRATION_WEIGHT: float = cfg("rl.calibration_weight", env="RL_CALIBRATION_WEIGHT", fallback=0.5)
 
 # ---------------------------------------------------------------------------
 # STATIC_AUDIT #9 — News geo: removed country filter entirely
@@ -581,57 +588,57 @@ MACRO_NEWS_ENABLED: bool = cfg("macro_news.enabled", env="MACRO_NEWS_ENABLED", f
 #     higher when computing historical average returns.
 #     weight = exp(-cycle_age_months / FEEDBACK_HALFLIFE_MONTHS)
 # ---------------------------------------------------------------------------
-RL_FORGETTING_ENABLED: bool = os.getenv("RL_FORGETTING_ENABLED", "true").lower() == "true"
+RL_FORGETTING_ENABLED: bool = cfg("rl.forgetting_enabled", env="RL_FORGETTING_ENABLED", fallback=True)
 
 # Half-life (days) for recency decay of miss events — score halves every N days.
-MISS_RECENCY_HALFLIFE_DAYS: float = float(os.getenv("MISS_RECENCY_HALFLIFE_DAYS", "21"))
+MISS_RECENCY_HALFLIFE_DAYS: float = cfg("rl.miss_recency_halflife_days", env="MISS_RECENCY_HALFLIFE_DAYS", fallback=21.0)
 
 # Multiplier applied to non-penalizable miss types (e.g. external_shock) when
 # computing recency-weighted miss scores.
-MISS_PENALIZABLE_DISCOUNT: float = float(os.getenv("MISS_PENALIZABLE_DISCOUNT", "0.3"))
+MISS_PENALIZABLE_DISCOUNT: float = cfg("rl.miss_penalizable_discount", env="MISS_PENALIZABLE_DISCOUNT", fallback=0.3)
 
 # Archival thresholds — a still_valid=False lesson is archived only when ALL
 # three conditions hold: effective confidence at/below floor, effectiveness
 # below floor, AND stale for longer than ARCHIVE_STALE_DAYS.
-ARCHIVE_CONF_FLOOR: float = float(os.getenv("ARCHIVE_CONF_FLOOR", "0.12"))
-ARCHIVE_EFFECTIVENESS_FLOOR: float = float(os.getenv("ARCHIVE_EFFECTIVENESS_FLOOR", "0.25"))
-ARCHIVE_STALE_DAYS: int = int(os.getenv("ARCHIVE_STALE_DAYS", "60"))
+ARCHIVE_CONF_FLOOR: float = cfg("rl.archive_conf_floor", env="ARCHIVE_CONF_FLOOR", fallback=0.12)
+ARCHIVE_EFFECTIVENESS_FLOOR: float = cfg("rl.archive_effectiveness_floor", env="ARCHIVE_EFFECTIVENESS_FLOOR", fallback=0.25)
+ARCHIVE_STALE_DAYS: int = cfg("rl.archive_stale_days", env="ARCHIVE_STALE_DAYS", fallback=60)
 
 # Half-life (months) for recency-weighted feedback cycle aggregation.
-FEEDBACK_HALFLIFE_MONTHS: float = float(os.getenv("FEEDBACK_HALFLIFE_MONTHS", "3"))
+FEEDBACK_HALFLIFE_MONTHS: float = cfg("rl.feedback_halflife_months", env="FEEDBACK_HALFLIFE_MONTHS", fallback=3.0)
 
 # ── RL Knowledge Layer — Ticker Dossier + executable claims (2026-06) ──────
-RL_DOSSIER_ENABLED: bool = os.getenv("RL_DOSSIER_ENABLED", "true").lower() == "true"
-DOSSIER_MAX_OBSERVATIONS: int = int(os.getenv("DOSSIER_MAX_OBSERVATIONS", "30"))
-DOSSIER_DIGEST_MAX_CHARS: int = int(os.getenv("DOSSIER_DIGEST_MAX_CHARS", "2500"))
-DOSSIER_AGENT_DIGEST_CHARS: int = int(os.getenv("DOSSIER_AGENT_DIGEST_CHARS", "1500"))
-DOSSIER_MAX_NEW_OBS_PER_DAY: int = int(os.getenv("DOSSIER_MAX_NEW_OBS_PER_DAY", "3"))
+RL_DOSSIER_ENABLED: bool = cfg("rl.dossier_enabled", env="RL_DOSSIER_ENABLED", fallback=True)
+DOSSIER_MAX_OBSERVATIONS: int = cfg("rl.dossier_max_observations", env="DOSSIER_MAX_OBSERVATIONS", fallback=30)
+DOSSIER_DIGEST_MAX_CHARS: int = cfg("rl.dossier_digest_max_chars", env="DOSSIER_DIGEST_MAX_CHARS", fallback=2500)
+DOSSIER_AGENT_DIGEST_CHARS: int = cfg("rl.dossier_agent_digest_chars", env="DOSSIER_AGENT_DIGEST_CHARS", fallback=1500)
+DOSSIER_MAX_NEW_OBS_PER_DAY: int = cfg("rl.dossier_max_new_obs_per_day", env="DOSSIER_MAX_NEW_OBS_PER_DAY", fallback=3)
 # Post-cap dossiers (30 obs/20 guidance/12 questions/10 catalysts) serialize well under this
 # limit, so this cut is a safety net only — not expected to bite in normal operation.
-DOSSIER_DISTILL_INPUT_MAX_CHARS: int = int(os.getenv("DOSSIER_DISTILL_INPUT_MAX_CHARS", "20000"))
-RL_CLAIMS_ENABLED: bool = os.getenv("RL_CLAIMS_ENABLED", "true").lower() == "true"
-RL_LESSON_EMPHASIS_DELTA: float = float(os.getenv("RL_LESSON_EMPHASIS_DELTA", "0.03"))
-RL_LESSON_EMPHASIS_CAP: float = float(os.getenv("RL_LESSON_EMPHASIS_CAP", "0.06"))
-RL_LESSON_MATCH_MIN_CONF: float = float(os.getenv("RL_LESSON_MATCH_MIN_CONF", "0.45"))
+DOSSIER_DISTILL_INPUT_MAX_CHARS: int = cfg("rl.dossier_distill_input_max_chars", env="DOSSIER_DISTILL_INPUT_MAX_CHARS", fallback=20000)
+RL_CLAIMS_ENABLED: bool = cfg("rl.claims_enabled", env="RL_CLAIMS_ENABLED", fallback=True)
+RL_LESSON_EMPHASIS_DELTA: float = cfg("rl.lesson_emphasis_delta", env="RL_LESSON_EMPHASIS_DELTA", fallback=0.03)
+RL_LESSON_EMPHASIS_CAP: float = cfg("rl.lesson_emphasis_cap", env="RL_LESSON_EMPHASIS_CAP", fallback=0.06)
+RL_LESSON_MATCH_MIN_CONF: float = cfg("rl.lesson_match_min_conf", env="RL_LESSON_MATCH_MIN_CONF", fallback=0.45)
 
 # ── RL Phase 3 — Event-driven dossier ingestion (2026-06-12) ───────────────
 # Weekly scan + on-demand CLI: digest qualifying NSE corporate events
 # (results, concalls, guidance, investor presentations) into the existing
 # TickerDossier via the same bounded merge the daily curator uses.
-RL_EVENT_INGEST_ENABLED: bool = os.getenv("RL_EVENT_INGEST_ENABLED", "true").lower() == "true"
-EVENT_INGEST_LOOKBACK_DAYS: int = int(os.getenv("EVENT_INGEST_LOOKBACK_DAYS", "8"))
-EVENT_INGEST_MAX_EVENTS_PER_SCAN: int = int(os.getenv("EVENT_INGEST_MAX_EVENTS_PER_SCAN", "3"))
-EVENT_INGEST_TEXT_MAX_CHARS: int = int(os.getenv("EVENT_INGEST_TEXT_MAX_CHARS", "6000"))
+RL_EVENT_INGEST_ENABLED: bool = cfg("rl.event_ingest_enabled", env="RL_EVENT_INGEST_ENABLED", fallback=True)
+EVENT_INGEST_LOOKBACK_DAYS: int = cfg("rl.event_ingest_lookback_days", env="EVENT_INGEST_LOOKBACK_DAYS", fallback=8)
+EVENT_INGEST_MAX_EVENTS_PER_SCAN: int = cfg("rl.event_ingest_max_events_per_scan", env="EVENT_INGEST_MAX_EVENTS_PER_SCAN", fallback=3)
+EVENT_INGEST_TEXT_MAX_CHARS: int = cfg("rl.event_ingest_text_max_chars", env="EVENT_INGEST_TEXT_MAX_CHARS", fallback=6000)
 
 # ── RL Phase 4 — Research Loop (active open-question resolution) (2026-06-13) ─
 # Weekly per-ticker pass: select unresolved dossier open_questions, run targeted
 # Serper/Tavily searches built from the question text, judge via one batched LLM
 # call, and write results back through the same bounded merge. Stale questions
 # expire after RL_RESEARCH_MAX_ATTEMPTS. Flag off -> zero I/O.
-RL_RESEARCH_LOOP_ENABLED: bool = os.getenv("RL_RESEARCH_LOOP_ENABLED", "true").lower() == "true"
-RL_RESEARCH_MAX_QUESTIONS_PER_RUN: int = int(os.getenv("RL_RESEARCH_MAX_QUESTIONS_PER_RUN", "2"))
-RL_RESEARCH_MAX_ATTEMPTS: int = int(os.getenv("RL_RESEARCH_MAX_ATTEMPTS", "3"))
-RL_RESEARCH_CONTEXT_MAX_CHARS: int = int(os.getenv("RL_RESEARCH_CONTEXT_MAX_CHARS", "6000"))
+RL_RESEARCH_LOOP_ENABLED: bool = cfg("rl.research_loop_enabled", env="RL_RESEARCH_LOOP_ENABLED", fallback=True)
+RL_RESEARCH_MAX_QUESTIONS_PER_RUN: int = cfg("rl.research_max_questions_per_run", env="RL_RESEARCH_MAX_QUESTIONS_PER_RUN", fallback=2)
+RL_RESEARCH_MAX_ATTEMPTS: int = cfg("rl.research_max_attempts", env="RL_RESEARCH_MAX_ATTEMPTS", fallback=3)
+RL_RESEARCH_CONTEXT_MAX_CHARS: int = cfg("rl.research_context_max_chars", env="RL_RESEARCH_CONTEXT_MAX_CHARS", fallback=6000)
 
 # ---------------------------------------------------------------------------
 # RL Phase 1 — Monthly Scorecard + Baseline Duel (2026-06-12)
@@ -645,13 +652,13 @@ RL_RESEARCH_CONTEXT_MAX_CHARS: int = int(os.getenv("RL_RESEARCH_CONTEXT_MAX_CHAR
 # ---------------------------------------------------------------------------
 
 # Daily control-lane prediction + scoring (daily_review Step 10).
-RL_CONTROL_LANE_ENABLED: bool = os.getenv("RL_CONTROL_LANE_ENABLED", "true").lower() == "true"
+RL_CONTROL_LANE_ENABLED: bool = cfg("rl.control_lane_enabled", env="RL_CONTROL_LANE_ENABLED", fallback=True)
 
 # Control-lane model; empty string -> settings.LLM_MODEL_REASONING.
-CONTROL_LANE_MODEL: str = os.getenv("CONTROL_LANE_MODEL", "")
+CONTROL_LANE_MODEL: str = cfg("rl.control_lane_model", env="CONTROL_LANE_MODEL", fallback="")
 
 # Monthly scorecard scheduler job (CronTrigger day 1, 02:00 IST).
-SCORECARD_ENABLED: bool = os.getenv("SCORECARD_ENABLED", "true").lower() == "true"
+SCORECARD_ENABLED: bool = cfg("rl.scorecard_enabled", env="SCORECARD_ENABLED", fallback=True)
 
 # Persisted scorecard time series (PERMANENT — improvement history; volume).
 SCORECARD_DIR: str = os.getenv("SCORECARD_DIR", "data/eval/scorecards")
@@ -665,30 +672,30 @@ SCORECARD_DIR: str = os.getenv("SCORECARD_DIR", "data/eval/scorecards")
 
 # Shock-triggered re-forecast (Component 2): regenerate the envelope mid-month
 # when external_shock / thesis_break / regime_flip fires.
-RL_REFORECAST_ENABLED: bool = os.getenv("RL_REFORECAST_ENABLED", "true").lower() == "true"
+RL_REFORECAST_ENABLED: bool = cfg("rl.reforecast_enabled", env="RL_REFORECAST_ENABLED", fallback=True)
 
 # Hard cap on regenerate_envelope() calls per ticker per calendar month.
-RL_REFORECAST_MAX_PER_MONTH: int = int(os.getenv("RL_REFORECAST_MAX_PER_MONTH", "2"))
+RL_REFORECAST_MAX_PER_MONTH: int = cfg("rl.reforecast_max_per_month", env="RL_REFORECAST_MAX_PER_MONTH", fallback=2)
 
 # thesis_break trigger fires when ThesisReviewer's horizon_confidence_multiplier
 # drops to/below this threshold.
-RL_REFORECAST_THESIS_MULT_THRESHOLD: float = float(os.getenv("RL_REFORECAST_THESIS_MULT_THRESHOLD", "0.5"))
+RL_REFORECAST_THESIS_MULT_THRESHOLD: float = cfg("rl.reforecast_thesis_mult_threshold", env="RL_REFORECAST_THESIS_MULT_THRESHOLD", fallback=0.5)
 
 # Sticky regime (Component 1): hysteresis on top of the raw daily RegimeDetector
 # label so a single calm day doesn't immediately exit RISK_OFF/MACRO_CRISIS.
-RL_REGIME_STICKY_ENABLED: bool = os.getenv("RL_REGIME_STICKY_ENABLED", "true").lower() == "true"
+RL_REGIME_STICKY_ENABLED: bool = cfg("rl.regime_sticky_enabled", env="RL_REGIME_STICKY_ENABLED", fallback=True)
 
 # Consecutive milder-than-sticky detections required before exiting to the
 # milder label.
-RL_REGIME_CALM_DAYS: int = int(os.getenv("RL_REGIME_CALM_DAYS", "3"))
+RL_REGIME_CALM_DAYS: int = cfg("regime.calm_days", env="RL_REGIME_CALM_DAYS", fallback=3)
 
 # Pre-open sanity check (Component 3): scheduler job at 08:45 IST on trading
 # days, 1 Serper + 1 fast-tier LLM call market-wide.
-RL_PREOPEN_CHECK_ENABLED: bool = os.getenv("RL_PREOPEN_CHECK_ENABLED", "true").lower() == "true"
+RL_PREOPEN_CHECK_ENABLED: bool = cfg("rl.preopen_check_enabled", env="RL_PREOPEN_CHECK_ENABLED", fallback=True)
 
 # Severity threshold (0.0-1.0) above which contradicted tickers trigger
 # regenerate_envelope(reason="preopen_shock").
-RL_PREOPEN_SHOCK_SEVERITY: float = float(os.getenv("RL_PREOPEN_SHOCK_SEVERITY", "0.7"))
+RL_PREOPEN_SHOCK_SEVERITY: float = cfg("rl.preopen_shock_severity", env="RL_PREOPEN_SHOCK_SEVERITY", fallback=0.7)
 
 # ---------------------------------------------------------------------------
 # Data integrity — NSE official close cross-check (2026-06)
@@ -700,25 +707,26 @@ RL_PREOPEN_SHOCK_SEVERITY: float = float(os.getenv("RL_PREOPEN_SHOCK_SEVERITY", 
 # close (fetch_equity_historical_data) is used as a cross-check via
 # services/data/fetchers/close_verifier.get_verified_close().
 # ---------------------------------------------------------------------------
-CLOSE_VERIFY_ENABLED: bool = os.getenv("CLOSE_VERIFY_ENABLED", "true").lower() == "true"
+CLOSE_VERIFY_ENABLED: bool = cfg("rl.close_verify_enabled", env="CLOSE_VERIFY_ENABLED", fallback=True)
 
 # Max % difference between yfinance and NSE closes considered "agreement".
 # Differences beyond this trigger a WARNING log and use the NSE value
 # (poisoning detector).
-CLOSE_VERIFY_TOLERANCE_PCT: float = float(os.getenv("CLOSE_VERIFY_TOLERANCE_PCT", "1.0"))
+CLOSE_VERIFY_TOLERANCE_PCT: float = cfg("rl.close_verify_tolerance_pct", env="CLOSE_VERIFY_TOLERANCE_PCT", fallback=1.0)
 
 # ---------------------------------------------------------------------------
 # Unified Sector Analyst (2026-06-12 redesign) — one data bundle + one
 # reasoning-model call replaces the per-sector parallel agent fan-out.
 # CSV of sector names on the unified path; "" disables it everywhere.
 # ---------------------------------------------------------------------------
-UNIFIED_ANALYST_SECTORS: str = os.getenv(
-    "UNIFIED_ANALYST_SECTORS", "automobile,banking_bfsi,it_sector,renewable_energy"
+UNIFIED_ANALYST_SECTORS: str = cfg(
+    "unified_analyst.sectors", env="UNIFIED_ANALYST_SECTORS",
+    fallback="automobile,banking_bfsi,it_sector,renewable_energy",
 )
-UNIFIED_ANALYST_FALLBACK_LEGACY: bool = os.getenv("UNIFIED_ANALYST_FALLBACK_LEGACY", "true").lower() == "true"
-UNIFIED_ANALYST_MAX_TOKENS: int = int(os.getenv("UNIFIED_ANALYST_MAX_TOKENS", "6000"))
-UNIFIED_SECTION_MAX_CHARS: int = int(os.getenv("UNIFIED_SECTION_MAX_CHARS", "2500"))
-UNIFIED_BUNDLE_MAX_CHARS: int = int(os.getenv("UNIFIED_BUNDLE_MAX_CHARS", "18000"))
+UNIFIED_ANALYST_FALLBACK_LEGACY: bool = cfg("unified_analyst.fallback_legacy", env="UNIFIED_ANALYST_FALLBACK_LEGACY", fallback=True)
+UNIFIED_ANALYST_MAX_TOKENS: int = cfg("unified_analyst.max_tokens", env="UNIFIED_ANALYST_MAX_TOKENS", fallback=6000)
+UNIFIED_SECTION_MAX_CHARS: int = cfg("unified_analyst.section_max_chars", env="UNIFIED_SECTION_MAX_CHARS", fallback=2500)
+UNIFIED_BUNDLE_MAX_CHARS: int = cfg("unified_analyst.bundle_max_chars", env="UNIFIED_BUNDLE_MAX_CHARS", fallback=18000)
 
 
 def unified_analyst_sectors() -> set[str]:

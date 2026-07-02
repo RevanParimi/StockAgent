@@ -22,6 +22,7 @@ COPY services/   ./services/
 COPY src/backend/ ./backend/
 COPY scripts/    ./scripts/
 COPY main.py     ./
+COPY config.yaml ./config.yaml
 
 # Frontend: the prototype app + PWA assets (manifest.json, sw.js, icons,
 # .well-known/assetlinks.json). Served by services/api/server.py at "/".

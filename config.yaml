@@ -1,0 +1,288 @@
+# =============================================================================
+# StockAgent tunable configuration
+# Precedence: environment variable  >  this file  >  hardcoded fallback (base.py)
+# Secrets (API keys, webhook URLs) NEVER go here — they stay in .env.
+# =============================================================================
+
+llm:
+  # Hybrid model tiers — 2026-06-03 benchmark (scripts/model_bench.py), bulk tier
+  # re-benchmarked 2026-07-02.
+  #   fast      – chat tool-loop (tools + free text, no json_object): qwen/qwen3.6-flash
+  #   reasoning – judgment calls (aggregator verdict, RL feedback/thesis): qwen/qwen3.7-max
+  #   bulk      – high-volume sector-agent scoring (json_object): deepseek/deepseek-v4-flash
+  #               $0.09/$0.18 per M (vs 0.36/0.40 for retired qwen-2.5-72b), 1M ctx,
+  #               json_object verified 2026-07-02 with reasoning disabled.
+  # NB 2026-07: OpenRouter silently rolled several models to thinking-by-default
+  # snapshots, truncating json_object output. EVERY json_object call site passes
+  # extra_body=JSON_MODE_EXTRA_BODY (llm_client.py) to disable reasoning.
+  # Retired: qwen3-235b (broke JSON), qwen-2.5-72b (2-4x cost of deepseek),
+  # Gemini 3.5 Flash (broken output + 64x cost), Kimi (empty + 68s).
+  model_fast: "qwen/qwen3.6-flash"
+  model_reasoning: "qwen/qwen3.7-max"
+  model_bulk: "deepseek/deepseek-v4-flash"
+  temperature: 0.2
+  max_tokens: 2048
+  timeout_seconds: 60
+  # Token cost rates (USD per million) for telemetry — default to the BULK tier.
+  input_cost_per_m: 0.09
+  output_cost_per_m: 0.18
+
+logging:
+  # Permanent log/telemetry archive (services/data/stores/log_store.py).
+  # Lives under data/ so it sits on the Railway volume and SURVIVES DEPLOYS.
+  telemetry_db_path: "data/telemetry.db"
+
+agent_execution:
+  timeout_seconds: 120
+  max_retries: 3
+  retry_delay_seconds: 2.0
+
+# Signal Aggregator – agent weights (must sum to 1.0)
+agent_weights:
+  sales_demand: 0.15
+  raw_materials: 0.09
+  fundamentals: 0.18
+  pattern_analysis: 0.11
+  sentiment: 0.04
+  policy_regulatory: 0.09
+  competitive_intel: 0.09
+  risk_macro: 0.13
+  valuation_catalyst: 0.12
+
+# Score thresholds for the final stock score (rendered as tuples in base.py)
+score_thresholds:
+  strong_buy: [0.75, 1.00]
+  buy: [0.55, 0.75]
+  neutral: [0.40, 0.55]
+  sell: [0.20, 0.40]
+  strong_sell: [0.00, 0.20]
+
+data_fetch:
+  news_articles_per_query: 5
+  serper_max_queries: 3          # per agent run — controls API cost
+  financials_lookback_quarters: 4
+  serper_timeout_seconds: 10
+  tavily_max_content_chars: 600
+  price_history_years: 10        # OHLCV history for pattern analysis
+  technical_refresh_interval_min: 15
+  # Macro cache: HIT saves Serper calls for every stock in the same sector
+  # within the TTL (keys: automobile / bfsi / it).
+  macro_cache_ttl_hours: 4.0
+
+scheduler:
+  enabled: false                 # master switch (true in Railway prod via env)
+  cron: "30 8 * * 1-5"           # weekdays 8:30am IST
+  tickers: ["MARUTI", "TATAMOTORS", "M&M", "HEROMOTOCO", "BAJAJ-AUTO"]
+  feedback_cron: "0 11 * * 1-5"  # daily RL review: weekdays 4:30pm IST = 11:00 UTC
+  alert_score_change_threshold: 0.10
+  alert_on_verdict_change: true
+  alert_channels: ["console", "file"]
+  score_history_max_rows: 90     # ~3 months daily
+
+chat:
+  max_review_cycles: 0           # reviewer loop removed in 3-node pipeline redesign
+
+macro_news:
+  enabled: true
+  retain_days: 90
+  context_max_items: 3           # HIGH-severity items per synthesize call
+  reviewer_max_items: 5
+
+regime:
+  # Regime detection thresholds
+  vix_volatile_threshold: 22.0
+  vix_low_vol_threshold: 14.0
+  fii_proxy_threshold_pct: 1.0   # Nifty 5-day move threshold for FII proxy
+  rsi_overbought: 70.0
+  rsi_oversold: 30.0
+  # Sticky-regime hysteresis: consecutive milder detections required to exit
+  calm_days: 3
+
+# Applied on top of learned WeightMemory weights (daily-only modifier, not stored).
+# Agents not listed default to 1.0.
+regime_multipliers:
+  MACRO_CRISIS:
+    risk_macro: 1.40
+    fundamentals: 0.80
+    sales_demand: 0.70
+    sentiment: 0.80
+    pattern_analysis: 0.90
+    competitive_intel: 1.00
+    valuation_catalyst: 0.90
+    raw_materials: 1.00
+    policy_regulatory: 1.00
+  RISK_OFF:
+    risk_macro: 1.20
+    fundamentals: 0.90
+    sales_demand: 0.85
+    sentiment: 0.90
+    pattern_analysis: 0.95
+    competitive_intel: 1.00
+    valuation_catalyst: 0.95
+    raw_materials: 1.00
+    policy_regulatory: 1.00
+  NORMAL:
+    risk_macro: 1.00
+    fundamentals: 1.00
+    sales_demand: 1.00
+    sentiment: 1.00
+    pattern_analysis: 1.00
+    competitive_intel: 1.00
+    valuation_catalyst: 1.00
+    raw_materials: 1.00
+    policy_regulatory: 1.00
+  RISK_ON:
+    risk_macro: 0.90
+    fundamentals: 1.10
+    sales_demand: 1.10
+    sentiment: 1.15
+    pattern_analysis: 0.95
+    competitive_intel: 1.00
+    valuation_catalyst: 1.10
+    raw_materials: 1.00
+    policy_regulatory: 1.00
+  MOMENTUM_EXTENDED:
+    risk_macro: 0.85
+    fundamentals: 1.05
+    sales_demand: 0.95
+    sentiment: 0.80
+    pattern_analysis: 1.20
+    competitive_intel: 1.00
+    valuation_catalyst: 1.10
+    raw_materials: 1.00
+    policy_regulatory: 1.00
+  OVERSOLD:
+    risk_macro: 1.10
+    fundamentals: 1.00
+    sales_demand: 1.00
+    sentiment: 0.90
+    pattern_analysis: 1.30
+    competitive_intel: 1.00
+    valuation_catalyst: 1.05
+    raw_materials: 1.00
+    policy_regulatory: 1.00
+
+# REGIME_MULTIPLIERS uses automobile agent names as canonical keys; map each
+# sector's agents to the closest automobile role. Unlisted agent -> 1.0.
+sector_agent_regime_role:
+  banking_bfsi:
+    fundamentals: fundamentals        # earnings quality
+    risk: risk_macro                  # credit risk, NPA
+    macro_policy: policy_regulatory   # RBI policy
+    institutional: sentiment          # FII/DII flows
+    technical: pattern_analysis
+    business: valuation_catalyst      # loan book growth
+  it_sector:
+    fundamentals: fundamentals
+    risk_macro: risk_macro
+    global_macro: risk_macro          # US tech spend risk
+    peer_benchmark: competitive_intel # TCS vs Infosys
+    transcript_nlp: sentiment         # earnings call NLP
+    technical: pattern_analysis
+    valuation: valuation_catalyst
+  renewable_energy:
+    fundamentals: fundamentals
+    business: sales_demand            # capacity pipeline
+    valuation: valuation_catalyst
+    sentiment_policy: policy_regulatory  # MNRE/CERC policy
+    technical: pattern_analysis
+    risk: risk_macro                  # DISCOM/curtailment risk
+  automobile:                          # identity mapping
+    sales_demand: sales_demand
+    raw_materials: raw_materials
+    fundamentals: fundamentals
+    pattern_analysis: pattern_analysis
+    sentiment: sentiment
+    policy_regulatory: policy_regulatory
+    competitive_intel: competitive_intel
+    risk_macro: risk_macro
+    valuation_catalyst: valuation_catalyst
+
+rl:
+  # -- Forecast + weight adaptation (Phase 5) ------------------------------
+  forecast_horizon_days: 30
+  weight_max_step: 0.05            # max weight change per daily step
+  weight_max_drift: 0.15           # max total drift from base value
+  weight_min_observations: 3
+  weight_accuracy_window: 7
+  weight_boost_hit_rate: 0.70      # >=70% hit rate -> boost
+  weight_penalty_hit_rate: 0.40    # <=40% hit rate -> penalty
+  # -- Direction / early-exit ----------------------------------------------
+  flat_threshold_pct: 0.3          # moves within +/-0.3% classified FLAT
+  agent_rerun_threshold_pct: 0.5   # skip re-run when direction OK + error below; 0 disables
+  scheduler_max_workers: 1         # 1 = sequential (safe without file locking)
+  # -- Conviction streak (P3) ----------------------------------------------
+  streak_warning_threshold: 8
+  rsi_amplifier: 1.50
+  max_reversion_prior: 0.30
+  # -- ThesisReviewer ------------------------------------------------------
+  atr_threshold_floor: 1.5
+  atr_threshold_multiplier: 1.5
+  # -- Lesson propagation (P2) ---------------------------------------------
+  lesson_blend_existing: 0.70
+  lesson_blend_incoming: 0.30
+  cross_ticker_boost: 0.05
+  # -- Weight delta constants (STATIC_AUDIT #4) ----------------------------
+  boost: 0.02
+  penalty: -0.03
+  miss_streak_penalty: -0.05
+  bias_trigger: 0.55
+  bias_full: 0.70
+  timing_free_window: 3
+  timing_partial_window: 7
+  weight_drift_escape_days: 14     # streak length unlocking drift escape
+  weight_drift_escape_multiplier: 1.5
+  # -- Calibration reward (Intelligence Phase C2) --------------------------
+  calibration_reward_enabled: true
+  calibration_weight: 0.5
+  # -- Forgetting & recency (Intelligence Phase C3) -------------------------
+  forgetting_enabled: true
+  miss_recency_halflife_days: 21.0
+  miss_penalizable_discount: 0.3
+  archive_conf_floor: 0.12
+  archive_effectiveness_floor: 0.25
+  archive_stale_days: 60
+  feedback_halflife_months: 3.0
+  # -- Ticker dossier + executable claims (Knowledge Layer) ----------------
+  dossier_enabled: true
+  dossier_max_observations: 30
+  dossier_digest_max_chars: 2500
+  dossier_agent_digest_chars: 1500
+  dossier_max_new_obs_per_day: 3
+  dossier_distill_input_max_chars: 20000
+  claims_enabled: true
+  lesson_emphasis_delta: 0.03
+  lesson_emphasis_cap: 0.06
+  lesson_match_min_conf: 0.45
+  # -- Event-driven dossier ingestion (Phase 3) ----------------------------
+  event_ingest_enabled: true
+  event_ingest_lookback_days: 8
+  event_ingest_max_events_per_scan: 3
+  event_ingest_text_max_chars: 6000
+  # -- Research loop (Phase 4) ---------------------------------------------
+  research_loop_enabled: true
+  research_max_questions_per_run: 2
+  research_max_attempts: 3
+  research_context_max_chars: 6000
+  # -- Control lane + monthly scorecard (Phase 1) ---------------------------
+  control_lane_enabled: true
+  control_lane_model: ""           # empty -> llm.model_reasoning
+  scorecard_enabled: true
+  # -- Living Envelope (Phase 2.5) ------------------------------------------
+  reforecast_enabled: true
+  reforecast_max_per_month: 2
+  reforecast_thesis_mult_threshold: 0.5
+  regime_sticky_enabled: true
+  preopen_check_enabled: true
+  preopen_shock_severity: 0.7
+  # -- NSE official close cross-check ---------------------------------------
+  close_verify_enabled: true
+  close_verify_tolerance_pct: 1.0
+
+unified_analyst:
+  # CSV of sectors on the unified one-call path; "" disables everywhere.
+  sectors: "automobile,banking_bfsi,it_sector,renewable_energy"
+  fallback_legacy: true
+  max_tokens: 6000
+  section_max_chars: 2500
+  bundle_max_chars: 18000

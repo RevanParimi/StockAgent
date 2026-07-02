@@ -92,6 +92,38 @@ def _should_skip_agent_rerun(
     return direction_correct and abs(price_error_pct) < threshold
 
 
+def _resolve_cycle_and_forecast(
+    store: PredictionStore,
+    review_date: date,
+):
+    """
+    Pick the (cycle_id, envelope, forecast_row) to review a date against.
+
+    Own-month cycle first. When that envelope is missing or has no row for
+    the date (early-month days before that month's forecast ran, or a
+    cross-month backfill), fall back to the PREVIOUS month's envelope —
+    horizons span ~6 weeks, so its rows extend into the next month.
+    Either envelope or forecast may come back None — callers handle both.
+    """
+    cycle_id = store.cycle_id_for(review_date)
+    date_str = review_date.isoformat()
+    envelope = store.load_envelope(cycle_id)
+    forecast = envelope.get_forecast(date_str) if envelope else None
+
+    if forecast is None:
+        prev_cycle = store.cycle_id_for(review_date.replace(day=1) - timedelta(days=1))
+        prev_envelope = store.load_envelope(prev_cycle)
+        prev_forecast = prev_envelope.get_forecast(date_str) if prev_envelope else None
+        if prev_forecast is not None:
+            logger.info(
+                "[daily_review] %s: %s not in own-month envelope — using previous cycle %s",
+                store.ticker, date_str, prev_cycle,
+            )
+            return prev_cycle, prev_envelope, prev_forecast
+
+    return cycle_id, envelope, forecast
+
+
 def _fetch_actual_close(ticker: str, target_date: date) -> float | None:
     """
     Fetch the actual closing price for a specific date via yfinance.
@@ -261,6 +293,7 @@ def _revise_remaining_forecasts(
     thesis_review: ThesisReview | None = None,
     ticker_ledger=None,
     today_tags: list[str] | None = None,
+    cycle_id: str | None = None,
 ) -> None:
     """
     Update all remaining (future) forecast rows in the envelope:
@@ -274,7 +307,7 @@ def _revise_remaining_forecasts(
       - Step 7 (knowledge layer): Apply executable-claim emphasis to
         predicted_agent_scores for tagged lessons firing on today's tags
     """
-    envelope = store.load_envelope()
+    envelope = store.load_envelope(cycle_id)
     if envelope is None:
         logger.warning("[daily_review] No envelope to revise for %s", ticker)
         return
@@ -370,7 +403,7 @@ def run_daily_review(
         Sector graph to use: automobile | banking_bfsi | it_sector | renewable_energy
     """
     store    = PredictionStore(ticker, sector=sector)
-    cycle_id = store.current_cycle_id()
+    cycle_id = store.cycle_id_for(review_date)
     date_str = review_date.isoformat()
 
     logger.info(
@@ -435,7 +468,8 @@ def run_daily_review(
     # ------------------------------------------------------------------ #
     # Step 1: Load envelope + find today's prediction row
     # ------------------------------------------------------------------ #
-    envelope = store.load_envelope(cycle_id)
+    cycle_id, envelope, today_forecast = _resolve_cycle_and_forecast(store, review_date)
+
     if envelope is None:
         logger.error(
             "[daily_review] No prediction envelope for %s cycle %s. "
@@ -444,7 +478,6 @@ def run_daily_review(
         )
         return {"status": "no_envelope", "ticker": ticker, "date": date_str}
 
-    today_forecast = envelope.get_forecast(date_str)
     if today_forecast is None:
         logger.warning(
             "[daily_review] No forecast row for %s on %s (holiday or non-trading day?)",
@@ -609,7 +642,7 @@ def run_daily_review(
     # P4: Load prompt enhancements (top missed factors from previous cycles) and
     # append them to market_context_today so FeedbackAgent is primed on recurring blindspots.
     try:
-        enhancements = store.load_enhancements(store.current_cycle_id())
+        enhancements = store.load_enhancements(cycle_id)
         if enhancements:
             lines = ["[RECURRING BLINDSPOTS — pay close attention]"]
             for agent_key, tips in enhancements.items():
@@ -1074,7 +1107,11 @@ def run_daily_review(
     # ------------------------------------------------------------------ #
     reforecast_envelope: PredictionEnvelope | None = None
     reforecast_trigger: str | None = None
-    if getattr(settings, "RL_REFORECAST_ENABLED", True):
+    # Re-forecasts only make sense for the live cycle: regenerate_envelope()
+    # always rewrites the CURRENT month's envelope, so a shock seen while
+    # replaying a historical date (cross-month backfill) must not fire it.
+    _is_live_cycle = cycle_id == store.current_cycle_id()
+    if getattr(settings, "RL_REFORECAST_ENABLED", True) and _is_live_cycle:
         try:
             thesis_mult_threshold = getattr(settings, "RL_REFORECAST_THESIS_MULT_THRESHOLD", 0.5)
 
@@ -1167,6 +1204,7 @@ def run_daily_review(
             thesis_review=thesis_review,
             ticker_ledger=updated_ledger,
             today_tags=today_tags,
+            cycle_id=cycle_id,
         )
 
     # ------------------------------------------------------------------ #

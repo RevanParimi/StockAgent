@@ -147,13 +147,14 @@ class DossierCurator:
 
     def _call_llm(self, system_prompt: str, user_prompt: str) -> str:
         from core.config import settings
-        from services.clients.llm_client import get_llm_client
+        from services.clients.llm_client import JSON_MODE_EXTRA_BODY, get_llm_client
         client = get_llm_client()
         resp = client.chat.completions.create(
             model=settings.LLM_MODEL,
             temperature=0.2,
             max_tokens=900,
             response_format={"type": "json_object"},
+            extra_body=JSON_MODE_EXTRA_BODY,
             messages=[{"role": "system", "content": system_prompt},
                       {"role": "user", "content": user_prompt}],
         )

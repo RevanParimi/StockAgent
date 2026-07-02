@@ -120,7 +120,14 @@ def record_llm_call(
     latency_ms: int,
     success: bool,
 ) -> None:
-    """Append one JSON line per LLM call to outputs/llm_log/{date}.jsonl. Never raises."""
+    """Record one LLM call: permanent SQLite archive (data/telemetry.db, on the
+    Railway volume — survives deploys) + legacy JSONL line under
+    outputs/llm_log/ (ephemeral in prod; kept for local tooling). Never raises."""
+    try:
+        from services.data.stores.log_store import log_llm_call
+        log_llm_call(caller, model, input_tokens, output_tokens, latency_ms, success)
+    except Exception as exc:
+        logger.warning("[llm_client] telemetry DB write failed (non-fatal): %s", exc)
     try:
         _LLM_LOG_DIR.mkdir(parents=True, exist_ok=True)
         log_path = _LLM_LOG_DIR / f"{date.today().isoformat()}.jsonl"

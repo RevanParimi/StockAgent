@@ -45,6 +45,7 @@ from backend.shared.config import settings
 from backend.shared.schemas.pipeline import AgentOutput, FinalReport, PipelineRun, StockQuery
 from backend.shared.prompts import orchestrator as P
 from backend.shared.clients.llm_client import get_llm_client
+from services.clients.llm_client import JSON_MODE_EXTRA_BODY
 from backend.shared.data.fetchers.symbol_resolver import learn_company_name, resolve_company_name
 from backend.shared.data.stores.run_logger import log_llm_call, log_run_summary
 from backend.shared.data.stores.analysis_logger import log_analysis
@@ -377,6 +378,7 @@ class BaseSectorOrchestrator(ABC):
                     {"role": "user",   "content": prompt},
                 ],
                 response_format={"type": "json_object"},
+                extra_body=JSON_MODE_EXTRA_BODY,
             )
             if response.usage:
                 pt = response.usage.prompt_tokens

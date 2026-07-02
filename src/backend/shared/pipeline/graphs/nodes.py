@@ -30,7 +30,7 @@ from langgraph.types import Send
 
 from backend.shared.config import settings
 from backend.shared.schemas.pipeline import AgentOutput, FinalReport, StockQuery, WeightedAgentScore
-from services.clients.llm_client import get_llm_client
+from services.clients.llm_client import JSON_MODE_EXTRA_BODY, get_llm_client
 from services.data.stores.run_logger import log_llm_call
 
 from backend.shared.pipeline.graphs.rails import conflict_rail, input_rail, output_rail
@@ -75,6 +75,7 @@ def make_resolve_ticker_node(sector: str) -> Callable[[GraphState], dict]:
                     {"role": "user",   "content": _RESOLVE_USER.format(user_input=user_input)},
                 ],
                 response_format={"type": "json_object"},
+                extra_body=JSON_MODE_EXTRA_BODY,
             )
             data = json.loads(resp.choices[0].message.content or "{}")
             if resp.usage:
@@ -345,6 +346,7 @@ def make_aggregate_node(
                         {"role": "user",   "content": prompt},
                     ],
                     response_format={"type": "json_object"},
+                    extra_body=JSON_MODE_EXTRA_BODY,
                 )
                 data = json.loads(resp.choices[0].message.content or "{}")
                 final_score = float(data.get("final_score", final_score))
@@ -380,6 +382,7 @@ def make_aggregate_node(
                         {"role": "user",   "content": prompt},
                     ],
                     response_format={"type": "json_object"},
+                    extra_body=JSON_MODE_EXTRA_BODY,
                 )
                 data = json.loads(resp.choices[0].message.content or "{}")
                 final_score = float(data.get("final_score", final_score))

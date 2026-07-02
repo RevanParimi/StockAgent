@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import sys
 import pathlib
 import threading
@@ -59,6 +60,16 @@ class _ISTFormatter(logging.Formatter):
 
 
 logging.basicConfig(level=logging.INFO)
+
+# Mirror WARNING+ into the permanent SQLite archive on the volume
+# (data/telemetry.db) — Railway console logs rotate per-deploy, this doesn't.
+try:
+    from services.data.stores.log_store import SQLiteLogHandler
+    _db_handler = SQLiteLogHandler(level=logging.WARNING)
+    _db_handler.setFormatter(logging.Formatter("%(message)s"))
+    logging.getLogger().addHandler(_db_handler)
+except Exception as _exc:  # pragma: no cover — telemetry must never block startup
+    logging.getLogger(__name__).warning("SQLite log handler unavailable: %s", _exc)
 _ist_fmt = _ISTFormatter("%(asctime)s %(levelname)-8s [%(name)s] %(message)s")
 for _h in logging.root.handlers:
     _h.setFormatter(_ist_fmt)
@@ -272,6 +283,35 @@ def _ensure_calendar_file() -> None:
 # Lifespan — startup + shutdown
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# Singleton lock — uvicorn runs N workers (Dockerfile: --workers 2) and the
+# lifespan executes in EVERY worker process. Without a cross-process guard the
+# scheduler and RL self-heal ran once per worker: every cron job fired twice
+# (2× LLM spend), and concurrent tmp→rename writes raced (2026-07-02 incident:
+# "[RegimeState] Failed to persist … Errno 2"). One worker binds a localhost
+# port and becomes the singleton owner; the OS releases the lock automatically
+# if that process dies. The other workers serve API traffic only.
+# ---------------------------------------------------------------------------
+
+_singleton_lock_socket = None   # module-level: held for process lifetime
+
+
+def _acquire_singleton_lock() -> bool:
+    """True if this process now owns the background-work lock."""
+    global _singleton_lock_socket
+    import socket
+    port = int(os.getenv("SINGLETON_LOCK_PORT", "59321"))
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        s.bind(("127.0.0.1", port))
+        s.listen(1)
+        _singleton_lock_socket = s
+        return True
+    except OSError:
+        s.close()
+        return False
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # ── Startup ──────────────────────────────────────────────────────────────
@@ -283,28 +323,38 @@ async def lifespan(app: FastAPI):
     # 1. Calendar file (sync, fast — just a file check + possible HTTP call)
     _ensure_calendar_file()
 
-    # 2. RL self-heal (heavy — 9-agent pipeline per ticker)
-    #    Run in a daemon thread so the server accepts requests immediately.
-    heal_thread = threading.Thread(target=_self_heal_rl, name="rl-self-heal", daemon=True)
-    heal_thread.start()
-    logger.info("[startup] RL self-heal thread started (runs in background)")
+    is_primary = _acquire_singleton_lock()
+    if is_primary:
+        # 2. RL self-heal (heavy — 9-agent pipeline per ticker)
+        #    Run in a daemon thread so the server accepts requests immediately.
+        heal_thread = threading.Thread(target=_self_heal_rl, name="rl-self-heal", daemon=True)
+        heal_thread.start()
+        logger.info("[startup] RL self-heal thread started (runs in background)")
 
-    # 3. Background scheduler
-    try:
-        _get_scheduler().start()
-    except Exception as exc:
-        logger.warning("[startup] Scheduler failed to start (non-fatal): %s", exc)
+        # 3. Background scheduler
+        try:
+            _get_scheduler().start()
+        except Exception as exc:
+            logger.warning("[startup] Scheduler failed to start (non-fatal): %s", exc)
+    else:
+        logger.info(
+            "[startup] Singleton lock held by another worker — "
+            "this worker serves API requests only (no scheduler, no self-heal)"
+        )
 
     logger.info("[startup] === Startup complete — accepting requests ===")
 
     yield  # Server is running here
 
     # ── Shutdown ─────────────────────────────────────────────────────────────
-    logger.info("[shutdown] Stopping scheduler…")
-    try:
-        _get_scheduler().stop()
-    except Exception as exc:
-        logger.warning("[shutdown] Scheduler stop error (non-fatal): %s", exc)
+    # Only the singleton owner ever started a scheduler; don't lazily create
+    # one in API-only workers just to stop it.
+    if _scheduler_instance is not None:
+        logger.info("[shutdown] Stopping scheduler…")
+        try:
+            _get_scheduler().stop()
+        except Exception as exc:
+            logger.warning("[shutdown] Scheduler stop error (non-fatal): %s", exc)
     logger.info("[shutdown] Clean shutdown complete")
 
 

@@ -39,6 +39,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from core.config import settings
+from services.clients.llm_client import JSON_MODE_EXTRA_BODY
 
 if TYPE_CHECKING:
     from core.schemas.feedback import LearningLedger
@@ -431,6 +432,7 @@ class PromptEnhancer:
                     {"role": "user",   "content": user_prompt},
                 ],
                 response_format={"type": "json_object"},
+                extra_body=JSON_MODE_EXTRA_BODY,
             )
             raw = resp.choices[0].message.content or "{}"
             data = json.loads(raw)

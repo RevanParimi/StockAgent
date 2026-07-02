@@ -25,28 +25,33 @@ load_dotenv()  # reads .env in project root if present
 OPENROUTER_API_KEY: str = os.getenv("OPENROUTER_API_KEY", "your-openrouter-api-key-here")
 OPENROUTER_BASE_URL: str = "https://openrouter.ai/api/v1"
 
-# Hybrid model tiers — chosen from the 2026-06-03 benchmark (scripts/model_bench.py).
-# qwen3-235b RETIRED: qwen3.6-flash beat it on depth, speed AND reliability for ~the same cost.
+# Hybrid model tiers — 2026-06-03 benchmark (scripts/model_bench.py), bulk tier
+# re-benchmarked 2026-07-02.
 #   FAST      – chat tool-loop (tools + free text, no json_object): fast, strong tool-use. qwen/qwen3.6-flash
 #   REASONING – judgment calls (aggregator verdict, RL feedback/thesis): deepest answers. qwen/qwen3.7-max
-#               NB validated for response_format=json_object — thinking models (e.g. qwen3-235b) break it.
-#   BULK      – high-volume sector-agent scoring (json_object): the JSON-proven model. qwen-2.5-72b
-#               (the .env-tested workhorse; 235b was retired because it broke JSON output).
-# Override any tier in .env. Gemini 3.5 Flash rejected (broken output + 64× cost); Kimi too (empty + 68s).
+#   BULK      – high-volume sector-agent scoring (json_object). deepseek/deepseek-v4-flash:
+#               $0.09/$0.18 per M (vs 0.36/0.40 for the retired qwen-2.5-72b), 1M ctx,
+#               json_object verified 2026-07-02 with reasoning disabled.
+#
+# NB 2026-07: OpenRouter silently rolled several models to thinking-by-default
+# snapshots, which truncates json_object output. EVERY json_object call site
+# passes extra_body=JSON_MODE_EXTRA_BODY (llm_client.py) to disable reasoning,
+# so tier choices here are safe regardless of upstream snapshot behavior.
+# Retired: qwen3-235b (broke JSON), qwen-2.5-72b (outdated, 2-4× cost of deepseek),
+# Gemini 3.5 Flash (broken output + 64× cost), Kimi (empty + 68s).
 LLM_MODEL_FAST: str      = os.getenv("LLM_MODEL_FAST", "qwen/qwen3.6-flash")
 LLM_MODEL_REASONING: str = os.getenv("LLM_MODEL_REASONING", "qwen/qwen3.7-max")
-LLM_MODEL_BULK: str      = os.getenv("LLM_MODEL_BULK", "qwen/qwen-2.5-72b-instruct")
-# Back-compat catch-all: any call-site still reading LLM_MODEL gets the BULK tier
-# (was qwen3-235b-a22b until 2026-06-03).
+LLM_MODEL_BULK: str      = os.getenv("LLM_MODEL_BULK", "deepseek/deepseek-v4-flash")
+# Back-compat catch-all: any call-site still reading LLM_MODEL gets the BULK tier.
 LLM_MODEL: str = os.getenv("LLM_MODEL", LLM_MODEL_BULK)
 LLM_TEMPERATURE: float = float(os.getenv("LLM_TEMPERATURE", "0.2"))
 LLM_MAX_TOKENS: int = int(os.getenv("LLM_MAX_TOKENS", "2048"))
 LLM_TIMEOUT_SECONDS: int = int(os.getenv("LLM_TIMEOUT_SECONDS", "60"))
 
 # Token cost rates (USD per million tokens) for telemetry — default to the BULK tier
-# (qwen3.6-flash). Override in .env if you repoint the tiers.
-LLM_INPUT_COST_PER_M: float = float(os.getenv("LLM_INPUT_COST_PER_M", "0.1875"))
-LLM_OUTPUT_COST_PER_M: float = float(os.getenv("LLM_OUTPUT_COST_PER_M", "1.125"))
+# (deepseek-v4-flash, OpenRouter 2026-07-02). Override in .env if you repoint the tiers.
+LLM_INPUT_COST_PER_M: float = float(os.getenv("LLM_INPUT_COST_PER_M", "0.09"))
+LLM_OUTPUT_COST_PER_M: float = float(os.getenv("LLM_OUTPUT_COST_PER_M", "0.18"))
 
 
 # ---------------------------------------------------------------------------
@@ -114,6 +119,11 @@ SCORE_THRESHOLDS: dict[str, tuple[float, float]] = {
 # ---------------------------------------------------------------------------
 LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
 LOG_FILE: str = os.getenv("LOG_FILE", "logs/automobile_agent.log")
+
+# Permanent log/telemetry archive (services/data/stores/log_store.py).
+# Lives under data/ so it sits on the Railway volume and SURVIVES DEPLOYS —
+# Railway console logs rotate per-deployment and are lost otherwise.
+TELEMETRY_DB_PATH: str = os.getenv("TELEMETRY_DB_PATH", "data/telemetry.db")
 
 # ---------------------------------------------------------------------------
 # Output

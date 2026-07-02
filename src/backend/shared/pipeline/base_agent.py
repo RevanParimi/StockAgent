@@ -25,7 +25,7 @@ from openai import APIError, APITimeoutError, RateLimitError
 
 from backend.shared.config import settings  # migrated
 from backend.shared.schemas.pipeline import AgentOutput, StockQuery  # migrated
-from services.clients.llm_client import get_llm_client, get_async_llm_client
+from services.clients.llm_client import JSON_MODE_EXTRA_BODY, get_llm_client, get_async_llm_client
 from services.data.stores.run_logger import log_llm_call
 
 logger = logging.getLogger(__name__)
@@ -219,6 +219,7 @@ class BaseAgent(ABC):
                         {"role": "user",   "content": user_prompt},
                     ],
                     response_format={"type": "json_object"},
+                    extra_body=JSON_MODE_EXTRA_BODY,
                 )
                 content = response.choices[0].message.content or ""
                 logger.debug("[%s] Raw LLM response: %s", self.agent_name, content[:200])
@@ -276,6 +277,7 @@ class BaseAgent(ABC):
                         {"role": "user",   "content": user_prompt},
                     ],
                     response_format={"type": "json_object"},
+                    extra_body=JSON_MODE_EXTRA_BODY,
                 )
                 content = response.choices[0].message.content or ""
                 logger.debug("[%s] Raw async LLM response: %s", self.agent_name, content[:200])

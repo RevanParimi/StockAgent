@@ -76,11 +76,11 @@ class TestOpenRouterSettings:
             f"Expected openrouter.ai in base URL, got: {settings.OPENROUTER_BASE_URL}"
         )
 
-    def test_model_is_qwen(self):
+    def test_model_is_approved_openrouter_slug(self):
         from core.config import settings
-        assert "qwen" in settings.LLM_MODEL.lower(), (
-            f"Expected Qwen model, got: {settings.LLM_MODEL}. "
-            "Set LLM_MODEL=qwen/qwen3-235b-a22b in .env"
+        assert any(fam in settings.LLM_MODEL.lower() for fam in ("qwen", "deepseek")), (
+            f"Expected an approved OpenRouter model family (qwen/deepseek), "
+            f"got: {settings.LLM_MODEL}"
         )
 
     def test_no_groq_api_key_attribute(self):

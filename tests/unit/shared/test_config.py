@@ -75,9 +75,10 @@ class TestLLMSettings:
     def test_openrouter_api_key_attribute_exists(self):
         assert hasattr(settings, "OPENROUTER_API_KEY")
 
-    def test_model_is_qwen(self):
-        assert "qwen" in settings.LLM_MODEL.lower(), (
-            f"Expected Qwen model via OpenRouter, got: {settings.LLM_MODEL}"
+    def test_model_is_approved_openrouter_slug(self):
+        assert any(fam in settings.LLM_MODEL.lower() for fam in ("qwen", "deepseek")), (
+            f"Expected an approved OpenRouter model family (qwen/deepseek), "
+            f"got: {settings.LLM_MODEL}"
         )
 
 

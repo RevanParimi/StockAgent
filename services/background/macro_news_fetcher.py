@@ -330,7 +330,7 @@ Respond ONLY with JSON inside <json> tags:
 </json>"""
 
         try:
-            from services.clients.llm_client import get_llm_client
+            from services.clients.llm_client import JSON_MODE_EXTRA_BODY, get_llm_client
             from backend.shared.config import settings as _s
 
             client = get_llm_client()
@@ -341,13 +341,19 @@ Respond ONLY with JSON inside <json> tags:
                         "role": "system",
                         "content": (
                             "You are a concise financial news quality reviewer. "
-                            "Output only valid JSON inside <json> tags. No other text."
+                            "Output only a valid JSON object. No other text."
                         ),
                     },
                     {"role": "user", "content": prompt},
                 ],
                 temperature=0.0,
-                max_tokens=600,
+                # json_object + reasoning-off (2026-07): free-text <json>-tag
+                # extraction on a thinking-by-default model returned prose/empty
+                # → JSONDecodeError char 0, macro feeds written partial 3×/day.
+                # The review JSON itself is ~200-400 tokens; 1500 is headroom.
+                max_tokens=1500,
+                response_format={"type": "json_object"},
+                extra_body=JSON_MODE_EXTRA_BODY,
             )
 
             raw_text = resp.choices[0].message.content or ""

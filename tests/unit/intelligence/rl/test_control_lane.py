@@ -55,8 +55,8 @@ def _patch_llm(monkeypatch, payload: dict | str, model: str = "test-model"):
 
 def test_scoring_fills_correct_for_up(tmp_path, monkeypatch):
     store = _store(tmp_path)
-    cycle_id = store.current_cycle_id()
     review_date = date(2026, 6, 10)
+    cycle_id = store.cycle_id_for(review_date)
 
     _seed_log(store, cycle_id, [
         ControlPrediction(date="2026-06-10", made_on="2026-06-09",
@@ -87,8 +87,8 @@ def test_scoring_fills_correct_for_up(tmp_path, monkeypatch):
 
 def test_scoring_fills_correct_for_down_mismatch(tmp_path, monkeypatch):
     store = _store(tmp_path)
-    cycle_id = store.current_cycle_id()
     review_date = date(2026, 6, 10)
+    cycle_id = store.cycle_id_for(review_date)
 
     _seed_log(store, cycle_id, [
         ControlPrediction(date="2026-06-10", made_on="2026-06-09",
@@ -116,8 +116,8 @@ def test_scoring_fills_correct_for_down_mismatch(tmp_path, monkeypatch):
 
 def test_prediction_appended_for_next_trading_day(tmp_path, monkeypatch):
     store = _store(tmp_path)
-    cycle_id = store.current_cycle_id()
     review_date = date(2026, 6, 10)  # Wednesday -> next trading day = Thursday 06-11
+    cycle_id = store.cycle_id_for(review_date)
 
     _patch_llm(monkeypatch, {
         "direction": "UP", "confidence": 0.7, "predicted_close": 110.5,
@@ -142,8 +142,8 @@ def test_prediction_appended_for_next_trading_day(tmp_path, monkeypatch):
 
 def test_rationale_truncated_to_200_chars(tmp_path, monkeypatch):
     store = _store(tmp_path)
-    cycle_id = store.current_cycle_id()
     review_date = date(2026, 6, 10)
+    cycle_id = store.cycle_id_for(review_date)
 
     long_rationale = "x" * 500
     _patch_llm(monkeypatch, {
@@ -206,8 +206,8 @@ def test_month_boundary_writes_to_next_month_log(tmp_path, monkeypatch):
 
 def test_llm_failure_scoring_still_applied(tmp_path, monkeypatch):
     store = _store(tmp_path)
-    cycle_id = store.current_cycle_id()
     review_date = date(2026, 6, 10)
+    cycle_id = store.cycle_id_for(review_date)
 
     _seed_log(store, cycle_id, [
         ControlPrediction(date="2026-06-10", made_on="2026-06-09",
@@ -241,8 +241,8 @@ def test_llm_failure_scoring_still_applied(tmp_path, monkeypatch):
 
 def test_invalid_direction_discarded(tmp_path, monkeypatch):
     store = _store(tmp_path)
-    cycle_id = store.current_cycle_id()
     review_date = date(2026, 6, 10)
+    cycle_id = store.cycle_id_for(review_date)
 
     _seed_log(store, cycle_id, [
         ControlPrediction(date="2026-06-10", made_on="2026-06-09",

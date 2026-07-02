@@ -123,7 +123,11 @@ def test_run_daily_review_writes_dossier_and_event_tags(tmp_path, monkeypatch):
     date_str = review_date.isoformat()
 
     store = PredictionStore(ticker, sector=sector, base_dir=tmp_path)
-    cycle_id = store.current_cycle_id()
+    # Cycle of the (fixed, historical) review date — daily_review resolves the
+    # cycle from the review date, so the envelope must live there too. The
+    # date stays fixed because the event_tags assertion below depends on the
+    # June monsoon calendar window.
+    cycle_id = store.cycle_id_for(review_date)
     store.save_envelope(_make_envelope(ticker, cycle_id))
 
     # --- Monkeypatch all network/LLM-touching boundaries (non-deterministic / slow) ---

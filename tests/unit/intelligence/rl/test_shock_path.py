@@ -23,7 +23,7 @@ Covers docs/superpowers/specs/2026-06-13-living-envelope-design.md §4.2/§4.3:
 from __future__ import annotations
 
 import json
-from datetime import date
+from datetime import date, timedelta
 
 import pytest
 
@@ -39,21 +39,27 @@ from core.intelligence.rl.stores.prediction_store import PredictionStore
 
 TICKER = "TESTSHOCK"
 SECTOR = "automobile"
-REVIEW_DATE = date(2026, 6, 10)
+# Today-anchored: re-forecast triggers only fire for the LIVE cycle (a
+# historical replay must never rewrite the current envelope), so these tests
+# must review a current-month date. Fixed dates here rotted at month rollover.
+REVIEW_DATE = date.today()
+NEXT_DATE = REVIEW_DATE + timedelta(days=1)
 DATE_STR = REVIEW_DATE.isoformat()
 
 
 def _make_envelope(ticker: str = TICKER, verdict: str = "BUY") -> PredictionEnvelope:
     """2-day BUY-verdict envelope: day 1 = review date, day 2 = "tomorrow"."""
     return PredictionEnvelope(
-        ticker=ticker, sector=SECTOR, cycle_id=f"{ticker}_2026-06",
-        generated_at="2026-06-01T00:00:00", base_close=100.0,
+        ticker=ticker, sector=SECTOR,
+        cycle_id=f"{ticker}_{REVIEW_DATE.year}-{REVIEW_DATE.month:02d}",
+        generated_at=f"{REVIEW_DATE.replace(day=1).isoformat()}T00:00:00",
+        base_close=100.0,
         daily_forecasts=[
-            DailyForecast(day=1, date="2026-06-10", predicted_close=100.0,
+            DailyForecast(day=1, date=DATE_STR, predicted_close=100.0,
                            predicted_verdict=verdict,
                            predicted_agent_scores={"risk_macro": 0.5, "sales_demand": 0.5},
                            confidence=0.5),
-            DailyForecast(day=2, date="2026-06-11", predicted_close=101.0,
+            DailyForecast(day=2, date=NEXT_DATE.isoformat(), predicted_close=101.0,
                            predicted_verdict=verdict,
                            predicted_agent_scores={"risk_macro": 0.5, "sales_demand": 0.5},
                            confidence=0.5),
@@ -103,6 +109,11 @@ def _patch_common(dr, monkeypatch, tmp_path, actual_close: float = 98.0):
 
     import core.intelligence.rl.algorithms.factor_regime as factor_regime_mod
     monkeypatch.setattr(factor_regime_mod, "get_factor_regime", lambda *a, **k: None)
+
+    # REVIEW_DATE == today: never let a real month-end trigger the (slow,
+    # networked) seasonal validation inside these unit tests.
+    import core.intelligence.rl.workflows.month_end_validation as mev
+    monkeypatch.setattr(mev, "_is_last_trading_day_of_month", lambda d: False)
 
     from core.intelligence.rl.agents.dossier_curator import DossierCurator
     dossier_payload = {
@@ -330,7 +341,7 @@ def test_rate_capped_external_shock_does_not_fire_trigger(tmp_path, monkeypatch)
     prior_entries = []
     for i, mt in enumerate(["external_shock", "external_shock", "magnitude", "magnitude", "magnitude"]):
         prior_entries.append(FeedbackEntry(
-            day=i + 1, date=f"2026-06-{i+1:02d}",
+            day=i + 1, date=(REVIEW_DATE - timedelta(days=5 - i)).isoformat(),
             predicted_close=100.0, actual_close=100.0, price_error_pct=0.0,
             predicted_verdict="BUY", actual_direction="UP", direction_correct=True,
             miss_analysis=MissAnalysis(

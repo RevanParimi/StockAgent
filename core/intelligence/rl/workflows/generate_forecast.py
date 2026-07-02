@@ -573,7 +573,9 @@ def regenerate_envelope(
 
     try:
         store = PredictionStore(ticker, sector=sector)
-        cycle_id = store.current_cycle_id()
+        # Cycle derived from review_date (== today in normal operation) so the
+        # regenerated envelope is the one containing the shock day.
+        cycle_id = store.cycle_id_for(review_date)
 
         envelope = store.load_envelope(cycle_id)
         if envelope is None:

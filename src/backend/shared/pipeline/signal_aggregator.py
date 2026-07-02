@@ -25,7 +25,7 @@ from backend.shared.schemas.pipeline import (  # migrated
     WeightedAgentScore,
 )
 from backend.shared.prompts import signal_aggregator as P  # migrated
-from services.clients.llm_client import get_llm_client
+from services.clients.llm_client import JSON_MODE_EXTRA_BODY, get_llm_client
 from services.data.stores.run_logger import log_llm_call
 
 logger = logging.getLogger(__name__)
@@ -230,6 +230,7 @@ class SignalAggregator:
                 {"role": "user",   "content": user_prompt},
             ],
             response_format={"type": "json_object"},
+            extra_body=JSON_MODE_EXTRA_BODY,
         )
         if response.usage:
             self._last_prompt_tokens = response.usage.prompt_tokens

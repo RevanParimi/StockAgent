@@ -955,6 +955,11 @@ class FeedbackAgentOutput(BaseModel):
     agent_score_drift: dict[str, float] = Field(default_factory=dict)
     new_lessons: list[RawLesson] = Field(default_factory=list)
     revised_context: RevisedContext = Field(default_factory=RevisedContext)
+    # True when this output is a pipeline-failure fallback (LLM unavailable or
+    # unparseable/unsalvageable response) rather than real analysis. Degraded
+    # outputs MUST NOT feed the LearningLedger — pipeline errors are telemetry,
+    # never training signal (see FeedbackAgent.merge_lessons_into_ledger).
+    degraded: bool = False
 
 
 # ---------------------------------------------------------------------------

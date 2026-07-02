@@ -50,6 +50,7 @@ import time
 from openai import APIError, APITimeoutError, RateLimitError
 
 from core.config import settings
+from services.clients.llm_client import JSON_MODE_EXTRA_BODY
 from core.schemas.feedback import FeedbackAgentOutput, ThesisReview
 
 logger = logging.getLogger(__name__)
@@ -228,6 +229,7 @@ class ThesisReviewer:
                         {"role": "user",   "content": user_prompt},
                     ],
                     response_format={"type": "json_object"},
+                    extra_body=JSON_MODE_EXTRA_BODY,
                 )
                 return resp.choices[0].message.content or "{}"
             except RateLimitError as e:

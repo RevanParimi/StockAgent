@@ -22,6 +22,78 @@ logger = logging.getLogger(__name__)
 _LLM_LOG_DIR = Path("outputs/llm_log")
 
 
+# OpenRouter extra_body for JSON-mode calls: disable upstream "thinking".
+# 2026-07: OpenRouter silently rolled qwen3.7-max / qwen3.6-flash to snapshots
+# that emit reasoning blocks by default. Reasoning burns the completion budget
+# unpredictably, so json_object responses get truncated mid-string (the
+# "Expecting value" / "Unterminated string" parse failures seen in prod).
+# Structured-output calls gain nothing from emitted reasoning — disable it so
+# output size is deterministic. Pass as `extra_body=JSON_MODE_EXTRA_BODY` on
+# every chat.completions.create() that sets response_format=json_object.
+JSON_MODE_EXTRA_BODY: dict = {"reasoning": {"enabled": False}}
+
+
+def salvage_truncated_json(raw: str) -> dict:
+    """
+    Best-effort recovery of a partial top-level JSON object from `raw` when
+    `json.loads(raw)` fails (e.g. the response was cut off mid-stream by a
+    max_tokens cap).
+
+    Strategy: walk the string tracking string/escape state and brace depth.
+    Each time depth returns to 1 immediately after a `}` (i.e. a top-level
+    key's object value has just fully closed), record that index as a
+    candidate salvage point. Take the LAST such point, truncate the string
+    there, close the top-level object. Returns {} if nothing salvageable
+    (including on any error, or if `raw` doesn't even open a top-level `{`).
+
+    Safe to call on valid, complete JSON too — callers only invoke this after
+    `json.loads(raw)` has already failed.
+    """
+    if not raw:
+        return {}
+
+    depth = 0
+    in_string = False
+    escape = False
+    last_complete_idx: int | None = None
+    started = False
+
+    for i, ch in enumerate(raw):
+        if in_string:
+            if escape:
+                escape = False
+            elif ch == "\\":
+                escape = True
+            elif ch == '"':
+                in_string = False
+            continue
+
+        if ch == '"':
+            in_string = True
+        elif ch == "{":
+            depth += 1
+            started = True
+        elif ch == "}":
+            depth -= 1
+            if started and depth == 1:
+                # A top-level value's object just closed cleanly.
+                last_complete_idx = i
+
+    if last_complete_idx is None:
+        return {}
+
+    candidate = raw[: last_complete_idx + 1].rstrip()
+    candidate = candidate.rstrip(",")
+    candidate += "}"
+
+    try:
+        parsed = json.loads(candidate)
+    except (json.JSONDecodeError, ValueError):
+        return {}
+
+    return parsed if isinstance(parsed, dict) else {}
+
+
 def get_llm_client() -> OpenAI:
     """Return a configured sync OpenAI client pointed at OpenRouter."""
     return OpenAI(

@@ -32,7 +32,11 @@ from pathlib import Path
 from openai import OpenAI, APIError, APITimeoutError, RateLimitError
 
 from core.config import settings
-from services.clients.llm_client import record_llm_call
+from services.clients.llm_client import (
+    JSON_MODE_EXTRA_BODY,
+    record_llm_call,
+    salvage_truncated_json,
+)
 from core.intelligence.rl.stores.ledger_propagator import resurrect_lesson
 from core.schemas.feedback import (
     EVENT_TAGS,
@@ -59,6 +63,13 @@ except AttributeError:
 # 0.3 (vs the previous 0.1) gives enough creativity to surface non-obvious
 # cross-signal patterns while still producing deterministic structured JSON.
 _FEEDBACK_TEMPERATURE = 0.3
+
+# Miss-factor slugs must look like real market factors ("rsi_divergence",
+# "risk_on_fii_inflow_amplifier"). Error strings ("Parse error: Expecting
+# value: line 1…") previously leaked in here, poisoned the miss counter and
+# drove PromptEnhancer to generate search queries about parse errors.
+# Shared with scripts/clean_ledger_errors.py — keep the two in sync.
+VALID_MISS_FACTOR_RE = re.compile(r"[a-z0-9][a-z0-9_&]{2,39}")
 
 
 def classify_direction(actual: float, predicted: float) -> str:
@@ -177,10 +188,12 @@ class FeedbackAgent:
                 "returning degraded output; weights and lessons NOT updated",
                 fb_input.ticker, fb_input.date, exc,
             )
+            # NOTE: the error string goes to logs only — NEVER into
+            # missed_factors, which feeds the LearningLedger miss counter.
             return FeedbackAgentOutput(
                 miss_type="data_gap",
                 primary_miss_agent="",
-                missed_factors=[f"LLM unavailable: {exc}"],
+                missed_factors=[],
                 over_weighted_factors=[],
                 agent_score_drift={},
                 new_lessons=[],
@@ -189,6 +202,7 @@ class FeedbackAgent:
                     watch_signals=[],
                     horizon_confidence_adjustment=0.0,
                 ),
+                degraded=True,
             )
 
         output = self._parse(raw, fb_input)
@@ -215,12 +229,17 @@ class FeedbackAgent:
                 response = self._client.chat.completions.create(
                     model=settings.LLM_MODEL_REASONING,
                     temperature=_FEEDBACK_TEMPERATURE,
-                    max_tokens=1500,
+                    # 4000, not the old 1500: the feedback JSON itself is only
+                    # ~600-1,500 tokens, but headroom is cheap and truncated
+                    # JSON poisons the ledger (2026-07 incident). Reasoning is
+                    # disabled below so output size is deterministic.
+                    max_tokens=4000,
                     messages=[
                         {"role": "system", "content": system_prompt},
                         {"role": "user",   "content": user_prompt},
                     ],
                     response_format={"type": "json_object"},
+                    extra_body=JSON_MODE_EXTRA_BODY,
                 )
                 _latency = int((time.monotonic() - _t0) * 1000)
                 record_llm_call(
@@ -293,12 +312,30 @@ class FeedbackAgent:
     _VALID_SCOPES = {"stock_specific", "sector_wide", "market_wide"}
 
     def _parse(self, raw: str, fb_input: FeedbackAgentInput) -> FeedbackAgentOutput:
+        stripped = (raw or "").strip()
+        if stripped.startswith("```"):
+            stripped = re.sub(r"^```(?:json)?\s*", "", stripped)
+            stripped = re.sub(r"\s*```\s*$", "", stripped).strip()
+
         try:
-            stripped = (raw or "").strip()
-            if stripped.startswith("```"):
-                stripped = re.sub(r"^```(?:json)?\s*", "", stripped)
-                stripped = re.sub(r"\s*```\s*$", "", stripped).strip()
             data = json.loads(stripped)
+        except json.JSONDecodeError as exc:
+            # Truncated mid-JSON (max_tokens cut)? Salvage the complete
+            # top-level keys instead of discarding the whole analysis.
+            data = salvage_truncated_json(stripped)
+            if data:
+                logger.warning(
+                    "[FeedbackAgent] Response truncated (%s) — salvaged partial JSON "
+                    "(%d top-level keys)", exc, len(data),
+                )
+            else:
+                logger.error(
+                    "[FeedbackAgent] Unparseable LLM response (%s) — degraded output; "
+                    "ledger will NOT be updated | Raw: %s", exc, stripped[:400],
+                )
+                return self._degraded_output()
+
+        try:
 
             # Parse raw lessons with scope + executable-claim fields
             valid_agents = set(fb_input.predicted_agent_scores.keys())
@@ -372,12 +409,23 @@ class FeedbackAgent:
             )
 
         except Exception as exc:
+            # Structurally-valid JSON that still failed to map onto the schema.
+            # The error text goes to logs only — NEVER into missed_factors
+            # (2026-07 incident: "Parse error: Expecting value…" strings were
+            # ingested as market factors and poisoned the ledger + the
+            # PromptEnhancer search queries derived from it).
             logger.error("[FeedbackAgent] Parse error: %s | Raw: %s", exc, raw[:400])
-            return FeedbackAgentOutput(
-                primary_miss_agent="unknown",
-                miss_type="direction_flip",
-                missed_factors=[f"Parse error: {exc}"],
-            )
+            return self._degraded_output()
+
+    @staticmethod
+    def _degraded_output() -> FeedbackAgentOutput:
+        """Inert fallback when no real analysis exists. degraded=True gates
+        every ledger write downstream."""
+        return FeedbackAgentOutput(
+            primary_miss_agent="unknown",
+            miss_type="data_gap",
+            degraded=True,
+        )
 
     # ------------------------------------------------------------------
     # Ledger integration: merge raw lessons into LearningLedger
@@ -404,6 +452,13 @@ class FeedbackAgent:
 
         Returns (updated_ledger, list_of_lesson_ids_touched).
         """
+        if output.degraded:
+            logger.info(
+                "[FeedbackAgent] Degraded output — ledger untouched "
+                "(no lessons merged, no miss counters incremented)"
+            )
+            return ledger, []
+
         lesson_ids: list[str] = []
         today_str = date.today().isoformat()
 
@@ -498,6 +553,16 @@ class FeedbackAgent:
 
         for factor in output.missed_factors:
             key = factor.strip().replace(" ", "_").replace("-", "_").lower()[:40]
+            if not VALID_MISS_FACTOR_RE.fullmatch(key):
+                # Defense in depth: even non-degraded outputs can carry junk
+                # (colons, punctuation, error-shaped strings). Miss factors
+                # must look like real market-factor slugs or they get dropped
+                # loudly instead of poisoning the ledger.
+                logger.warning(
+                    "[FeedbackAgent] Dropping malformed miss factor %r "
+                    "(slug %r fails validation)", factor, key,
+                )
+                continue
             ledger.increment_miss(key)
 
         ledger.last_updated = today_str

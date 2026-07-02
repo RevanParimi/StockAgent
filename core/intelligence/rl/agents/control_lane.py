@@ -41,7 +41,7 @@ def _strip_think(raw: str) -> str:
 def _call_llm(system_prompt: str, user_prompt: str) -> str:
     """LLM client pattern mirrors DossierCurator._call_llm."""
     from core.config import settings
-    from services.clients.llm_client import get_llm_client
+    from services.clients.llm_client import JSON_MODE_EXTRA_BODY, get_llm_client
 
     client = get_llm_client()
     model = settings.CONTROL_LANE_MODEL or settings.LLM_MODEL_REASONING
@@ -50,6 +50,7 @@ def _call_llm(system_prompt: str, user_prompt: str) -> str:
         temperature=0.2,
         max_tokens=300,
         response_format={"type": "json_object"},
+        extra_body=JSON_MODE_EXTRA_BODY,
         messages=[{"role": "system", "content": system_prompt},
                   {"role": "user", "content": user_prompt}],
     )

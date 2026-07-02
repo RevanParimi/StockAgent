@@ -133,13 +133,37 @@ def _run_forecasts(tickers: list[str]) -> list[dict]:
     return results
 
 
-def _run_reviews(tickers: list[str], dates: list[date]) -> list[dict]:
+def _has_feedback_entry(ticker: str, review_date: date, sector: str = "automobile") -> bool:
+    """True when a feedback entry already exists for this ticker+date (in the
+    cycle the review would write to — own month first, then previous month,
+    mirroring daily_review's cross-month resolution)."""
+    from core.intelligence.rl.stores.prediction_store import PredictionStore
+    store = PredictionStore(ticker, sector=sector)
+    date_str = review_date.isoformat()
+    for cycle_day in (review_date, review_date.replace(day=1) - timedelta(days=1)):
+        log = store.load_feedback_log(store.cycle_id_for(cycle_day))
+        if any(e.date == date_str for e in log.entries):
+            return True
+    return False
+
+
+def _run_reviews(tickers: list[str], dates: list[date], skip_existing: bool = False) -> list[dict]:
     """Run daily_review for each (ticker, date) pair. Sync."""
     from core.intelligence.rl.workflows.daily_review import run_daily_review
     results = []
     for review_date in dates:
         for ticker in tickers:
             try:
+                if skip_existing and _has_feedback_entry(ticker, review_date):
+                    logger.info(
+                        "[scheduler_api] Skip %s %s — feedback entry already exists",
+                        ticker, review_date,
+                    )
+                    results.append({
+                        "ticker": ticker, "date": review_date.isoformat(),
+                        "status": "skipped_existing",
+                    })
+                    continue
                 summary = run_daily_review(ticker, review_date)
                 status  = summary.get("status", "unknown")
                 logger.info(
@@ -166,8 +190,8 @@ async def _forecast_task(tickers: list[str]) -> None:
     logger.info("[scheduler_api] Forecast task complete: %d/%d ok", ok, len(results))
 
 
-async def _review_task(tickers: list[str], dates: list[date]) -> None:
-    results = await asyncio.to_thread(_run_reviews, tickers, dates)
+async def _review_task(tickers: list[str], dates: list[date], skip_existing: bool = False) -> None:
+    results = await asyncio.to_thread(_run_reviews, tickers, dates, skip_existing)
     completed = sum(1 for r in results if r.get("status") == "completed")
     logger.info(
         "[scheduler_api] Review task complete: %d completed across %d ticker-date pairs",
@@ -279,6 +303,7 @@ async def trigger_backfill(
     background_tasks: BackgroundTasks,
     ticker: str | None = Query(default=None, description="NSE ticker. Omit for all SCHEDULER_TICKERS."),
     month: str | None = Query(default=None, description="YYYY-MM. Backfill that month instead of the current one (reviews run against that month's envelope)."),
+    skip_existing: bool = Query(default=False, description="Skip ticker+date pairs that already have a feedback entry (recovery mode — never overwrites same-day reviews)."),
     x_scheduler_key: str | None = Header(default=None),
 ) -> dict:
     """
@@ -307,13 +332,14 @@ async def trigger_backfill(
             "tickers": tickers,
         }
 
-    background_tasks.add_task(_review_task, tickers, trading_days)
+    background_tasks.add_task(_review_task, tickers, trading_days, skip_existing)
     return {
         "status":          "accepted",
         "message":         f"Backfill started: {len(trading_days)} trading days × {len(tickers)} tickers.",
         "tickers":         tickers,
         "trading_days":    [d.isoformat() for d in trading_days],
         "total_reviews":   len(trading_days) * len(tickers),
+        "skip_existing":   skip_existing,
         "monitor":         "/scheduler/status",
     }
 

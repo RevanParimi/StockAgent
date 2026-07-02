@@ -124,6 +124,33 @@ def test_backfill_days_bad_month_raises():
 
 
 # ---------------------------------------------------------------------------
+# scheduler_api._has_feedback_entry — skip_existing recovery mode
+# ---------------------------------------------------------------------------
+
+def test_has_feedback_entry_checks_own_and_previous_cycle(tmp_path, monkeypatch):
+    from backend.shared.schemas.feedback import DailyFeedbackLog, FeedbackEntry
+    from services.api.routes import scheduler_api
+    from core.config import settings
+
+    monkeypatch.setattr(settings, "PREDICTION_DATA_DIR", str(tmp_path))
+    store = _make_store(tmp_path)
+
+    def _entry(d):
+        return FeedbackEntry(day=1, date=d, predicted_close=1.0, actual_close=1.0,
+                             price_error_pct=0.0, predicted_verdict="NEUTRAL",
+                             actual_direction="FLAT", direction_correct=True)
+
+    # Jul 1 entry lives in the JUNE cycle log (cross-month fallback wrote it there)
+    store.save_feedback_log(DailyFeedbackLog(
+        ticker="MARUTI", cycle_id="MARUTI_2026-06",
+        entries=[_entry("2026-06-10"), _entry("2026-07-01")]))
+
+    assert scheduler_api._has_feedback_entry("MARUTI", date(2026, 6, 10)) is True
+    assert scheduler_api._has_feedback_entry("MARUTI", date(2026, 7, 1)) is True   # prev-cycle hit
+    assert scheduler_api._has_feedback_entry("MARUTI", date(2026, 6, 20)) is False
+
+
+# ---------------------------------------------------------------------------
 # run_logger → telemetry.db mirror
 # ---------------------------------------------------------------------------
 

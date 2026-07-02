@@ -124,8 +124,12 @@ class PredictionStore:
 
     def current_cycle_id(self) -> str:
         """Returns e.g. 'MARUTI_2026-04' for the current calendar month."""
-        today = date.today()
-        return f"{self.ticker}_{today.year}-{today.month:02d}"
+        return self.cycle_id_for(date.today())
+
+    def cycle_id_for(self, target: date) -> str:
+        """Cycle id for the calendar month containing target — lets backfill
+        review a June date against the June cycle even when today is July."""
+        return f"{self.ticker}_{target.year}-{target.month:02d}"
 
     def _cycle_prefix(self, cycle_id: str) -> str:
         return cycle_id  # already includes ticker

@@ -79,6 +79,21 @@ def log_llm_call(
         "error": error,
     }
     _append(AGENT_CALLS_LOG, record)
+    # Mirror into the permanent SQLite archive (data/telemetry.db on the
+    # Railway volume) — the JSONL above lives on the ephemeral container FS
+    # and dies with each deploy. Never fatal.
+    try:
+        from services.data.stores.log_store import log_llm_call as _log_llm_call_sqlite
+        _log_llm_call_sqlite(
+            caller=f"{phase}:{agent_name or ticker}",
+            model=model,
+            input_tokens=prompt_tokens,
+            output_tokens=completion_tokens,
+            latency_ms=int(duration_ms),
+            success=error is None,
+        )
+    except Exception as exc:
+        logger.warning("[run_logger] telemetry DB mirror failed (non-fatal): %s", exc)
     logger.debug(
         "[run_logger] %s/%s tokens=%d cost=$%.5f",
         phase, agent_name or "–", record["total_tokens"], cost_usd,

@@ -67,22 +67,35 @@ def _last_trading_day() -> date:
     return d
 
 
-def _trading_days_this_month_until_yesterday() -> list[date]:
+def _trading_days_for_backfill(month: str | None = None) -> list[date]:
     """
-    All weekdays from the 1st of the current month up to (and including) yesterday.
-    Used for backfill — NSE-holiday-aware via nse_calendar.
+    Trading days to backfill, capped at yesterday. NSE-holiday-aware.
+
+    month=None      → 1st of the current month … yesterday (original behavior)
+    month="2026-06" → every trading day of that month (… yesterday if current)
     """
     from core.intelligence.rl.nse_calendar import is_trading_day
-    today = date.today()
-    start = today.replace(day=1)
-    end   = today - timedelta(days=1)
-    days  = []
+    today     = date.today()
+    yesterday = today - timedelta(days=1)
+    if month:
+        year_s, month_s = month.split("-")
+        start = date(int(year_s), int(month_s), 1)
+        end   = min(_last_day_of_month(start), yesterday)
+    else:
+        start = today.replace(day=1)
+        end   = yesterday
+    days = []
     d = start
     while d <= end:
         if is_trading_day(d):
             days.append(d)
         d += timedelta(days=1)
     return days
+
+
+def _last_day_of_month(any_day: date) -> date:
+    next_month_first = (any_day.replace(day=28) + timedelta(days=4)).replace(day=1)
+    return next_month_first - timedelta(days=1)
 
 
 def _resolve_tickers(ticker_param: str | None) -> list[str]:
@@ -265,6 +278,7 @@ async def trigger_daily_review(
 async def trigger_backfill(
     background_tasks: BackgroundTasks,
     ticker: str | None = Query(default=None, description="NSE ticker. Omit for all SCHEDULER_TICKERS."),
+    month: str | None = Query(default=None, description="YYYY-MM. Backfill that month instead of the current one (reviews run against that month's envelope)."),
     x_scheduler_key: str | None = Header(default=None),
 ) -> dict:
     """
@@ -275,15 +289,21 @@ async def trigger_backfill(
 
     Example: today is May 15. Backfill runs reviews for May 1, 2, 5, 6, 7, 8, 9, 12, 13, 14.
     Days with no envelope forecast row (NSE holidays) are silently skipped.
+
+    Pass ?month=YYYY-MM to recover a PAST month (e.g. after a dead scheduler):
+    reviews load that month's envelope and land in that month's feedback log.
     """
     _check_auth(x_scheduler_key)
     tickers = _resolve_tickers(ticker)
-    trading_days = _trading_days_this_month_until_yesterday()
+    try:
+        trading_days = _trading_days_for_backfill(month)
+    except (ValueError, IndexError):
+        raise HTTPException(status_code=422, detail=f"Invalid month {month!r} — expected YYYY-MM.")
 
     if not trading_days:
         return {
             "status":  "skipped",
-            "message": "No past trading days found in the current month (today is the 1st?).",
+            "message": "No past trading days found in the requested window.",
             "tickers": tickers,
         }
 

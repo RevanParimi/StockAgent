@@ -247,7 +247,7 @@ class TestAutomobileScheduler:
     @patch("core.pipeline.orchestrator.AutomobileAgentOrchestrator")
     @patch("services.data.stores.score_store.ScoreStore")
     @patch("services.clients.alerting.AlertManager")
-    @patch("apscheduler.schedulers.blocking.BlockingScheduler")
+    @patch("apscheduler.schedulers.background.BackgroundScheduler")
     def test_run_now_calls_orchestrator_for_each_ticker(
         self, mock_sched_cls, mock_alert_cls, mock_store_cls, mock_orch_cls
     ):
@@ -272,7 +272,7 @@ class TestAutomobileScheduler:
 
     @patch("services.data.stores.score_store.ScoreStore")
     @patch("services.clients.alerting.AlertManager")
-    @patch("apscheduler.schedulers.blocking.BlockingScheduler")
+    @patch("apscheduler.schedulers.background.BackgroundScheduler")
     def test_status_has_required_keys(
         self, mock_sched_cls, mock_alert_cls, mock_store_cls
     ):
@@ -292,7 +292,8 @@ class TestAutomobileScheduler:
         status = sched.status()
 
         assert "enabled" in status
-        assert "cron" in status
+        assert "feedback_cron" in status
         assert "tickers" in status
         assert "db_total_runs" in status
         assert "db_ticker_count" in status
+        assert "jobs" in status

@@ -72,7 +72,9 @@ def run_control_lane_step(
     # 1. Score yesterday's call (this cycle's ControlLog entry for review_date)
     # ------------------------------------------------------------------ #
     try:
-        cycle_id = store.current_cycle_id()
+        # Entries live in the log of the month they were predicted FOR, so
+        # score in review_date's cycle (≠ current month during backfill).
+        cycle_id = store.cycle_id_for(review_date)
         log = store.load_control_log(cycle_id)
         scored = False
         for entry in log.entries:

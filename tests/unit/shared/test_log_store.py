@@ -48,11 +48,16 @@ def test_handler_mirrors_warnings_but_not_info(fresh_db):
     handler = log_store.SQLiteLogHandler(level=logging.WARNING)
     lg = logging.getLogger("test.macro_fetcher")
     lg.addHandler(handler)
+    # Isolate from the root logger: tests that import services.api.server leave
+    # a session-wide SQLiteLogHandler attached there, which would double-write
+    # this record into the (redirected) fresh_db.
+    lg.propagate = False
     try:
         lg.warning("ReviewAgent LLM failed: Expecting value")
         lg.info("routine info line")  # below handler level → not archived
     finally:
         lg.removeHandler(handler)
+        lg.propagate = True
     rows = _rows(fresh_db, "SELECT level, logger, message FROM app_logs")
     assert rows == [("WARNING", "test.macro_fetcher",
                      "ReviewAgent LLM failed: Expecting value")]

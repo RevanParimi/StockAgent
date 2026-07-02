@@ -20,6 +20,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY core/       ./core/
 COPY services/   ./services/
 COPY src/backend/ ./backend/
+COPY scripts/    ./scripts/
 COPY main.py     ./
 
 # Frontend: the prototype app + PWA assets (manifest.json, sw.js, icons,

@@ -6,9 +6,16 @@
 
 llm:
   # Hybrid model tiers — 2026-06-03 benchmark (scripts/model_bench.py), bulk tier
-  # re-benchmarked 2026-07-02.
+  # re-benchmarked 2026-07-02, reasoning tier re-benchmarked 2026-07-03
+  # (scripts/reasoning_bench.py + live unified-analyst runs on MARUTI).
   #   fast      – chat tool-loop (tools + free text, no json_object): qwen/qwen3.6-flash
-  #   reasoning – judgment calls (aggregator verdict, RL feedback/thesis): qwen/qwen3.7-max
+  #   reasoning – judgment calls (aggregator verdict, RL feedback/thesis, unified
+  #               analyst): qwen/qwen3.7-plus — $0.32/$1.28 per M vs $1.25/$3.75 for
+  #               qwen3.7-max (3.3x cheaper). Matched max on every deterministic
+  #               production check (json_object validity, schema, slug regex,
+  #               restraint), beat it on near-tie driver ranking; live analyst run
+  #               agreed with max's verdict. Runner-up deepseek-v4-pro: 1.8x slower,
+  #               verdict diverged at boundary, and both tiers in one vendor.
   #   bulk      – high-volume sector-agent scoring (json_object): deepseek/deepseek-v4-flash
   #               $0.09/$0.18 per M (vs 0.36/0.40 for retired qwen-2.5-72b), 1M ctx,
   #               json_object verified 2026-07-02 with reasoning disabled.
@@ -17,8 +24,10 @@ llm:
   # extra_body=JSON_MODE_EXTRA_BODY (llm_client.py) to disable reasoning.
   # Retired: qwen3-235b (broke JSON), qwen-2.5-72b (2-4x cost of deepseek),
   # Gemini 3.5 Flash (broken output + 64x cost), Kimi (empty + 68s).
+  # Rejected 2026-07-03: minimax-m3 (non-JSON 3/12), minimax-m2.7 (OpenRouter 400:
+  # reasoning cannot be disabled — violates the JSON_MODE_EXTRA_BODY rule).
   model_fast: "qwen/qwen3.6-flash"
-  model_reasoning: "qwen/qwen3.7-max"
+  model_reasoning: "qwen/qwen3.7-plus"
   model_bulk: "deepseek/deepseek-v4-flash"
   temperature: 0.2
   max_tokens: 2048

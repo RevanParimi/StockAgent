@@ -733,3 +733,35 @@ def unified_analyst_sectors() -> set[str]:
     """Parsed UNIFIED_ANALYST_SECTORS; empty set when disabled."""
     return {s.strip() for s in UNIFIED_ANALYST_SECTORS.split(",") if s.strip()}
 
+
+# ---------------------------------------------------------------------------
+# Compass Phase A — Portfolio Core + Position Advisor (spec 2026-07-06)
+# ---------------------------------------------------------------------------
+PORTFOLIO_DATA_DIR: str = cfg("portfolio.data_dir", env="PORTFOLIO_DATA_DIR", fallback="data/portfolio")
+PORTFOLIO_DEFAULT_USER_ID: str = cfg("portfolio.default_user_id", env="PORTFOLIO_DEFAULT_USER_ID", fallback="primary")
+PORTFOLIO_MAX_MANAGED_TICKERS: int = cfg("portfolio.max_managed_tickers", env="PORTFOLIO_MAX_MANAGED_TICKERS", fallback=40)
+PORTFOLIO_WEEKLY_REVIEW_WEEKDAY: int = cfg("portfolio.weekly_review_weekday", fallback=4)
+
+ADVISOR_ENABLED: bool = bool(cfg("advisor.enabled", env="ADVISOR_ENABLED", fallback=True))
+ADVISOR_NARRATE: bool = bool(cfg("advisor.narrate", fallback=True))
+ADVISOR_ATR_PERIOD: int = cfg("advisor.atr_period", fallback=20)
+ADVISOR_STOP_ATR_MULT: float = cfg("advisor.stop_atr_mult", fallback=3.0)
+_DEFAULT_STOP_BUCKETS: dict[str, tuple[float, float]] = {
+    "large": (8.0, 12.0),
+    "mid":   (12.0, 18.0),
+    "small": (15.0, 22.0),
+}
+ADVISOR_STOP_BUCKETS: dict[str, tuple[float, float]] = {
+    k: tuple(v) for k, v in cfg("advisor.stop_buckets", fallback=_DEFAULT_STOP_BUCKETS).items()
+}
+ADVISOR_LARGE_CAP_FLOOR_CR: float = float(cfg("advisor.large_cap_floor_cr", fallback=65000))
+ADVISOR_MID_CAP_FLOOR_CR: float = float(cfg("advisor.mid_cap_floor_cr", fallback=20000))
+ADVISOR_TRIM_PROFIT_PCT: float = cfg("advisor.trim_profit_pct", fallback=25.0)
+ADVISOR_REVERSION_PRIOR_ELEVATED: float = cfg("advisor.reversion_prior_elevated", fallback=0.20)
+ADVISOR_CONFIDENCE_DECLINE_THRESHOLD: float = cfg("advisor.confidence_decline_threshold", fallback=0.05)
+ADVISOR_ENVELOPE_FLAT_BAND_PCT: float = cfg("advisor.envelope_flat_band_pct", fallback=1.0)
+ADVISOR_ADD_MIN_DIRECTION_ACCURACY: float = cfg("advisor.add_min_direction_accuracy", fallback=0.60)
+ADVISOR_MAX_POSITION_PCT: float = cfg("advisor.max_position_pct", fallback=10.0)
+ADVISOR_SECTOR_CONCENTRATION_WARN_PCT: float = cfg("advisor.sector_concentration_warn_pct", fallback=30.0)
+ADVISOR_LTCG_WAIT_MIN_MONTHS: int = cfg("advisor.ltcg_wait_min_months", fallback=10)
+ADVISOR_EARNINGS_GAP_DAYS: int = cfg("advisor.earnings_gap_days", fallback=3)

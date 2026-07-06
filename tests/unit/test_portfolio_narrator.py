@@ -61,3 +61,34 @@ def test_fallback_never_says_advice():
     for verdict in ("HOLD", "ADD", "TRIM", "EXIT"):
         text = narrator.fallback_narrative(_rec(verdict=verdict))
         assert "advice" not in text.lower()   # research/analysis posture (spec §2)
+
+
+def test_narrate_passes_json_mode_extra_body(monkeypatch):
+    from services.clients.llm_client import JSON_MODE_EXTRA_BODY
+    captured = {}
+
+    payload = json.dumps({"narrative": "ok"})
+
+    class _CapturingClient(_FakeClient):
+        def __init__(self):
+            super().__init__(payload)
+            orig = self.chat.completions.create
+            def create(**kw):
+                captured.update(kw)
+                return orig(**kw)
+            self.chat.completions.create = create
+
+    monkeypatch.setattr(narrator, "get_llm_client", lambda: _CapturingClient())
+    narrator.narrate(_rec(), _signals())
+    assert captured["extra_body"] == JSON_MODE_EXTRA_BODY
+    assert captured["response_format"] == {"type": "json_object"}
+
+
+def test_narrate_non_dict_json_falls_back_single_telemetry(monkeypatch):
+    calls = []
+    monkeypatch.setattr(narrator, "record_llm_call",
+                        lambda *a, **k: calls.append(a[-1] if a else k.get("success")))
+    monkeypatch.setattr(narrator, "get_llm_client", lambda: _FakeClient('["not", "a", "dict"]'))
+    text = narrator.narrate(_rec(), _signals())
+    assert text == narrator.fallback_narrative(_rec())
+    assert calls == [True]   # exactly one telemetry record, success=True (call succeeded, content unusable)

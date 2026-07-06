@@ -85,13 +85,15 @@ def narrate(rec: AdviceRecord, signals: AdvisorSignals) -> str:
             data = json.loads(raw)
         except (json.JSONDecodeError, ValueError):
             data = salvage_truncated_json(raw)
+        if not isinstance(data, dict):
+            data = {}
+        narrative = str(data.get("narrative", "")).strip()
         usage = getattr(resp, "usage", None)
         record_llm_call(
             "portfolio_narrator", settings.LLM_MODEL_BULK,
             getattr(usage, "prompt_tokens", 0), getattr(usage, "completion_tokens", 0),
             int((time.time() - started) * 1000), True,
         )
-        narrative = str(data.get("narrative", "")).strip()
         return narrative or fallback_narrative(rec)
     except Exception as exc:
         logger.warning("[narrator] narration failed for %s (non-fatal): %s", rec.symbol, exc)

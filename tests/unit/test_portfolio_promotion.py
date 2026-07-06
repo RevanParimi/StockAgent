@@ -86,3 +86,18 @@ def test_due_for_review_cadence():
     assert promo.due_for_review(legacy, monday) is True
     assert promo.due_for_review(weekly, monday) is False
     assert promo.due_for_review(weekly, friday) is True
+
+
+def test_watchlist_promotion_rotates_oldest_watchlist(managed, monkeypatch):
+    monkeypatch.setattr(promo.settings, "PORTFOLIO_MAX_MANAGED_TICKERS", 3)
+    managed["tickers"] += [
+        {"sym": "WIPRO", "name": "Wipro Ltd", "sector": "it_sector", "enabled": True,
+         "origin": "watchlist", "cadence": "weekly", "promoted_at": "2026-05-01"},
+        {"sym": "COFORGE", "name": "Coforge Ltd", "sector": "it_sector", "enabled": True,
+         "origin": "watchlist", "cadence": "weekly", "promoted_at": "2026-06-01"},
+    ]
+    result = promo.promote_symbol("INFY", "it_sector", origin="watchlist")
+    assert result["status"] == "promoted"
+    active = [t["sym"] for t in managed["tickers"] if t.get("enabled", True)]
+    assert "WIPRO" not in active        # oldest watchlist entry rotated out
+    assert "COFORGE" in active and "INFY" in active and "MARUTI" in active

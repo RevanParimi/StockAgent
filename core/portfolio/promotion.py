@@ -68,16 +68,12 @@ def promote_symbol(symbol: str, sector: str, origin: str) -> dict:
     cap = settings.PORTFOLIO_MAX_MANAGED_TICKERS
     active = [t for t in tickers if t.get("enabled", True)]
     if len(active) >= cap:
-        # Evict the lowest-priority portfolio-origin entry. Manual entries
-        # (no origin field — the original universe) are never evicted.
-        candidates = [
-            t for t in active
-            if t.get("origin") in _EVICTION_ORDER
-            and _EVICTION_ORDER[t["origin"]] < _EVICTION_ORDER.get(origin, 1)
-        ]
-        candidates.sort(key=lambda t: (
-            _EVICTION_ORDER[t["origin"]], t.get("promoted_at", "")
-        ))
+        # Only watchlist-origin entries are evictable: held positions and
+        # origin-less manual entries are never rotated out. A new watchlist
+        # promotion may evict the OLDEST watchlist entry (spec §4.3:
+        # "lowest-priority watchlist names rotate out").
+        candidates = [t for t in active if t.get("origin") == "watchlist"]
+        candidates.sort(key=lambda t: t.get("promoted_at", ""))
         if not candidates:
             logger.warning(
                 "[promotion] cap %d reached and nothing evictable — %s NOT promoted",

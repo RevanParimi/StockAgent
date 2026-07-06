@@ -33,7 +33,7 @@ from core.config import settings
 from backend.shared.schemas.portfolio import Holding, WatchlistItem
 from core.portfolio.pipeline import run_post_review_pipeline
 from core.portfolio.pricing import PriceUnavailableError, close_on
-from core.portfolio.promotion import demote_symbol, promote_symbol
+from core.portfolio.promotion import SUPPORTED_SECTORS, demote_symbol, promote_symbol
 from core.portfolio.store import PortfolioStore, import_csv
 
 logger = logging.getLogger(__name__)
@@ -97,14 +97,26 @@ async def add_holding(
 ) -> dict:
     _check_auth(x_scheduler_key)
     symbol = body.symbol.strip().upper()
-    promotion = promote_symbol(symbol, body.sector, origin="held")
-    if promotion["status"] == "unsupported_sector":
-        raise HTTPException(status_code=422, detail=promotion["detail"])
+    if body.sector.strip().lower() not in SUPPORTED_SECTORS:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"Sector '{body.sector}' not yet supported — Phase A covers "
+                f"{sorted(SUPPORTED_SECTORS)} only."
+            ),
+        )
+    try:
+        buy_date = date.fromisoformat(body.buy_date)
+    except ValueError:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Invalid buy_date '{body.buy_date}'. Use ISO format: YYYY-MM-DD.",
+        )
     if body.price is not None:
         price = body.price
     else:
         try:
-            price = close_on(symbol, date.fromisoformat(body.buy_date))
+            price = close_on(symbol, buy_date)
         except PriceUnavailableError as exc:
             raise HTTPException(status_code=422, detail=str(exc))
     holding = Holding(
@@ -115,6 +127,7 @@ async def add_holding(
         PortfolioStore(user_id=user_id).add_holding(holding)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
+    promotion = promote_symbol(symbol, body.sector, origin="held")
     return {"holding": holding.model_dump(), "promotion": promotion}
 
 
@@ -143,6 +156,11 @@ async def add_watchlist(
 ) -> dict:
     _check_auth(x_scheduler_key)
     symbol = body.symbol.strip().upper()
+    if body.sector.strip().lower() not in SUPPORTED_SECTORS:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Sector '{body.sector}' not yet supported — Phase A covers {sorted(SUPPORTED_SECTORS)} only.",
+        )
     promotion = promote_symbol(symbol, body.sector, origin="watchlist")
     if promotion["status"] == "unsupported_sector":
         raise HTTPException(status_code=422, detail=promotion["detail"])
@@ -223,7 +241,16 @@ async def run_advisor(
     x_scheduler_key: str | None = Header(default=None),
 ) -> dict:
     _check_auth(x_scheduler_key)
-    target = date.fromisoformat(review_date) if review_date else date.today()
+    if review_date:
+        try:
+            target = date.fromisoformat(review_date)
+        except ValueError:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Invalid date '{review_date}'. Use ISO format: YYYY-MM-DD.",
+            )
+    else:
+        target = date.today()
 
     async def _task() -> None:
         result = await asyncio.to_thread(run_post_review_pipeline, target)

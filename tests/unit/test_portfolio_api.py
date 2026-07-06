@@ -96,3 +96,16 @@ def test_run_advisor_returns_202(client, monkeypatch):
     monkeypatch.setattr(papi, "run_post_review_pipeline", lambda d: {"status": "completed"})
     resp = client.post("/portfolio/run-advisor")
     assert resp.status_code == 202
+
+
+def test_add_holding_bad_date_422(client):
+    resp = client.post("/portfolio/holdings", json={
+        "symbol": "MARUTI", "sector": "automobile", "qty": 10, "buy_date": "07/01/2026",
+    })
+    assert resp.status_code == 422
+    assert "Invalid buy_date" in resp.json()["detail"]
+
+
+def test_run_advisor_bad_date_422(client):
+    resp = client.post("/portfolio/run-advisor?review_date=notadate")
+    assert resp.status_code == 422

@@ -42,7 +42,7 @@ except Exception:
 from services.clients.llm_client import JSON_MODE_EXTRA_BODY, get_async_llm_client
 from core.intelligence.rl.agents.feedback_agent import VALID_MISS_FACTOR_RE
 
-# OpenRouter ids + live price ($/1M in, out) — verified 2026-07-03 via /api/v1/models
+# OpenRouter ids + live price ($/1M in, out) — verified 2026-07-03/06 via /api/v1/models
 PRICES: dict[str, tuple[float, float]] = {
     "qwen/qwen3.7-max":          (1.25, 3.75),    # current REASONING tier (baseline)
     "qwen/qwen3.7-plus":         (0.32, 1.28),
@@ -51,8 +51,12 @@ PRICES: dict[str, tuple[float, float]] = {
     "z-ai/glm-4.7":              (0.40, 1.75),
     "minimax/minimax-m2.7":      (0.18, 0.72),
     "deepseek/deepseek-v4-flash": (0.089, 0.18),  # BULK tier — floor reference
+    "z-ai/glm-5.2":              (0.686, 2.156),  # AA index 51 (> max's 46), reasoning-on
+    "z-ai/glm-5":                (0.60, 1.92),
+    "stepfun/step-3.7-flash":    (0.20, 1.15),    # AA 43 reasoning-on, ~30 off
 }
-MODELS = list(PRICES)
+# Pass model ids as argv to bench a subset; default = all in PRICES.
+MODELS = [m for m in sys.argv[1:] if m in PRICES] or list(PRICES)
 TRIALS = 3   # per task per model
 
 AGENT_SCORES = {

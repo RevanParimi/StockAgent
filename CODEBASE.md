@@ -271,7 +271,7 @@ Models are tiered (2026-06-03 benchmark, `scripts/model_bench.py`; bulk re-bench
 |------|---------|-------------|
 | `OPENROUTER_API_KEY` | `""` (required) | OpenRouter API key (.env only) |
 | `LLM_MODEL_FAST` | `qwen/qwen3.6-flash` | **FAST tier** — the agentic chat tool-loop |
-| `LLM_MODEL_REASONING` | `qwen/qwen3.7-plus` | **REASONING tier** — SignalAggregator verdict, RL FeedbackAgent / ThesisReviewer, and the Unified Sector Analyst for all four sectors (JSON-validated). Switched from qwen3.7-max 2026-07-03 (3.3× cheaper, `scripts/reasoning_bench.py`) |
+| `LLM_MODEL_REASONING` | `z-ai/glm-5.2` | **REASONING tier** — SignalAggregator verdict, RL FeedbackAgent / ThesisReviewer, and the Unified Sector Analyst for all four sectors (JSON-validated). Switched from qwen3.7-max 2026-07-06 (~45% cheaper, higher AA index, `scripts/reasoning_bench.py` + live analyst runs) |
 | `LLM_MODEL_BULK` | `deepseek/deepseek-v4-flash` | **BULK tier** — high-volume `json_object` scoring; $0.09/$0.18 per M, reasoning disabled via `JSON_MODE_EXTRA_BODY` |
 | `LLM_MODEL` | `= LLM_MODEL_BULK` | Back-compat catch-all for any call-site not on a named tier |
 | `LLM_TEMPERATURE` | `0.2` | LLM sampling temperature |

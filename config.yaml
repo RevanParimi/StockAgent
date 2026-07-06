@@ -10,12 +10,13 @@ llm:
   # (scripts/reasoning_bench.py + live unified-analyst runs on MARUTI).
   #   fast      – chat tool-loop (tools + free text, no json_object): qwen/qwen3.6-flash
   #   reasoning – judgment calls (aggregator verdict, RL feedback/thesis, unified
-  #               analyst): qwen/qwen3.7-plus — $0.32/$1.28 per M vs $1.25/$3.75 for
-  #               qwen3.7-max (3.3x cheaper). Matched max on every deterministic
-  #               production check (json_object validity, schema, slug regex,
-  #               restraint), beat it on near-tie driver ranking; live analyst run
-  #               agreed with max's verdict. Runner-up deepseek-v4-pro: 1.8x slower,
-  #               verdict diverged at boundary, and both tiers in one vendor.
+  #               analyst): z-ai/glm-5.2 — $0.686/$2.156 per M vs $1.25/$3.75 for
+  #               qwen3.7-max (~45% cheaper), AA intelligence 51 vs max's 46
+  #               (reasoning-on numbers; our reasoning-off bench: 100% JSON, all
+  #               production checks). Live MARUTI analyst agreed with max's verdict.
+  #               Fallbacks on file: qwen/qwen3.7-plus ($0.32/$1.28, max savings,
+  #               AA 39) and deepseek/deepseek-v4-pro ($0.435/$0.87, 1.8x slower,
+  #               vendor-concentrates with bulk).
   #   bulk      – high-volume sector-agent scoring (json_object): deepseek/deepseek-v4-flash
   #               $0.09/$0.18 per M (vs 0.36/0.40 for retired qwen-2.5-72b), 1M ctx,
   #               json_object verified 2026-07-02 with reasoning disabled.
@@ -27,11 +28,11 @@ llm:
   # Rejected 2026-07-03: minimax-m3 (non-JSON 3/12), minimax-m2.7 (OpenRouter 400:
   # reasoning cannot be disabled — violates the JSON_MODE_EXTRA_BODY rule).
   model_fast: "qwen/qwen3.6-flash"
-  model_reasoning: "qwen/qwen3.7-plus"
+  model_reasoning: "z-ai/glm-5.2"
   model_bulk: "deepseek/deepseek-v4-flash"
   temperature: 0.2
   max_tokens: 2048
-  timeout_seconds: 60
+  timeout_seconds: 120   # was 60; prod ran 120 via env var (long analyst calls) — unified 2026-07-06
   # Token cost rates (USD per million) for telemetry — default to the BULK tier.
   input_cost_per_m: 0.09
   output_cost_per_m: 0.18
@@ -42,7 +43,7 @@ logging:
   telemetry_db_path: "data/telemetry.db"
 
 agent_execution:
-  timeout_seconds: 120
+  timeout_seconds: 180   # was 120; prod ran 180 via env var — unified 2026-07-06
   max_retries: 3
   retry_delay_seconds: 2.0
 

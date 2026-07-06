@@ -94,6 +94,15 @@ StockAgent-main/
 │   │   ├── fno/                   # F&O data helpers
 │   │   └── prompt_enhancer/
 │   │       └── enhancer.py        # Prompt enhancement with RL lessons
+│   ├── portfolio/                 # Compass Phase A: per-user virtual portfolio (see below)
+│   │   ├── store.py               # PortfolioStore — per-user JSON holdings/ledger/digest
+│   │   ├── pricing.py             # close_on() — yfinance + NSE cross-check entry pricing
+│   │   ├── corp_actions.py        # Corp-action sync (splits/bonuses) into holdings
+│   │   ├── promotion.py           # Auto-promotion into managed_tickers.json universe
+│   │   ├── advisor.py             # Deterministic HOLD/ADD/TRIM/EXIT verdicts, ATR-scaled stops
+│   │   ├── narrator.py            # BULK-tier LLM narration of advice
+│   │   ├── digest.py              # EOD portfolio digest builder
+│   │   └── pipeline.py            # run_post_review_pipeline() orchestration entry point
 │   ├── pipeline/                  # Core pipeline abstractions
 │   │   ├── base_agent.py
 │   │   ├── orchestrator.py
@@ -124,6 +133,12 @@ StockAgent-main/
 ├── pyproject.toml
 └── requirements.txt
 ```
+
+- `core/portfolio/` — Compass Phase A: per-user virtual portfolio (store, corp-action
+  sync, auto-promotion into managed universe, deterministic HOLD/ADD/TRIM/EXIT advisor
+  with ATR-scaled stops, BULK-tier narration, EOD digest). Event-triggered from
+  scheduler_api._review_task after daily reviews. Spec:
+  docs/superpowers/specs/2026-07-06-portfolio-intelligence-discovery-design.md
 
 ---
 

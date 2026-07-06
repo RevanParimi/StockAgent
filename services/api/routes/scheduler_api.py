@@ -31,6 +31,9 @@ from datetime import date, timedelta
 
 from fastapi import APIRouter, BackgroundTasks, Header, HTTPException, Query
 
+from core.portfolio.pipeline import run_post_review_pipeline
+from core.portfolio.promotion import due_for_review
+
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/scheduler", tags=["Scheduler"])
 
@@ -180,6 +183,16 @@ def _run_reviews(tickers: list[dict], dates: list[date], skip_existing: bool = F
     for review_date in dates:
         for entry in tickers:
             ticker, sector = entry["sym"], entry.get("sector", _SECTOR)
+            if not due_for_review(entry, review_date):
+                logger.info(
+                    "[scheduler_api] Skip %s %s — weekly cadence, not due today",
+                    ticker, review_date,
+                )
+                results.append({
+                    "ticker": ticker, "date": review_date.isoformat(),
+                    "status": "skipped_cadence",
+                })
+                continue
             try:
                 if skip_existing and _has_feedback_entry(ticker, review_date, sector=sector):
                     logger.info(
@@ -224,6 +237,17 @@ async def _review_task(tickers: list[dict], dates: list[date], skip_existing: bo
         "[scheduler_api] Review task complete: %d completed across %d ticker-date pairs",
         completed, len(results),
     )
+    # Compass Phase A: advisor + digest run EVENT-TRIGGERED on review completion
+    # (never clock-scheduled — at 40 tickers the review runs ~80 min). Non-fatal:
+    # a pipeline failure must never mark the reviews themselves as failed.
+    try:
+        summary = await asyncio.to_thread(run_post_review_pipeline, dates[-1])
+        logger.info("[scheduler_api] Post-review portfolio pipeline: %s", summary)
+    except Exception as exc:
+        logger.error(
+            "[scheduler_api] Post-review portfolio pipeline failed (non-fatal): %s",
+            exc, exc_info=True,
+        )
 
 
 # ---------------------------------------------------------------------------

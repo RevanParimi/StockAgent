@@ -151,6 +151,42 @@ def test_has_feedback_entry_checks_own_and_previous_cycle(tmp_path, monkeypatch)
 
 
 # ---------------------------------------------------------------------------
+# scheduler_api._resolve_tickers — managed_tickers.json is the source of truth
+# ---------------------------------------------------------------------------
+
+def test_resolve_tickers_uses_managed_list(monkeypatch):
+    import services.api.log_buffer as log_buffer
+    from services.api.routes import scheduler_api
+
+    managed = [
+        {"sym": "OLAELEC", "sector": "automobile"},
+        {"sym": "YESBANK", "sector": "banking_bfsi"},
+        {"sym": "SUZLON", "sector": "renewable_energy"},
+    ]
+    monkeypatch.setattr(log_buffer, "get_active_tickers_with_sector", lambda: managed)
+
+    entries = scheduler_api._resolve_tickers(None)
+    assert entries == managed
+    # ticker param narrows to the managed entry WITH its sector
+    assert scheduler_api._resolve_tickers("yesbank") == [
+        {"sym": "YESBANK", "sector": "banking_bfsi"}]
+    # unknown ticker falls back to automobile
+    assert scheduler_api._resolve_tickers("MARUTI") == [
+        {"sym": "MARUTI", "sector": "automobile"}]
+
+
+def test_resolve_tickers_falls_back_to_scheduler_tickers(monkeypatch):
+    import services.api.log_buffer as log_buffer
+    from services.api.routes import scheduler_api
+    from core.config import settings
+
+    monkeypatch.setattr(log_buffer, "get_active_tickers_with_sector", lambda: [])
+    entries = scheduler_api._resolve_tickers(None)
+    assert [e["sym"] for e in entries] == list(settings.SCHEDULER_TICKERS)
+    assert all(e["sector"] == "automobile" for e in entries)
+
+
+# ---------------------------------------------------------------------------
 # run_logger → telemetry.db mirror
 # ---------------------------------------------------------------------------
 

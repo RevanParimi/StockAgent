@@ -98,24 +98,50 @@ def _last_day_of_month(any_day: date) -> date:
     return next_month_first - timedelta(days=1)
 
 
-def _resolve_tickers(ticker_param: str | None) -> list[str]:
-    from core.config import settings
-    return [ticker_param.strip().upper()] if ticker_param else list(settings.SCHEDULER_TICKERS)
+def _resolve_tickers(ticker_param: str | None) -> list[dict]:
+    """
+    Resolve the ticker set to operate on, as [{"sym", "sector"}, ...].
+
+    Source of truth is managed_tickers.json (the UI-managed list the scheduler
+    crons run on — all four sectors), falling back to the legacy automobile
+    SCHEDULER_TICKERS when the managed list is empty/unreadable. A ticker
+    param narrows to that one symbol, with its managed sector when known.
+    """
+    entries: list[dict] = []
+    try:
+        from services.api.log_buffer import get_active_tickers_with_sector
+        entries = get_active_tickers_with_sector()
+    except Exception as exc:
+        logger.warning("[scheduler_api] managed tickers unavailable — falling back: %s", exc)
+    if not entries:
+        from core.config import settings
+        entries = [{"sym": t, "sector": _SECTOR} for t in settings.SCHEDULER_TICKERS]
+    if ticker_param:
+        sym = ticker_param.strip().upper()
+        matched = [e for e in entries if e["sym"] == sym]
+        return matched or [{"sym": sym, "sector": _SECTOR}]
+    return entries
+
+
+def _syms(entries: list[dict]) -> list[str]:
+    return [e["sym"] for e in entries]
 
 
 # ---------------------------------------------------------------------------
 # Background task implementations  (sync → run via asyncio.to_thread)
 # ---------------------------------------------------------------------------
 
-def _run_forecasts(tickers: list[str]) -> list[dict]:
+def _run_forecasts(tickers: list[dict]) -> list[dict]:
     """Generate prediction envelopes for each ticker. Sync, heavy (9-agent pipeline)."""
     from core.intelligence.rl.workflows.generate_forecast import generate_forecast
     results = []
-    for ticker in tickers:
+    for entry in tickers:
+        ticker, sector = entry["sym"], entry.get("sector", _SECTOR)
         try:
-            env = generate_forecast(ticker)
+            env = generate_forecast(ticker, sector=sector)
             result = {
                 "ticker":           ticker,
+                "sector":           sector,
                 "status":           "ok",
                 "cycle_id":         env.cycle_id,
                 "horizon_days":     len(env.daily_forecasts),
@@ -127,7 +153,7 @@ def _run_forecasts(tickers: list[str]) -> list[dict]:
                 ticker, env.cycle_id, len(env.daily_forecasts), env.base_close,
             )
         except Exception as exc:
-            result = {"ticker": ticker, "status": "error", "detail": str(exc)}
+            result = {"ticker": ticker, "sector": sector, "status": "error", "detail": str(exc)}
             logger.error("[scheduler_api] Forecast FAILED for %s: %s", ticker, exc, exc_info=True)
         results.append(result)
     return results
@@ -147,14 +173,15 @@ def _has_feedback_entry(ticker: str, review_date: date, sector: str = "automobil
     return False
 
 
-def _run_reviews(tickers: list[str], dates: list[date], skip_existing: bool = False) -> list[dict]:
+def _run_reviews(tickers: list[dict], dates: list[date], skip_existing: bool = False) -> list[dict]:
     """Run daily_review for each (ticker, date) pair. Sync."""
     from core.intelligence.rl.workflows.daily_review import run_daily_review
     results = []
     for review_date in dates:
-        for ticker in tickers:
+        for entry in tickers:
+            ticker, sector = entry["sym"], entry.get("sector", _SECTOR)
             try:
-                if skip_existing and _has_feedback_entry(ticker, review_date):
+                if skip_existing and _has_feedback_entry(ticker, review_date, sector=sector):
                     logger.info(
                         "[scheduler_api] Skip %s %s — feedback entry already exists",
                         ticker, review_date,
@@ -164,7 +191,7 @@ def _run_reviews(tickers: list[str], dates: list[date], skip_existing: bool = Fa
                         "status": "skipped_existing",
                     })
                     continue
-                summary = run_daily_review(ticker, review_date)
+                summary = run_daily_review(ticker, review_date, sector=sector)
                 status  = summary.get("status", "unknown")
                 logger.info(
                     "[scheduler_api] Review %s %s — status=%s direction=%s lessons=%s",
@@ -184,13 +211,13 @@ def _run_reviews(tickers: list[str], dates: list[date], skip_existing: bool = Fa
 
 
 # Async wrappers for BackgroundTasks
-async def _forecast_task(tickers: list[str]) -> None:
+async def _forecast_task(tickers: list[dict]) -> None:
     results = await asyncio.to_thread(_run_forecasts, tickers)
     ok = sum(1 for r in results if r["status"] == "ok")
     logger.info("[scheduler_api] Forecast task complete: %d/%d ok", ok, len(results))
 
 
-async def _review_task(tickers: list[str], dates: list[date], skip_existing: bool = False) -> None:
+async def _review_task(tickers: list[dict], dates: list[date], skip_existing: bool = False) -> None:
     results = await asyncio.to_thread(_run_reviews, tickers, dates, skip_existing)
     completed = sum(1 for r in results if r.get("status") == "completed")
     logger.info(
@@ -210,7 +237,7 @@ async def _review_task(tickers: list[str], dates: list[date], skip_existing: boo
 )
 async def trigger_forecast(
     background_tasks: BackgroundTasks,
-    ticker: str | None = Query(default=None, description="NSE ticker. Omit for all SCHEDULER_TICKERS."),
+    ticker: str | None = Query(default=None, description="NSE ticker. Omit for all managed tickers (all sectors)."),
     x_scheduler_key: str | None = Header(default=None),
 ) -> dict:
     """
@@ -229,8 +256,8 @@ async def trigger_forecast(
     background_tasks.add_task(_forecast_task, tickers)
     return {
         "status":   "accepted",
-        "message":  f"Forecast generation started for {tickers}. Takes ~2 min per ticker.",
-        "tickers":  tickers,
+        "message":  f"Forecast generation started for {_syms(tickers)}. Takes ~2 min per ticker.",
+        "tickers":  _syms(tickers),
         "monitor":  "/scheduler/status",
     }
 
@@ -246,7 +273,7 @@ async def trigger_forecast(
 )
 async def trigger_daily_review(
     background_tasks: BackgroundTasks,
-    ticker: str | None = Query(default=None, description="NSE ticker. Omit for all SCHEDULER_TICKERS."),
+    ticker: str | None = Query(default=None, description="NSE ticker. Omit for all managed tickers (all sectors)."),
     review_date: str | None = Query(
         default=None,
         description="ISO date to review e.g. 2026-05-02. Default: last trading day.",
@@ -283,8 +310,8 @@ async def trigger_daily_review(
     background_tasks.add_task(_review_task, tickers, [target])
     return {
         "status":       "accepted",
-        "message":      f"Daily review started for {tickers} on {target}.",
-        "tickers":      tickers,
+        "message":      f"Daily review started for {_syms(tickers)} on {target}.",
+        "tickers":      _syms(tickers),
         "review_date":  target.isoformat(),
         "monitor":      "/scheduler/status",
     }
@@ -301,7 +328,7 @@ async def trigger_daily_review(
 )
 async def trigger_backfill(
     background_tasks: BackgroundTasks,
-    ticker: str | None = Query(default=None, description="NSE ticker. Omit for all SCHEDULER_TICKERS."),
+    ticker: str | None = Query(default=None, description="NSE ticker. Omit for all managed tickers (all sectors)."),
     month: str | None = Query(default=None, description="YYYY-MM. Backfill that month instead of the current one (reviews run against that month's envelope)."),
     skip_existing: bool = Query(default=False, description="Skip ticker+date pairs that already have a feedback entry (recovery mode — never overwrites same-day reviews)."),
     x_scheduler_key: str | None = Header(default=None),
@@ -336,7 +363,7 @@ async def trigger_backfill(
     return {
         "status":          "accepted",
         "message":         f"Backfill started: {len(trading_days)} trading days × {len(tickers)} tickers.",
-        "tickers":         tickers,
+        "tickers":         _syms(tickers),
         "trading_days":    [d.isoformat() for d in trading_days],
         "total_reviews":   len(trading_days) * len(tickers),
         "skip_existing":   skip_existing,
@@ -362,13 +389,13 @@ async def scheduler_status(
       - weight_memory.rl_active   → True when UI analyses use learned weights
     """
     _check_auth(x_scheduler_key)
-    from core.config import settings
     from core.intelligence.rl.stores.prediction_store import PredictionStore
 
     ticker_states = []
-    for ticker in settings.SCHEDULER_TICKERS:
+    for entry in _resolve_tickers(None):
+        ticker, sector = entry["sym"], entry.get("sector", _SECTOR)
         try:
-            store    = PredictionStore(ticker, sector=_SECTOR)
+            store    = PredictionStore(ticker, sector=sector)
             cycle_id = store.current_cycle_id()
             env      = store.load_envelope(cycle_id)
             fb_log   = store.load_feedback_log(cycle_id)
@@ -389,6 +416,7 @@ async def scheduler_status(
 
             ticker_states.append({
                 "ticker":   ticker,
+                "sector":   sector,
                 "cycle_id": cycle_id,
                 "envelope": {
                     "exists":        env is not None,

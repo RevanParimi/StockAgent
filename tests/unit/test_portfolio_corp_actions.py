@@ -101,3 +101,22 @@ def test_sync_never_raises_and_saves(tmp_path):
     def boom(symbol):
         raise RuntimeError("network down")
     assert sync_corp_actions(store, TODAY, fetch=boom)["applied"] == 0
+
+
+def test_parse_bonus_issue_phrasing():
+    a = parse_action({"subject": "Bonus Issue 1:1", "exDate": "10-Jun-2026"})
+    assert a is not None and a.kind == "bonus" and a.ratio == 2.0
+
+
+def test_sync_survives_save_failure(tmp_path, monkeypatch):
+    store = PortfolioStore(user_id="u2", base_dir=str(tmp_path))
+    store.add_holding(_holding())
+
+    def fake_fetch(symbol):
+        return [{"subject": "Bonus 1:1", "exDate": "10-Jun-2026"}]
+
+    def boom_save(portfolio):
+        raise RuntimeError("disk full")
+    monkeypatch.setattr(store, "save", boom_save)
+    result = sync_corp_actions(store, TODAY, fetch=fake_fetch)
+    assert result["applied"] == 0 and result.get("save_failed") is True

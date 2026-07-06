@@ -18,7 +18,7 @@ from services.data.fetchers.corporate_events import fetch_corp_actions
 
 logger = logging.getLogger(__name__)
 
-_BONUS_RE = re.compile(r"bonus\s+(\d+)\s*:\s*(\d+)", re.I)
+_BONUS_RE = re.compile(r"bonus[^0-9]*?(\d+)\s*:\s*(\d+)", re.I)
 _SPLIT_RE = re.compile(
     r"from\s+r[se]\.?\s*(\d+(?:\.\d+)?).{0,40}?to\s+r[se]\.?\s*(\d+(?:\.\d+)?)", re.I
 )
@@ -135,5 +135,12 @@ def sync_corp_actions(store: PortfolioStore, today: date, fetch=fetch_corp_actio
                 "[corp_actions] sync failed for %s (non-fatal): %s", holding.symbol, exc
             )
     if total:
-        store.save(portfolio)
+        try:
+            store.save(portfolio)
+        except Exception as exc:
+            logger.error(
+                "[corp_actions] portfolio save failed after %d applied actions (non-fatal): %s",
+                total, exc,
+            )
+            return {"applied": 0, "symbols": [], "save_failed": True}
     return {"applied": total, "symbols": touched}

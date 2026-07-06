@@ -72,3 +72,13 @@ def test_next_results_event():
     ev = ce.next_results_event("INFY", date(2026, 7, 6), calendar)
     assert ev is not None and ev.date == "2026-07-15"
     assert ce.next_results_event("TCS", date(2026, 7, 6), calendar) is None
+
+
+def test_next_results_event_unsorted_and_corrupt_entries():
+    calendar = {"events": {"INFY": [
+        {"symbol": "INFY", "date": "2026-09-01", "kind": "results", "desc": "later"},
+        {"symbol": "INFY", "date": "not-a-date", "kind": "results", "desc": "corrupt"},
+        {"symbol": "INFY", "date": "2026-07-15", "kind": "results", "desc": "earliest future"},
+    ]}}
+    ev = ce.next_results_event("INFY", date(2026, 7, 6), calendar)
+    assert ev is not None and ev.date == "2026-07-15"

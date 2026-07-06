@@ -147,14 +147,17 @@ def load_events_calendar(cache_path: str | None = None) -> dict:
 
 def next_results_event(symbol: str, on: date, calendar: dict) -> CorporateEvent | None:
     """Earliest future results-kind event for symbol, or None."""
+    best: CorporateEvent | None = None
     for raw in calendar.get("events", {}).get(symbol, []):
         try:
             ev = CorporateEvent(**raw)
+            ev_date = date.fromisoformat(ev.date)
         except Exception:
             continue
-        if ev.kind == "results" and date.fromisoformat(ev.date) >= on:
-            return ev
-    return None
+        if ev.kind == "results" and ev_date >= on:
+            if best is None or ev.date < best.date:
+                best = ev
+    return best
 
 
 def _write_cache(path: pathlib.Path, data: dict) -> None:

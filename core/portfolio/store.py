@@ -52,9 +52,18 @@ class PortfolioStore:
     # Atomic write helper
     # ------------------------------------------------------------------
     def _write_json(self, path: Path, data: dict) -> None:
+        """Write JSON atomically via a temp file to avoid partial writes."""
         tmp = path.with_suffix(".tmp")
-        tmp.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
-        tmp.replace(path)
+        try:
+            tmp.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+            tmp.replace(path)
+        except OSError as exc:
+            logger.error("[PortfolioStore] Write failed for %s: %s", path.name, exc)
+            try:
+                tmp.unlink(missing_ok=True)
+            except OSError:
+                pass
+            raise RuntimeError(f"Write failed for {path.name}: {exc}") from exc
 
     # ------------------------------------------------------------------
     # Portfolio CRUD
@@ -74,6 +83,7 @@ class PortfolioStore:
         self._write_json(self._portfolio_path(), p.model_dump())
 
     def add_holding(self, h: Holding) -> Portfolio:
+        h.symbol = h.symbol.strip().upper()
         if h.qty <= 0 or h.avg_buy_price <= 0:
             raise ValueError(f"qty and avg_buy_price must be positive: {h.symbol}")
         p = self.load()
@@ -85,6 +95,8 @@ class PortfolioStore:
                 existing.avg_buy_price * existing.qty + h.avg_buy_price * h.qty
             ) / total_qty
             adj_total = existing.adj_qty + h.adj_qty
+            if adj_total <= 0:
+                raise ValueError(f"adjusted quantity must be positive after merge: {h.symbol}")
             existing.adj_avg_price = (
                 existing.adj_avg_price * existing.adj_qty + h.adj_avg_price * h.adj_qty
             ) / adj_total
@@ -105,6 +117,7 @@ class PortfolioStore:
         return True
 
     def add_watchlist(self, w: WatchlistItem) -> Portfolio:
+        w.symbol = w.symbol.strip().upper()
         p = self.load()
         if not any(x.symbol == w.symbol for x in p.watchlist):
             p.watchlist.append(w)
@@ -151,7 +164,10 @@ class PortfolioStore:
         return path
 
     def load_latest_digest(self) -> dict | None:
-        files = sorted(self._digest_dir().glob("*.json"))
+        digest_dir = self._dir / "digests"
+        if not digest_dir.exists():
+            return None
+        files = sorted(digest_dir.glob("*.json"))
         if not files:
             return None
         try:

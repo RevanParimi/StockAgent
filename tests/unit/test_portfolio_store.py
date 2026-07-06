@@ -113,3 +113,23 @@ def test_list_user_ids(tmp_path):
     PortfolioStore(user_id="alpha", base_dir=str(tmp_path)).add_holding(_holding())
     PortfolioStore(user_id="beta", base_dir=str(tmp_path)).add_holding(_holding())
     assert sorted(list_user_ids(base_dir=str(tmp_path))) == ["alpha", "beta"]
+
+
+def test_add_lowercase_symbol_normalized_and_removable(store):
+    store.add_holding(_holding(symbol="maruti"))
+    p = store.load()
+    assert p.holdings[0].symbol == "MARUTI"
+    assert store.remove_holding("maruti") is True
+
+
+def test_watchlist_dedupes_across_case(store):
+    store.add_watchlist(WatchlistItem(symbol="tcs", added="2026-07-06"))
+    p = store.add_watchlist(WatchlistItem(symbol="TCS", added="2026-07-06"))
+    assert len(p.watchlist) == 1
+    assert p.watchlist[0].symbol == "TCS"
+
+
+def test_load_latest_digest_does_not_create_dir(tmp_path):
+    s = PortfolioStore(user_id="fresh", base_dir=str(tmp_path))
+    assert s.load_latest_digest() is None
+    assert not (tmp_path / "fresh" / "digests").exists()

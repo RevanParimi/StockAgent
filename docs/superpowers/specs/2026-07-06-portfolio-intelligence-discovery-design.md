@@ -93,9 +93,19 @@ volume-persisted state, flag-gated rollout.
 
 ### 4.1 Data model (volume: `/app/data/portfolio/`)
 
+**USER DECISION 2026-07-06: virtual-first, per-user from day one.** No broker
+integration at launch. Holdings are VIRTUAL positions entered by the user
+(mock money, real market): entry price = actual NSE close on entry date,
+P&L marked daily against real closes on trading days only (existing
+nse_calendar). The product behaves exactly as if the money were real —
+advice, alerts, ledger — so the system's advice quality is proven on paper
+before a rupee moves. Broker sync (Kite Personal, free) becomes an optional
+later upgrade that flips `virtual: false`.
+
 ```
-portfolio.json          # single-user now, user-keyed dirs later
+data/portfolio/<user_id>/portfolio.json     # per-user keyed from day one
   holdings: [ { symbol, sector, qty, avg_buy_price, buy_date(s),
+                virtual: true,        # mock-money position (launch default)
                 adj_avg_price,        # corp-action-adjusted (splits/bonus) —
                                       # ALL P&L/stop math uses this, never raw
                 broker, notes, target_pct?, max_loss_pct? } ]
@@ -117,8 +127,9 @@ adjustment exists (Phase A dependency).
 
 | Phase | Method | Notes |
 |---|---|---|
-| A | Manual + CSV (Zerodha Console export format) | zero dependencies |
-| B | **Kite Connect Personal API — free tier** | holdings/positions sync; no market data needed (we have our own); daily sync job |
+| A | **Virtual portfolio** — user enters mock buys (symbol, qty, date) via chat/UI; entry priced at real NSE close; daily mark-to-market on trading days | zero dependencies; proves advice quality risk-free |
+| A | CSV import (same schema) | bulk entry convenience |
+| later (opt-in) | Kite Connect Personal API — free tier | flips positions to `virtual: false` when user goes live |
 | later | CDSL CAS PDF parse | only if multi-broker needed |
 
 ### 4.3 Auto-promotion — the key mechanic

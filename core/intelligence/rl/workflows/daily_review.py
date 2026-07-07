@@ -1388,8 +1388,8 @@ def main() -> None:
     parser.add_argument(
         "--sector",
         default="automobile",
-        choices=["automobile", "banking_bfsi", "it_sector", "renewable_energy"],
-        help="Sector graph to use (default: automobile)",
+        help="Sector graph to use (native: automobile | banking_bfsi | it_sector | "
+             "renewable_energy; any other sector key routes via the generic graph)",
     )
     parser.add_argument(
         "--ticker",

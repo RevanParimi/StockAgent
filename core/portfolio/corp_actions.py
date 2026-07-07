@@ -85,6 +85,10 @@ def parse_action(row: dict) -> AppliedCorpAction | None:
                 key=key, ex_date=ex_date, kind="dividend", desc=desc,
                 dividend_per_share=float(m.group(1)), applied_on=today_iso,
             )
+    if "split" in low or "bonus" in low or "sub-division" in low:
+        logger.warning(
+            "[corp_actions] unparseable split/bonus row (manual review needed): %s", desc[:80]
+        )
     return None
 
 
@@ -94,9 +98,10 @@ def apply_actions_to_holding(
     """Apply every unapplied action with buy_date < ex_date <= today.
     Mutates the holding in place. Returns number applied."""
     applied_keys = {a.key for a in holding.applied_actions}
+    valid = sorted((a for a in actions if a is not None), key=lambda a: a.ex_date)
     count = 0
-    for action in actions:
-        if action is None or action.key in applied_keys:
+    for action in valid:
+        if action.key in applied_keys:
             continue
         ex = date.fromisoformat(action.ex_date)
         if ex <= date.fromisoformat(holding.buy_date) or ex > today:

@@ -49,6 +49,13 @@ def _check_auth(key: str | None) -> None:
                        "(accepted for virtual-money phase; revisit before real holdings).")
 
 
+def _store(user_id: str | None) -> PortfolioStore:
+    try:
+        return PortfolioStore(user_id=user_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+
+
 class HoldingIn(BaseModel):
     symbol: str
     sector: str
@@ -69,13 +76,13 @@ async def get_portfolio(
     x_scheduler_key: str | None = Header(default=None),
 ) -> dict:
     _check_auth(x_scheduler_key)
-    store = PortfolioStore(user_id=user_id)
+    store = _store(user_id)
     p = store.load()
     holdings = []
     for h in p.holdings:
         last_close, pnl = None, None
         try:
-            last_close = close_on(h.symbol, date.today())
+            last_close = await asyncio.to_thread(close_on, h.symbol, date.today())
             pnl = round(h.unrealised_pnl_pct(last_close), 2)
         except Exception as exc:
             logger.warning("[portfolio_api] mark failed for %s: %s", h.symbol, exc)
@@ -116,7 +123,7 @@ async def add_holding(
         price = body.price
     else:
         try:
-            price = close_on(symbol, buy_date)
+            price = await asyncio.to_thread(close_on, symbol, buy_date)
         except PriceUnavailableError as exc:
             raise HTTPException(status_code=422, detail=str(exc))
     holding = Holding(
@@ -124,7 +131,7 @@ async def add_holding(
         adj_avg_price=price, adj_qty=body.qty, buy_date=body.buy_date,
     )
     try:
-        PortfolioStore(user_id=user_id).add_holding(holding)
+        _store(user_id).add_holding(holding)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
     promotion = promote_symbol(symbol, body.sector, origin="held")
@@ -138,7 +145,7 @@ async def delete_holding(
     x_scheduler_key: str | None = Header(default=None),
 ) -> dict:
     _check_auth(x_scheduler_key)
-    store = PortfolioStore(user_id=user_id)
+    store = _store(user_id)
     if not store.remove_holding(symbol):
         raise HTTPException(status_code=404, detail=f"No holding {symbol.upper()}")
     demoted = False
@@ -162,13 +169,11 @@ async def add_watchlist(
             detail=f"Sector '{body.sector}' not yet supported — Phase A covers {sorted(SUPPORTED_SECTORS)} only.",
         )
     promotion = promote_symbol(symbol, body.sector, origin="watchlist")
-    if promotion["status"] == "unsupported_sector":
-        raise HTTPException(status_code=422, detail=promotion["detail"])
     item = WatchlistItem(
         symbol=symbol, sector=body.sector, added=date.today().isoformat(),
         reason=body.reason, source="user",
     )
-    PortfolioStore(user_id=user_id).add_watchlist(item)
+    _store(user_id).add_watchlist(item)
     return {"watchlist_item": item.model_dump(), "promotion": promotion}
 
 
@@ -179,7 +184,7 @@ async def delete_watchlist(
     x_scheduler_key: str | None = Header(default=None),
 ) -> dict:
     _check_auth(x_scheduler_key)
-    store = PortfolioStore(user_id=user_id)
+    store = _store(user_id)
     if not store.remove_watchlist(symbol):
         raise HTTPException(status_code=404, detail=f"No watchlist entry {symbol.upper()}")
     demoted = False
@@ -196,13 +201,14 @@ async def import_csv_endpoint(
     x_scheduler_key: str | None = Header(default=None),
 ) -> dict:
     _check_auth(x_scheduler_key)
+    _store(user_id)  # validate user_id before running the import
     text = (await request.body()).decode("utf-8", errors="replace")
-    result = import_csv(
-        text, user_id=user_id,
+    result = await asyncio.to_thread(
+        import_csv, text, user_id=user_id,
         price_lookup=lambda sym, d: close_on(sym, date.fromisoformat(d)),
     )
     # Promote successfully imported symbols (held origin).
-    p = PortfolioStore(user_id=user_id).load()
+    p = _store(user_id).load()
     for h in p.holdings:
         try:
             promote_symbol(h.symbol, h.sector, origin="held")
@@ -214,11 +220,11 @@ async def import_csv_endpoint(
 @router.get("/advice", summary="Advice-ledger tail")
 async def get_advice(
     user_id: str | None = Query(default=None),
-    limit: int = Query(default=50, le=500),
+    limit: int = Query(default=50, ge=1, le=500),
     x_scheduler_key: str | None = Header(default=None),
 ) -> dict:
     _check_auth(x_scheduler_key)
-    records = PortfolioStore(user_id=user_id).load_advice(limit=limit)
+    records = _store(user_id).load_advice(limit=limit)
     return {"records": [r.model_dump() for r in records]}
 
 
@@ -228,7 +234,7 @@ async def get_latest_digest(
     x_scheduler_key: str | None = Header(default=None),
 ) -> dict:
     _check_auth(x_scheduler_key)
-    digest = PortfolioStore(user_id=user_id).load_latest_digest()
+    digest = _store(user_id).load_latest_digest()
     if digest is None:
         raise HTTPException(status_code=404, detail="No digest yet — run the advisor first.")
     return digest

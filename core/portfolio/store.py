@@ -14,6 +14,7 @@ import csv
 import io
 import json
 import logging
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -27,10 +28,14 @@ from backend.shared.schemas.portfolio import (
 
 logger = logging.getLogger(__name__)
 
+_USER_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
+
 
 class PortfolioStore:
     def __init__(self, user_id: str | None = None, base_dir: str | None = None) -> None:
         self.user_id = (user_id or settings.PORTFOLIO_DEFAULT_USER_ID).strip()
+        if not _USER_ID_RE.fullmatch(self.user_id):
+            raise ValueError(f"invalid user_id {self.user_id!r} — allowed: [A-Za-z0-9_-], max 64 chars")
         self._dir = Path(base_dir or settings.PORTFOLIO_DATA_DIR) / self.user_id
         self._dir.mkdir(parents=True, exist_ok=True)
 
@@ -76,6 +81,14 @@ class PortfolioStore:
             return Portfolio(**json.loads(path.read_text(encoding="utf-8")))
         except Exception as exc:
             logger.error("[PortfolioStore] failed to read %s: %s", path, exc)
+            try:
+                quarantine = path.with_name(
+                    f"portfolio.json.corrupt-{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S')}"
+                )
+                path.rename(quarantine)
+                logger.error("[PortfolioStore] quarantined corrupt file to %s", quarantine)
+            except OSError:
+                pass
             return Portfolio(user_id=self.user_id)
 
     def save(self, p: Portfolio) -> None:

@@ -11,7 +11,8 @@ pharma stock would be analyzed as a car company. Promotion therefore REJECTS
 unsupported sectors until the generic sector graph ships (Phase B).
 
 Cap governance: portfolio.max_managed_tickers (default 40) guards LLM spend.
-Priority held > watchlist; pre-existing manual entries are never evicted.
+Only watchlist-origin entries are ever evicted (oldest first); held and manual
+entries are never rotated out.
 Cadence tiers govern review cost: held=daily, watchlist=weekly (spec §4.3).
 """
 from __future__ import annotations
@@ -31,8 +32,28 @@ SUPPORTED_SECTORS: frozenset[str] = frozenset(
 )
 
 _ORIGIN_CADENCE = {"held": "daily", "watchlist": "weekly"}
-# Eviction preference under cap pressure (lower value evicted first).
-_EVICTION_ORDER = {"watchlist": 0, "held": 1}
+
+
+def _evict_for_capacity(tickers: list[dict], cap: int) -> bool:
+    """Ensure there's room for one more active entry under `cap`.
+
+    Returns True if room already exists or was made by evicting the oldest
+    watchlist-origin entry (held and manual entries are never evicted).
+    Returns False if the cap is full and nothing is evictable — callers
+    must NOT enable/add the entry in that case.
+    """
+    active = [t for t in tickers if t.get("enabled", True)]
+    if len(active) < cap:
+        return True
+    candidates = [t for t in active if t.get("origin") == "watchlist"]
+    candidates.sort(key=lambda t: t.get("promoted_at", ""))
+    if not candidates:
+        return False
+    evicted = candidates[0]
+    evicted["enabled"] = False
+    logger.info("[promotion] cap %d: evicted %s (origin=%s)",
+                cap, evicted["sym"], evicted["origin"])
+    return True
 
 
 def promote_symbol(symbol: str, sector: str, origin: str) -> dict:
@@ -54,6 +75,14 @@ def promote_symbol(symbol: str, sector: str, origin: str) -> dict:
     if existing:
         changed = False
         if not existing.get("enabled", True):
+            cap = settings.PORTFOLIO_MAX_MANAGED_TICKERS
+            if not _evict_for_capacity(tickers, cap):
+                logger.warning(
+                    "[promotion] cap %d reached and nothing evictable — "
+                    "%s NOT re-enabled", cap, symbol,
+                )
+                return {"status": "cap_full", "symbol": symbol,
+                        "detail": f"managed-ticker cap {cap} reached"}
             existing["enabled"] = True
             changed = True
         # A held position outranks a watchlist promotion of the same symbol.
@@ -66,25 +95,13 @@ def promote_symbol(symbol: str, sector: str, origin: str) -> dict:
         return {"status": "already_managed", "symbol": symbol}
 
     cap = settings.PORTFOLIO_MAX_MANAGED_TICKERS
-    active = [t for t in tickers if t.get("enabled", True)]
-    if len(active) >= cap:
-        # Only watchlist-origin entries are evictable: held positions and
-        # origin-less manual entries are never rotated out. A new watchlist
-        # promotion may evict the OLDEST watchlist entry (spec §4.3:
-        # "lowest-priority watchlist names rotate out").
-        candidates = [t for t in active if t.get("origin") == "watchlist"]
-        candidates.sort(key=lambda t: t.get("promoted_at", ""))
-        if not candidates:
-            logger.warning(
-                "[promotion] cap %d reached and nothing evictable — %s NOT promoted",
-                cap, symbol,
-            )
-            return {"status": "cap_full", "symbol": symbol,
-                    "detail": f"managed-ticker cap {cap} reached"}
-        evicted = candidates[0]
-        evicted["enabled"] = False
-        logger.info("[promotion] cap %d: evicted %s (origin=%s) for %s",
-                    cap, evicted["sym"], evicted["origin"], symbol)
+    if not _evict_for_capacity(tickers, cap):
+        logger.warning(
+            "[promotion] cap %d reached and nothing evictable — %s NOT promoted",
+            cap, symbol,
+        )
+        return {"status": "cap_full", "symbol": symbol,
+                "detail": f"managed-ticker cap {cap} reached"}
 
     try:
         name = resolve_company_name(symbol) or symbol

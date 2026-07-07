@@ -88,6 +88,18 @@ def test_due_for_review_cadence():
     assert promo.due_for_review(weekly, friday) is True
 
 
+def test_reenable_respects_cap(managed, monkeypatch):
+    monkeypatch.setattr(promo.settings, "PORTFOLIO_MAX_MANAGED_TICKERS", 1)
+    managed["tickers"].append({
+        "sym": "TCS", "name": "TCS Ltd", "sector": "it_sector", "enabled": False,
+        "origin": "watchlist", "cadence": "weekly", "promoted_at": "2026-06-01",
+    })
+    result = promo.promote_symbol("TCS", "it_sector", origin="watchlist")
+    assert result["status"] == "cap_full"
+    entry = next(t for t in managed["tickers"] if t["sym"] == "TCS")
+    assert entry["enabled"] is False
+
+
 def test_watchlist_promotion_rotates_oldest_watchlist(managed, monkeypatch):
     monkeypatch.setattr(promo.settings, "PORTFOLIO_MAX_MANAGED_TICKERS", 3)
     managed["tickers"] += [

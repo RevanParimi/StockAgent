@@ -37,6 +37,13 @@ def test_build_digest_totals_and_escalations():
     assert d["holdings"][0]["verdict"] == "TRIM"
 
 
+def test_build_digest_missing_close_excluded_from_totals():
+    p = Portfolio(user_id="u", holdings=[_holding(), _holding(symbol="NOPRICE")])
+    d = build_digest("u", REVIEW_DATE, [_advice()], p, {"MARUTI": 13000.0})
+    assert d["cost_basis"] == pytest.approx(120000.0)     # only the priced holding
+    assert d["total_pnl_pct"] == pytest.approx(130000.0 / 120000.0 * 100 - 100)
+
+
 def test_pipeline_skips_non_trading_day(monkeypatch, tmp_path):
     monkeypatch.setattr(pipeline, "is_trading_day", lambda d: False)
     result = pipeline.run_post_review_pipeline(REVIEW_DATE)

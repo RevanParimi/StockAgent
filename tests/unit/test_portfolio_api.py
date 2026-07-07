@@ -109,3 +109,8 @@ def test_add_holding_bad_date_422(client):
 def test_run_advisor_bad_date_422(client):
     resp = client.post("/portfolio/run-advisor?review_date=notadate")
     assert resp.status_code == 422
+
+
+def test_traversal_user_id_422(client):
+    resp = client.get("/portfolio?user_id=../../etc")
+    assert resp.status_code == 422

@@ -25,7 +25,7 @@ def build_digest(
         close = closes.get(h.symbol)
         if close is not None:
             value += h.adj_qty * close
-        cost += h.adj_qty * h.adj_avg_price
+            cost += h.adj_qty * h.adj_avg_price
         rec = by_symbol.get(h.symbol)
         rows.append({
             "symbol": h.symbol,

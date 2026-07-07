@@ -133,3 +133,20 @@ def test_load_latest_digest_does_not_create_dir(tmp_path):
     s = PortfolioStore(user_id="fresh", base_dir=str(tmp_path))
     assert s.load_latest_digest() is None
     assert not (tmp_path / "fresh" / "digests").exists()
+
+
+def test_user_id_path_traversal_rejected(tmp_path):
+    with pytest.raises(ValueError):
+        PortfolioStore(user_id="../evil", base_dir=str(tmp_path))
+    with pytest.raises(ValueError):
+        PortfolioStore(user_id="a/b", base_dir=str(tmp_path))
+
+
+def test_corrupt_portfolio_quarantined_not_clobbered(tmp_path):
+    s = PortfolioStore(user_id="u9", base_dir=str(tmp_path))
+    s.add_holding(_holding())
+    (tmp_path / "u9" / "portfolio.json").write_text("{not json", encoding="utf-8")
+    p = s.load()
+    assert p.holdings == []
+    corrupt = list((tmp_path / "u9").glob("portfolio.json.corrupt-*"))
+    assert len(corrupt) == 1                      # original preserved

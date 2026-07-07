@@ -108,6 +108,18 @@ def test_parse_bonus_issue_phrasing():
     assert a is not None and a.kind == "bonus" and a.ratio == 2.0
 
 
+def test_actions_apply_in_ex_date_order_regardless_of_feed_order():
+    h = _holding(price=1000.0, qty=10)
+    bonus = parse_action({"subject": "Bonus 1:1", "exDate": "10-Jun-2026"})
+    div = parse_action({"subject": "Dividend - Rs 8 Per Share", "exDate": "01-Jun-2026"})
+    # Feed newest-first: bonus before dividend. Dividend ex-date is EARLIER,
+    # so it must credit on the pre-bonus quantity (10 × 8 = 80, not 160).
+    applied = apply_actions_to_holding(h, [bonus, div], TODAY)
+    assert applied == 2
+    assert h.dividends_received == pytest.approx(80.0)
+    assert h.adj_qty == 20
+
+
 def test_sync_survives_save_failure(tmp_path, monkeypatch):
     store = PortfolioStore(user_id="u2", base_dir=str(tmp_path))
     store.add_holding(_holding())

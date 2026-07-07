@@ -32,7 +32,7 @@ from backend.sectors.renewable_energy.config.settings import AGENT_WEIGHTS as RE
 from backend.sectors.automobile.config.settings import AGENT_WEIGHTS as AUTO_WEIGHTS
 
 
-ALL_SECTORS = ["automobile", "banking_bfsi", "it_sector", "renewable_energy"]
+ALL_SECTORS = ["automobile", "banking_bfsi", "it_sector", "renewable_energy", "generic"]
 
 
 def _make_query(ticker: str = "HDFCBANK") -> StockQuery:

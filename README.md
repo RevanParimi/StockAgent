@@ -3,6 +3,8 @@
 > AI-powered Indian stock analyser with a self-learning feedback loop.
 > Analyses NSE/BSE stocks across 4 sectors using up to 9 specialist AI agents in parallel —
 > then reviews its own predictions every trading day to get smarter over time.
+> Now with **Compass**: a virtual portfolio it watches for you daily, telling you
+> when to HOLD / ADD / TRIM / EXIT each position — with the receipts in a permanent advice ledger.
 
 **Live app:** [stockagent-ai.up.railway.app/app/index.html](https://stockagent-ai.up.railway.app/app/index.html)
 
@@ -240,6 +242,157 @@ This is not a prediction — it is a calibration. The system is telling you: *"W
 
 ---
 
+## Compass — Your Portfolio, Watched Daily
+
+Everything above analyses stocks *in general*. Compass points all of that machinery at **your stocks specifically**. You tell it what you hold; from that moment every holding gets the full treatment — monthly forecast envelope, daily RL review, living dossier — and every evening a deterministic advisor tells you, per position: **HOLD, ADD, TRIM, or EXIT**, with the reason.
+
+It launches **virtual-first**: you enter mock buys with real money mechanics. Entry price is the *actual NSE close* on your buy date, P&L is marked against real closes on trading days only, and every piece of advice is logged to a permanent ledger — so the system's advice quality is proven on paper before a single real rupee moves.
+
+> Everything Compass outputs is research/analysis for the portfolio owner — never investment advice, and there is no auto-trading anywhere in the system.
+
+### How an evening works
+
+```
+  YOU (once)                                THE SYSTEM (every trading day)
+┌─────────────────────────┐
+│ "Add 10 MARUTI,          │      4:30pm IST daily RL review finishes for
+│  bought 2026-07-03"      │      ALL managed tickers (yours included)
+│                          │                      │
+│ entry priced at the      │                      │  event-trigger — the advisor runs
+│ REAL NSE close that day  │                      │  when the review completes,
+└───────────┬─────────────┘                      │  never on a wall clock
+            │ auto-promotion                      ▼
+            ▼                        ┌────────────────────────────────┐
+┌─────────────────────────┐         │ 1  CORP-ACTION SYNC            │
+│ MANAGED UNIVERSE         │         │    splits · bonuses · dividends │
+│ your holding now gets:   │         │    adjust cost basis FIRST      │
+│  · 30-day envelope       │         ├────────────────────────────────┤
+│  · daily RL review       │         │ 2  EVENTS CALENDAR REFRESH     │
+│  · living dossier        │         │    forward earnings dates       │
+│  — identical treatment   │         ├────────────────────────────────┤
+│  to the original tickers │         │ 3  PER HOLDING                 │
+└─────────────────────────┘         │    envelope + regime + thesis   │
+                                     │    + P&L + earnings distance    │
+                                     │    → HOLD / ADD / TRIM / EXIT   │
+                                     │    → LLM writes the one-liner   │
+                                     ├────────────────────────────────┤
+                                     │ 4  ADVICE LEDGER (append-only) │
+                                     ├────────────────────────────────┤
+                                     │ 5  EOD DIGEST saved per user   │
+                                     └────────────────────────────────┘
+```
+
+Step 1 is deliberately first and non-negotiable: without it, a 1:1 bonus issue would look like a −50% overnight crash and fire a false EXIT. All P&L and stop math runs on the **corp-action-adjusted** cost basis (`adj_avg_price` / `adj_qty`), never the raw entry numbers — and dividends you've received count toward P&L, so dividend payers aren't unfairly trimmed.
+
+### The verdicts
+
+The decision engine is **pure Python — deterministic, testable, cheap**. The LLM only phrases the explanation afterwards; it never makes the call.
+
+**Precedence is absolute: `EXIT > TRIM > ADD > HOLD`.**
+
+| Verdict | Fires when | Rule codes in the ledger |
+|---|---|---|
+| 🟥 **EXIT** | Loss breaches the volatility-scaled stop, **or** thesis assessed broken with a bearish envelope, **or** a shock re-forecast moved against you, **or** `MACRO_CRISIS` regime + bearish envelope | `stop_breach`, `thesis_break`, `shock_reforecast`, `crisis_regime_bearish` |
+| 🟧 **TRIM** | Profit ≥ 25% **and** envelope confidence is fading or the mean-reversion prior is elevated | `trim_profit_confidence_decline`, `trim_profit_reversion_elevated` |
+| 🟩 **ADD** | Envelope bullish + supportive regime + position under its 10% weight cap + recent direction accuracy ≥ 60% | `add_bullish_healthy` |
+| ⬜ **HOLD** | Default — thesis intact, nothing above fired | `default_hold` |
+
+Two tax/event refinements ride on top:
+
+| Annotation | Meaning |
+|---|---|
+| `WAIT_FOR_LTCG` | A TRIM on a position aged 10–12 months with an intact thesis is softened to HOLD — selling a few weeks early would pay 20% STCG instead of 12.5% LTCG. **This never softens an EXIT** — capital protection outranks tax optimisation, always. |
+| `EARNINGS_GAP_PROTECTION` | Profitable position with results due within 3 trading days — flags the profit-protection question before the gap risk, fed by a live NSE corporate-events calendar. |
+| `SECTOR_CONCENTRATION_HIGH` | Position weight has crossed the 30% concentration comfort band. |
+
+### Stops that respect volatility
+
+A flat stop-loss % is wrong twice: it's one bad week of noise on a small-cap and far too loose on a large-cap bank. Compass scales the stop to the stock:
+
+```
+stop % = clamp( 3 × ATR(20d)% ,  bucket floor ,  bucket cap )
+```
+
+| Market-cap bucket | Stop floor | Stop cap | Example |
+|---|---|---|---|
+| Large (≥ ₹65,000 cr) | 8% | 12% | HDFCBANK (ATR ~0.8%) → stop ≈ 8% (floored) |
+| Mid (≥ ₹20,000 cr) | 12% | 18% | typical mid-cap ATR ~1.5% → stop ≈ 12–15% |
+| Small | 15% | 22% | volatile small-cap ATR ~3.5% → stop ≈ 22% (capped) |
+
+A `conservative` risk profile tightens the bucket one notch (small→mid, mid→large). Every threshold above — trim %, weight cap, ATR multiple, bucket bands, LTCG window — lives in `config.yaml` under `advisor.*` / `portfolio.*`.
+
+### Auto-promotion — the key mechanic
+
+Any symbol you hold or watchlist is **automatically promoted into the managed universe** and starts receiving forecasts, daily reviews, and a dossier — no separate setup.
+
+| Rule | Behaviour |
+|---|---|
+| Sector gate | Phase A supports the 4 live sectors (automobile, banking/BFSI, IT, renewable energy). Anything else is rejected with a clear *"sector not yet supported"* — the generic sector graph that lifts this arrives in Phase B. |
+| Review cadence | **Held names review daily; watchlist names weekly** (Fridays) — this is what keeps LLM spend governed. |
+| Cap | 40 managed tickers max (`portfolio.max_managed_tickers`). At the cap, the **oldest watchlist-origin** name rotates out. |
+| Protection | Held positions and the original manually-managed tickers are **never** rotated out. |
+
+### What lands on disk
+
+```
+data/portfolio/
+└── <user_id>/                        ← per-user from day one (default: "primary")
+    ├── portfolio.json                ← holdings + watchlist + risk profile
+    │     symbol, sector, qty, buy_date,
+    │     avg_buy_price     (raw — never touched)
+    │     adj_avg_price     (corp-action-adjusted — ALL math uses this)
+    │     dividends_received, applied_actions[], virtual: true
+    ├── advice_ledger.jsonl           ← append-only: every verdict ever issued
+    │     date, symbol, verdict, close, pnl%, stop%,
+    │     trigger codes, confidence, narrative, outcome slots (+10/30/60td)
+    └── digests/
+        └── 2026-07-03.json           ← one EOD digest per trading day
+
+data/market_cache/
+└── corporate_events.json             ← forward earnings calendar (degraded-mode safe)
+```
+
+The advice ledger is the seed of the next learning loop: outcome slots get filled at +10/+30/+60 trading days, and in Phase D the same weight-adaptation machinery that tunes the analysis agents starts tuning the advisor's own thresholds — *"were my TRIM calls actually right?"* becomes a measured number.
+
+### A digest, rendered
+
+```
+EOD DIGEST — 2026-07-03 · user: primary
+──────────────────────────────────────────────────────────
+Portfolio value  ₹1,43,660        Cost basis  ₹1,20,000
+Total P&L        +19.7%           Escalations: none
+──────────────────────────────────────────────────────────
+ MARUTI    ⬜ HOLD   ₹14,366   +19.7%
+           "Thesis intact; envelope tracking within band and
+            no rule fired. Results due Jul 29 — no gap risk yet."
+──────────────────────────────────────────────────────────
+```
+
+### Driving it — the `/portfolio` API
+
+| Method | Endpoint | What it does |
+|---|---|---|
+| GET | `/portfolio` | Holdings + watchlist, marked to market at the latest close |
+| POST | `/portfolio/holdings` | Add a virtual buy — omit `price` and it's priced at the real NSE close on your buy date |
+| DELETE | `/portfolio/holdings/{symbol}` | Remove a position (auto-demotes from the managed universe if not watchlisted) |
+| POST | `/portfolio/watchlist` · DELETE `/portfolio/watchlist/{symbol}` | Watch a symbol (weekly review cadence) |
+| POST | `/portfolio/import-csv` | Bulk import — `symbol,sector,qty,avg_buy_price,buy_date` (price blank → real close) |
+| GET | `/portfolio/advice?limit=50` | The advice-ledger tail |
+| GET | `/portfolio/digest/latest` | Latest EOD digest |
+| POST | `/portfolio/run-advisor` | Manual pipeline trigger (202, runs in background) |
+
+### What Compass is not (yet)
+
+| Not in Phase A | Arrives |
+|---|---|
+| Discovery engine (weekly quant funnel over ~2000 NSE stocks) + paper-trading lane | Phase B |
+| Sectors beyond the live 4 (generic sector graph) | Phase B |
+| IPO tracker, morning brief, push/email delivery, SWITCH verdicts | Phase C |
+| Advice-outcome RL (thresholds that tune themselves) | Phase D — data-gated on ~6 weeks of ledger |
+| Broker sync (Zerodha Kite Personal — flips `virtual: false`) | Optional, any time after A |
+
+---
+
 ## The Chat Assistant
 
 The floating orb (bottom-right corner) opens a chat assistant — an **agentic tool-loop** that reasons,
@@ -418,6 +571,21 @@ A quick guide to every abbreviation, metric, and concept you will encounter in S
 
 ---
 
+### Compass Portfolio Advisor
+
+| Term | What it means | In plain English |
+|---|---|---|
+| **Virtual holding** | A mock-money position entered at the real NSE close on the buy date, marked to market daily | Real prices, fake money — the advisor's track record is provable before any real capital moves |
+| **`adj_avg_price`** | Corp-action-adjusted cost basis (splits, bonuses, dividends applied in ex-date order) | After a 1:1 bonus your ₹1,000 entry becomes ₹500 × double the shares — P&L stays truthful instead of showing a fake −50% crash |
+| **Verdict precedence** | `EXIT > TRIM > ADD > HOLD` — a stronger signal always wins | An 11-month-old profitable position breaching its stop gets EXIT, never "wait for LTCG" |
+| **ATR-scaled stop** | Stop-loss % = 3 × the stock's 20-day ATR, clamped to a market-cap band | HDFCBANK gets a tight ~8% stop; a volatile small-cap gets room up to 22% — one bad week of normal noise doesn't eject you |
+| **WAIT_FOR_LTCG** | TRIM softened to HOLD when the position is 10–12 months old with an intact thesis | Selling at month 11 pays 20% STCG; waiting past month 12 pays 12.5% LTCG. Never applied to an EXIT |
+| **Advice ledger** | Append-only JSONL of every verdict ever issued, with outcome slots at +10/30/60 trading days | The product grades its own advice — the Phase D learning loop tunes thresholds from this file |
+| **Auto-promotion** | Held/watchlisted symbols automatically join the managed universe (cap 40) | Add a holding once; envelopes, daily reviews, and a dossier start without any other setup |
+| **EOD digest** | Per-user end-of-day summary, event-triggered when the daily review finishes | Per-holding verdict + one-line reason + P&L, saved as one file per trading day |
+
+---
+
 ### Indian Market Structure
 
 | Term | Full Form | What it means in context |
@@ -544,6 +712,7 @@ A quick guide to every abbreviation, metric, and concept you will encounter in S
 | Document | Purpose |
 |---|---|
 | [CODEBASE.md](CODEBASE.md) | Full module map, all API endpoints, configuration reference |
+| [docs/superpowers/specs/2026-07-06-portfolio-intelligence-discovery-design.md](docs/superpowers/specs/2026-07-06-portfolio-intelligence-discovery-design.md) | Compass design spec: portfolio core, position advisor, discovery engine, proactive delivery — full 4-phase roadmap |
 | [docs/RL_DESIGN.md](docs/RL_DESIGN.md) | RL feedback loop: formulas, daily flow, schemas, static vs LLM, knowledge layer (ticker dossier + executable claims, §23) and measurement phase (eval harness, §24) |
 | [docs/AGENT_DESIGN.md — not yet created] | All sector agents, sub-scores, implementation status, full terminology reference |
 | [docs/AGENTIC_DESIGN.md](docs/AGENTIC_DESIGN.md) | All agents, tasks, data sources, static vs LLM boundary |

@@ -202,6 +202,24 @@ All endpoints are served on port 8001. No global auth middleware — auth is per
 | POST | `/scheduler/backfill?ticker=<sym>` | `X-Scheduler-Key` header | Backfill all past trading days this month. Returns 202, runs in background. |
 | GET | `/scheduler/status` | `X-Scheduler-Key` header | Full RL state for all configured tickers: envelope, feedback log, weight memory. |
 
+### Portfolio — Compass Phase A (`/portfolio/*`)
+
+All endpoints take an optional `user_id` query param (default `portfolio.default_user_id`, i.e. `"primary"`); `user_id` is validated against `[A-Za-z0-9_-]{1,64}`. Auth mirrors the scheduler pattern (optional `X-Scheduler-Key`; lockdown deferred while the portfolio is virtual — user decision 2026-07-06).
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| GET | `/portfolio` | optional key | Holdings + watchlist marked to market at latest NSE close (per-holding `last_close`, `pnl_pct`). |
+| POST | `/portfolio/holdings` | optional key | Add virtual holding `{symbol, sector, qty, buy_date, price?}` — `price` omitted → real NSE close on `buy_date`. 422 on unsupported sector / bad date / no price. Auto-promotes (origin=held, daily cadence). |
+| DELETE | `/portfolio/holdings/{symbol}` | optional key | Remove holding; demotes from managed universe unless watchlisted. 404 if absent. |
+| POST | `/portfolio/watchlist` | optional key | Add watchlist symbol `{symbol, sector, reason?}` — promotes with weekly cadence. |
+| DELETE | `/portfolio/watchlist/{symbol}` | optional key | Remove watchlist symbol; demotes unless held. |
+| POST | `/portfolio/import-csv` | optional key | Raw CSV body `symbol,sector,qty,avg_buy_price,buy_date`; blank price → real close on buy date; per-row errors reported. |
+| GET | `/portfolio/advice?limit=<1-500>` | optional key | Advice-ledger tail (append-only JSONL of every verdict). |
+| GET | `/portfolio/digest/latest` | optional key | Latest EOD digest (404 until the advisor has run). |
+| POST | `/portfolio/run-advisor?review_date=<ISO>` | optional key | Manually trigger the post-review pipeline (corp-action sync → events → advisor → ledger → digest). 202, background. |
+
+The pipeline also runs automatically: `scheduler_api._review_task` event-triggers `core.portfolio.pipeline.run_post_review_pipeline` after every daily-review job completes (never clock-scheduled).
+
 ### Analytics (`/analytics/*`)
 
 | Method | Path | Auth | Description |
@@ -351,6 +369,29 @@ Models are tiered (2026-06-03 benchmark, `scripts/model_bench.py`; bulk re-bench
 | `FEEDBACK_CRON` | `0 11 * * 1-5` | Cron for daily RL feedback review (4:30pm IST weekdays) |
 | `AUTO_TICKERS` | `MARUTI,...,ASHOKLEY` | Automobile sector ticker list override |
 
+### Portfolio + Position Advisor — Compass Phase A (`config.yaml` → `portfolio.*` / `advisor.*`)
+
+| Name | Default | Description |
+|------|---------|-------------|
+| `PORTFOLIO_DATA_DIR` | `data/portfolio` | Per-user roots: `data/portfolio/<user_id>/` (volume-persisted) |
+| `PORTFOLIO_DEFAULT_USER_ID` | `primary` | Single-user launch default; per-user layout from day one |
+| `PORTFOLIO_MAX_MANAGED_TICKERS` | `40` | Auto-promotion cap — guards LLM spend; oldest watchlist-origin entry rotates out at cap |
+| `PORTFOLIO_WEEKLY_REVIEW_WEEKDAY` | `4` | Friday — watchlist-cadence names review this weekday only (held names review daily) |
+| `ADVISOR_ENABLED` | `true` | Master switch for the post-review advisor pipeline |
+| `ADVISOR_NARRATE` | `true` | BULK-tier LLM narration of verdicts (deterministic fallback text on any failure) |
+| `ADVISOR_ATR_PERIOD` / `ADVISOR_STOP_ATR_MULT` | `20` / `3.0` | Stop = clamp(mult × ATR(period)%, bucket floor, bucket cap) |
+| `ADVISOR_STOP_BUCKETS` | large `[8,12]` · mid `[12,18]` · small `[15,22]` | Stop floor/cap % per market-cap bucket; `conservative` profile tightens one notch |
+| `ADVISOR_LARGE_CAP_FLOOR_CR` / `ADVISOR_MID_CAP_FLOOR_CR` | `65000` / `20000` | ₹ crore mcap thresholds for bucket resolution (unknown → mid) |
+| `ADVISOR_TRIM_PROFIT_PCT` | `25.0` | Profit threshold before TRIM rules are considered |
+| `ADVISOR_REVERSION_PRIOR_ELEVATED` | `0.20` | Conviction-streak reversion prior considered "elevated" (TRIM trigger) |
+| `ADVISOR_CONFIDENCE_DECLINE_THRESHOLD` | `0.05` | Remaining-envelope confidence drop that counts as declining (TRIM trigger) |
+| `ADVISOR_ENVELOPE_FLAT_BAND_PCT` | `1.0` | Remaining-forecast drift within ±this% = FLAT (neither ADD nor EXIT signal) |
+| `ADVISOR_ADD_MIN_DIRECTION_ACCURACY` | `0.60` | Last-7-reviews hit rate required for ADD |
+| `ADVISOR_MAX_POSITION_PCT` | `10.0` | Position weight cap gating ADD |
+| `ADVISOR_SECTOR_CONCENTRATION_WARN_PCT` | `30.0` | Weight threshold for the `SECTOR_CONCENTRATION_HIGH` note |
+| `ADVISOR_LTCG_WAIT_MIN_MONTHS` | `10` | TRIM at age 10–12 months with intact thesis → `WAIT_FOR_LTCG` note (never softens EXIT) |
+| `ADVISOR_EARNINGS_GAP_DAYS` | `3` | Profitable + results within N trading days → `EARNINGS_GAP_PROTECTION` note |
+
 ### Alerts
 
 | Name | Default | Description |
@@ -483,7 +524,12 @@ All paths verified to exist. Paths are relative to project root.
 | `services/api/routes/stream.py` | WebSocket /ws/stream — real-time agent progress |
 | `services/api/routes/history.py` | GET /history — score history from SQLite |
 | `services/api/routes/ui_data.py` | All /ui/* routes (bootstrap, agents, tickers, chat, learnings, etc.) |
-| `services/api/routes/scheduler_api.py` | POST/GET /scheduler/* — RL trigger and status endpoints |
+| `services/api/routes/scheduler_api.py` | POST/GET /scheduler/* — RL trigger and status endpoints; event-triggers the portfolio advisor pipeline after daily reviews |
+| `services/api/routes/portfolio_api.py` | /portfolio/* — Compass Phase A: holdings, watchlist, CSV import, advice ledger, EOD digest |
+| `core/portfolio/pipeline.py` | `run_post_review_pipeline()` — corp-action sync → events refresh → advisor → ledger → digest, per user |
+| `core/portfolio/advisor.py` | Deterministic HOLD/ADD/TRIM/EXIT engine (EXIT>TRIM>ADD>HOLD), ATR-scaled stops, LTCG/earnings-gap notes |
+| `services/data/fetchers/corporate_events.py` | NSE corp-actions feed + forward board-meetings calendar (degraded-mode safe) |
+| `data/portfolio/<user>/` | Per-user volume state: `portfolio.json`, `advice_ledger.jsonl`, `digests/` |
 | `services/api/routes/prompts.py` | /ui/prompts/* — live prompt editing and GitHub deploy |
 | `services/api/routes/analytics.py` | /analytics/* — RL performance exports and Power BI feed |
 | `services/api/log_buffer.py` | In-memory ring buffer for real-time log streaming |

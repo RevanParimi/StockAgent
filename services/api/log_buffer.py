@@ -216,7 +216,11 @@ def get_active_tickers_with_sector() -> list[dict]:
     Used by scheduler to pass correct sector to daily_review and generate_forecast.
     """
     return [
-        {"sym": t["sym"], "sector": t.get("sector", "automobile")}
+        {
+            "sym": t["sym"],
+            "sector": t.get("sector", "automobile"),
+            "cadence": t.get("cadence", "daily"),
+        }
         for t in load_managed_tickers()
         if t.get("enabled", True)
     ]

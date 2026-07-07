@@ -296,3 +296,35 @@ unified_analyst:
   max_tokens: 6000
   section_max_chars: 2500
   bundle_max_chars: 18000
+
+# =============================================================================
+# Compass Phase A — Portfolio Core + Position Advisor (spec 2026-07-06)
+# =============================================================================
+portfolio:
+  data_dir: "data/portfolio"     # per-user roots: data/portfolio/<user_id>/
+  default_user_id: "primary"     # single-user launch; per-user layout from day one
+  max_managed_tickers: 40        # auto-promotion cap — guards LLM spend (~$19/mo at 40)
+  weekly_review_weekday: 4       # Friday: watchlist-cadence names review this weekday only
+
+advisor:
+  enabled: true
+  narrate: true                  # BULK-tier narration of verdicts (deterministic fallback on failure)
+  # Volatility-scaled stops, not a flat % (spec §5.2):
+  # stop_pct = clamp(stop_atr_mult × ATR(atr_period) as %, bucket floor, bucket cap)
+  atr_period: 20
+  stop_atr_mult: 3.0
+  stop_buckets:                  # [floor_pct, cap_pct] per market-cap bucket
+    large: [8.0, 12.0]
+    mid:   [12.0, 18.0]
+    small: [15.0, 22.0]
+  large_cap_floor_cr: 65000      # ₹ crore free-float mcap thresholds for bucket resolution
+  mid_cap_floor_cr: 20000
+  trim_profit_pct: 25.0
+  reversion_prior_elevated: 0.20 # conviction-streak reversion prior considered "elevated"
+  confidence_decline_threshold: 0.05  # remaining-envelope confidence drop that counts as declining
+  envelope_flat_band_pct: 1.0    # remaining-forecast drift within ±this% = FLAT
+  add_min_direction_accuracy: 0.60    # last-7-entries hit rate needed for ADD
+  max_position_pct: 10.0
+  sector_concentration_warn_pct: 30.0
+  ltcg_wait_min_months: 10       # TRIM in month 10-12 with intact thesis -> WAIT_FOR_LTCG note
+  earnings_gap_days: 3           # profitable + earnings within N trading days -> protection flag

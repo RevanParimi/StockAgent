@@ -171,3 +171,21 @@ def test_generate_forecast_paper_uses_paper_root(monkeypatch, tmp_path):
     with pytest.raises(RuntimeError, match="stop-here"):
         gf.generate_forecast("PAPERCO", sector="pharma", paper=True)
     assert captured["base_dir"] == str(tmp_path)
+
+
+def test_generate_forecast_paper_never_persists_weight_memory(monkeypatch, tmp_path):
+    """Spec §6.3 check: no *weight_memory* files ever land in the paper root —
+    the non-paper path bootstraps + saves defaults, the paper path must not."""
+    import core.intelligence.rl.workflows.generate_forecast as gf
+
+    monkeypatch.setattr(gf.settings, "PAPER_PREDICTION_DATA_DIR", str(tmp_path))
+    monkeypatch.setattr(gf, "get_sector_weights",
+                        lambda s: {"risk": 0.5, "fundamentals": 0.5})
+    # Abort right after the weights block — the next call in the flow.
+    monkeypatch.setattr(gf, "_run_orchestrator_analysis",
+                        lambda *a, **k: (_ for _ in ()).throw(RuntimeError("stop-here")))
+
+    with pytest.raises(RuntimeError, match="stop-here"):
+        gf.generate_forecast("PAPERCO", sector="pharma", paper=True)
+
+    assert not list(tmp_path.rglob("*weight_memory*"))

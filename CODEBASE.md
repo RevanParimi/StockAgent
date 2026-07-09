@@ -25,11 +25,13 @@ StockAgent-main/
 │   │   ├── tavily_fetcher.py      # Tavily full-page extraction client
 │   │   └── alerting.py            # Alert dispatch (console/file/webhook)
 │   ├── data/                      # Data persistence
-│   │   ├── stores/                # Data store implementations
+│   │   ├── stores/                # Data store implementations (+ eod_store.py — per-day
+│   │   │                          #  parquet EOD cache, Compass Phase B)
 │   │   ├── cache/                 # Data caching utilities
 │   │   ├── context/               # Context-building helpers + bundle_builder.py
 │   │   │                          # (Unified Sector Analyst — one-pass SectorDataBundle)
-│   │   └── fetchers/              # Market/news data fetchers
+│   │   └── fetchers/              # Market/news data fetchers (+ bhavcopy.py, bulk_block.py,
+│   │                              #  surveillance.py — Compass Phase B discovery guard data)
 │   └── scheduler/
 │       └── python/
 │           └── scheduler.py       # APScheduler jobs (RL daily review, forecast, calendar)
@@ -48,8 +50,13 @@ StockAgent-main/
 │   │   │   │   └── pipeline/orchestrator.py  # BankingAgentOrchestrator
 │   │   │   ├── it_sector/         # IT sector agents (8 agents)
 │   │   │   │   └── pipeline/orchestrator.py  # ITAgentOrchestrator
-│   │   │   └── renewable_energy/  # Renewable energy agents (6 agents)
-│   │   │       └── pipeline/orchestrator.py  # RenewableAgentOrchestrator
+│   │   │   ├── renewable_energy/  # Renewable energy agents (6 agents)
+│   │   │   │   └── pipeline/orchestrator.py  # RenewableAgentOrchestrator
+│   │   │   └── generic/           # Compass Phase B — sector-agnostic unified graph for
+│   │   │       │                  #  auto-promoted tickers outside the 4 native sectors
+│   │   │       ├── pipeline/orchestrator.py  # GenericSectorOrchestrator (8 dimensions)
+│   │   │       ├── prompts/       # unified.py (one-call prompt) + dimensions.py (fallback pool)
+│   │   │       └── config/settings.py        # AGENT_WEIGHTS ← settings.GENERIC_AGENT_WEIGHTS; TICKERS=[]
 │   │   ├── intelligence/          # Backend intelligence modules
 │   │   │   ├── chat/              # Agentic chat backend
 │   │   │   ├── rag/               # RAG pipeline (backend path)
@@ -103,6 +110,15 @@ StockAgent-main/
 │   │   ├── narrator.py            # BULK-tier LLM narration of advice
 │   │   ├── digest.py              # EOD portfolio digest builder
 │   │   └── pipeline.py            # run_post_review_pipeline() orchestration entry point
+│   ├── discovery/                 # Compass Phase B: weekly discovery funnel (see below)
+│   │   ├── __init__.py            # run_discovery_cycle() — single orchestration entry point
+│   │   ├── universe.py            # EQ-series + price-floor universe from the EOD window
+│   │   ├── guards.py              # Threshold gates (liquidity, T2T, circuits, ASM/GSM, float)
+│   │   ├── signals.py             # 5 live + 2 dark quant signals (pure pandas, zero LLM)
+│   │   ├── screen.py              # Weighted percentile-rank composite → ScreenResult persistence
+│   │   ├── deep_dive.py           # Stage-3 LLM one-call dives + sector inference
+│   │   ├── shelf.py               # Discovery Shelf (cap/displace, stale rotation, promote)
+│   │   └── paper_lane.py          # Paper envelopes + weekly paper reviews (ISOLATED lane)
 │   ├── pipeline/                  # Core pipeline abstractions
 │   │   ├── base_agent.py
 │   │   ├── orchestrator.py
@@ -139,6 +155,13 @@ StockAgent-main/
   with ATR-scaled stops, BULK-tier narration, EOD digest). Event-triggered from
   scheduler_api._review_task after daily reviews. Spec:
   docs/superpowers/specs/2026-07-06-portfolio-intelligence-discovery-design.md
+
+- `core/discovery/` — Compass Phase B: weekly quant discovery funnel (~2000 NSE
+  mainboard stocks → composite rank → guards → ≤10 LLM deep-dives → Discovery Shelf
+  with paper envelopes in an ISOLATED paper lane — `data/rl/paper/predictions` is
+  never mixed into real RL metrics; `run_daily_review(paper=True)` hard-disables all
+  learning writes). Driven by scheduler Job 12 (Sat 12:30 IST) + `/discovery/*` routes.
+  Same spec as Phase A; plan: docs/superpowers/plans/2026-07-07-compass-phase-b.md
 
 ---
 
@@ -220,6 +243,20 @@ All endpoints take an optional `user_id` query param (default `portfolio.default
 
 The pipeline also runs automatically: `scheduler_api._review_task` event-triggers `core.portfolio.pipeline.run_post_review_pipeline` after every daily-review job completes (never clock-scheduled).
 
+### Discovery — Compass Phase B (`/discovery/*`)
+
+Auth mirrors the portfolio pattern (optional `X-Scheduler-Key`; lockdown deferred — user decision 2026-07-06).
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| GET | `/discovery/shelf` | optional key | Discovery Shelf — active/promoted/dropped ideas with conviction, entry zone, invalidation level, paper-review status. |
+| GET | `/discovery/screen/latest` | optional key | Most recent weekly `ScreenResult` (candidates, rejected gates, dark signals, degraded checks). 404 until a screen has run. |
+| POST | `/discovery/run` | optional key | Trigger a full discovery cycle now (sync → screen → dives → shelf → paper reviews). 202, background. |
+| POST | `/discovery/shelf/{symbol}/promote` | optional key | One-command promote a shelf idea to the watchlist (`source="discovery"`, weekly cadence). 404 if not an active idea. |
+| DELETE | `/discovery/shelf/{symbol}` | optional key | Drop a shelf idea (`reason="manual_api"`). 404 if not an active idea. |
+
+The cycle also runs automatically: scheduler Job 12 (`discovery_weekly`, Sat 12:30 IST) calls `core.discovery.run_discovery_cycle()`; Job 11 (`bhavcopy_daily_sync`, Mon-Fri 19:00 IST) keeps the EOD parquet cache topped up. Both are gated on `discovery.enabled`.
+
 ### Analytics (`/analytics/*`)
 
 | Method | Path | Auth | Description |
@@ -260,7 +297,15 @@ Source: `src/backend/sectors/registry.py`. Toggle state loaded from `config/sect
 | TCS, INFY, WIPRO, HCLTECH, TECHM, LTIM, COFORGE, MPHASIS, PERSISTENT, LTTS, KPITTECH, TATAELXSI, NIIT, MASTEK, HEXAWARE, HAPPSTMNDS | it_sector |
 | ADANIGREEN, TATAPOWER, TORNTPOWER, CESC, SJVN, NHPC, NTPC, POWERGRID, ADANIPOWER, JSWENERGY, INOXGREEN, INOXWIND, WAAREEENER, SUZLON, PREMIERENE, RPOWER | renewable_energy |
 
-### Disabled sectors (mapped but degrade to automobile)
+### Mapped sectors without a native graph (routed to the generic graph)
+
+Compass Phase B: on the RL path, `core/intelligence/rl/workflows/sector_router.py`
+routes any sector key outside the 4 native ones to `GenericSectorOrchestrator`
+(sector-agnostic unified analyst + neutral `generic_graph.agent_weights`) — the old
+silent degrade-to-automobile is gone. `PredictionStore` keeps the REAL sector name
+for its directory layout (e.g. `data/predictions/pharma/SUNPHARMA/`). The chat-path
+`CoreSectorAdapter` skeleton tier (commit e30042f, `config/sector_toggles.json`)
+remains toggled off and unused.
 
 | Sector | Example Tickers |
 |--------|----------------|
@@ -391,6 +436,30 @@ Models are tiered (2026-06-03 benchmark, `scripts/model_bench.py`; bulk re-bench
 | `ADVISOR_SECTOR_CONCENTRATION_WARN_PCT` | `30.0` | Weight threshold for the `SECTOR_CONCENTRATION_HIGH` note |
 | `ADVISOR_LTCG_WAIT_MIN_MONTHS` | `10` | TRIM at age 10–12 months with intact thesis → `WAIT_FOR_LTCG` note (never softens EXIT) |
 | `ADVISOR_EARNINGS_GAP_DAYS` | `3` | Profitable + results within N trading days → `EARNINGS_GAP_PROTECTION` note |
+
+### Discovery + Generic Graph — Compass Phase B (`config.yaml` → `discovery.*` / `generic_graph.*`)
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `discovery.enabled` | `true` (base.py fallback `false`) | Master gate for scheduler Jobs 11/12 and the discovery funnel |
+| `discovery.history_days` | `550` | Rolling EOD window (~2.2yr; 12m momentum needs 252 sessions) |
+| `discovery.bhavcopy_dir` | `data/market_cache/bhavcopy` | Per-day parquet EOD cache root |
+| `discovery.data_dir` | `data/discovery` | `screens/`, `shelf.json`, `shelf_events.jsonl` |
+| `discovery.paper_data_dir` | `data/rl/paper/predictions` | ISOLATED paper-lane store root (spec §6.3) |
+| `discovery.liquidity_floor_cr` | `5.0` | Median daily traded value floor (₹ cr) |
+| `discovery.float_mcap_floor_cr` | `500.0` | Free-float mcap floor (₹ cr) |
+| `discovery.min_price` | `20.0` | No penny stocks |
+| `discovery.max_promoter_pledge_pct` | `25.0` | Guard ships DARK in v1 (no free data source yet) |
+| `discovery.circuit_streak_max` | `3` | > N trailing upper-circuit days = operator pattern, rejected |
+| `discovery.shortlist_size` | `80` | Ranked names that get per-symbol guard checks |
+| `discovery.max_candidates` | `40` | ScreenResult size after guards |
+| `discovery.deep_dive_count` | `10` | Weekly unified-analyst calls (LLM cost cap) |
+| `discovery.shelf_size` | `10` | Max active shelf ideas (stronger idea displaces weakest) |
+| `discovery.stale_days` | `60` | Idea age without trigger → rotate out |
+| `discovery.min_conviction` | `0.55` | Deep-dive final_score floor to reach the shelf |
+| `discovery.include_sme` | `false` | SME platform excluded (spec §6.2) |
+| `discovery.signal_weights` | momentum 0.30, delivery_surge 0.15, volume_breakout 0.15, bulk_block 0.15, high_52wk_rs 0.10, insider_buying 0.10, mf_holding 0.05 | Composite blend; **insider_buying + mf_holding are DARK in v1** — the screen renormalizes over live signals and reports dark ones in `ScreenResult.dark_signals` |
+| `generic_graph.agent_weights` | business 0.14, fundamentals 0.18, valuation 0.14, technical 0.12, macro 0.12, risk 0.12, management 0.09, earnings 0.09 | Neutral 8-dimension weights for sectors without a native graph (sum 1.0) |
 
 ### Alerts
 
@@ -530,6 +599,20 @@ All paths verified to exist. Paths are relative to project root.
 | `core/portfolio/advisor.py` | Deterministic HOLD/ADD/TRIM/EXIT engine (EXIT>TRIM>ADD>HOLD), ATR-scaled stops, LTCG/earnings-gap notes |
 | `services/data/fetchers/corporate_events.py` | NSE corp-actions feed + forward board-meetings calendar (degraded-mode safe) |
 | `data/portfolio/<user>/` | Per-user volume state: `portfolio.json`, `advice_ledger.jsonl`, `digests/` |
+| `services/api/routes/discovery_api.py` | /discovery/* — Compass Phase B: shelf, latest screen, manual run, promote/drop |
+| `core/discovery/__init__.py` | `run_discovery_cycle()` — weekly funnel orchestration (every stage non-fatal) |
+| `core/discovery/screen.py` | Stage-1 quant screen: composite rank over live signals, guards, `ScreenResult` persistence |
+| `core/discovery/deep_dive.py` | Stage-3 LLM dives (≤`discovery.deep_dive_count`/wk) + `infer_sector()` (registry → NSE industry → generic) |
+| `core/discovery/shelf.py` | `ShelfStore` — cap/displacement, stale rotation, promote-to-watchlist, `shelf_events.jsonl` |
+| `core/discovery/paper_lane.py` | Paper envelopes + weekly paper reviews via `paper=True` RL workflows |
+| `services/data/stores/eod_store.py` | `EodStore` — per-day parquet EOD cache (canonical 12-column schema) |
+| `services/data/fetchers/bhavcopy.py` | NSE delivery-bhavcopy fetcher + resumable `sync_recent()` |
+| `services/data/fetchers/bulk_block.py` | Bulk/block deals cache (degraded-mode keeps stale deals) |
+| `services/data/fetchers/surveillance.py` | Per-symbol NSE meta (ASM/GSM, suspension, industry) + yfinance float mcap |
+| `src/backend/sectors/generic/pipeline/orchestrator.py` | GenericSectorOrchestrator — sector-agnostic 8-dimension graph (unified primary, UniversalAgent fallback pool) |
+| `data/market_cache/bhavcopy/` | Per-day parquet EOD cache, ~550 sessions rolling |
+| `data/discovery/` | `screens/`, `shelf.json`, `shelf_events.jsonl` |
+| `data/rl/paper/predictions/` | ISOLATED paper-lane RL store — never mixed into real metrics |
 | `services/api/routes/prompts.py` | /ui/prompts/* — live prompt editing and GitHub deploy |
 | `services/api/routes/analytics.py` | /analytics/* — RL performance exports and Power BI feed |
 | `services/api/log_buffer.py` | In-memory ring buffer for real-time log streaming |

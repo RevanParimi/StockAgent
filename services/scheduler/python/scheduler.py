@@ -338,6 +338,24 @@ class AutomobileScheduler:
         else:
             logger.info("[Scheduler] Bhavcopy sync job disabled (DISCOVERY_ENABLED=false)")
 
+        # ── Job 12: Weekly discovery funnel (Sat 12:30 IST — after event-ingest
+        # 10:00 and research-loop 11:00, so the week's filings are digested first) ──
+        if getattr(settings, "DISCOVERY_ENABLED", False):
+            scheduler.add_job(
+                func=self._discovery_weekly_job,
+                trigger=CronTrigger(
+                    day_of_week="sat", hour=12, minute=30, timezone="Asia/Kolkata",
+                ),
+                id="discovery_weekly",
+                name="Weekly discovery funnel (screen + deep-dives + shelf + paper)",
+                misfire_grace_time=7200,
+                coalesce=True,
+                replace_existing=True,
+            )
+            logger.info("[Scheduler] Discovery job: Saturdays at 12:30 pm IST")
+        else:
+            logger.info("[Scheduler] Discovery job disabled (DISCOVERY_ENABLED=false)")
+
         return scheduler
 
     # ------------------------------------------------------------------
@@ -359,6 +377,26 @@ class AutomobileScheduler:
         except Exception as exc:
             logger.error("[Scheduler] Bhavcopy sync FAILED: %s", exc, exc_info=True)
         _job_banner("Daily Bhavcopy Sync", done=True)
+
+    def _discovery_weekly_job(self) -> None:
+        """Weekly discovery funnel (spec §6): non-fatal by construction —
+        run_discovery_cycle() contains every stage failure."""
+        from core.discovery import run_discovery_cycle
+
+        _job_banner("Weekly Discovery Funnel")
+        try:
+            result = run_discovery_cycle()
+            logger.info(
+                "[Scheduler] Discovery — universe=%s candidates=%s dives=%s "
+                "shelf_added=%s paper_reviewed=%s dark=%s errors=%s",
+                result.get("universe_size"), result.get("candidates"),
+                result.get("deep_dives"), result.get("shelf", {}).get("added"),
+                result.get("paper", {}).get("reviewed"),
+                result.get("dark_signals"), result.get("errors"),
+            )
+        except Exception as exc:
+            logger.error("[Scheduler] Discovery FAILED: %s", exc, exc_info=True)
+        _job_banner("Weekly Discovery Funnel", done=True)
 
     def _daily_review_job(self) -> None:
         """

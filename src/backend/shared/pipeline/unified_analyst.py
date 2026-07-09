@@ -111,10 +111,15 @@ def _make_output_cls(sector_prefix: str, dimension: str, sub_scores_model: type 
     Mint an `AgentOutput` subclass for `dimension` with
     `agent: str = dimension` (matches the legacy `agent=` value) and, if
     `sub_scores_model` is given, `sub_scores: sub_scores_model | None = None`.
+    For sectors with no sub-score models (sub_scores_model=None), add
+    `sub_scores: None = None`.
     """
     fields: dict[str, tuple] = {"agent": (str, dimension)}
     if sub_scores_model is not None:
         fields["sub_scores"] = (sub_scores_model | None, None)
+    else:
+        # For sectors with no sub-score models (like generic), add a field with type None
+        fields["sub_scores"] = (type(None), None)
     return create_model(
         f"{sector_prefix}_{dimension}_Output",
         __base__=AgentOutput,
@@ -202,6 +207,18 @@ _RENEWABLE_ENERGY_CLASSES: dict[str, type[AgentOutput]] = _build_sector_classes(
     },
 )
 
+# --- generic (Compass Phase B — sector-agnostic graph) -----------------------
+GENERIC_DIMENSIONS: list[str] = [
+    "business", "fundamentals", "valuation", "technical",
+    "macro", "risk", "management", "earnings",
+]
+
+# No sub-score models by design: the generic graph is sector-agnostic, and
+# _make_output_cls / _parse_dimension already handle sub_scores_model=None.
+_GENERIC_CLASSES: dict[str, type[AgentOutput]] = _build_sector_classes(
+    "Generic", {dim: None for dim in GENERIC_DIMENSIONS},
+)
+
 
 @dataclass(frozen=True)
 class SectorSpec:
@@ -231,6 +248,11 @@ SECTOR_SPECS: dict[str, SectorSpec] = {
     "renewable_energy": SectorSpec(
         classes=_RENEWABLE_ENERGY_CLASSES,
         prompts_module="backend.sectors.renewable_energy.prompts.unified",
+        has_valuation_extras=False,
+    ),
+    "generic": SectorSpec(
+        classes=_GENERIC_CLASSES,
+        prompts_module="backend.sectors.generic.prompts.unified",
         has_valuation_extras=False,
     ),
 }

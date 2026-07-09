@@ -418,6 +418,12 @@ _DEFAULT_SECTOR_AGENT_REGIME_ROLE: dict[str, dict[str, str]] = {
         "risk_macro":         "risk_macro",
         "valuation_catalyst": "valuation_catalyst",
     },
+    "generic": {
+        "business": "sales_demand", "fundamentals": "fundamentals",
+        "valuation": "valuation_catalyst", "technical": "pattern_analysis",
+        "macro": "risk_macro", "risk": "risk_macro",
+        "management": "competitive_intel", "earnings": "fundamentals",
+    },
 }
 
 SECTOR_AGENT_REGIME_ROLE: dict[str, dict[str, str]] = cfg(
@@ -721,7 +727,7 @@ CLOSE_VERIFY_TOLERANCE_PCT: float = cfg("rl.close_verify_tolerance_pct", env="CL
 # ---------------------------------------------------------------------------
 UNIFIED_ANALYST_SECTORS: str = cfg(
     "unified_analyst.sectors", env="UNIFIED_ANALYST_SECTORS",
-    fallback="automobile,banking_bfsi,it_sector,renewable_energy",
+    fallback="automobile,banking_bfsi,it_sector,renewable_energy,generic",
 )
 UNIFIED_ANALYST_FALLBACK_LEGACY: bool = cfg("unified_analyst.fallback_legacy", env="UNIFIED_ANALYST_FALLBACK_LEGACY", fallback=True)
 UNIFIED_ANALYST_MAX_TOKENS: int = cfg("unified_analyst.max_tokens", env="UNIFIED_ANALYST_MAX_TOKENS", fallback=6000)
@@ -765,3 +771,46 @@ ADVISOR_MAX_POSITION_PCT: float = cfg("advisor.max_position_pct", fallback=10.0)
 ADVISOR_SECTOR_CONCENTRATION_WARN_PCT: float = cfg("advisor.sector_concentration_warn_pct", fallback=30.0)
 ADVISOR_LTCG_WAIT_MIN_MONTHS: int = cfg("advisor.ltcg_wait_min_months", fallback=10)
 ADVISOR_EARNINGS_GAP_DAYS: int = cfg("advisor.earnings_gap_days", fallback=3)
+
+# ---------------------------------------------------------------------------
+# Compass Phase B — Discovery funnel + generic sector graph (spec 2026-07-06)
+# ---------------------------------------------------------------------------
+DISCOVERY_ENABLED: bool = bool(cfg("discovery.enabled", env="DISCOVERY_ENABLED", fallback=False))
+DISCOVERY_HISTORY_DAYS: int = int(cfg("discovery.history_days", fallback=550))
+DISCOVERY_BHAVCOPY_DIR: str = cfg("discovery.bhavcopy_dir", fallback="data/market_cache/bhavcopy")
+DISCOVERY_DATA_DIR: str = cfg("discovery.data_dir", fallback="data/discovery")
+PAPER_PREDICTION_DATA_DIR: str = cfg(
+    "discovery.paper_data_dir", env="PAPER_PREDICTION_DATA_DIR",
+    fallback="data/rl/paper/predictions",
+)
+DISCOVERY_LIQUIDITY_FLOOR_CR: float = float(cfg("discovery.liquidity_floor_cr", fallback=5.0))
+DISCOVERY_FLOAT_MCAP_FLOOR_CR: float = float(cfg("discovery.float_mcap_floor_cr", fallback=500.0))
+DISCOVERY_MIN_PRICE: float = float(cfg("discovery.min_price", fallback=20.0))
+DISCOVERY_MAX_PLEDGE_PCT: float = float(cfg("discovery.max_promoter_pledge_pct", fallback=25.0))
+DISCOVERY_CIRCUIT_STREAK_MAX: int = int(cfg("discovery.circuit_streak_max", fallback=3))
+DISCOVERY_SHORTLIST_SIZE: int = int(cfg("discovery.shortlist_size", fallback=80))
+DISCOVERY_MAX_CANDIDATES: int = int(cfg("discovery.max_candidates", fallback=40))
+DISCOVERY_DEEP_DIVE_COUNT: int = int(cfg("discovery.deep_dive_count", fallback=10))
+DISCOVERY_SHELF_SIZE: int = int(cfg("discovery.shelf_size", fallback=10))
+DISCOVERY_STALE_DAYS: int = int(cfg("discovery.stale_days", fallback=60))
+DISCOVERY_MIN_CONVICTION: float = float(cfg("discovery.min_conviction", fallback=0.55))
+DISCOVERY_INCLUDE_SME: bool = bool(cfg("discovery.include_sme", fallback=False))
+
+_DISCOVERY_SIGNAL_WEIGHTS_FALLBACK: dict[str, float] = {
+    "momentum": 0.30, "delivery_surge": 0.15, "volume_breakout": 0.15,
+    "bulk_block": 0.15, "high_52wk_rs": 0.10, "insider_buying": 0.10,
+    "mf_holding": 0.05,
+}
+DISCOVERY_SIGNAL_WEIGHTS: dict[str, float] = {
+    str(k): float(v)
+    for k, v in cfg("discovery.signal_weights", fallback=_DISCOVERY_SIGNAL_WEIGHTS_FALLBACK).items()
+}
+
+_GENERIC_AGENT_WEIGHTS_FALLBACK: dict[str, float] = {
+    "business": 0.14, "fundamentals": 0.18, "valuation": 0.14, "technical": 0.12,
+    "macro": 0.12, "risk": 0.12, "management": 0.09, "earnings": 0.09,
+}
+GENERIC_AGENT_WEIGHTS: dict[str, float] = {
+    str(k): float(v)
+    for k, v in cfg("generic_graph.agent_weights", fallback=_GENERIC_AGENT_WEIGHTS_FALLBACK).items()
+}

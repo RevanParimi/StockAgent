@@ -402,7 +402,9 @@ def _extract_agent_predictions(report: FinalReport) -> dict[str, dict]:
     return agent_predictions
 
 
-def generate_forecast(ticker: str, sector: str = "automobile") -> PredictionEnvelope:
+def generate_forecast(
+    ticker: str, sector: str = "automobile", paper: bool = False
+) -> PredictionEnvelope:
     """
     Run full analysis + generate 30-day prediction envelope for one ticker.
 
@@ -415,14 +417,44 @@ def generate_forecast(ticker: str, sector: str = "automobile") -> PredictionEnve
         NSE ticker symbol (e.g. "MARUTI").
     sector : str
         Sector graph to use (default: "automobile").
+    paper : bool
+        Write the envelope into the isolated paper-lane store root
+        (discovery shelf ideas).
     """
-    store = PredictionStore(ticker, sector=sector)
+    # Compass Phase B: paper-lane envelopes live under an ISOLATED store root
+    # (spec §6.3) — the real RL tree never sees discovery paper artifacts.
+    store = PredictionStore(
+        ticker, sector=sector,
+        base_dir=settings.PAPER_PREDICTION_DATA_DIR if paper else None,
+    )
     cycle_id = store.current_cycle_id()
 
     logger.info("[generate_forecast] Starting forecast for %s | cycle=%s", ticker, cycle_id)
 
     # Load learned weights for this ticker (or bootstrap from config defaults)
-    wm = store.get_or_init_weight_memory(get_sector_weights(sector))
+    if paper:
+        # PAPER-LANE ISOLATION: weight memory is never persisted for paper
+        # ideas — get_or_init_weight_memory() would WRITE a default file into
+        # the paper store (spec §6.3 check: "no *weight_memory* files under
+        # the paper root"). Build the defaults in memory only.
+        wm = store.load_weight_memory()
+        if wm is None:
+            from datetime import date as _date
+            from core.schemas.feedback import WeightMemory
+            base = get_sector_weights(sector)
+            wm = WeightMemory(
+                ticker=ticker,
+                last_updated=_date.today().isoformat(),
+                weight_version=0,
+                current_weights=dict(base),
+                base_weights=dict(base),
+                adjustment_bounds={
+                    "max_single_step": settings.WEIGHT_MAX_STEP,
+                    "max_total_drift_from_base": settings.WEIGHT_MAX_DRIFT,
+                },
+            )
+    else:
+        wm = store.get_or_init_weight_memory(get_sector_weights(sector))
     effective_weights = wm.effective_weights()
     logger.info(
         "[generate_forecast] Using weight version v%d: %s",

@@ -134,6 +134,21 @@ _SECTOR_BUNDLE_CFG: dict[str, dict] = {
         "peer_tickers_attr": "TICKERS",
         "macro_cache_key": "renewable_energy",
     },
+    "generic": {
+        # Compass Phase B: sector-agnostic wording — the ticker's industry is
+        # inferred by the analyst from the bundle itself.
+        "company_news_terms": "results guidance outlook",
+        "sector_policy_news_query": (
+            "India stock market {month} {year} sector news policy demand"
+        ),
+        "policy_deep_dive_query": (
+            "{company_name} NSE {ticker} results outlook policy regulation {year}"
+        ),
+        "has_commodities": False,
+        "peer_tickers_module": None,
+        "peer_tickers_attr": "TICKERS",
+        "macro_cache_key": "generic",
+    },
 }
 
 # Fallback config for an unregistered sector — mirrors automobile's shape so

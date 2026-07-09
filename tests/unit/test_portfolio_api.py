@@ -33,17 +33,27 @@ def test_add_holding_prices_at_close(client, tmp_path):
     assert body["promotion"]["status"] == "promoted"
 
 
-def test_add_holding_unsupported_sector_422(client, monkeypatch):
-    monkeypatch.setattr(
-        papi, "promote_symbol",
-        lambda symbol, sector, origin: {"status": "unsupported_sector",
-                                         "detail": "sector not yet supported"},
-    )
+def test_add_holding_invalid_sector_422(client):
     resp = client.post("/portfolio/holdings", json={
-        "symbol": "SUNPHARMA", "sector": "pharma", "qty": 5, "buy_date": "2026-07-01",
+        "symbol": "XYZ", "sector": "Not A Sector!!", "qty": 1,
+        "buy_date": "2026-07-01", "price": 100.0,
     })
     assert resp.status_code == 422
-    assert "not yet supported" in resp.json()["detail"]
+    assert "sector" in resp.json()["detail"].lower()
+
+
+def test_add_holding_generic_sector_accepted(client, monkeypatch):
+    monkeypatch.setattr(
+        papi, "promote_symbol",
+        lambda symbol, sector, origin: {"status": "promoted", "symbol": symbol,
+                                        "graph": "generic", "cadence": "daily"},
+    )
+    resp = client.post("/portfolio/holdings", json={
+        "symbol": "SUNPHARMA", "sector": "pharma", "qty": 5,
+        "buy_date": "2026-07-01", "price": 1650.0,
+    })
+    assert resp.status_code == 200
+    assert resp.json()["promotion"]["graph"] == "generic"
 
 
 def test_get_portfolio_marks_to_market(client):

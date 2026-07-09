@@ -1,0 +1,87 @@
+"""
+Compass Phase B — Discovery Engine (spec §6): weekly funnel orchestration.
+
+run_discovery_cycle() is the single entry point used by BOTH the Saturday
+scheduler job and POST /discovery/run. Every stage is individually
+non-fatal: a dark data feed degrades the screen, it never kills the cycle.
+"""
+from __future__ import annotations
+
+import logging
+from datetime import date
+
+# Re-exported collaborators — tests and callers patch these names HERE.
+from core.discovery.deep_dive import run_deep_dives
+from core.discovery.paper_lane import run_paper_reviews
+from core.discovery.screen import load_latest_screen, run_screen
+from core.discovery.shelf import ShelfStore
+from services.data.fetchers.bhavcopy import sync_recent
+from services.data.fetchers.bulk_block import refresh_bulk_block
+
+logger = logging.getLogger(__name__)
+
+__all__ = [
+    "run_discovery_cycle", "run_deep_dives", "run_paper_reviews",
+    "run_screen", "load_latest_screen", "ShelfStore",
+    "sync_recent", "refresh_bulk_block",
+]
+
+
+def run_discovery_cycle(on: date | None = None) -> dict:
+    """sync EOD -> refresh bulk/block -> screen -> deep-dives -> shelf ->
+    weekly paper reviews. Returns a stage-by-stage summary; never raises."""
+    on = on or date.today()
+    errors: list[str] = []
+
+    try:
+        sync = sync_recent(days_back=7)
+    except Exception as exc:
+        logger.warning("[discovery] sync failed (non-fatal): %s", exc)
+        errors.append(f"sync failed: {exc}")
+        sync = {}
+
+    try:
+        refresh_bulk_block(weeks=4)
+    except Exception as exc:
+        logger.warning("[discovery] bulk/block refresh failed (non-fatal): %s", exc)
+        errors.append(f"bulk_block failed: {exc}")
+
+    screen = run_screen(on=on)          # never raises by contract
+
+    try:
+        dives = run_deep_dives(screen.candidates, on=on)
+    except Exception as exc:
+        logger.warning("[discovery] deep dives failed (non-fatal): %s", exc)
+        errors.append(f"deep_dives failed: {exc}")
+        dives = []
+
+    shelf_store = ShelfStore()
+    try:
+        shelf_summary = shelf_store.apply_deep_dives(dives, on=on)
+        rotated = shelf_store.rotate_stale(on=on)
+    except Exception as exc:
+        logger.warning("[discovery] shelf update failed (non-fatal): %s", exc)
+        errors.append(f"shelf failed: {exc}")
+        shelf_summary, rotated = {"added": [], "displaced": [], "skipped": []}, []
+
+    try:
+        paper = run_paper_reviews(on=on)
+    except Exception as exc:
+        logger.warning("[discovery] paper reviews failed (non-fatal): %s", exc)
+        errors.append(f"paper failed: {exc}")
+        paper = {"reviewed": [], "failed": [], "skipped": []}
+
+    result = {
+        "date": on.isoformat(),
+        "sync": sync,
+        "universe_size": screen.universe_size,
+        "candidates": len(screen.candidates),
+        "dark_signals": screen.dark_signals,
+        "deep_dives": len(dives),
+        "shelf": shelf_summary,
+        "rotated_stale": rotated,
+        "paper": paper,
+        "errors": errors,
+    }
+    logger.info("[discovery] weekly cycle complete: %s", result)
+    return result

@@ -49,6 +49,7 @@ from services.api.routes.scheduler_api import router as scheduler_router
 from services.api.routes.prompts import router as prompts_router
 from services.api.routes.analytics import router as analytics_router
 from services.api.routes.portfolio_api import router as portfolio_router
+from services.api.routes.discovery_api import router as discovery_router
 
 _IST = timezone(timedelta(hours=5, minutes=30))
 
@@ -395,6 +396,7 @@ app.include_router(scheduler_router, tags=["Scheduler"])
 app.include_router(prompts_router,   tags=["Prompts"])
 app.include_router(analytics_router, tags=["Analytics"])
 app.include_router(portfolio_router,  tags=["Portfolio"])
+app.include_router(discovery_router,  tags=["Discovery"])
 
 
 # NOTE: "/" is served by the SPA catch-all at the bottom of this module

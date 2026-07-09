@@ -89,6 +89,22 @@ def _active_tickers() -> list[str]:
     return tickers
 
 
+from services.api.log_buffer import get_active_tickers_with_sector
+
+
+def _sector_lookup() -> dict[str, str]:
+    """sym -> sector from managed_tickers.json — works for ANY sector,
+    including generic-graph ones (Compass Phase B). Empty dict on failure."""
+    try:
+        return {
+            e["sym"]: e.get("sector", "automobile")
+            for e in get_active_tickers_with_sector()
+        }
+    except Exception as exc:
+        logger.warning("[scheduler] _sector_lookup failed: %s", exc)
+        return {}
+
+
 class AutomobileScheduler:
     """
     BackgroundScheduler wrapper for all RL automation jobs.
@@ -305,11 +321,82 @@ class AutomobileScheduler:
         )
         logger.info("[Scheduler] Pre-open shock check job: 8:45 am IST weekdays")
 
+        # ── Job 11: Daily bhavcopy sync (19:00 IST weekdays — EOD data settles ~18:30) ──
+        if getattr(settings, "DISCOVERY_ENABLED", False):
+            scheduler.add_job(
+                func=self._bhavcopy_sync_job,
+                trigger=CronTrigger(
+                    day_of_week="mon-fri", hour=19, minute=0, timezone="Asia/Kolkata",
+                ),
+                id="bhavcopy_daily_sync",
+                name="Daily bhavcopy EOD cache sync",
+                misfire_grace_time=3600,
+                coalesce=True,
+                replace_existing=True,
+            )
+            logger.info("[Scheduler] Bhavcopy sync job: weekdays at 7:00 pm IST")
+        else:
+            logger.info("[Scheduler] Bhavcopy sync job disabled (DISCOVERY_ENABLED=false)")
+
+        # ── Job 12: Weekly discovery funnel (Sat 12:30 IST — after event-ingest
+        # 10:00 and research-loop 11:00, so the week's filings are digested first) ──
+        if getattr(settings, "DISCOVERY_ENABLED", False):
+            scheduler.add_job(
+                func=self._discovery_weekly_job,
+                trigger=CronTrigger(
+                    day_of_week="sat", hour=12, minute=30, timezone="Asia/Kolkata",
+                ),
+                id="discovery_weekly",
+                name="Weekly discovery funnel (screen + deep-dives + shelf + paper)",
+                misfire_grace_time=7200,
+                coalesce=True,
+                replace_existing=True,
+            )
+            logger.info("[Scheduler] Discovery job: Saturdays at 12:30 pm IST")
+        else:
+            logger.info("[Scheduler] Discovery job disabled (DISCOVERY_ENABLED=false)")
+
         return scheduler
 
     # ------------------------------------------------------------------
     # Job implementations
     # ------------------------------------------------------------------
+
+    def _bhavcopy_sync_job(self) -> None:
+        """Top up the EOD market cache with the last week's trading days.
+        days_back=7 self-heals transient NSE outages. Non-fatal by construction."""
+        from services.data.fetchers.bhavcopy import sync_recent
+
+        _job_banner("Daily Bhavcopy Sync")
+        try:
+            result = sync_recent(days_back=7)
+            logger.info(
+                "[Scheduler] Bhavcopy sync — synced=%d skipped=%d failed=%s pruned=%d",
+                result["synced"], result["skipped"], result["failed"], result["pruned"],
+            )
+        except Exception as exc:
+            logger.error("[Scheduler] Bhavcopy sync FAILED: %s", exc, exc_info=True)
+        _job_banner("Daily Bhavcopy Sync", done=True)
+
+    def _discovery_weekly_job(self) -> None:
+        """Weekly discovery funnel (spec §6): non-fatal by construction —
+        run_discovery_cycle() contains every stage failure."""
+        from core.discovery import run_discovery_cycle
+
+        _job_banner("Weekly Discovery Funnel")
+        try:
+            result = run_discovery_cycle()
+            logger.info(
+                "[Scheduler] Discovery — universe=%s candidates=%s dives=%s "
+                "shelf_added=%s paper_reviewed=%s dark=%s errors=%s",
+                result.get("universe_size"), result.get("candidates"),
+                result.get("deep_dives"), result.get("shelf", {}).get("added"),
+                result.get("paper", {}).get("reviewed"),
+                result.get("dark_signals"), result.get("errors"),
+            )
+        except Exception as exc:
+            logger.error("[Scheduler] Discovery FAILED: %s", exc, exc_info=True)
+        _job_banner("Weekly Discovery Funnel", done=True)
 
     def _daily_review_job(self) -> None:
         """
@@ -319,7 +406,6 @@ class AutomobileScheduler:
         blocking the entire review loop.
         """
         from core.intelligence.rl.workflows.daily_review import run_daily_review
-        from services.api.log_buffer import get_active_tickers_with_sector
 
         review_date = date.today() - timedelta(days=1)
         while review_date.weekday() >= 5:
@@ -378,7 +464,6 @@ class AutomobileScheduler:
         Runs the full 9-agent analysis per ticker — takes ~2 min/ticker.
         """
         from core.intelligence.rl.workflows.generate_forecast import generate_forecast
-        from services.api.log_buffer import get_active_tickers_with_sector
 
         today = date.today()
         ticker_entries = get_active_tickers_with_sector()
@@ -480,27 +565,19 @@ class AutomobileScheduler:
         Runs Monday at 3:30 am IST — well before any market activity.
         Non-fatal: failures per ticker are logged but never crash the scheduler.
         """
-        from pathlib import Path
         from core.intelligence.rl.stores.ledger_propagator import (
             archive_stale_lessons,
             downgrade_stale_lessons,
         )
         from core.intelligence.rl.stores.prediction_store import PredictionStore
 
-        _KNOWN_SECTORS = ["automobile", "banking_bfsi", "it_sector", "renewable_energy"]
-        base_dir = "data/predictions"
-
-        def _sector_for(ticker: str) -> str:
-            return next(
-                (s for s in _KNOWN_SECTORS if Path(f"{base_dir}/{s}/{ticker}").exists()),
-                "automobile",
-            )
+        sectors = _sector_lookup()
 
         tickers = _active_tickers()
         _job_banner(f"Weekly Ledger Cleanup — {len(tickers)} tickers")
         for ticker in tickers:
             try:
-                sector = _sector_for(ticker)
+                sector = sectors.get(ticker, "automobile")
                 store = PredictionStore(ticker, sector=sector)
                 ticker_ledger, sector_ledger, market_ledger = store.load_all_ledgers()
 
@@ -613,27 +690,19 @@ class AutomobileScheduler:
         Gated on RL_EVENT_INGEST_ENABLED; non-fatal per ticker (mirrors
         `_ledger_cleanup_job`'s loop style).
         """
-        from pathlib import Path
         from core.intelligence.rl.agents.event_ingestor import EventIngestor
 
         if not getattr(settings, "RL_EVENT_INGEST_ENABLED", True):
             return
 
-        _KNOWN_SECTORS = ["automobile", "banking_bfsi", "it_sector", "renewable_energy"]
-        base_dir = "data/predictions"
-
-        def _sector_for(ticker: str) -> str:
-            return next(
-                (s for s in _KNOWN_SECTORS if Path(f"{base_dir}/{s}/{ticker}").exists()),
-                "automobile",
-            )
+        sectors = _sector_lookup()
 
         tickers = _active_tickers()
         _job_banner(f"Weekly Event Ingestion — {len(tickers)} tickers")
         total = 0
         for ticker in tickers:
             try:
-                sector = _sector_for(ticker)
+                sector = sectors.get(ticker, "automobile")
                 count = EventIngestor().run(ticker, sector)
                 total += count
                 logger.info(
@@ -652,27 +721,19 @@ class AutomobileScheduler:
         Gated on RL_RESEARCH_LOOP_ENABLED; non-fatal per ticker (mirrors
         `_event_ingest_job`'s loop style).
         """
-        from pathlib import Path
         from core.intelligence.rl.agents.question_researcher import QuestionResearcher
 
         if not getattr(settings, "RL_RESEARCH_LOOP_ENABLED", True):
             return
 
-        _KNOWN_SECTORS = ["automobile", "banking_bfsi", "it_sector", "renewable_energy"]
-        base_dir = "data/predictions"
-
-        def _sector_for(ticker: str) -> str:
-            return next(
-                (s for s in _KNOWN_SECTORS if Path(f"{base_dir}/{s}/{ticker}").exists()),
-                "automobile",
-            )
+        sectors = _sector_lookup()
 
         tickers = _active_tickers()
         _job_banner(f"Weekly Research Loop — {len(tickers)} tickers")
         answered = expired = 0
         for ticker in tickers:
             try:
-                sector = _sector_for(ticker)
+                sector = sectors.get(ticker, "automobile")
                 result = QuestionResearcher().run(ticker, sector)
                 answered += result.get("answered", 0)
                 expired += result.get("expired", 0)

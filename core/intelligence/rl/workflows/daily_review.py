@@ -389,6 +389,7 @@ def run_daily_review(
     ticker: str,
     review_date: date,
     sector: str = "automobile",
+    paper: bool = False,
 ) -> dict:
     """
     Execute the full 8-step feedback loop for one ticker on one date.
@@ -401,8 +402,17 @@ def run_daily_review(
         The trading date being reviewed (typically yesterday)
     sector : str
         Sector graph to use: automobile | banking_bfsi | it_sector | renewable_energy
+        (any other sector key routes via the generic graph)
+    paper : bool
+        PAPER-LANE mode (Compass Phase B, spec §6.3): isolated store root;
+        disables WeightAdapter writes, shared-ledger propagation, sticky-regime
+        writes, re-forecasts and the control lane. Per-idea local
+        ledger/feedback only.
     """
-    store    = PredictionStore(ticker, sector=sector)
+    store    = PredictionStore(
+        ticker, sector=sector,
+        base_dir=settings.PAPER_PREDICTION_DATA_DIR if paper else None,
+    )
     cycle_id = store.cycle_id_for(review_date)
     date_str = review_date.isoformat()
 
@@ -442,21 +452,27 @@ def run_daily_review(
     # ------------------------------------------------------------------ #
     sticky_regime_label = regime_snapshot.regime_label
     prior_sticky_label: str | None = None
-    try:
-        prior_state = _read_state(_state_path())
-        prior_sticky_label = prior_state.label if prior_state else None
-        new_regime_state = update_sticky_regime(regime_snapshot.regime_label, review_date.isoformat())
-        sticky_regime_label = new_regime_state.label
-        if sticky_regime_label != regime_snapshot.regime_label:
-            logger.info(
-                "[daily_review] Sticky regime: raw=%s sticky=%s (calm_streak=%d)",
-                regime_snapshot.regime_label, sticky_regime_label, new_regime_state.calm_streak,
+    if paper:
+        # PAPER-LANE ISOLATION: sticky regime state is GLOBAL
+        # (data/predictions/_regime_state.json) — paper reviews read the raw
+        # label and never write hysteresis state.
+        pass
+    else:
+        try:
+            prior_state = _read_state(_state_path())
+            prior_sticky_label = prior_state.label if prior_state else None
+            new_regime_state = update_sticky_regime(regime_snapshot.regime_label, review_date.isoformat())
+            sticky_regime_label = new_regime_state.label
+            if sticky_regime_label != regime_snapshot.regime_label:
+                logger.info(
+                    "[daily_review] Sticky regime: raw=%s sticky=%s (calm_streak=%d)",
+                    regime_snapshot.regime_label, sticky_regime_label, new_regime_state.calm_streak,
+                )
+        except Exception as exc:
+            logger.warning(
+                "[daily_review] %s: sticky regime update failed — using raw label (non-fatal): %s",
+                ticker, exc,
             )
-    except Exception as exc:
-        logger.warning(
-            "[daily_review] %s: sticky regime update failed — using raw label (non-fatal): %s",
-            ticker, exc,
-        )
 
     # Sticky-label-driven regime multipliers: recompute from settings using the
     # STICKY label (not the raw one) so the weight adjustment reflects the
@@ -924,7 +940,27 @@ def run_daily_review(
     except Exception as exc:
         logger.debug("[daily_review] %s: Factor regime unavailable (non-fatal): %s", ticker, exc)
 
-    wm = store.get_or_init_weight_memory(settings.AGENT_WEIGHTS)
+    if paper:
+        # PAPER-LANE ISOLATION: weight memory is never persisted for paper
+        # ideas — get_or_init_weight_memory() would WRITE a fresh file into
+        # the store on first review. Load if present, else build the config
+        # default in memory only.
+        wm = store.load_weight_memory()
+        if wm is None:
+            from core.schemas.feedback import WeightMemory
+            wm = WeightMemory(
+                ticker=ticker,
+                last_updated=date.today().isoformat(),
+                weight_version=0,
+                current_weights=dict(settings.AGENT_WEIGHTS),
+                base_weights=dict(settings.AGENT_WEIGHTS),
+                adjustment_bounds={
+                    "max_single_step": settings.WEIGHT_MAX_STEP,
+                    "max_total_drift_from_base": settings.WEIGHT_MAX_DRIFT,
+                },
+            )
+    else:
+        wm = store.get_or_init_weight_memory(settings.AGENT_WEIGHTS)
     # feedback_log was loaded above (before the external_shock rate-cap block);
     # reuse the same object here rather than reloading.
 
@@ -957,18 +993,24 @@ def run_daily_review(
     feedback_log.entries.append(provisional)
     feedback_log.entries.sort(key=lambda e: e.date)
 
-    adapter    = WeightAdapter()
-    updated_wm = adapter.update(
-        weight_memory=wm,
-        feedback_log=feedback_log,
-        todays_primary_miss_agent=fb_output.primary_miss_agent,
-        todays_miss_type=fb_output.miss_type,
-        timing_lag_days=timing.lag_days if timing and timing.lag_days is not None else 0,
-        seasonal_threshold_deltas=seasonal_ctx.accuracy_threshold_delta or None,
-        factor_regime=_factor_regime_data,
-    )
-    store.save_weight_memory(updated_wm)
-    new_weight_version = f"v{updated_wm.weight_version}"
+    if paper:
+        # PAPER-LANE ISOLATION: no weight training on paper ideas — junk
+        # discovery names must never move learned weights (spec §6.3).
+        updated_wm = wm
+        new_weight_version = f"v{wm.weight_version}"
+    else:
+        adapter    = WeightAdapter()
+        updated_wm = adapter.update(
+            weight_memory=wm,
+            feedback_log=feedback_log,
+            todays_primary_miss_agent=fb_output.primary_miss_agent,
+            todays_miss_type=fb_output.miss_type,
+            timing_lag_days=timing.lag_days if timing and timing.lag_days is not None else 0,
+            seasonal_threshold_deltas=seasonal_ctx.accuracy_threshold_delta or None,
+            factor_regime=_factor_regime_data,
+        )
+        store.save_weight_memory(updated_wm)
+        new_weight_version = f"v{updated_wm.weight_version}"
 
     # ------------------------------------------------------------------ #
     # Step 5.5 (P5): Apply regime multipliers to effective weights.
@@ -1008,21 +1050,24 @@ def run_daily_review(
     # P2: Route sector_wide / market_wide lessons to the shared ledgers.
     # Only lesson_ids touched in this review cycle are propagated; stale
     # lessons already in the ledger from previous cycles are left alone.
-    try:
-        updated_sector_ledger, updated_market_ledger = propagate_lessons(
-            ticker=ticker,
-            updated_ledger=updated_ledger,
-            sector_ledger=sector_ledger,
-            market_ledger=market_ledger,
-            lesson_ids=lesson_ids,
-        )
-        store.save_sector_ledger(updated_sector_ledger)
-        store.save_market_ledger(updated_market_ledger)
-    except Exception as exc:
-        logger.warning(
-            "[daily_review] %s: Shared ledger propagation failed (non-fatal): %s",
-            ticker, exc,
-        )
+    if paper:
+        logger.debug("[daily_review] %s: paper lane — shared-ledger propagation skipped", ticker)
+    else:
+        try:
+            updated_sector_ledger, updated_market_ledger = propagate_lessons(
+                ticker=ticker,
+                updated_ledger=updated_ledger,
+                sector_ledger=sector_ledger,
+                market_ledger=market_ledger,
+                lesson_ids=lesson_ids,
+            )
+            store.save_sector_ledger(updated_sector_ledger)
+            store.save_market_ledger(updated_market_ledger)
+        except Exception as exc:
+            logger.warning(
+                "[daily_review] %s: Shared ledger propagation failed (non-fatal): %s",
+                ticker, exc,
+            )
 
     # ------------------------------------------------------------------ #
     # Step 6.5 (P3): Update conviction streak + compute reversion prior
@@ -1111,7 +1156,7 @@ def run_daily_review(
     # always rewrites the CURRENT month's envelope, so a shock seen while
     # replaying a historical date (cross-month backfill) must not fire it.
     _is_live_cycle = cycle_id == store.current_cycle_id()
-    if getattr(settings, "RL_REFORECAST_ENABLED", True) and _is_live_cycle:
+    if getattr(settings, "RL_REFORECAST_ENABLED", True) and _is_live_cycle and not paper:
         try:
             thesis_mult_threshold = getattr(settings, "RL_REFORECAST_THESIS_MULT_THRESHOLD", 0.5)
 
@@ -1314,7 +1359,7 @@ def run_daily_review(
     # make tomorrow's, using a bare LLM with the same close + market_context
     # StockAgent had at this moment. Flag-gated, never fatal.
     # ------------------------------------------------------------------ #
-    if getattr(settings, "RL_CONTROL_LANE_ENABLED", True):
+    if not paper and getattr(settings, "RL_CONTROL_LANE_ENABLED", True):
         try:
             from core.intelligence.rl.agents.control_lane import run_control_lane_step
             run_control_lane_step(
@@ -1333,6 +1378,7 @@ def run_daily_review(
         "status":                   "completed",
         "ticker":                   ticker,
         "sector":                   sector,
+        "paper":                    paper,
         "date":                     date_str,
         "predicted_close":          predicted_close,
         "actual_close":             actual_close,

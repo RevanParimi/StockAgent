@@ -402,7 +402,9 @@ def _extract_agent_predictions(report: FinalReport) -> dict[str, dict]:
     return agent_predictions
 
 
-def generate_forecast(ticker: str, sector: str = "automobile") -> PredictionEnvelope:
+def generate_forecast(
+    ticker: str, sector: str = "automobile", paper: bool = False
+) -> PredictionEnvelope:
     """
     Run full analysis + generate 30-day prediction envelope for one ticker.
 
@@ -415,8 +417,16 @@ def generate_forecast(ticker: str, sector: str = "automobile") -> PredictionEnve
         NSE ticker symbol (e.g. "MARUTI").
     sector : str
         Sector graph to use (default: "automobile").
+    paper : bool
+        Write the envelope into the isolated paper-lane store root
+        (discovery shelf ideas).
     """
-    store = PredictionStore(ticker, sector=sector)
+    # Compass Phase B: paper-lane envelopes live under an ISOLATED store root
+    # (spec §6.3) — the real RL tree never sees discovery paper artifacts.
+    store = PredictionStore(
+        ticker, sector=sector,
+        base_dir=settings.PAPER_PREDICTION_DATA_DIR if paper else None,
+    )
     cycle_id = store.current_cycle_id()
 
     logger.info("[generate_forecast] Starting forecast for %s | cycle=%s", ticker, cycle_id)

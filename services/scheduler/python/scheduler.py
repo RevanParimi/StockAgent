@@ -321,11 +321,44 @@ class AutomobileScheduler:
         )
         logger.info("[Scheduler] Pre-open shock check job: 8:45 am IST weekdays")
 
+        # ── Job 11: Daily bhavcopy sync (19:00 IST weekdays — EOD data settles ~18:30) ──
+        if getattr(settings, "DISCOVERY_ENABLED", False):
+            scheduler.add_job(
+                func=self._bhavcopy_sync_job,
+                trigger=CronTrigger(
+                    day_of_week="mon-fri", hour=19, minute=0, timezone="Asia/Kolkata",
+                ),
+                id="bhavcopy_daily_sync",
+                name="Daily bhavcopy EOD cache sync",
+                misfire_grace_time=3600,
+                coalesce=True,
+                replace_existing=True,
+            )
+            logger.info("[Scheduler] Bhavcopy sync job: weekdays at 7:00 pm IST")
+        else:
+            logger.info("[Scheduler] Bhavcopy sync job disabled (DISCOVERY_ENABLED=false)")
+
         return scheduler
 
     # ------------------------------------------------------------------
     # Job implementations
     # ------------------------------------------------------------------
+
+    def _bhavcopy_sync_job(self) -> None:
+        """Top up the EOD market cache with the last week's trading days.
+        days_back=7 self-heals transient NSE outages. Non-fatal by construction."""
+        from services.data.fetchers.bhavcopy import sync_recent
+
+        _job_banner("Daily Bhavcopy Sync")
+        try:
+            result = sync_recent(days_back=7)
+            logger.info(
+                "[Scheduler] Bhavcopy sync — synced=%d skipped=%d failed=%s pruned=%d",
+                result["synced"], result["skipped"], result["failed"], result["pruned"],
+            )
+        except Exception as exc:
+            logger.error("[Scheduler] Bhavcopy sync FAILED: %s", exc, exc_info=True)
+        _job_banner("Daily Bhavcopy Sync", done=True)
 
     def _daily_review_job(self) -> None:
         """

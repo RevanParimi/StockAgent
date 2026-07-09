@@ -35,11 +35,33 @@ def test_promote_watchlist_gets_weekly_cadence(managed):
     assert entry["cadence"] == "weekly"
 
 
-def test_promote_unsupported_sector_rejected(managed):
+def test_promote_generic_sector_accepted(managed):
+    """Phase B: generic sector graph lifts the 4-sector restriction."""
     result = promo.promote_symbol("SUNPHARMA", "pharma", origin="held")
-    assert result["status"] == "unsupported_sector"
-    assert "not yet supported" in result["detail"]
-    assert all(t["sym"] != "SUNPHARMA" for t in managed["tickers"])
+    assert result["status"] == "promoted"
+    assert result["graph"] == "generic"
+    entry = next(t for t in managed["tickers"] if t["sym"] == "SUNPHARMA")
+    assert entry["sector"] == "pharma" and entry["cadence"] == "daily"
+
+
+def test_promote_native_sector_flagged_native(managed):
+    result = promo.promote_symbol("TCS2", "it_sector", origin="held")
+    assert result["status"] == "promoted"
+    assert result["graph"] == "native"
+
+
+def test_promote_invalid_sector_key_rejected(managed):
+    result = promo.promote_symbol("XYZ", "Pharma & Health!!", origin="held")
+    assert result["status"] == "invalid_sector"
+    assert all(t["sym"] != "XYZ" for t in managed["tickers"])
+
+
+def test_is_valid_sector():
+    assert promo.is_valid_sector("pharma")
+    assert promo.is_valid_sector("banking_bfsi")
+    assert not promo.is_valid_sector("Pharma!!")
+    assert not promo.is_valid_sector("")
+    assert not promo.is_valid_sector("x" * 40)
 
 
 def test_promote_existing_symbol_noop(managed):

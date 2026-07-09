@@ -5,10 +5,9 @@ Any held or watchlisted symbol is promoted into managed_tickers.json so the
 existing crons give it envelopes, daily reviews and dossiers — identical
 treatment to the original tickers.
 
-Phase A reality check: sector_router supports exactly 4 sectors and silently
-falls back to the automobile orchestrator for anything else — an auto-promoted
-pharma stock would be analyzed as a car company. Promotion therefore REJECTS
-unsupported sectors until the generic sector graph ships (Phase B).
+Phase B: the generic sector graph shipped — any well-formed sector key is
+accepted; sectors outside NATIVE_SECTORS are analysed via the generic graph
+(sector_router routes them). Malformed keys are rejected (invalid_sector).
 
 Cap governance: portfolio.max_managed_tickers (default 40) guards LLM spend.
 Only watchlist-origin entries are ever evicted (oldest first); held and manual
@@ -18,6 +17,7 @@ Cadence tiers govern review cost: held=daily, watchlist=weekly (spec §4.3).
 from __future__ import annotations
 
 import logging
+import re
 from datetime import date
 
 from core.config import settings
@@ -26,10 +26,23 @@ from backend.shared.data.fetchers.symbol_resolver import resolve_company_name
 
 logger = logging.getLogger(__name__)
 
-# Must mirror core/intelligence/rl/workflows/sector_router.py _ORCHESTRATORS.
-SUPPORTED_SECTORS: frozenset[str] = frozenset(
+# Sectors with a hand-built native graph — mirrors sector_router.NATIVE_SECTORS.
+NATIVE_SECTORS: frozenset[str] = frozenset(
     {"automobile", "banking_bfsi", "it_sector", "renewable_energy"}
 )
+# Back-compat alias (Phase A name; portfolio_api and older tests import it).
+SUPPORTED_SECTORS = NATIVE_SECTORS
+
+# Any other well-formed sector key routes via the GENERIC sector graph
+# (Compass Phase B). Format guard only — a typo'd key would silently fragment
+# PredictionStore directories, so reject anything that isn't a clean
+# lowercase token.
+_SECTOR_RE = re.compile(r"^[a-z][a-z0-9_]{1,31}$")
+
+
+def is_valid_sector(sector: str) -> bool:
+    """True when `sector` is a well-formed sector key (native or generic)."""
+    return bool(_SECTOR_RE.match(sector.strip().lower()))
 
 _ORIGIN_CADENCE = {"held": "daily", "watchlist": "weekly"}
 
@@ -62,13 +75,14 @@ def promote_symbol(symbol: str, sector: str, origin: str) -> dict:
     if origin not in _ORIGIN_CADENCE:
         raise ValueError(f"origin must be one of {sorted(_ORIGIN_CADENCE)}: {origin!r}")
 
-    if sector not in SUPPORTED_SECTORS:
+    if not _SECTOR_RE.match(sector):
         detail = (
-            f"Sector '{sector}' not yet supported — Phase A promotion covers "
-            f"{sorted(SUPPORTED_SECTORS)} only (generic sector graph is Phase B)."
+            f"'{sector}' is not a valid sector key — use a lowercase token "
+            f"(letters/digits/underscore, 2-32 chars), e.g. 'pharma'."
         )
         logger.info("[promotion] %s rejected: %s", symbol, detail)
-        return {"status": "unsupported_sector", "symbol": symbol, "detail": detail}
+        return {"status": "invalid_sector", "symbol": symbol, "detail": detail}
+    graph = "native" if sector in NATIVE_SECTORS else "generic"
 
     tickers = list(load_managed_tickers())
     existing = next((t for t in tickers if t.get("sym") == symbol), None)
@@ -92,7 +106,7 @@ def promote_symbol(symbol: str, sector: str, origin: str) -> dict:
             changed = True
         if changed:
             save_managed_tickers(tickers)
-        return {"status": "already_managed", "symbol": symbol}
+        return {"status": "already_managed", "symbol": symbol, "graph": graph}
 
     cap = settings.PORTFOLIO_MAX_MANAGED_TICKERS
     if not _evict_for_capacity(tickers, cap):
@@ -119,7 +133,8 @@ def promote_symbol(symbol: str, sector: str, origin: str) -> dict:
     save_managed_tickers(tickers)
     logger.info("[promotion] %s promoted (sector=%s origin=%s cadence=%s)",
                 symbol, sector, origin, _ORIGIN_CADENCE[origin])
-    return {"status": "promoted", "symbol": symbol, "cadence": _ORIGIN_CADENCE[origin]}
+    return {"status": "promoted", "symbol": symbol,
+            "cadence": _ORIGIN_CADENCE[origin], "graph": graph}
 
 
 def demote_symbol(symbol: str) -> bool:

@@ -33,7 +33,7 @@ from core.config import settings
 from backend.shared.schemas.portfolio import Holding, WatchlistItem
 from core.portfolio.pipeline import run_post_review_pipeline
 from core.portfolio.pricing import PriceUnavailableError, close_on
-from core.portfolio.promotion import SUPPORTED_SECTORS, demote_symbol, promote_symbol
+from core.portfolio.promotion import demote_symbol, is_valid_sector, promote_symbol
 from core.portfolio.store import PortfolioStore, import_csv
 
 logger = logging.getLogger(__name__)
@@ -104,12 +104,13 @@ async def add_holding(
 ) -> dict:
     _check_auth(x_scheduler_key)
     symbol = body.symbol.strip().upper()
-    if body.sector.strip().lower() not in SUPPORTED_SECTORS:
+    sector = body.sector.strip().lower()
+    if not is_valid_sector(sector):
         raise HTTPException(
             status_code=422,
             detail=(
-                f"Sector '{body.sector}' not yet supported — Phase A covers "
-                f"{sorted(SUPPORTED_SECTORS)} only."
+                f"Invalid sector key '{body.sector}' — use a lowercase token like "
+                f"'pharma' or 'banking_bfsi' (letters/digits/underscore)."
             ),
         )
     try:
@@ -127,14 +128,14 @@ async def add_holding(
         except PriceUnavailableError as exc:
             raise HTTPException(status_code=422, detail=str(exc))
     holding = Holding(
-        symbol=symbol, sector=body.sector, qty=body.qty, avg_buy_price=price,
+        symbol=symbol, sector=sector, qty=body.qty, avg_buy_price=price,
         adj_avg_price=price, adj_qty=body.qty, buy_date=body.buy_date,
     )
     try:
         _store(user_id).add_holding(holding)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
-    promotion = promote_symbol(symbol, body.sector, origin="held")
+    promotion = promote_symbol(symbol, sector, origin="held")
     return {"holding": holding.model_dump(), "promotion": promotion}
 
 
@@ -163,14 +164,18 @@ async def add_watchlist(
 ) -> dict:
     _check_auth(x_scheduler_key)
     symbol = body.symbol.strip().upper()
-    if body.sector.strip().lower() not in SUPPORTED_SECTORS:
+    sector = body.sector.strip().lower()
+    if not is_valid_sector(sector):
         raise HTTPException(
             status_code=422,
-            detail=f"Sector '{body.sector}' not yet supported — Phase A covers {sorted(SUPPORTED_SECTORS)} only.",
+            detail=(
+                f"Invalid sector key '{body.sector}' — use a lowercase token like "
+                f"'pharma' or 'banking_bfsi' (letters/digits/underscore)."
+            ),
         )
-    promotion = promote_symbol(symbol, body.sector, origin="watchlist")
+    promotion = promote_symbol(symbol, sector, origin="watchlist")
     item = WatchlistItem(
-        symbol=symbol, sector=body.sector, added=date.today().isoformat(),
+        symbol=symbol, sector=sector, added=date.today().isoformat(),
         reason=body.reason, source="user",
     )
     _store(user_id).add_watchlist(item)

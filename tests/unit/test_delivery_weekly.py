@@ -1,8 +1,6 @@
 """Compass Phase C — weekly review: allocation, laggards, scoreboard (spec §7)."""
 from datetime import date
 
-import pandas as pd
-
 import core.delivery.weekly as wk
 from backend.shared.schemas.portfolio import AdviceRecord, Holding
 from core.portfolio.store import PortfolioStore
@@ -66,6 +64,25 @@ def test_switch_candidates_only_underweight_sectors(tmp_path, monkeypatch):
     ])
     review = wk.build_weekly_review("u1", date(2026, 7, 5), store=store)
     assert [c["symbol"] for c in review["switch_candidates"]] == ["PHARMCO"]
+
+
+def test_switch_suggestions_from_advice_ledger(tmp_path, monkeypatch):
+    store = _store(tmp_path)
+    # advisor issued "EXIT WINCO -> NEWCO" during the week (SWITCH verdict)
+    store.append_advice(AdviceRecord(
+        date="2026-06-20", user_id="u1", symbol="WINCO", verdict="SWITCH",
+        close=100.0, unrealised_pnl_pct=5.0, stop_pct=12.0,
+        switch_candidate="NEWCO"))
+    monkeypatch.setattr(wk, "_narrate_weekly", lambda r: "h")
+    monkeypatch.setattr(wk, "_latest_closes", lambda symbols, on: _closes())
+    monkeypatch.setattr(wk, "_active_shelf_ideas", lambda: [])
+
+    review = wk.build_weekly_review("u1", date(2026, 7, 5), store=store)
+    assert review["switch_suggestions"] == [
+        {"symbol": "WINCO", "switch_candidate": "NEWCO", "date": "2026-06-20"}
+    ]
+    text = wk.render_weekly_text(review)
+    assert "SWITCH" in text and "NEWCO" in text
 
 
 def test_run_weekly_saves_and_delivers(tmp_path, monkeypatch):

@@ -165,12 +165,21 @@ def build_weekly_review(
 
     # advice-ledger scoreboard (deterministic; Phase D owns real outcome RL)
     counts: dict[str, int] = {}
+    switch_suggestions: list[dict] = []
     checked = correct = 0
     window_start = (on - timedelta(days=_SCOREBOARD_WINDOW_DAYS)).isoformat()
     for rec in store.load_advice(limit=500):
         if rec.date < window_start or rec.date > on.isoformat():
             continue
         counts[rec.verdict] = counts.get(rec.verdict, 0) + 1
+        # SWITCH is an EXIT with a replacement suggestion — surface the
+        # advisor's actual pick, not just an anonymous tally (spec §5.2).
+        if rec.verdict == "SWITCH" and rec.switch_candidate:
+            switch_suggestions.append({
+                "symbol": rec.symbol,
+                "switch_candidate": rec.switch_candidate,
+                "date": rec.date,
+            })
         if rec.verdict in ("HOLD",):
             continue
         age_days = (on - date.fromisoformat(rec.date)).days
@@ -195,6 +204,7 @@ def build_weekly_review(
         "risk_profile": portfolio.risk_profile,
         "laggards": laggards,
         "switch_candidates": switch_candidates,
+        "switch_suggestions": switch_suggestions,
         "scoreboard": {"counts": counts, "checked": checked, "correct": correct},
         "paper_shelf": [
             {"symbol": i.symbol, "conviction": i.conviction,
@@ -216,6 +226,8 @@ def render_weekly_text(review: dict) -> str:
     for c in review.get("switch_candidates", []):
         lines.append(f"Shelf candidate ({c['sector']}): {c['symbol']} "
                      f"conviction {c['conviction']:.2f}")
+    for s in review.get("switch_suggestions", []):
+        lines.append(f"SWITCH: {s['symbol']} → {s['switch_candidate']}")
     sb = review.get("scoreboard", {})
     if sb.get("checked"):
         lines.append(f"Scoreboard: {sb['correct']}/{sb['checked']} judged calls right")

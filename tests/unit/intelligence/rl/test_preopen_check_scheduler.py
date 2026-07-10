@@ -12,10 +12,15 @@ Covers:
     result without raising, even when run_preopen_check() (mocked) raises.
 
 All run_preopen_check() calls are mocked — no real Serper/LLM/network
-traffic is possible from this test module.
+traffic is possible from this test module. When a fake result carries
+reforecasts, the job also calls core.delivery.alerts.emit_alerts — that
+is mocked too (see test_scheduler_delivery_jobs.py), so no test run ever
+touches the real alerts_sent.jsonl sent-log or delivery channels.
 """
 
 from __future__ import annotations
+
+from unittest.mock import patch
 
 import services.scheduler.python.scheduler as sched
 
@@ -70,9 +75,14 @@ def test_preopen_shock_check_job_calls_run_preopen_check(monkeypatch):
     )
 
     scheduler = _scheduler()
-    scheduler._preopen_shock_check_job()
+    # This fake result carries reforecasts=["MARUTI"], which triggers the
+    # emit_alerts() hook in _preopen_shock_check_job — patch it so the real
+    # alert engine (sent-log write + delivery channels) never runs.
+    with patch("core.delivery.alerts.emit_alerts") as m_emit:
+        scheduler._preopen_shock_check_job()
 
     assert calls == [None]
+    assert m_emit.called
 
 
 def test_preopen_shock_check_job_handles_skipped_result(monkeypatch):

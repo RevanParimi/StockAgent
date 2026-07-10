@@ -118,6 +118,8 @@ def run_deep_dives(
         if cand.symbol in managed or cand.symbol in shelved:
             logger.debug("[deep_dive] %s skipped (managed/shelved)", cand.symbol)
             continue
+        if any(r.symbol == cand.symbol for r in results):
+            continue        # IPO candidate may also pass the quant screen
         try:
             sector = infer_sector(cand.symbol)
             report = get_orchestrator(sector).analyse(cand.symbol)

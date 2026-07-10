@@ -6,7 +6,7 @@
  *   - same-origin static GET -> stale-while-revalidate
  *   - cross-origin CDN libs  -> cache-first
  */
-const VERSION = 'v1';
+const VERSION = 'v2';
 const SHELL_CACHE = `sa-shell-${VERSION}`;
 const RUNTIME_CACHE = `sa-runtime-${VERSION}`;
 
@@ -23,6 +23,7 @@ const SHELL = [
 const API_PREFIXES = [
   '/api', '/ui', '/analyse', '/history', '/health', '/tickers',
   '/scheduler', '/prompts', '/analytics', '/ws', '/docs', '/redoc', '/openapi.json',
+  '/delivery', '/portfolio', '/discovery',
 ];
 
 self.addEventListener('install', (event) => {
@@ -87,3 +88,28 @@ function staleWhileRevalidate(req) {
     })
   );
 }
+
+/* Compass Phase C — web-push (M4 proactive delivery).
+ * Payload: {"title": ..., "body": ..., "url": ...} from core/delivery/channels.py */
+self.addEventListener('push', (event) => {
+  let data = {};
+  try { data = event.data ? event.data.json() : {}; }
+  catch (e) { data = { body: event.data ? event.data.text() : '' }; }
+  event.waitUntil(self.registration.showNotification(data.title || 'StockAgent', {
+    body: data.body || '',
+    icon: '/icons/pwa-192x192.png',
+    badge: '/icons/pwa-192x192.png',
+    data: { url: data.url || '/' },
+  }));
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const url = (event.notification.data && event.notification.data.url) || '/';
+  event.waitUntil(
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((wins) => {
+      for (const w of wins) { if ('focus' in w) return w.focus(); }
+      return clients.openWindow(url);
+    })
+  );
+});

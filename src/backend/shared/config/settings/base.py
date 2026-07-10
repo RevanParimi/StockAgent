@@ -806,6 +806,36 @@ DISCOVERY_SIGNAL_WEIGHTS: dict[str, float] = {
     for k, v in cfg("discovery.signal_weights", fallback=_DISCOVERY_SIGNAL_WEIGHTS_FALLBACK).items()
 }
 
+# ---------------------------------------------------------------------------
+# Compass Phase C — IPO tracker + M4 proactive delivery (spec §6.2 / §7)
+# ---------------------------------------------------------------------------
+DISCOVERY_IPO_ENABLED: bool = bool(cfg("discovery.ipo_enabled", env="DISCOVERY_IPO_ENABLED", fallback=False))
+DISCOVERY_IPO_LISTING_WINDOW_DAYS: int = int(cfg("discovery.ipo_listing_window_days", fallback=90))
+DISCOVERY_IPO_MAX_DEEP_DIVES: int = int(cfg("discovery.ipo_max_deep_dives", fallback=2))
+DISCOVERY_IPO_LOCKIN_WARN_DAYS: int = int(cfg("discovery.ipo_lockin_warn_days", fallback=7))
+DISCOVERY_IPO_QIB_WEIGHT: float = float(cfg("discovery.ipo_qib_weight", fallback=3.0))
+
+ADVISOR_SWITCH_CONVICTION_GAP: float = float(cfg("advisor.switch_conviction_gap", fallback=0.15))
+
+DELIVERY_ENABLED: bool = bool(cfg("delivery.enabled", env="DELIVERY_ENABLED", fallback=False))
+DELIVERY_DATA_DIR: str = cfg("delivery.data_dir", fallback="data/delivery")
+DELIVERY_EMAIL_ENABLED: bool = bool(cfg("delivery.email_enabled", env="DELIVERY_EMAIL_ENABLED", fallback=False))
+DELIVERY_PUSH_ENABLED: bool = bool(cfg("delivery.push_enabled", env="DELIVERY_PUSH_ENABLED", fallback=True))
+DELIVERY_INDEX_WATCH: list[str] = list(cfg(
+    "delivery.index_watch",
+    fallback=["NIFTY 50", "NIFTY NEXT 50", "NIFTY MIDCAP 150", "NIFTY SMALLCAP 250"],
+))
+
+# Delivery secrets — .env ONLY (never config.yaml), same pattern as OPENROUTER_API_KEY.
+SMTP_HOST: str = os.getenv("SMTP_HOST", "")
+SMTP_PORT: int = int(os.getenv("SMTP_PORT", "587"))
+SMTP_USER: str = os.getenv("SMTP_USER", "")
+SMTP_PASSWORD: str = os.getenv("SMTP_PASSWORD", "")
+DELIVERY_EMAIL_TO: str = os.getenv("DELIVERY_EMAIL_TO", "")
+VAPID_PRIVATE_KEY: str = os.getenv("VAPID_PRIVATE_KEY", "")
+VAPID_PUBLIC_KEY: str = os.getenv("VAPID_PUBLIC_KEY", "")
+VAPID_CLAIM_EMAIL: str = os.getenv("VAPID_CLAIM_EMAIL", "admin@stockagent.app")
+
 _GENERIC_AGENT_WEIGHTS_FALLBACK: dict[str, float] = {
     "business": 0.14, "fundamentals": 0.18, "valuation": 0.14, "technical": 0.12,
     "macro": 0.12, "risk": 0.12, "management": 0.09, "earnings": 0.09,

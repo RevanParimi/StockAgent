@@ -6,6 +6,8 @@ import pytest
 from backend.shared.schemas.portfolio import AdviceRecord, Holding, Portfolio
 from core.portfolio.digest import build_digest
 from core.portfolio.store import PortfolioStore
+import core.delivery.alerts as alerts_mod
+import core.delivery.channels as channels_mod
 import core.portfolio.pipeline as pipeline
 
 REVIEW_DATE = date(2026, 7, 6)
@@ -63,6 +65,11 @@ def test_pipeline_end_to_end(monkeypatch, tmp_path):
     monkeypatch.setattr(pipeline, "close_on", lambda sym, d: 13000.0)
     monkeypatch.setattr(pipeline, "get_price_history", lambda t, years=1: None)
     monkeypatch.setattr(pipeline, "narrate", lambda rec, sig: "Thesis intact.")
+    # Step 5 delivery is real by default (delivery.enabled: true) — keep hermetic
+    # regardless of what verdict the advisor computes (see test_delivery_alerts.py
+    # for emit_alerts' own dedupe/persist behaviour).
+    monkeypatch.setattr(alerts_mod, "emit_alerts", lambda *a, **k: {"emitted": 0})
+    monkeypatch.setattr(channels_mod, "deliver", lambda *a, **k: {"delivered": False})
 
     class _FakePredStore:
         def __init__(self, ticker, sector=None):
@@ -100,6 +107,8 @@ def test_pipeline_holding_failure_is_non_fatal(monkeypatch, tmp_path):
     monkeypatch.setattr(pipeline, "load_events_calendar", lambda cache_path=None: {"events": {}})
     monkeypatch.setattr(pipeline, "get_price_history", lambda t, years=1: None)
     monkeypatch.setattr(pipeline, "narrate", lambda rec, sig: "")
+    monkeypatch.setattr(alerts_mod, "emit_alerts", lambda *a, **k: {"emitted": 0})
+    monkeypatch.setattr(channels_mod, "deliver", lambda *a, **k: {"delivered": False})
 
     def close_or_boom(sym, d):
         if sym == "BADSTK":

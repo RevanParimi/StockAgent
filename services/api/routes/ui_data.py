@@ -2158,6 +2158,20 @@ _CHAT_TOOLS = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_portfolio_brief",
+            "description": (
+                "The latest proactive morning brief (or EOD digest) for the user's "
+                "virtual portfolio: value, P&L, per-holding verdicts, escalations, "
+                "regime, discovery-shelf adds, upcoming earnings and IPO lock-in flags. "
+                "Use whenever the user says 'brief', 'morning brief', 'portfolio update', "
+                "'my portfolio', or asks what happened to their holdings today."
+            ),
+            "parameters": {"type": "object", "properties": {}, "required": []},
+        },
+    },
 ]
 
 
@@ -2627,6 +2641,32 @@ async def _execute_chat_tool(name: str, args: dict, cache: dict | None = None) -
     return await _dispatch_chat_tool(name, args)
 
 
+def _chat_tool_portfolio_brief() -> str:
+    """Latest morning brief; falls back to the latest EOD digest (Compass Phase C)."""
+    try:
+        from core.portfolio.store import PortfolioStore
+        store = PortfolioStore()
+        brief = store.load_latest_brief()
+        if brief:
+            from core.delivery.brief import render_brief_text
+            return render_brief_text(brief)[:1800]
+        digest = store.load_latest_digest()
+        if digest:
+            lines = [
+                f"EOD digest {digest['date']} — value ₹{digest.get('portfolio_value', 0):,.0f} "
+                f"({digest.get('total_pnl_pct', 0.0):+.1f}%)"
+            ]
+            for row in digest.get("holdings", [])[:10]:
+                pnl = row.get("pnl_pct")
+                pnl_s = f" ({pnl:+.1f}%)" if pnl is not None else ""
+                lines.append(f"{row['symbol']}: {row['verdict']}{pnl_s} — {row.get('reason', '')}")
+            return "\n".join(lines)[:1800]
+        return ("No brief yet — the morning-brief job hasn't produced one. "
+                "Add holdings via /portfolio, then POST /delivery/run-brief.")
+    except Exception as exc:
+        return f"Brief unavailable: {exc}"
+
+
 async def _dispatch_chat_tool(name: str, args: dict) -> str:
     if name == "get_live_price":
         return await _chat_tool_get_live_price(args.get("symbol", ""))
@@ -2657,6 +2697,8 @@ async def _dispatch_chat_tool(name: str, args: dict) -> str:
         return await _chat_tool_rl_prediction(args.get("ticker", ""))
     if name == "get_ticker_dossier":
         return await _chat_tool_ticker_dossier(args.get("ticker", ""))
+    if name == "get_portfolio_brief":
+        return _chat_tool_portfolio_brief()
     return f"Unknown tool: {name}"
 
 

@@ -191,7 +191,32 @@ def build_signals(
 # Verdict engine
 # ---------------------------------------------------------------------------
 
-def decide(signals: AdvisorSignals, holding: Holding, risk_profile: str) -> AdviceRecord:
+def _best_switch_candidate(signals: AdvisorSignals, shelf_ideas, sector_weights: dict):
+    """SWITCH (spec §5.2): EXIT already fired AND an active shelf idea beats the
+    holding's mean remaining envelope confidence by >= ADVISOR_SWITCH_CONVICTION_GAP,
+    in a sector strictly UNDERWEIGHT vs the exiting holding's sector. With no
+    sector-weight context every idea fails the underweight check (conservative)."""
+    own_weight = sector_weights.get(signals.sector, 0.0)
+    best = None
+    for idea in shelf_ideas or []:
+        if getattr(idea, "status", "active") != "active":
+            continue
+        if sector_weights.get(idea.sector, 0.0) >= own_weight:
+            continue
+        if idea.conviction - signals.confidence < settings.ADVISOR_SWITCH_CONVICTION_GAP:
+            continue
+        if best is None or idea.conviction > best.conviction:
+            best = idea
+    return best
+
+
+def decide(
+    signals: AdvisorSignals,
+    holding: Holding,
+    risk_profile: str,
+    shelf_ideas: list | None = None,
+    sector_weights: dict[str, float] | None = None,
+) -> AdviceRecord:
     triggers: list[str] = []
     notes: list[str] = []
 
@@ -240,6 +265,15 @@ def decide(signals: AdvisorSignals, holding: Holding, risk_profile: str) -> Advi
     else:
         verdict = "HOLD"
 
+    # -- SWITCH: EXIT + stronger shelf idea in an underweight sector (§5.2) --
+    switch_candidate = ""
+    if verdict == "EXIT" and shelf_ideas:
+        cand = _best_switch_candidate(signals, shelf_ideas, sector_weights or {})
+        if cand is not None:
+            verdict = "SWITCH"
+            triggers.append("switch_candidate_available")
+            switch_candidate = cand.symbol
+
     # -- LTCG softening: TRIM only, NEVER EXIT (spec §5.2) ------------------
     if verdict == "TRIM" and signals.thesis_intact is not False:
         months = signals.holding_age_days / 30.44
@@ -269,5 +303,6 @@ def decide(signals: AdvisorSignals, holding: Holding, risk_profile: str) -> Advi
         triggers=triggers,
         notes=notes,
         confidence=signals.confidence,
+        switch_candidate=switch_candidate,
         rationale_hash=hashlib.sha256(rationale.encode()).hexdigest()[:16],
     )

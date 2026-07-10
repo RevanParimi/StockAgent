@@ -69,3 +69,10 @@ class ShelfIdea(BaseModel):
 class Shelf(BaseModel):
     ideas: list[ShelfIdea] = Field(default_factory=list)
     updated_at: str = ""
+
+
+class LockinEvent(BaseModel):
+    """One IPO lock-in expiry cliff (spec §6.2: supply risk — flag, don't buy into)."""
+    symbol: str
+    expiry: str                            # ISO date
+    kind: Literal["anchor_50pct", "anchor_remaining", "pre_ipo_6mo"]

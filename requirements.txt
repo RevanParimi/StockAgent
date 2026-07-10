@@ -17,6 +17,7 @@ requests>=2.31.0          # Serper + NewsAPI HTTP calls
 nse>=2.0.0                # NseIndiaApi (BennyThadikaran) — announcements / board meetings / actions
 python-dateutil>=2.8.0    # Defensive date parsing for NSE event ingestion (was transitive via pandas)
 pyarrow>=16.0.0           # Parquet EOD market cache (Compass Phase B discovery)
+pywebpush>=2.0.0          # M4 web-push delivery (Compass Phase C)
 
 # Phase 4 – Python scheduler (kept as fallback; C# Quartz.NET is primary)
 apscheduler>=3.10.0       # Cron-based periodic trigger

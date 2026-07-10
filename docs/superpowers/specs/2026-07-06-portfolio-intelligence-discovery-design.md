@@ -1,6 +1,6 @@
 # StockAgent "Compass" — Personal Portfolio Intelligence & Discovery Layer
 
-**Status:** APPROVED — Phase A merged 2026-07-07; Phase B implemented (plan docs/superpowers/plans/2026-07-07-compass-phase-b.md)
+**Status:** APPROVED — Phase A merged 2026-07-07; Phase B merged 2026-07-09; Phase C implemented (plan docs/superpowers/plans/2026-07-09-compass-phase-c.md)
 **Date:** 2026-07-06
 **Scope:** ~40-50% product expansion on the existing RL/agent foundation
 **Author:** Claude (researched online 2026-07-06; sources at bottom)

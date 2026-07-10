@@ -51,6 +51,24 @@ def run_post_review_pipeline(review_date: date) -> dict:
         if not portfolio.holdings:
             continue
 
+        # Phase C context for SWITCH: active shelf ideas + sector weights.
+        shelf_ideas: list = []
+        try:
+            from core.discovery.shelf import ShelfStore
+            shelf_ideas = [i for i in ShelfStore().load().ideas if i.status == "active"]
+        except Exception as exc:
+            logger.debug("[portfolio_pipeline] shelf unavailable (non-fatal): %s", exc)
+        sector_weights: dict[str, float] = {}
+        try:
+            total = sum(h.adj_qty * h.adj_avg_price for h in portfolio.holdings)
+            if total > 0:
+                for h in portfolio.holdings:
+                    sector_weights[h.sector] = sector_weights.get(h.sector, 0.0) + (
+                        h.adj_qty * h.adj_avg_price / total * 100.0
+                    )
+        except Exception:
+            pass
+
         # Step 2 — refresh forward events for held symbols (degraded-mode safe).
         symbols = [h.symbol for h in portfolio.holdings]
         try:
@@ -76,7 +94,8 @@ def run_post_review_pipeline(review_date: date) -> dict:
                     holding, portfolio, review_date, pred_store, calendar, close,
                     ohlcv_df=ohlcv,
                 )
-                rec = decide(signals, holding, portfolio.risk_profile)
+                rec = decide(signals, holding, portfolio.risk_profile,
+                             shelf_ideas=shelf_ideas, sector_weights=sector_weights)
                 rec.user_id = user_id
                 rec.date = review_date.isoformat()
                 rec.narrative = narrate(rec, signals)
@@ -88,13 +107,41 @@ def run_post_review_pipeline(review_date: date) -> dict:
                     user_id, holding.symbol, exc,
                 )
         total_advice += len(advice)
-        escalations.extend(a.symbol for a in advice if a.verdict in ("TRIM", "EXIT"))
+        escalations.extend(a.symbol for a in advice if a.verdict in ("TRIM", "EXIT", "SWITCH"))
 
         # Step 4 — digest.
         try:
             store.save_digest(build_digest(user_id, review_date, advice, portfolio, closes))
         except Exception as exc:
             logger.warning("[portfolio_pipeline] digest failed for %s: %s", user_id, exc)
+
+        # Step 5 — Phase C M4: escalation alerts + digest delivery. Non-fatal.
+        try:
+            from core.delivery.alerts import AlertEvent, emit_alerts
+            from core.delivery.channels import deliver
+            events = [
+                AlertEvent(
+                    date=review_date.isoformat(),
+                    kind=f"advisor_{a.verdict.lower()}",
+                    symbol=a.symbol,
+                    message=(a.narrative or a.verdict)
+                    + (f" (switch → {a.switch_candidate})" if a.switch_candidate else ""),
+                    severity="critical" if a.verdict in ("EXIT", "SWITCH") else "warning",
+                )
+                for a in advice if a.verdict in ("TRIM", "EXIT", "SWITCH")
+            ]
+            if events:
+                emit_alerts(events, user_id=user_id,
+                            title=f"Advisor escalations — {review_date}")
+            n_esc = len(events)
+            deliver(
+                f"EOD digest — {review_date}",
+                f"{len(advice)} holdings reviewed; {n_esc} escalation(s). "
+                "Open the app or ask the chat for 'brief' for details.",
+                user_id=user_id,
+            )
+        except Exception as exc:
+            logger.warning("[portfolio_pipeline] delivery failed (non-fatal): %s", exc)
 
     logger.info(
         "[portfolio_pipeline] complete — users=%d advice=%d escalations=%s",

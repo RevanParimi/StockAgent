@@ -17,6 +17,9 @@ from core.discovery.screen import load_latest_screen, run_screen
 from core.discovery.shelf import ShelfStore
 from services.data.fetchers.bhavcopy import sync_recent
 from services.data.fetchers.bulk_block import refresh_bulk_block
+from core.config import settings
+from core.discovery.ipo_tracker import build_ipo_candidates, upcoming_lockin_alerts
+from services.data.fetchers.ipo import refresh_ipo_cache
 
 logger = logging.getLogger(__name__)
 
@@ -24,11 +27,13 @@ __all__ = [
     "run_discovery_cycle", "run_deep_dives", "run_paper_reviews",
     "run_screen", "load_latest_screen", "ShelfStore",
     "sync_recent", "refresh_bulk_block",
+    "refresh_ipo_cache", "build_ipo_candidates", "upcoming_lockin_alerts",
+    "settings",
 ]
 
 
 def run_discovery_cycle(on: date | None = None) -> dict:
-    """sync EOD -> refresh bulk/block -> screen -> deep-dives -> shelf ->
+    """sync EOD -> refresh bulk/block -> ipo tracker -> screen -> deep-dives -> shelf ->
     weekly paper reviews. Returns a stage-by-stage summary; never raises."""
     on = on or date.today()
     errors: list[str] = []
@@ -46,10 +51,21 @@ def run_discovery_cycle(on: date | None = None) -> dict:
         logger.warning("[discovery] bulk/block refresh failed (non-fatal): %s", exc)
         errors.append(f"bulk_block failed: {exc}")
 
+    ipo_cands: list = []
+    if getattr(settings, "DISCOVERY_IPO_ENABLED", False):
+        try:
+            refresh_ipo_cache()
+            ipo_cands = build_ipo_candidates(on=on)[
+                : settings.DISCOVERY_IPO_MAX_DEEP_DIVES]
+        except Exception as exc:
+            logger.warning("[discovery] ipo stage failed (non-fatal): %s", exc)
+            errors.append(f"ipo failed: {exc}")
+            ipo_cands = []
+
     screen = run_screen(on=on)          # never raises by contract
 
     try:
-        dives = run_deep_dives(screen.candidates, on=on)
+        dives = run_deep_dives(ipo_cands + screen.candidates, on=on)
     except Exception as exc:
         logger.warning("[discovery] deep dives failed (non-fatal): %s", exc)
         errors.append(f"deep_dives failed: {exc}")
@@ -65,6 +81,20 @@ def run_discovery_cycle(on: date | None = None) -> dict:
         shelf_summary, rotated = {"added": [], "displaced": [], "skipped": []}, []
 
     try:
+        if shelf_summary.get("added"):
+            from core.delivery.alerts import AlertEvent, emit_alerts
+            conviction = {d.symbol: d.conviction for d in dives}
+            emit_alerts(
+                [AlertEvent(date=on.isoformat(), kind="shelf_add", symbol=sym,
+                            message=f"new discovery idea (conviction "
+                                    f"{conviction.get(sym, 0.0):.2f})", severity="info")
+                 for sym in shelf_summary["added"]],
+                title=f"Discovery shelf — {on}",
+            )
+    except Exception as exc:
+        logger.warning("[discovery] shelf alert emit failed (non-fatal): %s", exc)
+
+    try:
         paper = run_paper_reviews(on=on)
     except Exception as exc:
         logger.warning("[discovery] paper reviews failed (non-fatal): %s", exc)
@@ -76,6 +106,7 @@ def run_discovery_cycle(on: date | None = None) -> dict:
         "sync": sync,
         "universe_size": screen.universe_size,
         "candidates": len(screen.candidates),
+        "ipo_candidates": len(ipo_cands),
         "dark_signals": screen.dark_signals,
         "deep_dives": len(dives),
         "shelf": shelf_summary,

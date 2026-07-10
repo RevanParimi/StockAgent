@@ -61,7 +61,7 @@ def _resolve_sector(symbol: str, sector: str | None) -> str:
     """Explicit sector wins; otherwise the registry maps the symbol."""
     if sector and sector.strip():
         return sector.strip().lower()
-    return SectorRegistry.resolve(symbol)
+    return SectorRegistry.resolve(symbol).strip().lower()
 
 
 class HoldingIn(BaseModel):

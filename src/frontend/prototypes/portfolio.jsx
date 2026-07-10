@@ -33,10 +33,12 @@ function digestAlerts(digest) {
 
 function usePortfolioLive() {
   const [state, setState] = useStatePf({ status: 'loading', holdings: [], digest: null });
+  const aliveRef = useRefPf(false);
+  const wasLiveRef = useRefPf(false); // once true, a later reload failure must not downgrade live -> demo
 
   const load = async () => {
     if (new URLSearchParams(location.search).get('demo') === '1') {
-      setState({ status: 'demo', holdings: window.PORTFOLIO.holdings, digest: null });
+      if (aliveRef.current) setState({ status: 'demo', forced: true, holdings: window.PORTFOLIO.holdings, digest: null });
       return;
     }
     try {
@@ -48,14 +50,19 @@ function usePortfolioLive() {
         const dr = await fetch('/portfolio/digest/latest');
         if (dr.ok) digest = await dr.json();
       } catch {} // digest is optional — 404 until first advisor run
-      setState({ status: 'live', holdings: (p.holdings || []).map(adaptHolding), digest });
+      wasLiveRef.current = true;
+      if (aliveRef.current) setState({ status: 'live', holdings: (p.holdings || []).map(adaptHolding), digest });
     } catch (e) {
+      if (wasLiveRef.current) {
+        console.warn('[Portfolio] reload failed — keeping last live data.', e);
+        return;
+      }
       console.warn('[Portfolio] live fetch failed — demo fallback.', e);
-      setState({ status: 'demo', holdings: window.PORTFOLIO.holdings, digest: null });
+      if (aliveRef.current) setState({ status: 'demo', forced: false, holdings: window.PORTFOLIO.holdings, digest: null });
     }
   };
 
-  useEffectPf(() => { load(); }, []);
+  useEffectPf(() => { aliveRef.current = true; load(); return () => { aliveRef.current = false; }; }, []);
   return { ...state, reload: load };
 }
 
@@ -69,7 +76,7 @@ function AddHoldingModal({ onClose, onAdded }) {
   const [saving, setSaving] = useStatePf(false);
   const timerRef = useRefPf(null);
   const aliveRef = useRefPf(true);
-  useEffectPf(() => () => { aliveRef.current = false; clearTimeout(timerRef.current); }, []);
+  useEffectPf(() => { aliveRef.current = true; return () => { aliveRef.current = false; clearTimeout(timerRef.current); }; }, []);
 
   const searchSym = (val) => {
     setSym(val.toUpperCase());
@@ -79,7 +86,10 @@ function AddHoldingModal({ onClose, onAdded }) {
     timerRef.current = setTimeout(async () => {
       try {
         const res = await fetch(`/ui/search?q=${encodeURIComponent(val)}`);
-        if (res.ok && aliveRef.current) setResults((await res.json()).results || []);
+        if (res.ok) {
+          const d = await res.json();
+          if (aliveRef.current) setResults(d.results || []);
+        }
       } catch {}
     }, 350);
   };
@@ -158,17 +168,17 @@ function AddHoldingModal({ onClose, onAdded }) {
         <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginBottom:14 }}>
           <div>
             <label style={label}>Quantity</label>
-            <input value={qty} onChange={e=>setQty(e.target.value)} type="number" min="0" step="any" placeholder="10" className="mono" style={field}/>
+            <input value={qty} onChange={e=>{ setQty(e.target.value); setErr(''); }} type="number" min="0" step="any" placeholder="10" className="mono" style={field}/>
           </div>
           <div>
             <label style={label}>Buy date</label>
-            <input value={buyDate} onChange={e=>setBuyDate(e.target.value)} type="date" className="mono" style={field}/>
+            <input value={buyDate} onChange={e=>{ setBuyDate(e.target.value); setErr(''); }} type="date" className="mono" style={field}/>
           </div>
         </div>
 
         <div style={{ marginBottom:18 }}>
           <label style={label}>Buy price (optional)</label>
-          <input value={price} onChange={e=>setPrice(e.target.value)} type="number" min="0" step="any"
+          <input value={price} onChange={e=>{ setPrice(e.target.value); setErr(''); }} type="number" min="0" step="any"
             placeholder="Leave blank to use the real NSE close on the buy date" className="mono" style={field}/>
         </div>
 
@@ -247,7 +257,7 @@ function PortfolioPage({ onNav, openChat }) {
               {isDemo && (
                 <span style={{ fontSize:10, fontWeight:700, padding:'3px 8px', borderRadius:999,
                   background:'rgba(217,119,6,.25)', color:'#fcd34d', letterSpacing:'.06em' }}>
-                  DEMO DATA — API UNREACHABLE
+                  {live.forced ? 'DEMO DATA' : 'DEMO DATA — API UNREACHABLE'}
                 </span>
               )}
             </div>
@@ -332,8 +342,8 @@ function EmptyPortfolio({ onAdd }) {
       </div>
       <div style={{ fontSize:17, fontWeight:700, marginBottom:6 }}>No holdings yet</div>
       <p style={{ fontSize:13, color:'var(--ink-3)', margin:'0 auto 18px', maxWidth:380, lineHeight:1.6 }}>
-        Add your first holding — any tracked stock across automobile, banking, IT and
-        renewable energy. Mock money, real prices, real agent analysis.
+        Add your first holding — any NSE stock — automobile, banking, IT,
+        renewable energy and beyond. Mock money, real prices, real agent analysis.
       </p>
       <button onClick={onAdd} style={{ padding:'10px 18px', border:'none', borderRadius:10,
         background:'linear-gradient(135deg, var(--cyan), var(--violet))', color:'#fff',
@@ -393,7 +403,7 @@ function agentTake(h, digest) {
   const drow = (digest?.holdings || []).find(r => r.symbol === h.sym && r.verdict && r.verdict !== 'NO_DATA');
   if (drow) return { verdict: drow.verdict, reason: drow.reason, score: null };
   if (h.verdict) return { verdict: h.verdict, reason: null, score: h.agentScore }; // demo rows
-  const t = (window.TICKERS || []).find(t => t.sym === h.sym);
+  const t = (window.TICKERS || []).find(t => t.sym === h.sym && t.hasData);
   if (t) return { verdict: t.verdict, reason: 'Latest composite agent score', score: t.score };
   return null;
 }
@@ -471,7 +481,7 @@ function HoldingsTable({ holdings, digest, isLive, onAdd, onRemoved }) {
                 <td style={pfTd}><span className="mono">{fmt(h.currentPrice)}</span></td>
                 <td style={pfTd}><span className="mono" style={{ fontWeight:700 }}>{fmt(value, 0)}</span></td>
                 <td style={pfTd}>
-                  {pl == null ? <span style={{ color:'var(--ink-3)' }}>—</span> : (
+                  {pl == null ? <span className="mono" style={{ color:'var(--ink-3)' }}>—</span> : (
                     <div style={{ color: pl>=0 ? 'var(--buy-strong)':'var(--sell-strong)', fontWeight:700 }}>
                       <span className="mono">{pl>=0?'+':'-'}₹{Math.abs(pl).toLocaleString('en-IN', {maximumFractionDigits:0})}</span>
                       <div className="mono" style={{ fontSize:11, fontWeight:600 }}>{plPct>=0?'+':''}{plPct.toFixed(2)}%</div>
@@ -487,7 +497,7 @@ function HoldingsTable({ holdings, digest, isLive, onAdd, onRemoved }) {
                         {take.verdict}
                       </span>
                     </div>
-                  ) : <span style={{ color:'var(--ink-3)' }}>—</span>}
+                  ) : <span className="mono" style={{ color:'var(--ink-3)' }}>—</span>}
                 </td>
                 {isLive && (
                   <td style={{ ...pfTd, textAlign:'right' }}>

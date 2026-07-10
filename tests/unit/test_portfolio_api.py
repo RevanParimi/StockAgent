@@ -148,3 +148,12 @@ def test_watchlist_sector_omitted_resolves_via_registry(client):
     })
     assert resp.status_code == 200
     assert resp.json()["watchlist_item"]["sector"] == "banking_bfsi"
+
+
+def test_add_holding_explicit_sector_overrides_registry(client):
+    resp = client.post("/portfolio/holdings", json={
+        "symbol": "TCS", "sector": "pharma", "qty": 1,
+        "buy_date": "2026-07-01", "price": 3500.0,
+    })
+    assert resp.status_code == 200
+    assert resp.json()["holding"]["sector"] == "pharma"

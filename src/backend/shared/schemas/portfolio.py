@@ -55,13 +55,30 @@ class Holding(BaseModel):
     def age_days(self, on: date) -> int:
         return (on - date.fromisoformat(self.buy_date)).days
 
+    def sell(self, sell_qty: float, price: float) -> float:
+        """Reduce the live (adj_*) position by sell_qty shares at price.
+        Returns realized P&L incl. pro-rata dividends; moves that dividend
+        slice out of dividends_received so remaining unrealised P&L doesn't
+        double-count it. Raw qty/avg_buy_price stay as entered (entry
+        history); adj_* is the live position (Autopilot spec §3/§4)."""
+        if sell_qty <= 0 or sell_qty > self.adj_qty + 1e-9:
+            raise ValueError(
+                f"invalid sell qty {sell_qty} for {self.symbol} (adj_qty={self.adj_qty})"
+            )
+        fraction = min(1.0, sell_qty / self.adj_qty)
+        realized = (price - self.adj_avg_price) * sell_qty \
+            + self.dividends_received * fraction
+        self.dividends_received = round(self.dividends_received * (1 - fraction), 2)
+        self.adj_qty = round(self.adj_qty - sell_qty, 6)
+        return round(realized, 2)
+
 
 class WatchlistItem(BaseModel):
     symbol: str
     sector: str = ""
     added: str                     # ISO date
     reason: str = ""
-    source: Literal["user", "discovery"] = "user"
+    source: Literal["user", "discovery", "autopilot"] = "user"
 
 
 class Portfolio(BaseModel):
@@ -69,6 +86,9 @@ class Portfolio(BaseModel):
     holdings: list[Holding] = Field(default_factory=list)
     watchlist: list[WatchlistItem] = Field(default_factory=list)
     cash_deployable: float | None = None      # optional — enables ADD sizing later
+    capital_in: float = 0.0                   # total mock money ever put in
+    autopilot: bool = False                   # advisor-executed trading opt-in
+    last_autopilot_run: str = ""              # ISO date of last executed run
     risk_profile: Literal["conservative", "balanced", "aggressive"] = "balanced"
     updated_at: str = ""
 
@@ -93,6 +113,30 @@ class AdviceRecord(BaseModel):
     outcome_10td: float | None = None
     outcome_30td: float | None = None
     outcome_60td: float | None = None
+
+
+class TransactionRecord(BaseModel):
+    """One executed virtual trade (append-only transactions.jsonl —
+    Autopilot spec §3.2). The ledger is the audit authority; portfolio.json
+    is derived state."""
+    txn_id: str                    # sha256(user|date|symbol|side|ref)[:16]
+    date: str                      # trade/review date (ISO)
+    ts: str                        # UTC timestamp (ISO)
+    user_id: str
+    symbol: str
+    side: Literal["BUY", "SELL"]
+    qty: float                     # whole shares
+    price: float
+    value: float                   # qty × price
+    cash_before: float
+    cash_after: float
+    holding_qty_after: float
+    realized_pnl: float = 0.0      # SELL only
+    source: Literal["autopilot", "seed", "manual"] = "autopilot"
+    verdict: str = ""              # originating advisor verdict, "" for seed/manual
+    advice_ref: str = ""           # "<date>|<symbol>|<rationale_hash>"
+    triggers: list[str] = Field(default_factory=list)
+    note: str = ""
 
 
 class CorporateEvent(BaseModel):

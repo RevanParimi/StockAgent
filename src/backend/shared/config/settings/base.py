@@ -777,6 +777,14 @@ ADVISOR_EARNINGS_GAP_DAYS: int = cfg("advisor.earnings_gap_days", fallback=3)
 # ---------------------------------------------------------------------------
 DISCOVERY_ENABLED: bool = bool(cfg("discovery.enabled", env="DISCOVERY_ENABLED", fallback=False))
 DISCOVERY_HISTORY_DAYS: int = int(cfg("discovery.history_days", fallback=550))
+
+# --- Compass Autopilot (spec docs/superpowers/specs/2026-07-10-compass-autopilot-design.md)
+AUTOPILOT_ENABLED: bool = bool(cfg("autopilot.enabled", env="AUTOPILOT_ENABLED", fallback=True))
+AUTOPILOT_ADD_TRANCHE_PCT: float = cfg("autopilot.add_tranche_pct", fallback=25.0)
+AUTOPILOT_TRIM_PCT: float = cfg("autopilot.trim_pct", fallback=25.0)
+AUTOPILOT_MIN_CASH_FLOOR: float = cfg("autopilot.min_cash_floor", fallback=10000.0)
+AUTOPILOT_ADD_COOLDOWN_TD: int = int(cfg("autopilot.add_cooldown_td", fallback=5))
+
 DISCOVERY_BHAVCOPY_DIR: str = cfg("discovery.bhavcopy_dir", fallback="data/market_cache/bhavcopy")
 DISCOVERY_DATA_DIR: str = cfg("discovery.data_dir", fallback="data/discovery")
 PAPER_PREDICTION_DATA_DIR: str = cfg(

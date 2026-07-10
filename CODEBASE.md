@@ -31,7 +31,8 @@ StockAgent-main/
 │   │   ├── context/               # Context-building helpers + bundle_builder.py
 │   │   │                          # (Unified Sector Analyst — one-pass SectorDataBundle)
 │   │   └── fetchers/              # Market/news data fetchers (+ bhavcopy.py, bulk_block.py,
-│   │                              #  surveillance.py — Compass Phase B discovery guard data)
+│   │                              #  surveillance.py — Compass Phase B discovery guard data;
+│   │                              #  ipo.py — Compass Phase C IPO lists)
 │   └── scheduler/
 │       └── python/
 │           └── scheduler.py       # APScheduler jobs (RL daily review, forecast, calendar)
@@ -118,7 +119,14 @@ StockAgent-main/
 │   │   ├── screen.py              # Weighted percentile-rank composite → ScreenResult persistence
 │   │   ├── deep_dive.py           # Stage-3 LLM one-call dives + sector inference
 │   │   ├── shelf.py               # Discovery Shelf (cap/displace, stale rotation, promote)
-│   │   └── paper_lane.py          # Paper envelopes + weekly paper reviews (ISOLATED lane)
+│   │   ├── paper_lane.py          # Paper envelopes + weekly paper reviews (ISOLATED lane)
+│   │   └── ipo_tracker.py         # Stage-2 IPO/new-listing scoring + lock-in calendar
+│   ├── delivery/                  # Compass Phase C: M4 proactive delivery (see below)
+│   │   ├── channels.py            # web-push (pywebpush+VAPID) + SMTP email; PushStore
+│   │   ├── alerts.py              # AlertEvent + deduped emit (alerts_sent.jsonl)
+│   │   ├── brief.py               # Morning brief builder (08:50 IST job)
+│   │   ├── weekly.py              # Weekly review builder (Sun 18:00 IST job)
+│   │   └── index_watch.py         # Index constituent diff -> inclusion/exclusion alerts
 │   ├── pipeline/                  # Core pipeline abstractions
 │   │   ├── base_agent.py
 │   │   ├── orchestrator.py
@@ -162,6 +170,13 @@ StockAgent-main/
   never mixed into real RL metrics; `run_daily_review(paper=True)` hard-disables all
   learning writes). Driven by scheduler Job 12 (Sat 12:30 IST) + `/discovery/*` routes.
   Same spec as Phase A; plan: docs/superpowers/plans/2026-07-07-compass-phase-b.md
+
+- `core/delivery/` — Compass Phase C: M4 proactive delivery (morning brief, weekly
+  review + index watch, deduped event alerts, web-push + email channels). Jobs 13/14
+  + event-triggered hooks in the advisor pipeline, pre-open check and discovery cycle.
+  IPO tracker (`core/discovery/ipo_tracker.py` + `services/data/fetchers/ipo.py`)
+  feeds the same Stage-3 deep-dive budget. Same spec; plan:
+  docs/superpowers/plans/2026-07-09-compass-phase-c.md
 
 ---
 
@@ -256,6 +271,26 @@ Auth mirrors the portfolio pattern (optional `X-Scheduler-Key`; lockdown deferre
 | DELETE | `/discovery/shelf/{symbol}` | optional key | Drop a shelf idea (`reason="manual_api"`). 404 if not an active idea. |
 
 The cycle also runs automatically: scheduler Job 12 (`discovery_weekly`, Sat 12:30 IST) calls `core.discovery.run_discovery_cycle()`; Job 11 (`bhavcopy_daily_sync`, Mon-Fri 19:00 IST) keeps the EOD parquet cache topped up. Both are gated on `discovery.enabled`.
+
+### Delivery — Compass Phase C (`/delivery/*`)
+
+Auth mirrors the portfolio pattern (optional `X-Scheduler-Key`), except the push
+endpoints (`public-key` is public by design; `subscribe` carries no secrets).
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| GET | `/delivery/brief/latest` | optional key | Latest morning brief (404 until one is built). |
+| GET | `/delivery/weekly/latest` | optional key | Latest weekly review (404 until one is built). |
+| POST | `/delivery/run-brief` | optional key | Build + deliver the morning brief now. 202, background. |
+| POST | `/delivery/run-weekly` | optional key | Build + deliver the weekly review now. 202, background. |
+| GET | `/delivery/alerts?limit=50` | optional key | Emitted-alert tail (deduped sent-log). |
+| GET | `/delivery/push/public-key` | none | VAPID application server key for the browser. |
+| POST | `/delivery/push/subscribe` | none | Store a web-push subscription (body = PushSubscription JSON). |
+| DELETE | `/delivery/push/subscribe?endpoint=` | none | Remove a web-push subscription. |
+
+Jobs: 13 `morning_brief` (Mon-Fri 08:50 IST), 14 `weekly_review` (Sun 18:00 IST) —
+both gated on `delivery.enabled`. Alerts also fire event-triggered from the advisor
+pipeline, the 08:45 pre-open check, and the Saturday discovery cycle.
 
 ### Analytics (`/analytics/*`)
 
@@ -461,6 +496,22 @@ Models are tiered (2026-06-03 benchmark, `scripts/model_bench.py`; bulk re-bench
 | `discovery.signal_weights` | momentum 0.30, delivery_surge 0.15, volume_breakout 0.15, bulk_block 0.15, high_52wk_rs 0.10, insider_buying 0.10, mf_holding 0.05 | Composite blend; **insider_buying + mf_holding are DARK in v1** — the screen renormalizes over live signals and reports dark ones in `ScreenResult.dark_signals` |
 | `generic_graph.agent_weights` | business 0.14, fundamentals 0.18, valuation 0.14, technical 0.12, macro 0.12, risk 0.12, management 0.09, earnings 0.09 | Neutral 8-dimension weights for sectors without a native graph (sum 1.0) |
 
+### Delivery + IPO Tracker — Compass Phase C (`config.yaml` → `delivery.*` / `discovery.ipo_*`)
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `delivery.enabled` | `true` (base.py fallback `false`) | Master gate: Jobs 13/14 + every channel send |
+| `delivery.data_dir` | `data/delivery` | `push_subscriptions.json`, `alerts_sent.jsonl` |
+| `delivery.email_enabled` | `false` | Needs `SMTP_HOST/PORT/USER/PASSWORD` + `DELIVERY_EMAIL_TO` in .env |
+| `delivery.push_enabled` | `true` | Needs `VAPID_PRIVATE_KEY/PUBLIC_KEY/CLAIM_EMAIL` in .env (`scripts/gen_vapid_keys.py`) |
+| `delivery.index_watch` | NIFTY 50 / NEXT 50 / MIDCAP 150 / SMALLCAP 250 | Weekly constituent diff → inclusion/exclusion alerts |
+| `discovery.ipo_enabled` | `true` (fallback `false`) | Stage-2 IPO tracker in the Saturday cycle |
+| `discovery.ipo_listing_window_days` | `90` | Listings younger than this are candidates |
+| `discovery.ipo_max_deep_dives` | `2` | Reserved Stage-3 slots (WITHIN `deep_dive_count`) |
+| `discovery.ipo_lockin_warn_days` | `7` | Lock-in expiry flag window (30/90/180-day cliffs) |
+| `discovery.ipo_qib_weight` | `3.0` | QIB subscription weighted 3× retail |
+| `advisor.switch_conviction_gap` | `0.15` | SWITCH: shelf conviction − holding confidence floor |
+
 ### Alerts
 
 | Name | Default | Description |
@@ -605,6 +656,15 @@ All paths verified to exist. Paths are relative to project root.
 | `core/discovery/deep_dive.py` | Stage-3 LLM dives (≤`discovery.deep_dive_count`/wk) + `infer_sector()` (registry → NSE industry → generic) |
 | `core/discovery/shelf.py` | `ShelfStore` — cap/displacement, stale rotation, promote-to-watchlist, `shelf_events.jsonl` |
 | `core/discovery/paper_lane.py` | Paper envelopes + weekly paper reviews via `paper=True` RL workflows |
+| `services/data/fetchers/ipo.py` | NSE IPO lists (current/upcoming/past) + degraded-mode cache |
+| `core/discovery/ipo_tracker.py` | IPO candidate scoring (QIB 3×, post-listing evidence) + lock-in calendar |
+| `core/delivery/channels.py` | Web-push (pywebpush + VAPID) + SMTP email; `deliver()` fan-out |
+| `core/delivery/alerts.py` | Deduped alert engine (`data/delivery/alerts_sent.jsonl`) |
+| `core/delivery/brief.py` | Morning brief builder/renderer/runner |
+| `core/delivery/weekly.py` | Weekly review builder (allocation, laggards, scoreboard) |
+| `core/delivery/index_watch.py` | Index constituent snapshot diff → alerts |
+| `services/api/routes/delivery_api.py` | /delivery/* — briefs, weekly, alerts, push subscriptions |
+| `scripts/gen_vapid_keys.py` | One-time VAPID keypair generation for web-push |
 | `services/data/stores/eod_store.py` | `EodStore` — per-day parquet EOD cache (canonical 12-column schema) |
 | `services/data/fetchers/bhavcopy.py` | NSE delivery-bhavcopy fetcher + resumable `sync_recent()` |
 | `services/data/fetchers/bulk_block.py` | Bulk/block deals cache (degraded-mode keeps stale deals) |
@@ -616,7 +676,7 @@ All paths verified to exist. Paths are relative to project root.
 | `services/api/routes/prompts.py` | /ui/prompts/* — live prompt editing and GitHub deploy |
 | `services/api/routes/analytics.py` | /analytics/* — RL performance exports and Power BI feed |
 | `services/api/log_buffer.py` | In-memory ring buffer for real-time log streaming |
-| `services/scheduler/python/scheduler.py` | APScheduler: daily RL review (4:30pm IST), monthly forecast (1st, 9am IST), calendar update (Dec 31), pre-open shock check (`preopen_shock_check`, Mon-Fri 08:45 IST, Living Envelope §27.3) |
+| `services/scheduler/python/scheduler.py` | APScheduler: daily RL review (4:30pm IST), monthly forecast (1st, 9am IST), calendar update (Dec 31), pre-open shock check (`preopen_shock_check`, Mon-Fri 08:45 IST, Living Envelope §27.3), Job 13 morning brief (Mon-Fri 08:50 IST) + Job 14 weekly review (Sun 18:00 IST, Compass Phase C) |
 | `services/data/stores/score_store.py` | SQLite score history (read/write/delta/range queries) |
 | `services/background/macro_news_cache.py` | Daily macro news cache read/write |
 | `services/clients/llm_client.py` | Async OpenRouter LLM client |

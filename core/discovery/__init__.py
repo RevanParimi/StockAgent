@@ -81,6 +81,20 @@ def run_discovery_cycle(on: date | None = None) -> dict:
         shelf_summary, rotated = {"added": [], "displaced": [], "skipped": []}, []
 
     try:
+        if shelf_summary.get("added"):
+            from core.delivery.alerts import AlertEvent, emit_alerts
+            conviction = {d.symbol: d.conviction for d in dives}
+            emit_alerts(
+                [AlertEvent(date=on.isoformat(), kind="shelf_add", symbol=sym,
+                            message=f"new discovery idea (conviction "
+                                    f"{conviction.get(sym, 0.0):.2f})", severity="info")
+                 for sym in shelf_summary["added"]],
+                title=f"Discovery shelf — {on}",
+            )
+    except Exception as exc:
+        logger.warning("[discovery] shelf alert emit failed (non-fatal): %s", exc)
+
+    try:
         paper = run_paper_reviews(on=on)
     except Exception as exc:
         logger.warning("[discovery] paper reviews failed (non-fatal): %s", exc)

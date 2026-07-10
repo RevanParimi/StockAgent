@@ -115,6 +115,34 @@ def run_post_review_pipeline(review_date: date) -> dict:
         except Exception as exc:
             logger.warning("[portfolio_pipeline] digest failed for %s: %s", user_id, exc)
 
+        # Step 5 — Phase C M4: escalation alerts + digest delivery. Non-fatal.
+        try:
+            from core.delivery.alerts import AlertEvent, emit_alerts
+            from core.delivery.channels import deliver
+            events = [
+                AlertEvent(
+                    date=review_date.isoformat(),
+                    kind=f"advisor_{a.verdict.lower()}",
+                    symbol=a.symbol,
+                    message=(a.narrative or a.verdict)
+                    + (f" (switch → {a.switch_candidate})" if a.switch_candidate else ""),
+                    severity="critical" if a.verdict in ("EXIT", "SWITCH") else "warning",
+                )
+                for a in advice if a.verdict in ("TRIM", "EXIT", "SWITCH")
+            ]
+            if events:
+                emit_alerts(events, user_id=user_id,
+                            title=f"Advisor escalations — {review_date}")
+            n_esc = len(events)
+            deliver(
+                f"EOD digest — {review_date}",
+                f"{len(advice)} holdings reviewed; {n_esc} escalation(s). "
+                "Open the app or ask the chat for 'brief' for details.",
+                user_id=user_id,
+            )
+        except Exception as exc:
+            logger.warning("[portfolio_pipeline] delivery failed (non-fatal): %s", exc)
+
     logger.info(
         "[portfolio_pipeline] complete — users=%d advice=%d escalations=%s",
         len(users), total_advice, escalations,

@@ -356,6 +356,38 @@ class AutomobileScheduler:
         else:
             logger.info("[Scheduler] Discovery job disabled (DISCOVERY_ENABLED=false)")
 
+        # ── Job 13: Morning brief (Mon-Fri 08:50 IST — right after the 08:45
+        # pre-open shock check, before the 09:15 open; spec §7 M4) ───────────
+        if getattr(settings, "DELIVERY_ENABLED", False):
+            scheduler.add_job(
+                func=self._morning_brief_job,
+                trigger=CronTrigger(
+                    day_of_week="mon-fri", hour=8, minute=50, timezone="Asia/Kolkata",
+                ),
+                id="morning_brief",
+                name="Morning brief (M4 proactive delivery)",
+                misfire_grace_time=1800,
+                coalesce=True,
+                replace_existing=True,
+            )
+            logger.info("[Scheduler] Morning brief job: weekdays at 8:50 am IST")
+
+            # ── Job 14: Weekly review + index watch (Sun 18:00 IST) ─────────
+            scheduler.add_job(
+                func=self._weekly_review_job,
+                trigger=CronTrigger(
+                    day_of_week="sun", hour=18, minute=0, timezone="Asia/Kolkata",
+                ),
+                id="weekly_review",
+                name="Weekly portfolio review + index watch (M4)",
+                misfire_grace_time=7200,
+                coalesce=True,
+                replace_existing=True,
+            )
+            logger.info("[Scheduler] Weekly review job: Sundays at 6:00 pm IST")
+        else:
+            logger.info("[Scheduler] Delivery jobs disabled (DELIVERY_ENABLED=false)")
+
         return scheduler
 
     # ------------------------------------------------------------------
@@ -397,6 +429,37 @@ class AutomobileScheduler:
         except Exception as exc:
             logger.error("[Scheduler] Discovery FAILED: %s", exc, exc_info=True)
         _job_banner("Weekly Discovery Funnel", done=True)
+
+    def _morning_brief_job(self) -> None:
+        """Morning brief (spec §7): run_morning_brief() never raises and skips
+        non-trading days internally."""
+        from core.delivery.brief import run_morning_brief
+
+        _job_banner("Morning Brief")
+        try:
+            result = run_morning_brief()
+            logger.info("[Scheduler] Morning brief — %s", result)
+        except Exception as exc:
+            logger.error("[Scheduler] Morning brief FAILED: %s", exc, exc_info=True)
+        _job_banner("Morning Brief", done=True)
+
+    def _weekly_review_job(self) -> None:
+        """Weekly review + index-constituent diff (spec §7 / §10 Phase C)."""
+        from core.delivery.index_watch import run_index_watch
+        from core.delivery.weekly import run_weekly_review
+
+        _job_banner("Weekly Review + Index Watch")
+        try:
+            idx = run_index_watch()
+            logger.info("[Scheduler] Index watch — %s", idx)
+        except Exception as exc:
+            logger.error("[Scheduler] Index watch FAILED: %s", exc, exc_info=True)
+        try:
+            result = run_weekly_review()
+            logger.info("[Scheduler] Weekly review — %s", result)
+        except Exception as exc:
+            logger.error("[Scheduler] Weekly review FAILED: %s", exc, exc_info=True)
+        _job_banner("Weekly Review + Index Watch", done=True)
 
     def _daily_review_job(self) -> None:
         """
@@ -774,6 +837,24 @@ class AutomobileScheduler:
                     result.get("severity", 0.0), result.get("direction", "neutral"),
                     result.get("flagged", []), result.get("reforecasts", []),
                 )
+                if result.get("reforecasts"):
+                    try:
+                        from datetime import date as _date
+                        from core.delivery.alerts import AlertEvent, emit_alerts
+                        emit_alerts(
+                            [AlertEvent(
+                                date=_date.today().isoformat(),
+                                kind="preopen_reforecast", symbol=t,
+                                message=f"overnight shock re-forecast "
+                                        f"(severity {result.get('severity', 0.0):.2f}, "
+                                        f"{result.get('direction', 'neutral')})",
+                                severity="critical")
+                             for t in result["reforecasts"]],
+                            title="Pre-open shock re-forecasts",
+                        )
+                    except Exception as exc:
+                        logger.warning(
+                            "[Scheduler] preopen alert emit failed (non-fatal): %s", exc)
         except Exception as exc:
             logger.error("[Scheduler] Pre-open shock check FAILED: %s", exc, exc_info=True)
         _job_banner("Pre-open Shock Check", done=True)

@@ -68,6 +68,8 @@ function AddHoldingModal({ onClose, onAdded }) {
   const [err, setErr] = useStatePf('');
   const [saving, setSaving] = useStatePf(false);
   const timerRef = useRefPf(null);
+  const aliveRef = useRefPf(true);
+  useEffectPf(() => () => { aliveRef.current = false; clearTimeout(timerRef.current); }, []);
 
   const searchSym = (val) => {
     setSym(val.toUpperCase());
@@ -77,7 +79,7 @@ function AddHoldingModal({ onClose, onAdded }) {
     timerRef.current = setTimeout(async () => {
       try {
         const res = await fetch(`/ui/search?q=${encodeURIComponent(val)}`);
-        if (res.ok) setResults((await res.json()).results || []);
+        if (res.ok && aliveRef.current) setResults((await res.json()).results || []);
       } catch {}
     }, 350);
   };
@@ -95,14 +97,14 @@ function AddHoldingModal({ onClose, onAdded }) {
       });
       if (!res.ok) {
         const d = await res.json().catch(()=>({}));
-        setErr(typeof d.detail === 'string' ? d.detail : `HTTP ${res.status}`);
+        if (aliveRef.current) setErr(typeof d.detail === 'string' ? d.detail : `HTTP ${res.status}`);
         return;
       }
       onAdded();
     } catch (e) {
-      setErr('Network error: ' + e.message);
+      if (aliveRef.current) setErr('Network error: ' + e.message);
     } finally {
-      setSaving(false);
+      if (aliveRef.current) setSaving(false);
     }
   };
 

@@ -337,6 +337,7 @@ advisor:
   sector_concentration_warn_pct: 30.0
   ltcg_wait_min_months: 10       # TRIM in month 10-12 with intact thesis -> WAIT_FOR_LTCG note
   earnings_gap_days: 3           # profitable + earnings within N trading days -> protection flag
+  switch_conviction_gap: 0.15    # SWITCH: shelf idea must beat holding envelope confidence by this (spec §5.2)
 
 # =============================================================================
 # Compass Phase B — Discovery funnel + generic sector graph (spec 2026-07-06 §6/§8)
@@ -368,6 +369,13 @@ discovery:
     insider_buying: 0.10         # DARK in v1 — fetcher returns None until a source ships
     mf_holding: 0.05             # DARK in v1 — AMC portfolio parsing is its own sub-project
 
+  # -- Stage-2 IPO / new-listing tracker (Compass Phase C, spec §6.2) --------
+  ipo_enabled: true              # base.py fallback false
+  ipo_listing_window_days: 90    # listings younger than this are tracker candidates
+  ipo_max_deep_dives: 2          # reserved Stage-3 slots (WITHIN deep_dive_count budget)
+  ipo_lockin_warn_days: 7        # flag anchor/pre-IPO lock-in expiries within N days
+  ipo_qib_weight: 3.0            # QIB subscription weighted 3x retail (spec §6.2)
+
 generic_graph:
   # Neutral 8-dimension weights for sectors without a native graph (must sum to 1.0).
   agent_weights:
@@ -379,3 +387,18 @@ generic_graph:
     risk: 0.12
     management: 0.09
     earnings: 0.09
+
+# =============================================================================
+# Compass Phase C — M4 proactive delivery (spec 2026-07-06 §7)
+# Secrets (SMTP_*, VAPID_*, DELIVERY_EMAIL_TO) stay in .env — NEVER here.
+# =============================================================================
+delivery:
+  enabled: true                  # master gate: scheduler Jobs 13/14 + all channel sends
+  data_dir: "data/delivery"      # push_subscriptions.json, alerts_sent.jsonl
+  email_enabled: false           # flip after SMTP_* secrets are set in .env / Railway
+  push_enabled: true             # degrades silently until VAPID_* secrets are set
+  index_watch:                   # weekly constituent diff -> inclusion/exclusion alerts
+    - "NIFTY 50"
+    - "NIFTY NEXT 50"
+    - "NIFTY MIDCAP 150"
+    - "NIFTY SMALLCAP 250"

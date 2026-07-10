@@ -253,18 +253,57 @@ function Stat2({ label, value, pct }) {
   );
 }
 
-function HoldingsTable({ holdings }) {
+// Advisor verdicts (digest) + composite verdicts (TICKERS) share one color map.
+const PF_VERDICT_COLORS = {
+  'STRONG BUY':'var(--buy-strong)', 'BUY':'var(--buy)', 'NEUTRAL':'var(--neutral)',
+  'SELL':'var(--sell)', 'STRONG SELL':'var(--sell-strong)',
+  'HOLD':'var(--neutral)', 'TRIM':'var(--sell)', 'EXIT':'var(--sell-strong)',
+  'SWITCH':'var(--violet)', 'ADD':'var(--buy)',
+};
+
+// Digest advisor verdict first; composite window.TICKERS verdict as fallback.
+function agentTake(h, digest) {
+  const drow = (digest?.holdings || []).find(r => r.symbol === h.sym && r.verdict && r.verdict !== 'NO_DATA');
+  if (drow) return { verdict: drow.verdict, reason: drow.reason, score: null };
+  if (h.verdict) return { verdict: h.verdict, reason: null, score: h.agentScore }; // demo rows
+  const t = (window.TICKERS || []).find(t => t.sym === h.sym);
+  if (t) return { verdict: t.verdict, reason: 'Latest composite agent score', score: t.score };
+  return null;
+}
+
+function HoldingsTable({ holdings, digest, isLive, onAdd, onRemoved }) {
+  const [busy, setBusy] = useStatePf('');
+  const remove = async (sym) => {
+    if (!window.confirm(`Remove ${sym} from your portfolio?`)) return;
+    setBusy(sym);
+    try {
+      const res = await fetch(`/portfolio/holdings/${encodeURIComponent(sym)}`, { method:'DELETE' });
+      if (!res.ok) alert(`Could not remove ${sym}: HTTP ${res.status}`);
+      await onRemoved();
+    } catch (e) {
+      alert(`Could not remove ${sym}: ${e.message}`);
+    } finally {
+      setBusy('');
+    }
+  };
+
+  const fmt = (v, digits=2) => v == null ? '—'
+    : '₹' + v.toLocaleString('en-IN', digits === 0 ? {maximumFractionDigits:0} : {minimumFractionDigits:digits});
+
   return (
     <div className="card">
       <div className="pf-card-header" style={{ padding:'18px 24px', borderBottom:'1px solid var(--border)', display:'flex', alignItems:'center', gap:12 }}>
         <div className="eyebrow">Your holdings · {holdings.length}</div>
-        <button style={{ marginLeft:'auto', padding:'6px 12px', border:'1px dashed var(--border-strong)', borderRadius:8,
-          background:'transparent', fontSize:12, fontWeight:600, color:'var(--ink-2)', display:'flex', alignItems:'center', gap:6 }}>
+        <button onClick={isLive ? onAdd : undefined} disabled={!isLive}
+          title={isLive ? 'Add a virtual holding' : 'Unavailable in demo mode'}
+          style={{ marginLeft:'auto', padding:'6px 12px', border:'1px dashed var(--border-strong)', borderRadius:8,
+          background:'transparent', fontSize:12, fontWeight:600, color:'var(--ink-2)', display:'flex', alignItems:'center', gap:6,
+          cursor: isLive ? 'pointer' : 'not-allowed', opacity: isLive ? 1 : .5 }}>
           <Icon.Plus size={13}/> Add holding
         </button>
       </div>
       <div className="holdings-table-scroll">
-      <table style={{ width:'100%', borderCollapse:'collapse', minWidth:600 }}>
+      <table style={{ width:'100%', borderCollapse:'collapse', minWidth:640 }}>
         <thead>
           <tr style={{ fontSize:11, textTransform:'uppercase', color:'var(--ink-3)', letterSpacing:'.1em' }}>
             <th style={pfTh}>Ticker</th>
@@ -274,16 +313,17 @@ function HoldingsTable({ holdings }) {
             <th style={pfTh}>Value</th>
             <th style={pfTh}>P/L</th>
             <th style={pfTh}>Agent take</th>
+            {isLive && <th style={pfTh}></th>}
           </tr>
         </thead>
         <tbody>
           {holdings.map(h => {
-            const value = h.qty * h.currentPrice;
-            const pl = h.qty * (h.currentPrice - h.avgPrice);
-            const plPct = ((h.currentPrice - h.avgPrice) / h.avgPrice) * 100;
-            const verdictColor = {
-              'STRONG BUY':'var(--buy-strong)','BUY':'var(--buy)','NEUTRAL':'var(--neutral)','SELL':'var(--sell)','STRONG SELL':'var(--sell-strong)'
-            }[h.verdict];
+            const value = h.currentPrice != null ? h.qty * h.currentPrice : null;
+            const pl    = h.currentPrice != null ? h.qty * (h.currentPrice - h.avgPrice) : null;
+            const plPct = h.pnlPct != null ? h.pnlPct
+              : (h.currentPrice != null ? ((h.currentPrice - h.avgPrice) / h.avgPrice) * 100 : null);
+            const take  = agentTake(h, digest);
+            const verdictColor = take ? (PF_VERDICT_COLORS[take.verdict] || 'var(--neutral)') : null;
             return (
               <tr key={h.sym} style={{ transition:'background .15s' }}
                 onMouseEnter={e=>e.currentTarget.style.background='var(--bg-tinted)'}
@@ -293,32 +333,46 @@ function HoldingsTable({ holdings }) {
                     <div style={{ width:32, height:32, borderRadius:8,
                       background:'linear-gradient(135deg, var(--cyan-soft), var(--violet-soft))',
                       display:'grid', placeItems:'center', fontWeight:800, color:'var(--cyan)', fontSize:13 }}>{h.sym[0]}</div>
-                    <div className="mono" style={{ fontWeight:700 }}>{h.sym}</div>
+                    <div>
+                      <div className="mono" style={{ fontWeight:700 }}>{h.sym}</div>
+                      {h.sector && <div style={{ fontSize:10, color:'var(--ink-3)', letterSpacing:'.04em' }}>{h.sector.replace(/_/g,' ')}</div>}
+                    </div>
                   </div>
                 </td>
                 <td style={pfTd}><span className="mono">{h.qty}</span></td>
-                <td style={pfTd}><span className="mono">₹{h.avgPrice.toLocaleString('en-IN', {minimumFractionDigits:2})}</span></td>
-                <td style={pfTd}><span className="mono">{h.currentPrice == null ? '—' : '₹'+h.currentPrice.toLocaleString('en-IN', {minimumFractionDigits:2})}</span></td>
-                <td style={pfTd}><span className="mono" style={{ fontWeight:700 }}>{h.currentPrice == null ? '—' : '₹'+value.toLocaleString('en-IN', {maximumFractionDigits:0})}</span></td>
+                <td style={pfTd}><span className="mono">{fmt(h.avgPrice)}</span></td>
+                <td style={pfTd}><span className="mono">{fmt(h.currentPrice)}</span></td>
+                <td style={pfTd}><span className="mono" style={{ fontWeight:700 }}>{fmt(value, 0)}</span></td>
                 <td style={pfTd}>
-                  {h.currentPrice == null ? <span className="mono" style={{ color:'var(--ink-3)' }}>—</span> : (
-                  <div style={{ color: pl>=0 ? 'var(--buy-strong)':'var(--sell-strong)', fontWeight:700 }}>
-                    <span className="mono">{pl>=0?'+':''}₹{Math.abs(pl).toLocaleString('en-IN', {maximumFractionDigits:0})}</span>
-                    <div className="mono" style={{ fontSize:11, fontWeight:600 }}>{plPct>=0?'+':''}{plPct.toFixed(2)}%</div>
-                  </div>
+                  {pl == null ? <span style={{ color:'var(--ink-3)' }}>—</span> : (
+                    <div style={{ color: pl>=0 ? 'var(--buy-strong)':'var(--sell-strong)', fontWeight:700 }}>
+                      <span className="mono">{pl>=0?'+':'-'}₹{Math.abs(pl).toLocaleString('en-IN', {maximumFractionDigits:0})}</span>
+                      <div className="mono" style={{ fontSize:11, fontWeight:600 }}>{plPct>=0?'+':''}{plPct.toFixed(2)}%</div>
+                    </div>
                   )}
                 </td>
                 <td style={pfTd}>
-                  {(h.agentScore == null || !h.verdict) ? <span className="mono" style={{ color:'var(--ink-3)' }}>—</span> : (
-                  <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-                    <span className="mono" style={{ fontWeight:700 }}>{h.agentScore.toFixed(2)}</span>
-                    <span style={{ display:'inline-block', padding:'3px 8px', borderRadius:999, fontSize:10, fontWeight:700,
-                      background:`color-mix(in oklab, ${verdictColor} 14%, transparent)`, color: verdictColor, letterSpacing:'.04em' }}>
-                      {h.verdict}
-                    </span>
-                  </div>
-                  )}
+                  {take ? (
+                    <div style={{ display:'flex', alignItems:'center', gap:8 }} title={take.reason || undefined}>
+                      {take.score != null && <span className="mono" style={{ fontWeight:700 }}>{take.score.toFixed(2)}</span>}
+                      <span style={{ display:'inline-block', padding:'3px 8px', borderRadius:999, fontSize:10, fontWeight:700,
+                        background:`color-mix(in oklab, ${verdictColor} 14%, transparent)`, color: verdictColor, letterSpacing:'.04em' }}>
+                        {take.verdict}
+                      </span>
+                    </div>
+                  ) : <span style={{ color:'var(--ink-3)' }}>—</span>}
                 </td>
+                {isLive && (
+                  <td style={{ ...pfTd, textAlign:'right' }}>
+                    <button onClick={()=>remove(h.sym)} disabled={busy===h.sym}
+                      title={`Remove ${h.sym}`}
+                      style={{ width:28, height:28, borderRadius:7, border:'1px solid var(--border)',
+                        background:'transparent', color:'var(--ink-3)', cursor:'pointer',
+                        display:'inline-grid', placeItems:'center', opacity: busy===h.sym ? .4 : 1 }}>
+                      <Icon.X size={13}/>
+                    </button>
+                  </td>
+                )}
               </tr>
             );
           })}

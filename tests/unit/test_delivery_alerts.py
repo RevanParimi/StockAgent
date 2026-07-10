@@ -51,3 +51,23 @@ def test_emit_never_raises_on_delivery_failure(tmp_path):
     with patch.object(al, "deliver", side_effect=RuntimeError("channel down")):
         out = emit_alerts([_ev()], sent_log=log)
     assert out["emitted"] == 1          # logged as sent; delivery failure is telemetry
+
+
+def test_emit_same_event_different_users_both_deliver(tmp_path):
+    """Dedupe is user-aware: emits are per-user (brief.py/pipeline.py), so
+    the same event for two different users must not suppress each other."""
+    log = str(tmp_path / "alerts_sent.jsonl")
+    with patch.object(al, "deliver", return_value={"delivered": True}) as m:
+        out_a = emit_alerts([_ev()], user_id="a", sent_log=log)
+        out_b = emit_alerts([_ev()], user_id="b", sent_log=log)
+    assert out_a["emitted"] == 1 and out_b["emitted"] == 1
+    assert m.call_count == 2
+
+
+def test_emit_same_event_same_user_still_dedupes(tmp_path):
+    log = str(tmp_path / "alerts_sent.jsonl")
+    with patch.object(al, "deliver", return_value={"delivered": True}) as m:
+        out1 = emit_alerts([_ev()], user_id="a", sent_log=log)
+        out2 = emit_alerts([_ev()], user_id="a", sent_log=log)
+    assert out1["emitted"] == 1 and out2["emitted"] == 0
+    assert m.call_count == 1

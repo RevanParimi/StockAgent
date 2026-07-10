@@ -3,8 +3,11 @@ Compass Phase C — event alerts (spec §7): shock reforecast on a holding,
 advisor escalations, shelf adds, lock-in expiry, index reconstitution.
 
 Dedupe: one JSONL sent-log (data/delivery/alerts_sent.jsonl), key
-"{date}|{kind}|{symbol}" — re-running a pipeline the same day never
-re-notifies. Emission failures are telemetry, never pipeline errors.
+"{user_id}|{date}|{kind}|{symbol}" — re-running a pipeline the same day
+never re-notifies, and the same event for two different users each still
+delivers (emits are per-user; see brief.py / pipeline.py). Records written
+before this field existed have no "user_id" key and are treated as the
+default user (""). Emission failures are telemetry, never pipeline errors.
 """
 from __future__ import annotations
 
@@ -52,7 +55,8 @@ def _seen_keys(path: Path, tail: int = 2000) -> set[str]:
         for line in path.read_text(encoding="utf-8").splitlines()[-tail:]:
             try:
                 rec = json.loads(line)
-                keys.add(f"{rec.get('date')}|{rec.get('kind')}|{rec.get('symbol')}")
+                keys.add(f"{rec.get('user_id', '')}|{rec.get('date')}|"
+                          f"{rec.get('kind')}|{rec.get('symbol')}")
             except Exception:
                 continue
     except Exception as exc:
@@ -79,23 +83,32 @@ def emit_alerts(
     title: str = "StockAgent alerts",
     sent_log: str | None = None,
 ) -> dict:
-    """Dedupe, persist, and deliver a batch as ONE bundled message. Never raises."""
+    """Dedupe, persist, and deliver a batch as ONE bundled message. Never raises.
+
+    Dedupe is user-aware — the sent-log is global but emits are per-user
+    (brief.py, pipeline.py), so the key includes user_id to avoid one
+    user's alert silently suppressing everyone else's identical event.
+    """
     try:
+        uid = user_id or ""
         path = _sent_log_path(sent_log)
         seen = _seen_keys(path)
-        new = [e for e in events if e.key() not in seen]
+        new = [e for e in events if f"{uid}|{e.key()}" not in seen]
         # in-batch dedupe too
         uniq: list[AlertEvent] = []
         batch_keys: set[str] = set()
         for e in new:
-            if e.key() not in batch_keys:
-                batch_keys.add(e.key())
+            bk = f"{uid}|{e.key()}"
+            if bk not in batch_keys:
+                batch_keys.add(bk)
                 uniq.append(e)
         if not uniq:
             return {"emitted": 0}
         with open(path, "a", encoding="utf-8") as fh:
             for e in uniq:
-                fh.write(e.model_dump_json() + "\n")
+                rec = e.model_dump()
+                rec["user_id"] = uid
+                fh.write(json.dumps(rec) + "\n")
         body = "\n".join(
             f"{_SEVERITY_TAG[e.severity]} {e.symbol + ' — ' if e.symbol else ''}{e.message}"
             for e in uniq

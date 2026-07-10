@@ -102,4 +102,7 @@ def test_hold_and_unknown_symbol_do_nothing(tmp_path):
         [_advice(verdict="HOLD"), _advice(sym="GHOST", verdict="EXIT")],
         {"MARUTI": 110.0}, D)
     assert txns == []
-    assert len(s.load().holdings) == 1
+    p = s.load()
+    assert len(p.holdings) == 1
+    assert p.last_autopilot_run == D.isoformat()   # zero-trade run still stamps marker
+    assert s.load_transactions() == []

@@ -298,15 +298,18 @@ function HoldingsTable({ holdings }) {
                 </td>
                 <td style={pfTd}><span className="mono">{h.qty}</span></td>
                 <td style={pfTd}><span className="mono">₹{h.avgPrice.toLocaleString('en-IN', {minimumFractionDigits:2})}</span></td>
-                <td style={pfTd}><span className="mono">₹{h.currentPrice.toLocaleString('en-IN', {minimumFractionDigits:2})}</span></td>
-                <td style={pfTd}><span className="mono" style={{ fontWeight:700 }}>₹{value.toLocaleString('en-IN', {maximumFractionDigits:0})}</span></td>
+                <td style={pfTd}><span className="mono">{h.currentPrice == null ? '—' : '₹'+h.currentPrice.toLocaleString('en-IN', {minimumFractionDigits:2})}</span></td>
+                <td style={pfTd}><span className="mono" style={{ fontWeight:700 }}>{h.currentPrice == null ? '—' : '₹'+value.toLocaleString('en-IN', {maximumFractionDigits:0})}</span></td>
                 <td style={pfTd}>
+                  {h.currentPrice == null ? <span className="mono" style={{ color:'var(--ink-3)' }}>—</span> : (
                   <div style={{ color: pl>=0 ? 'var(--buy-strong)':'var(--sell-strong)', fontWeight:700 }}>
                     <span className="mono">{pl>=0?'+':''}₹{Math.abs(pl).toLocaleString('en-IN', {maximumFractionDigits:0})}</span>
                     <div className="mono" style={{ fontSize:11, fontWeight:600 }}>{plPct>=0?'+':''}{plPct.toFixed(2)}%</div>
                   </div>
+                  )}
                 </td>
                 <td style={pfTd}>
+                  {(h.agentScore == null || !h.verdict) ? <span className="mono" style={{ color:'var(--ink-3)' }}>—</span> : (
                   <div style={{ display:'flex', alignItems:'center', gap:8 }}>
                     <span className="mono" style={{ fontWeight:700 }}>{h.agentScore.toFixed(2)}</span>
                     <span style={{ display:'inline-block', padding:'3px 8px', borderRadius:999, fontSize:10, fontWeight:700,
@@ -314,6 +317,7 @@ function HoldingsTable({ holdings }) {
                       {h.verdict}
                     </span>
                   </div>
+                  )}
                 </td>
               </tr>
             );
@@ -390,7 +394,7 @@ function AllocationCard({ holdings }) {
   const total = holdings.reduce((s,h) => s + h.qty * (h.currentPrice || 0), 0);
   const segments = holdings.map(h => ({
     sym: h.sym,
-    pct: ((h.qty * (h.currentPrice || 0)) / total) * 100,
+    pct: total > 0 ? ((h.qty * (h.currentPrice || 0)) / total) * 100 : 0,
   }));
   const colors = ['#0891b2','#7c3aed','#16a34a','#d97706','#dc2626','#475569'];
 

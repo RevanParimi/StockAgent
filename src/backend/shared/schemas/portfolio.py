@@ -13,7 +13,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-Verdict = Literal["HOLD", "ADD", "TRIM", "EXIT"]
+Verdict = Literal["HOLD", "ADD", "TRIM", "EXIT", "SWITCH"]
 
 
 class AppliedCorpAction(BaseModel):
@@ -88,6 +88,7 @@ class AdviceRecord(BaseModel):
     notes: list[str] = Field(default_factory=list)      # WAIT_FOR_LTCG, EARNINGS_GAP_PROTECTION, ...
     confidence: float = 0.5
     narrative: str = ""            # LLM narration (research tone, never "advice")
+    switch_candidate: str = ""     # SWITCH only: the stronger shelf idea's symbol
     rationale_hash: str = ""
     outcome_10td: float | None = None
     outcome_30td: float | None = None

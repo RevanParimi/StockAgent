@@ -31,6 +31,7 @@ _TRIGGER_TEXT = {
     "trim_profit_confidence_decline": "profit is extended while envelope confidence is declining",
     "trim_profit_reversion_elevated": "profit is extended while the reversion prior is elevated",
     "add_bullish_healthy": "the envelope is bullish, the regime supportive and recent accuracy healthy",
+    "switch_candidate_available": "a stronger discovery-shelf idea in an underweight sector is available as a replacement",
 }
 
 _NOTE_TEXT = {

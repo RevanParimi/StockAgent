@@ -35,7 +35,7 @@ def build_digest(
             "reason": rec.narrative if rec else "no advisor run for this holding today",
             "notes": rec.notes if rec else [],
         })
-    escalations = sorted(a.symbol for a in advice if a.verdict in ("TRIM", "EXIT"))
+    escalations = sorted(a.symbol for a in advice if a.verdict in ("TRIM", "EXIT", "SWITCH"))
     return {
         "date": review_date.isoformat(),
         "user_id": user_id,

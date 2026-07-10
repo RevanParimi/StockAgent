@@ -58,6 +58,17 @@ def test_build_brief_assembles_sections(tmp_path, monkeypatch):
 def test_build_brief_survives_missing_everything(tmp_path, monkeypatch):
     store = _mk_store(tmp_path, with_digest=False)
     monkeypatch.setattr(br, "_narrate_brief", lambda b: "h")
+    # Settings-backed collectors: point at empty tmp subdirs so the
+    # "missing file" branches genuinely run, hermetically (no real repo data).
+    monkeypatch.setattr(br.settings, "PREDICTION_DATA_DIR", str(tmp_path / "predictions"))
+    monkeypatch.setattr(br.settings, "DISCOVERY_DATA_DIR", str(tmp_path / "discovery"))
+    # Collectors backed by hardcoded module-level cache paths (no settings
+    # attribute to redirect) must be stubbed directly to avoid touching real
+    # repo data (data/macro_news, data/market_cache/*).
+    monkeypatch.setattr(br, "_overnight_items", lambda *a, **k: [])
+    monkeypatch.setattr(br, "_earnings_soon", lambda *a, **k: [])
+    monkeypatch.setattr(br, "_ipo_watch", lambda *a, **k: [])
+    monkeypatch.setattr(br, "upcoming_lockin_alerts", lambda on, symbols=None: [])
     brief = br.build_morning_brief("u1", date(2026, 7, 9), store=store)
     assert brief["portfolio"] is None and brief["advisor_flags"] == []
     assert isinstance(br.render_brief_text(brief), str)
@@ -73,8 +84,13 @@ def test_run_builds_saves_delivers(tmp_path, monkeypatch):
     monkeypatch.setattr(br, "is_trading_day", lambda d: True)
     monkeypatch.setattr(br, "list_user_ids", lambda: ["u1"])
     monkeypatch.setattr(br.settings, "PORTFOLIO_DATA_DIR", str(tmp_path))
+    monkeypatch.setattr(br.settings, "PREDICTION_DATA_DIR", str(tmp_path / "predictions"))
+    monkeypatch.setattr(br.settings, "DISCOVERY_DATA_DIR", str(tmp_path / "discovery"))
     _mk_store(tmp_path)
     monkeypatch.setattr(br, "_narrate_brief", lambda b: "h")
+    monkeypatch.setattr(br, "_overnight_items", lambda *a, **k: [])
+    monkeypatch.setattr(br, "_earnings_soon", lambda *a, **k: [])
+    monkeypatch.setattr(br, "_ipo_watch", lambda *a, **k: [])
     monkeypatch.setattr(br, "upcoming_lockin_alerts",
                         lambda on, symbols=None: [])
     with patch.object(br, "deliver", return_value={"delivered": True}) as m:

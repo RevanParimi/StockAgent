@@ -152,6 +152,14 @@ def _narrate_brief(brief: dict) -> str:
         return str(data.get("headline", "")).strip() or fallback
     except Exception as exc:
         logger.warning("[brief] narration failed (non-fatal): %s", exc)
+        try:
+            from services.clients.llm_client import record_llm_call
+            record_llm_call(
+                "morning_brief", settings.LLM_MODEL_BULK, 0, 0,
+                int((time.time() - started) * 1000), False,
+            )
+        except Exception:
+            pass
         return fallback
 
 

@@ -247,9 +247,9 @@ All endpoints take an optional `user_id` query param (default `portfolio.default
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
 | GET | `/portfolio` | optional key | Holdings + watchlist marked to market at latest NSE close (per-holding `last_close`, `pnl_pct`). |
-| POST | `/portfolio/holdings` | optional key | Add virtual holding `{symbol, sector, qty, buy_date, price?}` — `price` omitted → real NSE close on `buy_date`. 422 on unsupported sector / bad date / no price. Auto-promotes (origin=held, daily cadence). |
+| POST | `/portfolio/holdings` | optional key | Add virtual holding `{symbol, sector?, qty, buy_date, price?}` — `sector` omitted → resolved via `SectorRegistry`; `price` omitted → real NSE close on `buy_date`. 422 on unsupported sector / bad date / no price. Auto-promotes (origin=held, daily cadence). Wired to the prototype portfolio page's Add-holding modal (portfolio-live-wiring). |
 | DELETE | `/portfolio/holdings/{symbol}` | optional key | Remove holding; demotes from managed universe unless watchlisted. 404 if absent. |
-| POST | `/portfolio/watchlist` | optional key | Add watchlist symbol `{symbol, sector, reason?}` — promotes with weekly cadence. |
+| POST | `/portfolio/watchlist` | optional key | Add watchlist symbol `{symbol, sector?, reason?}` — `sector` omitted → resolved via `SectorRegistry`; promotes with weekly cadence. |
 | DELETE | `/portfolio/watchlist/{symbol}` | optional key | Remove watchlist symbol; demotes unless held. |
 | POST | `/portfolio/import-csv` | optional key | Raw CSV body `symbol,sector,qty,avg_buy_price,buy_date`; blank price → real close on buy date; per-row errors reported. |
 | GET | `/portfolio/advice?limit=<1-500>` | optional key | Advice-ledger tail (append-only JSONL of every verdict). |

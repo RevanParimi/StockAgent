@@ -86,12 +86,12 @@ All variables are on `window`. No module exports.
 | `CATEGORIES` | `Array<{key,icon,label,count,color}>` | 〰️ static | CategoryCard | 6 items; color is hex — no API needed |
 | `NIFTY_AUTO_HISTORY` | `number[]` (30 items) | ✅ bootstrap | (unused directly — feeds NIFTY_AUTO_RANGES) | Real yfinance `^CNXAUTO` 30-day closes |
 | `NIFTY_AUTO_RANGES` | `Record<'1W'|'1M'|'3M'|'6M'|'1Y', {points:number[], label, change}>` | ❌ mock | TodayPane → Sparkline via RangeTabs | Multi-range series not in bootstrap; only 1M via NIFTY_AUTO_HISTORY |
-| `PORTFOLIO_RANGES` | Same shape as NIFTY_AUTO_RANGES | ❌ mock | PortfolioPage → Sparkline | No portfolio backend yet |
+| `PORTFOLIO_RANGES` | Same shape as NIFTY_AUTO_RANGES | ❌ mock | PortfolioPage → Sparkline | Demo mode only — hero sparkline hidden when live (no value-history endpoint yet) |
 | `CHAT_SEEDS` | `string[]` (4 items) | ✅ bootstrap | ChatOverlay seed buttons when `msgs.length === 1` | Static strings from backend |
-| `PORTFOLIO` | `{totalValue, totalCost, dayChange, dayChangePct, cash, holdings[], recentActivity[], perfHistory[], alerts[]}` | ❌ mock | PortfolioPage and all sub-cards | No brokerage API / user system yet |
-| `PORTFOLIO.holdings` | `Array<{sym,qty,avgPrice,currentPrice,agentScore,verdict}>` | ❌ mock | HoldingsTable, AllocationCard | 5 items |
-| `PORTFOLIO.recentActivity` | `Array<{kind,sym,qty?,price?,text?,t}>` | ❌ mock | ActivityCard | `kind`: `'buy'|'sell'|'agent'` |
-| `PORTFOLIO.alerts` | `Array<{sym,kind,text}>` | ❌ mock | AlertsCard | `kind`: `'good'|'warn'` |
+| `PORTFOLIO` | `{totalValue, totalCost, dayChange, dayChangePct, cash, holdings[], recentActivity[], perfHistory[], alerts[]}` | ❌ mock | PortfolioPage and all sub-cards | Demo fallback only — live page fetches `GET /portfolio` (`?demo=1` forces demo; see §4 Portfolio) |
+| `PORTFOLIO.holdings` | `Array<{sym,qty,avgPrice,currentPrice,agentScore,verdict}>` | ❌ mock | HoldingsTable, AllocationCard | 5 items; demo only |
+| `PORTFOLIO.recentActivity` | `Array<{kind,sym,qty?,price?,text?,t}>` | ❌ mock | ActivityCard | `kind`: `'buy'|'sell'|'agent'`; demo only |
+| `PORTFOLIO.alerts` | `Array<{sym,kind,text}>` | ❌ mock | AlertsCard | `kind`: `'good'|'warn'`; demo only — live alerts come from the digest via `digestAlerts()` |
 | `PORTFOLIO_LEARNINGS` | `{summary, items[], patterns[]}` | ❌ mock | LearningsSection | No feedback/RL engine connected to UI yet |
 | `PORTFOLIO_LEARNINGS.items` | `Array<{id,kind,severity,sym,title,when,what,cost,costValue,lesson,agentSnapshot[],action}>` | ❌ mock | LessonCard | `kind`: `'missed-buy'|'missed-sell'|'sold-too-early'|'sizing'|'good-call'|'avoided-loss'` |
 | `PORTFOLIO_LEARNINGS.patterns` | `Array<{id,label,rate,kind,detail}>` | ❌ mock | PatternChip | `kind`: `'good'|'bad'`; `rate` 0–1 |
@@ -277,28 +277,34 @@ All icons are inline SVG, Lucide-style, exposed on `window.Icon`.
 
 **Entry component:** `PortfolioPage({ onNav, openChat })`
 
-**Layout:**
+**Live-wired (as of portfolio-live-wiring):** `usePortfolioLive()` (portfolio.jsx:34) fetches `GET /portfolio` (holdings, mark-to-market) then `GET /portfolio/digest/latest` (advisor verdicts — optional, 404 until first advisor run). Status is `'loading' | 'live' | 'demo'`. Falls back to mock `window.PORTFOLIO` on any fetch failure, or unconditionally when `?demo=1` is in the URL (skips the live fetch entirely).
+
+**Layout (live):**
 ```
 <div> min-height:100vh
 ├── <TopNav active="portfolio" .../>
 └── <main> maxWidth:1280
-    ├── hero strip (dark gradient, portfolio value, Sparkline with DarkRangeTabs)
+    ├── hero strip (dark gradient; live shows value/invested/return/holdings-count only —
+    │   day-change badge, Cash stat, and Sparkline/DarkRangeTabs are demo-only)
     └── grid 2fr / 1fr
         ├── LEFT column (flex column, gap:20)
-        │   ├── <HoldingsTable/>
-        │   ├── <LearningsSection/>
-        │   └── <ActivityCard/>
+        │   ├── <HoldingsTable/> (or <EmptyPortfolio/> when live with 0 holdings)
+        │   ├── <LearningsSection/>  — demo only, or window.__learningsLive
+        │   └── <ActivityCard/>      — demo only (no advice-ledger-backed feed yet)
         └── RIGHT column (flex column, gap:20)
-            ├── <AlertsCard/>
-            ├── <AllocationCard/>
+            ├── <AlertsCard/>        — rendered only if alerts.length > 0
+            ├── <AllocationCard/>    — rendered only if holdings.length > 0
             └── <AskAssistantCard/>
+{addOpen && <AddHoldingModal/>}      — overlay outside the grid
 ```
 
 **Sub-components:**
 
 | Component | Props | window.* reads |
 |---|---|---|
-| `HoldingsTable` | `holdings` | — |
+| `AddHoldingModal` | `onClose, onAdded` | — (`GET /ui/search` autocomplete → `POST /portfolio/holdings`) |
+| `EmptyPortfolio` | `onAdd` | — |
+| `HoldingsTable` | `holdings, digest, isLive, onAdd, onRemoved` | — verdict/reason come from `digest`, not window.* |
 | `LearningsSection` | `learnings, openChat` | `PORTFOLIO_LEARNINGS` |
 | `ActivityCard` | `items` | — |
 | `AlertsCard` | `alerts` | — |
@@ -311,15 +317,29 @@ All icons are inline SVG, Lucide-style, exposed on `window.Icon`.
 | `DarkRangeTabs` | `value, onChange, options?` | — |
 | `Stat2` | `label, value, pct?` | — |
 
-**window.* reads (PortfolioPage):** `PORTFOLIO`, `PORTFOLIO_RANGES`, `PORTFOLIO_LEARNINGS`.
+**Live data helpers (module-level functions, not window.*):**
+
+| Function | Purpose |
+|---|---|
+| `digestAlerts(digest)` | Digest holdings with a `verdict`+`reason` → up to 4 rows for `AlertsCard`; symbols in `digest.escalations` sorted first with `kind:'warn'`, rest `kind:'good'` |
+| `agentTake(h, digest)` | Per-row "Agent take": digest advisor verdict/reason first, else demo `h.verdict`, else `window.TICKERS` composite verdict/score fallback, else `null` (renders `—`) |
+| `adaptHolding(h)` | Maps a raw `/portfolio` holding to UI shape; uses `adj_qty`/`adj_avg_price` (corp-action-adjusted) |
+
+**window.* reads (PortfolioPage):** `PORTFOLIO`, `PORTFOLIO_RANGES`, `PORTFOLIO_LEARNINGS` — demo mode only. In live mode holdings/verdicts come from `GET /portfolio` + `GET /portfolio/digest/latest`; `window.TICKERS` is read only as the `agentTake` fallback when no digest row matches.
 
 **Internal state:**
 
 | State | Controls |
 |---|---|
-| `range` ('1W'…'1Y') | Portfolio sparkline range selector |
+| `live.status` ('loading'\|'live'\|'demo') | Which layout renders (skeleton / live / demo) |
+| `range` ('1W'…'1Y') | Portfolio sparkline range selector (demo only) |
 | `search` (string) | TopNav search input (display only) |
+| `addOpen` (bool) | AddHoldingModal visibility |
 | `filter` ('all'|'mistakes'|'wins') inside LearningsSection | LessonCard filter |
+
+**Add holding:** `AddHoldingModal` debounce-searches `GET /ui/search?q=` for ticker autocomplete, then `POST /portfolio/holdings` with `{symbol, qty, buy_date, price?}` — no `sector` sent; the backend resolves it via `SectorRegistry`. `price` omitted → backend prices at the real NSE close for `buy_date`. Success calls `onAdded()` → `live.reload()`.
+
+**Row delete:** the remove button in each `HoldingsTable` row calls `DELETE /portfolio/holdings/{symbol}` then `onRemoved()` → `live.reload()`.
 
 ---
 
@@ -621,6 +641,11 @@ FastAPI server at `http://localhost:8001`. Frontend served at `/app` via `Static
 | `GET` | `/history/{ticker}/latest` | history.py | Single most-recent record or 404 | — |
 | `GET` | `/health` | server.py | `{status:'ok', timestamp}` | — |
 | `GET` | `/tickers` | server.py | `{tickers: [...]}` — scheduler tickers list | — |
+| `GET` | `/portfolio` | portfolio_api.py | `{user_id, risk_profile, holdings[], watchlist[]}` — holdings marked to market (`last_close`, `pnl_pct`) | `window.PORTFOLIO.holdings` (PortfolioPage live mode) |
+| `GET` | `/portfolio/digest/latest` | portfolio_api.py | Latest EOD digest `{holdings[{symbol,verdict,reason,...}], escalations[]}`; 404 until first advisor run | `window.PORTFOLIO.alerts` (AlertsCard) + Agent-take column |
+| `POST` | `/portfolio/holdings` | portfolio_api.py | `{holding, promotion}` — body `{symbol, qty, buy_date, price?}`; sector resolved server-side | AddHoldingModal submit |
+| `DELETE` | `/portfolio/holdings/{symbol}` | portfolio_api.py | `{removed, demoted}` | HoldingsTable row delete |
+| `GET` | `/ui/search?q=` | ui_data.py | `{results: [{sym, name, type, snippet?}], query}` — ticker + thesis text search, max 8 | AddHoldingModal autocomplete |
 
 ### New endpoints (added in this session)
 
@@ -645,12 +670,12 @@ Table `score_history`: `id, ticker, company_name, run_at, final_score, verdict, 
 
 | Feature | What's missing | Path to unblock |
 |---|---|---|
-| **Portfolio page live data** | No brokerage API, no user auth system | Integrate Zerodha/Groww API, or add manual entry + user session |
+| **Portfolio value history / cash / activity** | Holdings + digest are live (portfolio-live-wiring); no value-history endpoint, cash tracking, or ledger-backed activity feed yet | Value snapshot store + `GET /portfolio/value-history`; activity feed from the advice ledger |
 | **Learnings / patterns** | No feedback/RL engine connected to frontend | Wire `core/intelligence/rl/` prediction store to a `GET /ui/learnings` endpoint |
 | **NIFTY_AUTO_RANGES multi-timeframe** | Bootstrap only returns 30-day; `1W/3M/6M/1Y` series not exposed | Add range param to `GET /ui/market/summary?range=3M` calling yfinance with longer periods |
 | **AGENT_TASKS persistence** | Toggle state is local React only | New `PUT /ui/agents/tasks` endpoint; store per-agent task flags in a JSON sidecar like weights |
 | **Watchlist persistence** | Hardcoded default; no user concept | Session token + `GET/PUT /ui/watchlist` once auth is real |
-| **Search backend** | Client-side filter only | `GET /ui/search?q=MARU` — filter over TICKERS + possibly news headlines |
+| **Search backend** | `GET /ui/search` exists (used by AddHoldingModal) but TopNav search is still display-only | Wire TopNav input to `GET /ui/search?q=` results |
 
 ### Innovative ideas — backend ready, just needs UI
 
@@ -666,4 +691,4 @@ These features require **zero new backend endpoints** — the data already exist
 1. **Score History Drawer** — highest signal/effort ratio; uses existing endpoint; dramatically improves ticker insight
 2. **API Budget badge** — 30 min; prevents surprise quota exhaustion
 3. **"Analyze Now" + streaming** — most impressive feature; needs WS handling in React (~2h)
-4. **Portfolio live data** — requires architecture decision on auth/brokerage first
+4. ~~**Portfolio live data**~~ — shipped (portfolio-live-wiring, 2026-07-10): holdings/digest/add/delete wired to `/portfolio/*`; value history + cash + activity remain deferred

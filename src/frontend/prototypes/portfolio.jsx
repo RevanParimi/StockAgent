@@ -59,7 +59,132 @@ function usePortfolioLive() {
   return { ...state, reload: load };
 }
 
-function AddHoldingModal({ onClose, onAdded }) { return null; }  // Task 4 replaces this
+function AddHoldingModal({ onClose, onAdded }) {
+  const [sym, setSym] = useStatePf('');
+  const [results, setResults] = useStatePf([]);
+  const [qty, setQty] = useStatePf('');
+  const [buyDate, setBuyDate] = useStatePf(new Date().toISOString().slice(0,10));
+  const [price, setPrice] = useStatePf('');
+  const [err, setErr] = useStatePf('');
+  const [saving, setSaving] = useStatePf(false);
+  const timerRef = useRefPf(null);
+
+  const searchSym = (val) => {
+    setSym(val.toUpperCase());
+    setErr('');
+    clearTimeout(timerRef.current);
+    if (val.length < 2) { setResults([]); return; }
+    timerRef.current = setTimeout(async () => {
+      try {
+        const res = await fetch(`/ui/search?q=${encodeURIComponent(val)}`);
+        if (res.ok) setResults((await res.json()).results || []);
+      } catch {}
+    }, 350);
+  };
+
+  const submit = async () => {
+    const q = parseFloat(qty);
+    if (!sym.trim())        { setErr('Pick a stock symbol.'); return; }
+    if (!(q > 0))           { setErr('Quantity must be a positive number.'); return; }
+    setSaving(true); setErr('');
+    const body = { symbol: sym.trim(), qty: q, buy_date: buyDate };
+    if (price.trim() !== '') body.price = parseFloat(price);
+    try {
+      const res = await fetch('/portfolio/holdings', {
+        method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(()=>({}));
+        setErr(typeof d.detail === 'string' ? d.detail : `HTTP ${res.status}`);
+        return;
+      }
+      onAdded();
+    } catch (e) {
+      setErr('Network error: ' + e.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const field = { width:'100%', padding:'10px 12px', borderRadius:9, border:'1px solid var(--border-strong)',
+    background:'var(--bg-base)', color:'var(--ink-1)', fontSize:13, outline:'none', boxSizing:'border-box' };
+  const label = { fontSize:11, fontWeight:700, color:'var(--ink-3)', textTransform:'uppercase',
+    letterSpacing:'.1em', marginBottom:6, display:'block' };
+
+  return (
+    <>
+      <div onClick={onClose} style={{ position:'fixed', inset:0, background:'rgba(15,23,42,.45)', backdropFilter:'blur(4px)', zIndex:60, animation:'fade-in .2s' }}/>
+      <div style={{ position:'fixed', top:'50%', left:'50%', transform:'translate(-50%,-50%)', zIndex:65,
+        width:'min(440px, calc(100vw - 32px))', background:'var(--bg-surface)', borderRadius:16,
+        border:'1px solid var(--border)', boxShadow:'var(--shadow-lg, 0 24px 64px rgba(0,0,0,.35))', padding:24 }}>
+        <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:18 }}>
+          <div style={{ flex:1 }}>
+            <div className="eyebrow" style={{ marginBottom:2 }}>Virtual holding</div>
+            <div style={{ fontSize:16, fontWeight:700 }}>Add holding</div>
+          </div>
+          <button onClick={onClose} style={{ width:30, height:30, borderRadius:8, border:'1px solid var(--border)',
+            background:'transparent', display:'grid', placeItems:'center', color:'var(--ink-2)', cursor:'pointer' }}>
+            <Icon.X size={15}/>
+          </button>
+        </div>
+
+        <div style={{ marginBottom:14, position:'relative' }}>
+          <label style={label}>Symbol</label>
+          <input value={sym} onChange={e=>searchSym(e.target.value)} placeholder="e.g. HDFCBANK, TCS, SUZLON"
+            className="mono" style={field} autoFocus/>
+          {results.length > 0 && (
+            <div style={{ position:'absolute', top:'100%', left:0, right:0, zIndex:5, marginTop:4,
+              background:'var(--bg-surface)', border:'1px solid var(--border)', borderRadius:10,
+              boxShadow:'var(--shadow-md, 0 12px 32px rgba(0,0,0,.25))', overflow:'hidden', maxHeight:200, overflowY:'auto' }}>
+              {results.map(r => (
+                <button key={r.sym} onClick={()=>{ setSym(r.sym); setResults([]); }}
+                  style={{ display:'flex', gap:10, alignItems:'center', width:'100%', padding:'9px 12px',
+                    border:'none', background:'transparent', cursor:'pointer', textAlign:'left' }}
+                  onMouseEnter={e=>e.currentTarget.style.background='var(--bg-tinted)'}
+                  onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
+                  <span className="mono" style={{ fontWeight:700, fontSize:12, color:'var(--ink-1)' }}>{r.sym}</span>
+                  <span style={{ fontSize:12, color:'var(--ink-3)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{r.name}</span>
+                </button>
+              ))}
+            </div>
+          )}
+          <div style={{ fontSize:11, color:'var(--ink-3)', marginTop:5 }}>
+            Sector is detected automatically. Any NSE symbol works — new ones get the generic analysis graph.
+          </div>
+        </div>
+
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginBottom:14 }}>
+          <div>
+            <label style={label}>Quantity</label>
+            <input value={qty} onChange={e=>setQty(e.target.value)} type="number" min="0" step="any" placeholder="10" className="mono" style={field}/>
+          </div>
+          <div>
+            <label style={label}>Buy date</label>
+            <input value={buyDate} onChange={e=>setBuyDate(e.target.value)} type="date" className="mono" style={field}/>
+          </div>
+        </div>
+
+        <div style={{ marginBottom:18 }}>
+          <label style={label}>Buy price (optional)</label>
+          <input value={price} onChange={e=>setPrice(e.target.value)} type="number" min="0" step="any"
+            placeholder="Leave blank to use the real NSE close on the buy date" className="mono" style={field}/>
+        </div>
+
+        {err && (
+          <div style={{ padding:'10px 12px', borderRadius:9, background:'var(--sell-soft)', color:'var(--sell-strong)',
+            fontSize:12, lineHeight:1.5, marginBottom:14 }}>{err}</div>
+        )}
+
+        <button onClick={submit} disabled={saving} style={{ width:'100%', padding:'11px 14px', border:'none', borderRadius:10,
+          background:'linear-gradient(135deg, var(--cyan), var(--violet))', color:'#fff', fontSize:13, fontWeight:700,
+          cursor: saving ? 'wait' : 'pointer', opacity: saving ? .6 : 1,
+          display:'flex', alignItems:'center', justifyContent:'center', gap:8 }}>
+          <Icon.Plus size={14}/> {saving ? 'Adding…' : 'Add to portfolio'}
+        </button>
+      </div>
+    </>
+  );
+}
 
 function PortfolioPage({ onNav, openChat }) {
   const [search, setSearch] = useStatePf('');

@@ -189,6 +189,43 @@ class PortfolioStore:
             logger.error("[PortfolioStore] failed to read digest %s: %s", files[-1], exc)
             return None
 
+    # ------------------------------------------------------------------
+    # Briefs + weekly reviews (Compass Phase C, M4)
+    # ------------------------------------------------------------------
+    def _dated_dir(self, name: str) -> Path:
+        d = self._dir / name
+        d.mkdir(parents=True, exist_ok=True)
+        return d
+
+    def _load_latest_dated(self, name: str) -> dict | None:
+        d = self._dir / name
+        if not d.exists():
+            return None
+        files = sorted(d.glob("*.json"))
+        if not files:
+            return None
+        try:
+            return json.loads(files[-1].read_text(encoding="utf-8"))
+        except Exception as exc:
+            logger.error("[PortfolioStore] failed to read %s: %s", files[-1], exc)
+            return None
+
+    def save_brief(self, brief: dict) -> Path:
+        path = self._dated_dir("briefs") / f"{brief['date']}.json"
+        self._write_json(path, brief)
+        return path
+
+    def load_latest_brief(self) -> dict | None:
+        return self._load_latest_dated("briefs")
+
+    def save_weekly(self, review: dict) -> Path:
+        path = self._dated_dir("weekly") / f"{review['date']}.json"
+        self._write_json(path, review)
+        return path
+
+    def load_latest_weekly(self) -> dict | None:
+        return self._load_latest_dated("weekly")
+
 
 # ---------------------------------------------------------------------------
 # CSV import (spec §4.2): symbol,sector,qty,avg_buy_price,buy_date

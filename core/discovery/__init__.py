@@ -33,7 +33,7 @@ __all__ = [
 
 
 def run_discovery_cycle(on: date | None = None) -> dict:
-    """sync EOD -> refresh bulk/block -> screen -> deep-dives -> shelf ->
+    """sync EOD -> refresh bulk/block -> ipo tracker -> screen -> deep-dives -> shelf ->
     weekly paper reviews. Returns a stage-by-stage summary; never raises."""
     on = on or date.today()
     errors: list[str] = []

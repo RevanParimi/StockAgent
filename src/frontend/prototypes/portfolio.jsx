@@ -1,14 +1,99 @@
 // Portfolio page — beginner-friendly view of holdings, P/L, agent take, recent activity, learnings
-const { useState: useStatePf } = React;
+const { useState: useStatePf, useEffect: useEffectPf, useRef: useRefPf } = React;
+
+// ── Live data ──────────────────────────────────────────────────────────────
+// GET /portfolio (+ digest). status: 'loading' | 'live' | 'demo'.
+// Demo (mock) data renders ONLY when the API is unreachable, or with ?demo=1.
+
+function adaptHolding(h) {
+  return {
+    sym: h.symbol,
+    sector: h.sector,
+    qty: h.adj_qty,               // corp-action-adjusted — all math uses adj_*
+    avgPrice: h.adj_avg_price,
+    currentPrice: h.last_close,   // null when mark-to-market failed
+    pnlPct: h.pnl_pct,            // null when mark-to-market failed
+    buyDate: h.buy_date,
+  };
+}
+
+function digestAlerts(digest) {
+  if (!digest?.holdings?.length) return [];
+  const esc = new Set(digest.escalations || []);
+  return digest.holdings
+    .filter(r => r.verdict && r.verdict !== 'NO_DATA' && r.reason)
+    .sort((a, b) => (esc.has(b.symbol) ? 1 : 0) - (esc.has(a.symbol) ? 1 : 0))
+    .slice(0, 4)
+    .map(r => ({
+      sym:  r.symbol,
+      kind: esc.has(r.symbol) ? 'warn' : 'good',
+      text: r.reason,
+    }));
+}
+
+function usePortfolioLive() {
+  const [state, setState] = useStatePf({ status: 'loading', holdings: [], digest: null });
+
+  const load = async () => {
+    if (new URLSearchParams(location.search).get('demo') === '1') {
+      setState({ status: 'demo', holdings: window.PORTFOLIO.holdings, digest: null });
+      return;
+    }
+    try {
+      const res = await fetch('/portfolio');
+      if (!res.ok) throw new Error('portfolio HTTP ' + res.status);
+      const p = await res.json();
+      let digest = null;
+      try {
+        const dr = await fetch('/portfolio/digest/latest');
+        if (dr.ok) digest = await dr.json();
+      } catch {} // digest is optional — 404 until first advisor run
+      setState({ status: 'live', holdings: (p.holdings || []).map(adaptHolding), digest });
+    } catch (e) {
+      console.warn('[Portfolio] live fetch failed — demo fallback.', e);
+      setState({ status: 'demo', holdings: window.PORTFOLIO.holdings, digest: null });
+    }
+  };
+
+  useEffectPf(() => { load(); }, []);
+  return { ...state, reload: load };
+}
+
+function AddHoldingModal({ onClose, onAdded }) { return null; }  // Task 4 replaces this
 
 function PortfolioPage({ onNav, openChat }) {
   const [search, setSearch] = useStatePf('');
   const [range, setRange] = useStatePf('1M');
-  const p = window.PORTFOLIO;
+  const [addOpen, setAddOpen] = useStatePf(false);   // modal wired in Task 4
+  const live = usePortfolioLive();
+  const isDemo = live.status === 'demo';
+  const isLive = live.status === 'live';
+  const holdings = live.holdings;
+
+  // Demo keeps the mock aggregates; live computes from marked rows only.
+  const demo = window.PORTFOLIO;
+  const marked = holdings.filter(h => h.currentPrice != null);
+  const invested = isDemo ? demo.totalCost
+    : marked.reduce((s, h) => s + h.qty * h.avgPrice, 0);
+  const totalValue = isDemo ? demo.totalValue
+    : marked.reduce((s, h) => s + h.qty * h.currentPrice, 0);
+  const totalReturn = totalValue - invested;
+  const totalReturnPct = invested > 0 ? (totalReturn / invested) * 100 : 0;
   const ranges = window.PORTFOLIO_RANGES;
   const r = ranges[range];
-  const totalReturn = p.totalValue - p.totalCost;
-  const totalReturnPct = (totalReturn / p.totalCost) * 100;
+  const alerts = isDemo ? demo.alerts : digestAlerts(live.digest);
+
+  if (live.status === 'loading') {
+    return (
+      <div style={{ minHeight:'100vh', background:'var(--bg-base)' }}>
+        <TopNav active="portfolio" onNav={onNav} search={search} setSearch={setSearch}/>
+        <main style={{ maxWidth:1280, margin:'0 auto', padding:'var(--main-py) var(--main-px) 96px' }}>
+          <div style={{ height:180, borderRadius:24, marginBottom:24, background:'var(--bg-tinted)', animation:'pulse 1.4s ease-in-out infinite' }}/>
+          <div style={{ height:320, borderRadius:16, background:'var(--bg-tinted)', animation:'pulse 1.4s ease-in-out infinite' }}/>
+        </main>
+      </div>
+    );
+  }
 
   return (
     <div style={{ minHeight:'100vh', background:'var(--bg-base)' }}>
@@ -20,7 +105,7 @@ function PortfolioPage({ onNav, openChat }) {
           position:'relative', overflow:'hidden', borderRadius:24, marginBottom:24,
           background:'linear-gradient(135deg, #0a1628 0%, #134e5c 50%, #1a4a73 100%)',
           color:'#f1f5f9', padding:'28px var(--main-px)',
-          display:'grid', gridTemplateColumns:'var(--hero-cols)', gap:32, alignItems:'center'
+          display:'grid', gridTemplateColumns: isDemo ? 'var(--hero-cols)' : '1fr', gap:32, alignItems:'center'
         }}>
           <div style={{ position:'absolute', top:'-30%', right:'-10%', width:520, height:520, borderRadius:'50%',
             background:'radial-gradient(circle, rgba(124,58,237,.32), transparent 65%)', filter:'blur(40px)' }}/>
@@ -28,61 +113,106 @@ function PortfolioPage({ onNav, openChat }) {
             background:'radial-gradient(circle, rgba(8,145,178,.4), transparent 65%)', filter:'blur(40px)' }}/>
 
           <div style={{ position:'relative', zIndex:2 }}>
-            <div style={{ fontSize:11, fontWeight:700, letterSpacing:'.18em', color:'#94a3b8', textTransform:'uppercase', marginBottom:8 }}>
-              Portfolio · Live
+            <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:8 }}>
+              <div style={{ fontSize:11, fontWeight:700, letterSpacing:'.18em', color:'#94a3b8', textTransform:'uppercase' }}>
+                Portfolio · {isDemo ? 'Demo' : 'Live'}
+              </div>
+              {isDemo && (
+                <span style={{ fontSize:10, fontWeight:700, padding:'3px 8px', borderRadius:999,
+                  background:'rgba(217,119,6,.25)', color:'#fcd34d', letterSpacing:'.06em' }}>
+                  DEMO DATA — API UNREACHABLE
+                </span>
+              )}
             </div>
             <div className="pf-hero-value-row" style={{ display:'flex', alignItems:'baseline', gap:14, marginBottom:12, flexWrap:'wrap' }}>
               <span className="pf-hero-value mono" style={{ fontSize:44, fontWeight:800, letterSpacing:'-0.02em' }}>
-                ₹{p.totalValue.toLocaleString('en-IN')}
+                ₹{Math.round(totalValue).toLocaleString('en-IN')}
               </span>
-              <span className="pf-hero-badge" style={{
-                fontSize:14, fontWeight:700, padding:'4px 10px', borderRadius:8,
-                background: p.dayChange >= 0 ? 'rgba(34,197,94,.18)' : 'rgba(239,68,68,.18)',
-                color: p.dayChange >= 0 ? '#86efac' : '#fca5a5'
-              }}>
-                {p.dayChange >= 0 ? '+' : ''}₹{Math.abs(p.dayChange).toLocaleString('en-IN')} ({p.dayChangePct >= 0 ? '+':''}{p.dayChangePct.toFixed(2)}%) today
-              </span>
+              {isDemo && (
+                <span className="pf-hero-badge" style={{
+                  fontSize:14, fontWeight:700, padding:'4px 10px', borderRadius:8,
+                  background: demo.dayChange >= 0 ? 'rgba(34,197,94,.18)' : 'rgba(239,68,68,.18)',
+                  color: demo.dayChange >= 0 ? '#86efac' : '#fca5a5'
+                }}>
+                  {demo.dayChange >= 0 ? '+' : ''}₹{Math.abs(demo.dayChange).toLocaleString('en-IN')} ({demo.dayChangePct >= 0 ? '+':''}{demo.dayChangePct.toFixed(2)}%) today
+                </span>
+              )}
             </div>
-            <div className="pf-hero-stats" style={{ display:'flex', gap:24, color:'#cbd5e1', fontSize:13 }}>
-              <Stat2 label="Invested"      value={'₹'+p.totalCost.toLocaleString('en-IN')}/>
-              <Stat2 label="Total return"  value={(totalReturn>=0?'+':'')+'₹'+totalReturn.toLocaleString('en-IN')} pct={totalReturnPct}/>
-              <Stat2 label="Cash"          value={'₹'+p.cash.toLocaleString('en-IN')}/>
-              <Stat2 label="Holdings"      value={p.holdings.length+' stocks'}/>
+            <div className="pf-hero-stats" style={{ display:'flex', gap:24, color:'#cbd5e1', fontSize:13, flexWrap:'wrap' }}>
+              <Stat2 label="Invested"      value={'₹'+Math.round(invested).toLocaleString('en-IN')}/>
+              <Stat2 label="Total return"  value={(totalReturn>=0?'+':'-')+'₹'+Math.abs(Math.round(totalReturn)).toLocaleString('en-IN')} pct={totalReturnPct}/>
+              {isDemo && <Stat2 label="Cash" value={'₹'+demo.cash.toLocaleString('en-IN')}/>}
+              <Stat2 label="Holdings"      value={holdings.length+' stocks'}/>
+              {isLive && marked.length < holdings.length && (
+                <Stat2 label="Unpriced" value={(holdings.length - marked.length)+' awaiting close'}/>
+              )}
             </div>
           </div>
 
-          <div className="pf-hero-chart" style={{ position:'relative', zIndex:2 }}>
-            <div style={{
-              display:'flex', alignItems:'center', justifyContent:'space-between', gap:10, marginBottom:8
-            }}>
-              <div>
-                <div style={{ fontSize:11, color:'#94a3b8' }}>Value over {r.label}</div>
-                <div style={{ fontSize:13, fontWeight:700, color: r.change>=0 ? '#86efac' : '#fca5a5' }}>
-                  {r.change>=0?'+':''}{r.change.toFixed(2)}%
+          {isDemo && (
+            <div className="pf-hero-chart" style={{ position:'relative', zIndex:2 }}>
+              <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:10, marginBottom:8 }}>
+                <div>
+                  <div style={{ fontSize:11, color:'#94a3b8' }}>Value over {r.label}</div>
+                  <div style={{ fontSize:13, fontWeight:700, color: r.change>=0 ? '#86efac' : '#fca5a5' }}>
+                    {r.change>=0?'+':''}{r.change.toFixed(2)}%
+                  </div>
                 </div>
+                <DarkRangeTabs value={range} onChange={setRange}/>
               </div>
-              <DarkRangeTabs value={range} onChange={setRange}/>
+              <Sparkline values={r.points} height={92} color="#22d3ee"/>
             </div>
-            <Sparkline values={r.points} height={92} color="#22d3ee"/>
-          </div>
+          )}
         </section>
 
         <div style={{ display:'grid', gridTemplateColumns:'var(--grid-portfolio)', gap:20 }}>
-          {/* Holdings + activity column */}
+          {/* Holdings + learnings column */}
           <div style={{ display:'flex', flexDirection:'column', gap:20 }}>
-            <HoldingsTable holdings={p.holdings}/>
-            <LearningsSection learnings={window.PORTFOLIO_LEARNINGS} openChat={openChat}/>
-            <ActivityCard items={p.recentActivity}/>
+            {isLive && holdings.length === 0 ? (
+              <EmptyPortfolio onAdd={()=>setAddOpen(true)}/>
+            ) : (
+              <HoldingsTable holdings={holdings} digest={live.digest} isLive={isLive}
+                onAdd={()=>setAddOpen(true)} onRemoved={live.reload}/>
+            )}
+            {(isDemo || window.__learningsLive) && (
+              <LearningsSection learnings={window.PORTFOLIO_LEARNINGS} openChat={openChat}/>
+            )}
+            {isDemo && <ActivityCard items={demo.recentActivity}/>}
           </div>
 
           {/* Right rail */}
           <div style={{ display:'flex', flexDirection:'column', gap:20 }}>
-            <AlertsCard alerts={p.alerts}/>
-            <AllocationCard holdings={p.holdings}/>
+            {alerts.length > 0 && <AlertsCard alerts={alerts}/>}
+            {holdings.length > 0 && <AllocationCard holdings={holdings}/>}
             <AskAssistantCard openChat={openChat}/>
           </div>
         </div>
       </main>
+
+      {addOpen && <AddHoldingModal onClose={()=>setAddOpen(false)}
+        onAdded={()=>{ setAddOpen(false); live.reload(); }}/>}
+    </div>
+  );
+}
+
+function EmptyPortfolio({ onAdd }) {
+  return (
+    <div className="card" style={{ padding:'48px 24px', textAlign:'center' }}>
+      <div style={{ width:56, height:56, borderRadius:16, margin:'0 auto 16px',
+        background:'linear-gradient(135deg, var(--cyan-soft), var(--violet-soft))',
+        display:'grid', placeItems:'center', color:'var(--cyan)' }}>
+        <Icon.Briefcase size={24}/>
+      </div>
+      <div style={{ fontSize:17, fontWeight:700, marginBottom:6 }}>No holdings yet</div>
+      <p style={{ fontSize:13, color:'var(--ink-3)', margin:'0 auto 18px', maxWidth:380, lineHeight:1.6 }}>
+        Add your first holding — any tracked stock across automobile, banking, IT and
+        renewable energy. Mock money, real prices, real agent analysis.
+      </p>
+      <button onClick={onAdd} style={{ padding:'10px 18px', border:'none', borderRadius:10,
+        background:'linear-gradient(135deg, var(--cyan), var(--violet))', color:'#fff',
+        fontSize:13, fontWeight:700, cursor:'pointer', display:'inline-flex', alignItems:'center', gap:8 }}>
+        <Icon.Plus size={14}/> Add holding
+      </button>
     </div>
   );
 }
@@ -257,10 +387,10 @@ function AlertsCard({ alerts }) {
 }
 
 function AllocationCard({ holdings }) {
-  const total = holdings.reduce((s,h) => s + h.qty * h.currentPrice, 0);
+  const total = holdings.reduce((s,h) => s + h.qty * (h.currentPrice || 0), 0);
   const segments = holdings.map(h => ({
     sym: h.sym,
-    pct: ((h.qty * h.currentPrice) / total) * 100,
+    pct: ((h.qty * (h.currentPrice || 0)) / total) * 100,
   }));
   const colors = ['#0891b2','#7c3aed','#16a34a','#d97706','#dc2626','#475569'];
 

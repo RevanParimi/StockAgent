@@ -30,6 +30,7 @@ from fastapi import APIRouter, BackgroundTasks, Header, HTTPException, Query, Re
 from pydantic import BaseModel
 
 from core.config import settings
+from backend.sectors.registry import SectorRegistry
 from backend.shared.schemas.portfolio import Holding, WatchlistItem
 from core.portfolio.pipeline import run_post_review_pipeline
 from core.portfolio.pricing import PriceUnavailableError, close_on
@@ -56,9 +57,16 @@ def _store(user_id: str | None) -> PortfolioStore:
         raise HTTPException(status_code=422, detail=str(exc))
 
 
+def _resolve_sector(symbol: str, sector: str | None) -> str:
+    """Explicit sector wins; otherwise the registry maps the symbol."""
+    if sector and sector.strip():
+        return sector.strip().lower()
+    return SectorRegistry.resolve(symbol)
+
+
 class HoldingIn(BaseModel):
     symbol: str
-    sector: str
+    sector: str | None = None          # omitted -> SectorRegistry.resolve(symbol)
     qty: float
     buy_date: str                      # ISO date
     price: float | None = None         # omitted -> real NSE close on buy_date
@@ -66,7 +74,7 @@ class HoldingIn(BaseModel):
 
 class WatchlistIn(BaseModel):
     symbol: str
-    sector: str
+    sector: str | None = None          # omitted -> SectorRegistry.resolve(symbol)
     reason: str = ""
 
 
@@ -104,7 +112,7 @@ async def add_holding(
 ) -> dict:
     _check_auth(x_scheduler_key)
     symbol = body.symbol.strip().upper()
-    sector = body.sector.strip().lower()
+    sector = _resolve_sector(symbol, body.sector)
     if not is_valid_sector(sector):
         raise HTTPException(
             status_code=422,
@@ -164,7 +172,7 @@ async def add_watchlist(
 ) -> dict:
     _check_auth(x_scheduler_key)
     symbol = body.symbol.strip().upper()
-    sector = body.sector.strip().lower()
+    sector = _resolve_sector(symbol, body.sector)
     if not is_valid_sector(sector):
         raise HTTPException(
             status_code=422,

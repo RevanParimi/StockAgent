@@ -124,3 +124,27 @@ def test_run_advisor_bad_date_422(client):
 def test_traversal_user_id_422(client):
     resp = client.get("/portfolio?user_id=../../etc")
     assert resp.status_code == 422
+
+
+def test_add_holding_sector_omitted_resolves_via_registry(client):
+    resp = client.post("/portfolio/holdings", json={
+        "symbol": "TCS", "qty": 5, "buy_date": "2026-07-01", "price": 3500.0,
+    })
+    assert resp.status_code == 200
+    assert resp.json()["holding"]["sector"] == "it_sector"
+
+
+def test_add_holding_unknown_symbol_sector_defaults_to_automobile(client):
+    resp = client.post("/portfolio/holdings", json={
+        "symbol": "ZZZUNKNOWN", "qty": 1, "buy_date": "2026-07-01", "price": 10.0,
+    })
+    assert resp.status_code == 200
+    assert resp.json()["holding"]["sector"] == "automobile"
+
+
+def test_watchlist_sector_omitted_resolves_via_registry(client):
+    resp = client.post("/portfolio/watchlist", json={
+        "symbol": "HDFCBANK", "reason": "quality bank",
+    })
+    assert resp.status_code == 200
+    assert resp.json()["watchlist_item"]["sector"] == "banking_bfsi"

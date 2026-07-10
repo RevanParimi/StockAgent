@@ -1,4 +1,5 @@
 """Compass Phase C — /delivery/* routes."""
+from datetime import date
 from unittest.mock import patch
 
 from fastapi import FastAPI
@@ -33,15 +34,24 @@ def test_weekly_latest_404(monkeypatch, tmp_path):
 
 def test_run_brief_202_background():
     with patch.object(dapi, "run_morning_brief") as m:
-        resp = _client().post("/delivery/run-brief")
+        resp = _client().post("/delivery/run-brief?on=2026-07-08")
     assert resp.status_code == 202
     assert m.called                       # TestClient runs background tasks inline
+    assert m.call_args.args[0] == date(2026, 7, 8)
 
 
 def test_run_weekly_202_background():
     with patch.object(dapi, "run_weekly_review") as m:
-        resp = _client().post("/delivery/run-weekly")
-    assert resp.status_code == 202 and m.called
+        resp = _client().post("/delivery/run-weekly?on=2026-07-09")
+    assert resp.status_code == 202
+    assert m.called
+    assert m.call_args.args[0] == date(2026, 7, 9)
+
+
+def test_run_brief_rejects_malformed_on():
+    c = _client()
+    resp = c.post("/delivery/run-brief?on=garbage")
+    assert resp.status_code == 422
 
 
 def test_alerts_tail():

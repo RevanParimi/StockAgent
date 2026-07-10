@@ -66,7 +66,13 @@ async def run_brief_now(
     x_scheduler_key: str | None = Header(default=None),
 ) -> dict:
     _check_auth(x_scheduler_key)
-    target = date.fromisoformat(on) if on else None
+    if on:
+        try:
+            target = date.fromisoformat(on)
+        except ValueError:
+            raise HTTPException(status_code=422, detail="invalid 'on' date; expected YYYY-MM-DD")
+    else:
+        target = None
     background_tasks.add_task(run_morning_brief, target)
     return {"status": "accepted", "monitor": "/delivery/brief/latest"}
 
@@ -78,7 +84,13 @@ async def run_weekly_now(
     x_scheduler_key: str | None = Header(default=None),
 ) -> dict:
     _check_auth(x_scheduler_key)
-    target = date.fromisoformat(on) if on else None
+    if on:
+        try:
+            target = date.fromisoformat(on)
+        except ValueError:
+            raise HTTPException(status_code=422, detail="invalid 'on' date; expected YYYY-MM-DD")
+    else:
+        target = None
     background_tasks.add_task(run_weekly_review, target)
     return {"status": "accepted", "monitor": "/delivery/weekly/latest"}
 
@@ -98,6 +110,7 @@ async def push_public_key() -> dict:
     return {"public_key": settings.VAPID_PUBLIC_KEY}
 
 
+# Browser push clients don't hold the scheduler key; these endpoints only store/remove the caller's own subscription.
 @router.post("/push/subscribe", summary="Store a web-push subscription")
 async def push_subscribe(
     subscription: dict,

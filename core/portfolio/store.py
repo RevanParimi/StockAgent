@@ -23,6 +23,7 @@ from backend.shared.schemas.portfolio import (
     AdviceRecord,
     Holding,
     Portfolio,
+    TransactionRecord,
     WatchlistItem,
 )
 
@@ -47,6 +48,12 @@ class PortfolioStore:
 
     def _ledger_path(self) -> Path:
         return self._dir / "advice_ledger.jsonl"
+
+    def _transactions_path(self) -> Path:
+        return self._dir / "transactions.jsonl"
+
+    def _value_history_path(self) -> Path:
+        return self._dir / "value_history.jsonl"
 
     def _digest_dir(self) -> Path:
         d = self._dir / "digests"
@@ -167,6 +174,64 @@ class PortfolioStore:
             except Exception as exc:
                 logger.warning("[PortfolioStore] skipping bad ledger line: %s", exc)
         return records
+
+    # ------------------------------------------------------------------
+    # Transactions ledger (append-only JSONL — Autopilot spec §3.2)
+    # ------------------------------------------------------------------
+    def append_transaction(self, rec: TransactionRecord) -> None:
+        with open(self._transactions_path(), "a", encoding="utf-8") as fh:
+            fh.write(json.dumps(rec.model_dump(), ensure_ascii=False) + "\n")
+
+    def load_transactions(self, limit: int = 200) -> list[TransactionRecord]:
+        path = self._transactions_path()
+        if not path.exists():
+            return []
+        records: list[TransactionRecord] = []
+        for line in path.read_text(encoding="utf-8").splitlines()[-limit:]:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                records.append(TransactionRecord(**json.loads(line)))
+            except Exception as exc:
+                logger.warning("[PortfolioStore] skipping bad txn line: %s", exc)
+        return records
+
+    # ------------------------------------------------------------------
+    # Daily value history (append-only JSONL — Autopilot spec §3.3)
+    # ------------------------------------------------------------------
+    def append_value_point(self, point: dict) -> None:
+        with open(self._value_history_path(), "a", encoding="utf-8") as fh:
+            fh.write(json.dumps(point, ensure_ascii=False) + "\n")
+
+    def load_value_history(self, limit: int = 400) -> list[dict]:
+        path = self._value_history_path()
+        if not path.exists():
+            return []
+        points: list[dict] = []
+        for line in path.read_text(encoding="utf-8").splitlines()[-limit:]:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                points.append(json.loads(line))
+            except Exception as exc:
+                logger.warning("[PortfolioStore] skipping bad value line: %s", exc)
+        return points
+
+    def reduce_holding(self, symbol: str, sell_qty: float, price: float) -> tuple[float, bool]:
+        """Sell sell_qty shares of symbol at price. Returns (realized_pnl,
+        removed). Raises ValueError for unknown symbol or overdraw."""
+        p = self.load()
+        h = next((x for x in p.holdings if x.symbol == symbol.upper()), None)
+        if h is None:
+            raise ValueError(f"no holding {symbol.upper()}")
+        realized = h.sell(sell_qty, price)
+        removed = h.adj_qty <= 1e-9
+        if removed:
+            p.holdings = [x for x in p.holdings if x.symbol != h.symbol]
+        self.save(p)
+        return realized, removed
 
     # ------------------------------------------------------------------
     # Digests

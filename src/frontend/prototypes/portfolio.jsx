@@ -32,7 +32,7 @@ function digestAlerts(digest) {
 }
 
 function usePortfolioLive() {
-  const [state, setState] = useStatePf({ status: 'loading', holdings: [], digest: null });
+  const [state, setState] = useStatePf({ status: 'loading', holdings: [], digest: null, perf: null, txns: [] });
   const aliveRef = useRefPf(false);
   const wasLiveRef = useRefPf(false); // once true, a later reload failure must not downgrade live -> demo
 
@@ -50,8 +50,17 @@ function usePortfolioLive() {
         const dr = await fetch('/portfolio/digest/latest');
         if (dr.ok) digest = await dr.json();
       } catch {} // digest is optional — 404 until first advisor run
+      let perf = null, txns = [];
+      try {
+        const pr = await fetch('/portfolio/performance');
+        if (pr.ok) perf = await pr.json();
+      } catch {} // performance is optional — absent until cash accounting is on
+      try {
+        const tr = await fetch('/portfolio/transactions?limit=500');
+        if (tr.ok) txns = (await tr.json()).transactions || [];
+      } catch {}
       wasLiveRef.current = true;
-      if (aliveRef.current) setState({ status: 'live', holdings: (p.holdings || []).map(adaptHolding), digest });
+      if (aliveRef.current) setState({ status: 'live', holdings: (p.holdings || []).map(adaptHolding), digest, perf, txns });
     } catch (e) {
       if (wasLiveRef.current) {
         console.warn('[Portfolio] reload failed — keeping last live data.', e);
@@ -219,6 +228,15 @@ function PortfolioPage({ onNav, openChat }) {
   const ranges = window.PORTFOLIO_RANGES;
   const r = ranges[range];
   const alerts = isDemo ? demo.alerts : digestAlerts(live.digest);
+  const perf = isLive ? live.perf : null;
+  const cashLive = perf && perf.cash != null;
+  const heroValue = cashLive && perf.total_equity != null ? perf.total_equity : totalValue;
+  const liveHist = (perf?.history || []).filter(pt => pt.total_equity != null);
+  const showChart = isDemo || liveHist.length > 1;
+  const histWindow = { '1W': 5, '1M': 22, '3M': 66, '6M': 132, '1Y': 252 }[range] || 22;
+  const liveSlice = liveHist.slice(-histWindow);
+  const liveChange = liveSlice.length > 1
+    ? (liveSlice[liveSlice.length - 1].total_equity / liveSlice[0].total_equity - 1) * 100 : 0;
 
   if (live.status === 'loading') {
     return (
@@ -242,7 +260,7 @@ function PortfolioPage({ onNav, openChat }) {
           position:'relative', overflow:'hidden', borderRadius:24, marginBottom:24,
           background:'linear-gradient(135deg, #0a1628 0%, #134e5c 50%, #1a4a73 100%)',
           color:'#f1f5f9', padding:'28px var(--main-px)',
-          display:'grid', gridTemplateColumns: isDemo ? 'var(--hero-cols)' : '1fr', gap:32, alignItems:'center'
+          display:'grid', gridTemplateColumns: showChart ? 'var(--hero-cols)' : '1fr', gap:32, alignItems:'center'
         }}>
           <div style={{ position:'absolute', top:'-30%', right:'-10%', width:520, height:520, borderRadius:'50%',
             background:'radial-gradient(circle, rgba(124,58,237,.32), transparent 65%)', filter:'blur(40px)' }}/>
@@ -260,10 +278,16 @@ function PortfolioPage({ onNav, openChat }) {
                   {live.forced ? 'DEMO DATA' : 'DEMO DATA — API UNREACHABLE'}
                 </span>
               )}
+              {isLive && perf?.autopilot && (
+                <span style={{ fontSize:10, fontWeight:700, padding:'3px 8px', borderRadius:999,
+                  background:'rgba(34,211,238,.18)', color:'#67e8f9', letterSpacing:'.06em' }}>
+                  AUTOPILOT
+                </span>
+              )}
             </div>
             <div className="pf-hero-value-row" style={{ display:'flex', alignItems:'baseline', gap:14, marginBottom:12, flexWrap:'wrap' }}>
               <span className="pf-hero-value mono" style={{ fontSize:44, fontWeight:800, letterSpacing:'-0.02em' }}>
-                ₹{Math.round(totalValue).toLocaleString('en-IN')}
+                ₹{Math.round(heroValue).toLocaleString('en-IN')}
               </span>
               {isDemo && (
                 <span className="pf-hero-badge" style={{
@@ -274,11 +298,24 @@ function PortfolioPage({ onNav, openChat }) {
                   {demo.dayChange >= 0 ? '+' : ''}₹{Math.abs(demo.dayChange).toLocaleString('en-IN')} ({demo.dayChangePct >= 0 ? '+':''}{demo.dayChangePct.toFixed(2)}%) today
                 </span>
               )}
+              {isLive && cashLive && perf.day_change_pct != null && (
+                <span className="pf-hero-badge" style={{
+                  fontSize:14, fontWeight:700, padding:'4px 10px', borderRadius:8,
+                  background: perf.day_change_pct >= 0 ? 'rgba(34,197,94,.18)' : 'rgba(239,68,68,.18)',
+                  color: perf.day_change_pct >= 0 ? '#86efac' : '#fca5a5'
+                }}>
+                  {perf.day_change_pct >= 0 ? '+' : ''}{perf.day_change_pct.toFixed(2)}% today
+                </span>
+              )}
             </div>
             <div className="pf-hero-stats" style={{ display:'flex', gap:24, color:'#cbd5e1', fontSize:13, flexWrap:'wrap' }}>
-              <Stat2 label="Invested"      value={'₹'+Math.round(invested).toLocaleString('en-IN')}/>
-              <Stat2 label="Total return"  value={(totalReturn>=0?'+':'-')+'₹'+Math.abs(Math.round(totalReturn)).toLocaleString('en-IN')} pct={totalReturnPct}/>
-              {isDemo && <Stat2 label="Cash" value={'₹'+demo.cash.toLocaleString('en-IN')}/>}
+              <Stat2 label="Invested"      value={'₹'+Math.round(cashLive && perf.capital_in > 0 ? perf.capital_in : invested).toLocaleString('en-IN')}/>
+              <Stat2 label="Total return"  value={((cashLive ? (perf.total_equity - perf.capital_in) : totalReturn)>=0?'+':'-')+'₹'+Math.abs(Math.round(cashLive ? (perf.total_equity - perf.capital_in) : totalReturn)).toLocaleString('en-IN')} pct={perf?.total_return_pct ?? totalReturnPct}/>
+              {(isDemo || cashLive) && <Stat2 label="Cash" value={'₹'+(isDemo ? demo.cash : Math.round(perf.cash)).toLocaleString('en-IN')}/>}
+              {cashLive && perf.realized_pnl != null && (
+                <Stat2 label="Realized P&L"
+                  value={(perf.realized_pnl>=0?'+':'-')+'₹'+Math.abs(Math.round(perf.realized_pnl)).toLocaleString('en-IN')}/>
+              )}
               <Stat2 label="Holdings"      value={holdings.length+' stocks'}/>
               {isLive && marked.length < holdings.length && (
                 <Stat2 label="Unpriced" value={(holdings.length - marked.length)+' awaiting close'}/>
@@ -286,18 +323,18 @@ function PortfolioPage({ onNav, openChat }) {
             </div>
           </div>
 
-          {isDemo && (
+          {showChart && (
             <div className="pf-hero-chart" style={{ position:'relative', zIndex:2 }}>
               <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:10, marginBottom:8 }}>
                 <div>
-                  <div style={{ fontSize:11, color:'#94a3b8' }}>Value over {r.label}</div>
-                  <div style={{ fontSize:13, fontWeight:700, color: r.change>=0 ? '#86efac' : '#fca5a5' }}>
-                    {r.change>=0?'+':''}{r.change.toFixed(2)}%
+                  <div style={{ fontSize:11, color:'#94a3b8' }}>Value over {isDemo ? r.label : range}</div>
+                  <div style={{ fontSize:13, fontWeight:700, color: (isDemo ? r.change : liveChange) >= 0 ? '#86efac' : '#fca5a5' }}>
+                    {(isDemo ? r.change : liveChange) >= 0 ? '+' : ''}{(isDemo ? r.change : liveChange).toFixed(2)}%
                   </div>
                 </div>
                 <DarkRangeTabs value={range} onChange={setRange}/>
               </div>
-              <Sparkline values={r.points} height={92} color="#22d3ee"/>
+              <Sparkline values={isDemo ? r.points : liveSlice.map(pt => pt.total_equity)} height={92} color="#22d3ee"/>
             </div>
           )}
         </section>
@@ -315,6 +352,7 @@ function PortfolioPage({ onNav, openChat }) {
               <LearningsSection learnings={window.PORTFOLIO_LEARNINGS} openChat={openChat}/>
             )}
             {isDemo && <ActivityCard items={demo.recentActivity}/>}
+            {isLive && live.txns.length > 0 && <LiveActivityCard txns={live.txns}/>}
           </div>
 
           {/* Right rail */}
@@ -554,6 +592,31 @@ function ActivityCard({ items }) {
           );
         })}
       </div>
+    </div>
+  );
+}
+
+function LiveActivityCard({ txns }) {
+  const [showAll, setShowAll] = useStatePf(false);
+  const items = (showAll ? txns : txns.slice(0, 10)).map(t => ({
+    kind: t.side === 'BUY' ? 'buy' : 'sell',
+    sym: t.symbol, qty: t.qty, price: t.price,
+    text: [t.verdict || t.source,
+           t.side === 'SELL' && t.realized_pnl != null
+             ? `realized ${t.realized_pnl >= 0 ? '+' : ''}₹${Math.abs(t.realized_pnl).toLocaleString('en-IN')}` : '',
+           t.note].filter(Boolean).join(' · '),
+    t: t.date,
+  }));
+  return (
+    <div>
+      <ActivityCard items={items}/>
+      {txns.length > 10 && (
+        <button onClick={()=>setShowAll(v=>!v)} style={{ marginTop:8, padding:'8px 14px',
+          borderRadius:9, border:'1px solid var(--border)', background:'transparent',
+          color:'var(--ink-2)', fontSize:12, fontWeight:600, cursor:'pointer' }}>
+          {showAll ? 'Show recent only' : `View all ${txns.length} transactions`}
+        </button>
+      )}
     </div>
   );
 }

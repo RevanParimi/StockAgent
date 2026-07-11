@@ -235,7 +235,7 @@ function PortfolioPage({ onNav, openChat }) {
   const showChart = isDemo || liveHist.length > 1;
   const histWindow = { '1W': 5, '1M': 22, '3M': 66, '6M': 132, '1Y': 252 }[range] || 22;
   const liveSlice = liveHist.slice(-histWindow);
-  const liveChange = liveSlice.length > 1
+  const liveChange = liveSlice.length > 1 && liveSlice[0].total_equity > 0
     ? (liveSlice[liveSlice.length - 1].total_equity / liveSlice[0].total_equity - 1) * 100 : 0;
 
   if (live.status === 'loading') {

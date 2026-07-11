@@ -26,6 +26,8 @@ from backend.shared.schemas.portfolio import (
     WatchlistItem,
 )
 from core.portfolio.store import PortfolioStore
+from core.portfolio.pricing import close_on
+from core.portfolio.promotion import promote_symbol
 
 logger = logging.getLogger(__name__)
 
@@ -152,7 +154,44 @@ def _execute_buys(portfolio: Portfolio, advice: list[AdviceRecord],
     floor_cash = settings.AUTOPILOT_MIN_CASH_FLOOR
 
     for proceeds, rec in switch_proceeds:
-        pass   # Task 6: SWITCH buy leg
+        cand = rec.switch_candidate.strip().upper()
+        if not cand:
+            continue
+        try:
+            price = close_on(cand, review_date)
+        except Exception as exc:
+            logger.warning("[autopilot] SWITCH buy %s skipped: unpriceable (%s)",
+                           cand, exc)
+            continue
+        budget = min(proceeds, portfolio.cash_deployable - floor_cash)
+        qty = float(math.floor(budget / price)) if price > 0 else 0.0
+        if qty < 1:
+            logger.info("[autopilot] SWITCH buy %s skipped: budget %.2f < 1 share",
+                        cand, budget)
+            continue
+        ref = f"{rec.date}|{rec.symbol}|{rec.rationale_hash}"
+        if make_txn_id(portfolio.user_id, rec.date, cand, "BUY", ref) in existing_ids:
+            continue
+        sector = (sector_lookup or {}).get(cand, "")
+        if not sector:
+            try:
+                from backend.sectors.registry import SectorRegistry
+                sector = SectorRegistry.resolve(cand).strip().lower()
+            except Exception:
+                sector = "generic"
+        cash_before = portfolio.cash_deployable
+        portfolio.cash_deployable = round(portfolio.cash_deployable - qty * price, 2)
+        qty_after = _buy_into_holding(portfolio, cand, sector, qty, price,
+                                      review_date.isoformat())
+        txns.append(_txn(portfolio, rec, side="BUY", qty=qty, price=price,
+                         cash_before=cash_before, holding_qty_after=qty_after,
+                         realized=0.0, note=f"switch from {rec.symbol}",
+                         symbol=cand))
+        try:
+            promote_symbol(cand, sector, origin="held")
+        except Exception as exc:
+            logger.warning("[autopilot] promotion failed for %s (non-fatal): %s",
+                           cand, exc)
 
     adds = sorted((a for a in advice if a.verdict == "ADD"),
                   key=lambda a: (-a.confidence, a.symbol))
@@ -228,3 +267,27 @@ def execute_advice(store: PortfolioStore, portfolio: Portfolio,
     logger.info("[autopilot] %s executed %d trade(s) for %s",
                 day, len(txns), portfolio.user_id)
     return txns
+
+
+def record_value_point(store: PortfolioStore, portfolio: Portfolio,
+                       closes: dict[str, float], review_date: date) -> dict | None:
+    """Append today's equity snapshot (spec §3.3). Skips when cash accounting
+    is off or the point already exists (idempotent re-runs)."""
+    if portfolio.cash_deployable is None:
+        return None
+    day = review_date.isoformat()
+    hist = store.load_value_history(limit=1)
+    if hist and hist[-1].get("date") == day:
+        return None
+    mv = round(_portfolio_market_value(portfolio, closes), 2)
+    total = round(mv + portfolio.cash_deployable, 2)
+    day_change_pct = None
+    if hist and hist[-1].get("total_equity"):
+        prev = hist[-1]["total_equity"]
+        if prev > 0:
+            day_change_pct = round((total / prev - 1) * 100, 4)
+    point = {"date": day, "market_value": mv,
+             "cash": round(portfolio.cash_deployable, 2), "total_equity": total,
+             "capital_in": portfolio.capital_in, "day_change_pct": day_change_pct}
+    store.append_value_point(point)
+    return point

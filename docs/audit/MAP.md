@@ -2,8 +2,8 @@
 
 Date: 2026-07-11 · HEAD: ab243ac · Method: entrypoint trace + AST import-reachability
 walk from prod roots, with dynamic-import edges resolved by hand. Prod-log verification
-(protocol step 2) pending `railway login`; everything below is static analysis anchored
-on the Dockerfile.
+(protocol step 2) **done same day via Railway CLI** — see §7; topology claims below are
+prod-confirmed.
 
 ## 1. Prod topology
 
@@ -38,7 +38,7 @@ mounted anywhere** — dead tree.
 
 | Job | What | When (IST) |
 |-----|------|------------|
-| 1 | Daily RL review → advisor → **autopilot** | 16:30 weekdays |
+| 1 | Daily RL review → advisor → **autopilot** | intended 16:30 Mon–Fri; **actually fires 11:00 IST Tue–Sat** (AUD-038, prod-observed) |
 | 2 | Monthly forecast | 1st, 09:00 |
 | 3 | Calendar update | Dec 31, 23:00 |
 | 4 | Prompt daily deploy | 00:00 |
@@ -133,3 +133,25 @@ have BOMs); (b) dynamic string imports. Resolved dynamic edge families:
 New: AUD-031…037. Updated: AUD-001 (evidence hardened: 2 workers × mutation routes),
 AUD-026 (confirmed + quantified), AUD-028 (src/backend/api confirmed dead),
 AUD-030 (resolved KEEP — live shim). See LEDGER.md.
+
+## 7. Prod-run trace (backfill, 2026-07-11 evening — Railway CLI)
+
+Deployments: b6818b60 (08:23–14:54 IST — ran Saturday's jobs) → cecd42a7 (14:54) →
+fec3e7a3 (15:19, live). Verified against real logs:
+
+- **Topology confirmed:** two uvicorn workers; singleton lock works (one worker logs
+  "held by another worker … API requests only", the other starts self-heal + scheduler);
+  volume mounted True; 16 managed tickers on volume; "BackgroundScheduler started — 15
+  jobs registered"; RL self-heal completed via checkpoint skips.
+- **Job-1 schedule reality (AUD-038):** "RL daily feedback review" trigger
+  `day_of_week='1-5', hour='11'`, tz Asia/Kolkata — fired **Saturday** 2026-07-11
+  11:00:00 IST, reviewing 2026-07-10. Numeric days + IST timezone ≠ the "11:00 UTC
+  weekdays" comment. No Monday run exists on current prod.
+- **Incident (AUD-042/039):** OpenRouter key invalid — 887× HTTP 401 "User not found"
+  from 10:00:19 to 12:43:11 IST; every LLM call of event-ingestion, daily review,
+  research loop, and discovery deep-dives failed; all jobs still reported "complete"
+  (ingested=0, answered=0, deep_dives=0, discovery errors=[]); zero alerts emitted.
+  Autopilot did not engage (no log mentions; portfolio untouched).
+- **Misc:** SectorRegistry tries `/config/sector_toggles.json` at fs root (AUD-040);
+  SCHEDULER_KEY unset → open endpoints warned at startup; yfinance 401 "Invalid Crumb"
+  during the window; a "last 48h" news context contained a 2026-05-13 article (AUD-041).

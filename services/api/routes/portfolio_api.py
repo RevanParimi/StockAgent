@@ -183,7 +183,9 @@ async def delete_holding(
     if p.cash_deployable is not None:
         try:
             price = await asyncio.to_thread(close_on, h.symbol, date.today())
-        except Exception:
+        except Exception as exc:
+            logger.warning("[portfolio_api] sell price failed for %s, "
+                           "falling back to adj_avg_price: %s", h.symbol, exc)
             price = h.adj_avg_price
         qty = h.adj_qty
         cash_before = p.cash_deployable
@@ -332,9 +334,15 @@ async def get_performance(
             for h in p.holdings:
                 try:
                     mv += h.adj_qty * await asyncio.to_thread(close_on, h.symbol, date.today())
-                except Exception:
+                except Exception as exc:
+                    logger.warning("[portfolio_api] mark failed for %s, "
+                                   "falling back to adj_avg_price: %s", h.symbol, exc)
                     mv += h.adj_qty * h.adj_avg_price
             market_value = round(mv, 2)
+        elif p.cash_deployable is not None:
+            # Cash accounting on, empty portfolio (transient state right
+            # after opt-in): market value is zero — known, not unknown.
+            market_value = 0.0
     total_equity = round((market_value or 0.0) + (cash or 0.0), 2) \
         if market_value is not None else None
     total_pnl = round(total_equity - p.capital_in, 2) \

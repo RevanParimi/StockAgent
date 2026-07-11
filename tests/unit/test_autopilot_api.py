@@ -69,6 +69,25 @@ def test_performance_from_value_history(client, tmp_path):
     assert len(d["history"]) == 2
 
 
+def test_performance_empty_portfolio_accounting_on(client, tmp_path):
+    """Cash accounting ON + no holdings + no value history yet (transient
+    state right after opt-in): market value is 0.0 — known, not unknown —
+    so total_equity == cash and the P&L fields compute (no nulls)."""
+    s = PortfolioStore(user_id="primary", base_dir=str(tmp_path))
+    p = s.load()
+    p.cash_deployable, p.capital_in, p.autopilot = 10000.0, 10000.0, True
+    s.save(p)
+    r = client.get("/portfolio/performance")
+    assert r.status_code == 200
+    d = r.json()
+    assert d["market_value"] == 0.0
+    assert d["total_equity"] == 10000.0          # == cash
+    assert d["autopilot"] is True
+    assert d["total_return_pct"] is not None     # capital_in > 0 — computes
+    assert d["total_return_pct"] == pytest.approx(0.0)
+    assert d["unrealized_pnl"] is not None
+
+
 def test_manual_add_records_txn_and_capital(client, tmp_path):
     _seed_store(tmp_path)
     r = client.post("/portfolio/holdings", json={

@@ -16,6 +16,7 @@ def build_digest(
     advice: list[AdviceRecord],
     portfolio: Portfolio,
     closes: dict[str, float],
+    transactions: list | None = None,
 ) -> dict:
     value = 0.0
     cost = 0.0
@@ -45,4 +46,5 @@ def build_digest(
         "total_pnl_pct": value / cost * 100 - 100 if cost > 0 else 0.0,
         "holdings": rows,
         "escalations": escalations,
+        "trades": [t.model_dump() for t in (transactions or [])],
     }

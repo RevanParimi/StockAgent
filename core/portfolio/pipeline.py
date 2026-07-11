@@ -109,9 +109,33 @@ def run_post_review_pipeline(review_date: date) -> dict:
         total_advice += len(advice)
         escalations.extend(a.symbol for a in advice if a.verdict in ("TRIM", "EXIT", "SWITCH"))
 
+        # Step 3.5 — Compass Autopilot: execute verdicts, then snapshot equity.
+        txns = []
+        try:
+            from core.portfolio import autopilot
+            shelf_sectors = {i.symbol: i.sector for i in shelf_ideas
+                             if getattr(i, "sector", "")}
+            txns = autopilot.execute_advice(
+                store, portfolio, advice, closes, review_date,
+                sector_lookup=shelf_sectors)
+            if txns:
+                portfolio = store.load()          # digest sees post-trade state
+                logger.info("[portfolio_pipeline] autopilot executed %d trade(s) for %s",
+                            len(txns), user_id)
+        except Exception as exc:
+            logger.warning("[portfolio_pipeline] autopilot failed for %s (non-fatal): %s",
+                           user_id, exc)
+        try:
+            from core.portfolio import autopilot
+            autopilot.record_value_point(store, store.load(), closes, review_date)
+        except Exception as exc:
+            logger.warning("[portfolio_pipeline] value point failed for %s (non-fatal): %s",
+                           user_id, exc)
+
         # Step 4 — digest.
         try:
-            store.save_digest(build_digest(user_id, review_date, advice, portfolio, closes))
+            store.save_digest(build_digest(user_id, review_date, advice, portfolio,
+                                           closes, transactions=txns))
         except Exception as exc:
             logger.warning("[portfolio_pipeline] digest failed for %s: %s", user_id, exc)
 
@@ -130,14 +154,26 @@ def run_post_review_pipeline(review_date: date) -> dict:
                 )
                 for a in advice if a.verdict in ("TRIM", "EXIT", "SWITCH")
             ]
+            n_esc = len(events)
+            events.extend(
+                AlertEvent(
+                    date=review_date.isoformat(),
+                    kind="autopilot_trade",
+                    symbol=t.symbol,
+                    message=f"{t.side} {int(t.qty)} {t.symbol} @ ₹{t.price:,.2f}"
+                            + (f" (realized ₹{t.realized_pnl:,.2f})" if t.side == "SELL" else ""),
+                    severity="warning" if t.side == "SELL" else "info",
+                )
+                for t in txns
+            )
             if events:
                 emit_alerts(events, user_id=user_id,
                             title=f"Advisor escalations — {review_date}")
-            n_esc = len(events)
             deliver(
                 f"EOD digest — {review_date}",
-                f"{len(advice)} holdings reviewed; {n_esc} escalation(s). "
-                "Open the app or ask the chat for 'brief' for details.",
+                f"{len(advice)} holdings reviewed; {n_esc} escalation(s)"
+                + (f"; {len(txns)} trade(s) executed" if txns else "")
+                + ". Open the app or ask the chat for 'brief' for details.",
                 user_id=user_id,
             )
         except Exception as exc:

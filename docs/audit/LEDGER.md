@@ -76,3 +76,30 @@ known-issues, `ph0` = verified directly during Phase 0 at HEAD 69e317d.
 | AUD-011 | LOWIMPACT | P3 | multiple | Lint/docs batch: unused imports (T4/T11), stale docstrings/Layout docs (T1/T2), "Advisor escalations" title on trade-only batches (T7), M6 cosmetics | apl:8-18,21 | FIX (one commit) | OPEN |
 | AUD-020 | LOWIMPACT | P3 | lockin watch | watched-or-None lockin widening | phc:21 | FIX | OPEN |
 | AUD-021 | LOWIMPACT | P3 | preopen alerts | Alert scope broader than holdings | phc:21 | FIX or KEEP | OPEN |
+
+## Phase 1 additions (2026-07-11, HEAD ab243ac — evidence in MAP.md)
+
+`ph1` = import-reachability walk + entrypoint trace, docs/audit/MAP.md.
+
+| ID | Tag | Sev | Where | Defect | Evidence | Action | Status |
+|----|-----|-----|-------|--------|----------|--------|--------|
+| AUD-031 | DEAD | P3 | `services/api/user_profile.py` | 58 LOC, zero importers | ph1 | DELETE | OPEN (Ph6) |
+| AUD-032 | DEAD | P2 | `core/config/prompts/` | 22 legacy per-dimension prompt dirs, 185 files / 8,259 LOC, unreachable (prompts route only imports `backend.*`); superseded by unified analyst | ph1 | DELETE | OPEN (Ph6) |
+| AUD-033 | DEAD | P2 | `src/backend/sectors/` dead subset | 53 files / ~1,460 LOC: legacy fetchers (npa_metrics, rbi_data, mnre_data, transcript, deal_wins), `automobile/pipeline/graph.py`, `schemas/sub_scores.py`; +5 latent prompt files (338 LOC) editable via prompts route but consumed by nothing | ph1 | DELETE (latent prompts: decide in Ph5) | OPEN (Ph6) |
+| AUD-034 | DEAD | P3 | `services/clients/alerting.py` | 196 LOC orphan alerting client | ph1 | DELETE | OPEN (Ph6) |
+| AUD-035 | DEAD | P3 | `core/intelligence/rag/ingestion/` | ingestion.py + ingest_cli.py (304 LOC) unreachable; retriever/vector_store ARE live | ph1 | DELETE or move to tools | OPEN (Ph6) |
+| AUD-036 | GAP | P3 | docs (run instructions) | 7× `python -m scripts.daily_review` + 3× `scripts.generate_forecast` reference files that no longer exist; 19× refs to manual run_schedule runner need a currency check | ph1 (grep) | FIX docs | OPEN (Ph7) |
+| AUD-037 | OVERENG | P3 | `scripts/api_exploration/` | 7 exploration spikes (1,505 LOC) shipped inside the prod image (`COPY scripts/`) | ph1; Dockerfile | DELETE or move out of image | OPEN (Ph6) |
+
+**Updates to seeded rows:**
+
+- AUD-001 — evidence hardened: prod runs `--workers 2`; singleton lock (server.py:302)
+  covers scheduler/self-heal only, portfolio-mutating routes execute on both workers →
+  race is cross-process. Severity P1 confirmed; candidate P0 reclassification in Phase 2.
+- AUD-026 — confirmed + quantified: 253 files / 9,941 LOC; only consumer is
+  `core_adapter` tier=core path, which registry (all 4 sectors tier=backend) never takes.
+- AUD-028 — resolved: `src/backend/api` is DEAD (not mounted, zero importers). Merge
+  action now = plain DELETE in Phase 6; `services/api` is the single live surface.
+- AUD-030 — **resolved KEEP**: `core/pipeline/orchestrator.py` is a live migration shim
+  (sector_router resolves automobile's orchestrator through it). Do not delete without
+  updating sector_router._ORCHESTRATORS.

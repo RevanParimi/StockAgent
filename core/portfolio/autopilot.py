@@ -101,12 +101,98 @@ def _execute_sells(portfolio: Portfolio, advice: list[AdviceRecord],
     return txns, switch_proceeds
 
 
+def _trading_days_between(start: date, end: date) -> int:
+    from core.intelligence.rl.nse_calendar import is_trading_day
+    n, d = 0, start
+    while d < end:
+        d += timedelta(days=1)
+        if is_trading_day(d):
+            n += 1
+    return n
+
+
+def _portfolio_market_value(portfolio: Portfolio, closes: dict[str, float]) -> float:
+    return sum(h.adj_qty * closes.get(h.symbol, h.adj_avg_price)
+               for h in portfolio.holdings)
+
+
+def _last_add_date(store: PortfolioStore, symbol: str) -> date | None:
+    for t in reversed(store.load_transactions(limit=2000)):
+        if t.symbol == symbol and t.side == "BUY" and t.source == "autopilot":
+            return date.fromisoformat(t.date)
+    return None
+
+
+def _buy_into_holding(portfolio: Portfolio, symbol: str, sector: str,
+                      qty: float, price: float, buy_date: str) -> float:
+    """Merge a buy into an existing holding (weighted adj averages) or create
+    a new one. Returns the holding's post-trade adj_qty."""
+    h = _find(portfolio, symbol)
+    if h is None:
+        portfolio.holdings.append(Holding(
+            symbol=symbol, sector=sector, qty=qty, avg_buy_price=price,
+            adj_avg_price=price, adj_qty=qty, buy_date=buy_date))
+        return qty
+    total = h.adj_qty + qty
+    h.adj_avg_price = (h.adj_avg_price * h.adj_qty + price * qty) / total
+    h.adj_qty = total
+    # raw fields track money actually put in (entry history)
+    raw_total = h.qty + qty
+    h.avg_buy_price = (h.avg_buy_price * h.qty + price * qty) / raw_total
+    h.qty = raw_total
+    return h.adj_qty
+
+
 def _execute_buys(portfolio: Portfolio, advice: list[AdviceRecord],
                   closes: dict[str, float], existing_ids: set[str],
                   switch_proceeds: list[tuple[float, AdviceRecord]],
                   review_date: date, store: PortfolioStore,
                   sector_lookup: dict[str, str] | None) -> list[TransactionRecord]:
-    return []   # Task 5 (ADD) and Task 6 (SWITCH buy leg) fill this in.
+    txns: list[TransactionRecord] = []
+    floor_cash = settings.AUTOPILOT_MIN_CASH_FLOOR
+
+    for proceeds, rec in switch_proceeds:
+        pass   # Task 6: SWITCH buy leg
+
+    adds = sorted((a for a in advice if a.verdict == "ADD"),
+                  key=lambda a: (-a.confidence, a.symbol))
+    cap = settings.ADVISOR_MAX_POSITION_PCT / 100.0
+    for rec in adds:
+        h = _find(portfolio, rec.symbol)
+        if h is None:
+            continue
+        price = closes.get(rec.symbol) or rec.close
+        if price <= 0:
+            continue
+        last_add = _last_add_date(store, rec.symbol)
+        if last_add is not None and _trading_days_between(
+                last_add, review_date) < settings.AUTOPILOT_ADD_COOLDOWN_TD:
+            logger.info("[autopilot] ADD %s skipped: cooldown", rec.symbol)
+            continue
+        position_value = h.adj_qty * price
+        tranche = position_value * settings.AUTOPILOT_ADD_TRANCHE_PCT / 100.0
+        total_mv = _portfolio_market_value(portfolio, closes)
+        # post-trade weight cap: (pos + X)/(total + X) <= cap
+        weight_headroom = (cap * total_mv - position_value) / (1 - cap) \
+            if cap < 1 else float("inf")
+        budget = min(tranche, max(0.0, weight_headroom),
+                     portfolio.cash_deployable - floor_cash)
+        qty = float(math.floor(budget / price))
+        if qty < 1:
+            logger.info("[autopilot] ADD %s skipped: budget %.2f < 1 share @ %.2f",
+                        rec.symbol, budget, price)
+            continue
+        ref = f"{rec.date}|{rec.symbol}|{rec.rationale_hash}"
+        if make_txn_id(portfolio.user_id, rec.date, rec.symbol, "BUY", ref) in existing_ids:
+            continue
+        cash_before = portfolio.cash_deployable
+        portfolio.cash_deployable = round(portfolio.cash_deployable - qty * price, 2)
+        qty_after = _buy_into_holding(portfolio, rec.symbol, h.sector, qty, price,
+                                      review_date.isoformat())
+        txns.append(_txn(portfolio, rec, side="BUY", qty=qty, price=price,
+                         cash_before=cash_before, holding_qty_after=qty_after,
+                         realized=0.0, note="add_tranche"))
+    return txns
 
 
 def execute_advice(store: PortfolioStore, portfolio: Portfolio,

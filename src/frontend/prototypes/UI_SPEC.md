@@ -86,9 +86,9 @@ All variables are on `window`. No module exports.
 | `CATEGORIES` | `Array<{key,icon,label,count,color}>` | 〰️ static | CategoryCard | 6 items; color is hex — no API needed |
 | `NIFTY_AUTO_HISTORY` | `number[]` (30 items) | ✅ bootstrap | (unused directly — feeds NIFTY_AUTO_RANGES) | Real yfinance `^CNXAUTO` 30-day closes |
 | `NIFTY_AUTO_RANGES` | `Record<'1W'|'1M'|'3M'|'6M'|'1Y', {points:number[], label, change}>` | ❌ mock | TodayPane → Sparkline via RangeTabs | Multi-range series not in bootstrap; only 1M via NIFTY_AUTO_HISTORY |
-| `PORTFOLIO_RANGES` | Same shape as NIFTY_AUTO_RANGES | ❌ mock | PortfolioPage → Sparkline | Demo mode only — hero sparkline hidden when live (no value-history endpoint yet) |
+| `PORTFOLIO_RANGES` | Same shape as NIFTY_AUTO_RANGES | ❌ mock | PortfolioPage → Sparkline | Demo mode only — live hero chart instead reads `GET /portfolio/performance` history (`liveHist`/`liveSlice`), hidden until ≥2 equity points exist |
 | `CHAT_SEEDS` | `string[]` (4 items) | ✅ bootstrap | ChatOverlay seed buttons when `msgs.length === 1` | Static strings from backend |
-| `PORTFOLIO` | `{totalValue, totalCost, dayChange, dayChangePct, cash, holdings[], recentActivity[], perfHistory[], alerts[]}` | ❌ mock | PortfolioPage and all sub-cards | Demo fallback only — live page fetches `GET /portfolio` (`?demo=1` forces demo; see §4 Portfolio) |
+| `PORTFOLIO` | `{totalValue, totalCost, dayChange, dayChangePct, cash, holdings[], recentActivity[], perfHistory[], alerts[]}` | ❌ mock | PortfolioPage and all sub-cards | Demo fallback only — live page fetches `GET /portfolio` + `GET /portfolio/performance` (cash/day-change/equity curve) + `GET /portfolio/transactions` (activity) (`?demo=1` forces demo; see §4 Portfolio) |
 | `PORTFOLIO.holdings` | `Array<{sym,qty,avgPrice,currentPrice,agentScore,verdict}>` | ❌ mock | HoldingsTable, AllocationCard | 5 items; demo only |
 | `PORTFOLIO.recentActivity` | `Array<{kind,sym,qty?,price?,text?,t}>` | ❌ mock | ActivityCard | `kind`: `'buy'|'sell'|'agent'`; demo only |
 | `PORTFOLIO.alerts` | `Array<{sym,kind,text}>` | ❌ mock | AlertsCard | `kind`: `'good'|'warn'`; demo only — live alerts come from the digest via `digestAlerts()` |
@@ -277,20 +277,24 @@ All icons are inline SVG, Lucide-style, exposed on `window.Icon`.
 
 **Entry component:** `PortfolioPage({ onNav, openChat })`
 
-**Live-wired (as of portfolio-live-wiring):** `usePortfolioLive()` (portfolio.jsx:34) fetches `GET /portfolio` (holdings, mark-to-market) then `GET /portfolio/digest/latest` (advisor verdicts — optional, 404 until first advisor run). Status is `'loading' | 'live' | 'demo'`. Falls back to mock `window.PORTFOLIO` on any fetch failure, or unconditionally when `?demo=1` is in the URL (skips the live fetch entirely).
+**Live-wired (as of portfolio-live-wiring + autopilot):** `usePortfolioLive()` (portfolio.jsx:34) fetches `GET /portfolio` (holdings, mark-to-market), then in parallel `GET /portfolio/digest/latest` (advisor verdicts — optional, 404 until first advisor run), `GET /portfolio/performance` (cash/day-change/equity curve — optional, absent until cash accounting is on), and `GET /portfolio/transactions?limit=500` (Autopilot audit trail — optional). Status is `'loading' | 'live' | 'demo'`. Falls back to mock `window.PORTFOLIO` on any fetch failure, or unconditionally when `?demo=1` is in the URL (skips the live fetch entirely). A later reload failure never downgrades an already-live page back to demo (`wasLiveRef`) — it just keeps the last good data.
+
+Cash/day-change/range-chart/activity are now live-wired via `/portfolio/performance` + `/portfolio/transactions` (no longer demo-only): the hero shows a real day-change badge, Cash + Realized P&L stats, and the range chart plots `perf.history` (`total_equity` per day, sliced to the selected range) once ≥2 equity points exist. An `AUTOPILOT` pill renders in the hero eyebrow when `perf.autopilot` is true. Demo mode is unchanged (still reads `window.PORTFOLIO`/`PORTFOLIO_RANGES`/`window.PORTFOLIO.recentActivity` unconditionally).
 
 **Layout (live):**
 ```
 <div> min-height:100vh
 ├── <TopNav active="portfolio" .../>
 └── <main> maxWidth:1280
-    ├── hero strip (dark gradient; live shows value/invested/return/holdings-count only —
-    │   day-change badge, Cash stat, and Sparkline/DarkRangeTabs are demo-only)
+    ├── hero strip (dark gradient; DEMO DATA / AUTOPILOT pill in the eyebrow;
+    │   day-change badge + Cash + Realized P&L stats once /portfolio/performance
+    │   has cash accounting on; Sparkline/DarkRangeTabs render once ≥2 equity points exist)
     └── grid 2fr / 1fr
         ├── LEFT column (flex column, gap:20)
         │   ├── <HoldingsTable/> (or <EmptyPortfolio/> when live with 0 holdings)
         │   ├── <LearningsSection/>  — demo only, or window.__learningsLive
-        │   └── <ActivityCard/>      — demo only (no advice-ledger-backed feed yet)
+        │   ├── <ActivityCard/>      — demo only (window.PORTFOLIO.recentActivity)
+        │   └── <LiveActivityCard/>  — live only, when live.txns.length > 0 (/portfolio/transactions)
         └── RIGHT column (flex column, gap:20)
             ├── <AlertsCard/>        — rendered only if alerts.length > 0
             ├── <AllocationCard/>    — rendered only if holdings.length > 0
@@ -306,7 +310,8 @@ All icons are inline SVG, Lucide-style, exposed on `window.Icon`.
 | `EmptyPortfolio` | `onAdd` | — |
 | `HoldingsTable` | `holdings, digest, isLive, onAdd, onRemoved` | — verdict/reason come from `digest`, not window.* |
 | `LearningsSection` | `learnings, openChat` | `PORTFOLIO_LEARNINGS` |
-| `ActivityCard` | `items` | — |
+| `ActivityCard` | `items` | — (demo activity, or fed by `LiveActivityCard`'s mapped `items`) |
+| `LiveActivityCard` | `txns` | — wraps `ActivityCard`; maps `/portfolio/transactions` rows to activity items (BUY→buy, SELL→sell, text = verdict/source + realized P&L + note), "View all N" toggle past the first 10 |
 | `AlertsCard` | `alerts` | — |
 | `AllocationCard` | `holdings` | — |
 | `AskAssistantCard` | `openChat` | — (renders Sphere inline) |
@@ -325,14 +330,15 @@ All icons are inline SVG, Lucide-style, exposed on `window.Icon`.
 | `agentTake(h, digest)` | Per-row "Agent take": digest advisor verdict/reason first, else demo `h.verdict`, else `window.TICKERS` composite verdict/score fallback, else `null` (renders `—`) |
 | `adaptHolding(h)` | Maps a raw `/portfolio` holding to UI shape; uses `adj_qty`/`adj_avg_price` (corp-action-adjusted) |
 
-**window.* reads (PortfolioPage):** `PORTFOLIO`, `PORTFOLIO_RANGES`, `PORTFOLIO_LEARNINGS` — demo mode only. In live mode holdings/verdicts come from `GET /portfolio` + `GET /portfolio/digest/latest`; `window.TICKERS` is read only as the `agentTake` fallback when no digest row matches.
+**window.* reads (PortfolioPage):** `PORTFOLIO`, `PORTFOLIO_RANGES`, `PORTFOLIO_LEARNINGS` — demo mode only. In live mode holdings/verdicts/cash/chart/activity come from `GET /portfolio` + `GET /portfolio/digest/latest` + `GET /portfolio/performance` + `GET /portfolio/transactions`; `window.TICKERS` is read only as the `agentTake` fallback when no digest row matches.
 
 **Internal state:**
 
 | State | Controls |
 |---|---|
 | `live.status` ('loading'\|'live'\|'demo') | Which layout renders (skeleton / live / demo) |
-| `range` ('1W'…'1Y') | Portfolio sparkline range selector (demo only) |
+| `live.perf` / `live.txns` | `/portfolio/performance` response / `/portfolio/transactions` rows (live mode only) |
+| `range` ('1W'…'1Y') | Range chart selector — demo mode slices `PORTFOLIO_RANGES`, live mode slices `perf.history` to a trading-day window (5/22/66/132/252) |
 | `search` (string) | TopNav search input (display only) |
 | `addOpen` (bool) | AddHoldingModal visibility |
 | `filter` ('all'|'mistakes'|'wins') inside LearningsSection | LessonCard filter |
@@ -645,6 +651,8 @@ FastAPI server at `http://localhost:8001`. Frontend served at `/app` via `Static
 | `GET` | `/portfolio/digest/latest` | portfolio_api.py | Latest EOD digest `{holdings[{symbol,verdict,reason,...}], escalations[]}`; 404 until first advisor run | `window.PORTFOLIO.alerts` (AlertsCard) + Agent-take column |
 | `POST` | `/portfolio/holdings` | portfolio_api.py | `{holding, promotion}` — body `{symbol, qty, buy_date, price?}`; sector resolved server-side | AddHoldingModal submit |
 | `DELETE` | `/portfolio/holdings/{symbol}` | portfolio_api.py | `{removed, demoted}` | HoldingsTable row delete |
+| `GET` | `/portfolio/performance` | portfolio_api.py | `{cash, market_value, total_equity, capital_in, realized_pnl, day_change_pct, total_return_pct, autopilot, history[{date, market_value, cash, total_equity, day_change_pct}]}` — sourced from `value_history.jsonl`, falls back to a live mark when history is empty | Hero cash/day-change/AUTOPILOT-pill stats + range chart (`live.perf`) |
+| `GET` | `/portfolio/transactions?limit=` | portfolio_api.py | `{transactions: [{txn_id, date, symbol, side, qty, price, realized_pnl, source, verdict, note, ...}]}` — newest first | `LiveActivityCard` (`live.txns`) |
 | `GET` | `/ui/search?q=` | ui_data.py | `{results: [{sym, name, type, snippet?}], query}` — ticker + thesis text search, max 8 | AddHoldingModal autocomplete |
 
 ### New endpoints (added in this session)
@@ -670,7 +678,6 @@ Table `score_history`: `id, ticker, company_name, run_at, final_score, verdict, 
 
 | Feature | What's missing | Path to unblock |
 |---|---|---|
-| **Portfolio value history / cash / activity** | Holdings + digest are live (portfolio-live-wiring); no value-history endpoint, cash tracking, or ledger-backed activity feed yet | Value snapshot store + `GET /portfolio/value-history`; activity feed from the advice ledger |
 | **Learnings / patterns** | No feedback/RL engine connected to frontend | Wire `core/intelligence/rl/` prediction store to a `GET /ui/learnings` endpoint |
 | **NIFTY_AUTO_RANGES multi-timeframe** | Bootstrap only returns 30-day; `1W/3M/6M/1Y` series not exposed | Add range param to `GET /ui/market/summary?range=3M` calling yfinance with longer periods |
 | **AGENT_TASKS persistence** | Toggle state is local React only | New `PUT /ui/agents/tasks` endpoint; store per-agent task flags in a JSON sidecar like weights |
@@ -691,4 +698,5 @@ These features require **zero new backend endpoints** — the data already exist
 1. **Score History Drawer** — highest signal/effort ratio; uses existing endpoint; dramatically improves ticker insight
 2. **API Budget badge** — 30 min; prevents surprise quota exhaustion
 3. **"Analyze Now" + streaming** — most impressive feature; needs WS handling in React (~2h)
-4. ~~**Portfolio live data**~~ — shipped (portfolio-live-wiring, 2026-07-10): holdings/digest/add/delete wired to `/portfolio/*`; value history + cash + activity remain deferred
+4. ~~**Portfolio live data**~~ — shipped (portfolio-live-wiring, 2026-07-10): holdings/digest/add/delete wired to `/portfolio/*`
+5. ~~**Autopilot cash/chart/activity**~~ — shipped (compass-autopilot, 2026-07-11): hero cash/day-change/AUTOPILOT pill + range chart wired to `GET /portfolio/performance`, activity feed wired to `GET /portfolio/transactions` (`LiveActivityCard`); demo mode unchanged

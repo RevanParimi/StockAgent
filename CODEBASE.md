@@ -110,7 +110,8 @@ StockAgent-main/
 │   │   ├── advisor.py             # Deterministic HOLD/ADD/TRIM/EXIT verdicts, ATR-scaled stops
 │   │   ├── narrator.py            # BULK-tier LLM narration of advice
 │   │   ├── digest.py              # EOD portfolio digest builder
-│   │   └── pipeline.py            # run_post_review_pipeline() orchestration entry point
+│   │   ├── pipeline.py            # run_post_review_pipeline() orchestration entry point
+│   │   └── autopilot.py           # Compass Autopilot: deterministic verdict executor (see below)
 │   ├── discovery/                 # Compass Phase B: weekly discovery funnel (see below)
 │   │   ├── __init__.py            # run_discovery_cycle() — single orchestration entry point
 │   │   ├── universe.py            # EQ-series + price-floor universe from the EOD window
@@ -137,7 +138,8 @@ StockAgent-main/
 │   └── sectors/                   # Core-layer sector definitions
 ├── scripts/
 │   ├── api_exploration/           # Ad-hoc API exploration scripts
-│   └── model_bench.py             # Chat-tier model comparison harness (fabrication/latency/cost)
+│   ├── model_bench.py             # Chat-tier model comparison harness (fabrication/latency/cost)
+│   └── seed_autopilot.py          # One-time Autopilot seed: equal-weight holdings + autopilot=True
 ├── tests/                         # Test suite
 │   ├── api/                       # API-level tests
 │   ├── contract/                  # Contract tests (C# integration)
@@ -163,6 +165,14 @@ StockAgent-main/
   with ATR-scaled stops, BULK-tier narration, EOD digest). Event-triggered from
   scheduler_api._review_task after daily reviews. Spec:
   docs/superpowers/specs/2026-07-06-portfolio-intelligence-discovery-design.md
+
+- `core/portfolio/autopilot.py` — Compass Autopilot: deterministic executor that turns
+  each review-day's advisor verdicts into paper trades (sells first, then buys; no LLM
+  in the loop). Writes append-only to `transactions.jsonl` (audit trail) and
+  `value_history.jsonl` (daily equity curve) inside the per-user store dir only — never
+  touches `data/rl/paper` or PredictionStore paths (isolation invariant, spec §8, tested
+  by `tests/unit/test_autopilot_isolation.py`). Seeded one-time via
+  `scripts/seed_autopilot.py`. Spec: docs/superpowers/specs/2026-07-10-compass-autopilot-design.md
 
 - `core/discovery/` — Compass Phase B: weekly quant discovery funnel (~2000 NSE
   mainboard stocks → composite rank → guards → ≤10 LLM deep-dives → Discovery Shelf
@@ -255,6 +265,8 @@ All endpoints take an optional `user_id` query param (default `portfolio.default
 | GET | `/portfolio/advice?limit=<1-500>` | optional key | Advice-ledger tail (append-only JSONL of every verdict). |
 | GET | `/portfolio/digest/latest` | optional key | Latest EOD digest (404 until the advisor has run). |
 | POST | `/portfolio/run-advisor?review_date=<ISO>` | optional key | Manually trigger the post-review pipeline (corp-action sync → events → advisor → ledger → digest). 202, background. |
+| GET | `/portfolio/transactions?limit=<1-1000>` | optional key | Transaction audit trail, newest first — every Autopilot trade (source, verdict, qty/price, realized P&L). |
+| GET | `/portfolio/performance` | optional key | P&L summary + daily equity curve: cash, market value, total equity, day-change %, realized P&L, sourced from `value_history.jsonl` (falls back to a live mark when history is empty). |
 
 The pipeline also runs automatically: `scheduler_api._review_task` event-triggers `core.portfolio.pipeline.run_post_review_pipeline` after every daily-review job completes (never clock-scheduled).
 
@@ -645,11 +657,13 @@ All paths verified to exist. Paths are relative to project root.
 | `services/api/routes/history.py` | GET /history — score history from SQLite |
 | `services/api/routes/ui_data.py` | All /ui/* routes (bootstrap, agents, tickers, chat, learnings, etc.) |
 | `services/api/routes/scheduler_api.py` | POST/GET /scheduler/* — RL trigger and status endpoints; event-triggers the portfolio advisor pipeline after daily reviews |
-| `services/api/routes/portfolio_api.py` | /portfolio/* — Compass Phase A: holdings, watchlist, CSV import, advice ledger, EOD digest |
+| `services/api/routes/portfolio_api.py` | /portfolio/* — Compass Phase A: holdings, watchlist, CSV import, advice ledger, EOD digest; Autopilot: transactions audit trail, performance (P&L + equity curve) |
 | `core/portfolio/pipeline.py` | `run_post_review_pipeline()` — corp-action sync → events refresh → advisor → ledger → digest, per user |
 | `core/portfolio/advisor.py` | Deterministic HOLD/ADD/TRIM/EXIT engine (EXIT>TRIM>ADD>HOLD), ATR-scaled stops, LTCG/earnings-gap notes |
+| `core/portfolio/autopilot.py` | `execute_advice()` — deterministic verdict executor (sells then buys, no LLM); `record_value_point()` — daily equity snapshot |
 | `services/data/fetchers/corporate_events.py` | NSE corp-actions feed + forward board-meetings calendar (degraded-mode safe) |
-| `data/portfolio/<user>/` | Per-user volume state: `portfolio.json`, `advice_ledger.jsonl`, `digests/` |
+| `data/portfolio/<user>/` | Per-user volume state: `portfolio.json`, `advice_ledger.jsonl`, `transactions.jsonl` (Autopilot audit trail), `value_history.jsonl` (daily equity curve), `digests/` |
+| `scripts/seed_autopilot.py` | One-time Autopilot seed: equal-weight virtual holdings from managed tickers + `autopilot=True`; idempotent |
 | `services/api/routes/discovery_api.py` | /discovery/* — Compass Phase B: shelf, latest screen, manual run, promote/drop |
 | `core/discovery/__init__.py` | `run_discovery_cycle()` — weekly funnel orchestration (every stage non-fatal) |
 | `core/discovery/screen.py` | Stage-1 quant screen: composite rank over live signals, guards, `ScreenResult` persistence |

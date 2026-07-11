@@ -169,10 +169,12 @@ StockAgent-main/
 - `core/portfolio/autopilot.py` — Compass Autopilot: deterministic executor that turns
   each review-day's advisor verdicts into paper trades (sells first, then buys; no LLM
   in the loop). Writes append-only to `transactions.jsonl` (audit trail) and
-  `value_history.jsonl` (daily equity curve) inside the per-user store dir only — never
-  touches `data/rl/paper` or PredictionStore paths (isolation invariant, spec §8, tested
-  by `tests/unit/test_autopilot_isolation.py`). Seeded one-time via
-  `scripts/seed_autopilot.py`. Spec: docs/superpowers/specs/2026-07-10-compass-autopilot-design.md
+  `value_history.jsonl` (daily equity curve); executor writes stay inside
+  `data/portfolio/<user>/` — never `data/rl/paper` or PredictionStore paths (isolation
+  invariant, spec §8; sell + buy paths pinned by `tests/unit/test_autopilot_isolation.py`).
+  One designed exception: a SWITCH buy promotes the candidate into the managed universe
+  (`data/managed_tickers.json` via `core/portfolio/promotion.py`, mocked in that test).
+  Seeded one-time via `scripts/seed_autopilot.py`. Spec: docs/superpowers/specs/2026-07-10-compass-autopilot-design.md
 
 - `core/discovery/` — Compass Phase B: weekly quant discovery funnel (~2000 NSE
   mainboard stocks → composite rank → guards → ≤10 LLM deep-dives → Discovery Shelf

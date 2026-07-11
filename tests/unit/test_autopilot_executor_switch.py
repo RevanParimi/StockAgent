@@ -71,6 +71,21 @@ def test_record_value_point_appends_and_computes_day_change(tmp_path):
     assert len(s.load_value_history()) == 2
 
 
+def test_record_value_point_skips_stale_review_date(tmp_path):
+    """C1: a replayed point for a review_date older than the last recorded
+    history point must be dropped, not just an exact-date duplicate — else
+    a stale-date replay appends an out-of-order value point."""
+    s = _store(tmp_path, [_h(qty=10, price=100.0)], cash=1000.0)
+    s.append_value_point({"date": "2026-07-13", "market_value": 1100.0,
+                          "cash": 1000.0, "total_equity": 2100.0,
+                          "capital_in": 100000.0, "day_change_pct": None})
+    before = s.load_value_history()
+    stale = date(2026, 7, 10)                       # before the last recorded point
+    pt = record_value_point(s, s.load(), {"TATAMOTORS": 110.0}, stale)
+    assert pt is None
+    assert s.load_value_history() == before          # nothing appended
+
+
 def test_record_value_point_skips_without_cash_accounting(tmp_path):
     s = PortfolioStore(user_id="t2", base_dir=str(tmp_path))
     p = s.load(); p.holdings = [_h()]; s.save(p)      # cash_deployable None

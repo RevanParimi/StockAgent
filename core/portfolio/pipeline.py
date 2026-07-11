@@ -166,6 +166,26 @@ def run_post_review_pipeline(review_date: date) -> dict:
                 )
                 for t in txns
             )
+            # SWITCH sold but the buy leg didn't land (unpriceable candidate,
+            # budget < 1 share, or dedupe) — the user gets a SELL alert and
+            # otherwise silence, which reads as a position vanishing into cash
+            # with no explanation (spec §4).
+            for a in advice:
+                if a.verdict != "SWITCH" or not a.switch_candidate.strip():
+                    continue
+                candidate = a.switch_candidate.strip().upper()
+                sold = any(t.side == "SELL" and t.symbol == a.symbol for t in txns)
+                bought = any(t.side == "BUY" and t.symbol == candidate for t in txns)
+                if sold and not bought:
+                    events.append(AlertEvent(
+                        date=review_date.isoformat(),
+                        kind="switch_buy_skipped",
+                        symbol=candidate,
+                        message=f"SWITCH {a.symbol}→{candidate}: sold but buy leg "
+                                "skipped (unpriceable or budget) — proceeds remain "
+                                "in cash",
+                        severity="warning",
+                    ))
             if events:
                 emit_alerts(events, user_id=user_id,
                             title=f"Advisor escalations — {review_date}")

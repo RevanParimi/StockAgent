@@ -83,6 +83,10 @@ def _execute_sells(portfolio: Portfolio, advice: list[AdviceRecord],
                 qty, note = h.adj_qty, "trim_to_zero"
         ref = f"{rec.date}|{rec.symbol}|{rec.rationale_hash}"
         if make_txn_id(portfolio.user_id, rec.date, rec.symbol, "SELL", ref) in existing_ids:
+            logger.warning(
+                "[autopilot] SELL %s (%s) already in ledger but run marker predates "
+                "this run — possible ledger/portfolio divergence from a mid-run "
+                "crash; manual reconciliation may be needed", rec.symbol, rec.verdict)
             continue
         cash_before = portfolio.cash_deployable
         realized = h.sell(qty, price)
@@ -171,6 +175,11 @@ def _execute_buys(portfolio: Portfolio, advice: list[AdviceRecord],
             continue
         ref = f"{rec.date}|{rec.symbol}|{rec.rationale_hash}"
         if make_txn_id(portfolio.user_id, rec.date, cand, "BUY", ref) in existing_ids:
+            logger.warning(
+                "[autopilot] SWITCH BUY %s (from %s) already in ledger but run "
+                "marker predates this run — possible ledger/portfolio divergence "
+                "from a mid-run crash; manual reconciliation may be needed",
+                cand, rec.symbol)
             continue
         sector = (sector_lookup or {}).get(cand, "")
         if not sector:
@@ -223,6 +232,10 @@ def _execute_buys(portfolio: Portfolio, advice: list[AdviceRecord],
             continue
         ref = f"{rec.date}|{rec.symbol}|{rec.rationale_hash}"
         if make_txn_id(portfolio.user_id, rec.date, rec.symbol, "BUY", ref) in existing_ids:
+            logger.warning(
+                "[autopilot] ADD BUY %s already in ledger but run marker predates "
+                "this run — possible ledger/portfolio divergence from a mid-run "
+                "crash; manual reconciliation may be needed", rec.symbol)
             continue
         cash_before = portfolio.cash_deployable
         portfolio.cash_deployable = round(portfolio.cash_deployable - qty * price, 2)
@@ -240,12 +253,21 @@ def execute_advice(store: PortfolioStore, portfolio: Portfolio,
                    sector_lookup: dict[str, str] | None = None,
                    ) -> list[TransactionRecord]:
     """Execute one review-day's verdicts. Appends transactions FIRST, then
-    saves the portfolio (txn_id dedupe makes a crash between the two safe)."""
+    saves the portfolio — a crash between the two cannot double-execute
+    (txn_id dedupe), but it CAN leave the ledger ahead of portfolio.json
+    (a txn recorded, cash/holdings never updated). The dedupe-skip warning
+    logged below flags that state for manual reconciliation."""
     if not settings.AUTOPILOT_ENABLED or not portfolio.autopilot \
             or portfolio.cash_deployable is None:
         return []
     day = review_date.isoformat()
-    if portfolio.last_autopilot_run == day:
+    # Monotonic guard: only run for a day strictly after the last completed
+    # run. Equality-only checks let a re-run for a PAST review_date (e.g. a
+    # manually retried POST /portfolio/run-advisor?review_date=<past>)
+    # execute stale-priced trades against the CURRENT portfolio and regress
+    # the marker. ISO date strings compare correctly lexicographically, and
+    # a forward recovery run for a missed day still proceeds normally.
+    if portfolio.last_autopilot_run and day <= portfolio.last_autopilot_run:
         return []
     existing_ids = {t.txn_id for t in store.load_transactions(limit=2000)}
 
@@ -277,7 +299,10 @@ def record_value_point(store: PortfolioStore, portfolio: Portfolio,
         return None
     day = review_date.isoformat()
     hist = store.load_value_history(limit=1)
-    if hist and hist[-1].get("date") == day:
+    # Skip both the exact-duplicate (idempotent re-run) and out-of-order
+    # (stale review_date replayed after a newer point already recorded)
+    # cases — either would append a point older than or equal to the tail.
+    if hist and hist[-1].get("date", "") >= day:
         return None
     mv = round(_portfolio_market_value(portfolio, closes), 2)
     total = round(mv + portfolio.cash_deployable, 2)

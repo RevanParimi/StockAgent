@@ -95,6 +95,25 @@ def test_txn_id_dedupe_survives_missing_run_marker(tmp_path):
     assert txns2 == []                                    # ledger id blocks replay
 
 
+def test_stale_review_date_replay_is_blocked(tmp_path):
+    """C1: a re-run for a PAST review_date (e.g. a manually retried
+    POST /portfolio/run-advisor?review_date=<past>) must not execute stale
+    trades against the CURRENT portfolio nor regress the run marker. Only
+    an equality check (old behaviour) would miss this — day < last_run
+    must also be blocked."""
+    s = _store(tmp_path, [_h()])
+    advice = [_advice(verdict="TRIM")]
+    execute_advice(s, s.load(), advice, {"MARUTI": 110.0}, D)   # stamps last_autopilot_run=D
+    assert s.load().last_autopilot_run == D.isoformat()
+    stale = date(2026, 7, 10)                                   # before D
+    before = (tmp_path / "t1" / "portfolio.json").read_bytes()
+    txns2 = execute_advice(s, s.load(), advice, {"MARUTI": 110.0}, stale)
+    assert txns2 == []
+    assert (tmp_path / "t1" / "portfolio.json").read_bytes() == before
+    assert s.load().last_autopilot_run == D.isoformat()          # marker not regressed
+    assert len(s.load_transactions()) == 1                       # no new txns appended
+
+
 def test_hold_and_unknown_symbol_do_nothing(tmp_path):
     s = _store(tmp_path, [_h()])
     txns = execute_advice(

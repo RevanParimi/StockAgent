@@ -30,6 +30,22 @@ def _txn():
         realized_pnl=20.0, verdict="TRIM")
 
 
+def _switch_advice_with_skipped_buy():
+    """SWITCH verdict whose sell leg executed but whose buy leg (LODHA) did
+    not — mirrors an unpriceable candidate or budget < 1 share (spec §4)."""
+    return [AdviceRecord(date=D.isoformat(), user_id="t1", symbol="MARUTI",
+                         verdict="SWITCH", close=110.0, unrealised_pnl_pct=-9.0,
+                         stop_pct=8.0, switch_candidate="lodha")]
+
+
+def _switch_sell_only_txn():
+    return TransactionRecord(
+        txn_id="x2", date=D.isoformat(), ts="2026-07-13T12:00:00+00:00",
+        user_id="t1", symbol="MARUTI", side="SELL", qty=10, price=110.0,
+        value=1100.0, cash_before=0.0, cash_after=1100.0, holding_qty_after=0,
+        realized_pnl=100.0, verdict="SWITCH")
+
+
 def test_digest_includes_trades_when_passed():
     d = build_digest("t1", D, _advice(), _portfolio(), {"MARUTI": 110.0},
                      transactions=[_txn()])
@@ -63,3 +79,37 @@ def test_pipeline_calls_executor_and_value_recorder():
     assert result["status"] == "completed"
     assert mock_exec.call_count == 1
     assert mock_rvp.call_count == 1
+
+
+def test_pipeline_emits_switch_buy_skipped_alert():
+    """I2 (spec §4): when a SWITCH sell executes but the buy leg is skipped
+    (unpriceable candidate / budget < 1 share / dedupe), the pipeline must
+    surface a switch_buy_skipped alert — otherwise the user sees a SELL
+    alert and silence while a position quietly became cash."""
+    import core.portfolio.pipeline as pl
+    with patch.object(pl, "list_user_ids", return_value=["t1"]), \
+         patch.object(pl, "PortfolioStore") as MockStore, \
+         patch.object(pl, "sync_corp_actions"), \
+         patch.object(pl, "refresh_events_calendar", return_value={}), \
+         patch.object(pl, "close_on", return_value=110.0), \
+         patch.object(pl, "get_price_history", side_effect=Exception("skip")), \
+         patch.object(pl, "build_signals"), \
+         patch.object(pl, "decide", return_value=_switch_advice_with_skipped_buy()[0]), \
+         patch.object(pl, "narrate", return_value="n"), \
+         patch("core.portfolio.autopilot.execute_advice",
+               return_value=[_switch_sell_only_txn()]), \
+         patch("core.portfolio.autopilot.record_value_point", return_value=None), \
+         patch.object(pl, "is_trading_day", return_value=True), \
+         patch("core.delivery.alerts.emit_alerts", return_value={"emitted": 0}) as mock_emit, \
+         patch("core.delivery.channels.deliver", return_value={"delivered": False}):
+        store = MockStore.return_value
+        store.load.return_value = _portfolio()
+        result = pl.run_post_review_pipeline(D)
+    assert result["status"] == "completed"
+    assert mock_emit.call_count == 1
+    events = mock_emit.call_args.args[0]
+    skipped = [e for e in events if e.kind == "switch_buy_skipped"]
+    assert len(skipped) == 1
+    assert skipped[0].symbol == "LODHA"
+    assert "MARUTI" in skipped[0].message and "LODHA" in skipped[0].message
+    assert skipped[0].severity == "warning"

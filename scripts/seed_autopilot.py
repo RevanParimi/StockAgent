@@ -15,8 +15,13 @@ import logging
 import math
 import sys
 from datetime import date, datetime, timezone
+from pathlib import Path
 
-sys.path.insert(0, ".")   # repo root when run as a script
+# Repo root + src/ on sys.path (mirrors pyproject pythonpath = [".", "src"])
+_ROOT = Path(__file__).resolve().parents[1]
+for _p in (_ROOT, _ROOT / "src"):
+    if str(_p) not in sys.path:
+        sys.path.insert(0, str(_p))
 
 from backend.shared.schemas.portfolio import Holding, TransactionRecord   # noqa: E402
 from core.portfolio.autopilot import make_txn_id, record_value_point      # noqa: E402

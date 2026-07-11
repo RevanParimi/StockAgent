@@ -24,14 +24,15 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
-from datetime import date
+from datetime import date, datetime, timezone
 
 from fastapi import APIRouter, BackgroundTasks, Header, HTTPException, Query, Request
 from pydantic import BaseModel
 
 from core.config import settings
 from backend.sectors.registry import SectorRegistry
-from backend.shared.schemas.portfolio import Holding, WatchlistItem
+from backend.shared.schemas.portfolio import Holding, TransactionRecord, WatchlistItem
+from core.portfolio.autopilot import make_txn_id
 from core.portfolio.pipeline import run_post_review_pipeline
 from core.portfolio.pricing import PriceUnavailableError, close_on
 from core.portfolio.promotion import demote_symbol, is_valid_sector, promote_symbol
@@ -143,8 +144,27 @@ async def add_holding(
         _store(user_id).add_holding(holding)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
+    txn = None
+    store = _store(user_id)
+    p = store.load()
+    if p.cash_deployable is not None:
+        value = round(holding.qty * price, 2)
+        p.capital_in = round(p.capital_in + value, 2)   # fresh money in
+        store.save(p)
+        txn = TransactionRecord(
+            txn_id=make_txn_id(p.user_id, body.buy_date, symbol, "BUY",
+                               f"manual-{datetime.now(timezone.utc).isoformat()}"),
+            date=body.buy_date, ts=datetime.now(timezone.utc).isoformat(),
+            user_id=p.user_id, symbol=symbol, side="BUY", qty=body.qty,
+            price=price, value=value, cash_before=p.cash_deployable,
+            cash_after=p.cash_deployable,
+            holding_qty_after=next((h.adj_qty for h in p.holdings
+                                    if h.symbol == symbol), body.qty),
+            source="manual", note="manual add (fresh capital)")
+        store.append_transaction(txn)
     promotion = promote_symbol(symbol, sector, origin="held")
-    return {"holding": holding.model_dump(), "promotion": promotion}
+    return {"holding": holding.model_dump(), "promotion": promotion,
+            "transaction": (txn.model_dump() if txn else None)}
 
 
 @router.delete("/holdings/{symbol}", summary="Remove a holding")
@@ -155,13 +175,40 @@ async def delete_holding(
 ) -> dict:
     _check_auth(x_scheduler_key)
     store = _store(user_id)
-    if not store.remove_holding(symbol):
+    p = store.load()
+    h = next((x for x in p.holdings if x.symbol == symbol.upper()), None)
+    if h is None:
         raise HTTPException(status_code=404, detail=f"No holding {symbol.upper()}")
+    txn = None
+    if p.cash_deployable is not None:
+        try:
+            price = await asyncio.to_thread(close_on, h.symbol, date.today())
+        except Exception:
+            price = h.adj_avg_price
+        qty = h.adj_qty
+        cash_before = p.cash_deployable
+        realized, _removed = store.reduce_holding(h.symbol, qty, price)
+        p = store.load()
+        p.cash_deployable = round(p.cash_deployable + qty * price, 2)
+        store.save(p)
+        txn = TransactionRecord(
+            txn_id=make_txn_id(p.user_id, date.today().isoformat(), h.symbol,
+                               "SELL", f"manual-{datetime.now(timezone.utc).isoformat()}"),
+            date=date.today().isoformat(), ts=datetime.now(timezone.utc).isoformat(),
+            user_id=p.user_id, symbol=h.symbol, side="SELL", qty=qty, price=price,
+            value=round(qty * price, 2), cash_before=cash_before,
+            cash_after=p.cash_deployable, holding_qty_after=0.0,
+            realized_pnl=realized, source="manual", note="manual delete")
+        store.append_transaction(txn)
+    else:
+        if not store.remove_holding(symbol):
+            raise HTTPException(status_code=404, detail=f"No holding {symbol.upper()}")
     demoted = False
     p = store.load()
     if not any(w.symbol == symbol.upper() for w in p.watchlist):
         demoted = demote_symbol(symbol)
-    return {"removed": symbol.upper(), "demoted": demoted}
+    return {"removed": symbol.upper(), "demoted": demoted,
+            "transaction": (txn.model_dump() if txn else None)}
 
 
 @router.post("/watchlist", summary="Add a watchlist symbol")
@@ -251,6 +298,60 @@ async def get_latest_digest(
     if digest is None:
         raise HTTPException(status_code=404, detail="No digest yet — run the advisor first.")
     return digest
+
+
+@router.get("/transactions", summary="Transaction audit trail (newest first)")
+async def get_transactions(
+    user_id: str | None = Query(default=None),
+    limit: int = Query(default=50, ge=1, le=1000),
+    x_scheduler_key: str | None = Header(default=None),
+) -> dict:
+    _check_auth(x_scheduler_key)
+    records = _store(user_id).load_transactions(limit=limit)
+    return {"transactions": [r.model_dump() for r in reversed(records)]}
+
+
+@router.get("/performance", summary="P&L summary + daily equity curve")
+async def get_performance(
+    user_id: str | None = Query(default=None),
+    x_scheduler_key: str | None = Header(default=None),
+) -> dict:
+    _check_auth(x_scheduler_key)
+    store = _store(user_id)
+    p = store.load()
+    history = store.load_value_history(limit=400)
+    realized = round(sum(t.realized_pnl for t in store.load_transactions(limit=2000)), 2)
+    cash = p.cash_deployable
+    if history:
+        last = history[-1]
+        market_value, day_change_pct = last.get("market_value"), last.get("day_change_pct")
+    else:
+        market_value, day_change_pct = None, None
+        if p.holdings:   # no history yet — live mark like GET /portfolio
+            mv = 0.0
+            for h in p.holdings:
+                try:
+                    mv += h.adj_qty * await asyncio.to_thread(close_on, h.symbol, date.today())
+                except Exception:
+                    mv += h.adj_qty * h.adj_avg_price
+            market_value = round(mv, 2)
+    total_equity = round((market_value or 0.0) + (cash or 0.0), 2) \
+        if market_value is not None else None
+    total_pnl = round(total_equity - p.capital_in, 2) \
+        if total_equity is not None and p.capital_in > 0 else None
+    return {
+        "cash": cash,
+        "capital_in": p.capital_in,
+        "market_value": market_value,
+        "total_equity": total_equity,
+        "realized_pnl": realized,
+        "unrealized_pnl": round(total_pnl - realized, 2) if total_pnl is not None else None,
+        "total_return_pct": round(total_pnl / p.capital_in * 100, 2)
+            if total_pnl is not None else None,
+        "day_change_pct": day_change_pct,
+        "autopilot": p.autopilot,
+        "history": history,
+    }
 
 
 @router.post("/run-advisor", status_code=202, summary="Manually trigger the post-review pipeline")

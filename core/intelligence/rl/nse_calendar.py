@@ -61,15 +61,25 @@ _HARDCODED_HOLIDAYS: frozenset[date] = frozenset({
     date(2025, 10, 21),   # Diwali Balipratipada
     date(2025, 11,  5),   # Prakash Gurpurb Sri Guru Nanak Dev Ji
     date(2025, 12, 25),   # Christmas
-    # 2026 (preliminary — updated by calendar_updater on Dec 31 2025)
+    # 2026 — official NSE trading-holiday circular (AUD-023: the earlier
+    # preliminary guesses marked real sessions Mar 4 / Mar 20 as holidays and
+    # missed Sep 14, Oct 20, Nov 10, Nov 24 entirely).
+    date(2026,  1, 15),   # Maharashtra municipal elections
     date(2026,  1, 26),   # Republic Day
-    date(2026,  3,  4),   # Maha Shivratri (approx)
-    date(2026,  3, 20),   # Holi (approx)
-    date(2026,  4,  3),   # Good Friday (approx)
+    date(2026,  3,  3),   # Holi
+    date(2026,  3, 26),   # Shri Ram Navami
+    date(2026,  3, 31),   # Shri Mahavir Jayanti
+    date(2026,  4,  3),   # Good Friday
     date(2026,  4, 14),   # Dr. Baba Saheb Ambedkar Jayanti
     date(2026,  5,  1),   # Maharashtra Day
-    date(2026,  8, 15),   # Independence Day
+    date(2026,  5, 28),   # Bakri Id
+    date(2026,  6, 26),   # Muharram
+    date(2026,  8, 15),   # Independence Day (Saturday)
+    date(2026,  9, 14),   # Ganesh Chaturthi
     date(2026, 10,  2),   # Mahatma Gandhi Jayanti
+    date(2026, 10, 20),   # Dussehra
+    date(2026, 11, 10),   # Diwali Balipratipada
+    date(2026, 11, 24),   # Prakash Gurpurb Sri Guru Nanak Dev
     date(2026, 12, 25),   # Christmas
 })
 
@@ -85,6 +95,8 @@ def _load_from_file() -> frozenset[date]:
         raw: dict[str, list[str]] = json.loads(_HOLIDAY_FILE.read_text(encoding="utf-8"))
         holidays: set[date] = set()
         for year_str, date_list in raw.items():
+            if year_str.startswith("_") or not isinstance(date_list, list):
+                continue    # metadata / malformed entries are not holiday years
             for ds in date_list:
                 try:
                     holidays.add(date.fromisoformat(ds))
@@ -98,17 +110,18 @@ def _load_from_file() -> frozenset[date]:
 
 
 def _build_holiday_set() -> frozenset[date]:
-    """Merge hardcoded fallback with file-based holidays (file wins on overlap)."""
-    file_holidays = _load_from_file()
-    if file_holidays:
-        # File exists: use file for years it covers, hardcoded for any year not in file
-        file_years = {d.year for d in file_holidays}
-        extra = frozenset(d for d in _HARDCODED_HOLIDAYS if d.year not in file_years)
-        merged = file_holidays | extra
-        logger.debug("[nse_calendar] Holiday set: %d from file + %d hardcoded fill-in", len(file_holidays), len(extra))
-        return merged
-    # No file: use hardcoded only
-    return _HARDCODED_HOLIDAYS
+    """UNION of the hardcoded fallback and the file (AUD-023).
+
+    Not file-wins-per-year: a file year built by the yfinance layer only
+    contains holidays up to the day it was written, so letting it replace the
+    hardcoded year silently DROPS every future holiday. Union keeps both.
+    Tradeoff: if the exchange ever cancels a hardcoded holiday, the union
+    keeps the stale date until the hardcoded list is corrected — a rarer and
+    safer failure (one skipped session) than trading-day logic running on
+    real holidays."""
+    merged = _HARDCODED_HOLIDAYS | _load_from_file()
+    logger.debug("[nse_calendar] Holiday set: %d dates (hardcoded ∪ file)", len(merged))
+    return merged
 
 
 # Module-level holiday set — initialised once at import

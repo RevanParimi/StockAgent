@@ -266,18 +266,31 @@ def _log_volume_check() -> None:
 
 def _ensure_calendar_file() -> None:
     """
-    If data/nse_holidays.json doesn't exist yet, fetch it now so the RL
-    system starts with accurate holiday data rather than only the hardcoded fallback.
-    Non-fatal — hardcoded holidays are always the safety net.
+    Fetch data/nse_holidays.json when it is missing OR lacks the current year
+    (AUD-023: a file created by an earlier startup can predate the current
+    year and would otherwise never be refreshed — the Dec-31 job only covers
+    the NEXT year). Non-fatal — the hardcoded ∪ file union in nse_calendar is
+    always the safety net.
     """
+    import json as _json
+    from datetime import date as _date
+
     holiday_file = _ROOT / "data" / "nse_holidays.json"
     if holiday_file.exists():
-        return
-    logger.info("[startup] data/nse_holidays.json not found — running first-time calendar fetch…")
+        try:
+            data = _json.loads(holiday_file.read_text(encoding="utf-8"))
+            if str(_date.today().year) in data:
+                return
+            logger.info("[startup] nse_holidays.json lacks %d — refreshing calendar…",
+                        _date.today().year)
+        except Exception as exc:
+            logger.warning("[startup] nse_holidays.json unreadable (%s) — refetching", exc)
+    else:
+        logger.info("[startup] data/nse_holidays.json not found — running first-time calendar fetch…")
     try:
         from core.intelligence.rl.calendar_updater import update_calendar
         result = update_calendar()
-        logger.info("[startup] Calendar file created with %d years: %s", len(result), list(result.keys()))
+        logger.info("[startup] Calendar file updated with %d years: %s", len(result), list(result.keys()))
     except Exception as exc:
         logger.warning("[startup] Calendar fetch failed (using hardcoded fallback): %s", exc)
 

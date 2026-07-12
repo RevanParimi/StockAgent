@@ -428,6 +428,15 @@ class AutomobileScheduler:
                 result.get("paper", {}).get("reviewed"),
                 result.get("dark_signals"), result.get("errors"),
             )
+            try:
+                from core.delivery.ops_alerts import alert_job_zero_output
+                alert_job_zero_output(
+                    "discovery_deep_dives",
+                    produced=int(result.get("deep_dives") or 0),
+                    expected=int(result.get("candidates") or 0),
+                )
+            except Exception:
+                pass
         except Exception as exc:
             logger.error("[Scheduler] Discovery FAILED: %s", exc, exc_info=True)
         _job_banner("Weekly Discovery Funnel", done=True)
@@ -496,6 +505,7 @@ class AutomobileScheduler:
             except Exception as exc:
                 return t, s, None, exc
 
+        succeeded = 0
         with _cf.ThreadPoolExecutor(max_workers=max_w) as executor:
             futures = {
                 executor.submit(_review_one, entry): entry
@@ -509,6 +519,7 @@ class AutomobileScheduler:
                             "[Scheduler] Daily review FAILED for %s: %s", ticker, err, exc_info=True
                         )
                     else:
+                        succeeded += 1
                         logger.info(
                             "[Scheduler] %s %s sector=%s — status=%s direction=%s lessons=%s weights=v%s",
                             ticker, review_date, sector,
@@ -521,6 +532,14 @@ class AutomobileScheduler:
                     logger.error("[Scheduler] Daily review TIMED OUT after 180s")
                 except Exception as exc:
                     logger.error("[Scheduler] Unexpected error in daily review: %s", exc, exc_info=True)
+
+        try:
+            # AUD-039: "all reviews failed but the job logged complete" must page.
+            from core.delivery.ops_alerts import alert_job_zero_output
+            alert_job_zero_output("daily_review", produced=succeeded,
+                                  expected=len(ticker_entries))
+        except Exception:
+            pass
 
         # Compass: advisor + autopilot + digest run EVENT-TRIGGERED on review
         # completion (AUD-043 — this hook existed only on the HTTP path before;
@@ -791,6 +810,13 @@ class AutomobileScheduler:
             except Exception as exc:
                 logger.warning("[Scheduler] Event ingest failed for %s: %s", ticker, exc, exc_info=True)
         logger.info("[Scheduler] Weekly event ingestion complete — total ingested=%d", total)
+        try:
+            # AUD-039: a genuinely quiet week can produce 0 too — one deduped
+            # push beats the silent 100%-LLM-failure day (2026-07-11).
+            from core.delivery.ops_alerts import alert_job_zero_output
+            alert_job_zero_output("event_ingestion", produced=total, expected=len(tickers))
+        except Exception:
+            pass
         _job_banner("Weekly Event Ingestion", done=True)
 
     def _research_loop_job(self) -> None:

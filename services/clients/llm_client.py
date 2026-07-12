@@ -129,6 +129,12 @@ def record_llm_call(
     except Exception as exc:
         logger.warning("[llm_client] telemetry DB write failed (non-fatal): %s", exc)
     try:
+        # AUD-039: consecutive-failure streak → one throttled critical alert.
+        from core.delivery.ops_alerts import record_llm_result
+        record_llm_result(success)
+    except Exception as exc:
+        logger.debug("[llm_client] ops-alert hook failed (non-fatal): %s", exc)
+    try:
         _LLM_LOG_DIR.mkdir(parents=True, exist_ok=True)
         log_path = _LLM_LOG_DIR / f"{date.today().isoformat()}.jsonl"
         entry = json.dumps({

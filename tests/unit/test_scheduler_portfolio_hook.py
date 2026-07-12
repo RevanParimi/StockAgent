@@ -52,3 +52,44 @@ def test_run_reviews_respects_cadence(monkeypatch):
     assert "MARUTI" in ran and "INFY" not in ran
     statuses = {r["ticker"]: r["status"] for r in results}
     assert statuses["INFY"] == "skipped_cadence"
+
+
+def test_scheduled_daily_review_job_triggers_pipeline(monkeypatch):
+    """AUD-043: the APScheduler cron job itself (not just the HTTP path) must
+    event-trigger the portfolio pipeline after reviews complete."""
+    import services.scheduler.python.scheduler as sch
+    import core.intelligence.rl.workflows.daily_review as dr
+    import core.portfolio.pipeline as pl
+
+    calls = {}
+    monkeypatch.setattr(dr, "run_daily_review",
+                        lambda t, d, sector=None: {"status": "completed"})
+    monkeypatch.setattr(pl, "run_post_review_pipeline",
+                        lambda d: calls.setdefault("date", d) or {"status": "completed"})
+    monkeypatch.setattr(sch, "get_active_tickers_with_sector",
+                        lambda: [{"sym": "MARUTI", "sector": "automobile"}])
+
+    sch.AutomobileScheduler()._daily_review_job()
+
+    assert "date" in calls, "scheduled job never invoked the portfolio pipeline"
+    # review date must be the last trading day strictly before today (AUD-051)
+    from core.intelligence.rl.nse_calendar import is_trading_day, now_ist
+    assert calls["date"] < now_ist().date()
+    assert is_trading_day(calls["date"])
+
+
+def test_scheduled_daily_review_job_survives_pipeline_failure(monkeypatch):
+    import services.scheduler.python.scheduler as sch
+    import core.intelligence.rl.workflows.daily_review as dr
+    import core.portfolio.pipeline as pl
+
+    monkeypatch.setattr(dr, "run_daily_review",
+                        lambda t, d, sector=None: {"status": "completed"})
+
+    def boom(review_date):
+        raise RuntimeError("pipeline exploded")
+    monkeypatch.setattr(pl, "run_post_review_pipeline", boom)
+    monkeypatch.setattr(sch, "get_active_tickers_with_sector",
+                        lambda: [{"sym": "MARUTI", "sector": "automobile"}])
+
+    sch.AutomobileScheduler()._daily_review_job()   # must not raise

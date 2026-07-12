@@ -9,8 +9,10 @@ platform (Railway, AWS, GCP, local) without a separate process or service.
 
 Three scheduled jobs
 --------------------
-1. rl_daily_review       — every weekday 4:30 pm IST (11:00 UTC)
-                           Runs the 8-step RL feedback loop for all tickers.
+1. rl_daily_review       — Mon–Fri 4:30 pm IST (FEEDBACK_CRON, IST-native fields)
+                           Runs the 8-step RL feedback loop for all tickers,
+                           then event-triggers the Compass portfolio pipeline
+                           (advisor → autopilot → digest, AUD-043).
                            Requires a prediction envelope to exist (created by job 2).
 
 2. rl_monthly_forecast   — 1st of every month 9:00 am IST (03:30 UTC)
@@ -129,7 +131,7 @@ class AutomobileScheduler:
 
         scheduler = BackgroundScheduler(timezone="Asia/Kolkata")
 
-        # ── Job 1: Daily RL review (4:30 pm IST = 11:00 UTC weekdays) ────────
+        # ── Job 1: Daily RL review (FEEDBACK_CRON — IST-native fields, named days) ──
         fb_parts = settings.FEEDBACK_CRON.split()
         if len(fb_parts) == 5:
             fb_minute, fb_hour, fb_day, fb_month, fb_dow = fb_parts
@@ -463,16 +465,17 @@ class AutomobileScheduler:
 
     def _daily_review_job(self) -> None:
         """
-        Review yesterday's trading session for all configured tickers.
-        Steps back over weekends so Monday's job reviews Friday's session.
-        Each ticker has a 3-minute timeout to prevent a stalled LLM call from
-        blocking the entire review loop.
+        Review the previous trading session for all configured tickers.
+        Holiday-aware (AUD-051): the day after a weekday NSE holiday reviews
+        the last real session, not the holiday. Each ticker has a 3-minute
+        timeout to prevent a stalled LLM call from blocking the entire loop.
+        After the reviews, the Compass portfolio pipeline runs event-triggered
+        (AUD-043) — advisor → autopilot → value point → digest.
         """
         from core.intelligence.rl.workflows.daily_review import run_daily_review
+        from core.intelligence.rl.nse_calendar import now_ist, trading_days_ago
 
-        review_date = date.today() - timedelta(days=1)
-        while review_date.weekday() >= 5:
-            review_date -= timedelta(days=1)
+        review_date = trading_days_ago(now_ist().date(), 1)
 
         ticker_entries = get_active_tickers_with_sector()
         _job_banner(f"RL Daily Review — {review_date.isoformat()} ({len(ticker_entries)} tickers)")
@@ -518,6 +521,20 @@ class AutomobileScheduler:
                     logger.error("[Scheduler] Daily review TIMED OUT after 180s")
                 except Exception as exc:
                     logger.error("[Scheduler] Unexpected error in daily review: %s", exc, exc_info=True)
+
+        # Compass: advisor + autopilot + digest run EVENT-TRIGGERED on review
+        # completion (AUD-043 — this hook existed only on the HTTP path before;
+        # the scheduled job never traded). Non-fatal: a pipeline failure must
+        # never mark the reviews themselves as failed.
+        try:
+            from core.portfolio.pipeline import run_post_review_pipeline
+            summary = run_post_review_pipeline(review_date)
+            logger.info("[Scheduler] Post-review portfolio pipeline: %s", summary)
+        except Exception as exc:
+            logger.error(
+                "[Scheduler] Post-review portfolio pipeline FAILED (non-fatal): %s",
+                exc, exc_info=True,
+            )
 
         _job_banner("RL Daily Review", done=True)
 

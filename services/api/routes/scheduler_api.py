@@ -63,11 +63,9 @@ def _check_auth(key: str | None) -> None:
 # ---------------------------------------------------------------------------
 
 def _last_trading_day() -> date:
-    """Most recent weekday before today (skips weekends; not NSE-holiday-aware for simplicity)."""
-    d = date.today() - timedelta(days=1)
-    while d.weekday() >= 5:
-        d -= timedelta(days=1)
-    return d
+    """Most recent NSE trading day strictly before today, IST (AUD-051)."""
+    from core.intelligence.rl.nse_calendar import now_ist, trading_days_ago
+    return trading_days_ago(now_ist().date(), 1)
 
 
 def _trading_days_for_backfill(month: str | None = None) -> list[date]:

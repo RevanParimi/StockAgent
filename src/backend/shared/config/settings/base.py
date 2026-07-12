@@ -294,8 +294,11 @@ WEIGHT_ACCURACY_WINDOW: int = cfg("rl.weight_accuracy_window", fallback=7)
 WEIGHT_BOOST_HIT_RATE: float = cfg("rl.weight_boost_hit_rate", fallback=0.70)    # ≥70% hit rate → apply weight boost
 WEIGHT_PENALTY_HIT_RATE: float = cfg("rl.weight_penalty_hit_rate", fallback=0.40)  # ≤40% hit rate → apply weight penalty
 
-# Cron expression for the daily feedback review job (default: weekdays 4:30pm IST = 11:00 UTC)
-FEEDBACK_CRON: str = cfg("scheduler.feedback_cron", env="FEEDBACK_CRON", fallback="0 11 * * 1-5")
+# Cron expression for the daily feedback review job. Fields are fed RAW into
+# an APScheduler CronTrigger with timezone="Asia/Kolkata" — write IST times and
+# NAMED days only. (AUD-038: the old "0 11 * * 1-5" was meant as 16:30-IST-as-UTC,
+# but APScheduler read it as 11:00 IST Tue–Sat — numeric cron days are 0=Mon.)
+FEEDBACK_CRON: str = cfg("scheduler.feedback_cron", env="FEEDBACK_CRON", fallback="30 16 * * mon-fri")
 
 # ---------------------------------------------------------------------------
 # P5 — Regime Detection Thresholds

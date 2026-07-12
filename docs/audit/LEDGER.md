@@ -254,3 +254,95 @@ Still OPEN from Phases 0–2 (deferred by scope decision, unchanged): AUD-005
 (resolved earlier), 008, 009 (mechanism fixed via 003; digest cosmetics remain),
 010, 011, 012 (ON HOLD), 013–022, 024–037, 041, 042a residual (key limit/balance
 check), 047, 048.
+
+## Phase 3 — Data layer (2026-07-12, HEAD f2177e8)
+
+`ph3` = full read of services/data/* (fetchers, stores, cache, context wiring),
+prediction_store, symbol_resolver, indicators/fetcher, daily_review fetch path,
+server.py self-heal. `probe` = live read-only NSE probe run locally 2026-07-12
+(fetch_equity_historical_data + actions() across MARUTI/TCS/HDFCBANK/SUNPHARMA/
+ITC/VEDL, 60 action rows). `plog` = prod deploy logs via Railway MCP 2026-07-12.
+
+| ID | Tag | Sev | Where | Defect | Evidence | Action | Status |
+|----|-----|-----|-------|--------|----------|--------|--------|
+| AUD-052 | BUG | P2 | `core/portfolio/corp_actions.py:25,81-97` | `_DIV_RE.search` captures the FIRST amount only — NSE combines interim+special dividends in one row ("Interim Dividend Rs 11 Per Share/ Special Dividend Rs 46 Per Share", TCS pattern EVERY January; "Dividend - Rs 6.75 /Special Dividend - Rs 2.75", ITC 2023): the special slice is silently dropped from cash credit + P&L. Risk universe-dependent (TCS/ITC not in current 16) but the class is live for any promoted holding | probe (real rows) | FIX (parse every `dividend…amount` segment, sum; effort L) | OPEN (wave) |
+| AUD-053 | GAP | P2 | `core/portfolio/corp_actions.py:parse_action` | Demerger rows return None with **no warning** — a demerger on a held stock leaves adj basis unadjusted → phantom −X% "crash" on ex-date → false EXIT/stop fire (exactly the class this module exists to prevent; the split/bonus branch does warn). Real rows: ITC 06-Jan-2025, VEDL 30-Apr-2026 | probe; corp_actions.py:98-101 warns only for split/bonus | FIX (WARN + mark holding corp-action-unverifiable + suppress auto-EXIT on demerger ex-date) | OPEN (wave) |
+| AUD-054 | BUG | P2 | `services/data/fetchers/fundamentals.py:27-33` | Private `_nse_ticker` bypasses symbol_resolver AND `YF_SYMBOL_OVERRIDES` — TATAMOTORS (managed, automobile) hits `TATAMOTORS.NS`, stale/dead since the 2025 demerger (override says TMPV.NS) → analyst fundamentals context empty or wrong-entity daily. Same naive-suffix class: analysis_logger.py:76 (log-only, P3), ui_data.py:1129/2284/3474 (chat, mixed) | ph3; settings/base.py:158-163 | FIX (route through resolve_yf_symbol; effort L) | OPEN (wave) |
+| AUD-055 | GAP | P2 | `src/backend/shared/data/fetchers/symbol_resolver.py:107-136` | Wrong-company cache-poisoning guard only protects tickers present in static `TICKER_SECTOR` — unknown symbols (discovery shelf, user adds, future promotions) may still learn a wrong-company mapping from a single "valid" fuzzy Yahoo match and keep it forever. Companion of the portfolio-page "validate before promotion" follow-up | ph3 | FIX (unknowns: require name-similarity or exact-root; or resolve+validate at promotion time) | OPEN (Ph6/wave) |
+| AUD-056 | PATTERN | P2 | `core/intelligence/algorithms/indicators/fetcher.py:258-294,548-581` | `get_technical_context` hardcodes correlation/beta vs `NIFTY_AUTO_TICKER` and automobile-peer Serper fallback queries — and it feeds the unified analyst for ALL sectors (bundle_builder.py:283-285, builder.py:144-146,825-827): banking/IT/renewable prompts carry "Nifty Auto Correlation/Beta" as decision input | ph3 | FIX (sector→index map in SECTOR_SPECS; feeds Ph4/5 decision-quality review) | OPEN (Ph4) |
+| AUD-057 | LOWIMPACT | P3 | `services/data/stores/api_usage.py`, `nse_key_registry.py:117-122`, symbol/company caches | Non-atomic `write_text` + in-process-only threading locks across 2 uvicorn workers + scheduler → lost updates / torn JSON (Serper monthly counter undercounts → false quota headroom; registry/caches degrade gracefully) | ph3 | FIX (shared temp+rename util, one polish commit) | OPEN (polish) |
+| AUD-058 | LOWIMPACT | P3 | `prediction_store.py:127`, `news.py:37`, `close_verifier.py:47`, `bhavcopy.py:97`, `api_usage.py:55` | `date.today()`/`utcnow()` = server TZ (UTC): cycle ids, day-cache keys and month counters shift between 00:00–05:30 IST and at month boundaries. Latent — all scheduled jobs run 08:50–18:00 IST | ph3 | KEEP (document) or fold into an ist_today() helper during a wave | OPEN (polish) |
+| AUD-059 | OVERENG | P3 | `services/data/fetchers/nse_market.py` | Second NSE client library (`nsepython`) shipped alongside the `nse` package for FII/DII + a second bulk-deals path — two scraper deps to break independently | ph3 | Ph6 consolidation candidate | OPEN (Ph6) |
+
+**Updates to seeded rows (Phase 3 verification):**
+
+- AUD-017 — confirmed + widened: `mkdtemp` per call across **9 prod files** (bhavcopy
+  ×2 per fetch_day — client + folder arg, bhavcopy.py:52,65; corporate_events per
+  symbol; close_verifier per ticker/day; nse_announcements, bulk_block, surveillance,
+  ipo, index_watch, nse_key_registry.seed). Target is container /tmp (resets on
+  redeploy), NOT the volume — the 800-day backfill left ~1,600 dirs+CSVs in the
+  then-running container. Fix: one shared download dir with cleanup. Severity stays P2.
+- AUD-024 — confirmed, pinned prediction_store.py:119 (`mkdir` in `__init__`).
+  Read-heavy constructors are everywhere (analytics routes build stores per request
+  per ticker: analytics.py:168,304,377,438,503,584) → empty dirs accumulate on the
+  volume. FIX: mkdir lazily on write paths only.
+- AUD-025 — **escalated P2→P1, prod-confirmed.** The startup self-heal iterates ALL
+  managed tickers (`get_active_tickers()`, 16 across 4 sectors) but constructs
+  `PredictionStore(ticker, sector="automobile")` (server.py:164) and calls
+  `generate_forecast(ticker)` / `run_daily_review(ticker, date)` WITHOUT sector —
+  both default to "automobile" (generate_forecast.py:406, daily_review.py:391). For
+  12 non-auto tickers: envelope lookup misses (wrong root) → regenerates through the
+  AUTOMOBILE analyst → writes a shadow envelope under data/predictions/automobile/
+  <TICKER>/ → backfills a month of daily reviews against it. Monthly checkpoint
+  (data/self_heal_checkpoint_YYYY-MM.json) makes the burn recur on the first deploy
+  of every month: ~12 forecasts + ~12×20 reviews of wrong-sector LLM spend, plus a
+  growing shadow tree the real scheduler jobs (which pass correct sectors) never
+  read. Prod: 2026-07-12 08:29 IST startup logs show all 16 tickers checkpoint-
+  skipped for cycle 2026-07 → the July burn already happened. Secondary hardcodes:
+  prediction_store.py:345 (`sector or "automobile"` in load_control_log),
+  scheduler_api.py:163 (default param). FIX: use get_active_tickers_with_sector()
+  and pass sector through (effort L, impact H — cost + data hygiene). Volume
+  `ls data/predictions/automobile/` (expect 12 shadow dirs) pending — railway ssh
+  needs user-named prod target.
+- AUD-041 — root cause pinned: `get_news_context` (news.py:274-317) applies **no
+  date filter at all** — no Serper time-range param, no post-filter on the dates it
+  already parses via `_normalize_date` — yet stamps output "last 48h context"
+  (news.py:305). FeedbackAgent correlates months-old articles with today's move
+  (prod: 2026-05-13 article in TATAMOTORS "48h" context on 2026-07-11). Also
+  `_normalize_date` returns the RAW STRING on parse failure (news.py:60) → junk in
+  prompt date tags. FIX: post-filter to review_date−2d + honest header + drop
+  unparseable dates (effort L). Upgrade P2→P1 candidate: this is a direct RL
+  training-signal contaminant.
+- AUD-046 — **RESOLVED (verified low-risk).** Live probe of real `actions()` rows
+  (60 rows, 6 symbols, 2015–2026): 100% ₹-per-share formats ("Rs 140 Per Share",
+  "Rs 80/-", "Rs 15 Per Sh" — all parse), ZERO percent-of-face-value rows in the
+  NSE feed. Wave-1 percent guard is sufficient; full %-parser unnecessary.
+  Superseded by AUD-052 (combined rows) as the real dividend-parse risk.
+
+**Prod observations (context):** current deploy 50a66b18 startup clean; zero
+[close_verifier] lines since deploy — expected, no review job has run post-deploy
+(Wave-1 cron = Mon–Fri 16:30 IST; next fire Mon 2026-07-13). Historical-data API
+keys verified against live NSE: `mtimestamp`/`chClosingPrice` exactly as
+close_verifier expects, rows oldest→newest (package docstring claiming mTIMESTAMp
+is wrong, code is right).
+
+**Test coverage vs failure modes:** close_verifier 12 unit tests (all NSE-mocked;
+the live-API key-shape assumption was untested until this probe) · news staleness
+UNTESTED (get_news_context appears only as a mock in RL tests) · fundamentals
+symbol resolution UNTESTED (an "honors YF_SYMBOL_OVERRIDES" test would have caught
+AUD-054) · corp_actions combined-dividend + demerger rows UNTESTED · self-heal
+sector wiring UNTESTED (same false-confidence class as AUD-043's hook test).
+Pattern from Phase 2 holds: every defect sits in untested territory.
+
+**Component verdicts (Phase 3 protocol step 5):**
+`eod_store.py` KEEP (atomic per-day parquet, regex-filtered, corrupt-skip) ·
+`bhavcopy.py` KEEP+FIX (AUD-017 ×2/call) · `corporate_events.py` KEEP+FIX (mkdtemp;
+parser fixes live in corp_actions AUD-052/053) · `news.py` FIX (AUD-041) ·
+`close_verifier.py` KEEP (live-verified, well-tested — the strongest file in the
+layer) · `symbol_resolver.py` KEEP+FIX (AUD-055 unknown-ticker guard) ·
+`fundamentals.py` FIX (AUD-054) · `prediction_store.py` KEEP+FIX (AUD-024, :345
+hardcode) · `server.py` self-heal FIX (AUD-025 P1) · `nse_key_registry.py` KEEP
+(+AUD-057 polish) · `daily_review._fetch_actual_close` KEEP (overrides + BSE + C++
+fallbacks + NSE cross-check — the reference implementation) · macro_cache /
+nse_market / mf_herding / bulk_block / surveillance / ipo KEEP (house pattern
+conformant) · `api_usage.py` KEEP+polish (AUD-057).

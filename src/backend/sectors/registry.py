@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from pathlib import Path
 from typing import Any
 
@@ -25,7 +26,11 @@ logger = logging.getLogger(__name__)
 # Toggle config — loaded once at import
 # ---------------------------------------------------------------------------
 
-_TOGGLES_PATH = Path(__file__).parents[3] / "config" / "sector_toggles.json"
+# CWD-relative (AUD-040): `Path(__file__).parents[3]` resolved to the
+# filesystem ROOT inside the Docker image (src/backend/ ships as /app/backend/,
+# one level shallower than in the repo) — the file never loaded in prod.
+# Both layouts run with CWD at the app/repo root, where config/ lives.
+_TOGGLES_PATH = Path(os.getenv("SECTOR_TOGGLES_PATH", "config/sector_toggles.json"))
 
 def _load_toggles() -> dict[str, dict]:
     try:
@@ -33,7 +38,7 @@ def _load_toggles() -> dict[str, dict]:
             raw = json.load(f)
         return {k: v for k, v in raw.items() if not k.startswith("_")}
     except Exception as exc:
-        logger.warning("[SectorRegistry] Could not load sector_toggles.json: %s — using defaults", exc)
+        logger.info("[SectorRegistry] sector_toggles.json not loaded (%s) — using defaults", exc)
         return {
             "automobile":       {"enabled": True,  "tier": "backend"},
             "banking_bfsi":     {"enabled": True,  "tier": "backend"},

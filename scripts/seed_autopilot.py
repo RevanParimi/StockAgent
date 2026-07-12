@@ -51,6 +51,7 @@ def seed(user_id: str, pot: float, base_dir: str | None = None,
     budget = pot / len(tickers)
     day = on.isoformat()
     seeded, skipped, spent = 0, [], 0.0
+    txns: list[TransactionRecord] = []
     for t in tickers:
         sym = t["sym"].strip().upper()
         sector = (t.get("sector") or "generic").strip().lower()
@@ -72,7 +73,7 @@ def seed(user_id: str, pot: float, base_dir: str | None = None,
         value = round(qty * price, 2)
         cash_before = round(pot - spent, 2)
         spent += value
-        store.append_transaction(TransactionRecord(
+        txns.append(TransactionRecord(
             txn_id=make_txn_id(user_id, day, sym, "BUY", "seed"),
             date=day, ts=datetime.now(timezone.utc).isoformat(),
             user_id=user_id, symbol=sym, side="BUY", qty=qty, price=price,
@@ -84,7 +85,12 @@ def seed(user_id: str, pot: float, base_dir: str | None = None,
     p.capital_in = float(pot)
     p.cash_deployable = round(pot - spent, 2)
     p.autopilot = True
+    # Portfolio first, ledger second (AUD-049): a crash mid-append leaves an
+    # intact money state and a backfillable ledger — the reverse order left
+    # orphan txns that also blocked the idempotency re-seed check.
     store.save(p)
+    for txn in txns:
+        store.append_transaction(txn)
     closes = {h.symbol: h.adj_avg_price for h in p.holdings}
     record_value_point(store, p, closes, on)
     return {"seeded": seeded, "skipped": skipped,

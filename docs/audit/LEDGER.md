@@ -301,9 +301,18 @@ ITC/VEDL, 60 action rows). `plog` = prod deploy logs via Railway MCP 2026-07-12.
   skipped for cycle 2026-07 → the July burn already happened. Secondary hardcodes:
   prediction_store.py:345 (`sector or "automobile"` in load_control_log),
   scheduler_api.py:163 (default param). FIX: use get_active_tickers_with_sector()
-  and pass sector through (effort L, impact H — cost + data hygiene). Volume
-  `ls data/predictions/automobile/` (expect 12 shadow dirs) pending — railway ssh
-  needs user-named prod target.
+  and pass sector through (effort L, impact H — cost + data hygiene). **Volume
+  CONFIRMED (user ran `railway ssh "ls data/predictions/automobile/"` 2026-07-12):
+  33 ticker dirs under automobile/ — all 12 non-auto managed tickers present
+  (SUZLON, INOXWIND, WAAREEENER, ADANIGREEN, YESBANK, IDFCFIRSTB, RBLBANK, PAYTM,
+  OLAELEC, KPITTECH, PERSISTENT, TATAELXSI, HAPPSTMNDS, OLECTRA) plus legacy auto
+  names (APOLLOTYRE, BALKRISIND, BOSCHLTD, CEATLTD, ESCORTS, MOTHERSON, MRF,
+  TIINDIA…). BONUS defect evidence for AUD-024: malformed sibling dirs
+  `'TATA MOTORS'` (space) next to TATAMOTORS and `TVSMOTORS` next to TVSMOTOR —
+  some call path constructs PredictionStore with raw un-normalized display names
+  and mkdir-on-init mints a junk dir each time (PredictionStore strips/uppercases
+  but never validates against the registry). Cleanup of the shadow+junk dirs
+  belongs in the AUD-025 fix wave.**
 - AUD-041 — root cause pinned: `get_news_context` (news.py:274-317) applies **no
   date filter at all** — no Serper time-range param, no post-filter on the dates it
   already parses via `_normalize_date` — yet stamps output "last 48h context"

@@ -83,7 +83,9 @@ scheduler:
   enabled: false                 # master switch (true in Railway prod via env)
   cron: "30 8 * * 1-5"           # weekdays 8:30am IST
   tickers: ["MARUTI", "TATAMOTORS", "M&M", "HEROMOTOCO", "BAJAJ-AUTO"]
-  feedback_cron: "0 11 * * 1-5"  # daily RL review: weekdays 4:30pm IST = 11:00 UTC
+  # Fields go RAW into CronTrigger(timezone="Asia/Kolkata") — IST times, NAMED
+  # days only (numeric days are 0=Mon in APScheduler: "1-5" meant Tue–Sat, AUD-038).
+  feedback_cron: "30 16 * * mon-fri"  # daily RL review: Mon–Fri 16:30 IST
   alert_score_change_threshold: 0.10
   alert_on_verdict_change: true
   alert_channels: ["console", "file"]

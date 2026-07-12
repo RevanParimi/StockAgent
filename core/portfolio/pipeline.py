@@ -132,6 +132,17 @@ def run_post_review_pipeline(review_date: date) -> dict:
             logger.warning("[portfolio_pipeline] value point failed for %s (non-fatal): %s",
                            user_id, exc)
 
+        # Step 3.6 — ledger ⇄ portfolio reconciliation (AUD-006, detect+alert).
+        try:
+            from core.portfolio.reconcile import reconcile
+            rec_result = reconcile(store)
+            if rec_result["status"] == "drift":
+                logger.error("[portfolio_pipeline] reconciliation drift for %s: %s",
+                             user_id, rec_result["issues"])
+        except Exception as exc:
+            logger.warning("[portfolio_pipeline] reconcile failed for %s (non-fatal): %s",
+                           user_id, exc)
+
         # Step 4 — digest.
         try:
             store.save_digest(build_digest(user_id, review_date, advice, portfolio,

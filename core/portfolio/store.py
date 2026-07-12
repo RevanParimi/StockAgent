@@ -324,7 +324,7 @@ def import_csv(
     price_lookup=None,
 ) -> dict:
     store = PortfolioStore(user_id=user_id, base_dir=base_dir)
-    imported, errors = 0, []
+    imported, errors, total_value = 0, [], 0.0
     reader = csv.DictReader(io.StringIO(text))
     for i, row in enumerate(reader, start=2):   # row 1 = header
         try:
@@ -344,8 +344,18 @@ def import_csv(
                 adj_avg_price=price, adj_qty=qty, buy_date=buy_date,
             ))
             imported += 1
+            total_value += qty * price
         except Exception as exc:
             errors.append({"row": i, "error": str(exc)})
+    # Fresh capital in, matching POST /holdings (AUD-007 parity): imported
+    # positions raise capital_in when cash accounting is on, so total_pnl
+    # (= equity − capital_in) isn't inflated by the import.
+    if imported and total_value > 0:
+        with store.locked():
+            p = store.load()
+            if p.cash_deployable is not None:
+                p.capital_in = round(p.capital_in + total_value, 2)
+                store.save(p)
     return {"imported": imported, "errors": errors}
 
 

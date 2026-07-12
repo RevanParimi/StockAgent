@@ -126,3 +126,44 @@ def test_scheduler_daily_review_future_date_422():
     resp = client.post("/scheduler/daily-review?review_date=2027-01-05")
     assert resp.status_code == 422
     assert "future" in resp.json()["detail"].lower()
+
+
+def test_manual_delete_is_idempotent_and_atomic(client, tmp_path, monkeypatch):
+    """AUD-007: delete = ONE critical section; repeating it must 404 and must
+    not double-record the SELL in the ledger."""
+    _seed_store(tmp_path)
+    monkeypatch.setattr(papi, "close_on", lambda sym, d: 120.0)
+    r1 = client.delete("/portfolio/holdings/MARUTI")
+    assert r1.status_code == 200
+    r2 = client.delete("/portfolio/holdings/MARUTI")
+    assert r2.status_code == 404
+    s = PortfolioStore(user_id="primary", base_dir=str(tmp_path))
+    sells = [t for t in s.load_transactions() if t.side == "SELL" and t.source == "manual"]
+    assert len(sells) == 1
+    p = s.load()
+    assert p.holdings == []
+    assert p.cash_deployable == pytest.approx(10000.0 + 10 * 120.0)
+
+
+def test_manual_add_identical_retry_dedupes(client, tmp_path, monkeypatch):
+    """AUD-007: manual txn ids are state-derived — an identical same-day retry
+    (client timeout + resubmit) must not double-record in the ledger."""
+    _seed_store(tmp_path)
+    monkeypatch.setattr(papi, "close_on", lambda sym, d: 50.0)
+    body = {"symbol": "TCS", "sector": "it_sector", "qty": 5, "buy_date": "2026-07-01"}
+    r1 = client.post("/portfolio/holdings", json=body)
+    r2 = client.post("/portfolio/holdings", json=body)
+    assert r1.status_code == 200 and r2.status_code == 200
+    s = PortfolioStore(user_id="primary", base_dir=str(tmp_path))
+    buys = [t for t in s.load_transactions() if t.side == "BUY" and t.symbol == "TCS"]
+    assert len(buys) == 1, "identical same-day manual add must dedupe in the ledger"
+
+
+def test_import_csv_credits_capital_in(client, tmp_path):
+    """AUD-007 parity: CSV import must credit capital_in like POST /holdings."""
+    _seed_store(tmp_path)
+    csv_text = "symbol,sector,qty,avg_buy_price,buy_date\nINFY,it_sector,4,1500,2026-07-01\n"
+    resp = client.post("/portfolio/import-csv", content=csv_text)
+    assert resp.status_code == 200 and resp.json()["imported"] == 1
+    p = PortfolioStore(user_id="primary", base_dir=str(tmp_path)).load()
+    assert p.capital_in == pytest.approx(11000.0 + 4 * 1500.0)

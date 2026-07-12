@@ -140,28 +140,41 @@ async def add_holding(
         symbol=symbol, sector=sector, qty=body.qty, avg_buy_price=price,
         adj_avg_price=price, adj_qty=body.qty, buy_date=body.buy_date,
     )
-    try:
-        _store(user_id).add_holding(holding)
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc))
-    txn = None
     store = _store(user_id)
-    p = store.load()
-    if p.cash_deployable is not None:
-        value = round(holding.qty * price, 2)
-        p.capital_in = round(p.capital_in + value, 2)   # fresh money in
-        store.save(p)
-        txn = TransactionRecord(
-            txn_id=make_txn_id(p.user_id, body.buy_date, symbol, "BUY",
-                               f"manual-{datetime.now(timezone.utc).isoformat()}"),
-            date=body.buy_date, ts=datetime.now(timezone.utc).isoformat(),
-            user_id=p.user_id, symbol=symbol, side="BUY", qty=body.qty,
-            price=price, value=value, cash_before=p.cash_deployable,
-            cash_after=p.cash_deployable,
-            holding_qty_after=next((h.adj_qty for h in p.holdings
-                                    if h.symbol == symbol), body.qty),
-            source="manual", note="manual add (fresh capital)")
-        store.append_transaction(txn)
+    txn = None
+    # One critical section for the whole read-modify-write (AUD-001/007).
+    with store.locked():
+        p = store.load()
+        # State-derived txn id: an identical same-day resubmit (client retry
+        # after timeout) produces the same id and is skipped ENTIRELY — no
+        # double holding merge, no double capital_in (AUD-007).
+        ref = f"manual-add|{body.buy_date}|{body.qty:g}|{price:g}"
+        tid = make_txn_id(store.user_id, body.buy_date, symbol, "BUY", ref)
+        if p.cash_deployable is not None and any(
+                t.txn_id == tid for t in store.load_transactions(limit=2000)):
+            logger.info("[portfolio_api] duplicate manual add ignored: %s %s", symbol, ref)
+            return {"holding": holding.model_dump(),
+                    "promotion": {"status": "already_managed", "symbol": symbol},
+                    "transaction": None, "duplicate": True}
+        try:
+            store.add_holding(holding)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc))
+        p = store.load()
+        if p.cash_deployable is not None:
+            value = round(holding.qty * price, 2)
+            p.capital_in = round(p.capital_in + value, 2)   # fresh money in
+            txn = TransactionRecord(
+                txn_id=tid,
+                date=body.buy_date, ts=datetime.now(timezone.utc).isoformat(),
+                user_id=p.user_id, symbol=symbol, side="BUY", qty=body.qty,
+                price=price, value=value, cash_before=p.cash_deployable,
+                cash_after=p.cash_deployable,
+                holding_qty_after=next((h.adj_qty for h in p.holdings
+                                        if h.symbol == symbol), body.qty),
+                source="manual", note="manual add (fresh capital)")
+            store.append_transaction(txn)
+            store.save(p)
     promotion = promote_symbol(symbol, sector, origin="held")
     return {"holding": holding.model_dump(), "promotion": promotion,
             "transaction": (txn.model_dump() if txn else None)}
@@ -181,27 +194,40 @@ async def delete_holding(
         raise HTTPException(status_code=404, detail=f"No holding {symbol.upper()}")
     txn = None
     if p.cash_deployable is not None:
+        # Price BEFORE the lock (network call) — the critical section below
+        # stays milliseconds wide (AUD-001/007).
         try:
             price = await asyncio.to_thread(close_on, h.symbol, date.today())
         except Exception as exc:
             logger.warning("[portfolio_api] sell price failed for %s, "
                            "falling back to adj_avg_price: %s", h.symbol, exc)
             price = h.adj_avg_price
-        qty = h.adj_qty
-        cash_before = p.cash_deployable
-        realized, _removed = store.reduce_holding(h.symbol, qty, price)
-        p = store.load()
-        p.cash_deployable = round(p.cash_deployable + qty * price, 2)
-        store.save(p)
-        txn = TransactionRecord(
-            txn_id=make_txn_id(p.user_id, date.today().isoformat(), h.symbol,
-                               "SELL", f"manual-{datetime.now(timezone.utc).isoformat()}"),
-            date=date.today().isoformat(), ts=datetime.now(timezone.utc).isoformat(),
-            user_id=p.user_id, symbol=h.symbol, side="SELL", qty=qty, price=price,
-            value=round(qty * price, 2), cash_before=cash_before,
-            cash_after=p.cash_deployable, holding_qty_after=0.0,
-            realized_pnl=realized, source="manual", note="manual delete")
-        store.append_transaction(txn)
+        # ONE atomic critical section: sell + cash credit + txn + single save
+        # (AUD-007: the old 3-write sequence could crash after the holding was
+        # removed but before the cash credit — money vanished, ledger silent).
+        with store.locked():
+            p = store.load()
+            h = next((x for x in p.holdings if x.symbol == symbol.upper()), None)
+            if h is None:   # deleted concurrently between check and lock
+                raise HTTPException(status_code=404,
+                                    detail=f"No holding {symbol.upper()}")
+            qty = h.adj_qty
+            cash_before = p.cash_deployable
+            realized = h.sell(qty, price)
+            p.holdings = [x for x in p.holdings if x.symbol != h.symbol]
+            p.cash_deployable = round(p.cash_deployable + qty * price, 2)
+            today = date.today().isoformat()
+            txn = TransactionRecord(
+                txn_id=make_txn_id(p.user_id, today, h.symbol, "SELL",
+                                   f"manual-delete|{today}|{qty:g}|{price:g}"),
+                date=today, ts=datetime.now(timezone.utc).isoformat(),
+                user_id=p.user_id, symbol=h.symbol, side="SELL", qty=qty, price=price,
+                value=round(qty * price, 2), cash_before=cash_before,
+                cash_after=p.cash_deployable, holding_qty_after=0.0,
+                realized_pnl=realized, source="manual", note="manual delete")
+            if txn.txn_id not in {t.txn_id for t in store.load_transactions(limit=2000)}:
+                store.append_transaction(txn)
+            store.save(p)
     else:
         if not store.remove_holding(symbol):
             raise HTTPException(status_code=404, detail=f"No holding {symbol.upper()}")

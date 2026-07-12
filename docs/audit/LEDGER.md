@@ -125,3 +125,94 @@ during the window (fetcher resilience → Ph3).
 - AUD-030 — **resolved KEEP**: `core/pipeline/orchestrator.py` is a live migration shim
   (sector_router resolves automobile's orchestrator through it). Do not delete without
   updating sector_router._ORCHESTRATORS.
+
+## Phase 2 — Money path (2026-07-12, HEAD 98449af)
+
+`ph2` = full read of core/portfolio/* + schemas + portfolio_api/scheduler_api +
+scheduler.py + nse_calendar/calendar_updater, cross-checked against prod via Railway
+logs and read-only API probes. 129 money-path unit tests pass at HEAD — every defect
+below lives in untested territory.
+
+| ID | Tag | Sev | Where | Defect | Evidence | Action | Status |
+|----|-----|-----|-------|--------|----------|--------|--------|
+| AUD-043 | BUG | P1 | `services/scheduler/python/scheduler.py:464-522` | **Autopilot/advisor pipeline unreachable from the production schedule.** `run_post_review_pipeline` (advisor → autopilot → value point → digest → alerts) is called ONLY from HTTP `_review_task` (scheduler_api.py:244) and manual POST /portfolio/run-advisor (portfolio_api.py:384). The APScheduler `rl_daily_review` job runs reviews and returns — no pipeline call. CODEBASE.md:273 documents the intended hook as if live; test_scheduler_portfolio_hook.py patches only the API module (false confidence). Prod signature: zero `[portfolio_pipeline]` lines in any deployment; value_history frozen at the seed point (GET /performance 2026-07-12: 1 point, 2026-07-11); autopilot=true but nothing will ever trade. **No auto-trades Tue 2026-07-14 without a fix or a manual daily POST /scheduler/daily-review** | ph2; plog; /performance probe | FIX (wire `_daily_review_job` → pipeline; impact H, effort L) — USER-DECISION: hotfix before Tue 2026-07-14? | OPEN (URGENT) |
+| AUD-044 | BUG | P1 | `services/api/routes/portfolio_api.py:365-388` + `core/portfolio/autopilot.py:270,280-284` | Future-dated POST /portfolio/run-advisor bricks autopilot: any future weekday passes `is_trading_day`, all `close_on` calls fail → advice empty → `execute_advice` still stamps `last_autopilot_run=<future>` and the monotonic guard then rejects every real run until that date. Also saves a future-dated digest that pins /digest/latest. One typo'd year = autopilot silently dead for months, zero alerts | ph2 (code path) | FIX (reject review_date > today-IST at the route; never stamp marker beyond today; impact H, effort L) | OPEN (Ph2) |
+| AUD-045 | GAP | P2 | `core/portfolio/corp_actions.py:112-113` + `core/portfolio/autopilot.py:307-316` | Dividends are booked to `holding.dividends_received` (inflates pnl% and realized_pnl on sell) but **never credited to cash_deployable** — total_equity = MV + cash excludes them, so the equity curve understates true return while pnl% overstates vs equity; on SELL, ledger `realized_pnl` includes the dividend slice but `cash_after` moves only by qty×price — ledger cash and P&L are mutually inconsistent by construction | ph2 | FIX (credit cash at ex-date, or exclude dividends from realized_pnl — pick one accounting identity) | OPEN (Ph2→wave) |
+| AUD-046 | GAP | P2 | `core/portfolio/corp_actions.py:25,81-87` | Dividend regex assumes ₹-per-share; an NSE row quoting percent-of-face-value ("Dividend 150%") books ₹150/share into dividends_received → pnl% inflated → can suppress a legitimate EXIT (stop math is dividend-inclusive). Tests cover only "Rs 8 Per Share" format | ph2; tests/unit/test_portfolio_corp_actions.py:41-66 | VERIFY real NSE actions() formats in Ph3, then FIX parser (% × face value or reject) | OPEN (Ph3) |
+| AUD-047 | PATTERN | P2 | `core/portfolio/advisor.py:127-131` + `core/portfolio/pipeline.py:63-68` vs `core/portfolio/autopilot.py:220-227` | Two weight definitions in one decision chain: advisor position_weight_pct and pipeline sector_weights use **cost basis** (adj_avg_price), autopilot ADD headroom uses **market value** — the ADD gate and the ADD sizing can disagree on the same holding; SWITCH underweight test also runs on cost. Third instance of the AUD-016 class | ph2 | FIX (one MV-based weight helper shared by advisor/pipeline/autopilot) | OPEN (Ph4 w/ AUD-016) |
+| AUD-048 | LOWIMPACT | P3 | `core/portfolio/advisor.py:73-82,100-124` | Cap-bucket stop machinery is constant in practice: pipeline never passes market_cap_inr, so resolve_cap_bucket always returns "mid" — stops are always clamp(3×ATR, 12, 18) (large-bucket if conservative). large/small buckets + both floor_cr settings are unreachable code | ph2; pipeline.py:93-96 | FIX (wire real mcap) or DELETE the parameter | OPEN (Ph4) |
+| AUD-049 | GAP | P3 | `scripts/seed_autopilot.py:47,75-87` | Seed appends transactions before the single portfolio save; a crash mid-loop leaves txns with no holdings, and the idempotency check then refuses re-seed — recovery requires manual volume surgery. One-time script, low likelihood | ph2 | KEEP (document) or FIX (write txns after save) | OPEN (polish) |
+| AUD-050 | GAP | P2 | `core/portfolio/store.py:83-99` | Corrupt portfolio.json is quarantined and **silently replaced by an empty portfolio** — API keeps serving/saving empty state, autopilot disengages (cash None), no alert fires. Correct crash-safety instinct, wrong failure mode for the money store | ph2; ties to AUD-039 | FIX (alert + refuse mutations while quarantined file exists) | OPEN (Ph7) |
+| AUD-051 | GAP | P3 | `services/scheduler/python/scheduler.py:473-475` + `services/api/routes/scheduler_api.py:65-70` | Both review-date derivations skip weekends but not holidays ("not NSE-holiday-aware for simplicity") — the day after any weekday holiday reviews the holiday and no-ops the whole ticker loop; compounds with AUD-023's missing holidays | ph2 | FIX alongside AUD-038 (use nse_calendar last-trading-day) | OPEN (Ph2 wave) |
+
+**Updates to seeded rows (Phase 2 verification):**
+
+- AUD-001 — **reclassified P0** (was P1). The race window is not milliseconds, it is
+  the WHOLE pipeline run: pipeline.py:50 loads the portfolio, then per-holding network
+  fetches (close_on, 1y OHLCV) + LLM narration run for minutes, then execute_advice
+  saves the stale object (autopilot.py:283,288). Any API mutation in between is
+  silently reverted while its transaction stays in the ledger → ledger/portfolio
+  divergence. Mutation routes run on both uvicorn workers; store.py has zero locking;
+  corp_actions.sync adds a second load-mutate-save. Today the pipeline only runs via
+  manual HTTP (AUD-043) so collisions need a manual trigger; the moment AUD-043 is
+  fixed this is live daily at review time. **Wave-1 rule: file locking must land in
+  the same change that wires the scheduler hook.**
+- AUD-002 — verified; downgrade P3. `Holding.sell` (schemas/portfolio.py:64-72) raises
+  on overdraw; ZeroDivision needs adj_qty exactly 0 with 0<qty≤1e-9, and zero-qty
+  holdings are removed at creation of that state. Theoretical only.
+- AUD-003 — confirmed, pinned: ADD/sell execute at `closes.get(sym) or rec.close`
+  (autopilot.py:75,212) while valuation falls back to adj_avg_price
+  (autopilot.py:120-122). Same-run equity mixes two price bases when closes lacks a
+  symbol. Also: SWITCH buy price from close_on never enters `closes` → digest values
+  the new position at cost and shows NO_DATA (= AUD-009's mechanism, pipeline.py:122).
+- AUD-004 — confirmed for sells only: buys guard `price <= 0` (autopilot.py:213),
+  sells don't (autopilot.py:75) — a 0-price sell would wipe the position for ₹0 cash.
+  Unreachable from today's pipeline (close_on raises instead of returning 0) — P3 in
+  practice, guard still worth adding.
+- AUD-005 — **resolved at HEAD**: existing_ids is refreshed between the sell and buy
+  legs (autopilot.py:275), and within-leg collisions are impossible (txn_id embeds the
+  advice ref incl. rationale_hash, unique per record). No duplicate-id class remains.
+- AUD-006 — confirmed open, sharpened: the dedupe key itself is fragile across a
+  crash-retry because rationale_hash is recomputed from live signals (advisor.py:294);
+  if triggers shift between crash and retry, the retry gets a NEW txn_id and re-sells —
+  portfolio stays consistent (it was never saved) but the ledger records two SELLs for
+  one economic sale and /performance double-counts realized_pnl. Reconciler (replay
+  transactions.jsonl → derived portfolio, diff against portfolio.json) remains the fix.
+- AUD-007 — confirmed + worse: delete flow is THREE sequential writes
+  (reduce_holding save → cash-credit save → txn append, portfolio_api.py:177-204); a
+  crash after the first write destroys the cash credit AND the audit record — the
+  holding is gone, cash never credited, ledger silent. Manual txn ids are
+  datetime-based (portfolio_api.py:156,198) → client retries double-record. Also
+  noted: sell-price fallback to adj_avg_price on fetch failure (line 189) silently
+  sells at cost on data-outage days. CSV import path credits neither capital_in nor
+  cash (store.py:301-330) while POST /holdings does — two manual-entry accountings.
+- AUD-023 — **expanded to P1, root cause found.** Hardcoded 2026 fallback
+  (nse_calendar.py:64-73) is wrong: Mar 4 + Mar 20 were real trading days marked as
+  holidays (labels are shifted guesses: actual Holi was Mar 3, actual Eid Mar 21 —
+  both dates false), and FOUR future weekday holidays are missing — **Sep 14 (Ganesh
+  Chaturthi), Oct 20 (Dussehra), Nov 10 (Diwali Balipratipada), Nov 24 (Guru Nanak)**
+  [NSE 2026 official list]. Root cause: the correcting job `rl_calendar_update` only
+  fires Dec 31 (scheduler.py:171-176) and the service first deployed 2026-05-04
+  (git log) — it has NEVER run, so data/nse_holidays.json cannot exist on the volume
+  (no "[nse_calendar] Loaded" at startup; direct volume check pending — needs
+  `railway ssh -- ls data/`). On each missing-holiday date: close_on treats it as a
+  trading day, gets no data and RAISES instead of walking back (pricing.py:30-35) →
+  every holding skipped, no advice, autopilot stamps the marker for a dead day.
+  FIX: run calendar_updater at startup when file missing/stale + correct the
+  hardcoded list (impact H, effort L).
+- AUD-038 — unchanged (cron still wrong at HEAD); note the interplay: fixing the cron
+  alone doesn't start autopilot (AUD-043), and fixing both still leaves review_date
+  derivation holiday-blind (AUD-051).
+- AUD-042/042a — **key verified WORKING 2026-07-12**: fresh deploy 8d2c6c31 (06:25
+  IST, same commit — env-var change), zero 401s since, and a live /ui/chat/stream
+  probe streamed a real LLM token (not the canned fallback). Residual: confirm the
+  replacement key's monthly limit ≥ $30 (042a trap) — dashboard-only check.
+
+**Component verdicts (Phase 2 protocol step 5):**
+`autopilot.py` KEEP (clean deterministic core; add AUD-004/044 guards) ·
+`store.py` KEEP+FIX (locking AUD-001, corrupt-load AUD-050) ·
+`advisor.py` KEEP+FIX (AUD-047/048) · `pipeline.py` KEEP+FIX (AUD-043 wiring, AUD-001) ·
+`corp_actions.py` KEEP+FIX (AUD-045/046) · `pricing.py` KEEP (correct given a correct
+calendar) · `nse_calendar.py`+`calendar_updater.py` FIX (AUD-023) ·
+`portfolio_api.py` FIX (AUD-007 consolidation, AUD-044 guard) · `digest.py`,
+`narrator.py`, `promotion.py`, seed script KEEP (polish rows only).

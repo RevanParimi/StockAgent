@@ -155,3 +155,28 @@ fec3e7a3 (15:19, live). Verified against real logs:
 - **Misc:** SectorRegistry tries `/config/sector_toggles.json` at fs root (AUD-040);
   SCHEDULER_KEY unset → open endpoints warned at startup; yfinance 401 "Invalid Crumb"
   during the window; a "last 48h" news context contained a 2026-05-13 article (AUD-041).
+
+## 8. Phase 2 census correction — money path (2026-07-12)
+
+Phase 1 marked `core/portfolio/*` LIVE. Phase 2 shows the execution half is
+**DARK, not LIVE**: `run_post_review_pipeline` (advisor → autopilot → value point →
+digest) has no caller on the production schedule — the APScheduler `rl_daily_review`
+job never invokes it; only HTTP `POST /scheduler/daily-review|backfill` and
+`POST /portfolio/run-advisor` reach it (AUD-043). Prod confirms: zero
+`[portfolio_pipeline]` log lines across deployments; value_history has exactly the
+seed point (2026-07-11); autopilot=true with no trades and no digests.
+
+Corollary: the advice ledger, transactions ledger (beyond seed), digests, briefs'
+digest fallback, and the equity curve are all dormant until AUD-043 is fixed or a
+human POSTs daily. The compass expectation "first auto-trades Tue 2026-07-14" does
+not hold on current prod.
+
+Calendar reality (AUD-023 expanded): prod runs on the hardcoded 2026 fallback —
+`rl_calendar_update` fires only Dec 31 and the service first deployed 2026-05-04,
+so `data/nse_holidays.json` has never been written. The fallback list has 2 past
+false holidays (Mar 4, Mar 20) and misses 4 future weekday holidays (Sep 14, Oct 20,
+Nov 10, Nov 24).
+
+OpenRouter key (AUD-042): verified working 2026-07-12 after env-var redeploy
+8d2c6c31 — live chat probe streamed a real LLM token. Monthly-limit check on the
+new key still outstanding.

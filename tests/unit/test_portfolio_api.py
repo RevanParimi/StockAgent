@@ -157,3 +157,11 @@ def test_add_holding_explicit_sector_overrides_registry(client):
     })
     assert resp.status_code == 200
     assert resp.json()["holding"]["sector"] == "pharma"
+
+
+def test_run_advisor_future_date_422(client):
+    """AUD-044: a future review_date would stamp last_autopilot_run forward and
+    brick the monotonic guard — the route must refuse it."""
+    resp = client.post("/portfolio/run-advisor?review_date=2027-01-05")
+    assert resp.status_code == 422
+    assert "future" in resp.json()["detail"].lower()

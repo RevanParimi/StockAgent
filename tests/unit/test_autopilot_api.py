@@ -112,3 +112,17 @@ def test_manual_delete_sells_and_credits_cash(client, tmp_path, monkeypatch):
     p = s.load()
     assert p.holdings == []
     assert p.cash_deployable == pytest.approx(10000.0 + 1300.0)
+
+
+def test_scheduler_daily_review_future_date_422():
+    """AUD-044: same guard on the scheduler trigger route."""
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    import services.api.routes.scheduler_api as sapi
+
+    app = FastAPI()
+    app.include_router(sapi.router)
+    client = TestClient(app)
+    resp = client.post("/scheduler/daily-review?review_date=2027-01-05")
+    assert resp.status_code == 422
+    assert "future" in resp.json()["detail"].lower()

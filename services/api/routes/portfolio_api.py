@@ -379,6 +379,14 @@ async def run_advisor(
             )
     else:
         target = date.today()
+    from core.intelligence.rl.nse_calendar import now_ist
+    if target > now_ist().date():
+        # AUD-044: a future date would stamp last_autopilot_run forward and
+        # brick the executor's monotonic guard until that date passes.
+        raise HTTPException(
+            status_code=422,
+            detail=f"review_date {target} is in the future (IST) — refusing.",
+        )
 
     async def _task() -> None:
         result = await asyncio.to_thread(run_post_review_pipeline, target)

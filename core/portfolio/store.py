@@ -15,8 +15,11 @@ import io
 import json
 import logging
 import re
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
+
+from filelock import FileLock
 
 from core.config import settings
 from backend.shared.schemas.portfolio import (
@@ -39,6 +42,17 @@ class PortfolioStore:
             raise ValueError(f"invalid user_id {self.user_id!r} — allowed: [A-Za-z0-9_-], max 64 chars")
         self._dir = Path(base_dir or settings.PORTFOLIO_DATA_DIR) / self.user_id
         self._dir.mkdir(parents=True, exist_ok=True)
+        # Cross-process guard for every read-modify-write on this user's
+        # portfolio (AUD-001): API workers and the pipeline all contend on
+        # portfolio.json. Re-entrant for the same FileLock instance, so an
+        # outer locked() block may call the locking helpers below.
+        self._lock = FileLock(str(self._dir / "portfolio.lock"), timeout=30)
+
+    @contextmanager
+    def locked(self):
+        """Per-user critical section for load→mutate→save sequences."""
+        with self._lock:
+            yield self
 
     # ------------------------------------------------------------------
     # Paths
@@ -106,52 +120,56 @@ class PortfolioStore:
         h.symbol = h.symbol.strip().upper()
         if h.qty <= 0 or h.avg_buy_price <= 0:
             raise ValueError(f"qty and avg_buy_price must be positive: {h.symbol}")
-        p = self.load()
-        existing = next((x for x in p.holdings if x.symbol == h.symbol), None)
-        if existing:
-            # Merge lots: weighted average on BOTH raw and adjusted figures.
-            total_qty = existing.qty + h.qty
-            existing.avg_buy_price = (
-                existing.avg_buy_price * existing.qty + h.avg_buy_price * h.qty
-            ) / total_qty
-            adj_total = existing.adj_qty + h.adj_qty
-            if adj_total <= 0:
-                raise ValueError(f"adjusted quantity must be positive after merge: {h.symbol}")
-            existing.adj_avg_price = (
-                existing.adj_avg_price * existing.adj_qty + h.adj_avg_price * h.adj_qty
-            ) / adj_total
-            existing.qty = total_qty
-            existing.adj_qty = adj_total
-        else:
-            p.holdings.append(h)
-        self.save(p)
-        return p
+        with self._lock:
+            p = self.load()
+            existing = next((x for x in p.holdings if x.symbol == h.symbol), None)
+            if existing:
+                # Merge lots: weighted average on BOTH raw and adjusted figures.
+                total_qty = existing.qty + h.qty
+                existing.avg_buy_price = (
+                    existing.avg_buy_price * existing.qty + h.avg_buy_price * h.qty
+                ) / total_qty
+                adj_total = existing.adj_qty + h.adj_qty
+                if adj_total <= 0:
+                    raise ValueError(f"adjusted quantity must be positive after merge: {h.symbol}")
+                existing.adj_avg_price = (
+                    existing.adj_avg_price * existing.adj_qty + h.adj_avg_price * h.adj_qty
+                ) / adj_total
+                existing.qty = total_qty
+                existing.adj_qty = adj_total
+            else:
+                p.holdings.append(h)
+            self.save(p)
+            return p
 
     def remove_holding(self, symbol: str) -> bool:
-        p = self.load()
-        before = len(p.holdings)
-        p.holdings = [h for h in p.holdings if h.symbol != symbol.upper()]
-        if len(p.holdings) == before:
-            return False
-        self.save(p)
-        return True
+        with self._lock:
+            p = self.load()
+            before = len(p.holdings)
+            p.holdings = [h for h in p.holdings if h.symbol != symbol.upper()]
+            if len(p.holdings) == before:
+                return False
+            self.save(p)
+            return True
 
     def add_watchlist(self, w: WatchlistItem) -> Portfolio:
         w.symbol = w.symbol.strip().upper()
-        p = self.load()
-        if not any(x.symbol == w.symbol for x in p.watchlist):
-            p.watchlist.append(w)
-            self.save(p)
-        return p
+        with self._lock:
+            p = self.load()
+            if not any(x.symbol == w.symbol for x in p.watchlist):
+                p.watchlist.append(w)
+                self.save(p)
+            return p
 
     def remove_watchlist(self, symbol: str) -> bool:
-        p = self.load()
-        before = len(p.watchlist)
-        p.watchlist = [w for w in p.watchlist if w.symbol != symbol.upper()]
-        if len(p.watchlist) == before:
-            return False
-        self.save(p)
-        return True
+        with self._lock:
+            p = self.load()
+            before = len(p.watchlist)
+            p.watchlist = [w for w in p.watchlist if w.symbol != symbol.upper()]
+            if len(p.watchlist) == before:
+                return False
+            self.save(p)
+            return True
 
     # ------------------------------------------------------------------
     # Advice ledger (append-only JSONL — spec §5.3)
@@ -222,16 +240,17 @@ class PortfolioStore:
     def reduce_holding(self, symbol: str, sell_qty: float, price: float) -> tuple[float, bool]:
         """Sell sell_qty shares of symbol at price. Returns (realized_pnl,
         removed). Raises ValueError for unknown symbol or overdraw."""
-        p = self.load()
-        h = next((x for x in p.holdings if x.symbol == symbol.upper()), None)
-        if h is None:
-            raise ValueError(f"no holding {symbol.upper()}")
-        realized = h.sell(sell_qty, price)
-        removed = h.adj_qty <= 1e-9
-        if removed:
-            p.holdings = [x for x in p.holdings if x.symbol != h.symbol]
-        self.save(p)
-        return realized, removed
+        with self._lock:
+            p = self.load()
+            h = next((x for x in p.holdings if x.symbol == symbol.upper()), None)
+            if h is None:
+                raise ValueError(f"no holding {symbol.upper()}")
+            realized = h.sell(sell_qty, price)
+            removed = h.adj_qty <= 1e-9
+            if removed:
+                p.holdings = [x for x in p.holdings if x.symbol != h.symbol]
+            self.save(p)
+            return realized, removed
 
     # ------------------------------------------------------------------
     # Digests

@@ -11,6 +11,16 @@ from core.portfolio.store import PortfolioStore
 
 D = date(2026, 7, 13)
 
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def _freeze_today(monkeypatch):
+    """Wave 1 (AUD-044): executor date guards compare against IST-today;
+    freeze it so these tests are calendar-independent."""
+    import core.portfolio.autopilot as _ap
+    monkeypatch.setattr(_ap, "_today_ist", lambda: D)
+
 
 def test_executor_writes_stay_inside_user_dir(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)                     # any stray relative write lands here

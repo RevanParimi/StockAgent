@@ -418,3 +418,142 @@ warranted at this scale) · `regime/state.py` KEEP (well-built, idempotent) ·
 decision-quality files this phase; honest dark-signal renormalization) · `deep_dive.py`
 KEEP+FIX (075) · `advisor.py` KEEP+FIX (047/048/060/075) · autopilot sizing KEEP (076
 later) · `signal_aggregator.py` FIX (077 — the phase headline).
+
+## Phase 6 — Over-engineering / dead-code sweep (2026-07-12, HEAD 13ca54a; Phase 5 deferred by user)
+
+`ph6` = full census re-run at HEAD (AST import-reachability walk, BOM-aware, all four
+dynamic-edge families re-verified by hand at HEAD: sector_router `_ORCHESTRATORS`/`_WEIGHT_MODULES`,
+unified_analyst `SECTOR_SPECS`, base_orchestrator settings import, core_adapter tier=core) +
+targeted importer greps + git history + Railway deploy-log search. Census at HEAD:
+**LIVE 281 files / 42.6K LOC · DARK 15 / 3.2K (manual CLIs + api_exploration) ·
+DEAD 524 / 20.9K.** Both big dead trees are byte-stable since Phase 1 (253/9,941 and
+183/8,259) — Wave 1 resurrected nothing.
+
+| ID | Tag | Sev | Where | Defect | Evidence | Action | Status |
+|----|-----|-----|-------|--------|----------|--------|--------|
+| AUD-078 | GAP | P1 | `requirements.txt` + `services/data/fetchers/nse_market.py:72-75` | **`nsepython` is imported by two LIVE fetchers but has NEVER been in requirements.txt** (git log -S: no hit; `pyproject.toml` declares NO `[project.dependencies]`; Dockerfile installs requirements.txt only) → in prod, every context build takes the ImportError branch: FII/DII flows, bulk deals, upcoming earnings (nse_events) and MF-herding context are **structurally empty in every analyst prompt and daily review since first deploy** (8 live call sites: builder.py ×5, bundle_builder.py ×2, daily_review.py:725). Silent divergence never caught because the gitignored local `.stockai` venv HAS nsepython 2.97 installed — it "works" in dev, empty in prod ("[nse_market] nsepython not installed" warning, empty string into prompts). The design treats institutional flow as a decision signal; prod has never seen it | ph6; requirements.txt; pyproject.toml; Dockerfile:15-16; nse_market.py:72-75; mf_herding guard :210; `.stockai/…/nsepython-2.97.dist-info` | FIX (decide with AUD-059: EITHER add `nsepython` to requirements — one line, activates dormant features — OR delete the nsepython paths and port FII/DII to the `nse` package; adding the dep is effort-trivial) — optional pre-Monday hotfix, USER call | OPEN (URGENT-adjacent) |
+| AUD-079 | DEAD | P3 | `core/graphs/` | 4 files / 12 LOC of migration shims re-exporting `backend.shared.pipeline.graphs` (which is LIVE); zero importers of the shim side | ph6 census | DELETE | OPEN (Wave 2) |
+| AUD-080 | DEAD | P3 | namespace/shim residue across `src/backend/` | `src/backend/api/` is now just 2 empty `__init__`s (AUD-028's tree already shrunk — resolves that row); `src/backend/scheduler/` 2 empty; `src/backend/intelligence/` 23 empty `__init__`s (restructure skeleton, zero code); `src/backend/shared/` dead subset 10 files/309 LOC: 2-LOC re-export shims with no importers (clients/alerting, clients/tavily_fetcher, data/cache/macro_cache, data/fetchers/{fundamentals,macro,news}, data/stores/score_store) + `config/rag_config.py` (67) + `prompts/feedback_agent.py` (227, superseded by core/config/prompts/shared/feedback_agent.py) + `core/config/rag_config.py` 3-LOC shim | ph6 census | DELETE (~37 files / ~312 LOC, mostly zero-LOC) | OPEN (Wave 2) |
+| AUD-081 | OVERENG | P2 | `tests/unit/` root vs subdirs | **7 test files exist in TWO collected copies** (pre-restructure root + post-restructure subdir): test_config, test_enhancer, test_prompts, test_regime, test_schemas, test_seasonal, test_signal_aggregator (~1,666 duplicated test lines). Actively double-maintained: both test_config copies edited 2026-07-02; test_enhancer copies have DIVERGED (root 2026-05-31/321L vs subdir 2026-05-12/329L — a fix landed in one copy only). Doubles suite time for these modules and guarantees rot | ph6 (md5 + git dates) | FIX (diff each pair, merge newest into the subdir copy, delete root copy) | OPEN (Wave 2) |
+| AUD-082 | LOWIMPACT | P3 | `requirements.txt` | Comment/constraint rot: duplicate constraint pairs (`openai>=1.30.0` AND `openai==2.32.0`; `yfinance>=0.2.40` AND `yfinance==1.3.0`), comments referencing deleted layers ("consumed by TypeScript + C#", "C# Quartz.NET is primary" — python scheduler is the ONLY scheduler), langgraph comment pointing at the dead shim dir | ph6 | FIX (one cleanup commit; joins AUD-011 polish batch) | OPEN (polish) |
+| AUD-083 | OVERENG | P2 | `src/backend/shared/config/settings/base.py` | Config god-object: 857 LOC, 25 residual `getenv` sites despite "config.yaml sole source" doctrine; every module imports the whole surface | ph6; MAP §4 | Split proposal in Ph9 (by domain: llm/, data/, portfolio/, delivery/) — design debt, not a wave-2 deletion | OPEN (Ph9) |
+
+**Updates to seeded/earlier rows (Phase 6 verification at HEAD 13ca54a):**
+
+- AUD-026 — confirmed + fully quantified: `core/sectors/` = 253 files / 9,941 LOC, all DEAD.
+  Composition: 19 codegen skeletons (~501 LOC each) + banking 413 + renewable 463 +
+  automobile 44 (12 shim files re-exporting backend agents) + it 3 (2 shims). Only
+  consumer remains `core_adapter` (142 LOC) whose tier=core branch requires a sector
+  with `enabled:true, tier:core` — config/sector_toggles.json ships all 19 as
+  `enabled:false`. **New risk note: Wave 1's AUD-040 fix ships the toggles file into the
+  image, so a config-only flip can now actually activate a CoreSectorAdapter in prod
+  (8 LLM calls/analysis through 2024-era skeleton prompts) — before Wave 1 the file never
+  loaded and the branch was doubly dead.** The promotion path is superseded by the
+  generic sector graph (Compass Phase B): sector_router routes non-native sectors to
+  GenericSectorOrchestrator; SectorRegistry's core tier is a second, INCONSISTENT
+  promotion path (registry degrades disabled→automobile; router uses generic).
+  DELETE proposal: core/sectors tree + core_adapter.py + registry tier=core branch +
+  generate_sector_skeletons.py (AUD-029, 1,013 LOC) = **255 files / ~11.1K LOC**;
+  re-point 2 test files (tests/unit/test_agents_unit.py, tests/contract/
+  test_phase0_llm_migration.py import automobile agents via the dead shims —
+  redirect to backend.sectors.automobile). USER-DECISION: forfeits the core-tier
+  promotion path (generic graph covers the need).
+- AUD-027 — quantified: `src/frontend/web/` = 27 files / 1,180 LOC (excl. package-lock).
+  Not in the image; prototypes are the real UI. DELETE.
+- AUD-028 — **RESOLVED (already gone at HEAD)**: `src/backend/api/` now contains only
+  2 empty `__init__.py` files; the route files were deleted in an earlier restructure.
+  Residue folded into AUD-080.
+- AUD-029 — confirmed 1,013 LOC; rides the AUD-026 deletion (it is the skeleton generator).
+- AUD-031 — confirmed zero importers (`user_profile` grep: none outside the file).
+  The chat-side tests/unit/intelligence/chat/test_user_profile.py tests a DIFFERENT
+  module — unaffected. DELETE (58 LOC).
+- AUD-032 — confirmed + made precise: DEAD subset = **183 files / 8,259 LOC** = 20 fully-dead
+  sector prompt dirs (~9 files/~400 LOC each; renewable 703, banking 396) + shared/
+  orchestrator.py (57) + shared/signal_aggregator.py (3) + automobile/valuation_catalyst.py
+  (3). **NOT deletable wholesale: `core/config/prompts/shared/` has 7 LIVE files (627 LOC)
+  imported by six RL agents (control_lane:28, preopen_check:40, feedback_agent:51,
+  event_ingestor:22, dossier_curator:20, question_researcher:25), and
+  `core/config/prompts/automobile/` has 9 LIVE 3-LOC shims imported from base_agent.py:415
+  + services/data/context/builder.py ×7.** Cleanest cut: re-point those 8 automobile import
+  sites to backend.sectors.automobile.prompts (the shim targets), keep shared/, delete the
+  rest (then 192 files / ~8.3K LOC).
+- AUD-033 — re-censused at HEAD: dead subset = 40 files / 1,800 LOC (Phase 1's 53/1,460
+  counted empty `__init__`s now rolled into AUD-080; LOC method = raw lines). The 5 latent
+  prompt files (banking institutional 76 + pattern_analysis 71, it_sector
+  insider_smart_money 77 + pattern_analysis 71, renewable technical 43 = 338 LOC) —
+  **decision brought forward from skipped Ph5: DELETE all 5**; they are editable via the
+  prompts hot-deploy route but consumed by nothing (per-dimension agents dead) — a
+  phantom edit surface that silently discards edits.
+- AUD-034 — confirmed: only importer of services/clients/alerting.py is the DEAD 2-line
+  shim src/backend/shared/clients/alerting.py. DELETE both (198 LOC); prune the alerting
+  tests inside tests/contract/test_scheduler.py (:150,204-222 — tests of an orphan).
+- AUD-035 — DELETE hardened: `ingest_cli.py:114` contains a **syntax error**
+  (`from core.intelligence.rag import config as rag_config as rc`) — the file has never
+  been importable since that line was written; py_compile fails at HEAD. ingestion.py
+  is valid but unreachable. tests/integration/test_rag.py imports ingestion helpers
+  (_chunk_text/_doc_id ×5 sites) — those tests go with it. retriever/vector_store stay
+  (LIVE).
+- AUD-037 — confirmed unchanged: 7 spikes / 1,505 LOC shipped in the image via
+  `COPY scripts/`. DELETE (or move out of image); nse_insider_scraper.py also imports
+  nsepython (consistent with AUD-078 — it was a local-only experiment).
+- AUD-040 — (FIXED in Wave 1) follow-on risk recorded under AUD-026: shipping the
+  toggles file makes accidental core-tier activation a live config surface.
+- AUD-055 — not an over-engineering item; re-parked to remediation wave assignment in
+  Ph9 (unknown-symbol resolver guard).
+- AUD-059 — REFRAMED by AUD-078: there is no "second NSE client" in prod — nsepython
+  was never installed. The consolidation decision collapses into AUD-078's either/or.
+- AUD-072 — confirmed; harness.py:18-30 itself documents the real-data ablation no-op.
+  Action refined: KEEP harness + synthetic generator; stop emitting `ablation_deltas`
+  for real-data runs (or annotate "synthetic-only") so the scorecard can't render
+  circular numbers.
+- AUD-073 — quantified: factor_regime.py = 263 LOC, 3 LIVE importers (weight_adapter,
+  daily_review, context builder). FIX-or-DELETE unchanged — lands in Wave 4 next to
+  AUD-066 (it feeds agent-leniency into the same weight loop); `verify=False` fix is
+  immediate-wave material.
+
+**Program-question verdicts (named suspects closed out):**
+typescript/ wrapper + C# scheduler — already deleted (April), nothing at HEAD ·
+dual sync/async dispatch — **KEEP, not dual**: one chain; `analyse()` is a sync wrapper
+over `analyse_async` and is the entry used by ALL callers (daily_review:224,
+generate_forecast:276, deep_dive:125, scheduler:942, main:189) ·
+duplicate API layers — resolved (AUD-028: already reduced to empty residue) ·
+`core/graphs` — DELETE (AUD-079) · fno / seasonal / prompt_enhancer — **KEEP, all LIVE**
+(generate_forecast:32-33,363-364; daily_review:61; month_end_validation:50; note test
+duplication in AUD-081) · config surface — one source confirmed; god-object split =
+AUD-083 (Ph9).
+
+**Wave 2 deletion docket (proposal — nothing deleted this session):**
+
+| Target | Files | LOC | Rider actions |
+|--------|------:|----:|---------------|
+| core/sectors + core_adapter + tier=core branch + skeleton codegen (026/029) | 255 | 11,096 | re-point 2 test files; USER sign-off on promotion path |
+| core/config/prompts dead subset (032) | 183 | 8,259 | re-point 8 automobile-shim imports → +9 shim files/25 LOC deletable |
+| src/backend/sectors dead subset incl. 5 latent prompts (033) | 40 | 1,800 | AUD-022 stale-mock cleanup rides along |
+| scripts/api_exploration in-image spikes (037) | 7 | 1,505 | or relocate out of COPY set |
+| src/frontend/web stub (027) | 27 | 1,180 | non-Python |
+| rag/ingestion incl. syntax-broken CLI (035) | 3 | 304 | prune test_rag ingestion tests |
+| services/clients/alerting + shim (034) | 2 | 198 | prune test_scheduler alerting tests |
+| services/api/user_profile.py (031) | 1 | 58 | — |
+| core/graphs shims (079) | 4 | 12 | — |
+| namespace/shim residue (080, incl. old 028) | 37 | 312 | — |
+| **Total prod code** | **559** | **~24,724** | **≈37% of shipped LOC** |
+| duplicate test copies (081) | 7 | ~1,666 | merge-then-delete, not blind delete |
+
+Prod-trace note (protocol step 2): Railway deploy-log search for "nsepython" in the
+current deployment (0a2b1057, live since 06:10 UTC today) — no hits, as expected: no
+context-building job has run on it yet; older deployments are REMOVED (logs gone). The
+structural chain (requirements.txt → Dockerfile → ImportError guard) is conclusive
+without the log line; if AUD-078 stays unfixed, expect the warning in Monday's
+16:30 IST review logs.
+
+**Component verdicts (Phase 6 protocol step 5):**
+`core/sectors/*` DELETE (026) · `core_adapter.py` DELETE with it ·
+`generate_sector_skeletons.py` DELETE (029) · `core/config/prompts/{20 dirs}` DELETE,
+`shared/` KEEP-LIVE, `automobile/` re-point-then-DELETE (032) · `src/backend/api|scheduler|
+intelligence` residue DELETE (080) · `src/frontend/web` DELETE (027) ·
+`scripts/api_exploration` DELETE-from-image (037) · `rag/ingestion` DELETE (035) ·
+`services/clients/alerting.py` DELETE (034) · `user_profile.py` DELETE (031) ·
+`core/graphs` DELETE (079) · `nse_market.py`/`mf_herding.py` KEEP+FIX-dep (078) ·
+`base_orchestrator` sync/async KEEP · `fno`/`seasonal`/`prompt_enhancer` KEEP (live) ·
+`settings/base.py` KEEP now, split in Ph9 (083) · `eval/harness.py` KEEP+flag (072) ·
+`factor_regime.py` FIX-or-DELETE in W4 (073) · duplicate test copies MERGE+DELETE (081).

@@ -355,3 +355,66 @@ hardcode) · `server.py` self-heal FIX (AUD-025 P1) · `nse_key_registry.py` KEE
 fallbacks + NSE cross-check — the reference implementation) · macro_cache /
 nse_market / mf_herding / bulk_block / surveillance / ipo KEEP (house pattern
 conformant) · `api_usage.py` KEEP+polish (AUD-057).
+
+## Phase 4 — Decision/ML quality (2026-07-12, HEAD ae4fe7b)
+
+`ph4` = full read of core/intelligence/rl/{eval,agents,algorithms,conviction,workflows},
+core/intelligence/regime, core/discovery/{signals,screen,deep_dive}, core/portfolio/advisor,
+autopilot sizing path, src/backend/shared/pipeline/signal_aggregator + settings constants.
+`sc` = data/eval/scorecards (May n=6, June n=1 — real artifacts). `dev` = local
+data/predictions feedback logs (3 files: BUY n=7 hit 0%, NEUTRAL n=2 hit 100%).
+Rubric per algorithm: statistical validity · vs-naive-baseline · better-algorithm candidate.
+
+| ID | Tag | Sev | Where | Defect | Evidence | Action | Status |
+|----|-----|-----|-------|--------|----------|--------|--------|
+| AUD-060 | BUG | P1 | `feedback_agent.py:87-101` + `daily_review.py:547` | **NEUTRAL verdict = automatic direction hit** ("always treated as not-wrong") → inflates direction_accuracy, Brier (outcome forced 1.0), scorecard agent lane (baselines get NO free pass; control lane FLAT must exact-match — asymmetric duel), WeightAdapter hit credit for all agents, and **the advisor ADD money gate** (`direction_accuracy_7d` ≥ 0.60, advisor.py:160-164): a NEUTRAL month scores 100% and passes the quality gate with zero demonstrated skill. Synthetic generator uses the OTHER rule (hit iff FLAT, synthetic.py:266-269) — synthetic/live semantics diverge | ph4; dev (NEUTRAL 100% vs BUY 0%) | FIX (score NEUTRAL correct iff actual FLAT everywhere, or exclude NEUTRAL days from accuracy denominators; align synthetic+live+control on ONE rule; effort L-M, impact H) | OPEN (wave) |
+| AUD-061 | BUG | P2 | `eval/scorecard.py:49-58,201-205` + `eval/harness.py:193-215` | Ticker discovery = directory scan of data/predictions → AUD-025's shadow `automobile/<non-auto>` trees (33 dirs on volume) pool into the aggregate (`all_entries.extend`) double-counting 12 tickers, and `sc.tickers[ticker]` is silently overwritten by the last sector dir. Scorecard job IS live (scheduler Job 8, 1st 02:00 IST) → the Aug-1 run builds a contaminated July scorecard | ph4; AUD-025 volume evidence | FIX (registry-driven discovery via get_active_tickers_with_sector; joins AUD-025 wave incl. tree cleanup) | OPEN (wave w/ 025) |
+| AUD-062 | GAP | P2 | scorecard/duel edges | No statistical significance anywhere: edges + month-over-month deltas are raw point differences on n=1–20 correlated days (sc: June n=1 renders "edge"); "did RL help" is unanswerable from output | sc; ph4 | FIX (Wilson CI / binomial test + min-n gate before rendering edges; pool ≥3 months; effort L) | OPEN (Ph9) |
+| AUD-063 | PATTERN | P2 | `control_lane.py:95-101` vs envelope verdicts | Duel horizon mismatch: control predicts NEXT-DAY with same-day fresh market_context; the agent's verdict for that day was fixed at month-start (verdict never revised — only confidence). Scoring rules also differ (control: exact 3-way match; agent: is_direction_correct w/ NEUTRAL free pass). Negative edge is uninterpretable; docstring parity claim ("exactly the information StockAgent has") is false | ph4 | FIX (score both lanes with one rule on the same day set; add cycle-return sign scoring; document asymmetry) | OPEN (Ph9) |
+| AUD-064 | BUG | P2 | `weight_adapter.py:338-380` | Bias score = blame-share among MISSES, not miss rate over days (denominator = penalisable misses only): a window's single miss blamed on agent X → bias_score 1.0 → full penalty at 95% ensemble accuracy; docstring example computes over days | ph4 | FIX (denominate by window days or require min misses; effort L) | OPEN (wave) |
+| AUD-065 | BUG | P3 | `weight_adapter.py:509-518` + `daily_review.py:791-808` | Per-agent labels on ensemble numbers: escape-hatch "agent streak" loops agents but computes the identical ensemble direction_correct streak for each; `_accuracy_trend` prints "agent: W/7" lines that are all the ensemble rate — misinformation into the FeedbackAgent prompt | ph4 | FIX (use per-agent calibration records or drop the per-agent framing) | OPEN (polish) |
+| AUD-066 | ML-UP | P2 | `weight_adapter.py:295-310` credit assignment | Learning signal is 1 bit/day: LLM picks ONE scapegoat; every other agent gets hit credit → direction component of per-agent hit_rate near-identical across agents; uniform boosts cancel exactly under renormalization (delta ∝ weight). The real per-agent signal exists (Component-2 calibration_hits vs own lean, blended 50%) | ph4 | REPLACE candidate (Wave 4): drive weights from per-agent calibration accuracy via multiplicative-weights/Hedge or Thompson; drop blame plumbing | OPEN (Ph9/W4) |
+| AUD-067 | BUG | P2 | `regime/detector.py:116-174` | All three signal fetchers ignore `as_of_date` (`period="1mo"/"3mo"` + `iloc[-1]`) → backfilled reviews stamp TODAY's regime on historical entries (regime_label on FeedbackEntry, regime-segmented historical returns, sticky transitions). AUD-025's July backfill labeled a month of entries with one day's regime | ph4 | FIX (slice frame at as_of_date; effort L) | OPEN (wave) |
+| AUD-068 | BUG | P2 | `price_interpolator.py:517-612,355-359` | `compute_historical_avg_return` = median DAILY price_error_pct, but the profile-LLM prompt presents it as "Historical average return … over 30 days" → monthly_return_pct calibrated against a wrong-scale number | ph4 | FIX (compute realized cycle return per verdict: last actual vs base_close; effort L-M) | OPEN (wave) |
+| AUD-069 | GAP | P2 | envelope confidence semantics | `confidence` is not a probability: base = LLM composite `final_score` (bullishness), then horizon decay + band penalty + blends/multipliers (generate_forecast.py:166, interpolator:289-299, daily_review revise) — yet Brier/reliability_table treat it as P(hit) and the advisor consumes it; reliability_table exists but NOTHING recalibrates from it | ph4; sc (May: Brier .164 on 0% accuracy) | FIX (rolling isotonic/Platt map before writing DailyForecast.confidence, or split display-score from probability field) | OPEN (Ph9/W4) |
+| AUD-070 | GAP | P2 | MC band calibration | σ = LLM band (anchor ATR×0.5) × regime scale — no feedback from realized coverage; P10–P90 at that σ is ≈half of realized daily moves → systematic under-coverage (sc May: band_coverage 0.0, n=6); `band_coverage` also returns 0.0 when NO band exists (metrics.py:147-151) masking absent bands as zero coverage. No envelope-level naive baseline exists (duel covers direction only) | ph4; sc | FIX (σ from realized returns EWMA/GARCH-lite, LLM adjusts ±; trailing-coverage width correction; add "zero-drift GBM w/ historical σ" envelope control lane; distinguish no-band from zero-coverage) | OPEN (Ph9/W4) |
+| AUD-071 | PATTERN | P3 | verdict/scoring granularity | One month-scoped verdict copied onto ~30 daily rows, scored daily against ±0.3% FLAT threshold — daily noise dominates the metric the whole loop learns from | ph4 | Design note for Ph9: score cycle-return sign at horizon alongside daily | OPEN (Ph9) |
+| AUD-072 | OVERENG | P3 | `eval/synthetic.py:70-73` + harness ablation | Ablation deltas measure the generator's own hard-coded constants (0.05/0.03/0.02 injected, then "detected"); real-data ablation is a documented no-op — circular instrumentation | ph4 | KEEP generator (schema parity), drop/flag ablation delta reporting | OPEN (Ph6) |
+| AUD-073 | LOWIMPACT | P3 | `algorithms/factor_regime.py` | IIMA factor data frozen at 2023-03 → MOMENTUM/REVERSAL label + agent leniency (0.80/0.85) are constants from 2022-23 presented as live regime awareness; also `requests.get(verify=False)` in prod code (:71-75) | ph4 | FIX (compute WML live from EOD store or DELETE; at minimum verify=True) | OPEN (Ph6) |
+| AUD-074 | LOWIMPACT | P3 | `daily_review.py:233-282` | Timing "lag" = review-day index minus envelope argmax day — measures nothing about when the actual move occurred; feeds WeightAdapter timing-penalty tiers | ph4 | Document or replace with actual move-day detection | OPEN (polish) |
+| AUD-075 | PATTERN | P2 | `advisor.py:194-210` + `deep_dive.py:134` | SWITCH gap compares raw deep-dive LLM final_score against the holding's horizon-decayed mean envelope confidence — different quantities, different scales; decay alone biases toward SWITCH; the 0.15 gap has no calibration basis. Third member of the AUD-016/047 "one semantics" family | ph4 | FIX with 016/047 (single confidence/weight semantics helper) | OPEN (wave w/ 016/047) |
+| AUD-076 | ML-UP | P3 | `autopilot.py:235-243` sizing | Fixed-fraction sizing (ADD = 25% of position value; TRIM 25%; equal-weight seed) with vol-scaled STOPS but not vol-scaled SIZES → per-name risk heterogeneous by construction | ph4 | Wave-4 candidate: ATR/vol-targeted sizing reusing the advisor's ATR | OPEN (Ph9/W4) |
+| AUD-077 | PATTERN | P1 | `signal_aggregator.py:129-172,264-265` | **Learned weights do not bind the decision.** Verdict + final_score come free-form from the aggregation LLM; the weighted composite appears only as one prompt line. The entire learning loop (WeightAdapter, regime multipliers, lesson emphasis, seasonal deltas) modulates prompt context, not a decision function — its causal effect on trades is unenforced and unmeasured (no ablation lane, no composite-vs-final_score drift logging). SCORE_THRESHOLDS verdict bands already exist in settings but are unused here | ph4 | FIX (Ph9 decision: (a) verdict = threshold(composite), LLM narrates — matches advisor's "LLM never decides" philosophy; or (b) at minimum log/monitor LLM-vs-composite drift + add a thresholded shadow lane to the scorecard) | OPEN (Ph9 — USER DECISION) |
+
+**Updates to seeded rows (Phase 4 verification):**
+
+- AUD-016/047 — confirmed + widened: advisor position_weight_pct is cost-basis
+  (advisor.py:127-131) while autopilot gates/sizes on market value; AUD-075 adds the
+  conviction-vs-confidence instance. One wave item: single weight+confidence semantics.
+- AUD-048 — confirmed unchanged at HEAD: `build_signals(market_cap_inr=None)` default and
+  no caller passes mcap → `resolve_cap_bucket` always "mid"; stops always clamp(3×ATR,12,18).
+- AUD-056 — unchanged; its decision-quality impact lands via analyst prompts (Ph5 scope).
+- Advisor threshold provenance (rubric): every ADVISOR_* constant is a config fallback with
+  no evidence trail (trim 25%, ADD gate 0.60 — measured on the AUD-060-inflated metric,
+  max position 10%, SWITCH gap 0.15). Not separately actionable beyond 048/060/075.
+
+**Test coverage vs failure modes:** direction-semantics (NEUTRAL) asymmetry untested
+(synthetic and live rules diverge silently) · scorecard discovery never tested against a
+polluted tree · WeightAdapter bias-score denominator untested at low miss counts ·
+regime as_of_date behavior untested for backfill dates · no test asserts envelope
+band coverage ≈ nominal 80%. Phase 2/3 pattern holds: defects live where tests aren't.
+
+**Component verdicts (Phase 4 protocol step 5):**
+`eval/metrics.py`+`baselines.py` KEEP+FIX (060 semantics, 070 no-band conflation) ·
+`eval/scorecard.py` KEEP+FIX (061/062) · `eval/harness.py` KEEP (drop ablation output, 072) ·
+`eval/synthetic.py` KEEP (schema-parity value) · `weight_adapter.py` REPLACE-candidate
+(Wave 4 via 066; interim FIX 064/065) · `feedback_agent.py` KEEP (parse hardening + rate
+cap are good) · `lesson_emphasis.py` KEEP (bounded, clean) · `conviction/tracker.py` KEEP ·
+`regime/detector.py` KEEP+FIX (067; rule-based+hysteresis is right-sized — HMM/BOCPD NOT
+warranted at this scale) · `regime/state.py` KEEP (well-built, idempotent) ·
+`factor_regime.py` FIX-or-DELETE (073) · `price_interpolator.py` KEEP+FIX (068/070) ·
+`generate_forecast.py` KEEP+FIX (069) · `daily_review.py` KEEP+FIX (060/065/074 wiring) ·
+`control_lane.py` KEEP+FIX (063) · discovery `signals.py`+`screen.py` KEEP (strongest
+decision-quality files this phase; honest dark-signal renormalization) · `deep_dive.py`
+KEEP+FIX (075) · `advisor.py` KEEP+FIX (047/048/060/075) · autopilot sizing KEEP (076
+later) · `signal_aggregator.py` FIX (077 — the phase headline).

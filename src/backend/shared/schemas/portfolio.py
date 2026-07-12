@@ -61,7 +61,7 @@ class Holding(BaseModel):
         slice out of dividends_received so remaining unrealised P&L doesn't
         double-count it. Raw qty/avg_buy_price stay as entered (entry
         history); adj_* is the live position (Autopilot spec §3/§4)."""
-        if sell_qty <= 0 or sell_qty > self.adj_qty + 1e-9:
+        if sell_qty <= 0 or self.adj_qty <= 0 or sell_qty > self.adj_qty + 1e-9:
             raise ValueError(
                 f"invalid sell qty {sell_qty} for {self.symbol} (adj_qty={self.adj_qty})"
             )
@@ -124,8 +124,8 @@ class TransactionRecord(BaseModel):
     ts: str                        # UTC timestamp (ISO)
     user_id: str
     symbol: str
-    side: Literal["BUY", "SELL"]
-    qty: float                     # whole shares
+    side: Literal["BUY", "SELL", "DIV"]   # DIV = dividend cash credit (qty 0)
+    qty: float                     # whole shares (0 for DIV)
     price: float
     value: float                   # qty × price
     cash_before: float

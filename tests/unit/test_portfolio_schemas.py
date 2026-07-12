@@ -10,6 +10,7 @@ from backend.shared.schemas.portfolio import (
     CorporateEvent,
     Holding,
     Portfolio,
+    TransactionRecord,
     WatchlistItem,
 )
 
@@ -63,3 +64,21 @@ def test_watchlist_source_default_user():
 def test_corporate_event_fields():
     e = CorporateEvent(symbol="INFY", date="2026-07-15", kind="results", desc="Board meeting - financial results")
     assert e.kind == "results"
+
+
+def test_sell_zero_adj_qty_raises_not_zerodivision():
+    """AUD-002: adj_qty == 0 with a tiny positive sell qty must raise, not ZeroDivisionError."""
+    h = Holding(symbol="MARUTI", sector="automobile", qty=10.0, avg_buy_price=100.0,
+                adj_avg_price=100.0, adj_qty=0.0, buy_date="2026-07-01")
+    with pytest.raises(ValueError):
+        h.sell(1e-10, 100.0)
+
+
+def test_transaction_record_div_side_validates():
+    """AUD-045 prep: DIV is a legal ledger side (dividend cash credit)."""
+    t = TransactionRecord(
+        txn_id="x" * 16, date="2026-07-12", ts="2026-07-12T00:00:00+00:00",
+        user_id="primary", symbol="MARUTI", side="DIV", qty=0.0, price=8.0,
+        value=80.0, cash_before=100.0, cash_after=180.0, holding_qty_after=10.0,
+    )
+    assert t.side == "DIV" and t.realized_pnl == 0.0

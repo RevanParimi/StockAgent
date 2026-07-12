@@ -1,5 +1,7 @@
 """Autopilot pipeline integration — execution hook + digest trades (spec §4)."""
 from datetime import date
+
+import pytest
 from unittest.mock import patch
 
 from backend.shared.schemas.portfolio import (
@@ -8,6 +10,14 @@ from backend.shared.schemas.portfolio import (
 from core.portfolio.digest import build_digest
 
 D = date(2026, 7, 13)
+
+@pytest.fixture(autouse=True)
+def _freeze_today(monkeypatch):
+    """Wave 1 (AUD-044): executor date guards compare against IST-today;
+    freeze it so these tests are calendar-independent."""
+    import core.portfolio.autopilot as _ap
+    monkeypatch.setattr(_ap, "_today_ist", lambda: D)
+
 
 
 def _portfolio():

@@ -9,6 +9,15 @@ from core.portfolio.store import PortfolioStore
 
 D = date(2026, 7, 13)          # a Monday (trading day)
 
+@pytest.fixture(autouse=True)
+def _freeze_today(monkeypatch):
+    """Wave 1 (AUD-044): executor date guards compare against IST-today;
+    freeze it so these tests are calendar-independent."""
+    import core.portfolio.autopilot as _ap
+    monkeypatch.setattr(_ap, "_today_ist", lambda: D)
+
+
+
 
 def _store(tmp_path, holdings, cash=50000.0, autopilot=True):
     s = PortfolioStore(user_id="t1", base_dir=str(tmp_path))

@@ -7,6 +7,14 @@ from core.portfolio.store import PortfolioStore
 from scripts.seed_autopilot import seed
 
 D = date(2026, 7, 13)
+
+
+@pytest.fixture(autouse=True)
+def _freeze_today(monkeypatch):
+    """Wave 1 (AUD-044): value-point future guard compares against IST-today;
+    freeze it so these tests are calendar-independent."""
+    import core.portfolio.autopilot as _ap
+    monkeypatch.setattr(_ap, "_today_ist", lambda: D)
 TICKERS = [{"sym": "AAA", "sector": "automobile"},
            {"sym": "BBB", "sector": "banking"},
            {"sym": "CCC", "sector": "it"},

@@ -40,6 +40,13 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _today_ist() -> date:
+    """IST calendar date — the reference clock for all date guards (AUD-044).
+    Module-level seam so tests can freeze 'today'."""
+    from core.intelligence.rl.nse_calendar import now_ist
+    return now_ist().date()
+
+
 def _txn(portfolio: Portfolio, rec: AdviceRecord, *, side: str, qty: float,
          price: float, cash_before: float, holding_qty_after: float,
          realized: float, note: str, symbol: str | None = None) -> TransactionRecord:
@@ -73,6 +80,12 @@ def _execute_sells(portfolio: Portfolio, advice: list[AdviceRecord],
         if h is None or h.adj_qty <= 0:
             continue
         price = closes.get(rec.symbol) or rec.close
+        if price is None or price <= 0:
+            # AUD-004: never wipe a position for ₹0 on a bad/missing price.
+            logger.warning("[autopilot] SELL %s skipped: non-positive price %r",
+                           rec.symbol, price)
+            continue
+        closes.setdefault(rec.symbol, price)   # AUD-003: one price basis per run
         note = ""
         if rec.verdict in ("EXIT", "SWITCH"):
             qty = h.adj_qty
@@ -167,6 +180,7 @@ def _execute_buys(portfolio: Portfolio, advice: list[AdviceRecord],
             logger.warning("[autopilot] SWITCH buy %s skipped: unpriceable (%s)",
                            cand, exc)
             continue
+        closes[cand] = price                   # AUD-003: one price basis per run
         budget = min(proceeds, portfolio.cash_deployable - floor_cash)
         qty = float(math.floor(budget / price)) if price > 0 else 0.0
         if qty < 1:
@@ -212,6 +226,7 @@ def _execute_buys(portfolio: Portfolio, advice: list[AdviceRecord],
         price = closes.get(rec.symbol) or rec.close
         if price <= 0:
             continue
+        closes.setdefault(rec.symbol, price)   # AUD-003: one price basis per run
         last_add = _last_add_date(store, rec.symbol)
         if last_add is not None and _trading_days_between(
                 last_add, review_date) < settings.AUTOPILOT_ADD_COOLDOWN_TD:
@@ -256,36 +271,52 @@ def execute_advice(store: PortfolioStore, portfolio: Portfolio,
     saves the portfolio — a crash between the two cannot double-execute
     (txn_id dedupe), but it CAN leave the ledger ahead of portfolio.json
     (a txn recorded, cash/holdings never updated). The dedupe-skip warning
-    logged below flags that state for manual reconciliation."""
-    if not settings.AUTOPILOT_ENABLED or not portfolio.autopilot \
-            or portfolio.cash_deployable is None:
+    logged below flags that state for manual reconciliation.
+
+    AUD-001: the `portfolio` argument is a pre-advisor snapshot that may be
+    minutes stale (network + LLM per holding). It is used for gating hints
+    only — the actual mutation reloads FRESH state under the store lock so a
+    concurrent API mutation is never silently reverted.
+    AUD-044: a future review_date is refused outright (no trades, no marker
+    stamp) — stamping a future marker would brick the monotonic guard."""
+    if not settings.AUTOPILOT_ENABLED:
         return []
     day = review_date.isoformat()
-    # Monotonic guard: only run for a day strictly after the last completed
-    # run. Equality-only checks let a re-run for a PAST review_date (e.g. a
-    # manually retried POST /portfolio/run-advisor?review_date=<past>)
-    # execute stale-priced trades against the CURRENT portfolio and regress
-    # the marker. ISO date strings compare correctly lexicographically, and
-    # a forward recovery run for a missed day still proceeds normally.
-    if portfolio.last_autopilot_run and day <= portfolio.last_autopilot_run:
+    today = _today_ist().isoformat()
+    if day > today:
+        logger.warning("[autopilot] refusing future review_date %s (today %s)",
+                       day, today)
         return []
-    existing_ids = {t.txn_id for t in store.load_transactions(limit=2000)}
+    with store.locked():
+        portfolio = store.load()               # fresh state — AUD-001
+        if not portfolio.autopilot or portfolio.cash_deployable is None:
+            return []
+        # Monotonic guard: only run for a day strictly after the last completed
+        # run. Equality-only checks let a re-run for a PAST review_date (e.g. a
+        # manually retried POST /portfolio/run-advisor?review_date=<past>)
+        # execute stale-priced trades against the CURRENT portfolio and regress
+        # the marker. ISO date strings compare correctly lexicographically, and
+        # a forward recovery run for a missed day still proceeds normally.
+        if portfolio.last_autopilot_run and day <= portfolio.last_autopilot_run:
+            return []
+        existing_ids = {t.txn_id for t in store.load_transactions(limit=2000)}
 
-    sell_txns, switch_proceeds = _execute_sells(portfolio, advice, closes, existing_ids)
-    existing_ids |= {t.txn_id for t in sell_txns}
-    buy_txns = _execute_buys(portfolio, advice, closes, existing_ids,
-                             switch_proceeds, review_date, store, sector_lookup)
-    txns = sell_txns + buy_txns
-    if not txns:
-        # Still stamp the run marker so re-triggered pipelines skip cheaply,
-        # but avoid rewriting portfolio.json when nothing happened at all.
+        sell_txns, switch_proceeds = _execute_sells(portfolio, advice, closes,
+                                                    existing_ids)
+        existing_ids |= {t.txn_id for t in sell_txns}
+        buy_txns = _execute_buys(portfolio, advice, closes, existing_ids,
+                                 switch_proceeds, review_date, store, sector_lookup)
+        txns = sell_txns + buy_txns
+        if not txns:
+            # Still stamp the run marker so re-triggered pipelines skip cheaply,
+            # but avoid rewriting portfolio.json when nothing happened at all.
+            portfolio.last_autopilot_run = day
+            store.save(portfolio)
+            return []
+        for t in txns:
+            store.append_transaction(t)
         portfolio.last_autopilot_run = day
         store.save(portfolio)
-        return []
-    for t in txns:
-        store.append_transaction(t)
-    portfolio.last_autopilot_run = day
-    store.save(portfolio)
     logger.info("[autopilot] %s executed %d trade(s) for %s",
                 day, len(txns), portfolio.user_id)
     return txns
@@ -296,6 +327,9 @@ def record_value_point(store: PortfolioStore, portfolio: Portfolio,
     """Append today's equity snapshot (spec §3.3). Skips when cash accounting
     is off or the point already exists (idempotent re-runs)."""
     if portfolio.cash_deployable is None:
+        return None
+    if review_date > _today_ist():
+        logger.warning("[autopilot] refusing future value point %s", review_date)
         return None
     day = review_date.isoformat()
     hist = store.load_value_history(limit=1)

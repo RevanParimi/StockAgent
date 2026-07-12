@@ -216,3 +216,41 @@ below lives in untested territory.
 calendar) · `nse_calendar.py`+`calendar_updater.py` FIX (AUD-023) ·
 `portfolio_api.py` FIX (AUD-007 consolidation, AUD-044 guard) · `digest.py`,
 `narrator.py`, `promotion.py`, seed script KEEP (polish rows only).
+
+## Wave 1 — correctness remediation SHIPPED (2026-07-12, merge 6884dd8)
+
+Spec: docs/superpowers/specs/2026-07-12-audit-wave1-correctness-design.md ·
+Plan: docs/superpowers/plans/2026-07-12-audit-wave1-correctness.md ·
+14 commits 96b1dd8..6884dd8, reviewer-runs-code verdict APPROVED (9/9 executed
+criteria), unit suite 1913 passed / 5 skipped (2 pre-existing failures
+unchanged: event_ingestor date-parse [fails on main], eval harness real-data
+[environment]). Prod deploy + post-deploy verification logged below the table.
+
+| ID | Resolution |
+|----|------------|
+| AUD-001 | **FIXED** 96b1dd8+539b6da — filelock per user (`portfolio.lock`, re-entrant, 30 s timeout) on every RMW; executor reloads FRESH state under the lock (stale pre-advisor snapshot is signals-only). Cross-process atomicity + fresh-reload proven by executed tests |
+| AUD-002 | **FIXED** 0303347 — `Holding.sell` guards `adj_qty <= 0` |
+| AUD-003 | **FIXED** 539b6da — every executed price feeds back into `closes` (one price basis per run; also removes AUD-009's mechanism) |
+| AUD-004 | **FIXED** 539b6da — sell path skips non-positive prices |
+| AUD-006 | **FIXED (detect+alert per user decision)** 557d6e8 — `core/portfolio/reconcile.py`: cash-chain continuity (lost-update signature), final-cash replay, per-symbol net qty (corp-action-adjusted symbols reported unverifiable); daily pipeline step; drift → critical push alert; never repairs |
+| AUD-007 | **FIXED** 15bab5f — delete = one locked critical section (price fetched pre-lock); manual txn ids state-derived (`manual-add\|date\|qty\|price`), identical same-day resubmits skipped whole; CSV import credits capital_in |
+| AUD-023 | **FIXED** ec354d4 — official 2026 NSE list hardcoded (adds Sep 14/Oct 20/Nov 10/Nov 24 etc., drops false Mar 4/Mar 20); holiday set = hardcoded ∪ file (partial yfinance file years can no longer drop future holidays); startup refresh when file missing OR lacks current year |
+| AUD-038 | **FIXED** 51e9000+2dc8c53 — `feedback_cron: "30 16 * * mon-fri"` in config.yaml (the live source) + settings fallback + comments; named days end the numeric-day trap |
+| AUD-039 | **FIXED** 4fc1a31 — `core/delivery/ops_alerts.py`: LLM consecutive-failure streak alert (≥10, throttled 6 h, wired into `record_llm_call`) + zero-output alerts on daily review / event ingestion / discovery deep-dives |
+| AUD-040 | **FIXED** 9f89f6e — toggles path CWD-relative (+ env override) AND `COPY config/` added to Dockerfile (file never shipped in the image at all) |
+| AUD-043 | **FIXED** 51e9000 — `_daily_review_job` now event-triggers `run_post_review_pipeline(review_date)` (non-fatal); review_date holiday-aware; REAL hook test executes the scheduled job itself |
+| AUD-044 | **FIXED** 539b6da+1a0bdf5 — routes 422 future review_date (IST); executor refuses future dates outright (no marker stamp); value points skip future dates |
+| AUD-045 | **FIXED (credit-cash per user decision)** 51c96d0 — dividends credit cash_deployable at ex-date application + append `DIV` ledger rows (side literal widened); no prod migration needed (pipeline never ran → dividends_received all 0) |
+| AUD-046 | **PARTIAL (guard)** 51c96d0 — percent-of-face-value dividend rows skipped with warning; full parse fix stays gated on Ph3 format verification |
+| AUD-049 | **FIXED** 9f89f6e — seed saves portfolio before appending txns |
+| AUD-050 | **FIXED** 1792588 — `QuarantinedPortfolioError` blocks saves while an unrecovered corrupt archive exists (reads stay up); 409 handler; critical alert on quarantine |
+| AUD-051 | **FIXED** 51e9000 — both review-date derivations use `trading_days_ago(now_ist().date(), 1)` |
+
+Also shipped: `_today_ist()` seam + frozen-today fixtures make all executor tests
+calendar-independent; sync_corp_actions split into fetch-outside-lock /
+apply-under-lock phases.
+
+Still OPEN from Phases 0–2 (deferred by scope decision, unchanged): AUD-005
+(resolved earlier), 008, 009 (mechanism fixed via 003; digest cosmetics remain),
+010, 011, 012 (ON HOLD), 013–022, 024–037, 041, 042a residual (key limit/balance
+check), 047, 048.

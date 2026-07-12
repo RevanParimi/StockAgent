@@ -35,6 +35,12 @@ logger = logging.getLogger(__name__)
 _USER_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 
 
+class QuarantinedPortfolioError(RuntimeError):
+    """portfolio.json was corrupt and quarantined; mutations are refused until
+    a human restores a valid live file (AUD-050). Reads keep working (empty
+    portfolio) so the API stays up."""
+
+
 class PortfolioStore:
     def __init__(self, user_id: str | None = None, base_dir: str | None = None) -> None:
         self.user_id = (user_id or settings.PORTFOLIO_DEFAULT_USER_ID).strip()
@@ -108,11 +114,41 @@ class PortfolioStore:
                 )
                 path.rename(quarantine)
                 logger.error("[PortfolioStore] quarantined corrupt file to %s", quarantine)
+                self._alert_quarantine(quarantine)
             except OSError:
                 pass
             return Portfolio(user_id=self.user_id)
 
+    def _alert_quarantine(self, quarantine: Path) -> None:
+        """One critical push alert per quarantine event (AUD-050/039). Never raises."""
+        try:
+            from core.delivery.alerts import AlertEvent, emit_alerts
+            emit_alerts([AlertEvent(
+                date=datetime.now(timezone.utc).date().isoformat(),
+                kind="portfolio_corrupt", symbol="",
+                message=(f"portfolio.json for user '{self.user_id}' was corrupt and "
+                         f"quarantined to {quarantine.name}. Mutations are blocked "
+                         "until a valid portfolio.json is restored."),
+                severity="critical",
+            )], user_id=self.user_id, title="Portfolio store alert")
+        except Exception as exc:
+            logger.warning("[PortfolioStore] quarantine alert failed (non-fatal): %s", exc)
+
+    def _unrecovered_quarantine(self) -> Path | None:
+        """A corrupt-archive exists and no live portfolio.json has replaced it."""
+        if self._portfolio_path().exists():
+            return None
+        corpses = sorted(self._dir.glob("portfolio.json.corrupt-*"))
+        return corpses[-1] if corpses else None
+
     def save(self, p: Portfolio) -> None:
+        corpse = self._unrecovered_quarantine()
+        if corpse is not None:
+            raise QuarantinedPortfolioError(
+                f"portfolio.json for user '{self.user_id}' is quarantined "
+                f"({corpse.name}) — refusing to overwrite with derived state; "
+                "restore a valid portfolio.json first (AUD-050)."
+            )
         p.updated_at = datetime.now(timezone.utc).isoformat()
         self._write_json(self._portfolio_path(), p.model_dump())
 

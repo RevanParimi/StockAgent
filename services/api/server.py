@@ -51,6 +51,7 @@ from services.api.routes.analytics import router as analytics_router
 from services.api.routes.portfolio_api import router as portfolio_router
 from services.api.routes.discovery_api import router as discovery_router
 from services.api.routes.delivery_api import router as delivery_router
+from core.portfolio.store import QuarantinedPortfolioError
 
 _IST = timezone(timedelta(hours=5, minutes=30))
 
@@ -397,6 +398,13 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.exception_handler(QuarantinedPortfolioError)
+async def _quarantined_portfolio_handler(request, exc):
+    """AUD-050: corrupt portfolio.json blocks mutations — surface as 409, not 500."""
+    from fastapi.responses import JSONResponse
+    return JSONResponse(status_code=409, content={"detail": str(exc)})
 
 # ---------------------------------------------------------------------------
 # Routes

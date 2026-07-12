@@ -150,3 +150,31 @@ def test_corrupt_portfolio_quarantined_not_clobbered(tmp_path):
     assert p.holdings == []
     corrupt = list((tmp_path / "u9").glob("portfolio.json.corrupt-*"))
     assert len(corrupt) == 1                      # original preserved
+
+
+def test_corrupt_portfolio_blocks_mutations_until_recovered(tmp_path):
+    """AUD-050: a corrupt portfolio.json quarantines and reads degrade to an
+    empty portfolio — but SAVES must be refused until a human recovers the
+    file, so the empty state can never silently replace the real one."""
+    from backend.shared.schemas.portfolio import Holding
+    from core.portfolio.store import PortfolioStore, QuarantinedPortfolioError
+
+    s = PortfolioStore(user_id="u1", base_dir=str(tmp_path))
+    s.add_holding(Holding(symbol="MARUTI", sector="automobile", qty=1,
+                          avg_buy_price=100.0, adj_avg_price=100.0, adj_qty=1,
+                          buy_date="2026-07-01"))
+    (tmp_path / "u1" / "portfolio.json").write_text("{not json", encoding="utf-8")
+
+    p = s.load()                          # quarantines, returns empty
+    assert p.holdings == []
+    assert list((tmp_path / "u1").glob("portfolio.json.corrupt-*"))
+
+    import pytest as _pytest
+    with _pytest.raises(QuarantinedPortfolioError):
+        s.save(p)
+
+    # Recovery: restore a valid live file → saves work again.
+    quarantined = next((tmp_path / "u1").glob("portfolio.json.corrupt-*"))
+    (tmp_path / "u1" / "portfolio.json").write_text('{"user_id": "u1"}', encoding="utf-8")
+    s.save(s.load())                      # must not raise
+    assert quarantined.exists()           # archive stays for forensics

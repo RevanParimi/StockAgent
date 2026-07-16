@@ -151,3 +151,43 @@ def test_daily_review_job_partial_alert_silent_on_full_harvest(monkeypatch):
 
     sch.AutomobileScheduler()._daily_review_job()
     assert fired == [(1, 1)]
+
+
+def test_scheduler_registers_job_error_listener():
+    """AUD-084 rider: any exception escaping a job must page, not just land in
+    the apscheduler log."""
+    import services.scheduler.python.scheduler as sch
+    inst = sch.AutomobileScheduler()
+    assert inst._on_job_error in [cb for cb, _mask in inst._scheduler._listeners]
+
+
+def test_on_job_error_emits_crash_alert(monkeypatch):
+    import services.scheduler.python.scheduler as sch
+    import core.delivery.ops_alerts as oa
+
+    crashed = []
+    monkeypatch.setattr(oa, "alert_job_crashed",
+                        lambda job, error: crashed.append((job, error)))
+
+    class _Event:
+        job_id = "rl_daily_review"
+        exception = TimeoutError("3 (of 16) futures unfinished")
+
+    sch.AutomobileScheduler()._on_job_error(_Event())
+    assert crashed and crashed[0][0] == "rl_daily_review"
+    assert "unfinished" in crashed[0][1]
+
+
+def test_on_job_error_never_raises(monkeypatch):
+    import services.scheduler.python.scheduler as sch
+    import core.delivery.ops_alerts as oa
+
+    def boom(job, error):
+        raise RuntimeError("alert layer down")
+    monkeypatch.setattr(oa, "alert_job_crashed", boom)
+
+    class _Event:
+        job_id = "rl_daily_review"
+        exception = RuntimeError("x")
+
+    sch.AutomobileScheduler()._on_job_error(_Event())   # must not raise

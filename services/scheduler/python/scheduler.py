@@ -131,6 +131,15 @@ class AutomobileScheduler:
 
         scheduler = BackgroundScheduler(timezone="Asia/Kolkata")
 
+        # AUD-084 rider: anything that still escapes a job function (the
+        # harvest-TimeoutError class) must page a human, not just vanish
+        # into the apscheduler error log.
+        try:
+            from apscheduler.events import EVENT_JOB_ERROR
+            scheduler.add_listener(self._on_job_error, EVENT_JOB_ERROR)
+        except Exception as exc:
+            logger.warning("[Scheduler] could not register error listener: %s", exc)
+
         # ── Job 1: Daily RL review (FEEDBACK_CRON — IST-native fields, named days) ──
         fb_parts = settings.FEEDBACK_CRON.split()
         if len(fb_parts) == 5:
@@ -391,6 +400,18 @@ class AutomobileScheduler:
             logger.info("[Scheduler] Delivery jobs disabled (DELIVERY_ENABLED=false)")
 
         return scheduler
+
+    def _on_job_error(self, event) -> None:
+        """EVENT_JOB_ERROR hook — one critical ops alert per crashed job run
+        (AUD-084 rider). Never raises: alerting must not hurt the scheduler."""
+        job_id = str(getattr(event, "job_id", "unknown"))
+        exc = getattr(event, "exception", None)
+        logger.error("[Scheduler] Job %s CRASHED: %r", job_id, exc)
+        try:
+            from core.delivery.ops_alerts import alert_job_crashed
+            alert_job_crashed(job_id, repr(exc))
+        except Exception as alert_exc:
+            logger.warning("[Scheduler] crash alert failed (non-fatal): %s", alert_exc)
 
     # ------------------------------------------------------------------
     # Job implementations

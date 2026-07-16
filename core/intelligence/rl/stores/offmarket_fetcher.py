@@ -14,6 +14,8 @@ miss more accurately the next day.
 """
 from __future__ import annotations
 import logging
+import pathlib
+import tempfile
 from core.schemas.feedback import OffMarketSignals, BlockDeal, BulkDeal
 
 logger = logging.getLogger(__name__)
@@ -23,7 +25,9 @@ class OffMarketFetcher:
     def __init__(self) -> None:
         try:
             from nse import NSE
-            self._nse = NSE()
+            # download_folder is REQUIRED by the nse client (AUD-086);
+            # mkdtemp matches every other NSE() call site in the repo.
+            self._nse = NSE(download_folder=pathlib.Path(tempfile.mkdtemp()))
         except Exception as exc:
             logger.warning("[OffMarketFetcher] nse package unavailable: %s", exc)
             self._nse = None

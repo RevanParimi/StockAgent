@@ -14,6 +14,8 @@ Only near-month (closest expiry) contracts are extracted to avoid far-month nois
 """
 from __future__ import annotations
 import logging
+import pathlib
+import tempfile
 from datetime import datetime
 
 logger = logging.getLogger(__name__)
@@ -24,7 +26,8 @@ class FnOFetcher:
         self.near_month_expiry: str | None = None
         try:
             from nse import NSE
-            self._nse = NSE()
+            # download_folder is REQUIRED by the nse client (AUD-086).
+            self._nse = NSE(download_folder=pathlib.Path(tempfile.mkdtemp()))
         except Exception as exc:
             logger.warning("[FnOFetcher] nse package unavailable: %s", exc)
             self._nse = None

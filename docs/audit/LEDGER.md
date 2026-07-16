@@ -948,3 +948,25 @@ once on a 403, so flipping the key won't brick the UI. New tests: `test_api_auth
 `test_api_routes.py` ws-leak (1). NOT touched: AUD-100/101/104 (correctness/perf — different
 waves). **USER ACTION to activate: add `SCHEDULER_KEY=<strong random>` to Railway Variables;
 after redeploy the PWA prompts for it once on the first gated action.**
+
+## Incident — test suite sent real alert emails (2026-07-16 23:14 IST; fixed 2026-07-17, 9f13a5f)
+
+Operator received two `[ALERT] portfolio.json for user 'u9'/'u1' was corrupt and
+quarantined` emails. **Prod was untouched** — the Railway volume holds only the
+primary user, no quarantine files, portfolio intact (verified read-only over ssh).
+Root cause: the AUD-050 quarantine unit tests use fixture users u1/u9 and drive
+`PortfolioStore.load()` → `_alert_quarantine` → `emit_alerts` with REAL transports;
+once live SMTP creds landed in the developer `.env` (AUD-085 transport work, same
+day), every local pytest run could email real alerts and append fixture records
+(u1/u9/t1) to the repo's real `data/delivery/alerts_sent.jsonl`. The 5s gap between
+the two emails = sequential SMTP sends between tests; the 23:14 IST timestamp = the
+Wave A post-merge verification run.
+
+| ID | Tag | Sev | Where | Defect | Evidence | Action | Status |
+|----|-----|-----|-------|--------|----------|--------|--------|
+| AUD-106 | BUG | P2 | `tests/conftest.py` (was: nothing isolating delivery) | Unit tests exercised live delivery transports + the repo's real sent-log; any machine with delivery configured emails real alerts on every pytest run and pollutes dedupe state | operator emails 2026-07-16; `data/delivery/alerts_sent.jsonl` fixture records; prod volume clean | FIX (autouse `_no_real_deliveries` fixture: forces `DELIVERY_EMAIL_ENABLED`/`DELIVERY_PUSH_ENABLED` off + redirects default sent-log to tmp_path per test; explicit `sent_log=` honored; regression tests `test_delivery_test_isolation.py`; `DELIVERY_PUSH_ENABLED` config assert → type assert, same class as 6620cdb) | FIXED (9f13a5f) |
+
+Suite after fix: 1962 passed / 5 skipped / 1 failed = the known pre-existing
+`test_find_qualifying_events_unparseable_date_skipped` (fails at clean HEAD).
+Residual: `data/delivery/alerts_sent.jsonl` still carries the 4 junk fixture lines
+(local-only dedupe records for nonexistent users — safe to delete by hand).

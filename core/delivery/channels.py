@@ -2,8 +2,8 @@
 Compass Phase C — delivery channels (spec §7).
 
 web-push: pywebpush + VAPID keys (env secrets); subscriptions persisted in
-data/delivery/push_subscriptions.json per user. Expired subscriptions
-(404/410) are pruned on send. The PWA service worker displays the payload;
+data/delivery/push_subscriptions.json per user. Dead subscriptions
+(400/403/404/410) are pruned on send. The PWA service worker displays the payload;
 the TWA Android app gets it free.
 
 email: stdlib smtplib STARTTLS fallback — single user, spec §7 "trivial SMTP".
@@ -116,9 +116,17 @@ def send_push(
             and webpush is not None):
         return 0
     store = store or PushStore()
+    subs = store.list(user_id)
+    if not subs:
+        # AUD-090c: enabled-but-no-recipients is the silent-drop signature.
+        logger.warning(
+            "[delivery] push enabled but 0 subscriptions registered for user "
+            "'%s' — notification dropped (enable alerts in the PWA)",
+            user_id or settings.PORTFOLIO_DEFAULT_USER_ID)
+        return 0
     payload = json.dumps({"title": title, "body": body[:1500], "url": url})
     sent = 0
-    for sub in store.list(user_id):
+    for sub in subs:
         try:
             webpush(
                 subscription_info=sub,
@@ -129,9 +137,11 @@ def send_push(
             sent += 1
         except Exception as exc:
             code = getattr(getattr(exc, "response", None), "status_code", None)
-            if code in (404, 410):
+            if code in (400, 403, 404, 410):
+                # 404/410 = expired; 400/403 = malformed sub or VAPID-key
+                # mismatch (AUD-085 prod stale sub) — all permanent, prune.
                 store.remove(sub.get("endpoint", ""), user_id)
-                logger.info("[delivery] pruned expired push subscription (%s)", code)
+                logger.info("[delivery] pruned dead push subscription (%s)", code)
             else:
                 logger.warning("[delivery] push send failed (non-fatal): %s", exc)
     return sent
@@ -152,5 +162,10 @@ def deliver(
         emailed = int(send_email(title, body))
     except Exception as exc:
         logger.warning("[delivery] email channel failed (non-fatal): %s", exc)
-    logger.info("[delivery] %s — push=%d email=%d", title, pushed, emailed)
+    if pushed or emailed:
+        logger.info("[delivery] %s — push=%d email=%d", title, pushed, emailed)
+    else:
+        logger.warning(
+            "[delivery] %s — landed NOWHERE (push=0 email=0): no push "
+            "subscriptions and email disabled/unconfigured (AUD-085)", title)
     return {"delivered": bool(pushed or emailed), "push": pushed, "email": emailed}

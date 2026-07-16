@@ -90,3 +90,49 @@ def test_deliver_gated_and_never_raises(monkeypatch):
     monkeypatch.setattr(ch, "send_email", lambda *a, **k: False)
     out = deliver("t", "b")
     assert out["delivered"] is False and out["push"] == 0
+
+
+def test_send_push_prunes_dead_subscription_on_400(tmp_path, monkeypatch):
+    """AUD-085 rider: the prod stale sub fails 400 (malformed/VAPID-mismatch)
+    on EVERY send and was never pruned — 400/403 are permanent, like 404/410."""
+    store = PushStore(path=str(tmp_path / "subs.json"))
+    store.add(_SUB)
+    monkeypatch.setattr(ch.settings, "DELIVERY_PUSH_ENABLED", True)
+    monkeypatch.setattr(ch.settings, "VAPID_PRIVATE_KEY", "priv")
+
+    class _Resp:
+        status_code = 400
+
+    class _Bad(Exception):
+        def __init__(self):
+            self.response = _Resp()
+
+    def _fake_webpush(subscription_info, data, vapid_private_key, vapid_claims):
+        raise _Bad()
+
+    monkeypatch.setattr(ch, "webpush", _fake_webpush)
+    assert send_push("t", "b", store=store) == 0
+    assert store.list() == []                       # 400 pruned
+
+
+def test_send_push_zero_subscriptions_warns(tmp_path, monkeypatch, caplog):
+    """AUD-090c: push enabled + no subscription = notification silently dropped."""
+    import logging
+    store = PushStore(path=str(tmp_path / "subs.json"))
+    monkeypatch.setattr(ch.settings, "DELIVERY_PUSH_ENABLED", True)
+    monkeypatch.setattr(ch.settings, "VAPID_PRIVATE_KEY", "priv")
+    monkeypatch.setattr(ch, "webpush", lambda **kw: None)
+    with caplog.at_level(logging.WARNING, logger="core.delivery.channels"):
+        assert send_push("t", "b", store=store) == 0
+    assert any("0 subscriptions" in r.message for r in caplog.records)
+
+
+def test_deliver_warns_when_nothing_delivered(monkeypatch, caplog):
+    import logging
+    monkeypatch.setattr(ch.settings, "DELIVERY_ENABLED", True)
+    monkeypatch.setattr(ch, "send_push", lambda *a, **k: 0)
+    monkeypatch.setattr(ch, "send_email", lambda *a, **k: False)
+    with caplog.at_level(logging.WARNING, logger="core.delivery.channels"):
+        out = deliver("Morning brief", "body")
+    assert out["delivered"] is False
+    assert any("NOWHERE" in r.message for r in caplog.records)

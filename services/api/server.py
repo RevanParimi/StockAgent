@@ -462,10 +462,18 @@ if _FRONTEND_DIR is not None:
     if _ASSETS_DIR.exists():
         app.mount("/assets", StaticFiles(directory=str(_ASSETS_DIR)), name="assets")
 
+    # API namespaces: an unmatched path here is a broken contract, not a SPA
+    # route (the prototype does no URL routing — UI_SPEC.md). Serving
+    # index.html@200 for these hid 5 phantom /ui/rl/* routes for a month
+    # (AUD-100) — fail loudly instead.
+    _API_NAMESPACES = (
+        "ui/", "api/", "scheduler/", "analytics/", "portfolio/", "discovery/",
+        "delivery/", "history/", "ws/", "analyse",
+    )
+
     # Catch-all (registered last → all API/docs routes take precedence).
     # Serves real build files (manifest.webmanifest, sw.js, icons,
-    # /.well-known/assetlinks.json, etc.) and falls back to index.html for
-    # client-side React Router routes.
+    # /.well-known/assetlinks.json, etc.) and falls back to index.html.
     @app.get("/{full_path:path}", include_in_schema=False)
     async def spa(full_path: str):
         if full_path:
@@ -473,6 +481,9 @@ if _FRONTEND_DIR is not None:
             # Guard against path traversal outside the build dir
             if str(candidate).startswith(str(_FRONTEND_ROOT)) and candidate.is_file():
                 return FileResponse(candidate)
+            if full_path.startswith(_API_NAMESPACES):
+                from fastapi import HTTPException
+                raise HTTPException(status_code=404, detail="unknown API path")
         return FileResponse(_FRONTEND_DIR / "index.html")
 
     logger.info("[server] Serving prototype PWA from %s", _FRONTEND_DIR)

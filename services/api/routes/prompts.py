@@ -168,9 +168,15 @@ def _extract_docstring(file_path: Path) -> str:
     return ""
 
 
-def _safe_triple_quote(s: str) -> str:
-    """Wrap s in triple double-quotes, escaping any embedded triple-double-quotes."""
-    escaped = s.replace('"""', r'\"\"\"')
+def _py_string_literal(s: str) -> str:
+    """Encode s as a SAFE multi-line Python string literal (AUD-099b).
+
+    Escape backslashes FIRST, then double quotes — so no payload can
+    terminate the triple-quoted literal (the old version escaped only
+    literal triple-quotes; a trailing single backslash or quote broke out
+    of the string in a file that then gets importlib-imported).
+    """
+    escaped = s.replace("\\", "\\\\").replace('"', '\\"')
     return f'"""{escaped}"""'
 
 
@@ -186,9 +192,9 @@ def _write_prompt_file(
     if docstring:
         parts.append(docstring)
     parts.append("")
-    parts.append(f"SYSTEM_PROMPT = {_safe_triple_quote(system_prompt)}")
+    parts.append(f"SYSTEM_PROMPT = {_py_string_literal(system_prompt)}")
     parts.append("")
-    parts.append(f"ANALYSIS_PROMPT = {_safe_triple_quote(analysis_prompt)}")
+    parts.append(f"ANALYSIS_PROMPT = {_py_string_literal(analysis_prompt)}")
     parts.append("")
     query_lines = ["CONTEXT_SEARCH_QUERIES = ["]
     for q in queries:

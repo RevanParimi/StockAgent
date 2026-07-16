@@ -117,6 +117,9 @@ class BaseAgent(ABC):
         pt = self._last_usage["prompt_tokens"]
         ct = self._last_usage["completion_tokens"]
         cost = (pt * settings.LLM_INPUT_COST_PER_M + ct * settings.LLM_OUTPUT_COST_PER_M) / 1_000_000
+        output.prompt_tokens = pt
+        output.completion_tokens = ct
+        output.cost_usd = cost
         log_llm_call(
             run_id=run_id, ticker=query.ticker, phase="agent",
             agent_name=self.agent_name, model=settings.LLM_MODEL,
@@ -158,6 +161,9 @@ class BaseAgent(ABC):
         pt = self._last_usage["prompt_tokens"]
         ct = self._last_usage["completion_tokens"]
         cost = (pt * settings.LLM_INPUT_COST_PER_M + ct * settings.LLM_OUTPUT_COST_PER_M) / 1_000_000
+        output.prompt_tokens = pt
+        output.completion_tokens = ct
+        output.cost_usd = cost
         log_llm_call(
             run_id=run_id, ticker=query.ticker, phase="agent",
             agent_name=self.agent_name, model=settings.LLM_MODEL,

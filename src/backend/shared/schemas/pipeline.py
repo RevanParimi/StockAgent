@@ -124,6 +124,10 @@ class AgentOutput(BaseModel):
     data_freshness: str = ""
     raw_llm_response: str = Field(default="", exclude=True)  # not serialised in reports
     error: str | None = None
+    # Telemetry (AUD-087): per-call usage, excluded from serialised reports.
+    prompt_tokens: int = Field(default=0, exclude=True)
+    completion_tokens: int = Field(default=0, exclude=True)
+    cost_usd: float = Field(default=0.0, exclude=True)
     # Ticker-specific insight fields — all optional with defaults so existing code is unaffected
     ticker_vs_peers: str = Field(
         default="",

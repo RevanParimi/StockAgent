@@ -70,6 +70,22 @@ def _build_worker_pool_graph(agents: dict, sector: str):
     return wf.compile()
 
 
+def sum_run_usage(
+    agent_outputs: dict[str, AgentOutput],
+    resolve_usage: tuple[int, int],
+    aggregator: object,
+) -> tuple[int, int, float]:
+    """Run totals for log_run_summary (AUD-087): agents + ticker-resolve + aggregator."""
+    pt = sum(o.prompt_tokens for o in agent_outputs.values())
+    ct = sum(o.completion_tokens for o in agent_outputs.values())
+    cost = sum(o.cost_usd for o in agent_outputs.values())
+    extra_pt = resolve_usage[0] + getattr(aggregator, "_last_prompt_tokens", 0)
+    extra_ct = resolve_usage[1] + getattr(aggregator, "_last_completion_tokens", 0)
+    cost += (extra_pt * settings.LLM_INPUT_COST_PER_M
+             + extra_ct * settings.LLM_OUTPUT_COST_PER_M) / 1_000_000
+    return pt + extra_pt, ct + extra_ct, round(cost, 6)
+
+
 class BaseSectorOrchestrator(ABC):
     """
     Sector-agnostic orchestrator base.
@@ -147,11 +163,15 @@ class BaseSectorOrchestrator(ABC):
         pipeline_run.duration_seconds = round(time.time() - start, 2)
 
         errors = [f"{n}: {o.error}" for n, o in agent_outputs.items() if o.error]
+        total_pt, total_ct, total_cost = sum_run_usage(
+            agent_outputs, getattr(self, "_last_resolve_usage", (0, 0)), self._aggregator
+        )
         log_run_summary(
             run_id=run_id, ticker=query.ticker, company_name=query.company_name,
             started_at=started_at, duration_seconds=pipeline_run.duration_seconds,
             final_score=report.final_score, verdict=report.verdict,
-            total_prompt_tokens=0, total_completion_tokens=0, total_cost_usd=0.0,
+            total_prompt_tokens=total_pt, total_completion_tokens=total_ct,
+            total_cost_usd=total_cost,
             agent_scores={n: o.overall_score for n, o in agent_outputs.items()},
             errors=errors,
         )
@@ -207,11 +227,15 @@ class BaseSectorOrchestrator(ABC):
         pipeline_run.duration_seconds = round(time.time() - start, 2)
 
         errors = [f"{n}: {o.error}" for n, o in agent_outputs.items() if o.error]
+        total_pt, total_ct, total_cost = sum_run_usage(
+            agent_outputs, getattr(self, "_last_resolve_usage", (0, 0)), self._aggregator
+        )
         log_run_summary(
             run_id=run_id, ticker=query.ticker, company_name=query.company_name,
             started_at=started_at, duration_seconds=pipeline_run.duration_seconds,
             final_score=report.final_score, verdict=report.verdict,
-            total_prompt_tokens=0, total_completion_tokens=0, total_cost_usd=0.0,
+            total_prompt_tokens=total_pt, total_completion_tokens=total_ct,
+            total_cost_usd=total_cost,
             agent_scores={n: o.overall_score for n, o in agent_outputs.items()},
             errors=errors,
         )
@@ -358,6 +382,7 @@ class BaseSectorOrchestrator(ABC):
 
     def _resolve_ticker(self, user_input: str, run_id: str = "") -> StockQuery:
         t0 = time.time()
+        self._last_resolve_usage = (0, 0)  # AUD-087: reset per run
 
         candidate = user_input.strip().upper()
         if candidate in self._managed_tickers():
@@ -383,6 +408,7 @@ class BaseSectorOrchestrator(ABC):
             if response.usage:
                 pt = response.usage.prompt_tokens
                 ct = response.usage.completion_tokens
+                self._last_resolve_usage = (pt, ct)  # AUD-087
                 cost = (pt * settings.LLM_INPUT_COST_PER_M + ct * settings.LLM_OUTPUT_COST_PER_M) / 1_000_000
                 log_llm_call(
                     run_id=run_id, ticker=user_input.upper(), phase="ticker_resolution",
@@ -478,7 +504,18 @@ class BaseSectorOrchestrator(ABC):
             "[%s] unified bundle: api_calls=%s real_data=%s",
             self.SECTOR_NAME, bundle.api_calls_made, bundle.has_real_data,
         )
-        outputs = UnifiedAnalyst().run(query, bundle, self.SECTOR_NAME)
+        analyst = UnifiedAnalyst()
+        outputs = analyst.run(query, bundle, self.SECTOR_NAME, run_id=run_id)
+        if outputs:
+            # AUD-087: one LLM call produced all outputs — stamp totals on one
+            # output so sum_run_usage() over the dict counts them exactly once.
+            first = next(iter(outputs.values()))
+            first.prompt_tokens = analyst._last_prompt_tokens
+            first.completion_tokens = analyst._last_completion_tokens
+            first.cost_usd = (
+                analyst._last_prompt_tokens * settings.LLM_INPUT_COST_PER_M
+                + analyst._last_completion_tokens * settings.LLM_OUTPUT_COST_PER_M
+            ) / 1_000_000
         if outputs and progress_callback:
             for name, out in outputs.items():
                 try:

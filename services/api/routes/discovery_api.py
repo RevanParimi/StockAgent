@@ -8,7 +8,6 @@ user decision 2026-07-06, virtual money).
 from __future__ import annotations
 
 import logging
-import os
 from datetime import date
 
 from fastapi import APIRouter, BackgroundTasks, Header, HTTPException, Query
@@ -22,9 +21,8 @@ router = APIRouter(prefix="/discovery", tags=["Discovery"])
 
 
 def _check_auth(key: str | None) -> None:
-    required = os.getenv("SCHEDULER_KEY", "")
-    if required and key != required:
-        raise HTTPException(status_code=403, detail="Invalid or missing X-Scheduler-Key header.")
+    from services.api.auth import check_scheduler_key
+    check_scheduler_key(key, context="discovery_api")
 
 
 @router.get("/shelf", summary="Discovery shelf — active ideas + paper status")

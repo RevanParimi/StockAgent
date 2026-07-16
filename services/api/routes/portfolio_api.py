@@ -23,7 +23,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import os
 from datetime import date, datetime, timezone
 
 from fastapi import APIRouter, BackgroundTasks, Header, HTTPException, Query, Request
@@ -43,12 +42,8 @@ router = APIRouter(prefix="/portfolio", tags=["Portfolio"])
 
 
 def _check_auth(key: str | None) -> None:
-    required = os.getenv("SCHEDULER_KEY", "")
-    if required and key != required:
-        raise HTTPException(status_code=403, detail="Invalid or missing X-Scheduler-Key header.")
-    if not required:
-        logger.warning("[portfolio_api] SCHEDULER_KEY not set — endpoint is open "
-                       "(accepted for virtual-money phase; revisit before real holdings).")
+    from services.api.auth import check_scheduler_key
+    check_scheduler_key(key, context="portfolio_api")
 
 
 def _store(user_id: str | None) -> PortfolioStore:

@@ -10,7 +10,6 @@ user decision 2026-07-06).
 from __future__ import annotations
 
 import logging
-import os
 from datetime import date
 
 from fastapi import APIRouter, BackgroundTasks, Header, HTTPException, Query
@@ -27,12 +26,8 @@ router = APIRouter(prefix="/delivery", tags=["Delivery"])
 
 
 def _check_auth(key: str | None) -> None:
-    required = os.getenv("SCHEDULER_KEY", "")
-    if required and key != required:
-        raise HTTPException(status_code=403,
-                            detail="Invalid or missing X-Scheduler-Key header.")
-    if not required:
-        logger.warning("[delivery_api] SCHEDULER_KEY not set — endpoint is open.")
+    from services.api.auth import check_scheduler_key
+    check_scheduler_key(key, context="delivery_api")
 
 
 @router.get("/brief/latest", summary="Latest morning brief")

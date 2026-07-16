@@ -45,17 +45,8 @@ _SECTOR = "automobile"
 # ---------------------------------------------------------------------------
 
 def _check_auth(key: str | None) -> None:
-    required = os.getenv("SCHEDULER_KEY", "")
-    if required and key != required:
-        raise HTTPException(
-            status_code=403,
-            detail="Invalid or missing X-Scheduler-Key header.",
-        )
-    if not required:
-        logger.warning(
-            "[scheduler_api] SCHEDULER_KEY not set — endpoint is open. "
-            "Add it to your Railway Variables to restrict access."
-        )
+    from services.api.auth import check_scheduler_key
+    check_scheduler_key(key, context="scheduler_api")
 
 
 # ---------------------------------------------------------------------------

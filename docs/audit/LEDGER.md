@@ -557,3 +557,77 @@ intelligence` residue DELETE (080) · `src/frontend/web` DELETE (027) ·
 `base_orchestrator` sync/async KEEP · `fno`/`seasonal`/`prompt_enhancer` KEEP (live) ·
 `settings/base.py` KEEP now, split in Ph9 (083) · `eval/harness.py` KEEP+flag (072) ·
 `factor_regime.py` FIX-or-DELETE in W4 (073) · duplicate test copies MERGE+DELETE (081).
+
+## Phase 7 — Reliability / ops / security (2026-07-16, HEAD 4eda774)
+
+`ph7` = full read of scheduler.py, core/delivery/* (alerts, ops_alerts, channels),
+llm_client, pipeline.py step wiring, server.py lifespan/lock; retry-pattern grep across
+services/data (zero hits); contract+integration suite re-run at HEAD. `plog7` = prod
+deploy logs for deployment faccdf0b (live 2026-07-12 17:12 UTC → today, spans the first
+three scheduled autopilot days Mon 7/13–Wed 7/15) + read-only API probes 2026-07-16.
+
+**Prod trace headline — Wave 1 WORKS, but day 2 of 3 was lost silently.**
+(All figures = the VIRTUAL paper portfolio.) Mon 7/13: review 16:30 IST → pipeline
+17:07 → **first-ever auto-trades: 7 (3 EXITs RBLBANK/OLAELEC/KPITTECH + 4 ADD
+tranches), ledger cash-chain continuous, realized_pnl 0.0 is CORRECT** (seeded 7/11 at
+7/10 closes; EXITs executed at the same 7/10 closes — zero P&L by construction).
+Wed 7/15: 1 ADD (TVSMOTOR), cooldown correctly blocked a second INOXWIND ADD.
+Tue 7/14: **NO pipeline, no trades, no digest, no value point, no alert** — see
+AUD-084. Paper equity −0.68% on 2 value points.
+
+| ID | Tag | Sev | Where | Defect | Evidence | Action | Status |
+|----|-----|-----|-------|--------|----------|--------|--------|
+| AUD-084 | BUG | P1 | `services/scheduler/python/scheduler.py:509-534` | **One slow review day silently kills the whole trading day.** Docstring promises a 3-min per-ticker timeout, but `future.result(timeout=180)` never blocks (as_completed yields finished futures) — the only real cap is the AGGREGATE `as_completed(timeout=180×N)`; with RL_SCHEDULER_MAX_WORKERS=1 the loop is serial, so mean review >180s guarantees a tail TimeoutError; that TimeoutError is UNCAUGHT (inner except guards result(), not the generator) → skips the zero-output alert AND the run_post_review_pipeline hook. Same loss-class: a Railway deploy landing 16:30–17:10 IST kills the job with no resumption. Prod: Tue 2026-07-14 "TimeoutError: 3 (of 16) futures unfinished" at 17:21 IST — 13 reviews saved, 0 trades, value_history gap, zero alerts (partial ≠ produced==0) | plog7 traceback; scheduler.py | FIX (catch TimeoutError around harvest; run pipeline regardless of stragglers — reviews are per-ticker persisted; budget 300s/ticker or workers>1; optional APScheduler error-listener → ops alert) — **hotfix candidate, USER call** | OPEN (URGENT) |
+| AUD-085 | GAP | P1 | delivery transport (channels.py + prod state) | **Every prod delivery lands nowhere: `push=0 email=0` on ALL sends all 4 days** (morning briefs, Monday's 7-trade digest + escalations, lock-in expiries). VAPID keys ARE configured (live /delivery/push/public-key returns a key) → cause = ZERO push subscriptions ever registered (🔔 Enable-alerts never tapped on the deployed PWA); email fallback default-disabled. The whole Wave-1 AUD-039 alert stack (LLM-streak, zero-output, quarantine, reconcile-drift) has no working transport. Design flaw compounding it: emit_alerts appends the sent-log BEFORE delivery outcome (alerts.py:107-119) → date\|kind dedupe suppresses a same-day resend even after the user subscribes; send_push returns 0 with no log when unconfigured/no-subs | plog7 (8× push=0 email=0); live probe | **USER ACTION: tap 🔔 on the PWA (and/or set SMTP_* + delivery.email_enabled)**; FIX (WARNING log on 0-subscription send; only sent-log after ≥1 channel delivers, or record delivered=false) | OPEN (URGENT) |
+| AUD-086 | BUG | P2 | `core/intelligence/rl/stores/offmarket_fetcher.py` | Off-market context structurally empty every ticker/day: "nse package unavailable: NSE.__init__() missing 1 required positional argument: 'download_folder'" — the nse package IS installed; the CONSTRUCTOR CALL is wrong (other callers pass a download folder, AUD-017 family). Mislabeled as missing-dep so it reads like AUD-078; fires ~16×/day in prod | plog7 (every review) | FIX (pass download_folder=mkdtemp-shared dir; effort trivial) — joins AUD-078's "context silently empty" wave | OPEN (wave) |
+| AUD-087 | GAP | P2 | `src/backend/shared/pipeline/base_orchestrator.py:154,214` | Run-level cost telemetry is fiction: both dispatch paths hardcode `total_prompt_tokens=0, total_completion_tokens=0, total_cost_usd=0.0` into every run summary (prod: "Run … tokens=0 cost=$0.0000") while real usage lands only in per-call telemetry.db rows — the $19–25/mo burn vs the key monthly limit (AUD-042a residual trap) is unmonitorable from run logs | plog7; code | FIX (sum agent-call usage into the summary; feeds deferred Ph5 cost audit) | OPEN (Ph5) |
+| AUD-088 | GAP | P2 | volume backup story | **No backup/export mechanism exists anywhere** for data/ — portfolio.json, transactions.jsonl (now holding real trade history), value_history, predictions tree, telemetry.db live solely on the single Railway volume; repo grep: zero backup scripts; no scheduled export job | ph7 grep; MAP | FIX (nightly ledger export job → private repo/object storage; at minimum enable+document Railway volume backups) | OPEN (Ph9 wave) |
+| AUD-089 | LOWIMPACT | P3 | `core/portfolio/autopilot.record_value_point` + /performance | Equity curve boundary quirks: Monday's value point (review_date 7/10) predates the 7/11 seed point and was silently skipped → the first real trading day is absent from the curve; `day_change_pct` is labeled per-day but computed across multi-day gaps (−0.685% spans 7/11→7/14) | probe (/portfolio/performance: 2 points) | FIX (record at execution-date or allow ordered backdate-insert; label change as period_change) | OPEN (polish) |
+| AUD-090 | GAP | P3 | observability polish batch | (a) reconcile logs nothing on a clean pass — "ran clean" indistinguishable from "didn't run"; (b) alert_job_zero_output only fires at produced==0 — 13/16 partial is invisible; (c) send_push silent at 0 recipients; (d) run_now/scheduler status has no last-run-outcome surface | ph7 | FIX (one INFO/WARNING line each; fold into AUD-084/085 wave commit) | OPEN (wave) |
+| AUD-091 | PATTERN | P3 | fetcher layer (services/data/*) | Zero retry/backoff anywhere in the data layer (grep: no hits) — every NSE/yfinance/Serper fetch is single-attempt try/except-degrade; one transient blip at 16:30 = context holes or skipped holdings (close_on raise → holding unadvised that day). House degrade-gracefully style is otherwise right for daily cadence | ph7 grep; 2026-07-11 yfinance "Invalid Crumb" day | KEEP overall; targeted FIX: one 2-attempt retry on the money-path close_on + get_price_history only | OPEN (polish) |
+
+**Updates to earlier rows (Phase 7 verification):**
+
+- AUD-012 — evidence re-presented per hold: posture unchanged at HEAD, re-verified
+  by read-only probe 2026-07-16 (specifics withheld from this public doc — recorded
+  in the private session notes). The endpoints now guard live trade history, not
+  just seed state. Status ON-HOLD (user 2026-07-10) unchanged — re-decide in Ph9.
+- AUD-013 — pinned alerts.py:107 (plain append, no rotation) + `_seen_keys` re-reads
+  the WHOLE file per emit. Actual growth ~10 lines/day → **downgrade P2→P3**, fold
+  into delivery wave.
+- AUD-015 — pinned: ops_alerts._emit and pipeline emits pass no/default user_id;
+  single-real-user today → P3 in practice, unchanged action.
+- AUD-019 — unchanged (USER-DECISION); reader torn-line tolerance verified
+  (alerts.py:56-60 json-per-line try/except).
+- AUD-022 — re-measured at HEAD: **9 failed + 10 errors = 19**, identical two stale-mock
+  roots (AutomobileAgentOrchestrator patch targets in test_phase0_llm_migration/
+  test_orchestrator; SignalAggregator/WS mocks in test_phase2_api); 221 pass alongside.
+  One cleanup ticket, count stable since seed.
+- AUD-036 — unchanged: RL_DESIGN.md still carries 4 stale `scripts.daily_review` /
+  `scripts.generate_forecast` run instructions.
+- AUD-039 — Wave-1 hooks verified wired (llm-streak + zero-output) BUT effectiveness = 0
+  until AUD-085 lands a transport; coverage hole = AUD-084's crash class skips the hook.
+- AUD-041 — prod-reconfirmed at HEAD: TATAELXSI "last 48h context" carried a 2026-04-22
+  article on 7/14 (P1-candidate upgrade evidence unchanged).
+- AUD-050 — FIXED verified in prod code path (409 quarantine handler at server.py:405);
+  no quarantine event has occurred in prod.
+- AUD-057 — scope widened: data/ops_alerts_state.json joins the non-atomic
+  write_text set (streak counter RMW from every LLM call site across 2 workers +
+  scheduler thread).
+- AUD-060/066 — live evidence: WeightAdapter logs "hits=7/7" for ALL 8 agents with
+  uniformly positive Δ on both observed days (NEUTRAL free-pass inflation visible in
+  prod exactly as predicted).
+- AUD-078 — prod-confirmed live: "[nse_market] nsepython not installed — context will
+  be empty" at 16:30:1x IST on 7/13, 7/14, 7/15. Still a one-line fix, still unshipped.
+- Error-handling taxonomy verdict: house pattern (per-step try/except-log-continue,
+  "non-fatal by construction") is RIGHT for this system and consistently applied; its
+  two systemic holes are exactly AUD-084 (exceptions that escape the pattern kill whole
+  chains) and AUD-085 (the only human-facing failure channel has no recipients).
+
+**Component verdicts (Phase 7 protocol step 5):**
+`scheduler.py` jobs KEEP+FIX (084 harvest/timeout; else clean taxonomy) ·
+`ops_alerts.py` KEEP+FIX (085 rider, 057 atomicity) · `alerts.py` KEEP+FIX (sent-log
+ordering, 013 P3) · `channels.py` KEEP+FIX (silent-zero logging) · `llm_client.py` KEEP
+(SDK default 2-retry is adequate; salvage util solid) · `pipeline.py` step wiring KEEP
+(clean-pass logging only) · server.py lifespan/singleton lock KEEP (port-bind lock
+verified working in prod all week) · fetcher resilience KEEP+targeted-retry (091).

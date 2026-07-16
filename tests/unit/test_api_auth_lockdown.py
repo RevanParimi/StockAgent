@@ -47,3 +47,39 @@ def test_prompts_routes_open_when_key_unset(monkeypatch):
     monkeypatch.delenv("SCHEDULER_KEY", raising=False)
     c = _prompts_client()
     assert c.get("/ui/prompts/catalogue").status_code == 200
+
+
+def _ui_client():
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from services.api.routes.ui_data import router
+    app = FastAPI()
+    app.include_router(router)
+    return TestClient(app, raise_server_exceptions=False)
+
+
+def test_ui_mutations_locked_when_key_set(monkeypatch):
+    monkeypatch.setenv("SCHEDULER_KEY", "sekret")
+    c = _ui_client()
+    assert c.put("/ui/watchlist", json={"watchlist": ["MARUTI"]}).status_code == 403
+    assert c.put("/ui/agents/tasks", json={"flags": {}}).status_code == 403
+    assert c.put("/ui/tickers/managed", json=[]).status_code == 403
+    assert c.delete("/ui/tickers/managed/MARUTI").status_code == 403
+    assert c.patch("/ui/tickers/managed/MARUTI/toggle").status_code == 403
+    assert c.post("/ui/tickers/managed/MARUTI/generate-envelope").status_code == 403
+
+
+def test_ui_reads_stay_open_when_key_set(monkeypatch):
+    monkeypatch.setenv("SCHEDULER_KEY", "sekret")
+    c = _ui_client()
+    # GET endpoints stay ungated — read-only, the PWA needs them pre-key
+    assert c.get("/ui/tickers/managed").status_code == 200
+
+
+def test_replace_managed_tickers_rejects_empty_sym(monkeypatch):
+    monkeypatch.delenv("SCHEDULER_KEY", raising=False)
+    c = _ui_client()
+    resp = c.put("/ui/tickers/managed",
+                 json=[{"sym": "  ", "sector": "automobile"}])
+    assert resp.status_code == 422
+    assert "sym" in resp.text

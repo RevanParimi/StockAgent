@@ -32,8 +32,10 @@ from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Header, HTTPException, Query
 from pydantic import BaseModel
+
+from services.api.auth import check_scheduler_key
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/ui", tags=["UI"])
@@ -655,6 +657,7 @@ class _WeightsBody(BaseModel):
 async def update_agent_weights(
     body: _WeightsBody,
     sector: str = Query(default="automobile", description="Sector key"),
+    x_scheduler_key: str | None = Header(default=None),
 ) -> dict:
     """
     Accepts {weights: {agent_key: float}} and persists only the changed keys as
@@ -665,6 +668,7 @@ async def update_agent_weights(
       - All final weights (base merged with overrides) must sum to 0.95–1.05
       - Only valid agent keys for the sector are accepted; unknown keys dropped
     """
+    check_scheduler_key(x_scheduler_key, context="ui_data")
     if sector not in _AGENT_SECTORS:
         sector = "automobile"
 
@@ -1006,7 +1010,9 @@ async def get_agent_tasks() -> dict:
 
 
 @router.put("/agents/tasks", summary="Persist user task toggle state to data/agent_tasks.json")
-async def update_agent_tasks(body: _TaskFlagsBody) -> dict:
+async def update_agent_tasks(body: _TaskFlagsBody,
+                             x_scheduler_key: str | None = Header(default=None)) -> dict:
+    check_scheduler_key(x_scheduler_key, context="ui_data")
     _CUSTOM_TASKS_PATH.parent.mkdir(parents=True, exist_ok=True)
     _CUSTOM_TASKS_PATH.write_text(json.dumps(body.flags, indent=2), encoding="utf-8")
     logger.info("[ui/agents/tasks] Saved task flags: %d agents", len(body.flags))
@@ -1041,7 +1047,9 @@ async def get_watchlist() -> dict:
 
 
 @router.put("/watchlist", summary="Persist user watchlist to data/watchlist.json")
-async def update_watchlist(body: _WatchlistBody) -> dict:
+async def update_watchlist(body: _WatchlistBody,
+                           x_scheduler_key: str | None = Header(default=None)) -> dict:
+    check_scheduler_key(x_scheduler_key, context="ui_data")
     valid_syms = {t["sym"] for t in _ALL_TICKERS}
     sanitized = [s.strip().upper() for s in body.watchlist if s.strip().upper() in valid_syms]
     sanitized = list(dict.fromkeys(sanitized))   # deduplicate preserving order
@@ -1089,7 +1097,9 @@ class _CategoryTickersBody(BaseModel):
 
 
 @router.put("/categories/{key}/tickers", summary="Add or remove tickers from a category")
-async def update_category_tickers(key: str, body: _CategoryTickersBody) -> dict:
+async def update_category_tickers(key: str, body: _CategoryTickersBody,
+                                  x_scheduler_key: str | None = Header(default=None)) -> dict:
+    check_scheduler_key(x_scheduler_key, context="ui_data")
     valid_syms = {t["sym"] for t in _ALL_TICKERS}
     overrides = _load_category_overrides()
 
@@ -3392,12 +3402,17 @@ class _ManagedTickerBody(BaseModel):
 
 
 @router.put("/tickers/managed", summary="Replace the entire managed ticker list")
-async def replace_managed_tickers(body: list[_ManagedTickerBody]) -> dict:
+async def replace_managed_tickers(body: list[_ManagedTickerBody],
+                                  x_scheduler_key: str | None = Header(default=None)) -> dict:
+    check_scheduler_key(x_scheduler_key, context="ui_data")
     valid_sectors = _get_valid_sectors()
     tickers = [t.model_dump() for t in body]
     for t in tickers:
+        t["sym"] = (t.get("sym") or "").strip().upper()
+        if not t["sym"]:
+            raise HTTPException(status_code=422,
+                                detail="Each ticker needs a non-empty 'sym'.")
         if t["sector"] not in valid_sectors:
-            from fastapi import HTTPException
             raise HTTPException(status_code=422, detail=f"Unknown sector '{t['sector']}'")
     _save_mt(tickers)
     logger.info("[ui/tickers/managed] Replaced list: %d tickers", len(tickers))
@@ -3444,7 +3459,9 @@ def _cleanup_ticker_rl_data(sym: str, sector: str) -> None:
 
 
 @router.post("/tickers/managed/{sym}", summary="Add a ticker to the managed list")
-async def add_managed_ticker(sym: str, body: _ManagedTickerBody = _ManagedTickerBody()) -> dict:
+async def add_managed_ticker(sym: str, body: _ManagedTickerBody = _ManagedTickerBody(),
+                             x_scheduler_key: str | None = Header(default=None)) -> dict:
+    check_scheduler_key(x_scheduler_key, context="ui_data")
     import asyncio as _asyncio
     from services.api.log_buffer import _KNOWN_NAMES
     valid_sectors = _get_valid_sectors()
@@ -3539,11 +3556,13 @@ async def add_managed_ticker(sym: str, body: _ManagedTickerBody = _ManagedTicker
 
 
 @router.post("/tickers/managed/{sym}/generate-envelope", summary="Trigger immediate envelope generation for a ticker")
-async def trigger_envelope_generation(sym: str, sector: str = "automobile") -> dict:
+async def trigger_envelope_generation(sym: str, sector: str = "automobile",
+                                      x_scheduler_key: str | None = Header(default=None)) -> dict:
     """
     Immediately generate a forecast envelope for this ticker.
     Use this when adding a new ticker mid-month and don't want to wait until month-end.
     """
+    check_scheduler_key(x_scheduler_key, context="ui_data")
     import asyncio as _asyncio
     sym_up = sym.upper()
     _asyncio.create_task(_generate_envelope_for_new_ticker(sym_up, sector))
@@ -3551,7 +3570,9 @@ async def trigger_envelope_generation(sym: str, sector: str = "automobile") -> d
 
 
 @router.delete("/tickers/managed/{sym}", summary="Remove a ticker from the managed list")
-async def remove_managed_ticker(sym: str) -> dict:
+async def remove_managed_ticker(sym: str,
+                                x_scheduler_key: str | None = Header(default=None)) -> dict:
+    check_scheduler_key(x_scheduler_key, context="ui_data")
     sym_up = sym.strip().upper()
     tickers = _load_mt()
     # Find the ticker's sector BEFORE removing it
@@ -3578,7 +3599,9 @@ async def remove_managed_ticker(sym: str) -> dict:
 
 
 @router.patch("/tickers/managed/{sym}/toggle", summary="Enable or disable a managed ticker")
-async def toggle_managed_ticker(sym: str) -> dict:
+async def toggle_managed_ticker(sym: str,
+                                x_scheduler_key: str | None = Header(default=None)) -> dict:
+    check_scheduler_key(x_scheduler_key, context="ui_data")
     sym_up = sym.strip().upper()
     tickers = _load_mt()
     toggled = None

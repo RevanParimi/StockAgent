@@ -21,7 +21,9 @@ def test_switch_gap_present():
 def test_delivery_settings_present():
     assert settings.DELIVERY_ENABLED is True            # yaml true; base.py fallback False
     assert settings.DELIVERY_DATA_DIR == "data/delivery"
-    assert settings.DELIVERY_EMAIL_ENABLED is False     # off until SMTP secrets configured
+    # DELIVERY_EMAIL_ENABLED is an env-driven operator switch (flipped on when
+    # SMTP went live 2026-07-16) — assert type, not the machine's current value.
+    assert isinstance(settings.DELIVERY_EMAIL_ENABLED, bool)
     assert settings.DELIVERY_PUSH_ENABLED is True
     assert "NIFTY 50" in settings.DELIVERY_INDEX_WATCH
     assert len(settings.DELIVERY_INDEX_WATCH) == 4

@@ -179,7 +179,7 @@ class BaseSectorOrchestrator(ABC):
         log_analysis(
             report=report, run_id=run_id,
             duration_seconds=pipeline_run.duration_seconds,
-            model=settings.LLM_MODEL, agent_outputs=agent_outputs,
+            model=settings.LLM_MODEL_BULK, agent_outputs=agent_outputs,
         )
         logger.info(
             "[%s] Async run %s done in %.1fs — verdict=%s score=%.3f",
@@ -243,7 +243,7 @@ class BaseSectorOrchestrator(ABC):
         log_analysis(
             report=report, run_id=run_id,
             duration_seconds=pipeline_run.duration_seconds,
-            model=settings.LLM_MODEL, agent_outputs=agent_outputs,
+            model=settings.LLM_MODEL_BULK, agent_outputs=agent_outputs,
         )
         logger.info(
             "[%s] Run %s done in %.1fs — verdict=%s score=%.3f",
@@ -395,7 +395,7 @@ class BaseSectorOrchestrator(ABC):
 
         def _llm_call(prompt: str) -> dict:
             response = self._llm.chat.completions.create(
-                model=settings.LLM_MODEL,
+                model=settings.LLM_MODEL_BULK,
                 temperature=0.0,
                 max_tokens=256,
                 messages=[
@@ -412,7 +412,7 @@ class BaseSectorOrchestrator(ABC):
                 cost = (pt * settings.LLM_INPUT_COST_PER_M + ct * settings.LLM_OUTPUT_COST_PER_M) / 1_000_000
                 log_llm_call(
                     run_id=run_id, ticker=user_input.upper(), phase="ticker_resolution",
-                    agent_name=None, model=settings.LLM_MODEL,
+                    agent_name=None, model=settings.LLM_MODEL_BULK,
                     prompt_tokens=pt, completion_tokens=ct,
                     duration_ms=(time.time() - t0) * 1000, cost_usd=cost,
                 )

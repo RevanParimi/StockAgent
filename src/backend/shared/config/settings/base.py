@@ -31,8 +31,6 @@ OPENROUTER_BASE_URL: str = "https://openrouter.ai/api/v1"
 LLM_MODEL_FAST: str      = cfg("llm.model_fast",      env="LLM_MODEL_FAST",      fallback="qwen/qwen3.6-flash")
 LLM_MODEL_REASONING: str = cfg("llm.model_reasoning", env="LLM_MODEL_REASONING", fallback="qwen/qwen3.7-max")
 LLM_MODEL_BULK: str      = cfg("llm.model_bulk",      env="LLM_MODEL_BULK",      fallback="deepseek/deepseek-v4-flash")
-# Back-compat catch-all: any call-site still reading LLM_MODEL gets the BULK tier.
-LLM_MODEL: str = os.getenv("LLM_MODEL", LLM_MODEL_BULK)
 LLM_TEMPERATURE: float = cfg("llm.temperature", env="LLM_TEMPERATURE", fallback=0.2)
 LLM_MAX_TOKENS: int = cfg("llm.max_tokens", env="LLM_MAX_TOKENS", fallback=2048)
 LLM_TIMEOUT_SECONDS: int = cfg("llm.timeout_seconds", env="LLM_TIMEOUT_SECONDS", fallback=60)

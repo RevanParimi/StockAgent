@@ -381,7 +381,7 @@ class PriceInterpolator:
                 t0 = time.time()
                 try:
                     resp = client.chat.completions.create(
-                        model=settings.LLM_MODEL,
+                        model=settings.LLM_MODEL_BULK,
                         temperature=0.2,
                         max_tokens=180,
                         messages=[
@@ -392,11 +392,11 @@ class PriceInterpolator:
                         extra_body=JSON_MODE_EXTRA_BODY,
                     )
                 except Exception:
-                    record_llm_call("price_interpolator", settings.LLM_MODEL, 0, 0,
+                    record_llm_call("price_interpolator", settings.LLM_MODEL_BULK, 0, 0,
                                     int((time.time() - t0) * 1000), False)
                     raise
                 usage = getattr(resp, "usage", None)
-                record_llm_call("price_interpolator", settings.LLM_MODEL,
+                record_llm_call("price_interpolator", settings.LLM_MODEL_BULK,
                                 getattr(usage, "prompt_tokens", 0) or 0,
                                 getattr(usage, "completion_tokens", 0) or 0,
                                 int((time.time() - t0) * 1000), True)

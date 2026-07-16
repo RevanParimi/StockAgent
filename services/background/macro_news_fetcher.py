@@ -338,7 +338,7 @@ Respond ONLY with JSON inside <json> tags:
             t0 = time.time()
             try:
                 resp = client.chat.completions.create(
-                    model=_s.LLM_MODEL,
+                    model=_s.LLM_MODEL_BULK,
                     messages=[
                         {
                             "role": "system",
@@ -359,11 +359,11 @@ Respond ONLY with JSON inside <json> tags:
                     extra_body=JSON_MODE_EXTRA_BODY,
                 )
             except Exception:
-                record_llm_call("macro_reviewer", _s.LLM_MODEL, 0, 0,
+                record_llm_call("macro_reviewer", _s.LLM_MODEL_BULK, 0, 0,
                                 int((time.time() - t0) * 1000), False)
                 raise
             usage = getattr(resp, "usage", None)
-            record_llm_call("macro_reviewer", _s.LLM_MODEL,
+            record_llm_call("macro_reviewer", _s.LLM_MODEL_BULK,
                             getattr(usage, "prompt_tokens", 0) or 0,
                             getattr(usage, "completion_tokens", 0) or 0,
                             int((time.time() - t0) * 1000), True)

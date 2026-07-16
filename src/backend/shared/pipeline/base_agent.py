@@ -122,7 +122,7 @@ class BaseAgent(ABC):
         output.cost_usd = cost
         log_llm_call(
             run_id=run_id, ticker=query.ticker, phase="agent",
-            agent_name=self.agent_name, model=settings.LLM_MODEL,
+            agent_name=self.agent_name, model=settings.LLM_MODEL_BULK,
             prompt_tokens=pt, completion_tokens=ct,
             duration_ms=duration_ms, cost_usd=cost,
             score=output.overall_score, error=output.error,
@@ -166,7 +166,7 @@ class BaseAgent(ABC):
         output.cost_usd = cost
         log_llm_call(
             run_id=run_id, ticker=query.ticker, phase="agent",
-            agent_name=self.agent_name, model=settings.LLM_MODEL,
+            agent_name=self.agent_name, model=settings.LLM_MODEL_BULK,
             prompt_tokens=pt, completion_tokens=ct,
             duration_ms=duration_ms, cost_usd=cost,
             score=output.overall_score, error=output.error,
@@ -217,7 +217,7 @@ class BaseAgent(ABC):
         for attempt in range(1, retries + 1):
             try:
                 response = self._client.chat.completions.create(
-                    model=settings.LLM_MODEL,
+                    model=settings.LLM_MODEL_BULK,
                     temperature=settings.LLM_TEMPERATURE,
                     max_tokens=settings.LLM_MAX_TOKENS,
                     messages=[
@@ -275,7 +275,7 @@ class BaseAgent(ABC):
         for attempt in range(1, retries + 1):
             try:
                 response = await client.chat.completions.create(
-                    model=settings.LLM_MODEL,
+                    model=settings.LLM_MODEL_BULK,
                     temperature=settings.LLM_TEMPERATURE,
                     max_tokens=settings.LLM_MAX_TOKENS,
                     messages=[

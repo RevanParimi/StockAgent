@@ -78,9 +78,9 @@ class TestOpenRouterSettings:
 
     def test_model_is_approved_openrouter_slug(self):
         from core.config import settings
-        assert any(fam in settings.LLM_MODEL.lower() for fam in ("qwen", "deepseek")), (
+        assert any(fam in settings.LLM_MODEL_BULK.lower() for fam in ("qwen", "deepseek")), (
             f"Expected an approved OpenRouter model family (qwen/deepseek), "
-            f"got: {settings.LLM_MODEL}"
+            f"got: {settings.LLM_MODEL_BULK}"
         )
 
     def test_no_groq_api_key_attribute(self):

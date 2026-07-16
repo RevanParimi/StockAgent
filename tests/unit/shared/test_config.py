@@ -64,7 +64,7 @@ class TestLLMSettings:
         assert settings.LLM_MAX_TOKENS > 0
 
     def test_model_name_not_empty(self):
-        assert settings.LLM_MODEL.strip() != ""
+        assert settings.LLM_MODEL_BULK.strip() != ""
 
     def test_timeout_positive(self):
         assert settings.LLM_TIMEOUT_SECONDS > 0
@@ -76,9 +76,9 @@ class TestLLMSettings:
         assert hasattr(settings, "OPENROUTER_API_KEY")
 
     def test_model_is_approved_openrouter_slug(self):
-        assert any(fam in settings.LLM_MODEL.lower() for fam in ("qwen", "deepseek")), (
+        assert any(fam in settings.LLM_MODEL_BULK.lower() for fam in ("qwen", "deepseek")), (
             f"Expected an approved OpenRouter model family (qwen/deepseek), "
-            f"got: {settings.LLM_MODEL}"
+            f"got: {settings.LLM_MODEL_BULK}"
         )
 
 

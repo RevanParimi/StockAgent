@@ -67,7 +67,7 @@ def make_resolve_ticker_node(sector: str) -> Callable[[GraphState], dict]:
 
         try:
             resp = llm.chat.completions.create(
-                model=settings.LLM_MODEL,
+                model=settings.LLM_MODEL_BULK,
                 temperature=0.0,
                 max_tokens=128,
                 messages=[
@@ -84,7 +84,7 @@ def make_resolve_ticker_node(sector: str) -> Callable[[GraphState], dict]:
                 log_llm_call(
                     run_id=run_id, ticker=user_input.upper(),
                     phase="ticker_resolution", agent_name=None,
-                    model=settings.LLM_MODEL, prompt_tokens=pt,
+                    model=settings.LLM_MODEL_BULK, prompt_tokens=pt,
                     completion_tokens=ct, duration_ms=(time.time() - t0) * 1000,
                     cost_usd=cost,
                 )
@@ -338,7 +338,7 @@ def make_aggregate_node(
                     summaries=summaries,
                 )
                 resp = llm.chat.completions.create(
-                    model=settings.LLM_MODEL,
+                    model=settings.LLM_MODEL_BULK,
                     temperature=0.1,
                     max_tokens=512,
                     messages=[
@@ -374,7 +374,7 @@ def make_aggregate_node(
                     summaries=summaries,
                 )
                 resp = llm.chat.completions.create(
-                    model=settings.LLM_MODEL,
+                    model=settings.LLM_MODEL_BULK,
                     temperature=0.1,
                     max_tokens=512,
                     messages=[
@@ -402,7 +402,7 @@ def make_aggregate_node(
                 log_llm_call(
                     run_id=run_id, ticker=query.ticker,
                     phase="aggregation", agent_name="signal_aggregator",
-                    model=settings.LLM_MODEL, prompt_tokens=pt,
+                    model=settings.LLM_MODEL_BULK, prompt_tokens=pt,
                     completion_tokens=ct, duration_ms=(time.time() - t0) * 1000,
                     cost_usd=cost,
                 )

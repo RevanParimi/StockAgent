@@ -177,7 +177,7 @@ class EventIngestor:
         t0 = time.time()
         try:
             resp = client.chat.completions.create(
-                model=settings.LLM_MODEL,
+                model=settings.LLM_MODEL_BULK,
                 temperature=0.2,
                 max_tokens=900,
                 response_format={"type": "json_object"},
@@ -186,11 +186,11 @@ class EventIngestor:
                           {"role": "user", "content": user_prompt}],
             )
         except Exception:
-            record_llm_call("event_ingestor", settings.LLM_MODEL, 0, 0,
+            record_llm_call("event_ingestor", settings.LLM_MODEL_BULK, 0, 0,
                             int((time.time() - t0) * 1000), False)
             raise
         usage = getattr(resp, "usage", None)
-        record_llm_call("event_ingestor", settings.LLM_MODEL,
+        record_llm_call("event_ingestor", settings.LLM_MODEL_BULK,
                         getattr(usage, "prompt_tokens", 0) or 0,
                         getattr(usage, "completion_tokens", 0) or 0,
                         int((time.time() - t0) * 1000), True)

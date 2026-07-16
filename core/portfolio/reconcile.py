@@ -94,6 +94,9 @@ def reconcile(store: PortfolioStore) -> dict:
             logger.error("[reconcile] DRIFT for %s: %s", store.user_id, issues)
             _alert(store.user_id, issues)
             return {"status": "drift", "issues": issues, "unverifiable": unverifiable}
+        logger.info("[reconcile] clean for %s — %d txns replayed, %d holdings "
+                    "verified (%d unverifiable)", store.user_id, len(txns),
+                    len(portfolio.holdings) - len(unverifiable), len(unverifiable))
         return {"status": "clean", "issues": [], "unverifiable": unverifiable}
     except Exception as exc:
         logger.warning("[reconcile] failed (non-fatal): %s", exc)

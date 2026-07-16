@@ -97,3 +97,14 @@ def test_no_cash_accounting_skips(tmp_path, _alert_spy):
     s = PortfolioStore(user_id="u1", base_dir=str(tmp_path))
     s.add_holding(_h("MARUTI", 10))
     assert rec.reconcile(s)["status"] == "skipped"
+
+
+def test_clean_pass_logs_info(tmp_path, _alert_spy, caplog):
+    """AUD-090a: a clean pass must leave a log line — silence previously meant
+    either 'clean' or 'never ran'."""
+    import logging
+    s = _store(tmp_path, [_h("MARUTI", 10)], cash=9000.0)
+    s.append_transaction(_txn("t1", "BUY", "MARUTI", 10, 100.0, 10000.0, 9000.0))
+    with caplog.at_level(logging.INFO, logger="core.portfolio.reconcile"):
+        assert rec.reconcile(s)["status"] == "clean"
+    assert any("clean" in r.message for r in caplog.records)

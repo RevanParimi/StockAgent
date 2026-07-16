@@ -369,28 +369,37 @@ class PriceInterpolator:
         )
 
     def _call_llm(self, user_prompt: str) -> str:
-        from openai import OpenAI, APIError, APITimeoutError, RateLimitError
-        client = OpenAI(
-            api_key=settings.OPENROUTER_API_KEY,
-            base_url=settings.OPENROUTER_BASE_URL,
-            timeout=settings.LLM_TIMEOUT_SECONDS,
-        )
+        from openai import APITimeoutError, RateLimitError
+        # AUD-097: single factory — provider/timeout config lives in one place.
+        from services.clients.llm_client import get_llm_client, record_llm_call
+        client = get_llm_client()
         delay = settings.RETRY_DELAY_SECONDS
         last_err: Exception | None = None
 
         for attempt in range(1, settings.MAX_RETRIES + 1):
             try:
-                resp = client.chat.completions.create(
-                    model=settings.LLM_MODEL,
-                    temperature=0.2,
-                    max_tokens=180,
-                    messages=[
-                        {"role": "system", "content": _SYSTEM_PROMPT},
-                        {"role": "user",   "content": user_prompt},
-                    ],
-                    response_format={"type": "json_object"},
-                    extra_body=JSON_MODE_EXTRA_BODY,
-                )
+                t0 = time.time()
+                try:
+                    resp = client.chat.completions.create(
+                        model=settings.LLM_MODEL,
+                        temperature=0.2,
+                        max_tokens=180,
+                        messages=[
+                            {"role": "system", "content": _SYSTEM_PROMPT},
+                            {"role": "user",   "content": user_prompt},
+                        ],
+                        response_format={"type": "json_object"},
+                        extra_body=JSON_MODE_EXTRA_BODY,
+                    )
+                except Exception:
+                    record_llm_call("price_interpolator", settings.LLM_MODEL, 0, 0,
+                                    int((time.time() - t0) * 1000), False)
+                    raise
+                usage = getattr(resp, "usage", None)
+                record_llm_call("price_interpolator", settings.LLM_MODEL,
+                                getattr(usage, "prompt_tokens", 0) or 0,
+                                getattr(usage, "completion_tokens", 0) or 0,
+                                int((time.time() - t0) * 1000), True)
                 return resp.choices[0].message.content or "{}"
             except RateLimitError as e:
                 last_err = e; time.sleep(delay); delay *= 2

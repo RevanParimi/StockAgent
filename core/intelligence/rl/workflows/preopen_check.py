@@ -34,6 +34,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+import time
 from datetime import date
 
 from core.config import settings
@@ -59,19 +60,29 @@ def _strip_think(raw: str) -> str:
 
 def _call_llm(system_prompt: str, user_prompt: str) -> tuple[str, str]:
     """LLM client pattern mirrors control_lane._call_llm. May raise — caller handles."""
-    from services.clients.llm_client import JSON_MODE_EXTRA_BODY, get_llm_client
+    from services.clients.llm_client import JSON_MODE_EXTRA_BODY, get_llm_client, record_llm_call
 
     client = get_llm_client()
     model = settings.LLM_MODEL_FAST
-    resp = client.chat.completions.create(
-        model=model,
-        temperature=0.2,
-        max_tokens=300,
-        response_format={"type": "json_object"},
-        extra_body=JSON_MODE_EXTRA_BODY,
-        messages=[{"role": "system", "content": system_prompt},
-                  {"role": "user", "content": user_prompt}],
-    )
+    t0 = time.time()
+    try:
+        resp = client.chat.completions.create(
+            model=model,
+            temperature=0.2,
+            max_tokens=300,
+            response_format={"type": "json_object"},
+            extra_body=JSON_MODE_EXTRA_BODY,
+            messages=[{"role": "system", "content": system_prompt},
+                      {"role": "user", "content": user_prompt}],
+        )
+    except Exception:
+        record_llm_call("preopen_check", model, 0, 0, int((time.time() - t0) * 1000), False)
+        raise
+    usage = getattr(resp, "usage", None)
+    record_llm_call("preopen_check", model,
+                    getattr(usage, "prompt_tokens", 0) or 0,
+                    getattr(usage, "completion_tokens", 0) or 0,
+                    int((time.time() - t0) * 1000), True)
     return resp.choices[0].message.content or "", model
 
 

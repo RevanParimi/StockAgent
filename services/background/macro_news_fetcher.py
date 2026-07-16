@@ -31,6 +31,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+import time
 from datetime import date, timedelta
 from typing import Any
 
@@ -330,31 +331,42 @@ Respond ONLY with JSON inside <json> tags:
 </json>"""
 
         try:
-            from services.clients.llm_client import JSON_MODE_EXTRA_BODY, get_llm_client
+            from services.clients.llm_client import JSON_MODE_EXTRA_BODY, get_llm_client, record_llm_call
             from backend.shared.config import settings as _s
 
             client = get_llm_client()
-            resp = client.chat.completions.create(
-                model=_s.LLM_MODEL,
-                messages=[
-                    {
-                        "role": "system",
-                        "content": (
-                            "You are a concise financial news quality reviewer. "
-                            "Output only a valid JSON object. No other text."
-                        ),
-                    },
-                    {"role": "user", "content": prompt},
-                ],
-                temperature=0.0,
-                # json_object + reasoning-off (2026-07): free-text <json>-tag
-                # extraction on a thinking-by-default model returned prose/empty
-                # → JSONDecodeError char 0, macro feeds written partial 3×/day.
-                # The review JSON itself is ~200-400 tokens; 1500 is headroom.
-                max_tokens=1500,
-                response_format={"type": "json_object"},
-                extra_body=JSON_MODE_EXTRA_BODY,
-            )
+            t0 = time.time()
+            try:
+                resp = client.chat.completions.create(
+                    model=_s.LLM_MODEL,
+                    messages=[
+                        {
+                            "role": "system",
+                            "content": (
+                                "You are a concise financial news quality reviewer. "
+                                "Output only a valid JSON object. No other text."
+                            ),
+                        },
+                        {"role": "user", "content": prompt},
+                    ],
+                    temperature=0.0,
+                    # json_object + reasoning-off (2026-07): free-text <json>-tag
+                    # extraction on a thinking-by-default model returned prose/empty
+                    # → JSONDecodeError char 0, macro feeds written partial 3×/day.
+                    # The review JSON itself is ~200-400 tokens; 1500 is headroom.
+                    max_tokens=1500,
+                    response_format={"type": "json_object"},
+                    extra_body=JSON_MODE_EXTRA_BODY,
+                )
+            except Exception:
+                record_llm_call("macro_reviewer", _s.LLM_MODEL, 0, 0,
+                                int((time.time() - t0) * 1000), False)
+                raise
+            usage = getattr(resp, "usage", None)
+            record_llm_call("macro_reviewer", _s.LLM_MODEL,
+                            getattr(usage, "prompt_tokens", 0) or 0,
+                            getattr(usage, "completion_tokens", 0) or 0,
+                            int((time.time() - t0) * 1000), True)
 
             raw_text = resp.choices[0].message.content or ""
             # Strip <think> blocks (Qwen3)

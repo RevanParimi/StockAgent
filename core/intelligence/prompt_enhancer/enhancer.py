@@ -417,23 +417,31 @@ class PromptEnhancer:
             f"to find current {factor} data. Include the current month and year."
         )
         try:
-            from openai import OpenAI
-            client = OpenAI(
-                api_key=settings.OPENROUTER_API_KEY,
-                base_url=settings.OPENROUTER_BASE_URL,
-                timeout=settings.LLM_TIMEOUT_SECONDS,
-            )
-            resp = client.chat.completions.create(
-                model=settings.LLM_MODEL,
-                temperature=0.1,
-                max_tokens=120,
-                messages=[
-                    {"role": "system", "content": _LLM_QUERY_GEN_SYSTEM},
-                    {"role": "user",   "content": user_prompt},
-                ],
-                response_format={"type": "json_object"},
-                extra_body=JSON_MODE_EXTRA_BODY,
-            )
+            # AUD-097: single factory — provider/timeout config lives in one place.
+            from services.clients.llm_client import get_llm_client, record_llm_call
+            client = get_llm_client()
+            t0 = time.time()
+            try:
+                resp = client.chat.completions.create(
+                    model=settings.LLM_MODEL,
+                    temperature=0.1,
+                    max_tokens=120,
+                    messages=[
+                        {"role": "system", "content": _LLM_QUERY_GEN_SYSTEM},
+                        {"role": "user",   "content": user_prompt},
+                    ],
+                    response_format={"type": "json_object"},
+                    extra_body=JSON_MODE_EXTRA_BODY,
+                )
+            except Exception:
+                record_llm_call("prompt_enhancer", settings.LLM_MODEL, 0, 0,
+                                int((time.time() - t0) * 1000), False)
+                raise
+            usage = getattr(resp, "usage", None)
+            record_llm_call("prompt_enhancer", settings.LLM_MODEL,
+                            getattr(usage, "prompt_tokens", 0) or 0,
+                            getattr(usage, "completion_tokens", 0) or 0,
+                            int((time.time() - t0) * 1000), True)
             raw = resp.choices[0].message.content or "{}"
             data = json.loads(raw)
             queries = [str(q) for q in data.get("queries", [])[:2]]

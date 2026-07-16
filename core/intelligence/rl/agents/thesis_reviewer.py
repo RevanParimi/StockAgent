@@ -124,12 +124,9 @@ class ThesisReviewer:
     """
 
     def __init__(self) -> None:
-        from openai import OpenAI
-        self._client = OpenAI(
-            api_key=settings.OPENROUTER_API_KEY,
-            base_url=settings.OPENROUTER_BASE_URL,
-            timeout=settings.LLM_TIMEOUT_SECONDS,
-        )
+        # AUD-097: single factory — provider/timeout config lives in one place.
+        from services.clients.llm_client import get_llm_client
+        self._client = get_llm_client()
 
     # ------------------------------------------------------------------
     # Public interface
@@ -220,17 +217,29 @@ class ThesisReviewer:
 
         for attempt in range(1, settings.MAX_RETRIES + 1):
             try:
-                resp = self._client.chat.completions.create(
-                    model=settings.LLM_MODEL_REASONING,
-                    temperature=0.1,        # low temp — we want deterministic validity assessment
-                    max_tokens=300,
-                    messages=[
-                        {"role": "system", "content": _SYSTEM_PROMPT},
-                        {"role": "user",   "content": user_prompt},
-                    ],
-                    response_format={"type": "json_object"},
-                    extra_body=JSON_MODE_EXTRA_BODY,
-                )
+                from services.clients.llm_client import record_llm_call
+                t0 = time.time()
+                try:
+                    resp = self._client.chat.completions.create(
+                        model=settings.LLM_MODEL_REASONING,
+                        temperature=0.1,        # low temp — we want deterministic validity assessment
+                        max_tokens=300,
+                        messages=[
+                            {"role": "system", "content": _SYSTEM_PROMPT},
+                            {"role": "user",   "content": user_prompt},
+                        ],
+                        response_format={"type": "json_object"},
+                        extra_body=JSON_MODE_EXTRA_BODY,
+                    )
+                except Exception:
+                    record_llm_call("thesis_reviewer", settings.LLM_MODEL_REASONING, 0, 0,
+                                    int((time.time() - t0) * 1000), False)
+                    raise
+                usage = getattr(resp, "usage", None)
+                record_llm_call("thesis_reviewer", settings.LLM_MODEL_REASONING,
+                                getattr(usage, "prompt_tokens", 0) or 0,
+                                getattr(usage, "completion_tokens", 0) or 0,
+                                int((time.time() - t0) * 1000), True)
                 return resp.choices[0].message.content or "{}"
             except RateLimitError as e:
                 logger.warning("[ThesisReviewer] Rate limit (attempt %d)", attempt)

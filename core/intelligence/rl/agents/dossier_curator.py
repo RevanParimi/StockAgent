@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+import time
 from datetime import date as _date
 
 from backend.shared.schemas.dossier import (
@@ -147,17 +148,28 @@ class DossierCurator:
 
     def _call_llm(self, system_prompt: str, user_prompt: str) -> str:
         from core.config import settings
-        from services.clients.llm_client import JSON_MODE_EXTRA_BODY, get_llm_client
+        from services.clients.llm_client import JSON_MODE_EXTRA_BODY, get_llm_client, record_llm_call
         client = get_llm_client()
-        resp = client.chat.completions.create(
-            model=settings.LLM_MODEL,
-            temperature=0.2,
-            max_tokens=900,
-            response_format={"type": "json_object"},
-            extra_body=JSON_MODE_EXTRA_BODY,
-            messages=[{"role": "system", "content": system_prompt},
-                      {"role": "user", "content": user_prompt}],
-        )
+        t0 = time.time()
+        try:
+            resp = client.chat.completions.create(
+                model=settings.LLM_MODEL,
+                temperature=0.2,
+                max_tokens=900,
+                response_format={"type": "json_object"},
+                extra_body=JSON_MODE_EXTRA_BODY,
+                messages=[{"role": "system", "content": system_prompt},
+                          {"role": "user", "content": user_prompt}],
+            )
+        except Exception:
+            record_llm_call("dossier_curator", settings.LLM_MODEL, 0, 0,
+                            int((time.time() - t0) * 1000), False)
+            raise
+        usage = getattr(resp, "usage", None)
+        record_llm_call("dossier_curator", settings.LLM_MODEL,
+                        getattr(usage, "prompt_tokens", 0) or 0,
+                        getattr(usage, "completion_tokens", 0) or 0,
+                        int((time.time() - t0) * 1000), True)
         return resp.choices[0].message.content or ""
 
     # ------------------------------------------------------------------

@@ -42,6 +42,30 @@ from core.schemas.pipeline import (
 
 
 # ---------------------------------------------------------------------------
+# Delivery isolation — no test may ever use a real transport
+# ---------------------------------------------------------------------------
+
+@pytest.fixture(autouse=True)
+def _no_real_deliveries(monkeypatch, tmp_path):
+    """Delivery transports are inert under pytest (2026-07-16 incident: the
+    AUD-050 quarantine tests emailed real [ALERT]s for fixture users u1/u9
+    through live SMTP creds in the developer's .env, and test alerts polluted
+    the repo's real data/delivery/alerts_sent.jsonl). Tests that exercise a
+    transport re-enable the flag explicitly and mock smtplib/pywebpush;
+    explicit sent_log= arguments are honored unchanged."""
+    from core.config import settings as _settings
+    from core.delivery import alerts as _alerts
+    monkeypatch.setattr(_settings, "DELIVERY_EMAIL_ENABLED", False)
+    monkeypatch.setattr(_settings, "DELIVERY_PUSH_ENABLED", False)
+    _orig_sent_log_path = _alerts._sent_log_path
+    monkeypatch.setattr(
+        _alerts, "_sent_log_path",
+        lambda sent_log=None: _orig_sent_log_path(
+            sent_log or str(tmp_path / "alerts_sent.jsonl")),
+    )
+
+
+# ---------------------------------------------------------------------------
 # Stock query fixtures
 # ---------------------------------------------------------------------------
 

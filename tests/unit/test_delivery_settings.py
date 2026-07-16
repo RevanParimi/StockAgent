@@ -23,8 +23,10 @@ def test_delivery_settings_present():
     assert settings.DELIVERY_DATA_DIR == "data/delivery"
     # DELIVERY_EMAIL_ENABLED is an env-driven operator switch (flipped on when
     # SMTP went live 2026-07-16) — assert type, not the machine's current value.
+    # DELIVERY_PUSH_ENABLED is likewise forced off under pytest by the
+    # _no_real_deliveries conftest fixture (2026-07-16 test-email incident).
     assert isinstance(settings.DELIVERY_EMAIL_ENABLED, bool)
-    assert settings.DELIVERY_PUSH_ENABLED is True
+    assert isinstance(settings.DELIVERY_PUSH_ENABLED, bool)
     assert "NIFTY 50" in settings.DELIVERY_INDEX_WATCH
     assert len(settings.DELIVERY_INDEX_WATCH) == 4
 

@@ -6,7 +6,7 @@
  *   - same-origin static GET -> stale-while-revalidate
  *   - cross-origin CDN libs  -> cache-first
  */
-const VERSION = 'v2';
+const VERSION = 'v3';
 const SHELL_CACHE = `sa-shell-${VERSION}`;
 const RUNTIME_CACHE = `sa-runtime-${VERSION}`;
 

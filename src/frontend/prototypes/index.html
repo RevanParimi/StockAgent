@@ -88,6 +88,42 @@
     window.marked.setOptions({ breaks: true, gfm: true });
   }
 </script>
+<script>
+  /* Wave B (AUD-099/102): attach X-Scheduler-Key to same-origin API calls.
+     The key is optional — when the server has no SCHEDULER_KEY set, requests
+     work without it. Set it once via the prompt that appears on a 403, or
+     manually: saSetKey('your-key'). */
+  (function () {
+    const realFetch = window.fetch.bind(window);
+    window.saSetKey = function (k) {
+      if (k) localStorage.setItem('sa_key', k);
+      else localStorage.removeItem('sa_key');
+    };
+    window.fetch = async function (input, init) {
+      const url = typeof input === 'string' ? input : ((input && input.url) || '');
+      const sameOrigin = url.startsWith('/') || url.startsWith(window.location.origin);
+      const key = localStorage.getItem('sa_key');
+      if (sameOrigin && key) {
+        init = init || {};
+        init.headers = Object.assign({}, init.headers || {}, { 'X-Scheduler-Key': key });
+      }
+      const resp = await realFetch(input, init);
+      if (resp.status === 403 && sameOrigin && !window.__saKeyPrompting) {
+        window.__saKeyPrompting = true;
+        try {
+          const entered = window.prompt('This action needs the API key. Enter it to unlock:');
+          if (entered && entered.trim()) {
+            window.saSetKey(entered.trim());
+            return window.fetch(input, init);
+          }
+        } finally {
+          window.__saKeyPrompting = false;
+        }
+      }
+      return resp;
+    };
+  })();
+</script>
 </head>
 <body>
 <div id="root"></div>

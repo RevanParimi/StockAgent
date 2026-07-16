@@ -631,3 +631,68 @@ ordering, 013 P3) · `channels.py` KEEP+FIX (silent-zero logging) · `llm_client
 (SDK default 2-retry is adequate; salvage util solid) · `pipeline.py` step wiring KEEP
 (clean-pass logging only) · server.py lifespan/singleton lock KEEP (port-bind lock
 verified working in prod all week) · fetcher resilience KEEP+targeted-retry (091).
+
+## Phase 5 — LLM usage / cost, slice 1: call-site inventory (2026-07-16, HEAD 0da0dca)
+
+Method: enumerated EVERY production `chat.completions.create` — 23 call sites across
+17 files (tests and `scripts/reasoning_bench.py` excluded). Tier resolution per
+`src/backend/shared/config/settings/base.py:31-37` + `config.yaml`: FAST =
+qwen/qwen3.6-flash, REASONING = z-ai/glm-5.2, BULK = deepseek/deepseek-v4-flash;
+back-compat alias `LLM_MODEL` → BULK (base.py:35). `LLM_TEMPERATURE`=0.2,
+`LLM_MAX_TOKENS`=2048, `UNIFIED_ANALYST_MAX_TOKENS`=6000.
+
+| # | Call site | Model (tier) | max_tok | temp | json_object | reasoning-off | telemetry |
+|---|-----------|--------------|---------|------|-------------|---------------|-----------|
+| 1 | `core/delivery/weekly.py:71` (weekly narrate) | BULK | 300 | 0.2 | ✓ | ✓ | ✓ |
+| 2 | `core/delivery/brief.py:123` (brief narrate) | BULK | 300 | 0.2 | ✓ | ✓ | ✓ |
+| 3 | `core/portfolio/narrator.py:70` (advice narrate) | BULK | 300 | 0.2 | ✓ | ✓ | ✓ |
+| 4 | `services/background/macro_news_fetcher.py:337` (review agent) | LLM_MODEL→BULK | 1500 | 0.0 | ✓ | ✓ | ✗ |
+| 5 | `services/api/routes/ui_data.py:2915` (chat tool loop, non-stream) | FAST | 600 | 0.4 | n/a (tools) | ✗ | ✗ |
+| 6 | `ui_data.py:2948` (chat synthesis, non-stream) | FAST | 600 | 0.4 | n/a | ✗ | ✗ |
+| 7 | `ui_data.py:3258` (stream tool loop, via `_chat_completion:3006`) | FAST, fb→REASONING | 700 | 0.4 | n/a (tools) | ✗ | ✗ |
+| 8 | `ui_data.py:3299` (stream synthesis) | FAST, fb→REASONING | 700 | 0.4 | n/a | ✗ | ✗ |
+| 9 | `core/intelligence/rl/workflows/preopen_check.py:66` | FAST | 300 | 0.2 | ✓ | ✓ | ✗ |
+| 10 | `src/backend/shared/pipeline/unified_analyst.py:441` (LIVE analyst) | REASONING | 6000 | 0.2 | ✓ | ✓ | ✓ |
+| 11 | `signal_aggregator.py:224` (legacy-fallback verdict) | REASONING | 2048 | 0.2 | ✓ | ✓ | usage→instance var only |
+| 12–13 | `base_agent.py:213,271` (legacy-fallback agents, sync+async) | LLM_MODEL→BULK | 2048 | 0.2 | ✓ | ✓ | usage→instance var only |
+| 14 | `base_orchestrator.py:372` (ticker resolve) | LLM_MODEL→BULK | 256 | 0.0 | ✓ | ✓ | ✓ |
+| 15 | `graphs/nodes.py:69` (resolve — legacy DAG) | LLM_MODEL→BULK | 128 | 0.0 | ✓ | ✓ | ✓ |
+| 16–17 | `graphs/nodes.py:340,376` (aggregation — legacy DAG) | LLM_MODEL→BULK | 512 | 0.1 | ✓ | ✓ | ✓ |
+| 18 | `rl/agents/control_lane.py:48` | CONTROL_LANE_MODEL(∅)→REASONING | 300 | 0.2 | ✓ | ✓ | ✗ |
+| 19 | `rl/agents/thesis_reviewer.py:223` | REASONING | 300 | 0.1 | ✓ | ✓ | ✗ |
+| 20 | `rl/agents/feedback_agent.py:229` | REASONING | 4000 | 0.3 | ✓ | ✓ | ✓ |
+| 21 | `rl/agents/question_researcher.py:136` | LLM_MODEL→BULK | 900 | 0.2 | ✓ | ✓ | ✗ |
+| 22 | `rl/agents/event_ingestor.py:176` | LLM_MODEL→BULK | 900 | 0.2 | ✓ | ✓ | ✗ |
+| 23 | `rl/agents/dossier_curator.py:152` | LLM_MODEL→BULK | 900 | 0.2 | ✓ | ✓ | ✗ |
+| 24 | `rl/algorithms/price_interpolator.py:383` | LLM_MODEL→BULK | 180 | 0.2 | ✓ | ✓ | ✗ |
+| 25 | `core/intelligence/prompt_enhancer/enhancer.py:426` | LLM_MODEL→BULK | 120 | 0.1 | ✓ | ✓ | ✗ |
+
+(#12–13 and #16–17 share one parameter block each; 23 distinct `create()` calls.)
+
+**What's healthy:** the JSON_MODE_EXTRA_BODY hardening rule holds at 100% — all 19
+`response_format=json_object` sites pass reasoning-off. Tier placement is broadly
+right: the two verdict paths (unified analyst, aggregator) on REASONING, narration
+and the RL knowledge layer on BULK, chat on FAST. Temperatures are all in the sane
+0.0–0.4 band, lowest where determinism matters (resolve 0.0, thesis 0.1). The
+feedback 4000-token headroom is deliberate and documented (truncation-poisoning
+guard). Note on caps: with reasoning disabled, max_tokens is a safety bound, not a
+spend driver — you only pay for emitted tokens — so the cost levers below are tier
+and reasoning-off, not cap-lowering.
+
+| ID | Tag | Sev | Where | Defect | Evidence | Action | Status |
+|----|-----|-----|-------|--------|----------|--------|--------|
+| AUD-092 | COST | P2 | `services/api/routes/ui_data.py:2915,2948,3258,3299` | Chat is the ONLY surface that never disables reasoning: all 4 free-text chat calls omit the reasoning-off extra_body while the code itself strips `<think>` blocks from the output (`_strip_think` at :3302) — on thinking-by-default snapshots (exactly the 2026-07 incident class; FAST=qwen3.6-flash was one of the rolled models) the 600/700-token completion cap is burned on reasoning that is then discarded, and a long think can eat the whole cap leaving an empty visible answer | code read (no extra_body on any chat call; `_strip_think` present) | FIX (pass `extra_body={"reasoning": {"enabled": False}}` on all 4 chat calls — orthogonal to tools/response_format; keep `_strip_think` as belt-and-braces) | OPEN (Ph5 wave) |
+| AUD-093 | GAP | P2 | 13 of 23 call sites | Cost telemetry coverage is partial — extends AUD-087: chat (4 sites), preopen_check, control_lane, thesis_reviewer, question_researcher, event_ingestor, dossier_curator, price_interpolator, enhancer, macro reviewer never call `record_llm_call`/`log_llm_call`, so the RL knowledge layer (runs per-ticker daily) and the whole chat surface are invisible in telemetry.db; signal_aggregator/base_agent capture usage only into instance vars that AUD-087's hardcoded-zero summary then drops | grep record_llm_call/log_llm_call across call-site files | FIX (add `record_llm_call` at the 13 sites — it already never-raises by design; unlocks the deferred spend-vs-key-limit check) | OPEN (Ph5 wave) |
+| AUD-094 | COST | P3 | `ui_data.py:2979-2982,2995-3013` | Chat fallback chain escalates to the DEAREST tier: docstring says "fall back to a lighter model" but the chain is FAST→REASONING (glm-5.2), and the config-import except-branch hardcodes retired `qwen/qwen3.7-max` (:2982) — under a sustained 429/5xx storm every chat message pays 3 backoff retries then lands on the priciest model; separately the non-stream endpoint (:2915) bypasses `_chat_completion` entirely (no retry, no fallback) — two chat paths, two resilience behaviours | code read | FIX (fall back to BULK deepseek or fix the docstring to say "escalate"; update stale :2982 literal; route :2915/:2948 through `_chat_completion`) | OPEN (Ph5 wave) |
+| AUD-095 | DEAD | P3 | `graphs/nodes.py:69,340,376` + 16 `core/sectors/*/graph.py` | Legacy LangGraph DAG duplicates resolver+aggregation with a tier twin-drift: its final verdict aggregation runs on LLM_MODEL→BULK while both live verdict paths (unified_analyst, signal_aggregator fallback) use REASONING; scheduler/services never import the graph path (only the 16 sector `graph.py` shells do — Wave-2 shadow-tree candidates) | grep imports; scheduler grep = 0 hits | CONFIRM dead → fold into Wave-2 deletion docket (AUD-025 family); if any sector graph IS reachable its verdict silently runs on deepseek | OPEN (Wave-2) |
+| AUD-096 | PATTERN | P3 | `base.py:35` + 12 call sites | Back-compat catch-all `LLM_MODEL` still read by 12 production call sites (nodes ×3, base_agent ×2, base_orchestrator, macro, question_researcher, event_ingestor, dossier_curator, price_interpolator, enhancer) — tier choice at those sites is an implicit default, not a decision; worse, the alias is `os.getenv`-only (no `cfg()`), so it bypasses the config.yaml precedence that is supposed to be the single source of truth | base.py:35; grep LLM_MODEL | FIX (mechanical: s/settings.LLM_MODEL/settings.LLM_MODEL_BULK/ at all 12 sites, delete the alias) | OPEN (polish) |
+| AUD-097 | PATTERN | P3 | `price_interpolator.py:373-377`, `enhancer.py:421-425` | Two sites construct inline `OpenAI(...)` clients instead of `get_llm_client()` — the factory docstring's "single place to swap provider/model" is false; any future base-url/timeout/provider change silently misses these two (both also in the AUD-093 unlogged set) | code read | FIX (use the factory; 2-line change each) | OPEN (polish) |
+| AUD-098 | COST | P3 | `thesis_reviewer.py:224`, `control_lane.py:47-48` | Down-tier candidates: two tiny bounded-JSON judgments (300-token cap, temp 0.1/0.2, output = bool+multiplier / direction+confidence) run per-ticker daily on REASONING (glm-5.2 $0.686/$2.156) where BULK (deepseek $0.09/$0.18) benches 100% JSON-reliable — ~90% unit-cost cut on the two highest-frequency REASONING jobs; `CONTROL_LANE_MODEL` yaml knob already exists for a zero-code A/B | tier table above; llm-tiers memory bench data | EVALUATE (bench rule applies: live json_object smoke via reasoning_bench.py before any swap; control-lane decision AFTER AUD-060/077 RL-semantics verdict — don't retune a metric under audit) | OPEN (Ph5, USER-DECISION) |
+
+**Not flagged (checked and fine):** macro reviewer 1500 cap (~200-400-token payload,
+headroom documented) · unified analyst 6000 cap on REASONING — it is the dominant
+spend by construction (16 tickers/day × biggest prompt) but that's the product's
+core call; right tier, right cap · resolve calls at 0.0 temp with 128/256 caps ·
+narration trio on BULK at 300 · preopen on FAST. Quantifying actual $/day per
+caller stays blocked on AUD-087/093 telemetry — that's the remaining Phase 5 slice
+(pull telemetry.db once coverage lands).

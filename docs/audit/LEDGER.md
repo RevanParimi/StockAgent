@@ -720,3 +720,206 @@ docket), AUD-098 (bench-gated user decision). Suite: no new failures vs
 baseline 10F/10E/2150P/12S (pre-existing = AUD-022 stale-mock family + 1
 event_ingestor date test). Phase 5 slice 2 ($/caller from telemetry.db) is now
 UNBLOCKED once this deploy accumulates a few days of prod rows.
+
+## Phase 8 — API / UI / chat surface (2026-07-16, HEAD 524af78)
+
+`ph8` = full read of services/api/server.py + all 10 routers (analyse, history,
+stream, ui_data, scheduler_api, prompts, analytics, portfolio_api, discovery_api,
+delivery_api); route-decorator census (75 paths incl. SPA catch-all); frontend
+fetch/EventSource/WebSocket inventory across src/frontend/prototypes/*.jsx matched
+against the route contracts; error-path grep (`detail=str(exc)` / `f"…{exc}"` sites);
+chat call-count from static read of `chat()` + `chat_stream()` + `_chat_completion()`
+retry chain; latency from telemetry.db instrumented rows (chat's own `ui_chat` rows
+are still 0 — that surface only runs in prod and AUD-093 telemetry just shipped, so
+latency is proxied from the models chat calls).
+
+**Census headline — the surface is broad (75 routes) and the request/response
+contracts are consistent and largely well-validated (portfolio + agents/weights are
+exemplary: sector/qty/date/weight-sum all checked, domain errors → 422 with actionable
+messages). Two structural gaps dominate: the `/ui/prompts/*` and `/ui/*` mutation
+families carry NO auth at all (not even the optional `X-Scheduler-Key` gate the
+portfolio/discovery/delivery/scheduler routers use), and the RL Monitor page calls
+five routes that don't exist — silently masked by the SPA catch-all. Error handling is
+correct at the front door (`/analyse` logs the traceback and returns a generic 503) but
+leaks `str(exc)` on the sibling paths (`/ws/stream`, the chat brief tool, prompts 500s).**
+
+| ID | Tag | Sev | Where | Defect | Evidence | Action | Status |
+|----|-----|-----|-------|--------|----------|--------|--------|
+| AUD-099 | SEC | P1 | `services/api/routes/prompts.py` (all 6 routes) | **Unauthenticated prompt read/write/deploy that writes attacker-controlled text into an imported `.py` module.** No `_check_auth` on any `/ui/prompts/*` route (the only router with zero auth gate); PUT `/ui/prompts/{sector}/{agent}` writes `body.system_prompt`/`analysis_prompt` into the agent prompt file via `_safe_triple_quote` — which escapes only `"""` and NOT a trailing backslash, so a payload ending in `\` escapes the closing delimiter and breaks out of the string literal in a file that is then `importlib.import_module`-ed and hot-patched into live modules; POST `/ui/prompts/deploy` then git-pushes with the repo's `GITHUB_TOKEN`. Internet-reachable on the public Railway host | ph8 (prompts.py:490-535 no auth; `_safe_triple_quote`:169-172 backslash gap; `_write_prompt_file`→import at 541-547) | FIX (add `_check_auth` to all prompt routes — same gate as scheduler_api; replace `_safe_triple_quote` with `repr()`-style literal encoding or write prompts as data not code; gate `/deploy` behind the key). Joins the AUD-012 auth-lockdown decision | OPEN (Ph9, USER-DECISION) |
+| AUD-100 | CONTRACT | P2 | `src/frontend/prototypes/rl-data.jsx:182,199-202` vs router | **Five phantom routes: the RL Monitor page shows fabricated data as real, permanently.** `rl-data.jsx`/`rl-monitor.jsx` fetch `/ui/rl/tickers`, `/ui/rl/summary/{t}`, `/ui/rl/predictions/{t}`, `/ui/rl/weights/{t}`, `/ui/rl/misses/{t}` — none are defined server-side (grep = 0). The SPA catch-all (`server.py:467`) returns `index.html` with HTTP 200 for the unmatched paths, so `res.ok` is TRUE, `res.json()` throws on the HTML, the `catch{}` swallows it, and the page silently keeps its mock `RL_TICKERS`. The real RL state IS exposed — under `/scheduler/status` and `/analytics/*` — just never wired to this page | ph8 (5 fetches, 0 matching routes; catch-all fallthrough) | FIX (either implement the 5 `/ui/rl/*` routes as thin adapters over PredictionStore/`/scheduler/status`, or repoint the page at the existing `/scheduler/status` + `/analytics/weight-drift`/`miss-breakdown`; at minimum make the catch-all 404 unknown `/ui/*` + `/api/*` paths instead of serving index.html so contract drift fails loudly) | OPEN (Ph9) |
+| AUD-101 | PERF | P2 | `ui_data.py` `chat()`:2915-2955, `chat_stream()`:3276-3321, `_chat_completion()`:3011-3032 | **Chat fan-out: 1–5 sequential LLM calls per turn, each expandable to 6 upstream attempts.** A turn runs up to `_CHAT_MAX_TOOL_ROUNDS`=4 tool rounds + 1 forced synthesis = up to 5 logical LLM calls, ALL sequential (tools within a round run concurrently, rounds do not). Each logical call goes through `_chat_completion`, which on transient 429/5xx retries 3× with 0.8/1.6/3.2s backoff across 2 models (FAST→REASONING escalation) = up to 6 upstream completions per logical call. Worst case per single user message ≈ 30 upstream completions + ~56s of pure backoff sleep, and every retry escalates onto the DEAREST tier (glm-5.2 — compounds AUD-094). Measured proxy latency (telemetry, instrumented rows): median LLM call ~1–3s, p90 up to ~17s → a 1-round answer ~2–4s; a 4-round loop 10–20s nominal, 60s+ under upstream stress | ph8 static trace; telemetry.db latency by model (glm-5.2 median 960ms/p90 17.2s, deepseek-flash median 3.2s) | FIX (cap the retry×model product for the interactive path — chat is latency-bound, prefer fail-fast + honest "retry" over 56s of silent backoff; consider a per-turn wall-clock budget; the escalation-on-stress is AUD-094's cost lever). Re-measure with real `ui_chat` rows once prod accumulates them | OPEN (Ph9) |
+| AUD-102 | GAP | P2 | `ui_data.py` all `/ui/*` write routes | **Unauthenticated mutation of the RL-scheduling surface, with a whole-list clobber path.** PUT `/ui/tickers/managed` (replace entire list), POST/DELETE/PATCH `/ui/tickers/managed/{sym}`, PUT `/ui/agents/weights`, PUT `/ui/agents/tasks`, PUT `/ui/watchlist`, PUT `/ui/categories/{key}/tickers` all lack any auth gate. PUT `/ui/tickers/managed` accepts `list[_ManagedTickerBody]` where `sym` defaults to `""` and is never validated non-empty — a garbage or empty-sym list silently replaces the managed-ticker list that drives RL scheduling AND (via `_generate_envelope_for_new_ticker`) triggers the ~2-min 9-agent LLM pipeline per added symbol. Unauth spend + scheduling-state amplification vector | ph8 (replace_managed_tickers:3395 no `sym` guard, no `_check_auth`; envelope side effect 3407-3428) | FIX (add the shared auth gate to `/ui/*` writes; reject empty/whitespace `sym`; rate-limit or gate the envelope-generation side effect). Folds into the AUD-012/099 auth-lockdown decision | OPEN (Ph9, USER-DECISION) |
+| AUD-103 | SEC | P3 | `stream.py:68`, `ui_data.py:2668`, `prompts.py:500,502,522,535` | **Raw `str(exc)` leaks on the paths that mirror `/analyse`'s hardened one.** `/analyse` is the correct template — logs the traceback server-side, returns a generic 503. But the WebSocket `/ws/stream` sends `{"event":"error","detail":str(exc)}` for the SAME pipeline; `_chat_tool_portfolio_brief` returns `f"Brief unavailable: {exc}"` into the model's tool context (this is seeded AUD-014, still live); and prompts 500s return `str(exc)`/`f"…{exc}"` (import errors, filesystem paths). Low attacker value but an inconsistent, information-disclosing contract | ph8 grep + read | FIX (mirror the `/analyse` pattern: log server-side, return generic client text; sanitize the brief tool). Supersedes+absorbs AUD-014 | OPEN (Ph9) |
+| AUD-104 | PATTERN | P3 | `ui_data.py` `chat()`:2896 vs `chat_stream()`:3222 | **Two chat endpoints, two conversation-memory models.** POST `/ui/chat` trusts a CLIENT-supplied `history` array (`body["history"]`, last 8, role-filtered to user/assistant) — the client controls the model's memory and can inject arbitrary prior turns. POST `/ui/chat/stream` uses server-side in-process `_SESSION_HISTORY` (last 12, keyed by `session_id`). Divergent truncation windows (8 vs 12) and trust boundaries for the same product feature; the non-stream path is a minor prompt-injection surface (bounded by the role filter) | ph8 read | FIX (converge on the server-side session store for both; if client history is kept, treat it as untrusted context not conversation state) | OPEN (Ph9) |
+
+**Updates to seeded Phase 8 rows (verified at HEAD 524af78):**
+
+- AUD-008 — CONFIRMED live: `/portfolio/performance` still does the legacy per-holding
+  live-mark (`close_on` in a loop) only on the empty-history branch (portfolio_api.py:358-367);
+  normal path reads `value_history`. Cost is now bounded (fires only right after opt-in or a
+  history gap). Unchanged action, still P3.
+- AUD-014 — CONFIRMED live at ui_data.py:2668 (`return f"Brief unavailable: {exc}"`).
+  **Absorbed into AUD-103** (same leak taxonomy); track/fix there.
+- AUD-018 — **RESOLVED at HEAD.** `get_portfolio_brief` IS now a registered chat tool
+  (`_CHAT_TOOLS` at ui_data.py:2165, dispatched at :2701) — the model can discover and call
+  it. The seeded "tool absent" defect no longer holds. Mark FIXED (verify: chat can answer
+  portfolio questions via the tool loop).
+
+**Not flagged (checked and fine):** request/response shapes are consistent JSON dicts;
+FastAPI+Pydantic validation is correct and often exemplary (`update_agent_weights`
+range+sum checks, `add_holding` sector/date/price validation, `Query(ge=…, le=…)` bounds
+on every `limit`/pagination param, `rl-export?format=` regex-pinned); the QuarantinedPortfolio
+409 handler (server.py:405) is the right shape; `/analyse` error handling is the model to
+copy; the `/ws/stream` 150s aggregate timeout + task-cancel-on-disconnect is sound. **CORS
+note (not a separate row):** `allow_origins=["*"]` + `allow_credentials=True` (server.py:394)
+is a contradictory combo browsers reject and a smell to fix when auth lands — harmless today
+only because no route reads cookies. Fold into the auth-lockdown wave.
+
+**Component verdicts (Phase 8 protocol step 5):**
+`analyse.py` KEEP (reference error-handling) · `history.py` KEEP · `stream.py` KEEP+FIX
+(103 leak) · `portfolio_api.py` KEEP (exemplary validation+locking; auth deferred per user) ·
+`delivery_api.py` KEEP · `discovery_api.py` KEEP · `scheduler_api.py` KEEP · `analytics.py`
+KEEP (read-only, well-bounded) · `prompts.py` FIX (099 auth+code-write — highest-severity
+row this phase) · `ui_data.py` KEEP+FIX (100 phantom routes, 101 chat fan-out, 102 unauth
+writes, 103/104 chat debt) · `server.py` KEEP+FIX (catch-all should 404 unknown API paths;
+CORS combo).
+
+## Phase 9 — Improvement backlog prioritization (2026-07-16)
+
+Consolidated ranking of every OPEN finding across all phases into execution waves.
+Ordering key: prod-impact-now > correctness/security > cost > polish; within a wave,
+cheapest-first. `USER-DECISION` items are called out — they gate on a policy choice
+(auth lockdown, tier retune), not on engineering.
+
+**Wave A — URGENT prod (ship next; live paper-portfolio is affected today):**
+1. AUD-084 (P1) — uncaught scheduler TimeoutError silently kills a trading day (lost Tue 7/14).
+   Catch around the harvest; run the pipeline regardless of stragglers. HOTFIX.
+2. AUD-085 (P1) — all prod alerts land nowhere (0 push subs + email off). Needs the user
+   action (tap 🔔 / set SMTP) PLUS the code rider (WARNING on 0-recipient send; sent-log
+   only after ≥1 channel delivers). HOTFIX + USER ACTION.
+   → these two are the reliability/observability blind spot; everything else can wait behind them.
+
+**Wave B — Security / auth lockdown (one coherent decision, USER-DECISION):**
+3. AUD-099 (P1) — unauth prompt write→imported `.py` + token-backed git push. Highest new severity.
+4. AUD-102 (P2) — unauth `/ui/*` mutations + empty-`sym` whole-list clobber of the scheduling surface.
+5. AUD-012 (P1, ON-HOLD) — push-subscribe auth-bypass; re-decide now.
+6. CORS `*`+credentials cleanup (rides along).
+   → all four resolve together the moment the user lifts the 2026-07-06 "virtual money, lockdown
+   deferred" hold. Recommend lifting it: real trade history now lives behind these endpoints.
+
+**Wave C — Correctness / context (cheap, high-signal):**
+7. AUD-086 (P2) — off-market NSE() ctor bug, fires ~16×/day; trivial fix, joins AUD-078.
+8. AUD-078 (P1) — nsepython missing, context silently empty; one-line, prod-confirmed daily.
+9. AUD-100 (P2) — phantom `/ui/rl/*`; wire the page to existing data + make catch-all 404 unknown APIs.
+10. AUD-103 (P3, absorbs AUD-014) — sanitize the three `str(exc)` leak sites to the `/analyse` pattern.
+
+**Wave D — Cost / LLM (Phase 5 slice 2 gated on prod telemetry):**
+11. AUD-101 (P2) — chat retry×model fan-out; cap the interactive path, add a per-turn budget.
+12. AUD-098 (P3, USER-DECISION) — down-tier thesis_reviewer/control_lane to BULK; bench-gated.
+13. AUD-088 (P2) — no volume backup for data/; nightly ledger export. (Ops, not LLM, but Ph9 wave.)
+14. Phase 5 slice 2 — pull $/caller from telemetry.db once a few prod days accumulate (now unblocked).
+
+**Wave E — Dead code / structure (Wave-2 deletion docket):**
+15. AUD-095 / AUD-025 family (P3) — legacy LangGraph DAG + shadow tree, 559 files/~24.7K LOC.
+    Confirm-dead then delete in one sweep.
+
+**Wave F — Polish (fold into whichever wave touches the file):**
+16. AUD-104 (P3) chat memory convergence · AUD-089/090 (P3) equity-curve + observability lines ·
+    AUD-091 (P3) targeted close_on retry · AUD-013/015/057 (P3) alert-log rotation/atomicity/user_id ·
+    AUD-036 (P3) stale RL_DESIGN run docs · AUD-008 (P3) /performance live-mark.
+
+**RL-semantics gate (blocks parts of D):** AUD-060/066/077 (NEUTRAL free-pass weight
+inflation, RL reward semantics) are under audit — do NOT retune any tier/metric that
+depends on them (esp. AUD-098's control-lane A/B) until that verdict lands.
+
+**Suite baseline unchanged this phase** (read-only audit, no code touched): 10F/10E/2150P/12S,
+same AUD-022 stale-mock family + 1 event_ingestor date test as prior phases.
+
+## Phase 5 — LLM usage / cost, slice 2: spend quantification (2026-07-16, HEAD 524af78)
+
+`ph5b` = read of the cost-computation path (all 8 `LLM_INPUT/OUTPUT_COST_PER_M` sites),
+config.yaml tier+rate block, `record_llm_call`/`log_llm_call`, base_orchestrator unified
+dispatch, daily_review LLM caller set; measured per-call token magnitudes pulled from
+`data/telemetry.db` (`llm_calls`, 394 instrumented rows, span 2026-07-02…07-16). Prod
+telemetry for the NEW callers (AUD-093 coverage shipped today) has not accumulated yet —
+Railway MCP token unauthorized, CLI Bash-gated — so magnitudes come from the real rows
+that exist and cadence from config + the code path. The empirical prod pull stays a
+follow-up (query below), but the cost MODEL and the systemic finding are complete now.
+
+**Headline — the cost telemetry AUD-087 just made non-zero is still systematically wrong
+(low) for the calls that dominate spend, because the rate is tier-blind. Every cost site
+uses the single flat `input=0.09 / output=0.18` (deepseek BULK) rate regardless of the
+model actually called, so every REASONING-tier call — unified_analyst (the dominant
+call), FeedbackAgent, aggregation, thesis_reviewer, macro_reviewer, control_lane — is
+undercosted ~7.6× on input and ~12× on output. Measured: a real unified_analyst call is
+7,440 in / 2,957 out → $0.0115 tier-correct (glm-5.2 $0.686/$2.156) but is LOGGED at
+$0.0012 (9.6× undercount). Separately, the actual spend is small: recurring scheduled LLM
+cost is ≈ $2/mo tier-correct, comfortably under the $19–25/mo cap (AUD-042a residual). The
+cap exposure is entirely on-demand chat + UI `/analyse`, amplified by AUD-101's retry
+fan-out — that is the only path that can approach the cap, and it is exactly the path the
+broken telemetry cannot see accurately.**
+
+| ID | Tag | Sev | Where | Defect | Evidence | Action | Status |
+|----|-----|-----|-------|--------|----------|--------|--------|
+| AUD-105 | COST | P2 | `unified_analyst.py:357`, `signal_aggregator.py:162`, `base_orchestrator.py:84,412,516`, `base_agent.py:119,163`, `graphs/nodes.py:83,401` — all via `settings.LLM_INPUT/OUTPUT_COST_PER_M` | **Tier-blind flat cost rate — the cost telemetry undercounts REASONING calls ~8–12×.** All 9 cost-computation sites multiply tokens by the SAME flat `input_cost_per_m=0.09 / output_cost_per_m=0.18` (config.yaml:37 — "default to the BULK tier") regardless of the model each call actually uses. deepseek BULK sites are correct; glm-5.2 REASONING sites (unified_analyst, aggregation, FeedbackAgent, thesis_reviewer, macro_reviewer, control_lane) are costed at 7.6× too low on input ($0.686 vs 0.09) and 12.0× too low on output ($2.156 vs 0.18). This is exactly the AUD-042a "spend vs key monthly limit" figure everyone will read off the run summaries — now non-zero (AUD-087) but ~10× understated for the dominant caller. Measured unified_analyst call: $0.0115 real vs $0.0012 logged. Units are consistent (all sites `/1_000_000`; no 1e6 bug) — the defect is purely the rate | ph5b (grep of the 9 sites all on one flat rate; config.yaml:36-38; measured tokens from telemetry.db) | FIX (per-model rate table keyed on the `model` string already passed to `log_llm_call` — e.g. `{glm-5.2:(0.686,2.156), deepseek-v4-flash:(0.09,0.18), qwen3.6-flash:(…)}`; the tier is known at every call site. Cheap, unblocks a trustworthy $/mo vs cap number) | OPEN (Ph9, Wave D) |
+
+**Spend model (tier-correct, per-call cost from measured token medians):**
+
+| Caller | Tier / model | in→out tok (measured) | $/call (tier-correct) | $/call (as-logged, flat) |
+|--------|--------------|-----------------------|-----------------------|--------------------------|
+| unified_analyst | REASONING glm-5.2 | 7,440 → 2,957 | **$0.01148** | $0.00120 (9.6× low) |
+| aggregation (legacy path) | REASONING glm-5.2 | 2,566 → 1,276 | $0.00451 | $0.00046 |
+| FeedbackAgent | REASONING glm-5.2 | 1,420 → 380 | $0.00179 | $0.00020 |
+| thesis_reviewer | REASONING glm-5.2 | 474 → 96 | $0.00053 | $0.00006 |
+| portfolio_narrator | BULK deepseek | 100 → 50 | $0.00002 | $0.00002 (correct) |
+
+**Monthly spend estimate (16 managed tickers, ~22 trading days), tier-correct:**
+- Monthly forecast (1st): 16 × unified_analyst ≈ **$0.18/mo** (once).
+- Daily review (weekdays): per ticker ≈ FeedbackAgent $0.0018 + thesis_reviewer $0.0005 +
+  control_lane ~$0.0004 + RL knowledge layer (question_researcher/event_ingestor/dossier_curator,
+  BULK 900-cap, ~$0.0006 total) + price_interpolator re-forecast (BULK, ~$0.0002) ≈ $0.0031;
+  × 16 × 22 ≈ **$1.09/mo**; + macro_reviewer (REASONING, once/day) ~$0.05/mo. Daily review does
+  NOT re-run the analyst — the Living-Envelope re-forecast is price_interpolator (BULK), verified.
+- Weekly discovery deep-dive: `deep_dive_count=10` unified calls/wk × $0.0115 × 4.3 ≈ **$0.49/mo**.
+- Narration + preopen: negligible (< $0.02/mo).
+- **Scheduled recurring total ≈ $1.8–2.0/mo tier-correct** (≈ $0.20/mo as the flat-rate
+  telemetry would report). Far under the $19–25/mo cap.
+- **On-demand (uncapped, the real variable):** UI `/analyse` = $0.0115/call; chat = 1–5
+  REASONING/FAST calls/turn (AUD-101), a heavy tool-loop turn up to ~$0.05. Reaching the cap
+  needs roughly ~1,700 `/analyse` calls or ~400 heavy chat turns per month. The historical
+  $19–25/mo figure predates the glm-5.2 + unified-analyst consolidation (8 calls → 1) and is
+  almost certainly stale on the high side.
+
+**Two remaining Phase 5 questions — both CLOSED here (no new rows needed):**
+- **8-agent ensemble value ("do all 8 agents earn their calls?") — RESOLVED by architecture,
+  not cost.** The live path is a SINGLE `UnifiedAnalyst` call (`base_orchestrator._run_unified`,
+  all 4 live sectors), not 8 per-agent calls. The completed unified migration already collapsed
+  the ensemble 8→1; the 8 separate `base_agent` calls survive only in the dead/fallback legacy
+  worker pool (AUD-095 family). Nothing to prune — the expensive version is already off the live path.
+- **LLM-where-code-suffices sweep — clean.** `ticker_resolution` (the one that looked suspect) is
+  gated behind an exact-match managed-ticker lookup and only calls the LLM for unknown free-text
+  symbols (genuinely fuzzy NSE-name resolution) — right call. The chat pre-router
+  (`_detect_invest_intent`), table flattener, and answer sanitizer are already deterministic code
+  (a prior good decision). No LLM-for-deterministic-work found worth a row.
+
+**Empirical follow-up (unblocked, needs a few prod days of rows).** Do NOT trust any stored
+`cost_usd` until AUD-105 lands — recompute from tokens × the correct per-model rate:
+```sql
+-- against the prod data/telemetry.db once ui_chat + RL-layer rows accumulate
+SELECT substr(caller,1,20) AS caller, COUNT(*) n,
+       SUM(input_tokens)  in_tok, SUM(output_tokens) out_tok,
+       SUM( CASE WHEN model='z-ai/glm-5.2'
+                 THEN input_tokens*0.686/1e6 + output_tokens*2.156/1e6
+                 WHEN model='deepseek/deepseek-v4-flash'
+                 THEN input_tokens*0.09/1e6  + output_tokens*0.18/1e6
+                 ELSE input_tokens*0.30/1e6  + output_tokens*0.50/1e6  -- FAST/other, adjust
+            END ) AS usd_tier_correct
+FROM llm_calls WHERE success=1 AND input_tokens>0
+GROUP BY 1 ORDER BY usd_tier_correct DESC;
+```
+
+**Component verdict (Phase 5 slice 2):** cost-computation path KEEP+FIX (AUD-105 rate table) ·
+tier placement + reasoning-off + telemetry coverage all verified sound (slice 1 + the shipped
+wave) · ensemble economics already optimal on the live path · no code-suffices offenders.
+**Phase 5 COMPLETE** (slice 1 inventory + shipped cost/telemetry wave + slice 2 quantification);
+the only residual is the empirical prod pull above, which is data-time-gated, not analysis-gated.

@@ -8,6 +8,11 @@ never re-notifies, and the same event for two different users each still
 delivers (emits are per-user; see brief.py / pipeline.py). Records written
 before this field existed have no "user_id" key and are treated as the
 default user (""). Emission failures are telemetry, never pipeline errors.
+
+Each record carries "delivered" (AUD-085): false means no channel accepted
+the batch — such records are ignored by dedupe so the alert retries on the
+next emit; records written before this field existed are treated as
+delivered.
 """
 from __future__ import annotations
 
@@ -55,6 +60,8 @@ def _seen_keys(path: Path, tail: int = 2000) -> set[str]:
         for line in path.read_text(encoding="utf-8").splitlines()[-tail:]:
             try:
                 rec = json.loads(line)
+                if rec.get("delivered") is False:   # AUD-085: undelivered → retryable
+                    continue
                 keys.add(f"{rec.get('user_id', '')}|{rec.get('date')}|"
                           f"{rec.get('kind')}|{rec.get('symbol')}")
             except Exception:
@@ -104,20 +111,34 @@ def emit_alerts(
                 uniq.append(e)
         if not uniq:
             return {"emitted": 0}
-        with open(path, "a", encoding="utf-8") as fh:
-            for e in uniq:
-                rec = e.model_dump()
-                rec["user_id"] = uid
-                fh.write(json.dumps(rec) + "\n")
         body = "\n".join(
             f"{_SEVERITY_TAG[e.severity]} {e.symbol + ' — ' if e.symbol else ''}{e.message}"
             for e in uniq
         )
+        # AUD-085 rider: deliver FIRST, then record the outcome — a record with
+        # delivered=false does not dedupe, so the same-day batch retries once a
+        # transport (push sub / SMTP) appears. Legacy records lack the key and
+        # are treated as delivered.
+        delivered = False
+        outcome: dict = {}
         try:
-            deliver(title, body, user_id=user_id)
+            outcome = deliver(title, body, user_id=user_id) or {}
+            delivered = bool(outcome.get("delivered"))
         except Exception as exc:
             logger.warning("[alerts] delivery failed (non-fatal): %s", exc)
-        return {"emitted": len(uniq), "kinds": sorted({e.kind for e in uniq})}
+        if not delivered:
+            logger.warning(
+                "[alerts] %d alert(s) NOT delivered (%s) — recorded delivered=false, "
+                "will retry on next emit (AUD-085)",
+                len(uniq), outcome.get("reason") or "no channel delivered")
+        with open(path, "a", encoding="utf-8") as fh:
+            for e in uniq:
+                rec = e.model_dump()
+                rec["user_id"] = uid
+                rec["delivered"] = delivered
+                fh.write(json.dumps(rec) + "\n")
+        return {"emitted": len(uniq), "delivered": delivered,
+                "kinds": sorted({e.kind for e in uniq})}
     except Exception as exc:
         logger.warning("[alerts] emit failed (non-fatal): %s", exc)
         return {"emitted": 0, "error": str(exc)}

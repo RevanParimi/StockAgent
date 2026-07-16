@@ -1,5 +1,6 @@
 # tests/unit/test_delivery_alerts.py
 """Compass Phase C — deduped alert engine (spec §7 event alerts)."""
+import json
 from unittest.mock import patch
 
 import core.delivery.alerts as al
@@ -50,7 +51,34 @@ def test_emit_never_raises_on_delivery_failure(tmp_path):
     log = str(tmp_path / "alerts_sent.jsonl")
     with patch.object(al, "deliver", side_effect=RuntimeError("channel down")):
         out = emit_alerts([_ev()], sent_log=log)
-    assert out["emitted"] == 1          # logged as sent; delivery failure is telemetry
+    assert out["emitted"] == 1 and out["delivered"] is False
+
+
+def test_undelivered_alert_retries_next_emit_then_dedupes(tmp_path):
+    """AUD-085 rider: appending the sent-log BEFORE the outcome cemented failed
+    sends — after the user subscribes, the same-day alert must go out."""
+    log = str(tmp_path / "alerts_sent.jsonl")
+    with patch.object(al, "deliver",
+                      return_value={"delivered": False, "push": 0, "email": 0}):
+        assert emit_alerts([_ev()], sent_log=log)["emitted"] == 1
+    with patch.object(al, "deliver",
+                      return_value={"delivered": True, "push": 1, "email": 0}) as m:
+        out2 = emit_alerts([_ev()], sent_log=log)   # transport appeared → retry
+        out3 = emit_alerts([_ev()], sent_log=log)   # delivered → now dedupes
+    assert out2["emitted"] == 1 and out2["delivered"] is True
+    assert out3["emitted"] == 0
+    assert m.call_count == 1
+
+
+def test_legacy_records_without_delivered_key_still_dedupe(tmp_path):
+    """Records written before the delivered flag existed are treated as sent."""
+    log = tmp_path / "alerts_sent.jsonl"
+    log.write_text(json.dumps({"date": "2026-07-09", "kind": "advisor_exit",
+                               "symbol": "OLDCO", "user_id": ""}) + "\n",
+                   encoding="utf-8")
+    with patch.object(al, "deliver", return_value={"delivered": True}) as m:
+        out = emit_alerts([_ev()], sent_log=str(log))
+    assert out["emitted"] == 0 and m.call_count == 0
 
 
 def test_emit_same_event_different_users_both_deliver(tmp_path):

@@ -51,6 +51,7 @@ from services.api.routes.analytics import router as analytics_router
 from services.api.routes.portfolio_api import router as portfolio_router
 from services.api.routes.discovery_api import router as discovery_router
 from services.api.routes.delivery_api import router as delivery_router
+from services.api.routes.rl_monitor import router as rl_monitor_router
 from core.portfolio.store import QuarantinedPortfolioError
 
 _IST = timezone(timedelta(hours=5, minutes=30))
@@ -420,6 +421,7 @@ app.include_router(analytics_router, tags=["Analytics"])
 app.include_router(portfolio_router,  tags=["Portfolio"])
 app.include_router(discovery_router,  tags=["Discovery"])
 app.include_router(delivery_router,   tags=["Delivery"])
+app.include_router(rl_monitor_router, tags=["RL Monitor"])
 
 
 # NOTE: "/" is served by the SPA catch-all at the bottom of this module

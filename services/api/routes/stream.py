@@ -65,7 +65,12 @@ async def stream(websocket: WebSocket, ticker: str = ""):
             complete_event = json.dumps({"event": "complete", "report": report.model_dump()})
             await queue.put(complete_event)
         except Exception as exc:
-            err_event = json.dumps({"event": "error", "detail": str(exc)})
+            logger.error("[WS /ws/stream] pipeline failed for %s: %s",
+                         ticker, exc, exc_info=True)
+            err_event = json.dumps({
+                "event": "error",
+                "detail": "Analysis pipeline failed. Please try again later.",
+            })
             await queue.put(err_event)
 
     pipeline_task = asyncio.create_task(run_pipeline())

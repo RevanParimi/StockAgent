@@ -2675,7 +2675,8 @@ def _chat_tool_portfolio_brief() -> str:
         return ("No brief yet — the morning-brief job hasn't produced one. "
                 "Add holdings via /portfolio, then POST /delivery/run-brief.")
     except Exception as exc:
-        return f"Brief unavailable: {exc}"
+        logger.warning("[chat] portfolio brief failed: %s", exc, exc_info=True)
+        return "Brief unavailable right now — try again in a moment."
 
 
 async def _dispatch_chat_tool(name: str, args: dict) -> str:

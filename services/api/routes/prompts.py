@@ -512,7 +512,8 @@ async def get_prompt(sector: str, agent: str,
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
     except RuntimeError as exc:
-        raise HTTPException(status_code=500, detail=str(exc))
+        logger.error("[prompts] load failed for %s/%s: %s", sector, agent, exc, exc_info=True)
+        raise HTTPException(status_code=500, detail="Prompt module failed to load — see server logs.")
 
     return {
         "sector":  sector,
@@ -547,7 +548,8 @@ async def put_prompt(sector: str, agent: str, body: PromptBody,
             [q.strip() for q in body.context_search_queries if q.strip()],
         )
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"Failed to write prompt file: {exc}")
+        logger.error("[prompts] write failed for %s/%s: %s", sector, agent, exc, exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to write prompt file — see server logs.")
 
     # Patch the live module object in-place so agent modules that already hold a
     # reference to it (via `from ... import fundamentals as P`) see the new values
@@ -569,7 +571,7 @@ async def put_prompt(sector: str, agent: str, body: PromptBody,
         "status":  "saved",
         "sector":  sector,
         "agent":   agent,
-        "path":    str(file_path),
+        "path":    _github_path_for(sector, agent),
         "pending": _load_pending(),
     }
 

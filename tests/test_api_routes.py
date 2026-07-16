@@ -10,6 +10,32 @@ from __future__ import annotations
 import pytest
 
 
+def test_ws_stream_error_event_does_not_leak_exception_detail():
+    """AUD-103: /ws/stream error events must not carry raw str(exc)."""
+    from unittest.mock import patch, AsyncMock, MagicMock
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from services.api.routes.stream import router as stream_router
+    import json as _json
+
+    app = FastAPI()
+    app.include_router(stream_router)
+    client = TestClient(app)
+
+    internal = "/internal/path/secret_module.py line 99 KeyError('OPENROUTER_API_KEY')"
+    mock_orch = MagicMock()
+    mock_orch.analyse_async = AsyncMock(side_effect=RuntimeError(internal))
+
+    with patch("services.api.routes.stream.detect_sector", return_value="automobile"), \
+         patch("services.api.routes.stream.get_orchestrator", return_value=lambda: mock_orch):
+        with client.websocket_connect("/ws/stream?ticker=MARUTI") as ws:
+            event = _json.loads(ws.receive_text())
+
+    assert event["event"] == "error"
+    assert "/internal/path" not in event["detail"]
+    assert "OPENROUTER" not in event["detail"]
+
+
 def test_analyse_route_does_not_leak_exception_detail():
     """HTTP 5xx response must not contain internal exception detail (file paths, line numbers)."""
     from unittest.mock import patch, AsyncMock, MagicMock

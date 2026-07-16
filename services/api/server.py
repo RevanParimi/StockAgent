@@ -394,7 +394,7 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],   # Frontend is same-origin; broad allow for API clients
-    allow_credentials=True,
+    allow_credentials=False,   # AUD Phase 8: '*'+credentials is a rejected combo; no route uses cookies
     allow_methods=["*"],
     allow_headers=["*"],
 )

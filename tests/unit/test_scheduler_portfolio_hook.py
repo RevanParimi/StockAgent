@@ -93,3 +93,61 @@ def test_scheduled_daily_review_job_survives_pipeline_failure(monkeypatch):
                         lambda: [{"sym": "MARUTI", "sector": "automobile"}])
 
     sch.AutomobileScheduler()._daily_review_job()   # must not raise
+
+
+def test_daily_review_job_survives_harvest_timeout(monkeypatch):
+    """AUD-084: Tue 2026-07-14 — the aggregate as_completed TimeoutError escaped
+    the loop, skipping BOTH the alerts and the portfolio pipeline (13 reviews
+    saved, 0 trades, no alert). The tail must run regardless."""
+    import concurrent.futures as cf
+    import services.scheduler.python.scheduler as sch
+    import core.intelligence.rl.workflows.daily_review as dr
+    import core.portfolio.pipeline as pl
+    import core.delivery.ops_alerts as oa
+
+    calls, partial = {}, {}
+    monkeypatch.setattr(dr, "run_daily_review",
+                        lambda t, d, sector=None: {"status": "completed"})
+    monkeypatch.setattr(pl, "run_post_review_pipeline",
+                        lambda d: calls.setdefault("pipeline", d) or {"status": "completed"})
+    monkeypatch.setattr(sch, "get_active_tickers_with_sector",
+                        lambda: [{"sym": "MARUTI", "sector": "automobile"},
+                                 {"sym": "INFY", "sector": "it_sector"}])
+    monkeypatch.setattr(
+        oa, "alert_job_partial_output",
+        lambda job, produced, expected: partial.update(produced=produced, expected=expected))
+
+    def fake_as_completed(fs, timeout=None):
+        fs = list(fs)
+        cf.wait(fs)                 # deterministic: both futures finish instantly
+        yield fs[0]                 # harvest ONE result...
+        raise cf.TimeoutError()     # ...then the aggregate budget "expires"
+
+    monkeypatch.setattr(sch._cf, "as_completed", fake_as_completed)
+
+    sch.AutomobileScheduler()._daily_review_job()   # must not raise
+
+    assert "pipeline" in calls, "TimeoutError skipped the portfolio pipeline"
+    assert partial == {"produced": 1, "expected": 2}
+
+
+def test_daily_review_job_partial_alert_silent_on_full_harvest(monkeypatch):
+    """The call site passes correct numbers on a normal full-success day (the
+    helper itself no-ops at produced == expected — covered in test_ops_alerts)."""
+    import services.scheduler.python.scheduler as sch
+    import core.intelligence.rl.workflows.daily_review as dr
+    import core.portfolio.pipeline as pl
+    import core.delivery.ops_alerts as oa
+
+    fired = []
+    monkeypatch.setattr(dr, "run_daily_review",
+                        lambda t, d, sector=None: {"status": "completed"})
+    monkeypatch.setattr(pl, "run_post_review_pipeline",
+                        lambda d: {"status": "completed"})
+    monkeypatch.setattr(sch, "get_active_tickers_with_sector",
+                        lambda: [{"sym": "MARUTI", "sector": "automobile"}])
+    monkeypatch.setattr(oa, "alert_job_partial_output",
+                        lambda job, produced, expected: fired.append((produced, expected)))
+
+    sch.AutomobileScheduler()._daily_review_job()
+    assert fired == [(1, 1)]

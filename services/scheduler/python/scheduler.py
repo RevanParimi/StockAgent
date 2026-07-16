@@ -476,8 +476,10 @@ class AutomobileScheduler:
         """
         Review the previous trading session for all configured tickers.
         Holiday-aware (AUD-051): the day after a weekday NSE holiday reviews
-        the last real session, not the holiday. Each ticker has a 3-minute
-        timeout to prevent a stalled LLM call from blocking the entire loop.
+        the last real session, not the holiday. The harvest has an aggregate
+        budget (300 s x tickers); if it expires, the finished reviews stand,
+        stragglers are logged, and the pipeline below still runs (AUD-084 —
+        a slow day must not kill the trading day).
         After the reviews, the Compass portfolio pipeline runs event-triggered
         (AUD-043) — advisor → autopilot → value point → digest.
         """
@@ -506,38 +508,64 @@ class AutomobileScheduler:
                 return t, s, None, exc
 
         succeeded = 0
-        with _cf.ThreadPoolExecutor(max_workers=max_w) as executor:
+        stragglers: list[str] = []
+        # AUD-084: the old "3-minute per-ticker timeout" was fiction —
+        # as_completed only ever yields FINISHED futures, so result(timeout=)
+        # never blocked. The only real cap is the aggregate as_completed budget,
+        # and its TimeoutError rises from the GENERATOR, outside the old inner
+        # try — on Tue 2026-07-14 it escaped, skipping the alerts and the
+        # portfolio pipeline (13 reviews saved, 0 trades, zero alerts).
+        # Contain it: harvest what finished, log the stragglers, always fall
+        # through to the alert + pipeline tail. shutdown(wait=False) releases
+        # this thread; a straggler finishing later still persists its review.
+        executor = _cf.ThreadPoolExecutor(max_workers=max_w)
+        try:
             futures = {
                 executor.submit(_review_one, entry): entry
                 for entry in ticker_entries
             }
-            for future in _cf.as_completed(futures, timeout=180 * len(ticker_entries)):
-                try:
-                    ticker, sector, summary, err = future.result(timeout=180)
-                    if err is not None:
-                        logger.error(
-                            "[Scheduler] Daily review FAILED for %s: %s", ticker, err, exc_info=True
-                        )
-                    else:
-                        succeeded += 1
-                        logger.info(
-                            "[Scheduler] %s %s sector=%s — status=%s direction=%s lessons=%s weights=v%s",
-                            ticker, review_date, sector,
-                            summary.get("status"),
-                            summary.get("direction_correct"),
-                            summary.get("lessons_added"),
-                            summary.get("weight_version"),
-                        )
-                except _cf.TimeoutError:
-                    logger.error("[Scheduler] Daily review TIMED OUT after 180s")
-                except Exception as exc:
-                    logger.error("[Scheduler] Unexpected error in daily review: %s", exc, exc_info=True)
+            try:
+                for future in _cf.as_completed(futures, timeout=300 * max(len(ticker_entries), 1)):
+                    try:
+                        ticker, sector, summary, err = future.result()
+                        if err is not None:
+                            logger.error(
+                                "[Scheduler] Daily review FAILED for %s: %s", ticker, err, exc_info=True
+                            )
+                        else:
+                            succeeded += 1
+                            logger.info(
+                                "[Scheduler] %s %s sector=%s — status=%s direction=%s lessons=%s weights=v%s",
+                                ticker, review_date, sector,
+                                summary.get("status"),
+                                summary.get("direction_correct"),
+                                summary.get("lessons_added"),
+                                summary.get("weight_version"),
+                            )
+                    except Exception as exc:
+                        logger.error("[Scheduler] Unexpected error in daily review: %s", exc, exc_info=True)
+            except _cf.TimeoutError:
+                stragglers = [e["sym"] for f, e in futures.items() if not f.done()]
+                logger.error(
+                    "[Scheduler] Daily review harvest budget exhausted — %d unfinished: %s; "
+                    "continuing with %d completed reviews (AUD-084)",
+                    len(stragglers), stragglers, succeeded,
+                )
+        finally:
+            executor.shutdown(wait=False, cancel_futures=True)
 
         try:
             # AUD-039: "all reviews failed but the job logged complete" must page.
             from core.delivery.ops_alerts import alert_job_zero_output
             alert_job_zero_output("daily_review", produced=succeeded,
                                   expected=len(ticker_entries))
+        except Exception:
+            pass
+        try:
+            # AUD-090b: a partial day (13/16 on Tue 7/14) was invisible.
+            from core.delivery.ops_alerts import alert_job_partial_output
+            alert_job_partial_output("daily_review", produced=succeeded,
+                                     expected=len(ticker_entries))
         except Exception:
             pass
 

@@ -694,20 +694,28 @@ function RLMonitorPage({ onNav }) {
 
   useEffectRL(() => {
     const sym = activeTicker;
+    const live = window.__rlApiReady;
+    // Mocks only seed the view when the live API never answered (AUD-100);
+    // once it has, an empty ticker must show the real empty state, not mocks.
     setData({
-      summary:     window.RL_SUMMARIES?.[sym]   || null,
-      predictions: window.RL_PREDICTIONS?.[sym] || [],
-      weights:     window.RL_WEIGHTS?.[sym]     || null,
-      misses:      window.RL_MISSES?.[sym]      || null,
+      summary:     live ? null : (window.RL_SUMMARIES?.[sym]   || null),
+      predictions: live ? []   : (window.RL_PREDICTIONS?.[sym] || []),
+      weights:     live ? null : (window.RL_WEIGHTS?.[sym]     || null),
+      misses:      live ? null : (window.RL_MISSES?.[sym]      || null),
     });
     setLoading(true);
-    window.rlFetch(sym).then(live => {
-      setData(prev => ({
-        summary:     live.summary     ?? prev.summary,
-        predictions: live.predictions?.length ? live.predictions : prev.predictions,
-        weights:     live.weights     ?? prev.weights,
-        misses:      live.misses      ?? prev.misses,
-      }));
+    window.rlFetch(sym).then(fetched => {
+      setData(prev => window.__rlApiReady ? {
+        summary:     fetched.summary,
+        predictions: fetched.predictions ?? [],
+        weights:     fetched.weights,
+        misses:      fetched.misses,
+      } : {
+        summary:     fetched.summary     ?? prev.summary,
+        predictions: fetched.predictions?.length ? fetched.predictions : prev.predictions,
+        weights:     fetched.weights     ?? prev.weights,
+        misses:      fetched.misses      ?? prev.misses,
+      });
       setLoading(false);
     });
   }, [activeTicker]);

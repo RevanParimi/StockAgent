@@ -180,14 +180,14 @@ window.__rlApiReady = false;
 (async function loadRLData() {
   try {
     const res = await fetch('/ui/rl/tickers');
-    if (!res.ok) return;
-    const d = await res.json();
-    if (d.tickers?.length) {
+    if (!res.ok) return;                    // 404/500 → keep mock demo data
+    const d = await res.json();             // HTML → throws → keep mocks
+    if (Array.isArray(d.tickers)) {
       window.RL_TICKERS = d.tickers;
-      window.__rlApiReady = true;
+      window.__rlApiReady = true;           // live contract answered: mocks are dead
     }
   } catch {
-    // keep mock RL_TICKERS
+    // API unreachable or non-JSON — keep mock RL_TICKERS as demo data
   }
 })();
 

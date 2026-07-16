@@ -15,6 +15,7 @@ pandas>=2.2.0             # Tabular data handling
 yfinance>=0.2.40          # Yahoo Finance OHLCV data (pattern analysis)
 requests>=2.31.0          # Serper + NewsAPI HTTP calls
 nse>=2.0.0                # NseIndiaApi (BennyThadikaran) — announcements / board meetings / actions
+nsepython>=2.90           # FII/DII flows, bulk deals, earnings calendar (AUD-078; pulls scipy)
 python-dateutil>=2.8.0    # Defensive date parsing for NSE event ingestion (was transitive via pandas)
 pyarrow>=16.0.0           # Parquet EOD market cache (Compass Phase B discovery)
 pywebpush>=2.0.0          # M4 web-push delivery (Compass Phase C)

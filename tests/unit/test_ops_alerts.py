@@ -56,3 +56,46 @@ def test_helpers_never_raise(monkeypatch, tmp_path):
     for _ in range(12):
         ops.record_llm_result(False)        # must not raise even when emit fails
     ops.alert_job_zero_output("x", produced=0, expected=5)
+
+
+def test_partial_output_job_alerts_warning(_isolated_state, monkeypatch):
+    """AUD-090b: 13/16 after a harvest timeout was invisible — zero-output only
+    fires at produced==0."""
+    import core.delivery.alerts as al
+    sent = []
+    monkeypatch.setattr(al, "emit_alerts",
+                        lambda events, **kw: sent.append(events[0]) or {"emitted": 1})
+    ops.alert_job_partial_output("daily_review", produced=13, expected=16)
+    assert len(sent) == 1
+    assert sent[0].kind == "job_partial_output_daily_review"
+    assert sent[0].severity == "warning"
+    assert "13/16" in sent[0].message
+
+
+def test_partial_output_silent_on_full_zero_or_empty(_isolated_state, monkeypatch):
+    import core.delivery.alerts as al
+    sent = []
+    monkeypatch.setattr(al, "emit_alerts",
+                        lambda events, **kw: sent.append(events[0]) or {"emitted": 1})
+    ops.alert_job_partial_output("j", produced=16, expected=16)   # full — silent
+    ops.alert_job_partial_output("j", produced=0, expected=16)    # zero-output's job
+    ops.alert_job_partial_output("j", produced=3, expected=0)     # nothing expected
+    assert sent == []
+
+
+def test_job_crashed_alert(_isolated_state):
+    sent = _isolated_state
+    ops.alert_job_crashed("rl_daily_review", "TimeoutError: 3 futures unfinished")
+    assert len(sent) == 1 and sent[0][0] == "job_crashed_rl_daily_review"
+    assert "TimeoutError" in sent[0][1]
+
+
+def test_new_helpers_never_raise(monkeypatch):
+    import core.delivery.alerts as al
+
+    def boom(*a, **k):
+        raise RuntimeError("delivery down")
+    monkeypatch.setattr(al, "emit_alerts", boom)
+    monkeypatch.setattr(ops, "_emit", boom)
+    ops.alert_job_partial_output("j", produced=1, expected=5)   # must not raise
+    ops.alert_job_crashed("j", "boom")                          # must not raise

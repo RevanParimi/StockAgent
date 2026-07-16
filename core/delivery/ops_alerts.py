@@ -98,3 +98,35 @@ def alert_job_zero_output(job: str, produced: int, expected: int) -> None:
             logger.warning("[ops_alerts] zero-output alert emit failed: %s", exc)
     except Exception as exc:
         logger.debug("[ops_alerts] alert_job_zero_output failed (non-fatal): %s", exc)
+
+
+def alert_job_partial_output(job: str, produced: int, expected: int) -> None:
+    """A job that completed only PART of its input (e.g. 13/16 reviews after a
+    harvest timeout, AUD-084/090b) is invisible to the zero-output alert.
+    Warning severity — the day still ran; same-day repeats deduped by the
+    alerts layer (date|kind key)."""
+    try:
+        if expected <= 0 or produced <= 0 or produced >= expected:
+            return
+        from core.delivery.alerts import AlertEvent, emit_alerts
+        emit_alerts([AlertEvent(
+            date=date.today().isoformat(),
+            kind=f"job_partial_output_{job}", symbol="",
+            message=(f"Job '{job}' completed {produced}/{expected} — the rest "
+                     "timed out or failed. Check logs."),
+            severity="warning")],
+            title="StockAgent ops alert")
+    except Exception as exc:
+        logger.debug("[ops_alerts] alert_job_partial_output failed (non-fatal): %s", exc)
+
+
+def alert_job_crashed(job: str, error: str) -> None:
+    """An exception escaped a scheduled job entirely (AUD-084 listener class):
+    everything after the crash point — alerts, portfolio pipeline — did not
+    run. Same-day repeats deduped by the alerts layer (date|kind key)."""
+    try:
+        _emit(f"job_crashed_{job}",
+              f"Scheduled job '{job}' CRASHED: {error[:300]} — steps after the "
+              "crash (alerts / portfolio pipeline) did not run. Check logs.")
+    except Exception as exc:
+        logger.debug("[ops_alerts] alert_job_crashed failed (non-fatal): %s", exc)

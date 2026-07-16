@@ -26,6 +26,7 @@ import asyncio
 import json
 import logging
 import re
+import time
 import uuid
 from datetime import date, datetime, timezone
 from pathlib import Path
@@ -2912,8 +2913,8 @@ async def chat(body: dict) -> dict:
         client = get_async_llm_client()
 
         for _ in range(4):
-            resp = await client.chat.completions.create(
-                model=_CHAT_MODEL,
+            resp = await _chat_completion(
+                client,
                 messages=messages,
                 temperature=0.4,
                 max_tokens=600,
@@ -2945,8 +2946,8 @@ async def chat(body: dict) -> dict:
                 messages.append({"role": "tool", "tool_call_id": tc.id, "content": result})
 
         # Final synthesis after max tool rounds
-        resp = await client.chat.completions.create(
-            model=_CHAT_MODEL,
+        resp = await _chat_completion(
+            client,
             messages=messages,
             temperature=0.4,
             max_tokens=600,
@@ -2979,7 +2980,7 @@ try:
     _CHAT_FALLBACK_MODEL = _chat_cfg.LLM_MODEL_REASONING  # escalate on rate-limit/5xx
 except Exception:
     _CHAT_MODEL = "qwen/qwen3.6-flash"
-    _CHAT_FALLBACK_MODEL = "qwen/qwen3.7-max"
+    _CHAT_FALLBACK_MODEL = "z-ai/glm-5.2"
 _CHAT_MAX_TOOL_ROUNDS = 4              # max tool rounds before forcing a final answer
 
 
@@ -2992,23 +2993,41 @@ def _is_transient_llm_error(exc: Exception) -> bool:
     return any(s in msg for s in ("429", "rate-limit", "rate limit", "502", "503", "temporarily"))
 
 
-async def _chat_completion(client, *, models: tuple[str, ...] | list[str] | None = None, **kwargs):
+async def _chat_completion(client, *, models: tuple[str, ...] | list[str] | None = None,
+                           caller: str = "ui_chat", **kwargs):
     """
     chat.completions.create with resilience: retry the primary model on transient
-    rate-limit/5xx errors (exponential backoff), then fall back to a lighter model.
+    rate-limit/5xx errors (exponential backoff), then ESCALATE to the reasoning
+    tier (deliberate: quality over cost while the fast tier is rate-limited).
     `models` overrides the model chain (used by the model-comparison harness).
     Raises the last exception only if every model+retry is exhausted.
+    AUD-092: reasoning is disabled by default — chat output is user-visible text
+    and <think> blocks are stripped downstream, so paying for them is waste.
+    AUD-093: every attempt is recorded to telemetry.
     """
+    from services.clients.llm_client import JSON_MODE_EXTRA_BODY, record_llm_call
+    kwargs.setdefault("extra_body", JSON_MODE_EXTRA_BODY)
     last_exc: Exception | None = None
     for model in (models or (_CHAT_MODEL, _CHAT_FALLBACK_MODEL)):
         for attempt in range(3):
+            t0 = time.monotonic()
             try:
-                return await client.chat.completions.create(model=model, **kwargs)
+                resp = await client.chat.completions.create(model=model, **kwargs)
             except Exception as exc:  # noqa: BLE001 — inspect then re-raise non-transient
+                record_llm_call(caller, model, 0, 0, int((time.monotonic() - t0) * 1000), False)
                 last_exc = exc
                 if not _is_transient_llm_error(exc):
                     raise
                 await asyncio.sleep(0.8 * (2 ** attempt))  # 0.8s, 1.6s, 3.2s
+            else:
+                usage = getattr(resp, "usage", None)
+                record_llm_call(
+                    caller, model,
+                    getattr(usage, "prompt_tokens", 0) or 0,
+                    getattr(usage, "completion_tokens", 0) or 0,
+                    int((time.monotonic() - t0) * 1000), True,
+                )
+                return resp
         logger.warning("[chat] model %s exhausted retries — falling back", model)
     raise last_exc  # type: ignore[misc]
 

@@ -105,15 +105,27 @@ async def push_public_key() -> dict:
     return {"public_key": settings.VAPID_PUBLIC_KEY}
 
 
-# Browser push clients don't hold the scheduler key; these endpoints only store/remove the caller's own subscription.
+_MAX_PUSH_SUBS_PER_USER = 50   # AUD-012: bound anonymous store growth
+
+
+# Browser push clients don't hold the scheduler key; these endpoints only
+# store/remove the caller's own subscription (keyless BY DESIGN — the
+# pre-login 🔔 flow and AUD-085 recovery depend on it). AUD-012 hardening:
+# https-only endpoints + per-user cap.
 @router.post("/push/subscribe", summary="Store a web-push subscription")
 async def push_subscribe(
     subscription: dict,
     user_id: str | None = Query(default=None),
 ) -> dict:
-    if not subscription.get("endpoint"):
-        raise HTTPException(status_code=422, detail="subscription.endpoint required")
-    count = PushStore().add(subscription, user_id=user_id)
+    endpoint = subscription.get("endpoint")
+    if not (isinstance(endpoint, str) and endpoint.startswith("https://")):
+        raise HTTPException(status_code=422,
+                            detail="subscription.endpoint must be an https:// URL")
+    store = PushStore()
+    if len(store.list(user_id=user_id)) >= _MAX_PUSH_SUBS_PER_USER:
+        raise HTTPException(status_code=429,
+                            detail="Subscription limit reached for this user.")
+    count = store.add(subscription, user_id=user_id)
     return {"status": "subscribed", "subscriptions": count}
 
 

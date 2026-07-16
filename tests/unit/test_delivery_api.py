@@ -48,6 +48,28 @@ def test_run_weekly_202_background():
     assert m.call_args.args[0] == date(2026, 7, 9)
 
 
+def test_push_subscribe_rejects_non_https_endpoint(monkeypatch, tmp_path):
+    monkeypatch.setattr(dapi.settings, "DELIVERY_DATA_DIR", str(tmp_path), raising=False)
+    c = _client()
+    assert c.post("/delivery/push/subscribe",
+                  json={"endpoint": "http://evil.example/x"}).status_code == 422
+    assert c.post("/delivery/push/subscribe",
+                  json={"endpoint": 123}).status_code == 422
+
+
+def test_push_subscribe_caps_store_size(monkeypatch, tmp_path):
+    monkeypatch.setattr(dapi.settings, "DELIVERY_DATA_DIR", str(tmp_path), raising=False)
+    from core.delivery.channels import PushStore
+    store = PushStore(path=str(tmp_path / "push_subscriptions.json"))
+    for i in range(50):
+        store.add({"endpoint": f"https://push.example/{i}"})
+    with patch.object(dapi, "PushStore", lambda: store):
+        c = _client()
+        resp = c.post("/delivery/push/subscribe",
+                      json={"endpoint": "https://push.example/one-too-many"})
+    assert resp.status_code == 429
+
+
 def test_run_brief_rejects_malformed_on():
     c = _client()
     resp = c.post("/delivery/run-brief?on=garbage")

@@ -67,3 +67,5 @@ frontend/node_modules/
 
 # Claude Code internal worktrees
 .claude/worktrees/
+
+MagicMock/

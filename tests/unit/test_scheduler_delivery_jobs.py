@@ -32,6 +32,23 @@ def test_morning_brief_cron_is_0850_ist(monkeypatch):
     assert wfields["day_of_week"] == "sun" and wfields["hour"] == "18"
 
 
+def test_nightly_backup_job_registered_at_2330_ist():
+    """AUD-088: Job 15 — nightly data backup, always on (local rotation is free)."""
+    sched = AutomobileScheduler()
+    job = sched._scheduler.get_job("data_backup_nightly")
+    assert job is not None
+    fields = {f.name: str(f) for f in job.trigger.fields}
+    assert fields["hour"] == "23" and fields["minute"] == "30"
+
+
+def test_backup_job_runs_run_backup_job(monkeypatch):
+    sched = AutomobileScheduler()
+    with patch("services.data.backup.run_backup_job",
+               return_value={"archive": "x.zip", "bytes": 1, "emailed": True, "pruned": 0}) as m:
+        sched._backup_job()
+    assert m.called
+
+
 def test_preopen_job_emits_reforecast_alerts(monkeypatch):
     monkeypatch.setattr(settings, "DELIVERY_ENABLED", True, raising=False)
     sched = AutomobileScheduler()

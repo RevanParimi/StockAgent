@@ -399,6 +399,20 @@ class AutomobileScheduler:
         else:
             logger.info("[Scheduler] Delivery jobs disabled (DELIVERY_ENABLED=false)")
 
+        # ── Job 15: Nightly data backup (23:30 IST daily — AUD-088) ─────────
+        # Always on: the local rotation under data/backups/ is free; the
+        # emailed off-site copy rides whenever the SMTP transport is configured.
+        scheduler.add_job(
+            func=self._backup_job,
+            trigger=CronTrigger(hour=23, minute=30, timezone="Asia/Kolkata"),
+            id="data_backup_nightly",
+            name="Nightly data backup (zip + email off-site)",
+            misfire_grace_time=3600,
+            coalesce=True,
+            replace_existing=True,
+        )
+        logger.info("[Scheduler] Backup job: daily at 11:30 pm IST")
+
         return scheduler
 
     def _on_job_error(self, event) -> None:
@@ -706,6 +720,15 @@ class AutomobileScheduler:
         except Exception as exc:
             logger.error("[Scheduler] Macro daily FAILED: %s", exc, exc_info=True)
         _job_banner("Macro News — Daily Policy/RBI", done=True)
+
+    def _backup_job(self) -> None:
+        """Job 15 — nightly data/ backup (AUD-088). Archive-creation failures
+        raise so the EVENT_JOB_ERROR listener pages a human; a missing off-site
+        copy only warns (run_backup_job logs it)."""
+        from services.data.backup import run_backup_job
+        summary = run_backup_job()
+        logger.info("[Scheduler] nightly backup done: emailed=%s bytes=%d",
+                    summary["emailed"], summary["bytes"])
 
     def _ledger_cleanup_job(self) -> None:
         """

@@ -280,8 +280,7 @@ class _SectorRegistry:
 
         Dispatch logic:
           enabled + tier=backend → BackendOrchestratorClass (lazy-imported)
-          enabled + tier=core   → CoreSectorAdapter subclass (Phase 3)
-          disabled              → AutomobileAgentOrchestrator (safe degradation)
+          disabled / other tier  → AutomobileAgentOrchestrator (safe degradation)
         """
         cfg = _TOGGLES.get(sector, {})
         enabled = cfg.get("enabled", False)
@@ -298,10 +297,6 @@ class _SectorRegistry:
         if tier == "backend":
             loader = _BACKEND_LOADERS.get(sector, _BACKEND_LOADERS["automobile"])
             return loader()
-
-        if tier == "core":
-            from backend.shared.pipeline.core_adapter import make_core_adapter_class
-            return make_core_adapter_class(sector)
 
         logger.warning(
             "[SectorRegistry] unknown tier '%s' for sector '%s' — falling back to automobile",

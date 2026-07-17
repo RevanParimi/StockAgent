@@ -87,9 +87,15 @@ def classify_direction(actual: float, predicted: float) -> str:
 def is_direction_correct(predicted_verdict: str, actual_direction: str) -> bool:
     """
     True if the verdict's implied direction aligns with the actual price move.
-    BUY / STRONG BUY  → expects UP
+    BUY / STRONG BUY   → expects UP
     SELL / STRONG SELL → expects DOWN
-    NEUTRAL            → no directional claim, always treated as not-wrong
+    NEUTRAL / other    → expects FLAT (within ±FLAT_THRESHOLD_PCT)
+
+    AUD-060 (fix-forward 2026-07-17): NEUTRAL used to be an automatic hit,
+    inflating direction accuracy, WeightAdapter credit, and the advisor ADD
+    gate. A NEUTRAL claim is now correct only when the move was actually
+    flat — the rule the synthetic generator always used. Applies to new
+    reviews only; stored direction_correct values are never rewritten.
     """
     bullish = {"BUY", "STRONG BUY"}
     bearish = {"SELL", "STRONG SELL"}
@@ -98,7 +104,7 @@ def is_direction_correct(predicted_verdict: str, actual_direction: str) -> bool:
         return actual_direction == "UP"
     if verdict_upper in bearish:
         return actual_direction == "DOWN"
-    return True
+    return actual_direction == "FLAT"
 
 
 class FeedbackAgent:

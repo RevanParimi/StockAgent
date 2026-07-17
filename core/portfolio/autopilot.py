@@ -337,16 +337,27 @@ def record_value_point(store: PortfolioStore, portfolio: Portfolio,
     # (stale review_date replayed after a newer point already recorded)
     # cases — either would append a point older than or equal to the tail.
     if hist and hist[-1].get("date", "") >= day:
+        if hist[-1].get("date") != day:
+            logger.info("[autopilot] skipping out-of-order value point %s "
+                        "(history tail is %s)", day, hist[-1].get("date"))
         return None
     mv = round(_portfolio_market_value(portfolio, closes), 2)
     total = round(mv + portfolio.cash_deployable, 2)
     day_change_pct = None
+    change_span_days = None   # AUD-089: gap behind day_change_pct, calendar days
     if hist and hist[-1].get("total_equity"):
         prev = hist[-1]["total_equity"]
         if prev > 0:
             day_change_pct = round((total / prev - 1) * 100, 4)
+        prev_date = hist[-1].get("date")
+        if prev_date:
+            try:
+                change_span_days = (review_date - date.fromisoformat(prev_date)).days
+            except ValueError:
+                pass
     point = {"date": day, "market_value": mv,
              "cash": round(portfolio.cash_deployable, 2), "total_equity": total,
-             "capital_in": portfolio.capital_in, "day_change_pct": day_change_pct}
+             "capital_in": portfolio.capital_in, "day_change_pct": day_change_pct,
+             "change_span_days": change_span_days}
     store.append_value_point(point)
     return point

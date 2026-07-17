@@ -67,6 +67,7 @@ def test_performance_from_value_history(client, tmp_path):
     assert d["day_change_pct"] == 0.91
     assert d["autopilot"] is True
     assert len(d["history"]) == 2
+    assert d["as_of"] == "2026-07-13"            # AUD-008: figure's reference date
 
 
 def test_performance_empty_portfolio_accounting_on(client, tmp_path):

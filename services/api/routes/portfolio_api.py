@@ -348,8 +348,10 @@ async def get_performance(
     if history:
         last = history[-1]
         market_value, day_change_pct = last.get("market_value"), last.get("day_change_pct")
+        as_of = last.get("date")                # AUD-008: what the figure refers to
     else:
         market_value, day_change_pct = None, None
+        as_of = None
         if p.holdings:   # no history yet — live mark like GET /portfolio
             mv = 0.0
             for h in p.holdings:
@@ -360,10 +362,12 @@ async def get_performance(
                                    "falling back to adj_avg_price: %s", h.symbol, exc)
                     mv += h.adj_qty * h.adj_avg_price
             market_value = round(mv, 2)
+            as_of = date.today().isoformat()
         elif p.cash_deployable is not None:
             # Cash accounting on, empty portfolio (transient state right
             # after opt-in): market value is zero — known, not unknown.
             market_value = 0.0
+            as_of = date.today().isoformat()
     total_equity = round((market_value or 0.0) + (cash or 0.0), 2) \
         if market_value is not None else None
     total_pnl = round(total_equity - p.capital_in, 2) \
@@ -378,6 +382,7 @@ async def get_performance(
         "total_return_pct": round(total_pnl / p.capital_in * 100, 2)
             if total_pnl is not None else None,
         "day_change_pct": day_change_pct,
+        "as_of": as_of,
         "autopilot": p.autopilot,
         "history": history,
     }

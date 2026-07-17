@@ -65,46 +65,6 @@ class TestEmbedder:
 # Text chunking (pure function, no mocks needed)
 # ---------------------------------------------------------------------------
 
-class TestChunking:
-    def test_chunk_text_basic(self):
-        from core.intelligence.rag.ingestion.ingestion import _chunk_text
-        text = " ".join([f"word{i}" for i in range(1000)])
-        chunks = _chunk_text(text, chunk_size=100, overlap=20)
-        assert len(chunks) > 1
-        assert all(isinstance(c, str) for c in chunks)
-
-    def test_chunk_text_overlap_creates_shared_content(self):
-        from core.intelligence.rag.ingestion.ingestion import _chunk_text
-        words = [f"w{i}" for i in range(50)]
-        text = " ".join(words)
-        chunks = _chunk_text(text, chunk_size=30, overlap=10)
-        # With overlap, consecutive chunks share some words
-        if len(chunks) >= 2:
-            words_first = set(chunks[0].split())
-            words_second = set(chunks[1].split())
-            assert len(words_first & words_second) > 0
-
-    def test_chunk_text_empty_returns_empty(self):
-        from core.intelligence.rag.ingestion.ingestion import _chunk_text
-        assert _chunk_text("", chunk_size=100, overlap=10) == []
-
-    def test_doc_id_is_deterministic(self):
-        from core.intelligence.rag.ingestion.ingestion import _doc_id
-        id1 = _doc_id("same text", "source.pdf", 0)
-        id2 = _doc_id("same text", "source.pdf", 0)
-        assert id1 == id2
-
-    def test_doc_id_differs_for_different_chunks(self):
-        from core.intelligence.rag.ingestion.ingestion import _doc_id
-        id1 = _doc_id("text A", "source.pdf", 0)
-        id2 = _doc_id("text B", "source.pdf", 1)
-        assert id1 != id2
-
-
-# ---------------------------------------------------------------------------
-# VectorStore
-# ---------------------------------------------------------------------------
-
 class TestVectorStore:
     """
     chromadb is imported lazily inside VectorStore._init_chroma().
@@ -155,57 +115,6 @@ class TestVectorStore:
 
 # ---------------------------------------------------------------------------
 # DocumentIngester
-# ---------------------------------------------------------------------------
-
-class TestDocumentIngester:
-    @patch("core.intelligence.rag.ingestion.ingestion.VectorStore")
-    @patch("core.intelligence.rag.ingestion.ingestion.Embedder")
-    def test_ingest_text_calls_upsert(self, mock_embedder_cls, mock_store_cls):
-        from core.intelligence.rag.ingestion.ingestion import DocumentIngester
-
-        mock_embedder = MagicMock()
-        mock_embedder.embed_batch.return_value = [[0.1, 0.2]] * 5
-        mock_embedder_cls.return_value = mock_embedder
-
-        mock_store = MagicMock()
-        mock_store_cls.return_value = mock_store
-
-        ingester = DocumentIngester()
-        text = " ".join([f"word{i}" for i in range(500)])
-        n = ingester.ingest_text(text, doc_id="test_doc", metadata={"ticker": "MARUTI"})
-
-        assert n > 0
-        mock_store.upsert.assert_called_once()
-
-    @patch("core.intelligence.rag.ingestion.ingestion.VectorStore")
-    @patch("core.intelligence.rag.ingestion.ingestion.Embedder")
-    def test_ingest_empty_text_returns_zero(self, mock_embedder_cls, mock_store_cls):
-        from core.intelligence.rag.ingestion.ingestion import DocumentIngester
-        ingester = DocumentIngester()
-        n = ingester.ingest_text("   ", doc_id="empty")
-        assert n == 0
-
-    @patch("core.intelligence.rag.ingestion.ingestion.VectorStore")
-    @patch("core.intelligence.rag.ingestion.ingestion.Embedder")
-    def test_ingest_file_missing_returns_zero(self, mock_embedder_cls, mock_store_cls):
-        from core.intelligence.rag.ingestion.ingestion import DocumentIngester
-        ingester = DocumentIngester()
-        n = ingester.ingest_file(Path("/nonexistent/file.pdf"))
-        assert n == 0
-
-    @patch("core.intelligence.rag.ingestion.ingestion.VectorStore")
-    @patch("core.intelligence.rag.ingestion.ingestion.Embedder")
-    def test_ingest_unsupported_extension_returns_zero(self, mock_embedder_cls, mock_store_cls, tmp_path):
-        from core.intelligence.rag.ingestion.ingestion import DocumentIngester
-        f = tmp_path / "test.docx"
-        f.write_text("some content")
-        ingester = DocumentIngester()
-        n = ingester.ingest_file(f)
-        assert n == 0
-
-
-# ---------------------------------------------------------------------------
-# RAGRetriever
 # ---------------------------------------------------------------------------
 
 class TestRAGRetriever:

@@ -1,4 +1,6 @@
 """AUD-088: send_email grows optional file attachments (zip backup rider)."""
+import email as email_lib
+
 import core.delivery.channels as channels
 
 
@@ -42,7 +44,11 @@ def test_email_with_attachment_is_multipart(monkeypatch, tmp_path):
     payload = _FakeSMTP.sent[0]
     assert "multipart" in payload.lower()
     assert 'filename="backup.zip"' in payload
-    assert "body text" in payload
+    # The text part is transfer-encoded inside the multipart — parse, don't grep.
+    parsed = email_lib.message_from_string(payload)
+    parts = {p.get_content_type(): p for p in parsed.walk()}
+    assert parts["text/plain"].get_payload(decode=True).decode("utf-8") == "body text"
+    assert parts["application/octet-stream"].get_payload(decode=True) == b"PK\x03\x04fakezip"
 
 
 def test_email_without_attachment_unchanged(monkeypatch):

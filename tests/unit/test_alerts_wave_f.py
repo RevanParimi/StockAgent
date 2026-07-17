@@ -83,3 +83,9 @@ def test_system_alert_sites_broadcast():
     assert "emit_alerts_broadcast" in inspect.getsource(
         pstore.PortfolioStore._alert_quarantine)
     assert "emit_alerts_broadcast" in inspect.getsource(reconcile._alert)
+
+    # preopen reforecast alert (scheduler job) is system-level too
+    import services.scheduler.python.scheduler as sched
+    src = inspect.getsource(sched)
+    assert "emit_alerts_broadcast(" in src
+    assert "import AlertEvent, emit_alerts\n" not in src

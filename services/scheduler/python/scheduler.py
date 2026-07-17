@@ -974,8 +974,8 @@ class AutomobileScheduler:
                 if result.get("reforecasts"):
                     try:
                         from datetime import date as _date
-                        from core.delivery.alerts import AlertEvent, emit_alerts
-                        emit_alerts(
+                        from core.delivery.alerts import AlertEvent, emit_alerts_broadcast
+                        emit_alerts_broadcast(   # AUD-015
                             [AlertEvent(
                                 date=_date.today().isoformat(),
                                 kind="preopen_reforecast", symbol=t,

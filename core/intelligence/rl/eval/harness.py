@@ -62,6 +62,15 @@ ABLATION_REGISTRY: dict[str, str] = {
     "executable_claims": "RL_CLAIMS_ENABLED",
 }
 
+# AUD-072: synthetic ablation deltas re-measure constants that synthetic.py
+# itself injects (0.05 / 0.03 / 0.02) — circular instrumentation. They verify
+# the plumbing, not the value of any live feature. Real-data ablation remains
+# a documented no-op. Every synthetic delta carries this caveat.
+_SYNTHETIC_ABLATION_CAVEAT = (
+    "synthetic-model artifact: this delta re-measures constants injected by "
+    "SyntheticLogGenerator — it is NOT evidence of live-loop feature value (AUD-072)"
+)
+
 
 # ---------------------------------------------------------------------------
 # EvalReport
@@ -163,7 +172,7 @@ class EvalHarness:
                 report.ablation_deltas[key] = None
                 continue
 
-            report.ablation_deltas[key] = self._synthetic_ablation_delta(
+            delta = self._synthetic_ablation_delta(
                 key=key,
                 baseline_aggregate=report.aggregate,
                 n_tickers=n_tickers,
@@ -172,6 +181,13 @@ class EvalHarness:
                 vol=vol,
                 seed=seed,
             )
+            delta["caveat"] = _SYNTHETIC_ABLATION_CAVEAT
+            logger.warning(
+                "[EvalHarness] Ablation '%s' delta is a synthetic-model "
+                "artifact (see caveat field) — do not read it as live value.",
+                key,
+            )
+            report.ablation_deltas[key] = delta
 
         return report
 

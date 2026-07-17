@@ -104,6 +104,17 @@ class TestAblationRegistry:
         assert "direction_accuracy_delta" in delta
         assert "brier_score_delta" in delta
 
+    def test_synthetic_ablation_delta_carries_caveat(self):
+        """AUD-072: synthetic deltas are generator artifacts and must say so."""
+        harness = EvalHarness()
+        report = harness.run_eval(
+            synthetic=True, ablate=["calibration_reward"],
+            n_tickers=1, n_cycles=1, seed=7,
+        )
+        delta = report.ablation_deltas["calibration_reward"]
+        assert "caveat" in delta
+        assert "synthetic" in delta["caveat"].lower()
+
     def test_unregistered_ablation_key_still_recorded(self):
         """Arbitrary ablation keys should not crash — registry is open-ended."""
         harness = EvalHarness()

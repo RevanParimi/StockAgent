@@ -404,8 +404,9 @@ Models are tiered (2026-06-03 benchmark, `scripts/model_bench.py`; bulk re-bench
 | `LLM_TEMPERATURE` | `0.2` | LLM sampling temperature |
 | `LLM_MAX_TOKENS` | `2048` | Max output tokens per LLM call |
 | `LLM_TIMEOUT_SECONDS` | `60` | Per-call LLM timeout |
-| `LLM_INPUT_COST_PER_M` | `0.09` | Cost tracking: USD per 1M input tokens (bulk tier) |
-| `LLM_OUTPUT_COST_PER_M` | `0.18` | Cost tracking: USD per 1M output tokens (bulk tier) |
+| `LLM_INPUT_COST_PER_M` | `0.09` | Cost tracking fallback: USD per 1M input tokens for models NOT in `llm.cost_rates` |
+| `LLM_OUTPUT_COST_PER_M` | `0.18` | Cost tracking fallback: USD per 1M output tokens for models NOT in `llm.cost_rates` |
+| `LLM_COST_RATES` | per-model table | Tier-correct cost rates (config.yaml `llm.cost_rates`, AUD-105) — every cost site calls `settings.llm_cost_usd(model, pt, ct)` |
 
 ### Data / Search APIs
 

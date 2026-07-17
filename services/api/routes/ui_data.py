@@ -2993,6 +2993,8 @@ except Exception:
     _CHAT_MODEL = "qwen/qwen3.6-flash"
     _CHAT_FALLBACK_MODEL = "z-ai/glm-5.2"
 _CHAT_MAX_TOOL_ROUNDS = 4              # max tool rounds before forcing a final answer
+_CHAT_RETRIES_PER_MODEL = 2            # AUD-101: was 3 — caps the retry x model product at 4
+_CHAT_TURN_BUDGET_S = 45.0             # AUD-101: soft wall-clock budget per user turn
 
 
 def _is_transient_llm_error(exc: Exception) -> bool:
@@ -3005,7 +3007,8 @@ def _is_transient_llm_error(exc: Exception) -> bool:
 
 
 async def _chat_completion(client, *, models: tuple[str, ...] | list[str] | None = None,
-                           caller: str = "ui_chat", **kwargs):
+                           caller: str = "ui_chat", deadline: float | None = None,
+                           **kwargs):
     """
     chat.completions.create with resilience: retry the primary model on transient
     rate-limit/5xx errors (exponential backoff), then ESCALATE to the reasoning
@@ -3015,12 +3018,16 @@ async def _chat_completion(client, *, models: tuple[str, ...] | list[str] | None
     AUD-092: reasoning is disabled by default — chat output is user-visible text
     and <think> blocks are stripped downstream, so paying for them is waste.
     AUD-093: every attempt is recorded to telemetry.
+    AUD-101: `deadline` (time.monotonic() stamp) is the per-turn wall-clock
+    budget — chat is latency-bound, so once the budget is blown we fail fast
+    with the last transient error (the caller shows an honest "retry shortly"
+    message) instead of sleeping through more backoff.
     """
     from services.clients.llm_client import JSON_MODE_EXTRA_BODY, record_llm_call
     kwargs.setdefault("extra_body", JSON_MODE_EXTRA_BODY)
     last_exc: Exception | None = None
     for model in (models or (_CHAT_MODEL, _CHAT_FALLBACK_MODEL)):
-        for attempt in range(3):
+        for attempt in range(_CHAT_RETRIES_PER_MODEL):
             t0 = time.monotonic()
             try:
                 resp = await client.chat.completions.create(model=model, **kwargs)
@@ -3029,7 +3036,11 @@ async def _chat_completion(client, *, models: tuple[str, ...] | list[str] | None
                 last_exc = exc
                 if not _is_transient_llm_error(exc):
                     raise
-                await asyncio.sleep(0.8 * (2 ** attempt))  # 0.8s, 1.6s, 3.2s
+                sleep_s = 0.8 * (2 ** attempt)  # 0.8s, 1.6s
+                if deadline is not None and time.monotonic() + sleep_s >= deadline:
+                    logger.warning("[chat] turn budget exhausted — giving up early")
+                    raise last_exc
+                await asyncio.sleep(sleep_s)
             else:
                 usage = getattr(resp, "usage", None)
                 record_llm_call(

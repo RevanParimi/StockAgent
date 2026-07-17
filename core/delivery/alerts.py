@@ -52,6 +52,28 @@ def _sent_log_path(sent_log: str | None) -> Path:
     return base / "alerts_sent.jsonl"
 
 
+_ROTATE_AT_LINES = 4000   # rotate when the sent-log grows past this
+_ROTATE_KEEP = 2000       # keep-window; matches the _seen_keys tail
+
+
+def _rotate_sent_log(path: Path) -> None:
+    """AUD-013: cap unbounded sent-log growth (~10 lines/day on the volume).
+    Rewrites the newest _ROTATE_KEEP lines atomically; dedupe already only
+    looks at that same tail window, so rotation never changes behavior."""
+    try:
+        if not path.exists():
+            return
+        lines = path.read_text(encoding="utf-8").splitlines()
+        if len(lines) <= _ROTATE_AT_LINES:
+            return
+        from core.utils.atomic_io import atomic_write_text
+        atomic_write_text(path, "\n".join(lines[-_ROTATE_KEEP:]) + "\n")
+        logger.info("[alerts] sent-log rotated: %d -> %d lines",
+                    len(lines), _ROTATE_KEEP)
+    except Exception as exc:
+        logger.warning("[alerts] sent-log rotation failed (non-fatal): %s", exc)
+
+
 def _seen_keys(path: Path, tail: int = 2000) -> set[str]:
     if not path.exists():
         return set()
@@ -99,6 +121,7 @@ def emit_alerts(
     try:
         uid = user_id or ""
         path = _sent_log_path(sent_log)
+        _rotate_sent_log(path)   # AUD-013
         seen = _seen_keys(path)
         new = [e for e in events if f"{uid}|{e.key()}" not in seen]
         # in-batch dedupe too
@@ -142,3 +165,41 @@ def emit_alerts(
     except Exception as exc:
         logger.warning("[alerts] emit failed (non-fatal): %s", exc)
         return {"emitted": 0, "error": str(exc)}
+
+
+def _audience_push_store():
+    """Seam for tests — the default PushStore."""
+    from core.delivery.channels import PushStore
+    return PushStore()
+
+
+def alert_audience() -> list[str]:
+    """Every user who should receive SYSTEM-level alerts (AUD-015): all users
+    with a push subscription, plus the default portfolio user (the email
+    transport is a single global mailbox and rides the default user's emit)."""
+    uids: set[str] = set()
+    try:
+        uids.update(_audience_push_store().user_ids())
+    except Exception as exc:
+        logger.warning("[alerts] audience lookup failed (non-fatal): %s", exc)
+    uids.add(settings.PORTFOLIO_DEFAULT_USER_ID)
+    return sorted(uids)
+
+
+def emit_alerts_broadcast(
+    events: list[AlertEvent],
+    title: str = "StockAgent alerts",
+    sent_log: str | None = None,
+) -> dict:
+    """emit_alerts to every alert_audience() user (AUD-015). Never raises.
+
+    Note: with >1 audience user the single global mailbox receives one email
+    per user (deliver() sends email unconditionally); acceptable at the
+    current single-real-user scale, and per-user push still lands correctly.
+    """
+    results: dict[str, dict] = {}
+    for uid in alert_audience():
+        results[uid] = emit_alerts(events, user_id=uid, title=title,
+                                   sent_log=sent_log)
+    return {"users": results,
+            "emitted": sum(r.get("emitted", 0) for r in results.values())}

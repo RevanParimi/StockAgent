@@ -83,6 +83,10 @@ class PushStore:
         uid = user_id or settings.PORTFOLIO_DEFAULT_USER_ID
         return list(self._load().get(uid, []))
 
+    def user_ids(self) -> list[str]:
+        """All user_ids with at least one stored subscription (AUD-015)."""
+        return sorted(uid for uid, subs in self._load().items() if subs)
+
 
 def send_email(subject: str, body: str, attachments: list[Path] | None = None) -> bool:
     """SMTP STARTTLS send to DELIVERY_EMAIL_TO. False when disabled/unconfigured

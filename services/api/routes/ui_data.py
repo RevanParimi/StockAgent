@@ -2922,8 +2922,12 @@ async def chat(body: dict) -> dict:
     try:
         from services.clients.llm_client import get_async_llm_client
         client = get_async_llm_client()
+        turn_deadline = time.monotonic() + _CHAT_TURN_BUDGET_S  # AUD-101
 
-        for _ in range(4):
+        for _round in range(_CHAT_MAX_TOOL_ROUNDS):
+            if time.monotonic() >= turn_deadline:
+                logger.warning("[chat] turn budget spent after %d tool rounds — forcing final answer", _round)
+                break
             resp = await _chat_completion(
                 client,
                 messages=messages,
@@ -2931,6 +2935,7 @@ async def chat(body: dict) -> dict:
                 max_tokens=600,
                 tools=_CHAT_TOOLS,
                 tool_choice="auto",
+                deadline=turn_deadline,
             )
             msg = resp.choices[0].message
             tool_calls = getattr(msg, "tool_calls", None) or []
@@ -2956,7 +2961,8 @@ async def chat(body: dict) -> dict:
             for tc, result in zip(tool_calls, tool_results):
                 messages.append({"role": "tool", "tool_call_id": tc.id, "content": result})
 
-        # Final synthesis after max tool rounds
+        # Final synthesis after max tool rounds / spent budget — always allowed
+        # (no deadline), so a long turn still ends in a grounded answer (AUD-101).
         resp = await _chat_completion(
             client,
             messages=messages,
@@ -3294,8 +3300,12 @@ async def chat_stream(body: dict):
         final_text = ""
         try:
             client = get_async_llm_client()
+            turn_deadline = time.monotonic() + _CHAT_TURN_BUDGET_S  # AUD-101
 
             for _round in range(_CHAT_MAX_TOOL_ROUNDS):
+                if time.monotonic() >= turn_deadline:
+                    logger.warning("[chat] turn budget spent after %d tool rounds — forcing final answer", _round)
+                    break
                 resp = await _chat_completion(
                     client,
                     messages=messages,
@@ -3303,6 +3313,7 @@ async def chat_stream(body: dict):
                     max_tokens=700,
                     tools=_CHAT_TOOLS,
                     tool_choice="auto",
+                    deadline=turn_deadline,
                 )
                 msg = resp.choices[0].message
                 tcs = getattr(msg, "tool_calls", None) or []
@@ -3335,8 +3346,11 @@ async def chat_stream(body: dict):
                     messages.append({"role": "tool", "tool_call_id": tc.id, "content": result})
                     summary = (result or "")[:600]
                     yield f'data: {_json.dumps({"event": "tool_result", "tool": tc.function.name, "summary": summary})}\n\n'
-            else:
-                # Hit max rounds with tool context pending → force a final answer (no tools).
+
+            if not final_text:
+                # Rounds or budget exhausted with tool context pending → ONE final
+                # no-tools synthesis, always allowed (no deadline): the user gets a
+                # grounded answer over a mock even when the turn ran long (AUD-101).
                 resp = await _chat_completion(
                     client, messages=messages, temperature=0.4, max_tokens=700,
                 )

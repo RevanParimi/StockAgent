@@ -87,3 +87,44 @@ def test_non_transient_raises_immediately():
     with pytest.raises(_Fatal):
         asyncio.run(ui_data._chat_completion(_FakeClient(fake), messages=[]))
     assert fake.calls == 1
+
+
+async def _drain_stream(payload: dict) -> str:
+    sr = await ui_data.chat_stream(payload)
+    chunks = []
+    async for chunk in sr.body_iterator:
+        chunks.append(chunk if isinstance(chunk, str) else chunk.decode())
+    return "".join(chunks)
+
+
+def _fake_completion_factory(calls):
+    async def _fake_completion(client, **kwargs):
+        calls.append((kwargs.get("deadline"), "tools" in kwargs))
+        return _Resp()
+
+    return _fake_completion
+
+
+def test_stream_blown_budget_still_forces_one_final_synthesis(monkeypatch):
+    """Budget already spent → no tool rounds, but ONE final no-tools synthesis
+    (deadline-free) still runs so the user gets a real answer, not a mock."""
+    calls = []
+    monkeypatch.setattr(ui_data, "_chat_completion", _fake_completion_factory(calls))
+    monkeypatch.setattr(ui_data, "_CHAT_TURN_BUDGET_S", -1.0)
+
+    body = asyncio.run(_drain_stream({"message": "hello there", "session_id": "t1"}))
+    assert "ok" in body
+    assert calls == [(None, False)]  # exactly one call: deadline-free, tool-free
+
+
+def test_stream_normal_turn_passes_deadline_to_tool_rounds(monkeypatch):
+    calls = []
+    monkeypatch.setattr(ui_data, "_chat_completion", _fake_completion_factory(calls))
+    monkeypatch.setattr(ui_data, "_CHAT_TURN_BUDGET_S", 45.0)
+
+    body = asyncio.run(_drain_stream({"message": "hello there", "session_id": "t2"}))
+    assert "ok" in body
+    assert len(calls) == 1
+    deadline, has_tools = calls[0]
+    assert has_tools is True
+    assert isinstance(deadline, float)  # the tool round is budget-gated

@@ -15,6 +15,9 @@ from __future__ import annotations
 import json
 import logging
 import smtplib
+from email import encoders
+from email.mime.base import MIMEBase
+from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from pathlib import Path
 
@@ -81,14 +84,26 @@ class PushStore:
         return list(self._load().get(uid, []))
 
 
-def send_email(subject: str, body: str) -> bool:
+def send_email(subject: str, body: str, attachments: list[Path] | None = None) -> bool:
     """SMTP STARTTLS send to DELIVERY_EMAIL_TO. False when disabled/unconfigured
-    or on any failure — never raises."""
+    or on any failure — never raises. `attachments` (AUD-088): file paths to
+    attach; the whole send fails closed if any is unreadable."""
     if not (settings.DELIVERY_EMAIL_ENABLED and settings.SMTP_HOST
             and settings.DELIVERY_EMAIL_TO):
         return False
     try:
-        msg = MIMEText(body, "plain", "utf-8")
+        if attachments:
+            msg: MIMEText | MIMEMultipart = MIMEMultipart()
+            msg.attach(MIMEText(body, "plain", "utf-8"))
+            for path in attachments:
+                part = MIMEBase("application", "octet-stream")
+                part.set_payload(Path(path).read_bytes())
+                encoders.encode_base64(part)
+                part.add_header("Content-Disposition",
+                                f'attachment; filename="{Path(path).name}"')
+                msg.attach(part)
+        else:
+            msg = MIMEText(body, "plain", "utf-8")
         msg["Subject"] = subject
         msg["From"] = settings.SMTP_USER or "stockagent@localhost"
         msg["To"] = settings.DELIVERY_EMAIL_TO

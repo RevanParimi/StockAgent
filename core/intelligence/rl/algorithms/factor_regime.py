@@ -26,6 +26,9 @@ for the bias penalty in WeightAdapter._compute_deltas():
   REVERSAL + pattern_analysis/competitive_intel → 0.80 (momentum agents suffer in reversals)
   MOMENTUM + fundamentals/risk_macro            → 0.85 (value agents lag in momentum markets)
   All other cases                               → 1.0 (no change)
+  Data stale (>18 months old, AUD-073)          → 1.0 always — a frozen
+  dataset stays in prompts as a labeled structural prior but never tilts
+  live weight penalties.
 
 Caching
 -------
@@ -37,7 +40,6 @@ from __future__ import annotations
 
 import io
 import logging
-import warnings
 from datetime import date
 from pathlib import Path
 from typing import Literal
@@ -52,6 +54,7 @@ _IIMA_BASE  = "https://www.iimahd.ernet.in/~iffm/Indian-Fama-French-Momentum"
 _INDEX_URL  = f"{_IIMA_BASE}/"
 _CACHE_DIR  = Path(__file__).parent.parent.parent.parent / "data" / "cache" / "iima_ff"
 _TIMEOUT    = 30
+_STALE_AFTER_MONTHS = 18   # newest factor row older than this => background-only
 
 # ---------------------------------------------------------------------------
 # In-process daily cache
@@ -70,9 +73,7 @@ def _today_key() -> str:
 
 def _get(url: str):
     import requests
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        return requests.get(url, verify=False, timeout=_TIMEOUT)
+    return requests.get(url, timeout=_TIMEOUT)
 
 
 def _discover_latest_vintage() -> str:
@@ -122,6 +123,20 @@ def _download_csv(vintage: str | None = None) -> "pd.DataFrame":
 # Regime computation
 # ---------------------------------------------------------------------------
 
+def _vintage_is_stale(vintage) -> bool:
+    """True when the newest factor row is older than _STALE_AFTER_MONTHS.
+    Unparseable vintages count as stale — never grant live influence to data
+    we can't date (AUD-073)."""
+    import pandas as pd
+    try:
+        last = pd.to_datetime(str(vintage), errors="coerce")
+        if pd.isna(last):
+            return True
+        return (pd.Timestamp.today() - last).days > _STALE_AFTER_MONTHS * 31
+    except Exception:
+        return True
+
+
 def _compute_regime(lookback_months: int = 12) -> dict:
     """Download IIMA CSV and compute momentum + style regime."""
     import pandas as pd
@@ -142,6 +157,7 @@ def _compute_regime(lookback_months: int = 12) -> dict:
     regime   = "MOMENTUM" if avg_wml > 0 else "REVERSAL"
     strength = "STRONG" if abs(z_score) > 1.5 else ("MODERATE" if abs(z_score) > 0.5 else "WEAK")
 
+    vintage = str(df["Date"].iloc[-1]) if not df.empty else "unknown"
     return {
         "regime":           regime,
         "strength":         strength,
@@ -152,7 +168,8 @@ def _compute_regime(lookback_months: int = 12) -> dict:
         "style_tilt":       "VALUE"     if float(hml.mean()) > 0 else "GROWTH",
         "market_factor_avg": round(float(mf.mean()), 3),
         "lookback_months":  lookback_months,
-        "data_vintage":     str(df["Date"].iloc[-1]) if not df.empty else "unknown",
+        "data_vintage":     vintage,
+        "data_stale":       _vintage_is_stale(vintage),   # AUD-073
         "fetched_at":       _today_key(),
     }
 
@@ -201,8 +218,10 @@ def format_factor_regime_context(regime: dict | None) -> str:
     if not regime:
         return ""
 
+    stale_tag = " — STALE, background prior only" if regime.get("data_stale") else ""
     lines = [
-        f"[IIMA FACTOR REGIME — long-run prior, data through {regime.get('data_vintage', 'unknown')}]",
+        f"[IIMA FACTOR REGIME — long-run prior, data through "
+        f"{regime.get('data_vintage', 'unknown')}{stale_tag}]",
         f"  Momentum regime: {regime['strength']} {regime['regime']} "
         f"(WML avg={regime['avg_wml_pct']:+.3f}%, z={regime['z_score']:+.2f})",
         f"  Market tilt: {regime['size_tilt']} / {regime['style_tilt']}",
@@ -246,6 +265,12 @@ def get_regime_penalty_scale(agent_name: str, regime: dict | None) -> float:
     Returns 1.0 (no change) when regime is None, WEAK, or agent doesn't match.
     """
     if not regime:
+        return 1.0
+
+    # AUD-073: the IIMA series is frozen at 2023-03. A regime read from stale
+    # data stays in the prompt as a labeled structural prior, but must never
+    # tilt live weight penalties.
+    if regime.get("data_stale"):
         return 1.0
 
     r_type     = regime.get("regime", "")

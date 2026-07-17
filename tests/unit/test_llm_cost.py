@@ -31,3 +31,18 @@ def test_zero_tokens_zero_cost():
 def test_all_three_tier_models_have_rates():
     for m in (settings.LLM_MODEL_FAST, settings.LLM_MODEL_REASONING, settings.LLM_MODEL_BULK):
         assert m in settings.LLM_COST_RATES
+
+
+def test_sum_run_usage_splits_rates_by_model():
+    """base_orchestrator.sum_run_usage: resolve tokens=BULK rate, aggregator=REASONING rate."""
+    from backend.shared.pipeline.base_orchestrator import sum_run_usage
+
+    class _Agg:
+        _last_prompt_tokens = 1_000_000
+        _last_completion_tokens = 0
+
+    pt, ct, cost = sum_run_usage({}, (1_000_000, 0), _Agg())
+    bulk_in = settings.LLM_COST_RATES[settings.LLM_MODEL_BULK][0]
+    reason_in = settings.LLM_COST_RATES[settings.LLM_MODEL_REASONING][0]
+    assert pt == 2_000_000 and ct == 0
+    assert cost == round(bulk_in + reason_in, 6)  # 1M resolve @ bulk + 1M agg @ reasoning

@@ -116,7 +116,7 @@ class BaseAgent(ABC):
 
         pt = self._last_usage["prompt_tokens"]
         ct = self._last_usage["completion_tokens"]
-        cost = (pt * settings.LLM_INPUT_COST_PER_M + ct * settings.LLM_OUTPUT_COST_PER_M) / 1_000_000
+        cost = settings.llm_cost_usd(settings.LLM_MODEL_BULK, pt, ct)
         output.prompt_tokens = pt
         output.completion_tokens = ct
         output.cost_usd = cost
@@ -160,7 +160,7 @@ class BaseAgent(ABC):
 
         pt = self._last_usage["prompt_tokens"]
         ct = self._last_usage["completion_tokens"]
-        cost = (pt * settings.LLM_INPUT_COST_PER_M + ct * settings.LLM_OUTPUT_COST_PER_M) / 1_000_000
+        cost = settings.llm_cost_usd(settings.LLM_MODEL_BULK, pt, ct)
         output.prompt_tokens = pt
         output.completion_tokens = ct
         output.cost_usd = cost

@@ -353,10 +353,10 @@ class UnifiedAnalyst:
             raw = self._call_llm(system_prompt, user_prompt)
             duration_ms = (time.time() - t0) * 1000
 
-            cost = (
-                self._last_prompt_tokens * settings.LLM_INPUT_COST_PER_M
-                + self._last_completion_tokens * settings.LLM_OUTPUT_COST_PER_M
-            ) / 1_000_000
+            cost = settings.llm_cost_usd(
+                settings.LLM_MODEL_REASONING,
+                self._last_prompt_tokens, self._last_completion_tokens,
+            )
             log_llm_call(
                 run_id=run_id, ticker=query.ticker, phase="unified_analyst",
                 agent_name=None, model=settings.LLM_MODEL_REASONING,

@@ -79,11 +79,13 @@ def sum_run_usage(
     pt = sum(o.prompt_tokens for o in agent_outputs.values())
     ct = sum(o.completion_tokens for o in agent_outputs.values())
     cost = sum(o.cost_usd for o in agent_outputs.values())
-    extra_pt = resolve_usage[0] + getattr(aggregator, "_last_prompt_tokens", 0)
-    extra_ct = resolve_usage[1] + getattr(aggregator, "_last_completion_tokens", 0)
-    cost += (extra_pt * settings.LLM_INPUT_COST_PER_M
-             + extra_ct * settings.LLM_OUTPUT_COST_PER_M) / 1_000_000
-    return pt + extra_pt, ct + extra_ct, round(cost, 6)
+    resolve_pt, resolve_ct = resolve_usage
+    agg_pt = getattr(aggregator, "_last_prompt_tokens", 0)
+    agg_ct = getattr(aggregator, "_last_completion_tokens", 0)
+    # AUD-105: resolve runs on BULK, the aggregator on REASONING — cost each at its rate.
+    cost += settings.llm_cost_usd(settings.LLM_MODEL_BULK, resolve_pt, resolve_ct)
+    cost += settings.llm_cost_usd(settings.LLM_MODEL_REASONING, agg_pt, agg_ct)
+    return pt + resolve_pt + agg_pt, ct + resolve_ct + agg_ct, round(cost, 6)
 
 
 class BaseSectorOrchestrator(ABC):
@@ -409,7 +411,7 @@ class BaseSectorOrchestrator(ABC):
                 pt = response.usage.prompt_tokens
                 ct = response.usage.completion_tokens
                 self._last_resolve_usage = (pt, ct)  # AUD-087
-                cost = (pt * settings.LLM_INPUT_COST_PER_M + ct * settings.LLM_OUTPUT_COST_PER_M) / 1_000_000
+                cost = settings.llm_cost_usd(settings.LLM_MODEL_BULK, pt, ct)
                 log_llm_call(
                     run_id=run_id, ticker=user_input.upper(), phase="ticker_resolution",
                     agent_name=None, model=settings.LLM_MODEL_BULK,
@@ -512,10 +514,10 @@ class BaseSectorOrchestrator(ABC):
             first = next(iter(outputs.values()))
             first.prompt_tokens = analyst._last_prompt_tokens
             first.completion_tokens = analyst._last_completion_tokens
-            first.cost_usd = (
-                analyst._last_prompt_tokens * settings.LLM_INPUT_COST_PER_M
-                + analyst._last_completion_tokens * settings.LLM_OUTPUT_COST_PER_M
-            ) / 1_000_000
+            first.cost_usd = settings.llm_cost_usd(
+                settings.LLM_MODEL_REASONING,
+                analyst._last_prompt_tokens, analyst._last_completion_tokens,
+            )
         if outputs and progress_callback:
             for name, out in outputs.items():
                 try:

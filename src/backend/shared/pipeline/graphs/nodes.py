@@ -80,7 +80,7 @@ def make_resolve_ticker_node(sector: str) -> Callable[[GraphState], dict]:
             data = json.loads(resp.choices[0].message.content or "{}")
             if resp.usage:
                 pt, ct = resp.usage.prompt_tokens, resp.usage.completion_tokens
-                cost = (pt * settings.LLM_INPUT_COST_PER_M + ct * settings.LLM_OUTPUT_COST_PER_M) / 1_000_000
+                cost = settings.llm_cost_usd(settings.LLM_MODEL_BULK, pt, ct)
                 log_llm_call(
                     run_id=run_id, ticker=user_input.upper(),
                     phase="ticker_resolution", agent_name=None,
@@ -398,7 +398,7 @@ def make_aggregate_node(
             # Log usage after both branches — resp is guaranteed defined here
             if resp.usage:
                 pt, ct = resp.usage.prompt_tokens, resp.usage.completion_tokens
-                cost = (pt * settings.LLM_INPUT_COST_PER_M + ct * settings.LLM_OUTPUT_COST_PER_M) / 1_000_000
+                cost = settings.llm_cost_usd(settings.LLM_MODEL_BULK, pt, ct)
                 log_llm_call(
                     run_id=run_id, ticker=query.ticker,
                     phase="aggregation", agent_name="signal_aggregator",

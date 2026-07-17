@@ -2904,19 +2904,20 @@ async def chat(body: dict) -> dict:
     in a tool loop (max 4 rounds) before composing a grounded reply.
     """
     message: str = (body.get("message") or "").strip()
-    history: list = body.get("history") or []
+    # AUD-104: ONE memory model for both chat endpoints — the server-side
+    # session store (same store + 12-message window as /ui/chat/stream).
+    # Client-supplied "history" is deliberately ignored: it let the client
+    # inject arbitrary prior turns, and the live UI never sent it anyway.
+    session_id: str = body.get("session_id") or str(uuid.uuid4())
     if not message:
-        return {"reply": "Ask me anything — live prices, why a market is moving, stock verdicts, or what our agents say."}
+        return {"reply": "Ask me anything — live prices, why a market is moving, stock verdicts, or what our agents say.",
+                "session_id": session_id}
 
     context = _build_chat_context(message)
     system_prompt = _CHAT_SYSTEM_PROMPT.format(context=context)
 
     messages: list[dict] = [{"role": "system", "content": system_prompt}]
-    for h in history[-8:]:
-        role = h.get("role", "")
-        content = h.get("content", "")
-        if role in ("user", "assistant") and content:
-            messages.append({"role": role, "content": content})
+    messages.extend(_session_history_get(session_id))
     messages.append({"role": "user", "content": message})
 
     try:
@@ -2941,7 +2942,9 @@ async def chat(body: dict) -> dict:
             tool_calls = getattr(msg, "tool_calls", None) or []
 
             if not tool_calls:
-                return {"reply": (msg.content or "").strip()}
+                reply = (msg.content or "").strip()
+                _session_history_append(session_id, message, reply)
+                return {"reply": reply, "session_id": session_id}
 
             assistant_entry: dict = {"role": "assistant", "content": msg.content or ""}
             assistant_entry["tool_calls"] = [
@@ -2969,11 +2972,15 @@ async def chat(body: dict) -> dict:
             temperature=0.4,
             max_tokens=600,
         )
-        return {"reply": (resp.choices[0].message.content or "").strip()}
+        reply = (resp.choices[0].message.content or "").strip()
+        _session_history_append(session_id, message, reply)
+        return {"reply": reply, "session_id": session_id}
 
     except Exception as exc:
         logger.warning("[ui/chat] LLM call failed: %s", exc)
-        return {"reply": _mock_reply(message)}
+        reply = _mock_reply(message)
+        _session_history_append(session_id, message, reply)
+        return {"reply": reply, "session_id": session_id}
 
 
 def _mock_reply(q: str) -> str:

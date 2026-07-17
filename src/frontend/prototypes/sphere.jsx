@@ -287,9 +287,10 @@ function ChatOverlay({ open, onClose, mode='wireframe' }) {
         const res = await fetch('/ui/chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ message: text }),
+          body: JSON.stringify({ message: text, session_id: sessionId }),
         });
         const data = res.ok ? await res.json() : {};
+        if (data.session_id) setSessionId(data.session_id);
         setMsgs(m => [...m.slice(0, -1), { from:'bot', text: data.reply || 'Error', loading:false, toolTrace:[] }]);
       } catch {
         setMsgs(m => [...m.slice(0, -1), { from:'bot', text:'Network error — try again.', loading:false, toolTrace:[] }]);

@@ -33,6 +33,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Literal
 
+from core.utils.atomic_io import atomic_write_json
+
 logger = logging.getLogger(__name__)
 
 _LOGS_DIR = Path(os.getenv("LOGS_DIR", "logs"))
@@ -68,9 +70,8 @@ def _load() -> dict:
 
 
 def _save(data: dict) -> None:
-    _USAGE_FILE.parent.mkdir(parents=True, exist_ok=True)
     try:
-        _USAGE_FILE.write_text(json.dumps(data, indent=2), encoding="utf-8")
+        atomic_write_json(_USAGE_FILE, data, indent=2)   # AUD-057
     except Exception as exc:
         logger.warning("[api_usage] Failed to save usage file: %s", exc)
 

@@ -115,9 +115,9 @@ def _load_registry() -> dict:
 
 
 def _save_registry(registry: dict) -> None:
-    _REGISTRY_PATH.parent.mkdir(parents=True, exist_ok=True)
     try:
-        _REGISTRY_PATH.write_text(json.dumps(registry, indent=2), encoding="utf-8")
+        from core.utils.atomic_io import atomic_write_json
+        atomic_write_json(_REGISTRY_PATH, registry, indent=2)   # AUD-057
     except OSError as exc:
         logger.warning("[NseKeyRegistry] Could not save registry: %s", exc)
 

@@ -31,6 +31,7 @@ import threading
 from pathlib import Path
 
 from core.config import settings
+from core.utils.atomic_io import atomic_write_json
 
 logger = logging.getLogger(__name__)
 
@@ -161,10 +162,7 @@ def _remove_from_cache_file(ticker: str) -> None:
             return
         del cache[ticker]
         try:
-            _CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
-            _CACHE_FILE.write_text(
-                json.dumps(cache, indent=2, sort_keys=True), encoding="utf-8"
-            )
+            atomic_write_json(_CACHE_FILE, cache, indent=2, sort_keys=True)   # AUD-057
         except Exception as exc:
             logger.warning("[symbol_resolver] cache prune-write failed: %s", exc)
 
@@ -183,10 +181,7 @@ def _persist(ticker: str, yf_symbol: str) -> None:
         cache = _load_cache()
         cache[t] = yf_symbol                # mutates the memo in place
         try:
-            _CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
-            _CACHE_FILE.write_text(
-                json.dumps(cache, indent=2, sort_keys=True), encoding="utf-8"
-            )
+            atomic_write_json(_CACHE_FILE, cache, indent=2, sort_keys=True)   # AUD-057
             logger.info("[symbol_resolver] learned %s -> %s (cached)", t, yf_symbol)
         except Exception as exc:
             logger.warning("[symbol_resolver] cache write failed: %s", exc)
@@ -233,10 +228,9 @@ def learn_company_name(ticker: str, name: str) -> None:
         cache = _load_company_name_cache()
         cache[t] = name  # mutates the memo in place
         try:
-            _COMPANY_NAME_CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
-            _COMPANY_NAME_CACHE_FILE.write_text(
-                json.dumps(cache, indent=2, sort_keys=True), encoding="utf-8"
-            )
+            atomic_write_json(
+                _COMPANY_NAME_CACHE_FILE, cache, indent=2, sort_keys=True
+            )   # AUD-057
             logger.info("[symbol_resolver] learned company name %s -> %s (cached)", t, name)
         except Exception as exc:
             logger.warning("[symbol_resolver] company-name cache write failed: %s", exc)

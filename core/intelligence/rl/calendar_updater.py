@@ -236,9 +236,9 @@ def update_calendar(target_year: int | None = None) -> dict[str, list[str]]:
         existing[cur_str] = [d.isoformat() for d in cur_holidays]
         logger.info("[calendar_updater] Also recorded %d holidays for current year %d", len(cur_holidays), today.year)
 
-    # ── Write file ───────────────────────────────────────────────────────────
-    _HOLIDAY_FILE.parent.mkdir(parents=True, exist_ok=True)
-    _HOLIDAY_FILE.write_text(json.dumps(existing, indent=2, sort_keys=True), encoding="utf-8")
+    # ── Write file (atomic — AUD-057) ────────────────────────────────────────
+    from core.utils.atomic_io import atomic_write_json
+    atomic_write_json(_HOLIDAY_FILE, existing, indent=2, sort_keys=True)
     logger.info("[calendar_updater] Written to %s", _HOLIDAY_FILE)
 
     # ── Hot-reload the in-memory calendar ────────────────────────────────────

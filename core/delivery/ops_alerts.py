@@ -42,8 +42,8 @@ def _load_state() -> dict:
 
 def _save_state(state: dict) -> None:
     try:
-        _STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
-        _STATE_PATH.write_text(json.dumps(state), encoding="utf-8")
+        from core.utils.atomic_io import atomic_write_json
+        atomic_write_json(_STATE_PATH, state, indent=None)   # AUD-057
     except Exception as exc:
         logger.debug("[ops_alerts] state write failed (non-fatal): %s", exc)
 

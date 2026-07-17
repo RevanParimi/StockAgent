@@ -169,7 +169,18 @@ class SignalAggregator:
             completion_tokens=self._last_completion_tokens,
             duration_ms=duration_ms, cost_usd=cost,
         )
-        return self._parse(raw, ticker, company_name, weighted_scores, agent_outputs)
+        report = self._parse(raw, ticker, company_name, weighted_scores, agent_outputs)
+        # AUD-077 shadow lane (observe-only): what the verdict WOULD be if
+        # bound to the learned composite — never substituted for the LLM's.
+        from backend.shared.pipeline.verdict_shadow import log_verdict_shadow
+        log_verdict_shadow(
+            ticker=ticker,
+            composite=composite,
+            llm_verdict=report.verdict,
+            llm_final_score=report.final_score,
+            learned_weights_used=bool(learned_weights),
+        )
+        return report
 
     # ------------------------------------------------------------------
     # Narrative block — collates per-agent insights for cross-context synthesis

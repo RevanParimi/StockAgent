@@ -96,7 +96,7 @@ class ContextBuilder:
 
     def _build_sales_demand(self, query: StockQuery) -> str:
         from services.data.fetchers.news import fetch_news_context
-        from core.config.prompts.automobile.sales_demand import CONTEXT_SEARCH_QUERIES
+        from backend.sectors.automobile.prompts.sales_demand import CONTEXT_SEARCH_QUERIES
 
         today = date.today()
         queries = [
@@ -119,7 +119,7 @@ class ContextBuilder:
         from services.data.fetchers.fundamentals import get_fundamentals_context
         from services.data.fetchers.news import fetch_news_context
         from services.data.fetchers.nse_announcements import format_nse_context
-        from core.config.prompts.automobile.fundamentals import CONTEXT_SEARCH_QUERIES
+        from backend.sectors.automobile.prompts.fundamentals import CONTEXT_SEARCH_QUERIES
 
         today = date.today()
         queries = [
@@ -152,7 +152,7 @@ class ContextBuilder:
 
     def _build_sentiment(self, query: StockQuery) -> str:
         from services.data.fetchers.news import fetch_news_context
-        from core.config.prompts.automobile.sentiment import CONTEXT_SEARCH_QUERIES
+        from backend.sectors.automobile.prompts.sentiment import CONTEXT_SEARCH_QUERIES
 
         today = date.today()
         queries = [
@@ -201,7 +201,7 @@ class ContextBuilder:
         from services.data.fetchers.macro import get_macro_context
         from services.data.fetchers.news import fetch_news_context
         from services.data.cache.macro_cache import get_macro_cache
-        from core.config.prompts.automobile.risk_macro import CONTEXT_SEARCH_QUERIES
+        from backend.sectors.automobile.prompts.risk_macro import CONTEXT_SEARCH_QUERIES
 
         # yfinance macro data — always free, fetch fresh every time
         macro = get_macro_context()
@@ -258,7 +258,7 @@ class ContextBuilder:
     def _build_raw_materials(self, query: StockQuery) -> str:
         from services.data.fetchers.macro import get_raw_materials_context
         from services.data.fetchers.news import fetch_news_context
-        from core.config.prompts.automobile.raw_materials import CONTEXT_SEARCH_QUERIES
+        from backend.sectors.automobile.prompts.raw_materials import CONTEXT_SEARCH_QUERIES
 
         today = date.today()
         queries = [
@@ -281,7 +281,7 @@ class ContextBuilder:
     def _build_policy_regulatory(self, query: StockQuery) -> str:
         from services.clients.tavily_fetcher import fetch_tavily_context
         from services.data.fetchers.news import fetch_news_context
-        from core.config.prompts.automobile.policy_regulatory import TAVILY_SEARCH_QUERIES, CONTEXT_SEARCH_QUERIES
+        from backend.sectors.automobile.prompts.policy_regulatory import TAVILY_SEARCH_QUERIES, CONTEXT_SEARCH_QUERIES
 
         today = date.today()
         tavily_queries = [
@@ -311,7 +311,7 @@ class ContextBuilder:
 
     def _build_competitive_intel(self, query: StockQuery) -> str:
         from services.data.fetchers.news import fetch_news_context
-        from core.config.prompts.automobile.competitive_intel import CONTEXT_SEARCH_QUERIES
+        from backend.sectors.automobile.prompts.competitive_intel import CONTEXT_SEARCH_QUERIES
 
         today = date.today()
         queries = [

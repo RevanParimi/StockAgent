@@ -98,7 +98,7 @@ class TestBaseAgentUsesOpenAI:
     @patch("services.clients.llm_client.OpenAI")
     def test_base_agent_instantiates_openai(self, mock_openai_cls):
         mock_openai_cls.return_value = MagicMock()
-        from core.sectors.automobile.sales_demand import SalesDemandAgent
+        from backend.sectors.automobile.agents.sales_demand import SalesDemandAgent
         # Re-import to trigger __init__
         agent = SalesDemandAgent.__new__(SalesDemandAgent)
         agent.__init__()
@@ -108,7 +108,7 @@ class TestBaseAgentUsesOpenAI:
     def test_base_agent_passes_openrouter_base_url(self, mock_openai_cls):
         from core.config import settings
         mock_openai_cls.return_value = MagicMock()
-        from core.sectors.automobile.sales_demand import SalesDemandAgent
+        from backend.sectors.automobile.agents.sales_demand import SalesDemandAgent
         SalesDemandAgent()
         _, kwargs = mock_openai_cls.call_args
         assert kwargs.get("base_url") == settings.OPENROUTER_BASE_URL, (
@@ -119,7 +119,7 @@ class TestBaseAgentUsesOpenAI:
     def test_base_agent_passes_openrouter_api_key(self, mock_openai_cls):
         from core.config import settings
         mock_openai_cls.return_value = MagicMock()
-        from core.sectors.automobile.sales_demand import SalesDemandAgent
+        from backend.sectors.automobile.agents.sales_demand import SalesDemandAgent
         SalesDemandAgent()
         _, kwargs = mock_openai_cls.call_args
         assert kwargs.get("api_key") == settings.OPENROUTER_API_KEY

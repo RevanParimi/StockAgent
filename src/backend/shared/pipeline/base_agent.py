@@ -418,7 +418,7 @@ class BaseAgent(ABC):
         Active only when RAG_ENABLED=true in config/rag_config.py.
         """
         from core.intelligence.rag.core.retriever import RAGRetriever
-        from core.config.prompts.automobile import sales_demand, fundamentals, pattern_analysis, sentiment, risk_macro, orchestrator
+        from backend.sectors.automobile.prompts import sales_demand, fundamentals, pattern_analysis, sentiment, risk_macro, orchestrator
 
         # Map agent name → its search queries template list
         prompt_modules = {

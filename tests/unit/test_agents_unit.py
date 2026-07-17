@@ -17,11 +17,11 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from core.sectors.automobile.sales_demand import SalesDemandAgent
-from core.sectors.automobile.fundamentals import FundamentalsAgent
-from core.sectors.automobile.pattern_analysis import PatternAnalysisAgent
-from core.sectors.automobile.sentiment import SentimentAgent
-from core.sectors.automobile.risk_macro import RiskMacroAgent
+from backend.sectors.automobile.agents.sales_demand import SalesDemandAgent
+from backend.sectors.automobile.agents.fundamentals import FundamentalsAgent
+from backend.sectors.automobile.agents.pattern_analysis import PatternAnalysisAgent
+from backend.sectors.automobile.agents.sentiment import SentimentAgent
+from backend.sectors.automobile.agents.risk_macro import RiskMacroAgent
 from tests.conftest import (
     make_sales_demand_json,
     make_fundamentals_json,

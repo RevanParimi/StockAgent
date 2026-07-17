@@ -13,11 +13,11 @@ What is tested:
 
 import pytest
 
-from core.config.prompts.automobile import sales_demand
-from core.config.prompts.automobile import fundamentals
-from core.config.prompts.automobile import pattern_analysis
-from core.config.prompts.automobile import sentiment
-from core.config.prompts.automobile import risk_macro
+from backend.sectors.automobile.prompts import sales_demand
+from backend.sectors.automobile.prompts import fundamentals
+from backend.sectors.automobile.prompts import pattern_analysis
+from backend.sectors.automobile.prompts import sentiment
+from backend.sectors.automobile.prompts import risk_macro
 from core.config.prompts.shared import signal_aggregator
 from core.config.prompts.shared import orchestrator
 

@@ -271,12 +271,17 @@ def fetch_news_context(
 # RL daily review — per-ticker news context
 # ---------------------------------------------------------------------------
 
-def get_news_context(ticker: str, max_articles: int = 5) -> str:
+def get_news_context(ticker: str, max_articles: int = 5, window_days: int = 3) -> str:
     """
     Fetch recent news for a specific NSE ticker for the RL daily review.
 
     Called by daily_review.py to populate FeedbackAgentInput.market_context_today.
     Uses Serper /news with a company-specific query and geo=in for India.
+
+    AUD-041: articles are FILTERED to the last `window_days` calendar days
+    (3 covers the Monday-reviews-Friday weekend gap); dated-but-old and
+    undated articles are dropped — the old "(last 48h context)" label carried
+    months-old stories straight into the RL training signal.
 
     Returns a formatted string with [Date: YYYY-MM-DD] tags so FeedbackAgent
     can correlate articles with the trading day under review.
@@ -286,6 +291,7 @@ def get_news_context(ticker: str, max_articles: int = 5) -> str:
     ----------
     ticker       : NSE symbol e.g. "TATAMOTORS", "HDFCBANK"
     max_articles : cap on number of articles returned (default 5)
+    window_days  : drop articles older than this many calendar days (default 3)
     """
     try:
         from backend.shared.config import settings as _s
@@ -302,9 +308,19 @@ def get_news_context(ticker: str, max_articles: int = 5) -> str:
             logger.debug("[news] get_news_context: no results for %s", ticker)
             return "Market context unavailable."
 
-        lines = [f"Recent news for {ticker} (last 48h context):"]
+        cutoff = date.today() - timedelta(days=window_days)
+        lines = [f"Recent news for {ticker} (last {window_days} days):"]
+        dropped = 0
         for r in results[:max_articles]:
             date_str = _normalize_date(r.get("date", ""))
+            try:
+                article_date = date.fromisoformat(date_str)
+            except ValueError:
+                dropped += 1        # undated/unparseable — can't correlate
+                continue
+            if article_date < cutoff:
+                dropped += 1        # AUD-041: the April-ghost class
+                continue
             title    = r.get("title", "").strip()
             snippet  = r.get("snippet", "").strip()
             source   = r.get("source", "")
@@ -313,6 +329,9 @@ def get_news_context(ticker: str, max_articles: int = 5) -> str:
                     f"• [Date: {date_str}] [{source}] {title}"
                     + (f": {snippet}" if snippet else "")
                 )
+        if dropped:
+            logger.debug("[news] get_news_context: dropped %d stale/undated articles for %s",
+                         dropped, ticker)
 
         return "\n".join(lines) if len(lines) > 1 else "Market context unavailable."
 

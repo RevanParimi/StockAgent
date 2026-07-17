@@ -122,15 +122,17 @@ class PortfolioStore:
     def _alert_quarantine(self, quarantine: Path) -> None:
         """One critical push alert per quarantine event (AUD-050/039). Never raises."""
         try:
-            from core.delivery.alerts import AlertEvent, emit_alerts
-            emit_alerts([AlertEvent(
+            # AUD-015: ops-severity event — broadcast to the whole alert
+            # audience (the affected user is named in the message).
+            from core.delivery.alerts import AlertEvent, emit_alerts_broadcast
+            emit_alerts_broadcast([AlertEvent(
                 date=datetime.now(timezone.utc).date().isoformat(),
                 kind="portfolio_corrupt", symbol="",
                 message=(f"portfolio.json for user '{self.user_id}' was corrupt and "
                          f"quarantined to {quarantine.name}. Mutations are blocked "
                          "until a valid portfolio.json is restored."),
                 severity="critical",
-            )], user_id=self.user_id, title="Portfolio store alert")
+            )], title="Portfolio store alert")
         except Exception as exc:
             logger.warning("[PortfolioStore] quarantine alert failed (non-fatal): %s", exc)
 

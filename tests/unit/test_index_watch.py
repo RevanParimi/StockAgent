@@ -1,4 +1,4 @@
-"""Compass Phase C — index constituent diff -> inclusion/exclusion alerts."""
+﻿"""Compass Phase C â€” index constituent diff -> inclusion/exclusion alerts."""
 import json
 from datetime import date
 from unittest.mock import patch
@@ -24,7 +24,7 @@ def test_first_snapshot_never_alerts(tmp_path, monkeypatch):
     monkeypatch.setattr(iw, "_make_nse_client",
                         lambda: _FakeNSE({"NIFTY 50": ["AAA", "BBB"]}))
     monkeypatch.setattr(iw, "_watched_symbols", lambda: {"AAA"})
-    with patch.object(iw, "emit_alerts") as m:
+    with patch.object(iw, "emit_alerts_broadcast") as m:
         out = iw.run_index_watch(on=date(2026, 7, 5), cache_path=cache)
     assert out["events"] == 0 and not m.called
     assert set(json.loads(open(cache).read())["NIFTY 50"]["symbols"]) == {"AAA", "BBB"}
@@ -38,7 +38,7 @@ def test_diff_alerts_only_watched_symbols(tmp_path, monkeypatch):
     monkeypatch.setattr(iw, "_make_nse_client",
                         lambda: _FakeNSE({"NIFTY 50": ["AAA", "CCC", "DDD"]}))
     monkeypatch.setattr(iw, "_watched_symbols", lambda: {"BBB", "CCC"})
-    with patch.object(iw, "emit_alerts") as m:
+    with patch.object(iw, "emit_alerts_broadcast") as m:
         out = iw.run_index_watch(on=date(2026, 7, 5), cache_path=cache)
     assert out["events"] == 2                       # CCC included, BBB excluded (DDD unwatched)
     events = m.call_args.args[0]
@@ -55,7 +55,7 @@ def test_fetch_failure_keeps_stale_and_no_alerts(tmp_path, monkeypatch):
     def _boom():
         raise RuntimeError("NSE down")
     monkeypatch.setattr(iw, "_make_nse_client", _boom)
-    with patch.object(iw, "emit_alerts") as m:
+    with patch.object(iw, "emit_alerts_broadcast") as m:
         out = iw.run_index_watch(on=date(2026, 7, 5), cache_path=cache)
     assert out["events"] == 0 and "NIFTY 50" in out["degraded"] and not m.called
     assert json.loads(open(cache).read())["NIFTY 50"]["symbols"] == ["AAA"]

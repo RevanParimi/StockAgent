@@ -66,3 +66,20 @@ def test_broadcast_emits_once_per_user(tmp_path, monkeypatch):
     users = {r["user_id"] for r in recs}
     assert "alice" in users and "bob" in users
     assert result["emitted"] == len(users)   # one record per audience user
+
+
+def test_system_alert_sites_broadcast():
+    """The 6 system-level alert sites fan out to the whole audience (AUD-015)."""
+    import inspect
+    from core.delivery import ops_alerts, index_watch
+    import core.discovery as discovery
+    from core.portfolio import store as pstore, reconcile
+
+    assert "emit_alerts_broadcast" in inspect.getsource(ops_alerts._emit)
+    assert "emit_alerts_broadcast" in inspect.getsource(
+        ops_alerts.alert_job_partial_output)
+    assert "emit_alerts_broadcast" in inspect.getsource(index_watch)
+    assert "emit_alerts_broadcast" in inspect.getsource(discovery)
+    assert "emit_alerts_broadcast" in inspect.getsource(
+        pstore.PortfolioStore._alert_quarantine)
+    assert "emit_alerts_broadcast" in inspect.getsource(reconcile._alert)

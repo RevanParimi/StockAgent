@@ -82,9 +82,9 @@ def run_discovery_cycle(on: date | None = None) -> dict:
 
     try:
         if shelf_summary.get("added"):
-            from core.delivery.alerts import AlertEvent, emit_alerts
+            from core.delivery.alerts import AlertEvent, emit_alerts_broadcast
             conviction = {d.symbol: d.conviction for d in dives}
-            emit_alerts(
+            emit_alerts_broadcast(
                 [AlertEvent(date=on.isoformat(), kind="shelf_add", symbol=sym,
                             message=f"new discovery idea (conviction "
                                     f"{conviction.get(sym, 0.0):.2f})", severity="info")

@@ -15,7 +15,7 @@ import tempfile
 from datetime import date, datetime, timezone
 
 from core.config import settings
-from core.delivery.alerts import AlertEvent, emit_alerts
+from core.delivery.alerts import AlertEvent, emit_alerts_broadcast
 
 logger = logging.getLogger(__name__)
 
@@ -103,6 +103,6 @@ def run_index_watch(on: date | None = None, cache_path: str | None = None) -> di
         logger.error("[index_watch] cache write failed (non-fatal): %s", exc)
 
     if events:
-        emit_alerts(events, title=f"Index reconstitution — {on}")
+        emit_alerts_broadcast(events, title=f"Index reconstitution — {on}")   # AUD-015
     return {"indices": len(settings.DELIVERY_INDEX_WATCH),
             "events": len(events), "degraded": degraded}

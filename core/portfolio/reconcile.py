@@ -34,13 +34,15 @@ _QTY_TOL = 1e-6
 def _alert(user_id: str, issues: list[str]) -> None:
     """One critical push alert per drift detection. Never raises."""
     try:
-        from core.delivery.alerts import AlertEvent, emit_alerts
-        emit_alerts([AlertEvent(
+        # AUD-015: ops-severity event — broadcast to the whole alert audience
+        # (the affected user is named in the message).
+        from core.delivery.alerts import AlertEvent, emit_alerts_broadcast
+        emit_alerts_broadcast([AlertEvent(
             date=date.today().isoformat(), kind="ledger_drift", symbol="",
             message="Ledger/portfolio reconciliation drift for user "
                     f"'{user_id}': " + " | ".join(issues[:5]),
             severity="critical",
-        )], user_id=user_id, title="Portfolio reconciliation drift")
+        )], title="Portfolio reconciliation drift")
     except Exception as exc:
         logger.warning("[reconcile] alert failed (non-fatal): %s", exc)
 

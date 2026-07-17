@@ -34,8 +34,17 @@ llm:
   max_tokens: 2048
   timeout_seconds: 120   # was 60; prod ran 120 via env var (long analyst calls) — unified 2026-07-06
   # Token cost rates (USD per million) for telemetry — default to the BULK tier.
+  # These flat rates are the UNKNOWN-MODEL fallback only; known models use cost_rates.
   input_cost_per_m: 0.09
   output_cost_per_m: 0.18
+  # Per-model cost rates (USD per million tokens) — AUD-105. Keyed on the exact
+  # OpenRouter model id each call site logs; models not listed fall back to the
+  # flat input/output_cost_per_m above. Live OpenRouter prices 2026-07-17
+  # (NB glm-5.2 was repriced upstream from 0.686/2.156 at the 2026-07-03 bench).
+  cost_rates:
+    "z-ai/glm-5.2": [1.218, 3.828]
+    "deepseek/deepseek-v4-flash": [0.098, 0.196]
+    "qwen/qwen3.6-flash": [0.1875, 1.125]
 
 logging:
   # Permanent log/telemetry archive (services/data/stores/log_store.py).

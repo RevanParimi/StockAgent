@@ -40,6 +40,27 @@ LLM_TIMEOUT_SECONDS: int = cfg("llm.timeout_seconds", env="LLM_TIMEOUT_SECONDS",
 LLM_INPUT_COST_PER_M: float = cfg("llm.input_cost_per_m", env="LLM_INPUT_COST_PER_M", fallback=0.09)
 LLM_OUTPUT_COST_PER_M: float = cfg("llm.output_cost_per_m", env="LLM_OUTPUT_COST_PER_M", fallback=0.18)
 
+# Per-model cost rates (AUD-105) — the flat rates above remain the unknown-model
+# fallback. Values: (input_usd_per_m, output_usd_per_m). Source of truth is
+# config.yaml llm.cost_rates; this dict is the shipped default.
+_DEFAULT_COST_RATES = {
+    "z-ai/glm-5.2": (1.218, 3.828),
+    "deepseek/deepseek-v4-flash": (0.098, 0.196),
+    "qwen/qwen3.6-flash": (0.1875, 1.125),
+}
+LLM_COST_RATES: dict[str, tuple[float, float]] = {
+    str(k): (float(v[0]), float(v[1]))
+    for k, v in (cfg("llm.cost_rates", fallback=_DEFAULT_COST_RATES) or {}).items()
+    if isinstance(v, (list, tuple)) and len(v) == 2
+}
+
+
+def llm_cost_usd(model: str, prompt_tokens: int, completion_tokens: int) -> float:
+    """Tier-correct USD cost of one LLM call (AUD-105)."""
+    in_rate, out_rate = LLM_COST_RATES.get(
+        model, (LLM_INPUT_COST_PER_M, LLM_OUTPUT_COST_PER_M))
+    return (prompt_tokens * in_rate + completion_tokens * out_rate) / 1_000_000
+
 
 # ---------------------------------------------------------------------------
 # Data / Search APIs

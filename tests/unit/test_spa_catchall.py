@@ -24,6 +24,11 @@ def test_root_and_real_files_still_served():
     assert c.get("/manifest.json").status_code == 200
 
 
-def test_registered_api_routes_unaffected():
+def test_registered_api_routes_unaffected(monkeypatch, tmp_path):
+    # Stub the RL adapter so the request never constructs a PredictionStore
+    # against the real data dir (mkdir-on-init pollution, AUD-024 class).
+    import services.api.routes.rl_monitor as rlm
+    monkeypatch.setattr(rlm, "_managed", lambda: [])
+    monkeypatch.setattr(rlm, "_BASE_DIR_OVERRIDE", str(tmp_path))
     assert c.get("/health").status_code == 200
     assert c.get("/ui/rl/tickers").status_code == 200  # real route, not catch-all

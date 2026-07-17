@@ -469,8 +469,12 @@ async def scheduler_status(
     rl_active = sum(1 for t in ticker_states if t.get("weight_memory", {}).get("rl_active", False))
     total_feedback = sum(t.get("feedback_log", {}).get("entries", 0) for t in ticker_states)
 
+    from services.data.stores.job_outcomes import load_job_outcomes
+
     return {
         "scheduler_key_configured": bool(os.getenv("SCHEDULER_KEY")),
+        "last_runs":                load_job_outcomes(),   # AUD-090d
+
         "rl_active_tickers":        rl_active,
         "total_tickers":            len(ticker_states),
         "total_feedback_entries":   total_feedback,

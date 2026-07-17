@@ -608,15 +608,34 @@ class AutomobileScheduler:
         # completion (AUD-043 — this hook existed only on the HTTP path before;
         # the scheduled job never traded). Non-fatal: a pipeline failure must
         # never mark the reviews themselves as failed.
+        pipeline_ok = False
+        pipeline_error = ""
         try:
             from core.portfolio.pipeline import run_post_review_pipeline
             summary = run_post_review_pipeline(review_date)
+            pipeline_ok = True
             logger.info("[Scheduler] Post-review portfolio pipeline: %s", summary)
         except Exception as exc:
+            pipeline_error = str(exc)[:300]
             logger.error(
                 "[Scheduler] Post-review portfolio pipeline FAILED (non-fatal): %s",
                 exc, exc_info=True,
             )
+
+        try:
+            # AUD-090d: last-run-outcome surface for GET /scheduler/status.
+            from services.data.stores.job_outcomes import record_job_outcome
+            record_job_outcome(
+                "daily_review",
+                review_date=review_date.isoformat(),
+                produced=succeeded,
+                expected=len(ticker_entries),
+                stragglers=stragglers,
+                pipeline_ok=pipeline_ok,
+                pipeline_error=pipeline_error,
+            )
+        except Exception:
+            pass
 
         _job_banner("RL Daily Review", done=True)
 

@@ -1063,10 +1063,10 @@ Phase 6 removed all automobile-specific coupling from the RL feedback loop.
 **Multi-sector CLI (Phase 6+):**
 
 ```bash
-python -m scripts.daily_review --sector banking_bfsi --ticker HDFCBANK SBIN
-python -m scripts.daily_review --sector it_sector --ticker TCS INFY
-python -m scripts.daily_review --sector renewable_energy --ticker ADANIGREEN NTPC
-python -m scripts.generate_forecast --sector renewable_energy --ticker ADANIGREEN NTPC
+python -m services.scheduler.run_schedule daily-review --sector banking_bfsi --ticker HDFCBANK SBIN
+python -m services.scheduler.run_schedule daily-review --sector it_sector --ticker TCS INFY
+python -m services.scheduler.run_schedule daily-review --sector renewable_energy --ticker ADANIGREEN NTPC
+python -m services.scheduler.run_schedule forecast --sector renewable_energy --ticker ADANIGREEN NTPC
 ```
 
 ---

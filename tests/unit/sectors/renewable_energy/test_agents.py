@@ -8,7 +8,6 @@ from backend.sectors.renewable_energy.agents.fundamentals     import REFundament
 from backend.sectors.renewable_energy.agents.business         import REBusinessAgent
 from backend.sectors.renewable_energy.agents.valuation        import REValuationAgent
 from backend.sectors.renewable_energy.agents.sentiment_policy import RESentimentPolicyAgent
-from backend.sectors.renewable_energy.agents.technical        import RETechnicalAgent
 from backend.sectors.renewable_energy.agents.risk             import RERiskAgent
 
 
@@ -28,7 +27,6 @@ AGENT_CASES = [
     (REBusinessAgent,       "business",         "re"),
     (REValuationAgent,      "valuation",        "re"),
     (RESentimentPolicyAgent,"sentiment_policy", "re"),
-    (RETechnicalAgent,      "technical",        "re"),
     (RERiskAgent,           "risk",             "re"),
 ]
 

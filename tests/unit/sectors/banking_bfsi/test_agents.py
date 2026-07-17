@@ -13,8 +13,6 @@ import pytest
 from backend.sectors.banking_bfsi.agents.fundamentals    import BFSIFundamentalsAgent
 from backend.sectors.banking_bfsi.agents.risk            import BFSIRiskAgent
 from backend.sectors.banking_bfsi.agents.macro_policy    import BFSIMacroPolicyAgent
-from backend.sectors.banking_bfsi.agents.institutional   import BFSIInstitutionalAgent
-from backend.sectors.banking_bfsi.agents.pattern_analysis import BFSIPatternAgent
 from backend.sectors.banking_bfsi.agents.universe_setup  import BFSIUniverseAgent
 
 
@@ -33,8 +31,6 @@ AGENT_CASES = [
     ("fundamentals",    BFSIFundamentalsAgent,   "fundamentals"),
     ("risk",            BFSIRiskAgent,           "risk"),
     ("macro_policy",    BFSIMacroPolicyAgent,    "macro_policy"),
-    ("institutional",   BFSIInstitutionalAgent,  "institutional"),
-    ("pattern_analysis",BFSIPatternAgent,        "pattern_analysis"),
     ("universe_setup",  BFSIUniverseAgent,       "universe_setup"),
 ]
 

@@ -8,10 +8,8 @@ from backend.sectors.it_sector.agents.fundamentals      import ITFundamentalsAge
 from backend.sectors.it_sector.agents.global_macro      import ITGlobalMacroAgent
 from backend.sectors.it_sector.agents.risk_macro        import ITRiskMacroAgent
 from backend.sectors.it_sector.agents.peer_benchmark    import ITPeerBenchmarkAgent
-from backend.sectors.it_sector.agents.pattern_analysis  import ITPatternAgent
 from backend.sectors.it_sector.agents.sentiment         import ITSentimentAgent
 from backend.sectors.it_sector.agents.transcript_nlp    import ITTranscriptNLPAgent
-from backend.sectors.it_sector.agents.insider_smart_money import ITInsiderAgent
 
 
 def _base_json(score: float = 0.65) -> str:
@@ -30,10 +28,8 @@ AGENT_CASES = [
     (ITGlobalMacroAgent,    "global_macro",        "it"),
     (ITRiskMacroAgent,      "risk_macro",          "it"),
     (ITPeerBenchmarkAgent,  "peer_benchmark",      "it"),
-    (ITPatternAgent,        "pattern_analysis",    "it"),
     (ITSentimentAgent,      "sentiment",           "it"),
     (ITTranscriptNLPAgent,  "transcript_nlp",      "it"),
-    (ITInsiderAgent,        "insider_smart_money", "it"),
 ]
 
 

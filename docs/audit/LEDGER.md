@@ -1138,3 +1138,41 @@ New tests: test_direction_semantics (5), test_verdict_shadow (5),
 test_news_context_window (5). Full suite 2035 passed / 12 skipped; fail set
 IDENTICAL to baseline (10F+10E = AUD-022 + event_ingestor date). Operational
 note honored: merged/pushed OUTSIDE the 16:25–17:15 IST deploy-kill window.
+
+## Wave H — Saturday-run riders (2026-07-18, shipped same session; commit 1af94ff)
+
+Findings surfaced by the first Saturday discovery run under Wave G + first
+nightly-backup inspection (backup zip extracted locally; contents verified:
+ledgers/briefs/predictions/telemetry present).
+
+- **AUD-107 | BUG | P2 | core/delivery/brief.py:61 | FIXED** — `_overnight_items`
+  read `i["headline"]` but macro_news_cache entries carry `title` → every
+  Overnight line in every prod brief rendered blank AND the headline LLM was told
+  a garbage overnight string (2026-07-17 brief: 3 HIGH items present, narrated as
+  "no overnight high-severity items"). This was the real cause of the Wave-C
+  watch item "empty Overnight lines", previously attributed to AUD-078/086 empty
+  context. Fix maps title→headline and filters empty titles BEFORE the 3-item
+  slice.
+- **AUD-108 | BUG | P1 | services/data/fetchers/close_verifier.py + paper_lane | FIXED**
+  — a NaN yfinance last-row close passed every `is None` guard: `_compare(nan,
+  None)` → `(nan, "yfinance")` → generate_forecast saved a paper envelope with
+  `base_close=nan` (RISHABH_2026-07, 2026-07-18 discovery run) → all 30 forecast
+  rows nan. Fix: `_sanitize` (non-finite/≤0 → None) at both fetchers +
+  cross_check_close entry (daily_review path covered too); paper_lane
+  `ensure_paper_envelope` now regenerates when a stored envelope's base_close is
+  non-finite → prod's poisoned RISHABH envelope self-heals next Saturday, no
+  manual volume surgery.
+- **Observations (no code change):** (a) paper-lane first-run reviews for
+  freshly added shelf ideas always report "failed" (envelope created today has
+  no row for yesterday) — benign but noisy, candidate polish; (b) discovery
+  resolved KISSHT → "Kishan Auto Parts Ltd" — symbol-resolution quality worth a
+  spot-check before trusting that idea; (c) `record_job_outcome` is wired ONLY
+  into daily_review — backup/brief/discovery jobs never appear in
+  /scheduler/status last_runs (scope was AUD-090d as specced; widen if wanted);
+  (d) morning-brief ADD vs same-day autopilot EXIT (TVSMOTOR 7/17) is inherent
+  daily cadence (brief reads latest digest, verdict recomputed at 16:30), not a
+  staleness bug — documented so it isn't re-investigated.
+
+Suite: 2040 passed; fail-set verified IDENTICAL to pre-change HEAD (stash A/B).
+analysis_data/ (extracted prod backup) gitignored — must never reach the public
+repo.

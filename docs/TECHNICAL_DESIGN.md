@@ -16,6 +16,16 @@ confidentiality: "Internal — Engineering Reference"
 | **Confidentiality** | Internal — Engineering Reference |
 | **Scope** | All sectors: automobile, banking_bfsi, it_sector, renewable_energy |
 
+> **Status (2026-07-18):** this is the encyclopedic implementation reference, frozen at
+> version 2026-05-19 — the fetcher/context/settings internals it documents are largely
+> intact, but it **predates**: the Compass portfolio/autopilot/discovery/delivery stack,
+> the July audit program (Waves 1 + A–H: locking, alerting, backups, auth gates, the Wave E
+> deletion of ~570 dead files — trees documented here may no longer exist), the glm-5.2
+> REASONING tier, per-model cost telemetry, and the Wave G RL-semantics changes. For
+> anything scheduler-, portfolio-, delivery-, or security-related, trust
+> [ARCHITECTURE.md](ARCHITECTURE.md) + [audit/LEDGER.md](audit/LEDGER.md) over this
+> document; for RL semantics, [RL_DESIGN.md](RL_DESIGN.md)'s status banner lists the deltas.
+
 ---
 
 ## Table of Contents

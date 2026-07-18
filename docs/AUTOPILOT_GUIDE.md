@@ -1,5 +1,12 @@
 # Compass Autopilot — End-to-End Developer Guide
 
+> **Status (2026-07-18):** live in production since 2026-07-13 (first real auto-trades).
+> Post-audit hardening not yet folded into the body: pipeline-wide file lock with fresh
+> reload, dividend cash-credit `DIV` ledger rows, detect-only reconciler, harvest-timeout
+> containment so a slow review day can never silently skip the trading pipeline, per-run
+> outcomes in `/scheduler/status last_runs`, and nightly ledger backups. Details:
+> [audit/LEDGER.md](audit/LEDGER.md); map: [ARCHITECTURE.md](ARCHITECTURE.md) §6.
+
 > **One sentence:** every trading day, after the RL reviews finish, the Position
 > Advisor scores each holding and Autopilot *executes* those verdicts
 > (buy/sell/trim/exit/switch) on a **virtual** portfolio — mock money, real NSE

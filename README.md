@@ -1,10 +1,12 @@
 # StockAgent
 
 > AI-powered Indian stock analyser with a self-learning feedback loop.
-> Analyses NSE/BSE stocks across 4 sectors using up to 9 specialist AI agents in parallel —
-> then reviews its own predictions every trading day to get smarter over time.
-> Now with **Compass**: a virtual portfolio it watches for you daily, telling you
-> when to HOLD / ADD / TRIM / EXIT each position — with the receipts in a permanent advice ledger.
+> Scores NSE/BSE stocks across 4 sectors — up to 9 specialist dimensions assessed in a
+> single reasoning-model pass — then reviews its own predictions every trading day to get
+> smarter over time.
+> Now with **Compass Autopilot**: a virtual portfolio it watches daily and *trades itself*
+> (mock money, real NSE prices) — HOLD / ADD / TRIM / EXIT per position, executed by a
+> deterministic engine, with the receipts in permanent advice + transaction ledgers.
 
 **Live app:** [stockagent-ai.up.railway.app/app/index.html](https://stockagent-ai.up.railway.app/app/index.html)
 
@@ -30,7 +32,7 @@ After every trading day, the system automatically fetches the actual closing pri
 | **Banking / BFSI** | ✅ Unified single-call analyst live (6 dimensions) | HDFCBANK, ICICIBANK, SBIN, KOTAKBANK, AXISBANK, INDUSINDBK, BANDHANBNK, RBLBANK, YESBANK, BAJFINANCE, MUTHOOTFIN and more |
 | **IT Sector** | ✅ Unified single-call analyst live (8 dimensions) | TCS, INFY, WIPRO, HCLTECH, TECHM, LTIM, COFORGE, MPHASIS, PERSISTENT and more |
 | **Renewable Energy** | ✅ Unified single-call analyst live (6 dimensions) | ADANIGREEN, TATAPOWER, NTPC, POWERGRID, SJVN, JSWENERGY and more |
-| **17 more sectors** | 🔲 Pipeline — prompt templates ready | Pharma, FMCG, Metals, Oil & Gas, Capital Goods, Insurance, Telecom, Defence, Chemicals, Infra, Logistics, Real Estate, Retail, Power, Media, Hospitality, Agro-Chemicals |
+| **Any other sector** | ✅ Generic unified analyst (8 dimensions) | Stocks outside the 4 native sectors — e.g. ideas promoted by the weekly discovery funnel — run on a sector-agnostic unified analyst with the same RL loop |
 
 You can type either the NSE ticker (`MARUTI`) or the company name (`Maruti Suzuki`) — the system resolves it automatically.
 
@@ -248,7 +250,7 @@ Everything above analyses stocks *in general*. Compass points all of that machin
 
 It launches **virtual-first**: you enter mock buys with real money mechanics. Entry price is the *actual NSE close* on your buy date, P&L is marked against real closes on trading days only, and every piece of advice is logged to a permanent ledger — so the system's advice quality is proven on paper before a single real rupee moves.
 
-> Everything Compass outputs is research/analysis for the portfolio owner — never investment advice, and there is no auto-trading anywhere in the system.
+> Everything Compass outputs is research/analysis for the portfolio owner — never investment advice. **Autopilot** executes the advisor's verdicts automatically, but only ever on the *virtual* portfolio: mock money, real NSE closing prices, no broker connection anywhere in the system. The LLM narrates trades; it never decides them.
 
 ### How an evening works
 
@@ -278,7 +280,13 @@ It launches **virtual-first**: you enter mock buys with real money mechanics. En
                                      ├────────────────────────────────┤
                                      │ 4  ADVICE LEDGER (append-only) │
                                      ├────────────────────────────────┤
-                                     │ 5  EOD DIGEST saved per user   │
+                                     │ 5  AUTOPILOT executes verdicts │
+                                     │    on the VIRTUAL portfolio    │
+                                     │    → transactions.jsonl        │
+                                     │    → value_history.jsonl       │
+                                     ├────────────────────────────────┤
+                                     │ 6  EOD DIGEST + alerts         │
+                                     │    (push + email)              │
                                      └────────────────────────────────┘
 ```
 
@@ -508,8 +516,8 @@ A surprise government order, a sudden exchange circuit breaker, or a geopolitica
 
 | Layer | Technology |
 |---|---|
-| AI models (hybrid, via OpenRouter) | `qwen3.6-flash` for the chat assistant · `qwen3.7-max` for the verdict synthesis, RL reasoning, and the Unified Sector Analyst (all four sectors) · `qwen-2.5-72b` for the legacy per-dimension fallback agents (tier chosen by a benchmark; Qwen3-235B retired) |
-| Analysis framework | Single unified-analyst call per run (all sectors); LangGraph parallel agent dispatch retained as the automatic fallback |
+| AI models (3 tiers, via OpenRouter) | `glm-5.2` (REASONING) for the Unified Sector Analyst, verdict synthesis, RL feedback, and discovery deep-dives · `deepseek-v4-flash` (BULK) for all narration (briefs, digests, advice text) and the chat default · `qwen3.6-flash` (FAST) for ticker resolution and cheap classification. Tier map lives in `config.yaml`; every call is telemetered with per-model cost rates |
+| Analysis framework | Single unified-analyst call per run (all sectors, generic included); the legacy per-dimension parallel agent pool survives only as the automatic fallback |
 | Backend | Python FastAPI |
 | Data — prices & OHLCV | yfinance (NSE/BSE prices, 10-year OHLCV, sector indices, commodities) |
 | Data — news & search | Serper News API (primary), Tavily (fallback + policy docs) |
@@ -709,10 +717,14 @@ A quick guide to every abbreviation, metric, and concept you will encounter in S
 
 ## Reference Documents
 
+Full index with a living-vs-historical taxonomy: **[docs/README.md](docs/README.md)**.
+
 | Document | Purpose |
 |---|---|
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | **Start here** — current-state system map: the three loops, runtime topology, all 16 scheduled jobs, data layout, LLM tiers, security posture |
 | [CODEBASE.md](CODEBASE.md) | Full module map, all API endpoints, configuration reference |
-| [docs/superpowers/specs/2026-07-06-portfolio-intelligence-discovery-design.md](docs/superpowers/specs/2026-07-06-portfolio-intelligence-discovery-design.md) | Compass design spec: portfolio core, position advisor, discovery engine, proactive delivery — full 4-phase roadmap |
-| [docs/RL_DESIGN.md](docs/RL_DESIGN.md) | RL feedback loop: formulas, daily flow, schemas, static vs LLM, knowledge layer (ticker dossier + executable claims, §23) and measurement phase (eval harness, §24) |
-| [docs/AGENT_DESIGN.md — not yet created] | All sector agents, sub-scores, implementation status, full terminology reference |
+| [docs/RL_DESIGN.md](docs/RL_DESIGN.md) | RL feedback loop: formulas, daily flow, schemas, static vs LLM, knowledge layer, Living Envelope |
+| [docs/AUTOPILOT_GUIDE.md](docs/AUTOPILOT_GUIDE.md) | Compass money path: advisor rule cascade, executor invariants, ledgers |
+| [docs/CHAT_ARCHITECTURE.md](docs/CHAT_ARCHITECTURE.md) | The agentic streaming chat tool-loop |
 | [docs/AGENTIC_DESIGN.md](docs/AGENTIC_DESIGN.md) | All agents, tasks, data sources, static vs LLM boundary |
+| [docs/audit/LEDGER.md](docs/audit/LEDGER.md) | The audit trail: every finding (`AUD-###`) with evidence and fix status — why the code is shaped the way it is |

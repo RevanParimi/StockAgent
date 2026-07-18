@@ -3,6 +3,13 @@
 > All agents, tasks, metrics, data sources, static vs LLM responsibilities.
 > Minimize plain text — prefer tables and trees.
 > Updated: 2026-06-12 · All four sectors (automobile, banking_bfsi, it_sector, renewable_energy) on the Unified Sector Analyst by default + RL + Chat (agentic tool-loop) + hybrid LLM tiers.
+>
+> **Status (2026-07-18):** taxonomy still accurate. Post-audit deltas: REASONING tier is
+> `glm-5.2` (since 2026-07-06); the legacy per-dimension agent pool exists **only** as the
+> unified-analyst fallback (its dead graph shells were deleted in Wave E); a `generic`
+> sector graph serves discovery-promoted tickers; SignalAggregator now also logs an
+> observe-only threshold verdict (shadow lane, Wave G). Current map:
+> [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ---
 

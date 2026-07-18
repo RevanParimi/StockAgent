@@ -1,5 +1,11 @@
 # Chat Architecture — Agentic Streaming Tool-Loop
 
+> **Status (2026-07-18):** loop design unchanged; runtime contract tightened by the audit
+> waves: BULK-tier default with reasoning disabled, glm-5.2 escalation on failure, retries
+> capped at 2/model (≤4 upstream attempts per logical call), a **45-second per-turn
+> wall-clock budget** with one budget-free final synthesis, and **server-side session
+> memory** on both routes (`session_id` in the response; client-sent history is ignored).
+
 ## Overview
 
 The chat assistant is an **agentic streaming tool-loop**: the LLM reasons, calls tools across

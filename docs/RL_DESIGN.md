@@ -1,5 +1,18 @@
 # RL Design — Adaptive Prediction Loop
 
+> **Status (2026-07-18):** body verified through 2026-06-13; still the authoritative
+> internals reference, with these post-audit deltas (details in
+> [audit/LEDGER.md](audit/LEDGER.md), map in [ARCHITECTURE.md](ARCHITECTURE.md)):
+> **(1) Direction semantics changed 2026-07-17 (Wave G):** a NEUTRAL prediction now counts
+> correct only when the actual move was FLAT — accuracy series has a deliberate break at
+> that date. **(2) Verdict shadow lane added:** `threshold(composite)` is logged beside the
+> LLM verdict to `data/rl/verdict_shadow.jsonl` (observe-only; hard-bind decision pending).
+> **(3) Actual closes are integrity-gated** by `services/data/fetchers/close_verifier.py`
+> (yfinance×NSE cross-check + non-finite sanitizer). **(4) News context is date-filtered to
+> a 3-day window** (the "48h" label used to be aspirational). **(5)** The daily-review
+> harvest has a contained time budget; every run records an outcome to
+> `/scheduler/status last_runs`.
+
 > Complete reference for the self-learning RL feedback system.
 > Covers: 5 JSON memory files, full daily loop (Steps 0–9 incl. Step 8.5 dossier curator),
 > month-start forecast, all static formulas & multipliers, LLM contracts, schemas,

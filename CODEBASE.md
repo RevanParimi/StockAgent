@@ -1,6 +1,10 @@
 # CODEBASE.md
 
 Developer quick-reference for the StockAgent codebase. All entries verified against source files.
+Last full verification: **2026-07-18** (post audit Waves A–H — the Wave E deletion pass removed
+~570 dead files, so trees you may remember from older commits are intentionally absent).
+For the system-level map (the three loops, all 16 scheduled jobs, data layout), start with
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ---
 
@@ -11,31 +15,39 @@ StockAgent-main/
 ├── main.py                        # CLI entry point (wraps services/api/server.py)
 ├── services/                      # Runtime services layer
 │   ├── api/                       # FastAPI application
-│   │   ├── server.py              # App factory, lifespan, route mounting
+│   │   ├── server.py              # App factory, lifespan, route mounting, RL self-heal
+│   │   ├── auth.py                # check_scheduler_key — shared X-Scheduler-Key gate for all
+│   │   │                          #  mutation routes (dormant until SCHEDULER_KEY env is set)
 │   │   ├── log_buffer.py          # In-memory ring buffer for /ui/logs
-│   │   ├── user_profile.py        # User tier profile helpers (dormant — see CHAT_ARCHITECTURE.md)
 │   │   └── routes/                # All API route files (see Section 2)
 │   │                              # NB: the agentic chat loop lives in routes/ui_data.py
 │   │                              #     (the old chat_graph.py LangGraph DAG was removed 2026-06-03)
+│   │                              # rl_monitor.py — real /ui/rl/* adapters over PredictionStore
 │   ├── background/                # Background jobs
 │   │   ├── macro_news_cache.py    # Daily macro news cache reader/writer
 │   │   └── macro_news_fetcher.py  # Serper/Tavily-based macro news fetcher
 │   ├── clients/                   # Shared HTTP/API clients
-│   │   ├── llm_client.py          # OpenRouter LLM wrapper (AsyncOpenAI)
-│   │   ├── tavily_fetcher.py      # Tavily full-page extraction client
-│   │   └── alerting.py            # Alert dispatch (console/file/webhook)
+│   │   ├── llm_client.py          # OpenRouter LLM wrapper (single factory; per-call telemetry,
+│   │   │                          #  JSON_MODE_EXTRA_BODY, retry/deadline helpers)
+│   │   └── tavily_fetcher.py      # Tavily full-page extraction client
 │   ├── data/                      # Data persistence
-│   │   ├── stores/                # Data store implementations (+ eod_store.py — per-day
-│   │   │                          #  parquet EOD cache, Compass Phase B)
+│   │   ├── backup.py              # Nightly volume backup: zip + 7-copy rotation + email off-site
+│   │   ├── stores/                # eod_store.py (per-day parquet EOD cache) · telemetry stores
+│   │   │                          #  (run_logger, api_usage, analysis_logger, score_store,
+│   │   │                          #   log_store) · job_outcomes.py (last-run per scheduled job
+│   │   │                          #   → /scheduler/status "last_runs")
 │   │   ├── cache/                 # Data caching utilities
 │   │   ├── context/               # Context-building helpers + bundle_builder.py
 │   │   │                          # (Unified Sector Analyst — one-pass SectorDataBundle)
 │   │   └── fetchers/              # Market/news data fetchers (+ bhavcopy.py, bulk_block.py,
-│   │                              #  surveillance.py — Compass Phase B discovery guard data;
-│   │                              #  ipo.py — Compass Phase C IPO lists)
+│   │                              #  surveillance.py — discovery guard data; ipo.py — IPO lists;
+│   │                              #  close_verifier.py — yfinance×NSE close cross-check +
+│   │                              #  poisoning detector + non-finite sanitizer, the RL loop's
+│   │                              #  price-integrity gate)
 │   └── scheduler/
 │       └── python/
-│           └── scheduler.py       # APScheduler jobs (RL daily review, forecast, calendar)
+│           └── scheduler.py       # APScheduler BackgroundScheduler — all 16 jobs
+│                                  # (see docs/ARCHITECTURE.md §3 for the full schedule table)
 ├── src/                           # Source packages
 │   ├── backend/                   # Python backend agents
 │   │   ├── sectors/               # Per-sector agent implementations
@@ -58,41 +70,51 @@ StockAgent-main/
 │   │   │       ├── pipeline/orchestrator.py  # GenericSectorOrchestrator (8 dimensions)
 │   │   │       ├── prompts/       # unified.py (one-call prompt) + dimensions.py (fallback pool)
 │   │   │       └── config/settings.py        # AGENT_WEIGHTS ← settings.GENERIC_AGENT_WEIGHTS; TICKERS=[]
-│   │   ├── intelligence/          # Backend intelligence modules
-│   │   │   ├── chat/              # Agentic chat backend
-│   │   │   ├── rag/               # RAG pipeline (backend path)
-│   │   │   ├── rl/                # RL feedback (backend path)
-│   │   │   └── technical/         # Technical indicator helpers
-│   │   ├── api/
-│   │   │   └── routes/            # Backend-specific route helpers
-│   │   └── shared/                # Shared utilities across sectors
+│   │   └── (dead intelligence/, api/ subtrees deleted — audit Wave E 2026-07-17)
+│   │
+│   │   # src/backend/shared/ — shared machinery across sectors:
+│   │   ├── shared/
 │   │       ├── agents/            # Base agent classes
 │   │       ├── clients/           # Shared API clients
 │   │       ├── config/
 │   │       │   ├── settings/base.py   # Master settings file (all env vars)
 │   │       │   └── rag_config.py      # RAG-specific settings
 │   │       ├── data/              # Data helpers
-│   │       ├── pipeline/          # Core adapter (core_adapter.py), base_orchestrator.py,
-│   │       │                      # unified_analyst.py (Unified Sector Analyst — one-call dimension scoring)
+│   │       ├── pipeline/          # THE analysis engine:
+│   │       │   ├── base_orchestrator.py   # resolve → bundle → analyse → aggregate
+│   │       │   ├── unified_analyst.py     # Unified Sector Analyst — one-call dimension scoring
+│   │       │   ├── signal_aggregator.py   # learned weights + conflict detection + LLM verdict
+│   │       │   ├── verdict_shadow.py      # observe-only threshold(composite) lane
+│   │       │   │                          #  → data/rl/verdict_shadow.jsonl (audit Wave G)
+│   │       │   ├── base_agent.py          # legacy per-dimension agent base (fallback pool)
+│   │       │   └── graphs/                # nodes.py/rails.py/state.py — legacy fallback
+│   │       │                              #  dispatch machinery (UNIFIED_ANALYST_FALLBACK_LEGACY)
 │   │       ├── prompts/           # Shared prompt templates
 │   │       └── schemas/
 │   │           └── feedback.py    # Feedback/RL schemas (src path)
-│   ├── frontend/
-│   │   ├── web/                   # TypeScript/React dashboard (Vite)
-│   │   │   └── src/               # App.tsx, components/, features/, hooks/, pages/
-│   │   └── prototypes/            # Served as static files at /app by FastAPI
-│   └── prototypes/                # Legacy prototype UIs
+│   └── frontend/
+│       └── prototypes/            # THE real frontend — vanilla-React JSX (Babel standalone),
+│                                  #  served statically at /app; PWA (sw.js + VAPID push).
+│                                  #  (The old TypeScript/Vite src/frontend/web scaffold was
+│                                  #   deleted in audit Wave E — it was never the deployed UI.)
 ├── core/                          # Core intelligence layer (shared across sectors)
-│   ├── config/                    # Core-level config re-export
-│   ├── graphs/                    # LangGraph definitions
+│   ├── config/                    # Settings (config.yaml is the tunables source of truth)
+│   ├── utils/
+│   │   └── atomic_io.py           # mkstemp + os.replace atomic JSON/text writes (audit AUD-057)
 │   ├── intelligence/
 │   │   ├── rl/                    # Reinforcement learning feedback loop
-│   │   │   ├── agents/            # FeedbackAgent, WeightAdapter, ThesisReviewer, DossierCurator
+│   │   │   ├── agents/            # feedback_agent (direction scoring: NEUTRAL correct only on
+│   │   │   │                      #  FLAT moves — Wave G), weight_adapter, thesis_reviewer,
+│   │   │   │                      #  dossier_curator, event_ingestor, question_researcher,
+│   │   │   │                      #  control_lane
 │   │   │   ├── algorithms/        # price_interpolator.py, lesson_emphasis.py (executable claims)
 │   │   │   ├── conviction/        # tracker.py (conviction streak)
 │   │   │   ├── eval/              # Read-only evaluation harness (metrics, synthetic, run_eval CLI)
-│   │   │   ├── stores/            # prediction_store.py, ledger_propagator.py (archival + resurrection)
-│   │   │   ├── workflows/         # generate_forecast.py, daily_review.py (Step 8.5 = dossier curator)
+│   │   │   ├── stores/            # prediction_store.py, ledger_propagator.py (archival +
+│   │   │   │                      #  resurrection), offmarket_fetcher.py (bulk/block off-market)
+│   │   │   ├── workflows/         # generate_forecast.py, daily_review.py (Step 8.5 = dossier
+│   │   │   │                      #  curator), preopen_check.py, month_end_validation.py,
+│   │   │   │                      #  sector_router.py
 │   │   │   ├── nse_calendar.py    # NSE trading day calendar
 │   │   │   └── calendar_updater.py
 │   │   ├── regime/                # Market regime detection
@@ -123,42 +145,55 @@ StockAgent-main/
 │   │   ├── paper_lane.py          # Paper envelopes + weekly paper reviews (ISOLATED lane)
 │   │   └── ipo_tracker.py         # Stage-2 IPO/new-listing scoring + lock-in calendar
 │   ├── delivery/                  # Compass Phase C: M4 proactive delivery (see below)
-│   │   ├── channels.py            # web-push (pywebpush+VAPID) + SMTP email; PushStore
-│   │   ├── alerts.py              # AlertEvent + deduped emit (alerts_sent.jsonl)
+│   │   ├── channels.py            # web-push (pywebpush+VAPID) + SMTP email; PushStore;
+│   │   │                          #  send-then-record delivered flag; stale-sub pruning
+│   │   ├── alerts.py              # AlertEvent + delivered-aware deduped emit (alerts_sent.jsonl)
+│   │   │                          #  + emit_alerts_broadcast (fan-out to all subscribed users)
+│   │   ├── ops_alerts.py          # Job crashed / zero-output / partial-output / reconcile-drift
+│   │   │                          #  operational alerts (audit AUD-039/084/090)
 │   │   ├── brief.py               # Morning brief builder (08:50 IST job)
 │   │   ├── weekly.py              # Weekly review builder (Sun 18:00 IST job)
 │   │   └── index_watch.py         # Index constituent diff -> inclusion/exclusion alerts
-│   ├── pipeline/                  # Core pipeline abstractions
+│   ├── pipeline/                  # Live shim for the automobile path via sector_router
 │   │   ├── base_agent.py
 │   │   ├── orchestrator.py
 │   │   └── signal_aggregator.py
-│   ├── schemas/
-│   │   ├── feedback.py            # Canonical feedback/RL schemas
-│   │   └── pipeline.py
-│   └── sectors/                   # Core-layer sector definitions
+│   └── schemas/
+│       ├── feedback.py            # Canonical feedback/RL schemas
+│       └── pipeline.py
 ├── scripts/
-│   ├── api_exploration/           # Ad-hoc API exploration scripts
 │   ├── model_bench.py             # Chat-tier model comparison harness (fabrication/latency/cost)
+│   ├── reasoning_bench.py         # Reasoning-tier model benchmark
+│   ├── gen_vapid_keys.py          # One-time VAPID keypair generation (web-push)
+│   ├── clean_ledger_errors.py     # One-off ledger repair utility
 │   └── seed_autopilot.py          # One-time Autopilot seed: equal-weight holdings + autopilot=True
 ├── tests/                         # Test suite
 │   ├── api/                       # API-level tests
-│   ├── contract/                  # Contract tests (C# integration)
+│   ├── contract/                  # Cross-module contract tests (LLM migration, scheduler wiring)
 │   ├── fixtures/                  # Shared test fixtures
 │   ├── integration/               # Integration tests
 │   └── unit/                      # Unit tests
 ├── config/
 │   └── sector_toggles.json        # Enable/disable sectors at runtime
-├── data/                          # Runtime data (SQLite, prediction JSONs, caches)
+├── data/                          # Runtime data volume (see docs/ARCHITECTURE.md §11)
 ├── logs/                          # Log files
 ├── outputs/                       # Report output files
-├── docs/                          # Design documentation
-├── services/csharp/
-│   └── StockAgent.Scheduler/      # C# scheduler service (.NET)
-├── Dockerfile
+├── docs/                          # Design documentation (index: docs/README.md)
+├── services/csharp/               # ⚠ DEAD — .NET scheduler, NOT in the Docker image (superseded
+│   └── StockAgent.Scheduler/      #  by the Python APScheduler); still tracked, deletion candidate
+├── Dockerfile                     # THE deploy artifact: core/ services/ src/backend→backend/
+│                                  #  scripts/ main.py config.yaml prototypes → anything outside
+│                                  #  its COPY set is dead in prod by construction
 ├── docker-compose.yml
 ├── pyproject.toml
 └── requirements.txt
 ```
+
+> **Deleted in audit Wave E (2026-07-17, −34.8K lines)** — if you're looking for these, they're
+> gone on purpose: `core/sectors/` (22 sector skeletons, never live), `core/graphs/`,
+> `src/backend/intelligence/`, `src/frontend/web/` (TS scaffold), `scripts/api_exploration/`,
+> the legacy per-sector prompt trees, and the duplicate root-level test copies. History:
+> [docs/audit/LEDGER.md](docs/audit/LEDGER.md) Wave E section.
 
 - `core/portfolio/` — Compass Phase A: per-user virtual portfolio (store, corp-action
   sync, auto-promotion into managed universe, deterministic HOLD/ADD/TRIM/EXIT advisor
@@ -194,7 +229,14 @@ StockAgent-main/
 
 ## 2. API Endpoints
 
-All endpoints are served on port 8001. No global auth middleware — auth is per-endpoint where required.
+All endpoints are served on port 8001. No global auth middleware — auth is per-endpoint.
+Since audit Wave B (2026-07-16), **every mutation route** (all `/ui/*` writes, all
+`/ui/prompts/*` routes, portfolio/discovery/delivery POST/PUT/DELETE) passes through the
+shared `services/api/auth.py::check_scheduler_key` gate: requests must carry
+`X-Scheduler-Key` **when `SCHEDULER_KEY` is set in the environment**; when unset the gate
+logs a warning and allows (dormant enforcement — flipping it on is one env var). The only
+deliberately keyless writes are the push subscribe/unsubscribe endpoints (pre-login 🔔).
+Unknown paths under the API prefixes return 404 (the SPA catch-all no longer masks them).
 
 ### Analysis
 
@@ -229,19 +271,43 @@ All endpoints are served on port 8001. No global auth middleware — auth is per
 | GET | `/ui/categories` | None | Categories (EV, mass-market, etc.) with ticker lists. |
 | PUT | `/ui/categories/{key}/tickers` | None | Add/remove tickers from a category (body: `{add: [], remove: []}`). |
 | GET | `/ui/learnings` | None | RL-derived lesson cards and portfolio learning summary. |
-| POST | `/ui/chat/stream` | None | **Primary chat** — agentic streaming tool-loop (SSE). Deterministic intent pre-router pre-fetches screen+news for buy/sell/momentum queries; FAST-tier model. Events: `intent`, `tool_result`, `token`, `done`. |
-| POST | `/ui/chat` | None | Non-streaming twin of the chat loop (blocking JSON reply). Used as the frontend fallback. |
+| POST | `/ui/chat/stream` | None | **Primary chat** — agentic streaming tool-loop (SSE). Deterministic intent pre-router pre-fetches screen+news for buy/sell/momentum queries; BULK-tier default with reasoning disabled, glm-5.2 escalation on failure; **45s per-turn wall-clock budget**, ≤4 upstream attempts per logical call, one budget-free final synthesis. Server-side session memory (`session_id`). Events: `intent`, `tool_result`, `token`, `done`. |
+| POST | `/ui/chat` | None | Non-streaming twin of the chat loop (blocking JSON reply; same server session memory — returns `session_id`, client-sent history is ignored). Frontend fallback. |
+| GET | `/ui/logs` · `/ui/logs/stream` | None | Recent server log lines (ring buffer) + SSE tail. |
+
+### Managed Tickers (`/ui/tickers/managed*`) — RL universe administration
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| GET | `/ui/tickers/managed` | None | The managed-ticker list (the RL scheduling universe). |
+| PUT | `/ui/tickers/managed` | optional key | Replace the whole list (rejects empty/whitespace `sym` entries — whole-list clobber guard). |
+| POST | `/ui/tickers/managed/{sym}` | optional key | Add one ticker. |
+| POST | `/ui/tickers/managed/{sym}/generate-envelope` | optional key | Kick a first 30-day envelope for a newly added ticker (~2 min LLM run, background). |
+| DELETE | `/ui/tickers/managed/{sym}` | optional key | Remove one ticker. |
+
+### RL Monitor (`/ui/rl/*`) — real data behind the RL Monitor page (audit Wave C)
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| GET | `/ui/rl/tickers` | None | Managed tickers with RL-data-present flags. |
+| GET | `/ui/rl/summary/{ticker}` | None | Summary card: envelope, accuracy, weight version. |
+| GET | `/ui/rl/predictions/{ticker}` | None | Per-day predicted vs actual close rows (feedback log). |
+| GET | `/ui/rl/weights/{ticker}` | None | Agent weight state + drift history. |
+| GET | `/ui/rl/misses/{ticker}` | None | Miss-type attribution counts. |
+
+Ticker path params are validated against the managed list *before* any store construction
+(unknown tickers 404 without creating directories).
 
 ### Prompt Management (`/ui/prompts/*`)
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
-| GET | `/ui/prompts/catalogue` | None | List all sectors and their agent names. |
-| GET | `/ui/prompts/status` | None | Pending deploy count, next midnight IST deploy time, last deploy result. |
-| GET | `/ui/prompts/pending` | None | Files modified since last deploy. |
-| GET | `/ui/prompts/{sector}/{agent}` | None | Read `SYSTEM_PROMPT`, `ANALYSIS_PROMPT`, `CONTEXT_SEARCH_QUERIES` for an agent. |
-| PUT | `/ui/prompts/{sector}/{agent}` | None | Write prompt to disk and patch live module in-memory. Marks file as pending deploy. |
-| POST | `/ui/prompts/deploy` | None | Emergency manual deploy: push pending files to GitHub immediately (requires `GITHUB_TOKEN`/`GITHUB_REPO`). |
+| GET | `/ui/prompts/catalogue` | optional key | List all sectors and their agent names. |
+| GET | `/ui/prompts/status` | optional key | Pending deploy count, next midnight IST deploy time, last deploy result. |
+| GET | `/ui/prompts/pending` | optional key | Files modified since last deploy. |
+| GET | `/ui/prompts/{sector}/{agent}` | optional key | Read `SYSTEM_PROMPT`, `ANALYSIS_PROMPT`, `CONTEXT_SEARCH_QUERIES` for an agent. |
+| PUT | `/ui/prompts/{sector}/{agent}` | optional key | Write prompt to disk and patch live module in-memory (content is escaped into a safe Python string literal — no `"""`/trailing-backslash breakout). Marks file as pending deploy. |
+| POST | `/ui/prompts/deploy` | optional key | Emergency manual deploy: push pending files to GitHub immediately (requires `GITHUB_TOKEN`/`GITHUB_REPO`). |
 
 ### Scheduler (`/scheduler/*`)
 
@@ -250,7 +316,7 @@ All endpoints are served on port 8001. No global auth middleware — auth is per
 | POST | `/scheduler/forecast?ticker=<sym>` | `X-Scheduler-Key` header | Generate 30-day prediction envelopes (full 9-agent pipeline). Returns 202, runs in background. |
 | POST | `/scheduler/daily-review?ticker=<sym>&review_date=<ISO>` | `X-Scheduler-Key` header | Run RL daily feedback loop for one date. Returns 202, runs in background. |
 | POST | `/scheduler/backfill?ticker=<sym>` | `X-Scheduler-Key` header | Backfill all past trading days this month. Returns 202, runs in background. |
-| GET | `/scheduler/status` | `X-Scheduler-Key` header | Full RL state for all configured tickers: envelope, feedback log, weight memory. |
+| GET | `/scheduler/status` | `X-Scheduler-Key` header | Full RL state for all configured tickers: envelope, feedback log, weight memory — plus `last_runs` (per-job last outcome from `data/scheduler_job_outcomes.json`: produced/expected counts, stragglers, pipeline result). |
 
 ### Portfolio — Compass Phase A (`/portfolio/*`)
 
@@ -400,7 +466,7 @@ Models are tiered (2026-06-03 benchmark, `scripts/model_bench.py`; bulk re-bench
 | `LLM_MODEL_FAST` | `qwen/qwen3.6-flash` | **FAST tier** — the agentic chat tool-loop |
 | `LLM_MODEL_REASONING` | `z-ai/glm-5.2` | **REASONING tier** — SignalAggregator verdict, RL FeedbackAgent / ThesisReviewer, and the Unified Sector Analyst for all four sectors (JSON-validated). Switched from qwen3.7-max 2026-07-06 (~45% cheaper, higher AA index, `scripts/reasoning_bench.py` + live analyst runs) |
 | `LLM_MODEL_BULK` | `deepseek/deepseek-v4-flash` | **BULK tier** — high-volume `json_object` scoring; $0.09/$0.18 per M, reasoning disabled via `JSON_MODE_EXTRA_BODY` |
-| `LLM_MODEL` | `= LLM_MODEL_BULK` | Back-compat catch-all for any call-site not on a named tier |
+(The old `LLM_MODEL` back-compat alias was **deleted** in the 2026-07-16 cost wave — every call site names an explicit tier; `config.yaml` is the sole model-selection source.)
 | `LLM_TEMPERATURE` | `0.2` | LLM sampling temperature |
 | `LLM_MAX_TOKENS` | `2048` | Max output tokens per LLM call |
 | `LLM_TIMEOUT_SECONDS` | `60` | Per-call LLM timeout |
@@ -613,7 +679,7 @@ Models are tiered (2026-06-03 benchmark, `scripts/model_bench.py`; bulk re-bench
 | Name | Default | Description |
 |------|---------|-------------|
 | `CSHARP_SCHEDULER_ENABLED` | `false` | Route score saves through C# API |
-| `CSHARP_API_URL` | `http://localhost:5000` | C# scheduler service base URL |
+| `CSHARP_API_URL` | `http://localhost:5000` | Legacy C# scheduler base URL (the C# service is dead — setting only read by `score_store.py`'s unused mirror path) |
 
 ### Prompt Deploy (GitHub)
 
@@ -744,4 +810,4 @@ All paths verified to exist. Paths are relative to project root.
 | `data/watchlist.json` | User watchlist (created at runtime) |
 | `data/nse_holidays.json` | NSE holiday calendar (fetched on first deploy) |
 | `src/frontend/web/` | TypeScript/React dashboard (Vite; `npm run dev` for local) |
-| `services/csharp/StockAgent.Scheduler/` | C# .NET scheduler service |
+| `services/csharp/StockAgent.Scheduler/` | ⚠ DEAD C# .NET scheduler (not in the Docker image; deletion candidate) |

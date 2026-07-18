@@ -99,3 +99,25 @@ def test_run_builds_saves_delivers(tmp_path, monkeypatch):
     assert m.call_count == 1
     saved = PortfolioStore(user_id="u1", base_dir=str(tmp_path)).load_latest_brief()
     assert saved and saved["date"] == "2026-07-09"
+
+
+def test_overnight_items_read_cache_title_field(monkeypatch):
+    # Cache entries carry "title" (macro_news_cache schema); the 2026-07-17
+    # brief rendered three blank "Overnight:" lines because the collector
+    # read a nonexistent "headline" key. Empty/missing titles are dropped.
+    class _FakeCache:
+        def get_high_severity(self, hours_back=24):
+            return [
+                {"title": "Fed shock", "severity": "HIGH"},
+                {"title": "", "severity": "HIGH"},
+                {"severity": "HIGH"},
+                {"title": "RBI policy surprise", "severity": "HIGH"},
+            ]
+
+    import services.background.macro_news_cache as mnc
+    monkeypatch.setattr(mnc, "MacroNewsCache", _FakeCache)
+    items = br._overnight_items()
+    assert items == [
+        {"headline": "Fed shock", "severity": "HIGH"},
+        {"headline": "RBI policy surprise", "severity": "HIGH"},
+    ]

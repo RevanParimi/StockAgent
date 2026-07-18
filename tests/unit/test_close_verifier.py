@@ -225,3 +225,29 @@ class TestGenerateForecastIntegration:
 
         assert result == 13022.0
         assert called_with["ticker"] == "MARUTI"
+
+
+class TestNanSanitization:
+    """A NaN yfinance close (RISHABH 2026-07-18) passed `is None` guards and
+    was saved into an envelope as base_close=nan. Non-finite / non-positive
+    closes must be treated as missing data."""
+
+    def test_sanitize_rejects_nan_inf_zero_negative(self):
+        assert close_verifier._sanitize(float("nan")) is None
+        assert close_verifier._sanitize(float("inf")) is None
+        assert close_verifier._sanitize(0.0) is None
+        assert close_verifier._sanitize(-13022.0) is None
+        assert close_verifier._sanitize(None) is None
+        assert close_verifier._sanitize(13022.0) == 13022.0
+
+    def test_cross_check_nan_yf_close_nse_dead_returns_none_none(self):
+        with patch.object(close_verifier, "_fetch_nse_close", return_value=None):
+            close, source = close_verifier.cross_check_close("RISHABH", float("nan"))
+        assert close is None
+        assert source == "none"
+
+    def test_cross_check_nan_yf_close_falls_back_to_nse(self):
+        with patch.object(close_verifier, "_fetch_nse_close", return_value=310.65):
+            close, source = close_verifier.cross_check_close("RISHABH", float("nan"))
+        assert close == 310.65
+        assert source == "nse"

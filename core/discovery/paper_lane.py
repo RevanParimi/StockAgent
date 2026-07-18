@@ -13,6 +13,7 @@ when the current cycle's envelope is missing.
 from __future__ import annotations
 
 import logging
+import math
 from datetime import date, timedelta
 
 from core.config import settings
@@ -42,9 +43,18 @@ def ensure_paper_envelope(idea: ShelfIdea) -> str:
         base_dir=settings.PAPER_PREDICTION_DATA_DIR,
     )
     cycle_id = store.current_cycle_id()
-    if store.load_envelope(cycle_id) is None:
-        logger.info("[paper_lane] generating paper envelope for %s (%s)",
-                    idea.symbol, cycle_id)
+    existing = store.load_envelope(cycle_id)
+    base = getattr(existing, "base_close", None) if existing else None
+    poisoned = isinstance(base, float) and not math.isfinite(base)
+    if existing is None or poisoned:
+        if poisoned:
+            # A NaN yfinance close once got saved as base_close=nan (RISHABH
+            # 2026-07-18); every forecast row was nan. Regenerate, don't review.
+            logger.warning("[paper_lane] %s envelope has invalid base_close=%s — regenerating",
+                           idea.symbol, base)
+        else:
+            logger.info("[paper_lane] generating paper envelope for %s (%s)",
+                        idea.symbol, cycle_id)
         env = generate_forecast(idea.symbol, sector=idea.sector, paper=True)
         return env.cycle_id
     return cycle_id

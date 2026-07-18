@@ -70,3 +70,38 @@ def test_run_paper_reviews_weekly(monkeypatch):
     assert shelf.ideas[0].last_paper_review == "2026-07-03"
     assert shelf.ideas[0].paper_cycle_id == "X_2026-07"
     assert saved                                          # shelf persisted
+
+
+def test_ensure_paper_envelope_regenerates_poisoned_nan_base(monkeypatch, tmp_path):
+    # RISHABH 2026-07-18: a NaN yfinance close was saved as base_close=nan;
+    # "generate only when missing" would have kept the poisoned envelope forever.
+    monkeypatch.setattr(pl.settings, "PAPER_PREDICTION_DATA_DIR", str(tmp_path))
+
+    class _PoisonedEnv:
+        base_close = float("nan")
+
+    envelopes = {"AAA_2026-07": _PoisonedEnv()}
+
+    class _FakeStore:
+        def __init__(self, ticker, sector=None, base_dir=None):
+            pass
+        def current_cycle_id(self):
+            return "AAA_2026-07"
+        def load_envelope(self, cycle_id):
+            return envelopes.get(cycle_id)
+    monkeypatch.setattr(pl, "PredictionStore", _FakeStore)
+
+    calls = []
+    def fake_generate(ticker, sector="automobile", paper=False):
+        calls.append(ticker)
+        class _E:
+            cycle_id = "AAA_2026-07"
+            base_close = 100.0
+        envelopes["AAA_2026-07"] = _E()
+        return _E()
+    monkeypatch.setattr(pl, "generate_forecast", fake_generate)
+
+    assert pl.ensure_paper_envelope(_idea()) == "AAA_2026-07"
+    assert calls == ["AAA"]                      # regenerated despite existing
+    assert pl.ensure_paper_envelope(_idea()) == "AAA_2026-07"
+    assert calls == ["AAA"]                      # healthy envelope → no regen

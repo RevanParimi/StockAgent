@@ -29,6 +29,7 @@ NEVER raises.
 from __future__ import annotations
 
 import logging
+import math
 from datetime import date, timedelta
 
 from core.config import settings
@@ -51,6 +52,15 @@ def _today_key() -> str:
 # Individual fetchers
 # ---------------------------------------------------------------------------
 
+def _sanitize(close: float | None) -> float | None:
+    """NaN/inf/non-positive closes are data failures, not prices — a NaN last
+    row from yfinance (RISHABH 2026-07-18) passed the `is None` guard in
+    generate_forecast and was saved into an envelope as base_close=nan."""
+    if close is None or not math.isfinite(close) or close <= 0:
+        return None
+    return close
+
+
 def _fetch_yfinance_close(ticker: str) -> float | None:
     """Most recent close via the existing yfinance/C++ fetcher. Never raises."""
     try:
@@ -59,7 +69,7 @@ def _fetch_yfinance_close(ticker: str) -> float | None:
         if df.empty:
             return None
         close = df["Close"].squeeze()
-        return float(close.iloc[-1])
+        return _sanitize(float(close.iloc[-1]))
     except Exception as exc:
         logger.debug("[close_verifier] yfinance close fetch failed for %s: %s", ticker, exc)
         return None
@@ -101,7 +111,7 @@ def _fetch_nse_close(ticker: str, target_date: date | None = None) -> float | No
                     row = match or data[-1]
                 else:
                     row = data[-1]
-                close = float(row["chClosingPrice"])
+                close = _sanitize(float(row["chClosingPrice"]))
         finally:
             try:
                 nse.exit()
@@ -193,6 +203,7 @@ def cross_check_close(
     NEVER raises.
     """
     try:
+        yf_close = _sanitize(yf_close)
         if not getattr(settings, "CLOSE_VERIFY_ENABLED", True):
             return (yf_close, "yfinance") if yf_close is not None else (None, "none")
 

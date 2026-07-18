@@ -57,8 +57,10 @@ def _read_regime() -> dict | None:
 def _overnight_items(max_items: int = 3) -> list[dict]:
     try:
         from services.background.macro_news_cache import MacroNewsCache
-        items = MacroNewsCache().get_high_severity(hours_back=24)[:max_items]
-        return [{"headline": i.get("headline", ""), "severity": i.get("severity", "HIGH")}
+        # Cache entries carry "title" (macro_news_cache schema), not "headline".
+        items = [i for i in MacroNewsCache().get_high_severity(hours_back=24)
+                 if i.get("title")][:max_items]
+        return [{"headline": i["title"], "severity": i.get("severity", "HIGH")}
                 for i in items]
     except Exception as exc:
         logger.warning("[brief] macro feed read failed (non-fatal): %s", exc)

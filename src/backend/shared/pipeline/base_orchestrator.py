@@ -158,6 +158,7 @@ class BaseSectorOrchestrator(ABC):
             agent_outputs=agent_outputs,
             learned_weights=self._aggregator_weights,
             run_id=run_id,
+            sector=self.SECTOR_NAME,
         )
 
         pipeline_run.report = report
@@ -222,6 +223,7 @@ class BaseSectorOrchestrator(ABC):
             agent_outputs=agent_outputs,
             learned_weights=self._aggregator_weights,
             run_id=run_id,
+            sector=self.SECTOR_NAME,
         )
 
         pipeline_run.report = report
@@ -543,6 +545,13 @@ class BaseSectorOrchestrator(ABC):
             if not settings.UNIFIED_ANALYST_FALLBACK_LEGACY:
                 return outputs
             logger.warning("[%s] unified analyst failed -> legacy fallback", self.SECTOR_NAME)
+            # Wave I: fallback costs ~6-8x the Serper credits of the unified
+            # path — record it so /scheduler/status can surface the rate.
+            try:
+                from services.data.stores.fallback_events import record_fallback
+                record_fallback(self.SECTOR_NAME, query.ticker)
+            except Exception:
+                pass
         return self._run_via_graph(query, run_id=run_id, progress_callback=progress_callback)
 
     # ------------------------------------------------------------------

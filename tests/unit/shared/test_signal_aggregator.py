@@ -127,3 +127,65 @@ class TestWeightedScoreComputation:
         report = agg.run("MARUTI", "Maruti Suzuki India Ltd", mock_all_agent_outputs)
         assert report.verdict == "NEUTRAL"
         assert report.final_score == 0.5
+
+
+class TestErroredOutputExclusion:
+    """Wave I: errored/no-data outputs carry a fabricated 0.5 and must not
+    move the weighted composite, appear as real scores in the prompt, or
+    trigger phantom conflicts."""
+
+    def _make_output(self, name, score, error=""):
+        from core.schemas.pipeline import AgentOutput
+        return AgentOutput(agent=name, ticker="MARUTI", overall_score=score, error=error)
+
+    def _run_capturing(self, agg, outputs, weights):
+        """Run the aggregator with LLM + shadow logger mocked; return
+        (captured shadow kwargs, captured user prompt)."""
+        from tests.conftest import make_aggregator_json
+        shadow_kwargs = {}
+        prompts = []
+
+        def fake_llm(system_prompt, user_prompt):
+            prompts.append(user_prompt)
+            return make_aggregator_json(0.66)
+
+        def fake_shadow(**kwargs):
+            shadow_kwargs.update(kwargs)
+            return None
+
+        with patch.object(SignalAggregator, "_call_llm", side_effect=fake_llm), \
+             patch("backend.shared.pipeline.verdict_shadow.log_verdict_shadow", fake_shadow), \
+             patch("services.clients.llm_client.OpenAI"):
+            agg = SignalAggregator()
+            agg.run("MARUTI", "Maruti Suzuki India Ltd", outputs,
+                    learned_weights=weights)
+        return shadow_kwargs, prompts[0]
+
+    def test_errored_output_does_not_move_composite(self):
+        outputs = {
+            "sales_demand": self._make_output("sales_demand", 0.9),
+            "fundamentals": self._make_output("fundamentals", 0.5, error="parse_error: boom"),
+        }
+        weights = {"sales_demand": 0.5, "fundamentals": 0.5}
+        shadow, prompt = self._run_capturing(None, outputs, weights)
+        # Old behavior: (0.9*0.5 + 0.5*0.5) / 1.0 = 0.70. New: 0.90.
+        assert shadow["composite"] == pytest.approx(0.9)
+        assert "EXCLUDED" in prompt
+        assert "fundamentals: EXCLUDED" in prompt
+
+    def test_all_errored_composite_is_neutral(self):
+        outputs = {
+            "sales_demand": self._make_output("sales_demand", 0.5, error="no_real_time_data"),
+            "fundamentals": self._make_output("fundamentals", 0.5, error="parse_error: x"),
+        }
+        weights = {"sales_demand": 0.5, "fundamentals": 0.5}
+        shadow, _ = self._run_capturing(None, outputs, weights)
+        assert shadow["composite"] == pytest.approx(0.5)
+
+    def test_errored_output_no_phantom_conflict(self):
+        agg = SignalAggregator.__new__(SignalAggregator)
+        outputs = {
+            "sales_demand": self._make_output("sales_demand", 0.9),
+            "fundamentals": self._make_output("fundamentals", 0.5, error="parse_error: x"),
+        }
+        assert agg._detect_conflicts(outputs) == []

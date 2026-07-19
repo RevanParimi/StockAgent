@@ -103,3 +103,9 @@ class MonthlyScorecard(BaseModel):
     tickers: dict[str, TickerScorecard] = Field(default_factory=dict)
     aggregate: TickerScorecard | None = None  # ticker-weighted aggregate (ticker="ALL")
     deltas_vs_previous: dict[str, float] = Field(default_factory=dict)  # aggregate metric deltas; {} when no prior
+    # Wave I: per-regime accuracy breakdown, pooled across tickers —
+    # {regime_label: {"n": days, "direction_accuracy": float|None,
+    #                 "agents": {agent: {"hits": int, "total": int, "hit_rate": float}}}}
+    # Report-only evidence for retuning the hand-authored REGIME_MULTIPLIERS
+    # table (hit-credit rule shared with WeightAdapter Stage 1).
+    regime_agent_hit_rates: dict[str, dict] = Field(default_factory=dict)

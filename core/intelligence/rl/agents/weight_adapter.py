@@ -63,8 +63,8 @@ _PENALTY             = _s.RL_PENALTY
 _MISS_STREAK_PENALTY = _s.RL_MISS_STREAK_PENALTY  # base bias penalty; scales with bias_score
 
 # Multi-window bias detection (trading-day-aware)
-_BIAS_WINDOWS        = [5, 10, 21]           # trading days: ~1 wk, ~2 wk, ~1 month
-_BIAS_WINDOW_WEIGHTS = [0.50, 0.30, 0.20]    # recent windows weighted more heavily
+_BIAS_WINDOWS        = _s.RL_BIAS_WINDOWS         # trading days: ~1 wk, ~2 wk, ~1 month
+_BIAS_WINDOW_WEIGHTS = _s.RL_BIAS_WINDOW_WEIGHTS  # recent windows weighted more heavily
 _BIAS_TRIGGER        = _s.RL_BIAS_TRIGGER    # weighted miss rate → penalty starts
 _BIAS_FULL           = _s.RL_BIAS_FULL       # weighted miss rate → full _MISS_STREAK_PENALTY
 
@@ -89,6 +89,28 @@ AGENT_BULLISH_THRESHOLD = 0.5
 # entry.actual_direction.
 _BULLISH_VERDICTS = frozenset({"BUY", "STRONG BUY"})
 _DIRECTIONAL_VERDICTS = frozenset({"BUY", "STRONG BUY", "SELL", "STRONG SELL"})
+
+
+def agent_hit_credit(entry, agent: str) -> bool:
+    """Stage-1 hit-credit rule for one (entry, agent) pair.
+
+    Shared with the monthly scorecard's regime breakdown (Wave I) so the two
+    can never disagree on what counts as a hit:
+      - correct day → every agent gets a hit;
+      - wrong day with a NO_PENALTY miss type → every agent gets a hit
+        (the model was not at fault);
+      - otherwise → everyone but the primary miss agent gets a hit.
+    """
+    if entry.direction_correct:
+        return True
+    miss_type = (
+        entry.miss_analysis.miss_type
+        if entry.miss_analysis and entry.miss_analysis.miss_type
+        else "direction_flip"
+    )
+    if miss_type in NO_PENALTY_MISS_TYPES:
+        return True
+    return not (entry.miss_analysis and entry.miss_analysis.primary_miss_agent == agent)
 
 
 class WeightAdapter:
@@ -272,13 +294,6 @@ class WeightAdapter:
         calib_total: dict[str, int] = {a: 0 for a in agents}
 
         for entry in recent:
-            miss_type = (
-                entry.miss_analysis.miss_type
-                if entry.miss_analysis and entry.miss_analysis.miss_type
-                else "direction_flip"
-            )
-            is_no_penalty = miss_type in NO_PENALTY_MISS_TYPES
-
             # Realized direction for calibration — taken directly from
             # entry.actual_direction (the system's own classify_direction output),
             # so calibration and the direction metric can never disagree. FLAT
@@ -295,18 +310,7 @@ class WeightAdapter:
             for agent in agents:
                 total[agent] += 1
 
-                if entry.direction_correct:
-                    hits[agent] += 1
-                elif (
-                    entry.miss_analysis
-                    and entry.miss_analysis.primary_miss_agent == agent
-                    and not is_no_penalty
-                ):
-                    # Primary miss agent on a penalisable miss — no hit credit
-                    pass
-                else:
-                    # Non-primary agents always get credit on a miss day.
-                    # Primary agent gets credit too when miss was not their fault.
+                if agent_hit_credit(entry, agent):
                     hits[agent] += 1
 
                 if entry.miss_analysis and agent in entry.miss_analysis.agent_score_drift:

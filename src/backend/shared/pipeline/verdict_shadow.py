@@ -50,14 +50,21 @@ def log_verdict_shadow(
     llm_verdict: str,
     llm_final_score: float,
     learned_weights_used: bool,
+    sector: str = "",
     shadow_log: str | None = None,
 ) -> dict | None:
-    """Append one shadow record. Observe-only, never raises."""
+    """Append one shadow record. Observe-only, never raises.
+
+    `sector` enables per-sector threshold calibration in the hard-bind
+    analysis; rows written before 2026-07-19 lack it (join those via the
+    managed-ticker registry instead).
+    """
     try:
         threshold_verdict = verdict_from_composite(composite)
         rec = {
             "ts": datetime.now(timezone.utc).isoformat(),
             "ticker": ticker,
+            "sector": sector,
             "composite": round(float(composite), 4),
             "threshold_verdict": threshold_verdict,
             "llm_verdict": llm_verdict,

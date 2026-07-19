@@ -3066,22 +3066,20 @@ async def _chat_completion(client, *, models: tuple[str, ...] | list[str] | None
         logger.warning("[chat] model %s exhausted retries — falling back", model)
     raise last_exc  # type: ignore[misc]
 
-# In-process per-session memory (mirrors the old MemorySaver semantics: in-RAM,
-# cleared on restart). Keyed by session_id → list of {role, content} turns.
-_SESSION_HISTORY: dict[str, list[dict]] = {}
+# Server-side per-session memory, volume-backed (data/chat_sessions.db) so
+# both uvicorn workers see the same history and sessions survive deploys.
+# The old in-process dict lost history whenever turn N+1 hit the other worker.
 _SESSION_MAX_TURNS = 12               # keep last 12 messages (≈6 exchanges) per session
 
 
 def _session_history_get(session_id: str) -> list[dict]:
-    return list(_SESSION_HISTORY.get(session_id, []))
+    from services.data.stores.chat_session_store import get_history
+    return get_history(session_id, _SESSION_MAX_TURNS)
 
 
 def _session_history_append(session_id: str, user_text: str, assistant_text: str) -> None:
-    hist = _SESSION_HISTORY.setdefault(session_id, [])
-    hist.append({"role": "user", "content": user_text})
-    hist.append({"role": "assistant", "content": assistant_text})
-    if len(hist) > _SESSION_MAX_TURNS:
-        del hist[: len(hist) - _SESSION_MAX_TURNS]
+    from services.data.stores.chat_session_store import append_turns
+    append_turns(session_id, user_text, assistant_text, _SESSION_MAX_TURNS)
 
 
 def _strip_think(text: str) -> str:

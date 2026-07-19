@@ -1308,7 +1308,7 @@ enabled=false → AutomobileAgentOrchestrator (safe degradation)
 | 4 | Sector score thresholds identical across sectors | `settings/base.py` | MEDIUM | ⬜ Backlog — add per-sector `SCORE_THRESHOLDS` |
 | 5 | Technical indicator periods not backtested on NSE | `fetcher.py` | MEDIUM | ⬜ Backlog — 14 vs 9 RSI, 12/26 vs 8/17 MACD |
 | 6 | Scheduler reads SCHEDULER_TICKERS env var, not managed_tickers.json | `scheduler.py` | MEDIUM | ⚠️ Partially done — reads managed_tickers.json with fallback to env var |
-| 7 | Agent parse failure returns silent 0.5 | `base_agent.py` | MEDIUM | ⬜ Backlog — return explicit `AgentOutput.error="parse_failed"` |
+| 7 | Agent parse failure returns silent 0.5 | `base_agent.py` | MEDIUM | ✅ Fixed (Wave I, 2026-07-19) — `error` was already set on the output; the real defect was downstream: SignalAggregator now **excludes** errored/no-data outputs from the weighted composite (renormalized), marks them `EXCLUDED` in the aggregation prompt, and skips them in conflict detection. All-errored → composite 0.5 NEUTRAL |
 | 8 | `external_shock` miss type never penalises | `schemas/feedback.py` | LOW | ⬜ Backlog — after 3 consecutive: apply 0.1× penalty |
 | 9 | Feedback LLM temperature hardcoded 0.3 | `feedback_agent.py:56` | LOW | ⬜ Backlog — move to `settings.FEEDBACK_LLM_TEMPERATURE` |
 | 10 | Error handling: all external calls now guarded | All fetchers/stores | DONE | ✅ Fixed — 14-file audit complete 2026-05-21 |

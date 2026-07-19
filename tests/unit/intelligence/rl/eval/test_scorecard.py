@@ -365,3 +365,67 @@ def test_render_table_empty_data(tmp_path):
 
     assert f"SCORECARD {MONTH}" in table
     assert "agent" in table
+
+
+# ---------------------------------------------------------------------------
+# Wave I — per-regime x per-agent hit rates
+# ---------------------------------------------------------------------------
+
+def _regime_entry(day, regime, correct, scores, primary=None, miss_type="direction_flip"):
+    from core.schemas.feedback import MissAnalysis
+    e = _entry(day, f"{MONTH}-{day:02d}", 100.0, 101.0,
+               "UP" if correct else "DOWN", correct)
+    e.regime_label = regime
+    e.predicted_agent_scores = scores
+    if primary is not None:
+        e.miss_analysis = MissAnalysis(primary_miss_agent=primary, miss_type=miss_type)
+    return e
+
+
+def test_regime_agent_breakdown_hit_credit_rules():
+    scores = {"risk_macro": 0.6, "fundamentals": 0.4}
+    entries = [
+        # NORMAL, correct day -> both agents hit
+        _regime_entry(1, "NORMAL", True, scores),
+        # MACRO_CRISIS, penalisable miss blamed on risk_macro -> only fundamentals hit
+        _regime_entry(2, "MACRO_CRISIS", False, scores, primary="risk_macro"),
+        # MACRO_CRISIS, external_shock miss -> both hit (model not at fault)
+        _regime_entry(3, "MACRO_CRISIS", False, scores,
+                      primary="risk_macro", miss_type="external_shock"),
+    ]
+    out = sc_mod._regime_agent_breakdown(entries)
+
+    assert out["NORMAL"]["n"] == 1
+    assert out["NORMAL"]["direction_accuracy"] == 1.0
+    assert out["NORMAL"]["agents"]["risk_macro"]["hit_rate"] == 1.0
+
+    crisis = out["MACRO_CRISIS"]
+    assert crisis["n"] == 2
+    assert crisis["direction_accuracy"] == 0.0
+    assert crisis["agents"]["risk_macro"] == {"hits": 1, "total": 2, "hit_rate": 0.5}
+    assert crisis["agents"]["fundamentals"] == {"hits": 2, "total": 2, "hit_rate": 1.0}
+
+
+def test_regime_breakdown_matches_weight_adapter_rule():
+    """The scorecard must use WeightAdapter's shared hit-credit helper."""
+    import inspect
+    src = inspect.getsource(sc_mod._regime_agent_breakdown)
+    assert "agent_hit_credit" in src
+
+
+def test_build_scorecard_populates_regime_breakdown(tmp_path):
+    base_dir = tmp_path / "predictions"
+    _seed_ticker(base_dir)
+    sc = sc_mod.build_scorecard(MONTH)
+    # Seeded entries default to regime NORMAL with no per-agent scores.
+    assert sc.regime_agent_hit_rates["NORMAL"]["n"] == 4
+    assert sc.regime_agent_hit_rates["NORMAL"]["direction_accuracy"] == 0.5
+
+
+def test_render_table_regime_section(tmp_path):
+    base_dir = tmp_path / "predictions"
+    _seed_ticker(base_dir)
+    sc = sc_mod.build_scorecard(MONTH)
+    table = sc_mod.render_table(sc)
+    assert "by regime" in table
+    assert "NORMAL" in table

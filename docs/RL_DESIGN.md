@@ -471,7 +471,8 @@ bias_score = Σ( window_weight × agent_miss_rate_in_window )
              ────────────────────────────────────────────────
                         Σ( window_weight )
 
-Windows and weights (hardcoded in code, not settings):
+Windows and weights (settings-backed since Wave I: `rl.bias_windows` /
+`rl.bias_window_weights` in config.yaml → `RL_BIAS_WINDOWS` / `RL_BIAS_WINDOW_WEIGHTS`):
   5 td  (~1 week)  → weight 0.50   ← recent performance dominates
   10 td (~2 weeks) → weight 0.30
   21 td (~1 month) → weight 0.20

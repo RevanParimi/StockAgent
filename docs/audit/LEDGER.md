@@ -1176,3 +1176,63 @@ ledgers/briefs/predictions/telemetry present).
 Suite: 2040 passed; fail-set verified IDENTICAL to pre-change HEAD (stash A/B).
 analysis_data/ (extracted prod backup) gitignored — must never reach the public
 repo.
+
+## Wave I — design-review fixes (2026-07-19, shipped same session)
+
+Source: doc-vs-code cross-check of the living docs (every claim verified
+against code before fixing; two doc claims turned out inverted — see drift
+notes below).
+
+- **AUD-109 | BUG | P1 | services/api/routes/ui_data.py + Dockerfile | FIXED**
+  — chat session memory was a per-process dict (`_SESSION_HISTORY`) while
+  uvicorn runs `--workers 2`: consecutive turns of one session land on
+  different workers ~half the time → silent amnesia, and every deploy wiped
+  all sessions. Fix: volume-backed SQLite store
+  (`services/data/stores/chat_session_store.py`, `data/chat_sessions.db`,
+  WAL + busy_timeout like log_store), 12-message cap, 7-day TTL sweep on
+  singleton startup; storage failure degrades a turn to stateless, never
+  errors. Deliberately NOT in telemetry.db so conversation content stays out
+  of the nightly backup email.
+- **AUD-110 | BUG | P2 | signal_aggregator.py | FIXED** — errored/no-data
+  agent outputs (fabricated `overall_score=0.5`, `error` set) were summed
+  into the weighted composite at full weight, dragging it toward NEUTRAL,
+  polluting the AUD-077 shadow lane's composite, feeding `raw=0.50` to the
+  aggregation LLM as if real, and triggering phantom conflicts. (base_agent's
+  own no-data docstring claimed "excluded from confidence weighting" — that
+  exclusion never existed.) Fix: exclude errored outputs from
+  composite + conflict detection, renormalize over real scores, mark them
+  `EXCLUDED (no data / parse error)` in the prompt; all-errored → 0.5
+  NEUTRAL. Closes AGENTIC_DESIGN backlog #7 (by the downstream route — the
+  `error` field itself was already set).
+- **AUD-111 | GAP | P3 | base_orchestrator.py:545 | FIXED** — legacy-pool
+  fallback engaged with only a log WARNING; each engagement costs ~6-8× the
+  unified path's Serper credits, so an elevated fallback rate silently broke
+  the cost model. Fix: `services/data/stores/fallback_events.py` appends
+  `data/rl/fallback_events.jsonl` per engagement; `GET /scheduler/status`
+  now returns `fallback_events_today`.
+- **AUD-112 | GAP | P3 | verdict_shadow.py | FIXED** — shadow rows carried no
+  sector, forcing an external ticker→sector join for the 2026-07-31
+  per-sector threshold calibration. Fix: `sector` field added
+  (orchestrators pass `SECTOR_NAME` through `SignalAggregator.run`); rows
+  before 2026-07-19 need the registry join.
+- **AUD-113 | POLISH | P3 | weight_adapter.py:66 | FIXED** — `_BIAS_WINDOWS`
+  / `_BIAS_WINDOW_WEIGHTS` were the last hardcoded WeightAdapter constants;
+  now `rl.bias_windows` / `rl.bias_window_weights` in config.yaml
+  (defaults unchanged: [5,10,21] / [0.50,0.30,0.20]).
+- **AUD-114 | GAP | P3 | eval/scorecard.py | FIXED** —
+  `FeedbackEntry.regime_label` was designed for regime-stratified accuracy
+  ("risk_macro 71% in NORMAL, 44% in MACRO_CRISIS" — the schema comment's
+  own example) but never consumed. Fix: monthly scorecard now emits
+  `regime_agent_hit_rates` (per-regime n / direction accuracy / per-agent
+  hit rates using WeightAdapter's Stage-1 rule via shared helper
+  `agent_hit_credit` — extracted so the two can never disagree) + a
+  "by regime" render section. Report-only: the evidence base for reviewing
+  the hand-authored REGIME_MULTIPLIERS table, not an input to it.
+- **Doc drift (fixed same session):** CHAT_ARCHITECTURE banner claimed
+  "BULK-tier default" — code says FAST tier (`qwen3.6-flash`) with glm-5.2
+  escalation (the body table's fallback `qwen3.7-max` was the stale half);
+  ARCHITECTURE §9 listed chat under BULK — moved to FAST;
+  AUTOPILOT_GUIDE gotcha #2 still said "no file locking on portfolio.json"
+  — contradicted its own status banner (FileLock in store.py since Wave 1
+  hardening); CHAT cost tables repriced to glm-5.2/deepseek and labeled as
+  legacy-fallback-only; RL_DESIGN Step 5 "hardcoded" note updated.

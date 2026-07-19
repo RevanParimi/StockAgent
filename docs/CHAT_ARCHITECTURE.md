@@ -1,10 +1,13 @@
 # Chat Architecture — Agentic Streaming Tool-Loop
 
-> **Status (2026-07-18):** loop design unchanged; runtime contract tightened by the audit
-> waves: BULK-tier default with reasoning disabled, glm-5.2 escalation on failure, retries
-> capped at 2/model (≤4 upstream attempts per logical call), a **45-second per-turn
-> wall-clock budget** with one budget-free final synthesis, and **server-side session
-> memory** on both routes (`session_id` in the response; client-sent history is ignored).
+> **Status (2026-07-19):** loop design unchanged; runtime contract tightened by the audit
+> waves: **FAST-tier default** (`qwen3.6-flash`) with reasoning disabled, **glm-5.2**
+> (REASONING tier) escalation on rate-limit/5xx, retries capped at 2/model (≤4 upstream
+> attempts per logical call), a **45-second per-turn wall-clock budget** with one
+> budget-free final synthesis, and **server-side session memory** on both routes
+> (`session_id` in the response; client-sent history is ignored). Wave I: session memory
+> is now **volume-backed SQLite** (`data/chat_sessions.db`) — shared across both uvicorn
+> workers, survives deploys, 7-day TTL.
 
 ## Overview
 
@@ -26,10 +29,10 @@ module any more.
 
 ## Model Strategy (hybrid)
 
-| Role | Constant | Setting | Model |
+| Role | Constant | Setting | Model (config.yaml) |
 |---|---|---|---|
 | Chat loop | `_CHAT_MODEL` | `LLM_MODEL_FAST` | `qwen/qwen3.6-flash` |
-| Fallback (rate-limit / 5xx) | `_CHAT_FALLBACK_MODEL` | `LLM_MODEL_REASONING` | `qwen/qwen3.7-max` |
+| Fallback (rate-limit / 5xx) | `_CHAT_FALLBACK_MODEL` | `LLM_MODEL_REASONING` | `z-ai/glm-5.2` |
 
 Chosen from the **2026-06-03 model benchmark** (`scripts/model_bench.py`, 8 models × real
 queries through this exact pipeline): qwen3.6-flash produced the deepest answers, fastest
@@ -50,7 +53,7 @@ user message + session_id
         ▼
 build prompt  ── _CHAT_SYSTEM_PROMPT  (grounding rules, step-back intent, tool guidance)
               ├─ _nse_market_context()  (IST session: PRE_OPEN / OPEN / CLOSED / HOLIDAY)
-              └─ carried session history (_SESSION_HISTORY[session_id])
+              └─ carried session history (chat_session_store, volume-backed)
         │
         ▼
 DETERMINISTIC PRE-ROUTER  ── _detect_invest_intent(message)
@@ -150,9 +153,15 @@ tool result; with the pre-router injecting real screen + news, the model has no 
 
 ## 5. Session Memory
 
-In-process `_SESSION_HISTORY: dict[session_id → list[turn]]`, capped at the last 12 messages.
-This replaced the LangGraph `MemorySaver` checkpointer — same semantics (in-RAM, cleared on
-restart), no graph dependency. The client sends only `session_id`; no client-side history.
+Volume-backed SQLite (`data/chat_sessions.db`, WAL mode), capped at the last 12 messages
+per session, swept after 7 idle days on startup. The client sends only `session_id`; no
+client-side history.
+
+History: the LangGraph `MemorySaver` checkpointer was first replaced by an in-process
+dict (AUD-104), but uvicorn runs **2 workers** — consecutive turns of one session could
+land on different workers, silently losing history, and every deploy wiped all sessions.
+Wave I moved it to the shared store (`services/data/stores/chat_session_store.py`); on
+any storage failure a turn degrades to stateless instead of erroring.
 
 ---
 
@@ -206,8 +215,8 @@ analyst call fails outright.)
 | NseIndiaApi `announcements()` / `boardMeetings()` / `actions()` | 1 each | Free | Pre-fetch (once, before bundle) |
 | Serper (`company_news`, `sector_policy_news`, `macro_context`) | 0–2 | Credits | Bundle build (macro_context skipped on cache hit) |
 | Tavily (`policy_deep_dive`) | 0–1 | Credits | Bundle build |
-| LLM — Unified Analyst (REASONING: qwen3.7-max) | 1 | Paid | One call → all dimension scores (9/6/8/6 per sector) |
-| LLM — SignalAggregator (REASONING: qwen3.7-max) | 1 | Paid | Verdict synthesis |
+| LLM — Unified Analyst (REASONING: glm-5.2) | 1 | Paid | One call → all dimension scores (9/6/8/6 per sector) |
+| LLM — SignalAggregator (REASONING: glm-5.2) | 1 | Paid | Verdict synthesis |
 | **Total Serper (warm)** | **~2** | — | macro cache hit |
 | **Total Serper (cold)** | **~3** | — | macro cache miss |
 
@@ -222,8 +231,8 @@ analyst call fails outright.)
 | NseIndiaApi `actions()` | 1 | Free | Pre-fetch (once, before fan-out) |
 | Serper (all agents combined, cache warm) | ~16 | Credits | During fan-out |
 | Tavily (policy_regulatory only, 96% cache hit) | ~0.08 | Credits | policy_regulatory |
-| LLM — 9 agents (BULK: qwen-2.5-72b) | 9 | Paid | During fan-out |
-| LLM — SignalAggregator (REASONING: qwen3.7-max) | 1 | Paid | Aggregate node |
+| LLM — 9 agents (BULK: deepseek-v4-flash) | 9 | Paid | During fan-out |
+| LLM — SignalAggregator (REASONING: glm-5.2) | 1 | Paid | Aggregate node |
 | **Total Serper (cold)** | **~19** | — | Risk_macro cache miss |
 | **Total Serper (warm)** | **~16** | — | Risk_macro cache hit |
 
@@ -236,14 +245,17 @@ analyst call fails outright.)
 | Serper `get_news_context(ticker, days=2)` | 1 credit | Editorial market context for FeedbackAgent |
 | NseIndiaApi `announcements(ticker, days=2)` | Free | Official regulatory events for FeedbackAgent |
 | yfinance OHLCV (close + volume) | 1 | Actual close price + volume vs 20d avg |
-| LLM — FeedbackAgent (REASONING: qwen3.7-max) | 1 | Miss classification + lesson generation |
+| LLM — FeedbackAgent (REASONING: glm-5.2) | 1 | Miss classification + lesson generation |
 | LLM — ThesisReviewer (REASONING, conditional) | 0–1 | Only on significant misses (~1–3×/month) |
 | LLM — DossierCurator (Step 8.5, qwen temp=0.2) | 1 | Updates ticker dossier — runs every day, hit or miss |
 
 **Weekly (per ticker):** `distill_dossier()` adds +1 LLM call/ticker/week, hooked into the
 `ledger_cleanup_weekly` scheduler job. See `RL_DESIGN.md` §23.5.
 
-**Monthly budget (5 tickers, 21 trading days, automobile sector):**
+**Monthly budget (worked example: 5 tickers, 21 trading days, automobile sector —
+prod runs 16 managed tickers on the unified path, so real Serper usage is far lower;
+these legacy-path numbers apply only when the fallback engages, now counted in
+`GET /scheduler/status fallback_events_today`):**
 
 | Usage type | Formula | Calls/month |
 |---|---|---|

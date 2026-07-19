@@ -697,6 +697,9 @@ SCORECARD_ENABLED: bool = cfg("rl.scorecard_enabled", env="SCORECARD_ENABLED", f
 # Persisted scorecard time series (PERMANENT — improvement history; volume).
 SCORECARD_DIR: str = os.getenv("SCORECARD_DIR", "data/eval/scorecards")
 
+# Learning Evidence Report output (self-ablation experiment, design 2026-07-19).
+LEARNING_EVIDENCE_DIR: str = os.getenv("LEARNING_EVIDENCE_DIR", "data/eval/learning_evidence")
+
 # ---------------------------------------------------------------------------
 # Living Envelope (RL Phase 2.5) — shock-robust forecasting (2026-06-13)
 #

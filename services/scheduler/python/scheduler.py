@@ -871,6 +871,33 @@ class AutomobileScheduler:
             logger.info("[Scheduler] Scorecard for %s saved to %s", month, path)
         except Exception as exc:
             logger.warning("[Scheduler] Monthly scorecard build failed for %s: %s", month, exc, exc_info=True)
+
+        # Learning Evidence Report (self-ablation experiment, design 2026-07-19):
+        # did the adaptive layer beat frozen-base weights this month? Emailed so
+        # the verdict (INERT / BENEFICIAL / HARMFUL / UNPROVEN) is seen, not
+        # just archived. Failure here never breaks the scorecard job.
+        try:
+            from core.intelligence.rl.eval.learning_evidence import (
+                build_learning_evidence,
+                render_report,
+                save_report,
+            )
+            from core.delivery.channels import send_email
+
+            report = build_learning_evidence([month])
+            json_path, _txt_path = save_report(report)
+            logger.info(
+                "[Scheduler] Learning evidence for %s: %s — saved to %s",
+                month, report["verdict"], json_path,
+            )
+            send_email(
+                subject=f"[StockAgent] Learning Evidence {month}: {report['verdict']}",
+                body=render_report(report),
+            )
+        except Exception as exc:
+            logger.warning(
+                "[Scheduler] Learning evidence build failed for %s: %s", month, exc, exc_info=True
+            )
         _job_banner(f"Monthly Scorecard — {month}", done=True)
 
     def _event_ingest_job(self) -> None:

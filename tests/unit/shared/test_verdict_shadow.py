@@ -55,3 +55,25 @@ def test_aggregator_calls_shadow_logger():
     import inspect
     from backend.shared.pipeline.signal_aggregator import SignalAggregator
     assert "log_verdict_shadow" in inspect.getsource(SignalAggregator.run)
+
+
+def test_log_verdict_shadow_records_sector(tmp_path):
+    log = tmp_path / "shadow.jsonl"
+    rec = vs.log_verdict_shadow(
+        ticker="MARUTI", composite=0.62, llm_verdict="BUY",
+        llm_final_score=0.6, learned_weights_used=True,
+        sector="automobile", shadow_log=str(log),
+    )
+    assert rec["sector"] == "automobile"
+    on_disk = json.loads(log.read_text(encoding="utf-8").splitlines()[-1])
+    assert on_disk["sector"] == "automobile"
+
+
+def test_log_verdict_shadow_sector_defaults_empty(tmp_path):
+    log = tmp_path / "shadow.jsonl"
+    rec = vs.log_verdict_shadow(
+        ticker="TCS", composite=0.5, llm_verdict="NEUTRAL",
+        llm_final_score=0.5, learned_weights_used=False,
+        shadow_log=str(log),
+    )
+    assert rec["sector"] == ""

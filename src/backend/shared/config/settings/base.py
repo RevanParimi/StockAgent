@@ -537,6 +537,12 @@ RL_BIAS_FULL: float           =  cfg("rl.bias_full", fallback=0.70)   # bias sco
 RL_TIMING_FREE_WINDOW: int    =  cfg("rl.timing_free_window", fallback=3)      # lag ≤ N trading days → 0× timing penalty
 RL_TIMING_PARTIAL_WINDOW: int =  cfg("rl.timing_partial_window", fallback=7)      # lag ≤ N trading days → 0.20× timing penalty
 
+# Multi-window bias detection (Wave I: last hardcoded WeightAdapter constants).
+# Parallel lists: rolling trading-day windows and their blend weights — recent
+# windows dominate so one good day can't zero out a bad-run signal.
+RL_BIAS_WINDOWS: list        = cfg("rl.bias_windows", fallback=[5, 10, 21])
+RL_BIAS_WINDOW_WEIGHTS: list = cfg("rl.bias_window_weights", fallback=[0.50, 0.30, 0.20])
+
 # Weight drift ceiling escape hatch: agents with ≥ N consecutive correct days
 # are allowed to drift up to ESCAPE_MULTIPLIER × WEIGHT_MAX_DRIFT.
 # Prevents the 0.15 cap from blocking learning on clearly reliable agents.

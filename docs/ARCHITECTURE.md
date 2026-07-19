@@ -7,7 +7,7 @@
 > [CHAT_ARCHITECTURE](CHAT_ARCHITECTURE.md)) explain each subsystem's internals;
 > this document is the map that connects them.
 >
-> Verified against the deployed code on **2026-07-18** (post audit Waves A–H —
+> Verified against the deployed code on **2026-07-19** (post audit Waves A–I —
 > see [audit/LEDGER.md](audit/LEDGER.md) for the finding-by-finding history).
 
 ---
@@ -226,7 +226,9 @@ anyone acts on it. IPO tracker adds listing + lock-in-expiry awareness.
   volume subset, 7-copy rotation + email off-site. SQLite is snapshotted via
   the backup API (never file-copied live).
 - **Observability**: `GET /scheduler/status` = RL per-ticker state + envelope +
-  weight versions + `last_runs` job outcomes; `telemetry.db` records **every**
+  weight versions + `last_runs` job outcomes + `fallback_events_today`
+  (legacy-pool engagements, each ~6-8× the unified path's Serper cost —
+  logged to `data/rl/fallback_events.jsonl`); `telemetry.db` records **every**
   LLM call (caller, model, tokens, latency, success) with per-model cost rates
   from `config.yaml llm.cost_rates`.
 
@@ -234,9 +236,9 @@ anyone acts on it. IPO tracker adds listing + lock-in-expiry awareness.
 
 | Tier | Model | Used for |
 |---|---|---|
-| FAST | `qwen3.6-flash` | Ticker resolution, cheap classification |
-| REASONING | `glm-5.2` | Unified analyst, signal aggregation, feedback agent, deep dives |
-| BULK | `deepseek-v4-flash` | All narration (briefs, digests, advice text), chat default |
+| FAST | `qwen3.6-flash` | Ticker resolution, cheap classification, **chat loop default** |
+| REASONING | `glm-5.2` | Unified analyst, signal aggregation, feedback agent, deep dives, chat escalation |
+| BULK | `deepseek-v4-flash` | All narration (briefs, digests, advice text) |
 
 Rules that keep this sane:
 
@@ -284,7 +286,9 @@ data/
 ├── discovery/                 # shelf.json, screens, shelf_events.jsonl
 ├── delivery/                  # alerts_sent.jsonl, push_subscriptions.json
 ├── backups/                   # nightly zips (7-copy rotation)
+├── rl/fallback_events.jsonl   # legacy-pool fallback engagements (Wave I)
 ├── telemetry.db               # every LLM call
+├── chat_sessions.db           # chat session memory (shared across workers, 7d TTL)
 └── scheduler_job_outcomes.json
 ```
 

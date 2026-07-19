@@ -109,6 +109,40 @@ def _claim_split(entries: list[FeedbackEntry]) -> tuple[int, float | None, float
     return claim_days, acc_claim, acc_other
 
 
+def _regime_agent_breakdown(entries: list[FeedbackEntry]) -> dict[str, dict]:
+    """Per-regime accuracy breakdown, pooled across tickers (Wave I).
+
+    FeedbackEntry.regime_label was designed for exactly this stratification
+    ("risk_macro is 71% accurate in NORMAL but only 44% in MACRO_CRISIS") but
+    was never consumed. Hit credit per agent uses WeightAdapter's Stage-1 rule
+    (shared helper — the two can never disagree). Report-only: this is the
+    evidence base for retuning settings.REGIME_MULTIPLIERS, not an input to it.
+    """
+    from core.intelligence.rl.agents.weight_adapter import agent_hit_credit
+
+    out: dict[str, dict] = {}
+    for entry in entries:
+        regime = entry.regime_label or "NORMAL"
+        bucket = out.setdefault(
+            regime, {"n": 0, "correct": 0, "agents": {}}
+        )
+        bucket["n"] += 1
+        bucket["correct"] += 1 if entry.direction_correct else 0
+        for agent in entry.predicted_agent_scores:
+            a = bucket["agents"].setdefault(agent, {"hits": 0, "total": 0})
+            a["total"] += 1
+            if agent_hit_credit(entry, agent):
+                a["hits"] += 1
+
+    for bucket in out.values():
+        n = bucket["n"]
+        correct = bucket.pop("correct")
+        bucket["direction_accuracy"] = round(correct / n, 4) if n else None
+        for a in bucket["agents"].values():
+            a["hit_rate"] = round(a["hits"] / a["total"], 4) if a["total"] else None
+    return out
+
+
 def _build_ticker_scorecard(
     ticker: str,
     sector: str,
@@ -226,6 +260,8 @@ def build_scorecard(month: str, tickers: list[str] | None = None) -> MonthlyScor
             aggregate.dossier_observations = total_obs
             aggregate.live_signatures = total_live
     sc.aggregate = aggregate
+
+    sc.regime_agent_hit_rates = _regime_agent_breakdown(all_entries)
 
     sc.deltas_vs_previous = _compute_deltas(sc, base_dir=base_dir)
 
@@ -373,5 +409,29 @@ def render_table(sc: MonthlyScorecard) -> str:
                 f"dossier: {version_str}{agg.dossier_observations} observations, "
                 f"{agg.live_signatures} live signatures"
             )
+
+    if sc.regime_agent_hit_rates:
+        lines.append("")
+        lines.append("by regime (evidence for REGIME_MULTIPLIERS review):")
+        for regime, bucket in sorted(
+            sc.regime_agent_hit_rates.items(), key=lambda kv: -kv[1]["n"]
+        ):
+            lines.append(
+                f"  {regime:<14} {_fmt_pct(bucket['direction_accuracy']):>9} "
+                f"over {bucket['n']} days"
+            )
+            agents = bucket.get("agents") or {}
+            if agents:
+                # Worst first — where the multiplier table most likely disagrees
+                # with reality.
+                ranked = sorted(
+                    agents.items(),
+                    key=lambda kv: kv[1].get("hit_rate") if kv[1].get("hit_rate") is not None else 2.0,
+                )
+                lines.append(
+                    "    " + ", ".join(
+                        f"{name} {_fmt_pct(a.get('hit_rate'))}" for name, a in ranked
+                    )
+                )
 
     return "\n".join(lines)

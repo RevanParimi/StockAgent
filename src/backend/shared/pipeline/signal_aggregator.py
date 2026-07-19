@@ -90,6 +90,7 @@ class SignalAggregator:
         agent_outputs: dict[str, AgentOutput],
         learned_weights: dict[str, float] | None = None,
         run_id: str = "",
+        sector: str = "",
     ) -> FinalReport:
         """
         Parameters
@@ -114,6 +115,7 @@ class SignalAggregator:
         weighted_sum = 0.0
         weight_total = 0.0
 
+        excluded: set[str] = set()
         for agent_name, output in agent_outputs.items():
             w = weights.get(agent_name, 0.0)
             ws = WeightedAgentScore(
@@ -122,10 +124,23 @@ class SignalAggregator:
                 weighted=round(output.overall_score * w, 4),
             )
             weighted_scores[agent_name] = ws
+            # An errored/no-data output carries a fabricated neutral 0.5, not a
+            # real score — including it drags the composite toward NEUTRAL and
+            # pollutes the shadow lane. Exclude it and renormalize over the
+            # dimensions that actually produced a score.
+            if output.error:
+                excluded.add(agent_name)
+                continue
             weighted_sum += ws.weighted
             weight_total += w
+        if excluded:
+            logger.warning(
+                "[SignalAggregator] %s: %d/%d dimensions excluded from composite (errored): %s",
+                ticker, len(excluded), len(agent_outputs), sorted(excluded),
+            )
 
         # Normalise in case weights don't sum to exactly 1.0
+        # (weight_total == 0 also covers the all-dimensions-errored case)
         composite = weighted_sum / weight_total if weight_total else 0.5
         composite = max(0.0, min(1.0, composite))
 
@@ -134,6 +149,11 @@ class SignalAggregator:
         # Build the block of scores for the prompt
         score_lines = []
         for name, ws in weighted_scores.items():
+            if name in excluded:
+                score_lines.append(
+                    f"  {name}: EXCLUDED (no data / parse error — not scored)"
+                )
+                continue
             score_lines.append(
                 f"  {name}: raw={ws.raw:.3f}, weight={ws.weight:.2f}, "
                 f"weighted={ws.weighted:.4f}"
@@ -179,6 +199,7 @@ class SignalAggregator:
             llm_verdict=report.verdict,
             llm_final_score=report.final_score,
             learned_weights_used=bool(learned_weights),
+            sector=sector,
         )
         return report
 
@@ -214,7 +235,9 @@ class SignalAggregator:
     # ------------------------------------------------------------------
 
     def _detect_conflicts(self, agent_outputs: dict[str, AgentOutput]) -> list[str]:
-        scores = {k: v.overall_score for k, v in agent_outputs.items()}
+        # Errored outputs carry a fabricated 0.5 — comparing them against real
+        # scores would flag phantom conflicts, so only score real outputs.
+        scores = {k: v.overall_score for k, v in agent_outputs.items() if not v.error}
         names = list(scores.keys())
         conflicts: list[str] = []
         for i in range(len(names)):

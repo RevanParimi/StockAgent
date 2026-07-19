@@ -449,8 +449,10 @@ Quick loop while developing: `python -m pytest tests/unit -k autopilot -q`
 1. `pytest` works from the repo root because `pyproject.toml` sets
    `pythonpath = [".", "src"]`. Standalone scripts must add both roots
    themselves — copy the `sys.path` block from `scripts/seed_autopilot.py`.
-2. There is **no file locking** on `portfolio.json` (personal-use scale, one
-   writer at a time by design). Don't add concurrent writers.
+2. `portfolio.json` writes go through a **`FileLock`** (`store.py` —
+   `data/portfolio/<user>/portfolio.lock`, re-entrant, 30s timeout); autopilot
+   mutations reload fresh state under the lock before writing. Always use
+   `store.locked()` / the locking helpers — never write the file directly.
 3. The digest values the portfolio with *pre-trade* closes; a switched-in
    candidate shows NO_DATA on day one. Cosmetic, known.
 4. `manual` transactions use a timestamped ref — an HTTP retry writes a second

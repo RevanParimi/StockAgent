@@ -354,6 +354,14 @@ async def lifespan(app: FastAPI):
             _get_scheduler().start()
         except Exception as exc:
             logger.warning("[startup] Scheduler failed to start (non-fatal): %s", exc)
+
+        # 4. Chat session TTL sweep (volume-backed store; only the singleton
+        #    owner sweeps so the two workers don't race on it)
+        try:
+            from services.data.stores.chat_session_store import sweep_expired
+            sweep_expired()
+        except Exception as exc:
+            logger.warning("[startup] Chat session sweep failed (non-fatal): %s", exc)
     else:
         logger.info(
             "[startup] Singleton lock held by another worker — "

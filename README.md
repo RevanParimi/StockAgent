@@ -171,6 +171,13 @@ on the 1st) persists the time series: StockAgent vs control vs baselines, month-
 deltas, accuracy on days learned claims fired vs other days, and dossier health. The edge
 over the bare model is a measured number, not a claim.
 
+**Including against itself with learning switched off.** A monthly Learning Evidence
+Report (`python -m core.intelligence.rl.eval.learning_evidence`, auto-emailed with the
+scorecard) replays every logged day under the learned weights vs the frozen starting
+weights vs naive-uniform weights and issues a blunt verdict — INERT, BENEFICIAL,
+HARMFUL, or UNPROVEN — with significance tests, per-lesson lift, and calibration
+decomposition. If the adaptive layer ever stops earning its keep, the report says so.
+
 **And it reads the filings, not just the tape.** A weekly event scan watches NSE corporate
 announcements (results, concalls, investor presentations, guidance) and digests qualifying
 events into the dossier — so management guidance like "expects ~1% growth in FY27" enters

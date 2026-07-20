@@ -1,6 +1,6 @@
 # RL Design — Adaptive Prediction Loop
 
-> **Status (2026-07-18):** body verified through 2026-06-13; still the authoritative
+> **Status (2026-07-19):** body verified through 2026-06-13; still the authoritative
 > internals reference, with these post-audit deltas (details in
 > [audit/LEDGER.md](audit/LEDGER.md), map in [ARCHITECTURE.md](ARCHITECTURE.md)):
 > **(1) Direction semantics changed 2026-07-17 (Wave G):** a NEUTRAL prediction now counts
@@ -11,7 +11,12 @@
 > (yfinance×NSE cross-check + non-finite sanitizer). **(4) News context is date-filtered to
 > a 3-day window** (the "48h" label used to be aspirational). **(5)** The daily-review
 > harvest has a contained time budget; every run records an outcome to
-> `/scheduler/status last_runs`.
+> `/scheduler/status last_runs`. **(6) The adaptive layer is under formal measurement
+> (AUD-116, 2026-07-19):** a monthly Learning Evidence Report (§25) replays decisions
+> under adapted vs frozen vs uniform weights; first verdict over May+Jun prod data was
+> **LEARNING_INERT** (0/87 days diverged) — read
+> [audit/ADAPTIVE_LEARNING_REVIEW.md](audit/ADAPTIVE_LEARNING_REVIEW.md) before
+> trusting this document's learning-efficacy claims.
 
 > Complete reference for the self-learning RL feedback system.
 > Covers: 5 JSON memory files, full daily loop (Steps 0–9 incl. Step 8.5 dossier curator),
@@ -1743,6 +1748,21 @@ number instead of a claim.
 
 Settings: `RL_CONTROL_LANE_ENABLED` (True), `CONTROL_LANE_MODEL` (""), `SCORECARD_ENABLED`
 (True), `SCORECARD_DIR` (`data/eval/scorecards`). All flag-off paths byte-identical.
+
+- **Learning Evidence Report** (`eval/learning_evidence.py`, 2026-07-19, AUD-116): the
+  self-ablation the scorecard never runs — replays every logged day's frozen
+  `predicted_agent_scores` under ADAPTED (weights active strictly before that date) vs
+  frozen BASE vs UNIFORM weights through the shadow-lane verdict map, and reports
+  divergence rate + paired lift with an exact sign test, plus credit-degeneracy index,
+  weight entropy / poverty-trap diagnostics, per-lesson fired-vs-unfired lift (harmful
+  flag), Brier decomposition, and shadow-lane actuation stats. Verdict:
+  `LEARNING_INERT / ACTIVE_BENEFICIAL / ACTIVE_HARMFUL / ACTIVE_UNPROVEN /
+  INSUFFICIENT_DATA`. Runs inside `scorecard_monthly` (saved to
+  `LEARNING_EVIDENCE_DIR` = `data/eval/learning_evidence`, emailed) and on demand:
+  `python -m core.intelligence.rl.eval.learning_evidence --month YYYY-MM
+  [--months-back N] [--email]`. First run over May+Jun 2026 prod data:
+  **LEARNING_INERT — 0/87 replayed days diverged**. Scientific context and the
+  fix roadmap live in `docs/audit/ADAPTIVE_LEARNING_REVIEW.md` (gaps G1–G10).
 
 ---
 

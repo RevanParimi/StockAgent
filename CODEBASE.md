@@ -643,6 +643,7 @@ Models are tiered (2026-06-03 benchmark, `scripts/model_bench.py`; bulk re-bench
 | `CONTROL_LANE_MODEL` | `""` | Control model; empty → `LLM_MODEL_REASONING` |
 | `SCORECARD_ENABLED` | `true` | Monthly scorecard scheduler job (1st, 02:00 IST) |
 | `SCORECARD_DIR` | `data/eval/scorecards` | Persisted monthly scorecard time series |
+| `LEARNING_EVIDENCE_DIR` | `data/eval/learning_evidence` | Monthly Learning Evidence Report (self-ablation: adapted vs frozen vs uniform weights) |
 
 ### RL Phase 3 — Event-Driven Dossier Ingestion
 
@@ -792,6 +793,7 @@ All paths verified to exist. Paths are relative to project root.
 | `core/intelligence/rl/eval/` | Read-only eval harness: `python -m core.intelligence.rl.eval.run_eval [--synthetic] [--ablate ...]` |
 | `core/intelligence/rl/eval/baselines.py` | Naive baselines (persistence, always-up/down) for the monthly duel |
 | `core/intelligence/rl/eval/scorecard.py` | Monthly scorecard builder: agent vs control vs baselines + MoM deltas; CLI `run_schedule scorecard` |
+| `core/intelligence/rl/eval/learning_evidence.py` | Learning Evidence Report (AUD-116): counterfactual weight replay + sign test, credit-degeneracy, entropy/poverty-trap, per-lesson lift, Brier decomposition; CLI `python -m core.intelligence.rl.eval.learning_evidence` |
 | `core/intelligence/rl/agents/control_lane.py` | Bare-LLM control lane (daily review Step 10): same info, no architecture |
 | `core/intelligence/rl/agents/event_ingestor.py` | Event ingestion: NSE filings → dossier guidance/business (weekly + CLI `ingest-events`) |
 | `src/backend/shared/schemas/dossier.py` | TickerDossier schema + budgeted markdown digest (`to_digest`) |

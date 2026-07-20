@@ -100,7 +100,7 @@ The daily rhythm is the easiest way to understand the system:
 | 11 | Sat 12:30 | **Weekly discovery funnel** | Universe (~2,150) → 5-signal screen → dark signals → ~10 LLM deep-dives → conviction shelf → paper-lane envelopes + weekly paper reviews |
 | 12 | Sun 18:00 | Weekly review + index watch | Portfolio week-in-review narration + index RL check |
 | 13 | Mon 03:30 | Ledger stale-lesson cleanup | Ages out stale RL lessons |
-| 14 | 1st 02:00 | Monthly scorecard | Baseline duel: RL forecasts vs naive baselines per ticker |
+| 14 | 1st 02:00 | Monthly scorecard | Baseline duel: RL forecasts vs naive baselines per ticker; also builds + emails the Learning Evidence Report (adapted-vs-frozen-weights self-ablation, AUD-116) |
 | 15 | 1st 09:00 | Monthly forecast | Fresh 30-day envelope per managed ticker |
 | 16 | Dec 31 23:00 | NSE holiday calendar update | Refreshes next year's trading calendar |
 

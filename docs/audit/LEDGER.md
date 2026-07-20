@@ -1236,3 +1236,25 @@ notes below).
   — contradicted its own status banner (FileLock in store.py since Wave 1
   hardening); CHAT cost tables repriced to glm-5.2/deepseek and labeled as
   legacy-fallback-only; RL_DESIGN Step 5 "hardcoded" note updated.
+- **AUD-116 | DESIGN | P1 | rl adaptive layer | INSTRUMENTED (fix = hard-bind
+  decision 2026-07-31 + review doc §4 build order)** — self-ablation replay
+  over May+Jun prod data (87 replayable days, 5 tickers): learned weights
+  changed the composite-threshold decision on **0/87 days** — adapted, frozen
+  -base, and uniform weight lanes produced identical verdicts (all 31.0%
+  accuracy). Root causes (full science review:
+  `docs/audit/ADAPTIVE_LEARNING_REVIEW.md`, gaps G1–G10): pre-AUD-060 NEUTRAL
+  auto-hit reward contaminated all weight state (MARUTI June: 21/21 NEUTRAL
+  scored 21/21 correct); hit-credit identical across agents on 58.6% of days
+  (zero-bit learning signal); weights collapsed from engineered priors to
+  ~uniform on every ticker with prop_scale poverty traps (MARUTI sales_demand
+  0.027 despite 6/6 hits, cannot recover); verdict is LLM free-form so
+  learned state reaches decisions only as a prompt line (AUD-077's admitted
+  gap, now quantified). Also: 19/64 ledger lessons have negative fired-day
+  lift (worst −72pp on 5 fired days) — lessons are never outcome-validated.
+  Instrument shipped: `core/intelligence/rl/eval/learning_evidence.py`
+  (counterfactual replay + sign test, credit-degeneracy index, entropy/
+  poverty-trap diagnostics, per-lesson lift, Brier decomposition, shadow
+  actuation stats; verdict INERT/BENEFICIAL/HARMFUL/UNPROVEN/INSUFFICIENT).
+  Runs inside `scorecard_monthly` (saved to `LEARNING_EVIDENCE_DIR` +
+  emailed) and via CLI `python -m core.intelligence.rl.eval.learning_evidence`.
+  First verdict on record: **LEARNING_INERT** (2026-07-19, months 2026-05..06).

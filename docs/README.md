@@ -26,6 +26,7 @@ body text where they disagree.
 | [audit/CHARTER.md](audit/CHARTER.md) | The audit program's scope, protocol, and hotspot ranking |
 | [audit/LEDGER.md](audit/LEDGER.md) | Every finding (`AUD-###`) with evidence, severity, and fix status — the "why is the code like this" record |
 | [audit/MAP.md](audit/MAP.md) | System reality map: LIVE / DARK / DEAD census of every module at audit time |
+| [audit/ADAPTIVE_LEARNING_REVIEW.md](audit/ADAPTIVE_LEARNING_REVIEW.md) | Scientific review of the adaptive layer (gaps G1–G10) + how to read the monthly Learning Evidence Report (AUD-116) |
 
 ## Frozen history (do **not** update)
 

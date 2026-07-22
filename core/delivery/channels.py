@@ -125,7 +125,7 @@ def send_email(subject: str, body: str, attachments: list[Path] | None = None) -
 def send_push(
     title: str,
     body: str,
-    url: str = "/app/index.html",
+    url: str = "/",
     user_id: str | None = None,
     store: PushStore | None = None,
 ) -> int:
@@ -167,7 +167,7 @@ def send_push(
 
 
 def deliver(
-    title: str, body: str, url: str = "/app/index.html", user_id: str | None = None
+    title: str, body: str, url: str = "/", user_id: str | None = None
 ) -> dict:
     """Fan one message out to all configured channels. Never raises."""
     if not settings.DELIVERY_ENABLED:

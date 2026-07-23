@@ -44,9 +44,27 @@ def test_send_email_smtp_flow(monkeypatch):
     monkeypatch.setattr(ch.settings, "SMTP_USER", "u@example.com")
     monkeypatch.setattr(ch.settings, "SMTP_PASSWORD", "pw")
     monkeypatch.setattr(ch.settings, "DELIVERY_EMAIL_TO", "me@example.com")
+    monkeypatch.setattr(ch.settings, "APP_PUBLIC_URL", "https://app.example")
     monkeypatch.setattr(ch.smtplib, "SMTP", _FakeSMTP)
     assert send_email("Subject", "Body") is True
     assert sent["to"] == ["me@example.com"] and sent["tls"] and sent["login"] == "u@example.com"
+    # AUD: every email carries a footer link back to the app (payload is
+    # base64-encoded in the MIME message, so decode before asserting).
+    import email as _email
+    decoded = _email.message_from_string(sent["msg"]).get_payload(decode=True).decode("utf-8")
+    assert "https://app.example/" in decoded
+
+
+def test_with_app_link_appends_once_and_respects_unset():
+    # Appends when set…
+    ch.settings.APP_PUBLIC_URL = "https://app.example"
+    body = ch._with_app_link("hello")
+    assert body.endswith("Open StockAgent → https://app.example/")
+    # …idempotent — a body that already has the link is unchanged.
+    assert ch._with_app_link(body) == body
+    # …and a no-op when APP_PUBLIC_URL is empty.
+    ch.settings.APP_PUBLIC_URL = ""
+    assert ch._with_app_link("hello") == "hello"
 
 
 def test_send_push_fans_out_and_prunes_expired(tmp_path, monkeypatch):

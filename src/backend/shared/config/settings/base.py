@@ -865,6 +865,15 @@ DELIVERY_INDEX_WATCH: list[str] = list(cfg(
     fallback=["NIFTY 50", "NIFTY NEXT 50", "NIFTY MIDCAP 150", "NIFTY SMALLCAP 250"],
 ))
 
+# Public base URL of the deployed app — appended as a footer link to every
+# notification email so each one is one tap from opening the app. Railway sets
+# RAILWAY_PUBLIC_DOMAIN automatically; APP_PUBLIC_URL overrides it explicitly.
+APP_PUBLIC_URL: str = (
+    os.getenv("APP_PUBLIC_URL")
+    or (f"https://{os.getenv('RAILWAY_PUBLIC_DOMAIN')}" if os.getenv("RAILWAY_PUBLIC_DOMAIN") else "")
+    or "https://stockagent-ai.up.railway.app"
+).rstrip("/")
+
 # Delivery secrets — .env ONLY (never config.yaml), same pattern as OPENROUTER_API_KEY.
 SMTP_HOST: str = os.getenv("SMTP_HOST", "")
 SMTP_PORT: int = int(os.getenv("SMTP_PORT", "587"))

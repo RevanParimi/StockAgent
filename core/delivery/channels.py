@@ -88,6 +88,16 @@ class PushStore:
         return sorted(uid for uid, subs in self._load().items() if subs)
 
 
+def _with_app_link(body: str) -> str:
+    """Append a footer that links back to the app, so every notification email
+    is one tap from opening it. No-op when APP_PUBLIC_URL is unset or the link
+    is already present (idempotent)."""
+    url = (getattr(settings, "APP_PUBLIC_URL", "") or "").rstrip("/")
+    if not url or url in body:
+        return body
+    return f"{body.rstrip()}\n\n----------\nOpen StockAgent → {url}/"
+
+
 def send_email(subject: str, body: str, attachments: list[Path] | None = None) -> bool:
     """SMTP STARTTLS send to DELIVERY_EMAIL_TO. False when disabled/unconfigured
     or on any failure — never raises. `attachments` (AUD-088): file paths to
@@ -95,6 +105,7 @@ def send_email(subject: str, body: str, attachments: list[Path] | None = None) -
     if not (settings.DELIVERY_EMAIL_ENABLED and settings.SMTP_HOST
             and settings.DELIVERY_EMAIL_TO):
         return False
+    body = _with_app_link(body)
     try:
         if attachments:
             msg: MIMEText | MIMEMultipart = MIMEMultipart()

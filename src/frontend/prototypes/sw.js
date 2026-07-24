@@ -6,7 +6,7 @@
  *   - same-origin static GET -> stale-while-revalidate
  *   - cross-origin CDN libs  -> cache-first
  */
-const VERSION = 'v5';
+const VERSION = 'v6';
 const SHELL_CACHE = `sa-shell-${VERSION}`;
 const RUNTIME_CACHE = `sa-runtime-${VERSION}`;
 
@@ -15,6 +15,7 @@ const SHELL = [
   '/data.jsx', '/icons.jsx', '/sphere.jsx', '/auth.jsx', '/home.jsx',
   '/agents-page.jsx', '/portfolio.jsx', '/learn.jsx', '/tweaks-panel.jsx',
   '/prompt-lab.jsx', '/analytics.jsx', '/logs.jsx', '/rl-data.jsx', '/rl-monitor.jsx',
+  '/inbox.jsx',
   '/icons/pwa-192x192.png', '/icons/pwa-512x512.png', '/icons/pwa-maskable-512x512.png',
   '/icons/apple-touch-icon.png', '/icons/favicon-32x32.png',
 ];
@@ -139,7 +140,13 @@ self.addEventListener('notificationclick', (event) => {
   const url = (event.notification.data && event.notification.data.url) || '/';
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then((wins) => {
-      for (const w of wins) { if ('focus' in w) return w.focus(); }
+      for (const w of wins) {
+        if ('focus' in w) {
+          // Warm tap: tell the open app where to go, then bring it forward.
+          w.postMessage({ type: 'sa-open', url });
+          return w.focus();
+        }
+      }
       return clients.openWindow(url);
     })
   );

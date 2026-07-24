@@ -205,6 +205,7 @@ def run_post_review_pipeline(review_date: date) -> dict:
                 f"{len(advice)} holdings reviewed; {n_esc} escalation(s)"
                 + (f"; {len(txns)} trade(s) executed" if txns else "")
                 + ". Open the app or ask the chat for 'brief' for details.",
+                url="/#/inbox/digest",
                 user_id=user_id,
             )
         except Exception as exc:

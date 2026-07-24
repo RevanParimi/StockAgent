@@ -244,7 +244,8 @@ def run_weekly_review(on: date | None = None) -> dict:
             store = PortfolioStore(user_id=user_id)
             review = build_weekly_review(user_id, on, store=store)
             store.save_weekly(review)
-            deliver(f"Weekly review — {on}", render_weekly_text(review), user_id=user_id)
+            deliver(f"Weekly review — {on}", render_weekly_text(review),
+                    url="/#/inbox/weekly", user_id=user_id)
             built += 1
         except Exception as exc:
             logger.warning("[weekly] build failed for %s (non-fatal): %s", user_id, exc)

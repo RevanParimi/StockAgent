@@ -121,3 +121,20 @@ def test_overnight_items_read_cache_title_field(monkeypatch):
         {"headline": "Fed shock", "severity": "HIGH"},
         {"headline": "RBI policy surprise", "severity": "HIGH"},
     ]
+
+
+def test_run_brief_delivers_inbox_deeplink(tmp_path, monkeypatch):
+    from core.config import settings
+    captured = {}
+    monkeypatch.setattr(br, "is_trading_day", lambda on: True)
+    monkeypatch.setattr(br, "list_user_ids", lambda: ["u1"])
+    monkeypatch.setattr(br, "build_morning_brief",
+                        lambda uid, on, store=None: {"date": on.isoformat(),
+                                                     "kind": "morning_brief",
+                                                     "lockin_flags": []})
+    monkeypatch.setattr(br, "render_brief_text", lambda b: "text")
+    monkeypatch.setattr(br, "deliver",
+                        lambda *a, **k: captured.update(k) or {"delivered": True})
+    monkeypatch.setattr(settings, "PORTFOLIO_DATA_DIR", str(tmp_path))
+    br.run_morning_brief(date(2026, 7, 22))
+    assert captured["url"] == "/#/inbox/brief"

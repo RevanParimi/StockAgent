@@ -99,3 +99,14 @@ def test_emit_same_event_same_user_still_dedupes(tmp_path):
         out2 = emit_alerts([_ev()], user_id="a", sent_log=log)
     assert out1["emitted"] == 1 and out2["emitted"] == 0
     assert m.call_count == 1
+
+
+def test_emit_alerts_delivers_inbox_deeplink(tmp_path, monkeypatch):
+    captured = {}
+    monkeypatch.setattr(al, "deliver",
+                        lambda *a, **k: captured.update(k) or {"delivered": True})
+    al.emit_alerts(
+        [al.AlertEvent(date="2026-07-22", kind="test", symbol="X",
+                       message="m", severity="warning")],
+        user_id="u1", sent_log=str(tmp_path / "sent.jsonl"))
+    assert captured["url"] == "/#/inbox/alerts"

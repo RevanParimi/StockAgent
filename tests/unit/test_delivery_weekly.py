@@ -98,3 +98,18 @@ def test_run_weekly_saves_and_delivers(tmp_path, monkeypatch):
     assert out["status"] == "completed" and m.call_count == 1
     saved = PortfolioStore(user_id="u1", base_dir=str(tmp_path)).load_latest_weekly()
     assert saved and saved["kind"] == "weekly_review"
+
+
+def test_run_weekly_delivers_inbox_deeplink(tmp_path, monkeypatch):
+    from core.config import settings
+    captured = {}
+    monkeypatch.setattr(wk, "list_user_ids", lambda: ["u1"])
+    monkeypatch.setattr(wk, "build_weekly_review",
+                        lambda uid, on, store=None: {"date": on.isoformat(),
+                                                     "kind": "weekly_review"})
+    monkeypatch.setattr(wk, "render_weekly_text", lambda r: "text")
+    monkeypatch.setattr(wk, "deliver",
+                        lambda *a, **k: captured.update(k) or {"delivered": True})
+    monkeypatch.setattr(settings, "PORTFOLIO_DATA_DIR", str(tmp_path))
+    wk.run_weekly_review(date(2026, 7, 22))
+    assert captured["url"] == "/#/inbox/weekly"

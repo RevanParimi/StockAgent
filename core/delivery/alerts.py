@@ -145,7 +145,7 @@ def emit_alerts(
         delivered = False
         outcome: dict = {}
         try:
-            outcome = deliver(title, body, user_id=user_id) or {}
+            outcome = deliver(title, body, url="/#/inbox/alerts", user_id=user_id) or {}
             delivered = bool(outcome.get("delivered"))
         except Exception as exc:
             logger.warning("[alerts] delivery failed (non-fatal): %s", exc)

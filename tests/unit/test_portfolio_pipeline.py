@@ -69,7 +69,9 @@ def test_pipeline_end_to_end(monkeypatch, tmp_path):
     # regardless of what verdict the advisor computes (see test_delivery_alerts.py
     # for emit_alerts' own dedupe/persist behaviour).
     monkeypatch.setattr(alerts_mod, "emit_alerts", lambda *a, **k: {"emitted": 0})
-    monkeypatch.setattr(channels_mod, "deliver", lambda *a, **k: {"delivered": False})
+    delivered_kwargs = {}
+    monkeypatch.setattr(channels_mod, "deliver",
+                        lambda *a, **k: delivered_kwargs.update(k) or {"delivered": False})
 
     class _FakePredStore:
         def __init__(self, ticker, sector=None):
@@ -93,6 +95,7 @@ def test_pipeline_end_to_end(monkeypatch, tmp_path):
     # Digest persisted
     digest = store.load_latest_digest()
     assert digest is not None and digest["date"] == REVIEW_DATE.isoformat()
+    assert delivered_kwargs.get("url") == "/#/inbox/digest"
 
 
 def test_pipeline_holding_failure_is_non_fatal(monkeypatch, tmp_path):

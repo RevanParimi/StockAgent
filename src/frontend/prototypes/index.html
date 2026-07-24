@@ -167,9 +167,24 @@ const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
   "density": "comfy"
 }/*EDITMODE-END*/;
 
+// Notification deep links: '#/inbox' or '#/inbox/<brief|digest|weekly|alerts>'.
+// One-shot: consumed (removed from the URL) so refresh doesn't re-trigger.
+function saConsumeDeepLink() {
+  const m = /^#\/inbox(?:\/(brief|digest|weekly|alerts))?$/.exec(location.hash || '');
+  if (!m) return null;
+  history.replaceState(null, '', location.pathname + location.search);
+  return { screen: 'inbox', tab: m[1] || 'brief' };
+}
+
 function App() {
   const [tweaks, setTweak] = useTweaks(TWEAK_DEFAULTS);
-  const [screen, setScreen] = useState('auth');
+  const [deepLink] = useState(saConsumeDeepLink);          // lazy: runs once
+  const remembered = localStorage.getItem('sa_remembered') === '1';
+  const [screen, setScreen] = useState(
+    remembered ? (deepLink ? deepLink.screen : 'home') : 'auth');
+  const [inboxTab, setInboxTab] = useState(deepLink ? deepLink.tab : 'brief');
+  // Where to land after login when the tap arrived logged-out:
+  const [pendingDest, setPendingDest] = useState(!remembered && deepLink ? deepLink : null);
   const [chat, setChat] = useState(false);
   const [, forceRender] = useState(0);
 
@@ -184,21 +199,52 @@ function App() {
     return () => { window.__onApiReady = null; };
   }, []);
 
-  const goHome = () => setScreen('home');
-  const goAgents = () => setScreen('agents');
+  // Warm notification tap: SW posts {type:'sa-open', url:'/#/inbox/<tab>'}.
+  useEffect(() => {
+    if (!('serviceWorker' in navigator)) return;
+    const onMsg = (e) => {
+      const d = e.data || {};
+      if (d.type !== 'sa-open') return;
+      const m = /#\/inbox(?:\/(brief|digest|weekly|alerts))?$/.exec(d.url || '');
+      const tab = (m && m[1]) || 'brief';
+      setInboxTab(tab);
+      if (localStorage.getItem('sa_remembered') === '1') setScreen('inbox');
+      else { setPendingDest({ screen: 'inbox', tab }); setScreen('auth'); }
+    };
+    navigator.serviceWorker.addEventListener('message', onMsg);
+    return () => navigator.serviceWorker.removeEventListener('message', onMsg);
+  }, []);
+
+  const nav = (s) => {
+    if (s === 'auth') localStorage.removeItem('sa_remembered');   // sign out
+    setScreen(s);
+  };
+  const goHome = () => nav('home');
+  const goAgents = () => nav('agents');
+  const onAuthed = (remember) => {
+    if (remember) localStorage.setItem('sa_remembered', '1');
+    if (pendingDest) {
+      setInboxTab(pendingDest.tab);
+      setScreen(pendingDest.screen);
+      setPendingDest(null);
+    } else {
+      setScreen('home');
+    }
+  };
   const openChat = () => setChat(true);
   const closeChat = () => setChat(false);
 
   return <>
-    {screen === 'auth' && <AuthScreen onAuthed={goHome}/>}
-    {screen === 'home' && <Home onNav={setScreen} openChat={openChat}/>}
-    {screen === 'agents' && <AgentsPage onNav={setScreen} openChat={openChat}/>}
-    {screen === 'portfolio' && <PortfolioPage onNav={setScreen} openChat={openChat}/>}
-    {screen === 'learn' && <LearnPage onNav={setScreen} openChat={openChat}/>}
-    {screen === 'prompt-lab' && <PromptLabPage onNav={setScreen}/>}
-    {screen === 'analytics' && <AnalyticsPage onNav={setScreen}/>}
-    {screen === 'logs'      && <LogsPage onNav={setScreen}/>}
-    {screen === 'rl-monitor' && <RLMonitorPage onNav={setScreen}/>}
+    {screen === 'auth' && <AuthScreen onAuthed={onAuthed}/>}
+    {screen === 'home' && <Home onNav={nav} openChat={openChat}/>}
+    {screen === 'agents' && <AgentsPage onNav={nav} openChat={openChat}/>}
+    {screen === 'portfolio' && <PortfolioPage onNav={nav} openChat={openChat}/>}
+    {screen === 'learn' && <LearnPage onNav={nav} openChat={openChat}/>}
+    {screen === 'prompt-lab' && <PromptLabPage onNav={nav}/>}
+    {screen === 'analytics' && <AnalyticsPage onNav={nav}/>}
+    {screen === 'logs'      && <LogsPage onNav={nav}/>}
+    {screen === 'rl-monitor' && <RLMonitorPage onNav={nav}/>}
+    {screen === 'inbox' && <InboxPage onNav={nav} tab={inboxTab} setTab={setInboxTab}/>}
 
     {/* Floating orb on non-auth screens */}
     {screen !== 'auth' && !chat && <SphereOrb onOpen={openChat} mode={tweaks.sphereMode}/>}
@@ -212,11 +258,11 @@ function App() {
         display:'flex', gap:6, padding:6, background:'var(--bg-surface)',
         border:'1px solid var(--border)', borderRadius:999, boxShadow:'var(--shadow-md)'
       }}>
-        <NavChip active={screen==='prompt-lab'} onClick={()=>setScreen('prompt-lab')} icon={<Icon.Settings size={14}/>} label="Prompt Lab"/>
-        <NavChip active={screen==='analytics'} onClick={()=>setScreen('analytics')} icon={<Icon.Trend size={14}/>} label="Analytics"/>
-        <NavChip active={screen==='logs'} onClick={()=>setScreen('logs')} icon={<Icon.Layers size={14}/>} label="Logs"/>
-        <NavChip active={screen==='rl-monitor'} onClick={()=>setScreen('rl-monitor')} icon={<Icon.Activity size={14}/>} label="RL Monitor"/>
-        <NavChip onClick={()=>setScreen('auth')} icon={<Icon.User size={14}/>} label="Sign out"/>
+        <NavChip active={screen==='prompt-lab'} onClick={()=>nav('prompt-lab')} icon={<Icon.Settings size={14}/>} label="Prompt Lab"/>
+        <NavChip active={screen==='analytics'} onClick={()=>nav('analytics')} icon={<Icon.Trend size={14}/>} label="Analytics"/>
+        <NavChip active={screen==='logs'} onClick={()=>nav('logs')} icon={<Icon.Layers size={14}/>} label="Logs"/>
+        <NavChip active={screen==='rl-monitor'} onClick={()=>nav('rl-monitor')} icon={<Icon.Activity size={14}/>} label="RL Monitor"/>
+        <NavChip onClick={()=>nav('auth')} icon={<Icon.User size={14}/>} label="Sign out"/>
       </div>
     )}
 
@@ -241,15 +287,15 @@ function App() {
         ]} onChange={v=>setTweak('density', v)}/>
       </TweakSection>
       <TweakSection title="Quick jump">
-        <TweakButton onClick={()=>setScreen('auth')}>Open auth screen</TweakButton>
+        <TweakButton onClick={()=>nav('auth')}>Open auth screen</TweakButton>
         <TweakButton onClick={goHome}>Open home</TweakButton>
         <TweakButton onClick={goAgents}>Open agents</TweakButton>
-        <TweakButton onClick={()=>setScreen('portfolio')}>Open portfolio</TweakButton>
-        <TweakButton onClick={()=>setScreen('learn')}>Open learn</TweakButton>
-        <TweakButton onClick={()=>setScreen('prompt-lab')}>Open prompt lab</TweakButton>
-        <TweakButton onClick={()=>setScreen('analytics')}>Open analytics</TweakButton>
-        <TweakButton onClick={()=>setScreen('logs')}>Open logs</TweakButton>
-        <TweakButton onClick={()=>setScreen('rl-monitor')}>Open RL Monitor</TweakButton>
+        <TweakButton onClick={()=>nav('portfolio')}>Open portfolio</TweakButton>
+        <TweakButton onClick={()=>nav('learn')}>Open learn</TweakButton>
+        <TweakButton onClick={()=>nav('prompt-lab')}>Open prompt lab</TweakButton>
+        <TweakButton onClick={()=>nav('analytics')}>Open analytics</TweakButton>
+        <TweakButton onClick={()=>nav('logs')}>Open logs</TweakButton>
+        <TweakButton onClick={()=>nav('rl-monitor')}>Open RL Monitor</TweakButton>
       </TweakSection>
     </TweaksPanel>
   </>;

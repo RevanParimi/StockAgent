@@ -7,8 +7,9 @@ function AuthScreen({ onAuthed }) {
   const [email, setEmail] = useStateAuth('');
   const [name, setName] = useStateAuth('');
   const [pw, setPw] = useStateAuth('');
+  const [remember, setRemember] = useStateAuth(true);
 
-  const submit = (e) => { e.preventDefault(); onAuthed(); };
+  const submit = (e) => { e.preventDefault(); onAuthed(remember); };
 
   return (
     <div className="auth-layout" style={{
@@ -127,7 +128,7 @@ function AuthScreen({ onAuthed }) {
             {tab==='login' && (
               <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', fontSize:12 }}>
                 <label style={{ display:'flex', alignItems:'center', gap:6, color:'var(--ink-2)', cursor:'pointer' }}>
-                  <input type="checkbox" defaultChecked/> Remember me
+                  <input type="checkbox" checked={remember} onChange={e=>setRemember(e.target.checked)}/> Remember me
                 </label>
                 <a href="#" style={{ color:'var(--cyan)', textDecoration:'none', fontWeight:600 }}>Forgot?</a>
               </div>
@@ -148,8 +149,8 @@ function AuthScreen({ onAuthed }) {
           </div>
 
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
-            <SocialBtn onClick={onAuthed} icon={<Icon.Google size={18}/>} label="Google"/>
-            <SocialBtn onClick={onAuthed} icon={<Icon.Apple size={18}/>} label="Apple"/>
+            <SocialBtn onClick={()=>onAuthed(remember)} icon={<Icon.Google size={18}/>} label="Google"/>
+            <SocialBtn onClick={()=>onAuthed(remember)} icon={<Icon.Apple size={18}/>} label="Apple"/>
           </div>
 
           <p style={{ marginTop:24, fontSize:12, color:'var(--ink-3)', textAlign:'center' }}>

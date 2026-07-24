@@ -33,24 +33,32 @@ def _check_auth(key: str | None) -> None:
 @router.get("/brief/latest", summary="Latest morning brief")
 async def brief_latest(
     user_id: str | None = Query(default=None),
+    format: str | None = Query(default=None, description="'text' → rendered text"),
     x_scheduler_key: str | None = Header(default=None),
 ) -> dict:
     _check_auth(x_scheduler_key)
     brief = PortfolioStore(user_id=user_id).load_latest_brief()
     if brief is None:
         raise HTTPException(status_code=404, detail="No brief yet — run POST /delivery/run-brief.")
+    if format == "text":
+        from core.delivery.brief import render_brief_text
+        return {"date": brief.get("date"), "text": render_brief_text(brief)}
     return brief
 
 
 @router.get("/weekly/latest", summary="Latest weekly review")
 async def weekly_latest(
     user_id: str | None = Query(default=None),
+    format: str | None = Query(default=None, description="'text' → rendered text"),
     x_scheduler_key: str | None = Header(default=None),
 ) -> dict:
     _check_auth(x_scheduler_key)
     review = PortfolioStore(user_id=user_id).load_latest_weekly()
     if review is None:
         raise HTTPException(status_code=404, detail="No weekly review yet — run POST /delivery/run-weekly.")
+    if format == "text":
+        from core.delivery.weekly import render_weekly_text
+        return {"date": review.get("date"), "text": render_weekly_text(review)}
     return review
 
 

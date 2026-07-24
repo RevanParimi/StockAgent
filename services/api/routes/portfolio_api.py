@@ -314,12 +314,16 @@ async def get_advice(
 @router.get("/digest/latest", summary="Latest EOD digest")
 async def get_latest_digest(
     user_id: str | None = Query(default=None),
+    format: str | None = Query(default=None, description="'text' → rendered text"),
     x_scheduler_key: str | None = Header(default=None),
 ) -> dict:
     _check_auth(x_scheduler_key)
     digest = _store(user_id).load_latest_digest()
     if digest is None:
         raise HTTPException(status_code=404, detail="No digest yet — run the advisor first.")
+    if format == "text":
+        from core.portfolio.digest_text import render_digest_text
+        return {"date": digest.get("date"), "text": render_digest_text(digest)}
     return digest
 
 

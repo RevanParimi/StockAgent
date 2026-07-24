@@ -108,3 +108,25 @@ def test_auth_enforced_when_key_set(monkeypatch, tmp_path):
     assert c.get("/delivery/brief/latest").status_code == 403
     assert c.get("/delivery/brief/latest",
                  headers={"X-Scheduler-Key": "sekret"}).status_code in (200, 404)
+
+
+def test_brief_latest_format_text(monkeypatch, tmp_path):
+    monkeypatch.setattr(dapi.settings, "PORTFOLIO_DATA_DIR", str(tmp_path))
+    from core.portfolio.store import PortfolioStore
+    PortfolioStore(base_dir=str(tmp_path)).save_brief(
+        {"date": "2026-07-22", "kind": "morning_brief", "headline": "Calm open."})
+    resp = _client().get("/delivery/brief/latest?format=text")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["date"] == "2026-07-22"
+    assert body["text"].startswith("Morning brief — 2026-07-22")
+
+
+def test_weekly_latest_format_text(monkeypatch, tmp_path):
+    monkeypatch.setattr(dapi.settings, "PORTFOLIO_DATA_DIR", str(tmp_path))
+    from core.portfolio.store import PortfolioStore
+    PortfolioStore(base_dir=str(tmp_path)).save_weekly(
+        {"date": "2026-07-20", "kind": "weekly_review"})
+    resp = _client().get("/delivery/weekly/latest?format=text")
+    assert resp.status_code == 200
+    assert resp.json()["text"].startswith("Weekly review — 2026-07-20")

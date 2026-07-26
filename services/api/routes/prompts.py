@@ -44,10 +44,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, Header, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel
 
-from services.api.auth import check_scheduler_key
+from services.api.auth import require_owner
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/ui/prompts", tags=["Prompts"])
@@ -451,8 +451,7 @@ class DeployResult(BaseModel):
 # ---------------------------------------------------------------------------
 
 @router.get("/catalogue", summary="List all sectors and their agent names")
-async def get_catalogue(x_scheduler_key: str | None = Header(default=None)) -> dict:
-    check_scheduler_key(x_scheduler_key, context="prompts")
+async def get_catalogue(_owner: dict = Depends(require_owner)) -> dict:
     return {
         "catalogue": [
             {
@@ -469,13 +468,12 @@ async def get_catalogue(x_scheduler_key: str | None = Header(default=None)) -> d
 
 
 @router.get("/pending", summary="List prompt files modified since last deploy")
-async def get_pending(x_scheduler_key: str | None = Header(default=None)) -> dict:
-    check_scheduler_key(x_scheduler_key, context="prompts")
+async def get_pending(_owner: dict = Depends(require_owner)) -> dict:
     return {"pending": _load_pending()}
 
 
 @router.get("/status", summary="Pending count, next scheduled deploy time, last deploy result")
-async def get_deploy_status(x_scheduler_key: str | None = Header(default=None)) -> dict:
+async def get_deploy_status(_owner: dict = Depends(require_owner)) -> dict:
     """
     Used by the Prompt Lab UI to show the deploy schedule indicator.
 
@@ -486,7 +484,6 @@ async def get_deploy_status(x_scheduler_key: str | None = Header(default=None)) 
       last_deploy     — result dict from the most recent deploy (or null)
       scheduler_configured — true if GITHUB_TOKEN + GITHUB_REPO are set
     """
-    check_scheduler_key(x_scheduler_key, context="prompts")
     return {
         "pending_count":         len(_load_pending()),
         "pending":               _load_pending(),
@@ -500,8 +497,7 @@ async def get_deploy_status(x_scheduler_key: str | None = Header(default=None)) 
 
 @router.get("/{sector}/{agent}", summary="Read a prompt file's three sections")
 async def get_prompt(sector: str, agent: str,
-                     x_scheduler_key: str | None = Header(default=None)) -> dict:
-    check_scheduler_key(x_scheduler_key, context="prompts")
+                     _owner: dict = Depends(require_owner)) -> dict:
     if sector not in _CATALOGUE:
         raise HTTPException(status_code=404, detail=f"Unknown sector '{sector}'")
     if agent not in _CATALOGUE[sector]["agents"]:
@@ -525,8 +521,7 @@ async def get_prompt(sector: str, agent: str,
 
 @router.put("/{sector}/{agent}", summary="Save updated prompt content to disk")
 async def put_prompt(sector: str, agent: str, body: PromptBody,
-                     x_scheduler_key: str | None = Header(default=None)) -> dict:
-    check_scheduler_key(x_scheduler_key, context="prompts")
+                     _owner: dict = Depends(require_owner)) -> dict:
     if sector not in _CATALOGUE:
         raise HTTPException(status_code=404, detail=f"Unknown sector '{sector}'")
     if agent not in _CATALOGUE[sector]["agents"]:
@@ -577,7 +572,7 @@ async def put_prompt(sector: str, agent: str, body: PromptBody,
 
 
 @router.post("/deploy", summary="Manual override: deploy now instead of waiting for midnight")
-async def deploy_prompts(x_scheduler_key: str | None = Header(default=None)) -> DeployResult:
+async def deploy_prompts(_owner: dict = Depends(require_owner)) -> DeployResult:
     """
     Emergency override — pushes pending changes immediately.
 
@@ -587,7 +582,6 @@ async def deploy_prompts(x_scheduler_key: str | None = Header(default=None)) -> 
 
     Requires GITHUB_TOKEN + GITHUB_REPO env vars set in Railway.
     """
-    check_scheduler_key(x_scheduler_key, context="prompts")
     import asyncio
     result = await asyncio.to_thread(run_scheduled_deploy, "manual")
     return DeployResult(

@@ -101,13 +101,16 @@ def test_push_subscribe_and_unsubscribe(monkeypatch, tmp_path):
     assert resp.json()["removed"] is True
 
 
-def test_auth_enforced_when_key_set(monkeypatch, tmp_path):
+def test_auth_enforced_when_auth_required(monkeypatch, tmp_path):
+    # M0.1: brief reads need a logged-in user (session), not the key.
     monkeypatch.setattr(dapi.settings, "PORTFOLIO_DATA_DIR", str(tmp_path))
-    monkeypatch.setenv("SCHEDULER_KEY", "sekret")
+    from core.config import settings
+    monkeypatch.setattr(settings, "AUTH_REQUIRED", True, raising=False)
     c = _client()
-    assert c.get("/delivery/brief/latest").status_code == 403
-    assert c.get("/delivery/brief/latest",
-                 headers={"X-Scheduler-Key": "sekret"}).status_code in (200, 404)
+    assert c.get("/delivery/brief/latest").status_code == 401
+    # single-user mode (AUTH_REQUIRED=false): anonymous = owner → 200/404
+    monkeypatch.setattr(settings, "AUTH_REQUIRED", False, raising=False)
+    assert c.get("/delivery/brief/latest").status_code in (200, 404)
 
 
 def test_brief_latest_format_text(monkeypatch, tmp_path):

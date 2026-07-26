@@ -46,6 +46,17 @@ from core.schemas.pipeline import (
 # ---------------------------------------------------------------------------
 
 @pytest.fixture(autouse=True)
+def _auth_defaults(monkeypatch):
+    """M0.1: keep the suite deterministic regardless of the developer's .env.
+    base.py load_dotenv() means a local AUTH_REQUIRED=true / SCHEDULER_KEY
+    would flip route auth for every test (anonymous 401s across the board).
+    Pin the shipped defaults here; enforcement tests set them explicitly."""
+    from core.config import settings as _settings
+    monkeypatch.setattr(_settings, "AUTH_REQUIRED", False, raising=False)
+    monkeypatch.delenv("SCHEDULER_KEY", raising=False)
+
+
+@pytest.fixture(autouse=True)
 def _no_real_deliveries(monkeypatch, tmp_path):
     """Delivery transports are inert under pytest (2026-07-16 incident: the
     AUD-050 quarantine tests emailed real [ALERT]s for fixture users u1/u9

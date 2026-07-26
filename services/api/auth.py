@@ -63,3 +63,22 @@ async def get_current_user(
     if user is None:
         raise HTTPException(status_code=401, detail="Login required.")
     return user
+
+
+async def require_owner(
+        authorization: str | None = Header(None),
+        x_scheduler_key: str | None = Header(None)) -> dict:
+    """M0.1: owner-or-machine gate for config/trigger routes.
+
+    Passes when the request carries EITHER a valid **owner** session (human,
+    from the login screen) OR the exact SCHEDULER_KEY header (server-to-server
+    machine calls). Browsers therefore never need the key — the key becomes
+    purely server-side. Members get 403; anonymous follows AUTH_REQUIRED
+    (owner-passthrough when false, 401 when true)."""
+    required = os.getenv("SCHEDULER_KEY", "")
+    if required and x_scheduler_key == required:
+        return _owner_passthrough()        # machine identity acts as owner
+    user = await get_current_user(authorization)   # 401 on anonymous/invalid
+    if user.get("role") != "owner":
+        raise HTTPException(status_code=403, detail="Owner only.")
+    return user

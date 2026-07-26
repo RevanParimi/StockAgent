@@ -442,7 +442,8 @@ curl -s -o /dev/null -w "%{http_code}\n" "$BASE/auth/me"                  # expe
 
 # Ops checklist (user actions — track here, nag politely)
 
-- [ ] Railway variable typo: rename `SCHEDULAR_KEY` → `SCHEDULER_KEY` (value can stay; consider rotating later — it appeared in a chat screenshot 2026-07-26).
+- [x] Railway variable typo: rename `SCHEDULAR_KEY` → `SCHEDULER_KEY` — DONE 2026-07-26 (user). Prod redeploy healthy (probes 200/200/401/401). Verified this does NOT 403 any browser route: `check_scheduler_key` has zero active call sites (M0.1 moved all config/trigger routes to `require_owner`); the rename only activates `require_owner`'s additive machine-key path (owner session still works).
+- [ ] **ROTATE `SCHEDULER_KEY` now (newly recommended).** The rename flipped the screenshot-exposed value from inert (typo'd env name ⇒ `os.getenv("SCHEDULER_KEY")` was `""` ⇒ machine path dead) to a **live owner-equivalent credential** (`require_owner` accepts `X-Scheduler-Key == SCHEDULER_KEY` as owner). Generate a fresh random value in Railway → nothing in the browser needs the key (owner uses the session), so zero client impact.
 - [ ] Notification deep-link phone test: after key rename, fire `POST /delivery/run-brief` (owner session or key), push arrives → tap with app fully closed → must land on Inbox → Brief tab.
 - [ ] Invites for friends — only AFTER Phase A is deployed (push/chat privacy fixes).
 - [ ] Backup PII: once user #2 exists, access-control the nightly backup destination (email).

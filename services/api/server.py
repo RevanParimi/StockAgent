@@ -52,6 +52,7 @@ from services.api.routes.portfolio_api import router as portfolio_router
 from services.api.routes.discovery_api import router as discovery_router
 from services.api.routes.delivery_api import router as delivery_router
 from services.api.routes.rl_monitor import router as rl_monitor_router
+from services.api.routes.auth_api import router as auth_router
 from core.portfolio.store import QuarantinedPortfolioError
 
 _IST = timezone(timedelta(hours=5, minutes=30))
@@ -362,6 +363,16 @@ async def lifespan(app: FastAPI):
             sweep_expired()
         except Exception as exc:
             logger.warning("[startup] Chat session sweep failed (non-fatal): %s", exc)
+
+        # 5. M0: session TTL sweep (users.db; only the singleton owner sweeps,
+        #    same guard as the chat sweep above)
+        try:
+            from services.data.stores.user_store import sweep_expired_sessions
+            swept = sweep_expired_sessions()
+            if swept:
+                logger.info("[startup] Swept %d expired auth sessions", swept)
+        except Exception as exc:
+            logger.warning("[startup] Auth session sweep failed (non-fatal): %s", exc)
     else:
         logger.info(
             "[startup] Singleton lock held by another worker — "
@@ -430,6 +441,7 @@ app.include_router(portfolio_router,  tags=["Portfolio"])
 app.include_router(discovery_router,  tags=["Discovery"])
 app.include_router(delivery_router,   tags=["Delivery"])
 app.include_router(rl_monitor_router, tags=["RL Monitor"])
+app.include_router(auth_router,      tags=["Auth"])
 
 
 # NOTE: "/" is served by the SPA catch-all at the bottom of this module

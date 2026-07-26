@@ -526,7 +526,7 @@ Models are tiered (2026-06-03 benchmark, `scripts/model_bench.py`; bulk re-bench
 | `SCHEDULER_CRON` | `30 8 * * 1-5` | Cron for scheduled analysis runs (8:30am IST weekdays) |
 | `SCHEDULER_TICKERS` | `MARUTI,TATAMOTORS,M&M,HEROMOTOCO,BAJAJ-AUTO` | Tickers processed by scheduler |
 | `SCORE_DB_PATH` | `data/scores.db` | SQLite database path |
-| `SCHEDULER_KEY` | `""` | API key for scheduler endpoints (header `X-Scheduler-Key`) |
+| `SCHEDULER_KEY` | `""` | API key for scheduler endpoints (header `X-Scheduler-Key`); M0: now expected to be set in prod to enforce the Wave-B gate |
 | `FEEDBACK_CRON` | `0 11 * * 1-5` | Cron for daily RL feedback review (4:30pm IST weekdays) |
 | `AUTO_TICKERS` | `MARUTI,...,ASHOKLEY` | Automobile sector ticker list override |
 
@@ -536,6 +536,8 @@ Models are tiered (2026-06-03 benchmark, `scripts/model_bench.py`; bulk re-bench
 |------|---------|-------------|
 | `PORTFOLIO_DATA_DIR` | `data/portfolio` | Per-user roots: `data/portfolio/<user_id>/` (volume-persisted) |
 | `PORTFOLIO_DEFAULT_USER_ID` | `primary` | Single-user launch default; per-user layout from day one |
+| `AUTH_REQUIRED` | `false` | M0: when true, user-scoped routes require a bearer session; false = anonymous acts as owner (single-user compatibility) |
+| `CHAT_DAILY_QUOTA` | `30` | M0: member daily LLM chat turns; owner exempt; 0 = unlimited |
 | `PORTFOLIO_MAX_MANAGED_TICKERS` | `40` | Auto-promotion cap — guards LLM spend; oldest watchlist-origin entry rotates out at cap |
 | `PORTFOLIO_WEEKLY_REVIEW_WEEKDAY` | `4` | Friday — watchlist-cadence names review this weekday only (held names review daily) |
 | `ADVISOR_ENABLED` | `true` | Master switch for the post-review advisor pipeline |

@@ -90,7 +90,9 @@ def test_non_transient_raises_immediately():
 
 
 async def _drain_stream(payload: dict) -> str:
-    sr = await ui_data.chat_stream(payload)
+    # M0: chat_stream now takes an authenticated user (Depends). Pass an owner
+    # dict directly — owner is quota-exempt, so streaming behavior is unchanged.
+    sr = await ui_data.chat_stream(payload, user={"user_id": "primary", "role": "owner"})
     chunks = []
     async for chunk in sr.body_iterator:
         chunks.append(chunk if isinstance(chunk, str) else chunk.decode())

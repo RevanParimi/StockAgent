@@ -29,7 +29,9 @@ import logging
 import os
 from datetime import date, timedelta
 
-from fastapi import APIRouter, BackgroundTasks, Header, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
+
+from services.api.auth import require_owner
 
 from core.portfolio.pipeline import run_post_review_pipeline
 from core.portfolio.promotion import due_for_review
@@ -43,11 +45,6 @@ _SECTOR = "automobile"
 # ---------------------------------------------------------------------------
 # Auth
 # ---------------------------------------------------------------------------
-
-def _check_auth(key: str | None) -> None:
-    from services.api.auth import check_scheduler_key
-    check_scheduler_key(key, context="scheduler_api")
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -251,7 +248,7 @@ async def _review_task(tickers: list[dict], dates: list[date], skip_existing: bo
 async def trigger_forecast(
     background_tasks: BackgroundTasks,
     ticker: str | None = Query(default=None, description="NSE ticker. Omit for all managed tickers (all sectors)."),
-    x_scheduler_key: str | None = Header(default=None),
+    _owner: dict = Depends(require_owner),
 ) -> dict:
     """
     Kick off envelope generation in the background. Returns 202 immediately.
@@ -264,7 +261,6 @@ async def trigger_forecast(
     Takes ~2 min per ticker. Monitor progress with GET /scheduler/status.
     Must run before any daily reviews can execute.
     """
-    _check_auth(x_scheduler_key)
     tickers = _resolve_tickers(ticker)
     background_tasks.add_task(_forecast_task, tickers)
     return {
@@ -291,7 +287,7 @@ async def trigger_daily_review(
         default=None,
         description="ISO date to review e.g. 2026-05-02. Default: last trading day.",
     ),
-    x_scheduler_key: str | None = Header(default=None),
+    _owner: dict = Depends(require_owner),
 ) -> dict:
     """
     Kick off the 8-step daily RL feedback loop for one date in the background.
@@ -306,7 +302,6 @@ async def trigger_daily_review(
     Requires envelope to exist — run POST /scheduler/forecast first.
     Returns immediately. Monitor with GET /scheduler/status.
     """
-    _check_auth(x_scheduler_key)
     tickers = _resolve_tickers(ticker)
 
     if review_date:
@@ -352,7 +347,7 @@ async def trigger_backfill(
     ticker: str | None = Query(default=None, description="NSE ticker. Omit for all managed tickers (all sectors)."),
     month: str | None = Query(default=None, description="YYYY-MM. Backfill that month instead of the current one (reviews run against that month's envelope)."),
     skip_existing: bool = Query(default=False, description="Skip ticker+date pairs that already have a feedback entry (recovery mode — never overwrites same-day reviews)."),
-    x_scheduler_key: str | None = Header(default=None),
+    _owner: dict = Depends(require_owner),
 ) -> dict:
     """
     Catch up the RL feedback loop from the start of this month up to yesterday.
@@ -366,7 +361,6 @@ async def trigger_backfill(
     Pass ?month=YYYY-MM to recover a PAST month (e.g. after a dead scheduler):
     reviews load that month's envelope and land in that month's feedback log.
     """
-    _check_auth(x_scheduler_key)
     tickers = _resolve_tickers(ticker)
     try:
         trading_days = _trading_days_for_backfill(month)
@@ -398,7 +392,7 @@ async def trigger_backfill(
 
 @router.get("/status", summary="Full RL state for all configured tickers")
 async def scheduler_status(
-    x_scheduler_key: str | None = Header(default=None),
+    _owner: dict = Depends(require_owner),
 ) -> dict:
     """
     Shows per-ticker RL state so you can verify the loop is running correctly.
@@ -409,7 +403,6 @@ async def scheduler_status(
       - weight_memory.version = 0 → RL not learned yet (needs ≥3 feedback entries)
       - weight_memory.rl_active   → True when UI analyses use learned weights
     """
-    _check_auth(x_scheduler_key)
     from core.intelligence.rl.stores.prediction_store import PredictionStore
 
     ticker_states = []

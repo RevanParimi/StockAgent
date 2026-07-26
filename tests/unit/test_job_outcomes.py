@@ -42,5 +42,7 @@ def test_scheduler_status_includes_last_runs(monkeypatch):
         "services.data.stores.job_outcomes.load_job_outcomes",
         lambda: {"daily_review": {"produced": 16, "expected": 16}},
     )
-    out = asyncio.run(sched_api.scheduler_status(x_scheduler_key=None))
+    # M0.1: scheduler_status takes the resolved owner (require_owner dep)
+    out = asyncio.run(sched_api.scheduler_status(
+        _owner={"user_id": "primary", "role": "owner"}))
     assert out["last_runs"]["daily_review"]["produced"] == 16

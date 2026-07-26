@@ -462,14 +462,16 @@ curl -s -o /dev/null -w "%{http_code}\n" "$BASE/auth/me"                  # expe
 
 ### Task C0: Baseline
 
-- [ ] **Branch + baseline.**
-  ```bash
-  git checkout main && git pull --ff-only && git checkout -b atlas-c
-  python -m pytest -q 2>&1 | tail -5
-  ```
-  Record the fail-set to a scratch note. Must equal the known-red baseline (10 FAILED + 10 ERROR in
-  the network-flaky orchestrator/phase2_api/event_ingestor area; re-run once before treating a new
-  failure as real). New unexplained failures ⇒ stop and report.
+- [x] **Branch + baseline.** — **DONE 2026-07-27.** Branched `atlas-c` **off `atlas-b`** (not `main`):
+  `atlas-b` = `main` + 4 docs-only commits with **zero code divergence**, so the pytest baseline is
+  identical either way, and branching off `atlas-b` keeps the plan + spec (the Phase-C source of
+  truth) on the working branch instead of orphaning them; they land on `main` together with the
+  Phase-C code at the C11 merge (no premature main push/deploy). Baseline captured to
+  `scratchpad/atlas_c_baseline.md`: **12 failed, 2131 passed, 12 skipped, 10 errors**. 10F+10E = the
+  documented known-red network area; the 2 extra failures (`test_autopilot_api::test_manual_add_identical_retry_dedupes`,
+  `test_portfolio_locking::test_cross_process_add_holding_is_atomic`) are Windows cross-process
+  file-lock flakes (`[WinError 5]` on `os.replace(portfolio.tmp→portfolio.json)`) — environmental,
+  non-deterministic, zero code diff at this commit.
 
 ---
 
@@ -484,20 +486,18 @@ curl -s -o /dev/null -w "%{http_code}\n" "$BASE/auth/me"                  # expe
   (WAL, `_lock`, `_conn_holder`) so tests can monkeypatch `_DB_PATH`/`_conn_holder` the same way.
 - Consumes: `cfg()` from `src/backend/shared/config/settings/base.py`.
 
-- [ ] **Step 1 — failing tests** `tests/unit/test_atlas_store.py`: (a) schema instantiates and
-  `PRAGMA foreign_keys` returns 1 on the store's connection; (b) FK enforced — inserting a
-  `user_instruments` row for a non-existent user raises `IntegrityError`; (c) DPDP cascade —
-  `DELETE FROM users` drops the 7 PII tables to 0 while `instruments`/`ticker_verdicts` survive and
-  `invites` rows are retained with `created_by/used_by` NULLed (port the verified check from
-  `scratchpad/atlas_ddl_check.py`); (d) `_reset_for_tests` + `_DB_PATH` monkeypatch isolate a tmp DB.
-- [ ] **Step 2 — run red.**
-- [ ] **Step 3 — implement** `atlas_store.py`: copy the `user_store.py` connection skeleton; set
-  `_SCHEMA` to the spec §2 DDL verbatim (owner-first table order); issue all three PRAGMAs in
-  `_get_conn()` **on every connection** (`foreign_keys` is per-connection, not persisted). No
-  business functions yet — this task is the schema + connection only. Behavioral no-op (nothing
-  imports it).
-- [ ] **Step 4 — run green** (`test_atlas_store.py` + full suite unaffected).
-- [ ] **Step 5 — commit** `feat(atlas-c1): atlas.db store foundation — schema + FK-on connection (dormant)`.
+- [x] **Step 1 — failing tests** `tests/unit/test_atlas_store.py` (4): (a) FK-on connection +
+  all designed tables present; (b) FK enforced (orphan `user_instruments` → `IntegrityError`);
+  (c) DPDP cascade (7 PII tables → 0; `instruments`/`ticker_verdicts` survive; `invites`
+  `created_by/used_by` NULLed) — the check was written directly from the spec §2 DDL (the Phase-B
+  `scratchpad/atlas_ddl_check.py` lived in a prior session's scratchpad, now cleaned up);
+  (d) `_reset_for_tests` + `_DB_PATH` monkeypatch isolate a tmp DB.
+- [x] **Step 2 — run red** (ModuleNotFoundError: `services.data.stores.atlas_store`).
+- [x] **Step 3 — implement** `atlas_store.py`: `user_store.py` connection skeleton; `_SCHEMA` = spec
+  §2 DDL verbatim (owner-first); WAL + busy_timeout + `foreign_keys=ON` issued on every connection.
+  No business functions — schema + connection only. Behavioral no-op (imported by nothing).
+- [x] **Step 4 — run green** (4/4 atlas tests pass; full-suite collection clean at 2169, +4).
+- [x] **Step 5 — commit** `bd76779` `feat(atlas-c1): atlas.db store foundation — schema + FK-on connection (dormant)`.
 
 ---
 

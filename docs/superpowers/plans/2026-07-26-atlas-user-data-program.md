@@ -412,7 +412,7 @@ curl -s -o /dev/null -w "%{http_code}\n" "$BASE/auth/me"                  # expe
 
 ### Task B1: Researcher pass
 
-- [ ] Re-verify the §Background findings against current code (repo moves fast) and produce a research memo covering, at minimum: every persistent store + its key + its user linkage; every reader/writer of `portfolio.json`, `managed_tickers.json`, global `watchlist.json`; every place `list_user_ids()` drives fan-out; advisor's exact `PredictionStore` surface (`load_envelope`, `cycle_id_for` at `core/portfolio/advisor.py:104-160`); current row/file counts from a prod backup if available. Save as `docs/superpowers/research/2026-XX-XX-atlas-data-research.md`. Commit.
+- [x] Re-verify the §Background findings against current code (repo moves fast) and produce a research memo covering, at minimum: every persistent store + its key + its user linkage; every reader/writer of `portfolio.json`, `managed_tickers.json`, global `watchlist.json`; every place `list_user_ids()` drives fan-out; advisor's exact `PredictionStore` surface (`load_envelope`, `cycle_id_for` at `core/portfolio/advisor.py:104-160`); current row/file counts from a prod backup if available. Save as `docs/superpowers/research/2026-XX-XX-atlas-data-research.md`. Commit. — **DONE 2026-07-26** → `docs/superpowers/research/2026-07-26-atlas-data-research.md`. Findings #1/#2 RESOLVED (Phase A); #3–#7 CONFIRMED still-open; full store inventory (21 stores) + `list_user_ids()` fan-out map + advisor↔PredictionStore surface + R1–R4 + BP1/2/4/5 + DPDP delete gap + live data counts (0 users, 1 `primary` dir, 3 managed tickers, telemetry no user_id).
 
 ### Task B2: Designer pass
 

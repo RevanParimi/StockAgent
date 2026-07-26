@@ -2940,7 +2940,7 @@ async def chat(body: dict, user: dict = Depends(get_current_user)) -> dict:
     system_prompt = _CHAT_SYSTEM_PROMPT.format(context=context)
 
     messages: list[dict] = [{"role": "system", "content": system_prompt}]
-    messages.extend(_session_history_get(session_id))
+    messages.extend(_session_history_get(session_id, user["user_id"]))
     messages.append({"role": "user", "content": message})
 
     try:
@@ -2966,7 +2966,7 @@ async def chat(body: dict, user: dict = Depends(get_current_user)) -> dict:
 
             if not tool_calls:
                 reply = (msg.content or "").strip()
-                _session_history_append(session_id, message, reply)
+                _session_history_append(session_id, message, reply, user["user_id"])
                 return {"reply": reply, "session_id": session_id}
 
             assistant_entry: dict = {"role": "assistant", "content": msg.content or ""}
@@ -2996,13 +2996,13 @@ async def chat(body: dict, user: dict = Depends(get_current_user)) -> dict:
             max_tokens=600,
         )
         reply = (resp.choices[0].message.content or "").strip()
-        _session_history_append(session_id, message, reply)
+        _session_history_append(session_id, message, reply, user["user_id"])
         return {"reply": reply, "session_id": session_id}
 
     except Exception as exc:
         logger.warning("[ui/chat] LLM call failed: %s", exc)
         reply = _mock_reply(message)
-        _session_history_append(session_id, message, reply)
+        _session_history_append(session_id, message, reply, user["user_id"])
         return {"reply": reply, "session_id": session_id}
 
 
@@ -3095,14 +3095,16 @@ async def _chat_completion(client, *, models: tuple[str, ...] | list[str] | None
 _SESSION_MAX_TURNS = 12               # keep last 12 messages (≈6 exchanges) per session
 
 
-def _session_history_get(session_id: str) -> list[dict]:
+def _session_history_get(session_id: str, user_id: str = "primary") -> list[dict]:
     from services.data.stores.chat_session_store import get_history
-    return get_history(session_id, _SESSION_MAX_TURNS)
+    return get_history(session_id, _SESSION_MAX_TURNS, user_id=user_id)
 
 
-def _session_history_append(session_id: str, user_text: str, assistant_text: str) -> None:
+def _session_history_append(session_id: str, user_text: str,
+                            assistant_text: str, user_id: str = "primary") -> None:
     from services.data.stores.chat_session_store import append_turns
-    append_turns(session_id, user_text, assistant_text, _SESSION_MAX_TURNS)
+    append_turns(session_id, user_text, assistant_text, _SESSION_MAX_TURNS,
+                 user_id=user_id)
 
 
 def _strip_think(text: str) -> str:
@@ -3288,7 +3290,7 @@ async def chat_stream(body: dict, user: dict = Depends(get_current_user)):
         context = _build_chat_context(message)
         system_prompt = _CHAT_SYSTEM_PROMPT.format(context=context)
         messages: list[dict] = [{"role": "system", "content": system_prompt}]
-        messages.extend(_session_history_get(session_id))
+        messages.extend(_session_history_get(session_id, user["user_id"]))
         messages.append({"role": "user", "content": message})
 
         # Tier-1 deterministic pre-route (plan-and-execute): if this is clearly a
@@ -3415,7 +3417,7 @@ async def chat_stream(body: dict, user: dict = Depends(get_current_user)):
                 final_text = _mock_reply(message)
             yield f'data: {_json.dumps({"event": "token", "text": final_text})}\n\n'
 
-        _session_history_append(session_id, message, final_text)
+        _session_history_append(session_id, message, final_text, user["user_id"])
         yield 'data: {"event":"done"}\n\n'
 
     return _SR(

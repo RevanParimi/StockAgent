@@ -5,6 +5,12 @@
 > Audience: everyone. New developers, business analysts, and anyone technical-adjacent
 > should be able to read this top to bottom and understand both the *business case*
 > and the *engineering plan*.
+>
+> **Companion documents:** [SCALING_BLUEPRINTS.md](SCALING_BLUEPRINTS.md) (detailed
+> designs for the M1 building blocks + the learning constitution) ·
+> [LEGAL_AND_COMPLIANCE.md](LEGAL_AND_COMPLIANCE.md) (SEBI, DPDP, multi-tenancy gates) ·
+> M0 spec & plan under `docs/superpowers/specs/` and `docs/superpowers/plans/`
+> (dated 2026-07-26).
 
 ---
 

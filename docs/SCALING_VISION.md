@@ -86,6 +86,32 @@ we can't eliminate. So chat becomes the *metering point*: free tier gets quotas 
 cached answers, paid tier gets the full conversational analyst. The cost structure
 hands us the business model.
 
+### The pricing model (decided 2026-07-26) 💳
+
+Freemium with a hard-metered paid tier — paywall exactly what costs money, give away
+what's free to serve:
+
+| | **Free** (the network-effect engine) | **Pro** (the meter) |
+|---|---|---|
+| Morning brief + verdict cards on the covered universe | ✅ | ✅ |
+| Watchlist (feeds coverage — we *want* this used) | ✅ | ✅ |
+| Cached chat answers (L0/L1 — verdict cards, common questions) | ✅ unlimited | ✅ unlimited |
+| Live analyst chat (L2 — real LLM turns) | ~5/day | high cap |
+| On-demand deep analysis of any ticker | — | ✅ |
+| Full advisor depth on your portfolio | limited | ✅ |
+| Priority daily coverage of your holdings | — | ✅ |
+
+- **Never paywall briefs/verdicts:** marginal cost ≈ zero, and free users are the
+  coverage-and-feedback engine that makes the brain better (§6). Charging for them
+  would starve the flywheel to protect nothing.
+- **Founding-member price** for the first paid cohort (locked-in discount) — early
+  users are doing us a favor: they're growing the brain.
+- **Sequence:** friends free (M0) → free public beta with quotas (build coverage +
+  maturity metrics) → introduce Pro **only after** the SEBI registration question is
+  resolved — payment triggers the "consideration" prong
+  ([LEGAL_AND_COMPLIANCE.md](LEGAL_AND_COMPLIANCE.md) §1). Legal gate before revenue,
+  always.
+
 ---
 
 ## 3. The Two Cost Leaks 🔧 (and their fixes)

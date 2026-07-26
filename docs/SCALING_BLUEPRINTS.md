@@ -141,6 +141,23 @@ prefix (instructions, tool definitions) is byte-identical across calls, enabling
 OpenRouter/provider prompt-cache discounts on input tokens. Measure the hit rate via
 telemetry — if a provider doesn't honor it, the restructure still costs nothing.
 
+**Staleness & context-specificity rules** (why a cached answer can never be *wrong-day*
+or *wrong-purpose*):
+
+1. **Date is part of the key, and expiry is event-driven, not just time-driven.** Every
+   entry carries `trading_date`; the whole cache dies at the next verdict refresh
+   (16:35 IST). Additionally, *mid-day* events evict early: a shock re-forecast (Living
+   Envelope) or a breaking alert on a ticker immediately evicts every cached entry
+   touching that ticker. A cached answer can never outlive the analysis underneath it.
+2. **Temporal intent survives normalization.** "Should I buy TCS *today*?" and
+   "*long-term* view on TCS?" are different intents — the intent taxonomy includes
+   horizon (intraday / short / long), so they key differently and never collide.
+3. **Purpose/persona qualifiers = distinct intents.** "…for a conservative investor"
+   keys separately. Rare phrasings simply miss the cache and fall through to L2.
+4. **The failure asymmetry is deliberate:** a cache *miss* costs a few paise of LLM;
+   a false *hit* costs trust. Keying and the similarity threshold are tuned so misses
+   absorb all the ambiguity — when in doubt, go to L2.
+
 **Quota interacts with the ladder:** L0/L1 answers don't consume quota (they're free to
 serve); only L2 does. Free-tier users get generous cached answers and a bounded number of
 live analyses — which is exactly the right product shape anyway.
@@ -272,6 +289,32 @@ sufficiency explicit and mechanical:
 Floors turn "more users" into a visible countdown: *"Pharma sector: 22/30 outcomes —
 8 more days of coverage until per-sector calibration activates."* That sentence is the
 network effect made tangible — for us **and** as user-facing product copy.
+
+### The brain's memory budget — why years of data don't blow up token cost 🧮
+
+A fair worry: "training on years of history must eventually mean huge LLM contexts."
+It doesn't — because of a structural choice already in place: **the brain learns in
+compact statistics, not in LLM context.**
+
+- Scorecards, duels, regime multipliers, envelopes = *counters and parameters*. A year
+  of outcomes updates the same fixed-size numbers; ten years updates the same numbers.
+  Learning state does not grow with history.
+- LLM calls never receive raw history. They receive the **distilled** context: the
+  ticker dossier summary, the last 3 days of news (the Wave-G filter), today's
+  indicators, the regime label. Token cost per call is **flat over time by construction**.
+- Chat memory is windowed (12 messages) and sessions expire — no unbounded growth there
+  either.
+
+Two pieces are *not yet designed* (flagged honestly, neither is urgent):
+
+1. **Dossier compaction.** Per-ticker dossiers append episodes; after ~a year they need
+   a summarize-and-prune policy — keep the last N episodes verbatim + a rolling LLM
+   summary of everything older (one cheap call per ticker per quarter). Schedule this
+   before the oldest dossiers pass ~12 months.
+2. **Episodic retrieval on a budget.** Someday: "find the 3 most similar past episodes
+   to today's setup" (the RAG substrate under `core/intelligence/` is the natural home).
+   When built, it gets a **fixed token budget per call** (top-k, hard cap) — retrieval
+   augments the distilled context, never replaces the compact-statistics learning.
 
 ### The ignition sequence (ordering discipline)
 

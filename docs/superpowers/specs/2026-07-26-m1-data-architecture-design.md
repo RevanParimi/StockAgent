@@ -824,7 +824,23 @@ watchers:1, chat_hits_7d:0.5}) · `universe.max_daily_analyses` · `universe.bud
 
 ---
 
-## Open questions for the B4 gate (could not be closed from code alone)
+## B4 ratification — RESOLVED 2026-07-27 (user)
+
+> **User verdict: APPROVE AS-IS** + delete policy = **spec default**. All 7 decisions (D1–D7)
+> ratified; Phase C task list appended to the program plan. Resolutions:
+> - **Q1 (verdict-store writer = user-plane projection):** ACCEPTED — the deliberate refinement of
+>   BP1's "written by the intelligence plane" to "written by a user-plane projection that reads
+>   ticker-keyed output" stands (protects R1).
+> - **Q2 (universe recompute = user-plane, aggregates only):** ACCEPTED.
+> - **Q3 (telemetry on delete):** **ANONYMIZE** (`llm_calls.user_id → NULL`) — keeps the cost ledger.
+> - **Q4 (`invites` retention):** CONFIRMED — both `created_by` and `used_by` → `SET NULL` (R6a).
+> - **Q5 (feedback_events on delete):** **HARD-DELETE** (FK cascade) — behavioral PII, cleanest DPDP;
+>   R3 ≥20-user floor means no lone-user aggregate is lost.
+>
+> The spec's DDL already encodes Q3+Q5 (telemetry anonymize / feedback cascade) — no schema change
+> from ratification. **Original gate questions retained below for provenance.**
+
+## Open questions for the B4 gate (could not be closed from code alone) — now resolved above
 
 1. **Verdict Store writer direction (D2).** This spec *refines* the Task/BP1 phrasing "written by
    the intelligence plane" to "written by a user-plane projection that reads ticker-keyed

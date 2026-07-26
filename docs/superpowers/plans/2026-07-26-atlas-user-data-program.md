@@ -432,11 +432,305 @@ curl -s -o /dev/null -w "%{http_code}\n" "$BASE/auth/me"                  # expe
 
 ### Task B4: User approval gate + plan append
 
-- [ ] Present the approved spec to the user (decisions table + cost + risk). On explicit user approval: append Phase C implementation tasks to this plan file (full TDD code per task, sized like Phase A), commit both docs, update memory. **Phase C does not start in the same session as B4.**
+- [x] **DONE 2026-07-27.** Presented the approved spec (decisions table + cost + risk + 2 deviations + 5 open Qs) to the user. **User verdict: APPROVE AS-IS**, delete policy = **spec default** (telemetry anonymize / feedback hard-delete). Ratification stamped into the spec ("B4 ratification — RESOLVED 2026-07-27"). Phase C implementation tasks appended below. **Phase C NOT started this session (per rule).** Present the approved spec to the user (decisions table + cost + risk). On explicit user approval: append Phase C implementation tasks to this plan file (full TDD code per task, sized like Phase A), commit both docs, update memory. **Phase C does not start in the same session as B4.**
 
 ---
 
-# PHASE C — Implementation (appended by Task B4 — intentionally absent until the design is approved)
+# PHASE C — Implementation (branch `atlas-c`, appended by Task B4 on user approval 2026-07-27)
+
+> **Design source of truth:** `docs/superpowers/specs/2026-07-26-m1-data-architecture-design.md`
+> (APPROVED + B4-ratified). Every task here implements a numbered section of that spec; when in
+> doubt, the spec wins. **Execution rule (unchanged):** a task is untouched or completed through its
+> commit; TDD (write failing test → run red → implement → run green → commit); all tunables via
+> `cfg()`; hot paths log+degrade; atomic writes; module docstring headers.
+>
+> **Global safety for Phase C:** everything ships **dormant behind `cfg("atlas.enabled",
+> env="ATLAS_ENABLED", fallback=False)`** and is a behavioral no-op until the cutover task (C11).
+> The flag is the rollback lever (`ATLAS_ENABLED=false` ⇒ today's JSON/`users.db`/dir-scan path).
+> **No `atlas.db` read is wired into fan-out until C11.** Merges to main are allowed while dormant
+> (never 16:25–17:15 IST on trading days); the *cutover* itself (C11) is weekend-only.
+>
+> **Ordering / waves (dependency-correct):**
+> - **Wave α — foundation, dormant:** C0 baseline · C1 `atlas.db` store + schema · C2 VerdictStore
+>   facade + import-boundary test + advisor/pipeline swap.
+> - **Wave β — write model, dormant:** C3 `user_instruments` write-through + `active_user_ids()` ·
+>   C4 nightly Universe recompute · C5 global-singleton resolution.
+> - **Wave γ — greenfield features:** C6 DPDP `delete_user_completely` · C7 outbox worker (BP2) ·
+>   C8 feedback_events + accept/override UI + telemetry BP4 · C9 retention jobs.
+> - **Wave δ — cutover:** C10 ETL + ghost-dir reconciliation · C11 close-out (A/B, weekend cutover,
+>   flip flag, first-run watch, decommission).
+
+### Task C0: Baseline
+
+- [ ] **Branch + baseline.**
+  ```bash
+  git checkout main && git pull --ff-only && git checkout -b atlas-c
+  python -m pytest -q 2>&1 | tail -5
+  ```
+  Record the fail-set to a scratch note. Must equal the known-red baseline (10 FAILED + 10 ERROR in
+  the network-flaky orchestrator/phase2_api/event_ingestor area; re-run once before treating a new
+  failure as real). New unexplained failures ⇒ stop and report.
+
+---
+
+### Task C1: `atlas.db` store foundation (spec §1, §2)
+
+**Files:** Create `services/data/stores/atlas_store.py`; Test `tests/unit/test_atlas_store.py`.
+
+**Interfaces:**
+- Produces: `_get_conn()` (process-wide connection, opens with `PRAGMA journal_mode=WAL;
+  busy_timeout=5000; foreign_keys=ON`), `_SCHEMA` (the full spec §2 DDL for `atlas.db`), `_reset_for_tests()`,
+  `db_path()` = `cfg("atlas.db_path", fallback="data/atlas.db")`. Mirrors the `user_store.py` recipe
+  (WAL, `_lock`, `_conn_holder`) so tests can monkeypatch `_DB_PATH`/`_conn_holder` the same way.
+- Consumes: `cfg()` from `src/backend/shared/config/settings/base.py`.
+
+- [ ] **Step 1 — failing tests** `tests/unit/test_atlas_store.py`: (a) schema instantiates and
+  `PRAGMA foreign_keys` returns 1 on the store's connection; (b) FK enforced — inserting a
+  `user_instruments` row for a non-existent user raises `IntegrityError`; (c) DPDP cascade —
+  `DELETE FROM users` drops the 7 PII tables to 0 while `instruments`/`ticker_verdicts` survive and
+  `invites` rows are retained with `created_by/used_by` NULLed (port the verified check from
+  `scratchpad/atlas_ddl_check.py`); (d) `_reset_for_tests` + `_DB_PATH` monkeypatch isolate a tmp DB.
+- [ ] **Step 2 — run red.**
+- [ ] **Step 3 — implement** `atlas_store.py`: copy the `user_store.py` connection skeleton; set
+  `_SCHEMA` to the spec §2 DDL verbatim (owner-first table order); issue all three PRAGMAs in
+  `_get_conn()` **on every connection** (`foreign_keys` is per-connection, not persisted). No
+  business functions yet — this task is the schema + connection only. Behavioral no-op (nothing
+  imports it).
+- [ ] **Step 4 — run green** (`test_atlas_store.py` + full suite unaffected).
+- [ ] **Step 5 — commit** `feat(atlas-c1): atlas.db store foundation — schema + FK-on connection (dormant)`.
+
+---
+
+### Task C2: `VerdictStore` facade + import-boundary test + advisor/pipeline swap (spec §3, reviewer R2)
+
+**Files:** Create `services/data/verdict_store.py`; Create `tests/unit/test_atlas_import_boundary.py`;
+Create `tests/unit/test_verdict_store_facade.py`; Modify `core/portfolio/advisor.py` (import `:21`,
+`build_signals` type hint), `core/portfolio/pipeline.py` (imports `:15-17`).
+
+**Interfaces:**
+- Produces: `VerdictStore(ticker, sector=None)` duck-typing the exact `PredictionStore` read surface —
+  `cycle_id_for(target: date) -> str`, `load_envelope(cycle_id=None) -> EnvelopeView|None`,
+  `load_feedback_log(cycle_id=None) -> FeedbackView`, plus `get_verdict_card(symbol, as_of) -> dict|None`
+  and `publish_projection(symbol, as_of, ...)` (writes one `ticker_verdicts` row from the freshly
+  written ticker-keyed envelope/feedback — user-plane projection, D2). Delegates the three read calls
+  to `PredictionStore`; the facade is the **only** user-plane importer of the intelligence plane.
+- **R2 guard (new, not "extended"):** `test_atlas_import_boundary.py` AST-walks every module under
+  `core/intelligence/**` and asserts none imports `services.data.verdict_store`, the feedback store,
+  `feedback_events`, `atlas_store`, or any `services.data.stores.user_store`/portfolio store. This is
+  the guard the blueprint prescribed but never had.
+
+- [ ] **Step 1 — failing tests.** (a) `test_atlas_import_boundary.py`: walk `core/intelligence/`
+  `*.py`, `ast.parse` each, collect `Import`/`ImportFrom` targets, assert the forbidden set is
+  disjoint (RED only if a real leak exists — today it passes *once written*, so assert it stays green
+  and also add a synthetic negative: a fixture module string that imports the facade must be flagged
+  by the checker function). (b) `test_verdict_store_facade.py`: `VerdictStore("TCS").cycle_id_for(...)`,
+  `.load_envelope(...)`, `.load_feedback_log(...)` return the same shapes the advisor reads (monkeypatch
+  a fake `PredictionStore`); each read degrades to `None`/empty on exception (hot-path safety).
+- [ ] **Step 2 — run red** (facade import fails → tests error).
+- [ ] **Step 3 — implement** `verdict_store.py` per spec §3 (delegate to `PredictionStore`; `EnvelopeView`/
+  `FeedbackView` expose only the attributes `build_signals` reads). Swap `advisor.py:21`
+  `from core.intelligence.rl.stores.prediction_store import PredictionStore` →
+  `from services.data.verdict_store import VerdictStore` and change `build_signals(..., store: VerdictStore, ...)`
+  type hint; **call sites unchanged** (`store.cycle_id_for`/`load_envelope`/`load_feedback_log`).
+  Same swap in `pipeline.py` where it constructs the store. Leave `is_trading_day`/`get_price_history`/
+  `next_results_event` as direct imports (spec §3 "stays direct").
+- [ ] **Step 4 — run green** (new tests + `test_advisor*.py` + `test_pipeline*.py` + full suite).
+- [ ] **Step 5 — commit** `feat(atlas-c2): VerdictStore facade + R1 import-boundary test; advisor/pipeline swap`.
+
+---
+
+### Task C3: `user_instruments` write-through + `active_user_ids()` (spec §4, §6, reviewer none)
+
+**Files:** Modify `core/portfolio/store.py` (add/remove holding + watchlist hooks; add `active_user_ids()`);
+Modify fan-out sites `core/portfolio/pipeline.py:39`, `core/delivery/brief.py:270`, `weekly.py:240`,
+`index_watch.py:35`; Create `tests/unit/test_atlas_user_instruments.py`.
+
+**Interfaces:**
+- Produces: transactional upserts into `atlas.db user_instruments` on `add_holding`(→`held`)/`remove_holding`,
+  `add_watchlist`(→`watch`)/`remove_watchlist`, each ensuring an `instruments` row exists (held ⇒
+  `origin='held',cadence='daily'`; watch ⇒ `origin='watched',cadence='weekly'`). All **flag-gated** —
+  no-op when `ATLAS_ENABLED=false`. `active_user_ids()` per spec §6 (atlas users query; preserves
+  `AUTH_REQUIRED=false ⇒ [primary]`; falls back to `list_user_ids()` when flag off).
+
+- [ ] **Step 1 — failing tests:** flag ON ⇒ `add_holding` creates `user_instruments(held)` + an
+  `instruments` row; `remove_holding` deletes the `held` row; watchlist mirrors; `active_user_ids()`
+  returns users from `atlas.db` (ghost dir with no users row is **excluded**), and returns `[primary]`
+  when 0 users + `AUTH_REQUIRED=false`. Flag OFF ⇒ every hook is a no-op and `active_user_ids()==list_user_ids()`.
+- [ ] **Step 2 — run red.**
+- [ ] **Step 3 — implement** the hooks (call `atlas_store` upserts inside the existing FileLock write,
+  guarded by the flag; hot-path-safe: log+continue on `atlas.db` error so a portfolio write never
+  fails because of the index). Add `active_user_ids()`; repoint the 4 fan-out sites to it (unifies the
+  inconsistent owner fallback — fixes finding #6).
+- [ ] **Step 4 — run green** (new + `test_portfolio_store.py` + `test_scheduler_*` fan-out tests).
+- [ ] **Step 5 — commit** `feat(atlas-c3): user_instruments write-through + active_user_ids() (flag-gated)`.
+
+---
+
+### Task C4: Nightly Universe recompute (spec §4)
+
+**Files:** Create `core/portfolio/universe.py` (`recompute_universe()`); register in the nightly
+scheduler lane (same place as the backup job); Create `tests/unit/test_atlas_universe_recompute.py`.
+
+**Interfaces:** `recompute_universe()` (user-plane) reads `user_instruments`, writes only aggregates
+to `instruments`: `holders`/`watchers` counts, `chat_hits_7d=0` (reviewer R4 — deferred tap),
+`demand_score = cfg("universe.demand_weights")·(h,w,c)`, cadence tiers (held→daily; top-N by demand→daily,
+N=`cfg("universe.max_daily_analyses")`; watched long-tail→weekly; rest→on_demand); budget governor ops
+alert at `cfg("universe.budget_alert_pct",0.8)`. Demote policy: refcount→0 ⇒ `cadence='on_demand',enabled=0`,
+history preserved; archive only if no intelligence history + `origin in (watched,on_demand,discovery)` +
+refcount-0 for `cfg("universe.archive_grace_days",30)`.
+
+- [ ] **Step 1 — failing tests:** counts correct; tiers assigned; demote-not-delete on refcount 0;
+  never-archive when `data/predictions/**/<TICKER>/` exists; budget alert fires at threshold; job is
+  user-plane (asserts no `user_id` written to `instruments`). Flag-gated no-op when off.
+- [ ] **Step 2 — run red.** — [ ] **Step 3 — implement** per spec §4 (all weights/N/thresholds via `cfg()`).
+- [ ] **Step 4 — run green.** — [ ] **Step 5 — commit** `feat(atlas-c4): nightly Universe recompute — demand tiers + demote policy`.
+
+---
+
+### Task C5: Global-singleton resolution (spec §5)
+
+**Files:** Modify `services/api/routes/ui_data.py` (watchlist read/write endpoints → per-user;
+`agent_weights`/`agent_tasks`/`category_tickers` PUTs → `require_owner`); Create
+`tests/unit/test_atlas_singletons.py`.
+
+**Interfaces:** watchlist becomes per-user (single SoT = `Portfolio.watchlist`, projected into
+`user_instruments(watch)`); the global `data/watchlist.json` endpoints repoint to the session user's
+portfolio store; `agent_weights.json`/`agent_tasks.json`/`category_tickers.json` stay global but
+their write routes require owner (they tune the one shared brain — spec §5 rationale). Per-user tuning
+already exists via `Portfolio.risk_profile` (no new knob).
+
+- [ ] **Step 1 — failing tests:** two users get isolated watchlists; owner-config PUTs return 401/403
+  for a non-owner member and 200 for owner; no global watchlist bleed between users.
+- [ ] **Step 2 — run red.** — [ ] **Step 3 — implement** (repoint watchlist endpoints to per-user store;
+  add `require_owner` to the 3 config PUTs; keep reads open where they already are).
+- [ ] **Step 4 — run green** (new + existing `ui_data` watchlist/weights tests).
+- [ ] **Step 5 — commit** `feat(atlas-c5): watchlist per-user; agent/task/category configs owner-gated`.
+
+---
+
+### Task C6: DPDP `delete_user_completely` (spec §Learning-Constitution/DPDP, B4 Q3/Q5)
+
+**Files:** Add `delete_user_completely(user_id)` to `services/data/stores/atlas_store.py`; wire an
+authenticated route (`DELETE /auth/me` or `services/api/routes/auth_api.py`); Create
+`tests/unit/test_atlas_dpdp_delete.py`.
+
+**Interfaces:** one entry point: (1) atomic cascade `DELETE FROM users WHERE user_id=?` on `atlas.db`
+(7 PII tables → 0; `invites` SET NULL; `instruments`/`ticker_verdicts` survive); (2) idempotent
+follow-ups in the **same function**, DB-commit-first: `shutil.rmtree(data/portfolio/<uid>/)`,
+`chat_sessions.db DELETE FROM chat_turns WHERE user_id=?`, `telemetry.db UPDATE llm_calls SET
+user_id=NULL WHERE user_id=?` (**anonymize — B4 Q3**). `feedback_events` is removed by the cascade
+(**hard-delete — B4 Q5**). All follow-ups retry-safe and no-op if already clean.
+
+- [ ] **Step 1 — failing tests:** after delete — atlas cascade verified (reuse C1's cascade assertions);
+  portfolio dir gone; chat_turns for that user gone; `llm_calls` rows for that user have `user_id IS NULL`
+  (row count preserved); function is idempotent (second call no-ops); DB commit precedes filesystem.
+- [ ] **Step 2 — run red.** — [ ] **Step 3 — implement** per spec (order: DB commit → fs → cross-DB;
+  each wrapped log+continue so a stray artifact never blocks the erasure).
+- [ ] **Step 4 — run green.** — [ ] **Step 5 — commit** `feat(atlas-c6): DPDP delete_user_completely — single cascade + idempotent follow-ups`.
+
+---
+
+### Task C7: Outbox worker (BP2) — in-process, singleton-lock owner, atomic claim (spec §7, §8, reviewer R3)
+
+**Files:** Create `core/delivery/outbox.py` (`enqueue()`, `drain_once()`); wire the drainer into the
+**existing singleton-lock owner** in `services/api/server.py` (reuse the localhost-socket guard at
+`:306-388` — do NOT add a new lock); repoint fan-out (`brief.py`/`weekly.py`/`index_watch.py`/`pipeline.py`)
+to `enqueue()` behind the flag; Create `tests/unit/test_atlas_outbox.py`.
+
+**Interfaces:** `enqueue(user_id, channel, kind, payload_ref, dedupe_key)` (idempotent via UNIQUE
+`dedupe_key`); `drain_once()` claims each row atomically —
+`UPDATE outbox SET status='sending', attempts=attempts+1 WHERE id=? AND status='queued'`, acts only if
+`rowcount==1` (reviewer R3: prevents double-send under `--workers 2`), sends via the existing push/email
+transports, then `status='delivered'` or reschedules `next_attempt_at` with `cfg("delivery.outbox_backoff_minutes",[1,5,30])`
+up to `cfg("delivery.outbox_max_attempts",3)` then `status='dead'`.
+
+- [ ] **Step 1 — failing tests:** enqueue idempotency (duplicate `dedupe_key` → one row); atomic claim
+  (two concurrent `drain_once` calls send exactly once — simulate by racing the CAS); backoff + dead-letter
+  after max attempts; drainer only runs in the singleton owner (assert guarded start). Flag-gated no-op.
+- [ ] **Step 2 — run red.** — [ ] **Step 3 — implement** (transports are the existing `send_push`/email;
+  worker is a daemon thread started only inside the singleton-lock branch of the lifespan).
+- [ ] **Step 4 — run green** (new + delivery tests — no real transport, per `conftest` isolation).
+- [ ] **Step 5 — commit** `feat(atlas-c7): BP2 outbox — in-process drainer (singleton owner) + atomic claim`.
+
+---
+
+### Task C8: feedback_events (BP5) + accept/override UI + telemetry BP4 user_id (spec §2 telemetry, R2/R3/R4)
+
+**Files:** Add `record_feedback_event()` to `atlas_store.py`; advice-card accept/override endpoint in
+`ui_data.py` + frontend hook; telemetry BP4: `ALTER TABLE llm_calls ADD COLUMN user_id`, a
+`current_user_id: ContextVar` set by auth, read by `log_llm_call`, nightly `cost_by_user_day` rollup;
+Create `tests/unit/test_atlas_feedback_events.py`, `tests/unit/test_atlas_telemetry_user.py`.
+
+**Interfaces:** `record_feedback_event(ts,user_id,symbol,advice_ref,verdict_shown,action,override_direction,position_state)`
+(append-only, user-plane, **outside** `core/intelligence/` — R1). Aggregation refuses below
+`cfg("atlas.feedback.aggregation_floor_users",20)` (R3). Telemetry: `user_id` nullable, **NULL = shared
+brain** (BP4); only chat / on-demand `/analyse` / narrator pre-cache set it; scheduled analysis stays NULL.
+
+- [ ] **Step 1 — failing tests:** feedback event persists + DPDP-cascades on user delete; aggregator
+  returns nothing below the 20-user floor; `llm_calls.user_id` populated for a chat call, NULL for a
+  scheduled call; `cost_by_user_day` rollup buckets NULL as "shared brain". Import-boundary test (C2)
+  still green (feedback store not imported by intelligence).
+- [ ] **Step 2 — run red.** — [ ] **Step 3 — implement** (ContextVar avoids threading user_id through
+  ~20 call sites — BP4). — [ ] **Step 4 — run green.**
+- [ ] **Step 5 — commit** `feat(atlas-c8): BP5 feedback_events + accept/override UI + BP4 telemetry user_id`.
+
+---
+
+### Task C9: Retention jobs (spec §7)
+
+**Files:** Create `core/portfolio/retention.py` (or fold into the nightly lane); Create
+`tests/unit/test_atlas_retention.py`.
+
+**Interfaces:** nightly prune, all caps via `cfg()`: `ticker_verdicts` older than
+`atlas.retention.ticker_verdicts_days`(400); `outbox` delivered/dead older than
+`delivery.outbox_retention_days`(30); `value_history` points cap(400); `sessions` expiry (existing sweep);
+`user_advice`/`feedback_events` keep by default (None). Hot-path-safe (log+continue).
+
+- [ ] **Step 1 — failing tests:** each prune respects its `cfg` cap; None ⇒ keep-all; a job failure
+  doesn't crash the lane. — [ ] **Step 2 — run red.** — [ ] **Step 3 — implement.** — [ ] **Step 4 — green.**
+- [ ] **Step 5 — commit** `feat(atlas-c9): retention/prune jobs — all caps via cfg()`.
+
+---
+
+### Task C10: ETL + ghost-dir reconciliation (spec §6)
+
+**Files:** Create `scripts/atlas_etl.py` (idempotent, additive, deletes nothing); Create
+`tests/unit/test_atlas_etl.py`.
+
+**Interfaces:** per spec §6 cutover step 3–4: `users.db`→users/sessions/invites/chat_usage (ATTACH +
+INSERT…SELECT); `push_subscriptions.json`→rows; `managed_tickers.json`→instruments; each
+`portfolio.json` holdings/watchlist→`user_instruments`; `advice_ledger.jsonl`→`user_advice`;
+`watchlist.json`→owner's `Portfolio.watchlist`→`user_instruments(watch)`; `telemetry.db` ALTER (in
+place). **Ghost-dir reconciliation:** `primary`→adopt to owner; matching users row→keep; **no users
+row→quarantine** to `data/portfolio/_quarantine/<uid>/` + one ops alert (no silent adoption). Re-runnable.
+
+- [ ] **Step 1 — failing tests** on a synthetic `data/` tree: row-count assertions post-ETL; idempotent
+  (second run = same counts, no dupes); ghost dir with no users row is quarantined not adopted; `primary`
+  adopted to owner; `active_user_ids()` dry-run equals the intended set.
+- [ ] **Step 2 — run red.** — [ ] **Step 3 — implement** (ATTACH for the SQLite→SQLite copy; JSONL
+  stream for ledgers). — [ ] **Step 4 — run green.**
+- [ ] **Step 5 — commit** `feat(atlas-c10): ETL + ghost-dir reconciliation (idempotent, additive)`.
+
+---
+
+### Task C11: Close-out — A/B, weekend cutover, flip flag, first-run watch, decommission
+
+- [ ] **Step 1 — Full-suite A/B** — fail-set must equal the C0 baseline (+ all new atlas tests green).
+- [ ] **Step 2 — Merge dormant** (`ATLAS_ENABLED` unset/false): `git checkout main && git merge --no-ff
+  atlas-c`; `git diff --stat atlas-c HEAD` empty; push (respect the deploy window); confirm Railway
+  deploy SUCCESS — behavioral no-op (nothing reads `atlas.db` yet).
+- [ ] **Step 3 — Weekend cutover** (Sat/Sun, scheduler idle, `/scheduler/status` idle): run
+  `scripts/atlas_etl.py`; run the spec §6 step-5 validations (row counts, dry-run `active_user_ids()`,
+  DDL integrity check).
+- [ ] **Step 4 — Flip** `ATLAS_ENABLED=true` in Railway; redeploy. Fan-out switches to `active_user_ids()`.
+- [ ] **Step 5 — First-run watch** (next trading day): 16:30 autopilot + 08:50 brief fan out to exactly
+  the owner (+ any real users), **zero ghost dirs**; `/scheduler/status` clean; no `SQLITE_BUSY` in logs.
+- [ ] **Step 6 — Decommission window:** keep `users.db`/`watchlist.json`/`push_subscriptions.json`/
+  `managed_tickers.json` **read-only** until `cfg("atlas.retention.source_decommission_days",14)` of
+  green operation, then remove. Update memory + this plan; program COMPLETE.
+
+**Rollback at any point:** `ATLAS_ENABLED=false` + redeploy ⇒ instant revert to the JSON/dir-scan path;
+`atlas.db` is rebuildable from the still-present sources (ETL deletes nothing).
 
 ---
 

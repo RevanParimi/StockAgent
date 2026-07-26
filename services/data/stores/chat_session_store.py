@@ -40,11 +40,12 @@ _SCHEMA = """
 CREATE TABLE IF NOT EXISTS chat_turns (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
     session_id TEXT NOT NULL,
+    user_id    TEXT NOT NULL DEFAULT 'primary',
     ts         TEXT NOT NULL,
     role       TEXT NOT NULL,
     content    TEXT NOT NULL
 );
-CREATE INDEX IF NOT EXISTS idx_chat_turns_session ON chat_turns (session_id, id);
+CREATE INDEX IF NOT EXISTS idx_chat_turns_session ON chat_turns (user_id, session_id, id);
 CREATE INDEX IF NOT EXISTS idx_chat_turns_ts ON chat_turns (ts);
 """
 
@@ -60,6 +61,16 @@ def _get_conn() -> sqlite3.Connection | None:
         conn = sqlite3.connect(str(db_path), check_same_thread=False, timeout=5.0)
         conn.execute("PRAGMA journal_mode=WAL")
         conn.execute("PRAGMA busy_timeout=5000")
+        # Atlas A2: migrate a pre-existing DB *before* _SCHEMA runs — the new
+        # schema indexes user_id, so the column must exist first. Legacy rows
+        # become the owner's ('primary'). On a fresh DB there is no table yet,
+        # so the ALTER is a harmless no-op (caught below) and _SCHEMA creates it.
+        try:
+            conn.execute("ALTER TABLE chat_turns ADD COLUMN"
+                         " user_id TEXT NOT NULL DEFAULT 'primary'")
+            conn.commit()
+        except sqlite3.OperationalError:
+            pass                   # no such table (fresh DB) or column exists
         conn.executescript(_SCHEMA)
         conn.commit()
         _conn = conn
@@ -73,17 +84,18 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def get_history(session_id: str, max_messages: int) -> list[dict]:
-    """Return the last `max_messages` turns for a session, oldest first."""
+def get_history(session_id: str, max_messages: int, user_id: str = "primary") -> list[dict]:
+    """Return the last `max_messages` turns for this user's session, oldest first."""
     try:
         conn = _get_conn()
         if conn is None or not session_id:
             return []
         with _lock:
             rows = conn.execute(
-                "SELECT role, content FROM chat_turns WHERE session_id = ? "
-                "ORDER BY id DESC LIMIT ?",
-                (session_id, int(max_messages)),
+                "SELECT role, content FROM chat_turns"
+                " WHERE session_id = ? AND user_id = ?"
+                " ORDER BY id DESC LIMIT ?",
+                (session_id, user_id, int(max_messages)),
             ).fetchall()
         return [{"role": r, "content": c} for r, c in reversed(rows)]
     except Exception as exc:
@@ -92,9 +104,12 @@ def get_history(session_id: str, max_messages: int) -> list[dict]:
 
 
 def append_turns(
-    session_id: str, user_text: str, assistant_text: str, max_messages: int
+    session_id: str, user_text: str, assistant_text: str, max_messages: int,
+    user_id: str = "primary",
 ) -> None:
-    """Append one user+assistant exchange and prune to the last `max_messages`."""
+    """Append one user+assistant exchange for this user and prune to the last
+    `max_messages` — pruning is scoped to (user_id, session_id) so one user's
+    turns never evict another's on a shared session_id."""
     try:
         conn = _get_conn()
         if conn is None or not session_id:
@@ -102,26 +117,29 @@ def append_turns(
         ts = _now()
         with _lock:
             conn.execute(
-                "INSERT INTO chat_turns (session_id, ts, role, content) VALUES (?, ?, 'user', ?)",
-                (session_id, ts, user_text),
+                "INSERT INTO chat_turns (session_id, user_id, ts, role, content)"
+                " VALUES (?, ?, ?, 'user', ?)",
+                (session_id, user_id, ts, user_text),
             )
             conn.execute(
-                "INSERT INTO chat_turns (session_id, ts, role, content) VALUES (?, ?, 'assistant', ?)",
-                (session_id, ts, assistant_text),
+                "INSERT INTO chat_turns (session_id, user_id, ts, role, content)"
+                " VALUES (?, ?, ?, 'assistant', ?)",
+                (session_id, user_id, ts, assistant_text),
             )
             conn.execute(
-                "DELETE FROM chat_turns WHERE session_id = ? AND id NOT IN ("
-                "  SELECT id FROM chat_turns WHERE session_id = ? ORDER BY id DESC LIMIT ?)",
-                (session_id, session_id, int(max_messages)),
+                "DELETE FROM chat_turns WHERE session_id = ? AND user_id = ? AND id NOT IN ("
+                "  SELECT id FROM chat_turns WHERE session_id = ? AND user_id = ?"
+                "  ORDER BY id DESC LIMIT ?)",
+                (session_id, user_id, session_id, user_id, int(max_messages)),
             )
             conn.commit()
     except Exception as exc:
         logger.warning("[chat_session_store] write failed (non-fatal): %s", exc)
 
 
-def has_session(session_id: str) -> bool:
-    """True if any turns exist for this session."""
-    return bool(get_history(session_id, 1))
+def has_session(session_id: str, user_id: str = "primary") -> bool:
+    """True if any turns exist for this user's session."""
+    return bool(get_history(session_id, 1, user_id=user_id))
 
 
 def sweep_expired(ttl_days: int = SESSION_TTL_DAYS) -> int:

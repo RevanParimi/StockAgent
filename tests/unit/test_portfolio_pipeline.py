@@ -82,7 +82,7 @@ def test_pipeline_end_to_end(monkeypatch, tmp_path):
             return None
         def load_feedback_log(self, cid):
             return None
-    monkeypatch.setattr(pipeline, "PredictionStore", _FakePredStore)
+    monkeypatch.setattr(pipeline, "VerdictStore", _FakePredStore)  # Atlas C2 plane-boundary swap
 
     result = pipeline.run_post_review_pipeline(REVIEW_DATE)
     assert result["status"] == "completed"
@@ -128,7 +128,7 @@ def test_pipeline_holding_failure_is_non_fatal(monkeypatch, tmp_path):
             return None
         def load_feedback_log(self, cid):
             return None
-    monkeypatch.setattr(pipeline, "PredictionStore", _FakePredStore)
+    monkeypatch.setattr(pipeline, "VerdictStore", _FakePredStore)  # Atlas C2 plane-boundary swap
 
     result = pipeline.run_post_review_pipeline(REVIEW_DATE)
     assert result["status"] == "completed"

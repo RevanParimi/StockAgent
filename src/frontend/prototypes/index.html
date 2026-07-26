@@ -114,15 +114,42 @@
       if (k) localStorage.setItem('sa_key', k);
       else localStorage.removeItem('sa_key');
     };
+    /* M0 (spec 2026-07-26): bearer-session token helpers. Remember-me stores in
+       localStorage (survives tab close); otherwise sessionStorage. */
+    window.saGetToken = function () {
+      return localStorage.getItem('sa_auth_token')
+          || sessionStorage.getItem('sa_auth_token') || '';
+    };
+    window.saSetToken = function (tok, remember) {
+      (remember ? localStorage : sessionStorage).setItem('sa_auth_token', tok);
+      (remember ? sessionStorage : localStorage).removeItem('sa_auth_token');
+    };
+    window.saClearToken = function () {
+      localStorage.removeItem('sa_auth_token');
+      sessionStorage.removeItem('sa_auth_token');
+    };
     window.fetch = async function (input, init) {
       const url = typeof input === 'string' ? input : ((input && input.url) || '');
       const sameOrigin = url.startsWith('/') || url.startsWith(window.location.origin);
-      const key = localStorage.getItem('sa_key');
-      if (sameOrigin && key) {
-        init = init || {};
-        init.headers = Object.assign({}, init.headers || {}, { 'X-Scheduler-Key': key });
+      if (sameOrigin) {
+        const key = localStorage.getItem('sa_key');
+        const tok = window.saGetToken();
+        if (key || tok) {
+          init = init || {};
+          const h = Object.assign({}, init.headers || {});
+          if (key) h['X-Scheduler-Key'] = key;
+          if (tok) h['Authorization'] = 'Bearer ' + tok;
+          init.headers = h;
+        }
       }
       const resp = await realFetch(input, init);
+      /* M0: a 401 on a request we DID send a token with means the session
+         expired/was revoked — drop it and let the app show the login screen.
+         (Login/signup carry no token, so their 401s never trigger this.) */
+      if (resp.status === 401 && sameOrigin && window.saGetToken()) {
+        window.saClearToken();
+        try { window.dispatchEvent(new Event('sa-auth-expired')); } catch (e) {}
+      }
       if (resp.status === 403 && sameOrigin && !window.__saKeyPrompting) {
         window.__saKeyPrompting = true;
         try {
@@ -180,12 +207,13 @@ function saConsumeDeepLink() {
 function App() {
   const [tweaks, setTweak] = useTweaks(TWEAK_DEFAULTS);
   const [deepLink] = useState(saConsumeDeepLink);          // lazy: runs once
-  const remembered = localStorage.getItem('sa_remembered') === '1';
+  // M0: a stored bearer token is the auth signal (validated at boot below).
+  const hasToken = !!(window.saGetToken && window.saGetToken());
   const [screen, setScreen] = useState(
-    remembered ? (deepLink ? deepLink.screen : 'home') : 'auth');
+    hasToken ? (deepLink ? deepLink.screen : 'home') : 'auth');
   const [inboxTab, setInboxTab] = useState(deepLink ? deepLink.tab : 'brief');
   // Where to land after login when the tap arrived logged-out:
-  const [pendingDest, setPendingDest] = useState(!remembered && deepLink ? deepLink : null);
+  const [pendingDest, setPendingDest] = useState(!hasToken && deepLink ? deepLink : null);
   const [chat, setChat] = useState(false);
   const [, forceRender] = useState(0);
 
@@ -209,21 +237,42 @@ function App() {
       const m = /#\/inbox(?:\/(brief|digest|weekly|alerts))?$/.exec(d.url || '');
       const tab = (m && m[1]) || 'brief';
       setInboxTab(tab);
-      if (localStorage.getItem('sa_remembered') === '1') setScreen('inbox');
+      if (window.saGetToken && window.saGetToken()) setScreen('inbox');
       else { setPendingDest({ screen: 'inbox', tab }); setScreen('auth'); }
     };
     navigator.serviceWorker.addEventListener('message', onMsg);
     return () => navigator.serviceWorker.removeEventListener('message', onMsg);
   }, []);
 
+  // M0: validate a stored session at boot. An expired/revoked token makes
+  // /auth/me 401 → the fetch wrapper clears it and fires 'sa-auth-expired'.
+  useEffect(() => {
+    if (!(window.saGetToken && window.saGetToken())) return;
+    fetch('/auth/me').then(r => { if (!r.ok) setScreen('auth'); }).catch(() => {});
+  }, []);
+
+  // M0: session expiry mid-use → back to the login screen.
+  useEffect(() => {
+    const onExpired = () => setScreen('auth');
+    window.addEventListener('sa-auth-expired', onExpired);
+    return () => window.removeEventListener('sa-auth-expired', onExpired);
+  }, []);
+
   const nav = (s) => {
-    if (s === 'auth') localStorage.removeItem('sa_remembered');   // sign out
+    if (s === 'auth') {                       // sign out — revoke + drop token
+      try { fetch('/auth/logout', { method: 'POST' }); } catch (e) {}
+      if (window.saClearToken) window.saClearToken();
+      localStorage.removeItem('sa_remembered');
+    }
     setScreen(s);
   };
   const goHome = () => nav('home');
   const goAgents = () => nav('agents');
-  const onAuthed = (remember) => {
+  const onAuthed = (user, remember) => {
+    // auth.jsx has already stored the token via saSetToken; keep sa_remembered
+    // as a legacy hint for any code still reading it.
     if (remember) localStorage.setItem('sa_remembered', '1');
+    else localStorage.removeItem('sa_remembered');
     if (pendingDest) {
       setInboxTab(pendingDest.tab);
       setScreen(pendingDest.screen);

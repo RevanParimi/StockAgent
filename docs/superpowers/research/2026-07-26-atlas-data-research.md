@@ -132,7 +132,7 @@ Inconsistency: pipeline has **no** owner fallback; the 3 delivery jobs do. All f
 ## Part 4 — Constraints & counts
 
 ### Learning Constitution R1–R4 (`docs/SCALING_BLUEPRINTS.md:229-234`)
-- **R1 Reward isolation** (`:231`): scorecards/duels/envelopes/regime-multipliers update from **market outcomes only**; no code path reads feedback events inside `core/intelligence/rl/`. Enforced by import-boundary test: `core/intelligence/rl/` must not import the feedback store.
+- **R1 Reward isolation** (`:231`): scorecards/duels/envelopes/regime-multipliers update from **market outcomes only**; no code path reads feedback events inside `core/intelligence/rl/`. **Enforcement mechanism named in the blueprint's "Enforced how" column is an import-boundary test (`core/intelligence/rl/` must not import the feedback store) — but this test does NOT exist yet** (grep confirms; corrected by Reviewer R2). Today R1 holds *by construction* (see Part 3 grep: zero tenant refs in `core/intelligence/`); Phase C must **create** the guard.
 - **R2 Aggregates as features, decisions by humans** (`:232`): feedback aggregates may rank universe / populate dashboards / flag rules for human review, but may **not** auto-adjust any weight/threshold/multiplier. "Aggregates land in reports, never in config."
 - **R3 Aggregation floor** (`:233`): no feedback aggregate consumed until **≥20 distinct users** contribute (privacy boundary — no aggregate traceable to an individual). Floor constant in config; aggregator refuses below it.
 - **R4 Standing bias audit** (`:234`): quarterly, compare override rates on losing vs winning positions; publish the number. Scheduled report, scorecard-email lane.

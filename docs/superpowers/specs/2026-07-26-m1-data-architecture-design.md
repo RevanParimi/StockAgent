@@ -4,12 +4,14 @@
 > **Date:** 2026-07-26 · **Branch:** `atlas-b` (docs only) · **Inputs:** the Researcher memo
 > `docs/superpowers/research/2026-07-26-atlas-data-research.md`, `docs/SCALING_BLUEPRINTS.md`
 > (BP1/2/4/5 + Learning Constitution R1–R4), `docs/LEGAL_AND_COMPLIANCE.md` §2/§5.
-> **Status:** DRAFT for the Reviewer, then the B4 user-ratification gate. **Nothing here is
-> implemented** — this spec drives Phase C.
+> **Status:** **APPROVED by the Reviewer** (Task B3 loop closed — findings R1–R6 from
+> `docs/superpowers/research/2026-07-26-atlas-data-review.md` applied), pending the **B4
+> user-ratification gate**. **Nothing here is implemented** — this spec drives Phase C.
 >
 > Every DDL statement below was instantiated in `sqlite3` with `PRAGMA foreign_keys=ON`; the
 > DPDP cascade and the CHECK/FK constraints were exercised (a single `DELETE FROM users`
-> removes all 8 user-plane tables while the user-free `instruments`/`ticker_verdicts` survive).
+> cascades to the 7 PII-bearing user tables and `SET NULL`s the retained `invites` audit rows,
+> while the user-free `instruments`/`ticker_verdicts` survive).
 > Signatures were re-read from source, not memory (advisor `:100-187`, prediction_store
 > `:129/:193/:266`, user_store `:36-67/:169`, channels `:35-88`, log_store `:54-77`,
 > portfolio store `:400`, portfolio schema, `managed_tickers.json`, `settings/loader.py cfg()`).
@@ -52,25 +54,37 @@ move is a dump/load)."* We keep that portability and pay nothing now.
 |---|---|---|
 | $/mo added | **$0** | ~+$5/mo (addon) + egress |
 | Ops surface | none new — same volume, same backup email, same `sqlite3` recipe | `DATABASE_URL` secret, `psycopg`, a migration tool, connection pool, addon lifecycle |
-| Concurrency | WAL: many readers + **one writer**; `busy_timeout` absorbs contention | true MVCC multi-writer |
+| Concurrency | WAL: many readers, writes serialized by the write lock; `busy_timeout` absorbs contention across processes | true MVCC multi-writer |
 | FK / CASCADE | full (proven above) | full |
 | Single-txn DPDP delete | yes (one `DELETE FROM users` cascades) | yes |
 | Migration cost later | dump → load (portable SQL kept deliberately) | n/a |
-| Risk | single-writer ceiling once a **second process** writes the same DB | new failure modes (pool exhaustion, addon outage) for zero M1 benefit |
+| Risk | `SQLITE_BUSY` if **concurrent write throughput** exceeds `busy_timeout` (measurable — see triggers) | new failure modes (pool exhaustion, addon outage) for zero M1 benefit |
 
-**Migration-trigger criteria** — move `atlas.db` → Postgres when **any** fires:
+> **Multi-writer reality (reviewer R1):** the app already runs `uvicorn --workers 2` (`Dockerfile:47`),
+> so `atlas.db` will have **two API-writer processes from day one** (signup/session, plus the M1
+> write-through paths: `add_holding`, `chat_usage`, `push_subscribe`, `feedback_events`), alongside
+> the single scheduler-owner worker doing batch writes. This is **not** a future event — it is the
+> starting condition, and it is fine: `users.db` and `chat_sessions.db` **already** run under
+> `--workers 2` with this exact WAL + `busy_timeout` recipe and serialize writes cleanly at this
+> scale. SQLite's write lock + `busy_timeout=5000` makes concurrent *processes* correct (one commits
+> at a time); the only thing that breaks it is *sustained throughput* exceeding the timeout — a
+> measurable quantity, not a process count.
 
-1. **Concurrent-writer pressure:** the BP2 outbox worker becomes a **second Railway process**
-   writing `atlas.db` (M1 runs it in-process — see §8). Two OS processes both doing sustained
-   INSERT/UPDATE will exceed `busy_timeout` and surface `SQLITE_BUSY`. This is the primary
-   trigger and maps exactly to BP2's "first true service split."
-2. **Write throughput:** sustained > ~50 writes/sec, or p99 write latency climbing under
-   `busy_timeout` contention on the outbox/feedback path.
+**Migration-trigger criteria** — move `atlas.db` → Postgres when **any** fires (each is *measurable*,
+not "a second process appeared" — that already happened):
+
+1. **Write-contention pressure (primary):** `SQLITE_BUSY` errors on the `atlas.db` write path appear
+   in telemetry at a non-trivial rate (target: ~0 today), **or** p99 write latency on the
+   outbox/feedback path climbs under `busy_timeout` contention. This is the real signal that the
+   two API workers + scheduler-owner + (M1) in-process outbox drainer are outgrowing the single
+   write lock — and it maps to BP2's "first true service split."
+2. **Write throughput:** sustained > ~50 writes/sec on `atlas.db`.
 3. **Size:** any single hot table > ~5M rows, or `atlas.db` > ~2 GB (the volume backup email
    stops being practical well before the 4.9 GB volume fills).
 4. **User count > ~1k** (the declared M1 ceiling) — re-evaluate regardless.
 
-At today's scale every one of these is orders of magnitude away. **Ratify SQLite for M1.**
+At today's scale every one of these is orders of magnitude away (0 `SQLITE_BUSY`, <<1 write/sec).
+**Ratify SQLite for M1.**
 
 ### Why three DBs, not one
 
@@ -119,7 +133,7 @@ CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
 
 CREATE TABLE IF NOT EXISTS invites (
   code       TEXT PRIMARY KEY,
-  created_by TEXT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+  created_by TEXT REFERENCES users(user_id) ON DELETE SET NULL,   -- keep the invite-graph edge if the creator is erased (reviewer R6a)
   created_at TEXT NOT NULL,
   used_by    TEXT REFERENCES users(user_id) ON DELETE SET NULL,   -- keep the "used" audit if consumer is erased
   used_at    TEXT
@@ -418,9 +432,15 @@ portfolio write path** and **rebuilt nightly** as a backstop (both cheap at ≤1
 carries `user_id`), writing only **aggregate counts + cadence** into `instruments`:
 
 1. `holders = COUNT(DISTINCT user_id WHERE relationship='held')`,
-   `watchers = COUNT(DISTINCT ... 'watch')`, `chat_hits_7d` from telemetry/chat mentions.
+   `watchers = COUNT(DISTINCT ... 'watch')`. **`chat_hits_7d = 0` at M1 (reviewer R4):** no store
+   today carries per-symbol chat mentions — `llm_calls` has no `symbol` column (Researcher #7) and
+   `chat_turns` is free-text only, so the term is *unimplementable* against the current schema.
+   Defer the source to a named M1.x follow-up: a tiny `symbol_mentions(symbol, user_id, ts)` tap
+   written when the chat symbol-resolver (NSE-first) identifies a ticker, aggregated over 7 days.
+   Until that ships, `w_c·chat_hits_7d = 0` and holders/watchers alone drive cadence (adequate at
+   ≤1k users). The column and weight stay in the schema/`cfg` so enabling the tap is additive.
 2. `demand_score = w_h·holders + w_w·watchers + w_c·chat_hits_7d` — weights in
-   `cfg("universe.demand_weights", …)` (BP1: 3 / 1 / 0.5).
+   `cfg("universe.demand_weights", …)` (BP1: 3 / 1 / 0.5); `chat_hits_7d` is 0 until the M1.x tap.
 3. Cadence tiers: every **held** ticker → `daily`; top-N by demand → `daily`
    (N = `cfg("universe.max_daily_analyses", …)`); watched long tail → `weekly`; rest → `on_demand`.
    Budget governor fires an ops alert at `cfg("universe.budget_alert_pct", fallback=0.8)`.
@@ -429,6 +449,15 @@ carries `user_id`), writing only **aggregate counts + cadence** into `instrument
 > read `user_instruments` (user identity), it runs **user-plane**; only its *aggregate output*
 > (counts, cadence, `enabled`) is written to `instruments`, which the scheduler/intelligence plane
 > then reads. The intelligence plane sees counts, never a `user_id`. (Flagged at B4.)
+>
+> **Why this is not an R1 leak (reviewer R6b):** `instruments` now carries user-derived aggregates
+> (`holders`, `watchers`, `demand_score`) read by the scheduler to pick cadence — the design's
+> closest approach to the R1 line. This is **explicitly permitted by R2** (`SCALING_BLUEPRINTS.md:232`:
+> *"aggregates … may rank the universe (Blueprint 1's demand score)"*). The demand→cadence path is
+> **universe ranking (which tickers get analyzed, how often)** — it never enters reward, scorecard,
+> duel, envelope, or regime-multiplier math (R1). The counts are a *feature for universe membership*,
+> not a reward signal; the ≥20-user R3 floor does not gate them (they are membership counts, not
+> feedback aggregates).
 
 **Demote policy when holder+watcher refcount hits 0** — *never hard-delete an instrument the
 intelligence plane has history for:*
@@ -582,9 +611,17 @@ lane (same place as the backup job), hot-path-safe (log + continue).
 Bounded scope — **not built at ≤1k users**, flagged for later:
 
 - **Postgres / migrations tooling** — until a §1 trigger fires.
-- **Outbox as a separate Railway service** — M1 runs the worker **in-process** (a thread/async
-  loop draining `outbox`); the second-service split is BP2's M2 step, gated on fan-out latency
-  (~100+ users) and the concurrent-writer trigger.
+- **Outbox as a separate Railway service** — M1 runs the worker **in-process**; the second-service
+  split is BP2's M2 step, gated on fan-out latency (~100+ users) and the concurrent-writer trigger.
+  **Two-worker safety (reviewer R3):** the FastAPI lifespan runs in *every* uvicorn worker
+  (`--workers 2`), and this app has already been bitten by "every cron job fired twice," which is
+  why `server.py:306-388` binds a localhost socket so only **one** worker runs the scheduler/
+  self-heal. The outbox drainer **runs only inside that same singleton-lock owner** (reuse the
+  existing guard — no new lock), *and* claims each row atomically before sending:
+  `UPDATE outbox SET status='sending', attempts=attempts+1 WHERE id=? AND status='queued'` — act
+  only if `rowcount==1`. The `dedupe_key` UNIQUE prevents duplicate *rows*; the CAS prevents a
+  duplicate *send* (belt-and-braces even if a second drainer ever exists). This is a Phase-C
+  requirement, not an optional detail.
 - **Sharding, read replicas, per-tenant encryption at rest, an event bus/message queue** — none
   earn their complexity at this scale.
 - **Semantic chat cache embedding store (BP3)** — separate program; no table here.
@@ -700,10 +737,14 @@ construction.
 carries a `user_id`. The one boundary table, `ticker_verdicts`, has **no user columns** (proven:
 it survives the DPDP cascade). The dependency direction is strictly user→intelligence: the
 `VerdictStore` facade imports `PredictionStore`; the intelligence plane imports neither the facade
-nor `feedback_events` nor `atlas.db`. Enforced by the existing **import-boundary test**
-(`core/intelligence/rl/` must not import the feedback/verdict/user stores) — Phase C extends it to
-name `services/data/verdict_store.py` and `feedback_events` as forbidden imports inside
-`core/intelligence/`. The Universe recompute reads `user_instruments` but runs **user-plane** and
+nor `feedback_events` nor `atlas.db`. **Today R1 holds *by construction*, not by an automated
+guard** (Researcher grep: zero tenant-identity references anywhere in `core/intelligence/`) — the
+import-boundary check named in `SCALING_BLUEPRINTS.md:231` ("Enforced how") is a **prescription that
+has never been implemented** (reviewer R2). **Phase C therefore CREATES it** (it is a required Phase-C
+task, shipped *with* `verdict_store.py`): an AST/import walk asserting that `core/intelligence/**`
+imports **none** of {`services/data/verdict_store.py`, the feedback store, `feedback_events`,
+`atlas.db`/the user stores}. That test turns R1 from a convention into a build-time invariant the
+moment the facade lands. The Universe recompute reads `user_instruments` but runs **user-plane** and
 emits only aggregate counts to `instruments` (§4).
 
 **R3 — Aggregation floor (≥20 users).** `feedback_events` is stored append-only and tenant-scoped;
@@ -717,10 +758,13 @@ so it is unaffected by the floor.
 `delete_user_completely(user_id)`:
 
 1. **Atomic core (one SQL transaction on `atlas.db`):** `DELETE FROM users WHERE user_id=?` →
-   `ON DELETE CASCADE` removes `sessions`, `invites(created_by)`, `chat_usage`, `user_instruments`,
-   `user_advice`, `push_subscriptions`, `outbox`, `feedback_events` in a single commit (verified in
-   the DDL check — all 8 drop to 0; `instruments`/`ticker_verdicts` survive). `invites.used_by` →
-   `SET NULL` (keeps the invite-graph audit without the erased identity).
+   `ON DELETE CASCADE` removes `sessions`, `chat_usage`, `user_instruments`, `user_advice`,
+   `push_subscriptions`, `outbox`, `feedback_events` in a single commit (verified in the DDL check —
+   all 7 drop to 0; `instruments`/`ticker_verdicts` survive). **`invites` rows are retained** with
+   `created_by`/`used_by` → `SET NULL` (reviewer R6a): the invite-graph edge (who-invited-whom
+   audit) outlives the erased identity, and no PII remains on the row (a `code` is not personal data).
+   No feedback aggregate is affected because `feedback_events` is consumed only above the R3
+   ≥20-user floor.
 2. **Non-DB artifacts, same function, deterministic + idempotent** (SQLite FKs can't reach other
    files): `shutil.rmtree(data/portfolio/<uid>/)` (holdings, ledgers, digests — the PII-heavy dir);
    `chat_sessions.db`: `DELETE FROM chat_turns WHERE user_id=?`; `telemetry.db`: **anonymize**
@@ -733,6 +777,17 @@ retry-safe follow-ups (order: DB commit first, then filesystem). This satisfies 
 scope to erase" and closes the `delete_user:169-175` gap (which today clears only
 sessions/chat_usage/users). It also fixes finding #6's PII half: push endpoints + email are pruned
 on delete (LEGAL_AND_COMPLIANCE §2 bullet 4).
+
+**Asymmetry, made deliberate (reviewer R5):** telemetry (`llm_calls`) is **anonymized**
+(`user_id→NULL`) but `feedback_events` is **hard-deleted** (FK cascade) — opposite treatments for two
+stores that both retain aggregate value after the user leaves (feedback feeds the R4 bias audit and,
+eventually, R2 ranking). The chosen default is deliberate: a `feedback_event` is **behavioral PII**
+(a named person's accept/override psychology on a specific verdict) — more sensitive than an
+unattributed token count, and DPDP "delete on request" most cleanly means *remove it*. Losing it costs
+little, because the R3 ≥20-user floor means no individual's feedback is ever consumed on its own
+anyway. Telemetry is anonymized rather than deleted only to keep the **aggregate cost ledger**
+whole (BP4's NULL bucket already means "unattributed"). This is a genuine privacy-vs-learning-value
+judgment, not an implementation detail — **routed to the B4 gate as Q5** for ratification.
 
 ---
 
@@ -782,6 +837,14 @@ watchers:1, chat_hits_7d:0.5}) · `universe.max_daily_analyses` · `universe.bud
 3. **Telemetry on delete: anonymize vs hard-delete.** Spec chooses **anonymize** (`user_id=NULL`)
    to preserve aggregate cost integrity. If DPDP counsel prefers hard-delete of per-user telemetry
    rows, it's a one-line change — flag for the eventual lawyer review (LEGAL §2).
-4. **`invites.used_by` on consumer delete: SET NULL vs cascade.** Spec keeps the invite row
-   (audit) with a nulled consumer. Confirm that retaining the invite-graph edge is desired.
+4. **`invites` retention on member delete: SET NULL vs cascade.** Spec keeps the invite row (audit)
+   with **both** `created_by` and `used_by` nulled on the respective user's deletion (reviewer R6a
+   aligned `created_by` from CASCADE to SET NULL so a creator's deletion no longer erases invite-graph
+   edges pointing at still-existing members). Confirm retaining the (now PII-free) invite-graph edge
+   is desired.
+5. **`feedback_events` on user delete: hard-delete vs anonymize (reviewer R5).** Spec's default is
+   **hard cascade-delete** (behavioral PII; DPDP "delete on request"; R3 floor means no lone-user
+   aggregate is lost). The alternative — anonymize (`user_id→NULL`) to preserve the raw event for the
+   R4 bias audit / future R2 ranking, matching the telemetry treatment — is a one-line FK change.
+   Needs a privacy-vs-learning-value ruling (eventual LEGAL §2 counsel review).
 ```

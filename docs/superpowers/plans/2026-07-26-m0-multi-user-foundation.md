@@ -18,6 +18,7 @@
 - House style: functions on hot paths never raise (log + degrade); atomic file writes via `core/utils/atomic_io.py`; module docstring headers like the surrounding files.
 - Work on branch `m0-foundation`; conventional commits; suite green before merge.
 - All Python new-code imports of settings go through `from core.config import settings` (the shim over `src/backend/shared/config/settings/base.py`) — match `core/portfolio/narrator.py`.
+- **No hardcoded business tunables (user rule, 2026-07-26):** every value business might re-tune — quotas, caps, TTLs, thresholds, tier limits — goes through `cfg("section.key", env=..., fallback=...)` in settings, never as a literal in code. (This plan complies: `CHAT_DAILY_QUOTA`, `AUTH_REQUIRED`; session TTLs 30d/24h and password min-length 10 are acceptable as module constants only because they are security parameters, not business knobs — if in doubt, make it a setting.)
 
 ---
 

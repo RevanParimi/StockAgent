@@ -519,23 +519,27 @@ Create `tests/unit/test_verdict_store_facade.py`; Modify `core/portfolio/advisor
   `feedback_events`, `atlas_store`, or any `services.data.stores.user_store`/portfolio store. This is
   the guard the blueprint prescribed but never had.
 
-- [ ] **Step 1 — failing tests.** (a) `test_atlas_import_boundary.py`: walk `core/intelligence/`
-  `*.py`, `ast.parse` each, collect `Import`/`ImportFrom` targets, assert the forbidden set is
-  disjoint (RED only if a real leak exists — today it passes *once written*, so assert it stays green
-  and also add a synthetic negative: a fixture module string that imports the facade must be flagged
-  by the checker function). (b) `test_verdict_store_facade.py`: `VerdictStore("TCS").cycle_id_for(...)`,
-  `.load_envelope(...)`, `.load_feedback_log(...)` return the same shapes the advisor reads (monkeypatch
-  a fake `PredictionStore`); each read degrades to `None`/empty on exception (hot-path safety).
-- [ ] **Step 2 — run red** (facade import fails → tests error).
-- [ ] **Step 3 — implement** `verdict_store.py` per spec §3 (delegate to `PredictionStore`; `EnvelopeView`/
-  `FeedbackView` expose only the attributes `build_signals` reads). Swap `advisor.py:21`
-  `from core.intelligence.rl.stores.prediction_store import PredictionStore` →
-  `from services.data.verdict_store import VerdictStore` and change `build_signals(..., store: VerdictStore, ...)`
-  type hint; **call sites unchanged** (`store.cycle_id_for`/`load_envelope`/`load_feedback_log`).
-  Same swap in `pipeline.py` where it constructs the store. Leave `is_trading_day`/`get_price_history`/
-  `next_results_event` as direct imports (spec §3 "stays direct").
-- [ ] **Step 4 — run green** (new tests + `test_advisor*.py` + `test_pipeline*.py` + full suite).
-- [ ] **Step 5 — commit** `feat(atlas-c2): VerdictStore facade + R1 import-boundary test; advisor/pipeline swap`.
+- [x] **Step 1 — failing tests.** (a) `test_atlas_import_boundary.py` (7): AST-walks
+  `core/intelligence/**`, asserts none imports {verdict_store, atlas_store, user_store, portfolio
+  store, feedback_events}, + 5 synthetic-negative + 1 allowed-arrow check so a green walk is
+  meaningful. Reads with `utf-8-sig` (one intelligence file carries a BOM). (b)
+  `test_verdict_store_facade.py` (8): the 3 delegated reads return the store objects unchanged
+  (monkeypatched fake PredictionStore), degrade to None on exception, + publish/get round-trip,
+  idempotent upsert, and hot-path safety on a bad DB.
+- [x] **Step 2 — run red** (facade `ModuleNotFoundError`; boundary guard already green — it scans
+  source, doesn't import the facade).
+- [x] **Step 3 — implement** `verdict_store.py` per spec §3. Chose **delegate-and-return-raw**:
+  the facade returns PredictionStore's actual `PredictionEnvelope`/`DailyFeedbackLog` objects
+  (byte-for-byte the advisor surface, zero drift risk) rather than re-wrapping in EnvelopeView/
+  FeedbackView — the advisor duck-types, importing only `VerdictStore`, so R1 holds. Swapped
+  `advisor.py:21/:104` and `pipeline.py:17/:92` PredictionStore→VerdictStore. `is_trading_day`/
+  `get_price_history`/`next_results_event` left as direct imports (spec §3). Other PredictionStore
+  importers (scheduler/rl_monitor/analytics/run_schedule) are the RL operational surface, stay direct.
+- [x] **Step 4 — run green** (48 passed: facade+boundary+`test_portfolio_advisor`/`_switch`/
+  `test_portfolio_pipeline`/`test_autopilot_pipeline`; updated the 2 `pipeline.PredictionStore`
+  monkeypatch targets → `pipeline.VerdictStore`, fake already duck-types). Full-suite collection clean
+  (2183, no import cycle).
+- [x] **Step 5 — commit** `d91c497` `feat(atlas-c2): VerdictStore facade + R1 import-boundary test; advisor/pipeline swap`.
 
 ---
 
@@ -552,17 +556,28 @@ Modify fan-out sites `core/portfolio/pipeline.py:39`, `core/delivery/brief.py:27
   no-op when `ATLAS_ENABLED=false`. `active_user_ids()` per spec §6 (atlas users query; preserves
   `AUTH_REQUIRED=false ⇒ [primary]`; falls back to `list_user_ids()` when flag off).
 
-- [ ] **Step 1 — failing tests:** flag ON ⇒ `add_holding` creates `user_instruments(held)` + an
-  `instruments` row; `remove_holding` deletes the `held` row; watchlist mirrors; `active_user_ids()`
-  returns users from `atlas.db` (ghost dir with no users row is **excluded**), and returns `[primary]`
-  when 0 users + `AUTH_REQUIRED=false`. Flag OFF ⇒ every hook is a no-op and `active_user_ids()==list_user_ids()`.
-- [ ] **Step 2 — run red.**
-- [ ] **Step 3 — implement** the hooks (call `atlas_store` upserts inside the existing FileLock write,
-  guarded by the flag; hot-path-safe: log+continue on `atlas.db` error so a portfolio write never
-  fails because of the index). Add `active_user_ids()`; repoint the 4 fan-out sites to it (unifies the
-  inconsistent owner fallback — fixes finding #6).
-- [ ] **Step 4 — run green** (new + `test_portfolio_store.py` + `test_scheduler_*` fan-out tests).
-- [ ] **Step 5 — commit** `feat(atlas-c3): user_instruments write-through + active_user_ids() (flag-gated)`.
+- [x] **Step 1 — failing tests** (`test_atlas_user_instruments.py`, 8): flag-ON write-through
+  (add_holding→held+instrument origin/cadence, remove_holding, reduce_holding full-exit,
+  watchlist mirror, hot-path-safe with no users row), active_user_ids (atlas users, ghost excluded,
+  owner fallback), flag-OFF no-op + `active_user_ids()==list_user_ids()`.
+- [x] **Step 2 — run red.**
+- [x] **Step 3 — implement.** `atlas_store.enabled/user_ids/upsert_user_instrument/
+  remove_user_instrument` (idempotent, atomic, hot-path safe). `PortfolioStore._sync_instrument`
+  hooks on add/remove holding + add/remove watchlist + **reduce_holding full-exit** (added for
+  refcount accuracy — same 'held ended' event). `active_user_ids()` per spec §6; repointed all 4
+  fan-out sites (pipeline bare; brief/weekly/index_watch keep `or [DEFAULT]` to preserve the dormant
+  path exactly). config.yaml gains a dormant `atlas:` section.
+- [x] **Step 4 — run green** (59 passed across affected areas; renamed 6 monkeypatch targets
+  `list_user_ids`→`active_user_ids` in test_autopilot_pipeline/test_delivery_brief/test_delivery_weekly;
+  full-suite collection clean 2191).
+- [x] **Step 5 — commit** `40d6cd5` `feat(atlas-c3): user_instruments write-through + active_user_ids() (flag-gated)`.
+
+> **Gap flagged (post-cutover, not blocking):** new signups still write only to `users.db`, not
+> `atlas.db users`. The C10 ETL migrates *existing* users at cutover, but ongoing signups won't have
+> an `atlas.db users` row, so their `user_instruments` write-through FK-skips (hot-path safe, just not
+> indexed) and `active_user_ids()` won't fan out to them until a re-ETL. Wiring the signup path to
+> also write `atlas.db` (dual-write or switch the auth SoT) is out of the current Phase-C task list —
+> track for before user #2 relies on atlas fan-out.
 
 ---
 

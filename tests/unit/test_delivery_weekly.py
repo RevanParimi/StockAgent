@@ -87,7 +87,7 @@ def test_switch_suggestions_from_advice_ledger(tmp_path, monkeypatch):
 
 def test_run_weekly_saves_and_delivers(tmp_path, monkeypatch):
     from unittest.mock import patch
-    monkeypatch.setattr(wk, "list_user_ids", lambda: ["u1"])
+    monkeypatch.setattr(wk, "active_user_ids", lambda: ["u1"])
     monkeypatch.setattr(wk.settings, "PORTFOLIO_DATA_DIR", str(tmp_path))
     _store(tmp_path)
     monkeypatch.setattr(wk, "_narrate_weekly", lambda r: "h")
@@ -103,7 +103,7 @@ def test_run_weekly_saves_and_delivers(tmp_path, monkeypatch):
 def test_run_weekly_delivers_inbox_deeplink(tmp_path, monkeypatch):
     from core.config import settings
     captured = {}
-    monkeypatch.setattr(wk, "list_user_ids", lambda: ["u1"])
+    monkeypatch.setattr(wk, "active_user_ids", lambda: ["u1"])
     monkeypatch.setattr(wk, "build_weekly_review",
                         lambda uid, on, store=None: {"date": on.isoformat(),
                                                      "kind": "weekly_review"})

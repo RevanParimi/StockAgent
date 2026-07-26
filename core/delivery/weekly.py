@@ -13,7 +13,7 @@ from datetime import date, datetime, timedelta, timezone
 
 from core.config import settings
 from core.delivery.channels import deliver
-from core.portfolio.store import PortfolioStore, list_user_ids
+from core.portfolio.store import PortfolioStore, active_user_ids
 
 logger = logging.getLogger(__name__)
 
@@ -237,7 +237,7 @@ def render_weekly_text(review: dict) -> str:
 def run_weekly_review(on: date | None = None) -> dict:
     """Scheduler Job 14 / POST /delivery/run-weekly entry point. Never raises."""
     on = on or date.today()
-    users = list_user_ids() or [settings.PORTFOLIO_DEFAULT_USER_ID]
+    users = active_user_ids() or [settings.PORTFOLIO_DEFAULT_USER_ID]
     built = 0
     for user_id in users:
         try:

@@ -31,6 +31,7 @@ from __future__ import annotations
 import logging
 import sqlite3
 import threading
+from datetime import datetime, timezone
 from pathlib import Path
 
 from backend.shared.config.settings.loader import cfg
@@ -41,6 +42,20 @@ logger = logging.getLogger(__name__)
 def db_path() -> Path:
     """Resolve the atlas.db location (env > config.yaml > fallback)."""
     return Path(cfg("atlas.db_path", env="ATLAS_DB_PATH", fallback="data/atlas.db"))
+
+
+def enabled() -> bool:
+    """True when the Atlas relational plane is switched on (env > yaml > False).
+
+    Read LIVE on every call (not resolved once at import) so the C11 cutover —
+    flip ATLAS_ENABLED and redeploy — takes effect, and so tests can toggle it.
+    While False the whole Phase-C build is a behavioral no-op.
+    """
+    return bool(cfg("atlas.enabled", env="ATLAS_ENABLED", fallback=False))
+
+
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
 _DB_PATH = db_path()               # tests monkeypatch this (same recipe as user_store)
@@ -240,3 +255,71 @@ def _reset_for_tests() -> None:
         except Exception:
             pass
     _conn_holder["conn"] = None
+
+
+# ---------------------------------------------------------------------------
+# Business functions (C3) — the user_instruments reverse index (spec §4).
+# All hot-path safe: they log + return on any failure so a portfolio write
+# never fails because of the atlas index. Callers gate on `enabled()`.
+# ---------------------------------------------------------------------------
+
+def user_ids() -> list[str]:
+    """All registered user_ids (SELECT user_id FROM users). [] on any failure."""
+    try:
+        conn = _get_conn()
+        with _lock:
+            rows = conn.execute("SELECT user_id FROM users ORDER BY created_at").fetchall()
+        return [r[0] for r in rows]
+    except Exception as exc:
+        logger.warning("[atlas_store] user_ids read failed (non-fatal): %s", exc)
+        return []
+
+
+def upsert_user_instrument(user_id: str, symbol: str, relationship: str, *,
+                           origin: str = "seed", cadence: str = "on_demand") -> bool:
+    """Ensure the `instruments` FK target exists, then record the (user, symbol,
+    relationship) membership. Idempotent (INSERT OR IGNORE on the UNIQUE key).
+    `origin`/`cadence` are set only when the instrument row is first created —
+    the nightly Universe recompute (C4) is the authority on cadence thereafter.
+    Atomic (both rows or neither); returns False on any failure, never raises."""
+    sym = symbol.strip().upper()
+    now = _now_iso()
+    try:
+        conn = _get_conn()
+        with _lock:
+            try:
+                conn.execute(
+                    "INSERT OR IGNORE INTO instruments (sym, origin, cadence,"
+                    " created_at, updated_at) VALUES (?,?,?,?,?)",
+                    (sym, origin, cadence, now, now))
+                conn.execute(
+                    "INSERT OR IGNORE INTO user_instruments (user_id, symbol,"
+                    " relationship, added_at) VALUES (?,?,?,?)",
+                    (user_id, sym, relationship, now))
+                conn.commit()
+            except Exception:
+                conn.rollback()
+                raise
+        return True
+    except Exception as exc:
+        logger.warning("[atlas_store] upsert_user_instrument failed for %s/%s"
+                       " (non-fatal): %s", user_id, sym, exc)
+        return False
+
+
+def remove_user_instrument(user_id: str, symbol: str, relationship: str) -> bool:
+    """Delete one (user, symbol, relationship) membership row. Returns False on
+    any failure, never raises."""
+    sym = symbol.strip().upper()
+    try:
+        conn = _get_conn()
+        with _lock:
+            conn.execute(
+                "DELETE FROM user_instruments WHERE user_id=? AND symbol=?"
+                " AND relationship=?", (user_id, sym, relationship))
+            conn.commit()
+        return True
+    except Exception as exc:
+        logger.warning("[atlas_store] remove_user_instrument failed for %s/%s"
+                       " (non-fatal): %s", user_id, sym, exc)
+        return False

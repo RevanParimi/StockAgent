@@ -20,7 +20,7 @@ from core.portfolio.corp_actions import sync_corp_actions
 from core.portfolio.digest import build_digest
 from core.portfolio.narrator import narrate
 from core.portfolio.pricing import close_on
-from core.portfolio.store import PortfolioStore, list_user_ids
+from core.portfolio.store import PortfolioStore, active_user_ids
 from services.data.fetchers.corporate_events import (
     load_events_calendar,
     refresh_events_calendar,
@@ -36,7 +36,7 @@ def run_post_review_pipeline(review_date: date) -> dict:
         logger.info("[portfolio_pipeline] %s is not a trading day — skipping", review_date)
         return {"status": "not_trading_day"}
 
-    users = list_user_ids()
+    users = active_user_ids()          # Atlas C3: users-table when enabled, dir-scan when not
     total_advice, escalations = 0, []
 
     for user_id in users:

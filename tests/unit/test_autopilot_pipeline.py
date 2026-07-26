@@ -71,7 +71,7 @@ def test_digest_backward_compatible_without_trades():
 def test_pipeline_calls_executor_and_value_recorder():
     """The pipeline must call execute_advice + record_value_point per user."""
     import core.portfolio.pipeline as pl
-    with patch.object(pl, "list_user_ids", return_value=["t1"]), \
+    with patch.object(pl, "active_user_ids", return_value=["t1"]), \
          patch.object(pl, "PortfolioStore") as MockStore, \
          patch.object(pl, "sync_corp_actions"), \
          patch.object(pl, "refresh_events_calendar", return_value={}), \
@@ -97,7 +97,7 @@ def test_pipeline_emits_switch_buy_skipped_alert():
     surface a switch_buy_skipped alert — otherwise the user sees a SELL
     alert and silence while a position quietly became cash."""
     import core.portfolio.pipeline as pl
-    with patch.object(pl, "list_user_ids", return_value=["t1"]), \
+    with patch.object(pl, "active_user_ids", return_value=["t1"]), \
          patch.object(pl, "PortfolioStore") as MockStore, \
          patch.object(pl, "sync_corp_actions"), \
          patch.object(pl, "refresh_events_calendar", return_value={}), \

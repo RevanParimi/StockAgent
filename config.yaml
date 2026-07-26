@@ -413,3 +413,13 @@ delivery:
     - "NIFTY NEXT 50"
     - "NIFTY MIDCAP 150"
     - "NIFTY SMALLCAP 250"
+
+# =============================================================================
+# Atlas M1 — user-plane relational core (data/atlas.db). Ships DORMANT: the whole
+# Phase-C build is a behavioral no-op until `enabled` is flipped at the weekend
+# cutover (env ATLAS_ENABLED wins over this file). enabled=false = instant
+# rollback to the JSON / users.db / dir-scan path.
+# =============================================================================
+atlas:
+  enabled: false                 # flip to true (via ATLAS_ENABLED in Railway) at the C11 cutover
+  db_path: "data/atlas.db"

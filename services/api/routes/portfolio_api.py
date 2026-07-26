@@ -3,7 +3,8 @@ services/api/routes/portfolio_api.py
 =====================================
 Compass Phase A — virtual portfolio + advisor REST surface.
 
-Endpoints (user_id query param defaults to portfolio.default_user_id)
+Endpoints (identity comes from the bearer session (M0); AUTH_REQUIRED=false
+maps anonymous to the owner)
 ---------------------------------------------------------------------
 GET    /portfolio                      Holdings + watchlist, marked to market
 POST   /portfolio/holdings             Add virtual buy (priced at real NSE close)
@@ -25,10 +26,12 @@ import asyncio
 import logging
 from datetime import date, datetime, timezone
 
-from fastapi import APIRouter, BackgroundTasks, Header, HTTPException, Query, Request
+from fastapi import (APIRouter, BackgroundTasks, Depends, Header, HTTPException,
+                     Query, Request)
 from pydantic import BaseModel
 
 from core.config import settings
+from services.api.auth import get_current_user
 from backend.sectors.registry import SectorRegistry
 from backend.shared.schemas.portfolio import Holding, TransactionRecord, WatchlistItem
 from core.portfolio.autopilot import make_txn_id
@@ -76,11 +79,11 @@ class WatchlistIn(BaseModel):
 
 @router.get("", summary="Portfolio with mark-to-market P&L")
 async def get_portfolio(
-    user_id: str | None = Query(default=None),
+    user: dict = Depends(get_current_user),
     x_scheduler_key: str | None = Header(default=None),
 ) -> dict:
     _check_auth(x_scheduler_key)
-    store = _store(user_id)
+    store = _store(user["user_id"])
     p = store.load()
     holdings = []
     for h in p.holdings:
@@ -103,7 +106,7 @@ async def get_portfolio(
 @router.post("/holdings", summary="Add a virtual holding (mock money, real prices)")
 async def add_holding(
     body: HoldingIn,
-    user_id: str | None = Query(default=None),
+    user: dict = Depends(get_current_user),
     x_scheduler_key: str | None = Header(default=None),
 ) -> dict:
     _check_auth(x_scheduler_key)
@@ -135,7 +138,7 @@ async def add_holding(
         symbol=symbol, sector=sector, qty=body.qty, avg_buy_price=price,
         adj_avg_price=price, adj_qty=body.qty, buy_date=body.buy_date,
     )
-    store = _store(user_id)
+    store = _store(user["user_id"])
     txn = None
     # One critical section for the whole read-modify-write (AUD-001/007).
     with store.locked():
@@ -178,11 +181,11 @@ async def add_holding(
 @router.delete("/holdings/{symbol}", summary="Remove a holding")
 async def delete_holding(
     symbol: str,
-    user_id: str | None = Query(default=None),
+    user: dict = Depends(get_current_user),
     x_scheduler_key: str | None = Header(default=None),
 ) -> dict:
     _check_auth(x_scheduler_key)
-    store = _store(user_id)
+    store = _store(user["user_id"])
     p = store.load()
     h = next((x for x in p.holdings if x.symbol == symbol.upper()), None)
     if h is None:
@@ -237,7 +240,7 @@ async def delete_holding(
 @router.post("/watchlist", summary="Add a watchlist symbol")
 async def add_watchlist(
     body: WatchlistIn,
-    user_id: str | None = Query(default=None),
+    user: dict = Depends(get_current_user),
     x_scheduler_key: str | None = Header(default=None),
 ) -> dict:
     _check_auth(x_scheduler_key)
@@ -256,18 +259,18 @@ async def add_watchlist(
         symbol=symbol, sector=sector, added=date.today().isoformat(),
         reason=body.reason, source="user",
     )
-    _store(user_id).add_watchlist(item)
+    _store(user["user_id"]).add_watchlist(item)
     return {"watchlist_item": item.model_dump(), "promotion": promotion}
 
 
 @router.delete("/watchlist/{symbol}", summary="Remove a watchlist symbol")
 async def delete_watchlist(
     symbol: str,
-    user_id: str | None = Query(default=None),
+    user: dict = Depends(get_current_user),
     x_scheduler_key: str | None = Header(default=None),
 ) -> dict:
     _check_auth(x_scheduler_key)
-    store = _store(user_id)
+    store = _store(user["user_id"])
     if not store.remove_watchlist(symbol):
         raise HTTPException(status_code=404, detail=f"No watchlist entry {symbol.upper()}")
     demoted = False
@@ -280,18 +283,18 @@ async def delete_watchlist(
 @router.post("/import-csv", summary="Bulk import holdings from CSV text")
 async def import_csv_endpoint(
     request: Request,
-    user_id: str | None = Query(default=None),
+    user: dict = Depends(get_current_user),
     x_scheduler_key: str | None = Header(default=None),
 ) -> dict:
     _check_auth(x_scheduler_key)
-    _store(user_id)  # validate user_id before running the import
+    _store(user["user_id"])  # validate the user's store before running the import
     text = (await request.body()).decode("utf-8", errors="replace")
     result = await asyncio.to_thread(
-        import_csv, text, user_id=user_id,
+        import_csv, text, user_id=user["user_id"],
         price_lookup=lambda sym, d: close_on(sym, date.fromisoformat(d)),
     )
     # Promote successfully imported symbols (held origin).
-    p = _store(user_id).load()
+    p = _store(user["user_id"]).load()
     for h in p.holdings:
         try:
             promote_symbol(h.symbol, h.sector, origin="held")
@@ -302,23 +305,23 @@ async def import_csv_endpoint(
 
 @router.get("/advice", summary="Advice-ledger tail")
 async def get_advice(
-    user_id: str | None = Query(default=None),
+    user: dict = Depends(get_current_user),
     limit: int = Query(default=50, ge=1, le=500),
     x_scheduler_key: str | None = Header(default=None),
 ) -> dict:
     _check_auth(x_scheduler_key)
-    records = _store(user_id).load_advice(limit=limit)
+    records = _store(user["user_id"]).load_advice(limit=limit)
     return {"records": [r.model_dump() for r in records]}
 
 
 @router.get("/digest/latest", summary="Latest EOD digest")
 async def get_latest_digest(
-    user_id: str | None = Query(default=None),
+    user: dict = Depends(get_current_user),
     format: str | None = Query(default=None, description="'text' → rendered text"),
     x_scheduler_key: str | None = Header(default=None),
 ) -> dict:
     _check_auth(x_scheduler_key)
-    digest = _store(user_id).load_latest_digest()
+    digest = _store(user["user_id"]).load_latest_digest()
     if digest is None:
         raise HTTPException(status_code=404, detail="No digest yet — run the advisor first.")
     if format == "text":
@@ -329,22 +332,22 @@ async def get_latest_digest(
 
 @router.get("/transactions", summary="Transaction audit trail (newest first)")
 async def get_transactions(
-    user_id: str | None = Query(default=None),
+    user: dict = Depends(get_current_user),
     limit: int = Query(default=50, ge=1, le=1000),
     x_scheduler_key: str | None = Header(default=None),
 ) -> dict:
     _check_auth(x_scheduler_key)
-    records = _store(user_id).load_transactions(limit=limit)
+    records = _store(user["user_id"]).load_transactions(limit=limit)
     return {"transactions": [r.model_dump() for r in reversed(records)]}
 
 
 @router.get("/performance", summary="P&L summary + daily equity curve")
 async def get_performance(
-    user_id: str | None = Query(default=None),
+    user: dict = Depends(get_current_user),
     x_scheduler_key: str | None = Header(default=None),
 ) -> dict:
     _check_auth(x_scheduler_key)
-    store = _store(user_id)
+    store = _store(user["user_id"])
     p = store.load()
     history = store.load_value_history(limit=400)
     realized = round(sum(t.realized_pnl for t in store.load_transactions(limit=2000)), 2)

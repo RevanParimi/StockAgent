@@ -32,10 +32,11 @@ from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, Header, HTTPException, Query
+from fastapi import APIRouter, Depends, Header, HTTPException, Query
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from services.api.auth import check_scheduler_key
+from services.api.auth import check_scheduler_key, get_current_user
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/ui", tags=["UI"])
@@ -2897,8 +2898,30 @@ These run on NSE stocks via "Run Analysis". Chat uses live tools above instead.
 {context}"""
 
 
+def check_chat_quota(user: dict) -> dict | None:
+    """M0 (spec §4.5): count this LLM turn against the user's daily quota.
+    Returns the 429 payload when exhausted, else None. One user message = one
+    turn regardless of internal tool fan-out. Availability over strict
+    metering: storage failure allows the turn (loudly)."""
+    from core.config import settings as _s
+    quota = int(getattr(_s, "CHAT_DAILY_QUOTA", 0) or 0)
+    if quota <= 0 or user.get("role") == "owner":
+        return None
+    try:
+        from services.data.stores import user_store
+        used = user_store.bump_chat_usage(user["user_id"])
+    except Exception as exc:
+        logger.warning("[ui/chat] quota store failed — allowing turn: %s", exc)
+        return None
+    if used > quota:
+        return {"error": "daily_quota",
+                "detail": (f"You've used your {quota} assistant questions for "
+                           "today — resets at midnight IST.")}
+    return None
+
+
 @router.post("/chat", summary="AI assistant chat reply")
-async def chat(body: dict) -> dict:
+async def chat(body: dict, user: dict = Depends(get_current_user)) -> dict:
     """
     Agentic chat: LLM can call get_live_price, search_market_news, get_stock_analysis
     in a tool loop (max 4 rounds) before composing a grounded reply.
@@ -2912,6 +2935,10 @@ async def chat(body: dict) -> dict:
     if not message:
         return {"reply": "Ask me anything — live prices, why a market is moving, stock verdicts, or what our agents say.",
                 "session_id": session_id}
+
+    quota_block = check_chat_quota(user)   # M0 §4.5 — counts this turn
+    if quota_block:
+        return JSONResponse(status_code=429, content=quota_block)
 
     context = _build_chat_context(message)
     system_prompt = _CHAT_SYSTEM_PROMPT.format(context=context)
@@ -3225,7 +3252,7 @@ def _sanitize_answer(text: str) -> str:
 # ---------------------------------------------------------------------------
 
 @router.post("/chat/stream", summary="AI assistant chat — SSE streaming response")
-async def chat_stream(body: dict):
+async def chat_stream(body: dict, user: dict = Depends(get_current_user)):
     """
     Streaming agentic chat. The model runs a multi-round tool loop (live prices,
     sector movers, web search, RL predictions) and then streams a grounded answer.
@@ -3240,6 +3267,19 @@ async def chat_stream(body: dict):
         async def _empty():
             yield 'data: {"event":"done"}\n\n'
         return _SR(_empty(), media_type="text/event-stream")
+
+    quota_block = check_chat_quota(user)   # M0 §4.5 — counts this turn
+    if quota_block:
+        # Reuse the SSE token→done shape (same as the agentic-loop error path):
+        # the detail renders as a plain assistant info bubble, not a hard error.
+        import json as _json
+        _detail = quota_block["detail"]
+
+        async def _quota():
+            yield f'data: {_json.dumps({"event": "intent", "session_id": session_id, "tier": "active", "query": message[:80]})}\n\n'
+            yield f'data: {_json.dumps({"event": "token", "text": _detail})}\n\n'
+            yield 'data: {"event":"done"}\n\n'
+        return _SR(_quota(), media_type="text/event-stream")
 
     async def generate():
         import json as _json

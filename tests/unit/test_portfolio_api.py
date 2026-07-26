@@ -121,9 +121,14 @@ def test_run_advisor_bad_date_422(client):
     assert resp.status_code == 422
 
 
-def test_traversal_user_id_422(client):
+def test_traversal_user_id_query_param_ignored(client):
+    # M0 IDOR fix (spec §3 D6): identity comes only from the bearer session, so
+    # a ?user_id= query param is inert. A traversal attempt via that param can no
+    # longer reach PortfolioStore — it resolves to the owner passthrough
+    # (AUTH_REQUIRED=false), which is strictly safer than the old 422 guard.
     resp = client.get("/portfolio?user_id=../../etc")
-    assert resp.status_code == 422
+    assert resp.status_code == 200
+    assert resp.json()["user_id"] != "../../etc"
 
 
 def test_add_holding_sector_omitted_resolves_via_registry(client):

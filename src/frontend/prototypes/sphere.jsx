@@ -289,6 +289,11 @@ function ChatOverlay({ open, onClose, mode='wireframe' }) {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ message: text, session_id: sessionId }),
         });
+        if (res.status === 429) {   // M0: daily chat quota — friendly info bubble
+          const q = await res.json().catch(() => ({}));
+          setMsgs(m => [...m.slice(0, -1), { from:'bot', text: q.detail || "You've reached today's assistant limit — resets at midnight IST.", loading:false, toolTrace:[] }]);
+          return;
+        }
         const data = res.ok ? await res.json() : {};
         if (data.session_id) setSessionId(data.session_id);
         setMsgs(m => [...m.slice(0, -1), { from:'bot', text: data.reply || 'Error', loading:false, toolTrace:[] }]);

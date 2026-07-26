@@ -8,8 +8,43 @@ function AuthScreen({ onAuthed }) {
   const [name, setName] = useStateAuth('');
   const [pw, setPw] = useStateAuth('');
   const [remember, setRemember] = useStateAuth(true);
+  const [invite, setInvite] = useStateAuth('');
+  const [consent, setConsent] = useStateAuth(false);
+  const [busy, setBusy] = useStateAuth(false);
+  const [err, setErr] = useStateAuth('');
 
-  const submit = (e) => { e.preventDefault(); onAuthed(remember); };
+  // M0 (spec 2026-07-26 §4.6): real auth against /auth/{login,signup}.
+  async function submitAuth(e) {
+    if (e) e.preventDefault();
+    if (busy) return;
+    setBusy(true); setErr('');
+    try {
+      const path = tab === 'login' ? '/auth/login' : '/auth/signup';
+      const body = tab === 'login'
+        ? { email, password: pw, remember_me: remember }
+        : { email, password: pw, display_name: name, invite_code: invite || null,
+            remember_me: remember, consent: consent };
+      const r = await fetch(path, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        setErr((data && data.detail) || 'Something went wrong — try again.');
+        return;
+      }
+      window.saSetToken(data.token, remember);
+      onAuthed(data.user, remember);      // parent routes to the app shell
+    } catch (e2) {
+      setErr('Network error — try again.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const socialUnavailable = () =>
+    setErr('Social sign-in is coming soon — use your email for now.');
 
   return (
     <div className="auth-layout" style={{
@@ -105,7 +140,7 @@ function AuthScreen({ onAuthed }) {
             ))}
           </div>
 
-          <form onSubmit={submit} style={{ display:'flex', flexDirection:'column', gap:14 }}>
+          <form onSubmit={submitAuth} style={{ display:'flex', flexDirection:'column', gap:14 }}>
             {tab==='signup' && (
               <Field icon={<Icon.User size={16}/>} label="Full name">
                 <input value={name} onChange={e=>setName(e.target.value)} placeholder="Aditi Sharma" className="auth-input"
@@ -125,6 +160,20 @@ function AuthScreen({ onAuthed }) {
               }}>{showPw ? <Icon.EyeOff size={16}/> : <Icon.Eye size={16}/>}</button>
             </Field>
 
+            {tab==='signup' && (
+              <Field icon={<Icon.Sparkles size={16}/>} label="Invite code">
+                <input value={invite} onChange={e=>setInvite(e.target.value)} placeholder="inv_… (from whoever invited you)" className="auth-input"
+                  style={inputStyle}/>
+              </Field>
+            )}
+
+            {tab==='signup' && (
+              <label style={{ display:'flex', alignItems:'flex-start', gap:8, fontSize:12, color:'var(--ink-2)', cursor:'pointer', lineHeight:1.5 }}>
+                <input type="checkbox" checked={consent} onChange={e=>setConsent(e.target.checked)} style={{ marginTop:2 }}/>
+                <span>I agree that my email, portfolio and watchlist are stored to run this research service. Delete anytime in Settings.</span>
+              </label>
+            )}
+
             {tab==='login' && (
               <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', fontSize:12 }}>
                 <label style={{ display:'flex', alignItems:'center', gap:6, color:'var(--ink-2)', cursor:'pointer' }}>
@@ -134,12 +183,21 @@ function AuthScreen({ onAuthed }) {
               </div>
             )}
 
-            <button type="submit" style={{
+            {err && (
+              <div role="alert" style={{
+                fontSize:12, color:'#b91c1c', background:'rgba(185,28,28,.08)',
+                border:'1px solid rgba(185,28,28,.2)', borderRadius:10, padding:'9px 12px'
+              }}>{err}</div>
+            )}
+
+            <button type="submit" disabled={busy || (tab==='signup' && !consent)} style={{
               marginTop:8, padding:'14px 16px', border:'none', borderRadius:12,
               background:'linear-gradient(135deg,#0891b2,#7c3aed)', color:'#fff',
               fontSize:14, fontWeight:700, letterSpacing:'.01em',
-              boxShadow:'0 8px 24px rgba(8,145,178,.3)', cursor:'pointer'
-            }}>{tab==='login' ? 'Log in' : 'Create account'} →</button>
+              boxShadow:'0 8px 24px rgba(8,145,178,.3)',
+              cursor: (busy || (tab==='signup' && !consent)) ? 'not-allowed' : 'pointer',
+              opacity: (busy || (tab==='signup' && !consent)) ? 0.6 : 1
+            }}>{busy ? 'Please wait…' : (tab==='login' ? 'Log in' : 'Create account')} →</button>
           </form>
 
           <div style={{ display:'flex', alignItems:'center', gap:12, margin:'24px 0', color:'var(--ink-3)', fontSize:11 }}>
@@ -149,8 +207,8 @@ function AuthScreen({ onAuthed }) {
           </div>
 
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
-            <SocialBtn onClick={()=>onAuthed(remember)} icon={<Icon.Google size={18}/>} label="Google"/>
-            <SocialBtn onClick={()=>onAuthed(remember)} icon={<Icon.Apple size={18}/>} label="Apple"/>
+            <SocialBtn onClick={socialUnavailable} icon={<Icon.Google size={18}/>} label="Google"/>
+            <SocialBtn onClick={socialUnavailable} icon={<Icon.Apple size={18}/>} label="Apple"/>
           </div>
 
           <p style={{ marginTop:24, fontSize:12, color:'var(--ink-3)', textAlign:'center' }}>

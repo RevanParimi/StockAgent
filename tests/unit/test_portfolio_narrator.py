@@ -1,9 +1,21 @@
 """Compass Phase A — narration is presentation-only, never blocks advice."""
 import json
 
+import pytest
+
 from backend.shared.schemas.portfolio import AdviceRecord
 from core.portfolio.advisor import AdvisorSignals
 import core.portfolio.narrator as narrator
+
+
+@pytest.fixture(autouse=True)
+def _fresh_narrative_cache(tmp_path, monkeypatch):
+    # M0: narrate() is now cache-backed. Isolate each test so a prior same-
+    # context narration cannot suppress the LLM call this test expects.
+    from core.portfolio import narrative_cache
+    monkeypatch.setattr(narrative_cache, "_CACHE_PATH",
+                        tmp_path / "narrative_cache.json")
+    narrative_cache._mem.clear()
 
 
 def _rec(verdict="TRIM", triggers=None) -> AdviceRecord:
@@ -47,14 +59,14 @@ def test_narrate_falls_back_on_llm_error(monkeypatch):
         raise RuntimeError("openrouter down")
     monkeypatch.setattr(narrator, "get_llm_client", boom)
     text = narrator.narrate(_rec(), _signals())
-    assert text == narrator.fallback_narrative(_rec())
+    assert text == narrator.fallback_narrative(_rec()) + narrator._user_suffix(_rec())
     assert "TRIM" in text
 
 
 def test_narrate_disabled_uses_fallback(monkeypatch):
     monkeypatch.setattr(narrator.settings, "ADVISOR_NARRATE", False)
     text = narrator.narrate(_rec(), _signals())
-    assert text == narrator.fallback_narrative(_rec())
+    assert text == narrator.fallback_narrative(_rec()) + narrator._user_suffix(_rec())
 
 
 def test_fallback_never_says_advice():
@@ -90,5 +102,5 @@ def test_narrate_non_dict_json_falls_back_single_telemetry(monkeypatch):
                         lambda *a, **k: calls.append(a[-1] if a else k.get("success")))
     monkeypatch.setattr(narrator, "get_llm_client", lambda: _FakeClient('["not", "a", "dict"]'))
     text = narrator.narrate(_rec(), _signals())
-    assert text == narrator.fallback_narrative(_rec())
+    assert text == narrator.fallback_narrative(_rec()) + narrator._user_suffix(_rec())
     assert calls == [True]   # exactly one telemetry record, success=True (call succeeded, content unusable)

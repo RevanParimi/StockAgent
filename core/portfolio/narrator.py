@@ -42,13 +42,14 @@ _NOTE_TEXT = {
 
 _PROMPT = """You are the narration layer of a personal stock-research tool.
 Write a 2-3 sentence research note (NOT financial advice — never use the word
-"advice") explaining this deterministic verdict to the portfolio owner.
+"advice") explaining this deterministic verdict on the stock.
 
 Verdict: {verdict} on {symbol} at close ₹{close}
-Unrealised P&L: {pnl:+.1f}% | Stop level: {stop:.1f}% | Regime: {regime}
+Regime: {regime}
 Rule triggers: {triggers}
 Annotations: {notes}
 
+Do not mention any specific investor's position, P&L, or stop level.
 Respond with JSON: {{"narrative": "<2-3 sentences>"}}"""
 
 
@@ -61,9 +62,24 @@ def fallback_narrative(rec: AdviceRecord) -> str:
     return " ".join(parts)
 
 
+def _user_suffix(rec: AdviceRecord) -> str:
+    return f" Your position: {rec.unrealised_pnl_pct:+.1f}% vs a {rec.stop_pct:.1f}% stop."
+
+
 def narrate(rec: AdviceRecord, signals: AdvisorSignals) -> str:
     if not settings.ADVISOR_NARRATE:
-        return fallback_narrative(rec)
+        return fallback_narrative(rec) + _user_suffix(rec)
+    from core.portfolio import narrative_cache
+    try:
+        key = narrative_cache.context_key(
+            rec.symbol, rec.verdict, list(rec.triggers), list(rec.notes),
+            signals.regime_label, narrative_cache.ist_today())
+        cached = narrative_cache.get(key)
+    except Exception as exc:
+        logger.warning("[narrator] cache read failed (non-fatal): %s", exc)
+        key, cached = None, None
+    if cached:
+        return cached + _user_suffix(rec)
     started = time.time()
     try:
         client = get_llm_client()
@@ -71,7 +87,6 @@ def narrate(rec: AdviceRecord, signals: AdvisorSignals) -> str:
             model=settings.LLM_MODEL_BULK,
             messages=[{"role": "user", "content": _PROMPT.format(
                 verdict=rec.verdict, symbol=rec.symbol, close=rec.close,
-                pnl=rec.unrealised_pnl_pct, stop=rec.stop_pct,
                 regime=signals.regime_label,
                 triggers=", ".join(rec.triggers) or "none",
                 notes=", ".join(rec.notes) or "none",
@@ -95,7 +110,12 @@ def narrate(rec: AdviceRecord, signals: AdvisorSignals) -> str:
             getattr(usage, "prompt_tokens", 0), getattr(usage, "completion_tokens", 0),
             int((time.time() - started) * 1000), True,
         )
-        return narrative or fallback_narrative(rec)
+        if narrative and key:
+            try:
+                narrative_cache.put(key, narrative)
+            except Exception as exc:
+                logger.warning("[narrator] cache write failed (non-fatal): %s", exc)
+        return (narrative or fallback_narrative(rec)) + _user_suffix(rec)
     except Exception as exc:
         logger.warning("[narrator] narration failed for %s (non-fatal): %s", rec.symbol, exc)
         try:
@@ -105,4 +125,4 @@ def narrate(rec: AdviceRecord, signals: AdvisorSignals) -> str:
             )
         except Exception:
             pass
-        return fallback_narrative(rec)
+        return fallback_narrative(rec) + _user_suffix(rec)

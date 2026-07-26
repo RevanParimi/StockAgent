@@ -804,6 +804,12 @@ ADVISOR_LTCG_WAIT_MIN_MONTHS: int = cfg("advisor.ltcg_wait_min_months", fallback
 ADVISOR_EARNINGS_GAP_DAYS: int = cfg("advisor.earnings_gap_days", fallback=3)
 
 # ---------------------------------------------------------------------------
+# M0 — Multi-user foundation (spec 2026-07-26)
+# ---------------------------------------------------------------------------
+AUTH_REQUIRED: bool = bool(cfg("auth.required", env="AUTH_REQUIRED", fallback=False))
+CHAT_DAILY_QUOTA: int = int(cfg("chat.daily_quota", env="CHAT_DAILY_QUOTA", fallback=30))
+
+# ---------------------------------------------------------------------------
 # Compass Phase B — Discovery funnel + generic sector graph (spec 2026-07-06)
 # ---------------------------------------------------------------------------
 DISCOVERY_ENABLED: bool = bool(cfg("discovery.enabled", env="DISCOVERY_ENABLED", fallback=False))

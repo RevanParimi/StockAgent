@@ -35,11 +35,25 @@
 
 # PHASE A — Pre-user-#2 privacy fixes (branch `atlas-a`)
 
+> ✅ **PHASE A COMPLETE — 2026-07-26.** Shipped as merge `e9c17fe` (A1 `5f15b4e`,
+> A2 `89be3a3`). Full-suite A/B: post-change fail-set IDENTICAL to the A0
+> baseline known-red set (10 FAILED + 10 ERROR in the network-flaky
+> orchestrator/phase2_api/event_ingestor area), zero Atlas failures, all 8 new
+> Atlas tests green. Deployed: Railway deployment `d8217787` = SUCCESS on
+> `e9c17fe`, service Online. Prod probes (AUTH_REQUIRED=true): `POST
+> /delivery/push/subscribe` (no auth) → 401, `GET /auth/me` (no auth) → 401.
+> Deploy-safety verified: the owner account's user_id IS `primary` and the PWA
+> fetch-wrapper auto-attaches the bearer token, so push-subscribe is a
+> behavioral no-op for the owner and only isolates a future user #2.
+> Implementation note: A2's DB migration runs `ALTER TABLE` *before*
+> `executescript(_SCHEMA)` (plan had it after) so the new user_id index does not
+> reference a not-yet-existing column on a legacy index-less DB.
+
 ### Task A0: Baseline
 
 **Files:** none (verification only)
 
-- [ ] **Step 1: Branch + baseline**
+- [x] **Step 1: Branch + baseline**
 
 ```bash
 git checkout main && git pull --ff-only
@@ -61,7 +75,7 @@ Record pass/fail/skip counts and the FAILED/ERROR ids to a scratch note. Expecte
 - Consumes: `get_current_user` (`services/api/auth.py`), `PushStore` (`core/delivery/channels.py` — `add(subscription, user_id)`, `remove(endpoint, user_id)`, `list(user_id)`)
 - Produces: `POST /delivery/push/subscribe` and `DELETE /delivery/push/subscribe` that ignore any client-supplied user identity and use the session's `user["user_id"]`. Anonymous behavior follows `AUTH_REQUIRED` (false ⇒ owner-passthrough, preserving today's single-user flow; true ⇒ 401).
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Create `tests/unit/test_atlas_push_binding.py`:
 
@@ -144,13 +158,13 @@ def test_unsubscribe_scoped_to_session_user(env):
     assert channels.PushStore().list(user_id=member_id) == []
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `python -m pytest tests/unit/test_atlas_push_binding.py -q`
 Expected: `test_member_sub_lands_under_member_id` and `test_client_user_id_param_is_ignored` FAIL (subs land under `primary`); 401 test FAILS (route is open).
 (If the fixture's `PushStore` path-patch errors, first read `core/delivery/channels.py:35-60` for the real path attribute and fix the fixture — then confirm the *behavioral* failures above.)
 
-- [ ] **Step 3: Fix the routes**
+- [x] **Step 3: Fix the routes**
 
 In `services/api/routes/delivery_api.py`, replace both handlers:
 
@@ -186,12 +200,12 @@ async def push_unsubscribe(
 Also update the comment above them (the "keyless BY DESIGN" note is now wrong):
 `# Session-bound (Atlas A1). Public-key GET below stays open — it's a public key.`
 
-- [ ] **Step 4: Run the new tests + existing delivery tests**
+- [x] **Step 4: Run the new tests + existing delivery tests**
 
 Run: `python -m pytest tests/unit/test_atlas_push_binding.py tests/unit/test_delivery_api.py -q`
 Expected: all PASS. If an existing delivery test posted subscriptions anonymously with `?user_id=`, update it to the session pattern and note it in the commit message.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add services/api/routes/delivery_api.py tests/unit/test_atlas_push_binding.py tests/unit/test_delivery_api.py
@@ -211,7 +225,7 @@ git commit -m "fix(atlas-a1): push subscriptions bind to session user — client
 - Consumes: user dicts from `get_current_user` (both chat endpoints already resolve `user`).
 - Produces: `get_history(session_id, max_messages, user_id="primary")`, `append_turns(session_id, user_text, assistant_text, max_messages, user_id="primary")`, `has_session(session_id, user_id="primary")` — history reads/writes scoped to `(user_id, session_id)`. Legacy rows (pre-migration) carry `user_id='primary'` via column default, so the owner keeps their history.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Create `tests/unit/test_atlas_chat_user_binding.py`:
 
@@ -277,12 +291,12 @@ def test_has_session_scoped():
     assert css.has_session("s3", user_id="u_b") is False
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `python -m pytest tests/unit/test_atlas_chat_user_binding.py -q`
 Expected: FAIL with `TypeError: append_turns() got an unexpected keyword argument 'user_id'`
 
-- [ ] **Step 3: Implement in `chat_session_store.py`**
+- [x] **Step 3: Implement in `chat_session_store.py`**
 
 (a) Schema block gains the column (fresh DBs):
 
@@ -353,12 +367,12 @@ def _session_history_append(session_id: str, user_text: str,
 
 Call sites (both endpoints already have `user` in scope): `_session_history_get(session_id, user["user_id"])` at ~2943 and ~3291; `_session_history_append(session_id, message, reply, user["user_id"])` at ~2969/2999/3005 (in `chat_stream`'s generator the variable is `final_text` — pass `user["user_id"]` there too, ~3382).
 
-- [ ] **Step 4: Run new + existing chat tests**
+- [x] **Step 4: Run new + existing chat tests**
 
 Run: `python -m pytest tests/unit/test_atlas_chat_user_binding.py tests/unit/test_chat_session_memory.py tests/unit/test_chat_turn_budget.py tests/unit/test_m0_chat_quota.py -q`
 Expected: all PASS (legacy tests pass because the default arg is `'primary'` and their direct calls use the owner user).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add services/data/stores/chat_session_store.py services/api/routes/ui_data.py tests/unit/test_atlas_chat_user_binding.py
@@ -369,8 +383,8 @@ git commit -m "fix(atlas-a2): chat history scoped (user_id, session_id) — cros
 
 ### Task A3: Phase-A close-out — A/B, merge, deploy, prod verify
 
-- [ ] **Step 1: Full-suite A/B** — `python -m pytest -q 2>&1 | tail -5`; fail-set must equal the A0 baseline (re-run once before treating a new network-area failure as real).
-- [ ] **Step 2: Merge + push** (deploy-window check first: not 16:25–17:15 IST on a trading day):
+- [x] **Step 1: Full-suite A/B** — `python -m pytest -q 2>&1 | tail -5`; fail-set must equal the A0 baseline (re-run once before treating a new network-area failure as real).
+- [x] **Step 2: Merge + push** (deploy-window check first: not 16:25–17:15 IST on a trading day):
 
 ```bash
 git checkout main && git merge --no-ff atlas-a -m "merge: Atlas Phase A — push-sub + chat-session user binding (pre-user-#2 privacy)"
@@ -378,8 +392,8 @@ git diff --stat atlas-a HEAD   # MUST be empty
 git push origin main && git branch -d atlas-a
 ```
 
-- [ ] **Step 3: Watch deploy** — `railway deployment list --json` until SUCCESS on the merge commit.
-- [ ] **Step 4: Prod probes (status codes only):**
+- [x] **Step 3: Watch deploy** — `railway deployment list --json` until SUCCESS on the merge commit.
+- [x] **Step 4: Prod probes (status codes only):**
 
 ```bash
 BASE="https://stockagent-ai.up.railway.app"
@@ -388,7 +402,7 @@ curl -s -o /dev/null -w "%{http_code}\n" -X POST -H "Content-Type: application/j
 curl -s -o /dev/null -w "%{http_code}\n" "$BASE/auth/me"                  # expect 401
 ```
 
-- [ ] **Step 5: Update memory** — mark Phase A DONE in `project_user_data_program.md` (+ MEMORY.md hook), including deploy commit hash and probe results.
+- [x] **Step 5: Update memory** — mark Phase A DONE in `project_user_data_program.md` (+ MEMORY.md hook), including deploy commit hash and probe results.
 
 ---
 

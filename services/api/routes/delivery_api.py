@@ -106,31 +106,32 @@ async def push_public_key() -> dict:
 _MAX_PUSH_SUBS_PER_USER = 50   # AUD-012: bound anonymous store growth
 
 
-# Browser push clients don't hold the scheduler key; these endpoints only
-# store/remove the caller's own subscription (keyless BY DESIGN — the
-# pre-login 🔔 flow and AUD-085 recovery depend on it). AUD-012 hardening:
+# Session-bound (Atlas A1): the device belongs to whoever is logged in, so we
+# ignore any client-supplied user identity and use the session's user_id.
+# AUTH_REQUIRED=false keeps the single-user flow (anonymous ⇒ owner). The
+# public-key GET above stays open — it's a public key. AUD-012 hardening:
 # https-only endpoints + per-user cap.
 @router.post("/push/subscribe", summary="Store a web-push subscription")
 async def push_subscribe(
     subscription: dict,
-    user_id: str | None = Query(default=None),
+    user: dict = Depends(get_current_user),
 ) -> dict:
     endpoint = subscription.get("endpoint")
     if not (isinstance(endpoint, str) and endpoint.startswith("https://")):
         raise HTTPException(status_code=422,
                             detail="subscription.endpoint must be an https:// URL")
     store = PushStore()
-    if len(store.list(user_id=user_id)) >= _MAX_PUSH_SUBS_PER_USER:
+    if len(store.list(user_id=user["user_id"])) >= _MAX_PUSH_SUBS_PER_USER:
         raise HTTPException(status_code=429,
                             detail="Subscription limit reached for this user.")
-    count = store.add(subscription, user_id=user_id)
+    count = store.add(subscription, user_id=user["user_id"])
     return {"status": "subscribed", "subscriptions": count}
 
 
 @router.delete("/push/subscribe", summary="Remove a web-push subscription")
 async def push_unsubscribe(
     endpoint: str = Query(...),
-    user_id: str | None = Query(default=None),
+    user: dict = Depends(get_current_user),
 ) -> dict:
-    removed = PushStore().remove(endpoint, user_id=user_id)
+    removed = PushStore().remove(endpoint, user_id=user["user_id"])
     return {"removed": removed}

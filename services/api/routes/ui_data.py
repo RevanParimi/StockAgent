@@ -2954,6 +2954,24 @@ def check_chat_quota(user: dict) -> dict | None:
     return None
 
 
+@router.post("/feedback", summary="Record accept/override on an advice card")
+async def record_feedback(body: dict,
+                          user: dict = Depends(get_current_user)) -> dict:
+    """Atlas C8 (BP5): persist a user's reaction to an advice card (accept /
+    override / ignore) — append-only, bound to the session user. Dormant no-op
+    (records nothing) until ATLAS_ENABLED; never leaks a store error to the UI."""
+    rid = atlas_store.record_feedback_event(
+        user["user_id"],
+        str(body.get("symbol", "")),
+        str(body.get("action", "")),
+        advice_ref=str(body.get("advice_ref", "")),
+        verdict_shown=str(body.get("verdict_shown", "")),
+        override_direction=str(body.get("override_direction", "")),
+        position_state=str(body.get("position_state", "")),
+    )
+    return {"ok": rid is not None, "id": rid}
+
+
 @router.post("/chat", summary="AI assistant chat reply")
 async def chat(body: dict, user: dict = Depends(get_current_user)) -> dict:
     """

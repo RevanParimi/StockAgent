@@ -428,6 +428,21 @@ class AutomobileScheduler:
         )
         logger.info("[Scheduler] Universe recompute job: daily at 11:00 pm IST")
 
+        # ── Job 17: Atlas cost-by-user rollup (23:15 IST daily — Atlas C8 BP4) ─
+        # Buckets the day's llm_calls cost by user_id (NULL = shared brain) into
+        # cost_by_user_day. Dormant no-op until ATLAS_ENABLED. Runs between the
+        # universe recompute (23:00) and the backup (23:30).
+        scheduler.add_job(
+            func=self._cost_rollup_job,
+            trigger=CronTrigger(hour=23, minute=15, timezone="Asia/Kolkata"),
+            id="atlas_cost_rollup",
+            name="Atlas cost-by-user rollup (BP4)",
+            misfire_grace_time=3600,
+            coalesce=True,
+            replace_existing=True,
+        )
+        logger.info("[Scheduler] Cost rollup job: daily at 11:15 pm IST")
+
         return scheduler
 
     def _on_job_error(self, event) -> None:
@@ -770,6 +785,16 @@ class AutomobileScheduler:
         from core.portfolio.universe import recompute_universe
         result = recompute_universe()
         logger.info("[Scheduler] universe recompute: %s", result)
+
+    def _cost_rollup_job(self) -> None:
+        """Job 17 — Atlas cost-by-user rollup (C8, BP4). Dormant unless
+        ATLAS_ENABLED; rollup_cost_by_user_day() is hot-path safe (never raises)."""
+        from services.data.stores import atlas_store
+        if not atlas_store.enabled():
+            return
+        from services.data.stores.log_store import rollup_cost_by_user_day
+        result = rollup_cost_by_user_day()
+        logger.info("[Scheduler] cost rollup: %s", result)
 
     def _ledger_cleanup_job(self) -> None:
         """

@@ -429,6 +429,8 @@ delivery:
 atlas:
   enabled: false                 # flip to true (via ATLAS_ENABLED in Railway) at the C11 cutover
   db_path: "data/atlas.db"
+  feedback:                      # BP5 accept/override events (Atlas C8)
+    aggregation_floor_users: 20  # refuse to return an aggregate below this many distinct users (privacy)
 
 # Universe demand model (BP1) — the nightly recompute (Atlas C4) turns held/watch
 # refcounts into demand tiers. A watch-only ticker earns a DAILY slot only once its

@@ -393,3 +393,70 @@ def delete_user_completely(user_id: str) -> dict:
 
     logger.info("[atlas_store] DPDP delete complete for %s: %s", user_id, summary)
     return summary
+
+
+# ---------------------------------------------------------------------------
+# BP5 feedback events (C8) — user reactions to advice cards. Append-only,
+# user-plane, OUTSIDE core/intelligence (Learning Constitution R1). The
+# aggregate refuses to return below a distinct-user floor (reviewer R3).
+# ---------------------------------------------------------------------------
+
+_VALID_ACTIONS = {"accepted", "overridden", "ignored"}
+_VALID_POSITION_STATES = {"winning", "losing", ""}
+
+
+def _feedback_floor() -> int:
+    return int(cfg("atlas.feedback.aggregation_floor_users", fallback=20))
+
+
+def record_feedback_event(user_id: str, symbol: str, action: str, *,
+                          ts: str | None = None, advice_ref: str = "",
+                          verdict_shown: str = "", override_direction: str = "",
+                          position_state: str = "") -> int | None:
+    """Append one feedback event (a user accepting/overriding/ignoring an advice
+    card). Flag-gated no-op when ATLAS disabled; rejects an invalid action or
+    position_state (returns None); never raises. Returns the new row id."""
+    if not enabled():
+        return None
+    if action not in _VALID_ACTIONS or position_state not in _VALID_POSITION_STATES:
+        logger.warning("[atlas_store] feedback rejected — bad action/state (%s/%s)",
+                       action, position_state)
+        return None
+    try:
+        conn = _get_conn()
+        with _lock:
+            cur = conn.execute(
+                "INSERT INTO feedback_events (ts, user_id, symbol, advice_ref,"
+                " verdict_shown, action, override_direction, position_state)"
+                " VALUES (?,?,?,?,?,?,?,?)",
+                (ts or _now_iso(), user_id, symbol.strip().upper(), advice_ref,
+                 verdict_shown, action, override_direction, position_state))
+            conn.commit()
+            return cur.lastrowid
+    except Exception as exc:
+        logger.warning("[atlas_store] record_feedback_event failed for %s/%s"
+                       " (non-fatal): %s", user_id, symbol, exc)
+        return None
+
+
+def feedback_aggregate() -> dict | None:
+    """Privacy-safe aggregate of all feedback events. Returns None below the
+    distinct-user floor (reviewer R3) so small-N cohorts can't be de-anonymised;
+    otherwise the counts by action. [] / None on any failure, never raises."""
+    try:
+        conn = _get_conn()
+        with _lock:
+            n_users = conn.execute(
+                "SELECT COUNT(DISTINCT user_id) FROM feedback_events").fetchone()[0]
+            if n_users < _feedback_floor():
+                return None
+            rows = conn.execute(
+                "SELECT action, COUNT(*) FROM feedback_events GROUP BY action"
+            ).fetchall()
+        by_action = {a: 0 for a in _VALID_ACTIONS}
+        for action, count in rows:
+            by_action[action] = count
+        return {"users": n_users, "by_action": by_action}
+    except Exception as exc:
+        logger.warning("[atlas_store] feedback_aggregate failed (non-fatal): %s", exc)
+        return None

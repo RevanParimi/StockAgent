@@ -794,6 +794,7 @@ ADVISOR_STOP_BUCKETS: dict[str, tuple[float, float]] = {
 ADVISOR_LARGE_CAP_FLOOR_CR: float = float(cfg("advisor.large_cap_floor_cr", fallback=65000))
 ADVISOR_MID_CAP_FLOOR_CR: float = float(cfg("advisor.mid_cap_floor_cr", fallback=20000))
 ADVISOR_TRIM_PROFIT_PCT: float = cfg("advisor.trim_profit_pct", fallback=25.0)
+ADVISOR_TRAIL_ARM_PCT: float = cfg("advisor.trail_arm_pct", fallback=10.0)  # peak P&L % that arms the trailing stop
 ADVISOR_REVERSION_PRIOR_ELEVATED: float = cfg("advisor.reversion_prior_elevated", fallback=0.20)
 ADVISOR_CONFIDENCE_DECLINE_THRESHOLD: float = cfg("advisor.confidence_decline_threshold", fallback=0.05)
 ADVISOR_ENVELOPE_FLAT_BAND_PCT: float = cfg("advisor.envelope_flat_band_pct", fallback=1.0)

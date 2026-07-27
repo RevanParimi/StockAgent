@@ -5,6 +5,18 @@ const { useState: useStatePf, useEffect: useEffectPf, useRef: useRefPf } = React
 // GET /portfolio (+ digest). status: 'loading' | 'live' | 'demo'.
 // Demo (mock) data renders ONLY when the API is unreachable, or with ?demo=1.
 
+function fmtIST(ts, dateStr) {
+  try {
+    if (ts) {
+      const d = new Date(ts);
+      if (!isNaN(d)) return d.toLocaleString('en-IN', {
+        timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short',
+        hour: '2-digit', minute: '2-digit', hour12: false });
+    }
+  } catch (e) { /* fall through */ }
+  return dateStr || '';
+}
+
 function adaptHolding(h) {
   return {
     sym: h.symbol,
@@ -562,6 +574,7 @@ const pfTh = { textAlign:'left', padding:'12px 24px', fontSize:11, fontWeight:60
 const pfTd = { padding:'14px 24px', fontSize:13, borderBottom:'1px solid var(--border)' };
 
 function ActivityCard({ items }) {
+  const [openIdx, setOpenIdx] = useStatePf(null);
   const iconMap = {
     buy:   { icon:<Icon.Plus size={14}/>,   bg:'var(--buy-soft)',     fg:'var(--buy-strong)',  label:'Bought' },
     sell:  { icon:<Icon.TrendDown size={14}/>, bg:'var(--sell-soft)', fg:'var(--sell-strong)', label:'Sold' },
@@ -583,9 +596,26 @@ function ActivityCard({ items }) {
               <div style={{ minWidth:0 }}>
                 <div style={{ fontSize:13, fontWeight:600 }}>
                   {m.label} <span className="mono">{it.sym}</span>
-                  {it.qty && <span style={{ color:'var(--ink-3)', fontWeight:500 }}> · {it.qty} @ ₹{it.price.toLocaleString('en-IN', {minimumFractionDigits:2})}</span>}
+                  {it.qty && <span style={{ color:'var(--ink-3)', fontWeight:500 }}>
+                    {' · '}{it.qty} @ ₹{it.price.toLocaleString('en-IN', {minimumFractionDigits:2})}
+                    {it.buyPx != null && ` (bought @ ${it.approx ? '≈' : ''}₹${it.buyPx.toLocaleString('en-IN', {maximumFractionDigits:2})})`}
+                  </span>}
                 </div>
                 {it.text && <div style={{ fontSize:12, color:'var(--ink-3)', marginTop:2 }}>{it.text}</div>}
+                {it.reason && (
+                  <div style={{ marginTop:4 }}>
+                    <button onClick={()=>setOpenIdx(openIdx===i?null:i)}
+                      style={{ background:'none', border:'none', padding:0, cursor:'pointer',
+                               fontSize:11, fontWeight:600, color:'var(--violet)' }}>
+                      {openIdx===i ? 'hide why' : 'why?'}
+                    </button>
+                    {openIdx===i && (
+                      <div style={{ fontSize:12, color:'var(--ink-2)', marginTop:4,
+                                    padding:'8px 10px', background:'var(--violet-soft)',
+                                    borderRadius:8 }}>{it.reason}</div>
+                    )}
+                  </div>
+                )}
               </div>
               <span className="pf-activity-time" style={{ fontSize:11, color:'var(--ink-3)', whiteSpace:'nowrap' }}>{it.t}</span>
             </div>
@@ -598,15 +628,31 @@ function ActivityCard({ items }) {
 
 function LiveActivityCard({ txns }) {
   const [showAll, setShowAll] = useStatePf(false);
-  const items = (showAll ? txns : txns.slice(0, 10)).map(t => ({
-    kind: t.side === 'BUY' ? 'buy' : 'sell',
-    sym: t.symbol, qty: t.qty, price: t.price,
-    text: [t.verdict || t.source,
-           t.side === 'SELL' && t.realized_pnl != null
-             ? `realized ${t.realized_pnl >= 0 ? '+' : ''}₹${Math.abs(t.realized_pnl).toLocaleString('en-IN')}` : '',
-           t.note].filter(Boolean).join(' · '),
-    t: t.date,
-  }));
+  const items = (showAll ? txns : txns.slice(0, 10)).map(t => {
+    const isSell = t.side === 'SELL';
+    const buyPx = isSell
+      ? (t.cost_basis != null ? t.cost_basis
+         : (t.realized_pnl != null && t.qty ? t.price - t.realized_pnl / t.qty : null))
+      : null;
+    const approx = isSell && t.cost_basis == null && buyPx != null;
+    const pnlPct = isSell
+      ? (t.pnl_pct != null ? t.pnl_pct
+         : (buyPx ? (t.price / buyPx - 1) * 100 : null))
+      : null;
+    return {
+      kind: isSell ? 'sell' : 'buy',
+      sym: t.symbol, qty: t.qty, price: t.price,
+      buyPx, approx,
+      text: [t.verdict || t.source,
+             isSell && t.realized_pnl != null
+               ? `realized ${t.realized_pnl >= 0 ? '+' : ''}₹${Math.abs(t.realized_pnl).toLocaleString('en-IN')}`
+                 + (pnlPct != null ? ` (${pnlPct >= 0 ? '+' : ''}${pnlPct.toFixed(1)}%)` : '')
+               : '',
+             t.note].filter(Boolean).join(' · '),
+      reason: t.reason || '',
+      t: fmtIST(t.ts, t.date),
+    };
+  });
   return (
     <div>
       <ActivityCard items={items}/>

@@ -630,7 +630,10 @@ already exists via `Portfolio.risk_profile` (no new knob).
 - [x] **Step 4 — run green** (4 atlas + 47 auth-lockdown/m0/ui tests; collection 2202).
 - [x] **Step 5 — commit** `04a5039` `feat(atlas-c5): watchlist per-user; agent/task/category configs owner-gated`.
 
-> **WAVE β COMPLETE (C3–C5).** Full-suite wave-β A/B launched.
+> **WAVE β COMPLETE (C3–C5) — A/B CLEAN.** Full-suite: 10 failed, 2170 passed, 12 skipped, 10 errors
+> — fail-set == the C0 known-red network area exactly (the 2 Windows file-lock flakes did not recur);
+> 2170 passed = wave-α 2151 + 19 new C3/C4/C5 tests. Both design-heavy waves (α + β) now validated.
+> **NEXT SESSION = wave γ from C6.**
 
 ---
 

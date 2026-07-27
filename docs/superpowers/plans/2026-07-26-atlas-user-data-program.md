@@ -685,13 +685,24 @@ to `enqueue()` behind the flag; Create `tests/unit/test_atlas_outbox.py`.
 transports, then `status='delivered'` or reschedules `next_attempt_at` with `cfg("delivery.outbox_backoff_minutes",[1,5,30])`
 up to `cfg("delivery.outbox_max_attempts",3)` then `status='dead'`.
 
-- [ ] **Step 1 — failing tests:** enqueue idempotency (duplicate `dedupe_key` → one row); atomic claim
-  (two concurrent `drain_once` calls send exactly once — simulate by racing the CAS); backoff + dead-letter
-  after max attempts; drainer only runs in the singleton owner (assert guarded start). Flag-gated no-op.
-- [ ] **Step 2 — run red.** — [ ] **Step 3 — implement** (transports are the existing `send_push`/email;
-  worker is a daemon thread started only inside the singleton-lock branch of the lifespan).
-- [ ] **Step 4 — run green** (new + delivery tests — no real transport, per `conftest` isolation).
-- [ ] **Step 5 — commit** `feat(atlas-c7): BP2 outbox — in-process drainer (singleton owner) + atomic claim`.
+- [x] **Step 1 — failing tests** (`test_atlas_outbox.py`, 8): enqueue idempotency (duplicate `dedupe_key`
+  → one row) + flag-gated no-op; drain delivers→'delivered' and never re-sends; a pre-claimed ('sending')
+  row is skipped not re-sent (the CAS invariant, tested deterministically); backoff→dead-letter after
+  `_max_attempts`; `enqueue_message` fans to enabled channels; `deliver()` enqueues when ON / inline when
+  OFF; drainer start flag-gated (Thread when ON, None when OFF).
+- [x] **Step 2 — run red** (ModuleNotFoundError `core.delivery.outbox`).
+- [x] **Step 3 — implement** `core/delivery/outbox.py` (enqueue / enqueue_message / drain_once / start-stop
+  drainer). **Choke-point repoint (deviation from the 4-file list, documented):** all inline fan-out funnels
+  through `deliver()` (brief/weekly/pipeline call it directly; alerts + index_watch route through it via
+  `emit_alerts`→`deliver`), so I added a `kind` kwarg to `deliver()` and gated ONE enqueue branch there
+  instead of four conditional wrappers — same "outbox replaces inline fan-out", lower risk. Callers pass
+  `kind=brief|weekly|digest`. **Payload = inline compact JSON** (user decision B4). **Atomic claim** via
+  `status='queued'→'sending'` CAS (added `'sending'` to the atlas.db outbox CHECK — greenfield, no
+  migration). Drainer daemon started only in `server.py`'s `is_primary` branch (reuses the singleton lock;
+  stopped on shutdown). Tunables `delivery.outbox_{max_attempts,backoff_minutes,poll_seconds,retention_days}`.
+- [x] **Step 4 — run green** (8 new + 25 delivery/atlas/log_store; the lone WinError5 push-store flake
+  passed in isolation — environmental). Full-suite A/B CLEAN: 10F+10E == C0 known-red, **2186 passed** (2178+8).
+- [x] **Step 5 — commit** `a1aa7ad` `feat(atlas-c7): BP2 durable outbox — in-process drainer (singleton owner) + atomic claim`.
 
 ---
 

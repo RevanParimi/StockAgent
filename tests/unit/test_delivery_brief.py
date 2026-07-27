@@ -82,7 +82,7 @@ def test_run_skips_non_trading_day(monkeypatch):
 
 def test_run_builds_saves_delivers(tmp_path, monkeypatch):
     monkeypatch.setattr(br, "is_trading_day", lambda d: True)
-    monkeypatch.setattr(br, "list_user_ids", lambda: ["u1"])
+    monkeypatch.setattr(br, "active_user_ids", lambda: ["u1"])
     monkeypatch.setattr(br.settings, "PORTFOLIO_DATA_DIR", str(tmp_path))
     monkeypatch.setattr(br.settings, "PREDICTION_DATA_DIR", str(tmp_path / "predictions"))
     monkeypatch.setattr(br.settings, "DISCOVERY_DATA_DIR", str(tmp_path / "discovery"))
@@ -127,7 +127,7 @@ def test_run_brief_delivers_inbox_deeplink(tmp_path, monkeypatch):
     from core.config import settings
     captured = {}
     monkeypatch.setattr(br, "is_trading_day", lambda on: True)
-    monkeypatch.setattr(br, "list_user_ids", lambda: ["u1"])
+    monkeypatch.setattr(br, "active_user_ids", lambda: ["u1"])
     monkeypatch.setattr(br, "build_morning_brief",
                         lambda uid, on, store=None: {"date": on.isoformat(),
                                                      "kind": "morning_brief",

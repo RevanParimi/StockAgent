@@ -142,6 +142,22 @@ def has_session(session_id: str, user_id: str = "primary") -> bool:
     return bool(get_history(session_id, 1, user_id=user_id))
 
 
+def delete_user_turns(user_id: str) -> int:
+    """DPDP erasure (Atlas C6): delete every chat turn for one user. Returns the
+    number of rows deleted; never raises. Idempotent — a second call deletes 0."""
+    try:
+        conn = _get_conn()
+        if conn is None:
+            return 0
+        with _lock:
+            cur = conn.execute("DELETE FROM chat_turns WHERE user_id = ?", (user_id,))
+            conn.commit()
+        return cur.rowcount or 0
+    except Exception as exc:
+        logger.warning("[chat_session_store] delete_user_turns failed (non-fatal): %s", exc)
+        return 0
+
+
 def sweep_expired(ttl_days: int = SESSION_TTL_DAYS) -> int:
     """Delete turns older than the TTL. Returns rows deleted; never raises."""
     try:

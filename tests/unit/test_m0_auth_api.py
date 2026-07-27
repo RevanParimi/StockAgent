@@ -9,6 +9,21 @@ def client(tmp_path, monkeypatch):
     from services.data.stores import user_store
     monkeypatch.setattr(user_store, "_DB_PATH", tmp_path / "users.db")
     monkeypatch.setattr(user_store, "_conn_holder", {"conn": None})
+    # DELETE /auth/account now runs the Atlas cross-plane erasure (C6): isolate
+    # atlas.db / chat_sessions.db / telemetry.db on tmp paths so these route
+    # tests never touch the real default stores.
+    from services.data.stores import atlas_store
+    import services.data.stores.chat_session_store as css
+    import services.data.stores.log_store as log_store
+    monkeypatch.setattr(atlas_store, "_DB_PATH", tmp_path / "atlas.db")
+    monkeypatch.setattr(atlas_store, "_conn_holder", {"conn": None})
+    atlas_store._reset_for_tests()
+    monkeypatch.setattr(css.settings, "CHAT_SESSIONS_DB_PATH",
+                        str(tmp_path / "chat.db"), raising=False)
+    css._reset_for_tests()
+    monkeypatch.setattr(log_store.settings, "TELEMETRY_DB_PATH",
+                        str(tmp_path / "telemetry.db"), raising=False)
+    monkeypatch.setattr(log_store, "_conn", None)
     from services.api.routes.auth_api import router
     app = FastAPI()
     app.include_router(router)

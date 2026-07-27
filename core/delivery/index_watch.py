@@ -31,8 +31,8 @@ def _watched_symbols() -> set[str]:
     """held + watchlist + active shelf. Never raises."""
     watched: set[str] = set()
     try:
-        from core.portfolio.store import PortfolioStore, list_user_ids
-        for uid in list_user_ids() or [settings.PORTFOLIO_DEFAULT_USER_ID]:
+        from core.portfolio.store import PortfolioStore, active_user_ids
+        for uid in active_user_ids() or [settings.PORTFOLIO_DEFAULT_USER_ID]:
             p = PortfolioStore(user_id=uid).load()
             watched |= {h.symbol for h in p.holdings}
             watched |= {w.symbol for w in p.watchlist}

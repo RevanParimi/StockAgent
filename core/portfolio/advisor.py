@@ -18,7 +18,7 @@ from pydantic import BaseModel
 
 from core.config import settings
 from backend.shared.schemas.portfolio import AdviceRecord, Holding, Portfolio
-from core.intelligence.rl.stores.prediction_store import PredictionStore
+from services.data.verdict_store import VerdictStore  # plane boundary (Atlas C2)
 from services.data.fetchers.corporate_events import next_results_event
 
 logger = logging.getLogger(__name__)
@@ -101,7 +101,7 @@ def build_signals(
     holding: Holding,
     portfolio: Portfolio,
     review_date: date,
-    store: PredictionStore,
+    store: VerdictStore,
     calendar: dict,
     close: float,
     ohlcv_df=None,

@@ -413,6 +413,50 @@ class AutomobileScheduler:
         )
         logger.info("[Scheduler] Backup job: daily at 11:30 pm IST")
 
+        # ── Job 16: Atlas Universe recompute (23:00 IST daily — Atlas C4) ───
+        # Reads atlas.db user_instruments, writes only aggregate demand/cadence
+        # back to instruments. Runs before the backup so the archive captures
+        # the recomputed universe. Dormant no-op until ATLAS_ENABLED is set.
+        scheduler.add_job(
+            func=self._universe_recompute_job,
+            trigger=CronTrigger(hour=23, minute=0, timezone="Asia/Kolkata"),
+            id="atlas_universe_recompute",
+            name="Atlas Universe recompute (demand tiers)",
+            misfire_grace_time=3600,
+            coalesce=True,
+            replace_existing=True,
+        )
+        logger.info("[Scheduler] Universe recompute job: daily at 11:00 pm IST")
+
+        # ── Job 17: Atlas cost-by-user rollup (23:15 IST daily — Atlas C8 BP4) ─
+        # Buckets the day's llm_calls cost by user_id (NULL = shared brain) into
+        # cost_by_user_day. Dormant no-op until ATLAS_ENABLED. Runs between the
+        # universe recompute (23:00) and the backup (23:30).
+        scheduler.add_job(
+            func=self._cost_rollup_job,
+            trigger=CronTrigger(hour=23, minute=15, timezone="Asia/Kolkata"),
+            id="atlas_cost_rollup",
+            name="Atlas cost-by-user rollup (BP4)",
+            misfire_grace_time=3600,
+            coalesce=True,
+            replace_existing=True,
+        )
+        logger.info("[Scheduler] Cost rollup job: daily at 11:15 pm IST")
+
+        # ── Job 18: Atlas retention prune (23:20 IST daily — Atlas C9) ──────
+        # Bounds ticker_verdicts / outbox / value_history / sessions; all caps
+        # via cfg(), None = keep-all. Dormant no-op until ATLAS_ENABLED.
+        scheduler.add_job(
+            func=self._retention_job,
+            trigger=CronTrigger(hour=23, minute=20, timezone="Asia/Kolkata"),
+            id="atlas_retention",
+            name="Atlas retention prune (bounded stores)",
+            misfire_grace_time=3600,
+            coalesce=True,
+            replace_existing=True,
+        )
+        logger.info("[Scheduler] Retention prune job: daily at 11:20 pm IST")
+
         return scheduler
 
     def _on_job_error(self, event) -> None:
@@ -748,6 +792,30 @@ class AutomobileScheduler:
         summary = run_backup_job()
         logger.info("[Scheduler] nightly backup done: emailed=%s bytes=%d",
                     summary["emailed"], summary["bytes"])
+
+    def _universe_recompute_job(self) -> None:
+        """Job 16 — Atlas Universe recompute (C4). No-op unless ATLAS_ENABLED;
+        recompute_universe() is hot-path safe (never raises)."""
+        from core.portfolio.universe import recompute_universe
+        result = recompute_universe()
+        logger.info("[Scheduler] universe recompute: %s", result)
+
+    def _cost_rollup_job(self) -> None:
+        """Job 17 — Atlas cost-by-user rollup (C8, BP4). Dormant unless
+        ATLAS_ENABLED; rollup_cost_by_user_day() is hot-path safe (never raises)."""
+        from services.data.stores import atlas_store
+        if not atlas_store.enabled():
+            return
+        from services.data.stores.log_store import rollup_cost_by_user_day
+        result = rollup_cost_by_user_day()
+        logger.info("[Scheduler] cost rollup: %s", result)
+
+    def _retention_job(self) -> None:
+        """Job 18 — Atlas retention prune (C9). No-op unless ATLAS_ENABLED;
+        run_retention() is hot-path safe (never raises)."""
+        from core.portfolio.retention import run_retention
+        result = run_retention()
+        logger.info("[Scheduler] retention prune: %s", result)
 
     def _ledger_cleanup_job(self) -> None:
         """

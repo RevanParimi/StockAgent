@@ -105,6 +105,22 @@ scheduler (brief ready)            worker loop (separate process)
 (same image, different start command) sharing the database — the first true service split,
 and deliberately the *easiest* one.
 
+> **✅ Implemented — Atlas C7 (`core/delivery/outbox.py`), dormant behind `ATLAS_ENABLED`.**
+> The outbox table lives in `data/atlas.db`; `deliver()` is the single choke point that
+> enqueues per-channel rows when the flag is on (else today's inline send). As-built
+> deviations from the sketch above, all deliberate:
+> - **In-process drainer, not a second service** (spec §8 defers the service split to M2):
+>   the drainer runs **only in the singleton-lock owner** — the same guard that already
+>   makes the scheduler single-owner under `--workers 2` — and claims each row with a CAS
+>   (`status='queued'→'sending'`, act iff `rowcount==1`, reviewer R3) so there is no
+>   double-send even without a separate process.
+> - **Payload stored inline** as compact JSON `{title,body,url}` in `payload_ref` (owner
+>   decision) rather than a reference — push bodies are already capped and C9 prunes the rows,
+>   so they stay tiny.
+> - **`dedupe_key = user_id|kind|date|content-hash|channel`** — the content hash lets an
+>   identical re-run dedupe while two distinct alert bundles the same day each deliver.
+> Backoff/dead-letter caps via `cfg("delivery.outbox_{max_attempts,backoff_minutes}")`.
+
 ---
 
 ## Blueprint 3 — Semantic Chat Cache 💬
@@ -189,6 +205,15 @@ chart, unit economics are faith, not fact.
    shared-brain %"), and a `/scheduler/status` field for dashboards. Alert if any single
    user exceeds a configurable daily cost ceiling (abuse tripwire).
 
+> **✅ Implemented — Atlas C8 (`services/data/stores/log_store.py`), dormant behind `ATLAS_ENABLED`.**
+> Points 1–4 built as designed: nullable `llm_calls.user_id` (ALTER + fresh-schema);
+> `current_user_id` ContextVar set by the **auth dependency** (`auth._attribute_telemetry` in
+> `get_current_user_optional`, only when the flag is on) — no signature change at the ~20 call
+> sites; NULL = shared brain (scheduled work never sets it); `cost_by_user_day` rebuilt nightly
+> by **scheduler Job 18** (`rollup_cost_by_user_day`, NULL kept as the shared-brain bucket).
+> **Still design-only:** the weekly-digest "top-5 users" line, the `/scheduler/status` surface,
+> and the per-user daily cost-ceiling tripwire (the rollup table they read now exists).
+
 ---
 
 ## Blueprint 5 — The Learning Constitution ⚖️
@@ -223,6 +248,17 @@ weigh, rather than a **target** it must please.
 
 Captured when a user acts on (or dismisses) an advice card. Stored append-only,
 tenant-scoped, in the user plane — **physically outside the RL stores**.
+
+> **✅ Implemented — Atlas C8, dormant behind `ATLAS_ENABLED`.** The event is the
+> `feedback_events` table in `data/atlas.db` (append-only, FK to `users`, DPDP-cascades on
+> delete). `atlas_store.record_feedback_event` writes it; `POST /ui/feedback` captures the
+> accept/override/ignore from the session user. **R1** is enforced by the real import-boundary
+> guard `tests/unit/test_atlas_import_boundary.py` (created in Atlas C2 — the blueprint had only
+> *prescribed* it); the feedback store lives in `atlas_store`, which `core/intelligence/**` may
+> not import. **R3** is `atlas_store.feedback_aggregate()`, which returns nothing below
+> `cfg("atlas.feedback.aggregation_floor_users", 20)`. **Still design-only:** wiring aggregates
+> into Blueprint-1 demand (R2), the quarterly disposition-bias audit (R4), and the advice-card
+> accept/override **frontend control** (the endpoint contract ships; the UI is a visual-pass item).
 
 ### The four consumption rules
 

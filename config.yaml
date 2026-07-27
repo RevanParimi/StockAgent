@@ -413,3 +413,37 @@ delivery:
     - "NIFTY NEXT 50"
     - "NIFTY MIDCAP 150"
     - "NIFTY SMALLCAP 250"
+  # Atlas C7 (BP2) durable outbox — active only when ATLAS_ENABLED. The drainer
+  # runs in the singleton-lock owner and retries with backoff -> dead-letter.
+  outbox_max_attempts: 3         # sends before a row is dead-lettered
+  outbox_backoff_minutes: [1, 5, 30]   # per-attempt reschedule delay
+  outbox_poll_seconds: 30        # drainer loop interval
+  outbox_retention_days: 30      # C9 prunes delivered/dead rows older than this
+
+# =============================================================================
+# Atlas M1 — user-plane relational core (data/atlas.db). Ships DORMANT: the whole
+# Phase-C build is a behavioral no-op until `enabled` is flipped at the weekend
+# cutover (env ATLAS_ENABLED wins over this file). enabled=false = instant
+# rollback to the JSON / users.db / dir-scan path.
+# =============================================================================
+atlas:
+  enabled: false                 # flip to true (via ATLAS_ENABLED in Railway) at the C11 cutover
+  db_path: "data/atlas.db"
+  feedback:                      # BP5 accept/override events (Atlas C8)
+    aggregation_floor_users: 20  # refuse to return an aggregate below this many distinct users (privacy)
+  retention:                     # C9 nightly prune caps — null = keep-all
+    ticker_verdicts_days: 400    # drop projections older than this
+    value_history_cap: 400       # keep the last N daily value points per user
+    # outbox delivered/dead prune uses delivery.outbox_retention_days (30) above
+
+# Universe demand model (BP1) — the nightly recompute (Atlas C4) turns held/watch
+# refcounts into demand tiers. A watch-only ticker earns a DAILY slot only once its
+# demand reaches one held-equivalent (the holders weight below); otherwise weekly.
+universe:
+  demand_weights:                # demand_score = holders*3 + watchers*1 + chat_hits_7d*0.5
+    holders: 3
+    watchers: 1
+    chat_hits_7d: 0.5            # source deferred to M1.x (reviewer R4) — 0 until then
+  max_daily_analyses: 25         # daily-cadence budget (held always daily; can exceed → governor)
+  budget_alert_pct: 0.8          # ops alert when daily count >= this fraction of the budget
+  archive_grace_days: 30         # refcount-0 + no history + archivable origin → archive after this

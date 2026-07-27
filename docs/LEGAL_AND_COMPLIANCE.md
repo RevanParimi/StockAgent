@@ -76,6 +76,20 @@ position-sized personal instructions.
     (currently: nightly volume backup email — that becomes multi-user PII the moment
     user #2 exists, so the backup channel and storage need the same care as the DB).
   - Push subscription endpoints and email addresses are PII too — prune on logout/delete.
+- **Status — mostly built (Atlas):**
+  - ✅ **Consent gate:** M0 signup requires an explicit `consent` (422 without it).
+  - ✅ **Right to erasure (Atlas C6):** `DELETE /auth/account` → `delete_user_completely(user_id)`
+    is one entry point that erases every trace across planes — a single `atlas.db` cascade
+    (7 PII tables: sessions, chat_usage, user_instruments, user_advice, push_subscriptions,
+    outbox, feedback_events), plus the portfolio directory, the user's chat turns, and
+    telemetry anonymisation (`llm_calls.user_id → NULL`, so cost history — a shared-brain
+    signal — is retained without identity). Idempotent + hot-path safe; the owner cannot
+    self-delete. Per-user data layout makes this "one user_id scope to erase" real.
+  - ✅ **PII binds to the user:** push subscriptions (Atlas A1) and chat history (Atlas A2)
+    are session-user-scoped, and the erasure above prunes both.
+  - ⏳ **Still open:** access-control the nightly backup destination once user #2 exists
+    (it becomes multi-user PII); the deletion path is gated on `ATLAS_ENABLED` for the
+    `atlas.db` cascade but already erases the live `users.db`/portfolio/chat/telemetry paths.
 
 ---
 
@@ -140,6 +154,19 @@ Each of these is benign today with one user and becomes a live vulnerability wit
    env var is set in Railway. That switch flips **before** user #2, full stop.
 5. **Backups are multi-tenant the moment users are.** See DPDP above — same cause, listed
    here because the fix (access-controlled backup destination) is an ops task, not code.
+
+**Status — Atlas M0/M1 (build state):**
+- ✅ **#1 IDOR closed (M0):** identity is derived server-side from the bearer session
+  (`get_current_user` / `require_owner`); the client can no longer name another user's id.
+- ✅ **#2 tenant scoping (Atlas M1):** the new relational plane `data/atlas.db` gives every
+  PII table a `user_id` FK with `ON DELETE CASCADE` — `user_instruments`, `outbox`,
+  `feedback_events`, `push_subscriptions`, `user_advice`, `sessions`, `chat_usage` — so a
+  single `DELETE FROM users` erases the tenant and no unscoped table can leak across tenants.
+  The **intelligence plane stays user-free** (Learning Constitution R1), enforced by the
+  `test_atlas_import_boundary.py` guard. *(Dormant behind `ATLAS_ENABLED` until the C11 cutover.)*
+- ✅ **#3 abuse (M0):** LLM-triggering routes require a session + per-user chat quota; the
+  per-user cost tripwire (Blueprint 4) has its `cost_by_user_day` data source built (Atlas C8).
+- ⏳ **#4/#5** remain ops switches (SCHEDULER_KEY posture, access-controlled backup destination).
 
 ---
 

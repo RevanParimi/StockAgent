@@ -42,6 +42,21 @@ def _owner_passthrough() -> dict:
             "display_name": "Owner", "role": "owner", "created_at": ""}
 
 
+def _attribute_telemetry(user_id: str | None) -> None:
+    """Atlas C8 (BP4): bind this request's user to LLM-cost telemetry so
+    `log_llm_call` attributes chat / on-demand analyse / narrator spend. Only
+    when ATLAS is enabled — dormant pre-cutover (unset ⇒ NULL ⇒ shared brain).
+    Never raises. (Future hardening: reset per request via middleware so a
+    value never leaks to a later non-authenticated request on the same worker.)
+    """
+    try:
+        from services.data.stores import atlas_store, log_store
+        if atlas_store.enabled():
+            log_store.current_user_id.set(user_id)
+    except Exception:
+        pass
+
+
 async def get_current_user_optional(
         authorization: str | None = Header(None)) -> dict | None:
     """Resolve Bearer token → user dict. Invalid *presented* tokens raise 401;
@@ -51,9 +66,12 @@ async def get_current_user_optional(
         user = user_store.resolve_session(authorization[7:].strip())
         if user is None:
             raise HTTPException(status_code=401, detail="Invalid or expired session.")
+        _attribute_telemetry(user["user_id"])
         return user
     if not settings.AUTH_REQUIRED:
-        return _owner_passthrough()
+        owner = _owner_passthrough()
+        _attribute_telemetry(owner["user_id"])
+        return owner
     return None
 
 

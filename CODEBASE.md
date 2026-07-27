@@ -16,8 +16,10 @@ StockAgent-main/
 ├── services/                      # Runtime services layer
 │   ├── api/                       # FastAPI application
 │   │   ├── server.py              # App factory, lifespan, route mounting, RL self-heal
-│   │   ├── auth.py                # check_scheduler_key — shared X-Scheduler-Key gate for all
-│   │   │                          #  mutation routes (dormant until SCHEDULER_KEY env is set)
+│   │   ├── auth.py                # M0 identity: get_current_user / require_owner (bearer session,
+│   │   │                          #  owner-passthrough when AUTH_REQUIRED=false) + check_scheduler_key
+│   │   │                          #  machine gate; Atlas C8 binds the request user to LLM-cost
+│   │   │                          #  telemetry (_attribute_telemetry → log_store.current_user_id)
 │   │   ├── log_buffer.py          # In-memory ring buffer for /ui/logs
 │   │   └── routes/                # All API route files (see Section 2)
 │   │                              # NB: the agentic chat loop lives in routes/ui_data.py
@@ -32,9 +34,17 @@ StockAgent-main/
 │   │   └── tavily_fetcher.py      # Tavily full-page extraction client
 │   ├── data/                      # Data persistence
 │   │   ├── backup.py              # Nightly volume backup: zip + 7-copy rotation + email off-site
+│   │   ├── verdict_store.py       # Atlas C2 — VerdictStore facade (the ONLY user-plane importer
+│   │   │                          #  of the intelligence plane; delegates PredictionStore reads +
+│   │   │                          #  publishes ticker_verdicts projections — plane boundary, R1)
 │   │   ├── stores/                # eod_store.py (per-day parquet EOD cache) · telemetry stores
 │   │   │                          #  (run_logger, api_usage, analysis_logger, score_store,
-│   │   │                          #   log_store) · job_outcomes.py (last-run per scheduled job
+│   │   │                          #   log_store — BP4: llm_calls.user_id + cost_by_user_day) ·
+│   │   │                          #   user_store.py (M0 auth: users/sessions/invites/quota) ·
+│   │   │                          #   atlas_store.py (Atlas M1: FK-linked data/atlas.db user-plane
+│   │   │                          #    core — user_instruments, ticker_verdicts, outbox,
+│   │   │                          #    feedback_events; DPDP delete_user_completely) ·
+│   │   │                          #   job_outcomes.py (last-run per scheduled job
 │   │   │                          #   → /scheduler/status "last_runs")
 │   │   ├── cache/                 # Data caching utilities
 │   │   ├── context/               # Context-building helpers + bundle_builder.py
@@ -46,7 +56,8 @@ StockAgent-main/
 │   │                              #  price-integrity gate)
 │   └── scheduler/
 │       └── python/
-│           └── scheduler.py       # APScheduler BackgroundScheduler — all 16 jobs
+│           └── scheduler.py       # APScheduler BackgroundScheduler — all 18 jobs (Jobs 16-18 =
+│                                  #  Atlas universe/cost-rollup/retention, dormant until ATLAS_ENABLED)
 │                                  # (see docs/ARCHITECTURE.md §3 for the full schedule table)
 ├── src/                           # Source packages
 │   ├── backend/                   # Python backend agents
@@ -133,7 +144,11 @@ StockAgent-main/
 │   │   ├── narrator.py            # BULK-tier LLM narration of advice
 │   │   ├── digest.py              # EOD portfolio digest builder
 │   │   ├── pipeline.py            # run_post_review_pipeline() orchestration entry point
-│   │   └── autopilot.py           # Compass Autopilot: deterministic verdict executor (see below)
+│   │   ├── autopilot.py           # Compass Autopilot: deterministic verdict executor (see below)
+│   │   ├── universe.py            # Atlas C4 — nightly Universe recompute (Job 16): user_instruments
+│   │   │                          #  refcounts → instruments demand tiers/cadence (no user_id, R1)
+│   │   └── retention.py           # Atlas C9 — nightly prune (Job 18): bounds ticker_verdicts /
+│   │                              #  outbox / value_history / sessions; all caps via cfg()
 │   ├── discovery/                 # Compass Phase B: weekly discovery funnel (see below)
 │   │   ├── __init__.py            # run_discovery_cycle() — single orchestration entry point
 │   │   ├── universe.py            # EQ-series + price-floor universe from the EOD window
@@ -153,7 +168,10 @@ StockAgent-main/
 │   │   │                          #  operational alerts (audit AUD-039/084/090)
 │   │   ├── brief.py               # Morning brief builder (08:50 IST job)
 │   │   ├── weekly.py              # Weekly review builder (Sun 18:00 IST job)
-│   │   └── index_watch.py         # Index constituent diff -> inclusion/exclusion alerts
+│   │   ├── index_watch.py         # Index constituent diff -> inclusion/exclusion alerts
+│   │   └── outbox.py              # Atlas C7 (BP2) — durable delivery outbox: deliver() enqueues
+│   │                              #  per-channel rows when ATLAS_ENABLED; singleton-owner drainer
+│   │                              #  claims each atomically (queued→sending CAS) → send + backoff
 │   ├── pipeline/                  # Live shim for the automobile path via sector_router
 │   │   ├── base_agent.py
 │   │   ├── orchestrator.py
@@ -225,6 +243,24 @@ StockAgent-main/
   feeds the same Stage-3 deep-dive budget. Same spec; plan:
   docs/superpowers/plans/2026-07-09-compass-phase-c.md
 
+- **Atlas M1 — user-data ↔ central-intelligence relational plane** (Phase C, all
+  **dormant behind `cfg("atlas.enabled", env="ATLAS_ENABLED")` = false** until the
+  weekend cutover; flag-off is byte-for-byte today's JSON/`users.db`/dir-scan path and
+  the instant-rollback lever). One FK-linked SQLite DB `data/atlas.db` folds `users.db`
+  + the global `watchlist.json` + `push_subscriptions.json` and adds the missing
+  `user_instruments` join, the plane-boundary `ticker_verdicts` projection, `user_advice`,
+  and the greenfield `outbox` + `feedback_events`. Modules: `services/data/stores/atlas_store.py`
+  (schema + FK-on connection, `user_instruments` write-through, `active_user_ids()`, DPDP
+  `delete_user_completely`, `record_feedback_event`/`feedback_aggregate`),
+  `services/data/verdict_store.py` (the plane boundary — advisor/pipeline read verdicts through
+  this instead of importing `PredictionStore`; the intelligence plane never gains user references,
+  Learning Constitution R1, enforced by `tests/unit/test_atlas_import_boundary.py`),
+  `core/delivery/outbox.py` (BP2 durable delivery), `core/portfolio/universe.py` (BP1 demand
+  tiers), `core/portfolio/retention.py` (nightly prune). Telemetry `llm_calls.user_id`
+  (BP4, `services/data/stores/log_store.py`) attributes cost per user (NULL = shared brain).
+  Spec: docs/superpowers/specs/2026-07-26-m1-data-architecture-design.md · plan:
+  docs/superpowers/plans/2026-07-26-atlas-user-data-program.md
+
 ---
 
 ## 2. API Endpoints
@@ -237,6 +273,19 @@ shared `services/api/auth.py::check_scheduler_key` gate: requests must carry
 logs a warning and allows (dormant enforcement — flipping it on is one env var). The only
 deliberately keyless writes are the push subscribe/unsubscribe endpoints (pre-login 🔔).
 Unknown paths under the API prefixes return 404 (the SPA catch-all no longer masks them).
+
+### Auth (`/auth/*`) — M0 multi-user identity + DPDP
+
+Bearer-session identity (`services/api/auth.py`). First signup becomes the `owner`
+(`user_id='primary'`); later signups are invite-gated. `AUTH_REQUIRED=false` ⇒ anonymous
+acts as owner (single-user passthrough).
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| POST | `/auth/signup` · `/auth/login` · `/auth/logout` | mixed | Session lifecycle; returns `{token, user}`. |
+| GET | `/auth/me` | session | Current user. |
+| POST · GET | `/auth/invites` | owner | Create / list invite codes. |
+| DELETE | `/auth/account` | session (not owner) | **DPDP right-to-erasure (Atlas C6)** — runs `user_store.delete_user` + `atlas_store.delete_user_completely` (single atlas.db cascade → 7 PII tables + portfolio dir + chat_turns; telemetry anonymised) + session revoke. Owner cannot self-delete. |
 
 ### Analysis
 
@@ -265,12 +314,13 @@ Unknown paths under the API prefixes return 404 (the SPA catch-all no longer mas
 | GET | `/ui/trending` | None | Tickers ranked by score delta between last two analysis runs. |
 | GET | `/ui/market/summary` | None | Market pulse, driver cards, sector index changes, Nifty Auto sparkline. |
 | GET | `/ui/nifty-ranges?range=1M` | None | Nifty Auto sparkline for a time range: `1W`, `1M`, `3M`, `6M`, `1Y`. |
-| GET | `/ui/watchlist` | None | User watchlist with live prices. |
-| PUT | `/ui/watchlist` | None | Persist watchlist to `data/watchlist.json`. |
+| GET | `/ui/watchlist` | None | User watchlist with live prices. When `ATLAS_ENABLED`, the session user's `Portfolio.watchlist` (per-user); else the global `data/watchlist.json` (Atlas C5). |
+| PUT | `/ui/watchlist` | None → owner | Persist watchlist. When `ATLAS_ENABLED`, writes the session user's `Portfolio.watchlist`; else owner-only global `data/watchlist.json` (Atlas C5). |
 | GET | `/ui/search?q=<term>` | None | Ticker + thesis text search (falls back to yfinance lookup). |
 | GET | `/ui/categories` | None | Categories (EV, mass-market, etc.) with ticker lists. |
 | PUT | `/ui/categories/{key}/tickers` | None | Add/remove tickers from a category (body: `{add: [], remove: []}`). |
 | GET | `/ui/learnings` | None | RL-derived lesson cards and portfolio learning summary. |
+| POST | `/ui/feedback` | session user | Atlas C8 (BP5) — record a user's accept/override/ignore on an advice card (`symbol`, `action`, optional `verdict_shown`/`override_direction`/`position_state`). Append-only to `feedback_events`; dormant no-op until `ATLAS_ENABLED`. |
 | POST | `/ui/chat/stream` | None | **Primary chat** — agentic streaming tool-loop (SSE). Deterministic intent pre-router pre-fetches screen+news for buy/sell/momentum queries; BULK-tier default with reasoning disabled, glm-5.2 escalation on failure; **45s per-turn wall-clock budget**, ≤4 upstream attempts per logical call, one budget-free final synthesis. Server-side session memory (`session_id`). Events: `intent`, `tool_result`, `token`, `done`. |
 | POST | `/ui/chat` | None | Non-streaming twin of the chat loop (blocking JSON reply; same server session memory — returns `session_id`, client-sent history is ignored). Frontend fallback. |
 | GET | `/ui/logs` · `/ui/logs/stream` | None | Recent server log lines (ring buffer) + SSE tail. |
@@ -588,12 +638,34 @@ Models are tiered (2026-06-03 benchmark, `scripts/model_bench.py`; bulk re-bench
 | `delivery.email_enabled` | `false` | Needs `SMTP_HOST/PORT/USER/PASSWORD` + `DELIVERY_EMAIL_TO` in .env |
 | `delivery.push_enabled` | `true` | Needs `VAPID_PRIVATE_KEY/PUBLIC_KEY/CLAIM_EMAIL` in .env (`scripts/gen_vapid_keys.py`) |
 | `delivery.index_watch` | NIFTY 50 / NEXT 50 / MIDCAP 150 / SMALLCAP 250 | Weekly constituent diff → inclusion/exclusion alerts |
+| `delivery.outbox_max_attempts` | `3` | BP2 outbox: sends before a row is dead-lettered (active only when `ATLAS_ENABLED`) |
+| `delivery.outbox_backoff_minutes` | `[1, 5, 30]` | BP2 outbox: per-attempt reschedule delay |
+| `delivery.outbox_poll_seconds` | `30` | BP2 outbox: drainer loop interval |
+| `delivery.outbox_retention_days` | `30` | Prune delivered/dead outbox rows older than this (Atlas C9) |
 | `discovery.ipo_enabled` | `true` (fallback `false`) | Stage-2 IPO tracker in the Saturday cycle |
 | `discovery.ipo_listing_window_days` | `90` | Listings younger than this are candidates |
 | `discovery.ipo_max_deep_dives` | `2` | Reserved Stage-3 slots (WITHIN `deep_dive_count`) |
 | `discovery.ipo_lockin_warn_days` | `7` | Lock-in expiry flag window (30/90/180-day cliffs) |
 | `discovery.ipo_qib_weight` | `3.0` | QIB subscription weighted 3× retail |
 | `advisor.switch_conviction_gap` | `0.15` | SWITCH: shelf conviction − holding confidence floor |
+
+### Atlas M1 — user-data plane (`config.yaml` → `atlas.*` / `universe.*`)
+
+The whole Atlas relational plane is gated on `atlas.enabled` (env `ATLAS_ENABLED` wins).
+**Default `false` = dormant** — every Atlas feature is a behavioral no-op and the app runs
+today's JSON/`users.db`/dir-scan path; flipping to `true` at the weekend cutover activates
+the plane and flag-off is the instant-rollback lever.
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `atlas.enabled` | `false` | Master flag for the entire Phase-C data plane (read live per call) |
+| `atlas.db_path` | `data/atlas.db` | The FK-linked user-plane SQLite DB |
+| `atlas.feedback.aggregation_floor_users` | `20` | `feedback_aggregate()` refuses below this many distinct users (privacy, reviewer R3) |
+| `atlas.retention.ticker_verdicts_days` | `400` | Nightly prune of `ticker_verdicts` older than this (`null` = keep-all) |
+| `atlas.retention.value_history_cap` | `400` | Keep the last N daily value points per user |
+| `universe.demand_weights` | holders×3 / watchers×1 / chat_hits_7d×0.5 | BP1 demand score for the nightly recompute (Atlas C4) |
+| `universe.max_daily_analyses` | `25` | Daily-cadence budget; governor alerts at `universe.budget_alert_pct` (`0.8`) |
+| `universe.archive_grace_days` | `30` | Refcount-0 + no history + archivable origin → archive after this |
 
 ### Alerts
 

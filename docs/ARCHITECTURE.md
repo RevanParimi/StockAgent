@@ -81,7 +81,7 @@ killed run is recoverable via `POST /scheduler/backfill?skip_existing=true`.
 
 ---
 
-## 3. The Clock — All 16 Scheduled Jobs (IST)
+## 3. The Clock — All 19 Scheduled Jobs (IST)
 
 The daily rhythm is the easiest way to understand the system:
 
@@ -103,6 +103,14 @@ The daily rhythm is the easiest way to understand the system:
 | 14 | 1st 02:00 | Monthly scorecard | Baseline duel: RL forecasts vs naive baselines per ticker; also builds + emails the Learning Evidence Report (adapted-vs-frozen-weights self-ablation, AUD-116) |
 | 15 | 1st 09:00 | Monthly forecast | Fresh 30-day envelope per managed ticker |
 | 16 | Dec 31 23:00 | NSE holiday calendar update | Refreshes next year's trading calendar |
+
+**Atlas M1 nightly jobs (scheduler internal IDs 16–18) — dormant no-ops until `ATLAS_ENABLED`:**
+
+| # | Time | Job | What it does |
+|---|------|-----|--------------|
+| 17 | 23:00 daily | **Atlas Universe recompute** (C4) | `user_instruments` refcounts → `instruments` demand tiers/cadence (held→daily, watch long-tail→weekly, refcount-0 demote) — no `user_id` written (Learning Constitution R1) |
+| 18 | 23:15 daily | **Atlas cost rollup** (C8, BP4) | Buckets the day's `llm_calls` cost by `user_id` into `cost_by_user_day` (NULL = shared brain) |
+| 19 | 23:20 daily | **Atlas retention prune** (C9) | Bounds `ticker_verdicts` / `outbox` / `value_history` / sessions; all caps via `cfg()`, `null` = keep-all |
 
 Reliability contract for the money-path job (#6): a slow ticker harvest can
 never silently kill the day — the harvest has an aggregate time budget with the
@@ -215,6 +223,13 @@ anyone acts on it. IPO tracker adds listing + lock-in-expiry awareness.
   delivery is retried the same day instead of being deduped into silence; stale
   push subscriptions (404/410/400/403) are pruned; a send that lands nowhere
   (push=0, email=0) logs a WARNING.
+- **Durable outbox** (`core/delivery/outbox.py`, Atlas C7 / BP2 — dormant until
+  `ATLAS_ENABLED`): when on, `deliver()` enqueues per-channel rows into `atlas.db`
+  instead of sending inline. A drainer started **only in the singleton-lock owner**
+  (reusing the same guard that makes the scheduler single-owner under `--workers 2`)
+  claims each row atomically (`status='queued'→'sending'` CAS, act iff `rowcount==1`
+  — no double-send) then delivers with backoff → dead-letter. The `dedupe_key`
+  UNIQUE makes re-running a fan-out job idempotent.
 - **Ops alerts** (`core/delivery/ops_alerts.py`): job crashed / zero-output /
   partial-output / portfolio-reconcile mismatch → broadcast to all subscribed
   users. The scheduler's error listener is the backstop.
@@ -230,7 +245,9 @@ anyone acts on it. IPO tracker adds listing + lock-in-expiry awareness.
   (legacy-pool engagements, each ~6-8× the unified path's Serper cost —
   logged to `data/rl/fallback_events.jsonl`); `telemetry.db` records **every**
   LLM call (caller, model, tokens, latency, success) with per-model cost rates
-  from `config.yaml llm.cost_rates`.
+  from `config.yaml llm.cost_rates`. Atlas C8 (BP4) adds a nullable `user_id`
+  (NULL = the shared brain; scheduled analysis stays NULL) set per request via a
+  ContextVar, rolled up nightly into `cost_by_user_day` — dormant until `ATLAS_ENABLED`.
 
 ## 9. LLM Tiering & Cost Model
 
@@ -263,6 +280,13 @@ Rules that keep this sane:
   trailing-backslash breakout into the imported module).
 - Error responses are generic; exception details are logged server-side only.
 - CORS: no wildcard-with-credentials.
+- **Identity** (M0, `services/api/auth.py`): bearer-session `get_current_user` /
+  `require_owner`; `AUTH_REQUIRED=false` ⇒ anonymous acts as owner (single-user
+  passthrough). Push subscriptions and chat history bind to the session user
+  (Atlas Phase A), so user #2's device/session can never receive the owner's data.
+- **DPDP right-to-erasure** (Atlas C6): `DELETE /auth/account` runs one atlas.db
+  cascade (7 PII tables) + portfolio-dir removal + chat-turn deletion + telemetry
+  anonymisation — a single `delete_user_completely` entry point (see §Legal).
 - **Public-repo hygiene**: prod cash figures, hostnames, and auth specifics stay
   out of committed docs; local prod-backup extracts (`analysis_data/`) are
   gitignored.
@@ -287,10 +311,18 @@ data/
 ├── delivery/                  # alerts_sent.jsonl, push_subscriptions.json
 ├── backups/                   # nightly zips (7-copy rotation)
 ├── rl/fallback_events.jsonl   # legacy-pool fallback engagements (Wave I)
-├── telemetry.db               # every LLM call
-├── chat_sessions.db           # chat session memory (shared across workers, 7d TTL)
+├── telemetry.db               # every LLM call (+ user_id + cost_by_user_day rollup — Atlas C8/BP4)
+├── chat_sessions.db           # chat session memory (shared across workers, 7d TTL; user-scoped, Atlas A2)
+├── users.db                   # M0 auth: users, sessions, invites, chat quota
+├── atlas.db                   # Atlas M1 user-plane relational core (FK-linked) — DORMANT until
+│                              #   ATLAS_ENABLED: users, user_instruments, instruments,
+│                              #   ticker_verdicts, user_advice, push_subscriptions, outbox, feedback_events
 └── scheduler_job_outcomes.json
 ```
+
+At the weekend cutover (Atlas C11) `atlas.db` folds in `users.db` + the global
+`watchlist.json` + `push_subscriptions.json`; until then the sources stay
+authoritative and `atlas.db` is written but never read on the fan-out path.
 
 ## 12. Reading Order for New Developers
 

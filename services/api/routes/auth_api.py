@@ -8,15 +8,13 @@ deletion. Sessions are bearer tokens resolved by services.api.auth.
 from __future__ import annotations
 
 import logging
-import shutil
-from pathlib import Path
 
 from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel, Field
 
 from core.config import settings
 from services.api.auth import get_current_user
-from services.data.stores import user_store
+from services.data.stores import atlas_store, user_store
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/auth", tags=["Auth"])
@@ -107,17 +105,19 @@ def list_invites(user: dict = Depends(get_current_user)) -> dict:
 
 
 @router.delete("/account")
-def delete_account(user: dict = Depends(get_current_user)) -> dict:
+def delete_account(user: dict = Depends(get_current_user),
+                   authorization: str | None = Header(None)) -> dict:
     if user["role"] == "owner":
         raise HTTPException(status_code=403,
                             detail="The owner account cannot self-delete.")
-    user_store.delete_user(user["user_id"])
-    pf_dir = Path(settings.PORTFOLIO_DATA_DIR) / user["user_id"]
-    try:
-        if pf_dir.is_dir():
-            shutil.rmtree(pf_dir)
-    except Exception as exc:
-        logger.warning("[auth] portfolio dir cleanup failed for %s: %s",
-                       user["user_id"], exc)
-    logger.info("[auth] account deleted (DPDP): %s", user["user_id"])
+    uid = user["user_id"]
+    # Erase across both identity stores so deletion is correct whether or not
+    # ATLAS_ENABLED: users.db is the pre-cutover identity SoT; atlas_store owns
+    # the cross-plane cascade (atlas.db PII + portfolio dir + chat_turns +
+    # telemetry anonymize). Then revoke the caller's session token.
+    user_store.delete_user(uid)
+    atlas_store.delete_user_completely(uid)
+    if authorization and authorization.lower().startswith("bearer "):
+        user_store.revoke_session(authorization[7:].strip())
+    logger.info("[auth] account deleted (DPDP): %s", uid)
     return {"ok": True}

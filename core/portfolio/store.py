@@ -29,6 +29,7 @@ from backend.shared.schemas.portfolio import (
     TransactionRecord,
     WatchlistItem,
 )
+from services.data.stores import atlas_store   # Atlas C3 user_instruments index (flag-gated)
 
 logger = logging.getLogger(__name__)
 
@@ -59,6 +60,27 @@ class PortfolioStore:
         """Per-user critical section for load→mutate→save sequences."""
         with self._lock:
             yield self
+
+    # ------------------------------------------------------------------
+    # Atlas user_instruments write-through (C3, flag-gated, hot-path safe)
+    # ------------------------------------------------------------------
+    def _sync_instrument(self, symbol: str, relationship: str, action: str, *,
+                         origin: str = "seed", cadence: str = "on_demand") -> None:
+        """Mirror a held/watch membership change into atlas.db. No-op unless
+        ATLAS_ENABLED; an atlas failure never propagates (the portfolio write
+        is the source of truth — the index is a derived backstop rebuilt
+        nightly)."""
+        if not atlas_store.enabled():
+            return
+        try:
+            if action == "add":
+                atlas_store.upsert_user_instrument(
+                    self.user_id, symbol, relationship, origin=origin, cadence=cadence)
+            else:
+                atlas_store.remove_user_instrument(self.user_id, symbol, relationship)
+        except Exception as exc:                 # defense-in-depth (callee already guards)
+            logger.warning("[PortfolioStore] atlas sync failed for %s/%s (non-fatal): %s",
+                           self.user_id, symbol, exc)
 
     # ------------------------------------------------------------------
     # Paths
@@ -178,6 +200,7 @@ class PortfolioStore:
             else:
                 p.holdings.append(h)
             self.save(p)
+            self._sync_instrument(h.symbol, "held", "add", origin="held", cadence="daily")
             return p
 
     def remove_holding(self, symbol: str) -> bool:
@@ -188,6 +211,7 @@ class PortfolioStore:
             if len(p.holdings) == before:
                 return False
             self.save(p)
+            self._sync_instrument(symbol.upper(), "held", "remove")
             return True
 
     def add_watchlist(self, w: WatchlistItem) -> Portfolio:
@@ -197,6 +221,8 @@ class PortfolioStore:
             if not any(x.symbol == w.symbol for x in p.watchlist):
                 p.watchlist.append(w)
                 self.save(p)
+            # Idempotent upsert (also backfills a pre-flag watch on later calls).
+            self._sync_instrument(w.symbol, "watch", "add", origin="watched", cadence="weekly")
             return p
 
     def remove_watchlist(self, symbol: str) -> bool:
@@ -207,6 +233,7 @@ class PortfolioStore:
             if len(p.watchlist) == before:
                 return False
             self.save(p)
+            self._sync_instrument(symbol.upper(), "watch", "remove")
             return True
 
     # ------------------------------------------------------------------
@@ -288,6 +315,8 @@ class PortfolioStore:
             if removed:
                 p.holdings = [x for x in p.holdings if x.symbol != h.symbol]
             self.save(p)
+            if removed:                          # full exit → no longer held
+                self._sync_instrument(h.symbol, "held", "remove")
             return realized, removed
 
     # ------------------------------------------------------------------
@@ -402,3 +431,20 @@ def list_user_ids(base_dir: str | None = None) -> list[str]:
     if not root.exists():
         return []
     return [d.name for d in root.iterdir() if d.is_dir() and (d / "portfolio.json").exists()]
+
+
+def active_user_ids(base_dir: str | None = None) -> list[str]:
+    """Users the scheduler should fan out to (Atlas C3, spec §6).
+
+    When Atlas is enabled, `atlas.db` is authoritative: fan-out is driven by the
+    users table, so ghost portfolio dirs without a users row no longer trade
+    (finding #6). The AUTH_REQUIRED=false single-user flow is preserved — with 0
+    users and auth off, the owner (`primary`) still gets autopilot/briefs. When
+    disabled, this is EXACTLY today's directory scan (the rollback path), so the
+    dormant build is a byte-for-byte no-op."""
+    if not atlas_store.enabled():
+        return list_user_ids(base_dir)
+    ids = atlas_store.user_ids()
+    if not ids and not settings.AUTH_REQUIRED:
+        return [settings.PORTFOLIO_DEFAULT_USER_ID]
+    return ids

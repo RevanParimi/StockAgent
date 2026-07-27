@@ -14,13 +14,13 @@ from datetime import date
 from core.config import settings
 from core.intelligence.algorithms.indicators.fetcher import get_price_history
 from core.intelligence.rl.nse_calendar import is_trading_day
-from core.intelligence.rl.stores.prediction_store import PredictionStore
+from services.data.verdict_store import VerdictStore  # plane boundary (Atlas C2)
 from core.portfolio.advisor import build_signals, decide
 from core.portfolio.corp_actions import sync_corp_actions
 from core.portfolio.digest import build_digest
 from core.portfolio.narrator import narrate
 from core.portfolio.pricing import close_on
-from core.portfolio.store import PortfolioStore, list_user_ids
+from core.portfolio.store import PortfolioStore, active_user_ids
 from services.data.fetchers.corporate_events import (
     load_events_calendar,
     refresh_events_calendar,
@@ -36,7 +36,7 @@ def run_post_review_pipeline(review_date: date) -> dict:
         logger.info("[portfolio_pipeline] %s is not a trading day — skipping", review_date)
         return {"status": "not_trading_day"}
 
-    users = list_user_ids()
+    users = active_user_ids()          # Atlas C3: users-table when enabled, dir-scan when not
     total_advice, escalations = 0, []
 
     for user_id in users:
@@ -89,7 +89,7 @@ def run_post_review_pipeline(review_date: date) -> dict:
                 except Exception as exc:
                     logger.debug("[portfolio_pipeline] OHLCV fetch failed for %s: %s",
                                  holding.symbol, exc)
-                pred_store = PredictionStore(holding.symbol, sector=holding.sector)
+                pred_store = VerdictStore(holding.symbol, sector=holding.sector)
                 signals = build_signals(
                     holding, portfolio, review_date, pred_store, calendar, close,
                     ohlcv_df=ohlcv,
@@ -207,6 +207,7 @@ def run_post_review_pipeline(review_date: date) -> dict:
                 + ". Open the app or ask the chat for 'brief' for details.",
                 url="/#/inbox/digest",
                 user_id=user_id,
+                kind="digest",
             )
         except Exception as exc:
             logger.warning("[portfolio_pipeline] delivery failed (non-fatal): %s", exc)

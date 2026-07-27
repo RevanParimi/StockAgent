@@ -178,11 +178,31 @@ def send_push(
 
 
 def deliver(
-    title: str, body: str, url: str = "/", user_id: str | None = None
+    title: str, body: str, url: str = "/", user_id: str | None = None,
+    kind: str = "alert",
 ) -> dict:
-    """Fan one message out to all configured channels. Never raises."""
+    """Fan one message out to all configured channels. Never raises.
+
+    Atlas C7 (BP2): when the relational plane is on, hand the message to the
+    durable outbox (per-channel rows, atomic-claim drainer) instead of sending
+    inline — `delivered=True` then means *accepted for delivery*; the outbox
+    owns retry/dead-letter. `kind` (brief|digest|weekly|alert) tags the queued
+    rows. The dormant path (flag off) below is byte-for-byte today's behaviour.
+    """
     if not settings.DELIVERY_ENABLED:
         return {"delivered": False, "reason": "delivery_disabled"}
+    try:
+        from services.data.stores import atlas_store
+        if atlas_store.enabled():
+            from core.delivery.outbox import enqueue_message
+            uid = user_id or settings.PORTFOLIO_DEFAULT_USER_ID
+            queued = enqueue_message(uid, title, body, url=url, kind=kind)
+            if queued:
+                logger.info("[delivery] %s — queued to outbox (%d row(s))", title, queued)
+            return {"delivered": bool(queued), "queued": queued, "push": 0, "email": 0}
+    except Exception as exc:
+        logger.warning("[delivery] outbox enqueue failed, falling back to inline "
+                       "(non-fatal): %s", exc)
     pushed = emailed = 0
     try:
         pushed = send_push(title, body, url=url, user_id=user_id)

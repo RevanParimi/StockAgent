@@ -329,6 +329,12 @@ VIX_LOW_VOL_THRESHOLD: float   = cfg("regime.vix_low_vol_threshold", fallback=14
 FII_PROXY_THRESHOLD_PCT: float = cfg("regime.fii_proxy_threshold_pct", fallback=1.0)    # Nifty 5-day move threshold for FII proxy
 RSI_OVERBOUGHT: float          = cfg("regime.rsi_overbought", fallback=70.0)   # RSI above this → overbought
 RSI_OVERSOLD: float            = cfg("regime.rsi_oversold", fallback=30.0)   # RSI below this → oversold
+# Global-stress escalation (spec 2026-07-27): direct crude/rupee/US inputs so
+# a world shock can escalate the regime before India VIX fully reacts.
+REGIME_BRENT_SHOCK_PCT: float   = cfg("regime.brent_shock_pct", fallback=8.0)    # Brent 5d % ≥ this → oil shock (India imports)
+REGIME_USDINR_STRESS_PCT: float = cfg("regime.usdinr_stress_pct", fallback=1.5)  # USDINR 5d % ≥ this → rupee stress
+REGIME_SPX_DROP_PCT: float      = cfg("regime.spx_drop_pct", fallback=-2.0)      # S&P last session % ≤ this → global risk-off
+REGIME_GLOBAL_STRESS_MIN_SIGNALS: int = cfg("regime.global_stress_min_signals", fallback=2)
 
 # Direction classification threshold for RL feedback (see STATIC_AUDIT.md #5)
 RL_FLAT_THRESHOLD_PCT: float = cfg("rl.flat_threshold_pct", fallback=0.3)     # moves within ±0.3% classified as FLAT
@@ -388,6 +394,9 @@ REGIME_SECTOR_TICKERS: dict[str, str] = {
 REGIME_SECTOR_FALLBACK_TICKER: str = "^NSEI"    # Nifty 50 fallback
 REGIME_VIX_TICKER: str = "^INDIAVIX"
 REGIME_FII_PROXY_TICKER: str = "^NSEI"          # Nifty 50 for 5-day momentum proxy
+REGIME_BRENT_TICKER: str  = "BZ=F"
+REGIME_USDINR_TICKER: str = "INR=X"
+REGIME_SPX_TICKER: str    = "^GSPC"
 
 # P5 — Regime Multiplier Table
 # Applied on top of learned WeightMemory weights (not stored, daily-only modifier).

@@ -979,6 +979,11 @@ class RegimeSnapshot(BaseModel):
     multipliers: dict[str, float] = Field(default_factory=dict)   # per-agent regime multipliers
     narrative: str = ""                    # one-sentence context for LLM injection
     as_of_date: str = ""                   # ISO date
+    # Global-stress escalation inputs (spec 2026-07-27); optional for compat
+    brent_5d_pct: float | None = None
+    usdinr_5d_pct: float | None = None
+    spx_last_pct: float | None = None
+    global_stress_signals: list[str] = Field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------

@@ -210,6 +210,35 @@ class RegimeDetector:
         return "NORMAL"
 
     @staticmethod
+    def _global_stress_signals(
+        brent_5d_pct: float | None,
+        usdinr_5d_pct: float | None,
+        spx_last_pct: float | None,
+    ) -> list[str]:
+        """Which global-stress conditions fired. None (fetch failed) never
+        counts — a network outage must degrade to today's behavior."""
+        fired: list[str] = []
+        if brent_5d_pct is not None and brent_5d_pct >= settings.REGIME_BRENT_SHOCK_PCT:
+            fired.append("brent_shock")
+        if usdinr_5d_pct is not None and usdinr_5d_pct >= settings.REGIME_USDINR_STRESS_PCT:
+            fired.append("usdinr_stress")
+        if spx_last_pct is not None and spx_last_pct <= settings.REGIME_SPX_DROP_PCT:
+            fired.append("spx_drop")
+        return fired
+
+    @staticmethod
+    def _escalate_label(label: str, n_stress: int) -> str:
+        """One severity notch when enough independent global signals agree.
+        A single noisy signal never escalates on its own."""
+        if n_stress < settings.REGIME_GLOBAL_STRESS_MIN_SIGNALS:
+            return label
+        if label == "RISK_OFF":
+            return "MACRO_CRISIS"
+        if label == "MACRO_CRISIS":
+            return label
+        return "RISK_OFF"
+
+    @staticmethod
     def _build_narrative(
         label: str, vix: float, fii_proxy: float, sector_rsi: float
     ) -> str:

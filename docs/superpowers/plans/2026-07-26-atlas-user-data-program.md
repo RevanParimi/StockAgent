@@ -780,16 +780,31 @@ INSERT…SELECT); `push_subscriptions.json`→rows; `managed_tickers.json`→ins
 place). **Ghost-dir reconciliation:** `primary`→adopt to owner; matching users row→keep; **no users
 row→quarantine** to `data/portfolio/_quarantine/<uid>/` + one ops alert (no silent adoption). Re-runnable.
 
-- [ ] **Step 1 — failing tests** on a synthetic `data/` tree: row-count assertions post-ETL; idempotent
-  (second run = same counts, no dupes); ghost dir with no users row is quarantined not adopted; `primary`
-  adopted to owner; `active_user_ids()` dry-run equals the intended set.
-- [ ] **Step 2 — run red.** — [ ] **Step 3 — implement** (ATTACH for the SQLite→SQLite copy; JSONL
-  stream for ledgers). — [ ] **Step 4 — run green.**
-- [ ] **Step 5 — commit** `feat(atlas-c10): ETL + ghost-dir reconciliation (idempotent, additive)`.
+- [x] **Step 1 — failing tests** (`tests/unit/test_atlas_etl.py`, 9) on a synthetic `data/` tree:
+  full-table population + row counts; advice `verdict_ref` mapping; idempotent second run (same counts,
+  no dupes); ghost dir with no users row quarantined; `primary` adopted (with AND without a users row —
+  the owner's dir is never quarantined); `active_user_ids()` dry-run == registered set; global-watchlist
+  merge into the owner + `user_instruments(watch)`; telemetry column idempotency.
+- [x] **Step 2 — run red** (`ImportError: cannot import name 'atlas_etl' from 'scripts'`). — [x] **Step 3 —
+  implement** `scripts/atlas_etl.py`: ATTACH + INSERT…SELECT for the users.db→atlas SQLite copy (FK-guarded
+  so an orphan session/invite is skipped not fatal); JSON/JSONL streams for the rest; writes atlas.db
+  **directly** (not the flag-gated write-through) so the index is full before the flip. `_classify` →
+  adopt(primary)/migrate(users-row)/quarantine(stranger); `--dry-run` classifies + reports without writing.
+  Every insert `INSERT OR IGNORE` on a UNIQUE/PK key; dir moves guarded → additive + idempotent, sources
+  untouched. — [x] **Step 4 — run green** (9/9). Full-suite A/B CLEAN: fail-set == C0 known-red (10F+10E,
+  network-flaky area), **2213 passed** (2204 + 9), zero atlas/etl failures; the 2 Windows file-lock flakes
+  did not recur.
+- [x] **Step 5 — commit** `8d71127` `feat(atlas-c10): ETL + ghost-dir reconciliation (idempotent, additive)`.
 
 ---
 
 ### Task C11: Close-out — A/B, weekend cutover, flip flag, first-run watch, decommission
+
+> **WAVE δ / C10 COMPLETE — 2026-07-27 (branch `atlas-c`, NOT merged, dormant).** ETL + ghost-dir
+> reconciliation shipped + A/B CLEAN. **C11 is the live production cutover — deliberately NOT auto-run:**
+> it merges `atlas-c` to main, deploys, runs the ETL against prod data, and flips `ATLAS_ENABLED=true`
+> live. It is **weekend-gated** (2026-07-27 is a Monday trading day) and needs the user in the loop for
+> the go-live moment. **Paused here for user scheduling + go-ahead.**
 
 - [ ] **Step 1 — Full-suite A/B** — fail-set must equal the C0 baseline (+ all new atlas tests green).
 - [ ] **Step 2 — Merge dormant** (`ATLAS_ENABLED` unset/false): `git checkout main && git merge --no-ff

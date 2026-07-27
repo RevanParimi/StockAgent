@@ -431,6 +431,10 @@ atlas:
   db_path: "data/atlas.db"
   feedback:                      # BP5 accept/override events (Atlas C8)
     aggregation_floor_users: 20  # refuse to return an aggregate below this many distinct users (privacy)
+  retention:                     # C9 nightly prune caps — null = keep-all
+    ticker_verdicts_days: 400    # drop projections older than this
+    value_history_cap: 400       # keep the last N daily value points per user
+    # outbox delivered/dead prune uses delivery.outbox_retention_days (30) above
 
 # Universe demand model (BP1) — the nightly recompute (Atlas C4) turns held/watch
 # refcounts into demand tiers. A watch-only ticker earns a DAILY slot only once its

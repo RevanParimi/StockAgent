@@ -443,6 +443,20 @@ class AutomobileScheduler:
         )
         logger.info("[Scheduler] Cost rollup job: daily at 11:15 pm IST")
 
+        # ── Job 18: Atlas retention prune (23:20 IST daily — Atlas C9) ──────
+        # Bounds ticker_verdicts / outbox / value_history / sessions; all caps
+        # via cfg(), None = keep-all. Dormant no-op until ATLAS_ENABLED.
+        scheduler.add_job(
+            func=self._retention_job,
+            trigger=CronTrigger(hour=23, minute=20, timezone="Asia/Kolkata"),
+            id="atlas_retention",
+            name="Atlas retention prune (bounded stores)",
+            misfire_grace_time=3600,
+            coalesce=True,
+            replace_existing=True,
+        )
+        logger.info("[Scheduler] Retention prune job: daily at 11:20 pm IST")
+
         return scheduler
 
     def _on_job_error(self, event) -> None:
@@ -795,6 +809,13 @@ class AutomobileScheduler:
         from services.data.stores.log_store import rollup_cost_by_user_day
         result = rollup_cost_by_user_day()
         logger.info("[Scheduler] cost rollup: %s", result)
+
+    def _retention_job(self) -> None:
+        """Job 18 — Atlas retention prune (C9). No-op unless ATLAS_ENABLED;
+        run_retention() is hot-path safe (never raises)."""
+        from core.portfolio.retention import run_retention
+        result = run_retention()
+        logger.info("[Scheduler] retention prune: %s", result)
 
     def _ledger_cleanup_job(self) -> None:
         """

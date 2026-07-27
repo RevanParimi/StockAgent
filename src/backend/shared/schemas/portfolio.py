@@ -137,6 +137,11 @@ class TransactionRecord(BaseModel):
     advice_ref: str = ""           # "<date>|<symbol>|<rationale_hash>"
     triggers: list[str] = Field(default_factory=list)
     note: str = ""
+    # Piece A transparency (spec 2026-07-27) — all optional so historical
+    # ledger rows keep parsing; the ledger itself is never rewritten.
+    cost_basis: float | None = None   # SELL: holding adj_avg_price at sale
+    pnl_pct: float | None = None      # SELL: realized P&L % vs cost_basis
+    reason: str = ""                  # advice narrative at execution time
 
 
 class CorporateEvent(BaseModel):

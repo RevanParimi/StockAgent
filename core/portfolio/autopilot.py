@@ -49,9 +49,13 @@ def _today_ist() -> date:
 
 def _txn(portfolio: Portfolio, rec: AdviceRecord, *, side: str, qty: float,
          price: float, cash_before: float, holding_qty_after: float,
-         realized: float, note: str, symbol: str | None = None) -> TransactionRecord:
+         realized: float, note: str, symbol: str | None = None,
+         cost_basis: float | None = None) -> TransactionRecord:
     sym = symbol or rec.symbol
     ref = f"{rec.date}|{rec.symbol}|{rec.rationale_hash}"
+    pnl_pct = None
+    if side == "SELL" and cost_basis and cost_basis > 0 and qty > 0:
+        pnl_pct = round(realized / (cost_basis * qty) * 100, 2)
     return TransactionRecord(
         txn_id=make_txn_id(portfolio.user_id, rec.date, sym, side, ref),
         date=rec.date, ts=_now_iso(), user_id=portfolio.user_id, symbol=sym,
@@ -61,6 +65,7 @@ def _txn(portfolio: Portfolio, rec: AdviceRecord, *, side: str, qty: float,
         holding_qty_after=holding_qty_after, realized_pnl=realized,
         source="autopilot", verdict=rec.verdict, advice_ref=ref,
         triggers=list(rec.triggers), note=note,
+        cost_basis=cost_basis, pnl_pct=pnl_pct, reason=rec.narrative,
     )
 
 
@@ -101,6 +106,7 @@ def _execute_sells(portfolio: Portfolio, advice: list[AdviceRecord],
                 "this run — possible ledger/portfolio divergence from a mid-run "
                 "crash; manual reconciliation may be needed", rec.symbol, rec.verdict)
             continue
+        cost_basis = round(h.adj_avg_price, 4)
         cash_before = portfolio.cash_deployable
         realized = h.sell(qty, price)
         portfolio.cash_deployable = round(portfolio.cash_deployable + qty * price, 2)
@@ -114,7 +120,7 @@ def _execute_sells(portfolio: Portfolio, advice: list[AdviceRecord],
         txns.append(_txn(portfolio, rec, side="SELL", qty=qty, price=price,
                          cash_before=cash_before,
                          holding_qty_after=(h.adj_qty if h.adj_qty > 1e-9 else 0.0),
-                         realized=realized, note=note))
+                         realized=realized, note=note, cost_basis=cost_basis))
         if rec.verdict == "SWITCH" and rec.switch_candidate:
             switch_proceeds.append((qty * price, rec))
     return txns, switch_proceeds

@@ -28,6 +28,7 @@ _TRIGGER_TEXT = {
     "thesis_break": "the original thesis is assessed as broken while the forecast points down",
     "shock_reforecast": "a shock re-forecast moved against the position",
     "crisis_regime_bearish": "the regime is MACRO_CRISIS with a bearish envelope",
+    "trailing_stop_breach": "the position gave back its volatility budget from the peak, so profit is being booked",
     "trim_profit_confidence_decline": "profit is extended while envelope confidence is declining",
     "trim_profit_reversion_elevated": "profit is extended while the reversion prior is elevated",
     "add_bullish_healthy": "the envelope is bullish, the regime supportive and recent accuracy healthy",

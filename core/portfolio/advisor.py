@@ -44,6 +44,7 @@ class AdvisorSignals(BaseModel):
     position_weight_pct: float = 0.0
     earnings_in_days: int | None = None    # trading-day distance to next results event
     confidence: float = 0.5                # mean remaining envelope confidence
+    peak_close_since_entry: float | None = None   # max close since buy_date (trailing stop)
 
 
 # ---------------------------------------------------------------------------
@@ -68,6 +69,21 @@ def atr_pct(ohlcv_df, period: int) -> float:
     except Exception as exc:
         logger.debug("[advisor] ATR computation failed: %s", exc)
         return 0.0
+
+
+def peak_close_since(ohlcv_df, buy_date: date) -> float | None:
+    """Highest close on/after buy_date from the already-fetched OHLCV frame.
+    None (rule inactive) when the frame is missing or has no in-window rows —
+    conservative, like every other non-fatal signal read."""
+    try:
+        if ohlcv_df is None or len(ohlcv_df) == 0:
+            return None
+        closes = [float(c) for d, c in zip(ohlcv_df.index, ohlcv_df["Close"])
+                  if d.date() >= buy_date]
+        return round(max(closes), 4) if closes else None
+    except Exception as exc:
+        logger.debug("[advisor] peak_close_since failed: %s", exc)
+        return None
 
 
 def resolve_cap_bucket(market_cap_inr: float | None) -> str:
@@ -122,6 +138,8 @@ def build_signals(
         unrealised_pnl_pct=holding.unrealised_pnl_pct(close),
         holding_age_days=holding.age_days(review_date),
     )
+    sig.peak_close_since_entry = peak_close_since(
+        ohlcv_df, date.fromisoformat(holding.buy_date))
     # Position weight vs portfolio market value
     try:
         total = sum(h.adj_qty * h.adj_avg_price for h in portfolio.holdings)
@@ -230,6 +248,13 @@ def decide(
         triggers.append("shock_reforecast")
     if signals.regime_label == "MACRO_CRISIS" and signals.envelope_direction == "DOWN":
         triggers.append("crisis_regime_bearish")
+    peak = signals.peak_close_since_entry
+    if (peak is not None and peak > 0 and holding.adj_avg_price > 0):
+        peak_pnl_pct = (peak / holding.adj_avg_price - 1) * 100
+        drawdown_from_peak_pct = (peak - signals.close) / peak * 100
+        if (peak_pnl_pct >= settings.ADVISOR_TRAIL_ARM_PCT
+                and drawdown_from_peak_pct >= signals.atr_stop_pct):
+            triggers.append("trailing_stop_breach")
 
     exit_fired = bool(triggers)
 

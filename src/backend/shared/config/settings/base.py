@@ -329,6 +329,12 @@ VIX_LOW_VOL_THRESHOLD: float   = cfg("regime.vix_low_vol_threshold", fallback=14
 FII_PROXY_THRESHOLD_PCT: float = cfg("regime.fii_proxy_threshold_pct", fallback=1.0)    # Nifty 5-day move threshold for FII proxy
 RSI_OVERBOUGHT: float          = cfg("regime.rsi_overbought", fallback=70.0)   # RSI above this → overbought
 RSI_OVERSOLD: float            = cfg("regime.rsi_oversold", fallback=30.0)   # RSI below this → oversold
+# Global-stress escalation (spec 2026-07-27): direct crude/rupee/US inputs so
+# a world shock can escalate the regime before India VIX fully reacts.
+REGIME_BRENT_SHOCK_PCT: float   = cfg("regime.brent_shock_pct", fallback=8.0)    # Brent 5d % ≥ this → oil shock (India imports)
+REGIME_USDINR_STRESS_PCT: float = cfg("regime.usdinr_stress_pct", fallback=1.5)  # USDINR 5d % ≥ this → rupee stress
+REGIME_SPX_DROP_PCT: float      = cfg("regime.spx_drop_pct", fallback=-2.0)      # S&P last session % ≤ this → global risk-off
+REGIME_GLOBAL_STRESS_MIN_SIGNALS: int = cfg("regime.global_stress_min_signals", fallback=2)
 
 # Direction classification threshold for RL feedback (see STATIC_AUDIT.md #5)
 RL_FLAT_THRESHOLD_PCT: float = cfg("rl.flat_threshold_pct", fallback=0.3)     # moves within ±0.3% classified as FLAT
@@ -388,6 +394,9 @@ REGIME_SECTOR_TICKERS: dict[str, str] = {
 REGIME_SECTOR_FALLBACK_TICKER: str = "^NSEI"    # Nifty 50 fallback
 REGIME_VIX_TICKER: str = "^INDIAVIX"
 REGIME_FII_PROXY_TICKER: str = "^NSEI"          # Nifty 50 for 5-day momentum proxy
+REGIME_BRENT_TICKER: str  = "BZ=F"
+REGIME_USDINR_TICKER: str = "INR=X"
+REGIME_SPX_TICKER: str    = "^GSPC"
 
 # P5 — Regime Multiplier Table
 # Applied on top of learned WeightMemory weights (not stored, daily-only modifier).
@@ -794,6 +803,7 @@ ADVISOR_STOP_BUCKETS: dict[str, tuple[float, float]] = {
 ADVISOR_LARGE_CAP_FLOOR_CR: float = float(cfg("advisor.large_cap_floor_cr", fallback=65000))
 ADVISOR_MID_CAP_FLOOR_CR: float = float(cfg("advisor.mid_cap_floor_cr", fallback=20000))
 ADVISOR_TRIM_PROFIT_PCT: float = cfg("advisor.trim_profit_pct", fallback=25.0)
+ADVISOR_TRAIL_ARM_PCT: float = cfg("advisor.trail_arm_pct", fallback=10.0)  # peak P&L % that arms the trailing stop
 ADVISOR_REVERSION_PRIOR_ELEVATED: float = cfg("advisor.reversion_prior_elevated", fallback=0.20)
 ADVISOR_CONFIDENCE_DECLINE_THRESHOLD: float = cfg("advisor.confidence_decline_threshold", fallback=0.05)
 ADVISOR_ENVELOPE_FLAT_BAND_PCT: float = cfg("advisor.envelope_flat_band_pct", fallback=1.0)

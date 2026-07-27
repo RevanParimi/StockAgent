@@ -36,7 +36,13 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from services.api.auth import check_scheduler_key, get_current_user, require_owner
+from services.api.auth import (
+    check_scheduler_key,
+    get_current_user,
+    get_current_user_optional,
+    require_owner,
+)
+from services.data.stores import atlas_store   # Atlas C5 per-user watchlist gate (flag)
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/ui", tags=["UI"])
@@ -1027,8 +1033,17 @@ class _WatchlistBody(BaseModel):
 
 
 @router.get("/watchlist", summary="Get current user watchlist with live ticker prices")
-async def get_watchlist() -> dict:
-    syms = _load_watchlist()
+async def get_watchlist(
+        user: dict | None = Depends(get_current_user_optional)) -> dict:
+    # Atlas C5: when enabled, the watchlist is per-user (single SoT =
+    # Portfolio.watchlist). Dormant path is the legacy global watchlist.json.
+    if atlas_store.enabled():
+        from core.portfolio.store import PortfolioStore
+        from core.config import settings
+        uid = (user or {}).get("user_id") or settings.PORTFOLIO_DEFAULT_USER_ID
+        syms = [w.symbol for w in PortfolioStore(user_id=uid).load().watchlist]
+    else:
+        syms = _load_watchlist()
     store = _score_store()
     db_latest = store.get_all_latest()
     db_map = {row["ticker"]: row for row in db_latest}
@@ -1045,13 +1060,36 @@ async def get_watchlist() -> dict:
     return {"watchlist": syms, "tickers": list(tickers)}
 
 
-@router.put("/watchlist", summary="Persist user watchlist to data/watchlist.json")
+@router.put("/watchlist", summary="Persist the current user's watchlist")
 async def update_watchlist(body: _WatchlistBody,
-                           _owner: dict = Depends(require_owner)) -> dict:
+                           user: dict = Depends(get_current_user)) -> dict:
     valid_syms = {t["sym"] for t in _ALL_TICKERS}
     sanitized = [s.strip().upper() for s in body.watchlist if s.strip().upper() in valid_syms]
     sanitized = list(dict.fromkeys(sanitized))   # deduplicate preserving order
 
+    # Atlas C5: when enabled, the watchlist is per-user (single SoT =
+    # Portfolio.watchlist, projected into user_instruments by the C3 hooks); any
+    # authenticated user edits their own. Dormant path is unchanged: the legacy
+    # global watchlist.json, owner-only (mirrors require_owner's human path — the
+    # machine-key path never applied to this UI route).
+    if atlas_store.enabled():
+        from core.portfolio.store import PortfolioStore
+        from backend.shared.schemas.portfolio import WatchlistItem
+        from datetime import date
+        store = PortfolioStore(user_id=user["user_id"])
+        current = {w.symbol for w in store.load().watchlist}
+        desired = set(sanitized)
+        today = date.today().isoformat()
+        for sym in desired - current:
+            store.add_watchlist(WatchlistItem(symbol=sym, added=today))
+        for sym in current - desired:
+            store.remove_watchlist(sym)
+        logger.info("[ui/watchlist] Saved per-user watchlist for %s: %s",
+                    user["user_id"], sanitized)
+        return {"watchlist": sanitized}
+
+    if user.get("role") != "owner":
+        raise HTTPException(status_code=403, detail="Owner only.")
     _WATCHLIST_PATH.parent.mkdir(parents=True, exist_ok=True)
     _WATCHLIST_PATH.write_text(json.dumps(sanitized), encoding="utf-8")
     logger.info("[ui/watchlist] Saved watchlist: %s", sanitized)

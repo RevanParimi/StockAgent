@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import time
 from datetime import date, datetime, timezone
 from pathlib import Path
@@ -25,6 +26,138 @@ from services.data.fetchers.corporate_events import (
 from services.data.fetchers.ipo import load_ipo_cache
 
 logger = logging.getLogger(__name__)
+
+# -- plain-language maps + pure formatting helpers (redesign 2026-07-27) -----
+# Regime label -> (plain word, one-line gloss). Unknown labels degrade to
+# (label.title(), "") in the renderer.
+_REGIME_PLAIN: dict[str, tuple[str, str]] = {
+    "MACRO_CRISIS":      ("Crisis", "a volatile market and outflows together — the system is at its most defensive."),
+    "RISK_OFF":          ("Cautious", "the system reads elevated risk right now and is trading defensively."),
+    "MOMENTUM_EXTENDED": ("Overextended", "a strong run has left the market overbought, so mean-reversion risk is up."),
+    "RISK_ON":           ("Constructive", "a calm market with inflows — the system is comfortable leaning in."),
+    "OVERSOLD":          ("Oversold", "the market has sold off sharply; beaten-down names may be due a bounce."),
+    "NORMAL":            ("Steady", "conditions are normal; the system is trading as usual."),
+}
+
+# Holding verdicts are opaque to newcomers -> plain words (NEEDS ATTENTION only).
+_VERDICT_PLAIN: dict[str, str] = {
+    "EXIT": "Consider exiting", "TRIM": "Trim back", "ADD": "Add more",
+    "HOLD": "Hold", "SWITCH": "Switch", "WAIT_FOR_LTCG": "Hold for tax",
+}
+
+# Sentence end = punctuation followed by whitespace (decimal-safe: "547.86" has
+# no space after the dot, so it is not treated as a sentence boundary).
+_SENT_END = re.compile(r"[.!?]\s")
+
+
+def _pct(conviction) -> str:
+    """0.654 -> '65%'. Bad input -> ''."""
+    try:
+        return f"{round(float(conviction) * 100)}%"
+    except (TypeError, ValueError):
+        return ""
+
+
+def _trim_words(text: str, maxlen: int) -> str:
+    """Collapse whitespace; trim to <= maxlen at a word boundary + '…' if cut."""
+    t = " ".join((text or "").split())
+    if len(t) <= maxlen:
+        return t
+    return t[:maxlen].rsplit(" ", 1)[0].rstrip(",;:") + "…"
+
+
+def _clean_headline(text: str, maxlen: int) -> str:
+    """Length safety-net for an overnight headline (spec §4.2)."""
+    return _trim_words(text, maxlen)
+
+
+def _first_sentence(thesis: str, maxlen: int) -> str:
+    """First sentence of a thesis (decimal-safe), capped at maxlen. '' if empty."""
+    t = " ".join((thesis or "").split())
+    if not t:
+        return ""
+    m = _SENT_END.search(t)
+    sent = t[: m.start() + 1].strip() if m else t
+    return _trim_words(sent, maxlen)
+
+
+def _fmt_date(iso: str) -> str:
+    try:
+        return date.fromisoformat(iso).strftime("%a %d %b")
+    except Exception:
+        return iso
+
+
+def _norm_text(s: str) -> str:
+    return re.sub(r"[^a-z0-9 ]", "", (s or "").lower()).strip()
+
+
+def _dedup_overnight(items: list[dict], threshold: float, max_items: int) -> list[dict]:
+    """Collapse near-duplicate stories (prefix or Jaccard>=threshold); keep the
+    longest headline per cluster; return in first-seen order, capped."""
+    kept: list[dict] = []
+    kept_norm: list[str] = []
+    kept_tok: list[set] = []
+    for it in items:
+        norm = _norm_text(it["headline"])
+        toks = set(norm.split())
+        if not toks:
+            continue
+        dup = None
+        for i, kn in enumerate(kept_norm):
+            inter = len(toks & kept_tok[i])
+            union = len(toks | kept_tok[i]) or 1
+            if norm in kn or kn in norm or (inter / union) >= threshold:
+                dup = i
+                break
+        if dup is None:
+            kept.append(it); kept_norm.append(norm); kept_tok.append(toks)
+        elif len(it["headline"]) > len(kept[dup]["headline"]):
+            kept[dup] = it; kept_norm[dup] = norm; kept_tok[dup] = toks
+    return kept[:max_items]
+
+
+def _dedup_ipos(rows: list[dict], max_items: int) -> list[dict]:
+    """Dedup by symbol; a 'current' row beats 'upcoming'/'past'. First-seen order."""
+    rank = {"current": 0, "upcoming": 1, "past": 2}
+    best: dict[str, dict] = {}
+    seq: list[str] = []
+    for r in rows:
+        sym = r.get("symbol", "")
+        if not sym:
+            continue
+        if sym not in best:
+            best[sym] = r; seq.append(sym)
+        elif rank.get(r.get("status", ""), 9) < rank.get(best[sym].get("status", ""), 9):
+            best[sym] = r
+    return [best[s] for s in seq][:max_items]
+
+
+def _ipo_demand(w: dict) -> str:
+    """Human-readable subscription demand line for one IPO row."""
+    total, qib, retail = w.get("total_x"), w.get("qib_x"), w.get("retail_x")
+    if total is None and qib is None and retail is None:
+        return "demand data pending"
+    parts: list[str] = []
+    if total is not None:
+        parts.append(f"{total:g}× overall")
+    extra = []
+    if qib is not None:
+        extra.append(f"QIB {qib:g}×")
+    if retail is not None:
+        extra.append(f"retail {retail:g}×")
+    if extra:
+        parts.append("(" + ", ".join(extra) + ")")
+    return " ".join(parts) if parts else "demand data pending"
+
+
+def _indent(text: str, width: int = 2) -> str:
+    """Wrap prose to ~74 cols with a fixed left indent (email/push friendly)."""
+    import textwrap
+    pad = " " * width
+    return textwrap.fill(" ".join((text or "").split()), width=74,
+                         initial_indent=pad, subsequent_indent=pad)
+
 
 _PROMPT = """You are the narration layer of a personal stock-research tool.
 Write a 2-4 sentence morning headline (research tone; NEVER the word "advice")
@@ -54,14 +187,23 @@ def _read_regime() -> dict | None:
     return None
 
 
-def _overnight_items(max_items: int = 3) -> list[dict]:
+def _overnight_items(max_items: int | None = None) -> list[dict]:
     try:
         from services.background.macro_news_cache import MacroNewsCache
-        # Cache entries carry "title" (macro_news_cache schema), not "headline".
-        items = [i for i in MacroNewsCache().get_high_severity(hours_back=24)
-                 if i.get("title")][:max_items]
-        return [{"headline": i["title"], "severity": i.get("severity", "HIGH")}
-                for i in items]
+        mi = max_items if max_items is not None else settings.DELIVERY_BRIEF_MAX_OVERNIGHT
+        raw = MacroNewsCache().get_high_severity(hours_back=24)
+        items: list[dict] = []
+        for i in raw:
+            # Prefer the clean one-sentence LLM summary; the raw title is often
+            # a source-truncated snippet ("…Middle East con"). Title is fallback.
+            text = (i.get("summary") or i.get("title") or "").strip()
+            if not text:
+                continue
+            items.append({
+                "headline": _clean_headline(text, settings.DELIVERY_BRIEF_OVERNIGHT_MAXLEN),
+                "severity": i.get("severity", "HIGH"),
+            })
+        return _dedup_overnight(items, settings.DELIVERY_BRIEF_OVERNIGHT_DEDUP_THRESHOLD, mi)
     except Exception as exc:
         logger.warning("[brief] macro feed read failed (non-fatal): %s", exc)
         return []
@@ -87,6 +229,32 @@ def _shelf_events_since(since_iso: str) -> list[dict]:
         return []
 
 
+def _enrich_discovery_adds(adds: list[dict]) -> list[dict]:
+    """Join each discovery add to its shelf idea, attaching the tool's own
+    verdict/conviction + a one-line reason from the idea's thesis. Non-fatal:
+    an unknown symbol stays a bare row (renders as a plain bullet)."""
+    if not adds:
+        return adds
+    ideas: dict[str, object] = {}
+    try:
+        from core.discovery.shelf import ShelfStore
+        for idea in ShelfStore().load().ideas:
+            ideas[str(getattr(idea, "symbol", "")).upper()] = idea
+    except Exception as exc:
+        logger.debug("[brief] shelf read for idea enrichment failed (non-fatal): %s", exc)
+    out: list[dict] = []
+    for a in adds:
+        row = dict(a)
+        idea = ideas.get(str(a.get("symbol", "")).upper())
+        if idea is not None:
+            row["verdict"] = getattr(idea, "verdict", None)
+            row["conviction"] = getattr(idea, "conviction", None)
+            row["reason"] = _first_sentence(
+                getattr(idea, "thesis", "") or "", settings.DELIVERY_BRIEF_IDEA_REASON_MAXLEN)
+        out.append(row)
+    return out
+
+
 def _earnings_soon(symbols: list[str], on: date) -> list[dict]:
     try:
         calendar = load_events_calendar()
@@ -101,12 +269,18 @@ def _earnings_soon(symbols: list[str], on: date) -> list[dict]:
         return []
 
 
-def _ipo_watch(max_items: int = 3) -> list[dict]:
+def _ipo_watch(max_items: int | None = None) -> list[dict]:
     try:
         cache = load_ipo_cache()
+        mi = max_items if max_items is not None else settings.DELIVERY_BRIEF_MAX_IPOS
         rows = cache.get("current", []) + cache.get("upcoming", [])
-        return [{"symbol": r.get("symbol", ""), "company": r.get("company", ""),
-                 "status": r.get("status", "")} for r in rows[:max_items]]
+        out = [{
+            "symbol": r.get("symbol", ""), "company": r.get("company", ""),
+            "status": r.get("status", ""), "qib_x": r.get("qib_x"),
+            "retail_x": r.get("retail_x"), "total_x": r.get("total_x"),
+            "issue_price": r.get("issue_price"),
+        } for r in rows]
+        return _dedup_ipos(out, mi)
     except Exception as exc:
         logger.warning("[brief] ipo watch failed (non-fatal): %s", exc)
         return []
@@ -228,7 +402,7 @@ def build_morning_brief(
         "regime": _read_regime(),
         "overnight": _overnight_items(),
         "earnings_soon": _earnings_soon(held, on),
-        "discovery_adds": _shelf_events_since(since),
+        "discovery_adds": _enrich_discovery_adds(_shelf_events_since(since)),
         "ipo_watch": _ipo_watch(),
         "lockin_flags": [
             e.model_dump() for e in upcoming_lockin_alerts(on, symbols=watched or None)
@@ -239,27 +413,94 @@ def build_morning_brief(
 
 
 def render_brief_text(brief: dict) -> str:
-    lines = [f"Morning brief — {brief['date']}", brief.get("headline", ""), ""]
+    """Sectioned, plain-English plain-text brief (redesign 2026-07-27).
+
+    Renders identically in email, web-push, and the in-app Inbox. Each section
+    auto-hides when empty. Never raises.
+    """
+    bar = "═" * 42
+    L: list[str] = []
+    try:
+        hdr = date.fromisoformat(brief.get("date", "")).strftime("%d %b %Y")
+    except Exception:
+        hdr = brief.get("date", "")
+    L += [bar, f"  MORNING BRIEF · {hdr}", bar, ""]
+
+    headline = (brief.get("headline") or "").strip()
+    if headline:
+        L += ["SUMMARY", _indent(headline), ""]
+
     p = brief.get("portfolio")
     if p:
-        lines.append(f"Portfolio ₹{p.get('portfolio_value', 0):,.0f} "
-                     f"({p.get('total_pnl_pct', 0.0):+.1f}%)")
-    for f in brief.get("advisor_flags", []):
-        lines.append(f"{f['symbol']}: {f['verdict']} — {f['reason']}")
+        pnl = p.get("total_pnl_pct", 0.0) or 0.0
+        direction = "up" if pnl >= 0 else "down"
+        flags = brief.get("advisor_flags", []) or []
+        note = ("Nothing needs your attention today." if not flags
+                else f"{len(flags)} holding(s) flagged — see below.")
+        L += ["YOUR PORTFOLIO",
+              f"  ₹{p.get('portfolio_value', 0):,.0f} — {direction} {abs(pnl):.1f}% since inception.",
+              f"  {note}", ""]
+
+    flags = brief.get("advisor_flags", []) or []
+    if flags:
+        L.append("NEEDS ATTENTION")
+        for f in flags:
+            verb = _VERDICT_PLAIN.get(f.get("verdict", ""), f.get("verdict", ""))
+            reason = f.get("reason", "")
+            L.append(f"  • {f['symbol']}  {verb}" + (f" — {reason}" if reason else ""))
+        L.append("")
+
     regime = (brief.get("regime") or {}).get("label")
     if regime:
-        lines.append(f"Regime: {regime}")
-    for i in brief.get("overnight", []):
-        lines.append(f"Overnight: {i['headline']}")
-    for e in brief.get("earnings_soon", []):
-        lines.append(f"Earnings soon: {e['symbol']} on {e['date']}")
-    for a in brief.get("discovery_adds", []):
-        lines.append(f"Shelf {a['event']}: {a['symbol']} {a.get('detail', '')}")
-    for w in brief.get("ipo_watch", []):
-        lines.append(f"IPO {w['status']}: {w['symbol']} {w['company']}")
-    for lf in brief.get("lockin_flags", []):
-        lines.append(f"Lock-in expiry: {lf['symbol']} {lf['kind']} on {lf['expiry']}")
-    return "\n".join(x for x in lines if x != "").strip()
+        word, gloss = _REGIME_PLAIN.get(regime, (regime.title(), ""))
+        L += ["MARKET CONDITIONS",
+              f"  {word} ({regime})" + (f" — {gloss}" if gloss else ""), ""]
+
+    overnight = brief.get("overnight", []) or []
+    if overnight:
+        L.append("OVERNIGHT — HIGH-IMPACT NEWS")
+        L += [f"  • {i['headline']}" for i in overnight]
+        L.append("")
+
+    earnings = brief.get("earnings_soon", []) or []
+    if earnings:
+        L.append("EARNINGS THIS WEEK   (your holdings)")
+        L += [f"  • {e['symbol']}  — {_fmt_date(e['date'])}" for e in earnings]
+        L.append("")
+
+    adds = (brief.get("discovery_adds", []) or [])[: settings.DELIVERY_BRIEF_MAX_IDEAS]
+    if adds:
+        L += ["IDEAS THE TOOL IS RESEARCHING   (its own view — not personal advice)",
+              "  The scanner flagged these; the tool rated each and is paper-testing the",
+              "  thesis. Confidence = how strongly it backs its own call."]
+        for a in adds:
+            verdict, pct = a.get("verdict"), _pct(a.get("conviction"))
+            head = f"  • {a['symbol']}"
+            if verdict and pct:
+                head += f"   {verdict} · {pct}"
+            elif verdict:
+                head += f"   {verdict}"
+            L.append(head)
+            if a.get("reason"):
+                L.append(f"      {a['reason']}")
+        L.append("")
+
+    ipos = brief.get("ipo_watch", []) or []
+    if ipos:
+        L += ["IPOs OPEN NOW   (live demand — a data point, not a buy call)",
+              "  × = times the issue was subscribed; high QIB/overall = institutional interest."]
+        L += [f"  • {w['symbol']}  {w.get('company', '')}  ·  {_ipo_demand(w)}" for w in ipos]
+        L.append("")
+
+    lockin = brief.get("lockin_flags", []) or []
+    if lockin:
+        L.append("LOCK-IN EXPIRIES")
+        L += [f"  • {lf['symbol']} {lf['kind']} on {lf['expiry']} — supply risk, not a signal"
+              for lf in lockin]
+        L.append("")
+
+    L += ["─" * 42, "Research tool — information only, never personal advice."]
+    return "\n".join(L).strip()
 
 
 def run_morning_brief(on: date | None = None) -> dict:

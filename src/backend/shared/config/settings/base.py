@@ -881,6 +881,14 @@ DELIVERY_INDEX_WATCH: list[str] = list(cfg(
     fallback=["NIFTY 50", "NIFTY NEXT 50", "NIFTY MIDCAP 150", "NIFTY SMALLCAP 250"],
 ))
 
+# Morning-brief rendering (redesign 2026-07-27)
+DELIVERY_BRIEF_MAX_OVERNIGHT: int = int(cfg("delivery.brief_max_overnight", fallback=3))
+DELIVERY_BRIEF_OVERNIGHT_DEDUP_THRESHOLD: float = float(cfg("delivery.brief_overnight_dedup_threshold", fallback=0.6))
+DELIVERY_BRIEF_OVERNIGHT_MAXLEN: int = int(cfg("delivery.brief_overnight_maxlen", fallback=240))
+DELIVERY_BRIEF_MAX_IDEAS: int = int(cfg("delivery.brief_max_ideas", fallback=5))
+DELIVERY_BRIEF_IDEA_REASON_MAXLEN: int = int(cfg("delivery.brief_idea_reason_maxlen", fallback=180))
+DELIVERY_BRIEF_MAX_IPOS: int = int(cfg("delivery.brief_max_ipos", fallback=3))
+
 # Public base URL of the deployed app — appended as a footer link to every
 # notification email so each one is one tap from opening the app. Railway sets
 # RAILWAY_PUBLIC_DOMAIN automatically; APP_PUBLIC_URL overrides it explicitly.

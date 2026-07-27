@@ -51,7 +51,7 @@ def test_build_brief_assembles_sections(tmp_path, monkeypatch):
     assert brief["headline"] == "Deterministic headline."
 
     text = br.render_brief_text(brief)
-    for token in ("Deterministic headline.", "OLDCO", "EXIT", "RISK_OFF", "NEWCO"):
+    for token in ("Deterministic headline.", "OLDCO", "Consider exiting", "RISK_OFF", "NEWCO"):
         assert token in text
 
 
@@ -138,3 +138,147 @@ def test_run_brief_delivers_inbox_deeplink(tmp_path, monkeypatch):
     monkeypatch.setattr(settings, "PORTFOLIO_DATA_DIR", str(tmp_path))
     br.run_morning_brief(date(2026, 7, 22))
     assert captured["url"] == "/#/inbox/brief"
+
+
+# --------------------------------------------------------------------------
+# Redesign 2026-07-27: sectioned layout, plain-English, dedup, %-confidence
+# --------------------------------------------------------------------------
+
+def test_brief_settings_have_defaults():
+    from core.config import settings
+    assert settings.DELIVERY_BRIEF_MAX_OVERNIGHT == 3
+    assert settings.DELIVERY_BRIEF_OVERNIGHT_DEDUP_THRESHOLD == 0.6
+    assert settings.DELIVERY_BRIEF_OVERNIGHT_MAXLEN == 240
+    assert settings.DELIVERY_BRIEF_MAX_IDEAS == 5
+    assert settings.DELIVERY_BRIEF_IDEA_REASON_MAXLEN == 180
+    assert settings.DELIVERY_BRIEF_MAX_IPOS == 3
+
+
+def test_pct_formats_conviction():
+    assert br._pct(0.654) == "65%"
+    assert br._pct(0.62) == "62%"
+    assert br._pct(None) == "" and br._pct("x") == ""
+
+
+def test_first_sentence_ignores_decimals():
+    thesis = "Acme has 65% EBITDA margin and INR 547.86cr revenue. The next line."
+    assert br._first_sentence(thesis, 180) == "Acme has 65% EBITDA margin and INR 547.86cr revenue."
+
+
+def test_first_sentence_caps_length():
+    assert br._first_sentence("word " * 60, 40).endswith("…")
+    assert br._first_sentence("", 40) == ""
+
+
+def test_clean_headline_trims_overlong_at_word_boundary():
+    out = br._clean_headline("a " * 200, 20)
+    assert len(out) <= 21 and out.endswith("…") and not out.endswith(" …")
+
+
+def test_regime_and_verdict_maps():
+    assert br._REGIME_PLAIN["RISK_OFF"][0] == "Cautious"
+    assert {"MACRO_CRISIS", "RISK_OFF", "MOMENTUM_EXTENDED", "RISK_ON",
+            "OVERSOLD", "NORMAL"} <= set(br._REGIME_PLAIN)
+    assert br._VERDICT_PLAIN["EXIT"] == "Consider exiting"
+
+
+def test_overnight_prefers_summary_over_truncated_title(monkeypatch):
+    class _Fake:
+        def get_high_severity(self, hours_back=24):
+            return [{"title": "Rupee rallies amid Middle East con",
+                     "summary": "The rupee rallied after the RBI eased rules for foreign investors.",
+                     "severity": "HIGH"}]
+    import services.background.macro_news_cache as mnc
+    monkeypatch.setattr(mnc, "MacroNewsCache", _Fake)
+    items = br._overnight_items()
+    assert items[0]["headline"] == "The rupee rallied after the RBI eased rules for foreign investors."
+
+
+def test_overnight_dedups_same_story(monkeypatch):
+    class _Fake:
+        def get_high_severity(self, hours_back=24):
+            return [
+                {"summary": "RBI raised equity investment limits for NRIs and OCIs.", "severity": "HIGH"},
+                {"summary": "RBI raised equity investment limits for NRIs and OCIs, boosting inflows.", "severity": "HIGH"},
+                {"summary": "SEBI to launch corporate bond index derivatives.", "severity": "HIGH"},
+            ]
+    import services.background.macro_news_cache as mnc
+    monkeypatch.setattr(mnc, "MacroNewsCache", _Fake)
+    items = br._overnight_items()
+    heads = [i["headline"] for i in items]
+    assert len(heads) == 2
+    assert "RBI raised equity investment limits for NRIs and OCIs, boosting inflows." in heads
+    assert any("SEBI" in h for h in heads)
+
+
+def test_ipo_dedups_by_symbol(monkeypatch):
+    monkeypatch.setattr(br, "load_ipo_cache", lambda: {
+        "current": [{"symbol": "LSR", "company": "Laser", "status": "current", "total_x": 8.2}],
+        "upcoming": [{"symbol": "LSR", "company": "Laser", "status": "upcoming"},
+                     {"symbol": "KUS", "company": "Kusum", "status": "upcoming"}]})
+    rows = br._ipo_watch()
+    assert [r["symbol"] for r in rows] == ["LSR", "KUS"]
+    assert rows[0]["total_x"] == 8.2
+
+
+def test_ipo_demand_string():
+    assert br._ipo_demand({"total_x": 8.2, "qib_x": 12.0, "retail_x": 3.0}) == "8.2× overall (QIB 12×, retail 3×)"
+    assert br._ipo_demand({}) == "demand data pending"
+
+
+def test_enrich_discovery_adds_joins_shelf(monkeypatch):
+    class _Idea:
+        symbol, verdict, conviction = "NEWCO", "BUY", 0.62
+        thesis = "Newco is a fast grower with 40% margins. More detail here."
+
+    class _Shelf:
+        def load(self):
+            return type("S", (), {"ideas": [_Idea()]})()
+    import core.discovery.shelf as sh
+    monkeypatch.setattr(sh, "ShelfStore", _Shelf)
+    out = br._enrich_discovery_adds([{"event": "added", "symbol": "NEWCO", "detail": ""},
+                                     {"event": "added", "symbol": "GHOST", "detail": ""}])
+    assert out[0]["verdict"] == "BUY" and out[0]["conviction"] == 0.62
+    assert out[0]["reason"] == "Newco is a fast grower with 40% margins."
+    assert "verdict" not in out[1]
+
+
+def _full_brief():
+    return {
+        "date": "2026-07-27", "headline": "A cautious day.",
+        "portfolio": {"portfolio_value": 620904.0, "total_pnl_pct": -5.9},
+        "advisor_flags": [{"symbol": "OLDCO", "verdict": "EXIT", "reason": "stop breached"}],
+        "regime": {"label": "RISK_OFF"},
+        "overnight": [{"headline": "RBI eased foreign-investor rules.", "severity": "HIGH"}],
+        "earnings_soon": [{"symbol": "SUZLON", "date": "2026-07-28"}],
+        "discovery_adds": [{"symbol": "ACMESOLAR", "verdict": "BUY", "conviction": 0.65,
+                            "reason": "One of the most efficient renewable operators."}],
+        "ipo_watch": [{"symbol": "XTRANET", "company": "Xtranet", "status": "current",
+                       "total_x": 8.2, "qib_x": 12.0, "retail_x": 3.0}],
+        "lockin_flags": [],
+    }
+
+
+def test_render_full_brief_has_sections_and_glosses():
+    t = br.render_brief_text(_full_brief())
+    for h in ("MORNING BRIEF · 27 Jul 2026", "SUMMARY", "YOUR PORTFOLIO",
+              "NEEDS ATTENTION", "MARKET CONDITIONS", "OVERNIGHT — HIGH-IMPACT NEWS",
+              "EARNINGS THIS WEEK", "IDEAS THE TOOL IS RESEARCHING", "IPOs OPEN NOW"):
+        assert h in t
+    assert "Cautious (RISK_OFF)" in t
+    assert "down 5.9% since inception" in t
+    assert "OLDCO  Consider exiting — stop breached" in t
+    assert "ACMESOLAR   BUY · 65%" in t
+    assert "One of the most efficient renewable operators." in t
+    assert "8.2× overall (QIB 12×, retail 3×)" in t
+    assert "never personal advice" in t
+
+
+def test_render_hides_empty_sections():
+    b = _full_brief()
+    b.update({"overnight": [], "earnings_soon": [], "discovery_adds": [],
+              "ipo_watch": [], "advisor_flags": []})
+    t = br.render_brief_text(b)
+    for absent in ("OVERNIGHT", "EARNINGS THIS WEEK", "IDEAS THE TOOL", "IPOs OPEN NOW", "NEEDS ATTENTION"):
+        assert absent not in t
+    assert "YOUR PORTFOLIO" in t and "Nothing needs your attention today." in t

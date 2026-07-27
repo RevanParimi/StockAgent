@@ -650,12 +650,24 @@ follow-ups in the **same function**, DB-commit-first: `shutil.rmtree(data/portfo
 user_id=NULL WHERE user_id=?` (**anonymize — B4 Q3**). `feedback_events` is removed by the cascade
 (**hard-delete — B4 Q5**). All follow-ups retry-safe and no-op if already clean.
 
-- [ ] **Step 1 — failing tests:** after delete — atlas cascade verified (reuse C1's cascade assertions);
-  portfolio dir gone; chat_turns for that user gone; `llm_calls` rows for that user have `user_id IS NULL`
-  (row count preserved); function is idempotent (second call no-ops); DB commit precedes filesystem.
-- [ ] **Step 2 — run red.** — [ ] **Step 3 — implement** per spec (order: DB commit → fs → cross-DB;
-  each wrapped log+continue so a stray artifact never blocks the erasure).
-- [ ] **Step 4 — run green.** — [ ] **Step 5 — commit** `feat(atlas-c6): DPDP delete_user_completely — single cascade + idempotent follow-ups`.
+- [x] **Step 1 — failing tests** (`test_atlas_dpdp_delete.py`, 8): atlas cascade (reuse C1's
+  assertions); portfolio dir gone; chat_turns gone for the target user only; telemetry `llm_calls`
+  user's rows → `user_id IS NULL` with row count preserved (post-C8 schema simulated) **and** the
+  missing-column pre-C8 state is a safe no-op; idempotent (second call no-ops); DB commit precedes
+  filesystem (rmtree made to raise → cascade still committed); + a route test for `DELETE /auth/account`
+  (both stores erased + session revoked, owner can't self-delete).
+- [x] **Step 2 — run red** (all 8 fail: `no attribute 'delete_user_completely'`).
+- [x] **Step 3 — implement** per spec (order: DB commit → fs → cross-DB; each wrapped log+continue).
+  Kept each store's DB access in its owning module: `chat_session_store.delete_user_turns` +
+  `log_store.anonymize_user` (defensive `no such column` skip until C8 adds `llm_calls.user_id`);
+  `atlas_store.delete_user_completely` orchestrates via lazy imports. **NOT flag-gated** — DPDP erasure
+  must run whether or not `ATLAS_ENABLED` (pre-cutover atlas.db holds no rows for the user → harmless
+  0-row cascade). Enhanced `DELETE /auth/account` to run `user_store.delete_user` +
+  `atlas_store.delete_user_completely` + `revoke_session` (portfolio rmtree moved into the cascade);
+  `test_m0_auth_api.py` `client` fixture now isolates atlas/chat/telemetry on tmp paths.
+- [x] **Step 4 — run green** (31 passed across new + M0-auth + log_store + chat + atlas_store).
+  Full-suite A/B CLEAN: 10F+10E == C0 known-red, **2178 passed** (2170 + 8), 12 skipped, 10 errors.
+- [x] **Step 5 — commit** `c83075c` `feat(atlas-c6): DPDP delete_user_completely — single cascade + idempotent follow-ups`.
 
 ---
 

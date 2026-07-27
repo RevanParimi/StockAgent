@@ -718,13 +718,24 @@ Create `tests/unit/test_atlas_feedback_events.py`, `tests/unit/test_atlas_teleme
 `cfg("atlas.feedback.aggregation_floor_users",20)` (R3). Telemetry: `user_id` nullable, **NULL = shared
 brain** (BP4); only chat / on-demand `/analyse` / narrator pre-cache set it; scheduled analysis stays NULL.
 
-- [ ] **Step 1 — failing tests:** feedback event persists + DPDP-cascades on user delete; aggregator
-  returns nothing below the 20-user floor; `llm_calls.user_id` populated for a chat call, NULL for a
-  scheduled call; `cost_by_user_day` rollup buckets NULL as "shared brain". Import-boundary test (C2)
-  still green (feedback store not imported by intelligence).
-- [ ] **Step 2 — run red.** — [ ] **Step 3 — implement** (ContextVar avoids threading user_id through
-  ~20 call sites — BP4). — [ ] **Step 4 — run green.**
-- [ ] **Step 5 — commit** `feat(atlas-c8): BP5 feedback_events + accept/override UI + BP4 telemetry user_id`.
+- [x] **Step 1 — failing tests** (`test_atlas_feedback_events.py` 7, `test_atlas_telemetry_user.py` 5):
+  feedback persists all fields + flag-gated no-op + invalid-action rejected + DPDP-cascades on delete;
+  aggregate returns None below the floor / counts at-or-above (floor monkeypatched to 2); POST /ui/feedback
+  records the session user; `llm_calls.user_id` = ContextVar user for a chat call, NULL for scheduled +
+  explicit-arg override + ALTER migration on a legacy DB; `cost_by_user_day` rollup buckets by user with a
+  NULL shared-brain bucket + idempotent; `_attribute_telemetry` binds only when ATLAS_ENABLED.
+- [x] **Step 2 — run red.** — [x] **Step 3 — implement.** BP5: `atlas_store.record_feedback_event` +
+  `feedback_aggregate` (floor `cfg atlas.feedback.aggregation_floor_users` 20) + `POST /ui/feedback`
+  (record lives in atlas_store, so the C2 import-boundary guard keeps it out of intelligence). BP4:
+  `log_store.current_user_id` ContextVar + nullable `llm_calls.user_id` (ALTER + _SCHEMA) read by
+  `log_llm_call`; `auth._attribute_telemetry` sets it in `get_current_user_optional` only when enabled
+  (ContextVar avoids threading through ~20 call sites); `cost_by_user_day` table + `rollup_cost_by_user_day`
+  + scheduler **Job 17** (23:15 IST, dormant unless ATLAS_ENABLED). **Frontend accept/override control
+  deferred to a visual pass** — the endpoint (the durable contract) is shipped + dormant; blind-editing
+  the static prototype JSX I can't run was judged low-value/high-risk (matches the project's
+  human-visual-pass pattern). — [x] **Step 4 — run green** (12 new + 46 affected incl. import-boundary).
+  Full-suite A/B CLEAN: 10F+10E == C0 known-red, **2198 passed** (2186 + 12).
+- [x] **Step 5 — commit** `e6629f3` `feat(atlas-c8): BP5 feedback_events + accept/override endpoint + BP4 telemetry user_id`.
 
 ---
 

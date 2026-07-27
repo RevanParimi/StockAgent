@@ -594,11 +594,17 @@ alert at `cfg("universe.budget_alert_pct",0.8)`. Demote policy: refcount→0 ⇒
 history preserved; archive only if no intelligence history + `origin in (watched,on_demand,discovery)` +
 refcount-0 for `cfg("universe.archive_grace_days",30)`.
 
-- [ ] **Step 1 — failing tests:** counts correct; tiers assigned; demote-not-delete on refcount 0;
-  never-archive when `data/predictions/**/<TICKER>/` exists; budget alert fires at threshold; job is
-  user-plane (asserts no `user_id` written to `instruments`). Flag-gated no-op when off.
-- [ ] **Step 2 — run red.** — [ ] **Step 3 — implement** per spec §4 (all weights/N/thresholds via `cfg()`).
-- [ ] **Step 4 — run green.** — [ ] **Step 5 — commit** `feat(atlas-c4): nightly Universe recompute — demand tiers + demote policy`.
+- [x] **Step 1 — failing tests** (`test_atlas_universe_recompute.py`, 7): counts/tiers,
+  demote-not-delete, never-archive-with-history, archive-after-grace, budget alert at threshold,
+  no-`user_id`-column invariant, disabled no-op.
+- [x] **Step 2 — run red.** — [x] **Step 3 — implement** `core/portfolio/universe.py` per spec §4;
+  all weights/N/thresholds via `cfg()` (config.yaml `universe:` section). Refinement: a watch-only
+  ticker earns a daily slot only once demand ≥ one held-equivalent (holders weight) — derived from
+  `demand_weights`, no new key — so a lone watcher stays weekly (cost control). `updated_at` written
+  only on a real state change → it is the archive grace clock. Registered as scheduler **Job 16**
+  (23:00 IST, before backup).
+- [x] **Step 4 — run green** (7 atlas + 19 scheduler tests; collection 2198). — [x] **Step 5 — commit**
+  `e76f198` `feat(atlas-c4): nightly Universe recompute — demand tiers + demote policy`.
 
 ---
 
@@ -614,12 +620,17 @@ portfolio store; `agent_weights.json`/`agent_tasks.json`/`category_tickers.json`
 their write routes require owner (they tune the one shared brain — spec §5 rationale). Per-user tuning
 already exists via `Portfolio.risk_profile` (no new knob).
 
-- [ ] **Step 1 — failing tests:** two users get isolated watchlists; owner-config PUTs return 401/403
-  for a non-owner member and 200 for owner; no global watchlist bleed between users.
-- [ ] **Step 2 — run red.** — [ ] **Step 3 — implement** (repoint watchlist endpoints to per-user store;
-  add `require_owner` to the 3 config PUTs; keep reads open where they already are).
-- [ ] **Step 4 — run green** (new + existing `ui_data` watchlist/weights tests).
-- [ ] **Step 5 — commit** `feat(atlas-c5): watchlist per-user; agent/task/category configs owner-gated`.
+- [x] **Step 1 — failing tests** (`test_atlas_singletons.py`, 4): two users isolated watchlists,
+  member edits own list, shared-brain configs owner-only (401/403/200), dormant global-owner-only.
+- [x] **Step 2 — run red.** — [x] **Step 3 — implement.** The 3 config PUTs **already** used
+  `require_owner` (M0.1 lockdown — spec §5's owner-config requirement was already met); C5 adds the
+  regression guard. Watchlist GET/PUT flag-gated to the session user's `Portfolio.watchlist` when
+  ATLAS_ENABLED (PUT dep require_owner→get_current_user + manual owner check in the dormant branch to
+  preserve the exact legacy owner-only global-file behavior; GET gains get_current_user_optional).
+- [x] **Step 4 — run green** (4 atlas + 47 auth-lockdown/m0/ui tests; collection 2202).
+- [x] **Step 5 — commit** `04a5039` `feat(atlas-c5): watchlist per-user; agent/task/category configs owner-gated`.
+
+> **WAVE β COMPLETE (C3–C5).** Full-suite wave-β A/B launched.
 
 ---
 

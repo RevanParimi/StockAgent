@@ -233,10 +233,19 @@ anyone acts on it. IPO tracker adds listing + lock-in-expiry awareness.
 - **Ops alerts** (`core/delivery/ops_alerts.py`): job crashed / zero-output /
   partial-output / portfolio-reconcile mismatch → broadcast to all subscribed
   users. The scheduler's error listener is the backstop.
-- **Morning brief** (`core/delivery/brief.py`): deterministic sections
-  (portfolio state, advisor flags, regime, overnight HIGH-severity items,
-  earnings within 3 sessions, discovery adds, IPO/lock-in watch) + exactly one
-  BULK-tier narration call for the headline, with a deterministic fallback.
+- **Morning brief** (`core/delivery/brief.py`): a sectioned, plain-English
+  plain-text brief (Summary → Portfolio → Needs-attention → Market conditions →
+  Overnight → Earnings-this-week → Ideas-the-tool-is-researching → IPOs →
+  Lock-in), each section auto-hidden when empty. Regime/verdict shown in plain
+  words with the technical term in parens; overnight items use the clean
+  one-sentence LLM `summary` (deduped by content, not URL); ideas carry the
+  tool's own verdict + confidence% + a one-line reason from the idea's thesis —
+  framed as a research view, never personal advice; IPOs show live subscription
+  demand (deduped by symbol). Exactly one BULK-tier narration call for the
+  top-line SUMMARY, with a deterministic fallback. Ideas explained: the scanner
+  screens the market → a passing name goes on the research shelf → the tool
+  forms a view and paper-trades it to test the thesis. Rendering caps/thresholds
+  live in `config.yaml` → `delivery.brief_*`.
 - **Backups** (`services/data/backup.py`): nightly zip of the non-rebuildable
   volume subset, 7-copy rotation + email off-site. SQLite is snapshotted via
   the backup API (never file-copied live).

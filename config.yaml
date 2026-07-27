@@ -434,6 +434,7 @@ atlas:
   retention:                     # C9 nightly prune caps — null = keep-all
     ticker_verdicts_days: 400    # drop projections older than this
     value_history_cap: 400       # keep the last N daily value points per user
+    source_decommission_days: 14 # C11 step 6: keep legacy users.db/watchlist.json/push_subscriptions.json/managed_tickers.json read-only this many days of green atlas operation before removal
     # outbox delivered/dead prune uses delivery.outbox_retention_days (30) above
 
 # Universe demand model (BP1) — the nightly recompute (Atlas C4) turns held/watch

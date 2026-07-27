@@ -800,16 +800,25 @@ row→quarantine** to `data/portfolio/_quarantine/<uid>/` + one ops alert (no si
 
 ### Task C11: Close-out — A/B, weekend cutover, flip flag, first-run watch, decommission
 
-> **WAVE δ / C10 COMPLETE — 2026-07-27 (branch `atlas-c`, NOT merged, dormant).** ETL + ghost-dir
-> reconciliation shipped + A/B CLEAN. **C11 is the live production cutover — deliberately NOT auto-run:**
-> it merges `atlas-c` to main, deploys, runs the ETL against prod data, and flips `ATLAS_ENABLED=true`
-> live. It is **weekend-gated** (2026-07-27 is a Monday trading day) and needs the user in the loop for
-> the go-live moment. **Paused here for user scheduling + go-ahead.**
+> **WAVE δ / C10 COMPLETE + C11 STEPS 1–2 DONE (DORMANT DEPLOY LIVE) — 2026-07-27.** ETL shipped
+> A/B-clean; Phase C merged to **main** dormant and deployed. **Remaining C11 (Steps 3–6) = the live
+> cutover: run the ETL on prod, flip `ATLAS_ENABLED=true`, first-run watch, decommission — weekend-gated,
+> user-scheduled.** `ATLAS_ENABLED=false` stays the instant rollback the whole time.
+>
+> **Owner-identity safety (verified in code, `auth_api.py:50-55`):** the FIRST signup gets
+> `user_id = PORTFOLIO_DEFAULT_USER_ID = "primary"`, `role="owner"`. The owner has logged in (M0.1) ⇒
+> `users.db` holds a `primary` row ⇒ the ETL populates `atlas.users` with `primary` ⇒ post-flip
+> `active_user_ids()` returns `["primary", …]`. This matters because with `AUTH_REQUIRED=true` (prod)
+> there is **no owner fallback** — the Step-5 dry-run `active_user_ids()` validation (flag still false) is
+> the runtime gate that confirms it before the flip.
 
-- [ ] **Step 1 — Full-suite A/B** — fail-set must equal the C0 baseline (+ all new atlas tests green).
-- [ ] **Step 2 — Merge dormant** (`ATLAS_ENABLED` unset/false): `git checkout main && git merge --no-ff
-  atlas-c`; `git diff --stat atlas-c HEAD` empty; push (respect the deploy window); confirm Railway
-  deploy SUCCESS — behavioral no-op (nothing reads `atlas.db` yet).
+- [x] **Step 1 — Full-suite A/B** — CLEAN: fail-set == C0 known-red (10F+10E network-flaky area),
+  **2213 passed** (2204 + 9 C10), zero atlas failures; 2 Windows file-lock flakes did not recur.
+- [x] **Step 2 — Merge dormant + deploy** (`ATLAS_ENABLED` unset ⇒ atlas OFF, safety-gated before push):
+  `git merge --no-ff atlas-c` = **`47a5812`**, `git diff --stat atlas-c HEAD` **empty** (main == atlas-c
+  tip), pushed `83989d5..47a5812` (~15:07 IST, outside the 16:25–17:15 window). Railway deploy
+  **`8af33825` = SUCCESS** on `47a5812`, service Online. Prod probes (behavioral no-op): `GET /` → 200,
+  `GET /auth/me` → 401 (auth live), `GET /health` → 200. `atlas-c` kept until the program completes.
 - [ ] **Step 3 — Weekend cutover** (Sat/Sun, scheduler idle, `/scheduler/status` idle): run
   `scripts/atlas_etl.py`; run the spec §6 step-5 validations (row counts, dry-run `active_user_ids()`,
   DDL integrity check).

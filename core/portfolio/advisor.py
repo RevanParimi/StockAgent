@@ -248,6 +248,13 @@ def decide(
         triggers.append("shock_reforecast")
     if signals.regime_label == "MACRO_CRISIS" and signals.envelope_direction == "DOWN":
         triggers.append("crisis_regime_bearish")
+    peak = signals.peak_close_since_entry
+    if (peak is not None and peak > 0 and holding.adj_avg_price > 0):
+        peak_pnl_pct = (peak / holding.adj_avg_price - 1) * 100
+        drawdown_from_peak_pct = (peak - signals.close) / peak * 100
+        if (peak_pnl_pct >= settings.ADVISOR_TRAIL_ARM_PCT
+                and drawdown_from_peak_pct >= signals.atr_stop_pct):
+            triggers.append("trailing_stop_breach")
 
     exit_fired = bool(triggers)
 

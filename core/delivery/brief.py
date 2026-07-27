@@ -275,7 +275,7 @@ def run_morning_brief(on: date | None = None) -> dict:
             brief = build_morning_brief(user_id, on, store=store)
             store.save_brief(brief)
             deliver(f"Morning brief — {on}", render_brief_text(brief),
-                    url="/#/inbox/brief", user_id=user_id)
+                    url="/#/inbox/brief", user_id=user_id, kind="brief")
             if brief["lockin_flags"]:
                 emit_alerts(
                     [AlertEvent(date=on.isoformat(), kind="lockin_expiry",

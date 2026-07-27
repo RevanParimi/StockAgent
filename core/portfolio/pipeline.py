@@ -207,6 +207,7 @@ def run_post_review_pipeline(review_date: date) -> dict:
                 + ". Open the app or ask the chat for 'brief' for details.",
                 url="/#/inbox/digest",
                 user_id=user_id,
+                kind="digest",
             )
         except Exception as exc:
             logger.warning("[portfolio_pipeline] delivery failed (non-fatal): %s", exc)

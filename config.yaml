@@ -413,6 +413,12 @@ delivery:
     - "NIFTY NEXT 50"
     - "NIFTY MIDCAP 150"
     - "NIFTY SMALLCAP 250"
+  # Atlas C7 (BP2) durable outbox — active only when ATLAS_ENABLED. The drainer
+  # runs in the singleton-lock owner and retries with backoff -> dead-letter.
+  outbox_max_attempts: 3         # sends before a row is dead-lettered
+  outbox_backoff_minutes: [1, 5, 30]   # per-attempt reschedule delay
+  outbox_poll_seconds: 30        # drainer loop interval
+  outbox_retention_days: 30      # C9 prunes delivered/dead rows older than this
 
 # =============================================================================
 # Atlas M1 — user-plane relational core (data/atlas.db). Ships DORMANT: the whole

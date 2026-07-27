@@ -203,7 +203,7 @@ CREATE TABLE IF NOT EXISTS outbox (
   delivered_at    TEXT,
   CHECK (channel IN ('push','email')),
   CHECK (kind    IN ('brief','digest','weekly','alert')),
-  CHECK (status  IN ('queued','delivered','failed','dead'))
+  CHECK (status  IN ('queued','sending','delivered','failed','dead'))
 );
 CREATE INDEX IF NOT EXISTS idx_outbox_ready ON outbox(status, next_attempt_at);
 

@@ -373,6 +373,16 @@ async def lifespan(app: FastAPI):
                 logger.info("[startup] Swept %d expired auth sessions", swept)
         except Exception as exc:
             logger.warning("[startup] Auth session sweep failed (non-fatal): %s", exc)
+
+        # 6. Atlas C7 (BP2): durable-outbox drainer. Started ONLY here in the
+        #    singleton owner (reusing this same lock), so --workers 2 can never
+        #    run two drainers. No-op until ATLAS_ENABLED (dormant pre-cutover).
+        try:
+            from core.delivery.outbox import start_outbox_drainer
+            if start_outbox_drainer() is not None:
+                logger.info("[startup] Atlas outbox drainer started")
+        except Exception as exc:
+            logger.warning("[startup] Outbox drainer start failed (non-fatal): %s", exc)
     else:
         logger.info(
             "[startup] Singleton lock held by another worker — "
@@ -392,6 +402,11 @@ async def lifespan(app: FastAPI):
             _get_scheduler().stop()
         except Exception as exc:
             logger.warning("[shutdown] Scheduler stop error (non-fatal): %s", exc)
+    try:                                   # Atlas C7: stop the outbox drainer
+        from core.delivery.outbox import stop_outbox_drainer
+        stop_outbox_drainer()
+    except Exception:
+        pass
     logger.info("[shutdown] Clean shutdown complete")
 
 

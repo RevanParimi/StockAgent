@@ -122,7 +122,7 @@ def test_brief_latest_format_text(monkeypatch, tmp_path):
     assert resp.status_code == 200
     body = resp.json()
     assert body["date"] == "2026-07-22"
-    assert body["text"].startswith("Morning brief — 2026-07-22")
+    assert "MORNING BRIEF · 22 Jul 2026" in body["text"]
 
 
 def test_weekly_latest_format_text(monkeypatch, tmp_path):

@@ -25,7 +25,7 @@ def test_returns_rendered_brief(tmp_path, monkeypatch):
         "discovery_adds": [], "ipo_watch": [], "lockin_flags": [], "regime": None,
     })
     out = _dispatch("get_portfolio_brief", {})
-    assert "Markets calm; no flags." in out and "2026-07-09" in out
+    assert "Markets calm; no flags." in out and "09 Jul 2026" in out
 
 
 def test_falls_back_to_digest_then_helpful_message(tmp_path, monkeypatch):

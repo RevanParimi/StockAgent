@@ -323,3 +323,73 @@ def remove_user_instrument(user_id: str, symbol: str, relationship: str) -> bool
         logger.warning("[atlas_store] remove_user_instrument failed for %s/%s"
                        " (non-fatal): %s", user_id, sym, exc)
         return False
+
+
+# ---------------------------------------------------------------------------
+# DPDP right-to-erasure (C6, spec §DPDP / B4 Q3/Q5).
+# ---------------------------------------------------------------------------
+
+def delete_user_completely(user_id: str) -> dict:
+    """Erase every trace of `user_id` across all planes — the single DPDP entry
+    point. Order is DB-commit-first so the authoritative record is destroyed
+    before best-effort filesystem/cross-DB cleanup: a stray artifact can never
+    block the erasure.
+
+      1. atlas.db — `DELETE FROM users` one-transaction cascade drops the 7 PII
+         tables to 0 (feedback_events HARD-DELETE, B4 Q5); the user-free
+         instruments/ticker_verdicts survive; invites created_by/used_by SET NULL.
+      2. filesystem — `data/portfolio/<user_id>/` removed.
+      3. chat_sessions.db — this user's chat_turns deleted.
+      4. telemetry.db — this user's llm_calls ANONYMIZED (user_id→NULL, B4 Q3),
+         row count preserved.
+
+    Every step is idempotent and hot-path safe (log + continue): a second call
+    no-ops and one failing step never blocks the others. NOT flag-gated — DPDP
+    erasure must run whether or not ATLAS_ENABLED (pre-cutover the user lives in
+    users.db, so atlas.db simply holds no rows and step 1 is a harmless 0-row
+    delete). Returns a summary of what was erased.
+    """
+    summary = {"atlas_cascade": False, "portfolio_removed": False,
+               "chat_turns_deleted": 0, "telemetry_anonymized": 0}
+
+    # (1) authoritative DB erasure FIRST — commit before any fs/cross-DB work.
+    try:
+        conn = _get_conn()
+        with _lock:
+            conn.execute("DELETE FROM users WHERE user_id=?", (user_id,))
+            conn.commit()
+        summary["atlas_cascade"] = True
+    except Exception as exc:
+        logger.warning("[atlas_store] DPDP atlas cascade failed for %s"
+                       " (non-fatal): %s", user_id, exc)
+
+    # (2) portfolio directory.
+    try:
+        import shutil
+        from core.config import settings
+        pf_dir = Path(settings.PORTFOLIO_DATA_DIR) / user_id
+        if pf_dir.is_dir():
+            shutil.rmtree(pf_dir)
+        summary["portfolio_removed"] = True
+    except Exception as exc:
+        logger.warning("[atlas_store] DPDP portfolio cleanup failed for %s"
+                       " (non-fatal): %s", user_id, exc)
+
+    # (3) chat history (its own DB, owns its connection).
+    try:
+        from services.data.stores import chat_session_store
+        summary["chat_turns_deleted"] = chat_session_store.delete_user_turns(user_id)
+    except Exception as exc:
+        logger.warning("[atlas_store] DPDP chat cleanup failed for %s"
+                       " (non-fatal): %s", user_id, exc)
+
+    # (4) telemetry anonymize (row count preserved — shared-brain cost signal).
+    try:
+        from services.data.stores import log_store
+        summary["telemetry_anonymized"] = log_store.anonymize_user(user_id)
+    except Exception as exc:
+        logger.warning("[atlas_store] DPDP telemetry anonymize failed for %s"
+                       " (non-fatal): %s", user_id, exc)
+
+    logger.info("[atlas_store] DPDP delete complete for %s: %s", user_id, summary)
+    return summary

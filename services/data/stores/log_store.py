@@ -143,6 +143,35 @@ def log_app_record(level: str, logger_name: str, message: str) -> None:
         pass  # never let telemetry recurse into logging
 
 
+def anonymize_user(user_id: str) -> int:
+    """DPDP erasure (Atlas C6): detach a deleted user's LLM-cost rows from their
+    identity (user_id → NULL) while *preserving the rows* — cost/telemetry is a
+    shared-brain signal, so B4 Q3 chose ANONYMIZE over delete. Returns the number
+    of rows anonymized; never raises.
+
+    The `user_id` column on llm_calls is added by Atlas C8; until then the table
+    has no such column, so a missing-column error is a benign no-op (there is
+    nothing yet to anonymize). Idempotent — a second call anonymizes 0.
+    """
+    try:
+        conn = _get_conn()
+        if conn is None:
+            return 0
+        with _lock:
+            try:
+                cur = conn.execute(
+                    "UPDATE llm_calls SET user_id=NULL WHERE user_id=?", (user_id,))
+                conn.commit()
+                return cur.rowcount or 0
+            except sqlite3.OperationalError as exc:
+                if "no such column" in str(exc).lower():
+                    return 0            # pre-C8: llm_calls has no user_id yet
+                raise
+    except Exception as exc:
+        logger.warning("[log_store] anonymize_user failed (non-fatal): %s", exc)
+        return 0
+
+
 class SQLiteLogHandler(logging.Handler):
     """logging.Handler that mirrors WARNING+ records into app_logs.
 

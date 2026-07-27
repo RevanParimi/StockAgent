@@ -91,8 +91,30 @@ class RegimeDetector:
         sector_rsi = self._get_sector_rsi(sector, as_of_date)
 
         label = self._classify(vix, fii_proxy, sector_rsi)
-        multipliers = dict(settings.REGIME_MULTIPLIERS.get(label, settings.REGIME_MULTIPLIERS["NORMAL"]))
-        narrative   = self._build_narrative(label, vix, fii_proxy, sector_rsi)
+
+        brent = self._get_5d_pct(settings.REGIME_BRENT_TICKER)
+        usdinr = self._get_5d_pct(settings.REGIME_USDINR_TICKER)
+        spx = self._get_last_session_pct(settings.REGIME_SPX_TICKER)
+        stress = self._global_stress_signals(brent, usdinr, spx)
+        escalated = self._escalate_label(label, len(stress))
+        if escalated != label:
+            logger.info("[RegimeDetector] global stress %s escalated %s -> %s",
+                        stress, label, escalated)
+        label = escalated
+
+        multipliers = dict(settings.REGIME_MULTIPLIERS.get(
+            label, settings.REGIME_MULTIPLIERS["NORMAL"]))
+        narrative = self._build_narrative(label, vix, fii_proxy, sector_rsi)
+        if stress:
+            parts = []
+            if brent is not None:
+                parts.append(f"Brent 5d {brent:+.1f}%")
+            if usdinr is not None:
+                parts.append(f"USDINR 5d {usdinr:+.2f}%")
+            if spx is not None:
+                parts.append(f"S&P last {spx:+.1f}%")
+            narrative += (f" Global stress [{', '.join(stress)}]: "
+                          + ", ".join(parts) + ".")
 
         snap = RegimeSnapshot(
             regime_label      = label,
@@ -102,6 +124,10 @@ class RegimeDetector:
             multipliers       = multipliers,
             narrative         = narrative,
             as_of_date        = as_of_date.isoformat(),
+            brent_5d_pct      = brent,
+            usdinr_5d_pct     = usdinr,
+            spx_last_pct      = spx,
+            global_stress_signals = stress,
         )
         logger.info(
             "[RegimeDetector] %s | VIX=%.1f | FII_proxy=%.2f%% | RSI=%.1f → %s",
@@ -172,6 +198,34 @@ class RegimeDetector:
                 ticker_sym, exc,
             )
             return settings.RSI_FALLBACK
+
+    def _get_5d_pct(self, ticker: str) -> float | None:
+        """5-session % change for a global ticker. None on any failure."""
+        try:
+            import yfinance as yf
+            df = yf.Ticker(ticker).history(period="1mo")
+            if df.empty or len(df) < 6:
+                return None
+            close = df["Close"]
+            return round(float((close.iloc[-1] - close.iloc[-6]) / close.iloc[-6] * 100.0), 4)
+        except Exception as exc:
+            logger.warning("[RegimeDetector] 5d fetch failed for %s (neutral): %s",
+                           ticker, exc)
+            return None
+
+    def _get_last_session_pct(self, ticker: str) -> float | None:
+        """Last completed session % move. None on any failure."""
+        try:
+            import yfinance as yf
+            df = yf.Ticker(ticker).history(period="5d")
+            if df.empty or len(df) < 2:
+                return None
+            close = df["Close"]
+            return round(float((close.iloc[-1] - close.iloc[-2]) / close.iloc[-2] * 100.0), 4)
+        except Exception as exc:
+            logger.warning("[RegimeDetector] last-session fetch failed for %s (neutral): %s",
+                           ticker, exc)
+            return None
 
     # ------------------------------------------------------------------
     # Classification

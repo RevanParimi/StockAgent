@@ -749,9 +749,22 @@ brain** (BP4); only chat / on-demand `/analyse` / narrator pre-cache set it; sch
 `delivery.outbox_retention_days`(30); `value_history` points cap(400); `sessions` expiry (existing sweep);
 `user_advice`/`feedback_events` keep by default (None). Hot-path-safe (log+continue).
 
-- [ ] **Step 1 — failing tests:** each prune respects its `cfg` cap; None ⇒ keep-all; a job failure
-  doesn't crash the lane. — [ ] **Step 2 — run red.** — [ ] **Step 3 — implement.** — [ ] **Step 4 — green.**
-- [ ] **Step 5 — commit** `feat(atlas-c9): retention/prune jobs — all caps via cfg()`.
+- [x] **Step 1 — failing tests** (`test_atlas_retention.py`, 6): ticker_verdicts respects cap; None cap
+  keeps all; outbox prunes only old *terminal* rows (queued/sending kept regardless of age); value_history
+  trimmed to the last N lines; run_retention dormant when disabled; one prune raising doesn't crash the lane.
+- [x] **Step 2 — run red** (ModuleNotFoundError `core.portfolio.retention`). — [x] **Step 3 — implement**
+  `core/portfolio/retention.py` (ticker_verdicts / outbox / value_history / sessions prunes, monkeypatchable
+  cap resolvers, all `cfg()`; `user_advice`+`feedback_events` kept indefinitely); scheduler **Job 18**
+  (23:20 IST, dormant unless ATLAS_ENABLED); config `atlas.retention.{ticker_verdicts_days,value_history_cap}`.
+- [x] **Step 4 — run green** (6 new + 21 scheduler/retention). Full-suite A/B: deterministic fail-set ==
+  C0 known-red (10F+10E), **2204 passed** (2198 + 6); the lone `test_delivery_api` WinError5 push-store
+  flake is environmental (13/13 in isolation, C9 touches no delivery path).
+- [x] **Step 5 — commit** `d37f105` `feat(atlas-c9): retention/prune jobs — all caps via cfg()`.
+
+> **WAVE γ COMPLETE (C6–C9) — A/B CLEAN.** DPDP delete (`c83075c`), durable outbox (`a1aa7ad`), feedback +
+> BP4 telemetry (`e6629f3`), retention (`d37f105`); deterministic fail-set == C0 known-red throughout,
+> 2204 passed. All greenfield features ship dormant behind `ATLAS_ENABLED=false`; nothing merged/deployed.
+> **NEXT SESSION = wave δ: C10 ETL + ghost-dir reconciliation → C11 weekend cutover.**
 
 ---
 

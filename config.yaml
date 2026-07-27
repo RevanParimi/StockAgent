@@ -423,3 +423,15 @@ delivery:
 atlas:
   enabled: false                 # flip to true (via ATLAS_ENABLED in Railway) at the C11 cutover
   db_path: "data/atlas.db"
+
+# Universe demand model (BP1) — the nightly recompute (Atlas C4) turns held/watch
+# refcounts into demand tiers. A watch-only ticker earns a DAILY slot only once its
+# demand reaches one held-equivalent (the holders weight below); otherwise weekly.
+universe:
+  demand_weights:                # demand_score = holders*3 + watchers*1 + chat_hits_7d*0.5
+    holders: 3
+    watchers: 1
+    chat_hits_7d: 0.5            # source deferred to M1.x (reviewer R4) — 0 until then
+  max_daily_analyses: 25         # daily-cadence budget (held always daily; can exceed → governor)
+  budget_alert_pct: 0.8          # ops alert when daily count >= this fraction of the budget
+  archive_grace_days: 30         # refcount-0 + no history + archivable origin → archive after this

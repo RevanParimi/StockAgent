@@ -413,6 +413,21 @@ class AutomobileScheduler:
         )
         logger.info("[Scheduler] Backup job: daily at 11:30 pm IST")
 
+        # ── Job 16: Atlas Universe recompute (23:00 IST daily — Atlas C4) ───
+        # Reads atlas.db user_instruments, writes only aggregate demand/cadence
+        # back to instruments. Runs before the backup so the archive captures
+        # the recomputed universe. Dormant no-op until ATLAS_ENABLED is set.
+        scheduler.add_job(
+            func=self._universe_recompute_job,
+            trigger=CronTrigger(hour=23, minute=0, timezone="Asia/Kolkata"),
+            id="atlas_universe_recompute",
+            name="Atlas Universe recompute (demand tiers)",
+            misfire_grace_time=3600,
+            coalesce=True,
+            replace_existing=True,
+        )
+        logger.info("[Scheduler] Universe recompute job: daily at 11:00 pm IST")
+
         return scheduler
 
     def _on_job_error(self, event) -> None:
@@ -748,6 +763,13 @@ class AutomobileScheduler:
         summary = run_backup_job()
         logger.info("[Scheduler] nightly backup done: emailed=%s bytes=%d",
                     summary["emailed"], summary["bytes"])
+
+    def _universe_recompute_job(self) -> None:
+        """Job 16 — Atlas Universe recompute (C4). No-op unless ATLAS_ENABLED;
+        recompute_universe() is hot-path safe (never raises)."""
+        from core.portfolio.universe import recompute_universe
+        result = recompute_universe()
+        logger.info("[Scheduler] universe recompute: %s", result)
 
     def _ledger_cleanup_job(self) -> None:
         """

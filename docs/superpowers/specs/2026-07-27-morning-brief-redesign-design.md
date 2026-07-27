@@ -17,7 +17,7 @@ from the real 2026-07-24 and 2026-07-27 briefs:
 |---|---------|-----------|------|
 | 1 | Flat wall of lines, no sections | `render_brief_text` concatenates lines with no grouping | presentation |
 | 2 | LLM headline repeats the body verbatim (value, regime, overnight, earnings said twice) | Narrated summary + body list the same fields | presentation |
-| 3 | Overnight text cut mid-word ("…Middle East con", "…strengtheni") | **Source-side**: Serper/NewsAPI hand us an already-truncated `title`; our fetcher stores it verbatim (`macro_news_fetcher.py:212`). Not recoverable — full text was never in our data | data (display) |
+| 3 | Overnight text cut mid-word ("…Middle East con", "…strengtheni") | The brief renders the raw `title`, which Serper/NewsAPI hand us already truncated. **Fix:** each entry also carries a clean one-sentence LLM `summary` (`macro_news_cache.py:21`) — render that instead, with `title` only as fallback + a length safety-net trim | data (display) |
 | 4 | Same story appears 3× (+ again in headline) | Overnight dedup is **URL-only**; different URLs for the same story all pass | data |
 | 5 | IPO listed twice (e.g. LASERPOWER current + upcoming) | `_ipo_watch` concatenates `current` + `upcoming` with no symbol dedup | presentation |
 | 6 | Jargon with no explanation (RISK_OFF, conviction=0.62, "Regime", "Lock-in expiry") | Assumes the reader knows the system | newcomer gap |
@@ -105,10 +105,11 @@ All new helpers are **pure, deterministic, and unit-testable**; **no new LLM cal
   self-evident and reads cleanly as `BUY · 65%`. Unknown verdict → shown raw.
 
 ### 4.2 New pure helpers
-- `_clean_headline(text: str) -> str` — strip; if the text lacks terminal punctuation
-  **and** its last token looks like a truncated word (heuristic: no trailing sentence
-  punctuation and length over the cap), cut back to the last complete word boundary and
-  append `…`. Also caps at `brief_overnight_maxlen`. Never lengthens; never raises.
+- `_clean_headline(text: str, maxlen: int) -> str` — collapse whitespace; if over `maxlen`,
+  trim to the last complete word boundary and append `…`. A length safety-net only (the
+  primary truncation fix is preferring the clean LLM `summary` — see §4.3). Never lengthens;
+  never raises. No fragile "missing terminal punctuation" heuristic (real news headlines
+  rarely end in a period, so that would mangle good headlines).
 - `_dedup_overnight(items, threshold, max_items) -> list` — normalize each headline
   (lowercase, strip punctuation, collapse whitespace); cluster items where one normalized
   string is a prefix of another **or** token-set Jaccard ≥ `threshold`; keep the
@@ -129,8 +130,10 @@ already wrapped non-fatally elsewhere; reuse the same guard.
 `_ipo_watch` → include `qib_x`, `retail_x`, `total_x`, `issue_price` from the cache rows
 (already present per `services/data/fetchers/ipo.py`), then `_dedup_ipos`.
 
-`_overnight_items` → after reading titles, run `_clean_headline` on each and
-`_dedup_overnight`.
+`_overnight_items` → for each HIGH-severity entry, take the text as
+`summary or title` (the clean one-sentence LLM `summary` first — this is the real
+truncation fix — falling back to `title`), run `_clean_headline` (length safety-net),
+then `_dedup_overnight`. Existing behaviour of dropping empty items is preserved.
 
 ### 4.4 `render_brief_text` rewrite
 Deterministic assembly of §3 from the (already-built) `brief` dict using the helpers above.

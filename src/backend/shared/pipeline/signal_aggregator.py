@@ -190,17 +190,26 @@ class SignalAggregator:
             duration_ms=duration_ms, cost_usd=cost,
         )
         report = self._parse(raw, ticker, company_name, weighted_scores, agent_outputs)
-        # AUD-077 shadow lane (observe-only): what the verdict WOULD be if
-        # bound to the learned composite — never substituted for the LLM's.
-        from backend.shared.pipeline.verdict_shadow import log_verdict_shadow
+        # AUD-077/AUD-117 hard-bind. Capture the RAW LLM verdict FIRST so the
+        # shadow lane keeps comparing raw-LLM vs threshold even after the bind.
+        raw_llm_verdict = report.verdict
+        from backend.shared.pipeline.verdict_shadow import (
+            log_verdict_shadow,
+            verdict_from_composite,
+        )
         log_verdict_shadow(
             ticker=ticker,
             composite=composite,
-            llm_verdict=report.verdict,
+            llm_verdict=raw_llm_verdict,
             llm_final_score=report.final_score,
             learned_weights_used=bool(learned_weights),
             sector=sector,
         )
+        # Bind only the categorical verdict to the learned composite; final_score
+        # is left as the LLM's (it feeds base_confidence -> MC path width, so the
+        # price path is undisturbed). Deterministic verdict unblocks AUD-098.
+        if settings.RL_HARD_BIND_VERDICT_ENABLED:
+            report.verdict = verdict_from_composite(composite)
         return report
 
     # ------------------------------------------------------------------

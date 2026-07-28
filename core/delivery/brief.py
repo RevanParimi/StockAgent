@@ -151,6 +151,54 @@ def _ipo_demand(w: dict) -> str:
     return " ".join(parts) if parts else "demand data pending"
 
 
+def _ipo_lean(row: dict) -> tuple[str, str]:
+    """The tool's OWN demand-based research view of an IPO -> (label, reason).
+
+    Demand-only: the IPO feed carries no valuation/earnings data, so this never
+    claims a fundamental/P-E view. Never personal advice (spec §1)."""
+    total, qib, retail = row.get("total_x"), row.get("qib_x"), row.get("retail_x")
+    if total is None and qib is None and retail is None:
+        return ("data pending", "subscription not yet reported")
+    t, q = (total or 0.0), (qib or 0.0)
+    if t >= settings.DELIVERY_BRIEF_IPO_STRONG_DEMAND_X or q >= settings.DELIVERY_BRIEF_IPO_STRONG_QIB_X:
+        return ("STRONG DEMAND",
+                "Heavy demand — historically tends to list well, though never guaranteed.")
+    if t < settings.DELIVERY_BRIEF_IPO_SOFT_DEMAND_X and q < settings.DELIVERY_BRIEF_IPO_SOFT_DEMAND_X:
+        return ("SOFT DEMAND", "Light subscription so far — muted interest.")
+    return ("MODERATE DEMAND", "Steady subscription interest.")
+
+
+def _resolve_sector(ticker: str) -> str:
+    """Seam over SectorRegistry so tests can inject (ticker -> sector key)."""
+    from backend.sectors.registry import SectorRegistry
+    return SectorRegistry.resolve(ticker)
+
+
+def _load_ticker_dossier(ticker: str, sector: str):
+    """Seam over PredictionStore.load_dossier so tests can inject."""
+    from core.intelligence.rl.stores.prediction_store import PredictionStore
+    return PredictionStore(ticker, sector=sector).load_dossier()
+
+
+def _earnings_watch(symbol: str) -> str:
+    """Latest open-guidance one-liner from the ticker's dossier, else ''.
+    Best-effort — any failure (no sector/dossier/guidance) yields ''. Never raises."""
+    try:
+        sector = _resolve_sector(symbol)
+        dossier = _load_ticker_dossier(symbol, sector)
+        if dossier is None:
+            return ""
+        open_g = [g for g in getattr(dossier, "guidance", []) or []
+                  if getattr(g, "status", "") == "open"]
+        if not open_g:
+            return ""
+        return _trim_words(getattr(open_g[-1], "guidance", "") or "",
+                           settings.DELIVERY_BRIEF_EARNINGS_WATCH_MAXLEN)
+    except Exception as exc:
+        logger.debug("[brief] earnings watch failed for %s (non-fatal): %s", symbol, exc)
+        return ""
+
+
 def _indent(text: str, width: int = 2) -> str:
     """Wrap prose to ~74 cols with a fixed left indent (email/push friendly)."""
     import textwrap
@@ -166,11 +214,15 @@ summarising the portfolio state and what matters today.
 Portfolio: {portfolio}
 Escalations flagged yesterday: {escalations}
 Market regime: {regime}
-Overnight HIGH-severity items: {overnight}
+Overnight HIGH-severity items (numbered):
+{overnight}
 Earnings within 3 sessions: {earnings}
 New discovery-shelf ideas: {adds}
 
-Respond with JSON: {{"headline": "<2-4 sentences>"}}"""
+Also produce "overnight_notes": one short line (<=12 words) per overnight item, in the
+SAME numbered order, on why it matters to an Indian-equity investor. Empty list if none.
+
+Respond with JSON: {{"headline": "<2-4 sentences>", "overnight_notes": ["<line 1>", ...]}}"""
 
 
 # -- section collectors (each non-fatal, monkeypatchable) -------------------
@@ -286,8 +338,10 @@ def _ipo_watch(max_items: int | None = None) -> list[dict]:
         return []
 
 
-def _narrate_brief(brief: dict) -> str:
-    """ONE BULK call; deterministic fallback (mirror narrator.py)."""
+def _narrate_brief(brief: dict) -> tuple[str, list[str]]:
+    """ONE BULK call. Returns (headline, overnight_notes). Deterministic
+    fallback on any failure = (fallback headline, []). No extra LLM calls —
+    the overnight relevance notes ride the same request."""
     fallback = _fallback_headline(brief)
     started = time.time()
     try:
@@ -296,6 +350,8 @@ def _narrate_brief(brief: dict) -> str:
             salvage_truncated_json,
         )
         p = brief.get("portfolio") or {}
+        overnight_lines = "\n".join(
+            f"{idx}. {i['headline']}" for idx, i in enumerate(brief["overnight"], 1)) or "none"
         resp = get_llm_client().chat.completions.create(
             model=settings.LLM_MODEL_BULK,
             messages=[{"role": "user", "content": _PROMPT.format(
@@ -303,13 +359,13 @@ def _narrate_brief(brief: dict) -> str:
                            f"({p.get('total_pnl_pct', 0.0):+.1f}%)") if p else "empty",
                 escalations=", ".join(f["symbol"] for f in brief["advisor_flags"]) or "none",
                 regime=(brief.get("regime") or {}).get("label", "unknown"),
-                overnight="; ".join(i["headline"] for i in brief["overnight"]) or "none",
+                overnight=overnight_lines,
                 earnings=", ".join(f"{e['symbol']} {e['date']}"
                                    for e in brief["earnings_soon"]) or "none",
                 adds=", ".join(a["symbol"] for a in brief["discovery_adds"]) or "none",
             )}],
             temperature=settings.LLM_TEMPERATURE,
-            max_tokens=300,
+            max_tokens=400,
             response_format={"type": "json_object"},
             extra_body=JSON_MODE_EXTRA_BODY,
         )
@@ -325,7 +381,9 @@ def _narrate_brief(brief: dict) -> str:
                         getattr(usage, "prompt_tokens", 0),
                         getattr(usage, "completion_tokens", 0),
                         int((time.time() - started) * 1000), True)
-        return str(data.get("headline", "")).strip() or fallback
+        raw_notes = data.get("overnight_notes", [])
+        notes = [str(n).strip() for n in raw_notes] if isinstance(raw_notes, list) else []
+        return (str(data.get("headline", "")).strip() or fallback, notes)
     except Exception as exc:
         logger.warning("[brief] narration failed (non-fatal): %s", exc)
         try:
@@ -336,7 +394,7 @@ def _narrate_brief(brief: dict) -> str:
             )
         except Exception:
             pass
-        return fallback
+        return (fallback, [])
 
 
 def _fallback_headline(brief: dict) -> str:
@@ -408,7 +466,20 @@ def build_morning_brief(
             e.model_dump() for e in upcoming_lockin_alerts(on, symbols=watched or None)
         ],
     }
-    brief["headline"] = _narrate_brief(brief)
+    # Earnings "why": attach a best-effort dossier watch-line per held earnings.
+    for e in brief["earnings_soon"]:
+        e["watch"] = _earnings_watch(e.get("symbol", ""))
+
+    # Headline + overnight relevance notes ride one narration call. Tolerate a
+    # plain-str return (older monkeypatched callers/tests) as headline-only.
+    narrated = _narrate_brief(brief)
+    if isinstance(narrated, tuple):
+        brief["headline"], overnight_notes = narrated
+    else:
+        brief["headline"], overnight_notes = narrated, []
+    for idx, item in enumerate(brief["overnight"]):
+        if idx < len(overnight_notes) and overnight_notes[idx]:
+            item["note"] = overnight_notes[idx]
     return brief
 
 
@@ -459,13 +530,21 @@ def render_brief_text(brief: dict) -> str:
     overnight = brief.get("overnight", []) or []
     if overnight:
         L.append("OVERNIGHT — HIGH-IMPACT NEWS")
-        L += [f"  • {i['headline']}" for i in overnight]
+        for i in overnight:
+            L.append(f"  • {i['headline']}")
+            note = (i.get("note") or "").strip()
+            if note:
+                L.append(f"      Why it matters: {note}")
         L.append("")
 
     earnings = brief.get("earnings_soon", []) or []
     if earnings:
         L.append("EARNINGS THIS WEEK   (your holdings)")
-        L += [f"  • {e['symbol']}  — {_fmt_date(e['date'])}" for e in earnings]
+        for e in earnings:
+            L.append(f"  • {e['symbol']}  — {_fmt_date(e['date'])}")
+            watch = (e.get("watch") or "").strip()
+            tail = f"watch: {watch}" if watch else "results & guidance are the next catalyst."
+            L.append(f"      You hold this — {tail}")
         L.append("")
 
     adds = (brief.get("discovery_adds", []) or [])[: settings.DELIVERY_BRIEF_MAX_IDEAS]
@@ -487,9 +566,16 @@ def render_brief_text(brief: dict) -> str:
 
     ipos = brief.get("ipo_watch", []) or []
     if ipos:
-        L += ["IPOs OPEN NOW   (live demand — a data point, not a buy call)",
+        L += ["IPOs OPEN NOW   (the tool's research view — not advice)",
               "  × = times the issue was subscribed; high QIB/overall = institutional interest."]
-        L += [f"  • {w['symbol']}  {w.get('company', '')}  ·  {_ipo_demand(w)}" for w in ipos]
+        for w in ipos:
+            lean, reason = _ipo_lean(w)
+            if lean == "data pending":
+                L.append(f"  • {w['symbol']}  {w.get('company', '')}  ·  Lean: data pending — {reason}")
+            else:
+                L.append(f"  • {w['symbol']}  {w.get('company', '')}")
+                L.append(f"      Lean: {lean} · {_ipo_demand(w)}")
+                L.append(f"      {reason}")
         L.append("")
 
     lockin = brief.get("lockin_flags", []) or []

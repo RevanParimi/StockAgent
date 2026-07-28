@@ -888,6 +888,11 @@ DELIVERY_BRIEF_OVERNIGHT_MAXLEN: int = int(cfg("delivery.brief_overnight_maxlen"
 DELIVERY_BRIEF_MAX_IDEAS: int = int(cfg("delivery.brief_max_ideas", fallback=5))
 DELIVERY_BRIEF_IDEA_REASON_MAXLEN: int = int(cfg("delivery.brief_idea_reason_maxlen", fallback=180))
 DELIVERY_BRIEF_MAX_IPOS: int = int(cfg("delivery.brief_max_ipos", fallback=3))
+# Brief enhancements (2026-07-28)
+DELIVERY_BRIEF_IPO_STRONG_DEMAND_X: float = float(cfg("delivery.brief_ipo_strong_demand_x", fallback=10.0))
+DELIVERY_BRIEF_IPO_STRONG_QIB_X: float = float(cfg("delivery.brief_ipo_strong_qib_x", fallback=15.0))
+DELIVERY_BRIEF_IPO_SOFT_DEMAND_X: float = float(cfg("delivery.brief_ipo_soft_demand_x", fallback=2.0))
+DELIVERY_BRIEF_EARNINGS_WATCH_MAXLEN: int = int(cfg("delivery.brief_earnings_watch_maxlen", fallback=120))
 
 # Public base URL of the deployed app — appended as a footer link to every
 # notification email so each one is one tap from opening the app. Railway sets

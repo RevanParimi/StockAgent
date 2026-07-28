@@ -282,3 +282,77 @@ def test_render_hides_empty_sections():
     for absent in ("OVERNIGHT", "EARNINGS THIS WEEK", "IDEAS THE TOOL", "IPOs OPEN NOW", "NEEDS ATTENTION"):
         assert absent not in t
     assert "YOUR PORTFOLIO" in t and "Nothing needs your attention today." in t
+
+
+# ---- Enhancements 2026-07-28: earnings-why, IPO lean, overnight notes ------
+
+def test_ipo_lean_classifies_by_demand():
+    assert br._ipo_lean({"total_x": 24.0, "qib_x": 41.0})[0] == "STRONG DEMAND"
+    assert br._ipo_lean({"qib_x": 18.0})[0] == "STRONG DEMAND"
+    assert br._ipo_lean({"total_x": 1.5})[0] == "SOFT DEMAND"
+    assert br._ipo_lean({"total_x": 5.0})[0] == "MODERATE DEMAND"
+    lbl, reason = br._ipo_lean({})
+    assert lbl == "data pending" and "not yet" in reason
+
+
+def test_earnings_watch_returns_open_guidance(monkeypatch):
+    class _G:
+        def __init__(self, status, guidance):
+            self.status, self.guidance = status, guidance
+
+    class _Dossier:
+        guidance = [_G("met", "old thing"),
+                    _G("open", "FY27 capex guidance of INR 42,000 crore")]
+
+    monkeypatch.setattr(br, "_resolve_sector", lambda t: "renewable_energy")
+    monkeypatch.setattr(br, "_load_ticker_dossier", lambda t, s: _Dossier())
+    assert br._earnings_watch("ACMESOLAR") == "FY27 capex guidance of INR 42,000 crore"
+
+
+def test_earnings_watch_empty_when_no_dossier(monkeypatch):
+    monkeypatch.setattr(br, "_resolve_sector", lambda t: "x")
+    monkeypatch.setattr(br, "_load_ticker_dossier", lambda t, s: None)
+    assert br._earnings_watch("FOO") == ""
+
+
+def test_render_earnings_generic_and_watch():
+    b = _full_brief()
+    b["earnings_soon"] = [
+        {"symbol": "SUZLON", "date": "2026-07-28"},
+        {"symbol": "ACMESOLAR", "date": "2026-07-29", "watch": "FY27 capex guidance"},
+    ]
+    t = br.render_brief_text(b)
+    assert "You hold this — results & guidance are the next catalyst." in t
+    assert "You hold this — watch: FY27 capex guidance" in t
+
+
+def test_render_ipo_shows_lean():
+    b = _full_brief()
+    b["ipo_watch"] = [{"symbol": "XTRANET", "company": "Xtranet", "status": "current",
+                       "total_x": 24.0, "qib_x": 41.0}]
+    t = br.render_brief_text(b)
+    assert "the tool's research view — not advice" in t
+    assert "Lean: STRONG DEMAND" in t
+
+
+def test_render_overnight_note():
+    b = _full_brief()
+    b["overnight"] = [{"headline": "SEBI tightens bond-derivative oversight",
+                       "severity": "HIGH",
+                       "note": "signals a firmer regulatory hand on debt markets."}]
+    t = br.render_brief_text(b)
+    assert "Why it matters: signals a firmer regulatory hand on debt markets." in t
+
+
+def test_build_attaches_overnight_notes(tmp_path, monkeypatch):
+    store = _mk_store(tmp_path)
+    monkeypatch.setattr(br, "_narrate_brief", lambda b: ("Head.", ["note-A"]))
+    monkeypatch.setattr(br, "_read_regime", lambda: {"label": "RISK_OFF"})
+    monkeypatch.setattr(br, "_overnight_items", lambda: [{"headline": "X", "severity": "HIGH"}])
+    monkeypatch.setattr(br, "_shelf_events_since", lambda since: [])
+    monkeypatch.setattr(br, "_earnings_soon", lambda symbols, on: [])
+    monkeypatch.setattr(br, "_ipo_watch", lambda: [])
+    monkeypatch.setattr(br, "upcoming_lockin_alerts", lambda on, symbols=None: [])
+    brief = br.build_morning_brief("u1", date(2026, 7, 9), store=store)
+    assert brief["headline"] == "Head."
+    assert brief["overnight"][0]["note"] == "note-A"

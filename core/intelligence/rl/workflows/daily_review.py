@@ -552,7 +552,7 @@ def run_daily_review(
 
     actual_direction = classify_direction(actual_close, predicted_close)
     direction_correct = is_direction_correct(today_forecast.predicted_verdict, actual_direction)
-    # AUD-117: the verdict grading is actually done against. Defaults to the
+    # AUD-117: the verdict direction_correct is graded against. Defaults to the
     # frozen envelope verdict (skip-rerun days + flag OFF); overridden below to
     # the fresh daily verdict when the hard-bind flag is on and a re-run exists.
     graded_verdict = today_forecast.predicted_verdict

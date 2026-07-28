@@ -1261,8 +1261,9 @@ notes below).
 
 ## Hard-Bind Verdict — AUD-077 decision + AUD-117 fix (2026-07-28, branch rl-hard-bind-verdict)
 
-Merged flag OFF (`RL_HARD_BIND_VERDICT_ENABLED`, default false) → byte-identical
-no-op deploy; prod-enable gated on user go. Analysis (fresh prod pull, n=81):
+Merged flag OFF (`RL_HARD_BIND_VERDICT_ENABLED`, default false) → no behavior or
+test-fail-set change (flag-off path inert); adds a backward-compatible
+`graded_verdict` field (default "") to new feedback rows. Prod-enable gated on user go. Analysis (fresh prod pull, n=81):
 three verdict channels, not two — the graded/acted-on `predicted_verdict` is a
 FROZEN month-start value (14.8% dir-acc) vs the daily threshold verdict (33.3%);
 threshold beats production 16–1, sign-test p=0.0003. Spec:
@@ -1282,3 +1283,5 @@ docs/superpowers/specs/2026-07-28-rl-hard-bind-verdict-design.md.
 - **AUD-098 | COST | P3 | UNBLOCKED.** Aggregator verdict now deterministic →
   thesis_reviewer/control_lane down-tier A/B no longer gated on the RL-semantics
   verdict (still bench-gated).
+
+**Rollout watch (on enable):** the reward signal becomes a hybrid — re-run days grade against the fresh threshold verdict, but early-exit/skip days fall back to the frozen `predicted_verdict` (and skip requires the frozen verdict to already read "correct"). Watch whether the skip-day fraction inflates `direction_accuracy_7d`; note it in the first post-enable review. Both channels sit far below the 0.60 ADD gate, so near-term impact is negligible.

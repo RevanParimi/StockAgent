@@ -189,3 +189,55 @@ class TestErroredOutputExclusion:
             "fundamentals": self._make_output("fundamentals", 0.5, error="parse_error: x"),
         }
         assert agg._detect_conflicts(outputs) == []
+
+
+class TestHardBindVerdict:
+    """AUD-117/AUD-077 Binding 1: under the flag, report.verdict is rebound to
+    the composite→threshold verdict; the shadow lane still logs the RAW LLM
+    verdict; final_score is never overridden."""
+
+    def _make_output(self, name, score, error=""):
+        from core.schemas.pipeline import AgentOutput
+        return AgentOutput(agent=name, ticker="MARUTI", overall_score=score, error=error)
+
+    def _run(self, outputs, weights, flag_on):
+        from tests.conftest import make_aggregator_json
+        shadow_kwargs = {}
+
+        def fake_llm(system_prompt, user_prompt):
+            return make_aggregator_json(0.66)          # verdict="BUY", final_score=0.66
+
+        def fake_shadow(**kwargs):
+            shadow_kwargs.update(kwargs)
+            return None
+
+        with patch.object(SignalAggregator, "_call_llm", side_effect=fake_llm), \
+             patch("backend.shared.pipeline.verdict_shadow.log_verdict_shadow", fake_shadow), \
+             patch("services.clients.llm_client.OpenAI"), \
+             patch.object(settings, "RL_HARD_BIND_VERDICT_ENABLED", flag_on):
+            agg = SignalAggregator()
+            report = agg.run("MARUTI", "Maruti Suzuki India Ltd", outputs,
+                             learned_weights=weights)
+        return report, shadow_kwargs
+
+    def test_flag_off_verdict_and_shadow_unchanged(self):
+        # composite = 0.1 (both agents 0.1) -> threshold verdict would be STRONG SELL,
+        # but flag OFF must leave the raw LLM "BUY" verdict in place.
+        outputs = {"sales_demand": self._make_output("sales_demand", 0.1),
+                   "fundamentals": self._make_output("fundamentals", 0.1)}
+        weights = {"sales_demand": 0.5, "fundamentals": 0.5}
+        report, shadow = self._run(outputs, weights, flag_on=False)
+        assert report.verdict == "BUY"                    # raw LLM verdict, untouched
+        assert shadow["llm_verdict"] == "BUY"
+        assert report.final_score == pytest.approx(0.66)
+
+    def test_flag_on_verdict_bound_shadow_keeps_raw(self):
+        from backend.shared.pipeline.verdict_shadow import verdict_from_composite
+        outputs = {"sales_demand": self._make_output("sales_demand", 0.1),
+                   "fundamentals": self._make_output("fundamentals", 0.1)}
+        weights = {"sales_demand": 0.5, "fundamentals": 0.5}
+        report, shadow = self._run(outputs, weights, flag_on=True)
+        assert verdict_from_composite(0.1) == "STRONG SELL"   # lock the band map
+        assert report.verdict == "STRONG SELL"                # bound to composite
+        assert shadow["llm_verdict"] == "BUY"                 # shadow logs RAW, not bound
+        assert report.final_score == pytest.approx(0.66)      # final_score NEVER overridden

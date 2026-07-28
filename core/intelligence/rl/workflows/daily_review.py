@@ -208,6 +208,7 @@ def _run_todays_agent_scores(
     ticker: str,
     sector: str = "automobile",
     learned_weights: dict[str, float] | None = None,
+    capture: dict | None = None,
 ) -> dict[str, float]:
     """
     Re-run all sub-agents with live data to compute today's scores.
@@ -215,6 +216,10 @@ def _run_todays_agent_scores(
 
     Routes to the correct orchestrator/graph based on sector.
     Falls back to empty dict on any failure (non-fatal).
+
+    AUD-117: when `capture` is provided, the fresh FinalReport is stored at
+    capture["report"] so the caller can reuse this single re-run's verdict for
+    hard-bind grading (avoids a second orchestrator pass). Left unset on failure.
     """
     try:
         from core.intelligence.rl.workflows.sector_router import get_orchestrator
@@ -222,6 +227,8 @@ def _run_todays_agent_scores(
         if learned_weights:
             orchestrator.set_aggregator_weights(learned_weights, ticker)
         report = orchestrator.analyse(ticker)
+        if capture is not None:
+            capture["report"] = report
         return {name: ws.raw for name, ws in report.weighted_agent_scores.items()}
     except Exception as exc:
         logger.warning(
@@ -545,6 +552,10 @@ def run_daily_review(
 
     actual_direction = classify_direction(actual_close, predicted_close)
     direction_correct = is_direction_correct(today_forecast.predicted_verdict, actual_direction)
+    # AUD-117: the verdict direction_correct is graded against. Defaults to the
+    # frozen envelope verdict (skip-rerun days + flag OFF); overridden below to
+    # the fresh daily verdict when the hard-bind flag is on and a re-run exists.
+    graded_verdict = today_forecast.predicted_verdict
 
     timing = _compute_timing_accuracy(envelope, today_forecast, actual_direction)
 
@@ -571,10 +582,12 @@ def run_daily_review(
             _rerun_threshold,
         )
     else:
+        _todays_capture: dict = {}
         todays_scores = _run_todays_agent_scores(
             ticker,
             sector=sector,
             learned_weights=wm_for_scores.effective_weights() if wm_for_scores else None,
+            capture=_todays_capture,
         )
         if not todays_scores and today_forecast.predicted_agent_scores:
             todays_scores = dict(today_forecast.predicted_agent_scores)
@@ -582,6 +595,18 @@ def run_daily_review(
                 "[daily_review] Agent re-run unavailable for %s — "
                 "using envelope predicted scores as fallback for drift analysis", ticker,
             )
+        # AUD-117 Binding 2: grade against the FRESH daily verdict (the threshold
+        # verdict under Binding 1) from this same re-run, not the frozen
+        # month-start predicted_verdict. Flag OFF or no fresh report => unchanged.
+        if settings.RL_HARD_BIND_VERDICT_ENABLED:
+            _fresh_report = _todays_capture.get("report")
+            if _fresh_report is not None:
+                graded_verdict = _fresh_report.verdict
+                direction_correct = is_direction_correct(graded_verdict, actual_direction)
+                logger.info(
+                    "[daily_review] %s hard-bind grading: %s -> %s | direction_correct=%s",
+                    ticker, today_forecast.predicted_verdict, graded_verdict, direction_correct,
+                )
 
     # P2: Load all three ledger tiers in one call.
     # ticker_ledger = stock-specific lessons for this ticker
@@ -984,6 +1009,7 @@ def run_daily_review(
         predicted_verdict=today_forecast.predicted_verdict,
         actual_direction=actual_direction,
         direction_correct=direction_correct,
+        graded_verdict=graded_verdict,
         miss_analysis=miss_analysis,
         timing=timing,
         predicted_agent_scores=today_forecast.predicted_agent_scores,
@@ -1272,6 +1298,7 @@ def run_daily_review(
         predicted_verdict=today_forecast.predicted_verdict,
         actual_direction=actual_direction,
         direction_correct=direction_correct,
+        graded_verdict=graded_verdict,
         regime_label=sticky_regime_label,
         event_tags=today_tags,
         claims_fired=claims_fired,

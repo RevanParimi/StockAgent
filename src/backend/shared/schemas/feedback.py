@@ -271,6 +271,11 @@ class FeedbackEntry(BaseModel):
     predicted_verdict: str
     actual_direction: Direction            # UP | DOWN | FLAT (±ATR-relative threshold)
     direction_correct: bool
+    # AUD-117: the verdict direction_correct was actually graded against. Under
+    # the hard-bind flag + a fresh daily re-run this is the daily threshold
+    # verdict; otherwise it equals predicted_verdict (frozen month-start). ""
+    # for entries written before the field existed (backward-compatible).
+    graded_verdict: str = ""
     # Per-agent composite scores frozen at forecast time (copied from the day's
     # DailyForecast.predicted_agent_scores). Enables per-agent calibration scoring
     # in WeightAdapter._compute_accuracy — was an agent's own lean (>=0.5 = bullish)

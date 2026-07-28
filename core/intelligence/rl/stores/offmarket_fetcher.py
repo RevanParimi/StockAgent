@@ -24,13 +24,18 @@ logger = logging.getLogger(__name__)
 class OffMarketFetcher:
     def __init__(self) -> None:
         try:
-            from nse import NSE
-            # download_folder is REQUIRED by the nse client (AUD-086);
-            # mkdtemp matches every other NSE() call site in the repo.
-            self._nse = NSE(download_folder=pathlib.Path(tempfile.mkdtemp()))
+            from services.data.fetchers.nse_client import make_nse, track_for_cleanup
+            self._nse = make_nse()               # private temp dir (AUD-086)
+            track_for_cleanup(self, self._nse)   # rmtree on GC (AUD-017)
         except Exception as exc:
             logger.warning("[OffMarketFetcher] nse package unavailable: %s", exc)
             self._nse = None
+
+    def close(self) -> None:
+        """Release the NSE session and its temp dir (AUD-017)."""
+        from services.data.fetchers.nse_client import close_nse
+        close_nse(self._nse)
+        self._nse = None
 
     def fetch_all(self, ticker: str, date_str: str) -> OffMarketSignals:
         signals = OffMarketSignals(date=date_str, ticker=ticker)

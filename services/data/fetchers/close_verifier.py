@@ -113,10 +113,8 @@ def _fetch_nse_close(ticker: str, target_date: date | None = None) -> float | No
                     row = data[-1]
                 close = _sanitize(float(row["chClosingPrice"]))
         finally:
-            try:
-                nse.exit()
-            except Exception:
-                pass
+            from services.data.fetchers.nse_client import close_nse
+            close_nse(nse)  # exit() + rmtree(download_folder) — AUD-017
     except Exception as exc:
         logger.debug("[close_verifier] NSE close fetch failed for %s: %s", ticker, exc)
         close = None

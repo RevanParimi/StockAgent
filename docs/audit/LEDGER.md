@@ -29,7 +29,7 @@ known-issues, `ph0` = verified directly during Phase 0 at HEAD 69e317d.
 
 | ID | Tag | Sev | Where | Defect | Evidence | Action | Status |
 |----|-----|-----|-------|--------|----------|--------|--------|
-| AUD-017 | BUG | P2 | NSE client | mkdtemp leak per client instantiation — temp dirs accumulate on the Railway volume | phc:21; mem | FIX | OPEN (Ph3) |
+| AUD-017 | BUG | P2 | NSE client | mkdtemp leak per client instantiation — temp dirs accumulate on the Railway volume | phc:21; mem | FIX | FIXED (2026-07-28 — root cause: `NSE.exit()` closes session + unlinks cookie but never rmtree's `download_folder`, so EVERY `NSE(download_folder=mkdtemp())` orphaned its dir regardless of exit(). New `services/data/fetchers/nse_client.py` (`make_nse`/`close_nse`/`nse_session`/`track_for_cleanup`); 11 call sites converted — offmarket/fno (per-ticker leakers) use make_nse+track_for_cleanup+close(), 8 factory/inline sites swap `nse.exit()`→`close_nse(nse)`, bhavcopy drops its separate `folder=mkdtemp`. +7 tests) |
 | AUD-024 | BUG | P2 | PredictionStore | mkdir-on-read side effect | mem (Ph3 known) | FIX | OPEN (Ph3) |
 | AUD-025 | BUG | P2 | `services/api/server.py` | Hardcoded sector="automobile" in PredictionStore self-heal | mem (Ph3 known) | FIX | OPEN (Ph3) |
 

@@ -25,12 +25,18 @@ class FnOFetcher:
     def __init__(self) -> None:
         self.near_month_expiry: str | None = None
         try:
-            from nse import NSE
-            # download_folder is REQUIRED by the nse client (AUD-086).
-            self._nse = NSE(download_folder=pathlib.Path(tempfile.mkdtemp()))
+            from services.data.fetchers.nse_client import make_nse, track_for_cleanup
+            self._nse = make_nse()               # private temp dir (AUD-086)
+            track_for_cleanup(self, self._nse)   # rmtree on GC (AUD-017)
         except Exception as exc:
             logger.warning("[FnOFetcher] nse package unavailable: %s", exc)
             self._nse = None
+
+    def close(self) -> None:
+        """Release the NSE session and its temp dir (AUD-017)."""
+        from services.data.fetchers.nse_client import close_nse
+        close_nse(self._nse)
+        self._nse = None
 
     def fetch_option_chain(self, ticker: str) -> list[dict] | None:
         """

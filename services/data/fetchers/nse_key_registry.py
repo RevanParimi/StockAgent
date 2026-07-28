@@ -293,7 +293,5 @@ def seed_registry(tickers: list[str]) -> None:
             time.sleep(0.8)  # slightly longer between tickers
 
     finally:
-        try:
-            nse.exit()
-        except Exception:
-            pass
+        from services.data.fetchers.nse_client import close_nse
+        close_nse(nse)  # exit() + rmtree(download_folder) — AUD-017

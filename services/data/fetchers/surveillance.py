@@ -77,10 +77,8 @@ def get_symbol_meta(symbol: str) -> dict:
         try:
             meta = nse.equityMetaInfo(symbol) or {}
         finally:
-            try:
-                nse.exit()
-            except Exception:
-                pass
+            from services.data.fetchers.nse_client import close_nse
+            close_nse(nse)  # exit() + rmtree(download_folder) — AUD-017
         surv_block = meta.get("surveillance") or {}
         surv = surv_block.get("surv") if isinstance(surv_block, dict) else None
         result["surveillance"] = (str(surv).strip() or None) if surv else None

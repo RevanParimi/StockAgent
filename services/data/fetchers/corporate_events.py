@@ -70,10 +70,8 @@ def fetch_corp_actions(symbol: str) -> list[dict]:
         logger.warning("[corporate_events] actions() failed for %s: %s", symbol, exc)
         return []
     finally:
-        try:
-            nse.exit()
-        except Exception:
-            pass
+        from services.data.fetchers.nse_client import close_nse
+        close_nse(nse)  # exit() + rmtree(download_folder) — AUD-017
 
 
 def refresh_events_calendar(symbols: list[str], cache_path: str | None = None) -> dict:
@@ -120,10 +118,8 @@ def refresh_events_calendar(symbols: list[str], cache_path: str | None = None) -
                 degraded.append(sym)
             time.sleep(_SLEEP_BETWEEN_CALLS)
     finally:
-        try:
-            nse.exit()
-        except Exception:
-            pass
+        from services.data.fetchers.nse_client import close_nse
+        close_nse(nse)  # exit() + rmtree(download_folder) — AUD-017
 
     result = {
         "fetched_at": datetime.now(timezone.utc).isoformat(),

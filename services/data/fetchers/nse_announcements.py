@@ -304,10 +304,8 @@ def prefetch_nse_data(ticker: str) -> dict:
         )
         result["error"] = str(exc)
     finally:
-        try:
-            nse.exit()
-        except Exception:
-            pass
+        from services.data.fetchers.nse_client import close_nse
+        close_nse(nse)  # exit() + rmtree(download_folder) — AUD-017
 
     return result
 

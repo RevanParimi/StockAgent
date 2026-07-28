@@ -95,10 +95,8 @@ def refresh_bulk_block(weeks: int = 4, cache_path: str | None = None) -> dict:
             deals += _normalise(nse.bulkdeals("bulk_deals", fromdate, todate), "bulk")
             deals += _normalise(nse.bulkdeals("block_deals", fromdate, todate), "block")
         finally:
-            try:
-                nse.exit()
-            except Exception:
-                pass
+            from services.data.fetchers.nse_client import close_nse
+            close_nse(nse)  # exit() + rmtree(download_folder) — AUD-017
     except Exception as exc:
         logger.warning("[bulk_block] fetch failed — keeping stale cache: %s", exc)
         degraded = True

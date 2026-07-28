@@ -127,10 +127,8 @@ def refresh_ipo_cache(cache_path: str | None = None) -> dict:
             current = _normalise(nse.listCurrentIPO(), "current")
             upcoming = _normalise(nse.listUpcomingIPO(), "upcoming")
         finally:
-            try:
-                nse.exit()
-            except Exception:
-                pass
+            from services.data.fetchers.nse_client import close_nse
+            close_nse(nse)  # exit() + rmtree(download_folder) — AUD-017
     except Exception as exc:
         logger.warning("[ipo] fetch failed — keeping stale cache: %s", exc)
         degraded = True

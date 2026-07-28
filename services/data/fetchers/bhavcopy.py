@@ -60,9 +60,10 @@ def fetch_day(day: date) -> pd.DataFrame | None:
         logger.warning("[bhavcopy] NSE client unavailable: %s", exc)
         return None
     try:
+        # Download into the client's own download_folder (default) so
+        # close_nse() cleans it up — no separate orphaned mkdtemp (AUD-017).
         path = nse.deliveryBhavcopy(
             datetime(day.year, day.month, day.day),
-            folder=pathlib.Path(tempfile.mkdtemp()),
         )
         raw = pd.read_csv(path, skipinitialspace=True)
         raw.columns = [c.strip() for c in raw.columns]
@@ -81,10 +82,8 @@ def fetch_day(day: date) -> pd.DataFrame | None:
         logger.warning("[bhavcopy] fetch failed for %s: %s", day, exc)
         return None
     finally:
-        try:
-            nse.exit()
-        except Exception:
-            pass
+        from services.data.fetchers.nse_client import close_nse
+        close_nse(nse)  # exit() + rmtree(download_folder) — AUD-017
 
 
 def sync_recent(end: date | None = None, days_back: int | None = None) -> dict:

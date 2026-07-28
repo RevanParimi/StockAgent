@@ -65,10 +65,8 @@ def run_index_watch(on: date | None = None, cache_path: str | None = None) -> di
             try:
                 raw = nse.listEquityStocksByIndex(index)
             finally:
-                try:
-                    nse.exit()
-                except Exception:
-                    pass
+                from services.data.fetchers.nse_client import close_nse
+                close_nse(nse)  # exit() + rmtree(download_folder) — AUD-017
             symbols = sorted({
                 str(r.get("symbol", "")).upper()
                 for r in (raw.get("data", []) if isinstance(raw, dict) else [])

@@ -1258,3 +1258,27 @@ notes below).
   Runs inside `scorecard_monthly` (saved to `LEARNING_EVIDENCE_DIR` +
   emailed) and via CLI `python -m core.intelligence.rl.eval.learning_evidence`.
   First verdict on record: **LEARNING_INERT** (2026-07-19, months 2026-05..06).
+
+## Hard-Bind Verdict — AUD-077 decision + AUD-117 fix (2026-07-28, branch rl-hard-bind-verdict)
+
+Merged flag OFF (`RL_HARD_BIND_VERDICT_ENABLED`, default false) → byte-identical
+no-op deploy; prod-enable gated on user go. Analysis (fresh prod pull, n=81):
+three verdict channels, not two — the graded/acted-on `predicted_verdict` is a
+FROZEN month-start value (14.8% dir-acc) vs the daily threshold verdict (33.3%);
+threshold beats production 16–1, sign-test p=0.0003. Spec:
+docs/superpowers/specs/2026-07-28-rl-hard-bind-verdict-design.md.
+
+- **AUD-077 | PATTERN | P1 → DECISION MADE (BIND, flag-gated).** Binding 1:
+  `SignalAggregator.run` rebinds `report.verdict = verdict_from_composite(composite)`
+  under the flag (final_score untouched; shadow lane still logs RAW llm_verdict vs
+  threshold). Aggregator verdict now deterministic.
+- **AUD-117 | DESIGN | P1 | NEW → FIXED (Binding 2).** Frozen month-start
+  `predicted_verdict`, stamped on every envelope day, poisoned the RL reward signal
+  + ADD gate. daily_review now grades `direction_correct` against the fresh daily
+  (threshold) verdict from the same orchestrator re-run; skip-rerun days fall back
+  to the frozen value; the graded verdict is recorded on `FeedbackEntry.graded_verdict`.
+  Stored envelope verdicts + historical `direction_correct` are never rewritten
+  (forward-only break, cf. AUD-060).
+- **AUD-098 | COST | P3 | UNBLOCKED.** Aggregator verdict now deterministic →
+  thesis_reviewer/control_lane down-tier A/B no longer gated on the RL-semantics
+  verdict (still bench-gated).

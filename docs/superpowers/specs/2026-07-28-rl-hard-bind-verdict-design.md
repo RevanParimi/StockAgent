@@ -1,7 +1,7 @@
 # RL Hard-Bind Verdict — Design Spec
 
 **Date:** 2026-07-28
-**Status:** APPROVED (design), pending spec review → plan
+**Status:** SHIPPED (flag OFF, byte-identical no-op) — pending prod-enable on user go
 **Findings/IDs:** AUD-077 (resolve: decision made), AUD-117 (new — frozen-verdict reward poisoning), unblocks AUD-098
 **Related memory:** project-learning-evidence, project-tech-audit-program (Lighthouse)
 

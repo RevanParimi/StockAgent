@@ -575,9 +575,11 @@ RL_CALIBRATION_WEIGHT: float = cfg("rl.calibration_weight", env="RL_CALIBRATION_
 # verdict_from_composite(composite) (final_score untouched); (2) daily_review
 # grades direction_correct against the FRESH daily (threshold) verdict instead
 # of the frozen month-start predicted_verdict. Default OFF ⇒ byte-identical.
+# config.yaml-only (no env override) — enable by flipping the yaml flag, not a
+# Railway env var. Not a secret, so it belongs in config.yaml as the sole source.
 # ---------------------------------------------------------------------------
 RL_HARD_BIND_VERDICT_ENABLED: bool = cfg(
-    "rl.hard_bind_verdict_enabled", env="RL_HARD_BIND_VERDICT_ENABLED", fallback=False)
+    "rl.hard_bind_verdict_enabled", fallback=False)
 
 # ---------------------------------------------------------------------------
 # STATIC_AUDIT #9 — News geo: removed country filter entirely

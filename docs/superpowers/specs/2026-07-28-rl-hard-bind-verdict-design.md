@@ -65,12 +65,13 @@ DEFER** (thin per-sector n, no config schema, the failure is the NEUTRAL dead-zo
 
 ```
 RL_HARD_BIND_VERDICT_ENABLED: bool = cfg(
-    "rl.hard_bind_verdict_enabled", env="RL_HARD_BIND_VERDICT_ENABLED", fallback=False)
+    "rl.hard_bind_verdict_enabled", fallback=False)
 ```
 
 One flag governs both bindings (conceptually one decision). Merged OFF ⇒ deploy is
-a byte-identical no-op. `config.yaml` gets `rl.hard_bind_verdict_enabled: false`
-([[feedback-config-over-hardcode]] — no hardcoded magic).
+a byte-identical no-op. `config.yaml` is the sole source: `rl.hard_bind_verdict_enabled: false`
+([[feedback-config-over-hardcode]] — no hardcoded magic, and no env override for a
+non-secret toggle; flip the yaml, not a Railway env var).
 
 ### 3.2 Binding 1 — Aggregator (`SignalAggregator.run`)
 
@@ -149,13 +150,13 @@ and the normal price path are unaffected.
 
 ## 6. Rollout
 
-Merge with flag OFF (no-op deploy). Enable via `config.yaml`
-`rl.hard_bind_verdict_enabled: true` (or Railway env) when the user gives the go —
+Merge with flag OFF (no-op deploy). Enable by flipping `config.yaml`
+`rl.hard_bind_verdict_enabled: true` and redeploying, when the user gives the go —
 ideally after the optional 2026-07-31 reconfirmation re-run (`p=0.0003` is already
 decisive, so this is confirmation, not a gate). Watch the first post-enable
 daily_review: `direction_correct` should track the daily threshold verdict; shadow
-lane continues logging. Rollback = set the flag false (instant, no redeploy needed
-if env-driven).
+lane continues logging. Rollback = set the flag back to false in `config.yaml` and
+redeploy.
 
 ## 7. Ledger updates (on ship)
 

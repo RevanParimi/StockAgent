@@ -241,8 +241,14 @@ anyone acts on it. IPO tracker adds listing + lock-in-expiry awareness.
   one-sentence LLM `summary` (deduped by content, not URL); ideas carry the
   tool's own verdict + confidence% + a one-line reason from the idea's thesis —
   framed as a research view, never personal advice; IPOs show live subscription
-  demand (deduped by symbol). Exactly one BULK-tier narration call for the
-  top-line SUMMARY, with a deterministic fallback. Ideas explained: the scanner
+  demand (deduped by symbol) plus the tool's own **demand-based lean**
+  (STRONG/MODERATE/SOFT/data-pending — demand-only, no valuation, no
+  grey-market/listing-gain), same research-not-advice framing; each held
+  earnings line carries a "you hold this — watch: <open guidance from its
+  dossier>" note; and each overnight item gets a one-line "why it matters".
+  Exactly one BULK-tier narration call for the top-line SUMMARY **and** the
+  overnight relevance notes (one JSON response, no extra calls), with a
+  deterministic fallback. Ideas explained: the scanner
   screens the market → a passing name goes on the research shelf → the tool
   forms a view and paper-trades it to test the thesis. Rendering caps/thresholds
   live in `config.yaml` → `delivery.brief_*`.

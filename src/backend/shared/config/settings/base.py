@@ -570,6 +570,16 @@ RL_CALIBRATION_REWARD_ENABLED: bool = cfg("rl.calibration_reward_enabled", env="
 RL_CALIBRATION_WEIGHT: float = cfg("rl.calibration_weight", env="RL_CALIBRATION_WEIGHT", fallback=0.5)
 
 # ---------------------------------------------------------------------------
+# AUD-117 / AUD-077 — Hard-bind the graded/acted-on verdict to the learned
+# composite. When True: (1) SignalAggregator.run rebinds report.verdict to
+# verdict_from_composite(composite) (final_score untouched); (2) daily_review
+# grades direction_correct against the FRESH daily (threshold) verdict instead
+# of the frozen month-start predicted_verdict. Default OFF ⇒ byte-identical.
+# ---------------------------------------------------------------------------
+RL_HARD_BIND_VERDICT_ENABLED: bool = cfg(
+    "rl.hard_bind_verdict_enabled", env="RL_HARD_BIND_VERDICT_ENABLED", fallback=False)
+
+# ---------------------------------------------------------------------------
 # STATIC_AUDIT #9 — News geo: removed country filter entirely
 # Serper query now omits "gl" — Google surfaces globally relevant results
 # based on query specificity. A query like "TCS Q4 2026 deal wins" returns

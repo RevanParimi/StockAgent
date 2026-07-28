@@ -265,6 +265,8 @@ rl:
   # -- Calibration reward (Intelligence Phase C2) --------------------------
   calibration_reward_enabled: true
   calibration_weight: 0.5
+  # -- Hard-bind verdict (AUD-117 / AUD-077) -------------------------------
+  hard_bind_verdict_enabled: false   # bind graded+aggregator verdict to learned composite
   # -- Forgetting & recency (Intelligence Phase C3) -------------------------
   forgetting_enabled: true
   miss_recency_halflife_days: 21.0

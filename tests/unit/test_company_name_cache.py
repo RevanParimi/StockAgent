@@ -57,12 +57,16 @@ def test_resolve_miss_returns_none(fresh_resolver):
 # ---------------------------------------------------------------------------
 
 def test_learn_never_raises_on_unwritable_path(fresh_resolver, monkeypatch):
-    bad_path = MagicMock()
-    bad_path.parent.mkdir.side_effect = OSError("nope")
-    monkeypatch.setattr(fresh_resolver, "_COMPANY_NAME_CACHE_FILE", bad_path)
+    # Make the REAL writer fail — this actually exercises learn_company_name's
+    # try/except. Mocking the PATH does not: os.fspath(MagicMock()) is a real
+    # relative path ("MagicMock/mock/<id>"), so atomic_write_text's `Path(path)`
+    # bypasses the mock, the write escapes to the CWD, and the error branch is
+    # never hit (a false-confidence test that also leaks a junk dir).
+    monkeypatch.setattr(fresh_resolver, "atomic_write_json", MagicMock(side_effect=OSError("nope")))
 
-    # Should not raise.
+    # Should not raise — and must not write anything to disk.
     fresh_resolver.learn_company_name("FOOBAR", "Foo Bar Ltd")
+    assert not fresh_resolver._COMPANY_NAME_CACHE_FILE.exists()
 
 
 # ---------------------------------------------------------------------------

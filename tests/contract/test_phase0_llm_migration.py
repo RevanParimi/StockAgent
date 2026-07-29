@@ -130,9 +130,14 @@ class TestBaseAgentUsesOpenAI:
 # ---------------------------------------------------------------------------
 
 class TestOrchestratorUsesOpenAI:
+    # The orchestrator builds its client via get_llm_client() (in
+    # base_orchestrator), which constructs services.clients.llm_client.OpenAI
+    # uncached — so patching OpenAI there still intercepts self._llm. The
+    # aggregator now lives in base_orchestrator, so it (not the migration shim)
+    # is the seam to stub out. Sub-agents are module-level singletons built at
+    # import time, so they never call the patched OpenAI during __init__.
     @patch("services.clients.llm_client.OpenAI")
-    @patch("core.pipeline.orchestrator._SUB_AGENTS", {})
-    @patch("core.pipeline.orchestrator.SignalAggregator")
+    @patch("backend.shared.pipeline.base_orchestrator.SignalAggregator")
     def test_orchestrator_instantiates_openai(self, mock_agg, mock_openai_cls):
         mock_openai_cls.return_value = MagicMock()
         mock_agg.return_value = MagicMock()
@@ -141,8 +146,7 @@ class TestOrchestratorUsesOpenAI:
         mock_openai_cls.assert_called_once()
 
     @patch("services.clients.llm_client.OpenAI")
-    @patch("core.pipeline.orchestrator._SUB_AGENTS", {})
-    @patch("core.pipeline.orchestrator.SignalAggregator")
+    @patch("backend.shared.pipeline.base_orchestrator.SignalAggregator")
     def test_orchestrator_uses_openrouter_url(self, mock_agg, mock_openai_cls):
         from core.config import settings
         mock_openai_cls.return_value = MagicMock()
@@ -206,42 +210,41 @@ class TestProgressCallback:
         default = sig.parameters["progress_callback"].default
         assert default is None
 
-    @patch("services.clients.llm_client.OpenAI")
-    @patch("core.pipeline.orchestrator.SignalAggregator")
-    @patch("core.pipeline.orchestrator._SUB_AGENTS")
-    def test_progress_callback_called_per_agent(self, mock_agents, mock_agg_cls, mock_openai_cls):
-        """Callback must fire once per agent that completes."""
-        from core.pipeline.orchestrator import AutomobileAgentOrchestrator
-        from core.schemas.pipeline import AgentOutput, FinalReport, WeightedAgentScore
+    def test_progress_callback_called_per_agent(self):
+        """
+        Legacy worker-pool path: the progress callback fires once per agent
+        that completes.
 
-        # Setup mock LLM for ticker resolution
-        mock_llm = MagicMock()
-        mock_llm.chat.completions.create.return_value = MagicMock(
-            choices=[MagicMock(message=MagicMock(content='{"ticker":"MARUTI","company_name":"Maruti Suzuki","exchange":"NSE","confidence":0.99}'))]
-        )
-        mock_openai_cls.return_value = mock_llm
+        Automobile runs the unified analyst in production, so this pins the
+        orchestrator to the legacy fan-out (still live as the unified-failure
+        fallback path) by building it over two stub agents and driving
+        _run_via_graph directly through the real compiled LangGraph — no
+        network, no LLM.
+        """
+        from core.schemas.pipeline import AgentOutput, StockQuery
 
-        # Two mock agents
         agent_a = MagicMock()
         agent_a.run.return_value = AgentOutput(agent="a", ticker="MARUTI", overall_score=0.7)
         agent_b = MagicMock()
         agent_b.run.return_value = AgentOutput(agent="b", ticker="MARUTI", overall_score=0.6)
-        mock_agents.__iter__ = MagicMock(return_value=iter({"a": agent_a, "b": agent_b}.items()))
-        mock_agents.items.return_value = {"a": agent_a, "b": agent_b}.items()
-        mock_agents.__len__ = MagicMock(return_value=2)
 
-        ws = WeightedAgentScore(raw=0.65, weight=1.0, weighted=0.65)
-        mock_agg = MagicMock()
-        mock_agg.run.return_value = FinalReport(
-            ticker="MARUTI", company_name="Maruti Suzuki",
-            final_score=0.65, verdict="BUY",
-            weighted_agent_scores={"a": ws},
-        )
-        mock_agg_cls.return_value = mock_agg
+        with patch(
+            "backend.sectors.automobile.pipeline.orchestrator._SUB_AGENTS",
+            {"a": agent_a, "b": agent_b},
+        ), patch(
+            "backend.shared.pipeline.base_orchestrator.get_llm_client",
+            return_value=MagicMock(),
+        ), patch("backend.shared.pipeline.base_orchestrator.SignalAggregator"):
+            from core.pipeline.orchestrator import AutomobileAgentOrchestrator
+            orch = AutomobileAgentOrchestrator()
 
+        query = StockQuery(ticker="MARUTI", company_name="Maruti Suzuki India Ltd")
         fired: list[tuple[str, float]] = []
-        orch = AutomobileAgentOrchestrator()
-        orch.analyse("MARUTI", progress_callback=lambda name, score: fired.append((name, score)))
+        orch._run_via_graph(
+            query, run_id="r1",
+            progress_callback=lambda name, score: fired.append((name, score)),
+        )
 
         assert len(fired) == 2
+        assert {name for name, _ in fired} == {"a", "b"}
         assert all(isinstance(score, float) for _, score in fired)

@@ -5,73 +5,28 @@ Integration-level tests for the AutomobileAgentOrchestrator.
 All LLM calls are mocked — no real API calls or network access needed.
 
 What is tested:
-  - Ticker resolution (valid ticker, fallback on failure)
-  - All 5 agents are dispatched
-  - FinalReport is returned with correct structure
-  - Agent failure falls back to neutral score (doesn't crash pipeline)
+  - Ticker resolution falls back to raw input when LLM resolution fails
+  - Sync analyse() wiring returns the aggregator's FinalReport
+  - A single agent failure is contained by the worker-pool node (swarm
+    fallback) instead of crashing the pipeline
 """
 
-import json
-from unittest.mock import MagicMock, patch, call
-
-import pytest
+from unittest.mock import MagicMock, patch
 
 from core.pipeline.orchestrator import AutomobileAgentOrchestrator
-from tests.conftest import (
-    make_aggregator_json,
-    make_sales_demand_json,
-    make_fundamentals_json,
-    make_pattern_json,
-    make_sentiment_json,
-    make_risk_macro_json,
-)
-
-
-TICKER_RESOLUTION_JSON = json.dumps({
-    "ticker": "MARUTI",
-    "company_name": "Maruti Suzuki India Ltd",
-    "exchange": "NSE",
-    "sector": "Automobile",
-    "confidence": 0.99,
-})
-
-
-def _make_llm_side_effect(responses: list[str]):
-    """Return successive responses from a list."""
-    calls = iter(responses)
-
-    def side_effect(*args, **kwargs):
-        content = next(calls, make_aggregator_json())
-        mock_choice = MagicMock()
-        mock_choice.message.content = content
-        mock_resp = MagicMock()
-        mock_resp.choices = [mock_choice]
-        return mock_resp
-
-    return side_effect
 
 
 class TestOrchestratorTickerResolution:
-    @patch("services.clients.llm_client.OpenAI")
-    @patch("core.pipeline.orchestrator._SUB_AGENTS")
-    @patch("core.pipeline.orchestrator.SignalAggregator")
-    def test_valid_ticker_resolved(self, mock_agg_cls, mock_agents, mock_groq_cls):
-        # Mock orchestrator LLM for ticker resolution
-        mock_llm = MagicMock()
-        mock_groq_cls.return_value = mock_llm
-        mock_llm.chat.completions.create.return_value.choices[
-            0
-        ].message.content = TICKER_RESOLUTION_JSON
+    @patch("backend.shared.pipeline.base_orchestrator.get_llm_client")
+    @patch("backend.shared.pipeline.base_orchestrator.SignalAggregator")
+    def test_valid_ticker_resolved(self, mock_agg_cls, mock_llm_factory):
+        """Sync analyse() end-to-end wiring: resolve → weights → agents →
+        aggregate → report. All network/LLM seams on BaseSectorOrchestrator
+        are stubbed so only the wiring is exercised."""
+        mock_llm_factory.return_value = MagicMock()
 
-        # Mock all sub-agents to return neutral outputs
-        from core.schemas.pipeline import AgentOutput
-        for name, agent in mock_agents.items():
-            agent.run.return_value = AgentOutput(
-                agent=name, ticker="MARUTI", overall_score=0.6
-            )
-
-        # Mock aggregator
-        from core.schemas.pipeline import FinalReport
+        # Mock aggregator — analyse() returns whatever it produces.
+        from core.schemas.pipeline import FinalReport, StockQuery
         mock_agg_instance = MagicMock()
         mock_agg_cls.return_value = mock_agg_instance
         mock_agg_instance.run.return_value = FinalReport(
@@ -83,7 +38,16 @@ class TestOrchestratorTickerResolution:
         )
 
         orch = AutomobileAgentOrchestrator()
-        report = orch.analyse("MARUTI")
+        query = StockQuery(ticker="MARUTI", company_name="Maruti Suzuki India Ltd")
+        with patch.object(orch, "_resolve_ticker", return_value=query), \
+             patch.object(orch, "_prefetch_nse_data"), \
+             patch.object(orch, "_load_learned_weights", return_value=None), \
+             patch.object(orch, "_run_agents", return_value={}), \
+             patch("backend.shared.pipeline.base_orchestrator.log_run_summary"), \
+             patch("backend.shared.pipeline.base_orchestrator.log_run_api_usage"), \
+             patch("backend.shared.pipeline.base_orchestrator.log_analysis"), \
+             patch("backend.shared.pipeline.base_orchestrator.snapshot_usage", return_value={}):
+            report = orch.analyse("MARUTI")
         assert report.ticker == "MARUTI"
         assert report.verdict == "BUY"
 
@@ -101,39 +65,30 @@ class TestOrchestratorTickerResolution:
 
 
 class TestOrchestratorAgentFailure:
-    @patch("services.clients.llm_client.OpenAI")
-    @patch("core.pipeline.orchestrator._SUB_AGENTS")
-    @patch("core.pipeline.orchestrator.SignalAggregator")
-    def test_single_agent_failure_does_not_crash(
-        self, mock_agg_cls, mock_agents, mock_groq_cls
-    ):
-        """If one agent raises, it should be replaced with neutral output."""
-        mock_llm = MagicMock()
-        mock_groq_cls.return_value = mock_llm
-        mock_llm.chat.completions.create.return_value.choices[
-            0
-        ].message.content = TICKER_RESOLUTION_JSON
+    def test_single_agent_failure_does_not_crash(self):
+        """If one agent raises, the worker-pool node replaces it with a neutral
+        output rather than crashing the pipeline (swarm fallback). Drives the
+        real compiled LangGraph over two stub agents — no network, no LLM."""
+        from core.schemas.pipeline import AgentOutput, StockQuery
 
-        from core.schemas.pipeline import AgentOutput, FinalReport
-        for i, (name, agent) in enumerate(mock_agents.items()):
-            if i == 0:
-                agent.run.side_effect = RuntimeError("Simulated agent crash")
-            else:
-                agent.run.return_value = AgentOutput(
-                    agent=name, ticker="MARUTI", overall_score=0.6
-                )
+        failing = MagicMock()
+        failing.run.side_effect = RuntimeError("Simulated agent crash")
+        healthy = MagicMock()
+        healthy.run.return_value = AgentOutput(agent="b", ticker="MARUTI", overall_score=0.6)
 
-        mock_agg_instance = MagicMock()
-        mock_agg_cls.return_value = mock_agg_instance
-        mock_agg_instance.run.return_value = FinalReport(
-            ticker="MARUTI",
-            company_name="Maruti Suzuki India Ltd",
-            final_score=0.55,
-            verdict="NEUTRAL",
-            weighted_agent_scores={},
-        )
+        with patch(
+            "backend.sectors.automobile.pipeline.orchestrator._SUB_AGENTS",
+            {"a": failing, "b": healthy},
+        ), patch(
+            "backend.shared.pipeline.base_orchestrator.get_llm_client",
+            return_value=MagicMock(),
+        ), patch("backend.shared.pipeline.base_orchestrator.SignalAggregator"):
+            orch = AutomobileAgentOrchestrator()
 
-        orch = AutomobileAgentOrchestrator()
-        # Should not raise
-        report = orch.analyse("MARUTI")
-        assert report is not None
+        query = StockQuery(ticker="MARUTI", company_name="Maruti Suzuki India Ltd")
+        outputs = orch._run_via_graph(query, run_id="r1")  # must not raise
+
+        assert set(outputs) == {"a", "b"}
+        assert outputs["a"].error  # failing agent → neutral fallback carries error context
+        assert outputs["a"].overall_score == 0.5
+        assert outputs["b"].overall_score == 0.6

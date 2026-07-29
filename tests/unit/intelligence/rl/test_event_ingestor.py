@@ -90,9 +90,12 @@ def test_find_qualifying_events_date_window_cap_and_order(monkeypatch):
 
 
 def test_find_qualifying_events_unparseable_date_skipped(monkeypatch):
+    # The valid date must be relative to today, otherwise it drifts outside the
+    # lookback window as the calendar advances (the fixed "10-Jun-2026" here was
+    # a time-bomb that expired 30 days after 2026-06-10).
     items = [
         ("not-a-date", "Outcome of Board Meeting - Q4 Results"),
-        ("10-Jun-2026", "Earnings Call Transcript"),
+        (_fmt(date.today() - timedelta(days=10)), "Earnings Call Transcript"),
     ]
     monkeypatch.setattr(ei, "prefetch_nse_data", lambda ticker: _nse_payload(items))
 

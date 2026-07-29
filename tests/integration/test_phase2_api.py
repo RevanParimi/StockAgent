@@ -53,6 +53,26 @@ def _make_report(ticker: str = "MARUTI", score: float = 0.66, verdict: str = "BU
     )
 
 
+def _fake_orchestrator(*, report: FinalReport | None = None, error: Exception | None = None):
+    """
+    Build a (fake_class, instance) pair matching the current route seam.
+
+    Both /analyse and /ws/stream resolve the orchestrator via
+    ``get_orchestrator(sector)`` (backend.sectors), then do
+    ``OrchestratorClass()`` and ``await instance.analyse_async(ticker, ...)``.
+    So the patched ``get_orchestrator`` must *return a class* whose call
+    yields the instance. ``__name__`` is set because analyse.py logs it.
+    """
+    instance = MagicMock()
+    if error is not None:
+        instance.analyse_async = AsyncMock(side_effect=error)
+    else:
+        instance.analyse_async = AsyncMock(return_value=report)
+    fake_cls = MagicMock(return_value=instance)
+    fake_cls.__name__ = "AutomobileAgentOrchestrator"
+    return fake_cls, instance
+
+
 @pytest.fixture
 def client():
     """TestClient with no external dependencies."""
@@ -63,11 +83,13 @@ def client():
 
 @pytest.fixture
 def mock_orchestrator(mock_final_report):
-    """Patch AutomobileAgentOrchestrator so no LLM calls happen."""
-    with patch("services.api.routes.analyse.AutomobileAgentOrchestrator") as cls:
-        instance = MagicMock()
-        instance.analyse_async = AsyncMock(return_value=mock_final_report)
-        cls.return_value = instance
+    """Patch the sector→orchestrator lookup so no real orchestrator/LLM is built.
+
+    analyse.py imports ``get_orchestrator`` locally from ``backend.sectors`` at
+    call time, so it must be patched at that source module (not on the route).
+    """
+    fake_cls, instance = _fake_orchestrator(report=mock_final_report)
+    with patch("backend.sectors.get_orchestrator", return_value=fake_cls):
         yield instance
 
 
@@ -188,18 +210,14 @@ class TestAnalyseEndpoint:
         assert resp.status_code == 422
 
     def test_orchestrator_failure_returns_503(self, client):
-        with patch("services.api.routes.analyse.AutomobileAgentOrchestrator") as cls:
-            instance = MagicMock()
-            instance.analyse_async = AsyncMock(side_effect=RuntimeError("LLM unreachable"))
-            cls.return_value = instance
+        fake_cls, _ = _fake_orchestrator(error=RuntimeError("LLM unreachable"))
+        with patch("backend.sectors.get_orchestrator", return_value=fake_cls):
             resp = client.post("/analyse", json={"ticker": "MARUTI"})
         assert resp.status_code == 503
 
     def test_503_body_contains_detail(self, client):
-        with patch("services.api.routes.analyse.AutomobileAgentOrchestrator") as cls:
-            instance = MagicMock()
-            instance.analyse_async = AsyncMock(side_effect=RuntimeError("LLM unreachable"))
-            cls.return_value = instance
+        fake_cls, _ = _fake_orchestrator(error=RuntimeError("LLM unreachable"))
+        with patch("backend.sectors.get_orchestrator", return_value=fake_cls):
             body = client.post("/analyse", json={"ticker": "MARUTI"}).json()
         assert "detail" in body
 
@@ -287,11 +305,9 @@ class TestWebSocketStream:
             assert "ticker" in msg["detail"].lower()
 
     def test_ws_streams_complete_event(self, client, mock_final_report):
-        with patch("services.api.routes.stream.AutomobileAgentOrchestrator") as cls:
-            instance = MagicMock()
-            instance.analyse_async = AsyncMock(return_value=mock_final_report)
-            cls.return_value = instance
-
+        fake_cls, _ = _fake_orchestrator(report=mock_final_report)
+        # stream.py imports get_orchestrator at module level → patch it there.
+        with patch("services.api.routes.stream.get_orchestrator", return_value=fake_cls):
             with client.websocket_connect("/ws/stream?ticker=MARUTI") as ws:
                 events = []
                 while True:
@@ -304,11 +320,8 @@ class TestWebSocketStream:
         assert "complete" in event_types
 
     def test_ws_complete_event_contains_report(self, client, mock_final_report):
-        with patch("services.api.routes.stream.AutomobileAgentOrchestrator") as cls:
-            instance = MagicMock()
-            instance.analyse_async = AsyncMock(return_value=mock_final_report)
-            cls.return_value = instance
-
+        fake_cls, _ = _fake_orchestrator(report=mock_final_report)
+        with patch("services.api.routes.stream.get_orchestrator", return_value=fake_cls):
             with client.websocket_connect("/ws/stream?ticker=MARUTI") as ws:
                 events = []
                 while True:

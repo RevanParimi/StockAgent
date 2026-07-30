@@ -138,6 +138,20 @@ def _dedup_overnight(items: list[dict], threshold: float, max_items: int,
     return kept[:max_items]
 
 
+def _dedupe_notes(notes: list[str]) -> list[str]:
+    """Blank a relevance note that near-duplicates an earlier one (Jaccard>=0.6 on
+    normalized tokens) so 'why it matters' lines don't echo across items."""
+    out: list[str] = []
+    seen: list[set] = []
+    for n in notes:
+        toks = set(_norm_text(n).split())
+        dup = any(toks and s and len(toks & s) / (len(toks | s) or 1) >= 0.6 for s in seen)
+        out.append("" if dup else n)
+        if not dup and toks:
+            seen.append(toks)
+    return out
+
+
 def _dedup_ipos(rows: list[dict], max_items: int) -> list[dict]:
     """Dedup by symbol; a 'current' row beats 'upcoming'/'past'. First-seen order."""
     rank = {"current": 0, "upcoming": 1, "past": 2}
@@ -251,8 +265,10 @@ def _indent(text: str, width: int = 2) -> str:
 
 
 _PROMPT = """You are the narration layer of a personal stock-research tool.
-Write a 2-4 sentence morning headline (research tone; NEVER the word "advice")
-summarising the portfolio state and what matters today.
+Write a 2-4 sentence morning "headline": the market regime, the single overarching
+THEME of today's news, and the portfolio's posture. Do NOT enumerate or restate the
+individual overnight items (they are listed separately below as bullets). Research
+tone; NEVER the word "advice".
 
 Portfolio: {portfolio}
 Escalations flagged yesterday: {escalations}
@@ -263,7 +279,8 @@ Earnings within 3 sessions: {earnings}
 New discovery-shelf ideas: {adds}
 
 Also produce "overnight_notes": one short line (<=12 words) per overnight item, in the
-SAME numbered order, on why it matters to an Indian-equity investor. Empty list if none.
+SAME numbered order, each stating a DISTINCT, portfolio-relevant consequence for an
+Indian-equity investor. Do not repeat wording across notes. Empty list if none.
 
 Respond with JSON: {{"headline": "<2-4 sentences>", "overnight_notes": ["<line 1>", ...]}}"""
 
@@ -524,6 +541,7 @@ def build_morning_brief(
         brief["headline"], overnight_notes = narrated
     else:
         brief["headline"], overnight_notes = narrated, []
+    overnight_notes = _dedupe_notes(overnight_notes)
     for idx, item in enumerate(brief["overnight"]):
         if idx < len(overnight_notes) and overnight_notes[idx]:
             item["note"] = overnight_notes[idx]

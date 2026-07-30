@@ -409,3 +409,18 @@ def test_portfolio_extras_best_worst_and_last_exit():
 def test_portfolio_extras_empty_digest_is_blank():
     assert br._portfolio_extras({}) == {}
     assert br._portfolio_extras({"holdings": []}) == {}
+
+
+# -- Task 3: distinct why-it-matters notes (2026-07-30) --
+
+def test_dedupe_notes_blanks_near_duplicate():
+    notes = [
+        "Higher NRI/OCI limits could boost equity inflows.",
+        "Eased NRI/OCI limits boost equity inflows.",     # near-dup of #0
+        "Rupee support curbs imported inflation.",
+    ]
+    out = br._dedupe_notes(notes)
+    assert out[0] == notes[0]
+    assert out[1] == ""                                    # duplicate blanked
+    assert out[2] == notes[2]
+    assert len(out) == len(notes)                          # order/length preserved

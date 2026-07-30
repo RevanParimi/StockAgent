@@ -189,7 +189,7 @@ def send_push(
 
 def deliver(
     title: str, body: str, url: str = "/", user_id: str | None = None,
-    kind: str = "alert",
+    kind: str = "alert", html_body: str | None = None,
 ) -> dict:
     """Fan one message out to all configured channels. Never raises.
 
@@ -206,7 +206,7 @@ def deliver(
         if atlas_store.enabled():
             from core.delivery.outbox import enqueue_message
             uid = user_id or settings.PORTFOLIO_DEFAULT_USER_ID
-            queued = enqueue_message(uid, title, body, url=url, kind=kind)
+            queued = enqueue_message(uid, title, body, url=url, kind=kind, html_body=html_body)
             if queued:
                 logger.info("[delivery] %s — queued to outbox (%d row(s))", title, queued)
             return {"delivered": bool(queued), "queued": queued, "push": 0, "email": 0}
@@ -219,7 +219,7 @@ def deliver(
     except Exception as exc:
         logger.warning("[delivery] push channel failed (non-fatal): %s", exc)
     try:
-        emailed = int(send_email(title, body))
+        emailed = int(send_email(title, body, html_body=html_body))
     except Exception as exc:
         logger.warning("[delivery] email channel failed (non-fatal): %s", exc)
     if pushed or emailed:

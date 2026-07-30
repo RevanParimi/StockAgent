@@ -913,6 +913,8 @@ DELIVERY_BRIEF_IPO_STRONG_DEMAND_X: float = float(cfg("delivery.brief_ipo_strong
 DELIVERY_BRIEF_IPO_STRONG_QIB_X: float = float(cfg("delivery.brief_ipo_strong_qib_x", fallback=15.0))
 DELIVERY_BRIEF_IPO_SOFT_DEMAND_X: float = float(cfg("delivery.brief_ipo_soft_demand_x", fallback=2.0))
 DELIVERY_BRIEF_EARNINGS_WATCH_MAXLEN: int = int(cfg("delivery.brief_earnings_watch_maxlen", fallback=120))
+# HTML email (redesign 2026-07-30) — kill-switch for the styled HTML part
+DELIVERY_BRIEF_HTML_ENABLED: bool = bool(cfg("delivery.brief_html_enabled", fallback=True))
 
 # Public base URL of the deployed app — appended as a footer link to every
 # notification email so each one is one tap from opening the app. Railway sets

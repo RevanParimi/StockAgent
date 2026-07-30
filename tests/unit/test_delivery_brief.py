@@ -463,3 +463,29 @@ def test_render_brief_html_full_and_safe():
 def test_render_brief_html_never_raises_on_empty():
     assert isinstance(br.render_brief_html({}), str)
     assert isinstance(br.render_brief_html({"date": "2026-07-30", "portfolio": None}), str)
+
+
+# -- Task 6: run_morning_brief renders HTML when enabled; kill-switch => None --
+
+def test_run_brief_renders_html_when_enabled(tmp_path, monkeypatch):
+    monkeypatch.setattr(br, "is_trading_day", lambda d: True)
+    monkeypatch.setattr(br, "active_user_ids", lambda: ["u1"])
+    monkeypatch.setattr(br.settings, "PORTFOLIO_DATA_DIR", str(tmp_path))
+    monkeypatch.setattr(br.settings, "PREDICTION_DATA_DIR", str(tmp_path / "predictions"))
+    monkeypatch.setattr(br.settings, "DISCOVERY_DATA_DIR", str(tmp_path / "discovery"))
+    monkeypatch.setattr(br.settings, "DELIVERY_BRIEF_HTML_ENABLED", True)
+    _mk_store(tmp_path)
+    monkeypatch.setattr(br, "_narrate_brief", lambda b: ("h", []))
+    monkeypatch.setattr(br, "_overnight_items", lambda *a, **k: [])
+    monkeypatch.setattr(br, "_earnings_soon", lambda *a, **k: [])
+    monkeypatch.setattr(br, "_ipo_watch", lambda *a, **k: [])
+    monkeypatch.setattr(br, "upcoming_lockin_alerts", lambda on, symbols=None: [])
+    captured = {}
+    monkeypatch.setattr(br, "deliver", lambda title, body, **k: captured.update(k) or {"delivered": True})
+    br.run_morning_brief(on=date(2026, 7, 9))
+    assert captured.get("html_body", "").lstrip().lower().startswith("<!doctype html>")
+
+    captured.clear()
+    monkeypatch.setattr(br.settings, "DELIVERY_BRIEF_HTML_ENABLED", False)
+    br.run_morning_brief(on=date(2026, 7, 9))
+    assert captured.get("html_body") is None            # kill-switch => text only

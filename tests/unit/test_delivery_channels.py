@@ -207,3 +207,28 @@ def test_send_email_html_none_is_single_part(monkeypatch):
     monkeypatch.setattr(ch.smtplib, "SMTP", _FakeSMTP)
     assert send_email("Subj", "plain body") is True
     assert "multipart" not in sent["msg"].lower()
+
+
+# -- Task 6: deliver threads html to email, never to push (2026-07-30) --
+
+def test_deliver_passes_html_to_email_not_push(monkeypatch):
+    monkeypatch.setattr(ch.settings, "DELIVERY_ENABLED", True)
+    seen = {}
+
+    def _fake_push(title, body, **k):
+        seen["push"] = (body, k)
+        return 0
+
+    def _fake_email(title, body, html_body=None):
+        seen["email"] = (body, html_body)
+        return 1
+
+    monkeypatch.setattr(ch, "send_push", _fake_push)
+    monkeypatch.setattr(ch, "send_email", _fake_email)
+    # force inline path (Atlas off)
+    import services.data.stores.atlas_store as a
+    monkeypatch.setattr(a, "enabled", lambda: False)
+    out = deliver("t", "plain", html_body="<b>h</b>", kind="brief")
+    assert out["email"] == 1
+    assert seen["email"] == ("plain", "<b>h</b>")     # html reached email
+    assert "html_body" not in seen["push"][1]         # push never got html

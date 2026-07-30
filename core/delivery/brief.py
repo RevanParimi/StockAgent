@@ -926,8 +926,15 @@ def run_morning_brief(on: date | None = None) -> dict:
             store = PortfolioStore(user_id=user_id)
             brief = build_morning_brief(user_id, on, store=store)
             store.save_brief(brief)
-            deliver(f"Morning brief — {on}", render_brief_text(brief),
-                    url="/#/inbox/brief", user_id=user_id, kind="brief")
+            text = render_brief_text(brief)
+            html_body = None
+            if settings.DELIVERY_BRIEF_HTML_ENABLED:
+                try:
+                    html_body = render_brief_html(brief)
+                except Exception as exc:      # defence in depth (renderer already guards)
+                    logger.warning("[brief] html render failed, sending text-only (non-fatal): %s", exc)
+            deliver(f"Morning brief — {on}", text, url="/#/inbox/brief",
+                    user_id=user_id, kind="brief", html_body=html_body)
             if brief["lockin_flags"]:
                 emit_alerts(
                     [AlertEvent(date=on.isoformat(), kind="lockin_expiry",

@@ -98,18 +98,28 @@ def _with_app_link(body: str) -> str:
     return f"{body.rstrip()}\n\n----------\nOpen StockAgent → {url}/"
 
 
-def send_email(subject: str, body: str, attachments: list[Path] | None = None) -> bool:
+def send_email(subject: str, body: str, attachments: list[Path] | None = None,
+               html_body: str | None = None) -> bool:
     """SMTP STARTTLS send to DELIVERY_EMAIL_TO. False when disabled/unconfigured
     or on any failure — never raises. `attachments` (AUD-088): file paths to
-    attach; the whole send fails closed if any is unreadable."""
+    attach; the whole send fails closed if any is unreadable. `html_body`
+    (2026-07-30): when set, the message is multipart/alternative — plain `body`
+    first, HTML last (clients prefer the last part)."""
     if not (settings.DELIVERY_EMAIL_ENABLED and settings.SMTP_HOST
             and settings.DELIVERY_EMAIL_TO):
         return False
     body = _with_app_link(body)
     try:
+        alt: MIMEText | MIMEMultipart
+        if html_body:
+            alt = MIMEMultipart("alternative")
+            alt.attach(MIMEText(body, "plain", "utf-8"))
+            alt.attach(MIMEText(html_body, "html", "utf-8"))   # last = preferred
+        else:
+            alt = MIMEText(body, "plain", "utf-8")
         if attachments:
-            msg: MIMEText | MIMEMultipart = MIMEMultipart()
-            msg.attach(MIMEText(body, "plain", "utf-8"))
+            msg: MIMEText | MIMEMultipart = MIMEMultipart("mixed")
+            msg.attach(alt)
             for path in attachments:
                 part = MIMEBase("application", "octet-stream")
                 part.set_payload(Path(path).read_bytes())
@@ -118,7 +128,7 @@ def send_email(subject: str, body: str, attachments: list[Path] | None = None) -
                                 f'attachment; filename="{Path(path).name}"')
                 msg.attach(part)
         else:
-            msg = MIMEText(body, "plain", "utf-8")
+            msg = alt
         msg["Subject"] = subject
         msg["From"] = settings.SMTP_USER or "stockagent@localhost"
         msg["To"] = settings.DELIVERY_EMAIL_TO
@@ -179,7 +189,7 @@ def send_push(
 
 def deliver(
     title: str, body: str, url: str = "/", user_id: str | None = None,
-    kind: str = "alert",
+    kind: str = "alert", html_body: str | None = None,
 ) -> dict:
     """Fan one message out to all configured channels. Never raises.
 
@@ -196,7 +206,7 @@ def deliver(
         if atlas_store.enabled():
             from core.delivery.outbox import enqueue_message
             uid = user_id or settings.PORTFOLIO_DEFAULT_USER_ID
-            queued = enqueue_message(uid, title, body, url=url, kind=kind)
+            queued = enqueue_message(uid, title, body, url=url, kind=kind, html_body=html_body)
             if queued:
                 logger.info("[delivery] %s — queued to outbox (%d row(s))", title, queued)
             return {"delivered": bool(queued), "queued": queued, "push": 0, "email": 0}
@@ -209,7 +219,7 @@ def deliver(
     except Exception as exc:
         logger.warning("[delivery] push channel failed (non-fatal): %s", exc)
     try:
-        emailed = int(send_email(title, body))
+        emailed = int(send_email(title, body, html_body=html_body))
     except Exception as exc:
         logger.warning("[delivery] email channel failed (non-fatal): %s", exc)
     if pushed or emailed:

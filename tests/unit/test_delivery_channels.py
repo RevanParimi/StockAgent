@@ -154,3 +154,81 @@ def test_deliver_warns_when_nothing_delivered(monkeypatch, caplog):
         out = deliver("Morning brief", "body")
     assert out["delivered"] is False
     assert any("NOWHERE" in r.message for r in caplog.records)
+
+
+# -- Task 5: send_email multipart/alternative with optional HTML (2026-07-30) --
+
+def test_send_email_multipart_alternative_when_html(monkeypatch):
+    import email as _email
+    sent = {}
+
+    class _FakeSMTP:
+        def __init__(self, host, port, timeout=None): pass
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+        def starttls(self): pass
+        def login(self, u, p): pass
+        def sendmail(self, frm, to, msg): sent["msg"] = msg
+
+    monkeypatch.setattr(ch.settings, "DELIVERY_EMAIL_ENABLED", True)
+    monkeypatch.setattr(ch.settings, "SMTP_HOST", "smtp.example.com")
+    monkeypatch.setattr(ch.settings, "SMTP_USER", "u@example.com")
+    monkeypatch.setattr(ch.settings, "SMTP_PASSWORD", "pw")
+    monkeypatch.setattr(ch.settings, "DELIVERY_EMAIL_TO", "me@example.com")
+    monkeypatch.setattr(ch.settings, "APP_PUBLIC_URL", "")
+    monkeypatch.setattr(ch.smtplib, "SMTP", _FakeSMTP)
+
+    assert send_email("Subj", "plain body", html_body="<b>hi</b>") is True
+    parsed = _email.message_from_string(sent["msg"])
+    assert parsed.get_content_type() == "multipart/alternative"
+    kinds = [p.get_content_type() for p in parsed.walk()]
+    assert "text/plain" in kinds and "text/html" in kinds
+    # HTML must be the LAST leaf part (preferred by clients).
+    leaves = [p.get_content_type() for p in parsed.walk() if not p.is_multipart()]
+    assert leaves[-1] == "text/html"
+
+
+def test_send_email_html_none_is_single_part(monkeypatch):
+    sent = {}
+
+    class _FakeSMTP:
+        def __init__(self, host, port, timeout=None): pass
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+        def starttls(self): pass
+        def login(self, u, p): pass
+        def sendmail(self, frm, to, msg): sent["msg"] = msg
+
+    monkeypatch.setattr(ch.settings, "DELIVERY_EMAIL_ENABLED", True)
+    monkeypatch.setattr(ch.settings, "SMTP_HOST", "smtp.example.com")
+    monkeypatch.setattr(ch.settings, "SMTP_USER", "")
+    monkeypatch.setattr(ch.settings, "DELIVERY_EMAIL_TO", "me@example.com")
+    monkeypatch.setattr(ch.settings, "APP_PUBLIC_URL", "")
+    monkeypatch.setattr(ch.smtplib, "SMTP", _FakeSMTP)
+    assert send_email("Subj", "plain body") is True
+    assert "multipart" not in sent["msg"].lower()
+
+
+# -- Task 6: deliver threads html to email, never to push (2026-07-30) --
+
+def test_deliver_passes_html_to_email_not_push(monkeypatch):
+    monkeypatch.setattr(ch.settings, "DELIVERY_ENABLED", True)
+    seen = {}
+
+    def _fake_push(title, body, **k):
+        seen["push"] = (body, k)
+        return 0
+
+    def _fake_email(title, body, html_body=None):
+        seen["email"] = (body, html_body)
+        return 1
+
+    monkeypatch.setattr(ch, "send_push", _fake_push)
+    monkeypatch.setattr(ch, "send_email", _fake_email)
+    # force inline path (Atlas off)
+    import services.data.stores.atlas_store as a
+    monkeypatch.setattr(a, "enabled", lambda: False)
+    out = deliver("t", "plain", html_body="<b>h</b>", kind="brief")
+    assert out["email"] == 1
+    assert seen["email"] == ("plain", "<b>h</b>")     # html reached email
+    assert "html_body" not in seen["push"][1]         # push never got html

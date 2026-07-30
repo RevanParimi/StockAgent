@@ -165,3 +165,38 @@ def test_drainer_start_is_flag_gated(env, monkeypatch):
         outbox.stop_outbox_drainer()
         t.join(timeout=2)
     assert not t.is_alive()
+
+
+# --- HTML carry-through (redesign 2026-07-30) -------------------------------
+
+def test_enqueue_message_stores_full_body_and_html(monkeypatch):
+    captured = {}
+
+    def _fake_enqueue(user_id, channel, kind, payload_ref, dedupe_key):
+        captured[channel] = payload_ref
+        return 1
+
+    monkeypatch.setattr(outbox, "enqueue", _fake_enqueue)
+    monkeypatch.setattr(settings, "DELIVERY_PUSH_ENABLED", True, raising=False)
+    monkeypatch.setattr(settings, "DELIVERY_EMAIL_ENABLED", True, raising=False)
+
+    long_body = "x" * 4000
+    n = outbox.enqueue_message("u1", "Subj", long_body, kind="brief", html_body="<b>hi</b>")
+    assert n == 2
+    email_payload = json.loads(captured["email"])
+    assert email_payload["html"] == "<b>hi</b>"
+    assert len(email_payload["body"]) == 4000          # full body stored (no 1500 clip)
+
+
+def test_send_row_caps_push_and_passes_html_to_email(monkeypatch):
+    calls = {}
+    monkeypatch.setattr(channels, "send_push",
+                        lambda title, body, url="/", user_id=None: calls.setdefault("push", body) and 1 or 1)
+    monkeypatch.setattr(channels, "send_email",
+                        lambda title, body, html_body=None: calls.__setitem__("email", (len(body), html_body)) or True)
+
+    payload = json.dumps({"title": "t", "body": "y" * 4000, "url": "/", "html": "<i>h</i>"})
+    assert outbox._send_row({"id": 1, "user_id": "u1", "channel": "push", "payload_ref": payload}) is True
+    assert len(calls["push"]) == 1500                   # push capped at send time
+    assert outbox._send_row({"id": 2, "user_id": "u1", "channel": "email", "payload_ref": payload}) is True
+    assert calls["email"] == (4000, "<i>h</i>")         # email gets full body + html

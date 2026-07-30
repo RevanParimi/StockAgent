@@ -356,3 +356,136 @@ def test_build_attaches_overnight_notes(tmp_path, monkeypatch):
     brief = br.build_morning_brief("u1", date(2026, 7, 9), store=store)
     assert brief["headline"] == "Head."
     assert brief["overnight"][0]["note"] == "note-A"
+
+
+# -- Task 1: overnight de-dup — salient-entity clustering (redesign 2026-07-30) --
+
+def test_dedup_overnight_merges_salient_entities():
+    # The two NRI/OCI items are one story worded differently; the rupee item is separate.
+    items = [
+        {"headline": "RBI measures boost rupee amid Middle East conflict.", "severity": "HIGH"},
+        {"headline": "Govt raises equity limits for NRIs, OCIs to boost foreign investment.", "severity": "HIGH"},
+        {"headline": "RBI increases NRI/OCI investment limits without SEBI registration.", "severity": "HIGH"},
+    ]
+    stop = frozenset(br.settings.DELIVERY_BRIEF_OVERNIGHT_STOPWORDS)
+    out = br._dedup_overnight(items, 0.6, 5, min_shared=2, stopwords=stop)
+    heads = [o["headline"] for o in out]
+    assert len(out) == 2                                   # 3 -> 2
+    assert any("rupee" in h.lower() for h in heads)        # rupee survives
+    assert sum("nri" in h.lower() or "oci" in h.lower() for h in heads) == 1  # one NRI row
+
+
+def test_dedup_overnight_min_shared_zero_is_legacy():
+    # min_shared=0 disables the entity path — unrelated items are NOT merged.
+    items = [
+        {"headline": "Govt raises equity limits for NRIs, OCIs.", "severity": "HIGH"},
+        {"headline": "RBI increases NRI/OCI investment limits without SEBI.", "severity": "HIGH"},
+    ]
+    out = br._dedup_overnight(items, 0.6, 5)               # legacy call, no entity merge
+    assert len(out) == 2
+
+
+# -- Task 2: richer portfolio line — best/worst/count/last-exit (2026-07-30) --
+
+def test_portfolio_extras_best_worst_and_last_exit():
+    digest = {
+        "holdings": [
+            {"symbol": "SUZLON", "pnl_pct": -10.9},
+            {"symbol": "PAYTM", "pnl_pct": -2.3},
+            {"symbol": "TATAELXSI", "pnl_pct": -2.9},
+        ],
+        "trades": [
+            {"symbol": "IDFCFIRSTB", "side": "SELL", "pnl_pct": 6.1},
+        ],
+    }
+    x = br._portfolio_extras(digest)
+    assert x["holdings_count"] == 3
+    assert x["best"] == {"symbol": "PAYTM", "pnl_pct": -2.3}
+    assert x["worst"] == {"symbol": "SUZLON", "pnl_pct": -10.9}
+    assert x["all_below_cost"] is True
+    assert x["last_exit"] == {"symbol": "IDFCFIRSTB", "pnl_pct": 6.1}
+
+
+def test_portfolio_extras_empty_digest_is_blank():
+    assert br._portfolio_extras({}) == {}
+    assert br._portfolio_extras({"holdings": []}) == {}
+
+
+# -- Task 3: distinct why-it-matters notes (2026-07-30) --
+
+def test_dedupe_notes_blanks_near_duplicate():
+    notes = [
+        "Higher NRI/OCI limits could boost equity inflows.",
+        "Eased NRI/OCI limits boost equity inflows.",     # near-dup of #0
+        "Rupee support curbs imported inflation.",
+    ]
+    out = br._dedupe_notes(notes)
+    assert out[0] == notes[0]
+    assert out[1] == ""                                    # duplicate blanked
+    assert out[2] == notes[2]
+    assert len(out) == len(notes)                          # order/length preserved
+
+
+# -- Task 4: render_brief_html — clean-fintech email-safe renderer (2026-07-30) --
+
+def test_render_brief_html_full_and_safe():
+    brief = {
+        "date": "2026-07-30",
+        "headline": "Calm NORMAL market; policy-heavy overnight tape.",
+        "portfolio": {"portfolio_value": 556826.57, "total_pnl_pct": -6.81,
+                      "holdings_count": 8, "all_below_cost": True,
+                      "best": {"symbol": "PAYTM", "pnl_pct": -2.3},
+                      "worst": {"symbol": "SUZLON", "pnl_pct": -10.9},
+                      "last_exit": {"symbol": "IDFCFIRSTB", "pnl_pct": 6.1}},
+        "advisor_flags": [],
+        "regime": {"label": "NORMAL"},
+        "overnight": [{"headline": "RBI steadies the rupee.", "severity": "HIGH",
+                       "note": "Curbs imported-inflation risk."}],
+        "earnings_soon": [{"symbol": "WAAREEENER", "date": "2026-07-30", "watch": ""}],
+        "discovery_adds": [],
+        "ipo_watch": [{"symbol": "XTRANET", "company": "Xtranet Technologies",
+                       "status": "current", "issue_price": 127.0,
+                       "qib_x": None, "retail_x": None, "total_x": None}],
+        "lockin_flags": [{"symbol": "KISSHT", "kind": "anchor_remaining", "expiry": "2026-08-06"}],
+    }
+    html = br.render_brief_html(brief)
+    assert html.lstrip().lower().startswith("<!doctype html>")
+    assert "<script" not in html.lower()                       # no scripts
+    assert "http://" not in html and 'src="https://' not in html  # no external images
+    assert 'style="' in html                                    # inline styles present
+    for token in ("Morning Brief", "5,56,827", "PAYTM", "SUZLON", "IDFCFIRSTB",
+                  "RBI steadies the rupee.", "Curbs imported-inflation risk.",
+                  "WAAREEENER", "XTRANET", "KISSHT",
+                  "never personal advice"):
+        assert token in html
+
+
+def test_render_brief_html_never_raises_on_empty():
+    assert isinstance(br.render_brief_html({}), str)
+    assert isinstance(br.render_brief_html({"date": "2026-07-30", "portfolio": None}), str)
+
+
+# -- Task 6: run_morning_brief renders HTML when enabled; kill-switch => None --
+
+def test_run_brief_renders_html_when_enabled(tmp_path, monkeypatch):
+    monkeypatch.setattr(br, "is_trading_day", lambda d: True)
+    monkeypatch.setattr(br, "active_user_ids", lambda: ["u1"])
+    monkeypatch.setattr(br.settings, "PORTFOLIO_DATA_DIR", str(tmp_path))
+    monkeypatch.setattr(br.settings, "PREDICTION_DATA_DIR", str(tmp_path / "predictions"))
+    monkeypatch.setattr(br.settings, "DISCOVERY_DATA_DIR", str(tmp_path / "discovery"))
+    monkeypatch.setattr(br.settings, "DELIVERY_BRIEF_HTML_ENABLED", True)
+    _mk_store(tmp_path)
+    monkeypatch.setattr(br, "_narrate_brief", lambda b: ("h", []))
+    monkeypatch.setattr(br, "_overnight_items", lambda *a, **k: [])
+    monkeypatch.setattr(br, "_earnings_soon", lambda *a, **k: [])
+    monkeypatch.setattr(br, "_ipo_watch", lambda *a, **k: [])
+    monkeypatch.setattr(br, "upcoming_lockin_alerts", lambda on, symbols=None: [])
+    captured = {}
+    monkeypatch.setattr(br, "deliver", lambda title, body, **k: captured.update(k) or {"delivered": True})
+    br.run_morning_brief(on=date(2026, 7, 9))
+    assert captured.get("html_body", "").lstrip().lower().startswith("<!doctype html>")
+
+    captured.clear()
+    monkeypatch.setattr(br.settings, "DELIVERY_BRIEF_HTML_ENABLED", False)
+    br.run_morning_brief(on=date(2026, 7, 9))
+    assert captured.get("html_body") is None            # kill-switch => text only

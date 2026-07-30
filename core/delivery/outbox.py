@@ -87,15 +87,20 @@ def enqueue(user_id: str, channel: str, kind: str, payload_ref: str,
 
 
 def enqueue_message(user_id: str, title: str, body: str, *, url: str = "/",
-                    kind: str = "alert") -> int:
+                    kind: str = "alert", html_body: str | None = None) -> int:
     """Fan one logical message into the outbox as per-channel rows, mirroring
     `deliver()`'s push+email fan-out — but only for channels currently enabled
-    (so a permanently-disabled channel never accrues dead-letters). The payload
-    is stored inline; the dedupe key carries a content hash so re-running an
-    identical brief dedupes while two distinct alert bundles each deliver.
-    Returns the number of rows enqueued (0 when nothing was queued)."""
+    (so a permanently-disabled channel never accrues dead-letters). The full
+    payload is stored inline ({title, body, url, html}); the push length cap is
+    applied at *send* time (see `_send_row`) so the email row keeps the full text
+    + HTML. The dedupe key carries a content hash so re-running an identical brief
+    dedupes while two distinct alert bundles each deliver. Returns the number of
+    rows enqueued (0 when nothing was queued)."""
     from core.config import settings
-    payload_ref = json.dumps({"title": title, "body": body[:1500], "url": url})
+    payload = {"title": title, "body": body, "url": url}
+    if html_body:
+        payload["html"] = html_body
+    payload_ref = json.dumps(payload)
     digest = hashlib.sha1(body.encode("utf-8")).hexdigest()[:12]
     base = f"{user_id}|{kind}|{_now().date().isoformat()}|{digest}"
     n = 0
@@ -118,13 +123,13 @@ def _send_row(row) -> bool:
     except Exception:
         payload = {}
     title, body = payload.get("title", ""), payload.get("body", "")
-    url = payload.get("url", "/")
+    url, html_body = payload.get("url", "/"), payload.get("html")
     from core.delivery.channels import send_email, send_push
     try:
         if row["channel"] == "push":
-            return send_push(title, body, url=url, user_id=row["user_id"]) > 0
+            return send_push(title, body[:1500], url=url, user_id=row["user_id"]) > 0
         if row["channel"] == "email":
-            return bool(send_email(title, body))
+            return bool(send_email(title, body, html_body=html_body))
     except Exception as exc:
         logger.warning("[outbox] send failed for row %s (non-fatal): %s",
                        row["id"], exc)

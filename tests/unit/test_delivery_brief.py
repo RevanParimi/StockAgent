@@ -356,3 +356,30 @@ def test_build_attaches_overnight_notes(tmp_path, monkeypatch):
     brief = br.build_morning_brief("u1", date(2026, 7, 9), store=store)
     assert brief["headline"] == "Head."
     assert brief["overnight"][0]["note"] == "note-A"
+
+
+# -- Task 1: overnight de-dup — salient-entity clustering (redesign 2026-07-30) --
+
+def test_dedup_overnight_merges_salient_entities():
+    # The two NRI/OCI items are one story worded differently; the rupee item is separate.
+    items = [
+        {"headline": "RBI measures boost rupee amid Middle East conflict.", "severity": "HIGH"},
+        {"headline": "Govt raises equity limits for NRIs, OCIs to boost foreign investment.", "severity": "HIGH"},
+        {"headline": "RBI increases NRI/OCI investment limits without SEBI registration.", "severity": "HIGH"},
+    ]
+    stop = frozenset(br.settings.DELIVERY_BRIEF_OVERNIGHT_STOPWORDS)
+    out = br._dedup_overnight(items, 0.6, 5, min_shared=2, stopwords=stop)
+    heads = [o["headline"] for o in out]
+    assert len(out) == 2                                   # 3 -> 2
+    assert any("rupee" in h.lower() for h in heads)        # rupee survives
+    assert sum("nri" in h.lower() or "oci" in h.lower() for h in heads) == 1  # one NRI row
+
+
+def test_dedup_overnight_min_shared_zero_is_legacy():
+    # min_shared=0 disables the entity path — unrelated items are NOT merged.
+    items = [
+        {"headline": "Govt raises equity limits for NRIs, OCIs.", "severity": "HIGH"},
+        {"headline": "RBI increases NRI/OCI investment limits without SEBI.", "severity": "HIGH"},
+    ]
+    out = br._dedup_overnight(items, 0.6, 5)               # legacy call, no entity merge
+    assert len(out) == 2

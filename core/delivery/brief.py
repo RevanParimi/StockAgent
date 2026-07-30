@@ -92,28 +92,49 @@ def _norm_text(s: str) -> str:
     return re.sub(r"[^a-z0-9 ]", "", (s or "").lower()).strip()
 
 
-def _dedup_overnight(items: list[dict], threshold: float, max_items: int) -> list[dict]:
-    """Collapse near-duplicate stories (prefix or Jaccard>=threshold); keep the
-    longest headline per cluster; return in first-seen order, capped."""
+def _salient_tokens(headline: str, stopwords: frozenset) -> set[str]:
+    """Distinctive-entity set for near-duplicate detection: slash-split (NRI/OCI ->
+    two tokens), keep alnum, drop stopwords + short non-numeric tokens, crude
+    singularise trailing 's'. Generic actors/verbs (rbi, boost, raise…) live in the
+    stoplist so two stories don't cluster just for sharing them."""
+    s = re.sub(r"[^a-z0-9 ]", " ", (headline or "").lower().replace("/", " "))
+    out: set[str] = set()
+    for t in s.split():
+        if t.endswith("s") and len(t) > 3:
+            t = t[:-1]
+        if t in stopwords or (len(t) < 3 and not t.isdigit()):
+            continue
+        out.add(t)
+    return out
+
+
+def _dedup_overnight(items: list[dict], threshold: float, max_items: int,
+                     min_shared: int = 0, stopwords: frozenset = frozenset()) -> list[dict]:
+    """Collapse near-duplicate stories and keep the longest headline per cluster.
+    Two items merge when they share a headline prefix, Jaccard>=threshold, OR (when
+    min_shared>0) share >= min_shared salient entities. First-seen order, capped."""
     kept: list[dict] = []
     kept_norm: list[str] = []
     kept_tok: list[set] = []
+    kept_sal: list[set] = []
     for it in items:
         norm = _norm_text(it["headline"])
         toks = set(norm.split())
         if not toks:
             continue
+        sal = _salient_tokens(it["headline"], stopwords) if min_shared else set()
         dup = None
         for i, kn in enumerate(kept_norm):
             inter = len(toks & kept_tok[i])
             union = len(toks | kept_tok[i]) or 1
-            if norm in kn or kn in norm or (inter / union) >= threshold:
+            entity_hit = min_shared and len(sal & kept_sal[i]) >= min_shared
+            if norm in kn or kn in norm or (inter / union) >= threshold or entity_hit:
                 dup = i
                 break
         if dup is None:
-            kept.append(it); kept_norm.append(norm); kept_tok.append(toks)
+            kept.append(it); kept_norm.append(norm); kept_tok.append(toks); kept_sal.append(sal)
         elif len(it["headline"]) > len(kept[dup]["headline"]):
-            kept[dup] = it; kept_norm[dup] = norm; kept_tok[dup] = toks
+            kept[dup] = it; kept_norm[dup] = norm; kept_tok[dup] = toks; kept_sal[dup] = sal
     return kept[:max_items]
 
 
@@ -255,7 +276,10 @@ def _overnight_items(max_items: int | None = None) -> list[dict]:
                 "headline": _clean_headline(text, settings.DELIVERY_BRIEF_OVERNIGHT_MAXLEN),
                 "severity": i.get("severity", "HIGH"),
             })
-        return _dedup_overnight(items, settings.DELIVERY_BRIEF_OVERNIGHT_DEDUP_THRESHOLD, mi)
+        return _dedup_overnight(
+            items, settings.DELIVERY_BRIEF_OVERNIGHT_DEDUP_THRESHOLD, mi,
+            min_shared=settings.DELIVERY_BRIEF_OVERNIGHT_DEDUP_MIN_SHARED,
+            stopwords=frozenset(settings.DELIVERY_BRIEF_OVERNIGHT_STOPWORDS))
     except Exception as exc:
         logger.warning("[brief] macro feed read failed (non-fatal): %s", exc)
         return []

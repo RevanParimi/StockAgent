@@ -433,6 +433,12 @@ delivery:
   brief_ipo_strong_qib_x: 15.0         # qib-x at/above => STRONG lean
   brief_ipo_soft_demand_x: 2.0         # total-x AND qib-x below => SOFT lean
   brief_earnings_watch_maxlen: 120     # cap for the earnings "watch" line
+  # Overnight de-dup (2026-07-30): cluster near-duplicate stories by salient entity
+  brief_overnight_dedup_min_shared_entities: 2   # >= this many shared salient entities => same story
+  brief_overnight_stopwords: [the, a, an, of, for, to, in, on, and, or, as, at, by,
+    with, from, up, its, into, over, without, amid, new, plan, move, step, measure,
+    raise, boost, increase, hike, support, ease, rbi, govt, government, india, indian,
+    market, stock, share, sensex, nifty]
 
 # =============================================================================
 # Atlas M1 — user-plane relational core (data/atlas.db). Ships DORMANT: the whole

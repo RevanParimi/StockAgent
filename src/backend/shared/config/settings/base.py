@@ -897,6 +897,14 @@ DELIVERY_INDEX_WATCH: list[str] = list(cfg(
 DELIVERY_BRIEF_MAX_OVERNIGHT: int = int(cfg("delivery.brief_max_overnight", fallback=3))
 DELIVERY_BRIEF_OVERNIGHT_DEDUP_THRESHOLD: float = float(cfg("delivery.brief_overnight_dedup_threshold", fallback=0.6))
 DELIVERY_BRIEF_OVERNIGHT_MAXLEN: int = int(cfg("delivery.brief_overnight_maxlen", fallback=240))
+DELIVERY_BRIEF_OVERNIGHT_DEDUP_MIN_SHARED: int = int(cfg("delivery.brief_overnight_dedup_min_shared_entities", fallback=2))
+DELIVERY_BRIEF_OVERNIGHT_STOPWORDS: list = list(cfg("delivery.brief_overnight_stopwords", fallback=[
+    "the", "a", "an", "of", "for", "to", "in", "on", "and", "or", "as", "at", "by",
+    "with", "from", "up", "its", "into", "over", "without", "amid", "new", "plan",
+    "move", "step", "measure", "raise", "boost", "increase", "hike", "support", "ease",
+    "rbi", "govt", "government", "india", "indian", "market", "stock", "share",
+    "sensex", "nifty",
+]))
 DELIVERY_BRIEF_MAX_IDEAS: int = int(cfg("delivery.brief_max_ideas", fallback=5))
 DELIVERY_BRIEF_IDEA_REASON_MAXLEN: int = int(cfg("delivery.brief_idea_reason_maxlen", fallback=180))
 DELIVERY_BRIEF_MAX_IPOS: int = int(cfg("delivery.brief_max_ipos", fallback=3))

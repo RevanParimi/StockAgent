@@ -6,6 +6,7 @@ Research tone, never "advice" (spec §2).
 """
 from __future__ import annotations
 
+import html as _htmlmod
 import json
 import logging
 import re
@@ -48,6 +49,50 @@ _VERDICT_PLAIN: dict[str, str] = {
 # Sentence end = punctuation followed by whitespace (decimal-safe: "547.86" has
 # no space after the dot, so it is not treated as a sentence boundary).
 _SENT_END = re.compile(r"[.!?]\s")
+
+# -- HTML email renderer (clean-fintech, email-safe) — redesign 2026-07-30 -----
+_FONT = "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif"
+_HTML = {
+    "page": "#e9eef3", "card": "#ffffff", "ink": "#0f172a", "body": "#334155",
+    "muted": "#64748b", "hair": "#e4e9f0", "hair_soft": "#eef2f7",
+    "accent": "#0f766e", "accent_deep": "#115e59", "neg": "#b91c1c", "pos": "#15803d",
+    "warn": "#b45309", "hi_bg": "#fdeceb", "hi_ink": "#b91c1c",
+    "pill_bg": "#ecfdf5", "pill_bd": "#a7f3d0", "pill_ink": "#0f766e", "kpi": "#f4faf9",
+}
+
+
+def _esc(s) -> str:
+    return _htmlmod.escape("" if s is None else str(s))
+
+
+def _inr(v) -> str:
+    """Indian-format rupee, e.g. 556826.57 -> '5,56,827' (no decimals)."""
+    try:
+        n = int(round(float(v)))
+    except (TypeError, ValueError):
+        return "0"
+    sign, n = ("-" if n < 0 else ""), abs(n)
+    s = str(n)
+    if len(s) <= 3:
+        return sign + s
+    head, tail = s[:-3], s[-3:]
+    parts: list[str] = []
+    while len(head) > 2:
+        parts.insert(0, head[-2:]); head = head[:-2]
+    parts.insert(0, head)
+    return sign + ",".join(parts) + "," + tail
+
+
+def _dark_css() -> str:
+    """Progressive-enhancement dark overrides (clients honoring <style>+media)."""
+    return ("@media (prefers-color-scheme:dark){"
+            ".sa-page{background:#0a0f1a!important}"
+            ".sa-card{background:#111a2b!important;border-color:#233149!important}"
+            ".sa-ink{color:#f1f5f9!important}.sa-body{color:#cbd5e1!important}"
+            ".sa-muted{color:#94a3b8!important}"
+            ".sa-kpi{background:#0e1b22!important;border-color:#233149!important}"
+            ".sa-foot{background:#0e1728!important}.sa-div{border-color:#233149!important}"
+            ".sa-neg{color:#f87171!important}.sa-pos{color:#4ade80!important}}")
 
 
 def _pct(conviction) -> str:
@@ -652,6 +697,221 @@ def render_brief_text(brief: dict) -> str:
 
     L += ["─" * 42, "Research tool — information only, never personal advice."]
     return "\n".join(L).strip()
+
+
+def render_brief_html(brief: dict) -> str:
+    """Styled, email-safe HTML brief (redesign 2026-07-30). Full standalone
+    document; tables + inline styles + system fonts, dark via <style> media.
+    Mirrors render_brief_text section-for-section; never raises."""
+    try:
+        return _render_brief_html_inner(brief, _HTML)
+    except Exception as exc:
+        logger.warning("[brief] html render failed (non-fatal): %s", exc)
+        safe = _esc(render_brief_text(brief)).replace("\n", "<br>")
+        return ("<!doctype html><html><body style=\"font-family:%s\">"
+                "<pre style=\"font-family:%s\">%s</pre></body></html>" % (_FONT, _FONT, safe))
+
+
+def _section(title: str, inner_html: str, H: dict) -> str:
+    return (
+        '<tr><td style="padding:20px 26px">'
+        f'<div class="sa-ink" style="font:700 11.5px {_FONT};letter-spacing:.13em;'
+        f'text-transform:uppercase;color:{H["accent"]};margin:0 0 12px">{_esc(title)}'
+        f'<div style="height:2px;width:26px;background:{H["accent"]};border-radius:2px;'
+        'margin:7px 0 0;opacity:.55"></div></div>'
+        f'{inner_html}</td></tr>'
+        f'<tr><td style="padding:0 26px"><div class="sa-div" '
+        f'style="height:1px;background:{H["hair"]}"></div></td></tr>'
+    )
+
+
+def _html_rows(trs: str) -> str:
+    return f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0">{trs}</table>'
+
+
+def _render_brief_html_inner(brief: dict, H: dict) -> str:
+    try:
+        hdr = date.fromisoformat(brief.get("date", "")).strftime("%A, %d %B %Y")
+    except Exception:
+        hdr = brief.get("date", "")
+
+    rows: list[str] = []
+
+    # SUMMARY
+    headline = (brief.get("headline") or "").strip()
+    if headline:
+        rows.append(
+            '<tr><td style="padding:22px 26px">'
+            f'<p class="sa-body" style="margin:0;font:400 15px/1.6 {_FONT};color:{H["body"]}">'
+            f'{_esc(headline)}</p></td></tr>'
+            f'<tr><td style="padding:0 26px"><div class="sa-div" style="height:1px;background:{H["hair"]}"></div></td></tr>')
+
+    # YOUR PORTFOLIO (KPI card)
+    p = brief.get("portfolio")
+    if p:
+        pnl = p.get("total_pnl_pct", 0.0) or 0.0
+        arrow = "▲" if pnl >= 0 else "▼"
+        chip_cls, chip_ink = ("sa-pos", H["pos"]) if pnl >= 0 else ("sa-neg", H["neg"])
+        chip_bg = H["pill_bg"] if pnl >= 0 else H["hi_bg"]
+        meta_bits = []
+        if p.get("holdings_count"):
+            cost = "all currently below cost" if p.get("all_below_cost") else "mixed vs cost"
+            meta_bits.append(f'<b style="color:{H["body"]}">{p["holdings_count"]} holdings</b>, {cost}.')
+        if p.get("best"):
+            meta_bits.append(f'Best <b style="color:{H["body"]}">{_esc(p["best"]["symbol"])} {p["best"]["pnl_pct"]:+.1f}%</b>')
+        if p.get("worst"):
+            meta_bits.append(f'Worst <b style="color:{H["body"]}">{_esc(p["worst"]["symbol"])} {p["worst"]["pnl_pct"]:+.1f}%</b>')
+        meta = (' <span style="color:%s">·</span> ' % H["hair"]).join(meta_bits)
+        exit_line = ""
+        if p.get("last_exit"):
+            le = p["last_exit"]
+            exit_line = (f'<p class="sa-muted" style="margin:12px 0 0;font:400 13px/1.5 {_FONT};color:{H["muted"]}">'
+                         f'Yesterday: autopilot exited <b style="color:{H["body"]}">{_esc(le["symbol"])} {le["pnl_pct"]:+.1f}%</b> on a thesis break.</p>')
+        inner = (
+            f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" class="sa-kpi" '
+            f'style="background:{H["kpi"]};border:1px solid {H["hair"]};border-radius:12px"><tr><td style="padding:18px 20px">'
+            f'<div class="sa-ink" style="font:700 34px {_FONT};color:{H["ink"]};letter-spacing:-.02em">₹{_inr(p.get("portfolio_value", 0))}</div>'
+            f'<div style="margin:12px 0 0"><span class="{chip_cls}" style="display:inline-block;font:600 12.5px {_FONT};'
+            f'color:{chip_ink};background:{chip_bg};padding:4px 10px;border-radius:999px">'
+            f'{arrow} {abs(pnl):.1f}% since inception</span></div>'
+            + (f'<p class="sa-muted" style="margin:14px 0 0;font:400 13.5px/1.55 {_FONT};color:{H["muted"]}">{meta}</p>' if meta else "")
+            + exit_line
+            + '</td></tr></table>')
+        rows.append(_section("Your portfolio", inner, H))
+
+    # NEEDS ATTENTION
+    flags = brief.get("advisor_flags", []) or []
+    if flags:
+        items = []
+        for f in flags:
+            verb = _VERDICT_PLAIN.get(f.get("verdict", ""), f.get("verdict", ""))
+            reason = f.get("reason", "")
+            items.append(
+                f'<div style="padding:8px 0"><span class="sa-ink" style="font:600 14.5px {_FONT};color:{H["ink"]}">'
+                f'{_esc(f["symbol"])}</span> <span style="color:{H["warn"]};font:600 13px {_FONT}">{_esc(verb)}</span>'
+                + (f'<div class="sa-muted" style="font:400 13px/1.5 {_FONT};color:{H["muted"]};margin:3px 0 0">{_esc(reason)}</div>' if reason else "")
+                + '</div>')
+        rows.append(_section("Needs attention", "".join(items), H))
+
+    # MARKET CONDITIONS
+    regime = (brief.get("regime") or {}).get("label")
+    if regime:
+        word, gloss = _REGIME_PLAIN.get(regime, (regime.title(), ""))
+        inner = (
+            f'<span style="display:inline-block;background:{H["pill_bg"]};border:1px solid {H["pill_bd"]};'
+            f'color:{H["pill_ink"]};font:700 13px {_FONT};padding:6px 12px;border-radius:999px">{_esc(word)} · {_esc(regime)}</span>'
+            + (f'<p class="sa-muted" style="margin:10px 0 0;font:400 13.5px/1.5 {_FONT};color:{H["muted"]}">{_esc(gloss)}</p>' if gloss else ""))
+        rows.append(_section("Market conditions", inner, H))
+
+    # OVERNIGHT (table with severity chip)
+    overnight = brief.get("overnight", []) or []
+    if overnight:
+        trs = []
+        for i in overnight:
+            note = (i.get("note") or "").strip()
+            why = (f'<div class="sa-muted" style="font:400 13px/1.5 {_FONT};color:{H["muted"]};margin:4px 0 0">'
+                   f'<span style="color:{H["accent"]};font-weight:600">Why it matters:</span> {_esc(note)}</div>') if note else ""
+            trs.append(
+                f'<tr><td style="padding:12px 0;border-top:1px solid {H["hair_soft"]};vertical-align:top">'
+                f'<div class="sa-ink" style="font:600 14.5px/1.45 {_FONT};color:{H["ink"]}">{_esc(i["headline"])}</div>{why}</td>'
+                f'<td style="padding:12px 0 12px 12px;text-align:right;width:54px;vertical-align:top">'
+                f'<span style="display:inline-block;font:700 10.5px {_FONT};letter-spacing:.06em;padding:3px 8px;'
+                f'border-radius:6px;background:{H["hi_bg"]};color:{H["hi_ink"]}">{_esc(i.get("severity", "HIGH"))}</span></td></tr>')
+        rows.append(_section("Overnight · high-impact news", _html_rows("".join(trs)), H))
+
+    # EARNINGS
+    earnings = brief.get("earnings_soon", []) or []
+    if earnings:
+        trs = []
+        for e in earnings:
+            watch = (e.get("watch") or "").strip()
+            tail = f"watch: {watch}" if watch else "results & guidance are the next catalyst."
+            trs.append(
+                f'<tr><td style="padding:12px 0;border-top:1px solid {H["hair_soft"]};vertical-align:top">'
+                f'<div class="sa-ink" style="font:600 14.5px {_FONT};color:{H["ink"]}">{_esc(e["symbol"])}</div>'
+                f'<div class="sa-muted" style="font:400 13px/1.5 {_FONT};color:{H["muted"]};margin:4px 0 0">You hold this — {_esc(tail)}</div></td>'
+                f'<td class="sa-ink" style="padding:12px 0;text-align:right;white-space:nowrap;width:96px;color:{H["ink"]};font:600 14px {_FONT}">{_esc(_fmt_date(e["date"]))}</td></tr>')
+        rows.append(_section("Earnings this week · your holdings", _html_rows("".join(trs)), H))
+
+    # IDEAS
+    adds = (brief.get("discovery_adds", []) or [])[: settings.DELIVERY_BRIEF_MAX_IDEAS]
+    if adds:
+        trs = []
+        for a in adds:
+            verdict, pct = a.get("verdict"), _pct(a.get("conviction"))
+            tag = (f'<span style="color:{H["accent"]};font:600 12.5px {_FONT}">{_esc(verdict)}'
+                   + (f' · {pct}' if pct else "") + '</span>') if verdict else ""
+            reason = a.get("reason", "")
+            trs.append(
+                f'<tr><td style="padding:12px 0;border-top:1px solid {H["hair_soft"]};vertical-align:top">'
+                f'<div class="sa-ink" style="font:600 14.5px {_FONT};color:{H["ink"]}">{_esc(a["symbol"])} &nbsp;{tag}</div>'
+                + (f'<div class="sa-muted" style="font:400 13px/1.5 {_FONT};color:{H["muted"]};margin:4px 0 0">{_esc(reason)}</div>' if reason else "")
+                + '</td></tr>')
+        rows.append(_section("Ideas the tool is researching · its own view, not advice", _html_rows("".join(trs)), H))
+
+    # IPOs
+    ipos = brief.get("ipo_watch", []) or []
+    if ipos:
+        trs = []
+        for w in ipos:
+            lean, reason = _ipo_lean(w)
+            demand = _ipo_demand(w) if lean != "data pending" else "subscription not yet reported"
+            price = f'₹{_inr(w.get("issue_price"))}' if w.get("issue_price") else ""
+            lean_color = H["warn"] if lean in ("data pending", "SOFT DEMAND") else H["accent"]
+            leancol = f'<span style="color:{lean_color};font-weight:600">{_esc(lean)}</span>'
+            trs.append(
+                f'<tr><td style="padding:12px 0;border-top:1px solid {H["hair_soft"]};vertical-align:top">'
+                f'<div class="sa-ink" style="font:600 14.5px {_FONT};color:{H["ink"]}">{_esc(w["symbol"])} '
+                f'<span class="sa-muted" style="color:{H["muted"]};font-weight:600;font-size:12.5px">{_esc(w.get("company", ""))}</span></div>'
+                f'<div class="sa-muted" style="font:400 13px/1.5 {_FONT};color:{H["muted"]};margin:4px 0 0">Lean: {leancol} — {_esc(demand)}</div></td>'
+                f'<td class="sa-ink" style="padding:12px 0;text-align:right;white-space:nowrap;width:96px;color:{H["ink"]};font:600 14px {_FONT}">{price}</td></tr>')
+        rows.append(_section("IPOs open now · research view, not advice", _html_rows("".join(trs)), H))
+
+    # LOCK-IN
+    lockin = brief.get("lockin_flags", []) or []
+    if lockin:
+        trs = []
+        for lf in lockin:
+            trs.append(
+                f'<tr><td style="padding:12px 0;border-top:1px solid {H["hair_soft"]};vertical-align:top">'
+                f'<div class="sa-ink" style="font:600 14.5px {_FONT};color:{H["ink"]}">{_esc(lf["symbol"])} '
+                f'<span class="sa-muted" style="color:{H["muted"]};font-weight:600;font-size:12.5px">{_esc(lf.get("kind", ""))}</span></div>'
+                f'<div class="sa-muted" style="font:400 13px/1.5 {_FONT};color:{H["muted"]};margin:4px 0 0">Supply risk as shares free up — context, not a signal.</div></td>'
+                f'<td class="sa-ink" style="padding:12px 0;text-align:right;white-space:nowrap;width:96px;color:{H["ink"]};font:600 14px {_FONT}">{_esc(_fmt_date(lf.get("expiry", "")))}</td></tr>')
+        rows.append(_section("Lock-in expiries", _html_rows("".join(trs)), H))
+
+    body_rows = "".join(rows)
+
+    button = ""
+    url = (getattr(settings, "APP_PUBLIC_URL", "") or "").rstrip("/")
+    if url:
+        button = (f'<a href="{_esc(url)}/" style="display:inline-block;background:{H["accent_deep"]};'
+                  f'color:#ffffff;text-decoration:none;font:600 14px {_FONT};padding:11px 20px;border-radius:9px">Open StockAgent →</a>')
+
+    return (
+        '<!doctype html><html lang="en"><head><meta charset="utf-8">'
+        '<meta name="viewport" content="width=device-width,initial-scale=1">'
+        '<meta name="color-scheme" content="light dark">'
+        f'<style>{_dark_css()}</style></head>'
+        f'<body class="sa-page" style="margin:0;background:{H["page"]};-webkit-text-size-adjust:100%">'
+        '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" class="sa-page" '
+        f'style="background:{H["page"]}"><tr><td align="center" style="padding:22px 12px 40px">'
+        '<table role="presentation" width="600" cellpadding="0" cellspacing="0" class="sa-card" '
+        f'style="max-width:600px;width:100%;background:{H["card"]};border:1px solid {H["hair"]};'
+        'border-radius:14px;overflow:hidden">'
+        f'<tr><td style="background:{H["accent_deep"]};padding:20px 26px">'
+        f'<div style="font:600 11px {_FONT};letter-spacing:.16em;text-transform:uppercase;color:#c7f2ea">StockAgent · Personal research</div>'
+        f'<div style="font:700 22px {_FONT};color:#ffffff;margin:4px 0 0;letter-spacing:-.01em">Morning Brief</div>'
+        f'<div style="font:500 13px {_FONT};color:#a9e5db;margin:6px 0 0">{_esc(hdr)}</div></td></tr>'
+        f'{body_rows}'
+        f'<tr><td class="sa-foot" style="background:{H["hair_soft"]};padding:20px 26px 24px">'
+        f'<p class="sa-muted" style="margin:0 0 14px;font:400 12px/1.5 {_FONT};color:{H["muted"]}">'
+        'Research tool — information only, <b>never personal advice</b>. '
+        'Figures are model estimates from your paper portfolio and public sources.</p>'
+        f'{button}'
+        f'<p class="sa-muted" style="margin:16px 0 0;font:400 11px {_FONT};color:{H["muted"]};letter-spacing:.04em">StockAgent · morning brief</p>'
+        '</td></tr>'
+        '</table></td></tr></table></body></html>')
 
 
 def run_morning_brief(on: date | None = None) -> dict:

@@ -424,3 +424,42 @@ def test_dedupe_notes_blanks_near_duplicate():
     assert out[1] == ""                                    # duplicate blanked
     assert out[2] == notes[2]
     assert len(out) == len(notes)                          # order/length preserved
+
+
+# -- Task 4: render_brief_html — clean-fintech email-safe renderer (2026-07-30) --
+
+def test_render_brief_html_full_and_safe():
+    brief = {
+        "date": "2026-07-30",
+        "headline": "Calm NORMAL market; policy-heavy overnight tape.",
+        "portfolio": {"portfolio_value": 556826.57, "total_pnl_pct": -6.81,
+                      "holdings_count": 8, "all_below_cost": True,
+                      "best": {"symbol": "PAYTM", "pnl_pct": -2.3},
+                      "worst": {"symbol": "SUZLON", "pnl_pct": -10.9},
+                      "last_exit": {"symbol": "IDFCFIRSTB", "pnl_pct": 6.1}},
+        "advisor_flags": [],
+        "regime": {"label": "NORMAL"},
+        "overnight": [{"headline": "RBI steadies the rupee.", "severity": "HIGH",
+                       "note": "Curbs imported-inflation risk."}],
+        "earnings_soon": [{"symbol": "WAAREEENER", "date": "2026-07-30", "watch": ""}],
+        "discovery_adds": [],
+        "ipo_watch": [{"symbol": "XTRANET", "company": "Xtranet Technologies",
+                       "status": "current", "issue_price": 127.0,
+                       "qib_x": None, "retail_x": None, "total_x": None}],
+        "lockin_flags": [{"symbol": "KISSHT", "kind": "anchor_remaining", "expiry": "2026-08-06"}],
+    }
+    html = br.render_brief_html(brief)
+    assert html.lstrip().lower().startswith("<!doctype html>")
+    assert "<script" not in html.lower()                       # no scripts
+    assert "http://" not in html and 'src="https://' not in html  # no external images
+    assert 'style="' in html                                    # inline styles present
+    for token in ("Morning Brief", "5,56,827", "PAYTM", "SUZLON", "IDFCFIRSTB",
+                  "RBI steadies the rupee.", "Curbs imported-inflation risk.",
+                  "WAAREEENER", "XTRANET", "KISSHT",
+                  "never personal advice"):
+        assert token in html
+
+
+def test_render_brief_html_never_raises_on_empty():
+    assert isinstance(br.render_brief_html({}), str)
+    assert isinstance(br.render_brief_html({"date": "2026-07-30", "portfolio": None}), str)

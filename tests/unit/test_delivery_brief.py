@@ -383,3 +383,29 @@ def test_dedup_overnight_min_shared_zero_is_legacy():
     ]
     out = br._dedup_overnight(items, 0.6, 5)               # legacy call, no entity merge
     assert len(out) == 2
+
+
+# -- Task 2: richer portfolio line — best/worst/count/last-exit (2026-07-30) --
+
+def test_portfolio_extras_best_worst_and_last_exit():
+    digest = {
+        "holdings": [
+            {"symbol": "SUZLON", "pnl_pct": -10.9},
+            {"symbol": "PAYTM", "pnl_pct": -2.3},
+            {"symbol": "TATAELXSI", "pnl_pct": -2.9},
+        ],
+        "trades": [
+            {"symbol": "IDFCFIRSTB", "side": "SELL", "pnl_pct": 6.1},
+        ],
+    }
+    x = br._portfolio_extras(digest)
+    assert x["holdings_count"] == 3
+    assert x["best"] == {"symbol": "PAYTM", "pnl_pct": -2.3}
+    assert x["worst"] == {"symbol": "SUZLON", "pnl_pct": -10.9}
+    assert x["all_below_cost"] is True
+    assert x["last_exit"] == {"symbol": "IDFCFIRSTB", "pnl_pct": 6.1}
+
+
+def test_portfolio_extras_empty_digest_is_blank():
+    assert br._portfolio_extras({}) == {}
+    assert br._portfolio_extras({"holdings": []}) == {}

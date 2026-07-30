@@ -220,6 +220,28 @@ def _earnings_watch(symbol: str) -> str:
         return ""
 
 
+def _portfolio_extras(digest: dict) -> dict:
+    """Best/worst holding, count, all-below-cost, and the day's last realized exit,
+    computed from the digest. Every key is optional — an empty/partial digest yields
+    a subset (or {}) and the renderers degrade cleanly."""
+    out: dict = {}
+    rows = [h for h in (digest.get("holdings") or [])
+            if isinstance(h.get("pnl_pct"), (int, float))]
+    if rows:
+        best = max(rows, key=lambda h: h["pnl_pct"])
+        worst = min(rows, key=lambda h: h["pnl_pct"])
+        out["holdings_count"] = len(rows)
+        out["best"] = {"symbol": best.get("symbol", ""), "pnl_pct": best["pnl_pct"]}
+        out["worst"] = {"symbol": worst.get("symbol", ""), "pnl_pct": worst["pnl_pct"]}
+        out["all_below_cost"] = all(h["pnl_pct"] < 0 for h in rows)
+    sells = [t for t in (digest.get("trades") or [])
+             if t.get("side") == "SELL" and isinstance(t.get("pnl_pct"), (int, float))]
+    if sells:
+        last = sells[-1]
+        out["last_exit"] = {"symbol": last.get("symbol", ""), "pnl_pct": last["pnl_pct"]}
+    return out
+
+
 def _indent(text: str, width: int = 2) -> str:
     """Wrap prose to ~74 cols with a fixed left indent (email/push friendly)."""
     import textwrap
@@ -450,6 +472,7 @@ def build_morning_brief(
         portfolio = {k: digest.get(k) for k in
                      ("date", "portfolio_value", "total_pnl_pct", "escalations")}
         portfolio["portfolio_value"] = digest.get("portfolio_value", 0.0)
+        portfolio.update(_portfolio_extras(digest))
         held = [r["symbol"] for r in digest.get("holdings", [])]
         advisor_flags = [
             {"symbol": r["symbol"], "verdict": r["verdict"],

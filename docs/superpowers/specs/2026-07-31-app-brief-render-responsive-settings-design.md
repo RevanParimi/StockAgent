@@ -211,6 +211,12 @@ response enrichment.
    `document.documentElement.scrollWidth <= window.innerWidth`. This mechanically catches
    audit items #2, #3, #4, #5, #7 and guards against the next fixed-width regression.
 3. **Screenshots.** Same matrix, before/after, for human review.
+
+   The overflow assertion in (2) is necessary but **not sufficient** — it only catches
+   content escaping the viewport. It cannot catch the opposite failure: a container told
+   to grow while its contents stay fixed-width, which distributes badly without ever
+   overflowing (audit item #3 is exactly this shape). The 1280px screenshots therefore
+   need a human pass, not just a green assertion.
 4. **Python suite** must stay at 0F/0E.
 5. New unit test for §3.2 enrichment: `verdict_plain` present and correct, unknown enum
    falls through to raw.

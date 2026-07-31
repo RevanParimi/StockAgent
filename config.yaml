@@ -79,6 +79,18 @@ score_thresholds:
 data_fetch:
   news_articles_per_query: 5
   serper_max_queries: 3          # per agent run — controls API cost
+  # RL daily review only: one extra /search call when /news returns no in-window
+  # article for a ticker (F1 sensing fix). Set false to hard-cap at 1 call/ticker.
+  news_context_fallback_search: true
+  # Recency bound sent to Google for that query. Unbounded, the top /news hits
+  # are months-old earnings roundups and the 3-day filter drops all of them —
+  # that was the real cause of the 12/16 news-blind reviews. "" disables.
+  news_context_recency: "qdr:w"    # keep >= the review's 3-day window
+  # Same bound for the shared fetch_news_context() path (analyst bundle, RL
+  # research loop, indicator price fallback). Unbounded it served articles
+  # 2 months to 11 years old, mostly undated. "" disables.
+  news_search_recency: "qdr:m"
+  preopen_news_recency: "qdr:w"    # shock rater scores OVERNIGHT news — tighter
   financials_lookback_quarters: 4
   serper_timeout_seconds: 10
   tavily_max_content_chars: 600

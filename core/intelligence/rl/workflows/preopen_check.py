@@ -99,7 +99,11 @@ def _fetch_overnight_context(today: date) -> str:
         f"{today.isoformat()}"
     )
     try:
-        return fetch_news_context([query], max_queries=1)
+        # F6: without a recency bound this query returned articles 44-120 days
+        # old and nothing fresh — the shock severity was being rated on them.
+        from backend.shared.config import settings as _s
+        return fetch_news_context([query], max_queries=1,
+                                  tbs=getattr(_s, "PREOPEN_NEWS_RECENCY", "qdr:w"))
     except Exception as exc:
         logger.warning("[preopen_check] News fetch failed (non-fatal): %s", exc)
         return ""

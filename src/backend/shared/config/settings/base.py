@@ -187,6 +187,23 @@ NEWS_ARTICLES_PER_QUERY: int = cfg("data_fetch.news_articles_per_query", env="NE
 # Max Serper search queries per agent run (to control API cost)
 SERPER_MAX_QUERIES: int = cfg("data_fetch.serper_max_queries", env="SERPER_MAX_QUERIES", fallback=3)
 
+# F1: when the RL daily review's /news query yields no in-window article, allow
+# ONE extra /search call per blind ticker-day. Kill-switch — flip in config.yaml.
+NEWS_CONTEXT_FALLBACK_SEARCH: bool = cfg("data_fetch.news_context_fallback_search", fallback=True)
+
+# F1: Google recency bound for the RL news query ("qdr:d"/"qdr:w"/"qdr:m", ""
+# disables). Must be at least as wide as the daily review's window_days=3.
+NEWS_CONTEXT_RECENCY: str = cfg("data_fetch.news_context_recency", fallback="qdr:w")
+
+# F6: recency bound for the shared fetch_news_context() path (analyst bundle,
+# research loop, indicator price fallback). One month keeps quarterly-results
+# context while cutting the months-to-years-old articles that path used to serve.
+NEWS_SEARCH_RECENCY: str = cfg("data_fetch.news_search_recency", fallback="qdr:m")
+
+# F6: the preopen shock rater scores OVERNIGHT moves — it gets a tighter bound
+# (a week, not a day, so Monday still sees Friday-night and weekend news).
+PREOPEN_NEWS_RECENCY: str = cfg("data_fetch.preopen_news_recency", fallback="qdr:w")
+
 # Quarterly financials: how many quarters to look back
 FINANCIALS_LOOKBACK_QUARTERS: int = cfg("data_fetch.financials_lookback_quarters", env="FINANCIALS_LOOKBACK_QUARTERS", fallback=4)
 

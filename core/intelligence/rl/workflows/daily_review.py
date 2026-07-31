@@ -615,10 +615,16 @@ def run_daily_review(
     ticker_ledger, sector_ledger, market_ledger = store.load_all_ledgers()
 
     market_context = ""
+    # F5: did the FeedbackAgent actually see company news today? Reported in the
+    # summary so the scheduler can count fetched-vs-blind per run — the baseline
+    # metric for the news-query fix (2026-07-30: 12 of 16 tickers ran blind, and
+    # only a WARNING line recorded it).
+    news_available = False
     try:
         from services.data.fetchers.news import get_news_context
         market_context = get_news_context(ticker, max_articles=3)
         if market_context and market_context != "Market context unavailable.":
+            news_available = True
             logger.info(
                 "[daily_review] %s: News context fetched (%d chars, preview: %.120s)",
                 ticker, len(market_context), market_context.replace("\n", " "),
@@ -1412,6 +1418,9 @@ def run_daily_review(
         "price_error_pct":          price_error_pct,
         "direction_correct":        direction_correct,
         "timing_assessment":        timing.assessment,
+        # F5: sensing telemetry — False means this review's attribution was made
+        # without company news (see the news fetch block above).
+        "news_available":           news_available,
         "miss_type":                fb_output.miss_type,
         "primary_miss_agent":       fb_output.primary_miss_agent,
         "lessons_added":            lesson_ids,

@@ -588,6 +588,11 @@ class AutomobileScheduler:
 
         succeeded = 0
         stragglers: list[str] = []
+        # F5: how many reviews actually saw company news. Reviews that early-return
+        # (no envelope / no actual close) never reach the news fetch and report no
+        # flag — they count as neither, so the ratio stays honest.
+        news_fetched = 0
+        news_blind = 0
         # AUD-084: the old "3-minute per-ticker timeout" was fiction —
         # as_completed only ever yields FINISHED futures, so result(timeout=)
         # never blocked. The only real cap is the aggregate as_completed budget,
@@ -613,6 +618,11 @@ class AutomobileScheduler:
                             )
                         else:
                             succeeded += 1
+                            news_flag = summary.get("news_available")
+                            if news_flag is True:
+                                news_fetched += 1
+                            elif news_flag is False:
+                                news_blind += 1
                             logger.info(
                                 "[Scheduler] %s %s sector=%s — status=%s direction=%s lessons=%s weights=v%s",
                                 ticker, review_date, sector,
@@ -632,6 +642,13 @@ class AutomobileScheduler:
                 )
         finally:
             executor.shutdown(wait=False, cancel_futures=True)
+
+        # F5: one aggregate line per run — the pre-fix baseline for the news
+        # query work and the only place the blind rate is visible at a glance.
+        logger.info(
+            "[Scheduler] news_context: %d fetched / %d blind of %d reviewed",
+            news_fetched, news_blind, news_fetched + news_blind,
+        )
 
         try:
             # AUD-039: "all reviews failed but the job logged complete" must page.
@@ -677,6 +694,8 @@ class AutomobileScheduler:
                 stragglers=stragglers,
                 pipeline_ok=pipeline_ok,
                 pipeline_error=pipeline_error,
+                news_fetched=news_fetched,     # F5 sensing telemetry
+                news_blind=news_blind,
             )
         except Exception:
             pass

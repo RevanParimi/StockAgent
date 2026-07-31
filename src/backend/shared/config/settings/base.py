@@ -599,6 +599,17 @@ RL_HARD_BIND_VERDICT_ENABLED: bool = cfg(
     "rl.hard_bind_verdict_enabled", fallback=False)
 
 # ---------------------------------------------------------------------------
+# F2 — market-wide fallback context for the daily review. When a ticker has no
+# company-specific news, HIGH/MEDIUM items from the macro news cache (already
+# fetched 4x a day by MacroNewsFetcher) are injected into market_context_today
+# under an explicit market-wide header. Zero new API calls. Flag off ⇒ the
+# blind ticker sees nothing, exactly as before F2. config.yaml-only (no env).
+# ---------------------------------------------------------------------------
+RL_MACRO_FALLBACK_CONTEXT_ENABLED: bool = cfg(
+    "rl.macro_fallback_context_enabled", fallback=True)
+RL_MACRO_FALLBACK_MAX_ITEMS: int = cfg("rl.macro_fallback_max_items", fallback=5)
+
+# ---------------------------------------------------------------------------
 # STATIC_AUDIT #9 — News geo: removed country filter entirely
 # Serper query now omits "gl" — Google surfaces globally relevant results
 # based on query specificity. A query like "TCS Q4 2026 deal wins" returns

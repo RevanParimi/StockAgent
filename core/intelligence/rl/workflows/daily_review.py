@@ -634,6 +634,44 @@ def run_daily_review(
     except Exception as exc:
         logger.warning("[daily_review] %s: News context fetch failed (import/runtime error): %s", ticker, exc)
 
+    # F2 companion metric to F5's news_available, which stays False on a rescued
+    # ticker (it means "company news", and the F1 blind-rate A/B depends on that).
+    # This one answers the different question the miss-taxonomy validation asks:
+    # did the agent have ANY real evidence today?
+    macro_fallback_used = False
+
+    # F2: blind ticker ⇒ fall back to the market-wide macro feed rather than to
+    # nothing. With no context at all the agent's own rules (cite only what is
+    # in market_context_today, external_shock capped at 20% of days) funnel every
+    # large unexplained move into model_bias/direction_flip — a full weight
+    # penalty and a permanent lesson, both written off blindness. The macro cache
+    # is already fetched 4x a day, so this costs no API calls. Labelled
+    # market-wide so it can never be mistaken for company-specific evidence.
+    if not news_available and settings.RL_MACRO_FALLBACK_CONTEXT_ENABLED:
+        try:
+            from services.background.macro_news_cache import MacroNewsCache
+            macro_block = MacroNewsCache().get_for_daily_review(
+                max_items=settings.RL_MACRO_FALLBACK_MAX_ITEMS,
+                for_date=review_date,      # backfills must not read today's feed
+            )
+            if macro_block:
+                macro_fallback_used = True
+                market_context = (
+                    (market_context or "Market context unavailable.")
+                    + "\n\n[MARKET-WIDE CONTEXT — company-specific news unavailable]\n"
+                    + "These are market/macro events, NOT news about this stock. "
+                      "Use them only if they plausibly explain today's move.\n"
+                    + macro_block
+                )
+                logger.info(
+                    "[daily_review] %s: macro fallback context injected (%d chars)",
+                    ticker, len(macro_block),
+                )
+        except Exception as exc:
+            logger.warning(
+                "[daily_review] %s: macro fallback context unavailable: %s", ticker, exc
+            )
+
     # Inject seasonal context so FeedbackAgent doesn't "discover" known patterns.
     # The narrative is appended to market_context_today with a clear [SEASONAL] tag.
     seasonal_calendar = SeasonalCalendar(sector=sector)
@@ -1421,6 +1459,9 @@ def run_daily_review(
         # F5: sensing telemetry — False means this review's attribution was made
         # without company news (see the news fetch block above).
         "news_available":           news_available,
+        # F2: True when company news was missing but market-wide macro context
+        # was injected instead — a blind review that still had real evidence.
+        "macro_fallback_used":      macro_fallback_used,
         "miss_type":                fb_output.miss_type,
         "primary_miss_agent":       fb_output.primary_miss_agent,
         "lessons_added":            lesson_ids,

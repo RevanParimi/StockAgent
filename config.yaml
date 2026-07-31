@@ -279,6 +279,13 @@ rl:
   calibration_weight: 0.5
   # -- Hard-bind verdict (AUD-117 / AUD-077) -------------------------------
   hard_bind_verdict_enabled: false   # bind graded+aggregator verdict to learned composite
+  # -- Market-wide fallback context (F2 sensing fix) ------------------------
+  # When a ticker has NO company news, inject HIGH/MEDIUM items from the macro
+  # news cache (already fetched 4x daily — zero new API calls) so the
+  # FeedbackAgent has something real to attribute a large move to instead of
+  # defaulting to model_bias. false = pre-F2 behaviour (blind stays blind).
+  macro_fallback_context_enabled: true
+  macro_fallback_max_items: 5
   # -- Forgetting & recency (Intelligence Phase C3) -------------------------
   forgetting_enabled: true
   miss_recency_halflife_days: 21.0

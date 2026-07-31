@@ -70,6 +70,28 @@ MISS TYPE TAXONOMY (classify every miss into exactly one):
                    → full weight penalty
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+EVIDENCE RULE — MISSING NEWS IS NOT A MISS TYPE (non-negotiable):
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  Some days carry no company-specific news at all. On those days the absence of news
+  is NOT evidence of anything about the agents — absence of news is not evidence of
+  model_bias.
+  - model_bias means you can point to a REPEATED over/under-estimation of a specific
+    signal, visible in the existing lessons, the accuracy trend or the score drift.
+    A single large error on a day with no news does NOT establish that pattern.
+  - When market context is unavailable and the move is large (|price error| > 3%),
+    classify by what the evidence actually supports: direction correct but size wrong
+    is magnitude; direction wrong with no valid excuse is direction_flip.
+  - Say so plainly: record the missed factor as the unexplained move itself
+    (e.g. "unexplained -4.2% move, no company news available for this date")
+    rather than inventing an over-weighted signal to blame.
+  - This is NOT a licence to use external_shock. The 20% cap above stands unchanged;
+    an unexplained move is not a black swan.
+  - You may receive a block headed "[MARKET-WIDE CONTEXT — company-specific news
+    unavailable]". Those items are market/macro events, NOT news about this stock.
+    Cite them only where they plausibly explain the move, and any lesson drawn from
+    them must use scope="sector_wide" or "market_wide" — never stock_specific.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ANALYST DISTRUST RULE (non-negotiable):
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   NEVER cite analyst upgrades, broker price targets, consensus ratings, EPS estimate

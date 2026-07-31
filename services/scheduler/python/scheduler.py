@@ -593,6 +593,10 @@ class AutomobileScheduler:
         # flag — they count as neither, so the ratio stays honest.
         news_fetched = 0
         news_blind = 0
+        # F2: of the blind reviews, how many were given market-wide macro context
+        # instead of nothing. Separates "rescued" from "truly context-less" for
+        # the 20-trading-day miss-taxonomy comparison.
+        news_macro_rescued = 0
         # AUD-084: the old "3-minute per-ticker timeout" was fiction —
         # as_completed only ever yields FINISHED futures, so result(timeout=)
         # never blocked. The only real cap is the aggregate as_completed budget,
@@ -623,6 +627,8 @@ class AutomobileScheduler:
                                 news_fetched += 1
                             elif news_flag is False:
                                 news_blind += 1
+                            if summary.get("macro_fallback_used") is True:
+                                news_macro_rescued += 1
                             logger.info(
                                 "[Scheduler] %s %s sector=%s — status=%s direction=%s lessons=%s weights=v%s",
                                 ticker, review_date, sector,
@@ -646,8 +652,9 @@ class AutomobileScheduler:
         # F5: one aggregate line per run — the pre-fix baseline for the news
         # query work and the only place the blind rate is visible at a glance.
         logger.info(
-            "[Scheduler] news_context: %d fetched / %d blind of %d reviewed",
-            news_fetched, news_blind, news_fetched + news_blind,
+            "[Scheduler] news_context: %d fetched / %d blind of %d reviewed "
+            "(%d macro-rescued)",
+            news_fetched, news_blind, news_fetched + news_blind, news_macro_rescued,
         )
 
         try:
@@ -696,6 +703,7 @@ class AutomobileScheduler:
                 pipeline_error=pipeline_error,
                 news_fetched=news_fetched,     # F5 sensing telemetry
                 news_blind=news_blind,
+                news_macro_rescued=news_macro_rescued,   # F2 attribution telemetry
             )
         except Exception:
             pass

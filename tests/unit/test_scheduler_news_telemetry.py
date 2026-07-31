@@ -26,7 +26,7 @@ def sched_env(monkeypatch):
     monkeypatch.setattr(jo, "record_job_outcome",
                         lambda job, **fields: recorded.update(job=job, **fields))
 
-    def _configure(news_by_ticker: dict[str, object]):
+    def _configure(news_by_ticker: dict[str, object], macro_by_ticker: dict | None = None):
         monkeypatch.setattr(
             sch, "get_active_tickers_with_sector",
             lambda: [{"sym": t, "sector": "automobile"} for t in news_by_ticker],
@@ -37,6 +37,8 @@ def sched_env(monkeypatch):
             summary = {"status": "completed"}
             if flag is not None:          # None => early return, key absent
                 summary["news_available"] = flag
+            if macro_by_ticker and ticker in macro_by_ticker:
+                summary["macro_fallback_used"] = macro_by_ticker[ticker]
             return summary
 
         monkeypatch.setattr(dr, "run_daily_review", _review)
@@ -89,3 +91,47 @@ def test_all_blind_day_is_recorded_not_swallowed(sched_env, caplog):
 
     assert recorded["news_fetched"] == 0 and recorded["news_blind"] == 2
     assert any("0 fetched / 2 blind of 2" in r.getMessage() for r in caplog.records)
+
+
+# --------------------------------------------------------------------------- #
+# F2 — how many of the blind reviews were rescued by market-wide macro context.
+# The F2 validation ("model_bias share drops over 20 trading days") needs to
+# separate rescued reviews from ones that stayed truly context-less; deploy
+# logs rotate, job outcomes persist.
+# --------------------------------------------------------------------------- #
+
+def test_job_outcome_counts_macro_rescued_reviews(sched_env):
+    configure, recorded = sched_env
+    sch = configure(
+        {"MARUTI": False, "INFY": False, "TCS": True},
+        macro_by_ticker={"MARUTI": True, "INFY": False, "TCS": False},
+    )
+
+    sch.AutomobileScheduler()._daily_review_job()
+
+    assert recorded["news_blind"] == 2
+    assert recorded["news_macro_rescued"] == 1
+
+
+def test_macro_rescue_count_is_zero_when_nothing_was_rescued(sched_env):
+    """A blind day with an empty macro feed must read 0, not absent."""
+    configure, recorded = sched_env
+    sch = configure({"MARUTI": False}, macro_by_ticker={"MARUTI": False})
+
+    sch.AutomobileScheduler()._daily_review_job()
+
+    assert recorded["news_macro_rescued"] == 0
+
+
+def test_news_summary_line_reports_macro_rescues(sched_env, caplog):
+    configure, _recorded = sched_env
+    sch = configure(
+        {"MARUTI": False, "INFY": True},
+        macro_by_ticker={"MARUTI": True},
+    )
+
+    with caplog.at_level(logging.INFO, logger=_SCHED_LOGGER):
+        sch.AutomobileScheduler()._daily_review_job()
+
+    line = next(r.getMessage() for r in caplog.records if "news_context:" in r.getMessage())
+    assert "1 macro-rescued" in line

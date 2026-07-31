@@ -106,8 +106,8 @@ class MacroNewsCache:
         self._cleanup_old_files()
         return added
 
-    def get_high_severity(self, hours_back: int = 24) -> list[dict]:
-        """Return HIGH-severity entries from the last `hours_back` hours (today + yesterday)."""
+    def _recent_entries(self, severities: tuple[str, ...], hours_back: int) -> list[dict]:
+        """Entries at the given severities from the last `hours_back` hours."""
         cutoff = datetime.now(timezone.utc) - timedelta(hours=hours_back)
         cutoff_date = cutoff.date()
 
@@ -115,12 +115,18 @@ class MacroNewsCache:
         for d in [date.today(), date.today() - timedelta(days=1)]:
             if d < cutoff_date:
                 continue
-            data = _load_file(_today_file(d))
-            for e in data.get("entries", []):
-                if e.get("severity") == "HIGH":
-                    entries.append(e)
+            entries.extend(self._entries_on(d, severities))
 
         return entries
+
+    def _entries_on(self, day: date, severities: tuple[str, ...]) -> list[dict]:
+        """Entries of the given severities from one day's feed file."""
+        data = _load_file(_today_file(day))
+        return [e for e in data.get("entries", []) if e.get("severity") in severities]
+
+    def get_high_severity(self, hours_back: int = 24) -> list[dict]:
+        """Return HIGH-severity entries from the last `hours_back` hours (today + yesterday)."""
+        return self._recent_entries(("HIGH",), hours_back)
 
     def get_all_today(self) -> list[dict]:
         """Return all entries for today, sorted HIGH → MEDIUM → LOW."""
@@ -161,6 +167,37 @@ class MacroNewsCache:
             lines.append(
                 f"{i}. [{e.get('published_date', '')}] {e.get('title', '')} "
                 f"— {e.get('summary', '')} [tags: {tags}]"
+            )
+        return "\n".join(lines)
+
+    def get_for_daily_review(self, max_items: int = 5, for_date: date | None = None) -> str:
+        """
+        F2 — market-wide context for the RL daily review when a ticker has no
+        company-specific news. HIGH *and* MEDIUM from the reviewed day and the
+        one before it: an overnight macro event big enough to move a stock is
+        often rated MEDIUM, and the review's alternative is no context at all.
+
+        `for_date` anchors the window on the day under review — backfills read
+        past days, and today's headlines must never be injected into a review of
+        June. Retention (90 days) bounds how far back a backfill finds anything;
+        beyond it the feed files are gone and the result is empty.
+
+        Reads the existing cache only — no API calls. Empty string if nothing.
+        """
+        anchor = for_date or date.today()
+        items = (
+            self._entries_on(anchor, ("HIGH", "MEDIUM"))
+            + self._entries_on(anchor - timedelta(days=1), ("HIGH", "MEDIUM"))
+        )
+        _sev_order = {"HIGH": 0, "MEDIUM": 1}
+        items.sort(key=lambda e: _sev_order.get(e.get("severity", "MEDIUM"), 1))
+
+        lines = []
+        for e in items[:max_items]:
+            tags = ", ".join(e.get("impact_tags", []))
+            lines.append(
+                f"• [{e.get('published_date', '')}] [{e.get('severity', '')}] "
+                f"{e.get('title', '')} — {e.get('summary', '')} [tags: {tags}]"
             )
         return "\n".join(lines)
 

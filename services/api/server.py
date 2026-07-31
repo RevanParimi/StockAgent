@@ -263,6 +263,21 @@ def _log_volume_check() -> None:
         )
 
 
+def _log_api_usage_check() -> None:
+    """
+    F4 self-check: report the monthly API counter at boot.
+
+    The counter silently reset on every redeploy for a month because nothing
+    ever inspected it. Reporting it here means a lost counter shows up in the
+    deploy logs on its own instead of waiting for someone to go looking.
+    """
+    try:
+        from services.data.stores.api_usage import log_boot_state
+        log_boot_state()
+    except Exception as exc:
+        logger.warning("[startup] api_usage boot check failed (non-fatal): %s", exc)
+
+
 # ---------------------------------------------------------------------------
 # Calendar first-run
 # ---------------------------------------------------------------------------
@@ -338,6 +353,7 @@ async def lifespan(app: FastAPI):
 
     # 0. Volume / data directory verification
     _log_volume_check()
+    _log_api_usage_check()      # F4: monthly counter must survive redeploys
 
     # 1. Calendar file (sync, fast — just a file check + possible HTTP call)
     _ensure_calendar_file()

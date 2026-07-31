@@ -92,6 +92,56 @@ def _ensure_month(data: dict, month: str) -> dict:
     return data
 
 
+def log_boot_state() -> dict:
+    """
+    Report the monthly counter at process start — F4's self-check.
+
+    The counter used to live on ephemeral storage and reset on every redeploy,
+    which went unnoticed for a month because nothing ever looked. Logging it at
+    boot puts the evidence in the deploy logs: a WARNING when the file is gone
+    (the volume is not backing data/logs) and an INFO with the running totals
+    when it carried over. Read-only — it must never create or heal the file,
+    or it would erase the very symptom it exists to surface. Never raises.
+
+    Returns {present, month, stale_month, calls} for callers/tests.
+    """
+    state: dict = {"present": False, "month": None, "stale_month": False, "calls": {}}
+    try:
+        month = _current_month()
+        if not _USAGE_FILE.exists():
+            logger.warning(
+                "[api_usage] counter file ABSENT at boot (%s) — monthly totals start "
+                "from zero. Expected only on a fresh volume or the first deploy after "
+                "the data/logs move; mid-month otherwise means data/ is not persistent.",
+                _USAGE_FILE,
+            )
+            return state
+
+        state["present"] = True
+        data = _load()                      # already warns + returns {} on corrupt JSON
+        stored_month = data.get("month")
+        state["month"] = stored_month
+        state["calls"] = {
+            api: vals.get("calls", 0)
+            for api, vals in data.items()
+            if isinstance(vals, dict)
+        }
+        state["stale_month"] = bool(stored_month) and stored_month != month
+
+        totals = ", ".join(
+            f"{api}={calls}" + (f"/{_LIMITS[api]}" if _LIMITS.get(api) else "")
+            for api, calls in state["calls"].items()
+        ) or "no counters yet"
+        logger.info(
+            "[api_usage] counter intact at boot (%s): month=%s %s%s",
+            _USAGE_FILE, stored_month, totals,
+            " — previous month, rolls over on next call" if state["stale_month"] else "",
+        )
+    except Exception as exc:                # a boot report must never break boot
+        logger.warning("[api_usage] boot state check failed (non-fatal): %s", exc)
+    return state
+
+
 def record_call(api: ApiName, count: int = 1) -> None:
     """Increment the call counter for the given API. Thread-safe."""
     month = _current_month()

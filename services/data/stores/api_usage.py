@@ -3,10 +3,11 @@ services/data/stores/api_usage.py
 ==================================
 Persistent monthly call counter for external search APIs.
 
-Counters are stored in logs/api_usage.json and reset automatically
-when the calendar month changes. Thread-safe via a lock.
+Counters are stored in data/logs/api_usage.json (LOGS_DIR override) and reset
+automatically when the calendar month changes — data/ is the persistent volume
+in prod, so the total survives redeploys. Thread-safe via a lock.
 
-Per-run events are appended to logs/api_usage_events.jsonl — each record
+Per-run events are appended to data/logs/api_usage_events.jsonl — each record
 contains this-run call counts + monthly totals, ready for UI / Arize / Helicone.
 
 Usage
@@ -37,7 +38,12 @@ from core.utils.atomic_io import atomic_write_json
 
 logger = logging.getLogger(__name__)
 
-_LOGS_DIR = Path(os.getenv("LOGS_DIR", "logs"))
+# F4: default under data/ — the ONLY volume-backed path in prod (/app/data).
+# The old "logs" default put the counter on ephemeral container storage, so
+# every redeploy reset the monthly total (prod read 1 call on 2026-07-31 after
+# a month of hundreds). Relative on purpose: cwd is /app. Counters restart
+# once at rollout; no migration.
+_LOGS_DIR = Path(os.getenv("LOGS_DIR", "data/logs"))
 _USAGE_FILE = _LOGS_DIR / "api_usage.json"
 _EVENTS_FILE = _LOGS_DIR / "api_usage_events.jsonl"
 _lock = threading.Lock()
@@ -135,7 +141,7 @@ def snapshot_usage() -> dict[str, int]:
 
 def log_run_api_usage(run_id: str, ticker: str, before: dict[str, int]) -> None:
     """
-    Append a structured JSONL record to logs/api_usage_events.jsonl.
+    Append a structured JSONL record to data/logs/api_usage_events.jsonl.
 
     Parameters
     ----------

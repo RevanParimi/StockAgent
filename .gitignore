@@ -70,3 +70,6 @@ frontend/node_modules/
 
 MagicMock/
 analysis_data/
+
+# Superpowers brainstorm session artifacts
+.superpowers/

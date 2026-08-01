@@ -1,0 +1,45 @@
+{
+  "date": "2026-07-31",
+  "user_id": "primary",
+  "kind": "morning_brief",
+  "generated_at": "2026-07-31T03:20:00+00:00",
+  "headline": "Two holdings need a look after an overnight selloff across autos, and the scanner has surfaced one new idea worth watching; conditions stay defensive so position sizes are running smaller than usual today.",
+  "portfolio": {
+    "date": "2026-07-30",
+    "portfolio_value": 482300.0,
+    "total_pnl_pct": 6.4,
+    "escalations": ["TATAMOTORS"],
+    "holdings_count": 5,
+    "best": {"symbol": "M&M", "pnl_pct": 21.3},
+    "worst": {"symbol": "TATAMOTORS", "pnl_pct": -8.7},
+    "all_below_cost": false,
+    "last_exit": {"symbol": "HEROMOTOCO", "pnl_pct": 3.1}
+  },
+  "advisor_flags": [
+    {"symbol": "MARUTI", "verdict": "TRIM", "reason": "Thesis weakened — margin guidance cut twice.", "notes": []},
+    {"symbol": "TATAMOTORS", "verdict": "EXIT", "reason": "Stop breached on the JLR demand warning.", "notes": []},
+    {"symbol": "BAJAJ-AUTO", "verdict": "WAT_UNKNOWN", "reason": "Unknown enum — must fall through to the raw string.", "notes": []}
+  ],
+  "regime": {"label": "RISK_OFF"},
+  "overnight": [
+    {"headline": "Maruti Q1 operating margin misses street estimates by 140bps", "note": "You hold this; margin is the core of the thesis."},
+    {"headline": "Nifty Auto slips 2.1% on weak monthly volume prints", "note": "Sector-wide — affects 4 of your holdings."},
+    {"headline": "JLR flags softening demand in China for the September quarter", "note": "Direct read-through to TATAMOTORS."},
+    {"headline": "Rupee weakens past 88.4 against the dollar", "note": "Import-cost pressure for OEMs without local sourcing."},
+    {"headline": "Two-wheeler retail registrations up 6% month-on-month", "note": "Mildly supportive for BAJAJ-AUTO."},
+    {"headline": "Crude holds above $84 for a third session", "note": "Input-cost headwind across the sector."},
+    {"headline": "GST council defers the rate review on hybrids", "note": "Removes a near-term catalyst for M&M."},
+    {"headline": "FII flows negative for the fifth straight session", "note": "Consistent with the defensive regime reading."}
+  ],
+  "earnings_soon": [
+    {"symbol": "M&M", "date": "2026-08-01", "watch": "tractor volume commentary and the FES margin trajectory"}
+  ],
+  "discovery_adds": [
+    {"symbol": "BAJAJ-AUTO", "verdict": "BUY", "conviction": 0.72, "reason": "Export recovery plus a richer premium mix."},
+    {"symbol": "TVSMOTOR", "verdict": "WATCH", "reason": "No conviction score yet — the chip must render without a percentage."}
+  ],
+  "ipo_watch": [],
+  "lockin_flags": [
+    {"symbol": "NEWCO", "kind": "anchor", "expiry": "2026-08-14"}
+  ]
+}

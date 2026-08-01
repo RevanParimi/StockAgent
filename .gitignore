@@ -73,3 +73,6 @@ analysis_data/
 
 # Superpowers brainstorm session artifacts
 .superpowers/
+
+# Local dev seed data (fixture-seeded, per scripts/seed_fixture_ui.py)
+.uidev-data/

@@ -794,7 +794,7 @@ function RLMonitorPage({ onNav }) {
 
   return (
     <div style={{ minHeight:'100vh', background:'var(--bg-base)' }}>
-      <TopNav active="rl-monitor" onNav={onNav} search="" setSearch={()=>{}}/>
+      <TopNav active="rl-monitor" onNav={onNav}/>
 
       <main style={{ maxWidth:1280, margin:'0 auto', padding:'var(--main-py) var(--main-px) 96px' }}>
         {/* Header */}

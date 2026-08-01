@@ -183,10 +183,23 @@ function TopNav({ active, onNav, search, setSearch }) {
   const [results, setResults] = useStateHome([]);
   const [dropOpen, setDropOpen] = useStateHome(false);
   const [menuOpen, setMenuOpen] = useStateHome(false);
+  // Search text is TopNav's own, exactly like `results`/`dropOpen`, unless a
+  // parent hands down real state. Five screens (analytics, inbox, logs,
+  // prompt-lab, rl-monitor) used to pass `search="" setSearch={()=>{}}`: the
+  // inputs are controlled, so every keystroke was written to a no-op setter
+  // and React put the empty value straight back — search was untypeable on
+  // those screens, including Inbox, where a brief notification lands. Since
+  // Task 13 the hamburger menu is the ONLY search below 1024px, so a dead
+  // input there is worse than no input at all. Props stay optional so the
+  // screens that do own the state (home, agents, learn, portfolio) are
+  // unchanged.
+  const [ownSearch, setOwnSearch] = useStateHome('');
+  const value = setSearch ? search : ownSearch;
+  const write = setSearch || setOwnSearch;
   const timerRef = useRefHome(null);
 
   const handleSearch = (val) => {
-    setSearch(val);
+    write(val);
     clearTimeout(timerRef.current);
     if (val.length < 2) { setResults([]); setDropOpen(false); return; }
     timerRef.current = setTimeout(async () => {
@@ -229,7 +242,7 @@ function TopNav({ active, onNav, search, setSearch }) {
           <div style={{ position:'relative', marginBottom:16 }}>
             <Icon.Search size={16} style={{ position:'absolute', left:12, top:'50%',
               transform:'translateY(-50%)', color:'var(--ink-3)', pointerEvents:'none' }}/>
-            <input value={search} onChange={e=>handleSearch(e.target.value)}
+            <input value={value} onChange={e=>handleSearch(e.target.value)}
               placeholder="Search MARUTI, Tata Motors..." style={{
                 width:'100%', padding:'11px 12px 11px 36px', border:'1px solid var(--border)',
                 borderRadius:10, background:'var(--bg-base)', fontSize:14, outline:'none',
@@ -331,7 +344,7 @@ function TopNav({ active, onNav, search, setSearch }) {
           <div className="nav-desktop nav-search" style={{ flex:1, position:'relative', maxWidth:400, marginLeft:'auto' }}
             onBlur={e => { if (!e.currentTarget.contains(e.relatedTarget)) setDropOpen(false); }}>
             <Icon.Search size={16} style={{ position:'absolute', left:12, top:'50%', transform:'translateY(-50%)', color:'var(--ink-3)', pointerEvents:'none' }}/>
-            <input value={search} onChange={e=>handleSearch(e.target.value)}
+            <input value={value} onChange={e=>handleSearch(e.target.value)}
               onFocus={()=>results.length > 0 && setDropOpen(true)}
               placeholder="Search MARUTI, Tata Motors..." style={{
                 width:'100%', padding:'9px 12px 9px 36px', border:'1px solid var(--border)', borderRadius:10,
@@ -342,7 +355,7 @@ function TopNav({ active, onNav, search, setSearch }) {
                 background:'var(--bg-surface)', border:'1px solid var(--border)', borderRadius:12,
                 boxShadow:'var(--shadow-lg)', overflow:'hidden' }}>
                 {results.map((r, i) => (
-                  <button key={i} onClick={()=>{setSearch(''); setDropOpen(false);}} style={{
+                  <button key={i} onClick={()=>{write(''); setDropOpen(false);}} style={{
                     display:'flex', alignItems:'center', gap:10, width:'100%',
                     padding:'10px 14px', border:'none', background:'transparent', textAlign:'left',
                     borderBottom: i < results.length-1 ? '1px solid var(--border)' : 'none', cursor:'pointer'

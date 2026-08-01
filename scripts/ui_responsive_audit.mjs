@@ -16,6 +16,10 @@
  * never showed up in any failure list — activeTab defaults to a different
  * tab, so the screen-level check alone never rendered it.
  *
+ * After the width sweep, one behavioural guard runs: the hamburger menu's
+ * search input must actually keep what you type into it (see the block at the
+ * bottom). Layout assertions cannot see an input that discards keystrokes.
+ *
  * Usage:
  *   python scripts/seed_fixture_ui.py --data-dir .uidev-data
  *   PORTFOLIO_DATA_DIR=.uidev-data python -m uvicorn services.api.server:app --port 8001
@@ -156,10 +160,56 @@ for (const width of WIDTHS) {
   await ctx.close();
 }
 
+// ── Guard: the hamburger menu's search input must accept typed text ──────────
+// The overflow assertion above structurally cannot see a control that renders
+// at the right size but silently discards input. Five screens shipped
+// `search="" setSearch={()=>{}}`, which made TopNav's controlled input reset
+// after every keystroke — and since Task 13 the hamburger IS the only search
+// below 1024px, so that input was the whole affordance. Assert on inbox: it's
+// one of the five, and it's where a brief notification lands.
+{
+  const TYPED = 'MARUTI';
+  const ctx = await browser.newContext({ viewport: { width: 390, height: 900 } });
+  await ctx.addInitScript(tok => { localStorage.setItem('sa_auth_token', tok); }, token);
+  const page = await ctx.newPage();
+  await page.goto(BASE, { waitUntil: 'networkidle' });
+  const navigated = await page.evaluate(() => {
+    if (typeof window.__auditNav !== 'function') return false;
+    window.__auditNav('inbox');
+    return true;
+  });
+  if (!navigated) {
+    console.error('FATAL: window.__auditNav missing — cannot reach inbox for the search-typing guard.');
+    await browser.close();
+    process.exit(2);
+  }
+  await page.waitForTimeout(600);
+
+  // Instrument-broken (menu/input unreachable) is exit 2, same as the nav seam
+  // and tab-click guards; only a wrong VALUE is a scored app failure.
+  const input = page.locator('.mobile-menu input').first();
+  try {
+    await page.locator('.nav-hamburger button').last().click({ timeout: 5000 });
+    await input.waitFor({ state: 'visible', timeout: 5000 });
+    await input.pressSequentially(TYPED, { timeout: 5000 });
+  } catch (e) {
+    console.error('FATAL: could not open the hamburger menu / reach its search input on '
+      + `inbox @ 390px — the typing guard proves nothing. (${e.message})`);
+    await browser.close();
+    process.exit(2);
+  }
+  const got = await input.inputValue();
+  if (got !== TYPED) {
+    failures.push(`inbox hamburger search @ 390px — typed "${TYPED}" but the input reads `
+      + `"${got}" (controlled input discarding keystrokes)`);
+  }
+  await ctx.close();
+}
+
 await browser.close();
 
 if (failures.length) {
-  console.error(`\n✗ ${failures.length} overflow failure(s):`);
+  console.error(`\n✗ ${failures.length} failure(s):`);
   for (const f of failures) console.error('  ' + f);
   console.error(`\nScreenshots in ${OUT}`);
   process.exit(1);
@@ -167,5 +217,6 @@ if (failures.length) {
 const totalTabs = NORMALIZED_SCREENS.reduce((n, s) => n + s.tabs.length, 0);
 console.log(`✓ no horizontal overflow across ${SCREENS.length} screens `
   + `(+ ${totalTabs} inner tabs) × ${WIDTHS.length} widths`);
+console.log('✓ hamburger search input accepts typed text (inbox @ 390px)');
 console.log(`Screenshots in ${OUT} — eyeball the 1280px set for under-distribution.`);
 process.exit(0);

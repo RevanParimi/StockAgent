@@ -338,7 +338,7 @@ function AnalyticsPage({ onNav }) {
 
   return (
     <div className="proto-screen" style={{ minHeight: '100vh', background: 'var(--bg-base)', color: 'var(--ink-1)', paddingBottom: 100 }}>
-      <TopNav active="analytics" onNav={onNav} search="" setSearch={()=>{}}/>
+      <TopNav active="analytics" onNav={onNav}/>
 
       {/* Page header — title + CSV export; back-nav now lives in TopNav */}
       <div style={{

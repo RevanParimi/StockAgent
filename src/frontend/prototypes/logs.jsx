@@ -83,7 +83,7 @@ function LogsPage({ onNav }) {
 
   return (
     <div className="proto-screen" style={{ minHeight: '100vh', background: '#0f172a', color: '#e2e8f0', display: 'flex', flexDirection: 'column' }}>
-      <TopNav active="logs" onNav={onNav} search="" setSearch={()=>{}}/>
+      <TopNav active="logs" onNav={onNav}/>
 
       {/* Header — title + tab switcher + log controls; back-nav now lives in TopNav */}
       <div style={{

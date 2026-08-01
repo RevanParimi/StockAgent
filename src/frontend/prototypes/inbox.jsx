@@ -72,7 +72,7 @@ function InboxPage({ onNav, tab, setTab }) {
 
   return (
     <div className="proto-screen" style={{ minHeight: '100vh', background: 'var(--bg-base)' }}>
-      <TopNav active="inbox" onNav={onNav} search="" setSearch={()=>{}}/>
+      <TopNav active="inbox" onNav={onNav}/>
 
       <div style={{ maxWidth: 640, margin: '0 auto', padding: '18px 16px 90px' }}>
         <div style={{ fontSize: 20, fontWeight: 800, color: 'var(--ink-1)', marginBottom: 18 }}>Inbox</div>

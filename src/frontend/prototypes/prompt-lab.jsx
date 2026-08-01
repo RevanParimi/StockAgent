@@ -271,7 +271,7 @@ function PromptLabPage({ onNav }) {
 
   return (
     <div className="proto-screen" style={{ minHeight: '100vh', background: 'var(--bg-base)', color: 'var(--ink-1)', paddingBottom: 100 }}>
-      <TopNav active="prompt-lab" onNav={onNav} search="" setSearch={()=>{}}/>
+      <TopNav active="prompt-lab" onNav={onNav}/>
 
       {/* Header — title + Save; back-nav now lives in TopNav */}
       <div style={{

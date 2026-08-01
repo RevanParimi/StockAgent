@@ -348,7 +348,7 @@ function TickerManager() {
                 onKeyDown={e => e.key === 'Enter' && handleAdd()}
                 style={{
                   background: '#1e293b', border: '1px solid #334155', color: '#e2e8f0',
-                  padding: '7px 12px', borderRadius: 7, fontSize: 13, flex: '1 1 140px', minWidth: 0,
+                  padding: '7px 12px', borderRadius: 7, fontSize: 13, flex: '0 1 140px', minWidth: 0,
                   fontFamily: 'monospace',
                 }}
               />

@@ -1,15 +1,18 @@
-/* Inbox — notification landing screen. Each tab renders the latest content of
- * one notification type, fetched as pre-rendered text (?format=text) so it
- * matches the push/email body exactly. */
+/* Inbox — notification landing screen. Each tab fetches the latest content of
+ * one notification type from its structured JSON endpoint and renders it with
+ * a native view component (BriefView, DigestView, WeeklyView, or the inline
+ * alerts list) — the same card/fold vocabulary throughout, no ASCII. The
+ * `?format=text` variants of these endpoints still exist and are still used
+ * by push notifications and email; this screen no longer requests them. */
 const { useState: useStateInbox, useEffect: useEffectInbox } = React;
 
-/* `render` picks the view component; 'text' is the legacy ASCII path still used
- * by tabs not yet migrated. */
+/* `render` picks the view component for the dispatch below — data-driven, not
+ * a parallel switch on `key`, so adding/renaming a tab only means one line. */
 const INBOX_TABS = [
-  { key: 'brief',  label: 'Brief',  url: '/delivery/brief/latest',           render: 'brief'  },
-  { key: 'digest', label: 'Digest', url: '/portfolio/digest/latest?format=text', render: 'text' },
-  { key: 'weekly', label: 'Weekly', url: '/delivery/weekly/latest?format=text', render: 'text' },
-  { key: 'alerts', label: 'Alerts', url: '/delivery/alerts?limit=20',        render: 'alerts' },
+  { key: 'brief',  label: 'Brief',  url: '/delivery/brief/latest',    render: 'brief'  },
+  { key: 'digest', label: 'Digest', url: '/portfolio/digest/latest',  render: 'digest' },
+  { key: 'weekly', label: 'Weekly', url: '/delivery/weekly/latest',   render: 'weekly' },
+  { key: 'alerts', label: 'Alerts', url: '/delivery/alerts?limit=20', render: 'alerts' },
 ];
 
 const INBOX_EMPTY = {
@@ -23,14 +26,14 @@ const SEV_COLOR = { critical: '#dc2626', warning: '#d97706', info: 'var(--ink-3)
 
 function InboxPage({ onNav, tab, setTab }) {
   const active = INBOX_TABS.some(t => t.key === tab) ? tab : 'brief';
+  const activeSpec = INBOX_TABS.find(t => t.key === active) || INBOX_TABS[0];
   const [state, setState] = useStateInbox({ status: 'loading' });
   const [nonce, setNonce] = useStateInbox(0);          // retry trigger
 
   useEffectInbox(() => {
     let alive = true;
     setState({ status: 'loading' });
-    const spec = INBOX_TABS.find(t => t.key === active);
-    fetch(spec.url)
+    fetch(activeSpec.url)
       .then(async (r) => {
         if (r.status === 404) return { status: 'empty' };
         if (!r.ok) throw new Error('HTTP ' + r.status);
@@ -44,22 +47,6 @@ function InboxPage({ onNav, tab, setTab }) {
   const card = {
     background: 'var(--bg-surface)', border: '1px solid var(--border)',
     borderRadius: 16, padding: '18px 16px',
-  };
-
-  const renderText = (data) => {
-    const lines = String(data.text || '').split('\n').filter(l => l.trim() !== '');
-    if (!lines.length) return <div style={{ color: 'var(--ink-3)' }}>{INBOX_EMPTY[active]}</div>;
-    return (
-      <div style={card}>
-        <div style={{ fontSize: 15, fontWeight: 800, color: 'var(--ink-1)', marginBottom: 10 }}>
-          {lines[0]}
-        </div>
-        {lines.slice(1).map((l, i) => (
-          <div key={i} style={{ fontSize: 13, color: 'var(--ink-2)', padding: '5px 0',
-            borderTop: i ? '1px solid var(--border)' : 'none' }}>{l}</div>
-        ))}
-      </div>
-    );
   };
 
   const renderAlerts = (data) => {
@@ -117,9 +104,11 @@ function InboxPage({ onNav, tab, setTab }) {
           </div>
         )}
         {state.status === 'ok' && (
-          active === 'alerts' ? renderAlerts(state.data)
-          : active === 'brief' ? <BriefView data={state.data} onNav={onNav}/>
-          : renderText(state.data)
+          activeSpec.render === 'alerts' ? renderAlerts(state.data)
+          : activeSpec.render === 'brief'  ? <BriefView  data={state.data} onNav={onNav}/>
+          : activeSpec.render === 'digest' ? <DigestView data={state.data}/>
+          : activeSpec.render === 'weekly' ? <WeeklyView data={state.data}/>
+          : null
         )}
       </div>
     </div>

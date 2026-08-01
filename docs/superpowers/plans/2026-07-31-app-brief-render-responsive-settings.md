@@ -1535,11 +1535,18 @@ npm install
 npx playwright install chromium
 ```
 
-Append to `.gitignore`:
+`.gitignore` already covers `node_modules/` (line 63) — no change needed there; verify rather than duplicate.
+
+**Keep the harness out of the production image.** `Dockerfile:22` does `COPY scripts/ ./scripts/`, so anything under `scripts/` ships to prod. The image is `python:3.11-slim` with no Node runtime, so a `.mjs` file could never execute there — but dead dev-only tooling has no business in a production image. `.dockerignore` already excludes `**/node_modules` and `tests`; add the harness and the dev manifest:
 
 ```
-node_modules/
+# --- Dev-only tooling (never runs in the Python prod image) ---
+scripts/ui_responsive_audit.mjs
+package.json
+package-lock.json
 ```
+
+**Never hardcode an absolute path to the npx cache** (e.g. `require('C:/Users/.../_npx/<hash>/node_modules/playwright')`). That hash changes on cache clear and does not exist on any other machine — it is exactly what the dev `package.json` exists to avoid. Use the bare `import { chromium } from 'playwright'` shown below.
 
 Verify the import resolves before writing the harness:
 
@@ -1653,7 +1660,7 @@ If it reports zero failures, the harness is not driving navigation correctly —
 - [ ] **Step 6: Commit**
 
 ```bash
-git add package.json package-lock.json .gitignore \
+git add package.json package-lock.json .dockerignore \
         src/frontend/prototypes/hooks.jsx scripts/ui_responsive_audit.mjs \
         src/frontend/prototypes/index.html
 git commit -m "test(ui): responsive audit harness + useIsMobile/useViewportWidth hooks

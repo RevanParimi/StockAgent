@@ -2029,9 +2029,38 @@ inline-positioned so it missed the .drawer-panel bottom-sheet override."
 
 ---
 
-### Task 13: Mobile search, bell and avatar
+### Task 13: Mobile search, bell and avatar — and un-strand tablet search
 
 `nav-desktop` hides all three below 768px, so phone users have no search and no account affordance.
+
+**ADDED 2026-08-01 (ruling, after Task 10's review).** Task 10 hid the desktop search box in the
+768–1023px band to make the header fit. That leaves **real iPads** (10.2" portrait = 810px,
+Air = 820px, Pro 11" = 834px) with **no way to search at all**. This plan originally assumed
+Task 13 would rescue them by moving search into the hamburger — but `.nav-hamburger` only
+renders below 768px (`styles.css:118-122`), so the gap would have been **permanent**, not
+temporary. That assumption was wrong.
+
+Fix: extend the hamburger to the tablet band so those viewports get the full-screen menu this
+task is already putting search into.
+
+```css
+/* was: @media (max-width: 767px) */
+@media (max-width: 1023px) {
+  .nav-desktop   { display: none !important; }
+  .nav-hamburger { display: flex; }
+}
+```
+
+Consequences you MUST handle, not assume:
+- `.nav-desktop` currently hides the pill nav, search, bell and avatar below 768px. Widening
+  that to 1023px removes the **icon-only pill nav** Task 10 added for this band — check whether
+  that is what you want, or whether the pill should stay and only search/bell hide. Decide
+  deliberately and say which in your report.
+- Adding the hamburger button in the 768–1023 band ADDS width. **Re-run the Task 9 harness and
+  confirm 768px still passes on every screen** — Task 10's fix is only 66+146px of headroom and
+  can be undone by careless additions here.
+- `.mobile-bottom-nav` stays a phone pattern (`max-width: 767px`) — do NOT widen it; the
+  hamburger covers navigation in the tablet band.
 
 **Files:**
 - Modify: `src/frontend/prototypes/home.jsx:316,350,354`, `styles.css`

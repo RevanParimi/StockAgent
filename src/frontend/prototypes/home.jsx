@@ -238,6 +238,7 @@ function TopNav({ active, onNav, search, setSearch }) {
           {/* Secondary screens */}
           <div style={{ height:1, background:'var(--border)', margin:'12px 0 8px' }}/>
           {[
+            { screen:'settings',   label:'Settings',   icon:<Icon.Settings size={16}/> },
             { screen:'prompt-lab', label:'Prompt Lab', icon:<Icon.Settings size={16}/> },
             { screen:'analytics',  label:'Analytics',  icon:<Icon.Trend size={16}/> },
             { screen:'logs',       label:'Logs',        icon:<Icon.Layers size={16}/> },
@@ -249,12 +250,6 @@ function TopNav({ active, onNav, search, setSearch }) {
               fontSize:14, fontWeight:500, textAlign:'left', marginBottom:2
             }}>{l.icon} {l.label}</button>
           ))}
-
-          {/* Preferences */}
-          <div style={{ height:1, background:'var(--border)', margin:'12px 0 8px' }}/>
-          <div style={{ fontSize:11, fontWeight:700, letterSpacing:'.04em', textTransform:'uppercase',
-            color:'var(--ink-3)', padding:'0 14px', marginBottom:6 }}>Preferences</div>
-          <NotifRow/>
 
           <div style={{ flex:1 }}/>
           <button onClick={()=>{ onNav?.('auth'); setMenuOpen(false); }} style={{
@@ -351,7 +346,7 @@ function TopNav({ active, onNav, search, setSearch }) {
             <Icon.Bell size={16} c="var(--ink-2)"/>
             <span style={{ position:'absolute', top:6, right:6, width:8, height:8, borderRadius:'50%', background:'var(--sell-strong)' }}/>
           </button>
-          <div className="nav-desktop" style={{ width:36, height:36, borderRadius:'50%', background:'linear-gradient(135deg,#22d3ee,#a78bfa)', display:'grid', placeItems:'center', color:'#fff', fontWeight:700, fontSize:13, flexShrink:0 }}>AS</div>
+          <button onClick={()=>onNav?.('settings')} title="Settings" style={{ width:36, height:36, borderRadius:'50%', background:'linear-gradient(135deg,#22d3ee,#a78bfa)', display:'grid', placeItems:'center', color:'#fff', fontWeight:700, fontSize:13, flexShrink:0, border:'none', cursor:'pointer' }}>AS</button>
 
           {/* Mobile: theme toggle + hamburger */}
           <div className="nav-hamburger" style={{ marginLeft:'auto', gap:8 }}>

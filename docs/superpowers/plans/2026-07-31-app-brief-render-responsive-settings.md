@@ -1702,6 +1702,36 @@ newly-navigated screens must pass at every width.
 - Modify: `src/frontend/prototypes/analytics.jsx:344-355`, `logs.jsx:88-100`, `prompt-lab.jsx:275-287`, `inbox.jsx:87-94`
 - Modify: `src/frontend/prototypes/home.jsx` (TopNav tablet band) and/or `styles.css`
 
+- [ ] **Step 0: Harden the harness against a false pass** (added 2026-08-01 after Task 9's review)
+
+`scripts/ui_responsive_audit.mjs` currently navigates with
+`window.__auditNav && window.__auditNav(s)`. The `&&` guard means that if the nav seam is ever
+missing — hooks fail to load, `App()` throws before the effect runs, a later task deletes the
+wiring — the call **silently no-ops**, the harness screenshots whatever screen it is stuck on
+under ten different filenames, and it can report a **false pass**. This task and the three
+after it use the harness as their gate, so fix that first.
+
+Replace the guarded call with one that fails loudly:
+
+```js
+    const navigated = await page.evaluate(s => {
+      if (typeof window.__auditNav !== 'function') return false;
+      window.__auditNav(s);
+      return true;
+    }, screen);
+    if (!navigated) {
+      console.error(`FATAL: window.__auditNav missing — cannot navigate to "${screen}". ` +
+                    'Every screenshot would be the same screen and results would be meaningless.');
+      await browser.close();
+      process.exit(2);
+    }
+```
+
+Exit code 2 distinguishes "the instrument is broken" from "the app overflows" (exit 1).
+
+Confirm it works by temporarily renaming `window.__auditNav` in index.html, running the
+harness, seeing exit 2, then restoring.
+
 - [ ] **Step 1: Add `TopNav` to `analytics.jsx`**
 
 In `AnalyticsPage`, replace the custom sticky header (the `<div>` at line ~346 containing the back button) with:

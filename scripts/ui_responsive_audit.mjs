@@ -73,7 +73,17 @@ for (const width of WIDTHS) {
     // The prototype does no URL routing — drive it through the Tweaks quick-jump
     // by calling the app's own nav via a synthetic hash the App() reads, falling
     // back to clicking the nav entry.
-    await page.evaluate(s => { window.__auditNav && window.__auditNav(s); }, screen);
+    const navigated = await page.evaluate(s => {
+      if (typeof window.__auditNav !== 'function') return false;
+      window.__auditNav(s);
+      return true;
+    }, screen);
+    if (!navigated) {
+      console.error(`FATAL: window.__auditNav missing — cannot navigate to "${screen}". ` +
+                    'Every screenshot would be the same screen and results would be meaningless.');
+      await browser.close();
+      process.exit(2);
+    }
     await page.waitForTimeout(600);
 
     const overflow = await page.evaluate(() => ({

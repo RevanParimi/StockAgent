@@ -336,21 +336,16 @@ function AnalyticsPage({ onNav }) {
   const tabs = ['overview', 'weights', 'sector'];
 
   return (
-    <div style={{ minHeight: '100vh', background: 'var(--bg-base)', color: 'var(--ink-1)', paddingBottom: 100 }}>
-      {/* Simple page header — no TopNav (ThemeToggle/MutationObserver inside TopNav crashes when nested) */}
+    <div className="proto-screen" style={{ minHeight: '100vh', background: 'var(--bg-base)', color: 'var(--ink-1)', paddingBottom: 100 }}>
+      <TopNav active="analytics" onNav={onNav} search="" setSearch={()=>{}}/>
+
+      {/* Page header — title + CSV export; back-nav now lives in TopNav */}
       <div style={{
         padding: '18px 24px', borderBottom: '1px solid var(--border)',
         background: 'var(--bg-surface)',
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        position: 'sticky', top: 0, zIndex: 30,
-        backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)',
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <button onClick={() => onNav('home')} style={{
-            background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--ink-3)',
-          }}>
-            <Icon.ChevronL size={18}/>
-          </button>
           <Icon.Trend size={20} c="var(--cyan)"/>
           <div>
             <div style={{ fontWeight: 700, fontSize: 16 }}>RL Analytics</div>

@@ -270,18 +270,15 @@ function PromptLabPage({ onNav }) {
   const totalTokens = tokenEstimate(systemPrompt) + tokenEstimate(analysisPrompt) + tokenEstimate(queriesText);
 
   return (
-    <div style={{ minHeight: '100vh', background: 'var(--bg-base)', color: 'var(--ink-1)', paddingBottom: 100 }}>
-      {/* Header */}
+    <div className="proto-screen" style={{ minHeight: '100vh', background: 'var(--bg-base)', color: 'var(--ink-1)', paddingBottom: 100 }}>
+      <TopNav active="prompt-lab" onNav={onNav} search="" setSearch={()=>{}}/>
+
+      {/* Header — title + Save; back-nav now lives in TopNav */}
       <div style={{
         padding: '18px 24px', borderBottom: '1px solid var(--border)', background: 'var(--bg-surface)',
         display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap',
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <button onClick={() => onNav('home')} style={{
-            background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--ink-3)',
-          }}>
-            <Icon.ChevronL size={18}/>
-          </button>
           <Icon.Settings size={20} c="var(--accent)"/>
           <div>
             <div style={{ fontWeight: 700, fontSize: 16 }}>Prompt Lab</div>

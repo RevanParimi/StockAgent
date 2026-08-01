@@ -392,3 +392,34 @@ button { font-family: inherit; cursor: pointer; }
   border-bottom-color: rgba(34,211,238,.14) !important;
 }
 /* nav-top-pill now uses var(--bg-surface) + var(--border) — no override needed */
+
+/* ── TopNav tablet band (768-1023px) — pre-existing overflow, not caused by
+   Task 8/10 ─────────────────────────────────────────────────────────────
+   The desktop pill nav (6 NavLinks + divider + ThemeToggle) plus the 400px
+   search box plus bell and avatar were only ever sized for >=1024px; at
+   768px the header measured 980px wide against a 768px viewport. Chosen
+   fix (preference #1 from the task brief): hide the desktop search box
+   below 1024px. It is already hidden below 768px via .nav-desktop, and
+   Task 13 plans to move search into the hamburger menu anyway, so this
+   loses no reachable functionality — it is a strict subset of what
+   .nav-desktop already hides. Does not touch >=1024px (search still
+   shows there) or <768px (already hidden there via .nav-desktop). */
+@media (min-width: 768px) and (max-width: 1023px) {
+  .nav-search { display: none !important; }
+  /* Without the search box's own marginLeft:auto, push bell+avatar back to
+     the right edge instead of letting them clump against the pill nav. */
+  .nav-bell   { margin-left: auto !important; }
+  /* Hiding search alone only saved ~66px (measured 980px -> 914px at 768px
+     viewport) — still ~146px over. The remaining bulk is the 6-label pill
+     nav, so collapse it to icon-only (brief's approach #3) rather than
+     fine-tuning padding/font (#2), which measured too close to call safe
+     against font-metric variance. `title` on each NavLink keeps the label
+     available on hover/long-press. */
+  .navlink-label   { display: none; }
+  .navlink-pill-btn { padding: 8px !important; gap: 0 !important; }
+}
+
+/* ── Bottom-nav clearance — every screen, not just the ones built with it ── */
+@media (max-width: 767px) {
+  .proto-screen { padding-bottom: 92px !important; }
+}

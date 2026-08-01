@@ -307,8 +307,10 @@ function TopNav({ active, onNav, search, setSearch }) {
             <ThemeToggle/>
           </nav>
 
-          {/* Desktop search */}
-          <div className="nav-desktop" style={{ flex:1, position:'relative', maxWidth:400, marginLeft:'auto' }}
+          {/* Desktop search — hidden in the 768-1023 tablet band too (nav-search); the
+              pill nav + 400px search + bell + avatar were only ever sized for >=1024px.
+              Task 13 moves search into the hamburger anyway, so hiding it here is safe. */}
+          <div className="nav-desktop nav-search" style={{ flex:1, position:'relative', maxWidth:400, marginLeft:'auto' }}
             onBlur={e => { if (!e.currentTarget.contains(e.relatedTarget)) setDropOpen(false); }}>
             <Icon.Search size={16} style={{ position:'absolute', left:12, top:'50%', transform:'translateY(-50%)', color:'var(--ink-3)', pointerEvents:'none' }}/>
             <input value={search} onChange={e=>handleSearch(e.target.value)}
@@ -341,8 +343,10 @@ function TopNav({ active, onNav, search, setSearch }) {
             )}
           </div>
 
-          {/* Bell + avatar — desktop */}
-          <button className="nav-desktop" style={{ width:36, height:36, borderRadius:'50%', border:'1px solid var(--border)', background:'var(--bg-surface)', display:'grid', placeItems:'center', position:'relative', flexShrink:0 }}>
+          {/* Bell + avatar — desktop. nav-bell picks up marginLeft:auto in the tablet
+              band (768-1023px) once nav-search is hidden there, so this pair still
+              sits at the right edge instead of clumping against the pill nav. */}
+          <button className="nav-desktop nav-bell" style={{ width:36, height:36, borderRadius:'50%', border:'1px solid var(--border)', background:'var(--bg-surface)', display:'grid', placeItems:'center', position:'relative', flexShrink:0 }}>
             <Icon.Bell size={16} c="var(--ink-2)"/>
             <span style={{ position:'absolute', top:6, right:6, width:8, height:8, borderRadius:'50%', background:'var(--sell-strong)' }}/>
           </button>
@@ -366,14 +370,14 @@ function TopNav({ active, onNav, search, setSearch }) {
 
 function NavLink({ children, icon, active, onClick }) {
   return (
-    <button onClick={onClick} style={{
+    <button className="navlink-pill-btn" onClick={onClick} title={children} style={{
       display:'flex', alignItems:'center', gap:6, padding:'7px 13px', borderRadius:999,
       border:'none',
       background: active ? 'var(--bg-surface)' : 'transparent',
       boxShadow: active ? '0 1px 5px rgba(34,211,238,.2)' : 'none',
       color: active ? 'var(--ink-1)' : 'var(--ink-2)',
       fontSize:13, fontWeight:600, cursor:'pointer', transition:'background .15s, color .15s',
-    }}>{icon} {children}</button>
+    }}>{icon}<span className="navlink-label"> {children}</span></button>
   );
 }
 

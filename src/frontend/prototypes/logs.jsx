@@ -82,19 +82,16 @@ function LogsPage({ onNav }) {
   const statusColor = { connecting: '#f59e0b', live: '#22c55e', error: '#ef4444', closed: '#94a3b8' };
 
   return (
-    <div style={{ minHeight: '100vh', background: '#0f172a', color: '#e2e8f0', display: 'flex', flexDirection: 'column' }}>
-      {/* Header */}
+    <div className="proto-screen" style={{ minHeight: '100vh', background: '#0f172a', color: '#e2e8f0', display: 'flex', flexDirection: 'column' }}>
+      <TopNav active="logs" onNav={onNav} search="" setSearch={()=>{}}/>
+
+      {/* Header — title + tab switcher + log controls; back-nav now lives in TopNav */}
       <div style={{
         padding: '14px 20px', borderBottom: '1px solid #1e293b',
         display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap',
         background: '#0f172a',
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <button onClick={() => onNav('home')} style={{
-            background: 'transparent', border: 'none', cursor: 'pointer', color: '#64748b',
-          }}>
-            <Icon.ChevronL size={18}/>
-          </button>
           <Icon.Layers size={18} c="#6366f1"/>
           <div>
             <div style={{ fontWeight: 700, fontSize: 15, fontFamily: 'monospace' }}>Server Logs</div>

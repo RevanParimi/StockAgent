@@ -71,16 +71,11 @@ function InboxPage({ onNav, tab, setTab }) {
   };
 
   return (
-    <div style={{ minHeight: '100vh', background: 'var(--bg-base)', padding: '18px 16px 90px' }}>
-      <div style={{ maxWidth: 640, margin: '0 auto' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 18 }}>
-          <button onClick={() => onNav?.('home')} style={{ width: 36, height: 36, borderRadius: 10,
-            border: '1px solid var(--border)', background: 'var(--bg-surface)',
-            display: 'grid', placeItems: 'center', cursor: 'pointer' }}>
-            <Icon.ChevronL size={16}/>
-          </button>
-          <div style={{ fontSize: 20, fontWeight: 800, color: 'var(--ink-1)' }}>Inbox</div>
-        </div>
+    <div className="proto-screen" style={{ minHeight: '100vh', background: 'var(--bg-base)' }}>
+      <TopNav active="inbox" onNav={onNav} search="" setSearch={()=>{}}/>
+
+      <div style={{ maxWidth: 640, margin: '0 auto', padding: '18px 16px 90px' }}>
+        <div style={{ fontSize: 20, fontWeight: 800, color: 'var(--ink-1)', marginBottom: 18 }}>Inbox</div>
 
         <div style={{ display: 'flex', gap: 6, marginBottom: 16 }}>
           {INBOX_TABS.map(t => (

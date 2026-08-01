@@ -1673,12 +1673,34 @@ codebase had zero matchMedia usage."
 
 ---
 
-### Task 10: Make `TopNav` universal
+### Task 10: Make `TopNav` universal — and make it fit the tablet band
 
 Root cause of "a few pages aren't compatible for phone": `TopNav` owns both the mobile bottom nav and the hamburger, and four screens don't render it.
 
+**ADDED 2026-08-01 (ruling, after Task 9's harness went red).** The harness found a
+**second, previously undocumented** `TopNav` defect: at **768px the header is 980px wide**,
+overflowing on all five screens that currently render it (home, agents, portfolio, learn,
+rl-monitor). This was **proven pre-existing**, not a regression from Task 8 — a browser probe
+hiding Task 8's avatar still measured 928px against a 768px viewport. The cause is that the
+desktop pill nav (6 `NavLink`s + divider + `ThemeToggle`) plus the 400px search box plus bell
+and avatar were only ever sized for ≥1024px; the 768–1023 tablet band was never handled.
+
+Because this task already rewires `TopNav` across four more screens, the fix belongs here —
+otherwise Task 10 would spread a known-overflowing header to four additional screens.
+
+Fix the tablet band so the header fits at 768px. Reasonable approaches, in preference order:
+1. Hide the desktop search box below 1024px (it is already hidden below 768px via
+   `nav-desktop`; Task 13 puts search in the hamburger anyway).
+2. Shrink `NavLink` padding/font in the 768–1023 band via a `styles.css` media query.
+3. Collapse the pill nav to icon-only below 1024px.
+
+Do NOT change behaviour at ≥1024px, and do NOT regress the <768px mobile layout. Verify with
+the Task 9 harness: home/agents/portfolio/learn/rl-monitor must pass at 768px, and the four
+newly-navigated screens must pass at every width.
+
 **Files:**
 - Modify: `src/frontend/prototypes/analytics.jsx:344-355`, `logs.jsx:88-100`, `prompt-lab.jsx:275-287`, `inbox.jsx:87-94`
+- Modify: `src/frontend/prototypes/home.jsx` (TopNav tablet band) and/or `styles.css`
 
 - [ ] **Step 1: Add `TopNav` to `analytics.jsx`**
 
@@ -1754,8 +1776,22 @@ chevron, with .proto-nav hidden under 768px."
 
 ### Task 11: RL Monitor — weights grid and daily log
 
+**ADDED 2026-08-01 (ruling, after Task 9 exposed a harness blind spot).** The 474px weights
+grid did **not** appear in the harness's failure list — not because it is fine, but because it
+sits behind a non-default inner tab (`activeTab` defaults to `'predictions'`) that the
+screen-level harness never clicks. Task 9's implementer confirmed by hand that the overflow is
+real: **496px against a 360px viewport**.
+
+So this task has an extra deliverable: **extend `scripts/ui_responsive_audit.mjs` to visit
+tabbed sub-views**, so the grid is actually asserted and every other tabbed screen is guarded
+too. Give the `SCREENS` entries an optional `tabs` list, click each tab, and run the same
+`scrollWidth <= innerWidth` assertion per tab. Name failures as `screen/tab @ width`.
+
+Without this, your fix is unverified and the same class of bug can silently return.
+
 **Files:**
 - Modify: `src/frontend/prototypes/rl-monitor.jsx:620-660` (weights grid), `:252-300` (daily log)
+- Modify: `scripts/ui_responsive_audit.mjs` (tab traversal)
 
 **Interfaces:**
 - Consumes: `window.useIsMobile` (Task 9).
@@ -1868,10 +1904,21 @@ Desktop layout unchanged."
 
 ---
 
-### Task 12: Analytics, Logs and Learn
+### Task 12: Analytics, Logs and Learn — plus two overflows the harness found
+
+**ADDED 2026-08-01 (ruling).** Task 9's harness found two 360px overflows that this plan's
+original audit missed. They are small and belong with the other per-page fixes:
+- `home @ 360px` — **367px** against a 360px viewport (7px over)
+- `learn @ 360px` — **361px** against a 360px viewport (1px over)
+
+Both are almost certainly a fixed-width or non-shrinking child rather than a layout rethink.
+Diagnose each by finding the element whose `getBoundingClientRect().right` exceeds
+`window.innerWidth`, then let it shrink (`min-width: 0`, `max-width: 100%`, or flex-shrink)
+rather than hard-coding a narrower width. Verify with the Task 9 harness.
 
 **Files:**
 - Modify: `analytics.jsx:472,480,530,676`, `logs.jsx:143,354`, `learn.jsx:235`
+- Modify: whichever elements in `home.jsx` / `learn.jsx` (or `styles.css`) cause the 360px overflows above
 
 - [ ] **Step 1: Collapse the Analytics two-column grid**
 

@@ -1,0 +1,9 @@
+{
+  "name": "stockagent-devtools",
+  "private": true,
+  "type": "module",
+  "description": "Dev-only tooling. The app itself has no build step and no runtime npm dependencies.",
+  "devDependencies": {
+    "playwright": "^1.62.1"
+  }
+}

@@ -25,3 +25,8 @@ outputs
 # --- Misc ---
 tests
 docker-compose.yml
+
+# --- Dev-only tooling (never runs in the Python prod image) ---
+scripts/ui_responsive_audit.mjs
+package.json
+package-lock.json

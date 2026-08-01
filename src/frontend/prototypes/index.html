@@ -171,6 +171,7 @@
 <div id="root"></div>
 
 <script type="text/babel" src="data.jsx"></script>
+<script type="text/babel" src="hooks.jsx"></script>
 <script type="text/babel" src="icons.jsx"></script>
 <script type="text/babel" src="sphere.jsx"></script>
 <script type="text/babel" src="auth.jsx"></script>
@@ -269,6 +270,11 @@ function App() {
     }
     setScreen(s);
   };
+
+  // Test seam for scripts/ui_responsive_audit.mjs — the prototype does no URL
+  // routing, so the audit harness drives navigation through this.
+  useEffect(() => { window.__auditNav = nav; return () => { window.__auditNav = null; }; });
+
   const goHome = () => nav('home');
   const goAgents = () => nav('agents');
   const onAuthed = (user, remember) => {

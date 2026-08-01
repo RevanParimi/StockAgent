@@ -226,6 +226,24 @@ function TopNav({ active, onNav, search, setSearch }) {
               <Icon.X size={18}/>
             </button>
           </div>
+          <div style={{ position:'relative', marginBottom:16 }}>
+            <Icon.Search size={16} style={{ position:'absolute', left:12, top:'50%',
+              transform:'translateY(-50%)', color:'var(--ink-3)', pointerEvents:'none' }}/>
+            <input value={search} onChange={e=>handleSearch(e.target.value)}
+              placeholder="Search MARUTI, Tata Motors..." style={{
+                width:'100%', padding:'11px 12px 11px 36px', border:'1px solid var(--border)',
+                borderRadius:10, background:'var(--bg-base)', fontSize:14, outline:'none',
+                boxSizing:'border-box' }}/>
+          </div>
+          {results.length > 0 && (
+            <div style={{ marginBottom:12, border:'1px solid var(--border)', borderRadius:12,
+              overflow:'hidden' }}>
+              {results.slice(0, 5).map((r, i) => (
+                <div key={i} style={{ padding:'10px 14px', fontSize:13,
+                  borderTop: i ? '1px solid var(--border)' : 'none' }}>{r.sym || r.name}</div>
+              ))}
+            </div>
+          )}
           {navLinks.map(l => (
             <button key={l.screen} onClick={()=>{ onNav?.(l.screen); setMenuOpen(false); }} style={{
               display:'flex', alignItems:'center', gap:14, padding:'16px 14px', borderRadius:12, width:'100%',
@@ -307,9 +325,9 @@ function TopNav({ active, onNav, search, setSearch }) {
             <ThemeToggle/>
           </nav>
 
-          {/* Desktop search — hidden in the 768-1023 tablet band too (nav-search); the
-              pill nav + 400px search + bell + avatar were only ever sized for >=1024px.
-              Task 13 moves search into the hamburger anyway, so hiding it here is safe. */}
+          {/* Desktop search — >=1024px only (nav-desktop, widened by Task 13). Below
+              that the hamburger's full-screen menu carries its own search input
+              instead, so hiding this one there loses no reachable functionality. */}
           <div className="nav-desktop nav-search" style={{ flex:1, position:'relative', maxWidth:400, marginLeft:'auto' }}
             onBlur={e => { if (!e.currentTarget.contains(e.relatedTarget)) setDropOpen(false); }}>
             <Icon.Search size={16} style={{ position:'absolute', left:12, top:'50%', transform:'translateY(-50%)', color:'var(--ink-3)', pointerEvents:'none' }}/>
@@ -343,19 +361,24 @@ function TopNav({ active, onNav, search, setSearch }) {
             )}
           </div>
 
-          {/* Bell + avatar — desktop. nav-bell picks up marginLeft:auto in the tablet
-              band (768-1023px) once nav-search is hidden there, so this pair still
-              sits at the right edge instead of clumping against the pill nav. */}
+          {/* Bell — desktop-only. Duplicates the Inbox tab already in the bottom
+              nav / mobile menu, so it stays nav-desktop rather than adding a
+              third route to the same screen. */}
           <button className="nav-desktop nav-bell" style={{ width:36, height:36, borderRadius:'50%', border:'1px solid var(--border)', background:'var(--bg-surface)', display:'grid', placeItems:'center', position:'relative', flexShrink:0 }}>
             <Icon.Bell size={16} c="var(--ink-2)"/>
             <span style={{ position:'absolute', top:6, right:6, width:8, height:8, borderRadius:'50%', background:'var(--sell-strong)' }}/>
           </button>
-          <button onClick={()=>onNav?.('settings')} title="Settings" style={{ width:36, height:36, borderRadius:'50%', background:'linear-gradient(135deg,#22d3ee,#a78bfa)', display:'grid', placeItems:'center', color:'#fff', fontWeight:700, fontSize:13, flexShrink:0, border:'none', cursor:'pointer' }}>AS</button>
+          {/* Avatar — the single Settings entry point, visible at every width (no
+              nav-desktop). Below 1024px .nav-avatar picks up margin-left:auto
+              (styles.css:130) so it clusters with the theme toggle + hamburger
+              at the right edge instead of sitting orphaned next to the logo
+              once the pill/search/bell disappear. */}
+          <button className="nav-avatar" onClick={()=>onNav?.('settings')} title="Settings" style={{ width:36, height:36, borderRadius:'50%', background:'linear-gradient(135deg,#22d3ee,#a78bfa)', display:'grid', placeItems:'center', color:'#fff', fontWeight:700, fontSize:13, flexShrink:0, border:'none', cursor:'pointer' }}>AS</button>
 
-          {/* Mobile: theme toggle + hamburger */}
-          <div className="nav-hamburger" style={{ marginLeft:'auto', gap:8 }}>
+          {/* Mobile + tablet: theme toggle + hamburger (opens the full-screen
+              menu, which now also carries search) */}
+          <div className="nav-hamburger" style={{ gap:8 }}>
             <ThemeToggle/>
-            <div style={{ width:32, height:32, borderRadius:'50%', background:'linear-gradient(135deg,#22d3ee,#a78bfa)', display:'grid', placeItems:'center', color:'#fff', fontWeight:700, fontSize:12 }}>AS</div>
             <button onClick={()=>setMenuOpen(true)} style={{ width:36, height:36, borderRadius:9, border:'1px solid var(--border)', background:'var(--bg-surface)', display:'grid', placeItems:'center' }}>
               <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
                 <line x1="2" y1="4" x2="16" y2="4"/><line x1="2" y1="9" x2="16" y2="9"/><line x1="2" y1="14" x2="16" y2="14"/>

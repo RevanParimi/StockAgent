@@ -3,11 +3,13 @@
  * matches the push/email body exactly. */
 const { useState: useStateInbox, useEffect: useEffectInbox } = React;
 
+/* `render` picks the view component; 'text' is the legacy ASCII path still used
+ * by tabs not yet migrated. */
 const INBOX_TABS = [
-  { key: 'brief',  label: 'Brief',  url: '/delivery/brief/latest?format=text' },
-  { key: 'digest', label: 'Digest', url: '/portfolio/digest/latest?format=text' },
-  { key: 'weekly', label: 'Weekly', url: '/delivery/weekly/latest?format=text' },
-  { key: 'alerts', label: 'Alerts', url: '/delivery/alerts?limit=20' },
+  { key: 'brief',  label: 'Brief',  url: '/delivery/brief/latest',           render: 'brief'  },
+  { key: 'digest', label: 'Digest', url: '/portfolio/digest/latest?format=text', render: 'text' },
+  { key: 'weekly', label: 'Weekly', url: '/delivery/weekly/latest?format=text', render: 'text' },
+  { key: 'alerts', label: 'Alerts', url: '/delivery/alerts?limit=20',        render: 'alerts' },
 ];
 
 const INBOX_EMPTY = {
@@ -114,7 +116,11 @@ function InboxPage({ onNav, tab, setTab }) {
               color: 'var(--cyan)', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>Retry</button>
           </div>
         )}
-        {state.status === 'ok' && (active === 'alerts' ? renderAlerts(state.data) : renderText(state.data))}
+        {state.status === 'ok' && (
+          active === 'alerts' ? renderAlerts(state.data)
+          : active === 'brief' ? <BriefView data={state.data} onNav={onNav}/>
+          : renderText(state.data)
+        )}
       </div>
     </div>
   );

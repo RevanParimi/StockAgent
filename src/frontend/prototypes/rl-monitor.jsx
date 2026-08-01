@@ -232,6 +232,10 @@ const MISS_PILL_STYLE = {
 };
 
 function DailyLog({ predictions }) {
+  // Hooks called before the early return so their order stays stable across
+  // renders — see the identical note on WeightDrift above.
+  const isMobile = useIsMobile();
+  const [openRow, setOpenRow] = React.useState(null);
   if (!predictions || !predictions.length) return null;
 
   // Derive predicted direction and actual direction for each row
@@ -249,17 +253,22 @@ function DailyLog({ predictions }) {
     return { ...p, predDir, actualDir };
   });
 
-  const cols = ['Date','Predicted ₹','Actual ₹','Error %','Pred Dir','Actual Dir','Hit','Miss Type','Confidence'];
+  const cols = isMobile
+    ? ['Date','Error %','Hit']
+    : ['Date','Predicted ₹','Actual ₹','Error %','Pred Dir','Actual Dir','Hit','Miss Type','Confidence'];
 
   return (
     <div style={{ marginTop:28 }}>
       <p style={{ fontSize:14, fontWeight:700, color:'var(--ink-1)', marginBottom:4 }}>Daily log</p>
       <p style={{ fontSize:12, color:'var(--ink-3)', marginBottom:12 }}>
-        Most recent first · click any row to see the agent snapshot for that prediction (not wired in this prototype)
+        {isMobile
+          ? 'Most recent first · tap a row for the full record'
+          : 'Most recent first · click any row to see the agent snapshot for that prediction (not wired in this prototype)'}
       </p>
       <div style={{ overflowX:'auto', borderRadius:12, border:'1px solid var(--border)' }}>
         {/* No global fontFamily — only numeric cells get mono. Text cells (date, hit, miss) inherit Inter. */}
-        <table style={{ width:'100%', borderCollapse:'collapse', fontSize:13, minWidth:820 }}>
+        <table style={{ width:'100%', borderCollapse:'collapse', fontSize:13,
+          minWidth: isMobile ? 0 : 820 }}>
           <thead>
             <tr style={{ borderBottom:'1px solid var(--border)', background:'var(--bg-elevated)' }}>
               {cols.map(h => (
@@ -294,65 +303,105 @@ function DailyLog({ predictions }) {
               const MONO = { fontFamily:'JetBrains Mono, monospace', fontVariantNumeric:'tabular-nums' };
 
               return (
-                <tr key={i}
-                    style={{ borderBottom:'1px solid var(--border)', cursor:'pointer',
-                             background: rowBg, transition:'background .1s' }}
-                    onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-tinted)'}
-                    onMouseLeave={e => e.currentTarget.style.background = rowBg}>
+                <React.Fragment key={i}>
+                  <tr
+                      style={{ borderBottom:'1px solid var(--border)', cursor:'pointer',
+                               background: rowBg, transition:'background .1s' }}
+                      onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-tinted)'}
+                      onMouseLeave={e => e.currentTarget.style.background = rowBg}
+                      onClick={() => isMobile && setOpenRow(openRow === i ? null : i)}>
 
-                  {/* Date — Inter, muted, 12px */}
-                  <td style={{ padding:'10px 14px', color:'var(--ink-3)', fontSize:12 }}>{p.date}</td>
+                    {/* Date — Inter, muted, 12px */}
+                    <td style={{ padding:'10px 14px', color:'var(--ink-3)', fontSize:12 }}>{p.date}</td>
 
-                  {/* Predicted ₹ — MONO, bold, 13px */}
-                  <td style={{ padding:'10px 14px', color:'var(--ink-1)', fontWeight:700, ...MONO }}>
-                    {p.predicted != null ? p.predicted.toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2}) : '—'}
-                  </td>
+                    {!isMobile && (
+                      <>
+                        {/* Predicted ₹ — MONO, bold, 13px */}
+                        <td style={{ padding:'10px 14px', color:'var(--ink-1)', fontWeight:700, ...MONO }}>
+                          {p.predicted != null ? p.predicted.toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2}) : '—'}
+                        </td>
 
-                  {/* Actual ₹ — MONO, bold when available */}
-                  <td style={{ padding:'10px 14px', fontWeight: p.actual ? 700 : 400, ...MONO,
-                               color: p.actual != null ? 'var(--ink-1)' : 'var(--ink-3)' }}>
-                    {p.actual != null ? p.actual.toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2}) : '—'}
-                  </td>
+                        {/* Actual ₹ — MONO, bold when available */}
+                        <td style={{ padding:'10px 14px', fontWeight: p.actual ? 700 : 400, ...MONO,
+                                     color: p.actual != null ? 'var(--ink-1)' : 'var(--ink-3)' }}>
+                          {p.actual != null ? p.actual.toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2}) : '—'}
+                        </td>
+                      </>
+                    )}
 
-                  {/* Error % — MONO, signed, colored when large */}
-                  <td style={{ padding:'10px 14px', color: errColor,
-                               fontWeight: Math.abs(signedErr||0)>0.5 ? 600 : 400, ...MONO }}>
-                    {errDisplay}
-                  </td>
+                    {/* Error % — MONO, signed, colored when large */}
+                    <td style={{ padding:'10px 14px', color: errColor,
+                                 fontWeight: Math.abs(signedErr||0)>0.5 ? 600 : 400, ...MONO }}>
+                      {errDisplay}
+                    </td>
 
-                  {/* Pred Dir — arrow only, no text */}
-                  <td style={{ padding:'10px 14px' }}>
-                    {p.predDir !== null ? <DirArrow up={p.predDir}/> : <span style={{ color:'var(--ink-3)' }}>—</span>}
-                  </td>
+                    {!isMobile && (
+                      <>
+                        {/* Pred Dir — arrow only, no text */}
+                        <td style={{ padding:'10px 14px' }}>
+                          {p.predDir !== null ? <DirArrow up={p.predDir}/> : <span style={{ color:'var(--ink-3)' }}>—</span>}
+                        </td>
 
-                  {/* Actual Dir */}
-                  <td style={{ padding:'10px 14px' }}>
-                    {p.actualDir !== null ? <DirArrow up={p.actualDir}/> : <span style={{ color:'var(--ink-3)' }}>—</span>}
-                  </td>
+                        {/* Actual Dir */}
+                        <td style={{ padding:'10px 14px' }}>
+                          {p.actualDir !== null ? <DirArrow up={p.actualDir}/> : <span style={{ color:'var(--ink-3)' }}>—</span>}
+                        </td>
+                      </>
+                    )}
 
-                  {/* Hit — Inter font, 13px */}
-                  <td style={{ padding:'10px 14px' }}>
-                    {isHit    && <span style={{ color:'var(--buy-strong)', fontWeight:600, fontSize:13 }}>✓ hit</span>}
-                    {isMiss   && <span style={{ color:'var(--sell-strong)', fontWeight:600, fontSize:13 }}>✗ miss</span>}
-                    {isPending && <span style={{ color:'var(--ink-3)' }}>—</span>}
-                  </td>
+                    {/* Hit — Inter font, 13px */}
+                    <td style={{ padding:'10px 14px' }}>
+                      {isHit    && <span style={{ color:'var(--buy-strong)', fontWeight:600, fontSize:13 }}>✓ hit</span>}
+                      {isMiss   && <span style={{ color:'var(--sell-strong)', fontWeight:600, fontSize:13 }}>✗ miss</span>}
+                      {isPending && <span style={{ color:'var(--ink-3)' }}>—</span>}
+                    </td>
 
-                  {/* Miss Type pill */}
-                  <td style={{ padding:'9px 12px' }}>
-                    {missLabel
-                      ? <span style={{ ...MISS_PILL_STYLE, background:`${missColor}22`, color:missColor, border:`1px solid ${missColor}55` }}>
-                          {missLabel}
-                        </span>
-                      : <span style={{ color:'var(--ink-3)' }}>—</span>
-                    }
-                  </td>
+                    {!isMobile && (
+                      <>
+                        {/* Miss Type pill */}
+                        <td style={{ padding:'9px 12px' }}>
+                          {missLabel
+                            ? <span style={{ ...MISS_PILL_STYLE, background:`${missColor}22`, color:missColor, border:`1px solid ${missColor}55` }}>
+                                {missLabel}
+                              </span>
+                            : <span style={{ color:'var(--ink-3)' }}>—</span>
+                          }
+                        </td>
 
-                  {/* Confidence — MONO */}
-                  <td style={{ padding:'10px 14px', color:'var(--ink-2)',
-                               fontFamily:'JetBrains Mono, monospace', fontVariantNumeric:'tabular-nums' }}>
-                    {p.confidence != null ? `${Math.round(p.confidence * 100)}%` : '—'}
-                  </td>
-                </tr>
+                        {/* Confidence — MONO */}
+                        <td style={{ padding:'10px 14px', color:'var(--ink-2)',
+                                     fontFamily:'JetBrains Mono, monospace', fontVariantNumeric:'tabular-nums' }}>
+                          {p.confidence != null ? `${Math.round(p.confidence * 100)}%` : '—'}
+                        </td>
+                      </>
+                    )}
+                  </tr>
+
+                  {/* Mobile row expansion — the six fields hidden from the priority
+                      columns above. Field names/values match this row's own derived
+                      data (predDir/actualDir booleans, missLabel), not raw prop
+                      names, since predicted_direction/actual_direction strings
+                      don't exist on the prediction objects. */}
+                  {isMobile && openRow === i && (
+                    <tr style={{ background:'var(--bg-tinted)' }}>
+                      <td colSpan={3} style={{ padding:'10px 14px' }}>
+                        {[['Predicted', p.predicted != null ? '₹' + p.predicted : '—'],
+                          ['Actual',    p.actual != null ? '₹' + p.actual : '—'],
+                          ['Direction', (p.predDir !== null ? (p.predDir ? 'Up' : 'Down') : '—')
+                                        + ' → ' + (p.actualDir !== null ? (p.actualDir ? 'Up' : 'Down') : '—')],
+                          ['Miss type', missLabel || '—'],
+                          ['Confidence', p.confidence != null ? `${Math.round(p.confidence * 100)}%` : '—']
+                        ].map(([k2, v2]) => (
+                          <div key={k2} style={{ display:'flex', justifyContent:'space-between',
+                            padding:'3px 0', fontSize:12 }}>
+                            <span style={{ color:'var(--ink-3)' }}>{k2}</span>
+                            <span style={{ color:'var(--ink-1)', fontWeight:600 }}>{v2}</span>
+                          </div>
+                        ))}
+                      </td>
+                    </tr>
+                  )}
+                </React.Fragment>
               );
             })}
           </tbody>
@@ -528,6 +577,10 @@ function MissAttribution({ misses }) {
 
 // ── Agent Weight Drift ────────────────────────────────────────────────────────
 function WeightDrift({ weights, ticker }) {
+  // Called before the early return below so hook order stays stable across
+  // renders where `weights` flips null <-> populated while this component
+  // stays mounted (e.g. switching ticker while the "weights" tab is active).
+  const isMobile = useIsMobile();
   if (!weights) return <p style={{ color:'var(--ink-3)', fontSize:13 }}>No weight data yet for this ticker.</p>;
 
   const agentColors = window.RL_AGENT_COLORS || {};
@@ -623,14 +676,17 @@ function WeightDrift({ weights, ticker }) {
             const color = agentColors[k] || '#94a3b8';
             const BAR_MAX = 0.30; // 30% = full bar
             return (
-              <div key={k} style={{
+              <div key={k} style={isMobile ? {
+                display:'block', padding:'12px 14px',
+                borderBottom: idx < agents.length-1 ? '1px solid var(--border)' : 'none',
+              } : {
                 display:'grid', gridTemplateColumns:'180px 1fr 60px 70px 60px',
                 alignItems:'center', gap:'0 16px',
                 padding:'10px 20px',
                 borderBottom: idx < agents.length-1 ? '1px solid var(--border)' : 'none',
               }}>
                 {/* Name + colored dot */}
-                <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom: isMobile ? 8 : 0 }}>
                   <span style={{ width:10, height:10, borderRadius:'50%', background:color, flexShrink:0, display:'inline-block' }}/>
                   <span style={{ fontSize:13, color:'var(--ink-1)', fontWeight:500 }}>{AGENT_LABELS_RL[k]||k}</span>
                 </div>
@@ -650,21 +706,26 @@ function WeightDrift({ weights, ticker }) {
                     borderRadius:1, transform:'translateX(-50%)',
                   }}/>
                 </div>
-                {/* Base % */}
-                <span className="mono" style={{ fontSize:12, color:'var(--ink-3)', textAlign:'right' }}>
-                  {(base*100).toFixed(1)}%
-                </span>
-                {/* Current % */}
-                <span className="mono" style={{ fontSize:13, fontWeight:700, color:'var(--ink-1)', textAlign:'right' }}>
-                  {(cur*100).toFixed(1)}%
-                </span>
-                {/* Delta */}
-                <span className="mono" style={{
-                  fontSize:12, fontWeight:600, textAlign:'right',
-                  color: diff > 0.005 ? 'var(--buy-strong)' : diff < -0.005 ? 'var(--sell-strong)' : 'var(--ink-3)',
-                }}>
-                  {diff >= 0 ? '+' : ''}{(diff*100).toFixed(1)}%
-                </span>
+                {/* Numeric cells — inline row on mobile, grid columns on desktop */}
+                <div style={isMobile
+                  ? { display:'flex', gap:14, marginTop:6, fontSize:11 }
+                  : { display:'contents' }}>
+                  {/* Base % */}
+                  <span className="mono" style={{ fontSize:12, color:'var(--ink-3)', textAlign:'right' }}>
+                    {(base*100).toFixed(1)}%
+                  </span>
+                  {/* Current % */}
+                  <span className="mono" style={{ fontSize:13, fontWeight:700, color:'var(--ink-1)', textAlign:'right' }}>
+                    {(cur*100).toFixed(1)}%
+                  </span>
+                  {/* Delta */}
+                  <span className="mono" style={{
+                    fontSize:12, fontWeight:600, textAlign:'right',
+                    color: diff > 0.005 ? 'var(--buy-strong)' : diff < -0.005 ? 'var(--sell-strong)' : 'var(--ink-3)',
+                  }}>
+                    {diff >= 0 ? '+' : ''}{(diff*100).toFixed(1)}%
+                  </span>
+                </div>
               </div>
             );
           })}

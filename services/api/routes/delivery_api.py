@@ -38,7 +38,8 @@ async def brief_latest(
     if format == "text":
         from core.delivery.brief import render_brief_text
         return {"date": brief.get("date"), "text": render_brief_text(brief)}
-    return brief
+    from core.delivery.brief import enrich_brief_for_api
+    return enrich_brief_for_api(brief)
 
 
 @router.get("/weekly/latest", summary="Latest weekly review")

@@ -133,3 +133,43 @@ def test_weekly_latest_format_text(monkeypatch, tmp_path):
     resp = _client().get("/delivery/weekly/latest?format=text")
     assert resp.status_code == 200
     assert resp.json()["text"].startswith("Weekly review — 2026-07-20")
+
+
+def test_brief_latest_enriches_verdict_and_regime(monkeypatch, tmp_path):
+    """The app renders from raw JSON, so plain-English must ride the response."""
+    monkeypatch.setattr(dapi.settings, "PORTFOLIO_DATA_DIR", str(tmp_path))
+    from core.portfolio.store import PortfolioStore
+    PortfolioStore(base_dir=str(tmp_path)).save_brief({
+        "date": "2026-07-31", "kind": "morning_brief", "headline": "h",
+        "advisor_flags": [{"symbol": "OLDCO", "verdict": "TRIM", "reason": "r"}],
+        "regime": {"label": "RISK_OFF"},
+    })
+    body = _client().get("/delivery/brief/latest").json()
+    assert body["advisor_flags"][0]["verdict_plain"] == "Trim back"
+    assert body["advisor_flags"][0]["verdict"] == "TRIM"      # raw preserved
+    assert body["regime"]["label_plain"] == "Cautious"
+    assert body["regime"]["gloss"].startswith("the system reads elevated risk")
+
+
+def test_brief_enrichment_tolerates_unknown_and_missing(monkeypatch, tmp_path):
+    """Unknown enums fall through to the raw string; absent keys stay absent."""
+    monkeypatch.setattr(dapi.settings, "PORTFOLIO_DATA_DIR", str(tmp_path))
+    from core.portfolio.store import PortfolioStore
+    PortfolioStore(base_dir=str(tmp_path)).save_brief({
+        "date": "2026-07-31", "kind": "morning_brief",
+        "advisor_flags": [{"symbol": "X", "verdict": "WAT"}],
+        "regime": None,
+    })
+    body = _client().get("/delivery/brief/latest").json()
+    assert body["advisor_flags"][0]["verdict_plain"] == "WAT"
+    assert body["regime"] is None
+
+
+def test_enrich_does_not_mutate_stored_brief():
+    """Stored briefs feed RL grading and replay — they must stay byte-identical."""
+    from core.delivery.brief import enrich_brief_for_api
+    original = {"advisor_flags": [{"symbol": "A", "verdict": "EXIT"}],
+                "regime": {"label": "RISK_ON"}}
+    enrich_brief_for_api(original)
+    assert "verdict_plain" not in original["advisor_flags"][0]
+    assert "label_plain" not in original["regime"]

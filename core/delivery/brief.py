@@ -699,6 +699,30 @@ def render_brief_text(brief: dict) -> str:
     return "\n".join(L).strip()
 
 
+def enrich_brief_for_api(brief: dict) -> dict:
+    """Add plain-English strings for JSON clients (the in-app Inbox).
+
+    The stored brief is the source of truth for RL grading and replay, so this
+    returns a shallow copy with only the derived keys added — the argument is
+    never mutated. Unknown enum values fall through to the raw string, matching
+    render_brief_text(). Never raises.
+    """
+    out = dict(brief)
+    flags = brief.get("advisor_flags") or []
+    if flags:
+        out["advisor_flags"] = [
+            {**f, "verdict_plain": _VERDICT_PLAIN.get(f.get("verdict", ""),
+                                                      f.get("verdict", ""))}
+            for f in flags
+        ]
+    regime = brief.get("regime")
+    if isinstance(regime, dict) and regime.get("label"):
+        word, gloss = _REGIME_PLAIN.get(regime["label"],
+                                        (str(regime["label"]).title(), ""))
+        out["regime"] = {**regime, "label_plain": word, "gloss": gloss}
+    return out
+
+
 def render_brief_html(brief: dict) -> str:
     """Styled, email-safe HTML brief (redesign 2026-07-30). Full standalone
     document; tables + inline styles + system fonts, dark via <style> media.

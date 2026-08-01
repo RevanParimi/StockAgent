@@ -188,14 +188,14 @@
 <script type="text/babel" src="digest-view.jsx"></script>
 <script type="text/babel" src="weekly-view.jsx"></script>
 <script type="text/babel" src="inbox.jsx"></script>
+<script type="text/babel" src="settings.jsx"></script>
 
 <script type="text/babel">
 const { useState, useEffect } = React;
 
 const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
   "theme": "light",
-  "sphereMode": "wireframe",
-  "density": "comfy"
+  "sphereMode": "wireframe"
 }/*EDITMODE-END*/;
 
 // Notification deep links: '#/inbox' or '#/inbox/<brief|digest|weekly|alerts>'.
@@ -298,6 +298,8 @@ function App() {
     {screen === 'logs'      && <LogsPage onNav={nav}/>}
     {screen === 'rl-monitor' && <RLMonitorPage onNav={nav}/>}
     {screen === 'inbox' && <InboxPage onNav={nav} tab={inboxTab} setTab={setInboxTab}/>}
+    {screen === 'settings' && <SettingsPage onNav={nav} theme={tweaks.theme}
+      setTheme={v => setTweak('theme', v)}/>}
 
     {/* Floating orb on non-auth screens */}
     {screen !== 'auth' && !chat && <SphereOrb onOpen={openChat} mode={tweaks.sphereMode}/>}
@@ -320,24 +322,11 @@ function App() {
     )}
 
     <TweaksPanel title="Tweaks">
-      <TweakSection title="Theme">
-        <TweakRadio value={tweaks.theme} options={[
-          {value:'light', label:'Light'},
-          {value:'dark',  label:'Dark'},
-        ]} onChange={v=>setTweak('theme', v)}/>
-      </TweakSection>
       <TweakSection title="Sphere style">
         <TweakRadio value={tweaks.sphereMode} options={[
           {value:'wireframe', label:'Wireframe'},
           {value:'liquid',    label:'Liquid'},
         ]} onChange={v=>setTweak('sphereMode', v)}/>
-      </TweakSection>
-      <TweakSection title="Density">
-        <TweakRadio value={tweaks.density} options={[
-          {value:'comfy', label:'Comfy'},
-          {value:'cozy',  label:'Cozy'},
-          {value:'dense', label:'Dense'},
-        ]} onChange={v=>setTweak('density', v)}/>
       </TweakSection>
       <TweakSection title="Quick jump">
         <TweakButton onClick={()=>nav('auth')}>Open auth screen</TweakButton>
@@ -349,6 +338,7 @@ function App() {
         <TweakButton onClick={()=>nav('analytics')}>Open analytics</TweakButton>
         <TweakButton onClick={()=>nav('logs')}>Open logs</TweakButton>
         <TweakButton onClick={()=>nav('rl-monitor')}>Open RL Monitor</TweakButton>
+        <TweakButton onClick={()=>nav('settings')}>Open settings</TweakButton>
       </TweakSection>
     </TweaksPanel>
   </>;

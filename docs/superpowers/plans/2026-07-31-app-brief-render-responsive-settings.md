@@ -6,21 +6,25 @@
 
 **Architecture:** The app is a **no-build prototype** — `.jsx` files are transpiled in the browser by Babel standalone and loaded as `<script type="text/babel">` tags from `index.html`. There is no bundler, no npm package, no import/export. Components communicate by assigning to `window.*` at the bottom of each file, and load order in `index.html` is the dependency graph. Every new file must be registered there. Phase 1 renders from the structured dict already returned by `GET /delivery/brief/latest`; the only backend change is response enrichment so plain-English verdict/regime strings stay server-side.
 
-**Tech Stack:** React 18.3.1 (UMD, browser-global), Babel standalone 7.29, FastAPI + pytest on the backend, Playwright 1.62 via `npx` for responsive verification.
+**Tech Stack:** React 18.3.1 (UMD, browser-global), Babel standalone 7.29, FastAPI + pytest on the backend, Playwright 1.62 as a **dev-only npm devDependency** for responsive verification (see Global Constraints).
 
 **Spec:** `docs/superpowers/specs/2026-07-31-app-brief-render-responsive-settings-design.md`
 
 ## Global Constraints
 
 - **No build step.** No `import`/`export` in any `.jsx`. Components attach to `window` at file end; consumers read the global. New files MUST be added to `index.html` **before** the file that consumes them.
-- **No new dependencies.** No npm install, no new CDN `<script>` tags.
+- **No new *runtime* dependencies.** No new CDN `<script>` tags in `index.html`; the app ships exactly the globals it ships today. **Dev tooling is exempt** (ruling, 2026-08-01): Task 9 adds a root `package.json` with `playwright` as a `devDependency`, because `import { chromium } from 'playwright'` cannot resolve otherwise — verified `ERR_MODULE_NOT_FOUND`, and `npx --package=playwright node` does not fix ESM resolution. `node_modules/` must be gitignored.
 - **Copy rule:** the app is a research tool. Never render text that reads as personal financial advice. The Brief footer string is exactly: `Research tool — information only, never advice.`
 - **Plain-English strings come from the server.** Never hardcode a verdict or regime translation in JSX — `_VERDICT_PLAIN` / `_REGIME_PLAIN` (`core/delivery/brief.py:34-47`) are the single source of truth.
 - **Every brief section auto-hides when empty**, matching `render_brief_text()`.
 - **Prefs persist to `localStorage` only.** No new table, no new preferences endpoint (spec D6 — avoids colliding with the Atlas cutover Aug 1–2).
 - **Never run the live pipeline for verification.** No `POST /delivery/run-brief`, no Serper call (spec D8).
 - **Breakpoint is 767px/768px**, matching every existing rule in `styles.css`.
-- **Python suite baseline is 2379 passed / 0 failed / 0 errors.** It must end at 0F/0E.
+- **Python suite baseline in a CLEAN checkout is 2377 passed / 2 failed / 12 skipped** (measured on this worktree, 2026-08-01). Two tests are **KNOWN-RED and pre-existing** — both pass in isolation and at file level, and fail only in a full-suite run (deterministic cross-file pollution; no random-order plugin installed). They are unrelated to this plan:
+  - `tests/unit/test_delivery_api.py::test_push_subscribe_caps_store_size`
+  - `tests/unit/intelligence/rl/eval/test_harness.py::TestRealDataDiscovery::test_real_eval_discovers_maruti_data`
+
+  **The gate is "no NEW failures beyond these two"** — not 0F. Do NOT attempt to fix them; they are out of scope and logged separately. (The repo's notes describe a green 2379P/0F/0E baseline; that holds only in the primary checkout, where local untracked state masks the pollution.)
 - **Do not push to `main` between 16:25 and 17:15 IST on a trading day.**
 
 ---
@@ -33,6 +37,7 @@
 |---|---|
 | `tests/fixtures/ui_brief_fixture.json` | Brief covering every section + the §3.4 edge cases |
 | `scripts/seed_fixture_ui.py` | Writes fixture brief/digest/weekly into a data dir for local UI work |
+| `package.json` | Dev-only; `playwright` devDependency so the harness's ESM import resolves |
 | `scripts/ui_responsive_audit.mjs` | Playwright: overflow assertion + screenshots, 10 screens × 4 widths |
 | `src/frontend/prototypes/hooks.jsx` | `useIsMobile()` — the reactive width hook the codebase lacks |
 | `src/frontend/prototypes/brief-view.jsx` | `BriefView` + `BVFold` + `BVAttentionRow` |
@@ -1480,7 +1485,23 @@ function useIsMobile(query) {
   return match;
 }
 
+/* Reactive viewport width. analytics.jsx read window.innerWidth once at render
+ * with no resize listener, so its chart kept portrait width after a rotate
+ * (audit item #9). Task 12 consumes this. */
+function useViewportWidth() {
+  const [w, setW] = React.useState(
+    () => (typeof window !== 'undefined' ? window.innerWidth : 1280));
+  React.useEffect(() => {
+    const on = () => setW(window.innerWidth);
+    window.addEventListener('resize', on);
+    on();
+    return () => window.removeEventListener('resize', on);
+  }, []);
+  return w;
+}
+
 window.useIsMobile = useIsMobile;
+window.useViewportWidth = useViewportWidth;
 ```
 
 - [ ] **Step 2: Register it first in `index.html`**
@@ -1490,6 +1511,43 @@ It must load before any consumer. Add immediately after the `data.jsx` tag (line
 ```html
 <script type="text/babel" src="hooks.jsx"></script>
 ```
+
+- [ ] **Step 2b: Make `playwright` importable** (ruling, 2026-08-01)
+
+`import { chromium } from 'playwright'` fails with `ERR_MODULE_NOT_FOUND` in this repo — there is no `package.json` and no `node_modules`, and `npx --package=playwright node` does not fix ESM resolution (Node resolves from the *script's* location, not npx's PATH). Create a root `package.json`:
+
+```json
+{
+  "name": "stockagent-devtools",
+  "private": true,
+  "type": "module",
+  "description": "Dev-only tooling. The app itself has no build step and no runtime npm dependencies.",
+  "devDependencies": {
+    "playwright": "^1.62.1"
+  }
+}
+```
+
+Then:
+
+```bash
+npm install
+npx playwright install chromium
+```
+
+Append to `.gitignore`:
+
+```
+node_modules/
+```
+
+Verify the import resolves before writing the harness:
+
+```bash
+node -e "import('playwright').then(m=>console.log('RESOLVES', typeof m.chromium)).catch(e=>{console.error('FAILS',e.code);process.exit(1)})"
+```
+
+Expected: `RESOLVES function`.
 
 - [ ] **Step 3: Write the audit harness**
 
@@ -1595,8 +1653,10 @@ If it reports zero failures, the harness is not driving navigation correctly —
 - [ ] **Step 6: Commit**
 
 ```bash
-git add src/frontend/prototypes/hooks.jsx scripts/ui_responsive_audit.mjs src/frontend/prototypes/index.html
-git commit -m "test(ui): responsive audit harness + useIsMobile hook
+git add package.json package-lock.json .gitignore \
+        src/frontend/prototypes/hooks.jsx scripts/ui_responsive_audit.mjs \
+        src/frontend/prototypes/index.html
+git commit -m "test(ui): responsive audit harness + useIsMobile/useViewportWidth hooks
 
 Asserts scrollWidth<=innerWidth across 10 screens x 4 widths and writes
 screenshots. Currently RED on rl-monitor — that's the Phase 2 to-do list.
@@ -1818,11 +1878,23 @@ Line 472 — replace the hardcoded grid:
 
 - [ ] **Step 2: Make the chart width reactive**
 
-Line 480 reads `window.innerWidth` once at render with no resize listener, so it keeps portrait width after a rotate. Add `const isMobile = useIsMobile();` at the top of the component and replace with:
+Line 480 reads `window.innerWidth` once at render with no resize listener, so it keeps portrait width after a rotate.
+
+**Corrected approach (ruling, 2026-08-01).** An earlier draft of this step used `Math.min(880, (isMobile ? 360 : 1280) - 80)`. That is wrong: `useIsMobile()` is `max-width: 767px`, so a **768px** viewport takes the non-mobile branch and yields an 880px chart on a 768px screen — a horizontal overflow at one of the exact widths Task 9 asserts. Use the reactive width instead.
+
+Add at the top of the component:
 
 ```jsx
-            <HBarChart data={barData} width={Math.min(880, (isMobile ? 360 : 1280) - 80)}/>
+  const vw = useViewportWidth();
 ```
+
+And replace line 480 with:
+
+```jsx
+            <HBarChart data={barData} width={Math.max(240, Math.min(880, vw - 80))}/>
+```
+
+The `Math.max(240, …)` floor keeps the chart legible if the viewport is ever narrower than 320px. Verify at 360, 390, 768 and 1280 — all four must satisfy the Task 9 overflow assertion.
 
 - [ ] **Step 3: Add scroll wrappers to the two Analytics tables**
 

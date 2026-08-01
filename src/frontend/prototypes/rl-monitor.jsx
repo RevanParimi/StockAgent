@@ -882,7 +882,15 @@ function RLMonitorPage({ onNav }) {
                   <p style={{ fontSize:12, color:'var(--ink-3)', marginBottom:20 }}>
                     {predictions.length} trading days · prediction emitted at 4:30 PM IST, reviewed against next-day close
                   </p>
-                  <PredictionChart predictions={predictions}/>
+                  {/* key={activeTicker}: forces a full remount on ticker switch so
+                      DailyLog's openRow (mobile tap-to-expand) resets. Without this,
+                      switching ticker while staying on this tab only changes props —
+                      DailyLog stays mounted and an expanded row index from the old
+                      ticker's data renders "expanded" on the new ticker's rows. The
+                      tab-switch path already remounts (this whole block is gated on
+                      activeTab==='predictions'), so only the ticker-switch path needed
+                      this. */}
+                  <PredictionChart key={activeTicker} predictions={predictions}/>
                 </div>
               )}
               {activeTab === 'calendar' && (

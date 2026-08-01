@@ -269,6 +269,7 @@ function AnalyticsPage({ onNav }) {
   const [loading,        setLoading]        = useAnState(true);
   const [error,          setError]          = useAnState(null);
   const [activeTab,      setActiveTab]      = useAnState('overview');
+  const vw = useViewportWidth();
 
   useAnEffect(() => {
     let cancelled = false;
@@ -415,6 +416,7 @@ function AnalyticsPage({ onNav }) {
             scatterPts={scatterPts}
             conviction={conviction}
             accuracy={accuracy}
+            vw={vw}
           />
         )}
 
@@ -440,7 +442,7 @@ function AnalyticsPage({ onNav }) {
 // ---------------------------------------------------------------------------
 // Tab: Overview — 2x2 grid
 // ---------------------------------------------------------------------------
-function OverviewTab({ barData, donutData, missColors, scatterPts, conviction, accuracy }) {
+function OverviewTab({ barData, donutData, missColors, scatterPts, conviction, accuracy, vw }) {
   const overallHitRate = accuracy?.aggregate?.length
     ? (accuracy.aggregate.reduce((s, a) => s + a.hit_rate, 0) / accuracy.aggregate.length * 100).toFixed(1)
     : null;
@@ -464,7 +466,7 @@ function OverviewTab({ barData, donutData, missColors, scatterPts, conviction, a
         </div>
       )}
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'var(--grid-2col)', gap: 16 }}>
 
         {/* Panel 1: Agent Accuracy Bar */}
         <div style={{ gridColumn: '1 / -1' }}>
@@ -472,7 +474,7 @@ function OverviewTab({ barData, donutData, missColors, scatterPts, conviction, a
             title="Agent Direction Accuracy"
             subtitle="Hit rate (direction correct %) per agent — aggregated across all reviewed tickers"
           >
-            <HBarChart data={barData} width={Math.min(880, window.innerWidth - 80)}/>
+            <HBarChart data={barData} width={Math.max(240, Math.min(880, vw - 80))}/>
           </ChartPanel>
         </div>
 
@@ -522,6 +524,7 @@ function OverviewTab({ barData, donutData, missColors, scatterPts, conviction, a
 
 function ConvictionBucketTable({ buckets }) {
   return (
+    <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
     <table style={{ width: '100%', marginTop: 14, borderCollapse: 'collapse', fontSize: 12 }}>
       <thead>
         <tr style={{ borderBottom: '1px solid var(--border)' }}>
@@ -547,6 +550,7 @@ function ConvictionBucketTable({ buckets }) {
         ))}
       </tbody>
     </table>
+    </div>
   );
 }
 
@@ -668,6 +672,7 @@ function WeightDiffTable({ ticker, agentColors }) {
   const agents  = Object.keys({ ...current, ...base });
 
   return (
+    <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
       <thead>
         <tr style={{ borderBottom: '1px solid var(--border)' }}>
@@ -700,6 +705,7 @@ function WeightDiffTable({ ticker, agentColors }) {
         })}
       </tbody>
     </table>
+    </div>
   );
 }
 

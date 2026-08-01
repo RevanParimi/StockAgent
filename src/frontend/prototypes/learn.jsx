@@ -138,7 +138,7 @@ function PathCard({ p, onClick }) {
 
 function GlossaryCard({ openChat }) {
   return (
-    <div className="card" style={{ padding:24 }}>
+    <div className="card" style={{ padding:24, minWidth:0 }}>
       <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:14 }}>
         <div className="eyebrow">Glossary · for the impatient</div>
         <button onClick={openChat} style={{ marginLeft:'auto', fontSize:11, fontWeight:600, color:'var(--cyan)',
@@ -149,7 +149,8 @@ function GlossaryCard({ openChat }) {
       <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
         {window.GLOSSARY.map(g => (
           <div key={g.term} style={{
-            padding:'14px 16px', borderRadius:12, background:'var(--bg-base)', border:'1px solid var(--border)'
+            padding:'14px 16px', borderRadius:12, background:'var(--bg-base)', border:'1px solid var(--border)',
+            minWidth:0,
           }}>
             <div style={{ display:'flex', alignItems:'baseline', gap:8, marginBottom:6 }}>
               <span style={{ fontSize:13, fontWeight:700 }}>{g.term}</span>
@@ -231,12 +232,7 @@ function PathOverlay({ p, onClose }) {
         position:'fixed', inset:0, background:'rgba(15,23,42,.5)', backdropFilter:'blur(6px)', zIndex:50,
         animation:'fade-in .2s'
       }}/>
-      <aside style={{
-        position:'fixed', top:0, right:0, bottom:0, width:560, zIndex:55,
-        background:'var(--bg-surface)', boxShadow:'-20px 0 60px rgba(15,23,42,.15)',
-        animation:'slide-in .3s cubic-bezier(.2,.8,.2,1)',
-        display:'flex', flexDirection:'column', overflow:'hidden'
-      }}>
+      <aside className="drawer-panel" style={{ width:560, zIndex:55 }}>
         <div style={{
           padding:'24px 28px 20px', position:'relative', overflow:'hidden',
           background:`linear-gradient(135deg, color-mix(in oklab, ${p.color} 16%, var(--bg-surface)), var(--bg-surface))`

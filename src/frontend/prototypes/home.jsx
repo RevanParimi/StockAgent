@@ -505,7 +505,7 @@ function TodayPane({ data, onDriverClick }) {
   return (
     <div style={{ display:'grid', gridTemplateColumns:'var(--grid-2col)', gap:20 }}>
       {/* Market pulse + drivers */}
-      <div className="card" style={{ padding:24 }}>
+      <div className="card" style={{ padding:24, minWidth:0 }}>
         <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:16 }}>
           <PulseDot kind="good"/>
           <div>
@@ -531,10 +531,10 @@ function TodayPane({ data, onDriverClick }) {
       </div>
 
       {/* Sector heatmap + Nifty Auto sparkline */}
-      <div style={{ display:'flex', flexDirection:'column', gap:20 }}>
-        <div className="card" style={{ padding:20 }}>
-          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:14, gap:10 }}>
-            <div>
+      <div style={{ display:'flex', flexDirection:'column', gap:20, minWidth:0 }}>
+        <div className="card" style={{ padding:20, minWidth:0 }}>
+          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:14, gap:10, flexWrap:'wrap' }}>
+            <div style={{ minWidth:0 }}>
               <div className="eyebrow" style={{ marginBottom:4 }}>Nifty Auto</div>
               <div style={{ display:'flex', alignItems:'baseline', gap:8 }}>
                 <span className="mono" style={{ fontSize:24, fontWeight:700 }}>22,847</span>
@@ -549,7 +549,7 @@ function TodayPane({ data, onDriverClick }) {
           <Sparkline values={r.points} height={70} color="var(--cyan)"/>
         </div>
 
-        <div className="card" style={{ padding:20 }}>
+        <div className="card" style={{ padding:20, minWidth:0 }}>
           <div className="eyebrow" style={{ marginBottom:12 }}>Sectors today</div>
           <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
             {data.sectorChange.map(s => <SectorRow key={s.name} s={s}/>)}

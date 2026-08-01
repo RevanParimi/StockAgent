@@ -137,7 +137,7 @@ function LogsPage({ onNav }) {
               placeholder="Filter..."
               style={{
                 background: '#1e293b', border: '1px solid #334155', color: '#e2e8f0',
-                padding: '4px 10px', borderRadius: 6, fontSize: 12, width: 140, fontFamily: 'monospace',
+                padding: '4px 10px', borderRadius: 6, fontSize: 12, flex: '1 1 120px', minWidth: 0, fontFamily: 'monospace',
               }}
             />
 
@@ -348,7 +348,7 @@ function TickerManager() {
                 onKeyDown={e => e.key === 'Enter' && handleAdd()}
                 style={{
                   background: '#1e293b', border: '1px solid #334155', color: '#e2e8f0',
-                  padding: '7px 12px', borderRadius: 7, fontSize: 13, width: 180,
+                  padding: '7px 12px', borderRadius: 7, fontSize: 13, flex: '1 1 140px', minWidth: 0,
                   fontFamily: 'monospace',
                 }}
               />
@@ -358,7 +358,7 @@ function TickerManager() {
                 placeholder="Display name (optional)"
                 style={{
                   background: '#1e293b', border: '1px solid #334155', color: '#e2e8f0',
-                  padding: '7px 12px', borderRadius: 7, fontSize: 13, flex: 1, minWidth: 160,
+                  padding: '7px 12px', borderRadius: 7, fontSize: 13, flex: 1, minWidth: 0,
                 }}
               />
               <select value={newSec} onChange={e => setNewSec(e.target.value)} style={{

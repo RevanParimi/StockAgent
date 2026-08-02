@@ -422,6 +422,10 @@ function ThemeToggle() {
     () => document.documentElement.getAttribute('data-theme') === 'dark'
   );
 
+  // Stays: this is how the button follows a change it did not make (the
+  // Settings Appearance segment). Keeping it means ThemeToggle needs no props,
+  // so App() doesn't have to thread theme state through all ten page
+  // components down to TopNav.
   useEffectHome(() => {
     const obs = new MutationObserver(() => {
       setIsDark(document.documentElement.getAttribute('data-theme') === 'dark');
@@ -430,8 +434,11 @@ function ThemeToggle() {
     return () => obs.disconnect();
   }, []);
 
+  // Route through saSetTheme rather than setting data-theme directly: that is
+  // what persists the choice to localStorage and lets App() mirror it into
+  // tweaks.theme, which the Settings segment renders from.
   const toggle = () => {
-    document.documentElement.setAttribute('data-theme', isDark ? 'light' : 'dark');
+    window.saSetTheme(isDark ? 'light' : 'dark');
   };
 
   return (

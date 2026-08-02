@@ -166,6 +166,36 @@
     };
   })();
 </script>
+<script>
+  /* Theme persistence + the single write path for `data-theme`.
+     Lives here, before </head>, so a returning user's dark theme is on the
+     documentElement before the first paint instead of flashing light while
+     Babel transpiles and React mounts.
+
+     saSetTheme is the ONLY place that touches data-theme. Both controls (the
+     header ThemeToggle and the Settings Appearance segment) route through it,
+     and it announces 'sa-theme' so whichever control did not originate the
+     change can follow. Storage is localStorage-only by design — no table, no
+     endpoint. */
+  (function () {
+    window.saGetTheme = function () {
+      try { return localStorage.getItem('sa_theme'); } catch (e) { return null; }
+    };
+    window.saSetTheme = function (t) {
+      const theme = t === 'dark' ? 'dark' : 'light';
+      try { localStorage.setItem('sa_theme', theme); } catch (e) {}
+      document.documentElement.setAttribute('data-theme', theme);
+      try {
+        window.dispatchEvent(new CustomEvent('sa-theme', { detail: theme }));
+      } catch (e) {}
+    };
+    /* Null when the user has never chosen — App() then falls back to
+       TWEAK_DEFAULTS.theme so the dev host's EDITMODE value still wins on a
+       fresh profile. */
+    const stored = window.saGetTheme();
+    if (stored) document.documentElement.setAttribute('data-theme', stored);
+  })();
+</script>
 </head>
 <body>
 <div id="root"></div>
@@ -209,7 +239,12 @@ function saConsumeDeepLink() {
 }
 
 function App() {
-  const [tweaks, setTweak] = useTweaks(TWEAK_DEFAULTS);
+  // Seed the theme from localStorage so it survives a reload; TWEAK_DEFAULTS
+  // still supplies it (and everything else) when nothing was ever stored.
+  const [tweaks, setTweak] = useTweaks({
+    ...TWEAK_DEFAULTS,
+    theme: (window.saGetTheme && window.saGetTheme()) || TWEAK_DEFAULTS.theme,
+  });
   const [deepLink] = useState(saConsumeDeepLink);          // lazy: runs once
   // M0: a stored bearer token is the auth signal (validated at boot below).
   const hasToken = !!(window.saGetToken && window.saGetToken());
@@ -221,9 +256,25 @@ function App() {
   const [chat, setChat] = useState(false);
   const [, forceRender] = useState(0);
 
+  // Settings' Appearance segment writes here (via setTheme below). Go through
+  // saSetTheme so the choice is persisted and the header toggle hears about it.
   useEffect(() => {
-    document.documentElement.setAttribute('data-theme', tweaks.theme);
+    window.saSetTheme(tweaks.theme);
   }, [tweaks.theme]);
+
+  // ...and the reverse direction: the header ☾/☀ writes data-theme through
+  // saSetTheme, which announces 'sa-theme'; mirror that back into tweaks.theme
+  // so the Settings segment can never show "Light" while the app is dark.
+  // Before this, ThemeToggle set data-theme directly and tweaks.theme never
+  // moved — so tapping the segment's already-"selected" option produced a new
+  // tweaks object but an unchanged dep string, the effect above never re-ran,
+  // and the Settings control was simply dead.
+  // The `!==` guard is what stops the two effects ping-ponging.
+  useEffect(() => {
+    const onTheme = (e) => { if (e.detail !== tweaks.theme) setTweak('theme', e.detail); };
+    window.addEventListener('sa-theme', onTheme);
+    return () => window.removeEventListener('sa-theme', onTheme);
+  }, [tweaks.theme, setTweak]);
 
   // Re-render with live API data once bootstrap fetch completes
   useEffect(() => {

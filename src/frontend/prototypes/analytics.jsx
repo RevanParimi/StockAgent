@@ -427,6 +427,7 @@ function AnalyticsPage({ onNav }) {
             weightDrift={weightDrift}
             agentColors={agentColors}
             managedTickers={managedTickers}
+            vw={vw}
           />
         )}
 
@@ -507,7 +508,7 @@ function OverviewTab({ barData, donutData, missColors, scatterPts, conviction, a
           title="Conviction vs Price Error"
           subtitle="Each dot = one reviewed day. X = streak length, Y = price error %. Green = correct direction."
         >
-          <ScatterPlot points={scatterPts} width={340} height={160}/>
+          <ScatterPlot points={scatterPts} width={Math.max(240, Math.min(340, vw - 80))} height={160}/>
           <Legend items={[
             { label: 'Direction correct', color: PAL.green },
             { label: 'Direction wrong',   color: PAL.red },
@@ -557,7 +558,7 @@ function ConvictionBucketTable({ buckets }) {
 // ---------------------------------------------------------------------------
 // Tab: Weights
 // ---------------------------------------------------------------------------
-function WeightsTab({ lineSeries, wdTicker, weightDrift, agentColors, managedTickers }) {
+function WeightsTab({ lineSeries, wdTicker, weightDrift, agentColors, managedTickers, vw }) {
   const [selectedTicker, setSelectedTicker] = useAnState(wdTicker?.ticker || managedTickers[0]?.sym || '');
 
   // All managed tickers merged with those that have actual RL data
@@ -646,7 +647,7 @@ function WeightsTab({ lineSeries, wdTicker, weightDrift, agentColors, managedTic
           </div>
         ) : (
           <>
-            <LineChart series={seriesForTicker} width={860} height={140} yMin={0} yMax={0.35}/>
+            <LineChart series={seriesForTicker} width={Math.max(240, Math.min(860, vw - 80))} height={140} yMin={0} yMax={0.35}/>
             {seriesForTicker.length > 0 && (
               <Legend items={seriesForTicker.map(s => ({ label: s.label.replace(/_/g, ' '), color: s.color }))}/>
             )}

@@ -19,11 +19,12 @@ const SET_ROW = {
   borderTop: '1px solid var(--border)',
 };
 
-function SetRow({ name, desc, children, danger, onClick, first }) {
+function SetRow({ name, desc, children, danger, onClick, first, disabled }) {
   return (
-    <div onClick={onClick}
+    <div onClick={disabled ? undefined : onClick}
       style={{ ...SET_ROW, borderTop: first ? 'none' : SET_ROW.borderTop,
-        cursor: onClick ? 'pointer' : 'default' }}>
+        cursor: onClick && !disabled ? 'pointer' : 'default',
+        opacity: disabled ? 0.55 : 1 }}>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontWeight: 600, fontSize: 13,
           color: danger ? '#b91c1c' : 'var(--ink-1)' }}>{name}</div>
@@ -138,11 +139,29 @@ function SettingsPage({ onNav, theme, setTheme }) {
 
         <div style={SET_GROUP}>Data &amp; privacy</div>
         <div style={SET_CARD}>
-          <SetRow first danger name="Delete my account"
-            desc="Erases your portfolio, chats and personal data. Cannot be undone."
-            onClick={() => setSub('delete')}>
-            <span style={{ color: 'var(--ink-3)' }}>›</span>
-          </SetRow>
+          {/* The server 403s an owner self-delete by design (auth_api.py's
+              delete_account), and the global fetch wrapper turns ANY 403 into
+              window.prompt('This action needs the API key…') — so leaving this
+              live meant the most destructive control in the app opened with an
+              unrelated credential prompt, and you only saw the real reason
+              after cancelling it. The owner is also the only real user today.
+
+              Disabled-with-a-reason rather than hidden: "can I delete my
+              data?" is a question that deserves an answer on screen, and a
+              silently absent row answers it badly. Rendered disabled until the
+              role is known, so the live row can't flash during /auth/me. */}
+          {user && user.role !== 'owner' ? (
+            <SetRow first danger name="Delete my account"
+              desc="Erases your portfolio, chats and personal data. Cannot be undone."
+              onClick={() => setSub('delete')}>
+              <span style={{ color: 'var(--ink-3)' }}>›</span>
+            </SetRow>
+          ) : (
+            <SetRow first disabled name="Delete my account"
+              desc={user
+                ? 'Owner accounts cannot be deleted — this is the account that runs the research pipeline.'
+                : 'Checking your account…'}/>
+          )}
         </div>
 
         <div style={SET_GROUP}>About</div>

@@ -132,53 +132,6 @@ function Home({ onNav, openChat }) {
   );
 }
 
-// Notifications toggle for the hamburger menu (replaces the old floating 🔔).
-// Reads/toggles the push subscription via window.saPush (defined in index.html).
-function NotifRow() {
-  const [state, setState] = useStateHome('loading');   // on|off|denied|unsupported|unconfigured|loading|pending
-
-  useEffectHome(() => {
-    let alive = true;
-    if (window.saPush) window.saPush.status().then(s => { if (alive) setState(s); });
-    else setState('unsupported');
-    return () => { alive = false; };
-  }, []);
-
-  const LABEL = { on:'On', off:'Off', pending:'…', loading:'…',
-                  denied:'Blocked', unsupported:'N/A', unconfigured:'Off' };
-  const locked = ['unsupported', 'denied', 'loading', 'pending'].includes(state);
-  const on = state === 'on';
-
-  const toggle = async () => {
-    if (!window.saPush || locked) return;
-    setState('pending');
-    const next = on ? await window.saPush.disable() : await window.saPush.enable();
-    setState(next);
-  };
-
-  return (
-    <button onClick={toggle} disabled={locked} title={
-      state === 'denied' ? 'Notifications are blocked in your device settings — re-enable them there first'
-      : state === 'unsupported' ? 'Push notifications are not supported on this device'
-      : 'Alerts, morning brief and portfolio digests'
-    } style={{
-      display:'flex', alignItems:'center', gap:14, padding:'12px 14px', borderRadius:12, width:'100%',
-      border:'none', background:'transparent', color:'var(--ink-2)',
-      fontSize:14, fontWeight:500, textAlign:'left', marginBottom:2,
-      cursor: locked ? 'default' : 'pointer', opacity: locked && state !== 'loading' ? 0.6 : 1,
-    }}>
-      <Icon.Bell size={16}/>
-      <span>Notifications</span>
-      <span style={{
-        marginLeft:'auto', fontSize:12, fontWeight:700, padding:'3px 10px', borderRadius:999,
-        background: on ? 'var(--bg-tinted)' : 'var(--bg-base)',
-        color: on ? 'var(--cyan)' : 'var(--ink-3)',
-        border:'1px solid var(--border)',
-      }}>{LABEL[state] || 'Off'}</span>
-    </button>
-  );
-}
-
 function TopNav({ active, onNav, search, setSearch }) {
   const [results, setResults] = useStateHome([]);
   const [dropOpen, setDropOpen] = useStateHome(false);

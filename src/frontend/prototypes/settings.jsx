@@ -51,7 +51,9 @@ function SetSegment({ value, options, onChange }) {
   );
 }
 
-/* Push toggle — same state machine as the old NotifRow in home.jsx. */
+/* Push toggle. Reads/toggles the push subscription via window.saPush (defined
+   in index.html). This replaced the hamburger menu's NotifRow, which this
+   branch deleted along with its last call site. */
 function SetPushToggle() {
   const [state, setState] = useStateSet('loading');
   useEffectSet(() => {

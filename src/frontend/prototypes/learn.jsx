@@ -233,6 +233,7 @@ function PathOverlay({ p, onClose }) {
         animation:'fade-in .2s'
       }}/>
       <aside className="drawer-panel" style={{ width:560, zIndex:55 }}>
+        <div className="drawer-handle"/>
         <div style={{
           padding:'24px 28px 20px', position:'relative', overflow:'hidden',
           background:`linear-gradient(135deg, color-mix(in oklab, ${p.color} 16%, var(--bg-surface)), var(--bg-surface))`

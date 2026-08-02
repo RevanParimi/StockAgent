@@ -62,7 +62,6 @@ Fixed floating panel (bottom-right, draggable, z-index 2147483646) defined in tw
 |---|---|---|
 | Theme | `theme` | `light` / `dark` |
 | Sphere style | `sphereMode` | `wireframe` / `liquid` |
-| Density | `density` | `comfy` / `cozy` / `dense` |
 | Quick jump | — | Buttons: setScreen to each screen |
 
 ---

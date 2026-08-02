@@ -19,7 +19,8 @@ function WeeklyView({ data }) {
         </div>
         {d.headline ? <div style={{ fontSize: 14, lineHeight: 1.5, color: 'var(--ink-1)' }}>
           {d.headline}</div> : null}
-        {typeof sb.checked === 'number' && sb.checked > 0 ? (
+        {typeof sb.checked === 'number' && sb.checked > 0
+          && typeof sb.correct === 'number' ? (
           <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--border)' }}>
             <span style={{ font: '800 19px/1 Inter, sans-serif', color: 'var(--ink-1)' }}>
               {sb.correct}/{sb.checked}

@@ -22,13 +22,13 @@
 //       <div style={{ fontSize: t.fontSize, color: t.primaryColor }}>
 //         Hello
 //         <TweaksPanel>
-//           <TweakSection label="Typography" />
+//           <TweakSection title="Typography" />
 //           <TweakSlider label="Font size" value={t.fontSize} min={10} max={32} unit="px"
 //                        onChange={(v) => setTweak('fontSize', v)} />
 //           <TweakRadio  label="Density" value={t.density}
 //                        options={['compact', 'regular', 'comfy']}
 //                        onChange={(v) => setTweak('density', v)} />
-//           <TweakSection label="Theme" />
+//           <TweakSection title="Theme" />
 //           <TweakColor  label="Primary" value={t.primaryColor}
 //                        onChange={(v) => setTweak('primaryColor', v)} />
 //           <TweakToggle label="Dark mode" value={t.dark}
@@ -247,10 +247,10 @@ function TweaksPanel({ title = 'Tweaks', children }) {
 
 // ── Layout helpers ──────────────────────────────────────────────────────────
 
-function TweakSection({ label, children }) {
+function TweakSection({ title, children }) {
   return (
     <>
-      <div className="twk-sect">{label}</div>
+      <div className="twk-sect">{title}</div>
       {children}
     </>
   );
@@ -411,10 +411,10 @@ function TweakColor({ label, value, onChange }) {
   );
 }
 
-function TweakButton({ label, onClick, secondary = false }) {
+function TweakButton({ children, onClick, secondary = false }) {
   return (
     <button type="button" className={secondary ? 'twk-btn secondary' : 'twk-btn'}
-            onClick={onClick}>{label}</button>
+            onClick={onClick}>{children}</button>
   );
 }
 

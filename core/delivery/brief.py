@@ -705,7 +705,10 @@ def enrich_brief_for_api(brief: dict) -> dict:
     The stored brief is the source of truth for RL grading and replay, so this
     returns a shallow copy with only the derived keys added — the argument is
     never mutated. Unknown enum values fall through to the raw string, matching
-    render_brief_text(). Never raises.
+    render_brief_text(). A malformed brief whose advisor_flags is a list of
+    non-dicts raises TypeError, the same way render_brief_text() does — the
+    stored brief is written by us, so a shape that wrong is a bug worth
+    surfacing rather than papering over.
     """
     out = dict(brief)
     flags = brief.get("advisor_flags") or []

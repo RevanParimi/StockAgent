@@ -278,7 +278,7 @@ rl:
   calibration_reward_enabled: true
   calibration_weight: 0.5
   # -- Hard-bind verdict (AUD-117 / AUD-077) -------------------------------
-  hard_bind_verdict_enabled: false   # bind graded+aggregator verdict to learned composite
+  hard_bind_verdict_enabled: true    # bind graded+aggregator verdict to learned composite
   # -- Market-wide fallback context (F2 sensing fix) ------------------------
   # When a ticker has NO company news, inject HIGH/MEDIUM items from the macro
   # news cache (already fetched 4x daily — zero new API calls) so the

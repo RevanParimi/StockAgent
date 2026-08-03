@@ -116,7 +116,7 @@ class TestWeightedScoreComputation:
 
     @patch("services.clients.llm_client.OpenAI")
     def test_bad_llm_json_fallback(self, mock_groq_cls, mock_all_agent_outputs):
-        """If LLM returns invalid JSON, aggregator should return NEUTRAL fallback."""
+        """Unbound: if the LLM returns invalid JSON, the fallback is NEUTRAL/0.5."""
         mock_instance = MagicMock()
         mock_groq_cls.return_value = mock_instance
         mock_instance.chat.completions.create.return_value.choices[
@@ -124,8 +124,39 @@ class TestWeightedScoreComputation:
         ].message.content = "NOT JSON AT ALL"
 
         agg = SignalAggregator()
-        report = agg.run("MARUTI", "Maruti Suzuki India Ltd", mock_all_agent_outputs)
+        with patch.object(settings, "RL_HARD_BIND_VERDICT_ENABLED", False):
+            report = agg.run("MARUTI", "Maruti Suzuki India Ltd", mock_all_agent_outputs)
         assert report.verdict == "NEUTRAL"
+        assert report.final_score == 0.5
+
+    @patch("backend.shared.pipeline.verdict_shadow.log_verdict_shadow")
+    @patch("services.clients.llm_client.OpenAI")
+    def test_bad_llm_json_still_binds_verdict_to_composite(
+        self, mock_groq_cls, mock_shadow, mock_all_agent_outputs
+    ):
+        """AUD-117: a parse failure must not manufacture a NEUTRAL.
+
+        The composite is built from the agent scores, which are valid whether or
+        not the aggregator LLM returned parseable JSON, so under hard-bind the
+        verdict comes from the composite. final_score stays the 0.5 fallback by
+        design (spec §3.1 leaves it to the LLM; it feeds the MC path width, a
+        separate channel from the categorical verdict).
+        """
+        from backend.shared.pipeline.verdict_shadow import verdict_from_composite
+
+        mock_instance = MagicMock()
+        mock_groq_cls.return_value = mock_instance
+        mock_instance.chat.completions.create.return_value.choices[
+            0
+        ].message.content = "NOT JSON AT ALL"
+
+        agg = SignalAggregator()
+        with patch.object(settings, "RL_HARD_BIND_VERDICT_ENABLED", True):
+            report = agg.run("MARUTI", "Maruti Suzuki India Ltd", mock_all_agent_outputs)
+
+        composite = mock_shadow.call_args.kwargs["composite"]
+        assert report.verdict == verdict_from_composite(composite)
+        assert mock_shadow.call_args.kwargs["llm_verdict"] == "NEUTRAL"  # raw, pre-bind
         assert report.final_score == 0.5
 
 

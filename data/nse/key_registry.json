@@ -654,5 +654,50 @@
       "desc": "subject",
       "date": "exDate"
     }
+  },
+  "M&M": {
+    "announcements": {
+      "desc": "desc",
+      "date": "an_dt",
+      "attachment": "attchmntText"
+    },
+    "board_meetings": {
+      "desc": "bm_desc",
+      "date": "bm_date"
+    },
+    "actions": {
+      "desc": "subject",
+      "date": "exDate"
+    }
+  },
+  "HEROMOTOCO": {
+    "announcements": {
+      "desc": "desc",
+      "date": "an_dt",
+      "attachment": "attchmntText"
+    },
+    "board_meetings": {
+      "desc": "bm_desc",
+      "date": "bm_date"
+    },
+    "actions": {
+      "desc": "subject",
+      "date": "exDate"
+    }
+  },
+  "BAJAJ-AUTO": {
+    "announcements": {
+      "desc": "desc",
+      "date": "an_dt",
+      "attachment": "attchmntText"
+    },
+    "board_meetings": {
+      "desc": "bm_desc",
+      "date": "bm_date"
+    },
+    "actions": {
+      "desc": "subject",
+      "date": "exDate"
+    }
   }
 }

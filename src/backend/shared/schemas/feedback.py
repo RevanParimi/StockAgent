@@ -585,6 +585,12 @@ class Lesson(BaseModel):
     # Populated when still_valid is set to False — preserves the reason for audit.
     invalidation_reason: str = ""
     invalidation_date: str = ""
+    # F3 provenance (sensing audit 2026-07-31): the dated headlines that were in
+    # the agent's context when this lesson was written or last reinforced, as
+    # "YYYY-MM-DD — headline" (market-wide items prefixed "market-wide "). Lets a
+    # later audit tell a lesson grounded in a real event from one written on a
+    # newsless day. Empty on pre-F3 lessons and on blind days — never fabricated.
+    evidence: list[str] = Field(default_factory=list)
 
 
 class MissEvent(BaseModel):

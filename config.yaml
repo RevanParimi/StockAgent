@@ -286,6 +286,14 @@ rl:
   # defaulting to model_bias. false = pre-F2 behaviour (blind stays blind).
   macro_fallback_context_enabled: true
   macro_fallback_max_items: 5
+  # -- Provenance on learned artifacts (F3 sensing fix) ---------------------
+  # Lessons and dossier observations keep the dated headlines they were learned
+  # from, so an audit can tell evidence-grounded learning from a claim written
+  # on a newsless day. Retention only — no URL re-fetch or verification.
+  # false = pre-F3 behaviour (provenance fields stay empty).
+  provenance_enabled: true
+  lesson_evidence_max_items: 3       # per lesson; oldest evicted on reinforcement
+  lesson_evidence_max_chars: 160     # per evidence line
   # -- Forgetting & recency (Intelligence Phase C3) -------------------------
   forgetting_enabled: true
   miss_recency_halflife_days: 21.0

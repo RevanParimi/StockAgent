@@ -610,6 +610,17 @@ RL_MACRO_FALLBACK_CONTEXT_ENABLED: bool = cfg(
 RL_MACRO_FALLBACK_MAX_ITEMS: int = cfg("rl.macro_fallback_max_items", fallback=5)
 
 # ---------------------------------------------------------------------------
+# F3 — provenance retention on learned artifacts. Lessons and dossier
+# observations keep the dated headlines they were learned from ("2026-08-04 —
+# headline"), so an audit can separate evidence-grounded learning from claims
+# written on a newsless day. Retention only — nothing re-fetches or verifies a
+# URL. Flag off ⇒ pre-F3 behaviour (fields stay empty). config.yaml-only.
+# ---------------------------------------------------------------------------
+RL_PROVENANCE_ENABLED: bool = cfg("rl.provenance_enabled", fallback=True)
+RL_LESSON_EVIDENCE_MAX_ITEMS: int = cfg("rl.lesson_evidence_max_items", fallback=3)
+RL_LESSON_EVIDENCE_MAX_CHARS: int = cfg("rl.lesson_evidence_max_chars", fallback=160)
+
+# ---------------------------------------------------------------------------
 # STATIC_AUDIT #9 — News geo: removed country filter entirely
 # Serper query now omits "gl" — Google surfaces globally relevant results
 # based on query specificity. A query like "TCS Q4 2026 deal wins" returns

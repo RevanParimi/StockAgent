@@ -37,6 +37,7 @@ from services.clients.llm_client import (
     record_llm_call,
     salvage_truncated_json,
 )
+from core.intelligence.rl.provenance import extract_context_evidence, merge_evidence
 from core.intelligence.rl.stores.ledger_propagator import resurrect_lesson
 from core.schemas.feedback import (
     EVENT_TAGS,
@@ -437,11 +438,18 @@ class FeedbackAgent:
     # Ledger integration: merge raw lessons into LearningLedger
     # ------------------------------------------------------------------
 
+    @staticmethod
+    def _attach_evidence(lesson: Lesson, evidence: list[str]) -> None:
+        """F3: record the dated headlines behind this lesson, newest last."""
+        lesson.evidence = merge_evidence(
+            lesson.evidence, evidence, settings.RL_LESSON_EVIDENCE_MAX_ITEMS)
+
     def merge_lessons_into_ledger(
         self,
         output: FeedbackAgentOutput,
         ledger: LearningLedger,
         cold_store_path: "Path | str | None" = None,
+        market_context: str = "",
     ) -> tuple[LearningLedger, list[str]]:
         """
         Merge new lessons from FeedbackAgentOutput into the LearningLedger.
@@ -456,6 +464,11 @@ class FeedbackAgent:
         `cold_store_path` is optional — when None (default), resurrection is
         skipped entirely and behavior is unchanged from before Component 3.
 
+        `market_context` is the day's context string (F3). Its dated bullets are
+        retained on every lesson touched, so the ledger records what a lesson was
+        learned from and not just what it concluded. Optional — callers that omit
+        it (and the kill switch) simply write no provenance.
+
         Returns (updated_ledger, list_of_lesson_ids_touched).
         """
         if output.degraded:
@@ -467,6 +480,15 @@ class FeedbackAgent:
 
         lesson_ids: list[str] = []
         today_str = date.today().isoformat()
+
+        # F3 provenance — parsed once per merge, shared by every lesson touched.
+        evidence: list[str] = []
+        if settings.RL_PROVENANCE_ENABLED:
+            evidence = extract_context_evidence(
+                market_context,
+                max_items=settings.RL_LESSON_EVIDENCE_MAX_ITEMS,
+                max_chars=settings.RL_LESSON_EVIDENCE_MAX_CHARS,
+            )
 
         for raw in output.new_lessons:
             existing = ledger.find_by_pattern(raw.pattern)
@@ -490,6 +512,7 @@ class FeedbackAgent:
                     existing.prioritise_agents = raw.prioritise_agents
                 if not existing.discount_agents and raw.discount_agents:
                     existing.discount_agents = raw.discount_agents
+                self._attach_evidence(existing, evidence)
                 lesson_ids.append(existing.lesson_id)
                 logger.info(
                     "[FeedbackAgent] Updated %s (pattern=%s occurrences=%d scope=%s)",
@@ -525,6 +548,7 @@ class FeedbackAgent:
                     resurrected.prioritise_agents = raw.prioritise_agents
                 if not resurrected.discount_agents and raw.discount_agents:
                     resurrected.discount_agents = raw.discount_agents
+                self._attach_evidence(resurrected, evidence)
                 lesson_ids.append(resurrected.lesson_id)
                 logger.info(
                     "[FeedbackAgent] Resurrected %s (pattern=%s occurrences=%d) "
@@ -549,6 +573,7 @@ class FeedbackAgent:
                 trigger_tags=raw.trigger_tags,
                 prioritise_agents=raw.prioritise_agents,
                 discount_agents=raw.discount_agents,
+                evidence=list(evidence),
             )
             ledger.lessons.append(lesson)
             lesson_ids.append(new_id)

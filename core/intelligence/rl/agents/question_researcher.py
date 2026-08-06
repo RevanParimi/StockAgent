@@ -29,6 +29,7 @@ from core.config.prompts.shared.question_researcher import (
 from core.intelligence.rl.agents.dossier_curator import (
     _strip_think, merge_curator_output,
 )
+from core.intelligence.rl.provenance import extract_context_evidence
 from services.clients.tavily_fetcher import fetch_tavily_context
 from services.data.fetchers.news import fetch_news_context
 
@@ -201,7 +202,8 @@ class QuestionResearcher:
 
             results_by_q = self._judge(ticker, sector, selected, contexts)
 
-            answered, partial = self._apply(dossier, selected, results_by_q, today)
+            answered, partial = self._apply(dossier, selected, results_by_q, today,
+                                            contexts=contexts)
 
             store.save_dossier(dossier)
             return {"selected": len(selected), "answered": answered,
@@ -253,11 +255,33 @@ class QuestionResearcher:
                     break
         return out
 
+    @staticmethod
+    def _provenance(context: str) -> str:
+        """F3: the first dated headline in a question's search context, or "".
+
+        Only the top hit is kept — the observation is one claim, so one source.
+        The search text carries no URL (fetch_news_context returns formatted
+        prose), so this is date + headline: enough to find the article again and
+        to tell a grounded answer from an ungrounded one, which is what the
+        audit asked for. No re-fetch, no verification.
+        """
+        if not settings.RL_PROVENANCE_ENABLED:
+            return ""
+        hits = extract_context_evidence(
+            context, max_items=1, max_chars=settings.RL_LESSON_EVIDENCE_MAX_CHARS)
+        return hits[0] if hits else ""
+
     def _apply(self, dossier: TickerDossier, selected: list[OpenQuestion],
-               results_by_q: dict[str, dict], today: str) -> tuple[int, int]:
+               results_by_q: dict[str, dict], today: str,
+               contexts: dict[str, str] | None = None) -> tuple[int, int]:
         """Map judgments onto the curator-shaped dict + apply via the shared
         bounded merge, then do the attempts/last_attempt bookkeeping (which is
-        intentionally OUTSIDE the merge). Returns (answered, partial) counts."""
+        intentionally OUTSIDE the merge). Returns (answered, partial) counts.
+
+        `contexts` is the per-question search text (F3). Its first dated headline
+        is kept as the observation's `source`, so a research answer records what
+        answered it and not just the conclusion. Optional — no context, or no
+        dated hit in it, means no provenance rather than an invented one."""
         new_observations: list[dict] = []
         question_updates: list[dict] = []
         answered = partial = 0
@@ -266,6 +290,7 @@ class QuestionResearcher:
             res = results_by_q.get(q.question)
             status = (res or {}).get("status", "no_signal")
             tags = [t for t in (res or {}).get("tags", []) if t in EVENT_TAGS]
+            source = self._provenance((contexts or {}).get(q.question, ""))
 
             if status == "answered" and (res.get("answer") or "").strip():
                 ans = res["answer"].strip()
@@ -273,13 +298,13 @@ class QuestionResearcher:
                     {"action": "resolve", "question": q.question, "answer": ans})
                 new_observations.append(
                     {"observation": f"[research] {ans}", "tags": tags,
-                     "materiality": 0.6})
+                     "materiality": 0.6, "source": source})
                 answered += 1
             elif status == "partial" and (res.get("finding") or "").strip():
                 finding = res["finding"].strip()
                 new_observations.append(
                     {"observation": f"[research-partial] {finding}", "tags": tags,
-                     "materiality": 0.4})
+                     "materiality": 0.4, "source": source})
                 q.attempts += 1
                 partial += 1
             else:                              # no_signal / unmatched / garbage

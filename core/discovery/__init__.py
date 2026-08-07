@@ -85,8 +85,11 @@ def run_discovery_cycle(on: date | None = None) -> dict:
             from core.delivery.alerts import AlertEvent, emit_alerts_broadcast
             conviction = {d.symbol: d.conviction for d in dives}
             emit_alerts_broadcast(
+                # "new discovery idea" read as a recommendation; a shelf add is
+                # a research candidate that is paper-traded until you promote it.
                 [AlertEvent(date=on.isoformat(), kind="shelf_add", symbol=sym,
-                            message=f"new discovery idea (conviction "
+                            message=f"added to the research shelf — tracking "
+                                    f"only, not a buy (conviction "
                                     f"{conviction.get(sym, 0.0):.2f})", severity="info")
                  for sym in shelf_summary["added"]],
                 title=f"Discovery shelf — {on}",

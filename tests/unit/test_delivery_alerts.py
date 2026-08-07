@@ -44,7 +44,9 @@ def test_load_recent_alerts_tail(tmp_path):
         emit_alerts([_ev(symbol=f"S{i}") for i in range(5)], sent_log=log)
     recent = load_recent_alerts(limit=3, sent_log=log)
     assert len(recent) == 3
-    assert recent[-1]["symbol"] == "S4"
+    # newest first — the Inbox renders this list top-to-bottom
+    assert recent[0]["symbol"] == "S4"
+    assert recent[-1]["symbol"] == "S2"
 
 
 def test_emit_never_raises_on_delivery_failure(tmp_path):

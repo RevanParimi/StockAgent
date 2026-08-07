@@ -51,6 +51,7 @@ from services.api.routes.analytics import router as analytics_router
 from services.api.routes.portfolio_api import router as portfolio_router
 from services.api.routes.discovery_api import router as discovery_router
 from services.api.routes.delivery_api import router as delivery_router
+from services.api.routes.audit_api import router as audit_router
 from services.api.routes.rl_monitor import router as rl_monitor_router
 from services.api.routes.auth_api import router as auth_router
 from core.portfolio.store import QuarantinedPortfolioError
@@ -472,6 +473,7 @@ app.include_router(portfolio_router,  tags=["Portfolio"])
 app.include_router(discovery_router,  tags=["Discovery"])
 app.include_router(delivery_router,   tags=["Delivery"])
 app.include_router(rl_monitor_router, tags=["RL Monitor"])
+app.include_router(audit_router,     tags=["Audit"])
 app.include_router(auth_router,      tags=["Auth"])
 
 

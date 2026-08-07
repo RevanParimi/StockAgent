@@ -94,7 +94,8 @@ guard.
 | `core/audit/store.py` | Append-only JSONL reader/writer for outcome rows, per user. |
 | `core/audit/benchmark.py` | `^NSEI` close on a date, same walkback contract as `close_on`. Memoised per run. |
 | `core/audit/outcomes.py` | The recorder. `grade_due(on)` finds rows whose horizon has matured, marks prices, appends outcome rows. Idempotent. |
-| `core/audit/metrics.py` | **Pure functions: lists in, numbers out, no I/O.** All judgment lives here. |
+| `core/audit/rules.py` | The correctness definition (§5) alone: `pct_change`, `excess`, `is_correct`. Split out from `metrics.py` so the one thing that can never be changed retroactively is a single small file. |
+| `core/audit/metrics.py` | **Pure functions: lists in, numbers out, no I/O.** All aggregate judgment lives here. |
 | `core/audit/thresholds.py` | Breach rules over metrics → `ops_alerts`. |
 | `core/audit/report.py` | Assembles the monthly email section and the API payload. |
 | `core/audit/cli.py` | `python -m core.audit --backfill [--user U] [--dry-run]`. |
@@ -162,7 +163,6 @@ Written to `data/portfolio/<user_id>/advice_outcomes.jsonl`, one row per
   "correct":      true,
   "graded_at":    "2026-08-14T02:11:04Z",
 
-  "sector_excess_pct":  1.02,
   "switch_excess_pct":  null,
   "conviction":         null
 }
@@ -172,15 +172,21 @@ Written to `data/portfolio/<user_id>/advice_outcomes.jsonl`, one row per
 grade was taken, so a later change in yfinance's split/dividend adjustment can
 be detected rather than silently rewriting history.
 
-The last three fields are **optional and nullable**, present only where they
+The last two fields are **optional and nullable**, present only where they
 apply:
 
-- `sector_excess_pct` — excess vs the holding's sector index. Recorded for
-  later analysis only; `correct` is never defined against it (§12).
 - `switch_excess_pct` — `SWITCH` rows only, when `switch_candidate` is
   priceable (§5).
 - `conviction` — `shelf` rows only; the value at add time, needed for
   calibration (§6.3).
+
+**No declared-but-unwritten fields.** Every field above is populated by some
+part of the implementation. An earlier draft of this section also carried
+`sector_excess_pct` "for later analysis"; it was removed on review, because no
+sector→index map exists in `core/` (the only one is UI-layer, at
+`services/api/routes/ui_data.py:227-234`) and shipping a nullable field that
+nothing writes would reproduce exactly the `outcome_*td` failure this whole
+design exists to correct.
 
 ### 4.3 Lanes
 
@@ -366,7 +372,7 @@ The empty-store case matters: a fresh install must return
 | `PriceUnavailableError` on a delisted or renamed symbol | Row is skipped and counted; the run reports `skipped_unpriceable` rather than failing |
 | Auditor silently stops running | It reports produced/expected through the existing `alert_job_partial_output` watchdog |
 | Small-n conclusions | Every metric carries `n`; verdict vocabulary includes `INSUFFICIENT_DATA` and it is the default |
-| Benchmark mismatch — auto-heavy portfolio vs broad NIFTY | `^NSEI` is the headline; sector index recorded as a secondary field for later analysis, but `correct` is defined against NIFTY only, so the definition stays stable |
+| Benchmark mismatch — auto-heavy portfolio vs broad NIFTY | `correct` is defined against `^NSEI` only, and stays that way. A second benchmark would let the auditor pick whichever flatters. If sector-relative analysis is wanted later it becomes its own field *with a writer*, per §4.2 |
 
 ---
 

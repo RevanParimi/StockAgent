@@ -2282,7 +2282,7 @@ import services.scheduler.python.scheduler as sched
 
 
 def _scheduler():
-    return sched.StockAgentScheduler()
+    return sched.AutomobileScheduler()
 
 
 def test_job_grades_then_evaluates_then_emits():

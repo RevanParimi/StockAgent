@@ -674,9 +674,12 @@ from core.audit.store import AuditOutcomeStore
 
 
 class _FakeBench:
-    """Deterministic benchmark: +1% per grading, regardless of date."""
+    """Deterministic benchmark: +1% over any window that starts on the issue
+    date. The 2026-07-02 boundary matches the price_fn fixtures below — it has
+    to fall between issue (2026-07-01) and maturity (2026-07-15), or the
+    benchmark never moves and every excess collapses to the raw return."""
     def close_on(self, d):
-        return 100.0 if d < date(2026, 7, 20) else 101.0
+        return 100.0 if d < date(2026, 7, 2) else 101.0
 
     def pct_change(self, start, end):
         return round((self.close_on(end) / self.close_on(start) - 1.0) * 100.0, 4)

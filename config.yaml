@@ -485,6 +485,22 @@ atlas:
     source_decommission_days: 14 # C11 step 6: keep legacy users.db/watchlist.json/push_subscriptions.json/managed_tickers.json read-only this many days of green atlas operation before removal
     # outbox delivered/dead prune uses delivery.outbox_retention_days (30) above
 
+# ---------------------------------------------------------------------------
+# Verification layer — the deterministic auditor (design 2026-08-07).
+# Read-only: these tunables change what it REPORTS and ALERTS on, never what
+# the system decides. No env= on any of them (config.yaml is the sole source).
+# ---------------------------------------------------------------------------
+audit:
+  enabled: true                # master switch for the nightly grading job
+  alerts_enabled: true         # kill-switch for breach alerts only
+  benchmark_ticker: "^NSEI"    # NIFTY 50 — the benchmark `correct` is defined against
+  horizons_td: [10, 30, 60]    # trading days after issue
+  min_n: 30                    # below this, every verdict is INSUFFICIENT_DATA
+  min_hit_rate_60d: 0.45       # 60td hit-rate floor before a warning fires
+  max_bench_lag_pct: 10.0      # portfolio trailing NIFTY by more than this over 60d
+  max_news_blind_rate: 0.20    # F1's blind-rate ceiling — currently log-only
+  conviction_flat_spread: 1.0  # top-minus-bottom decile spread, in pp
+
 # Universe demand model (BP1) — the nightly recompute (Atlas C4) turns held/watch
 # refcounts into demand tiers. A watch-only ticker earns a DAILY slot only once its
 # demand reaches one held-equivalent (the holders weight below); otherwise weekly.

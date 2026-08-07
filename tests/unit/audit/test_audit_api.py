@@ -9,7 +9,7 @@ def _client():
     from fastapi import FastAPI
     app = FastAPI()
     app.include_router(aapi.router)
-    app.dependency_overrides[aapi.get_current_user] = lambda: {"user_id": "primary"}
+    app.dependency_overrides[aapi.get_current_user_or_machine] = lambda: {"user_id": "primary"}
     app.dependency_overrides[aapi.require_owner] = lambda: {"user_id": "primary"}
     return TestClient(app)
 

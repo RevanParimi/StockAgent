@@ -83,6 +83,22 @@ async def get_current_user(
     return user
 
 
+async def get_current_user_or_machine(
+        authorization: str | None = Header(None),
+        x_scheduler_key: str | None = Header(None)) -> dict:
+    """Read-side counterpart to require_owner: any valid session OR the key.
+
+    require_owner is wrong for a per-user READ endpoint — it 403s a member out
+    of their own data. get_current_user alone is wrong for server-to-server
+    reads, which have no session. This is the union: members keep reading their
+    own report, and the machine identity (which already has owner-equivalent
+    access to the write side) can read the owner's."""
+    required = os.getenv("SCHEDULER_KEY", "")
+    if required and x_scheduler_key == required:
+        return _owner_passthrough()
+    return await get_current_user(authorization)
+
+
 async def require_owner(
         authorization: str | None = Header(None),
         x_scheduler_key: str | None = Header(None)) -> dict:

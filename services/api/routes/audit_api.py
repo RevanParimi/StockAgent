@@ -24,7 +24,7 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from core.audit.outcomes import grade_due
 from core.audit.report import build_report
-from services.api.auth import get_current_user, require_owner
+from services.api.auth import get_current_user_or_machine, require_owner
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +37,7 @@ _BACKFILL_RUNNING = threading.Event()
 
 
 @router.get("/summary", summary="Graded advice-outcome report")
-async def audit_summary(user: dict = Depends(get_current_user)) -> dict:
+async def audit_summary(user: dict = Depends(get_current_user_or_machine)) -> dict:
     return await asyncio.to_thread(build_report, user["user_id"])
 
 

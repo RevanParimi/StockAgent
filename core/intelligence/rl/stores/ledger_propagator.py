@@ -38,6 +38,7 @@ from datetime import date
 from pathlib import Path
 
 from core.config import settings
+from core.intelligence.rl.provenance import merge_evidence
 from core.schemas.feedback import LearningLedger, Lesson
 
 logger = logging.getLogger(__name__)
@@ -93,6 +94,11 @@ def propagate_lesson_to_ledger(
         if _rank.get(lesson.scope, 0) > _rank.get(existing.scope, 0):
             existing.scope = lesson.scope
 
+        # F3: a shared lesson is what other tickers inherit, so it carries the
+        # provenance of every ticker that confirmed it, not just the first.
+        existing.evidence = merge_evidence(
+            existing.evidence, lesson.evidence, settings.RL_LESSON_EVIDENCE_MAX_ITEMS)
+
         logger.info(
             "[LedgerPropagator] Updated shared lesson %s "
             "(pattern='%s', conf=%.3f, tickers=%s, occurrences=%d)",
@@ -120,6 +126,7 @@ def propagate_lesson_to_ledger(
             scope=lesson.scope,
             last_seen=today_str,
             contributing_tickers=[source_ticker],
+            evidence=list(lesson.evidence),      # F3 provenance follows the lesson
         )
     )
     logger.info(

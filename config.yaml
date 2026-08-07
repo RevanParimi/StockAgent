@@ -286,6 +286,14 @@ rl:
   # defaulting to model_bias. false = pre-F2 behaviour (blind stays blind).
   macro_fallback_context_enabled: true
   macro_fallback_max_items: 5
+  # -- Provenance on learned artifacts (F3 sensing fix) ---------------------
+  # Lessons and dossier observations keep the dated headlines they were learned
+  # from, so an audit can tell evidence-grounded learning from a claim written
+  # on a newsless day. Retention only — no URL re-fetch or verification.
+  # false = pre-F3 behaviour (provenance fields stay empty).
+  provenance_enabled: true
+  lesson_evidence_max_items: 3       # per lesson; oldest evicted on reinforcement
+  lesson_evidence_max_chars: 160     # per evidence line
   # -- Forgetting & recency (Intelligence Phase C3) -------------------------
   forgetting_enabled: true
   miss_recency_halflife_days: 21.0
@@ -476,6 +484,22 @@ atlas:
     value_history_cap: 400       # keep the last N daily value points per user
     source_decommission_days: 14 # C11 step 6: keep legacy users.db/watchlist.json/push_subscriptions.json/managed_tickers.json read-only this many days of green atlas operation before removal
     # outbox delivered/dead prune uses delivery.outbox_retention_days (30) above
+
+# ---------------------------------------------------------------------------
+# Verification layer — the deterministic auditor (design 2026-08-07).
+# Read-only: these tunables change what it REPORTS and ALERTS on, never what
+# the system decides. No env= on any of them (config.yaml is the sole source).
+# ---------------------------------------------------------------------------
+audit:
+  enabled: true                # master switch for the nightly grading job
+  alerts_enabled: true         # kill-switch for breach alerts only
+  benchmark_ticker: "^NSEI"    # NIFTY 50 — the benchmark `correct` is defined against
+  horizons_td: [10, 30, 60]    # trading days after issue
+  min_n: 30                    # below this, every verdict is INSUFFICIENT_DATA
+  min_hit_rate_60d: 0.45       # 60td hit-rate floor before a warning fires
+  max_bench_lag_pct: 10.0      # portfolio trailing NIFTY by more than this over 60d
+  max_news_blind_rate: 0.20    # F1's blind-rate ceiling — currently log-only
+  conviction_flat_spread: 1.0  # top-minus-bottom decile spread, in pp
 
 # Universe demand model (BP1) — the nightly recompute (Atlas C4) turns held/watch
 # refcounts into demand tiers. A watch-only ticker earns a DAILY slot only once its

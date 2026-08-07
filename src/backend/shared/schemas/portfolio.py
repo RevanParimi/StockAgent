@@ -94,9 +94,19 @@ class Portfolio(BaseModel):
 
 
 class AdviceRecord(BaseModel):
-    """One advice-ledger line (append-only JSONL). Outcome fields are filled
-    later by the review machinery (Phase D); ledger exists from day one so
-    data accumulates immediately (spec §5.3)."""
+    """One advice-ledger line (append-only JSONL).
+
+    DEPRECATED FIELDS: outcome_10td / outcome_30td / outcome_60td were added
+    for a "Phase D review machinery" that was never built — nothing has ever
+    written them, so every row in every ledger carries NULL. They are kept for
+    ledger-parsing compatibility and MUST NOT be used as a data source.
+
+    Graded outcomes live in data/portfolio/<user>/advice_outcomes.jsonl, keyed
+    by "<date>|<symbol>|<rationale_hash>" — see core/audit/ and
+    docs/superpowers/specs/2026-08-07-verification-layer-design.md. The ledger
+    is deliberately never rewritten: grading is derived data and derived data
+    must not be able to corrupt the record of what the user was told.
+    """
     date: str
     user_id: str
     symbol: str
@@ -110,6 +120,7 @@ class AdviceRecord(BaseModel):
     narrative: str = ""            # LLM narration (research tone, never "advice")
     switch_candidate: str = ""     # SWITCH only: the stronger shelf idea's symbol
     rationale_hash: str = ""
+    # DEPRECATED — never written by anything. See the class docstring.
     outcome_10td: float | None = None
     outcome_30td: float | None = None
     outcome_60td: float | None = None

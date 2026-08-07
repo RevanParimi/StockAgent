@@ -39,6 +39,11 @@ import concurrent.futures as _cf
 import logging
 from datetime import date, timedelta
 
+from backend.shared.config.settings.loader import cfg
+from core.audit.outcomes import grade_due
+from core.audit.report import build_report as build_audit_report
+from core.audit.report import render_section as render_audit_section
+from core.audit.thresholds import emit_breaches, evaluate_breaches
 from core.config import settings
 
 logger = logging.getLogger(__name__)
@@ -456,6 +461,23 @@ class AutomobileScheduler:
             replace_existing=True,
         )
         logger.info("[Scheduler] Retention prune job: daily at 11:20 pm IST")
+
+        # ── Verification layer: nightly grading + breach check (23:45 IST) ──
+        # After atlas_retention so the day's ledgers have settled. Read-only
+        # over the learning stack — it can never contaminate a validation run.
+        if cfg("audit.enabled", fallback=True):
+            scheduler.add_job(
+                func=self._audit_nightly_job,
+                trigger=CronTrigger(hour=23, minute=45, timezone="Asia/Kolkata"),
+                id="audit_nightly",
+                name="Nightly advice-outcome grading + breach check",
+                misfire_grace_time=3600,
+                coalesce=True,
+                replace_existing=True,
+            )
+            logger.info("[Scheduler] Audit job: nightly at 11:45 pm IST")
+        else:
+            logger.info("[Scheduler] Audit job disabled (audit.enabled=false)")
 
         return scheduler
 
@@ -941,6 +963,46 @@ class AutomobileScheduler:
                 logger.warning("[Scheduler] Ledger cleanup failed for %s: %s", ticker, exc, exc_info=True)
         _job_banner("Weekly Ledger Cleanup", done=True)
 
+    def _audit_nightly_job(self) -> None:
+        """Grade matured calls, then check the breach rules.
+
+        Never raises: the auditor must not be able to take down the scheduler
+        it shares a process with.
+        """
+        from datetime import date as _d
+        _job_banner("Audit — nightly grading")
+        try:
+            summary = grade_due(_d.today())
+            logger.info("[Scheduler] audit graded %s row(s): %s",
+                        summary.get("graded"), summary.get("lanes"))
+            # The auditor is itself watched (design section 8.1). "Expected" is
+            # the rows that SHOULD have graded — matured and attempted — so a
+            # run where prices are failing surfaces as a partial output rather
+            # than as a quietly smaller report. Rows not yet matured are not
+            # counted: they are not a failure.
+            from core.delivery.ops_alerts import alert_job_partial_output
+            produced = int(summary.get("graded", 0))
+            expected = produced + int(summary.get("skipped_unpriceable", 0))
+            alert_job_partial_output("audit_nightly", produced, expected)
+        except Exception as exc:
+            logger.warning("[Scheduler] audit grading failed: %s", exc, exc_info=True)
+            _job_banner("Audit — nightly grading", done=True)
+            return
+
+        try:
+            report = build_audit_report()
+            breaches = evaluate_breaches(report)
+            if breaches:
+                logger.warning("[Scheduler] audit breaches: %s",
+                               [b["rule"] for b in breaches])
+                emit_breaches(breaches)
+            else:
+                logger.info("[Scheduler] audit verdict %s — no breaches",
+                            report.get("verdict"))
+        except Exception as exc:
+            logger.warning("[Scheduler] audit breach check failed: %s", exc, exc_info=True)
+        _job_banner("Audit — nightly grading", done=True)
+
     def _scorecard_monthly_job(self) -> None:
         """
         Build + persist the previous month's RL scorecard (agent vs control
@@ -985,9 +1047,18 @@ class AutomobileScheduler:
                 "[Scheduler] Learning evidence for %s: %s — saved to %s",
                 month, report["verdict"], json_path,
             )
+            body = render_report(report)
+            # Verification layer (2026-08-07): the money-side auditor rides the
+            # same envelope — one monthly report, not two. A failure here must
+            # never cost us the Learning Evidence email.
+            try:
+                body += render_audit_section(build_audit_report())
+            except Exception as audit_exc:
+                logger.warning("[Scheduler] audit section failed (non-fatal): %s",
+                               audit_exc)
             send_email(
                 subject=f"[StockAgent] Learning Evidence {month}: {report['verdict']}",
-                body=render_report(report),
+                body=body,
             )
         except Exception as exc:
             logger.warning(

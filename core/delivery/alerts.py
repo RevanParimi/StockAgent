@@ -37,6 +37,10 @@ class AlertEvent(BaseModel):
     symbol: str = ""
     message: str
     severity: Literal["info", "warning", "critical"] = "info"
+    # Verification layer (2026-08-07): links an alert back to the advice row
+    # that produced it, so the auditor grades them as one event. Deliberately
+    # NOT part of key() — dedupe behaviour must be unchanged by provenance.
+    advice_ref: str = ""
 
     def key(self) -> str:
         return f"{self.date}|{self.kind}|{self.symbol}"
@@ -94,6 +98,12 @@ def _seen_keys(path: Path, tail: int = 2000) -> set[str]:
 
 
 def load_recent_alerts(limit: int = 50, sent_log: str | None = None) -> list[dict]:
+    """The newest `limit` alerts, NEWEST FIRST.
+
+    The sent-log is append-only, so the file's own order is oldest-first. The
+    Inbox renders this list top-to-bottom and a notification feed reads newest
+    at the top, so the reversal belongs here rather than in every caller.
+    """
     path = _sent_log_path(sent_log)
     if not path.exists():
         return []
@@ -103,6 +113,7 @@ def load_recent_alerts(limit: int = 50, sent_log: str | None = None) -> list[dic
             out.append(json.loads(line))
         except Exception:
             continue
+    out.reverse()
     return out
 
 

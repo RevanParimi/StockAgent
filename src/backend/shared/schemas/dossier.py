@@ -18,6 +18,11 @@ class DossierObservation(BaseModel):
     tags: list[str] = Field(default_factory=list)
     materiality: float = Field(ge=0.0, le=1.0, default=0.5)
     outcome_link: str = ""            # "hit" | "miss" | ""
+    # F3 provenance: the dated headline this observation came from, as
+    # "YYYY-MM-DD — headline". Mirrors GuidanceItem's date+source pair. Empty on
+    # pre-F3 observations and whenever the search returned nothing dated — an
+    # unsourced observation is honest, an invented source is not.
+    source: str = ""
 
 
 class ResponseSignature(BaseModel):
@@ -116,7 +121,8 @@ class TickerDossier(BaseModel):
         if self.observations:
             recent = sorted(self.observations, key=lambda o: o.date)[-5:]
             sections.append("## Recent observations\n" + "\n".join(
-                f"- {o.date}: {o.observation}" for o in recent))
+                f"- {o.date}" + (f" ({o.source})" if o.source else "")
+                + f": {o.observation}" for o in recent))
 
         out = f"# {self.ticker} dossier (updated {self.last_updated}, v{self.version})"
         for sec in sections:

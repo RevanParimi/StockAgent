@@ -1113,7 +1113,10 @@ def run_daily_review(
     # Step 6: LearningLedger — merge lessons + propagate to shared ledgers
     # ------------------------------------------------------------------ #
     updated_ledger, lesson_ids = fb_agent.merge_lessons_into_ledger(
-        fb_output, ticker_ledger, cold_store_path=store._archived_lessons_path()
+        fb_output, ticker_ledger, cold_store_path=store._archived_lessons_path(),
+        # F3: the same context the agent reasoned over, so each lesson records the
+        # dated headlines behind it instead of only its conclusion.
+        market_context=market_context,
     )
     store.save_learning_ledger(updated_ledger)
 

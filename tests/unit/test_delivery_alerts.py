@@ -44,7 +44,9 @@ def test_load_recent_alerts_tail(tmp_path):
         emit_alerts([_ev(symbol=f"S{i}") for i in range(5)], sent_log=log)
     recent = load_recent_alerts(limit=3, sent_log=log)
     assert len(recent) == 3
-    assert recent[-1]["symbol"] == "S4"
+    # newest first — the Inbox renders this list top-to-bottom
+    assert recent[0]["symbol"] == "S4"
+    assert recent[-1]["symbol"] == "S2"
 
 
 def test_emit_never_raises_on_delivery_failure(tmp_path):
@@ -110,3 +112,13 @@ def test_emit_alerts_delivers_inbox_deeplink(tmp_path, monkeypatch):
                        message="m", severity="warning")],
         user_id="u1", sent_log=str(tmp_path / "sent.jsonl"))
     assert captured["url"] == "/#/inbox/alerts"
+
+
+def test_alert_event_advice_ref_defaults_empty_and_not_in_dedupe_key():
+    from core.delivery.alerts import AlertEvent
+    plain = AlertEvent(date="2026-07-17", kind="advisor_exit", symbol="MARUTI",
+                       message="m", severity="warning")
+    tagged = plain.model_copy(update={"advice_ref": "2026-07-17|MARUTI|abc"})
+    assert plain.advice_ref == ""
+    # dedupe must be unaffected — adding provenance must not re-notify
+    assert plain.key() == tagged.key()

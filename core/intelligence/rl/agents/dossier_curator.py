@@ -72,7 +72,10 @@ def merge_curator_output(d: TickerDossier, data: dict, today: str, outcome_link:
             date=today, observation=text[:300],
             tags=[t for t in o.get("tags", []) if t in EVENT_TAGS],
             materiality=max(0.0, min(1.0, float(o.get("materiality", 0.5)))),
-            outcome_link=outcome_link))
+            outcome_link=outcome_link,
+            # F3 provenance — supplied by the research loop, absent from daily
+            # curator output (its evidence is the whole day, not one article).
+            source=(o.get("source") or "")[:120]))
     cands.sort(key=lambda o: o.materiality, reverse=True)
     d.observations.extend(cands[: settings.DOSSIER_MAX_NEW_OBS_PER_DAY])
     if len(d.observations) > settings.DOSSIER_MAX_OBSERVATIONS:

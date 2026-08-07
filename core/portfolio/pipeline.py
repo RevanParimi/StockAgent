@@ -159,6 +159,7 @@ def run_post_review_pipeline(review_date: date) -> dict:
                     date=review_date.isoformat(),
                     kind=f"advisor_{a.verdict.lower()}",
                     symbol=a.symbol,
+                    advice_ref=f"{review_date.isoformat()}|{a.symbol}|{a.rationale_hash}",
                     message=(a.narrative or a.verdict)
                     + (f" (switch → {a.switch_candidate})" if a.switch_candidate else ""),
                     severity="critical" if a.verdict in ("EXIT", "SWITCH") else "warning",

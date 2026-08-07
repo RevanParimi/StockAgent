@@ -37,6 +37,10 @@ class AlertEvent(BaseModel):
     symbol: str = ""
     message: str
     severity: Literal["info", "warning", "critical"] = "info"
+    # Verification layer (2026-08-07): links an alert back to the advice row
+    # that produced it, so the auditor grades them as one event. Deliberately
+    # NOT part of key() — dedupe behaviour must be unchanged by provenance.
+    advice_ref: str = ""
 
     def key(self) -> str:
         return f"{self.date}|{self.kind}|{self.symbol}"

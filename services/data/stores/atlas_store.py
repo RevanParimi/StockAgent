@@ -169,6 +169,8 @@ CREATE TABLE IF NOT EXISTS user_advice (
   confidence         REAL NOT NULL DEFAULT 0.5,
   triggers           TEXT NOT NULL DEFAULT '[]',
   rationale_hash     TEXT NOT NULL DEFAULT '',
+  -- DEPRECATED: never populated. Graded outcomes live in
+  -- advice_outcomes.jsonl (core/audit/). Kept so the ETL keeps parsing.
   outcome_10td       REAL,
   outcome_30td       REAL,
   outcome_60td       REAL,

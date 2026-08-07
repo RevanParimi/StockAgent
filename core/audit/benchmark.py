@@ -19,6 +19,7 @@ from core.intelligence.rl.nse_calendar import is_trading_day
 logger = logging.getLogger(__name__)
 
 _MAX_WALKBACK_DAYS = 10        # matches core.portfolio.pricing.close_on
+_FETCH_WINDOW_DAYS = 7         # matches daily_review._fetch_actual_close
 
 
 class BenchmarkUnavailableError(Exception):
@@ -28,19 +29,38 @@ class BenchmarkUnavailableError(Exception):
 def _fetch_index_close(ticker: str, d: date) -> float | None:
     """One yfinance index close. Returns None on any failure — the caller
     decides whether that is fatal. Isolated in its own function so tests can
-    patch it without touching the network."""
+    patch it without touching the network.
+
+    The request spans _FETCH_WINDOW_DAYS, not one day: yfinance answers a
+    single-day window with an EMPTY frame, which is why the first prod
+    backfill (2026-08-07) graded 0 of 119 matured rows. Same window and same
+    row-selection rule as the equity fetcher this sits beside,
+    daily_review._fetch_actual_close — entry and exit legs must not measure
+    their two dates by different conventions.
+    """
     try:
         import yfinance as yf
         frame = yf.download(
             ticker,
-            start=d.isoformat(),
+            start=(d - timedelta(days=_FETCH_WINDOW_DAYS)).isoformat(),
             end=(d + timedelta(days=1)).isoformat(),
             progress=False,
             auto_adjust=True,
         )
         if frame is None or frame.empty:
             return None
-        return float(frame["Close"].iloc[0])
+        close = frame["Close"]
+        if hasattr(close, "columns"):      # multi-level columns — take first
+            close = close.iloc[:, 0]
+        close = close.dropna()
+        exact = close[close.index.date == d]
+        if not exact.empty:
+            return float(exact.iloc[-1])
+        # Target absent (unscheduled holiday): stand in the most recent close
+        # at or before it. Never after — a future close would be lookahead
+        # bias in the denominator of every excess-return figure.
+        earlier = close[close.index.date <= d]
+        return float(earlier.iloc[-1]) if not earlier.empty else None
     except Exception as exc:
         logger.debug("[audit.benchmark] fetch failed for %s on %s: %s", ticker, d, exc)
         return None

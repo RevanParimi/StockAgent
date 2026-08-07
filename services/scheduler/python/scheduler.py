@@ -42,6 +42,7 @@ from datetime import date, timedelta
 from backend.shared.config.settings.loader import cfg
 from core.audit.outcomes import grade_due
 from core.audit.report import build_report as build_audit_report
+from core.audit.report import render_section as render_audit_section
 from core.audit.thresholds import emit_breaches, evaluate_breaches
 from core.config import settings
 
@@ -1046,9 +1047,18 @@ class AutomobileScheduler:
                 "[Scheduler] Learning evidence for %s: %s — saved to %s",
                 month, report["verdict"], json_path,
             )
+            body = render_report(report)
+            # Verification layer (2026-08-07): the money-side auditor rides the
+            # same envelope — one monthly report, not two. A failure here must
+            # never cost us the Learning Evidence email.
+            try:
+                body += render_audit_section(build_audit_report())
+            except Exception as audit_exc:
+                logger.warning("[Scheduler] audit section failed (non-fatal): %s",
+                               audit_exc)
             send_email(
                 subject=f"[StockAgent] Learning Evidence {month}: {report['verdict']}",
-                body=render_report(report),
+                body=body,
             )
         except Exception as exc:
             logger.warning(

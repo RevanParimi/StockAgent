@@ -159,6 +159,26 @@ def trading_days_ago(reference: date, n: int) -> date:
     return d
 
 
+def trading_days_after(reference: date, n: int) -> date:
+    """
+    Return the calendar date exactly N NSE trading days after reference.
+    Skips weekends and NSE holidays. n=0 returns reference unchanged.
+
+    The forward twin of trading_days_ago — the verification layer needs to ask
+    "what date is +30 trading days from this advice?" and approximating with
+    calendar days would misdate every horizon across a holiday.
+    """
+    if n <= 0:
+        return reference
+    count = 0
+    d = reference
+    while count < n:
+        d += timedelta(days=1)
+        if is_trading_day(d):
+            count += 1
+    return d
+
+
 def trading_dates(start: date, end: date) -> list[date]:
     """Return all NSE trading days in [start, end] inclusive, ascending."""
     result: list[date] = []

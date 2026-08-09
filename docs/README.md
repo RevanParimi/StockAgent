@@ -6,7 +6,8 @@ Two kinds of documents live here. Know which kind you're reading.
 
 | Document | What it covers | Audience |
 |---|---|---|
-| [ARCHITECTURE.md](ARCHITECTURE.md) | **Start here.** Current-state system map: the three loops, runtime topology, all 16 scheduled jobs, data volume layout, LLM tiers, security posture | Everyone |
+| [ARCHITECTURE.md](ARCHITECTURE.md) | **Start here.** Current-state system map: the three loops, runtime topology, the scheduled jobs, data volume layout, LLM tiers, security posture | Everyone |
+| [PRODUCT_MAP.md](PRODUCT_MAP.md) | **Start here to *learn* the product.** Every major module and its minor modules, enumerated from the source tree, plus a 4-week study order and the cross-cutting laws | New developers / anyone onboarding |
 | [../README.md](../README.md) | Product-level tour: what it does, sectors, verdicts, portfolio features, FAQ | Users / evaluators |
 | [../CODEBASE.md](../CODEBASE.md) | Module map, API endpoint census, sector registry, configuration reference | Developers |
 | [RL_DESIGN.md](RL_DESIGN.md) | The self-learning loop in full: memory files, daily review steps 0–9, formulas, LLM contracts, Knowledge Layer, Living Envelope | RL developers |

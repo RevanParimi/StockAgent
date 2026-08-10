@@ -1,0 +1,31 @@
+# Authoritative registry of date-bound milestones and standing invariants.
+# Read by the ops_watchdog scheduler job (06:30 IST daily).
+#
+# THIS FILE IS THE SOURCE OF TRUTH. Claude's memory files must point here
+# rather than carry their own dates. A new milestone lands in the SAME commit
+# as the work that creates it.
+#
+# Why it exists: on 2026-08-08 the Atlas C11 cutover window lapsed, and again
+# on 8/09, and it was noticed on 8/10 only because a human happened to ask.
+# Every milestone lived in memory files that prod cannot read.
+#
+# Reaches prod only on deploy — the deploy_matches_origin invariant guards that.
+#
+# Fields: id, kind, title, check are required. Optional: prep, window,
+# deadline, lead_days (default 3), schedule (daily|monthly), action, docs.
+
+milestones:
+  - id: atlas_c11_cutover
+    kind: milestone
+    title: "Atlas C11 live cutover"
+    check: atlas_cutover_pending
+    prep: atlas_cutover_prep
+    window: {weekdays: [sat, sun]}
+    deadline: 2026-08-15
+    lead_days: 3
+    action: >
+      Set ATLAS_ENABLED=true in Railway and redeploy.
+      Rollback at any time: set ATLAS_ENABLED=false.
+    docs: docs/superpowers/plans/2026-07-26-atlas-user-data-program.md
+
+invariants: []

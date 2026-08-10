@@ -1,0 +1,151 @@
+"""Watchdog engine — the escalation ladder, as a pure function.
+
+evaluate() performs no I/O and reads no clock: `now` and `prior_state` are
+parameters. That is what makes the whole ladder table-testable without prod,
+without a scheduler, and without waiting for a real Saturday.
+
+Ladder (spec section 7):
+
+    satisfied, previously not     -> resolved, once, then silent forever
+    unknown                       -> warning, once per day
+    past deadline, not satisfied  -> critical, every 7 days, indefinitely
+    window open (or no window)    -> warning, once per day
+    within lead of next window    -> info, once per approach
+    otherwise                     -> silent
+
+A lapsed deadline never goes quiet. That is the specific failure this exists
+to prevent.
+"""
+from __future__ import annotations
+
+from dataclasses import dataclass
+from datetime import date, datetime, timedelta
+from typing import Literal
+
+from core.ops.watchdog.checks import CheckResult
+from core.ops.watchdog.registry import Milestone
+
+Level = Literal["info", "warning", "critical", "resolved"]
+
+_LAPSED_REPEAT_DAYS = 7
+
+
+@dataclass(frozen=True)
+class Notification:
+    milestone_id: str
+    level: Level
+    title: str
+    body: str
+
+    @property
+    def severity(self) -> str:
+        """AlertEvent.severity only accepts info|warning|critical."""
+        return "info" if self.level == "resolved" else self.level
+
+
+def _next_window_start(entry: Milestone, today: date) -> date | None:
+    """First day on/after `today` on which the window is open."""
+    if entry.window is None or not entry.window.weekdays:
+        return today
+    for offset in range(0, 14):
+        cand = today + timedelta(days=offset)
+        if cand.weekday() in entry.window.weekdays:
+            return cand
+    return None
+
+
+def _compose(entry: Milestone, result: CheckResult, level: Level,
+             headline: str) -> Notification:
+    lines = [headline, "", f"Status: {result.detail}"]
+    if entry.action:
+        lines += ["", "Next step:", entry.action.strip()]
+    if entry.docs:
+        lines += ["", f"Docs: {entry.docs}"]
+    return Notification(entry.id, level, f"[watchdog] {entry.title}",
+                        "\n".join(lines))
+
+
+def evaluate(entries: list[Milestone],
+             results: dict[str, CheckResult],
+             now: datetime,
+             prior_state: dict) -> tuple[list[Notification], dict]:
+    """Return (notifications to send, new state). Pure."""
+    today = now.date()
+    prior_entries = (prior_state or {}).get("entries", {})
+    new_entries: dict[str, dict] = {}
+    notes: list[Notification] = []
+
+    for entry in entries:
+        result = results.get(entry.id) or CheckResult(
+            "unknown", f"no result produced for {entry.id}")
+        prior = prior_entries.get(entry.id, {})
+        last_level = prior.get("last_level")
+        last_state = prior.get("last_state")
+        last_notified = prior.get("last_notified_date")
+        record = {"last_level": last_level,
+                  "last_notified_date": last_notified,
+                  "last_state": result.state}
+
+        def fire(level: Level, headline: str, _rec=record) -> None:
+            notes.append(_compose(entry, result, level, headline))
+            _rec["last_level"] = level
+            _rec["last_notified_date"] = today.isoformat()
+
+        notified_today = last_notified == today.isoformat()
+
+        if result.state == "satisfied":
+            if last_state is not None and last_state != "satisfied":
+                fire("resolved", f"{entry.title} is now satisfied — closing.")
+            new_entries[entry.id] = record
+            continue
+
+        if result.state == "unknown":
+            if not notified_today:
+                fire("warning",
+                     f"{entry.title}: the check could not answer. "
+                     "Treating as UNRESOLVED rather than passing it.")
+            new_entries[entry.id] = record
+            continue
+
+        # pending / blocked from here on.
+        lapsed = entry.deadline is not None and today > entry.deadline
+        if lapsed:
+            due = (last_notified is None or
+                   (today - date.fromisoformat(last_notified)).days
+                   >= _LAPSED_REPEAT_DAYS)
+            if due:
+                fire("critical",
+                     f"{entry.title} has LAPSED — deadline {entry.deadline} "
+                     "passed and it is still not done.")
+            new_entries[entry.id] = record
+            continue
+
+        window_open = entry.window is None or entry.window.is_open(today)
+        if window_open:
+            if entry.schedule == "monthly":
+                same_month = (last_notified is not None and
+                              last_notified[:7] == today.isoformat()[:7])
+                if not same_month:
+                    fire("warning", f"{entry.title} needs attention.")
+            elif not notified_today:
+                if result.state == "blocked":
+                    fire("warning",
+                         f"{entry.title} is BLOCKED — a precondition failed, "
+                         "so investigate before acting.")
+                else:
+                    fire("warning", f"{entry.title} is due now.")
+            new_entries[entry.id] = record
+            continue
+
+        nxt = _next_window_start(entry, today)
+        if nxt is not None and (nxt - today).days <= entry.lead_days:
+            already = (last_level == "info" and last_notified is not None and
+                       date.fromisoformat(last_notified) >= today
+                       - timedelta(days=entry.lead_days))
+            if not already:
+                fire("info",
+                     f"{entry.title} comes due on {nxt.isoformat()} "
+                     f"({(nxt - today).days} day(s) away).")
+        new_entries[entry.id] = record
+
+    return notes, {"last_run_ts": now.timestamp(), "entries": new_entries}

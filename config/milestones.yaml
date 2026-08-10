@@ -21,7 +21,10 @@ milestones:
     check: atlas_cutover_pending
     prep: atlas_cutover_prep
     window: {weekdays: [sat, sun]}
-    deadline: 2026-08-15
+    # LAST day of the final window, not its first. With 2026-08-15 (the
+    # Saturday) the Sunday of the very weekend you are meant to act on is
+    # classified as lapsed and silenced by the 7-day repeat gate.
+    deadline: 2026-08-16
     lead_days: 3
     action: >
       Set ATLAS_ENABLED=true in Railway and redeploy.

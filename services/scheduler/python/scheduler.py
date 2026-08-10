@@ -479,6 +479,26 @@ class AutomobileScheduler:
         else:
             logger.info("[Scheduler] Audit job disabled (audit.enabled=false)")
 
+        # ── Operational watchdog (06:30 IST daily) ──────────────────────────
+        # Deliberately early and NOT in the 23:xx cluster: a "your window is
+        # open today" notice delivered at 23:45 has already wasted the day it
+        # is announcing. 06:30 on a Saturday leaves the whole weekend to act.
+        if cfg("watchdog.enabled", fallback=True):
+            scheduler.add_job(
+                func=self._watchdog_job,
+                trigger=CronTrigger(hour=int(cfg("watchdog.hour", fallback=6)),
+                                    minute=int(cfg("watchdog.minute", fallback=30)),
+                                    timezone="Asia/Kolkata"),
+                id="ops_watchdog",
+                name="Operational watchdog (milestones + invariants)",
+                misfire_grace_time=6 * 3600,
+                coalesce=True,
+                replace_existing=True,
+            )
+            logger.info("[Scheduler] Watchdog job: daily at 6:30 am IST")
+        else:
+            logger.info("[Scheduler] Watchdog job disabled (watchdog.enabled=false)")
+
         return scheduler
 
     def _on_job_error(self, event) -> None:
@@ -1002,6 +1022,22 @@ class AutomobileScheduler:
         except Exception as exc:
             logger.warning("[Scheduler] audit breach check failed: %s", exc, exc_info=True)
         _job_banner("Audit — nightly grading", done=True)
+
+    def _watchdog_job(self) -> None:
+        """Evaluate milestones + invariants and notify on transitions.
+
+        Never raises: the watchdog must not take down the scheduler it shares
+        a process with.
+        """
+        _job_banner("Operational watchdog")
+        try:
+            from core.ops.watchdog.runner import run_watchdog
+            out = run_watchdog()
+            logger.info("[Scheduler] watchdog evaluated=%s notified=%s levels=%s",
+                        out["evaluated"], out["notified"], out["levels"])
+        except Exception as exc:
+            logger.error("[Scheduler] watchdog FAILED: %s", exc, exc_info=True)
+        _job_banner("Operational watchdog", done=True)
 
     def _scorecard_monthly_job(self) -> None:
         """

@@ -120,6 +120,12 @@ analyse:
                                  # (POST /analyse + WS /ws/stream). Owner exempt;
                                  # 0 = unlimited. One run ≈ 8 LLM calls.
 
+watchdog:
+  enabled: true                  # master gate for the ops_watchdog job
+  prep_enabled: true             # auto-run safe, idempotent prep (e.g. Atlas ETL)
+  hour: 6                        # IST. Deliberately NOT the 23:xx cluster:
+  minute: 30                     #   "your window is open today" at 23:45 is useless
+
 macro_news:
   enabled: true
   retain_days: 90

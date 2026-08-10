@@ -1,0 +1,70 @@
+"""Watchdog checks — registration, failure containment, Atlas pre-flight."""
+import pytest
+
+from core.ops.watchdog import checks as C
+
+
+def test_run_check_unknown_name_is_unknown_state():
+    r = C.run_check("no_such_check")
+    assert r.state == "unknown" and "not registered" in r.detail
+
+
+def test_run_check_swallows_exception_as_unknown():
+    @C.check("boom_for_test")
+    def _boom():
+        raise RuntimeError("kaboom")
+    try:
+        r = C.run_check("boom_for_test")
+        assert r.state == "unknown"
+        assert "kaboom" in r.detail
+    finally:
+        C.CHECKS.pop("boom_for_test", None)
+
+
+def test_duplicate_check_name_rejected():
+    @C.check("dupe_for_test")
+    def _a():
+        return C.CheckResult("satisfied", "ok")
+    try:
+        with pytest.raises(ValueError, match="already registered"):
+            @C.check("dupe_for_test")
+            def _b():
+                return C.CheckResult("satisfied", "ok")
+    finally:
+        C.CHECKS.pop("dupe_for_test", None)
+
+
+class TestAtlasCutoverPending:
+    def test_satisfied_when_flag_set(self, monkeypatch):
+        monkeypatch.setenv("ATLAS_ENABLED", "true")
+        r = C.run_check("atlas_cutover_pending")
+        assert r.state == "satisfied"
+
+    def test_pending_when_flag_unset_and_preflight_clean(self, monkeypatch, tmp_path):
+        monkeypatch.delenv("ATLAS_ENABLED", raising=False)
+        monkeypatch.setattr(C, "_DATA_DIR", tmp_path)
+        (tmp_path / "portfolio").mkdir()
+        (tmp_path / "portfolio" / "primary").mkdir()
+        r = C.run_check("atlas_cutover_pending")
+        assert r.state == "pending"
+        assert r.evidence["atlas_db_present"] is False
+
+    def test_blocked_when_atlas_db_already_exists(self, monkeypatch, tmp_path):
+        monkeypatch.delenv("ATLAS_ENABLED", raising=False)
+        monkeypatch.setattr(C, "_DATA_DIR", tmp_path)
+        (tmp_path / "portfolio").mkdir()
+        (tmp_path / "portfolio" / "primary").mkdir()
+        (tmp_path / "atlas.db").write_text("x")
+        r = C.run_check("atlas_cutover_pending")
+        assert r.state == "blocked"
+        assert "atlas.db" in r.detail
+
+    def test_blocked_when_extra_portfolio_dirs(self, monkeypatch, tmp_path):
+        monkeypatch.delenv("ATLAS_ENABLED", raising=False)
+        monkeypatch.setattr(C, "_DATA_DIR", tmp_path)
+        (tmp_path / "portfolio").mkdir()
+        (tmp_path / "portfolio" / "primary").mkdir()
+        (tmp_path / "portfolio" / "u_other").mkdir()
+        r = C.run_check("atlas_cutover_pending")
+        assert r.state == "blocked"
+        assert "u_other" in r.detail

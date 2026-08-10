@@ -38,6 +38,7 @@ from __future__ import annotations
 import concurrent.futures as _cf
 import logging
 from datetime import date, timedelta
+from pathlib import Path
 
 from backend.shared.config.settings.loader import cfg
 from core.audit.outcomes import grade_due
@@ -49,6 +50,12 @@ from core.config import settings
 logger = logging.getLogger(__name__)
 
 _SEP = "=" * 65
+
+# Where the nightly audit run summary lands, for the watchdog to read.
+# Module-level so tests can redirect it — writing to the real data/ dir from
+# a test run would pollute the working tree and, worse, feed the watchdog
+# fabricated numbers.
+_AUDIT_SUMMARY_PATH = Path("data") / "audit_last_run.json"
 
 
 def _job_banner(label: str, done: bool = False) -> None:
@@ -1011,11 +1018,9 @@ class AutomobileScheduler:
             # when expected == 0, and on 2026-08-07 graded=0 AND
             # skipped_unpriceable=0, so the 0/119 run raised no alert at all.
             try:
-                from pathlib import Path as _Path
-
                 from core.audit.store import AuditOutcomeStore
                 from core.utils.atomic_io import atomic_write_json
-                atomic_write_json(_Path("data") / "audit_last_run.json", {
+                atomic_write_json(_AUDIT_SUMMARY_PATH, {
                     "date": _d.today().isoformat(),
                     "graded": produced,
                     "already_present": int(summary.get("already_present", 0)),

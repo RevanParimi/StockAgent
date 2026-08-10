@@ -589,6 +589,8 @@ Models are tiered (2026-06-03 benchmark, `scripts/model_bench.py`; bulk re-bench
 | `AUTH_REQUIRED` | `false` | M0: when true, user-scoped routes require a bearer session; false = anonymous acts as owner (single-user compatibility) |
 | `CHAT_DAILY_QUOTA` | `30` | M0: member daily LLM chat turns; owner exempt; 0 = unlimited |
 | `ANALYSE_DAILY_QUOTA` | `10` | Member daily on-demand pipeline runs (`POST /analyse` + `WS /ws/stream`); owner exempt; 0 = unlimited. **`config.yaml` key `analyse.daily_quota` only — no env override.** One run ≈ 8 LLM calls, hence tighter than chat |
+| `watchdog.enabled` | `true` | Master gate for the `ops_watchdog` job (06:30 IST daily). **`config.yaml` only — no env override.** |
+| `watchdog.prep_enabled` | `true` | Auto-run idempotent prep (e.g. the Atlas ETL) when a milestone's window is open. Set false for notify-only. |
 | `PORTFOLIO_MAX_MANAGED_TICKERS` | `40` | Auto-promotion cap — guards LLM spend; oldest watchlist-origin entry rotates out at cap |
 | `PORTFOLIO_WEEKLY_REVIEW_WEEKDAY` | `4` | Friday — watchlist-cadence names review this weekday only (held names review daily) |
 | `ADVISOR_ENABLED` | `true` | Master switch for the post-review advisor pipeline |
@@ -835,7 +837,8 @@ All paths verified to exist. Paths are relative to project root.
 | `services/api/routes/prompts.py` | /ui/prompts/* — live prompt editing and GitHub deploy |
 | `services/api/routes/analytics.py` | /analytics/* — RL performance exports and Power BI feed |
 | `services/api/log_buffer.py` | In-memory ring buffer for real-time log streaming |
-| `services/scheduler/python/scheduler.py` | APScheduler: daily RL review (4:30pm IST), monthly forecast (1st, 9am IST), calendar update (Dec 31), pre-open shock check (`preopen_shock_check`, Mon-Fri 08:45 IST, Living Envelope §27.3), Job 13 morning brief (Mon-Fri 08:50 IST) + Job 14 weekly review (Sun 18:00 IST, Compass Phase C) |
+| `services/scheduler/python/scheduler.py` | APScheduler: daily RL review (4:30pm IST), monthly forecast (1st, 9am IST), calendar update (Dec 31), pre-open shock check (`preopen_shock_check`, Mon-Fri 08:45 IST, Living Envelope §27.3), Job 13 morning brief (Mon-Fri 08:50 IST) + Job 14 weekly review (Sun 18:00 IST, Compass Phase C), `ops_watchdog` (06:30 IST daily) |
+| `core/ops/watchdog/` | **The watchdog.** Reads `config/milestones.yaml` — the authoritative registry of dated milestones and standing invariants — runs named checks, and notifies on transitions via `ops_alerts`. `registry.py` loads/validates, `checks.py` probes state, `prep.py` auto-runs safe idempotent preparation, `engine.py` is the pure escalation ladder, `runner.py` wires it to state + delivery |
 | `services/data/stores/score_store.py` | SQLite score history (read/write/delta/range queries) |
 | `services/background/macro_news_cache.py` | Daily macro news cache read/write |
 | `services/clients/llm_client.py` | Async OpenRouter LLM client |

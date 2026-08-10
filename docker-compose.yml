@@ -1,6 +1,10 @@
 # ============================================================
-# StockAgent — Production Docker Compose
-# Target: DigitalOcean Droplet (4 GB / 2 vCPU) or Oracle Cloud A1
+# StockAgent — self-hosted / local Docker Compose
+#
+# NOTE ON PRODUCTION: production runs on Railway, not Compose — a single
+# Python process serving FastAPI with the scheduler running as an in-process
+# thread. This file exists for local full-stack runs and as a self-hosting
+# path; it is not what deploys today.
 #
 # Usage:
 #   cp .env .env.production          # fill in real API keys
@@ -10,15 +14,21 @@
 #   stockagent_data  → /app/data   (predictions, chroma_db, scores.db, KB docs)
 #   stockagent_logs  → /app/logs
 #   stockagent_out   → /app/outputs
-#   caddy_data       → TLS certificates (Let's Encrypt)
-#   caddy_config     → Caddy runtime config
+#
+# History: this file used to describe a DigitalOcean Droplet topology with a
+# TypeScript gateway behind a Caddy reverse proxy. Both are gone — the
+# gateway was deleted in 931da78 (its routes were passthroughs to Python; its
+# one non-trivial job, per-ticker WebSocket fan-out, now lives in
+# services/api/routes/stream.py) and the Caddyfile in d4792e4 (Railway
+# terminates TLS). Their service blocks were removed here so the file
+# describes something that can actually start.
 # ============================================================
 
 services:
 
   # ──────────────────────────────────────────────────────────
   # Python FastAPI — agent orchestrator + RL feedback loop
-  # Port 8000 (internal only, Caddy proxies to it)
+  # Serves the API, the PWA, and the in-process job scheduler.
   # Includes compiled C++ pybind11 indicators (multi-stage build)
   # ──────────────────────────────────────────────────────────
   python-api:
@@ -42,8 +52,9 @@ services:
       - stockagent_data:/app/data
       - stockagent_logs:/app/logs
       - stockagent_out:/app/outputs
-    expose:
-      - "8000"
+    ports:
+      # Published directly — there is no reverse proxy in front of it here.
+      - "8000:8000"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
@@ -52,43 +63,15 @@ services:
       start_period: 30s
 
   # ──────────────────────────────────────────────────────────
-  # TypeScript Gateway — REST API + WebSocket hub
-  # Port 3000 (REST), 3001 (WebSocket) — internal only
-  # ──────────────────────────────────────────────────────────
-  typescript-gateway:
-    build:
-      context: services/typescript
-      dockerfile: Dockerfile
-    container_name: stockagent-gateway
-    restart: unless-stopped
-    environment:
-      TZ: Asia/Kolkata
-      NODE_ENV: production
-      PYTHON_INTERNAL_URL: http://python-api:8000
-      PORT: "3000"
-      WS_PORT: "3001"
-    expose:
-      - "3000"
-      - "3001"
-    depends_on:
-      python-api:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 15s
-
-  # ──────────────────────────────────────────────────────────
-  # C# Quartz.NET Scheduler — daily + monthly cron jobs
-  # Port 5000 (internal only)
-  # TZ=Asia/Kolkata ensures 4:30pm IST fires correctly
-  # Communicates with python-api via HTTP (score_store proxy pattern)
+  # C# Quartz.NET Scheduler — dormant.
+  # Superseded by the in-process Python scheduler; the source is still in
+  # the tree, so this is kept behind an opt-in profile rather than deleted.
+  #   docker compose --profile csharp up -d
   # ──────────────────────────────────────────────────────────
   csharp-scheduler:
+    profiles: ["csharp"]
     build:
-      context: csharp/StockAgent.Scheduler
+      context: services/csharp/StockAgent.Scheduler
       dockerfile: Dockerfile
     container_name: stockagent-scheduler
     restart: unless-stopped
@@ -105,27 +88,8 @@ services:
       python-api:
         condition: service_healthy
 
-  # ──────────────────────────────────────────────────────────
-  # Caddy — reverse proxy + automatic HTTPS (Let's Encrypt)
-  # Replace YOUR_DOMAIN with your actual domain or Droplet IP
-  # ──────────────────────────────────────────────────────────
-  caddy:
-    image: caddy:2-alpine
-    container_name: stockagent-caddy
-    restart: unless-stopped
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy_data:/data
-      - caddy_config:/config
-    depends_on:
-      - typescript-gateway
-      - python-api
-
 # ============================================================
-# Named volumes — persisted on Droplet SSD across all restarts
+# Named volumes — persisted across all restarts
 # ============================================================
 volumes:
   stockagent_data:
@@ -133,10 +97,6 @@ volumes:
   stockagent_logs:
     driver: local
   stockagent_out:
-    driver: local
-  caddy_data:
-    driver: local
-  caddy_config:
     driver: local
 
 # ============================================================

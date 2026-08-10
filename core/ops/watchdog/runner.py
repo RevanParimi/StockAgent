@@ -99,34 +99,83 @@ def _alert_registry_broken(detail: str, today: date) -> None:
         logger.warning("[watchdog] registry alert failed: %s", exc)
 
 
+def _send_email(subject: str, body: str) -> None:
+    from core.delivery.channels import send_email
+    send_email(subject, body)
+
+
+def build_heartbeat(entries, results, now: datetime) -> str:
+    """Liveness digest: everything tracked and its current state.
+
+    Email-only by design. A push notification that says "all clear" trains
+    the reader to dismiss push, and push is how the urgent ones arrive.
+    """
+    lines = [f"Watchdog heartbeat — {now.strftime('%Y-%m-%d %H:%M')} IST",
+             f"{len(entries)} entr{'y' if len(entries) == 1 else 'ies'} tracked.",
+             ""]
+    for e in entries:
+        r = results.get(e.id)
+        state = r.state if r else "unknown"
+        detail = r.detail if r else "no result"
+        lines.append(f"  [{state:<9}] {e.title} — {detail}")
+    lines += ["", "Silence on any other day means nothing was due."]
+    return "\n".join(lines)
+
+
+def _maybe_heartbeat(entries, results, now: datetime,
+                     registry_error: str | None) -> None:
+    """Sunday only. Never raises — a failed heartbeat must not fail the run."""
+    if now.weekday() != 6:
+        return
+    try:
+        if registry_error is None:
+            body = build_heartbeat(entries, results, now)
+        else:
+            body = (f"Watchdog heartbeat — {now.strftime('%Y-%m-%d %H:%M')} IST"
+                    f"\n\nThe registry could not be loaded, so NOTHING is being "
+                    f"watched:\n  {registry_error}")
+        _send_email("StockAgent watchdog heartbeat", body)
+    except Exception as exc:
+        logger.warning("[watchdog] heartbeat send failed: %s", exc)
+
+
 def run_watchdog(now: datetime | None = None) -> dict:
     """Evaluate every entry and notify on transitions. Never raises."""
     now = now or datetime.now(IST)
     today = now.date()
+    entries: list = []
+    results: dict = {}
+    out = {"evaluated": 0, "notified": 0, "levels": []}
+    registry_error: str | None = None
+
     try:
         entries = load_registry(_REGISTRY_PATH)
     except RegistryError as exc:
+        registry_error = str(exc)
         logger.error("[watchdog] registry load failed: %s", exc)
-        _alert_registry_broken(str(exc), today)
-        return {"evaluated": 0, "notified": 0, "levels": []}
+        _alert_registry_broken(registry_error, today)
 
-    results = {e.id: checks_mod.run_check(e.check) for e in entries}
-    notes, new_state = evaluate(entries, results, now, _load_state())
+    if registry_error is None:
+        results = {e.id: checks_mod.run_check(e.check) for e in entries}
+        notes, new_state = evaluate(entries, results, now, _load_state())
+        out = {"evaluated": len(entries), "notified": 0, "levels": []}
 
-    if not notes:
-        _save_state(new_state)
-        return {"evaluated": len(entries), "notified": 0, "levels": []}
+        if not notes:
+            _save_state(new_state)
+        else:
+            prep_notes = _run_preps(entries, results, today)
+            try:
+                _broadcast(_as_events(notes, today, prep_notes),
+                           "StockAgent ops alert")
+            except Exception as exc:
+                # Do NOT advance state: an undelivered notification must be
+                # retried tomorrow, not silently marked as sent.
+                logger.warning(
+                    "[watchdog] delivery failed, state not advanced: %s", exc)
+            else:
+                _save_state(new_state)
+                out = {"evaluated": len(entries), "notified": len(notes),
+                       "levels": [n.level for n in notes]}
 
-    prep_notes = _run_preps(entries, results, today)
-
-    try:
-        _broadcast(_as_events(notes, today, prep_notes), "StockAgent ops alert")
-    except Exception as exc:
-        # Do NOT advance state: an undelivered notification must be retried
-        # tomorrow, not silently marked as sent.
-        logger.warning("[watchdog] delivery failed, state not advanced: %s", exc)
-        return {"evaluated": len(entries), "notified": 0, "levels": []}
-
-    _save_state(new_state)
-    return {"evaluated": len(entries), "notified": len(notes),
-            "levels": [n.level for n in notes]}
+    _maybe_heartbeat(entries, results, now, registry_error)
+    return out

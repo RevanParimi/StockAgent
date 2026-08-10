@@ -31,4 +31,71 @@ milestones:
       Rollback at any time: set ATLAS_ENABLED=false.
     docs: docs/superpowers/plans/2026-07-26-atlas-user-data-program.md
 
-invariants: []
+  - id: f2_validation
+    kind: milestone
+    title: "F2 miss-taxonomy validation (20 trading days post-fix)"
+    check: manual_confirmation
+    deadline: 2026-08-28
+    lead_days: 5
+    action: >
+      Compare the miss_type distribution against the 2026-07-31 break date.
+      Remove this entry from config/milestones.yaml once judged.
+    docs: docs/superpowers/plans/2026-07-31-intelligence-loop-fixes.md
+
+  - id: f3_checkpoint
+    kind: milestone
+    title: "F3 provenance checkpoint (20 trading days post-deploy)"
+    check: manual_confirmation
+    deadline: 2026-09-04
+    lead_days: 5
+    action: >
+      F3 deployed 2026-08-07. Check Lesson.evidence and
+      DossierObservation.source are populated on real rows.
+      Remove this entry once judged.
+    docs: docs/superpowers/plans/2026-07-31-intelligence-loop-fixes.md
+
+  - id: hard_bind_observation
+    kind: milestone
+    title: "Hard-bind post-enable observation window"
+    check: manual_confirmation
+    deadline: 2026-08-31
+    lead_days: 5
+    action: >
+      Hard-bind enabled 2026-08-03. Review direction_accuracy_7d for
+      hybrid-reward inflation and the forward-only accuracy break (AUD-060).
+      Remove this entry once judged.
+    docs: docs/superpowers/specs/2026-07-28-learning-evidence.md
+
+invariants:
+  - id: registry_is_current
+    kind: invariant
+    title: "Deployed registry matches origin/main"
+    check: registry_is_current
+    action: >
+      A milestone was added or changed on origin/main but never deployed,
+      so the watchdog is blind to it. Redeploy. (This compares the registry
+      FILE, not the commit SHA — holding unrelated commits back is fine.)
+
+  - id: serper_month_rollover
+    kind: invariant
+    title: "Serper quota counter rolled into the current month"
+    check: serper_counter_current_month
+    schedule: monthly
+    action: "Inspect data/logs/api_usage.json on the volume."
+
+  - id: monthly_scorecard_written
+    kind: invariant
+    title: "Previous month's RL scorecard was written"
+    check: monthly_scorecard_written
+    schedule: monthly
+    action: >
+      Check the 1st-of-month scorecard job ran. Note the file is named for
+      the COMPLETED month, so in September look for 2026-08_scorecard.json.
+
+  - id: audit_graded_when_due
+    kind: invariant
+    title: "Auditor grades rows once they mature"
+    check: audit_graded_when_due
+    action: >
+      Matured rows are not being graded. Check the ^NSEI benchmark fetch
+      (the 2026-08-07 failure mode) before trusting any audit verdict.

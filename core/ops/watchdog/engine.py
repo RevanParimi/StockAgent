@@ -120,7 +120,19 @@ def evaluate(entries: list[Milestone],
             new_entries[entry.id] = record
             continue
 
-        window_open = entry.window is None or entry.window.is_open(today)
+        # What counts as "actionable today":
+        #   recurring window  -> the window's own weekdays
+        #   deadline only     -> the last `lead_days` before the deadline.
+        #                        Treating this as always-open makes the entry
+        #                        warn EVERY DAY until its deadline.
+        #   neither           -> a standing invariant; broken means actionable.
+        if entry.window is not None:
+            window_open = entry.window.is_open(today)
+        elif entry.deadline is not None:
+            window_open = (entry.deadline - today).days <= entry.lead_days
+        else:
+            window_open = True
+
         if window_open:
             if entry.schedule == "monthly":
                 same_month = (last_notified is not None and
@@ -134,6 +146,13 @@ def evaluate(entries: list[Milestone],
                          "so investigate before acting.")
                 else:
                     fire("warning", f"{entry.title} is due now.")
+            new_entries[entry.id] = record
+            continue
+
+        # The lead-in "comes due on <date>" notice only makes sense for a
+        # recurring window. For a deadline-only entry the lead period IS the
+        # actionable window, already handled above.
+        if entry.window is None:
             new_entries[entry.id] = record
             continue
 

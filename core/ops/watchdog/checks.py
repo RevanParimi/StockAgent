@@ -8,13 +8,20 @@ is worse than no watchdog.
 """
 from __future__ import annotations
 
+import json
 import logging
 import os
+import urllib.request
 from dataclasses import dataclass, field
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Callable, Literal
+from zoneinfo import ZoneInfo
 
 logger = logging.getLogger(__name__)
+
+_GITHUB_REPO = "RevanParimi/StockAgent"     # verified via `git remote get-url origin`
+_IST = ZoneInfo("Asia/Kolkata")
 
 CheckState = Literal["satisfied", "pending", "blocked", "unknown"]
 
@@ -91,3 +98,163 @@ def atlas_cutover_pending() -> CheckResult:
         "pending",
         "Pre-flight clean (atlas.db absent, portfolio/ = only 'primary'). "
         "ATLAS_ENABLED is not set.", evidence)
+
+
+# ---------------------------------------------------------------------------
+# Standing invariants
+# ---------------------------------------------------------------------------
+
+def _today() -> date:
+    return datetime.now(_IST).date()
+
+
+_REGISTRY_RELPATH = "config/milestones.yaml"
+
+
+def _github_registry_text() -> str | None:
+    """config/milestones.yaml as it stands on origin/main. None if unavailable."""
+    import base64
+    token = os.getenv("GITHUB_TOKEN") or ""
+    headers = {"Accept": "application/vnd.github+json"}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    req = urllib.request.Request(
+        f"https://api.github.com/repos/{_GITHUB_REPO}/contents/"
+        f"{_REGISTRY_RELPATH}?ref=main", headers=headers)
+    with urllib.request.urlopen(req, timeout=15) as resp:
+        payload = json.loads(resp.read())
+    raw = payload.get("content")
+    if not raw:
+        return None
+    return base64.b64decode(raw).decode("utf-8")
+
+
+def _local_registry_text() -> str | None:
+    try:
+        return Path(_REGISTRY_RELPATH).read_text(encoding="utf-8")
+    except Exception:
+        return None
+
+
+def _normalise(text: str) -> str:
+    """Compare content, not line endings or trailing whitespace."""
+    return "\n".join(line.rstrip() for line in text.strip().splitlines())
+
+
+@check("registry_is_current")
+def registry_is_current() -> CheckResult:
+    """Is the DEPLOYED registry the same as the one on origin/main?
+
+    This deliberately compares the registry file rather than the commit SHA.
+    Holding unrelated commits back is normal working practice here, so a
+    SHA comparison would warn every day and get ignored. What actually
+    matters is narrower: a milestone added but never deployed leaves the
+    watchdog blind to it — the one way this design silently goes stale.
+    """
+    local = _local_registry_text()
+    if local is None:
+        return CheckResult("unknown",
+                           f"Could not read the deployed {_REGISTRY_RELPATH}.")
+    remote = _github_registry_text()
+    if remote is None:
+        return CheckResult("unknown",
+                           "Could not read the registry from origin/main.")
+    if _normalise(local) == _normalise(remote):
+        return CheckResult("satisfied",
+                           "Deployed registry matches origin/main.")
+    return CheckResult(
+        "pending",
+        "The registry on origin/main differs from the deployed one — a "
+        "milestone has been added or changed but not deployed, so the "
+        "watchdog is blind to it. Redeploy.")
+
+
+def _api_usage() -> dict:
+    from services.data.stores.api_usage import get_usage
+    return get_usage()
+
+
+@check("serper_counter_current_month")
+def serper_counter_current_month() -> CheckResult:
+    usage = _api_usage()
+    month = str(usage.get("month") or "")
+    expected = _today().strftime("%Y-%m")
+    if month == expected:
+        return CheckResult("satisfied", f"Counter is on {month}.",
+                           {"month": month})
+    return CheckResult(
+        "pending",
+        f"API usage counter still reads {month!r}, expected {expected!r} — "
+        "the monthly rollover did not happen.", {"month": month})
+
+
+def _scorecard_dir() -> Path:
+    from core.config import settings
+    return Path(settings.SCORECARD_DIR)
+
+
+@check("monthly_scorecard_written")
+def monthly_scorecard_written() -> CheckResult:
+    """The scorecard file is named for the COMPLETED month, so on any day in
+    September the file to look for is 2026-08_scorecard.json."""
+    today = _today()
+    prev = (today.replace(day=1) - timedelta(days=1)).strftime("%Y-%m")
+    path = _scorecard_dir() / f"{prev}_scorecard.json"
+    if path.exists():
+        return CheckResult("satisfied", f"{prev} scorecard present.",
+                           {"path": str(path)})
+    return CheckResult("pending", f"{prev} scorecard is missing at {path}.",
+                       {"path": str(path)})
+
+
+_AUDIT_RUN_PATH = _DATA_DIR / "audit_last_run.json"
+
+
+def _audit_counts() -> dict:
+    """Last nightly grading summary, persisted by the audit job."""
+    return json.loads(_AUDIT_RUN_PATH.read_text(encoding="utf-8"))
+
+
+@check("audit_graded_when_due")
+def audit_graded_when_due() -> CheckResult:
+    """Closes the hole in alert_job_partial_output, which returns early when
+    expected <= 0. On 2026-08-07 graded=0 AND skipped_unpriceable=0, so
+    expected was 0 and NO alert fired for a 0/119 grading run.
+
+    Two failure modes, both invisible before this: the nightly stopped running
+    at all, and the nightly ran but produced nothing while having work to do.
+    """
+    try:
+        run = _audit_counts()
+    except FileNotFoundError:
+        return CheckResult("pending",
+                           "No audit run summary yet — the nightly has not "
+                           "completed since the watchdog was deployed.")
+
+    last = date.fromisoformat(str(run["date"]))
+    age = (_today() - last).days
+    if age > 2:
+        return CheckResult(
+            "pending",
+            f"Last audit run was {last} ({age} days ago) — the nightly has "
+            "stopped running.", run)
+
+    graded = int(run.get("graded") or 0)
+    present = int(run.get("already_present") or 0)
+    pending_rows = int(run.get("pending_rows") or 0)
+    if graded == 0 and present == 0 and pending_rows > 0:
+        return CheckResult(
+            "pending",
+            f"The auditor graded 0 and carried 0 forward while {pending_rows} "
+            "advice row(s) exist — the 0/119 signature. Check the ^NSEI "
+            "benchmark fetch.", run)
+    return CheckResult(
+        "satisfied",
+        f"Last run {last}: graded={graded}, already_present={present}.", run)
+
+
+@check("manual_confirmation")
+def manual_confirmation() -> CheckResult:
+    """No programmatic signal exists; stays pending until the entry is removed
+    from the registry. Deliberately dumb — a date-only reminder."""
+    return CheckResult("pending", "Awaiting manual confirmation.")

@@ -148,3 +148,68 @@ def test_severity_maps_resolved_to_info():
 def test_last_run_ts_recorded():
     _, state = evaluate([_atlas()], PENDING, _now(2026, 8, 10), {})
     assert state["last_run_ts"] > 0
+
+
+class TestDeadlineOnlyEntries:
+    """A deadline with no recurring window: lead_days must count back from the
+    deadline. Without this the entry is 'always open' and warns EVERY DAY —
+    the alert fatigue the cadence decision explicitly rejected."""
+
+    def _entry(self):
+        return Milestone(id="f2", kind="milestone", title="F2 validation",
+                         check="manual_confirmation", deadline=date(2026, 8, 28),
+                         lead_days=5, action="Judge the distribution.")
+
+    PENDING_F2 = {"f2": CheckResult("pending", "awaiting confirmation")}
+
+    def test_silent_well_before_deadline(self):
+        notes, _ = evaluate([self._entry()], self.PENDING_F2,
+                            _now(2026, 8, 10), {})     # 18 days out, lead 5
+        assert notes == []
+
+    def test_silent_across_many_consecutive_days(self):
+        state: dict = {}
+        total = 0
+        for day in range(10, 23):                      # 8/10 .. 8/22
+            notes, state = evaluate([self._entry()], self.PENDING_F2,
+                                    _now(2026, 8, day), state)
+            total += len(notes)
+        assert total == 0, "deadline-only entry must not warn daily"
+
+    def test_warns_once_inside_lead_window(self):
+        notes, state = evaluate([self._entry()], self.PENDING_F2,
+                                _now(2026, 8, 24), {})  # 4 days out
+        assert [n.level for n in notes] == ["warning"]
+        again, _ = evaluate([self._entry()], self.PENDING_F2,
+                            _now(2026, 8, 24), state)
+        assert again == []
+
+    def test_critical_after_deadline(self):
+        notes, _ = evaluate([self._entry()], self.PENDING_F2,
+                            _now(2026, 8, 29), {})
+        assert [n.level for n in notes] == ["critical"]
+
+
+class TestStandingInvariant:
+    """No window and no deadline: a broken invariant IS actionable today, so
+    it warns daily until fixed, then auto-resolves."""
+
+    def _entry(self):
+        return Milestone(id="inv", kind="invariant", title="Registry current",
+                         check="registry_is_current")
+
+    def test_warns_daily_while_broken(self):
+        res = {"inv": CheckResult("pending", "stale")}
+        state: dict = {}
+        levels = []
+        for day in (10, 11, 12):
+            notes, state = evaluate([self._entry()], res, _now(2026, 8, day), state)
+            levels += [n.level for n in notes]
+        assert levels == ["warning", "warning", "warning"]
+
+    def test_resolves_when_fixed(self):
+        res_bad = {"inv": CheckResult("pending", "stale")}
+        res_ok = {"inv": CheckResult("satisfied", "in sync")}
+        _, state = evaluate([self._entry()], res_bad, _now(2026, 8, 10), {})
+        notes, _ = evaluate([self._entry()], res_ok, _now(2026, 8, 11), state)
+        assert [n.level for n in notes] == ["resolved"]

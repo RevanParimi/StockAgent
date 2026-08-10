@@ -1004,6 +1004,26 @@ class AutomobileScheduler:
             produced = int(summary.get("graded", 0))
             expected = produced + int(summary.get("skipped_unpriceable", 0))
             alert_job_partial_output("audit_nightly", produced, expected)
+
+            # Persist the run summary so the watchdog can tell "graded nothing
+            # because there was nothing to do" from "graded nothing because it
+            # is broken". alert_job_partial_output cannot: it returns early
+            # when expected == 0, and on 2026-08-07 graded=0 AND
+            # skipped_unpriceable=0, so the 0/119 run raised no alert at all.
+            try:
+                from pathlib import Path as _Path
+
+                from core.audit.store import AuditOutcomeStore
+                from core.utils.atomic_io import atomic_write_json
+                atomic_write_json(_Path("data") / "audit_last_run.json", {
+                    "date": _d.today().isoformat(),
+                    "graded": produced,
+                    "already_present": int(summary.get("already_present", 0)),
+                    "skipped_unpriceable": int(summary.get("skipped_unpriceable", 0)),
+                    "pending_rows": len(AuditOutcomeStore().load_all()),
+                }, indent=None)
+            except Exception as exc:
+                logger.warning("[Scheduler] audit summary persist failed: %s", exc)
         except Exception as exc:
             logger.warning("[Scheduler] audit grading failed: %s", exc, exc_info=True)
             _job_banner("Audit — nightly grading", done=True)

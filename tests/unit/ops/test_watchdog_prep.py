@@ -6,6 +6,16 @@ import pytest
 from core.ops.watchdog import prep as P
 
 
+@pytest.fixture(autouse=True)
+def _isolate_data_dir(tmp_path, monkeypatch):
+    """Prep writes a marker under the data dir. Without this every prep test
+    would write the REAL data/atlas_prep_done.json, polluting the tree and
+    leaking state into the next test (a stale marker makes prep skip the ETL)."""
+    from core.ops.watchdog import checks as C
+    monkeypatch.setattr(C, "_DATA_DIR", tmp_path)
+    return tmp_path
+
+
 def test_run_prep_unknown_name_is_not_ok():
     r = P.run_prep("nope")
     assert r.ok is False and "not registered" in r.transcript[0]
@@ -153,3 +163,66 @@ milestones:
     assert sent
     assert "Automatic prep" in sent[0].message
     assert "1191" in sent[0].message
+
+
+class TestPrepIsIdempotentAndVisibleToTheCheck:
+    """Saturday's prep creates atlas.db. Without a marker, Sunday's check reads
+    that as 'pre-flight DIRTY, investigate' — a false alarm caused by our own
+    prep, on the LAST day of the window, which would talk the user out of the
+    cutover entirely."""
+
+    def _wire(self, monkeypatch, tmp_path):
+        from core.ops.watchdog import checks as C
+        monkeypatch.setattr(C, "_DATA_DIR", tmp_path)
+        monkeypatch.delenv("ATLAS_ENABLED", raising=False)
+        (tmp_path / "portfolio").mkdir(exist_ok=True)
+        (tmp_path / "portfolio" / "primary").mkdir(exist_ok=True)
+
+    def test_check_reads_ready_to_flip_after_prep_ran(self, monkeypatch, tmp_path):
+        from core.ops.watchdog import checks as C
+        self._wire(monkeypatch, tmp_path)
+        calls = []
+
+        def fake_etl(**kw):
+            calls.append(kw)
+            if not kw.get("dry_run"):
+                (tmp_path / "atlas.db").write_text("etl output")  # as the real one does
+            return {"verdicts": 1191}
+
+        monkeypatch.setattr(P, "_run_etl", fake_etl)
+
+        assert C.run_check("atlas_cutover_pending").state == "pending"
+        P.run_prep("atlas_cutover_prep")                 # Saturday
+        assert (tmp_path / "atlas.db").exists()
+        r = C.run_check("atlas_cutover_pending")         # Sunday
+        assert r.state == "pending", "must not read as blocked after our own prep"
+        assert "already run" in r.detail.lower()
+
+    def test_unexplained_atlas_db_is_still_blocked(self, monkeypatch, tmp_path):
+        """A db with no prep marker is genuinely unexpected — keep warning."""
+        from core.ops.watchdog import checks as C
+        self._wire(monkeypatch, tmp_path)
+        (tmp_path / "atlas.db").write_text("from somewhere else")
+        r = C.run_check("atlas_cutover_pending")
+        assert r.state == "blocked" and "atlas.db" in r.detail
+
+    def test_second_prep_does_not_rerun_the_etl(self, monkeypatch, tmp_path):
+        self._wire(monkeypatch, tmp_path)
+        calls = []
+        monkeypatch.setattr(P, "_run_etl",
+                            lambda **kw: calls.append(kw) or {"verdicts": 1191})
+        P.run_prep("atlas_cutover_prep")
+        first = len(calls)
+        second = P.run_prep("atlas_cutover_prep")
+        assert len(calls) == first, "re-running the ETL is wasteful and can error"
+        assert second.ok is True
+        assert any("already prepared" in l.lower() for l in second.transcript)
+
+    def test_prep_writes_a_marker_recording_what_it_did(self, monkeypatch, tmp_path):
+        import json
+        from core.ops.watchdog import checks as C
+        self._wire(monkeypatch, tmp_path)
+        monkeypatch.setattr(P, "_run_etl", lambda **kw: {"verdicts": 1191})
+        P.run_prep("atlas_cutover_prep")
+        marker = json.loads(C._atlas_prep_marker().read_text(encoding="utf-8"))
+        assert "at" in marker and marker["result"]["verdicts"] == 1191

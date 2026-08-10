@@ -65,6 +65,23 @@ def run_check(name: str) -> CheckResult:
 # Atlas C11
 # ---------------------------------------------------------------------------
 
+def _data_dir() -> Path:
+    """Resolved at call time so tests patching _DATA_DIR affect prep too."""
+    return _DATA_DIR
+
+
+def _atlas_prep_marker() -> Path:
+    """Written by atlas_cutover_prep once the ETL has run successfully."""
+    return _data_dir() / "atlas_prep_done.json"
+
+
+def _atlas_prep_record() -> dict | None:
+    try:
+        return json.loads(_atlas_prep_marker().read_text(encoding="utf-8"))
+    except Exception:
+        return None
+
+
 @check("atlas_cutover_pending")
 def atlas_cutover_pending() -> CheckResult:
     """Satisfied once ATLAS_ENABLED is set. Until then, report whether the
@@ -80,15 +97,27 @@ def atlas_cutover_pending() -> CheckResult:
     dirs = sorted(p.name for p in portfolio.iterdir() if p.is_dir()) \
         if portfolio.is_dir() else []
     unexpected = [d for d in dirs if d != "primary"]
+    prepared = _atlas_prep_record()
     evidence = {"atlas_enabled": False,
                 "atlas_db_present": atlas_db.exists(),
-                "portfolio_dirs": dirs}
+                "portfolio_dirs": dirs,
+                "prepared_at": (prepared or {}).get("at")}
 
     if atlas_db.exists():
+        # Our OWN prep creates atlas.db. Without distinguishing that from an
+        # unexplained one, Saturday's prep would make Sunday — the last day of
+        # the window — report "pre-flight DIRTY, investigate", talking the user
+        # out of the very cutover this milestone exists to land.
+        if prepared:
+            return CheckResult(
+                "pending",
+                f"ETL already run by the watchdog at {prepared.get('at')} "
+                f"({prepared.get('result')}). Ready to flip — "
+                "ATLAS_ENABLED is still unset.", evidence)
         return CheckResult(
             "blocked",
-            "Pre-flight DIRTY: data/atlas.db already exists — investigate "
-            "before cutting over.", evidence)
+            "Pre-flight DIRTY: data/atlas.db already exists and the watchdog "
+            "did not create it — investigate before cutting over.", evidence)
     if unexpected:
         return CheckResult(
             "blocked",

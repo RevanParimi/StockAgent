@@ -42,13 +42,49 @@ def _save_state(state: dict) -> None:
         logger.warning("[watchdog] state write failed (non-fatal): %s", exc)
 
 
-def _as_events(notes: list[Notification], today: date):
+def _as_events(notes: list[Notification], today: date,
+               preps: dict[str, list[str]] | None = None):
     from core.delivery.alerts import AlertEvent
-    return [AlertEvent(date=today.isoformat(),
-                       kind=f"watchdog_{n.milestone_id}_{n.level}",
-                       symbol="", message=f"{n.title}\n\n{n.body}",
-                       severity=n.severity)
-            for n in notes]
+    preps = preps or {}
+    events = []
+    for n in notes:
+        body = n.body
+        lines = preps.get(n.milestone_id)
+        if lines:
+            body += "\n\nAutomatic prep:\n" + "\n".join(f"  - {l}" for l in lines)
+        events.append(AlertEvent(date=today.isoformat(),
+                                 kind=f"watchdog_{n.milestone_id}_{n.level}",
+                                 symbol="", message=f"{n.title}\n\n{body}",
+                                 severity=n.severity))
+    return events
+
+
+def _prep_enabled() -> bool:
+    from backend.shared.config.settings.loader import cfg
+    return bool(cfg("watchdog.prep_enabled", fallback=True))
+
+
+def _run_preps(entries, results, today) -> dict[str, list[str]]:
+    """Run each due entry's prep. Returns id -> transcript lines.
+
+    Gated deliberately: never prep a `blocked` entry (a precondition already
+    failed, so acting would be wrong) and never prep outside the window (the
+    work would be stale by the time it can be used).
+    """
+    if not _prep_enabled():
+        return {}
+    from core.ops.watchdog.prep import run_prep
+    out: dict[str, list[str]] = {}
+    for entry in entries:
+        if not entry.prep:
+            continue
+        result = results.get(entry.id)
+        if result is None or result.state != "pending":
+            continue
+        if entry.window is not None and not entry.window.is_open(today):
+            continue
+        out[entry.id] = run_prep(entry.prep).transcript
+    return out
 
 
 def _alert_registry_broken(detail: str, today: date) -> None:
@@ -81,8 +117,10 @@ def run_watchdog(now: datetime | None = None) -> dict:
         _save_state(new_state)
         return {"evaluated": len(entries), "notified": 0, "levels": []}
 
+    prep_notes = _run_preps(entries, results, today)
+
     try:
-        _broadcast(_as_events(notes, today), "StockAgent ops alert")
+        _broadcast(_as_events(notes, today, prep_notes), "StockAgent ops alert")
     except Exception as exc:
         # Do NOT advance state: an undelivered notification must be retried
         # tomorrow, not silently marked as sent.

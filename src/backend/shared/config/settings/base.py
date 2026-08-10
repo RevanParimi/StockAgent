@@ -869,6 +869,9 @@ ADVISOR_EARNINGS_GAP_DAYS: int = cfg("advisor.earnings_gap_days", fallback=3)
 # ---------------------------------------------------------------------------
 AUTH_REQUIRED: bool = bool(cfg("auth.required", env="AUTH_REQUIRED", fallback=False))
 CHAT_DAILY_QUOTA: int = int(cfg("chat.daily_quota", env="CHAT_DAILY_QUOTA", fallback=30))
+# On-demand pipeline runs (POST /analyse, WS /ws/stream). One run ≈ 8 LLM calls,
+# so this is metered far tighter than chat. Owner exempt; 0 = unlimited.
+ANALYSE_DAILY_QUOTA: int = int(cfg("analyse.daily_quota", fallback=10))
 
 # ---------------------------------------------------------------------------
 # Compass Phase B — Discovery funnel + generic sector graph (spec 2026-07-06)

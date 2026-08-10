@@ -291,8 +291,8 @@ acts as owner (single-user passthrough).
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
-| POST | `/analyse` | None | Run full multi-sector 9-agent pipeline for a ticker. Auto-detects sector; accepts `ticker`, `sector` (optional override), `output_format`. Returns `FinalReport` as JSON. |
-| WS | `/ws/stream?ticker=<sym>` | None | WebSocket stream. Emits `agent_progress` events per agent, then a final `complete` event with the full report. |
+| POST | `/analyse` | session | Run full multi-sector 9-agent pipeline for a ticker. Auto-detects sector; accepts `ticker`, `sector` (optional override), `output_format`. Returns `FinalReport` as JSON. Metered per user via `analyse.daily_quota` → 429 when exhausted. |
+| WS | `/ws/stream?ticker=<sym>` | session | WebSocket stream. Emits `agent_progress` events per agent, then a final `complete` event with the full report. Token rides in the `sa.bearer` subprotocol (`new WebSocket(url, ['sa.bearer', tok])`) — browsers cannot set headers on a WS handshake, and a `?token=` param would land in access logs. Same per-user quota as `/analyse`. Concurrent viewers of the **same ticker share one pipeline run** (fan-out hub in `stream.py`); the run is cancelled when the last viewer leaves. |
 
 ### History
 
@@ -588,6 +588,7 @@ Models are tiered (2026-06-03 benchmark, `scripts/model_bench.py`; bulk re-bench
 | `PORTFOLIO_DEFAULT_USER_ID` | `primary` | Single-user launch default; per-user layout from day one |
 | `AUTH_REQUIRED` | `false` | M0: when true, user-scoped routes require a bearer session; false = anonymous acts as owner (single-user compatibility) |
 | `CHAT_DAILY_QUOTA` | `30` | M0: member daily LLM chat turns; owner exempt; 0 = unlimited |
+| `ANALYSE_DAILY_QUOTA` | `10` | Member daily on-demand pipeline runs (`POST /analyse` + `WS /ws/stream`); owner exempt; 0 = unlimited. **`config.yaml` key `analyse.daily_quota` only — no env override.** One run ≈ 8 LLM calls, hence tighter than chat |
 | `PORTFOLIO_MAX_MANAGED_TICKERS` | `40` | Auto-promotion cap — guards LLM spend; oldest watchlist-origin entry rotates out at cap |
 | `PORTFOLIO_WEEKLY_REVIEW_WEEKDAY` | `4` | Friday — watchlist-cadence names review this weekday only (held names review daily) |
 | `ADVISOR_ENABLED` | `true` | Master switch for the post-review advisor pipeline |

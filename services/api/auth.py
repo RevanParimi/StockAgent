@@ -99,6 +99,68 @@ async def get_current_user_or_machine(
     return await get_current_user(authorization)
 
 
+# ---------------------------------------------------------------------------
+# WebSocket identity + on-demand pipeline quota.
+#
+# Browsers cannot set headers on a WebSocket handshake, so the bearer token
+# rides in `Sec-WebSocket-Protocol` as the pair ["sa.bearer", "<token>"]
+# (client: `new WebSocket(url, ['sa.bearer', tok])`). That keeps live session
+# tokens out of the URL, and therefore out of edge/access logs — a `?token=`
+# query param would be logged by Railway on every connection.
+# ---------------------------------------------------------------------------
+
+WS_BEARER_SUBPROTOCOL = "sa.bearer"
+
+
+def ws_token(websocket) -> str | None:
+    """Extract the bearer token offered on a WebSocket handshake, or None."""
+    subprotocols = list(websocket.scope.get("subprotocols") or [])
+    if WS_BEARER_SUBPROTOCOL in subprotocols:
+        idx = subprotocols.index(WS_BEARER_SUBPROTOCOL)
+        if idx + 1 < len(subprotocols):
+            return subprotocols[idx + 1].strip() or None
+    # Non-browser clients (scripts, tests) may use a query param instead.
+    return (websocket.query_params.get("token") or "").strip() or None
+
+
+async def get_ws_user(websocket) -> dict | None:
+    """WebSocket counterpart to `get_current_user`.
+
+    Returns the user dict, or None when the connection must be rejected.
+    Mirrors the HTTP path exactly: a valid token resolves to its user, an
+    absent token is owner-passthrough while AUTH_REQUIRED is false, and an
+    invalid or missing token under AUTH_REQUIRED=true is a rejection. Never
+    raises — a WebSocket has no HTTPException handler, so the caller closes
+    the socket instead."""
+    token = ws_token(websocket)
+    try:
+        return await get_current_user_optional(
+            f"Bearer {token}" if token else None)
+    except HTTPException:
+        return None            # presented token was invalid or expired
+
+
+def check_analyse_quota(user: dict) -> str | None:
+    """Meter one on-demand pipeline run against the user's daily quota.
+
+    Returns a human-readable refusal message when exhausted, else None.
+    Owner is exempt and 0 means unlimited, matching chat. Availability over
+    strict metering: if the counter store fails we allow the run, loudly."""
+    quota = int(getattr(settings, "ANALYSE_DAILY_QUOTA", 0) or 0)
+    if quota <= 0 or user.get("role") == "owner":
+        return None
+    try:
+        from services.data.stores import user_store
+        used = user_store.bump_analyse_usage(user["user_id"])
+    except Exception as exc:
+        logger.warning("[analyse] quota store failed — allowing run: %s", exc)
+        return None
+    if used > quota:
+        return (f"You've used your {quota} on-demand analyses for today — "
+                "resets at midnight IST.")
+    return None
+
+
 async def require_owner(
         authorization: str | None = Header(None),
         x_scheduler_key: str | None = Header(None)) -> dict:

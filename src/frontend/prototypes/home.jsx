@@ -15,9 +15,15 @@ function Home({ onNav, openChat }) {
 
     // T2.6 — WebSocket streaming with POST fallback
     const wsProto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = `${wsProto}//${window.location.host}/ws/stream?ticker=${encodeURIComponent(sym)}`;
     let ws;
     try {
-      ws = new WebSocket(`${wsProto}//${window.location.host}/ws/stream?ticker=${encodeURIComponent(sym)}`);
+      // The session token cannot ride in a header on a WebSocket, and putting
+      // it in the URL would leak it into access logs — so it goes in the
+      // subprotocol, which the server echoes back. The POST fallback below
+      // needs no such handling: the global fetch wrapper adds the header.
+      const tok = (window.saGetToken && window.saGetToken()) || '';
+      ws = tok ? new WebSocket(wsUrl, ['sa.bearer', tok]) : new WebSocket(wsUrl);
     } catch {
       ws = null;
     }

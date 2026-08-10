@@ -115,6 +115,11 @@ scheduler:
 chat:
   max_review_cycles: 0           # reviewer loop removed in 3-node pipeline redesign
 
+analyse:
+  daily_quota: 10                # per-member on-demand pipeline runs per IST day
+                                 # (POST /analyse + WS /ws/stream). Owner exempt;
+                                 # 0 = unlimited. One run ≈ 8 LLM calls.
+
 macro_news:
   enabled: true
   retain_days: 90

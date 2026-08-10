@@ -6,7 +6,9 @@
  *   - same-origin static GET -> stale-while-revalidate
  *   - cross-origin CDN libs  -> cache-first
  */
-const VERSION = 'v6';
+// v7: home.jsx now passes the session token as a WebSocket subprotocol, so the
+// cached shell must refresh or /ws/stream is rejected until revalidation.
+const VERSION = 'v7';
 const SHELL_CACHE = `sa-shell-${VERSION}`;
 const RUNTIME_CACHE = `sa-runtime-${VERSION}`;
 

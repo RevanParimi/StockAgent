@@ -11,8 +11,10 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
+
+from services.api.auth import check_analyse_quota, get_current_user
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -25,7 +27,8 @@ class AnalyseRequest(BaseModel):
 
 
 @router.post("/analyse", summary="Run full multi-sector stock analysis")
-async def analyse(req: AnalyseRequest) -> dict:
+async def analyse(req: AnalyseRequest,
+                  user: dict = Depends(get_current_user)) -> dict:
     """
     Trigger a complete analysis pipeline for the given ticker.
 
@@ -33,11 +36,18 @@ async def analyse(req: AnalyseRequest) -> dict:
     TCS → it_sector, ADANIGREEN → renewable_energy, else automobile).
     Pass `sector` explicitly to override auto-detection.
 
+    Requires a bearer session: this runs ~8 LLM calls per request, so it is
+    both authenticated and metered per user (see ANALYSE_DAILY_QUOTA).
+
     Returns the FinalReport as a JSON object.
     """
     ticker = req.ticker.strip().upper()
     if not ticker:
         raise HTTPException(status_code=422, detail="ticker must not be empty")
+
+    over_quota = check_analyse_quota(user)
+    if over_quota:
+        raise HTTPException(status_code=429, detail=over_quota)
 
     # Sector routing: explicit override > auto-detect from ticker symbol
     from backend.sectors import detect_sector, get_orchestrator

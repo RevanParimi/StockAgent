@@ -64,6 +64,12 @@ CREATE TABLE IF NOT EXISTS chat_usage (
   llm_turns INTEGER NOT NULL DEFAULT 0,
   PRIMARY KEY (user_id, day)
 );
+CREATE TABLE IF NOT EXISTS analyse_usage (
+  user_id   TEXT NOT NULL,
+  day       TEXT NOT NULL,
+  runs      INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (user_id, day)
+);
 """
 
 
@@ -270,3 +276,26 @@ def get_chat_usage(user_id: str) -> int:
         "SELECT llm_turns FROM chat_usage WHERE user_id=? AND day=?",
         (user_id, _ist_today())).fetchone()
     return int(row["llm_turns"]) if row else 0
+
+
+# -- on-demand analysis quota -------------------------------------------------
+# Separate counter from chat: one /analyse run is a full 8-agent pipeline
+# (~8 LLM calls), so it is metered far more tightly than a single chat turn.
+
+def bump_analyse_usage(user_id: str) -> int:
+    day = _ist_today()
+    conn = _get_conn()
+    with _lock:
+        conn.execute(
+            "INSERT INTO analyse_usage (user_id, day, runs) VALUES (?,?,1)"
+            " ON CONFLICT(user_id, day) DO UPDATE SET runs=runs+1",
+            (user_id, day))
+        conn.commit()
+    return get_analyse_usage(user_id)
+
+
+def get_analyse_usage(user_id: str) -> int:
+    row = _get_conn().execute(
+        "SELECT runs FROM analyse_usage WHERE user_id=? AND day=?",
+        (user_id, _ist_today())).fetchone()
+    return int(row["runs"]) if row else 0

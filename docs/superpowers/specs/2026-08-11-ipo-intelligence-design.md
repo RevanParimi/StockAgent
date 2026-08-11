@@ -14,7 +14,7 @@ on-disk cache:
 
 | # | Defect | Evidence |
 |---|--------|----------|
-| 1 | **Subscription × is never populated.** The fetcher resolves `qibSubscriptionTimes` / `retailSubscriptionTimes` / `noOfTimesSubscribed`, but NSE's `/api/ipo-current-issue` and `/all-upcoming-issues?category=ipo` carry **no bid data at all**. The `nse` pkg wraps only three IPO endpoints, none of them bid details. | `services/data/fetchers/ipo.py:33-35`; every row in `data/market_cache/ipo.json` has `qib_x: null, retail_x: null, total_x: null` |
+| 1 | **Subscription × is never populated — through a key-name miss, not an absent source.** `/api/ipo-current-issue` *does* carry the total: `category: "Total"`, `noOfTime` (× subscribed), `noOfSharesOffered`, `noOfsharesBid`. The fetcher's `_TOTAL_SUB_KEYS` guesses `noOfTimesSubscribed` / `totalSubscriptionTimes` / `subscriptionTimes` — **none of which is `noOfTime`**. The QIB/retail *breakdown* genuinely does require a second endpoint. | `services/data/fetchers/ipo.py:33-35`; verified live 2026-08-11 (§11); every row in `data/market_cache/ipo.json` has `qib_x: null, retail_x: null, total_x: null` |
 | 2 | **The issue window is never parsed.** `_LISTING_DATE_KEYS` looks for `listingDate`, but the current/upcoming feeds carry `issueStartDate` / `issueEndDate`. Nothing in the system knows when an issue opens or closes. | `services/data/fetchers/ipo.py:31`; `listing_date: ""` on every current/upcoming row |
 | 3 | **The cache refreshes weekly.** `refresh_ipo_cache()` is called only from `run_discovery_cycle()` — the Saturday job. An issue that opens Monday and closes Wednesday is stale for a week or missed outright. | `core/discovery/__init__.py:57`; local cache stamped `2026-07-11` |
 | 4 | **The weekly digest has no IPO section.** | `core/delivery/weekly.py` contains no IPO reference |
@@ -57,10 +57,12 @@ indices, not one composite.
 
 | Feature | Rationale |
 |---|---|
-| Retail subscription × | Direct froth measure |
+| Retail subscription × | Direct froth measure; available per-category (§11.2) |
 | **Retail-to-QIB skew** (`retail_x / qib_x`) | Retail leading institutions is the classic distribution tell |
-| GMP as % of issue price | Strongest short-term listing-pop signal in the Indian market |
-| **GMP decay across the window** | A GMP that fades day-over-day while bids climb is the sharpest froth warning available |
+| **Cut-off bid share** (`totalBidAtCutOff / TOTAL_BIDS`) | Retail bidding at cut-off rather than a chosen price = price-insensitive demand. MOLBIO: 46% (§11.3). **Official, free, no GMP dependency.** |
+| **Demand velocity across the window** | The price-level demand curve is timestamped and refreshed hourly (§11.3), so bid accumulation day-1→day-3 is directly measurable |
+| GMP as % of issue price | Corroborating short-term pop signal — *demoted* from "strongest" now that official froth measures exist |
+| **GMP decay across the window** | A GMP that fades while bids climb remains a sharp warning, but is now a cross-check on the official curve rather than the primary input |
 | News-volume spike vs sector baseline | Brand visibility ≠ business quality |
 | Issue size vs sector median | Mega consumer-brand issues are structurally hype-prone |
 | **OFS share of issue** | Promoters cashing out vs fresh capital into the business — the single strongest Ola/Ather discriminator, and it is disclosed |
@@ -71,10 +73,10 @@ indices, not one composite.
 |---|---|
 | PAT trajectory, revenue CAGR (RHP, 3 disclosed years) | Is there a business |
 | Valuation vs listed peers | Peer closes already available in `EodStore` |
-| **Anchor-book quality** | Domestic MF/insurance = sticky; foreign hedge funds = flippers |
+| **Institutional composition** | The bid ladder breaks QIB into **FIIs / Domestic FIs / Mutual funds / Others** as separate line items (§11.2) — the sticky-vs-flipper split is directly observable, no RHP parsing required |
 | QIB × | The only subscription figure `ipo_tracker.py`'s own research note credits as predictive |
 | Parent / promoter track record | Ather ← Hero MotoCorp; Ola ← Ola Cabs' own record |
-| Use of proceeds | Growth capex vs debt repayment vs pure OFS |
+| **OFS vs fresh-issue split** | Present as free text in `issueInfo` (§11.2) — needs extraction, but no external source |
 
 ### Verdict grid
 
@@ -138,10 +140,18 @@ never breaks the brief.
 
 ### P0 — Fix the plumbing *(independently shippable; ships in days)*
 
-- **Task 1 is a spike**, not a build: confirm NSE's category-wise bid-details
-  endpoint path and field names. See §7 risk 1 — this is load-bearing.
+- ~~Task 1 is a spike~~ **— done 2026-08-11, contract verified in §11.** The
+  build starts from a known contract.
+- **One-line win first:** add `noOfTime` to `_TOTAL_SUB_KEYS`. That alone
+  populates total subscription × from the feed already being fetched, and is
+  worth shipping ahead of everything else here.
+- **Resolve NSE-only vs all-exchange (§7 risk 6) before wiring the breakdown.**
+  Verify on a second live symbol against NSE's published end-of-day figure, then
+  pin the chosen source in a docstring so a later reader cannot "simplify" it
+  back to the wrong one.
 - Parse `issueStartDate` / `issueEndDate`; derive issue state.
-- Fetch real subscription × from the bid-details endpoint.
+- Fetch the category breakdown (QIB / FII / DomFI / MF / NII / Retail /
+  Employee / Total) from the verified authority.
 - Move refresh from the weekly Saturday job to a **daily scheduler job**
   (twice-daily while a window is live), following the `add_job` /
   `CronTrigger(timezone="Asia/Kolkata")` pattern at
@@ -239,10 +249,11 @@ ipo:
 
 ## 7. Risks
 
-1. **The endpoint spike is load-bearing.** If NSE exposes no accessible bid
-   data, P0's subscription fix has no source and SHORT loses its strongest
-   official input; fallback is GMP + news only, materially weaker. **This is why
-   it is task 1.**
+1. ~~**The endpoint spike is load-bearing.**~~ **CLOSED 2026-08-11 — resolved
+   favourably.** `/api/ipo-detail?symbol=X&series=EQ` and
+   `/api/ipo-active-category?symbol=X` both return 200 with a full
+   category-wise bid ladder, live, through the existing primed `nse` session.
+   Full verified contract in §11. The residual risk moved to risk 6.
 2. **Sample size.** ~200 issues, of which perhaps 30 are the mega-hype cases of
    interest. Report confidence intervals and resist over-reading — precedent:
    the verification layer's 35.8% / Wilson [27.4%, 45.1%] episode, where ~90%
@@ -255,6 +266,16 @@ ipo:
 5. **Survivorship in the backfill.** Issues that listed and were later delisted
    or suspended must be retained, or the historical spine will overstate
    outcomes.
+6. **NSE-only vs all-exchange subscription figures disagree, inside a single
+   response.** For MOLBIO on 2026-08-11, `ipo-detail.bidDetails` reported QIB
+   **0.564×** while `ipo-detail.activeCat` reported QIB **1.391×**. Arithmetic
+   (§11.4) indicates `bidDetails`/`demandDataNSE` are **NSE-only** and
+   `activeCat` is **all-exchange combined** — the latter being what the press
+   and the market quote. **A naive implementation reading the more convenient
+   `bidDetails` shape would silently under-report every IPO's demand**, which is
+   precisely the class of bug that produces confidently wrong verdicts. Treated
+   as a hypothesis, not a finding: P0 must verify it on a second symbol against
+   NSE's published end-of-day figure before either source is trusted.
 
 ## 8. Non-goals
 
@@ -281,3 +302,100 @@ window.
 None blocking. Weight values for H and S are deliberately deferred to P3, where
 the P1 measurement informs them — setting them now would be inventing numbers
 ahead of the evidence.
+
+---
+
+## 11. Appendix — verified NSE data contract
+
+**Spiked live against NSE on 2026-08-11** using the existing primed `nse`
+session (`NSE._session`), read-only GETs. Live symbols at the time: `MILKYMIST`
+(11-13 Aug), `MOLBIO` (10-12 Aug), `DHOOTTRANS` (10-12 Aug). Everything below is
+observed, not inferred.
+
+### 11.1 `/api/ipo-current-issue` — carries the total × already
+
+```
+keys: category, companyName, issueEndDate, issuePrice, issueSize,
+      issueStartDate, noOfSharesOffered, noOfTime, noOfsharesBid,
+      series, srNo, status, symbol
+```
+
+```json
+{"symbol": "MILKYMIST", "companyName": "Milky Mist Dairy Food Limited",
+ "issueStartDate": "11-Aug-2026", "issueEndDate": "13-Aug-2026",
+ "issuePrice": "Rs.133 to Rs.140", "series": "EQ", "status": "Active",
+ "category": "Total", "noOfTime": "0.5315724992825029"}
+```
+
+- `noOfTime` **is** the total subscription × — the key the fetcher never guessed.
+- `issueStartDate` / `issueEndDate` confirm defect #2. `status: "Active"` exists.
+- `issuePrice` is a **band string**; the existing `_parse_price` takes the last
+  number (upper band, 140) — correct, and now documented so it is not "fixed".
+- `/all-upcoming-issues?category=ipo` returns only 8 keys — **no bid data**, as
+  expected for issues not yet open.
+
+### 11.2 `/api/ipo-detail?symbol=X&series=EQ` — the rich one
+
+Top-level: `companyName, metaInfo, bidDetails, issueInfo, activeCat,
+demandGraph, demandDataNSE, demandDataBSE, demandGraphALL`.
+
+`bidDetails` — 21 rows, full ladder with per-category × (`noOfTime`), MOLBIO:
+
+| srNo | category | × |
+|---|---|---|
+| 1 | Qualified Institutional Buyers (QIBs) | 0.564 |
+| 1(a) / 1(b) / 1(c) / 1(d) | FIIs / Domestic FIs / **Mutual funds** / Others | bid qty only |
+| 2 | Non Institutional Investors | 3.604 |
+| 2.1 / 2.2 | NII >10L / NII >2L | 3.066 / 4.679 |
+| 3 | **Retail Individual Investors (RIIs)** | 2.226 |
+| 3(a) / 3(b) | Cut Off / Price bids | bid qty only |
+| 4 | Employees | 3.803 |
+| — | **Total** | 2.051 |
+
+`issueInfo.dataList` is `{title, value}` pairs and **contains the OFS split**:
+
+> "Initial Public Offering comprising of **Fresh Issue** aggregating up to Rs.
+> 2,000 million and **Offer for Sale** of up to 9,166,000 Equity Shares
+> (including Employee reservation … and **Anchor Investor portion** of up to
+> 34,87,717 Equity Shares)"
+
+Free text — extraction required, but no external source needed.
+
+### 11.3 Price-level demand curve — an unplanned upgrade
+
+`demandDataNSE` (36 rows) / `demandDataBSE` (37 rows) give **cumulative bid
+quantity at every price point in the band**, each row timestamped
+(`11-Aug-2026 17:00:56`). `demandGraph` carries `totalBidAtCutOff` and
+`TOTAL_BIDS`, and states the graph **"is updated every hour."**
+
+Two signals fall out for free, both official:
+
+- **Cut-off share** — MOLBIO `7,752,114 / 16,731,036` = **46%** bidding at
+  cut-off, i.e. price-insensitive demand.
+- **Demand velocity** — hourly refresh makes intra-window bid accumulation
+  directly measurable.
+
+This is why GMP is demoted to a corroborating signal in §3.
+
+### 11.4 The NSE-only vs combined arithmetic (see §7 risk 6)
+
+| figure | `bidDetails` / `demandDataNSE` | `activeCat` / `demandGraphALL` |
+|---|---|---|
+| MOLBIO QIB × | 0.564 | 1.391 |
+| MOLBIO total bids | 16,731,036 | 25,437,636 |
+
+`demandDataNSE.TOTAL_BIDS` (16,731,036) matches `bidDetails` Total exactly and
+matches `ipo-current-issue`'s 2.0507× — so **`bidDetails` is NSE-only** and
+`activeCat` is almost certainly all-exchange. Compelling, single-symbol, and
+**not yet proven** — hence the P0 verification task.
+
+### 11.5 Endpoints probed and rejected
+
+| endpoint | result |
+|---|---|
+| `/api/ipo-active-category?symbol=X` | **200, works** — `{dataList, heading, symbol, updateTime}`; carries `updateTime` for freshness. First `dataList` row is a **header row whose values are column labels** — must be skipped. |
+| `/api/ipo-bid-details?symbol=X` | 200 but body `missing params` — wrong parameter set; superseded, not pursued |
+| `/api/public-past-issues?symbol=X` | 200, empty — needs date-range params (`listPastIPO` already wraps this) |
+
+`series=EQ` is optional on both working endpoints; results were identical with
+and without it.

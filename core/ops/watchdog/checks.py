@@ -108,12 +108,19 @@ def atlas_cutover_pending() -> CheckResult:
         # unexplained one, Saturday's prep would make Sunday — the last day of
         # the window — report "pre-flight DIRTY, investigate", talking the user
         # out of the very cutover this milestone exists to land.
-        if prepared:
+        if prepared and prepared.get("validated"):
             return CheckResult(
                 "pending",
-                f"ETL already run by the watchdog at {prepared.get('at')} "
-                f"({prepared.get('result')}). Ready to flip — "
-                "ATLAS_ENABLED is still unset.", evidence)
+                f"ETL already run and VALIDATED by the watchdog at "
+                f"{prepared.get('at')} ({prepared.get('result')}). "
+                "Ready to flip — the flag is still off.", evidence)
+        if prepared:
+            fails = "; ".join(prepared.get("failures") or []) or "see logs"
+            return CheckResult(
+                "blocked",
+                f"ETL ran at {prepared.get('at')} but its validation FAILED "
+                f"({fails[:180]}). Do NOT flip the flag until this is "
+                "resolved.", evidence)
         return CheckResult(
             "blocked",
             "Pre-flight DIRTY: data/atlas.db already exists and the watchdog "

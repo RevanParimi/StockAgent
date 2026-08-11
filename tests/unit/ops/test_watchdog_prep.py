@@ -16,6 +16,15 @@ def _isolate_data_dir(tmp_path, monkeypatch):
     return tmp_path
 
 
+@pytest.fixture(autouse=True)
+def _validations_pass(monkeypatch):
+    """These tests cover ETL orchestration and idempotency, not the spec §6
+    step-5 validations — those have their own file
+    (test_watchdog_atlas_validation.py) which stubs the granular helpers."""
+    monkeypatch.setattr(P, "_atlas_validations",
+                        lambda: (True, ["validations OK (stubbed)"]))
+
+
 def test_run_prep_unknown_name_is_not_ok():
     r = P.run_prep("nope")
     assert r.ok is False and "not registered" in r.transcript[0]

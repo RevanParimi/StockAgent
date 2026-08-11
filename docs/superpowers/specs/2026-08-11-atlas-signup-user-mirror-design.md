@@ -1,7 +1,7 @@
 # Atlas signup → user mirror (C3 gap) — design
 
 **Date:** 2026-08-11
-**Status:** approved, not yet implemented
+**Status:** IMPLEMENTED 2026-08-11 — see §10 for the two as-built refinements
 **Closes:** the "signup→atlas.db users wiring (C3 gap)" item, open since Phase C
 
 ---
@@ -195,3 +195,34 @@ no reader. The ETL still copies them once at cutover.
 
 Also out of scope: switching auth to read `atlas.db`. `users.db` remains the
 identity SoT, before and after the cutover.
+
+---
+
+## 10. As built (2026-08-11)
+
+Implemented as designed, plus two refinements found while writing the tests:
+
+1. **The call site passes the path rather than trusting the default.** §4 kept
+   `users_db` defaulting to the literal `Path("data/users.db")`; `signup` now
+   calls `mirror_user(uid, users_db=user_store.db_path())` via a new
+   one-line accessor. Re-deriving the literal in a second module means that if
+   `user_store._DB_PATH` ever moves — which is exactly what every test does —
+   the mirror silently reads a *different* file than the one signup just wrote
+   to, and reports "user not found" for a user that plainly exists.
+
+2. **A missing `users.db` returns before the ATTACH, not through it.** `ATTACH`
+   *creates* an empty database at a nonexistent path, so relying on the
+   `no such table: src.users` failure would leave a stray file behind on every
+   miss. The existence check is now explicit.
+
+`test_a_failed_mirror_leaves_the_connection_usable` was written against a real
+but table-less DB for the same reason: with the early return above, a
+nonexistent path never reaches the `ATTACH`, so it would no longer exercise the
+`finally: DETACH` that keeps the connection usable after a failure.
+
+Files: `services/data/stores/atlas_store.py` (`mirror_user`, delete-path guard),
+`services/data/stores/user_store.py` (`db_path`),
+`services/api/routes/auth_api.py` (`_mirror_to_atlas` + both branches),
+`core/ops/watchdog/checks.py` (`users_mirrored`), `config/milestones.yaml`,
+`tests/unit/test_atlas_signup_user_mirror.py` (15),
+`tests/unit/ops/test_watchdog_checks_more.py` (+6).

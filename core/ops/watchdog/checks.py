@@ -289,6 +289,55 @@ def audit_graded_when_due() -> CheckResult:
         f"Last run {last}: graded={graded}, already_present={present}.", run)
 
 
+def _atlas_enabled() -> bool:
+    from services.data.stores import atlas_store
+    return atlas_store.enabled()
+
+
+def _identity_counts() -> tuple[int, int]:
+    """(accounts in users.db, mirrored rows in atlas.db). Called only once the
+    flag is on — `user_ids()` opens atlas.db, which CREATES it, and a
+    pre-cutover atlas.db reads as a dirty pre-flight."""
+    from services.data.stores import atlas_store, user_store
+    return user_store.count_users(), len(atlas_store.user_ids())
+
+
+@check("users_mirrored")
+def users_mirrored() -> CheckResult:
+    """Does every users.db account have its atlas.db mirror row?
+
+    Signup writes users.db; `atlas_store.user_ids()` — the set the brief and
+    autopilot fan out over — reads atlas.db. The mirror between them is written
+    non-fatally, and unlike the user_instruments index there is no nightly
+    rebuild to quietly repair it. A dropped mirror is therefore a person who
+    authenticates fine and receives nothing: exactly the class of silent
+    failure this watchdog exists to end.
+    """
+    if not _atlas_enabled():
+        return CheckResult(
+            "satisfied",
+            "Atlas plane is off — users.db is the sole identity store.",
+            {"atlas_enabled": False})
+    n_users, n_mirrored = _identity_counts()
+    evidence = {"atlas_enabled": True, "users_db": n_users,
+                "atlas_db": n_mirrored}
+    if n_users == n_mirrored:
+        return CheckResult("satisfied",
+                           f"{n_users} user(s), all mirrored into atlas.db.",
+                           evidence)
+    if n_mirrored < n_users:
+        return CheckResult(
+            "pending",
+            f"{n_users - n_mirrored} of {n_users} account(s) are missing from "
+            "atlas.db — they can log in but receive no brief and no autopilot. "
+            "Re-run scripts/atlas_etl.py (idempotent).", evidence)
+    return CheckResult(
+        "pending",
+        f"atlas.db holds {n_mirrored - n_users} user row(s) that users.db does "
+        "not — a delete cascade half-failed. Reconcile before trusting the "
+        "fan-out set.", evidence)
+
+
 @check("manual_confirmation")
 def manual_confirmation() -> CheckResult:
     """No programmatic signal exists; stays pending until the entry is removed

@@ -92,6 +92,17 @@ invariants:
       Check the 1st-of-month scorecard job ran. Note the file is named for
       the COMPLETED month, so in September look for 2026-08_scorecard.json.
 
+  - id: users_mirrored
+    kind: invariant
+    title: "Every account is mirrored into the Atlas fan-out set"
+    check: users_mirrored
+    action: >
+      Signup writes users.db; the brief and autopilot fan out over atlas.db.
+      An account missing from atlas.db can log in and receives nothing.
+      Re-run scripts/atlas_etl.py on prod (idempotent) to repair.
+      Silent until atlas.enabled is true — pre-cutover users.db IS the store.
+    docs: docs/superpowers/specs/2026-08-11-atlas-signup-user-mirror-design.md
+
   - id: audit_graded_when_due
     kind: invariant
     title: "Auditor grades rows once they mature"

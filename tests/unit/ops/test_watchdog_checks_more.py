@@ -1,4 +1,5 @@
-"""Watchdog standing invariants — deploy drift, quota rollover, scorecard, audit grading."""
+"""Watchdog standing invariants — deploy drift, quota rollover, scorecard,
+audit grading, user mirroring."""
 import json
 from datetime import date
 
@@ -115,6 +116,64 @@ class TestAuditGradedWhenDue:
         monkeypatch.setattr(C, "_AUDIT_RUN_PATH", tmp_path / "absent.json")
         r = C.run_check("audit_graded_when_due")
         assert r.state == "pending" and "not completed" in r.detail
+
+
+class TestUsersMirrored:
+    """Signup writes users.db; the fan-out set reads atlas.db. The mirror that
+    joins them is written non-fatally, and unlike the user_instruments index
+    there is no nightly rebuild to repair it — so an undetected failure is a
+    person who silently receives nothing. This check is that detection."""
+
+    def _counts(self, monkeypatch, *, enabled=True, users=0, atlas=0):
+        monkeypatch.setattr(C, "_atlas_enabled", lambda: enabled)
+        monkeypatch.setattr(C, "_identity_counts", lambda: (users, atlas))
+
+    def test_satisfied_and_silent_while_atlas_is_off(self, monkeypatch):
+        """Pre-cutover users.db IS the identity store, so a divergence is
+        meaningless — the check must not nag until the flip makes it real."""
+        self._counts(monkeypatch, enabled=False, users=3, atlas=0)
+        assert C.run_check("users_mirrored").state == "satisfied"
+
+    def test_satisfied_when_counts_match(self, monkeypatch):
+        self._counts(monkeypatch, users=2, atlas=2)
+        r = C.run_check("users_mirrored")
+        assert r.state == "satisfied" and "2" in r.detail
+
+    def test_pending_when_atlas_is_short(self, monkeypatch):
+        self._counts(monkeypatch, users=3, atlas=1)
+        r = C.run_check("users_mirrored")
+        assert r.state == "pending"
+        assert "2" in r.detail and "atlas_etl" in r.detail
+
+    def test_pending_when_atlas_is_ahead(self, monkeypatch):
+        """The other direction: a delete cascade that half-failed."""
+        self._counts(monkeypatch, users=1, atlas=4)
+        r = C.run_check("users_mirrored")
+        assert r.state == "pending" and "3" in r.detail
+
+    def test_unreadable_store_becomes_unknown_not_a_crash(self, monkeypatch):
+        monkeypatch.setattr(C, "_atlas_enabled", lambda: True)
+
+        def boom():
+            raise OSError("database is locked")
+
+        monkeypatch.setattr(C, "_identity_counts", boom)
+        assert C.run_check("users_mirrored").state == "unknown"
+
+    def test_disabled_flag_never_touches_atlas_db(self, monkeypatch, tmp_path):
+        """Reading user_ids() would CREATE atlas.db and block the C11 cutover,
+        so the flag check has to come before any store call — the same landmine
+        as atlas_store.mirror_user."""
+        import services.data.stores.atlas_store as atlas_store
+        monkeypatch.setattr(atlas_store, "_DB_PATH", tmp_path / "atlas.db")
+        monkeypatch.setattr(atlas_store, "_conn_holder", {"conn": None})
+        monkeypatch.delenv("ATLAS_ENABLED", raising=False)
+        atlas_store._reset_for_tests()
+        try:
+            assert C.run_check("users_mirrored").state == "satisfied"
+            assert not (tmp_path / "atlas.db").exists()
+        finally:
+            atlas_store._reset_for_tests()
 
 
 def test_manual_confirmation_stays_pending():

@@ -486,7 +486,15 @@ delivery:
 # rollback to the JSON / users.db / dir-scan path.
 # =============================================================================
 atlas:
-  enabled: false                 # flip to true (via ATLAS_ENABLED in Railway) at the C11 cutover
+  # THE C11 CUTOVER SWITCH. Flip to `true` HERE and push — that is the whole
+  # step. Railway is NOT required: the code reads
+  # cfg("atlas.enabled", env="ATLAS_ENABLED", fallback=False), and the env var
+  # is only an override that prod does not set, so this yaml value is what is
+  # actually in force. (The old comment here said "via ATLAS_ENABLED in
+  # Railway", which sent several sessions hunting for a dashboard step that
+  # was never necessary.)
+  # Rollback is the same edit in reverse.
+  enabled: false
   db_path: "data/atlas.db"
   feedback:                      # BP5 accept/override events (Atlas C8)
     aggregation_floor_users: 20  # refuse to return an aggregate below this many distinct users (privacy)

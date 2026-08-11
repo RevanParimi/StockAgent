@@ -42,6 +42,25 @@ def _session_response(user: dict, remember_me: bool) -> dict:
             "user": user}
 
 
+def _mirror_to_atlas(user_id: str) -> None:
+    """Mirror a brand-new account into atlas.db's derived `users` table — the
+    fan-out set the brief and autopilot iterate. Without this, a post-cutover
+    signup authenticates fine (auth reads users.db) and receives nothing.
+
+    A no-op while ATLAS is off, and it must stay one: any atlas_store write
+    creates atlas.db, which the cutover pre-flight reads as dirty.
+
+    Never fails signup — the Atlas plane is a derived index, not the account,
+    and the ETL rebuilds it. Drift is caught by the `users_mirrored` invariant
+    rather than left to hope.
+    """
+    try:
+        atlas_store.mirror_user(user_id, users_db=user_store.db_path())
+    except Exception as exc:            # defense in depth — the callee guards too
+        logger.warning("[auth] atlas user mirror failed for %s (non-fatal): %s",
+                       user_id, exc)
+
+
 @router.post("/signup")
 def signup(body: SignupBody) -> dict:
     if not body.consent:
@@ -56,6 +75,7 @@ def signup(body: SignupBody) -> dict:
         except ValueError:
             raise HTTPException(status_code=409, detail="Email already registered.")
         logger.info("[auth] owner account created")
+        _mirror_to_atlas(user["user_id"])
         return _session_response(user, body.remember_me)
     if not body.invite_code:
         raise HTTPException(status_code=403, detail="An invite code is required.")
@@ -66,6 +86,10 @@ def signup(body: SignupBody) -> dict:
     if not user_store.consume_invite(body.invite_code, user["user_id"]):
         user_store.delete_user(user["user_id"])
         raise HTTPException(status_code=403, detail="Invalid or used invite code.")
+    # AFTER consume_invite: a rejected code deletes the users.db row above, and
+    # mirroring before that point would strand an atlas row pointing at a user
+    # that no longer exists.
+    _mirror_to_atlas(user["user_id"])
     return _session_response(user, body.remember_me)
 
 

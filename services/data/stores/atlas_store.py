@@ -277,6 +277,61 @@ def user_ids() -> list[str]:
         return []
 
 
+def mirror_user(user_id: str, *,
+                users_db: Path | str = Path("data/users.db")) -> bool:
+    """Copy one `users.db` account into atlas.db's derived `users` mirror.
+
+    `users.db` stays the identity source of truth; this table exists only to be
+    the FK target for the 7 PII tables and to populate `user_ids()` — the
+    fan-out set the brief and autopilot iterate. Without it a post-cutover
+    signup authenticates fine and receives nothing (the C3 gap).
+
+    The flag check is the FIRST statement, before `_get_conn()`, and that
+    ordering is load-bearing: any connection would CREATE atlas.db, which the
+    watchdog reads as a dirty cutover pre-flight → `blocked` → the automatic
+    weekend ETL prep is suppressed. An ungated mirror plus one pre-cutover
+    signup would sabotage the very cutover this supports.
+
+    ATTACH + `INSERT OR IGNORE … SELECT` rather than passing fields in, because
+    `pw_hash` is NOT NULL here while `user_store._row_to_user()` deliberately
+    omits it — and because it is the ETL's own statement narrowed by user_id,
+    so signup and `scripts/atlas_etl.py` cannot drift about what a mirrored row
+    is. Idempotent; returns whether the row is present afterwards; never raises.
+    """
+    if not enabled():
+        return False
+    src_path = Path(users_db)
+    if not src_path.exists():
+        logger.warning("[atlas_store] mirror_user: no users.db at %s — skipped",
+                       src_path)
+        return False
+    try:
+        conn = _get_conn()
+        with _lock:
+            conn.commit()                    # ATTACH cannot run mid-transaction
+            conn.execute("ATTACH DATABASE ? AS src", (str(src_path),))
+            try:
+                conn.execute(
+                    "INSERT OR IGNORE INTO users (user_id, email, pw_hash,"
+                    " display_name, role, created_at, consent_at)"
+                    " SELECT user_id, email, pw_hash, display_name, role,"
+                    " created_at, consent_at FROM src.users WHERE user_id=?",
+                    (user_id,))
+                conn.commit()
+            finally:
+                conn.execute("DETACH DATABASE src")
+            present = conn.execute("SELECT 1 FROM users WHERE user_id=?",
+                                   (user_id,)).fetchone() is not None
+        if not present:
+            logger.warning("[atlas_store] mirror_user: %s not found in %s",
+                           user_id, src_path)
+        return present
+    except Exception as exc:
+        logger.warning("[atlas_store] mirror_user failed for %s (non-fatal): %s",
+                       user_id, exc)
+        return False
+
+
 def upsert_user_instrument(user_id: str, symbol: str, relationship: str, *,
                            origin: str = "seed", cadence: str = "on_demand") -> bool:
     """Ensure the `instruments` FK target exists, then record the (user, symbol,
@@ -347,23 +402,32 @@ def delete_user_completely(user_id: str) -> dict:
 
     Every step is idempotent and hot-path safe (log + continue): a second call
     no-ops and one failing step never blocks the others. NOT flag-gated — DPDP
-    erasure must run whether or not ATLAS_ENABLED (pre-cutover the user lives in
-    users.db, so atlas.db simply holds no rows and step 1 is a harmless 0-row
-    delete). Returns a summary of what was erased.
+    erasure must run whether or not ATLAS_ENABLED, because pre-cutover the user
+    still has a portfolio dir, chat turns and telemetry to erase. Step 1 alone
+    is skipped while atlas.db does not exist (see below). Returns a summary of
+    what was erased.
     """
     summary = {"atlas_cascade": False, "portfolio_removed": False,
                "chat_turns_deleted": 0, "telemetry_anonymized": 0}
 
     # (1) authoritative DB erasure FIRST — commit before any fs/cross-DB work.
-    try:
-        conn = _get_conn()
-        with _lock:
-            conn.execute("DELETE FROM users WHERE user_id=?", (user_id,))
-            conn.commit()
-        summary["atlas_cascade"] = True
-    except Exception as exc:
-        logger.warning("[atlas_store] DPDP atlas cascade failed for %s"
-                       " (non-fatal): %s", user_id, exc)
+    # Skipped while atlas.db does not exist: `_get_conn()` would CREATE it, and
+    # a pre-cutover atlas.db reads as a dirty pre-flight that blocks C11. A
+    # nonexistent DB holds zero rows, so the erasure is already complete —
+    # the DPDP semantics are bit-for-bit unchanged, only the file is not born.
+    if not _DB_PATH.exists():
+        logger.info("[atlas_store] DPDP: atlas.db absent — nothing to cascade"
+                    " for %s", user_id)
+    else:
+        try:
+            conn = _get_conn()
+            with _lock:
+                conn.execute("DELETE FROM users WHERE user_id=?", (user_id,))
+                conn.commit()
+            summary["atlas_cascade"] = True
+        except Exception as exc:
+            logger.warning("[atlas_store] DPDP atlas cascade failed for %s"
+                           " (non-fatal): %s", user_id, exc)
 
     # (2) portfolio directory.
     try:

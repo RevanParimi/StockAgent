@@ -97,6 +97,15 @@ def _get_conn() -> sqlite3.Connection:
     return conn
 
 
+def db_path() -> Path:
+    """Where users.db actually lives, read at call time so it follows the
+    module global (tests repoint it). Callers that need to read this DB from
+    another store — the Atlas user mirror — must ask rather than re-derive the
+    literal, or they silently read a different file than the one just written.
+    """
+    return _DB_PATH
+
+
 def _hash_password(password: str) -> str:
     salt = secrets.token_bytes(16)
     dk = hashlib.scrypt(password.encode(), salt=salt,

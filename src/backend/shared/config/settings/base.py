@@ -960,6 +960,7 @@ DELIVERY_BRIEF_OVERNIGHT_STOPWORDS: list = list(cfg("delivery.brief_overnight_st
 DELIVERY_BRIEF_MAX_IDEAS: int = int(cfg("delivery.brief_max_ideas", fallback=5))
 DELIVERY_BRIEF_IDEA_REASON_MAXLEN: int = int(cfg("delivery.brief_idea_reason_maxlen", fallback=180))
 DELIVERY_BRIEF_MAX_IPOS: int = int(cfg("delivery.brief_max_ipos", fallback=3))
+DELIVERY_WEEKLY_MAX_IPOS: int = int(cfg("delivery.weekly_max_ipos", fallback=6))
 # Brief enhancements (2026-07-28)
 DELIVERY_BRIEF_IPO_STRONG_DEMAND_X: float = float(cfg("delivery.brief_ipo_strong_demand_x", fallback=10.0))
 DELIVERY_BRIEF_IPO_STRONG_QIB_X: float = float(cfg("delivery.brief_ipo_strong_qib_x", fallback=15.0))

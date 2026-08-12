@@ -475,6 +475,7 @@ delivery:
   brief_max_ideas: 5                   # discovery ideas shown
   brief_idea_reason_maxlen: 180        # per-idea reason line cap
   brief_max_ipos: 3                    # IPOs shown after dedup
+  weekly_max_ipos: 6                   # IPO rows in the weekly digest
   # Brief enhancements (2026-07-28): earnings-why, IPO lean
   brief_ipo_strong_demand_x: 10.0      # total-x at/above => STRONG lean
   brief_ipo_strong_qib_x: 15.0         # qib-x at/above => STRONG lean

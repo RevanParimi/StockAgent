@@ -486,6 +486,32 @@ class AutomobileScheduler:
         else:
             logger.info("[Scheduler] Audit job disabled (audit.enabled=false)")
 
+        # ── IPO calendar + bid ladder (PI Prospect P0) ──────────────────────
+        # Twice daily: 08:00 catches issues that opened this morning, 18:00
+        # runs after NSE's ~17:00 bid update so the evening brief and the
+        # weekly digest read same-day demand. The weekly discovery cycle also
+        # calls refresh_ipo_cache(); that stays, and is idempotent.
+        if cfg("ipo.enabled", fallback=True):
+            for slot, hour in (
+                ("am", int(cfg("ipo.refresh_hour", fallback=8))),
+                ("pm", int(cfg("ipo.refresh_hour_live", fallback=18))),
+            ):
+                scheduler.add_job(
+                    func=self._ipo_refresh_job,
+                    trigger=CronTrigger(hour=hour, minute=0,
+                                        timezone="Asia/Kolkata"),
+                    id=f"ipo_refresh_{slot}",
+                    name=f"IPO calendar + bid ladder refresh ({slot})",
+                    misfire_grace_time=3600,
+                    coalesce=True,
+                    replace_existing=True,
+                )
+            logger.info("[Scheduler] IPO refresh: daily at %s:00 and %s:00 IST",
+                        cfg("ipo.refresh_hour", fallback=8),
+                        cfg("ipo.refresh_hour_live", fallback=18))
+        else:
+            logger.info("[Scheduler] IPO refresh disabled (ipo.enabled=false)")
+
         # ── Operational watchdog (06:30 IST daily) ──────────────────────────
         # Deliberately early and NOT in the 23:xx cluster: a "your window is
         # open today" notice delivered at 23:45 has already wasted the day it
@@ -568,6 +594,24 @@ class AutomobileScheduler:
         except Exception as exc:
             logger.error("[Scheduler] Discovery FAILED: %s", exc, exc_info=True)
         _job_banner("Weekly Discovery Funnel", done=True)
+
+    def _ipo_refresh_job(self) -> None:
+        """IPO calendar + bid-ladder refresh (PI Prospect P0). Never raises:
+        refresh_ipo_cache() contains its own failures and keeps a stale cache
+        rather than emptying one."""
+        from services.data.fetchers.ipo import refresh_ipo_cache
+
+        _job_banner("IPO Refresh")
+        try:
+            result = refresh_ipo_cache()
+            logger.info(
+                "[Scheduler] IPO refresh — current=%d upcoming=%d past=%d degraded=%s",
+                len(result.get("current", [])), len(result.get("upcoming", [])),
+                len(result.get("past", [])), result.get("degraded"),
+            )
+        except Exception as exc:
+            logger.error("[Scheduler] IPO refresh FAILED: %s", exc, exc_info=True)
+        _job_banner("IPO Refresh", done=True)
 
     def _morning_brief_job(self) -> None:
         """Morning brief (spec §7): run_morning_brief() never raises and skips

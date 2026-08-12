@@ -17,7 +17,10 @@ import logging
 import pathlib
 import re
 import tempfile
+from datetime import date as _date
 from datetime import datetime, timedelta, timezone
+
+from services.data.fetchers.ipo_bids import fetch_bid_ladder
 
 logger = logging.getLogger(__name__)
 
@@ -121,10 +124,45 @@ def load_ipo_cache(cache_path: str | None = None) -> dict:
                 "current": [], "upcoming": [], "past": []}
 
 
-def refresh_ipo_cache(cache_path: str | None = None) -> dict:
-    """Fetch current + upcoming + past-120d IPO lists. Never raises."""
+def _enrich_open_issues(rows: list[dict], on: _date) -> None:
+    """Attach the bid ladder to issues whose window is OPEN, in place.
+
+    Only open issues: an upcoming one has no bids yet and a closed one will
+    never change, so either would spend an NSE call to learn nothing. Bounded
+    by IPO_MAX_LADDER_FETCHES because this runs inside a scheduler job.
+    """
+    from core.config import settings
+    from core.ipo.calendar import issue_state
+
+    if not getattr(settings, "IPO_BID_LADDER_ENABLED", True):
+        return
+    budget = int(getattr(settings, "IPO_MAX_LADDER_FETCHES", 10))
+    for rec in rows:
+        if budget <= 0:
+            break
+        if issue_state(rec, on) != "open":
+            continue
+        budget -= 1
+        ladder = fetch_bid_ladder(rec["symbol"])
+        if ladder is None:
+            continue                    # keep whatever the feed already gave
+        combined = ladder.get("combined") or {}
+        rec["bid_ladder"] = ladder
+        rec["cutoff_share"] = ladder.get("cutoff_share")
+        for field, key in (("qib_x", "qib"), ("retail_x", "retail")):
+            if combined.get(key) is not None:
+                rec[field] = combined[key]
+        if combined.get("total") is not None:
+            rec["total_x"] = combined["total"]
+
+
+def refresh_ipo_cache(cache_path: str | None = None,
+                      on: _date | None = None) -> dict:
+    """Fetch current + upcoming + past-120d IPO lists, then enrich OPEN issues
+    with their category-wise bid ladder. Never raises."""
     path = pathlib.Path(cache_path or _DEFAULT_CACHE)
     previous = load_ipo_cache(cache_path=str(path))
+    on = on or _date.today()
 
     degraded = False
     current: list[dict] = []
@@ -147,6 +185,9 @@ def refresh_ipo_cache(cache_path: str | None = None) -> dict:
         current = list(previous.get("current", []))
         upcoming = list(previous.get("upcoming", []))
         past = list(previous.get("past", []))
+
+    if not degraded:
+        _enrich_open_issues(current + upcoming, on)
 
     result = {
         "fetched_at": datetime.now(timezone.utc).isoformat(),

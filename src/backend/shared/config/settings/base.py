@@ -924,6 +924,16 @@ DISCOVERY_IPO_MAX_DEEP_DIVES: int = int(cfg("discovery.ipo_max_deep_dives", fall
 DISCOVERY_IPO_LOCKIN_WARN_DAYS: int = int(cfg("discovery.ipo_lockin_warn_days", fallback=7))
 DISCOVERY_IPO_QIB_WEIGHT: float = float(cfg("discovery.ipo_qib_weight", fallback=3.0))
 
+# ---------------------------------------------------------------------------
+# PI Prospect — IPO intelligence (design 2026-08-11)
+# ---------------------------------------------------------------------------
+IPO_ENABLED: bool = bool(cfg("ipo.enabled", fallback=True))
+IPO_REFRESH_HOUR: int = int(cfg("ipo.refresh_hour", fallback=8))
+IPO_REFRESH_HOUR_LIVE: int = int(cfg("ipo.refresh_hour_live", fallback=18))
+IPO_BID_LADDER_ENABLED: bool = bool(cfg("ipo.bid_ladder_enabled", fallback=True))
+IPO_MAX_LADDER_FETCHES: int = int(cfg("ipo.max_ladder_fetches", fallback=10))
+IPO_CACHE_MAX_AGE_HOURS: int = int(cfg("ipo.cache_max_age_hours", fallback=48))
+
 ADVISOR_SWITCH_CONVICTION_GAP: float = float(cfg("advisor.switch_conviction_gap", fallback=0.15))
 
 DELIVERY_ENABLED: bool = bool(cfg("delivery.enabled", env="DELIVERY_ENABLED", fallback=False))

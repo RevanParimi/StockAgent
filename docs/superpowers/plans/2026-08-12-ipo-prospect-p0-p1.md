@@ -1092,7 +1092,13 @@ The heading changes from `IPOs OPEN NOW` to `IPO WATCH` because the section now 
 def render_brief_text(brief: dict) -> str:
     # The IPO section renders window state ("closes tomorrow"), which is
     # relative to the day the brief is FOR, not the day it is rendered.
-    on = date.fromisoformat(brief["date"]) if brief.get("date") else date.today()
+    # Guarded like the `hdr` parse below it: this function documents "never
+    # raises", and render_brief_html's except-fallback calls it — an
+    # unguarded parse here would make the fallback itself raise.
+    try:
+        on = date.fromisoformat(brief["date"]) if brief.get("date") else date.today()
+    except ValueError:
+        on = date.today()
 ```
 
 - [ ] **Step 6: Update the HTML renderer**
@@ -1128,7 +1134,10 @@ In the HTML IPO block (around line 879), replace the `demand` line and section t
 
 ```python
 def _render_brief_html_inner(brief: dict, H: dict) -> str:
-    on = date.fromisoformat(brief["date"]) if brief.get("date") else date.today()
+    try:
+        on = date.fromisoformat(brief["date"]) if brief.get("date") else date.today()
+    except ValueError:
+        on = date.today()
 ```
 
 `date` is already imported in `core/delivery/brief.py` — no new import is needed.

@@ -2503,7 +2503,9 @@ not registered here**: the work that creates it is P5, and the registry rule is
 that a milestone lands with its work. Registering it now would have the watchdog
 chase a decision that nothing in the codebase can yet inform.
 
-Append to `config/milestones.yaml` under `milestones:`:
+`config/milestones.yaml` has TWO top-level keys, `milestones:` and `invariants:`, and every existing `kind: invariant` entry lives under the latter. File each new entry by its own kind — the loader merges both lists and classifies by the `kind:` field, but a human reads this file at 06:30 when something has lapsed, and a misfiled entry costs them time exactly when they have least.
+
+Append to the **`invariants:`** list:
 
 ```yaml
   - id: ipo_cache_fresh
@@ -2515,7 +2517,11 @@ Append to `config/milestones.yaml` under `milestones:`:
       stale issues with no error, so this is silent without the watchdog.
       Check the scheduler job ids ipo_refresh_am / ipo_refresh_pm.
     docs: docs/superpowers/specs/2026-08-11-ipo-intelligence-design.md
+```
 
+Append to the **`milestones:`** list:
+
+```yaml
   - id: ipo_p0_live_window_check
     kind: milestone
     title: "IPO P0 — verify a live window end-to-end"
@@ -2551,14 +2557,21 @@ python -c "
 from core.ops.watchdog.checks import run_check
 import yaml
 reg = yaml.safe_load(open('config/milestones.yaml', encoding='utf-8'))
-ids = [m['id'] for m in reg['milestones']]
+# BOTH keys — the file splits entries into milestones: and invariants:, and
+# reading only the first silently under-counts and hides a misfiled entry.
+ids = [e['id'] for key in ('milestones', 'invariants') for e in reg.get(key) or []]
 print('entries:', len(ids))
 assert 'ipo_cache_fresh' in ids
+kinds = {e['id']: e.get('kind') for key in ('milestones', 'invariants')
+         for e in reg.get(key) or []}
+assert kinds['ipo_cache_fresh'] == 'invariant'
+# and it must sit in the section matching its kind
+assert 'ipo_cache_fresh' in [e['id'] for e in reg['invariants']], 'misfiled'
 print('ipo_cache_fresh ->', run_check('ipo_cache_fresh').state)
 "
 ```
 
-Expected: entry count is the previous 9 plus 3 = 12, and the check answers (not `unknown`).
+Expected: entry count is the previous 9 plus 3 = 12, the misfile assertion passes, and the check answers (not `unknown`).
 
 - [ ] **Step 7: Run the full unit suite and commit**
 

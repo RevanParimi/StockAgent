@@ -1,5 +1,6 @@
 """Compass Phase C — IPO feed fetcher: normalization + degraded mode (spec §6.2/§8)."""
 import json
+from datetime import date
 
 import services.data.fetchers.ipo as ipo_mod
 from services.data.fetchers.ipo import load_ipo_cache, refresh_ipo_cache
@@ -107,12 +108,14 @@ def test_current_issue_noOfTime_populates_total_x(tmp_path, monkeypatch):
     cache = str(tmp_path / "ipo.json")
     monkeypatch.setattr(ipo_mod, "_make_nse_client",
                         lambda: _FakeNSE(current=[_LIVE_CURRENT_ROW]))
-    # _LIVE_CURRENT_ROW's window (11-13 Aug 2026) is open on today's real
-    # date in some test runs, which would otherwise route this call through
-    # the live ladder enrichment added in Task 4. Stub it out: this test is
-    # about the raw-feed noOfTime mapping, not the ladder.
+    # _LIVE_CURRENT_ROW's window (11-13 Aug 2026) would be open on today's
+    # real date in some test runs, which would otherwise route this call
+    # through the live ladder enrichment added in Task 4. Stub the fetch AND
+    # pin `on` past the close (2026-08-20) so the execution path is fixed by
+    # the test, not by the wall clock: this test is about the raw-feed
+    # noOfTime mapping, not the ladder.
     monkeypatch.setattr(ipo_mod, "fetch_bid_ladder", lambda s: None)
-    rec = refresh_ipo_cache(cache_path=cache)["current"][0]
+    rec = refresh_ipo_cache(cache_path=cache, on=date(2026, 8, 20))["current"][0]
     assert rec["total_x"] == 0.5315724992825029
     assert rec["issue_price"] == 140.0        # upper band of "Rs.133 to Rs.140"
 
@@ -125,7 +128,7 @@ def test_issue_window_dates_are_parsed(tmp_path, monkeypatch):
                         lambda: _FakeNSE(current=[_LIVE_CURRENT_ROW]))
     # See test_current_issue_noOfTime_populates_total_x — same reason.
     monkeypatch.setattr(ipo_mod, "fetch_bid_ladder", lambda s: None)
-    rec = refresh_ipo_cache(cache_path=cache)["current"][0]
+    rec = refresh_ipo_cache(cache_path=cache, on=date(2026, 8, 20))["current"][0]
     assert rec["issue_start"] == "2026-08-11"
     assert rec["issue_end"] == "2026-08-13"
     assert rec["listing_date"] == ""          # genuinely absent on this feed
@@ -139,9 +142,6 @@ def test_past_rows_keep_their_listing_date(tmp_path, monkeypatch):
                         lambda: _FakeNSE(past=[_PAST_ROW]))
     rec = refresh_ipo_cache(cache_path=cache)["past"][0]
     assert rec["listing_date"] == "2026-06-15"
-
-
-from datetime import date
 
 
 def test_open_issues_are_enriched_with_the_bid_ladder(tmp_path, monkeypatch):

@@ -263,7 +263,7 @@ def test_render_full_brief_has_sections_and_glosses():
     t = br.render_brief_text(_full_brief())
     for h in ("MORNING BRIEF · 27 Jul 2026", "SUMMARY", "YOUR PORTFOLIO",
               "NEEDS ATTENTION", "MARKET CONDITIONS", "OVERNIGHT — HIGH-IMPACT NEWS",
-              "EARNINGS THIS WEEK", "IDEAS THE TOOL IS RESEARCHING", "IPOs OPEN NOW"):
+              "EARNINGS THIS WEEK", "IDEAS THE TOOL IS RESEARCHING", "IPO WATCH"):
         assert h in t
     assert "Cautious (RISK_OFF)" in t
     assert "down 5.9% since inception" in t
@@ -279,7 +279,7 @@ def test_render_hides_empty_sections():
     b.update({"overnight": [], "earnings_soon": [], "discovery_adds": [],
               "ipo_watch": [], "advisor_flags": []})
     t = br.render_brief_text(b)
-    for absent in ("OVERNIGHT", "EARNINGS THIS WEEK", "IDEAS THE TOOL", "IPOs OPEN NOW", "NEEDS ATTENTION"):
+    for absent in ("OVERNIGHT", "EARNINGS THIS WEEK", "IDEAS THE TOOL", "IPO WATCH", "NEEDS ATTENTION"):
         assert absent not in t
     assert "YOUR PORTFOLIO" in t and "Nothing needs your attention today." in t
 
@@ -489,3 +489,42 @@ def test_run_brief_renders_html_when_enabled(tmp_path, monkeypatch):
     monkeypatch.setattr(br.settings, "DELIVERY_BRIEF_HTML_ENABLED", False)
     br.run_morning_brief(on=date(2026, 7, 9))
     assert captured.get("html_body") is None            # kill-switch => text only
+
+
+from datetime import date as _date
+
+
+def test_ipo_watch_tags_state_and_drops_listed(monkeypatch):
+    monkeypatch.setattr(br, "load_ipo_cache", lambda: {
+        "current": [{"symbol": "OPENCO", "company": "Open Co", "status": "current",
+                     "issue_start": "2026-08-11", "issue_end": "2026-08-13",
+                     "total_x": 4.2}],
+        "upcoming": [{"symbol": "SOONCO", "company": "Soon Co", "status": "upcoming",
+                      "issue_start": "2026-08-18", "issue_end": "2026-08-20"},
+                     {"symbol": "DONECO", "company": "Done Co", "status": "upcoming",
+                      "issue_start": "2026-07-01", "issue_end": "2026-07-03",
+                      "listing_date": "2026-07-08"}]})
+    rows = br._ipo_watch(on=_date(2026, 8, 12))
+    by_sym = {r["symbol"]: r for r in rows}
+    assert by_sym["OPENCO"]["state"] == "open"
+    assert by_sym["SOONCO"]["state"] == "upcoming"
+    assert "DONECO" not in by_sym          # already listed — not an IPO to watch
+
+
+def test_ipo_lean_distinguishes_not_open_from_broken():
+    """An issue that has not opened has no bids BY DEFINITION. Reporting that
+    as 'data pending' reads as a fault in the tool."""
+    label, reason = br._ipo_lean({"state": "upcoming"})
+    assert label == "not open yet"
+    assert "bidding" in reason.lower()
+    # A genuinely absent feed for an OPEN issue still reports data pending.
+    assert br._ipo_lean({"state": "open"})[0] == "data pending"
+
+
+def test_ipo_window_line_is_human_readable():
+    assert br._ipo_window({"state": "open", "issue_end": "2026-08-13"},
+                          _date(2026, 8, 13)) == "closes today"
+    assert br._ipo_window({"state": "open", "issue_end": "2026-08-13"},
+                          _date(2026, 8, 12)) == "closes tomorrow"
+    assert br._ipo_window({"state": "upcoming", "issue_start": "2026-08-18"},
+                          _date(2026, 8, 12)) == "opens 18 Aug"

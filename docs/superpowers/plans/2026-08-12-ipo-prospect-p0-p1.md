@@ -613,13 +613,13 @@ def fetch_bid_ladder(symbol: str) -> dict | None:
     caller renormalizes rather than treating absence as zero demand."""
     try:
         with nse_session() as nse:
-            resp = nse._session.get(
-                f"{_BASE}/ipo-detail", params={"symbol": symbol, "series": "EQ"},
-                timeout=20,
-            )
-            if not 200 <= resp.status_code < 300:
-                logger.warning("[ipo_bids] %s -> HTTP %s", symbol, resp.status_code)
-                return None
+            # _req(), not _session.get(): it applies the process-wide
+            # mthrottle shared by every other NSE call site, and raises
+            # ConnectionError on non-2xx — which the except below already
+            # catches. Going around it would make this the one fetcher that
+            # can hammer NSE independently, and it runs in a per-symbol loop.
+            resp = nse._req(f"{_BASE}/ipo-detail",
+                            params={"symbol": symbol, "series": "EQ"})
             out = parse_bid_ladder(resp.json())
             out["symbol"] = symbol          # payload's companyName is unreliable
             return out

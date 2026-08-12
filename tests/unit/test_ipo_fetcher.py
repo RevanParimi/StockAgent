@@ -110,3 +110,25 @@ def test_current_issue_noOfTime_populates_total_x(tmp_path, monkeypatch):
     rec = refresh_ipo_cache(cache_path=cache)["current"][0]
     assert rec["total_x"] == 0.5315724992825029
     assert rec["issue_price"] == 140.0        # upper band of "Rs.133 to Rs.140"
+
+
+def test_issue_window_dates_are_parsed(tmp_path, monkeypatch):
+    """The current/upcoming feeds carry issueStartDate/issueEndDate, NOT
+    listingDate — the key the fetcher originally looked for (spec 11.1)."""
+    cache = str(tmp_path / "ipo.json")
+    monkeypatch.setattr(ipo_mod, "_make_nse_client",
+                        lambda: _FakeNSE(current=[_LIVE_CURRENT_ROW]))
+    rec = refresh_ipo_cache(cache_path=cache)["current"][0]
+    assert rec["issue_start"] == "2026-08-11"
+    assert rec["issue_end"] == "2026-08-13"
+    assert rec["listing_date"] == ""          # genuinely absent on this feed
+
+
+def test_past_rows_keep_their_listing_date(tmp_path, monkeypatch):
+    """Regression guard: listPastIPO DOES carry listingDate and that path
+    must survive the addition of the window keys."""
+    cache = str(tmp_path / "ipo.json")
+    monkeypatch.setattr(ipo_mod, "_make_nse_client",
+                        lambda: _FakeNSE(past=[_PAST_ROW]))
+    rec = refresh_ipo_cache(cache_path=cache)["past"][0]
+    assert rec["listing_date"] == "2026-06-15"

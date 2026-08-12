@@ -918,7 +918,7 @@ DISCOVERY_SIGNAL_WEIGHTS: dict[str, float] = {
 # ---------------------------------------------------------------------------
 # Compass Phase C — IPO tracker + M4 proactive delivery (spec §6.2 / §7)
 # ---------------------------------------------------------------------------
-DISCOVERY_IPO_ENABLED: bool = bool(cfg("discovery.ipo_enabled", env="DISCOVERY_IPO_ENABLED", fallback=False))
+DISCOVERY_IPO_ENABLED: bool = bool(cfg("discovery.ipo_enabled", fallback=False))
 DISCOVERY_IPO_LISTING_WINDOW_DAYS: int = int(cfg("discovery.ipo_listing_window_days", fallback=90))
 DISCOVERY_IPO_MAX_DEEP_DIVES: int = int(cfg("discovery.ipo_max_deep_dives", fallback=2))
 DISCOVERY_IPO_LOCKIN_WARN_DAYS: int = int(cfg("discovery.ipo_lockin_warn_days", fallback=7))

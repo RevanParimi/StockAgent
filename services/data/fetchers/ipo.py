@@ -29,6 +29,11 @@ _SYMBOL_KEYS = ("symbol", "sym", "SYMBOL")
 _COMPANY_KEYS = ("companyName", "company", "issuerCompany", "COMPANY_NAME")
 _SERIES_KEYS = ("series", "SERIES")
 _LISTING_DATE_KEYS = ("listingDate", "listing_date", "dateOfListing", "listingDt")
+# The current/upcoming feeds carry the BIDDING window, not a listing date
+# (verified live 2026-08-11, spec section 11.1). listPastIPO does carry
+# listingDate, which is why _LISTING_DATE_KEYS stays.
+_ISSUE_START_KEYS = ("issueStartDate", "issue_start_date", "biddingStartDate")
+_ISSUE_END_KEYS = ("issueEndDate", "issue_end_date", "biddingEndDate")
 _ISSUE_PRICE_KEYS = ("issuePrice", "issue_price", "finalIssuePrice", "priceBand", "issuePriceBand")
 _QIB_KEYS = ("qibSubscriptionTimes", "qibTimes", "qib")
 _RETAIL_KEYS = ("retailSubscriptionTimes", "riiTimes", "retail")
@@ -92,6 +97,8 @@ def _normalise(rows: list, status: str) -> list[dict]:
             "company": _first(item, _COMPANY_KEYS),
             "series": series,
             "listing_date": _parse_date(_first(item, _LISTING_DATE_KEYS)),
+            "issue_start": _parse_date(_first(item, _ISSUE_START_KEYS)),
+            "issue_end": _parse_date(_first(item, _ISSUE_END_KEYS)),
             "issue_price": _parse_price(_first(item, _ISSUE_PRICE_KEYS)),
             "qib_x": _parse_x(_first(item, _QIB_KEYS)),
             "retail_x": _parse_x(_first(item, _RETAIL_KEYS)),

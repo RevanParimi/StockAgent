@@ -98,3 +98,13 @@ def test_fetch_returns_none_when_nse_fails(monkeypatch):
         def __exit__(self, *a): return False
     monkeypatch.setattr(bids_mod, "nse_session", lambda: _Boom())
     assert fetch_bid_ladder("MOLBIO") is None
+
+
+def test_fetch_returns_none_when_req_fails(monkeypatch):
+    """_req raises ConnectionError on non-2xx; it must degrade to None."""
+    class _ReqFails:
+        def _req(self, *a, **kw): raise ConnectionError("NSE non-2xx")
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+    monkeypatch.setattr(bids_mod, "nse_session", lambda: _ReqFails())
+    assert fetch_bid_ladder("MOLBIO") is None

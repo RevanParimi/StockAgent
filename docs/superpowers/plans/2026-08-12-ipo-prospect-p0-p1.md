@@ -920,7 +920,7 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 
 **Interfaces:**
 - Consumes: `issue_state` (Task 2)
-- Produces: `_ipo_watch()` rows gain `"state": str` and `"window": str`; `_ipo_lean(row)` gains a `not_open_yet` label
+- Produces: `_ipo_watch()` rows gain `"state": str`, `"issue_start": str`, `"issue_end": str`, `"cutoff_share": float | None`; `_ipo_window(row, on) -> str` is a new helper (the window line is computed on demand, NOT stored on the row); `_ipo_lean(row)` gains a `"not open yet"` label
 
 - [ ] **Step 1: Write the failing test**
 
@@ -1112,7 +1112,10 @@ In the HTML IPO block (around line 879), replace the `demand` line and section t
             lean_color = H["warn"] if lean in ("data pending", "not open yet", "SOFT DEMAND") else H["accent"]
             leancol = f'<span style="color:{lean_color};font-weight:600">{_esc(lean)}</span>'
             trs.append(
-                '<tr><td style="padding:12px 0">'
+                # Keep border-top + vertical-align:top — every sibling section
+                # in this email has them, and dropping them here would make the
+                # IPO block the only one with no divider hairline.
+                f'<tr><td style="padding:12px 0;border-top:1px solid {H["hair_soft"]};vertical-align:top">'
                 f'<div class="sa-ink" style="font:600 14.5px {_FONT};color:{H["ink"]}">{_esc(w["symbol"])} '
                 f'<span class="sa-muted" style="color:{H["muted"]};font-weight:600;font-size:12.5px">{_esc(w.get("company", ""))}</span></div>'
                 f'<div class="sa-muted" style="font:400 13px/1.5 {_FONT};color:{H["muted"]};margin:4px 0 0">{_esc(window)}</div>'

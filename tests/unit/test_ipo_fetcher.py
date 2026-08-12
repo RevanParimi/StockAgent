@@ -88,3 +88,25 @@ def test_load_missing_cache_returns_empty_degraded(tmp_path):
     out = load_ipo_cache(cache_path=str(tmp_path / "nope.json"))
     assert out == {"fetched_at": "", "degraded": True,
                    "current": [], "upcoming": [], "past": []}
+
+
+_LIVE_CURRENT_ROW = {
+    # Shape verified live against NSE 2026-08-11 (spec section 11.1).
+    "symbol": "MILKYMIST", "companyName": "Milky Mist Dairy Food Limited",
+    "series": "EQ", "status": "Active", "category": "Total",
+    "issueStartDate": "11-Aug-2026", "issueEndDate": "13-Aug-2026",
+    "issuePrice": "Rs.133 to Rs.140",
+    "noOfSharesOffered": "8.1798244E7", "noOfsharesBid": "4.3481697E7",
+    "noOfTime": "0.5315724992825029",
+}
+
+
+def test_current_issue_noOfTime_populates_total_x(tmp_path, monkeypatch):
+    """NSE ships the total subscription x as `noOfTime`, not any of the three
+    names the fetcher originally guessed."""
+    cache = str(tmp_path / "ipo.json")
+    monkeypatch.setattr(ipo_mod, "_make_nse_client",
+                        lambda: _FakeNSE(current=[_LIVE_CURRENT_ROW]))
+    rec = refresh_ipo_cache(cache_path=cache)["current"][0]
+    assert rec["total_x"] == 0.5315724992825029
+    assert rec["issue_price"] == 140.0        # upper band of "Rs.133 to Rs.140"

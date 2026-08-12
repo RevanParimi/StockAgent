@@ -32,7 +32,12 @@ _LISTING_DATE_KEYS = ("listingDate", "listing_date", "dateOfListing", "listingDt
 _ISSUE_PRICE_KEYS = ("issuePrice", "issue_price", "finalIssuePrice", "priceBand", "issuePriceBand")
 _QIB_KEYS = ("qibSubscriptionTimes", "qibTimes", "qib")
 _RETAIL_KEYS = ("retailSubscriptionTimes", "riiTimes", "retail")
-_TOTAL_SUB_KEYS = ("noOfTimesSubscribed", "totalSubscriptionTimes", "subscriptionTimes")
+# `noOfTime` is what /api/ipo-current-issue actually ships (verified live
+# 2026-08-11, spec section 11.1) and MUST stay first: _first() takes the
+# earliest key present. The other three are unobserved legacy guesses, kept
+# only because NSE field names drift across report vintages.
+_TOTAL_SUB_KEYS = ("noOfTime", "noOfTimesSubscribed", "totalSubscriptionTimes",
+                   "subscriptionTimes")
 _SME_SERIES = {"SM", "ST", "SME"}
 
 

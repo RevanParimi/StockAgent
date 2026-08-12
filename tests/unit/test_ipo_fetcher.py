@@ -193,3 +193,23 @@ def test_ladder_failure_leaves_the_row_intact(tmp_path, monkeypatch):
     rec = refresh_ipo_cache(cache_path=cache, on=date(2026, 8, 12))["current"][0]
     assert rec["total_x"] == 0.5315724992825029
     assert rec["qib_x"] is None
+
+
+def test_past_feed_sme_is_excluded_via_securityType(tmp_path, monkeypatch):
+    """listPastIPO carries NO `series` key — it marks type in `securityType`.
+    The SME guard read only `series`, so 287 SME rows leaked into a universe
+    the spec restricts to mainboard (verified against live NSE 2026-08-12)."""
+    cache = str(tmp_path / "ipo.json")
+    rows = [
+        {"symbol": "MAINCO", "company": "Main Co", "securityType": "EQ",
+         "listingDate": "15-Jun-2026", "issuePrice": "315"},
+        {"symbol": "SMECO", "company": "SME Co", "securityType": "SME",
+         "listingDate": "16-Jun-2026", "issuePrice": "60"},
+        {"symbol": "815CHLI36", "company": "A Bond", "securityType": "N0",
+         "listingDate": "17-Mar-2026", "issuePrice": "######"},
+        {"symbol": "TTCO", "company": "T2T Co", "securityType": "BE",
+         "listingDate": "18-Jun-2026", "issuePrice": "120"},
+    ]
+    monkeypatch.setattr(ipo_mod, "_make_nse_client", lambda: _FakeNSE(past=rows))
+    out = [r["symbol"] for r in refresh_ipo_cache(cache_path=cache)["past"]]
+    assert out == ["MAINCO", "TTCO"]      # SME and the bond both dropped

@@ -2,8 +2,7 @@
 from core.ipo.history import IpoHistoryStore, IpoRecord
 
 _REC = dict(symbol="NEWCO", company="NewCo Ltd", listing_date="2026-06-15",
-            issue_price=315.0, total_x=22.7, qib_x=45.2, retail_x=8.1,
-            issue_size_shares=1_000_000.0)
+            issue_price=315.0, total_x=22.7, qib_x=45.2, retail_x=8.1)
 
 
 def test_round_trip(tmp_path):

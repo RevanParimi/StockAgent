@@ -66,7 +66,7 @@ def test_zero_or_missing_issue_price_yields_no_outcomes():
 from datetime import date
 
 import scripts.ipo_backfill as bf
-from core.ipo.history import IpoHistoryStore
+from core.ipo.history import IpoHistoryStore, IpoRecord
 
 
 def test_backfill_joins_feed_to_tape(tmp_path, monkeypatch):
@@ -116,3 +116,79 @@ def test_symbols_that_never_traded_are_recorded_not_dropped(tmp_path, monkeypatc
     rec = IpoHistoryStore(base_dir=str(tmp_path)).load_all()[0]
     assert rec.symbol == "GHOSTCO"
     assert rec.sessions_available == 0 and rec.outcomes == {}
+
+
+def test_enrich_populates_predictors_from_the_ladder(tmp_path, monkeypatch):
+    store = IpoHistoryStore(base_dir=str(tmp_path))
+    store.append(IpoRecord(symbol="INDGN", listing_date="2024-05-13",
+                           issue_price=100.0, outcomes={"1": 5.0}))
+
+    monkeypatch.setattr(bf, "fetch_bid_ladder", lambda s: {
+        "symbol": s, "updated_at": "",
+        "combined": {"qib": 197.55, "retail": 7.95, "total": 69.91,
+                     "fii": None, "dom_fi": None, "mutual_fund": None,
+                     "nii": None, "employee": None},
+        "nse_only": {k: None for k in
+                     ("qib", "fii", "dom_fi", "mutual_fund", "nii",
+                      "retail", "employee", "total")},
+        "cutoff_share": None})
+
+    result = bf.enrich_predictors(store)
+    assert result["enriched"] == 1
+    rec = store.load_all()[0]
+    assert rec.total_x == 69.91 and rec.qib_x == 197.55 and rec.retail_x == 7.95
+    assert rec.outcomes == {"1": 5.0}          # curves untouched
+
+
+def test_enrich_skips_rows_that_already_have_predictors(tmp_path, monkeypatch):
+    """Resumability: the pass costs one throttled NSE call per row, so a
+    re-run must not repeat work it already did."""
+    store = IpoHistoryStore(base_dir=str(tmp_path))
+    store.append(IpoRecord(symbol="DONE", total_x=12.0, outcomes={"1": 1.0}))
+    calls = []
+    monkeypatch.setattr(bf, "fetch_bid_ladder", lambda s: calls.append(s) or None)
+    result = bf.enrich_predictors(store)
+    assert calls == [] and result["skipped"] == 1
+
+
+def test_enrich_leaves_the_row_intact_when_the_ladder_is_unavailable(tmp_path, monkeypatch):
+    store = IpoHistoryStore(base_dir=str(tmp_path))
+    store.append(IpoRecord(symbol="GHOST", outcomes={"1": 2.0}))
+    monkeypatch.setattr(bf, "fetch_bid_ladder", lambda s: None)
+    result = bf.enrich_predictors(store)
+    assert result["failed"] == 1
+    rec = store.load_all()[0]
+    assert rec.total_x is None                 # absent, never 0
+    assert rec.outcomes == {"1": 2.0}
+
+
+def test_enrich_rejects_a_placeholder_total_with_no_category_breakdown(tmp_path, monkeypatch):
+    """Live NSE (verified 2026-08-12 against IGIL, listed 2024-12-20): for
+    some older listings the `combined` ladder (activeCat.dataList) is a
+    stub — a single "Total" row of literal "0.00" with `updateTime:
+    "Updated as on null"` and no QIB/retail breakdown at all. The real
+    subscription data still exists (bidDetails/nse_only shows IGIL at
+    31.5x QIB), it just isn't in the ladder this fetcher reads.
+
+    A real combined ladder always reports qib and retail alongside total
+    (true on every one of the other 202 rows the 2026-08-12 backfill
+    enriched); a `total` with BOTH qib and retail absent is therefore the
+    stub, not a genuine zero, and must not be written as one.
+    """
+    store = IpoHistoryStore(base_dir=str(tmp_path))
+    store.append(IpoRecord(symbol="IGIL", outcomes={"1": 12.9856}))
+    monkeypatch.setattr(bf, "fetch_bid_ladder", lambda s: {
+        "symbol": s, "updated_at": "Updated as on null",
+        "combined": {"qib": None, "retail": None, "total": 0.0,
+                     "fii": None, "dom_fi": None, "mutual_fund": None,
+                     "nii": None, "employee": None},
+        "nse_only": {"qib": 31.507063099685354, "retail": None, "total": None,
+                     "fii": None, "dom_fi": None, "mutual_fund": None,
+                     "nii": None, "employee": None},
+        "cutoff_share": None})
+    result = bf.enrich_predictors(store)
+    assert result["failed"] == 1 and result["enriched"] == 0
+    rec = store.load_all()[0]
+    assert rec.total_x is None                 # NOT 0.0 — the dark-signal rule
+    assert rec.qib_x is None and rec.retail_x is None
+    assert rec.outcomes == {"1": 12.9856}

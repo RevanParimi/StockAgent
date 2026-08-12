@@ -32,7 +32,6 @@ class IpoRecord(BaseModel):
     total_x: float | None = None
     qib_x: float | None = None
     retail_x: float | None = None
-    issue_size_shares: float | None = None
 
     # Realised curves, percent vs ISSUE PRICE, keyed by trading-day horizon.
     outcomes: dict[str, float] = Field(default_factory=dict)

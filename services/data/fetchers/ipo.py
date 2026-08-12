@@ -30,7 +30,10 @@ _PAST_WINDOW_DAYS = 120          # fetch a little beyond the 90d tracker window
 
 _SYMBOL_KEYS = ("symbol", "sym", "SYMBOL")
 _COMPANY_KEYS = ("companyName", "company", "issuerCompany", "COMPANY_NAME")
-_SERIES_KEYS = ("series", "SERIES")
+# listPastIPO has no `series` key at all — it carries `securityType`
+# (verified live 2026-08-12). Without this the SME guard below never fires
+# on the past feed, and 287 SME rows leak into a mainboard-only universe.
+_SERIES_KEYS = ("series", "SERIES", "securityType")
 _LISTING_DATE_KEYS = ("listingDate", "listing_date", "dateOfListing", "listingDt")
 # The current/upcoming feeds carry the BIDDING window, not a listing date
 # (verified live 2026-08-11, spec section 11.1). listPastIPO does carry
@@ -47,6 +50,9 @@ _RETAIL_KEYS = ("retailSubscriptionTimes", "riiTimes", "retail")
 _TOTAL_SUB_KEYS = ("noOfTime", "noOfTimesSubscribed", "totalSubscriptionTimes",
                    "subscriptionTimes")
 _SME_SERIES = {"SM", "ST", "SME"}
+# Bonds and other non-equity instruments share the IPO feed. An equity-IPO
+# study must not treat an NCD as a listing.
+_NON_EQUITY_TYPES = {"DEBT", "N0", "N1", "IV", "RR"}
 
 
 def _make_nse_client():
@@ -95,6 +101,8 @@ def _normalise(rows: list, status: str) -> list[dict]:
         series = _first(item, _SERIES_KEYS).upper()
         if series in _SME_SERIES and not settings.DISCOVERY_INCLUDE_SME:
             continue                                     # spec §6.2: SME excluded
+        if series in _NON_EQUITY_TYPES:
+            continue
         out.append({
             "symbol": symbol,
             "company": _first(item, _COMPANY_KEYS),

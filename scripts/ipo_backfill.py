@@ -24,6 +24,7 @@ import pandas as pd
 
 from core.ipo.history import IpoHistoryStore, IpoRecord
 from core.ipo.outcomes import compute_outcomes, symbol_sessions
+from services.data.fetchers.ipo_bids import fetch_bid_ladder
 
 logger = logging.getLogger(__name__)
 
@@ -147,14 +148,76 @@ def run_backfill(base_dir: str | None = None, since: date | None = None,
     return result
 
 
+def enrich_predictors(store: IpoHistoryStore, symbols: set[str] | None = None,
+                      sleep_s: float = 0.0) -> dict:
+    """Fill in the pre-listing predictors the past-IPO feed does not carry.
+
+    listPastIPO returns no bid data at all, so a backfilled row arrives with
+    outcomes and nothing to explain them. /api/ipo-detail does serve the
+    ladder for ALREADY-LISTED symbols (verified back to 2024-05-13), so the
+    predictors are recoverable one symbol at a time.
+
+    Resumable by design: rows that already carry total_x are skipped, so an
+    interrupted run resumes where it stopped instead of re-spending calls.
+    Reads the `combined` (all-exchange) ladder — the figure the market quotes.
+    """
+    import time
+
+    rows = store.load_all()
+    enriched = skipped = failed = 0
+    for rec in rows:
+        if symbols is not None and rec.symbol not in symbols:
+            continue
+        if rec.total_x is not None:
+            skipped += 1
+            continue
+        ladder = fetch_bid_ladder(rec.symbol)
+        if ladder is None:
+            failed += 1
+            continue
+        combined = ladder.get("combined") or {}
+        if combined.get("total") is None:
+            failed += 1
+            continue                    # absent stays absent, never 0
+        if combined.get("qib") is None and combined.get("retail") is None:
+            # NSE's activeCat (the "combined" ladder) degenerates to a stub
+            # for some older listings: a single "Total" row of literal
+            # "0.00" with no per-category breakdown at all (verified live
+            # 2026-08-12 against IGIL — updateTime "Updated as on null",
+            # while bidDetails/nse_only still shows its real 31.5x QIB). A
+            # genuine combined ladder always carries qib and retail beside
+            # total; a total-only response is the stub, not a real zero.
+            failed += 1
+            continue
+        rec.total_x = combined.get("total")
+        rec.qib_x = combined.get("qib")
+        rec.retail_x = combined.get("retail")
+        _upsert_with_retry(store, rec)
+        enriched += 1
+        logger.info("[ipo_backfill] enriched %s (total_x=%s) — %d done",
+                    rec.symbol, rec.total_x, enriched)
+        if sleep_s:
+            time.sleep(sleep_s)
+
+    result = {"enriched": enriched, "skipped": skipped, "failed": failed,
+              "total": len(rows)}
+    logger.info("[ipo_backfill] enrich %s", result)
+    return result
+
+
 def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     ap = argparse.ArgumentParser(description="Build the historical IPO spine")
     ap.add_argument("--since", default="2024-05-01")
     ap.add_argument("--base-dir", default=None)
+    ap.add_argument("--enrich", action="store_true",
+                    help="fetch predictors per symbol (slow: one NSE call each)")
     args = ap.parse_args()
     print(json.dumps(run_backfill(base_dir=args.base_dir,
                                   since=date.fromisoformat(args.since)), indent=2))
+    if args.enrich:
+        print(json.dumps(enrich_predictors(IpoHistoryStore(base_dir=args.base_dir)),
+                         indent=2))
 
 
 if __name__ == "__main__":

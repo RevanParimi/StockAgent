@@ -1906,6 +1906,279 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 
 ---
 
+## Task 9b: Universe filter + historical predictor enrichment
+
+**Added 2026-08-12, after Task 9's real run exposed a plan defect.** The run produced 522 rows with realised curves but **zero predictors** — `total_x`, `qib_x`, `retail_x` were `None` on every row, because `listPastIPO` carries no bid data. P1's whole deliverable is "what predicted what", so without this the phase produces a curve archive and no finding.
+
+Verified live 2026-08-12 that the predictors are recoverable: `/api/ipo-detail?symbol=X&series=EQ` returns full ladders for **already-listed** symbols going back to 2024-05-13 (`INDGN` → combined total 69.91×, QIB 197.55×). The Task 3 fetcher works unchanged.
+
+The same run exposed a second defect. The observed `listPastIPO` schema is:
+
+```
+company, htmSym, ipoEndDate, ipoStartDate, issuePrice,
+linkRemovalDate, listingDate, priceRange, securityType, symbol
+```
+
+`series` is **absent (`None`) on every past row**, so `_normalise`'s SME guard has never once fired on this feed. Type distribution over 2024-05-01 → 2026-08-12 (560 rows):
+
+| securityType | count | |
+|---|---|---|
+| SME | 287 | explicitly excluded by the spec's universe decision |
+| EQ | 173 | mainboard equity |
+| BE | 36 | mainboard equity, trade-to-trade segment |
+| DEBT / N0 / N1 | 50 | bonds — not equity IPOs |
+| IV / RR | 14 | other instruments |
+
+**Files:**
+- Modify: `services/data/fetchers/ipo.py` (`_SERIES_KEYS`, new non-equity guard)
+- Modify: `core/ipo/history.py` (drop `issue_size_shares`)
+- Modify: `scripts/ipo_backfill.py` (enrichment pass)
+- Test: `tests/unit/test_ipo_fetcher.py`, `tests/unit/test_ipo_backfill.py`
+
+**Interfaces:**
+- Consumes: `fetch_bid_ladder` (Task 3), `IpoHistoryStore` (Task 7)
+- Produces: `enrich_predictors(store, symbols=None, sleep_s=0.0) -> dict`; history rows gain populated `total_x` / `qib_x` / `retail_x`
+
+- [ ] **Step 1: Write the failing universe test**
+
+Append to `tests/unit/test_ipo_fetcher.py`:
+
+```python
+def test_past_feed_sme_is_excluded_via_securityType(tmp_path, monkeypatch):
+    """listPastIPO carries NO `series` key — it marks type in `securityType`.
+    The SME guard read only `series`, so 287 SME rows leaked into a universe
+    the spec restricts to mainboard (verified against live NSE 2026-08-12)."""
+    cache = str(tmp_path / "ipo.json")
+    rows = [
+        {"symbol": "MAINCO", "company": "Main Co", "securityType": "EQ",
+         "listingDate": "15-Jun-2026", "issuePrice": "315"},
+        {"symbol": "SMECO", "company": "SME Co", "securityType": "SME",
+         "listingDate": "16-Jun-2026", "issuePrice": "60"},
+        {"symbol": "815CHLI36", "company": "A Bond", "securityType": "N0",
+         "listingDate": "17-Mar-2026", "issuePrice": "######"},
+        {"symbol": "TTCO", "company": "T2T Co", "securityType": "BE",
+         "listingDate": "18-Jun-2026", "issuePrice": "120"},
+    ]
+    monkeypatch.setattr(ipo_mod, "_make_nse_client", lambda: _FakeNSE(past=rows))
+    out = [r["symbol"] for r in refresh_ipo_cache(cache_path=cache)["past"]]
+    assert out == ["MAINCO", "TTCO"]      # SME and the bond both dropped
+```
+
+- [ ] **Step 2: Run it to verify it fails**
+
+Run: `python -m pytest tests/unit/test_ipo_fetcher.py::test_past_feed_sme_is_excluded_via_securityType -v`
+Expected: FAIL — all four symbols returned.
+
+- [ ] **Step 3: Fix the universe filter**
+
+In `services/data/fetchers/ipo.py`, extend the series key tuple so the past feed's field is read (`_SME_SERIES` already contains `"SME"`, so this alone drops all 287):
+
+```python
+# listPastIPO has no `series` key at all — it carries `securityType`
+# (verified live 2026-08-12). Without this the SME guard below never fires
+# on the past feed, and 287 SME rows leak into a mainboard-only universe.
+_SERIES_KEYS = ("series", "SERIES", "securityType")
+```
+
+Add beside `_SME_SERIES`:
+
+```python
+# Bonds and other non-equity instruments share the IPO feed. An equity-IPO
+# study must not treat an NCD as a listing.
+_NON_EQUITY_TYPES = {"DEBT", "N0", "N1", "IV", "RR"}
+```
+
+In `_normalise`, immediately after the existing SME check:
+
+```python
+        if series in _NON_EQUITY_TYPES:
+            continue
+```
+
+- [ ] **Step 4: Run the test**
+
+Run: `python -m pytest tests/unit/test_ipo_fetcher.py -v`
+Expected: PASS, all pre-existing tests included.
+
+- [ ] **Step 5: Drop the field nothing writes**
+
+`IpoRecord.issue_size_shares` has no writer — `listPastIPO` carries no size field. This repo already paid for that pattern once: `AdviceRecord.outcome_10td/30td/60td` sat declared-but-unwritten since Compass Phase A and every verdict carried a NULL outcome, which is why the verification layer exists. Do not ship a second one.
+
+In `core/ipo/history.py`, delete the line:
+
+```python
+    issue_size_shares: float | None = None
+```
+
+Remove it from any test fixture that sets it. P2 may reintroduce it **together with a writer**.
+
+- [ ] **Step 6: Write the failing enrichment test**
+
+Append to `tests/unit/test_ipo_backfill.py`:
+
+```python
+def test_enrich_populates_predictors_from_the_ladder(tmp_path, monkeypatch):
+    store = IpoHistoryStore(base_dir=str(tmp_path))
+    store.append(IpoRecord(symbol="INDGN", listing_date="2024-05-13",
+                           issue_price=100.0, outcomes={"1": 5.0}))
+
+    monkeypatch.setattr(bf, "fetch_bid_ladder", lambda s: {
+        "symbol": s, "updated_at": "",
+        "combined": {"qib": 197.55, "retail": 7.95, "total": 69.91,
+                     "fii": None, "dom_fi": None, "mutual_fund": None,
+                     "nii": None, "employee": None},
+        "nse_only": {k: None for k in
+                     ("qib", "fii", "dom_fi", "mutual_fund", "nii",
+                      "retail", "employee", "total")},
+        "cutoff_share": None})
+
+    result = bf.enrich_predictors(store)
+    assert result["enriched"] == 1
+    rec = store.load_all()[0]
+    assert rec.total_x == 69.91 and rec.qib_x == 197.55 and rec.retail_x == 7.95
+    assert rec.outcomes == {"1": 5.0}          # curves untouched
+
+
+def test_enrich_skips_rows_that_already_have_predictors(tmp_path, monkeypatch):
+    """Resumability: the pass costs one throttled NSE call per row, so a
+    re-run must not repeat work it already did."""
+    store = IpoHistoryStore(base_dir=str(tmp_path))
+    store.append(IpoRecord(symbol="DONE", total_x=12.0, outcomes={"1": 1.0}))
+    calls = []
+    monkeypatch.setattr(bf, "fetch_bid_ladder", lambda s: calls.append(s) or None)
+    result = bf.enrich_predictors(store)
+    assert calls == [] and result["skipped"] == 1
+
+
+def test_enrich_leaves_the_row_intact_when_the_ladder_is_unavailable(tmp_path, monkeypatch):
+    store = IpoHistoryStore(base_dir=str(tmp_path))
+    store.append(IpoRecord(symbol="GHOST", outcomes={"1": 2.0}))
+    monkeypatch.setattr(bf, "fetch_bid_ladder", lambda s: None)
+    result = bf.enrich_predictors(store)
+    assert result["failed"] == 1
+    rec = store.load_all()[0]
+    assert rec.total_x is None                 # absent, never 0
+    assert rec.outcomes == {"1": 2.0}
+```
+
+- [ ] **Step 7: Run it to verify it fails**
+
+Run: `python -m pytest tests/unit/test_ipo_backfill.py -k enrich -v`
+Expected: FAIL — `AttributeError: module 'scripts.ipo_backfill' has no attribute 'enrich_predictors'`
+
+- [ ] **Step 8: Implement the enrichment pass**
+
+Add to `scripts/ipo_backfill.py`, importing `fetch_bid_ladder` at module level so tests can monkeypatch it on `bf`:
+
+```python
+from services.data.fetchers.ipo_bids import fetch_bid_ladder
+```
+
+```python
+def enrich_predictors(store: IpoHistoryStore, symbols: set[str] | None = None,
+                      sleep_s: float = 0.0) -> dict:
+    """Fill in the pre-listing predictors the past-IPO feed does not carry.
+
+    listPastIPO returns no bid data at all, so a backfilled row arrives with
+    outcomes and nothing to explain them. /api/ipo-detail does serve the
+    ladder for ALREADY-LISTED symbols (verified back to 2024-05-13), so the
+    predictors are recoverable one symbol at a time.
+
+    Resumable by design: rows that already carry total_x are skipped, so an
+    interrupted run resumes where it stopped instead of re-spending calls.
+    Reads the `combined` (all-exchange) ladder — the figure the market quotes.
+    """
+    import time
+
+    rows = store.load_all()
+    enriched = skipped = failed = 0
+    for rec in rows:
+        if symbols is not None and rec.symbol not in symbols:
+            continue
+        if rec.total_x is not None:
+            skipped += 1
+            continue
+        ladder = fetch_bid_ladder(rec.symbol)
+        if ladder is None:
+            failed += 1
+            continue
+        combined = ladder.get("combined") or {}
+        if combined.get("total") is None:
+            failed += 1
+            continue                    # absent stays absent, never 0
+        rec.total_x = combined.get("total")
+        rec.qib_x = combined.get("qib")
+        rec.retail_x = combined.get("retail")
+        store.upsert(rec)
+        enriched += 1
+        if sleep_s:
+            time.sleep(sleep_s)
+
+    result = {"enriched": enriched, "skipped": skipped, "failed": failed,
+              "total": len(rows)}
+    logger.info("[ipo_backfill] enrich %s", result)
+    return result
+```
+
+Wire it into `main()` behind a flag so the slow pass is opt-in:
+
+```python
+    ap.add_argument("--enrich", action="store_true",
+                    help="fetch predictors per symbol (slow: one NSE call each)")
+```
+
+and in `main()`, after `run_backfill(...)`:
+
+```python
+    if args.enrich:
+        print(json.dumps(enrich_predictors(IpoHistoryStore(base_dir=args.base_dir)),
+                         indent=2))
+```
+
+- [ ] **Step 9: Run the tests**
+
+Run: `python -m pytest tests/unit/test_ipo_backfill.py tests/unit/test_ipo_fetcher.py -v`
+Expected: PASS.
+
+- [ ] **Step 10: Rebuild the dataset for real**
+
+The universe filter changed, so the existing `data/ipo/ipo_history.jsonl` holds ~313 rows that no longer belong. Delete it and rebuild:
+
+```bash
+rm -f data/ipo/ipo_history.jsonl
+python -m scripts.ipo_backfill --since 2024-05-01 --enrich
+```
+
+Expected shape: roughly **200-210 rows** (EQ + BE), not 522. The enrich pass makes one throttled NSE call per row, so allow time.
+
+**Report the ACTUAL numbers.** If `enriched` is 0, STOP and report — that means the historical ladder is not in fact retrievable and the phase needs re-planning rather than a workaround.
+
+- [ ] **Step 11: Commit**
+
+```bash
+git add services/data/fetchers/ipo.py core/ipo/history.py scripts/ipo_backfill.py \
+        tests/unit/test_ipo_fetcher.py tests/unit/test_ipo_backfill.py
+git commit -m "feat(ipo): filter the universe on securityType and recover predictors
+
+listPastIPO has no `series` key, so the SME guard never fired on the past
+feed and 287 SME rows plus 64 bonds/other instruments leaked into a
+universe the spec restricts to mainboard equity.
+
+It also carries no bid data, so every backfilled row had outcomes and no
+predictor to explain them. /api/ipo-detail does serve the ladder for
+already-listed symbols back to 2024-05, so enrich_predictors recovers
+them one symbol at a time, skipping rows already done so a re-run is
+cheap.
+
+Drops IpoRecord.issue_size_shares: nothing can write it from this feed,
+and a declared-but-unwritten field is the exact defect the verification
+layer exists to correct.
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
+```
+
+---
+
 ## Task 10: The measurement report
 
 P1's actual deliverable: *what predicted what*, with honest interval reporting.

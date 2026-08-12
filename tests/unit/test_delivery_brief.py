@@ -528,3 +528,19 @@ def test_ipo_window_line_is_human_readable():
                           _date(2026, 8, 12)) == "closes tomorrow"
     assert br._ipo_window({"state": "upcoming", "issue_start": "2026-08-18"},
                           _date(2026, 8, 12)) == "opens 18 Aug"
+
+
+def test_malformed_date_does_not_raise_from_renderers():
+    """Both renderers document 'never raises', and render_brief_html's
+    except-fallback calls render_brief_text — an unguarded parse in either
+    breaks both."""
+    brief = {
+        "date": "not-a-date",
+        "headline": "Test brief",
+        "ipo_watch": [{"symbol": "TEST", "company": "Test Co", "status": "current"}],
+    }
+    # Should not raise — guarded parse should fall back to date.today()
+    text_result = br.render_brief_text(brief)
+    assert isinstance(text_result, str)
+    html_result = br.render_brief_html(brief)
+    assert isinstance(html_result, str)

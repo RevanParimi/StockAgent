@@ -643,7 +643,13 @@ def render_brief_text(brief: dict) -> str:
     """
     # The IPO section renders window state ("closes tomorrow"), which is
     # relative to the day the brief is FOR, not the day it is rendered.
-    on = date.fromisoformat(brief["date"]) if brief.get("date") else date.today()
+    # Guarded like the `hdr` parse below it: this function documents "never
+    # raises", and render_brief_html's except-fallback calls it — an
+    # unguarded parse here would make the fallback itself raise.
+    try:
+        on = date.fromisoformat(brief["date"]) if brief.get("date") else date.today()
+    except ValueError:
+        on = date.today()
     bar = "═" * 42
     L: list[str] = []
     try:
@@ -806,7 +812,10 @@ def _html_rows(trs: str) -> str:
 
 
 def _render_brief_html_inner(brief: dict, H: dict) -> str:
-    on = date.fromisoformat(brief["date"]) if brief.get("date") else date.today()
+    try:
+        on = date.fromisoformat(brief["date"]) if brief.get("date") else date.today()
+    except ValueError:
+        on = date.today()
     try:
         hdr = date.fromisoformat(brief.get("date", "")).strftime("%A, %d %B %Y")
     except Exception:
@@ -937,8 +946,11 @@ def _render_brief_html_inner(brief: dict, H: dict) -> str:
             price = f'₹{_inr(w.get("issue_price"))}' if w.get("issue_price") else ""
             lean_color = H["warn"] if lean in ("data pending", "not open yet", "SOFT DEMAND") else H["accent"]
             leancol = f'<span style="color:{lean_color};font-weight:600">{_esc(lean)}</span>'
+            # Keep border-top + vertical-align:top — every sibling section
+            # in this email has them, and dropping them here would make the
+            # IPO block the only one with no divider hairline.
             trs.append(
-                '<tr><td style="padding:12px 0">'
+                f'<tr><td style="padding:12px 0;border-top:1px solid {H["hair_soft"]};vertical-align:top">'
                 f'<div class="sa-ink" style="font:600 14.5px {_FONT};color:{H["ink"]}">{_esc(w["symbol"])} '
                 f'<span class="sa-muted" style="color:{H["muted"]};font-weight:600;font-size:12.5px">{_esc(w.get("company", ""))}</span></div>'
                 f'<div class="sa-muted" style="font:400 13px/1.5 {_FONT};color:{H["muted"]};margin:4px 0 0">{_esc(window)}</div>'

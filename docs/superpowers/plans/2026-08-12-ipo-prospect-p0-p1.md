@@ -21,7 +21,8 @@
 - **Append-only history.** The P1 store is rebuildable from source; it must never be the only copy of anything.
 - **Commit per task**, message style `feat(ipo): ...` / `fix(ipo): ...` / `test(ipo): ...`, ending with:
   `Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>`
-- **Run the unit suite before each commit:** `python -m pytest tests/unit -q`. The baseline is green; any failure is yours.
+- **Test discipline.** Run the **targeted** tests named in each step before that step's commit. Run the **full** suite (`python -m pytest tests/unit -q`) where a task explicitly says so — those are the integration boundaries. The full suite takes ~4m15s, which is why it is not run before every commit.
+- **Baseline measured 2026-08-12 on `ipo-intelligence` @ `e18242d`: 2394 passed, 5 skipped, 0 failed.** Any failure you see is yours; do not "fix" a pre-existing one.
 
 ---
 

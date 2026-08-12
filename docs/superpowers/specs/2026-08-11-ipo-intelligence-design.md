@@ -1,7 +1,7 @@
 # PI "Prospect" — IPO Intelligence
 
 **Date:** 2026-08-11
-**Status:** design approved, implementation plan not yet written
+**Status:** P0 + P1 implemented (plan `docs/superpowers/plans/2026-08-12-ipo-prospect-p0-p1.md`); P2-P5 not started
 **Codename:** Prospect (house style: Compass, Atlas, Lighthouse)
 
 ---
@@ -140,6 +140,8 @@ never breaks the brief.
 
 ### P0 — Fix the plumbing *(independently shippable; ships in days)*
 
+**Delivered:** commits `c74cfd7` `adebf34` `691c33b` `119f4a2` `6fce990` `1bcfb43` `51862a4` `bb71733` `474c864`.
+
 - ~~Task 1 is a spike~~ **— done 2026-08-11, contract verified in §11.** The
   build starts from a known contract.
 - **One-line win first:** add `noOfTime` to `_TOTAL_SUB_KEYS`. That alone
@@ -170,6 +172,10 @@ subscription × in both daily and weekly briefs; a closed issue never appears as
 open.
 
 ### P1 — Historical spine *(the reason this is evidence, not astrology)*
+
+**Delivered:** commits `be9d2fb` `bab1a7c` `9a38620` `2ec3a55` `8ab012a` `7ac2159` `b377286` `51183d8` `4d5d611`.
+
+**Measurement:** Dataset: 206 NSE mainboard rows (2024-05 → 2026-08), 202 with a subscription figure, 188 with realised curves, **185 with both**. Listing-day return vs issue price, bucketed by total subscription: hot (≥10×) n=118 mean +26.36%, 85% positive; warm (2–10×) n=39 mean −0.46%, 46% positive; cold (<2×) n=28 mean −4.15%, 25% positive. At 252td the hot bucket is n=57 mean +30.11% — i.e. almost the entire year's return was already present on listing day. The cold bucket's 252td figure (n=8) is below the report's own n≥10 floor and is deliberately not quoted.
 
 Backfill every mainboard IPO from 2024-05 to date using `listPastIPO` plus the
 **550 bhavcopy sessions already on disk** (`2024-05-01` → `2026-07-15`).

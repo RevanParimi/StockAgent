@@ -1,0 +1,89 @@
+"""PI Prospect P1 — the historical spine (design section 5, P1).
+
+One row per mainboard IPO: what was knowable BEFORE listing joined to what
+actually happened after. This is the file that decides whether any later
+scoring model is evidence or astrology, so it is deliberately dumb — a JSONL
+of facts, rebuildable from NSE plus the bhavcopy parquet at any time, with no
+derived score anywhere in it.
+
+Outcome horizons are TRADING DAYS, keyed as strings because JSON object keys
+are strings: "1" (listing day), "5", "21", "63", "126", "252".
+"""
+from __future__ import annotations
+
+import json
+import logging
+from pathlib import Path
+
+from pydantic import BaseModel, Field
+
+logger = logging.getLogger(__name__)
+
+HORIZONS_TD: tuple[int, ...] = (1, 5, 21, 63, 126, 252)
+
+
+class IpoRecord(BaseModel):
+    symbol: str
+    company: str = ""
+    listing_date: str = ""             # ISO
+    issue_price: float | None = None
+
+    # Pre-listing knowables. None means genuinely unavailable — never 0.
+    total_x: float | None = None
+    qib_x: float | None = None
+    retail_x: float | None = None
+    issue_size_shares: float | None = None
+
+    # Realised curves, percent vs ISSUE PRICE, keyed by trading-day horizon.
+    outcomes: dict[str, float] = Field(default_factory=dict)
+    # Same horizons, percent vs ^NSEI over the identical calendar dates.
+    excess: dict[str, float] = Field(default_factory=dict)
+
+    listing_open: float | None = None
+    listing_close: float | None = None
+    sessions_available: int = 0
+
+
+class IpoHistoryStore:
+    """JSONL at <base_dir>/ipo_history.jsonl."""
+
+    def __init__(self, base_dir: str | None = None) -> None:
+        self._dir = Path(base_dir or "data/ipo")
+        self._dir.mkdir(parents=True, exist_ok=True)
+
+    @property
+    def path(self) -> Path:
+        return self._dir / "ipo_history.jsonl"
+
+    def append(self, rec: IpoRecord) -> None:
+        with open(self.path, "a", encoding="utf-8") as fh:
+            fh.write(rec.model_dump_json() + "\n")
+
+    def load_all(self) -> list[IpoRecord]:
+        if not self.path.exists():
+            return []
+        out: list[IpoRecord] = []
+        for line in self.path.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                out.append(IpoRecord(**json.loads(line)))
+            except Exception:
+                continue            # a corrupt line must never break a backfill
+        return out
+
+    def existing_symbols(self) -> set[str]:
+        return {r.symbol for r in self.load_all()}
+
+    def upsert(self, rec: IpoRecord) -> None:
+        """Replace any row for this symbol. Rewrites the file — acceptable at
+        a few hundred rows, and keeps the reader trivially correct."""
+        rows = {r.symbol: r for r in self.load_all()}
+        rows[rec.symbol] = rec
+        tmp = self.path.with_suffix(".tmp")
+        tmp.write_text(
+            "".join(r.model_dump_json() + "\n" for r in rows.values()),
+            encoding="utf-8",
+        )
+        tmp.replace(self.path)

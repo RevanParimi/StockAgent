@@ -3,6 +3,7 @@ import json
 from datetime import date
 
 import services.data.fetchers.ipo as ipo_mod
+import services.data.fetchers.ipo_bids as bids_mod
 from services.data.fetchers.ipo import load_ipo_cache, refresh_ipo_cache
 
 
@@ -213,3 +214,53 @@ def test_past_feed_sme_is_excluded_via_securityType(tmp_path, monkeypatch):
     monkeypatch.setattr(ipo_mod, "_make_nse_client", lambda: _FakeNSE(past=rows))
     out = [r["symbol"] for r in refresh_ipo_cache(cache_path=cache)["past"]]
     assert out == ["MAINCO", "TTCO"]      # SME and the bond both dropped
+
+
+def test_open_issue_ladder_stub_does_not_write_a_false_zero(tmp_path, monkeypatch):
+    """Regression for the vulnerability that motivated moving the
+    placeholder-total guard into parse_bid_ladder (the chokepoint every
+    ladder consumer passes through): _enrich_open_issues calls the REAL
+    fetch_bid_ladder -> parse_bid_ladder chain (nothing about it is
+    monkeypatched here, only the network layer underneath), so this proves
+    the fix, not just the mock. If NSE serves the same degenerate `combined`
+    stub observed live on IGIL for a currently-OPEN issue, the morning
+    brief's ladder for an actively-bidding IPO must not end up with
+    total_x = 0.0 — that would be a false claim of zero demand on a live
+    issue, arguably higher-stakes than the historical backfill."""
+    class _FakeResp:
+        def json(self):
+            return {
+                "companyName": "MILKYMIST",
+                "bidDetails": [],
+                "activeCat": {
+                    "updateTime": "Updated as on null",
+                    "dataList": [
+                        {"srNo": "Sr.No.", "category": "Category",
+                         "noOfShareOffered": "x", "noOfSharesBid": "x",
+                         "noOfTotalMeant": "x"},
+                        {"srNo": None, "category": "Total",
+                         "noOfShareOffered": "0.0", "noOfSharesBid": "0.0",
+                         "noOfTotalMeant": "0.00"},
+                    ],
+                },
+                "demandGraph": {},
+            }
+
+    class _FakeLadderNSE:
+        def _req(self, *a, **kw):
+            return _FakeResp()
+        def __enter__(self):
+            return self
+        def __exit__(self, *a):
+            return False
+
+    monkeypatch.setattr(bids_mod, "nse_session", lambda: _FakeLadderNSE())
+
+    cache = str(tmp_path / "ipo.json")
+    monkeypatch.setattr(ipo_mod, "_make_nse_client",
+                        lambda: _FakeNSE(current=[_LIVE_CURRENT_ROW]))
+    rec = refresh_ipo_cache(cache_path=cache, on=date(2026, 8, 12))["current"][0]
+
+    # noOfTime from the raw feed itself, untouched by the stubbed ladder.
+    assert rec["total_x"] == 0.5315724992825029
+    assert rec["qib_x"] is None

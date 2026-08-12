@@ -170,16 +170,22 @@ def test_enrich_rejects_a_placeholder_total_with_no_category_breakdown(tmp_path,
     subscription data still exists (bidDetails/nse_only shows IGIL at
     31.5x QIB), it just isn't in the ladder this fetcher reads.
 
-    A real combined ladder always reports qib and retail alongside total
-    (true on every one of the other 202 rows the 2026-08-12 backfill
-    enriched); a `total` with BOTH qib and retail absent is therefore the
-    stub, not a genuine zero, and must not be written as one.
+    The guard itself now lives in parse_bid_ladder
+    (services/data/fetchers/ipo_bids.py) — the chokepoint every ladder
+    consumer passes through, not just this script — so `fetch_bid_ladder`
+    already returns `total: None` for a stub, never the literal `0.0`
+    (see tests/unit/test_ipo_bids.py for that guard's own unit test, and
+    tests/unit/test_ipo_fetcher.py::test_open_issue_ladder_stub_does_not_write_a_false_zero
+    for the live open-issue path this also protects). This test documents
+    enrich_predictors' side of the resulting contract: given a ladder
+    already shaped as the fetch layer actually produces it, a total-only
+    outcome must not survive as a written predictor.
     """
     store = IpoHistoryStore(base_dir=str(tmp_path))
     store.append(IpoRecord(symbol="IGIL", outcomes={"1": 12.9856}))
     monkeypatch.setattr(bf, "fetch_bid_ladder", lambda s: {
         "symbol": s, "updated_at": "Updated as on null",
-        "combined": {"qib": None, "retail": None, "total": 0.0,
+        "combined": {"qib": None, "retail": None, "total": None,
                      "fii": None, "dom_fi": None, "mutual_fund": None,
                      "nii": None, "employee": None},
         "nse_only": {"qib": 31.507063099685354, "retail": None, "total": None,

@@ -80,6 +80,25 @@ def _read_ladder(rows: list, x_key: str) -> dict[str, float | None]:
     return out
 
 
+def _reject_placeholder_total(ladder: dict[str, float | None]) -> dict[str, float | None]:
+    """NSE serves a literal 0.00 `total` with no category breakdown for some
+    older listings (observed live 2026-08-12 on IGIL, a heavily-subscribed
+    IPO — its bidDetails/nse_only ladder still shows the real 31.5x QIB).
+    Recording that would assert 'nobody subscribed' about a hot issue — the
+    exact inversion the dark-signal rule exists to prevent. A genuine
+    ladder always carries the category rows (qib, retail) alongside the
+    total; a total-only response is the stub, not a real zero.
+
+    Applied to both `combined` and `nse_only` in `parse_bid_ladder` — the
+    single chokepoint every caller of either ladder passes through, so no
+    consumer (backfill enrichment, the live open-issue enrichment that
+    feeds the morning brief) has to know which ladder can lie.
+    """
+    if ladder["qib"] is None and ladder["retail"] is None:
+        ladder["total"] = None
+    return ladder
+
+
 def _cutoff_share(graph: object) -> float | None:
     """Share of bids placed at cut-off rather than a chosen price — demand
     that is indifferent to price. Official, and free of any GMP dependency."""
@@ -98,8 +117,10 @@ def parse_bid_ladder(payload: dict) -> dict:
     return {
         "symbol": str(payload.get("companyName") or "").strip(),
         "updated_at": str(active.get("updateTime") or "").strip(),
-        "combined": _read_ladder(active.get("dataList"), "noOfTotalMeant"),
-        "nse_only": _read_ladder(payload.get("bidDetails"), "noOfTime"),
+        "combined": _reject_placeholder_total(
+            _read_ladder(active.get("dataList"), "noOfTotalMeant")),
+        "nse_only": _reject_placeholder_total(
+            _read_ladder(payload.get("bidDetails"), "noOfTime")),
         "cutoff_share": _cutoff_share(payload.get("demandGraph")),
     }
 

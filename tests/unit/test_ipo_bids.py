@@ -108,3 +108,49 @@ def test_fetch_returns_none_when_req_fails(monkeypatch):
         def __exit__(self, *a): return False
     monkeypatch.setattr(bids_mod, "nse_session", lambda: _ReqFails())
     assert fetch_bid_ladder("MOLBIO") is None
+
+
+_STUB_PAYLOAD = {
+    # Live shape verified 2026-08-12 against IGIL (listed 2024-12-20, a
+    # heavily-subscribed IPO — QIB 31.5x per bidDetails below). For some
+    # older listings NSE's activeCat degenerates to a two-row stub: the
+    # header plus a single "Total" row of literal "0.00", no category
+    # breakdown at all, and updateTime "Updated as on null".
+    "companyName": "IGIL",
+    "bidDetails": [
+        {"srNo": "1", "category": "Qualified Institutional Buyers(QIBs)",
+         "noOfSharesOffered": "31911839", "noOfsharesBid": "1005448325",
+         "noOfTime": "31.507063099685354"},
+    ],
+    "activeCat": {
+        "updateTime": "Updated as on null",
+        "dataList": [
+            {"srNo": "Sr.No.", "category": "Category",
+             "noOfShareOffered": "No.of shares offered/reserved",
+             "noOfSharesBid": "No. of shares bid for",
+             "noOfTotalMeant": "No. of times of total meant for the category"},
+            {"srNo": None, "category": "Total", "noOfShareOffered": "0.0",
+             "noOfSharesBid": "0.0", "noOfTotalMeant": "0.00"},
+        ],
+    },
+    "demandGraph": {},
+}
+
+
+def test_placeholder_total_with_no_category_breakdown_is_rejected():
+    """Recording that stub's `0.00` as `combined["total"]` would assert
+    'nobody subscribed' about a hot issue — the exact inversion the
+    dark-signal rule exists to prevent. A genuine combined ladder always
+    carries qib/retail alongside total (true on every other symbol this
+    fetcher has ever parsed), so total-only must be treated as unavailable.
+    This is the single chokepoint every consumer of `combined`/`nse_only`
+    passes through — the earlier fix inside scripts/ipo_backfill.py left
+    the live _enrich_open_issues path (services/data/fetchers/ipo.py)
+    exposed to writing this false zero into the morning brief."""
+    out = parse_bid_ladder(_STUB_PAYLOAD)
+    assert out["combined"]["total"] is None       # NOT 0.0
+    assert out["combined"]["qib"] is None and out["combined"]["retail"] is None
+    # nse_only has real data (qib present) here, so its total (absent from
+    # this fixture) is unaffected by the guard — the rule applies uniformly
+    # per-ladder, not by assuming combined is the only untrustworthy one.
+    assert out["nse_only"]["qib"] == 31.507063099685354

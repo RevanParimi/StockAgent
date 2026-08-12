@@ -177,16 +177,11 @@ def enrich_predictors(store: IpoHistoryStore, symbols: set[str] | None = None,
             continue
         combined = ladder.get("combined") or {}
         if combined.get("total") is None:
-            failed += 1
-            continue                    # absent stays absent, never 0
-        if combined.get("qib") is None and combined.get("retail") is None:
-            # NSE's activeCat (the "combined" ladder) degenerates to a stub
-            # for some older listings: a single "Total" row of literal
-            # "0.00" with no per-category breakdown at all (verified live
-            # 2026-08-12 against IGIL — updateTime "Updated as on null",
-            # while bidDetails/nse_only still shows its real 31.5x QIB). A
-            # genuine combined ladder always carries qib and retail beside
-            # total; a total-only response is the stub, not a real zero.
+            # Absent stays absent, never 0 — including NSE's degenerate
+            # placeholder-total stub, which parse_bid_ladder
+            # (services/data/fetchers/ipo_bids.py) already nulls out at
+            # the source, the single chokepoint every ladder consumer
+            # passes through.
             failed += 1
             continue
         rec.total_x = combined.get("total")

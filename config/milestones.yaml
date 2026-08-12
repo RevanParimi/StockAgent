@@ -66,16 +66,6 @@ milestones:
       Remove this entry once judged.
     docs: docs/superpowers/specs/2026-07-28-learning-evidence.md
 
-  - id: ipo_cache_fresh
-    kind: invariant
-    title: "IPO calendar cache is being refreshed"
-    check: ipo_cache_fresh
-    action: >
-      The twice-daily ipo_refresh job has stopped. The brief keeps rendering
-      stale issues with no error, so this is silent without the watchdog.
-      Check the scheduler job ids ipo_refresh_am / ipo_refresh_pm.
-    docs: docs/superpowers/specs/2026-08-11-ipo-intelligence-design.md
-
   - id: ipo_p0_live_window_check
     kind: milestone
     title: "IPO P0 — verify a live window end-to-end"
@@ -104,6 +94,16 @@ milestones:
     docs: docs/superpowers/specs/2026-08-11-ipo-intelligence-design.md
 
 invariants:
+  - id: ipo_cache_fresh
+    kind: invariant
+    title: "IPO calendar cache is being refreshed"
+    check: ipo_cache_fresh
+    action: >
+      The twice-daily ipo_refresh job has stopped. The brief keeps rendering
+      stale issues with no error, so this is silent without the watchdog.
+      Check the scheduler job ids ipo_refresh_am / ipo_refresh_pm.
+    docs: docs/superpowers/specs/2026-08-11-ipo-intelligence-design.md
+
   - id: registry_is_current
     kind: invariant
     title: "Deployed registry matches origin/main"

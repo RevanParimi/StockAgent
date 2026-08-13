@@ -271,6 +271,10 @@ As with the P1 spine: **no derived value ever enters this file.**
 5. **Wiring** — `_enrich_open_issues` appends a snapshot after each successful
    ladder fetch. **Zero additional NSE calls**: the same fetch, persisted
    instead of discarded.
+6. **Watchdog** — a new `ipo_signals_accruing` invariant (§9). `ipo_cache_fresh`
+   proves the refresh *job* runs; nothing proves capture *lands*, and a ledger
+   that silently stopped accruing is indistinguishable from a quiet IPO month
+   until P3 needs the data and finds a hole in it.
 
 #### Two §9b prerequisites fold in, because capture is broken without them
 
@@ -435,6 +439,7 @@ window.
 | `ipo_p1_backtest_review` | milestone | P1 backfill report ready for judgement |
 | `ipo_verdicts_visible_gate` | milestone | Decide the dark→visible flip on measured evidence |
 | `ipo_cache_fresh` | invariant | `ipo.json` older than 48h while `ipo.enabled` ⇒ the daily refresh job is dead |
+| `ipo_signals_accruing` | invariant (P2) | An issue is **open** but the capture ledger holds no snapshot for it ⇒ perishable demand data is being lost. `ipo_cache_fresh` proves the *job* runs; it cannot prove capture *lands*. Scoped to open windows so a quiet IPO month reports satisfied rather than crying wolf. |
 
 ## 9b. Known follow-ups from P0/P1 execution
 

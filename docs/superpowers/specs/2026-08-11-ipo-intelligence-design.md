@@ -303,6 +303,62 @@ window.
 | `ipo_verdicts_visible_gate` | milestone | Decide the dark→visible flip on measured evidence |
 | `ipo_cache_fresh` | invariant | `ipo.json` older than 48h while `ipo.enabled` ⇒ the daily refresh job is dead |
 
+## 9b. Known follow-ups from P0/P1 execution
+
+Triaged during the whole-branch review of 2026-08-13. Recorded here because the
+execution workspace is scratch and these would otherwise be discarded silently.
+Nothing here blocks merge; the Critical and Important findings were fixed in
+`a578ac6`.
+
+**Do before the next deploy**
+
+- **Verify `DISCOVERY_IPO_ENABLED` is unset in Railway.** P0 dropped the `env=`
+  override per the no-env-for-toggles rule, and `config.yaml` has
+  `ipo_enabled: true`. If prod currently sets that variable to `false`, this
+  branch turns the discovery IPO stage **on** at deploy. This is the one
+  follow-up with a behaviour change attached.
+
+**Worth doing soon**
+
+- `combined["total"]` — the entire P1 predictor column — is only asserted
+  `is None` in the ladder fixture. Add a positive case. Same for `dom_fi`,
+  which currently has no consumer at all.
+- `IpoHistoryStore.upsert` rewrites the whole file per row (O(n²) IO at ~206
+  rows) and is the root cause of the OneDrive lock that `_upsert_with_retry`
+  works around. An `upsert_many` fixes both.
+- `ipo_refresh_pm` (Sun 18:00 IST) and `weekly_review` (Sun 18:00 IST) fire in
+  the same minute with no ordering, so the digest is a coin flip between the
+  fresh cache and the 08:00 one. Writes are atomic, so this is
+  non-determinism, not corruption. Move one slot.
+
+**Lower priority**
+
+- `IPO_ENABLED`, `IPO_REFRESH_HOUR`, `IPO_REFRESH_HOUR_LIVE` are declared in
+  `base.py` but never read — the scheduler calls `cfg("ipo.…")` directly. Read
+  them or delete them.
+- `_enrich_open_issues` rebuilds rows from `_normalise` each run, so
+  `bid_ladder` / `cutoff_share` / ladder-derived `qib_x`/`retail_x` are
+  discarded at the next 08:00 pass. A closed issue's brief line degrades
+  overnight from "40× overall (QIB 90×, retail 12×)" to bare "40× overall".
+- `cutoff_share` is fetched, cached, and threaded into every brief row, then
+  never rendered. Either surface it (it is a real froth signal — see §3) or
+  drop the plumbing.
+- `ipo_cache_fresh` cannot see a *degraded* feed: `refresh_ipo_cache` writes
+  `fetched_at` even when the fetch failed, so a week-long NSE outage still
+  reports `satisfied`. Correctly scoped to "the job died" per its docstring,
+  but stale content is equally silent. Fold `degraded` into the verdict or at
+  least the evidence.
+- The ladder-fetch budget is decremented even when `fetch_bid_ladder` fails, so
+  a run of dead-endpoint failures can exhaust `IPO_MAX_LADDER_FETCHES` with
+  zero successful enrichment.
+- The placeholder-total guard also applies to `nse_only`. Mid-bidding, if only
+  NII/Employee rows have posted, a real partial total would be nulled. No
+  consumer reads `nse_only` today; revisit when one does.
+- `checks.py` re-encodes the `48` default already set in
+  `cfg("ipo.cache_max_age_hours", fallback=48)`.
+- The watchdog check's naive-timestamp and malformed-JSON branches are verified
+  by inspection only, not by a test.
+
 ## 10. Open questions
 
 None blocking. Weight values for H and S are deliberately deferred to P3, where

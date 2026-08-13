@@ -59,6 +59,21 @@ def _active_shelf_ideas() -> list:
         return []
 
 
+def _weekly_ipos(on: date) -> list[dict]:
+    """IPO watch rows for the digest. Wider than the daily brief's cap: the
+    weekly is where a reader plans the coming week's windows."""
+    from core.delivery.brief import _ipo_watch
+    return _ipo_watch(max_items=settings.DELIVERY_WEEKLY_MAX_IPOS, on=on)
+
+
+def _safe_weekly_ipos(on: date) -> list[dict]:
+    try:
+        return _weekly_ipos(on)
+    except Exception as exc:
+        logger.warning("[weekly] ipo read failed (non-fatal): %s", exc)
+        return []
+
+
 def _narrate_weekly(review: dict) -> str:
     fallback = _fallback_headline(review)
     started = time.time()
@@ -211,6 +226,7 @@ def build_weekly_review(
              "last_paper_review": getattr(i, "last_paper_review", "")}
             for i in _active_shelf_ideas()
         ],
+        "ipo_watch": _safe_weekly_ipos(on),
     }
     review["headline"] = _narrate_weekly(review)
     return review
@@ -228,6 +244,24 @@ def render_weekly_text(review: dict) -> str:
                      f"conviction {c['conviction']:.2f}")
     for s in review.get("switch_suggestions", []):
         lines.append(f"SWITCH: {s['symbol']} → {s['switch_candidate']}")
+    ipos = review.get("ipo_watch", []) or []
+    if ipos:
+        from core.delivery.brief import _ipo_demand, _ipo_lean, _ipo_window
+        # render_weekly_text is called directly from the HTTP route in
+        # services/api/routes/delivery_api.py with no per-user wrapper (only
+        # run_weekly_review wraps this per user) — a malformed stored date
+        # must degrade, not 500. Same guard as both brief renderers.
+        try:
+            on = date.fromisoformat(review["date"])
+        except (TypeError, ValueError):
+            on = date.today()
+        lines.append("IPO watch (research view, not advice):")
+        for w in ipos:
+            lean, _reason = _ipo_lean(w)
+            window = _ipo_window(w, on)
+            demand = _ipo_demand(w) if lean not in ("data pending", "not open yet") else ""
+            bits = [b for b in (window, f"Lean: {lean}", demand) if b]
+            lines.append(f"  • {w['symbol']} {w.get('company', '')} — " + " · ".join(bits))
     sb = review.get("scoreboard", {})
     if sb.get("checked"):
         lines.append(f"Scoreboard: {sb['correct']}/{sb['checked']} judged calls right")

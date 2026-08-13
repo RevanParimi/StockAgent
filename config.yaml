@@ -427,6 +427,15 @@ discovery:
   ipo_lockin_warn_days: 7        # flag anchor/pre-IPO lock-in expiries within N days
   ipo_qib_weight: 3.0            # QIB subscription weighted 3x retail (spec §6.2)
 
+# ── PI Prospect — IPO intelligence (spec 2026-08-11) ────────────────────────
+ipo:
+  enabled: true
+  refresh_hour: 8               # daily calendar+ladder refresh (IST)
+  refresh_hour_live: 18         # second pass, after the 17:00 NSE bid update
+  bid_ladder_enabled: true      # kill-switch for the per-symbol ladder fetch
+  max_ladder_fetches: 10        # cap per refresh — one NSE call per open issue
+  cache_max_age_hours: 48       # watchdog invariant threshold
+
 generic_graph:
   # Neutral 8-dimension weights for sectors without a native graph (must sum to 1.0).
   agent_weights:
@@ -466,6 +475,7 @@ delivery:
   brief_max_ideas: 5                   # discovery ideas shown
   brief_idea_reason_maxlen: 180        # per-idea reason line cap
   brief_max_ipos: 3                    # IPOs shown after dedup
+  weekly_max_ipos: 6                   # IPO rows in the weekly digest
   # Brief enhancements (2026-07-28): earnings-why, IPO lean
   brief_ipo_strong_demand_x: 10.0      # total-x at/above => STRONG lean
   brief_ipo_strong_qib_x: 15.0         # qib-x at/above => STRONG lean

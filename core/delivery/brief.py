@@ -213,6 +213,30 @@ def _dedup_ipos(rows: list[dict], max_items: int) -> list[dict]:
     return [best[s] for s in seq][:max_items]
 
 
+def _ipo_window(row: dict, on: date) -> str:
+    """Plain-English window line for one IPO row."""
+    state = row.get("state", "unknown")
+    if state == "open":
+        try:
+            days = (date.fromisoformat(row.get("issue_end", "")) - on).days
+        except (TypeError, ValueError):
+            return "open now"
+        if days <= 0:
+            return "closes today"
+        if days == 1:
+            return "closes tomorrow"
+        return f"closes in {days} days"
+    if state == "upcoming":
+        try:
+            opens = date.fromisoformat(row.get("issue_start", ""))
+        except (TypeError, ValueError):
+            return "opens soon"
+        return f"opens {opens.day} {opens.strftime('%b')}"
+    if state == "closed":
+        return "bidding closed — awaiting listing"
+    return ""
+
+
 def _ipo_demand(w: dict) -> str:
     """Human-readable subscription demand line for one IPO row."""
     total, qib, retail = w.get("total_x"), w.get("qib_x"), w.get("retail_x")
@@ -220,7 +244,12 @@ def _ipo_demand(w: dict) -> str:
         return "demand data pending"
     parts: list[str] = []
     if total is not None:
-        parts.append(f"{total:g}× overall")
+        # noOfTime (the raw-feed fallback) is the NSE-only figure — under-
+        # reporting vs the all-exchange number the market quotes, sometimes
+        # by 50%+. Qualify it so the kill-switch degrades to an honestly
+        # partial figure, not a wrong one shown as if it were complete.
+        qualifier = " (NSE only)" if w.get("total_x_nse_only") else ""
+        parts.append(f"{total:g}× overall{qualifier}")
     extra = []
     if qib is not None:
         extra.append(f"QIB {qib:g}×")
@@ -236,14 +265,26 @@ def _ipo_lean(row: dict) -> tuple[str, str]:
 
     Demand-only: the IPO feed carries no valuation/earnings data, so this never
     claims a fundamental/P-E view. Never personal advice (spec §1)."""
+    # An issue that has not opened has no bids by definition. Calling that
+    # "data pending" reads as a fault in the tool rather than a fact about
+    # the calendar, which is exactly how the pre-P0 brief read.
+    if row.get("state") == "upcoming":
+        return ("not open yet", "Bidding has not started.")
     total, qib, retail = row.get("total_x"), row.get("qib_x"), row.get("retail_x")
     if total is None and qib is None and retail is None:
         return ("data pending", "subscription not yet reported")
-    t, q = (total or 0.0), (qib or 0.0)
-    if t >= settings.DELIVERY_BRIEF_IPO_STRONG_DEMAND_X or q >= settings.DELIVERY_BRIEF_IPO_STRONG_QIB_X:
+    # Decide only on legs that are actually present. Defaulting an absent
+    # leg to 0.0 (the old behaviour) reads as "SOFT DEMAND" on absence, not
+    # on evidence — the dark-signal rule applies to this decision same as
+    # to the fetch layer that produces total_x/qib_x/retail_x.
+    legs = [x for x in (total, qib) if x is not None]
+    if not legs:
+        return ("data pending", "subscription not yet reported")
+    if ((total is not None and total >= settings.DELIVERY_BRIEF_IPO_STRONG_DEMAND_X)
+            or (qib is not None and qib >= settings.DELIVERY_BRIEF_IPO_STRONG_QIB_X)):
         return ("STRONG DEMAND",
                 "Heavy demand — historically tends to list well, though never guaranteed.")
-    if t < settings.DELIVERY_BRIEF_IPO_SOFT_DEMAND_X and q < settings.DELIVERY_BRIEF_IPO_SOFT_DEMAND_X:
+    if all(x < settings.DELIVERY_BRIEF_IPO_SOFT_DEMAND_X for x in legs):
         return ("SOFT DEMAND", "Light subscription so far — muted interest.")
     return ("MODERATE DEMAND", "Steady subscription interest.")
 
@@ -429,17 +470,31 @@ def _earnings_soon(symbols: list[str], on: date) -> list[dict]:
         return []
 
 
-def _ipo_watch(max_items: int | None = None) -> list[dict]:
+def _ipo_watch(max_items: int | None = None, on: date | None = None) -> list[dict]:
     try:
+        from core.ipo.calendar import issue_state
+        on = on or date.today()
         cache = load_ipo_cache()
         mi = max_items if max_items is not None else settings.DELIVERY_BRIEF_MAX_IPOS
         rows = cache.get("current", []) + cache.get("upcoming", [])
-        out = [{
-            "symbol": r.get("symbol", ""), "company": r.get("company", ""),
-            "status": r.get("status", ""), "qib_x": r.get("qib_x"),
-            "retail_x": r.get("retail_x"), "total_x": r.get("total_x"),
-            "issue_price": r.get("issue_price"),
-        } for r in rows]
+        out = []
+        for r in rows:
+            state = issue_state(r, on)
+            if state == "listed":
+                continue          # it has a tape now; the tracker owns it
+            out.append({
+                "symbol": r.get("symbol", ""), "company": r.get("company", ""),
+                "status": r.get("status", ""), "state": state,
+                "issue_start": r.get("issue_start", ""),
+                "issue_end": r.get("issue_end", ""),
+                "qib_x": r.get("qib_x"), "retail_x": r.get("retail_x"),
+                "total_x": r.get("total_x"), "issue_price": r.get("issue_price"),
+                "cutoff_share": r.get("cutoff_share"),
+                "total_x_nse_only": r.get("total_x_nse_only", False),
+            })
+        # Open issues first — they are the ones with a deadline attached.
+        order = {"open": 0, "closed": 1, "upcoming": 2, "unknown": 3}
+        out.sort(key=lambda r: order.get(r["state"], 9))
         return _dedup_ipos(out, mi)
     except Exception as exc:
         logger.warning("[brief] ipo watch failed (non-fatal): %s", exc)
@@ -570,7 +625,7 @@ def build_morning_brief(
         "overnight": _overnight_items(),
         "earnings_soon": _earnings_soon(held, on),
         "discovery_adds": _enrich_discovery_adds(_shelf_events_since(since)),
-        "ipo_watch": _ipo_watch(),
+        "ipo_watch": _ipo_watch(on=on),
         "lockin_flags": [
             e.model_dump() for e in upcoming_lockin_alerts(on, symbols=watched or None)
         ],
@@ -599,6 +654,15 @@ def render_brief_text(brief: dict) -> str:
     Renders identically in email, web-push, and the in-app Inbox. Each section
     auto-hides when empty. Never raises.
     """
+    # The IPO section renders window state ("closes tomorrow"), which is
+    # relative to the day the brief is FOR, not the day it is rendered.
+    # Guarded like the `hdr` parse below it: this function documents "never
+    # raises", and render_brief_html's except-fallback calls it — an
+    # unguarded parse here would make the fallback itself raise.
+    try:
+        on = date.fromisoformat(brief["date"]) if brief.get("date") else date.today()
+    except (TypeError, ValueError):
+        on = date.today()
     bar = "═" * 42
     L: list[str] = []
     try:
@@ -676,14 +740,18 @@ def render_brief_text(brief: dict) -> str:
 
     ipos = brief.get("ipo_watch", []) or []
     if ipos:
-        L += ["IPOs OPEN NOW   (the tool's research view — not advice)",
+        L += ["IPO WATCH   (the tool's research view — not advice)",
               "  × = times the issue was subscribed; high QIB/overall = institutional interest."]
         for w in ipos:
             lean, reason = _ipo_lean(w)
-            if lean == "data pending":
-                L.append(f"  • {w['symbol']}  {w.get('company', '')}  ·  Lean: data pending — {reason}")
+            window = _ipo_window(w, on)
+            head = f"  • {w['symbol']}  {w.get('company', '')}"
+            if window:
+                head += f"  ·  {window}"
+            L.append(head)
+            if lean in ("data pending", "not open yet"):
+                L.append(f"      {reason}")
             else:
-                L.append(f"  • {w['symbol']}  {w.get('company', '')}")
                 L.append(f"      Lean: {lean} · {_ipo_demand(w)}")
                 L.append(f"      {reason}")
         L.append("")
@@ -757,6 +825,10 @@ def _html_rows(trs: str) -> str:
 
 
 def _render_brief_html_inner(brief: dict, H: dict) -> str:
+    try:
+        on = date.fromisoformat(brief["date"]) if brief.get("date") else date.today()
+    except (TypeError, ValueError):
+        on = date.today()
     try:
         hdr = date.fromisoformat(brief.get("date", "")).strftime("%A, %d %B %Y")
     except Exception:
@@ -882,17 +954,22 @@ def _render_brief_html_inner(brief: dict, H: dict) -> str:
         trs = []
         for w in ipos:
             lean, reason = _ipo_lean(w)
-            demand = _ipo_demand(w) if lean != "data pending" else "subscription not yet reported"
+            window = _ipo_window(w, on)
+            demand = _ipo_demand(w) if lean not in ("data pending", "not open yet") else reason
             price = f'₹{_inr(w.get("issue_price"))}' if w.get("issue_price") else ""
-            lean_color = H["warn"] if lean in ("data pending", "SOFT DEMAND") else H["accent"]
+            lean_color = H["warn"] if lean in ("data pending", "not open yet", "SOFT DEMAND") else H["accent"]
             leancol = f'<span style="color:{lean_color};font-weight:600">{_esc(lean)}</span>'
+            # Keep border-top + vertical-align:top — every sibling section
+            # in this email has them, and dropping them here would make the
+            # IPO block the only one with no divider hairline.
             trs.append(
                 f'<tr><td style="padding:12px 0;border-top:1px solid {H["hair_soft"]};vertical-align:top">'
                 f'<div class="sa-ink" style="font:600 14.5px {_FONT};color:{H["ink"]}">{_esc(w["symbol"])} '
                 f'<span class="sa-muted" style="color:{H["muted"]};font-weight:600;font-size:12.5px">{_esc(w.get("company", ""))}</span></div>'
-                f'<div class="sa-muted" style="font:400 13px/1.5 {_FONT};color:{H["muted"]};margin:4px 0 0">Lean: {leancol} — {_esc(demand)}</div></td>'
+                f'<div class="sa-muted" style="font:400 13px/1.5 {_FONT};color:{H["muted"]};margin:4px 0 0">{_esc(window)}</div>'
+                f'<div class="sa-muted" style="font:400 13px/1.5 {_FONT};color:{H["muted"]};margin:2px 0 0">Lean: {leancol} — {_esc(demand)}</div></td>'
                 f'<td class="sa-ink" style="padding:12px 0;text-align:right;white-space:nowrap;width:96px;color:{H["ink"]};font:600 14px {_FONT}">{price}</td></tr>')
-        rows.append(_section("IPOs open now · research view, not advice", _html_rows("".join(trs)), H))
+        rows.append(_section("IPO watch · research view, not advice", _html_rows("".join(trs)), H))
 
     # LOCK-IN
     lockin = brief.get("lockin_flags", []) or []

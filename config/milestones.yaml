@@ -66,7 +66,49 @@ milestones:
       Remove this entry once judged.
     docs: docs/superpowers/specs/2026-07-28-learning-evidence.md
 
+  - id: ipo_p0_live_window_check
+    kind: milestone
+    title: "IPO P0 — verify a live window end-to-end"
+    check: manual_confirmation
+    deadline: 2026-09-15
+    lead_days: 3
+    action: >
+      During any open mainboard IPO window, confirm the daily brief shows a
+      real subscription x (not 'data pending') and the correct window line,
+      and that a CLOSED issue is not rendered as open. Also settle spec
+      section 7 risk 6 - compare the stored combined vs nse_only ladders for
+      one symbol against NSE's published end-of-day figure and pin the
+      authority in a docstring. Remove this entry once judged.
+    docs: docs/superpowers/specs/2026-08-11-ipo-intelligence-design.md
+
+  - id: ipo_p1_backtest_review
+    kind: milestone
+    title: "IPO P1 — read the historical measurement report"
+    check: manual_confirmation
+    deadline: 2026-09-30
+    lead_days: 5
+    action: >
+      Run `python -m scripts.ipo_backfill --since 2024-05-01 --enrich` then
+      `python -c "from core.ipo.history import IpoHistoryStore; from
+      core.ipo.report import render_report, summarise;
+      print(render_report(summarise(IpoHistoryStore().load_all())))"` and
+      read the output (python -m core.ipo.report prints nothing - the
+      module has no __main__ block). Decide whether the bucket sample sizes
+      support proceeding to P2/P3 or whether the spine needs a wider date
+      range first. Remove once judged.
+    docs: docs/superpowers/specs/2026-08-11-ipo-intelligence-design.md
+
 invariants:
+  - id: ipo_cache_fresh
+    kind: invariant
+    title: "IPO calendar cache is being refreshed"
+    check: ipo_cache_fresh
+    action: >
+      The twice-daily ipo_refresh job has stopped. The brief keeps rendering
+      stale issues with no error, so this is silent without the watchdog.
+      Check the scheduler job ids ipo_refresh_am / ipo_refresh_pm.
+    docs: docs/superpowers/specs/2026-08-11-ipo-intelligence-design.md
+
   - id: registry_is_current
     kind: invariant
     title: "Deployed registry matches origin/main"

@@ -13,7 +13,7 @@ import logging
 import os
 import urllib.request
 from dataclasses import dataclass, field
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Callable, Literal
 from zoneinfo import ZoneInfo
@@ -343,3 +343,39 @@ def manual_confirmation() -> CheckResult:
     """No programmatic signal exists; stays pending until the entry is removed
     from the registry. Deliberately dumb — a date-only reminder."""
     return CheckResult("pending", "Awaiting manual confirmation.")
+
+
+# ---------------------------------------------------------------------------
+# PI Prospect — IPO feed liveness
+# ---------------------------------------------------------------------------
+
+@check("ipo_cache_fresh")
+def ipo_cache_fresh() -> CheckResult:
+    """The IPO cache is refreshed twice daily by the ipo_refresh jobs. If it
+    goes stale the jobs are dead, and the failure is otherwise SILENT — the
+    brief keeps rendering yesterday's issues with no error anywhere."""
+    from core.config import settings
+
+    max_age = float(getattr(settings, "IPO_CACHE_MAX_AGE_HOURS", 48))
+    path = _data_dir() / "market_cache" / "ipo.json"
+    if not path.exists():
+        return CheckResult("pending", f"IPO cache absent at {path}",
+                           {"path": str(path)})
+    try:
+        stamp = json.loads(path.read_text(encoding="utf-8")).get("fetched_at") or ""
+        fetched = datetime.fromisoformat(stamp)
+    except Exception as exc:
+        return CheckResult("pending", f"IPO cache timestamp unreadable: {exc}",
+                           {"path": str(path)})
+    if fetched.tzinfo is None:
+        fetched = fetched.replace(tzinfo=timezone.utc)
+    age_h = (datetime.now(timezone.utc) - fetched).total_seconds() / 3600.0
+    evidence = {"fetched_at": stamp, "age_hours": round(age_h, 1),
+                "max_age_hours": max_age}
+    if age_h > max_age:
+        return CheckResult(
+            "pending",
+            f"IPO cache is stale — {age_h:.1f}h old (limit {max_age:.0f}h). "
+            f"The twice-daily ipo_refresh job is not running.",
+            evidence)
+    return CheckResult("satisfied", f"IPO cache {age_h:.1f}h old.", evidence)

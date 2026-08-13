@@ -1,4 +1,7 @@
 """Watchdog checks — registration, failure containment, Atlas pre-flight."""
+import json
+from datetime import datetime, timedelta, timezone
+
 import pytest
 
 from core.ops.watchdog import checks as C
@@ -68,3 +71,33 @@ class TestAtlasCutoverPending:
         r = C.run_check("atlas_cutover_pending")
         assert r.state == "blocked"
         assert "u_other" in r.detail
+
+
+def _write_ipo_cache(tmp_path, hours_old: float):
+    (tmp_path / "market_cache").mkdir(parents=True, exist_ok=True)
+    stamp = (datetime.now(timezone.utc) - timedelta(hours=hours_old)).isoformat()
+    (tmp_path / "market_cache" / "ipo.json").write_text(
+        json.dumps({"fetched_at": stamp, "degraded": False,
+                    "current": [], "upcoming": [], "past": []}),
+        encoding="utf-8")
+
+
+def test_ipo_cache_fresh_satisfied(tmp_path, monkeypatch):
+    monkeypatch.setattr(C, "_DATA_DIR", tmp_path)
+    _write_ipo_cache(tmp_path, hours_old=3)
+    assert C.run_check("ipo_cache_fresh").state == "satisfied"
+
+
+def test_ipo_cache_stale_is_pending(tmp_path, monkeypatch):
+    """A stale cache means the twice-daily refresh job is dead — exactly the
+    class of silent failure the watchdog exists to catch."""
+    monkeypatch.setattr(C, "_DATA_DIR", tmp_path)
+    _write_ipo_cache(tmp_path, hours_old=72)
+    result = C.run_check("ipo_cache_fresh")
+    assert result.state == "pending"
+    assert "stale" in result.detail.lower()
+
+
+def test_ipo_cache_absent_is_pending(tmp_path, monkeypatch):
+    monkeypatch.setattr(C, "_DATA_DIR", tmp_path)
+    assert C.run_check("ipo_cache_fresh").state == "pending"

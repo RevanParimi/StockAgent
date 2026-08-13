@@ -918,11 +918,21 @@ DISCOVERY_SIGNAL_WEIGHTS: dict[str, float] = {
 # ---------------------------------------------------------------------------
 # Compass Phase C — IPO tracker + M4 proactive delivery (spec §6.2 / §7)
 # ---------------------------------------------------------------------------
-DISCOVERY_IPO_ENABLED: bool = bool(cfg("discovery.ipo_enabled", env="DISCOVERY_IPO_ENABLED", fallback=False))
+DISCOVERY_IPO_ENABLED: bool = bool(cfg("discovery.ipo_enabled", fallback=False))
 DISCOVERY_IPO_LISTING_WINDOW_DAYS: int = int(cfg("discovery.ipo_listing_window_days", fallback=90))
 DISCOVERY_IPO_MAX_DEEP_DIVES: int = int(cfg("discovery.ipo_max_deep_dives", fallback=2))
 DISCOVERY_IPO_LOCKIN_WARN_DAYS: int = int(cfg("discovery.ipo_lockin_warn_days", fallback=7))
 DISCOVERY_IPO_QIB_WEIGHT: float = float(cfg("discovery.ipo_qib_weight", fallback=3.0))
+
+# ---------------------------------------------------------------------------
+# PI Prospect — IPO intelligence (design 2026-08-11)
+# ---------------------------------------------------------------------------
+IPO_ENABLED: bool = bool(cfg("ipo.enabled", fallback=True))
+IPO_REFRESH_HOUR: int = int(cfg("ipo.refresh_hour", fallback=8))
+IPO_REFRESH_HOUR_LIVE: int = int(cfg("ipo.refresh_hour_live", fallback=18))
+IPO_BID_LADDER_ENABLED: bool = bool(cfg("ipo.bid_ladder_enabled", fallback=True))
+IPO_MAX_LADDER_FETCHES: int = int(cfg("ipo.max_ladder_fetches", fallback=10))
+IPO_CACHE_MAX_AGE_HOURS: int = int(cfg("ipo.cache_max_age_hours", fallback=48))
 
 ADVISOR_SWITCH_CONVICTION_GAP: float = float(cfg("advisor.switch_conviction_gap", fallback=0.15))
 
@@ -950,6 +960,7 @@ DELIVERY_BRIEF_OVERNIGHT_STOPWORDS: list = list(cfg("delivery.brief_overnight_st
 DELIVERY_BRIEF_MAX_IDEAS: int = int(cfg("delivery.brief_max_ideas", fallback=5))
 DELIVERY_BRIEF_IDEA_REASON_MAXLEN: int = int(cfg("delivery.brief_idea_reason_maxlen", fallback=180))
 DELIVERY_BRIEF_MAX_IPOS: int = int(cfg("delivery.brief_max_ipos", fallback=3))
+DELIVERY_WEEKLY_MAX_IPOS: int = int(cfg("delivery.weekly_max_ipos", fallback=6))
 # Brief enhancements (2026-07-28)
 DELIVERY_BRIEF_IPO_STRONG_DEMAND_X: float = float(cfg("delivery.brief_ipo_strong_demand_x", fallback=10.0))
 DELIVERY_BRIEF_IPO_STRONG_QIB_X: float = float(cfg("delivery.brief_ipo_strong_qib_x", fallback=15.0))

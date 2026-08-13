@@ -1,7 +1,7 @@
 # PI "Prospect" — IPO Intelligence
 
 **Date:** 2026-08-11
-**Status:** P0 + P1 implemented (plan `docs/superpowers/plans/2026-08-12-ipo-prospect-p0-p1.md`); P2-P5 not started
+**Status:** P0 + P1 implemented (plan `docs/superpowers/plans/2026-08-12-ipo-prospect-p0-p1.md`) and live on prod as of 2026-08-13. **P2 scoped 2026-08-13** (§5 P2) — plan pending. P3-P5 not started.
 **Codename:** Prospect (house style: Compass, Atlas, Lighthouse)
 
 ---
@@ -33,7 +33,7 @@ express today.
 | Decision | Choice | Consequence |
 |---|---|---|
 | Universe | **NSE mainboard only** | SME stays excluded (`DISCOVERY_INCLUDE_SME=false`). Global/unlisted (the SpaceX case) is **out of scope** — no NSE tape, no structured source. |
-| GMP | **Yes, via Serper search extraction** | Stored with source + timestamp, always rendered as *unofficial grey-market chatter*. No aggregator HTML scraping. |
+| GMP | **Yes, via Serper search extraction** — but **gated behind a dedicated key from P2 on** (§5 P2: measured Serper headroom is 80–300 calls/mo, not the 2,300 first assumed) | Stored with source + timestamp, always rendered as *unofficial grey-market chatter*. No aggregator HTML scraping. |
 | Verdicts | **Both horizons, separately labelled** | SHORT (listing → T+5) and LONG (T+180/T+365) never collapse into one score. |
 | Proof gate | **Backfill first, ship visible after** | P0 (pure bugfix) ships immediately; scored verdicts run dark until the P1 backtest produces a measured hit-rate. |
 
@@ -194,12 +194,131 @@ market* — not a model, a measurement.
 > validated **forward** from launch. This is stated here so it cannot surface as
 > a surprise in month three.
 
-### P2 — Feature layer
+### P2 — Feature layer *("Prospect: capture")*
 
-GMP via Serper (~2,300 calls/mo headroom against the 2500 cap — the counter at
-`services/data/stores/api_usage.py` already self-checks at boot), anchor book,
-OFS share, RHP extraction, news-volume hype proxy. Each an independent fetcher
-with its own tests and its own dark-signal fallback.
+**Scoped 2026-08-13.** The original one-paragraph sketch (GMP via Serper, anchor
+book, OFS share, RHP extraction, news-volume proxy — "each an independent
+fetcher") survives in outline, but two measurements taken while scoping changed
+its shape and are recorded here so the reasoning is not lost.
+
+#### The two findings that reshaped this phase
+
+**1. The Serper headroom figure in the original sketch was wrong by an order of
+magnitude.** It claimed "~2,300 calls/mo headroom against the 2500 cap". Prod
+counter read live on 2026-08-13: **924 calls on day 13 of 31**, and the event
+ledger at `data/logs/api_usage_events.jsonl` shows 179 on Aug 3 → 922 on Aug 12,
+a burn of **~83 calls/day**. Projected month-end **~2,200–2,420 against a 2,500
+cap** ⇒ true headroom is **80–300 calls/month**. GMP + news-volume at even two
+snapshots a day across ~3 concurrent issues is ~360 calls/month and would
+exhaust the cap on its own, competing directly with the daily pipeline.
+
+**2. The most valuable perishable signals are free, already fetched, and being
+thrown away.** P0's `_enrich_open_issues` fetches the full bid ladder — the
+QIB→FII/DomFI/MutualFund split *and* `cutoff_share` — on every open issue, and
+then discards it: the row is rebuilt from `_normalise` on the next pass, and no
+consumer reads `bid_ladder` at all. `cutoff_share` reaches the brief row
+(`core/delivery/brief.py:492`) and is never rendered. §3 rates cut-off share and
+demand velocity as *official* froth measures that explicitly **demoted GMP** to
+a corroborator. So the highest-value capture costs zero API calls.
+
+Together these invert the build order: **capture the free official signals
+first; treat GMP as an optional corroborator gated behind its own key.**
+
+#### Decisions
+
+| Decision | Choice | Consequence |
+|---|---|---|
+| Build order | **Perishable-first** | Capture starts a clock that cannot be rewound — at ~5–15 mainboard issues/month, a month of delay is ~10 windows permanently absent from the forward validation set. OFS backfill is non-perishable and can happen any time, so it goes second. |
+| Serper | **GMP built, gated, dark** | Reads a dedicated `SERPER_API_KEY_IPO`. Unset ⇒ returns `None`, records no call, never touches the shared quota. P2 does not stall on a billing decision. |
+| Visibility | **Facts visible, scores dark** | Observed composition renders on live windows (NSE-published facts, same class as the subscription × the brief already prints). Every derived index, quadrant and verdict stays dark for P3/P5. Rationale: fully-dark capture is unobservable, so a silently-wrong ladder accumulates garbage for weeks — the exact failure mode the P1 backfill review caught once already. |
+| RHP extraction | **Deferred out of P2** | Heaviest, most brittle, not backfillable, least validatable of the five. Gets its own phase or is dropped. |
+| Named anchor-investor list | **Deferred out of P2** | The ladder already yields institutional *composition* free. The named anchor book is a separate disclosure and adds "who" on top of "how much". |
+
+#### Storage — an append-only ledger, separate from the P1 spine
+
+`data/ipo/ipo_signals.jsonl`, one row per (symbol, capture time).
+
+Folding snapshots into `IpoRecord` was considered and **rejected**: `upsert`
+rewrites the whole file per row (already the O(n²)/OneDrive-lock problem in
+§9b) and **the P1 backfill replaces whole rows**, so re-running it would erase
+captured signals — precisely the defect fixed in `a578ac6`. Per-symbol files
+were rejected for forcing P3 to glob. Append-only means no rewrite path exists
+to wipe the ledger.
+
+As with the P1 spine: **no derived value ever enters this file.**
+
+#### Components
+
+1. **`core/ipo/signals.py`** — `IpoSignalSnapshot` (symbol, captured_at, state,
+   `combined`, `nse_only`, `cutoff_share`, `gmp`, `news_volume`) and
+   `IpoSignalStore`: append-only JSONL, corrupt-line tolerant like
+   `IpoHistoryStore.load_all`, deduped on (symbol, capture hour) so a manual
+   re-run cannot double-count.
+2. **`core/ipo/velocity.py`** — pure functions over one symbol's snapshots.
+   `demand_velocity()` (× added since the previous snapshot and since window
+   open) and `final_snapshot()` (the last row before close — the feature vector
+   P3 will consume). Deltas over captured facts; no scores.
+3. **`services/data/fetchers/ipo_offer.py`** — OFS/fresh split from the
+   `issueInfo` free text. **Task 1 is a spike**, mirroring P0's structure:
+   confirm `issueInfo` carries the split for *past* symbols. If it does not,
+   OFS drops out of P2 and that is reported — no parser for a field that is not
+   there.
+4. **`services/data/fetchers/ipo_gmp.py`** — built, gated, dark. Requires **≥2
+   agreeing sources** (median); a lone snippet number returns `None`, because
+   grey-market chatter from one search result is not a measurement.
+   `SERPER_API_KEY_IPO` is a **secret**, so it keeps `env=` — the carve-out in
+   the no-env-for-toggles rule, not a violation of it.
+5. **Wiring** — `_enrich_open_issues` appends a snapshot after each successful
+   ladder fetch. **Zero additional NSE calls**: the same fetch, persisted
+   instead of discarded.
+
+#### Two §9b prerequisites fold in, because capture is broken without them
+
+- **The rebuild-discard bug.** Ladder fields evaporate at the next 08:00 pass.
+  Unfixed, a closed issue's **final ladder — the single most valuable row in the
+  ledger** — is lost the morning after it closes. Fix: carry the previous row's
+  ladder forward when the issue has closed or the fetch failed.
+- **The Sunday 18:00 collision.** `ipo_refresh_pm` and `weekly_review` fire in
+  the same minute unordered. Move the refresh to **17:45** — still after NSE's
+  ~17:00 bid update, and capture then deterministically precedes the digest that
+  reads it.
+
+#### What becomes visible
+
+`_ipo_demand` gains the split it already holds:
+
+```
+• MILKYMIST  Milkymist Dairy  ·  closes today
+    Lean: STRONG DEMAND · 12.4× overall (QIB 28×, retail 6×) · 46% at cut-off · +3.1× today
+```
+
+Every clause omitted when `None`. No index, no quadrant, no two-horizon verdict.
+
+#### Config
+
+`ipo.signals_enabled: true`, `ipo.gmp_enabled: false`,
+`ipo.gmp_min_sources: 2`, `ipo.signal_retention_days: 400` (>365 so P4 can read
+a full convergence year). All via `cfg()`, no `env=`; `SERPER_API_KEY_IPO` is
+the sole `env=` and only because it is a secret.
+
+#### Testing
+
+Ledger append-only / dedup / corrupt-line tolerance. Velocity with a single
+snapshot returning `None`, never `0`. GMP keyless ⇒ `None` **and zero
+`record_call`** — the quota gate is asserted, not assumed. OFS parser against
+real spike strings plus a garbage string ⇒ `None`. Closes the positive-case gap
+§9b flagged: `combined["total"]` and `dom_fi` are currently only asserted
+`is None`, and P2 is `dom_fi`'s first consumer. The regression that matters
+most: **a closed issue keeps its final ladder across a later refresh pass.**
+
+#### Not in P2
+
+RHP PDF extraction; the named anchor-investor list; hype/substance indices;
+verdicts; any change to the brief's existing demand lean; the auditor
+`Lane="ipo"` extension (P5).
+
+**Cost:** zero new API calls while `gmp_enabled: false`. NSE ladder fetch count
+unchanged. Storage ≈ 50 KB/month.
 
 ### P3 — The model
 
@@ -238,20 +357,34 @@ rewritten.
 ## 6. Config surface
 
 New `ipo:` block in `config.yaml`, mirrored in `base.py` with `cfg()` and **no
-`env=`**:
+`env=`**. The single exception is `SERPER_API_KEY_IPO`, which is a *secret* and
+therefore keeps `env=` — the carve-out in the no-env-for-toggles rule.
 
 ```yaml
 ipo:
   enabled: true
   refresh_hour: 8               # daily calendar/bid refresh (IST)
-  refresh_hour_live: 18         # second pass while a window is open
+  refresh_hour_live: 17         # P2: was 18 — see below
+  refresh_minute_live: 45       # P2: 17:45, after NSE's ~17:00 bid update and
+                                #     strictly before Sunday's 18:00 weekly_review
   verdicts_visible: false       # P5 gate — flipped only on measured evidence
-  gmp_enabled: true
+  signals_enabled: true         # P2: append to the capture ledger
+  gmp_enabled: false            # P2: stays false until SERPER_API_KEY_IPO exists
+  gmp_min_sources: 2            # P2: a lone snippet number is not a measurement
   gmp_max_age_hours: 24
+  signal_retention_days: 400    # P2: >365 so P4 can read a full convergence year
   hype_weights: {...}           # P3
   substance_weights: {...}      # P3
   convergence_window_days: 365  # P4
 ```
+
+**`refresh_hour_live` moves 18:00 → 17:45 in P2.** The scheduler currently pins
+`minute=0` (`scheduler.py:501`), so the move needs a minute key alongside the
+hour. It applies every day rather than only Sunday: 17:45 is still after NSE's
+bid update, and a single daily slot is simpler than a weekday exception. The
+reason is the Sunday collision — `ipo_refresh_pm` and `weekly_review` both fire
+at 18:00 with no ordering, making the digest a coin flip between the fresh cache
+and the morning one (§9b).
 
 ## 7. Risks
 
@@ -312,37 +445,42 @@ Nothing here blocks merge; the Critical and Important findings were fixed in
 
 **Do before the next deploy**
 
-- **Verify `DISCOVERY_IPO_ENABLED` is unset in Railway.** P0 dropped the `env=`
-  override per the no-env-for-toggles rule, and `config.yaml` has
-  `ipo_enabled: true`. If prod currently sets that variable to `false`, this
-  branch turns the discovery IPO stage **on** at deploy. This is the one
-  follow-up with a behaviour change attached.
+- ~~**Verify `DISCOVERY_IPO_ENABLED` is unset in Railway.**~~ **✅ CLOSED
+  2026-08-13 — user-verified unset in both the env file and prod**, so dropping
+  the `env=` override was a no-op at runtime (`cfg()` already fell through to
+  `config.yaml`'s `discovery.ipo_enabled: true`). The deploy has since happened.
+  Do not re-raise.
 
 **Worth doing soon**
 
-- `combined["total"]` — the entire P1 predictor column — is only asserted
-  `is None` in the ladder fixture. Add a positive case. Same for `dom_fi`,
-  which currently has no consumer at all.
+- **→ absorbed into P2.** `combined["total"]` — the entire P1 predictor column —
+  is only asserted `is None` in the ladder fixture. Add a positive case. Same
+  for `dom_fi`, which currently has no consumer at all — P2 is its first.
 - `IpoHistoryStore.upsert` rewrites the whole file per row (O(n²) IO at ~206
   rows) and is the root cause of the OneDrive lock that `_upsert_with_retry`
   works around. An `upsert_many` fixes both.
-- `ipo_refresh_pm` (Sun 18:00 IST) and `weekly_review` (Sun 18:00 IST) fire in
-  the same minute with no ordering, so the digest is a coin flip between the
-  fresh cache and the 08:00 one. Writes are atomic, so this is
-  non-determinism, not corruption. Move one slot.
+- **→ absorbed into P2 (prerequisite).** `ipo_refresh_pm` (Sun 18:00 IST) and
+  `weekly_review` (Sun 18:00 IST) fire in the same minute with no ordering, so
+  the digest is a coin flip between the fresh cache and the 08:00 one. Writes
+  are atomic, so this is non-determinism, not corruption. Move one slot — P2
+  moves the refresh to 17:45 (§6).
 
 **Lower priority**
 
 - `IPO_ENABLED`, `IPO_REFRESH_HOUR`, `IPO_REFRESH_HOUR_LIVE` are declared in
   `base.py` but never read — the scheduler calls `cfg("ipo.…")` directly. Read
   them or delete them.
-- `_enrich_open_issues` rebuilds rows from `_normalise` each run, so
+- **→ absorbed into P2 (prerequisite; promoted from Lower priority).**
+  `_enrich_open_issues` rebuilds rows from `_normalise` each run, so
   `bid_ladder` / `cutoff_share` / ladder-derived `qib_x`/`retail_x` are
   discarded at the next 08:00 pass. A closed issue's brief line degrades
   overnight from "40× overall (QIB 90×, retail 12×)" to bare "40× overall".
-- `cutoff_share` is fetched, cached, and threaded into every brief row, then
-  never rendered. Either surface it (it is a real froth signal — see §3) or
-  drop the plumbing.
+  **P2 promotes this to a blocker:** unfixed, the closed issue's final ladder —
+  the most valuable row in the capture ledger — is lost the morning after the
+  window shuts.
+- **→ absorbed into P2 (surfaced).** `cutoff_share` is fetched, cached, and
+  threaded into every brief row, then never rendered. Either surface it (it is
+  a real froth signal — see §3) or drop the plumbing. P2 surfaces it.
 - `ipo_cache_fresh` cannot see a *degraded* feed: `refresh_ipo_cache` writes
   `fetched_at` even when the fetch failed, so a week-long NSE outage still
   reports `satisfied`. Correctly scoped to "the job died" per its docstring,

@@ -91,8 +91,12 @@ def test_backfill_is_idempotent(tmp_path, monkeypatch):
     script is expected to be run repeatedly."""
     tape = _tape("NEWCO", [400.0] * 6)
     monkeypatch.setattr(bf, "_load_past_ipos", lambda since, until: [
+        # listPastIPO never carries bid data — total_x/qib_x/retail_x are
+        # always None on the real feed. A fixture with total_x set (as this
+        # test used to do) is a shape the real feed cannot produce, and it
+        # is exactly why this test never caught the row-wipe bug (Finding 1).
         {"symbol": "NEWCO", "company": "NewCo Ltd", "listing_date": "2026-06-15",
-         "issue_price": 200.0, "total_x": 22.7, "qib_x": None, "retail_x": None},
+         "issue_price": 200.0, "total_x": None, "qib_x": None, "retail_x": None},
     ])
     monkeypatch.setattr(bf, "_load_tape", lambda end: tape)
     monkeypatch.setattr(bf, "build_index_pct", lambda a, b: (lambda s, e: 0.0))
@@ -100,6 +104,39 @@ def test_backfill_is_idempotent(tmp_path, monkeypatch):
     bf.run_backfill(base_dir=str(tmp_path), on=date(2026, 8, 12))
     bf.run_backfill(base_dir=str(tmp_path), on=date(2026, 8, 12))
     assert len(IpoHistoryStore(base_dir=str(tmp_path)).load_all()) == 1
+
+
+def test_backfill_preserves_prior_enriched_predictors(tmp_path, monkeypatch):
+    """The past-IPO feed never carries bid data. A naive rebuild that upserts
+    a fresh IpoRecord straight from the feed would overwrite the WHOLE row —
+    including total_x/qib_x/retail_x that a separate enrich_predictors() pass
+    already wrote — with None, destroying every enriched predictor on every
+    re-run. The module docstring says "re-run it freely"; this proves that
+    claim is actually true."""
+    tape = _tape("NEWCO", [400.0] * 6)
+    monkeypatch.setattr(bf, "_load_past_ipos", lambda since, until: [
+        {"symbol": "NEWCO", "company": "NewCo Ltd", "listing_date": "2026-06-15",
+         "issue_price": 200.0, "total_x": None, "qib_x": None, "retail_x": None},
+    ])
+    monkeypatch.setattr(bf, "_load_tape", lambda end: tape)
+    monkeypatch.setattr(bf, "build_index_pct", lambda a, b: (lambda s, e: 0.0))
+
+    store = IpoHistoryStore(base_dir=str(tmp_path))
+    store.append(IpoRecord(symbol="NEWCO", company="NewCo Ltd",
+                           listing_date="2026-06-15", issue_price=200.0,
+                           total_x=69.91, qib_x=197.55, retail_x=7.95,
+                           outcomes={"1": 5.0}))
+
+    bf.run_backfill(base_dir=str(tmp_path), on=date(2026, 8, 12))
+
+    rows = IpoHistoryStore(base_dir=str(tmp_path)).load_all()
+    assert len(rows) == 1
+    rec = rows[0]
+    assert rec.total_x == 69.91 and rec.qib_x == 197.55 and rec.retail_x == 7.95
+    # Outcomes are recomputed fresh from the tape every run (that is the
+    # point — horizons mature over time), so this is NOT expected to be
+    # carried forward like the predictors are.
+    assert rec.outcomes["1"] == 100.0
 
 
 def test_symbols_that_never_traded_are_recorded_not_dropped(tmp_path, monkeypatch):

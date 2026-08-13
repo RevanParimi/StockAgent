@@ -118,6 +118,13 @@ def run_backfill(base_dir: str | None = None, since: date | None = None,
     tape = _load_tape(on)
     index_pct = build_index_pct(since, on)
 
+    # listPastIPO never carries bid data (total_x/qib_x/retail_x are always
+    # None on that feed), and IpoHistoryStore.upsert replaces the WHOLE row.
+    # Rebuilding straight from the feed would silently discard everything
+    # enrich_predictors wrote in a separate pass. So: carry a prior
+    # predictor forward whenever the incoming feed row has nothing for it.
+    prior = {r.symbol: r for r in store.load_all()}
+
     written = 0
     for rec in listings:
         symbol = (rec.get("symbol") or "").strip()
@@ -126,14 +133,18 @@ def run_backfill(base_dir: str | None = None, since: date | None = None,
         sessions = symbol_sessions(tape, symbol)
         outcomes, excess, n = compute_outcomes(
             sessions, rec.get("issue_price"), index_pct)
+        p = prior.get(symbol)
         _upsert_with_retry(store, IpoRecord(
             symbol=symbol,
             company=rec.get("company", ""),
             listing_date=rec.get("listing_date", ""),
             issue_price=rec.get("issue_price"),
-            total_x=rec.get("total_x"),
-            qib_x=rec.get("qib_x"),
-            retail_x=rec.get("retail_x"),
+            total_x=rec.get("total_x") if rec.get("total_x") is not None
+                    else (p.total_x if p else None),
+            qib_x=rec.get("qib_x") if rec.get("qib_x") is not None
+                    else (p.qib_x if p else None),
+            retail_x=rec.get("retail_x") if rec.get("retail_x") is not None
+                    else (p.retail_x if p else None),
             outcomes=outcomes,
             excess=excess,
             listing_open=float(sessions["open"].iloc[0]) if n else None,

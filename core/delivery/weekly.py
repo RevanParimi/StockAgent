@@ -247,7 +247,14 @@ def render_weekly_text(review: dict) -> str:
     ipos = review.get("ipo_watch", []) or []
     if ipos:
         from core.delivery.brief import _ipo_demand, _ipo_lean, _ipo_window
-        on = date.fromisoformat(review["date"])
+        # render_weekly_text is called directly from the HTTP route in
+        # services/api/routes/delivery_api.py with no per-user wrapper (only
+        # run_weekly_review wraps this per user) — a malformed stored date
+        # must degrade, not 500. Same guard as both brief renderers.
+        try:
+            on = date.fromisoformat(review["date"])
+        except (TypeError, ValueError):
+            on = date.today()
         lines.append("IPO watch (research view, not advice):")
         for w in ipos:
             lean, _reason = _ipo_lean(w)

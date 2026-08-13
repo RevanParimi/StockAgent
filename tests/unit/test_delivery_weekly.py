@@ -139,6 +139,24 @@ def test_weekly_ipo_section_absent_when_no_issues():
     assert "IPO" not in wk.render_weekly_text(review)
 
 
+def test_render_weekly_text_survives_malformed_date():
+    """render_weekly_text is called directly from an HTTP route
+    (services/api/routes/delivery_api.py) with no per-user wrapper — unlike
+    build_weekly_review/run_weekly_review, which only run_weekly_review
+    wraps. A malformed stored date must degrade to today(), not raise
+    (Finding 5) — the same guard both brief renderers already have."""
+    review = {
+        "date": "not-a-date", "headline": "", "allocation": [],
+        "concentration_flags": [], "laggards": [], "switch_candidates": [],
+        "switch_suggestions": [], "scoreboard": {"counts": {}, "checked": 0, "correct": 0},
+        "ipo_watch": [{"symbol": "OPENCO", "company": "Open Co", "state": "open",
+                       "issue_start": "2026-08-14", "issue_end": "2026-08-18",
+                       "total_x": 4.2, "qib_x": None, "retail_x": None}],
+    }
+    text = wk.render_weekly_text(review)          # must not raise
+    assert isinstance(text, str) and "OPENCO" in text
+
+
 def test_ipo_read_failure_does_not_break_the_weekly(monkeypatch):
     monkeypatch.setattr(wk, "_weekly_ipos", lambda on: (_ for _ in ()).throw(RuntimeError("boom")))
     # build_weekly_review catches per-section; the helper itself must be safe.

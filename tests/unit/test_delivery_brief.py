@@ -35,7 +35,7 @@ def test_build_brief_assembles_sections(tmp_path, monkeypatch):
         {"event": "added", "symbol": "NEWCO", "detail": "conviction=0.72"}])
     monkeypatch.setattr(br, "_earnings_soon", lambda symbols, on: [
         {"symbol": "GOODCO", "date": "2026-07-10"}])
-    monkeypatch.setattr(br, "_ipo_watch", lambda: [
+    monkeypatch.setattr(br, "_ipo_watch", lambda on=None: [
         {"symbol": "SOON", "company": "Soon Ltd", "status": "upcoming"}])
     monkeypatch.setattr(br, "upcoming_lockin_alerts", lambda on, symbols=None: [])
 
@@ -226,6 +226,16 @@ def test_ipo_demand_string():
     assert br._ipo_demand({}) == "demand data pending"
 
 
+def test_ipo_demand_qualifies_nse_only_total():
+    """A total_x that only ever came from the raw feed (noOfTime) is the
+    NSE-only figure — under-reporting vs the all-exchange number the market
+    quotes, by 52% on the branch's own MOLBIO fixture. It must render
+    qualified, not as a bare (and silently wrong) number (Finding 3)."""
+    assert br._ipo_demand({"total_x": 2.05, "total_x_nse_only": True}) == "2.05× overall (NSE only)"
+    assert br._ipo_demand({"total_x": 2.05, "total_x_nse_only": False}) == "2.05× overall"
+    assert br._ipo_demand({"total_x": 2.05}) == "2.05× overall"
+
+
 def test_enrich_discovery_adds_joins_shelf(monkeypatch):
     class _Idea:
         symbol, verdict, conviction = "NEWCO", "BUY", 0.62
@@ -295,6 +305,18 @@ def test_ipo_lean_classifies_by_demand():
     assert lbl == "data pending" and "not yet" in reason
 
 
+def test_ipo_lean_does_not_read_absent_legs_as_zero():
+    """total_x/qib_x absent with only retail_x present used to default the
+    missing legs to 0.0, which is below the soft threshold, so absence was
+    misreported as SOFT DEMAND — the lean contradicted the number printed
+    beside it (Finding 2). Only legs that are actually present may decide."""
+    label, _reason = br._ipo_lean({"total_x": None, "qib_x": None, "retail_x": 25.0})
+    assert label != "SOFT DEMAND"
+    assert label == "data pending"
+    # Genuinely low values on a PRESENT leg must still read SOFT DEMAND.
+    assert br._ipo_lean({"total_x": 1.5, "qib_x": None})[0] == "SOFT DEMAND"
+
+
 def test_earnings_watch_returns_open_guidance(monkeypatch):
     class _G:
         def __init__(self, status, guidance):
@@ -351,7 +373,7 @@ def test_build_attaches_overnight_notes(tmp_path, monkeypatch):
     monkeypatch.setattr(br, "_overnight_items", lambda: [{"headline": "X", "severity": "HIGH"}])
     monkeypatch.setattr(br, "_shelf_events_since", lambda since: [])
     monkeypatch.setattr(br, "_earnings_soon", lambda symbols, on: [])
-    monkeypatch.setattr(br, "_ipo_watch", lambda: [])
+    monkeypatch.setattr(br, "_ipo_watch", lambda on=None: [])
     monkeypatch.setattr(br, "upcoming_lockin_alerts", lambda on, symbols=None: [])
     brief = br.build_morning_brief("u1", date(2026, 7, 9), store=store)
     assert brief["headline"] == "Head."
@@ -494,6 +516,31 @@ def test_run_brief_renders_html_when_enabled(tmp_path, monkeypatch):
 from datetime import date as _date
 
 
+def test_build_morning_brief_computes_ipo_state_from_the_brief_date(tmp_path, monkeypatch):
+    """build_morning_brief must pass its own `on` into _ipo_watch — otherwise
+    `state` is computed from date.today() while the rendered window line
+    (_ipo_window, called with the brief's own `on`) uses a different clock
+    (Finding 4). Build a brief for a PAST date with an issue that opened and
+    closed entirely within that past window; if `_ipo_watch` used today's
+    real date instead, this issue would read 'closed', not 'open'."""
+    store = _mk_store(tmp_path)
+    monkeypatch.setattr(br, "_narrate_brief", lambda b: "h")
+    monkeypatch.setattr(br, "_read_regime", lambda: None)
+    monkeypatch.setattr(br, "_overnight_items", lambda *a, **k: [])
+    monkeypatch.setattr(br, "_shelf_events_since", lambda since: [])
+    monkeypatch.setattr(br, "_earnings_soon", lambda symbols, on: [])
+    monkeypatch.setattr(br, "upcoming_lockin_alerts", lambda on, symbols=None: [])
+    monkeypatch.setattr(br, "load_ipo_cache", lambda: {
+        "current": [{"symbol": "PASTCO", "company": "Past Co", "status": "current",
+                     "issue_start": "2020-01-06", "issue_end": "2020-01-08"}],
+        "upcoming": []})
+
+    past_on = date(2020, 1, 7)         # inside PASTCO's window, long before "today"
+    brief = br.build_morning_brief("u1", past_on, store=store)
+    rows = {r["symbol"]: r for r in brief["ipo_watch"]}
+    assert rows["PASTCO"]["state"] == "open"
+
+
 def test_ipo_watch_tags_state_and_drops_listed(monkeypatch):
     monkeypatch.setattr(br, "load_ipo_cache", lambda: {
         "current": [{"symbol": "OPENCO", "company": "Open Co", "status": "current",
@@ -519,6 +566,16 @@ def test_ipo_lean_distinguishes_not_open_from_broken():
     assert "bidding" in reason.lower()
     # A genuinely absent feed for an OPEN issue still reports data pending.
     assert br._ipo_lean({"state": "open"})[0] == "data pending"
+
+
+def test_ipo_window_survives_a_none_date_field():
+    """date.fromisoformat(None) raises TypeError, not ValueError. A bare
+    `except ValueError` would let that escape _ipo_window, then
+    render_brief_text, then render_brief_html's own except-fallback (which
+    calls render_brief_text) — a missing issue_end/issue_start field would
+    break the 'never raises' contract of both renderers (Finding 6)."""
+    assert br._ipo_window({"state": "open", "issue_end": None}, _date(2026, 8, 12)) == "open now"
+    assert br._ipo_window({"state": "upcoming", "issue_start": None}, _date(2026, 8, 12)) == "opens soon"
 
 
 def test_ipo_window_line_is_human_readable():

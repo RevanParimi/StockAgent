@@ -103,6 +103,12 @@ def _normalise(rows: list, status: str) -> list[dict]:
             continue                                     # spec §6.2: SME excluded
         if series in _NON_EQUITY_TYPES:
             continue
+        total_x = _parse_x(_first(item, _TOTAL_SUB_KEYS))
+        # `noOfTime` is the NSE-only figure, and NSE serves a literal 0.00 for
+        # some rows. A bare 0.0 with no category breakdown means "unknown",
+        # not "nobody bid" — the dark-signal rule, same as parse_bid_ladder.
+        if total_x == 0.0:
+            total_x = None
         out.append({
             "symbol": symbol,
             "company": _first(item, _COMPANY_KEYS),
@@ -113,7 +119,14 @@ def _normalise(rows: list, status: str) -> list[dict]:
             "issue_price": _parse_price(_first(item, _ISSUE_PRICE_KEYS)),
             "qib_x": _parse_x(_first(item, _QIB_KEYS)),
             "retail_x": _parse_x(_first(item, _RETAIL_KEYS)),
-            "total_x": _parse_x(_first(item, _TOTAL_SUB_KEYS)),
+            "total_x": total_x,
+            # noOfTime is the NSE-only figure (the ladder's all-exchange
+            # `combined` total, when available, overwrites both this value
+            # and the flag in _enrich_open_issues below) — it under-reports
+            # vs the all-exchange figure the market actually quotes, so a
+            # consumer showing this number unqualified would show a WRONG
+            # number, not an honestly absent one.
+            "total_x_nse_only": total_x is not None,
             "status": status,
         })
     return out
@@ -162,6 +175,7 @@ def _enrich_open_issues(rows: list[dict], on: _date) -> None:
                 rec[field] = combined[key]
         if combined.get("total") is not None:
             rec["total_x"] = combined["total"]
+            rec["total_x_nse_only"] = False
 
 
 def refresh_ipo_cache(cache_path: str | None = None,

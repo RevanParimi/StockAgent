@@ -86,6 +86,53 @@ def test_missing_subscription_fields_are_none(tmp_path, monkeypatch):
     assert rec["qib_x"] is None and rec["retail_x"] is None and rec["total_x"] is None
 
 
+def test_zero_total_subscription_is_treated_as_unavailable(tmp_path, monkeypatch):
+    """NSE serves a literal 0.00 total on the raw list feed too (the same
+    pathology already guarded for the ladder in parse_bid_ladder) — a bare
+    0.0 with no category breakdown means unknown, not 'nobody bid'."""
+    cache = str(tmp_path / "ipo.json")
+    row = dict(_PAST_ROW)
+    row["noOfTimesSubscribed"] = "0.00"
+    monkeypatch.setattr(ipo_mod, "_make_nse_client", lambda: _FakeNSE(past=[row]))
+    rec = refresh_ipo_cache(cache_path=cache)["past"][0]
+    assert rec["total_x"] is None
+    assert rec["total_x_nse_only"] is False
+
+
+def test_feed_total_is_flagged_nse_only(tmp_path, monkeypatch):
+    """`noOfTime`/`noOfTimesSubscribed` on the raw list feed is the NSE-only
+    figure — the ladder's all-exchange `combined` total is the one the
+    market actually quotes. A total that survives straight from the feed
+    (no ladder enrichment) must be flagged so downstream renderers can
+    qualify it instead of showing it as if it were the complete figure."""
+    cache = str(tmp_path / "ipo.json")
+    monkeypatch.setattr(ipo_mod, "_make_nse_client", lambda: _FakeNSE(past=[_PAST_ROW]))
+    rec = refresh_ipo_cache(cache_path=cache)["past"][0]
+    assert rec["total_x"] == 22.7
+    assert rec["total_x_nse_only"] is True
+
+
+def test_ladder_supplied_total_clears_the_nse_only_flag(tmp_path, monkeypatch):
+    """Once _enrich_open_issues overwrites total_x with the ladder's
+    all-exchange combined total, the NSE-only flag must clear — that figure
+    is no longer the under-reporting NSE-only one."""
+    cache = str(tmp_path / "ipo.json")
+    monkeypatch.setattr(ipo_mod, "_make_nse_client",
+                        lambda: _FakeNSE(current=[_LIVE_CURRENT_ROW]))
+    monkeypatch.setattr(ipo_mod, "fetch_bid_ladder", lambda symbol: {
+        "symbol": symbol, "updated_at": "11-Aug-2026 17:00:56",
+        "combined": {"qib": 1.39, "retail": 2.22, "total": 2.05,
+                     "fii": None, "dom_fi": None, "mutual_fund": None,
+                     "nii": None, "employee": None},
+        "nse_only": {k: None for k in
+                     ("qib", "fii", "dom_fi", "mutual_fund", "nii",
+                      "retail", "employee", "total")},
+        "cutoff_share": 0.46})
+    rec = refresh_ipo_cache(cache_path=cache, on=date(2026, 8, 12))["current"][0]
+    assert rec["total_x"] == 2.05
+    assert rec["total_x_nse_only"] is False
+
+
 def test_load_missing_cache_returns_empty_degraded(tmp_path):
     out = load_ipo_cache(cache_path=str(tmp_path / "nope.json"))
     assert out == {"fetched_at": "", "degraded": True,

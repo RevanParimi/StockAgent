@@ -529,9 +529,18 @@ Expected: FAIL — `_enrich_open_issues() got an unexpected keyword argument 'pr
 
 In `services/data/fetchers/ipo.py`, replace `_enrich_open_issues` with:
 
+> **CORRECTED 2026-08-14 after review (Ruling 5).** The first version of this
+> block listed `total_x_nse_only` inside `_LADDER_FIELDS`, which **cannot
+> work**: `_normalise` sets it to `total_x is not None`, so it is always a bool
+> and never `None`, and the `is None` guard below can therefore never carry it
+> — while happily carrying the `total_x` it qualifies. The result was a stale
+> NSE-only total rendered *without* its "(NSE only)" marker, i.e. an
+> under-reporting figure shown as if it were the all-exchange number the market
+> quotes. Spec §11.4 calls that a wrong number, not an incomplete one. The
+> qualifier must travel as a **pair** with the value.
+
 ```python
-_LADDER_FIELDS = ("bid_ladder", "cutoff_share", "qib_x", "retail_x",
-                  "total_x", "total_x_nse_only")
+_LADDER_FIELDS = ("bid_ladder", "cutoff_share", "qib_x", "retail_x", "total_x")
 
 
 def _carry_forward(rec: dict, previous: dict | None) -> None:
@@ -552,6 +561,13 @@ def _carry_forward(rec: dict, previous: dict | None) -> None:
     for field in _LADDER_FIELDS:
         if rec.get(field) is None and prior.get(field) is not None:
             rec[field] = prior[field]
+            if field == "total_x":
+                # The qualifier must travel WITH the value it qualifies.
+                # _normalise recomputes it as `total_x is not None`, so it is
+                # always a bool and the `is None` guard above can never carry
+                # it. A carried NSE-only total whose flag stayed False renders
+                # as the all-exchange figure — wrong, not partial (spec §11.4).
+                rec["total_x_nse_only"] = bool(prior.get("total_x_nse_only", False))
 
 
 def _enrich_open_issues(rows: list[dict], on: _date,

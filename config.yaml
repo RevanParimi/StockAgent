@@ -435,6 +435,9 @@ ipo:
   bid_ladder_enabled: true      # kill-switch for the per-symbol ladder fetch
   max_ladder_fetches: 10        # cap per refresh — one NSE call per open issue
   cache_max_age_hours: 48       # watchdog invariant threshold
+  # ── P2 capture (design §5 P2) ──
+  signals_enabled: true         # append a snapshot per issue per refresh pass
+  signal_retention_days: 400    # >365 so P4 can read a full convergence year
 
 generic_graph:
   # Neutral 8-dimension weights for sectors without a native graph (must sum to 1.0).

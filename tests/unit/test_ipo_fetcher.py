@@ -485,3 +485,68 @@ def test_a_fresh_successful_fetch_wins_over_carry_forward(monkeypatch):
     assert rows[0]["cutoff_share"] == 0.46
     assert rows[0]["bid_ladder"] == fresh_ladder
     assert rows[0]["total_x_nse_only"] is False
+
+
+def test_capture_writes_one_snapshot_per_issue(tmp_path):
+    from datetime import date
+    import services.data.fetchers.ipo as ipo_mod
+    from core.ipo.signals import IpoSignalStore
+
+    store = IpoSignalStore(base_dir=str(tmp_path))
+    rows = [{"symbol": "MOLBIO", "issue_start": "2026-08-10",
+             "issue_end": "2026-08-14", "listing_date": "",
+             "cutoff_share": 0.46,
+             "bid_ladder": {"combined": {"total": 40.0, "qib": 90.0,
+                                         "dom_fi": 0.2},
+                            "nse_only": {"total": 20.0}}}]
+
+    assert ipo_mod._capture_signals(rows, date(2026, 8, 13), store=store) == 1
+    snaps = store.load_symbol("MOLBIO")
+    assert len(snaps) == 1
+    assert snaps[0].state == "open"
+    assert snaps[0].combined["total"] == 40.0
+    assert snaps[0].combined["dom_fi"] == 0.2
+    assert snaps[0].cutoff_share == 0.46
+
+
+def test_capture_skips_an_issue_with_no_ladder(tmp_path):
+    """An upcoming issue has no bids. Writing an all-None snapshot would put a
+    row in the ledger asserting a reading was taken when none was."""
+    from datetime import date
+    import services.data.fetchers.ipo as ipo_mod
+    from core.ipo.signals import IpoSignalStore
+
+    store = IpoSignalStore(base_dir=str(tmp_path))
+    rows = [{"symbol": "ARDEE", "issue_start": "2026-09-01",
+             "issue_end": "2026-09-03", "listing_date": ""}]
+    assert ipo_mod._capture_signals(rows, date(2026, 8, 13), store=store) == 0
+    assert store.load_all() == []
+
+
+def test_capture_is_off_when_the_flag_is_false(tmp_path, monkeypatch):
+    from datetime import date
+    import services.data.fetchers.ipo as ipo_mod
+    from core.config import settings
+    from core.ipo.signals import IpoSignalStore
+
+    monkeypatch.setattr(settings, "IPO_SIGNALS_ENABLED", False, raising=False)
+    store = IpoSignalStore(base_dir=str(tmp_path))
+    rows = [{"symbol": "MOLBIO", "issue_start": "2026-08-10",
+             "issue_end": "2026-08-14", "listing_date": "",
+             "bid_ladder": {"combined": {"total": 40.0}}}]
+    assert ipo_mod._capture_signals(rows, date(2026, 8, 13), store=store) == 0
+
+
+def test_capture_never_raises_into_the_refresh(tmp_path, monkeypatch):
+    """A dead ledger must not break the cache write the brief depends on."""
+    from datetime import date
+    import services.data.fetchers.ipo as ipo_mod
+
+    class Boom:
+        def append(self, snap):
+            raise OSError("disk gone")
+
+    rows = [{"symbol": "MOLBIO", "issue_start": "2026-08-10",
+             "issue_end": "2026-08-14", "listing_date": "",
+             "bid_ladder": {"combined": {"total": 40.0}}}]
+    assert ipo_mod._capture_signals(rows, date(2026, 8, 13), store=Boom()) == 0

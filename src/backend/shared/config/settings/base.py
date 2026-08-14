@@ -933,6 +933,8 @@ IPO_REFRESH_HOUR_LIVE: int = int(cfg("ipo.refresh_hour_live", fallback=18))
 IPO_BID_LADDER_ENABLED: bool = bool(cfg("ipo.bid_ladder_enabled", fallback=True))
 IPO_MAX_LADDER_FETCHES: int = int(cfg("ipo.max_ladder_fetches", fallback=10))
 IPO_CACHE_MAX_AGE_HOURS: int = int(cfg("ipo.cache_max_age_hours", fallback=48))
+IPO_SIGNALS_ENABLED: bool = bool(cfg("ipo.signals_enabled", fallback=True))
+IPO_SIGNAL_RETENTION_DAYS: int = int(cfg("ipo.signal_retention_days", fallback=400))
 
 ADVISOR_SWITCH_CONVICTION_GAP: float = float(cfg("advisor.switch_conviction_gap", fallback=0.15))
 

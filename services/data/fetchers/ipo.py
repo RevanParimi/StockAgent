@@ -218,6 +218,53 @@ def _enrich_open_issues(rows: list[dict], on: _date,
         _carry_forward(rec, previous)
 
 
+def _capture_signals(rows: list[dict], on: _date, store=None) -> int:
+    """Append one capture-ledger snapshot per issue that has a ladder.
+
+    Spends NO additional API calls: it persists what _enrich_open_issues
+    already fetched and previously discarded. An issue with no ladder is
+    skipped rather than written as all-None — a row in the ledger asserts a
+    reading was taken, and "we looked and there were no bids yet" is not the
+    same claim as "we never looked".
+
+    Never raises: a dead ledger must not break the cache write the morning
+    brief depends on.
+    """
+    from core.config import settings
+    from core.ipo.calendar import issue_state
+
+    if not getattr(settings, "IPO_SIGNALS_ENABLED", True):
+        return 0
+
+    written = 0
+    try:
+        if store is None:
+            from core.ipo.signals import IpoSignalStore
+            store = IpoSignalStore()
+        from core.ipo.signals import IpoSignalSnapshot
+        stamp = datetime.now(timezone.utc).isoformat()
+        for rec in rows:
+            ladder = rec.get("bid_ladder")
+            if not isinstance(ladder, dict):
+                continue
+            snap = IpoSignalSnapshot(
+                symbol=rec.get("symbol", ""),
+                captured_at=stamp,
+                state=issue_state(rec, on),
+                issue_start=rec.get("issue_start", "") or "",
+                issue_end=rec.get("issue_end", "") or "",
+                combined=ladder.get("combined") or {},
+                nse_only=ladder.get("nse_only") or {},
+                cutoff_share=rec.get("cutoff_share"),
+            )
+            if store.append(snap):
+                written += 1
+    except Exception as exc:
+        logger.warning("[ipo] signal capture failed (non-fatal): %s", exc)
+        return written
+    return written
+
+
 def refresh_ipo_cache(cache_path: str | None = None,
                       on: _date | None = None) -> dict:
     """Fetch current + upcoming + past-120d IPO lists, then enrich OPEN issues
@@ -255,6 +302,18 @@ def refresh_ipo_cache(cache_path: str | None = None,
                 if isinstance(row, dict) and row.get("symbol"):
                     prior_rows.setdefault(row["symbol"], row)
         _enrich_open_issues(current + upcoming, on, previous=prior_rows)
+
+        captured = _capture_signals(current + upcoming, on)
+        if captured:
+            logger.info("[ipo] captured %d signal snapshot(s)", captured)
+
+        try:
+            from core.config import settings as _s
+            from core.ipo.signals import IpoSignalStore
+            IpoSignalStore().prune(
+                older_than_days=int(getattr(_s, "IPO_SIGNAL_RETENTION_DAYS", 400)))
+        except Exception as exc:
+            logger.warning("[ipo] signal prune failed (non-fatal): %s", exc)
 
     result = {
         "fetched_at": datetime.now(timezone.utc).isoformat(),

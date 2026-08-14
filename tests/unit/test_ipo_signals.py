@@ -94,6 +94,19 @@ def test_prune_with_a_wide_window_is_a_no_op(tmp_path):
     assert store.path.read_bytes() == before
 
 
+def test_prune_keeps_a_row_whose_timestamp_cannot_be_parsed(tmp_path):
+    """prune() is the one path that can delete captured data, and it promises
+    to keep rows it cannot date. Deleting data we cannot date is the worse error."""
+    store = IpoSignalStore(base_dir=str(tmp_path))
+    now = datetime(2026, 8, 13, tzinfo=timezone.utc)
+    store.append(_snap(captured_at=(now - timedelta(days=500)).isoformat(), total=2.05))
+    store.append(_snap(captured_at="not-a-real-timestamp", total=9.80))
+    assert store.prune(older_than_days=400, now=now) == 1      # only the datable-old row
+    survivors = store.load_all()
+    assert len(survivors) == 1
+    assert survivors[0].captured_at == "not-a-real-timestamp"
+
+
 def test_a_naive_timestamp_is_treated_as_utc_not_crashed_on(tmp_path):
     store = IpoSignalStore(base_dir=str(tmp_path))
     store.append(_snap(captured_at="2026-08-13T08:00:00"))

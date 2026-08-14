@@ -236,6 +236,44 @@ def test_ipo_demand_qualifies_nse_only_total():
     assert br._ipo_demand({"total_x": 2.05}) == "2.05× overall"
 
 
+def test_ipo_demand_renders_the_cutoff_share():
+    """Fetched, cached and threaded into every brief row since P0 — and never
+    once rendered (§9b). It is an official froth measure (spec §3)."""
+    line = br._ipo_demand({"total_x": 12.4, "qib_x": 28.0, "retail_x": 6.0,
+                           "cutoff_share": 0.4633})
+    assert line == "12.4× overall (QIB 28×, retail 6×) · 46% at cut-off"
+
+
+def test_ipo_demand_renders_the_demand_delta():
+    line = br._ipo_demand({"total_x": 12.4, "demand_delta": 3.1})
+    assert line == "12.4× overall · +3.1× since last update"
+
+
+def test_ipo_demand_renders_a_negative_delta_with_one_sign():
+    """`:+g` must not produce '--0.4'. Demand can fall between passes when NSE
+    revises a category."""
+    line = br._ipo_demand({"total_x": 12.4, "demand_delta": -0.4})
+    assert line == "12.4× overall · -0.4× since last update"
+
+
+def test_ipo_demand_omits_every_absent_clause():
+    """Dark-signal: absent means omitted, never zero."""
+    assert br._ipo_demand({"total_x": 12.4}) == "12.4× overall"
+    assert br._ipo_demand({"total_x": 12.4, "cutoff_share": None,
+                           "demand_delta": None}) == "12.4× overall"
+
+
+def test_ipo_demand_still_reports_pending_with_nothing_at_all():
+    assert br._ipo_demand({}) == "demand data pending"
+
+
+def test_ipo_demand_keeps_the_nse_only_qualifier():
+    """P0 behaviour that must not regress: an NSE-only total is a WRONG
+    number if shown unqualified, not merely an incomplete one."""
+    assert br._ipo_demand({"total_x": 2.05, "total_x_nse_only": True}) == \
+        "2.05× overall (NSE only)"
+
+
 def test_enrich_discovery_adds_joins_shelf(monkeypatch):
     class _Idea:
         symbol, verdict, conviction = "NEWCO", "BUY", 0.62

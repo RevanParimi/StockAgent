@@ -257,6 +257,18 @@ def _ipo_demand(w: dict) -> str:
         extra.append(f"retail {retail:g}×")
     if extra:
         parts.append("(" + ", ".join(extra) + ")")
+
+    # P2: official froth measures. Both are captured facts, not scores — the
+    # derived indices and verdicts stay dark until P3/P5.
+    cutoff = w.get("cutoff_share")
+    if cutoff is not None:
+        parts.append(f"· {cutoff * 100:.0f}% at cut-off")
+    delta = w.get("demand_delta")
+    if delta is not None:
+        # "since last update", not "today": the refresh runs twice daily, so
+        # the previous reading may be this morning or yesterday evening.
+        parts.append(f"· {delta:+g}× since last update")
+
     return " ".join(parts) if parts else "demand data pending"
 
 
@@ -470,6 +482,24 @@ def _earnings_soon(symbols: list[str], on: date) -> list[dict]:
         return []
 
 
+def _demand_delta_for(symbol: str) -> float | None:
+    """Change in subscription × since the previous capture, or None.
+
+    Non-fatal by construction: the ledger is a P2 addition and the brief
+    predates it, so an unreadable ledger degrades this one clause rather than
+    dropping the IPO section.
+    """
+    if not symbol:
+        return None
+    try:
+        from core.ipo.signals import IpoSignalStore
+        from core.ipo.velocity import demand_delta
+        return demand_delta(IpoSignalStore().load_symbol(symbol))
+    except Exception as exc:
+        logger.debug("[brief] demand delta unavailable for %s: %s", symbol, exc)
+        return None
+
+
 def _ipo_watch(max_items: int | None = None, on: date | None = None) -> list[dict]:
     try:
         from core.ipo.calendar import issue_state
@@ -491,6 +521,10 @@ def _ipo_watch(max_items: int | None = None, on: date | None = None) -> list[dic
                 "total_x": r.get("total_x"), "issue_price": r.get("issue_price"),
                 "cutoff_share": r.get("cutoff_share"),
                 "total_x_nse_only": r.get("total_x_nse_only", False),
+                "dom_fi_x": (r.get("bid_ladder") or {}).get("combined", {}).get("dom_fi"),
+                "fii_x": (r.get("bid_ladder") or {}).get("combined", {}).get("fii"),
+                "mutual_fund_x": (r.get("bid_ladder") or {}).get("combined", {}).get("mutual_fund"),
+                "demand_delta": _demand_delta_for(r.get("symbol", "")),
             })
         # Open issues first — they are the ones with a deadline attached.
         order = {"open": 0, "closed": 1, "upcoming": 2, "unknown": 3}

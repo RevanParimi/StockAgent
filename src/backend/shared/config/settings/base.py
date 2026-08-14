@@ -929,7 +929,8 @@ DISCOVERY_IPO_QIB_WEIGHT: float = float(cfg("discovery.ipo_qib_weight", fallback
 # ---------------------------------------------------------------------------
 IPO_ENABLED: bool = bool(cfg("ipo.enabled", fallback=True))
 IPO_REFRESH_HOUR: int = int(cfg("ipo.refresh_hour", fallback=8))
-IPO_REFRESH_HOUR_LIVE: int = int(cfg("ipo.refresh_hour_live", fallback=18))
+IPO_REFRESH_HOUR_LIVE: int = int(cfg("ipo.refresh_hour_live", fallback=17))
+IPO_REFRESH_MINUTE_LIVE: int = int(cfg("ipo.refresh_minute_live", fallback=45))
 IPO_BID_LADDER_ENABLED: bool = bool(cfg("ipo.bid_ladder_enabled", fallback=True))
 IPO_MAX_LADDER_FETCHES: int = int(cfg("ipo.max_ladder_fetches", fallback=10))
 IPO_CACHE_MAX_AGE_HOURS: int = int(cfg("ipo.cache_max_age_hours", fallback=48))

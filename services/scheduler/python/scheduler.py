@@ -487,18 +487,23 @@ class AutomobileScheduler:
             logger.info("[Scheduler] Audit job disabled (audit.enabled=false)")
 
         # ── IPO calendar + bid ladder (PI Prospect P0) ──────────────────────
-        # Twice daily: 08:00 catches issues that opened this morning, 18:00
+        # Twice daily: 08:00 catches issues that opened this morning, 17:45
         # runs after NSE's ~17:00 bid update so the evening brief and the
-        # weekly digest read same-day demand. The weekly discovery cycle also
-        # calls refresh_ipo_cache(); that stays, and is idempotent.
+        # weekly digest read same-day demand. 17:45 (not 18:00) is deliberate:
+        # weekly_review also fires at 18:00 Sunday with no ordering between the
+        # two jobs, so this refresh must land strictly before it or the Sunday
+        # digest is a coin flip between the fresh cache and the 08:00 one
+        # (PI Prospect P2). The weekly discovery cycle also calls
+        # refresh_ipo_cache(); that stays, and is idempotent.
         if cfg("ipo.enabled", fallback=True):
-            for slot, hour in (
-                ("am", int(cfg("ipo.refresh_hour", fallback=8))),
-                ("pm", int(cfg("ipo.refresh_hour_live", fallback=18))),
+            for slot, hour, minute in (
+                ("am", int(cfg("ipo.refresh_hour", fallback=8)), 0),
+                ("pm", int(cfg("ipo.refresh_hour_live", fallback=17)),
+                 int(cfg("ipo.refresh_minute_live", fallback=45))),
             ):
                 scheduler.add_job(
                     func=self._ipo_refresh_job,
-                    trigger=CronTrigger(hour=hour, minute=0,
+                    trigger=CronTrigger(hour=hour, minute=minute,
                                         timezone="Asia/Kolkata"),
                     id=f"ipo_refresh_{slot}",
                     name=f"IPO calendar + bid ladder refresh ({slot})",
@@ -506,9 +511,11 @@ class AutomobileScheduler:
                     coalesce=True,
                     replace_existing=True,
                 )
-            logger.info("[Scheduler] IPO refresh: daily at %s:00 and %s:00 IST",
-                        cfg("ipo.refresh_hour", fallback=8),
-                        cfg("ipo.refresh_hour_live", fallback=18))
+            logger.info(
+                "[Scheduler] IPO refresh: daily at %s:00 and %s:%02d IST",
+                cfg("ipo.refresh_hour", fallback=8),
+                cfg("ipo.refresh_hour_live", fallback=17),
+                cfg("ipo.refresh_minute_live", fallback=45))
         else:
             logger.info("[Scheduler] IPO refresh disabled (ipo.enabled=false)")
 

@@ -46,10 +46,31 @@ _KEYWORD_RE = re.compile(r"\bgmp\b|\bpremium\b|grey\s*market", re.IGNORECASE)
 # How far past a GMP/premium keyword to look for "the" figure that follows
 # it (chars). Generous enough for "GMP today is around Rs 120" but tight
 # enough to not reach into an unrelated clause.
-_FORWARD_WINDOW = 40
+_KEYWORD_WINDOW = 40
+# How close "discount" must sit to the matched figure to count as ITS sign
+# qualifier ("at a discount of Rs 15" ~ 3 chars) rather than an unrelated
+# mention elsewhere in the snippet ("No discount seen, GMP is now Rs 120" ~
+# 17 chars) — measured, not guessed; see the sign tests for the two shapes.
+_DISCOUNT_WINDOW = 10
 # Guards against picking up a share count or a market-cap figure. Symmetric —
 # a discount is bounded the same way a premium is.
 _MAX_PLAUSIBLE_GMP = 5000.0
+
+
+def _gap(a: re.Match, b: re.Match) -> float:
+    """Character distance between two regex matches (0 if they overlap).
+
+    The single shared "how near is near" primitive for this module — both
+    the GMP/premium keyword anchor (deciding WHICH figure is the GMP) and
+    the discount-word sign check (deciding WHAT SIGN that figure has) are
+    built on this, so there is exactly one notion of proximity here, not two
+    independently-tuned ones.
+    """
+    if a.start() >= b.end():
+        return a.start() - b.end()
+    if b.start() >= a.end():
+        return b.start() - a.end()
+    return 0.0
 
 
 def _extract_gmp(snippet: str) -> float | None:
@@ -59,7 +80,7 @@ def _extract_gmp(snippet: str) -> float | None:
     Proximity: real GMP phrasing overwhelmingly puts the number AFTER the
     keyword ("GMP is Rs 120", "premium of Rs 130"), so this prefers the
     nearest ₹/Rs-prefixed number that FOLLOWS a "GMP"/"premium"/"grey market"
-    keyword within `_FORWARD_WINDOW` characters. A plain nearest-by-distance
+    keyword within `_KEYWORD_WINDOW` characters. A plain nearest-by-distance
     search is not enough: a price band or issue price stated right before
     the keyword (e.g. "...band Rs 490 - Rs 500, GMP today is Rs 120") can sit
     textually closer to the keyword than the true GMP figure that follows
@@ -67,9 +88,12 @@ def _extract_gmp(snippet: str) -> float | None:
     within the window.
 
     Sign: negative if a minus sign sits immediately against the currency
-    token, OR the snippet contains the word "discount" — both are treated as
-    sufficient signals per design; a positive premium is otherwise assumed
-    (the common "GMP of Rs X" phrasing).
+    token, OR the word "discount" sits within `_DISCOUNT_WINDOW` characters
+    of THIS figure — scoped to the figure's own neighbourhood, not scanned
+    across the whole snippet, so an unrelated "discount" elsewhere in the
+    text (e.g. "No discount seen, GMP is now Rs 120") can't flip an
+    otherwise-genuine positive reading. A positive premium is otherwise
+    assumed (the common "GMP of Rs X" phrasing).
     """
     matches = list(_GMP_RE.finditer(snippet))
     if not matches:
@@ -78,19 +102,16 @@ def _extract_gmp(snippet: str) -> float | None:
     keyword_matches = list(_KEYWORD_RE.finditer(snippet))
     if keyword_matches:
         def _forward_gap(m: re.Match) -> float | None:
-            gaps = [m.start() - k.end() for k in keyword_matches if m.start() >= k.end()]
+            gaps = [_gap(m, k) for k in keyword_matches if m.start() >= k.end()]
             return min(gaps) if gaps else None
 
         forward = [(m, _forward_gap(m)) for m in matches]
         forward = [(m, gap) for m, gap in forward
-                   if gap is not None and gap <= _FORWARD_WINDOW]
+                   if gap is not None and gap <= _KEYWORD_WINDOW]
         if forward:
             match = min(forward, key=lambda pair: pair[1])[0]
         else:
-            def _distance(m: re.Match) -> float:
-                mid = (m.start() + m.end()) / 2.0
-                return min(abs(mid - (k.start() + k.end()) / 2.0) for k in keyword_matches)
-            match = min(matches, key=_distance)
+            match = min(matches, key=lambda m: min(_gap(m, k) for k in keyword_matches))
     else:
         match = matches[0]
 
@@ -99,7 +120,9 @@ def _extract_gmp(snippet: str) -> float | None:
     except ValueError:
         return None
 
-    if match.group(1) or _DISCOUNT_RE.search(snippet):
+    discount_matches = list(_DISCOUNT_RE.finditer(snippet))
+    is_discount = any(_gap(match, d) <= _DISCOUNT_WINDOW for d in discount_matches)
+    if match.group(1) or is_discount:
         value = -value
 
     if abs(value) > _MAX_PLAUSIBLE_GMP:
@@ -170,6 +193,12 @@ def fetch_gmp(company: str, issue_price: float | None = None) -> dict | None:
     if lo == 0 and hi == 0:
         pass  # both exactly zero -> trivially agree
     else:
+        # NB an opposite-sign pair (one premium reading, one discount reading)
+        # is rejected here too, but that's emergent, not a separate guard: for
+        # opposite signs, spread = |hi - lo| >= 2 * reference always, so it
+        # only survives if tolerance >= ~2.0 (200%) — unreachable at the
+        # shipped 0.25. Raising gmp_agreement_tolerance toward/above 1.0
+        # weakens this; if you do, add an explicit sign check here.
         reference = min(abs(lo), abs(hi))
         if reference == 0 or abs(hi - lo) > reference * tolerance:
             logger.debug("[ipo_gmp] %s: sources disagree (%s) — discarding",

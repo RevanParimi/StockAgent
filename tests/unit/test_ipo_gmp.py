@@ -159,3 +159,26 @@ def test_price_band_before_gmp_figure_is_not_picked(monkeypatch):
     ])
     out = gmp_mod.fetch_gmp("Molbio Diagnostics")
     assert out["gmp"] == 125.0
+
+
+def test_unrelated_discount_mention_does_not_flip_the_actual_figure(monkeypatch):
+    """A stray 'discount' elsewhere in the snippet must not flip a genuine,
+    unrelated GMP figure. Both sources here mention 'discount' far from
+    their actual GMP number (a whole-snippet scan would wrongly flip both to
+    negative and — since two negatives still agree with each other — return
+    a confidently wrong -125.0 instead of the correct +125.0)."""
+    monkeypatch.setattr(gmp_mod, "search_serper", lambda *a, **k: [
+        {"snippet": "No discount seen, GMP is now Rs 120", "link": "https://a.example/x"},
+        {"snippet": "Discounts elsewhere aside, grey market premium is at Rs 130 today",
+         "link": "https://b.example/y"},
+    ])
+    out = gmp_mod.fetch_gmp("Molbio Diagnostics")
+    assert out["gmp"] == 125.0
+
+# NB the other two review-requested regression cases — "a genuine discount
+# phrased normally still yields negative" and "an explicit minus sign still
+# yields negative" — are already covered by test_discount_word_flips_sign
+# and test_explicit_negative_gmp_stays_negative above, unmodified. Both
+# still pass after the windowing change (their word/sign sits ~3-4 chars
+# from the figure, well inside _DISCOUNT_WINDOW); duplicating them here
+# would just be the same input asserted twice.

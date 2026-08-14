@@ -145,28 +145,60 @@ def load_ipo_cache(cache_path: str | None = None) -> dict:
                 "current": [], "upcoming": [], "past": []}
 
 
-def _enrich_open_issues(rows: list[dict], on: _date) -> None:
+_LADDER_FIELDS = ("bid_ladder", "cutoff_share", "qib_x", "retail_x",
+                  "total_x", "total_x_nse_only")
+
+
+def _carry_forward(rec: dict, previous: dict | None) -> None:
+    """Restore ladder-derived fields from the previous cache, in place.
+
+    Every pass rebuilds rows from _normalise, which knows only what the LIST
+    feed carries — and the list feed has no ladder. Without this, a closed
+    issue's final ladder is destroyed by the next refresh, and that row is the
+    completed demand picture the capture ledger exists to keep.
+
+    Only fills fields the new row lacks: a fresh fetch always wins.
+    """
+    if not previous:
+        return
+    prior = previous.get(rec.get("symbol", ""))
+    if not isinstance(prior, dict):
+        return
+    for field in _LADDER_FIELDS:
+        if rec.get(field) is None and prior.get(field) is not None:
+            rec[field] = prior[field]
+
+
+def _enrich_open_issues(rows: list[dict], on: _date,
+                        previous: dict | None = None) -> None:
     """Attach the bid ladder to issues whose window is OPEN, in place.
 
-    Only open issues: an upcoming one has no bids yet and a closed one will
-    never change, so either would spend an NSE call to learn nothing. Bounded
-    by IPO_MAX_LADDER_FETCHES because this runs inside a scheduler job.
+    Only open issues get a live fetch: an upcoming one has no bids yet and a
+    closed one will never change, so either would spend an NSE call to learn
+    nothing. Closed issues instead inherit their last known ladder via
+    _carry_forward. Bounded by IPO_MAX_LADDER_FETCHES because this runs inside
+    a scheduler job.
     """
     from core.config import settings
     from core.ipo.calendar import issue_state
 
     if not getattr(settings, "IPO_BID_LADDER_ENABLED", True):
+        for rec in rows:
+            _carry_forward(rec, previous)
         return
+
     budget = int(getattr(settings, "IPO_MAX_LADDER_FETCHES", 10))
     for rec in rows:
-        if budget <= 0:
-            break
-        if issue_state(rec, on) != "open":
+        if issue_state(rec, on) != "open" or budget <= 0:
+            _carry_forward(rec, previous)
             continue
-        budget -= 1
         ladder = fetch_bid_ladder(rec["symbol"])
         if ladder is None:
-            continue                    # keep whatever the feed already gave
+            # Budget is spent only on a SUCCESSFUL fetch: a run of dead-endpoint
+            # failures must not exhaust the cap with zero enrichment (§9b).
+            _carry_forward(rec, previous)
+            continue
+        budget -= 1
         combined = ladder.get("combined") or {}
         rec["bid_ladder"] = ladder
         rec["cutoff_share"] = ladder.get("cutoff_share")
@@ -176,6 +208,7 @@ def _enrich_open_issues(rows: list[dict], on: _date) -> None:
         if combined.get("total") is not None:
             rec["total_x"] = combined["total"]
             rec["total_x_nse_only"] = False
+        _carry_forward(rec, previous)
 
 
 def refresh_ipo_cache(cache_path: str | None = None,
@@ -209,7 +242,12 @@ def refresh_ipo_cache(cache_path: str | None = None,
         past = list(previous.get("past", []))
 
     if not degraded:
-        _enrich_open_issues(current + upcoming, on)
+        prior_rows: dict[str, dict] = {}
+        for bucket in ("current", "upcoming", "past"):
+            for row in previous.get(bucket, []) or []:
+                if isinstance(row, dict) and row.get("symbol"):
+                    prior_rows.setdefault(row["symbol"], row)
+        _enrich_open_issues(current + upcoming, on, previous=prior_rows)
 
     result = {
         "fetched_at": datetime.now(timezone.utc).isoformat(),

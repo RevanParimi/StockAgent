@@ -2,6 +2,8 @@
 import json
 from datetime import date
 
+import pytest
+
 import services.data.fetchers.ipo as ipo_mod
 import services.data.fetchers.ipo_bids as bids_mod
 from services.data.fetchers.ipo import load_ipo_cache, refresh_ipo_cache
@@ -311,3 +313,95 @@ def test_open_issue_ladder_stub_does_not_write_a_false_zero(tmp_path, monkeypatc
     # noOfTime from the raw feed itself, untouched by the stubbed ladder.
     assert rec["total_x"] == 0.5315724992825029
     assert rec["qib_x"] is None
+
+
+def test_a_closed_issue_keeps_its_final_ladder(monkeypatch):
+    """The most valuable row in the capture ledger is a closed issue's FINAL
+    ladder. Before this fix it was destroyed by the next 08:00 pass: the row is
+    rebuilt from _normalise, and _enrich_open_issues only refetches OPEN issues.
+    """
+    from datetime import date
+    import services.data.fetchers.ipo as ipo_mod
+
+    ladder = {"symbol": "MOLBIO",
+              "combined": {"qib": 90.0, "retail": 12.0, "total": 40.0,
+                           "dom_fi": 0.2, "fii": 1.0, "mutual_fund": 0.3,
+                           "nii": 5.0, "employee": None},
+              "nse_only": {"qib": 45.0, "total": 20.0},
+              "cutoff_share": 0.46}
+
+    previous = {"MOLBIO": {"symbol": "MOLBIO", "bid_ladder": ladder,
+                           "cutoff_share": 0.46, "qib_x": 90.0,
+                           "retail_x": 12.0, "total_x": 40.0,
+                           "total_x_nse_only": False}}
+
+    # Window ended yesterday => state is "closed", so no refetch happens.
+    rows = [{"symbol": "MOLBIO", "issue_start": "2026-08-10",
+             "issue_end": "2026-08-12", "listing_date": "",
+             "qib_x": None, "retail_x": None, "total_x": None,
+             "total_x_nse_only": False}]
+
+    monkeypatch.setattr(ipo_mod, "fetch_bid_ladder",
+                        lambda s: pytest.fail("a closed issue must not be refetched"))
+    ipo_mod._enrich_open_issues(rows, date(2026, 8, 13), previous=previous)
+
+    assert rows[0]["total_x"] == 40.0
+    assert rows[0]["qib_x"] == 90.0
+    assert rows[0]["bid_ladder"]["combined"]["dom_fi"] == 0.2
+    assert rows[0]["cutoff_share"] == 0.46
+
+
+def test_a_failed_refetch_keeps_the_previous_ladder(monkeypatch):
+    """An open issue whose fetch fails must not lose yesterday's numbers."""
+    from datetime import date
+    import services.data.fetchers.ipo as ipo_mod
+
+    previous = {"MOLBIO": {"symbol": "MOLBIO", "cutoff_share": 0.46,
+                           "qib_x": 90.0, "total_x": 40.0,
+                           "bid_ladder": {"combined": {"total": 40.0}}}}
+    rows = [{"symbol": "MOLBIO", "issue_start": "2026-08-10",
+             "issue_end": "2026-08-14", "listing_date": "",
+             "qib_x": None, "retail_x": None, "total_x": None,
+             "total_x_nse_only": False}]
+
+    monkeypatch.setattr(ipo_mod, "fetch_bid_ladder", lambda s: None)
+    ipo_mod._enrich_open_issues(rows, date(2026, 8, 13), previous=previous)
+
+    assert rows[0]["total_x"] == 40.0
+    assert rows[0]["cutoff_share"] == 0.46
+
+
+def test_budget_is_spent_only_on_a_successful_fetch(monkeypatch):
+    """A run of dead-endpoint failures must not exhaust IPO_MAX_LADDER_FETCHES
+    with zero enrichment (§9b). With the budget cap at 1, a failed fetch on
+    the first open issue must not stop the second open issue from being
+    enriched — the old code decremented the budget before checking the
+    result, so one dead symbol could silently zero out the whole pass."""
+    from core.config import settings
+    import services.data.fetchers.ipo as ipo_mod
+
+    monkeypatch.setattr(settings, "IPO_MAX_LADDER_FETCHES", 1)
+
+    rows = [
+        {"symbol": "DEADCO", "issue_start": "2026-08-12", "issue_end": "2026-08-14",
+         "listing_date": "", "qib_x": None, "retail_x": None, "total_x": None,
+         "total_x_nse_only": False},
+        {"symbol": "LIVECO", "issue_start": "2026-08-12", "issue_end": "2026-08-14",
+         "listing_date": "", "qib_x": None, "retail_x": None, "total_x": None,
+         "total_x_nse_only": False},
+    ]
+
+    def _fake_ladder(symbol):
+        if symbol == "DEADCO":
+            return None
+        return {"symbol": symbol,
+                "combined": {"qib": 5.0, "retail": 3.0, "total": 4.0,
+                             "dom_fi": None, "fii": None, "mutual_fund": None,
+                             "nii": None, "employee": None},
+                "nse_only": {}, "cutoff_share": 0.5}
+
+    monkeypatch.setattr(ipo_mod, "fetch_bid_ladder", _fake_ladder)
+    ipo_mod._enrich_open_issues(rows, date(2026, 8, 13))
+
+    assert rows[0]["total_x"] is None       # DEADCO's failed fetch, no data
+    assert rows[1]["total_x"] == 4.0        # LIVECO still got its fetch

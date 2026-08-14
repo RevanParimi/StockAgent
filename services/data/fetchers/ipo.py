@@ -145,8 +145,7 @@ def load_ipo_cache(cache_path: str | None = None) -> dict:
                 "current": [], "upcoming": [], "past": []}
 
 
-_LADDER_FIELDS = ("bid_ladder", "cutoff_share", "qib_x", "retail_x",
-                  "total_x", "total_x_nse_only")
+_LADDER_FIELDS = ("bid_ladder", "cutoff_share", "qib_x", "retail_x", "total_x")
 
 
 def _carry_forward(rec: dict, previous: dict | None) -> None:
@@ -167,6 +166,14 @@ def _carry_forward(rec: dict, previous: dict | None) -> None:
     for field in _LADDER_FIELDS:
         if rec.get(field) is None and prior.get(field) is not None:
             rec[field] = prior[field]
+            if field == "total_x":
+                # The qualifier must travel WITH the value it qualifies.
+                # _normalise recomputes this as `total_x is not None`, so it is
+                # always a bool and the `is None` guard above can never carry it.
+                # A carried NSE-only total whose flag stayed False renders as if
+                # it were the all-exchange figure — a wrong number, not a partial
+                # one (spec §11.4).
+                rec["total_x_nse_only"] = bool(prior.get("total_x_nse_only", False))
 
 
 def _enrich_open_issues(rows: list[dict], on: _date,

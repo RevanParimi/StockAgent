@@ -405,3 +405,83 @@ def test_budget_is_spent_only_on_a_successful_fetch(monkeypatch):
 
     assert rows[0]["total_x"] is None       # DEADCO's failed fetch, no data
     assert rows[1]["total_x"] == 4.0        # LIVECO still got its fetch
+
+
+def test_a_carried_total_keeps_its_nse_only_qualifier():
+    """An NSE-only total shown unqualified is a WRONG number, not an incomplete
+    one — the qualifier must travel with the value it qualifies."""
+    from datetime import date
+    import services.data.fetchers.ipo as ipo_mod
+
+    previous = {"MOLBIO": {"symbol": "MOLBIO", "total_x": 20.0,
+                           "total_x_nse_only": True}}
+    rows = [{"symbol": "MOLBIO", "issue_start": "2026-08-10",
+             "issue_end": "2026-08-12", "listing_date": "",
+             "qib_x": None, "retail_x": None, "total_x": None,
+             "total_x_nse_only": False}]
+    ipo_mod._enrich_open_issues(rows, date(2026, 8, 13), previous=previous)
+    assert rows[0]["total_x"] == 20.0
+    assert rows[0]["total_x_nse_only"] is True
+
+
+def test_a_fresh_all_exchange_total_is_not_downgraded_by_a_stale_flag(monkeypatch):
+    """The inverse case: a successful ladder fetch yields the all-exchange
+    total with nse_only False, and carry-forward must not resurrect a stale
+    True over it."""
+    from datetime import date
+    import services.data.fetchers.ipo as ipo_mod
+
+    previous = {"MOLBIO": {"symbol": "MOLBIO", "total_x": 20.0,
+                           "total_x_nse_only": True}}
+    rows = [{"symbol": "MOLBIO", "issue_start": "2026-08-12",
+             "issue_end": "2026-08-14", "listing_date": "",
+             "qib_x": None, "retail_x": None, "total_x": None,
+             "total_x_nse_only": False}]
+
+    monkeypatch.setattr(ipo_mod, "fetch_bid_ladder", lambda s: {
+        "symbol": s, "combined": {"qib": 90.0, "retail": 12.0, "total": 40.0,
+                                   "dom_fi": None, "fii": None,
+                                   "mutual_fund": None, "nii": None,
+                                   "employee": None},
+        "nse_only": {}, "cutoff_share": 0.46})
+
+    ipo_mod._enrich_open_issues(rows, date(2026, 8, 13), previous=previous)
+
+    assert rows[0]["total_x"] == 40.0
+    assert rows[0]["total_x_nse_only"] is False
+
+
+def test_a_fresh_successful_fetch_wins_over_carry_forward(monkeypatch):
+    """Global constraint: a fresh successful fetch must always win over
+    carried-forward data. Give an open issue both a previous row with stale
+    numbers AND a successful fetch that differs on every field, and assert
+    the fresh values win throughout."""
+    from datetime import date
+    import services.data.fetchers.ipo as ipo_mod
+
+    previous = {"MOLBIO": {"symbol": "MOLBIO",
+                           "bid_ladder": {"combined": {"total": 999.0}},
+                           "cutoff_share": 0.99, "qib_x": 999.0,
+                           "retail_x": 999.0, "total_x": 999.0,
+                           "total_x_nse_only": True}}
+    rows = [{"symbol": "MOLBIO", "issue_start": "2026-08-12",
+             "issue_end": "2026-08-14", "listing_date": "",
+             "qib_x": None, "retail_x": None, "total_x": None,
+             "total_x_nse_only": False}]
+
+    fresh_ladder = {"symbol": "MOLBIO",
+                    "combined": {"qib": 90.0, "retail": 12.0, "total": 40.0,
+                                 "dom_fi": 0.2, "fii": 1.0, "mutual_fund": 0.3,
+                                 "nii": 5.0, "employee": None},
+                    "nse_only": {"qib": 45.0, "total": 20.0},
+                    "cutoff_share": 0.46}
+    monkeypatch.setattr(ipo_mod, "fetch_bid_ladder", lambda s: fresh_ladder)
+
+    ipo_mod._enrich_open_issues(rows, date(2026, 8, 13), previous=previous)
+
+    assert rows[0]["total_x"] == 40.0
+    assert rows[0]["qib_x"] == 90.0
+    assert rows[0]["retail_x"] == 12.0
+    assert rows[0]["cutoff_share"] == 0.46
+    assert rows[0]["bid_ladder"] == fresh_ladder
+    assert rows[0]["total_x_nse_only"] is False

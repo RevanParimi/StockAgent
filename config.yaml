@@ -439,6 +439,11 @@ ipo:
   # ── P2 capture (design §5 P2) ──
   signals_enabled: true         # append a snapshot per issue per refresh pass
   signal_retention_days: 400    # >365 so P4 can read a full convergence year
+  # ── P2 GMP capture — built dark (2026-08-13, reads SERPER_API_KEY_IPO) ──
+  gmp_enabled: false            # stays false until SERPER_API_KEY_IPO exists
+  gmp_min_sources: 2            # a lone snippet number is not a measurement
+  gmp_agreement_tolerance: 0.25 # >25% spread between sources => discard
+  gmp_max_age_hours: 24
 
 generic_graph:
   # Neutral 8-dimension weights for sectors without a native graph (must sum to 1.0).

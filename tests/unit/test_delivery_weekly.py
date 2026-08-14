@@ -1,9 +1,26 @@
 """Compass Phase C — weekly review: allocation, laggards, scoreboard (spec §7)."""
 from datetime import date
 
+import pytest
+
+import core.delivery.brief as brief_mod
 import core.delivery.weekly as wk
 from backend.shared.schemas.portfolio import AdviceRecord, Holding
 from core.portfolio.store import PortfolioStore
+
+
+@pytest.fixture(autouse=True)
+def _isolated_ipo_ledger(tmp_path, monkeypatch):
+    """build_weekly_review() unconditionally calls _safe_weekly_ipos() ->
+    _weekly_ipos() -> core.delivery.brief._ipo_watch(), which (since the
+    P2 ledger load-once fix) constructs the IPO signal ledger via
+    core.delivery.brief._ipo_signal_store(). Same isolation rationale as the
+    fixture of the same name in test_delivery_brief.py: no test may reach
+    the repo's real data/ipo/ path, ever, by accident."""
+    from core.ipo.signals import IpoSignalStore
+    store = IpoSignalStore(base_dir=str(tmp_path / "ipo_ledger"))
+    monkeypatch.setattr(brief_mod, "_ipo_signal_store", lambda: store)
+    return store
 
 
 def _store(tmp_path):

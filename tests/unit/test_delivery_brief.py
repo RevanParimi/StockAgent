@@ -2,8 +2,29 @@
 from datetime import date
 from unittest.mock import patch
 
+import pytest
+
 import core.delivery.brief as br
 from core.portfolio.store import PortfolioStore
+
+
+@pytest.fixture(autouse=True)
+def _isolated_ipo_ledger(tmp_path, monkeypatch):
+    """Every test in this module gets its own throwaway IPO signal ledger,
+    never the repo's real data/ipo/. IpoSignalStore.__init__ mkdirs its
+    base_dir on construction, and a test that (even accidentally) appends to
+    the default path can write a plausible, real-timestamped, but fabricated
+    row into the same directory as data/ipo/ipo_history.jsonl — the P1
+    historical spine, gitignored and expensive to rebuild. This is the ONLY
+    place in this test module that may construct an IpoSignalStore pointed
+    at the default path (it isn't — it points at tmp_path), so any new test
+    that reaches _ipo_watch()/_ipo_ledger_snapshots() is isolated by default
+    without having to remember to do it itself.
+    """
+    from core.ipo.signals import IpoSignalStore
+    store = IpoSignalStore(base_dir=str(tmp_path / "ipo_ledger"))
+    monkeypatch.setattr(br, "_ipo_signal_store", lambda: store)
+    return store
 
 
 def _digest():
@@ -272,6 +293,73 @@ def test_ipo_demand_keeps_the_nse_only_qualifier():
     number if shown unqualified, not merely an incomplete one."""
     assert br._ipo_demand({"total_x": 2.05, "total_x_nse_only": True}) == \
         "2.05× overall (NSE only)"
+
+
+def test_ipo_watch_pulls_institutional_split_from_bid_ladder(monkeypatch):
+    """_ipo_watch's row-building wiring (dom_fi_x/fii_x/mutual_fund_x out of
+    bid_ladder["combined"]) had no direct test — every prior test exercised
+    _ipo_demand with hand-built dicts, never the code that produces them."""
+    monkeypatch.setattr(br, "load_ipo_cache", lambda: {
+        "current": [{"symbol": "LADCO", "company": "Ladder Co", "status": "current",
+                     "total_x": 5.0,
+                     "bid_ladder": {"combined": {"dom_fi": 1.1, "fii": 2.2,
+                                                  "mutual_fund": 3.3}}}],
+        "upcoming": []})
+    row = br._ipo_watch()[0]
+    assert row["dom_fi_x"] == 1.1
+    assert row["fii_x"] == 2.2
+    assert row["mutual_fund_x"] == 3.3
+
+
+def test_ipo_watch_computes_demand_delta_from_two_captures(_isolated_ipo_ledger, monkeypatch):
+    """End-to-end through the real ledger (pointed at tmp_path by the autouse
+    fixture): two stored snapshots for the same symbol must produce a real,
+    non-None demand_delta on the row _ipo_watch returns."""
+    from core.ipo.signals import IpoSignalSnapshot
+    _isolated_ipo_ledger.append(IpoSignalSnapshot(
+        symbol="DELCO", captured_at="2026-08-10T09:00:00Z", combined={"total": 3.0}))
+    _isolated_ipo_ledger.append(IpoSignalSnapshot(
+        symbol="DELCO", captured_at="2026-08-10T17:00:00Z", combined={"total": 5.5}))
+    monkeypatch.setattr(br, "load_ipo_cache", lambda: {
+        "current": [{"symbol": "DELCO", "company": "Delco", "status": "current",
+                     "total_x": 5.5}],
+        "upcoming": []})
+    row = br._ipo_watch()[0]
+    assert row["demand_delta"] == 2.5
+
+
+def test_ipo_watch_survives_a_ledger_that_raises_on_read(monkeypatch):
+    """Never-raise guarantee, proven rather than assumed: an IpoSignalStore
+    that blows up on load_all() must degrade demand_delta to None on every
+    row WITHOUT dropping the row or the IPO section."""
+    def _boom():
+        raise OSError("ledger unreadable")
+    monkeypatch.setattr(br, "_ipo_signal_store", _boom)
+    monkeypatch.setattr(br, "load_ipo_cache", lambda: {
+        "current": [{"symbol": "BOOMCO", "company": "Boom Co", "status": "current",
+                     "total_x": 4.0}],
+        "upcoming": []})
+    rows = br._ipo_watch()
+    assert rows[0]["symbol"] == "BOOMCO"
+    assert rows[0]["demand_delta"] is None
+
+
+def test_ipo_ledger_loaded_once_per_ipo_watch_call(monkeypatch):
+    """Performance regression guard: _ipo_watch must build the ledger ONCE
+    and index it, not re-read the file once per row (the pre-fix shape,
+    which turned an O(rows) render into O(rows * ledger size))."""
+    calls = {"n": 0}
+    real = br._ipo_ledger_snapshots
+
+    def _counting():
+        calls["n"] += 1
+        return real()
+    monkeypatch.setattr(br, "_ipo_ledger_snapshots", _counting)
+    monkeypatch.setattr(br, "load_ipo_cache", lambda: {
+        "current": [{"symbol": "A1", "status": "current"}, {"symbol": "A2", "status": "current"}],
+        "upcoming": [{"symbol": "A3", "status": "upcoming"}]})
+    br._ipo_watch()
+    assert calls["n"] == 1
 
 
 def test_enrich_discovery_adds_joins_shelf(monkeypatch):

@@ -482,19 +482,46 @@ def _earnings_soon(symbols: list[str], on: date) -> list[dict]:
         return []
 
 
-def _demand_delta_for(symbol: str) -> float | None:
+def _ipo_signal_store():
+    """Seam over IpoSignalStore() so tests can point the ledger at a tmp_dir
+    instead of the repo's real data/ipo/ (IpoSignalStore.__init__ mkdirs)."""
+    from core.ipo.signals import IpoSignalStore
+    return IpoSignalStore()
+
+
+def _ipo_ledger_snapshots() -> dict:
+    """All captured IPO signal snapshots, grouped by symbol. {} on any
+    failure — the ledger is a P2 addition and the brief predates it, so an
+    unreadable ledger degrades every row's demand_delta rather than dropping
+    the IPO section.
+
+    Loaded ONCE per _ipo_watch() call rather than once per row: the ledger
+    grows to hundreds of rows over the retention window, and re-parsing the
+    whole file per row (the pre-fix shape of this code) turned an O(rows)
+    render into O(rows * ledger size).
+    """
+    try:
+        by_symbol: dict = {}
+        for snap in _ipo_signal_store().load_all():
+            by_symbol.setdefault(snap.symbol, []).append(snap)
+        return by_symbol
+    except Exception as exc:
+        logger.debug("[brief] ipo ledger unavailable: %s", exc)
+        return {}
+
+
+def _demand_delta_for(symbol: str, ledger: dict | None = None) -> float | None:
     """Change in subscription × since the previous capture, or None.
 
-    Non-fatal by construction: the ledger is a P2 addition and the brief
-    predates it, so an unreadable ledger degrades this one clause rather than
-    dropping the IPO section.
+    `ledger` is the {symbol: [snapshots]} map built once by
+    _ipo_ledger_snapshots() — this function does no I/O of its own. Non-fatal
+    by construction: any failure degrades this one clause, never the section.
     """
     if not symbol:
         return None
     try:
-        from core.ipo.signals import IpoSignalStore
         from core.ipo.velocity import demand_delta
-        return demand_delta(IpoSignalStore().load_symbol(symbol))
+        return demand_delta((ledger or {}).get(symbol, []))
     except Exception as exc:
         logger.debug("[brief] demand delta unavailable for %s: %s", symbol, exc)
         return None
@@ -507,6 +534,7 @@ def _ipo_watch(max_items: int | None = None, on: date | None = None) -> list[dic
         cache = load_ipo_cache()
         mi = max_items if max_items is not None else settings.DELIVERY_BRIEF_MAX_IPOS
         rows = cache.get("current", []) + cache.get("upcoming", [])
+        ledger = _ipo_ledger_snapshots()
         out = []
         for r in rows:
             state = issue_state(r, on)
@@ -524,7 +552,7 @@ def _ipo_watch(max_items: int | None = None, on: date | None = None) -> list[dic
                 "dom_fi_x": (r.get("bid_ladder") or {}).get("combined", {}).get("dom_fi"),
                 "fii_x": (r.get("bid_ladder") or {}).get("combined", {}).get("fii"),
                 "mutual_fund_x": (r.get("bid_ladder") or {}).get("combined", {}).get("mutual_fund"),
-                "demand_delta": _demand_delta_for(r.get("symbol", "")),
+                "demand_delta": _demand_delta_for(r.get("symbol", ""), ledger),
             })
         # Open issues first — they are the ones with a deadline attached.
         order = {"open": 0, "closed": 1, "upcoming": 2, "unknown": 3}

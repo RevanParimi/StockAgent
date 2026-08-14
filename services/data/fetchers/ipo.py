@@ -313,15 +313,33 @@ def refresh_ipo_cache(cache_path: str | None = None,
         _enrich_open_issues(current + upcoming, on, previous=prior_rows)
 
         signal_store = None
+        skip_capture = False
         try:
             from core.ipo.signals import IpoSignalStore
             signal_store = IpoSignalStore(base_dir=signals_dir)
         except Exception as exc:
-            logger.warning("[ipo] signal store init failed (non-fatal): %s", exc)
+            if signals_dir is not None:
+                # An explicit override that fails to construct must NEVER
+                # fall through to _capture_signals's own store=None branch —
+                # that branch default-constructs the REAL data/ipo/ ledger,
+                # which is exactly the fabricated-row-beside-the-P1-spine
+                # failure mode this override exists to prevent. Skip capture
+                # entirely instead of writing to a path nobody asked for.
+                logger.warning(
+                    "[ipo] signal store init failed for override %r — "
+                    "skipping capture rather than falling back to the "
+                    "default path (non-fatal): %s", signals_dir, exc)
+                skip_capture = True
+            else:
+                # signals_dir=None IS the production default: letting
+                # _capture_signals retry its own store=None construction is
+                # correct here, not a fallback to somewhere unintended.
+                logger.warning("[ipo] signal store init failed (non-fatal): %s", exc)
 
-        captured = _capture_signals(current + upcoming, on, store=signal_store)
-        if captured:
-            logger.info("[ipo] captured %d signal snapshot(s)", captured)
+        if not skip_capture:
+            captured = _capture_signals(current + upcoming, on, store=signal_store)
+            if captured:
+                logger.info("[ipo] captured %d signal snapshot(s)", captured)
 
         try:
             from core.config import settings as _s

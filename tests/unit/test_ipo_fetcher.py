@@ -612,3 +612,46 @@ def test_refresh_honours_the_signals_dir_override(tmp_path, monkeypatch):
     # The autouse fixture's own fallback directory must stay untouched: this
     # call never took the None-default path, so it was never created.
     assert not (tmp_path / "ipo_ledger" / "ipo_signals.jsonl").exists()
+
+
+def test_refresh_skips_capture_when_the_override_store_cannot_be_built(tmp_path, monkeypatch):
+    """P0 follow-up: an explicit signals_dir that fails to construct must
+    skip capture entirely — it must never fall through to
+    _capture_signals's own `store is None` branch, which default-constructs
+    the real data/ipo/ ledger. That silent redirect to production data is
+    exactly the failure mode a fabricated-row-beside-the-P1-spine incident
+    already came from once this task. Simulates the construction failure by
+    monkeypatching IpoSignalStore to raise (a genuinely unwritable directory
+    isn't portable to simulate on Windows), then proves _capture_signals is
+    never invoked at all — the direct mechanism of the fix — and, per the
+    coordinator's ask, that the real ledger file never appears."""
+    import pathlib
+    import core.ipo.signals as signals_mod
+
+    cache = str(tmp_path / "ipo.json")
+    monkeypatch.setattr(ipo_mod, "_make_nse_client",
+                        lambda: _FakeNSE(current=[_LIVE_CURRENT_ROW]))
+    monkeypatch.setattr(ipo_mod, "fetch_bid_ladder", lambda symbol: {
+        "symbol": symbol,
+        "combined": {"total": 2.05}, "nse_only": {"total": 1.0},
+        "cutoff_share": 0.46})
+
+    def _boom(base_dir=None):
+        raise OSError("disk gone")
+    monkeypatch.setattr(signals_mod, "IpoSignalStore", _boom)
+
+    capture_calls: list = []
+    monkeypatch.setattr(ipo_mod, "_capture_signals",
+                        lambda *a, **kw: capture_calls.append(kw.get("store")) or 0)
+
+    result = refresh_ipo_cache(cache_path=cache, on=date(2026, 8, 12),
+                              signals_dir=str(tmp_path / "unusable_signals"))
+
+    # The fix: capture is skipped outright, not called with store=None.
+    assert capture_calls == []
+    # The refresh itself still completes — capture failing is non-fatal.
+    assert result["current"][0]["symbol"] == "MILKYMIST"
+    # Literal check requested by the coordinator: the real ledger never
+    # appears, even though this module's autouse fixture already makes that
+    # unreachable independently — this is the direct mechanism-level proof.
+    assert not pathlib.Path("data/ipo/ipo_signals.jsonl").exists()

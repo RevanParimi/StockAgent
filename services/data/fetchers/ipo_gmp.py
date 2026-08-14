@@ -40,6 +40,12 @@ _GMP_RE = re.compile(r"(-)?\s*(?:₹|rs\.?)\s*([\d,]+(?:\.\d+)?)", re.IGNORECASE
 # A snippet saying "discount" without an explicit minus sign is still
 # reporting a negative GMP (e.g. "GMP at a discount of Rs 15").
 _DISCOUNT_RE = re.compile(r"\bdiscount\b", re.IGNORECASE)
+# "no discount", "not a discount", "without a discount", "zero discount" —
+# these DENY a discount. The word "discount" in that phrase carries no sign
+# signal at all (positive OR negative) and must be excluded before either
+# the negative-window check or the ambiguity check ever sees it.
+_NEGATED_DISCOUNT_RE = re.compile(
+    r"\b(?:no|not|without|zero)\s+(?:a\s+|any\s+)?discount\b", re.IGNORECASE)
 # Anchors the currency figure to GMP/premium wording so an unrelated price
 # band or issue-price figure earlier in the snippet isn't mistaken for GMP.
 _KEYWORD_RE = re.compile(r"\bgmp\b|\bpremium\b|grey\s*market", re.IGNORECASE)
@@ -73,6 +79,18 @@ def _gap(a: re.Match, b: re.Match) -> float:
     return 0.0
 
 
+def _discount_matches(snippet: str) -> list[re.Match]:
+    """Real ("discount" is being reported), not denied, discount mentions.
+
+    "No discount seen" must not count as a discount indicator at all — a
+    _DISCOUNT_RE match whose span sits inside a _NEGATED_DISCOUNT_RE match is
+    dropped before anything downstream ever sees it.
+    """
+    negated_spans = [(m.start(), m.end()) for m in _NEGATED_DISCOUNT_RE.finditer(snippet)]
+    return [d for d in _DISCOUNT_RE.finditer(snippet)
+            if not any(s <= d.start() and d.end() <= e for s, e in negated_spans)]
+
+
 def _extract_gmp(snippet: str) -> float | None:
     """The GMP figure nearest a GMP/premium keyword, signed correctly, or
     None if no plausible figure is found.
@@ -87,13 +105,27 @@ def _extract_gmp(snippet: str) -> float | None:
     it. Only falls back to nearest-in-either-direction if nothing follows
     within the window.
 
-    Sign: negative if a minus sign sits immediately against the currency
-    token, OR the word "discount" sits within `_DISCOUNT_WINDOW` characters
-    of THIS figure — scoped to the figure's own neighbourhood, not scanned
-    across the whole snippet, so an unrelated "discount" elsewhere in the
-    text (e.g. "No discount seen, GMP is now Rs 120") can't flip an
-    otherwise-genuine positive reading. A positive premium is otherwise
-    assumed (the common "GMP of Rs X" phrasing).
+    Sign is resolved in three states, not two — round-3 fix. Widening
+    `_DISCOUNT_WINDOW` to catch more phrasing was rejected on purpose: any
+    fixed threshold is tuned to invented examples (this heuristic is
+    UNVALIDATED against real search snippets — SERPER_API_KEY_IPO is not yet
+    provisioned) and just moves the inversion boundary rather than removing
+    it. So the window's job is narrowed to only what it was actually
+    measured for — confidently attributing "discount" to a nearby figure —
+    and anything it can't confidently place is dropped rather than guessed:
+
+    - CONFIDENTLY NEGATIVE: an explicit minus sits immediately against the
+      currency token, OR a real (non-negated) "discount" mention sits within
+      `_DISCOUNT_WINDOW` characters of this figure.
+    - CONFIDENTLY POSITIVE: no real "discount" mention anywhere in the
+      snippet at all (a negated one, e.g. "no discount", does not count —
+      see `_discount_matches`).
+    - AMBIGUOUS: a real "discount" mention exists in the snippet but not
+      within the window of this figure. Returns None for this figure — the
+      caller drops the source. This is deliberately the SAME safety rule as
+      the module's other "can't tell -> don't guess" behaviour: dropping one
+      of two required sources yields an honest None, never a confidently
+      wrong sign.
     """
     matches = list(_GMP_RE.finditer(snippet))
     if not matches:
@@ -120,10 +152,16 @@ def _extract_gmp(snippet: str) -> float | None:
     except ValueError:
         return None
 
-    discount_matches = list(_DISCOUNT_RE.finditer(snippet))
-    is_discount = any(_gap(match, d) <= _DISCOUNT_WINDOW for d in discount_matches)
-    if match.group(1) or is_discount:
-        value = -value
+    if match.group(1):
+        value = -value  # explicit minus on the figure itself -> confidently negative
+    else:
+        discount_matches = _discount_matches(snippet)
+        if discount_matches:
+            if any(_gap(match, d) <= _DISCOUNT_WINDOW for d in discount_matches):
+                value = -value  # confidently negative
+            else:
+                return None  # ambiguous: "discount" is present but not attached to this figure
+        # else: no real discount mention at all -> confidently positive, value unchanged
 
     if abs(value) > _MAX_PLAUSIBLE_GMP:
         return None

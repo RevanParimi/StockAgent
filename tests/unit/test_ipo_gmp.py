@@ -182,3 +182,50 @@ def test_unrelated_discount_mention_does_not_flip_the_actual_figure(monkeypatch)
 # still pass after the windowing change (their word/sign sits ~3-4 chars
 # from the figure, well inside _DISCOUNT_WINDOW); duplicating them here
 # would just be the same input asserted twice.
+
+
+def test_discount_outside_window_drops_the_source_not_flips_positive(monkeypatch):
+    """Round-3 fix: widening the window was explicitly rejected as unsafe
+    (any fixed threshold just relocates the inversion). A 'discount' mention
+    that is present but NOT close enough to the figure to confidently sign
+    it is AMBIGUOUS, not positive — the source is dropped. With only one
+    source, fetch_gmp must return None (never a guessed +15)."""
+    snippet = "GMP is at a discount, currently Rs 15"
+    assert gmp_mod._numbers_by_domain(
+        [{"snippet": snippet, "link": "https://a.example/x"}]
+    ) == {}
+
+    monkeypatch.setattr(gmp_mod, "search_serper", lambda *a, **k: [
+        {"snippet": snippet, "link": "https://a.example/x"},
+    ])
+    assert gmp_mod.fetch_gmp("Molbio Diagnostics") is None
+
+
+def test_discount_outside_window_drops_the_source_second_phrasing(monkeypatch):
+    """Same ambiguous-drop rule, a second real phrasing shape that also
+    inverted under the old two-state (positive/negative) logic."""
+    snippet = "GMP at a slight discount, currently around Rs 15 per share"
+    assert gmp_mod._numbers_by_domain(
+        [{"snippet": snippet, "link": "https://a.example/x"}]
+    ) == {}
+
+    monkeypatch.setattr(gmp_mod, "search_serper", lambda *a, **k: [
+        {"snippet": snippet, "link": "https://a.example/x"},
+    ])
+    assert gmp_mod.fetch_gmp("Molbio Diagnostics") is None
+
+
+def test_negated_discount_is_not_a_discount_indicator_at_all(monkeypatch):
+    """'No discount seen' explicitly DENIES a discount — under the
+    three-state rule it must count as NO discount mention whatsoever (not
+    even 'present but ambiguous'), so the genuine +120 reading survives and
+    is not dropped."""
+    value = gmp_mod._extract_gmp("No discount seen, GMP is now Rs 120")
+    assert value == 120.0
+
+
+def test_tight_discount_wording_still_confidently_negative(monkeypatch):
+    """The one case from the round-3 table that stays inside the window
+    (9 chars, vs. the 10-char threshold) must still resolve negative."""
+    value = gmp_mod._extract_gmp("trading at a discount of about Rs 15")
+    assert value == -15.0

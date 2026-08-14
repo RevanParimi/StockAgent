@@ -85,3 +85,77 @@ def test_gmp_pct_is_absent_without_an_issue_price(monkeypatch):
     out = gmp_mod.fetch_gmp("Molbio Diagnostics", issue_price=None)
     assert out["gmp"] == 125.0
     assert out["gmp_pct"] is None
+
+
+def test_zero_gmp_from_two_sources_is_a_real_reading(monkeypatch):
+    """A GMP of zero is a real reading (demand has collapsed), not an absent
+    one — it must NOT be filtered out as if no source were found."""
+    monkeypatch.setattr(gmp_mod, "search_serper", lambda *a, **k: [
+        {"snippet": "GMP today is Rs 0", "link": "https://a.example/x"},
+        {"snippet": "grey market premium at Rs 0", "link": "https://b.example/y"},
+    ])
+    out = gmp_mod.fetch_gmp("Molbio Diagnostics")
+    assert out == {"gmp": 0.0, "gmp_pct": None, "sources": 2}
+
+
+def test_explicit_negative_gmp_stays_negative(monkeypatch):
+    """A minus sign immediately against the currency token is a grey-market
+    discount, not a premium — the sign must survive, not be discarded."""
+    monkeypatch.setattr(gmp_mod, "search_serper", lambda *a, **k: [
+        {"snippet": "IPO GMP -Rs 15 ahead of listing", "link": "https://a.example/x"},
+        {"snippet": "grey market premium -₹17 today", "link": "https://b.example/y"},
+    ])
+    out = gmp_mod.fetch_gmp("Molbio Diagnostics")
+    assert out["gmp"] == -16.0
+    assert out["sources"] == 2
+
+
+def test_discount_word_flips_sign(monkeypatch):
+    """No explicit minus sign, but the word 'discount' is itself a sufficient
+    signal that the figure is negative."""
+    monkeypatch.setattr(gmp_mod, "search_serper", lambda *a, **k: [
+        {"snippet": "IPO GMP at a discount of Rs 15 ahead of listing",
+         "link": "https://a.example/x"},
+        {"snippet": "grey market discount of Rs 17 seen today",
+         "link": "https://b.example/y"},
+    ])
+    out = gmp_mod.fetch_gmp("Molbio Diagnostics")
+    assert out["gmp"] == -16.0
+
+
+def test_positive_snippet_without_discount_signals_stays_positive(monkeypatch):
+    """Sanity check: the sign fix must not affect the ordinary positive-GMP
+    path when neither a minus sign nor 'discount' wording is present."""
+    monkeypatch.setattr(gmp_mod, "search_serper", lambda *a, **k: [
+        {"snippet": "GMP today is Rs 120, strong demand seen",
+         "link": "https://a.example/x"},
+        {"snippet": "grey market premium at Rs 130",
+         "link": "https://b.example/y"},
+    ])
+    out = gmp_mod.fetch_gmp("Molbio Diagnostics")
+    assert out["gmp"] == 125.0
+
+
+def test_agreement_at_exactly_the_tolerance_boundary_is_accepted(monkeypatch):
+    """100 and 125 are exactly 25% apart (fixture tolerance=0.25) — the
+    boundary itself must be accepted, not discarded."""
+    monkeypatch.setattr(gmp_mod, "search_serper", lambda *a, **k: [
+        {"snippet": "GMP Rs 100", "link": "https://a.example/x"},
+        {"snippet": "GMP Rs 125", "link": "https://b.example/y"},
+    ])
+    out = gmp_mod.fetch_gmp("Molbio Diagnostics")
+    assert out is not None
+    assert out["gmp"] == 112.5
+
+
+def test_price_band_before_gmp_figure_is_not_picked(monkeypatch):
+    """A price band mentioned before the GMP figure in the same snippet must
+    not be mistaken for GMP — the figure nearest GMP/premium wording wins."""
+    monkeypatch.setattr(gmp_mod, "search_serper", lambda *a, **k: [
+        {"snippet": "Molbio price band Rs 490 - Rs 500, GMP today is Rs 120",
+         "link": "https://a.example/x"},
+        {"snippet": "grey market premium seen around Rs 130",
+         "link": "https://b.example/y"},
+    ])
+    out = gmp_mod.fetch_gmp("Molbio Diagnostics")
+    assert out["gmp"] == 125.0

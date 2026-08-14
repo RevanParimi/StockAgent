@@ -443,7 +443,6 @@ ipo:
   gmp_enabled: false            # stays false until SERPER_API_KEY_IPO exists
   gmp_min_sources: 2            # a lone snippet number is not a measurement
   gmp_agreement_tolerance: 0.25 # >25% spread between sources => discard
-  gmp_max_age_hours: 24
 
 generic_graph:
   # Neutral 8-dimension weights for sectors without a native graph (must sum to 1.0).

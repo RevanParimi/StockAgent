@@ -266,9 +266,18 @@ def _capture_signals(rows: list[dict], on: _date, store=None) -> int:
 
 
 def refresh_ipo_cache(cache_path: str | None = None,
-                      on: _date | None = None) -> dict:
+                      on: _date | None = None,
+                      signals_dir: str | None = None) -> dict:
     """Fetch current + upcoming + past-120d IPO lists, then enrich OPEN issues
-    with their category-wise bid ladder. Never raises."""
+    with their category-wise bid ladder. Never raises.
+
+    `signals_dir` overrides where the P2 capture ledger (IpoSignalStore) is
+    rooted, symmetric with `cache_path` for the JSON cache. None (the
+    production default) keeps the real `data/ipo/` ledger untouched by this
+    parameter — pass a tmp_path in tests so `refresh_ipo_cache` never has a
+    codepath left free to write a fabricated row next to the P1 historical
+    spine.
+    """
     path = pathlib.Path(cache_path or _DEFAULT_CACHE)
     previous = load_ipo_cache(cache_path=str(path))
     on = on or _date.today()
@@ -303,14 +312,21 @@ def refresh_ipo_cache(cache_path: str | None = None,
                     prior_rows.setdefault(row["symbol"], row)
         _enrich_open_issues(current + upcoming, on, previous=prior_rows)
 
-        captured = _capture_signals(current + upcoming, on)
+        signal_store = None
+        try:
+            from core.ipo.signals import IpoSignalStore
+            signal_store = IpoSignalStore(base_dir=signals_dir)
+        except Exception as exc:
+            logger.warning("[ipo] signal store init failed (non-fatal): %s", exc)
+
+        captured = _capture_signals(current + upcoming, on, store=signal_store)
         if captured:
             logger.info("[ipo] captured %d signal snapshot(s)", captured)
 
         try:
             from core.config import settings as _s
             from core.ipo.signals import IpoSignalStore
-            IpoSignalStore().prune(
+            IpoSignalStore(base_dir=signals_dir).prune(
                 older_than_days=int(getattr(_s, "IPO_SIGNAL_RETENTION_DAYS", 400)))
         except Exception as exc:
             logger.warning("[ipo] signal prune failed (non-fatal): %s", exc)

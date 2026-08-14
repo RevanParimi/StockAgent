@@ -9,6 +9,37 @@ import services.data.fetchers.ipo_bids as bids_mod
 from services.data.fetchers.ipo import load_ipo_cache, refresh_ipo_cache
 
 
+@pytest.fixture(autouse=True)
+def _isolated_ipo_ledger(tmp_path, monkeypatch):
+    """Every test in this module gets its own throwaway IPO signal ledger,
+    never the repo's real data/ipo/. refresh_ipo_cache's capture and prune
+    blocks construct IpoSignalStore(base_dir=signals_dir) via a lazy
+    `from core.ipo.signals import IpoSignalStore` inside the function body —
+    when a test doesn't pass signals_dir, that resolves to base_dir=None,
+    i.e. the real data/ipo/, the same directory as ipo_history.jsonl (the P1
+    historical spine: gitignored, the only copy, ~202 throttled NSE calls to
+    rebuild). Patching the class at its origin module means the lazy import
+    picks up the pinned version regardless of whether a given test remembers
+    to pass signals_dir — same isolation rationale as the fixture of the
+    same name in test_delivery_brief.py / test_delivery_weekly.py, adapted
+    here because this module has no _ipo_signal_store()-style factory to
+    monkeypatch; IpoSignalStore itself is the construction point.
+
+    An explicit base_dir (signals_dir=..., or a test's own
+    IpoSignalStore(base_dir=str(tmp_path))) always wins over the fallback —
+    this only substitutes for the None-means-real-path default.
+    """
+    import core.ipo.signals as signals_mod
+    real_cls = signals_mod.IpoSignalStore
+    ledger_dir = str(tmp_path / "ipo_ledger")
+
+    def _pinned(base_dir=None):
+        return real_cls(base_dir=base_dir or ledger_dir)
+
+    monkeypatch.setattr(signals_mod, "IpoSignalStore", _pinned)
+    return ledger_dir
+
+
 class _FakeNSE:
     def __init__(self, past=None, current=None, upcoming=None, fail=False):
         self._past, self._current, self._upcoming = past or [], current or [], upcoming or []
@@ -550,3 +581,34 @@ def test_capture_never_raises_into_the_refresh(tmp_path, monkeypatch):
              "issue_end": "2026-08-14", "listing_date": "",
              "bid_ladder": {"combined": {"total": 40.0}}}]
     assert ipo_mod._capture_signals(rows, date(2026, 8, 13), store=Boom()) == 0
+
+
+def test_refresh_honours_the_signals_dir_override(tmp_path, monkeypatch):
+    """The defect this guards against: refresh_ipo_cache's capture/prune
+    blocks used to construct IpoSignalStore() with no override at all, so
+    every test calling refresh_ipo_cache wrote real rows into data/ipo/ —
+    beside ipo_history.jsonl, the P1 historical spine. signals_dir must be
+    honoured end-to-end: the snapshot lands under the caller-supplied
+    directory, not wherever the None-default would otherwise resolve to."""
+    from core.ipo.signals import IpoSignalStore
+
+    cache = str(tmp_path / "ipo.json")
+    signals_dir = tmp_path / "explicit_signals"
+    monkeypatch.setattr(ipo_mod, "_make_nse_client",
+                        lambda: _FakeNSE(current=[_LIVE_CURRENT_ROW]))
+    monkeypatch.setattr(ipo_mod, "fetch_bid_ladder", lambda symbol: {
+        "symbol": symbol,
+        "combined": {"total": 2.05}, "nse_only": {"total": 1.0},
+        "cutoff_share": 0.46})
+
+    refresh_ipo_cache(cache_path=cache, on=date(2026, 8, 12),
+                      signals_dir=str(signals_dir))
+
+    override_store = IpoSignalStore(base_dir=str(signals_dir))
+    snaps = override_store.load_symbol("MILKYMIST")
+    assert len(snaps) == 1
+    assert snaps[0].combined["total"] == 2.05
+
+    # The autouse fixture's own fallback directory must stay untouched: this
+    # call never took the None-default path, so it was never created.
+    assert not (tmp_path / "ipo_ledger" / "ipo_signals.jsonl").exists()

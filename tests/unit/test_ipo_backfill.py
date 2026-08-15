@@ -338,6 +338,35 @@ def test_enrich_ofs_flushes_progress_before_a_later_failure(tmp_path, monkeypatc
         assert rows[symbol].outcomes == {"1": 1.0}
 
 
+def test_upsert_many_with_retry_recovers_from_a_transient_permission_error(tmp_path, monkeypatch):
+    """Round-3 fix: enrich_ofs's periodic flush calls store.upsert_many(),
+    which rewrites the whole file via tmp.replace() exactly like upsert()
+    does -- the same OneDrive-synced-working-copy race that
+    _upsert_with_retry exists to paper over for the per-row path (§9b). A
+    transient PermissionError on the first attempt must be retried, not
+    propagated, or a routine sync-lock race kills the whole ~200-call
+    throttled --ofs pass outright."""
+    store = IpoHistoryStore(base_dir=str(tmp_path))
+    store.append(IpoRecord(symbol="AAA"))
+
+    real_upsert_many = store.upsert_many
+    calls = []
+
+    def _flaky_upsert_many(recs):
+        calls.append(1)
+        if len(calls) == 1:
+            raise PermissionError("WinError 5: simulated OneDrive lock race")
+        return real_upsert_many(recs)
+
+    monkeypatch.setattr(store, "upsert_many", _flaky_upsert_many)
+    monkeypatch.setattr(bf.time, "sleep", lambda s: None)   # don't actually wait
+
+    written = bf._upsert_many_with_retry(store, [IpoRecord(symbol="AAA", total_x=1.0)])
+    assert written == 1
+    assert len(calls) == 2                          # failed once, retried, succeeded
+    assert store.load_all()[0].total_x == 1.0        # the retried write actually landed
+
+
 def test_enrich_rejects_a_placeholder_total_with_no_category_breakdown(tmp_path, monkeypatch):
     """Live NSE (verified 2026-08-12 against IGIL, listed 2024-12-20): for
     some older listings the `combined` ladder (activeCat.dataList) is a

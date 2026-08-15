@@ -33,6 +33,14 @@ one real captured payload per shape):
   3. INDIAN DIGIT GROUPING. "1,99,75,000" is 19,975,000. Stripping every
      comma (not just every third digit) parses this correctly regardless of
      grouping style.
+  4. UNBALANCED PARENTHESES. An unmatched "(" makes the parenthetical-strip
+     regex consume through to the NEXT ")" it finds, however far away — able
+     to delete an entire real clause (e.g. the whole OFS heading and its
+     figure), not just the intended carve-out. Not observed in the current
+     spine or the 8 sampled payloads, but reachable in principle, so
+     `_parens_balanced` checks first and refuses to strip (returns an
+     unreadable None) on unbalanced input rather than risk fabricating a
+     0.0/1.0/ratio from a mangled sentence.
 
 0.0 and 1.0 are REAL readings (pure fresh issue; pure offer-for-sale). None
 means the split could not be read. Collapsing the two would turn "we could
@@ -68,13 +76,40 @@ _BLANK: dict[str, float | None] = {
 }
 
 
+def _parens_balanced(text: str) -> bool:
+    """False if `text` has an unmatched '(' or ')' anywhere, including a ')'
+    that closes before any '(' opened. `_strip_parens` must never run on
+    unbalanced input: `\\([^)]*\\)` matches from an unmatched '(' through to
+    the NEXT ')' it can find, however far away — which can delete an entire
+    real clause (e.g. the whole "Offer for Sale ... Rs X" heading and
+    figure) rather than just the intended carve-out, producing a fabricated
+    ofs_share of 0.0 or 1.0 instead of the honest "could not read it"."""
+    depth = 0
+    for ch in text:
+        if ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth -= 1
+            if depth < 0:
+                return False
+    return depth == 0
+
+
 def _strip_parens(text: str) -> str:
     """Remove parenthetical sub-portions (anchor/employee carve-outs) BEFORE
     any amount is extracted. This is the single easiest way to get a
     silently-wrong number: a naive regex over the raw sentence captures the
     parenthetical figure as if it were one of the two top-level legs.
-    Looped (not a single pass) in case a vintage nests parentheses, though
-    none of the 8 sampled symbols do.
+
+    Looped (not a single pass) to handle SEQUENTIAL parenthetical groups,
+    e.g. "...(A) and (B)..." — each pass removes one already-closed group.
+    This does NOT handle truly NESTED parens like "(outer (inner) text)":
+    the first pass's `[^)]*` would stop at the inner ')', leaving "outer "
+    and a stray " text)" behind rather than removing the whole "(outer
+    (inner) text)" span. None of the 8 sampled symbols nest, and the caller
+    is expected to have already rejected unbalanced input via
+    `_parens_balanced` before this runs, so a lone stray character from an
+    unhandled nesting case is the worst case here, not a swallowed leg.
     """
     prev = None
     while prev != text:
@@ -147,6 +182,16 @@ def parse_offer_split(issue_info: object, issue_price: float | None = None) -> d
 
     text = _issue_size_text(issue_info)
     if not text:
+        return dict(_BLANK)
+
+    if not _parens_balanced(text):
+        # Unbalanced input makes _strip_parens unsafe to run at all — it
+        # could delete a real clause instead of just a carve-out (see
+        # _parens_balanced's docstring). Better an honest None than a
+        # confidently wrong 0.0/1.0/ratio built on a mangled sentence.
+        logger.warning(
+            "[ipo_offer] unbalanced parentheses in Issue Size text — "
+            "refusing to strip, ofs_share unreadable: %r", text)
         return dict(_BLANK)
 
     text = _strip_parens(text)

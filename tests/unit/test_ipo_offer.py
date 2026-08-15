@@ -143,3 +143,34 @@ def test_a_row_with_null_title_does_not_crash_the_scan():
     ]}
     out = parse_offer_split(info)
     assert out["ofs_share"] == pytest.approx(0.75)
+
+
+def test_unbalanced_parens_yields_none_not_a_fabricated_zero():
+    """An unmatched '(' before the OFS clause makes the naive
+    \\([^)]*\\) strip regex consume through to the NEXT ')' it finds,
+    however far away -- deleting the OFS heading and its figure entirely,
+    not just the intended carve-out. parse_offer_split would then take the
+    fresh-only branch and return ofs_share=0.0, asserting "no promoter
+    selling" when the truth is "we could not read it". 0.0 is a real
+    reading, which is exactly why it must never be fabricated from a
+    parsing accident -- the same wrong-number-not-absent failure class as
+    total_x_nse_only (Task 3) and the GMP sign (Task 8)."""
+    info = {"dataList": [{"title": "Issue Size",
+                          "value": "Fresh Issue aggregating upto Rs. 100 million "
+                                   "(Note: subject to approval and Offer for Sale "
+                                   "aggregating upto Rs. 300 million (including "
+                                   "Anchor Investor Portion of 50,000 Equity Shares)"}]}
+    out = parse_offer_split(info)
+    assert out == {"ofs_amount": None, "fresh_amount": None, "ofs_share": None}
+
+
+def test_balanced_parens_with_a_carve_out_still_parses_normally():
+    """Regression guard: the balance check must not make ordinary,
+    well-formed input unreadable — only genuinely unbalanced text."""
+    info = {"dataList": [{"title": "Issue Size",
+                          "value": "Fresh Issue aggregating upto Rs. 100 million "
+                                   "and Offer for Sale aggregating upto Rs. 300 million "
+                                   "(including Anchor Investor Portion of 50,000 "
+                                   "Equity Shares)"}]}
+    out = parse_offer_split(info)
+    assert out["ofs_share"] == pytest.approx(0.75)

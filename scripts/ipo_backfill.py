@@ -44,24 +44,39 @@ _INDEX_TICKER = "^NSEI"
 _NSE_API_BASE = "https://www.nseindia.com/api"    # matches ipo_bids.py's _BASE
 _FETCH_PAD_DAYS = 7          # see core/audit/benchmark.py: a 1-day yfinance
                              # window returns an EMPTY frame for ^NSEI
-_UPSERT_RETRIES = 5          # IpoHistoryStore.upsert rewrites the whole file
-                             # every row via tmp.replace(); on a OneDrive-
-                             # synced working copy that rename transiently
-                             # loses a race with the sync engine's own file
-                             # lock (WinError 5). Retrying the *call*, not
-                             # the store, keeps the landed Task 7 interface
-                             # untouched.
+_UPSERT_RETRIES = 5          # IpoHistoryStore.upsert/upsert_many both rewrite
+                             # the whole file via tmp.replace(); on a
+                             # OneDrive-synced working copy that rename
+                             # transiently loses a race with the sync
+                             # engine's own file lock (WinError 5). Retrying
+                             # the *call*, not the store, keeps the landed
+                             # Task 7/9 interfaces untouched. Every call site
+                             # that rewrites the file goes through _with_retry
+                             # (or one of its two thin wrappers below) — a
+                             # batched upsert_many() write is exactly as
+                             # exposed to this failure as a single upsert().
 
 
-def _upsert_with_retry(store: IpoHistoryStore, rec: IpoRecord) -> None:
+def _with_retry(fn, *args):
+    """Retry `fn(*args)` on a transient PermissionError (WinError 5, see
+    _UPSERT_RETRIES). Shared by _upsert_with_retry and
+    _upsert_many_with_retry so there is one retry loop, not two copies of it
+    drifting apart."""
     for attempt in range(_UPSERT_RETRIES):
         try:
-            store.upsert(rec)
-            return
+            return fn(*args)
         except PermissionError:
             if attempt == _UPSERT_RETRIES - 1:
                 raise
             time.sleep(0.5 * (attempt + 1))
+
+
+def _upsert_with_retry(store: IpoHistoryStore, rec: IpoRecord) -> None:
+    _with_retry(store.upsert, rec)
+
+
+def _upsert_many_with_retry(store: IpoHistoryStore, recs: list[IpoRecord]) -> int:
+    return _with_retry(store.upsert_many, recs)
 
 
 def _load_past_ipos(since: date, until: date) -> list[dict]:
@@ -272,16 +287,24 @@ def enrich_ofs(store: IpoHistoryStore, symbols: set[str] | None = None,
     excess/...); that exact defect class was fixed in a578ac6 and must not
     return.
 
-    Resumable for real: progress is flushed to disk via upsert_many every
-    `_OFS_FLUSH_EVERY` rows (plus a final flush for the remainder), not only
-    once at the very end. That keeps the batching win upsert_many exists for
-    — a handful of file rewrites over ~200 rows, not 200 one-row rewrites,
-    the O(n²) problem §9b flags — while making "resumable" actually true: an
-    interrupted run keeps every row flushed before the interruption (so it
-    is skipped on the next call, `ofs_share` already set) and only re-fetches
-    the rows in whatever batch was still in flight, not the whole pass. A
-    live run is ~200 throttled NSE calls, so losing partial progress to an
-    interruption is a real, not theoretical, cost.
+    Resumable for real: progress is flushed to disk via
+    `_upsert_many_with_retry` every `_OFS_FLUSH_EVERY` rows (plus a final
+    flush for the remainder), not only once at the very end. That keeps the
+    batching win upsert_many exists for — a handful of file rewrites over
+    ~200 rows, not 200 one-row rewrites, the O(n²) problem §9b flags — while
+    making "resumable" actually true: an interrupted run keeps every row
+    flushed before the interruption (so it is skipped on the next call,
+    `ofs_share` already set) and only re-fetches the rows in whatever batch
+    was still in flight, not the whole pass. A live run is ~200 throttled
+    NSE calls, so losing partial progress to an interruption is a real, not
+    theoretical, cost.
+
+    Each flush goes through the SAME transient-PermissionError retry as
+    run_backfill/enrich_predictors' per-row upsert() — this working copy is
+    OneDrive-synced, and tmp.replace() transiently raises WinError 5 on a
+    sync-engine lock race. Without the retry, one of those (routine) races
+    would kill the whole ~200-call throttled pass rather than just costing
+    a brief sleep-and-retry.
     """
     from services.data.fetchers.ipo_offer import parse_offer_split
 
@@ -307,11 +330,11 @@ def enrich_ofs(store: IpoHistoryStore, symbols: set[str] | None = None,
         batch.append(rec)
         logger.info("[ipo_backfill] ofs %s -> %.4f", rec.symbol, rec.ofs_share)
         if len(batch) >= _OFS_FLUSH_EVERY:
-            written += store.upsert_many(batch)
+            written += _upsert_many_with_retry(store, batch)
             batch = []
 
     if batch:
-        written += store.upsert_many(batch)
+        written += _upsert_many_with_retry(store, batch)
 
     result = {"updated": written, "failed": failed, "pending": len(pending)}
     logger.info("[ipo_backfill] ofs %s", result)

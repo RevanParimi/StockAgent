@@ -65,7 +65,7 @@ indices, not one composite.
 | **GMP decay across the window** | A GMP that fades while bids climb remains a sharp warning, but is now a cross-check on the official curve rather than the primary input |
 | News-volume spike vs sector baseline | Brand visibility ≠ business quality |
 | Issue size vs sector median | Mega consumer-brand issues are structurally hype-prone |
-| **OFS share of issue** | Promoters cashing out vs fresh capital into the business — the single strongest Ola/Ather discriminator, and it is disclosed |
+| **OFS share of issue** | ~~The single strongest Ola/Ather discriminator~~ — **MEASURED 2026-08-15 AND THE SIGN IS BACKWARDS; see §5 P2 "First OFS measurement".** The intuition was that promoters cashing out is the bad sign. Across 144 rows carrying both an OFS share and a listing-day outcome, OFS-heavy issues *outperformed* at every horizon. Treat as **unvalidated** — the sample is biased and confounded, and P3 must not weight this feature on the strength of it. |
 
 ### Substance Index (S)
 
@@ -323,6 +323,38 @@ verdicts; any change to the brief's existing demand lean; the auditor
 
 **Cost:** zero new API calls while `gmp_enabled: false`. NSE ladder fetch count
 unchanged. Storage ≈ 50 KB/month.
+
+#### First OFS measurement (2026-08-15) — the spec's own intuition is contradicted
+
+The `--ofs` backfill ran live: **161 of 209 rows enriched, 48 failed**, leaving **144 rows with
+both an OFS share and a listing-day outcome**. Mean return vs issue price, by OFS bucket:
+
+| bucket | 1td | 21td | 63td | 252td |
+|---|---|---|---|---|
+| fresh-heavy (OFS ≤33%) | +14.49% (n=67) | +13.08% (n=63) | +9.66% (n=61) | +22.87% (n=22) |
+| mixed (33–66%) | +14.87% (n=38) | +21.00% (n=38) | +23.64% (n=37) | +24.30% (n=18) |
+| **OFS-heavy (>66%)** | **+25.51%** (n=39) | **+23.04%** (n=37) | **+27.90%** (n=36) | **+35.72%** (n=20) |
+
+Every quoted cell clears the report's n≥10 floor. **OFS-heavy issues outperformed at every
+horizon** — the opposite of §3's stated reading that promoters cashing out is the bad sign.
+
+**This is an association, not a cause, and four things must be said with it:**
+
+1. **The sample is biased.** The 48 parse failures skew toward worse performers — missing-OFS
+   listing-day mean **+10.52%** (n=44) versus present-OFS **+17.57%** (n=144). The OFS column
+   is not a representative sample of the spine.
+2. **Maturity confound.** A company able to execute a large offer-for-sale is typically a
+   mature, PE/VC-backed business with a track record — exactly the kind that lists well. OFS
+   share may be proxying for company maturity rather than promoter conviction.
+3. **One regime.** 2024-05 → 2026-08 was a strong window for Indian IPOs; every bucket is
+   positive at every horizon. The ordering could invert in a different regime.
+4. **Overlapping windows at 252td** (n=22/18/20) mean effective n ≪ nominal n — the same
+   caveat the verification layer recorded for its `^NSEI` hit-rate.
+
+**Consequence for P3:** OFS is now a *measured* feature rather than an assumed one, and what was
+measured points the other way. P3 must not weight it on this evidence. The honest next step is
+to reduce the 23% parse-failure rate and re-measure, since fixing the bias could move the result
+in either direction.
 
 ### P3 — The model
 

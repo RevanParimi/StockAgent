@@ -32,6 +32,9 @@ class IpoRecord(BaseModel):
     total_x: float | None = None
     qib_x: float | None = None
     retail_x: float | None = None
+    # Promoters cashing out vs fresh capital in. 0.0 is a real reading
+    # (pure fresh issue); None means the split could not be read.
+    ofs_share: float | None = None
 
     # Realised curves, percent vs ISSUE PRICE, keyed by trading-day horizon.
     outcomes: dict[str, float] = Field(default_factory=dict)
@@ -86,3 +89,19 @@ class IpoHistoryStore:
             encoding="utf-8",
         )
         tmp.replace(self.path)
+
+    def upsert_many(self, recs: list[IpoRecord]) -> int:
+        """Replace rows for these symbols in ONE rewrite. Returns rows written.
+
+        upsert() rewrites the whole file per row, which is O(n²) IO at ~206
+        rows and the root cause of the OneDrive lock _upsert_with_retry works
+        around (§9b). An enrichment pass touching every row must not do that.
+        """
+        rows = {r.symbol: r for r in self.load_all()}
+        for rec in recs:
+            rows[rec.symbol] = rec
+        tmp = self.path.with_suffix(".tmp")
+        tmp.write_text("".join(r.model_dump_json() + "\n" for r in rows.values()),
+                       encoding="utf-8")
+        tmp.replace(self.path)
+        return len(recs)

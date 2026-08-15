@@ -1,5 +1,6 @@
 """PI Prospect P1 — outcome-curve maths against a synthetic tape."""
 import pandas as pd
+import pytest
 
 from core.ipo.outcomes import compute_outcomes, symbol_sessions
 
@@ -197,6 +198,101 @@ def test_enrich_leaves_the_row_intact_when_the_ladder_is_unavailable(tmp_path, m
     rec = store.load_all()[0]
     assert rec.total_x is None                 # absent, never 0
     assert rec.outcomes == {"1": 2.0}
+
+
+def test_backfill_preserves_prior_ofs_share(tmp_path, monkeypatch):
+    """Same defect class as test_backfill_preserves_prior_enriched_predictors,
+    now for ofs_share: listPastIPO never carries the OFS/fresh split either,
+    so a plain re-run of the base backfill must carry a prior enrich_ofs
+    result forward rather than silently reset it to None."""
+    tape = _tape("NEWCO", [400.0] * 6)
+    monkeypatch.setattr(bf, "_load_past_ipos", lambda since, until: [
+        {"symbol": "NEWCO", "company": "NewCo Ltd", "listing_date": "2026-06-15",
+         "issue_price": 200.0, "total_x": None, "qib_x": None, "retail_x": None},
+    ])
+    monkeypatch.setattr(bf, "_load_tape", lambda end: tape)
+    monkeypatch.setattr(bf, "build_index_pct", lambda a, b: (lambda s, e: 0.0))
+
+    store = IpoHistoryStore(base_dir=str(tmp_path))
+    store.append(IpoRecord(symbol="NEWCO", company="NewCo Ltd",
+                           listing_date="2026-06-15", issue_price=200.0,
+                           total_x=69.91, qib_x=197.55, retail_x=7.95,
+                           ofs_share=0.62, outcomes={"1": 5.0}))
+
+    bf.run_backfill(base_dir=str(tmp_path), on=date(2026, 8, 12))
+
+    rec = IpoHistoryStore(base_dir=str(tmp_path)).load_all()[0]
+    assert rec.ofs_share == 0.62
+    assert rec.total_x == 69.91 and rec.qib_x == 197.55 and rec.retail_x == 7.95
+
+
+def test_enrich_ofs_populates_the_split_from_the_detail_feed(tmp_path, monkeypatch):
+    store = IpoHistoryStore(base_dir=str(tmp_path))
+    store.append(IpoRecord(symbol="LEAP", issue_price=53.0, outcomes={"1": 5.0}))
+
+    monkeypatch.setattr(bf, "_fetch_issue_info", lambda symbol: {
+        "dataList": [{"title": "Issue Size",
+                      "value": "Fresh Issue aggregating upto Rs. 4,800 million "
+                               "and Offer for Sale aggregating upto Rs. 20,000 million"}]
+    })
+
+    result = bf.enrich_ofs(store)
+    assert result["updated"] == 1
+    rec = store.load_all()[0]
+    assert rec.ofs_share == pytest.approx(0.806452, abs=1e-6)
+    assert rec.outcomes == {"1": 5.0}          # curves untouched
+    assert rec.issue_price == 53.0             # untouched columns survive
+
+
+def test_enrich_ofs_skips_rows_that_already_have_the_split(tmp_path, monkeypatch):
+    """Resumability: the pass costs one throttled NSE call per row, so a
+    re-run must not repeat work it already did."""
+    store = IpoHistoryStore(base_dir=str(tmp_path))
+    store.append(IpoRecord(symbol="DONE", ofs_share=0.5, outcomes={"1": 1.0}))
+    calls = []
+    monkeypatch.setattr(bf, "_fetch_issue_info", lambda s: calls.append(s) or None)
+    result = bf.enrich_ofs(store)
+    assert calls == [] and result["pending"] == 0
+
+
+def test_enrich_ofs_leaves_the_row_intact_when_the_split_is_unreadable(tmp_path, monkeypatch):
+    store = IpoHistoryStore(base_dir=str(tmp_path))
+    store.append(IpoRecord(symbol="IGIL", outcomes={"1": 2.0}))
+    monkeypatch.setattr(bf, "_fetch_issue_info", lambda s: {})   # IGIL shape
+    result = bf.enrich_ofs(store)
+    assert result["failed"] == 1 and result["updated"] == 0
+    rec = store.load_all()[0]
+    assert rec.ofs_share is None               # absent, never a fabricated 0/1
+    assert rec.outcomes == {"1": 2.0}
+
+
+def test_enrich_ofs_never_wipes_columns_it_did_not_touch(tmp_path, monkeypatch):
+    """The one thing that must not go wrong (a578ac6's defect class): the OFS
+    pass touches ONE row and must not disturb the untouched row, nor any
+    column on the touched row it did not itself set."""
+    store = IpoHistoryStore(base_dir=str(tmp_path))
+    store.append(IpoRecord(symbol="LEAP", issue_price=53.0, total_x=12.3,
+                           qib_x=30.1, retail_x=4.5, outcomes={"1": 8.0, "5": 10.0}))
+    store.append(IpoRecord(symbol="UNTOUCHED", total_x=2.0, ofs_share=0.9))
+
+    monkeypatch.setattr(bf, "_fetch_issue_info", lambda symbol: {
+        "dataList": [{"title": "Issue Size",
+                      "value": "Fresh Issue aggregating upto Rs. 4,800 million "
+                               "and Offer for Sale aggregating upto Rs. 20,000 million"}]
+    })
+
+    result = bf.enrich_ofs(store)
+    assert result["updated"] == 1
+
+    rows = {r.symbol: r for r in store.load_all()}
+    leap = rows["LEAP"]
+    assert leap.ofs_share == pytest.approx(0.806452, abs=1e-6)
+    assert leap.total_x == 12.3 and leap.qib_x == 30.1 and leap.retail_x == 4.5
+    assert leap.outcomes == {"1": 8.0, "5": 10.0}
+    assert leap.issue_price == 53.0
+
+    untouched = rows["UNTOUCHED"]
+    assert untouched.total_x == 2.0 and untouched.ofs_share == 0.9
 
 
 def test_enrich_rejects_a_placeholder_total_with_no_category_breakdown(tmp_path, monkeypatch):

@@ -195,3 +195,29 @@ def test_every_registry_prep_name_is_registered():
     for entry in load_registry():
         if entry.prep:
             assert entry.prep in PREPS, f"{entry.id}: unregistered prep {entry.prep}"
+
+
+def test_signals_accruing_is_satisfied_when_no_window_was_open(tmp_path, monkeypatch):
+    """A quiet IPO month is not a fault. This check must not cry wolf."""
+    import core.ops.watchdog.checks as checks
+    monkeypatch.setattr(checks, "_data_dir", lambda: tmp_path)
+    (tmp_path / "market_cache").mkdir(parents=True)
+    (tmp_path / "market_cache" / "ipo.json").write_text(
+        '{"fetched_at": "2026-08-13T08:00:00+00:00", "current": [], '
+        '"upcoming": [], "past": []}', encoding="utf-8")
+    assert checks.ipo_signals_accruing().state == "satisfied"
+
+
+def test_signals_accruing_is_pending_when_an_open_issue_has_no_snapshot(tmp_path, monkeypatch):
+    import core.ops.watchdog.checks as checks
+    monkeypatch.setattr(checks, "_data_dir", lambda: tmp_path)
+    (tmp_path / "market_cache").mkdir(parents=True)
+    (tmp_path / "market_cache" / "ipo.json").write_text(
+        '{"fetched_at": "2026-08-13T08:00:00+00:00", "current": ['
+        '{"symbol": "MOLBIO", "issue_start": "2026-08-10", '
+        '"issue_end": "2099-01-01", "listing_date": ""}], '
+        '"upcoming": [], "past": []}', encoding="utf-8")
+    (tmp_path / "ipo").mkdir(parents=True)
+    result = checks.ipo_signals_accruing()
+    assert result.state == "pending"
+    assert "MOLBIO" in result.detail

@@ -109,6 +109,17 @@ invariants:
       Check the scheduler job ids ipo_refresh_am / ipo_refresh_pm.
     docs: docs/superpowers/specs/2026-08-11-ipo-intelligence-design.md
 
+  - id: ipo_signals_accruing
+    kind: invariant
+    title: "IPO capture ledger is accruing snapshots"
+    check: ipo_signals_accruing
+    action: >
+      An IPO window is open but the P2 capture ledger has no snapshot for it.
+      The perishable demand data for this window is being lost and cannot be
+      recovered later. Check ipo.signals_enabled in config.yaml and that
+      data/ipo/ipo_signals.jsonl is writable on the volume.
+    docs: docs/superpowers/specs/2026-08-11-ipo-intelligence-design.md
+
   - id: registry_is_current
     kind: invariant
     title: "Deployed registry matches origin/main"

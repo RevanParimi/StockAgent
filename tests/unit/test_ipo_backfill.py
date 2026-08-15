@@ -295,6 +295,49 @@ def test_enrich_ofs_never_wipes_columns_it_did_not_touch(tmp_path, monkeypatch):
     assert untouched.total_x == 2.0 and untouched.ofs_share == 0.9
 
 
+def test_enrich_ofs_flushes_progress_before_a_later_failure(tmp_path, monkeypatch):
+    """Round-2 fix: the docstring used to claim 'resumable by design' while
+    only writing once at the very end — self-contradictory, since nothing
+    written means nothing to skip on the next run. Progress must actually
+    reach disk periodically (every _OFS_FLUSH_EVERY rows), so an interrupted
+    run keeps what it completed and only re-fetches the still-in-flight
+    batch, not the whole pass (~200 throttled NSE calls on a live run)."""
+    monkeypatch.setattr(bf, "_OFS_FLUSH_EVERY", 2)
+
+    store = IpoHistoryStore(base_dir=str(tmp_path))
+    for symbol in ("A", "B", "C", "D", "E"):
+        store.append(IpoRecord(symbol=symbol, outcomes={"1": 1.0}))
+
+    ok_info = {"dataList": [{"title": "Issue Size",
+                             "value": "Fresh Issue aggregating upto Rs. 100 million "
+                                      "and Offer for Sale aggregating upto Rs. 300 million"}]}
+
+    def _fetch(symbol: str):
+        if symbol == "D":
+            raise RuntimeError("simulated interruption (e.g. an API cutoff)")
+        return ok_info
+
+    monkeypatch.setattr(bf, "_fetch_issue_info", _fetch)
+
+    with pytest.raises(RuntimeError):
+        bf.enrich_ofs(store)
+
+    rows = {r.symbol: r for r in store.load_all()}
+    # A and B formed the first full batch (_OFS_FLUSH_EVERY=2 here) and were
+    # flushed to disk BEFORE D raised.
+    assert rows["A"].ofs_share == pytest.approx(0.75)
+    assert rows["B"].ofs_share == pytest.approx(0.75)
+    # C succeeded but was still sitting in the in-flight batch (only 1 of 2)
+    # when D raised, so it was never flushed and is lost — the honest,
+    # documented cost of flushing every N rows instead of every single row.
+    assert rows["C"].ofs_share is None
+    assert rows["D"].ofs_share is None
+    assert rows["E"].ofs_share is None       # never reached at all
+    # Nothing else about the untouched rows was disturbed.
+    for symbol in ("C", "D", "E"):
+        assert rows[symbol].outcomes == {"1": 1.0}
+
+
 def test_enrich_rejects_a_placeholder_total_with_no_category_breakdown(tmp_path, monkeypatch):
     """Live NSE (verified 2026-08-12 against IGIL, listed 2024-12-20): for
     some older listings the `combined` ladder (activeCat.dataList) is a

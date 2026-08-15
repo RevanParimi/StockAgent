@@ -249,6 +249,16 @@ def _fetch_issue_info(symbol: str) -> dict | None:
         return None
 
 
+_OFS_FLUSH_EVERY = 25        # rows per upsert_many flush during --ofs. Keeps
+                             # the batching win that motivated upsert_many
+                             # (a handful of rewrites over ~200 rows, not
+                             # 200) while making resumability real: an
+                             # interruption loses at most one in-flight batch
+                             # (< 25 rows re-fetched next run), not the whole
+                             # pass — see test_enrich_ofs_flushes_progress_
+                             # before_a_later_failure for the proof.
+
+
 def enrich_ofs(store: IpoHistoryStore, symbols: set[str] | None = None,
                limit: int | None = None) -> dict:
     """Fill ofs_share on rows that lack it, one /api/ipo-detail call per row.
@@ -260,17 +270,18 @@ def enrich_ofs(store: IpoHistoryStore, symbols: set[str] | None = None,
     detail feed carries no bid data at all, so constructing a new record here
     would wipe every predictor P1 measured (total_x/qib_x/retail_x/outcomes/
     excess/...); that exact defect class was fixed in a578ac6 and must not
-    return. Writes land in ONE upsert_many rewrite at the end of the pass
-    rather than one file rewrite per symbol — upsert() is already O(n) IO per
-    call, so a per-row loop over ~200 rows is the O(n²) problem §9b flags.
+    return.
 
-    Resumable by design: rows that already carry ofs_share are skipped, so an
-    interrupted run resumes where it left off rather than re-spending calls —
-    except that unlike enrich_predictors, nothing here persists until the
-    pass finishes (upsert_many is a single batched write), so an interrupted
-    run keeps whatever the store already had and simply retries every symbol
-    that was still `pending` next time; it never corrupts a row, but it does
-    not partially save progress either.
+    Resumable for real: progress is flushed to disk via upsert_many every
+    `_OFS_FLUSH_EVERY` rows (plus a final flush for the remainder), not only
+    once at the very end. That keeps the batching win upsert_many exists for
+    — a handful of file rewrites over ~200 rows, not 200 one-row rewrites,
+    the O(n²) problem §9b flags — while making "resumable" actually true: an
+    interrupted run keeps every row flushed before the interruption (so it
+    is skipped on the next call, `ofs_share` already set) and only re-fetches
+    the rows in whatever batch was still in flight, not the whole pass. A
+    live run is ~200 throttled NSE calls, so losing partial progress to an
+    interruption is a real, not theoretical, cost.
     """
     from services.data.fetchers.ipo_offer import parse_offer_split
 
@@ -280,7 +291,8 @@ def enrich_ofs(store: IpoHistoryStore, symbols: set[str] | None = None,
     if limit:
         pending = pending[:limit]
 
-    updated: list[IpoRecord] = []
+    batch: list[IpoRecord] = []
+    written = 0
     failed = 0
     for rec in pending:
         issue_info = _fetch_issue_info(rec.symbol)
@@ -292,11 +304,15 @@ def enrich_ofs(store: IpoHistoryStore, symbols: set[str] | None = None,
             failed += 1
             continue
         rec.ofs_share = split["ofs_share"]     # mutate the LOADED row, never rebuild
-        updated.append(rec)
-        logger.info("[ipo_backfill] ofs %s -> %.4f — %d done",
-                    rec.symbol, rec.ofs_share, len(updated))
+        batch.append(rec)
+        logger.info("[ipo_backfill] ofs %s -> %.4f", rec.symbol, rec.ofs_share)
+        if len(batch) >= _OFS_FLUSH_EVERY:
+            written += store.upsert_many(batch)
+            batch = []
 
-    written = store.upsert_many(updated) if updated else 0
+    if batch:
+        written += store.upsert_many(batch)
+
     result = {"updated": written, "failed": failed, "pending": len(pending)}
     logger.info("[ipo_backfill] ofs %s", result)
     return result

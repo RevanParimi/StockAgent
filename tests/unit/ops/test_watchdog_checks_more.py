@@ -221,3 +221,106 @@ def test_signals_accruing_is_pending_when_an_open_issue_has_no_snapshot(tmp_path
     result = checks.ipo_signals_accruing()
     assert result.state == "pending"
     assert "MOLBIO" in result.detail
+
+
+def test_signals_accruing_is_satisfied_with_only_upcoming_issues(tmp_path, monkeypatch):
+    """An issue that hasn't opened yet has nothing to capture yet — not a fault."""
+    import core.ops.watchdog.checks as checks
+    monkeypatch.setattr(checks, "_data_dir", lambda: tmp_path)
+    (tmp_path / "market_cache").mkdir(parents=True)
+    (tmp_path / "market_cache" / "ipo.json").write_text(json.dumps({
+        "fetched_at": "2026-08-13T08:00:00+00:00",
+        "current": [],
+        "upcoming": [{"symbol": "FUTURE", "issue_start": "2099-01-01",
+                       "issue_end": "2099-01-05", "listing_date": ""}],
+        "past": []}), encoding="utf-8")
+    assert checks.ipo_signals_accruing().state == "satisfied"
+
+
+def test_signals_accruing_is_satisfied_with_only_closed_issues(tmp_path, monkeypatch):
+    """Closed-but-not-listed issues linger in the NSE feed for days; a closed
+    window is no longer open, so there is nothing new to capture."""
+    import core.ops.watchdog.checks as checks
+    monkeypatch.setattr(checks, "_data_dir", lambda: tmp_path)
+    (tmp_path / "market_cache").mkdir(parents=True)
+    (tmp_path / "market_cache" / "ipo.json").write_text(json.dumps({
+        "fetched_at": "2026-08-13T08:00:00+00:00",
+        "current": [{"symbol": "OLDISSUE", "issue_start": "2020-01-01",
+                      "issue_end": "2020-01-10", "listing_date": ""}],
+        "upcoming": [],
+        "past": []}), encoding="utf-8")
+    assert checks.ipo_signals_accruing().state == "satisfied"
+
+
+def test_signals_accruing_is_satisfied_with_only_listed_issues(tmp_path, monkeypatch):
+    """`listed` outranks open/closed — once the tape exists the window is
+    history, so this must not be mistaken for a currently-open issue."""
+    import core.ops.watchdog.checks as checks
+    monkeypatch.setattr(checks, "_data_dir", lambda: tmp_path)
+    (tmp_path / "market_cache").mkdir(parents=True)
+    (tmp_path / "market_cache" / "ipo.json").write_text(json.dumps({
+        "fetched_at": "2026-08-13T08:00:00+00:00",
+        "current": [{"symbol": "TAPED", "issue_start": "2020-01-01",
+                      "issue_end": "2020-01-10", "listing_date": "2020-01-15"}],
+        "upcoming": [],
+        "past": []}), encoding="utf-8")
+    assert checks.ipo_signals_accruing().state == "satisfied"
+
+
+def test_signals_accruing_names_only_the_missing_symbol_when_mixed(tmp_path, monkeypatch):
+    """Two open issues, one already captured and one not — pending must name
+    only the one actually missing, not the one already accruing."""
+    import core.ops.watchdog.checks as checks
+    from core.ipo.signals import IpoSignalSnapshot, IpoSignalStore
+    monkeypatch.setattr(checks, "_data_dir", lambda: tmp_path)
+    (tmp_path / "market_cache").mkdir(parents=True)
+    (tmp_path / "market_cache" / "ipo.json").write_text(json.dumps({
+        "fetched_at": "2026-08-13T08:00:00+00:00",
+        "current": [
+            {"symbol": "CAPTURED", "issue_start": "2026-08-10",
+             "issue_end": "2099-01-01", "listing_date": ""},
+            {"symbol": "MISSING", "issue_start": "2026-08-10",
+             "issue_end": "2099-01-01", "listing_date": ""},
+        ],
+        "upcoming": [], "past": []}), encoding="utf-8")
+    store = IpoSignalStore(base_dir=str(tmp_path / "ipo"))
+    store.append(IpoSignalSnapshot(symbol="CAPTURED",
+                                    captured_at="2026-08-13T08:00:00+00:00"))
+    result = checks.ipo_signals_accruing()
+    assert result.state == "pending"
+    assert "MISSING" in result.detail
+    assert "CAPTURED" not in result.detail
+    assert result.evidence["missing"] == ["MISSING"]
+
+
+def test_signals_accruing_ignores_a_malformed_row_without_raising(tmp_path, monkeypatch):
+    """A non-dict row inside `current` must not crash the 06:30 job."""
+    import core.ops.watchdog.checks as checks
+    monkeypatch.setattr(checks, "_data_dir", lambda: tmp_path)
+    (tmp_path / "market_cache").mkdir(parents=True)
+    (tmp_path / "market_cache" / "ipo.json").write_text(json.dumps({
+        "fetched_at": "2026-08-13T08:00:00+00:00",
+        "current": ["not-a-dict", 42, None],
+        "upcoming": [], "past": []}), encoding="utf-8")
+    result = checks.ipo_signals_accruing()
+    assert result.state == "satisfied"
+
+
+def test_signals_accruing_survives_an_unreadable_ledger(tmp_path, monkeypatch):
+    """If the ledger itself cannot be read — a permission error in prod, and
+    here a path collision that forces the same failure — the check must
+    return a verdict, not raise and rely on run_check's outer net."""
+    import core.ops.watchdog.checks as checks
+    monkeypatch.setattr(checks, "_data_dir", lambda: tmp_path)
+    (tmp_path / "market_cache").mkdir(parents=True)
+    (tmp_path / "market_cache" / "ipo.json").write_text(json.dumps({
+        "fetched_at": "2026-08-13T08:00:00+00:00",
+        "current": [{"symbol": "MOLBIO", "issue_start": "2026-08-10",
+                      "issue_end": "2099-01-01", "listing_date": ""}],
+        "upcoming": [], "past": []}), encoding="utf-8")
+    # A file where the store expects a directory makes IpoSignalStore's own
+    # mkdir(parents=True, exist_ok=True) raise FileExistsError.
+    (tmp_path / "ipo").write_text("not a directory", encoding="utf-8")
+    result = checks.ipo_signals_accruing()
+    assert result.state == "pending"
+    assert "MOLBIO" in result.detail

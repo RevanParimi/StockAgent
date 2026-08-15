@@ -399,20 +399,35 @@ def ipo_signals_accruing() -> CheckResult:
                            {"path": str(path)})
     try:
         cache = json.loads(path.read_text(encoding="utf-8"))
+        today = _today()
+        rows = (cache.get("current") or []) + (cache.get("upcoming") or [])
+        open_symbols = [r.get("symbol", "") for r in rows
+                        if isinstance(r, dict) and issue_state(r, today) == "open"]
     except Exception as exc:
+        # Covers a bad parse AND a malformed shape (top-level JSON not a dict,
+        # or current/upcoming not lists) — either way the cache is corrupt,
+        # not quiet, so this is a real "pending", not a crash.
         return CheckResult("pending", f"IPO cache unreadable: {exc}",
                            {"path": str(path)})
 
-    today = _today()
-    rows = (cache.get("current") or []) + (cache.get("upcoming") or [])
-    open_symbols = [r.get("symbol", "") for r in rows
-                    if isinstance(r, dict) and issue_state(r, today) == "open"]
     if not open_symbols:
         return CheckResult("satisfied", "No open IPO window — nothing to capture.",
                            {"open_issues": 0})
 
-    store = IpoSignalStore(base_dir=str(_data_dir() / "ipo"))
-    missing = [s for s in open_symbols if not store.load_symbol(s)]
+    try:
+        store = IpoSignalStore(base_dir=str(_data_dir() / "ipo"))
+        missing = [s for s in open_symbols if not store.load_symbol(s)]
+    except Exception as exc:
+        # A permission error or unreadable ledger means capture cannot be
+        # confirmed for issue(s) that are open right now — that is itself
+        # worth surfacing, not something to let bubble up and rely on
+        # run_check's outer net to catch.
+        return CheckResult(
+            "pending",
+            f"IPO capture ledger unreadable: {exc}. Cannot confirm capture is "
+            f"landing for open issue(s): {', '.join(open_symbols)}.",
+            {"open_issues": len(open_symbols), "error": str(exc)})
+
     evidence = {"open_issues": len(open_symbols), "missing": missing}
     if missing:
         return CheckResult(

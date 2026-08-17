@@ -145,28 +145,80 @@ def load_ipo_cache(cache_path: str | None = None) -> dict:
                 "current": [], "upcoming": [], "past": []}
 
 
-def _enrich_open_issues(rows: list[dict], on: _date) -> None:
+_LADDER_FIELDS = ("bid_ladder", "cutoff_share", "qib_x", "retail_x", "total_x")
+
+
+def _carry_forward(rec: dict, previous: dict | None, *,
+                   ladder_fetched: bool = False) -> None:
+    """Restore ladder-derived fields from the previous cache, in place.
+
+    Every pass rebuilds rows from _normalise, which knows only what the LIST
+    feed carries — and the list feed has no ladder. Without this, a closed
+    issue's final ladder is destroyed by the next refresh, and that row is the
+    completed demand picture the capture ledger exists to keep.
+
+    Only fills fields the new row lacks: a fresh fetch always wins.
+
+    `ladder_fetched=True` means THIS pass already asked NSE for a ladder and
+    got one back — so a None `cutoff_share` here is this fetch's own honest
+    reading (no demandGraph this time), not a gap to backfill. Restoring
+    yesterday's cutoff_share onto today's fresh combined/qib/retail would fuse
+    two different moments into one snapshot that never existed at any point in
+    time, and _capture_signals then writes that composite into the append-only
+    ledger as if it were a real reading (spec: dark-signal discipline). A
+    closed issue or a failed fetch never sets this flag, so carry-forward keeps
+    restoring cutoff_share there exactly as before.
+    """
+    if not previous:
+        return
+    prior = previous.get(rec.get("symbol", ""))
+    if not isinstance(prior, dict):
+        return
+    for field in _LADDER_FIELDS:
+        if field == "cutoff_share" and ladder_fetched:
+            continue
+        if rec.get(field) is None and prior.get(field) is not None:
+            rec[field] = prior[field]
+            if field == "total_x":
+                # The qualifier must travel WITH the value it qualifies.
+                # _normalise recomputes this as `total_x is not None`, so it is
+                # always a bool and the `is None` guard above can never carry it.
+                # A carried NSE-only total whose flag stayed False renders as if
+                # it were the all-exchange figure — a wrong number, not a partial
+                # one (spec §11.4).
+                rec["total_x_nse_only"] = bool(prior.get("total_x_nse_only", False))
+
+
+def _enrich_open_issues(rows: list[dict], on: _date,
+                        previous: dict | None = None) -> None:
     """Attach the bid ladder to issues whose window is OPEN, in place.
 
-    Only open issues: an upcoming one has no bids yet and a closed one will
-    never change, so either would spend an NSE call to learn nothing. Bounded
-    by IPO_MAX_LADDER_FETCHES because this runs inside a scheduler job.
+    Only open issues get a live fetch: an upcoming one has no bids yet and a
+    closed one will never change, so either would spend an NSE call to learn
+    nothing. Closed issues instead inherit their last known ladder via
+    _carry_forward. Bounded by IPO_MAX_LADDER_FETCHES because this runs inside
+    a scheduler job.
     """
     from core.config import settings
     from core.ipo.calendar import issue_state
 
     if not getattr(settings, "IPO_BID_LADDER_ENABLED", True):
+        for rec in rows:
+            _carry_forward(rec, previous)
         return
+
     budget = int(getattr(settings, "IPO_MAX_LADDER_FETCHES", 10))
     for rec in rows:
-        if budget <= 0:
-            break
-        if issue_state(rec, on) != "open":
+        if issue_state(rec, on) != "open" or budget <= 0:
+            _carry_forward(rec, previous)
             continue
-        budget -= 1
         ladder = fetch_bid_ladder(rec["symbol"])
         if ladder is None:
-            continue                    # keep whatever the feed already gave
+            # Budget is spent only on a SUCCESSFUL fetch: a run of dead-endpoint
+            # failures must not exhaust the cap with zero enrichment (§9b).
+            _carry_forward(rec, previous)
+            continue
+        budget -= 1
         combined = ladder.get("combined") or {}
         rec["bid_ladder"] = ladder
         rec["cutoff_share"] = ladder.get("cutoff_share")
@@ -176,12 +228,69 @@ def _enrich_open_issues(rows: list[dict], on: _date) -> None:
         if combined.get("total") is not None:
             rec["total_x"] = combined["total"]
             rec["total_x_nse_only"] = False
+        _carry_forward(rec, previous, ladder_fetched=True)
+
+
+def _capture_signals(rows: list[dict], on: _date, store=None) -> int:
+    """Append one capture-ledger snapshot per issue that has a ladder.
+
+    Spends NO additional API calls: it persists what _enrich_open_issues
+    already fetched and previously discarded. An issue with no ladder is
+    skipped rather than written as all-None — a row in the ledger asserts a
+    reading was taken, and "we looked and there were no bids yet" is not the
+    same claim as "we never looked".
+
+    Never raises: a dead ledger must not break the cache write the morning
+    brief depends on.
+    """
+    from core.config import settings
+    from core.ipo.calendar import issue_state
+
+    if not getattr(settings, "IPO_SIGNALS_ENABLED", True):
+        return 0
+
+    written = 0
+    try:
+        if store is None:
+            from core.ipo.signals import IpoSignalStore
+            store = IpoSignalStore()
+        from core.ipo.signals import IpoSignalSnapshot
+        stamp = datetime.now(timezone.utc).isoformat()
+        for rec in rows:
+            ladder = rec.get("bid_ladder")
+            if not isinstance(ladder, dict):
+                continue
+            snap = IpoSignalSnapshot(
+                symbol=rec.get("symbol", ""),
+                captured_at=stamp,
+                state=issue_state(rec, on),
+                issue_start=rec.get("issue_start", "") or "",
+                issue_end=rec.get("issue_end", "") or "",
+                combined=ladder.get("combined") or {},
+                nse_only=ladder.get("nse_only") or {},
+                cutoff_share=rec.get("cutoff_share"),
+            )
+            if store.append(snap):
+                written += 1
+    except Exception as exc:
+        logger.warning("[ipo] signal capture failed (non-fatal): %s", exc)
+        return written
+    return written
 
 
 def refresh_ipo_cache(cache_path: str | None = None,
-                      on: _date | None = None) -> dict:
+                      on: _date | None = None,
+                      signals_dir: str | None = None) -> dict:
     """Fetch current + upcoming + past-120d IPO lists, then enrich OPEN issues
-    with their category-wise bid ladder. Never raises."""
+    with their category-wise bid ladder. Never raises.
+
+    `signals_dir` overrides where the P2 capture ledger (IpoSignalStore) is
+    rooted, symmetric with `cache_path` for the JSON cache. None (the
+    production default) keeps the real `data/ipo/` ledger untouched by this
+    parameter — pass a tmp_path in tests so `refresh_ipo_cache` never has a
+    codepath left free to write a fabricated row next to the P1 historical
+    spine.
+    """
     path = pathlib.Path(cache_path or _DEFAULT_CACHE)
     previous = load_ipo_cache(cache_path=str(path))
     on = on or _date.today()
@@ -209,7 +318,49 @@ def refresh_ipo_cache(cache_path: str | None = None,
         past = list(previous.get("past", []))
 
     if not degraded:
-        _enrich_open_issues(current + upcoming, on)
+        prior_rows: dict[str, dict] = {}
+        for bucket in ("current", "upcoming", "past"):
+            for row in previous.get(bucket, []) or []:
+                if isinstance(row, dict) and row.get("symbol"):
+                    prior_rows.setdefault(row["symbol"], row)
+        _enrich_open_issues(current + upcoming, on, previous=prior_rows)
+
+        signal_store = None
+        skip_capture = False
+        try:
+            from core.ipo.signals import IpoSignalStore
+            signal_store = IpoSignalStore(base_dir=signals_dir)
+        except Exception as exc:
+            if signals_dir is not None:
+                # An explicit override that fails to construct must NEVER
+                # fall through to _capture_signals's own store=None branch —
+                # that branch default-constructs the REAL data/ipo/ ledger,
+                # which is exactly the fabricated-row-beside-the-P1-spine
+                # failure mode this override exists to prevent. Skip capture
+                # entirely instead of writing to a path nobody asked for.
+                logger.warning(
+                    "[ipo] signal store init failed for override %r — "
+                    "skipping capture rather than falling back to the "
+                    "default path (non-fatal): %s", signals_dir, exc)
+                skip_capture = True
+            else:
+                # signals_dir=None IS the production default: letting
+                # _capture_signals retry its own store=None construction is
+                # correct here, not a fallback to somewhere unintended.
+                logger.warning("[ipo] signal store init failed (non-fatal): %s", exc)
+
+        if not skip_capture:
+            captured = _capture_signals(current + upcoming, on, store=signal_store)
+            if captured:
+                logger.info("[ipo] captured %d signal snapshot(s)", captured)
+
+        try:
+            from core.config import settings as _s
+            from core.ipo.signals import IpoSignalStore
+            IpoSignalStore(base_dir=signals_dir).prune(
+                older_than_days=int(getattr(_s, "IPO_SIGNAL_RETENTION_DAYS", 400)))
+        except Exception as exc:
+            logger.warning("[ipo] signal prune failed (non-fatal): %s", exc)
 
     result = {
         "fetched_at": datetime.now(timezone.utc).isoformat(),

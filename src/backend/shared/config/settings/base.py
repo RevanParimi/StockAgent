@@ -68,6 +68,12 @@ def llm_cost_usd(model: str, prompt_tokens: int, completion_tokens: int) -> floa
 SERPER_API_KEY: str = os.getenv("SERPER_API_KEY", "")        # Google search via Serper — single paid key, all sectors
 TAVILY_API_KEY: str = os.getenv("TAVILY_API_KEY", "")        # Full-page extraction (Policy agent)
 
+# Dedicated Serper key for PI Prospect GMP capture. A SECRET, so env= is
+# correct here — the carve-out in the no-env-for-toggles rule. Kept separate
+# from SERPER_API_KEY on purpose: the shared key runs at ~83 calls/day against
+# a 2,500/mo cap (measured 2026-08-13), leaving no room for IPO polling.
+SERPER_API_KEY_IPO: str = os.getenv("SERPER_API_KEY_IPO", "")
+
 
 def get_serper_key(sector: str) -> str:
     """
@@ -929,10 +935,18 @@ DISCOVERY_IPO_QIB_WEIGHT: float = float(cfg("discovery.ipo_qib_weight", fallback
 # ---------------------------------------------------------------------------
 IPO_ENABLED: bool = bool(cfg("ipo.enabled", fallback=True))
 IPO_REFRESH_HOUR: int = int(cfg("ipo.refresh_hour", fallback=8))
-IPO_REFRESH_HOUR_LIVE: int = int(cfg("ipo.refresh_hour_live", fallback=18))
+IPO_REFRESH_HOUR_LIVE: int = int(cfg("ipo.refresh_hour_live", fallback=17))
+IPO_REFRESH_MINUTE_LIVE: int = int(cfg("ipo.refresh_minute_live", fallback=45))
 IPO_BID_LADDER_ENABLED: bool = bool(cfg("ipo.bid_ladder_enabled", fallback=True))
 IPO_MAX_LADDER_FETCHES: int = int(cfg("ipo.max_ladder_fetches", fallback=10))
 IPO_CACHE_MAX_AGE_HOURS: int = int(cfg("ipo.cache_max_age_hours", fallback=48))
+IPO_SIGNALS_ENABLED: bool = bool(cfg("ipo.signals_enabled", fallback=True))
+IPO_SIGNAL_RETENTION_DAYS: int = int(cfg("ipo.signal_retention_days", fallback=400))
+# P2 GMP capture — built dark. Reads SERPER_API_KEY_IPO (above), not the
+# shared SERPER_API_KEY. Stays disabled until that key exists.
+IPO_GMP_ENABLED: bool = bool(cfg("ipo.gmp_enabled", fallback=False))
+IPO_GMP_MIN_SOURCES: int = int(cfg("ipo.gmp_min_sources", fallback=2))
+IPO_GMP_AGREEMENT_TOLERANCE: float = float(cfg("ipo.gmp_agreement_tolerance", fallback=0.25))
 
 ADVISOR_SWITCH_CONVICTION_GAP: float = float(cfg("advisor.switch_conviction_gap", fallback=0.15))
 

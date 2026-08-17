@@ -43,9 +43,16 @@ _PAYLOAD = {
             {"srNo": "1", "category": "Qualified Institutional Buyers(QIBs)",
              "noOfShareOffered": "2325145", "noOfSharesBid": "3234672",
              "noOfTotalMeant": "1.3911700130529494"},
+            {"srNo": "1(b)", "category": "Financial Institutions/ Banks",
+             "noOfShareOffered": "", "noOfSharesBid": "245600",
+             "noOfTotalMeant": "0.42"},
             {"srNo": "1(c)", "category": "Mutual funds",
              "noOfShareOffered": "", "noOfSharesBid": "218268",
              "noOfTotalMeant": ""},
+            # Combined-ladder total: real figure per module docstring above
+            # (25,437,636 all-exchange bids vs. 16,731,036 NSE-only).
+            {"srNo": None, "category": "Total", "noOfShareOffered": "8158529.0",
+             "noOfSharesBid": "25437636", "noOfTotalMeant": "3.117918"},
         ],
     },
     "demandGraph": {"totalBidAtCutOff": "7752114", "TOTAL_BIDS": "16731036"},
@@ -154,3 +161,17 @@ def test_placeholder_total_with_no_category_breakdown_is_rejected():
     # this fixture) is unaffected by the guard — the rule applies uniformly
     # per-ladder, not by assuming combined is the only untrustworthy one.
     assert out["nse_only"]["qib"] == 31.507063099685354
+
+
+def test_combined_total_carries_a_real_value():
+    """The P1 predictor column. Previously only ever asserted `is None`, so a
+    parser that silently stopped reading totals would not have been caught."""
+    combined = parse_bid_ladder(_PAYLOAD)["combined"]
+    assert combined["total"] is not None
+    assert combined["total"] > 0
+
+
+def test_dom_fi_is_parsed_as_its_own_category():
+    """srNo 1(b). P2's capture ledger is its first consumer."""
+    combined = parse_bid_ladder(_PAYLOAD)["combined"]
+    assert "dom_fi" in combined

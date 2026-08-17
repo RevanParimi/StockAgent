@@ -2,9 +2,42 @@
 import json
 from datetime import date
 
+import pytest
+
 import services.data.fetchers.ipo as ipo_mod
 import services.data.fetchers.ipo_bids as bids_mod
 from services.data.fetchers.ipo import load_ipo_cache, refresh_ipo_cache
+
+
+@pytest.fixture(autouse=True)
+def _isolated_ipo_ledger(tmp_path, monkeypatch):
+    """Every test in this module gets its own throwaway IPO signal ledger,
+    never the repo's real data/ipo/. refresh_ipo_cache's capture and prune
+    blocks construct IpoSignalStore(base_dir=signals_dir) via a lazy
+    `from core.ipo.signals import IpoSignalStore` inside the function body —
+    when a test doesn't pass signals_dir, that resolves to base_dir=None,
+    i.e. the real data/ipo/, the same directory as ipo_history.jsonl (the P1
+    historical spine: gitignored, the only copy, ~202 throttled NSE calls to
+    rebuild). Patching the class at its origin module means the lazy import
+    picks up the pinned version regardless of whether a given test remembers
+    to pass signals_dir — same isolation rationale as the fixture of the
+    same name in test_delivery_brief.py / test_delivery_weekly.py, adapted
+    here because this module has no _ipo_signal_store()-style factory to
+    monkeypatch; IpoSignalStore itself is the construction point.
+
+    An explicit base_dir (signals_dir=..., or a test's own
+    IpoSignalStore(base_dir=str(tmp_path))) always wins over the fallback —
+    this only substitutes for the None-means-real-path default.
+    """
+    import core.ipo.signals as signals_mod
+    real_cls = signals_mod.IpoSignalStore
+    ledger_dir = str(tmp_path / "ipo_ledger")
+
+    def _pinned(base_dir=None):
+        return real_cls(base_dir=base_dir or ledger_dir)
+
+    monkeypatch.setattr(signals_mod, "IpoSignalStore", _pinned)
+    return ledger_dir
 
 
 class _FakeNSE:
@@ -311,3 +344,348 @@ def test_open_issue_ladder_stub_does_not_write_a_false_zero(tmp_path, monkeypatc
     # noOfTime from the raw feed itself, untouched by the stubbed ladder.
     assert rec["total_x"] == 0.5315724992825029
     assert rec["qib_x"] is None
+
+
+def test_a_closed_issue_keeps_its_final_ladder(monkeypatch):
+    """The most valuable row in the capture ledger is a closed issue's FINAL
+    ladder. Before this fix it was destroyed by the next 08:00 pass: the row is
+    rebuilt from _normalise, and _enrich_open_issues only refetches OPEN issues.
+    """
+    from datetime import date
+    import services.data.fetchers.ipo as ipo_mod
+
+    ladder = {"symbol": "MOLBIO",
+              "combined": {"qib": 90.0, "retail": 12.0, "total": 40.0,
+                           "dom_fi": 0.2, "fii": 1.0, "mutual_fund": 0.3,
+                           "nii": 5.0, "employee": None},
+              "nse_only": {"qib": 45.0, "total": 20.0},
+              "cutoff_share": 0.46}
+
+    previous = {"MOLBIO": {"symbol": "MOLBIO", "bid_ladder": ladder,
+                           "cutoff_share": 0.46, "qib_x": 90.0,
+                           "retail_x": 12.0, "total_x": 40.0,
+                           "total_x_nse_only": False}}
+
+    # Window ended yesterday => state is "closed", so no refetch happens.
+    rows = [{"symbol": "MOLBIO", "issue_start": "2026-08-10",
+             "issue_end": "2026-08-12", "listing_date": "",
+             "qib_x": None, "retail_x": None, "total_x": None,
+             "total_x_nse_only": False}]
+
+    monkeypatch.setattr(ipo_mod, "fetch_bid_ladder",
+                        lambda s: pytest.fail("a closed issue must not be refetched"))
+    ipo_mod._enrich_open_issues(rows, date(2026, 8, 13), previous=previous)
+
+    assert rows[0]["total_x"] == 40.0
+    assert rows[0]["qib_x"] == 90.0
+    assert rows[0]["bid_ladder"]["combined"]["dom_fi"] == 0.2
+    assert rows[0]["cutoff_share"] == 0.46
+
+
+def test_a_failed_refetch_keeps_the_previous_ladder(monkeypatch):
+    """An open issue whose fetch fails must not lose yesterday's numbers."""
+    from datetime import date
+    import services.data.fetchers.ipo as ipo_mod
+
+    previous = {"MOLBIO": {"symbol": "MOLBIO", "cutoff_share": 0.46,
+                           "qib_x": 90.0, "total_x": 40.0,
+                           "bid_ladder": {"combined": {"total": 40.0}}}}
+    rows = [{"symbol": "MOLBIO", "issue_start": "2026-08-10",
+             "issue_end": "2026-08-14", "listing_date": "",
+             "qib_x": None, "retail_x": None, "total_x": None,
+             "total_x_nse_only": False}]
+
+    monkeypatch.setattr(ipo_mod, "fetch_bid_ladder", lambda s: None)
+    ipo_mod._enrich_open_issues(rows, date(2026, 8, 13), previous=previous)
+
+    assert rows[0]["total_x"] == 40.0
+    assert rows[0]["cutoff_share"] == 0.46
+
+
+def test_budget_is_spent_only_on_a_successful_fetch(monkeypatch):
+    """A run of dead-endpoint failures must not exhaust IPO_MAX_LADDER_FETCHES
+    with zero enrichment (§9b). With the budget cap at 1, a failed fetch on
+    the first open issue must not stop the second open issue from being
+    enriched — the old code decremented the budget before checking the
+    result, so one dead symbol could silently zero out the whole pass."""
+    from core.config import settings
+    import services.data.fetchers.ipo as ipo_mod
+
+    monkeypatch.setattr(settings, "IPO_MAX_LADDER_FETCHES", 1)
+
+    rows = [
+        {"symbol": "DEADCO", "issue_start": "2026-08-12", "issue_end": "2026-08-14",
+         "listing_date": "", "qib_x": None, "retail_x": None, "total_x": None,
+         "total_x_nse_only": False},
+        {"symbol": "LIVECO", "issue_start": "2026-08-12", "issue_end": "2026-08-14",
+         "listing_date": "", "qib_x": None, "retail_x": None, "total_x": None,
+         "total_x_nse_only": False},
+    ]
+
+    def _fake_ladder(symbol):
+        if symbol == "DEADCO":
+            return None
+        return {"symbol": symbol,
+                "combined": {"qib": 5.0, "retail": 3.0, "total": 4.0,
+                             "dom_fi": None, "fii": None, "mutual_fund": None,
+                             "nii": None, "employee": None},
+                "nse_only": {}, "cutoff_share": 0.5}
+
+    monkeypatch.setattr(ipo_mod, "fetch_bid_ladder", _fake_ladder)
+    ipo_mod._enrich_open_issues(rows, date(2026, 8, 13))
+
+    assert rows[0]["total_x"] is None       # DEADCO's failed fetch, no data
+    assert rows[1]["total_x"] == 4.0        # LIVECO still got its fetch
+
+
+def test_a_carried_total_keeps_its_nse_only_qualifier():
+    """An NSE-only total shown unqualified is a WRONG number, not an incomplete
+    one — the qualifier must travel with the value it qualifies."""
+    from datetime import date
+    import services.data.fetchers.ipo as ipo_mod
+
+    previous = {"MOLBIO": {"symbol": "MOLBIO", "total_x": 20.0,
+                           "total_x_nse_only": True}}
+    rows = [{"symbol": "MOLBIO", "issue_start": "2026-08-10",
+             "issue_end": "2026-08-12", "listing_date": "",
+             "qib_x": None, "retail_x": None, "total_x": None,
+             "total_x_nse_only": False}]
+    ipo_mod._enrich_open_issues(rows, date(2026, 8, 13), previous=previous)
+    assert rows[0]["total_x"] == 20.0
+    assert rows[0]["total_x_nse_only"] is True
+
+
+def test_a_fresh_all_exchange_total_is_not_downgraded_by_a_stale_flag(monkeypatch):
+    """The inverse case: a successful ladder fetch yields the all-exchange
+    total with nse_only False, and carry-forward must not resurrect a stale
+    True over it."""
+    from datetime import date
+    import services.data.fetchers.ipo as ipo_mod
+
+    previous = {"MOLBIO": {"symbol": "MOLBIO", "total_x": 20.0,
+                           "total_x_nse_only": True}}
+    rows = [{"symbol": "MOLBIO", "issue_start": "2026-08-12",
+             "issue_end": "2026-08-14", "listing_date": "",
+             "qib_x": None, "retail_x": None, "total_x": None,
+             "total_x_nse_only": False}]
+
+    monkeypatch.setattr(ipo_mod, "fetch_bid_ladder", lambda s: {
+        "symbol": s, "combined": {"qib": 90.0, "retail": 12.0, "total": 40.0,
+                                   "dom_fi": None, "fii": None,
+                                   "mutual_fund": None, "nii": None,
+                                   "employee": None},
+        "nse_only": {}, "cutoff_share": 0.46})
+
+    ipo_mod._enrich_open_issues(rows, date(2026, 8, 13), previous=previous)
+
+    assert rows[0]["total_x"] == 40.0
+    assert rows[0]["total_x_nse_only"] is False
+
+
+def test_a_fresh_successful_fetch_wins_over_carry_forward(monkeypatch):
+    """Global constraint: a fresh successful fetch must always win over
+    carried-forward data. Give an open issue both a previous row with stale
+    numbers AND a successful fetch that differs on every field, and assert
+    the fresh values win throughout."""
+    from datetime import date
+    import services.data.fetchers.ipo as ipo_mod
+
+    previous = {"MOLBIO": {"symbol": "MOLBIO",
+                           "bid_ladder": {"combined": {"total": 999.0}},
+                           "cutoff_share": 0.99, "qib_x": 999.0,
+                           "retail_x": 999.0, "total_x": 999.0,
+                           "total_x_nse_only": True}}
+    rows = [{"symbol": "MOLBIO", "issue_start": "2026-08-12",
+             "issue_end": "2026-08-14", "listing_date": "",
+             "qib_x": None, "retail_x": None, "total_x": None,
+             "total_x_nse_only": False}]
+
+    fresh_ladder = {"symbol": "MOLBIO",
+                    "combined": {"qib": 90.0, "retail": 12.0, "total": 40.0,
+                                 "dom_fi": 0.2, "fii": 1.0, "mutual_fund": 0.3,
+                                 "nii": 5.0, "employee": None},
+                    "nse_only": {"qib": 45.0, "total": 20.0},
+                    "cutoff_share": 0.46}
+    monkeypatch.setattr(ipo_mod, "fetch_bid_ladder", lambda s: fresh_ladder)
+
+    ipo_mod._enrich_open_issues(rows, date(2026, 8, 13), previous=previous)
+
+    assert rows[0]["total_x"] == 40.0
+    assert rows[0]["qib_x"] == 90.0
+    assert rows[0]["retail_x"] == 12.0
+    assert rows[0]["cutoff_share"] == 0.46
+    assert rows[0]["bid_ladder"] == fresh_ladder
+    assert rows[0]["total_x_nse_only"] is False
+
+
+def test_a_successful_fetch_with_no_demand_graph_does_not_inherit_a_stale_cutoff_share(monkeypatch):
+    """I1: a fresh, SUCCESSFUL ladder fetch that has no demandGraph this pass
+    must report cutoff_share as None, not resurrect yesterday's value via
+    carry-forward. Fusing a stale cutoff_share onto a fresh combined ladder
+    would write a composite snapshot into the append-only ledger that never
+    existed at any single point in time."""
+    from datetime import date
+    import services.data.fetchers.ipo as ipo_mod
+
+    previous = {"MOLBIO": {"symbol": "MOLBIO", "cutoff_share": 0.99,
+                           "qib_x": 999.0, "total_x": 999.0,
+                           "total_x_nse_only": False}}
+    rows = [{"symbol": "MOLBIO", "issue_start": "2026-08-12",
+             "issue_end": "2026-08-14", "listing_date": "",
+             "qib_x": None, "retail_x": None, "total_x": None,
+             "total_x_nse_only": False}]
+
+    # A real fetch succeeded (not None) but NSE served no demandGraph this
+    # time, so parse_bid_ladder's cutoff_share comes back None.
+    monkeypatch.setattr(ipo_mod, "fetch_bid_ladder", lambda s: {
+        "symbol": s, "combined": {"qib": 90.0, "retail": 12.0, "total": 40.0,
+                                   "dom_fi": None, "fii": None,
+                                   "mutual_fund": None, "nii": None,
+                                   "employee": None},
+        "nse_only": {}, "cutoff_share": None})
+
+    ipo_mod._enrich_open_issues(rows, date(2026, 8, 13), previous=previous)
+
+    assert rows[0]["cutoff_share"] is None
+    # Other ladder fields still win fresh, unaffected by this fix.
+    assert rows[0]["total_x"] == 40.0
+    assert rows[0]["qib_x"] == 90.0
+
+
+def test_capture_writes_one_snapshot_per_issue(tmp_path):
+    from datetime import date
+    import services.data.fetchers.ipo as ipo_mod
+    from core.ipo.signals import IpoSignalStore
+
+    store = IpoSignalStore(base_dir=str(tmp_path))
+    rows = [{"symbol": "MOLBIO", "issue_start": "2026-08-10",
+             "issue_end": "2026-08-14", "listing_date": "",
+             "cutoff_share": 0.46,
+             "bid_ladder": {"combined": {"total": 40.0, "qib": 90.0,
+                                         "dom_fi": 0.2},
+                            "nse_only": {"total": 20.0}}}]
+
+    assert ipo_mod._capture_signals(rows, date(2026, 8, 13), store=store) == 1
+    snaps = store.load_symbol("MOLBIO")
+    assert len(snaps) == 1
+    assert snaps[0].state == "open"
+    assert snaps[0].combined["total"] == 40.0
+    assert snaps[0].combined["dom_fi"] == 0.2
+    assert snaps[0].cutoff_share == 0.46
+
+
+def test_capture_skips_an_issue_with_no_ladder(tmp_path):
+    """An upcoming issue has no bids. Writing an all-None snapshot would put a
+    row in the ledger asserting a reading was taken when none was."""
+    from datetime import date
+    import services.data.fetchers.ipo as ipo_mod
+    from core.ipo.signals import IpoSignalStore
+
+    store = IpoSignalStore(base_dir=str(tmp_path))
+    rows = [{"symbol": "ARDEE", "issue_start": "2026-09-01",
+             "issue_end": "2026-09-03", "listing_date": ""}]
+    assert ipo_mod._capture_signals(rows, date(2026, 8, 13), store=store) == 0
+    assert store.load_all() == []
+
+
+def test_capture_is_off_when_the_flag_is_false(tmp_path, monkeypatch):
+    from datetime import date
+    import services.data.fetchers.ipo as ipo_mod
+    from core.config import settings
+    from core.ipo.signals import IpoSignalStore
+
+    monkeypatch.setattr(settings, "IPO_SIGNALS_ENABLED", False, raising=False)
+    store = IpoSignalStore(base_dir=str(tmp_path))
+    rows = [{"symbol": "MOLBIO", "issue_start": "2026-08-10",
+             "issue_end": "2026-08-14", "listing_date": "",
+             "bid_ladder": {"combined": {"total": 40.0}}}]
+    assert ipo_mod._capture_signals(rows, date(2026, 8, 13), store=store) == 0
+
+
+def test_capture_never_raises_into_the_refresh(tmp_path, monkeypatch):
+    """A dead ledger must not break the cache write the brief depends on."""
+    from datetime import date
+    import services.data.fetchers.ipo as ipo_mod
+
+    class Boom:
+        def append(self, snap):
+            raise OSError("disk gone")
+
+    rows = [{"symbol": "MOLBIO", "issue_start": "2026-08-10",
+             "issue_end": "2026-08-14", "listing_date": "",
+             "bid_ladder": {"combined": {"total": 40.0}}}]
+    assert ipo_mod._capture_signals(rows, date(2026, 8, 13), store=Boom()) == 0
+
+
+def test_refresh_honours_the_signals_dir_override(tmp_path, monkeypatch):
+    """The defect this guards against: refresh_ipo_cache's capture/prune
+    blocks used to construct IpoSignalStore() with no override at all, so
+    every test calling refresh_ipo_cache wrote real rows into data/ipo/ —
+    beside ipo_history.jsonl, the P1 historical spine. signals_dir must be
+    honoured end-to-end: the snapshot lands under the caller-supplied
+    directory, not wherever the None-default would otherwise resolve to."""
+    from core.ipo.signals import IpoSignalStore
+
+    cache = str(tmp_path / "ipo.json")
+    signals_dir = tmp_path / "explicit_signals"
+    monkeypatch.setattr(ipo_mod, "_make_nse_client",
+                        lambda: _FakeNSE(current=[_LIVE_CURRENT_ROW]))
+    monkeypatch.setattr(ipo_mod, "fetch_bid_ladder", lambda symbol: {
+        "symbol": symbol,
+        "combined": {"total": 2.05}, "nse_only": {"total": 1.0},
+        "cutoff_share": 0.46})
+
+    refresh_ipo_cache(cache_path=cache, on=date(2026, 8, 12),
+                      signals_dir=str(signals_dir))
+
+    override_store = IpoSignalStore(base_dir=str(signals_dir))
+    snaps = override_store.load_symbol("MILKYMIST")
+    assert len(snaps) == 1
+    assert snaps[0].combined["total"] == 2.05
+
+    # The autouse fixture's own fallback directory must stay untouched: this
+    # call never took the None-default path, so it was never created.
+    assert not (tmp_path / "ipo_ledger" / "ipo_signals.jsonl").exists()
+
+
+def test_refresh_skips_capture_when_the_override_store_cannot_be_built(tmp_path, monkeypatch):
+    """P0 follow-up: an explicit signals_dir that fails to construct must
+    skip capture entirely — it must never fall through to
+    _capture_signals's own `store is None` branch, which default-constructs
+    the real data/ipo/ ledger. That silent redirect to production data is
+    exactly the failure mode a fabricated-row-beside-the-P1-spine incident
+    already came from once this task. Simulates the construction failure by
+    monkeypatching IpoSignalStore to raise (a genuinely unwritable directory
+    isn't portable to simulate on Windows), then proves _capture_signals is
+    never invoked at all — the direct mechanism of the fix — and, per the
+    coordinator's ask, that the real ledger file never appears."""
+    import pathlib
+    import core.ipo.signals as signals_mod
+
+    cache = str(tmp_path / "ipo.json")
+    monkeypatch.setattr(ipo_mod, "_make_nse_client",
+                        lambda: _FakeNSE(current=[_LIVE_CURRENT_ROW]))
+    monkeypatch.setattr(ipo_mod, "fetch_bid_ladder", lambda symbol: {
+        "symbol": symbol,
+        "combined": {"total": 2.05}, "nse_only": {"total": 1.0},
+        "cutoff_share": 0.46})
+
+    def _boom(base_dir=None):
+        raise OSError("disk gone")
+    monkeypatch.setattr(signals_mod, "IpoSignalStore", _boom)
+
+    capture_calls: list = []
+    monkeypatch.setattr(ipo_mod, "_capture_signals",
+                        lambda *a, **kw: capture_calls.append(kw.get("store")) or 0)
+
+    result = refresh_ipo_cache(cache_path=cache, on=date(2026, 8, 12),
+                              signals_dir=str(tmp_path / "unusable_signals"))
+
+    # The fix: capture is skipped outright, not called with store=None.
+    assert capture_calls == []
+    # The refresh itself still completes — capture failing is non-fatal.
+    assert result["current"][0]["symbol"] == "MILKYMIST"
+    # Literal check requested by the coordinator: the real ledger never
+    # appears, even though this module's autouse fixture already makes that
+    # unreachable independently — this is the direct mechanism-level proof.
+    assert not pathlib.Path("data/ipo/ipo_signals.jsonl").exists()

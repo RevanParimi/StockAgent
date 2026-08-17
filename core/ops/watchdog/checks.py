@@ -379,3 +379,64 @@ def ipo_cache_fresh() -> CheckResult:
             f"The twice-daily ipo_refresh job is not running.",
             evidence)
     return CheckResult("satisfied", f"IPO cache {age_h:.1f}h old.", evidence)
+
+
+@check("ipo_signals_accruing")
+def ipo_signals_accruing() -> CheckResult:
+    """An OPEN issue with no capture snapshot means the P2 ledger has stopped
+    accruing. Silent by nature: a dead ledger and a quiet IPO month look
+    identical until P3 needs the data and finds a hole in it.
+
+    Deliberately scoped to currently-open issues so a month with no IPOs
+    reports satisfied rather than crying wolf.
+    """
+    from core.ipo.calendar import issue_state
+    from core.ipo.signals import IpoSignalStore
+
+    path = _data_dir() / "market_cache" / "ipo.json"
+    if not path.exists():
+        return CheckResult("satisfied", "No IPO cache yet — nothing to capture.",
+                           {"path": str(path)})
+    try:
+        cache = json.loads(path.read_text(encoding="utf-8"))
+        today = _today()
+        rows = (cache.get("current") or []) + (cache.get("upcoming") or [])
+        open_symbols = [r.get("symbol", "") for r in rows
+                        if isinstance(r, dict) and issue_state(r, today) == "open"]
+    except Exception as exc:
+        # Covers a bad parse AND a malformed shape (top-level JSON not a dict,
+        # or current/upcoming not lists) — either way the cache is corrupt,
+        # not quiet, so this is a real "pending", not a crash.
+        return CheckResult("pending", f"IPO cache unreadable: {exc}",
+                           {"path": str(path)})
+
+    if not open_symbols:
+        return CheckResult("satisfied", "No open IPO window — nothing to capture.",
+                           {"open_issues": 0})
+
+    try:
+        store = IpoSignalStore(base_dir=str(_data_dir() / "ipo"))
+        missing = [s for s in open_symbols if not store.load_symbol(s)]
+    except Exception as exc:
+        # A permission error or unreadable ledger means capture cannot be
+        # confirmed for issue(s) that are open right now — that is itself
+        # worth surfacing, not something to let bubble up and rely on
+        # run_check's outer net to catch.
+        return CheckResult(
+            "pending",
+            f"IPO capture ledger unreadable: {exc}. Cannot confirm capture is "
+            f"landing for open issue(s): {', '.join(open_symbols)}.",
+            {"open_issues": len(open_symbols), "error": str(exc)})
+
+    evidence = {"open_issues": len(open_symbols), "missing": missing}
+    if missing:
+        return CheckResult(
+            "pending",
+            f"IPO capture ledger has no snapshot for open issue(s): "
+            f"{', '.join(missing)}. The refresh job is running but capture is "
+            f"not landing — check ipo.signals_enabled and the ledger path.",
+            evidence)
+    return CheckResult(
+        "satisfied",
+        f"Capture ledger has snapshots for all {len(open_symbols)} open issue(s).",
+        evidence)

@@ -257,6 +257,18 @@ def _ipo_demand(w: dict) -> str:
         extra.append(f"retail {retail:g}×")
     if extra:
         parts.append("(" + ", ".join(extra) + ")")
+
+    # P2: official froth measures. Both are captured facts, not scores — the
+    # derived indices and verdicts stay dark until P3/P5.
+    cutoff = w.get("cutoff_share")
+    if cutoff is not None:
+        parts.append(f"· {cutoff * 100:.0f}% at cut-off")
+    delta = w.get("demand_delta")
+    if delta is not None:
+        # "since last update", not "today": the refresh runs twice daily, so
+        # the previous reading may be this morning or yesterday evening.
+        parts.append(f"· {delta:+g}× since last update")
+
     return " ".join(parts) if parts else "demand data pending"
 
 
@@ -470,6 +482,51 @@ def _earnings_soon(symbols: list[str], on: date) -> list[dict]:
         return []
 
 
+def _ipo_signal_store():
+    """Seam over IpoSignalStore() so tests can point the ledger at a tmp_dir
+    instead of the repo's real data/ipo/ (IpoSignalStore.__init__ mkdirs)."""
+    from core.ipo.signals import IpoSignalStore
+    return IpoSignalStore()
+
+
+def _ipo_ledger_snapshots() -> dict:
+    """All captured IPO signal snapshots, grouped by symbol. {} on any
+    failure — the ledger is a P2 addition and the brief predates it, so an
+    unreadable ledger degrades every row's demand_delta rather than dropping
+    the IPO section.
+
+    Loaded ONCE per _ipo_watch() call rather than once per row: the ledger
+    grows to hundreds of rows over the retention window, and re-parsing the
+    whole file per row (the pre-fix shape of this code) turned an O(rows)
+    render into O(rows * ledger size).
+    """
+    try:
+        by_symbol: dict = {}
+        for snap in _ipo_signal_store().load_all():
+            by_symbol.setdefault(snap.symbol, []).append(snap)
+        return by_symbol
+    except Exception as exc:
+        logger.debug("[brief] ipo ledger unavailable: %s", exc)
+        return {}
+
+
+def _demand_delta_for(symbol: str, ledger: dict | None = None) -> float | None:
+    """Change in subscription × since the previous capture, or None.
+
+    `ledger` is the {symbol: [snapshots]} map built once by
+    _ipo_ledger_snapshots() — this function does no I/O of its own. Non-fatal
+    by construction: any failure degrades this one clause, never the section.
+    """
+    if not symbol:
+        return None
+    try:
+        from core.ipo.velocity import demand_delta
+        return demand_delta((ledger or {}).get(symbol, []))
+    except Exception as exc:
+        logger.debug("[brief] demand delta unavailable for %s: %s", symbol, exc)
+        return None
+
+
 def _ipo_watch(max_items: int | None = None, on: date | None = None) -> list[dict]:
     try:
         from core.ipo.calendar import issue_state
@@ -477,6 +534,7 @@ def _ipo_watch(max_items: int | None = None, on: date | None = None) -> list[dic
         cache = load_ipo_cache()
         mi = max_items if max_items is not None else settings.DELIVERY_BRIEF_MAX_IPOS
         rows = cache.get("current", []) + cache.get("upcoming", [])
+        ledger = _ipo_ledger_snapshots()
         out = []
         for r in rows:
             state = issue_state(r, on)
@@ -491,6 +549,25 @@ def _ipo_watch(max_items: int | None = None, on: date | None = None) -> list[dic
                 "total_x": r.get("total_x"), "issue_price": r.get("issue_price"),
                 "cutoff_share": r.get("cutoff_share"),
                 "total_x_nse_only": r.get("total_x_nse_only", False),
+                "dom_fi_x": (r.get("bid_ladder") or {}).get("combined", {}).get("dom_fi"),
+                "fii_x": (r.get("bid_ladder") or {}).get("combined", {}).get("fii"),
+                "mutual_fund_x": (r.get("bid_ladder") or {}).get("combined", {}).get("mutual_fund"),
+                # I4/I5: a delta is only meaningful while the issue is still
+                # taking bids and while it sits beside a total on the same
+                # scale. A closed issue's ladder is carry-forward-frozen, so
+                # its delta would print the SAME stale "+34.2x since last
+                # update" every morning next to "bidding closed" forever —
+                # a frozen number dressed as a live one. And when total_x is
+                # the NSE-only figure (total_x_nse_only True) but the delta
+                # itself is always computed from the all-exchange `combined`
+                # ledger rows, showing both together mixes two different
+                # scales in one clause. Both are a WRONG number beside the
+                # total, not an honestly absent one, so suppress to None.
+                "demand_delta": (
+                    _demand_delta_for(r.get("symbol", ""), ledger)
+                    if state == "open" and not r.get("total_x_nse_only", False)
+                    else None
+                ),
             })
         # Open issues first — they are the ones with a deadline attached.
         order = {"open": 0, "closed": 1, "upcoming": 2, "unknown": 3}

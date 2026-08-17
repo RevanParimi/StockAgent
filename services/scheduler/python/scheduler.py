@@ -496,10 +496,15 @@ class AutomobileScheduler:
         # (PI Prospect P2). The weekly discovery cycle also calls
         # refresh_ipo_cache(); that stays, and is idempotent.
         if cfg("ipo.enabled", fallback=True):
+            # M4: the pm slot's minute comes from settings.IPO_REFRESH_MINUTE_LIVE
+            # (backed by the SAME ipo.refresh_minute_live config key, cfg()'d
+            # once in base.py) rather than a second direct cfg() call here — a
+            # settings constant this branch declares must actually be the thing
+            # production code reads, not a value only a test exercises.
             for slot, hour, minute in (
                 ("am", int(cfg("ipo.refresh_hour", fallback=8)), 0),
                 ("pm", int(cfg("ipo.refresh_hour_live", fallback=17)),
-                 int(cfg("ipo.refresh_minute_live", fallback=45))),
+                 settings.IPO_REFRESH_MINUTE_LIVE),
             ):
                 scheduler.add_job(
                     func=self._ipo_refresh_job,
@@ -515,7 +520,7 @@ class AutomobileScheduler:
                 "[Scheduler] IPO refresh: daily at %s:00 and %s:%02d IST",
                 cfg("ipo.refresh_hour", fallback=8),
                 cfg("ipo.refresh_hour_live", fallback=17),
-                cfg("ipo.refresh_minute_live", fallback=45))
+                settings.IPO_REFRESH_MINUTE_LIVE)
         else:
             logger.info("[Scheduler] IPO refresh disabled (ipo.enabled=false)")
 

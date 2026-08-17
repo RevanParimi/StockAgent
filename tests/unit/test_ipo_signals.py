@@ -107,6 +107,29 @@ def test_prune_keeps_a_row_whose_timestamp_cannot_be_parsed(tmp_path):
     assert survivors[0].captured_at == "not-a-real-timestamp"
 
 
+def test_prune_with_zero_retention_is_a_no_op_not_a_wipe(tmp_path):
+    """0 is the near-universal 'disabled' convention. cutoff = now - 0 would
+    empty `keep` and delete every row — the one path that can destroy the
+    whole ledger. Must be a no-op instead."""
+    store = IpoSignalStore(base_dir=str(tmp_path))
+    now = datetime(2026, 8, 13, tzinfo=timezone.utc)
+    store.append(_snap(captured_at=now.isoformat()))
+    before = store.path.read_bytes()
+    assert store.prune(older_than_days=0, now=now) == 0
+    assert store.path.read_bytes() == before
+    assert len(store.load_all()) == 1
+
+
+def test_prune_with_negative_retention_is_a_no_op_not_a_wipe(tmp_path):
+    store = IpoSignalStore(base_dir=str(tmp_path))
+    now = datetime(2026, 8, 13, tzinfo=timezone.utc)
+    store.append(_snap(captured_at=now.isoformat()))
+    before = store.path.read_bytes()
+    assert store.prune(older_than_days=-5, now=now) == 0
+    assert store.path.read_bytes() == before
+    assert len(store.load_all()) == 1
+
+
 def test_a_naive_timestamp_is_treated_as_utc_not_crashed_on(tmp_path):
     store = IpoSignalStore(base_dir=str(tmp_path))
     store.append(_snap(captured_at="2026-08-13T08:00:00"))

@@ -148,7 +148,8 @@ def load_ipo_cache(cache_path: str | None = None) -> dict:
 _LADDER_FIELDS = ("bid_ladder", "cutoff_share", "qib_x", "retail_x", "total_x")
 
 
-def _carry_forward(rec: dict, previous: dict | None) -> None:
+def _carry_forward(rec: dict, previous: dict | None, *,
+                   ladder_fetched: bool = False) -> None:
     """Restore ladder-derived fields from the previous cache, in place.
 
     Every pass rebuilds rows from _normalise, which knows only what the LIST
@@ -157,6 +158,16 @@ def _carry_forward(rec: dict, previous: dict | None) -> None:
     completed demand picture the capture ledger exists to keep.
 
     Only fills fields the new row lacks: a fresh fetch always wins.
+
+    `ladder_fetched=True` means THIS pass already asked NSE for a ladder and
+    got one back — so a None `cutoff_share` here is this fetch's own honest
+    reading (no demandGraph this time), not a gap to backfill. Restoring
+    yesterday's cutoff_share onto today's fresh combined/qib/retail would fuse
+    two different moments into one snapshot that never existed at any point in
+    time, and _capture_signals then writes that composite into the append-only
+    ledger as if it were a real reading (spec: dark-signal discipline). A
+    closed issue or a failed fetch never sets this flag, so carry-forward keeps
+    restoring cutoff_share there exactly as before.
     """
     if not previous:
         return
@@ -164,6 +175,8 @@ def _carry_forward(rec: dict, previous: dict | None) -> None:
     if not isinstance(prior, dict):
         return
     for field in _LADDER_FIELDS:
+        if field == "cutoff_share" and ladder_fetched:
+            continue
         if rec.get(field) is None and prior.get(field) is not None:
             rec[field] = prior[field]
             if field == "total_x":
@@ -215,7 +228,7 @@ def _enrich_open_issues(rows: list[dict], on: _date,
         if combined.get("total") is not None:
             rec["total_x"] = combined["total"]
             rec["total_x_nse_only"] = False
-        _carry_forward(rec, previous)
+        _carry_forward(rec, previous, ladder_fetched=True)
 
 
 def _capture_signals(rows: list[dict], on: _date, store=None) -> int:

@@ -552,7 +552,22 @@ def _ipo_watch(max_items: int | None = None, on: date | None = None) -> list[dic
                 "dom_fi_x": (r.get("bid_ladder") or {}).get("combined", {}).get("dom_fi"),
                 "fii_x": (r.get("bid_ladder") or {}).get("combined", {}).get("fii"),
                 "mutual_fund_x": (r.get("bid_ladder") or {}).get("combined", {}).get("mutual_fund"),
-                "demand_delta": _demand_delta_for(r.get("symbol", ""), ledger),
+                # I4/I5: a delta is only meaningful while the issue is still
+                # taking bids and while it sits beside a total on the same
+                # scale. A closed issue's ladder is carry-forward-frozen, so
+                # its delta would print the SAME stale "+34.2x since last
+                # update" every morning next to "bidding closed" forever —
+                # a frozen number dressed as a live one. And when total_x is
+                # the NSE-only figure (total_x_nse_only True) but the delta
+                # itself is always computed from the all-exchange `combined`
+                # ledger rows, showing both together mixes two different
+                # scales in one clause. Both are a WRONG number beside the
+                # total, not an honestly absent one, so suppress to None.
+                "demand_delta": (
+                    _demand_delta_for(r.get("symbol", ""), ledger)
+                    if state == "open" and not r.get("total_x_nse_only", False)
+                    else None
+                ),
             })
         # Open issues first — they are the ones with a deadline attached.
         order = {"open": 0, "closed": 1, "upcoming": 2, "unknown": 3}

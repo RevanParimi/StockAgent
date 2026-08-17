@@ -129,7 +129,17 @@ class IpoSignalStore:
 
         Rewrites via .tmp + replace(); a row whose timestamp will not parse is
         KEPT, because deleting data we cannot date is the worse error.
+
+        older_than_days <= 0 is a no-op, not "prune everything". 0 is the
+        near-universal config convention for "disabled", and a caller setting
+        it to mean that must not have the entire ledger wiped out from under
+        them: cutoff = now - 0 days = now would empty `keep` outright, and a
+        negative value is worse still. This runs twice daily in production
+        immediately after capture, so silently destroying the ledger here is
+        the single worst thing this function could do.
         """
+        if older_than_days <= 0:
+            return 0
         rows = self.load_all()
         if not rows:
             return 0

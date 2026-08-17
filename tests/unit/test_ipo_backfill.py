@@ -226,6 +226,38 @@ def test_backfill_preserves_prior_ofs_share(tmp_path, monkeypatch):
     assert rec.total_x == 69.91 and rec.qib_x == 197.55 and rec.retail_x == 7.95
 
 
+def test_backfill_preserves_prior_issue_price(tmp_path, monkeypatch):
+    """I2 (third instance of the a578ac6 defect class): the live spine already
+    holds rows with issue_price null, proving a vintage of listPastIPO can
+    genuinely serve no price for a symbol. If a later vintage drops the price
+    for a symbol that USED to have one, a plain --since re-run must not wipe
+    it — issue_price is not recoverable from the tape, and compute_outcomes
+    refuses to compute outcomes/excess without it, so losing the price here
+    would silently destroy the whole outcome curve too."""
+    tape = _tape("NEWCO", [400.0] * 6)
+    monkeypatch.setattr(bf, "_load_past_ipos", lambda since, until: [
+        # This vintage of the feed has NO price for NEWCO.
+        {"symbol": "NEWCO", "company": "NewCo Ltd", "listing_date": "2026-06-15",
+         "issue_price": None, "total_x": None, "qib_x": None, "retail_x": None},
+    ])
+    monkeypatch.setattr(bf, "_load_tape", lambda end: tape)
+    monkeypatch.setattr(bf, "build_index_pct", lambda a, b: (lambda s, e: 0.0))
+
+    store = IpoHistoryStore(base_dir=str(tmp_path))
+    store.append(IpoRecord(symbol="NEWCO", company="NewCo Ltd",
+                           listing_date="2026-06-15", issue_price=200.0,
+                           total_x=69.91, qib_x=197.55, retail_x=7.95,
+                           outcomes={"1": 5.0}))
+
+    bf.run_backfill(base_dir=str(tmp_path), on=date(2026, 8, 12))
+
+    rec = IpoHistoryStore(base_dir=str(tmp_path)).load_all()[0]
+    assert rec.issue_price == 200.0            # carried forward, not wiped
+    # And the carried-forward price actually fed compute_outcomes, so the
+    # outcome curve is NOT nulled out alongside a "missing" price.
+    assert rec.outcomes["1"] == 100.0           # 400 vs the carried 200.0
+
+
 def test_enrich_ofs_populates_the_split_from_the_detail_feed(tmp_path, monkeypatch):
     store = IpoHistoryStore(base_dir=str(tmp_path))
     store.append(IpoRecord(symbol="LEAP", issue_price=53.0, outcomes={"1": 5.0}))

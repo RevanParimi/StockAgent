@@ -518,6 +518,40 @@ def test_a_fresh_successful_fetch_wins_over_carry_forward(monkeypatch):
     assert rows[0]["total_x_nse_only"] is False
 
 
+def test_a_successful_fetch_with_no_demand_graph_does_not_inherit_a_stale_cutoff_share(monkeypatch):
+    """I1: a fresh, SUCCESSFUL ladder fetch that has no demandGraph this pass
+    must report cutoff_share as None, not resurrect yesterday's value via
+    carry-forward. Fusing a stale cutoff_share onto a fresh combined ladder
+    would write a composite snapshot into the append-only ledger that never
+    existed at any single point in time."""
+    from datetime import date
+    import services.data.fetchers.ipo as ipo_mod
+
+    previous = {"MOLBIO": {"symbol": "MOLBIO", "cutoff_share": 0.99,
+                           "qib_x": 999.0, "total_x": 999.0,
+                           "total_x_nse_only": False}}
+    rows = [{"symbol": "MOLBIO", "issue_start": "2026-08-12",
+             "issue_end": "2026-08-14", "listing_date": "",
+             "qib_x": None, "retail_x": None, "total_x": None,
+             "total_x_nse_only": False}]
+
+    # A real fetch succeeded (not None) but NSE served no demandGraph this
+    # time, so parse_bid_ladder's cutoff_share comes back None.
+    monkeypatch.setattr(ipo_mod, "fetch_bid_ladder", lambda s: {
+        "symbol": s, "combined": {"qib": 90.0, "retail": 12.0, "total": 40.0,
+                                   "dom_fi": None, "fii": None,
+                                   "mutual_fund": None, "nii": None,
+                                   "employee": None},
+        "nse_only": {}, "cutoff_share": None})
+
+    ipo_mod._enrich_open_issues(rows, date(2026, 8, 13), previous=previous)
+
+    assert rows[0]["cutoff_share"] is None
+    # Other ladder fields still win fresh, unaffected by this fix.
+    assert rows[0]["total_x"] == 40.0
+    assert rows[0]["qib_x"] == 90.0
+
+
 def test_capture_writes_one_snapshot_per_issue(tmp_path):
     from datetime import date
     import services.data.fetchers.ipo as ipo_mod

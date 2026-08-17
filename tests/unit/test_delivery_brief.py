@@ -314,7 +314,11 @@ def test_ipo_watch_pulls_institutional_split_from_bid_ladder(monkeypatch):
 def test_ipo_watch_computes_demand_delta_from_two_captures(_isolated_ipo_ledger, monkeypatch):
     """End-to-end through the real ledger (pointed at tmp_path by the autouse
     fixture): two stored snapshots for the same symbol must produce a real,
-    non-None demand_delta on the row _ipo_watch returns."""
+    non-None demand_delta on the row _ipo_watch returns.
+
+    The row must be genuinely OPEN on `on` (I4 suppresses the delta on every
+    other state), so issue_start/issue_end bracket the fixed `on` date passed
+    below rather than relying on the real date.today()."""
     from core.ipo.signals import IpoSignalSnapshot
     _isolated_ipo_ledger.append(IpoSignalSnapshot(
         symbol="DELCO", captured_at="2026-08-10T09:00:00Z", combined={"total": 3.0}))
@@ -322,10 +326,56 @@ def test_ipo_watch_computes_demand_delta_from_two_captures(_isolated_ipo_ledger,
         symbol="DELCO", captured_at="2026-08-10T17:00:00Z", combined={"total": 5.5}))
     monkeypatch.setattr(br, "load_ipo_cache", lambda: {
         "current": [{"symbol": "DELCO", "company": "Delco", "status": "current",
+                     "issue_start": "2026-08-10", "issue_end": "2026-08-13",
                      "total_x": 5.5}],
         "upcoming": []})
-    row = br._ipo_watch()[0]
+    row = br._ipo_watch(on=date(2026, 8, 12))[0]
+    assert row["state"] == "open"
     assert row["demand_delta"] == 2.5
+
+
+def test_ipo_watch_suppresses_demand_delta_on_a_closed_issue(_isolated_ipo_ledger, monkeypatch):
+    """I4: carry-forward keeps a closed issue's ladder frozen at its last live
+    reading, and content-dedup correctly stops the ledger from growing new
+    rows for it — so a naive demand_delta would freeze at the last two live
+    readings and print e.g. '+2.5x since last update' every morning next to
+    'bidding closed — awaiting listing', forever. Must render as None."""
+    from core.ipo.signals import IpoSignalSnapshot
+    _isolated_ipo_ledger.append(IpoSignalSnapshot(
+        symbol="DELCO", captured_at="2026-08-10T09:00:00Z", combined={"total": 3.0}))
+    _isolated_ipo_ledger.append(IpoSignalSnapshot(
+        symbol="DELCO", captured_at="2026-08-10T17:00:00Z", combined={"total": 5.5}))
+    monkeypatch.setattr(br, "load_ipo_cache", lambda: {
+        "current": [{"symbol": "DELCO", "company": "Delco", "status": "current",
+                     "issue_start": "2026-08-08", "issue_end": "2026-08-10",
+                     "total_x": 5.5}],
+        "upcoming": []})
+    # `on` is AFTER issue_end, so the issue is closed, not open.
+    row = br._ipo_watch(on=date(2026, 8, 12))[0]
+    assert row["state"] == "closed"
+    assert row["demand_delta"] is None
+
+
+def test_ipo_watch_suppresses_demand_delta_for_an_nse_only_total(_isolated_ipo_ledger, monkeypatch):
+    """I5: demand_delta is always computed from the all-exchange `combined`
+    ledger rows, but total_x can be the NSE-only figure when the all-exchange
+    total was nulled by _reject_placeholder_total (observed live on IGIL).
+    Showing both together mixes two different scales in one clause — must
+    suppress the delta rather than print a wrong-scale number."""
+    from core.ipo.signals import IpoSignalSnapshot
+    _isolated_ipo_ledger.append(IpoSignalSnapshot(
+        symbol="IGIL", captured_at="2026-08-10T09:00:00Z", combined={"total": 3.0}))
+    _isolated_ipo_ledger.append(IpoSignalSnapshot(
+        symbol="IGIL", captured_at="2026-08-10T17:00:00Z", combined={"total": 5.5}))
+    monkeypatch.setattr(br, "load_ipo_cache", lambda: {
+        "current": [{"symbol": "IGIL", "company": "IGIL", "status": "current",
+                     "issue_start": "2026-08-10", "issue_end": "2026-08-13",
+                     "total_x": 31.5, "total_x_nse_only": True}],
+        "upcoming": []})
+    row = br._ipo_watch(on=date(2026, 8, 12))[0]
+    assert row["state"] == "open"
+    assert row["total_x_nse_only"] is True
+    assert row["demand_delta"] is None
 
 
 def test_ipo_watch_survives_a_ledger_that_raises_on_read(monkeypatch):

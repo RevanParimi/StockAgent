@@ -153,6 +153,13 @@ def run_backfill(base_dir: str | None = None, since: date | None = None,
     # wrote in a separate pass. So: carry each prior predictor forward
     # whenever the incoming feed row has nothing for it — ofs_share included,
     # or the very next un-flagged `--since` re-run erases every --ofs write.
+    # issue_price gets the SAME treatment: the live spine already holds rows
+    # with issue_price null (a vintage genuinely served no price), which
+    # proves a later vintage can drop the price for a symbol that used to
+    # have one. issue_price is not recoverable from the tape, and
+    # compute_outcomes refuses to compute outcomes/excess without it — so
+    # losing it here silently destroys a whole row's outcome curve, not just
+    # one field.
     prior = {r.symbol: r for r in store.load_all()}
 
     written = 0
@@ -160,15 +167,22 @@ def run_backfill(base_dir: str | None = None, since: date | None = None,
         symbol = (rec.get("symbol") or "").strip()
         if not symbol:
             continue
+        p = prior.get(symbol)
+        # Resolved BEFORE compute_outcomes, not just at storage time: a price
+        # dropped by this vintage but carried forward from `p` must still
+        # feed the outcomes/excess calculation below, or the stored
+        # issue_price would look correct while outcomes/excess were computed
+        # (and re-persisted) against a None price — i.e. still wiped.
+        issue_price = (rec.get("issue_price") if rec.get("issue_price") is not None
+                      else (p.issue_price if p else None))
         sessions = symbol_sessions(tape, symbol)
         outcomes, excess, n = compute_outcomes(
-            sessions, rec.get("issue_price"), index_pct)
-        p = prior.get(symbol)
+            sessions, issue_price, index_pct)
         _upsert_with_retry(store, IpoRecord(
             symbol=symbol,
             company=rec.get("company", ""),
             listing_date=rec.get("listing_date", ""),
-            issue_price=rec.get("issue_price"),
+            issue_price=issue_price,
             total_x=rec.get("total_x") if rec.get("total_x") is not None
                     else (p.total_x if p else None),
             qib_x=rec.get("qib_x") if rec.get("qib_x") is not None

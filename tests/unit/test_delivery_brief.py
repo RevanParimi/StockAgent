@@ -381,16 +381,27 @@ def test_ipo_watch_suppresses_demand_delta_for_an_nse_only_total(_isolated_ipo_l
 def test_ipo_watch_survives_a_ledger_that_raises_on_read(monkeypatch):
     """Never-raise guarantee, proven rather than assumed: an IpoSignalStore
     that blows up on load_all() must degrade demand_delta to None on every
-    row WITHOUT dropping the row or the IPO section."""
+    row WITHOUT dropping the row or the IPO section.
+
+    BOOMCO must be genuinely OPEN (issue_start/issue_end bracketing `on`,
+    passed explicitly): with no window fields the row's state is 'unknown',
+    and the I4 gate (state == 'open') would then force demand_delta to None
+    on state alone — passing this test even if the ledger-raise degradation
+    in _ipo_ledger_snapshots's try/except broke outright. An open state keeps
+    that gate open, so the assertion still depends on the thing it claims to
+    test.
+    """
     def _boom():
         raise OSError("ledger unreadable")
     monkeypatch.setattr(br, "_ipo_signal_store", _boom)
     monkeypatch.setattr(br, "load_ipo_cache", lambda: {
         "current": [{"symbol": "BOOMCO", "company": "Boom Co", "status": "current",
+                     "issue_start": "2026-08-10", "issue_end": "2026-08-13",
                      "total_x": 4.0}],
         "upcoming": []})
-    rows = br._ipo_watch()
+    rows = br._ipo_watch(on=date(2026, 8, 12))
     assert rows[0]["symbol"] == "BOOMCO"
+    assert rows[0]["state"] == "open"
     assert rows[0]["demand_delta"] is None
 
 

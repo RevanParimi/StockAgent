@@ -110,14 +110,22 @@ def test_prune_keeps_a_row_whose_timestamp_cannot_be_parsed(tmp_path):
 def test_prune_with_zero_retention_is_a_no_op_not_a_wipe(tmp_path):
     """0 is the near-universal 'disabled' convention. cutoff = now - 0 would
     empty `keep` and delete every row — the one path that can destroy the
-    whole ledger. Must be a no-op instead."""
+    whole ledger. Must be a no-op instead.
+
+    Both rows here are captured CLEARLY before `now` (30d and 500d back), not
+    at `now` itself: a row captured at exactly `now` would survive the old,
+    unguarded `cutoff = now - 0d == now` by coincidence (the `>=` comparison
+    keeps anything not strictly older than cutoff), passing this test for the
+    wrong reason even with the guard removed. Old rows discriminate for real.
+    """
     store = IpoSignalStore(base_dir=str(tmp_path))
     now = datetime(2026, 8, 13, tzinfo=timezone.utc)
-    store.append(_snap(captured_at=now.isoformat()))
+    store.append(_snap(captured_at=(now - timedelta(days=30)).isoformat(), total=2.05))
+    store.append(_snap(captured_at=(now - timedelta(days=500)).isoformat(), total=3.40))
     before = store.path.read_bytes()
     assert store.prune(older_than_days=0, now=now) == 0
     assert store.path.read_bytes() == before
-    assert len(store.load_all()) == 1
+    assert len(store.load_all()) == 2
 
 
 def test_prune_with_negative_retention_is_a_no_op_not_a_wipe(tmp_path):

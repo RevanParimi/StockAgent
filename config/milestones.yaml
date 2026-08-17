@@ -24,11 +24,23 @@ milestones:
     # LAST day of the final window, not its first. With 2026-08-15 (the
     # Saturday) the Sunday of the very weekend you are meant to act on is
     # classified as lapsed and silenced by the 7-day repeat gate.
-    deadline: 2026-08-16
+    # Re-armed 2026-08-17 after the 2026-08-16 window lapsed unused. Next
+    # weekend window is Sat 08-22 / Sun 08-23; this is its LAST day.
+    deadline: 2026-08-23
     lead_days: 3
     action: >
-      Set atlas.enabled: true in config.yaml and push (Railway NOT needed - the env var is only an override and prod does not set it).
+      PRE-FLIGHT IS ALREADY DONE (verified on prod 2026-08-17): the ETL has run,
+      atlas.db holds the owner (`primary`, role owner) with 19 user_instruments
+      and 210 user_advice, and atlas_store.user_ids() == active_user_ids() ==
+      ['primary'] - so the flip is a fan-out no-op and the owner cannot drop out
+      of briefs. Remaining step: set atlas.enabled: true in config.yaml and push
+      (Railway NOT needed - the env var is only an override and prod does not set
+      it). Then watch the next trading day: 16:30 autopilot and 08:50 brief must
+      fan out to exactly ['primary'], with no SQLITE_BUSY.
       Rollback: the same edit in reverse.
+      NOTE: the atlas_cutover_pending check only reports satisfied when the
+      ATLAS_ENABLED env var is set, so a correct config.yaml flip will leave this
+      milestone nagging - fix the check or clear the entry by hand after cutover.
     docs: docs/superpowers/plans/2026-07-26-atlas-user-data-program.md
 
   - id: f2_validation

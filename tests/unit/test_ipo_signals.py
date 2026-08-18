@@ -199,3 +199,42 @@ def test_append_still_lands_alongside_a_corrupt_line(tmp_path):
                                           captured_at="2026-08-18T06:00:00+00:00",
                                           combined={"total": 2.0})) is True
     assert {r.symbol for r in store.load_all()} == {"AAA", "BBB"}
+
+
+def test_content_dedup_compares_against_the_chronologically_newest_row(tmp_path):
+    """append() picked the newest row for a symbol by FILE ORDER
+    (symbol_rows[-1]) while load_symbol() sorts by captured_at. The two agree
+    only under strictly append-only, in-order writes; they diverge the moment
+    any out-of-order or backfill-style writer touches the ledger, and then the
+    content-dedup rule silently vetoes a genuinely new reading.
+
+    Here the file's last line is the OLDER row. The incoming snapshot repeats
+    that older row's ladder but differs from the chronologically newest one, so
+    it is a real change and must be written.
+    """
+    store = IpoSignalStore(base_dir=str(tmp_path))
+    newer = IpoSignalSnapshot(symbol="AAA", captured_at="2026-08-18T08:00:00+00:00",
+                              combined={"total": 2.0})
+    older = IpoSignalSnapshot(symbol="AAA", captured_at="2026-08-18T06:00:00+00:00",
+                              combined={"total": 1.0})
+    assert store.append(newer) is True
+    assert store.append(older) is True          # lands AFTER newer in the file
+    assert [r.captured_at for r in store.load_all()][-1] == older.captured_at
+
+    incoming = IpoSignalSnapshot(symbol="AAA", captured_at="2026-08-18T10:00:00+00:00",
+                                 combined={"total": 1.0})
+    assert store.append(incoming) is True
+    assert len(store.load_symbol("AAA")) == 3
+
+
+def test_content_dedup_still_vetoes_an_unchanged_reading_in_file_order(tmp_path):
+    """The ordinary append-only case must keep deduping: NSE serves a closed
+    issue's unchanged ladder for days, and appending byte-identical rows would
+    make a later delta read a meaningless 0.0 forever."""
+    store = IpoSignalStore(base_dir=str(tmp_path))
+    assert store.append(IpoSignalSnapshot(
+        symbol="BBB", captured_at="2026-08-18T06:00:00+00:00",
+        combined={"total": 3.0})) is True
+    assert store.append(IpoSignalSnapshot(
+        symbol="BBB", captured_at="2026-08-18T18:00:00+00:00",
+        combined={"total": 3.0})) is False

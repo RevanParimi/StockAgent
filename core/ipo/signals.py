@@ -75,6 +75,21 @@ def _as_utc(stamp: str) -> datetime | None:
     return dt.replace(tzinfo=timezone.utc) if dt.tzinfo is None else dt
 
 
+def _chronological(rows) -> list[IpoSignalSnapshot]:
+    """Rows oldest-first by `captured_at`. ISO-8601 UTC strings sort correctly
+    lexicographically, which is why the ledger writes them that way.
+
+    THE reason this is a shared helper rather than two sorted() calls:
+    `append`'s content-dedup used to take the newest row for a symbol by FILE
+    ORDER (`symbol_rows[-1]`) while `load_symbol` sorted by `captured_at`. Under
+    strictly append-only, in-order writes the two agree, so the divergence is
+    invisible today — and it appears the moment any out-of-order or
+    backfill-style writer touches this ledger, at which point the dedup rule
+    silently vetoes a genuinely new reading. One rule, one place.
+    """
+    return sorted(rows, key=lambda r: r.captured_at)
+
+
 class IpoSignalStore:
     """JSONL at <base_dir>/ipo_signals.jsonl."""
 
@@ -99,7 +114,7 @@ class IpoSignalStore:
         rows = self.load_all()
         if self._key(snap) in {self._key(r) for r in rows}:
             return False
-        symbol_rows = [r for r in rows if r.symbol == snap.symbol]
+        symbol_rows = _chronological(r for r in rows if r.symbol == snap.symbol)
         if symbol_rows:
             newest = symbol_rows[-1]
             if (newest.combined == snap.combined
@@ -131,8 +146,7 @@ class IpoSignalStore:
         return self._read_rows()[0]
 
     def load_symbol(self, symbol: str) -> list[IpoSignalSnapshot]:
-        rows = [r for r in self.load_all() if r.symbol == symbol]
-        return sorted(rows, key=lambda r: r.captured_at)
+        return _chronological(r for r in self.load_all() if r.symbol == symbol)
 
     def prune(self, older_than_days: int, now: datetime | None = None) -> int:
         """Drop rows older than the retention window. Returns rows removed.

@@ -65,7 +65,7 @@ indices, not one composite.
 | **GMP decay across the window** | A GMP that fades while bids climb remains a sharp warning, but is now a cross-check on the official curve rather than the primary input |
 | News-volume spike vs sector baseline | Brand visibility ≠ business quality |
 | Issue size vs sector median | Mega consumer-brand issues are structurally hype-prone |
-| **OFS share of issue** | ~~The single strongest Ola/Ather discriminator~~ — **MEASURED 2026-08-15 AND THE SIGN IS BACKWARDS; see §5 P2 "First OFS measurement".** The intuition was that promoters cashing out is the bad sign. Across 144 rows carrying both an OFS share and a listing-day outcome, OFS-heavy issues *outperformed* at every horizon. Treat as **unvalidated** — the sample is biased and confounded, and P3 must not weight this feature on the strength of it. |
+| **OFS share of issue** | ~~The single strongest Ola/Ather discriminator~~ — **MEASURED 2026-08-15, RE-MEASURED 2026-08-18 ON A LARGER SAMPLE; see §5 P2.** The intuition was that promoters cashing out is the bad sign. On 170 rows carrying both an OFS share and an outcome, OFS-heavy issues lead at 1/21/63td — but the 252td lead **disappeared** once the parse-failure rate was cut from 23% to 10%, leaving fresh-heavy marginally ahead over a full year. Treat as **unvalidated**: still one regime, still confounded by company maturity, and the horizon that matters most for the Ather thesis no longer supports either reading. P3 must not weight this feature. |
 
 ### Substance Index (S)
 
@@ -355,6 +355,60 @@ horizon** — the opposite of §3's stated reading that promoters cashing out is
 measured points the other way. P3 must not weight it on this evidence. The honest next step is
 to reduce the 23% parse-failure rate and re-measure, since fixing the bias could move the result
 in either direction.
+
+#### Re-measurement (2026-08-18) — the parse-failure rate is fixed, and the 252td lead is gone
+
+The "reduce the failure rate and re-measure" step above was carried out. All 48 unparsed rows
+were re-fetched and their raw "Issue Size" text classified, which showed the 23% was **three
+concrete parser bugs, not irreducible prose**:
+
+| cause | rows | fix |
+|---|---|---|
+| amount stated with no `Rs.` prefix ("Fresh Issue upto 5000 million") | 17 | accept a bare `<number> <unit word>` as Rupees; a share count always says "Equity Shares" |
+| unbalanced parentheses — NSE forgets the closing `)` | 6 | depth-aware strip defined for malformed input, guarded by "stripping must not remove a leg heading" |
+| the abbreviation `OFS` instead of the words (NSDL) | 1 | word-bounded `\bOFS\b` in the heading regex |
+| transient NSE fetch failure during the 2026-08-15 run | 3 | re-fetch |
+
+**Result: 161 → 188 rows enriched, parse-failure rate 23.0% → 10.0%, rows with both an OFS
+share and an outcome 144 → 170.** No pre-existing `ofs_share` changed and no other spine field
+was touched (verified row-by-row against the pre-run copy).
+
+**10% is the floor for this source, not a remaining bug.** All 21 stragglers were fetched
+successfully and classified: 15 disclose one single total with no split at all ("Initial Public
+Offer of up to 77,86,120 Equity Shares"), 4 carry no Issue Size row, and 2 (MOLBIO, DHOOTTRANS)
+state both legs in mixed units but have no issue price in the spine to reconcile them — and both
+of those also have no outcome, so they are inert for this measurement. None of the 21 is a parser
+gap. Widening the parser until a single-total row produced a number would be fabricating the
+signal, not measuring it.
+
+Mean return vs issue price, same buckets and same n≥10 quoting floor as 2026-08-15:
+
+| bucket | 1td | 21td | 63td | 252td |
+|---|---|---|---|---|
+| fresh-heavy (OFS ≤33%) | +14.13% (n=76) | +12.79% (n=72) | +11.38% (n=70) | **+34.17%** (n=25) |
+| mixed (33–66%) | +14.41% (n=50) | +19.80% (n=50) | +18.49% (n=49) | +17.92% (n=23) |
+| **OFS-heavy (>66%)** | **+23.58%** (n=44) | **+20.52%** (n=42) | **+22.79%** (n=41) | +32.91% (n=21) |
+
+**What changed, and it is the finding that matters:**
+
+1. **"OFS-heavy outperformed at EVERY horizon" is no longer true.** At 252td the ordering
+   flipped: fresh-heavy +34.17% (n=25) now edges OFS-heavy +32.91% (n=21). The 2026-08-15 gap at
+   that horizon was +35.72% vs +22.87% — a 12.85pp OFS-heavy lead that has become a 1.26pp
+   fresh-heavy lead. A 26-row sample change should not move a real effect that far; the original
+   252td cell was thin and unstable, exactly as the overlapping-windows caveat warned.
+2. **The short-horizon association survived, slightly weakened.** Listing-day gap 11.02pp →
+   9.45pp; OFS-heavy still leads at 1/21/63td. Demand-at-listing is where this effect lives.
+3. **The selection bias persists and is now structural rather than fixable.** Rows with an OFS
+   share average +16.66% on listing day (n=170) against +8.96% for those without (n=18) — a
+   *wider* per-row gap than before (+17.57% vs +10.52%), on far fewer missing rows. Non-disclosure
+   of the split is itself associated with worse listings, so the residual bias cannot be parsed
+   away; it is a property of which issuers break the split out.
+
+**Consequence for P3: unchanged, and the case is now stronger.** OFS must not be weighted. The
+one horizon that moved is the long one — precisely where the Ather thesis ("unloved at issue, big
+later") would have to appear — and it moved to "no signal" rather than to either reading. What P2
+has established is that the OFS column is now 90% complete and honest, not that it predicts
+anything.
 
 ### P3 — The model
 

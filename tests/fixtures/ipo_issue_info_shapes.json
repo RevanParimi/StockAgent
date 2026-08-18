@@ -802,5 +802,148 @@
   "IGIL": {
     "_shape": "issueInfo present but EMPTY",
     "issueInfo": {}
+  },
+  "RUBICON": {
+    "_shape": "both legs bare millions, no 'Rs.' prefix",
+    "_note": "Issue Size value captured live from /api/ipo-detail on 2026-08-18 during the OFS parse-failure diagnosis; surrounding dataList rows omitted because only this row carries the split.",
+    "issueInfo": {
+      "symbol": "RUBICON",
+      "dataList": [
+        {
+          "title": "Issue Size",
+          "value": "Initial Public Fresh Issue upto 5000 million and Offer of Offer for sale of up to 8774.99 million (including Anchor Allocation 1,27,64,691 Equity Shares)"
+        }
+      ]
+    }
+  },
+  "CAPILLARY": {
+    "_shape": "MIXED units with a bare-million fresh leg: fresh in millions (no 'Rs.'), OFS in shares",
+    "_note": "Issue Size value captured live from /api/ipo-detail on 2026-08-18 during the OFS parse-failure diagnosis; surrounding dataList rows omitted because only this row carries the split.",
+    "issueInfo": {
+      "symbol": "CAPILLARY",
+      "dataList": [
+        {
+          "title": "Issue Size",
+          "value": "Initial Public Offer comprising Fresh Issue aggregating up to 3,450 million and Offer for Sale of Up to 9,228,796 Equity Shares (Including eligible employees reservation portion of up to Rs. 20 million and Anchor Investor portion of 68,28,001 Equity Shares)"
+        }
+      ]
+    }
+  },
+  "OMNI": {
+    "_shape": "fresh leg has 'Rs.', OFS leg is a bare million figure",
+    "_note": "Issue Size value captured live from /api/ipo-detail on 2026-08-18 during the OFS parse-failure diagnosis; surrounding dataList rows omitted because only this row carries the split.",
+    "issueInfo": {
+      "symbol": "OMNI",
+      "dataList": [
+        {
+          "title": "Issue Size",
+          "value": "Initial Public Offer of Fresh Issue of up to Rs. 4,180 million and Offer for Sale of up to 1,650 million (Including Anchor investors portion of 76,91,629 Equity Shares)"
+        }
+      ]
+    }
+  },
+  "NIVABUPA": {
+    "_shape": "both legs bare, unit spelled 'millions' (plural), no parentheses at all",
+    "_note": "Issue Size value captured live from /api/ipo-detail on 2026-08-18 during the OFS parse-failure diagnosis; surrounding dataList rows omitted because only this row carries the split.",
+    "issueInfo": {
+      "symbol": "NIVABUPA",
+      "dataList": [
+        {
+          "title": "Issue Size",
+          "value": "Initial Public Offer of Fresh Issue of up to 8000 millions and  Offer for Sale up to 14,000 millions and Anchor Allocation 13,37,83,783 Equity Shares"
+        }
+      ]
+    }
+  },
+  "ARSSBL": {
+    "_shape": "fresh only, bare millions => ofs_share 0.0 is a REAL reading",
+    "_note": "Issue Size value captured live from /api/ipo-detail on 2026-08-18 during the OFS parse-failure diagnosis; surrounding dataList rows omitted because only this row carries the split.",
+    "issueInfo": {
+      "symbol": "ARSSBL",
+      "dataList": [
+        {
+          "title": "Issue Size",
+          "value": "Initial Public Offer of Fresh Issue up to 7450 million (Including anchor investor portion of 53,26,086 Equity Shares)"
+        }
+      ]
+    }
+  },
+  "CARRARO": {
+    "_shape": "OFS only, bare millions => ofs_share 1.0 is a REAL reading",
+    "_note": "Issue Size value captured live from /api/ipo-detail on 2026-08-18 during the OFS parse-failure diagnosis; surrounding dataList rows omitted because only this row carries the split.",
+    "issueInfo": {
+      "symbol": "CARRARO",
+      "dataList": [
+        {
+          "title": "Issue Size",
+          "value": "Initial Public Offer for Sale up to 12,500 million (Including Anchor Allocation of 53,26,703 Equity Shares)"
+        }
+      ]
+    }
+  },
+  "PINELABS": {
+    "_shape": "UNBALANCED: '(' never closed, opening AFTER both legs are stated",
+    "_note": "Issue Size value captured live from /api/ipo-detail on 2026-08-18 during the OFS parse-failure diagnosis; surrounding dataList rows omitted because only this row carries the split.",
+    "issueInfo": {
+      "symbol": "PINELABS",
+      "dataList": [
+        {
+          "title": "Issue Size",
+          "value": "Initial Public Offer of Fresh Issue up to Rs.20,800 million and Offer for Sale up to 82,348,779 Equity Shares (including Employee Reservation Portion aggregating up to Rs.25 million and Anchor investor portion of 7,93,58,986 Equity Shares"
+        }
+      ]
+    }
+  },
+  "WAKEFIT": {
+    "_shape": "UNBALANCED: a stray ')' with no '(' anywhere; carve-out is not parenthesised at all",
+    "_note": "Issue Size value captured live from /api/ipo-detail on 2026-08-18 during the OFS parse-failure diagnosis; surrounding dataList rows omitted because only this row carries the split.",
+    "issueInfo": {
+      "symbol": "WAKEFIT",
+      "dataList": [
+        {
+          "title": "Issue Size",
+          "value": "Initial Public Offer of Fresh issue aggregating up to Rs.3,771.78 million and Offer for Sale up to 46,754,405 Equity Shares and including anchor investor portion of 2,97,43,590 Equity Shares)"
+        }
+      ]
+    }
+  },
+  "NSDL": {
+    "_shape": "pure OFS written with the abbreviation 'OFS', never the words 'offer for sale'",
+    "_note": "Issue Size value captured live from /api/ipo-detail on 2026-08-18 during the OFS parse-failure diagnosis; surrounding dataList rows omitted because only this row carries the split.",
+    "issueInfo": {
+      "symbol": "NSDL",
+      "dataList": [
+        {
+          "title": "Issue Size",
+          "value": "Initial Public Offer comprising OFS of 50,145,001 Equity Shares (including anchor investor portion of 1,50,17,999 Equity Shares)"
+        }
+      ]
+    }
+  },
+  "STUDDS": {
+    "_shape": "ONE total only - no fresh/OFS split disclosed in this row; must stay None",
+    "_note": "Issue Size value captured live from /api/ipo-detail on 2026-08-18 during the OFS parse-failure diagnosis; surrounding dataList rows omitted because only this row carries the split.",
+    "issueInfo": {
+      "symbol": "STUDDS",
+      "dataList": [
+        {
+          "title": "Issue Size",
+          "value": "Initial Public Offer of up to 77,86,120 Equity Shares (including Anchor Allocation of 23,35,836 Equity Shares)"
+        }
+      ]
+    }
+  },
+  "URBANCO": {
+    "_shape": "three legs: fresh + OFS + a separate Employee Reservation Portion, all bare millions",
+    "_note": "Issue Size value captured live from /api/ipo-detail on 2026-08-18 during the OFS parse-failure diagnosis; surrounding dataList rows omitted because only this row carries the split.",
+    "issueInfo": {
+      "symbol": "URBANCO",
+      "dataList": [
+        {
+          "title": "Issue Size",
+          "value": "Initial Public Offer of Fresh Issue upto 4,695 Million and Offer for Sale upto 14,280 Million and Employee Reservation Portion upto 25 Million (Including anchor portion of 8,29,00,485 Equity Shares)"
+        }
+      ]
+    }
   }
 }

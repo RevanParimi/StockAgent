@@ -324,3 +324,113 @@ def test_signals_accruing_survives_an_unreadable_ledger(tmp_path, monkeypatch):
     result = checks.ipo_signals_accruing()
     assert result.state == "pending"
     assert "MOLBIO" in result.detail
+
+
+class _FrozenIST:
+    """Stand-in for the `datetime` module object inside checks.py, so only
+    `datetime.now(tz)` is pinned and every other attribute passes through."""
+
+    def __init__(self, *args):
+        from datetime import datetime as _dt
+        from zoneinfo import ZoneInfo
+        self._now = _dt(*args, tzinfo=ZoneInfo("Asia/Kolkata"))
+
+    def now(self, tz=None):
+        return self._now
+
+    def __getattr__(self, name):
+        import datetime as _m
+        return getattr(_m.datetime, name)
+
+
+# --- ipo_signals_accruing: timing guard + symbol dedupe (2026-08-18) -------
+
+def _ipo_cache(tmp_path, rows):
+    import json as _json
+    (tmp_path / "market_cache").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "market_cache" / "ipo.json").write_text(
+        _json.dumps({"fetched_at": "2026-08-18T02:30:00+00:00",
+                     "current": rows, "upcoming": rows, "past": []}),
+        encoding="utf-8")
+
+
+def _row(symbol, start, end):
+    return {"symbol": symbol, "issue_start": start, "issue_end": end,
+            "listing_date": ""}
+
+
+def test_a_window_that_opened_today_is_not_flagged_before_the_first_refresh(
+        tmp_path, monkeypatch):
+    """The watchdog runs 06:30 IST; the first capture is 08:00. Flagging in
+    that gap reports normal operation as a fault — the cry-wolf failure this
+    check exists to avoid. Observed live on prod 2026-08-18."""
+    import core.ops.watchdog.checks as checks
+    from datetime import datetime
+    monkeypatch.setattr(checks, "_data_dir", lambda: tmp_path)
+    _ipo_cache(tmp_path, [_row("LALITHAA", "2026-08-18", "2026-08-20")])
+    monkeypatch.setattr(checks, "datetime", _FrozenIST(2026, 8, 18, 6, 30))
+
+    result = checks.ipo_signals_accruing()
+    assert result.state == "satisfied"
+    assert result.evidence["awaiting_first_capture"] == ["LALITHAA"]
+
+
+def test_the_same_window_IS_flagged_once_the_refresh_hour_has_passed(
+        tmp_path, monkeypatch):
+    """After 08:00 the capture was due, so a missing snapshot is real."""
+    import core.ops.watchdog.checks as checks
+    monkeypatch.setattr(checks, "_data_dir", lambda: tmp_path)
+    _ipo_cache(tmp_path, [_row("LALITHAA", "2026-08-18", "2026-08-20")])
+    monkeypatch.setattr(checks, "datetime", _FrozenIST(2026, 8, 18, 8, 30))
+
+    result = checks.ipo_signals_accruing()
+    assert result.state == "pending"
+    assert "LALITHAA" in result.detail
+
+
+def test_a_window_that_opened_yesterday_is_flagged_even_before_the_refresh(
+        tmp_path, monkeypatch):
+    """Yesterday's 08:00 and 17:45 both ran, so a hole here is genuine and
+    must not be excused by the morning guard."""
+    import core.ops.watchdog.checks as checks
+    monkeypatch.setattr(checks, "_data_dir", lambda: tmp_path)
+    _ipo_cache(tmp_path, [_row("HORIZONIND", "2026-08-17", "2026-08-20")])
+    monkeypatch.setattr(checks, "datetime", _FrozenIST(2026, 8, 18, 6, 30))
+
+    result = checks.ipo_signals_accruing()
+    assert result.state == "pending"
+    assert "HORIZONIND" in result.detail
+
+
+def test_symbols_are_not_repeated_in_the_operator_alert(tmp_path, monkeypatch):
+    """NSE lists an open issue in BOTH current and upcoming, so the raw
+    concatenation produced 'LALITHAA, HORIZONIND, LALITHAA, HORIZONIND'."""
+    import core.ops.watchdog.checks as checks
+    monkeypatch.setattr(checks, "_data_dir", lambda: tmp_path)
+    _ipo_cache(tmp_path, [_row("LALITHAA", "2026-08-17", "2026-08-20"),
+                          _row("HORIZONIND", "2026-08-17", "2026-08-20")])
+    monkeypatch.setattr(checks, "datetime", _FrozenIST(2026, 8, 18, 9, 0))
+
+    result = checks.ipo_signals_accruing()
+    assert result.state == "pending"
+    assert result.detail.count("LALITHAA") == 1
+    assert result.detail.count("HORIZONIND") == 1
+    assert result.evidence["open_issues"] == 2
+
+
+def test_an_unparseable_start_date_is_treated_as_due_not_excused(
+        tmp_path, monkeypatch):
+    """Better a false alarm than silently excusing a genuine hole."""
+    import core.ops.watchdog.checks as checks
+    monkeypatch.setattr(checks, "_data_dir", lambda: tmp_path)
+    _ipo_cache(tmp_path, [{"symbol": "WEIRD", "issue_start": "not-a-date",
+                           "issue_end": "2026-08-20", "listing_date": ""}])
+    monkeypatch.setattr(checks, "datetime", _FrozenIST(2026, 8, 18, 6, 30))
+
+    result = checks.ipo_signals_accruing()
+    # issue_state needs parseable bounds; an unparseable start is "unknown",
+    # so it is not open and not flagged. The guard itself is asserted directly:
+    from datetime import datetime as _dt
+    from zoneinfo import ZoneInfo
+    now = _dt(2026, 8, 18, 6, 30, tzinfo=ZoneInfo("Asia/Kolkata"))
+    assert checks._capture_not_due_yet({"issue_start": "not-a-date"}, now, 8) is False

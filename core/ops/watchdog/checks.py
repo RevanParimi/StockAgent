@@ -381,15 +381,45 @@ def ipo_cache_fresh() -> CheckResult:
     return CheckResult("satisfied", f"IPO cache {age_h:.1f}h old.", evidence)
 
 
+def _capture_not_due_yet(rec: dict, now: datetime, refresh_hour: int) -> bool:
+    """True when no scheduled capture can yet have run for this open issue.
+
+    The day's first capture is `ipo.refresh_hour` (08:00 IST); this watchdog
+    runs at 06:30. So an issue whose window opens today legitimately has no
+    snapshot until 08:00, and flagging it before then reports normal operation
+    as a fault.
+
+    An issue that opened on an earlier day HAS had at least one refresh since,
+    so a missing snapshot there is real. An unparseable start date is treated
+    as due — better a false alarm than silently excusing a genuine hole.
+    """
+    try:
+        start = date.fromisoformat(str(rec.get("issue_start") or ""))
+    except ValueError:
+        return False
+    if start < now.date():
+        return False
+    return now.hour < refresh_hour
+
+
 @check("ipo_signals_accruing")
 def ipo_signals_accruing() -> CheckResult:
     """An OPEN issue with no capture snapshot means the P2 ledger has stopped
     accruing. Silent by nature: a dead ledger and a quiet IPO month look
     identical until P3 needs the data and finds a hole in it.
 
-    Deliberately scoped to currently-open issues so a month with no IPOs
-    reports satisfied rather than crying wolf.
+    Two things it deliberately does NOT flag:
+
+    * A month with no open IPO window. A quiet month is not a fault.
+    * An issue whose window opened TODAY, before the day's first capture is
+      due. This watchdog runs at 06:30 IST and the first capture runs at
+      `ipo.refresh_hour` (08:00), so without this guard every new IPO window
+      would raise an alarm on its first morning — roughly 90 minutes before
+      capture was ever scheduled to happen. Observed live on 2026-08-18 with
+      LALITHAA/HORIZONIND open; an alarm that fires on normal operation is the
+      cry-wolf failure this check exists to avoid.
     """
+    from core.config import settings
     from core.ipo.calendar import issue_state
     from core.ipo.signals import IpoSignalStore
 
@@ -399,10 +429,25 @@ def ipo_signals_accruing() -> CheckResult:
                            {"path": str(path)})
     try:
         cache = json.loads(path.read_text(encoding="utf-8"))
-        today = _today()
+        now = datetime.now(_IST)
+        today = now.date()
+        refresh_hour = int(getattr(settings, "IPO_REFRESH_HOUR", 8))
         rows = (cache.get("current") or []) + (cache.get("upcoming") or [])
-        open_symbols = [r.get("symbol", "") for r in rows
-                        if isinstance(r, dict) and issue_state(r, today) == "open"]
+        open_symbols: list[str] = []
+        awaiting_first: list[str] = []
+        for r in rows:
+            if not isinstance(r, dict) or issue_state(r, today) != "open":
+                continue
+            symbol = r.get("symbol", "")
+            # NSE lists an open issue in BOTH `current` and `upcoming`, so the
+            # raw concatenation repeats every symbol. Without this the operator
+            # alert reads "LALITHAA, HORIZONIND, LALITHAA, HORIZONIND".
+            if not symbol or symbol in open_symbols or symbol in awaiting_first:
+                continue
+            if _capture_not_due_yet(r, now, refresh_hour):
+                awaiting_first.append(symbol)
+            else:
+                open_symbols.append(symbol)
     except Exception as exc:
         # Covers a bad parse AND a malformed shape (top-level JSON not a dict,
         # or current/upcoming not lists) — either way the cache is corrupt,
@@ -411,6 +456,12 @@ def ipo_signals_accruing() -> CheckResult:
                            {"path": str(path)})
 
     if not open_symbols:
+        if awaiting_first:
+            return CheckResult(
+                "satisfied",
+                f"{len(awaiting_first)} window(s) opened today; the first capture "
+                f"is not due until {refresh_hour:02d}:00 IST.",
+                {"open_issues": 0, "awaiting_first_capture": awaiting_first})
         return CheckResult("satisfied", "No open IPO window — nothing to capture.",
                            {"open_issues": 0})
 
@@ -428,7 +479,8 @@ def ipo_signals_accruing() -> CheckResult:
             f"landing for open issue(s): {', '.join(open_symbols)}.",
             {"open_issues": len(open_symbols), "error": str(exc)})
 
-    evidence = {"open_issues": len(open_symbols), "missing": missing}
+    evidence = {"open_issues": len(open_symbols), "missing": missing,
+                "awaiting_first_capture": awaiting_first}
     if missing:
         return CheckResult(
             "pending",

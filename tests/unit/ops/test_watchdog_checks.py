@@ -43,6 +43,32 @@ class TestAtlasCutoverPending:
         r = C.run_check("atlas_cutover_pending")
         assert r.state == "satisfied"
 
+    def test_satisfied_when_config_yaml_flipped_and_env_unset(self, monkeypatch, tmp_path):
+        """The documented cutover is `atlas.enabled: true` in config.yaml, and
+        prod does NOT set ATLAS_ENABLED — the code itself resolves the flag as
+        cfg("atlas.enabled", env=...), so yaml is what is actually in force.
+        A check that reads only the env var therefore reports a correctly
+        completed cutover as still pending, forever."""
+        import backend.shared.config.settings.loader as loader_mod
+        monkeypatch.delenv("ATLAS_ENABLED", raising=False)
+        monkeypatch.setattr(C, "_DATA_DIR", tmp_path)
+        monkeypatch.setitem(loader_mod._YAML["atlas"], "enabled", True)
+        r = C.run_check("atlas_cutover_pending")
+        assert r.state == "satisfied"
+        assert r.evidence["atlas_enabled"] is True
+
+    def test_flipped_yaml_wins_over_a_dirty_preflight(self, monkeypatch, tmp_path):
+        """Post-cutover the ETL has necessarily created atlas.db, so the
+        resolved flag must be consulted BEFORE the pre-flight — otherwise the
+        finished cutover reads as 'pre-flight DIRTY, investigate'."""
+        import backend.shared.config.settings.loader as loader_mod
+        monkeypatch.delenv("ATLAS_ENABLED", raising=False)
+        monkeypatch.setattr(C, "_DATA_DIR", tmp_path)
+        monkeypatch.setitem(loader_mod._YAML["atlas"], "enabled", True)
+        (tmp_path / "atlas.db").write_text("x")
+        r = C.run_check("atlas_cutover_pending")
+        assert r.state == "satisfied"
+
     def test_pending_when_flag_unset_and_preflight_clean(self, monkeypatch, tmp_path):
         monkeypatch.delenv("ATLAS_ENABLED", raising=False)
         monkeypatch.setattr(C, "_DATA_DIR", tmp_path)

@@ -82,15 +82,37 @@ def _atlas_prep_record() -> dict | None:
         return None
 
 
+def _atlas_enabled() -> bool:
+    """Resolve the atlas flag through the SAME call the running code uses —
+    `cfg("atlas.enabled", env="ATLAS_ENABLED", fallback=False)`, i.e. env
+    override > config.yaml > False.
+
+    `atlas_cutover_pending` used to read `os.getenv("ATLAS_ENABLED")` directly,
+    which made the documented cutover invisible to the watchdog: the flip is one
+    line in config.yaml and prod does NOT set the env var, so doing it correctly
+    left the milestone nagging forever. Calling `enabled()` reads config only —
+    it opens no connection, so it cannot create atlas.db and trip the pre-flight.
+    """
+    from services.data.stores import atlas_store
+    return bool(atlas_store.enabled())
+
+
 @check("atlas_cutover_pending")
 def atlas_cutover_pending() -> CheckResult:
-    """Satisfied once ATLAS_ENABLED is set. Until then, report whether the
-    documented pre-flight is still clean (atlas.db absent, portfolio/ holding
-    only the primary user) — a dirty pre-flight means the human's next step
-    is investigation, not the cutover."""
-    if (os.getenv("ATLAS_ENABLED") or "").strip():
-        return CheckResult("satisfied", "ATLAS_ENABLED is set — cutover done.",
-                           {"atlas_enabled": True})
+    """Satisfied once the atlas flag RESOLVES true (config.yaml or the env
+    override). Until then, report whether the documented pre-flight is still
+    clean (atlas.db absent, portfolio/ holding only the primary user) — a dirty
+    pre-flight means the human's next step is investigation, not the cutover.
+
+    The flag is consulted FIRST, before the pre-flight, because the cutover
+    necessarily leaves atlas.db behind: checking the pre-flight first would
+    report a finished cutover as "DIRTY, investigate".
+    """
+    if _atlas_enabled():
+        return CheckResult(
+            "satisfied", "atlas.enabled resolves true — cutover done.",
+            {"atlas_enabled": True,
+             "via_env": bool((os.getenv("ATLAS_ENABLED") or "").strip())})
 
     atlas_db = _DATA_DIR / "atlas.db"
     portfolio = _DATA_DIR / "portfolio"
@@ -133,7 +155,7 @@ def atlas_cutover_pending() -> CheckResult:
     return CheckResult(
         "pending",
         "Pre-flight clean (atlas.db absent, portfolio/ = only 'primary'). "
-        "ATLAS_ENABLED is not set.", evidence)
+        "atlas.enabled is still false.", evidence)
 
 
 # ---------------------------------------------------------------------------
@@ -287,11 +309,6 @@ def audit_graded_when_due() -> CheckResult:
     return CheckResult(
         "satisfied",
         f"Last run {last}: graded={graded}, already_present={present}.", run)
-
-
-def _atlas_enabled() -> bool:
-    from services.data.stores import atlas_store
-    return atlas_store.enabled()
 
 
 def _identity_counts() -> tuple[int, int]:

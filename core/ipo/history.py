@@ -17,7 +17,12 @@ from pathlib import Path
 
 from pydantic import BaseModel, Field
 
+from core.ipo.ledger import guard_lossless_rewrite
+
 logger = logging.getLogger(__name__)
+
+# Named in the refusal message so the operator knows which file to look at.
+_WHAT = "IPO history spine (the only copy, ~200 throttled NSE calls to rebuild)"
 
 HORIZONS_TD: tuple[int, ...] = (1, 5, 21, 63, 126, 252)
 
@@ -61,19 +66,28 @@ class IpoHistoryStore:
         with open(self.path, "a", encoding="utf-8") as fh:
             fh.write(rec.model_dump_json() + "\n")
 
-    def load_all(self) -> list[IpoRecord]:
+    def _read_rows(self) -> tuple[list[IpoRecord], int]:
+        """(parsed rows, non-blank line count) from ONE read of the file.
+
+        The rewrite guard compares these two numbers, and deriving them from
+        two separate reads would let a write land in between and report a
+        phantom mismatch.
+        """
         if not self.path.exists():
-            return []
+            return [], 0
+        lines = [ln for ln in (raw.strip() for raw in
+                               self.path.read_text(encoding="utf-8").splitlines())
+                 if ln]
         out: list[IpoRecord] = []
-        for line in self.path.read_text(encoding="utf-8").splitlines():
-            line = line.strip()
-            if not line:
-                continue
+        for line in lines:
             try:
                 out.append(IpoRecord(**json.loads(line)))
             except Exception:
                 continue            # a corrupt line must never break a backfill
-        return out
+        return out, len(lines)
+
+    def load_all(self) -> list[IpoRecord]:
+        return self._read_rows()[0]
 
     def existing_symbols(self) -> set[str]:
         return {r.symbol for r in self.load_all()}
@@ -81,7 +95,9 @@ class IpoHistoryStore:
     def upsert(self, rec: IpoRecord) -> None:
         """Replace any row for this symbol. Rewrites the file — acceptable at
         a few hundred rows, and keeps the reader trivially correct."""
-        rows = {r.symbol: r for r in self.load_all()}
+        parsed, lines = self._read_rows()
+        guard_lossless_rewrite(self.path, len(parsed), lines, what=_WHAT)
+        rows = {r.symbol: r for r in parsed}
         rows[rec.symbol] = rec
         tmp = self.path.with_suffix(".tmp")
         tmp.write_text(
@@ -97,7 +113,9 @@ class IpoHistoryStore:
         rows and the root cause of the OneDrive lock _upsert_with_retry works
         around (§9b). An enrichment pass touching every row must not do that.
         """
-        rows = {r.symbol: r for r in self.load_all()}
+        parsed, lines = self._read_rows()
+        guard_lossless_rewrite(self.path, len(parsed), lines, what=_WHAT)
+        rows = {r.symbol: r for r in parsed}
         for rec in recs:
             rows[rec.symbol] = rec
         tmp = self.path.with_suffix(".tmp")

@@ -37,7 +37,11 @@ from pathlib import Path
 
 from pydantic import BaseModel, Field
 
+from core.ipo.ledger import guard_lossless_rewrite
+
 logger = logging.getLogger(__name__)
+
+_WHAT = "IPO capture ledger (perishable — an uncaptured pass is gone for good)"
 
 
 class IpoSignalSnapshot(BaseModel):
@@ -106,19 +110,25 @@ class IpoSignalStore:
             fh.write(snap.model_dump_json() + "\n")
         return True
 
-    def load_all(self) -> list[IpoSignalSnapshot]:
+    def _read_rows(self) -> tuple[list[IpoSignalSnapshot], int]:
+        """(parsed rows, non-blank line count) from ONE read of the file, so
+        prune's rewrite guard cannot be fooled by a write landing between two
+        reads."""
         if not self.path.exists():
-            return []
+            return [], 0
+        lines = [ln for ln in (raw.strip() for raw in
+                               self.path.read_text(encoding="utf-8").splitlines())
+                 if ln]
         out: list[IpoSignalSnapshot] = []
-        for line in self.path.read_text(encoding="utf-8").splitlines():
-            line = line.strip()
-            if not line:
-                continue
+        for line in lines:
             try:
                 out.append(IpoSignalSnapshot(**json.loads(line)))
             except Exception:
                 continue            # a corrupt line must never break a read
-        return out
+        return out, len(lines)
+
+    def load_all(self) -> list[IpoSignalSnapshot]:
+        return self._read_rows()[0]
 
     def load_symbol(self, symbol: str) -> list[IpoSignalSnapshot]:
         rows = [r for r in self.load_all() if r.symbol == symbol]
@@ -140,7 +150,8 @@ class IpoSignalStore:
         """
         if older_than_days <= 0:
             return 0
-        rows = self.load_all()
+        rows, lines = self._read_rows()
+        guard_lossless_rewrite(self.path, len(rows), lines, what=_WHAT)
         if not rows:
             return 0
         now = now or datetime.now(timezone.utc)

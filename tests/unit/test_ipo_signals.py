@@ -160,3 +160,42 @@ def test_a_changed_total_is_appended_even_at_identical_content_otherwise(tmp_pat
     store.append(_snap(captured_at="2026-08-13T08:00:00+00:00", total=2.05))
     assert store.append(_snap(captured_at="2026-08-14T08:00:00+00:00", total=9.80)) is True
     assert len(store.load_all()) == 2
+
+
+# ---------------------------------------------------------------------------
+# prune() is the ledger's only rewrite path, and load_all()'s corrupt-line
+# tolerance turned it into permanent deletion: it wrote back only the rows that
+# parsed. It runs twice daily in production, immediately after capture.
+# ---------------------------------------------------------------------------
+
+def test_prune_refuses_to_rewrite_a_file_it_cannot_fully_parse(tmp_path):
+    from core.ipo.ledger import LedgerIntegrityError
+    store = IpoSignalStore(base_dir=str(tmp_path))
+    now = datetime(2026, 8, 18, 6, 0, tzinfo=timezone.utc)
+    store.append(IpoSignalSnapshot(symbol="AAA", captured_at="2024-01-01T06:00:00+00:00",
+                                   combined={"total": 1.0}))
+    with open(store.path, "a", encoding="utf-8") as fh:
+        fh.write("{not json\n")
+    before = store.path.read_text(encoding="utf-8")
+
+    try:
+        store.prune(older_than_days=400, now=now)
+        raise AssertionError("prune rewrote a file it could not fully parse")
+    except LedgerIntegrityError:
+        pass
+
+    assert store.path.read_text(encoding="utf-8") == before
+
+
+def test_append_still_lands_alongside_a_corrupt_line(tmp_path):
+    """Capture is append-only and cannot lose data, so one bad line must never
+    stop the twice-daily snapshot from landing."""
+    store = IpoSignalStore(base_dir=str(tmp_path))
+    store.append(IpoSignalSnapshot(symbol="AAA", captured_at="2026-08-18T06:00:00+00:00",
+                                   combined={"total": 1.0}))
+    with open(store.path, "a", encoding="utf-8") as fh:
+        fh.write("{not json\n")
+    assert store.append(IpoSignalSnapshot(symbol="BBB",
+                                          captured_at="2026-08-18T06:00:00+00:00",
+                                          combined={"total": 2.0})) is True
+    assert {r.symbol for r in store.load_all()} == {"AAA", "BBB"}

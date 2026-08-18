@@ -76,3 +76,73 @@ def test_upsert_many_writes_one_file_replace_not_one_per_record(tmp_path, monkey
     ])
     assert written == 3
     assert len(replace_calls) == 1
+
+
+# ---------------------------------------------------------------------------
+# Corrupt-line tolerance must not become permanent deletion on rewrite.
+#
+# load_all() skips unparseable lines so a bad line cannot break a backfill.
+# But every rewrite path writes back only what load_all() parsed, so the same
+# tolerance silently DELETED those lines — and enrich_ofs performs up to 9
+# rewrites per run on the 209-row spine, which is gitignored and the only copy.
+# ---------------------------------------------------------------------------
+
+def _corrupt(store):
+    with open(store.path, "a", encoding="utf-8") as fh:
+        fh.write("{not json\n")
+
+
+def test_upsert_refuses_to_rewrite_a_file_it_cannot_fully_parse(tmp_path):
+    from core.ipo.ledger import LedgerIntegrityError
+    store = IpoHistoryStore(base_dir=str(tmp_path))
+    store.append(IpoRecord(**_REC))
+    _corrupt(store)
+    before = store.path.read_text(encoding="utf-8")
+
+    try:
+        store.upsert(IpoRecord(**{**_REC, "outcomes": {"1": 12.5}}))
+        raise AssertionError("upsert rewrote a file it could not fully parse")
+    except LedgerIntegrityError as exc:
+        assert "1 of 2" in str(exc)
+
+    assert store.path.read_text(encoding="utf-8") == before   # nothing lost
+
+
+def test_upsert_many_refuses_to_rewrite_a_file_it_cannot_fully_parse(tmp_path):
+    from core.ipo.ledger import LedgerIntegrityError
+    store = IpoHistoryStore(base_dir=str(tmp_path))
+    store.append(IpoRecord(symbol="AAA", total_x=40.0))
+    store.append(IpoRecord(symbol="BBB", total_x=2.0))
+    _corrupt(store)
+    before = store.path.read_text(encoding="utf-8")
+
+    try:
+        store.upsert_many([IpoRecord(symbol="AAA", total_x=40.0, ofs_share=0.8)])
+        raise AssertionError("upsert_many rewrote a file it could not fully parse")
+    except LedgerIntegrityError:
+        pass
+
+    assert store.path.read_text(encoding="utf-8") == before
+
+
+def test_append_still_works_alongside_a_corrupt_line(tmp_path):
+    """append() cannot delete anything, so one bad line must not stop new rows
+    from landing — only the REWRITE paths refuse."""
+    store = IpoHistoryStore(base_dir=str(tmp_path))
+    store.append(IpoRecord(**_REC))
+    _corrupt(store)
+    store.append(IpoRecord(symbol="LATER", total_x=3.0))
+    assert {r.symbol for r in store.load_all()} == {"NEWCO", "LATER"}
+
+
+def test_rewrites_still_work_on_a_fully_parseable_file(tmp_path):
+    """The guard must key on unparseable lines, not on duplicate symbols: the
+    spine legitimately holds one row per symbol after a dedup, so a guard that
+    compared the deduped dict size to the line count would refuse every
+    ordinary upsert."""
+    store = IpoHistoryStore(base_dir=str(tmp_path))
+    store.append(IpoRecord(symbol="AAA", total_x=1.0))
+    store.append(IpoRecord(symbol="AAA", total_x=2.0))     # same symbol twice
+    store.upsert(IpoRecord(symbol="AAA", total_x=3.0))
+    rows = store.load_all()
+    assert len(rows) == 1 and rows[0].total_x == 3.0

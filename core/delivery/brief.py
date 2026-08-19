@@ -569,9 +569,31 @@ def _ipo_watch(max_items: int | None = None, on: date | None = None) -> list[dic
                     else None
                 ),
             })
-        # Open issues first — they are the ones with a deadline attached.
+        # Open issues first — they are the ones with a deadline attached — then
+        # by SOONEST CLOSE, then by strongest book.
+        #
+        # State alone was not enough. The cap (delivery.brief_max_ipos, 3) then
+        # fell back on Python's stable sort, i.e. NSE's feed order, which is
+        # arbitrary with respect to significance: on 2026-08-18 four issues were
+        # open and the brief dropped LALITHAA (3.07x, closing the NEXT DAY) while
+        # keeping SHANKESH (0.36x, two days out) purely because NSE listed it
+        # later. Deadline leads because it is the part the reader cannot act on
+        # tomorrow; demand breaks ties within a closing date.
+        #
+        # Both tiebreakers are absence-safe, and neither treats absent as early
+        # or as zero: a missing issue_end would otherwise sort as "closes first"
+        # (an empty string precedes every real ISO date), and a missing total_x
+        # would sort level with a genuine 0.0.
         order = {"open": 0, "closed": 1, "upcoming": 2, "unknown": 3}
-        out.sort(key=lambda r: order.get(r["state"], 9))
+
+        def _rank(r: dict) -> tuple:
+            end = r.get("issue_end") or ""
+            total = r.get("total_x")
+            return (order.get(r["state"], 9),
+                    end == "", end,                 # undated last
+                    total is None, -(total or 0.0))  # unknown demand last
+
+        out.sort(key=_rank)
         return _dedup_ipos(out, mi)
     except Exception as exc:
         logger.warning("[brief] ipo watch failed (non-fatal): %s", exc)

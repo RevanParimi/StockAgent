@@ -788,3 +788,77 @@ def test_malformed_date_does_not_raise_from_renderers():
     assert isinstance(text_result, str)
     html_result = br.render_brief_html(brief)
     assert isinstance(html_result, str)
+
+
+# ---------------------------------------------------------------------------
+# The cap must choose by deadline, then demand — not by NSE feed order.
+# Found by the P0 live-window check on 2026-08-18: four issues were open, the
+# cap is 3, and the brief dropped LALITHAA (3.07x, closing the next day) while
+# keeping SHANKESH (0.36x, two days out) purely because NSE listed it later.
+# ---------------------------------------------------------------------------
+
+_LIVE_FEED_2026_08_18 = [
+    # Verbatim symbol/end/total from the prod cache, in the order NSE served
+    # them — the order is the whole point of the test.
+    {"symbol": "SUNSHINE", "company": "Sunshine Pictures", "status": "current",
+     "issue_start": "2026-08-18", "issue_end": "2026-08-20", "total_x": 4.332014047991898},
+    {"symbol": "SHANKESH", "company": "Shankesh Jewellers", "status": "current",
+     "issue_start": "2026-08-18", "issue_end": "2026-08-20", "total_x": 0.3572839702721674},
+    {"symbol": "HORIZONIND", "company": "Horizon Industrial Parks", "status": "current",
+     "issue_start": "2026-08-17", "issue_end": "2026-08-19", "total_x": 0.23647211700978715},
+    {"symbol": "LALITHAA", "company": "Lalithaa Jewellery Mart", "status": "current",
+     "issue_start": "2026-08-17", "issue_end": "2026-08-19", "total_x": 3.0682383566218236},
+]
+
+
+def test_ipo_cap_keeps_the_issues_closing_soonest(_isolated_ipo_ledger, monkeypatch):
+    """Both issues closing tomorrow must survive a cap of 3; the issue cut is
+    the weakest-demand one of those with more time left."""
+    monkeypatch.setattr(br, "load_ipo_cache",
+                        lambda: {"current": list(_LIVE_FEED_2026_08_18), "upcoming": []})
+    rows = br._ipo_watch(max_items=3, on=date(2026, 8, 18))
+    assert [r["symbol"] for r in rows] == ["LALITHAA", "HORIZONIND", "SUNSHINE"]
+
+
+def test_ipo_order_breaks_deadline_ties_by_demand(_isolated_ipo_ledger, monkeypatch):
+    """Within one closing date the stronger book leads: LALITHAA (3.07x) ahead
+    of HORIZONIND (0.24x), SUNSHINE (4.33x) ahead of SHANKESH (0.36x)."""
+    monkeypatch.setattr(br, "load_ipo_cache",
+                        lambda: {"current": list(_LIVE_FEED_2026_08_18), "upcoming": []})
+    rows = br._ipo_watch(max_items=10, on=date(2026, 8, 18))
+    assert [r["symbol"] for r in rows] == [
+        "LALITHAA", "HORIZONIND", "SUNSHINE", "SHANKESH"]
+
+
+def test_ipo_order_keeps_open_ahead_of_closed_and_upcoming(_isolated_ipo_ledger, monkeypatch):
+    """The state ranking still dominates the deadline sort — an open issue
+    outranks a closed one even though the closed one's end date is earlier."""
+    monkeypatch.setattr(br, "load_ipo_cache", lambda: {"current": [
+        {"symbol": "CLOSED1", "status": "current", "issue_start": "2026-08-10",
+         "issue_end": "2026-08-12", "total_x": 99.0},
+        {"symbol": "OPEN1", "status": "current", "issue_start": "2026-08-17",
+         "issue_end": "2026-08-19", "total_x": 1.0},
+        {"symbol": "SOON", "status": "upcoming", "issue_start": "2026-08-25",
+         "issue_end": "2026-08-27", "total_x": None},
+    ], "upcoming": []})
+    rows = br._ipo_watch(max_items=10, on=date(2026, 8, 18))
+    assert [r["symbol"] for r in rows] == ["OPEN1", "CLOSED1", "SOON"]
+
+
+def test_ipo_order_puts_rows_with_no_end_date_or_no_total_last(_isolated_ipo_ledger, monkeypatch):
+    """A missing issue_end must not sort as "closes first" (empty string sorts
+    before every real date), and a missing total_x must not sort as demand 0
+    ahead of a real 0.0 — absent is not early and not zero."""
+    monkeypatch.setattr(br, "load_ipo_cache", lambda: {"current": [
+        {"symbol": "NOEND", "status": "current", "issue_start": "2026-08-17",
+         "issue_end": "", "total_x": 5.0},
+        {"symbol": "DATED", "status": "current", "issue_start": "2026-08-17",
+         "issue_end": "2026-08-19", "total_x": 1.0},
+        {"symbol": "NOTOTAL", "status": "current", "issue_start": "2026-08-17",
+         "issue_end": "2026-08-19", "total_x": None},
+        {"symbol": "ZERO", "status": "current", "issue_start": "2026-08-17",
+         "issue_end": "2026-08-19", "total_x": 0.0},
+    ], "upcoming": []})
+    syms = [r["symbol"] for r in br._ipo_watch(max_items=10, on=date(2026, 8, 18))]
+    assert syms.index("DATED") < syms.index("ZERO") < syms.index("NOTOTAL")
+    assert syms[-1] == "NOEND"

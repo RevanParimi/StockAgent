@@ -85,12 +85,22 @@ milestones:
     deadline: 2026-09-15
     lead_days: 3
     action: >
-      During any open mainboard IPO window, confirm the daily brief shows a
-      real subscription x (not 'data pending') and the correct window line,
-      and that a CLOSED issue is not rendered as open. Also settle spec
-      section 7 risk 6 - compare the stored combined vs nse_only ladders for
-      one symbol against NSE's published end-of-day figure and pin the
-      authority in a docstring. Remove this entry once judged.
+      MOSTLY DONE 2026-08-18 against the live LALITHAA/HORIZONIND/SUNSHINE/
+      SHANKESH windows. Confirmed: the brief renders real subscription x (not
+      'data pending'), the window line is right ('closes tomorrow' / 'closes in
+      2 days'), cut-off share + institutional split + demand delta all render,
+      and spec section 7 risk 6 is settled and pinned in
+      services/data/fetchers/ipo_bids.py (read `combined`; LALITHAA QIB
+      0.0129x nse_only vs 1.0237x combined is an inverted conclusion, not a
+      degraded one). A latent cap-ordering bug was found and fixed while doing
+      this - the brief had been dropping the highest-demand issue closing
+      soonest because the cap fell back on NSE feed order.
+      ONLY ONE THING LEFT, and it needs no setup: on any morning when an issue
+      has passed its issue_end but has not yet listed, confirm the brief shows
+      it as 'bidding closed - awaiting listing' and NOT under an open heading.
+      Verified deterministically on 2026-08-18 by advancing `on` over the real
+      cached payload; this is the live observation of the same thing.
+      Remove this entry once that is seen.
     docs: docs/superpowers/specs/2026-08-11-ipo-intelligence-design.md
 
   - id: ipo_p1_backtest_review
@@ -100,14 +110,21 @@ milestones:
     deadline: 2026-09-30
     lead_days: 5
     action: >
-      Run `python -m scripts.ipo_backfill --since 2024-05-01 --enrich` then
-      `python -c "from core.ipo.history import IpoHistoryStore; from
-      core.ipo.report import render_report, summarise;
-      print(render_report(summarise(IpoHistoryStore().load_all())))"` and
-      read the output (python -m core.ipo.report prints nothing - the
-      module has no __main__ block). Decide whether the bucket sample sizes
-      support proceeding to P2/P3 or whether the spine needs a wider date
-      range first. Remove once judged.
+      RESCOPED 2026-08-18. The original question - "do the bucket sample sizes
+      support proceeding to P2/P3" - is moot: P2 shipped, merged and is
+      prod-verified. What is still worth doing is READING the report and judging
+      whether the samples support letting P3 WEIGHT any of these features.
+      DO NOT run `python -m scripts.ipo_backfill --enrich` for this: main()
+      always runs the full backfill first (it re-fetches and upserts every row),
+      and the report needs no refetch. Just read the spine:
+      `PYTHONPATH=".;src" python -c "from core.ipo.history import
+      IpoHistoryStore; from core.ipo.report import render_report, summarise;
+      print(render_report(summarise(IpoHistoryStore().load_all())))"`
+      (python -m core.ipo.report prints nothing - no __main__ block).
+      Read spec section 5 P2 alongside it: the OFS column is now 90% complete
+      (parse-failure rate 23% -> 10% on 2026-08-18) and the re-measurement KILLED
+      the "OFS-heavy outperforms at every horizon" claim - at 252td the ordering
+      flipped. Treat every bucket here as association-only. Remove once judged.
     docs: docs/superpowers/specs/2026-08-11-ipo-intelligence-design.md
 
 invariants:

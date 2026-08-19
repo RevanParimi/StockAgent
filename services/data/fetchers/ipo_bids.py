@@ -1,16 +1,57 @@
 """Category-wise IPO bid ladder from /api/ipo-detail (spec section 11.2).
 
 Endpoint verified live 2026-08-11. The response carries TWO ladders that
-disagree:
+disagree, and WHICH ONE IS AUTHORITATIVE IS SETTLED: read `combined`.
 
-  bidDetails  -> NSE-only        (MOLBIO QIB 0.564x, total bids 16,731,036)
-  activeCat   -> all-exchange    (MOLBIO QIB 1.391x, total bids 25,437,636)
+  combined  <- activeCat.dataList, key `noOfTotalMeant`   <-- THE headline
+  nse_only  <- bidDetails,         key `noOfTime`         <-- never the headline
 
-`bidDetails` is the more convenient shape — flat list, per-row multiple — and
-is the WRONG one to read: the figure the market and the press quote is the
-all-exchange one. Reading it would under-report every IPO's demand with no
-error anywhere. Both are therefore captured and named for what they are; see
-spec section 7 risk 6 for the arithmetic and the outstanding verification.
+`bidDetails` is the more convenient shape — flat list, per-row multiple — and is
+the WRONG one to read. It under-reports demand with no error raised anywhere.
+
+VERIFIED ON THREE SYMBOLS (spec section 7 risk 6 asked for a second; P0
+live-window check, 2026-08-18, closed it on two more):
+
+  symbol      when                       nse_only        combined
+  MOLBIO      2026-08-11    QIB            0.564x          1.391x
+  LALITHAA    2026-08-18 EOD  total        2.2373x         3.0682x
+                              QIB          0.0129x         1.0237x
+  SUNSHINE    2026-08-18 EOD  total        3.1834x         4.3320x
+                              QIB          0.0083x         0.0289x
+
+LALITHAA's QIB is the case that matters. `nse_only` says 0.0129x — read aloud,
+"institutions did not show up". `combined` says 1.0237x — "the institutional
+book filled". That is an INVERTED conclusion, not a degraded one, and it is the
+same wrong-number-rather-than-absent class as the total_x_nse_only flag and the
+GMP sign. A verdict built on the convenient shape would be confidently backwards.
+
+The disagreement is NOT a fixed denominator artifact: for LALITHAA the ratio
+combined/nse_only was 1.765 at the 08:00 IST pass and 1.371 at the 17:45 IST
+pass the same day. A constant offset would not move.
+
+WHAT IS DELIBERATELY *NOT* CLAIMED HERE. The older note in this docstring
+labelled the two "NSE-only" and "all-exchange". That reading is plausible but is
+NOT established by the data, so it is no longer asserted as fact: on 2026-08-18
+the payload's own price-level curves put NSE's share of cut-off demand at 0.44
+(demandDataNSE cumQty 5,72,92,946 vs demandDataBSE 7,29,65,628), whereas the
+observed nse_only/combined ratio was 0.73. A clean `combined = NSE + BSE` does
+not reconcile. activeCat carries no offered-share count, so numerator and
+denominator effects cannot be separated from this response alone.
+
+What IS established, and all the code needs: `activeCat` is the broader figure
+NSE itself publishes as "No. of times of total meant for the category", stamped
+with its own `updateTime` (the ~17:00 IST daily update), and it is the figure
+consistent with what the market quotes. An independent press cross-check was
+attempted and was inconclusive rather than contradictory — intraday quotes for
+LALITHAA on 2026-08-18 (1.15x around 10:59 IST) sit between this system's own
+08:00 reading (0.6937x) and its 17:45 reading (3.0682x), which is consistent
+with bids accumulating but cannot discriminate between the two shapes.
+
+So: both ladders stay captured and named for what they are, `combined` is the
+headline everywhere, and anything derived from `nse_only` must say so at the
+point of use. `total_x_nse_only` exists for exactly that admission, and
+core/delivery/brief.py suppresses the demand delta when it is set rather than
+mixing the two scales in one clause.
 
 Field names differ between the two ladders in ways that look like typos and
 are not: activeCat has `noOfShareOffered` (no 's' on Share) and `noOfSharesBid`;

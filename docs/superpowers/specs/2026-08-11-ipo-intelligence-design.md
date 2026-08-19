@@ -495,16 +495,46 @@ and the morning one (§9b).
 5. **Survivorship in the backfill.** Issues that listed and were later delisted
    or suspended must be retained, or the historical spine will overstate
    outcomes.
-6. **NSE-only vs all-exchange subscription figures disagree, inside a single
-   response.** For MOLBIO on 2026-08-11, `ipo-detail.bidDetails` reported QIB
-   **0.564×** while `ipo-detail.activeCat` reported QIB **1.391×**. Arithmetic
-   (§11.4) indicates `bidDetails`/`demandDataNSE` are **NSE-only** and
-   `activeCat` is **all-exchange combined** — the latter being what the press
-   and the market quote. **A naive implementation reading the more convenient
-   `bidDetails` shape would silently under-report every IPO's demand**, which is
-   precisely the class of bug that produces confidently wrong verdicts. Treated
-   as a hypothesis, not a finding: P0 must verify it on a second symbol against
-   NSE's published end-of-day figure before either source is trusted.
+6. ~~**NSE-only vs all-exchange subscription figures disagree, inside a single
+   response.**~~ **THE OPERATIONAL DECISION IS CLOSED (2026-08-18, P0
+   live-window check); THE MECHANISTIC LABEL IS NOT — and is no longer
+   asserted.** For MOLBIO on 2026-08-11, `ipo-detail.bidDetails` reported QIB
+   **0.564×** while `ipo-detail.activeCat` reported QIB **1.391×**. Verified on
+   two further symbols at NSE's own ~17:00 IST end-of-day stamp:
+
+   | symbol | field | `bidDetails` (`nse_only`) | `activeCat` (`combined`) |
+   |---|---|---|---|
+   | LALITHAA | total | 2.2373× | **3.0682×** |
+   | LALITHAA | QIB | **0.0129×** | **1.0237×** |
+   | SUNSHINE | total | 3.1834× | **4.3320×** |
+   | SUNSHINE | QIB | 0.0083× | 0.0289× |
+
+   **Read `combined`.** LALITHAA's QIB is the case that settles it: `nse_only`
+   says 0.0129× ("institutions did not show up"), `combined` says 1.0237× ("the
+   institutional book filled"). That is an INVERTED conclusion, not a degraded
+   one — the same wrong-number-rather-than-absent class as `total_x_nse_only`
+   and the GMP sign. The code reads `combined` everywhere, which is correct.
+
+   **What this does NOT establish, and what the docstring no longer claims:**
+   that the two are literally "NSE-only" and "all-exchange". The gap is not a
+   fixed offset (LALITHAA `combined/nse_only` was 1.765 at the 08:00 IST pass
+   and 1.371 at the 17:45 IST pass the same day), which rules out a constant
+   denominator artifact — but a clean `combined = NSE + BSE` does not reconcile
+   either: the payload's own price-level curves put NSE's share of cut-off
+   demand at 0.44 (`demandDataNSE` cumQty 5,72,92,946 vs `demandDataBSE`
+   7,29,65,628) against an observed `nse_only/combined` of 0.73. `activeCat`
+   carries no offered-share count, so numerator and denominator effects cannot
+   be separated from one response. An independent press cross-check was
+   inconclusive rather than contradictory: intraday quotes for LALITHAA on
+   2026-08-18 (~1.15× at 10:59 IST) fall between this system's 08:00 reading
+   (0.6937×) and its 17:45 reading (3.0682×) — consistent with bids
+   accumulating, but unable to discriminate between the shapes.
+
+   The defensible statement, and the one pinned in
+   `services/data/fetchers/ipo_bids.py`: `activeCat` is the broader figure NSE
+   itself publishes as "No. of times of total meant for the category", stamped
+   with its own `updateTime`, and it is what the market quotes. Anything derived
+   from `nse_only` must say so at the point of use.
 
 ## 8. Non-goals
 

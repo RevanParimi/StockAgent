@@ -393,6 +393,11 @@ advisor:
 # =============================================================================
 # Compass Phase B — Discovery funnel + generic sector graph (spec 2026-07-06 §6/§8)
 # =============================================================================
+  # Switch-validation capture (design 2026-08-20). Records every
+  # (holding, shelf-candidate) pair the rule evaluates, taken or not, so
+  # the auditor has a sample. Read-only telemetry — never changes a verdict.
+  switch_eval_enabled: true
+  switch_eval_max_candidates: 5   # top-N active ideas by conviction, per holding
 discovery:
   enabled: true
   history_days: 550              # rolling EOD window (~2.2yr; 12m momentum needs 252 tds)

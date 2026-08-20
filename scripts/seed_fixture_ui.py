@@ -43,8 +43,25 @@ _WEEKLY = {
                    {"sector": "BFSI", "weight_pct": 35.8}],
     "concentration_flags": ["AUTOMOBILE"],
     "laggards": [{"symbol": "TATAMOTORS", "pnl_pct": -8.7}],
-    "switch_candidates": [{"sector": "AUTOMOBILE", "symbol": "BAJAJ-AUTO", "conviction": 0.72}],
-    "switch_suggestions": [{"symbol": "TATAMOTORS", "switch_candidate": "BAJAJ-AUTO"}],
+    "switch_candidates": [
+        {"symbol": "SUNPHARMA", "sector": "PHARMA", "conviction": 0.72,
+         "thesis": "US generics pricing has stopped falling and the specialty "
+                   "ramp is ahead of guidance.",
+         "entry_low": 1580.0, "entry_high": 1670.0, "invalidation_level": 1495.0},
+    ],
+    "switch_suggestions": [
+        {"symbol": "TATAMOTORS", "switch_candidate": "BAJAJ-AUTO",
+         "date": "2026-07-24",
+         "reason": "The JLR demand warning broke the thesis and the stop went "
+                   "with it.",
+         "triggers": ["stop_breach", "thesis_break", "switch_candidate_available"],
+         "pnl_pct": -8.7, "stop_pct": 6.0, "confidence": 0.41,
+         "candidate": {"sector": "AUTOMOBILE", "conviction": 0.78,
+                       "thesis": "Export mix is carrying margin while the "
+                                 "domestic cycle is still soft.",
+                       "entry_low": 9100.0, "entry_high": 9600.0,
+                       "invalidation_level": 8650.0}},
+    ],
     "scoreboard": {"checked": 12, "correct": 8},
 }
 

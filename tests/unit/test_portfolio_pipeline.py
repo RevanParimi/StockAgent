@@ -133,3 +133,52 @@ def test_pipeline_holding_failure_is_non_fatal(monkeypatch, tmp_path):
     result = pipeline.run_post_review_pipeline(REVIEW_DATE)
     assert result["status"] == "completed"
     assert result["advice"] == 1          # GOODSTK advised, BADSTK skipped
+
+
+# -- the SWITCH alert has to carry the case too (2026-08-20) ----------------
+
+def test_advice_alert_fields_state_the_case_for_a_switch():
+    from backend.shared.schemas.portfolio import AdviceRecord
+    from core.portfolio.pipeline import advice_alert_fields
+
+    rec = AdviceRecord(date="2026-08-18", user_id="u", symbol="TATAMOTORS",
+                       verdict="SWITCH", close=642.0, unrealised_pnl_pct=-8.7,
+                       stop_pct=6.0, confidence=0.42, switch_candidate="NEWCO",
+                       triggers=["stop_breach", "switch_candidate_available"],
+                       narrative="The JLR demand warning broke the thesis.")
+
+    class _Idea:
+        symbol, sector, conviction = "NEWCO", "pharma", 0.81
+        thesis = "Margin inflection on the API ramp."
+        entry_low = entry_high = invalidation_level = 0.0
+
+    f = advice_alert_fields(rec, {"NEWCO": _Idea()})
+    assert f["title"] == "Switch — TATAMOTORS"
+    assert f["headline"] == "The JLR demand warning broke the thesis."
+    assert "-8.7%" in f["status"] and "6.0%" in f["status"]
+    assert "NEWCO" in f["next_step"]
+    assert "Margin inflection on the API ramp." in f["next_step"]
+
+
+def test_advice_alert_falls_back_to_triggers_without_a_narrative():
+    from backend.shared.schemas.portfolio import AdviceRecord
+    from core.portfolio.pipeline import advice_alert_fields
+
+    rec = AdviceRecord(date="2026-08-18", user_id="u", symbol="TATAMOTORS",
+                       verdict="EXIT", close=642.0, unrealised_pnl_pct=-8.7,
+                       stop_pct=6.0, triggers=["stop_breach"])
+    f = advice_alert_fields(rec, {})
+    assert "stop was breached" in f["headline"]
+    assert f["next_step"] == ""          # no candidate, nothing to point at
+
+
+def test_advice_alert_switch_survives_a_destination_off_the_shelf():
+    from backend.shared.schemas.portfolio import AdviceRecord
+    from core.portfolio.pipeline import advice_alert_fields
+
+    rec = AdviceRecord(date="2026-08-18", user_id="u", symbol="TATAMOTORS",
+                       verdict="SWITCH", close=642.0, unrealised_pnl_pct=-8.7,
+                       stop_pct=6.0, switch_candidate="GONE",
+                       triggers=["stop_breach"])
+    f = advice_alert_fields(rec, {})
+    assert f["next_step"] == "Replacement idea: GONE."

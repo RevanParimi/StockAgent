@@ -8,6 +8,7 @@ from __future__ import annotations
 from datetime import date, datetime, timezone
 
 from backend.shared.schemas.portfolio import AdviceRecord, Portfolio
+from core.portfolio.advisor import explain_triggers
 
 
 def build_digest(
@@ -33,8 +34,15 @@ def build_digest(
             "verdict": rec.verdict if rec else "NO_DATA",
             "close": close,
             "pnl_pct": round(h.unrealised_pnl_pct(close), 2) if close is not None else None,
-            "reason": rec.narrative if rec else "no advisor run for this holding today",
+            # `narrative` is the LLM's line and empties out whenever narration
+            # fails; the deterministic triggers are always present, so a failed
+            # narration costs prose, never the reason itself.
+            "reason": (rec.narrative.strip() or explain_triggers(rec.triggers)) if rec
+                      else "no advisor run for this holding today",
             "notes": rec.notes if rec else [],
+            # Carried so the brief can name the destination. Without it a
+            # SWITCH reached "Needs attention" as a verdict with no object.
+            "switch_candidate": rec.switch_candidate if rec else "",
         })
     escalations = sorted(a.symbol for a in advice if a.verdict in ("TRIM", "EXIT", "SWITCH"))
     return {

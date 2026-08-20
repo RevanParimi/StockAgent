@@ -209,15 +209,58 @@ def build_signals(
 # Verdict engine
 # ---------------------------------------------------------------------------
 
-def _best_switch_candidate(signals: AdvisorSignals, shelf_ideas, sector_weights: dict):
+# Plain English for the machine trigger codes below. Lives here, next to the
+# rules that emit them, so the brief, the weekly and the alert all say the same
+# thing about the same code instead of each inventing wording.
+TRIGGER_PLAIN = {
+    "stop_breach": "the stop was breached",
+    "trailing_stop_breach": "the trailing stop was breached",
+    "thesis_break": "the thesis broke",
+    "shock_reforecast": "a shock forced a reforecast",
+    "crisis_regime_bearish": "a crisis regime turned the forecast down",
+    "trim_profit_confidence_decline":
+        "confidence fell while the position was in profit",
+    "trim_profit_reversion_elevated":
+        "reversion risk rose while the position was in profit",
+    "add_bullish_healthy":
+        "the forecast points up and recent calls have been accurate",
+    "switch_candidate_available": "a stronger shelf idea was available",
+}
+
+
+def explain_triggers(triggers) -> str:
+    """One plain sentence for a list of trigger codes; "" for none.
+
+    An unknown code survives as its own de-underscored self rather than being
+    dropped — a rule that fires without a translation must still reach the
+    reader, or the page says less than the system knows.
+    """
+    parts = [TRIGGER_PLAIN.get(t, str(t).replace("_", " ")) for t in triggers or [] if t]
+    if not parts:
+        return ""
+    joined = "; ".join(parts)
+    return joined[0].upper() + joined[1:] + "."
+
+
+def _best_switch_candidate(signals: AdvisorSignals, shelf_ideas, sector_weights: dict,
+                           held_symbols: set[str] | None = None):
     """SWITCH (spec §5.2): EXIT already fired AND an active shelf idea beats the
     holding's mean remaining envelope confidence by >= ADVISOR_SWITCH_CONVICTION_GAP,
     in a sector strictly UNDERWEIGHT vs the exiting holding's sector. With no
-    sector-weight context every idea fails the underweight check (conservative)."""
+    sector-weight context every idea fails the underweight check (conservative).
+
+    A symbol already in the portfolio is never a destination: buying more of
+    what you hold is a top-up, not a rotation, and the underweight-sector test
+    that justified the call was computed on a sector you already own. The
+    reviewed symbol excludes itself without the caller having to say so.
+    """
     own_weight = sector_weights.get(signals.sector, 0.0)
+    excluded = set(held_symbols or ()) | {signals.symbol}
     best = None
     for idea in shelf_ideas or []:
         if getattr(idea, "status", "active") != "active":
+            continue
+        if idea.symbol in excluded:
             continue
         if sector_weights.get(idea.sector, 0.0) >= own_weight:
             continue
@@ -234,6 +277,7 @@ def decide(
     risk_profile: str,
     shelf_ideas: list | None = None,
     sector_weights: dict[str, float] | None = None,
+    held_symbols: set[str] | None = None,
 ) -> AdviceRecord:
     triggers: list[str] = []
     notes: list[str] = []
@@ -293,7 +337,8 @@ def decide(
     # -- SWITCH: EXIT + stronger shelf idea in an underweight sector (§5.2) --
     switch_candidate = ""
     if verdict == "EXIT" and shelf_ideas:
-        cand = _best_switch_candidate(signals, shelf_ideas, sector_weights or {})
+        cand = _best_switch_candidate(signals, shelf_ideas, sector_weights or {},
+                                      held_symbols)
         if cand is not None:
             verdict = "SWITCH"
             triggers.append("switch_candidate_available")

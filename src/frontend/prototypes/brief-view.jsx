@@ -88,6 +88,14 @@ function BVAttentionRow({ flag, onNav }) {
       onKeyDown={e => { if (e.key === 'Enter' && onNav) onNav('portfolio'); }}
       style={{ ...BV_ROW, cursor: onNav ? 'pointer' : 'default' }}>
       <span style={{ fontWeight: 800, color: 'var(--ink-1)', fontSize: 13 }}>{flag.symbol}</span>
+      {/* A SWITCH without its destination is a verdict with no object. */}
+      {flag.switch_candidate ? (
+        <React.Fragment>
+          <span style={{ color: 'var(--cyan)', fontSize: 13 }}> → </span>
+          <span style={{ fontWeight: 800, color: 'var(--ink-1)', fontSize: 13 }}>
+            {flag.switch_candidate}</span>
+        </React.Fragment>
+      ) : null}
       <BVChip verdict={flag.verdict} label={flag.verdict_plain}/>
       {flag.reason ? <div style={BV_WHY}>{flag.reason}
         {onNav ? <span style={{ color: 'var(--cyan)', fontWeight: 700 }}> ›</span> : null}</div> : null}

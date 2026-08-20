@@ -646,6 +646,7 @@ Models are tiered (2026-06-03 benchmark, `scripts/model_bench.py`; bulk re-bench
 | `delivery.data_dir` | `data/delivery` | `push_subscriptions.json`, `alerts_sent.jsonl` |
 | `delivery.email_enabled` | `false` | Needs `SMTP_HOST/PORT/USER/PASSWORD` + `DELIVERY_EMAIL_TO` in .env |
 | `delivery.push_enabled` | `true` | Needs `VAPID_PRIVATE_KEY/PUBLIC_KEY/CLAIM_EMAIL` in .env (`scripts/gen_vapid_keys.py`) |
+| `audit.shock_atr_mult` | `3.0` | Single-session move (× ATR) that classifies a switch miss as unforeseeable |
 | `audit.switch_lane_enabled` | `true` | Grade the evaluated switch pairs (switch lane) |
 | `audit.switch_grade_max_rows_per_run` | `2000` | Caps the first switch backfill so it cannot stall the nightly job |
 | `advisor.switch_eval_enabled` | `true` | Record every (holding, shelf-candidate) pair the advisor evaluates (switch validation, design 2026-08-20) |

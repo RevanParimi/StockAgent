@@ -80,7 +80,7 @@ def test_grade_due_sums_all_lanes(tmp_path):
         shelf_path=str(tmp_path / "missing.json"),
     )
     assert result["graded"] == 1
-    assert set(result["lanes"]) == {"advice", "alert", "shelf"}
+    assert set(result["lanes"]) == {"advice", "alert", "shelf", "switch"}
 
 
 def test_grade_due_never_raises_on_broken_lane(tmp_path):

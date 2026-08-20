@@ -542,6 +542,8 @@ audit:
   benchmark_ticker: "^NSEI"    # NIFTY 50 — the benchmark `correct` is defined against
   horizons_td: [10, 30, 60]    # trading days after issue
   min_n: 30                    # below this, every verdict is INSUFFICIENT_DATA
+  switch_lane_enabled: true          # grade the evaluated switch pairs
+  switch_grade_max_rows_per_run: 2000  # bounds the first backfill after deploy
   min_hit_rate_60d: 0.45       # 60td hit-rate floor before a warning fires
   max_bench_lag_pct: 10.0      # portfolio trailing NIFTY by more than this over 60d
   max_news_blind_rate: 0.20    # F1's blind-rate ceiling — currently log-only

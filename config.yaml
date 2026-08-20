@@ -542,6 +542,10 @@ audit:
   benchmark_ticker: "^NSEI"    # NIFTY 50 — the benchmark `correct` is defined against
   horizons_td: [10, 30, 60]    # trading days after issue
   min_n: 30                    # below this, every verdict is INSUFFICIENT_DATA
+  switch_min_n: 30                   # n_effective floor before any switch verdict
+  switch_horizon_td: 10              # horizon the switch blocks report on
+  per_trigger_horizon_td: 10         # was hardcoded to 60 -> the block read empty
+  conviction_horizon_td: 10          # was hardcoded to 30 -> the block read empty
   shock_atr_mult: 3.0                # single-session move counting as an unforeseeable shock
   switch_lane_enabled: true          # grade the evaluated switch pairs
   switch_grade_max_rows_per_run: 2000  # bounds the first backfill after deploy

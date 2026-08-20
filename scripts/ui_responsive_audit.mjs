@@ -51,7 +51,11 @@ const WIDTHS = [360, 390, 768, 1280];
 // grid, 496px measured overflow) went unasserted for two tasks. Every
 // activeTab-driven screen gets a tabs list here so that class of bug cannot
 // hide behind a tab again.
-const SCREENS = ['home', 'agents', 'portfolio', 'inbox', 'learn',
+const SCREENS = ['home', 'agents', 'portfolio', 'learn',
+                 // Inbox defaults to Brief, so the other three tabs — Alerts
+                 // above all, whose cards hold unbroken watchdog prose and doc
+                 // paths — were never rendered by the screen-level check.
+                 { name: 'inbox', tabs: ['Digest', 'Weekly', 'Alerts'] },
                  { name: 'rl-monitor', tabs: ['Predictions vs actual', 'Direction calendar',
                                                'Miss attribution', 'Agent weight drift'] },
                  { name: 'analytics', tabs: ['overview', 'weights', 'sector'] },
@@ -206,6 +210,53 @@ for (const width of WIDTHS) {
   await ctx.close();
 }
 
+/* Guard 2 (2026-08-20): the alert card's "Next step" fold must actually reveal
+ * its remediation. A collapsed fold and a fold whose body renders empty look
+ * identical to every layout assertion above — and the remediation is the only
+ * part of a watchdog alert that tells you what to do. */
+{
+  const ctx = await browser.newContext({ viewport: { width: 390, height: 900 } });
+  await ctx.addInitScript(tok => { localStorage.setItem('sa_auth_token', tok); }, token);
+  const page = await ctx.newPage();
+  await page.goto(BASE, { waitUntil: 'networkidle' });
+  const navigated = await page.evaluate(() => {
+    if (typeof window.__auditNav !== 'function') return false;
+    window.__auditNav('inbox');
+    return true;
+  });
+  if (!navigated) {
+    console.error('FATAL: window.__auditNav missing — cannot reach inbox for the fold guard.');
+    await browser.close();
+    process.exit(2);
+  }
+  await page.waitForTimeout(600);
+
+  const fold = page.getByRole('button', { name: 'Next step' }).first();
+  try {
+    await page.getByRole('button', { name: 'Alerts', exact: true }).click({ timeout: 5000 });
+    await page.waitForTimeout(400);
+    await fold.waitFor({ state: 'visible', timeout: 5000 });
+    if (await fold.getAttribute('aria-expanded') !== 'false') {
+      throw new Error('fold did not start collapsed');
+    }
+    await fold.click({ timeout: 5000 });
+    await page.waitForTimeout(250);
+  } catch (e) {
+    console.error('FATAL: no collapsed "Next step" fold on the Alerts tab — seed alert '
+      + `fixtures first (python scripts/seed_fixture_ui.py --with-alerts). (${e.message})`);
+    await browser.close();
+    process.exit(2);
+  }
+  const expanded = await fold.getAttribute('aria-expanded');
+  const revealed = (await fold.evaluate(
+    el => (el.parentElement.textContent || '').replace(el.textContent || '', '').trim()));
+  if (expanded !== 'true' || revealed.length === 0) {
+    failures.push('inbox alerts @ 390px — clicking "Next step" left aria-expanded='
+      + `"${expanded}" and revealed ${revealed.length} chars of remediation`);
+  }
+  await ctx.close();
+}
+
 await browser.close();
 
 if (failures.length) {
@@ -218,5 +269,6 @@ const totalTabs = NORMALIZED_SCREENS.reduce((n, s) => n + s.tabs.length, 0);
 console.log(`✓ no horizontal overflow across ${SCREENS.length} screens `
   + `(+ ${totalTabs} inner tabs) × ${WIDTHS.length} widths`);
 console.log('✓ hamburger search input accepts typed text (inbox @ 390px)');
+console.log('✓ alert card "Next step" fold opens and reveals its remediation (inbox @ 390px)');
 console.log(`Screenshots in ${OUT} — eyeball the 1280px set for under-distribution.`);
 process.exit(0);

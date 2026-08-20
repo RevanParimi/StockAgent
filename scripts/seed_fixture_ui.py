@@ -49,9 +49,56 @@ _WEEKLY = {
 }
 
 
+# Alerts tab fixtures (2026-08-20). Deliberately mixed: two rows carrying the
+# structured card fields and one legacy row with `message` only, because the
+# renderer has to keep both readable — every alert already in the sent-log
+# predates the fields and must not regress to a wall of text.
+_ALERTS = [
+    {"date": "2026-08-19", "kind": "watchdog_ipo_signals_accruing_resolved",
+     "symbol": "", "severity": "info", "user_id": "primary", "delivered": True,
+     "title": "IPO capture ledger is accruing snapshots",
+     "headline": "Now satisfied — closing.",
+     "status": "Capture ledger has snapshots for all 4 open issue(s).",
+     "next_step": "",
+     "docs": "docs/superpowers/specs/2026-08-11-ipo-intelligence-design.md",
+     "message": "[watchdog] IPO capture ledger is accruing snapshots\n\n"
+                "Now satisfied — closing.\n\n"
+                "Status: Capture ledger has snapshots for all 4 open issue(s)."},
+    {"date": "2026-08-19", "kind": "watchdog_atlas_c11_cutover_info",
+     "symbol": "", "severity": "info", "user_id": "primary", "delivered": True,
+     "title": "Atlas C11 live cutover",
+     "headline": "Comes due on 2026-08-22 (3 day(s) away).",
+     "status": "ETL already run and VALIDATED by the watchdog at "
+               "2026-08-15T06:30:00+05:30. Ready to flip — the flag is still off.",
+     "next_step": "Set atlas.enabled: true in config.yaml and push (Railway NOT "
+                  "needed — the env var is only an override and prod does not "
+                  "set it).\n\nThen watch the next trading day: 16:30 autopilot "
+                  "and 08:50 brief must fan out to exactly ['primary'], with no "
+                  "SQLITE_BUSY. Rollback is the same edit in reverse.",
+     "docs": "docs/superpowers/plans/2026-07-26-atlas-user-data-program.md",
+     "message": "[watchdog] Atlas C11 live cutover\n\nComes due on 2026-08-22."},
+    {"date": "2026-08-18", "kind": "advisor_exit", "symbol": "TATAMOTORS",
+     "severity": "critical", "user_id": "primary", "delivered": True,
+     "message": "Stop breached on the JLR demand warning.\n"
+                "Unrealised -8.7% against a 6.0% ATR stop.\n"
+                "Thesis review: broken."},
+]
+
+
+def _seed_alerts(path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "w", encoding="utf-8") as fh:
+        for rec in _ALERTS:
+            fh.write(json.dumps(rec) + "\n")
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--data-dir", default=".uidev-data")
+    ap.add_argument("--with-alerts", action="store_true",
+                    help="also OVERWRITE the configured delivery sent-log with "
+                         "alert fixtures (delivery.data_dir is not env-"
+                         "overridable, so this writes where the server reads)")
     args = ap.parse_args()
 
     from core.portfolio.store import PortfolioStore
@@ -60,6 +107,12 @@ def main() -> None:
     store.save_digest(_DIGEST)
     store.save_weekly(_WEEKLY)
     print(f"[seed] brief + digest + weekly written under {args.data_dir}")
+
+    if args.with_alerts:
+        from core.config import settings
+        target = Path(settings.DELIVERY_DATA_DIR) / "alerts_sent.jsonl"
+        _seed_alerts(target)
+        print(f"[seed] {len(_ALERTS)} alert fixture(s) written to {target}")
 
 
 if __name__ == "__main__":

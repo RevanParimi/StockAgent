@@ -213,3 +213,37 @@ class TestStandingInvariant:
         _, state = evaluate([self._entry()], res_bad, _now(2026, 8, 10), {})
         notes, _ = evaluate([self._entry()], res_ok, _now(2026, 8, 11), state)
         assert [n.level for n in notes] == ["resolved"]
+
+
+# -- structured notification fields (alert presentation, 2026-08-20) ---------
+
+def test_resolved_carries_no_next_step():
+    """A closing notification must not repeat the remediation text.
+
+    Regression: on 2026-08-19 a SATISFIED ipo_signals_accruing alert still
+    told the reader "The perishable demand data for this window is being lost
+    and cannot be recovered later" — false at the moment it was displayed,
+    because the thing had just been satisfied.
+    """
+    _, s = evaluate([_atlas()], PENDING, _now(2026, 8, 15), {})
+    notes, _ = evaluate([_atlas()], SATISFIED, _now(2026, 8, 16), s)
+    assert notes[0].level == "resolved"
+    assert notes[0].next_step == ""
+    assert "ATLAS_ENABLED=true" not in notes[0].body
+
+
+def test_headline_does_not_repeat_the_title():
+    """The card renders title and headline as separate lines; a headline that
+    restates the title renders it twice."""
+    notes, _ = evaluate([_atlas()], PENDING, _now(2026, 8, 15), {})
+    assert notes[0].title == "Atlas C11"
+    assert "Atlas C11" not in notes[0].headline
+
+
+def test_structured_fields_carry_status_next_step_and_docs():
+    notes, _ = evaluate([_atlas(docs="docs/atlas.md")], PENDING,
+                        _now(2026, 8, 15), {})
+    n = notes[0]
+    assert n.status == "pre-flight clean"
+    assert n.next_step == "Set ATLAS_ENABLED=true."
+    assert n.docs == "docs/atlas.md"

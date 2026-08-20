@@ -1,7 +1,9 @@
 /* Inbox — notification landing screen. Each tab fetches the latest content of
  * one notification type from its structured JSON endpoint and renders it with
- * a native view component (BriefView, DigestView, WeeklyView, or the inline
- * alerts list) — the same card/fold vocabulary throughout, no ASCII. The
+ * a native view component (BriefView, DigestView, WeeklyView, or AlertCard) —
+ * the same card/fold vocabulary throughout, no ASCII. Alerts were the last tab
+ * still printing a raw text blob; they now carry title/headline/status/
+ * next_step/docs from core/delivery/alerts.py and render as a card too. The
  * `?format=text` variants of these endpoints still exist and are still used
  * by push notifications and email; this screen no longer requests them. */
 const { useState: useStateInbox, useEffect: useEffectInbox } = React;
@@ -23,6 +25,83 @@ const INBOX_EMPTY = {
 };
 
 const SEV_COLOR = { critical: '#dc2626', warning: '#d97706', info: 'var(--ink-3)' };
+
+const ALERT_CARD = {
+  background: 'var(--bg-surface)', border: '1px solid var(--border)',
+  borderRadius: 16, padding: '18px 16px',
+};
+
+/* Collapsible remediation. Deliberately NOT BVFold: that renders its own card,
+ * and this lives inside one. Long next-step text (the watchdog's Atlas notice
+ * runs to a paragraph) must not push the headline off the screen. */
+function AlertFold({ title, children }) {
+  const [open, setOpen] = useStateInbox(false);
+  return (
+    <div style={{ marginTop: 10, borderTop: '1px solid var(--border)', paddingTop: 8 }}>
+      <button onClick={() => setOpen(o => !o)} aria-expanded={open} style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        width: '100%', padding: 0, border: 'none', background: 'transparent',
+        cursor: 'pointer', textAlign: 'left',
+      }}>
+        <span style={{ font: '700 11.5px Inter, sans-serif', color: 'var(--ink-1)' }}>{title}</span>
+        <span style={{ font: '600 11px Inter, sans-serif', color: 'var(--ink-3)' }}>
+          {open ? '⌃' : '⌄'}
+        </span>
+      </button>
+      {open && <div style={{ marginTop: 7, fontSize: 12.5, lineHeight: 1.55,
+        color: 'var(--ink-2)', whiteSpace: 'pre-wrap' }}>{children}</div>}
+    </div>
+  );
+}
+
+/* One alert. Rows emitted before the structured fields existed (2026-08-20)
+ * carry only `message`, so they fall back to it — with pre-wrap, which is what
+ * the old renderer was missing: it dropped every newline and reflowed a
+ * carefully structured watchdog notice into one wall of text. */
+function AlertCard({ a }) {
+  const sev = a.severity || 'info';
+  const structured = !!(a.title || a.headline || a.status);
+  return (
+    <div style={ALERT_CARD}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+        <span style={{ fontSize: 11, fontWeight: 800, textTransform: 'uppercase',
+          color: SEV_COLOR[sev] || 'var(--ink-3)' }}>{sev}</span>
+        {a.symbol ? <span style={{ fontSize: 12, fontWeight: 700,
+          color: 'var(--ink-1)' }}>{a.symbol}</span> : null}
+        <span style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--ink-3)' }}>{a.date}</span>
+      </div>
+
+      {!structured ? (
+        <div style={{ fontSize: 13, lineHeight: 1.55, color: 'var(--ink-2)',
+          whiteSpace: 'pre-wrap' }}>{a.message}</div>
+      ) : (
+        <React.Fragment>
+          {a.title ? <div style={{ fontSize: 14, fontWeight: 800,
+            color: 'var(--ink-1)', marginBottom: 4 }}>{a.title}</div> : null}
+          {a.headline ? <div style={{ fontSize: 13, lineHeight: 1.55,
+            color: 'var(--ink-2)' }}>{a.headline}</div> : null}
+          {a.status ? (
+            <div style={{ marginTop: 8, fontSize: 12.5, lineHeight: 1.5,
+              color: 'var(--ink-2)', whiteSpace: 'pre-wrap' }}>
+              <span style={{ font: '700 10px Inter, sans-serif', letterSpacing: '.09em',
+                textTransform: 'uppercase', color: 'var(--ink-3)' }}>Status </span>
+              {a.status}
+            </div>
+          ) : null}
+          {a.next_step ? <AlertFold title="Next step">{a.next_step}</AlertFold> : null}
+          {a.docs ? (
+            <div style={{ marginTop: 8, fontSize: 11.5, color: 'var(--ink-3)',
+              wordBreak: 'break-all' }}>
+              <span style={{ font: '700 10px Inter, sans-serif', letterSpacing: '.09em',
+                textTransform: 'uppercase' }}>Docs </span>
+              {a.docs}
+            </div>
+          ) : null}
+        </React.Fragment>
+      )}
+    </div>
+  );
+}
 
 function InboxPage({ onNav, tab, setTab }) {
   const active = INBOX_TABS.some(t => t.key === tab) ? tab : 'brief';
@@ -54,18 +133,7 @@ function InboxPage({ onNav, tab, setTab }) {
     if (!alerts.length) return <div style={{ color: 'var(--ink-3)' }}>{INBOX_EMPTY.alerts}</div>;
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-        {alerts.map((a, i) => (
-          <div key={i} style={card}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-              <span style={{ fontSize: 11, fontWeight: 800, textTransform: 'uppercase',
-                color: SEV_COLOR[a.severity] || 'var(--ink-3)' }}>{a.severity || 'info'}</span>
-              {a.symbol ? <span style={{ fontSize: 12, fontWeight: 700,
-                color: 'var(--ink-1)' }}>{a.symbol}</span> : null}
-              <span style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--ink-3)' }}>{a.date}</span>
-            </div>
-            <div style={{ fontSize: 13, color: 'var(--ink-2)' }}>{a.message}</div>
-          </div>
-        ))}
+        {alerts.map((a, i) => <AlertCard key={i} a={a}/>)}
       </div>
     );
   };

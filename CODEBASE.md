@@ -164,6 +164,8 @@ StockAgent-main/
 │   │   │                          #  send-then-record delivered flag; stale-sub pruning
 │   │   ├── alerts.py              # AlertEvent + delivered-aware deduped emit (alerts_sent.jsonl)
 │   │   │                          #  + emit_alerts_broadcast (fan-out to all subscribed users)
+│   │   │                          #  + optional title/headline/status/next_step/docs (Inbox card)
+│   │   │                          #  and render_alerts_html for the email body
 │   │   ├── ops_alerts.py          # Job crashed / zero-output / partial-output / reconcile-drift
 │   │   │                          #  operational alerts (audit AUD-039/084/090)
 │   │   ├── brief.py               # Morning brief builder (08:50 IST job)
@@ -640,6 +642,7 @@ Models are tiered (2026-06-03 benchmark, `scripts/model_bench.py`; bulk re-bench
 | `delivery.data_dir` | `data/delivery` | `push_subscriptions.json`, `alerts_sent.jsonl` |
 | `delivery.email_enabled` | `false` | Needs `SMTP_HOST/PORT/USER/PASSWORD` + `DELIVERY_EMAIL_TO` in .env |
 | `delivery.push_enabled` | `true` | Needs `VAPID_PRIVATE_KEY/PUBLIC_KEY/CLAIM_EMAIL` in .env (`scripts/gen_vapid_keys.py`) |
+| `delivery.alert_html_enabled` | `true` | HTML alert email body; `false` = plain text only (the Inbox card is unaffected) |
 | `delivery.index_watch` | NIFTY 50 / NEXT 50 / MIDCAP 150 / SMALLCAP 250 | Weekly constituent diff → inclusion/exclusion alerts |
 | `delivery.outbox_max_attempts` | `3` | BP2 outbox: sends before a row is dead-lettered (active only when `ATLAS_ENABLED`) |
 | `delivery.outbox_backoff_minutes` | `[1, 5, 30]` | BP2 outbox: per-attempt reschedule delay |

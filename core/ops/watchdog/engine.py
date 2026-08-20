@@ -36,6 +36,13 @@ class Notification:
     level: Level
     title: str
     body: str
+    # Presentation (2026-08-20): the same content as `body`, in parts, so the
+    # Inbox can render a card instead of reflowing prose. `body` remains the
+    # plain-text form push and email send.
+    headline: str = ""
+    status: str = ""
+    next_step: str = ""
+    docs: str = ""
 
     @property
     def severity(self) -> str:
@@ -56,13 +63,26 @@ def _next_window_start(entry: Milestone, today: date) -> date | None:
 
 def _compose(entry: Milestone, result: CheckResult, level: Level,
              headline: str) -> Notification:
-    lines = [headline, "", f"Status: {result.detail}"]
-    if entry.action:
-        lines += ["", "Next step:", entry.action.strip()]
+    """Build one notification in both forms: parts for the Inbox card, and the
+    plain-text `body` push and email send.
+
+    `next_step` is dropped on `resolved`. The remediation text describes a
+    problem that no longer exists, and reading it on a closing notice is
+    actively misleading — on 2026-08-19 a satisfied IPO-ledger alert still
+    warned that perishable window data "is being lost".
+    """
+    next_step = "" if level == "resolved" else entry.action.strip()
+    # The title is printed ONCE, here. The headline deliberately does not
+    # restate it (the card renders them as separate lines).
+    lines = [f"[watchdog] {entry.title}", "", headline, "",
+             f"Status: {result.detail}"]
+    if next_step:
+        lines += ["", "Next step:", next_step]
     if entry.docs:
         lines += ["", f"Docs: {entry.docs}"]
-    return Notification(entry.id, level, f"[watchdog] {entry.title}",
-                        "\n".join(lines))
+    return Notification(entry.id, level, entry.title, "\n".join(lines),
+                        headline=headline, status=result.detail,
+                        next_step=next_step, docs=entry.docs)
 
 
 def evaluate(entries: list[Milestone],
@@ -95,15 +115,15 @@ def evaluate(entries: list[Milestone],
 
         if result.state == "satisfied":
             if last_state is not None and last_state != "satisfied":
-                fire("resolved", f"{entry.title} is now satisfied — closing.")
+                fire("resolved", "Now satisfied — closing.")
             new_entries[entry.id] = record
             continue
 
         if result.state == "unknown":
             if not notified_today:
                 fire("warning",
-                     f"{entry.title}: the check could not answer. "
-                     "Treating as UNRESOLVED rather than passing it.")
+                     "The check could not answer. Treating as UNRESOLVED "
+                     "rather than passing it.")
             new_entries[entry.id] = record
             continue
 
@@ -115,8 +135,8 @@ def evaluate(entries: list[Milestone],
                    >= _LAPSED_REPEAT_DAYS)
             if due:
                 fire("critical",
-                     f"{entry.title} has LAPSED — deadline {entry.deadline} "
-                     "passed and it is still not done.")
+                     f"LAPSED — deadline {entry.deadline} passed and it is "
+                     "still not done.")
             new_entries[entry.id] = record
             continue
 
@@ -138,14 +158,14 @@ def evaluate(entries: list[Milestone],
                 same_month = (last_notified is not None and
                               last_notified[:7] == today.isoformat()[:7])
                 if not same_month:
-                    fire("warning", f"{entry.title} needs attention.")
+                    fire("warning", "Needs attention.")
             elif not notified_today:
                 if result.state == "blocked":
                     fire("warning",
-                         f"{entry.title} is BLOCKED — a precondition failed, "
-                         "so investigate before acting.")
+                         "BLOCKED — a precondition failed, so investigate "
+                         "before acting.")
                 else:
-                    fire("warning", f"{entry.title} is due now.")
+                    fire("warning", "Due now.")
             new_entries[entry.id] = record
             continue
 
@@ -163,7 +183,7 @@ def evaluate(entries: list[Milestone],
                        - timedelta(days=entry.lead_days))
             if not already:
                 fire("info",
-                     f"{entry.title} comes due on {nxt.isoformat()} "
+                     f"Comes due on {nxt.isoformat()} "
                      f"({(nxt - today).days} day(s) away).")
         new_entries[entry.id] = record
 

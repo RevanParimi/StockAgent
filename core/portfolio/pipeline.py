@@ -29,6 +29,32 @@ from services.data.fetchers.corporate_events import (
 logger = logging.getLogger(__name__)
 
 
+def advice_alert_fields(rec, shelf_index: dict) -> dict:
+    """The structured parts of an escalation alert (see core/delivery/alerts).
+
+    An EXIT/TRIM/SWITCH alert used to be one sentence, so a SWITCH arrived as
+    "… (switch → NEWCO)" with nothing about why you were leaving or why there.
+    Both halves already exist on the record and on the shelf; this assembles
+    them. Pure — `shelf_index` is passed in, never loaded here.
+    """
+    from core.delivery.brief import _VERDICT_PLAIN
+    from core.portfolio.advisor import explain_triggers
+
+    status = (f"Unrealised {rec.unrealised_pnl_pct:+.1f}% against a "
+              f"{rec.stop_pct:.1f}% stop · confidence {rec.confidence:.2f}")
+    next_step = ""
+    if rec.switch_candidate:
+        thesis = getattr(shelf_index.get(rec.switch_candidate), "thesis", "")
+        next_step = (f"Replace with {rec.switch_candidate} — {thesis}" if thesis
+                     else f"Replacement idea: {rec.switch_candidate}.")
+    return {
+        "title": f"{_VERDICT_PLAIN.get(rec.verdict, rec.verdict)} — {rec.symbol}",
+        "headline": rec.narrative.strip() or explain_triggers(rec.triggers),
+        "status": status,
+        "next_step": next_step,
+    }
+
+
 def run_post_review_pipeline(review_date: date) -> dict:
     if not settings.ADVISOR_ENABLED:
         return {"status": "disabled"}
@@ -95,7 +121,8 @@ def run_post_review_pipeline(review_date: date) -> dict:
                     ohlcv_df=ohlcv,
                 )
                 rec = decide(signals, holding, portfolio.risk_profile,
-                             shelf_ideas=shelf_ideas, sector_weights=sector_weights)
+                             shelf_ideas=shelf_ideas, sector_weights=sector_weights,
+                             held_symbols={h.symbol for h in portfolio.holdings})
                 rec.user_id = user_id
                 rec.date = review_date.isoformat()
                 rec.narrative = narrate(rec, signals)
@@ -154,6 +181,7 @@ def run_post_review_pipeline(review_date: date) -> dict:
         try:
             from core.delivery.alerts import AlertEvent, emit_alerts
             from core.delivery.channels import deliver
+            shelf_index = {i.symbol: i for i in (shelf_ideas or [])}
             events = [
                 AlertEvent(
                     date=review_date.isoformat(),
@@ -163,6 +191,7 @@ def run_post_review_pipeline(review_date: date) -> dict:
                     message=(a.narrative or a.verdict)
                     + (f" (switch → {a.switch_candidate})" if a.switch_candidate else ""),
                     severity="critical" if a.verdict in ("EXIT", "SWITCH") else "warning",
+                    **advice_alert_fields(a, shelf_index),
                 )
                 for a in advice if a.verdict in ("TRIM", "EXIT", "SWITCH")
             ]

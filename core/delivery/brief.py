@@ -692,7 +692,8 @@ def build_morning_brief(
         held = [r["symbol"] for r in digest.get("holdings", [])]
         advisor_flags = [
             {"symbol": r["symbol"], "verdict": r["verdict"],
-             "reason": r.get("reason", ""), "notes": r.get("notes", [])}
+             "reason": r.get("reason", ""), "notes": r.get("notes", []),
+             "switch_candidate": r.get("switch_candidate", "")}
             for r in digest.get("holdings", [])
             if r.get("verdict") not in ("HOLD", "NO_DATA")
         ]
@@ -791,7 +792,10 @@ def render_brief_text(brief: dict) -> str:
         for f in flags:
             verb = _VERDICT_PLAIN.get(f.get("verdict", ""), f.get("verdict", ""))
             reason = f.get("reason", "")
-            L.append(f"  • {f['symbol']}  {verb}" + (f" — {reason}" if reason else ""))
+            # A SWITCH with no destination is a verdict with no object.
+            into = f.get("switch_candidate", "")
+            head = f"  • {f['symbol']}  {verb}" + (f" → {into}" if into else "")
+            L.append(head + (f" — {reason}" if reason else ""))
         L.append("")
 
     regime = (brief.get("regime") or {}).get("label")
@@ -984,9 +988,11 @@ def _render_brief_html_inner(brief: dict, H: dict) -> str:
         for f in flags:
             verb = _VERDICT_PLAIN.get(f.get("verdict", ""), f.get("verdict", ""))
             reason = f.get("reason", "")
+            into = f.get("switch_candidate", "")
             items.append(
                 f'<div style="padding:8px 0"><span class="sa-ink" style="font:600 14.5px {_FONT};color:{H["ink"]}">'
                 f'{_esc(f["symbol"])}</span> <span style="color:{H["warn"]};font:600 13px {_FONT}">{_esc(verb)}</span>'
+                + (f' <span class="sa-ink" style="font:600 14.5px {_FONT};color:{H["ink"]}">&rarr; {_esc(into)}</span>' if into else "")
                 + (f'<div class="sa-muted" style="font:400 13px/1.5 {_FONT};color:{H["muted"]};margin:3px 0 0">{_esc(reason)}</div>' if reason else "")
                 + '</div>')
         rows.append(_section("Needs attention", "".join(items), H))

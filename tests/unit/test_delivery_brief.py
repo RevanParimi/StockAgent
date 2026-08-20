@@ -64,7 +64,8 @@ def test_build_brief_assembles_sections(tmp_path, monkeypatch):
     assert brief["kind"] == "morning_brief" and brief["date"] == "2026-07-09"
     assert brief["portfolio"]["total_pnl_pct"] == 10.0
     assert brief["advisor_flags"] == [
-        {"symbol": "OLDCO", "verdict": "EXIT", "reason": "stop breached", "notes": []}]
+        {"symbol": "OLDCO", "verdict": "EXIT", "reason": "stop breached",
+         "notes": [], "switch_candidate": ""}]
     assert brief["regime"]["label"] == "RISK_OFF"
     assert brief["overnight"][0]["headline"] == "Fed shock"
     assert brief["discovery_adds"][0]["symbol"] == "NEWCO"
@@ -862,3 +863,26 @@ def test_ipo_order_puts_rows_with_no_end_date_or_no_total_last(_isolated_ipo_led
     syms = [r["symbol"] for r in br._ipo_watch(max_items=10, on=date(2026, 8, 18))]
     assert syms.index("DATED") < syms.index("ZERO") < syms.index("NOTOTAL")
     assert syms[-1] == "NOEND"
+
+
+# -- a SWITCH in the brief must name where to switch to (2026-08-20) --------
+
+def _switch_brief():
+    return {
+        "date": "2026-08-18", "headline": "h", "portfolio": None,
+        "advisor_flags": [{"symbol": "TATAMOTORS", "verdict": "SWITCH",
+                           "reason": "The JLR demand warning broke the thesis.",
+                           "switch_candidate": "BAJAJ-AUTO", "notes": []}],
+        "regime": {"label": "NORMAL"}, "overnight": [], "earnings_soon": [],
+        "discovery_adds": [], "ipo_watch": [], "lockin_soon": [],
+    }
+
+
+def test_brief_text_names_the_switch_destination():
+    t = br.render_brief_text(_switch_brief())
+    assert "TATAMOTORS" in t and "BAJAJ-AUTO" in t
+
+
+def test_brief_html_names_the_switch_destination():
+    html = br.render_brief_html(_switch_brief())
+    assert "BAJAJ-AUTO" in html

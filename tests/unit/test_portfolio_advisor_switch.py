@@ -84,3 +84,60 @@ def test_switch_in_digest_escalations():
     digest = build_digest("u", date(2026, 7, 9), [rec],
                           Portfolio(user_id="u", holdings=[h]), {"OLDCO": 80.0})
     assert digest["escalations"] == ["OLDCO"]
+
+
+# -- a switch must move you somewhere you are not already (2026-08-20) -------
+
+def test_symbol_already_held_is_never_the_switch_destination():
+    """"Switch OLDCO -> NEWCO" when NEWCO is already in the portfolio is not a
+    switch, it is a top-up: it concentrates the book instead of rotating it,
+    and the underweight-sector test that justified the call was computed on a
+    sector the portfolio already owns."""
+    rec = decide(_exit_signals(confidence=0.5), _holding(), "balanced",
+                 shelf_ideas=[_idea("NEWCO", "pharma", 0.75)],
+                 sector_weights={"automobile": 60.0, "pharma": 10.0},
+                 held_symbols={"OLDCO", "NEWCO"})
+    assert rec.verdict == "EXIT" and rec.switch_candidate == ""
+
+
+def test_next_best_unheld_idea_wins_when_the_strongest_is_held():
+    rec = decide(_exit_signals(confidence=0.5), _holding(), "balanced",
+                 shelf_ideas=[_idea("HELD", "pharma", 0.95),
+                              _idea("FREE", "fmcg", 0.80)],
+                 sector_weights={"automobile": 60.0, "pharma": 5.0, "fmcg": 5.0},
+                 held_symbols={"OLDCO", "HELD"})
+    assert rec.verdict == "SWITCH" and rec.switch_candidate == "FREE"
+
+
+def test_a_holding_is_never_switched_into_itself():
+    """Needs no held_symbols from the caller — the reviewed symbol is known."""
+    rec = decide(_exit_signals(confidence=0.5), _holding(), "balanced",
+                 shelf_ideas=[_idea("OLDCO", "pharma", 0.95)],
+                 sector_weights={"automobile": 60.0, "pharma": 5.0})
+    assert rec.verdict == "EXIT" and rec.switch_candidate == ""
+
+
+def test_digest_row_keeps_the_switch_destination():
+    """The digest is what the brief reads. Dropping switch_candidate here is
+    why "Needs attention" could say "TATAMOTORS Switch" and never name what to
+    switch into."""
+    h = _holding()
+    rec = AdviceRecord(date="2026-07-09", user_id="u", symbol="OLDCO",
+                       verdict="SWITCH", close=80.0, unrealised_pnl_pct=-15.0,
+                       stop_pct=12.0, switch_candidate="NEWCO",
+                       narrative="Stop went with the thesis.")
+    digest = build_digest("u", date(2026, 7, 9), [rec],
+                          Portfolio(user_id="u", holdings=[h]), {"OLDCO": 80.0})
+    assert digest["holdings"][0]["switch_candidate"] == "NEWCO"
+
+
+def test_digest_reason_falls_back_to_triggers_when_narration_failed():
+    """`narrative` is an LLM field and empties out whenever narration fails —
+    the deterministic triggers are always there."""
+    h = _holding()
+    rec = AdviceRecord(date="2026-07-09", user_id="u", symbol="OLDCO",
+                       verdict="EXIT", close=80.0, unrealised_pnl_pct=-15.0,
+                       stop_pct=12.0, narrative="", triggers=["stop_breach"])
+    digest = build_digest("u", date(2026, 7, 9), [rec],
+                          Portfolio(user_id="u", holdings=[h]), {"OLDCO": 80.0})
+    assert "stop was breached" in digest["holdings"][0]["reason"]

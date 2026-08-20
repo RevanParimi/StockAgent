@@ -95,3 +95,29 @@ def test_state_not_advanced_when_send_fails(tmp_path, monkeypatch):
     monkeypatch.setattr(R, "_broadcast", lambda events, title: sent.append(events))
     out = R.run_watchdog(now=now)
     assert out["notified"] == 1 and sent
+
+
+def test_alert_message_names_the_milestone_exactly_once(tmp_path, monkeypatch):
+    """Regression: `_as_events` prepended the notification title to a body
+    that already opened with it, so the Inbox showed "[watchdog] Atlas C11
+    live cutover / Atlas C11 live cutover comes due on ...".
+    """
+    sent = []
+    _wire(monkeypatch, tmp_path)
+    monkeypatch.setattr(R, "_broadcast", lambda events, title: sent.append(events))
+
+    R.run_watchdog(now=datetime(2026, 8, 15, 6, 30, tzinfo=IST))
+    assert sent[0][0].message.count("Atlas C11 live cutover") == 1
+
+
+def test_alert_carries_the_structured_fields_the_inbox_renders(tmp_path, monkeypatch):
+    sent = []
+    _wire(monkeypatch, tmp_path)
+    monkeypatch.setattr(R, "_broadcast", lambda events, title: sent.append(events))
+
+    R.run_watchdog(now=datetime(2026, 8, 15, 6, 30, tzinfo=IST))
+    ev = sent[0][0]
+    assert ev.title == "Atlas C11 live cutover"
+    assert ev.headline and "Atlas C11 live cutover" not in ev.headline
+    assert ev.status
+    assert ev.next_step == "Set ATLAS_ENABLED=true."

@@ -476,6 +476,10 @@ delivery:
   outbox_backoff_minutes: [1, 5, 30]   # per-attempt reschedule delay
   outbox_poll_seconds: 30        # drainer loop interval
   outbox_retention_days: 30      # C9 prunes delivered/dead rows older than this
+  # Alert rendering (presentation 2026-08-20). false = plain-text email only;
+  # the Inbox card is unaffected either way (it reads the structured fields
+  # straight off the sent-log).
+  alert_html_enabled: true
   # Morning-brief rendering (redesign 2026-07-27)
   brief_max_overnight: 3               # overnight items shown after dedup
   brief_overnight_dedup_threshold: 0.6 # Jaccard token-similarity = "same story"

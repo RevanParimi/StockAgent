@@ -95,9 +95,9 @@ def test_switch_suggestions_from_advice_ledger(tmp_path, monkeypatch):
     monkeypatch.setattr(wk, "_active_shelf_ideas", lambda: [])
 
     review = wk.build_weekly_review("u1", date(2026, 7, 5), store=store)
-    assert review["switch_suggestions"] == [
-        {"symbol": "WINCO", "switch_candidate": "NEWCO", "date": "2026-06-20"}
-    ]
+    [s] = review["switch_suggestions"]
+    assert (s["symbol"], s["switch_candidate"], s["date"]) == \
+        ("WINCO", "NEWCO", "2026-06-20")
     text = wk.render_weekly_text(review)
     assert "SWITCH" in text and "NEWCO" in text
 
@@ -178,3 +178,105 @@ def test_ipo_read_failure_does_not_break_the_weekly(monkeypatch):
     monkeypatch.setattr(wk, "_weekly_ipos", lambda on: (_ for _ in ()).throw(RuntimeError("boom")))
     # build_weekly_review catches per-section; the helper itself must be safe.
     assert wk._safe_weekly_ipos(date(2026, 8, 16)) == []
+
+
+# -- a switch has to say why (2026-08-20) ------------------------------------
+
+def _switch_store(tmp_path, **kw):
+    store = _store(tmp_path)
+    fields = dict(date="2026-06-20", user_id="u1", symbol="WINCO",
+                  verdict="SWITCH", close=100.0, unrealised_pnl_pct=-14.0,
+                  stop_pct=12.0, switch_candidate="NEWCO",
+                  triggers=["stop_breach", "switch_candidate_available"])
+    fields.update(kw)
+    store.append_advice(AdviceRecord(**fields))
+    return store
+
+
+class _ShelfDouble:
+    def __init__(self, symbol, sector, conviction, **kw):
+        self.symbol, self.sector, self.conviction = symbol, sector, conviction
+        self.status = kw.get("status", "active")
+        self.thesis = kw.get("thesis", "")
+        self.entry_low = kw.get("entry_low", 0.0)
+        self.entry_high = kw.get("entry_high", 0.0)
+        self.invalidation_level = kw.get("invalidation_level", 0.0)
+
+
+def test_switch_suggestion_says_why_you_are_leaving(tmp_path, monkeypatch):
+    store = _switch_store(tmp_path)
+    monkeypatch.setattr(wk, "_narrate_weekly", lambda r: "h")
+    monkeypatch.setattr(wk, "_latest_closes", lambda symbols, on: _closes())
+    monkeypatch.setattr(wk, "_active_shelf_ideas", lambda: [])
+    monkeypatch.setattr(wk, "_shelf_by_symbol", lambda: {})
+
+    s = wk.build_weekly_review("u1", date(2026, 7, 5), store=store)["switch_suggestions"][0]
+    assert s["symbol"] == "WINCO" and s["switch_candidate"] == "NEWCO"
+    assert "stop" in s["reason"].lower()          # deterministic, from the triggers
+    assert s["triggers"] == ["stop_breach", "switch_candidate_available"]
+    assert s["pnl_pct"] == -14.0 and s["stop_pct"] == 12.0
+
+
+def test_switch_suggestion_prefers_the_stored_narrative(tmp_path, monkeypatch):
+    """The advisor already narrates every call. Re-deriving prose from trigger
+    codes when a written reason exists would show the user two voices."""
+    store = _switch_store(tmp_path, narrative="JLR demand warning broke the thesis.")
+    monkeypatch.setattr(wk, "_narrate_weekly", lambda r: "h")
+    monkeypatch.setattr(wk, "_latest_closes", lambda symbols, on: _closes())
+    monkeypatch.setattr(wk, "_active_shelf_ideas", lambda: [])
+    monkeypatch.setattr(wk, "_shelf_by_symbol", lambda: {})
+
+    s = wk.build_weekly_review("u1", date(2026, 7, 5), store=store)["switch_suggestions"][0]
+    assert s["reason"] == "JLR demand warning broke the thesis."
+
+
+def test_switch_suggestion_says_why_that_destination(tmp_path, monkeypatch):
+    store = _switch_store(tmp_path)
+    monkeypatch.setattr(wk, "_narrate_weekly", lambda r: "h")
+    monkeypatch.setattr(wk, "_latest_closes", lambda symbols, on: _closes())
+    monkeypatch.setattr(wk, "_active_shelf_ideas", lambda: [])
+    monkeypatch.setattr(wk, "_shelf_by_symbol", lambda: {"NEWCO": _ShelfDouble(
+        "NEWCO", "pharma", 0.81, thesis="Margin inflection on the API ramp.",
+        entry_low=90.0, entry_high=104.0, invalidation_level=82.0)})
+
+    cand = wk.build_weekly_review("u1", date(2026, 7, 5),
+                                  store=store)["switch_suggestions"][0]["candidate"]
+    assert cand["thesis"] == "Margin inflection on the API ramp."
+    assert cand["conviction"] == 0.81 and cand["sector"] == "pharma"
+    assert cand["entry_low"] == 90.0 and cand["invalidation_level"] == 82.0
+
+
+def test_destination_off_the_shelf_degrades_to_no_candidate_detail(tmp_path, monkeypatch):
+    """A destination promoted or dropped since the call still has to render."""
+    store = _switch_store(tmp_path)
+    monkeypatch.setattr(wk, "_narrate_weekly", lambda r: "h")
+    monkeypatch.setattr(wk, "_latest_closes", lambda symbols, on: _closes())
+    monkeypatch.setattr(wk, "_active_shelf_ideas", lambda: [])
+    monkeypatch.setattr(wk, "_shelf_by_symbol", lambda: {})
+
+    s = wk.build_weekly_review("u1", date(2026, 7, 5), store=store)["switch_suggestions"][0]
+    assert s["candidate"] == {}
+
+
+def test_shelf_candidates_exclude_what_you_already_hold(tmp_path, monkeypatch):
+    """Offering a holding as a "switch idea" is a top-up dressed as a rotation."""
+    store = _store(tmp_path)
+    monkeypatch.setattr(wk, "_narrate_weekly", lambda r: "h")
+    monkeypatch.setattr(wk, "_latest_closes", lambda symbols, on: _closes())
+    monkeypatch.setattr(wk, "_active_shelf_ideas", lambda: [
+        _ShelfDouble("LAGCO", "pharma", 0.9),      # already a holding
+        _ShelfDouble("PHARMCO", "pharma", 0.8),
+    ])
+    review = wk.build_weekly_review("u1", date(2026, 7, 5), store=store)
+    assert [c["symbol"] for c in review["switch_candidates"]] == ["PHARMCO"]
+
+
+def test_shelf_candidates_carry_their_thesis(tmp_path, monkeypatch):
+    store = _store(tmp_path)
+    monkeypatch.setattr(wk, "_narrate_weekly", lambda r: "h")
+    monkeypatch.setattr(wk, "_latest_closes", lambda symbols, on: _closes())
+    monkeypatch.setattr(wk, "_active_shelf_ideas", lambda: [
+        _ShelfDouble("PHARMCO", "pharma", 0.8, thesis="API ramp.",
+                     entry_low=90.0, entry_high=104.0)])
+    c = wk.build_weekly_review("u1", date(2026, 7, 5), store=store)["switch_candidates"][0]
+    assert c["thesis"] == "API ramp." and c["entry_low"] == 90.0

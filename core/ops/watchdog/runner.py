@@ -44,18 +44,30 @@ def _save_state(state: dict) -> None:
 
 def _as_events(notes: list[Notification], today: date,
                preps: dict[str, list[str]] | None = None):
+    """Map notifications onto alert events.
+
+    `n.body` already opens with "[watchdog] <title>" — prepending `n.title`
+    again is what made the Inbox read "[watchdog] Atlas C11 live cutover /
+    Atlas C11 live cutover comes due on ...". The structured fields ride
+    alongside so the Inbox can render a card; `message` stays the plain-text
+    form for push and for anything reading the sent-log as prose.
+    """
     from core.delivery.alerts import AlertEvent
     preps = preps or {}
     events = []
     for n in notes:
-        body = n.body
+        body, next_step = n.body, n.next_step
         lines = preps.get(n.milestone_id)
         if lines:
-            body += "\n\nAutomatic prep:\n" + "\n".join(f"  - {l}" for l in lines)
+            prep = "Automatic prep:\n" + "\n".join(f"  - {l}" for l in lines)
+            body += "\n\n" + prep
+            next_step = f"{next_step}\n\n{prep}" if next_step else prep
         events.append(AlertEvent(date=today.isoformat(),
                                  kind=f"watchdog_{n.milestone_id}_{n.level}",
-                                 symbol="", message=f"{n.title}\n\n{body}",
-                                 severity=n.severity))
+                                 symbol="", message=body, severity=n.severity,
+                                 title=n.title, headline=n.headline,
+                                 status=n.status, next_step=next_step,
+                                 docs=n.docs))
     return events
 
 

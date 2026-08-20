@@ -141,8 +141,11 @@ StockAgent-main/
 │   │   ├── corp_actions.py        # Corp-action sync (splits/bonuses) into holdings
 │   │   ├── promotion.py           # Auto-promotion into managed_tickers.json universe
 │   │   ├── advisor.py             # Deterministic HOLD/ADD/TRIM/EXIT verdicts, ATR-scaled stops
+│   │   │                          #  + explain_triggers() (codes -> plain English, shared by
+│   │   │                          #  brief/weekly/alerts); SWITCH never targets a held symbol
 │   │   ├── narrator.py            # BULK-tier LLM narration of advice
-│   │   ├── digest.py              # EOD portfolio digest builder
+│   │   ├── digest.py              # EOD portfolio digest builder (carries switch_candidate
+│   │   │                          #  so the brief can name the destination)
 │   │   ├── pipeline.py            # run_post_review_pipeline() orchestration entry point
 │   │   ├── autopilot.py           # Compass Autopilot: deterministic verdict executor (see below)
 │   │   ├── universe.py            # Atlas C4 — nightly Universe recompute (Job 16): user_instruments
@@ -164,10 +167,13 @@ StockAgent-main/
 │   │   │                          #  send-then-record delivered flag; stale-sub pruning
 │   │   ├── alerts.py              # AlertEvent + delivered-aware deduped emit (alerts_sent.jsonl)
 │   │   │                          #  + emit_alerts_broadcast (fan-out to all subscribed users)
+│   │   │                          #  + optional title/headline/status/next_step/docs (Inbox card)
+│   │   │                          #  and render_alerts_html for the email body
 │   │   ├── ops_alerts.py          # Job crashed / zero-output / partial-output / reconcile-drift
 │   │   │                          #  operational alerts (audit AUD-039/084/090)
 │   │   ├── brief.py               # Morning brief builder (08:50 IST job)
-│   │   ├── weekly.py              # Weekly review builder (Sun 18:00 IST job)
+│   │   ├── weekly.py              # Weekly review builder (Sun 18:00 IST job); switch
+│   │   │                          #  suggestions carry why-leave + the destination's thesis
 │   │   ├── index_watch.py         # Index constituent diff -> inclusion/exclusion alerts
 │   │   └── outbox.py              # Atlas C7 (BP2) — durable delivery outbox: deliver() enqueues
 │   │                              #  per-channel rows when ATLAS_ENABLED; singleton-owner drainer
@@ -640,6 +646,7 @@ Models are tiered (2026-06-03 benchmark, `scripts/model_bench.py`; bulk re-bench
 | `delivery.data_dir` | `data/delivery` | `push_subscriptions.json`, `alerts_sent.jsonl` |
 | `delivery.email_enabled` | `false` | Needs `SMTP_HOST/PORT/USER/PASSWORD` + `DELIVERY_EMAIL_TO` in .env |
 | `delivery.push_enabled` | `true` | Needs `VAPID_PRIVATE_KEY/PUBLIC_KEY/CLAIM_EMAIL` in .env (`scripts/gen_vapid_keys.py`) |
+| `delivery.alert_html_enabled` | `true` | HTML alert email body; `false` = plain text only (the Inbox card is unaffected) |
 | `delivery.index_watch` | NIFTY 50 / NEXT 50 / MIDCAP 150 / SMALLCAP 250 | Weekly constituent diff → inclusion/exclusion alerts |
 | `delivery.outbox_max_attempts` | `3` | BP2 outbox: sends before a row is dead-lettered (active only when `ATLAS_ENABLED`) |
 | `delivery.outbox_backoff_minutes` | `[1, 5, 30]` | BP2 outbox: per-attempt reschedule delay |
@@ -806,7 +813,7 @@ All paths verified to exist. Paths are relative to project root.
 | `services/api/routes/scheduler_api.py` | POST/GET /scheduler/* — RL trigger and status endpoints; event-triggers the portfolio advisor pipeline after daily reviews |
 | `services/api/routes/portfolio_api.py` | /portfolio/* — Compass Phase A: holdings, watchlist, CSV import, advice ledger, EOD digest; Autopilot: transactions audit trail, performance (P&L + equity curve) |
 | `core/portfolio/pipeline.py` | `run_post_review_pipeline()` — corp-action sync → events refresh → advisor → ledger → digest, per user |
-| `core/portfolio/advisor.py` | Deterministic HOLD/ADD/TRIM/EXIT engine (EXIT>TRIM>ADD>HOLD), ATR-scaled stops, LTCG/earnings-gap notes |
+| `core/portfolio/advisor.py` | Deterministic HOLD/ADD/TRIM/EXIT engine (EXIT>TRIM>ADD>HOLD), ATR-scaled stops, LTCG/earnings-gap notes, `explain_triggers()` |
 | `core/portfolio/autopilot.py` | `execute_advice()` — deterministic verdict executor (sells then buys, no LLM); `record_value_point()` — daily equity snapshot |
 | `services/data/fetchers/corporate_events.py` | NSE corp-actions feed + forward board-meetings calendar (degraded-mode safe) |
 | `data/portfolio/<user>/` | Per-user volume state: `portfolio.json`, `advice_ledger.jsonl`, `transactions.jsonl` (Autopilot audit trail), `value_history.jsonl` (daily equity curve), `digests/` |

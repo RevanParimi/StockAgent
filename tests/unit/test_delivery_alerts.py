@@ -122,3 +122,101 @@ def test_alert_event_advice_ref_defaults_empty_and_not_in_dedupe_key():
     assert plain.advice_ref == ""
     # dedupe must be unaffected — adding provenance must not re-notify
     assert plain.key() == tagged.key()
+
+
+# -- structured fields for the Inbox card (alert presentation, 2026-08-20) ---
+
+def _structured():
+    return AlertEvent(
+        date="2026-08-19", kind="watchdog_atlas_c11_cutover_info", symbol="",
+        message="[watchdog] Atlas C11 live cutover\n\nComes due on 2026-08-22.",
+        severity="info", title="Atlas C11 live cutover",
+        headline="Comes due on 2026-08-22 (3 day(s) away).",
+        status="ETL already run and VALIDATED by the watchdog.",
+        next_step="Set atlas.enabled: true in config.yaml and push.",
+        docs="docs/superpowers/specs/2026-07-26-atlas.md")
+
+
+def test_structured_fields_round_trip_through_the_sent_log(tmp_path):
+    log = str(tmp_path / "alerts_sent.jsonl")
+    with patch.object(al, "deliver", return_value={"delivered": True}):
+        emit_alerts([_structured()], sent_log=log)
+    rec = load_recent_alerts(limit=1, sent_log=log)[0]
+    assert rec["title"] == "Atlas C11 live cutover"
+    assert rec["headline"].startswith("Comes due on 2026-08-22")
+    assert rec["status"].startswith("ETL already run")
+    assert rec["next_step"].startswith("Set atlas.enabled")
+    assert rec["docs"].endswith("2026-07-26-atlas.md")
+
+
+def test_producers_that_pass_only_a_message_still_work(tmp_path):
+    """Every existing emitter (pipeline, ops_alerts, thresholds, index_watch)
+    constructs AlertEvent with `message` alone. The new fields are additive."""
+    log = str(tmp_path / "alerts_sent.jsonl")
+    with patch.object(al, "deliver", return_value={"delivered": True}):
+        emit_alerts([_ev()], sent_log=log)
+    rec = load_recent_alerts(limit=1, sent_log=log)[0]
+    assert rec["title"] == "" and rec["next_step"] == "" and rec["headline"] == ""
+
+
+def test_structured_fields_do_not_change_dedupe(tmp_path):
+    """Same rule as advice_ref: presentation must not alter what dedupes."""
+    log = str(tmp_path / "alerts_sent.jsonl")
+    twin = AlertEvent(date="2026-07-09", kind="advisor_exit", symbol="OLDCO",
+                      message="stop breached", severity="critical",
+                      title="different", status="different")
+    assert twin.title == "different"        # the field is real, not dropped
+    with patch.object(al, "deliver", return_value={"delivered": True}) as m:
+        first = emit_alerts([_ev()], sent_log=log)
+        second = emit_alerts([twin], sent_log=log)
+    assert first["emitted"] == 1 and second["emitted"] == 0
+    assert m.call_count == 1
+
+
+# -- HTML email body (alert presentation, 2026-08-20) ------------------------
+
+def test_alert_html_renders_the_structured_parts():
+    html = al.render_alerts_html([_structured()], "StockAgent ops alert")
+    assert html.lstrip().lower().startswith("<!doctype html")
+    assert "Atlas C11 live cutover" in html
+    assert "Comes due on 2026-08-22" in html
+    assert "Set atlas.enabled: true" in html
+    assert "ETL already run" in html
+
+
+def test_alert_html_escapes_untrusted_content():
+    ev = AlertEvent(date="2026-08-19", kind="k", symbol="", severity="info",
+                    message="x", title="<script>alert(1)</script>")
+    html = al.render_alerts_html([ev], "t")
+    assert "<script>alert(1)</script>" not in html
+    assert "&lt;script&gt;" in html
+
+
+def test_alert_html_falls_back_to_message_for_legacy_rows():
+    """Rows predating the structured fields must still render as themselves."""
+    html = al.render_alerts_html([_ev()], "t")
+    assert "stop breached" in html
+
+
+def test_emit_passes_an_html_body_to_deliver(tmp_path):
+    log = str(tmp_path / "alerts_sent.jsonl")
+    with patch.object(al, "deliver", return_value={"delivered": True}) as m:
+        emit_alerts([_structured()], sent_log=log)
+    assert "Atlas C11 live cutover" in m.call_args.kwargs["html_body"]
+
+
+def test_html_kill_switch_sends_text_only(tmp_path):
+    log = str(tmp_path / "alerts_sent.jsonl")
+    with patch.object(al, "_html_enabled", return_value=False), \
+         patch.object(al, "deliver", return_value={"delivered": True}) as m:
+        emit_alerts([_structured()], sent_log=log)
+    assert m.call_args.kwargs.get("html_body") is None
+
+
+def test_html_render_failure_never_blocks_the_text_alert(tmp_path):
+    log = str(tmp_path / "alerts_sent.jsonl")
+    with patch.object(al, "render_alerts_html", side_effect=RuntimeError("boom")), \
+         patch.object(al, "deliver", return_value={"delivered": True}) as m:
+        out = emit_alerts([_structured()], sent_log=log)
+    assert out["emitted"] == 1 and out["delivered"] is True
+    assert m.call_args.kwargs.get("html_body") is None

@@ -18,6 +18,7 @@
   "advisor_flags": [
     {"symbol": "MARUTI", "verdict": "TRIM", "reason": "Thesis weakened — margin guidance cut twice.", "notes": []},
     {"symbol": "TATAMOTORS", "verdict": "EXIT", "reason": "Stop breached on the JLR demand warning.", "notes": []},
+    {"symbol": "SUZLON", "verdict": "SWITCH", "reason": "Order-book growth stalled and the stop went with it.", "switch_candidate": "SUNPHARMA", "notes": []},
     {"symbol": "BAJAJ-AUTO", "verdict": "WAT_UNKNOWN", "reason": "Unknown enum — must fall through to the raw string.", "notes": []}
   ],
   "regime": {"label": "RISK_OFF"},

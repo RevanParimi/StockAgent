@@ -13,6 +13,7 @@ from datetime import date, datetime, timedelta, timezone
 
 from core.config import settings
 from core.delivery.channels import deliver
+from core.portfolio.advisor import explain_triggers
 from core.portfolio.store import PortfolioStore, active_user_ids
 
 logger = logging.getLogger(__name__)
@@ -57,6 +58,35 @@ def _active_shelf_ideas() -> list:
     except Exception as exc:
         logger.warning("[weekly] shelf read failed (non-fatal): %s", exc)
         return []
+
+
+def _shelf_by_symbol() -> dict:
+    """Every shelf idea by symbol, whatever its status.
+
+    Deliberately wider than `_active_shelf_ideas`: a switch called last Tuesday
+    may point at an idea that has since been promoted or dropped, and the
+    reader still deserves to see the thesis the call was made on.
+    """
+    try:
+        from core.discovery.shelf import ShelfStore
+        return {i.symbol: i for i in ShelfStore().load().ideas}
+    except Exception as exc:
+        logger.warning("[weekly] shelf index read failed (non-fatal): %s", exc)
+        return {}
+
+
+def _candidate_detail(idea) -> dict:
+    """The case for buying the destination. {} when the idea is gone."""
+    if idea is None:
+        return {}
+    return {
+        "sector": getattr(idea, "sector", ""),
+        "conviction": getattr(idea, "conviction", 0.0),
+        "thesis": getattr(idea, "thesis", ""),
+        "entry_low": getattr(idea, "entry_low", 0.0),
+        "entry_high": getattr(idea, "entry_high", 0.0),
+        "invalidation_level": getattr(idea, "invalidation_level", 0.0),
+    }
 
 
 def _weekly_ipos(on: date) -> list[dict]:
@@ -167,13 +197,17 @@ def build_weekly_review(
     ]
     laggards = sorted(perf, key=lambda r: r["pnl_pct"])[:_LAGGARD_COUNT]
 
-    # switch candidates: active shelf ideas in UNDERWEIGHT sectors
+    # switch candidates: active shelf ideas in UNDERWEIGHT sectors, carrying the
+    # case for each. A symbol already held is excluded — offering it as a
+    # "switch idea" is a top-up dressed as a rotation.
+    held = {h.symbol for h in portfolio.holdings}
     sector_weights = {a["sector"]: a["weight_pct"] for a in allocation}
     max_weight = max(sector_weights.values(), default=0.0)
     switch_candidates = sorted(
-        ({"symbol": i.symbol, "sector": i.sector, "conviction": i.conviction}
+        ({"symbol": i.symbol, **_candidate_detail(i)}
          for i in _active_shelf_ideas()
-         if i.conviction >= settings.DISCOVERY_MIN_CONVICTION
+         if i.symbol not in held
+         and i.conviction >= settings.DISCOVERY_MIN_CONVICTION
          and sector_weights.get(i.sector, 0.0) < max_weight),
         key=lambda c: -c["conviction"],
     )[:_SWITCH_CANDIDATE_COUNT]
@@ -181,6 +215,7 @@ def build_weekly_review(
     # advice-ledger scoreboard (deterministic; Phase D owns real outcome RL)
     counts: dict[str, int] = {}
     switch_suggestions: list[dict] = []
+    shelf_index = _shelf_by_symbol()
     checked = correct = 0
     window_start = (on - timedelta(days=_SCOREBOARD_WINDOW_DAYS)).isoformat()
     for rec in store.load_advice(limit=500):
@@ -188,12 +223,22 @@ def build_weekly_review(
             continue
         counts[rec.verdict] = counts.get(rec.verdict, 0) + 1
         # SWITCH is an EXIT with a replacement suggestion — surface the
-        # advisor's actual pick, not just an anonymous tally (spec §5.2).
+        # advisor's actual pick, not just an anonymous tally (spec §5.2), and
+        # both halves of the case: why you are leaving, and why there.
         if rec.verdict == "SWITCH" and rec.switch_candidate:
             switch_suggestions.append({
                 "symbol": rec.symbol,
                 "switch_candidate": rec.switch_candidate,
                 "date": rec.date,
+                # The advisor already narrated this call; re-deriving prose
+                # from the codes when a written reason exists would show the
+                # reader two voices for one decision.
+                "reason": rec.narrative.strip() or explain_triggers(rec.triggers),
+                "triggers": list(rec.triggers),
+                "pnl_pct": rec.unrealised_pnl_pct,
+                "stop_pct": rec.stop_pct,
+                "confidence": rec.confidence,
+                "candidate": _candidate_detail(shelf_index.get(rec.switch_candidate)),
             })
         if rec.verdict in ("HOLD",):
             continue
@@ -239,11 +284,21 @@ def render_weekly_text(review: dict) -> str:
         lines.append(f"{a['sector']}: {a['weight_pct']:.1f}%{flag}")
     for l in review.get("laggards", []):
         lines.append(f"Laggard: {l['symbol']} {l['pnl_pct']:+.1f}%")
-    for c in review.get("switch_candidates", []):
-        lines.append(f"Shelf candidate ({c['sector']}): {c['symbol']} "
-                     f"conviction {c['conviction']:.2f}")
+    # Calls the advisor actually made come first, and each says why. The shelf
+    # list below is a different claim — research candidates tied to no holding
+    # — so it is never interleaved with them.
     for s in review.get("switch_suggestions", []):
         lines.append(f"SWITCH: {s['symbol']} → {s['switch_candidate']}")
+        if s.get("reason"):
+            lines.append(f"  Why leave {s['symbol']}: {s['reason']}")
+        thesis = (s.get("candidate") or {}).get("thesis")
+        if thesis:
+            lines.append(f"  Why {s['switch_candidate']}: {thesis}")
+    for c in review.get("switch_candidates", []):
+        lines.append(f"Shelf idea ({c['sector']}): {c['symbol']} "
+                     f"conviction {c['conviction']:.2f}")
+        if c.get("thesis"):
+            lines.append(f"  {c['thesis']}")
     ipos = review.get("ipo_watch", []) or []
     if ipos:
         from core.delivery.brief import _ipo_demand, _ipo_lean, _ipo_window

@@ -91,6 +91,9 @@ class PortfolioStore:
     def _ledger_path(self) -> Path:
         return self._dir / "advice_ledger.jsonl"
 
+    def _switch_eval_path(self) -> Path:
+        return self._dir / "switch_evaluations.jsonl"
+
     def _transactions_path(self) -> Path:
         return self._dir / "transactions.jsonl"
 
@@ -239,6 +242,32 @@ class PortfolioStore:
     # ------------------------------------------------------------------
     # Advice ledger (append-only JSONL — spec §5.3)
     # ------------------------------------------------------------------
+    def append_switch_evaluations(self, rows: list) -> None:
+        """Append switch-evaluation rows. No-op on an empty batch."""
+        if not rows:
+            return
+        with open(self._switch_eval_path(), "a", encoding="utf-8") as fh:
+            for rec in rows:
+                fh.write(json.dumps(rec.model_dump(), ensure_ascii=False) + "\n")
+
+    def load_switch_evaluations(self, limit: int = 5000) -> list:
+        """The newest `limit` evaluation rows, oldest-first. A corrupt line is
+        skipped and logged, never fatal — same contract as load_advice."""
+        from backend.shared.schemas.portfolio import SwitchEvaluation
+        path = self._switch_eval_path()
+        if not path.exists():
+            return []
+        out: list = []
+        for line in path.read_text(encoding="utf-8").splitlines()[-limit:]:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                out.append(SwitchEvaluation(**json.loads(line)))
+            except Exception as exc:
+                logger.warning("[PortfolioStore] skipping bad switch-eval line: %s", exc)
+        return out
+
     def append_advice(self, rec: AdviceRecord) -> None:
         with open(self._ledger_path(), "a", encoding="utf-8") as fh:
             fh.write(json.dumps(rec.model_dump(), ensure_ascii=False) + "\n")

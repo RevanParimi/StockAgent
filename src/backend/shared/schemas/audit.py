@@ -11,7 +11,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-Lane = Literal["advice", "alert", "shelf"]
+Lane = Literal["advice", "alert", "shelf", "switch"]
 
 
 class AuditOutcome(BaseModel):
@@ -42,6 +42,12 @@ class AuditOutcome(BaseModel):
     # that is the outcome_*td failure this whole layer exists to correct.
     switch_excess_pct: float | None = None   # SWITCH rows with a priceable candidate
     conviction: float | None = None          # shelf rows only
+
+    # Switch lane only (2026-08-20). Both written by grade_switch_lane — no
+    # declared-but-unwritten fields, which is the outcome_*td failure this
+    # whole layer exists to correct.
+    candidate: str = ""            # the destination symbol
+    miss_class: str = ""           # attribution bucket; "" when not a miss
 
     def key(self) -> tuple[str, int]:
         return (self.ref, self.horizon_td)

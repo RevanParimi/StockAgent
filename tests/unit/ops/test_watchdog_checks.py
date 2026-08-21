@@ -127,3 +127,52 @@ def test_ipo_cache_stale_is_pending(tmp_path, monkeypatch):
 def test_ipo_cache_absent_is_pending(tmp_path, monkeypatch):
     monkeypatch.setattr(C, "_DATA_DIR", tmp_path)
     assert C.run_check("ipo_cache_fresh").state == "pending"
+
+
+# -- switch lane sample gate (2026-08-20) ----------------------------------
+
+def test_switch_sample_check_is_pending_below_the_floor(monkeypatch):
+    import core.ops.watchdog.checks as C
+    monkeypatch.setattr(C, "_switch_report", lambda: {
+        "switch_rule": {"n": 400, "n_effective": 4, "verdict": "INSUFFICIENT_DATA"},
+        "min_n": 30})
+    r = C.run_check("switch_lane_has_sample")
+    assert r.state == "pending"
+    assert "4" in r.detail
+
+
+def test_switch_sample_check_is_satisfied_once_it_clears(monkeypatch):
+    import core.ops.watchdog.checks as C
+    monkeypatch.setattr(C, "_switch_report", lambda: {
+        "switch_rule": {"n": 400, "n_effective": 31, "verdict": "UNPROVEN"},
+        "min_n": 30})
+    assert C.run_check("switch_lane_has_sample").state == "satisfied"
+
+
+def test_switch_sample_check_reads_effective_n_not_raw_n(monkeypatch):
+    """Raw n is inflated by daily capture of the same pair. Gating on it would
+    declare the question answerable while the evidence is one observation."""
+    import core.ops.watchdog.checks as C
+    monkeypatch.setattr(C, "_switch_report", lambda: {
+        "switch_rule": {"n": 9999, "n_effective": 1, "verdict": "INSUFFICIENT_DATA"},
+        "min_n": 30})
+    assert C.run_check("switch_lane_has_sample").state == "pending"
+
+
+def test_switch_sample_check_is_unknown_when_the_report_fails(monkeypatch):
+    """A watchdog that reports "fine" when it cannot see is worse than none."""
+    import core.ops.watchdog.checks as C
+    monkeypatch.setattr(C, "_switch_report",
+                        lambda: (_ for _ in ()).throw(RuntimeError("boom")))
+    assert C.run_check("switch_lane_has_sample").state == "unknown"
+
+
+def test_the_milestone_entry_is_monthly():
+    """A windowless pending invariant warns EVERY DAY (engine.py's
+    `window_open = True` branch). Over the months this sample takes to accrue
+    that trains the reader to ignore watchdog mail."""
+    from core.ops.watchdog.registry import load_registry
+    entry = next(e for e in load_registry("config/milestones.yaml")
+                 if e.id == "switch_lane_has_sample")
+    assert entry.schedule == "monthly"
+    assert entry.check == "switch_lane_has_sample"

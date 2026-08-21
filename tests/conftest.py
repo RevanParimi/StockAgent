@@ -76,6 +76,25 @@ def _no_real_deliveries(monkeypatch, tmp_path):
     )
 
 
+@pytest.fixture(autouse=True)
+def _no_real_evidence_writes(monkeypatch, tmp_path):
+    """Same rule as _no_real_deliveries, for the news-availability ledger.
+
+    `record_news_availability` is called from run_daily_review, which the RL
+    tests exercise heavily — so without this every suite run appended fixture
+    tickers to the repo's real data/rl/news_availability.jsonl. On the Railway
+    box that path IS the mounted volume, so a test run would corrupt live
+    attribution evidence. Explicit path= arguments are honored unchanged.
+    """
+    from core.audit import evidence as _evidence
+    _orig_path = _evidence._path
+    monkeypatch.setattr(
+        _evidence, "_path",
+        lambda path=None: _orig_path(
+            path or str(tmp_path / "news_availability.jsonl")),
+    )
+
+
 # ---------------------------------------------------------------------------
 # Stock query fixtures
 # ---------------------------------------------------------------------------

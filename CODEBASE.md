@@ -646,6 +646,15 @@ Models are tiered (2026-06-03 benchmark, `scripts/model_bench.py`; bulk re-bench
 | `delivery.data_dir` | `data/delivery` | `push_subscriptions.json`, `alerts_sent.jsonl` |
 | `delivery.email_enabled` | `false` | Needs `SMTP_HOST/PORT/USER/PASSWORD` + `DELIVERY_EMAIL_TO` in .env |
 | `delivery.push_enabled` | `true` | Needs `VAPID_PRIVATE_KEY/PUBLIC_KEY/CLAIM_EMAIL` in .env (`scripts/gen_vapid_keys.py`) |
+| `audit.switch_min_n` | `30` | Independent (strided) pairs needed before the switch blocks give a verdict |
+| `audit.switch_horizon_td` | `10` | Horizon the switch blocks report on |
+| `audit.per_trigger_horizon_td` | `10` | Was hardcoded to 60td, which made the block render empty |
+| `audit.conviction_horizon_td` | `10` | Was hardcoded to 30td, which made the block render empty |
+| `audit.shock_atr_mult` | `3.0` | Single-session move (× ATR) that classifies a switch miss as unforeseeable |
+| `audit.switch_lane_enabled` | `true` | Grade the evaluated switch pairs (switch lane) |
+| `audit.switch_grade_max_rows_per_run` | `2000` | Caps the first switch backfill so it cannot stall the nightly job |
+| `advisor.switch_eval_enabled` | `true` | Record every (holding, shelf-candidate) pair the advisor evaluates (switch validation, design 2026-08-20) |
+| `advisor.switch_eval_max_candidates` | `5` | Top-N active shelf ideas by conviction evaluated per holding per run |
 | `delivery.alert_html_enabled` | `true` | HTML alert email body; `false` = plain text only (the Inbox card is unaffected) |
 | `delivery.index_watch` | NIFTY 50 / NEXT 50 / MIDCAP 150 / SMALLCAP 250 | Weekly constituent diff → inclusion/exclusion alerts |
 | `delivery.outbox_max_attempts` | `3` | BP2 outbox: sends before a row is dead-lettered (active only when `ATLAS_ENABLED`) |

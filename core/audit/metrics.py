@@ -161,3 +161,55 @@ def portfolio_vs_benchmark(history: list[dict], bench_pct: float) -> dict:
         "excess_pct": round(portfolio_pct - bench_pct, 4),
         "n": len(points),
     }
+
+
+def mean_edge(
+    rows: Iterable[AuditOutcome], horizon: int | None = None
+) -> float | None:
+    """Mean (destination excess − origin excess) in percentage points.
+
+    Rows without a destination excess are excluded, not treated as zero: an
+    unpriceable candidate is an ABSENT measurement, and calling it "no edge"
+    would drag the mean toward zero using data that does not exist.
+    """
+    vals = [r.switch_excess_pct - r.excess_pct for r in rows
+            if r.switch_excess_pct is not None
+            and (horizon is None or r.horizon_td == horizon)]
+    if not vals:
+        return None
+    return round(sum(vals) / len(vals), 4)
+
+
+def stride_subsample(
+    rows: Iterable[AuditOutcome], horizon: int
+) -> list[AuditOutcome]:
+    """One row per (origin, candidate) per non-overlapping `horizon` window.
+
+    Daily capture means the same pair recurs with windows sharing nearly every
+    trading day. Those are not independent observations, and a Wilson interval
+    over them would claim a precision the data does not have — the same trap
+    already flagged against the 10td hit-rate (n=109, effective n far lower).
+
+    Keeps the EARLIEST row in each window: the first time the rule reached that
+    judgement, before any later day could revise it.
+
+    The stride is measured in CALENDAR days while the horizon is in TRADING
+    days, so it discards slightly more than strictly necessary. That direction
+    is deliberate — over-discarding costs sample size, under-discarding costs
+    honesty.
+    """
+    from datetime import date as _date
+    picked: list[AuditOutcome] = []
+    last_kept: dict[tuple[str, str], _date] = {}
+    for r in sorted((x for x in rows if x.horizon_td == horizon),
+                    key=lambda x: x.issued_on):
+        key = (r.symbol, r.candidate)
+        try:
+            issued = _date.fromisoformat(r.issued_on)
+        except Exception:
+            continue
+        prev = last_kept.get(key)
+        if prev is None or (issued - prev).days >= horizon:
+            picked.append(r)
+            last_kept[key] = issued
+    return picked

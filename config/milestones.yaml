@@ -192,3 +192,17 @@ invariants:
     action: >
       Matured rows are not being graded. Check the ^NSEI benchmark fetch
       (the 2026-08-07 failure mode) before trusting any audit verdict.
+
+  - id: switch_lane_has_sample
+    kind: invariant
+    title: "Switch validation has enough evidence to speak"
+    check: switch_lane_has_sample
+    schedule: monthly
+    action: >
+      Nothing to do — this is an accrual gate, not a failure. It closes by
+      itself once enough non-overlapping switch pairs have matured, and that is
+      the day the "do switch ideas actually work out?" question first has an
+      answer. Investigate ONLY if n_effective stops rising: that means capture
+      stopped (advisor.switch_eval_enabled) or grading stopped
+      (audit.switch_lane_enabled).
+    docs: docs/superpowers/specs/2026-08-20-switch-validation-design.md

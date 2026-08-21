@@ -1448,6 +1448,21 @@ def run_daily_review(
                 ticker, exc,
             )
 
+    # Switch validation (design 2026-08-20): persist news_available per
+    # (symbol, date). It was only ever aggregated into one scheduler log line,
+    # so "was this call made blind?" could not be answered afterwards — which
+    # silently attributed every such miss to the model's reasoning. Paper-lane
+    # reviews are excluded: they run on an isolated store against symbols
+    # nobody holds, and mixing them in would corrupt the real index.
+    if not paper:
+        try:
+            from core.audit.evidence import record_news_availability
+            record_news_availability(ticker, review_date, news_available,
+                                     macro_fallback_used)
+        except Exception as exc:
+            logger.debug("[daily_review] news-availability record failed "
+                         "(non-fatal): %s", exc)
+
     summary = {
         "status":                   "completed",
         "ticker":                   ticker,

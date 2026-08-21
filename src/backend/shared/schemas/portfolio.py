@@ -162,3 +162,31 @@ class CorporateEvent(BaseModel):
     date: str                      # ISO date of the event
     kind: Literal["results", "meeting", "action", "other"] = "other"
     desc: str = ""
+
+
+class SwitchEvaluation(BaseModel):
+    """One (holding, shelf-candidate) pair the advisor considered on one day.
+
+    Written for EVERY holding on every advisor run, not only when a SWITCH
+    fires — the rule acts on ~4% of its calls, so grading only the taken pairs
+    never accumulates a sample. `decision` records what the rule did and
+    `reason` why it declined; a rejected pair that would have won is exactly as
+    informative as a taken pair that lost.
+
+    Append-only, and never rewritten: like the advice ledger, this is a record
+    of what the rule actually concluded, and grading is derived data.
+    """
+    date: str                      # ISO date the evaluation was made
+    user_id: str
+    origin: str                    # the held symbol
+    origin_close: float
+    origin_sector: str = ""
+    origin_confidence: float = 0.5
+    origin_verdict: str = ""       # the advisor's verdict for the origin that day
+    candidate: str                 # the shelf idea considered
+    candidate_close: float
+    candidate_sector: str = ""
+    candidate_conviction: float = 0.0
+    decision: Literal["taken", "rejected"]
+    reason: str = ""               # "" when taken; else the declining branch
+    rationale_hash: str = ""       # joins back to the origin's AdviceRecord

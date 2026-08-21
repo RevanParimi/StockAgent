@@ -75,3 +75,62 @@ def test_coin_flip_p_none_without_rows():
 def test_mean_excess_averages_percentage_points():
     assert mean_excess([_row(excess=2.0), _row(excess=4.0)]) == 3.0
     assert mean_excess([]) is None
+
+
+# -- switch pair metrics + overlap control (2026-08-20) --------------------
+
+from core.audit.metrics import mean_edge, stride_subsample
+
+
+def _switch_row(issued, origin="OLD", candidate="NEW", horizon=10,
+                origin_excess=-2.0, dest_excess=3.0):
+    from backend.shared.schemas.audit import AuditOutcome
+    return AuditOutcome(
+        ref=f"switch:{issued}|{origin}|{candidate}", lane="switch", user_id="u",
+        symbol=origin, candidate=candidate, issued_on=issued,
+        horizon_td=horizon, graded_on=issued, entry_close=100.0,
+        exit_close=98.0, return_pct=-2.0, bench_entry=1.0, bench_exit=1.0,
+        bench_pct=0.0, excess_pct=origin_excess,
+        switch_excess_pct=dest_excess, correct=dest_excess > origin_excess,
+        graded_at="2026-09-01T00:00:00+00:00")
+
+
+def test_mean_edge_is_destination_minus_origin():
+    rows = [_switch_row("2026-08-03", origin_excess=-2.0, dest_excess=3.0),
+            _switch_row("2026-08-04", origin_excess=1.0, dest_excess=2.0)]
+    assert mean_edge(rows, horizon=10) == 3.0     # (5.0 + 1.0) / 2
+
+
+def test_mean_edge_ignores_rows_with_no_destination():
+    """An unpriceable candidate is an ABSENT measurement. Treating it as zero
+    edge would drag the mean toward zero with data that does not exist."""
+    base = _switch_row("2026-08-03", origin_excess=-2.0, dest_excess=3.0)
+    rows = [base, base.model_copy(update={"switch_excess_pct": None})]
+    assert mean_edge(rows, horizon=10) == 5.0
+
+
+def test_stride_keeps_one_row_per_pair_per_horizon_window():
+    """Ten consecutive daily evaluations of ONE pair share almost the whole
+    10td window. Counting them as ten independent observations is the specific
+    dishonesty this function exists to prevent."""
+    rows = [_switch_row(f"2026-08-{d:02d}") for d in range(3, 13)]
+    kept = stride_subsample(rows, horizon=10)
+    assert len(kept) == 1
+    assert kept[0].issued_on == "2026-08-03"     # earliest wins
+
+
+def test_stride_keeps_distinct_pairs_separately():
+    rows = [_switch_row("2026-08-03", candidate="A"),
+            _switch_row("2026-08-03", candidate="B")]
+    assert len(stride_subsample(rows, horizon=10)) == 2
+
+
+def test_stride_admits_the_next_row_once_the_window_has_passed():
+    rows = [_switch_row("2026-08-03"), _switch_row("2026-08-28")]
+    assert len(stride_subsample(rows, horizon=10)) == 2
+
+
+def test_stride_ignores_other_horizons():
+    rows = [_switch_row("2026-08-03", horizon=10),
+            _switch_row("2026-08-03", horizon=30)]
+    assert len(stride_subsample(rows, horizon=10)) == 1

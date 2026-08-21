@@ -323,13 +323,98 @@ def grade_shelf_lane(
             "already_present": already}
 
 
+def _switch_lane_enabled() -> bool:
+    return bool(cfg("audit.switch_lane_enabled", fallback=True))
+
+
+def grade_switch_lane(
+    on: date, user_id: str, *, store=None, bench=None,
+    price_fn: Callable[[str, date], float] | None = None,
+    base_dir: str | None = None,
+) -> dict:
+    """Grade every matured (origin, candidate) pair the advisor evaluated.
+
+    `correct` here answers a different question from every other lane — did
+    rotating beat staying — so it comes from is_switch_correct, never from
+    is_correct. Both legs must price or the row is skipped: a pair graded on
+    one leg is not a pair, and half a measurement is worse than none.
+    """
+    from core.audit.benchmark import BenchmarkSeries
+    from core.audit.rules import is_switch_correct
+    from core.audit.store import AuditOutcomeStore
+    from core.portfolio.store import PortfolioStore
+
+    summary = {"graded": 0, "skipped_unpriceable": 0, "already_present": 0}
+    if not _switch_lane_enabled():
+        return summary
+
+    store = store or AuditOutcomeStore(user_id=user_id, base_dir=base_dir)
+    bench = bench or BenchmarkSeries()
+    price_fn = price_fn or _default_price_fn
+    max_rows = int(cfg("audit.switch_grade_max_rows_per_run", fallback=2000))
+
+    evals = PortfolioStore(user_id=user_id,
+                           base_dir=base_dir).load_switch_evaluations()
+    seen = store.existing_keys()
+
+    for row in evals:
+        if summary["graded"] >= max_rows:
+            logger.info("[audit] switch lane hit the per-run cap (%d)", max_rows)
+            break
+        try:
+            issued = date.fromisoformat(row.date)
+        except Exception:
+            summary["skipped_unpriceable"] += 1
+            continue
+        ref = f"switch:{row.date}|{row.origin}|{row.candidate}"
+        for horizon in _horizons():
+            if (ref, horizon) in seen:
+                summary["already_present"] += 1
+                continue
+            matured = trading_days_after(issued, horizon)
+            if matured > on:
+                continue
+            try:
+                bench_pct = bench.pct_change(issued, matured)
+                origin_exit = float(price_fn(row.origin, matured))
+                dest_exit = float(price_fn(row.candidate, matured))
+                origin_ret = pct_change(row.origin_close, origin_exit)
+                origin_excess = excess(origin_ret, bench_pct)
+                dest_excess = excess(
+                    pct_change(row.candidate_close, dest_exit), bench_pct)
+                outcome = AuditOutcome(
+                    ref=ref, lane="switch", user_id=user_id, symbol=row.origin,
+                    verdict="", triggers=[row.decision, row.reason],
+                    issued_on=row.date, horizon_td=horizon,
+                    graded_on=matured.isoformat(),
+                    entry_close=row.origin_close, exit_close=origin_exit,
+                    return_pct=origin_ret,
+                    bench_entry=bench.close_on(issued),
+                    bench_exit=bench.close_on(matured),
+                    bench_pct=bench_pct, excess_pct=origin_excess,
+                    correct=is_switch_correct(origin_excess, dest_excess),
+                    graded_at=datetime.now(timezone.utc).isoformat(),
+                    switch_excess_pct=dest_excess, candidate=row.candidate)
+            except Exception as exc:
+                logger.debug("[audit] switch %s->%s @%dtd ungradeable "
+                             "(non-fatal): %s", row.origin, row.candidate,
+                             horizon, exc)
+                summary["skipped_unpriceable"] += 1
+                continue
+            store.append(outcome)
+            seen.add((ref, horizon))
+            summary["graded"] += 1
+    return summary
+
+
 def grade_due(on: date, user_id: str | None = None, **kw) -> dict:
     """Grade all three lanes. A failure in one lane never stops the others."""
     uid = user_id or settings.PORTFOLIO_DEFAULT_USER_ID
     lanes: dict[str, dict] = {}
     for name, fn in (("advice", grade_advice_lane),
                      ("alert", grade_alert_lane),
-                     ("shelf", grade_shelf_lane)):
+                     ("shelf", grade_shelf_lane),
+                     ("switch", grade_switch_lane)):
         allowed = {k: v for k, v in kw.items()
                    if k in _LANE_KWARGS[name] or k in _COMMON_KWARGS}
         try:
@@ -347,4 +432,5 @@ def grade_due(on: date, user_id: str | None = None, **kw) -> dict:
 
 
 _COMMON_KWARGS = {"store", "bench", "price_fn", "base_dir"}
-_LANE_KWARGS = {"advice": set(), "alert": {"sent_log"}, "shelf": {"shelf_path"}}
+_LANE_KWARGS = {"advice": set(), "alert": {"sent_log"},
+                "shelf": {"shelf_path"}, "switch": set()}

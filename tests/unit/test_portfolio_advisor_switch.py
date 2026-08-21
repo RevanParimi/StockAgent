@@ -141,3 +141,63 @@ def test_digest_reason_falls_back_to_triggers_when_narration_failed():
     digest = build_digest("u", date(2026, 7, 9), [rec],
                           Portfolio(user_id="u", holdings=[h]), {"OLDCO": 80.0})
     assert "stop was breached" in digest["holdings"][0]["reason"]
+
+
+# -- the evaluation, not just the winner (2026-08-20) -----------------------
+
+from core.portfolio.advisor import evaluate_switch_candidates
+
+
+def _evals(ideas, weights, held=None, max_candidates=5):
+    _best, rows = evaluate_switch_candidates(
+        _exit_signals(confidence=0.5), ideas, weights,
+        held_symbols=held, max_candidates=max_candidates)
+    return {r["candidate"]: r for r in rows}
+
+
+def test_every_considered_idea_yields_a_row_with_its_reason():
+    rows = _evals(
+        [_idea("HELD", "pharma", 0.95),      # already held
+         _idea("HEAVY", "automobile", 0.95), # sector not underweight
+         _idea("WEAK", "fmcg", 0.55),        # conviction gap too small
+         _idea("GOOD", "metals", 0.90),      # wins
+         _idea("ALSO", "textiles", 0.80)],   # qualifies but loses
+        {"automobile": 60.0, "pharma": 5.0, "fmcg": 5.0,
+         "metals": 5.0, "textiles": 5.0},
+        held={"OLDCO", "HELD"})
+    assert rows["HELD"]["reason"] == "already_held"
+    assert rows["HEAVY"]["reason"] == "sector_not_underweight"
+    assert rows["WEAK"]["reason"] == "conviction_gap_too_small"
+    assert rows["ALSO"]["reason"] == "not_best"
+    assert rows["GOOD"]["decision"] == "taken" and rows["GOOD"]["reason"] == ""
+    assert all(r["decision"] == "rejected" for k, r in rows.items() if k != "GOOD")
+
+
+def test_the_winner_is_unchanged_by_capture():
+    best, _rows = evaluate_switch_candidates(
+        _exit_signals(confidence=0.5),
+        [_idea("A", "pharma", 0.70), _idea("B", "fmcg", 0.85)],
+        {"automobile": 60.0, "pharma": 5.0, "fmcg": 5.0})
+    assert best.symbol == "B"
+
+
+def test_capture_is_bounded_by_max_candidates_highest_conviction_first():
+    rows = _evals([_idea(f"C{i}", "pharma", 0.60 + i / 100) for i in range(10)],
+                  {"automobile": 60.0, "pharma": 5.0}, max_candidates=3)
+    assert len(rows) == 3
+    assert set(rows) == {"C9", "C8", "C7"}
+
+
+def test_dropped_ideas_are_not_evaluated_at_all():
+    """A dropped idea was never a candidate; recording it as "rejected" would
+    put a shelf-lifecycle event into a decision-rule ledger."""
+    rows = _evals([ShelfIdea(symbol="GONE", sector="pharma", added="2026-07-01",
+                             conviction=0.99, status="dropped")],
+                  {"automobile": 60.0, "pharma": 5.0})
+    assert rows == {}
+
+
+def test_evaluations_are_produced_even_when_nothing_qualifies():
+    """The whole point: an EXIT that found no candidate is still evidence."""
+    rows = _evals([_idea("HEAVY", "automobile", 0.95)], {"automobile": 60.0})
+    assert rows["HEAVY"]["reason"] == "sector_not_underweight"

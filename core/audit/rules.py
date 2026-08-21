@@ -42,3 +42,19 @@ def is_correct(verdict: str, excess_pct: float) -> bool | None:
     if v in INTENT_REDUCE:
         return excess_pct < 0.0
     return None
+
+
+def is_switch_correct(origin_excess_pct: float, dest_excess_pct: float) -> bool:
+    """Did rotating beat staying, over the same window?
+
+    Deliberately NOT part of is_correct(). That function defines what every
+    accumulated advice row already means, and this module's docstring says it
+    cannot be changed without invalidating that history. A switch asks a
+    different question and gets its own answer here.
+
+    Both legs are excess over the same benchmark, so the benchmark cancels and
+    this is a pure relative-strength comparison. A dead heat is False:
+    rotating has real costs (brokerage, spread, tax) that this layer does not
+    model, so a tie is not evidence that moving was right.
+    """
+    return dest_excess_pct > origin_excess_pct

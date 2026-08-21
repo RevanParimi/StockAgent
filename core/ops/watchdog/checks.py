@@ -509,3 +509,36 @@ def ipo_signals_accruing() -> CheckResult:
         "satisfied",
         f"Capture ledger has snapshots for all {len(open_symbols)} open issue(s).",
         evidence)
+
+
+def _switch_report() -> dict:
+    """Seam for tests — the real graded-outcome report."""
+    from core.audit.report import build_report
+    return build_report()
+
+
+@check("switch_lane_has_sample")
+def switch_lane_has_sample() -> CheckResult:
+    """Satisfied once the switch lane has enough NON-OVERLAPPING pairs to say
+    anything at all.
+
+    Until then the question "do switch ideas actually work out?" has no answer,
+    and this reports how far off it is rather than going quiet. It reads
+    n_effective, never raw n: daily capture of the same pair produces many rows
+    and almost no additional information, so gating on raw n would declare the
+    question answerable while the evidence is one observation repeated.
+    """
+    report = _switch_report()
+    block = report.get("switch_rule") or {}
+    floor = int(report.get("min_n") or 30)
+    n_eff = int(block.get("n_effective") or 0)
+    evidence = {"n_effective": n_eff, "n_raw": block.get("n"), "floor": floor}
+    if n_eff >= floor:
+        return CheckResult(
+            "satisfied",
+            f"Switch lane has {n_eff} independent pairs (floor {floor}) — "
+            f"verdict {block.get('verdict')}.", evidence)
+    return CheckResult(
+        "pending",
+        f"Switch lane has {n_eff} independent pair(s) of {floor} needed "
+        f"({block.get('n')} raw rows). Still accruing.", evidence)

@@ -254,21 +254,60 @@ def _best_switch_candidate(signals: AdvisorSignals, shelf_ideas, sector_weights:
     that justified the call was computed on a sector you already own. The
     reviewed symbol excludes itself without the caller having to say so.
     """
+    return evaluate_switch_candidates(signals, shelf_ideas, sector_weights,
+                                      held_symbols)[0]
+
+
+def evaluate_switch_candidates(signals: AdvisorSignals, shelf_ideas,
+                               sector_weights: dict,
+                               held_symbols: set[str] | None = None,
+                               max_candidates: int = 5):
+    """Return (winner_or_None, evaluation_rows) — the same decision as
+    `_best_switch_candidate`, plus a record of how each candidate was judged.
+
+    The rows are the point. The advisor acts on ~4% of its calls, so grading
+    only the pairs it took never accumulates a sample; every pair it CONSIDERED
+    and declined is evidence about the same rule. Each row names the branch
+    that declined it, so per-reason precision can be measured later.
+
+    Pure: no I/O, no clock. Candidates are the top `max_candidates` ACTIVE
+    ideas by conviction — a dropped or promoted idea was never a candidate and
+    yields no row at all.
+    """
     own_weight = sector_weights.get(signals.sector, 0.0)
     excluded = set(held_symbols or ()) | {signals.symbol}
-    best = None
-    for idea in shelf_ideas or []:
-        if getattr(idea, "status", "active") != "active":
-            continue
+    active = sorted((i for i in (shelf_ideas or [])
+                     if getattr(i, "status", "active") == "active"),
+                    key=lambda i: -i.conviction)[:max_candidates]
+
+    rows: list[dict] = []
+    qualified: list = []
+    for idea in active:
+        reason = ""
         if idea.symbol in excluded:
-            continue
-        if sector_weights.get(idea.sector, 0.0) >= own_weight:
-            continue
-        if idea.conviction - signals.confidence < settings.ADVISOR_SWITCH_CONVICTION_GAP:
-            continue
-        if best is None or idea.conviction > best.conviction:
-            best = idea
-    return best
+            reason = "already_held"
+        elif sector_weights.get(idea.sector, 0.0) >= own_weight:
+            reason = "sector_not_underweight"
+        elif idea.conviction - signals.confidence < settings.ADVISOR_SWITCH_CONVICTION_GAP:
+            reason = "conviction_gap_too_small"
+        else:
+            qualified.append(idea)
+        rows.append({"candidate": idea.symbol,
+                     "candidate_sector": getattr(idea, "sector", ""),
+                     "candidate_conviction": getattr(idea, "conviction", 0.0),
+                     "decision": "rejected", "reason": reason})
+
+    # max() keeps the FIRST maximum, matching the original running comparison
+    # (`best is None or idea.conviction > best.conviction`), so tie-breaking is
+    # unchanged.
+    best = max(qualified, key=lambda i: i.conviction, default=None)
+    for row in rows:
+        if not row["reason"]:
+            if best is not None and row["candidate"] == best.symbol:
+                row["decision"] = "taken"
+            else:
+                row["reason"] = "not_best"
+    return best, rows
 
 
 def decide(

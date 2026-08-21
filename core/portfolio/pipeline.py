@@ -29,6 +29,53 @@ from services.data.fetchers.corporate_events import (
 logger = logging.getLogger(__name__)
 
 
+def _switch_eval_enabled() -> bool:
+    from backend.shared.config.settings.loader import cfg
+    return bool(cfg("advisor.switch_eval_enabled", fallback=True))
+
+
+def _switch_eval_max_candidates() -> int:
+    from backend.shared.config.settings.loader import cfg
+    return int(cfg("advisor.switch_eval_max_candidates", fallback=5))
+
+
+def capture_switch_evaluations(rec, signals, shelf_ideas, sector_weights,
+                               held_symbols, candidate_closes, user_id, on):
+    """Evaluation rows for ONE holding against the shelf (design 2026-08-20).
+
+    Runs for every holding on every review, not only when a SWITCH fires: the
+    rule acts on ~4% of its calls, so grading only what it took never
+    accumulates a sample.
+
+    Pure — prices arrive via `candidate_closes`, nothing is fetched here. A
+    candidate with no price is dropped rather than guessed: a fabricated entry
+    price would silently corrupt every excess computed from it.
+    """
+    if not _switch_eval_enabled():
+        return []
+    from backend.shared.schemas.portfolio import SwitchEvaluation
+    from core.portfolio.advisor import evaluate_switch_candidates
+    _best, rows = evaluate_switch_candidates(
+        signals, shelf_ideas, sector_weights, held_symbols,
+        _switch_eval_max_candidates())
+    out = []
+    for r in rows:
+        close = candidate_closes.get(r["candidate"])
+        if close is None:
+            continue
+        out.append(SwitchEvaluation(
+            date=on.isoformat(), user_id=user_id,
+            origin=signals.symbol, origin_close=signals.close,
+            origin_sector=signals.sector, origin_confidence=signals.confidence,
+            origin_verdict=rec.verdict, candidate=r["candidate"],
+            candidate_close=float(close),
+            candidate_sector=r["candidate_sector"],
+            candidate_conviction=r["candidate_conviction"],
+            decision=r["decision"], reason=r["reason"],
+            rationale_hash=rec.rationale_hash))
+    return out
+
+
 def advice_alert_fields(rec, shelf_index: dict) -> dict:
     """The structured parts of an escalation alert (see core/delivery/alerts).
 
@@ -95,6 +142,19 @@ def run_post_review_pipeline(review_date: date) -> dict:
         except Exception:
             pass
 
+        # Switch-validation capture (design 2026-08-20). ONE price per
+        # candidate per run: candidates repeat across holdings, so this must
+        # stay outside the holding loop or it becomes N_holdings fetches each.
+        candidate_closes: dict[str, float] = {}
+        switch_evals: list = []
+        if _switch_eval_enabled():
+            for idea in shelf_ideas:
+                try:
+                    candidate_closes[idea.symbol] = close_on(idea.symbol, review_date)
+                except Exception as exc:
+                    logger.debug("[portfolio_pipeline] no close for candidate %s "
+                                 "(non-fatal): %s", idea.symbol, exc)
+
         # Step 2 — refresh forward events for held symbols (degraded-mode safe).
         symbols = [h.symbol for h in portfolio.holdings]
         try:
@@ -128,11 +188,24 @@ def run_post_review_pipeline(review_date: date) -> dict:
                 rec.narrative = narrate(rec, signals)
                 store.append_advice(rec)
                 advice.append(rec)
+                try:
+                    switch_evals.extend(capture_switch_evaluations(
+                        rec, signals, shelf_ideas, sector_weights,
+                        {h.symbol for h in portfolio.holdings},
+                        candidate_closes, user_id, review_date))
+                except Exception as exc:
+                    logger.warning("[portfolio_pipeline] switch capture failed "
+                                   "for %s (non-fatal): %s", holding.symbol, exc)
             except Exception as exc:
                 logger.warning(
                     "[portfolio_pipeline] advisor failed for %s/%s (non-fatal): %s",
                     user_id, holding.symbol, exc,
                 )
+        try:
+            store.append_switch_evaluations(switch_evals)
+        except Exception as exc:
+            logger.warning("[portfolio_pipeline] switch-eval write failed "
+                           "(non-fatal): %s", exc)
         total_advice += len(advice)
         escalations.extend(a.symbol for a in advice if a.verdict in ("TRIM", "EXIT", "SWITCH"))
 

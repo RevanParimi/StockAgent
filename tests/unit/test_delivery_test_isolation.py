@@ -27,3 +27,23 @@ def test_emit_alerts_does_not_write_repo_sent_log():
                             message="conftest isolation probe")])
     after = repo_log.read_text(encoding="utf-8") if repo_log.exists() else None
     assert before == after
+
+
+def test_default_news_evidence_path_redirected_away_from_repo():
+    """record_news_availability runs inside run_daily_review, which the RL
+    tests exercise heavily. Without the autouse fixture every suite run
+    appended fixture tickers to the repo's real ledger — and on prod that path
+    is the mounted volume."""
+    from core.audit import evidence
+    p = evidence._path(None)
+    assert p.resolve() != Path("data/rl/news_availability.jsonl").resolve()
+
+
+def test_recording_evidence_does_not_write_the_repo_ledger():
+    from datetime import date
+    from core.audit.evidence import record_news_availability
+    repo_ledger = Path("data/rl/news_availability.jsonl")
+    before = repo_ledger.read_text(encoding="utf-8") if repo_ledger.exists() else None
+    record_news_availability("ISOLATIONPROBE", date(2026, 1, 1), True, False)
+    after = repo_ledger.read_text(encoding="utf-8") if repo_ledger.exists() else None
+    assert before == after

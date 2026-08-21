@@ -182,3 +182,75 @@ def test_advice_alert_switch_survives_a_destination_off_the_shelf():
                        triggers=["stop_breach"])
     f = advice_alert_fields(rec, {})
     assert f["next_step"] == "Replacement idea: GONE."
+
+
+# -- switch-evaluation capture (2026-08-20) --------------------------------
+
+def _sig(symbol="OLDCO", sector="automobile", confidence=0.5):
+    from core.portfolio.advisor import AdvisorSignals
+    return AdvisorSignals(symbol=symbol, sector=sector, close=100.0,
+                          atr_stop_pct=12.0, unrealised_pnl_pct=-15.0,
+                          holding_age_days=100, confidence=confidence)
+
+
+def _shelf(symbol, sector, conviction):
+    from backend.shared.schemas.discovery import ShelfIdea
+    return ShelfIdea(symbol=symbol, sector=sector, added="2026-07-01",
+                     conviction=conviction)
+
+
+def _switch_advice(symbol="OLDCO", verdict="HOLD"):
+    from backend.shared.schemas.portfolio import AdviceRecord
+    return AdviceRecord(date="2026-08-20", user_id="u1", symbol=symbol,
+                        verdict=verdict, close=100.0, unrealised_pnl_pct=-15.0,
+                        stop_pct=12.0, rationale_hash="hash1")
+
+
+def test_capture_produces_one_row_per_candidate_with_both_prices():
+    from datetime import date
+    from core.portfolio.pipeline import capture_switch_evaluations
+    rows = capture_switch_evaluations(
+        _switch_advice(), _sig(), [_shelf("NEWCO", "pharma", 0.9)],
+        {"automobile": 60.0, "pharma": 5.0}, {"OLDCO"},
+        {"NEWCO": 250.0}, "u1", date(2026, 8, 20))
+    assert len(rows) == 1
+    r = rows[0]
+    assert r.origin == "OLDCO" and r.candidate == "NEWCO"
+    assert r.origin_close == 100.0 and r.candidate_close == 250.0
+    assert r.decision == "taken"
+    assert r.rationale_hash == "hash1"
+    assert r.origin_verdict == "HOLD"
+
+
+def test_capture_happens_for_a_HOLD_not_only_an_EXIT():
+    """The whole reframe: evidence must accrue at the rate the rule EVALUATES,
+    and it evaluates on every holding every run."""
+    from datetime import date
+    from core.portfolio.pipeline import capture_switch_evaluations
+    rows = capture_switch_evaluations(
+        _switch_advice(verdict="HOLD"), _sig(), [_shelf("NEWCO", "pharma", 0.9)],
+        {"automobile": 60.0, "pharma": 5.0}, {"OLDCO"},
+        {"NEWCO": 250.0}, "u1", date(2026, 8, 20))
+    assert rows and rows[0].origin_verdict == "HOLD"
+
+
+def test_an_unpriceable_candidate_is_dropped_not_guessed():
+    from datetime import date
+    from core.portfolio.pipeline import capture_switch_evaluations
+    rows = capture_switch_evaluations(
+        _switch_advice(), _sig(), [_shelf("NEWCO", "pharma", 0.9),
+                            _shelf("NOPRICE", "metals", 0.9)],
+        {"automobile": 60.0, "pharma": 5.0, "metals": 5.0}, {"OLDCO"},
+        {"NEWCO": 250.0}, "u1", date(2026, 8, 20))
+    assert [r.candidate for r in rows] == ["NEWCO"]
+
+
+def test_capture_is_a_no_op_when_the_flag_is_off(monkeypatch):
+    from datetime import date
+    import core.portfolio.pipeline as pl
+    monkeypatch.setattr(pl, "_switch_eval_enabled", lambda: False)
+    rows = pl.capture_switch_evaluations(
+        _switch_advice(), _sig(), [_shelf("NEWCO", "pharma", 0.9)],
+        {"automobile": 60.0, "pharma": 5.0}, {"OLDCO"},
+        {"NEWCO": 250.0}, "u1", date(2026, 8, 20))
+    assert rows == []

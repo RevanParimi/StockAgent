@@ -1,5 +1,11 @@
 # Switch Validation and Miss Attribution — Implementation Plan
 
+> **STATUS: all 10 tasks executed 2026-08-20 on `feat/switch-validation`.**
+> Suite 2945P/12S/0F (2884 baseline + 61). Two deviations from the plan as
+> written, both recorded in the commits: a test-isolation leak this branch
+> introduced (fixed in the Task 10 commit), and `audit.switch_horizon_td`
+> added as a config key the plan had left implicit at 10.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Make the advisor's switch rule measurable by grading the candidate pairs it *evaluates and rejects*, not only the ~4% it acts on, and classify its misses into unpredictable / technical / knowledge / research.
@@ -35,7 +41,7 @@
 - Consumes: nothing.
 - Produces: `is_switch_correct(origin_excess_pct: float, dest_excess_pct: float) -> bool`; `Lane` literal gains `"switch"`; `AuditOutcome.candidate: str = ""` and `AuditOutcome.miss_class: str = ""`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Append to `tests/unit/audit/test_audit_rules.py`:
 
@@ -73,12 +79,12 @@ def test_switch_lane_and_pair_fields_exist_on_the_outcome_row():
     assert row.miss_class == "knowledge"
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `python -m pytest tests/unit/audit/test_audit_rules.py -q`
 Expected: FAIL — `ImportError: cannot import name 'is_switch_correct'`, and a pydantic `ValidationError` on `lane="switch"`.
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 Append to `core/audit/rules.py`:
 
@@ -114,12 +120,12 @@ and after the `conviction` field:
     miss_class: str = ""           # attribution bucket; "" when not a miss
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `python -m pytest tests/unit/audit/ -q`
 Expected: PASS, no other audit test disturbed.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add core/audit/rules.py src/backend/shared/schemas/audit.py tests/unit/audit/test_audit_rules.py
@@ -139,7 +145,7 @@ git commit -m "feat(audit): grade a switch on the pair, not on the origin alone"
 - Consumes: Task 1's schema module (no code dependency).
 - Produces: `SwitchEvaluation` pydantic model; `PortfolioStore.append_switch_evaluations(rows: list[SwitchEvaluation]) -> None`; `PortfolioStore.load_switch_evaluations(limit: int = 5000) -> list[SwitchEvaluation]`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `tests/unit/test_portfolio_store_switch_evals.py`:
 
@@ -187,12 +193,12 @@ def test_empty_batch_writes_nothing(tmp_path):
     assert store.load_switch_evaluations() == []
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `python -m pytest tests/unit/test_portfolio_store_switch_evals.py -q`
 Expected: FAIL — `ImportError: cannot import name 'SwitchEvaluation'`.
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 Append to `src/backend/shared/schemas/portfolio.py`:
 
@@ -261,12 +267,12 @@ and after `load_advice` (`:246`):
         return out
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `python -m pytest tests/unit/test_portfolio_store_switch_evals.py tests/unit/test_portfolio_store.py -q`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/backend/shared/schemas/portfolio.py core/portfolio/store.py tests/unit/test_portfolio_store_switch_evals.py
@@ -288,7 +294,7 @@ git commit -m "feat(portfolio): add the append-only switch-evaluation ledger"
 **Reason vocabulary** — exactly the four existing `continue` branches, same order:
 `already_held`, `sector_not_underweight`, `conviction_gap_too_small`, `not_best`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Append to `tests/unit/test_portfolio_advisor_switch.py`:
 
@@ -354,12 +360,12 @@ def test_evaluations_are_produced_even_when_nothing_qualifies():
     assert rows["HEAVY"]["reason"] == "sector_not_underweight"
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `python -m pytest tests/unit/test_portfolio_advisor_switch.py -q`
 Expected: FAIL — `ImportError: cannot import name 'evaluate_switch_candidates'`.
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 Replace `_best_switch_candidate` in `core/portfolio/advisor.py` with:
 
@@ -426,12 +432,12 @@ def _best_switch_candidate(signals: AdvisorSignals, shelf_ideas, sector_weights:
 > which idea is "first" on a tie only when `max_candidates` truncates — that is
 > the intended new bound, not a regression.
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `python -m pytest tests/unit/test_portfolio_advisor_switch.py tests/unit/test_portfolio_pipeline.py tests/unit/test_autopilot_executor_switch.py -q`
 Expected: PASS — all pre-existing switch tests included, since `decide()` must be behaviourally unchanged.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add core/portfolio/advisor.py tests/unit/test_portfolio_advisor_switch.py
@@ -459,7 +465,7 @@ git commit -m "feat(advisor): return the whole switch evaluation, not just the w
 | `advisor.switch_eval_enabled` | `true` |
 | `advisor.switch_eval_max_candidates` | `5` |
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Append to `tests/unit/test_portfolio_pipeline.py`:
 
@@ -536,12 +542,12 @@ def test_capture_is_a_no_op_when_the_flag_is_off(monkeypatch):
     assert rows == []
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `python -m pytest tests/unit/test_portfolio_pipeline.py -q`
 Expected: FAIL — `ImportError: cannot import name 'capture_switch_evaluations'`.
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 Add to `core/portfolio/pipeline.py` beside `advice_alert_fields`:
 
@@ -640,12 +646,12 @@ Add to `config.yaml` under `advisor:`:
 
 Add both rows to the config table in `CODEBASE.md`.
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `python -m pytest tests/unit/test_portfolio_pipeline.py tests/unit/test_autopilot_pipeline.py -q`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add core/portfolio/pipeline.py config.yaml CODEBASE.md tests/unit/test_portfolio_pipeline.py
@@ -673,7 +679,7 @@ git commit -m "feat(pipeline): capture every switch pair the advisor evaluates"
 | `audit.switch_lane_enabled` | `true` |
 | `audit.switch_grade_max_rows_per_run` | `2000` |
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `tests/unit/audit/test_audit_switch_lane.py`:
 
@@ -771,12 +777,12 @@ def test_the_lane_is_registered_with_grade_due():
     assert "switch" in _LANE_KWARGS
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `python -m pytest tests/unit/audit/test_audit_switch_lane.py -q`
 Expected: FAIL — `ImportError: cannot import name 'grade_switch_lane'`.
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 Add to `core/audit/outcomes.py`, after `grade_shelf_lane`:
 
@@ -877,12 +883,12 @@ Add to `config.yaml` under `audit:`:
 
 Add both rows to the `CODEBASE.md` config table.
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `python -m pytest tests/unit/audit/ -q`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add core/audit/outcomes.py config.yaml CODEBASE.md tests/unit/audit/test_audit_switch_lane.py
@@ -901,7 +907,7 @@ git commit -m "feat(audit): add the switch lane — grade the pair over the same
 - Consumes: `AuditOutcome` rows with `lane="switch"`.
 - Produces: `stride_subsample(rows: Iterable[AuditOutcome], horizon: int) -> list[AuditOutcome]`; `mean_edge(rows: Iterable[AuditOutcome], horizon: int | None = None) -> float | None`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Append to `tests/unit/audit/test_audit_metrics.py`:
 
@@ -957,12 +963,12 @@ def test_stride_admits_the_next_row_once_the_window_has_passed():
     assert len(stride_subsample(rows, horizon=10)) == 2
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `python -m pytest tests/unit/audit/test_audit_metrics.py -q`
 Expected: FAIL — `ImportError: cannot import name 'mean_edge'`.
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 Append to `core/audit/metrics.py`:
 
@@ -1016,12 +1022,12 @@ def stride_subsample(
     return picked
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `python -m pytest tests/unit/audit/ -q`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add core/audit/metrics.py tests/unit/audit/test_audit_metrics.py
@@ -1043,7 +1049,7 @@ git commit -m "feat(audit): pair edge + a non-overlapping stride for switch rows
 
 Storage: `data/rl/news_availability.jsonl`, append-only.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `tests/unit/audit/test_audit_evidence.py`:
 
@@ -1088,12 +1094,12 @@ def test_a_corrupt_line_does_not_break_the_index(tmp_path):
     assert len(news_availability_index(path=str(p))) == 1
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `python -m pytest tests/unit/audit/test_audit_evidence.py -q`
 Expected: FAIL — `ModuleNotFoundError: No module named 'core.audit.evidence'`.
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 Create `core/audit/evidence.py`:
 
@@ -1181,12 +1187,12 @@ In `core/intelligence/rl/workflows/daily_review.py`, immediately before the
 > the review date in that scope before pasting — this function is long and the
 > names differ from the parameter names in places. Do not guess; read it.
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `python -m pytest tests/unit/audit/test_audit_evidence.py tests/unit/intelligence/rl/ -q`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add core/audit/evidence.py core/intelligence/rl/workflows/daily_review.py tests/unit/audit/test_audit_evidence.py
@@ -1208,7 +1214,7 @@ git commit -m "feat(audit): persist per-symbol news availability so misses can b
 
 **Config added here:** `audit.shock_atr_mult` (default `3.0`).
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `tests/unit/audit/test_audit_attribution.py`:
 
@@ -1273,12 +1279,12 @@ def test_distribution_excludes_unknown_evidence_from_the_denominator():
     assert dist["n_classified"] == 2      # the denominator for any percentage
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `python -m pytest tests/unit/audit/test_audit_attribution.py -q`
 Expected: FAIL — `ModuleNotFoundError: No module named 'core.audit.attribution'`.
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 Create `core/audit/attribution.py`:
 
@@ -1346,12 +1352,12 @@ Add to `config.yaml` under `audit:`:
 
 Add the row to the `CODEBASE.md` config table.
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `python -m pytest tests/unit/audit/ -q`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add core/audit/attribution.py config.yaml CODEBASE.md tests/unit/audit/test_audit_attribution.py
@@ -1379,7 +1385,7 @@ git commit -m "feat(audit): classify switch misses into shock / technical / know
 | `audit.per_trigger_horizon_td` | `10` |
 | `audit.conviction_horizon_td` | `10` |
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Append to `tests/unit/audit/test_audit_report.py`:
 
@@ -1461,12 +1467,12 @@ def test_per_trigger_horizon_is_configurable(monkeypatch):
     assert "stop_breach" in build_report(store=_Store([row]))["per_trigger"]
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `python -m pytest tests/unit/audit/test_audit_report.py -q`
 Expected: FAIL — `KeyError: 'switch_rule'`, and the per-trigger test fails because the horizon is hardcoded to 60.
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 In `core/audit/report.py`, add near the top:
 
@@ -1545,12 +1551,12 @@ Add to `config.yaml` under `audit:`:
 
 Add all three rows to the `CODEBASE.md` config table.
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `python -m pytest tests/unit/audit/ -q`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add core/audit/report.py config.yaml CODEBASE.md tests/unit/audit/test_audit_report.py
@@ -1571,7 +1577,7 @@ git commit -m "feat(audit): report the switch rule on a strided sample, and unem
 - Consumes: `build_report` (Task 9).
 - Produces: a check registered as `switch_lane_has_sample`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Append to `tests/unit/ops/test_watchdog_checks.py`:
 
@@ -1615,12 +1621,12 @@ def test_the_milestone_entry_is_monthly():
     assert entry.check == "switch_lane_has_sample"
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `python -m pytest tests/unit/ops/test_watchdog_checks.py -q`
 Expected: FAIL — check not registered; `StopIteration` on the registry lookup.
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 In `core/ops/watchdog/checks.py`:
 
@@ -1673,12 +1679,12 @@ Add to `config/milestones.yaml` under `invariants:`:
     docs: docs/superpowers/specs/2026-08-20-switch-validation-design.md
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `python -m pytest tests/unit/ops/ -q`
 Expected: PASS.
 
-- [ ] **Step 5: Run the FULL suite and commit**
+- [x] **Step 5: Run the FULL suite and commit**
 
 ```bash
 python -m pytest -q

@@ -521,7 +521,7 @@ atlas:
   # Railway", which sent several sessions hunting for a dashboard step that
   # was never necessary.)
   # Rollback is the same edit in reverse.
-  enabled: false
+  enabled: true
   db_path: "data/atlas.db"
   feedback:                      # BP5 accept/override events (Atlas C8)
     aggregation_floor_users: 20  # refuse to return an aggregate below this many distinct users (privacy)

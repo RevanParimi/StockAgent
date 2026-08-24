@@ -51,16 +51,33 @@ own task card; it does not need the rest of the document.
 
 ### 2.0 Claim provenance — read this before citing anything below
 
-This spec has already produced **four** wrong claims that survived into a draft.
-All four came from the same mistake: reasoning from something plausible instead
-of measuring it. They are listed here as a standing warning, not as history.
+This spec has already produced **nine** claims that did not survive
+verification. They came from one mistake repeated: reasoning from something
+plausible instead of measuring it. Listed as a standing warning, not history.
 
-| Wrong claim | What it was based on | What measurement showed |
+**Outright wrong:**
+
+| Claim | Based on | Measurement |
 |---|---|---|
 | "Dimension scores collapsed to 0.65" | local `run_summaries.jsonl` | dev traffic — 547/548 runs were MARUTI smoke tests. Prod: 0/13 degenerate |
 | "The weights are inert" | the collapse claim above | prod corr(accuracy, weight) = **+0.625**, positive 16/16 stores |
-| "The legacy pool never fired in prod" | `fallback_events.jsonl` absent | it fired 2026-07-11; the evidence file was eaten by `except Exception: pass` |
-| "Tracebacks are dropped by the log handler" | the `"%(message)s"` formatter | **false** — `Formatter.format()` appends `exc_text`; 18 rows carry tracebacks |
+| "The legacy pool never fired in prod" | `fallback_events.jsonl` absent | fired 2026-07-11 (276 failures); evidence eaten by `except Exception: pass` |
+| "Tracebacks are dropped by the handler" | the `"%(message)s"` formatter | **false** — `Formatter.format()` appends `exc_text`; 18 rows carry them |
+| "`quoteType` is unused" | assumed alongside the other yfinance fields | one call site, `ui_data.py:2343` |
+
+**Wrong scope or source:**
+
+| Claim | Corrected to |
+|---|---|
+| "`has_real_data` consumed once repo-wide" | 7 sites. Only `SectorDataBundle`'s is inert — `base_agent`'s **gates** (skips the LLM). The unified redesign *removed* a gate |
+| "41 of 41 generic tickers" | that was the LOCAL dir; prod is **73 of 73** |
+| "`DLF` is the duplicate key" | **two** duplicates — `TORNTPOWER` (benign) and `DLF` (real conflict) |
+
+**Unverified, presented as fact:**
+
+| Claim | Status |
+|---|---|
+| "the fallback costs 6-8x Serper" | a docstring figure, and **unmeasurable** — `api_usage_events.jsonl` starts after the only event. Measured instead: mean **3.19 serper/run** over 382 runs |
 
 **Rules for every task card in this document:**
 

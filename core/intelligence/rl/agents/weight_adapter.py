@@ -455,6 +455,25 @@ class WeightAdapter:
                 deltas[agent] += _BOOST * prop_scale
             elif hit_rate <= effective_penalty:
                 deltas[agent] += _PENALTY * prop_scale
+            elif (agent_w == 0.0
+                  and getattr(settings, "RL_ZERO_WEIGHT_RECOVERY_ENABLED", True)
+                  and acc.direction_hit_rate() >= effective_boost):
+                # Zero-weight recovery. The blended hit_rate lands in the
+                # (penalty, boost) dead band — normally harmless hysteresis, but
+                # an agent already pinned at 0.0 has no penalty left to take and
+                # no boost to lift it, so it stays silent forever. The blend is
+                # calibration-dragged: prod 2026-08-24 had KPITTECH
+                # pattern_analysis at 7/7 on direction (blended 0.57) sitting at
+                # 0.0 for 25 weight versions. Read the RAW direction rate to
+                # decide the escape; deliberately scoped to exactly 0.0 so no
+                # normally-weighted agent changes behaviour.
+                deltas[agent] += _BOOST * prop_scale
+                logger.info(
+                    "[WeightAdapter] %s: zero-weight recovery — blended "
+                    "hit_rate=%.2f is in the dead band but direction rate "
+                    "%.2f >= %.2f; boosting off the floor.",
+                    agent, hit_rate, acc.direction_hit_rate(), effective_boost,
+                )
 
             # Bias penalty — only for the blamed agent on penalisable misses
             if agent == todays_primary_miss and todays_miss_type not in NO_PENALTY_MISS_TYPES:

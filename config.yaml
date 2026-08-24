@@ -303,6 +303,13 @@ rl:
   # row is recorded as data_stale and skipped by the weight adapter so it
   # never reaches the learned state. Raise very high to disable.
   absurd_price_error_pct: 50.0
+  # -- Zero-weight recovery -------------------------------------------------
+  # hit_rate() blends calibration at calibration_weight, and calibration hits
+  # are sparse, so a directionally excellent agent can land in the
+  # (weight_penalty_hit_rate, weight_boost_hit_rate) dead band. At a normal
+  # weight that is harmless hysteresis; at exactly 0.0 it is permanent silence.
+  # When pinned at 0.0, let the RAW direction hit rate earn the boost back.
+  zero_weight_recovery_enabled: true
   # -- Provenance on learned artifacts (F3 sensing fix) ---------------------
   # Lessons and dossier observations keep the dated headlines they were learned
   # from, so an audit can tell evidence-grounded learning from a claim written

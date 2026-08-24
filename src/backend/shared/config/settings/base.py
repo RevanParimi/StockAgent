@@ -627,6 +627,20 @@ RL_MACRO_FALLBACK_MAX_ITEMS: int = cfg("rl.macro_fallback_max_items", fallback=5
 RL_ABSURD_PRICE_ERROR_PCT: float = cfg("rl.absurd_price_error_pct", fallback=50.0)
 
 # ---------------------------------------------------------------------------
+# Zero-weight recovery. hit_rate() blends calibration at RL_CALIBRATION_WEIGHT,
+# and calibration hits are sparse (typically 1/7), which drags directionally
+# excellent agents into the (WEIGHT_PENALTY_HIT_RATE, WEIGHT_BOOST_HIT_RATE)
+# dead band. Harmless hysteresis at a normal weight; permanent silence at 0.0,
+# where there is no boost to lift the agent and no penalty left to apply.
+# Prod 2026-08-24: KPITTECH pattern_analysis sat at 0.0 for 25 weight versions
+# on a 7/7 direction record. When an agent is pinned at exactly 0.0 and its RAW
+# direction hit rate earns a boost, let it climb back. false = pre-fix
+# behaviour. config.yaml-only (no env).
+# ---------------------------------------------------------------------------
+RL_ZERO_WEIGHT_RECOVERY_ENABLED: bool = cfg(
+    "rl.zero_weight_recovery_enabled", fallback=True)
+
+# ---------------------------------------------------------------------------
 # F3 — provenance retention on learned artifacts. Lessons and dossier
 # observations keep the dated headlines they were learned from ("2026-08-04 —
 # headline"), so an audit can separate evidence-grounded learning from claims

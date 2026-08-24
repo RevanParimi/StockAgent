@@ -297,6 +297,12 @@ rl:
   # defaulting to model_bias. false = pre-F2 behaviour (blind stays blind).
   macro_fallback_context_enabled: true
   macro_fallback_max_items: 5
+  # -- Absurd price-error guard --------------------------------------------
+  # |price_error_pct| beyond this is a broken INPUT, not a forecast miss (a
+  # stale envelope across a split/corporate action, or a bad fetch). Such a
+  # row is recorded as data_stale and skipped by the weight adapter so it
+  # never reaches the learned state. Raise very high to disable.
+  absurd_price_error_pct: 50.0
   # -- Provenance on learned artifacts (F3 sensing fix) ---------------------
   # Lessons and dossier observations keep the dated headlines they were learned
   # from, so an audit can tell evidence-grounded learning from a claim written

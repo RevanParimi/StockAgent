@@ -991,6 +991,34 @@ def run_daily_review(
                 fb_output = fb_output.model_copy(update={"miss_type": "direction_flip"})
 
     # ------------------------------------------------------------------ #
+    # Absurd price-error guard: a broken INPUT is not a forecast miss.
+    #
+    # TATAMOTORS 2026-06-01..06-11 reviewed predicted ~5920 against actual
+    # ~380 — a stale pre-split envelope ramping +0.99/day. All nine rows were
+    # classified `magnitude` with direction_correct=True, so a corporate-action
+    # fault trained the weights at 0.25x and polluted agent_accuracy.avg_error
+    # for nine sessions before the envelope was regenerated on 06-12.
+    #
+    # No model predicts 15x wrong. Past the threshold, record the row as
+    # `data_stale` (a NO_PENALTY miss type) and skip the weight update, so the
+    # garbage never reaches the learned state. Deliberately placed after the
+    # external_shock cap so the reclassification is the LAST word on miss_type.
+    # ------------------------------------------------------------------ #
+    absurd_error = False
+    _absurd_threshold = getattr(settings, "RL_ABSURD_PRICE_ERROR_PCT", 50.0)
+    if abs(price_error_pct) > _absurd_threshold:
+        absurd_error = True
+        logger.error(
+            "[daily_review] %s: |price_error|=%.2f%% exceeds the %.1f%% absurd "
+            "threshold — predicted=%.4f actual=%.4f. Treating as data_stale and "
+            "SKIPPING the weight update; this is a stale envelope or a bad "
+            "fetch, not a model miss.",
+            ticker, abs(price_error_pct), _absurd_threshold,
+            predicted_close, actual_close,
+        )
+        fb_output = fb_output.model_copy(update={"miss_type": "data_stale"})
+
+    # ------------------------------------------------------------------ #
     # Step 5: WeightAdapter — adjust weights (miss_type-aware), save
     #
     # Pre-load IIMA factor regime for regime-aware penalty scaling.
@@ -1063,9 +1091,11 @@ def run_daily_review(
     feedback_log.entries.append(provisional)
     feedback_log.entries.sort(key=lambda e: e.date)
 
-    if paper:
+    if paper or absurd_error:
         # PAPER-LANE ISOLATION: no weight training on paper ideas — junk
         # discovery names must never move learned weights (spec §6.3).
+        # absurd_error: the row describes a broken input, not model behaviour —
+        # training on it is what let the TATAMOTORS split corrupt nine sessions.
         updated_wm = wm
         new_weight_version = f"v{wm.weight_version}"
     else:

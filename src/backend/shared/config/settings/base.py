@@ -616,6 +616,17 @@ RL_MACRO_FALLBACK_CONTEXT_ENABLED: bool = cfg(
 RL_MACRO_FALLBACK_MAX_ITEMS: int = cfg("rl.macro_fallback_max_items", fallback=5)
 
 # ---------------------------------------------------------------------------
+# Absurd price-error guard. |price_error_pct| beyond this is not a forecast
+# miss — no model predicts 15x wrong — it is a stale envelope across a
+# corporate action, a split, or a bad fetch. TATAMOTORS 2026-06-01..06-11 ran
+# predicted ~5920 against actual ~380 for nine sessions and every row was
+# learned from as `magnitude`. Above the threshold the miss is recorded as
+# `data_stale` (NO_PENALTY) and the weight update is skipped entirely.
+# Set very high to disable. config.yaml-only (no env).
+# ---------------------------------------------------------------------------
+RL_ABSURD_PRICE_ERROR_PCT: float = cfg("rl.absurd_price_error_pct", fallback=50.0)
+
+# ---------------------------------------------------------------------------
 # F3 — provenance retention on learned artifacts. Lessons and dossier
 # observations keep the dated headlines they were learned from ("2026-08-04 —
 # headline"), so an audit can separate evidence-grounded learning from claims

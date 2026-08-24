@@ -49,6 +49,33 @@ good run from a hollow one — and neither can we.
 Every task in this PI cites this section. A task chat should read §2 and its
 own task card; it does not need the rest of the document.
 
+### 2.0 Claim provenance — read this before citing anything below
+
+This spec has already produced **four** wrong claims that survived into a draft.
+All four came from the same mistake: reasoning from something plausible instead
+of measuring it. They are listed here as a standing warning, not as history.
+
+| Wrong claim | What it was based on | What measurement showed |
+|---|---|---|
+| "Dimension scores collapsed to 0.65" | local `run_summaries.jsonl` | dev traffic — 547/548 runs were MARUTI smoke tests. Prod: 0/13 degenerate |
+| "The weights are inert" | the collapse claim above | prod corr(accuracy, weight) = **+0.625**, positive 16/16 stores |
+| "The legacy pool never fired in prod" | `fallback_events.jsonl` absent | it fired 2026-07-11; the evidence file was eaten by `except Exception: pass` |
+| "Tracebacks are dropped by the log handler" | the `"%(message)s"` formatter | **false** — `Formatter.format()` appends `exc_text`; 18 rows carry tracebacks |
+
+**Rules for every task card in this document:**
+
+1. **Label the source of every number** — `PROD`, `LOCAL`, `CODE`, or
+   `INFERRED`. An unlabelled number is treated as unverified.
+2. **A missing file is not evidence of absence.** Three of the four errors
+   above came from concluding something never happened because its log was
+   missing. Check a second, independent source before claiming a negative.
+3. **Local `logs/` is dev traffic.** It is dominated by MARUTI and TESTSHOCK
+   smoke runs. Never generalise from it to prod behaviour.
+4. **Code comments are not measurements.** The "6-8x Serper" figure (§2.5)
+   is an example: it lives in a docstring and remains unverified.
+5. **If a claim cannot be measured, say so in the card** rather than
+   softening the wording until it sounds measured.
+
 ### 2.1 Sector routing (F1)
 
 Reproducible now, `python` with `src` on the path:
@@ -65,10 +92,14 @@ SOMETHINGNEW  automobile        AutomobileAgentOrchestrator     AutomobileAgentO
 
 - `TITAN` (jewellery) and any unrecognised string resolve to `automobile`
   via the `resolve()` fallback at `registry.py:249`.
-- 41 of 41 tickers the RL loop files under `predictions/generic/` would run
-  on the automobile graph via the API path.
-- `TICKER_SECTOR` has 203 literal entries but 201 distinct keys. `DLF` is
-  mapped twice — `infra`, then `realestate`; the later silently wins.
+- **73 of 73** tickers the RL loop files under `predictions/generic/` in
+  **prod** would run on the automobile graph via the API path. (An earlier
+  draft said "41 of 41" — that was the *local* generic directory. Prod is the
+  number to cite.)
+- `TICKER_SECTOR` has 203 literal entries but 201 distinct keys (AST-verified,
+  not regex). Two keys are duplicated: `TORNTPOWER` (both -> `renewable_energy`,
+  **benign**) and **`DLF` (-> `infra`, then `realestate`; realestate silently
+  wins)** — only `DLF` is a real conflict.
 
 **Prod prediction store, 2026-08-24:**
 
@@ -172,9 +203,16 @@ C) every dimension sharing ONE accuracy value   4/20   (nothing to learn from)
 
 ### 2.3 Observability (F3)
 
-- `bundle.has_real_data` consumed once, at
-  `src/backend/shared/pipeline/base_orchestrator.py:509`, in a log line.
-  Nothing branches on it.
+- **`SectorDataBundle.has_real_data` (the unified path's flag)** is consumed
+  once, at `src/backend/shared/pipeline/base_orchestrator.py:509`, in a log
+  line. Nothing branches on it.
+  ⚠ **Scope this claim precisely.** `base_agent.py` has a *separate* local
+  `has_real_data` from `ContextBuilder().build()`, and it **does** gate — at
+  lines 100 and 144 it skips the LLM entirely and returns a neutral 0.5 with a
+  WARNING. So the **legacy** path had a data gate and the **unified** path
+  (2026-06-12) dropped it. B2/B5 are therefore *restoring a gate that used to
+  exist*, not inventing one. Do not claim "consumed once repo-wide" — a grep
+  for `has_real_data` returns 7 sites.
 - `has_real_data` is `live_count >= 3` of 10 sections — it reports `True`
   when 7 sections are dead.
 - `api_calls_made` is hardcoded `{"serper": 3, "tavily": 1}`. All 13 prod
@@ -195,8 +233,11 @@ SUZLON  verdict=BUY  errors=[sentiment_policy: missing_in_unified_response,
 - `LOGS_DIR` has two different defaults for the same env var:
   `run_logger.py:31` -> `"logs"` (ephemeral container FS);
   `api_usage.py:49` -> `"data/logs"` (Railway volume). It is not set in prod.
-  Result: prod `run_summaries.jsonl` holds **13 rows**, all from after
-  today's redeploy, while `api_usage_events.jsonl` holds 198 KB.
+  Result: prod `run_summaries.jsonl` holds **13 rows, all timestamped
+  2026-08-24 (11:01-11:22 UTC)** `[PROD]`, while volume-backed
+  `api_usage_events.jsonl` holds 198 KB going back to 2026-07-31. (That the
+  13 rows begin at a redeploy boundary is an *inference* from the ephemeral
+  path — the directly verified fact is that only one day survives.)
 - `log_llm_call` mirrors to `telemetry.db`; **`log_run_summary` does not.**
 - Static scan: **209 of 680** exception handlers neither log nor re-raise.
   Worst files: `services/api/routes/ui_data.py` (36),
@@ -223,13 +264,90 @@ Recorded so no later session re-derives them:
 - yfinance 1.3.0 does not raise for an unknown symbol; it returns a
   one-field dict. So a bad ticker, a 429, and a schema change are one bit.
 - `regularMarketTime`, `marketState`, `exchange`, `currency`, `quoteType` are
-  all present in `.info` and all unused.
+  all present in `.info` `[PROD probe]`. `regularMarketTime` and `marketState`
+  are **unused anywhere in the repo** `[CODE]`; `quoteType` has exactly one
+  use, at `services/api/routes/ui_data.py:2343` — none of them are used by
+  `_verify_ticker`.
 - Symbol overrides verified working: `TATAMOTORS -> TMPV.NS`,
   `TVSMOTORS -> TVSMOTOR.NS`, `CANARABANK -> CANBK.NS`, `HEXAWARE -> HEXT.NS`.
 - All five sectors are on the unified path
   (`unified_analyst.sectors: "automobile,banking_bfsi,it_sector,renewable_energy,generic"`).
-  `data/rl/fallback_events.jsonl` **does not exist in prod** — the legacy
-  LangGraph worker pool has never fired.
+  ⚠ **CORRECTED 2026-08-24 — an earlier draft of this spec claimed the legacy
+  worker pool "has never fired in prod". That was WRONG.** It was inferred from
+  `data/rl/fallback_events.jsonl` being absent. `telemetry.db.app_logs` proves
+  otherwise:
+
+```
+graphs.nodes ERROR rows by day:  2026-07-11 -> 276   (and no other day)
+  [generic/business]     agent failed: LLM call failed after 3 attempts
+  [generic/fundamentals] agent failed: LLM call failed after 3 attempts
+  [generic/technical]    agent failed: LLM call failed after 3 attempts
+```
+
+  The pool fired on **2026-07-11**, on `generic`, and then failed on every
+  agent. The evidence file is missing because `record_fallback` is wrapped in
+  a bare `except Exception: pass` at `base_orchestrator.py:556-558` — **the
+  observability of the fallback was destroyed by one of the 209 silent
+  handlers**, and the event went unnoticed for six weeks. This is the single
+  best argument for WS-E.
+
+### 2.6 Error capture — what already exists (WS-E)
+
+**`SQLiteLogHandler(level=WARNING)` is already attached to the root logger**
+at `services/api/server.py:75` and mirrors WARNING+ records into the
+`app_logs` table of volume-backed `data/telemetry.db`. `[CODE]`
+One deliberate exclusion: `SQLiteLogHandler.emit` drops records whose logger
+is `log_store` itself (recursion guard), so that module's own warnings are
+invisible to this pipeline — E2 must not treat its silence as health.
+
+**PROD, 2026-08-24:**
+
+```
+app_logs: 4,254 rows   2026-07-02 -> 2026-08-24   (53 days, survives redeploys)
+WARNING 3,006 · ERROR 1,248
+
+top sources:
+  core.intelligence.rl.agents.feedback_agent    WARNING  619
+  yfinance                                      ERROR    445
+  backend.shared.pipeline.base_agent            ERROR    276
+  backend.shared.pipeline.graphs.nodes          ERROR    276
+  core.intelligence.rl.stores.offmarket_fetcher WARNING  263
+
+daily volume: ERROR 0-18/day, WARNING 6-42/day
+```
+
+That daily volume is what makes a digest practical — a normal day collapses to
+single-digit distinct fingerprints, and 2026-07-11's 276 would have been
+unmissable.
+
+**No Railway auth is needed for the scheduled job.** `[CODE]` A repo-wide grep
+for `RAILWAY_TOKEN|RAILWAY_API|railway login|railway logs|railway ssh` across
+`services/ core/ src/ scripts/` returns **two hits, both in comments**. No
+application code authenticates to Railway. `ops_watchdog` already runs daily
+at 06:30 IST reading `Path("data")` and delivering push/email with zero
+Railway credentials — WS-E is the same shape as a job already in production.
+
+`railway login` remains required for **human, outside-in** access
+(`railway ssh`, `railway logs`) — that is not the automation path, and
+scripting it would be a defect: CLI sessions expire, so a laptop cron would
+go blind silently.
+
+**Three verified gaps** in the existing capture:
+
+1. **Tracebacks are absent from 99.6% of rows — but not because of the
+   handler.** `[PROD+CODE]` Only 18 of 4,254 rows contain a traceback.
+   `Formatter.format()` *does* append `exc_text`; the gap is at the call
+   sites: **24** uses of `exc_info=` against **194** sites that pass the
+   exception as a `%s` string arg (`logger.error("...: %s", exc)`).
+   The fix belongs at hot-path call sites, not in the handler.
+2. **The handler is attached in exactly one place** — `server.py:75`.
+   `[CODE]` Prod impact is limited: the APScheduler jobs run in-process with
+   the API server and are covered. Uncovered are manually-invoked scripts
+   (`railway ssh python scripts/...`). Real, but low-severity — do not
+   overstate it.
+3. **No run correlation.** `[CODE]` The schema is
+   `app_logs(id, ts, level, logger, message)` — there is no `run_id` or
+   `ticker` column, so an error cannot be tied back to the run that caused it.
 
 ---
 
@@ -378,11 +496,12 @@ WS-B  ---   B1 LOGS_DIR fix       B3 watchdog checks                          B5
             B2 data_health emit   B4 real API counts
 WS-C  ---   C1 grading diagnostic C2 grading fix spec   C3 grading fix (dark) C4 recovery validation
 WS-D  ---                         D1 TickerVerdict      D2 fallback retire    D3 except-handler gate
+WS-E  ---   E1 capture gaps       E2 fingerprint+digest E3 watchdog surface   E4 error backlog
 ```
 
 **Dependency edges that matter:**
 `B2 -> B3`, `B2 -> B5`, `B2 -> C2`, `A1 -> A2`, `A2 -> A3`, `A3 -> A4`,
-`C1 -> C2 -> C3 -> C4`, `B4 -> D2`.
+`C1 -> C2 -> C3 -> C4`, `B4 -> D2`, `E1 -> E2 -> E3 -> E4`.
 
 **Sprint goals**
 - **S1 — Stop the bleed and switch the lights on.** No more duplicate stores
@@ -622,6 +741,13 @@ date-bound obligation.
 - **Why:** §2.5. `_verify_ticker` returns one bit for four distinct
   conditions, and accepts `previousClose` alone so a delisted stock passes.
   A false negative silently costs a Serper call plus a second LLM call.
+  **Measured cost (382 prod runs):** 41 runs (**10.7%**) exceed the 3-call
+  baseline, totalling **75 excess Serper calls** — extrapolating, ~90/month,
+  about **5.6%** of August's 1607 spend. **Measured cause** (`app_logs`,
+  logger `yfinance`, n=445): 206x "Quote not found", **123x "Unauthorized /
+  Invalid Crumb"**, 94x "possibly delisted", 8x "unable to access this
+  feature". The 123 crumb failures are transient upstream errors that today
+  are indistinguishable from a bad ticker.
 - **Files:** `src/backend/shared/pipeline/base_orchestrator.py:353-473`
 - **Approach:** Return an enum — `ok` | `stale` | `wrong_market` | `no_data`
   | `upstream`. Use `regularMarketTime` for staleness (N trading days, via
@@ -683,8 +809,14 @@ date-bound obligation.
 
 - **Sprint** 3 · **Workstream** D · **Depends on** B4
 - **Chat opener:** `Work task D2 from docs/superpowers/specs/2026-08-24-three-loops-pi-design.md`
-- **Why:** §2.5. Never fired in prod; costs 6-8x Serper against a budget at
-  1607/2500; all five sectors are unified.
+- **Why:** §2.5. Fired once (2026-07-11) and failed completely; all five
+  sectors are unified.
+  ⚠ **The "6-8x Serper" figure is UNVERIFIED** — it comes from a code comment
+  in `fallback_events.py`, not a measurement, and it cannot be checked from
+  prod: `api_usage_events.jsonl` starts **2026-07-31**, after the only
+  fallback event. Do not cite it as fact. What *is* measured (382 runs,
+  2026-07-31..2026-08-24): the unified path costs **mean 3.19 Serper/run,
+  median 3, max 8**.
 - **Files:** `src/backend/shared/pipeline/base_orchestrator.py:552-607`,
   `src/backend/shared/pipeline/graphs/`, the per-sector agent classes
 - **Approach — in order, not all at once:**
@@ -771,6 +903,130 @@ date-bound obligation.
   record to the B2 health record.
 - **Note:** do not mass-edit all 209. Many are legitimate (wrapping a
   `progress_callback`). The allowlist is the deliverable, not a purge.
+
+---
+
+### E1 — Close the error-capture gaps
+
+- **Sprint** 1 · **Workstream** E · **Depends on** nothing
+- **Chat opener:** `Work task E1 from docs/superpowers/specs/2026-08-24-three-loops-pi-design.md`
+- **Why:** §2.6. Capture already works (4,254 prod rows over 53 days). Three
+  verified gaps stop it being usable as a diagnosis surface.
+- **Files:** `services/data/stores/log_store.py`, `services/api/server.py`,
+  plus hot-path call sites in `base_orchestrator.py`, `bundle_builder.py`,
+  `unified_analyst.py`, `prediction_store.py`
+- **Approach:**
+  1. Add `run_id` and `ticker` columns to `app_logs` (nullable; existing rows
+     keep NULL — no migration of history). Populate from a `contextvars`
+     run context set in `analyse()`/`analyse_async()`.
+  2. Add `exc_info=True` at **hot-path** error sites only. **Do not touch all
+     194** — pick the analysis path first and measure the traceback rate
+     before and after.
+  3. Extract handler attachment into one `configure_logging()` used by
+     `server.py` and by standalone script entry points.
+- **Flag:** none — additive schema + logging changes.
+- **Acceptance:**
+  - New rows carry `run_id`/`ticker` when logged inside a run; NULL otherwise.
+  - Traceback-bearing rows rise measurably from the 18/4254 baseline for the
+    hot-path loggers specifically (state the before/after number).
+  - A script run via `railway ssh` produces `app_logs` rows.
+  - **Existing 4,254 rows remain readable** — a test asserts the old schema
+    still queries.
+- **Verify:** `[PROD]` after deploy, query `app_logs` for a run_id from a
+  known run and confirm its errors are linked.
+- **Rollback:** revert; the added columns are nullable and harmless if unused.
+- ⚠ **Do not claim tracebacks were "lost" or that the handler drops them.**
+  §2.0 records that as a wrong claim. The handler is fine; the call sites are
+  the gap.
+
+---
+
+### E2 — Fingerprint and digest
+
+- **Sprint** 2 · **Workstream** E · **Depends on** E1
+- **Chat opener:** `Work task E2 from docs/superpowers/specs/2026-08-24-three-loops-pi-design.md`
+- **Why:** §2.6. 4,254 raw rows are unreadable; ~10 errors/day collapse to a
+  handful of distinct causes.
+- **Files:** new `core/ops/error_digest.py`; new scheduler job in
+  `services/scheduler/python/scheduler.py` (alongside the existing 21)
+- **Approach:** Daily in-container job. Normalise each message into a
+  **fingerprint** by stripping tickers, numbers, paths, and UUIDs — the same
+  normalisation used to produce the yfinance shapes in §2.5. Classify each
+  fingerprint against a registry on the volume:
+
+```
+NEW        never seen                    -> alert
+REGRESSED  seen, quiet >= 7d, returned   -> alert
+SPIKE      count > baseline + 3 sigma    -> alert
+ONGOING    known, steady                 -> count only
+RESOLVED   absent >= 7d                  -> close
+```
+
+- **Flag:** `observability.error_digest_enabled` (dark first).
+- **Acceptance:**
+  - Replaying the 53 days of existing `app_logs` produces a stable fingerprint
+    set — **the yfinance 445 must collapse to the 4 shapes in §2.5**, and
+    2026-07-11 must surface as a SPIKE. This is the regression test: it runs
+    against real historical data, not fixtures.
+  - The digest never raises and never blocks the scheduler.
+  - Normalisation is deterministic — same input, same fingerprint.
+- **Verify:** `[PROD]` run the digest over history; confirm the 2026-07-11
+  legacy-pool event is flagged and that a normal day yields < 10 fingerprints.
+- **Rollback:** flag off; the job becomes a no-op.
+
+---
+
+### E3 — Surface the digest through the watchdog
+
+- **Sprint** 3 · **Workstream** E · **Depends on** E2
+- **Chat opener:** `Work task E3 from docs/superpowers/specs/2026-08-24-three-loops-pi-design.md`
+- **Why:** §6.3, §2.6. The alerting path already exists and is trusted; no new
+  scheduler, no new delivery channel.
+- **Files:** `core/ops/watchdog/checks.py`, `config/milestones.yaml`,
+  `tests/unit/ops/`
+- **Approach:** One `prod_error_digest` check that fires **only** on NEW,
+  REGRESSED or SPIKE. Thresholds via `cfg()`. Registry entry in the same
+  commit.
+- **Open decision — settle before building:** does the digest watch
+  **ERROR-only** (~10/day, tight) or **WARNING+** (~45/day, catches the
+  `bundle_builder` section degradations that are logged at WARNING and would
+  otherwise stay invisible even after B2)? Recommendation: **WARNING+ with
+  per-logger thresholds**, because F3's whole point is that degradations hide
+  at WARNING. Costs more tuning up front. **Confirm with Revan in the task.**
+- **Acceptance:**
+  - A quiet day produces no alert.
+  - An injected NEW fingerprint produces exactly one alert.
+  - Follows the `tests/unit/ops/conftest.py` pattern — must not assert the
+    repo deploy state.
+- **Verify:** `run_check("prod_error_digest")` against prod data.
+- **Rollback:** remove the registry entry; the check goes inert.
+
+---
+
+### E4 — The error registry as a work backlog
+
+- **Sprint** 4 · **Workstream** E · **Depends on** E3
+- **Chat opener:** `Work task E4 from docs/superpowers/specs/2026-08-24-three-loops-pi-design.md`
+- **Why:** this is the task that makes the system "grow with log data" rather
+  than merely alert. Alerting answers *did something break*; the registry
+  answers *what should we fix next*.
+- **Files:** the E2 registry, plus `GET /ops/errors` in `services/api/routes/`
+  and `scripts/prod_errors.py`
+- **Approach:** Each fingerprint carries `first_seen`, `last_seen`, `count`,
+  `trend`, `status` (`new` | `triaged` | `wontfix` | `fixed`), and an optional
+  linked task id. Expose it via an endpoint authenticated with **the app's own
+  auth** (the M0 layer, `AUTH_REQUIRED`) — **not** Railway credentials. A
+  small local script fetches and renders it.
+- **Acceptance:**
+  - The endpoint requires auth and returns the ranked registry.
+  - `scripts/prod_errors.py` prints a ranked digest with no Railway CLI
+    involvement.
+  - Marking a fingerprint `fixed` suppresses it until it REGRESSES.
+- **Verify:** fetch from a local machine with only app credentials; confirm no
+  `railway` binary is invoked.
+- **Rollback:** the endpoint is read-only and additive; remove the route.
+- **Security:** this repo is public and the endpoint exposes prod error text —
+  it must be auth-gated, and the digest must not be committed to the repo.
 
 ---
 

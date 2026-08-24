@@ -23,13 +23,13 @@ from datetime import date
 from core.config import settings
 from services.api.log_buffer import load_managed_tickers, save_managed_tickers
 from backend.shared.data.fetchers.symbol_resolver import resolve_company_name
+from backend.sectors.registry import NATIVE_SECTORS
 
 logger = logging.getLogger(__name__)
 
-# Sectors with a hand-built native graph — mirrors sector_router.NATIVE_SECTORS.
-NATIVE_SECTORS: frozenset[str] = frozenset(
-    {"automobile", "banking_bfsi", "it_sector", "renewable_energy"}
-)
+# NATIVE_SECTORS is imported from the registry, not re-declared: this module
+# used to hand-mirror sector_router.NATIVE_SECTORS, and PI task A1 collapsed
+# every sector map onto the registry so a sector cannot be half-added.
 # Back-compat alias (Phase A name; portfolio_api and older tests import it).
 SUPPORTED_SECTORS = NATIVE_SECTORS
 

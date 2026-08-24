@@ -470,13 +470,26 @@ Source: `src/backend/sectors/registry.py`. Toggle state loaded from `config/sect
 
 ### Mapped sectors without a native graph (routed to the generic graph)
 
-Compass Phase B: on the RL path, `core/intelligence/rl/workflows/sector_router.py`
-routes any sector key outside the 4 native ones to `GenericSectorOrchestrator`
-(sector-agnostic unified analyst + neutral `generic_graph.agent_weights`) — the old
-silent degrade-to-automobile is gone. `PredictionStore` keeps the REAL sector name
-for its directory layout (e.g. `data/predictions/pharma/SUNPHARMA/`). The chat-path
-`CoreSectorAdapter` skeleton tier (commit e30042f, `config/sector_toggles.json`)
-remains toggled off and unused.
+Any sector key outside the 4 native ones routes to `GenericSectorOrchestrator`
+(sector-agnostic unified analyst + neutral `generic_graph.agent_weights`), as does
+any ticker that is not in `TICKER_SECTOR` at all. `PredictionStore` keeps the REAL
+sector name for its directory layout (e.g. `data/predictions/pharma/SUNPHARMA/`) —
+only the analysis graph is generic. The chat-path `CoreSectorAdapter` skeleton tier
+(commit e30042f, `config/sector_toggles.json`) remains toggled off and unused.
+
+**One resolver (PI task A1).** Compass Phase B put this behaviour on the RL path
+only, and this section used to claim "the old silent degrade-to-automobile is
+gone" — it was not: `SectorRegistry.get_handler` still degraded every disabled
+sector to the automobile graph, so the same stock got two different analyses
+depending on which entry point ran it. In prod that meant all 73 `generic`
+tickers hit the automobile graph via the API path, and 13 tickers carried a
+never-learned `automobile` weight store beside their real one. Routing now lives
+in `SectorRegistry.get_graph_sector()` alone; `sector_router` and
+`core/portfolio/promotion.py` import from it rather than keeping their own maps.
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `sectors.generic_fallback_enabled` | `true` | Unknown ticker / disabled sector → `generic`. `false` is the A1 rollback line: both paths degrade to `automobile` again |
 
 | Sector | Example Tickers |
 |--------|----------------|
@@ -858,7 +871,7 @@ All paths verified to exist. Paths are relative to project root.
 | `services/data/stores/score_store.py` | SQLite score history (read/write/delta/range queries) |
 | `services/background/macro_news_cache.py` | Daily macro news cache read/write |
 | `services/clients/llm_client.py` | Async OpenRouter LLM client |
-| `src/backend/sectors/registry.py` | `TICKER_SECTOR` dict + `SectorRegistry` singleton (resolve, get_handler, is_enabled) |
+| `src/backend/sectors/registry.py` | `TICKER_SECTOR` dict + `SectorRegistry` singleton (resolve, get_graph_sector, get_handler, is_enabled) — the single resolution point for both the API and RL paths |
 | `src/backend/shared/config/settings/base.py` | All environment variable definitions with defaults |
 | `src/backend/shared/config/rag_config.py` | RAG-specific env vars (mirrors `core/intelligence/rag/config.py`) |
 | `src/backend/shared/pipeline/base_orchestrator.py` | `BaseSectorOrchestrator` — ticker resolution (managed-ticker short-circuit, no LLM for exact `TICKERS` matches), RL weights, NSE prefetch, `_run_agents`/`_run_unified`/`_unified_enabled` dispatch, SignalAggregator |

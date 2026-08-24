@@ -39,9 +39,9 @@ class TestDetectSector:
         ("TATAPOWER",   "renewable_energy"),
         ("SJVN",        "renewable_energy"),
         ("NHPC",        "renewable_energy"),
-        # Unknown → automobile fallback
-        ("UNKNOWN",     "automobile"),
-        ("RELIANCEXYZ", "automobile"),
+        # Unknown → generic fallback (PI task A1; was automobile)
+        ("UNKNOWN",     "generic"),
+        ("RELIANCEXYZ", "generic"),
     ])
     def test_ticker_routes_to_correct_sector(self, ticker, expected):
         assert detect_sector(ticker) == expected
@@ -79,10 +79,13 @@ class TestGetOrchestrator:
         cls = get_orchestrator("renewable_energy")
         assert cls is RenewableAgentOrchestrator
 
-    def test_unknown_sector_falls_back_to_automobile(self):
-        from backend.sectors.automobile.pipeline.orchestrator import AutomobileAgentOrchestrator
+    def test_unknown_sector_falls_back_to_generic(self):
+        """A1: the fallback moved off automobile. The automobile graph
+        injects nine automobile-specific dimensions into whatever it is
+        handed; the generic graph is sector-agnostic by construction."""
+        from backend.sectors.generic.pipeline.orchestrator import GenericSectorOrchestrator
         cls = get_orchestrator("unknown_sector_xyz")
-        assert cls is AutomobileAgentOrchestrator
+        assert cls is GenericSectorOrchestrator
 
     def test_all_orchestrators_extend_base(self):
         from backend.shared.pipeline.base_orchestrator import BaseSectorOrchestrator

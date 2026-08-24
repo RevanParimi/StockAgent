@@ -116,6 +116,29 @@ milestones:
       flipped. Treat every bucket here as association-only. Remove once judged.
     docs: docs/superpowers/specs/2026-08-11-ipo-intelligence-design.md
 
+  - id: a1_routing_prod_verify
+    kind: milestone
+    title: "A1 single-router — confirm zero DIVERGE on prod after deploy"
+    check: manual_confirmation
+    deadline: 2026-09-08
+    lead_days: 5
+    action: >
+      A1 merged locally 2026-08-25: SectorRegistry is now the only resolver and
+      unknown tickers / disabled sectors route to `generic`, not `automobile`.
+      Verified on LOCAL only - 0 DIVERGE rows over 14 tickers and all 23 mapped
+      sectors, 201 literal TICKER_SECTOR entries == 201 distinct keys. It has
+      NOT been observed on prod. Once it deploys, on prod confirm (a) the
+      routing table still prints zero DIVERGE, and (b) no NEW `automobile`
+      prediction-store stub appears for a ticker whose real sector is not
+      automobile - the 13 existing duplicates are A2's job to migrate, this
+      checks the bleed has stopped. Note briefs and daily reviews will start
+      running the GENERIC graph for the disabled-sector names the API path used
+      to hand to automobile, so a verdict shift on those names is expected, not
+      a regression.
+      Rollback: `sectors.generic_fallback_enabled: false` in config.yaml.
+      Remove this entry once judged.
+    docs: docs/superpowers/specs/2026-08-24-three-loops-pi-design.md
+
 invariants:
   - id: ipo_cache_fresh
     kind: invariant

@@ -10,7 +10,17 @@ Public API (backward-compatible shims for detect_sector / get_orchestrator):
     SectorRegistry.all_sectors()        → list[dict]
 
 Toggle state is read from config/sector_toggles.json at import time.
-Disabled sectors degrade silently to "automobile" — no crashes, logged warning.
+
+This module is the SINGLE resolution point for the whole system (PI task
+A1). `core.intelligence.rl.workflows.sector_router` delegates here rather
+than keeping its own map — before A1 the two disagreed on every disabled
+sector, which is what minted the duplicate prediction stores (spec §2.1).
+
+Unknown tickers and disabled sectors resolve to "generic", never to
+"automobile": the generic graph is sector-agnostic by construction, while
+the automobile graph injects nine automobile-specific dimensions into a
+pharma or realestate name. `sectors.generic_fallback_enabled: false`
+restores the pre-A1 automobile degradation.
 """
 from __future__ import annotations
 
@@ -138,8 +148,9 @@ TICKER_SECTOR: dict[str, str] = {
     "SCHAEFFLER":   "capgoods",     "ELGIEQUIP":    "capgoods",
     "AIAENG":       "capgoods",     "GRINDWELL":    "capgoods",
 
-    # ── power / utilities (disabled) ─────────────────────────────────────────
-    "TORNTPOWER":   "renewable_energy",  # already mapped above
+    # ── power / utilities ────────────────────────────────────────────────────
+    # Utility names live in the renewable_energy block above; TORNTPOWER was
+    # repeated here (harmlessly, same value) and is now listed once.
 
     # ── chemicals (disabled) ─────────────────────────────────────────────────
     "PIDILITIND":   "chemicals",    "DEEPAKNITRI":  "chemicals",
@@ -155,8 +166,11 @@ TICKER_SECTOR: dict[str, str] = {
     # ── infra (disabled) ─────────────────────────────────────────────────────
     "ULTRACEMCO":   "infra",        "SHREECEM":     "infra",
     "AMBUJACEM":    "infra",        "ACCCEMENT":    "infra",
-    "DLF":          "infra",        "LODHA":        "infra",
-    "KNRCON":       "infra",        "HGINFRA":      "infra",
+    "LODHA":        "infra",        "KNRCON":       "infra",
+    "HGINFRA":      "infra",
+    # DLF was listed here AND under realestate. Python keeps the last
+    # literal, so realestate has always won — the infra entry was dead
+    # text that read like a live mapping. Removed, not re-pointed.
 
     # ── insurance (disabled) ─────────────────────────────────────────────────
     "SBILIFE":      "insurance",    "HDFCLIFE":     "insurance",
@@ -241,12 +255,35 @@ def _get_renewable():
     from backend.sectors.renewable_energy.pipeline.orchestrator import RenewableAgentOrchestrator
     return RenewableAgentOrchestrator
 
+def _get_generic():
+    from backend.sectors.generic.pipeline.orchestrator import GenericSectorOrchestrator
+    return GenericSectorOrchestrator
+
+GENERIC_SECTOR = "generic"
+
+# Sectors with a hand-built native graph. `generic` is deliberately NOT one of
+# them — it is a routing target, not a sector, and it has no toggle entry.
+NATIVE_SECTORS: frozenset[str] = frozenset(
+    {"automobile", "banking_bfsi", "it_sector", "renewable_energy"}
+)
+
 _BACKEND_LOADERS: dict[str, Any] = {
     "automobile":       _get_automobile,
     "banking_bfsi":     _get_banking,
     "it_sector":        _get_it,
     "renewable_energy": _get_renewable,
+    GENERIC_SECTOR:     _get_generic,
 }
+
+
+def _generic_fallback_enabled() -> bool:
+    """A1: unknown ticker / disabled sector resolves to `generic`.
+
+    Rollback line: `sectors.generic_fallback_enabled: false` in config.yaml
+    restores the pre-A1 automobile degradation on both paths.
+    """
+    from backend.shared.config.settings.loader import cfg
+    return bool(cfg("sectors.generic_fallback_enabled", fallback=True))
 
 
 # ---------------------------------------------------------------------------
@@ -256,8 +293,12 @@ _BACKEND_LOADERS: dict[str, Any] = {
 class _SectorRegistry:
     """
     Singleton registry for sector routing with toggle support.
-    Disabled sectors degrade to automobile — no crashes, logged warning.
+    The one resolution point: both the API path and the RL path route here.
+    Unknown tickers and disabled sectors degrade to `generic` (A1).
     """
+
+    def _fallback_sector(self) -> str:
+        return GENERIC_SECTOR if _generic_fallback_enabled() else "automobile"
 
     def resolve(self, ticker: str) -> str:
         """
@@ -272,37 +313,49 @@ class _SectorRegistry:
         for fragment, sector in _NAME_FRAGMENTS:
             if fragment in tl:
                 return sector
-        return "automobile"
+        fallback = self._fallback_sector()
+        logger.info(
+            "[SectorRegistry] '%s' is not in the ticker map — resolving to '%s'",
+            t, fallback,
+        )
+        return fallback
+
+    def get_graph_sector(self, sector: str) -> str:
+        """
+        sector key → the sector whose GRAPH actually runs.
+
+        Native + enabled + tier=backend → itself.
+        Everything else (disabled, unknown, non-backend tier) → `generic`.
+
+        This is the function A1 unified: `sector_router` calls it too, so the
+        two entry points cannot disagree about which graph a ticker gets.
+        """
+        s = (sector or "").strip().lower()
+        if s == GENERIC_SECTOR:
+            return GENERIC_SECTOR
+
+        toggle  = _TOGGLES.get(s, {})
+        enabled = toggle.get("enabled", False)
+        tier    = toggle.get("tier", "backend")
+
+        if enabled and tier == "backend" and s in _BACKEND_LOADERS:
+            return s
+
+        fallback = self._fallback_sector()
+        if s != fallback:
+            reason = (
+                "is disabled or unknown" if not enabled
+                else f"has no backend graph (tier={tier!r})"
+            )
+            logger.warning(
+                "[SectorRegistry] sector '%s' %s — routing to '%s'",
+                s, reason, fallback,
+            )
+        return fallback
 
     def get_handler(self, sector: str):
-        """
-        Returns the orchestrator class for a sector.
-
-        Dispatch logic:
-          enabled + tier=backend → BackendOrchestratorClass (lazy-imported)
-          disabled / other tier  → AutomobileAgentOrchestrator (safe degradation)
-        """
-        cfg = _TOGGLES.get(sector, {})
-        enabled = cfg.get("enabled", False)
-        tier    = cfg.get("tier", "backend")
-
-        if not enabled:
-            if sector not in ("automobile",):
-                logger.warning(
-                    "[SectorRegistry] sector '%s' is disabled — falling back to automobile",
-                    sector,
-                )
-            return _BACKEND_LOADERS["automobile"]()
-
-        if tier == "backend":
-            loader = _BACKEND_LOADERS.get(sector, _BACKEND_LOADERS["automobile"])
-            return loader()
-
-        logger.warning(
-            "[SectorRegistry] unknown tier '%s' for sector '%s' — falling back to automobile",
-            tier, sector,
-        )
-        return _BACKEND_LOADERS["automobile"]()
+        """Returns the orchestrator CLASS for a sector (lazy-imported)."""
+        return _BACKEND_LOADERS[self.get_graph_sector(sector)]()
 
     def is_enabled(self, sector: str) -> bool:
         return bool(_TOGGLES.get(sector, {}).get("enabled", False))

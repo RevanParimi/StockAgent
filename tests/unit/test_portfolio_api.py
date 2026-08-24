@@ -139,12 +139,15 @@ def test_add_holding_sector_omitted_resolves_via_registry(client):
     assert resp.json()["holding"]["sector"] == "it_sector"
 
 
-def test_add_holding_unknown_symbol_sector_defaults_to_automobile(client):
+def test_add_holding_unknown_symbol_sector_defaults_to_generic(client):
+    """PI task A1: was `automobile`. An unknown holding filed under automobile
+    got an automobile-shaped prediction store and the automobile graph — one
+    of the sources of the duplicate stores in spec §2.1."""
     resp = client.post("/portfolio/holdings", json={
         "symbol": "ZZZUNKNOWN", "qty": 1, "buy_date": "2026-07-01", "price": 10.0,
     })
     assert resp.status_code == 200
-    assert resp.json()["holding"]["sector"] == "automobile"
+    assert resp.json()["holding"]["sector"] == "generic"
 
 
 def test_watchlist_sector_omitted_resolves_via_registry(client):

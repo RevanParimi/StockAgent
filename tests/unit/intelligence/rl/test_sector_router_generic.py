@@ -7,7 +7,10 @@ def test_native_sectors_unchanged():
     assert sr.NATIVE_SECTORS == frozenset(
         {"automobile", "banking_bfsi", "it_sector", "renewable_energy"}
     )
-    assert sr._ORCHESTRATORS["automobile"].endswith("AutomobileAgentOrchestrator")
+    # A1 deleted sr._ORCHESTRATORS — the router delegates to the registry
+    # rather than keeping a second dotted-path map that could drift.
+    assert not hasattr(sr, "_ORCHESTRATORS")
+    assert sr.get_orchestrator_class("automobile").__name__ == "AutomobileAgentOrchestrator"
 
 
 def test_unknown_sector_gets_generic_orchestrator():

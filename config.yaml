@@ -462,6 +462,27 @@ ipo:
   gmp_min_sources: 2            # a lone snippet number is not a measurement
   gmp_agreement_tolerance: 0.25 # >25% spread between sources => discard
 
+# =============================================================================
+# Sector routing (Three Loops PI, task A1 — spec 2026-08-24 §2.1)
+# =============================================================================
+sectors:
+  # Where an unknown ticker or a disabled sector lands.
+  #   true  -> `generic` (the sector-agnostic unified-analyst graph)
+  #   false -> `automobile`, the pre-A1 behaviour
+  #
+  # Why it changed: SectorRegistry degraded everything unknown or disabled to
+  # the automobile graph while the RL path sent it to generic, so the same
+  # stock got two different analyses depending on the entry point. In prod
+  # that minted 13 duplicate weight stores — a never-learned automobile stub
+  # beside the real-sector store — and put all 73 `generic` tickers on the
+  # automobile graph via the API path. Both paths read this key now.
+  #
+  # ROLLBACK LINE: set this to `false`. Both paths degrade to automobile
+  # again — they stay unified, only the fallback target moves back. Note
+  # that also returns the RL path's disabled sectors (pharma, fmcg, …) to
+  # the automobile graph, which is where they sat before Compass Phase B.
+  generic_fallback_enabled: true
+
 generic_graph:
   # Neutral 8-dimension weights for sectors without a native graph (must sum to 1.0).
   agent_weights:

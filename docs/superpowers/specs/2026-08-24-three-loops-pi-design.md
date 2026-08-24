@@ -520,6 +520,28 @@ WS-E  ---   E1 capture gaps       E2 fingerprint+digest E3 watchdog surface   E4
 `B2 -> B3`, `B2 -> B5`, `B2 -> C2`, `A1 -> A2`, `A2 -> A3`, `A3 -> A4`,
 `C1 -> C2 -> C3 -> C4`, `B4 -> D2`, `E1 -> E2 -> E3 -> E4`.
 
+**Sequencing constraints — these are not optional**
+
+The dependency graph is acyclic and no task depends on a later sprint
+(audited). But three Sprint-4 tasks each change what the RL loop observes, and
+running them concurrently would destroy C4's ability to measure anything:
+
+- **A4** changes the orchestrator and therefore the dimension outputs.
+- **B5** changes *which runs* are allowed to train weights.
+- **C4** measures whether the new grading metric ranks dimensions differently.
+
+**Rule: C4's measurement window must not overlap with A4's cutover or B5's
+enablement.** Land C4's comparison first (it reads the C3 shadow rows already
+accumulated in Sprint 3), publish its verdict, and only then flip A4 and B5.
+If schedule pressure makes that impossible, B5 goes last — it is the only one
+of the three that is purely additive to skip behaviour and can slip a sprint
+without blocking anything else.
+
+A related, milder note: **A2 (Sprint 2) relocates prediction stores**, so any
+baseline C1 captured in Sprint 1 is measured against pre-migration paths. A2
+preserves every `weight_version > 0` store byte-identical, so the *values* are
+unchanged — but C4 must confirm it is comparing the same stores, not assume it.
+
 **Sprint goals**
 - **S1 — Stop the bleed and switch the lights on.** No more duplicate stores
   created; every run emits health; run history survives a redeploy.
@@ -618,6 +640,8 @@ date-bound obligation.
   `section_status: dict[str, str]`. `_run_unified` combines that with the
   dimension outcome from `UnifiedAnalyst` and writes one row. Purely
   additive: no existing behaviour changes, nothing branches on `health` yet.
+- **Flag:** `observability.data_health_enabled` (default `true`; the record is
+  write-only until B5, so enabling it changes no behaviour).
 - **Acceptance:**
   - A row is written for every run, including failed runs.
   - `empty` is distinguished from `failed` and from `n/a`
@@ -746,6 +770,8 @@ date-bound obligation.
   `technical` and `pattern_analysis`, and the flag name. Must state what
   would falsify it.
 - **Acceptance:** design reviewed and approved by Revan before C3 opens.
+- **Verify:** N/A — this task writes a design section, it changes no code.
+- **Rollback:** N/A — nothing ships.
 - **Note:** if C1 concluded `technical` is genuinely uninformative, this task
   closes as `not needed` and C3/C4 are cancelled.
 
@@ -799,6 +825,8 @@ date-bound obligation.
   profiles. **Readers are switched one at a time**, each behind
   `sectors.profile_source_enabled`, each with a test asserting the profile
   and the legacy constant agree.
+- **Flag:** `sectors.profile_source_enabled` (dark; each reader switches
+  independently behind it).
 - **Acceptance:** for all five sectors, profile-derived dimensions, prompts
   module, peer universe, bundle config and macro cache key are identical to
   today's hardcoded values. A test asserts equality so drift fails CI.
@@ -816,9 +844,14 @@ date-bound obligation.
 - **Approach:** Ship behind a flag, writing a **shadow** accuracy alongside
   the live one — the way `verdict_shadow` shadows the composite. No weight is
   updated from the new metric until C4 validates it.
+- **Flag:** `rl.grading_shadow_enabled` (dark; shadow-write only).
 - **Acceptance:** shadow accuracy recorded for every dimension for at least
   10 trading days without touching live weights.
-- **Rollback:** flag off; shadow rows are inert.
+- **Verify:** `[PROD]` after 10 trading days, assert every learned store's
+  `weight_version` advanced **only** by the live metric — diff the version
+  history against a pre-C3 snapshot and confirm zero shadow-driven writes.
+- **Rollback:** flip `rl.grading_shadow_enabled` off; shadow rows are inert
+  and are never read by the live path.
 
 ---
 
@@ -846,6 +879,12 @@ date-bound obligation.
      empty**, delete the pool, the graph modules, and the agent classes.
 - **Acceptance:** step 3 is a separate commit, gated on the observed rate.
   If the file is non-empty, stop and file the failures as unified-path bugs.
+- **Verify:** per stage — (1) `[PROD]` a forced unified failure retries once
+  before falling back; (2) a simulated tight budget refuses the fallback and
+  emits a low-confidence verdict; (3) `app_logs` shows **zero**
+  `graphs.nodes` rows for a full sprint. ⚠ Use `app_logs`, **not**
+  `fallback_events.jsonl` — that file's writer is behind a bare
+  `except: pass` and is exactly what made this claim wrong the first time.
 - **Rollback:** `unified_analyst.fallback_legacy` already exists; deletion is
   the only irreversible step and it is gated on evidence.
 
@@ -860,6 +899,8 @@ date-bound obligation.
   `SectorOrchestrator(profile)`. The four native subclasses become thin
   profile lookups, then are deleted. Cutover is a single config flip, exactly
   like the `atlas.enabled` cutover.
+- **Flag:** `sectors.profile_source_enabled` -> `true` (the same flag A3
+  introduced; A4 is the flip, not a new switch).
 - **Acceptance:**
   - One orchestrator class remains.
   - Adding a sector requires no Python change — a test adds a synthetic
@@ -884,10 +925,12 @@ date-bound obligation.
 - **Flag:** `rl.hollow_run_gate_enabled`, dark first.
 - **Acceptance:** a synthetic hollow run does not move any weight; the skip
   is visible in the health record and countable by the watchdog.
-- **Risk to state plainly:** this reduces training volume. Measure the skip
-  rate for a sprint before enabling — if it is high, the fix is the data
-  pipeline, not the gate.
-- **Rollback:** flag off.
+- **Verify:** `[PROD]` run one sprint with the flag OFF, recording what
+  *would* have been skipped; only then enable. Confirm the observed skip rate
+  matches the dry-run prediction.
+- **Risk to state plainly:** this reduces training volume. If the skip rate is
+  high, the fix is the data pipeline, not the gate.
+- **Rollback:** flip `rl.hollow_run_gate_enabled` off.
 
 ---
 
@@ -904,6 +947,10 @@ date-bound obligation.
   documented refutation. **A refutation is a successful outcome.**
 - **Verify:** recheck the §2.2 table post-cutover — does `technical` climb
   off 0.0047, and does the miss-attribution rate for `technical` fall?
+- **Rollback:** the cutover is a flag flip (`rl.grading_shadow_enabled` ->
+  live). Reverting restores the previous metric, but **weights updated under
+  the new metric are not automatically undone** — snapshot every
+  `*_agent_weight_memory.json` before the cutover so versions can be restored.
 
 ---
 
@@ -918,8 +965,19 @@ date-bound obligation.
   `base_orchestrator.py` (5), `bundle_builder.py`, `prediction_store.py`.
 - **Acceptance:** the count cannot rise; hot-path handlers either log or
   record to the B2 health record.
+- **Verify:** injecting a new bare `except: pass` fails `repo_sanity`;
+  removing one lowers the ceiling.
+- **Rollback:** remove the check from `repo_sanity`; the script stays as a
+  manual tool.
+- ⚠ **Ratchet friction:** A1-A4 and E1-E2 all add code. A ratchet that only
+  ever falls will block a legitimate new handler. The allowlist therefore
+  needs an explicit *add-with-justification* entry (handler + one-line reason),
+  or this gate becomes something people disable.
 - **Note:** do not mass-edit all 209. Many are legitimate (wrapping a
   `progress_callback`). The allowlist is the deliverable, not a purge.
+- **First target, by evidence:** the `record_fallback` handler at
+  `base_orchestrator.py:556-558` — it is the one silent except already proven
+  to have destroyed real evidence (§2.5).
 
 ---
 
@@ -1004,12 +1062,15 @@ RESOLVED   absent >= 7d                  -> close
 - **Approach:** One `prod_error_digest` check that fires **only** on NEW,
   REGRESSED or SPIKE. Thresholds via `cfg()`. Registry entry in the same
   commit.
-- **Open decision — settle before building:** does the digest watch
-  **ERROR-only** (~10/day, tight) or **WARNING+** (~45/day, catches the
-  `bundle_builder` section degradations that are logged at WARNING and would
-  otherwise stay invisible even after B2)? Recommendation: **WARNING+ with
-  per-logger thresholds**, because F3's whole point is that degradations hide
-  at WARNING. Costs more tuning up front. **Confirm with Revan in the task.**
+- **DECIDED (Revan, 2026-08-24): WARNING+ with per-logger thresholds.**
+  ERROR-only (~10/day) would be tighter but would miss the entire F3 failure
+  class — `bundle_builder` section degradations are logged at WARNING, which
+  is precisely how they stayed invisible. The tuning cost is real and is
+  absorbed here: seed each logger's threshold from its own trailing-30-day
+  baseline in `app_logs` (53 days are available), not from a global constant.
+  Loggers with a high steady WARNING rate — `feedback_agent` (619),
+  `offmarket_fetcher` (263) — must not drown the digest: they alert on
+  *deviation from their own baseline*, never on absolute count.
 - **Acceptance:**
   - A quiet day produces no alert.
   - An injected NEW fingerprint produces exactly one alert.
@@ -1070,6 +1131,11 @@ RESOLVED   absent >= 7d                  -> close
   public.
 - Every flag introduced here gets a `config.yaml` entry with a comment naming
   its rollback line.
+- **Never enable two RL-affecting flags in the same window.**
+  `rl.hollow_run_gate_enabled`, `rl.grading_shadow_enabled` and
+  `sectors.profile_source_enabled` each change what the learner sees; flipping
+  two at once makes any regression unattributable. One flip, one observation
+  window, one verdict.
 
 ## 11. Memory changes (part of the work, not a follow-up)
 

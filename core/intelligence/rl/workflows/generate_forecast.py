@@ -38,11 +38,12 @@ from core.intelligence.rl.algorithms.price_interpolator import (
     compute_historical_avg_return,
 )
 from services.data.fetchers.close_verifier import get_verified_close
+from services.data.stores.log_store import configure_logging
 
-logging.basicConfig(
-    level=settings.LOG_LEVEL,
-    format="%(asctime)s [%(levelname)s] %(name)s – %(message)s",
-)
+# E1: one setup for every entry point. Idempotent, so importing this module
+# from the API server (which has already configured) is a no-op rather than a
+# second archive handler double-writing every row.
+configure_logging(level=settings.LOG_LEVEL)
 logger = logging.getLogger(__name__)
 
 # Number of trading days to forecast

@@ -27,6 +27,7 @@ from backend.shared.schemas.portfolio import Holding, TransactionRecord   # noqa
 from core.portfolio.autopilot import make_txn_id, record_value_point      # noqa: E402
 from core.portfolio.pricing import close_on                               # noqa: E402
 from core.portfolio.store import PortfolioStore                           # noqa: E402
+from services.data.stores.log_store import configure_logging   # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -98,7 +99,9 @@ def seed(user_id: str, pot: float, base_dir: str | None = None,
 
 
 def main() -> None:
-    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
+    # E1: shared setup — a script run under `railway ssh` now archives its
+    # warnings into telemetry.db instead of losing them with the console.
+    configure_logging(level=logging.INFO)
     ap = argparse.ArgumentParser(description="Seed the autopilot virtual portfolio")
     ap.add_argument("--user", default="primary")
     ap.add_argument("--pot", type=float, default=1_000_000.0)

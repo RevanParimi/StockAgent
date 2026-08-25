@@ -59,11 +59,11 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s  %(levelname)-8s  %(message)s",
-    handlers=[logging.StreamHandler(sys.stdout)],
-)
+# E1: shared setup, so a scheduler run under `railway ssh` archives its
+# warnings instead of losing them with the console.
+from services.data.stores.log_store import configure_logging
+
+configure_logging(level=logging.INFO, stream=sys.stdout)
 logger = logging.getLogger(__name__)
 
 

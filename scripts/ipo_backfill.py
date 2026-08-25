@@ -37,6 +37,7 @@ import pandas as pd
 from core.ipo.history import IpoHistoryStore, IpoRecord
 from core.ipo.outcomes import compute_outcomes, symbol_sessions
 from services.data.fetchers.ipo_bids import fetch_bid_ladder
+from services.data.stores.log_store import configure_logging
 
 logger = logging.getLogger(__name__)
 
@@ -356,7 +357,9 @@ def enrich_ofs(store: IpoHistoryStore, symbols: set[str] | None = None,
 
 
 def main() -> None:
-    logging.basicConfig(level=logging.INFO, format="%(message)s")
+    # E1: shared setup — a script run under `railway ssh` now archives its
+    # warnings into telemetry.db instead of losing them with the console.
+    configure_logging(level=logging.INFO)
     ap = argparse.ArgumentParser(description="Build the historical IPO spine")
     ap.add_argument("--since", default="2024-05-01")
     ap.add_argument("--base-dir", default=None)

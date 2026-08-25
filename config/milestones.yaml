@@ -221,6 +221,45 @@ milestones:
       Remove this entry once judged.
     docs: docs/superpowers/specs/2026-08-24-three-loops-pi-design.md
 
+  - id: e1_error_capture_prod_verify
+    kind: milestone
+    title: "E1 error capture - confirm run correlation, tracebacks and script coverage in prod"
+    check: manual_confirmation
+    deadline: 2026-09-15
+    lead_days: 5
+    action: >
+      E1 closed four gaps in the WARNING+ archive (telemetry.db.app_logs, 4,357
+      rows over 53 days, survives redeploys). It added nullable run_id/ticker
+      columns fed by a contextvars run context; exc_info=True at 14 hot-path
+      except handlers; one configure_logging() shared by the API server and
+      every standalone script entry point; and it stopped the archive storing a
+      duplicated "<IST ts> LEVEL [logger] " prefix inside every message.
+      After this deploys, confirm on prod (`railway ssh`):
+      (a) `PRAGMA table_info(app_logs)` lists run_id and ticker, and the rows
+          written BEFORE this deploy are still readable with the old
+          projection `SELECT id, ts, level, logger, message` - no history was
+          rewritten, old rows simply carry NULL;
+      (b) THE ACCEPTANCE THAT MATTERS - pick a run_id from run_summaries and
+          confirm the app_logs rows from that run carry it. If every new row is
+          NULL the context is not reaching the emitting thread and E2 has
+          nothing to correlate on;
+      (c) the traceback rate rises off its 18/4,254 (0.4%) baseline for the
+          hot-path loggers specifically - count rows where message LIKE
+          '%Traceback (most recent call last)%' and split before/after this
+          deploy's timestamp. State the number; do NOT claim tracebacks were
+          previously "lost" (spec section 2.0 records that as a wrong claim -
+          the handler always appended them, the call sites never asked);
+      (d) new rows carry NO timestamp prefix in `message`, while rows from
+          before the deploy still do. E2 fingerprints over both eras and must
+          handle the split - it cannot assume one shape;
+      (e) run one script under `railway ssh` (e.g. `python -m core.audit.cli`)
+          and confirm it produces app_logs rows. Before E1 the handler lived
+          only in server.py, so scripts archived nothing.
+      Rollback: revert the commit. The columns are nullable and inert if
+      unused; no data is migrated or rewritten.
+      Remove this entry once judged.
+    docs: docs/superpowers/specs/2026-08-24-three-loops-pi-design.md
+
 invariants:
   - id: ipo_cache_fresh
     kind: invariant

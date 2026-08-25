@@ -391,7 +391,8 @@ class UnifiedAnalyst:
             return self._parse_all(data, query.ticker, class_map, spec)
 
         except Exception as exc:
-            logger.error("[UnifiedAnalyst] run() failed for %s/%s: %s", sector, query.ticker, exc)
+            logger.error("[UnifiedAnalyst] run() failed for %s/%s: %s",
+                         sector, query.ticker, exc, exc_info=True)
             return {}
 
     # ------------------------------------------------------------------
@@ -406,7 +407,7 @@ class UnifiedAnalyst:
         except ImportError as exc:
             logger.error(
                 "[UnifiedAnalyst] No prompt module for sector '%s' (%s): %s",
-                sector, spec.prompts_module, exc,
+                sector, spec.prompts_module, exc, exc_info=True,
             )
             return None, None
 
@@ -421,7 +422,7 @@ class UnifiedAnalyst:
         except AttributeError as exc:
             logger.error(
                 "[UnifiedAnalyst] Prompt module '%s' for sector '%s' missing SYSTEM_PROMPT/ANALYSIS_PROMPT: %s",
-                spec.prompts_module, sector, exc,
+                spec.prompts_module, sector, exc, exc_info=True,
             )
             return None, None
 
@@ -473,12 +474,13 @@ class UnifiedAnalyst:
                     delay = min(delay * 2, 2.0)
 
             except APIError as e:
-                logger.error("[UnifiedAnalyst] API error: %s", e)
+                logger.error("[UnifiedAnalyst] API error: %s", e, exc_info=True)
                 last_error = e
                 break
 
             except Exception as e:
-                logger.error("[UnifiedAnalyst] Unexpected error calling LLM: %s", e)
+                logger.error("[UnifiedAnalyst] Unexpected error calling LLM: %s",
+                             e, exc_info=True)
                 last_error = e
                 if attempt < retries:
                     time.sleep(delay)
@@ -502,7 +504,8 @@ class UnifiedAnalyst:
             try:
                 outputs[dim] = self._parse_dimension(dim, block, output_cls, ticker, spec)
             except Exception as exc:
-                logger.error("[UnifiedAnalyst] Parse error for dimension '%s' (%s): %s", dim, ticker, exc)
+                logger.error("[UnifiedAnalyst] Parse error for dimension '%s' (%s): %s",
+                             dim, ticker, exc, exc_info=True)
                 outputs[dim] = self._error_output(output_cls, ticker, f"parse_error: {exc}")
         return outputs
 

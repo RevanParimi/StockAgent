@@ -366,6 +366,24 @@ go blind silently.
    `app_logs(id, ts, level, logger, message)` — there is no `run_id` or
    `ticker` column, so an error cannot be tied back to the run that caused it.
 
+**A fourth gap, measured while closing the first three** (E1, `[PROD]`
+2026-08-26, 4,357 rows): **every stored `message` carries a duplicated
+`"<IST ts> LEVEL [logger] "` prefix.** `server.py` gave the archive handler a
+`%(message)s` formatter and then overwrote it two lines later with the loop
+that re-formats every root handler, so the deliberate choice was dead code:
+
+```
+('2026-08-25T18:22:53+00:00', 'WARNING', 'core.delivery.channels',
+ '2026-08-25 23:52:53 IST WARNING  [core.delivery.channels] [delivery] email send failed ...')
+```
+
+`ts`, `level` and `logger` already have their own columns, so the prefix is
+pure duplication — and it embeds a **per-record timestamp inside the message
+body**, which would have made every E2 fingerprint unique by construction.
+E1 fixes it forward. ⚠ **This splits `app_logs` into two eras**: rows before
+the E1 deploy carry the prefix, rows after do not. E2 normalises across both;
+it must not assume one shape.
+
 ---
 
 ## 3. Vision
@@ -1043,6 +1061,13 @@ RESOLVED   absent >= 7d                  -> close
     set — **the yfinance 445 must collapse to the 4 shapes in §2.5**, and
     2026-07-11 must surface as a SPIKE. This is the regression test: it runs
     against real historical data, not fixtures.
+  - ⚠ **Normalisation must strip the pre-E1 `"<IST ts> LEVEL [logger] "`
+    message prefix** (§2.6, fourth gap). Rows written before the E1 deploy
+    carry it and rows after do not, so the same error either side of that
+    deploy must land on ONE fingerprint — otherwise every historical shape
+    reappears as NEW on the day E1 shipped.
+  - Rows now carry `run_id`/`ticker` (E1). A fingerprint that keeps either in
+    the normalised text is wrong — they are per-run, so it would never repeat.
   - The digest never raises and never blocks the scheduler.
   - Normalisation is deterministic — same input, same fingerprint.
 - **Verify:** `[PROD]` run the digest over history; confirm the 2026-07-11

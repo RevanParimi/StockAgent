@@ -165,7 +165,8 @@ class PredictionStore:
             tmp.replace(path)
             logger.debug("[PredictionStore] Wrote %s", path.name)
         except OSError as exc:
-            logger.error("[PredictionStore] Write failed for %s: %s", path.name, exc)
+            logger.error("[PredictionStore] Write failed for %s: %s", path.name, exc,
+                         exc_info=True)
             try:
                 tmp.unlink(missing_ok=True)
             except OSError:
@@ -178,7 +179,8 @@ class PredictionStore:
         try:
             return json.loads(path.read_text(encoding="utf-8"))
         except (json.JSONDecodeError, OSError) as exc:
-            logger.error("[PredictionStore] Failed to read %s: %s", path.name, exc)
+            logger.error("[PredictionStore] Failed to read %s: %s", path.name, exc,
+                         exc_info=True)
             return None
 
     # ------------------------------------------------------------------
@@ -248,7 +250,8 @@ class PredictionStore:
             )
             return str(dest)
         except Exception as exc:
-            logger.error("[PredictionStore] archive_envelope failed: %s", exc)
+            logger.error("[PredictionStore] archive_envelope failed: %s", exc,
+                         exc_info=True)
             return None
 
     # ------------------------------------------------------------------
@@ -578,7 +581,8 @@ class PredictionStore:
         try:
             return TickerDossier(**data)
         except Exception as exc:
-            logger.error("[PredictionStore] Corrupt dossier for %s: %s", self.ticker, exc)
+            logger.error("[PredictionStore] Corrupt dossier for %s: %s", self.ticker, exc,
+                         exc_info=True)
             return None
 
     def save_dossier(self, dossier) -> None:

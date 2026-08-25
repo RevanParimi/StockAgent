@@ -16,6 +16,7 @@ from datetime import date
 
 from core.audit.outcomes import grade_due
 from core.audit.report import build_report, render_section
+from services.data.stores.log_store import configure_logging
 
 logger = logging.getLogger(__name__)
 
@@ -53,5 +54,5 @@ def main(argv: list[str] | None = None) -> int:
 
 
 if __name__ == "__main__":       # pragma: no cover
-    logging.basicConfig(level=logging.INFO)
+    configure_logging(level=logging.INFO)
     raise SystemExit(main())

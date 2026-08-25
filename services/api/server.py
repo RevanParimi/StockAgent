@@ -56,30 +56,15 @@ from services.api.routes.rl_monitor import router as rl_monitor_router
 from services.api.routes.auth_api import router as auth_router
 from core.portfolio.store import QuarantinedPortfolioError
 
-_IST = timezone(timedelta(hours=5, minutes=30))
 
+# E1: console format + the permanent WARNING+ archive on the volume
+# (data/telemetry.db) now come from one place, shared with every standalone
+# script entry point. Railway console logs rotate per-deploy; the archive
+# doesn't. Idempotent, so an already-configured import (the RL workflow
+# modules configure at import time) does not attach a second handler.
+from services.data.stores.log_store import configure_logging
 
-class _ISTFormatter(logging.Formatter):
-    """Formats log timestamps in IST (UTC+5:30) with full date."""
-    def formatTime(self, record, datefmt=None):
-        dt = datetime.fromtimestamp(record.created, tz=_IST)
-        return dt.strftime("%Y-%m-%d %H:%M:%S IST")
-
-
-logging.basicConfig(level=logging.INFO)
-
-# Mirror WARNING+ into the permanent SQLite archive on the volume
-# (data/telemetry.db) — Railway console logs rotate per-deploy, this doesn't.
-try:
-    from services.data.stores.log_store import SQLiteLogHandler
-    _db_handler = SQLiteLogHandler(level=logging.WARNING)
-    _db_handler.setFormatter(logging.Formatter("%(message)s"))
-    logging.getLogger().addHandler(_db_handler)
-except Exception as _exc:  # pragma: no cover — telemetry must never block startup
-    logging.getLogger(__name__).warning("SQLite log handler unavailable: %s", _exc)
-_ist_fmt = _ISTFormatter("%(asctime)s %(levelname)-8s [%(name)s] %(message)s")
-for _h in logging.root.handlers:
-    _h.setFormatter(_ist_fmt)
+configure_logging(level=logging.INFO)
 
 logger = logging.getLogger(__name__)
 

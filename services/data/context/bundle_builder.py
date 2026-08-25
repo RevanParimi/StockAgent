@@ -253,7 +253,8 @@ def _safe(
     try:
         text = _cap(fetcher(*args))
     except Exception as exc:
-        logger.warning("[bundle_builder] %s fetch failed: %s", name, exc)
+        logger.warning("[bundle_builder] %s fetch failed: %s", name, exc,
+                       exc_info=True)
         sections[name] = UNAVAILABLE
         status[name] = f"{STATUS_FAILED_PREFIX}{type(exc).__name__}"
         return

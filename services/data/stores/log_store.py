@@ -22,9 +22,11 @@ data_health : one row per run describing what that run actually received —
             derived ok/degraded/hollow verdict. Mirrors
             data/logs/data_health.jsonl. Write-only until B5's hollow-run gate.
 app_logs  : one row per WARNING/ERROR log record from any module (attached
-            via SQLiteLogHandler in services/api/server.py)
-            → permanent incident history, queryable long after Railway's
-            console has rotated.
+            via configure_logging() — the API server and every standalone
+            script entry point). Carries run_id/ticker when the record was
+            emitted inside an analysis run, so an error can be traced to the
+            verdict it damaged → permanent incident history, queryable long
+            after Railway's console has rotated.
 
 Design rules
 ------------
@@ -48,8 +50,9 @@ from __future__ import annotations
 import logging
 import sqlite3
 import threading
+from contextlib import contextmanager
 from contextvars import ContextVar
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from core.config import settings
@@ -66,6 +69,42 @@ _conn: sqlite3.Connection | None = None
 # None and stay NULL — the correct "cost belongs to everyone" bucket).
 current_user_id: ContextVar[str | None] = ContextVar("current_user_id", default=None)
 
+# E1 (Three Loops PI) — run correlation. `app_logs` had no way to say WHICH run
+# an error came from, so a degradation could not be tied to the verdict it
+# damaged. The orchestrator opens `run_context(run_id)` for the whole of
+# analyse()/analyse_async() and names the ticker once resolution succeeds;
+# every WARNING+ record emitted underneath is stamped without threading an
+# argument through ~200 call sites. ContextVars are copied by
+# asyncio.to_thread, which is how the async path fans out, so offloaded work
+# stays correlated. Default None = no run in flight (scheduler, startup, API
+# request handling) — NULL is the honest answer there, not a guess.
+current_run_id: ContextVar[str | None] = ContextVar("current_run_id", default=None)
+current_ticker: ContextVar[str | None] = ContextVar("current_ticker", default=None)
+
+
+@contextmanager
+def run_context(run_id: str, ticker: str | None = None):
+    """Stamp every WARNING+ record emitted inside this block with `run_id`.
+
+    The ticker is usually unknown at the top of a run (resolution is the first
+    LLM call and can itself fail), so it is optional here and named later via
+    `set_run_ticker`. Both are restored on exit — including on a raise, so a
+    failed run cannot leak its id into the next one on a reused thread.
+    """
+    run_token = current_run_id.set(run_id)
+    ticker_token = current_ticker.set(ticker)
+    try:
+        yield
+    finally:
+        current_ticker.reset(ticker_token)
+        current_run_id.reset(run_token)
+
+
+def set_run_ticker(ticker: str | None) -> None:
+    """Name the ticker of the run in flight, once resolution has produced one."""
+    current_ticker.set(ticker)
+
+
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS llm_calls (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -81,12 +120,18 @@ CREATE TABLE IF NOT EXISTS llm_calls (
 CREATE INDEX IF NOT EXISTS idx_llm_calls_ts ON llm_calls (ts);
 CREATE INDEX IF NOT EXISTS idx_llm_calls_model ON llm_calls (model);
 
+-- E1 adds run_id/ticker. They are declared here for a FRESH database only;
+-- an existing one (prod holds 4,357 rows) is migrated by _add_column below,
+-- and the index over run_id is created there too — putting it in this script
+-- would abort the whole executescript on a pre-E1 DB and take telemetry down.
 CREATE TABLE IF NOT EXISTS app_logs (
     id      INTEGER PRIMARY KEY AUTOINCREMENT,
     ts      TEXT NOT NULL,
     level   TEXT NOT NULL,
     logger  TEXT NOT NULL,
-    message TEXT NOT NULL
+    message TEXT NOT NULL,
+    run_id  TEXT,
+    ticker  TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_app_logs_ts ON app_logs (ts);
 CREATE INDEX IF NOT EXISTS idx_app_logs_level ON app_logs (level);
@@ -149,29 +194,85 @@ CREATE INDEX IF NOT EXISTS idx_cost_by_user_day ON cost_by_user_day (day);
 """
 
 
+def _add_column(conn: sqlite3.Connection, table: str, column: str, decl: str) -> None:
+    """Add a nullable column to an existing table; a no-op once it is there.
+
+    SQLite has no `ADD COLUMN IF NOT EXISTS`, so the duplicate-column error is
+    the check. Anything else is left for _migrate to decide about.
+    """
+    try:
+        conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {decl}")
+        conn.commit()
+    except sqlite3.OperationalError as exc:
+        if "duplicate column" not in str(exc).lower():
+            raise
+
+
+def _migrate(conn: sqlite3.Connection) -> None:
+    """Bring an older database up to the current schema. Never raises.
+
+    Every added column is nullable: old rows keep NULL and stay readable, which
+    is why no history is ever rewritten here.
+
+    Non-fatal by design. Two uvicorn workers boot together and both ALTER the
+    same table, so one can meet `database is locked`. If that escaped, the
+    outer guard in _get_conn would return None and the worker would archive
+    NOTHING — llm_calls, run_summaries and data_health included — until the
+    next restart. Degrading to the one column we could not add is far cheaper,
+    and the next boot retries.
+    """
+    try:
+        _add_column(conn, "llm_calls", "user_id", "TEXT")   # Atlas C8
+        _add_column(conn, "app_logs", "run_id", "TEXT")     # E1
+        _add_column(conn, "app_logs", "ticker", "TEXT")     # E1
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_app_logs_run_id ON app_logs (run_id)"
+        )
+        conn.commit()
+    except Exception as exc:
+        logger.warning(
+            "[log_store] schema migration incomplete (non-fatal, telemetry stays "
+            "up; retried on next boot): %s", exc,
+        )
+
+
 def _get_conn() -> sqlite3.Connection | None:
-    """Lazily open (and initialize) the shared connection. None on failure."""
+    """Lazily open (and initialize) the shared connection. None on failure.
+
+    Double-checked locking: the fast path stays lock-free once the connection
+    exists, but first touch is serialised. Without that, two threads reaching
+    an untouched telemetry.db both ran `PRAGMA journal_mode=WAL` and the DDL,
+    one lost with `database is locked`, and its record was dropped — silently,
+    because every writer here is non-fatal by design. E1's parallel-run test
+    reproduces it; the analysis path fans out through asyncio.to_thread, so
+    concurrent first touch is normal, not exotic.
+
+    Callers must never hold `_lock` when calling this (they don't: every writer
+    takes it only around its INSERT), or this would deadlock on a plain Lock.
+
+    ⚠ Serialises threads, NOT processes. Prod runs two uvicorn workers and they
+    still race each other on first touch; `busy_timeout=5000` covers that, and
+    the DDL is all `IF NOT EXISTS`, so the loser retries on its next write.
+    """
     global _conn
     if _conn is not None:
         return _conn
-    try:
-        db_path = Path(getattr(settings, "TELEMETRY_DB_PATH", "data/telemetry.db"))
-        db_path.parent.mkdir(parents=True, exist_ok=True)
-        conn = sqlite3.connect(str(db_path), check_same_thread=False, timeout=5.0)
-        conn.execute("PRAGMA journal_mode=WAL")
-        conn.execute("PRAGMA busy_timeout=5000")
-        conn.executescript(_SCHEMA)
-        try:                       # Atlas C8: add user_id to a pre-existing DB
-            conn.execute("ALTER TABLE llm_calls ADD COLUMN user_id TEXT")
-            conn.commit()
-        except sqlite3.OperationalError:
-            pass                   # column already exists
-        conn.commit()
-        _conn = conn
-        return _conn
-    except Exception as exc:
-        logger.warning("[log_store] init failed (non-fatal, telemetry off): %s", exc)
-        return None
+    with _lock:
+        if _conn is not None:      # another thread initialised while we waited
+            return _conn
+        try:
+            db_path = Path(getattr(settings, "TELEMETRY_DB_PATH", "data/telemetry.db"))
+            db_path.parent.mkdir(parents=True, exist_ok=True)
+            conn = sqlite3.connect(str(db_path), check_same_thread=False, timeout=5.0)
+            conn.execute("PRAGMA journal_mode=WAL")
+            conn.execute("PRAGMA busy_timeout=5000")
+            conn.executescript(_SCHEMA)
+            _migrate(conn)
+            _conn = conn
+            return _conn
+        except Exception as exc:
+            logger.warning("[log_store] init failed (non-fatal, telemetry off): %s", exc)
+            return None
 
 
 def _now() -> str:
@@ -359,16 +460,30 @@ def rollup_cost_by_user_day(day: str | None = None) -> dict:
         return summary
 
 
-def log_app_record(level: str, logger_name: str, message: str) -> None:
-    """Persist one application log record. Never raises."""
+def log_app_record(
+    level: str,
+    logger_name: str,
+    message: str,
+    run_id: str | None = None,
+    ticker: str | None = None,
+) -> None:
+    """Persist one application log record. Never raises.
+
+    E1: `run_id`/`ticker` default to the `run_context` in flight, so the
+    handler passes nothing and an error logged anywhere under a run is tied to
+    it. Both stay NULL outside a run — that is the honest answer, not a gap.
+    """
     try:
+        rid = run_id if run_id is not None else current_run_id.get()
+        tkr = ticker if ticker is not None else current_ticker.get()
         conn = _get_conn()
         if conn is None:
             return
         with _lock:
             conn.execute(
-                "INSERT INTO app_logs (ts, level, logger, message) VALUES (?, ?, ?, ?)",
-                (_now(), level, logger_name, message[:4000]),
+                "INSERT INTO app_logs (ts, level, logger, message, run_id, ticker) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (_now(), level, logger_name, message[:4000], rid, tkr),
             )
             conn.commit()
     except Exception:
@@ -418,3 +533,76 @@ class SQLiteLogHandler(logging.Handler):
             log_app_record(record.levelname, record.name, self.format(record))
         except Exception:
             pass
+
+
+# ---------------------------------------------------------------------------
+# One logging setup for every entry point (E1)
+# ---------------------------------------------------------------------------
+# Before E1 the archive handler was attached in exactly one place —
+# services/api/server.py — so the APScheduler jobs (in-process with the API)
+# were covered but anything run as `railway ssh python -m ...` archived
+# nothing. This lives beside the handler rather than in a new module so that
+# `core` never has to import from `services` to configure its own logging.
+
+_IST = timezone(timedelta(hours=5, minutes=30))
+
+_CONSOLE_FORMAT = "%(asctime)s %(levelname)-8s [%(name)s] %(message)s"
+
+
+class _ISTFormatter(logging.Formatter):
+    """Console timestamps in IST (UTC+5:30) with the full date.
+
+    The market, the schedule and the person reading the console are all on IST;
+    UTC console lines cost a mental conversion on every incident.
+    """
+
+    def formatTime(self, record, datefmt=None):
+        return datetime.fromtimestamp(record.created, tz=_IST).strftime(
+            "%Y-%m-%d %H:%M:%S IST"
+        )
+
+
+def configure_logging(
+    level: int | str = logging.INFO,
+    *,
+    stream=None,
+    ist_time: bool = True,
+) -> None:
+    """Configure console logging and attach the permanent WARNING+ archive.
+
+    Idempotent: safe to call from a module imported by an already-configured
+    process. That matters because the RL workflow modules configure at import
+    time and the API server imports them — a second archive handler would
+    double every row.
+
+    E1 also fixes a duplication measured in prod on 2026-08-26: the archive
+    handler was given a `%(message)s` formatter and then had it overwritten two
+    lines later by the loop that re-formats every root handler, so all 4,357
+    stored messages carried a redundant `"<IST ts> LEVEL [logger] "` prefix.
+    `ts`, `level` and `logger` are already columns, and a per-record timestamp
+    inside the message body would make E2's fingerprints unique-by-construction.
+    The console keeps the prefix; the archive stores the message alone.
+    """
+    if stream is not None:
+        logging.basicConfig(level=level, stream=stream)
+    else:
+        logging.basicConfig(level=level)
+    root = logging.getLogger()
+    root.setLevel(level)   # basicConfig is a no-op once root has any handler
+
+    try:
+        if not any(isinstance(h, SQLiteLogHandler) for h in root.handlers):
+            archive = SQLiteLogHandler(level=logging.WARNING)
+            archive.setFormatter(logging.Formatter("%(message)s"))
+            root.addHandler(archive)
+    except Exception as exc:   # telemetry must never block a process from booting
+        logging.getLogger(__name__).warning(
+            "[log_store] SQLite log handler unavailable (non-fatal): %s", exc
+        )
+
+    console_fmt = (
+        _ISTFormatter(_CONSOLE_FORMAT) if ist_time else logging.Formatter(_CONSOLE_FORMAT)
+    )
+    for handler in root.handlers:
+        if not isinstance(handler, SQLiteLogHandler):
+            handler.setFormatter(console_fmt)

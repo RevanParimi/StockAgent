@@ -39,6 +39,7 @@ from pathlib import Path
 
 from core.config import settings
 from services.data.stores import atlas_store
+from services.data.stores.log_store import configure_logging
 
 logger = logging.getLogger(__name__)
 
@@ -413,7 +414,9 @@ def run_etl(*, users_db: Path | str = Path("data/users.db"),
 
 
 def main() -> None:
-    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
+    # E1: shared setup — a script run under `railway ssh` now archives its
+    # warnings into telemetry.db instead of losing them with the console.
+    configure_logging(level=logging.INFO)
     ap = argparse.ArgumentParser(description="Atlas C10 ETL (spec §6).")
     ap.add_argument("--dry-run", action="store_true",
                     help="classify portfolio dirs + report only; write nothing")

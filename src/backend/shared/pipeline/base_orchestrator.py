@@ -48,6 +48,7 @@ from backend.shared.clients.llm_client import get_llm_client
 from services.clients.llm_client import JSON_MODE_EXTRA_BODY
 from backend.shared.data.fetchers.symbol_resolver import learn_company_name, resolve_company_name
 from backend.shared.data.stores.run_logger import log_llm_call, log_run_summary
+from services.data.stores.log_store import run_context, set_run_ticker
 from backend.shared.data.stores.analysis_logger import log_analysis
 from backend.shared.data.stores.api_usage import log_run_api_usage, snapshot_usage
 from backend.shared.pipeline.graphs.nodes import make_dispatch_fn, make_run_agent_node
@@ -129,76 +130,81 @@ class BaseSectorOrchestrator(ABC):
     ) -> FinalReport:
         """Async end-to-end analysis. Preferred entry point for FastAPI / WebSocket."""
         run_id = str(uuid.uuid4())[:8]
-        start = time.time()
-        started_at = datetime.now(timezone.utc)
-        api_snapshot = snapshot_usage()
-        self._last_data_health = None
-        logger.info("[%s] Async run %s started for '%s'", self.SECTOR_NAME, run_id, user_input)
+        # E1: everything this run logs at WARNING+ is stamped with the run id,
+        # so a degradation can be traced back to the verdict it damaged. The
+        # ticker is named below, once resolution has actually produced one.
+        with run_context(run_id):
+            start = time.time()
+            started_at = datetime.now(timezone.utc)
+            api_snapshot = snapshot_usage()
+            self._last_data_health = None
+            logger.info("[%s] Async run %s started for '%s'", self.SECTOR_NAME, run_id, user_input)
 
-        query = await asyncio.to_thread(self._resolve_ticker, user_input, run_id)
-        logger.info("[%s] Resolved: %s -> %s", self.SECTOR_NAME, user_input, query)
+            query = await asyncio.to_thread(self._resolve_ticker, user_input, run_id)
+            set_run_ticker(query.ticker)
+            logger.info("[%s] Resolved: %s -> %s", self.SECTOR_NAME, user_input, query)
 
-        if self._aggregator_weights is None or self._aggregator_weights_ticker != query.ticker:
-            learned = await asyncio.to_thread(self._load_learned_weights, query.ticker)
-            self._aggregator_weights = learned or self._get_default_weights()
-            self._aggregator_weights_ticker = query.ticker
+            if self._aggregator_weights is None or self._aggregator_weights_ticker != query.ticker:
+                learned = await asyncio.to_thread(self._load_learned_weights, query.ticker)
+                self._aggregator_weights = learned or self._get_default_weights()
+                self._aggregator_weights_ticker = query.ticker
 
-        # Pre-fetch NseIndiaApi data before fan-out — NSE() is sync, run in thread.
-        # All 8 parallel agents share query.nse_data as read-only (set here, never written by agents).
-        await asyncio.to_thread(self._prefetch_nse_data, query)
+            # Pre-fetch NseIndiaApi data before fan-out — NSE() is sync, run in thread.
+            # All 8 parallel agents share query.nse_data as read-only (set here, never written by agents).
+            await asyncio.to_thread(self._prefetch_nse_data, query)
 
-        pipeline_run = PipelineRun(run_id=run_id, query=query, status="running")
-        if self._unified_enabled():
-            agent_outputs = await asyncio.to_thread(
-                self._run_agents, query, run_id, progress_callback
+            pipeline_run = PipelineRun(run_id=run_id, query=query, status="running")
+            if self._unified_enabled():
+                agent_outputs = await asyncio.to_thread(
+                    self._run_agents, query, run_id, progress_callback
+                )
+            else:
+                agent_outputs = await self._run_via_graph_async(
+                    query, run_id=run_id, progress_callback=progress_callback
+                )
+
+            report = self._aggregator.run(
+                ticker=query.ticker,
+                company_name=query.company_name,
+                agent_outputs=agent_outputs,
+                learned_weights=self._aggregator_weights,
+                run_id=run_id,
+                sector=self.SECTOR_NAME,
             )
-        else:
-            agent_outputs = await self._run_via_graph_async(
-                query, run_id=run_id, progress_callback=progress_callback
+
+            # B2: the run's health record travels with its verdict. None on the
+            # legacy worker-pool path, which builds no bundle to describe.
+            report.data_health = self._last_data_health
+
+            pipeline_run.report = report
+            pipeline_run.status = "completed"
+            pipeline_run.duration_seconds = round(time.time() - start, 2)
+
+            errors = [f"{n}: {o.error}" for n, o in agent_outputs.items() if o.error]
+            total_pt, total_ct, total_cost = sum_run_usage(
+                agent_outputs, getattr(self, "_last_resolve_usage", (0, 0)), self._aggregator
             )
-
-        report = self._aggregator.run(
-            ticker=query.ticker,
-            company_name=query.company_name,
-            agent_outputs=agent_outputs,
-            learned_weights=self._aggregator_weights,
-            run_id=run_id,
-            sector=self.SECTOR_NAME,
-        )
-
-        # B2: the run's health record travels with its verdict. None on the
-        # legacy worker-pool path, which builds no bundle to describe.
-        report.data_health = self._last_data_health
-
-        pipeline_run.report = report
-        pipeline_run.status = "completed"
-        pipeline_run.duration_seconds = round(time.time() - start, 2)
-
-        errors = [f"{n}: {o.error}" for n, o in agent_outputs.items() if o.error]
-        total_pt, total_ct, total_cost = sum_run_usage(
-            agent_outputs, getattr(self, "_last_resolve_usage", (0, 0)), self._aggregator
-        )
-        log_run_summary(
-            run_id=run_id, ticker=query.ticker, company_name=query.company_name,
-            started_at=started_at, duration_seconds=pipeline_run.duration_seconds,
-            final_score=report.final_score, verdict=report.verdict,
-            total_prompt_tokens=total_pt, total_completion_tokens=total_ct,
-            total_cost_usd=total_cost,
-            agent_scores={n: o.overall_score for n, o in agent_outputs.items()},
-            errors=errors,
-        )
-        log_run_api_usage(run_id, query.ticker, api_snapshot)
-        log_analysis(
-            report=report, run_id=run_id,
-            duration_seconds=pipeline_run.duration_seconds,
-            model=settings.LLM_MODEL_BULK, agent_outputs=agent_outputs,
-        )
-        logger.info(
-            "[%s] Async run %s done in %.1fs — verdict=%s score=%.3f",
-            self.SECTOR_NAME, run_id, pipeline_run.duration_seconds,
-            report.verdict, report.final_score,
-        )
-        return report
+            log_run_summary(
+                run_id=run_id, ticker=query.ticker, company_name=query.company_name,
+                started_at=started_at, duration_seconds=pipeline_run.duration_seconds,
+                final_score=report.final_score, verdict=report.verdict,
+                total_prompt_tokens=total_pt, total_completion_tokens=total_ct,
+                total_cost_usd=total_cost,
+                agent_scores={n: o.overall_score for n, o in agent_outputs.items()},
+                errors=errors,
+            )
+            log_run_api_usage(run_id, query.ticker, api_snapshot)
+            log_analysis(
+                report=report, run_id=run_id,
+                duration_seconds=pipeline_run.duration_seconds,
+                model=settings.LLM_MODEL_BULK, agent_outputs=agent_outputs,
+            )
+            logger.info(
+                "[%s] Async run %s done in %.1fs — verdict=%s score=%.3f",
+                self.SECTOR_NAME, run_id, pipeline_run.duration_seconds,
+                report.verdict, report.final_score,
+            )
+            return report
 
     def analyse(
         self,
@@ -207,68 +213,73 @@ class BaseSectorOrchestrator(ABC):
     ) -> FinalReport:
         """Sync end-to-end analysis. Used by CLI and scheduler."""
         run_id = str(uuid.uuid4())[:8]
-        start = time.time()
-        started_at = datetime.now(timezone.utc)
-        api_snapshot = snapshot_usage()
-        self._last_data_health = None
-        logger.info("[%s] Run %s started for '%s'", self.SECTOR_NAME, run_id, user_input)
+        # E1: everything this run logs at WARNING+ is stamped with the run id,
+        # so a degradation can be traced back to the verdict it damaged. The
+        # ticker is named below, once resolution has actually produced one.
+        with run_context(run_id):
+            start = time.time()
+            started_at = datetime.now(timezone.utc)
+            api_snapshot = snapshot_usage()
+            self._last_data_health = None
+            logger.info("[%s] Run %s started for '%s'", self.SECTOR_NAME, run_id, user_input)
 
-        query = self._resolve_ticker(user_input, run_id=run_id)
-        logger.info("[%s] Resolved: %s -> %s", self.SECTOR_NAME, user_input, query)
+            query = self._resolve_ticker(user_input, run_id=run_id)
+            set_run_ticker(query.ticker)
+            logger.info("[%s] Resolved: %s -> %s", self.SECTOR_NAME, user_input, query)
 
-        self._resolve_weights_for(query.ticker)
+            self._resolve_weights_for(query.ticker)
 
-        # Pre-fetch NseIndiaApi data before fan-out — one session, three calls, 0.5s sleep each.
-        # All 8 parallel agents share query.nse_data as read-only.
-        self._prefetch_nse_data(query)
+            # Pre-fetch NseIndiaApi data before fan-out — one session, three calls, 0.5s sleep each.
+            # All 8 parallel agents share query.nse_data as read-only.
+            self._prefetch_nse_data(query)
 
-        pipeline_run = PipelineRun(run_id=run_id, query=query, status="running")
-        agent_outputs = self._run_agents(
-            query, run_id=run_id, progress_callback=progress_callback
-        )
+            pipeline_run = PipelineRun(run_id=run_id, query=query, status="running")
+            agent_outputs = self._run_agents(
+                query, run_id=run_id, progress_callback=progress_callback
+            )
 
-        report = self._aggregator.run(
-            ticker=query.ticker,
-            company_name=query.company_name,
-            agent_outputs=agent_outputs,
-            learned_weights=self._aggregator_weights,
-            run_id=run_id,
-            sector=self.SECTOR_NAME,
-        )
+            report = self._aggregator.run(
+                ticker=query.ticker,
+                company_name=query.company_name,
+                agent_outputs=agent_outputs,
+                learned_weights=self._aggregator_weights,
+                run_id=run_id,
+                sector=self.SECTOR_NAME,
+            )
 
-        # B2: the run's health record travels with its verdict. None on the
-        # legacy worker-pool path, which builds no bundle to describe.
-        report.data_health = self._last_data_health
+            # B2: the run's health record travels with its verdict. None on the
+            # legacy worker-pool path, which builds no bundle to describe.
+            report.data_health = self._last_data_health
 
-        pipeline_run.report = report
-        pipeline_run.status = "completed"
-        pipeline_run.duration_seconds = round(time.time() - start, 2)
+            pipeline_run.report = report
+            pipeline_run.status = "completed"
+            pipeline_run.duration_seconds = round(time.time() - start, 2)
 
-        errors = [f"{n}: {o.error}" for n, o in agent_outputs.items() if o.error]
-        total_pt, total_ct, total_cost = sum_run_usage(
-            agent_outputs, getattr(self, "_last_resolve_usage", (0, 0)), self._aggregator
-        )
-        log_run_summary(
-            run_id=run_id, ticker=query.ticker, company_name=query.company_name,
-            started_at=started_at, duration_seconds=pipeline_run.duration_seconds,
-            final_score=report.final_score, verdict=report.verdict,
-            total_prompt_tokens=total_pt, total_completion_tokens=total_ct,
-            total_cost_usd=total_cost,
-            agent_scores={n: o.overall_score for n, o in agent_outputs.items()},
-            errors=errors,
-        )
-        log_run_api_usage(run_id, query.ticker, api_snapshot)
-        log_analysis(
-            report=report, run_id=run_id,
-            duration_seconds=pipeline_run.duration_seconds,
-            model=settings.LLM_MODEL_BULK, agent_outputs=agent_outputs,
-        )
-        logger.info(
-            "[%s] Run %s done in %.1fs — verdict=%s score=%.3f",
-            self.SECTOR_NAME, run_id, pipeline_run.duration_seconds,
-            report.verdict, report.final_score,
-        )
-        return report
+            errors = [f"{n}: {o.error}" for n, o in agent_outputs.items() if o.error]
+            total_pt, total_ct, total_cost = sum_run_usage(
+                agent_outputs, getattr(self, "_last_resolve_usage", (0, 0)), self._aggregator
+            )
+            log_run_summary(
+                run_id=run_id, ticker=query.ticker, company_name=query.company_name,
+                started_at=started_at, duration_seconds=pipeline_run.duration_seconds,
+                final_score=report.final_score, verdict=report.verdict,
+                total_prompt_tokens=total_pt, total_completion_tokens=total_ct,
+                total_cost_usd=total_cost,
+                agent_scores={n: o.overall_score for n, o in agent_outputs.items()},
+                errors=errors,
+            )
+            log_run_api_usage(run_id, query.ticker, api_snapshot)
+            log_analysis(
+                report=report, run_id=run_id,
+                duration_seconds=pipeline_run.duration_seconds,
+                model=settings.LLM_MODEL_BULK, agent_outputs=agent_outputs,
+            )
+            logger.info(
+                "[%s] Run %s done in %.1fs — verdict=%s score=%.3f",
+                self.SECTOR_NAME, run_id, pipeline_run.duration_seconds,
+                report.verdict, report.final_score,
+            )
+            return report
 
     # ------------------------------------------------------------------
     # RL learned weights
@@ -333,7 +344,7 @@ class BaseSectorOrchestrator(ABC):
         except Exception as exc:
             logger.warning(
                 "[%s] NseIndiaApi prefetch failed for %s (non-fatal): %s",
-                self.SECTOR_NAME, query.ticker, exc,
+                self.SECTOR_NAME, query.ticker, exc, exc_info=True,
             )
 
     # ------------------------------------------------------------------
@@ -470,7 +481,8 @@ class BaseSectorOrchestrator(ABC):
                 analysis_date=date.today(),
             )
         except Exception as exc:
-            logger.warning("[%s] Ticker resolution failed: %s", self.SECTOR_NAME, exc)
+            logger.warning("[%s] Ticker resolution failed: %s",
+                           self.SECTOR_NAME, exc, exc_info=True)
             return StockQuery(
                 ticker=user_input.upper(),
                 company_name=user_input,
@@ -584,7 +596,7 @@ class BaseSectorOrchestrator(ABC):
             )
         except Exception as exc:
             logger.warning("[%s] data_health record failed (non-fatal): %s",
-                           self.SECTOR_NAME, exc)
+                           self.SECTOR_NAME, exc, exc_info=True)
 
     def _run_agents(
         self,

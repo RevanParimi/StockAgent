@@ -489,7 +489,7 @@ in `SectorRegistry.get_graph_sector()` alone; `sector_router` and
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| `sectors.generic_fallback_enabled` | `true` | Unknown ticker / disabled sector → `generic`. `false` is the A1 rollback line: both paths degrade to `automobile` again |
+| `sectors.generic_fallback_enabled` | `true` | Unknown ticker / unrecognised sector key → `generic`. `false` is the A1 rollback line and sends **only those** back to `automobile` — a known sector without a native graph stays on the generic graph either way (Compass Phase B) |
 
 | Sector | Example Tickers |
 |--------|----------------|

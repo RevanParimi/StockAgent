@@ -119,19 +119,34 @@ def test_generic_orchestrator_is_instantiable_from_the_rl_entry_point():
 
 # ── the rollback line ─────────────────────────────────────────────────────
 
-def test_flag_off_restores_automobile_degradation(monkeypatch):
-    """`sectors.generic_fallback_enabled: false` is the named rollback.
-
-    It restores the pre-A1 fallback TARGET on both paths — the paths stay
-    unified, they just degrade to automobile again.
-    """
+def test_flag_off_sends_unplaceable_inputs_back_to_automobile(monkeypatch):
+    """`sectors.generic_fallback_enabled: false` is the named rollback, and
+    it reaches exactly the inputs we cannot place: an unknown ticker and an
+    unrecognised sector key."""
     monkeypatch.setattr(registry, "_generic_fallback_enabled", lambda: False)
 
     assert detect_sector("SOMETHINGNEW") == "automobile"
-    assert get_orchestrator("pharma") is _automobile_cls()
-    assert sr.get_orchestrator_class("pharma") is _automobile_cls()
+    assert detect_sector("TITAN") == "automobile"
+    assert get_orchestrator("unknown_sector_xyz") is _automobile_cls()
+    assert sr.get_orchestrator_class("unknown_sector_xyz") is _automobile_cls()
 
-    # still unified — the rollback must not resurrect the divergence
+
+def test_flag_off_does_not_drag_a_known_sector_onto_automobile(monkeypatch):
+    """The flag must not reach a mapped sector.
+
+    There is no single pre-A1 state to restore — pharma got automobile on the
+    API path and generic on the RL path, which IS the bug. So the flag picks
+    which consistent state to degrade to, and automobile is never it for a
+    sector we can name: Compass Phase B settled these on the generic graph and
+    the rollback must not regress below that.
+    """
+    monkeypatch.setattr(registry, "_generic_fallback_enabled", lambda: False)
+
+    for sector in ("pharma", "fmcg", "metals", "realestate", "retail"):
+        assert get_orchestrator(sector) is _generic_cls()
+        assert sr.get_orchestrator_class(sector) is _generic_cls()
+
+    # and the paths stay unified — the rollback cannot resurrect the divergence
     for ticker in ACCEPTANCE_TICKERS:
         sector = detect_sector(ticker)
         assert get_orchestrator(sector) is sr.get_orchestrator_class(sector)

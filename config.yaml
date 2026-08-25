@@ -466,9 +466,10 @@ ipo:
 # Sector routing (Three Loops PI, task A1 — spec 2026-08-24 §2.1)
 # =============================================================================
 sectors:
-  # Where an unknown ticker or a disabled sector lands.
+  # Where an input we cannot place lands — an unknown TICKER, or a sector key
+  # that is not in sector_toggles.json at all.
   #   true  -> `generic` (the sector-agnostic unified-analyst graph)
-  #   false -> `automobile`, the pre-A1 behaviour
+  #   false -> `automobile`, where those inputs went before A1
   #
   # Why it changed: SectorRegistry degraded everything unknown or disabled to
   # the automobile graph while the RL path sent it to generic, so the same
@@ -477,10 +478,17 @@ sectors:
   # beside the real-sector store — and put all 73 `generic` tickers on the
   # automobile graph via the API path. Both paths read this key now.
   #
-  # ROLLBACK LINE: set this to `false`. Both paths degrade to automobile
-  # again — they stay unified, only the fallback target moves back. Note
-  # that also returns the RL path's disabled sectors (pharma, fmcg, …) to
-  # the automobile graph, which is where they sat before Compass Phase B.
+  # ROLLBACK LINE: set this to `false`.
+  #
+  # SCOPE — read this before assuming it reverts A1 wholesale. It does NOT
+  # touch a KNOWN sector without a native graph (pharma, fmcg, realestate …):
+  # those stay on the generic graph whatever this says. There is no single
+  # pre-A1 state to restore, because pharma got automobile on the API path and
+  # generic on the RL path — that inconsistency IS the bug. So this flag picks
+  # which CONSISTENT state to degrade to, and automobile is never it for a
+  # sector we can name: Compass Phase B settled those on generic, and a
+  # rollback must not regress below behaviour already shipped and proven.
+  # To revert A1 wholesale, revert the commit.
   generic_fallback_enabled: true
 
 generic_graph:

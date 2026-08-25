@@ -20,7 +20,9 @@ Unknown tickers and disabled sectors resolve to "generic", never to
 "automobile": the generic graph is sector-agnostic by construction, while
 the automobile graph injects nine automobile-specific dimensions into a
 pharma or realestate name. `sectors.generic_fallback_enabled: false`
-restores the pre-A1 automobile degradation.
+sends the UNPLACEABLE cases (unknown ticker, unrecognised sector key)
+back to automobile; a known sector without a native graph stays on the
+generic graph either way.
 """
 from __future__ import annotations
 
@@ -60,8 +62,9 @@ _TOGGLES: dict[str, dict] = _load_toggles()
 
 # ---------------------------------------------------------------------------
 # Phase 1 — comprehensive ticker → sector map
-# Disabled sectors are mapped here so resolve() can log the right sector
-# even when it degrades to automobile.
+# Disabled sectors are mapped here too: resolve() returns the REAL sector
+# (PredictionStore uses it for the directory layout) and only the GRAPH
+# degrades to generic. See get_graph_sector.
 # ---------------------------------------------------------------------------
 
 TICKER_SECTOR: dict[str, str] = {
@@ -277,10 +280,15 @@ _BACKEND_LOADERS: dict[str, Any] = {
 
 
 def _generic_fallback_enabled() -> bool:
-    """A1: unknown ticker / disabled sector resolves to `generic`.
+    """A1: an input we cannot place at all resolves to `generic`.
+
+    Scope is deliberately narrow — an unknown TICKER and an unrecognised
+    SECTOR KEY. A known sector without a native graph goes to `generic`
+    regardless (see get_graph_sector).
 
     Rollback line: `sectors.generic_fallback_enabled: false` in config.yaml
-    restores the pre-A1 automobile degradation on both paths.
+    sends those unplaceable inputs back to automobile, which is where they
+    went before A1.
     """
     from backend.shared.config.settings.loader import cfg
     return bool(cfg("sectors.generic_fallback_enabled", fallback=True))
@@ -294,7 +302,8 @@ class _SectorRegistry:
     """
     Singleton registry for sector routing with toggle support.
     The one resolution point: both the API path and the RL path route here.
-    Unknown tickers and disabled sectors degrade to `generic` (A1).
+    Unknown tickers and sectors without a native graph degrade to
+    `generic` (A1), never to automobile.
     """
 
     def _fallback_sector(self) -> str:
@@ -324,32 +333,47 @@ class _SectorRegistry:
         """
         sector key → the sector whose GRAPH actually runs.
 
-        Native + enabled + tier=backend → itself.
-        Everything else (disabled, unknown, non-backend tier) → `generic`.
+        Native + enabled + tier=backend  → itself.
+        KNOWN sector without a native graph → `generic`, unconditionally.
+        Unrecognised sector key           → `generic`, or `automobile` when
+                                            the fallback flag is off.
 
         This is the function A1 unified: `sector_router` calls it too, so the
         two entry points cannot disagree about which graph a ticker gets.
+
+        The flag deliberately does NOT reach a known-but-disabled sector.
+        There is no single "pre-A1 state" to roll back to — pharma got the
+        automobile graph on the API path and the generic graph on the RL path,
+        which is the bug itself — so the flag picks which CONSISTENT state to
+        degrade to. Sending a mapped sector to the automobile graph is never
+        that state: it injects nine automobile dimensions into a pharma name.
+        Compass Phase B settled those sectors on generic and this keeps them
+        there whatever the flag says. The flag governs only the case where
+        `automobile` was ever a defensible default — an input we cannot place
+        at all.
         """
         s = (sector or "").strip().lower()
         if s == GENERIC_SECTOR:
             return GENERIC_SECTOR
 
-        toggle  = _TOGGLES.get(s, {})
-        enabled = toggle.get("enabled", False)
-        tier    = toggle.get("tier", "backend")
-
-        if enabled and tier == "backend" and s in _BACKEND_LOADERS:
-            return s
+        toggle = _TOGGLES.get(s)
+        if toggle is not None:
+            enabled = toggle.get("enabled", False)
+            tier    = toggle.get("tier", "backend")
+            if enabled and tier == "backend" and s in _BACKEND_LOADERS:
+                return s
+            logger.info(
+                "[SectorRegistry] sector '%s' has no native graph (%s) — using the generic graph",
+                s,
+                "disabled" if not enabled else f"tier={tier!r}",
+            )
+            return GENERIC_SECTOR
 
         fallback = self._fallback_sector()
         if s != fallback:
-            reason = (
-                "is disabled or unknown" if not enabled
-                else f"has no backend graph (tier={tier!r})"
-            )
             logger.warning(
-                "[SectorRegistry] sector '%s' %s — routing to '%s'",
-                s, reason, fallback,
+                "[SectorRegistry] sector '%s' is not a known sector key — routing to '%s'",
+                s, fallback,
             )
         return fallback
 

@@ -1112,8 +1112,11 @@ RESOLVED   absent >= 7d                  -> close
 
 - Every task is TDD: test first, watch it fail, then implement.
 - The full suite must be green before each commit. Baseline is
-  **2945P/12S/0F** as of 2026-08-22; any delta must be explained in the
-  commit message.
+  **2985P/12S/0F** as of 2026-08-25 (local `main`, post-A1); any delta must
+  be explained in the commit message. ⚠ The figure here read **2945P** for
+  the first day of this PI — that was measured 2026-08-22, before `7c410aa`
+  and `17aa7ae` added two test files, so HEAD was already 2953P when A1
+  started. **Re-measure HEAD before attributing a delta to your own change.**
 - **Run the suite yourself.** Subagents background the 5-minute run, lose the
   child, and report success without committing.
 - New tests must not assert the repo deploy state. Use the

@@ -135,7 +135,11 @@ milestones:
       running the GENERIC graph for the disabled-sector names the API path used
       to hand to automobile, so a verdict shift on those names is expected, not
       a regression.
-      Rollback: `sectors.generic_fallback_enabled: false` in config.yaml.
+      Rollback: `sectors.generic_fallback_enabled: false` in config.yaml -
+      but note its SCOPE: it sends unknown tickers and unrecognised sector
+      keys back to automobile and does NOT move a known sector (pharma,
+      fmcg, realestate) off the generic graph. To revert A1 wholesale,
+      revert the commit.
       Remove this entry once judged.
     docs: docs/superpowers/specs/2026-08-24-three-loops-pi-design.md
 

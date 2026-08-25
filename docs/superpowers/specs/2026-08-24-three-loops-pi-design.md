@@ -1154,7 +1154,240 @@ On completion of each workstream, update:
 
 ## 12. C1 findings
 
-*(populated by task C1)*
+Read-only diagnostic, run 2026-08-25 against prod via `railway ssh` over all
+`/app/data/predictions/*/*/` stores: **762 graded rows, 20 ticker-stores,
+39 monthly forecast cycles, 71 prediction envelopes, 36 weight memories.**
+Provenance per §2.0: every number below is `[PROD]` unless marked `[CODE]`.
+
+### 12.0 Verdict
+
+**`technical` is not uninformative. It is mis-graded, and so is every other
+dimension — `technical` just sits where the fault is worst.** C2-C4 are NOT
+retired, but their target moves: the defect is in the grading pipeline, not in
+the technical agent, and not in the weight learner. §2.0 claim 2 stands — the
+learner is correctly minimising a metric that is measuring the wrong thing.
+
+Four independent faults stack. Each is sufficient on its own to sink a
+dimension; `technical` gets all four at once.
+
+### 12.1 What `accuracy_snapshot[dim]` actually measures (Q1)
+
+`[CODE]` `WeightMemory.agent_accuracy[dim]` is an `AgentAccuracy` built by
+`WeightAdapter._compute_accuracy` over `WEIGHT_ACCURACY_WINDOW = 7` trading
+days, and read through `AgentAccuracy.hit_rate()`:
+
+```
+hit_rate = 0.5 * direction_hit_rate + 0.5 * calibration_hit_rate     (RL_CALIBRATION_WEIGHT = 0.5)
+```
+
+Neither half measures the dimension's own forecast.
+
+- **`direction_hit_rate`** comes from `agent_hit_credit()`
+  (`weight_adapter.py:94`). Every agent is credited a hit unless it is named
+  `miss_analysis.primary_miss_agent` on a wrong, penalisable day. So it is
+  **the ensemble's direction record minus one LLM-chosen blame label** — it
+  contains no reference to `predicted_agent_scores[dim]` at all. Two agents
+  with opposite views on the same day receive identical credit.
+- **`calibration_hit_rate`** is the only term that reads the agent's own
+  score, and it compares `predicted_agent_scores[dim] >= 0.5` against
+  `entry.actual_direction`.
+
+**Horizon:** each graded row is one day of a **month-ahead envelope generated
+once at cycle start** (`generated_at` = the 1st; `daily_forecasts` = 30 rows).
+The envelope is a shape, not 30 forecasts: `linear` 52 / `front_loaded` 18 /
+`volatile` 1 of 71. **56 of 71 envelopes (78.9%) carry ONE `predicted_verdict`
+for all 30 days**, and 36 of 71 carry <=4 distinct `predicted_agent_scores`
+vectors across the month (they change only at reforecast points). So the
+answer to "is it the same horizon `technical` predicts on" is **no** — the
+agent makes one monthly claim and is graded ~20 times on daily outcomes.
+
+**Effective sample size: 762 graded rows are 39 independent forecasts**
+(automobile 330/18, banking_bfsi 144/7, it_sector 136/6, renewable_energy
+152/8 — ~19-23 rows per cycle). §2.2's `technical n=136` is really **8 monthly
+renewable calls**, replayed ~19x each. Every pooled per-dimension figure in
+§2.2 is inflated by roughly that factor and none of them carry the
+significance their `n` implies.
+
+### 12.2 Why `technical: 1/7` sits next to `fundamentals: 7/7` (Q2)
+
+They are counting **the same event class** — the ensemble's direction record —
+and differ only by who the feedback LLM named. `fundamentals: 7/7` does not
+mean fundamentals was right seven times; it means it was not blamed seven
+times. The blame is not spread across the roster:
+
+```
+sector             top-blamed agent      share of penalisable misses   uniform would be
+renewable_energy   technical              90/103 = 87.4%               16.7%  (6 agents)
+it_sector          pattern_analysis       59/ 77 = 76.6%               12.5%  (8 agents)
+banking_bfsi       pattern_analysis       52/ 80 = 65.0%               16.7%  (6 agents)
+automobile         pattern_analysis       57/179 = 31.8%               11.1%  (9 agents)
+```
+
+**The LLM blames the chart agent.** `pattern_analysis` is the chart agent in
+three rosters; `renewable_energy` is the one roster with no `pattern_analysis`,
+and there the same prior lands on `technical` (its only chart-shaped agent).
+`technical` is not a worse dimension than `pattern_analysis` — it is the same
+scapegoat wearing the only name available in that sector.
+
+This closes §14's open question: **the `pattern_analysis` analogue shows the
+same mechanism**, so the finding generalises and is not a renewable quirk.
+
+In renewable_energy, `technical` is the **top-blamed agent in 8 of 8 cycles**.
+`SUZLON_2026-07`: 22 graded rows, direction_correct **0.00**, 21 of 22 blames
+on `technical`. One bad monthly call became 21 penalties on one agent.
+Across all cycles with >=5 blamed misses (n=35), the median share taken by a
+single agent is **0.71**, and 14 of 35 cycles put >=80% on one name.
+
+### 12.3 The unit error underneath it (Q3)
+
+`[CODE]` `daily_review.py:553`:
+`actual_direction = classify_direction(actual_close, predicted_close)`, and
+`classify_direction(actual, predicted)` returns UP/DOWN/FLAT from
+`(actual - predicted) / predicted` against +/-`RL_FLAT_THRESHOLD_PCT` (0.3%).
+
+**`actual_direction` is a forecast residual, not a market move.** "UP" means
+"closed above our own prediction". `is_direction_correct` then scores a BUY as
+correct only when the stock **beat the forecast** — a stock that rose 3% against
+a +8% forecast is recorded as a `direction_flip` miss on a BUY. The
+`is_direction_correct` docstring ("aligns with the actual price move") does not
+describe what the function does.
+
+Consequence — **an optimistic forecast manufactures its own misses**:
+
+```
+corr(forecast_profile_monthly_pct, UP-rate) = -0.368   over 39 cycles
+cycles forecasting >= +3%/mo (n=7):  mean UP-rate 0.211
+cycles forecasting <=  0%/mo (n=27): mean UP-rate 0.469
+```
+
+renewable_energy ran the most bullish profiles (+8.0, +5.0, +3.7, +3.5, +2.0)
+and drew a **0.133 UP-rate** on calibration-eligible days.
+`SUZLON_2026-07` forecast +8.0%/mo and recorded **0 UP / 21 DOWN**.
+So renewable's misses were largely produced by its own forecast profile, then
+charged to `technical`. Overall the split is UP 320 / DOWN 376 / FLAT 66.
+
+### 12.4 Sparse, mis-horizoned, or genuinely wrong? (Q4)
+
+**Mis-horizoned and mis-blamed, with a small unproven anti-signal.** The
+memory note that `hit_rate()` blends sparse calibration is correct but
+understates it: calibration is not merely sparse, it is **measuring the period
+base rate rather than skill.**
+
+Fit `calib_hit ~= bullish% * UPrate + (1 - bullish%) * (1 - UPrate)` — a model
+with no skill term at all — across 29 sector-agent pairs:
+
+```
+R^2 = 0.676     mean |residual| = 0.069
+```
+
+Agents with a constant lean match it exactly, because the identity is forced:
+renewable `risk` is bullish on 100.0% of days → calib_hit 0.133 = the UP-rate
+to three decimals; banking `institutional` 100.0% → 0.333. An agent is
+"calibrated" when its standing lean happens to match the window's residual
+base rate.
+
+`technical` in renewable: `calib_hit = 0.253` against a base-rate prediction of
+`0.358` — residual **-0.105** — with mean score 0.452 on UP days vs 0.621 on
+DOWN days (separation **-0.169**). So of technical's 0.247 shortfall below 0.5,
+roughly **0.142 is base-rate artifact and 0.105 is genuine anti-correlation.**
+That residual rests on 8 independent cycles and is **not significant**; it is a
+hypothesis for C2, not a finding.
+
+Combining both halves for renewable `technical`:
+`0.5 x 0.408 + 0.5 x 0.253 ~= 0.33`, below `WEIGHT_PENALTY_HIT_RATE` (0.40) →
+penalty on essentially every cycle → the observed zeroing in 3 of 4 stores.
+
+**The dead band is real and visible in the stored snapshots.** `BAJAJ-AUTO`
+v66: `competitive_intel`, `policy_regulatory` and `risk_macro` each hold a
+**perfect 6/6 direction record** with calibration 0/6, blending to exactly
+**0.500** — above the 0.40 penalty, below the 0.70 boost, so they can never
+climb. `raw_materials`, same 6/6 but calibration 6/6, blends to 1.000 and holds
+`w = 0.2159` against `competitive_intel`'s 0.0935. Same direction evidence,
+2.3x the weight, decided entirely by the base-rate term.
+`HEROMOTOCO` v65 shows §2.2 category C from the inside: all nine agents at
+`6/6` with `calibration_total = 0`, every weight ~0.1215 — nothing to learn
+from, so the normalisation cancels the boost.
+
+### 12.5 The cost (Q5)
+
+Over the 410 blamed misses whose store had a resolvable prior weight:
+
+```
+weight already < 0.01 at the time of blame:   151 / 410 = 36.8%
+weight already exactly 0.0:                   127 / 410 = 31.0%
+
+technical            65/ 85 = 76.5% of its blames landed on a dead weight
+sales_demand         13/ 27 = 48.1%
+valuation_catalyst   17/ 37 = 45.9%
+pattern_analysis     54/165 = 32.7%
+fundamentals          0/ 22 =  0.0%
+```
+
+**Three quarters of `technical`'s penalties were applied to a weight that was
+already at or near zero** — it could not fall further and was contributing
+nothing to the verdict being graded. The feedback agent kept naming it, wrote
+lesson L066 about it, and daily-review theses kept citing "zero-weight
+technical agent" as the cause of misses it could not have caused. That is the
+self-confirming loop §2.2 observed: the metric zeroes the agent, then blames
+the zeroed agent for the miss.
+
+### 12.6 What C2 should specify (proposed, not implemented)
+
+In dependency order — (a) and (b) are prerequisites for any measurement of
+(c) and (d), so they should land first even though they are the larger change.
+
+- **(a) Fix the unit.** Grade direction against the **prior close** (a market
+  move), not against `predicted_close`. Keep the forecast residual as a
+  separate, honestly-named `envelope_error` metric — it is a useful measure of
+  envelope quality and a bad measure of direction. This alone changes
+  `direction_correct` for a large share of the 762 rows and invalidates every
+  stored accuracy snapshot, so it needs the C3 dark-shadow treatment.
+- **(b) Grade once per forecast cycle, not once per replayed day.** Either
+  collapse a cycle to one graded observation, or weight rows by `1/cycle_len`.
+  Until then no per-dimension `n` in this system means what it says, and the
+  bias windows (`RL_BIAS_WINDOWS` 5/10/21 trading days) are measuring
+  autocorrelated copies of one call.
+- **(c) Stop deriving a per-agent signal from a single LLM scapegoat label.**
+  `primary_miss_agent` drives both `hit_rate` and `_compute_bias_score`, and it
+  carries a measured chart-agent prior of 65-87%. Options: score every agent
+  from its own `predicted_agent_scores` against the realised move; or require
+  the feedback agent to emit per-agent attribution weights; or keep the label
+  for narrative and remove it from the weight path. **The weight path should
+  not depend on it at all.**
+- **(d) Replace or gate the calibration term.** As built it rewards agreement
+  with the window's base rate (R^2 0.676). Either compare against a
+  base-rate-neutral benchmark (Brier skill score vs the period's own UP-rate),
+  or require a minimum `calibration_total` before blending, or drop it. Note
+  the `RL_CALIBRATION_WEIGHT = 0.5` blend is what creates the dead band that
+  `RL_ZERO_WEIGHT_RECOVERY_ENABLED` currently patches at one endpoint only.
+
+**C2-C4 are not retired.** The C4 validation should measure whether the
+re-graded metric ranks dimensions differently, and specifically whether
+`technical`'s -0.105 calibration residual survives once (a), (b) and (d) are in
+place. If it does, `technical` has a genuine polarity problem worth a separate
+card; if it does not, `technical` was never the problem.
+
+### 12.7 Incidental findings (not C1's scope, logged so they are not re-derived)
+
+- **Every `*_daily_feedback_log.json` on prod carries `"sector": "automobile"`**,
+  in all four sector directories (18/7/6/8 files). Any analysis that groups by
+  the `sector` **field** rather than the directory silently pools all four
+  sectors into automobile — this diagnostic hit exactly that trap on its first
+  pass. The directory is the truth; the field is not. Worth a one-line fix
+  alongside A2.
+- The `automobile/` directory physically holds ADANIGREEN, SUZLON, INOXWIND,
+  ACMESOLAR (renewable), KPITTECH, PERSISTENT, TATAELXSI, HAPPSTMNDS (IT) and
+  FEDERALBNK, IDFCFIRSTB, RBLBANK, PAYTM, STARHEALTH (BFSI) — F1's duplicate
+  stores, seen from the grading side. These ran on the **automobile roster**,
+  so their dimension names do not match their sector. A2 owns this; C4 must
+  confirm which stores it is comparing.
+- `miss_type` distribution over 682 entries with a miss analysis:
+  `magnitude` 295, `direction_flip` 294, `model_bias` 76, `data_stale` 8,
+  `data_gap` 6, `timing` 3. `external_shock` is **0**, consistent with §2's
+  note that its 20% cap is inert.
+- `primary_miss_agent` was reset to `"unknown"` on 25 of 682 entries (3.7%),
+  which correctly grants every agent a hit — the validator at
+  `feedback_agent.py:398` is working.
 
 ## 13. C2 grading design
 
@@ -1169,11 +1402,15 @@ On completion of each workstream, update:
 - Prod `run_summaries.jsonl` had 13 rows at the time of writing, so no
   historical run-quality baseline exists. B1 creates one; until it has run
   for a sprint, degraded-rate thresholds in B3 are estimates.
-- `technical` appears in only 4 prod stores (the renewable sector). The
+- ~~`technical` appears in only 4 prod stores (the renewable sector). The
   0.459 figure is well-sampled per store (136 snapshots) but narrow in
   ticker coverage. C1 must check whether the automobile/IT analogue
   (`pattern_analysis`, n=653, 16 stores) shows the same mechanism before
-  generalising.
+  generalising.~~ **CLOSED by C1 — see §12.2.** `pattern_analysis` shows the
+  same mechanism (65-77% blame share in banking_bfsi and it_sector), so the
+  finding generalises. But "well-sampled per store (136 snapshots)" was
+  **wrong**: §12.1 shows those 136 rows are ~8 independent monthly forecasts
+  replayed ~19x each. Do not cite any §2.2 `n` as an independent sample count.
 - This PI does not address the `generic` sector's learning gap (74 tickers,
   1 weight memory). That is a consequence of routing, and should be
   re-measured after A2 rather than fixed blind.

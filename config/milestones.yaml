@@ -160,6 +160,14 @@ milestones:
       before the fix: /app/logs/run_summaries.jsonl held 13 rows after 53 days,
       because run_logger and analysis_logger defaulted LOGS_DIR to the ephemeral
       logs/ while api_usage defaulted to data/logs.
+      INTERIM RESULT 2026-08-25 17:48 (deploy 292396ac, SUCCESS) - the deploy
+      half is confirmed, the durability half is NOT. Verified: no LOGS_DIR env
+      var is set on Railway so the new default is what runs; all three paths
+      resolve under data/logs/; telemetry.db now carries run_summaries beside
+      app_logs/llm_calls/cost_by_user_day (0 rows at boot, llm_calls 5250); the
+      boot line printed the INFO branch, not the WARNING; /app/logs/ is now
+      empty, which is the ephemeral wipe behaving exactly as described.
+      What remains is ONLY (b) below - proving the count does not reset.
       After this deploys, AND AFTER AT LEAST ONE FURTHER REDEPLOY, confirm on
       prod (`railway ssh`):
       (a) /app/data/logs/run_summaries.jsonl exists and is growing;

@@ -236,6 +236,12 @@ class FinalReport(BaseModel):
     # Raw agent outputs attached for drill-down
     agent_outputs: dict[str, Any] = Field(default_factory=dict, exclude=False)
 
+    # B2 (Three Loops PI): what this run actually received — per-section fetch
+    # outcomes, dimensions scored vs expected, and a derived ok/degraded/hollow
+    # verdict. See services/data/stores/data_health.py. None on the legacy
+    # worker-pool path and whenever `observability.data_health_enabled` is off.
+    data_health: dict[str, Any] | None = None
+
     def verdict_emoji(self) -> str:
         mapping = {
             "STRONG BUY": "🟢",

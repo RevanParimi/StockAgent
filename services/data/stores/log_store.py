@@ -17,6 +17,10 @@ llm_calls : one row per LLM call (caller, model, tokens, latency, success)
 run_summaries : one row per completed analysis run (ticker, verdict, score,
             tokens, cost, errors) — mirrors data/logs/run_summaries.jsonl so the
             history is queryable and survives a redeploy.
+data_health : one row per run describing what that run actually received —
+            per-section fetch outcomes, dimensions scored vs expected, and a
+            derived ok/degraded/hollow verdict. Mirrors
+            data/logs/data_health.jsonl. Write-only until B5's hollow-run gate.
 app_logs  : one row per WARNING/ERROR log record from any module (attached
             via SQLiteLogHandler in services/api/server.py)
             → permanent incident history, queryable long after Railway's
@@ -109,6 +113,29 @@ CREATE TABLE IF NOT EXISTS run_summaries (
 );
 CREATE INDEX IF NOT EXISTS idx_run_summaries_ts ON run_summaries (ts);
 CREATE INDEX IF NOT EXISTS idx_run_summaries_ticker ON run_summaries (ticker);
+
+-- B2 (Three Loops PI) — one row per run describing what that run actually
+-- received: per-section fetch outcomes and which dimensions the analyst
+-- produced. Mirrors data/logs/data_health.jsonl. Write-only until B5.
+CREATE TABLE IF NOT EXISTS data_health (
+    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts                  TEXT NOT NULL,
+    run_id              TEXT NOT NULL,
+    ticker              TEXT NOT NULL,
+    sector              TEXT,
+    sections            TEXT,
+    live                INTEGER NOT NULL DEFAULT 0,
+    degraded            INTEGER NOT NULL DEFAULT 0,
+    empty               INTEGER NOT NULL DEFAULT 0,
+    not_applicable      INTEGER NOT NULL DEFAULT 0,
+    dimensions_expected INTEGER NOT NULL DEFAULT 0,
+    dimensions_scored   INTEGER NOT NULL DEFAULT 0,
+    dimensions_missing  TEXT,
+    api_calls           TEXT,
+    health              TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_data_health_ts ON data_health (ts);
+CREATE INDEX IF NOT EXISTS idx_data_health_health ON data_health (health);
 
 -- Atlas C8 (BP4) — nightly cost rollup. user_id NULL = the shared-brain bucket.
 CREATE TABLE IF NOT EXISTS cost_by_user_day (
@@ -238,6 +265,70 @@ def run_summary_count() -> int:
         return int(row[0]) if row else 0
     except Exception as exc:
         logger.warning("[log_store] run_summary count failed (non-fatal): %s", exc)
+        return 0
+
+
+def log_data_health(
+    *,
+    run_id: str,
+    ticker: str,
+    sector: str | None,
+    sections: str | None,
+    live: int,
+    degraded: int,
+    empty: int,
+    not_applicable: int,
+    dimensions_expected: int,
+    dimensions_scored: int,
+    dimensions_missing: str | None,
+    api_calls: str | None,
+    health: str | None,
+) -> None:
+    """Persist one run's data-health row. Never raises.
+
+    B2: `sections`, `dimensions_missing` and `api_calls` arrive pre-serialised
+    as JSON text — this store does no shaping.
+    """
+    try:
+        conn = _get_conn()
+        if conn is None:
+            return
+        with _lock:
+            conn.execute(
+                "INSERT INTO data_health "
+                "(ts, run_id, ticker, sector, sections, live, degraded, empty, "
+                "not_applicable, dimensions_expected, dimensions_scored, "
+                "dimensions_missing, api_calls, health) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (_now(), run_id, ticker, sector, sections, live, degraded, empty,
+                 not_applicable, dimensions_expected, dimensions_scored,
+                 dimensions_missing, api_calls, health),
+            )
+            conn.commit()
+    except Exception as exc:
+        logger.warning("[log_store] data_health write failed (non-fatal): %s", exc)
+
+
+def data_health_count(health: str | None = None) -> int:
+    """How many health rows the durable archive holds, optionally by verdict.
+
+    0 when unavailable; never raises. B3's watchdog check reads the trailing
+    degraded+hollow rate off this table.
+    """
+    try:
+        conn = _get_conn()
+        if conn is None:
+            return 0
+        with _lock:
+            if health is None:
+                row = conn.execute("SELECT COUNT(*) FROM data_health").fetchone()
+            else:
+                row = conn.execute(
+                    "SELECT COUNT(*) FROM data_health WHERE health = ?", (health,)
+                ).fetchone()
+        return int(row[0]) if row else 0
+    except Exception as exc:
+        logger.warning("[log_store] data_health count failed (non-fatal): %s", exc)
         return 0
 
 

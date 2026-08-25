@@ -7,16 +7,17 @@ LLM calls, each with its own data fetch.
 
 Public API
 ----------
-SectorDataBundle           — dataclass: sections, has_real_data, api_calls_made
+SectorDataBundle           — dataclass: sections, has_real_data, api_calls_made,
+                             section_status
 build_sector_bundle(query, sector) -> SectorDataBundle
 
 Design notes
 ------------
 - Every `_fetch_<section>` is a module-level function so tests (and future
   callers) can patch them individually.
-- `build_sector_bundle` NEVER raises. Each fetcher is wrapped in its own
-  try/except; on failure the section becomes the literal string
-  "unavailable" and a warning is logged.
+- `build_sector_bundle` NEVER raises. Each fetcher is wrapped by `_safe`;
+  on failure the section becomes the literal string "unavailable", a warning
+  is logged, and `section_status[name]` records `failed:<ExceptionType>`.
 - Each section is capped at `settings.UNIFIED_SECTION_MAX_CHARS`.
 - `SectorDataBundle.to_prompt_text()` renders labelled `## SECTION_NAME`
   blocks in a fixed order, with the overall result capped at
@@ -52,6 +53,20 @@ SECTION_ORDER: list[str] = [
 
 UNAVAILABLE = "unavailable"
 NOT_APPLICABLE = "not_applicable"
+
+# ---------------------------------------------------------------------------
+# Per-section fetch outcomes (B2, spec 2026-08-24 §6.2)
+# ---------------------------------------------------------------------------
+# `sections` records WHAT a fetcher returned; `section_status` records HOW it
+# went. The two disagree in exactly the case that leaves no other trace: a
+# fetcher that returns "" without raising is indistinguishable, downstream,
+# from one that was never meant to run. `_fetch_flows_sentiment` does this
+# when all three of its inner calls fail — it logs at DEBUG and returns "".
+STATUS_OK = "ok"
+STATUS_CACHE_HIT = "cache_hit"
+STATUS_EMPTY = "empty"
+STATUS_NOT_APPLICABLE = "n/a"
+STATUS_FAILED_PREFIX = "failed:"        # rendered as failed:<ExceptionType>
 
 
 # ---------------------------------------------------------------------------
@@ -171,6 +186,8 @@ class SectorDataBundle:
     sections: dict[str, str] = field(default_factory=dict)
     has_real_data: bool = False
     api_calls_made: dict[str, int] = field(default_factory=dict)
+    # B2: one outcome per section name — STATUS_* above, or failed:<Type>.
+    section_status: dict[str, str] = field(default_factory=dict)
 
     def to_prompt_text(self) -> str:
         """
@@ -205,6 +222,45 @@ def _cap(text: str) -> str:
     return text
 
 
+def _classify_section(text: str) -> str:
+    """Map a fetcher's returned text to a B2 outcome.
+
+    `n/a` is a deliberate skip (`_fetch_commodities` outside automobile);
+    `empty` is a fetcher that ran and came back with nothing to say. A
+    fetcher that returns the literal UNAVAILABLE string without raising is
+    `empty` too — it produced no content, whatever it called itself.
+    """
+    if text == NOT_APPLICABLE:
+        return STATUS_NOT_APPLICABLE
+    if text == UNAVAILABLE or not (text or "").strip():
+        return STATUS_EMPTY
+    return STATUS_OK
+
+
+def _safe(
+    sections: dict[str, str],
+    status: dict[str, str],
+    name: str,
+    fetcher,
+    *args,
+) -> None:
+    """Run one section fetcher, recording both its text and its outcome.
+
+    Never raises: a failing fetcher degrades that section to UNAVAILABLE and
+    records `failed:<ExceptionType>`. A fetcher that has already written its
+    own status (macro_context on a cache hit) keeps it.
+    """
+    try:
+        text = _cap(fetcher(*args))
+    except Exception as exc:
+        logger.warning("[bundle_builder] %s fetch failed: %s", name, exc)
+        sections[name] = UNAVAILABLE
+        status[name] = f"{STATUS_FAILED_PREFIX}{type(exc).__name__}"
+        return
+    sections[name] = text
+    status.setdefault(name, _classify_section(text))
+
+
 def _fetch_company_news(query: StockQuery, sector: str, serper_key: str) -> str:
     """Serper search #1 — company news, results, guidance, management commentary."""
     from services.data.fetchers.news import fetch_news_context
@@ -228,11 +284,18 @@ def _fetch_sector_policy_news(query: StockQuery, sector: str, serper_key: str) -
     return fetch_news_context(queries, max_queries=1, api_key=serper_key)
 
 
-def _fetch_macro_context(sector: str, serper_key: str) -> str:
+def _fetch_macro_context(
+    sector: str, serper_key: str, status_out: dict[str, str] | None = None
+) -> str:
     """
     yfinance INR/USD + crude + factor regime, plus Serper search #3
     (skipped on macro_cache hit — same cached news the legacy risk_macro
     builder uses).
+
+    B2: `status_out` is the bundle's `section_status` dict. A cache hit is
+    the one outcome the returned text cannot tell you about — it looks like
+    any other populated section — so it is recorded here, at the branch that
+    knows. Optional so every existing caller and test still works.
     """
     from services.data.fetchers.macro import get_macro_context
     from services.data.cache.macro_cache import get_macro_cache
@@ -243,6 +306,8 @@ def _fetch_macro_context(sector: str, serper_key: str) -> str:
     cached_news = get_macro_cache(cache_key)
     if cached_news:
         logger.debug("[bundle_builder] macro_context: cache HIT — skipping Serper call")
+        if status_out is not None:
+            status_out["macro_context"] = STATUS_CACHE_HIT
         return f"{macro}\n\n[Macro news — from micro search cache]\n{cached_news}"
 
     from services.data.fetchers.news import fetch_news_context
@@ -409,77 +474,25 @@ def build_sector_bundle(query: StockQuery, sector: str) -> SectorDataBundle:
     serper_key = settings.get_serper_key(sector)
 
     sections: dict[str, str] = {}
+    status: dict[str, str] = {}
 
-    # --- company_news -----------------------------------------------------
-    try:
-        sections["company_news"] = _cap(_fetch_company_news(query, sector, serper_key))
-    except Exception as exc:
-        logger.warning("[bundle_builder] company_news fetch failed: %s", exc)
-        sections["company_news"] = UNAVAILABLE
+    _safe(sections, status, "company_news", _fetch_company_news, query, sector, serper_key)
+    _safe(sections, status, "sector_policy_news", _fetch_sector_policy_news, query, sector, serper_key)
+    _safe(sections, status, "macro_context", _fetch_macro_context, sector, serper_key, status)
+    _safe(sections, status, "policy_deep_dive", _fetch_policy_deep_dive, query, sector)
+    _safe(sections, status, "fundamentals", _fetch_fundamentals, query)
+    _safe(sections, status, "technicals", _fetch_technicals, query)
+    _safe(sections, status, "commodities", _fetch_commodities, sector)
+    _safe(sections, status, "flows_sentiment", _fetch_flows_sentiment, query, sector)
+    _safe(sections, status, "peers_valuation", _fetch_peers_valuation, query, sector)
+    _safe(sections, status, "dossier", _fetch_dossier, query, sector)
 
-    # --- sector_policy_news -------------------------------------------------
-    try:
-        sections["sector_policy_news"] = _cap(_fetch_sector_policy_news(query, sector, serper_key))
-    except Exception as exc:
-        logger.warning("[bundle_builder] sector_policy_news fetch failed: %s", exc)
-        sections["sector_policy_news"] = UNAVAILABLE
-
-    # --- macro_context -------------------------------------------------------
-    try:
-        sections["macro_context"] = _cap(_fetch_macro_context(sector, serper_key))
-    except Exception as exc:
-        logger.warning("[bundle_builder] macro_context fetch failed: %s", exc)
-        sections["macro_context"] = UNAVAILABLE
-
-    # --- policy_deep_dive ------------------------------------------------------
-    try:
-        sections["policy_deep_dive"] = _cap(_fetch_policy_deep_dive(query, sector))
-    except Exception as exc:
-        logger.warning("[bundle_builder] policy_deep_dive fetch failed: %s", exc)
-        sections["policy_deep_dive"] = UNAVAILABLE
-
-    # --- fundamentals -----------------------------------------------------------
-    try:
-        sections["fundamentals"] = _cap(_fetch_fundamentals(query))
-    except Exception as exc:
-        logger.warning("[bundle_builder] fundamentals fetch failed: %s", exc)
-        sections["fundamentals"] = UNAVAILABLE
-
-    # --- technicals -------------------------------------------------------------
-    try:
-        sections["technicals"] = _cap(_fetch_technicals(query))
-    except Exception as exc:
-        logger.warning("[bundle_builder] technicals fetch failed: %s", exc)
-        sections["technicals"] = UNAVAILABLE
-
-    # --- commodities --------------------------------------------------------------
-    try:
-        sections["commodities"] = _cap(_fetch_commodities(sector))
-    except Exception as exc:
-        logger.warning("[bundle_builder] commodities fetch failed: %s", exc)
-        sections["commodities"] = UNAVAILABLE
-
-    # --- flows_sentiment ---------------------------------------------------------
-    try:
-        sections["flows_sentiment"] = _cap(_fetch_flows_sentiment(query, sector))
-    except Exception as exc:
-        logger.warning("[bundle_builder] flows_sentiment fetch failed: %s", exc)
-        sections["flows_sentiment"] = UNAVAILABLE
-
-    # --- peers_valuation -----------------------------------------------------------
-    try:
-        sections["peers_valuation"] = _cap(_fetch_peers_valuation(query, sector))
-    except Exception as exc:
-        logger.warning("[bundle_builder] peers_valuation fetch failed: %s", exc)
-        sections["peers_valuation"] = UNAVAILABLE
-
-    # --- dossier --------------------------------------------------------------------
-    try:
-        sections["dossier"] = _cap(_fetch_dossier(query, sector))
-    except Exception as exc:
-        logger.warning("[bundle_builder] dossier fetch failed: %s", exc)
-        sections["dossier"] = UNAVAILABLE
-
+    # UNCHANGED BY B2 — deliberately not re-expressed in terms of
+    # `section_status`, because the two do not agree. This rule counts a
+    # `n/a` section (commodities outside automobile) as live; the health
+    # record does not. B2 is additive, so the flag keeps its old meaning and
+    # its one consumer (a log line at base_orchestrator.py:509); B5 gates on
+    # the health record instead. See spec §2.3.
     live_count = sum(
         1 for name in SECTION_ORDER
         if sections.get(name, UNAVAILABLE) not in (UNAVAILABLE, "")
@@ -495,4 +508,5 @@ def build_sector_bundle(query: StockQuery, sector: str) -> SectorDataBundle:
         sections=sections,
         has_real_data=has_real_data,
         api_calls_made=api_calls_made,
+        section_status=status,
     )

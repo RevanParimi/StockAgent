@@ -591,6 +591,8 @@ Models are tiered (2026-06-03 benchmark, `scripts/model_bench.py`; bulk re-bench
 | `UNIFIED_SECTION_MAX_CHARS` | `2500` | Per-section cap in `SectorDataBundle` |
 | `UNIFIED_BUNDLE_MAX_CHARS` | `18000` | Total cap on the rendered bundle text passed to the analyst prompt |
 
+**Data health (B2, `config.yaml` → `observability.*`).** `SectorDataBundle.has_real_data` is `live >= 3` of 10 sections and its only consumer is a log line, so a prod SUZLON run that lost 3 of its 6 dimensions shipped a BUY logging `real_data=True`. Every unified run now writes one `data_health` row describing what it actually received — see the module table below. `has_real_data` is deliberately unchanged (it counts an `n/a` section as live; the record does not). Rollback: `observability.data_health_enabled: false`.
+
 ### Scheduler
 
 | Name | Default | Description |
@@ -879,7 +881,8 @@ All paths verified to exist. Paths are relative to project root.
 | `src/backend/shared/config/settings/base.py` | All environment variable definitions with defaults |
 | `src/backend/shared/config/rag_config.py` | RAG-specific env vars (mirrors `core/intelligence/rag/config.py`) |
 | `src/backend/shared/pipeline/base_orchestrator.py` | `BaseSectorOrchestrator` — ticker resolution (managed-ticker short-circuit, no LLM for exact `TICKERS` matches), RL weights, NSE prefetch, `_run_agents`/`_run_unified`/`_unified_enabled` dispatch, SignalAggregator |
-| `services/data/context/bundle_builder.py` | `build_sector_bundle()` — one-pass `SectorDataBundle` (10 labeled, char-capped sections), sector-aware via `_SECTOR_BUNDLE_CFG` (per-sector queries, deep-dive Tavily target, commodities applicability, peer lists) |
+| `services/data/context/bundle_builder.py` | `build_sector_bundle()` — one-pass `SectorDataBundle` (10 labeled, char-capped sections), sector-aware via `_SECTOR_BUNDLE_CFG` (per-sector queries, deep-dive Tavily target, commodities applicability, peer lists); B2 adds `section_status` — one outcome per section (`ok` / `cache_hit` / `empty` / `n/a` / `failed:<Type>`) |
+| `services/data/stores/data_health.py` | B2 — one row per unified run: section outcomes, dimensions scored vs expected, derived `ok`/`degraded`/`hollow`. Writes `data/logs/data_health.jsonl` + `telemetry.db.data_health`, attaches to `FinalReport.data_health`. **Write-only until B5's hollow-run gate**; never raises. Flag `observability.data_health_enabled` |
 | `src/backend/shared/pipeline/unified_analyst.py` | `UnifiedAnalyst` — one reasoning-model call → all dimension `AgentOutput`s for a sector (9/6/8/6 per `SECTOR_SPECS`); never raises, falls back to legacy on total failure |
 | `src/backend/sectors/automobile/prompts/unified.py` | Unified Sector Analyst prompt for automobile (9 dimensions in one prompt) |
 | `src/backend/sectors/banking_bfsi/prompts/unified.py` | Unified Sector Analyst prompt for BFSI (6 dimensions) |

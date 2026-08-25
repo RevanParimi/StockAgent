@@ -183,6 +183,44 @@ milestones:
       Remove this entry once judged.
     docs: docs/superpowers/specs/2026-08-24-three-loops-pi-design.md
 
+  - id: b2_data_health_prod_verify
+    kind: milestone
+    title: "B2 data-health record - confirm one prod run writes a row that matches the aggregator"
+    check: manual_confirmation
+    deadline: 2026-09-15
+    lead_days: 5
+    action: >
+      B2 emits one data-health row per unified run: the outcome of each of the
+      10 bundle sections (ok / cache_hit / empty / n/a / failed:<Type>), how
+      many of the sector's dimensions the analyst actually scored, and a
+      derived ok/degraded/hollow verdict. Written to
+      data/logs/data_health.jsonl and mirrored to telemetry.db.data_health.
+      Prod evidence that made it necessary (2026-08-24, spec section 2.3): a
+      SUZLON run lost 3 of its 6 dimensions, shipped a BUY, and logged
+      real_data=True - has_real_data is `live >= 3 of 10` and its only consumer
+      is a log line, so a degraded run and a healthy one left the same trace.
+      After this deploys, confirm on prod (`railway ssh`):
+      (a) /app/data/logs/data_health.jsonl exists and holds at least one row
+          from a scheduled brief or digest;
+      (b) `sqlite3 /app/data/telemetry.db "SELECT COUNT(*) FROM data_health"`
+          matches, i.e. the mirror is not silently failing;
+      (c) THE ACCEPTANCE THAT MATTERS - for one run_id, the row's
+          dimensions_scored equals (total dimensions minus the count in that
+          run's "[SignalAggregator] <TICKER>: N/M dimensions excluded from
+          composite" warning). The two numbers are derived from the same
+          `output.error` test and MUST agree; if they do not, the record is
+          measuring something other than what the composite saw and B5 must
+          not gate on it.
+      (d) at least one row is NOT health=ok - if 100% of rows are ok, check
+          that degraded runs are reaching this path at all before believing it.
+      NOTE the record is write-only: nothing branches on `health` until B5's
+      hollow-run gate. A wrong row cannot change a verdict today, which is why
+      it is safe to land ahead of the gate - and why it must be checked before
+      the gate arrives.
+      Rollback: `observability.data_health_enabled: false` in config.yaml.
+      Remove this entry once judged.
+    docs: docs/superpowers/specs/2026-08-24-three-loops-pi-design.md
+
 invariants:
   - id: ipo_cache_fresh
     kind: invariant

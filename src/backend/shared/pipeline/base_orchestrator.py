@@ -112,6 +112,10 @@ class BaseSectorOrchestrator(ABC):
         # weight scoping so a long-lived orchestrator instance reloads weights when
         # the ticker changes between analyse()/analyse_async() calls.
         self._aggregator_weights_ticker: str | None = None
+        # B2: the health record for the run in flight, attached to the report
+        # once the aggregator has one. Reset per run — an orchestrator instance
+        # is long-lived, and a stale record on the next report would be a lie.
+        self._last_data_health: dict | None = None
         self._worker_pool_graph = _build_worker_pool_graph(self._sub_agents, self.SECTOR_NAME)
 
     # ------------------------------------------------------------------
@@ -128,6 +132,7 @@ class BaseSectorOrchestrator(ABC):
         start = time.time()
         started_at = datetime.now(timezone.utc)
         api_snapshot = snapshot_usage()
+        self._last_data_health = None
         logger.info("[%s] Async run %s started for '%s'", self.SECTOR_NAME, run_id, user_input)
 
         query = await asyncio.to_thread(self._resolve_ticker, user_input, run_id)
@@ -160,6 +165,10 @@ class BaseSectorOrchestrator(ABC):
             run_id=run_id,
             sector=self.SECTOR_NAME,
         )
+
+        # B2: the run's health record travels with its verdict. None on the
+        # legacy worker-pool path, which builds no bundle to describe.
+        report.data_health = self._last_data_health
 
         pipeline_run.report = report
         pipeline_run.status = "completed"
@@ -201,6 +210,7 @@ class BaseSectorOrchestrator(ABC):
         start = time.time()
         started_at = datetime.now(timezone.utc)
         api_snapshot = snapshot_usage()
+        self._last_data_health = None
         logger.info("[%s] Run %s started for '%s'", self.SECTOR_NAME, run_id, user_input)
 
         query = self._resolve_ticker(user_input, run_id=run_id)
@@ -225,6 +235,10 @@ class BaseSectorOrchestrator(ABC):
             run_id=run_id,
             sector=self.SECTOR_NAME,
         )
+
+        # B2: the run's health record travels with its verdict. None on the
+        # legacy worker-pool path, which builds no bundle to describe.
+        report.data_health = self._last_data_health
 
         pipeline_run.report = report
         pipeline_run.status = "completed"
@@ -510,6 +524,7 @@ class BaseSectorOrchestrator(ABC):
         )
         analyst = UnifiedAnalyst()
         outputs = analyst.run(query, bundle, self.SECTOR_NAME, run_id=run_id)
+        self._record_data_health(query, bundle, outputs, run_id)
         if outputs:
             # AUD-087: one LLM call produced all outputs — stamp totals on one
             # output so sum_run_usage() over the dict counts them exactly once.
@@ -528,6 +543,49 @@ class BaseSectorOrchestrator(ABC):
                     pass
         return outputs
 
+    def _record_data_health(
+        self,
+        query: StockQuery,
+        bundle,
+        outputs: dict[str, AgentOutput],
+        run_id: str,
+    ) -> None:
+        """
+        B2: write one row saying what this run actually received.
+
+        Called after the analyst returns and BEFORE the `if outputs:` branch,
+        so the total-failure case (`outputs == {}`) — the one most worth a
+        record — produces a row like any other run. A dimension counts as
+        missing when its output carries an `error`, which is the same test
+        `SignalAggregator` uses to exclude it from the composite; the two
+        numbers are meant to agree.
+
+        Never raises, and never changes the run's outcome.
+        """
+        self._last_data_health = None
+        try:
+            from services.data.stores.data_health import record_data_health
+            from backend.shared.pipeline.unified_analyst import DIMENSIONS
+
+            expected = list(DIMENSIONS.get(self.SECTOR_NAME) or outputs.keys())
+            if outputs:
+                missing = [n for n, o in outputs.items() if o.error]
+            else:
+                # The analyst returned nothing: every dimension is missing.
+                missing = list(expected)
+            self._last_data_health = record_data_health(
+                run_id=run_id,
+                ticker=query.ticker,
+                sector=self.SECTOR_NAME,
+                section_status=getattr(bundle, "section_status", None),
+                api_calls=getattr(bundle, "api_calls_made", None),
+                dimensions_expected=expected,
+                dimensions_missing=missing,
+            )
+        except Exception as exc:
+            logger.warning("[%s] data_health record failed (non-fatal): %s",
+                           self.SECTOR_NAME, exc)
+
     def _run_agents(
         self,
         query: StockQuery,
@@ -545,6 +603,14 @@ class BaseSectorOrchestrator(ABC):
             if not settings.UNIFIED_ANALYST_FALLBACK_LEGACY:
                 return outputs
             logger.warning("[%s] unified analyst failed -> legacy fallback", self.SECTOR_NAME)
+            # B2: the row just written is true and stays on disk — the unified
+            # attempt really did come back hollow, which is exactly the kind of
+            # degradation nothing used to record. But it describes an ABANDONED
+            # attempt, and the verdict about to be returned comes from the
+            # legacy pool instead, so it must not ride along on the report:
+            # `dimensions_scored: 0` beside a full set of agent outputs would
+            # be a lie about the run that actually produced them.
+            self._last_data_health = None
             # Wave I: fallback costs ~6-8x the Serper credits of the unified
             # path — record it so /scheduler/status can surface the rate.
             try:

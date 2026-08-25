@@ -463,6 +463,34 @@ ipo:
   gmp_agreement_tolerance: 0.25 # >25% spread between sources => discard
 
 # =============================================================================
+# Observability (Three Loops PI, task B2 — spec 2026-08-24 §2.3, §6.2)
+# =============================================================================
+observability:
+  # One data-health row per analysis run: what each of the 10 bundle sections
+  # returned (ok / cache_hit / empty / n/a / failed:<Type>), how many of the
+  # sector's dimensions the analyst actually scored, and a derived
+  # ok/degraded/hollow verdict. Written to data/logs/data_health.jsonl and
+  # telemetry.db.data_health.
+  #
+  # Why: a prod SUZLON run lost 3 of its 6 dimensions, shipped a BUY, and
+  # logged real_data=True — has_real_data is `live >= 3 of 10` and its only
+  # consumer is a log line, so a degraded run and a healthy one left the same
+  # trace. Nothing branches on this record yet; B5 adds the hollow-run gate.
+  #
+  # ROLLBACK LINE: set this to `false` — the run then writes no row and
+  # FinalReport.data_health stays None. Nothing else changes, because nothing
+  # reads it yet.
+  data_health_enabled: true
+
+  # When a run counts as `hollow` — i.e. too empty to train the RL loop.
+  # These are the weakest thresholds that are still true: hollow means the
+  # run scored NO dimension, or fetched NO live section. Raising them is a
+  # judgement about how much data the loop needs, and belongs to B5 with the
+  # first weeks of rows in hand.
+  data_health_hollow_min_dimensions: 1
+  data_health_hollow_min_live_sections: 1
+
+# =============================================================================
 # Sector routing (Three Loops PI, task A1 — spec 2026-08-24 §2.1)
 # =============================================================================
 sectors:

@@ -38,6 +38,7 @@ RUN mkdir -p \
     data/annual_reports \
     data/sector_reports \
     data/news_archive \
+    data/logs \
     logs \
     outputs
 

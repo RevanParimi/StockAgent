@@ -127,11 +127,16 @@ milestones:
       unknown tickers / disabled sectors route to `generic`, not `automobile`.
       Verified on LOCAL only - 0 DIVERGE rows over 14 tickers and all 23 mapped
       sectors, 201 literal TICKER_SECTOR entries == 201 distinct keys. It has
-      NOT been observed on prod. Once it deploys, on prod confirm (a) the
-      routing table still prints zero DIVERGE, and (b) no NEW `automobile`
-      prediction-store stub appears for a ticker whose real sector is not
-      automobile - the 13 existing duplicates are A2's job to migrate, this
-      checks the bleed has stopped. Note briefs and daily reviews will start
+      PART (a) IS NOW CLOSED. Deployed 2026-08-25 15:12 IST and checked on
+      prod at 15:44 via `railway ssh`: 0 DIVERGE over the 14-ticker table and
+      all 21 distinct TICKER_SECTOR sectors, 0 non-automobile sectors reaching
+      the automobile graph, 201 keys, generic_fallback_enabled=true.
+      STILL OPEN - part (b): no NEW `automobile` prediction-store stub appears
+      for a ticker whose real sector is not automobile. The 13 existing
+      duplicates are A2's job to migrate; this checks the bleed has stopped, and
+      it needs an observation window (at 30 minutes post-deploy the directory
+      counts were unchanged at 37/15/4/74/1/4/13/1/4/11 with no automobile write
+      since the deploy - a positive but far too short signal). Note briefs and daily reviews will start
       running the GENERIC graph for the disabled-sector names the API path used
       to hand to automobile, so a verdict shift on those names is expected, not
       a regression.
@@ -140,6 +145,33 @@ milestones:
       keys back to automobile and does NOT move a known sector (pharma,
       fmcg, realestate) off the generic graph. To revert A1 wholesale,
       revert the commit.
+      Remove this entry once judged.
+    docs: docs/superpowers/specs/2026-08-24-three-loops-pi-design.md
+
+  - id: b1_run_history_prod_verify
+    kind: milestone
+    title: "B1 durable run history - confirm run_summaries survives a redeploy"
+    check: manual_confirmation
+    deadline: 2026-09-15
+    lead_days: 5
+    action: >
+      B1 moved every LOGS_DIR consumer onto the volume-backed data/logs and
+      mirrored log_run_summary into telemetry.db.run_summaries. Prod evidence
+      before the fix: /app/logs/run_summaries.jsonl held 13 rows after 53 days,
+      because run_logger and analysis_logger defaulted LOGS_DIR to the ephemeral
+      logs/ while api_usage defaulted to data/logs.
+      After this deploys, AND AFTER AT LEAST ONE FURTHER REDEPLOY, confirm on
+      prod (`railway ssh`):
+      (a) /app/data/logs/run_summaries.jsonl exists and is growing;
+      (b) `sqlite3 /app/data/telemetry.db "SELECT COUNT(*) FROM run_summaries"`
+          is non-zero and its count did NOT reset across the redeploy;
+      (c) the boot line "[run_logger] run history at boot: N rows in
+          telemetry.db" appears in the deploy log, and NOT the
+          "durable mirror is behind or failing" WARNING.
+      A count that resets to 0 across a redeploy means data/ is not backing the
+      path and the fix did not land. Note the 13 pre-existing ephemeral rows are
+      deliberately NOT migrated - they are gone by design.
+      Rollback: revert the commit; the task performs no data migration.
       Remove this entry once judged.
     docs: docs/superpowers/specs/2026-08-24-three-loops-pi-design.md
 

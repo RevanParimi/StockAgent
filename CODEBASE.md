@@ -200,7 +200,10 @@ StockAgent-main/
 ├── config/
 │   └── sector_toggles.json        # Enable/disable sectors at runtime
 ├── data/                          # Runtime data volume (see docs/ARCHITECTURE.md §11)
-├── logs/                          # Log files
+│   └── logs/                      # THE log dir: every LOGS_DIR consumer defaults here
+│                                  #  (B1) because only data/ is volume-backed
+├── logs/                          # ⚠ EPHEMERAL container storage — wiped by every
+│                                  #  redeploy. Nothing should default here.
 ├── outputs/                       # Report output files
 ├── docs/                          # Design documentation (index: docs/README.md)
 ├── services/csharp/               # ⚠ DEAD — .NET scheduler, NOT in the Docker image (superseded
@@ -565,6 +568,7 @@ Models are tiered (2026-06-03 benchmark, `scripts/model_bench.py`; bulk re-bench
 |------|---------|-------------|
 | `LOG_LEVEL` | `INFO` | Python logging level |
 | `LOG_FILE` | `logs/automobile_agent.log` | Log file path |
+| `LOGS_DIR` | `data/logs` | Run history, analysis logs and API counters. One default for every consumer (B1) — `data/` is the only volume-backed path. |
 | `OUTPUT_DIR` | `outputs` | Report output directory |
 | `REPORT_FORMAT` | `json` | Output format: `json` or `markdown` |
 

@@ -14,6 +14,9 @@ Tables
 ------
 llm_calls : one row per LLM call (caller, model, tokens, latency, success)
             → permanent cost/reliability analytics across model swaps.
+run_summaries : one row per completed analysis run (ticker, verdict, score,
+            tokens, cost, errors) — mirrors data/logs/run_summaries.jsonl so the
+            history is queryable and survives a redeploy.
 app_logs  : one row per WARNING/ERROR log record from any module (attached
             via SQLiteLogHandler in services/api/server.py)
             → permanent incident history, queryable long after Railway's
@@ -83,6 +86,29 @@ CREATE TABLE IF NOT EXISTS app_logs (
 );
 CREATE INDEX IF NOT EXISTS idx_app_logs_ts ON app_logs (ts);
 CREATE INDEX IF NOT EXISTS idx_app_logs_level ON app_logs (level);
+
+-- B1 (Three Loops PI) — one row per completed analysis run, mirroring
+-- data/logs/run_summaries.jsonl. The JSONL is the human/UI copy; this is the
+-- queryable one that survives a redeploy.
+CREATE TABLE IF NOT EXISTS run_summaries (
+    id                      INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts                      TEXT NOT NULL,
+    run_id                  TEXT NOT NULL,
+    ticker                  TEXT NOT NULL,
+    company_name            TEXT,
+    started_at              TEXT,
+    duration_seconds        REAL NOT NULL DEFAULT 0,
+    final_score             REAL,
+    verdict                 TEXT,
+    total_prompt_tokens     INTEGER NOT NULL DEFAULT 0,
+    total_completion_tokens INTEGER NOT NULL DEFAULT 0,
+    total_cost_usd          REAL NOT NULL DEFAULT 0,
+    agent_scores            TEXT,
+    error_count             INTEGER NOT NULL DEFAULT 0,
+    errors                  TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_run_summaries_ts ON run_summaries (ts);
+CREATE INDEX IF NOT EXISTS idx_run_summaries_ticker ON run_summaries (ticker);
 
 -- Atlas C8 (BP4) — nightly cost rollup. user_id NULL = the shared-brain bucket.
 CREATE TABLE IF NOT EXISTS cost_by_user_day (
@@ -157,6 +183,62 @@ def log_llm_call(
             conn.commit()
     except Exception as exc:
         logger.warning("[log_store] llm_call write failed (non-fatal): %s", exc)
+
+
+def log_run_summary(
+    *,
+    run_id: str,
+    ticker: str,
+    company_name: str | None,
+    started_at: str | None,
+    duration_seconds: float,
+    final_score: float | None,
+    verdict: str | None,
+    total_prompt_tokens: int,
+    total_completion_tokens: int,
+    total_cost_usd: float,
+    agent_scores: str | None,
+    error_count: int,
+    errors: str | None,
+) -> None:
+    """Persist one completed analysis run. Never raises.
+
+    B1: the JSONL copy lived on ephemeral container storage and held 13 rows
+    after 53 days of prod traffic. `agent_scores` and `errors` arrive
+    pre-serialised as JSON text — this store does no shaping.
+    """
+    try:
+        conn = _get_conn()
+        if conn is None:
+            return
+        with _lock:
+            conn.execute(
+                "INSERT INTO run_summaries "
+                "(ts, run_id, ticker, company_name, started_at, duration_seconds, "
+                "final_score, verdict, total_prompt_tokens, total_completion_tokens, "
+                "total_cost_usd, agent_scores, error_count, errors) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (_now(), run_id, ticker, company_name, started_at, duration_seconds,
+                 final_score, verdict, total_prompt_tokens, total_completion_tokens,
+                 total_cost_usd, agent_scores, error_count, errors),
+            )
+            conn.commit()
+    except Exception as exc:
+        logger.warning("[log_store] run_summary write failed (non-fatal): %s", exc)
+
+
+def run_summary_count() -> int:
+    """How many runs the durable archive holds. 0 when unavailable; never raises."""
+    try:
+        conn = _get_conn()
+        if conn is None:
+            return 0
+        with _lock:
+            row = conn.execute("SELECT COUNT(*) FROM run_summaries").fetchone()
+        return int(row[0]) if row else 0
+    except Exception as exc:
+        logger.warning("[log_store] run_summary count failed (non-fatal): %s", exc)
+        return 0
 
 
 def rollup_cost_by_user_day(day: str | None = None) -> dict:

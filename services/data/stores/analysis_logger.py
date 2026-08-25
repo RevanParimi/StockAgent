@@ -3,10 +3,10 @@ services/data/stores/analysis_logger.py
 ========================================
 Two human-oriented log outputs written after every completed analysis run.
 
-  logs/analysis_rich.jsonl    — one JSON line per run; all facts in one place.
+  data/logs/analysis_rich.jsonl   — one JSON line per run; all facts in one place.
                                  Consumed by the UI and Python scripts.
 
-  logs/analysis_readable.log  — plain-text block per run; open in any editor.
+  data/logs/analysis_readable.log — plain-text block per run; open in any editor.
                                  Designed for human review, not parsing.
 
 Public API
@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import textwrap
 from datetime import datetime, timezone
 from pathlib import Path
@@ -28,7 +29,10 @@ from core.schemas.pipeline import FinalReport
 
 logger = logging.getLogger(__name__)
 
-LOGS_DIR = Path(settings.__dict__.get("LOGS_DIR", "logs"))
+# B1: same env var, same default as every other LOGS_DIR consumer.
+# It read `settings.__dict__`, where LOGS_DIR is not a field, so the
+# override never applied and the logs always landed on ephemeral storage.
+LOGS_DIR = Path(os.getenv("LOGS_DIR", "data/logs"))
 RICH_LOG    = LOGS_DIR / "analysis_rich.jsonl"
 READABLE_LOG = LOGS_DIR / "analysis_readable.log"
 

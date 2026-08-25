@@ -279,6 +279,22 @@ def _log_api_usage_check() -> None:
         logger.warning("[startup] api_usage boot check failed (non-fatal): %s", exc)
 
 
+def _log_run_history_check() -> None:
+    """
+    B1 self-check: report the surviving run history at boot.
+
+    `run_summaries.jsonl` defaulted to ephemeral `logs/` and held 13 rows after
+    53 days of prod traffic. It now writes to the volume and mirrors into
+    telemetry.db; reporting the counts here means a lost or un-mirrored history
+    shows up in the deploy log on its own.
+    """
+    try:
+        from services.data.stores.run_logger import log_boot_state
+        log_boot_state()
+    except Exception as exc:
+        logger.warning("[startup] run history boot check failed (non-fatal): %s", exc)
+
+
 # ---------------------------------------------------------------------------
 # Calendar first-run
 # ---------------------------------------------------------------------------
@@ -355,6 +371,7 @@ async def lifespan(app: FastAPI):
     # 0. Volume / data directory verification
     _log_volume_check()
     _log_api_usage_check()      # F4: monthly counter must survive redeploys
+    _log_run_history_check()    # B1: run summaries must survive redeploys
 
     # 1. Calendar file (sync, fast — just a file check + possible HTTP call)
     _ensure_calendar_file()

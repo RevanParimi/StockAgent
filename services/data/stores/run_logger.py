@@ -3,14 +3,17 @@ tools/run_logger.py
 ===================
 Structured JSONL logger for all LLM calls and run summaries.
 
-Two output files (append-only):
-  logs/agent_calls.jsonl   — one line per LLM call (ticker resolution, each agent, aggregator)
-  logs/run_summaries.jsonl — one line per full analysis run
+Two output files (append-only), on the Railway volume:
+  data/logs/agent_calls.jsonl   — one line per LLM call (ticker resolution, each agent, aggregator)
+  data/logs/run_summaries.jsonl — one line per full analysis run
+
+Run summaries are also mirrored into `telemetry.db.run_summaries`, which is
+queryable and survives a redeploy the way the JSONL alone did not.
 
 JSONL is newline-delimited JSON — each line is valid JSON, easy to parse with Python:
 
     import json
-    calls = [json.loads(l) for l in open("logs/agent_calls.jsonl")]
+    calls = [json.loads(l) for l in open("data/logs/agent_calls.jsonl")]
     # filter by ticker, agent, date — no LLM needed
     maruti_calls = [c for c in calls if c["ticker"] == "MARUTI"]
     total_cost = sum(c["cost_usd"] for c in calls)
@@ -27,7 +30,9 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-LOGS_DIR = Path(os.getenv("LOGS_DIR", "logs"))
+# B1: data/logs is the Railway volume mount; the bare `logs/` this used to
+# default to is ephemeral container storage, wiped by every redeploy.
+LOGS_DIR = Path(os.getenv("LOGS_DIR", "data/logs"))
 AGENT_CALLS_LOG = LOGS_DIR / "agent_calls.jsonl"
 RUN_SUMMARIES_LOG = LOGS_DIR / "run_summaries.jsonl"
 
@@ -134,7 +139,71 @@ def log_run_summary(
         "errors": errors,
     }
     _append(RUN_SUMMARIES_LOG, record)
+    # Mirror into telemetry.db the way log_llm_call does — the JSONL is the
+    # human/UI copy, this is the queryable one. Never fatal.
+    try:
+        from services.data.stores import log_store
+        log_store.log_run_summary(
+            run_id=run_id,
+            ticker=ticker,
+            company_name=company_name,
+            started_at=record["started_at"],
+            duration_seconds=record["duration_seconds"],
+            final_score=final_score,
+            verdict=verdict,
+            total_prompt_tokens=total_prompt_tokens,
+            total_completion_tokens=total_completion_tokens,
+            total_cost_usd=record["total_cost_usd"],
+            agent_scores=json.dumps(agent_scores, default=str),
+            error_count=len(errors),
+            errors=json.dumps(errors, default=str),
+        )
+    except Exception as exc:
+        logger.warning("[run_logger] telemetry DB mirror failed (non-fatal): %s", exc)
     logger.info(
         "[run_logger] Run %s summary: tokens=%d cost=$%.4f verdict=%s",
         run_id, record["total_tokens"], total_cost_usd, verdict,
     )
+
+
+def log_boot_state() -> dict:
+    """
+    Report the surviving run history at process start — B1's self-check.
+
+    `run_summaries.jsonl` held 13 rows after 53 days of prod traffic because it
+    sat on ephemeral storage and nothing ever counted it. Logging both copies at
+    boot puts the evidence in the deploy log: an INFO with the row counts, and a
+    WARNING when the JSONL has history the durable mirror does not — which is
+    what a silently failing mirror looks like. Read-only; never raises.
+
+    Returns {jsonl_path, jsonl_rows, db_rows, mirror_broken} for callers/tests.
+    """
+    state: dict[str, Any] = {
+        "jsonl_path": str(RUN_SUMMARIES_LOG),
+        "jsonl_rows": 0,
+        "db_rows": 0,
+        "mirror_broken": False,
+    }
+    try:
+        if RUN_SUMMARIES_LOG.exists():
+            with open(RUN_SUMMARIES_LOG, "r", encoding="utf-8", errors="replace") as f:
+                state["jsonl_rows"] = sum(1 for line in f if line.strip())
+
+        from services.data.stores.log_store import run_summary_count
+        state["db_rows"] = run_summary_count()
+
+        state["mirror_broken"] = state["jsonl_rows"] > state["db_rows"]
+        if state["mirror_broken"]:
+            logger.warning(
+                "[run_logger] run_summaries: %d rows in %s but only %d in "
+                "telemetry.db — the durable mirror is behind or failing.",
+                state["jsonl_rows"], RUN_SUMMARIES_LOG, state["db_rows"],
+            )
+        else:
+            logger.info(
+                "[run_logger] run history at boot: %d rows in telemetry.db, "
+                "%d in %s", state["db_rows"], state["jsonl_rows"], RUN_SUMMARIES_LOG,
+            )
+    except Exception as exc:
+        logger.warning("[run_logger] boot state check failed (non-fatal): %s", exc)
+    return state

@@ -168,6 +168,13 @@ milestones:
       boot line printed the INFO branch, not the WARNING; /app/logs/ is now
       empty, which is the ephemeral wipe behaving exactly as described.
       What remains is ONLY (b) below - proving the count does not reset.
+      RESULT 2026-08-26 16:56 IST - (a) and (c) are now CLOSED. The 16:30 IST
+      rl_daily_review wrote 13 run_summaries rows and data/logs/*.jsonl now
+      exist and are growing. NOTE the daily writer is rl_daily_review
+      (FEEDBACK_CRON "30 16 * * mon-fri"), NOT the 08:50 morning brief - the
+      brief runs no orchestrator, so it can never write a row, and a
+      non-trading day writes nothing at all. Only (b) is left, and it now has
+      real data to survive the next redeploy.
       After this deploys, AND AFTER AT LEAST ONE FURTHER REDEPLOY, confirm on
       prod (`railway ssh`):
       (a) /app/data/logs/run_summaries.jsonl exists and is growing;
@@ -217,6 +224,17 @@ milestones:
       hollow-run gate. A wrong row cannot change a verdict today, which is why
       it is safe to land ahead of the gate - and why it must be checked before
       the gate arrives.
+      RESULT 2026-08-26 16:56 IST - all four acceptances MET. 13 rows,
+      health ok=12 / degraded=1; the mirror matches; and (c) matched exactly:
+      the SignalAggregator warning "ADANIGREEN: 5/6 dimensions excluded
+      (errored)" naming business, risk, sentiment_policy, technical, valuation
+      against a data_health row of dims 1/6 naming the same five.
+      DO NOT CLOSE THIS AS HEALTHY. Spec section 15.1: two TATAMOTORS runs on a
+      ticker returning HTTP 404 at the price source were ALSO recorded
+      health=ok, live=10, dims 9/9. _safe records "failed:" only on an
+      exception, so a fetcher that swallows its own error and returns an empty
+      payload reads "ok". The record works; its section half has never been
+      exercised by a real failure. New card B6 fixes it and BLOCKS B5.
       Rollback: `observability.data_health_enabled: false` in config.yaml.
       Remove this entry once judged.
     docs: docs/superpowers/specs/2026-08-24-three-loops-pi-design.md
@@ -255,6 +273,17 @@ milestones:
       (e) run one script under `railway ssh` (e.g. `python -m core.audit.cli`)
           and confirm it produces app_logs rows. Before E1 the handler lived
           only in server.py, so scripts archived nothing.
+      RESULT 2026-08-26 - (a), (b) and (d) CLOSED. (b), the one that matters,
+      is confirmed: 44 app_logs rows carry a real run_id and ticker from the
+      16:30 review, including rows emitted by yfinance's own logger inside the
+      run context. (d) is exact - 4,357 prefixed rows before the deploy and 0
+      unprefixed, 0 prefixed after and 114 unprefixed - so E2 can normalise on
+      a single timestamp cut rather than sniffing every row.
+      (c) WILL NOT CLOSE AS WRITTEN and should be judged on hot-path handlers
+      only, or marked not applicable: the 114 new rows added ZERO tracebacks
+      (18 before, 1 after - the probe's own). The loudest prod errors come from
+      yfinance's own logger, not from our except handlers, so E1's exc_info
+      work cannot reach them by construction.
       Rollback: revert the commit. The columns are nullable and inert if
       unused; no data is migrated or rewritten.
       Remove this entry once judged.

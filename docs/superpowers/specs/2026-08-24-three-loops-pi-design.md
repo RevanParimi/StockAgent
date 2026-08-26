@@ -520,23 +520,29 @@ the check that reads it.
 
 ## 7. PI structure
 
-Four sprints, four workstreams. Sprint length is nominal — the ordering and
+Four sprints, five workstreams. **25 task cards** (20 as designed, plus
+B6/D4/D5/D6/E5 added 2026-08-26 from the Sprint 1 verification findings in §15). Sprint length is nominal — the ordering and
 dependencies are what matter.
 
 ```
             Sprint 1              Sprint 2              Sprint 3              Sprint 4
             stop the bleed        see it                collapse              cut over
 WS-A  ---   A1 single router      A2 store migration    A3 profile schema     A4 profile cutover
-WS-B  ---   B1 LOGS_DIR fix       B3 watchdog checks                          B5 hollow-run gate
+WS-B  ---   B1 LOGS_DIR fix       B3 watchdog checks    B6 section status     B5 hollow-run gate
             B2 data_health emit   B4 real API counts
 WS-C  ---   C1 grading diagnostic C2 grading fix spec   C3 grading fix (dark) C4 recovery validation
 WS-D  ---                         D1 TickerVerdict      D2 fallback retire    D3 except-handler gate
+                                  D4 ^CNXAUTO history
+                                  D5 TATAMOTORS delisted
+                                  D6 email delivery
 WS-E  ---   E1 capture gaps       E2 fingerprint+digest E3 watchdog surface   E4 error backlog
+                                                                              E5 LLM triage note
 ```
 
 **Dependency edges that matter:**
 `B2 -> B3`, `B2 -> B5`, `B2 -> C2`, `A1 -> A2`, `A2 -> A3`, `A3 -> A4`,
-`C1 -> C2 -> C3 -> C4`, `B4 -> D2`, `E1 -> E2 -> E3 -> E4`.
+`C1 -> C2 -> C3 -> C4`, `B4 -> D2`, `E1 -> E2 -> E3 -> E4`,
+`B2 -> B6 -> B5` (§15.1), `E2 -> E5`, `B6 -> D5` (detection only).
 
 **Sequencing constraints — these are not optional**
 
@@ -933,7 +939,12 @@ date-bound obligation.
 
 ### B5 — Hollow-run gate on the RL loop
 
-- **Sprint** 4 · **Workstream** B · **Depends on** B2, B3
+- **Sprint** 4 · **Workstream** B · **Depends on** B2, B3, **B6**
+- ⚠ **BLOCKED BY B6 — do not gate on `health` until it lands.** §15.1: a
+  fetcher that swallows its own error and returns an empty payload is recorded
+  `ok`, so `health=ok` is not evidence that data arrived. Two TATAMOTORS runs
+  on a 404-ing ticker were recorded `ok`, `dims 9/9`. Gating on today's record
+  would let exactly the hollow runs this card targets straight through.
 - **Chat opener:** `Work task B5 from docs/superpowers/specs/2026-08-24-three-loops-pi-design.md`
 - **Why:** §1 root cause. A run built on 3 live sections should not train
   weights as if it were built on 10.
@@ -1130,6 +1141,198 @@ RESOLVED   absent >= 7d                  -> close
 - **Rollback:** the endpoint is read-only and additive; remove the route.
 - **Security:** this repo is public and the endpoint exposes prod error text —
   it must be auth-gated, and the digest must not be committed to the repo.
+
+---
+
+### B6 — `section_status` must mean "returned data", not "did not raise"
+
+- **Sprint** 3 · **Workstream** B · **Depends on** B2 · **BLOCKS B5**
+- **Chat opener:** `Work task B6 from docs/superpowers/specs/2026-08-24-three-loops-pi-design.md`
+- **Why:** §15.1. B2's first 13 prod rows include two TATAMOTORS runs recorded
+  `health=ok`, `live=10`, `failed=0`, `empty=0`, `dims 9/9`, `missing=[]` — on a
+  ticker whose price history is a 404 at the source (§15.3). `_safe` records
+  `failed:<Type>` only when a fetcher **raises**; a fetcher that catches its own
+  error and returns an empty payload is recorded `ok`. `bundle_builder.py:60`
+  says this outright: `section_status` records *how* a fetcher returned.
+- ⚠ **Therefore `health=ok` is not evidence that data arrived, and B5 MUST NOT
+  gate the RL loop on `health` until this lands.** B2's acceptance (d) passed
+  (ADANIGREEN came back `degraded`) but it passed on the *dimension* count, not
+  on section status — the section half of the record has never been exercised
+  by a real failure.
+- **Files:** `services/data/context/bundle_builder.py`, `tests/unit/`
+- **Approach:** `_safe` gains an emptiness test on the returned payload, kept
+  distinct from the exception path: a section returning `None`, an empty
+  container, or an all-fallback payload records `empty`, not `ok`. The `empty`
+  state already exists in the B2 schema and is currently unreachable for these
+  fetchers. **Do not change `has_real_data`** — that B2 decision stands.
+- **Acceptance:**
+  - Replaying the TATAMOTORS bundle records `technicals` as `empty` (or
+    `failed:`), and the run derives `degraded`, not `ok`.
+  - A healthy run's row is unchanged from today's shape.
+  - B2 acceptance (c) still holds: `dimensions_missing` and the
+    `[SignalAggregator] N/M dimensions excluded` warning must still agree.
+- **Verify:** `[PROD]` one TATAMOTORS (or other 404-ing ticker) run after the
+  deploy records not-`ok`.
+- **Rollback:** `observability.data_health_enabled: false` (B2's flag).
+
+---
+
+### D4 — `^CNXAUTO` returns no history
+
+- **Sprint** 2 · **Workstream** D
+- **Chat opener:** `Work task D4 from docs/superpowers/specs/2026-08-24-three-loops-pi-design.md`
+- **Why:** §15.2. `[PROD]` 26 ERROR rows/day since 2026-08-25 (n=52, 2 days).
+- ⚠ **The symbol is NOT delisted.** Measured against Yahoo 2026-08-26:
+  `^CNXAUTO` resolves and `period=5d` returns **1 row** where `^NSEI` returns 4.
+  Only the long-range `interval=1d, 2025-11-17 -> 2026-08-26` call comes back
+  empty. This is external data thinning, not a dead ticker — the fix is a
+  window/fallback decision, not a rename.
+- ⚠ **Do NOT attribute this to A1.** A1 deployed 2026-08-25 15:12 IST and the
+  first error is 16:30 IST the same day, which looks causal and is not: A1
+  changes sector→graph routing and cannot affect what Yahoo returns for an
+  index symbol. Recorded here so it is not re-derived as an A1 regression.
+- **OPEN QUESTION — diagnose before fixing:** why non-automobile tickers fetch
+  `^CNXAUTO` at all. Rows carry `ticker=KPITTECH`, `PAYTM`, `TATAELXSI`
+  (`it_sector`, `banking_bfsi`). Two candidate explanations are already
+  **ruled out**: `technical.py`'s prompts are correctly per-sector
+  (`BANKING_TECHNICAL` → `^NSEBANK`), and `REGIME_SECTOR_TICKERS` falls back to
+  `REGIME_SECTOR_FALLBACK_TICKER = "^NSEI"`, not to automobile — so this is
+  **not** an A1-style second-sector-map-defaulting-to-automobile bug. The
+  remaining candidate is `NIFTY_AUTO_TICKER` (`base.py:98`, commented "used for
+  peer correlation") being fetched unconditionally.
+- **Files:** 5 hardcoded literals — `src/backend/shared/config/settings/base.py`
+  (98, 412), `src/backend/shared/agents/prompts/technical.py:149`,
+  `services/api/routes/ui_data.py` (228, 641, 990, 1696, 1710)
+- **Approach:** per the standing config-over-hardcode rule, collapse the
+  literals to `cfg()` keys in one place first; then choose the remedy (shorter
+  window, or `^NSEI` fallback) once the unconditional-fetch question is
+  answered. ⚠ One of the five sites is the **technical analysis prompt** and
+  four are the **UI's Auto index** — a naive rename changes what analysts are
+  told and what users see.
+- **Acceptance:** the ERROR rate for this fingerprint drops to zero; no
+  sector's index changes except automobile's, and only if deliberately
+  re-pointed.
+- **Rollback:** revert; the literals are inert config.
+
+---
+
+### D5 — `TATAMOTORS.NS` is delisted; `TMPV.NS` is the live successor
+
+- **Sprint** 2 · **Workstream** D · **Detection depends on B6**
+- **Chat opener:** `Work task D5 from docs/superpowers/specs/2026-08-24-three-loops-pi-design.md`
+- **Why:** §15.3. `[PROD]` HTTP 404 `Quote not found for symbol: TATAMOTORS.NS`,
+  n=190 over **35 distinct days since 2026-07-02**, plus 100 rows of
+  `possibly delisted; no price data found` for `period=1y` and `period=5d`.
+  Measured against Yahoo 2026-08-26: `TATAMOTORS.NS` **rows=0**,
+  `TATAMTRDVR.NS` **rows=0**, `TMPV.NS` **rows=5**. Tata Motors demerged and
+  the entry in `TICKER_SECTOR` now points at nothing.
+- ⚠ **The system has been shipping verdicts on it for 35 days.** 2026-08-26
+  alone: run `acab219f` NEUTRAL 0.481 at 16:40 IST and run `f57b8bc9` BUY 0.567
+  at 16:48 IST — the same absent data, two different verdicts eight minutes
+  apart, **both recorded `health=ok`, `dims 9/9`**. This is the single best
+  argument for B6 and for D1's `TickerVerdict`.
+- **Approach:** this is a **ticker lifecycle** problem, not a one-off edit.
+  Repoint or retire the symbol, and make an unresolvable ticker a first-class
+  outcome in D1's `TickerVerdict` — a 404 at the price source must not be able
+  to produce a tradable verdict. ⚠ Choosing the successor is a **judgement
+  call about the universe**, not a mechanical rename: the demerger produced
+  more than one entity, and picking one silently rewrites that ticker's
+  prediction history. Confirm with Revan before editing `TICKER_SECTOR`.
+- **Acceptance:** TATAMOTORS resolves to a live symbol or is retired from the
+  universe; no verdict is emitted for a ticker whose price source 404s.
+- ⚠ Until B6 lands this failure is **invisible to the health record**, so do
+  not rely on `data_health` to confirm the fix.
+
+---
+
+### D6 — brief/digest email delivery is failing
+
+- **Sprint** 2 · **Workstream** D
+- **Chat opener:** `Work task D6 from docs/superpowers/specs/2026-08-24-three-loops-pi-design.md`
+- **Why:** §15.4. `[PROD]` `[delivery] email send failed (non-fatal): [Errno 101]
+  Network is unreachable` — n=103 over **21 distinct days**, first 2026-07-16,
+  and **worsening**: 3-5/day through 2026-08-22, then 10-13/day from
+  2026-08-23.
+- ⚠ **NOT established: whether any recipient is actually affected.** `app_logs`
+  stores WARNING+ only, so delivery *successes* are invisible in it — and per
+  §2.0 the absence of a success row is **not** evidence of absence. Establish
+  first whether email is the sole channel or one of several, and whether the
+  brief reaches the user another way. Do not open with "briefs reach nobody".
+- **Approach:** `Errno 101` on egress is characteristic of outbound SMTP being
+  blocked at the platform rather than a credential or recipient fault. Confirm
+  the channel and port, then either move to an HTTP-API mailer or retire the
+  channel deliberately and stop logging a failure per send.
+- **Acceptance:** either delivery succeeds and the fingerprint disappears, or
+  the channel is retired on purpose and the WARNING stops. A silent
+  non-fatal failure repeating 13x/day is not an acceptable end state.
+
+---
+
+### E5 — LLM triage note on a fingerprint
+
+- **Sprint** 4 · **Workstream** E · **Depends on** E2 (the registry)
+- **Chat opener:** `Work task E5 from docs/superpowers/specs/2026-08-24-three-loops-pi-design.md`
+- **Why:** E2-E4 answer *what broke* and *what should we fix next*. They do not
+  answer *why*, and §15 is the proof that the why is where the work is: four
+  faults sat in `app_logs` for between 2 and 45 days, and finding each one took
+  a human reading raw rows and grepping the tree.
+- **DECIDED (Revan, 2026-08-26):** diagnose and propose, **never write**.
+  Nothing in prod changes automatically. Context is log rows **plus a
+  deterministic repo grep**. Triage fires on NEW / REGRESSED / SPIKE, plus a
+  weekly pass over the top-N `ONGOING` fingerprints with no note yet — because
+  the two most valuable faults found by hand (§15.2, §15.4) are both
+  high-volume and old, so an alert-classes-only trigger would never reach them.
+- **Files:** new `core/ops/error_triage.py`; `core/ops/error_digest.py` (E2)
+  gains the selector call; one weekly job in
+  `services/scheduler/python/scheduler.py`; `config/config.yaml`;
+  `tests/unit/ops/test_error_triage.py`
+- **Approach:**
+  1. **Evidence pack builder — a pure function, no LLM.** From the fingerprint
+     and ~5 sample rows, extract candidate literals: quoted strings,
+     `^`-prefixed symbols, `*.NS` tickers, dotted module paths, bracketed tags
+     such as `[SignalAggregator]`, and the logger name. Grep `/app` for each
+     and map hits back to repo paths. ⚠ **The prod image flattens `src/` —
+     `/app/backend/...` is repo `src/backend/...`** (`/app/services` and
+     `/app/core` map 1:1). ⚠ `run_id` and `ticker` MUST be excluded from
+     extraction for the same reason E2 excludes them from the fingerprint:
+     they are per-run and would never repeat.
+  2. **One bounded LLM call** — mid tier via `cfg()`, JSON mode per the
+     `JSON_MODE_EXTRA_BODY` rule, returning `{cause, confidence,
+     category, suggested_action, referenced_files[{path,line,why}],
+     needs_human}` with `category` in
+     `config | data_source | code | external | benign`.
+  3. **Note written back** onto the registry entry with `triaged_at`,
+     `triaged_model`, `evidence_hash`. Regenerated only when the evidence hash
+     changes or the fingerprint REGRESSES — **one call per cause, not per
+     day**.
+- **Flag:** `observability.error_triage_enabled`, default **false** (dark
+  first). Daily cap `observability.error_triage_max_calls_per_day` (default
+  10).
+- **Cost:** `[PROD, measured 2026-08-26]` 114 WARNING+ rows on a normal day
+  collapse to ~10 distinct causes, so seeding is a one-off ~10 calls and a
+  genuinely new cause is rare. Budget under 20 calls/month.
+- **Acceptance:**
+  - **The golden case, on real data (mirrors E2's approach):** replay the
+    `^CNXAUTO` fingerprint from prod history and assert the evidence pack
+    names `src/backend/shared/config/settings/base.py:98` and
+    `src/backend/shared/agents/prompts/technical.py:149`, category `config`.
+  - A fingerprint whose evidence hash is unchanged consumes **zero** LLM calls
+    on the next run.
+  - Flag off ⇒ zero calls and a byte-identical digest.
+  - A malformed LLM response degrades to **no note** — never a partial write.
+  - The path never raises and never blocks the scheduler (same rule as E2).
+  - Extraction is deterministic and covers **both message eras** (§2.6) and the
+    `\n1 Failed download:` companion-row shape.
+- **Surfacing:** E3's `prod_error_digest` alert carries `cause` and
+  `suggested_action` for the fingerprint that fired; E4's `GET /ops/errors` and
+  `scripts/prod_errors.py` render the full note.
+- **Security:** notes contain prod error text and repo paths. Auth-gated like
+  E4, and **never committed** — this repo is public.
+- **Rollback:** flag false. Notes are additive registry fields, ignored when
+  absent.
+- **Deferred, deliberately NOT in E5:** a local deep-pass triage in
+  `scripts/prod_errors.py` running against the true git tree (which could
+  produce a real patch). Revisit once the registry has proven itself.
 
 ---
 
@@ -1439,3 +1642,106 @@ card; if it does not, `technical` was never the problem.
 - This PI does not address the `generic` sector's learning gap (74 tickers,
   1 weight memory). That is a consequence of routing, and should be
   re-measured after A2 rather than fixed blind.
+
+## 15. Sprint 1 verification findings — what the first real rows showed
+
+All figures `[PROD]`, measured 2026-08-26 via `railway ssh` against
+`telemetry.db` (4,471 rows) and live Yahoo calls. §2.0's provenance rules apply
+throughout: a missing row is not evidence of absence, and code comments are not
+measurements.
+
+**How the first rows arrived.** ⚠ A correction worth stating once, because two
+sessions assumed otherwise: the **08:50 IST morning brief writes no run**. It
+calls `core.delivery.brief.run_morning_brief()`, which imports `PredictionStore`
+and `SectorRegistry` and renders predictions that already exist. `log_run_summary`
+has exactly two call sites, both in `base_orchestrator.py`, and
+`orchestrator.analyse()` is reached from only three places repo-wide:
+`daily_review._run_todays_agent_scores`, `generate_forecast.py` (monthly) and
+`deep_dive.py` (weekly discovery). **The only daily writer is `rl_daily_review`,
+`FEEDBACK_CRON='30 16 * * mon-fri'` → 16:30 IST Mon-Fri.** A non-trading day
+writes nothing at all. On 2026-08-26 that job ran 16:30→16:56, produced 19
+reviews and 13 orchestrator runs.
+
+**What closed.** B1 (a)+(c); B2 (a),(b),(c),(d); E1 (a),(b),(d). B2's
+acceptance (c) matched exactly — `[SignalAggregator] ADANIGREEN: 5/6 dimensions
+excluded (errored): ['business','risk','sentiment_policy','technical',
+'valuation']` against a `data_health` row of `dims 1/6` naming the same five.
+E1's run correlation works: 44 rows carry a real `run_id`, including rows
+emitted by `yfinance`'s own logger inside the run context.
+
+⚠ **E1 acceptance (c) will not close the way the card imagines.** The 114 new
+rows added **zero** tracebacks (18 before the deploy, 1 after — the probe's).
+The loudest errors in prod come from `yfinance`'s own logger, not from our
+`except` handlers, so E1's `exc_info=True` work cannot reach them by
+construction. Judge (c) on hot-path handlers only, or close it as not
+applicable.
+
+### 15.1 `health=ok` does not mean data arrived → B6
+
+Two TATAMOTORS runs on 2026-08-26 recorded `health=ok`, `live=10`, `failed=0`,
+`empty=0`, `dims 9/9`, `missing=[]`, every one of the 10 sections `"ok"` — on a
+ticker returning HTTP 404 at the price source. `_safe` records `failed:<Type>`
+only when a fetcher raises; `bundle_builder.py:60` states plainly that
+`section_status` records *how* a fetcher returned. A fetcher that swallows its
+own error and returns an empty payload is therefore `ok`.
+
+The section half of the record has never been exercised by a real failure: 13
+rows, `ok`=12 / `degraded`=1, and the one `degraded` was derived from the
+*dimension* count, not from section status. **B5 must not gate on `health`
+until B6 lands.**
+
+### 15.2 `^CNXAUTO` returns no history → D4
+
+26 ERROR rows/day since 2026-08-25 (n=52 over 2 days), on every ticker in every
+sector. ⚠ **Not delisted.** Measured against Yahoo 2026-08-26: `^CNXAUTO`
+resolves, `period=5d` returns **1 row** where `^NSEI` returns 4; only the
+long-range `interval=1d, 2025-11-17 -> 2026-08-26` call is empty.
+
+⚠ **Not caused by A1**, despite the timing (A1 deployed 2026-08-25 15:12 IST;
+first error 16:30 IST the same day). A1 changes sector→graph routing and cannot
+change what Yahoo returns for an index. Also ruled out: `technical.py`'s prompts
+are correctly per-sector, and `REGIME_SECTOR_TICKERS` falls back to `^NSEI`, not
+to automobile — this is **not** a second automobile-defaulting sector map.
+
+Still open: why non-automobile tickers fetch `^CNXAUTO` at all.
+
+### 15.3 `TATAMOTORS.NS` is delisted → D5
+
+n=190 HTTP 404 rows over **35 distinct days since 2026-07-02**, plus 100
+`possibly delisted` rows. Yahoo 2026-08-26: `TATAMOTORS.NS` rows=0,
+`TATAMTRDVR.NS` rows=0, **`TMPV.NS` rows=5**. The demerger left the
+`TICKER_SECTOR` entry pointing at nothing.
+
+⚠ The system shipped verdicts on it throughout: on 2026-08-26, `acab219f`
+NEUTRAL 0.481 at 16:40 IST and `f57b8bc9` BUY 0.567 at 16:48 IST — same absent
+data, two verdicts, eight minutes apart, both `health=ok`.
+
+### 15.4 Email delivery is failing → D6
+
+`[delivery] email send failed (non-fatal): [Errno 101] Network is unreachable`,
+n=103 over **21 distinct days**, first 2026-07-16, worsening from 3-5/day
+through 2026-08-22 to 10-13/day from 2026-08-23.
+
+⚠ **Whether a recipient is affected is NOT established.** `app_logs` holds
+WARNING+ only, so successes are invisible in it; per §2.0 that absence is not
+evidence. Establish the channel set before claiming briefs reach nobody.
+
+### 15.5 Why this motivates E5
+
+The day's 114 WARNING+ rows collapse to roughly **10 distinct causes** — which
+independently confirms E2's "< 10 fingerprints on a normal day" acceptance
+against real data. `^CNXAUTO` alone accounts for ~26 rows (13 errors plus 13
+`\n1 Failed download:` companion lines).
+
+But the ages are the point: 2 days, 21 days, 35 days, and 45 days for
+`[FeedbackAgent] Dropping malformed miss factor` (n=646, the largest single
+fingerprint). Every one of these was in `app_logs` the whole time. Detection
+alone would have ranked them; it would not have explained any of them, and
+three of the four required grepping the tree to understand. That gap is E5.
+
+⚠ Three of these four were **initially mis-stated in the session that found
+them** — `^CNXAUTO` called delisted when it resolves, email called permanently
+dead when it fails on 21 of 53 days, and the ages guessed rather than measured.
+The corrections came from querying `app_logs` for `MIN(ts)`/`COUNT(DISTINCT
+day)` and from calling Yahoo directly. Any triage layer that proposes causes
+must carry the same discipline: **age and frequency before mechanism.**

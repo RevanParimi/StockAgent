@@ -1,0 +1,4 @@
+# Documentation tools only; not application/runtime dependencies.
+markdown2==2.4.13
+pypdf==6.13.3
+PyYAML==6.0.3

@@ -1,5 +1,11 @@
 # StockAgent — Product Map
 
+> **September 15 KT update:** this detailed inventory was verified in August;
+> its counts and runtime/learning descriptions are historical. Use
+> [TECHNICAL_DESIGN.md](TECHNICAL_DESIGN.md) for the current code, IPO additions,
+> 23 possible scheduler job IDs and PI targets. Use the separate
+> [team testing guide](TEAM_TESTING_GUIDE.md) for assignable human duties.
+
 > **The study document.** Every major module and its minor modules, in one
 > place, with a suggested reading order. Where [ARCHITECTURE.md](ARCHITECTURE.md)
 > explains *how the system fits together* and the deep-dives explain *how one
@@ -16,7 +22,7 @@
 
 ## 0. Orientation
 
-**What the product is:** a single Python process — FastAPI plus an in-process
+**What the product is:** one Python service (Docker starts two workers, with one background owner) — FastAPI plus an in-process
 APScheduler thread — that runs an Indian-equity research loop. It forms a
 monthly price forecast per stock, checks itself against reality every trading
 day, learns from the miss, manages a virtual portfolio off those signals,

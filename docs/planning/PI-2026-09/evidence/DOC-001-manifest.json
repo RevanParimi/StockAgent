@@ -1,0 +1,94 @@
+{
+  "task": "DOC-001",
+  "baseline_commit": "9a805878ed19c0cda7833d5b897ac05ee407436d",
+  "hash_algorithm": "SHA-256",
+  "scope": "Exact current bytes of documentation deliverables and validation/rendering tools; no application source changes.",
+  "bookkeeping_exclusions": [
+    "docs/planning/PI-2026-09/STATE.json",
+    "docs/planning/PI-2026-09/HANDOFF.md",
+    "docs/planning/PI-2026-09/evidence/DOC-001-implementation.md",
+    "docs/planning/PI-2026-09/evidence/DOC-001-manifest.json"
+  ],
+  "files": [
+    {
+      "path": "AGENTS.md",
+      "sha256": "93965a67268f886908c93798188a5628f629ee1b8566e5a130dd809106e82b9a"
+    },
+    {
+      "path": "docs/ARCHITECTURE.md",
+      "sha256": "7271442623a4b1d1b71c7cdfc479bfdece222d591da5d671ca42cf57e7f56984"
+    },
+    {
+      "path": "docs/PRODUCT_MAP.md",
+      "sha256": "8a5655668bdda5822463e00b44822f616efcca19aadc4dd34746e81480422ed6"
+    },
+    {
+      "path": "docs/README.md",
+      "sha256": "3ffe2f88470b3e87506213c7392e465e0bf97ea42cbcca4af445905243443553"
+    },
+    {
+      "path": "docs/RL_DESIGN.md",
+      "sha256": "988d7f269eccc567876f21a8a31996adc8f7feda538824cecdca8524206ae2fc"
+    },
+    {
+      "path": "docs/StockAgent-Three-Loops.pdf",
+      "sha256": "72f77afaba4b5e587ad9d869359b8054239a45603d0576366e859e84911f8fda"
+    },
+    {
+      "path": "docs/TEAM_TESTING_GUIDE.md",
+      "sha256": "1222e0741bbdf3a793163022ec546ed0edaf448704b455ebf18141f17f8e7f4d"
+    },
+    {
+      "path": "docs/TECHNICAL_DESIGN.md",
+      "sha256": "15dc554239971a1ad8fefd820b8f1e2ae364cd71e4fd7691e13609b66a95f5d7"
+    },
+    {
+      "path": "docs/archive/README.md",
+      "sha256": "65cd6f8d5d203966e749aef6233b8f206b7ab7ad2f849413182bc4a0f4c7beae"
+    },
+    {
+      "path": "docs/archive/StockAgent-Three-Loops.original-before-2026-09-15.pdf",
+      "sha256": "1fc2402b6bdda4ac088630e1f1caf8d10f89799409dd9e0eff559ab3df4f66d9"
+    },
+    {
+      "path": "docs/planning/PI-2026-09/README.md",
+      "sha256": "f905ca476109a7bb8b5ec4ed67313dc06747543c7974d2a3e85e7eb85905dc74"
+    },
+    {
+      "path": "docs/planning/PI-2026-09/REVIEW.md",
+      "sha256": "133eb617ebbacf1596313708c08c6257faf29510b5c5f04dfbcc5caa064abcfd"
+    },
+    {
+      "path": "docs/planning/PI-2026-09/evidence/README.md",
+      "sha256": "ec8ac7a2144cdedd78c955c74ed47ffc1202bb56a927f93b861fd5179ce8bba6"
+    },
+    {
+      "path": "docs/planning/PI-2026-09/stories/DOC-001.md",
+      "sha256": "76c723c6a95a020b728f49a8abbd159225d0ae18b3741aa1055a90cbd246c2cb"
+    },
+    {
+      "path": "docs/planning/PI-2026-09/stories/SA-031.md",
+      "sha256": "4e73f7e92010729b4599dbc4396deff1a26b5e9d671b757afd89164d9c29d433"
+    },
+    {
+      "path": "scripts/docs/README.md",
+      "sha256": "e305b33afcec6e94bb464e53d5341a35d2d63bb0ad5123e9bfd974111dbb3b60"
+    },
+    {
+      "path": "scripts/docs/build_kt_pdf.py",
+      "sha256": "308edcc12d9b4391357c4b8a4007285ce134b76a9659d79f269218cfbb6df861"
+    },
+    {
+      "path": "scripts/docs/check_kt_docs.py",
+      "sha256": "ef92c687421206764569497c6edf77eb1beb183265b06cac111a655fc5cc0347"
+    },
+    {
+      "path": "scripts/docs/requirements.txt",
+      "sha256": "50ef0c996fea501409c55965f1f028a6a230c60dd108bc0205d03bc41a647754"
+    },
+    {
+      "path": "scripts/docs/run_kt_checks.py",
+      "sha256": "4420bb635d7716be5bc9e15f05288a2f42d7199576c25f8d91c039571159cfed"
+    }
+  ]
+}

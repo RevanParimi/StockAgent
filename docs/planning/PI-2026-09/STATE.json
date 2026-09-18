@@ -1,0 +1,736 @@
+{
+  "schema_version": 1,
+  "pi": "PI-2026-09",
+  "updated_at": "2026-09-15",
+  "baseline_commit": "9a805878ed19c0cda7833d5b897ac05ee407436d",
+  "audit": {
+    "status": "complete",
+    "report": "docs/audit/2026-09-10-repository-production-review.md",
+    "production_modified": false
+  },
+  "active_task": "DOC-001",
+  "next_task": "DOC-001",
+  "next_phase": "review",
+  "scope": "One implementation or fresh-session review phase per conversation. Default queue is planned stories; stretch requires explicit promotion.",
+  "status_definitions": {
+    "todo": "Not started; ready when every dependency is done.",
+    "in_progress": "Implementation is active; resume before selecting another task.",
+    "review_required": "Implementation evidence ready; needs fresh-session hard review.",
+    "changes_requested": "Review identified changes; resume implementation.",
+    "done": "Code/docs accepted after required tests and fresh-session review; see production_verification separately.",
+    "blocked": "A concrete external/input blocker is recorded; continue other ready authorized work."
+  },
+  "tasks": [
+    {
+      "id": "SA-001",
+      "title": "Sanitize every chat Markdown rendering boundary",
+      "story": "docs/planning/PI-2026-09/stories/SA-001.md",
+      "sprint": 1,
+      "points": 3,
+      "priority": "P0",
+      "scope": "planned",
+      "status": "todo",
+      "depends_on": [],
+      "implementation_receipt": null,
+      "review_receipt": null,
+      "reviewed_revision": null,
+      "production_verification": {
+        "status": "not_started",
+        "evidence": null
+      },
+      "blocked_reason": null
+    },
+    {
+      "id": "SA-002",
+      "title": "Make data-health records describe usable evidence",
+      "story": "docs/planning/PI-2026-09/stories/SA-002.md",
+      "sprint": 1,
+      "points": 3,
+      "priority": "P1",
+      "scope": "planned",
+      "status": "todo",
+      "depends_on": [],
+      "implementation_receipt": null,
+      "review_receipt": null,
+      "reviewed_revision": null,
+      "production_verification": {
+        "status": "not_started",
+        "evidence": null
+      },
+      "blocked_reason": null
+    },
+    {
+      "id": "SA-003",
+      "title": "Gate recommendations and learning on essential data",
+      "story": "docs/planning/PI-2026-09/stories/SA-003.md",
+      "sprint": 1,
+      "points": 5,
+      "priority": "P1",
+      "scope": "planned",
+      "status": "todo",
+      "depends_on": [
+        "SA-002"
+      ],
+      "implementation_receipt": null,
+      "review_receipt": null,
+      "reviewed_revision": null,
+      "production_verification": {
+        "status": "not_started",
+        "evidence": null
+      },
+      "blocked_reason": null
+    },
+    {
+      "id": "SA-004",
+      "title": "Count daily-review outcomes truthfully",
+      "story": "docs/planning/PI-2026-09/stories/SA-004.md",
+      "sprint": 1,
+      "points": 3,
+      "priority": "P1",
+      "scope": "planned",
+      "status": "todo",
+      "depends_on": [],
+      "implementation_receipt": null,
+      "review_receipt": null,
+      "reviewed_revision": null,
+      "production_verification": {
+        "status": "not_started",
+        "evidence": null
+      },
+      "blocked_reason": null
+    },
+    {
+      "id": "SA-005",
+      "title": "Establish a clean, isolated test and CI baseline",
+      "story": "docs/planning/PI-2026-09/stories/SA-005.md",
+      "sprint": 1,
+      "points": 5,
+      "priority": "P1",
+      "scope": "planned",
+      "status": "todo",
+      "depends_on": [],
+      "implementation_receipt": null,
+      "review_receipt": null,
+      "reviewed_revision": null,
+      "production_verification": {
+        "status": "not_started",
+        "evidence": null
+      },
+      "blocked_reason": null
+    },
+    {
+      "id": "SA-006",
+      "title": "Repair delivery transport and expose dead letters",
+      "story": "docs/planning/PI-2026-09/stories/SA-006.md",
+      "sprint": 2,
+      "points": 3,
+      "priority": "P1",
+      "scope": "planned",
+      "status": "todo",
+      "depends_on": [],
+      "implementation_receipt": null,
+      "review_receipt": null,
+      "reviewed_revision": null,
+      "production_verification": {
+        "status": "not_started",
+        "evidence": null
+      },
+      "blocked_reason": null
+    },
+    {
+      "id": "SA-007",
+      "title": "Make backups independently recoverable",
+      "story": "docs/planning/PI-2026-09/stories/SA-007.md",
+      "sprint": 2,
+      "points": 3,
+      "priority": "P1",
+      "scope": "planned",
+      "status": "todo",
+      "depends_on": [],
+      "implementation_receipt": null,
+      "review_receipt": null,
+      "reviewed_revision": null,
+      "production_verification": {
+        "status": "not_started",
+        "evidence": null
+      },
+      "blocked_reason": null
+    },
+    {
+      "id": "SA-008",
+      "title": "Quarantine unresolved securities with explicit lifecycle records",
+      "story": "docs/planning/PI-2026-09/stories/SA-008.md",
+      "sprint": 2,
+      "points": 5,
+      "priority": "P1",
+      "scope": "planned",
+      "status": "todo",
+      "depends_on": [
+        "SA-003"
+      ],
+      "implementation_receipt": null,
+      "review_receipt": null,
+      "reviewed_revision": null,
+      "production_verification": {
+        "status": "not_started",
+        "evidence": null
+      },
+      "blocked_reason": null
+    },
+    {
+      "id": "SA-009",
+      "title": "Inventory and reconcile prediction-store ownership",
+      "story": "docs/planning/PI-2026-09/stories/SA-009.md",
+      "sprint": 2,
+      "points": 3,
+      "priority": "P1",
+      "scope": "planned",
+      "status": "todo",
+      "depends_on": [],
+      "implementation_receipt": null,
+      "review_receipt": null,
+      "reviewed_revision": null,
+      "production_verification": {
+        "status": "not_started",
+        "evidence": null
+      },
+      "blocked_reason": null
+    },
+    {
+      "id": "SA-010",
+      "title": "Pass sector benchmarks through technical-data calls",
+      "story": "docs/planning/PI-2026-09/stories/SA-010.md",
+      "sprint": 2,
+      "points": 2,
+      "priority": "P2",
+      "scope": "planned",
+      "status": "todo",
+      "depends_on": [],
+      "implementation_receipt": null,
+      "review_receipt": null,
+      "reviewed_revision": null,
+      "production_verification": {
+        "status": "not_started",
+        "evidence": null
+      },
+      "blocked_reason": null
+    },
+    {
+      "id": "SA-011",
+      "title": "Turn durable errors into a deterministic operations backlog",
+      "story": "docs/planning/PI-2026-09/stories/SA-011.md",
+      "sprint": 2,
+      "points": 3,
+      "priority": "P2",
+      "scope": "planned",
+      "status": "todo",
+      "depends_on": [
+        "SA-002",
+        "SA-004"
+      ],
+      "implementation_receipt": null,
+      "review_receipt": null,
+      "reviewed_revision": null,
+      "production_verification": {
+        "status": "not_started",
+        "evidence": null
+      },
+      "blocked_reason": null
+    },
+    {
+      "id": "SA-012",
+      "title": "Specify and test the learning target before changing it",
+      "story": "docs/planning/PI-2026-09/stories/SA-012.md",
+      "sprint": 3,
+      "points": 3,
+      "priority": "P1",
+      "scope": "planned",
+      "status": "todo",
+      "depends_on": [
+        "SA-005"
+      ],
+      "implementation_receipt": null,
+      "review_receipt": null,
+      "reviewed_revision": null,
+      "production_verification": {
+        "status": "not_started",
+        "evidence": null
+      },
+      "blocked_reason": null
+    },
+    {
+      "id": "SA-013",
+      "title": "Persist immutable, genuinely prospective forecast identities",
+      "story": "docs/planning/PI-2026-09/stories/SA-013.md",
+      "sprint": 3,
+      "points": 5,
+      "priority": "P1",
+      "scope": "planned",
+      "status": "todo",
+      "depends_on": [
+        "SA-012"
+      ],
+      "implementation_receipt": null,
+      "review_receipt": null,
+      "reviewed_revision": null,
+      "production_verification": {
+        "status": "not_started",
+        "evidence": null
+      },
+      "blocked_reason": null
+    },
+    {
+      "id": "SA-014",
+      "title": "Grade frozen decisions and issue controls before their outcomes",
+      "story": "docs/planning/PI-2026-09/stories/SA-014.md",
+      "sprint": 3,
+      "points": 5,
+      "priority": "P1",
+      "scope": "planned",
+      "status": "todo",
+      "depends_on": [
+        "SA-003",
+        "SA-013"
+      ],
+      "implementation_receipt": null,
+      "review_receipt": null,
+      "reviewed_revision": null,
+      "production_verification": {
+        "status": "not_started",
+        "evidence": null
+      },
+      "blocked_reason": null
+    },
+    {
+      "id": "SA-015",
+      "title": "Make adaptive updates idempotent and preserve final weight bounds",
+      "story": "docs/planning/PI-2026-09/stories/SA-015.md",
+      "sprint": 3,
+      "points": 5,
+      "priority": "P1",
+      "scope": "planned",
+      "status": "todo",
+      "depends_on": [
+        "SA-014"
+      ],
+      "implementation_receipt": null,
+      "review_receipt": null,
+      "reviewed_revision": null,
+      "production_verification": {
+        "status": "not_started",
+        "evidence": null
+      },
+      "blocked_reason": null
+    },
+    {
+      "id": "SA-016",
+      "title": "Replace blame-based shared credit with identifiable outcomes",
+      "story": "docs/planning/PI-2026-09/stories/SA-016.md",
+      "sprint": 4,
+      "points": 5,
+      "priority": "P1",
+      "scope": "planned",
+      "status": "todo",
+      "depends_on": [
+        "SA-015"
+      ],
+      "implementation_receipt": null,
+      "review_receipt": null,
+      "reviewed_revision": null,
+      "production_verification": {
+        "status": "not_started",
+        "evidence": null
+      },
+      "blocked_reason": null
+    },
+    {
+      "id": "SA-017",
+      "title": "Attach historical lineage and quarantine incomparable feedback",
+      "story": "docs/planning/PI-2026-09/stories/SA-017.md",
+      "sprint": 4,
+      "points": 3,
+      "priority": "P1",
+      "scope": "planned",
+      "status": "todo",
+      "depends_on": [
+        "SA-009",
+        "SA-013"
+      ],
+      "implementation_receipt": null,
+      "review_receipt": null,
+      "reviewed_revision": null,
+      "production_verification": {
+        "status": "not_started",
+        "evidence": null
+      },
+      "blocked_reason": null
+    },
+    {
+      "id": "SA-018",
+      "title": "Build complete, matched monthly evaluation cohorts",
+      "story": "docs/planning/PI-2026-09/stories/SA-018.md",
+      "sprint": 4,
+      "points": 5,
+      "priority": "P1",
+      "scope": "planned",
+      "status": "todo",
+      "depends_on": [
+        "SA-014",
+        "SA-017"
+      ],
+      "implementation_receipt": null,
+      "review_receipt": null,
+      "reviewed_revision": null,
+      "production_verification": {
+        "status": "not_started",
+        "evidence": null
+      },
+      "blocked_reason": null
+    },
+    {
+      "id": "SA-019",
+      "title": "Evaluate suggestions across weekly and fortnightly cohorts",
+      "story": "docs/planning/PI-2026-09/stories/SA-019.md",
+      "sprint": 4,
+      "points": 5,
+      "priority": "P1",
+      "scope": "planned",
+      "status": "todo",
+      "depends_on": [
+        "SA-018"
+      ],
+      "implementation_receipt": null,
+      "review_receipt": null,
+      "reviewed_revision": null,
+      "production_verification": {
+        "status": "not_started",
+        "evidence": null
+      },
+      "blocked_reason": null
+    },
+    {
+      "id": "SA-020",
+      "title": "Compute effective samples from trading-session overlap",
+      "story": "docs/planning/PI-2026-09/stories/SA-020.md",
+      "sprint": 5,
+      "points": 3,
+      "priority": "P1",
+      "scope": "planned",
+      "status": "todo",
+      "depends_on": [
+        "SA-013"
+      ],
+      "implementation_receipt": null,
+      "review_receipt": null,
+      "reviewed_revision": null,
+      "production_verification": {
+        "status": "not_started",
+        "evidence": null
+      },
+      "blocked_reason": null
+    },
+    {
+      "id": "SA-021",
+      "title": "Validate calibration and weight recovery with minimum evidence",
+      "story": "docs/planning/PI-2026-09/stories/SA-021.md",
+      "sprint": 5,
+      "points": 5,
+      "priority": "P1",
+      "scope": "planned",
+      "status": "todo",
+      "depends_on": [
+        "SA-016",
+        "SA-018",
+        "SA-020"
+      ],
+      "implementation_receipt": null,
+      "review_receipt": null,
+      "reviewed_revision": null,
+      "production_verification": {
+        "status": "not_started",
+        "evidence": null
+      },
+      "blocked_reason": null
+    },
+    {
+      "id": "SA-022",
+      "title": "Run prospective adapted and frozen-policy experiments",
+      "story": "docs/planning/PI-2026-09/stories/SA-022.md",
+      "sprint": 5,
+      "points": 5,
+      "priority": "P1",
+      "scope": "planned",
+      "status": "todo",
+      "depends_on": [
+        "SA-016",
+        "SA-018",
+        "SA-020"
+      ],
+      "implementation_receipt": null,
+      "review_receipt": null,
+      "reviewed_revision": null,
+      "production_verification": {
+        "status": "not_started",
+        "evidence": null
+      },
+      "blocked_reason": null
+    },
+    {
+      "id": "SA-023",
+      "title": "Put learned lessons on measurable probation",
+      "story": "docs/planning/PI-2026-09/stories/SA-023.md",
+      "sprint": 5,
+      "points": 3,
+      "priority": "P2",
+      "scope": "planned",
+      "status": "todo",
+      "depends_on": [
+        "SA-022"
+      ],
+      "implementation_receipt": null,
+      "review_receipt": null,
+      "reviewed_revision": null,
+      "production_verification": {
+        "status": "not_started",
+        "evidence": null
+      },
+      "blocked_reason": null
+    },
+    {
+      "id": "SA-024",
+      "title": "Show verifiable learning evidence and honest unavailable states",
+      "story": "docs/planning/PI-2026-09/stories/SA-024.md",
+      "sprint": 5,
+      "points": 3,
+      "priority": "P2",
+      "scope": "planned",
+      "status": "todo",
+      "depends_on": [
+        "SA-019",
+        "SA-020",
+        "SA-022"
+      ],
+      "implementation_receipt": null,
+      "review_receipt": null,
+      "reviewed_revision": null,
+      "production_verification": {
+        "status": "not_started",
+        "evidence": null
+      },
+      "blocked_reason": null
+    },
+    {
+      "id": "SA-025",
+      "title": "Count actual provider calls and fallback cost",
+      "story": "docs/planning/PI-2026-09/stories/SA-025.md",
+      "sprint": 6,
+      "points": 3,
+      "priority": "P2",
+      "scope": "planned",
+      "status": "todo",
+      "depends_on": [
+        "SA-011"
+      ],
+      "implementation_receipt": null,
+      "review_receipt": null,
+      "reviewed_revision": null,
+      "production_verification": {
+        "status": "not_started",
+        "evidence": null
+      },
+      "blocked_reason": null
+    },
+    {
+      "id": "SA-026",
+      "title": "Consolidate sector definitions with equivalence checks",
+      "story": "docs/planning/PI-2026-09/stories/SA-026.md",
+      "sprint": 6,
+      "points": 5,
+      "priority": "P2",
+      "scope": "planned",
+      "status": "todo",
+      "depends_on": [
+        "SA-003",
+        "SA-009",
+        "SA-010"
+      ],
+      "implementation_receipt": null,
+      "review_receipt": null,
+      "reviewed_revision": null,
+      "production_verification": {
+        "status": "not_started",
+        "evidence": null
+      },
+      "blocked_reason": null
+    },
+    {
+      "id": "SA-027",
+      "title": "Retire redundant fallback only when measured replacements work",
+      "story": "docs/planning/PI-2026-09/stories/SA-027.md",
+      "sprint": 6,
+      "points": 3,
+      "priority": "P2",
+      "scope": "planned",
+      "status": "todo",
+      "depends_on": [
+        "SA-025",
+        "SA-026"
+      ],
+      "implementation_receipt": null,
+      "review_receipt": null,
+      "reviewed_revision": null,
+      "production_verification": {
+        "status": "not_started",
+        "evidence": null
+      },
+      "blocked_reason": null
+    },
+    {
+      "id": "SA-028",
+      "title": "Repair packaging and compile the browser client",
+      "story": "docs/planning/PI-2026-09/stories/SA-028.md",
+      "sprint": "stretch",
+      "points": 5,
+      "priority": "P2",
+      "scope": "stretch",
+      "status": "todo",
+      "depends_on": [
+        "SA-001",
+        "SA-005"
+      ],
+      "implementation_receipt": null,
+      "review_receipt": null,
+      "reviewed_revision": null,
+      "production_verification": {
+        "status": "not_started",
+        "evidence": null
+      },
+      "blocked_reason": null
+    },
+    {
+      "id": "SA-029",
+      "title": "Verify readiness and recover background ownership",
+      "story": "docs/planning/PI-2026-09/stories/SA-029.md",
+      "sprint": 6,
+      "points": 3,
+      "priority": "P1",
+      "scope": "planned",
+      "status": "todo",
+      "depends_on": [
+        "SA-004",
+        "SA-007"
+      ],
+      "implementation_receipt": null,
+      "review_receipt": null,
+      "reviewed_revision": null,
+      "production_verification": {
+        "status": "not_started",
+        "evidence": null
+      },
+      "blocked_reason": null
+    },
+    {
+      "id": "SA-030",
+      "title": "Reconcile or retire stale Atlas projections",
+      "story": "docs/planning/PI-2026-09/stories/SA-030.md",
+      "sprint": "stretch",
+      "points": 3,
+      "priority": "P2",
+      "scope": "stretch",
+      "status": "todo",
+      "depends_on": [
+        "SA-009",
+        "SA-013"
+      ],
+      "implementation_receipt": null,
+      "review_receipt": null,
+      "reviewed_revision": null,
+      "production_verification": {
+        "status": "not_started",
+        "evidence": null
+      },
+      "blocked_reason": null
+    },
+    {
+      "id": "SA-031",
+      "title": "Verify final architecture and operator-documentation consistency",
+      "story": "docs/planning/PI-2026-09/stories/SA-031.md",
+      "sprint": 6,
+      "points": 2,
+      "priority": "P2",
+      "scope": "planned",
+      "status": "todo",
+      "depends_on": [
+        "SA-024",
+        "SA-027",
+        "SA-029"
+      ],
+      "implementation_receipt": null,
+      "review_receipt": null,
+      "reviewed_revision": null,
+      "production_verification": {
+        "status": "not_started",
+        "evidence": null
+      },
+      "blocked_reason": null
+    },
+    {
+      "id": "SA-032",
+      "title": "Define and enforce the public-read and demo-data policy",
+      "story": "docs/planning/PI-2026-09/stories/SA-032.md",
+      "sprint": "stretch",
+      "points": 3,
+      "priority": "P2",
+      "scope": "stretch",
+      "status": "todo",
+      "depends_on": [
+        "SA-001",
+        "SA-024"
+      ],
+      "implementation_receipt": null,
+      "review_receipt": null,
+      "reviewed_revision": null,
+      "production_verification": {
+        "status": "not_started",
+        "evidence": null
+      },
+      "blocked_reason": null
+    },
+    {
+      "id": "DOC-001",
+      "title": "Refresh current-code KT documents and separate human testing duties",
+      "story": "docs/planning/PI-2026-09/stories/DOC-001.md",
+      "sprint": "user_requested",
+      "points": 0,
+      "priority": "P1",
+      "scope": "user_requested",
+      "status": "review_required",
+      "depends_on": [],
+      "implementation_receipt": "docs/planning/PI-2026-09/evidence/DOC-001-implementation.md",
+      "review_receipt": null,
+      "reviewed_revision": null,
+      "production_verification": {
+        "status": "not_applicable",
+        "evidence": "Documentation only; production behavior verification remains separate."
+      },
+      "blocked_reason": null,
+      "review_input_manifest": "docs/planning/PI-2026-09/evidence/DOC-001-manifest.json",
+      "review_input_sha256": "90c005c46417db97d6e3f6feba2431aae66a8ad93037e852e9823ad7936125c0"
+    }
+  ],
+  "history": [
+    {
+      "date": "2026-09-10",
+      "event": "Completed read-only repository/production audit and local verification. Created 29 planned stories plus 3 stretch stories. No remediation code or production configuration changed."
+    },
+    {
+      "date": "2026-09-15",
+      "event": "User explicitly resequenced a documentation and human-testing-guide task (DOC-001) before SA-001. Include planned PI changes as targets and maintain docs per story. No remediation status changed; SA-031 dependencies remain unresolved."
+    },
+    {
+      "date": "2026-09-15",
+      "event": "DOC-001 implementation complete: source-linked KT Markdown and 16-page PDF, 12 human testing duties/57 unexecuted cases, all 32 SA targets mapped. 323 existing tests pass; document/PDF checks pass. Fresh-session review required. Incremental documentation now required per story; SA-031 is final consistency only. No remediation or production acceptance changed.",
+      "review_input_sha256": "90c005c46417db97d6e3f6feba2431aae66a8ad93037e852e9823ad7936125c0"
+    }
+  ]
+}

@@ -1,6 +1,15 @@
 # RL Design — Adaptive Prediction Loop
 
-> **Status (2026-07-19):** body verified through 2026-06-13; still the authoritative
+> **Current authority (2026-09-15):** [Technical KT, section 5](TECHNICAL_DESIGN.md#5-learning-forecast-review-and-memory)
+> and the [September audit](audit/2026-09-10-repository-production-review.md)
+> supersede conflicting claims in this older deep dive. Hard-bind is enabled
+> in current YAML; its category binding leaves the model score separate.
+> Grading still compares actual close to predicted close and can use a fresh
+> verdict after the outcome. Weight bounds, attribution and matched evaluation
+> remain PI targets, not demonstrated learning benefit. The July notes below
+> are historical deltas, not the current acceptance state.
+
+> **Historical status (2026-07-19):** body verified through 2026-06-13; an older
 > internals reference, with these post-audit deltas (details in
 > [audit/LEDGER.md](audit/LEDGER.md), map in [ARCHITECTURE.md](ARCHITECTURE.md)):
 > **(1) Direction semantics changed 2026-07-17 (Wave G):** a NEUTRAL prediction now counts

@@ -972,6 +972,18 @@ IPO_SIGNAL_RETENTION_DAYS: int = int(cfg("ipo.signal_retention_days", fallback=4
 IPO_GMP_ENABLED: bool = bool(cfg("ipo.gmp_enabled", fallback=False))
 IPO_GMP_MIN_SOURCES: int = int(cfg("ipo.gmp_min_sources", fallback=2))
 IPO_GMP_AGREEMENT_TOLERANCE: float = float(cfg("ipo.gmp_agreement_tolerance", fallback=0.25))
+# P3 Substance research (plan 2026-09-21 Sprint 2). All via cfg(), no env=.
+IPO_RESEARCH_ENABLED: bool = bool(cfg("ipo.research_enabled", fallback=True))
+IPO_RESEARCH_MAX_FETCHES: int = int(cfg("ipo.research_max_fetches", fallback=6))
+IPO_RESEARCH_RESULTS_PER_QUERY: int = int(cfg("ipo.research_results_per_query", fallback=3))
+IPO_RESEARCH_MAX_CONTENT_CHARS: int = int(cfg("ipo.research_max_content_chars", fallback=6000))
+IPO_RESEARCH_EXTRACT_MAX_TOKENS: int = int(cfg("ipo.research_extract_max_tokens", fallback=900))
+IPO_RESEARCH_MIN_SOURCES: int = int(cfg("ipo.research_min_sources", fallback=2))
+IPO_RESEARCH_AGREEMENT_TOLERANCE: float = float(cfg("ipo.research_agreement_tolerance", fallback=0.25))
+IPO_RESEARCH_MAX_PEERS: int = int(cfg("ipo.research_max_peers", fallback=5))
+IPO_RESEARCH_MAX_ANCHORS: int = int(cfg("ipo.research_max_anchors", fallback=8))
+IPO_RESEARCH_MAX_PROCEEDS: int = int(cfg("ipo.research_max_proceeds", fallback=5))
+IPO_RESEARCH_MAX_FLAGS: int = int(cfg("ipo.research_max_flags", fallback=6))
 
 ADVISOR_SWITCH_CONVICTION_GAP: float = float(cfg("advisor.switch_conviction_gap", fallback=0.15))
 

@@ -461,6 +461,24 @@ ipo:
   gmp_enabled: false            # stays false until SERPER_API_KEY_IPO exists
   gmp_min_sources: 2            # a lone snippet number is not a measurement
   gmp_agreement_tolerance: 0.25 # >25% spread between sources => discard
+  # ── P3 Substance research — the browsing layer (plan 2026-09-21, Sprint 2) ──
+  # Fires once per issue at T-1, so it can afford to be deep: even 6 fetches
+  # x 15 issues/month is ~90 of Tavily's 1,000/month.
+  research_enabled: true
+  research_max_fetches: 6           # Tavily calls per issue — one per query kind
+  research_results_per_query: 3     # pages per Tavily call
+  research_max_content_chars: 6000  # per page into the extractor (not the 600 pipeline cap)
+  research_extract_max_tokens: 900  # fixed; the prompt caps every list so this is safe
+  # Corroboration — ipo_gmp's "a lone number is a rumour", generalised to every
+  # browsed figure. Non-numeric fields need >=1 source and render as "reported".
+  research_min_sources: 2           # distinct DOMAINS per numeric field
+  research_agreement_tolerance: 0.25
+  # List caps, stated inside the extraction prompt so output length is bounded
+  # by construction rather than by hoping max_tokens is enough.
+  research_max_peers: 5
+  research_max_anchors: 8
+  research_max_proceeds: 5
+  research_max_flags: 6
 
 # =============================================================================
 # Observability (Three Loops PI, task B2 — spec 2026-08-24 §2.3, §6.2)

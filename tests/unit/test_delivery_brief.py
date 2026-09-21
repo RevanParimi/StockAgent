@@ -505,6 +505,72 @@ def test_ipo_lean_does_not_read_absent_legs_as_zero():
     assert br._ipo_lean({"total_x": 1.5, "qib_x": None})[0] == "SOFT DEMAND"
 
 
+# ---- IPO-0b: size-tiered demand thresholds --------------------------------
+
+_LIVE_NSE_MULTIPLES = {"state": "open", "total_x": 1.1602, "qib_x": 1.52996, "retail_x": 0.722428}
+
+
+def test_ipo_lean_mega_issue_not_soft_at_low_multiple():
+    """The live 2026-09-21 case: NSE at 1.16x overall / QIB 1.53x read
+    "SOFT DEMAND" under the scale-free rule, though a mega-issue clearing
+    its book is an enormous absolute rupee demand. In the mega band
+    (soft 1.0x) both legs sit above soft."""
+    label, _ = br._ipo_lean({**_LIVE_NSE_MULTIPLES, "issue_size_cr": 12_000.0})
+    assert label != "SOFT DEMAND"
+    assert label == "MODERATE DEMAND"
+
+
+def test_ipo_lean_small_issue_still_soft_at_same_multiple():
+    """Same multiples on a 300cr issue are genuinely light demand."""
+    label, _ = br._ipo_lean({**_LIVE_NSE_MULTIPLES, "issue_size_cr": 300.0})
+    assert label == "SOFT DEMAND"
+
+
+def test_ipo_lean_unknown_size_uses_fallback_band():
+    """No size => today's scalar thresholds, unchanged. An unread size must
+    not be promoted to the largest tier, or every issue whose size failed
+    to parse would silently stop reading SOFT."""
+    assert br._ipo_lean({**_LIVE_NSE_MULTIPLES, "issue_size_cr": None})[0] == "SOFT DEMAND"
+    assert br._ipo_lean(_LIVE_NSE_MULTIPLES)[0] == "SOFT DEMAND"
+    assert br._ipo_demand_band(None) == (
+        br.settings.DELIVERY_BRIEF_IPO_SOFT_DEMAND_X,
+        br.settings.DELIVERY_BRIEF_IPO_STRONG_DEMAND_X,
+        br.settings.DELIVERY_BRIEF_IPO_STRONG_QIB_X)
+
+
+def test_ipo_demand_band_picks_largest_matching_tier(monkeypatch):
+    """Tiers are matched largest-first regardless of the order they are
+    configured in, and the strong thresholds scale down with size too."""
+    monkeypatch.setattr(br.settings, "DELIVERY_BRIEF_IPO_SIZE_TIERS", [
+        {"min_cr": 0, "soft_x": 3.0, "strong_total_x": 20.0, "strong_qib_x": 30.0},
+        {"min_cr": 10000, "soft_x": 1.0, "strong_total_x": 3.0, "strong_qib_x": 5.0},
+    ])
+    assert br._ipo_demand_band(12_000) == (1.0, 3.0, 5.0)
+    assert br._ipo_demand_band(9_999) == (3.0, 20.0, 30.0)
+    # A 12,000cr issue at 3.8x is STRONG in the mega band, MODERATE in the small one.
+    assert br._ipo_lean({"total_x": 3.8, "issue_size_cr": 12_000})[0] == "STRONG DEMAND"
+    assert br._ipo_lean({"total_x": 3.8, "issue_size_cr": 900})[0] == "MODERATE DEMAND"
+
+
+def test_ipo_demand_band_malformed_tiers_fall_back(monkeypatch):
+    """A broken config entry degrades to the scalar band, never raises into
+    the brief."""
+    monkeypatch.setattr(br.settings, "DELIVERY_BRIEF_IPO_SIZE_TIERS",
+                        [{"min_cr": "lots", "soft_x": 1.0}])
+    assert br._ipo_demand_band(12_000) == br._ipo_demand_band(None)
+
+
+def test_ipo_watch_carries_issue_size_to_the_row(monkeypatch):
+    monkeypatch.setattr(br, "load_ipo_cache", lambda *a, **k: {
+        "current": [{"symbol": "BIGCO", "issue_start": "2026-09-17", "issue_end": "2026-09-21",
+                     "total_x": 1.16, "qib_x": 1.53, "issue_size_cr": 12_000.0}],
+        "upcoming": []})
+    monkeypatch.setattr(br, "_ipo_ledger_snapshots", lambda: {})
+    rows = br._ipo_watch(on=date(2026, 9, 19))
+    assert rows[0]["issue_size_cr"] == 12_000.0
+    assert br._ipo_lean(rows[0])[0] == "MODERATE DEMAND"
+
+
 def test_earnings_watch_returns_open_guidance(monkeypatch):
     class _G:
         def __init__(self, status, guidance):

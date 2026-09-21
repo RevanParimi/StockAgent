@@ -13,6 +13,10 @@ Three Loops and skip the work that was actually asked for.
 **Chat opener:**
 `Work task IPO-0a from docs/superpowers/plans/2026-09-21-ipo-prospect-p3-substance.md`
 
+**IPO-0a status (2026-09-21 afternoon):** worked, not closeable today — nothing is in the `closed — awaiting listing` state until NSE and SONA close tonight. Read the "Progress 2026-09-21" note under IPO-0a in the plan; it names the two pieces of production evidence the 22 Sep 08:50 brief provides. Do not delete the milestone entry without both.
+
+**IPO-0b is done** (size-tiered demand lean; see the plan's "Done 2026-09-21" note). Next after 0a closes: `IPO-0c`, then `IPO-1`.
+
 Read that plan's "State of play as of 2026-09-21" section first. Sprints 0–2 are
 executable; Sprints 3–5 are design-level until `IPO-1` (the P1 backtest read,
 milestone due 2026-09-30) answers whether there is measurable signal to weight.

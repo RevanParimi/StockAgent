@@ -145,7 +145,8 @@ def load_ipo_cache(cache_path: str | None = None) -> dict:
                 "current": [], "upcoming": [], "past": []}
 
 
-_LADDER_FIELDS = ("bid_ladder", "cutoff_share", "qib_x", "retail_x", "total_x")
+_LADDER_FIELDS = ("bid_ladder", "cutoff_share", "qib_x", "retail_x", "total_x",
+                  "issue_size_cr")
 
 
 def _carry_forward(rec: dict, previous: dict | None, *,
@@ -212,7 +213,7 @@ def _enrich_open_issues(rows: list[dict], on: _date,
         if issue_state(rec, on) != "open" or budget <= 0:
             _carry_forward(rec, previous)
             continue
-        ladder = fetch_bid_ladder(rec["symbol"])
+        ladder = fetch_bid_ladder(rec["symbol"], rec.get("issue_price"))
         if ladder is None:
             # Budget is spent only on a SUCCESSFUL fetch: a run of dead-endpoint
             # failures must not exhaust the cap with zero enrichment (§9b).
@@ -222,6 +223,11 @@ def _enrich_open_issues(rows: list[dict], on: _date,
         combined = ladder.get("combined") or {}
         rec["bid_ladder"] = ladder
         rec["cutoff_share"] = ladder.get("cutoff_share")
+        # IPO-0b: the issue's scale, for the brief's size-tiered demand lean.
+        # Only set when read — an absent size must stay None so the lean falls
+        # back to its scale-free band rather than guessing a tier.
+        if ladder.get("issue_size_cr") is not None:
+            rec["issue_size_cr"] = ladder["issue_size_cr"]
         for field, key in (("qib_x", "qib"), ("retail_x", "retail")):
             if combined.get(key) is not None:
                 rec[field] = combined[key]

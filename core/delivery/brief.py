@@ -292,13 +292,43 @@ def _ipo_lean(row: dict) -> tuple[str, str]:
     legs = [x for x in (total, qib) if x is not None]
     if not legs:
         return ("data pending", "subscription not yet reported")
-    if ((total is not None and total >= settings.DELIVERY_BRIEF_IPO_STRONG_DEMAND_X)
-            or (qib is not None and qib >= settings.DELIVERY_BRIEF_IPO_STRONG_QIB_X)):
+    soft_x, strong_total_x, strong_qib_x = _ipo_demand_band(row.get("issue_size_cr"))
+    if ((total is not None and total >= strong_total_x)
+            or (qib is not None and qib >= strong_qib_x)):
         return ("STRONG DEMAND",
                 "Heavy demand — historically tends to list well, though never guaranteed.")
-    if all(x < settings.DELIVERY_BRIEF_IPO_SOFT_DEMAND_X for x in legs):
+    if all(x < soft_x for x in legs):
         return ("SOFT DEMAND", "Light subscription so far — muted interest.")
     return ("MODERATE DEMAND", "Steady subscription interest.")
+
+
+def _ipo_demand_band(issue_size_cr: float | None) -> tuple[float, float, float]:
+    """(soft_x, strong_total_x, strong_qib_x) for an issue of this size.
+
+    IPO-0b: a subscription multiple is scale-free, so one rule judged a
+    ₹50,000cr issue and a ₹500cr one alike — the live 2026-09-21 brief called
+    NSE at 1.16x overall "SOFT DEMAND", an enormous absolute rupee book. Bands
+    come from delivery.brief_ipo_size_tiers, largest min_cr first. An unknown
+    size takes the three scalar thresholds, NOT the largest tier: silently
+    promoting "size not read" to "mega-issue" would relabel every small issue
+    whose size failed to parse. Throwaway by design — P3 deletes _ipo_lean.
+    """
+    fallback = (settings.DELIVERY_BRIEF_IPO_SOFT_DEMAND_X,
+                settings.DELIVERY_BRIEF_IPO_STRONG_DEMAND_X,
+                settings.DELIVERY_BRIEF_IPO_STRONG_QIB_X)
+    if issue_size_cr is None:
+        return fallback
+    try:
+        size = float(issue_size_cr)
+        tiers = sorted((t for t in settings.DELIVERY_BRIEF_IPO_SIZE_TIERS if isinstance(t, dict)),
+                       key=lambda t: float(t.get("min_cr", 0)), reverse=True)
+        for tier in tiers:
+            if size >= float(tier.get("min_cr", 0)):
+                return (float(tier["soft_x"]), float(tier["strong_total_x"]),
+                        float(tier["strong_qib_x"]))
+    except Exception as exc:
+        logger.warning("[brief] ipo size tiers unusable (non-fatal): %s", exc)
+    return fallback
 
 
 def _resolve_sector(ticker: str) -> str:
@@ -548,6 +578,7 @@ def _ipo_watch(max_items: int | None = None, on: date | None = None) -> list[dic
                 "qib_x": r.get("qib_x"), "retail_x": r.get("retail_x"),
                 "total_x": r.get("total_x"), "issue_price": r.get("issue_price"),
                 "cutoff_share": r.get("cutoff_share"),
+                "issue_size_cr": r.get("issue_size_cr"),   # IPO-0b: sizes the demand band
                 "total_x_nse_only": r.get("total_x_nse_only", False),
                 "dom_fi_x": (r.get("bid_ladder") or {}).get("combined", {}).get("dom_fi"),
                 "fii_x": (r.get("bid_ladder") or {}).get("combined", {}).get("fii"),

@@ -175,3 +175,15 @@ def test_dom_fi_is_parsed_as_its_own_category():
     """srNo 1(b). P2's capture ledger is its first consumer."""
     combined = parse_bid_ladder(_PAYLOAD)["combined"]
     assert "dom_fi" in combined
+
+
+def test_issue_size_rides_along_from_issue_info():
+    """IPO-0b: the ladder fetch is the one call that already has issueInfo, so
+    issue_size_cr is read there at zero extra requests; absent => None."""
+    payload = dict(_PAYLOAD)
+    payload["issueInfo"] = {"dataList": [
+        {"title": "Issue Size", "value": "Fresh Issue aggregating upto Rs. 4,800 million "
+                                        "and Offer for Sale aggregating upto Rs. 20,000 million"}]}
+    assert parse_bid_ladder(payload)["issue_size_cr"] == 2480.0
+    assert parse_bid_ladder(_PAYLOAD)["issue_size_cr"] is None
+    assert parse_bid_ladder({})["issue_size_cr"] is None

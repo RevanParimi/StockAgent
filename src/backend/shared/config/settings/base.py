@@ -1004,6 +1004,9 @@ DELIVERY_WEEKLY_MAX_IPOS: int = int(cfg("delivery.weekly_max_ipos", fallback=6))
 DELIVERY_BRIEF_IPO_STRONG_DEMAND_X: float = float(cfg("delivery.brief_ipo_strong_demand_x", fallback=10.0))
 DELIVERY_BRIEF_IPO_STRONG_QIB_X: float = float(cfg("delivery.brief_ipo_strong_qib_x", fallback=15.0))
 DELIVERY_BRIEF_IPO_SOFT_DEMAND_X: float = float(cfg("delivery.brief_ipo_soft_demand_x", fallback=2.0))
+# IPO-0b: size-tiered bands, largest min_cr first; the three scalars above are
+# the fallback band when issue size is unknown. No env= by design (spec §5 P3).
+DELIVERY_BRIEF_IPO_SIZE_TIERS: list = list(cfg("delivery.brief_ipo_size_tiers", fallback=[]))
 DELIVERY_BRIEF_EARNINGS_WATCH_MAXLEN: int = int(cfg("delivery.brief_earnings_watch_maxlen", fallback=120))
 # HTML email (redesign 2026-07-30) — kill-switch for the styled HTML part
 DELIVERY_BRIEF_HTML_ENABLED: bool = bool(cfg("delivery.brief_html_enabled", fallback=True))

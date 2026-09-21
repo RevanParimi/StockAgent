@@ -99,6 +99,31 @@ tests/unit/ipo/                          NEW     fixtures from real captured pay
 
 ⚠ Do **not** mark it satisfied on the strength of the brief alone. The brief renders from the refresh; the ledger is a separate write path. Both must show the window.
 
+**Progress 2026-09-21 (afternoon) — not closeable today; closes on the 22 Sep brief.**
+
+- Read `manual_confirmation` in `core/ops/watchdog/checks.py`: it stays `pending` until the
+  entry is **removed** from the registry — there is no `satisfied` field. "Mark satisfied"
+  below means *delete the entry*, with the evidence in the commit message (precedent:
+  `f7a760f`, which closed `f2_validation` the same way).
+- Live NSE payload fetched 2026-09-21 14:15 IST (into the scratchpad, not `data/`):
+  `NSE` 17–21 Sep, total **3.817×** (QIB 7.81×, retail 1.10×, 14% at cut-off);
+  `SONA` 17–21 Sep, total 1.516× (QIB 0.46×, retail 2.14×); `VARMORA` opens 22 Sep.
+  Nothing is in the `closed` state today — MANIKA listed today, VEEGALAND on the 18th.
+  So the **one remaining check** in the milestone text ("bidding closed — awaiting
+  listing" observed *live*) has no subject until tomorrow. Rendering `_ipo_watch` over
+  this real payload with `on=2026-09-22` puts VARMORA first (`closes in 2 days`), then
+  NSE and SONA under `bidding closed — awaiting listing` with their × intact. That is the
+  deterministic re-check, not the live observation; the milestone already had the former.
+- Capture write path exercised against the same payload on a scratch ledger: 2 rows
+  (NSE, SONA). Proves the code path, **not** production — the real ledger is on the Railway
+  volume, which this machine cannot reach (no CLI, no token; `.env` is off-limits).
+- **To close on 2026-09-22:** (1) in the 08:50 IST production brief, NSE and SONA must sit
+  under `bidding closed — awaiting listing` with real × (not `data pending`) and VARMORA
+  under an open heading; (2) ledger evidence — either `ipo_signals_accruing` has emitted
+  **no** `pending` alert since NSE/SONA opened on the 17th (the Inbox or
+  `GET /delivery/alerts`), or `railway ssh` → `grep -c '"symbol": "NSE"' data/ipo/ipo_signals.jsonl`
+  ≥ 1. Then delete the entry, evidence in the commit message.
+
 ### `IPO-0b` — Size-tiered demand thresholds in `_ipo_lean`
 
 - **Chat opener:** `Work task IPO-0b from docs/superpowers/plans/2026-09-21-ipo-prospect-p3-substance.md`
@@ -106,7 +131,7 @@ tests/unit/ipo/                          NEW     fixtures from real captured pay
 
 **Problem (observed in the live brief, 2026-09-21).** NSE showed `1.1602× overall (QIB 1.52996×, retail 0.722428×)` and was labelled `SOFT DEMAND`. The label is *mechanically correct* — `_ipo_lean` requires all present legs below `soft 2.0×` — but the thresholds are **scale-free**. A ₹50,000cr issue and a ₹500cr SME are judged on one rule, so a mega-issue at 1.16× (an enormous absolute rupee book) reads identically to a small issue nobody bid for.
 
-- [ ] Add to `config.yaml` under `delivery:` — bands are `(min_issue_size_cr, soft_x, strong_total_x, strong_qib_x)`, largest first:
+- [x] Add to `config.yaml` under `delivery:` — bands are `(min_issue_size_cr, soft_x, strong_total_x, strong_qib_x)`, largest first:
 
 ```yaml
   # IPO-0b: demand multiples do not mean the same thing at every issue size.
@@ -119,19 +144,33 @@ tests/unit/ipo/                          NEW     fixtures from real captured pay
     - {min_cr: 0,     soft_x: 3.0, strong_total_x: 20.0, strong_qib_x: 30.0}  # small
 ```
 
-- [ ] Add `DELIVERY_BRIEF_IPO_SIZE_TIERS` in `base.py` via `cfg(...)`, **no `env=`**.
-- [ ] In `_ipo_lean`, resolve the band from the issue size, then compare. Keep the existing scalar settings as the fallback band when issue size is `None` — an unknown size must not silently become "mega".
-- [ ] Tests in `tests/unit/test_delivery_brief.py`:
+- [x] Add `DELIVERY_BRIEF_IPO_SIZE_TIERS` in `base.py` via `cfg(...)`, **no `env=`**.
+- [x] In `_ipo_lean`, resolve the band from the issue size, then compare. Keep the existing scalar settings as the fallback band when issue size is `None` — an unknown size must not silently become "mega".
+- [x] Tests in `tests/unit/test_delivery_brief.py`:
   - `test_ipo_lean_mega_issue_not_soft_at_low_multiple` — 12,000cr @ total 1.16×, qib 1.53× ⇒ **not** `SOFT DEMAND` (the live NSE case)
   - `test_ipo_lean_small_issue_still_soft_at_same_multiple` — 300cr @ the same multiples ⇒ `SOFT DEMAND`
   - `test_ipo_lean_unknown_size_uses_fallback_band` — size `None` ⇒ today's behaviour, unchanged
-- [ ] Run `python -m pytest tests/unit/test_delivery_brief.py -q` before committing.
+- [x] Run `python -m pytest tests/unit/test_delivery_brief.py -q` before committing.
 
 ⚠ **The band values above are judgement, not measurement.** They are chosen to make the 2026-09-21 NSE row read sensibly and nothing more. `IPO-1` produces the first evidence that could calibrate them; until then they carry the same "starting value" caveat the config comment states.
 
 **This is deliberately a throwaway patch.** P3 deletes `_ipo_lean`. It ships because wrong output reaches users every morning until P3 lands, and P3 is several sprints out.
 
 **Acceptance:** the NSE-shaped row no longer reads `SOFT DEMAND`; SME behaviour and the unknown-size path are unchanged; suite green.
+
+**Done 2026-09-21.** One widening beyond the listed touches, because without it the
+tiers were dead code: live refresh rows carried **no issue size at all** (only the P1
+backfill parsed it). The `/api/ipo-detail` body the ladder fetch already pulls carries
+`issueInfo`, so `parse_issue_size_cr()` (new, `ipo_offer.py`, sharing `_leg_clauses` with
+`parse_offer_split`) reads it there at zero extra calls; `parse_bid_ladder`/`fetch_bid_ladder`
+take an optional `issue_price` for share-count legs; `_enrich_open_issues` sets
+`issue_size_cr` and `_carry_forward` keeps it on closed rows. Measured on the live
+payload: **NSE = ₹22,569 cr** (mega band) → this morning's 1.16×/1.53× reads
+`MODERATE DEMAND`, its 14:41 IST book (3.93×/7.99×) reads `STRONG`; **SONA = ₹142 cr**
+(small band) stays `SOFT`; VARMORA (unopened) is untouched. `tests/unit`: 2843 passed,
+5 skipped; one unrelated Windows cross-process rename flake in `test_portfolio_locking`
+passes alone and on a clean tree. The size lands in production on the first refresh
+after deploy — the 08:00 IST job — so the 22 Sep 08:50 brief is the first one to show it.
 
 ### `IPO-0c` — Decide `SERPER_API_KEY_IPO`
 

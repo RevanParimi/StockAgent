@@ -313,3 +313,55 @@ def test_stripping_that_would_swallow_a_leg_keyword_refuses():
                                    "Rs. 300 million"}]}
     out = parse_offer_split(info)
     assert out == {"ofs_amount": None, "fresh_amount": None, "ofs_share": None}
+
+
+# ---------------------------------------------------------------------------
+# IPO-0b: total issue size in crore, from the same "Issue Size" row
+# ---------------------------------------------------------------------------
+
+from services.data.fetchers.ipo_offer import parse_issue_size_cr  # noqa: E402
+
+
+def test_issue_size_sums_both_rupee_legs_in_crore():
+    """LEAP: Rs. 4,800 million fresh + Rs. 20,000 million OFS = 2,480 cr."""
+    assert parse_issue_size_cr(_issue_info("LEAP")) == pytest.approx(2480.0)
+
+
+def test_issue_size_single_leg_shapes():
+    """A fresh-only or OFS-only issue IS its one leg (MVELECTRO 290 cr, CARRARO
+    1,250 cr) — the size is a sum, not a ratio, so one leg is a full answer."""
+    assert parse_issue_size_cr(_issue_info("MVELECTRO")) == pytest.approx(290.0)
+    assert parse_issue_size_cr(_issue_info("CARRARO")) == pytest.approx(1250.0)
+
+
+def test_issue_size_share_count_leg_needs_the_price():
+    """ARDEE states its OFS as a share count. Without a price the size is None
+    (an unconverted share count is a wrong number, not an approximate one);
+    with the price it is Rs. 3,200 million + 19,975,000 x Rs. 53."""
+    assert parse_issue_size_cr(_issue_info("ARDEE")) is None
+    expected = (3_200e6 + 19_975_000 * 53.0) / 1e7
+    assert parse_issue_size_cr(_issue_info("ARDEE"), issue_price=53.0) == pytest.approx(expected, abs=0.01)
+
+
+def test_issue_size_unreadable_shapes_are_none_never_raise():
+    assert parse_issue_size_cr(_issue_info("IGIL")) is None        # issueInfo: {}
+    assert parse_issue_size_cr(_issue_info("STUDDS")) is None      # one total, no legs
+    assert parse_issue_size_cr(None) is None
+    assert parse_issue_size_cr("not a dict", issue_price=10.0) is None
+
+
+def test_issue_size_agrees_with_offer_split_on_leg_boundaries():
+    """Both readings walk the same clauses: for every fixture whose legs are
+    all stated in Rupees (size readable with NO price), the size is exactly
+    the split's two amounts summed. Share-count shapes are excluded because
+    the split ratios raw counts without converting them."""
+    checked = 0
+    for symbol, entry in _FIXTURE.items():
+        size = parse_issue_size_cr(entry["issueInfo"])
+        split = parse_offer_split(entry["issueInfo"])
+        if size is None or split["ofs_share"] is None:
+            continue
+        assert size == pytest.approx(
+            (split["fresh_amount"] + split["ofs_amount"]) / 1e7, abs=0.01), symbol
+        checked += 1
+    assert checked >= 5

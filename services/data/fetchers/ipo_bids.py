@@ -62,6 +62,7 @@ from __future__ import annotations
 
 import logging
 
+from services.data.fetchers.ipo_offer import parse_issue_size_cr
 from services.data.fetchers.nse_client import nse_session
 
 logger = logging.getLogger(__name__)
@@ -151,8 +152,14 @@ def _cutoff_share(graph: object) -> float | None:
     return at_cutoff / total
 
 
-def parse_bid_ladder(payload: dict) -> dict:
-    """Pure parse of an /api/ipo-detail body. Never raises."""
+def parse_bid_ladder(payload: dict, issue_price: float | None = None) -> dict:
+    """Pure parse of an /api/ipo-detail body. Never raises.
+
+    `issue_size_cr` (IPO-0b) rides along from the same body's `issueInfo`:
+    the brief's demand lean needs the issue's scale, and this is the one
+    call that already has it, so reading it here costs no extra request.
+    `issue_price` is only needed when a leg is stated as a share count.
+    """
     payload = payload if isinstance(payload, dict) else {}
     active = payload.get("activeCat") if isinstance(payload.get("activeCat"), dict) else {}
     return {
@@ -163,10 +170,11 @@ def parse_bid_ladder(payload: dict) -> dict:
         "nse_only": _reject_placeholder_total(
             _read_ladder(payload.get("bidDetails"), "noOfTime")),
         "cutoff_share": _cutoff_share(payload.get("demandGraph")),
+        "issue_size_cr": parse_issue_size_cr(payload.get("issueInfo"), issue_price),
     }
 
 
-def fetch_bid_ladder(symbol: str) -> dict | None:
+def fetch_bid_ladder(symbol: str, issue_price: float | None = None) -> dict | None:
     """One symbol's ladder from live NSE. Returns None on any failure — the
     caller renormalizes rather than treating absence as zero demand."""
     try:
@@ -178,7 +186,7 @@ def fetch_bid_ladder(symbol: str) -> dict | None:
             # can hammer NSE independently, and it runs in a per-symbol loop.
             resp = nse._req(f"{_BASE}/ipo-detail",
                             params={"symbol": symbol, "series": "EQ"})
-            out = parse_bid_ladder(resp.json())
+            out = parse_bid_ladder(resp.json(), issue_price)
             out["symbol"] = symbol          # payload's companyName is unreliable
             return out
     except Exception as exc:

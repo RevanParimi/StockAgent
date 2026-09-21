@@ -261,22 +261,21 @@ def _issue_size_text(issue_info: dict) -> str | None:
     return None
 
 
-def parse_offer_split(issue_info: object, issue_price: float | None = None) -> dict:
-    """Parse the fresh-issue / offer-for-sale split out of an
-    /api/ipo-detail `issueInfo` dict. Never raises.
+def _leg_clauses(issue_info: object) -> tuple[str | None, str | None] | None:
+    """(fresh_clause, ofs_clause) — the prose following each leg heading in
+    the "Issue Size" row, parentheticals stripped. A leg the row does not
+    state is None. Returns None (not a tuple) when the row is absent or
+    unreadable, so callers cannot mistake "could not read" for "one leg".
 
-    Returns {"ofs_amount", "fresh_amount", "ofs_share"} — any may be None.
-    `issue_price` (Rupees per share) is consulted ONLY when the two legs are
-    stated in different units (one in Rupees, one in a share count); it is
-    unused otherwise, including in the fresh-only and OFS-only cases where
-    no reconciliation is needed.
+    Shared by parse_offer_split and parse_issue_size_cr so the two readings
+    of the same sentence can never disagree on where a leg starts.
     """
     if not isinstance(issue_info, dict):
-        return dict(_BLANK)
+        return None
 
     text = _issue_size_text(issue_info)
     if not text:
-        return dict(_BLANK)
+        return None
 
     raw = text
     if not _parens_balanced(raw):
@@ -293,20 +292,69 @@ def parse_offer_split(issue_info: object, issue_price: float | None = None) -> d
         logger.warning(
             "[ipo_offer] stripping parentheticals removed a leg heading - "
             "ofs_share unreadable rather than fabricated: %r", raw)
-        return dict(_BLANK)
+        return None
     fresh_m = _FRESH_RE.search(text)
     ofs_m = _OFS_RE.search(text)
 
     if not fresh_m and not ofs_m:
-        return dict(_BLANK)
-
+        return None
     if fresh_m and ofs_m:
         if fresh_m.start() < ofs_m.start():
-            fresh_clause = text[fresh_m.end():ofs_m.start()]
-            ofs_clause = text[ofs_m.end():]
-        else:
-            ofs_clause = text[ofs_m.end():fresh_m.start()]
-            fresh_clause = text[fresh_m.end():]
+            return text[fresh_m.end():ofs_m.start()], text[ofs_m.end():]
+        return text[fresh_m.end():], text[ofs_m.end():fresh_m.start()]
+    if fresh_m:
+        return text[fresh_m.end():], None
+    return None, text[ofs_m.end():]
+
+
+def parse_issue_size_cr(issue_info: object,
+                        issue_price: float | None = None) -> float | None:
+    """Total issue size in Rupees crore (fresh + OFS), or None. Never raises.
+
+    IPO-0b: the brief's demand lean needs the issue's SCALE, because 1.5x on
+    a mega-issue is a far larger rupee book than 1.5x on a small one. This
+    reads the same "Issue Size" row parse_offer_split reads, but sums the
+    legs instead of ratioing them, so it needs every stated leg in Rupees:
+    a share-count leg is converted via `issue_price`, and without a price the
+    answer is None — a size built from an unconverted share count would be
+    a wrong number, not an approximate one (dark-signal rule).
+    """
+    clauses = _leg_clauses(issue_info)
+    if clauses is None:
+        return None
+    total = 0.0
+    for clause in clauses:
+        if clause is None:
+            continue
+        amount, unit = _parse_leg(clause)
+        if amount is None:
+            return None
+        if unit == "shares":
+            if not issue_price or issue_price <= 0:
+                return None
+            amount = amount * issue_price
+        total += amount
+    if total <= 0:
+        return None
+    return round(total / 1e7, 2)
+
+
+def parse_offer_split(issue_info: object, issue_price: float | None = None) -> dict:
+    """Parse the fresh-issue / offer-for-sale split out of an
+    /api/ipo-detail `issueInfo` dict. Never raises.
+
+    Returns {"ofs_amount", "fresh_amount", "ofs_share"} — any may be None.
+    `issue_price` (Rupees per share) is consulted ONLY when the two legs are
+    stated in different units (one in Rupees, one in a share count); it is
+    unused otherwise, including in the fresh-only and OFS-only cases where
+    no reconciliation is needed.
+    """
+    clauses = _leg_clauses(issue_info)
+    if clauses is None:
+        return dict(_BLANK)
+    fresh_clause, ofs_clause = clauses
+
+    if fresh_clause is not None and ofs_clause is not None:
         fresh_amt, fresh_unit = _parse_leg(fresh_clause)
         ofs_amt, ofs_unit = _parse_leg(ofs_clause)
         if fresh_amt is None or ofs_amt is None:
@@ -329,17 +377,17 @@ def parse_offer_split(issue_info: object, issue_price: float | None = None) -> d
         return {"ofs_amount": ofs_amt, "fresh_amount": fresh_amt,
                 "ofs_share": round(ofs_amt / total, 6)}
 
-    if fresh_m:
+    if fresh_clause is not None:
         # Fresh-only: a disclosed pure fresh issue. ofs_share of 0.0 is a
         # REAL reading here, not "could not tell".
-        fresh_amt, _unit = _parse_leg(text[fresh_m.end():])
+        fresh_amt, _unit = _parse_leg(fresh_clause)
         if fresh_amt is None or fresh_amt <= 0:
             return dict(_BLANK)
         return {"ofs_amount": 0.0, "fresh_amount": fresh_amt, "ofs_share": 0.0}
 
     # OFS-only: a disclosed pure offer-for-sale. ofs_share of 1.0 is a REAL
     # reading here, not "could not tell".
-    ofs_amt, _unit = _parse_leg(text[ofs_m.end():])
+    ofs_amt, _unit = _parse_leg(ofs_clause)
     if ofs_amt is None or ofs_amt <= 0:
         return dict(_BLANK)
     return {"ofs_amount": ofs_amt, "fresh_amount": 0.0, "ofs_share": 1.0}

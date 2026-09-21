@@ -152,7 +152,7 @@ def test_ladder_supplied_total_clears_the_nse_only_flag(tmp_path, monkeypatch):
     cache = str(tmp_path / "ipo.json")
     monkeypatch.setattr(ipo_mod, "_make_nse_client",
                         lambda: _FakeNSE(current=[_LIVE_CURRENT_ROW]))
-    monkeypatch.setattr(ipo_mod, "fetch_bid_ladder", lambda symbol: {
+    monkeypatch.setattr(ipo_mod, "fetch_bid_ladder", lambda symbol, *_: {
         "symbol": symbol, "updated_at": "11-Aug-2026 17:00:56",
         "combined": {"qib": 1.39, "retail": 2.22, "total": 2.05,
                      "fii": None, "dom_fi": None, "mutual_fund": None,
@@ -195,7 +195,7 @@ def test_current_issue_noOfTime_populates_total_x(tmp_path, monkeypatch):
     # pin `on` past the close (2026-08-20) so the execution path is fixed by
     # the test, not by the wall clock: this test is about the raw-feed
     # noOfTime mapping, not the ladder.
-    monkeypatch.setattr(ipo_mod, "fetch_bid_ladder", lambda s: None)
+    monkeypatch.setattr(ipo_mod, "fetch_bid_ladder", lambda s, *_: None)
     rec = refresh_ipo_cache(cache_path=cache, on=date(2026, 8, 20))["current"][0]
     assert rec["total_x"] == 0.5315724992825029
     assert rec["issue_price"] == 140.0        # upper band of "Rs.133 to Rs.140"
@@ -208,7 +208,7 @@ def test_issue_window_dates_are_parsed(tmp_path, monkeypatch):
     monkeypatch.setattr(ipo_mod, "_make_nse_client",
                         lambda: _FakeNSE(current=[_LIVE_CURRENT_ROW]))
     # See test_current_issue_noOfTime_populates_total_x — same reason.
-    monkeypatch.setattr(ipo_mod, "fetch_bid_ladder", lambda s: None)
+    monkeypatch.setattr(ipo_mod, "fetch_bid_ladder", lambda s, *_: None)
     rec = refresh_ipo_cache(cache_path=cache, on=date(2026, 8, 20))["current"][0]
     assert rec["issue_start"] == "2026-08-11"
     assert rec["issue_end"] == "2026-08-13"
@@ -233,7 +233,7 @@ def test_open_issues_are_enriched_with_the_bid_ladder(tmp_path, monkeypatch):
                         lambda: _FakeNSE(current=[_LIVE_CURRENT_ROW]))
     calls = []
 
-    def _fake_ladder(symbol):
+    def _fake_ladder(symbol, *_):
         calls.append(symbol)
         return {"symbol": symbol, "updated_at": "11-Aug-2026 17:00:56",
                 "combined": {"qib": 1.39, "retail": 2.22, "total": 2.05,
@@ -259,7 +259,7 @@ def test_ladder_is_skipped_for_issues_not_open(tmp_path, monkeypatch):
                         lambda: _FakeNSE(current=[_LIVE_CURRENT_ROW]))
     calls = []
     monkeypatch.setattr(ipo_mod, "fetch_bid_ladder",
-                        lambda s: calls.append(s) or None)
+                        lambda s, *_: calls.append(s) or None)
     # 2026-08-20 is after the 13-Aug close.
     refresh_ipo_cache(cache_path=cache, on=date(2026, 8, 20))
     assert calls == []
@@ -270,7 +270,7 @@ def test_ladder_failure_leaves_the_row_intact(tmp_path, monkeypatch):
     cache = str(tmp_path / "ipo.json")
     monkeypatch.setattr(ipo_mod, "_make_nse_client",
                         lambda: _FakeNSE(current=[_LIVE_CURRENT_ROW]))
-    monkeypatch.setattr(ipo_mod, "fetch_bid_ladder", lambda s: None)
+    monkeypatch.setattr(ipo_mod, "fetch_bid_ladder", lambda s, *_: None)
     rec = refresh_ipo_cache(cache_path=cache, on=date(2026, 8, 12))["current"][0]
     assert rec["total_x"] == 0.5315724992825029
     assert rec["qib_x"] is None
@@ -373,7 +373,7 @@ def test_a_closed_issue_keeps_its_final_ladder(monkeypatch):
              "total_x_nse_only": False}]
 
     monkeypatch.setattr(ipo_mod, "fetch_bid_ladder",
-                        lambda s: pytest.fail("a closed issue must not be refetched"))
+                        lambda s, *_: pytest.fail("a closed issue must not be refetched"))
     ipo_mod._enrich_open_issues(rows, date(2026, 8, 13), previous=previous)
 
     assert rows[0]["total_x"] == 40.0
@@ -395,7 +395,7 @@ def test_a_failed_refetch_keeps_the_previous_ladder(monkeypatch):
              "qib_x": None, "retail_x": None, "total_x": None,
              "total_x_nse_only": False}]
 
-    monkeypatch.setattr(ipo_mod, "fetch_bid_ladder", lambda s: None)
+    monkeypatch.setattr(ipo_mod, "fetch_bid_ladder", lambda s, *_: None)
     ipo_mod._enrich_open_issues(rows, date(2026, 8, 13), previous=previous)
 
     assert rows[0]["total_x"] == 40.0
@@ -422,7 +422,7 @@ def test_budget_is_spent_only_on_a_successful_fetch(monkeypatch):
          "total_x_nse_only": False},
     ]
 
-    def _fake_ladder(symbol):
+    def _fake_ladder(symbol, *_):
         if symbol == "DEADCO":
             return None
         return {"symbol": symbol,
@@ -469,7 +469,7 @@ def test_a_fresh_all_exchange_total_is_not_downgraded_by_a_stale_flag(monkeypatc
              "qib_x": None, "retail_x": None, "total_x": None,
              "total_x_nse_only": False}]
 
-    monkeypatch.setattr(ipo_mod, "fetch_bid_ladder", lambda s: {
+    monkeypatch.setattr(ipo_mod, "fetch_bid_ladder", lambda s, *_: {
         "symbol": s, "combined": {"qib": 90.0, "retail": 12.0, "total": 40.0,
                                    "dom_fi": None, "fii": None,
                                    "mutual_fund": None, "nii": None,
@@ -506,7 +506,7 @@ def test_a_fresh_successful_fetch_wins_over_carry_forward(monkeypatch):
                                  "nii": 5.0, "employee": None},
                     "nse_only": {"qib": 45.0, "total": 20.0},
                     "cutoff_share": 0.46}
-    monkeypatch.setattr(ipo_mod, "fetch_bid_ladder", lambda s: fresh_ladder)
+    monkeypatch.setattr(ipo_mod, "fetch_bid_ladder", lambda s, *_: fresh_ladder)
 
     ipo_mod._enrich_open_issues(rows, date(2026, 8, 13), previous=previous)
 
@@ -537,7 +537,7 @@ def test_a_successful_fetch_with_no_demand_graph_does_not_inherit_a_stale_cutoff
 
     # A real fetch succeeded (not None) but NSE served no demandGraph this
     # time, so parse_bid_ladder's cutoff_share comes back None.
-    monkeypatch.setattr(ipo_mod, "fetch_bid_ladder", lambda s: {
+    monkeypatch.setattr(ipo_mod, "fetch_bid_ladder", lambda s, *_: {
         "symbol": s, "combined": {"qib": 90.0, "retail": 12.0, "total": 40.0,
                                    "dom_fi": None, "fii": None,
                                    "mutual_fund": None, "nii": None,
@@ -630,7 +630,7 @@ def test_refresh_honours_the_signals_dir_override(tmp_path, monkeypatch):
     signals_dir = tmp_path / "explicit_signals"
     monkeypatch.setattr(ipo_mod, "_make_nse_client",
                         lambda: _FakeNSE(current=[_LIVE_CURRENT_ROW]))
-    monkeypatch.setattr(ipo_mod, "fetch_bid_ladder", lambda symbol: {
+    monkeypatch.setattr(ipo_mod, "fetch_bid_ladder", lambda symbol, *_: {
         "symbol": symbol,
         "combined": {"total": 2.05}, "nse_only": {"total": 1.0},
         "cutoff_share": 0.46})
@@ -665,7 +665,7 @@ def test_refresh_skips_capture_when_the_override_store_cannot_be_built(tmp_path,
     cache = str(tmp_path / "ipo.json")
     monkeypatch.setattr(ipo_mod, "_make_nse_client",
                         lambda: _FakeNSE(current=[_LIVE_CURRENT_ROW]))
-    monkeypatch.setattr(ipo_mod, "fetch_bid_ladder", lambda symbol: {
+    monkeypatch.setattr(ipo_mod, "fetch_bid_ladder", lambda symbol, *_: {
         "symbol": symbol,
         "combined": {"total": 2.05}, "nse_only": {"total": 1.0},
         "cutoff_share": 0.46})

@@ -203,6 +203,7 @@ CREATE TABLE IF NOT EXISTS outbox (
   created_at      TEXT NOT NULL,
   next_attempt_at TEXT,
   delivered_at    TEXT,
+  last_error      TEXT,
   CHECK (channel IN ('push','email')),
   CHECK (kind    IN ('brief','digest','weekly','alert')),
   CHECK (status  IN ('queued','sending','delivered','failed','dead'))
@@ -227,6 +228,30 @@ CREATE INDEX IF NOT EXISTS idx_feedback_events_symbol ON feedback_events(symbol)
 """
 
 
+def _migrate(conn: sqlite3.Connection) -> None:
+    """Additive, idempotent column migrations.
+
+    `_SCHEMA` uses CREATE TABLE IF NOT EXISTS, so a column added to it later is
+    NOT applied to a database whose table already exists (i.e. production).
+    Each entry below is re-checked on every connect and added only when absent.
+    """
+    wanted = {
+        "outbox": [("last_error", "TEXT")],   # SA-006: why a row failed / dead-lettered
+    }
+    for table, columns in wanted.items():
+        try:
+            have = {r[1] for r in conn.execute(f"PRAGMA table_info({table})")}
+            if not have:
+                continue          # table absent (fresh db) — _SCHEMA above owns it
+            for name, decl in columns:
+                if name not in have:
+                    conn.execute(f"ALTER TABLE {table} ADD COLUMN {name} {decl}")
+                    logger.info("[atlas] migrated %s: added column %s", table, name)
+        except Exception as exc:
+            logger.warning("[atlas] migration check failed for %s (non-fatal): %s",
+                           table, exc)
+
+
 def _get_conn() -> sqlite3.Connection:
     """Return the process-wide connection, opening + initializing on first use.
 
@@ -242,6 +267,7 @@ def _get_conn() -> sqlite3.Connection:
         conn.execute("PRAGMA busy_timeout=5000")
         conn.execute("PRAGMA foreign_keys=ON")
         conn.executescript(_SCHEMA)
+        _migrate(conn)
         conn.commit()
         conn.row_factory = sqlite3.Row
         _conn_holder["conn"] = conn

@@ -6,12 +6,19 @@ data/delivery/push_subscriptions.json per user. Dead subscriptions
 (400/403/404/410) are pruned on send. The PWA service worker displays the payload;
 the TWA Android app gets it free.
 
-email: stdlib smtplib STARTTLS fallback — single user, spec §7 "trivial SMTP".
+email: two transports behind one entry point (`send_email` / `send_email_result`).
+  - resend: HTTPS POST to the Resend API. Required on Railway Free/Trial/Hobby,
+    where outbound SMTP is disabled at the platform — every send fails with
+    `[Errno 101] Network is unreachable` (D6; production since 2026-07-16).
+  - smtp:   stdlib smtplib STARTTLS — the original path, kept for local runs
+    and for any host that permits outbound 587.
+`settings.EMAIL_TRANSPORT` selects; "auto" uses resend when an API key is set.
 
 EVERY send is non-fatal. deliver() is the only entry point callers need.
 """
 from __future__ import annotations
 
+import base64
 import json
 import logging
 import smtplib
@@ -98,16 +105,107 @@ def _with_app_link(body: str) -> str:
     return f"{body.rstrip()}\n\n----------\nOpen StockAgent → {url}/"
 
 
-def send_email(subject: str, body: str, attachments: list[Path] | None = None,
-               html_body: str | None = None) -> bool:
-    """SMTP STARTTLS send to DELIVERY_EMAIL_TO. False when disabled/unconfigured
-    or on any failure — never raises. `attachments` (AUD-088): file paths to
-    attach; the whole send fails closed if any is unreadable. `html_body`
-    (2026-07-30): when set, the message is multipart/alternative — plain `body`
-    first, HTML last (clients prefer the last part)."""
-    if not (settings.DELIVERY_EMAIL_ENABLED and settings.SMTP_HOST
-            and settings.DELIVERY_EMAIL_TO):
-        return False
+def resolve_recipient(user_id: str | None) -> str:
+    """The email address that owns `user_id`, else the single-user fallback.
+
+    Multi-user (beta): every account row in `users` carries its own address, so
+    a scheduled message must reach the account that owns the outbox row rather
+    than one global inbox. `DELIVERY_EMAIL_TO` stays the fallback for the
+    single-user/dev setup and for rows whose user cannot be resolved (e.g. the
+    default portfolio id, which is not a real account). Never raises."""
+    if user_id:
+        try:
+            from services.data.stores import user_store
+            user = user_store.get_user(user_id)
+            if user and user.get("email"):
+                return str(user["email"])
+        except Exception as exc:
+            logger.warning("[delivery] could not resolve an email for user '%s' "
+                           "(non-fatal, using fallback): %s", user_id, exc)
+    return getattr(settings, "DELIVERY_EMAIL_TO", "") or ""
+
+
+def _resolve_transport() -> str:
+    """Which email transport to use: 'resend' | 'smtp'.
+
+    "auto" prefers resend whenever a key is present, so setting RESEND_API_KEY
+    in Railway is the entire cutover — no code or config edit needed."""
+    choice = (getattr(settings, "EMAIL_TRANSPORT", "auto") or "auto").strip().lower()
+    if choice in ("resend", "smtp"):
+        return choice
+    return "resend" if getattr(settings, "RESEND_API_KEY", "") else "smtp"
+
+
+def _send_via_resend(subject: str, body: str, attachments: list[Path] | None,
+                     html_body: str | None, recipient: str) -> tuple[bool, str]:
+    """POST one message to the Resend API over HTTPS. Never raises.
+
+    Returns `(delivered, reason)`. A 2xx means Resend ACCEPTED the message for
+    delivery — it is not proof the recipient's mailbox received it, so callers
+    must not report it as confirmed receipt."""
+    import requests
+
+    payload: dict = {
+        "from": settings.RESEND_FROM,
+        "to": [recipient],
+        "subject": subject,
+        "text": _with_app_link(body),
+    }
+    if html_body:
+        payload["html"] = html_body
+    if attachments:
+        try:
+            payload["attachments"] = [
+                {"filename": Path(p).name,
+                 "content": base64.b64encode(Path(p).read_bytes()).decode("ascii")}
+                for p in attachments
+            ]
+        except Exception as exc:          # fail closed, same as the SMTP path
+            return False, f"attachment unreadable: {type(exc).__name__}: {exc}"[:500]
+    try:
+        resp = requests.post(
+            "https://api.resend.com/emails",
+            headers={"Authorization": f"Bearer {settings.RESEND_API_KEY}",
+                     "Content-Type": "application/json"},
+            json=payload, timeout=20)
+    except Exception as exc:
+        logger.warning("[delivery] resend request failed (non-fatal): %s", exc)
+        return False, f"{type(exc).__name__}: {exc}"[:500]
+    if 200 <= resp.status_code < 300:
+        return True, ""
+    # Body is the provider's error JSON — no recipient data, safe to persist.
+    detail = (resp.text or "").strip().replace("\n", " ")[:300]
+    logger.warning("[delivery] resend rejected the message: HTTP %s %s",
+                   resp.status_code, detail)
+    return False, f"resend HTTP {resp.status_code}: {detail}"[:500]
+
+
+def send_email_result(subject: str, body: str, attachments: list[Path] | None = None,
+                      html_body: str | None = None,
+                      to: str | None = None) -> tuple[bool, str]:
+    """`send_email` plus the reason it failed (SA-006). Never raises.
+
+    `to` is the recipient for THIS message — the outbox passes the address of
+    the account that owns the row, so multi-user beta mail reaches each account
+    rather than one global inbox. It falls back to `DELIVERY_EMAIL_TO`.
+
+    Returns `(delivered, reason)`; `reason` is "" on success. The
+    disabled/unconfigured gates report DISTINCT reasons on purpose: previously
+    they all returned a bare False with no log line at all, so a dead-lettered
+    row was indistinguishable from a blocked one. The reason is persisted to
+    `outbox.last_error`, which is what makes a dead letter self-explaining
+    without the ephemeral container log. It carries no recipient or payload."""
+    if not settings.DELIVERY_EMAIL_ENABLED:
+        return False, "disabled: DELIVERY_EMAIL_ENABLED is false"
+    recipient = (to or getattr(settings, "DELIVERY_EMAIL_TO", "") or "").strip()
+    if not recipient:
+        return False, "unconfigured: no recipient (account email and DELIVERY_EMAIL_TO both unset)"
+    if _resolve_transport() == "resend":
+        if not settings.RESEND_API_KEY:
+            return False, "unconfigured: RESEND_API_KEY is unset"
+        return _send_via_resend(subject, body, attachments, html_body, recipient)
+    if not settings.SMTP_HOST:
+        return False, "unconfigured: SMTP_HOST is unset"
     body = _with_app_link(body)
     try:
         alt: MIMEText | MIMEMultipart
@@ -131,30 +229,48 @@ def send_email(subject: str, body: str, attachments: list[Path] | None = None,
             msg = alt
         msg["Subject"] = subject
         msg["From"] = settings.SMTP_USER or "stockagent@localhost"
-        msg["To"] = settings.DELIVERY_EMAIL_TO
+        msg["To"] = recipient
         with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT, timeout=20) as s:
             s.starttls()
             if settings.SMTP_USER:
                 s.login(settings.SMTP_USER, settings.SMTP_PASSWORD)
-            s.sendmail(msg["From"], [settings.DELIVERY_EMAIL_TO], msg.as_string())
-        return True
+            s.sendmail(msg["From"], [recipient], msg.as_string())
+        return True, ""
     except Exception as exc:
         logger.warning("[delivery] email send failed (non-fatal): %s", exc)
-        return False
+        return False, f"{type(exc).__name__}: {exc}"[:500]
 
 
-def send_push(
+def send_email(subject: str, body: str, attachments: list[Path] | None = None,
+               html_body: str | None = None, to: str | None = None) -> bool:
+    """Email send to `to`, defaulting to DELIVERY_EMAIL_TO. False when disabled/unconfigured
+    or on any failure — never raises. `attachments` (AUD-088): file paths to
+    attach; the whole send fails closed if any is unreadable. `html_body`
+    (2026-07-30): when set, the message is multipart/alternative — plain `body`
+    first, HTML last (clients prefer the last part).
+
+    Thin wrapper over `send_email_result` — use that when you need the reason."""
+    return send_email_result(subject, body, attachments, html_body, to=to)[0]
+
+
+def send_push_result(
     title: str,
     body: str,
     url: str = "/",
     user_id: str | None = None,
     store: PushStore | None = None,
-) -> int:
-    """Fan one notification out to every stored subscription. Returns the
-    number delivered; prunes expired (404/410) subscriptions. Never raises."""
-    if not (settings.DELIVERY_PUSH_ENABLED and settings.VAPID_PRIVATE_KEY
-            and webpush is not None):
-        return 0
+) -> tuple[int, str]:
+    """`send_push` plus the reason nothing was delivered (SA-006). Never raises.
+
+    Returns `(sent, reason)`; `reason` is "" whenever `sent > 0`. Endpoints are
+    never included — only the failure class — so `outbox.last_error` stays free
+    of recipient data."""
+    if not settings.DELIVERY_PUSH_ENABLED:
+        return 0, "disabled: DELIVERY_PUSH_ENABLED is false"
+    if not settings.VAPID_PRIVATE_KEY:
+        return 0, "unconfigured: VAPID_PRIVATE_KEY is unset"
+    if webpush is None:
+        return 0, "unavailable: pywebpush is not installed"
     store = store or PushStore()
     subs = store.list(user_id)
     if not subs:
@@ -163,9 +279,10 @@ def send_push(
             "[delivery] push enabled but 0 subscriptions registered for user "
             "'%s' — notification dropped (enable alerts in the PWA)",
             user_id or settings.PORTFOLIO_DEFAULT_USER_ID)
-        return 0
+        return 0, "no push subscriptions registered (enable alerts in the PWA)"
     payload = json.dumps({"title": title, "body": body[:1500], "url": url})
     sent = 0
+    failures: list[str] = []
     for sub in subs:
         try:
             webpush(
@@ -182,9 +299,27 @@ def send_push(
                 # mismatch (AUD-085 prod stale sub) — all permanent, prune.
                 store.remove(sub.get("endpoint", ""), user_id)
                 logger.info("[delivery] pruned dead push subscription (%s)", code)
+                failures.append(f"pruned dead subscription ({code})")
             else:
                 logger.warning("[delivery] push send failed (non-fatal): %s", exc)
-    return sent
+                failures.append(f"{type(exc).__name__}: {exc}")
+    if sent:
+        return sent, ""
+    return 0, ("; ".join(failures) or "no subscription accepted the push")[:500]
+
+
+def send_push(
+    title: str,
+    body: str,
+    url: str = "/",
+    user_id: str | None = None,
+    store: PushStore | None = None,
+) -> int:
+    """Fan one notification out to every stored subscription. Returns the
+    number delivered; prunes expired (404/410) subscriptions. Never raises.
+
+    Thin wrapper over `send_push_result` — use that when you need the reason."""
+    return send_push_result(title, body, url=url, user_id=user_id, store=store)[0]
 
 
 def deliver(

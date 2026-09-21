@@ -1023,6 +1023,19 @@ SMTP_PORT: int = int(os.getenv("SMTP_PORT", "587"))
 SMTP_USER: str = os.getenv("SMTP_USER", "")
 SMTP_PASSWORD: str = os.getenv("SMTP_PASSWORD", "")
 DELIVERY_EMAIL_TO: str = os.getenv("DELIVERY_EMAIL_TO", "")
+
+# D6/SA-006 — HTTPS email transport. Railway disables outbound SMTP (ports 25/
+# 465/587) on Free, Trial and Hobby; the symptom is `[Errno 101] Network is
+# unreachable` on every send, which is what production has logged since
+# 2026-07-16. An HTTPS API is the supported way out WITHOUT upgrading to Pro.
+#   EMAIL_TRANSPORT: "auto" (default) picks resend when RESEND_API_KEY is set,
+#   else falls back to smtp. Force one with "resend" or "smtp".
+EMAIL_TRANSPORT: str = os.getenv("EMAIL_TRANSPORT", "auto").strip().lower()
+RESEND_API_KEY: str = os.getenv("RESEND_API_KEY", "")
+# Resend's shared sender works with no domain, but only delivers to the address
+# that owns the Resend account — which is exactly DELIVERY_EMAIL_TO here. Set a
+# verified domain sender before fanning out to other recipients.
+RESEND_FROM: str = os.getenv("RESEND_FROM", "StockAgent <onboarding@resend.dev>")
 VAPID_PRIVATE_KEY: str = os.getenv("VAPID_PRIVATE_KEY", "")
 VAPID_PUBLIC_KEY: str = os.getenv("VAPID_PUBLIC_KEY", "")
 VAPID_CLAIM_EMAIL: str = os.getenv("VAPID_CLAIM_EMAIL", "admin@stockagent.app")

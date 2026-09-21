@@ -533,12 +533,15 @@ generic_graph:
 
 # =============================================================================
 # Compass Phase C — M4 proactive delivery (spec 2026-07-06 §7)
-# Secrets (SMTP_*, VAPID_*, DELIVERY_EMAIL_TO) stay in .env — NEVER here.
+# Secrets (RESEND_API_KEY, SMTP_*, VAPID_*, DELIVERY_EMAIL_TO) stay in .env — NEVER here.
 # =============================================================================
 delivery:
   enabled: true                  # master gate: scheduler Jobs 13/14 + all channel sends
   data_dir: "data/delivery"      # push_subscriptions.json, alerts_sent.jsonl
-  email_enabled: false           # flip after SMTP_* secrets are set in .env / Railway
+  # D6/SA-006: Railway disables outbound SMTP on Free/Trial/Hobby, so the SMTP
+  # path cannot work in prod on this plan ([Errno 101] Network is unreachable).
+  # Set RESEND_API_KEY in Railway and EMAIL_TRANSPORT stays "auto" -> resend.
+  email_enabled: false           # flip once RESEND_API_KEY (or SMTP_*) is set in .env / Railway
   push_enabled: true             # degrades silently until VAPID_* secrets are set
   index_watch:                   # weekly constituent diff -> inclusion/exclusion alerts
     - "NIFTY 50"

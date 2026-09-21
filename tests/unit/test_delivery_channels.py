@@ -40,6 +40,7 @@ def test_send_email_smtp_flow(monkeypatch):
             sent["to"], sent["msg"] = to, msg
 
     monkeypatch.setattr(ch.settings, "DELIVERY_EMAIL_ENABLED", True)
+    monkeypatch.setattr(ch.settings, "EMAIL_TRANSPORT", "smtp")   # pin: "auto" follows RESEND_API_KEY
     monkeypatch.setattr(ch.settings, "SMTP_HOST", "smtp.example.com")
     monkeypatch.setattr(ch.settings, "SMTP_USER", "u@example.com")
     monkeypatch.setattr(ch.settings, "SMTP_PASSWORD", "pw")
@@ -171,6 +172,7 @@ def test_send_email_multipart_alternative_when_html(monkeypatch):
         def sendmail(self, frm, to, msg): sent["msg"] = msg
 
     monkeypatch.setattr(ch.settings, "DELIVERY_EMAIL_ENABLED", True)
+    monkeypatch.setattr(ch.settings, "EMAIL_TRANSPORT", "smtp")   # pin: "auto" follows RESEND_API_KEY
     monkeypatch.setattr(ch.settings, "SMTP_HOST", "smtp.example.com")
     monkeypatch.setattr(ch.settings, "SMTP_USER", "u@example.com")
     monkeypatch.setattr(ch.settings, "SMTP_PASSWORD", "pw")
@@ -200,6 +202,7 @@ def test_send_email_html_none_is_single_part(monkeypatch):
         def sendmail(self, frm, to, msg): sent["msg"] = msg
 
     monkeypatch.setattr(ch.settings, "DELIVERY_EMAIL_ENABLED", True)
+    monkeypatch.setattr(ch.settings, "EMAIL_TRANSPORT", "smtp")   # pin: "auto" follows RESEND_API_KEY
     monkeypatch.setattr(ch.settings, "SMTP_HOST", "smtp.example.com")
     monkeypatch.setattr(ch.settings, "SMTP_USER", "")
     monkeypatch.setattr(ch.settings, "DELIVERY_EMAIL_TO", "me@example.com")
@@ -232,3 +235,157 @@ def test_deliver_passes_html_to_email_not_push(monkeypatch):
     assert out["email"] == 1
     assert seen["email"] == ("plain", "<b>h</b>")     # html reached email
     assert "html_body" not in seen["push"][1]         # push never got html
+
+
+# ---------------------------------------------------------------------------
+# D6 / SA-006 — HTTPS (Resend) transport + failure reasons
+# ---------------------------------------------------------------------------
+
+class _FakeResp:
+    def __init__(self, status_code=200, text='{"id":"abc"}'):
+        self.status_code, self.text = status_code, text
+
+
+def _enable_resend(monkeypatch):
+    monkeypatch.setattr(ch.settings, "DELIVERY_EMAIL_ENABLED", True)
+    monkeypatch.setattr(ch.settings, "EMAIL_TRANSPORT", "resend")
+    monkeypatch.setattr(ch.settings, "RESEND_API_KEY", "re_test_key")
+    monkeypatch.setattr(ch.settings, "RESEND_FROM", "StockAgent <x@resend.dev>")
+    monkeypatch.setattr(ch.settings, "DELIVERY_EMAIL_TO", "me@example.com")
+    monkeypatch.setattr(ch.settings, "APP_PUBLIC_URL", "https://app.example")
+
+
+def test_resend_transport_posts_and_succeeds(monkeypatch):
+    seen = {}
+
+    def _post(url, headers=None, json=None, timeout=None):
+        seen["url"], seen["headers"], seen["json"] = url, headers, json
+        return _FakeResp()
+
+    import requests
+    monkeypatch.setattr(requests, "post", _post)
+    _enable_resend(monkeypatch)
+
+    ok, reason = ch.send_email_result("Subject", "Body")
+    assert (ok, reason) == (True, "")
+    assert seen["url"] == "https://api.resend.com/emails"
+    assert seen["headers"]["Authorization"] == "Bearer re_test_key"
+    assert seen["json"]["to"] == ["me@example.com"]
+    # the app-link footer applies on this transport too
+    assert "https://app.example/" in seen["json"]["text"]
+
+
+def test_resend_http_error_returns_reason(monkeypatch):
+    import requests
+    monkeypatch.setattr(requests, "post",
+                        lambda *a, **k: _FakeResp(422, '{"message":"domain not verified"}'))
+    _enable_resend(monkeypatch)
+
+    ok, reason = ch.send_email_result("s", "b")
+    assert ok is False
+    assert "422" in reason and "domain not verified" in reason
+
+
+def test_resend_network_error_returns_reason(monkeypatch):
+    def _boom(*a, **k):
+        raise OSError("[Errno 101] Network is unreachable")
+
+    import requests
+    monkeypatch.setattr(requests, "post", _boom)
+    _enable_resend(monkeypatch)
+
+    ok, reason = ch.send_email_result("s", "b")
+    assert ok is False
+    assert "Errno 101" in reason
+
+
+def test_resend_attachment_is_base64(monkeypatch, tmp_path):
+    seen = {}
+
+    def _post(url, headers=None, json=None, timeout=None):
+        seen["json"] = json
+        return _FakeResp()
+
+    import base64 as _b64
+    import requests
+    monkeypatch.setattr(requests, "post", _post)
+    _enable_resend(monkeypatch)
+
+    f = tmp_path / "backup.zip"
+    f.write_bytes(b"PK\x03\x04payload")
+    assert ch.send_email_result("s", "b", attachments=[f])[0] is True
+    att = seen["json"]["attachments"][0]
+    assert att["filename"] == "backup.zip"
+    assert _b64.b64decode(att["content"]) == b"PK\x03\x04payload"
+
+
+def test_resend_missing_key_reports_unconfigured(monkeypatch):
+    _enable_resend(monkeypatch)
+    monkeypatch.setattr(ch.settings, "RESEND_API_KEY", "")
+    assert ch.send_email_result("s", "b") == (False, "unconfigured: RESEND_API_KEY is unset")
+
+
+def test_disabled_and_unconfigured_reasons_are_distinct(monkeypatch):
+    """The old code returned a bare False for all of these, so a dead letter
+    could not say whether email was off or the network was blocked."""
+    monkeypatch.setattr(ch.settings, "DELIVERY_EMAIL_ENABLED", False)
+    assert ch.send_email_result("s", "b")[1] == "disabled: DELIVERY_EMAIL_ENABLED is false"
+
+    monkeypatch.setattr(ch.settings, "DELIVERY_EMAIL_ENABLED", True)
+    monkeypatch.setattr(ch.settings, "DELIVERY_EMAIL_TO", "")
+    assert ch.send_email_result("s", "b")[1].startswith("unconfigured: no recipient")
+    # …and an explicit per-account address satisfies the same gate.
+    monkeypatch.setattr(ch.settings, "EMAIL_TRANSPORT", "resend")
+    monkeypatch.setattr(ch.settings, "RESEND_API_KEY", "")
+    assert ch.send_email_result("s", "b", to="beta@example.com")[1] == (
+        "unconfigured: RESEND_API_KEY is unset")
+
+
+def test_auto_transport_follows_api_key(monkeypatch):
+    monkeypatch.setattr(ch.settings, "EMAIL_TRANSPORT", "auto")
+    monkeypatch.setattr(ch.settings, "RESEND_API_KEY", "re_key")
+    assert ch._resolve_transport() == "resend"
+    monkeypatch.setattr(ch.settings, "RESEND_API_KEY", "")
+    assert ch._resolve_transport() == "smtp"
+
+
+# ---------------------------------------------------------------------------
+# Multi-user beta — per-account recipients
+# ---------------------------------------------------------------------------
+
+def test_resolve_recipient_prefers_the_account_email(monkeypatch):
+    import services.data.stores.user_store as us
+    monkeypatch.setattr(us, "get_user",
+                        lambda uid: {"user_id": uid, "email": "beta@example.com"})
+    monkeypatch.setattr(ch.settings, "DELIVERY_EMAIL_TO", "owner@example.com")
+    assert ch.resolve_recipient("u_42") == "beta@example.com"
+
+
+def test_resolve_recipient_falls_back_and_never_raises(monkeypatch):
+    import services.data.stores.user_store as us
+    monkeypatch.setattr(ch.settings, "DELIVERY_EMAIL_TO", "owner@example.com")
+    # unknown account -> fallback
+    monkeypatch.setattr(us, "get_user", lambda uid: None)
+    assert ch.resolve_recipient("ghost") == "owner@example.com"
+    # store blows up -> still the fallback, no exception escapes
+    def _boom(uid):
+        raise RuntimeError("users.db locked")
+    monkeypatch.setattr(us, "get_user", _boom)
+    assert ch.resolve_recipient("u_42") == "owner@example.com"
+    # no user_id at all (single-user/dev path)
+    assert ch.resolve_recipient(None) == "owner@example.com"
+
+
+def test_resend_sends_to_the_account_address(monkeypatch):
+    seen = {}
+
+    def _post(url, headers=None, json=None, timeout=None):
+        seen["json"] = json
+        return _FakeResp()
+
+    import requests
+    monkeypatch.setattr(requests, "post", _post)
+    _enable_resend(monkeypatch)
+    assert ch.send_email_result("s", "b", to="beta@example.com")[0] is True
+    # the per-message recipient wins over the global DELIVERY_EMAIL_TO
+    assert seen["json"]["to"] == ["beta@example.com"]

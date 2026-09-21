@@ -71,8 +71,8 @@ def test_enqueue_is_flag_gated_noop(env, monkeypatch):
 def test_drain_delivers_and_marks_delivered(env, monkeypatch):
     _mk_user("u_1")
     calls = []
-    monkeypatch.setattr(channels, "send_push",
-                        lambda *a, **k: (calls.append(a), 1)[1])
+    monkeypatch.setattr(channels, "send_push_result",
+                        lambda *a, **k: (calls.append(a), (1, ""))[1])
     outbox.enqueue("u_1", "push", "brief", _payload(), "k1")
     result = outbox.drain_once()
     assert result["delivered"] == 1
@@ -86,8 +86,8 @@ def test_drain_delivers_and_marks_delivered(env, monkeypatch):
 def test_row_already_claimed_is_not_resent(env, monkeypatch):
     _mk_user("u_1")
     calls = []
-    monkeypatch.setattr(channels, "send_push",
-                        lambda *a, **k: (calls.append(a), 1)[1])
+    monkeypatch.setattr(channels, "send_push_result",
+                        lambda *a, **k: (calls.append(a), (1, ""))[1])
     outbox.enqueue("u_1", "push", "brief", _payload(), "k1")
     # simulate another drainer having claimed the row (status='sending')
     conn = atlas_store._get_conn()
@@ -104,8 +104,8 @@ def test_backoff_then_dead_letter_after_max_attempts(env, monkeypatch):
     monkeypatch.setattr(outbox, "_max_attempts", lambda: 3)
     monkeypatch.setattr(outbox, "_backoff_minutes", lambda: [0, 0, 0])
     calls = []
-    monkeypatch.setattr(channels, "send_push",
-                        lambda *a, **k: (calls.append(a), 0)[1])   # always fails
+    monkeypatch.setattr(channels, "send_push_result",
+                        lambda *a, **k: (calls.append(a), (0, "push transport failed"))[1])   # always fails
     outbox.enqueue("u_1", "push", "brief", _payload(), "k1")
     for _ in range(3):
         outbox.drain_once()
@@ -190,13 +190,28 @@ def test_enqueue_message_stores_full_body_and_html(monkeypatch):
 
 def test_send_row_caps_push_and_passes_html_to_email(monkeypatch):
     calls = {}
-    monkeypatch.setattr(channels, "send_push",
-                        lambda title, body, url="/", user_id=None: calls.setdefault("push", body) and 1 or 1)
-    monkeypatch.setattr(channels, "send_email",
-                        lambda title, body, html_body=None: calls.__setitem__("email", (len(body), html_body)) or True)
+    # SA-006: _send_row now calls the *_result variants and returns (ok, reason).
+    monkeypatch.setattr(channels, "send_push_result",
+                        lambda title, body, url="/", user_id=None, store=None:
+                        (calls.__setitem__("push", body), (1, ""))[1])
+    monkeypatch.setattr(channels, "send_email_result",
+                        lambda title, body, html_body=None, to=None:
+                        (calls.__setitem__("email", (len(body), html_body)), (True, ""))[1])
 
     payload = json.dumps({"title": "t", "body": "y" * 4000, "url": "/", "html": "<i>h</i>"})
-    assert outbox._send_row({"id": 1, "user_id": "u1", "channel": "push", "payload_ref": payload}) is True
+    assert outbox._send_row({"id": 1, "user_id": "u1", "channel": "push", "payload_ref": payload}) == (True, "")
     assert len(calls["push"]) == 1500                   # push capped at send time
-    assert outbox._send_row({"id": 2, "user_id": "u1", "channel": "email", "payload_ref": payload}) is True
+    assert outbox._send_row({"id": 2, "user_id": "u1", "channel": "email", "payload_ref": payload}) == (True, "")
     assert calls["email"] == (4000, "<i>h</i>")         # email gets full body + html
+
+
+def test_send_row_returns_transport_reason(monkeypatch):
+    """The reason travels back so drain_once can persist it (SA-006)."""
+    monkeypatch.setattr(channels, "send_email_result",
+                        lambda title, body, html_body=None, to=None:
+                        (False, "OSError: [Errno 101] Network is unreachable"))
+    payload = json.dumps({"title": "t", "body": "b", "url": "/"})
+    ok, reason = outbox._send_row(
+        {"id": 3, "user_id": "u1", "channel": "email", "payload_ref": payload})
+    assert ok is False
+    assert "Errno 101" in reason

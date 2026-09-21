@@ -116,24 +116,38 @@ def enqueue_message(user_id: str, title: str, body: str, *, url: str = "/",
 # drain
 # ---------------------------------------------------------------------------
 
-def _send_row(row) -> bool:
-    """Deliver one claimed row via its channel transport. True on delivery."""
+def _send_row(row) -> tuple[bool, str]:
+    """Deliver one claimed row via its channel transport.
+
+    Returns `(delivered, reason)`; `reason` is "" on delivery and is persisted
+    to `outbox.last_error` otherwise (SA-006) so a dead letter explains itself
+    without the container log, which on Railway does not outlive the replica."""
     try:
         payload = json.loads(row["payload_ref"])
-    except Exception:
+    except Exception as exc:
         payload = {}
+        logger.warning("[outbox] row %s has unreadable payload_ref: %s",
+                       row["id"], exc)
     title, body = payload.get("title", ""), payload.get("body", "")
     url, html_body = payload.get("url", "/"), payload.get("html")
-    from core.delivery.channels import send_email, send_push
+    from core.delivery.channels import (resolve_recipient, send_email_result,
+                                        send_push_result)
     try:
         if row["channel"] == "push":
-            return send_push(title, body[:1500], url=url, user_id=row["user_id"]) > 0
+            sent, reason = send_push_result(title, body[:1500], url=url,
+                                            user_id=row["user_id"])
+            return sent > 0, reason
         if row["channel"] == "email":
-            return bool(send_email(title, body, html_body=html_body))
+            # Multi-user: the row's own account address, not one global inbox.
+            recipient = resolve_recipient(row["user_id"])
+            if not recipient:
+                return False, f"no email on file for user '{row['user_id']}'"
+            return send_email_result(title, body, html_body=html_body, to=recipient)
     except Exception as exc:
         logger.warning("[outbox] send failed for row %s (non-fatal): %s",
                        row["id"], exc)
-    return False
+        return False, f"{type(exc).__name__}: {exc}"[:500]
+    return False, f"unknown channel '{row['channel']}'"
 
 
 def drain_once() -> dict:
@@ -161,21 +175,27 @@ def drain_once() -> dict:
                 continue
             summary["claimed"] += 1
             attempts = row["attempts"] + 1
-            ok = _send_row(row)
+            ok, reason = _send_row(row)
             with atlas_store._lock:
                 if ok:
-                    conn.execute("UPDATE outbox SET status='delivered', delivered_at=?"
-                                 " WHERE id=?", (_now_iso(), rid))
+                    # Clear last_error so a row that recovered on retry does not
+                    # keep a stale reason from an earlier attempt.
+                    conn.execute("UPDATE outbox SET status='delivered', delivered_at=?,"
+                                 " last_error=NULL WHERE id=?", (_now_iso(), rid))
                     summary["delivered"] += 1
                 elif attempts >= _max_attempts():
-                    conn.execute("UPDATE outbox SET status='dead' WHERE id=?", (rid,))
+                    conn.execute("UPDATE outbox SET status='dead', last_error=?"
+                                 " WHERE id=?", (reason or None, rid))
                     summary["dead"] += 1
+                    logger.warning("[outbox] row %s dead-lettered after %d attempts "
+                                   "(%s/%s): %s", rid, attempts, row["channel"],
+                                   row["kind"], reason or "no reason recorded")
                 else:
                     backoff = _backoff_minutes()
                     mins = backoff[min(attempts - 1, len(backoff) - 1)] if backoff else 0
                     nxt = (_now() + timedelta(minutes=mins)).isoformat(timespec="seconds")
-                    conn.execute("UPDATE outbox SET status='queued', next_attempt_at=?"
-                                 " WHERE id=?", (nxt, rid))
+                    conn.execute("UPDATE outbox SET status='queued', next_attempt_at=?,"
+                                 " last_error=? WHERE id=?", (nxt, reason or None, rid))
                 conn.commit()
     except Exception as exc:
         logger.warning("[outbox] drain_once failed (non-fatal): %s", exc)

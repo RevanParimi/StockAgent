@@ -15,7 +15,13 @@ Three Loops and skip the work that was actually asked for.
 
 **IPO-0a status (2026-09-21 afternoon):** worked, not closeable today — nothing is in the `closed — awaiting listing` state until NSE and SONA close tonight. Read the "Progress 2026-09-21" note under IPO-0a in the plan; it names the two pieces of production evidence the 22 Sep 08:50 brief provides. Do not delete the milestone entry without both.
 
-**IPO-0b is done** (size-tiered demand lean; see the plan's "Done 2026-09-21" note). Next after 0a closes: `IPO-0c`, then `IPO-1`.
+**IPO-0b is done** (size-tiered demand lean; see the plan's "Done 2026-09-21" note).
+
+**IPO-1 is done** (2026-09-21 evening): the per-horizon read is in the plan under IPO-1 with the decision — fit the SHORT (post-close listing-day) horizon to QIB/total demand, LONG stays dark, OFS never scored. `ipo_p1_backtest_review` removed from the registry. Sprints 3–5 may now get step detail.
+
+**IPO-0c is blocked on you:** it needs the production Serper counter (`railway ssh` → `cat data/logs/api_usage.json`, or the boot log line `[api_usage] counter intact at boot ... serper=N/2500`). Also found: `fetch_gmp()` has no production caller, so provisioning the key would need a wiring change too — see the plan's IPO-0c progress note.
+
+Next after 0a closes and 0c is decided: Sprint 2 (`IPO-2a`).
 
 Read that plan's "State of play as of 2026-09-21" section first. Sprints 0–2 are
 executable; Sprints 3–5 are design-level until `IPO-1` (the P1 backtest read,

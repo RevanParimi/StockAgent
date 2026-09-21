@@ -186,6 +186,24 @@ after deploy — the 08:00 IST job — so the 22 Sep 08:50 brief is the first on
 
 **Acceptance:** either GMP readings flow with provenance, or a written, dated decision that it stays dark and `IPO-3a` omits the feature.
 
+**Progress 2026-09-21 — blocked on the production counter; and GMP is built but NOT wired.**
+
+- The counter (`data/logs/api_usage.json`) lives on the Railway volume. No HTTP route exposes it
+  (only the watchdog reads `get_usage()`, in-process), and this machine has no Railway access. It
+  needs one of: `railway ssh` → `cat data/logs/api_usage.json`; the deploy log's boot line
+  `[api_usage] counter intact at boot ... serper=N/2500`; or the serper.dev dashboard's credit count.
+- **Finding that changes the task:** `fetch_gmp()` has **no production caller**. Only
+  `tests/unit/test_ipo_gmp.py` calls it. `core/ipo/signals.py` declares `gmp` / `gmp_pct` /
+  `gmp_sources` but nothing fills them. Setting the key and flipping `ipo.gmp_enabled` would produce
+  **no reading** — the third checkbox cannot pass as written. If the decision is "provision", it
+  also needs a one-line call from the P2 capture path (one fetch per open issue per refresh) and a
+  test that the flag off still means zero calls.
+- **Volume, if wired that way:** 1 Serper call per open mainboard issue per daily refresh. 2025 had
+  99 mainboard listings in the spine (~8/month), each open ~3 days → ~25 issue-days/month → **~25
+  calls/month, ~1% of the 2,500 cap**; double it if the T−1 deep dive also fetches. Headroom is
+  therefore about the main pipeline's own consumption, not GMP's — which is why the counter still
+  has to be read before deciding.
+
 ---
 
 ## Sprint 1 — The evidence gate (by 2026-09-30)
@@ -195,16 +213,104 @@ after deploy — the 08:00 IST job — so the 22 Sep 08:50 brief is the first on
 - **Chat opener:** `Work task IPO-1 from docs/superpowers/plans/2026-09-21-ipo-prospect-p3-substance.md`
 - **Size:** ~half day · **Depends on:** nothing · **Gates:** Sprints 3–5
 
-- [ ] Produce the report from `core/ipo/report.py` over the P1 spine.
-- [ ] Record, per horizon (1/5/21/63/126/252 td), whether any captured feature shows measurable separation.
-- [ ] Write the decision into the plan: fit weights to measured signal, or ship P3 dark-only.
-- [ ] Mark `ipo_p1_backtest_review` satisfied.
+- [x] Produce the report from `core/ipo/report.py` over the P1 spine.
+- [x] Record, per horizon (1/5/21/63/126/252 td), whether any captured feature shows measurable separation.
+- [x] Write the decision into the plan: fit weights to measured signal, or ship P3 dark-only.
+- [x] Mark `ipo_p1_backtest_review` satisfied (entry removed — `manual_confirmation` has no satisfied state; precedent `f7a760f`).
 
 **Why this gates P3:** spec §5 P5 conditions the visible flip on a measured hit-rate. Building weights first and measuring after is exactly the failure mode the P1 spine exists to prevent.
 
 ⚠ **Honesty requirement.** `report.py`'s own docstring: *"This module measures; it does not model... the honest caveats travel WITH the numbers so a reader cannot pick up the hit-rate without also picking up its limits."* One regime, modest n. A weak result is a real result.
 
 **Acceptance:** a written, dated decision with the numbers behind it.
+
+**Read 2026-09-21 — decision: fit the SHORT horizon to demand, ship the LONG horizon dark, never weight OFS.**
+
+Spine: the local `data/ipo/ipo_history.jsonl` (P1 backfill of 2026-08-18; 209 rows, 188 graded,
+listings 2024-05-13 → 2026-08-14). `report.py` slices only 1 td and 252 td by total ×, so the
+per-horizon read below was done in a scratch script over the same rows — measurement only, no
+fitting. Spearman ρ against the raw feature with a 2,000-draw permutation p; terciles are equal-n
+thirds of the feature. Returns are % vs issue price; the `excess` (minus `^NSEI`) table is within
+±1pp of every cell below and changes no reading, so only `outcomes` is quoted.
+
+| feature | td | n | ρ | p | lo-tercile mean / pos | hi-tercile mean / pos |
+|---|---|---|---|---|---|---|
+| **qib_x** | 1 | 185 | **+0.66** | <0.001 | −3.0% / 38% | **+37.6% / 94%** |
+| qib_x | 5 | 183 | +0.61 | <0.001 | −2.9% / 36% | +40.3% / 90% |
+| qib_x | 21 | 179 | +0.44 | <0.001 | +1.4% / 42% | +35.9% / 82% |
+| qib_x | 63 | 175 | +0.33 | <0.001 | +3.4% / 48% | +32.0% / 76% |
+| qib_x | 126 | 157 | +0.33 | <0.001 | −1.5% / 38% | +35.9% / 77% |
+| qib_x | 252 | 77 | +0.23 | 0.048 | +13.1% / 44% | +44.7% / 69% |
+| **total_x** | 1 | 185 | **+0.64** | <0.001 | −3.1% / 33% | **+36.0% / 94%** |
+| total_x | 5 | 183 | +0.58 | <0.001 | −3.1% / 34% | +39.2% / 92% |
+| total_x | 21 | 179 | +0.40 | <0.001 | +1.6% / 42% | +35.3% / 80% |
+| total_x | 63 | 175 | +0.28 | 0.002 | +4.1% / 48% | +34.0% / 75% |
+| total_x | 126 | 157 | +0.31 | <0.001 | −2.0% / 40% | +37.4% / 75% |
+| total_x | 252 | 77 | +0.14 | 0.205 | +17.2% / 52% | +39.9% / 69% |
+| retail_x | 1 | 185 | +0.49 | <0.001 | +0.4% / 43% | +30.6% / 85% |
+| retail_x | 5 | 183 | +0.43 | <0.001 | +0.1% / 46% | +31.0% / 80% |
+| retail_x | 21 | 179 | +0.26 | <0.001 | +4.8% / 53% | +26.4% / 70% |
+| retail_x | 63 | 175 | +0.16 | 0.032 | +6.4% / 57% | +26.7% / 68% |
+| retail_x | 126 | 157 | +0.18 | 0.027 | +7.8% / 48% | +28.4% / 68% |
+| retail_x | 252 | 77 | +0.08 | 0.493 | +15.5% / 48% | +28.2% / 62% |
+| ofs_share | 1 | 170 | +0.15 | 0.064 | +14.6% / 64% | +20.6% / 72% |
+| ofs_share | 5 | 168 | +0.14 | 0.063 | +16.4% / 64% | +21.5% / 70% |
+| ofs_share | 21 | 164 | +0.12 | 0.137 | +14.1% / 46% | +18.9% / 69% |
+| ofs_share | 63 | 160 | +0.16 | 0.043 | +11.5% / 51% | +18.8% / 69% |
+| ofs_share | 126 | 142 | +0.15 | 0.075 | +12.9% / 51% | +21.0% / 67% |
+| ofs_share | 252 | 69 | **−0.03** | 0.839 | +38.9% / 61% | +28.8% / 70% |
+
+`report.py`'s own buckets, same rows: hot (≥10×) n=118 mean +26.4% / 85% positive on listing day;
+warm (2–10×) n=39 −0.5% / 46%; cold (<2×) n=28 −4.2% / 25%. The hot cohort's positive rate decays
+85% → 82% → 73% → 69% → 66% → 63% across 1/5/21/63/126/252 td while its mean holds near +25%: the
+pop is retained on average but by an ever-thinner majority.
+
+**What the numbers say, per feature:**
+
+1. **Final subscription demand is a real, strong, monotone predictor of the listing-day outcome,
+   and QIB × is the best single reading of it.** ρ ≈ 0.65 at 1 td, terciles separate cleanly
+   (−3% → +15% → +37%; positive rate 33% → 94%), and the effect is not a two-bucket artefact — the
+   middle tercile sits where it should. It decays with horizon but stays significant through 126 td
+   (ρ ≈ 0.3). This is the measured hit-rate spec §5 P5 asks for: **hi-tercile demand → 94% positive
+   listing-day, n=62.**
+2. **At 252 td the evidence is thin and borderline.** n=77, and 62 of the 80 matured rows are 2024
+   listings — one regime, one year, overlapping windows. QIB × scrapes p=0.048; total × and retail ×
+   do not. Nothing here supports a LONG-horizon verdict.
+3. **Retail × is the weakest demand reading** at every horizon and fades to noise by 63 td. In P3
+   it is a *Hype* input (froth), not a return predictor, and the data agrees: it separates the
+   listing pop less well than the institutional book does.
+4. **OFS share: no signal.** ρ ≈ 0.15, p between 0.04 and 0.14 across short horizons, sign flips at
+   252 td. This is the third measurement (2026-08-15, 2026-08-18, today) and the third time it has
+   failed to hold. §3's UNVALIDATED marking stands; `IPO-3a`/`3b` capture and render it, never
+   score it.
+
+**The caveat that shapes P3 more than any number above.** The spine holds *final* subscription —
+known at close of day 3, i.e. before listing but after the retail application window. `IPO-4a`
+fires at **T−1** on day-2 evening figures, and QIBs bid overwhelmingly on the final day. So:
+
+- A **listing-day lean issued after the book closes** (the SHORT verdict in its natural slot:
+  "closed — awaiting listing") is backed by this evidence directly.
+- A **T−1 apply-or-not lean** is *not* — its inputs are day-2 demand and `velocity.py`'s
+  ramp, which the spine cannot see. That can only be validated forward from the P2 capture
+  (`ipo_signals.jsonl`, live since 2026-08-13). Do not let the 94% figure be quoted for it.
+
+**Decision (2026-09-21):**
+
+- **`IPO-3a` (Hype):** weight `qib_x` ≥ `total_x` > `retail_x` for the SHORT horizon; fit to 1–5 td
+  on this spine. Retail-vs-QIB skew and cut-off share enter as froth modifiers, unweighted for return
+  until P2 rows mature. GMP only if `IPO-0c` wires it (see that task — it is not wired today).
+- **`IPO-3b` (Substance):** builds and captures; **no weight on historical evidence** — none exists
+  for PAT, revenue, valuation or promoter record, and the report says so in its own caveats.
+- **`IPO-3c` (verdict):** SHORT verdict may be fitted; **LONG verdict ships dark indefinitely**
+  until 252-td rows from a second regime accrue.
+- **`IPO-5b`:** the visible flip is admissible for the **post-close listing-day lean only**, gated on
+  a forward hit-rate from the P2 capture matching the historical one, not on this backtest alone.
+  The T−1 lean stays dark; `IPO-5a` research notes ship regardless.
+- OFS: captured, rendered, never scored. Unchanged.
+
+Re-run the read when the production spine (Railway volume) is pulled — it carries ~5 weeks of
+listings the local copy does not, though none can have matured past 21 td yet, so the short-horizon
+reading above is what would move, and only marginally.
 
 ---
 

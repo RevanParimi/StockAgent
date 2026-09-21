@@ -92,30 +92,6 @@ milestones:
       Remove this entry once that is seen.
     docs: docs/superpowers/specs/2026-08-11-ipo-intelligence-design.md
 
-  - id: ipo_p1_backtest_review
-    kind: milestone
-    title: "IPO P1 — read the historical measurement report"
-    check: manual_confirmation
-    deadline: 2026-09-30
-    lead_days: 5
-    action: >
-      RESCOPED 2026-08-18. The original question - "do the bucket sample sizes
-      support proceeding to P2/P3" - is moot: P2 shipped, merged and is
-      prod-verified. What is still worth doing is READING the report and judging
-      whether the samples support letting P3 WEIGHT any of these features.
-      DO NOT run `python -m scripts.ipo_backfill --enrich` for this: main()
-      always runs the full backfill first (it re-fetches and upserts every row),
-      and the report needs no refetch. Just read the spine:
-      `PYTHONPATH=".;src" python -c "from core.ipo.history import
-      IpoHistoryStore; from core.ipo.report import render_report, summarise;
-      print(render_report(summarise(IpoHistoryStore().load_all())))"`
-      (python -m core.ipo.report prints nothing - no __main__ block).
-      Read spec section 5 P2 alongside it: the OFS column is now 90% complete
-      (parse-failure rate 23% -> 10% on 2026-08-18) and the re-measurement KILLED
-      the "OFS-heavy outperforms at every horizon" claim - at 252td the ordering
-      flipped. Treat every bucket here as association-only. Remove once judged.
-    docs: docs/superpowers/specs/2026-08-11-ipo-intelligence-design.md
-
   - id: a1_routing_prod_verify
     kind: milestone
     title: "A1 single-router — confirm zero DIVERGE on prod after deploy"

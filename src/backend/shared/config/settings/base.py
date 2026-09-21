@@ -991,6 +991,8 @@ IPO_DEMAND_ANCHORS: dict = dict(cfg("ipo.demand_anchors", fallback={}) or {})
 IPO_HYPE_WEIGHTS: dict = dict(cfg("ipo.hype_weights", fallback={}) or {})
 IPO_HYPE_ANCHORS: dict = dict(cfg("ipo.hype_anchors", fallback={}) or {})
 IPO_INDEX_MIN_COVERAGE: float = float(cfg("ipo.index_min_coverage", fallback=0.5))
+IPO_SUBSTANCE_WEIGHTS: dict = dict(cfg("ipo.substance_weights", fallback={}) or {})
+IPO_SUBSTANCE_ANCHORS: dict = dict(cfg("ipo.substance_anchors", fallback={}) or {})
 
 ADVISOR_SWITCH_CONVICTION_GAP: float = float(cfg("advisor.switch_conviction_gap", fallback=0.15))
 

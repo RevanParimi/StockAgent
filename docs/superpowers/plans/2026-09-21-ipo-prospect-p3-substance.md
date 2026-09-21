@@ -59,7 +59,7 @@ Writing step-level implementation for Sprints 3–5 before that read would be in
 core/ipo/
   research.py      NEW  Tavily query plan + full-page fetch, per-issue cache
   extract.py       NEW  LLM structured extraction + corroboration gate
-  substance.py     NEW  S index over browsed + official features
+  substance.py     NEW  S over browsed + official features, fitted=False  ✓ IPO-3b
   hype.py          NEW  demand (fitted) + froth (H) over captured P2 features  ✓ IPO-3a
   verdict.py       NEW  grid, two-horizon outputs, quadrant
   verdicts.py      NEW  verdict store (IPO-3d), append-only
@@ -456,20 +456,39 @@ with a number that has a hit-rate behind it.
 
 - **Size:** ~3 h · **Depends on:** `IPO-2b/2c` (the `IpoSubstance` shape), `IPO-3a` (the scoring primitive)
 
-- [ ] Inputs: the corroborated `IpoSubstance` (browsed) **and** the ledger snapshot (official — QIB ×,
-      QIB composition). Two provenance classes, both recorded on the reading.
-- [ ] Features: `pat_trend` (sign and slope of the ≤3-year PAT series; a loss-making trajectory scores 0,
-      not `None`), `revenue_cagr`, `issue_pe_vs_peers` (`issue_pe / median(peer_pe)` — **expect it dark
-      most of the time**, per the IPO-2c finding; `S` must not depend on it), `qib_x`, `sticky_share`
-      (`(fii + dom_fi + mutual_fund) / qib` from the ladder), `promoter_track` (categorical → 0/0.5/1 only
-      when `status == "corroborated"`, else dark).
-- [ ] **No fitted anchors exist** — the spine has no Substance column. Every anchor is UNFITTED and labelled
-      so in `config.yaml`; weights are *equal* across present features until evidence says otherwise. The
-      reading carries `fitted: False` so `verdict.py` and the narrator cannot present S with the confidence
-      of `demand`.
-- [ ] Same primitive: `score_index` from `hype.py`, `ipo.substance_weights`, `ipo.substance_anchors`,
-      coverage gate.
-- [ ] Never raises. Tests offline over `tests/fixtures/ipo_research/*_extractions.json` + synthetic ledger rows.
+- [x] Inputs: the corroborated `IpoSubstance` (browsed) **and** the ledger snapshot (official — QIB ×,
+      QIB composition). Two provenance classes, both recorded on the reading (`provenance`, `sources`).
+- [x] Features: `pat_growth` (annualised multiple over the longest profitable run; **latest-year loss = 0.0**,
+      just-turned-profitable = 1.0 "flat, unmeasured"), `revenue_growth` (needs two years), `peer_pe_discount`
+      (`median(peer_pe) / issue_pe` — inverted so it *rises* with substance; dark unless both sides corroborated),
+      `qib_x`, `mutual_fund_x`.
+- [x] **No fitted anchors exist** except `qib_x`. Every other anchor is UNFITTED and labelled so in `config.yaml`;
+      weights are equal. `SubstanceReading.fitted` is hard-wired `False`.
+- [x] Same primitive: `score_index` from `hype.py`, `ipo.substance_weights`, `ipo.substance_anchors`, coverage gate.
+- [x] Never raises. Tests offline: `tests/unit/ipo/test_ipo_substance.py` (19), including the VARMORA replay end to end.
+
+**Done 2026-09-21.** Two departures from the design line above, both because the honest version is smaller:
+
+- **`sticky_share` is not computable from the ledger.** The QIB sub-rows (`fii`, `dom_fi`, `mutual_fund`) are
+  multiples whose denominator NSE does not state — in the recorded payload `dom_fi` bid 245,600 shares and
+  reads 0.42× against a 2,325,145-share QIB book, so it is not "share of QIB" and the three do not sum to
+  `qib_x`. A true sticky-vs-flipper share needs **shares-bid per sub-row in the ledger** (P2 follow-up;
+  `IpoSignalSnapshot` schema change, additive). Until then `mutual_fund_x` is scored on its own with an UNFITTED
+  anchor and `fii_x` / `dom_fi_x` are captured only.
+- **`promoter_track` is captured, never scored.** It is a `reported` free-text field; mapping it to 0/0.5/1 is a
+  judgement, and the LLM never decides. It reaches the user through the narrator (`IPO-4b`) as a sourced fact.
+
+Readings over the three recorded dossiers (official legs from the 21 Sep book where one existed):
+
+| issue | pat_growth | revenue_growth | peer_pe | qib_x | mf_x | coverage | S |
+|---|---|---|---|---|---|---|---|
+| VARMORA (opens 22 Sep) | 1.107 | 1.003 | dark | no book | dark | 0.4 | **None** |
+| NSE | dark (web disagreed, 2c) | dark | dark | 7.81 | dark | 0.2 | **None** |
+| LEAP | 1.011 | 1.407 | dark | 16.84 | dark | 0.6 | **53.2** |
+
+Consequence for `IPO-3c`: with `peer_pe` rarely corroborating and the MF sub-row usually blank, a typical
+issue has **three of five legs**, and any one more missing takes S dark. That is the intended behaviour —
+the quadrant needs both axes, and an issue whose business could not be read is "unread", not "low substance".
 
 ### `IPO-3c` — `core/ipo/verdict.py`
 

@@ -510,6 +510,28 @@ ipo:
     cutoff_share: [0.10, 0.25, 0.50]      # UNFITTED: the spine has no cut-off share; NSE 14%, MOLBIO 46%
     gmp_pct: [0.02, 0.15, 0.50]           # UNFITTED: GMP was never captured
   index_min_coverage: 0.5           # an index resting on < half its weight is None, not a number
+  # ── P3 Substance (IPO-3b) — runs DARK, and is NOT FITTED ──
+  # The P1 spine has no Substance column (no PAT, revenue or valuation), so
+  # only qib_x carries a fitted anchor; every other anchor is a stated
+  # starting point, and the reading carries fitted=False so nothing
+  # downstream can present S with the confidence `demand` has earned.
+  # Weights are EQUAL until evidence says otherwise (IPO-1 read). Growth
+  # features are annualised multiples (1.15 = +15%/yr); a loss-making PAT
+  # is 0.0 and scores 0 by construction. peer_pe_discount is
+  # median(peer P/E) / issue P/E, so >1 means priced below peers; expect it
+  # dark most of the time (IPO-2c: peers rarely corroborate).
+  substance_weights:
+    pat_growth: 1.0
+    revenue_growth: 1.0
+    peer_pe_discount: 1.0
+    qib_x: 1.0
+    mutual_fund_x: 1.0
+  substance_anchors:
+    pat_growth: [0.90, 1.15, 1.50]        # UNFITTED: -10% / +15% / +50% a year
+    revenue_growth: [0.95, 1.15, 1.40]    # UNFITTED
+    peer_pe_discount: [0.50, 1.00, 2.00]  # UNFITTED: 2x peers' P/E / at par / half
+    qib_x: [1.76, 40.35, 207.34]          # fitted: spine percentiles, 2026-09-21
+    mutual_fund_x: [0.50, 5.00, 40.00]    # UNFITTED: NSE's sub-row denominator is unstated
 
 # =============================================================================
 # Observability (Three Loops PI, task B2 — spec 2026-08-24 §2.3, §6.2)

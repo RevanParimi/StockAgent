@@ -720,6 +720,14 @@
   ],
   "history": [
     {
+      "date": "2026-09-21",
+      "event": "Email outage resolved. Cause was Railway disabling outbound SMTP on Hobby, not a credential fault: production logged [Errno 101] Network is unreachable on every send since 2026-07-16 (card D6, spec 2026-08-24 section 15.4, n=103 over 21 days). Fixed by upgrading to Pro AND redeploying; the upgrade alone does not affect an already-running container. Verified by triggering a brief that reached the inbox. Shipped in 590bc9f (on origin/main, deployed): outbox.last_error with an additive migration, an HTTPS Resend transport behind EMAIL_TRANSPORT=auto, and per-account recipients via resolve_recipient. Partially satisfies SA-006; SA-006 is NOT accepted as done. Known gap: resolve_recipient falls back to DELIVERY_EMAIL_TO on a transient users.db lookup failure, which could misroute a beta user's brief to the owner. Tests 2832 passed, 5 skipped. The 2026-09-19 audit's findings 1 and 3 are superseded and carry a correction banner. User then resequenced onto PI Prospect (IPO intelligence); next task is IPO-0a in docs/superpowers/plans/2026-09-21-ipo-prospect-p3-substance.md, outside this PI. DOC-001 remains review_required and all SA stories remain todo."
+    },
+    {
+      "date": "2026-09-19",
+      "event": "User requested a read-only operational investigation of missing scheduled emails and Railway deployment drift before resuming DOC-001. Repository/remote branch comparison and public HTTP checks completed; fresh private Railway inspection is blocked by absent local CLI/authentication. Saved September 10 evidence is historical, not refreshed production verification. DOC-001 remains review_required; SA-006/SA-007/SA-029 and all other remediation dependencies remain unresolved. Findings: docs/audit/2026-09-19-delivery-deployment-review.md. No application change or production action authorized by this investigation."
+    },
+    {
       "date": "2026-09-10",
       "event": "Completed read-only repository/production audit and local verification. Created 29 planned stories plus 3 stretch stories. No remediation code or production configuration changed."
     },

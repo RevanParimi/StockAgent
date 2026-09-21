@@ -1,4 +1,65 @@
-# Current handoff ? 2026-09-15
+# Current handoff - 2026-09-21
+
+## START HERE — next task is outside this PI
+
+The user resequenced onto **PI "Prospect" (IPO intelligence)**. The next task is
+**not** an `SA-` story and is not selected from `STATE.json`. Do not apply the
+AGENTS.md step-2 story-selection rule this conversation; it would route you into
+Three Loops and skip the work that was actually asked for.
+
+**Next task:** `IPO-0a`, then `IPO-0b`, in
+[the P3/Substance plan](../../superpowers/plans/2026-09-21-ipo-prospect-p3-substance.md).
+
+**Chat opener:**
+`Work task IPO-0a from docs/superpowers/plans/2026-09-21-ipo-prospect-p3-substance.md`
+
+Read that plan's "State of play as of 2026-09-21" section first. Sprints 0–2 are
+executable; Sprints 3–5 are design-level until `IPO-1` (the P1 backtest read,
+milestone due 2026-09-30) answers whether there is measurable signal to weight.
+
+The Three Loops PI below is **paused, not abandoned** — DOC-001 still awaits its
+fresh-session review and all 32 `SA-` stories remain `todo`.
+
+## Resolved since September 19 — the email outage
+
+The September 19 investigation below is superseded on its central question.
+
+- **Cause:** Railway disables outbound SMTP on Free/Trial/Hobby. Production
+  logged `[Errno 101] Network is unreachable` on every send since 2026-07-16
+  (n=103 over 21 days — card **D6**, spec `2026-08-24-three-loops-pi-design.md` §15.4).
+- **Fix:** upgraded to Pro **and redeployed**. The upgrade alone changes nothing
+  for an already-running container; the 25-day-old deployment was still under the
+  Hobby network policy. Verified 2026-09-21 — a triggered brief reached the inbox.
+- **D6 is closeable** after a day of clean logs.
+- ⚠ The [September 19 audit](../../audit/2026-09-19-delivery-deployment-review.md)
+  advances a Gmail-credential hypothesis that production evidence **disproved**.
+  Its §1 and §3 are wrong on cause. Treat it as a record of what was believed on
+  the 19th, not as current diagnosis.
+
+### Shipped in `590bc9f` (on `origin/main`, deployed)
+
+- `outbox.last_error`, written on retry and dead-letter, cleared on recovery —
+  a failed send now explains itself without container logs. Partially satisfies **SA-006**.
+- An HTTPS Resend transport beside SMTP; `EMAIL_TRANSPORT=auto` picks it only
+  when `RESEND_API_KEY` is set, so current behaviour is unchanged on Pro+SMTP.
+- Per-account recipients via `resolve_recipient()`. ⚠ **Known gap:** a transient
+  `users.db` lookup failure falls back to `DELIVERY_EMAIL_TO`, which in multi-user
+  beta could route a tester's brief to the owner's inbox. Tighten before beta.
+- Tests: 2832 passed, 5 skipped (full `tests/unit`).
+
+## Operational investigation requested September 19
+
+The user temporarily resequenced a read-only review of missing scheduled emails
+and Railway deployment state. See the [dated findings](../../audit/2026-09-19-delivery-deployment-review.md).
+Public HTTP and remote Git checks are current; private production logs/configuration
+could not be refreshed because this machine has no Railway CLI/login/token.
+September 10 delivery counts remain historical. Current service inventory, source
+branch, scheduler activity and SMTP connectivity still need authenticated inspection.
+No application, deployment, variable, job or notification was changed. This is
+an operational investigation, not DOC-001 acceptance or SA-006 implementation.
+The PI state and unresolved dependencies below are preserved.
+
+## PI handoff retained from September 15
 
 **DOC-001 implementation is complete; fresh-session review is required.**
 No remediation code was changed or accepted. All 29 planned SA stories and

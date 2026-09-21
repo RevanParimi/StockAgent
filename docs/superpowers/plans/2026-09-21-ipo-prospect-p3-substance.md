@@ -320,14 +320,16 @@ This is the half the spec assumes and never built.
 
 ### `IPO-2a` — `core/ipo/research.py`
 
-- [ ] Query plan per issue, derived from company name + symbol: financials/RHP, valuation vs peers, promoter/parent track record, anchor book, use of proceeds, risks & litigation.
-- [ ] Full-page fetch via `search_tavily` / `fetch_tavily_context`.
-- [ ] Per-issue cache keyed `(symbol, close_date)` so a re-run inside one window costs nothing.
-- [ ] Hard cap `ipo.research_max_fetches` per issue.
+- [x] Query plan per issue, derived from company name + symbol: financials/RHP, valuation vs peers, promoter/parent track record, anchor book, use of proceeds, risks & litigation.
+- [x] Full-page fetch via `search_tavily` / `fetch_tavily_context`.
+- [x] Per-issue cache keyed `(symbol, close_date)` so a re-run inside one window costs nothing.
+- [x] Hard cap `ipo.research_max_fetches` per issue.
 
 **Budget:** Tavily free tier is 1,000 calls/month. Mainboard IPOs run ~5–15/month and this fires **once per issue at T−1**, so even 10 fetches/issue is ~150/month worst case. This job's rarity is what lets it be far deeper than the daily pipeline.
 
 **Acceptance:** for a known past issue, returns non-empty documents with URLs; returns `[]` (never raises) when Tavily is unconfigured or down.
+
+**Done 2026-09-21** (`e8abda3`). Measured on the live plan: 6 fetches → 14–16 documents / 12–16 domains per issue (NSE, VARMORA, LEAP). Two rules beyond the checklist: documents are **deduped by URL across queries** so the plan itself cannot inflate a corroboration count, and an **empty result is never cached** so a Tavily outage at 19:00 cannot poison the window. Bare `NSE`-style symbols are not appended to the query (they swamp results); the legal suffix is stripped from the name.
 
 ### `IPO-2b` — `core/ipo/extract.py` — structured extraction
 
@@ -356,29 +358,35 @@ class IpoSubstance(BaseModel):
     red_flags:       list[Sourced] = []   # cap: ipo.research_max_flags
 ```
 
-- [ ] Prompt in `core/config/prompts/shared/ipo_extract.py`, `response_format={"type":"json_object"}` + `extra_body=JSON_MODE_EXTRA_BODY`.
-- [ ] **State the list caps in the prompt itself** so output length is bounded by construction and a fixed `max_tokens` is genuinely safe.
-- [ ] `salvage_truncated_json` on parse failure (the house pattern — see `narrator.py`, `feedback_agent.py`).
-- [ ] **Bound the output in the prompt** (cap list lengths) so a fixed `max_tokens` is genuinely safe. Do not rely on raising `max_tokens`; the dossier curator's 15% silent-truncation rate is what that approach looks like in production.
-- [ ] Check `finish_reason == "length"` and log truncation distinctly from malformation.
+- [x] Prompt in `core/config/prompts/shared/ipo_extract.py`, `response_format={"type":"json_object"}` + `extra_body=JSON_MODE_EXTRA_BODY`.
+- [x] **State the list caps in the prompt itself** so output length is bounded by construction and a fixed `max_tokens` is genuinely safe.
+- [x] `salvage_truncated_json` on parse failure (the house pattern — see `narrator.py`, `feedback_agent.py`). ⚠ It cuts only at **object-valued** top-level keys; this schema's top-level values are lists and scalars, so it salvaged zero keys in testing. `salvage_partial_object()` in `extract.py` is the shape-aware fallback; the house helper is still tried first.
+- [x] **Bound the output in the prompt** (cap list lengths) so a fixed `max_tokens` is genuinely safe. Do not rely on raising `max_tokens`; the dossier curator's 15% silent-truncation rate is what that approach looks like in production.
+- [x] Check `finish_reason == "length"` and log truncation distinctly from malformation.
 
 **Acceptance:** a fixture of real fetched pages yields populated fields with sources; a deliberately truncated response degrades to partial-with-provenance, never to invented numbers.
 
+**Done 2026-09-21** (`c8e54c2`). Design decision worth keeping: extraction is **per document**, and the code stamps the document URL onto every claim — the model is never asked for a URL, so provenance holds by construction (`Sourced` refuses a value without one). Measured on 45 real pages: max completion **264 tokens** against the 900 cap. `Sourced` grew `status` (`corroborated` / `reported`), `sources` (every agreeing URL) and `label` (peer name); `IpoSubstance` grew `docs_read` / `docs_extracted` / `docs_truncated` / `dropped` so a thin result explains itself.
+
 ### `IPO-2c` — Corroboration gate
 
-- [ ] `ipo.research_min_sources` (default 2) distinct **domains** per numeric field.
-- [ ] `ipo.research_agreement_tolerance` (default 0.25) — wider spread discards the field.
-- [ ] Non-numeric fields (promoter name, anchor list) require ≥1 source and are labelled as reported, not verified.
+- [x] `ipo.research_min_sources` (default 2) distinct **domains** per numeric field.
+- [x] `ipo.research_agreement_tolerance` (default 0.25) — wider spread discards the field.
+- [x] Non-numeric fields (promoter name, anchor list) require ≥1 source and are labelled as reported, not verified.
 
 **Why:** this is `ipo_gmp.py`'s rule — *"a single number is treated as a rumour"* — generalised. Scraped financials deserve at least the scepticism already applied to grey-market chatter.
 
 **Acceptance:** two sources agreeing → field kept; two disagreeing beyond tolerance → field `None` with a recorded reason.
 
+**Done 2026-09-21** (in `c8e54c2`). The NSE capture is the case this rule exists for: "NSE" is ambiguous on the open web and sources gave FY25 revenue of ₹1,039cr vs ₹16,352cr and PAT of −₹50cr vs ₹8,406cr. The gate kept **none** of it, recorded each disagreement in `dropped`, and kept the 35.4× P/E two domains agreed on. Series corroborate **per fiscal year** (FY25 / FY2025 / 2024-25 / March 2025 → `FY2025`); peers per name. Consequence for `IPO-3b`: **peer P/E will rarely corroborate** from the open web (VARMORA's four peers all came from one blog) — expect `peer_pe` to be empty more often than not, and do not let S depend on it.
+
 ### `IPO-2d` — Fixtures and tests
 
-- [ ] Capture real payloads for ≥3 issues (one recent, one mid-window, one older) into `tests/fixtures/`.
-- [ ] Tests run fully offline — no network in unit tests.
-- [ ] Full suite green.
+- [x] Capture real payloads for ≥3 issues (one recent, one mid-window, one older) into `tests/fixtures/`. → `tests/fixtures/ipo_research/`: NSE (closed 21 Sep), VARMORA (opens 22 Sep), LEAP (listed 14 Aug); dossiers **and** the recorded bulk-model responses per page.
+- [x] Tests run fully offline — no network in unit tests. The replay client **raises** on any prompt not in the recording.
+- [x] Full suite green — 2904 passed, 5 skipped, 0 failed (2026-09-21).
+
+**Done 2026-09-21.** 60 tests in `tests/unit/ipo/`. Cost of the capture: 18 Tavily calls + 45 bulk-model calls, once.
 
 ---
 

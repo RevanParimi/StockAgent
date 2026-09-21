@@ -21,7 +21,9 @@ Three Loops and skip the work that was actually asked for.
 
 **IPO-0c is blocked on you:** it needs the production Serper counter (`railway ssh` → `cat data/logs/api_usage.json`, or the boot log line `[api_usage] counter intact at boot ... serper=N/2500`). Also found: `fetch_gmp()` has no production caller, so provisioning the key would need a wiring change too — see the plan's IPO-0c progress note.
 
-Next after 0a closes and 0c is decided: Sprint 2 (`IPO-2a`).
+**Sprint 2 is done** (2026-09-21 evening, `e8abda3` + `c8e54c2`): `core/ipo/research.py` (Tavily dossier, cached per issue) and `core/ipo/extract.py` (per-document extraction, corroboration gate). 60 offline tests over three real captures. Not yet wired to any job — that is `IPO-4a`.
+
+Next: Sprint 3 needs its step detail written first (the plan says "added after IPO-1", and IPO-1 is now read). Start with `IPO-3a`/`3b`/`3c` step detail, then build. `IPO-0a` still closes on the 22 Sep brief; `IPO-0c` still waits on the Serper counter.
 
 Read that plan's "State of play as of 2026-09-21" section first. Sprints 0–2 are
 executable; Sprints 3–5 are design-level until `IPO-1` (the P1 backtest read,

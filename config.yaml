@@ -479,6 +479,37 @@ ipo:
   research_max_anchors: 8
   research_max_proceeds: 5
   research_max_flags: 6
+  # ── P3 Hype (plan 2026-09-21 Sprint 3, IPO-3a) — runs DARK ──
+  # Two readings, kept apart. `demand` is the FITTED short-horizon score:
+  # weights follow the IPO-1 read (qib_x >= total_x > retail_x, Spearman
+  # 0.66 / 0.64 / 0.49 vs listing-day return) and anchors are the P1 spine's
+  # p10 / p50 / p90 of each multiple (188 graded listings, 2024-05 -> 2026-08,
+  # measured 2026-09-21). On that spine the composite's top tercile listed
+  # positive 95% of the time, bottom tercile 33% — the hit-rate P5 gates on.
+  # `hype` is H proper (froth): retail x, retail-to-QIB skew, cut-off share,
+  # GMP. It has NO return evidence and none is claimed; skew/cut-off are
+  # modifiers "unweighted for return until P2 rows mature". OFS share is
+  # captured and NEVER scored (spec s3: UNVALIDATED after three measurements).
+  # Every anchor is (p10, p50, p90) on a log scale -> score 0 / 0.5 / 1.
+  demand_weights:
+    qib_x: 0.5
+    total_x: 0.3
+    retail_x: 0.2
+  demand_anchors:                   # fitted: spine percentiles, 2026-09-21
+    qib_x: [1.76, 40.35, 207.34]
+    total_x: [1.57, 30.57, 133.76]
+    retail_x: [0.96, 8.93, 72.49]
+  hype_weights:
+    retail_x: 0.35
+    retail_qib_skew: 0.30
+    cutoff_share: 0.20
+    gmp_pct: 0.15                   # dark until IPO-0c wires the GMP fetch
+  hype_anchors:
+    retail_x: [0.96, 8.93, 72.49]   # fitted: spine percentiles
+    retail_qib_skew: [0.04, 0.28, 1.23]   # fitted: spine percentiles of retail_x / qib_x
+    cutoff_share: [0.10, 0.25, 0.50]      # UNFITTED: the spine has no cut-off share; NSE 14%, MOLBIO 46%
+    gmp_pct: [0.02, 0.15, 0.50]           # UNFITTED: GMP was never captured
+  index_min_coverage: 0.5           # an index resting on < half its weight is None, not a number
 
 # =============================================================================
 # Observability (Three Loops PI, task B2 — spec 2026-08-24 §2.3, §6.2)

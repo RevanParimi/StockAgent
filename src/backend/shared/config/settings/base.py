@@ -984,6 +984,13 @@ IPO_RESEARCH_MAX_PEERS: int = int(cfg("ipo.research_max_peers", fallback=5))
 IPO_RESEARCH_MAX_ANCHORS: int = int(cfg("ipo.research_max_anchors", fallback=8))
 IPO_RESEARCH_MAX_PROCEEDS: int = int(cfg("ipo.research_max_proceeds", fallback=5))
 IPO_RESEARCH_MAX_FLAGS: int = int(cfg("ipo.research_max_flags", fallback=6))
+# P3 Hype (IPO-3a). Spec §5 P3: all weights via cfg(), no env=. Fallbacks are
+# EMPTY so a missing config block yields a dark reading, not a hidden model.
+IPO_DEMAND_WEIGHTS: dict = dict(cfg("ipo.demand_weights", fallback={}) or {})
+IPO_DEMAND_ANCHORS: dict = dict(cfg("ipo.demand_anchors", fallback={}) or {})
+IPO_HYPE_WEIGHTS: dict = dict(cfg("ipo.hype_weights", fallback={}) or {})
+IPO_HYPE_ANCHORS: dict = dict(cfg("ipo.hype_anchors", fallback={}) or {})
+IPO_INDEX_MIN_COVERAGE: float = float(cfg("ipo.index_min_coverage", fallback=0.5))
 
 ADVISOR_SWITCH_CONVICTION_GAP: float = float(cfg("advisor.switch_conviction_gap", fallback=0.15))
 

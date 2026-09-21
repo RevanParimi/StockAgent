@@ -60,8 +60,9 @@ core/ipo/
   research.py      NEW  Tavily query plan + full-page fetch, per-issue cache
   extract.py       NEW  LLM structured extraction + corroboration gate
   substance.py     NEW  S index over browsed + official features
-  hype.py          NEW  H index over captured P2 features
+  hype.py          NEW  demand (fitted) + froth (H) over captured P2 features  ✓ IPO-3a
   verdict.py       NEW  grid, two-horizon outputs, quadrant
+  verdicts.py      NEW  verdict store (IPO-3d), append-only
   deep_dive.py     NEW  orchestration: gather → research → extract → score → narrate
   signals.py       exists (P2 capture ledger)
   velocity.py      exists (P2 derivations)
@@ -75,7 +76,7 @@ core/config/prompts/shared/
 
 services/scheduler/python/scheduler.py   MODIFY  register ipo_deep_dive
 config/milestones.yaml                   MODIFY  register ipo_verdicts_visible_gate (Sprint 3)
-config.yaml                              MODIFY  ipo.research_*, ipo.deep_dive_*, weights
+config.yaml                              MODIFY  ipo.research_*, ipo.deep_dive_*, demand_*/hype_*/substance_* weights+anchors
 tests/unit/ipo/                          NEW     fixtures from real captured payloads
 ```
 
@@ -392,7 +393,7 @@ class IpoSubstance(BaseModel):
 
 ## Sprint 3 — P3, the model (runs dark)
 
-*Step detail added after `IPO-1`.*
+*Step detail written 2026-09-21, after the `IPO-1` read. Every design choice below traces to that read.*
 
 | Task | Deliverable |
 |---|---|
@@ -403,6 +404,103 @@ class IpoSubstance(BaseModel):
 | `IPO-3e` | Register `ipo_verdicts_visible_gate` in `config/milestones.yaml` **in the same commit** (watchdog rule) |
 
 ⚠ **Spec constraint carried forward:** §3 marks **OFS share as UNVALIDATED** after re-measurement — *"P3 must not weight this feature."* Capture it, render it, do not score it.
+
+**Shape of the model, fixed by the `IPO-1` read.** One scoring primitive for every index: each feature maps to
+0–1 by a piecewise-linear curve **on a log scale** through `(p10 → 0, p50 → 0.5, p90 → 1)`, clipped; an index
+is the weight-renormalised mean over the features present, ×100; an index resting on less than
+`ipo.index_min_coverage` (0.5) of its weight is `None`. Anchors and weights live in `config.yaml`, each anchor
+labelled **fitted** (read off the P1 spine, dated) or **UNFITTED** (no spine column exists — stated, not
+disguised). Dark features stay `None`, are listed in `dark`, and never default to zero.
+
+### `IPO-3a` — `core/ipo/hype.py`
+
+- **Chat opener:** `Work task IPO-3a from docs/superpowers/plans/2026-09-21-ipo-prospect-p3-substance.md`
+- **Size:** ~2 h · **Depends on:** `IPO-1` · **Touches:** `core/ipo/hype.py`, `config.yaml`, `base.py`, `tests/unit/test_ipo_hype.py`
+
+- [x] Two readings, kept apart because they carry different evidence: **`demand`** (fitted, the SHORT input —
+      `qib_x 0.5 ≥ total_x 0.3 > retail_x 0.2`, anchors = spine p10/p50/p90) and **`froth`** (H proper —
+      `retail_x`, `retail_qib_skew`, `cutoff_share`, `gmp_pct`; no return evidence, none claimed).
+- [x] Features from the **last ledger snapshot carrying a total** (`velocity.final_demand_snapshot`) plus the
+      NSE cache row for issue size / OFS share. QIB composition (`fii_x`, `dom_fi_x`, `mutual_fund_x`), NII,
+      `demand_delta`, `issue_size_cr`, `news_volume` and `ofs_share` are **captured, never scored** here —
+      composition is a Substance feature (`IPO-3b`); OFS is UNVALIDATED; size-vs-sector-median has no sector
+      for an unlisted issue and stays dark until one exists.
+- [x] `retail_qib_skew` is `None` when the QIB book is `0.0` — a real reading with an undefined ratio, not infinity.
+- [x] Config: `ipo.demand_weights`, `ipo.demand_anchors`, `ipo.hype_weights`, `ipo.hype_anchors`,
+      `ipo.index_min_coverage`; `base.py` fallbacks are **empty** so a missing block yields a dark reading,
+      not a hidden model. No `env=`.
+- [x] `read_hype()` never raises; a failure returns a reading with every scored feature dark.
+- [x] Tests offline: `tests/unit/test_ipo_hype.py` (18).
+
+**Done 2026-09-21.** Fit measured on the local spine (188 graded, 185 with a book), scratch script, not committed:
+
+| anchor | p10 | p50 | p90 | status |
+|---|---|---|---|---|
+| `qib_x` | 1.76 | 40.35 | 207.34 | fitted |
+| `total_x` | 1.57 | 30.57 | 133.76 | fitted |
+| `retail_x` | 0.96 | 8.93 | 72.49 | fitted |
+| `retail_qib_skew` | 0.04 | 0.28 | 1.23 | fitted |
+| `cutoff_share` | 0.10 | 0.25 | 0.50 | UNFITTED — no spine column; NSE 14%, MOLBIO 46% |
+| `gmp_pct` | 0.02 | 0.15 | 0.50 | UNFITTED — never captured |
+
+The `demand` composite over those anchors, terciles by score, `outcomes` at 1 td: **lo −3.1% / 33% positive,
+mid +12.6% / 74%, hi +38.5% / 95%** (n = 61/62/62); Spearman ρ 0.66 at 1 td, 0.59 at 5 td, i.e. it reproduces
+`qib_x` alone and adds nothing — which is the point: a composite that *beat* its best input on the same
+sample would be overfit. `demand ≥ 70` (n=76): +35.1% / 92%; `demand ≤ 30` (n=62): −3.0% / 34%. Reproduced
+with the production `config.yaml` through `read_hype()` itself, not only the scratch script. Live check: the
+NSE book (3.817× / QIB 7.81× / retail 1.10× / 14% cut-off) reads **demand 17, froth 17** — a huge absolute
+book, a thin multiple, no froth. The IPO-0b placeholder called that "SOFT DEMAND"; this says the same thing
+with a number that has a hit-rate behind it.
+
+### `IPO-3b` — `core/ipo/substance.py`
+
+- **Size:** ~3 h · **Depends on:** `IPO-2b/2c` (the `IpoSubstance` shape), `IPO-3a` (the scoring primitive)
+
+- [ ] Inputs: the corroborated `IpoSubstance` (browsed) **and** the ledger snapshot (official — QIB ×,
+      QIB composition). Two provenance classes, both recorded on the reading.
+- [ ] Features: `pat_trend` (sign and slope of the ≤3-year PAT series; a loss-making trajectory scores 0,
+      not `None`), `revenue_cagr`, `issue_pe_vs_peers` (`issue_pe / median(peer_pe)` — **expect it dark
+      most of the time**, per the IPO-2c finding; `S` must not depend on it), `qib_x`, `sticky_share`
+      (`(fii + dom_fi + mutual_fund) / qib` from the ladder), `promoter_track` (categorical → 0/0.5/1 only
+      when `status == "corroborated"`, else dark).
+- [ ] **No fitted anchors exist** — the spine has no Substance column. Every anchor is UNFITTED and labelled
+      so in `config.yaml`; weights are *equal* across present features until evidence says otherwise. The
+      reading carries `fitted: False` so `verdict.py` and the narrator cannot present S with the confidence
+      of `demand`.
+- [ ] Same primitive: `score_index` from `hype.py`, `ipo.substance_weights`, `ipo.substance_anchors`,
+      coverage gate.
+- [ ] Never raises. Tests offline over `tests/fixtures/ipo_research/*_extractions.json` + synthetic ledger rows.
+
+### `IPO-3c` — `core/ipo/verdict.py`
+
+- **Size:** ~2 h · **Depends on:** `IPO-3a`, `IPO-3b`
+
+- [ ] `IpoVerdict` = `{symbol, close_date, as_of, short: {lean, band, basis}, long: {lean=None, basis},
+      quadrant, hype, substance, demand, dark: [...]}`.
+- [ ] **SHORT** from `demand` only (the fitted reading): `≥ ipo.short_strong` → strong / `≤ ipo.short_weak`
+      → weak / else mixed, thresholds default 70 / 30 with the spine hit-rates quoted in the `basis` string
+      (92% / 34%). `froth` **modifies the band, not the lean** — high froth widens the stated pop band and
+      adds the de-rating caution.
+- [ ] **LONG ships dark**: `lean` is always `None`; `basis` records `H − S` and the quadrant so the
+      reasoning is captured, but no direction is asserted. Flipping this is a `config.yaml` edit gated on
+      252-td rows from a second regime — not a code change.
+- [ ] **Quadrant** from `froth` × `substance` against `ipo.quadrant_high` (50): quiet compounder / genuine
+      star / ignore / froth. `None` when either side is `None` — no quadrant from one axis.
+- [ ] Pure function; tests cover all four quadrants, the dark cases, and that `ofs_share` never changes an output.
+
+### `IPO-3d` — Verdict store
+
+- [ ] `core/ipo/verdicts.py`: JSONL at `data/ipo/ipo_verdicts.jsonl`, keyed `(symbol, close_date)`,
+      **append-only** (a re-fire on an extended close date is a new row, not an overwrite), `guard_lossless_rewrite`
+      on any prune. Stores the verdict **and** the feature/component dicts it was computed from, so a later
+      anchor change can be replayed against what was known.
+- [ ] Writes only. No reader outside tests and the watchdog until `IPO-5b`.
+
+### `IPO-3e` — Milestone
+
+- [ ] `ipo_verdicts_visible_gate` (`manual_confirmation`) registered **in the `IPO-3d` commit**. Deadline:
+      the earlier of 60 days of forward P2 rows or 2026-12-31. Action text states the gate: forward hit-rate
+      from the P2 capture on the post-close listing-day lean matching the historical 92% / 34%.
 
 ---
 

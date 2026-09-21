@@ -1,0 +1,122 @@
+{
+ "\"\"\"\n## Objectives of IPO\n\n## Financial Performance of LEAP India\n\n| Details | FY24 | FY25 | FY26 |\n ---  --- |\n| Total Revenue | ₹364.97 | ₹466.47 | ₹729.53 |\n| Total Assets | ₹1,400.28 | ₹2,042.46 | ": {
+  "content": " {\n  \"revenue_cr\": [\n    {\"as_of\": \"FY2024\", \"value\": 364.97},\n    {\"as_of\": \"FY2025\", \"value\": 466.47},\n    {\"as_of\": \"FY2026\", \"value\": 729.53}\n  ],\n  \"pat_cr\": [\n    {\"as_of\": \"FY2024\", \"value\": 37.17},\n    {\"as_of\": \"FY2025\", \"value\": 37.56},\n    {\"as_of\": \"FY2026\", \"value\": 62.34}\n  ],\n  \"ebitda_margin_pct\": null,\n  \"issue_pe\": null,\n  \"peer_pe\": [],\n  \"promoter\": null,\n  \"parent_track\": null,\n  \"anchor_names\": [],\n  \"use_of_proceeds\": [],\n  \"red_flags\": []\n}",
+  "finish_reason": "stop",
+  "usage": {
+   "prompt_tokens": 999,
+   "completion_tokens": 193
+  }
+ },
+ "\"\"\"\nLeap India IPO posted revenues of ₹ 729.53 Cr. for FY26 as against ₹ 466.47 Cr. for FY25. in EBITDA margin of 51.93% FY25 FY24 FY23. Leap India Profit After\n\"\"\"": {
+  "content": "{\n  \"revenue_cr\": [{\"as_of\": \"FY2026\", \"value\": 729.53}, {\"as_of\": \"FY2025\", \"value\": 466.47}],\n  \"pat_cr\": [],\n  \"ebitda_margin_pct\": 51.93,\n  \"issue_pe\": null,\n  \"peer_pe\": [],\n  \"promoter\": null,\n  \"parent_track\": null,\n  \"anchor_names\": [],\n  \"use_of_proceeds\": [],\n  \"red_flags\": []\n}",
+  "finish_reason": "stop",
+  "usage": {
+   "prompt_tokens": 691,
+   "completion_tokens": 119
+  }
+ },
+ "\"\"\"\nIPO-bound LEAP India’s net profit remained almost flat at INR 37.5 Cr in the year ended March 2025 (FY25) as against INR 37.1 Cr in FY24 despite a strong growth in revenue.👇 The company’s operatin": {
+  "content": "{\".revenue_cr\": [{\"as_of\": \"FY2025\", \"value\": 466.4}, {\"as_of\": \"FY2024\", \"value\": 364.9}], \"pat_cr\": [{\"as_of\": \"FY2025\", \"value\": 37.5}, {\"as_of\": \"FY2024\", \"value\": 37.1}], \"ebitda_margin_pct\": null, \"issue_pe\": null, \"peer_pe\": [], \"promoter\": null, \"parent_track\": null, \"anchor_names\": [], \"use_of_proceeds\": [], \"red_flags\": []}",
+  "finish_reason": "stop",
+  "usage": {
+   "prompt_tokens": 1325,
+   "completion_tokens": 141
+  }
+ },
+ "\"\"\"\nThe details about the LEAP India IPO are as follows:\n\n The issue size of the IPO is Rs 2,480.00 Cr.\n The price band for LEAP India IPO is Rs 151 to Rs 159.\n The shares of LEAP India IPO will list ": {
+  "content": "{\"\": null, \"revenue_cr\": [], \"pat_cr\": [], \"ebitda_margin_pct\": null, \"issue_pe\": null, \"peer_pe\": [], \"promoter\": null, \"parent_track\": null, \"anchor_names\": [], \"use_of_proceeds\": [], \"red_flags\": []}",
+  "finish_reason": "stop",
+  "usage": {
+   "prompt_tokens": 1330,
+   "completion_tokens": 75
+  }
+ },
+ "\"\"\"\n## IPO Valuation\n\n| Valuation Metric | Pre IPO | Post IPO |\n --- \n| EPS (₹) | 1.52 | 1.42 |\n| P/E (x) | 104.61 | 111.97 |\n| Market Cap at Offer Price | ₹6,524.53 Cr. | ₹6,384.69 Cr |\n\n The value w": {
+  "content": "{}",
+  "finish_reason": "stop",
+  "usage": {
+   "prompt_tokens": 1456,
+   "completion_tokens": 3
+  }
+ },
+ "\"\"\"\nManaging Director and Chief Executive Officer on the Board of our Company. He has been associated with our Company since February 14, 2014. He has passed the examination for a bachelor’s degree in": {
+  "content": "{\n  \"revenue_cr\": [],\n  \"pat_cr\": [],\n  \"ebitda_margin_pct\": null,\n  \"issue_pe\": null,\n  \"peer_pe\": [],\n  \"promoter\": \"Sunu Mathew and Vertical Holdings II Pte. Ltd.\",\n  \"parent_track\": null,\n  \"anchor_names\": [],\n  \"use_of_proceeds\": [],\n  \"red_flags\": []\n}",
+  "finish_reason": "stop",
+  "usage": {
+   "prompt_tokens": 1286,
+   "completion_tokens": 92
+  }
+ },
+ "\"\"\"\nGlobal investment firm KKR acquired a majority stake in LEAP India in 2023 as part of its Asia infrastructure strategy, and the company is promoted by Sunu Mathew, who serves as Chairman, Managing": {
+  "content": "{\n  \"revenue_cr\": [\n    {\"as_of\": \"FY2024\", \"value\": 371.94},\n    {\"as_of\": \"FY2025\", \"value\": 485.03},\n    {\"as_of\": \"FY2026\", \"value\": 747.36}\n  ],\n  \"pat_cr\": [],\n  \"ebitda_margin_pct\": 50.69,\n  \"issue_pe\": 111.97,\n  \"peer_pe\": [],\n  \"promoter\": \"Sunu Mathew, Vertical Holdings II Pte. Ltd.\",\n  \"parent_track\": \"Global investment firm KKR acquired a majority stake in LEAP India in 2023 as part of its Asia infrastructure strategy.\",\n  \"anchor_names\": [],\n  \"use_of_proceeds\": [],\n  \"red_flags\": [\"High Debt\"]\n}",
+  "finish_reason": "stop",
+  "usage": {
+   "prompt_tokens": 1229,
+   "completion_tokens": 182
+  }
+ },
+ "\"\"\"\n| Objective | Amount (₹ crore) |\n --- |\n| Business expansion and growth | ₹3600 |\n| General corporate purposes | Shall not exceed 25% of gross proceeds |\n\n## Promoter Shareholding of LEAP India IP": {
+  "content": "{\n  \"revenue_cr\": [],\n  \"pat_cr\": [],\n  \"ebitda_margin_pct\": null,\n  \"issue_pe\": null,\n  \"peer_pe\": [],\n  \"promoter\": \"Sunu Mathew and Vertical Holdings II Pte. Ltd.\",\n  \"parent_track\": null,\n  \"anchor_names\": [],\n  \"use_of_proceeds\": [\"Business expansion and growth\", \"General corporate purposes\"],\n  \"red_flags\": []\n}",
+  "finish_reason": "stop",
+  "usage": {
+   "prompt_tokens": 1004,
+   "completion_tokens": 103
+  }
+ },
+ "\"\"\"\nLeap India backed by global investment firm KKR, has raised Rs 743.6 crore through its anchor book, with participation from 32 marquee investors. Ahead of the public issue, Leap India allotted 46,": {
+  "content": "{\n  \"revenue_cr\": [],\n  \"pat_cr\": [],\n  \"ebitda_margin_pct\": null,\n  \"issue_pe\": null,\n  \"peer_pe\": [],\n  \"promoter\": null,\n  \"parent_track\": null,\n  \"anchor_names\": [\n    \"Monetary Authority of Singapore\",\n    \"Morgan Stanley India Investment Fund Inc.\",\n    \"Goldman Sachs Investments (Mauritius) I Ltd.\",\n    \"Government Pension Fund Global\",\n    \"Citigroup Global Markets Mauritius Private Limited\",\n    \"Société Générale – ODI\",\n    \"BNP Paribas Financial Markets – ODI\"\n  ],\n  \"use_of_proceeds\": [],\n  \"red_flags\": []\n}",
+  "finish_reason": "stop",
+  "usage": {
+   "prompt_tokens": 1050,
+   "completion_tokens": 153
+  }
+ },
+ "\"\"\"\nLimited (“Book Running Lead Managers”), has finalized allocation of 46,768,854 Equity Shares, to Anchor Investors at Anchor Investor Allocation Price of ₹ 159/- per Equity Share (including share p": {
+  "content": "{\n  \"revenue_cr\": [],\n  \"pat_cr\": [],\n  \"ebitda_margin_pct\": null,\n  \"issue_pe\": null,\n  \"peer_pe\": [],\n  \"promoter\": null,\n  \"parent_track\": null,\n  \"anchor_names\": [\"SMALLCAP WORLD FUND, INC\", \"MONETARY AUTHORITY OF SINGAPORE\", \"AXIS MUTUAL FUND TRUSTEE LTD A/C AXIS MUTUAL FUND A/C AXIS FLEXI CAP FUND\", \"MOTILAL OSWAL CONSUMPTION FUND\", \"MOTILAL OSWAL LARGE CAP FUND\", \"BANK OF INDIA FLEXI CAP FUND\", \"BANK OF INDIA MULTI CAP FUND\", \"JM FINANCIAL MUTUAL FUND - JM FLEXICAP FUND\"],\n  \"use_of_proceeds\": [],\n  \"red_flags\": []\n}",
+  "finish_reason": "stop",
+  "usage": {
+   "prompt_tokens": 1386,
+   "completion_tokens": 199
+  }
+ },
+ "\"\"\"\nAugust 7, 2026 - The IPO is structured as a fresh issue with no Offer for Sale (OFS) component. The price band and lot size are yet to be disclosed. Objects of Issue: The entire ₹360.00 Crore fres": {
+  "content": "{\n  \"revenue_cr\": [],\n  \"pat_cr\": [],\n  \"ebitda_margin_pct\": null,\n  \"issue_pe\": null,\n  \"peer_pe\": [],\n  \"promoter\": null,\n  \"parent_track\": null,\n  \"anchor_names\": [],\n  \"use_of_proceeds\": [],\n  \"red_flags\": []\n}",
+  "finish_reason": "stop",
+  "usage": {
+   "prompt_tokens": 706,
+   "completion_tokens": 81
+  }
+ },
+ "\"\"\"\nLEAP India Limited intends to utilize the net proceeds from the fresh issue primarily to strengthen its balance sheet by reducing its outstanding debt. Repayment and prepayment of borrowings are e": {
+  "content": "{\n  \"revenue_cr\": [],\n  \"pat_cr\": [],\n  \"ebitda_margin_pct\": null,\n  \"issue_pe\": null,\n  \"peer_pe\": [],\n  \"promoter\": null,\n  \"parent_track\": null,\n  \"anchor_names\": [],\n  \"use_of_proceeds\": [\"Repayment / Prepayment, in Full or in Part, of Certain Borrowings Availed by the Company\", \"General Corporate Purposes\"],\n  \"red_flags\": []\n}",
+  "finish_reason": "stop",
+  "usage": {
+   "prompt_tokens": 1087,
+   "completion_tokens": 109
+  }
+ },
+ "\"\"\"\n## Risks and Threats of LEAP India IPO\n\n1. High dependence on pallet pooling revenue.\n2. Competition from existing and new asset pooling players.\n3. Changes in customer preferences for alternative": {
+  "content": "{\n  \"revenue_cr\": [],\n  \"pat_cr\": [],\n  \"ebitda_margin_pct\": null,\n  \"issue_pe\": null,\n  \"peer_pe\": [],\n  \"promoter\": null,\n  \"parent_track\": null,\n  \"anchor_names\": [],\n  \"use_of_proceeds\": [],\n  \"red_flags\": [\n    \"High dependence on pallet pooling revenue\",\n    \"Competition from existing and new asset pooling players\",\n    \"Changes in customer preferences for alternative asset solutions\",\n    \"Asset damage, loss or lower utilisation risks\",\n    \"Dependence on suppliers for pallets and containers\",\n    \"Increasing maintenance and repair costs\"\n  ]\n}",
+  "finish_reason": "stop",
+  "usage": {
+   "prompt_tokens": 857,
+   "completion_tokens": 147
+  }
+ },
+ "\"\"\"\nAt the same time, the company faces risks related to revenue concentration in pallet pooling, supplier concentration, employee and operator attrition, asset loss, and regulatory compliance.\n\nLEAP ": {
+  "content": "{\n  \"revenue_cr\": [],\n  \"pat_cr\": [],\n  \"ebitda_margin_pct\": null,\n  \"issue_pe\": null,\n  \"peer_pe\": [],\n  \"promoter\": null,\n  \"parent_track\": null,\n  \"anchor_names\": [],\n  \"use_of_proceeds\": [],\n  \"red_flags\": [\n    \"₹28.30 million in assets went unrecovered from customers in Fiscal 2026, booked as an impairment loss\",\n    \"Lose scope with a top account, or lose the renewal outright, and revenue answers directly\",\n    \"Polymer prices climbed in Fiscal 2026, pushing up costs for certain plastic-based offerings\"\n  ]\n}",
+  "finish_reason": "stop",
+  "usage": {
+   "prompt_tokens": 993,
+   "completion_tokens": 151
+  }
+ },
+ "\"\"\"\ninitiated against our Subsidiaries. Actions taken by regulatory or statutory authorities against our Subsidiaries As on the date of this Red Herring Prospectus, there are no outstanding regulatory": {
+  "content": "{\n  \"revenue_cr\": [],\n  \"pat_cr\": [],\n  \"ebitda_margin_pct\": null,\n  \"issue_pe\": null,\n  \"peer_pe\": [],\n  \"promoter\": null,\n  \"parent_track\": null,\n  \"anchor_names\": [],\n  \"use_of_proceeds\": [],\n  \"red_flags\": []\n}",
+  "finish_reason": "stop",
+  "usage": {
+   "prompt_tokens": 1103,
+   "completion_tokens": 81
+  }
+ }
+}

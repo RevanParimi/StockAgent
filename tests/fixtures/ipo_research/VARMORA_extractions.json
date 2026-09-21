@@ -1,0 +1,114 @@
+{
+ "\"\"\"\n| Period Ended | 31 Mar 2026 | 31 Mar 2025 | 31 Mar 2024 |\n ---  --- |\n| Assets | 1,509.87 | 1,589.80 | 1,476.16 |\n| Total Income | 1,562.53 | 1,492.68 | 1,472.58 |\n| Profit After Tax | 55.09 | 30": {
+  "content": "{\n  \"revenue_cr\": [\n    {\"as_of\": \"FY2026\", \"value\": 1562.53},\n    {\"as_of\": \"FY2025\", \"value\": 1492.68},\n    {\"as_of\": \"FY2024\", \"value\": 1472.58}\n  ],\n  \"pat_cr\": [\n    {\"as_of\": \"FY2026\", \"value\": 55.09},\n    {\"as_of\": \"FY2025\", \"value\": 30.77},\n    {\"as_of\": \"FY2024\", \"value\": 44.94}\n  ],\n  \"ebitda_margin_pct\": null,\n  \"issue_pe\": null,\n  \"peer_pe\": [],\n  \"promoter\": null,\n  \"parent_track\": null,\n  \"anchor_names\": [],\n  \"use_of_proceeds\": [],\n  \"red_flags\": []\n}",
+  "finish_reason": "stop",
+  "usage": {
+   "prompt_tokens": 1023,
+   "completion_tokens": 196
+  }
+ },
+ "\"\"\"\n## Varmora Granito Limited Financials (in million)\n\n|  |  |  |  |\n ---  --- |\n| Particulars | 31 Mar 2025 | 31 Mar 2024 | 31 Mar 2023 |\n| Assets | 15,898.04 | 14,761.64 | 12,642.01 |\n| Revenue | 1": {
+  "content": "{\n  \"revenue_cr\": [\n    {\"as_of\": \"FY2025\", \"value\": 1446.029},\n    {\"as_of\": \"FY2024\", \"value\": 1435.481},\n    {\"as_of\": \"FY2023\", \"value\": 1334.946}\n  ],\n  \"pat_cr\": [\n    {\"as_of\": \"FY2025\", \"value\": 30.773},\n    {\"as_of\": \"FY2024\", \"value\": 44.935},\n    {\"as_of\": \"FY2023\", \"value\": 55.064}\n  ],\n  \"ebitda_margin_pct\": null,\n  \"issue_pe\": null,\n  \"peer_pe\": [],\n  \"promoter\": null,\n  \"parent_track\": null,\n  \"anchor_names\": [],\n  \"use_of_proceeds\": [],\n  \"red_flags\": []\n}",
+  "finish_reason": "stop",
+  "usage": {
+   "prompt_tokens": 1213,
+   "completion_tokens": 196
+  }
+ },
+ "\"\"\"\nAround ₹320 crore will go towards repaying or prepaying loans taken by the company and its subsidiaries. This includes Covertek Ceramica, Varmora Sanitarywares, and Simola Tiles.\n The remaining am": {
+  "content": "{\n  \"revenue_cr\": [\n    {\"as_of\": \"FY2025\", \"value\": 1446.029},\n    {\"as_of\": \"FY2024\", \"value\": 1435.481}\n  ],\n  \"pat_cr\": [\n    {\"as_of\": \"FY2025\", \"value\": 30.773},\n    {\"as_of\": \"FY2024\", \"value\": 44.935}\n  ],\n  \"ebitda_margin_pct\": null,\n  \"issue_pe\": null,\n  \"peer_pe\": [],\n  \"promoter\": null,\n  \"parent_track\": null,\n  \"anchor_names\": [],\n  \"use_of_proceeds\": [\n    \"repaying or prepaying loans taken by the company and its subsidiaries\",\n    \"general corporate purposes\"\n  ],\n  \"red_flags\": []\n}",
+  "finish_reason": "stop",
+  "usage": {
+   "prompt_tokens": 848,
+   "completion_tokens": 182
+  }
+ },
+ "\"\"\"\nClick Here To Read All IPO News\n\nVarmora Granito, which competes with listed peers like Kajaria Ceramics, Somany Ceramics, Asian Granito India, and Orient Bell, operates business through eight man": {
+  "content": " {\n  \"revenue_cr\": [\n    {\"as_of\": \"FY2026\", \"value\": 1361.6},\n    {\"as_of\": \"FY2025\", \"value\": 1312.8}\n  ],\n  \"pat_cr\": [\n    {\"as_of\": \"FY2026\", \"value\": 58.4},\n    {\"as_of\": \"FY2025\", \"value\": 28.8}\n  ],\n  \"ebitda_margin_pct\": null,\n  \"issue_pe\": null,\n  \"peer_pe\": [],\n  \"promoter\": null,\n  \"parent_track\": null,\n  \"anchor_names\": [],\n  \"use_of_proceeds\": [],\n  \"red_flags\": []\n}",
+  "finish_reason": "stop",
+  "usage": {
+   "prompt_tokens": 1144,
+   "completion_tokens": 159
+  }
+ },
+ "\"\"\"\nThe peer comparison makes the valuation more interesting. The IPO documents show Kajaria Ceramics at 35.24x P/E, Somany Ceramics at 24.94x, Asian Granito India at 87.36x and Orient Bell at 39.97x,": {
+  "content": "{\n  \"revenue_cr\": [],\n  \"pat_cr\": [{\"as_of\": \"FY2026\", \"value\": 55.09}],\n  \"ebitda_margin_pct\": null,\n  \"issue_pe\": 61,\n  \"peer_pe\": [\n    {\"name\": \"Kajaria Ceramics\", \"value\": 35.24},\n    {\"name\": \"Somany Ceramics\", \"value\": 24.94},\n    {\"name\": \"Asian Granito India\", \"value\": 87.36},\n    {\"name\": \"Orient Bell\", \"value\": 39.97}\n  ],\n  \"promoter\": null,\n  \"parent_track\": null,\n  \"anchor_names\": [],\n  \"use_of_proceeds\": [\"debt repayment\"],\n  \"red_flags\": [\"demanding valuation relative to current earnings and return ratios\"]\n}",
+  "finish_reason": "stop",
+  "usage": {
+   "prompt_tokens": 1132,
+   "completion_tokens": 189
+  }
+ },
+ "\"\"\"\n## Varmora Granito INFORMATION ON IPO ISSUE\n\n### About Varmora Granito\n\n#### Varmora Granito was incorporated on November 18, 2003. The company is one of the leading players in the Indian tiles in": {
+  "content": "{\n  \"revenue_cr\": [],\n  \"pat_cr\": [],\n  \"ebitda_margin_pct\": null,\n  \"issue_pe\": null,\n  \"peer_pe\": [],\n  \"promoter\": \"Bhavesh Vallabhdas Varmora, Hiren R Varmora and Pramodkumar Parsotambhai Patel\",\n  \"parent_track\": null,\n  \"anchor_names\": [],\n  \"use_of_proceeds\": [],\n  \"red_flags\": []\n}",
+  "finish_reason": "stop",
+  "usage": {
+   "prompt_tokens": 1232,
+   "completion_tokens": 109
+  }
+ },
+ "\"\"\"\n| Date | QIB | RII | NII | Total |\n ---  --- \n| Awaiting | | | | |\n\n## Varmora Granito Ltd IPO Reservation\n\n| Investor Category | Shares Offered |\n --- |\n| Anchor Investors | 1,43,51,777 (30.00%) ": {
+  "content": "{\"\": null}",
+  "finish_reason": "stop",
+  "usage": {
+   "prompt_tokens": 1512,
+   "completion_tokens": 6
+  }
+ },
+ "\"\"\"\n## Varmora Granito Ltd shareholder pattern\n\n| Pre-issue | Post-issue |\n --- |\n| Promoter group | 0.0 | 0.0 |\n| Public group | 100.0 | 100.0 |\n\n## Varmora Granito Ltd IPO registrar\n\n| KFin Techolog": {
+  "content": " {\n  \"revenue_cr\": [],\n  \"pat_cr\": [],\n  \"ebitda_margin_pct\": null,\n  \"issue_pe\": null,\n  \"peer_pe\": [],\n  \"promoter\": null,\n  \"parent_track\": null,\n  \"anchor_names\": [],\n  \"use_of_proceeds\": [],\n  \"red_flags\": []\n}",
+  "finish_reason": "stop",
+  "usage": {
+   "prompt_tokens": 914,
+   "completion_tokens": 81
+  }
+ },
+ "\"\"\"\nThe lot size of Varmora Granito Ltd is 101 shares. Retail investors can subscribe to minimum 1 lot and maximum 13 lots. The minimum and maximum application value is ₹14,948 and ₹1,94,324 respectiv": {
+  "content": "{\n  \"revenue_cr\": [],\n  \"pat_cr\": [],\n  \"ebitda_margin_pct\": null,\n  \"issue_pe\": null,\n  \"peer_pe\": [],\n  \"promoter\": null,\n  \"parent_track\": null,\n  \"anchor_names\": [],\n  \"use_of_proceeds\": [],\n  \"red_flags\": []\n}",
+  "finish_reason": "stop",
+  "usage": {
+   "prompt_tokens": 827,
+   "completion_tokens": 80
+  }
+ },
+ "\"\"\"\nVarmora Granito has reduced the size of its fresh issue from the earlier proposed Rs 400 crore and also trimmed the OFS component from the 5.24 crore equity shares planned in its draft document fi": {
+  "content": "{\n  \"revenue_cr\": [],\n  \"pat_cr\": [],\n  \"ebitda_margin_pct\": null,\n  \"issue_pe\": null,\n  \"peer_pe\": [],\n  \"promoter\": null,\n  \"parent_track\": null,\n  \"anchor_names\": [],\n  \"use_of_proceeds\": [\"repay its borrowings and clear the borrowings of its subsidiaries -- Covertek Ceramica, Varmora Sanitarywares and Simola Tiles\", \"general corporate purposes\"],\n  \"red_flags\": []\n}",
+  "finish_reason": "stop",
+  "usage": {
+   "prompt_tokens": 1056,
+   "completion_tokens": 118
+  }
+ },
+ "\"\"\"\nVarmora Granito Ltd, involved in tiles and bathware manufacture, has filed its Draft Red Herring Prospectus (DRHP) with the Securities and Exchange Board of India (SEBI) for an initial public offe": {
+  "content": " {\n  \"revenue_cr\": [],\n  \"pat_cr\": [],\n  \"ebitda_margin_pct\": null,\n  \"issue_pe\": null,\n  \"peer_pe\": [],\n  \"promoter\": \"Parsotambhai Jivrajbhai Patel, Ramanbhai Jivrajbhai Varmora, Vallabhbhai Jivrajbhai Varmora\",\n  \"parent_track\": null,\n  \"anchor_names\": [],\n  \"use_of_proceeds\": [\n    \"Repay borrowings of the company and its subsidiaries, Covertek Ceramica, Varmora Sanitarywares, and Simola Tiles\",\n    \"General corporate purposes\"\n  ],\n  \"red_flags\": []\n}",
+  "finish_reason": "stop",
+  "usage": {
+   "prompt_tokens": 1113,
+   "completion_tokens": 156
+  }
+ },
+ "\"\"\"\nNew Delhi, Tiles and bathware maker Varmora Granito Ltd has filed draft papers with the markets regulator Sebi seeking its go-ahead to mobilise funds through an Initial Public Offering (IPO).  \n  ": {
+  "content": " {\n  \"revenue_cr\": [],\n  \"pat_cr\": [],\n  \"ebitda_margin_pct\": null,\n  \"issue_pe\": null,\n  \"peer_pe\": [],\n  \"promoter\": null,\n  \"parent_track\": null,\n  \"anchor_names\": [],\n  \"use_of_proceeds\": [\n    \"Repay debt of company and subsidiaries\",\n    \"General corporate purposes\"\n  ],\n  \"red_flags\": []\n}",
+  "finish_reason": "stop",
+  "usage": {
+   "prompt_tokens": 1178,
+   "completion_tokens": 99
+  }
+ },
+ "\"\"\"\nTiles manufacturing fuel exposure: the disclosures point to sensitivity to natural gas and propane disruptions and price spikes, with the possibility that cost increases may not always be accepted": {
+  "content": "{\n  \"revenue_cr\": [],\n  \"pat_cr\": [],\n  \"ebitda_margin_pct\": null,\n  \"issue_pe\": null,\n  \"peer_pe\": [],\n  \"promoter\": null,\n  \"parent_track\": null,\n  \"anchor_names\": [],\n  \"use_of_proceeds\": [],\n  \"red_flags\": [\n    \"Sensitivity to natural gas and propane disruptions and price spikes, with possible inability to pass on cost increases to customers\",\n    \"Export receivables beyond nine months as a risk that can delay cash flows and create compliance issues, affecting working capital and financing costs\",\n    \"Shipping disruptions and geopolitical uncertainty can affect exports and input availability, with knock-on effects on production scheduling and customer deliveries\",\n    \"Mixed manufacturing model may lead to coordination issues across facilities and vendors, affecting product availability and delivery commitments\"\n  ]\n}",
+  "finish_reason": "stop",
+  "usage": {
+   "prompt_tokens": 1021,
+   "completion_tokens": 183
+  }
+ },
+ "\"\"\"\nSeptember 24, 2025 - Contingent liabilities: Claims under Income Tax Act ₹139.44m and Central Excise ₹58.96m; additional items under GST and other litigation noted. Regulatory and environmental: D": {
+  "content": "{\"revenue_cr\": [], \"pat_cr\": [], \"ebitda_margin_pct\": null, \"issue_pe\": null, \"peer_pe\": [], \"promoter\": null, \"parent_track\": null, \"anchor_names\": [], \"use_of_proceeds\": [], \"red_flags\": [\"Contingent liabilities: Claims under Income Tax Act ₹139.44m and Central Excise ₹58.96m; additional items under GST and other litigation noted.\", \"Regulatory and environmental: Disclosure of interim compensation demanded by NGT and GPCB for\"]}",
+  "finish_reason": "stop",
+  "usage": {
+   "prompt_tokens": 710,
+   "completion_tokens": 123
+  }
+ }
+}

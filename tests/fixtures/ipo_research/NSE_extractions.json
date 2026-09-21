@@ -1,0 +1,130 @@
+{
+ "\"\"\"\n3. Profit Before Tax (PBT) – PBT surged by 43.5%, climbing to ₹16,057 crore in FY25 from ₹11,184 crore in FY24. The growth was significantly supported by a sharp rise in other income, contributing": {
+  "content": "{\n  \"revenue_cr\": [],\n  \"pat_cr\": [{\"as_of\": \"FY2025\", \"value\": 12188}, {\"as_of\": \"FY2024\", \"value\": 8406}],\n  \"ebitda_margin_pct\": null,\n  \"issue_pe\": null,\n  \"peer_pe\": [],\n  \"promoter\": null,\n  \"parent_track\": null,\n  \"anchor_names\": [],\n  \"use_of_proceeds\": [],\n  \"red_flags\": []\n}",
+  "finish_reason": "stop",
+  "usage": {
+   "prompt_tokens": 1152,
+   "completion_tokens": 114
+  }
+ },
+ "\"\"\"\nTitle: Stock Market India 🇮🇳 on X: \"𝘾𝙤𝙢𝙥𝙡𝙚𝙩𝙚 𝙧𝙚𝙫𝙞𝙚𝙬 𝙤𝙛 𝙎𝙢𝙖𝙧𝙩𝙬𝙤𝙧𝙠𝙨 𝙄𝙋𝙊 I read the RHP extensively. Do repost & like ♻️ for wider awareness among #StockMarket enthusiasts. Let’s dive into it 👇 1️⃣ 𝙊": {
+  "content": "{\n  \"revenue_cr\": [\n    {\"as_of\": \"FY2023\", \"value\": 711.392},\n    {\"as_of\": \"FY2024\", \"value\": 1039.364},\n    {\"as_of\": \"FY2025\", \"value\": 1374.056}\n  ],\n  \"pat_cr\": [\n    {\"as_of\": \"FY2023\", \"value\": -101.046},\n    {\"as_of\": \"FY2024\", \"value\": -49.957},\n    {\"as_of\": \"FY2025\", \"value\": -63.179}\n  ],\n  \"ebitda_margin_pct\": 62.39,\n  \"issue_pe\": null,\n  \"peer_pe\": [],\n  \"promoter\": null,\n  \"parent_track\": null,\n  \"anchor_names\": [],\n  \"use_of_proceeds\": [],\n  \"red_flags\": [\n    \"Still loss making with negative PAT across all years\",\n    \"Negative EPS across all years\",\n    \"Highly negative ROE across all years\",\n    \"High finance cost and significant liabilities indicating high leverage\",\n    \"No PE ratio due to negative EPS\",\n    \"Continued net losses and high depreciation plus interest costs\"\n  ]\n}",
+  "finish_reason": "stop",
+  "usage": {
+   "prompt_tokens": 1773,
+   "completion_tokens": 264
+  }
+ },
+ "\"\"\"\nNSE National Stock Exchange India\nIPO reported revenue of ₹ 2067.44\nCr. in the latest fiscal year, showing business performance, on\nannualised basis. Revenue figures from\nNSE National Stock Exchan": {
+  "content": "{\n  \"revenue_cr\": [{\"as_of\": \"FY2025\", \"value\": 2067.44}],\n  \"pat_cr\": [{\"as_of\": \"FY2025\", \"value\": 1176.64}],\n  \"ebitda_margin_pct\": null,\n  \"issue_pe\": null,\n  \"peer_pe\": [],\n  \"promoter\": null,\n  \"parent_track\": null,\n  \"anchor_names\": [],\n  \"use_of_proceeds\": [],\n  \"red_flags\": []\n}",
+  "finish_reason": "stop",
+  "usage": {
+   "prompt_tokens": 939,
+   "completion_tokens": 119
+  }
+ },
+ "\"\"\"\n| Pre IPO | Post IPO |\n --- |\n| EPS (Rs) | 41.62 | 50.43 |\n| P/E (x) | 42.89 | 35.4 |\n\n## National Stock Exchange of India (NSE) IPO Objectives\n\nAs the National Stock Exchange of India (NSE) IPO i": {
+  "content": "{\n  \"revenue_cr\": [],\n  \"pat_cr\": [],\n  \"ebitda_margin_pct\": null,\n  \"issue_pe\": 35.4,\n  \"peer_pe\": [],\n  \"promoter\": null,\n  \"parent_track\": null,\n  \"anchor_names\": [],\n  \"use_of_proceeds\": [\"Benefits of listing on the largest stock exchange of the nation, which will help in scalability and credibility\", \"Providing a smooth exit to the existing selling shareholders\"],\n  \"red_flags\": []\n}",
+  "finish_reason": "stop",
+  "usage": {
+   "prompt_tokens": 1214,
+   "completion_tokens": 116
+  }
+ },
+ "\"\"\"\nValuation Takeaway: NSE is offering shares at 35.40x P/E, representing a 26.2% discount to BSE Limited (48x P/E), despite NSE having 8x higher\n\"\"\"": {
+  "content": "{\n  \"revenue_cr\": [],\n  \"pat_cr\": [],\n  \"ebitda_margin_pct\": null,\n  \"issue_pe\": 35.40,\n  \"peer_pe\": [{\"name\": \"BSE Limited\", \"value\": 48}],\n  \"promoter\": null,\n  \"parent_track\": null,\n  \"anchor_names\": [],\n  \"use_of_proceeds\": [],\n  \"red_flags\": []\n}",
+  "finish_reason": "stop",
+  "usage": {
+   "prompt_tokens": 686,
+   "completion_tokens": 99
+  }
+ },
+ "\"\"\"\nAnchor investor allocations occur on 16 September, and the lot size is 8 shares, with varying allocations for different investor categories. NSE IPO price band: The National Stock Exchange of Indi": {
+  "content": " {\n  \"revenue_cr\": [],\n  \"pat_cr\": [],\n  \"ebitda_margin_pct\": null,\n  \"issue_pe\": null,\n  \"peer_pe\": [],\n  \"promoter\": null,\n  \"parent_track\": null,\n  \"anchor_names\": [],\n  \"use_of_proceeds\": [],\n  \"red_flags\": []\n}",
+  "finish_reason": "stop",
+  "usage": {
+   "prompt_tokens": 1205,
+   "completion_tokens": 81
+  }
+ },
+ "\"\"\"\n- - Source: www.nseindia.com Note: Data for number of IPOs trading at premium/discount taken at closing price on NSE on the respective date. In case any of the days falls on a non-trading day, the": {
+  "content": "{\n  \"revenue_cr\": [],\n  \"pat_cr\": [],\n  \"ebitda_margin_pct\": null,\n  \"issue_pe\": null,\n  \"peer_pe\": [],\n  \"promoter\": null,\n  \"parent_track\": null,\n  \"anchor_names\": [],\n  \"use_of_proceeds\": [],\n  \"red_flags\": []\n}",
+  "finish_reason": "stop",
+  "usage": {
+   "prompt_tokens": 1285,
+   "completion_tokens": 80
+  }
+ },
+ "\"\"\"\n| Crown Capital Ltd. | Corporate | 58,71,093 | 1,047.99 |\n| 2726247 Ontario Inc. | Corporate | 54,01,286 | 964.13 |\n| Mahagony Ltd. | Corporate | 30,00,000 | 535.50 |\n| Oriental Insurance Co.Ltd.,": {
+  "content": "{\n  \"revenue_cr\": [],\n  \"pat_cr\": [],\n  \"ebitda_margin_pct\": null,\n  \"issue_pe\": null,\n  \"peer_pe\": [],\n  \"promoter\": null,\n  \"parent_track\": null,\n  \"anchor_names\": [],\n  \"use_of_proceeds\": [],\n  \"red_flags\": []\n}",
+  "finish_reason": "stop",
+  "usage": {
+   "prompt_tokens": 1350,
+   "completion_tokens": 81
+  }
+ },
+ "\"\"\"\nBook Running Lead Managers: Kotak Mahindra Capital Company Limited,  JM Financial Limited, Morgan Stanley India Company Private Limited, Citigroup Global Markets India Private Limited, HSBC Securi": {
+  "content": "{\n  \"revenue_cr\": [],\n  \"pat_cr\": [],\n  \"ebitda_margin_pct\": null,\n  \"issue_pe\": null,\n  \"peer_pe\": [],\n  \"promoter\": null,\n  \"parent_track\": null,\n  \"anchor_names\": [],\n  \"use_of_proceeds\": [],\n  \"red_flags\": []\n}",
+  "finish_reason": "stop",
+  "usage": {
+   "prompt_tokens": 1121,
+   "completion_tokens": 80
+  }
+ },
+ "\"\"\"\nNSE allotted 3.78 crore equity shares to anchor investors. Key highlights are: 1. 189 Anchor investors. 2. FPIs accounted for ₹2,883 crore, or\n\"\"\"": {
+  "content": "{\n  \"revenue_cr\": [],\n  \"pat_cr\": [],\n  \"ebitda_margin_pct\": null,\n  \"issue_pe\": null,\n  \"peer_pe\": [],\n  \"promoter\": null,\n  \"parent_track\": null,\n  \"anchor_names\": [],\n  \"use_of_proceeds\": [],\n  \"red_flags\": []\n}",
+  "finish_reason": "stop",
+  "usage": {
+   "prompt_tokens": 684,
+   "completion_tokens": 81
+  }
+ },
+ "\"\"\"\nSept 16 (Reuters) - The National ​Stock Exchange of India allocated shares worth 67.46 billion ‌rupees ($703.04 million) to anchor investors on Wednesday, including the sovereign wealth funds of N": {
+  "content": "{\n  \"revenue_cr\": [],\n  \"pat_cr\": [],\n  \"ebitda_margin_pct\": null,\n  \"issue_pe\": null,\n  \"peer_pe\": [],\n  \"promoter\": null,\n  \"parent_track\": null,\n  \"anchor_names\": [\"Life Insurance Corporation of India\", \"Abu Dhabi Investment Authority\", \"Norway's Government Pension Fund\", \"Fidelity\"],\n  \"use_of_proceeds\": [],\n  \"red_flags\": []\n}",
+  "finish_reason": "stop",
+  "usage": {
+   "prompt_tokens": 1020,
+   "completion_tokens": 105
+  }
+ },
+ "\"\"\"\nThe anchor book comprises institutional investors who are allotted shares before an IPO opens for public subscription.\n\nNational Stock Exchange of India (NSE) finalised its anchor allocation on 16": {
+  "content": "{\n  \"revenue_cr\": [],\n  \"pat_cr\": [],\n  \"ebitda_margin_pct\": null,\n  \"issue_pe\": null,\n  \"peer_pe\": [],\n  \"promoter\": null,\n  \"parent_track\": null,\n  \"anchor_names\": [\n    \"Nippon India Large Cap Fund\",\n    \"Invesco India Contra Fund\",\n    \"SBI Banking & Financial Services Fund\",\n    \"HDFC Large Cap Fund\",\n    \"Franklin India Large Cap Fund\",\n    \"Mirae Asset Large & Midcap Fund\",\n    \"Mirae Asset Large Cap Fund\",\n    \"Edelweiss Balanced Advantage Fund\"\n  ],\n  \"use_of_proceeds\": [],\n  \"red_flags\": []\n}",
+  "finish_reason": "stop",
+  "usage": {
+   "prompt_tokens": 1265,
+   "completion_tokens": 162
+  }
+ },
+ "\"\"\"\n|  |  |  |  |  |\n ---  --- \n| Period | 30th June 2026 | 31st March 2026 | 31st March 2025 | 31st March 2024 |\n| Assets | 91,334.07 | 87,937.44 | 69,466.64 | 65,463.98 |\n| Total Income | 5,252.17 |": {
+  "content": "{\n  \"revenue_cr\": [\n    {\"as_of\": \"FY2025\", \"value\": 19176.83},\n    {\"as_of\": \"FY2024\", \"value\": 16352.06}\n  ],\n  \"pat_cr\": [\n    {\"as_of\": \"FY2025\", \"value\": 12187.69},\n    {\"as_of\": \"FY2024\", \"value\": 8305.74}\n  ],\n  \"ebitda_margin_pct\": null,\n  \"issue_pe\": null,\n  \"peer_pe\": [],\n  \"promoter\": null,\n  \"parent_track\": null,\n  \"anchor_names\": [],\n  \"use_of_proceeds\": [\n    \"Entire proceeds go to selling shareholders (100% OFS)\"\n  ],\n  \"red_flags\": []\n}",
+  "finish_reason": "stop",
+  "usage": {
+   "prompt_tokens": 965,
+   "completion_tokens": 178
+  }
+ },
+ "\"\"\"\nThese two structures are not mutually exclusive. Most Indian IPOs combine both components in a single prospectus: the company raises growth capital through the fresh issue while promoters or early": {
+  "content": "{}",
+  "finish_reason": "stop",
+  "usage": {
+   "prompt_tokens": 1054,
+   "completion_tokens": 2
+  }
+ },
+ "\"\"\"\n[11:18] desirable. However, notably a major share of 81% of these are bank guarantees by nse clearing limited to\n[11:25] BSC clearing limites as interclaring cooperation collateral under sebis fra": {
+  "content": "{\n  \"revenue_cr\": [],\n  \"pat_cr\": [],\n  \"ebitda_margin_pct\": null,\n  \"issue_pe\": null,\n  \"peer_pe\": [],\n  \"promoter\": null,\n  \"parent_track\": null,\n  \"anchor_names\": [],\n  \"use_of_proceeds\": [],\n  \"red_flags\": [\n    \"Competition from BSE taking away market share, especially in equity options premium turnover\",\n    \"Strict regulatory scrutiny, past crises like collocation scam and confidential data sharing by former MD\",\n    \"High technology dependence and technological glitches remain a key challenge\",\n    \"Outstanding litigation of about 2,600 crores against NSE and 674 crores against subsidiaries\",\n    \"81% of collateral are bank guarantees by NSE Clearing to BSC Clearing as inter-clearing cooperation collateral\"\n  ]\n}",
+  "finish_reason": "stop",
+  "usage": {
+   "prompt_tokens": 1187,
+   "completion_tokens": 185
+  }
+ },
+ "\"\"\"\nNSE IPO: The National Stock Exchange raises a red flag regarding substantial financial and operational threats. Emerging regulatory\n\"\"\"": {
+  "content": "{\n  \"revenue_cr\": [],\n  \"pat_cr\": [],\n  \"ebitda_margin_pct\": null,\n  \"issue_pe\": null,\n  \"peer_pe\": [],\n  \"promoter\": null,\n  \"parent_track\": null,\n  \"anchor_names\": [],\n  \"use_of_proceeds\": [],\n  \"red_flags\": [\"substantial financial and operational threats\", \"emerging regulatory\"]\n}",
+  "finish_reason": "stop",
+  "usage": {
+   "prompt_tokens": 667,
+   "completion_tokens": 92
+  }
+ }
+}

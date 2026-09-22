@@ -30,6 +30,11 @@ finally corroborated, or the issue crossed from `open` to `closed` and the lean
 became admissible evidence — is a genuinely new reading and is appended.
 Readers take the newest row per key.
 
+The narration (IPO-4b) rides on the row and is OUTSIDE the dedup rule: a
+re-worded note over the same reading is not a new reading, and a note the
+model wrote differently on a retry must not look like the book moved. The
+narrator's own reuse key (its facts digest) lives on the narration itself.
+
 `prune()` is the only writer that rewrites the file, and it goes through
 `guard_lossless_rewrite` for the reason that module documents: read tolerance
 plus a rewrite equals silent permanent deletion.
@@ -45,6 +50,7 @@ from pydantic import BaseModel, Field
 
 from core.ipo.hype import HypeReading
 from core.ipo.ledger import guard_lossless_rewrite
+from core.ipo.narrate import IpoNarration
 from core.ipo.substance import SubstanceReading
 from core.ipo.verdict import IpoVerdict
 
@@ -59,6 +65,7 @@ class IpoVerdictRecord(BaseModel):
     verdict: IpoVerdict = Field(default_factory=IpoVerdict)
     hype: HypeReading = Field(default_factory=HypeReading)
     substance: SubstanceReading = Field(default_factory=SubstanceReading)
+    narration: IpoNarration = Field(default_factory=IpoNarration)   # IPO-4b; not a reading
 
     @property
     def key(self) -> tuple[str, str]:
@@ -89,8 +96,12 @@ def _same_reading(a: IpoVerdictRecord, b: IpoVerdictRecord) -> bool:
     replay possible. Comparing only the verdict would silently drop the better
     row. Duplicates are not a counting hazard either way: the gate reads one
     row per key via `latest()`, not every row in the file.
+
+    Narrower than the row by one field: the narration is prose ABOUT the
+    reading, and two wordings of one reading are one reading.
     """
-    return a.model_dump(exclude={"written_at"}) == b.model_dump(exclude={"written_at"})
+    skip = {"written_at", "narration"}
+    return a.model_dump(exclude=skip) == b.model_dump(exclude=skip)
 
 
 class IpoVerdictStore:
@@ -104,8 +115,20 @@ class IpoVerdictStore:
     def path(self) -> Path:
         return self._dir / "ipo_verdicts.jsonl"
 
+    def is_new(self, verdict: IpoVerdict, hype: HypeReading | None = None,
+               substance: SubstanceReading | None = None) -> bool:
+        """Would `append` write this reading? The deep dive asks before it
+        spends a model call on a narration the dedup rule would then drop."""
+        if not verdict.symbol:
+            return False
+        newest = self.latest(verdict.symbol, verdict.close_date)
+        return newest is None or not _same_reading(
+            newest, IpoVerdictRecord(verdict=verdict, hype=hype or HypeReading(),
+                                     substance=substance or SubstanceReading()))
+
     def append(self, verdict: IpoVerdict, hype: HypeReading | None = None,
                substance: SubstanceReading | None = None, *,
+               narration: IpoNarration | None = None,
                written_at: str | None = None) -> bool:
         """Store one decision. True if written, False on the content-dedup rule.
 
@@ -117,7 +140,8 @@ class IpoVerdictStore:
             return False
         record = IpoVerdictRecord(written_at=written_at or _now_iso(), verdict=verdict,
                                   hype=hype or HypeReading(),
-                                  substance=substance or SubstanceReading())
+                                  substance=substance or SubstanceReading(),
+                                  narration=narration or IpoNarration())
         newest = self.latest(verdict.symbol, verdict.close_date)
         if newest is not None and _same_reading(newest, record):
             return False

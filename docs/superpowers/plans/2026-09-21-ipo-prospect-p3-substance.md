@@ -680,14 +680,58 @@ opening one. Rebuild it on a machine with Node: `python scripts/docs/build_kt_pd
 
 - **Chat opener:** `Work task IPO-4b from docs/superpowers/plans/2026-09-21-ipo-prospect-p3-substance.md`
 - **Depends on:** `IPO-4a`
-- [ ] `core/config/prompts/shared/ipo_narrate.py` — facts in (the `SubstanceReading.captured` block, the
+- [x] `core/config/prompts/shared/ipo_narrate.py` — facts in (the `SubstanceReading.captured` block, the
       corroborated series with their URLs, the book), prose out. The prompt is forbidden from stating a
       lean, a band or a quadrant: those are verdict fields and stay dark; the narration is the `IPO-5a`
       content (what the business does, trajectory, valuation vs peers, who took anchor, red flags).
-- [ ] Deterministic fallback: a templated paragraph from the same structured findings when the LLM fails,
+- [x] Deterministic fallback: a templated paragraph from the same structured findings when the LLM fails,
       so a narration is never missing because a model was.
-- [ ] Stored beside the verdict row (a `narration` field on `IpoVerdictRecord`, default empty — the
+- [x] Stored beside the verdict row (a `narration` field on `IpoVerdictRecord`, default empty — the
       store's dedup rule must ignore it, or a re-worded narration would look like a new reading).
+- [x] `core/ipo/narrate.py`: `narration_facts` (the block), `check_narration` (the two guards),
+      `render_template` (the fallback), `narrate` (the whole note). `config.yaml`
+      `ipo.narrate_enabled` / `narrate_max_words` (220) / `narrate_max_tokens` (600), mirrored in
+      `base.py` via `cfg()`, no `env=`.
+- [x] Living docs: `docs/TECHNICAL_DESIGN.md` §8 IPO layers row; `TEAM_TESTING_GUIDE.md` case **05-F**
+      (read a stored note beside its findings). `check_kt_docs.py` green but for the pre-existing PDF
+      digest. ⚠ The KT PDF is still **not** regenerated — same missing Node/Chromium as `IPO-4a`.
+- [x] Tests, `tests/unit/ipo/test_ipo_narrate.py`, 45 offline over the recorded VARMORA dossier.
+
+**Done 2026-09-22.** The plan's checklist asked the *prompt* to forbid the lean, the band and the
+quadrant. That is where the constraint was weakest, so the build moved it out of the prompt and into
+the code path, three ways:
+
+1. **The verdict is never passed to the narrator.** `narration_facts()` takes the research, the
+   `HypeReading.features`, the `SubstanceReading.captured` block and the NSE row — no index, no
+   component, no coverage, no lean. A test asserts no verdict-shaped KEY reaches the block and that
+   none of `demand`/`froth`/`S` is even in the set of numbers a faithful note may contain.
+2. **Every number in the prose must appear in the facts.** Rounding is admitted (to 2/1/0 decimals, and
+   a 0..1 share as a percentage); arithmetic is not — a model writing "PAT grew 79.1%" over figures
+   that never state 79.1 is rejected outright. The check reads the *model-facing* block, so digits
+   inside a URL slug (`…rs-140-148-per-share-14031696`) are not a licence to quote them.
+3. **A vocabulary rejects the note** — the quadrant names, advice verbs, valuation adjectives, and the
+   arithmetic that carries no digits for guard 2 to see (`doubled`, `halved`, `times higher`). Carve-out:
+   a term the documents themselves used is the document's word, not the model's.
+
+Three further decisions beyond the checklist:
+
+- **The model never sees a URL.** `for_model()` replaces every `sources` list with its COUNT, so the
+  model can say "sources agree" without being handed a string full of unsourced digits. The URLs still
+  travel in code and become the note's "Sources:" line, which — with the "research view — not advice"
+  framing — is appended by `compose()` on both routes. Neither is ever the model's to write or omit.
+- **The note is written only for a row that will be stored.** `IpoVerdictStore.is_new()` is asked first,
+  so prose is never bought for a reading the dedup rule then drops, and a dark (`unread`) issue costs no
+  model call at all.
+- **Prose is reused while the facts digest holds.** An issue therefore costs at most two notes: one at
+  T−1 and one when the book turns final — which is a change the note *states* ("book open — interim
+  figures" vs "closed — final figures"), so it genuinely earns fresh prose. Every evening after that
+  dedups to nothing. `IPO-4a`'s zero-cost post-close claim covers network and extraction; the narration
+  adds exactly one model call at the close, and the test that proves it says so.
+
+Known limits, recorded rather than fixed: the vocabulary is a denylist, so it constrains the shapes seen
+in testing and not every possible opinion; and `use_of_proceeds` surfaces five near-identical entries for
+VARMORA because `extract.py`'s `_reported_many` dedups only exact matches — visible in the rendered
+template above, and a Sprint 2 cleanup, not a narrator bug. Full suite 3089 passed, 5 skipped.
 
 ### `IPO-4c` — audit integration
 

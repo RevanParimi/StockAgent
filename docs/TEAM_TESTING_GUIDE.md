@@ -150,6 +150,7 @@ the brief's IPO section and engineer-supplied calendar/history/snapshot reports.
 | 05-C | Compare two demand snapshots and a repeated unchanged refresh. | Changes match captured facts; duplicate unchanged input is not presented as new demand growth. |
 | 05-D | For issue price 100 and listing close 110, inspect the historical return; also inspect an unreached 252-session horizon. | Listing-close return is +10%; the unreached horizon is absent/unavailable, not 0% or a loss. |
 | 05-E | Inspect a small subscription bucket and a post-listing shelf candidate. | Sample limits are disclosed. A ranking/oversubscription/GMP figure is not sold as an established allotment or listing-gain prediction. Lock-in heuristic dates require issue-specific confirmation. |
+| 05-F | Ask an engineer for a stored IPO research note (the deep dive's narration) and read it beside the structured findings it was written from. | Every figure in the note appears in the findings; the sources line and the “research view — not advice” framing are present. No lean, band, quadrant, index, score or recommendation to apply appears anywhere in the note. Notes are stored only; none reaches a brief or any other surface. |
 
 **Deliverable:** one IPO lifecycle sheet, from opening through observed outcomes,
 with unknown/stale fields marked. Prospect P0/P1/P2 features are existing code;

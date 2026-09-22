@@ -39,8 +39,12 @@ dynamically scheduled job rots silently; "who closes tomorrow?" asked every
 evening cannot, and because the store key includes `close_date` an extension
 re-fires a fresh analysis rather than being deduped away.
 
-The LLM is nowhere in this file. It extracts inside extract.py and — from
-IPO-4b — narrates; it never decides.
+The LLM is nowhere in this file. It extracts inside extract.py and narrates
+inside narrate.py; it never decides. The narration is written only for a row
+that will actually be stored, and reuses the previous row's prose when the
+facts digest has not moved — so an issue costs at most two notes: one at T-1
+and one when the book turns final (which the note states), and the evenings
+after that dedup to nothing at all.
 """
 from __future__ import annotations
 
@@ -56,6 +60,7 @@ from pydantic import BaseModel, Field
 from core.ipo.calendar import issue_state
 from core.ipo.extract import IpoSubstance, extract_substance
 from core.ipo.hype import HypeReading, read_hype
+from core.ipo.narrate import IpoNarration, narrate
 from core.ipo.research import ResearchDossier, _cache_path, research_issue
 from core.ipo.signals import IpoSignalStore
 from core.ipo.substance import SubstanceReading, read_substance
@@ -93,6 +98,7 @@ class DeepDiveResult(BaseModel):
     verdict: IpoVerdict = Field(default_factory=IpoVerdict)
     hype: HypeReading = Field(default_factory=HypeReading)
     substance: SubstanceReading = Field(default_factory=SubstanceReading)
+    narration: IpoNarration = Field(default_factory=IpoNarration)
     written: bool = False                       # False also on the store's dedup
     unread: bool = False                        # every index dark: nothing to store
     error: str = ""
@@ -265,7 +271,18 @@ def analyse(cand: Candidate, on: date, *,
         if verdict.demand is None and verdict.hype is None and verdict.substance is None:
             result.unread = True
             return result
-        result.written = (verdict_store or IpoVerdictStore()).append(verdict, hype, substance)
+        store = verdict_store or IpoVerdictStore()
+        # Narrate only what will be stored, and only what is not already
+        # narrated: the dedup rule ignores the narration, so a note written
+        # for a row that is then deduped is a model call spent on nothing,
+        # and the post-close re-reads would otherwise pay it every evening.
+        if store.is_new(verdict, hype, substance):
+            previous = store.latest(cand.symbol, cand.close_date)
+            result.narration = narrate(research, hype, substance, row,
+                                       symbol=cand.symbol, close_date=cand.close_date,
+                                       state=cand.state, client=client,
+                                       previous=previous.narration if previous else None)
+        result.written = store.append(verdict, hype, substance, narration=result.narration)
     except Exception as exc:
         result.error = str(exc)[:300]
         logger.warning("[%s] %s (%s) failed (non-fatal): %s", _TAG, cand.symbol, cand.slot, exc)
@@ -333,13 +350,13 @@ def run_deep_dive_sweep(on: date | None = None, *,
                 "demand": res.verdict.demand, "hype": res.verdict.hype,
                 "substance": res.verdict.substance, "lean": res.verdict.short.lean,
                 "evidenced": res.verdict.short.evidenced, "written": res.written,
-                "unread": res.unread, "error": res.error,
+                "narration": res.narration.source, "unread": res.unread, "error": res.error,
             })
             logger.info("[%s] %s close=%s slot=%s docs=%d extracted=%d demand=%s substance=%s "
-                        "lean=%s evidenced=%s written=%s%s%s",
+                        "lean=%s evidenced=%s narration=%s written=%s%s%s",
                         _TAG, res.symbol, res.close_date, res.slot, res.docs, res.docs_extracted,
                         res.verdict.demand, res.verdict.substance, res.verdict.short.lean,
-                        res.verdict.short.evidenced, res.written,
+                        res.verdict.short.evidenced, res.narration.source or "none", res.written,
                         " (unread: every index dark, not stored)" if res.unread else "",
                         f" error={res.error}" if res.error else "")
 

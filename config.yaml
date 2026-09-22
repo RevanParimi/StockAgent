@@ -589,6 +589,18 @@ ipo:
   deep_dive_minute: 0
   deep_dive_lead_days: 1
   deep_dive_max_issues: 5
+  # ── P3 narrator — the explainer (IPO-4b) ──
+  # Prose over the SAME structured findings the indices read, written by the
+  # bulk model and checked in code: every number in the note must appear in
+  # the facts, and a verdict/advice vocabulary rejects it. A rejected or
+  # failed note falls back to a deterministic template from the same facts,
+  # so a narration is never missing because a model was. The verdict is
+  # never passed to the narrator — the note asserts sourced facts only.
+  # narrate_max_words is stated inside the prompt, so max_tokens is sized
+  # for it (~220 words is comfortably under 600 tokens) rather than hoped at.
+  narrate_enabled: true
+  narrate_max_words: 220
+  narrate_max_tokens: 600
 
 # =============================================================================
 # Observability (Three Loops PI, task B2 — spec 2026-08-24 §2.3, §6.2)

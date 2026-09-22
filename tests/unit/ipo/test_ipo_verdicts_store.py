@@ -256,6 +256,8 @@ def test_the_file_is_jsonl_at_the_documented_path(tmp_path):
     store.append(_verdict(), _hype(), _sub())
     assert store.path.name == "ipo_verdicts.jsonl"
     payload = json.loads(store.path.read_text(encoding="utf-8").splitlines()[0])
-    assert set(payload) == {"written_at", "verdict", "hype", "substance"}
+    # `narration` joined the row at IPO-4b: prose about the reading, outside
+    # the dedup rule, never an input to it.
+    assert set(payload) == {"written_at", "verdict", "hype", "substance", "narration"}
     assert payload["verdict"]["long"]["lean"] is None
     assert IpoVerdictRecord(**payload).verdict.symbol == "VARMORA"

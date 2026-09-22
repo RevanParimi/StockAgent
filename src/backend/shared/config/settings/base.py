@@ -1012,6 +1012,12 @@ IPO_DEEP_DIVE_HOUR: int = int(cfg("ipo.deep_dive_hour", fallback=19))
 IPO_DEEP_DIVE_MINUTE: int = int(cfg("ipo.deep_dive_minute", fallback=0))
 IPO_DEEP_DIVE_LEAD_DAYS: int = int(cfg("ipo.deep_dive_lead_days", fallback=1))
 IPO_DEEP_DIVE_MAX_ISSUES: int = int(cfg("ipo.deep_dive_max_issues", fallback=5))
+# P3 narrator (IPO-4b). The model narrates structured findings; it never
+# decides, and the verdict is never passed to it. Disabled -> the
+# deterministic template, which is a complete note, not a degraded one.
+IPO_NARRATE_ENABLED: bool = bool(cfg("ipo.narrate_enabled", fallback=True))
+IPO_NARRATE_MAX_WORDS: int = int(cfg("ipo.narrate_max_words", fallback=220))
+IPO_NARRATE_MAX_TOKENS: int = int(cfg("ipo.narrate_max_tokens", fallback=600))
 
 ADVISOR_SWITCH_CONVICTION_GAP: float = float(cfg("advisor.switch_conviction_gap", fallback=0.15))
 

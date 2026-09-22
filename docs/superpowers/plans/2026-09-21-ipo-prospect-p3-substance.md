@@ -21,6 +21,7 @@
 - **Email is now per-account.** `resolve_recipient()` routes each outbox row to the address of the account that owns it, falling back to `DELIVERY_EMAIL_TO`. ⚠ Known gap: a *transient* `users.db` lookup failure also falls back, which in multi-user beta could route one user's brief to the owner's inbox. Tighten before real beta users.
 - **The IPO lean the user saw is a placeholder**, not a model — `brief.py` says the derived indices stay dark until P3/P5. That complaint is what this plan answers.
 - **This plan is design-level for Sprints 3–5 on purpose.** See the scope note below.
+- **Update 2026-09-22:** Sprint 3's step detail is written and `IPO-3a`/`3b`/`3c` are built — `hype.py`, `substance.py`, `verdict.py`. The model now produces a verdict end to end and **nothing is wired to a job or a surface**: `IPO-3d` (the store) is next, then `IPO-3e` (the milestone, same commit), then Sprint 4.
 
 ## Global Constraints
 
@@ -494,18 +495,55 @@ the quadrant needs both axes, and an issue whose business could not be read is "
 
 - **Size:** ~2 h · **Depends on:** `IPO-3a`, `IPO-3b`
 
-- [ ] `IpoVerdict` = `{symbol, close_date, as_of, short: {lean, band, basis}, long: {lean=None, basis},
-      quadrant, hype, substance, demand, dark: [...]}`.
-- [ ] **SHORT** from `demand` only (the fitted reading): `≥ ipo.short_strong` → strong / `≤ ipo.short_weak`
+- [x] `IpoVerdict` = `{symbol, close_date, as_of, state, short: {lean, band, basis, evidenced},
+      long: {lean=None, basis, h_minus_s}, quadrant, hype, substance, demand, dark: [...]}`.
+- [x] **SHORT** from `demand` only (the fitted reading): `≥ ipo.short_strong` → strong / `≤ ipo.short_weak`
       → weak / else mixed, thresholds default 70 / 30 with the spine hit-rates quoted in the `basis` string
       (92% / 34%). `froth` **modifies the band, not the lean** — high froth widens the stated pop band and
       adds the de-rating caution.
-- [ ] **LONG ships dark**: `lean` is always `None`; `basis` records `H − S` and the quadrant so the
+- [x] **LONG ships dark**: `lean` is always `None`; `basis` records `H − S` and the quadrant so the
       reasoning is captured, but no direction is asserted. Flipping this is a `config.yaml` edit gated on
       252-td rows from a second regime — not a code change.
-- [ ] **Quadrant** from `froth` × `substance` against `ipo.quadrant_high` (50): quiet compounder / genuine
+- [x] **Quadrant** from `froth` × `substance` against `ipo.quadrant_high` (50): quiet compounder / genuine
       star / ignore / froth. `None` when either side is `None` — no quadrant from one axis.
-- [ ] Pure function; tests cover all four quadrants, the dark cases, and that `ofs_share` never changes an output.
+- [x] Pure function; tests cover all four quadrants, the dark cases, and that `ofs_share` never changes an output.
+
+**Done 2026-09-22.** The bands were measured, not chosen: same spine, same scratch method as `IPO-3a`
+(185 rows carrying a book and a 1 td outcome; `demand` scored with the production anchors, split at 70/30).
+
+| lean | n | mean 1 td | positive | band (p25–p75) | high-froth band |
+|---|---|---|---|---|---|
+| strong (`demand ≥ 70`) | 76 | +35.1% | 92% | +15.1 → +51.5 | +15.3 → +51.8 |
+| mixed | 47 | +10.5% | 72% | −1.6 → +20.2 | −7.7 → +13.0 |
+| weak (`demand ≤ 30`) | 62 | −3.0% | 34% | −8.7 → +3.2 | −11.5 → +3.2 |
+
+The right-hand column is the same percentiles restricted to `froth ≥ 50`, and it is what turns *"froth
+widens the band, not the lean"* from an assertion into a measurement: every band is wider (IQR, points —
+strong 36.5 vs 26.1, mixed 20.7 vs 17.1, weak 14.7 vs 10.3) while the cohort mean barely moves (strong
++35.0% vs +35.7%). So a high-froth issue gets the **wider** measured band and the de-rating caution, and
+the lean is untouched. ⚠ Caveat carried in `config.yaml` at the block: the spine holds no cut-off share
+and no GMP, so the froth used for that split rested on two of its four legs (0.65 coverage); a production
+froth including cut-off share is not on exactly the same scale.
+
+**One departure from the design line above: a fourth field on `short`, `evidenced`.** The `IPO-1` caveat
+that shapes P3 is that the 92% is admissible only for a **post-close** lean, while `IPO-4a` fires at T−1.
+Leaving that to be re-derived at the surface is how a hit-rate ends up quoted where it does not hold, so
+the verdict decides it once (`state ∈ {closed, listed}`), quotes the cohort **only** when it is True, and
+otherwise says in the basis that the figure is not admissible and the lean awaits forward P2 validation.
+`IPO-5b` then gates on that one flag. The spine cohorts live in `ipo.short_cohorts` beside the thresholds
+they measure, with a config comment requiring a re-measurement if `short_strong`/`short_weak` move.
+
+Live chain over the three recorded dossiers and the books that existed on 21 Sep:
+
+| issue | state | demand | froth | S | SHORT | evidenced | quadrant |
+|---|---|---|---|---|---|---|---|
+| VARMORA | upcoming | dark | dark | dark | no lean | no | none |
+| NSE | open | 17.0 | 17.0 | dark | weak, −8.7 → +3.2 | **no** — T−1 | none |
+| LEAP | closed | 29.1 | 18.0 | 53.2 | weak, −8.7 → +3.2 | yes (34%, n=62) | **quiet compounder** |
+
+LEAP is §3's Ather shape in miniature — a book that does not argue for a pop over a business that reads
+fine (`H − S = −35.2`) — and the only horizon that would act on that reading is the one shipping dark.
+51 offline tests (`tests/unit/ipo/test_ipo_verdict.py`); full unit suite 2992 passed, 5 skipped.
 
 ### `IPO-3d` — Verdict store
 

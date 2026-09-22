@@ -7,11 +7,12 @@ The user resequenced onto **PI "Prospect" (IPO intelligence)**. The next task is
 AGENTS.md step-2 story-selection rule this conversation; it would route you into
 Three Loops and skip the work that was actually asked for.
 
-**Next task:** `IPO-0a`, then `IPO-0b`, in
+**Next task:** `IPO-3d` (+ `IPO-3e` in the same commit) in
 [the P3/Substance plan](../../superpowers/plans/2026-09-21-ipo-prospect-p3-substance.md).
+The per-task status below is current as of 2026-09-22; read it before picking anything up.
 
 **Chat opener:**
-`Work task IPO-0a from docs/superpowers/plans/2026-09-21-ipo-prospect-p3-substance.md`
+`Work task IPO-3d from docs/superpowers/plans/2026-09-21-ipo-prospect-p3-substance.md`
 
 **IPO-0a status (2026-09-21 afternoon):** worked, not closeable today — nothing is in the `closed — awaiting listing` state until NSE and SONA close tonight. Read the "Progress 2026-09-21" note under IPO-0a in the plan; it names the two pieces of production evidence the 22 Sep 08:50 brief provides. Do not delete the milestone entry without both.
 
@@ -23,7 +24,13 @@ Three Loops and skip the work that was actually asked for.
 
 **Sprint 2 is done** (2026-09-21 evening, `e8abda3` + `c8e54c2`): `core/ipo/research.py` (Tavily dossier, cached per issue) and `core/ipo/extract.py` (per-document extraction, corroboration gate). 60 offline tests over three real captures. Not yet wired to any job — that is `IPO-4a`.
 
-Next: Sprint 3 needs its step detail written first (the plan says "added after IPO-1", and IPO-1 is now read). Start with `IPO-3a`/`3b`/`3c` step detail, then build. `IPO-0a` still closes on the 22 Sep brief; `IPO-0c` still waits on the Serper counter.
+**Sprint 3 is three-fifths done** (`4c26072`, `c60f602`, and `IPO-3c` on 2026-09-22): `hype.py` (fitted `demand` + unfitted `froth`), `substance.py` (S, never fitted) and `verdict.py` (the §3 grid, SHORT from `demand`, LONG hard-wired dark). The model runs end to end on the recorded dossiers and reaches no job and no surface.
+
+**Next task:** `IPO-3d` (the verdict store) with `IPO-3e` (the `ipo_verdicts_visible_gate` milestone) **in the same commit** — the plan makes that a watchdog rule, not a preference. Then Sprint 4.
+
+**Chat opener:** `Work task IPO-3d from docs/superpowers/plans/2026-09-21-ipo-prospect-p3-substance.md`
+
+Still open from Sprint 0: `IPO-0a` closes on the 22 Sep brief; `IPO-0c` still waits on the production Serper counter (see below).
 
 Read that plan's "State of play as of 2026-09-21" section first. Sprints 0–2 are
 executable; Sprints 3–5 are design-level until `IPO-1` (the P1 backtest read,

@@ -993,6 +993,17 @@ IPO_HYPE_ANCHORS: dict = dict(cfg("ipo.hype_anchors", fallback={}) or {})
 IPO_INDEX_MIN_COVERAGE: float = float(cfg("ipo.index_min_coverage", fallback=0.5))
 IPO_SUBSTANCE_WEIGHTS: dict = dict(cfg("ipo.substance_weights", fallback={}) or {})
 IPO_SUBSTANCE_ANCHORS: dict = dict(cfg("ipo.substance_anchors", fallback={}) or {})
+# P3 verdict (IPO-3c). The two thresholds carry real fallbacks — a lean has to
+# split somewhere, and 70/30 is the split the spine cohorts were measured at.
+# The cohort and band TABLES fall back EMPTY: with no config the verdict states
+# a lean and quotes no hit-rate and no band, rather than inventing either.
+IPO_SHORT_STRONG: float = float(cfg("ipo.short_strong", fallback=70.0))
+IPO_SHORT_WEAK: float = float(cfg("ipo.short_weak", fallback=30.0))
+IPO_FROTH_HIGH: float = float(cfg("ipo.froth_high", fallback=50.0))
+IPO_QUADRANT_HIGH: float = float(cfg("ipo.quadrant_high", fallback=50.0))
+IPO_SHORT_COHORTS: dict = dict(cfg("ipo.short_cohorts", fallback={}) or {})
+IPO_SHORT_BANDS: dict = dict(cfg("ipo.short_bands", fallback={}) or {})
+IPO_SHORT_BANDS_HIGH_FROTH: dict = dict(cfg("ipo.short_bands_high_froth", fallback={}) or {})
 
 ADVISOR_SWITCH_CONVICTION_GAP: float = float(cfg("advisor.switch_conviction_gap", fallback=0.15))
 

@@ -19,7 +19,7 @@ records remediation acceptance separately.
 |---|---|
 | Application | FastAPI from `services/api/server.py`; Docker uses Python 3.11 and two Uvicorn workers. |
 | Background ownership | One worker binds a localhost TCP port and starts scheduled/background work. Container-local guard; no continuous standby takeover. |
-| Scheduler | In-process APScheduler, up to 23 job IDs depending on gates and valid cron. IST schedule in KT section 9. |
+| Scheduler | In-process APScheduler, up to 24 job IDs depending on gates and valid cron. IST schedule in KT section 9. |
 | Storage | JSON/JSONL, parquet and SQLite under configured data paths; production volume was `/app/data` in the September 10 snapshot. |
 | Frontend | Served `src/frontend/prototypes/` JSX/PWA; runtime browser transformation, no compiled frontend build. |
 | External dependencies | Market/search providers, OpenRouter-compatible model client, optional SMTP and web push. |

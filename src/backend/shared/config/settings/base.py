@@ -1005,6 +1005,13 @@ IPO_SHORT_COHORTS: dict = dict(cfg("ipo.short_cohorts", fallback={}) or {})
 IPO_SHORT_BANDS: dict = dict(cfg("ipo.short_bands", fallback={}) or {})
 IPO_SHORT_BANDS_HIGH_FROTH: dict = dict(cfg("ipo.short_bands_high_froth", fallback={}) or {})
 IPO_VERDICT_RETENTION_DAYS: int = int(cfg("ipo.verdict_retention_days", fallback=1200))
+# P3 deep dive (IPO-4a). The daily sweep that wires Sprints 2-3 to the clock:
+# 19:00 IST, after the 17:45 live refresh has captured the evening book.
+IPO_DEEP_DIVE_ENABLED: bool = bool(cfg("ipo.deep_dive_enabled", fallback=True))
+IPO_DEEP_DIVE_HOUR: int = int(cfg("ipo.deep_dive_hour", fallback=19))
+IPO_DEEP_DIVE_MINUTE: int = int(cfg("ipo.deep_dive_minute", fallback=0))
+IPO_DEEP_DIVE_LEAD_DAYS: int = int(cfg("ipo.deep_dive_lead_days", fallback=1))
+IPO_DEEP_DIVE_MAX_ISSUES: int = int(cfg("ipo.deep_dive_max_issues", fallback=5))
 
 ADVISOR_SWITCH_CONVICTION_GAP: float = float(cfg("advisor.switch_conviction_gap", fallback=0.15))
 

@@ -50,7 +50,7 @@ the September KT supersedes stale counts, runtime statements and learning claims
 | 12 | [Verification Layer ("the auditor")](PRODUCT_MAP.md#12-verification-layer-the-auditor) | Deterministic grading of issued advice vs `^NSEI`; breach thresholds |
 | 13 | [Measurement & Scientific Evidence](PRODUCT_MAP.md#13-measurement--scientific-evidence) | Eval harness, baseline duel, monthly scorecard, self-ablation report |
 | 14 | [Service & Interface Layer](PRODUCT_MAP.md#14-service--interface-layer) | 13 routers, 88 endpoints + 1 WebSocket, the chat tool-loop, the PWA |
-| 15 | [Time Orchestration](PRODUCT_MAP.md#15-time-orchestration) | APScheduler; current builder has 23 possible IDs, with registration controlled by gates (KT section 9) |
+| 15 | [Time Orchestration](PRODUCT_MAP.md#15-time-orchestration) | APScheduler; current builder has 24 possible IDs, with registration controlled by gates (KT section 9) |
 | 16 | [Identity, Multi-Tenancy & Data Governance](PRODUCT_MAP.md#16-identity-multi-tenancy--data-governance) | Auth/sessions/invites, Atlas `atlas.db`, the two-plane boundary, DPDP delete |
 | 17 | [Ops, Cost & Reliability](PRODUCT_MAP.md#17-ops-cost--reliability) | Cost telemetry, quota, backup, two-tier self-monitoring |
 | 18 | [Quality](PRODUCT_MAP.md#18-quality) | ~38k lines of tests across 5 suites; the audit ledger |

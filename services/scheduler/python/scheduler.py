@@ -526,6 +526,29 @@ class AutomobileScheduler:
         else:
             logger.info("[Scheduler] IPO refresh disabled (ipo.enabled=false)")
 
+        # ── IPO deep dive (PI Prospect P3, IPO-4a) ──────────────────────────
+        # Daily at 19:00 IST, after the 17:45 live refresh has captured the
+        # evening book. Two slots from one cache read: issues closing tomorrow
+        # get the full research + extraction, issues that have closed but not
+        # listed are re-read from cache so the verdict store gets the
+        # post-close row the visibility gate is measured on. Writes only —
+        # nothing it produces reaches a surface until IPO-5b passes its gate.
+        # Shares 19:00 with bhavcopy_daily_sync on weekdays; no common store.
+        if cfg("ipo.enabled", fallback=True):
+            scheduler.add_job(
+                func=self._ipo_deep_dive_job,
+                trigger=CronTrigger(hour=settings.IPO_DEEP_DIVE_HOUR,
+                                    minute=settings.IPO_DEEP_DIVE_MINUTE,
+                                    timezone="Asia/Kolkata"),
+                id="ipo_deep_dive",
+                name="IPO T-1 deep dive + post-close re-read (P3, dark)",
+                misfire_grace_time=3600,
+                coalesce=True,
+                replace_existing=True,
+            )
+            logger.info("[Scheduler] IPO deep dive: daily at %s:%02d IST",
+                        settings.IPO_DEEP_DIVE_HOUR, settings.IPO_DEEP_DIVE_MINUTE)
+
         # ── Operational watchdog (06:30 IST daily) ──────────────────────────
         # Deliberately early and NOT in the 23:xx cluster: a "your window is
         # open today" notice delivered at 23:45 has already wasted the day it
@@ -626,6 +649,45 @@ class AutomobileScheduler:
         except Exception as exc:
             logger.error("[Scheduler] IPO refresh FAILED: %s", exc, exc_info=True)
         _job_banner("IPO Refresh", done=True)
+
+    def _ipo_deep_dive_job(self) -> None:
+        """IPO T-1 deep dive + post-close re-read (PI Prospect P3, IPO-4a).
+        Never raises: run_deep_dive_sweep() contains every stage failure and
+        returns a summary either way."""
+        from core.ipo.deep_dive import run_deep_dive_sweep
+
+        _job_banner("IPO Deep Dive")
+        try:
+            result = run_deep_dive_sweep()
+            logger.info(
+                "[Scheduler] IPO deep dive — on=%s enabled=%s candidates=%d analysed=%d "
+                "written=%d deduped=%d unread=%d errors=%d over_cap=%s skipped=%s pruned=%d",
+                result.get("on"), result.get("enabled"), result.get("candidates", 0),
+                result.get("analysed", 0), result.get("written", 0), result.get("deduped", 0),
+                result.get("unread", 0), result.get("errors", 0), result.get("over_cap"),
+                result.get("skipped"), result.get("pruned", 0),
+            )
+            try:
+                # Last-run-outcome surface for GET /scheduler/status, same as
+                # daily_review — the per-issue detail stays in the log.
+                from services.data.stores.job_outcomes import record_job_outcome
+                record_job_outcome(
+                    "ipo_deep_dive",
+                    on=result.get("on"),
+                    enabled=result.get("enabled"),
+                    candidates=result.get("candidates", 0),
+                    analysed=result.get("analysed", 0),
+                    written=result.get("written", 0),
+                    deduped=result.get("deduped", 0),
+                    unread=result.get("unread", 0),
+                    errors=result.get("errors", 0),
+                    over_cap=result.get("over_cap", []),
+                )
+            except Exception:
+                pass
+        except Exception as exc:
+            logger.error("[Scheduler] IPO deep dive FAILED: %s", exc, exc_info=True)
+        _job_banner("IPO Deep Dive", done=True)
 
     def _morning_brief_job(self) -> None:
         """Morning brief (spec §7): run_morning_brief() never raises and skips

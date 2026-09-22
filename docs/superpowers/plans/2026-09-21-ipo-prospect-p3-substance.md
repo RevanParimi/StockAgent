@@ -585,7 +585,8 @@ It also records that the T−1 lean stays dark regardless and that `IPO-5a` is n
 
 ## Sprint 4 — The scheduler job and narration
 
-*Step detail added after `IPO-1`.*
+*Step detail written 2026-09-22, after Sprint 3 closed. The model exists and reaches nothing; this sprint is
+where it starts to run.*
 
 | Task | Deliverable |
 |---|---|
@@ -600,6 +601,102 @@ It also records that the T−1 lean stays dark regardless and that `IPO-5a` is n
 **Why a daily sweep, not a per-IPO scheduled job:** close dates get extended. A dynamically scheduled job rots silently; a daily "who closes tomorrow?" query cannot. The ledger key includes `close_date`, so an extension re-fires a fresh analysis rather than being deduped away.
 
 **Concurrency:** cap per sweep (mirroring `ipo.max_ladder_fetches`) so a day with five closings cannot exhaust the research budget in one run.
+
+### `IPO-4a` — `core/ipo/deep_dive.py` + the `ipo_deep_dive` job
+
+- **Chat opener:** `Work task IPO-4a from docs/superpowers/plans/2026-09-21-ipo-prospect-p3-substance.md`
+- **Depends on:** Sprint 2, Sprint 3 (all done)
+
+**The one design point that is not in the table above.** `ipo_verdicts_visible_gate` counts rows where
+`short.evidenced` is true, and `verdict.py` sets that flag only when the issue state is `closed` or
+`listed`. A job that fires *only* at T−1 therefore writes rows the gate can never count — the T−1 lean is
+explicitly "not what this measures". So the sweep has **two slots**, selected from the same cache read:
+
+| Slot | Selector | Cost | What it writes |
+|---|---|---|---|
+| `t_minus_1` | `issue_end − today == ipo.deep_dive_lead_days` (1) | full: Tavily research + per-document extraction | the T−1 row: interim book, `evidenced=False` |
+| `post_close` | `issue_state == "closed"` (past `issue_end`, no listing yet) | cached: dossier and extraction reused, zero network | the evidenced row: final book, `evidenced=True` |
+
+`post_close` fires every evening from T+1 until listing (~3 days); the verdict store's content-dedup rule
+makes the repeats free. The **extraction is cached** beside the dossier (`data/ipo/research/<SYMBOL>_<close>.substance.json`),
+stamped with the dossier's `fetched_at`, and reused only while that stamp matches — a re-fetched dossier
+gets a fresh extraction, a matching one costs no LLM call. An extraction that yielded nothing is **never
+cached**, for the reason `research.py` never caches an empty dossier.
+
+- [x] `core/ipo/deep_dive.py`:
+  - `candidates(cache, on)` — one row per symbol across `current`/`upcoming`/`past` (a closed-not-listed
+    issue can sit in any of them), each tagged with its slot; `listed`, `upcoming`, `unknown` and rows with
+    no symbol or no `issue_end` are skipped with a counted reason. Ordered `t_minus_1` first (it cannot be
+    re-run tomorrow — tomorrow it is the close day), then by `issue_size_cr` desc, then symbol, so the cap
+    drops the smallest post-close re-read first.
+  - `analyse(row, slot, on, ...)` — `research_issue → extract_substance (cached) → read_hype → read_substance
+    → decide_verdict(state=issue_state(row, on)) → IpoVerdictStore.append`. The explicit `state` is the
+    point: the final snapshot in the ledger was captured while the book was `open`, and only the calendar
+    knows it has since closed. Never raises; a failed stage leaves the reading dark and the verdict still
+    writes (a dark-substance T−1 lean is exactly what the gate compares against).
+  - `run_deep_dive_sweep(on=None, ...)` — the job body: cap `ipo.deep_dive_max_issues` counted per
+    attempt, `IpoVerdictStore.prune(ipo.verdict_retention_days)` after the sweep (the setting has existed
+    since IPO-3d with no caller), one INFO line per issue, a result dict the scheduler logs. Every
+    dependency (`cache_path`, `research_dir`, `signals_dir`, `verdicts_dir`, `search`, `client`) is
+    injectable so the tests never touch `data/`.
+- [x] `config.yaml` `ipo.deep_dive_enabled` / `deep_dive_hour` (19) / `deep_dive_minute` (0) /
+      `deep_dive_lead_days` (1) / `deep_dive_max_issues` (5), mirrored in `base.py` via `cfg()`, no `env=`.
+- [x] `scheduler.py`: register `ipo_deep_dive` under the `ipo.enabled` gate, `CronTrigger` daily at the
+      configured hour/minute IST, `misfire_grace_time=3600`, `coalesce=True`; `_ipo_deep_dive_job` follows
+      `_ipo_refresh_job` (banner, one summary line, never raises) and records `record_job_outcome("ipo_deep_dive", …)`
+      so `GET /scheduler/status` shows the last sweep. It shares 19:00 with `bhavcopy_daily_sync` on
+      weekdays; the two touch no common store and need no ordering.
+- [x] Living docs: `docs/TECHNICAL_DESIGN.md` §8 IPO layers row for the P3 model (dark) and §9 job table
+      (23 → **24** possible job IDs); regenerate `docs/StockAgent-Three-Loops.pdf`; `check_kt_docs.py` green.
+- [x] Tests, `tests/unit/ipo/test_ipo_deep_dive.py`, fully offline on the Sprint 2 fixtures: slot selection
+      at the boundaries (T−1 yes, T−2 and T−0 no, closed yes, listed no, no `issue_end` no); the cap and its
+      ordering; an end-to-end T−1 run over the VARMORA dossier + replay client writes one row carrying both
+      readings; the post-close re-read reuses the cached extraction (replay client hit count stays 0) and
+      writes the `evidenced=True` row; a degraded research layer still writes a hype-only verdict; a dead
+      LLM caches nothing; the sweep never raises on an unreadable cache; `ipo_deep_dive` registered at
+      19:00 IST and absent when `ipo.enabled` is false.
+
+**Acceptance:** with the cache holding an issue that closes tomorrow, one sweep writes one verdict row
+with both readings attached and spends at most `research_max_fetches` Tavily calls; the next evening's
+sweep for the same issue (now closed) writes the evidenced row without a single network call.
+
+**Done 2026-09-22.** Both acceptance clauses are tests (`test_a_t_minus_1_run_writes_one_row_with_both_readings`,
+`test_the_post_close_re_read_costs_nothing_and_writes_the_evidenced_row`) over the recorded VARMORA
+dossier and replay client. Two rules beyond the checklist: a verdict with **every index dark is not
+stored** — no ledger snapshot and no research is "we never read it", and the capture ledger's rule that a
+row asserts a reading was taken applies here with the same force; and the cap counts **attempts**, not
+successes, unlike the ladder budget — a run of failures here would spend Tavily calls on every retry,
+which is exactly the budget the cap protects. `deep_dive_max_issues` is 5, not the ladder's 10: at
+`research_max_fetches` 6 that is 30 Tavily calls on the worst day. The T−1 slot is exact (`== lead_days`),
+so the close day itself is never re-read as T−1 and an issue the job missed (service down) is simply not
+analysed at T−1 — it still gets its post-close row, which is the one the gate counts. 32 offline tests
+(`tests/unit/ipo/test_ipo_deep_dive.py`). `docs/TECHNICAL_DESIGN.md` §8/§9 updated (24 job IDs;
+`check_kt_docs.py` job inventory green). ⚠ **The KT PDF was NOT regenerated**: this machine has no Node
+runtime or Playwright Chromium, which `build_kt_pdf.py` needs. Its source-digest check was already
+failing at `5f7238c` (the PDF predates `042c05f`), so this task widened an existing gap rather than
+opening one. Rebuild it on a machine with Node: `python scripts/docs/build_kt_pdf.py`.
+
+### `IPO-4b` — the narrator
+
+- **Chat opener:** `Work task IPO-4b from docs/superpowers/plans/2026-09-21-ipo-prospect-p3-substance.md`
+- **Depends on:** `IPO-4a`
+- [ ] `core/config/prompts/shared/ipo_narrate.py` — facts in (the `SubstanceReading.captured` block, the
+      corroborated series with their URLs, the book), prose out. The prompt is forbidden from stating a
+      lean, a band or a quadrant: those are verdict fields and stay dark; the narration is the `IPO-5a`
+      content (what the business does, trajectory, valuation vs peers, who took anchor, red flags).
+- [ ] Deterministic fallback: a templated paragraph from the same structured findings when the LLM fails,
+      so a narration is never missing because a model was.
+- [ ] Stored beside the verdict row (a `narration` field on `IpoVerdictRecord`, default empty — the
+      store's dedup rule must ignore it, or a re-worded narration would look like a new reading).
+
+### `IPO-4c` — audit integration
+
+- **Chat opener:** `Work task IPO-4c from docs/superpowers/plans/2026-09-21-ipo-prospect-p3-substance.md`
+- **Depends on:** `IPO-4a`
+- [ ] `Lane` gains `"ipo"`; `entry_close` documented at the schema as the issue price when `lane == "ipo"`.
+- [ ] Horizons 1/5/21/63/126/252 td; benchmark `^NSEI` at listing vs horizon, unchanged.
+- [ ] Grading reads the verdict store's newest row per key and the listing tape; writes append-only to the
+      existing audit store.
 
 ---
 

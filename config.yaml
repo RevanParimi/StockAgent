@@ -576,6 +576,19 @@ ipo:
   # issue is roughly 15 a month — but an unstated retention is how a store
   # grows forever by accident.
   verdict_retention_days: 1200
+  # ── P3 deep dive — the job (IPO-4a) ──
+  # One daily sweep at 19:00 IST, after the 17:45 live refresh has captured
+  # the evening book. Two slots from one cache read: T-1 (issue_end - today
+  # == lead_days) gets the full research + extraction; an issue that has
+  # CLOSED but not listed is re-read from the cached dossier at zero network
+  # cost, because that is the row the visibility gate counts (short.evidenced
+  # is true only once the book is final). The cap counts attempts per sweep,
+  # T-1 issues first: a day with five closings is 30 Tavily calls, not 1,000.
+  deep_dive_enabled: true
+  deep_dive_hour: 19
+  deep_dive_minute: 0
+  deep_dive_lead_days: 1
+  deep_dive_max_issues: 5
 
 # =============================================================================
 # Observability (Three Loops PI, task B2 — spec 2026-08-24 §2.3, §6.2)

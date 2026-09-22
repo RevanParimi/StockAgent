@@ -381,6 +381,7 @@ A shelf candidate, watchlist promotion and virtual purchase are separate steps.
 | Calendar, offer and bids | [ipo.py](../services/data/fetchers/ipo.py), [ipo_offer.py](../services/data/fetchers/ipo_offer.py), [ipo_bids.py](../services/data/fetchers/ipo_bids.py): normalize and enrich issues. Failed refresh preserves previous cache with degraded/stale information. |
 | Captured snapshots | [signals.py](../core/ipo/signals.py): observed refresh facts with hour/content deduplication. [velocity.py](../core/ipo/velocity.py): demand changes derived on read. |
 | Historical evidence | [history.py](../core/ipo/history.py), [outcomes.py](../core/ipo/outcomes.py), [report.py](../core/ipo/report.py): facts, realized curves and subscription-bucket summaries. |
+| P3 model and deep dive (dark) | [research.py](../core/ipo/research.py), [extract.py](../core/ipo/extract.py): browsed, corroborated Substance facts with source URLs. [hype.py](../core/ipo/hype.py), [substance.py](../core/ipo/substance.py), [verdict.py](../core/ipo/verdict.py): deterministic indices and the §3 verdict grid over captured and browsed facts. [deep_dive.py](../core/ipo/deep_dive.py): the 19:00 `ipo_deep_dive` sweep (T−1 research run, post-close re-read from cache) that writes to the append-only store in [verdicts.py](../core/ipo/verdicts.py). **Writes only:** no verdict, index or quadrant reaches any surface until the `ipo_verdicts_visible_gate` milestone is judged on forward rows. |
 | Recent-listing ranking | [ipo_tracker.py](../core/discovery/ipo_tracker.py): listing evidence, delivery trend, bulk accumulation and optional subscription score discovery candidates. |
 | User surfaces | IPO-watch in briefs, weekly/discovery context and shelf. Inspected routes do not provide a dedicated `/ipo/predict` API or complete standalone IPO prediction page. |
 
@@ -412,7 +413,7 @@ September remediation scope.
 
 Source: [scheduler.py](../services/scheduler/python/scheduler.py).
 These are in-process APScheduler jobs, not separate OS cron jobs. There are
-**23 possible job IDs**, including two IPO slots. Registration depends on gates
+**24 possible job IDs**, including three IPO jobs. Registration depends on gates
 and valid cron configuration; registration alone is not execution.
 All times are **Asia/Kolkata (IST)** defaults.
 
@@ -427,6 +428,7 @@ All times are **Asia/Kolkata (IST)** defaults.
 | `macro_market_news` | Mon–Fri 09:00, 12:00, 15:00 | Intraday macro feed; macro-news gate. |
 | `rl_daily_review` | Mon–Fri 16:30 | Previous trading session; configured feedback cron. |
 | `ipo_refresh_pm` | Daily 17:45 | Evening IPO update before Sunday weekly review; IPO gate. |
+| `ipo_deep_dive` | Daily 19:00 | T−1 IPO research + post-close re-read into the dark verdict store; IPO gate. |
 | `bhavcopy_daily_sync` | Mon–Fri 19:00 | Official EOD cache; discovery gate. |
 | `atlas_universe_recompute` | Daily 23:00 | Demand/cadence; no-op if Atlas disabled. |
 | `atlas_cost_rollup` | Daily 23:15 | Cost aggregation; Atlas gate in handler. |

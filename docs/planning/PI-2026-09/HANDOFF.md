@@ -7,14 +7,23 @@ The user resequenced onto **PI "Prospect" (IPO intelligence)**. The next task is
 AGENTS.md step-2 story-selection rule this conversation; it would route you into
 Three Loops and skip the work that was actually asked for.
 
-**Next task:** `IPO-4a` in
+**Next task:** `IPO-4b` (the narrator) in
 [the P3/Substance plan](../../superpowers/plans/2026-09-21-ipo-prospect-p3-substance.md).
-Sprint 4 needs its step detail written first — the plan has the table and the
-rationale (19:00 IST, daily sweep, concurrency cap) but no per-task steps.
+Sprint 4's step detail is written (2026-09-22); `IPO-4a` is built and committed.
 The per-task status below is current as of 2026-09-22; read it before picking anything up.
 
 **Chat opener:**
-`Work task IPO-4a from docs/superpowers/plans/2026-09-21-ipo-prospect-p3-substance.md`
+`Work task IPO-4b from docs/superpowers/plans/2026-09-21-ipo-prospect-p3-substance.md`
+
+**IPO-4a is done** (2026-09-22): `core/ipo/deep_dive.py` + the `ipo_deep_dive` job at 19:00 IST.
+The design point that was not in the plan's table: the visibility gate counts only `short.evidenced`
+rows, which exist only after the book closes, so the sweep has **two slots** — the T−1 research run and
+a post-close re-read off the cached dossier + cached extraction (zero network). A verdict with every index
+dark is not stored (the capture ledger's "a row asserts a reading was taken"). 32 offline tests. ⚠ The
+job reaches prod only on deploy; until then `data/ipo/ipo_verdicts.jsonl` does not exist in production.
+The first real T−1 candidate after deploy is whichever mainboard issue closes the day after.
+⚠ `docs/StockAgent-Three-Loops.pdf` is stale (was already stale at `5f7238c`; §8/§9 of the KT changed again
+here). No Node/Chromium on this machine — rebuild with `python scripts/docs/build_kt_pdf.py` where there is.
 
 **IPO-0a status (2026-09-21 afternoon):** worked, not closeable today — nothing is in the `closed — awaiting listing` state until NSE and SONA close tonight. Read the "Progress 2026-09-21" note under IPO-0a in the plan; it names the two pieces of production evidence the 22 Sep 08:50 brief provides. Do not delete the milestone entry without both.
 
@@ -30,7 +39,7 @@ The per-task status below is current as of 2026-09-22; read it before picking an
 
 **`ipo_verdicts_visible_gate` is now in `config/milestones.yaml`**, deadline 2026-12-31 or 60 days of forward P2 rows, whichever comes first. It is the gate P3 has to pass before any verdict is shown. ⚠ A milestone reaches prod only on deploy — the `registry_is_current` invariant watches for that.
 
-**Next: Sprint 4.** `IPO-4a` (the `ipo_deep_dive` job at 19:00 IST) is the first task that wires any of Sprint 2 or 3 to something that runs. Its step detail is not written yet — the plan has the table and the reasoning, not the steps.
+**Sprint 4 in progress.** `IPO-4a` (the `ipo_deep_dive` job at 19:00 IST) wires Sprints 2–3 to the clock and is done. `IPO-4b` (narrator) and `IPO-4c` (audit lane) have step outlines in the plan and are next, in that order.
 
 Still open from Sprint 0: `IPO-0a` closes on the 22 Sep brief; `IPO-0c` still waits on the production Serper counter (see below).
 
@@ -124,7 +133,7 @@ start it in that review conversation.
   blocked. TestClient and a Windows asyncio local socket pair are allowed.
   No full-suite or Linux/Python-3.11 parity claim.
 - 16-page PDF: searchable, source-hash matched, rendered and visually checked.
-  All 32 SA targets/dependencies/titles, 23 possible scheduler IDs, 13 config
+  All 32 SA targets/dependencies/titles, 23 possible scheduler IDs (24 since `IPO-4a`), 13 config
   assertions and local documentation links checked. Receipt has exact results.
 - Known grading, timing, health, weight-bound, delivery and recovery gaps
   remain. Neither tests describing existing behavior nor this KT establishes

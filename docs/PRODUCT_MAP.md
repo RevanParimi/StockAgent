@@ -3,7 +3,7 @@
 > **September 15 KT update:** this detailed inventory was verified in August;
 > its counts and runtime/learning descriptions are historical. Use
 > [TECHNICAL_DESIGN.md](TECHNICAL_DESIGN.md) for the current code, IPO additions,
-> 23 possible scheduler job IDs and PI targets. Use the separate
+> 24 possible scheduler job IDs and PI targets. Use the separate
 > [team testing guide](TEAM_TESTING_GUIDE.md) for assignable human duties.
 
 > **The study document.** Every major module and its minor modules, in one

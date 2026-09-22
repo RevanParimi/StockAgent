@@ -1,28 +1,82 @@
 # Current handoff - 2026-09-22
 
-## START HERE — next task is outside this PI
+## START HERE — IPO is paused; Three Loops is the active workstream
 
-The user resequenced onto **PI "Prospect" (IPO intelligence)**. The next task is
-**not** an `SA-` story and is not selected from `STATE.json`. Do not apply the
-AGENTS.md step-2 story-selection rule this conversation; it would route you into
-Three Loops and skip the work that was actually asked for.
+**Decided 2026-09-22 (evening), by the user.** `ed1b900` (IPO-4c) is pushed and `origin/main` is
+current, which closes **Sprint 4** of PI "Prospect". The user then chose to **pause IPO work and wait
+for live production evidence** rather than start `IPO-5a`. Do not start an `IPO-` task in a new
+conversation unless the user brings evidence or says so.
 
-**Next task:** `IPO-5a` (research notes in the brief/weekly) in
-[the P3/Substance plan](../../superpowers/plans/2026-09-21-ipo-prospect-p3-substance.md).
-**Sprint 4 is now complete** (`IPO-4a`/`4b`/`4c`). Sprint 5 has a table and a gate column, not step
-detail — write the detail first, as `IPO-4a` and `IPO-4c` did for themselves. `IPO-5a` is the ungated
-half: it surfaces the sourced research note only. `IPO-5b` (verdict + quadrant visible) stays shut until
-`ipo_verdicts_visible_gate` is judged on forward rows, and nothing in this conversation moved that gate.
-The per-task status below is current as of 2026-09-22; read it before picking anything up.
+**Next task:** [DOC-001](stories/DOC-001.md), next phase **fresh-session review** under
+[REVIEW.md](REVIEW.md). This is the phase PI-2026-09 has been parked at since September 15 — the
+implementation is complete and was never independently reviewed. `STATE.json` already says
+`active_task: DOC-001`, `next_phase: review`, and all 32 `SA-` stories remain `todo`.
 
 **Chat opener:**
-`Work task IPO-5a from docs/superpowers/plans/2026-09-21-ipo-prospect-p3-substance.md`
+`Continue — run the DOC-001 fresh-session review`
 
-**⚠ Two things want the user, not the agent, and neither blocks `IPO-5a`.**
-`IPO-0a` can close today: it needs the **22 Sep 08:50 IST production brief** (NSE and SONA under
-`bidding closed — awaiting listing` with real ×, VARMORA under an open heading) plus one piece of ledger
-evidence — read the "To close on 2026-09-22" list under IPO-0a in the plan; it names both exactly.
-`IPO-0c` still waits on the production Serper counter (see below).
+Read the [implementation receipt](evidence/DOC-001-implementation.md), verify the
+[manifest](evidence/DOC-001-manifest.json) and inspect the worktree. Review-input SHA-256:
+`90c005c46417db97d6e3f6feba2431aae66a8ad93037e852e9823ad7936125c0`. **Do not sign this off using its
+same-conversation self-review.** After acceptance, `SA-001` is the first remediation story — select it,
+do not start it in the review conversation.
+
+### Why IPO is waiting, and what arrives on its own
+
+Everything through Sprint 4 is built and now deployed-on-push; **none of it has been measured in
+production.** The first real evidence appears without anyone doing anything:
+
+- **Tonight and each evening after**, the `ipo_deep_dive` job (19:00 IST) should hit its `post_close`
+  slot for **NSE** and **SONA**, both `bidding closed — awaiting listing`.
+- **2026-09-23** is the first genuine **T−1** candidate: **VARMORA** closes 24 Sep (the 22 Sep brief
+  said "closes in 2 days"), so the expensive research slot should fire that evening.
+
+Check `GET /scheduler/status` for the `ipo_deep_dive` last-run outcome, or whether
+`data/ipo/ipo_verdicts.jsonl` now exists on the volume. Until a row exists, `IPO-5a` would be surfacing
+code written against an imagined row.
+
+### IPO-0a — criterion 1 is MET; one piece of evidence remains
+
+The user supplied the **22 Sep 08:50 IST production brief**. It satisfies the live-observation half in
+full — this is the subject the milestone had never had:
+
+| Issue | Heading rendered | Subscription rendered |
+|---|---|---|
+| NSE | `bidding closed — awaiting listing` | 3.78261× overall (QIB 1.52996×, retail 0.722428×, 39% at cut-off) |
+| SONA | `bidding closed — awaiting listing` | 1.45233× overall (QIB 0.459178×, retail 1.28955×, 58% at cut-off) |
+| VARMORA | `closes in 2 days` (open) | `data pending` — correct; it opened that morning |
+
+Real × values, not `data pending`, under correct state headings. **Still needed:** the ledger half —
+either no `ipo_signals_accruing` `pending` alert since NSE/SONA opened on the 17th (Inbox or
+`GET /delivery/alerts`), or a volume read. ⚠ `railway ssh` is NOT available: this machine has no Node,
+so the CLI's npm install route is closed too (a standalone binary from Railway's releases would work).
+Do not delete the milestone entry on the brief alone.
+
+### ⚠ Open question raised by that brief — worth one look before IPO-5b
+
+Both closed issues rendered **"(NSE only)"**. Per `services/data/fetchers/ipo.py`, `total_x_nse_only`
+clears only when the all-exchange **combined** ladder is fetched, and `_enrich_open_issues` fetches a
+live ladder only while `issue_state == "open"` — a closed issue inherits via `_carry_forward`. So the
+final book recorded in production for NSE and SONA looks like the **NSE-only under-report**.
+
+Against the 21 Sep 14:15 IST scratch fetch in the plan's IPO-0a note (total 3.817×, **QIB 7.81×, retail
+1.10×, 14% at cut-off**) the totals are close and the categories are not. Combined-vs-NSE-only would
+explain it; so would something wrong. **This is unresolved and was not investigated** — it needs
+production data this machine cannot reach.
+
+**Why it matters:** P3's `demand` is computed from exactly those category figures (`qib_x`, `retail_x`,
+`cutoff_share`), and `IPO-1` fitted its thresholds on the spine's combined subscription. If production's
+final book is habitually NSE-only, `demand` is being computed on a different quantity than it was fitted
+on — which would undercut the forward hit-rate `IPO-5b`'s gate depends on. Resolve before `IPO-5b`.
+
+### Also outstanding, user-side
+
+- `IPO-0c` still waits on the production Serper counter (`cat data/logs/api_usage.json`, or the boot log
+  `[api_usage] counter intact at boot ... serper=N/2500`). `fetch_gmp()` also has no production caller.
+- `docs/StockAgent-Three-Loops.pdf` is stale and cannot be rebuilt here — no Node, no Chromium cache,
+  although `node_modules/playwright` is vendored. Install Node LTS, then
+  `npx playwright install chromium` and `python scripts/docs/build_kt_pdf.py`. It is the only
+  `check_kt_docs.py` error; 24 job IDs, 221 local links and 13 configuration claims are green.
 
 **IPO-4c is done** (2026-09-22): the audit lane. `Lane` gains `"ipo"`; `core/ipo/listing.py` resolves the
 listing date and issue price (P1 spine first, NSE cache second); `grade_ipo_lane` in

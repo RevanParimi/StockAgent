@@ -126,6 +126,41 @@ tests/unit/ipo/                          NEW     fixtures from real captured pay
   `GET /delivery/alerts`), or `railway ssh` → `grep -c '"symbol": "NSE"' data/ipo/ipo_signals.jsonl`
   ≥ 1. Then delete the entry, evidence in the commit message.
 
+**Progress 2026-09-22 (evening) — half closed. The brief half is DONE; the ledger half is not.**
+
+The user supplied the 22 Sep 08:50 IST production brief. It satisfies the live-observation
+requirement in full, which is the subject this milestone never had until now:
+
+| Issue | Heading rendered | Subscription rendered |
+|---|---|---|
+| NSE | `bidding closed — awaiting listing` | 3.78261x overall (QIB 1.52996x, retail 0.722428x, 39% at cut-off) |
+| SONA | `bidding closed — awaiting listing` | 1.45233x overall (QIB 0.459178x, retail 1.28955x, 58% at cut-off) |
+| VARMORA | `closes in 2 days` (open heading) | `data pending` — correct, it opened that morning |
+
+Real x values, not `data pending`, under correct state headings.
+
+- **Still required before deleting the entry:** the ledger half — either no `ipo_signals_accruing`
+  `pending` alert since NSE/SONA opened on the 17th (Inbox or `GET /delivery/alerts`), or a volume
+  read. The warning above still stands: the brief renders from the refresh, the ledger is a separate
+  write path, and a correct brief over an empty ledger is a FAIL.
+- ⚠ `railway ssh` is unavailable: this machine has no Node, so the CLI's npm install route is closed
+  as well. A standalone binary from Railway's releases would work.
+
+⚠ **Open question this brief raised — unresolved, not investigated.** Both closed issues rendered
+**"(NSE only)"**. In `services/data/fetchers/ipo.py`, `total_x_nse_only` clears only when the
+all-exchange **combined** ladder is fetched, and `_enrich_open_issues` fetches a live ladder only
+while `issue_state == "open"` — a closed issue inherits via `_carry_forward`. So the final book
+recorded in production for NSE and SONA looks like the NSE-only under-report. Against the 21 Sep
+14:15 IST scratch fetch above (total 3.817x, QIB 7.81x, retail 1.10x, 14% at cut-off) the totals are
+close and the categories are not. Combined-vs-NSE-only would explain it; so would a real defect.
+Resolving it needs production data this machine cannot reach.
+
+**Why it matters beyond IPO-0a:** P3's `demand` is computed from exactly those category figures
+(`qib_x`, `retail_x`, `cutoff_share`), and `IPO-1` fitted its thresholds on the spine's COMBINED
+subscription. If production's final book is habitually NSE-only, `demand` is being computed on a
+different quantity than it was fitted on, which would undercut the forward hit-rate that
+`ipo_verdicts_visible_gate` is judged on. **Settle this before `IPO-5b`.**
+
 ### `IPO-0b` — Size-tiered demand thresholds in `_ipo_lean`
 
 - **Chat opener:** `Work task IPO-0b from docs/superpowers/plans/2026-09-21-ipo-prospect-p3-substance.md`

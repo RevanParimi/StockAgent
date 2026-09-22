@@ -737,10 +737,135 @@ template above, and a Sprint 2 cleanup, not a narrator bug. Full suite 3089 pass
 
 - **Chat opener:** `Work task IPO-4c from docs/superpowers/plans/2026-09-21-ipo-prospect-p3-substance.md`
 - **Depends on:** `IPO-4a`
-- [ ] `Lane` gains `"ipo"`; `entry_close` documented at the schema as the issue price when `lane == "ipo"`.
-- [ ] Horizons 1/5/21/63/126/252 td; benchmark `^NSEI` at listing vs horizon, unchanged.
-- [ ] Grading reads the verdict store's newest row per key and the listing tape; writes append-only to the
-      existing audit store.
+
+**The design points that are not in the sprint table.** Three, and each is a place where copying an
+existing lane verbatim would produce a number that looks right and means something else.
+
+**1. What an IPO verdict actually claims — and therefore what may be scored.** `verdict.py` asserts one
+direction and one only: `short.lean` (`strong`/`weak`) over the **listing day**, and even that is
+admissible evidence only once `short.evidenced` is true (the book closed; the T−1 lean rests on an
+interim book the spine cannot see). `long.lean` is hard-wired `None`. So:
+
+| Horizon | Row written | `correct` |
+|---|---|---|
+| 1 td (listing day), `evidenced`, lean `strong`/`weak` | yes | True/False |
+| 1 td, `evidenced=False` or lean `mixed`/`None` | yes | `None` |
+| 5/21/63/126/252 td | yes | `None` — the verdict asserted nothing there |
+
+The longer horizons are written because they are the curve the LONG horizon will be asked about when a
+second regime matures, and keeping them is the same discipline as the shelf lane: a row that is not a
+call still carries a return. `correct=None` keeps them out of every hit-rate — `metrics._scored` already
+drops `correct is None` — so the measurement accrues without asserting skill.
+
+**2. `is_correct` is not touched.** Its own docstring says it defines what every accumulated advice row
+already means and cannot be changed without invalidating that history, and `strong`/`weak` are not in its
+vocabulary — it would return `None` for every IPO row, silently. The switch lane already set the
+precedent: a different question gets its own answer. So `core/audit/rules.py` gains
+`is_ipo_correct(lean, excess_pct)` — `strong` → `excess_pct >= 0`, `weak` → `excess_pct < 0`, anything
+else `None` — beside `is_switch_correct`, and `is_correct` is left alone.
+
+**3. Where the issue price and the listing date come from.** The verdict store carries neither: it stores
+the *reading*, and at T−1 there is no listing. Both are resolved at grade time by a new
+`core/ipo/listing.py`, consulting the P1 spine first (`ipo_history.jsonl` — durable, canonical, the same
+`issue_price` IPO-1's thresholds were fitted against) and the NSE cache second (fresh, for an issue that
+has listed but not yet been backfilled). Neither is invented: with no listing date, or no positive issue
+price, the row is **`awaiting_listing`, not `skipped_unpriceable`** — a not-yet-listed issue is not a
+grading failure and must not push `alert_job_partial_output` into a false partial-output alarm.
+
+⚠ **Known dependency, recorded not fixed:** `ipo_history.jsonl` is maintained by `scripts/ipo_backfill.py`,
+which is manual and needs the bhavcopy parquet volume. Until an issue reaches the spine the NSE cache is
+the only resolver, and NSE drops issues from `past` after a few months — so a 252-td horizon on an issue
+that never reached the spine will sit in `awaiting_listing` for good. That is a visible counter, not a
+silent loss; wiring the spine to a job is out of scope here.
+
+**Why the tape, not the spine, prices the exits.** The spine already holds `outcomes`/`excess` at exactly
+these horizons and reading them would be less code. It is the wrong number: the spine measures raw
+bhavcopy closes, `BenchmarkSeries`/`close_on` measure yfinance adjusted closes, and the sprint table says
+the benchmark is `^NSEI` at listing vs horizon **unchanged** — i.e. the existing `BenchmarkSeries`, the
+same instrument every other lane is graded with. Two auditors must not disagree about what a return is.
+The spine is consulted for the two facts nothing else knows, and for nothing else.
+
+- [x] `src/backend/shared/schemas/audit.py`: `Lane` gains `"ipo"`; `entry_close` documented **at the field**
+      as the issue price when `lane == "ipo"` (and `issued_on` as the verdict date, which is before the
+      listing the return is measured from) — stated at the schema, not left to be inferred from a writer.
+- [x] `core/ipo/listing.py` NEW: `ListingFacts(symbol, listing_date, issue_price, source)` and
+      `listing_facts(symbol, *, history_store=None, cache_path=None)`. Spine first, NSE cache second,
+      `None` when neither has both. No network; both inputs injectable.
+- [x] `core/audit/rules.py`: `is_ipo_correct`.
+- [x] `core/audit/outcomes.py`: `grade_ipo_lane(on, user_id, ...)` and its entry in `grade_due` /
+      `_LANE_KWARGS`. Reads `IpoVerdictStore`, takes the newest row per `(symbol, close_date)` and then
+      **one key per symbol** — the latest `close_date` — because an extension is a new book but still the
+      same listing, and grading the superseded read would count one listing twice. Dropped keys are
+      counted as `superseded`. `ref = f"ipo:{close_date}|{symbol}"`, idempotent on `(ref, horizon_td)`
+      like every other lane. `graded_on = trading_days_after(listing_date, td − 1)` — horizon 1 **is** the
+      listing day, matching `compute_outcomes`' `sessions.iloc[td - 1]`; an off-by-one here would grade
+      the listing-day lean on day 2.
+- [x] The lane runs only for `settings.PORTFOLIO_DEFAULT_USER_ID`. An IPO verdict is a global research
+      output and the audit store is per-user; grading it per user would write N copies of one measurement
+      and inflate every future n. Returns zeros with a counted reason for any other user.
+- [x] `core/audit/report.py`: IPO rows are **excluded from the blended report**. Today the horizons
+      (1/5/21/63/126/252) miss the report's (10/30/60) by accident; that accident is not a guarantee, and
+      an `audit.ipo_horizons_td` edit must not be able to silently blend a dark IPO model into the advice
+      hit-rate. No IPO block is added: a rendered hit-rate is a surface, and the verdict stays dark until
+      `IPO-5b`.
+- [x] `config.yaml` `audit.ipo_lane_enabled` (true) / `audit.ipo_horizons_td`
+      ([1, 5, 21, 63, 126, 252] = `core.ipo.history.HORIZONS_TD`, so spine and audit cannot drift apart).
+- [x] Living docs: `docs/TECHNICAL_DESIGN.md` §8 audit-lane inventory; `TEAM_TESTING_GUIDE.md` a case for
+      reading a graded IPO row against its verdict row; regenerate `docs/StockAgent-Three-Loops.pdf`;
+      `check_kt_docs.py` green.
+- [x] Tests, `tests/unit/audit/test_audit_ipo_lane.py`, fully offline (stub `price_fn`, stub bench, both
+      stores under `tmp_path`). **Invariant tests, not implementation-shaped ones:**
+  - `correct` is non-`None` **only** at 1 td, only when `evidenced`, only for `strong`/`weak` — asserted
+    over a matrix, not one happy path.
+  - `entry_close` equals the resolved issue price on every IPO row and `return_pct` is
+    `(exit/issue_price − 1) × 100` — the identity the whole lane exists to record.
+  - horizon 1's `graded_on` **is** the listing date (the off-by-one).
+  - re-running the lane writes nothing new (idempotency on `(ref, horizon_td)`).
+  - an extended issue grades once, against the surviving `close_date`.
+  - an unlisted issue produces `awaiting_listing`, `graded=0`, `skipped_unpriceable=0`.
+  - the audit report is identical with and without IPO rows in the store.
+  - a lane failure does not stop the others in `grade_due`.
+
+**Acceptance:** with one evidenced verdict in the store and a listed issue in the spine, one nightly run
+writes six append-only rows under `lane="ipo"`, exactly one of which carries a True/False; a second run
+writes none; and the monthly audit report is unchanged by their presence.
+
+**Done 2026-09-22.** Built as specified, with four decisions the checklist did not reach.
+
+- **The band is recorded, never graded.** `ShortView.band` is a p25–p75 range and a range is a
+  calibration question, not a correctness one; scoring it would need a coverage test over many rows,
+  which is `IPO-5b`'s evidence and not a per-row verdict. The row keeps `lean`, `quadrant` and
+  `evidenced` as triggers so the band can be evaluated later off kept data.
+- **No field was added to `AuditOutcome` and none to `IpoVerdict`.** `demand`, `froth` and `S` are
+  already on the verdict row and join by `ref`; copying them into the audit row would be a second
+  source of truth for the numbers a future re-anchoring has to replay. `conviction` was left to the
+  shelf lane rather than overloaded with `demand` — the same objection the sprint table raises about
+  `entry_close` being silently overloaded, which is why that one is documented at the field instead.
+- **`awaiting_listing` is a separate counter from `skipped_unpriceable` because the nightly job feeds
+  the latter to `alert_job_partial_output`.** Folding them together would make every issue still
+  waiting for its tape read as a partial-output failure, which is the alarm this codebase already
+  learned not to cry (the 0/119 run of 2026-08-07).
+- **The report exclusion is structural, not incidental.** The IPO horizons miss the report's 10/30/60
+  today, so the blend is empty by luck; `test_ipo_horizons_colliding_with_the_report_still_change_nothing`
+  forces the horizons to 10/30/60 and asserts the report is byte-identical anyway, so the guard is the
+  lane filter and not the arithmetic accident.
+
+37 offline tests (`tests/unit/audit/test_audit_ipo_lane.py`), no network, no LLM, both stores under
+`tmp_path`. The four invariants are independent of the implementation's shape: the price identity, the
+horizon identity checked with `trading_dates` rather than the `trading_days_after` the lane itself uses,
+the scoreability matrix over six (lean × evidenced) combinations, and report containment. Full suite
+**3126 passed, 5 skipped**. `TEAM_TESTING_GUIDE.md` gained case **05-G** (12 duties, **59** cases, all
+still NOT RUN); `docs/TECHNICAL_DESIGN.md` §7 report family, §7 rules paragraph and §8 IPO layers.
+
+⚠ **No production row has been graded and none can be yet.** Three gates stand between this code and a
+graded row, and none of them is code: the job reaches production only on deploy; `data/ipo/ipo_verdicts.jsonl`
+does not exist in production until it does; and grading additionally needs the issue in the P1 spine or
+the NSE cache, and the spine is rebuilt by `scripts/ipo_backfill.py`, which is manual and needs the
+bhavcopy volume. The lane is correct against its own tests and unmeasured against production.
+
+⚠ `docs/StockAgent-Three-Loops.pdf` is still stale — this task changed §7 and §8 of its source and this
+machine still has no Node/Chromium for `scripts/docs/build_kt_pdf.py`. It remains the only
+`check_kt_docs.py` error; 221 local links, 24 job IDs and 13 configuration claims are green.
 
 ---
 

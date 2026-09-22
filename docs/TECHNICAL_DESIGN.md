@@ -350,7 +350,7 @@ establish executable net returns after fees, spread, tax and slippage.
 | Weekly scoreboard | 28-calendar-day lookback, non-HOLD calls at least five calendar days old, latest supplied closes. | Not fixed matured horizons; current-holding price selection can omit exited stocks. SA-018/SA-019. |
 | Monthly scorecard | Agent/control/simple-baseline lanes and previous-month comparisons. | Completeness, timing and denominators need repair. SA-018. |
 | Learning evidence | Retrospective adapted/base/uniform replay and lesson associations. | Not a prospective controlled experiment of the whole system. SA-020–SA-023. |
-| Nightly advice auditor | Issued advice, alert, shelf and switch lanes; default 10/30/60 trading-session horizons. | Separate from weekly heuristics and actual account P/L. |
+| Nightly advice auditor | Issued advice, alert, shelf, switch and IPO lanes; default 10/30/60 trading-session horizons, and 1/5/21/63/126/252 from listing on the IPO lane. | Separate from weekly heuristics and actual account P/L. IPO rows are excluded from the rendered report. |
 | IPO history report | Subscription groups and issue-price returns at available horizons. | Descriptive associations with sample/feature gaps, not a validated prediction model. |
 
 [Audit rules](../core/audit/rules.py) judge HOLD/ADD correct when excess return
@@ -358,6 +358,18 @@ over the benchmark is nonnegative, and TRIM/EXIT/SWITCH correct when negative.
 The switch-pair lane separately asks whether destination beat origin over the
 same dates; a tie does not establish benefit. An EXIT can score correctly while
 the actual virtual trade realizes a loss: these measure different things.
+
+The IPO lane ([grade_ipo_lane](../core/audit/outcomes.py)) grades the P3 IPO
+verdicts under `is_ipo_correct`, a separate rule from the advice vocabulary.
+Its entry price is the **issue price**, not a market close, and its horizons
+count trading days from listing with horizon 1 being the listing day itself.
+Only one row per issue can carry a True/False: the listing-day horizon, and
+only when the verdict was taken after the book closed and its lean asserted a
+direction. Every other horizon is recorded with `correct` unset, so it enters
+no hit-rate. These rows are written to the same store and excluded from the
+rendered audit report: the P3 model remains dark until its visibility gate is
+met, and a displayed hit-rate would be that surface. No production IPO row has
+been graded yet.
 
 **Example:** stock +5%, benchmark +8% means excess **−3 percentage points**.
 HOLD is incorrect under that relative-return rule despite a positive stock
@@ -382,6 +394,7 @@ A shelf candidate, watchlist promotion and virtual purchase are separate steps.
 | Captured snapshots | [signals.py](../core/ipo/signals.py): observed refresh facts with hour/content deduplication. [velocity.py](../core/ipo/velocity.py): demand changes derived on read. |
 | Historical evidence | [history.py](../core/ipo/history.py), [outcomes.py](../core/ipo/outcomes.py), [report.py](../core/ipo/report.py): facts, realized curves and subscription-bucket summaries. |
 | P3 model and deep dive (dark) | [research.py](../core/ipo/research.py), [extract.py](../core/ipo/extract.py): browsed, corroborated Substance facts with source URLs. [hype.py](../core/ipo/hype.py), [substance.py](../core/ipo/substance.py), [verdict.py](../core/ipo/verdict.py): deterministic indices and the §3 verdict grid over captured and browsed facts. [deep_dive.py](../core/ipo/deep_dive.py): the 19:00 `ipo_deep_dive` sweep (T−1 research run, post-close re-read from cache) that writes to the append-only store in [verdicts.py](../core/ipo/verdicts.py). [narrate.py](../core/ipo/narrate.py): a sourced research note stored on that row, written by the bulk model from the SAME structured findings the indices read — the verdict is never passed to it, every number in the prose must appear in the findings, an advice/verdict vocabulary rejects it, and a rejected or failed note falls back to a deterministic template. **Writes only:** no verdict, index or quadrant reaches any surface until the `ipo_verdicts_visible_gate` milestone is judged on forward rows. |
+| Forward grading of the P3 verdict (dark) | [listing.py](../core/ipo/listing.py) resolves the listing date and issue price from the P1 spine, then the NSE cache; [grade_ipo_lane](../core/audit/outcomes.py) grades the newest stored verdict per issue against the tape at 1/5/21/63/126/252 trading days from listing, entry price = issue price. Only the listing-day row of a post-close verdict with a directional lean can be scored; the rest carry the return and no claim. Rows land in the existing per-user audit store and are **excluded from the rendered audit report**. No production row exists yet: the job reaches production only on deploy, and grading also waits on the issue reaching the P1 spine, which `scripts/ipo_backfill.py` still rebuilds manually. |
 | Recent-listing ranking | [ipo_tracker.py](../core/discovery/ipo_tracker.py): listing evidence, delivery trend, bulk accumulation and optional subscription score discovery candidates. |
 | User surfaces | IPO-watch in briefs, weekly/discovery context and shelf. Inspected routes do not provide a dedicated `/ipo/predict` API or complete standalone IPO prediction page. |
 

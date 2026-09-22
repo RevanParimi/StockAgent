@@ -11,7 +11,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-Lane = Literal["advice", "alert", "shelf", "switch"]
+Lane = Literal["advice", "alert", "shelf", "switch", "ipo"]
 
 
 class AuditOutcome(BaseModel):
@@ -21,10 +21,21 @@ class AuditOutcome(BaseModel):
     symbol: str
     verdict: str = ""              # "" for shelf rows — they are not calls
     triggers: list[str] = Field(default_factory=list)
-    issued_on: str                 # ISO date the call was made
-    horizon_td: int                # 10 | 30 | 60 trading days
+    # ISO date the call was made. On ipo rows this is the verdict date (T-1 or
+    # the close day), which is BEFORE the listing the return is measured from
+    # — the two cannot be the same date, because the only price a subscriber
+    # can transact at is fixed before the tape exists.
+    issued_on: str
+    horizon_td: int                # 10 | 30 | 60 td; 1/5/21/63/126/252 on ipo rows
     graded_on: str                 # ISO date the horizon matured
 
+    # The price the return is measured from. A market close on `issued_on` for
+    # every lane EXCEPT ipo, where it is the ISSUE PRICE — what the subscriber
+    # actually paid — and the horizon is counted in trading days from listing,
+    # horizon 1 being the listing day itself. Stated here rather than left to
+    # be inferred from a writer: an IPO's defining number is the move from what
+    # was paid to what the market said it was worth, and anchoring an ipo row
+    # on a close would throw exactly that away (core/ipo/outcomes.py).
     entry_close: float
     exit_close: float
     return_pct: float              # (exit/entry - 1) * 100

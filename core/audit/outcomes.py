@@ -407,14 +407,182 @@ def grade_switch_lane(
     return summary
 
 
+def _ipo_lane_enabled() -> bool:
+    return bool(cfg("audit.ipo_lane_enabled", fallback=True))
+
+
+def _ipo_horizons() -> tuple[int, ...]:
+    """Trading days from LISTING, not from the verdict date.
+
+    Defaults to core.ipo.history.HORIZONS_TD rather than a second literal, so
+    the audit lane and the P1 spine cannot drift apart into two curves that
+    look comparable and are not. An empty or unreadable list falls back to the
+    same default rather than grading nothing: silently disabling a lane whose
+    own enabled flag reads true is the harder failure to notice, and
+    audit.ipo_lane_enabled is the switch that exists for that.
+    """
+    from core.ipo.history import HORIZONS_TD
+    configured = cfg("audit.ipo_horizons_td", fallback=list(HORIZONS_TD))
+    try:
+        out = tuple(int(h) for h in configured)
+    except Exception:
+        return HORIZONS_TD
+    return out or HORIZONS_TD
+
+
+# Horizon 1 IS the listing day — sessions.iloc[td - 1] in core/ipo/outcomes.py.
+# The listing-day lean is the only claim an IPO verdict makes, so this is the
+# only horizon at which `correct` can be anything but None.
+IPO_LISTING_TD = 1
+
+
+def _one_verdict_per_symbol(rows: list) -> tuple[list, int]:
+    """(the row to grade per symbol, count superseded).
+
+    Two reductions, and they answer different questions. Per
+    (symbol, close_date) the NEWEST write wins — that is the store's own
+    read rule, the post-close row superseding the T-1 one. Then per SYMBOL the
+    latest close_date wins, because an extension is a new book but still the
+    same listing: grading the abandoned read too would put two graded calls
+    against one tape and inflate every n the visibility gate is measured on.
+    """
+    newest: dict = {}
+    for row in rows:
+        key = row.key
+        prior = newest.get(key)
+        if prior is None or row.written_at >= prior.written_at:
+            newest[key] = row
+    by_symbol: dict = {}
+    superseded = 0
+    for (symbol, close_date), row in newest.items():
+        held = by_symbol.get(symbol)
+        if held is None:
+            by_symbol[symbol] = row
+        elif close_date > held.verdict.close_date:
+            by_symbol[symbol] = row
+            superseded += 1
+        else:
+            superseded += 1
+    return list(by_symbol.values()), superseded
+
+
+def grade_ipo_lane(
+    on: date, user_id: str, *, store=None, bench=None,
+    price_fn: Callable[[str, date], float] | None = None,
+    base_dir: str | None = None, verdicts_dir: str | None = None,
+    history_store=None, cache_path: str | None = None,
+) -> dict:
+    """Grade the P3 IPO verdicts whose post-listing horizons have matured.
+
+    What is scored, and what is only recorded. core/ipo/verdict.py asserts one
+    direction: `short.lean` over the LISTING DAY, and only once `short.evidenced`
+    is true — the T-1 lean rests on an interim book, which is explicitly not
+    what the P1 spine measured. `long.lean` is hard-wired dark. So exactly one
+    row per issue can carry True/False, and every other horizon is written with
+    `correct=None`: the curve is kept because the LONG horizon will be asked
+    about it when a second regime matures, and `metrics._scored` drops
+    correct=None, so keeping it asserts no skill in the meantime.
+
+    Entry is the ISSUE PRICE, not a close. An IPO's defining number is the move
+    from what the subscriber paid to what the market said it was worth, and it
+    is the anchor core/ipo/outcomes.py already measures the spine on.
+
+    One user, not every user. A verdict is a global research output while the
+    audit store is per-user, so the lane grades only for the default user;
+    running it per user would write N copies of one measurement.
+
+    Never raises, like every other lane.
+    """
+    from core.audit.benchmark import BenchmarkSeries
+    from core.audit.rules import is_ipo_correct
+    from core.audit.store import AuditOutcomeStore
+    from core.ipo.listing import listing_facts
+    from core.ipo.verdicts import IpoVerdictStore
+
+    summary = {"graded": 0, "skipped_unpriceable": 0, "already_present": 0,
+               "awaiting_listing": 0, "superseded": 0}
+    if not _ipo_lane_enabled():
+        return summary
+    if user_id != settings.PORTFOLIO_DEFAULT_USER_ID:
+        summary["not_default_user"] = True
+        return summary
+
+    store = store or AuditOutcomeStore(user_id=user_id, base_dir=base_dir)
+    bench = bench or BenchmarkSeries()
+    price_fn = price_fn or _default_price_fn
+    verdicts = IpoVerdictStore(base_dir=verdicts_dir)
+
+    rows, superseded = _one_verdict_per_symbol(verdicts.load_all())
+    summary["superseded"] = superseded
+    horizons = _ipo_horizons()
+    seen = store.existing_keys()
+
+    for record in rows:
+        v = record.verdict
+        symbol = (v.symbol or "").strip().upper()
+        if not symbol:
+            continue
+        facts = listing_facts(symbol, history_store=history_store,
+                              cache_path=cache_path)
+        listed = date.fromisoformat(facts.listing_date) if facts else None
+        if facts is None or listed > on:
+            # Not a failure and deliberately NOT skipped_unpriceable: the
+            # nightly job feeds that counter to alert_job_partial_output, and
+            # every issue still awaiting its tape would read as a broken run.
+            summary["awaiting_listing"] += 1
+            continue
+
+        ref = f"ipo:{v.close_date}|{symbol}"
+        lean = (v.short.lean or "")
+        triggers = [f"lean:{lean or 'none'}",
+                    f"quadrant:{v.quadrant or 'none'}",
+                    f"evidenced:{str(bool(v.short.evidenced)).lower()}"]
+        for horizon in horizons:
+            if (ref, horizon) in seen:
+                summary["already_present"] += 1
+                continue
+            matured = trading_days_after(listed, horizon - 1)
+            if matured > on:
+                continue
+            try:
+                exit_close = float(price_fn(symbol, matured))
+                ret = pct_change(facts.issue_price, exit_close)
+                bench_pct = bench.pct_change(listed, matured)
+                exc = excess(ret, bench_pct)
+                correct = (is_ipo_correct(lean, exc)
+                           if horizon == IPO_LISTING_TD and v.short.evidenced
+                           else None)
+                outcome = AuditOutcome(
+                    ref=ref, lane="ipo", user_id=user_id, symbol=symbol,
+                    verdict=lean, triggers=triggers,
+                    issued_on=v.as_of[:10] or v.close_date,
+                    horizon_td=horizon, graded_on=matured.isoformat(),
+                    entry_close=facts.issue_price, exit_close=exit_close,
+                    return_pct=ret,
+                    bench_entry=bench.close_on(listed),
+                    bench_exit=bench.close_on(matured),
+                    bench_pct=bench_pct, excess_pct=exc, correct=correct,
+                    graded_at=datetime.now(timezone.utc).isoformat())
+            except Exception as exc_err:
+                logger.debug("[audit] ipo %s @%dtd ungradeable (non-fatal): %s",
+                             symbol, horizon, exc_err)
+                summary["skipped_unpriceable"] += 1
+                continue
+            store.append(outcome)
+            seen.add((ref, horizon))
+            summary["graded"] += 1
+    return summary
+
+
 def grade_due(on: date, user_id: str | None = None, **kw) -> dict:
-    """Grade all three lanes. A failure in one lane never stops the others."""
+    """Grade every lane. A failure in one lane never stops the others."""
     uid = user_id or settings.PORTFOLIO_DEFAULT_USER_ID
     lanes: dict[str, dict] = {}
     for name, fn in (("advice", grade_advice_lane),
                      ("alert", grade_alert_lane),
                      ("shelf", grade_shelf_lane),
-                     ("switch", grade_switch_lane)):
+                     ("switch", grade_switch_lane),
+                     ("ipo", grade_ipo_lane)):
         allowed = {k: v for k, v in kw.items()
                    if k in _LANE_KWARGS[name] or k in _COMMON_KWARGS}
         try:
@@ -433,4 +601,5 @@ def grade_due(on: date, user_id: str | None = None, **kw) -> dict:
 
 _COMMON_KWARGS = {"store", "bench", "price_fn", "base_dir"}
 _LANE_KWARGS = {"advice": set(), "alert": {"sent_log"},
-                "shelf": {"shelf_path"}, "switch": set()}
+                "shelf": {"shelf_path"}, "switch": set(),
+                "ipo": {"verdicts_dir", "history_store", "cache_path"}}

@@ -7,14 +7,53 @@ The user resequenced onto **PI "Prospect" (IPO intelligence)**. The next task is
 AGENTS.md step-2 story-selection rule this conversation; it would route you into
 Three Loops and skip the work that was actually asked for.
 
-**Next task:** `IPO-4c` (audit integration) in
+**Next task:** `IPO-5a` (research notes in the brief/weekly) in
 [the P3/Substance plan](../../superpowers/plans/2026-09-21-ipo-prospect-p3-substance.md).
-Sprint 4's step detail is written (2026-09-22); `IPO-4a` and `IPO-4b` are built and committed.
-`IPO-4c` has an outline, not step detail — write the detail first, as `IPO-4a` did for itself.
+**Sprint 4 is now complete** (`IPO-4a`/`4b`/`4c`). Sprint 5 has a table and a gate column, not step
+detail — write the detail first, as `IPO-4a` and `IPO-4c` did for themselves. `IPO-5a` is the ungated
+half: it surfaces the sourced research note only. `IPO-5b` (verdict + quadrant visible) stays shut until
+`ipo_verdicts_visible_gate` is judged on forward rows, and nothing in this conversation moved that gate.
 The per-task status below is current as of 2026-09-22; read it before picking anything up.
 
 **Chat opener:**
-`Work task IPO-4c from docs/superpowers/plans/2026-09-21-ipo-prospect-p3-substance.md`
+`Work task IPO-5a from docs/superpowers/plans/2026-09-21-ipo-prospect-p3-substance.md`
+
+**⚠ Two things want the user, not the agent, and neither blocks `IPO-5a`.**
+`IPO-0a` can close today: it needs the **22 Sep 08:50 IST production brief** (NSE and SONA under
+`bidding closed — awaiting listing` with real ×, VARMORA under an open heading) plus one piece of ledger
+evidence — read the "To close on 2026-09-22" list under IPO-0a in the plan; it names both exactly.
+`IPO-0c` still waits on the production Serper counter (see below).
+
+**IPO-4c is done** (2026-09-22): the audit lane. `Lane` gains `"ipo"`; `core/ipo/listing.py` resolves the
+listing date and issue price (P1 spine first, NSE cache second); `grade_ipo_lane` in
+`core/audit/outcomes.py` grades the newest stored verdict per issue at 1/5/21/63/126/252 trading days
+from listing, with `entry_close` = the **issue price**, documented at the schema field rather than left
+to be inferred. Three design points the plan's outline did not reach, all now in its step detail:
+`is_correct` was **not** taught an IPO word — `core/audit/rules.py` gains `is_ipo_correct` beside
+`is_switch_correct`, on the precedent that a different question gets its own answer; **only one row per
+issue can carry True/False** (the listing-day horizon, of a post-close verdict, whose lean asserts a
+direction), every other horizon carrying the return and no claim; and an issue with no tape yet counts as
+`awaiting_listing`, deliberately **not** `skipped_unpriceable`, because the nightly job feeds that
+counter to `alert_job_partial_output`. IPO rows are excluded from the rendered audit report and reach no
+surface. 37 offline tests; full suite **3126 passed, 5 skipped**. `TEAM_TESTING_GUIDE.md` gained case
+**05-G** (12 duties, **59** cases, all still NOT RUN).
+
+⚠ **`IPO-4c` has had implementation and same-conversation self-review only — no fresh-session review.**
+That matches how `IPO-3*`/`IPO-4a`/`IPO-4b` were closed under this plan's own "commit per task"
+discipline, and it is not the `REVIEW.md` gate. If a fresh review is wanted, the three highest-value
+targets are: the horizon off-by-one (horizon 1 must be the listing day, not the day after); the
+scoreability rule (nothing outside an evidenced, directional, listing-day row may carry True/False); and
+containment (no IPO row may move a number in `build_report`). All three have tests; the question a
+reviewer should ask is whether the tests can pass while the property is false.
+
+⚠ **No production IPO row has been graded and none can be yet**, for three reasons that are not code:
+the `ipo_deep_dive` job reaches production only on deploy; `data/ipo/ipo_verdicts.jsonl` does not exist
+there until it does; and grading additionally needs the issue in the P1 spine, which
+`scripts/ipo_backfill.py` rebuilds **manually** from the bhavcopy volume. Until an issue reaches the
+spine the NSE cache is the only resolver, and NSE drops issues from `past` after a few months — so a
+252-td horizon on an issue that never reached the spine sits in `awaiting_listing` for good. That is a
+visible counter in the lane summary, not a silent loss. Wiring the spine to a job is unclaimed work; it
+is not in this plan.
 
 **IPO-4b is done** (2026-09-22): `core/ipo/narrate.py` + `core/config/prompts/shared/ipo_narrate.py`.
 The note is the `IPO-5a` explainer content, stored on the verdict row and reaching **no surface**.
@@ -26,8 +65,7 @@ to a deterministic template from the same facts. The model is handed source COUN
 Cost shape: a note is bought only for a row that will actually be stored, and reused while the facts
 digest holds, so an issue costs at most two model calls — T−1 and the close (the note states which).
 ⚠ This nuances `IPO-4a`'s "post-close costs nothing": that remains true for network and extraction; the
-narration adds exactly one call at the close. 45 offline tests; full suite **3089 passed, 5 skipped**.
-`TEAM_TESTING_GUIDE.md` gained case **05-F** (12 duties, **58** cases, all still NOT RUN).
+narration adds exactly one call at the close. 45 offline tests.
 
 **IPO-4a is done** (2026-09-22): `core/ipo/deep_dive.py` + the `ipo_deep_dive` job at 19:00 IST.
 The design point that was not in the plan's table: the visibility gate counts only `short.evidenced`
@@ -37,11 +75,14 @@ dark is not stored (the capture ledger's "a row asserts a reading was taken"). 3
 job reaches prod only on deploy; until then `data/ipo/ipo_verdicts.jsonl` does not exist in production.
 The first real T−1 candidate after deploy is whichever mainboard issue closes the day after.
 ⚠ `docs/StockAgent-Three-Loops.pdf` is stale (was already stale at `5f7238c`; §8/§9 of the KT changed at
-`IPO-4a` and §8 again at `IPO-4b`). No Node/Chromium on this machine — rebuild with
-`python scripts/docs/build_kt_pdf.py` where there is. It is the only `check_kt_docs.py` error; 24 job
-IDs, 218 local links and 13 configuration claims are green.
+`IPO-4a`, §8 again at `IPO-4b`, and §7 + §8 again at `IPO-4c`). No Node/Chromium on this machine —
+rebuild with `python scripts/docs/build_kt_pdf.py` where there is. It is the only `check_kt_docs.py`
+error; 24 job IDs, 221 local links and 13 configuration claims are green.
 
-**IPO-0a status (2026-09-21 afternoon):** worked, not closeable today — nothing is in the `closed — awaiting listing` state until NSE and SONA close tonight. Read the "Progress 2026-09-21" note under IPO-0a in the plan; it names the two pieces of production evidence the 22 Sep 08:50 brief provides. Do not delete the milestone entry without both.
+**IPO-0a status (2026-09-21 afternoon):** worked, not closeable that day — nothing was in the
+`closed — awaiting listing` state until NSE and SONA closed that night. Read the "Progress 2026-09-21"
+note under IPO-0a in the plan; it names the two pieces of production evidence the 22 Sep 08:50 brief
+provides. Do not delete the milestone entry without both.
 
 **IPO-0b is done** (size-tiered demand lean; see the plan's "Done 2026-09-21" note).
 
@@ -55,16 +96,20 @@ IDs, 218 local links and 13 configuration claims are green.
 
 **`ipo_verdicts_visible_gate` is now in `config/milestones.yaml`**, deadline 2026-12-31 or 60 days of forward P2 rows, whichever comes first. It is the gate P3 has to pass before any verdict is shown. ⚠ A milestone reaches prod only on deploy — the `registry_is_current` invariant watches for that.
 
-**Sprint 4 in progress.** `IPO-4a` (the `ipo_deep_dive` job at 19:00 IST) wires Sprints 2–3 to the clock, and `IPO-4b` (the narrator) gives the row its prose; both are done. `IPO-4c` (audit lane — `Lane` gains `"ipo"`, `entry_close` carries the issue price, horizons 1/5/21/63/126/252 td) is the last of the sprint and has an outline only.
+**Sprint 4 is complete.** `IPO-4a` (the `ipo_deep_dive` job at 19:00 IST) wired Sprints 2–3 to the clock,
+`IPO-4b` (the narrator) gave the row its prose, and `IPO-4c` (the audit lane) gave it forward grading.
+The model now runs, writes, narrates and will be measured — and still reaches no user.
 
 Still open from Sprint 0: `IPO-0a` closes on the 22 Sep brief; `IPO-0c` still waits on the production Serper counter (see below).
 
-Read that plan's "State of play as of 2026-09-21" section first. Sprints 0–2 are
-executable; Sprints 3–5 are design-level until `IPO-1` (the P1 backtest read,
-milestone due 2026-09-30) answers whether there is measurable signal to weight.
+Read that plan's "State of play as of 2026-09-21" section first. Sprints 0–4 are
+executable and built; Sprint 5 carries acceptance criteria and a gate column but
+no step detail yet.
 
 The Three Loops PI below is **paused, not abandoned** — DOC-001 still awaits its
-fresh-session review and all 32 `SA-` stories remain `todo`.
+fresh-session review and all 32 `SA-` stories remain `todo`. `STATE.json` was
+deliberately not touched by any IPO task: it describes PI-2026-09, which has zero
+IPO scope, and writing an IPO `active_task` into it would misrepresent that PI.
 
 ## Resolved since September 19 — the email outage
 
@@ -130,7 +175,7 @@ The updated entry points are [Technical KT](../../TECHNICAL_DESIGN.md),
 [generated PDF](../../StockAgent-Three-Loops.pdf),
 [architecture](../../ARCHITECTURE.md) and
 [team testing guide](../../TEAM_TESTING_GUIDE.md).
-The guide has 12 duties and 58 cases (05-F added at `IPO-4b`), all NOT RUN.
+The guide has 12 duties and 59 cases (05-F added at `IPO-4b`, 05-G at `IPO-4c`), all NOT RUN.
 
 Every future implementation updates its affected living docs/test cases and
 regenerates the PDF when its source changes. SA-031 now means the final

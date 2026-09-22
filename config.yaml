@@ -772,6 +772,15 @@ audit:
   shock_atr_mult: 3.0                # single-session move counting as an unforeseeable shock
   switch_lane_enabled: true          # grade the evaluated switch pairs
   switch_grade_max_rows_per_run: 2000  # bounds the first backfill after deploy
+  # IPO lane (PI Prospect, IPO-4c). Horizons are trading days from LISTING —
+  # horizon 1 IS the listing day — and entry is the issue price, not a close.
+  # The list mirrors core.ipo.history.HORIZONS_TD on purpose: the P1 spine and
+  # this lane must measure the same curve or the forward hit-rate cannot be
+  # compared with the backtest the thresholds were fitted on. These rows are
+  # excluded from the blended audit report; the P3 verdict stays dark until
+  # IPO-5b passes its measured gate.
+  ipo_lane_enabled: true
+  ipo_horizons_td: [1, 5, 21, 63, 126, 252]
   min_hit_rate_60d: 0.45       # 60td hit-rate floor before a warning fires
   max_bench_lag_pct: 10.0      # portfolio trailing NIFTY by more than this over 60d
   max_news_blind_rate: 0.20    # F1's blind-rate ceiling — currently log-only

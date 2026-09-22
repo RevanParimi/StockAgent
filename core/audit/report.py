@@ -93,7 +93,15 @@ def build_report(user_id: str | None = None, *, store=None, min_n: int | None = 
     from core.audit.store import AuditOutcomeStore
 
     store = store or AuditOutcomeStore(user_id=user_id)
-    rows = store.load_all()
+    # IPO rows are graded into the same store and belong to NO block here. This
+    # report is about the advice the user acts on; the P3 IPO model is dark
+    # until IPO-5b passes its measured gate, and rendering a hit-rate for it
+    # would be exactly the surface that gate withholds. The exclusion is
+    # structural rather than incidental: today the ipo horizons
+    # (1/5/21/63/126/252) miss this report's (10/30/60) and the blend is empty
+    # by luck, but audit.ipo_horizons_td is a config edit away from 60 and that
+    # edit must not be able to fold a dark model into the advice hit-rate.
+    rows = [r for r in store.load_all() if r.lane != "ipo"]
     floor = int(min_n if min_n is not None else cfg("audit.min_n", fallback=30))
 
     from core.audit.attribution import attribution_distribution

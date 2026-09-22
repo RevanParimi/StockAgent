@@ -58,3 +58,37 @@ def is_switch_correct(origin_excess_pct: float, dest_excess_pct: float) -> bool:
     model, so a tie is not evidence that moving was right.
     """
     return dest_excess_pct > origin_excess_pct
+
+
+# The IPO verdict's SHORT leans that assert a direction. "mixed" is not here:
+# it is the band between the two thresholds and claims nothing, so scoring it
+# would manufacture a call the model never made.
+IPO_LEAN_UP = frozenset({"strong"})
+IPO_LEAN_DOWN = frozenset({"weak"})
+
+
+def is_ipo_correct(lean: str, excess_pct: float) -> bool | None:
+    """Did an IPO verdict's listing-day lean hold?
+
+    Deliberately NOT part of is_correct(), for the reason this module's
+    docstring gives: is_correct defines what every accumulated advice row
+    already means, and "strong"/"weak" are not in its vocabulary — routed
+    through it, every IPO row would silently come back None. Same resolution
+    as is_switch_correct: a different question gets its own answer here.
+
+    The question is the one core/ipo/verdict.py actually asks — the listing-day
+    direction versus the issue price, in EXCESS terms like every other lane, so
+    a market that rose 3% on listing day does not make every strong lean right.
+    "mixed", an empty lean and anything unrecognised return None: the caller
+    still writes the row, it just carries no claim.
+
+    A dead heat counts FOR a strong lean and AGAINST a weak one, matching
+    is_correct's INTENT_LONG/INTENT_REDUCE split rather than inventing a third
+    convention for the same >= boundary.
+    """
+    v = (lean or "").strip().lower()
+    if v in IPO_LEAN_UP:
+        return excess_pct >= 0.0
+    if v in IPO_LEAN_DOWN:
+        return excess_pct < 0.0
+    return None

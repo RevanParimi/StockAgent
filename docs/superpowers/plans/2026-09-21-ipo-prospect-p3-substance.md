@@ -547,17 +547,39 @@ fine (`H − S = −35.2`) — and the only horizon that would act on that readi
 
 ### `IPO-3d` — Verdict store
 
-- [ ] `core/ipo/verdicts.py`: JSONL at `data/ipo/ipo_verdicts.jsonl`, keyed `(symbol, close_date)`,
+- [x] `core/ipo/verdicts.py`: JSONL at `data/ipo/ipo_verdicts.jsonl`, keyed `(symbol, close_date)`,
       **append-only** (a re-fire on an extended close date is a new row, not an overwrite), `guard_lossless_rewrite`
       on any prune. Stores the verdict **and** the feature/component dicts it was computed from, so a later
       anchor change can be replayed against what was known.
-- [ ] Writes only. No reader outside tests and the watchdog until `IPO-5b`.
+- [x] Writes only. No reader outside tests and the watchdog until `IPO-5b`.
+
+**Done 2026-09-22.** The row is `{written_at, verdict, hype, substance}` — both whole readings, so the raw
+features survive and a moved anchor can be re-asked of what was known. The anchors in force are deliberately
+**not** copied into the row: `config.yaml` is version-controlled and dated at the block, and a per-row copy
+would be a second source of truth that drifts.
+
+Dedup is the capture ledger's content rule, widened by one step: a re-run is vetoed only when it reproduces
+the whole stored row, not merely the same verdict. Two runs can reach the same lean over different evidence
+— research that finally corroborates leaves S dark and the verdict unchanged while the features behind it
+improve — and vetoing on the verdict alone would silently drop the better row. Duplicates cost nothing
+either way because readers take one row per key via `latest()`. An `open → closed` crossing at identical
+numbers is also a new row: the numbers did not move but `evidenced` did, and that flip is exactly what the
+gate measures. A verdict with no symbol is refused outright — an unkeyed row is one the gate counts against
+nothing. Retention is `ipo.verdict_retention_days` (1200 — 252 td of grading plus P4's 365-day convergence
+window, with headroom); `prune` keeps the `<= 0` no-op, keeps undateable rows, and refuses any rewrite of a
+file it could not fully parse. 23 offline tests (`tests/unit/ipo/test_ipo_verdicts_store.py`).
 
 ### `IPO-3e` — Milestone
 
-- [ ] `ipo_verdicts_visible_gate` (`manual_confirmation`) registered **in the `IPO-3d` commit**. Deadline:
+- [x] `ipo_verdicts_visible_gate` (`manual_confirmation`) registered **in the `IPO-3d` commit**. Deadline:
       the earlier of 60 days of forward P2 rows or 2026-12-31. Action text states the gate: forward hit-rate
       from the P2 capture on the post-close listing-day lean matching the historical 92% / 34%.
+
+**Done 2026-09-22**, same commit as `IPO-3d` per the watchdog rule. The action text points at
+`short.evidenced` as the row filter, names `config.yaml ipo.short_cohorts` as where the 92% / 34% and their
+n live, and states the two outcomes explicitly — including that a miss keeps P3 dark and sends the anchors
+back to a wider spine, because a milestone that only describes success is one a future reader ships past.
+It also records that the T−1 lean stays dark regardless and that `IPO-5a` is not gated on any of it.
 
 ---
 

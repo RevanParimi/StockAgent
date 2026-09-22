@@ -1004,6 +1004,7 @@ IPO_QUADRANT_HIGH: float = float(cfg("ipo.quadrant_high", fallback=50.0))
 IPO_SHORT_COHORTS: dict = dict(cfg("ipo.short_cohorts", fallback={}) or {})
 IPO_SHORT_BANDS: dict = dict(cfg("ipo.short_bands", fallback={}) or {})
 IPO_SHORT_BANDS_HIGH_FROTH: dict = dict(cfg("ipo.short_bands_high_froth", fallback={}) or {})
+IPO_VERDICT_RETENTION_DAYS: int = int(cfg("ipo.verdict_retention_days", fallback=1200))
 
 ADVISOR_SWITCH_CONVICTION_GAP: float = float(cfg("advisor.switch_conviction_gap", fallback=0.15))
 

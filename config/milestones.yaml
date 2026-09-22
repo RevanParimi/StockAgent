@@ -265,6 +265,35 @@ milestones:
       Remove this entry once judged.
     docs: docs/superpowers/specs/2026-08-24-three-loops-pi-design.md
 
+  - id: ipo_verdicts_visible_gate
+    kind: milestone
+    title: "IPO P3 — decide whether verdicts may be shown to a user"
+    check: manual_confirmation
+    deadline: 2026-12-31
+    lead_days: 5
+    action: >
+      P3 writes verdicts to data/ipo/ipo_verdicts.jsonl and shows NOTHING.
+      Spec section 5 P5 conditions the visible flip on a MEASURED hit-rate, and
+      the backtest alone does not qualify: the P1 spine holds FINAL
+      subscription, known at close of day 3, while the deep dive fires at T-1
+      on interim demand the spine cannot see. The verdict records which case it
+      is in `short.evidenced` — flip only what that flag admits.
+      JUDGE THIS WHEN 60 days of forward P2 rows have accrued, or on the
+      deadline above, whichever comes FIRST.
+      The gate: on rows where short.evidenced is true (the post-close
+      listing-day lean), does the forward hit-rate match the historical
+      92% positive for `strong` (demand >= 70) and 34% for `weak`
+      (demand <= 30)? Compare against config.yaml ipo.short_cohorts, which
+      carries the n behind each figure.
+      If it holds, IPO-5b may show the verdict and the quadrant. If it does
+      not, P3 stays dark and the anchors get re-read against the wider
+      production spine — a miss is a real result, not a reason to ship anyway.
+      The T-1 lean stays dark REGARDLESS; it is not what this measures.
+      IPO-5a (sourced research notes, no verdict claim) is not gated on any of
+      this and may ship first.
+      Remove this entry once judged.
+    docs: docs/superpowers/plans/2026-09-21-ipo-prospect-p3-substance.md
+
 invariants:
   - id: ipo_cache_fresh
     kind: invariant

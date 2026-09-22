@@ -1,4 +1,4 @@
-# Current handoff - 2026-09-21
+# Current handoff - 2026-09-22
 
 ## START HERE — next task is outside this PI
 
@@ -7,12 +7,14 @@ The user resequenced onto **PI "Prospect" (IPO intelligence)**. The next task is
 AGENTS.md step-2 story-selection rule this conversation; it would route you into
 Three Loops and skip the work that was actually asked for.
 
-**Next task:** `IPO-3d` (+ `IPO-3e` in the same commit) in
+**Next task:** `IPO-4a` in
 [the P3/Substance plan](../../superpowers/plans/2026-09-21-ipo-prospect-p3-substance.md).
+Sprint 4 needs its step detail written first — the plan has the table and the
+rationale (19:00 IST, daily sweep, concurrency cap) but no per-task steps.
 The per-task status below is current as of 2026-09-22; read it before picking anything up.
 
 **Chat opener:**
-`Work task IPO-3d from docs/superpowers/plans/2026-09-21-ipo-prospect-p3-substance.md`
+`Work task IPO-4a from docs/superpowers/plans/2026-09-21-ipo-prospect-p3-substance.md`
 
 **IPO-0a status (2026-09-21 afternoon):** worked, not closeable today — nothing is in the `closed — awaiting listing` state until NSE and SONA close tonight. Read the "Progress 2026-09-21" note under IPO-0a in the plan; it names the two pieces of production evidence the 22 Sep 08:50 brief provides. Do not delete the milestone entry without both.
 
@@ -24,11 +26,11 @@ The per-task status below is current as of 2026-09-22; read it before picking an
 
 **Sprint 2 is done** (2026-09-21 evening, `e8abda3` + `c8e54c2`): `core/ipo/research.py` (Tavily dossier, cached per issue) and `core/ipo/extract.py` (per-document extraction, corroboration gate). 60 offline tests over three real captures. Not yet wired to any job — that is `IPO-4a`.
 
-**Sprint 3 is three-fifths done** (`4c26072`, `c60f602`, and `IPO-3c` on 2026-09-22): `hype.py` (fitted `demand` + unfitted `froth`), `substance.py` (S, never fitted) and `verdict.py` (the §3 grid, SHORT from `demand`, LONG hard-wired dark). The model runs end to end on the recorded dossiers and reaches no job and no surface.
+**Sprint 3 is DONE** (`4c26072`, `c60f602`, and `IPO-3c`/`3d`/`3e` on 2026-09-22): `hype.py` (fitted `demand` + unfitted `froth`), `substance.py` (S, never fitted), `verdict.py` (the §3 grid, SHORT from `demand`, LONG hard-wired dark) and `verdicts.py` (the append-only store). The model runs end to end on the recorded dossiers and reaches no job and no surface.
 
-**Next task:** `IPO-3d` (the verdict store) with `IPO-3e` (the `ipo_verdicts_visible_gate` milestone) **in the same commit** — the plan makes that a watchdog rule, not a preference. Then Sprint 4.
+**`ipo_verdicts_visible_gate` is now in `config/milestones.yaml`**, deadline 2026-12-31 or 60 days of forward P2 rows, whichever comes first. It is the gate P3 has to pass before any verdict is shown. ⚠ A milestone reaches prod only on deploy — the `registry_is_current` invariant watches for that.
 
-**Chat opener:** `Work task IPO-3d from docs/superpowers/plans/2026-09-21-ipo-prospect-p3-substance.md`
+**Next: Sprint 4.** `IPO-4a` (the `ipo_deep_dive` job at 19:00 IST) is the first task that wires any of Sprint 2 or 3 to something that runs. Its step detail is not written yet — the plan has the table and the reasoning, not the steps.
 
 Still open from Sprint 0: `IPO-0a` closes on the 22 Sep brief; `IPO-0c` still waits on the production Serper counter (see below).
 

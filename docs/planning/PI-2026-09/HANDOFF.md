@@ -45,6 +45,32 @@ For the reviewer, the things most worth attacking:
 After acceptance, select **SA-001**, but do not start it in the review
 conversation.
 
+### Production read — 2026-09-23 (read-only; supersedes "no railway access" notes below)
+
+The Railway CLI now works here (Node installed, folder linked to project `carefree-renewal` /
+`production` / `StockAgent`). The user ran one read-only probe through `railway ssh`; Claude's own
+`railway ssh` is blocked by the auto-mode classifier. The probe is
+`analysis_data/prod_probe_20260923.py` (ignored). Run it from Git Bash:
+`railway ssh "cd /app && echo $(gzip -9c <probe> | base64 -w0) | base64 -d | python -c 'import sys,zlib;exec(zlib.decompress(sys.stdin.buffer.read(),31))'"`.
+
+- **Deploy:** `b68bc02` is SUCCESS (2026-09-23 07:59 UTC).
+- **D6 — closeable.** In the outbox, before 21 Sep there were 77 email rows dead and 77 push
+  delivered. Since 21 Sep: 3 email dead, all before the redeploy (last at 07:52 UTC on the 21st);
+  **8 email delivered, 0 dead since**, and 11 push delivered (email/push parity). "Delivered" means
+  provider-accepted. This is production evidence toward SA-006, **not** its acceptance.
+- **IPO live capture is broken in production since ~18–19 Sep.** Every `fetch_bid_ladder` fails;
+  locally it works. The 22 Sep brief's category figures were 2–3 days stale (NSE QIB 1.53× shown,
+  final 12.68×). VARMORA has no ledger rows, and `ipo_signals_accruing` is warning. **Do not close
+  IPO-0a.** Full evidence is under IPO-0a in the plan.
+- **P1 spine absent in production** (`data/ipo/ipo_history.jsonl` missing).
+- **IPO-0c:** serper counter 2,590 in September (default budget 2,500). Recommend GMP stays dark;
+  check serper.dev for real remaining credits.
+- **P3:** no `ipo_verdicts.jsonl` yet. That is expected for NSE/SONA, because their T−1 run predates
+  the deploy. VARMORA's T−1 run is 23 Sep 19:00 IST, but its demand inputs are dark (no ledger rows).
+- **Next evidence to get:** the production failure reason. It shows as `[ipo_bids] fetch failed for
+  VARMORA (non-fatal): …` in the logs after the 17:45 IST refresh, or from a one-off fetch through
+  `railway ssh`.
+
 ### IPO stays paused
 
 `ed1b900` (IPO-4c) is pushed and `origin/main` is current, which closes **Sprint 4** of PI "Prospect".

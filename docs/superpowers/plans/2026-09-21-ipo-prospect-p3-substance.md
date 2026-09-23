@@ -161,6 +161,46 @@ subscription. If production's final book is habitually NSE-only, `demand` is bei
 different quantity than it was fitted on, which would undercut the forward hit-rate that
 `ipo_verdicts_visible_gate` is judged on. **Settle this before `IPO-5b`.**
 
+**Production read 2026-09-23 — the ledger half is met as written, but do NOT close: live capture is
+broken in production.** Source: a read-only probe the user ran through `railway ssh`
+(`analysis_data/prod_probe_20260923.py`, ignored). It printed counts and IPO figures only.
+
+| Ledger `data/ipo/ipo_signals.jsonl` (144 rows) | Rows | First → last capture (UTC) | State |
+|---|---|---|---|
+| NSE (open 17–21 Sep) | 5 | 17 Sep 02:30 → **19 Sep 07:00** | all `open` |
+| SONA (open 17–21 Sep) | 3 | 17 Sep 02:30 → **18 Sep 12:15** | all `open` |
+| VARMORA (open from 22 Sep) | **0** | — | — |
+
+- The written criterion (`"symbol": "NSE"` rows ≥ 1) passes. The watchdog alternative fails:
+  `ipo_signals_accruing` raised a `warning` on 2026-09-23, "no snapshot for open issue(s): VARMORA".
+- **Cause, from code plus measurement.** `_capture_signals` writes only when a `bid_ladder` is
+  present. On a failed `fetch_bid_ladder`, `_carry_forward` restores the old ladder and the
+  ledger's dedup drops it as identical. So no row after the 19th means **every production ladder
+  fetch failed from about 18–19 Sep onward**. VARMORA never had a successful fetch, so it has
+  nothing to carry.
+- **It is production-specific.** A local `fetch_bid_ladder` on 2026-09-23 succeeded for both issues
+  (VARMORA total 0.27×; NSE final QIB 12.68×, retail 1.39×, total 5.71×, 12% at cut-off). No
+  deployment happened on 18–19 Sep: `9a805878` ran unchanged from 26 Aug to 21 Sep. Fresh containers
+  on 21–23 Sep still fail. NSE's *list* endpoint still works from Railway, since VARMORA appears
+  in the brief. The likely suspect is NSE refusing the ipo-detail endpoint to Railway's egress.
+  **Unconfirmed:** the production exception text has not been read yet.
+- **The "(NSE only)" open question above is answered, and the answer is worse.** The 22 Sep brief's
+  categories equal the last successful captures *exactly*: NSE QIB 1.52996×, retail 0.722428×,
+  39% cut-off = the 19 Sep 07:00 row; SONA QIB 0.459178×, retail 1.28955×, 58% = the 18 Sep 12:15
+  row. They are all-exchange (`combined`) figures, but **2–3 days stale**, carried past the close
+  and rendered under "bidding closed". Only the *total* (3.78×) came fresh from the NSE list feed,
+  and that is what the "(NSE only)" label qualifies. Against NSE's final book (QIB 12.68×), the
+  brief understated QIB about 8×.
+- **Consequence for P3.** `demand` reads these ledger rows and category fields. While fetches fail,
+  every issue's demand is stale or dark. That matters more for `IPO-5b` than NSE-only vs combined.
+- **Also measured:** `data/ipo/ipo_history.jsonl` (the P1 spine) **does not exist in production**.
+  It is written only by the manual `scripts/ipo_backfill.py`. IPO-1 was fitted on a local spine
+  (209 rows). In production, `grade_ipo_lane` has only the NSE-cache resolver, and history reports
+  are empty.
+
+**Before deleting the milestone:** read the production failure reason (the `[ipo_bids] fetch failed
+for …` warning), fix the fetch, and see VARMORA or the next open issue land ledger rows.
+
 ### `IPO-0b` — Size-tiered demand thresholds in `_ipo_lean`
 
 - **Chat opener:** `Work task IPO-0b from docs/superpowers/plans/2026-09-21-ipo-prospect-p3-substance.md`
@@ -240,6 +280,18 @@ after deploy — the 08:00 IST job — so the 22 Sep 08:50 brief is the first on
   calls/month, ~1% of the 2,500 cap**; double it if the T−1 deep dive also fetches. Headroom is
   therefore about the main pipeline's own consumption, not GMP's — which is why the counter still
   has to be read before deciding.
+
+**Production read 2026-09-23 — counter measured; recommendation: leave GMP dark.**
+
+- `data/logs/api_usage.json`, month `2026-09`: **serper 2,590 calls**, tavily 129. The monthly limit
+  is not stored in the file. It comes from `SERPER_MONTHLY_LIMIT`, default 2,500, and the production
+  value was not inspected. At the default, the app's own counter is **104% of budget with a week
+  left**. No code path stops Serper calls at the limit.
+- So there is no headroom on the shared counter. GMP's ~25 calls/month would come out of a budget
+  the main pipeline already exceeds, and `fetch_gmp()` still has no caller.
+- **Open, and more important than GMP:** whether the Serper *account* is exhausted, which would make
+  the pipeline's own searches fail for the rest of the month. Only the serper.dev dashboard shows
+  real remaining credits. **Decision (provision or stay dark) is the user's; not recorded as made.**
 
 ---
 

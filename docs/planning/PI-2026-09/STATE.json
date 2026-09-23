@@ -723,6 +723,10 @@
   "history": [
     {
       "date": "2026-09-23",
+      "event": "Read-only production inspection (user-run probe via railway ssh; no writes). Deploy b68bc02 SUCCESS. Outbox since 2026-09-21: 8 email delivered and 0 dead after the redeploy (3 dead before it, on the 21st); push 11 delivered. That is production evidence toward SA-006, which stays todo and is not accepted. Outside this PI: production IPO bid-ladder fetches have failed since ~18-19 Sep (they work locally), the P1 IPO spine is absent in production, and the September serper counter is 2590. Details are in HANDOFF and the IPO plan. No change to any story status."
+    },
+    {
+      "date": "2026-09-23",
       "event": "DOC-001 unblocked the same day: the user installed Node v24.21.0. Chromium was installed via the vendored Playwright 1.62.1 and docs/StockAgent-Three-Loops.pdf rebuilt (18 pages, no overflow). Visual inspection found the section 1 'Production observation' row implied a production check at d105a44 ('at the same commit'); it now names 9a805878 and states no d105a44 deployment was inspected. check_kt_docs.py: 0 errors for the first time since IPO-4a. Manifest regenerated: review input 7b04fa71..., 24 files; the 10 files differing from HEAD are exactly this phase's. F1-F4 fixed, F5 routed to SA-005/SA-006, F6 done. Status review_required; the fresh-session review must run in a new conversation, after the payload is committed. Harness not re-run (no code or test input changed since its 324-test/2-failure F5 result). No application source, config, deployment, job, notification, commit or push.",
       "implementation_receipt": "docs/planning/PI-2026-09/evidence/DOC-001-implementation.md",
       "review_input_sha256": "7b04fa718dbaf958c71413f21e0d99454b9184801cc530d4d3f1cec2fb03deca"

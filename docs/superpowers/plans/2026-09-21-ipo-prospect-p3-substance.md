@@ -266,10 +266,10 @@ after deploy — the 08:00 IST job — so the 22 Sep 08:50 brief is the first on
 - **Chat opener:** `Work task IPO-0c from docs/superpowers/plans/2026-09-21-ipo-prospect-p3-substance.md`
 - **Size:** ~15 min + key provisioning · **Depends on:** nothing · **Decision task, may end in "no"**
 
-- [ ] Read the current month's Serper counter (`data/api_usage.json` / `api_usage_events.jsonl`) and compute remaining headroom against the 2,500/month cap.
-- [ ] Decide: provision a dedicated key, or leave GMP dark.
-- [ ] If provisioning: set `SERPER_API_KEY_IPO`, flip `ipo.gmp_enabled: true`, confirm a reading appears carrying ≥`ipo.gmp_min_sources` distinct domains.
-- [ ] Record the decision and the measured headroom in this plan.
+- [x] Read the current month's Serper counter (`data/api_usage.json` / `api_usage_events.jsonl`) and compute remaining headroom against the 2,500/month cap. *(23 Sep: 2,590, no headroom at the default.)*
+- [x] Decide: provision a dedicated key, or leave GMP dark. *(23 Sep, owner: dark.)*
+- [ ] ~~If provisioning: set `SERPER_API_KEY_IPO`, flip `ipo.gmp_enabled: true`, confirm a reading appears carrying ≥`ipo.gmp_min_sources` distinct domains.~~ Not applicable.
+- [x] Record the decision and the measured headroom in this plan.
 
 **Why:** GMP is built, tested and dark — a Hype feature P3 wants for free. But `ipo_gmp.py` states plainly that `search_serper` calls `record_call("serper")` **regardless of which key was passed**, so enabling GMP spends from the same counter as the daily pipeline. Measure, don't assume.
 
@@ -305,6 +305,20 @@ after deploy — the 08:00 IST job — so the 22 Sep 08:50 brief is the first on
   the pipeline's own searches fail for the rest of the month. Only the serper.dev dashboard shows
   real remaining credits. **Decision (provision or stay dark) is the user's; not recorded as made.**
 
+**Decided 2026-09-23 (owner): GMP stays dark. `IPO-0c` is closed as "no".**
+
+- No `SERPER_API_KEY_IPO`, `ipo.gmp_enabled` stays false, and `fetch_gmp()` stays unwired, so
+  there is no code change.
+- `gmp_pct` is already one of `hype.py`'s unfitted froth inputs. It remains `None`, and each verdict
+  lists `hype.gmp_pct` under `dark`. That is the "omits the feature" half of the acceptance: absent
+  and visibly dark, not faked.
+- Measured headroom: the app counter read 2,590 against the default 2,500 on 23 Sep. The owner
+  took the decision on that counter. The serper.dev dashboard figure (real remaining account credit)
+  was **not** read, so "is the Serper account exhausted?" stays open under PI-2026-09 `SA-035`. It is
+  not reopened here.
+- Revisit only if SA-035 shows real headroom **and** P3's forward hit-rate (`IPO-5b`) suggests froth
+  matters.
+
 ---
 
 ### `IPO-0d` — Never render a carried-forward ladder as a final reading (added 2026-09-23)
@@ -327,8 +341,8 @@ after deploy — the 08:00 IST job — so the 22 Sep 08:50 brief is the first on
 - **Acceptance:** the spine exists on the volume and is refreshed by a job or a documented run,
   with a row count reconciled against the local build. `listing.py` resolves a listed issue from
   it in production.
-- **Also see:** PI-2026-09 `SA-035` for the Serper plan and budget question, which blocks
-  `IPO-0c`'s decision.
+- **Also see:** PI-2026-09 `SA-035` for the Serper plan and budget question. `IPO-0c` was decided
+  without it on 2026-09-23 (GMP stays dark); SA-035 still owns the account-credit question.
 
 ## Sprint 1 — The evidence gate (by 2026-09-30)
 
@@ -422,7 +436,7 @@ fires at **T−1** on day-2 evening figures, and QIBs bid overwhelmingly on the 
 
 - **`IPO-3a` (Hype):** weight `qib_x` ≥ `total_x` > `retail_x` for the SHORT horizon; fit to 1–5 td
   on this spine. Retail-vs-QIB skew and cut-off share enter as froth modifiers, unweighted for return
-  until P2 rows mature. GMP only if `IPO-0c` wires it (see that task — it is not wired today).
+  until P2 rows mature. GMP only if `IPO-0c` wires it (see that task — it is not wired today; decided 2026-09-23: it stays dark).
 - **`IPO-3b` (Substance):** builds and captures; **no weight on historical evidence** — none exists
   for PAT, revenue, valuation or promoter record, and the report says so in its own caveats.
 - **`IPO-3c` (verdict):** SHORT verdict may be fitted; **LONG verdict ships dark indefinitely**

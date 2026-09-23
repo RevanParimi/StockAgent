@@ -22,7 +22,7 @@ it is not an implemented human-approval workflow.
 | Current code | Traced in this checkout. Flags, inputs and runtime data determine whether a path actually runs. |
 | Locally checked | Existing tests run in an isolated copy. Exact results and limits are in the [validation receipt](planning/PI-2026-09/evidence/DOC-001-implementation.md). |
 | Production observation | Dated evidence: the September 10 audit, section 10's 2026-09-21 email diagnosis, and a September 15 deployment SUCCESS at `9a805878`. No `d105a44` deployment was inspected. |
-| PI target | Intended behavior, not completed functionality. All SA-001 through SA-038 remain `todo` in this edition; three are stretch. |
+| PI target | Intended behavior, not completed functionality. All SA-001 through SA-039 remain `todo` in this edition; three are stretch. |
 
 The [September audit](audit/2026-09-10-repository-production-review.md) records
 unresolved label, timing, health, weight-bound and operational defects.
@@ -261,6 +261,15 @@ Regime and lesson modifiers affect research inputs. This is an adaptive
 feedback system; it does not demonstrate that adaptation beats a fixed policy.
 The audit also reproduced final weight-bound violations and repeated ensemble
 trend counts presented under different agent names.
+
+Current code adapts live weights on every eligible review. On 2026-09-23,
+production logged `technical` at 0.0 against its 0.12 default for 5 of 6
+observed tickers. **PI target, not current code:** SA-039, ordered first by
+the owner, adds an observe-only switch. With it, forecasts, analysis and
+re-forecasts use the sector's configured default weights and lesson emphasis
+stops. The learner still computes into a diagnostic record, and stored weights
+stay untouched, so rollback is exact. Activating it in production is a
+separate, owner-authorized configuration push.
 
 SA-015 requires retry-safe updates and final bounds, SA-016 fixes attribution,
 and SA-017 records comparable history. SA-020/SA-021 address overlap,
@@ -598,6 +607,7 @@ documentation refresh; it does not close SA-031 or any upstream remediation.
 | [SA-036](planning/PI-2026-09/stories/SA-036.md) | Record durable outcomes for every critical job | 9 Jobs | None |
 | [SA-037](planning/PI-2026-09/stories/SA-037.md) | Keep deploys from dropping scheduled jobs | 3 Runtime; 9 Jobs | SA-036 |
 | [SA-038](planning/PI-2026-09/stories/SA-038.md) | Judge and retire lapsed production-verification milestones | 9 Jobs; 10 Operations | None |
+| [SA-039](planning/PI-2026-09/stories/SA-039.md) | Contain adaptive learning: observe-only, live weights back to defaults | 5 Learning | None |
 
 ### Maintain documentation with each story
 

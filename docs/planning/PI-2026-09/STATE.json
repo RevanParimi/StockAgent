@@ -22,6 +22,25 @@
   },
   "tasks": [
     {
+      "id": "SA-039",
+      "title": "Contain adaptive learning: observe-only, live weights back to defaults",
+      "story": "docs/planning/PI-2026-09/stories/SA-039.md",
+      "sprint": 1,
+      "points": 3,
+      "priority": "P0",
+      "scope": "planned",
+      "status": "todo",
+      "depends_on": [],
+      "implementation_receipt": null,
+      "review_receipt": null,
+      "reviewed_revision": null,
+      "production_verification": {
+        "status": "not_started",
+        "evidence": null
+      },
+      "blocked_reason": null
+    },
+    {
       "id": "SA-001",
       "title": "Sanitize every chat Markdown rendering boundary",
       "story": "docs/planning/PI-2026-09/stories/SA-001.md",
@@ -64,7 +83,7 @@
       "title": "Gate recommendations and learning on essential data",
       "story": "docs/planning/PI-2026-09/stories/SA-003.md",
       "sprint": 1,
-      "points": 5,
+      "points": 4,
       "priority": "P1",
       "scope": "planned",
       "status": "todo",
@@ -839,6 +858,10 @@
     }
   ],
   "history": [
+    {
+      "date": "2026-09-23",
+      "event": "Owner decisions (resequencing). (1) Learning containment promoted ahead of SA-001: SA-003's observe-only containment is split out as SA-039 (P0, Sprint 1, 3 points, no dependencies), placed first in the task order; SA-003 re-estimated 5 -> 4. The owner chose to reset live weights to the configured defaults rather than freeze them; SA-039 does this on the read side (decision consumers use the sector default table, stored WeightMemory is not mutated), so no production data migration is needed and rollback is exact. Activation is a separate owner-authorized config push. Reason: the adapter changes live weights daily on the target F02 found wrong (technical 0.0 vs 0.12 default for 5 of 6 observed tickers on 2026-09-23). Found while writing SA-039 (code inspection): verdict-shadow learned_weights_used is true whenever any weights are passed, defaults included; routed to SA-024. (2) Outside this PI: IPO-0c decided, GMP stays dark (recorded in the IPO plan). (3) The 2026-09-23 backlog batch was committed as 650c01c (verify --rev HEAD: 0 mismatches); push deferred to a safe window at the owner's instruction. Planned stories now 36 / 130 points (Sprint 1: 35). DOC-001 stays review_required; its payload changed again (KT sections 1, 5 and 12 plus the rebuilt PDF), so the manifest and review input were regenerated. After DOC-001 is accepted, the first ready story is SA-039, not SA-001. No story status changed; no application code changed."
+    },
     {
       "date": "2026-09-23",
       "event": "User-requested backlog additions from docs/audit/2026-09-23-production-assurance-review.md: SA-033 dependency lock, SA-034 silent-degradation watchdog, SA-035 provider credit exhaustion (OpenRouter balance reported at $0.97, Serper), SA-036 job outcomes, SA-037 deploy/missed-job hygiene, SA-038 lapsed-milestone judgement. SA-007 moved from Sprint 2 to Sprint 1 because no off-site backup copy was measured. Routed evidence notes were added to SA-003 (containment decision pending with the owner), SA-007, SA-008, SA-010, SA-011, SA-023 and SA-028. Sprint 1 is now 33 points and Sprint 2 24; re-estimate after Sprint 1. No status changed; SA-001 remains the first ready story unless the owner promotes SA-003's containment. IPO additions IPO-0d and IPO-0e went to the Prospect plan. DOC-001's payload changed with the KT §12 rows, rebuilt PDF and PI README; manifest regenerated, review input now d5516ae0... (was 7b04fa71...)."

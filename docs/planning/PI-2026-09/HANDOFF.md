@@ -1,25 +1,25 @@
-# Current handoff - 2026-09-23 (written 23:30 IST, end of a long session)
+# Current handoff - 2026-09-23 (updated about 23:45 IST)
 
 ## START HERE — resume checklist, in order
 
 Production runs `a2c19c9` (the `nse<4` fix), deployed 22:44 IST 2026-09-23 with SUCCESS and 24 jobs
-registered. `origin/main` = `a2c19c9`. **Everything below that says "added 2026-09-23 (late)" is
-uncommitted on disk.**
+registered. `origin/main` = `a2c19c9`. **Two local commits are not pushed yet** (Step 0).
 
-### Step 0 — commit and push the uncommitted batch (needs the owner's go-ahead)
+### Step 0 — push the two local commits (the owner's go-ahead is required for the push)
 
-`git status` shows 22 paths. All belong to this batch:
+Done at the owner's go-ahead, 23:30 IST:
 
-- the new `docs/audit/2026-09-23-production-assurance-review.md`
-- new cards SA-033 … SA-038
-- routed notes on SA-003/007/008/010/011/023/028
-- `STATE.json`, the PI `README.md`, `HANDOFF.md`, `docs/TECHNICAL_DESIGN.md` (§1 + §12 rows) and the
-  rebuilt PDF
-- `IPO-0d`/`IPO-0e` in the IPO plan
-- the DOC-001 manifest and the receipt addendum
+- **`650c01c`** holds the earlier 22-path batch: the production assurance review, SA-033…SA-038,
+  routed notes, and the DOC-001 payload `d5516ae0…`. `verify --rev HEAD` reported 0 mismatches.
+- **The commit after it** holds the owner's three decisions (Step 2, now resolved). That is the
+  SA-039 card, the SA-003 split, the SA-024 routed note, STATE, the PI README, KT §1/§5/§12, the
+  rebuilt PDF, the IPO-0c record, this HANDOFF, the DOC-001 receipt ("Payload update 2") and the
+  regenerated manifest (**review input `63ff474c…`**). After it, `verify --rev HEAD` must again
+  report 0 mismatches.
 
-Stage by explicit path. `data/nse/key_registry.json` must not be in the commit. The commit author
-is `Revan <revan.datta132@gmail.com>` (already the git config).
+**The push is still pending.** The owner chose "commit now, push later". At 23:28 IST a push would
+have redeployed over `data_backup_nightly` (23:30), and probably over `audit_nightly` (23:45) and
+`prompt_daily_deploy` (00:00).
 
 **Every push redeploys production** (no watch-path rule until SA-037), and the in-memory scheduler
 loses any job whose time falls inside the roughly 8-minute deploy.
@@ -27,9 +27,9 @@ loses any job whose time falls inside the roughly 8-minute deploy.
 - **Safest window: 00:10–06:20 IST.**
 - Otherwise avoid 07:25–09:05, 11:55–12:05, 14:55–15:05, 16:25–17:05, 17:40–17:55, 18:55–19:20
   and 22:55–00:05.
-- After the commit, run
-  `python scripts/docs/kt_manifest.py verify docs/planning/PI-2026-09/evidence/DOC-001-manifest.json --rev HEAD`.
-  It must report **0 mismatches**; any mismatch is the F1 failure again.
+- Push only when the owner says "push". Afterwards, confirm with `railway deployment list --json` that
+  the new deploy reached SUCCESS. The two commits change documentation only, with no application code
+  or requirements. The deploy still rebuilds and restarts the scheduler.
 
 ### Step 1 — time-sensitive production checks (read-only; the owner runs the probe)
 
@@ -52,36 +52,50 @@ Claude can run `railway status`, `railway deployment list --json` and `railway l
 **Claude's `railway ssh` is blocked by the auto-mode classifier.** Volume reads go through the
 owner.
 
-### Step 2 — owner decisions still open
+### Step 2 — owner decisions: all three resolved 2026-09-23, about 23:30 IST
 
-1. **Learning containment before SA-001?** **Recommended: yes.** Split SA-003's observe-only
-   containment into a small story and do it first. The learner adapts live weights daily on the
-   audited-wrong target: `technical` is at 0.0 against its 0.12 default for most tickers, and 33
-   lessons were added in one review. Sub-decision: freeze at the current weights, or **reset to the
-   configured defaults** (recommended, because the current values were learned from a wrong
-   target). If the owner agrees, create the story (e.g. `SA-039`, or `SA-003a` with a recorded split
-   in STATE), add it to STATE, the README and KT §12, and resequence with a history entry.
-2. **IPO-0c:** the owner reads the serper.dev dashboard for the real plan. The app counter read
-   2,590 against its default 2,500, yet calls still succeed. Recommended: GMP stays dark.
-3. **Push timing** for Step 0.
+1. **Learning containment: yes, reset to defaults.** The containment is split out of SA-003 as
+   **[SA-039](stories/SA-039.md)** (P0, Sprint 1, 3 points, no dependencies). It is placed first in
+   STATE's task order, and SA-003 went from 5 to 4 points. SA-039 resets on the **read side**:
+   - Decision consumers (forecast, public analysis, and the review's re-scoring and re-forecast) use
+     the sector's configured default table.
+   - Lesson emphasis stops.
+   - The adapter keeps computing into a diagnostic record, and stored `WeightMemory` is never
+     mutated.
+
+   So there is no production data migration, and rollback is exact. Example: stored
+   `technical = 0.0` stays 0.0 on disk, while the forecast uses 0.12. The code ships with `adapt` as
+   the default. Activation is a separate one-line config commit, pushed only with the owner's
+   go-ahead.
+
+   Also found while writing the card, by code inspection: the verdict-shadow field
+   `learned_weights_used` is true whenever any weights are passed, defaults included, so it
+   overstates learned-weight use. That is routed to SA-024, and SA-039 must not use it as evidence.
+2. **IPO-0c: GMP stays dark.** It is closed in the IPO plan with no code change, because `gmp_pct` is
+   already a dark froth input. The serper.dev dashboard was **not** read, so the question of real
+   account credit stays with SA-035.
+3. **Push timing:** commit now, and push only when the owner says so, after 00:10 IST (Step 0).
 
 ### Step 3 — then the normal PI sequence
 
 - **DOC-001** is `review_required`, with review input
-  `d5516ae04325e4e9bd836322f6f7f267bd093528cf318eba9b64bad7bc2ca7c9`. Its fresh-session review
-  runs in a **new conversation** after Step 0. Opener: `Continue — fresh-session review of DOC-001`.
-  Receipt: [the 2026-09-23 section](evidence/DOC-001-implementation.md#remediation-phase--2026-09-23).
-  F1–F4 are fixed, F5 is routed to SA-005/SA-006, F6 is done, and F2 was fixed by the PDF rebuild.
-  The payload changed once more, for the SA-033–SA-038 KT rows; see the receipt's "Payload update".
+  **`63ff474cec51a5810af84dca279a8fcdaa93239cd65230e6f5cd738b01128dd0`**.
+  - Its fresh-session review runs in a **new conversation**. It can run against the local commits
+    before the push. Opener: `Continue — fresh-session review of DOC-001`.
+  - Receipt: [the 2026-09-23 section](evidence/DOC-001-implementation.md#remediation-phase--2026-09-23).
+    F1–F4 are fixed, F5 is routed to SA-005/SA-006, F6 is done, and F2 was fixed by the PDF rebuild.
+  - The payload changed twice more. The first change added the SA-033–SA-038 KT rows ("Payload
+    update"). The second added SA-039's row and a labelled PI-target paragraph in KT §5 ("Payload
+    update 2"). Check that §5 paragraph against `daily_review.py` Step 5.
 - **After DOC-001 is accepted:** select the next ready story, but do not start it in the review
-  chat. By file order that is **SA-001** unless the owner promotes containment (Step 2.1).
-- **Ready now** (all dependencies done): SA-001 (S1, P0), SA-002 (S1), SA-004 (S1), SA-005 (S1),
-  SA-007 (S1), SA-033 (S1), SA-035 (S1), SA-036 (S1), SA-038 (S1), SA-006 (S2), SA-009 (S2) and
-  SA-010 (S2, P2). 38 SA stories in total (35 planned, 128 points; 3 stretch). Sprint 1 is 33
-  points, and Sprint 2 is 24.
+  chat. By STATE's order that is **SA-039**, then SA-001.
+- **Ready now** (all dependencies done): SA-039 (S1, P0), SA-001 (S1, P0), SA-002 (S1), SA-004 (S1),
+  SA-005 (S1), SA-007 (S1), SA-033 (S1), SA-035 (S1), SA-036 (S1), SA-038 (S1), SA-006 (S2), SA-009
+  (S2) and SA-010 (S2, P2). There are 39 SA stories in total: 36 planned (130 points) and 3 stretch.
+  Sprint 1 is 35 points, and Sprint 2 is 24.
 - **IPO (PI Prospect)** stays paused apart from the Step 1 checks. Open items: IPO-0a (Step 1),
-  IPO-0c (Step 2.2), IPO-0d (brief freshness), IPO-0e (P1 spine in production), and IPO-5a/5b
-  (gated). See `docs/superpowers/plans/2026-09-21-ipo-prospect-p3-substance.md`.
+  IPO-0d (brief freshness), IPO-0e (P1 spine in production), and IPO-5a/5b (gated). IPO-0c is
+  closed as "no". See `docs/superpowers/plans/2026-09-21-ipo-prospect-p3-substance.md`.
 
 ### How the owner likes to work (observed this session)
 
@@ -99,12 +113,8 @@ SA-037 (deploy/missed-job hygiene), SA-038 (lapsed milestones). **SA-007 moved t
 off-site backup). Notes were routed to SA-003, SA-008, SA-010, SA-011, SA-023 and SA-028. The IPO
 plan gains `IPO-0d` (brief freshness) and `IPO-0e` (P1 spine in production).
 
-**Decisions waiting on the owner:**
-
-1. **Learning containment first?** Promote SA-003's observe-only containment ahead of SA-001? The
-   technical weight is at 0.0 for most tickers.
-2. **IPO-0c:** check the serper.dev dashboard for the real plan, then decide on GMP.
-3. **When to push:** every push redeploys. Avoid the job windows until SA-037 lands.
+**Decisions that were waiting on the owner** have all been resolved; see Step 2 above. Containment
+became SA-039, GMP stays dark, and the push waits for the owner's word after 00:10 IST.
 
 ### Production read — 2026-09-23 (read-only; supersedes "no railway access" notes below)
 
@@ -146,8 +156,8 @@ review: the incremental-documentation discipline DOC-001 introduced **is** being
 job-count change propagated correctly to four documents, and cases 05-F/05-G were added with their
 stories.
 
-After DOC-001 is accepted, `SA-001` is the first remediation story — select it, do not start it in the
-acceptance conversation.
+After DOC-001 is accepted, `SA-039` is the first remediation story. It was promoted ahead of `SA-001`
+by the owner on 2026-09-23 (Step 2). Select it, but do not start it in the acceptance conversation.
 
 ### Why IPO is waiting, and what arrives on its own
 
@@ -363,7 +373,7 @@ Every future implementation updates its affected living docs/test cases and
 regenerates the PDF when its source changes. SA-031 now means the final
 consistency check; SA-024/SA-027/SA-029 remain unresolved dependencies. After
 DOC-001 acceptance, select SA-001 as the first remediation story, but do not
-start it in that review conversation.
+start it in that review conversation. *(Superseded 2026-09-23: SA-039 now comes first.)*
 
 ## Verification and limitations
 

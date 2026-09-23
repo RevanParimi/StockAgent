@@ -2,7 +2,7 @@
 
 The [September 10 audit](../../audit/2026-09-10-repository-production-review.md) found real adaptation but no demonstrated benefit, compromised evaluation semantics and concrete operational/security defects. This PI repairs the decision/evaluation contract before adding intelligence complexity.
 
-**Start/resume:** [HANDOFF.md](HANDOFF.md) → [STATE.json](STATE.json) → selected story. On September 15 the user explicitly requested [DOC-001](stories/DOC-001.md), current-code KT plus a separate human testing guide, ahead of SA-001. SA-001 remains the first remediation implementation after DOC-001 acceptance. No remediation is claimed complete by the documentation refresh.
+**Start/resume:** [HANDOFF.md](HANDOFF.md) → [STATE.json](STATE.json) → selected story. On September 15 the user explicitly requested [DOC-001](stories/DOC-001.md), current-code KT plus a separate human testing guide, ahead of SA-001. After DOC-001 acceptance, the first remediation implementation is SA-039 (learning containment, promoted by the owner on 2026-09-23), then SA-001. No remediation is claimed complete by the documentation refresh.
 
 ## Scope and outcomes
 
@@ -20,7 +20,7 @@ Planning assumption: six two-week sprints, one story implementation and a separa
 
 | Sprint | Objective | Planned points | Exit evidence |
 |---|---|---:|---|
-| 1 | Security, honest health, action gating, scheduler counts, clean CI; dependency lock, provider-credit alerts, job outcomes, milestone hygiene, off-site backup | 33 | Browser exploit fixture inert; no-data action/update blocked; counts reconcile; clean Python-3.11 CI baseline |
+| 1 | Learning containment first; security, honest health, action gating, scheduler counts, clean CI; dependency lock, provider-credit alerts, job outcomes, milestone hygiene, off-site backup | 35 | Contained learner leaves stored weights untouched and decisions on defaults; browser exploit fixture inert; no-data action/update blocked; counts reconcile; clean Python-3.11 CI baseline |
 | 2 | Delivery, instrument/store identity, benchmark correctness, incident registry; silent-degradation watchdog, deploy hygiene | 24 | Mock transport/recovery tests, real verification tracked separately, reviewed migration manifest, correct provider arguments |
 | 3 | Learning target, immutable issuance, correct dark grading, atomic bounded updates | 18 | Independent numeric/time fixtures; old outcome cannot be regraded with today's decision; crash/retry invariants pass |
 | 4 | Identifiable credit, historical lineage, complete monthly and weekly/fortnightly cohorts | 18 | Hand-reconciled forecast/outcome IDs and denominators; exited calls retained; wrong-roster history excluded explicitly |
@@ -28,7 +28,7 @@ Planning assumption: six two-week sprints, one story implementation and a separa
 | 6 | Actual call accounting, sector consolidation, justified fallback retirement, runtime recovery, current docs | 16 | Cost counts reconcile, routing equivalence, owner-loss recovery test, accepted operator documentation |
 | Stretch | Packaging/client build, Atlas projections, comprehensive public-read policy | 11 | Separate capacity/product decision; not selected automatically by “continue” |
 
-The 35 planned stories total 128 points; three stretch stories total 11. Six planned stories (SA-033–SA-038) were added on 2026-09-23 from the [production assurance review](../../audit/2026-09-23-production-assurance-review.md), and SA-007 moved to Sprint 1; Sprint 1 is heavy at 33 points, so re-estimate after it. Dependencies, not numbering alone, determine readiness. Security/privacy issues newly discovered during any story take priority over this provisional order. Production incidents may justify resequencing, recorded in STATE.json with the reason.
+The 36 planned stories total 130 points; three stretch stories total 11. Six planned stories (SA-033–SA-038) were added on 2026-09-23 from the [production assurance review](../../audit/2026-09-23-production-assurance-review.md), and SA-007 moved to Sprint 1. Later that day the owner split SA-003's learning containment out as SA-039 (P0, 3 points, first in order), and SA-003 went from 5 points to 4. Sprint 1 is heavy at 35 points, so re-estimate after it. Dependencies, not numbering alone, determine readiness. Security/privacy issues newly discovered during any story take priority over this provisional order. Production incidents may justify resequencing, recorded in STATE.json with the reason.
 
 DOC-001 is an additional user-requested documentation task outside those point
 totals. Its resequencing does not waive SA-031's unresolved dependencies.
@@ -36,7 +36,7 @@ Every implementation now updates its affected living documentation and human
 test cases, including regenerating the KT PDF when its source changes.
 SA-031 remains the final consistency check, not deferred documentation work.
 
-P0 learning defects need a correct target and issuance contract before a safe replacement can be activated. SA-003 therefore also prepares reversible observe-only containment for adaptive mutations, while SA-012–SA-016 build and review the corrected path. This plan does not endorse treating existing learning statistics as valid during that interval or automatically changing production flags.
+P0 learning defects need a correct target and issuance contract before a safe replacement can be activated. SA-039, split from SA-003 on 2026-09-23 by owner decision and ordered first, therefore adds reversible observe-only containment. Decisions use the configured default weights, while the learner keeps computing into a diagnostic record and leaves stored weights untouched. SA-012–SA-016 build and review the corrected path. Activating containment in production is a separate, owner-authorized configuration push. This plan does not endorse treating existing learning statistics as valid during that interval or automatically changing production flags.
 
 ## Executable backlog
 
@@ -44,7 +44,7 @@ P0 learning defects need a correct target and issuance contract before a safe re
 |---|---|---|---:|---|---|
 | [SA-001](stories/SA-001.md) | 1 | P0 | 3 | Sanitize every chat Markdown rendering boundary | — |
 | [SA-002](stories/SA-002.md) | 1 | P1 | 3 | Make data-health records describe usable evidence | — |
-| [SA-003](stories/SA-003.md) | 1 | P1 | 5 | Gate recommendations and learning on essential data | SA-002 |
+| [SA-003](stories/SA-003.md) | 1 | P1 | 4 | Gate recommendations and learning on essential data | SA-002 |
 | [SA-004](stories/SA-004.md) | 1 | P1 | 3 | Count daily-review outcomes truthfully | — |
 | [SA-005](stories/SA-005.md) | 1 | P1 | 5 | Establish a clean, isolated test and CI baseline | — |
 | [SA-006](stories/SA-006.md) | 2 | P1 | 3 | Repair delivery transport and expose dead letters | — |
@@ -80,6 +80,7 @@ P0 learning defects need a correct target and issuance contract before a safe re
 | [SA-036](stories/SA-036.md) | 1 | P1 | 3 | Record durable outcomes for every critical job | — |
 | [SA-037](stories/SA-037.md) | 2 | P2 | 3 | Keep deploys from dropping scheduled jobs | SA-036 |
 | [SA-038](stories/SA-038.md) | 1 | P1 | 2 | Judge and retire lapsed production-verification milestones | — |
+| [SA-039](stories/SA-039.md) | 1 | P0 | 3 | Contain adaptive learning: observe-only, live weights back to defaults | — |
 
 Every card has concrete acceptance criteria, independent unit/integration fixtures, hard-review questions and rollout/rollback limits. Use [REVIEW.md](REVIEW.md) for the sign-off gate and [evidence/README.md](evidence/README.md) for durable receipts.
 

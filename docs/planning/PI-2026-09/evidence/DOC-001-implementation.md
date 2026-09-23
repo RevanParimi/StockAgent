@@ -348,3 +348,37 @@ Sprint 1). No KT body text about current code changed.
 - `docs/TECHNICAL_DESIGN.md` git blob `f4d41cec0038ca4625b29ddd3315b02a86aeb151`, SHA-256
   `523049917f7b66324a7f169b9ea939693a76d69a047642b62542e3adffe2e084`. PDF git blob
   `75e9787b83e9eb315fb99c504d8c98eb4fa55f17`, SHA-256 `02981885777c299180a73eb4b4e028bb45ecc33b75d9bf55bfebe2a9f1cc9b18`.
+- That payload was committed as `650c01c`. `verify --rev HEAD` then reported 24 files and 0 mismatches.
+
+### Payload update 2 — 2026-09-23 (late), owner's containment decision
+
+The owner promoted learning containment ahead of SA-001, and it was split out of SA-003 as
+**SA-039**. The same three payload files changed:
+
+- `docs/TECHNICAL_DESIGN.md`:
+  - a §12 row for SA-039;
+  - §1 now reads "SA-001 through SA-039";
+  - one paragraph in §5 "What adaptation means here". It states the current behaviour, which is
+    that live weights adapt on every eligible review, with the dated production observation
+    (`technical` 0.0 against a 0.12 default for 5 of 6 tickers). It then labels SA-039 explicitly
+    as a **PI target, not current code**.
+- The rebuilt PDF.
+- `docs/planning/PI-2026-09/README.md`: the row, totals of 36 stories and 130 points, Sprint 1 at
+  35 points, SA-003 at 4 points, and the resume and containment paragraphs.
+
+No other current-code description changed. The §5 paragraph is new text a reviewer should check
+against `daily_review.py` Step 5 (L1095–1114).
+
+- `build_kt_pdf.py` (Node v24.21.0): 0 overflow elements, source SHA-256 `5253529c…`, 186,483 bytes.
+- `check_kt_docs.py`: 0 errors, 39 PI stories, 18 PDF pages, 24 job IDs, 13 configuration claims,
+  247 local links at the rebuild, and 248 after the final HANDOFF edit added its SA-039 link. The
+  count includes `HANDOFF.md`, which is bookkeeping and changed between readings. This payload adds
+  2 links, one each in the KT and the PI README. The header
+  report lists `tests/unit/test_ipo_bids.py` as changed since the declared revision `d105a44`, by
+  `a2c19c9`'s real-dependency tests. That is informational, not an error.
+- Visual check (pymupdf render): page 8 shows the §5 paragraph, and page 17 shows the SA-039 row.
+- **Current review-input SHA-256: `63ff474cec51a5810af84dca279a8fcdaa93239cd65230e6f5cd738b01128dd0`** (supersedes `d5516ae0…`).
+  24 files. Only the phase text and the three payload files' hashes changed.
+- `docs/TECHNICAL_DESIGN.md` git blob `e76a9a855920bab2b12cbc8831bf0099c25b28f1`, SHA-256
+  `5253529c4e4950c01136cad8fa2cc208e8db28325a198679ab83176202ddabce`. PDF git blob
+  `4ca3782960f21a61443e5a480451e00ea331c1fa`, SHA-256 `6a685703039cf2794f3f116ffd9285781a5ea9abbc412ede2bd604273ce2ca33`.

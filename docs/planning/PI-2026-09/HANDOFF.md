@@ -58,8 +58,11 @@ The Railway CLI now works here (Node installed, folder linked to project `carefr
   delivered. Since 21 Sep: 3 email dead, all before the redeploy (last at 07:52 UTC on the 21st);
   **8 email delivered, 0 dead since**, and 11 push delivered (email/push parity). "Delivered" means
   provider-accepted. This is production evidence toward SA-006, **not** its acceptance.
-- **IPO live capture is broken in production since ~18–19 Sep.** Every `fetch_bid_ladder` fails;
-  locally it works. The 22 Sep brief's category figures were 2–3 days stale (NSE QIB 1.53× shown,
+- **IPO live capture is broken in production since ~18–19 Sep.** Cause confirmed from the logs:
+  `'NSE' object has no attribute '_req'`. `nse` 4.0 (31 Aug) removed `NSE._req`, and the 21 Sep
+  rebuild installed 4.0.1 under the open-ended pin `nse>=2.0.0`. The fix is the pin
+  `nse>=2.0.0,<4.0` plus tests of the real dependency. The 19–21 Sep window, on the old 3.2.1
+  image, is still unexplained. The 22 Sep brief's category figures were 2–3 days stale (NSE QIB 1.53× shown,
   final 12.68×). VARMORA has no ledger rows, and `ipo_signals_accruing` is warning. **Do not close
   IPO-0a.** Full evidence is under IPO-0a in the plan.
 - **P1 spine absent in production** (`data/ipo/ipo_history.jsonl` missing).
@@ -67,9 +70,11 @@ The Railway CLI now works here (Node installed, folder linked to project `carefr
   check serper.dev for real remaining credits.
 - **P3:** no `ipo_verdicts.jsonl` yet. That is expected for NSE/SONA, because their T−1 run predates
   the deploy. VARMORA's T−1 run is 23 Sep 19:00 IST, but its demand inputs are dark (no ledger rows).
-- **Next evidence to get:** the production failure reason. It shows as `[ipo_bids] fetch failed for
-  VARMORA (non-fatal): …` in the logs after the 17:45 IST refresh, or from a one-off fetch through
-  `railway ssh`.
+- **P3 run observed:** `ipo_deep_dive` fired at 19:01 IST for VARMORA (`t_minus_1`, 16 docs, 9
+  extracted), with demand and substance both dark, so `written=False` ("every index dark, not
+  stored").
+- **After the fix deploys:** confirm VARMORA ledger rows land at the 08:00 / 17:45 IST refreshes on
+  24 Sep, the day it closes (re-run the probe). Only then revisit IPO-0a.
 
 ### IPO stays paused
 

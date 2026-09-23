@@ -14,7 +14,9 @@ beautifulsoup4>=4.12.0    # HTML parsing for web scraping
 pandas>=2.2.0             # Tabular data handling
 yfinance>=0.2.40          # Yahoo Finance OHLCV data (pattern analysis)
 requests>=2.31.0          # Serper + NewsAPI HTTP calls
-nse>=2.0.0                # NseIndiaApi (BennyThadikaran) — announcements / board meetings / actions
+nse>=2.0.0,<4.0           # NseIndiaApi (BennyThadikaran) — announcements / board meetings / actions
+                          # <4.0: 4.0 removed NSE._req, which ipo_bids.fetch_bid_ladder calls. The
+                          # 2026-09-21 rebuild installed 4.0.1 and every IPO bid-ladder fetch failed.
 nsepython>=2.90           # FII/DII flows, bulk deals, earnings calendar (AUD-078; pulls scipy)
 python-dateutil>=2.8.0    # Defensive date parsing for NSE event ingestion (was transitive via pandas)
 pyarrow>=16.0.0           # Parquet EOD market cache (Compass Phase B discovery)

@@ -178,12 +178,24 @@ broken in production.** Source: a read-only probe the user ran through `railway 
   ledger's dedup drops it as identical. So no row after the 19th means **every production ladder
   fetch failed from about 18–19 Sep onward**. VARMORA never had a successful fetch, so it has
   nothing to carry.
-- **It is production-specific.** A local `fetch_bid_ladder` on 2026-09-23 succeeded for both issues
-  (VARMORA total 0.27×; NSE final QIB 12.68×, retail 1.39×, total 5.71×, 12% at cut-off). No
-  deployment happened on 18–19 Sep: `9a805878` ran unchanged from 26 Aug to 21 Sep. Fresh containers
-  on 21–23 Sep still fail. NSE's *list* endpoint still works from Railway, since VARMORA appears
-  in the brief. The likely suspect is NSE refusing the ipo-detail endpoint to Railway's egress.
-  **Unconfirmed:** the production exception text has not been read yet.
+- **Cause (confirmed 2026-09-23 from production logs): a dependency drift, not NSE blocking.** Every
+  fetch in the 17:45 IST refresh logged `[ipo_bids] fetch failed for … 'NSE' object has no attribute
+  '_req'` (VARMORA plus four SME issues). `fetch_bid_ladder` has called the private `NSE._req` since
+  `119f4a2`, and `requirements.txt` pinned only `nse>=2.0.0`. `nse` 4.0.0/4.0.1 was released on
+  31 Aug and removed `_req`. Every image built from 21 Sep onward installed 4.0.1. The 26 Aug
+  image had 3.2.1, the latest before 4.0. Wheel inspection shows `_req` in 2.1.3 and 3.2.1 and not
+  in 4.0.1. `_req` is the only `nse` method we call that 4.0.1 lacks. A local live fetch reproduces
+  the production error exactly under 4.0.1 and succeeds under 3.2.1 (VARMORA total 0.27×) and
+  under the venv's 2.1.3 (NSE final QIB 12.68×, retail 1.39×, total 5.71×, 12% at cut-off).
+- **Still unexplained: 19–21 Sep.** The 26 Aug container (3.2.1, which has `_req`) also stopped
+  landing rows after 19 Sep 07:00 UTC. Its logs returned nothing for those dates, so that window
+  has no recorded cause. **User-reported context (2026-09-23):** during 19–21 Sep the account was
+  still on Railway Hobby (the Pro upgrade came on 21 Sep) and several commits had not been deployed.
+  That is a plausible explanation, not a verified one. Verify capture after the fix; do not assume
+  the pin covers it.
+- **Fix prepared 2026-09-23:** `nse>=2.0.0,<4.0`, plus two tests in `tests/unit/test_ipo_bids.py`
+  that check the REAL dependency. Every existing test fakes `_req`, which is why the suite stayed
+  green during the outage. The tests are shown to fail under 4.0.1 and against the old pin.
 - **The "(NSE only)" open question above is answered, and the answer is worse.** The 22 Sep brief's
   categories equal the last successful captures *exactly*: NSE QIB 1.52996×, retail 0.722428×,
   39% cut-off = the 19 Sep 07:00 row; SONA QIB 0.459178×, retail 1.28955×, 58% = the 18 Sep 12:15

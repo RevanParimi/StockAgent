@@ -187,3 +187,36 @@ def test_issue_size_rides_along_from_issue_info():
     assert parse_bid_ladder(payload)["issue_size_cr"] == 2480.0
     assert parse_bid_ladder(_PAYLOAD)["issue_size_cr"] is None
     assert parse_bid_ladder({})["issue_size_cr"] is None
+
+
+# The fakes above all supply their own `_req`, so none of them can notice the
+# REAL client losing it. That is exactly what happened: nse 4.0 removed
+# NSE._req, production's 2026-09-21 rebuild installed 4.0.1 under the old
+# open-ended pin, and every bid-ladder fetch failed with "'NSE' object has no
+# attribute '_req'" while this file stayed green. These two check the real
+# dependency instead of a double.
+
+def test_installed_nse_client_still_provides_req():
+    from nse import NSE
+    assert callable(getattr(NSE, "_req", None)), (
+        "fetch_bid_ladder calls NSE._req; this nse release does not have it "
+        "(removed in 4.0). Keep requirements.txt below 4.0 or port the call.")
+
+
+def test_requirements_pin_refuses_the_nse_release_that_dropped_req():
+    """Production installs from requirements.txt and runs no tests, so the pin
+    is its only guard. It must admit the 3.x line that worked in production
+    and refuse every 4.x release."""
+    from pathlib import Path
+    from packaging.requirements import Requirement
+
+    reqs = Path(__file__).resolve().parents[2] / "requirements.txt"
+    spec = None
+    for line in reqs.read_text(encoding="utf-8").splitlines():
+        line = line.split("#", 1)[0].strip()
+        if line and Requirement(line).name == "nse":
+            spec = Requirement(line).specifier
+    assert spec is not None, "requirements.txt no longer declares nse"
+    assert "3.2.1" in spec
+    for dropped in ("4.0.0", "4.0.1", "4.9.0"):
+        assert dropped not in spec, f"nse {dropped} lacks NSE._req"

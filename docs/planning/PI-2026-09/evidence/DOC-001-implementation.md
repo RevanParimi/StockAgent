@@ -331,3 +331,20 @@ The payload is still **uncommitted**. Commit it before the review; then
 With F2 closed, every review finding is fixed or routed. DOC-001 stops at
 **`review_required`**; the fresh-session review is the next phase, in a new
 conversation.
+
+### Payload update — 2026-09-23 (late), after the PDF rebuild
+
+After that rebuild, the user asked to add the production-assurance backlog to every board. The
+checker requires every SA story in STATE to have a KT §12 row, so three payload files changed:
+`docs/TECHNICAL_DESIGN.md` (six §12 rows for SA-033–SA-038, and §1's "SA-001 through SA-038"),
+the rebuilt PDF, and `docs/planning/PI-2026-09/README.md` (backlog rows, sprint totals, SA-007 →
+Sprint 1). No KT body text about current code changed.
+
+- `kt_manifest.py verify`, before regenerating, flagged exactly those 3 files. After
+  regenerating: 24 files, 0 mismatches.
+- `check_kt_docs.py`: 0 errors. 38 PI stories, 18 PDF pages, 248 local links. The new rows were
+  checked visually on page 17.
+- **Current review-input SHA-256: `d5516ae04325e4e9bd836322f6f7f267bd093528cf318eba9b64bad7bc2ca7c9`** (supersedes `7b04fa71…`).
+- `docs/TECHNICAL_DESIGN.md` git blob `f4d41cec0038ca4625b29ddd3315b02a86aeb151`, SHA-256
+  `523049917f7b66324a7f169b9ea939693a76d69a047642b62542e3adffe2e084`. PDF git blob
+  `75e9787b83e9eb315fb99c504d8c98eb4fa55f17`, SHA-256 `02981885777c299180a73eb4b4e028bb45ecc33b75d9bf55bfebe2a9f1cc9b18`.

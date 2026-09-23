@@ -307,6 +307,29 @@ after deploy — the 08:00 IST job — so the 22 Sep 08:50 brief is the first on
 
 ---
 
+### `IPO-0d` — Never render a carried-forward ladder as a final reading (added 2026-09-23)
+
+- **Size:** ~2h · **Depends on:** nothing
+- **Why:** the 22 Sep brief showed NSE at QIB 1.53× under "bidding closed". That was the 19 Sep
+  capture, carried forward three days; the final book was 12.68×. Carry-forward is correct for the
+  *cache*, but the *brief* must not present a stale reading as the closing book.
+- **Acceptance:** each IPO line with category figures shows its capture time. A ladder older than
+  the issue's close is labelled as not the final book, or its categories are suppressed. Tests
+  cover a stale open issue, a closed issue with a pre-close ladder, and a fresh one.
+
+### `IPO-0e` — Build the P1 spine in production (added 2026-09-23)
+
+- **Size:** ~half day · **Depends on:** nothing (read the production volume first)
+- **Why:** `data/ipo/ipo_history.jsonl` does not exist in production, and only the manual
+  `scripts/ipo_backfill.py` writes it. IPO-1 was fitted on a local 209-row spine. In production,
+  `grade_ipo_lane` has only the NSE-cache resolver, whose past list drops issues after months, so
+  long horizons may never resolve and the history reports are empty.
+- **Acceptance:** the spine exists on the volume and is refreshed by a job or a documented run,
+  with a row count reconciled against the local build. `listing.py` resolves a listed issue from
+  it in production.
+- **Also see:** PI-2026-09 `SA-035` for the Serper plan and budget question, which blocks
+  `IPO-0c`'s decision.
+
 ## Sprint 1 — The evidence gate (by 2026-09-30)
 
 ### `IPO-1` — Run and read the P1 backtest report

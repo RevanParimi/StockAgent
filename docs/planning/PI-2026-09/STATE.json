@@ -141,7 +141,7 @@
       "id": "SA-007",
       "title": "Make backups independently recoverable",
       "story": "docs/planning/PI-2026-09/stories/SA-007.md",
-      "sprint": 2,
+      "sprint": 1,
       "points": 3,
       "priority": "P1",
       "scope": "planned",
@@ -697,6 +697,124 @@
       "blocked_reason": null
     },
     {
+      "id": "SA-033",
+      "title": "Lock reproducible runtime dependencies",
+      "story": "docs/planning/PI-2026-09/stories/SA-033.md",
+      "sprint": 1,
+      "points": 3,
+      "priority": "P1",
+      "scope": "planned",
+      "status": "todo",
+      "depends_on": [],
+      "implementation_receipt": null,
+      "review_receipt": null,
+      "reviewed_revision": null,
+      "production_verification": {
+        "status": "not_started",
+        "evidence": null
+      },
+      "blocked_reason": null
+    },
+    {
+      "id": "SA-034",
+      "title": "Detect silent degradation in the watchdog",
+      "story": "docs/planning/PI-2026-09/stories/SA-034.md",
+      "sprint": 2,
+      "points": 5,
+      "priority": "P1",
+      "scope": "planned",
+      "status": "todo",
+      "depends_on": [
+        "SA-036"
+      ],
+      "implementation_receipt": null,
+      "review_receipt": null,
+      "reviewed_revision": null,
+      "production_verification": {
+        "status": "not_started",
+        "evidence": null
+      },
+      "blocked_reason": null
+    },
+    {
+      "id": "SA-035",
+      "title": "Surface LLM and search provider credit exhaustion",
+      "story": "docs/planning/PI-2026-09/stories/SA-035.md",
+      "sprint": 1,
+      "points": 3,
+      "priority": "P1",
+      "scope": "planned",
+      "status": "todo",
+      "depends_on": [],
+      "implementation_receipt": null,
+      "review_receipt": null,
+      "reviewed_revision": null,
+      "production_verification": {
+        "status": "not_started",
+        "evidence": null
+      },
+      "blocked_reason": null
+    },
+    {
+      "id": "SA-036",
+      "title": "Record durable outcomes for every critical job",
+      "story": "docs/planning/PI-2026-09/stories/SA-036.md",
+      "sprint": 1,
+      "points": 3,
+      "priority": "P1",
+      "scope": "planned",
+      "status": "todo",
+      "depends_on": [],
+      "implementation_receipt": null,
+      "review_receipt": null,
+      "reviewed_revision": null,
+      "production_verification": {
+        "status": "not_started",
+        "evidence": null
+      },
+      "blocked_reason": null
+    },
+    {
+      "id": "SA-037",
+      "title": "Keep deploys from dropping scheduled jobs",
+      "story": "docs/planning/PI-2026-09/stories/SA-037.md",
+      "sprint": 2,
+      "points": 3,
+      "priority": "P2",
+      "scope": "planned",
+      "status": "todo",
+      "depends_on": [
+        "SA-036"
+      ],
+      "implementation_receipt": null,
+      "review_receipt": null,
+      "reviewed_revision": null,
+      "production_verification": {
+        "status": "not_started",
+        "evidence": null
+      },
+      "blocked_reason": null
+    },
+    {
+      "id": "SA-038",
+      "title": "Judge and retire lapsed production-verification milestones",
+      "story": "docs/planning/PI-2026-09/stories/SA-038.md",
+      "sprint": 1,
+      "points": 2,
+      "priority": "P1",
+      "scope": "planned",
+      "status": "todo",
+      "depends_on": [],
+      "implementation_receipt": null,
+      "review_receipt": null,
+      "reviewed_revision": null,
+      "production_verification": {
+        "status": "not_started",
+        "evidence": null
+      },
+      "blocked_reason": null
+    },
+    {
       "id": "DOC-001",
       "title": "Refresh current-code KT documents and separate human testing duties",
       "story": "docs/planning/PI-2026-09/stories/DOC-001.md",
@@ -715,12 +833,16 @@
       },
       "blocked_reason": null,
       "review_input_manifest": "docs/planning/PI-2026-09/evidence/DOC-001-manifest.json",
-      "review_input_sha256": "7b04fa718dbaf958c71413f21e0d99454b9184801cc530d4d3f1cec2fb03deca",
+      "review_input_sha256": "d5516ae04325e4e9bd836322f6f7f267bd093528cf318eba9b64bad7bc2ca7c9",
       "reviewed_payload_rollup_sha256": "79d387cb8d3bab6b9f7f7d92a8fad918569b7df8bdbc7a69af5c6cda14b41b5b",
       "implementation_base_revision": "d105a44a06d430304a724f34ac3dc329a4ca0d87"
     }
   ],
   "history": [
+    {
+      "date": "2026-09-23",
+      "event": "User-requested backlog additions from docs/audit/2026-09-23-production-assurance-review.md: SA-033 dependency lock, SA-034 silent-degradation watchdog, SA-035 provider credit exhaustion (OpenRouter balance reported at $0.97, Serper), SA-036 job outcomes, SA-037 deploy/missed-job hygiene, SA-038 lapsed-milestone judgement. SA-007 moved from Sprint 2 to Sprint 1 because no off-site backup copy was measured. Routed evidence notes were added to SA-003 (containment decision pending with the owner), SA-007, SA-008, SA-010, SA-011, SA-023 and SA-028. Sprint 1 is now 33 points and Sprint 2 24; re-estimate after Sprint 1. No status changed; SA-001 remains the first ready story unless the owner promotes SA-003's containment. IPO additions IPO-0d and IPO-0e went to the Prospect plan. DOC-001's payload changed with the KT §12 rows, rebuilt PDF and PI README; manifest regenerated, review input now d5516ae0... (was 7b04fa71...)."
+    },
     {
       "date": "2026-09-23",
       "event": "Read-only production inspection (user-run probe via railway ssh; no writes). Deploy b68bc02 SUCCESS. Outbox since 2026-09-21: 8 email delivered and 0 dead after the redeploy (3 dead before it, on the 21st); push 11 delivered. That is production evidence toward SA-006, which stays todo and is not accepted. Outside this PI: production IPO bid-ladder fetches have failed since ~18-19 Sep (they work locally), the P1 IPO spine is absent in production, and the September serper counter is 2590. Details are in HANDOFF and the IPO plan. No change to any story status."

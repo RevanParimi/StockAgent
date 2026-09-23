@@ -1,6 +1,6 @@
 {
   "task": "DOC-001",
-  "phase": "changes_requested remediation + PDF rebuild, 2026-09-23",
+  "phase": "changes_requested remediation + PDF rebuild + SA-033..SA-038 backlog rows, 2026-09-23",
   "base_revision": "d105a44a06d430304a724f34ac3dc329a4ca0d87",
   "kt_code_inspected": "d105a44a06d430304a724f34ac3dc329a4ca0d87",
   "hash_algorithm": "SHA-256 (plus git SHA-1 blob id)",
@@ -44,8 +44,8 @@
     },
     {
       "path": "docs/StockAgent-Three-Loops.pdf",
-      "git_blob": "dfcdbf4a34c005ec087b74dd5db7a8121ff7df01",
-      "sha256": "576cf24ad4fe4d753d3c5fdfb4f609e7a74fd86754589b84d885252f9a3c7a26"
+      "git_blob": "75e9787b83e9eb315fb99c504d8c98eb4fa55f17",
+      "sha256": "02981885777c299180a73eb4b4e028bb45ecc33b75d9bf55bfebe2a9f1cc9b18"
     },
     {
       "path": "docs/TEAM_TESTING_GUIDE.md",
@@ -54,8 +54,8 @@
     },
     {
       "path": "docs/TECHNICAL_DESIGN.md",
-      "git_blob": "8e1dcf7a43cbf0933e42f50687426a39418449da",
-      "sha256": "8703543d353adfbb2983c90b8e7c496738d746ee52f54aaa7ea563c520b4bd20"
+      "git_blob": "f4d41cec0038ca4625b29ddd3315b02a86aeb151",
+      "sha256": "523049917f7b66324a7f169b9ea939693a76d69a047642b62542e3adffe2e084"
     },
     {
       "path": "docs/archive/README.md",
@@ -69,8 +69,8 @@
     },
     {
       "path": "docs/planning/PI-2026-09/README.md",
-      "git_blob": "dcff528983c8f817f71a645230e713dfd696e309",
-      "sha256": "f905ca476109a7bb8b5ec4ed67313dc06747543c7974d2a3e85e7eb85905dc74"
+      "git_blob": "141e06ed346aff581aef26464c4335c273d14ffb",
+      "sha256": "31ba5b9a85b49925161986388516bc9a072f74c298b77cc27dc1e855ccd592dc"
     },
     {
       "path": "docs/planning/PI-2026-09/REVIEW.md",

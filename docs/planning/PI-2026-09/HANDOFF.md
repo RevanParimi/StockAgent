@@ -1,49 +1,110 @@
-# Current handoff - 2026-09-23
+# Current handoff - 2026-09-23 (written 23:30 IST, end of a long session)
 
-## START HERE — DOC-001 is ready for its fresh-session review
+## START HERE — resume checklist, in order
 
-**2026-09-23:** the changes-requested remediation is complete, including the
-PDF rebuild; Node v24.21.0 was installed that day. `STATE.json` says
-`DOC-001: review_required`, `next_phase: fresh-session review`. The review input
-is **`7b04fa718dbaf958c71413f21e0d99454b9184801cc530d4d3f1cec2fb03deca`**,
-from the [manifest](evidence/DOC-001-manifest.json). The receipt is the
-[2026-09-23 section](evidence/DOC-001-implementation.md#remediation-phase--2026-09-23).
-All 32 `SA-` stories remain `todo`. **Self-review only so far.**
+Production runs `a2c19c9` (the `nse<4` fix), deployed 22:44 IST 2026-09-23 with SUCCESS and 24 jobs
+registered. `origin/main` = `a2c19c9`. **Everything below that says "added 2026-09-23 (late)" is
+uncommitted on disk.**
 
-**Before the review: commit the payload.** It is uncommitted. Then:
+### Step 0 — commit and push the uncommitted batch (needs the owner's go-ahead)
 
-```text
-python scripts/docs/kt_manifest.py verify docs/planning/PI-2026-09/evidence/DOC-001-manifest.json --rev HEAD
+`git status` shows 22 paths. All belong to this batch:
+
+- the new `docs/audit/2026-09-23-production-assurance-review.md`
+- new cards SA-033 … SA-038
+- routed notes on SA-003/007/008/010/011/023/028
+- `STATE.json`, the PI `README.md`, `HANDOFF.md`, `docs/TECHNICAL_DESIGN.md` (§1 + §12 rows) and the
+  rebuilt PDF
+- `IPO-0d`/`IPO-0e` in the IPO plan
+- the DOC-001 manifest and the receipt addendum
+
+Stage by explicit path. `data/nse/key_registry.json` must not be in the commit. The commit author
+is `Revan <revan.datta132@gmail.com>` (already the git config).
+
+**Every push redeploys production** (no watch-path rule until SA-037), and the in-memory scheduler
+loses any job whose time falls inside the roughly 8-minute deploy.
+
+- **Safest window: 00:10–06:20 IST.**
+- Otherwise avoid 07:25–09:05, 11:55–12:05, 14:55–15:05, 16:25–17:05, 17:40–17:55, 18:55–19:20
+  and 22:55–00:05.
+- After the commit, run
+  `python scripts/docs/kt_manifest.py verify docs/planning/PI-2026-09/evidence/DOC-001-manifest.json --rev HEAD`.
+  It must report **0 mismatches**; any mismatch is the F1 failure again.
+
+### Step 1 — time-sensitive production checks (read-only; the owner runs the probe)
+
+| When (IST) | Check | Why |
+|---|---|---|
+| 24 Sep after 08:00 and 17:45 | VARMORA rows appear in `data/ipo/ipo_signals.jsonl` | First proof that `a2c19c9` fixed capture. VARMORA closes on the 24th. |
+| 24 Sep after 19:00 | `ipo_deep_dive` post-close for VARMORA stored a row: `ipo_verdicts.jsonl` exists; note whether `substance` is still null | First stored P3 verdict. The 23 Sep T−1 run stored nothing (`demand=None substance=None`). |
+| Until 25 Sep | `railway logs \| grep -i "error code: 402"` | The owner reported an OpenRouter balance of **$0.97**, with a top-up on 25 Sep. The existing streak alert can miss a low-balance pattern (SA-035). |
+| After capture is proven | Close `IPO-0a`: delete `ipo_p0_live_window_check` from `config/milestones.yaml`, evidence in the commit message | Not before. |
+
+The probe is `analysis_data/prod_probe_20260923.py`. It is ignored, so it may be missing in another
+checkout; it prints counts and IPO fields only. Run it from Git Bash at the repo root:
+
+```bash
+railway ssh "cd /app && echo $(gzip -9c analysis_data/prod_probe_20260923.py | base64 -w0) | base64 -d | python -c 'import sys,zlib;exec(zlib.decompress(sys.stdin.buffer.read(),31))'"
 ```
 
-This must report 0 mismatches; any mismatch is F1 again. The pre-existing
-untracked `DOC-001-review.md` is part of the payload, so commit it too.
+Claude can run `railway status`, `railway deployment list --json` and `railway logs <id> -n 2000`
+(plus `--build`), after prepending `/c/Program Files/nodejs:$HOME/AppData/Roaming/npm` to PATH.
+**Claude's `railway ssh` is blocked by the auto-mode classifier.** Volume reads go through the
+owner.
 
-**Chat opener (new conversation):** `Continue — fresh-session review of DOC-001`
+### Step 2 — owner decisions still open
 
-| Finding | Now |
-|---|---|
-| F1 manifest unreproducible | **Fixed.** The new `scripts/docs/kt_manifest.py` records git's blob id plus the SHA-256 of the same bytes. |
-| F2 stale PDF | **Fixed.** Rebuilt, 18 pages; `check_kt_docs.py` has **0 errors**. |
-| F3 stale header | **Fixed.** Header at `d105a44`, and `check_kt_docs.py` now guards it (it fails the reviewed KT with 10 errors). |
-| F4 delivery undocumented | **Fixed.** §10 rewritten; §1, §8, §11 and §13 reconciled. Testing case 10-E added: **60** cases. |
-| F5 ambient-credential tests | **Routed** to [SA-005](stories/SA-005.md), noted on [SA-006](stories/SA-006.md). The harness still shows those 2 failures, by design. |
+1. **Learning containment before SA-001?** **Recommended: yes.** Split SA-003's observe-only
+   containment into a small story and do it first. The learner adapts live weights daily on the
+   audited-wrong target: `technical` is at 0.0 against its 0.12 default for most tickers, and 33
+   lessons were added in one review. Sub-decision: freeze at the current weights, or **reset to the
+   configured defaults** (recommended, because the current values were learned from a wrong
+   target). If the owner agrees, create the story (e.g. `SA-039`, or `SA-003a` with a recorded split
+   in STATE), add it to STATE, the README and KT §12, and resequence with a history entry.
+2. **IPO-0c:** the owner reads the serper.dev dashboard for the real plan. The app counter read
+   2,590 against its default 2,500, yet calls still succeed. Recommended: GMP stays dark.
+3. **Push timing** for Step 0.
 
-For the reviewer, the things most worth attacking:
+### Step 3 — then the normal PI sequence
 
-- **The header guard can pass while the header is wrong.** It proves linked
-  files and job IDs exist at the declared revision. It cannot see changed
-  behaviour inside a file that already existed there, which is how
-  `590bc9f`'s `channels.py` change slipped through.
-- **§10's production sentences.** "One triggered brief reached the inbox"
-  comes from the 2026-09-21 handoff, not from inspection. Whether production
-  sets `RESEND_API_KEY` was not inspected.
-- **Case 10-E expects a result current code does not give.** On a failed
-  account lookup, the brief goes to the owner. That is marked as the SA-006
-  target, not as current behaviour; check that the guide reads that way.
+- **DOC-001** is `review_required`, with review input
+  `d5516ae04325e4e9bd836322f6f7f267bd093528cf318eba9b64bad7bc2ca7c9`. Its fresh-session review
+  runs in a **new conversation** after Step 0. Opener: `Continue — fresh-session review of DOC-001`.
+  Receipt: [the 2026-09-23 section](evidence/DOC-001-implementation.md#remediation-phase--2026-09-23).
+  F1–F4 are fixed, F5 is routed to SA-005/SA-006, F6 is done, and F2 was fixed by the PDF rebuild.
+  The payload changed once more, for the SA-033–SA-038 KT rows; see the receipt's "Payload update".
+- **After DOC-001 is accepted:** select the next ready story, but do not start it in the review
+  chat. By file order that is **SA-001** unless the owner promotes containment (Step 2.1).
+- **Ready now** (all dependencies done): SA-001 (S1, P0), SA-002 (S1), SA-004 (S1), SA-005 (S1),
+  SA-007 (S1), SA-033 (S1), SA-035 (S1), SA-036 (S1), SA-038 (S1), SA-006 (S2), SA-009 (S2) and
+  SA-010 (S2, P2). 38 SA stories in total (35 planned, 128 points; 3 stretch). Sprint 1 is 33
+  points, and Sprint 2 is 24.
+- **IPO (PI Prospect)** stays paused apart from the Step 1 checks. Open items: IPO-0a (Step 1),
+  IPO-0c (Step 2.2), IPO-0d (brief freshness), IPO-0e (P1 spine in production), and IPO-5a/5b
+  (gated). See `docs/superpowers/plans/2026-09-21-ipo-prospect-p3-substance.md`.
 
-After acceptance, select **SA-001**, but do not start it in the review
-conversation.
+### How the owner likes to work (observed this session)
+
+- Explain each decision with a small concrete example (e.g. ₹100 → predicted ₹110 → closed ₹105).
+- Welcomes deep research and wants every recommendation turned into board tasks.
+- Commits and pushes happen only when the owner says so; each push is asked separately.
+
+### Backlog additions and owner decisions — 2026-09-23 (late)
+
+At the user's request, every recommendation in the
+[production assurance review](../../audit/2026-09-23-production-assurance-review.md) is now on a
+board. **New stories:** SA-033 (dependency lock), SA-034 (silent-degradation watchdog), SA-035
+(LLM/Serper credit exhaustion; OpenRouter was at $0.97, top-up 25 Sep), SA-036 (job outcomes),
+SA-037 (deploy/missed-job hygiene), SA-038 (lapsed milestones). **SA-007 moved to Sprint 1** (no
+off-site backup). Notes were routed to SA-003, SA-008, SA-010, SA-011, SA-023 and SA-028. The IPO
+plan gains `IPO-0d` (brief freshness) and `IPO-0e` (P1 spine in production).
+
+**Decisions waiting on the owner:**
+
+1. **Learning containment first?** Promote SA-003's observe-only containment ahead of SA-001? The
+   technical weight is at 0.0 for most tickers.
+2. **IPO-0c:** check the serper.dev dashboard for the real plan, then decide on GMP.
+3. **When to push:** every push redeploys. Avoid the job windows until SA-037 lands.
 
 ### Production read — 2026-09-23 (read-only; supersedes "no railway access" notes below)
 

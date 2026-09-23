@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "pi": "PI-2026-09",
-  "updated_at": "2026-09-15",
+  "updated_at": "2026-09-23",
   "baseline_commit": "9a805878ed19c0cda7833d5b897ac05ee407436d",
   "audit": {
     "status": "complete",
@@ -10,7 +10,7 @@
   },
   "active_task": "DOC-001",
   "next_task": "DOC-001",
-  "next_phase": "review",
+  "next_phase": "fresh-session review",
   "scope": "One implementation or fresh-session review phase per conversation. Default queue is planned stories; stretch requires explicit promotion.",
   "status_definitions": {
     "todo": "Not started; ready when every dependency is done.",
@@ -707,18 +707,38 @@
       "status": "review_required",
       "depends_on": [],
       "implementation_receipt": "docs/planning/PI-2026-09/evidence/DOC-001-implementation.md",
-      "review_receipt": null,
-      "reviewed_revision": null,
+      "review_receipt": "docs/planning/PI-2026-09/evidence/DOC-001-review.md",
+      "reviewed_revision": "d105a44a06d430304a724f34ac3dc329a4ca0d87",
       "production_verification": {
         "status": "not_applicable",
         "evidence": "Documentation only; production behavior verification remains separate."
       },
       "blocked_reason": null,
       "review_input_manifest": "docs/planning/PI-2026-09/evidence/DOC-001-manifest.json",
-      "review_input_sha256": "90c005c46417db97d6e3f6feba2431aae66a8ad93037e852e9823ad7936125c0"
+      "review_input_sha256": "7b04fa718dbaf958c71413f21e0d99454b9184801cc530d4d3f1cec2fb03deca",
+      "reviewed_payload_rollup_sha256": "79d387cb8d3bab6b9f7f7d92a8fad918569b7df8bdbc7a69af5c6cda14b41b5b",
+      "implementation_base_revision": "d105a44a06d430304a724f34ac3dc329a4ca0d87"
     }
   ],
   "history": [
+    {
+      "date": "2026-09-23",
+      "event": "DOC-001 unblocked the same day: the user installed Node v24.21.0. Chromium was installed via the vendored Playwright 1.62.1 and docs/StockAgent-Three-Loops.pdf rebuilt (18 pages, no overflow). Visual inspection found the section 1 'Production observation' row implied a production check at d105a44 ('at the same commit'); it now names 9a805878 and states no d105a44 deployment was inspected. check_kt_docs.py: 0 errors for the first time since IPO-4a. Manifest regenerated: review input 7b04fa71..., 24 files; the 10 files differing from HEAD are exactly this phase's. F1-F4 fixed, F5 routed to SA-005/SA-006, F6 done. Status review_required; the fresh-session review must run in a new conversation, after the payload is committed. Harness not re-run (no code or test input changed since its 324-test/2-failure F5 result). No application source, config, deployment, job, notification, commit or push.",
+      "implementation_receipt": "docs/planning/PI-2026-09/evidence/DOC-001-implementation.md",
+      "review_input_sha256": "7b04fa718dbaf958c71413f21e0d99454b9184801cc530d4d3f1cec2fb03deca"
+    },
+    {
+      "date": "2026-09-23",
+      "event": "DOC-001 changes-requested remediation (implementation phase; same-conversation self-review only, not a fresh review). F1 fixed: new scripts/docs/kt_manifest.py records each file's git blob id plus the SHA-256 of those blob bytes, refusing any file whose bytes do not reproduce the id; manifest regenerated (24 files, review input f2ee40c2...). Found that some committed blobs contain CRLF (docs/ARCHITECTURE.md), so LF-normalization is not a general proxy for committed bytes. F3 fixed: KT header now Edition 2026-09-23 / Code inspected d105a44, and check_kt_docs.py gains check_header_revision. That guard fails on the reviewed KT with 10 errors (9 core/ipo links plus ipo_deep_dive), but cannot see changed behaviour inside a file that already existed. F4 fixed: section 10 now documents SMTP/Resend, EMAIL_TRANSPORT, outbox.last_error, resolve_recipient and three known gaps, and dates the 09-10 and 09-21 observations; sections 11 and 13 reconciled. Also fixed section 8's missing IPO-0b size-tiered lean and its stale closing paragraph, and added testing case 10-E (recipient isolation; 60 cases, all NOT RUN). F5 reproduced (11 passed with DELIVERY_EMAIL_TO, 2 failed without) and routed to SA-005, noted on SA-006. The builder and checker now hash the KT LF-normalized. Harness: 324 tests, 2 failures (the F5 pair). check_kt_docs.py: 1 error, the stale PDF. F2 still blocked (no Node/npx/Chromium), so DOC-001 is marked blocked rather than review_required: a review would return changes_requested on the PDF alone. Under the stated rules SA-001 (no dependencies) is the first other ready story if the user does not unblock first. No application source, config, deployment, job, notification, commit or push.",
+      "implementation_receipt": "docs/planning/PI-2026-09/evidence/DOC-001-implementation.md",
+      "review_input_sha256": "f2ee40c297bf75437bac8678bc88db4fd854f37d0864960279cf115871278576"
+    },
+    {
+      "date": "2026-09-22",
+      "event": "DOC-001 fresh-session hard review executed at HEAD d105a44a06d430304a724f34ac3dc329a4ca0d87; verdict changes_requested. The KT's technical substance verified correct everywhere probed: all 24 scheduler IDs AND their schedules re-derived from the scheduler AST plus config.yaml/settings; the section 5 grading defect reproduced exactly (issue 100, predicted 110, actual 105 -> real +5% UP but classify_direction returns DOWN at RL_FLAT_THRESHOLD_PCT=0.3, live at daily_review.py:554-555); section 7 P/L example and the 2000/400 read limits, section 8 tracker weights 40/20/15/25, and section 6's EXIT>TRIM>ADD>HOLD cascade all match source; harness transport blocking confirmed genuine. Blocking findings are provenance and staleness, not engineering. F1 (high): the manifest's recorded digest for docs/TECHNICAL_DESIGN.md (15dc5542...) matches NO revision among 846 under either line-ending convention, so the reviewed artifact cannot be reconstituted; the review-input digest 90c005c4... only reproduces by re-expanding the manifest's LF bytes to CRLF. F2 (high): the deliverable PDF still says '23 possible job IDs' where source says 24 and omits all of IPO Sprints 2-4; check_kt_docs.py fails on exactly this; rebuild blocked - no Node/npx on this machine. F3 (medium): the KT header still declares baseline 9a805878 while section 8/section 9 document code absent at that revision; check_kt_docs.py has no header-revision guard. F4 (medium): 590bc9f's shipped delivery work (resolve_recipient, Resend transport, EMAIL_TRANSPORT, outbox.last_error) is undocumented and section 10 still presents the September 10 email picture. F5 (medium): the receipt's test claim no longer reproduces - 324 tests, 2 failures (was 323/0); both tests in tests/unit/test_atlas_outbox.py depend on an ambient DELIVERY_EMAIL_TO, proven by running with and without it; routed to SA-005 and noted against SA-006, since 590bc9f's 2832-pass run carried that credential. F6 (low): STATE.json updated_at was stale; corrected here. DOC-001 returns to implementation. All 32 SA stories remain todo; no remediation accepted. Read-only apart from this bookkeeping - no source, config, deployment, job, notification, commit or push.",
+      "review_receipt": "docs/planning/PI-2026-09/evidence/DOC-001-review.md",
+      "reviewed_revision": "d105a44a06d430304a724f34ac3dc329a4ca0d87"
+    },
     {
       "date": "2026-09-21",
       "event": "Email outage resolved. Cause was Railway disabling outbound SMTP on Hobby, not a credential fault: production logged [Errno 101] Network is unreachable on every send since 2026-07-16 (card D6, spec 2026-08-24 section 15.4, n=103 over 21 days). Fixed by upgrading to Pro AND redeploying; the upgrade alone does not affect an already-running container. Verified by triggering a brief that reached the inbox. Shipped in 590bc9f (on origin/main, deployed): outbox.last_error with an additive migration, an HTTPS Resend transport behind EMAIL_TRANSPORT=auto, and per-account recipients via resolve_recipient. Partially satisfies SA-006; SA-006 is NOT accepted as done. Known gap: resolve_recipient falls back to DELIVERY_EMAIL_TO on a transient users.db lookup failure, which could misroute a beta user's brief to the owner. Tests 2832 passed, 5 skipped. The 2026-09-19 audit's findings 1 and 3 are superseded and carry a correction banner. User then resequenced onto PI Prospect (IPO intelligence); next task is IPO-0a in docs/superpowers/plans/2026-09-21-ipo-prospect-p3-substance.md, outside this PI. DOC-001 remains review_required and all SA stories remain todo."

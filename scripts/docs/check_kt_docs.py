@@ -1,15 +1,26 @@
-"""Check current KT links, PI coverage, job IDs, config claims and PDF freshness.
+"""Check current KT links, PI coverage, job IDs, config claims, header revision
+and PDF freshness.
 
-Read-only source/document inspection. No application imports or transports.
-Requires pypdf and PyYAML (available in the local validation environment).
+Read-only source/document inspection. No application imports or transports;
+the only subprocess is local read-only `git`, used to check the KT header's
+declared revision. Requires pypdf and PyYAML (available in the local
+validation environment).
+
+The KT digest is SHA-256 over LF-normalized bytes, as in build_kt_pdf.py, so a
+CRLF Windows checkout and an LF Linux checkout agree on PDF freshness. It
+equals the committed blob only when git stores the file with LF, which is true
+of TECHNICAL_DESIGN.md but not of every older file. Review manifests record
+git's actual blob instead; see kt_manifest.py.
 """
 from __future__ import annotations
 
 import ast
 import hashlib
 import json
-from pathlib import Path
+from pathlib import Path, PurePosixPath
+import posixpath
 import re
+import subprocess
 from urllib.parse import unquote
 
 from pypdf import PdfReader
@@ -23,7 +34,68 @@ DOCS = [
     "docs/planning/PI-2026-09/stories/DOC-001.md", "docs/planning/PI-2026-09/stories/SA-031.md",
     "docs/planning/PI-2026-09/evidence/README.md",
     "docs/planning/PI-2026-09/evidence/DOC-001-implementation.md",
+    "docs/planning/PI-2026-09/evidence/DOC-001-review.md",
 ]
+LINK = r"\[[^\]\n]+\]\(([^)]+)\)"
+
+
+def canonical_sha256(path: Path) -> str:
+    """SHA-256 of the file with CRLF normalized to LF (checkout-independent)."""
+    return hashlib.sha256(path.read_bytes().replace(b"\r\n", b"\n")).hexdigest()
+
+
+def _git(*args: str) -> subprocess.CompletedProcess:
+    return subprocess.run(["git", *args], cwd=ROOT, capture_output=True, text=True)
+
+
+def check_header_revision(kt: str, documented_jobs: list[str], errors: list[str]) -> dict:
+    """The KT header must name the revision its body describes.
+
+    Fails when the declared revision is unknown, is not an ancestor of HEAD,
+    postdates the edition, or lacks any source file the KT links to or any job
+    ID the scheduler table documents -- i.e. the body describes code the
+    declared revision does not contain. Linked sources that changed after the
+    revision are reported, not failed: per-commit churn is expected, and the
+    list tells the maintainer which sections to re-read before bumping it.
+    """
+    rev_match = re.search(r"\*\*Code inspected:\*\* `([0-9a-f]{40})`", kt)
+    edition_match = re.search(r"\*\*Edition:\*\* (\d{4}-\d{2}-\d{2})", kt)
+    if not rev_match or not edition_match:
+        errors.append("KT header lacks an Edition date or a full 40-character Code inspected revision")
+        return {}
+    rev, edition = rev_match.group(1), edition_match.group(1)
+    if _git("cat-file", "-e", rev + "^{commit}").returncode:
+        errors.append("KT header revision is not a known commit: " + rev)
+        return {"declared_revision": rev}
+    if _git("merge-base", "--is-ancestor", rev, "HEAD").returncode:
+        errors.append("KT header revision is not an ancestor of HEAD: " + rev)
+    committed = _git("show", "-s", "--format=%cs", rev).stdout.strip()
+    if edition < committed:
+        errors.append(f"KT edition {edition} predates its declared revision's commit date {committed}")
+    tracked = _git("ls-tree", "-r", "--name-only", rev).stdout.splitlines()
+    tracked_set = set(tracked)
+    tracked_dirs = {str(PurePosixPath(p).parent) for p in tracked}
+    sources = set()
+    for href in re.findall(LINK, kt):
+        href = href.strip("<>")
+        target = unquote(href.split("#", 1)[0])
+        if not target or re.match(r"^[a-zA-Z]+:", href):
+            continue
+        rel = posixpath.normpath(posixpath.join("docs", target))
+        if rel.startswith("docs/") or rel.startswith(".."):
+            continue  # documentation is maintained alongside; only source must exist at the revision
+        sources.add(rel.rstrip("/"))
+    for rel in sorted(sources):
+        if rel not in tracked_set and rel not in tracked_dirs:
+            errors.append(f"KT links {rel}, which is absent at its declared revision {rev[:12]}")
+    scheduler = _git("show", f"{rev}:services/scheduler/python/scheduler.py").stdout
+    for job in documented_jobs:
+        needle = "ipo_refresh_" if job.startswith("ipo_refresh_") else job
+        if needle not in scheduler:
+            errors.append(f"KT documents job {job}, which is absent at its declared revision {rev[:12]}")
+    changed = _git("diff", "--name-only", rev, "HEAD", "--", *sorted(sources)).stdout.split()
+    return {"declared_revision": rev, "edition": edition, "linked_sources": len(sources),
+            "linked_sources_changed_since_revision": changed}
 
 
 def main() -> None:
@@ -35,7 +107,7 @@ def main() -> None:
             errors.append("Missing document: " + name)
             continue
         source = path.read_text(encoding="utf-8-sig")
-        for href in re.findall(r"\[[^\]\n]+\]\(([^)]+)\)", source):
+        for href in re.findall(LINK, source):
             href = href.strip("<>")
             if re.match(r"^[a-zA-Z]+:", href):
                 continue
@@ -80,6 +152,7 @@ def main() -> None:
         errors.append("Scheduler job inventory differs from KT table")
     if f"**{len(jobs)} possible job IDs**" not in clock:
         errors.append("Scheduler count in KT is stale")
+    header = check_header_revision(kt, documented, errors)
 
     config = yaml.safe_load((ROOT / "config.yaml").read_text(encoding="utf-8"))
     claims = {"scheduler.enabled": False, "scheduler.feedback_cron": "30 16 * * mon-fri",
@@ -99,7 +172,7 @@ def main() -> None:
     texts = [p.extract_text() or "" for p in pdf.pages]
     text = "\n".join(texts)
     compact = re.sub(r"\s+", "", text)
-    digest = hashlib.sha256(kt_path.read_bytes()).hexdigest()
+    digest = canonical_sha256(kt_path)
     if digest[:12] not in compact:
         errors.append("PDF source digest does not match current Markdown")
     for title in re.findall(r"^## (.+)$", kt, re.M):
@@ -118,7 +191,7 @@ def main() -> None:
     summary = {"documents": len(DOCS), "local_links_checked": links, "pi_stories": len(sa),
                "scheduler_job_ids": len(jobs), "configuration_claims": len(claims),
                "pdf_pages": len(pdf.pages), "pdf_text_characters": len(text),
-               "source_sha256": digest, "errors": errors}
+               "source_sha256": digest, "header": header, "errors": errors}
     out = ROOT / "analysis_data/kt_20260915"
     out.mkdir(parents=True, exist_ok=True)
     (out / "doc_checks.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")

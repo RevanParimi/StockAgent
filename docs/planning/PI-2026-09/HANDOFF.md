@@ -1,25 +1,61 @@
-# Current handoff - 2026-09-22
+# Current handoff - 2026-09-23
 
-## START HERE — IPO is paused; Three Loops is the active workstream
+## START HERE — DOC-001 is ready for its fresh-session review
 
-**Decided 2026-09-22 (evening), by the user.** `ed1b900` (IPO-4c) is pushed and `origin/main` is
-current, which closes **Sprint 4** of PI "Prospect". The user then chose to **pause IPO work and wait
-for live production evidence** rather than start `IPO-5a`. Do not start an `IPO-` task in a new
-conversation unless the user brings evidence or says so.
+**2026-09-23:** the changes-requested remediation is complete, including the
+PDF rebuild; Node v24.21.0 was installed that day. `STATE.json` says
+`DOC-001: review_required`, `next_phase: fresh-session review`. The review input
+is **`7b04fa718dbaf958c71413f21e0d99454b9184801cc530d4d3f1cec2fb03deca`**,
+from the [manifest](evidence/DOC-001-manifest.json). The receipt is the
+[2026-09-23 section](evidence/DOC-001-implementation.md#remediation-phase--2026-09-23).
+All 32 `SA-` stories remain `todo`. **Self-review only so far.**
 
-**Next task:** [DOC-001](stories/DOC-001.md), next phase **fresh-session review** under
-[REVIEW.md](REVIEW.md). This is the phase PI-2026-09 has been parked at since September 15 — the
-implementation is complete and was never independently reviewed. `STATE.json` already says
-`active_task: DOC-001`, `next_phase: review`, and all 32 `SA-` stories remain `todo`.
+**Before the review: commit the payload.** It is uncommitted. Then:
 
-**Chat opener:**
-`Continue — run the DOC-001 fresh-session review`
+```text
+python scripts/docs/kt_manifest.py verify docs/planning/PI-2026-09/evidence/DOC-001-manifest.json --rev HEAD
+```
 
-Read the [implementation receipt](evidence/DOC-001-implementation.md), verify the
-[manifest](evidence/DOC-001-manifest.json) and inspect the worktree. Review-input SHA-256:
-`90c005c46417db97d6e3f6feba2431aae66a8ad93037e852e9823ad7936125c0`. **Do not sign this off using its
-same-conversation self-review.** After acceptance, `SA-001` is the first remediation story — select it,
-do not start it in the review conversation.
+This must report 0 mismatches; any mismatch is F1 again. The pre-existing
+untracked `DOC-001-review.md` is part of the payload, so commit it too.
+
+**Chat opener (new conversation):** `Continue — fresh-session review of DOC-001`
+
+| Finding | Now |
+|---|---|
+| F1 manifest unreproducible | **Fixed.** The new `scripts/docs/kt_manifest.py` records git's blob id plus the SHA-256 of the same bytes. |
+| F2 stale PDF | **Fixed.** Rebuilt, 18 pages; `check_kt_docs.py` has **0 errors**. |
+| F3 stale header | **Fixed.** Header at `d105a44`, and `check_kt_docs.py` now guards it (it fails the reviewed KT with 10 errors). |
+| F4 delivery undocumented | **Fixed.** §10 rewritten; §1, §8, §11 and §13 reconciled. Testing case 10-E added: **60** cases. |
+| F5 ambient-credential tests | **Routed** to [SA-005](stories/SA-005.md), noted on [SA-006](stories/SA-006.md). The harness still shows those 2 failures, by design. |
+
+For the reviewer, the things most worth attacking:
+
+- **The header guard can pass while the header is wrong.** It proves linked
+  files and job IDs exist at the declared revision. It cannot see changed
+  behaviour inside a file that already existed there, which is how
+  `590bc9f`'s `channels.py` change slipped through.
+- **§10's production sentences.** "One triggered brief reached the inbox"
+  comes from the 2026-09-21 handoff, not from inspection. Whether production
+  sets `RESEND_API_KEY` was not inspected.
+- **Case 10-E expects a result current code does not give.** On a failed
+  account lookup, the brief goes to the owner. That is marked as the SA-006
+  target, not as current behaviour; check that the guide reads that way.
+
+After acceptance, select **SA-001**, but do not start it in the review
+conversation.
+
+### IPO stays paused
+
+`ed1b900` (IPO-4c) is pushed and `origin/main` is current, which closes **Sprint 4** of PI "Prospect".
+The user chose to **pause IPO work and wait for live production evidence** rather than start `IPO-5a`.
+Do not start an `IPO-` task unless the user brings evidence or says so. One encouraging note from the
+review: the incremental-documentation discipline DOC-001 introduced **is** being followed — the 23→24
+job-count change propagated correctly to four documents, and cases 05-F/05-G were added with their
+stories.
+
+After DOC-001 is accepted, `SA-001` is the first remediation story — select it, do not start it in the
+acceptance conversation.
 
 ### Why IPO is waiting, and what arrives on its own
 
@@ -229,7 +265,7 @@ The updated entry points are [Technical KT](../../TECHNICAL_DESIGN.md),
 [generated PDF](../../StockAgent-Three-Loops.pdf),
 [architecture](../../ARCHITECTURE.md) and
 [team testing guide](../../TEAM_TESTING_GUIDE.md).
-The guide has 12 duties and 59 cases (05-F added at `IPO-4b`, 05-G at `IPO-4c`), all NOT RUN.
+The guide has 12 duties and 60 cases (05-F added at `IPO-4b`, 05-G at `IPO-4c`, 10-E at the 2026-09-23 DOC-001 remediation), all NOT RUN.
 
 Every future implementation updates its affected living docs/test cases and
 regenerates the PDF when its source changes. SA-031 now means the final

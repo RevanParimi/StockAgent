@@ -76,7 +76,9 @@ def main() -> None:
     raw = SOURCE.read_bytes()
     source = raw.decode("utf-8-sig")
     edition = re.search(r"\*\*Edition:\*\* (\d{4}-\d{2}-\d{2})", source).group(1)
-    digest = hashlib.sha256(raw).hexdigest()
+    # LF-normalized, matching check_kt_docs.canonical_sha256, so the footer
+    # digest does not depend on the checkout's line endings.
+    digest = hashlib.sha256(raw.replace(b"\r\n", b"\n")).hexdigest()
     content = markdown2.markdown(source, extras=["tables", "fenced-code-blocks", "header-ids", "code-friendly"])
     content = re.sub(r"<h1[^>]*>.*?</h1>\s*", "", content, count=1, flags=re.S)
     headings = re.findall(r'<h2 id="([^"]+)">(.*?)</h2>', content)

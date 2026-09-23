@@ -242,8 +242,9 @@ Use dedicated test recipients and a prepared delivery-failure scenario.
 |---|---|---|
 | 10-A | Compare the stored brief/digest with inbox/email/push versions. | Same date, symbol, advice and action reason. A shortened push still opens the intended detail. |
 | 10-B | Record queue/provider status and actual test-recipient receipt. | Stored or provider-accepted is not called received/read without corresponding evidence. |
-| 10-C | Observe engineering's failed-transport and retry scenario. | Failure and final undelivered state remain visible; no unexplained duplicate message. **PI target: SA-006.** |
+| 10-C | Observe engineering's failed-transport and retry scenario. | Failure and final undelivered state remain visible, each with a stated reason (not a bare "failed"); no unexplained duplicate message. **PI target: SA-006.** |
 | 10-D | Check one portfolio escalation and one watchdog notice on desktop and phone. | Correct recipient/content, readable layout and relevant destination; operational notices are distinguishable from investment advice. |
+| 10-E | With two dedicated test accounts on different addresses, ask engineering to send each one scheduled brief. | Each address receives only its own account's brief. Nothing reaches the owner or fallback inbox, including when engineering simulates a failed account lookup. **PI target: SA-006.** |
 
 **Deliverable:** message ID/date, content match, transport state, receipt time
 and screenshot. Related PI: SA-006, SA-011, SA-024. A delivered backup email

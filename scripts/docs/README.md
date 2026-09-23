@@ -19,6 +19,23 @@ python scripts/docs/run_kt_checks.py
   source hash, and the original PDF archive hash. Update its explicit config
   expectations when an accepted PI change alters the documented defaults.
   It does not prove link fragments or every sentence are semantically correct.
+  It also guards the KT header, using read-only local `git`. The `Code
+  inspected` revision must be a commit that is an ancestor of HEAD, no newer
+  than the edition date. It must contain every source file the KT links and
+  every job ID in section 9's table. Linked sources changed since that revision
+  are listed under `header.linked_sources_changed_since_revision`, not failed.
+  Re-read the affected sections before moving the revision forward. The guard
+  cannot detect changed behaviour inside a file that already existed.
+- The builder and checker both hash `TECHNICAL_DESIGN.md` over
+  **LF-normalized** bytes, so CRLF and LF checkouts agree on PDF freshness.
+- `kt_manifest.py write|verify` records review-input manifests in
+  committed-blob terms. For each file it records git's own blob id
+  (`git hash-object`, compare with `git rev-parse REV:PATH`) and the SHA-256
+  of those same blob bytes. It refuses to record a file whose bytes do not
+  reproduce git's id. Some older files are committed with CRLF, so do not
+  assume LF normalization equals the blob. `verify` checks the working tree;
+  `verify --rev REV` checks a commit. Regenerate the manifest last, after
+  every payload edit.
 - `run_kt_checks.py` copies tracked source into a new isolated directory,
   excludes `.env` and runtime stores, disables dotenv and blocks external
   HTTP(S), sockets, SMTP, push and test subprocesses. Windows asyncio uses an

@@ -1,8 +1,12 @@
 # StockAgent — Technical Design and Knowledge Transfer
 
-**Edition:** 2026-09-15 · **Audience:** engineers and teammates learning the product
+**Edition:** 2026-09-23 · **Audience:** engineers and teammates learning the product
 
-**Code inspected:** `9a805878ed19c0cda7833d5b897ac05ee407436d`
+**Code inspected:** `d105a44a06d430304a724f34ac3dc329a4ca0d87`
+
+First edition 2026-09-15 at `9a805878`; maintained per story since. The revision
+above is the one the whole body describes. `check_kt_docs.py` fails if a linked
+source file or a documented job ID is absent at that revision.
 
 **PDF:** [StockAgent-Three-Loops.pdf](StockAgent-Three-Loops.pdf), generated from this Markdown.
 
@@ -17,7 +21,7 @@ it is not an implemented human-approval workflow.
 |---|---|
 | Current code | Traced in this checkout. Flags, inputs and runtime data determine whether a path actually runs. |
 | Locally checked | Existing tests run in an isolated copy. Exact results and limits are in the [validation receipt](planning/PI-2026-09/evidence/DOC-001-implementation.md). |
-| Production observation | Dated evidence. Railway reported the latest deployment as SUCCESS at the same commit on September 15. Detailed operational observations remain the September 10 audit; deployment status is not job correctness. |
+| Production observation | Dated evidence: the September 10 audit, section 10's 2026-09-21 email diagnosis, and a September 15 deployment SUCCESS at `9a805878`. No `d105a44` deployment was inspected. |
 | PI target | Intended behavior, not completed functionality. All SA-001 through SA-032 remain `todo` in this edition; three are stretch. |
 
 The [September audit](audit/2026-09-10-repository-production-review.md) records
@@ -396,7 +400,7 @@ A shelf candidate, watchlist promotion and virtual purchase are separate steps.
 | P3 model and deep dive (dark) | [research.py](../core/ipo/research.py), [extract.py](../core/ipo/extract.py): browsed, corroborated Substance facts with source URLs. [hype.py](../core/ipo/hype.py), [substance.py](../core/ipo/substance.py), [verdict.py](../core/ipo/verdict.py): deterministic indices and the §3 verdict grid over captured and browsed facts. [deep_dive.py](../core/ipo/deep_dive.py): the 19:00 `ipo_deep_dive` sweep (T−1 research run, post-close re-read from cache) that writes to the append-only store in [verdicts.py](../core/ipo/verdicts.py). [narrate.py](../core/ipo/narrate.py): a sourced research note stored on that row, written by the bulk model from the SAME structured findings the indices read — the verdict is never passed to it, every number in the prose must appear in the findings, an advice/verdict vocabulary rejects it, and a rejected or failed note falls back to a deterministic template. **Writes only:** no verdict, index or quadrant reaches any surface until the `ipo_verdicts_visible_gate` milestone is judged on forward rows. |
 | Forward grading of the P3 verdict (dark) | [listing.py](../core/ipo/listing.py) resolves the listing date and issue price from the P1 spine, then the NSE cache; [grade_ipo_lane](../core/audit/outcomes.py) grades the newest stored verdict per issue against the tape at 1/5/21/63/126/252 trading days from listing, entry price = issue price. Only the listing-day row of a post-close verdict with a directional lean can be scored; the rest carry the return and no claim. Rows land in the existing per-user audit store and are **excluded from the rendered audit report**. No production row exists yet: the job reaches production only on deploy, and grading also waits on the issue reaching the P1 spine, which `scripts/ipo_backfill.py` still rebuilds manually. |
 | Recent-listing ranking | [ipo_tracker.py](../core/discovery/ipo_tracker.py): listing evidence, delivery trend, bulk accumulation and optional subscription score discovery candidates. |
-| User surfaces | IPO-watch in briefs, weekly/discovery context and shelf. Inspected routes do not provide a dedicated `/ipo/predict` API or complete standalone IPO prediction page. |
+| User surfaces | IPO-watch in briefs, weekly/discovery context and shelf. The brief's demand lean ([`_ipo_lean`](../core/delivery/brief.py)) judges subscription against size-tiered bands from `delivery.brief_ipo_size_tiers`; an issue whose size was not read uses the scale-free scalar thresholds, never the largest tier. The lean is a labelled heuristic, not the P3 verdict. Inspected routes do not provide a dedicated `/ipo/predict` API or complete standalone IPO prediction page. |
 
 History uses **1, 5, 21, 63, 126 and 252 trading sessions**, measured from
 **issue price**. Unmatured horizons are absent, not zero. Benchmark excess
@@ -417,10 +421,12 @@ from listing; these are software heuristics, not verification of an individual
 issue's contractual dates.
 
 The historical **Prospect** design planned further modeling after P0/P1/P2
-collection. Current code has collection, history, captured signals and
-heuristic candidate ranking. A validated IPO application/allotment or
-listing-gain predictor is not established, and is not silently added to the
-September remediation scope.
+collection. Current code has collection, history, captured signals, heuristic
+candidate ranking and, since PI Prospect Sprints 2–4, the dark P3 model,
+deep-dive job, narrator and forward-grading lane in the table above. None of
+it reaches a user, and no production verdict row has been graded. A validated
+IPO application/allotment or listing-gain predictor is therefore still not
+established, and is not silently added to the September remediation scope.
 
 ## 9. Scheduled jobs and event hooks
 
@@ -471,12 +477,45 @@ readiness/ownership recovery.
 
 [Briefs](../core/delivery/brief.py), [weekly reviews](../core/delivery/weekly.py)
 and digests persist independently of transport.
-[Channels](../core/delivery/channels.py) send email/web push;
+[Channels](../core/delivery/channels.py) send email and web push. Email has two
+transports: SMTP (STARTTLS) and the HTTPS Resend API. `EMAIL_TRANSPORT` in
+[settings](../src/backend/shared/config/settings/base.py) defaults to `auto`,
+which uses Resend only when `RESEND_API_KEY` is set and SMTP otherwise;
+`resend` or `smtp` forces one. The repository's `delivery.email_enabled` is
+`false`; the `DELIVERY_EMAIL_ENABLED` environment variable overrides it.
+
 [outbox.py](../core/delivery/outbox.py) provides retry/dead-letter handling
-when its Atlas path is active. Stored, queued, provider-accepted, received
-and read are separate states. September 10 recorded email failures and no
-confirmed app-created off-site backup copy; delivery was not remeasured here.
-SA-006/SA-007 address those independent acceptance gaps.
+when its Atlas path is active (3 attempts, 1/5/30-minute backoff in
+`config.yaml`). Each email row's recipient comes from `resolve_recipient()`:
+the owning account's address in `users.db`, else `DELIVERY_EMAIL_TO`. A failed
+send stores its reason in `outbox.last_error`, which is cleared when a retry
+succeeds; an additive migration in
+[atlas_store.py](../services/data/stores/atlas_store.py) adds the column to
+existing databases. Stored, queued, provider-accepted, received and read are
+separate states. `last_error` explains a failure; an empty one does not prove
+receipt.
+
+**Dated production observation.** September 10 recorded email failures and no
+confirmed app-created off-site backup copy. The email cause was identified on
+2026-09-21: Railway disables outbound SMTP on its Hobby plan, and production
+had logged `[Errno 101] Network is unreachable` on every send since 2026-07-16.
+After a plan upgrade and redeploy, one triggered brief reached the inbox that
+day. That is a single observed delivery, not a measured delivery rate. Whether
+production sets `RESEND_API_KEY` was not inspected, and delivery was not
+remeasured for this edition.
+
+Known gaps in the shipped delivery code (`590bc9f`, which partially satisfies
+SA-006 without accepting it):
+
+- `resolve_recipient()` also falls back to `DELIVERY_EMAIL_TO` when the
+  `users.db` lookup raises. A transient failure can therefore route a beta
+  tester's brief to the owner's inbox.
+- Resend's default shared sender (`RESEND_FROM`) delivers only to the Resend
+  account owner's address. Per-account delivery needs a verified-domain sender.
+- Two outbox tests pass only when an ambient `DELIVERY_EMAIL_TO` is present.
+  This is routed to SA-005.
+
+SA-006/SA-007 address the remaining delivery and backup acceptance gaps.
 
 The frontend uses React JSX, runtime browser transformation and PWA assets.
 Chat uses a streaming tool loop with potentially paid provider calls. Prompt
@@ -503,8 +542,8 @@ HTTP responses do not prove recovery or successful jobs.
 | Data health | Durable health/run records. | Usable-data semantics and recommendation/learning gates. |
 | Verdict binding | Deterministic category enabled in YAML, raw model verdict logged. | Correct issue-time grading and final adaptive constraints. |
 | Portfolio | Per-user advice/execution, stops, switches and ledgers. | Stronger upstream evidence and report reconciliation. |
-| IPO | Calendar, history, snapshots and recent-listing screening. | Validated predictive modeling; outside default September scope. |
-| Operations | TCP singleton, outcomes, watchdog, outbox and backup code. | Truthful counts, proven recovery and delivery/readiness. |
+| IPO | Calendar, history, snapshots, recent-listing screening, size-tiered brief lean, and the dark P3 model, deep dive, narrator and forward-grading lane (section 8). | Forward evidence for P3 and its `ipo_verdicts_visible_gate`; no verdict reaches a user; outside default September scope. |
+| Operations | TCP singleton, outcomes, watchdog, outbox with `last_error`, per-account recipients, SMTP/Resend transports and backup code. | Truthful counts, proven recovery, measured delivery, the recipient-fallback gap and readiness. |
 | Frontend | JSX/PWA with live adapters and some fallback/demo paths. | Sanitization, honest unavailable states and optional build cleanup. |
 
 Historical [specifications](superpowers/specs/) retain what was intended at
@@ -566,7 +605,9 @@ normal documentation until Sprint 6.
 ## 13. Validation and KT sequence
 
 The [receipt](planning/PI-2026-09/evidence/DOC-001-implementation.md) records
-exact tests, source/path checks, PDF checks and limitations. Local validation
+exact tests, source/path checks, PDF checks and limitations; the
+[review](planning/PI-2026-09/evidence/DOC-001-review.md) records what was
+verified independently and what was sent back. Local validation
 uses Python 3.13 on Windows; production Docker uses Python 3.11 on Linux.
 Focused checks do not imply full-suite or platform-parity acceptance.
 
@@ -589,8 +630,8 @@ or all independent financial invariants. The PDF builder needs Python
 | Product/data | Sections 1–4: a symbol, source dates, dimensions and research verdict. |
 | Predictions/learning | Section 5: envelope row to feedback, weights and lessons; explain the grading gaps. |
 | Portfolio/marksheets | Sections 6–7: advice to transaction, the P/L example and different evaluation rules. |
-| IPO/discovery | Section 8: calendar to captured facts, history and post-listing candidates. |
-| Operations/roadmap | Sections 9–12: scheduled work to persisted output/delivery and remaining PI changes. |
+| IPO/discovery | Section 8: calendar to captured facts, history, post-listing candidates, and the dark P3 path from deep dive to a stored, narrated and graded verdict. |
+| Operations/roadmap | Sections 9–12: scheduled work to persisted output, outbox states and `last_error`, the dated email observation, and remaining PI changes. |
 
 Practical, non-code-intensive duties are in the separate
 [Team Human Testing Guide](TEAM_TESTING_GUIDE.md). Testers should be able to

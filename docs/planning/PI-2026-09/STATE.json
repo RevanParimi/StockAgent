@@ -1,16 +1,16 @@
 {
   "schema_version": 1,
   "pi": "PI-2026-09",
-  "updated_at": "2026-09-23",
+  "updated_at": "2026-09-24",
   "baseline_commit": "9a805878ed19c0cda7833d5b897ac05ee407436d",
   "audit": {
     "status": "complete",
     "report": "docs/audit/2026-09-10-repository-production-review.md",
     "production_modified": false
   },
-  "active_task": "DOC-001",
-  "next_task": "DOC-001",
-  "next_phase": "fresh-session review",
+  "active_task": null,
+  "next_task": "SA-039",
+  "next_phase": "implementation",
   "scope": "One implementation or fresh-session review phase per conversation. Default queue is planned stories; stretch requires explicit promotion.",
   "status_definitions": {
     "todo": "Not started; ready when every dependency is done.",
@@ -739,12 +739,13 @@
       "title": "Detect silent degradation in the watchdog",
       "story": "docs/planning/PI-2026-09/stories/SA-034.md",
       "sprint": 2,
-      "points": 5,
+      "points": 6,
       "priority": "P1",
       "scope": "planned",
       "status": "todo",
       "depends_on": [
-        "SA-036"
+        "SA-036",
+        "SA-040"
       ],
       "implementation_receipt": null,
       "review_receipt": null,
@@ -779,7 +780,7 @@
       "title": "Record durable outcomes for every critical job",
       "story": "docs/planning/PI-2026-09/stories/SA-036.md",
       "sprint": 1,
-      "points": 3,
+      "points": 4,
       "priority": "P1",
       "scope": "planned",
       "status": "todo",
@@ -834,6 +835,68 @@
       "blocked_reason": null
     },
     {
+      "id": "SA-040",
+      "title": "Record per-source fetch health and detect new error types",
+      "story": "docs/planning/PI-2026-09/stories/SA-040.md",
+      "sprint": 1,
+      "points": 3,
+      "priority": "P1",
+      "scope": "planned",
+      "status": "todo",
+      "depends_on": [],
+      "implementation_receipt": null,
+      "review_receipt": null,
+      "reviewed_revision": null,
+      "production_verification": {
+        "status": "not_started",
+        "evidence": null
+      },
+      "blocked_reason": null
+    },
+    {
+      "id": "SA-041",
+      "title": "Provide a read-only production status fetcher",
+      "story": "docs/planning/PI-2026-09/stories/SA-041.md",
+      "sprint": 2,
+      "points": 3,
+      "priority": "P1",
+      "scope": "planned",
+      "status": "todo",
+      "depends_on": [
+        "SA-036",
+        "SA-040"
+      ],
+      "implementation_receipt": null,
+      "review_receipt": null,
+      "reviewed_revision": null,
+      "production_verification": {
+        "status": "not_started",
+        "evidence": null
+      },
+      "blocked_reason": null
+    },
+    {
+      "id": "SA-042",
+      "title": "Add an outside witness for missed jobs (Healthchecks.io → Telegram)",
+      "story": "docs/planning/PI-2026-09/stories/SA-042.md",
+      "sprint": 1,
+      "points": 2,
+      "priority": "P1",
+      "scope": "planned",
+      "status": "todo",
+      "depends_on": [
+        "SA-036"
+      ],
+      "implementation_receipt": null,
+      "review_receipt": null,
+      "reviewed_revision": null,
+      "production_verification": {
+        "status": "not_started",
+        "evidence": null
+      },
+      "blocked_reason": null
+    },
+    {
       "id": "DOC-001",
       "title": "Refresh current-code KT documents and separate human testing duties",
       "story": "docs/planning/PI-2026-09/stories/DOC-001.md",
@@ -841,23 +904,38 @@
       "points": 0,
       "priority": "P1",
       "scope": "user_requested",
-      "status": "review_required",
+      "status": "done",
       "depends_on": [],
       "implementation_receipt": "docs/planning/PI-2026-09/evidence/DOC-001-implementation.md",
-      "review_receipt": "docs/planning/PI-2026-09/evidence/DOC-001-review.md",
-      "reviewed_revision": "d105a44a06d430304a724f34ac3dc329a4ca0d87",
+      "review_receipt": "docs/planning/PI-2026-09/evidence/DOC-001-review-2026-09-24.md",
+      "prior_review_receipts": [
+        "docs/planning/PI-2026-09/evidence/DOC-001-review.md"
+      ],
+      "reviewed_revision": "c83214541b1b26c14e66cb4b697288c35a5c2830",
       "production_verification": {
         "status": "not_applicable",
         "evidence": "Documentation only; production behavior verification remains separate."
       },
       "blocked_reason": null,
       "review_input_manifest": "docs/planning/PI-2026-09/evidence/DOC-001-manifest.json",
-      "review_input_sha256": "d5516ae04325e4e9bd836322f6f7f267bd093528cf318eba9b64bad7bc2ca7c9",
-      "reviewed_payload_rollup_sha256": "79d387cb8d3bab6b9f7f7d92a8fad918569b7df8bdbc7a69af5c6cda14b41b5b",
-      "implementation_base_revision": "d105a44a06d430304a724f34ac3dc329a4ca0d87"
+      "review_input_sha256": "63ff474cec51a5810af84dca279a8fcdaa93239cd65230e6f5cd738b01128dd0",
+      "implementation_base_revision": "d105a44a06d430304a724f34ac3dc329a4ca0d87",
+      "review_outcomes": [
+        {"date": "2026-09-22", "verdict": "changes_requested", "reviewed_revision": "d105a44a06d430304a724f34ac3dc329a4ca0d87", "reviewed_payload_rollup_sha256": "79d387cb8d3bab6b9f7f7d92a8fad918569b7df8bdbc7a69af5c6cda14b41b5b"},
+        {"date": "2026-09-24", "verdict": "accepted", "reviewed_revision": "c83214541b1b26c14e66cb4b697288c35a5c2830", "review_input_sha256": "63ff474cec51a5810af84dca279a8fcdaa93239cd65230e6f5cd738b01128dd0", "follow_ups": {"R2": "SA-039", "R3": "SA-033", "F5": "SA-005/SA-006"}}
+      ]
     }
   ],
   "history": [
+    {
+      "date": "2026-09-24",
+      "event": "Owner-requested planning (outside the one-phase rule; no story started). Production observability design docs/superpowers/specs/2026-09-24-production-observability-design.md. Owner decisions: D1 yes (Healthchecks.io free tier as an outside witness), D2 Telegram as the independent alert channel, D3 a monthly credit limit on the production OpenRouter key read through /api/v1/key (no management key in production), D4 Sentry deferred, D5 add to the board. New stories: SA-040 (per-source health and new-error signatures; S1, 3 points), SA-041 (read-only /ops/status and fetcher CLI; S2, 3 points; depends on SA-036 and SA-040), SA-042 (outside witness; S1, 2 points; depends on SA-036). Widened: SA-034 5 -> 6 points (post-job evaluation, source/signature/runway checks; now also depends on SA-040), SA-036 3 -> 4 points (job_runs history contract). SA-035 amended (key-limit runway, budget_readings, invalid_output class; points unchanged). Planned stories 39 / 140 points (Sprint 1: 41, Sprint 2: 28). Prometheus, the OpenTelemetry SDK, Arize and Langfuse were evaluated and deferred, with reasons in the design. SA-039 stays first; no story status changed. Same day, read-only logs: the 08:00 ipo_refresh_am on the nse 3.2.1 image logged no bid-ladder fetch failure (10 at 23 Sep 17:45); ledger rows are not visible from logs, so IPO-0a stays open."
+    },
+    {
+      "date": "2026-09-24",
+      "event": "DOC-001 second fresh-session review: ACCEPTED at c83214541b1b26c14e66cb4b697288c35a5c2830, review input 63ff474c (reproduced from the worktree, HEAD and e8df088; kt_manifest verify and verify --rev HEAD: 24 files, 0 mismatches). F1-F4 and F6 re-verified independently: the tampered manifest and the 9a805878 header both fail their guards; the section 10 and section 8 claims match source; the PDF matches its source digest 5253529c, with pages 8 and 17 rendered. F5 is still routed (324 tests, 2 known failures). New low follow-ups: R1 was a stale STATE review digest, corrected here; R2 (the 2026-09-23 weights observation has no sanitized evidence record) goes to SA-039; R3 (the harness dependency folder carries nse 4.0.1, outside the <4.0 pin) goes to SA-033. DOC-001 is done; production_verification is not_applicable. The next ready story is SA-039, selected but not started. No SA status changed. No application code, deployment, job or notification was touched.",
+      "review_input_sha256": "63ff474cec51a5810af84dca279a8fcdaa93239cd65230e6f5cd738b01128dd0"
+    },
     {
       "date": "2026-09-23",
       "event": "Owner decisions (resequencing). (1) Learning containment promoted ahead of SA-001: SA-003's observe-only containment is split out as SA-039 (P0, Sprint 1, 3 points, no dependencies), placed first in the task order; SA-003 re-estimated 5 -> 4. The owner chose to reset live weights to the configured defaults rather than freeze them; SA-039 does this on the read side (decision consumers use the sector default table, stored WeightMemory is not mutated), so no production data migration is needed and rollback is exact. Activation is a separate owner-authorized config push. Reason: the adapter changes live weights daily on the target F02 found wrong (technical 0.0 vs 0.12 default for 5 of 6 observed tickers on 2026-09-23). Found while writing SA-039 (code inspection): verdict-shadow learned_weights_used is true whenever any weights are passed, defaults included; routed to SA-024. (2) Outside this PI: IPO-0c decided, GMP stays dark (recorded in the IPO plan). (3) The 2026-09-23 backlog batch was committed as 650c01c (verify --rev HEAD: 0 mismatches); push deferred to a safe window at the owner's instruction. Planned stories now 36 / 130 points (Sprint 1: 35). DOC-001 stays review_required; its payload changed again (KT sections 1, 5 and 12 plus the rebuilt PDF), so the manifest and review input were regenerated. After DOC-001 is accepted, the first ready story is SA-039, not SA-001. No story status changed; no application code changed."

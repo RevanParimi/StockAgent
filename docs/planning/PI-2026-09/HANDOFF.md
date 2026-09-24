@@ -1,6 +1,67 @@
-# Current handoff - 2026-09-23 (updated about 23:45 IST)
+# Current handoff - 2026-09-24 (updated about 08:30 IST)
 
 ## START HERE — resume checklist, in order
+
+**DOC-001 was ACCEPTED on 2026-09-24** by a second fresh-session review, at `c832145` with review
+input `63ff474c…`. The receipt is [DOC-001-review-2026-09-24.md](evidence/DOC-001-review-2026-09-24.md).
+DOC-001 is `done`. STATE now has `active_task: null`, `next_task: SA-039` and `next_phase: implementation`.
+
+- **Next PI phase: implement [SA-039](stories/SA-039.md)** in a new conversation. Opener:
+  `Continue — implement SA-039`. Read the card's new "Routed input (R2)" section: the
+  implementation must also record a sanitized pre-activation weight baseline. That record becomes
+  the evidence for KT §5's "5 of 6 tickers" sentence, and §1's production row should name the
+  2026-09-23 inspection when §5 is rewritten.
+- The low follow-ups are routed, not waived. R3 (the KT harness imports nse 4.0.1, outside the
+  `<4.0` pin) is on SA-033, and F5 stays on SA-005/SA-006.
+- **Committed locally, not pushed** (at the owner's "commit", 2026-09-24): this conversation's work
+  in one commit on top of `c832145`:
+  - the review bookkeeping: the review receipt, STATE, this file, the implementation-receipt banner,
+    and routed notes on SA-033 and SA-039;
+  - the observability backlog (below).
+
+  `origin/main` is still `e8df088`, so both local commits ride the next push. Push only on the
+  owner's explicit word, in a safe window (Step 0 rules). The commits are docs-only, but every push
+  still redeploys. **Manifest note:** the backlog changes
+  three DOC-001 payload files (the KT, the PDF and the PI README) as normal post-acceptance
+  maintenance. Verify the accepted input with `kt_manifest.py verify <manifest> --rev c832145`
+  (0 mismatches). Against a later HEAD those three files will differ, and that is expected.
+- **Step 1 production checks, 24 Sep**, from read-only `railway logs` (no ssh):
+  - The build installed **nse 3.2.1**, so the pin works, and the fix has been live since
+    23 Sep 22:44 IST (deploy `dfd7a15d`).
+  - The **08:00 `ipo_refresh_am` logged no bid-ladder fetch failure**: current=7, 50 s, where the
+    23 Sep 17:45 run had 10 `_req` failures. Rows on the volume are not visible from logs, so
+    **IPO-0a stays open**; the 06:30 watchdog on 25 Sep or an owner probe confirms them.
+  - The 06:30 watchdog raised 1 `warning`. The log doesn't name the check; it is inferred to be
+    `ipo_signals_accruing`.
+  - **0 OpenRouter 402s** since 23 Sep 13:30. The 23 Sep 16:30 review logged 18 runs costing
+    **$0.40**, so a $0.97 balance leaves about 2 days. **Top up before 25 Sep 16:30.**
+  - Still due: VARMORA rows after 17:45, and whether the 19:00 `ipo_deep_dive` stores its first
+    verdict.
+
+### Production observability — adopted 2026-09-24 (owner decisions D1–D5)
+
+The owner asked for a proper production "fetcher" and a careful tool evaluation. The design is
+[2026-09-24-production-observability-design.md](../../superpowers/specs/2026-09-24-production-observability-design.md).
+
+- **Verdict:** no Prometheus, no OpenTelemetry SDK (field names only), no Arize or Langfuse for
+  now, and Sentry deferred. Instead:
+  - an in-app ops ledger in `telemetry.db`: `job_runs`, `source_health_day`, `error_signatures`
+    and `budget_readings`;
+  - the watchdog as evaluator, now also run right after each critical job;
+  - a read-only `GET /ops/status` with `OPS_READ_TOKEN`, plus a fetcher CLI;
+  - Healthchecks.io as the outside witness, alerting by Telegram.
+- **Board:** SA-040 (S1, 3 points), SA-041 (S2, 3 points) and SA-042 (S1, 2 points) are added.
+  SA-034 goes 5 → 6 points, SA-036 goes 3 → 4, and SA-035 is amended. That makes 39 planned
+  stories and 140 points; Sprint 1 is 41 and Sprint 2 is 28. SA-039 is still first. The KT §12
+  rows are added and the PDF is rebuilt (`check_kt_docs.py`: 0 errors).
+- **Owner actions (settings only, no code). The owner will do these at the end**, so don't press
+  for them earlier. Remind when a rollout needs one: the OpenRouter key limit for SA-035, and
+  Healthchecks.io for SA-042.
+  - Railway: turn on alerts for deploy failed/crashed and volume usage.
+  - OpenRouter: set a monthly credit limit on the production key.
+  - Healthchecks.io: create the account and connect Telegram, ready for SA-042.
+- **Suggested ops order after SA-039:** SA-036 → SA-035 → SA-040 → SA-042 → SA-034 → SA-041.
+  STATE's task order is unchanged, so "continue" still follows the existing sequence.
 
 **Pushed 2026-09-24 06:56 IST at the owner's explicit "push it".** `a2c19c9..e8df088` was pushed, and
 deploy `d9c459ae` reached SUCCESS at 07:03 IST. The boot log shows 24 jobs registered, no errors,
@@ -81,7 +142,8 @@ owner.
 
 ### Step 3 — then the normal PI sequence
 
-- **DOC-001** is `review_required`, with review input
+- ✅ **DOC-001 accepted 2026-09-24** (see START HERE). The bullets below are the pre-review record.
+- **DOC-001** was `review_required`, with review input
   **`63ff474cec51a5810af84dca279a8fcdaa93239cd65230e6f5cd738b01128dd0`**.
   - Its fresh-session review runs in a **new conversation**. It can run against the local commits
     before the push. Opener: `Continue — fresh-session review of DOC-001`.

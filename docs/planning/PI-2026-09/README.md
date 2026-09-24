@@ -20,15 +20,15 @@ Planning assumption: six two-week sprints, one story implementation and a separa
 
 | Sprint | Objective | Planned points | Exit evidence |
 |---|---|---:|---|
-| 1 | Learning containment first; security, honest health, action gating, scheduler counts, clean CI; dependency lock, provider-credit alerts, job outcomes, milestone hygiene, off-site backup | 35 | Contained learner leaves stored weights untouched and decisions on defaults; browser exploit fixture inert; no-data action/update blocked; counts reconcile; clean Python-3.11 CI baseline |
-| 2 | Delivery, instrument/store identity, benchmark correctness, incident registry; silent-degradation watchdog, deploy hygiene | 24 | Mock transport/recovery tests, real verification tracked separately, reviewed migration manifest, correct provider arguments |
+| 1 | Learning containment first; security, honest health, action gating, scheduler counts, clean CI; dependency lock, provider-credit alerts, job outcomes, source health, outside witness, milestone hygiene, off-site backup | 41 | Contained learner leaves stored weights untouched and decisions on defaults; browser exploit fixture inert; no-data action/update blocked; counts reconcile; clean Python-3.11 CI baseline |
+| 2 | Delivery, instrument/store identity, benchmark correctness, incident registry; silent-degradation watchdog, deploy hygiene, read-only ops status | 28 | Mock transport/recovery tests, real verification tracked separately, reviewed migration manifest, correct provider arguments |
 | 3 | Learning target, immutable issuance, correct dark grading, atomic bounded updates | 18 | Independent numeric/time fixtures; old outcome cannot be regraded with today's decision; crash/retry invariants pass |
 | 4 | Identifiable credit, historical lineage, complete monthly and weekly/fortnightly cohorts | 18 | Hand-reconciled forecast/outcome IDs and denominators; exited calls retained; wrong-roster history excluded explicitly |
 | 5 | Effective samples, calibration, prospective experiments, lesson probation, honest evidence UI | 19 | Reviewed experiment protocol and deterministic end-to-end experiment; sufficient market evidence may still be pending |
 | 6 | Actual call accounting, sector consolidation, justified fallback retirement, runtime recovery, current docs | 16 | Cost counts reconcile, routing equivalence, owner-loss recovery test, accepted operator documentation |
 | Stretch | Packaging/client build, Atlas projections, comprehensive public-read policy | 11 | Separate capacity/product decision; not selected automatically by “continue” |
 
-The 36 planned stories total 130 points; three stretch stories total 11. Six planned stories (SA-033–SA-038) were added on 2026-09-23 from the [production assurance review](../../audit/2026-09-23-production-assurance-review.md), and SA-007 moved to Sprint 1. Later that day the owner split SA-003's learning containment out as SA-039 (P0, 3 points, first in order), and SA-003 went from 5 points to 4. Sprint 1 is heavy at 35 points, so re-estimate after it. Dependencies, not numbering alone, determine readiness. Security/privacy issues newly discovered during any story take priority over this provisional order. Production incidents may justify resequencing, recorded in STATE.json with the reason.
+The 39 planned stories total 140 points; three stretch stories total 11. Six planned stories (SA-033–SA-038) were added on 2026-09-23 from the [production assurance review](../../audit/2026-09-23-production-assurance-review.md), and SA-007 moved to Sprint 1. Later that day the owner split SA-003's learning containment out as SA-039 (P0, 3 points, first in order), and SA-003 went from 5 points to 4. On 2026-09-24 the owner adopted the [production observability design](../../superpowers/specs/2026-09-24-production-observability-design.md). It adds SA-040 (source health), SA-041 (read-only ops status) and SA-042 (an outside witness on Healthchecks.io, alerting by Telegram), widens SA-034 (5 → 6 points) and SA-036 (3 → 4), and amends SA-035. The design keeps to this PI's small-service rule: no Prometheus, OpenTelemetry SDK or Arize. The one outside service is a free witness, justified by a measured nine-week email outage that nothing detected. Sprint 1 is heavy at 41 points, so re-estimate after it. Dependencies, not numbering alone, determine readiness. Security/privacy issues newly discovered during any story take priority over this provisional order. Production incidents may justify resequencing, recorded in STATE.json with the reason.
 
 DOC-001 is an additional user-requested documentation task outside those point
 totals. Its resequencing does not waive SA-031's unresolved dependencies.
@@ -75,12 +75,15 @@ P0 learning defects need a correct target and issuance contract before a safe re
 | [SA-031](stories/SA-031.md) | 6 | P2 | 2 | Verify final architecture and operator-documentation consistency | SA-024, SA-027, SA-029 |
 | [SA-032](stories/SA-032.md) | stretch | P2 | 3 | Define and enforce the public-read and demo-data policy | SA-001, SA-024 |
 | [SA-033](stories/SA-033.md) | 1 | P1 | 3 | Lock reproducible runtime dependencies | — |
-| [SA-034](stories/SA-034.md) | 2 | P1 | 5 | Detect silent degradation in the watchdog | SA-036 |
+| [SA-034](stories/SA-034.md) | 2 | P1 | 6 | Detect silent degradation in the watchdog | SA-036, SA-040 |
 | [SA-035](stories/SA-035.md) | 1 | P1 | 3 | Surface LLM and search provider credit exhaustion | — |
-| [SA-036](stories/SA-036.md) | 1 | P1 | 3 | Record durable outcomes for every critical job | — |
+| [SA-036](stories/SA-036.md) | 1 | P1 | 4 | Record durable outcomes for every critical job | — |
 | [SA-037](stories/SA-037.md) | 2 | P2 | 3 | Keep deploys from dropping scheduled jobs | SA-036 |
 | [SA-038](stories/SA-038.md) | 1 | P1 | 2 | Judge and retire lapsed production-verification milestones | — |
 | [SA-039](stories/SA-039.md) | 1 | P0 | 3 | Contain adaptive learning: observe-only, live weights back to defaults | — |
+| [SA-040](stories/SA-040.md) | 1 | P1 | 3 | Record per-source fetch health and detect new error types | — |
+| [SA-041](stories/SA-041.md) | 2 | P1 | 3 | Provide a read-only production status fetcher | SA-036, SA-040 |
+| [SA-042](stories/SA-042.md) | 1 | P1 | 2 | Add an outside witness for missed jobs (Healthchecks.io → Telegram) | SA-036 |
 
 Every card has concrete acceptance criteria, independent unit/integration fixtures, hard-review questions and rollout/rollback limits. Use [REVIEW.md](REVIEW.md) for the sign-off gate and [evidence/README.md](evidence/README.md) for durable receipts.
 

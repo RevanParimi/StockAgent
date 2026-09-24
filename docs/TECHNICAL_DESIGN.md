@@ -1,6 +1,6 @@
 # StockAgent — Technical Design and Knowledge Transfer
 
-**Edition:** 2026-09-23 · **Audience:** engineers and teammates learning the product
+**Edition:** 2026-09-24 · **Audience:** engineers and teammates learning the product
 
 **Code inspected:** `d105a44a06d430304a724f34ac3dc329a4ca0d87`
 
@@ -22,7 +22,7 @@ it is not an implemented human-approval workflow.
 | Current code | Traced in this checkout. Flags, inputs and runtime data determine whether a path actually runs. |
 | Locally checked | Existing tests run in an isolated copy. Exact results and limits are in the [validation receipt](planning/PI-2026-09/evidence/DOC-001-implementation.md). |
 | Production observation | Dated evidence: the September 10 audit, section 10's 2026-09-21 email diagnosis, and a September 15 deployment SUCCESS at `9a805878`. No `d105a44` deployment was inspected. |
-| PI target | Intended behavior, not completed functionality. All SA-001 through SA-039 remain `todo` in this edition; three are stretch. |
+| PI target | Intended behavior, not completed functionality. All SA-001 through SA-042 remain `todo` in this edition; three are stretch. |
 
 The [September audit](audit/2026-09-10-repository-production-review.md) records
 unresolved label, timing, health, weight-bound and operational defects.
@@ -552,7 +552,7 @@ HTTP responses do not prove recovery or successful jobs.
 | Verdict binding | Deterministic category enabled in YAML, raw model verdict logged. | Correct issue-time grading and final adaptive constraints. |
 | Portfolio | Per-user advice/execution, stops, switches and ledgers. | Stronger upstream evidence and report reconciliation. |
 | IPO | Calendar, history, snapshots, recent-listing screening, size-tiered brief lean, and the dark P3 model, deep dive, narrator and forward-grading lane (section 8). | Forward evidence for P3 and its `ipo_verdicts_visible_gate`; no verdict reaches a user; outside default September scope. |
-| Operations | TCP singleton, outcomes, watchdog, outbox with `last_error`, per-account recipients, SMTP/Resend transports and backup code. | Truthful counts, proven recovery, measured delivery, the recipient-fallback gap and readiness. |
+| Operations | TCP singleton, outcomes, watchdog, outbox with `last_error`, per-account recipients, SMTP/Resend transports and backup code. | Truthful counts, proven recovery, measured delivery, the recipient-fallback gap and readiness. The [observability design](superpowers/specs/2026-09-24-production-observability-design.md) adds planned job-run and source-health ledgers, post-job checks, a read-only status fetcher and an outside witness (SA-034–SA-036, SA-040–SA-042). |
 | Frontend | JSX/PWA with live adapters and some fallback/demo paths. | Sanitization, honest unavailable states and optional build cleanup. |
 
 Historical [specifications](superpowers/specs/) retain what was intended at
@@ -602,12 +602,15 @@ documentation refresh; it does not close SA-031 or any upstream remediation.
 | [SA-031](planning/PI-2026-09/stories/SA-031.md) | Verify final architecture and operator-documentation consistency | All: final consistency check | SA-024, SA-027, SA-029 |
 | [SA-032 (stretch)](planning/PI-2026-09/stories/SA-032.md) | Define and enforce the public-read and demo-data policy | 10 Interface | SA-001, SA-024 |
 | [SA-033](planning/PI-2026-09/stories/SA-033.md) | Lock reproducible runtime dependencies | 3 Runtime; 13 Validation | None |
-| [SA-034](planning/PI-2026-09/stories/SA-034.md) | Detect silent degradation in the watchdog | 9 Jobs; 10 Operations | SA-036 |
+| [SA-034](planning/PI-2026-09/stories/SA-034.md) | Detect silent degradation in the watchdog | 9 Jobs; 10 Operations | SA-036, SA-040 |
 | [SA-035](planning/PI-2026-09/stories/SA-035.md) | Surface LLM and search provider credit exhaustion | 10 Operations; 10 Cost | None |
 | [SA-036](planning/PI-2026-09/stories/SA-036.md) | Record durable outcomes for every critical job | 9 Jobs | None |
 | [SA-037](planning/PI-2026-09/stories/SA-037.md) | Keep deploys from dropping scheduled jobs | 3 Runtime; 9 Jobs | SA-036 |
 | [SA-038](planning/PI-2026-09/stories/SA-038.md) | Judge and retire lapsed production-verification milestones | 9 Jobs; 10 Operations | None |
 | [SA-039](planning/PI-2026-09/stories/SA-039.md) | Contain adaptive learning: observe-only, live weights back to defaults | 5 Learning | None |
+| [SA-040](planning/PI-2026-09/stories/SA-040.md) | Record per-source fetch health and detect new error types | 9 Jobs; 10 Operations | None |
+| [SA-041](planning/PI-2026-09/stories/SA-041.md) | Provide a read-only production status fetcher | 10 Operations; 13 Validation | SA-036, SA-040 |
+| [SA-042](planning/PI-2026-09/stories/SA-042.md) | Add an outside witness for missed jobs (Healthchecks.io → Telegram) | 9 Jobs; 10 Operations | SA-036 |
 
 ### Maintain documentation with each story
 

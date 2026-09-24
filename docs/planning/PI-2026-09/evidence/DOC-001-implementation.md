@@ -1,5 +1,9 @@
 # DOC-001 — Implementation and validation receipt
 
+> **2026-09-24 — ACCEPTED** by a second fresh-session review at `c832145`,
+> review input `63ff474c…`. See [DOC-001-review-2026-09-24.md](DOC-001-review-2026-09-24.md).
+> Low follow-ups are routed to SA-039 (R2) and SA-033 (R3). F5 stays with SA-005/SA-006.
+
 > **2026-09-23 — changes-requested remediation appended below.** The
 > September 15 sections are kept as the dated record. Their Markdown digest
 > (`15dc5542…`) and review-input digest (`90c005c4…`) are **superseded**: the

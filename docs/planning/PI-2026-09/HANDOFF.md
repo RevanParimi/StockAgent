@@ -2,10 +2,13 @@
 
 ## START HERE — resume checklist, in order
 
-Production runs `a2c19c9` (the `nse<4` fix), deployed 22:44 IST 2026-09-23 with SUCCESS and 24 jobs
-registered. `origin/main` = `a2c19c9`. **Two local commits are not pushed yet** (Step 0).
+**Pushed 2026-09-24 06:56 IST at the owner's explicit "push it".** `a2c19c9..e8df088` was pushed, and
+deploy `d9c459ae` reached SUCCESS at 07:03 IST. The boot log shows 24 jobs registered, no errors,
+and the serper counter at 2,590/2,500. The 06:30 watchdog had already finished, and no job was due
+before 07:30. Production now runs `e8df088`, which adds no application code over `a2c19c9`. The rest
+of Step 0 below is the record of how the push was arranged.
 
-### Step 0 — push the two local commits (the owner's go-ahead is required for the push)
+### Step 0 — push the two local commits (done; see above)
 
 Done at the owner's go-ahead, 23:30 IST:
 

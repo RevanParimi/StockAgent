@@ -214,8 +214,10 @@ receipt. Written after the manifest (bookkeeping, outside the review input): HAN
 
 ## Commit and push — 2026-09-25
 
-On 2026-09-25 the owner asked to commit and push, and reported OpenRouter recharged. The request came
-at 10:48 IST, and the push followed in the same window, outside every blocked job window.
+On 2026-09-25 the owner asked to commit and push, and reported OpenRouter recharged. **Correction:**
+the request came at 16:18 IST, not 10:48 as first written. My check used `TZ=Asia/Kolkata date`,
+which returns UTC in Git Bash, so the push went out at about 16:22 IST, inside the blocked
+16:25–17:05 window.
 
 - `4c4728a` holds this receipt's input exactly: `kt_manifest.py verify … --rev 4c4728a` reports
   0 mismatches.
@@ -228,3 +230,14 @@ at 10:48 IST, and the push followed in the same window, outside every blocked jo
 - Pushing deploys the code with `rl.learning_mode: adapt`, so no decision changes. Activating
   `observe` stays a separate owner decision after an accepted review. `production_verification`
   stays `not_started`.
+
+**Deploy outcome (read-only logs).** Deploy `7ebd06c5` (`309d801`) was created at 16:22:42 IST
+and reached SUCCESS. The new container came up at 16:28:56 and registered 24 jobs before 16:30,
+so the 16:30 review ran on the new code in `adapt` mode:
+20 starts and 19 completions logged `learning_mode=adapt`, and 19
+`[WeightAdapter] Weights →` writes happened, as before SA-039. The last review finished at 16:54 IST.
+The 20th start (a metals ticker) returned `no_envelope`, because it has no forecast envelope; that
+gap predates this change. The job and its post-review portfolio pipeline finished at 16:55:02.
+Error and warning lines fall only into categories that existed before this change; none came from
+the SA-039 code. This is the first production evidence that the `adapt` path behaves as before.
+It is not a review of SA-039, and it does not activate `observe`.

@@ -1,4 +1,4 @@
-# Current handoff - 2026-09-25 (updated about 11:00 IST)
+# Current handoff - 2026-09-25 (updated about 17:10 IST)
 
 ## START HERE — resume checklist, in order
 
@@ -14,7 +14,15 @@ STATE: `active_task: SA-039`, status `review_required`, `next_phase: review`. Re
   mismatch by design, because the next commit bumped the KT header. The receipt lists every decision
   consumer and the test that covers it. It also flags one scope interpretation for the reviewer:
   the untagged lesson micro-adjustment is contained too.
-- **Committed and pushed on 2026-09-25 at the owner's word** (asked at 10:48 IST; pushed in the same clear window).
+- **Committed and pushed on 2026-09-25 at the owner's word.** **Correction:** the owner asked at
+  16:18 IST, not 10:48. `TZ=Asia/Kolkata date` returns UTC in Git Bash, so the push went out at
+  about 16:22 IST, inside the blocked review window. Deploy `7ebd06c5` (`309d801`) reached SUCCESS.
+  The new container was up at 16:28:56, so the 16:30 review still ran, on the new code in `adapt`
+  mode: 19 completions and 19 weight writes, done at 16:54. The 20th ticker (metals) returned
+  `no_envelope`; it has no forecast envelope, an existing gap. The job and its portfolio pipeline
+  finished at 16:55. Nothing was missed.
+  This correction is committed locally and **not pushed**; it rides the next push. Read IST with
+  plain `date` from now on.
   `4c4728a` is the SA-039 change exactly as the review input describes it. The next commit bumps
   the KT header's `Code inspected` revision to `4c4728a` (edition 2026-09-25), links
   `learning_mode.py` and rebuilds the PDF. The deploy outcome is recorded in the commit after that.

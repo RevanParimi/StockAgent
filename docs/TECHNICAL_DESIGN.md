@@ -21,8 +21,8 @@ it is not an implemented human-approval workflow.
 |---|---|
 | Current code | Traced in this checkout. Flags, inputs and runtime data determine whether a path actually runs. |
 | Locally checked | Existing tests run in an isolated copy. Exact results and limits are in the [validation receipt](planning/PI-2026-09/evidence/DOC-001-implementation.md). |
-| Production observation | Dated evidence: the September 10 audit, section 10's 2026-09-21 email diagnosis, and a September 15 deployment SUCCESS at `9a805878`. No `d105a44` deployment was inspected. |
-| PI target | Intended behavior, not completed functionality. All SA-001 through SA-042 remain `todo` in this edition; three are stretch. |
+| Production observation | Dated evidence: the September 10 audit, section 10's 2026-09-21 email diagnosis, a September 15 deployment SUCCESS at `9a805878`, the 2026-09-23 read-only log inspection of learned weights, and the 2026-09-24 [SA-039 weight baseline](planning/PI-2026-09/evidence/SA-039-baseline-2026-09-24.md). No `d105a44` deployment was inspected. |
+| PI target | Intended behavior, not completed functionality. SA-039 is implemented and awaiting its fresh review; every other story from SA-001 to SA-042 is `todo`. Three are stretch. |
 
 The [September audit](audit/2026-09-10-repository-production-review.md) records
 unresolved label, timing, health, weight-bound and operational defects.
@@ -136,6 +136,7 @@ resolved at import, so editing a file does not imply live reconfiguration.
 | `scheduler.enabled: false` | Local startup default; production overrides are separate. |
 | `scheduler.feedback_cron: "30 16 * * mon-fri"` | Daily review default, interpreted in Asia/Kolkata. |
 | `rl.hard_bind_verdict_enabled: true` | Research category follows the composite; model `final_score` remains separate. |
+| `rl.learning_mode: adapt` | SA-039 switch, env `RL_LEARNING_MODE`. `adapt` keeps learned weights and lesson emphasis live; `observe` contains them (section 5). Any other value fails closed to `observe`. |
 | `rl.control_lane_enabled`, `rl.scorecard_enabled`: true | Control/evaluation paths configured; not proof of valid prospective comparison. |
 | `ipo.enabled: true`; `ipo.gmp_enabled: false` | IPO refresh and grey-market-price fetching have separate gates. |
 | `delivery.enabled: true`; `delivery.email_enabled: false`; `delivery.push_enabled: true` | Job scheduling, transport enablement and credentials are separate conditions. |
@@ -149,7 +150,7 @@ Credentials and `.env` contents do not belong in KT or testing evidence.
 
 | Records | Writer / consumers and scope |
 |---|---|
-| `data/predictions/<sector>/<ticker>/` | PredictionStore: envelopes, feedback, controls, weight memory, lessons and dossier. RL writes; advisor, evaluation and UI read. SA-009/SA-017 still need to reconcile historical aliases and mixed stores. |
+| `data/predictions/<sector>/<ticker>/` | PredictionStore: envelopes, feedback, controls, weight memory, lessons and dossier, plus `<TICKER>_weight_observations.json` (SA-039 observe-mode proposals). RL writes; advisor, evaluation and UI read. SA-009/SA-017 still need to reconcile historical aliases and mixed stores. |
 | `_shared_ledger.json` per sector; `_market_ledger.json` at prediction root | Shared lessons can affect more than one ticker; bad attribution can propagate. |
 | `data/portfolio/<user>/` | PortfolioStore: holdings/cash, advice and transaction JSONL, value history, dated digests, briefs and weekly reviews. |
 | `data/ipo/` | Historical issue facts and captured demand snapshots; reports derive from these records. |
@@ -262,14 +263,40 @@ feedback system; it does not demonstrate that adaptation beats a fixed policy.
 The audit also reproduced final weight-bound violations and repeated ensemble
 trend counts presented under different agent names.
 
-Current code adapts live weights on every eligible review. On 2026-09-23,
-production logged `technical` at 0.0 against its 0.12 default for 5 of 6
-observed tickers. **PI target, not current code:** SA-039, ordered first by
-the owner, adds an observe-only switch. With it, forecasts, analysis and
-re-forecasts use the sector's configured default weights and lesson emphasis
-stops. The learner still computes into a diagnostic record, and stored weights
-stay untouched, so rollback is exact. Activating it in production is a
-separate, owner-authorized configuration push.
+Production adapts live weights on every eligible review. On 2026-09-23,
+production logged `technical` at 0.0 for 5 of the 6 tickers that have that
+agent. The [2026-09-24 baseline](planning/PI-2026-09/evidence/SA-039-baseline-2026-09-24.md)
+reproduced it: the defaults are 0.12 in the generic graph and 0.10 in the
+renewable graph. Counting `pattern_analysis`, the chart agent of the other
+graphs, 9 of 18 tickers had a chart weight of 0.0 and 16 of 18 were below half
+their default. All 19 reviews that day wrote a new weight version.
+
+**SA-039 (implemented, awaiting fresh review; newer than the header
+revision):** `rl.learning_mode` has two values. `adapt` is the checked-in value
+and the behaviour described above. `observe` contains learning:
+
+- Forecasts, re-forecasts, public analysis, and the review's re-scoring and
+  forecast revision aggregate with the sector's configured default table (the
+  table a ticker with no learning state gets), whatever the file stores.
+- The review never writes weight memory. The adapter runs on a copy, and its
+  would-be weights, deltas and reason go to `<TICKER>_weight_observations.json`,
+  one record per review date.
+- Tagged-lesson emphasis and the older category micro-adjustment stop moving
+  agent scores. Lessons are still recorded, and `claims_fired` stays empty
+  because no claim acted.
+
+Example: a ticker stores `technical = 0.0` at v41. In `observe` mode its
+forecast uses 0.12; after the review the file still says 0.0 at v41, and the
+observation record shows what v42 would have been. Switching back to `adapt`
+resumes the stored weights unchanged. An unrecognised value fails closed to
+`observe` with a warning. The mode is shown in the review's start and
+completion log lines, on each envelope (`learning_mode`), and by
+`/ui/rl/weights/{ticker}` (with the live `decision_weights`) and
+`/ui/rl/summary/{ticker}`. The paper lane and the absurd-price-error guard
+behave as before. SA-039 does not contain regime multipliers, thesis
+multipliers, the conviction streak, miss-counter prompt enhancements or dossier
+text. **Production is still `adapt`.** Activation is a separate one-line
+configuration commit, pushed only on the owner's word.
 
 SA-015 requires retry-safe updates and final bounds, SA-016 fixes attribution,
 and SA-017 records comparable history. SA-020/SA-021 address overlap,
@@ -562,8 +589,9 @@ Legacy code should only be retired with measured replacement coverage.
 
 ## 12. PI changes included now
 
-The table below includes the planned destination now. **Every SA story remains
-`todo` in this edition.** Accepted state/dependencies are in
+The table below includes the planned destination now. **SA-039 is implemented
+and awaiting its fresh review; every other SA story is `todo`.** Accepted
+state/dependencies are in
 [STATE.json](planning/PI-2026-09/STATE.json). DOC-001 is this user-requested
 documentation refresh; it does not close SA-031 or any upstream remediation.
 

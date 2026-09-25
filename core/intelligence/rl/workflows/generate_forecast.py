@@ -20,6 +20,9 @@ from datetime import date, timedelta
 
 from core.config import settings
 from core.intelligence.rl.workflows.sector_router import get_orchestrator, get_sector_weights
+from core.intelligence.rl.learning_mode import (
+    OBSERVE, decision_weights, is_observing, learning_mode,
+)
 from core.schemas.feedback import (
     DailyForecast,
     LearningLedger,
@@ -94,8 +97,9 @@ def _apply_ledger_micro_adjustments(
     High-confidence lessons confirmed recently → +0.01 per lesson (max ±0.05 per agent).
     This makes the forecast path aware of known patterns without overriding the LLM.
     Lessons older than 90 days or with <2 occurrences are ignored.
+    SA-039: a no-op in observe mode, like the tagged-lesson emphasis.
     """
-    if not learning_ledger or not learning_ledger.lessons:
+    if not learning_ledger or not learning_ledger.lessons or is_observing():
         return day_agent_scores
 
     from datetime import date as _date
@@ -456,10 +460,13 @@ def generate_forecast(
             )
     else:
         wm = store.get_or_init_weight_memory(get_sector_weights(sector))
-    effective_weights = wm.effective_weights()
+    # SA-039: observe mode aggregates with the sector defaults, not the stored weights.
+    mode = learning_mode()
+    effective_weights = decision_weights(wm, sector)
     logger.info(
-        "[generate_forecast] Using weight version v%d: %s",
-        wm.weight_version,
+        "[generate_forecast] learning_mode=%s | stored weight version v%d | using %s: %s",
+        mode, wm.weight_version,
+        "sector default weights" if mode == OBSERVE else "stored weights",
         {k: round(v, 4) for k, v in effective_weights.items()},
     )
 
@@ -543,6 +550,7 @@ def generate_forecast(
         generated_at=date.today().isoformat(),
         base_close=base_close,
         weight_version_used=wm.weight_version,
+        learning_mode=mode,
         forecast_profile_shape=forecast_profile.path_shape if forecast_profile else "linear",
         forecast_profile_monthly_pct=forecast_profile.monthly_return_pct if forecast_profile else 0.0,
         forecast_profile_source=forecast_profile.source if forecast_profile else "static",
@@ -641,9 +649,11 @@ def regenerate_envelope(
         archived_file = store.archive_envelope(cycle_id) or ""
 
         # Fresh orchestrator analysis with the currently-effective weights —
-        # same sector orchestrator the monthly path uses.
+        # same sector orchestrator the monthly path uses (SA-039: the sector
+        # defaults in observe mode).
         wm = store.get_or_init_weight_memory(get_sector_weights(sector))
-        effective_weights = wm.effective_weights()
+        mode = learning_mode()
+        effective_weights = decision_weights(wm, sector)
         report = _run_orchestrator_analysis(ticker, sector, effective_weights)
 
         # Fresh baseline close — the new MC paths anchor on today's actual
@@ -704,6 +714,7 @@ def regenerate_envelope(
             envelope.forecast_profile_monthly_pct = forecast_profile.monthly_return_pct
             envelope.forecast_profile_source = forecast_profile.source
         envelope.weight_version_used = wm.weight_version
+        envelope.learning_mode = mode
 
         store.save_envelope(envelope)
         logger.info(

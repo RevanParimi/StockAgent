@@ -77,6 +77,7 @@ async def rl_tickers() -> dict:
 
 @router.get("/summary/{ticker}", summary="RL summary card data for a ticker")
 async def rl_summary(ticker: str) -> dict:
+    from core.intelligence.rl.learning_mode import learning_mode
     e = _entry_for(ticker)
     store = _store(e)
     env = store.load_envelope(store.current_cycle_id())
@@ -100,6 +101,7 @@ async def rl_summary(ticker: str) -> dict:
         "avg_price_error_pct": round(
             sum(abs(x.price_error_pct) for x in entries) / total, 2) if total else 0.0,
         "weight_version": wm.weight_version if wm else 0,
+        "learning_mode": learning_mode(),     # SA-039: "observe" = version not live
         "lesson_count": len(ledger.lessons) if ledger else 0,
         "top_miss_factor": max(miss_counter, key=miss_counter.get) if miss_counter else "",
         "current_verdict": streak.current_verdict if streak else "",
@@ -136,13 +138,23 @@ async def rl_predictions(ticker: str, limit: int = 30) -> dict:
 
 @router.get("/weights/{ticker}", summary="Agent weight state + history")
 async def rl_weights(ticker: str) -> dict:
+    from core.intelligence.rl.learning_mode import decision_weights, learning_mode_state
     e = _entry_for(ticker)
-    wm = _store(e).load_weight_memory()
+    store = _store(e)
+    wm = store.load_weight_memory()
+    # SA-039: which weights decisions actually use. In observe mode the
+    # current_weights below are stored but not live; decision_weights are.
+    mode, mode_reason = learning_mode_state()
+    learning = {"learning_mode": mode, "learning_mode_reason": mode_reason}
     if not wm:
-        return {"available": False, "ticker": e["sym"]}
+        return {"available": False, "ticker": e["sym"], **learning}
+    observations = store.load_weight_observations()
     return {
         "available": True,
         "ticker": e["sym"],
+        **learning,
+        "decision_weights": dict(decision_weights(wm, e.get("sector", "automobile")) or {}),
+        "latest_observation": observations[-1] if observations else None,
         "base_weights": dict(wm.base_weights or {}),
         "current_weights": dict(wm.current_weights or {}),
         "weight_history": [

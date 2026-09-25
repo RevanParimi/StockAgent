@@ -329,6 +329,12 @@ WEIGHT_MAX_DRIFT: float = cfg("rl.weight_max_drift", fallback=0.15)
 # Minimum rolling days required before weight adaptation kicks in
 WEIGHT_MIN_OBSERVATIONS: int = cfg("rl.weight_min_observations", fallback=3)
 
+# SA-039 learning containment: "adapt" (learned weights and lesson emphasis act)
+# or "observe" (sector default weights, no weight writes, lessons recorded only).
+# Read at call time through core.intelligence.rl.learning_mode, which fails
+# closed to "observe" on any other value.
+RL_LEARNING_MODE: str = cfg("rl.learning_mode", env="RL_LEARNING_MODE", fallback="adapt")
+
 # Accuracy window: how many recent days are used to judge agent direction accuracy
 WEIGHT_ACCURACY_WINDOW: int = cfg("rl.weight_accuracy_window", fallback=7)
 

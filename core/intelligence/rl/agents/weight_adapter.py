@@ -130,6 +130,7 @@ class WeightAdapter:
         timing_lag_days: int = 0,
         seasonal_threshold_deltas: dict[str, float] | None = None,
         factor_regime: dict | None = None,
+        proposal_only: bool = False,
     ) -> WeightMemory:
         """
         Compute and apply weight adjustments based on today's feedback.
@@ -155,6 +156,9 @@ class WeightAdapter:
             IIMA 4-factor regime dict from factor_regime.get_factor_regime().
             Used to scale bias penalties — agents structurally disadvantaged in the
             current regime receive lighter penalties (see get_regime_penalty_scale).
+        proposal_only : bool
+            SA-039 observe mode: the caller passes a copy and will not save it.
+            Only the log wording changes, so a proposal is never logged as a move.
         """
         if len(feedback_log.entries) < settings.WEIGHT_MIN_OBSERVATIONS:
             logger.info(
@@ -220,7 +224,10 @@ class WeightAdapter:
             )
         )
 
-        logger.info("[WeightAdapter] Weights → v%d — %s", new_version, reason)
+        if proposal_only:
+            logger.info("[WeightAdapter] Proposal (not applied) → v%d — %s", new_version, reason)
+        else:
+            logger.info("[WeightAdapter] Weights → v%d — %s", new_version, reason)
         return weight_memory
 
     # ------------------------------------------------------------------

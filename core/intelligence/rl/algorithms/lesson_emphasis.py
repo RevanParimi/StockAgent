@@ -57,10 +57,12 @@ def apply_lesson_emphasis(day_agent_scores: dict, ledger, today_tags: list) -> d
     """Boost/dampen agent scores for still-valid tagged lessons firing today.
 
     Pure with respect to inputs; reads settings at call time; never raises.
+    SA-039: a no-op in observe mode (lessons are recorded, not acted on).
     """
     from core.config import settings
+    from core.intelligence.rl.learning_mode import is_observing
 
-    if not getattr(settings, "RL_CLAIMS_ENABLED", True):
+    if not getattr(settings, "RL_CLAIMS_ENABLED", True) or is_observing():
         return dict(day_agent_scores)
 
     adj = {a: 0.0 for a in day_agent_scores}

@@ -286,8 +286,19 @@ class BaseSectorOrchestrator(ABC):
     # ------------------------------------------------------------------
 
     def _load_learned_weights(self, ticker: str) -> dict[str, float] | None:
-        """Load RL-learned agent weights from WeightMemory. Falls back to None (→ settings defaults)."""
+        """Load RL-learned agent weights from WeightMemory. Falls back to None (→ settings defaults).
+
+        SA-039: in observe mode nothing learned is used — None, so callers
+        aggregate with this sector's _get_default_weights().
+        """
         try:
+            from core.intelligence.rl.learning_mode import learning_mode, OBSERVE
+            if learning_mode() == OBSERVE:
+                logger.info(
+                    "[%s] learning_mode=observe — %s aggregates with sector default weights",
+                    self.SECTOR_NAME, ticker,
+                )
+                return None
             from core.intelligence.rl.stores.prediction_store import PredictionStore
             ps = PredictionStore(ticker=ticker, sector=self.SECTOR_NAME)
             memory = ps.load_weight_memory()

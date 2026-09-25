@@ -914,6 +914,7 @@ All paths verified to exist. Paths are relative to project root.
 | `src/backend/shared/schemas/scorecard.py` | ControlPrediction/ControlLog + MonthlyScorecard schemas |
 | `core/intelligence/rl/conviction/tracker.py` | Conviction streak tracking |
 | `core/intelligence/rl/nse_calendar.py` | NSE trading day calendar (holiday-aware) |
+| `core/intelligence/rl/learning_mode.py` | SA-039 switch `rl.learning_mode` (adapt/observe; unknown → observe): `decision_weights()` returns sector defaults in observe; `weight_observation()` builds the would-be-weights diagnostic |
 | `core/intelligence/regime/detector.py` | Market regime detection (VIX/FII/RSI-based) |
 | `core/intelligence/prompt_enhancer/enhancer.py` | Injects RL lessons and regime context into agent prompts |
 | `core/intelligence/seasonal/calendar.py` | Seasonal pattern calendar |

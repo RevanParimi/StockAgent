@@ -56,7 +56,11 @@ rules, gates, cash/size limits and deduplication; no broker execution path was
 identified. Narration explains the decision rather than deciding a trade.
 
 Learning persists feedback, weights and lessons. It currently has known
-label/timing/final-bound problems. The nightly auditor, monthly replay and
+label/timing/final-bound problems. The SA-039 switch `rl.learning_mode`
+(checked in as `adapt`, awaiting review) can contain it: in `observe` mode,
+decisions use each sector's default weights, no weight file is written and
+lessons stop moving scores ([KT section 5](TECHNICAL_DESIGN.md#5-learning-forecast-review-and-memory)).
+The nightly auditor, monthly replay and
 weekly scoreboard are different measurements; none alone demonstrates the
 benefit of adaptation. The watchdog checks operational milestones, not stock
 prediction correctness.

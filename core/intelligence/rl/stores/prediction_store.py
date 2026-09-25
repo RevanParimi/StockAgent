@@ -36,6 +36,8 @@ PredictionStore(ticker, sector=None)
   .append_feedback_entry(cycle_id, entry)
   .save_weight_memory(wm)
   .load_weight_memory()                     → WeightMemory | None
+  .record_weight_observation(record)        [SA-039 observe mode]
+  .load_weight_observations()               → list[dict]
   .save_learning_ledger(ll)
   .load_learning_ledger()                   → LearningLedger
   .load_sector_ledger()                     → LearningLedger  [P2]
@@ -392,6 +394,34 @@ class PredictionStore:
         if existing is not None:
             return existing
         return self.init_weight_memory(base_weights)
+
+    # ------------------------------------------------------------------
+    # SA-039 weight observations ({ticker}_weight_observations.json)
+    # Observe mode records what the adapter would have written here, and
+    # never touches the weight memory file above.
+    # ------------------------------------------------------------------
+
+    WEIGHT_OBSERVATIONS_KEEP = 260   # about a year of trading days
+
+    def _weight_observations_path(self) -> Path:
+        return self._dir / f"{self.ticker}_weight_observations.json"
+
+    def record_weight_observation(self, record: dict) -> None:
+        """Upsert one record per review_date (a re-run replaces it); keep the newest."""
+        path = self._weight_observations_path()
+        data = self._read_json(path) or {}
+        records = [r for r in data.get("records", [])
+                   if r.get("review_date") != record.get("review_date")]
+        records.append(record)
+        records.sort(key=lambda r: r.get("review_date", ""))
+        self._write_json(path, {
+            "ticker": self.ticker,
+            "records": records[-self.WEIGHT_OBSERVATIONS_KEEP:],
+        })
+
+    def load_weight_observations(self) -> list[dict]:
+        data = self._read_json(self._weight_observations_path())
+        return list(data.get("records", [])) if data else []
 
     # ------------------------------------------------------------------
     # Learning Ledger  (permanent across cycles)

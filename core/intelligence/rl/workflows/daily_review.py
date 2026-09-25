@@ -37,6 +37,12 @@ from core.intelligence.rl.agents.feedback_agent import (
     is_direction_correct,
 )
 from core.intelligence.rl.agents.weight_adapter import WeightAdapter
+from core.intelligence.rl.learning_mode import (
+    OBSERVE,
+    decision_weights,
+    learning_mode_state,
+    weight_observation,
+)
 from core.schemas.feedback import (
     ConvictionStreak,
     DailyFeedbackLog,
@@ -423,10 +429,13 @@ def run_daily_review(
     )
     cycle_id = store.cycle_id_for(review_date)
     date_str = review_date.isoformat()
+    # SA-039: observe mode aggregates with sector defaults and never writes
+    # adapted weights. Read once so the whole review runs under one mode.
+    mode, mode_reason = learning_mode_state()
 
     logger.info(
-        "[daily_review] === %s | sector=%s | %s | cycle=%s ===",
-        ticker, sector, date_str, cycle_id,
+        "[daily_review] === %s | sector=%s | %s | cycle=%s | learning_mode=%s ===",
+        ticker, sector, date_str, cycle_id, mode,
     )
 
     # ------------------------------------------------------------------ #
@@ -587,7 +596,7 @@ def run_daily_review(
         todays_scores = _run_todays_agent_scores(
             ticker,
             sector=sector,
-            learned_weights=wm_for_scores.effective_weights() if wm_for_scores else None,
+            learned_weights=decision_weights(wm_for_scores, sector),
             capture=_todays_capture,
         )
         if not todays_scores and today_forecast.predicted_agent_scores:
@@ -1092,6 +1101,14 @@ def run_daily_review(
     feedback_log.entries.append(provisional)
     feedback_log.entries.sort(key=lambda e: e.date)
 
+    adapter_inputs = dict(
+        feedback_log=feedback_log,
+        todays_primary_miss_agent=fb_output.primary_miss_agent,
+        todays_miss_type=fb_output.miss_type,
+        timing_lag_days=timing.lag_days if timing and timing.lag_days is not None else 0,
+        seasonal_threshold_deltas=seasonal_ctx.accuracy_threshold_delta or None,
+        factor_regime=_factor_regime_data,
+    )
     if paper or absurd_error:
         # PAPER-LANE ISOLATION: no weight training on paper ideas — junk
         # discovery names must never move learned weights (spec §6.3).
@@ -1099,17 +1116,28 @@ def run_daily_review(
         # training on it is what let the TATAMOTORS split corrupt nine sessions.
         updated_wm = wm
         new_weight_version = f"v{wm.weight_version}"
+    elif mode == OBSERVE:
+        # SA-039 observe mode: the adapter still computes, on a copy, and its
+        # proposal is recorded as a diagnostic. The stored weight memory is
+        # never written, so switching back to adapt resumes it unchanged.
+        proposal = WeightAdapter().update(
+            weight_memory=wm.model_copy(deep=True), proposal_only=True, **adapter_inputs,
+        )
+        updated_wm = wm
+        new_weight_version = f"v{wm.weight_version}"
+        store.record_weight_observation(weight_observation(
+            review_date=date_str, mode=mode, mode_reason=mode_reason,
+            stored=wm, proposal=proposal,
+            decision=decision_weights(wm, sector),
+        ))
+        logger.info(
+            "[daily_review] %s: learning_mode=observe — adapter proposal v%d not applied; "
+            "stored weights stay v%d (diagnostic recorded)",
+            ticker, proposal.weight_version, wm.weight_version,
+        )
     else:
         adapter    = WeightAdapter()
-        updated_wm = adapter.update(
-            weight_memory=wm,
-            feedback_log=feedback_log,
-            todays_primary_miss_agent=fb_output.primary_miss_agent,
-            todays_miss_type=fb_output.miss_type,
-            timing_lag_days=timing.lag_days if timing and timing.lag_days is not None else 0,
-            seasonal_threshold_deltas=seasonal_ctx.accuracy_threshold_delta or None,
-            factor_regime=_factor_regime_data,
-        )
+        updated_wm = adapter.update(weight_memory=wm, **adapter_inputs)
         store.save_weight_memory(updated_wm)
         new_weight_version = f"v{updated_wm.weight_version}"
 
@@ -1124,10 +1152,12 @@ def run_daily_review(
     # with transient noise. Instead, regime-adjusted weights are used only for
     # today's forecast revision (Step 7) and then discarded.
     # Tomorrow's daily_review loads fresh regime state and applies new multipliers.
+    # SA-039: in observe mode the base is the sector default table.
     # ------------------------------------------------------------------ #
+    decision_base = decision_weights(updated_wm, sector)
     try:
         regime_effective_weights = apply_regime_multipliers(
-            updated_wm.effective_weights(), sticky_regime_multipliers, sector=sector
+            decision_base, sticky_regime_multipliers, sector=sector
         )
         logger.info(
             "[daily_review] Regime '%s' effective weights applied for %s",
@@ -1138,7 +1168,7 @@ def run_daily_review(
             "[daily_review] %s: Regime weight application failed (using learned weights, non-fatal): %s",
             ticker, exc,
         )
-        regime_effective_weights = updated_wm.effective_weights()
+        regime_effective_weights = decision_base
 
     # ------------------------------------------------------------------ #
     # Step 6: LearningLedger — merge lessons + propagate to shared ledgers
@@ -1361,9 +1391,12 @@ def run_daily_review(
     # ------------------------------------------------------------------ #
     # Knowledge layer: audit which lessons' claims fired today, using the
     # post-merge ledger (updated_ledger) consistent with Step-7 emphasis.
-    # Empty list when claims are disabled or there is no ledger/tags.
+    # Empty list when claims are disabled or there is no ledger/tags, and in
+    # SA-039 observe mode, where lessons do not act: recording them as fired
+    # would credit or blame them in the scorecard's claim-day split.
     claims_fired: list[str] = []
-    if getattr(settings, "RL_CLAIMS_ENABLED", True) and updated_ledger and today_tags:
+    if (getattr(settings, "RL_CLAIMS_ENABLED", True) and mode != OBSERVE
+            and updated_ledger and today_tags):
         from core.intelligence.rl.algorithms.lesson_emphasis import matching_lessons
         claims_fired = [l.lesson_id for l in matching_lessons(updated_ledger, today_tags)]
 
@@ -1514,8 +1547,11 @@ def run_daily_review(
         "miss_type":                fb_output.miss_type,
         "primary_miss_agent":       fb_output.primary_miss_agent,
         "lessons_added":            lesson_ids,
+        # SA-039: the mode, and the weights decisions used (the sector
+        # defaults in observe mode; weight_version stays the stored version).
+        "learning_mode":            mode,
         "weight_version":           new_weight_version,
-        "weights":                  updated_wm.effective_weights(),
+        "weights":                  decision_base,
         "confidence_adj":           fb_output.revised_context.horizon_confidence_adjustment,
         "seasonal_patterns_active": seasonal_ctx.active_pattern_ids,
         # P3: conviction streak state
@@ -1541,9 +1577,9 @@ def run_daily_review(
 
     logger.info(
         "[daily_review] Complete — %s | correct=%s | miss_type=%s | timing=%s | "
-        "lessons=%s | weights=%s | conf_adj=%+.3f",
+        "lessons=%s | weights=%s | learning_mode=%s | conf_adj=%+.3f",
         ticker, direction_correct, fb_output.miss_type, timing.assessment,
-        lesson_ids, new_weight_version,
+        lesson_ids, new_weight_version, mode,
         fb_output.revised_context.horizon_confidence_adjustment,
     )
     return summary

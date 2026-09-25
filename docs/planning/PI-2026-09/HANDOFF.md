@@ -1,6 +1,45 @@
-# Current handoff - 2026-09-24 (updated about 08:30 IST)
+# Current handoff - 2026-09-24 (updated about 23:30 IST)
 
 ## START HERE — resume checklist, in order
+
+**SA-039 implementation is done and awaits a fresh-session review** (2026-09-24, one conversation).
+STATE: `active_task: SA-039`, status `review_required`, `next_phase: review`. Receipt:
+[SA-039-implementation.md](evidence/SA-039-implementation.md). Review input: `1efe361f…` from
+[SA-039-manifest.json](evidence/SA-039-manifest.json) (18 files) on top of HEAD `3742fff`.
+
+- **Next PI phase: the fresh review of SA-039** in a new conversation. Opener:
+  `Continue — fresh review of SA-039`. First step:
+  `python scripts/docs/kt_manifest.py verify docs/planning/PI-2026-09/evidence/SA-039-manifest.json`
+  (expect 0 mismatches), then follow [REVIEW.md](REVIEW.md). The receipt lists every decision
+  consumer and the test that covers it. It also flags one scope interpretation for the reviewer:
+  the untagged lesson micro-adjustment is contained too.
+- **Nothing is committed.** The SA-039 change is in the working tree: 20 modified files (including STATE, this file and routed notes on the SA-005, SA-016 and SA-024 cards), plus 5 new
+  (the module, the test, the baseline, the manifest and the receipt). `origin/main` is still
+  `e8df088`, and the local commits `c832145` and `3742fff` are unpushed. Commit and push only on
+  the owner's word. **At commit, bump the KT header's `Code inspected` revision** to the SA-039
+  commit and drop the §5 label "newer than the header revision".
+- **What it does, in one example:** a ticker stores `technical = 0.0` at v41. With
+  `rl.learning_mode: observe`, its forecast and analysis use the 0.12 default. After the review the
+  file still says 0.0 at v41, and `<TICKER>_weight_observations.json` shows what v42 would have
+  been. The code ships as `adapt`, so nothing changes until activation.
+- **Activation is a separate owner decision after acceptance:** a one-line config commit, or the
+  Railway variable `RL_LEARNING_MODE=observe`. Push only in a safe window (Step 0 rules). Afterwards,
+  verify production read-only against the
+  [baseline](evidence/SA-039-baseline-2026-09-24.md).
+- **R2 done:** the baseline comes from today's 16:30 review logs (deploy `d9c459ae`). Chart weight
+  was 0.0 for 9 of 18 logged tickers; 5 of the 6 `technical` tickers were at 0.0, which reproduces
+  the 23 Sep figure; all 19 reviews wrote a new version. KT §1 and §5 now cite it. §5 also corrects
+  the default: 0.12 generic, 0.10 renewable.
+- **Routed self-review follow-ups:**
+  - T1: the shared review test harness still constructs a live NSE session. Routed to SA-005, and
+    it may explain the `key_registry.json` leak.
+  - F1: chat context, `/scheduler/status` and the CLI show stored weights as if live. Routed to
+    SA-024.
+  - F2: the FeedbackAgent drift summary. Routed to SA-016.
+- The Step 1 production checks below are unchanged by this phase. Still due: the OpenRouter
+  top-up before 25 Sep 16:30, and IPO-0a.
+
+### Previous state (DOC-001 accepted, earlier on 2026-09-24)
 
 **DOC-001 was ACCEPTED on 2026-09-24** by a second fresh-session review, at `c832145` with review
 input `63ff474c…`. The receipt is [DOC-001-review-2026-09-24.md](evidence/DOC-001-review-2026-09-24.md).

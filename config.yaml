@@ -260,6 +260,16 @@ rl:
   weight_accuracy_window: 7
   weight_boost_hit_rate: 0.70      # >=70% hit rate -> boost
   weight_penalty_hit_rate: 0.40    # <=40% hit rate -> penalty
+  # -- Learning containment (SA-039) ---------------------------------------
+  # adapt   = decisions aggregate with each ticker's learned weights, the
+  #           daily review writes adapted weights, and lessons nudge agent
+  #           scores (the behaviour before SA-039).
+  # observe = decisions aggregate with the sector's configured default
+  #           weights; the review never writes adapted weights (the adapter's
+  #           proposal goes to {TICKER}_weight_observations.json instead); and
+  #           lessons are still recorded but no longer move agent scores.
+  # Any other value fails closed to observe and logs a warning.
+  learning_mode: adapt
   # -- Direction / early-exit ----------------------------------------------
   flat_threshold_pct: 0.3          # moves within +/-0.3% classified FLAT
   agent_rerun_threshold_pct: 0.5   # skip re-run when direction OK + error below; 0 disables

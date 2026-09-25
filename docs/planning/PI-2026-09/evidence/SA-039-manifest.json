@@ -1,0 +1,100 @@
+{
+  "story": "SA-039",
+  "phase": "implementation",
+  "baseline_commit": "3742fffd0be2ebc649ad95b226f8e7a747ce873a",
+  "date": "2026-09-24",
+  "excluded": "STATE.json, HANDOFF.md, SA-039-implementation.md and this manifest (bookkeeping written after the manifest)",
+  "hash_convention": "git blob bytes after .gitattributes normalization (CRLF->LF for text, binary unchanged); verify with scripts/docs/kt_manifest.py verify",
+  "files": [
+    {
+      "path": "CODEBASE.md",
+      "git_blob": "ecdcc520cef89ec69d64dc20bf7fcb83b068346e",
+      "sha256": "8decd64dbc08920583f86cef7bb957d4c6d2a123ce68985774ee83a4a4a5fcd6"
+    },
+    {
+      "path": "config.yaml",
+      "git_blob": "bfdcd5ad8a72e64ff2a5d2339f139d6f36edb1ff",
+      "sha256": "c0995d3852290a838606bb4dda2ac5755daa9add6ddf939c15f260d46861bcb9"
+    },
+    {
+      "path": "core/intelligence/rl/agents/weight_adapter.py",
+      "git_blob": "cbe3f9d795c6d97846c2b40531723f1d39f93a57",
+      "sha256": "c498311a3ec64bd30ffa9215766f7f34a9e8d7f8e5cda58dd5bd195e9ee2b72c"
+    },
+    {
+      "path": "core/intelligence/rl/algorithms/lesson_emphasis.py",
+      "git_blob": "09c37691fb22ecf2dfd8fc06445b96c4663fec8f",
+      "sha256": "c0bc23be8d065104715d7a0f6311083fc314bbc3a58896103931da84c6b3b77b"
+    },
+    {
+      "path": "core/intelligence/rl/learning_mode.py",
+      "git_blob": "61465d5fd1239f59574951a55efbaf5b6deff67d",
+      "sha256": "26ca561d6650d5a876c796923a803c6cfa5d3f443b0d05db621b2b50e6f94e57"
+    },
+    {
+      "path": "core/intelligence/rl/stores/prediction_store.py",
+      "git_blob": "c7a67950bb622344624536251d8335143602968b",
+      "sha256": "48269311f5c6f1bf31c5146160667adc12f7495d0337d266f1dd93e502981308"
+    },
+    {
+      "path": "core/intelligence/rl/workflows/daily_review.py",
+      "git_blob": "83252699f2d5b77f8ec7d1f1008ee577b4d04271",
+      "sha256": "5253365699e246a7d37f840a0fb2fec9e7335bcf13eb9b2fb8d015eefac8f8ee"
+    },
+    {
+      "path": "core/intelligence/rl/workflows/generate_forecast.py",
+      "git_blob": "5b661f77a7b4fbae9ced4d45d8661e4c80361dd7",
+      "sha256": "97e6f44b4554d30f40db4cec92a4ee1711e70d3dd92ca355faff40929ec038e4"
+    },
+    {
+      "path": "docs/ARCHITECTURE.md",
+      "git_blob": "819b170cfb600fc6297335c2c41e46aca5906f16",
+      "sha256": "73b3dd1ea038032574982ca332eb738b9c539ff04d56eb0e8ebeadb835ff2c74"
+    },
+    {
+      "path": "docs/StockAgent-Three-Loops.pdf",
+      "git_blob": "639e55354d638ca015d7b498ee306047d3cc7d5c",
+      "sha256": "c9a789a4a1a4a7669530d86d15e4112dfb73b9df42fcd3c9bbf10ee683a9e17d"
+    },
+    {
+      "path": "docs/TEAM_TESTING_GUIDE.md",
+      "git_blob": "d5d7ca70c5f34563e110c723d1b8fedd1b906cc4",
+      "sha256": "8c11e94d9cc1f64c78bb464f4240380be20daa828d51c9709ac14b97597769e9"
+    },
+    {
+      "path": "docs/TECHNICAL_DESIGN.md",
+      "git_blob": "f699e3e652821d82ae020a83c0ae89aca6064b1f",
+      "sha256": "719bf42ee7ba91004b2bb411c19033f59ce5313a163f86c3ebe2ee0cc3304416"
+    },
+    {
+      "path": "docs/planning/PI-2026-09/evidence/SA-039-baseline-2026-09-24.md",
+      "git_blob": "8f58db49d8fdd9b95abbd4317d086bef7082c7e9",
+      "sha256": "7f0b7fb8054b491fbd7513d07c5f657863cd2c1f0f7efdc65d4c60d8cd668e67"
+    },
+    {
+      "path": "services/api/routes/rl_monitor.py",
+      "git_blob": "7d9a6fb7ddcd8526c3cbf481a7f46b00b29b2220",
+      "sha256": "9e8c3d597ca4ee74fd2d20de1cca73ce5033c205e18606627b56d8aa7feb98a0"
+    },
+    {
+      "path": "src/backend/shared/config/settings/base.py",
+      "git_blob": "9bf22edd8b1a355447a437299c47434c7bd5b2e4",
+      "sha256": "8bc385df0a8c69491bc95fd3c03956328a14ff825af2a20ef9488de827224fad"
+    },
+    {
+      "path": "src/backend/shared/pipeline/base_orchestrator.py",
+      "git_blob": "95d5dbb94bb5e51e56e105fafaeffa7f645d506d",
+      "sha256": "86ee78ef014ad0be8ae505034961f63aa29a3dda369d95f829c7cc8bf79ba7c0"
+    },
+    {
+      "path": "src/backend/shared/schemas/feedback.py",
+      "git_blob": "2a8bfda09cdc48d97203fd71b4d2f9ffd4171a5a",
+      "sha256": "f195aa54b1700a5ef33dfff2aa81f500bd48a0b04a4a8aecb797fdb4ee227cb5"
+    },
+    {
+      "path": "tests/unit/intelligence/rl/test_learning_mode_sa039.py",
+      "git_blob": "968ae7e4491252f6c6086ff84e3add6d0aa599eb",
+      "sha256": "a7dd7c1f79c45c6137e696117c8e0064e1aca8a57048dfa63ede3796f140d482"
+    }
+  ]
+}

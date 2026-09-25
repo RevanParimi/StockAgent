@@ -98,6 +98,10 @@ class PredictionEnvelope(BaseModel):
     generated_at: str                            # ISO datetime
     base_close: float                            # actual close on day-0
     weight_version_used: int = 0                 # which WeightMemory version was active
+    # SA-039: learning mode of the latest (re)generation. "observe" means the
+    # sector default weights were used and weight_version_used is only the
+    # stored version at that time, not the weights that produced the forecast.
+    learning_mode: str = "adapt"
     # Forecast profile from PriceInterpolator — stored for hindsight timing evaluation.
     # "front_loaded" means early move was expected; "back_loaded" means catalyst is 2+ weeks out.
     forecast_profile_shape: str = "linear"

@@ -1,4 +1,4 @@
-# Current handoff - 2026-09-24 (updated about 23:30 IST)
+# Current handoff - 2026-09-25 (updated about 11:00 IST)
 
 ## START HERE — resume checklist, in order
 
@@ -9,15 +9,16 @@ STATE: `active_task: SA-039`, status `review_required`, `next_phase: review`. Re
 
 - **Next PI phase: the fresh review of SA-039** in a new conversation. Opener:
   `Continue — fresh review of SA-039`. First step:
-  `python scripts/docs/kt_manifest.py verify docs/planning/PI-2026-09/evidence/SA-039-manifest.json`
-  (expect 0 mismatches), then follow [REVIEW.md](REVIEW.md). The receipt lists every decision
+  `python scripts/docs/kt_manifest.py verify docs/planning/PI-2026-09/evidence/SA-039-manifest.json --rev 4c4728a`
+  (expect 0 mismatches), then follow [REVIEW.md](REVIEW.md). Without `--rev`, the KT and PDF
+  mismatch by design, because the next commit bumped the KT header. The receipt lists every decision
   consumer and the test that covers it. It also flags one scope interpretation for the reviewer:
   the untagged lesson micro-adjustment is contained too.
-- **Nothing is committed.** The SA-039 change is in the working tree: 20 modified files (including STATE, this file and routed notes on the SA-005, SA-016 and SA-024 cards), plus 5 new
-  (the module, the test, the baseline, the manifest and the receipt). `origin/main` is still
-  `e8df088`, and the local commits `c832145` and `3742fff` are unpushed. Commit and push only on
-  the owner's word. **At commit, bump the KT header's `Code inspected` revision** to the SA-039
-  commit and drop the §5 label "newer than the header revision".
+- **Committed and pushed on 2026-09-25 at the owner's word** (asked at 10:48 IST; pushed in the same clear window).
+  `4c4728a` is the SA-039 change exactly as the review input describes it. The next commit bumps
+  the KT header's `Code inspected` revision to `4c4728a` (edition 2026-09-25), links
+  `learning_mode.py` and rebuilds the PDF. The deploy outcome is recorded in the commit after that.
+  The code ships as `adapt`, so the deploy changes no decision.
 - **What it does, in one example:** a ticker stores `technical = 0.0` at v41. With
   `rl.learning_mode: observe`, its forecast and analysis use the 0.12 default. After the review the
   file still says 0.0 at v41, and `<TICKER>_weight_observations.json` shows what v42 would have
@@ -36,8 +37,8 @@ STATE: `active_task: SA-039`, status `review_required`, `next_phase: review`. Re
   - F1: chat context, `/scheduler/status` and the CLI show stored weights as if live. Routed to
     SA-024.
   - F2: the FeedbackAgent drift summary. Routed to SA-016.
-- The Step 1 production checks below are unchanged by this phase. Still due: the OpenRouter
-  top-up before 25 Sep 16:30, and IPO-0a.
+- The Step 1 production checks below are otherwise unchanged. **OpenRouter was recharged**
+  (owner, 2026-09-25). IPO-0a is still open.
 
 ### Previous state (DOC-001 accepted, earlier on 2026-09-24)
 

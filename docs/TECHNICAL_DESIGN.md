@@ -1,8 +1,8 @@
 # StockAgent — Technical Design and Knowledge Transfer
 
-**Edition:** 2026-09-24 · **Audience:** engineers and teammates learning the product
+**Edition:** 2026-09-25 · **Audience:** engineers and teammates learning the product
 
-**Code inspected:** `d105a44a06d430304a724f34ac3dc329a4ca0d87`
+**Code inspected:** `4c4728ae5b879e26430ed0f58dee2728cc126cd9`
 
 First edition 2026-09-15 at `9a805878`; maintained per story since. The revision
 above is the one the whole body describes. `check_kt_docs.py` fails if a linked
@@ -21,7 +21,7 @@ it is not an implemented human-approval workflow.
 |---|---|
 | Current code | Traced in this checkout. Flags, inputs and runtime data determine whether a path actually runs. |
 | Locally checked | Existing tests run in an isolated copy. Exact results and limits are in the [validation receipt](planning/PI-2026-09/evidence/DOC-001-implementation.md). |
-| Production observation | Dated evidence: the September 10 audit, section 10's 2026-09-21 email diagnosis, a September 15 deployment SUCCESS at `9a805878`, the 2026-09-23 read-only log inspection of learned weights, and the 2026-09-24 [SA-039 weight baseline](planning/PI-2026-09/evidence/SA-039-baseline-2026-09-24.md). No `d105a44` deployment was inspected. |
+| Production observation | Dated evidence: the September 10 audit, section 10's 2026-09-21 email diagnosis, a September 15 deployment SUCCESS at `9a805878`, the 2026-09-23 read-only log inspection of learned weights, and the 2026-09-24 [SA-039 weight baseline](planning/PI-2026-09/evidence/SA-039-baseline-2026-09-24.md). Those logs came from deploy `d9c459ae` (commit `e8df088`); no deployment of the header revision has been inspected yet. |
 | PI target | Intended behavior, not completed functionality. SA-039 is implemented and awaiting its fresh review; every other story from SA-001 to SA-042 is `todo`. Three are stretch. |
 
 The [September audit](audit/2026-09-10-repository-production-review.md) records
@@ -211,7 +211,8 @@ and SA-027 retires only justified fallback duplication.
 [daily review](../core/intelligence/rl/workflows/daily_review.py),
 [feedback agent](../core/intelligence/rl/agents/feedback_agent.py),
 [weight adapter](../core/intelligence/rl/agents/weight_adapter.py),
-[prediction store](../core/intelligence/rl/stores/prediction_store.py).
+[prediction store](../core/intelligence/rl/stores/prediction_store.py),
+[learning mode](../core/intelligence/rl/learning_mode.py).
 
 ### Forecast generation
 
@@ -271,8 +272,8 @@ renewable graph. Counting `pattern_analysis`, the chart agent of the other
 graphs, 9 of 18 tickers had a chart weight of 0.0 and 16 of 18 were below half
 their default. All 19 reviews that day wrote a new weight version.
 
-**SA-039 (implemented, awaiting fresh review; newer than the header
-revision):** `rl.learning_mode` has two values. `adapt` is the checked-in value
+**SA-039 (implemented, awaiting fresh review):** `rl.learning_mode` has
+two values. `adapt` is the checked-in value
 and the behaviour described above. `observe` contains learning:
 
 - Forecasts, re-forecasts, public analysis, and the review's re-scoring and

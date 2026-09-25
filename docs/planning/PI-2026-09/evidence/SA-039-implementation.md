@@ -3,7 +3,7 @@
 **Story:** [SA-039](../stories/SA-039.md) — Contain adaptive learning: observe-only, live weights back to defaults
 **Phase:** implementation, 2026-09-24. Status after this phase: `review_required`.
 **Context:** one implementation conversation. The self-review below is **not** the fresh-session review that [REVIEW.md](../REVIEW.md) requires.
-**Baseline commit:** `3742fffd0be2ebc649ad95b226f8e7a747ce873a` (HEAD). Nothing is committed; the change is in the working tree.
+**Baseline commit:** `3742fffd0be2ebc649ad95b226f8e7a747ce873a`. **Committed as `4c4728ae5b879e26430ed0f58dee2728cc126cd9`** on 2026-09-25 at the owner's word. Verify with `--rev 4c4728a` (see below).
 **Review input:** [SA-039-manifest.json](SA-039-manifest.json), 18 files, **review-input SHA-256 `1efe361fac2a0e444a39554c0c9490488c3695023791ba313ab836d22092725e`**.
 
 ## How to verify the input
@@ -211,3 +211,20 @@ receipt. Written after the manifest (bookkeeping, outside the review input): HAN
    Rollback is `adapt`.
 
 `production_verification` stays `not_started` until activation.
+
+## Commit and push — 2026-09-25
+
+On 2026-09-25 the owner asked to commit and push, and reported OpenRouter recharged. The request came
+at 10:48 IST, and the push followed in the same window, outside every blocked job window.
+
+- `4c4728a` holds this receipt's input exactly: `kt_manifest.py verify … --rev 4c4728a` reports
+  0 mismatches.
+- The next commit bumps the KT header's `Code inspected` revision to `4c4728a`, moves the edition to
+  2026-09-25, links `core/intelligence/rl/learning_mode.py` in §5, replaces the §1 sentence about
+  `d105a44`, drops the §5 "newer than the header revision" label and rebuilds the PDF.
+  `check_kt_docs.py` reports 0 errors and 0 linked sources changed since `4c4728a`.
+- **Consequence for the reviewer:** at that commit or later, the KT and PDF differ from the manifest
+  by design. Verify the review input with `--rev 4c4728a`.
+- Pushing deploys the code with `rl.learning_mode: adapt`, so no decision changes. Activating
+  `observe` stays a separate owner decision after an accepted review. `production_verification`
+  stays `not_started`.

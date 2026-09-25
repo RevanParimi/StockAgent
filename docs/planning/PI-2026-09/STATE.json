@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "pi": "PI-2026-09",
-  "updated_at": "2026-09-24",
+  "updated_at": "2026-09-25",
   "baseline_commit": "9a805878ed19c0cda7833d5b897ac05ee407436d",
   "audit": {
     "status": "complete",
@@ -34,6 +34,7 @@
       "implementation_receipt": "docs/planning/PI-2026-09/evidence/SA-039-implementation.md",
       "review_input_sha256": "1efe361fac2a0e444a39554c0c9490488c3695023791ba313ab836d22092725e",
       "baseline_evidence": "docs/planning/PI-2026-09/evidence/SA-039-baseline-2026-09-24.md",
+      "implementation_commit": "4c4728ae5b879e26430ed0f58dee2728cc126cd9",
       "review_receipt": null,
       "reviewed_revision": null,
       "production_verification": {
@@ -929,6 +930,10 @@
     }
   ],
   "history": [
+    {
+      "date": "2026-09-25",
+      "event": "Owner asked to commit and push (10:48 IST, outside every blocked window; OpenRouter reported recharged). SA-039 committed as 4c4728a exactly as reviewed-input 1efe361f (kt_manifest verify --rev 4c4728a: 0 mismatches). A follow-up docs commit bumps the KT header Code inspected revision to 4c4728a (edition 2026-09-25), links learning_mode.py in section 5, drops the 'newer than the header revision' label and rebuilds the PDF (check_kt_docs: 0 errors). The fresh reviewer verifies the input with --rev 4c4728a; at later revisions the KT and PDF differ by design. The code ships as adapt, so the deploy changes no decision; activation of observe remains a separate owner decision after the review. SA-039 stays review_required."
+    },
     {
       "date": "2026-09-24",
       "event": "SA-039 implementation phase (one conversation): status review_required. rl.learning_mode switch (config rl.learning_mode, env RL_LEARNING_MODE; checked in as adapt; unknown values fail closed to observe with a warning) and core/intelligence/rl/learning_mode.py. Observe mode: forecast, re-forecast, public analysis, review re-scoring and Step 7b revision aggregate with the sector default table; the review runs the adapter on a copy and upserts one record per review date into <TICKER>_weight_observations.json instead of saving weights; tagged-lesson emphasis and the legacy category micro-adjustment are no-ops; claims_fired stays empty. Mode shown in the review start/Complete log lines, the envelope, and /ui/rl/weights and /ui/rl/summary. Tests: new module 30 passed (hand-derived composite 0.56 vs 0.50; weight-file SHA-256 identical after a full observe review with network blocked); mutation check against the original call sites 12 failed/18 passed; full unit suite 3158 passed, 5 skipped. check_kt_docs 0 errors; PDF rebuilt. R2 baseline recorded from read-only production logs (deploy d9c459ae, 16:30 review): chart-signal weight 0.0 for 9 of 18 logged tickers, 5 of 6 technical tickers at 0.0, all 19 reviews wrote a new version. Review input 1efe361f (18 files, 0 mismatches) against baseline 3742fff; nothing committed or pushed. Self-review follow-ups routed: T1 test-harness live NSE constructor to SA-005, F1 display surfaces to SA-024, F2 FeedbackAgent drift summary to SA-016. No production variable, deployment, job or notification was touched. Next: fresh-session review of SA-039.",

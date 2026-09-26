@@ -42,8 +42,8 @@
         {"date": "2026-09-25", "verdict": "accepted", "reviewed_revision": "4c4728ae5b879e26430ed0f58dee2728cc126cd9", "review_input_sha256": "1efe361fac2a0e444a39554c0c9490488c3695023791ba313ab836d22092725e", "follow_ups": {"L1": "fixed in review docs update (KT section 5 wording)", "L2": "SA-026", "I1": "owner, at activation", "I2": "SA-022", "T1": "SA-005", "F1": "SA-024", "F2": "SA-016"}}
       ],
       "production_verification": {
-        "status": "not_started",
-        "evidence": "Code accepted 2026-09-25; production runs rl.learning_mode=adapt (deploy 7ebd06c5). Activation of observe is a separate owner decision; verify afterwards with the card's read-only checks against the 2026-09-24 baseline."
+        "status": "pending_observation",
+        "evidence": "docs/planning/PI-2026-09/evidence/SA-039-activation-2026-09-26.md: the owner set the Railway variable RL_LEARNING_MODE=observe on 2026-09-26 (deploys 786faf7f and da9df6cf, SUCCESS by 06:41 IST). All 20 managed tickers report learning_mode=observe on the read-only RL monitor, with default decision weights. Pending: the Mon 28 and Tue 29 Sep reviews leave stored versions unchanged and write observation records, and the Thu 1 Oct monthly forecast carries learning_mode=observe."
       },
       "blocked_reason": null
     },
@@ -1045,6 +1045,10 @@
     }
   ],
   "history": [
+    {
+      "date": "2026-09-26",
+      "event": "SA-039 activated in production by the owner: Railway variable RL_LEARNING_MODE=observe, followed by redeploy 786faf7f (5a27683, SUCCESS 06:38 IST); the owner's push of 16e7ea7 then gave deploy da9df6cf (SUCCESS 06:41:24 IST). Read-only verification (GETs on the production RL monitor): all 20 managed tickers report learning_mode=observe with the recognised reason. Decision chart weights are the defaults (0.10/0.11/0.15) while stored weights keep the learned 0.0-0.03. Stored versions are v15-v85 across 19 tickers; the metals ticker has no envelope, a known gap. No observation records exist yet. The per-ticker baseline is in ignored analysis_data/sa039_activation_versions_20260926.json. production_verification is now pending_observation; the checks after the Mon 28 and Tue 29 Sep reviews and the Thu 1 Oct forecast are listed in evidence/SA-039-activation-2026-09-26.md. Side effect found: the local environment (probably .env) now also resolves observe, so 7 RL unit tests that assume adapt fail locally; routed to SA-005 (pin the mode in tests/conftest.py, like AUTH_REQUIRED). KT sections 1, 5 and 12, ARCHITECTURE and TEAM_TESTING_GUIDE 04-F now say production runs observe, and the PDF is rebuilt. Claude changed no variable and triggered no job."
+    },
     {
       "date": "2026-09-26",
       "event": "Owner asked to commit and push. Claude committed the SA-039 review bookkeeping and both 2026-09-26 designs as 5a27683 (docs only, 19 files). Claude planned to push after the 06:30 watchdog, but origin/main was updated at 06:22:29 IST by a push from this checkout that no Claude command ran, most likely VS Code; it carried 0b3ebb9 as well. Deploy 82c945da (commit 5a27683) reached SUCCESS; the new container registered 24 jobs at 06:31:09 IST. The old container ran the 06:30 watchdog first (evaluated=17 notified=0 levels=[]), so nothing was missed. Production still runs rl.learning_mode=adapt. Activation advice: set the Railway variable RL_LEARNING_MODE=observe, because a config-file flip makes 7 RL unit tests fail (they assume adapt; checked with RL_LEARNING_MODE=observe: 7 failed, 1033 passed). Deadline: before the Mon 28 Sep 16:30 review, and at the latest before the Thu 1 Oct 09:00 monthly forecast. Read-only railway logs only; no variable, job or notification was touched."

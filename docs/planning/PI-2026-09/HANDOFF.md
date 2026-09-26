@@ -29,12 +29,24 @@ This is the single reference for both the learning-exit logic (§1) and the anal
   - The old container ran the 06:30 watchdog first (`evaluated=17 notified=0 levels=[]`), so
     nothing was missed.
   - Documentation only; production still runs `adapt`.
-- **Observe activation, still the owner's call.** The recommended route is the Railway variable
-  `RL_LEARNING_MODE=observe`: no code change, and rollback is deleting it. Setting it redeploys.
-  - A config-file flip is not one line: with `observe` as the default, 7 RL unit tests fail,
-    because they assume `adapt`. That needs test pinning first.
-  - Do it in a safe window, before Mon 28 Sep 16:25 (the next review) and at the latest before
-    Thu 1 Oct 09:00 (the monthly forecast).
+- **`observe` is ACTIVE in production since 2026-09-26, about 06:40 IST.** The owner set the
+  Railway variable `RL_LEARNING_MODE=observe`. Deploys `786faf7f` and `da9df6cf` (`16e7ea7`)
+  reached SUCCESS. A read-only RL-monitor check shows all 20 tickers in `observe`, using the default
+  weights. Record: [SA-039-activation-2026-09-26.md](evidence/SA-039-activation-2026-09-26.md).
+  STATE: `production_verification: pending_observation`. Rollback is deleting the variable.
+  **Checks still due (read-only):**
+  - **Mon 28 Sep after 16:30:** the logs show `learning_mode=observe` and `Proposal (not
+    applied)`; `/ui/rl/summary` versions match the baseline in ignored
+    `analysis_data/sa039_activation_versions_20260926.json`; `/ui/rl/weights` has a
+    `latest_observation` dated 2026-09-28.
+  - **Tue 29 Sep:** the versions are still unchanged.
+  - **Thu 1 Oct after 09:00:** the new envelopes carry `learning_mode: observe`.
+- **Local side effect:** the owner's local environment (probably `.env`) now also resolves
+  `observe`, so **7 lesson-emphasis unit tests fail locally**. They assume `adapt`, and SA-001 did
+  not cause this. Until SA-005 pins the mode in `tests/conftest.py` (routed note added), run tests
+  with `RL_LEARNING_MODE=adapt`, or remove that line from the local `.env`.
+- The docs for this (the activation record, STATE, this file, KT sections 1/5/12, ARCHITECTURE,
+  04-F, the SA-005 note and the PDF) are committed locally and ride the next push.
 
 **2026-09-26, owner-requested planning (no story started): how learning leaves `observe`.**
 

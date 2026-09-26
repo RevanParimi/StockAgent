@@ -21,8 +21,8 @@ it is not an implemented human-approval workflow.
 |---|---|
 | Current code | Traced in this checkout. Flags, inputs and runtime data determine whether a path actually runs. |
 | Locally checked | Existing tests run in an isolated copy. Exact results and limits are in the [validation receipt](planning/PI-2026-09/evidence/DOC-001-implementation.md). |
-| Production observation | Dated evidence: the September 10 audit, section 10's 2026-09-21 email diagnosis, a September 15 deployment SUCCESS at `9a805878`, the 2026-09-23 read-only log inspection of learned weights, and the 2026-09-24 [SA-039 weight baseline](planning/PI-2026-09/evidence/SA-039-baseline-2026-09-24.md). Those logs came from deploy `d9c459ae` (commit `e8df088`); no deployment of the header revision has been inspected yet. |
-| PI target | Intended behavior, not completed functionality. SA-039 was accepted by its fresh review on 2026-09-25, but production still runs `adapt` until the owner activates `observe`. Every other story from SA-001 to SA-047 is `todo`. Three are stretch. |
+| Production observation | Dated evidence: the September 10 audit, section 10's 2026-09-21 email diagnosis, a September 15 deployment SUCCESS at `9a805878`, the 2026-09-23 read-only log inspection of learned weights, and the 2026-09-24 [SA-039 weight baseline](planning/PI-2026-09/evidence/SA-039-baseline-2026-09-24.md). Those logs came from deploy `d9c459ae` (commit `e8df088`). Deploys carrying the header revision's code were inspected read-only on 2026-09-25 (`7ebd06c5`: the 16:30 review ran in `adapt`) and on 2026-09-26 (`da9df6cf`: all 20 tickers in `observe`, per the [activation record](planning/PI-2026-09/evidence/SA-039-activation-2026-09-26.md)). |
+| PI target | Intended behavior, not completed functionality. SA-039 was accepted by its fresh review on 2026-09-25, and production has run `observe` since 2026-09-26 ([activation record](planning/PI-2026-09/evidence/SA-039-activation-2026-09-26.md); verification after the next reviews is pending). Every other story from SA-001 to SA-047 is `todo`. Three are stretch. |
 
 The [September audit](audit/2026-09-10-repository-production-review.md) records
 unresolved label, timing, health, weight-bound and operational defects.
@@ -293,7 +293,7 @@ renewable graph. Counting `pattern_analysis`, the chart agent of the other
 graphs, 9 of 18 tickers had a chart weight of 0.0 and 16 of 18 were below half
 their default. All 19 reviews that day wrote a new weight version.
 
-**SA-039 (accepted 2026-09-25; production still `adapt`):** `rl.learning_mode` has
+**SA-039 (accepted 2026-09-25; production `observe` since 2026-09-26):** `rl.learning_mode` has
 two values. `adapt` is the checked-in value
 and the behaviour described above. `observe` contains learning:
 
@@ -319,8 +319,9 @@ weights, and the absurd-price-error guard still skips the adapter. Like every
 other decision path, the paper lane uses the sector defaults in `observe`.
 SA-039 does not contain regime multipliers, thesis
 multipliers, the conviction streak, miss-counter prompt enhancements or dossier
-text. **Production is still `adapt`.** Activation is a separate one-line
-configuration commit, pushed only on the owner's word. Forecast rows issued
+text. **Production has run `observe` since 2026-09-26 at about 06:40 IST.** The owner set the
+Railway variable `RL_LEARNING_MODE=observe`, which overrides the checked-in `adapt`
+([activation record](planning/PI-2026-09/evidence/SA-039-activation-2026-09-26.md)). Rollback is deleting the variable. Forecast rows issued
 before activation keep their verdicts and closes; the review re-weights only
 their confidence. The first fully contained cycle is therefore the next monthly
 forecast (the 1st, 09:00 IST).
@@ -637,7 +638,7 @@ Legacy code should only be retired with measured replacement coverage.
 ## 12. PI changes included now
 
 The table below includes the planned destination now. **SA-039 is accepted
-(activation of `observe` is pending); every other SA story is `todo`.** Accepted
+(production `observe` since 2026-09-26); every other SA story is `todo`.** Accepted
 state/dependencies are in
 [STATE.json](planning/PI-2026-09/STATE.json). DOC-001 is this user-requested
 documentation refresh; it does not close SA-031 or any upstream remediation.

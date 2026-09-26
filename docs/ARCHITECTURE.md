@@ -57,7 +57,7 @@ identified. Narration explains the decision rather than deciding a trade.
 
 Learning persists feedback, weights and lessons. It currently has known
 label/timing/final-bound problems. The SA-039 switch `rl.learning_mode`
-(accepted 2026-09-25; checked in as `adapt` until the owner activates it) can contain it: in `observe` mode,
+(accepted 2026-09-25; production runs `observe` since 2026-09-26 through the Railway variable `RL_LEARNING_MODE`) contains it: in `observe` mode,
 decisions use each sector's default weights, no weight file is written and
 lessons stop moving scores ([KT section 5](TECHNICAL_DESIGN.md#5-learning-forecast-review-and-memory)).
 The nightly auditor, monthly replay and

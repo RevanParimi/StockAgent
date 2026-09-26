@@ -84,8 +84,8 @@
         }
       ],
       "production_verification": {
-        "status": "pending_deployment",
-        "evidence": "Accepted locally 2026-09-26; not committed or deployed. After an authorized push: open the app twice (sw v8), run human case 11-C in an isolated test account, and confirm marked@12.0.2 and dompurify@3.4.16 load with status 200 and no SRI error."
+        "status": "pending_observation",
+        "evidence": "Committed as 8413b59; pushed with f1c7eba on 2026-09-27 at 03:41 IST (owner's word, safe window); deploy 0509de45 SUCCESS about 03:42:48 IST: boot log clean, scheduler started, 24 jobs registered, no job missed. Pending (owner): open the app twice (sw v8), run human case 11-C in an isolated test account, and confirm marked@12.0.2 and dompurify@3.4.16 load with status 200 and no SRI error."
       },
       "blocked_reason": null
     },
@@ -165,8 +165,8 @@
         "review_flake": "SA-005 (review note: Windows rename flake; date-dependent fixtures)"
       },
       "production_verification": {
-        "status": "pending_deployment",
-        "evidence": "Accepted locally 2026-09-26; not committed or deployed. After an authorized push: across one scheduled cohort, rows carry contract_version 2; health and essential_unusable agree with correlated source log lines; dimensions_scored matches the SignalAggregator exclusion warning; not every row is ok; note any fundamentals fallback naming a blank newest quarter (frequency unmeasured). Rollback: observability.data_health_enabled false."
+        "status": "pending_observation",
+        "evidence": "Committed as 8413b59; pushed with f1c7eba on 2026-09-27 at 03:41 IST (owner's word, safe window); deploy 0509de45 SUCCESS about 03:42:48 IST: boot log clean, scheduler started, 24 jobs registered, no job missed. Pending (read-only): across one scheduled cohort, rows carry contract_version 2; health and essential_unusable agree with correlated source log lines; dimensions_scored matches the SignalAggregator exclusion warning; not every row is ok; note any fundamentals fallback naming a blank newest quarter (frequency unmeasured). Rollback: observability.data_health_enabled false."
       },
       "blocked_reason": null
     },
@@ -1130,6 +1130,10 @@
     }
   ],
   "history": [
+    {
+      "date": "2026-09-27",
+      "event": "Pushed 16e7ea7..f1c7eba at 03:41:25 IST at the owner's word (994a7b6, 103f2b8, 8413b59, f1c7eba). Deploy 0509de45 reached SUCCESS about 03:42:48 IST (no requirements change, so the pip layer was cached). Boot log (read-only): startup complete 03:42:34, BackgroundScheduler started with 24 jobs registered, 0 error or warning lines. No job fell in the switch; the next is the 06:30 watchdog. SA-001 and SA-002 production_verification: pending_observation (owner checks for SA-001; one read-only scheduled cohort for SA-002). This record is committed locally and rides the next push."
+    },
     {
       "date": "2026-09-27",
       "event": "Owner asked to commit and push (about 03:36 IST, inside the 00:10-06:20 safe window). SA-001 and SA-002 committed together as 8413b59 (47 files). Commit checks: verify SA-001-manifest.json --rev 8413b59 and SA-002-manifest.json --rev 8413b59 both mismatch only in the five status-edited docs (TECHNICAL_DESIGN, the PDF, ARCHITECTURE, TEAM_TESTING_GUIDE, CODEBASE.md). npm run test:frontend 14/14 before the push. The next commit bumps the KT header to 8413b59 (edition 2026-09-27), links chat-markdown.js and fetch_result.py, and sets status lines to 'committed'. Production verification of both stories is pending."

@@ -1,4 +1,4 @@
-# Current handoff - 2026-09-27 (updated about 03:45 IST)
+# Current handoff - 2026-09-27 (updated about 03:50 IST)
 
 ## START HERE — resume checklist, in order
 
@@ -29,8 +29,13 @@ a check is due by then. STATE: `active_task: null`, `next_task: SA-003`,
   - `npm run test:frontend`: 14 of 14 passed before the push.
   - The next commit bumps the KT header to `8413b59` (edition 2026-09-27), links
     `chat-markdown.js` and `fetch_result.py`, and changes the status lines to "committed".
-  - Both commits are pushed together in the same window. The deploy outcome and the owner's
-    post-deploy checks are recorded in the commit after that.
+  - **Pushed and deployed.** `16e7ea7..f1c7eba` was pushed at 03:41:25 IST; it also carried
+    `994a7b6` and `103f2b8`. Deploy `0509de45` reached SUCCESS at about 03:42:48 IST.
+    - The boot log (read-only) shows startup complete at 03:42:34 and the scheduler started with
+      24 jobs registered. It has no error or warning lines.
+    - No job fell in the switch; the next is the 06:30 watchdog.
+    - Both stories' `production_verification` is now `pending_observation`.
+    - This record is committed locally and rides the next push.
   - **Owner's post-deploy checks:**
     - SA-001: open the app twice, so that sw v8 takes over. Run human case 11-C in an isolated
       test account. Confirm that `marked@12.0.2` and `dompurify@3.4.16` load with status 200 and no

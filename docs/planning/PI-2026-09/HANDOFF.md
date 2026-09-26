@@ -21,7 +21,20 @@ This is the single reference for both the learning-exit logic (§1) and the anal
 - **Found while inspecting (a live defect, fixed by SA-044):** generic-graph stocks are valued
   against car makers (SUNPHARMA → MARUTI, TATAMOTORS, M&M, HEROMOTOCO, BAJAJ-AUTO).
 - KT sections 1, 4, 5, 11 and 12, ARCHITECTURE and the PI README are updated; the PDF is rebuilt
-  (`check_kt_docs`: 0 errors, 47 stories). Everything is uncommitted and waits on the owner's word.
+  (`check_kt_docs`: 0 errors, 47 stories).
+- **Committed as `5a27683` and pushed on 2026-09-26 at 06:22:29 IST** (the reflog says "update
+  by push" from this checkout). The owner asked to commit and push. The push was not run by
+  Claude's commands, most likely through VS Code. It carried `0b3ebb9` too.
+  - Deploy `82c945da` reached SUCCESS, and the new container registered its jobs at 06:31:09.
+  - The old container ran the 06:30 watchdog first (`evaluated=17 notified=0 levels=[]`), so
+    nothing was missed.
+  - Documentation only; production still runs `adapt`.
+- **Observe activation, still the owner's call.** The recommended route is the Railway variable
+  `RL_LEARNING_MODE=observe`: no code change, and rollback is deleting it. Setting it redeploys.
+  - A config-file flip is not one line: with `observe` as the default, 7 RL unit tests fail,
+    because they assume `adapt`. That needs test pinning first.
+  - Do it in a safe window, before Mon 28 Sep 16:25 (the next review) and at the latest before
+    Thu 1 Oct 09:00 (the monthly forecast).
 
 **2026-09-26, owner-requested planning (no story started): how learning leaves `observe`.**
 

@@ -1,6 +1,6 @@
 # StockAgent — Technical Design and Knowledge Transfer
 
-**Edition:** 2026-09-25 · **Audience:** engineers and teammates learning the product
+**Edition:** 2026-09-26 · **Audience:** engineers and teammates learning the product
 
 **Code inspected:** `4c4728ae5b879e26430ed0f58dee2728cc126cd9`
 
@@ -22,7 +22,7 @@ it is not an implemented human-approval workflow.
 | Current code | Traced in this checkout. Flags, inputs and runtime data determine whether a path actually runs. |
 | Locally checked | Existing tests run in an isolated copy. Exact results and limits are in the [validation receipt](planning/PI-2026-09/evidence/DOC-001-implementation.md). |
 | Production observation | Dated evidence: the September 10 audit, section 10's 2026-09-21 email diagnosis, a September 15 deployment SUCCESS at `9a805878`, the 2026-09-23 read-only log inspection of learned weights, and the 2026-09-24 [SA-039 weight baseline](planning/PI-2026-09/evidence/SA-039-baseline-2026-09-24.md). Those logs came from deploy `d9c459ae` (commit `e8df088`); no deployment of the header revision has been inspected yet. |
-| PI target | Intended behavior, not completed functionality. SA-039 is implemented and awaiting its fresh review; every other story from SA-001 to SA-042 is `todo`. Three are stretch. |
+| PI target | Intended behavior, not completed functionality. SA-039 was accepted by its fresh review on 2026-09-25, but production still runs `adapt` until the owner activates `observe`. Every other story from SA-001 to SA-047 is `todo`. Three are stretch. |
 
 The [September audit](audit/2026-09-10-repository-production-review.md) records
 unresolved label, timing, health, weight-bound and operational defects.
@@ -204,6 +204,27 @@ learning; SA-008 handles unresolved instruments; SA-010 corrects benchmark
 arguments. SA-025 measures calls before SA-026 consolidates sector definitions
 and SA-027 retires only justified fallback duplication.
 
+**Planned redesign (adopted 2026-09-26, not implemented).** The
+[one-engine design](superpowers/specs/2026-09-26-one-engine-sector-lenses-design.md) retires the per-sector graphs. Today all five
+graphs already run one bundle and one reasoning-model call; the LangGraph
+pool is only a fallback. They differ mainly in five scoring schemes (37
+dimension slots under 24 names), and the LLM re-scores numbers the code has
+already computed. Generic-graph stocks are valued against automobile peers,
+and missing data is scored 0.5. The plan has four parts:
+- sector knowledge becomes a lens YAML (peers, benchmark, KPIs, news terms and
+  macro drivers), resolved from NSE's industry field;
+- code computes five factors (Value, Quality, Growth, Momentum and Risk) as
+  percentiles against real peers and the stock's own history;
+- one LLM reader returns dated, sourced events, and code turns them into a
+  sixth factor, Catalyst;
+- code combines the six at equal weights and maps the result to the existing
+  bands. With fewer than 4 of 6 factors it gives no directional verdict. The
+  LLM explains the verdict but cannot change it.
+
+SA-044 fixes the peers first. SA-026, SA-045 and SA-046 run in shadow. SA-047
+switches only when the engine is right on at least 50% of disagreements with
+today's analyst, and SA-027 then deletes the sector packages.
+
 ## 5. Learning: forecast, review and memory
 
 **Trace:** [forecast generation](../core/intelligence/rl/workflows/generate_forecast.py),
@@ -272,7 +293,7 @@ renewable graph. Counting `pattern_analysis`, the chart agent of the other
 graphs, 9 of 18 tickers had a chart weight of 0.0 and 16 of 18 were below half
 their default. All 19 reviews that day wrote a new weight version.
 
-**SA-039 (implemented, awaiting fresh review):** `rl.learning_mode` has
+**SA-039 (accepted 2026-09-25; production still `adapt`):** `rl.learning_mode` has
 two values. `adapt` is the checked-in value
 and the behaviour described above. `observe` contains learning:
 
@@ -293,11 +314,36 @@ resumes the stored weights unchanged. An unrecognised value fails closed to
 `observe` with a warning. The mode is shown in the review's start and
 completion log lines, on each envelope (`learning_mode`), and by
 `/ui/rl/weights/{ticker}` (with the live `decision_weights`) and
-`/ui/rl/summary/{ticker}`. The paper lane and the absurd-price-error guard
-behave as before. SA-039 does not contain regime multipliers, thesis
+`/ui/rl/summary/{ticker}`. The paper lane still never trains or writes
+weights, and the absurd-price-error guard still skips the adapter. Like every
+other decision path, the paper lane uses the sector defaults in `observe`.
+SA-039 does not contain regime multipliers, thesis
 multipliers, the conviction streak, miss-counter prompt enhancements or dossier
 text. **Production is still `adapt`.** Activation is a separate one-line
-configuration commit, pushed only on the owner's word.
+configuration commit, pushed only on the owner's word. Forecast rows issued
+before activation keep their verdicts and closes; the review re-weights only
+their confidence. The first fully contained cycle is therefore the next monthly
+forecast (the 1st, 09:00 IST).
+
+**Leaving `observe` (planned, not implemented).** In the current code,
+`observe` re-proposes one step from the frozen stored file each night, so its
+records do not accumulate into a learner. [SA-043](planning/PI-2026-09/stories/SA-043.md)
+plans a shadow learner. It learns six factor weights pooled across all stocks
+([one-engine design](superpowers/specs/2026-09-26-one-engine-sector-lenses-design.md)), starting from the defaults and learning on the
+corrected target (SA-012 to SA-015). For each issued decision, it records the
+default verdict and the shadow verdict from the same factor scores.
+[SA-022](planning/PI-2026-09/stories/SA-022.md) then scores only the decisions
+where the two disagree. Learning may return only when all of these hold:
+- at least 100 effective disagreements, over at least 3 months and 3 lenses;
+- the shadow is right on at least 60% of them;
+- its wins are consistent month to month and robust to dropping its best lens;
+- no factor's weight has collapsed to its bound, or below half its default, for
+  4 weeks.
+
+The pass must hold at two consecutive monthly looks, and the owner still
+decides. `adapt` would then resume from the shadow's weights, never from the
+stored pre-fix weights. A reverse tally in the first month (below 45%) returns
+learning to `observe`.
 
 SA-015 requires retry-safe updates and final bounds, SA-016 fixes attribution,
 and SA-017 records comparable history. SA-020/SA-021 address overlap,
@@ -574,8 +620,8 @@ HTTP responses do not prove recovery or successful jobs.
 
 | Topic | Current implementation | Still planned / unverified |
 |---|---|---|
-| Sector routing | Shared graph selection via registry. | Complete store lineage and consolidated definitions. |
-| Analysis | Unified scoring plus surviving legacy fallback. | Measured fallback retirement and actual call accounting. |
+| Sector routing | Shared graph selection via registry. | Complete store lineage, and sector lenses resolved from NSE's industry field ([one-engine design](superpowers/specs/2026-09-26-one-engine-sector-lenses-design.md); SA-026). |
+| Analysis | Unified scoring plus surviving legacy fallback. | Actual call accounting. A factor engine (computed factors, one text reader, code decides, LLM explains) proven in shadow, then the graphs and fallback retired (SA-044–SA-047, SA-027). |
 | Data health | Durable health/run records. | Usable-data semantics and recommendation/learning gates. |
 | Verdict binding | Deterministic category enabled in YAML, raw model verdict logged. | Correct issue-time grading and final adaptive constraints. |
 | Portfolio | Per-user advice/execution, stops, switches and ledgers. | Stronger upstream evidence and report reconciliation. |
@@ -590,8 +636,8 @@ Legacy code should only be retired with measured replacement coverage.
 
 ## 12. PI changes included now
 
-The table below includes the planned destination now. **SA-039 is implemented
-and awaiting its fresh review; every other SA story is `todo`.** Accepted
+The table below includes the planned destination now. **SA-039 is accepted
+(activation of `observe` is pending); every other SA story is `todo`.** Accepted
 state/dependencies are in
 [STATE.json](planning/PI-2026-09/STATE.json). DOC-001 is this user-requested
 documentation refresh; it does not close SA-031 or any upstream remediation.
@@ -619,12 +665,12 @@ documentation refresh; it does not close SA-031 or any upstream remediation.
 | [SA-019](planning/PI-2026-09/stories/SA-019.md) | Evaluate suggestions across weekly and fortnightly cohorts | 7 Marksheets | SA-018 |
 | [SA-020](planning/PI-2026-09/stories/SA-020.md) | Compute effective samples from trading-session overlap | 5 Learning; 7 Marksheets | SA-013 |
 | [SA-021](planning/PI-2026-09/stories/SA-021.md) | Validate calibration and weight recovery with minimum evidence | 5 Learning; 7 Marksheets | SA-016, SA-018, SA-020 |
-| [SA-022](planning/PI-2026-09/stories/SA-022.md) | Run prospective adapted and frozen-policy experiments | 5 Learning; 7 Marksheets | SA-016, SA-018, SA-020 |
+| [SA-022](planning/PI-2026-09/stories/SA-022.md) | Run prospective adapted and frozen-policy experiments | 5 Learning; 7 Marksheets | SA-016, SA-018, SA-020, SA-043, SA-047 |
 | [SA-023](planning/PI-2026-09/stories/SA-023.md) | Put learned lessons on measurable probation | 5 Learning | SA-022 |
 | [SA-024](planning/PI-2026-09/stories/SA-024.md) | Show verifiable learning evidence and honest unavailable states | 7 Marksheets; 10 Interface | SA-019, SA-020, SA-022 |
 | [SA-025](planning/PI-2026-09/stories/SA-025.md) | Count actual provider calls and fallback cost | 4 Research; 10 Cost | SA-011 |
-| [SA-026](planning/PI-2026-09/stories/SA-026.md) | Consolidate sector definitions with equivalence checks | 2 Modules; 4 Research | SA-003, SA-009, SA-010 |
-| [SA-027](planning/PI-2026-09/stories/SA-027.md) | Retire redundant fallback only when measured replacements work | 4 Research; 11 Changes | SA-025, SA-026 |
+| [SA-026](planning/PI-2026-09/stories/SA-026.md) | Consolidate sector definitions into sector lenses | 2 Modules; 4 Research | SA-003, SA-009, SA-010 |
+| [SA-027](planning/PI-2026-09/stories/SA-027.md) | Retire redundant fallback only when measured replacements work | 4 Research; 11 Changes | SA-025, SA-026, SA-047 |
 | [SA-028 (stretch)](planning/PI-2026-09/stories/SA-028.md) | Repair packaging and compile the browser client | 3 Runtime; 10 Interface | SA-001, SA-005 |
 | [SA-029](planning/PI-2026-09/stories/SA-029.md) | Verify readiness and recover background ownership | 3 Runtime; 9 Jobs | SA-004, SA-007 |
 | [SA-030 (stretch)](planning/PI-2026-09/stories/SA-030.md) | Reconcile or retire stale Atlas projections | 3 Storage | SA-009, SA-013 |
@@ -640,6 +686,11 @@ documentation refresh; it does not close SA-031 or any upstream remediation.
 | [SA-040](planning/PI-2026-09/stories/SA-040.md) | Record per-source fetch health and detect new error types | 9 Jobs; 10 Operations | None |
 | [SA-041](planning/PI-2026-09/stories/SA-041.md) | Provide a read-only production status fetcher | 10 Operations; 13 Validation | SA-036, SA-040 |
 | [SA-042](planning/PI-2026-09/stories/SA-042.md) | Add an outside witness for missed jobs (Healthchecks.io → Telegram) | 9 Jobs; 10 Operations | SA-036 |
+| [SA-043](planning/PI-2026-09/stories/SA-043.md) | Run a shadow learner and record paired decisions in observe mode | 5 Learning | SA-015, SA-039, SA-045 |
+| [SA-044](planning/PI-2026-09/stories/SA-044.md) | Compare valuations only with same-industry peers | 4 Research | None |
+| [SA-045](planning/PI-2026-09/stories/SA-045.md) | Compute the five universal factors deterministically | 4 Research | SA-026 |
+| [SA-046](planning/PI-2026-09/stories/SA-046.md) | Read text into dated events and a Catalyst factor | 4 Research | SA-026 |
+| [SA-047](planning/PI-2026-09/stories/SA-047.md) | Decide with the factor engine; switch when it is not worse | 4 Research; 5 Learning | SA-045, SA-046, SA-014, SA-020 |
 
 ### Maintain documentation with each story
 

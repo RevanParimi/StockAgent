@@ -1,6 +1,79 @@
-# Current handoff - 2026-09-25 (updated about 17:10 IST)
+# Current handoff - 2026-09-26 (updated about 06:40 IST)
 
 ## START HERE — resume checklist, in order
+
+**2026-09-26, owner-adopted design (no story started): [one engine with sector lenses](../../superpowers/specs/2026-09-26-one-engine-sector-lenses-design.md).**
+This is the single reference for both the learning-exit logic (§1) and the analysis redesign.
+
+- **The per-sector graphs go.**
+  - Sector knowledge becomes lens YAML (real peers, benchmark, KPIs), resolved from NSE's
+    industry field.
+  - Code computes five factors: Value, Quality, Growth, Momentum and Risk.
+  - One LLM reader returns dated events, and code turns them into Catalyst.
+  - Code decides at equal weights; below 4 of 6 factors it gives no verdict. The LLM explains.
+  - Learning uses six pooled factor weights.
+- **Board:**
+  - New stories: SA-044 (peer fix, Sprint 2), SA-045 (factors, Sprint 4), SA-046 (reader,
+    Sprint 4) and SA-047 (decide, shadow and switch on non-inferiority, Sprint 5).
+  - SA-026 is now the lens story (Sprint 3). SA-043 learns pooled factor weights (Sprint 4).
+  - SA-022 and SA-027 now also depend on SA-047.
+  - Totals: 44 planned stories, 158 points (Sprints 1–6: 41 / 30 / 23 / 29 / 24 / 11).
+- **Found while inspecting (a live defect, fixed by SA-044):** generic-graph stocks are valued
+  against car makers (SUNPHARMA → MARUTI, TATAMOTORS, M&M, HEROMOTOCO, BAJAJ-AUTO).
+- KT sections 1, 4, 5, 11 and 12, ARCHITECTURE and the PI README are updated; the PDF is rebuilt
+  (`check_kt_docs`: 0 errors, 47 stories). Everything is uncommitted and waits on the owner's word.
+
+**2026-09-26, owner-requested planning (no story started): how learning leaves `observe`.**
+
+- **New [SA-043](stories/SA-043.md)** (Sprint 3, 3 points, after SA-015): a shadow learner.
+  - A separate weight file starts from the defaults and learns every night on the corrected
+    target. Decisions stay on the defaults.
+  - For each issued decision it records the default verdict and the shadow verdict, computed from
+    the same agent scores.
+- **[SA-022](stories/SA-022.md) is amended** with predeclared gates. They are scored only on
+  disagreements between the two verdicts:
+  - at least 100 effective disagreements, over at least 3 months and 3 sectors;
+  - the shadow right on at least 60% of them;
+  - wins consistent month to month and robust to dropping the best sector;
+  - sane weights, with no agent collapsing to 0.
+
+  A pass must hold at two consecutive monthly looks, and the owner decides. Promotion resumes from
+  the shadow's weights, never the stored pre-fix ones. A reverse tally below 45% returns learning
+  to `observe`.
+- Totals are now 40 planned stories and 143 points (Sprint 3: 21). KT sections 1, 5 and 12 and the
+  PI README are updated; the PDF is rebuilt (`check_kt_docs`: 0 errors). This is uncommitted,
+  alongside the SA-039 review bookkeeping below.
+- Owner-decided backlog changes are recorded in STATE; nothing changed in the task order, and the
+  next story is still SA-001.
+
+**SA-039 was ACCEPTED on 2026-09-25** by a fresh-session review at `4c4728a`, with review input
+`1efe361f…` (0 mismatches). Receipt: [SA-039-review.md](evidence/SA-039-review.md). SA-039 is `done`.
+STATE has `active_task: null`, `next_task: SA-001` and `next_phase: implementation`.
+`production_verification` stays `not_started`, because production still runs `adapt`.
+
+- **Next PI phase: implement [SA-001](stories/SA-001.md)** in a new conversation. It has no
+  dependencies. Opener: `Continue — implement SA-001`.
+- **Review bookkeeping is uncommitted** in the worktree:
+  - the review receipt, STATE, this file and the implementation-receipt banner;
+  - routed notes on SA-022 (I2) and SA-026 (L2);
+  - post-acceptance docs maintenance: KT §1, §5 and §12 status lines, the L1 paper-lane wording
+    and the I1 timing sentence in §5, ARCHITECTURE, TEAM_TESTING_GUIDE 04-F, and the rebuilt PDF
+    (`check_kt_docs`: 0 errors).
+
+  Commit at the owner's word. `0b3ebb9` is also still unpushed. Every push redeploys, so push only
+  in a safe window (Step 0 rules; read IST with plain `date`).
+- **Owner decision: activate `observe`.** Either a one-line `rl.learning_mode: observe` commit or
+  the Railway variable `RL_LEARNING_MODE=observe` (checked: the env value overrides the yaml).
+  **Timing (review I1):** rows already issued keep their verdicts; the review re-weights only their
+  confidence. If activation lands before the **1 Oct 09:00 IST** monthly forecast, October is the
+  first clean `observe` cohort. The activation commit should also update the "Production is still
+  `adapt`" and status lines in the KT, ARCHITECTURE and 04-F, then rebuild the PDF. Afterwards,
+  verify read-only against the [baseline](evidence/SA-039-baseline-2026-09-24.md).
+- Findings: L1 is fixed (wording). L2, which predates SA-039, is routed to SA-026: the review
+  initialises missing weight memory from the automobile table. I2 is routed to SA-022: observe
+  freezes the numeric channels only. Earlier routes stand: T1 → SA-005, F1 → SA-024, F2 → SA-016.
+
+### Previous state (SA-039 implemented and pushed, 2026-09-24/25)
 
 **SA-039 implementation is done and awaits a fresh-session review** (2026-09-24, one conversation).
 STATE: `active_task: SA-039`, status `review_required`, `next_phase: review`. Receipt:

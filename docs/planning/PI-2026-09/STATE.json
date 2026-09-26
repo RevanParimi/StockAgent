@@ -1,16 +1,16 @@
 {
   "schema_version": 1,
   "pi": "PI-2026-09",
-  "updated_at": "2026-09-25",
+  "updated_at": "2026-09-26",
   "baseline_commit": "9a805878ed19c0cda7833d5b897ac05ee407436d",
   "audit": {
     "status": "complete",
     "report": "docs/audit/2026-09-10-repository-production-review.md",
     "production_modified": false
   },
-  "active_task": "SA-039",
-  "next_task": "SA-039",
-  "next_phase": "review",
+  "active_task": null,
+  "next_task": "SA-001",
+  "next_phase": "implementation",
   "scope": "One implementation or fresh-session review phase per conversation. Default queue is planned stories; stretch requires explicit promotion.",
   "status_definitions": {
     "todo": "Not started; ready when every dependency is done.",
@@ -29,17 +29,21 @@
       "points": 3,
       "priority": "P0",
       "scope": "planned",
-      "status": "review_required",
+      "status": "done",
       "depends_on": [],
       "implementation_receipt": "docs/planning/PI-2026-09/evidence/SA-039-implementation.md",
+      "review_input_manifest": "docs/planning/PI-2026-09/evidence/SA-039-manifest.json",
       "review_input_sha256": "1efe361fac2a0e444a39554c0c9490488c3695023791ba313ab836d22092725e",
       "baseline_evidence": "docs/planning/PI-2026-09/evidence/SA-039-baseline-2026-09-24.md",
       "implementation_commit": "4c4728ae5b879e26430ed0f58dee2728cc126cd9",
-      "review_receipt": null,
-      "reviewed_revision": null,
+      "review_receipt": "docs/planning/PI-2026-09/evidence/SA-039-review.md",
+      "reviewed_revision": "4c4728ae5b879e26430ed0f58dee2728cc126cd9",
+      "review_outcomes": [
+        {"date": "2026-09-25", "verdict": "accepted", "reviewed_revision": "4c4728ae5b879e26430ed0f58dee2728cc126cd9", "review_input_sha256": "1efe361fac2a0e444a39554c0c9490488c3695023791ba313ab836d22092725e", "follow_ups": {"L1": "fixed in review docs update (KT section 5 wording)", "L2": "SA-026", "I1": "owner, at activation", "I2": "SA-022", "T1": "SA-005", "F1": "SA-024", "F2": "SA-016"}}
+      ],
       "production_verification": {
         "status": "not_started",
-        "evidence": null
+        "evidence": "Code accepted 2026-09-25; production runs rl.learning_mode=adapt (deploy 7ebd06c5). Activation of observe is a separate owner decision; verify afterwards with the card's read-only checks against the 2026-09-24 baseline."
       },
       "blocked_reason": null
     },
@@ -486,7 +490,9 @@
       "depends_on": [
         "SA-016",
         "SA-018",
-        "SA-020"
+        "SA-020",
+        "SA-043",
+        "SA-047"
       ],
       "implementation_receipt": null,
       "review_receipt": null,
@@ -564,11 +570,11 @@
     },
     {
       "id": "SA-026",
-      "title": "Consolidate sector definitions with equivalence checks",
+      "title": "Consolidate sector definitions into sector lenses",
       "story": "docs/planning/PI-2026-09/stories/SA-026.md",
-      "sprint": 6,
+      "sprint": 3,
       "points": 5,
-      "priority": "P2",
+      "priority": "P1",
       "scope": "planned",
       "status": "todo",
       "depends_on": [
@@ -596,7 +602,8 @@
       "status": "todo",
       "depends_on": [
         "SA-025",
-        "SA-026"
+        "SA-026",
+        "SA-047"
       ],
       "implementation_receipt": null,
       "review_receipt": null,
@@ -900,6 +907,114 @@
       "blocked_reason": null
     },
     {
+      "id": "SA-043",
+      "title": "Run a shadow learner and record paired decisions in observe mode",
+      "story": "docs/planning/PI-2026-09/stories/SA-043.md",
+      "sprint": 4,
+      "points": 3,
+      "priority": "P1",
+      "scope": "planned",
+      "status": "todo",
+      "depends_on": [
+        "SA-015",
+        "SA-039",
+        "SA-045"
+      ],
+      "implementation_receipt": null,
+      "review_receipt": null,
+      "reviewed_revision": null,
+      "production_verification": {
+        "status": "not_started",
+        "evidence": null
+      },
+      "blocked_reason": null
+    },
+    {
+      "id": "SA-044",
+      "title": "Compare valuations only with same-industry peers",
+      "story": "docs/planning/PI-2026-09/stories/SA-044.md",
+      "sprint": 2,
+      "points": 2,
+      "priority": "P1",
+      "scope": "planned",
+      "status": "todo",
+      "depends_on": [],
+      "implementation_receipt": null,
+      "review_receipt": null,
+      "reviewed_revision": null,
+      "production_verification": {
+        "status": "not_started",
+        "evidence": null
+      },
+      "blocked_reason": null
+    },
+    {
+      "id": "SA-045",
+      "title": "Compute the five universal factors deterministically",
+      "story": "docs/planning/PI-2026-09/stories/SA-045.md",
+      "sprint": 4,
+      "points": 5,
+      "priority": "P1",
+      "scope": "planned",
+      "status": "todo",
+      "depends_on": [
+        "SA-026"
+      ],
+      "implementation_receipt": null,
+      "review_receipt": null,
+      "reviewed_revision": null,
+      "production_verification": {
+        "status": "not_started",
+        "evidence": null
+      },
+      "blocked_reason": null
+    },
+    {
+      "id": "SA-046",
+      "title": "Read text into dated events and a Catalyst factor",
+      "story": "docs/planning/PI-2026-09/stories/SA-046.md",
+      "sprint": 4,
+      "points": 3,
+      "priority": "P1",
+      "scope": "planned",
+      "status": "todo",
+      "depends_on": [
+        "SA-026"
+      ],
+      "implementation_receipt": null,
+      "review_receipt": null,
+      "reviewed_revision": null,
+      "production_verification": {
+        "status": "not_started",
+        "evidence": null
+      },
+      "blocked_reason": null
+    },
+    {
+      "id": "SA-047",
+      "title": "Decide with the factor engine; switch when it is not worse",
+      "story": "docs/planning/PI-2026-09/stories/SA-047.md",
+      "sprint": 5,
+      "points": 5,
+      "priority": "P1",
+      "scope": "planned",
+      "status": "todo",
+      "depends_on": [
+        "SA-045",
+        "SA-046",
+        "SA-014",
+        "SA-020"
+      ],
+      "implementation_receipt": null,
+      "review_receipt": null,
+      "reviewed_revision": null,
+      "production_verification": {
+        "status": "not_started",
+        "evidence": null
+      },
+      "blocked_reason": null
+    },
+    {
       "id": "DOC-001",
       "title": "Refresh current-code KT documents and separate human testing duties",
       "story": "docs/planning/PI-2026-09/stories/DOC-001.md",
@@ -930,6 +1045,18 @@
     }
   ],
   "history": [
+    {
+      "date": "2026-09-26",
+      "event": "Owner-requested planning (outside the one-phase rule; no story started): the owner adopted the design docs/superpowers/specs/2026-09-26-one-engine-sector-lenses-design.md (decisions D1-D7), which retires the per-sector graphs. Code inspection at 0b3ebb9 found: all five graphs already run one bundle plus one reasoning-model call, with the LangGraph worker pool only a fallback (about 3,800 fallback-only lines); five scoring schemes with 37 dimension slots under 24 names; the LLM re-scores numbers the code computed (RSI/MACD/peer P/E); generic-graph stocks are valued against automobile peers (_sector_peer_tickers('generic','SUNPHARMA') -> MARUTI, TATAMOTORS, M&M, HEROMOTOCO, BAJAJ-AUTO); missing data is scored 0.5; sector membership is a hand-typed list. The design is one engine: lens YAML per industry (NSE-industry resolution, real peers, benchmark, KPIs, frozen store keys); five computed factors (Value, Quality, Growth, Momentum, Risk) as percentiles against peers and own history; one LLM reader returning dated, sourced events, with Catalyst computed by code; composite at equal weights (1/6); no directional verdict below 4 of 6 factors; the LLM explains but cannot decide. Learning uses six pooled factor weights, not per-ticker weights. The engine switches on non-inferiority (effective disagreements >= 100 over >= 2 months and >= 3 lenses, right on >= 50%, no lens < 40% with >= 20, two consecutive looks); learning still needs superiority. Board: new SA-044 (peer fix, S2, 2), SA-045 (factors, S4, 5), SA-046 (reader, S4, 3), SA-047 (decide, shadow and switch, S5, 5); SA-026 retitled 'Consolidate sector definitions into sector lenses', P2 -> P1, S6 -> S3; SA-043 learns pooled factor weights, S3 -> S4, and now also depends on SA-045; SA-022 also depends on SA-047; SA-027 also depends on SA-047 and retires the sector packages, LangGraph pool and five prompts. Planned stories 44 / 158 points. KT sections 1, 4, 5, 11 and 12, ARCHITECTURE and the PI README are updated; the PDF is rebuilt. No application code, production variable, deployment, job or notification was touched. The next story is still SA-001."
+    },
+    {
+      "date": "2026-09-26",
+      "event": "Owner-requested planning (outside the one-phase rule; no story started): how to know when learning may leave observe. The owner adopted a shadow-learner design. Code inspection found that SA-039's observe mode re-proposes one step from the frozen stored weights every night (v41 -> v42 each time), so nothing accumulates to evaluate. New SA-043 (P1, Sprint 3, 3 points; depends on SA-015 and SA-039): in observe the review updates a separate shadow weight file that starts from the sector default table (never the stored pre-fix weights), with an evidence_start date. For each SA-014 frozen decision it records default and shadow composites and verdicts from the same agent scores, with the shadow version in force at issue time and no look-ahead. Worked example, generic graph with BUY >= 0.55: all agents 0.5 and technical 0.9 give 0.548 NEUTRAL with the default 0.12 and 0.58 BUY with a shadow 0.20. SA-022 is amended (points unchanged; now also depends on SA-043) with predeclared promotion gates scored on effective disagreements (SA-020): at least 100 over at least 3 months and at least 3 sectors; the shadow right on at least 60%; wins in 2 of the last 3 months and robust to dropping the best sector; sane weights (no agent at its bound or below half its default for 4 weeks, within SA-015 bounds). A pass must hold at two consecutive monthly looks, and the report never auto-promotes. Promotion is an owner decision at a month start: adapt resumes from the shadow weights, never the stored pre-fix weights (archived), through a reviewed migration. Then a reverse tally: fewer than 45% of at least 30 effective disagreements in the first full month returns to observe. This settles the SA-039 card's resume question (dated note added). Planned stories 40 / 143 points (Sprint 3: 21). KT sections 1, 5 and 12 and the PI README are updated and the PDF rebuilt. No application code, production variable, deployment, job or notification was touched."
+    },
+    {
+      "date": "2026-09-25",
+      "event": "SA-039 fresh-session review: ACCEPTED at 4c4728ae5b879e26430ed0f58dee2728cc126cd9, review input 1efe361f (kt_manifest verify --rev 4c4728a: 18 files, 0 mismatches; no .py or config change since). Every WeightMemory reader and writer was re-traced repo-wide: observe mode reaches forecast, re-forecast, public analysis (sync and async), review re-scoring and Step 7b; the only weight writer is the adapt branch plus the v0 first init; the other readers are display or evaluation. Reviewer's own adversarial trace (scratch, not committed) used the production-shaped renewable graph (technical default 0.10, stored 0.0 at v41): hand composites 0.55 observe / 0.50 adapt through the real orchestrator and aggregator; a full observe review kept the file at v41, wrote one record over the 6 renewable agents and was retry-safe; rolling back to adapt for the same date wrote exactly the recorded would-be weights; 7 passed. The RL_LEARNING_MODE env route was checked in subprocesses: observe and ' Observe ' give observe, an empty value gives the yaml adapt, and freeze fails closed. Workflow and orchestrator default tables agree for 8 sectors. Tests: SA-039 module 30 passed; full unit suite 3158 passed, 5 skipped (key_registry unchanged); mutations M1 (no deep copy) 1 failed, M2 (lesson emphasis ignores mode) 2 failed, both files restored. Findings: L1 low wording (KT section 5 said the paper lane behaves as before; its isolation does, but its decision weights follow observe), fixed in this review's docs update; L2 low pre-existing (daily_review initialises missing weight memory from the automobile table, so a non-automobile paper ticker's Step 7b re-weights with the wrong agent names in adapt), routed to SA-026; I1 rollout (issued rows keep their verdicts; the first clean observe cohort starts at the monthly forecast, 1st 09:00 IST), noted in KT section 5 for the owner; I2 observe freezes numeric channels only, routed note on SA-022. Docs maintenance: KT sections 1, 5 and 12 status lines, ARCHITECTURE, TEAM_TESTING_GUIDE 04-F; PDF rebuilt (source e808f23b, 19 pages); check_kt_docs 0 errors. SA-039 is done; production_verification stays not_started (production runs adapt). Next ready story: SA-001, selected, not started. No production variable, deployment, job or notification was touched; nothing committed or pushed."
+    },
     {
       "date": "2026-09-25",
       "event": "Correction and deploy outcome for the SA-039 push. The owner asked to commit and push at 16:18 IST on 2026-09-25 (Friday). My time check was wrong: `TZ=Asia/Kolkata date` in Git Bash returns UTC and printed 10:48, so I pushed at about 16:22 IST (e8df088..309d801), inside the blocked 16:25-17:05 daily-review window. Deploy 7ebd06c5 (commit 309d801) was created at 16:22:42 IST and reached SUCCESS. The new container started at 16:28:56 IST and registered 24 jobs before 16:30, so the 16:30 daily review was not missed. It ran on the new code in adapt mode: 20 review starts and 19 completions logged `learning_mode=adapt`, and 19 `[WeightAdapter] Weights ->` writes, the pre-SA-039 behaviour. The last review finished at 16:54 IST. The 20th start, a metals ticker, returned no_envelope (no forecast envelope for 2026-09 or 2026-08), an existing gap unrelated to SA-039. The job finished at 16:55:02 IST, and its post-review portfolio pipeline completed (1 user, 3 advice, 1 autopilot trade, reconcile clean). The old deploy logged no review start in the window. The deploy's ERROR/WARNING lines fall only into existing categories (yfinance ^CNXAUTO index data, reforecast cap, malformed FeedbackAgent factors, factor-regime fetch, ThesisReviewer parse); none came from the SA-039 code. Read-only railway logs; no job was triggered. This record is committed locally and not pushed: 16:4x IST is itself inside the blocked window, and the commit rides the next push."

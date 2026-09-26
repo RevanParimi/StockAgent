@@ -1,5 +1,10 @@
 # SA-039 — Implementation receipt
 
+> **2026-09-25 — ACCEPTED** by a fresh-session review at `4c4728a`, review input `1efe361f…`. See
+> [SA-039-review.md](SA-039-review.md). L1 (the "paper lane unchanged" wording) is fixed in the KT.
+> L2, which predates SA-039, is routed to SA-026, and I2 to SA-022. Production still runs `adapt`, and
+> activating `observe` is the owner's decision.
+
 **Story:** [SA-039](../stories/SA-039.md) — Contain adaptive learning: observe-only, live weights back to defaults
 **Phase:** implementation, 2026-09-24. Status after this phase: `review_required`.
 **Context:** one implementation conversation. The self-review below is **not** the fresh-session review that [REVIEW.md](../REVIEW.md) requires.

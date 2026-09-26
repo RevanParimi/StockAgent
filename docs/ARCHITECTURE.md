@@ -57,7 +57,7 @@ identified. Narration explains the decision rather than deciding a trade.
 
 Learning persists feedback, weights and lessons. It currently has known
 label/timing/final-bound problems. The SA-039 switch `rl.learning_mode`
-(checked in as `adapt`, awaiting review) can contain it: in `observe` mode,
+(accepted 2026-09-25; checked in as `adapt` until the owner activates it) can contain it: in `observe` mode,
 decisions use each sector's default weights, no weight file is written and
 lessons stop moving scores ([KT section 5](TECHNICAL_DESIGN.md#5-learning-forecast-review-and-memory)).
 The nightly auditor, monthly replay and
@@ -65,11 +65,24 @@ weekly scoreboard are different measurements; none alone demonstrates the
 benefit of adaptation. The watchdog checks operational milestones, not stock
 prediction correctness.
 
+**Planned (adopted 2026-09-26, not implemented):** the
+[one-engine design](superpowers/specs/2026-09-26-one-engine-sector-lenses-design.md)
+replaces the per-sector graphs with one engine:
+
+- a sector lens (YAML) supplies the peers, benchmark and KPIs;
+- code computes five factors;
+- one LLM reader turns news and filings into dated events, and code derives a
+  sixth factor from them;
+- code decides and the LLM explains.
+
+It switches only after it proves at least as good as today's analyst in shadow.
+Learning then tunes six weights pooled across all stocks.
+
 ## Current versus planned
 
 | Already present | Planned in PI-2026-09 |
 |---|---|
-| Central graph routing, unified scoring, durable run/health logs | Usable-data semantics, action gates, store lineage and sector consolidation |
+| Central graph routing, unified scoring, durable run/health logs | Usable-data semantics, action gates, store lineage, sector lenses and the factor engine (one-engine design) |
 | Hard-bound categorical research verdict under current YAML | Immutable issuance, correct grading and retry-safe bounded adaptive updates |
 | Virtual advice, execution, P/L and outcome reports | Complete matched cohorts and prospective evidence of learning benefit |
 | IPO calendar/history/capture and recent-listing heuristic | Future validated IPO modeling is not a completed September deliverable |

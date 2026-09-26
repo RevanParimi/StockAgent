@@ -66,7 +66,7 @@
       "review_input_manifest": "docs/planning/PI-2026-09/evidence/SA-001-manifest.json",
       "review_input_sha256": "2ded4b4381a007e51579d95e652bb448ab75f50155b6e7003d98f6b6d320058f",
       "implementation_baseline": "103f2b8171c0d6365525f9450d41091306ebf22c",
-      "implementation_commit": null,
+      "implementation_commit": "8413b59c5e1ce33b5bce8b9fca0a2b0328c4ff1b",
       "review_receipt": "docs/planning/PI-2026-09/evidence/SA-001-review.md",
       "reviewed_revision": "uncommitted working tree on 103f2b8171c0d6365525f9450d41091306ebf22c, pinned by review input 2ded4b4381a007e51579d95e652bb448ab75f50155b6e7003d98f6b6d320058f",
       "review_outcomes": [
@@ -117,7 +117,7 @@
         "tests": "contract file 155 passed (132 + 23 new); focused 11 files 289 passed, 0 blocked; weekday sweep 7 of 7 run days 155 passed (old _bars control: Sun 9, Mon 11, Tue 7, Wed-Sat 5 failed, the guard failing every day); M2 mutations 9/9/2 caught; characterize_nan 13 of 13 identical to HEAD; characterize.py 24 cases unchanged; full tests/unit 3323 passed, 5 skipped, 0 failed, nonet blocked the pre-existing 194; check_kt_docs errors [] (source 0979ad97, 21 pages). Windows, Python 3.13.11, pandas 3.0.2, RL_LEARNING_MODE=adapt, -p nonet.",
         "i1_note": "Found already corrected in the receipt's Rollout section and HANDOFF before the rework began; grep found the claim in no doc; no further edit."
       },
-      "implementation_commit": null,
+      "implementation_commit": "8413b59c5e1ce33b5bce8b9fca0a2b0328c4ff1b",
       "review_receipt": "docs/planning/PI-2026-09/evidence/SA-002-review.md",
       "reviewed_revision": "uncommitted working tree on 103f2b8171c0d6365525f9450d41091306ebf22c plus the SA-001 worktree, pinned by review input c88edda536f862096fd6fa0df8faffc6ee1bcd3ce3ffd1fc0887f109b8d7dd27 (diff dc7e850b62bb705e70aabe0addb9c52d73362dd6444632875f6cd65577023c2c; rework diff 56544c46183f1c1d1b12f4c9df95e6522c02ab2353841919df4eb106e0ee60b2)",
       "review_outcomes": [
@@ -1130,6 +1130,10 @@
     }
   ],
   "history": [
+    {
+      "date": "2026-09-27",
+      "event": "Owner asked to commit and push (about 03:36 IST, inside the 00:10-06:20 safe window). SA-001 and SA-002 committed together as 8413b59 (47 files). Commit checks: verify SA-001-manifest.json --rev 8413b59 and SA-002-manifest.json --rev 8413b59 both mismatch only in the five status-edited docs (TECHNICAL_DESIGN, the PDF, ARCHITECTURE, TEAM_TESTING_GUIDE, CODEBASE.md). npm run test:frontend 14/14 before the push. The next commit bumps the KT header to 8413b59 (edition 2026-09-27), links chat-markdown.js and fetch_result.py, and sets status lines to 'committed'. Production verification of both stories is pending."
+    },
     {
       "date": "2026-09-26",
       "event": "SA-002 ACCEPTED by a fresh-session re-review (a new conversation, about 21:57-22:25 IST); status done, production_verification pending_deployment. Input c88edda5 verified (0 mismatches); full diff dc7e850b and rework diff 56544c46 reproduced. M1, M2 and I1 resolved; new low findings routed: N1 (YoY is a three-quarter change) to SA-045, T3 (Windows rename flakes) to SA-005. Status wording updated in the KT, ARCHITECTURE, 02-F and CODEBASE.md; PDF rebuilt (check_kt_docs errors []). Next: implement SA-003 in a new conversation. No SA-039 check was due. Nothing committed, pushed or deployed.",

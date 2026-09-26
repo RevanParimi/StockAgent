@@ -1,4 +1,4 @@
-# Current handoff - 2026-09-26 (updated about 22:25 IST)
+# Current handoff - 2026-09-27 (updated about 03:45 IST)
 
 ## START HERE — resume checklist, in order
 
@@ -21,18 +21,21 @@ a check is due by then. STATE: `active_task: null`, `next_task: SA-003`,
   (`PYTHONPATH=analysis_data/sa002`), with `RL_LEARNING_MODE=adapt`. Without it, a missed patch
   reaches real providers (see the incident in step 5). Check any date-relative fixture on 7
   consecutive days; see the SA-005 note.
-- **Owner decision first (recommended): commit SA-001 and SA-002 before SA-003 starts.** Both are
-  accepted and uncommitted, and they share six files in one worktree. SA-003 will edit
-  `bundle_builder`, the orchestrator and the docs again. Without a commit, its manifest has to pin
-  a third story's bytes on top of two others'.
-  - For example, SA-003's KT §4 edit would sit in the same file as SA-001's and SA-002's
-    uncommitted status lines, and its review would have to tell the three apart.
-  - A commit is local and does not deploy; the push is a separate owner decision in a safe window.
-  - The commit checks are:
-    - `verify SA-001-manifest.json --rev <commit>` mismatches only in the KT, the PDF, ARCHITECTURE,
-      TEAM_TESTING_GUIDE and `CODEBASE.md`;
-    - `verify SA-002-manifest.json --rev <commit>` mismatches only in the same five files;
-    - then bump the KT header revision, and link `chat-markdown.js` and `fetch_result.py`.
+- **SA-001 and SA-002 are committed as `8413b59`** (2026-09-27, about 03:40 IST, at the owner's
+  "commit and push", inside the 00:10–06:20 safe window). SA-003 starts from a clean baseline.
+  - Commit checks passed. `verify SA-001-manifest.json --rev 8413b59` (17 files) and
+    `verify SA-002-manifest.json --rev 8413b59` (19 files) each mismatch only in the five
+    status-edited docs: the KT, the PDF, ARCHITECTURE, TEAM_TESTING_GUIDE and `CODEBASE.md`.
+  - `npm run test:frontend`: 14 of 14 passed before the push.
+  - The next commit bumps the KT header to `8413b59` (edition 2026-09-27), links
+    `chat-markdown.js` and `fetch_result.py`, and changes the status lines to "committed".
+  - Both commits are pushed together in the same window. The deploy outcome and the owner's
+    post-deploy checks are recorded in the commit after that.
+  - **Owner's post-deploy checks:**
+    - SA-001: open the app twice, so that sw v8 takes over. Run human case 11-C in an isolated
+      test account. Confirm that `marked@12.0.2` and `dompurify@3.4.16` load with status 200 and no
+      SRI error.
+    - SA-002: read-only, across one scheduled cohort, as in the Rollout section of its receipt.
 
 **2. SA-002 was ACCEPTED on 2026-09-26 by a fresh-session re-review** (a new conversation, about
 21:57–22:25 IST). Receipt: [SA-002-review.md](evidence/SA-002-review.md), under "Re-review". SA-002

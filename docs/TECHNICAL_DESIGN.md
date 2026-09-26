@@ -1,8 +1,8 @@
 # StockAgent — Technical Design and Knowledge Transfer
 
-**Edition:** 2026-09-26 · **Audience:** engineers and teammates learning the product
+**Edition:** 2026-09-27 · **Audience:** engineers and teammates learning the product
 
-**Code inspected:** `4c4728ae5b879e26430ed0f58dee2728cc126cd9`
+**Code inspected:** `8413b59c5e1ce33b5bce8b9fca0a2b0328c4ff1b`
 
 First edition 2026-09-15 at `9a805878`; maintained per story since. The revision
 above is the one the whole body describes. `check_kt_docs.py` fails if a linked
@@ -22,7 +22,7 @@ it is not an implemented human-approval workflow.
 | Current code | Traced in this checkout. Flags, inputs and runtime data determine whether a path actually runs. |
 | Locally checked | Existing tests run in an isolated copy. Exact results and limits are in the [validation receipt](planning/PI-2026-09/evidence/DOC-001-implementation.md). |
 | Production observation | Dated evidence: the September 10 audit, section 10's 2026-09-21 email diagnosis, a September 15 deployment SUCCESS at `9a805878`, the 2026-09-23 read-only log inspection of learned weights, and the 2026-09-24 [SA-039 weight baseline](planning/PI-2026-09/evidence/SA-039-baseline-2026-09-24.md). Those logs came from deploy `d9c459ae` (commit `e8df088`). Deploys carrying the header revision's code were inspected read-only on 2026-09-25 (`7ebd06c5`: the 16:30 review ran in `adapt`) and on 2026-09-26 (`da9df6cf`: all 20 tickers in `observe`, per the [activation record](planning/PI-2026-09/evidence/SA-039-activation-2026-09-26.md)). |
-| PI target | Intended behavior, not completed functionality. SA-039 was accepted by its fresh review on 2026-09-25, and production has run `observe` since 2026-09-26 ([activation record](planning/PI-2026-09/evidence/SA-039-activation-2026-09-26.md); verification after the next reviews is pending). SA-001 (chat rendering) was accepted by its fresh review on 2026-09-26 ([review](planning/PI-2026-09/evidence/SA-001-review.md)); it is not yet committed or deployed. SA-002 (data health) was accepted by its fresh re-review on 2026-09-26, after a rework of its test fixtures and one fundamentals case ([receipt](planning/PI-2026-09/evidence/SA-002-implementation.md), [review](planning/PI-2026-09/evidence/SA-002-review.md)); it is not yet committed or deployed. Every other story from SA-003 to SA-047 is `todo`. Three are stretch. |
+| PI target | Intended behavior, not completed functionality. SA-039 was accepted by its fresh review on 2026-09-25, and production has run `observe` since 2026-09-26 ([activation record](planning/PI-2026-09/evidence/SA-039-activation-2026-09-26.md); verification after the next reviews is pending). SA-001 (chat rendering) was accepted by its fresh review on 2026-09-26 ([review](planning/PI-2026-09/evidence/SA-001-review.md)); it is committed as `8413b59`, and its production verification is pending. SA-002 (data health) was accepted by its fresh re-review on 2026-09-26, after a rework of its test fixtures and one fundamentals case ([receipt](planning/PI-2026-09/evidence/SA-002-implementation.md), [review](planning/PI-2026-09/evidence/SA-002-review.md)); it is committed as `8413b59`, and its production verification is pending. Every other story from SA-003 to SA-047 is `todo`. Three are stretch. |
 
 The [September audit](audit/2026-09-10-repository-production-review.md) records
 unresolved label, timing, health, weight-bound and operational defects.
@@ -198,14 +198,14 @@ the bound verdict. A different LLM `final_score` is a different field, not
 necessarily an arithmetic error.
 
 **Data health (SA-002: accepted 2026-09-26 by its fresh re-review, after a
-rework; not committed or deployed; newer than the header revision).** Every unified run
+rework; committed as `8413b59`; production verification pending).** Every unified run
 writes one data-health row, to `data/logs/data_health.jsonl` and `telemetry.db`.
 Before SA-002 a section's status was guessed from its text, so any nonempty
 sentence read `ok`, including "Technical data unavailable for TATAMOTORS" and
 "[No results for: …]". The row's `health` looked at dimension counts only. On
 2026-08-26 two TATAMOTORS runs against a price source answering HTTP 404 were
 recorded `ok`, with 10 live sections and 9/9 dimensions. Now every section
-producer returns a typed result (`services/data/context/fetch_result.py`): a
+producer returns a typed result ([fetch_result.py](../services/data/context/fetch_result.py)): a
 status, the source, the as-of date of its newest datum, and a reason. The
 producer decides the status from its structured data, not from its sentence.
 
@@ -647,13 +647,13 @@ routes remain public. The RL client has demo/fallback paths on API failure,
 so populated charts alone do not prove live data. SA-024/SA-032 address
 evidence and public/demo policy.
 
-**Chat rendering (SA-001: accepted by its fresh review on 2026-09-26, not yet
-committed or deployed; newer than the header revision).** Chat replies are untrusted text:
+**Chat rendering (SA-001: accepted by its fresh review on 2026-09-26;
+committed as `8413b59`; production verification pending).** Chat replies are untrusted text:
 the model quotes news snippets and tool output. Before SA-001,
 [sphere.jsx](../src/frontend/prototypes/sphere.jsx) passed them through marked
 straight into `dangerouslySetInnerHTML`, so a quoted `<img src=x onerror=…>`
 ran its handler in the browser (audit F01), next to the stored bearer token.
-Now `renderMd` delegates to a new plain script, `chat-markdown.js`. index.html
+Now `renderMd` delegates to a new plain script, [chat-markdown.js](../src/frontend/prototypes/chat-markdown.js). index.html
 loads it after marked 12.0.2 and DOMPurify 3.4.16, both exact versions with SRI
 hashes. There are two layers:
 
@@ -685,7 +685,7 @@ HTTP responses do not prove recovery or successful jobs.
 |---|---|---|
 | Sector routing | Shared graph selection via registry. | Complete store lineage, and sector lenses resolved from NSE's industry field ([one-engine design](superpowers/specs/2026-09-26-one-engine-sector-lenses-design.md); SA-026). |
 | Analysis | Unified scoring plus surviving legacy fallback. | Actual call accounting. A factor engine (computed factors, one text reader, code decides, LLM explains) proven in shadow, then the graphs and fallback retired (SA-044–SA-047, SA-027). |
-| Data health | Durable health/run records. Producer-typed section status and usable-data health (SA-002, accepted 2026-09-26, not deployed). | Recommendation/learning gates on essential data (SA-003). |
+| Data health | Durable health/run records. Producer-typed section status and usable-data health (SA-002, accepted 2026-09-26, committed as `8413b59`). | Recommendation/learning gates on essential data (SA-003). |
 | Verdict binding | Deterministic category enabled in YAML, raw model verdict logged. | Correct issue-time grading and final adaptive constraints. |
 | Portfolio | Per-user advice/execution, stops, switches and ledgers. | Stronger upstream evidence and report reconciliation. |
 | IPO | Calendar, history, snapshots, recent-listing screening, size-tiered brief lean, and the dark P3 model, deep dive, narrator and forward-grading lane (section 8). | Forward evidence for P3 and its `ipo_verdicts_visible_gate`; no verdict reaches a user; outside default September scope. |
@@ -700,8 +700,9 @@ Legacy code should only be retired with measured replacement coverage.
 ## 12. PI changes included now
 
 The table below includes the planned destination now. **SA-039 is accepted
-(production `observe` since 2026-09-26). SA-001 is accepted and
-not yet deployed. SA-002 is accepted, after a rework, and not yet deployed.
+(production `observe` since 2026-09-26). SA-001 and SA-002
+(after a rework) are accepted and committed as `8413b59`; their production
+verification is pending.
 Every other SA story is `todo`; SA-003 is next.** Accepted
 state/dependencies are in
 [STATE.json](planning/PI-2026-09/STATE.json). DOC-001 is this user-requested

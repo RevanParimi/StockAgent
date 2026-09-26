@@ -2,6 +2,13 @@
 
 ## START HERE — resume checklist, in order
 
+**0. Before any story work, check STATE `pending_production_checks`.** It holds the SA-039 `observe`
+verification: P1 due Mon 28 Sep 17:00 IST, P2 due Tue 29 Sep 17:00 and P3 due Thu 1 Oct 09:30. Run
+every check that is due and unrecorded (read-only; the steps are in the carry-over box on
+[SA-001](stories/SA-001.md)). Record each in the
+[activation record](evidence/SA-039-activation-2026-09-26.md) and in STATE. [SA-038](stories/SA-038.md)
+is the backstop.
+
 **2026-09-26, owner-adopted design (no story started): [one engine with sector lenses](../../superpowers/specs/2026-09-26-one-engine-sector-lenses-design.md).**
 This is the single reference for both the learning-exit logic (§1) and the analysis redesign.
 

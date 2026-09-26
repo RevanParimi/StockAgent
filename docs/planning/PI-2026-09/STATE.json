@@ -12,6 +12,11 @@
   "next_task": "SA-001",
   "next_phase": "implementation",
   "scope": "One implementation or fresh-session review phase per conversation. Default queue is planned stories; stretch requires explicit promotion.",
+  "pending_production_checks": [
+    {"id": "SA-039-P1", "story": "SA-039", "due_ist": "2026-09-28 17:00", "status": "pending", "check": "After the Mon 16:30 review: logs show learning_mode=observe and '[WeightAdapter] Proposal (not applied)' (no 'Weights -> vN'); /ui/rl/summary weight_version for every managed ticker equals the analysis_data/sa039_activation_versions_20260926.json baseline; /ui/rl/weights latest_observation dated 2026-09-28.", "record_in": "docs/planning/PI-2026-09/evidence/SA-039-activation-2026-09-26.md"},
+    {"id": "SA-039-P2", "story": "SA-039", "due_ist": "2026-09-29 17:00", "status": "pending", "check": "After the Tue review: weight versions still unchanged (the two-review check).", "record_in": "docs/planning/PI-2026-09/evidence/SA-039-activation-2026-09-26.md"},
+    {"id": "SA-039-P3", "story": "SA-039", "due_ist": "2026-10-01 09:30", "status": "pending", "check": "After the 09:00 rl_monthly_forecast: new envelopes carry learning_mode=observe (the first fully contained cohort).", "record_in": "docs/planning/PI-2026-09/evidence/SA-039-activation-2026-09-26.md"}
+  ],
   "status_definitions": {
     "todo": "Not started; ready when every dependency is done.",
     "in_progress": "Implementation is active; resume before selecting another task.",
@@ -1045,6 +1050,10 @@
     }
   ],
   "history": [
+    {
+      "date": "2026-09-26",
+      "event": "Owner asked that the SA-039 'still to confirm' checks be attached to a story so they are not forgotten. They are recorded in three places. (1) A new top-level STATE list, pending_production_checks, holds SA-039-P1 (Mon 28 Sep 17:00), P2 (Tue 29 Sep 17:00) and P3 (Thu 1 Oct 09:30). (2) A carry-over box at the top of SA-001, the next story, says to run due and unrecorded checks before either phase. (3) A backstop note on SA-038 (production-verification milestones) says SA-038 cannot be accepted while SA-039 verification is pending without a dated reason. HANDOFF START HERE lists them too. No story status changed."
+    },
     {
       "date": "2026-09-26",
       "event": "SA-039 activated in production by the owner: Railway variable RL_LEARNING_MODE=observe, followed by redeploy 786faf7f (5a27683, SUCCESS 06:38 IST); the owner's push of 16e7ea7 then gave deploy da9df6cf (SUCCESS 06:41:24 IST). Read-only verification (GETs on the production RL monitor): all 20 managed tickers report learning_mode=observe with the recognised reason. Decision chart weights are the defaults (0.10/0.11/0.15) while stored weights keep the learned 0.0-0.03. Stored versions are v15-v85 across 19 tickers; the metals ticker has no envelope, a known gap. No observation records exist yet. The per-ticker baseline is in ignored analysis_data/sa039_activation_versions_20260926.json. production_verification is now pending_observation; the checks after the Mon 28 and Tue 29 Sep reviews and the Thu 1 Oct forecast are listed in evidence/SA-039-activation-2026-09-26.md. Side effect found: the local environment (probably .env) now also resolves observe, so 7 RL unit tests that assume adapt fail locally; routed to SA-005 (pin the mode in tests/conftest.py, like AUTH_REQUIRED). KT sections 1, 5 and 12, ARCHITECTURE and TEAM_TESTING_GUIDE 04-F now say production runs observe, and the PDF is rebuilt. Claude changed no variable and triggered no job."

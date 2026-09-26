@@ -10,6 +10,8 @@ get_price_history(ticker, years) → pd.DataFrame
 compute_technicals(df)           → dict
 get_peer_correlation(ticker, index_ticker, period) → float
 get_price_summary(ticker)        → dict   (latest price + 52w range)
+get_technical_result(ticker) / get_valuation_result(ticker, peers)
+                                 → FetchResult (context text + status/as-of, SA-002)
 """
 
 from __future__ import annotations
@@ -277,7 +279,8 @@ def get_peer_correlation(
         )["Close"]
         returns = data.pct_change().dropna()
         if returns.shape[1] < 2 or len(returns) < 30:
-            return {"correlation": 0.0, "beta": 1.0}
+            # SA-002: `default` marks these as a neutral substitute, not a measurement.
+            return {"correlation": 0.0, "beta": 1.0, "default": True}
 
         stock_col = yf_ticker
         index_col = index_ticker
@@ -291,7 +294,7 @@ def get_peer_correlation(
         }
     except Exception as exc:
         logger.error("[yfinance] Correlation failed for %s: %s", yf_ticker, exc)
-        return {"correlation": 0.0, "beta": 1.0}
+        return {"correlation": 0.0, "beta": 1.0, "default": True}
 
 
 # ---------------------------------------------------------------------------
@@ -306,13 +309,48 @@ def get_valuation_context(ticker: str, peer_tickers: list[str] | None = None) ->
     section that yfinance fails to provide.  No analyst opinions — Serper is used only
     to recover raw price/ratio facts when yfinance returns nothing.
 
-    Returns a formatted string for prompt injection.
+    Returns a formatted string for prompt injection (the text of
+    `get_valuation_result`).
+    """
+    return get_valuation_result(ticker, peer_tickers=peer_tickers).text
+
+
+def _serper_fallback(queries: list[str], max_queries: int):
+    """One Serper fallback, as (prompt text, whether any article came back)."""
+    from services.data.context.fetch_result import STATUS_OK
+    from services.data.fetchers.news import fetch_news_result
+    res = fetch_news_result(queries, max_queries=max_queries)
+    return res.text, res.status == STATUS_OK
+
+
+def get_valuation_result(ticker: str, peer_tickers: list[str] | None = None):
+    """
+    `get_valuation_context` with its outcome (SA-002). The section's core data
+    are the stock's own price history and its own valuation ratios; each is
+    tracked as it is fetched, and so is every Serper fallback that replaced
+    one — including whether that fallback found anything at all:
+
+    - both core data verified: `ok`, or `stale` when the newest bar is older
+      than the price freshness bound;
+    - neither verified and no fallback found anything: `empty` (the text is
+      headers and "[No results for: ...]" lines only);
+    - otherwise `fallback`: a core datum was replaced by search snippets, or
+      is simply missing beside one that is present. `reason` says which.
+
+    Peer P/E replaced by search snippets is named in `reason`; peers are
+    context for the core ratios, not a core datum themselves.
     """
     import yfinance as yf
     from datetime import date as _date
+    from services.data.context.fetch_result import (
+        STATUS_EMPTY, STATUS_FALLBACK, STATUS_OK, STATUS_STALE, FetchResult,
+        is_stale, join_reasons, price_max_age_days,
+    )
 
     today = _date.today()
     yf_ticker = _nse_ticker(ticker)
+    notes: list[str | None] = []
+    fallback_found = False
 
     # --- 2-year price history for trend analysis ---
     df = get_price_history(ticker, years=2)
@@ -322,15 +360,18 @@ def get_valuation_context(ticker: str, peer_tickers: list[str] | None = None) ->
     if not price_history_available:
         lines.append("[yfinance] Price history unavailable — falling back to Serper for price data.")
         try:
-            from services.data.fetchers.news import fetch_news_context
-            fallback = fetch_news_context([
+            fallback, found = _serper_fallback([
                 f"{ticker} NSE current stock price 52 week high low {today.year}",
                 f"{ticker} share price trend momentum {today.strftime('%B')} {today.year}",
                 f"{ticker} NSE stock performance chart support resistance {today.year}",
             ], max_queries=3)
             lines.append(f"[Serper fallback — price/technical]\n{fallback}")
+            fallback_found = fallback_found or found
+            notes.append("price history unavailable; Serper fallback "
+                         + ("found results" if found else "found nothing"))
         except Exception as exc:
             lines.append(f"Serper price fallback also failed: {exc}")
+            notes.append(f"price history unavailable; Serper fallback failed ({type(exc).__name__})")
     else:
         close = df["Close"].squeeze()
         volume = df["Volume"].squeeze() if "Volume" in df.columns else None
@@ -471,14 +512,17 @@ def get_valuation_context(ticker: str, peer_tickers: list[str] | None = None) ->
     if not fundamentals_available:
         lines.append("[yfinance] Fundamentals unavailable — falling back to Serper for ratio data.")
         try:
-            from services.data.fetchers.news import fetch_news_context
-            fallback = fetch_news_context([
+            fallback, found = _serper_fallback([
                 f"{ticker} NSE PE ratio EPS earnings revenue {today.year}",
                 f"{ticker} P/E price to earnings market cap valuation {today.year}",
             ], max_queries=2)
             lines.append(f"[Serper fallback — fundamentals]\n{fallback}")
+            fallback_found = fallback_found or found
+            notes.append("valuation ratios unavailable; Serper fallback "
+                         + ("found results" if found else "found nothing"))
         except Exception as exc:
             lines.append(f"Serper fundamentals fallback also failed: {exc}")
+            notes.append(f"valuation ratios unavailable; Serper fallback failed ({type(exc).__name__})")
 
     # --- Peer P/E from yfinance (data-driven, no opinion) ---
     if peer_tickers:
@@ -515,14 +559,16 @@ def get_valuation_context(ticker: str, peer_tickers: list[str] | None = None) ->
         else:
             lines.append("[yfinance] No peer P/E data — falling back to Serper for sector valuation.")
             try:
-                from services.data.fetchers.news import fetch_news_context
-                fallback = fetch_news_context([
+                fallback, found = _serper_fallback([
                     f"Indian automobile EV sector PE ratio peer comparison NSE {today.year}",
                     f"MARUTI TATAMOTORS HEROMOTOCO PE ratio valuation {today.year}",
                 ], max_queries=2)
                 lines.append(f"[Serper fallback — peer P/E]\n{fallback}")
+                notes.append("peer P/E unavailable; Serper fallback (automobile query) "
+                             + ("found results" if found else "found nothing"))
             except Exception as exc:
                 lines.append(f"Serper peer fallback also failed: {exc}")
+                notes.append(f"peer P/E unavailable; Serper fallback failed ({type(exc).__name__})")
 
     # --- Seasonal pattern ---
     if not df.empty:
@@ -538,25 +584,88 @@ def get_valuation_context(ticker: str, peer_tickers: list[str] | None = None) ->
             else f"Seasonality: Historically strong={strong} | Weak={weak}"
         )
 
-    return "\n".join(lines)
+    text = "\n".join(lines)
+    as_of = _last_bar_date(df) if price_history_available else None
+    source = "yfinance" if not notes else "yfinance+serper"
+    if price_history_available and fundamentals_available:
+        max_age = price_max_age_days()
+        stale = is_stale(as_of, max_age)
+        return FetchResult(
+            text, STATUS_STALE if stale else STATUS_OK, source, as_of=as_of,
+            reason=join_reasons([
+                f"last price bar {as_of} is older than {max_age} days" if stale else None,
+                *notes,
+            ]),
+        )
+    if not price_history_available and not fundamentals_available and not fallback_found:
+        return FetchResult(text, STATUS_EMPTY, source, reason=join_reasons(notes))
+    return FetchResult(text, STATUS_FALLBACK, source, as_of=as_of, reason=join_reasons(notes))
 
 
 # ---------------------------------------------------------------------------
 # Convenience: full technical context string for prompt injection
 # ---------------------------------------------------------------------------
 
+def _last_bar_date(df: pd.DataFrame) -> str | None:
+    """ISO date of a price frame's newest bar; None when it cannot be read."""
+    try:
+        return pd.Timestamp(df.index[-1]).date().isoformat()
+    except Exception:
+        return None
+
+
 def get_technical_context(ticker: str) -> str:
     """
     Returns a formatted string summarising technical indicators for prompt injection.
     """
+    return get_technical_result(ticker).text
+
+
+def get_technical_result(ticker: str):
+    """
+    `get_technical_context` with its outcome (SA-002), from the structured
+    `compute_technicals` result rather than the sentence it renders:
+
+    - no usable history (`error`): `empty` — the TATAMOTORS 404 case, which
+      rendered "Technical data unavailable for ..." and was recorded `ok`;
+    - newest bar older than the price freshness bound: `stale` (a delisted
+      or frozen symbol still returns its last bars);
+    - otherwise `ok`, with `as_of` the newest bar. A neutral index
+      correlation substituted for a failed one is named in `reason`.
+    """
+    from services.data.context.fetch_result import (
+        STATUS_EMPTY, STATUS_OK, STATUS_STALE, FetchResult, is_stale, join_reasons,
+        price_max_age_days,
+    )
+
     df = get_price_history(ticker, years=settings.PRICE_HISTORY_YEARS)
     tech = compute_technicals(df)
     seasonal = get_seasonal_pattern(df)
     corr = get_peer_correlation(ticker)
 
     if "error" in tech:
-        return f"Technical data unavailable for {ticker}: {tech['error']}"
+        return FetchResult(
+            f"Technical data unavailable for {ticker}: {tech['error']}",
+            STATUS_EMPTY, "yfinance",
+            as_of=_last_bar_date(df) if not df.empty else None,
+            reason=f"{tech['error']} ({len(df)} bars)",
+        )
 
+    as_of = _last_bar_date(df)
+    max_age = price_max_age_days()
+    stale = is_stale(as_of, max_age)
+    reason = join_reasons([
+        f"last price bar {as_of} is older than {max_age} days" if stale else None,
+        "index correlation unavailable; neutral 0.0 / beta 1.0 shown" if corr.get("default") else None,
+    ])
+    return FetchResult(
+        _format_technicals(ticker, tech, seasonal, corr),
+        STATUS_STALE if stale else STATUS_OK, "yfinance", as_of=as_of, reason=reason,
+    )
+
+
+def _format_technicals(ticker: str, tech: dict, seasonal: dict, corr: dict) -> str:
+    """The prompt text, byte-identical to the pre-SA-002 context string."""
     strong_months = [m for m, r in seasonal.items() if r > 1.0]
     weak_months = [m for m, r in seasonal.items() if r < -1.0]
 

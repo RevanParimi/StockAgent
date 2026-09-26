@@ -177,7 +177,17 @@ CREATE TABLE IF NOT EXISTS data_health (
     dimensions_scored   INTEGER NOT NULL DEFAULT 0,
     dimensions_missing  TEXT,
     api_calls           TEXT,
-    health              TEXT
+    health              TEXT,
+    -- SA-002 (contract v2). NULL on every v1 row, which is how readers tell
+    -- a row whose section statuses meant "did not raise" from one whose
+    -- statuses are its producers' verdicts. Also added by _migrate.
+    contract_version    INTEGER,
+    section_provenance  TEXT,
+    stale               INTEGER,
+    fallback            INTEGER,
+    unverified          INTEGER,
+    essential_unusable  TEXT,
+    health_reasons      TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_data_health_ts ON data_health (ts);
 CREATE INDEX IF NOT EXISTS idx_data_health_health ON data_health (health);
@@ -192,6 +202,17 @@ CREATE TABLE IF NOT EXISTS cost_by_user_day (
 );
 CREATE INDEX IF NOT EXISTS idx_cost_by_user_day ON cost_by_user_day (day);
 """
+
+
+_DATA_HEALTH_V2_COLUMNS = (
+    ("contract_version", "INTEGER"),
+    ("section_provenance", "TEXT"),
+    ("stale", "INTEGER"),
+    ("fallback", "INTEGER"),
+    ("unverified", "INTEGER"),
+    ("essential_unusable", "TEXT"),
+    ("health_reasons", "TEXT"),
+)
 
 
 def _add_column(conn: sqlite3.Connection, table: str, column: str, decl: str) -> None:
@@ -225,6 +246,8 @@ def _migrate(conn: sqlite3.Connection) -> None:
         _add_column(conn, "llm_calls", "user_id", "TEXT")   # Atlas C8
         _add_column(conn, "app_logs", "run_id", "TEXT")     # E1
         _add_column(conn, "app_logs", "ticker", "TEXT")     # E1
+        for column, decl in _DATA_HEALTH_V2_COLUMNS:        # SA-002
+            _add_column(conn, "data_health", column, decl)
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_app_logs_run_id ON app_logs (run_id)"
         )
@@ -384,11 +407,19 @@ def log_data_health(
     dimensions_missing: str | None,
     api_calls: str | None,
     health: str | None,
+    contract_version: int | None = None,
+    section_provenance: str | None = None,
+    stale: int | None = None,
+    fallback: int | None = None,
+    unverified: int | None = None,
+    essential_unusable: str | None = None,
+    health_reasons: str | None = None,
 ) -> None:
     """Persist one run's data-health row. Never raises.
 
     B2: `sections`, `dimensions_missing` and `api_calls` arrive pre-serialised
-    as JSON text — this store does no shaping.
+    as JSON text — this store does no shaping. SA-002's fields arrive the
+    same way and default to NULL, which is what a v1 row holds.
     """
     try:
         conn = _get_conn()
@@ -399,19 +430,28 @@ def log_data_health(
                 "INSERT INTO data_health "
                 "(ts, run_id, ticker, sector, sections, live, degraded, empty, "
                 "not_applicable, dimensions_expected, dimensions_scored, "
-                "dimensions_missing, api_calls, health) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "dimensions_missing, api_calls, health, contract_version, "
+                "section_provenance, stale, fallback, unverified, "
+                "essential_unusable, health_reasons) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (_now(), run_id, ticker, sector, sections, live, degraded, empty,
                  not_applicable, dimensions_expected, dimensions_scored,
-                 dimensions_missing, api_calls, health),
+                 dimensions_missing, api_calls, health, contract_version,
+                 section_provenance, stale, fallback, unverified,
+                 essential_unusable, health_reasons),
             )
             conn.commit()
     except Exception as exc:
         logger.warning("[log_store] data_health write failed (non-fatal): %s", exc)
 
 
-def data_health_count(health: str | None = None) -> int:
+def data_health_count(health: str | None = None, contract_version: int | None = None) -> int:
     """How many health rows the durable archive holds, optionally by verdict.
+
+    SA-002: `contract_version` narrows to one contract — 1 counts the v1 rows
+    (NULL in the column), 2 the rows whose sections are producer verdicts. A
+    v1 `ok` and a v2 `ok` are different claims, so a rate over both mixes
+    them; None keeps the old all-rows count.
 
     0 when unavailable; never raises. B3's watchdog check reads the trailing
     degraded+hollow rate off this table.
@@ -420,17 +460,42 @@ def data_health_count(health: str | None = None) -> int:
         conn = _get_conn()
         if conn is None:
             return 0
+        clauses: list[str] = []
+        params: list = []
+        if health is not None:
+            clauses.append("health = ?")
+            params.append(health)
+        if contract_version == 1:
+            clauses.append("contract_version IS NULL")
+        elif contract_version is not None:
+            clauses.append("contract_version = ?")
+            params.append(contract_version)
+        where = (" WHERE " + " AND ".join(clauses)) if clauses else ""
         with _lock:
-            if health is None:
-                row = conn.execute("SELECT COUNT(*) FROM data_health").fetchone()
-            else:
-                row = conn.execute(
-                    "SELECT COUNT(*) FROM data_health WHERE health = ?", (health,)
-                ).fetchone()
+            row = conn.execute(f"SELECT COUNT(*) FROM data_health{where}", params).fetchone()
         return int(row[0]) if row else 0
     except Exception as exc:
         logger.warning("[log_store] data_health count failed (non-fatal): %s", exc)
         return 0
+
+
+def data_health_rows(limit: int = 100) -> list[dict]:
+    """The newest `limit` data-health rows as plain dicts, JSON columns still text.
+    Shape them with `data_health.normalize_health_row`. [] when unavailable;
+    never raises."""
+    try:
+        conn = _get_conn()
+        if conn is None:
+            return []
+        with _lock:
+            cur = conn.execute(
+                "SELECT * FROM data_health ORDER BY id DESC LIMIT ?", (int(limit),))
+            names = [d[0] for d in cur.description]
+            rows = cur.fetchall()
+        return [dict(zip(names, r)) for r in rows]
+    except Exception as exc:
+        logger.warning("[log_store] data_health read failed (non-fatal): %s", exc)
+        return []
 
 
 def rollup_cost_by_user_day(day: str | None = None) -> dict:

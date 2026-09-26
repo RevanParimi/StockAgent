@@ -106,6 +106,8 @@ StockAgent-main/
 │   └── frontend/
 │       └── prototypes/            # THE real frontend — vanilla-React JSX (Babel standalone),
 │                                  #  served statically at /app; PWA (sw.js + VAPID push).
+│                                  #  chat-markdown.js = the chat reply → HTML boundary (SA-001);
+│                                  #  browser test in tests/frontend/ (npm run test:frontend).
 │                                  #  (The old TypeScript/Vite src/frontend/web scaffold was
 │                                  #   deleted in audit Wave E — it was never the deployed UI.)
 ├── core/                          # Core intelligence layer (shared across sectors)
@@ -593,6 +595,8 @@ Models are tiered (2026-06-03 benchmark, `scripts/model_bench.py`; bulk re-bench
 
 **Data health (B2, `config.yaml` → `observability.*`).** `SectorDataBundle.has_real_data` is `live >= 3` of 10 sections and its only consumer is a log line, so a prod SUZLON run that lost 3 of its 6 dimensions shipped a BUY logging `real_data=True`. Every unified run now writes one `data_health` row describing what it actually received — see the module table below. `has_real_data` is deliberately unchanged (it counts an `n/a` section as live; the record does not). Rollback: `observability.data_health_enabled: false`.
 
+**Data-health contract v2 (SA-002, accepted 2026-09-26 after a rework; not yet deployed).** B2 took a section's status from its text, so "Technical data unavailable for TATAMOTORS" and "[No results for: …]" read `ok`, and `health` looked at dimensions only. Every `_fetch_<section>` now returns a `FetchResult` (`services/data/context/fetch_result.py`) whose producer states the status — `ok` / `cache_hit` / `stale` / `fallback` / `empty` / `n/a` / `failed:<Type>`, or `unverified` for untyped text — plus source, as-of and reason. The row is `ok` only with every dimension scored and every applicable section verified and fresh; `essential_unusable` lists the unusable essential sections (`observability.data_health_essential_sections`), and `health_reasons` says why. Freshness bounds: `data_health_price_max_age_days` (7), `data_health_fundamentals_max_age_days` (200). A newest listed quarter without figures (NaN) makes fundamentals `fallback`, dated by the newest quarter with figures (`get_financials` `missing_values`). The prompt text is byte-identical. v1 rows stay as written; `normalize_health_row` labels them unknown provenance.
+
 ### Scheduler
 
 | Name | Default | Description |
@@ -881,8 +885,9 @@ All paths verified to exist. Paths are relative to project root.
 | `src/backend/shared/config/settings/base.py` | All environment variable definitions with defaults |
 | `src/backend/shared/config/rag_config.py` | RAG-specific env vars (mirrors `core/intelligence/rag/config.py`) |
 | `src/backend/shared/pipeline/base_orchestrator.py` | `BaseSectorOrchestrator` — ticker resolution (managed-ticker short-circuit, no LLM for exact `TICKERS` matches), RL weights, NSE prefetch, `_run_agents`/`_run_unified`/`_unified_enabled` dispatch, SignalAggregator |
-| `services/data/context/bundle_builder.py` | `build_sector_bundle()` — one-pass `SectorDataBundle` (10 labeled, char-capped sections), sector-aware via `_SECTOR_BUNDLE_CFG` (per-sector queries, deep-dive Tavily target, commodities applicability, peer lists); B2 adds `section_status` — one outcome per section (`ok` / `cache_hit` / `empty` / `n/a` / `failed:<Type>`) |
-| `services/data/stores/data_health.py` | B2 — one row per unified run: section outcomes, dimensions scored vs expected, derived `ok`/`degraded`/`hollow`. Writes `data/logs/data_health.jsonl` + `telemetry.db.data_health`, attaches to `FinalReport.data_health`. **Write-only until B5's hollow-run gate**; never raises. Flag `observability.data_health_enabled` |
+| `services/data/context/bundle_builder.py` | `build_sector_bundle()` — one-pass `SectorDataBundle` (10 labeled, char-capped sections), sector-aware via `_SECTOR_BUNDLE_CFG` (per-sector queries, deep-dive Tavily target, commodities applicability, peer lists); B2 adds `section_status` — one outcome per section; SA-002 takes it from each producer's `FetchResult` and adds `section_provenance` (source, as-of, reason) |
+| `services/data/context/fetch_result.py` | SA-002 — `FetchResult` (text, status, source, as_of, reason), the section status vocabulary, and the price/fundamentals freshness bounds |
+| `services/data/stores/data_health.py` | B2 — one row per unified run: section outcomes, dimensions scored vs expected, derived `ok`/`degraded`/`hollow`. SA-002 contract v2: `health_reasons`, `essential_unusable`, `section_provenance`, stale/fallback/unverified counts; `normalize_health_row` / `recent_health_rows` read v1 rows with unknown provenance. Writes `data/logs/data_health.jsonl` + `telemetry.db.data_health`, attaches to `FinalReport.data_health`. **Write-only until B5's hollow-run gate**; never raises. Flag `observability.data_health_enabled` |
 | `src/backend/shared/pipeline/unified_analyst.py` | `UnifiedAnalyst` — one reasoning-model call → all dimension `AgentOutput`s for a sector (9/6/8/6 per `SECTOR_SPECS`); never raises, falls back to legacy on total failure |
 | `src/backend/sectors/automobile/prompts/unified.py` | Unified Sector Analyst prompt for automobile (9 dimensions in one prompt) |
 | `src/backend/sectors/banking_bfsi/prompts/unified.py` | Unified Sector Analyst prompt for BFSI (6 dimensions) |

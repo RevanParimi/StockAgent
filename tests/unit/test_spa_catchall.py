@@ -22,6 +22,11 @@ def test_root_and_real_files_still_served():
     assert "text/html" in c.get("/").headers["content-type"]
     assert c.get("/rl-data.jsx").status_code == 200
     assert c.get("/manifest.json").status_code == 200
+    # SA-001: the chat Markdown boundary is a real script, not the SPA fallback.
+    boundary = c.get("/chat-markdown.js")
+    assert boundary.status_code == 200
+    assert "javascript" in boundary.headers["content-type"]
+    assert "saRenderChatMarkdown" in boundary.text
 
 
 def test_registered_api_routes_unaffected(monkeypatch, tmp_path):

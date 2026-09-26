@@ -9,6 +9,8 @@
 ### Script load order (index.html lines 19–27)
 ```
 styles.css          ← CSS variables, utility classes (.card, .mono, .eyebrow)
+marked + DOMPurify  ← CDN, exact versions with SRI (SA-001)
+chat-markdown.js    ← window.saRenderChatMarkdown: chat reply → sanitized HTML (plain script, not Babel)
 data.jsx            ← Populates window.* globals (no React)
 icons.jsx           ← window.Icon object
 sphere.jsx          ← window.Sphere, window.SphereOrb, window.ChatOverlay

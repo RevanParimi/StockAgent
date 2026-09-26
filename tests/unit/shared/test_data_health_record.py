@@ -28,6 +28,7 @@ from backend.shared.pipeline.base_orchestrator import BaseSectorOrchestrator
 from backend.shared.pipeline.unified_analyst import DIMENSIONS
 from core.schemas.pipeline import AgentOutput, StockQuery
 from services.data.context import bundle_builder as bb
+from services.data.context.fetch_result import FetchResult
 
 
 # ---------------------------------------------------------------------------
@@ -94,7 +95,9 @@ class TestSectionStatus:
 
     def _build(self, sector="renewable_energy", **fetchers):
         query = StockQuery(ticker="SUZLON", company_name="Suzlon Energy Ltd", nse_data={})
-        defaults = {name: "live text" for name in bb.SECTION_ORDER}
+        # SA-002: a verified section is a producer's typed `ok`, not any text.
+        defaults = {name: FetchResult("live text", bb.STATUS_OK, "fixture")
+                    for name in bb.SECTION_ORDER}
         defaults.update(fetchers)
         patchers = []
         for name, value in defaults.items():
@@ -137,27 +140,38 @@ class TestSectionStatus:
         bundle = self._build(commodities=bb.NOT_APPLICABLE)
         assert bundle.section_status["commodities"] == bb.STATUS_NOT_APPLICABLE
 
+    def test_untyped_text_is_unverified_not_ok(self):
+        """SA-002: a returned string is not proof of usable data. Text from a
+        producer that returns no FetchResult is `unverified`, whatever it says;
+        B2's blank and exact-marker rules still apply."""
+        bundle = self._build(company_news="some text", technicals="",
+                             flows_sentiment=bb.UNAVAILABLE)
+        assert bundle.section_status["company_news"] == bb.STATUS_UNVERIFIED
+        assert bundle.section_provenance["company_news"]["source"] == "untyped"
+        assert bundle.section_status["technicals"] == bb.STATUS_EMPTY
+        assert bundle.section_status["flows_sentiment"] == bb.STATUS_EMPTY
+
     def test_macro_cache_hit_is_recorded_by_the_branch_that_knows(self):
         """A cache hit looks like any other populated section from the outside,
         so `_fetch_macro_context` records it where the branch is taken."""
-        query = StockQuery(ticker="SUZLON", company_name="Suzlon Energy Ltd", nse_data={})
-        status: dict[str, str] = {}
-        with patch("services.data.fetchers.macro.get_macro_context", return_value="macro"), \
+        with patch("services.data.fetchers.macro.get_macro_result",
+                   return_value=FetchResult("macro", bb.STATUS_OK, "yfinance")), \
              patch("services.data.cache.macro_cache.get_macro_cache", return_value="cached news"):
-            text = bb._fetch_macro_context("renewable_energy", "fake-key", status)
+            result = bb._fetch_macro_context("renewable_energy", "fake-key")
 
-        assert status["macro_context"] == bb.STATUS_CACHE_HIT
-        assert "cached news" in text
+        assert result.status == bb.STATUS_CACHE_HIT
+        assert "cached news" in result.text
 
-    def test_macro_miss_leaves_the_status_to_the_classifier(self):
-        query = StockQuery(ticker="SUZLON", company_name="Suzlon Energy Ltd", nse_data={})
-        status: dict[str, str] = {}
-        with patch("services.data.fetchers.macro.get_macro_context", return_value="macro"), \
+    def test_macro_miss_with_news_is_ok(self):
+        with patch("services.data.fetchers.macro.get_macro_result",
+                   return_value=FetchResult("macro", bb.STATUS_OK, "yfinance")), \
              patch("services.data.cache.macro_cache.get_macro_cache", return_value=""), \
-             patch("services.data.fetchers.news.fetch_news_context", return_value="fresh news"):
-            bb._fetch_macro_context("renewable_energy", "fake-key", status)
+             patch("services.data.fetchers.news.fetch_news_result",
+                   return_value=FetchResult("fresh news", bb.STATUS_OK, "serper")):
+            result = bb._fetch_macro_context("renewable_energy", "fake-key")
 
-        assert "macro_context" not in status
+        assert result.status == bb.STATUS_OK
+        assert result.text == "macro\n\nfresh news"
 
     def test_has_real_data_is_unchanged_by_b2(self):
         """B2 is additive. `has_real_data` keeps its old meaning — including

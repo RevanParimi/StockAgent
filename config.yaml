@@ -617,9 +617,9 @@ ipo:
 # =============================================================================
 observability:
   # One data-health row per analysis run: what each of the 10 bundle sections
-  # returned (ok / cache_hit / empty / n/a / failed:<Type>), how many of the
-  # sector's dimensions the analyst actually scored, and a derived
-  # ok/degraded/hollow verdict. Written to data/logs/data_health.jsonl and
+  # returned (see the SA-002 statuses below), how many of the sector's
+  # dimensions the analyst actually scored, and a derived ok/degraded/hollow
+  # verdict with its reasons. Written to data/logs/data_health.jsonl and
   # telemetry.db.data_health.
   #
   # Why: a prod SUZLON run lost 3 of its 6 dimensions, shipped a BUY, and
@@ -639,6 +639,22 @@ observability:
   # first weeks of rows in hand.
   data_health_hollow_min_dimensions: 1
   data_health_hollow_min_live_sections: 1
+
+  # SA-002 (contract v2). Each section's status is now its producer's verdict
+  # (ok / cache_hit / stale / fallback / empty / n/a / unverified /
+  # failed:<Type>), not a guess from its text, and `ok` needs every dimension
+  # scored AND every applicable section verified and fresh. The sections
+  # below are also listed on their own in `essential_unusable`, because
+  # SA-003 gates recommendations on price and fundamental evidence.
+  data_health_essential_sections: [fundamentals, technicals, peers_valuation]
+  # Freshness bounds, in calendar days. A daily price series whose newest bar
+  # is older than 7 days is `stale` (a delisted or frozen symbol keeps
+  # returning its last bars; 7 covers weekends and holiday runs). A quarterly
+  # statement whose newest quarter ended more than 200 days ago is `stale`
+  # (results can arrive ~60 days after a quarter, which then stays newest
+  # for another ~90).
+  data_health_price_max_age_days: 7
+  data_health_fundamentals_max_age_days: 200
 
 # =============================================================================
 # Sector routing (Three Loops PI, task A1 — spec 2026-08-24 §2.1)

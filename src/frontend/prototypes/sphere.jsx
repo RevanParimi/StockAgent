@@ -133,14 +133,12 @@ function SphereOrb({ onOpen, mode='wireframe' }) {
 }
 window.SphereOrb = SphereOrb;
 
-// Markdown → HTML via marked.js (loaded from CDN in index.html).
-// Falls back to escaped plain text if marked isn't available.
+// Markdown → sanitized HTML for bot bubbles (SA-001). chat-markdown.js, loaded
+// by index.html, owns the marked + DOMPurify policy. Without it, show escaped
+// plain text — never raw marked output.
 function renderMd(text) {
   if (!text || text === '…') return text === '…' ? '…' : '';
-  if (window.marked) {
-    return window.marked.parse(text);
-  }
-  // Plain-text fallback — at least escape HTML so nothing breaks
+  if (window.saRenderChatMarkdown) return window.saRenderChatMarkdown(text);
   return text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
              .replace(/\n/g,'<br>');
 }
@@ -336,9 +334,9 @@ function ChatOverlay({ open, onClose, mode='wireframe' }) {
           };
           if (m.from === 'bot') {
             // Real-time markdown rendering + blinking cursor while streaming.
-            // OpenRouter delivers Qwen3 in ~60-char sentence fragments so markdown
-            // constructs (**bold**, list items) are nearly always complete per chunk.
-            // Any brief flicker on unclosed ** is imperceptible at this chunk cadence.
+            // The server streams the answer in 3-word chunks, so a partial text can
+            // end mid-tag; every partial is sanitized by renderMd before this sink,
+            // and only the constant cursor span is appended after it.
             let bubbleHtml;
             if (m.loading && !m.text) {
               bubbleHtml = '…';

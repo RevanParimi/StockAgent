@@ -182,6 +182,13 @@ Events: `intent` (sets/persists session_id + tier badge) · `tool_result` · `to
 The frontend (`sphere.jsx`) reads `/ui/chat/stream` as a streaming `fetch`, falling back to the
 blocking `/ui/chat` only if the stream fails.
 
+Every reply, partial or complete, is untrusted text. `renderMd` passes it to
+`chat-markdown.js` (SA-001). There, marked shows raw HTML as visible text, and DOMPurify
+keeps only Markdown tags and http(s) links, which open with `noopener noreferrer`. The
+result goes to the bubble's `dangerouslySetInnerHTML`, the client's only HTML sink. If
+marked or DOMPurify fails to load, the reply is shown as escaped text. `_sanitize_answer`
+on the server only formats the text; it is not a security control.
+
 ---
 
 ## Files
@@ -193,6 +200,8 @@ blocking `/ui/chat` only if the stream fails.
 | `core/intelligence/rl/nse_calendar.py` | `market_session()` — IST session resolver |
 | `scripts/model_bench.py` | Model-comparison harness (re-runnable; auto-scores fabrication / broken-output / latency / cost) |
 | `src/frontend/prototypes/sphere.jsx` | `ChatOverlay` — SSE reader, session_id state, tool-trace |
+| `src/frontend/prototypes/chat-markdown.js` | `saRenderChatMarkdown` — the Markdown → sanitized HTML boundary (SA-001) |
+| `tests/frontend/chat_markdown.test.mjs` | Real-browser test of that boundary through `ChatOverlay` (`npm run test:frontend`) |
 
 > `services/api/user_profile.py` (per-session tier detection) is currently **dormant** — it was
 > only used by the removed DAG. Retained for a future tier-adaptive verbosity feature.

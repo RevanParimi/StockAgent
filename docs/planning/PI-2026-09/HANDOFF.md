@@ -1,13 +1,244 @@
-# Current handoff - 2026-09-26 (updated about 06:40 IST)
+# Current handoff - 2026-09-26 (updated about 22:25 IST)
 
 ## START HERE — resume checklist, in order
 
 **0. Before any story work, check STATE `pending_production_checks`.** It holds the SA-039 `observe`
 verification: P1 due Mon 28 Sep 17:00 IST, P2 due Tue 29 Sep 17:00 and P3 due Thu 1 Oct 09:30. Run
 every check that is due and unrecorded (read-only; the steps are in the carry-over box on
-[SA-001](stories/SA-001.md)). Record each in the
-[activation record](evidence/SA-039-activation-2026-09-26.md) and in STATE. [SA-038](stories/SA-038.md)
-is the backstop.
+[SA-001](stories/SA-001.md), and [SA-003](stories/SA-003.md) carries a pointer to it). Record each in
+the [activation record](evidence/SA-039-activation-2026-09-26.md) and in STATE.
+[SA-038](stories/SA-038.md) is the backstop.
+
+**1. Next PI phase: implement [SA-003](stories/SA-003.md)** (gate recommendations and learning on
+essential data) in a new conversation. Opener: `Continue — implement SA-003`. Run step 0 first if
+a check is due by then. STATE: `active_task: null`, `next_task: SA-003`,
+`next_phase: implementation`. Its only dependency, SA-002, is now `done`.
+
+- **What SA-002 hands over** is in the "Routed input" section of the SA-003 card. Gate on the
+  record (`essential_unusable`, `section_status`), not on `has_real_data`. Only `ok` and
+  `cache_hit` count as usable.
+- **Run tests with a network guard.** Use `-p nonet` from ignored `analysis_data/sa002/nonet.py`
+  (`PYTHONPATH=analysis_data/sa002`), with `RL_LEARNING_MODE=adapt`. Without it, a missed patch
+  reaches real providers (see the incident in step 5). Check any date-relative fixture on 7
+  consecutive days; see the SA-005 note.
+- **Owner decision first (recommended): commit SA-001 and SA-002 before SA-003 starts.** Both are
+  accepted and uncommitted, and they share six files in one worktree. SA-003 will edit
+  `bundle_builder`, the orchestrator and the docs again. Without a commit, its manifest has to pin
+  a third story's bytes on top of two others'.
+  - For example, SA-003's KT §4 edit would sit in the same file as SA-001's and SA-002's
+    uncommitted status lines, and its review would have to tell the three apart.
+  - A commit is local and does not deploy; the push is a separate owner decision in a safe window.
+  - The commit checks are:
+    - `verify SA-001-manifest.json --rev <commit>` mismatches only in the KT, the PDF, ARCHITECTURE,
+      TEAM_TESTING_GUIDE and `CODEBASE.md`;
+    - `verify SA-002-manifest.json --rev <commit>` mismatches only in the same five files;
+    - then bump the KT header revision, and link `chat-markdown.js` and `fetch_result.py`.
+
+**2. SA-002 was ACCEPTED on 2026-09-26 by a fresh-session re-review** (a new conversation, about
+21:57–22:25 IST). Receipt: [SA-002-review.md](evidence/SA-002-review.md), under "Re-review". SA-002
+is `done`, and `production_verification` is `pending_deployment`. No SA-039 check was due.
+
+- **Input verified:**
+  - the review input `c88edda5…`: 19 files, 0 mismatches;
+  - the full diff `dc7e850b…` and the rework diff `56544c46…` both reproduced;
+  - the first review's blobs exist in the object database.
+- **M1 resolved, in one example.** Run as if on Monday 28 Sep, the whole contract file now passes.
+  The reviewer reran the 7-day sweep: 7 of 7 days pass 155 of 155. With the old fixture put back,
+  it fails on every day, through the guard.
+- **M2 resolved, in one example.** The reviewer's own fixture uses yfinance's real shape: every row
+  is NaN in the newest quarter (30 Jun), and the oldest column is sparse. The first review's code
+  says `ok`, as of 30 Jun. The reworked code says `fallback`, as of 31 Mar, and names 30 Jun.
+  - The same holds for three more shapes: the EBIT fallback row, a `pd.NA` nullable frame, and no
+    quarter reported.
+  - The prompt text is byte-identical to HEAD in 8 of 8 cases.
+- **Decided:** an older blank quarter keeps `ok`, as the first review specified. The growth figure
+  then shows `nan`, and SA-045's note covers it.
+- **New findings (both low, both predate SA-002):**
+  - **N1 → [SA-045](stories/SA-045.md).** The prompt's "Revenue YoY" compares the newest quarter
+    with the one three quarters back. Revenue growing 10% a quarter shows +33.1%, where the true
+    year-over-year change is +46.4%.
+  - **T3 → [SA-005](stories/SA-005.md).** The full run failed 2 tests on Windows rename flakes.
+    `test_delivery_api` fails 2 of 5 runs even alone, and `test_ops_alerts` loses its streak when a
+    save fails.
+- **Tests:**
+  - focused: 289 passed, with 0 connections blocked;
+  - full: 3321 passed, 2 failed (the flakes above), 5 skipped; the guard blocked the pre-existing
+    194;
+  - `check_kt_docs`: 0 errors.
+- **Docs:** status wording in the KT (§1, §4, §11, §12), ARCHITECTURE, 02-F and `CODEBASE.md`. The
+  PDF is rebuilt (source `333895c4…`). `verify SA-002-manifest.json` now mismatches exactly those
+  five files.
+- **Rollout (owner, after commit and push):** follow the "Rollout" section of the
+  [implementation receipt](evidence/SA-002-implementation.md). It is additive: 7 nullable columns,
+  and expect more `degraded` rows. Verify read-only across one scheduled cohort. Rollback is
+  `observability.data_health_enabled: false`.
+- Nothing was committed, pushed or deployed.
+
+**3. The SA-002 rework was done on 2026-09-26** (a new conversation, about 20:50–21:30 IST).
+The rework section is in the [implementation receipt](evidence/SA-002-implementation.md). No
+SA-039 check was due.
+
+- **M1, in one example.** Before, running on Monday 28 Sep made the fake "fresh" series end on
+  Sunday. pandas 3 then built 299 dates for 300 values, so technicals read `empty` and 5 tests
+  failed.
+  - Now `_bars` rolls weekend dates back to the last session.
+  - 14 guard tests pin a fixed Mon–Sun week and do not depend on the run day.
+  - The whole contract file passes as if run on each of 7 days (Sun 27 Sep – Sat 3 Oct).
+  - With the old fixture body put back, the original tests fail only on Sun, Mon and Tue, but the
+    guard fails on every day.
+- **M2, in one example.** Before, yfinance listing the quarter ended 27 Aug with NaN figures made
+  fundamentals read `ok`, as of 27 Aug.
+  - Now they read `fallback`, as of 28 May (the newest fully reported quarter), and the reason
+    names the blank quarter. The row is `degraded`.
+  - NaN, `None` and infinity all count as missing. The new key is `get_financials`
+    `missing_values`.
+  - The prompt text is byte-identical to HEAD in 13 of 13 cases.
+  - Three runtime mutations are each caught: 9, 9 and 2 failing tests.
+- **I1** had already been corrected in the receipt and in step 5 below before the rework began.
+  The rework checked that no doc repeats the claim.
+- **Tests:**
+  - contract file: 155 passed (132 before + 23 new);
+  - focused: 289 passed, with 0 connections blocked;
+  - full: 3323 passed, 5 skipped, 0 failed; the guard blocked the pre-existing 194;
+  - `check_kt_docs`: 0 errors; the PDF was rebuilt (source `0979ad97…`).
+- **Docs:** status wording in the KT (§1, §4, §11, §12), ARCHITECTURE, TEAM_TESTING_GUIDE 02-F and
+  `CODEBASE.md`. The KT §4 `fallback` meaning now includes a blank newest quarter, and 02-F gains
+  that expectation. Routed: a note on [SA-045](stories/SA-045.md) (the Growth factor must read
+  `missing_values`).
+- Nothing was committed, pushed or deployed.
+
+**4. The SA-002 fresh review requested changes on 2026-09-26** (a new conversation, about
+13:20–14:00 IST). Receipt: [SA-002-review.md](evidence/SA-002-review.md).
+
+- **Input verified:** `4d8968fd…`, 19 files, 0 mismatches; the diff digest `f605966c…` reproduced.
+- **The production code has no critical or high defect:**
+  - every essential producer decides its status from structured data;
+  - the analyst's only input is the bundle, and nothing branches on the row;
+  - the migration is additive, and there is no new secret sink.
+- **The reviewer's own fixtures:**
+  - A frozen symbol reads `stale` on all three essential sections (`degraded`). Correct.
+  - Serper over quota reads `degraded`, with no essential section flagged. Correct.
+  - With B2's rule put back at runtime, 100 of 104 health tests fail. Correct.
+- **Why changes were requested, in one example.** Run the suite on Monday 28 Sep. The fake
+  "healthy" price series then ends on Sunday 27 Sep. The test helper cannot build a price frame
+  ending on a weekend, so the healthy technicals read `empty`, and 5 tests fail. They passed on
+  2026-09-26 only because that was a Saturday.
+  - **Second finding:** yfinance lists a quarter ended 30 days ago with no figures in it. The row
+    says fundamentals `ok`, as of that quarter, while the prompt shows `₹nanCr`.
+- **Tests:**
+  - focused: 266 passed, with 0 connections blocked;
+  - full: 3299 passed, 1 failed, 5 skipped. The failure is a Windows rename flake in
+    `test_delivery_api`, which passes 16 of 16 alone; routed to SA-005. The guard blocked 194
+    connections, the pre-existing set;
+  - `check_kt_docs`: 0 errors.
+- **Routed:** L1 (the Gross Profit EBITDA proxy) to SA-045; the flake and date-dependent fixtures
+  to SA-005.
+- **Doc edits:** status wording in the KT, ARCHITECTURE, TEAM_TESTING_GUIDE 02-F and CODEBASE.md,
+  and the PDF is rebuilt. Nothing was committed, pushed or deployed.
+
+**5. SA-002 was implemented on 2026-09-26** (a conversation from about 10:24 to 11:20 IST). Its
+fresh review requested changes (step 4); the rework is step 3, and the re-review accepted it (step 2).
+
+- **What it does, in one example:** TATAMOTORS' price source answers 404, while news, macro and
+  flows answer, and the analyst scores 9/9.
+  - Before, the data-health row said `ok`, with 10 live sections: every "Technical data
+    unavailable for …" sentence counted as data.
+  - Now each section producer returns a typed `FetchResult` (status, source, as-of, reason), so
+    technicals and fundamentals read `empty`, peers valuation `fallback`, and the row `degraded`,
+    with `essential_unusable` naming all three.
+  - The analyst's prompt text is byte-identical: 24 producer cases and 5 whole-bundle scenarios
+    were compared against the HEAD code.
+  - Nothing branches on the row yet; SA-003 gates.
+- **Evidence:**
+  - 132 new tests;
+  - the full unit suite: 3300 passed, 5 skipped, under a network guard;
+  - 12 of 12 reintroduced defects caught;
+  - `check_kt_docs`: 0 errors; the PDF was rebuilt.
+- **Incident (recorded in the receipt).** One intermediate run of the existing sector tests, before
+  their patches were retargeted, reached real providers with the local `.env` keys. It made +2
+  Serper and +10 Tavily successful calls, plus public yfinance calls. The 8 Tavily cache pairs it
+  wrote were deleted. Nothing in production was touched.
+- **Found, pre-existing (routed to SA-005 as T2).** With the guard on, the *existing* suite tried
+  194 outbound connections: `openrouter.ai` 120 (four RL review test files), NSE 68 and Serper 6.
+  The pre-SA-002 code shows the same pattern. **In a normal unguarded run with `.env` keys, these
+  are real calls, and the OpenRouter ones likely spend LLM credit on every suite run.** Consider
+  running the suite with the guard until SA-005 lands.
+- **Other routed notes:** SA-003 (gate on the record, not `has_real_data`), SA-044 (F1: the
+  automobile peer P/E fallback query), SA-045 (F3: substitute zeros and defaults as factor inputs).
+- **Rollout (owner, after acceptance).** Deploy is additive: 7 nullable DB columns are added on
+  boot, and old rows are untouched. Expect more `degraded` rows, which is the point. Tavily cache
+  entries from September read `unverified` until 1 Oct.
+- **Serper credit, answered (owner, 2026-09-26):** the serper.dev dashboard shows **37,747 credits
+  left**. The app's "2,590 of 2,500" was never a limit: `SERPER_MONTHLY_LIMIT` only feeds the usage
+  log, and no code enforces it. Recorded on [SA-035](stories/SA-035.md). This closes the open
+  "check serper.dev for real remaining credits" item from 23 Sep. IPO-0c's decision (GMP stays
+  dark) stands on its own reasons.
+
+  Rollback: `observability.data_health_enabled: false`. Production verification is read-only,
+  across one scheduled cohort; see the receipt.
+- **Commit interaction.** SA-001 and SA-002 are both uncommitted in one worktree and share six
+  files. If they are committed together, SA-001's commit check will also show `CODEBASE.md`, which
+  is SA-002's hunk. The receipt explains. Commit and push only at the owner's word, in a safe
+  window.
+
+**6. SA-001 was ACCEPTED on 2026-09-26 by a fresh-session review** (a new conversation, about
+07:35–07:55 IST). Receipt: [SA-001-review.md](evidence/SA-001-review.md). SA-001 is `done`;
+`production_verification` is `pending_deployment`. No SA-039 check was due during the review.
+
+- **What the review checked:**
+  - The input was verified first: `2ded4b43…`, 17 files, 0 mismatches, on baseline `103f2b8`.
+  - The reviewer re-traced model and tool text to every client sink. There is one HTML sink, the
+    bubble; the only URL sink, `sw.js` `openWindow`, takes server constants.
+  - The previously executable fixture was re-run on the pre-fix files: 0 of 14 pass, and
+    `img-onerror`/`img-split` execute. The reviewed files pass 14 of 14.
+  - 20 of the reviewer's own payloads went through at every prefix: 0 executions, and the output is
+    stable on re-parse.
+  - The live CDN bytes equal all five SRI hashes.
+  - Focused pytest: 12 passed. `check_kt_docs`: 0 errors, after the review's status-wording edits
+    and the PDF rebuild.
+- **Findings:** none critical, high or medium.
+  - **L1 (low):** the browser suite skips on machines without Node, and the repo has no CI. Routed
+    to [SA-005](stories/SA-005.md). Until then, run `npm run test:frontend` before any push that
+    touches `src/frontend/prototypes/`.
+  - **I1 (info):** the harness flags an inert partial `href="https://"`. Noted on
+    [SA-028](stories/SA-028.md).
+- **Uncommitted in the worktree:**
+  - the SA-001 implementation (the 17 manifest files, plus its receipt and manifest);
+  - the review bookkeeping: the review receipt, STATE, this file, and the notes on SA-005, SA-028
+    and SA-002;
+  - status wording in the KT, the PDF, ARCHITECTURE and TEAM_TESTING_GUIDE.
+
+  Commit at the owner's word. Before committing, run
+  `python scripts/docs/kt_manifest.py verify docs/planning/PI-2026-09/evidence/SA-001-manifest.json --rev <commit>`.
+  Expect mismatches only in `TECHNICAL_DESIGN.md`, the PDF, `ARCHITECTURE.md` and
+  `TEAM_TESTING_GUIDE.md`. Bump the KT header revision to the commit, and link `chat-markdown.js`
+  there. `994a7b6` and `103f2b8` are also still unpushed.
+- **What it does, in one example:** the model quotes `Tata Motors <img src=x onerror="…">`. Before,
+  the chat bubble created the image and the handler ran, next to the stored login token. Now the
+  bubble shows that text literally, and nothing runs. Bold, lists, code, tables and https links
+  still render. Links open in a new tab that cannot reach the app.
+- **How:** the new `src/frontend/prototypes/chat-markdown.js` has two layers:
+  - marked shows raw HTML as text;
+  - DOMPurify 3.4.16 keeps Markdown tags and http(s) links only, with no images, styles or events.
+
+  It fails closed to escaped text. index.html pins marked 12.0.2 (the same bytes as before) and
+  DOMPurify with SRI, and takes marked off `window` immediately. That covers a pre-fix `sphere.jsx`
+  still cached by the service worker, which goes to v8.
+- **Evidence:**
+  - 14 real-browser tests through the actual `ChatOverlay`, with no network, stable over 3 runs;
+  - 9 static pytest guards (the sink inventory, including URL sinks, and the exact pins);
+  - full unit suite: 3166 passed, 5 skipped (with `RL_LEARNING_MODE=adapt`);
+  - on the pre-fix files the suite records the fixture executing, and five weakened fixes are each
+    caught;
+  - `check_kt_docs`: 0 errors, and the PDF is rebuilt.
+- **Routed:** CSP and bearer-token storage go to [SA-028](stories/SA-028.md) (a routed note). CSP
+  needs the compiled client first.
+- **Rollout (owner):** commit at the owner's word, and bump the KT header to that commit, linking
+  `chat-markdown.js`. Every push redeploys, so push only in a safe window (step 0 rules; read IST
+  with plain `date`). This change affects the served client. After the deploy, open the app twice so
+  sw v8 takes over, then run human case 11-C in an isolated test account. The fixture only changes
+  the tab title if it ever runs. Also confirm that `marked@12.0.2` and `dompurify@3.4.16` load with
+  status 200 and no SRI error. `production_verification` stays `pending_deployment` until then.
 
 **2026-09-26, owner-adopted design (no story started): [one engine with sector lenses](../../superpowers/specs/2026-09-26-one-engine-sector-lenses-design.md).**
 This is the single reference for both the learning-exit logic (§1) and the analysis redesign.

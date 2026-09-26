@@ -9,6 +9,7 @@ Public API
 get_commodity_prices()      → dict
 get_inr_usd_rate()          → float
 get_macro_context()         → str   (formatted for prompt injection)
+get_macro_result() / get_raw_materials_result() → FetchResult (SA-002)
 """
 
 from __future__ import annotations
@@ -218,8 +219,11 @@ def get_raw_materials_context() -> str:
     Returns a formatted string summarising raw material prices for prompt injection.
     Used by ContextBuilder._build_raw_materials().
     """
-    prices = get_raw_material_prices()
+    return _format_raw_materials(get_raw_material_prices())
 
+
+def _format_raw_materials(prices: dict) -> str:
+    """The prompt text, byte-identical to the pre-SA-002 context string."""
     steel     = prices.get("steel_etf", {})
     aluminium = prices.get("aluminium_stock", {})
     platinum  = prices.get("platinum_etf", {})
@@ -308,6 +312,7 @@ def get_rbi_repo_rate() -> dict[str, str]:
             "stance": settings.RBI_REPO_RATE_STANCE,
             "note": f"Source: settings fallback (live fetch failed; update settings.RBI_REPO_RATE_PCT)",
             "fetched_at": _date.today().isoformat(),
+            "fallback": True,   # SA-002: a configured value, not a fetched one
         }
         # Log staleness warning
         try:
@@ -326,12 +331,75 @@ def get_rbi_repo_rate() -> dict[str, str]:
 def get_macro_context() -> str:
     """
     Returns a formatted string summarising macro indicators for prompt injection.
+
+    Raises (TypeError/ValueError from the format specs) when a core indicator
+    has no value — callers rely on that; `get_macro_result` reports it instead.
     """
     inr = get_inr_usd_rate()
     crude = get_crude_oil_price()
     commodities = get_commodity_prices()
     rbi = get_rbi_repo_rate()
+    return _format_macro(inr, crude, commodities, rbi)
 
+
+_MACRO_CORE = (("INR/USD", "inr"), ("crude WTI", "crude"),
+               ("steel", "steel_etf"), ("aluminium", "aluminium_stock"))
+
+
+def get_macro_result():
+    """
+    `get_macro_context` as a `FetchResult` (SA-002). A core indicator without
+    a value is reported as `empty`, naming it, instead of surfacing as a
+    format-spec TypeError; the bundle then renders the section `unavailable`,
+    as it did when this raised. A missing rubber proxy or the RBI settings
+    fallback is named in `reason` without changing the status: neither is a
+    core indicator.
+    """
+    from services.data.context.fetch_result import (
+        STATUS_EMPTY, STATUS_OK, FetchResult, join_reasons,
+    )
+
+    inr = get_inr_usd_rate()
+    crude = get_crude_oil_price()
+    commodities = get_commodity_prices()
+    rbi = get_rbi_repo_rate()
+
+    core = {"inr": inr, "crude": crude, **commodities}
+    missing = [label for label, key in _MACRO_CORE
+               if (core.get(key) or {}).get("current") is None
+               or (core.get(key) or {}).get("change_3m_pct") is None]
+    if missing:
+        return FetchResult("", STATUS_EMPTY, "yfinance",
+                           reason="no value for " + ", ".join(missing))
+    return FetchResult(
+        _format_macro(inr, crude, commodities, rbi), STATUS_OK, "yfinance",
+        reason=join_reasons([
+            "rubber proxy unavailable" if "rubber_futures" not in commodities else None,
+            "RBI repo rate from settings fallback" if rbi.get("fallback") else None,
+        ]),
+    )
+
+
+def get_raw_materials_result():
+    """
+    `get_raw_materials_context` as a `FetchResult` (SA-002): `empty` when no
+    raw-material price came back (the text then shows `$None` on every line),
+    `ok` otherwise with the missing ones named in `reason`.
+    """
+    from services.data.context.fetch_result import STATUS_EMPTY, STATUS_OK, FetchResult
+
+    prices = get_raw_material_prices()
+    text = _format_raw_materials(prices)
+    missing = [name for name in _RAW_MATERIAL_TICKERS
+               if (prices.get(name) or {}).get("current") is None]
+    if len(missing) == len(_RAW_MATERIAL_TICKERS):
+        return FetchResult(text, STATUS_EMPTY, "yfinance", reason="no raw-material price returned")
+    return FetchResult(text, STATUS_OK, "yfinance",
+                       reason=("no price for " + ", ".join(missing)) if missing else None)
+
+
+def _format_macro(inr: dict, crude: dict, commodities: dict, rbi: dict) -> str:
+    """The prompt text, byte-identical to the pre-SA-002 context string."""
     steel = commodities.get("steel_etf", {})
     aluminium = commodities.get("aluminium_stock", {})
     rubber = commodities.get("rubber_futures", {})

@@ -8,12 +8,15 @@
  */
 // v7: home.jsx now passes the session token as a WebSocket subprotocol, so the
 // cached shell must refresh or /ws/stream is rejected until revalidation.
-const VERSION = 'v7';
+// v8 (SA-001): chat Markdown is sanitized by chat-markdown.js; drop the cached
+// pre-fix sphere.jsx and the unpinned marked@12 CDN entry.
+const VERSION = 'v8';
 const SHELL_CACHE = `sa-shell-${VERSION}`;
 const RUNTIME_CACHE = `sa-runtime-${VERSION}`;
 
 const SHELL = [
   '/', '/index.html', '/styles.css', '/manifest.json',
+  '/chat-markdown.js',
   '/data.jsx', '/icons.jsx', '/sphere.jsx', '/auth.jsx', '/home.jsx',
   '/agents-page.jsx', '/portfolio.jsx', '/learn.jsx', '/tweaks-panel.jsx',
   '/prompt-lab.jsx', '/analytics.jsx', '/logs.jsx', '/rl-data.jsx', '/rl-monitor.jsx',

@@ -22,7 +22,7 @@ it is not an implemented human-approval workflow.
 | Current code | Traced in this checkout. Flags, inputs and runtime data determine whether a path actually runs. |
 | Locally checked | Existing tests run in an isolated copy. Exact results and limits are in the [validation receipt](planning/PI-2026-09/evidence/DOC-001-implementation.md). |
 | Production observation | Dated evidence: the September 10 audit, section 10's 2026-09-21 email diagnosis, a September 15 deployment SUCCESS at `9a805878`, the 2026-09-23 read-only log inspection of learned weights, and the 2026-09-24 [SA-039 weight baseline](planning/PI-2026-09/evidence/SA-039-baseline-2026-09-24.md). Those logs came from deploy `d9c459ae` (commit `e8df088`). Deploys carrying the header revision's code were inspected read-only on 2026-09-25 (`7ebd06c5`: the 16:30 review ran in `adapt`) and on 2026-09-26 (`da9df6cf`: all 20 tickers in `observe`, per the [activation record](planning/PI-2026-09/evidence/SA-039-activation-2026-09-26.md)). |
-| PI target | Intended behavior, not completed functionality. SA-039 was accepted by its fresh review on 2026-09-25, and production has run `observe` since 2026-09-26 ([activation record](planning/PI-2026-09/evidence/SA-039-activation-2026-09-26.md); verification after the next reviews is pending). Every other story from SA-001 to SA-047 is `todo`. Three are stretch. |
+| PI target | Intended behavior, not completed functionality. SA-039 was accepted by its fresh review on 2026-09-25, and production has run `observe` since 2026-09-26 ([activation record](planning/PI-2026-09/evidence/SA-039-activation-2026-09-26.md); verification after the next reviews is pending). SA-001 (chat rendering) was accepted by its fresh review on 2026-09-26 ([review](planning/PI-2026-09/evidence/SA-001-review.md)); it is not yet committed or deployed. SA-002 (data health) was accepted by its fresh re-review on 2026-09-26, after a rework of its test fixtures and one fundamentals case ([receipt](planning/PI-2026-09/evidence/SA-002-implementation.md), [review](planning/PI-2026-09/evidence/SA-002-review.md)); it is not yet committed or deployed. Every other story from SA-003 to SA-047 is `todo`. Three are stretch. |
 
 The [September audit](audit/2026-09-10-repository-production-review.md) records
 unresolved label, timing, health, weight-bound and operational defects.
@@ -197,9 +197,46 @@ not prove no advice was issued.
 the bound verdict. A different LLM `final_score` is a different field, not
 necessarily an arithmetic error.
 
-**Current gap:** durable health exists, but empty/failed data and downstream
-eligibility do not form a reliable gate. A surviving subset can still produce
-an actionable report. SA-002 defines usable health; SA-003 gates action and
+**Data health (SA-002: accepted 2026-09-26 by its fresh re-review, after a
+rework; not committed or deployed; newer than the header revision).** Every unified run
+writes one data-health row, to `data/logs/data_health.jsonl` and `telemetry.db`.
+Before SA-002 a section's status was guessed from its text, so any nonempty
+sentence read `ok`, including "Technical data unavailable for TATAMOTORS" and
+"[No results for: …]". The row's `health` looked at dimension counts only. On
+2026-08-26 two TATAMOTORS runs against a price source answering HTTP 404 were
+recorded `ok`, with 10 live sections and 9/9 dimensions. Now every section
+producer returns a typed result (`services/data/context/fetch_result.py`): a
+status, the source, the as-of date of its newest datum, and a reason. The
+producer decides the status from its structured data, not from its sentence.
+
+- `ok` and `cache_hit` mean verified data. `stale` means older than the
+  freshness bound: a newest price bar over 7 days old, or a newest reported
+  quarter over 200 days old. `fallback` means a core figure was replaced by
+  search snippets or substituted zeros, or the newest listed quarter has no
+  figure (yfinance lists an announced quarter as NaN before its results are
+  filled in; `as_of` is then the newest quarter with figures). An older
+  quarter without a figure is named in the reason only. `empty` means
+  nothing came back; `n/a` means deliberately not fetched; `failed:<Type>`
+  means an exception.
+  `unverified` means plain text with no typed result.
+- A row is `ok` only when every dimension scored and every applicable section
+  is verified and fresh. Otherwise it is `degraded`, or `hollow` (thresholds
+  unchanged), and `health_reasons` says why. Fundamentals, technicals and peers
+  valuation are also listed in `essential_unusable`; SA-003 will gate on them.
+- A Tavily month-cache entry now records how many results it held, so a cached
+  "no results" stays `empty` for the rest of the month.
+- New rows carry `contract_version: 2`. Older rows stay as written and are read
+  as version 1 with unknown provenance, not upgraded.
+
+**Example:** the price source answers 404 for TATAMOTORS while news, macro and
+flows answer. The analyst's prompt text is unchanged. The row now says
+`degraded` with `essential technicals=empty`, `essential fundamentals=empty` and
+`essential peers_valuation=fallback`, where it used to say `ok`. Nothing
+branches on the row yet, so no recommendation changes until SA-003.
+
+**Current gap:** health is recorded truthfully once SA-002, now accepted, is
+deployed, but empty or stale essential data does not yet form a gate. A surviving subset
+can still produce an actionable report. SA-003 gates action and
 learning; SA-008 handles unresolved instruments; SA-010 corrects benchmark
 arguments. SA-025 measures calls before SA-026 consolidates sector definitions
 and SA-027 retires only justified fallback duplication.
@@ -607,8 +644,33 @@ editing can feed scheduled publishing. These are not inert testing screens.
 Bearer sessions, roles and machine-key authentication are implemented;
 portfolio identity comes from the authenticated user. Some intelligence read
 routes remain public. The RL client has demo/fallback paths on API failure,
-so populated charts alone do not prove live data. SA-001 repairs unsafe
-Markdown rendering; SA-024/SA-032 address evidence and public/demo policy.
+so populated charts alone do not prove live data. SA-024/SA-032 address
+evidence and public/demo policy.
+
+**Chat rendering (SA-001: accepted by its fresh review on 2026-09-26, not yet
+committed or deployed; newer than the header revision).** Chat replies are untrusted text:
+the model quotes news snippets and tool output. Before SA-001,
+[sphere.jsx](../src/frontend/prototypes/sphere.jsx) passed them through marked
+straight into `dangerouslySetInnerHTML`, so a quoted `<img src=x onerror=…>`
+ran its handler in the browser (audit F01), next to the stored bearer token.
+Now `renderMd` delegates to a new plain script, `chat-markdown.js`. index.html
+loads it after marked 12.0.2 and DOMPurify 3.4.16, both exact versions with SRI
+hashes. There are two layers:
+
+- marked shows any raw HTML in a reply as visible text; the chat prompt asks
+  for Markdown only.
+- DOMPurify then keeps only Markdown's own tags. Links must be http(s) and open
+  in a new tab with `noopener noreferrer`. Images, styles, classes and event
+  attributes are dropped.
+
+For example, a reply quoting `<img src=x onerror=…>` now shows that string as
+text; bold, lists, code fences, tables and https links still render. If either
+library fails to load, the reply is shown as escaped text. The raw parser is
+taken off `window`, so a pre-fix `sphere.jsx` still cached by the service worker
+also falls back to text; the worker's cache version moves to v8. That bubble is
+the client's only HTML sink, and a unit test keeps it so.
+`npm run test:frontend` drives the real ChatOverlay in Chromium with hostile
+fixtures and no network.
 
 Durable logs connect run IDs, tickers, warnings, LLM usage and health. Bundle
 call counters are not complete nested-provider/fallback cost accounting;
@@ -623,7 +685,7 @@ HTTP responses do not prove recovery or successful jobs.
 |---|---|---|
 | Sector routing | Shared graph selection via registry. | Complete store lineage, and sector lenses resolved from NSE's industry field ([one-engine design](superpowers/specs/2026-09-26-one-engine-sector-lenses-design.md); SA-026). |
 | Analysis | Unified scoring plus surviving legacy fallback. | Actual call accounting. A factor engine (computed factors, one text reader, code decides, LLM explains) proven in shadow, then the graphs and fallback retired (SA-044–SA-047, SA-027). |
-| Data health | Durable health/run records. | Usable-data semantics and recommendation/learning gates. |
+| Data health | Durable health/run records. Producer-typed section status and usable-data health (SA-002, accepted 2026-09-26, not deployed). | Recommendation/learning gates on essential data (SA-003). |
 | Verdict binding | Deterministic category enabled in YAML, raw model verdict logged. | Correct issue-time grading and final adaptive constraints. |
 | Portfolio | Per-user advice/execution, stops, switches and ledgers. | Stronger upstream evidence and report reconciliation. |
 | IPO | Calendar, history, snapshots, recent-listing screening, size-tiered brief lean, and the dark P3 model, deep dive, narrator and forward-grading lane (section 8). | Forward evidence for P3 and its `ipo_verdicts_visible_gate`; no verdict reaches a user; outside default September scope. |
@@ -638,7 +700,9 @@ Legacy code should only be retired with measured replacement coverage.
 ## 12. PI changes included now
 
 The table below includes the planned destination now. **SA-039 is accepted
-(production `observe` since 2026-09-26); every other SA story is `todo`.** Accepted
+(production `observe` since 2026-09-26). SA-001 is accepted and
+not yet deployed. SA-002 is accepted, after a rework, and not yet deployed.
+Every other SA story is `todo`; SA-003 is next.** Accepted
 state/dependencies are in
 [STATE.json](planning/PI-2026-09/STATE.json). DOC-001 is this user-requested
 documentation refresh; it does not close SA-031 or any upstream remediation.

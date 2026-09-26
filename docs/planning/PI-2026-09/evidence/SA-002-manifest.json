@@ -1,0 +1,129 @@
+{
+  "story": "SA-002",
+  "phase": "implementation (rework after the fresh review requested changes)",
+  "baseline_commit": "103f2b8171c0d6365525f9450d41091306ebf22c",
+  "baseline_note": "HEAD 103f2b8 plus the accepted, uncommitted SA-001 worktree (review input 2ded4b4381a007e51579d95e652bb448ab75f50155b6e7003d98f6b6d320058f). Diff every file below against pre_sa002_blobs when listed there, otherwise against 103f2b8:<path>.",
+  "pre_sa002_blobs": {
+    "CODEBASE.md": "425e5bacd45d8d50b1b582a05ea1352768d06190",
+    "docs/ARCHITECTURE.md": "518e23893ea79eddfb758c5676e19c74f4bba62a",
+    "docs/TEAM_TESTING_GUIDE.md": "5b2c189a51bfe7a4aeb647d82b142d85ff9cd8d4",
+    "docs/TECHNICAL_DESIGN.md": "08e8b9a213a41d8300e01ce9ffb01084a64a598a",
+    "docs/StockAgent-Three-Loops.pdf": "c8bfa135075d5a4220ce678cecd379e70d7065f8",
+    "config.yaml": "bfdcd5ad8a72e64ff2a5d2339f139d6f36edb1ff"
+  },
+  "pre_sa002_blobs_note": "Stored in this checkout's object database with `git hash-object -w` before any SA-002 edit (they are the SA-001-accepted bytes plus the SA-001 review's status edits). Another checkout will not have them.",
+  "new_files": [
+    "services/data/context/fetch_result.py",
+    "tests/unit/shared/test_data_health_contract.py"
+  ],
+  "date": "2026-09-26",
+  "previous_review_input": {
+    "manifest": "docs/planning/PI-2026-09/evidence/SA-002-manifest-review1.json",
+    "sha256": "4d8968fdf6bf7971429e63f16c296ec174f0e0f050a7a102e69d3ebd611b0f79",
+    "verdict": "changes_requested (M1, M2, I1)"
+  },
+  "review1_blobs": {
+    "services/data/fetchers/fundamentals.py": "2a9acfb12e0356aa8093e8033188154b32109884",
+    "tests/unit/shared/test_data_health_contract.py": "996149d52d90fa5d51c5c07db7b0af2117165a53"
+  },
+  "review1_blobs_note": "The first review's input bytes of the two code/test files the rework changed. Rebuilt by reversing the rework's edits, reproducing these pinned ids, and stored with `git hash-object -w` in this checkout only. The rework-only diff is taken against them.",
+  "excluded": "STATE.json, HANDOFF.md, SA-002-implementation.md, this manifest, SA-002-manifest-review1.json, the SA-002 story box, and the routed notes on SA-003, SA-005, SA-044 and SA-045 (bookkeeping written around the manifest)",
+  "hash_convention": "git blob bytes after .gitattributes normalization (CRLF->LF for text, binary unchanged); verify with scripts/docs/kt_manifest.py verify",
+  "files": [
+    {
+      "path": "CODEBASE.md",
+      "git_blob": "c66db10d6d39f1abfc505156d5590bd8e71b2404",
+      "sha256": "5834997149a6526c25d5595b7b9805246a520d7ada862fff6b17d97e7563bd83"
+    },
+    {
+      "path": "config.yaml",
+      "git_blob": "a8b80293c9d35cabe27f1f0d1b29ccd1ee2443b6",
+      "sha256": "687f7c200cfcd538c781b29f2122af75729a28b9eedf279774a6bd5222004cc1"
+    },
+    {
+      "path": "core/intelligence/algorithms/indicators/fetcher.py",
+      "git_blob": "4364c6ad2aa2331989892facba3b5004baa7d90e",
+      "sha256": "996efa9dcbd0592d61f0111018d83edf0a19960405bdb1b2f50726e59164e64a"
+    },
+    {
+      "path": "docs/ARCHITECTURE.md",
+      "git_blob": "2898065985961aff03f7512836a4c30c75fc42e2",
+      "sha256": "b688ff13159268151d1f0bd3a56303a070d99ad32a412cacabaef742ab922d8e"
+    },
+    {
+      "path": "docs/StockAgent-Three-Loops.pdf",
+      "git_blob": "1164840dcffe479c149722c5d23bed8f2b8274a4",
+      "sha256": "b20c0b0e34dd144e4aef2fa879708bc422c2cfedef9de6ed9afbe1da5f6e2909"
+    },
+    {
+      "path": "docs/TEAM_TESTING_GUIDE.md",
+      "git_blob": "346fd7a4f0eff26921ed05455f23f857f2d1b405",
+      "sha256": "facea8bf56afe1cae4b82139ef5f589453dab78290777345dd678f91fa572a09"
+    },
+    {
+      "path": "docs/TECHNICAL_DESIGN.md",
+      "git_blob": "a4c019204bfaf2ee771fc71a6af50d8008e64647",
+      "sha256": "0979ad977d54f09afb4ccdd64385e9dba92676532a76dca7eb62dbf68804e74b"
+    },
+    {
+      "path": "services/clients/tavily_fetcher.py",
+      "git_blob": "c0371d8284b0452e53213b16e76883ff593ae23d",
+      "sha256": "59fc789ee29489a5b0004b9c1bd5aef0272fb89f490f8501815452cb7c52d182"
+    },
+    {
+      "path": "services/data/context/bundle_builder.py",
+      "git_blob": "29ca71ad7f8f9a7322066c359300652df6d36c14",
+      "sha256": "7e695184ca0a8f9afd8b22454b289845266cc22eb9976d33638722fd0de9f32c"
+    },
+    {
+      "path": "services/data/context/fetch_result.py",
+      "git_blob": "d079b3da2b6c0e05be63018599bc5f5a7827e9e1",
+      "sha256": "748324dc19779fe0e639a8ec9ce72aa3c3d209e8f65a05ca1fc659382a059109"
+    },
+    {
+      "path": "services/data/fetchers/fundamentals.py",
+      "git_blob": "7417dd11f2a7a71d5d8362594a111cb72b912b70",
+      "sha256": "ac265ce4157b9210f506c677273d1940e3676414039c4f53779b19036dd93db6"
+    },
+    {
+      "path": "services/data/fetchers/macro.py",
+      "git_blob": "5b193eef5acff679dd262bdb262a500c7d5d6dac",
+      "sha256": "c3f7c46a2a9e785fc389d4968ccb7c36f0b545a41184fe57e463b3d62ea9927d"
+    },
+    {
+      "path": "services/data/fetchers/news.py",
+      "git_blob": "065f4ff68bf9c1d03cbfa7734b22df59b943e6f3",
+      "sha256": "5a288df5169bad05ed77476a082ac6d2566d2add3e903028e4ee0fb2e062c46a"
+    },
+    {
+      "path": "services/data/stores/data_health.py",
+      "git_blob": "b53ef0608b924a41699bf2adb7e0a27240789d43",
+      "sha256": "ebfb08c24d6e4034cb437fd5be7fd10723fafd0c98f342a428b09d5b5be0627f"
+    },
+    {
+      "path": "services/data/stores/log_store.py",
+      "git_blob": "d03b4c84a40801e1d2f2eae125970e0552adb62d",
+      "sha256": "d9c2ec733e57973c2ca50a65628c9f12467a01bcab8ef5ec1d4becbca0dadacc"
+    },
+    {
+      "path": "src/backend/shared/pipeline/base_orchestrator.py",
+      "git_blob": "3ad20bf9d427ac81a9591f30e3b9cae0c4bac071",
+      "sha256": "14b0e4f0f550fcba333ac3c669694f70b43b046b5bc56dbd28ab2bf78a9781c8"
+    },
+    {
+      "path": "tests/unit/shared/test_data_health_contract.py",
+      "git_blob": "f3bb93e13383e4dd0672ee80e30636a330677e3e",
+      "sha256": "748d65ef51d115fa3f42c463c446faf87a83070016baf77aca78f2597dc09443"
+    },
+    {
+      "path": "tests/unit/shared/test_data_health_record.py",
+      "git_blob": "bcc8a47b969bef761da889f4e9c0d66b0c89b343",
+      "sha256": "f629af3842a6b758b6b4016c974c85acff8e472d4f5c09576d9ce81b3a2361bc"
+    },
+    {
+      "path": "tests/unit/test_bundle_builder_sectors.py",
+      "git_blob": "0180fcaede4381159968de8e0aa3ded4a8e57252",
+      "sha256": "7958d757968a2a8c4d68c17db6266e2ee48d1db8307876701f922259bc93c044"
+    }
+  ]
+}

@@ -604,6 +604,7 @@ class BaseSectorOrchestrator(ABC):
                 api_calls=getattr(bundle, "api_calls_made", None),
                 dimensions_expected=expected,
                 dimensions_missing=missing,
+                section_provenance=getattr(bundle, "section_provenance", None),
             )
         except Exception as exc:
             logger.warning("[%s] data_health record failed (non-fatal): %s",

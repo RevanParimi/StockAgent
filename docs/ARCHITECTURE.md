@@ -21,7 +21,7 @@ records remediation acceptance separately.
 | Background ownership | One worker binds a localhost TCP port and starts scheduled/background work. Container-local guard; no continuous standby takeover. |
 | Scheduler | In-process APScheduler, up to 24 job IDs depending on gates and valid cron. IST schedule in KT section 9. |
 | Storage | JSON/JSONL, parquet and SQLite under configured data paths; production volume was `/app/data` in the September 10 snapshot. |
-| Frontend | Served `src/frontend/prototypes/` JSX/PWA; runtime browser transformation, no compiled frontend build. |
+| Frontend | Served `src/frontend/prototypes/` JSX/PWA; runtime browser transformation, no compiled frontend build. Chat replies are rendered through `chat-markdown.js` (SA-001, accepted 2026-09-26, not yet deployed): raw HTML shows as text, DOMPurify keeps only Markdown tags and http(s) links, and CDN scripts are exact versions with SRI. |
 | External dependencies | Market/search providers, OpenRouter-compatible model client, optional SMTP and web push. |
 | Health | `/health` is process liveness, not scheduler/data readiness. |
 
@@ -55,6 +55,15 @@ purchase; HOLD is not a flat forecast. The virtual executor uses deterministic
 rules, gates, cash/size limits and deduplication; no broker execution path was
 identified. Narration explains the decision rather than deciding a trade.
 
+Each analysis run writes a data-health row. Since SA-002 (accepted
+2026-09-26 by its fresh re-review, after a rework; not deployed), each bundle section's
+status comes from its producer rather than from its text: verified, stale,
+fallback, empty, not applicable, failed or unverified. A row is `ok` only when
+every dimension scored and every applicable section is verified and fresh. The
+essential price and fundamental sections are listed separately for SA-003's
+future gate. Nothing branches on the row yet
+([KT section 4](TECHNICAL_DESIGN.md#4-research-input-to-recommendation)).
+
 Learning persists feedback, weights and lessons. It currently has known
 label/timing/final-bound problems. The SA-039 switch `rl.learning_mode`
 (accepted 2026-09-25; production runs `observe` since 2026-09-26 through the Railway variable `RL_LEARNING_MODE`) contains it: in `observe` mode,
@@ -82,7 +91,7 @@ Learning then tunes six weights pooled across all stocks.
 
 | Already present | Planned in PI-2026-09 |
 |---|---|
-| Central graph routing, unified scoring, durable run/health logs | Usable-data semantics, action gates, store lineage, sector lenses and the factor engine (one-engine design) |
+| Central graph routing, unified scoring, durable run/health logs; usable-data health semantics (SA-002, accepted, not deployed) | Action gates on essential data, store lineage, sector lenses and the factor engine (one-engine design) |
 | Hard-bound categorical research verdict under current YAML | Immutable issuance, correct grading and retry-safe bounded adaptive updates |
 | Virtual advice, execution, P/L and outcome reports | Complete matched cohorts and prospective evidence of learning benefit |
 | IPO calendar/history/capture and recent-listing heuristic | Future validated IPO modeling is not a completed September deliverable |

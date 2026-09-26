@@ -25,6 +25,13 @@ import pytest
 from core.config import settings
 from core.schemas.pipeline import StockQuery
 from services.data.context import bundle_builder as bb
+from services.data.context.fetch_result import FetchResult
+
+
+def _fr(text: str) -> FetchResult:
+    """A verified fixture result. SA-002: the bundle's producers return
+    FetchResults, so their patched dependencies must too."""
+    return FetchResult(text, bb.STATUS_OK, "fixture")
 
 
 def _make_query(ticker: str = "MARUTI", company_name: str = "Maruti Suzuki India Ltd") -> StockQuery:
@@ -38,7 +45,7 @@ def _make_query(ticker: str = "MARUTI", company_name: str = "Maruti Suzuki India
 class TestCommodities:
     def test_automobile_commodities_real_fetch(self, ):
         with patch.object(bb, "_fetch_commodities", wraps=bb._fetch_commodities) as mock_fetch, \
-             patch("services.data.fetchers.macro.get_raw_materials_context", return_value="raw materials text") as mock_rm:
+             patch("services.data.fetchers.macro.get_raw_materials_result", return_value=_fr("raw materials text")) as mock_rm:
             sections = {}
             try:
                 sections["commodities"] = bb._fetch_commodities("automobile")
@@ -48,9 +55,10 @@ class TestCommodities:
 
     @pytest.mark.parametrize("sector", ["banking_bfsi", "it_sector", "renewable_energy"])
     def test_non_automobile_commodities_not_applicable(self, sector):
-        with patch("services.data.fetchers.macro.get_raw_materials_context") as mock_rm:
+        with patch("services.data.fetchers.macro.get_raw_materials_result") as mock_rm:
             result = bb._fetch_commodities(sector)
-        assert result == "not_applicable"
+        assert result.text == "not_applicable"
+        assert result.status == bb.STATUS_NOT_APPLICABLE
         mock_rm.assert_not_called()
 
     @pytest.mark.parametrize("sector", ["banking_bfsi", "it_sector", "renewable_energy"])
@@ -65,7 +73,7 @@ class TestCommodities:
              patch.object(bb, "_fetch_flows_sentiment", return_value="flows text"), \
              patch.object(bb, "_fetch_peers_valuation", return_value="peers text"), \
              patch.object(bb, "_fetch_dossier", return_value="dossier text"), \
-             patch("services.data.fetchers.macro.get_raw_materials_context") as mock_rm:
+             patch("services.data.fetchers.macro.get_raw_materials_result") as mock_rm:
             bundle = bb.build_sector_bundle(query, sector)
 
         assert bundle.sections["commodities"] == "not_applicable"
@@ -82,7 +90,7 @@ class TestCommodities:
              patch.object(bb, "_fetch_flows_sentiment", return_value="flows text"), \
              patch.object(bb, "_fetch_peers_valuation", return_value="peers text"), \
              patch.object(bb, "_fetch_dossier", return_value="dossier text"), \
-             patch("services.data.fetchers.macro.get_raw_materials_context", return_value="raw materials text") as mock_rm:
+             patch("services.data.fetchers.macro.get_raw_materials_result", return_value=_fr("raw materials text")) as mock_rm:
             bundle = bb.build_sector_bundle(query, "automobile")
 
         assert bundle.sections["commodities"] != "not_applicable"
@@ -96,7 +104,7 @@ class TestCommodities:
 class TestPolicyDeepDive:
     def test_automobile_query_unchanged(self):
         query = _make_query()
-        with patch("services.clients.tavily_fetcher.fetch_tavily_context", return_value="deep dive") as mock_tavily:
+        with patch("services.clients.tavily_fetcher.fetch_tavily_result", return_value=_fr("deep dive")) as mock_tavily:
             bb._fetch_policy_deep_dive(query, "automobile")
 
         assert mock_tavily.call_count == 1
@@ -107,7 +115,7 @@ class TestPolicyDeepDive:
 
     def test_bfsi_query_mentions_rbi_policy(self):
         query = _make_query(ticker="HDFCBANK", company_name="HDFC Bank")
-        with patch("services.clients.tavily_fetcher.fetch_tavily_context", return_value="deep dive") as mock_tavily:
+        with patch("services.clients.tavily_fetcher.fetch_tavily_result", return_value=_fr("deep dive")) as mock_tavily:
             bb._fetch_policy_deep_dive(query, "banking_bfsi")
 
         assert mock_tavily.call_count == 1
@@ -117,7 +125,7 @@ class TestPolicyDeepDive:
 
     def test_it_query_mentions_earnings_call_transcript(self):
         query = _make_query(ticker="INFY", company_name="Infosys")
-        with patch("services.clients.tavily_fetcher.fetch_tavily_context", return_value="deep dive") as mock_tavily:
+        with patch("services.clients.tavily_fetcher.fetch_tavily_result", return_value=_fr("deep dive")) as mock_tavily:
             bb._fetch_policy_deep_dive(query, "it_sector")
 
         assert mock_tavily.call_count == 1
@@ -127,7 +135,7 @@ class TestPolicyDeepDive:
 
     def test_re_query_mentions_mnre_auction_policy(self):
         query = _make_query(ticker="TATAPOWER", company_name="Tata Power")
-        with patch("services.clients.tavily_fetcher.fetch_tavily_context", return_value="deep dive") as mock_tavily:
+        with patch("services.clients.tavily_fetcher.fetch_tavily_result", return_value=_fr("deep dive")) as mock_tavily:
             bb._fetch_policy_deep_dive(query, "renewable_energy")
 
         assert mock_tavily.call_count == 1
@@ -138,7 +146,7 @@ class TestPolicyDeepDive:
     @pytest.mark.parametrize("sector", ["automobile", "banking_bfsi", "it_sector", "renewable_energy"])
     def test_exactly_one_tavily_call(self, sector):
         query = _make_query(ticker="ABC", company_name="ABC Ltd")
-        with patch("services.clients.tavily_fetcher.fetch_tavily_context", return_value="deep dive") as mock_tavily:
+        with patch("services.clients.tavily_fetcher.fetch_tavily_result", return_value=_fr("deep dive")) as mock_tavily:
             bb._fetch_policy_deep_dive(query, sector)
         assert mock_tavily.call_count == 1
         assert mock_tavily.call_args.kwargs.get("max_queries", 1) == 1
@@ -151,7 +159,7 @@ class TestPolicyDeepDive:
 class TestPeersValuation:
     def test_automobile_peers_used(self):
         query = _make_query(ticker="MARUTI")
-        with patch("core.intelligence.algorithms.indicators.fetcher.get_valuation_context", return_value="val ctx") as mock_val, \
+        with patch("core.intelligence.algorithms.indicators.fetcher.get_valuation_result", return_value=_fr("val ctx")) as mock_val, \
              patch("services.data.fetchers.nse_announcements.format_nse_context", return_value=""):
             bb._fetch_peers_valuation(query, "automobile")
 
@@ -165,7 +173,7 @@ class TestPeersValuation:
         from backend.sectors.banking_bfsi.config.settings import TICKERS as BFSI_TICKERS
 
         query = _make_query(ticker="HDFCBANK", company_name="HDFC Bank")
-        with patch("core.intelligence.algorithms.indicators.fetcher.get_valuation_context", return_value="val ctx") as mock_val, \
+        with patch("core.intelligence.algorithms.indicators.fetcher.get_valuation_result", return_value=_fr("val ctx")) as mock_val, \
              patch("services.data.fetchers.nse_announcements.format_nse_context", return_value=""):
             bb._fetch_peers_valuation(query, "banking_bfsi")
 
@@ -182,7 +190,7 @@ class TestPeersValuation:
         from backend.sectors.it_sector.config.settings import TICKERS as IT_TICKERS
 
         query = _make_query(ticker="INFY", company_name="Infosys")
-        with patch("core.intelligence.algorithms.indicators.fetcher.get_valuation_context", return_value="val ctx") as mock_val, \
+        with patch("core.intelligence.algorithms.indicators.fetcher.get_valuation_result", return_value=_fr("val ctx")) as mock_val, \
              patch("services.data.fetchers.nse_announcements.format_nse_context", return_value=""):
             bb._fetch_peers_valuation(query, "it_sector")
 
@@ -196,7 +204,7 @@ class TestPeersValuation:
         from backend.sectors.renewable_energy.config.settings import TICKERS as RE_TICKERS
 
         query = _make_query(ticker="TATAPOWER", company_name="Tata Power")
-        with patch("core.intelligence.algorithms.indicators.fetcher.get_valuation_context", return_value="val ctx") as mock_val, \
+        with patch("core.intelligence.algorithms.indicators.fetcher.get_valuation_result", return_value=_fr("val ctx")) as mock_val, \
              patch("services.data.fetchers.nse_announcements.format_nse_context", return_value=""):
             bb._fetch_peers_valuation(query, "renewable_energy")
 
@@ -214,7 +222,7 @@ class TestPeersValuation:
 class TestCompanyNewsQuery:
     def test_automobile_query_unchanged(self):
         query = _make_query()
-        with patch("services.data.fetchers.news.fetch_news_context", return_value="news") as mock_news:
+        with patch("services.data.fetchers.news.fetch_news_result", return_value=_fr("news")) as mock_news:
             bb._fetch_company_news(query, "automobile", "fake-key")
 
         q = mock_news.call_args.args[0][0]
@@ -222,7 +230,7 @@ class TestCompanyNewsQuery:
 
     def test_bfsi_query_contains_npa_keywords(self):
         query = _make_query(ticker="HDFCBANK", company_name="HDFC Bank")
-        with patch("services.data.fetchers.news.fetch_news_context", return_value="news") as mock_news:
+        with patch("services.data.fetchers.news.fetch_news_result", return_value=_fr("news")) as mock_news:
             bb._fetch_company_news(query, "banking_bfsi", "fake-key")
 
         q = mock_news.call_args.args[0][0]
@@ -232,7 +240,7 @@ class TestCompanyNewsQuery:
 
     def test_it_query_contains_deal_wins_attrition(self):
         query = _make_query(ticker="INFY", company_name="Infosys")
-        with patch("services.data.fetchers.news.fetch_news_context", return_value="news") as mock_news:
+        with patch("services.data.fetchers.news.fetch_news_result", return_value=_fr("news")) as mock_news:
             bb._fetch_company_news(query, "it_sector", "fake-key")
 
         q = mock_news.call_args.args[0][0]
@@ -242,7 +250,7 @@ class TestCompanyNewsQuery:
 
     def test_re_query_contains_ppa_commissioning_capacity(self):
         query = _make_query(ticker="TATAPOWER", company_name="Tata Power")
-        with patch("services.data.fetchers.news.fetch_news_context", return_value="news") as mock_news:
+        with patch("services.data.fetchers.news.fetch_news_result", return_value=_fr("news")) as mock_news:
             bb._fetch_company_news(query, "renewable_energy", "fake-key")
 
         q = mock_news.call_args.args[0][0]
@@ -254,7 +262,7 @@ class TestCompanyNewsQuery:
 class TestSectorPolicyNewsQuery:
     def test_bfsi_query_contains_rbi_keywords(self):
         query = _make_query(ticker="HDFCBANK", company_name="HDFC Bank")
-        with patch("services.data.fetchers.news.fetch_news_context", return_value="news") as mock_news:
+        with patch("services.data.fetchers.news.fetch_news_result", return_value=_fr("news")) as mock_news:
             bb._fetch_sector_policy_news(query, "banking_bfsi", "fake-key")
 
         q = mock_news.call_args.args[0][0]
@@ -264,7 +272,7 @@ class TestSectorPolicyNewsQuery:
 
     def test_it_query_contains_visa_and_ai_keywords(self):
         query = _make_query(ticker="INFY", company_name="Infosys")
-        with patch("services.data.fetchers.news.fetch_news_context", return_value="news") as mock_news:
+        with patch("services.data.fetchers.news.fetch_news_result", return_value=_fr("news")) as mock_news:
             bb._fetch_sector_policy_news(query, "it_sector", "fake-key")
 
         q = mock_news.call_args.args[0][0]
@@ -274,7 +282,7 @@ class TestSectorPolicyNewsQuery:
 
     def test_re_query_contains_mnre_keywords(self):
         query = _make_query(ticker="TATAPOWER", company_name="Tata Power")
-        with patch("services.data.fetchers.news.fetch_news_context", return_value="news") as mock_news:
+        with patch("services.data.fetchers.news.fetch_news_result", return_value=_fr("news")) as mock_news:
             bb._fetch_sector_policy_news(query, "renewable_energy", "fake-key")
 
         q = mock_news.call_args.args[0][0]
@@ -285,7 +293,7 @@ class TestSectorPolicyNewsQuery:
 
     def test_automobile_query_unchanged_shape(self):
         query = _make_query()
-        with patch("services.data.fetchers.news.fetch_news_context", return_value="news") as mock_news:
+        with patch("services.data.fetchers.news.fetch_news_result", return_value=_fr("news")) as mock_news:
             bb._fetch_sector_policy_news(query, "automobile", "fake-key")
 
         q = mock_news.call_args.args[0][0]
@@ -307,9 +315,9 @@ class TestMacroContextCacheKey:
         ],
     )
     def test_macro_cache_alias_per_sector(self, sector, expected_alias):
-        with patch("services.data.fetchers.macro.get_macro_context", return_value="macro yf data"), \
+        with patch("services.data.fetchers.macro.get_macro_result", return_value=_fr("macro yf data")), \
              patch("services.data.cache.macro_cache.get_macro_cache", return_value=None) as mock_cache, \
-             patch("services.data.fetchers.news.fetch_news_context", return_value="news"):
+             patch("services.data.fetchers.news.fetch_news_result", return_value=_fr("news")):
             bb._fetch_macro_context(sector, "fake-key")
 
         mock_cache.assert_called_once_with(expected_alias)
@@ -322,14 +330,15 @@ class TestMacroContextCacheKey:
         ],
     )
     def test_macro_cache_hit_skips_serper(self, sector, expected_alias):
-        with patch("services.data.fetchers.macro.get_macro_context", return_value="macro yf data"), \
+        with patch("services.data.fetchers.macro.get_macro_result", return_value=_fr("macro yf data")), \
              patch("services.data.cache.macro_cache.get_macro_cache", return_value="cached news") as mock_cache, \
-             patch("services.data.fetchers.news.fetch_news_context", return_value="news") as mock_news:
+             patch("services.data.fetchers.news.fetch_news_result", return_value=_fr("news")) as mock_news:
             result = bb._fetch_macro_context(sector, "fake-key")
 
         mock_cache.assert_called_once_with(expected_alias)
         mock_news.assert_not_called()
-        assert "cached news" in result
+        assert "cached news" in result.text
+        assert result.status == bb.STATUS_CACHE_HIT
 
 
 # ---------------------------------------------------------------------------

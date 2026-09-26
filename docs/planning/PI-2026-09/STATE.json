@@ -9,7 +9,7 @@
     "production_modified": false
   },
   "active_task": null,
-  "next_task": "SA-001",
+  "next_task": "SA-003",
   "next_phase": "implementation",
   "scope": "One implementation or fresh-session review phase per conversation. Default queue is planned stories; stretch requires explicit promotion.",
   "pending_production_checks": [
@@ -60,14 +60,32 @@
       "points": 3,
       "priority": "P0",
       "scope": "planned",
-      "status": "todo",
+      "status": "done",
       "depends_on": [],
-      "implementation_receipt": null,
-      "review_receipt": null,
-      "reviewed_revision": null,
+      "implementation_receipt": "docs/planning/PI-2026-09/evidence/SA-001-implementation.md",
+      "review_input_manifest": "docs/planning/PI-2026-09/evidence/SA-001-manifest.json",
+      "review_input_sha256": "2ded4b4381a007e51579d95e652bb448ab75f50155b6e7003d98f6b6d320058f",
+      "implementation_baseline": "103f2b8171c0d6365525f9450d41091306ebf22c",
+      "implementation_commit": null,
+      "review_receipt": "docs/planning/PI-2026-09/evidence/SA-001-review.md",
+      "reviewed_revision": "uncommitted working tree on 103f2b8171c0d6365525f9450d41091306ebf22c, pinned by review input 2ded4b4381a007e51579d95e652bb448ab75f50155b6e7003d98f6b6d320058f",
+      "review_outcomes": [
+        {
+          "date": "2026-09-26",
+          "verdict": "accepted",
+          "reviewed_revision": "worktree on 103f2b8 (uncommitted)",
+          "review_input_sha256": "2ded4b4381a007e51579d95e652bb448ab75f50155b6e7003d98f6b6d320058f",
+          "commit_condition": "kt_manifest.py verify SA-001-manifest.json --rev <commit> must show mismatches only in the four status-edited docs (TECHNICAL_DESIGN.md, StockAgent-Three-Loops.pdf, ARCHITECTURE.md, TEAM_TESTING_GUIDE.md)",
+          "follow_ups": {
+            "L1": "SA-005",
+            "I1": "SA-028 (note only)",
+            "R3": "SA-028 (routed by the implementation)"
+          }
+        }
+      ],
       "production_verification": {
-        "status": "not_started",
-        "evidence": null
+        "status": "pending_deployment",
+        "evidence": "Accepted locally 2026-09-26; not committed or deployed. After an authorized push: open the app twice (sw v8), run human case 11-C in an isolated test account, and confirm marked@12.0.2 and dompurify@3.4.16 load with status 200 and no SRI error."
       },
       "blocked_reason": null
     },
@@ -79,14 +97,76 @@
       "points": 3,
       "priority": "P1",
       "scope": "planned",
-      "status": "todo",
+      "status": "done",
       "depends_on": [],
-      "implementation_receipt": null,
-      "review_receipt": null,
-      "reviewed_revision": null,
+      "implementation_baseline": "103f2b8171c0d6365525f9450d41091306ebf22c plus the accepted, uncommitted SA-001 worktree (review input 2ded4b4381a007e51579d95e652bb448ab75f50155b6e7003d98f6b6d320058f)",
+      "implementation_receipt": "docs/planning/PI-2026-09/evidence/SA-002-implementation.md",
+      "review_input_manifest": "docs/planning/PI-2026-09/evidence/SA-002-manifest.json",
+      "review_input_sha256": "c88edda536f862096fd6fa0df8faffc6ee1bcd3ce3ffd1fc0887f109b8d7dd27",
+      "diff_sha256": "dc7e850b62bb705e70aabe0addb9c52d73362dd6444632875f6cd65577023c2c",
+      "rework": {
+        "date": "2026-09-26",
+        "context": "new conversation, about 20:50-21:30 IST (neither the implementing nor the reviewing one); no SA-039 check was due",
+        "addresses": ["M1", "M2", "I1"],
+        "previous_review_input_manifest": "docs/planning/PI-2026-09/evidence/SA-002-manifest-review1.json",
+        "previous_review_input_sha256": "4d8968fdf6bf7971429e63f16c296ec174f0e0f050a7a102e69d3ebd611b0f79",
+        "previous_diff_sha256": "f605966c50478145fca417c5d99cb5fe1dbe0e6952962f8e298358a049a2b15e",
+        "rework_diff_sha256": "56544c46183f1c1d1b12f4c9df95e6522c02ab2353841919df4eb106e0ee60b2",
+        "rework_diff_note": "fundamentals.py and test_data_health_contract.py only, from the first review's blobs (2a9acfb1, 996149d5; rebuilt, verified against the pinned ids, stored with git hash-object -w in this checkout) to the worktree; analysis_data/sa002/rework/rework_diff.py",
+        "changed_files": ["services/data/fetchers/fundamentals.py", "tests/unit/shared/test_data_health_contract.py", "docs/TECHNICAL_DESIGN.md", "docs/StockAgent-Three-Loops.pdf", "docs/ARCHITECTURE.md", "docs/TEAM_TESTING_GUIDE.md", "CODEBASE.md"],
+        "tests": "contract file 155 passed (132 + 23 new); focused 11 files 289 passed, 0 blocked; weekday sweep 7 of 7 run days 155 passed (old _bars control: Sun 9, Mon 11, Tue 7, Wed-Sat 5 failed, the guard failing every day); M2 mutations 9/9/2 caught; characterize_nan 13 of 13 identical to HEAD; characterize.py 24 cases unchanged; full tests/unit 3323 passed, 5 skipped, 0 failed, nonet blocked the pre-existing 194; check_kt_docs errors [] (source 0979ad97, 21 pages). Windows, Python 3.13.11, pandas 3.0.2, RL_LEARNING_MODE=adapt, -p nonet.",
+        "i1_note": "Found already corrected in the receipt's Rollout section and HANDOFF before the rework began; grep found the claim in no doc; no further edit."
+      },
+      "implementation_commit": null,
+      "review_receipt": "docs/planning/PI-2026-09/evidence/SA-002-review.md",
+      "reviewed_revision": "uncommitted working tree on 103f2b8171c0d6365525f9450d41091306ebf22c plus the SA-001 worktree, pinned by review input c88edda536f862096fd6fa0df8faffc6ee1bcd3ce3ffd1fc0887f109b8d7dd27 (diff dc7e850b62bb705e70aabe0addb9c52d73362dd6444632875f6cd65577023c2c; rework diff 56544c46183f1c1d1b12f4c9df95e6522c02ab2353841919df4eb106e0ee60b2)",
+      "review_outcomes": [
+        {
+          "date": "2026-09-26",
+          "verdict": "changes_requested",
+          "context": "fresh-session review (new conversation, about 13:20-14:00 IST)",
+          "reviewed_revision": "worktree on 103f2b8 + SA-001 (uncommitted)",
+          "review_input_sha256": "4d8968fdf6bf7971429e63f16c296ec174f0e0f050a7a102e69d3ebd611b0f79",
+          "diff_sha256": "f605966c50478145fca417c5d99cb5fe1dbe0e6952962f8e298358a049a2b15e",
+          "required_changes": {
+            "M1": "Blocking. test_data_health_contract.py fixtures are weekday-dependent: _bars (lines 97-101) breaks when the series ends on a weekend (pandas 3.0.2 bdate_range returns 299 dates for periods=300); the healthy-path and 30-day-stale tests fail on Sun/Mon/Tue. Anchor to business days (also line 568) and add a guard test over 7 consecutive end dates.",
+            "M2": "get_financials/get_fundamentals_result: a newest quarter with NaN revenue/operating income reads ok with that quarter as as_of (prompt shows nan). Report not-verified (e.g. fallback naming the quarter), as_of from the newest finite quarter; prompt text byte-identical and re-characterized."
+          },
+          "follow_ups": {
+            "I1": "SA-002 rework (docs: the rollout note's 'Serper over budget, news may read empty' has no code basis; SERPER_MONTHLY_LIMIT is reporting-only)",
+            "L1": "SA-045 (note: Gross Profit used as EBITDA proxy without a record)",
+            "flake": "SA-005 (note: test_delivery_api push-subscribe WinError 5 rename flake; date-dependent fixtures)"
+          },
+          "docs_after_review": "Status wording edited in TECHNICAL_DESIGN (sections 1, 4, 11, 12), ARCHITECTURE, TEAM_TESTING_GUIDE 02-F and CODEBASE.md; PDF rebuilt (source 5694d413). SA-002-manifest verify now mismatches exactly those 5 files; no code or test file changed."
+        },
+        {
+          "date": "2026-09-26",
+          "verdict": "accepted",
+          "context": "fresh-session re-review (new conversation, about 21:57-22:25 IST; not the implementing, first-review or rework conversation); no SA-039 check was due",
+          "reviewed_revision": "worktree on 103f2b8 + SA-001 (uncommitted)",
+          "review_input_sha256": "c88edda536f862096fd6fa0df8faffc6ee1bcd3ce3ffd1fc0887f109b8d7dd27",
+          "diff_sha256": "dc7e850b62bb705e70aabe0addb9c52d73362dd6444632875f6cd65577023c2c",
+          "rework_diff_sha256": "56544c46183f1c1d1b12f4c9df95e6522c02ab2353841919df4eb106e0ee60b2",
+          "resolved": {"M1": "sweep reproduced: 7 of 7 run days 155 passed; old _bars control Sun 9 / Mon 11 / Tue 7 / Wed-Sat 5 failed, guard failing every day", "M2": "reviewer fixtures R4-R11 (yfinance shape, EBIT row, pd.NA, older blank, stale+blank, healthy, all blank): 8 of 8 as expected; first-review blob 2a9acfb1 reads ok on R4/R5/R6/R11; prompt text identical to HEAD 8 of 8", "I1": "rollout note corrected; no doc repeats the claim"},
+          "tests": "focused 11 files 289 passed, blocked 0 (real clock, Saturday); full tests/unit 3321 passed, 2 failed, 5 skipped, blocked 194 (pre-existing set); the 2 failures are Windows WinError 5 rename flakes (test_ops_alerts alone 5/5 passed; test_delivery_api alone failed 2 of 5); check_kt_docs errors [] (source 333895c4 after status edits, 21 pages). Windows, Python 3.13.11, pandas 3.0.2, RL_LEARNING_MODE=adapt, -p nonet.",
+          "follow_ups": {"N1": "SA-045 (note: revenue_yoy_pct is a three-quarter change labelled YoY; predates SA-002)", "T3": "SA-005 (note: rename flake frequency; ops_alerts streak test swallows a failed save)", "older_blank_quarter": "accepted as the first review specified; SA-045 M2 note stands"},
+          "docs_after_review": "Status wording edited in TECHNICAL_DESIGN (sections 1, 4, 11, 12), ARCHITECTURE (2 places), TEAM_TESTING_GUIDE 02-F and CODEBASE.md; PDF rebuilt (source 333895c4). SA-002-manifest verify now mismatches exactly those 5 files; no code or test file changed.",
+          "commit_condition": "kt_manifest.py verify SA-002-manifest.json --rev <commit> must show mismatches only in the five status-edited docs (TECHNICAL_DESIGN.md, StockAgent-Three-Loops.pdf, ARCHITECTURE.md, TEAM_TESTING_GUIDE.md, CODEBASE.md)"
+        }
+      ],
+      "routed_follow_ups": {
+        "N1": "SA-045 (re-review note: revenue_yoy_pct compares the newest quarter with the one three quarters back)",
+        "T3": "SA-005 (re-review note: Windows rename flakes in test_delivery_api and test_ops_alerts)",
+        "T2": "SA-005 (suite-wide network guard; measured 194 pre-existing outbound attempts)",
+        "F1": "SA-044 (automobile peer P/E Serper fallback query)",
+        "F3": "SA-045 (substitute zeros/defaults as factor inputs)",
+        "gate_inputs": "SA-003 (gate on the record, not has_real_data)",
+        "L1": "SA-045 (review note: Gross Profit EBITDA proxy)",
+        "review_flake": "SA-005 (review note: Windows rename flake; date-dependent fixtures)"
+      },
       "production_verification": {
-        "status": "not_started",
-        "evidence": null
+        "status": "pending_deployment",
+        "evidence": "Accepted locally 2026-09-26; not committed or deployed. After an authorized push: across one scheduled cohort, rows carry contract_version 2; health and essential_unusable agree with correlated source log lines; dimensions_scored matches the SignalAggregator exclusion warning; not every row is ok; note any fundamentals fallback naming a blank newest quarter (frequency unmeasured). Rollback: observability.data_health_enabled false."
       },
       "blocked_reason": null
     },
@@ -1050,6 +1130,29 @@
     }
   ],
   "history": [
+    {
+      "date": "2026-09-26",
+      "event": "SA-002 ACCEPTED by a fresh-session re-review (a new conversation, about 21:57-22:25 IST); status done, production_verification pending_deployment. Input c88edda5 verified (0 mismatches); full diff dc7e850b and rework diff 56544c46 reproduced. M1, M2 and I1 resolved; new low findings routed: N1 (YoY is a three-quarter change) to SA-045, T3 (Windows rename flakes) to SA-005. Status wording updated in the KT, ARCHITECTURE, 02-F and CODEBASE.md; PDF rebuilt (check_kt_docs errors []). Next: implement SA-003 in a new conversation. No SA-039 check was due. Nothing committed, pushed or deployed.",
+      "review_input_sha256": "c88edda536f862096fd6fa0df8faffc6ee1bcd3ce3ffd1fc0887f109b8d7dd27"
+    },
+    {
+      "date": "2026-09-26",
+      "event": "SA-002 rework after the fresh review's changes_requested (a new conversation, about 20:50-21:30 IST); status review_required, next_phase review (a fresh re-review, in a new conversation). No SA-039 check was due (P1 is Mon 28 Sep 17:00). M1: _bars rolls weekend end dates back to the last session (pandas 3 bdate_range(end=weekend, periods=n) returns n-1); the line-568 expectation uses a plain-Python _last_session; 14 guard tests pin a fixed Mon 21-Sun 27 Sep week (only fetch_result.date pinned). The whole contract file passes as if run on each of 7 days; with the reviewed _bars body reinstated, the original tests fail only Sun/Mon/Tue while the guard fails every day. M2: get_financials adds missing_values (present rows without a finite figure: NaN, None, inf) and dates as_of by the newest fully reported quarter; a blank newest quarter makes fundamentals fallback, an older blank is reason-only (as the review specified); prompt text byte-identical to HEAD (13 of 13; the 24-case characterization unchanged); 8 parametrized producer cases plus 1 end-to-end; three runtime mutations caught (9/9/2 tests). I1 was already corrected before the rework began. Docs: status wording in KT sections 1/4/11/12, ARCHITECTURE, TEAM_TESTING_GUIDE 02-F (plus the blank-quarter expectation), CODEBASE.md; KT section 4 fallback meaning widened; PDF rebuilt (source 0979ad97); check_kt_docs 0 errors. Routed a note to SA-045 (Growth must read missing_values; an older blank renders growth nan). Tests: contract 155 passed; focused 289 passed, 0 blocked; full tests/unit 3323 passed, 5 skipped, 0 failed, nonet blocked the pre-existing 194. New review input c88edda5 (19 files, 0 mismatches); the first input is preserved as SA-002-manifest-review1.json (4d8968fd). Full diff dc7e850b; rework-only diff 56544c46. Nothing committed, pushed or deployed.",
+      "review_input_sha256": "c88edda536f862096fd6fa0df8faffc6ee1bcd3ce3ffd1fc0887f109b8d7dd27"
+    },
+    {
+      "date": "2026-09-26",
+      "event": "SA-002 fresh-session review (a new conversation, about 13:20-14:00 IST): CHANGES REQUESTED; status changes_requested, next_phase implementation (the rework, in a new conversation). No SA-039 check was due (P1 is Mon 28 Sep 17:00). Review input 4d8968fd verified with 0 mismatches and diff digest f605966c reproduced. The production code has no critical or high defect: every essential producer decides its status from structured data; the analyst's only input is the bundle; nothing branches on the row; the telemetry migration is additive; the macro rule is equivalent in practice; no new secret sink. Reviewer fixtures: a frozen symbol reads stale on all three essentials (degraded) and Serper over quota reads degraded with no essential flagged, both as expected. With B2's health rule reinstated at runtime, 100 of 104 health tests fail. Findings: M1 (blocking) the new contract tests are weekday-dependent (a pandas 3 bdate_range quirk in the _bars fixture): they pass Wed-Sat and fail on Sun/Mon/Tue; M2 a NaN newest quarter reads fundamentals ok with a fresh as_of; L1 the Gross Profit EBITDA proxy, routed to SA-045. Tests: focused 266 passed (nonet blocked 0); full tests/unit 3299 passed, 1 failed (test_delivery_api WinError 5 rename flake, 16/16 alone; routed to SA-005), 5 skipped, nonet blocked 194 (the pre-existing set); check_kt_docs 0 errors. Review doc edits: status wording in the KT, ARCHITECTURE, TEAM_TESTING_GUIDE 02-F and CODEBASE.md; PDF rebuilt. The SA-002 implementation phase (10:24-11:20 IST) recorded no history entry of its own; see its receipt. Nothing committed, pushed or deployed.",
+      "review_input_sha256": "4d8968fdf6bf7971429e63f16c296ec174f0e0f050a7a102e69d3ebd611b0f79"
+    },
+    {
+      "date": "2026-09-26",
+      "event": "SA-001 ACCEPTED by a fresh-session review (a new conversation, about 07:35-07:55 IST); status done. No SA-039 carry-over check was due (P1 is Mon 28 Sep 17:00). Review input 2ded4b43 verified with 0 mismatches on baseline 103f2b8 (uncommitted worktree). The reviewer re-traced model and tool text from ui_data chat_stream/chat to every client sink: one HTML sink (the sphere.jsx bubble); the only URL sink is sw.js openWindow, fed by server constants. Re-ran the pre-fix fixture from 103f2b8: 0/14 pass, with img-split, img-onerror and img-entity executing. The reviewed files pass 14/14. The reviewer's own 20 payloads (reference links, raw-text elements, comments/CDATA, plaintext, table cells, autolinks) at every prefix through both layers: 0 executions, re-parse stable. Live CDN bytes equal all five SRI hashes; the old floating marked@12 is byte-identical to 12.0.2. Focused pytest: 12 passed. Findings: L1 low (the browser suite skips without Node and there is no CI) routed to SA-005; I1 info (the harness flags an inert partial href=\"https://\") noted on SA-028. Review docs edits: status wording in KT sections 1, 10 and 12, ARCHITECTURE and TEAM_TESTING_GUIDE 11-C; PDF rebuilt. production_verification pending_deployment. Next: implement SA-002 (not started)."
+    },
+    {
+      "date": "2026-09-26",
+      "event": "SA-001 implemented (one conversation, uncommitted; baseline 103f2b8) and set to review_required. The SA-039 carry-over checks were looked at first: none was due (P1 is Mon 28 Sep 17:00). Chat replies now pass through a new plain script, src/frontend/prototypes/chat-markdown.js. marked shows raw HTML as text, then a private DOMPurify 3.4.16 instance applies a Markdown-only allowlist, http(s)-only links with target=_blank and rel=noopener noreferrer, and no images, styles or event attributes. It fails closed to escaped text. index.html pins marked 12.0.2 and DOMPurify with SRI and moves marked off window at once, so a pre-fix sphere.jsx cached by the service worker cannot reach it. sw.js goes to v8. A new real-browser suite (tests/frontend, 14 tests, Playwright Chromium, no network) drives the actual ChatOverlay sink. On the pre-fix files it records the img/onerror fixture executing (0/14 pass). Five weakened-fix mutations and a stale-cache variant are each caught. Full unit suite: 3166 passed, 5 skipped. Review input: SA-001-manifest.json, 17 files, 2ded4b43. Routed to SA-028: CSP and token storage. Not deployed; production_verification not_started."
+    },
     {
       "date": "2026-09-26",
       "event": "Owner asked that the SA-039 'still to confirm' checks be attached to a story so they are not forgotten. They are recorded in three places. (1) A new top-level STATE list, pending_production_checks, holds SA-039-P1 (Mon 28 Sep 17:00), P2 (Tue 29 Sep 17:00) and P3 (Thu 1 Oct 09:30). (2) A carry-over box at the top of SA-001, the next story, says to run due and unrecorded checks before either phase. (3) A backstop note on SA-038 (production-verification milestones) says SA-038 cannot be accepted while SA-039 verification is pending without a dated reason. HANDOFF START HERE lists them too. No story status changed."

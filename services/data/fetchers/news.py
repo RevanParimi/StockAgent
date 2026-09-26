@@ -9,6 +9,7 @@ Public API
 search_serper(query, n)       → list[dict]  (title, snippet, link, date)
 search_newsapi(query, n)      → list[dict]
 fetch_news_context(queries)   → str   (formatted for prompt injection)
+fetch_news_result(queries)    → FetchResult (the same text + status/source/as-of, SA-002)
 """
 
 from __future__ import annotations
@@ -253,6 +254,24 @@ def fetch_news_context(
     Run up to `max_queries` searches (Serper preferred, NewsAPI fallback)
     and return a formatted string suitable for prompt injection.
 
+    The text of `fetch_news_result`; see there.
+    """
+    return fetch_news_result(queries, max_queries=max_queries, api_key=api_key, tbs=tbs).text
+
+
+def fetch_news_result(
+    queries: list[str],
+    max_queries: int = settings.SERPER_MAX_QUERIES,
+    api_key: str | None = None,
+    tbs: str | None = None,
+):
+    """
+    `fetch_news_context` with its outcome (SA-002): a `FetchResult` whose
+    status is `ok` only when at least one query returned an article, and
+    `empty` when every query came back with nothing — the case the text
+    renders as "[No results for: ...]" and used to be recorded as healthy.
+    `as_of` is the newest dated article.
+
     F6 (2026-07-31): results are recency-bounded. Unbounded, this path served
     2-4 MONTH old articles to the preopen shock rater and an 11-year-old one to
     the research loop, most of them undated so the prompt read
@@ -265,32 +284,59 @@ def fetch_news_context(
     tbs     : recency bound override — "qdr:d"/"qdr:w"/"qdr:m", "" to disable.
               None (default) uses settings.NEWS_SEARCH_RECENCY.
     """
+    from services.data.context.fetch_result import (
+        STATUS_EMPTY, STATUS_OK, FetchResult,
+    )
+
     if not queries:
-        return "No news queries provided."
+        return FetchResult("No news queries provided.", STATUS_EMPTY, "serper",
+                           reason="no queries")
 
     from backend.shared.config import settings as _s
     recency = (getattr(_s, "NEWS_SEARCH_RECENCY", "qdr:m") if tbs is None else tbs) or None
 
     lines: list[str] = []
+    articles = 0
+    unanswered = 0
+    sources: set[str] = set()
+    dated: list[date] = []
     for query in queries[:max_queries]:
+        source = "serper"
         results = search_serper(query, n=settings.NEWS_ARTICLES_PER_QUERY,
                                 api_key=api_key, tbs=recency)
         if not results:
+            source = "newsapi"
             results = search_newsapi(query, n=settings.NEWS_ARTICLES_PER_QUERY)
 
         if not results:
+            unanswered += 1
             lines.append(f"[No results for: {query}]")
             continue
 
+        articles += len(results)
+        sources.add(source)
         lines.append(f"\n--- Search: {query} ---")
         for r in results:
             title = r.get("title") or r.get("description", "")
             snippet = r.get("snippet") or r.get("description", "")
             raw_dt = r.get("date") or r.get("publishedAt", "")
             dt = _normalize_date(raw_dt)
+            try:
+                dated.append(date.fromisoformat(dt))
+            except ValueError:
+                pass
             lines.append(f"• [Date: {dt}] {title}: {snippet}")
 
-    return "\n".join(lines) if lines else "No news data available."
+    text = "\n".join(lines) if lines else "No news data available."
+    asked = len(queries[:max_queries])
+    if not articles:
+        return FetchResult(text, STATUS_EMPTY, "serper+newsapi",
+                           reason=f"no results for {unanswered} of {asked} queries")
+    return FetchResult(
+        text, STATUS_OK, "+".join(sorted(sources)),
+        as_of=max(dated).isoformat() if dated else None,
+        reason=f"no results for {unanswered} of {asked} queries" if unanswered else None,
+    )
 
 
 # ---------------------------------------------------------------------------

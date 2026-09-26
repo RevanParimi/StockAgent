@@ -1,0 +1,95 @@
+{
+  "story": "SA-001",
+  "phase": "implementation",
+  "baseline_commit": "103f2b8171c0d6365525f9450d41091306ebf22c",
+  "date": "2026-09-26",
+  "excluded": "STATE.json, HANDOFF.md, the SA-028 routed note, SA-001-implementation.md and this manifest (bookkeeping written after the manifest)",
+  "hash_convention": "git blob bytes after .gitattributes normalization (CRLF->LF for text, binary unchanged); verify with scripts/docs/kt_manifest.py verify",
+  "files": [
+    {
+      "path": "CODEBASE.md",
+      "git_blob": "425e5bacd45d8d50b1b582a05ea1352768d06190",
+      "sha256": "b0f1e68087b3b6774f6073f51d881b4453e07e16331a36505f1d3246706b94e4"
+    },
+    {
+      "path": "docs/ARCHITECTURE.md",
+      "git_blob": "be5a31d887093a17dcdd43a3d4a4c8f42c6dcd35",
+      "sha256": "4782e3b3de7584560209c95345d5685f435bd1260f08fd697daf8fb852779879"
+    },
+    {
+      "path": "docs/CHAT_ARCHITECTURE.md",
+      "git_blob": "567ebba404c34e88896aea2d66af6d8762572902",
+      "sha256": "fb08da141c542d94fd9cfb74099d764f6f0047a330a9b27a511253cbd28ccb49"
+    },
+    {
+      "path": "docs/StockAgent-Three-Loops.pdf",
+      "git_blob": "53cc3927d979143b44170c9b6f17b0fef2c60213",
+      "sha256": "5e78d3a4179adc4cfc62d11ab913d29817ceb6a0e28af6bb3c200bd208ee63a3"
+    },
+    {
+      "path": "docs/TEAM_TESTING_GUIDE.md",
+      "git_blob": "6f52250414ca93a9ec46a4e525dd8b6dadb8dbd0",
+      "sha256": "7ac54443d1e1f40905909d13884e49da13857ac0490bf8930f4622c1ffab1ccd"
+    },
+    {
+      "path": "docs/TECHNICAL_DESIGN.md",
+      "git_blob": "97535e07c475cbf89d07eacc7fe678816e032bd3",
+      "sha256": "bd7035dc35d099624b9acbaf1caf8b1fec5dfa1ddde8dccd4db246a4d7af13a7"
+    },
+    {
+      "path": "package-lock.json",
+      "git_blob": "a8dc7a87b82032ae69c655ea919a4b39a09fe676",
+      "sha256": "a316bc9f097e67362c20de9b6dc1cb4ff46046c17374ab322ec8eb4f6606a683"
+    },
+    {
+      "path": "package.json",
+      "git_blob": "1b1cc40fcdd68c64a72e5a081e4de7782d119bc9",
+      "sha256": "7bd09089aa495c72979ae47897d791a7874eb0ec6524f638a24b30cf5e4bce97"
+    },
+    {
+      "path": "src/frontend/prototypes/UI_SPEC.md",
+      "git_blob": "72ebb45327f69fc51311c866665557fd4fc1de54",
+      "sha256": "9950ba8a34c786fa59d2826827800b8179d1f9ece003a2161230e88aa0afd018"
+    },
+    {
+      "path": "src/frontend/prototypes/chat-markdown.js",
+      "git_blob": "36ebed17c167bf5ee430c42f30f2f100e89a8daa",
+      "sha256": "7536aa2a5f0cf6130634fb59eae7add11eaf34f50f79d599704ad2742382f704"
+    },
+    {
+      "path": "src/frontend/prototypes/index.html",
+      "git_blob": "5d46db7de581fe33cbc0b540d8beb03222d1bd3d",
+      "sha256": "78eb7436dfa6132bba36a45502dd3bbeafa76265f841fcb1888d84742aa88bbc"
+    },
+    {
+      "path": "src/frontend/prototypes/sphere.jsx",
+      "git_blob": "13a7d03c3dce541eb5ae4c605527a27bdd1e7769",
+      "sha256": "c8535fff50ed3670eea375f4d48cbff8b83ff1bf10f9f7ca5a915604dc4a85c5"
+    },
+    {
+      "path": "src/frontend/prototypes/sw.js",
+      "git_blob": "c759d84f3c0d5a8965717d93e0512ab6e62d1ed0",
+      "sha256": "6785e9b65c2474d58e3075cf2ded9b5bd15be1c03212502ef14bd0300f1a1b9d"
+    },
+    {
+      "path": "tests/frontend/chat_harness.mjs",
+      "git_blob": "520a968bd47fc994fbb3e86b9abde65e0146c292",
+      "sha256": "cb9b7c84c6c4e55587581fedb02f3965993bb9250fa530437abaee22196f0133"
+    },
+    {
+      "path": "tests/frontend/chat_markdown.test.mjs",
+      "git_blob": "e6a3a9b4970d36ad4517dbed4c81848371faf918",
+      "sha256": "99fe97a6707f111b81fa978f36d87ad051841c02a69c7c4119f96fc97da8f0dd"
+    },
+    {
+      "path": "tests/unit/test_chat_markdown_boundary.py",
+      "git_blob": "ab16699c5fd85a604fc728337d3550fab7b7015f",
+      "sha256": "863c638d1b5bdc43022b194d570535ce81f0b62b282cbb69283e9ee6f0af1abd"
+    },
+    {
+      "path": "tests/unit/test_spa_catchall.py",
+      "git_blob": "0f065035830e580bd3236683af05b4193db3c81c",
+      "sha256": "de3079f7f47f7adbefbc69bfee91d765581c42e13286f0e6a4ad707a461b7460"
+    }
+  ]
+}

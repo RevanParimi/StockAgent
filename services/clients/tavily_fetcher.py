@@ -16,13 +16,15 @@ Public API
 ----------
 search_tavily(query, max_results)  → list[dict]  {title, content, url}
 fetch_tavily_context(queries)      → str   (formatted for prompt injection)
+fetch_tavily_result(queries)       → FetchResult (the same text + status, SA-002)
 """
 
 from __future__ import annotations
 
 import hashlib
+import json
 import logging
-from datetime import date
+from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -44,6 +46,21 @@ def _cache_path(queries: list[str], max_queries: int) -> Path:
     canonical = "|".join(sorted(queries[:max_queries]))
     q_hash = hashlib.md5(canonical.encode("utf-8")).hexdigest()[:12]
     return _TAVILY_CACHE_DIR / month / f"{q_hash}.txt"
+
+
+def _meta_path(cache_file: Path) -> Path:
+    """SA-002: `<hash>.meta.json` beside `<hash>.txt` — how many results the
+    cached text holds, and when it was fetched. The text alone cannot say:
+    a cached "[No Tavily results for: ...]" looks like any other entry."""
+    return cache_file.with_suffix(".meta.json")
+
+
+def _read_meta(cache_file: Path) -> dict | None:
+    try:
+        meta = json.loads(_meta_path(cache_file).read_text(encoding="utf-8"))
+        return meta if isinstance(meta.get("results"), int) else None
+    except (OSError, ValueError, AttributeError):
+        return None
 
 
 def search_tavily(
@@ -119,19 +136,52 @@ def fetch_tavily_context(
 
     Returns
     -------
-    str — multi-line context block
+    str — multi-line context block (the text of `fetch_tavily_result`)
     """
+    return fetch_tavily_result(queries, max_queries, max_results_per_query).text
+
+
+def fetch_tavily_result(
+    queries: list[str],
+    max_queries: int = 2,
+    max_results_per_query: int = 2,
+):
+    """
+    `fetch_tavily_context` with its outcome (SA-002), as a `FetchResult`:
+
+    - live fetch: `ok` with at least one result, `empty` with none;
+    - cache hit: `cache_hit` when the entry's sidecar records results,
+      `empty` when it records none — a failed month-start fetch is cached
+      for the month, and must not read as healthy for the rest of it;
+    - cache hit without a sidecar (written before SA-002): `unverified`.
+      The entry is still served, as before, so no extra Tavily call is spent.
+    """
+    from services.data.context.fetch_result import (
+        STATUS_CACHE_HIT, STATUS_EMPTY, STATUS_OK, STATUS_UNVERIFIED, FetchResult,
+    )
+
     if not queries:
-        return "No Tavily queries provided."
+        return FetchResult("No Tavily queries provided.", STATUS_EMPTY, "tavily",
+                           reason="no queries")
 
     # --- Cache check ---
     cache_file = _cache_path(queries, max_queries)
     if cache_file.exists():
         logger.debug("[tavily] Cache hit: %s", cache_file.name)
-        return cache_file.read_text(encoding="utf-8")
+        text = cache_file.read_text(encoding="utf-8")
+        meta = _read_meta(cache_file)
+        if meta is None:
+            return FetchResult(text, STATUS_UNVERIFIED, "tavily_cache",
+                               reason="cache entry has no result count (written before SA-002)")
+        if meta["results"] > 0:
+            return FetchResult(text, STATUS_CACHE_HIT, "tavily_cache",
+                               as_of=meta.get("fetched_at"))
+        return FetchResult(text, STATUS_EMPTY, "tavily_cache", as_of=meta.get("fetched_at"),
+                           reason="cached Tavily response had no results")
 
     # --- Live fetch (existing logic unchanged) ---
     lines: list[str] = []
+    found = 0
     for query in queries[:max_queries]:
         results = search_tavily(query, max_results=max_results_per_query)
 
@@ -139,6 +189,7 @@ def fetch_tavily_context(
             lines.append(f"[No Tavily results for: {query}]")
             continue
 
+        found += len(results)
         lines.append(f"\n--- Tavily (full content): {query} ---")
         for r in results:
             title = r.get("title", "")
@@ -152,10 +203,15 @@ def fetch_tavily_context(
             lines.append(f"• {title}\n  {content}\n  Source: {url}")
 
     result = "\n".join(lines) if lines else "No Tavily data available."
+    fetched_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
 
     # --- Write to cache ---
+    # The sidecar goes first: a crash between the two writes leaves a sidecar
+    # with no text, which is a miss, never a text with no sidecar.
     try:
         cache_file.parent.mkdir(parents=True, exist_ok=True)
+        _meta_path(cache_file).write_text(
+            json.dumps({"results": found, "fetched_at": fetched_at}), encoding="utf-8")
         cache_file.write_text(result, encoding="utf-8")
         logger.debug("[tavily] Cache written: %s", cache_file.name)
     except OSError as exc:
@@ -164,4 +220,7 @@ def fetch_tavily_context(
             cache_file.name, exc,
         )
 
-    return result
+    if not found:
+        return FetchResult(result, STATUS_EMPTY, "tavily", as_of=fetched_at,
+                           reason=f"no Tavily results for {len(queries[:max_queries])} queries")
+    return FetchResult(result, STATUS_OK, "tavily", as_of=fetched_at)

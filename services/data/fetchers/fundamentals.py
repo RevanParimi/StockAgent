@@ -9,11 +9,13 @@ Public API
 get_financials(ticker)      → dict   (revenue, EBITDA, margins, QoQ/YoY)
 get_shareholding(ticker)    → dict   (promoter %, FII %, DII %)
 get_fundamentals_context(ticker) → str  (formatted for prompt injection)
+get_fundamentals_result(ticker)  → FetchResult (the same text + status/as-of, SA-002)
 """
 
 from __future__ import annotations
 
 import logging
+import math
 from typing import Any
 
 import pandas as pd
@@ -38,6 +40,19 @@ def _safe_float(val: Any, default: float = 0.0) -> float:
         return float(val)
     except (TypeError, ValueError):
         return default
+
+
+def _is_reported(val: Any) -> bool:
+    """True when a statement cell holds a finite number.
+
+    SA-002 review M2: yfinance lists an announced quarter before its figures
+    are populated, as NaN. `_safe_float` passes NaN through (the prompt shows
+    `nan`) and turns None into 0.0; neither is a reported figure.
+    """
+    try:
+        return math.isfinite(float(val))
+    except (TypeError, ValueError):
+        return False
 
 
 # ---------------------------------------------------------------------------
@@ -71,18 +86,36 @@ def get_financials(ticker: str) -> dict:
         n = settings.FINANCIALS_LOOKBACK_QUARTERS
         quarters = q_income.columns[:n]
 
-        def get_row(df: pd.DataFrame, *keys: str) -> pd.Series:
+        missing_rows: list[str] = []
+
+        def get_row(df: pd.DataFrame, label: str, *keys: str) -> pd.Series:
             for k in keys:
                 if k in df.index:
                     return df.loc[k]
+            # SA-002: the zeros below are a substitute, not a reported figure.
+            missing_rows.append(label)
             return pd.Series([0.0] * len(df.columns), index=df.columns)
 
-        revenue_row = get_row(q_income, "Total Revenue", "Revenue")
-        op_income_row = get_row(q_income, "Operating Income", "EBIT", "Gross Profit")
+        revenue_row = get_row(q_income, "revenue", "Total Revenue", "Revenue")
+        op_income_row = get_row(q_income, "operating_income",
+                                "Operating Income", "EBIT", "Gross Profit")
 
         revenues = [_safe_float(revenue_row[q]) / 1e7 for q in quarters]   # to Crores
         ebitdas = [_safe_float(op_income_row[q]) / 1e7 for q in quarters]
         quarter_labels = [str(q)[:10] for q in quarters]
+
+        # SA-002 review M2: a present row can still lack a figure for a
+        # quarter. Name those cells, and date the statement by the newest
+        # quarter in which every present row reported one.
+        missing_values: dict[str, list[str]] = {}
+        for label, row in (("revenue", revenue_row), ("operating_income", op_income_row)):
+            if label in missing_rows:
+                continue
+            blank = [ql for q, ql in zip(quarters, quarter_labels) if not _is_reported(row[q])]
+            if blank:
+                missing_values[label] = blank
+        reported = [ql for ql in quarter_labels
+                    if not any(ql in qs for qs in missing_values.values())]
 
         # QoQ and YoY growth
         rev_qoq = (
@@ -104,11 +137,17 @@ def get_financials(ticker: str) -> dict:
             "revenue_qoq_pct":  round(rev_qoq, 2),
             "revenue_yoy_pct":  round(rev_yoy, 2),
             "ebitda_margin_pct": round(ebitda_margin, 2),
+            # SA-002 provenance, additive: the newest fully reported quarter
+            # end, which statement rows were absent and replaced by zeros, and
+            # which present rows had no figure (row -> quarter ends).
+            "as_of": reported[0] if reported else None,
+            "missing_rows": missing_rows,
+            "missing_values": missing_values,
         }
 
     except Exception as exc:
         logger.error("[fundamentals] get_financials failed for %s: %s", yf_ticker, exc)
-        return {"error": str(exc)}
+        return {"error": str(exc), "error_type": type(exc).__name__}
 
 
 # ---------------------------------------------------------------------------
@@ -162,6 +201,9 @@ def get_shareholding(ticker: str) -> dict:
             "institutional_pct":    round(institutional_pct, 2),
             "note": "yfinance combines FII+DII into institutional_pct. "
                     "For split, use NSE bulk deal data.",
+            # SA-002, additive: fields yfinance omitted, shown above as 0.0.
+            "missing_fields": [k for k in ("heldPercentInsiders", "heldPercentInstitutions")
+                               if info.get(k) is None],
         }
     except Exception as exc:
         logger.warning("[fundamentals] get_shareholding failed for %s: %s", yf_ticker, exc)
@@ -187,6 +229,9 @@ def get_company_info(ticker: str) -> dict:
             "pb_ratio":        round(_safe_float(info.get("priceToBook", 0)), 2),
             "dividend_yield":  round(_safe_float(info.get("dividendYield", 0)) * 100, 2),
             "description":     (info.get("longBusinessSummary", "") or "")[:400],
+            # SA-002, additive: fields yfinance omitted, shown as 0.0 / N/A.
+            "missing_fields": [k for k in ("marketCap", "trailingPE", "priceToBook")
+                               if info.get(k) is None],
         }
     except Exception as exc:
         logger.warning("[fundamentals] get_company_info failed for %s: %s", yf_ticker, exc)
@@ -198,10 +243,79 @@ def get_company_info(ticker: str) -> dict:
 # ---------------------------------------------------------------------------
 
 def get_fundamentals_context(ticker: str) -> str:
+    return get_fundamentals_result(ticker).text
+
+
+def get_fundamentals_result(ticker: str):
+    """
+    `get_fundamentals_context` with its outcome (SA-002). The status follows
+    the core datum, the quarterly statement, read from `get_financials`'
+    structured result — never from the rendered sentence:
+
+    - no statement (`error`): `empty`, or `failed:<Type>` when it raised;
+    - a revenue or operating-income row absent, so zeros were substituted:
+      `fallback`;
+    - the newest listed quarter without a figure in a present row (NaN, as
+      yfinance lists an announced but unpopulated quarter): `fallback`, with
+      `as_of` the newest fully reported quarter (review M2);
+    - newest quarter older than the fundamentals freshness bound: `stale`;
+    - otherwise `ok`. Missing shareholding or company info, and an older
+      quarter without a figure, are named in `reason` without changing the
+      status.
+    """
+    from services.data.context.fetch_result import (
+        STATUS_EMPTY, STATUS_FAILED_PREFIX, STATUS_FALLBACK, STATUS_OK, STATUS_STALE,
+        FetchResult, fundamentals_max_age_days, is_stale, join_reasons,
+    )
+
     fin = get_financials(ticker)
     sh = get_shareholding(ticker)
     info = get_company_info(ticker)
+    text = _format_fundamentals(ticker, fin, sh, info)
 
+    partial = [
+        "shareholding unavailable" if "error" in sh else None,
+        ("shareholding fields absent, 0.0 shown: " + ", ".join(sh["missing_fields"])
+         if sh.get("missing_fields") else None),
+        "company info unavailable" if not info else None,
+        ("company info fields absent, 0.0 shown: " + ", ".join(info["missing_fields"])
+         if info.get("missing_fields") else None),
+    ]
+    if "error" in fin:
+        status = (f"{STATUS_FAILED_PREFIX}{fin['error_type']}" if fin.get("error_type")
+                  else STATUS_EMPTY)
+        return FetchResult(text, status, "yfinance",
+                           reason=join_reasons([f"financials: {fin['error']}", *partial]))
+
+    as_of = fin.get("as_of")
+    listed = [q for q, _ in fin.get("quarterly_revenue_cr", [])]    # newest first
+    newest = listed[0] if listed else None
+    blank = fin.get("missing_values") or {}
+    newest_blank = [row for row, qs in blank.items() if newest in qs]
+    older_blank = [f"{row} {q}" for row, qs in blank.items() for q in qs if q != newest]
+    statement = [
+        ("statement rows absent, zeros substituted: " + ", ".join(fin["missing_rows"])
+         if fin.get("missing_rows") else None),
+        (f"newest quarter {newest} has no figure for: " + ", ".join(newest_blank)
+         + (f"; newest fully reported quarter {as_of}" if as_of else "; no quarter fully reported")
+         if newest_blank else None),
+        ("older quarters without a figure: " + ", ".join(older_blank) if older_blank else None),
+    ]
+    if fin.get("missing_rows") or newest_blank:
+        return FetchResult(text, STATUS_FALLBACK, "yfinance", as_of=as_of,
+                           reason=join_reasons([*statement, *partial]))
+    max_age = fundamentals_max_age_days()
+    if is_stale(as_of, max_age):
+        return FetchResult(text, STATUS_STALE, "yfinance", as_of=as_of,
+                           reason=join_reasons([
+                               f"newest quarter {as_of} is older than {max_age} days",
+                               *statement, *partial]))
+    return FetchResult(text, STATUS_OK, "yfinance", as_of=as_of,
+                       reason=join_reasons([*statement, *partial]))
+
+
+def _format_fundamentals(ticker: str, fin: dict, sh: dict, info: dict) -> str:
+    """The prompt text, byte-identical to the pre-SA-002 context string."""
     if "error" in fin:
         fin_block = f"Financial data unavailable: {fin['error']}"
     else:

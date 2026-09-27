@@ -62,7 +62,7 @@ fallback, empty, not applicable, failed or unverified. A row is `ok` only when
 every dimension scored and every applicable section is verified and fresh. The
 essential price and fundamental sections are listed separately.
 
-SA-003 (accepted by its fresh review 2026-09-27, not yet committed) turns those
+SA-003 (accepted by its fresh review 2026-09-27, committed as `167f08b`) turns those
 statuses into a decision gate on every report: `abstain` when an essential
 section is unusable, fewer than half the dimensions scored, or the run has no
 bundle; `degraded` (still actionable) when only ordinary enrichment is
@@ -101,7 +101,7 @@ Learning then tunes six weights pooled across all stocks.
 
 | Already present | Planned in PI-2026-09 |
 |---|---|
-| Central graph routing, unified scoring, durable run/health logs; usable-data health semantics (SA-002, accepted, committed as `8413b59`); the essential-data decision gate, recording only (SA-003, accepted, not yet committed) | Enforcing the gate (owner decision after a measured record period), instrument lifecycles (SA-008), store lineage, sector lenses and the factor engine (one-engine design) |
+| Central graph routing, unified scoring, durable run/health logs; usable-data health semantics (SA-002, accepted, committed as `8413b59`); the essential-data decision gate, recording only (SA-003, accepted, committed as `167f08b`) | Enforcing the gate (owner decision after a measured record period), instrument lifecycles (SA-008), store lineage, sector lenses and the factor engine (one-engine design) |
 | Hard-bound categorical research verdict under current YAML | Immutable issuance, correct grading and retry-safe bounded adaptive updates |
 | Virtual advice, execution, P/L and outcome reports | Complete matched cohorts and prospective evidence of learning benefit |
 | IPO calendar/history/capture and recent-listing heuristic | Future validated IPO modeling is not a completed September deliverable |

@@ -188,6 +188,7 @@
       "review_input_manifest": "docs/planning/PI-2026-09/evidence/SA-003-manifest.json",
       "review_input_sha256": "dbe167149b5f73ab616c7d5e1e25054594e7c2af043d5316b948b8d92aa96c94",
       "diff_sha256": "a46a684622ce54d4e766982d7d8d0d98a19705e56f2e430340e3e21dc89cd2f1",
+      "implementation_commit": "167f08bc18414857a82f5c8828111ea0f6274b60",
       "implementation": {
         "date": "2026-09-27",
         "context": "one implementation conversation, about 03:40-05:15 IST, including a same-conversation self-review (not the fresh review)",
@@ -216,7 +217,7 @@
       },
       "production_verification": {
         "status": "pending_deployment",
-        "evidence": "Accepted 2026-09-27; not committed. Ships decision_gate.mode=record (a deploy changes no outcome). After commit and push (owner's word, 00:10-06:20 IST): read-only across one scheduled cohort, decision_gate.jsonl gains rows (reviews name stage forecast_row 'issued before the data gate existed' until the next monthly forecast), reports carry decision_gate, review weight/feedback behaviour unchanged. Enforcing is SA-039-P3's delegated decision."
+        "evidence": "Accepted 2026-09-27; committed as 167f08b at the owner's word (about 09:05 IST; verify SA-003-manifest.json --rev 167f08b mismatches only the five status-edited docs, so every reviewed code/test/config byte is committed as reviewed); push pending at this record. Ships decision_gate.mode=record (a deploy changes no outcome). After commit and push (owner's word, 00:10-06:20 IST): read-only across one scheduled cohort, decision_gate.jsonl gains rows (reviews name stage forecast_row 'issued before the data gate existed' until the next monthly forecast), reports carry decision_gate, review weight/feedback behaviour unchanged. Enforcing is SA-039-P3's delegated decision."
       },
       "blocked_reason": null
     },
@@ -1159,6 +1160,10 @@
     }
   ],
   "history": [
+    {
+      "date": "2026-09-27",
+      "event": "Owner said 'commit and push' (about 09:00 IST, Sunday). SA-003 committed as 167f08b (50 files); verify SA-003-manifest.json --rev 167f08b mismatches only the five status-edited docs. The next commit bumps the KT header to 167f08b (edition 2026-09-27), links decision_gate.py and changes the status lines to committed; PDF rebuilt, check_kt_docs errors []. Push window: Sunday after 09:05 IST is job-free until weekly_review at 18:00 (the weekday 07:25-09:05 block does not apply; ipo_refresh_am 08:00 already ran)."
+    },
     {
       "date": "2026-09-27",
       "event": "SA-003 ACCEPTED by its fresh-session review (a new conversation, about 08:30-09:15 IST); status done, production_verification pending_deployment (not committed). Review input dbe16714 verified (38 files, 0 mismatches); diff a46a6846 rebuilt independently. Full tests/unit 3442 passed, 5 skipped, 0 failed (nonet blocked the pre-existing 194); reviewer mutations R1-R5 caught; 7-day sweep clean; NSE-lag probe. Findings: F1 medium (abstained month-start forecast retried only by a restart's self-heal; KT corrected; SA-036), F2 medium pre-existing (close verifier prefers an earlier NSE row on a >1% disagreement; SA-012). Review edits: status wording in five docs, PDF rebuilt (source 3735be42); no code changed. SA-039-P3's enforce decision gains two reported inputs (F1, F2); its rules are unchanged. No SA-039 check was due. Next: SA-004 implementation in a new conversation. Nothing committed, pushed or deployed.",

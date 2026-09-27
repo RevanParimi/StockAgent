@@ -1,4 +1,4 @@
-# Current handoff - 2026-09-27 (updated about 09:15 IST)
+# Current handoff - 2026-09-27 (updated about 09:10 IST)
 
 ## START HERE — resume checklist, in order
 
@@ -13,8 +13,8 @@ the [activation record](evidence/SA-039-activation-2026-09-26.md) and in STATE.
   delegated it to Claude: decide by the written rules, log the decision, and tell the owner. SA-039's
   observation window ends with P3. The rules are in STATE, under P3's `then_decision`:
   - **Wait** until all of these hold:
-    - SA-003 is deployed in record mode. It was accepted on 27 Sep and still needs the owner's
-      commit and push (step 1);
+    - SA-003 is deployed in record mode. It is committed as `167f08b` and pushed at the owner's
+      word on 27 Sep (step 1);
     - P1–P3 have passed;
     - the live envelopes carry `data_gate` (otherwise wait for the 1 Nov forecast);
     - `decision_gate.jsonl` holds at least 5 scheduled review days of rows;
@@ -46,23 +46,30 @@ STATE: `active_task: null`, `next_task: SA-004`, `next_phase: implementation`.
 - SA-004 has no dependencies. Its card carries SA-003's note: count `data_gated` separately from
   produced.
 - Run every test with the network guard `-p nonet` and `RL_LEARNING_MODE=adapt` (see step 4).
-- **Owner, when convenient: commit and push SA-003.**
-  - Commit only on the owner's word. Push only in the 00:10–06:20 IST window.
-  - It ships `record`, so the deploy changes no outcome and is not a policy-flag change.
-  - At commit:
-    - link `src/backend/shared/pipeline/decision_gate.py` in the KT;
-    - bump the KT header past `8413b59`;
-    - rebuild the PDF and run `check_kt_docs`;
-    - run `verify SA-003-manifest.json --rev <commit>`. Expect mismatches only in the five
-      status-edited docs.
-  - **Timing example.** Pushed in the early hours of Mon 28 to Thu 1 Oct, before 09:00 on the 1st:
-    the October envelopes carry `data_gate`, and the enforce decision's third condition can be met
-    this cycle. Pushed later, that condition waits for the 1 Nov forecast.
+- **SA-003 is committed as `167f08b`** at the owner's word ("commit and push", about 09:00 IST on
+  Sun 27 Sep).
+  - `verify SA-003-manifest.json --rev 167f08b` mismatches only the five status-edited docs. So
+    every reviewed code, test and config byte is committed as reviewed.
+  - The next commit bumps the KT header to `167f08b` (edition 2026-09-27), links
+    `decision_gate.py`, and changes the status lines to "committed". The PDF is rebuilt, and
+    `check_kt_docs` reports no errors.
+  - **The push window.** On a Sunday, the time after 09:05 IST is job-free until `weekly_review`
+    at 18:00. The weekday 07:25–09:05 block does not apply, and `ipo_refresh_am` (08:00) has
+    already run.
+  - It ships `record`, so the deploy changes no outcome and is not a policy-flag change. Deployed
+    before 09:00 on Thu 1 Oct, it lets the October envelopes carry `data_gate`, which is the
+    enforce decision's third condition.
+  - **After the deploy, verify read-only across one scheduled cohort,** as the receipt's
+    "Rollout" says. The first cohort is Mon 28 Sep, at the 16:30 review.
+    - `data/logs/decision_gate.jsonl` gains rows. Until 1 Oct, every review names
+      `stage: forecast_row`, "issued before the data gate existed".
+    - Reports carry `decision_gate`.
+    - The weight and feedback behaviour is unchanged; SA-039-P1 checks this anyway.
 
 **2. SA-003 was ACCEPTED on 2026-09-27 by a fresh-session review** (a new conversation, about
 08:30–09:15 IST). Receipt: [SA-003-review.md](evidence/SA-003-review.md). SA-003 is `done`, and its
-`production_verification` is `pending_deployment`. No SA-039 check was due. Nothing was committed,
-pushed or deployed.
+`production_verification` is `pending_deployment`. No SA-039 check was due. The review itself
+committed, pushed and deployed nothing; the commit followed at the owner's word (step 1).
 
 - **Input verified:**
   - the review input `dbe16714…`: 38 files, 0 mismatches;

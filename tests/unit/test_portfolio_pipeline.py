@@ -5,6 +5,7 @@ import pytest
 
 from backend.shared.schemas.portfolio import AdviceRecord, Holding, Portfolio
 from core.portfolio.digest import build_digest
+from core.portfolio.pricing import SessionClose
 from core.portfolio.store import PortfolioStore
 import core.delivery.alerts as alerts_mod
 import core.delivery.channels as channels_mod
@@ -62,7 +63,7 @@ def test_pipeline_end_to_end(monkeypatch, tmp_path):
     monkeypatch.setattr(pipeline, "sync_corp_actions", lambda s, d: {"applied": 0, "symbols": []})
     monkeypatch.setattr(pipeline, "refresh_events_calendar", lambda syms, cache_path=None: {"events": {}})
     monkeypatch.setattr(pipeline, "load_events_calendar", lambda cache_path=None: {"events": {}})
-    monkeypatch.setattr(pipeline, "close_on", lambda sym, d: 13000.0)
+    monkeypatch.setattr(pipeline, "session_close", lambda sym, d: (SessionClose(13000.0, d, "agree"), d))
     monkeypatch.setattr(pipeline, "get_price_history", lambda t, years=1: None)
     monkeypatch.setattr(pipeline, "narrate", lambda rec, sig: "Thesis intact.")
     # Step 5 delivery is real by default (delivery.enabled: true) — keep hermetic
@@ -116,8 +117,8 @@ def test_pipeline_holding_failure_is_non_fatal(monkeypatch, tmp_path):
     def close_or_boom(sym, d):
         if sym == "BADSTK":
             raise RuntimeError("no price")
-        return 13000.0
-    monkeypatch.setattr(pipeline, "close_on", close_or_boom)
+        return SessionClose(13000.0, d, "agree"), d
+    monkeypatch.setattr(pipeline, "session_close", close_or_boom)
 
     class _FakePredStore:
         def __init__(self, ticker, sector=None):

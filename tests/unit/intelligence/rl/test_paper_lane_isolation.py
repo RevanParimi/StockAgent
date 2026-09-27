@@ -53,7 +53,7 @@ def _fb_output(miss_type: str = "direction_flip"):
 def _patch_common(dr, monkeypatch, actual_close: float = 98.0):
     # Same seam stack as test_shock_path._patch_common, minus PREDICTION_DATA_DIR
     # (this test controls both roots explicitly).
-    monkeypatch.setattr(dr, "_fetch_actual_close", lambda t, d: actual_close)
+    monkeypatch.setattr(dr, "_fetch_session_close", lambda t, d: dr.SessionClose(actual_close, d, "agree"))
     monkeypatch.setattr(dr, "get_price_history", lambda *a, **k: None)
     monkeypatch.setattr(dr, "_run_todays_agent_scores",
                         lambda *a, **k: {"risk": 0.5, "fundamentals": 0.5})

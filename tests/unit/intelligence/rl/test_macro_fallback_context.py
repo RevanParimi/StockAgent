@@ -61,7 +61,7 @@ def _run_review(
     monkeypatch.setattr(dr.settings, "PREDICTION_DATA_DIR", str(tmp_path))
     if fallback_enabled is not None:
         monkeypatch.setattr(dr.settings, "RL_MACRO_FALLBACK_CONTEXT_ENABLED", fallback_enabled)
-    monkeypatch.setattr(dr, "_fetch_actual_close", lambda t, d: 100.1)
+    monkeypatch.setattr(dr, "_fetch_session_close", lambda t, d: dr.SessionClose(100.1, d, "agree"))
     monkeypatch.setattr(dr, "get_price_history", lambda *a, **k: None)
 
     from core.schemas.feedback import RegimeSnapshot

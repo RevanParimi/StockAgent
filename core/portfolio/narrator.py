@@ -39,6 +39,7 @@ _NOTE_TEXT = {
     "WAIT_FOR_LTCG": "the position crosses the 12-month LTCG boundary soon, so the trim signal is noted rather than acted on",
     "EARNINGS_GAP_PROTECTION": "results are due within days — a profit-protection review is flagged",
     "SECTOR_CONCENTRATION_HIGH": "position weight is above the concentration comfort band",
+    "DATA_GATE": "an add or switch was withheld because the price or the forecast behind it is not verified",
 }
 
 _PROMPT = """You are the narration layer of a personal stock-research tool.

@@ -29,8 +29,10 @@ import argparse
 import logging
 import sys
 from datetime import date, timedelta
+from typing import NamedTuple
 
 from core.config import settings
+from backend.shared.pipeline import decision_gate as dg
 from core.intelligence.rl.agents.feedback_agent import (
     FeedbackAgent,
     classify_direction,
@@ -131,7 +133,31 @@ def _resolve_cycle_and_forecast(
     return cycle_id, envelope, forecast
 
 
+class SessionClose(NamedTuple):
+    """SA-003: a close and the session it belongs to.
+
+    `bar_date` is the date of the bar the close was actually taken from. The
+    fetchers below fall back to the newest earlier bar when the requested
+    session has none (a suspended or renamed symbol, a provider lag), so
+    `bar_date` can be earlier than the session asked for. `fresh` is the
+    minimum price freshness for grading and for trading: the bar IS the
+    session. None when there is no close, or its bar is undated.
+    """
+    close: float | None
+    bar_date: date | None
+    source: str
+
+    def fresh_for(self, session: date) -> bool:
+        return self.close is not None and self.bar_date == session
+
+
 def _fetch_actual_close(ticker: str, target_date: date) -> float | None:
+    """The close `_fetch_session_close` finds, without its date. Kept for the
+    portfolio's `close_on` and other callers that want only the number."""
+    return _fetch_session_close(ticker, target_date).close
+
+
+def _fetch_session_close(ticker: str, target_date: date) -> SessionClose:
     """
     Fetch the actual closing price for a specific date via yfinance.
 
@@ -143,11 +169,14 @@ def _fetch_actual_close(ticker: str, target_date: date) -> float | None:
     EOD close (close_verifier.cross_check_close) — a single extra NSE call,
     no re-fetch of yfinance — guarding against symbol-cache poisoning / stale
     yfinance data on the RL scoring path.
+
+    SA-003: the selection is unchanged; the result also names the session of
+    the bar the chosen close came from, so a carried-forward close is visible.
     """
     import yfinance as yf
     from datetime import timedelta
     from core.config import settings
-    from services.data.fetchers.close_verifier import cross_check_close
+    from services.data.fetchers.close_verifier import cross_check_close, nse_session_close
 
     suffix = ".NS"
     yf_sym = settings.YF_SYMBOL_OVERRIDES.get(ticker.upper()) or (
@@ -157,9 +186,9 @@ def _fetch_actual_close(ticker: str, target_date: date) -> float | None:
     start = (target_date - timedelta(days=7)).isoformat()
     end   = (target_date + timedelta(days=1)).isoformat()
 
-    def _extract(df) -> float | None:
+    def _extract(df) -> tuple[float | None, date | None]:
         if df is None or df.empty:
-            return None
+            return None, None
         close = df["Close"].squeeze()
         if hasattr(close, "columns"):          # multi-level columns — take first
             close = close.iloc[:, 0]
@@ -167,16 +196,19 @@ def _fetch_actual_close(ticker: str, target_date: date) -> float | None:
         target_str = target_date.isoformat()
         mask = close.index.astype(str) == target_str
         if mask.any():
-            return float(close[mask].iloc[-1])
+            return float(close[mask].iloc[-1]), target_date
         available = close[close.index.date <= target_date]
-        return float(available.iloc[-1]) if not available.empty else None
+        if available.empty:
+            return None, None
+        return float(available.iloc[-1]), available.index[-1].date()
 
     yf_close: float | None = None
+    yf_date: date | None = None
 
     # Attempt 1: yf.download() — handles crumb refresh automatically
     try:
         df = yf.download(yf_sym, start=start, end=end, progress=False, auto_adjust=True)
-        yf_close = _extract(df)
+        yf_close, yf_date = _extract(df)
         if yf_close is None:
             logger.debug("[daily_review] yf.download() returned empty for %s on %s", yf_sym, target_date)
     except Exception as exc:
@@ -187,7 +219,7 @@ def _fetch_actual_close(ticker: str, target_date: date) -> float | None:
         bse_sym = ticker if ticker.endswith(".BO") else f"{ticker}.BO"
         try:
             df = yf.download(bse_sym, start=start, end=end, progress=False, auto_adjust=True)
-            yf_close = _extract(df)
+            yf_close, yf_date = _extract(df)
             if yf_close is not None:
                 logger.debug("[daily_review] Used .BO fallback price for %s", ticker)
         except Exception as exc:
@@ -197,7 +229,7 @@ def _fetch_actual_close(ticker: str, target_date: date) -> float | None:
     if yf_close is None:
         try:
             df = get_price_history(ticker, years=1)
-            yf_close = _extract(df)
+            yf_close, yf_date = _extract(df)
         except Exception as exc:
             logger.warning("[daily_review] get_price_history() failed for %s on %s: %s", ticker, target_date, exc)
 
@@ -206,9 +238,45 @@ def _fetch_actual_close(ticker: str, target_date: date) -> float | None:
     close, source = cross_check_close(ticker, yf_close, target_date=target_date)
     if close is None:
         logger.warning("[daily_review] Could not fetch actual close for %s on %s (source=%s)", ticker, target_date, source)
-    elif source != "agree":
+        return SessionClose(None, None, source)
+    if source != "agree":
         logger.info("[daily_review] Actual close for %s on %s sourced from %s: %.2f", ticker, target_date, source, close)
-    return close
+    if source == "nse":
+        # The same cached NSE fetch the cross-check just made.
+        bar_date = nse_session_close(ticker, target_date)[1]
+    else:
+        bar_date = yf_date
+    return SessionClose(close, bar_date, source)
+
+
+_GATED_REVIEW_SKIPS = ("grading, FeedbackAgent, weight update or proposal, lessons, "
+                       "envelope revision, streak, feedback entry, dossier and control lane")
+
+
+def _review_gate(
+    ticker: str, date_str: str, *, paper: bool, stage: str, status: str,
+    reasons: list[str], run_id: str,
+) -> dict:
+    """SA-003: record a review input that is not actionable. The returned row
+    has enforced=True when the gate is enforcing: the caller must stop."""
+    return dg.record_gate_decision(
+        consumer="paper_review" if paper else "daily_review", ticker=ticker,
+        skipped=_GATED_REVIEW_SKIPS, status=status, reasons=reasons, run_id=run_id,
+        enforced=dg.enforcing(), on_date=date_str, extra={"stage": stage},
+    )
+
+
+def _gated_summary(ticker: str, sector: str, date_str: str, mode: str,
+                   paper: bool, gate_row: dict) -> dict:
+    """What a review stopped by the gate returns: no side effect was written."""
+    logger.warning(
+        "[daily_review] %s %s: data gate — review skipped at %s (%s)",
+        ticker, date_str, gate_row.get("stage"), "; ".join(gate_row.get("reasons") or []),
+    )
+    return {
+        "status": "data_gated", "ticker": ticker, "sector": sector, "paper": paper,
+        "date": date_str, "learning_mode": mode, "data_gate": [gate_row],
+    }
 
 
 def _run_todays_agent_scores(
@@ -523,13 +591,48 @@ def run_daily_review(
     # streak is then advanced using today's verdict (Step 6.5).
     existing_streak = envelope.conviction_streak
 
+    # SA-003: what the gate would have stopped (record mode keeps going and
+    # reports these; enforce mode returns at the first one, before any write).
+    gate_rows: list[dict] = []
+
+    # The row being graded must come from an actionable analysis: learning
+    # from a forecast issued on missing data teaches the weights noise.
+    if not dg.is_actionable(today_forecast.data_gate):
+        row = _review_gate(
+            ticker, date_str, paper=paper, stage="forecast_row",
+            status=today_forecast.data_gate,
+            reasons=[dg.row_gate_reason(today_forecast.data_gate,
+                                        today_forecast.source_run_id)],
+            run_id=today_forecast.source_run_id,
+        )
+        if row["enforced"]:
+            return _gated_summary(ticker, sector, date_str, mode, paper, row)
+        gate_rows.append(row)
+
     # ------------------------------------------------------------------ #
     # Step 2: Fetch actual close + volume context
     # ------------------------------------------------------------------ #
-    actual_close = _fetch_actual_close(ticker, review_date)
+    session_close = _fetch_session_close(ticker, review_date)
+    actual_close = session_close.close
     if actual_close is None:
         logger.error("[daily_review] Could not fetch actual close for %s on %s", ticker, date_str)
         return {"status": "no_actual_data", "ticker": ticker, "date": date_str}
+
+    # SA-003: minimum price freshness. A close carried forward from an earlier
+    # session would grade the day as flat — a valid-looking zero return that
+    # never happened.
+    if not session_close.fresh_for(review_date):
+        bar = session_close.bar_date.isoformat() if session_close.bar_date else "undated"
+        row = _review_gate(
+            ticker, date_str, paper=paper, stage="actual_close", status="stale_price",
+            reasons=[f"no close dated the session {date_str}: the close found "
+                     f"({actual_close:.2f}, source {session_close.source}) is from "
+                     f"bar {bar}"],
+            run_id=today_forecast.source_run_id,
+        )
+        if row["enforced"]:
+            return _gated_summary(ticker, sector, date_str, mode, paper, row)
+        gate_rows.append(row)
 
     # Volume-vs-20d-avg: tells FeedbackAgent if today's move was institutional or noise.
     volume_vs_20d_avg: float | None = None
@@ -599,6 +702,19 @@ def run_daily_review(
             learned_weights=decision_weights(wm_for_scores, sector),
             capture=_todays_capture,
         )
+        # SA-003: a re-run on missing essential data produces fabricated drift
+        # and, under hard-bind, the verdict the day is graded against.
+        _rerun_report = _todays_capture.get("report")
+        if _rerun_report is not None:
+            _rerun_status, _rerun_id, _rerun_reasons = dg.report_gate(_rerun_report)
+            if not dg.is_actionable(_rerun_status):
+                row = _review_gate(
+                    ticker, date_str, paper=paper, stage="rerun", status=_rerun_status,
+                    reasons=_rerun_reasons, run_id=_rerun_id,
+                )
+                if row["enforced"]:
+                    return _gated_summary(ticker, sector, date_str, mode, paper, row)
+                gate_rows.append(row)
         if not todays_scores and today_forecast.predicted_agent_scores:
             todays_scores = dict(today_forecast.predicted_agent_scores)
             logger.info(
@@ -1573,6 +1689,8 @@ def run_daily_review(
         "reforecast_trigger":       reforecast_trigger,
         "reforecast_fired":         reforecast_envelope is not None,
         "reforecast_count":         reforecast_envelope.reforecast_count if reforecast_envelope else None,
+        # SA-003 record mode: inputs the gate would have stopped this review on.
+        "data_gate":                gate_rows,
     }
 
     logger.info(

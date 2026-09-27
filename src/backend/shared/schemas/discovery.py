@@ -46,6 +46,7 @@ class DeepDiveResult(BaseModel):
     close: float
     composite: float
     dive_date: str                         # ISO
+    data_gate: str = ""                    # SA-003 gate status of the dive's run
 
 
 class ShelfIdea(BaseModel):
@@ -64,6 +65,9 @@ class ShelfIdea(BaseModel):
     paper_cycle_id: str = ""
     last_paper_review: str = ""            # ISO date of last paper review
     source_screen_date: str = ""
+    # SA-003: gate status of the deep dive that shelved this idea; "" = shelved
+    # before the gate existed (unverified: not a SWITCH destination in enforce).
+    data_gate: str = ""
 
 
 class Shelf(BaseModel):

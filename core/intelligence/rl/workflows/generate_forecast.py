@@ -42,6 +42,7 @@ from core.intelligence.rl.algorithms.price_interpolator import (
 )
 from services.data.fetchers.close_verifier import get_verified_close
 from services.data.stores.log_store import configure_logging
+from backend.shared.pipeline import decision_gate as dg
 
 # E1: one setup for every entry point. Idempotent, so importing this module
 # from the API server (which has already configured) is a no-op rather than a
@@ -51,6 +52,29 @@ logger = logging.getLogger(__name__)
 
 # Number of trading days to forecast
 HORIZON = settings.FORECAST_HORIZON_DAYS
+
+
+class InsufficientDataError(RuntimeError):
+    """SA-003: the analysis a forecast would be built on abstained, and the
+    decision gate is enforcing. No envelope is written."""
+
+
+def _forecast_gated(report: FinalReport, ticker: str, consumer: str, skipped: str) -> bool:
+    """
+    SA-003: record a forecast that rests on a non-actionable analysis (an
+    abstaining gate, or a report with no gate at all). Returns True when the
+    gate is enforcing, i.e. the caller must not build on this report.
+    """
+    status, run_id, reasons = dg.report_gate(report)
+    if dg.is_actionable(status):
+        return False
+    enforced = dg.enforcing()
+    dg.record_gate_decision(
+        consumer=consumer, ticker=ticker, skipped=skipped, status=status,
+        reasons=reasons, run_id=run_id, enforced=enforced,
+        on_date=date.today().isoformat(),
+    )
+    return enforced
 
 def _trading_dates(start: date, n: int) -> list[date]:
     """Return the next n NSE trading days after start (skips weekends + NSE holidays)."""
@@ -169,6 +193,8 @@ def _build_daily_forecasts(
         for name, ws in report.weighted_agent_scores.items()
     }
     base_confidence = min(1.0, max(0.1, report.final_score))
+    # SA-003: every row names the run that issued it and that run's gate.
+    gate_status, gate_run_id, _ = dg.report_gate(report)
 
     # Build the LLM-calibrated price path via interpolator (Monte Carlo GBM primary)
     interpolator = PriceInterpolator()
@@ -254,6 +280,8 @@ def _build_daily_forecasts(
             revised=False,
             revision_count=0,
             predicted_agent_catalysts=agent_predictions or {},
+            data_gate=gate_status,
+            source_run_id=gate_run_id,
         ))
 
     return forecasts
@@ -474,6 +502,17 @@ def generate_forecast(
     # via the _aggregator.run() call inside, so no global config mutation needed.
     report = _run_orchestrator_analysis(ticker, sector, effective_weights)
 
+    # SA-003: no envelope from an abstained analysis. Everything downstream —
+    # the daily grading, weight updates, the advisor's ADD — would inherit it.
+    if _forecast_gated(report, ticker, "paper_forecast" if paper else "forecast",
+                       "prediction envelope"):
+        _, run_id, reasons = dg.report_gate(report)
+        raise InsufficientDataError(
+            f"[generate_forecast] {ticker}: analysis run {run_id or '?'} abstained "
+            f"({'; '.join(reasons)}) — no envelope built. Will retry on the next "
+            "scheduled run."
+        )
+
     # Fetch actual baseline close — retry once on failure before raising
     base_close = _fetch_actual_close(ticker)
     if base_close is None:
@@ -551,6 +590,7 @@ def generate_forecast(
         base_close=base_close,
         weight_version_used=wm.weight_version,
         learning_mode=mode,
+        decision_gate=report.decision_gate.model_dump() if report.decision_gate else None,
         forecast_profile_shape=forecast_profile.path_shape if forecast_profile else "linear",
         forecast_profile_monthly_pct=forecast_profile.monthly_return_pct if forecast_profile else 0.0,
         forecast_profile_source=forecast_profile.source if forecast_profile else "static",
@@ -656,6 +696,15 @@ def regenerate_envelope(
         effective_weights = decision_weights(wm, sector)
         report = _run_orchestrator_analysis(ticker, sector, effective_weights)
 
+        # SA-003: an abstained analysis regenerates nothing; the current
+        # envelope stays as it is (as on the base-close abort below).
+        if _forecast_gated(report, ticker, "reforecast", f"re-forecast ({trigger})"):
+            logger.warning(
+                "[regenerate_envelope] %s: analysis abstained — re-forecast skipped "
+                "(original envelope intact)", ticker,
+            )
+            return None
+
         # Fresh baseline close — the new MC paths anchor on today's actual
         # close, not the month-start base_close.
         base_close = _fetch_actual_close(ticker)
@@ -715,6 +764,8 @@ def regenerate_envelope(
             envelope.forecast_profile_source = forecast_profile.source
         envelope.weight_version_used = wm.weight_version
         envelope.learning_mode = mode
+        envelope.decision_gate = (report.decision_gate.model_dump()
+                                  if report.decision_gate else None)
 
         store.save_envelope(envelope)
         logger.info(

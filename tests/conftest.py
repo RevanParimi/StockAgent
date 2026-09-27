@@ -95,6 +95,19 @@ def _no_real_evidence_writes(monkeypatch, tmp_path):
     )
 
 
+@pytest.fixture(autouse=True)
+def _no_real_gate_writes(monkeypatch, tmp_path):
+    """Same rule for SA-003's decision-gate skip log: every analysis, forecast
+    and review the suite runs records its gate, and data/logs is the Railway
+    volume in production. Explicit path= arguments are honored unchanged."""
+    from backend.shared.pipeline import decision_gate as _gate
+    _orig_path = _gate._path
+    monkeypatch.setattr(
+        _gate, "_path",
+        lambda path=None: _orig_path(path or str(tmp_path / "decision_gate.jsonl")),
+    )
+
+
 # ---------------------------------------------------------------------------
 # Stock query fixtures
 # ---------------------------------------------------------------------------

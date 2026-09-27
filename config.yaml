@@ -657,6 +657,37 @@ observability:
   data_health_fundamentals_max_age_days: 200
 
 # =============================================================================
+# Decision gate (SA-003, audit F08) — act only on essential data
+# =============================================================================
+decision_gate:
+  # Each analysis gets a typed gate: actionable, degraded (actionable, but an
+  # ordinary enrichment such as news is missing) or abstain. It abstains when
+  # an essential section above (observability.data_health_essential_sections)
+  # is not ok/cache_hit, when fewer than min_dimensions_fraction of the
+  # sector's dimensions were scored, or when the run has no structured
+  # provenance (the legacy worker-pool fallback).
+  #
+  # record  = compute the gate everywhere and record, in
+  #           data/logs/decision_gate.jsonl and on the report, forecast rows and
+  #           advice, what enforcement WOULD stop. Nothing changes.
+  # enforce = an abstained analysis reads INSUFFICIENT DATA; no forecast,
+  #           re-forecast, shelf idea, weight update, lesson or envelope
+  #           revision is built on it; a review whose close is not dated the
+  #           session is skipped; no ADD or SWITCH buy without a close dated
+  #           the review session and an actionable forecast. Exits and trims
+  #           are never blocked.
+  # Any other value fails closed to enforce and logs a warning.
+  #
+  # Checked in as record: activating enforce is a separate owner decision,
+  # after SA-039's observation window and a measured record period.
+  # ROLLBACK LINE: set this (or the env DECISION_GATE_MODE) back to record.
+  mode: record
+  # Audit F08 saw BUY on 1 of 6 and 2 of 6 scored dimensions and STRONG BUY on
+  # 3 of 9. The composite renormalises over what was scored, so one surviving
+  # dimension becomes the whole verdict. At least half must be scored.
+  min_dimensions_fraction: 0.5
+
+# =============================================================================
 # Sector routing (Three Loops PI, task A1 — spec 2026-08-24 §2.1)
 # =============================================================================
 sectors:

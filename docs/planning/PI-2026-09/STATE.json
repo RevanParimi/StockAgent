@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "pi": "PI-2026-09",
-  "updated_at": "2026-09-26",
+  "updated_at": "2026-09-27",
   "baseline_commit": "9a805878ed19c0cda7833d5b897ac05ee407436d",
   "audit": {
     "status": "complete",
@@ -9,13 +9,13 @@
     "production_modified": false
   },
   "active_task": null,
-  "next_task": "SA-003",
+  "next_task": "SA-004",
   "next_phase": "implementation",
   "scope": "One implementation or fresh-session review phase per conversation. Default queue is planned stories; stretch requires explicit promotion.",
   "pending_production_checks": [
     {"id": "SA-039-P1", "story": "SA-039", "due_ist": "2026-09-28 17:00", "status": "pending", "check": "After the Mon 16:30 review: logs show learning_mode=observe and '[WeightAdapter] Proposal (not applied)' (no 'Weights -> vN'); /ui/rl/summary weight_version for every managed ticker equals the analysis_data/sa039_activation_versions_20260926.json baseline; /ui/rl/weights latest_observation dated 2026-09-28.", "record_in": "docs/planning/PI-2026-09/evidence/SA-039-activation-2026-09-26.md"},
     {"id": "SA-039-P2", "story": "SA-039", "due_ist": "2026-09-29 17:00", "status": "pending", "check": "After the Tue review: weight versions still unchanged (the two-review check).", "record_in": "docs/planning/PI-2026-09/evidence/SA-039-activation-2026-09-26.md"},
-    {"id": "SA-039-P3", "story": "SA-039", "due_ist": "2026-10-01 09:30", "status": "pending", "check": "After the 09:00 rl_monthly_forecast: new envelopes carry learning_mode=observe (the first fully contained cohort).", "record_in": "docs/planning/PI-2026-09/evidence/SA-039-activation-2026-09-26.md"}
+    {"id": "SA-039-P3", "story": "SA-039", "due_ist": "2026-10-01 09:30", "status": "pending", "check": "After the 09:00 rl_monthly_forecast: new envelopes carry learning_mode=observe (the first fully contained cohort).", "record_in": "docs/planning/PI-2026-09/evidence/SA-039-activation-2026-09-26.md", "then_decision": "SA-003 enforce decision, DELEGATED to Claude by the owner on 2026-09-27 ('decide to update to enforce or not on that SA-039; you know how to log it'). After P3 passes, decide go / wait / no-go by these rules, log it, and tell the owner. WAIT unless all of: (1) SA-003 accepted by its fresh review and deployed in record mode; (2) P1-P3 passed; (3) the live envelopes carry data_gate (deployed before a monthly forecast; else wait for 1 Nov); (4) at least 5 scheduled review days of record-mode rows in data/logs/decision_gate.jsonl; (5) no other policy flag changed in this window. Then NO-GO (route a fix instead) if either: (a) more than 20% of analyses would abstain, not counting pre-gate forecast rows; or (b) a spot check of 5 abstain rows against their health rows and source logs finds one where the data was actually fine. Otherwise GO: set DECISION_GATE_MODE=enforce in a safe window (00:10-06:20 IST), read-only verify after the next scheduled review, and roll back to record if a verified run was withheld or the skip count far exceeds the record-mode prediction. If Claude cannot set the Railway variable, give the owner the exact command. Log: evidence/SA-003-enforce-decision-<date>.md, STATE history, SA-003 production_verification. See the SA-003 receipt, Rollout. ALSO REPORT (added by the SA-003 fresh review, 2026-09-27; informs the owner, does not change the rules above): (F1) how many month-start envelopes in the measured cohort carry data_gate abstain: under enforce each such ticker would get no envelope for the month (only a restart's self-heal retries; same-month retry routed to SA-036), so its reviews return no_envelope and its ADDs stay blocked; (F2) how many stage actual_close rows name source nse with the previous session's bar: the close verifier replacing a session close with an earlier NSE row (routed to SA-012); under enforce those days are skipped, not mis-graded. Count analyses by distinct run_id against the data-health rows, not raw gate-log rows (a re-run review appends again). See evidence/SA-003-review.md."}
   ],
   "status_definitions": {
     "todo": "Not started; ready when every dependency is done.",
@@ -178,16 +178,45 @@
       "points": 4,
       "priority": "P1",
       "scope": "planned",
-      "status": "todo",
+      "status": "done",
+      "implementation_started": "2026-09-27, a new conversation from about 03:40 IST; baseline da90ee5 (the previous conversation's push/deploy record, committed at 03:44 as this one began; clean tree otherwise); no SA-039 check was due (P1 is Mon 28 Sep 17:00)",
       "depends_on": [
         "SA-002"
       ],
-      "implementation_receipt": null,
-      "review_receipt": null,
-      "reviewed_revision": null,
+      "implementation_baseline": "da90ee5ad8f1d50037db708ded72fcf8b222ad05",
+      "implementation_receipt": "docs/planning/PI-2026-09/evidence/SA-003-implementation.md",
+      "review_input_manifest": "docs/planning/PI-2026-09/evidence/SA-003-manifest.json",
+      "review_input_sha256": "dbe167149b5f73ab616c7d5e1e25054594e7c2af043d5316b948b8d92aa96c94",
+      "diff_sha256": "a46a684622ce54d4e766982d7d8d0d98a19705e56f2e430340e3e21dc89cd2f1",
+      "implementation": {
+        "date": "2026-09-27",
+        "context": "one implementation conversation, about 03:40-05:15 IST, including a same-conversation self-review (not the fresh review)",
+        "summary": "Typed FinalReport.decision_gate (actionable/degraded/abstain) derived from SA-002's build_record: abstain on an unusable essential section, fewer than half the dimensions scored, or no bundle. Switch decision_gate.mode (env DECISION_GATE_MODE) ships as record (records what enforcement would stop; changes nothing); enforce withholds the verdict (INSUFFICIENT DATA), builds no forecast or re-forecast, stops the daily review before any learning write (graded row not actionable, close not from the session's bar, or re-run not actionable), shelves no abstained deep dive, and withholds ADD and SWITCH buy legs on a stale close or an unverified forecast; EXIT/TRIM never blocked. Unknown values fail closed to enforce. Skip records: data/logs/decision_gate.jsonl (ticker-level), the review summary, and the user's AdviceRecord.data_gate.",
+        "tests": "New 4 files 119 passed; focused 32 existing + 4 new: 570 passed, 2 failed (test_portfolio_pipeline, local atlas.db dependency, identical on baseline); 12 of 12 runtime mutations caught; 7-day sweep 27 Sep-3 Oct 119 passed each; full tests/unit 3442 passed, 5 skipped, 0 failed, nonet blocked the pre-existing 194; check_kt_docs errors [] (PDF source 67acf0c7, 22 pages). Windows, Python 3.13.11, pandas 3.0.2, RL_LEARNING_MODE=adapt, -p nonet.",
+        "routes": {
+          "SA-004": "count data_gated separately from produced",
+          "SA-005": "config-loader reload leak; Atlas-dependent pipeline tests; locking flake measured",
+          "SA-008": "what the gate gives; TATAMOTORS->TMPV override is invisible to the gate",
+          "SA-024": "screens show final_score beside INSUFFICIENT DATA and no reasons"
+        },
+        "at_commit": "link decision_gate.py in the KT and bump the KT header past 8413b59"
+      },
+      "review_receipt": "docs/planning/PI-2026-09/evidence/SA-003-review.md",
+      "reviewed_revision": "uncommitted working tree on da90ee5ad8f1d50037db708ded72fcf8b222ad05, pinned by review input dbe167149b5f73ab616c7d5e1e25054594e7c2af043d5316b948b8d92aa96c94 (diff a46a684622ce54d4e766982d7d8d0d98a19705e56f2e430340e3e21dc89cd2f1, rebuilt independently by the reviewer)",
+      "review_outcomes": [
+        {"date": "2026-09-27", "verdict": "accepted", "context": "fresh-session review (new conversation, about 08:30-09:15 IST); no SA-039 check was due", "reviewed_revision": "worktree on da90ee5 (uncommitted)", "review_input_sha256": "dbe167149b5f73ab616c7d5e1e25054594e7c2af043d5316b948b8d92aa96c94", "diff_sha256": "a46a684622ce54d4e766982d7d8d0d98a19705e56f2e430340e3e21dc89cd2f1", "findings": {"F1": "Medium, documentation/operational: an abstained month-start forecast is retried only by a restart's self-heal, not 'the next scheduled run' (scheduler.py:180-190, server.py:155-172); under enforce the ticker has no envelope for the month. KT corrected in the review; retry and log text routed to SA-036.", "F2": "Medium, pre-existing, reproduced: close_verifier picks NSE's newest earlier row when the session row is absent and prefers it on a >1% disagreement (close_verifier.py:126-129, 157-168); probe gives 100.0 from 24 Sep where yfinance had 25 Sep 110.0. SA-003 correctly marks it stale. Routed to SA-012."}, "tests": "full tests/unit 3442 passed, 5 skipped, 0 failed, nonet blocked the pre-existing 194; 4 new files 119 passed, blocked 0; reviewer mutations R1-R5 caught (34/5/11/13/32); 7-day sweep 119 each; NSE-lag probe 3 passed; check_kt_docs errors [] (PDF source 3735be42, 22 pages). Windows, Python 3.13.11, pandas 3.0.2, RL_LEARNING_MODE=adapt, -p nonet.", "doc_edits": "status wording (KT, ARCHITECTURE, TEAM_TESTING_GUIDE 02-C/03-C, CODEBASE.md), KT F1 sentence corrected, KT F2 case named, PDF rebuilt; verify SA-003-manifest.json now mismatches exactly those five files; no code, test or config changed"}
+      ],
+      "routed_follow_ups": {
+        "F1": "SA-036 (same-month retry of a withheld month-start envelope; 'Will retry on the next scheduled run' log text in generate_forecast)",
+        "F2": "SA-012 (close verifier: no earlier-row NSE fallback when a session is requested; test the lag case)",
+        "SA-004": "count data_gated separately from produced (implementation route)",
+        "SA-005": "config-loader reload leak; Atlas-dependent pipeline tests; locking flake (implementation route)",
+        "SA-008": "lifecycle identity; TATAMOTORS->TMPV invisible to the gate (implementation route)",
+        "SA-024": "screens show final_score beside INSUFFICIENT DATA (implementation route)"
+      },
       "production_verification": {
-        "status": "not_started",
-        "evidence": null
+        "status": "pending_deployment",
+        "evidence": "Accepted 2026-09-27; not committed. Ships decision_gate.mode=record (a deploy changes no outcome). After commit and push (owner's word, 00:10-06:20 IST): read-only across one scheduled cohort, decision_gate.jsonl gains rows (reviews name stage forecast_row 'issued before the data gate existed' until the next monthly forecast), reports carry decision_gate, review weight/feedback behaviour unchanged. Enforcing is SA-039-P3's delegated decision."
       },
       "blocked_reason": null
     },
@@ -1130,6 +1159,16 @@
     }
   ],
   "history": [
+    {
+      "date": "2026-09-27",
+      "event": "SA-003 ACCEPTED by its fresh-session review (a new conversation, about 08:30-09:15 IST); status done, production_verification pending_deployment (not committed). Review input dbe16714 verified (38 files, 0 mismatches); diff a46a6846 rebuilt independently. Full tests/unit 3442 passed, 5 skipped, 0 failed (nonet blocked the pre-existing 194); reviewer mutations R1-R5 caught; 7-day sweep clean; NSE-lag probe. Findings: F1 medium (abstained month-start forecast retried only by a restart's self-heal; KT corrected; SA-036), F2 medium pre-existing (close verifier prefers an earlier NSE row on a >1% disagreement; SA-012). Review edits: status wording in five docs, PDF rebuilt (source 3735be42); no code changed. SA-039-P3's enforce decision gains two reported inputs (F1, F2); its rules are unchanged. No SA-039 check was due. Next: SA-004 implementation in a new conversation. Nothing committed, pushed or deployed.",
+      "review_receipt": "docs/planning/PI-2026-09/evidence/SA-003-review.md"
+    },
+    {
+      "date": "2026-09-27",
+      "event": "SA-003 implemented (a new conversation, about 03:40-05:15 IST, on da90ee5) and set to review_required. The essential-data decision gate across public analysis, forecast/re-forecast, daily review, discovery, advisor and autopilot; ships decision_gate.mode=record (no outcome changes on deploy); enforcing is an owner decision after SA-039's window and a measured record period. Review input dbe16714 (38 files, 0 mismatches), diff a46a6846. Full tests/unit 3442 passed, 5 skipped, 0 failed (nonet blocked the pre-existing 194); 12/12 mutations caught; 7-day sweep clean. Routed notes on SA-004, SA-005, SA-008, SA-024. No SA-039 check was due. Nothing committed, pushed or deployed. Next: the fresh-session review in a new conversation ('Continue — review SA-003').",
+      "review_input_sha256": "dbe167149b5f73ab616c7d5e1e25054594e7c2af043d5316b948b8d92aa96c94"
+    },
     {
       "date": "2026-09-27",
       "event": "Pushed 16e7ea7..f1c7eba at 03:41:25 IST at the owner's word (994a7b6, 103f2b8, 8413b59, f1c7eba). Deploy 0509de45 reached SUCCESS about 03:42:48 IST (no requirements change, so the pip layer was cached). Boot log (read-only): startup complete 03:42:34, BackgroundScheduler started with 24 jobs registered, 0 error or warning lines. No job fell in the switch; the next is the 06:30 watchdog. SA-001 and SA-002 production_verification: pending_observation (owner checks for SA-001; one read-only scheduled cohort for SA-002). This record is committed locally and rides the next push."

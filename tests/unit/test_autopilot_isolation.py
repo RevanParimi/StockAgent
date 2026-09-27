@@ -7,6 +7,7 @@ from unittest.mock import patch
 
 from backend.shared.schemas.portfolio import AdviceRecord, Holding
 from core.portfolio.autopilot import execute_advice
+from core.portfolio.pricing import SessionClose
 from core.portfolio.store import PortfolioStore
 
 D = date(2026, 7, 13)
@@ -41,7 +42,7 @@ def test_executor_writes_stay_inside_user_dir(tmp_path, monkeypatch):
 
 
 @patch("core.portfolio.autopilot.promote_symbol", return_value={"status": "ok"})
-@patch("core.portfolio.autopilot.close_on", return_value=200.0)
+@patch("core.portfolio.autopilot.session_close", return_value=(SessionClose(200.0, D, "agree"), D))
 def test_executor_buy_paths_stay_inside_user_dir(mock_close, mock_promote,
                                                  tmp_path, monkeypatch):
     """ADD + SWITCH buy legs must also write only inside the user store.

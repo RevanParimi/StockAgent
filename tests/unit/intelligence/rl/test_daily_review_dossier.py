@@ -140,7 +140,7 @@ def test_run_daily_review_writes_dossier_and_event_tags(tmp_path, monkeypatch):
 
     # Step 2: actual close — direction-correct, near-zero error (NEUTRAL verdict
     # is always direction_correct regardless, but keep the error tiny too).
-    monkeypatch.setattr(dr, "_fetch_actual_close", lambda t, d: 100.1)
+    monkeypatch.setattr(dr, "_fetch_session_close", lambda t, d: dr.SessionClose(100.1, d, "agree"))
 
     # Volume context (non-fatal try/except around get_price_history).
     monkeypatch.setattr(dr, "get_price_history", lambda *a, **k: None)
@@ -283,7 +283,7 @@ def test_run_daily_review_external_shock_wrong_direction_no_crash(tmp_path, monk
 
     # Falling actual close => actual_direction="DOWN" => direction_correct=False
     # for the BUY verdict above.
-    monkeypatch.setattr(dr, "_fetch_actual_close", lambda t, d: 98.0)
+    monkeypatch.setattr(dr, "_fetch_session_close", lambda t, d: dr.SessionClose(98.0, d, "agree"))
     monkeypatch.setattr(dr, "get_price_history", lambda *a, **k: None)
 
     from core.schemas.feedback import RegimeSnapshot

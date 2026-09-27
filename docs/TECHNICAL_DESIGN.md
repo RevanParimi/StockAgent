@@ -22,7 +22,7 @@ it is not an implemented human-approval workflow.
 | Current code | Traced in this checkout. Flags, inputs and runtime data determine whether a path actually runs. |
 | Locally checked | Existing tests run in an isolated copy. Exact results and limits are in the [validation receipt](planning/PI-2026-09/evidence/DOC-001-implementation.md). |
 | Production observation | Dated evidence: the September 10 audit, section 10's 2026-09-21 email diagnosis, a September 15 deployment SUCCESS at `9a805878`, the 2026-09-23 read-only log inspection of learned weights, and the 2026-09-24 [SA-039 weight baseline](planning/PI-2026-09/evidence/SA-039-baseline-2026-09-24.md). Those logs came from deploy `d9c459ae` (commit `e8df088`). Deploys carrying the header revision's code were inspected read-only on 2026-09-25 (`7ebd06c5`: the 16:30 review ran in `adapt`) and on 2026-09-26 (`da9df6cf`: all 20 tickers in `observe`, per the [activation record](planning/PI-2026-09/evidence/SA-039-activation-2026-09-26.md)). |
-| PI target | Intended behavior, not completed functionality. SA-039 was accepted by its fresh review on 2026-09-25, and production has run `observe` since 2026-09-26 ([activation record](planning/PI-2026-09/evidence/SA-039-activation-2026-09-26.md); verification after the next reviews is pending). SA-001 (chat rendering) was accepted by its fresh review on 2026-09-26 ([review](planning/PI-2026-09/evidence/SA-001-review.md)); it is committed as `8413b59`, and its production verification is pending. SA-002 (data health) was accepted by its fresh re-review on 2026-09-26, after a rework of its test fixtures and one fundamentals case ([receipt](planning/PI-2026-09/evidence/SA-002-implementation.md), [review](planning/PI-2026-09/evidence/SA-002-review.md)); it is committed as `8413b59`, and its production verification is pending. Every other story from SA-003 to SA-047 is `todo`. Three are stretch. |
+| PI target | Intended behavior, not completed functionality. SA-039 was accepted by its fresh review on 2026-09-25, and production has run `observe` since 2026-09-26 ([activation record](planning/PI-2026-09/evidence/SA-039-activation-2026-09-26.md); verification after the next reviews is pending). SA-001 (chat rendering) was accepted by its fresh review on 2026-09-26 ([review](planning/PI-2026-09/evidence/SA-001-review.md)); it is committed as `8413b59`, and its production verification is pending. SA-002 (data health) was accepted by its fresh re-review on 2026-09-26, after a rework of its test fixtures and one fundamentals case ([receipt](planning/PI-2026-09/evidence/SA-002-implementation.md), [review](planning/PI-2026-09/evidence/SA-002-review.md)); it is committed as `8413b59`, and its production verification is pending. SA-003 (the decision gate) was accepted by its fresh review on 2026-09-27 and is not yet committed ([receipt](planning/PI-2026-09/evidence/SA-003-implementation.md), [review](planning/PI-2026-09/evidence/SA-003-review.md)); it ships recording only (`decision_gate.mode: record`), and enforcing it is a separate decision, after SA-039's observation window and a measured record period. Every other story from SA-004 to SA-047 is `todo`. Three are stretch. |
 
 The [September audit](audit/2026-09-10-repository-production-review.md) records
 unresolved label, timing, health, weight-bound and operational defects.
@@ -137,6 +137,7 @@ resolved at import, so editing a file does not imply live reconfiguration.
 | `scheduler.feedback_cron: "30 16 * * mon-fri"` | Daily review default, interpreted in Asia/Kolkata. |
 | `rl.hard_bind_verdict_enabled: true` | Research category follows the composite; model `final_score` remains separate. |
 | `rl.learning_mode: adapt` | SA-039 switch, env `RL_LEARNING_MODE`. `adapt` keeps learned weights and lesson emphasis live; `observe` contains them (section 5). Any other value fails closed to `observe`. |
+| `decision_gate.mode: record` | SA-003 switch, env `DECISION_GATE_MODE`. `record` computes and records the essential-data gate everywhere and changes nothing; `enforce` withholds verdicts, forecasts, learning and new-risk buys that rest on unverified data (sections 4–6). Any other value fails closed to `enforce`. |
 | `rl.control_lane_enabled`, `rl.scorecard_enabled`: true | Control/evaluation paths configured; not proof of valid prospective comparison. |
 | `ipo.enabled: true`; `ipo.gmp_enabled: false` | IPO refresh and grey-market-price fetching have separate gates. |
 | `delivery.enabled: true`; `delivery.email_enabled: false`; `delivery.push_enabled: true` | Job scheduling, transport enablement and credentials are separate conditions. |
@@ -191,6 +192,8 @@ not prove no advice was issued.
    `final_score` remains separate.
 7. Score history, run summaries, logs and data-health records support the
    user report and later diagnosis.
+8. The decision gate (SA-003, below) labels the report actionable, degraded or
+   abstain before anything logs or returns its verdict.
 
 **Example:** scores 0.8 and 0.4 at weights 0.75 and 0.25 give composite
 `0.8 × 0.75 + 0.4 × 0.25 = 0.70`. The configured band containing 0.70 gives
@@ -222,7 +225,7 @@ producer decides the status from its structured data, not from its sentence.
 - A row is `ok` only when every dimension scored and every applicable section
   is verified and fresh. Otherwise it is `degraded`, or `hollow` (thresholds
   unchanged), and `health_reasons` says why. Fundamentals, technicals and peers
-  valuation are also listed in `essential_unusable`; SA-003 will gate on them.
+  valuation are also listed in `essential_unusable`; SA-003's gate reads them.
 - A Tavily month-cache entry now records how many results it held, so a cached
   "no results" stays `empty` for the rest of the month.
 - New rows carry `contract_version: 2`. Older rows stay as written and are read
@@ -231,15 +234,49 @@ producer decides the status from its structured data, not from its sentence.
 **Example:** the price source answers 404 for TATAMOTORS while news, macro and
 flows answer. The analyst's prompt text is unchanged. The row now says
 `degraded` with `essential technicals=empty`, `essential fundamentals=empty` and
-`essential peers_valuation=fallback`, where it used to say `ok`. Nothing
-branches on the row yet, so no recommendation changes until SA-003.
+`essential peers_valuation=fallback`, where it used to say `ok`. The decision
+gate below reads the same statuses.
 
-**Current gap:** health is recorded truthfully once SA-002, now accepted, is
-deployed, but empty or stale essential data does not yet form a gate. A surviving subset
-can still produce an actionable report. SA-003 gates action and
-learning; SA-008 handles unresolved instruments; SA-010 corrects benchmark
-arguments. SA-025 measures calls before SA-026 consolidates sector definitions
-and SA-027 retires only justified fallback duplication.
+**Decision gate (SA-003: accepted by its fresh review 2026-09-27, not yet
+committed; ships recording only).** Before SA-003 the row was write-only, and production
+recorded BUY on 1 of 6 scored dimensions and STRONG BUY on 3 of 9: the
+aggregator renormalises over whatever was scored, so one surviving dimension
+becomes the whole verdict. Every report now carries a typed `decision_gate`
+(module `src/backend/shared/pipeline/decision_gate.py`), computed from the same
+section statuses and dimension counts as the health row, whether or not the row
+is recorded:
+
+- **abstain** when an essential section (`observability.data_health_essential_sections`)
+  is not `ok`/`cache_hit`, when fewer than half the sector's dimensions were
+  scored (`decision_gate.min_dimensions_fraction: 0.5`), or when the run has
+  no bundle at all (the legacy worker-pool fallback has no provenance). An
+  unresolved symbol lands here too: no provider knows it, so its essential
+  sections are empty.
+- **degraded** when it may act but an ordinary enrichment (news, macro, flows,
+  a dimension above the floor) is missing. Degraded is actionable.
+- **actionable** when nothing is missing.
+
+One switch, `decision_gate.mode` (env `DECISION_GATE_MODE`). `record`, the
+checked-in value, changes nothing: every consumer computes the gate and
+records what enforcement would stop, in `data/logs/decision_gate.jsonl`, on the
+report, on forecast rows and on advice. In `enforce` an abstaining report's
+verdict reads `INSUFFICIENT DATA` (the aggregator's verdict is kept as
+`withheld_verdict`), and sections 5 and 6 describe what the learning and
+portfolio consumers then refuse. An unrecognised value fails closed to
+`enforce`. **Example:** the TATAMOTORS 404 run above scores 9 of 9 and the
+aggregator says STRONG BUY. Its gate is `abstain`, naming the three essential
+sections. In `record` the user still sees STRONG BUY and the gate log gains a
+row saying what enforcement would have withheld; in `enforce` the user sees
+INSUFFICIENT DATA. The same run with its price source answering stays
+`actionable` and keeps STRONG BUY.
+
+**Current gap:** production records the gate only once SA-003 is deployed, and
+nothing is withheld until the owner switches to `enforce`. How often the gate
+would abstain is not yet measured: a blank newest quarter, for example, makes
+fundamentals `fallback` and so abstains, for weeks after each quarter end.
+SA-008 handles instrument lifecycles (renames, demergers, successors); SA-010
+corrects benchmark arguments. SA-025 measures calls before SA-026 consolidates
+sector definitions and SA-027 retires only justified fallback duplication.
 
 **Planned redesign (adopted 2026-09-26, not implemented).** The
 [one-engine design](superpowers/specs/2026-09-26-one-engine-sector-lenses-design.md) retires the per-sector graphs. Today all five
@@ -285,6 +322,17 @@ Shocks, thesis changes and later evidence can revise/archive envelopes.
 SA-013 will define immutable issuance identity so revised knowledge does not
 replace the earlier decision's evidence.
 
+**SA-003:** every forecast row now names the analysis run that issued it
+(`source_run_id`) and that run's gate (`data_gate`); the envelope keeps the
+latest run's full `decision_gate`. A row issued before SA-003 has an empty
+`data_gate`, meaning provenance unknown. In `enforce` mode an abstained
+analysis builds no envelope (`InsufficientDataError`; the monthly job logs it)
+and regenerates nothing on a shock (the current envelope stays as it is).
+Nothing scheduled retries a withheld month-start envelope before the next
+month's run: only a restart's self-heal regenerates a missing envelope. Until
+then that ticker's reviews return `no_envelope` and its ADDs stay blocked.
+A same-month retry is routed to SA-036.
+
 ### Daily review walkthrough
 
 1. The scheduler selects the previous exchange trading session.
@@ -300,6 +348,30 @@ replace the earlier decision's evidence.
    knowledge updates can run under their feature gates.
 7. After harvesting reviews, the scheduler invokes the portfolio pipeline.
    Returning successfully does not establish that every ticker got feedback.
+
+**Decision gate in the review (SA-003).** The review checks three inputs, in
+order, before it writes anything:
+- the graded row came from an actionable analysis (not `abstain`, not unknown);
+- the actual close is from the bar dated the review session. The close
+  fetchers fall back to the newest earlier bar when the session has none (a
+  suspended symbol, a provider lag), and that fallback is unchanged. What is
+  new is that the result names the bar it came from. A known case (routed to
+  SA-012): when NSE has not yet listed the session and yfinance's session
+  close differs from NSE's latest row by more than 1%, the cross-check still
+  prefers NSE's earlier close. That close is now marked stale, not graded;
+- the fresh re-run, when one happens, is actionable.
+
+In `enforce` mode the first failure ends the review as `data_gated`: no
+grading, FeedbackAgent call, weight update or observe-mode proposal, lesson,
+envelope revision, streak, feedback entry, dossier or control-lane step. The
+skip is recorded with its stage, reason and source run id. The market-wide
+sticky regime, updated at the start of every review, is the one write that
+still happens. In `record` mode the review runs as before and its summary lists
+what enforcement would have stopped. **Example:** a symbol is suspended on the
+review day, and both providers return the previous day's close of 99.0. That
+used to be graded as a flat day, a zero return that never happened. Now the
+close says it is from the previous day's bar, and enforcement skips the review.
+Scheduler counts still treat `data_gated` as produced; that is SA-004's.
 
 ### Grading defect: an example everyone can follow
 
@@ -423,6 +495,23 @@ become SWITCH when an eligible replacement exists. A holding-age rule can
 soften certain TRIM actions to HOLD; it does not override EXIT. These are
 product rules, not individualized tax or investment advice.
 
+**Decision gate (SA-003).** ADD and a SWITCH's buy leg add risk, so in
+`enforce` mode they need two things: the holding's close must be from the
+review session's own bar, and the forecast rows behind the signal must come
+from an actionable analysis. A blocked ADD becomes HOLD. A blocked SWITCH
+destination falls back to the next eligible idea, or to a plain EXIT. A shelf
+idea shelved before SA-003, from an abstained deep dive, or priced from an
+earlier bar is not a destination. Either way the advice gains the note
+`DATA_GATE` and a `data_gate` record (what was withheld, why, and the source
+forecast runs). That record is on the user's own advice ledger; the shared
+gate log never holds a user id. EXIT and TRIM are never blocked: missing data
+must not trap a position. When they rest on a stale close or an unverified
+forecast, the advice records that. In `record` mode the decision is
+unchanged and `data_gate` says what enforcement would have withheld.
+**Example:** a holding's envelope was built on an abstained STRONG BUY and
+points up. Unenforced, that gives ADD and a virtual buy of 2 shares. Enforced,
+it gives HOLD with `DATA_GATE`, and no buy.
+
 ### Execution and persistence
 
 The global gate, user's virtual-autopilot choice and cash-accounting state
@@ -435,6 +524,9 @@ Transactions are appended before saving holdings/cash. A crash in between can
 leave the ledger ahead of the portfolio; deduplication is not an atomic
 multi-file transaction. Reconciliation handles this gap. Corporate actions
 affect adjusted quantities and cost. No broker-order execution path was found.
+In `enforce` mode the executor also re-checks a SWITCH buy leg's own price:
+if its close is not from the session's bar, the sell executes and the buy is
+skipped, and the user gets the existing `switch_buy_skipped` alert.
 
 ## 7. Profit/loss and the different marksheets
 
@@ -685,7 +777,7 @@ HTTP responses do not prove recovery or successful jobs.
 |---|---|---|
 | Sector routing | Shared graph selection via registry. | Complete store lineage, and sector lenses resolved from NSE's industry field ([one-engine design](superpowers/specs/2026-09-26-one-engine-sector-lenses-design.md); SA-026). |
 | Analysis | Unified scoring plus surviving legacy fallback. | Actual call accounting. A factor engine (computed factors, one text reader, code decides, LLM explains) proven in shadow, then the graphs and fallback retired (SA-044–SA-047, SA-027). |
-| Data health | Durable health/run records. Producer-typed section status and usable-data health (SA-002, accepted 2026-09-26, committed as `8413b59`). | Recommendation/learning gates on essential data (SA-003). |
+| Data health | Durable health/run records. Producer-typed section status and usable-data health (SA-002, accepted 2026-09-26, committed as `8413b59`). A decision gate on essential data across research, learning and portfolio (SA-003, accepted 2026-09-27, not yet committed), shipped recording only. | A measured record period, then the owner's decision to enforce; instrument lifecycles (SA-008). |
 | Verdict binding | Deterministic category enabled in YAML, raw model verdict logged. | Correct issue-time grading and final adaptive constraints. |
 | Portfolio | Per-user advice/execution, stops, switches and ledgers. | Stronger upstream evidence and report reconciliation. |
 | IPO | Calendar, history, snapshots, recent-listing screening, size-tiered brief lean, and the dark P3 model, deep dive, narrator and forward-grading lane (section 8). | Forward evidence for P3 and its `ipo_verdicts_visible_gate`; no verdict reaches a user; outside default September scope. |
@@ -702,8 +794,8 @@ Legacy code should only be retired with measured replacement coverage.
 The table below includes the planned destination now. **SA-039 is accepted
 (production `observe` since 2026-09-26). SA-001 and SA-002
 (after a rework) are accepted and committed as `8413b59`; their production
-verification is pending.
-Every other SA story is `todo`; SA-003 is next.** Accepted
+verification is pending. SA-003 is accepted by its fresh review (2026-09-27)
+and not yet committed. Every other SA story is `todo`.** Accepted
 state/dependencies are in
 [STATE.json](planning/PI-2026-09/STATE.json). DOC-001 is this user-requested
 documentation refresh; it does not close SA-031 or any upstream remediation.

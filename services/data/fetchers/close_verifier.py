@@ -41,7 +41,10 @@ logger = logging.getLogger(__name__)
 # ticker on every call within the same process/day.
 # ---------------------------------------------------------------------------
 
-_NSE_CLOSE_CACHE: dict[str, dict[str, float | None]] = {}  # { "YYYY-MM-DD": { ticker: close } }
+# { "YYYY-MM-DD": { "TICKER:target": (close, bar_date) } } — bar_date is the
+# session of the NSE row the close came from (SA-003: a close carried forward
+# from an earlier session must be recognisable as such).
+_NSE_CLOSE_CACHE: dict[str, dict[str, tuple[float | None, date | None]]] = {}
 
 
 def _today_key() -> str:
@@ -86,12 +89,27 @@ def _fetch_nse_close(ticker: str, target_date: date | None = None) -> float | No
     when NSE's quote-equity endpoint returns 403. Day-cached in-process per
     (ticker, target_date). Never raises.
     """
+    return _fetch_nse_session(ticker, target_date)[0]
+
+
+def nse_session_close(ticker: str, target_date: date | None = None) -> tuple[float | None, date | None]:
+    """(close, bar_date) of the NSE row `_fetch_nse_close` uses — the same
+    cached fetch, so asking for the date costs no extra NSE call. Never raises."""
+    return _safe_call(_fetch_nse_session, ticker, target_date,
+                      default=(None, None), label="NSE session close")
+
+
+def _fetch_nse_session(ticker: str, target_date: date | None = None) -> tuple[float | None, date | None]:
+    """The fetch behind `_fetch_nse_close`, also returning the row's session."""
+    from datetime import datetime as _dt
+
     cache = _NSE_CLOSE_CACHE.setdefault(_today_key(), {})
     cache_key = f"{ticker}:{target_date.isoformat() if target_date else 'latest'}"
     if cache_key in cache:
         return cache[cache_key]
 
     close: float | None = None
+    bar_date: date | None = None
     try:
         from nse import NSE
         import pathlib
@@ -112,15 +130,22 @@ def _fetch_nse_close(ticker: str, target_date: date | None = None) -> float | No
                 else:
                     row = data[-1]
                 close = _sanitize(float(row["chClosingPrice"]))
+                try:
+                    bar_date = _dt.strptime(str(row.get("mtimestamp")), "%d-%b-%Y").date()
+                except (TypeError, ValueError):
+                    bar_date = None      # undated: never taken as the session's close
         finally:
             from services.data.fetchers.nse_client import close_nse
             close_nse(nse)  # exit() + rmtree(download_folder) — AUD-017
     except Exception as exc:
         logger.debug("[close_verifier] NSE close fetch failed for %s: %s", ticker, exc)
         close = None
+        bar_date = None
 
-    cache[cache_key] = close
-    return close
+    if close is None:
+        bar_date = None
+    cache[cache_key] = (close, bar_date)
+    return close, bar_date
 
 
 # ---------------------------------------------------------------------------

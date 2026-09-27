@@ -6,6 +6,7 @@ import pytest
 
 from backend.shared.schemas.portfolio import AdviceRecord, Holding
 from core.portfolio.autopilot import execute_advice, record_value_point
+from core.portfolio.pricing import SessionClose
 from core.portfolio.store import PortfolioStore
 
 D = date(2026, 7, 13)
@@ -42,7 +43,7 @@ def _switch(sym="TATAMOTORS", cand="LODHA", close=110.0):
 
 
 @patch("core.portfolio.autopilot.promote_symbol", return_value={"status": "ok"})
-@patch("core.portfolio.autopilot.close_on", return_value=200.0)
+@patch("core.portfolio.autopilot.session_close", return_value=(SessionClose(200.0, D, "agree"), D))
 def test_switch_sells_then_buys_candidate(mock_close, mock_promote, tmp_path):
     s = _store(tmp_path, [_h()], cash=20000.0)
     txns = execute_advice(s, s.load(), [_switch()], {"TATAMOTORS": 110.0}, D,
@@ -58,7 +59,7 @@ def test_switch_sells_then_buys_candidate(mock_close, mock_promote, tmp_path):
     mock_promote.assert_called_once_with("LODHA", "realty", origin="held")
 
 
-@patch("core.portfolio.autopilot.close_on", side_effect=Exception("no price"))
+@patch("core.portfolio.autopilot.session_close", side_effect=Exception("no price"))
 def test_switch_buy_skipped_when_candidate_unpriceable(mock_close, tmp_path):
     s = _store(tmp_path, [_h()], cash=20000.0)
     txns = execute_advice(s, s.load(), [_switch()], {"TATAMOTORS": 110.0}, D)

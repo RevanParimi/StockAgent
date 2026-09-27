@@ -235,7 +235,7 @@ def test_daily_review_persists_evidence_on_the_lesson_it_writes(tmp_path, monkey
 
     import core.intelligence.rl.workflows.daily_review as dr
     monkeypatch.setattr(dr.settings, "PREDICTION_DATA_DIR", str(tmp_path))
-    monkeypatch.setattr(dr, "_fetch_actual_close", lambda t, d: 100.1)
+    monkeypatch.setattr(dr, "_fetch_session_close", lambda t, d: dr.SessionClose(100.1, d, "agree"))
     monkeypatch.setattr(dr, "get_price_history", lambda *a, **k: None)
 
     from core.schemas.feedback import RegimeSnapshot

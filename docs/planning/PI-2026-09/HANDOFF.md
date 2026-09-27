@@ -1,4 +1,4 @@
-# Current handoff - 2026-09-27 (updated about 03:50 IST)
+# Current handoff - 2026-09-27 (updated about 09:15 IST)
 
 ## START HERE — resume checklist, in order
 
@@ -9,20 +9,154 @@ every check that is due and unrecorded (read-only; the steps are in the carry-ov
 the [activation record](evidence/SA-039-activation-2026-09-26.md) and in STATE.
 [SA-038](stories/SA-038.md) is the backstop.
 
-**1. Next PI phase: implement [SA-003](stories/SA-003.md)** (gate recommendations and learning on
-essential data) in a new conversation. Opener: `Continue — implement SA-003`. Run step 0 first if
-a check is due by then. STATE: `active_task: null`, `next_task: SA-003`,
-`next_phase: implementation`. Its only dependency, SA-002, is now `done`.
+- **When P3 passes (Thu 1 Oct), make the SA-003 enforce decision.** On 2026-09-27 the owner
+  delegated it to Claude: decide by the written rules, log the decision, and tell the owner. SA-039's
+  observation window ends with P3. The rules are in STATE, under P3's `then_decision`:
+  - **Wait** until all of these hold:
+    - SA-003 is deployed in record mode. It was accepted on 27 Sep and still needs the owner's
+      commit and push (step 1);
+    - P1–P3 have passed;
+    - the live envelopes carry `data_gate` (otherwise wait for the 1 Nov forecast);
+    - `decision_gate.jsonl` holds at least 5 scheduled review days of rows;
+    - no other policy flag changed in this window.
+  - **No-go**, and route a fix, if either of these holds:
+    - more than 20% of analyses would abstain, not counting forecast rows issued before the gate;
+    - a spot check of 5 abstain rows finds one whose data was actually fine.
+  - **Otherwise go:**
+    - set `DECISION_GATE_MODE=enforce` in a safe window (00:10–06:20 IST). If Claude cannot set
+      the Railway variable, give the owner the exact command;
+    - verify read-only after the next scheduled review;
+    - roll back to `record` if a verified run was withheld, or if skips far exceed the prediction.
+  - **Also report two inputs to the owner.** The SA-003 review added them; they do not change the
+    rules above:
+    - **F1:** how many month-start envelopes carry `abstain`. Under `enforce`, each such ticker
+      would have no envelope for that month, because only a restart retries it;
+    - **F2:** how many `actual_close` gate rows name `source nse` with the previous session's bar
+      (the close-verifier case);
+    - count analyses by distinct `run_id` against the data-health rows, not by raw gate-log rows.
+      A re-run review appends its rows again.
+  - Log the decision in `evidence/SA-003-enforce-decision-<date>.md`, in STATE history and in
+    SA-003's `production_verification`. The [SA-003 receipt](evidence/SA-003-implementation.md)
+    has the steps, under "Rollout", and the [review](evidence/SA-003-review.md) has F1 and F2.
 
-- **What SA-002 hands over** is in the "Routed input" section of the SA-003 card. Gate on the
-  record (`essential_unusable`, `section_status`), not on `has_real_data`. Only `ok` and
-  `cache_hit` count as usable.
-- **Run tests with a network guard.** Use `-p nonet` from ignored `analysis_data/sa002/nonet.py`
-  (`PYTHONPATH=analysis_data/sa002`), with `RL_LEARNING_MODE=adapt`. Without it, a missed patch
-  reaches real providers (see the incident in step 5). Check any date-relative fixture on 7
-  consecutive days; see the SA-005 note.
-- **SA-001 and SA-002 are committed as `8413b59`** (2026-09-27, about 03:40 IST, at the owner's
-  "commit and push", inside the 00:10–06:20 safe window). SA-003 starts from a clean baseline.
+**1. Next PI phase: implement [SA-004](stories/SA-004.md)** (count daily-review outcomes
+truthfully), in a new conversation. Opener: `Continue`. Run step 0 first if a check is due by then.
+STATE: `active_task: null`, `next_task: SA-004`, `next_phase: implementation`.
+
+- SA-004 has no dependencies. Its card carries SA-003's note: count `data_gated` separately from
+  produced.
+- Run every test with the network guard `-p nonet` and `RL_LEARNING_MODE=adapt` (see step 4).
+- **Owner, when convenient: commit and push SA-003.**
+  - Commit only on the owner's word. Push only in the 00:10–06:20 IST window.
+  - It ships `record`, so the deploy changes no outcome and is not a policy-flag change.
+  - At commit:
+    - link `src/backend/shared/pipeline/decision_gate.py` in the KT;
+    - bump the KT header past `8413b59`;
+    - rebuild the PDF and run `check_kt_docs`;
+    - run `verify SA-003-manifest.json --rev <commit>`. Expect mismatches only in the five
+      status-edited docs.
+  - **Timing example.** Pushed in the early hours of Mon 28 to Thu 1 Oct, before 09:00 on the 1st:
+    the October envelopes carry `data_gate`, and the enforce decision's third condition can be met
+    this cycle. Pushed later, that condition waits for the 1 Nov forecast.
+
+**2. SA-003 was ACCEPTED on 2026-09-27 by a fresh-session review** (a new conversation, about
+08:30–09:15 IST). Receipt: [SA-003-review.md](evidence/SA-003-review.md). SA-003 is `done`, and its
+`production_verification` is `pending_deployment`. No SA-039 check was due. Nothing was committed,
+pushed or deployed.
+
+- **Input verified:**
+  - the review input `dbe16714…`: 38 files, 0 mismatches;
+  - the diff `a46a6846…`, rebuilt with the reviewer's own script;
+  - the PDF blob.
+- **Traced:**
+  - all 8 non-test `analyse` callers;
+  - the one `decide` caller;
+  - both autopilot buy paths;
+  - every weight and lesson writer;
+  - the re-forecast paths.
+
+  Each acts only through the gate, or is display-only and routed.
+- **F1 (medium), in one example.** With `enforce` on, TATAMOTORS' 09:00 analysis on 1 Nov
+  abstains.
+  - No November envelope is built.
+  - Nothing scheduled retries it before 1 Dec; only a restart's self-heal does.
+  - Until then its reviews return `no_envelope`, and its ADDs stay blocked.
+
+  The KT said "the next scheduled run retries", and the review corrected it. The retry and the log
+  text are routed to [SA-036](stories/SA-036.md).
+- **F2 (medium, predates SA-003), in one example.** Friday's review: yfinance has Friday's close,
+  110. NSE has not listed Friday yet, and its newest row is Thursday's, 100.
+  - The verifier returns 100, from Thursday.
+  - Before SA-003, Friday was graded against Thursday's close.
+  - SA-003 dates it Thursday, so it is not fresh: `record` logs it, and `enforce` skips the day.
+
+  Routed to [SA-012](stories/SA-012.md).
+- **The implementer's seven decisions:** the review agreed with each. EXIT and TRIM are never
+  blocked (verified).
+- **Tests** (network guard on):
+  - full `tests/unit`: 3442 passed, 5 skipped, 0 failed; the guard blocked the pre-existing 194;
+  - the 4 new files: 119 passed;
+  - the reviewer's 5 runtime mutations: all caught (34, 5, 11, 13 and 32 failing);
+  - the 7-day sweep: 119 passed each day;
+  - the NSE-lag probe: 3 passed;
+  - `check_kt_docs`: 0 errors.
+- **Review edits (documentation only):**
+  - status wording in the KT, ARCHITECTURE, 02-C, 03-C and `CODEBASE.md`;
+  - the KT's F1 sentence corrected, and the F2 case named;
+  - the PDF rebuilt (source `3735be42…`).
+
+  `verify SA-003-manifest.json` now mismatches exactly those five files. No code, test or config
+  changed.
+
+**3. SA-003 was implemented on 2026-09-27** (a new conversation, about 03:40–05:15 IST, on baseline
+`da90ee5`). Receipt: [SA-003-implementation.md](evidence/SA-003-implementation.md). No SA-039 check
+was due. Nothing was committed, pushed or deployed.
+
+- **What it does, in one example.** TATAMOTORS' price source answers 404, and the aggregator still
+  says STRONG BUY on 9 of 9 dimensions.
+  - The report now carries a typed `decision_gate`, `abstain`, naming the three unusable essential
+    sections and the run id.
+  - In `record` (the checked-in mode) nothing else changes, and a row in
+    `data/logs/decision_gate.jsonl` says what enforcement would have withheld.
+  - In `enforce` the report reads INSUFFICIENT DATA. No envelope is built on it, and the small
+    holding's ADD becomes HOLD with no buy.
+  - With a live price source, the same chain still buys.
+- **Where it acts** (in `enforce`):
+  - public analysis;
+  - the month-start forecast and re-forecast;
+  - the daily review: the graded row, a close from the session's own bar, and the re-run;
+  - discovery's shelf;
+  - the advisor's ADD and SWITCH destinations;
+  - the autopilot's SWITCH buy leg.
+
+  EXIT and TRIM are never blocked.
+- **Tests** (network guard on, `RL_LEARNING_MODE=adapt`):
+  - new files: 119 passed;
+  - focused (32 affected existing files plus the new 4): 570 passed, 2 pre-existing failures that
+    need the local Atlas DB (identical on baseline);
+  - full `tests/unit`: 3442 passed, 5 skipped, 0 failed; the guard blocked the pre-existing 194;
+  - 12 runtime mutations, 12 caught;
+  - 7-day sweep (27 Sep – 3 Oct, across the month rollover and the 2 Oct holiday): 119 passed
+    each day;
+  - `check_kt_docs`: 0 errors.
+- **Docs:** KT §1, §3, §4, §5, §6, §11 and §12; the PDF is rebuilt; ARCHITECTURE; human cases
+  02-C, 02-F and 03-C; `CODEBASE.md`.
+- **Routed:** [SA-004](stories/SA-004.md) (count `data_gated` separately),
+  [SA-005](stories/SA-005.md) (the loader reload, the Atlas-dependent pipeline tests, the locking
+  flake), [SA-008](stories/SA-008.md) (what the gate gives; TATAMOTORS maps to TMPV, and the gate
+  cannot see that), and [SA-024](stories/SA-024.md) (the screens show a score next to INSUFFICIENT
+  DATA).
+- **At commit:** the KT names `src/backend/shared/pipeline/decision_gate.py` in code formatting.
+  The commit that lands SA-003 should link it and bump the KT header past `8413b59`;
+  `check_kt_docs.py` fails on a link to a file absent at the header's revision.
+
+**4. SA-001 and SA-002 were committed, pushed and deployed on 2026-09-27.** They are committed as
+`8413b59` (about 03:40 IST, at the owner's "commit and push", inside the 00:10–06:20 safe window).
+
+- **Network guard.** Use `-p nonet` for every test run. Without it, a missed patch reaches real
+  providers (see the incident in step 8). Check any date-relative fixture on 7 consecutive days;
+  see the SA-005 note.
+- **Commit and deploy:**
   - Commit checks passed. `verify SA-001-manifest.json --rev 8413b59` (17 files) and
     `verify SA-002-manifest.json --rev 8413b59` (19 files) each mismatch only in the five
     status-edited docs: the KT, the PDF, ARCHITECTURE, TEAM_TESTING_GUIDE and `CODEBASE.md`.
@@ -42,7 +176,7 @@ a check is due by then. STATE: `active_task: null`, `next_task: SA-003`,
       SRI error.
     - SA-002: read-only, across one scheduled cohort, as in the Rollout section of its receipt.
 
-**2. SA-002 was ACCEPTED on 2026-09-26 by a fresh-session re-review** (a new conversation, about
+**5. SA-002 was ACCEPTED on 2026-09-26 by a fresh-session re-review** (a new conversation, about
 21:57–22:25 IST). Receipt: [SA-002-review.md](evidence/SA-002-review.md), under "Re-review". SA-002
 is `done`, and `production_verification` is `pending_deployment`. No SA-039 check was due.
 
@@ -82,7 +216,7 @@ is `done`, and `production_verification` is `pending_deployment`. No SA-039 chec
   `observability.data_health_enabled: false`.
 - Nothing was committed, pushed or deployed.
 
-**3. The SA-002 rework was done on 2026-09-26** (a new conversation, about 20:50–21:30 IST).
+**6. The SA-002 rework was done on 2026-09-26** (a new conversation, about 20:50–21:30 IST).
 The rework section is in the [implementation receipt](evidence/SA-002-implementation.md). No
 SA-039 check was due.
 
@@ -102,7 +236,7 @@ SA-039 check was due.
     `missing_values`.
   - The prompt text is byte-identical to HEAD in 13 of 13 cases.
   - Three runtime mutations are each caught: 9, 9 and 2 failing tests.
-- **I1** had already been corrected in the receipt and in step 5 below before the rework began.
+- **I1** had already been corrected in the receipt and in step 8 below before the rework began.
   The rework checked that no doc repeats the claim.
 - **Tests:**
   - contract file: 155 passed (132 before + 23 new);
@@ -115,7 +249,7 @@ SA-039 check was due.
   `missing_values`).
 - Nothing was committed, pushed or deployed.
 
-**4. The SA-002 fresh review requested changes on 2026-09-26** (a new conversation, about
+**7. The SA-002 fresh review requested changes on 2026-09-26** (a new conversation, about
 13:20–14:00 IST). Receipt: [SA-002-review.md](evidence/SA-002-review.md).
 
 - **Input verified:** `4d8968fd…`, 19 files, 0 mismatches; the diff digest `f605966c…` reproduced.
@@ -144,8 +278,8 @@ SA-039 check was due.
 - **Doc edits:** status wording in the KT, ARCHITECTURE, TEAM_TESTING_GUIDE 02-F and CODEBASE.md,
   and the PDF is rebuilt. Nothing was committed, pushed or deployed.
 
-**5. SA-002 was implemented on 2026-09-26** (a conversation from about 10:24 to 11:20 IST). Its
-fresh review requested changes (step 4); the rework is step 3, and the re-review accepted it (step 2).
+**8. SA-002 was implemented on 2026-09-26** (a conversation from about 10:24 to 11:20 IST). Its
+fresh review requested changes (step 7); the rework is step 6, and the re-review accepted it (step 5).
 
 - **What it does, in one example:** TATAMOTORS' price source answers 404, while news, macro and
   flows answer, and the analyst scores 9/9.
@@ -189,7 +323,7 @@ fresh review requested changes (step 4); the rework is step 3, and the re-review
   is SA-002's hunk. The receipt explains. Commit and push only at the owner's word, in a safe
   window.
 
-**6. SA-001 was ACCEPTED on 2026-09-26 by a fresh-session review** (a new conversation, about
+**9. SA-001 was ACCEPTED on 2026-09-26 by a fresh-session review** (a new conversation, about
 07:35–07:55 IST). Receipt: [SA-001-review.md](evidence/SA-001-review.md). SA-001 is `done`;
 `production_verification` is `pending_deployment`. No SA-039 check was due during the review.
 

@@ -97,6 +97,7 @@ class ShelfStore:
                 entry_low=dive.entry_low, entry_high=dive.entry_high,
                 invalidation_level=dive.invalidation_level,
                 close_at_add=dive.close, source_screen_date=dive.dive_date,
+                data_gate=dive.data_gate,
             ))
             added.append(dive.symbol)
             self._event("added", dive.symbol, f"conviction={dive.conviction:.2f}")

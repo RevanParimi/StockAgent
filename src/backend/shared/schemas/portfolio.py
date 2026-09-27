@@ -120,6 +120,11 @@ class AdviceRecord(BaseModel):
     narrative: str = ""            # LLM narration (research tone, never "advice")
     switch_candidate: str = ""     # SWITCH only: the stronger shelf idea's symbol
     rationale_hash: str = ""
+    # SA-003: set when the data gate blocked (enforce) or would have blocked
+    # (record) a risk-increasing action, or when a risk-reducing action rests
+    # on unverified data. {mode, enforced, blocked, reasons, source_run_ids,
+    # price_bar_date}. None when the gate had nothing to say.
+    data_gate: dict | None = None
     # DEPRECATED — never written by anything. See the class docstring.
     outcome_10td: float | None = None
     outcome_30td: float | None = None

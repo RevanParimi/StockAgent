@@ -73,6 +73,12 @@ class DailyForecast(BaseModel):
         default_factory=dict,
         description="Agent catalyst predictions for this forecast day: {agent: {bull_case_if, bear_case_if, data_confidence}}"
     )
+    # SA-003: the decision-gate status of the analysis run that issued this
+    # row (actionable | degraded | abstain), and that run's id. "" means the
+    # row was issued before the gate existed: provenance unknown, which the
+    # review and the advisor treat as unverified in enforce mode.
+    data_gate: str = ""
+    source_run_id: str = ""
 
 
 class ReforecastEvent(BaseModel):
@@ -102,6 +108,9 @@ class PredictionEnvelope(BaseModel):
     # sector default weights were used and weight_version_used is only the
     # stored version at that time, not the weights that produced the forecast.
     learning_mode: str = "adapt"
+    # SA-003: DecisionGate (as a dict) of the latest (re)generation's analysis.
+    # Each row also carries its own issuing run's status in data_gate.
+    decision_gate: dict | None = None
     # Forecast profile from PriceInterpolator — stored for hindsight timing evaluation.
     # "front_loaded" means early move was expected; "back_loaded" means catalyst is 2+ weeks out.
     forecast_profile_shape: str = "linear"

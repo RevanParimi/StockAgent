@@ -117,6 +117,10 @@ class BaseSectorOrchestrator(ABC):
         # once the aggregator has one. Reset per run — an orchestrator instance
         # is long-lived, and a stale record on the next report would be a lie.
         self._last_data_health: dict | None = None
+        # SA-003: what the decision gate is computed from — the unified run's
+        # section statuses and dimension counts. None means the run built no
+        # bundle (legacy worker pool), which the gate treats as unverified.
+        self._last_gate_inputs: dict | None = None
         self._worker_pool_graph = _build_worker_pool_graph(self._sub_agents, self.SECTOR_NAME)
 
     # ------------------------------------------------------------------
@@ -138,6 +142,7 @@ class BaseSectorOrchestrator(ABC):
             started_at = datetime.now(timezone.utc)
             api_snapshot = snapshot_usage()
             self._last_data_health = None
+            self._last_gate_inputs = None
             logger.info("[%s] Async run %s started for '%s'", self.SECTOR_NAME, run_id, user_input)
 
             query = await asyncio.to_thread(self._resolve_ticker, user_input, run_id)
@@ -175,6 +180,8 @@ class BaseSectorOrchestrator(ABC):
             # B2: the run's health record travels with its verdict. None on the
             # legacy worker-pool path, which builds no bundle to describe.
             report.data_health = self._last_data_health
+            # SA-003: the decision gate, before anything logs or returns the verdict.
+            self._apply_decision_gate(report, query.ticker, run_id)
 
             pipeline_run.report = report
             pipeline_run.status = "completed"
@@ -221,6 +228,7 @@ class BaseSectorOrchestrator(ABC):
             started_at = datetime.now(timezone.utc)
             api_snapshot = snapshot_usage()
             self._last_data_health = None
+            self._last_gate_inputs = None
             logger.info("[%s] Run %s started for '%s'", self.SECTOR_NAME, run_id, user_input)
 
             query = self._resolve_ticker(user_input, run_id=run_id)
@@ -250,6 +258,8 @@ class BaseSectorOrchestrator(ABC):
             # B2: the run's health record travels with its verdict. None on the
             # legacy worker-pool path, which builds no bundle to describe.
             report.data_health = self._last_data_health
+            # SA-003: the decision gate, before anything logs or returns the verdict.
+            self._apply_decision_gate(report, query.ticker, run_id)
 
             pipeline_run.report = report
             pipeline_run.status = "completed"
@@ -584,6 +594,11 @@ class BaseSectorOrchestrator(ABC):
         numbers are meant to agree.
 
         Never raises, and never changes the run's outcome.
+
+        SA-003: the same section statuses and dimension counts are kept as the
+        decision gate's inputs before the row is written, so the gate does not
+        depend on the row being recorded (the observability flag is only the
+        row's rollback line).
         """
         self._last_data_health = None
         try:
@@ -596,6 +611,12 @@ class BaseSectorOrchestrator(ABC):
             else:
                 # The analyst returned nothing: every dimension is missing.
                 missing = list(expected)
+            self._last_gate_inputs = {
+                "section_status": dict(getattr(bundle, "section_status", None) or {}),
+                "section_provenance": getattr(bundle, "section_provenance", None),
+                "dimensions_expected": expected,
+                "dimensions_missing": missing,
+            }
             self._last_data_health = record_data_health(
                 run_id=run_id,
                 ticker=query.ticker,
@@ -609,6 +630,43 @@ class BaseSectorOrchestrator(ABC):
         except Exception as exc:
             logger.warning("[%s] data_health record failed (non-fatal): %s",
                            self.SECTOR_NAME, exc, exc_info=True)
+
+    def _apply_decision_gate(self, report: FinalReport, ticker: str, run_id: str) -> None:
+        """
+        SA-003: attach the decision gate to the report. In enforce mode an
+        abstaining gate withholds the verdict (INSUFFICIENT DATA). Every
+        abstention is recorded with its reasons and this run id, in both modes.
+
+        Never raises. If the gate itself cannot be computed, the run abstains:
+        an analysis nobody could check is not evidence.
+        """
+        from backend.shared.pipeline import decision_gate as dg
+        try:
+            inputs = self._last_gate_inputs
+            if inputs is None:
+                gate = dg.no_provenance_gate(
+                    run_id, "no structured provenance: this run's outputs came from "
+                            "the legacy worker pool, which builds no data bundle")
+            else:
+                gate = dg.assess_analysis(run_id=run_id, **inputs)
+        except Exception as exc:
+            logger.error("[%s] decision gate failed for %s — abstaining: %s",
+                         self.SECTOR_NAME, ticker, exc, exc_info=True)
+            gate = dg.no_provenance_gate(
+                run_id, f"decision gate evaluation failed: {type(exc).__name__}")
+        try:
+            dg.apply_gate(report, gate)
+            if gate.status == dg.ABSTAIN:
+                dg.record_gate_decision(
+                    consumer="analysis", ticker=ticker,
+                    skipped=f"actionable verdict {gate.withheld_verdict or report.verdict}",
+                    status=gate.status, reasons=gate.reasons, run_id=run_id,
+                    enforced=gate.enforced, on_date=date.today().isoformat(),
+                    extra={"sector": self.SECTOR_NAME},
+                )
+        except Exception as exc:
+            logger.error("[%s] decision gate could not be applied for %s: %s",
+                         self.SECTOR_NAME, ticker, exc, exc_info=True)
 
     def _run_agents(
         self,
@@ -635,6 +693,9 @@ class BaseSectorOrchestrator(ABC):
             # `dimensions_scored: 0` beside a full set of agent outputs would
             # be a lie about the run that actually produced them.
             self._last_data_health = None
+            # SA-003: likewise the gate inputs. The legacy pool builds no
+            # bundle, so the gate has no provenance for its outputs.
+            self._last_gate_inputs = None
             # Wave I: fallback costs ~6-8x the Serper credits of the unified
             # path — record it so /scheduler/status can surface the rate.
             try:

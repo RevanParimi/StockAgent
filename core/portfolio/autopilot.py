@@ -25,8 +25,9 @@ from backend.shared.schemas.portfolio import (
     TransactionRecord,
     WatchlistItem,
 )
+from backend.shared.pipeline import decision_gate as dg
 from core.portfolio.store import PortfolioStore
-from core.portfolio.pricing import close_on
+from core.portfolio.pricing import session_close
 from core.portfolio.promotion import promote_symbol
 
 logger = logging.getLogger(__name__)
@@ -181,11 +182,24 @@ def _execute_buys(portfolio: Portfolio, advice: list[AdviceRecord],
         if not cand:
             continue
         try:
-            price = close_on(cand, review_date)
+            quote, session = session_close(cand, review_date)
+            price = quote.close
         except Exception as exc:
             logger.warning("[autopilot] SWITCH buy %s skipped: unpriceable (%s)",
                            cand, exc)
             continue
+        if not quote.fresh_for(session):
+            # SA-003: a buy needs the session's own close. The pipeline's
+            # switch_buy_skipped alert tells the user the proceeds stayed in cash.
+            bar = quote.bar_date.isoformat() if quote.bar_date else "undated"
+            if dg.enforcing():
+                logger.warning("[autopilot] SWITCH buy %s skipped (data gate): close "
+                               "%.2f is from bar %s, not session %s",
+                               cand, price, bar, session)
+                continue
+            logger.warning("[autopilot] SWITCH buy %s at a close from bar %s, not "
+                           "session %s — the data gate would skip it (record mode)",
+                           cand, bar, session)
         closes[cand] = price                   # AUD-003: one price basis per run
         budget = min(proceeds, portfolio.cash_deployable - floor_cash)
         qty = float(math.floor(budget / price)) if price > 0 else 0.0

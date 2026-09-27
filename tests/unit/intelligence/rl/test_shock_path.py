@@ -81,7 +81,7 @@ def _patch_common(dr, monkeypatch, tmp_path, actual_close: float = 98.0):
     => actual_direction="DOWN" => direction_correct=False.
     """
     monkeypatch.setattr(dr.settings, "PREDICTION_DATA_DIR", str(tmp_path))
-    monkeypatch.setattr(dr, "_fetch_actual_close", lambda t, d: actual_close)
+    monkeypatch.setattr(dr, "_fetch_session_close", lambda t, d: dr.SessionClose(actual_close, d, "agree"))
     monkeypatch.setattr(dr, "get_price_history", lambda *a, **k: None)
 
     # When direction is wrong (the common case in these shock-path tests),

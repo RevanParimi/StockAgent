@@ -95,6 +95,8 @@ StockAgent-main/
 │   │       │   ├── base_orchestrator.py   # resolve → bundle → analyse → aggregate
 │   │       │   ├── unified_analyst.py     # Unified Sector Analyst — one-call dimension scoring
 │   │       │   ├── signal_aggregator.py   # learned weights + conflict detection + LLM verdict
+│   │       │   ├── decision_gate.py       # SA-003 essential-data gate: actionable/degraded/abstain,
+│   │       │   │                          #  decision_gate.mode record|enforce, skip log
 │   │       │   ├── verdict_shadow.py      # observe-only threshold(composite) lane
 │   │       │   │                          #  → data/rl/verdict_shadow.jsonl (audit Wave G)
 │   │       │   ├── base_agent.py          # legacy per-dimension agent base (fallback pool)
@@ -139,7 +141,8 @@ StockAgent-main/
 │   │       └── enhancer.py        # Prompt enhancement with RL lessons
 │   ├── portfolio/                 # Compass Phase A: per-user virtual portfolio (see below)
 │   │   ├── store.py               # PortfolioStore — per-user JSON holdings/ledger/digest
-│   │   ├── pricing.py             # close_on() — yfinance + NSE cross-check entry pricing
+│   │   ├── pricing.py             # close_on() — yfinance + NSE cross-check entry pricing;
+│   │   │                          #  session_close() also names the bar's session (SA-003)
 │   │   ├── corp_actions.py        # Corp-action sync (splits/bonuses) into holdings
 │   │   ├── promotion.py           # Auto-promotion into managed_tickers.json universe
 │   │   ├── advisor.py             # Deterministic HOLD/ADD/TRIM/EXIT verdicts, ATR-scaled stops
@@ -597,6 +600,8 @@ Models are tiered (2026-06-03 benchmark, `scripts/model_bench.py`; bulk re-bench
 
 **Data-health contract v2 (SA-002, accepted 2026-09-26 after a rework; committed as `8413b59`).** B2 took a section's status from its text, so "Technical data unavailable for TATAMOTORS" and "[No results for: …]" read `ok`, and `health` looked at dimensions only. Every `_fetch_<section>` now returns a `FetchResult` (`services/data/context/fetch_result.py`) whose producer states the status — `ok` / `cache_hit` / `stale` / `fallback` / `empty` / `n/a` / `failed:<Type>`, or `unverified` for untyped text — plus source, as-of and reason. The row is `ok` only with every dimension scored and every applicable section verified and fresh; `essential_unusable` lists the unusable essential sections (`observability.data_health_essential_sections`), and `health_reasons` says why. Freshness bounds: `data_health_price_max_age_days` (7), `data_health_fundamentals_max_age_days` (200). A newest listed quarter without figures (NaN) makes fundamentals `fallback`, dated by the newest quarter with figures (`get_financials` `missing_values`). The prompt text is byte-identical. v1 rows stay as written; `normalize_health_row` labels them unknown provenance.
 
+**Decision gate (SA-003, accepted by its fresh review 2026-09-27; not yet committed).** `src/backend/shared/pipeline/decision_gate.py` turns the same section statuses and dimension counts into a typed `FinalReport.decision_gate`: `abstain` when an essential section is not `ok`/`cache_hit`, fewer than `decision_gate.min_dimensions_fraction` (0.5) of the dimensions scored, or the run built no bundle (legacy fallback); `degraded` (actionable) when only ordinary enrichment is missing; else `actionable`. It is computed whether or not the health row is recorded. Switch `decision_gate.mode` (env `DECISION_GATE_MODE`): `record` (checked in) changes nothing and logs what enforcement would stop to `data/logs/decision_gate.jsonl` (ticker-level, no user id); `enforce` makes an abstaining verdict `INSUFFICIENT DATA` (original in `withheld_verdict`), and then `generate_forecast` raises `InsufficientDataError`, `regenerate_envelope` returns None, `run_daily_review` returns `data_gated` before any write (graded row not actionable, close not from the session's bar, or re-run not actionable), `run_deep_dives` shelves nothing, and the advisor withholds ADD and SWITCH buy legs (`DATA_GATE` note, `AdviceRecord.data_gate`). EXIT/TRIM are never blocked. Unknown values fail closed to `enforce`. Forecast rows carry `data_gate` + `source_run_id`; `daily_review._fetch_session_close` / `pricing.session_close` return a `SessionClose(close, bar_date, source)`.
+
 ### Scheduler
 
 | Name | Default | Description |
@@ -845,7 +850,7 @@ All paths verified to exist. Paths are relative to project root.
 | `services/api/routes/scheduler_api.py` | POST/GET /scheduler/* — RL trigger and status endpoints; event-triggers the portfolio advisor pipeline after daily reviews |
 | `services/api/routes/portfolio_api.py` | /portfolio/* — Compass Phase A: holdings, watchlist, CSV import, advice ledger, EOD digest; Autopilot: transactions audit trail, performance (P&L + equity curve) |
 | `core/portfolio/pipeline.py` | `run_post_review_pipeline()` — corp-action sync → events refresh → advisor → ledger → digest, per user |
-| `core/portfolio/advisor.py` | Deterministic HOLD/ADD/TRIM/EXIT engine (EXIT>TRIM>ADD>HOLD), ATR-scaled stops, LTCG/earnings-gap notes, `explain_triggers()` |
+| `core/portfolio/advisor.py` | Deterministic HOLD/ADD/TRIM/EXIT engine (EXIT>TRIM>ADD>HOLD), ATR-scaled stops, LTCG/earnings-gap notes, `explain_triggers()`; SA-003 `data_gate_blocks` / `decide(add_blocks=, blocked_candidates=)` withhold ADD and SWITCH destinations on a stale close or unverified forecast (never EXIT/TRIM) |
 | `core/portfolio/autopilot.py` | `execute_advice()` — deterministic verdict executor (sells then buys, no LLM); `record_value_point()` — daily equity snapshot |
 | `services/data/fetchers/corporate_events.py` | NSE corp-actions feed + forward board-meetings calendar (degraded-mode safe) |
 | `data/portfolio/<user>/` | Per-user volume state: `portfolio.json`, `advice_ledger.jsonl`, `transactions.jsonl` (Autopilot audit trail), `value_history.jsonl` (daily equity curve), `digests/` |
@@ -887,7 +892,8 @@ All paths verified to exist. Paths are relative to project root.
 | `src/backend/shared/pipeline/base_orchestrator.py` | `BaseSectorOrchestrator` — ticker resolution (managed-ticker short-circuit, no LLM for exact `TICKERS` matches), RL weights, NSE prefetch, `_run_agents`/`_run_unified`/`_unified_enabled` dispatch, SignalAggregator |
 | `services/data/context/bundle_builder.py` | `build_sector_bundle()` — one-pass `SectorDataBundle` (10 labeled, char-capped sections), sector-aware via `_SECTOR_BUNDLE_CFG` (per-sector queries, deep-dive Tavily target, commodities applicability, peer lists); B2 adds `section_status` — one outcome per section; SA-002 takes it from each producer's `FetchResult` and adds `section_provenance` (source, as-of, reason) |
 | `services/data/context/fetch_result.py` | SA-002 — `FetchResult` (text, status, source, as_of, reason), the section status vocabulary, and the price/fundamentals freshness bounds |
-| `services/data/stores/data_health.py` | B2 — one row per unified run: section outcomes, dimensions scored vs expected, derived `ok`/`degraded`/`hollow`. SA-002 contract v2: `health_reasons`, `essential_unusable`, `section_provenance`, stale/fallback/unverified counts; `normalize_health_row` / `recent_health_rows` read v1 rows with unknown provenance. Writes `data/logs/data_health.jsonl` + `telemetry.db.data_health`, attaches to `FinalReport.data_health`. **Write-only until B5's hollow-run gate**; never raises. Flag `observability.data_health_enabled` |
+| `src/backend/shared/pipeline/decision_gate.py` | SA-003 — the essential-data gate: `assess_analysis` / `gate_from_health_row` (actionable/degraded/abstain), `apply_gate` (enforce → `INSUFFICIENT DATA`), `decision_gate.mode` record|enforce (unknown → enforce), `record_gate_decision` → `data/logs/decision_gate.jsonl` (ticker-level) |
+| `services/data/stores/data_health.py` | B2 — one row per unified run: section outcomes, dimensions scored vs expected, derived `ok`/`degraded`/`hollow`. SA-002 contract v2: `health_reasons`, `essential_unusable`, `section_provenance`, stale/fallback/unverified counts; `normalize_health_row` / `recent_health_rows` read v1 rows with unknown provenance. Writes `data/logs/data_health.jsonl` + `telemetry.db.data_health`, attaches to `FinalReport.data_health`. Never raises. Flag `observability.data_health_enabled` (the row only: SA-003's gate reads the same inputs and does not depend on it); `build_record` is also the gate's source |
 | `src/backend/shared/pipeline/unified_analyst.py` | `UnifiedAnalyst` — one reasoning-model call → all dimension `AgentOutput`s for a sector (9/6/8/6 per `SECTOR_SPECS`); never raises, falls back to legacy on total failure |
 | `src/backend/sectors/automobile/prompts/unified.py` | Unified Sector Analyst prompt for automobile (9 dimensions in one prompt) |
 | `src/backend/sectors/banking_bfsi/prompts/unified.py` | Unified Sector Analyst prompt for BFSI (6 dimensions) |

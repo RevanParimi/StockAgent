@@ -335,6 +335,13 @@ WEIGHT_MIN_OBSERVATIONS: int = cfg("rl.weight_min_observations", fallback=3)
 # closed to "observe" on any other value.
 RL_LEARNING_MODE: str = cfg("rl.learning_mode", env="RL_LEARNING_MODE", fallback="adapt")
 
+# SA-003 decision gate: "record" (compute and record which analyses, forecasts,
+# reviews and buys the essential-data gate would stop; change nothing) or
+# "enforce" (stop them). Read at call time through
+# backend.shared.pipeline.decision_gate, which fails closed to "enforce" on any
+# other value.
+DECISION_GATE_MODE: str = cfg("decision_gate.mode", env="DECISION_GATE_MODE", fallback="record")
+
 # Accuracy window: how many recent days are used to judge agent direction accuracy
 WEIGHT_ACCURACY_WINDOW: int = cfg("rl.weight_accuracy_window", fallback=7)
 

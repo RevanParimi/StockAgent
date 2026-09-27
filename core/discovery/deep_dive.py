@@ -19,6 +19,7 @@ from datetime import date
 import pandas as pd
 
 from core.config import settings
+from backend.shared.pipeline import decision_gate as dg
 from backend.shared.schemas.discovery import DeepDiveResult, DiscoveryCandidate
 from core.discovery.shelf import ShelfStore
 from core.intelligence.rl.workflows.sector_router import NATIVE_SECTORS, get_orchestrator
@@ -123,6 +124,18 @@ def run_deep_dives(
         try:
             sector = infer_sector(cand.symbol)
             report = get_orchestrator(sector).analyse(cand.symbol)
+            # SA-003: a shelf idea is a future SWITCH destination (a buy), so
+            # it must not be minted from an abstained analysis.
+            gate_status, gate_run_id, gate_reasons = dg.report_gate(report)
+            if not dg.is_actionable(gate_status):
+                enforced = dg.enforcing()
+                dg.record_gate_decision(
+                    consumer="discovery", ticker=cand.symbol, skipped="shelf idea",
+                    status=gate_status, reasons=gate_reasons, run_id=gate_run_id,
+                    enforced=enforced, on_date=on.isoformat(),
+                )
+                if enforced:
+                    continue
             sym_win = window[window["symbol"] == cand.symbol]
             atr = _atr_pct(sym_win)
             stop_pct = max(8.0, min(22.0, settings.ADVISOR_STOP_ATR_MULT * atr))
@@ -139,6 +152,7 @@ def run_deep_dives(
                 close=cand.close,
                 composite=cand.composite,
                 dive_date=on.isoformat(),
+                data_gate=gate_status,
             ))
             logger.info("[deep_dive] %s sector=%s conviction=%.2f verdict=%s",
                         cand.symbol, sector, report.final_score, report.verdict)

@@ -15,11 +15,12 @@ from core.config import settings
 from core.intelligence.algorithms.indicators.fetcher import get_price_history
 from core.intelligence.rl.nse_calendar import is_trading_day
 from services.data.verdict_store import VerdictStore  # plane boundary (Atlas C2)
-from core.portfolio.advisor import build_signals, decide
+from backend.shared.pipeline import decision_gate as dg
+from core.portfolio.advisor import build_signals, data_gate_blocks, decide
 from core.portfolio.corp_actions import sync_corp_actions
 from core.portfolio.digest import build_digest
 from core.portfolio.narrator import narrate
-from core.portfolio.pricing import close_on
+from core.portfolio.pricing import session_close
 from core.portfolio.store import PortfolioStore, active_user_ids
 from services.data.fetchers.corporate_events import (
     load_events_calendar,
@@ -40,7 +41,8 @@ def _switch_eval_max_candidates() -> int:
 
 
 def capture_switch_evaluations(rec, signals, shelf_ideas, sector_weights,
-                               held_symbols, candidate_closes, user_id, on):
+                               held_symbols, candidate_closes, user_id, on,
+                               blocked=None):
     """Evaluation rows for ONE holding against the shelf (design 2026-08-20).
 
     Runs for every holding on every review, not only when a SWITCH fires: the
@@ -50,6 +52,9 @@ def capture_switch_evaluations(rec, signals, shelf_ideas, sector_weights,
     Pure — prices arrive via `candidate_closes`, nothing is fetched here. A
     candidate with no price is dropped rather than guessed: a fabricated entry
     price would silently corrupt every excess computed from it.
+
+    `blocked` is the SA-003 destinations map `decide` was given (enforce mode
+    only), so a row never says "taken" for a switch the gate refused.
     """
     if not _switch_eval_enabled():
         return []
@@ -57,7 +62,7 @@ def capture_switch_evaluations(rec, signals, shelf_ideas, sector_weights,
     from core.portfolio.advisor import evaluate_switch_candidates
     _best, rows = evaluate_switch_candidates(
         signals, shelf_ideas, sector_weights, held_symbols,
-        _switch_eval_max_candidates())
+        _switch_eval_max_candidates(), blocked=blocked)
     out = []
     for r in rows:
         close = candidate_closes.get(r["candidate"])
@@ -100,6 +105,51 @@ def advice_alert_fields(rec, shelf_index: dict) -> dict:
         "status": status,
         "next_step": next_step,
     }
+
+
+def gated_decide(signals, holding, risk_profile, *, shelf_ideas, sector_weights,
+                 held_symbols, candidate_fresh):
+    """
+    SA-003: `decide` with the data gate, plus what the gate did.
+
+    Both decisions are computed — with the blocks and without — and the mode
+    picks one: enforce keeps the gated one, record keeps the ungated one. When
+    they differ, the kept record says so in `data_gate` (what was, or would
+    have been, withheld, why, and from which forecast runs). A risk-reducing
+    verdict (EXIT/TRIM/SWITCH sell) resting on a stale close or an unverified
+    forecast is kept and annotated, never blocked.
+
+    Returns (record, blocked_candidates_passed_to_decide).
+    """
+    add_reasons, blocked = data_gate_blocks(signals, shelf_ideas, candidate_fresh)
+    common = dict(shelf_ideas=shelf_ideas, sector_weights=sector_weights,
+                  held_symbols=held_symbols)
+    ungated = decide(signals, holding, risk_profile, **common)
+    if not add_reasons and not blocked:
+        return ungated, None
+    gated = decide(signals, holding, risk_profile, add_blocks=add_reasons,
+                   blocked_candidates=blocked, **common)
+    enforced = dg.enforcing()
+    rec = gated if enforced else ungated
+    info = {
+        "mode": dg.gate_mode(), "enforced": False, "blocked": None,
+        "reasons": [], "source_run_ids": list(signals.forecast_run_ids),
+        "price_bar_date": signals.price_bar_date or None,
+    }
+    if (gated.verdict, gated.switch_candidate) != (ungated.verdict, ungated.switch_candidate):
+        blocked_action = ungated.verdict
+        reasons = list(add_reasons)
+        if ungated.verdict == "SWITCH":
+            blocked_action = f"SWITCH buy leg {ungated.switch_candidate}"
+            reasons = [f"{ungated.switch_candidate}: {blocked.get(ungated.switch_candidate, '?')}"]
+        info.update(enforced=enforced, blocked=blocked_action, reasons=reasons,
+                    gated_verdict=gated.verdict, ungated_verdict=ungated.verdict)
+        rec.data_gate = info
+    elif rec.verdict in ("EXIT", "TRIM", "SWITCH") and add_reasons:
+        info.update(reasons=add_reasons,
+                    note="risk reduction is never blocked; it rests on the data named here")
+        rec.data_gate = info
+    return rec, (blocked if enforced else None)
 
 
 def run_post_review_pipeline(review_date: date) -> dict:
@@ -146,11 +196,14 @@ def run_post_review_pipeline(review_date: date) -> dict:
         # candidate per run: candidates repeat across holdings, so this must
         # stay outside the holding loop or it becomes N_holdings fetches each.
         candidate_closes: dict[str, float] = {}
+        candidate_fresh: dict[str, bool] = {}      # SA-003: bar is the session
         switch_evals: list = []
         if _switch_eval_enabled():
             for idea in shelf_ideas:
                 try:
-                    candidate_closes[idea.symbol] = close_on(idea.symbol, review_date)
+                    quote, session = session_close(idea.symbol, review_date)
+                    candidate_closes[idea.symbol] = quote.close
+                    candidate_fresh[idea.symbol] = quote.fresh_for(session)
                 except Exception as exc:
                     logger.debug("[portfolio_pipeline] no close for candidate %s "
                                  "(non-fatal): %s", idea.symbol, exc)
@@ -167,7 +220,8 @@ def run_post_review_pipeline(review_date: date) -> dict:
         advice, closes = [], {}
         for holding in portfolio.holdings:
             try:
-                close = close_on(holding.symbol, review_date)
+                quote, session = session_close(holding.symbol, review_date)
+                close = quote.close
                 closes[holding.symbol] = close
                 ohlcv = None
                 try:
@@ -180,9 +234,14 @@ def run_post_review_pipeline(review_date: date) -> dict:
                     holding, portfolio, review_date, pred_store, calendar, close,
                     ohlcv_df=ohlcv,
                 )
-                rec = decide(signals, holding, portfolio.risk_profile,
-                             shelf_ideas=shelf_ideas, sector_weights=sector_weights,
-                             held_symbols={h.symbol for h in portfolio.holdings})
+                # SA-003: the price freshness the gate needs.
+                signals.price_fresh = quote.fresh_for(session)
+                signals.price_bar_date = quote.bar_date.isoformat() if quote.bar_date else ""
+                rec, gate_blocked = gated_decide(
+                    signals, holding, portfolio.risk_profile,
+                    shelf_ideas=shelf_ideas, sector_weights=sector_weights,
+                    held_symbols={h.symbol for h in portfolio.holdings},
+                    candidate_fresh=candidate_fresh)
                 rec.user_id = user_id
                 rec.date = review_date.isoformat()
                 rec.narrative = narrate(rec, signals)
@@ -192,7 +251,8 @@ def run_post_review_pipeline(review_date: date) -> dict:
                     switch_evals.extend(capture_switch_evaluations(
                         rec, signals, shelf_ideas, sector_weights,
                         {h.symbol for h in portfolio.holdings},
-                        candidate_closes, user_id, review_date))
+                        candidate_closes, user_id, review_date,
+                        blocked=gate_blocked))
                 except Exception as exc:
                     logger.warning("[portfolio_pipeline] switch capture failed "
                                    "for %s (non-fatal): %s", holding.symbol, exc)
@@ -296,8 +356,8 @@ def run_post_review_pipeline(review_date: date) -> dict:
                         kind="switch_buy_skipped",
                         symbol=candidate,
                         message=f"SWITCH {a.symbol}→{candidate}: sold but buy leg "
-                                "skipped (unpriceable or budget) — proceeds remain "
-                                "in cash",
+                                "skipped (unpriceable, no close dated the session, "
+                                "or budget) — proceeds remain in cash",
                         severity="warning",
                     ))
             if events:

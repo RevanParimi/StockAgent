@@ -7,6 +7,12 @@ The LLM only narrates (narrator.py) — it never decides.
 Verdict precedence (explicit, non-negotiable): EXIT > TRIM > ADD > HOLD.
 Tax-deferral may soften a TRIM into WAIT_FOR_LTCG; it must NEVER suppress or
 delay an EXIT — capital protection outranks tax optimisation, always.
+
+SA-003 data gate: ADD and a SWITCH's buy leg add risk, so they need a close
+dated the review session and a forecast issued on actionable data. `decide`
+takes the blocks explicitly (`add_blocks`, `blocked_candidates`); the
+pipeline decides whether to pass them (enforce) or only record them (record).
+EXIT and TRIM are never blocked: missing data must not trap a position.
 """
 from __future__ import annotations
 
@@ -14,9 +20,10 @@ import hashlib
 import logging
 from datetime import date, timedelta
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from core.config import settings
+from backend.shared.pipeline import decision_gate as dg
 from backend.shared.schemas.portfolio import AdviceRecord, Holding, Portfolio
 from services.data.verdict_store import VerdictStore  # plane boundary (Atlas C2)
 from services.data.fetchers.corporate_events import next_results_event
@@ -45,6 +52,15 @@ class AdvisorSignals(BaseModel):
     earnings_in_days: int | None = None    # trading-day distance to next results event
     confidence: float = 0.5                # mean remaining envelope confidence
     peak_close_since_entry: float | None = None   # max close since buy_date (trailing stop)
+    # SA-003: is `close` the review session's own bar? (the pipeline sets these
+    # from pricing.session_close; a carried-forward close is not fresh)
+    price_fresh: bool = True
+    price_bar_date: str = ""
+    # SA-003: gate of the forecast rows the envelope signals came from —
+    # abstain if any came from an abstained analysis, UNKNOWN ("") if any was
+    # issued before the gate existed, NO_FORECAST when no row was read.
+    forecast_gate: str = "none"
+    forecast_run_ids: list[str] = Field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -164,6 +180,9 @@ def build_signals(
                 sig.confidence = round(
                     sum(f.confidence for f in remaining) / len(remaining), 4
                 )
+                sig.forecast_gate = forecast_rows_gate([f.data_gate for f in remaining])
+                sig.forecast_run_ids = sorted({f.source_run_id for f in remaining
+                                               if f.source_run_id})
             sig.reversion_prior = env.conviction_streak.reversion_prior
             if env.reforecast_history:
                 sig.reforecast_reason = env.reforecast_history[-1].reason
@@ -206,6 +225,62 @@ def build_signals(
 
 
 # ---------------------------------------------------------------------------
+# SA-003 data gate inputs
+# ---------------------------------------------------------------------------
+
+NO_FORECAST = "none"      # AdvisorSignals.forecast_gate when no forecast row was read
+
+
+def forecast_rows_gate(statuses: list[str]) -> str:
+    """One gate for a set of forecast rows: the worst of them. abstain beats
+    UNKNOWN beats degraded beats actionable; no rows is NO_FORECAST."""
+    present = set(statuses)
+    if not present:
+        return NO_FORECAST
+    if dg.ABSTAIN in present:
+        return dg.ABSTAIN
+    if any(not dg.is_actionable(s) for s in present):
+        return dg.UNKNOWN
+    return dg.DEGRADED if dg.DEGRADED in present else dg.ACTIONABLE
+
+
+def data_gate_blocks(
+    signals: AdvisorSignals,
+    shelf_ideas: list | None = None,
+    candidate_fresh: dict[str, bool] | None = None,
+) -> tuple[list[str], dict[str, str]]:
+    """
+    What the data gate would stop for one holding. Pure.
+
+    Returns (add_reasons, blocked_candidates):
+      add_reasons         why an ADD may not fire ([] = it may)
+      blocked_candidates  shelf symbol -> why it may not be a SWITCH destination
+
+    A candidate whose price was never fetched here is not blocked at advice
+    time; the autopilot checks its session price again before buying.
+    """
+    add_reasons: list[str] = []
+    if not signals.price_fresh:
+        add_reasons.append(
+            f"no close dated the review session: {signals.close:.2f} is from bar "
+            f"{signals.price_bar_date or 'undated'}")
+    if signals.forecast_gate == NO_FORECAST:
+        add_reasons.append("no forecast rows for the review session")
+    elif not dg.is_actionable(signals.forecast_gate):
+        add_reasons.append(dg.row_gate_reason(
+            signals.forecast_gate, ",".join(signals.forecast_run_ids)))
+    blocked: dict[str, str] = {}
+    for idea in shelf_ideas or []:
+        status = getattr(idea, "data_gate", dg.UNKNOWN)
+        if not dg.is_actionable(status):
+            blocked[idea.symbol] = (f"shelf idea data gate {status or 'unknown'} "
+                                    "(deep dive not verified as actionable)")
+        elif (candidate_fresh or {}).get(idea.symbol) is False:
+            blocked[idea.symbol] = "no close dated the review session"
+    return add_reasons, blocked
+
+
+# ---------------------------------------------------------------------------
 # Verdict engine
 # ---------------------------------------------------------------------------
 
@@ -242,9 +317,15 @@ def explain_triggers(triggers) -> str:
     return joined[0].upper() + joined[1:] + "."
 
 
-def _best_switch_candidate(signals: AdvisorSignals, shelf_ideas, sector_weights: dict,
-                           held_symbols: set[str] | None = None):
-    """SWITCH (spec §5.2): EXIT already fired AND an active shelf idea beats the
+def evaluate_switch_candidates(signals: AdvisorSignals, shelf_ideas,
+                               sector_weights: dict,
+                               held_symbols: set[str] | None = None,
+                               max_candidates: int = 5,
+                               blocked: dict[str, str] | None = None):
+    """Return (winner_or_None, evaluation_rows): the SWITCH destination, plus a
+    record of how each candidate was judged.
+
+    SWITCH (spec §5.2): EXIT already fired AND an active shelf idea beats the
     holding's mean remaining envelope confidence by >= ADVISOR_SWITCH_CONVICTION_GAP,
     in a sector strictly UNDERWEIGHT vs the exiting holding's sector. With no
     sector-weight context every idea fails the underweight check (conservative).
@@ -253,17 +334,6 @@ def _best_switch_candidate(signals: AdvisorSignals, shelf_ideas, sector_weights:
     what you hold is a top-up, not a rotation, and the underweight-sector test
     that justified the call was computed on a sector you already own. The
     reviewed symbol excludes itself without the caller having to say so.
-    """
-    return evaluate_switch_candidates(signals, shelf_ideas, sector_weights,
-                                      held_symbols)[0]
-
-
-def evaluate_switch_candidates(signals: AdvisorSignals, shelf_ideas,
-                               sector_weights: dict,
-                               held_symbols: set[str] | None = None,
-                               max_candidates: int = 5):
-    """Return (winner_or_None, evaluation_rows) — the same decision as
-    `_best_switch_candidate`, plus a record of how each candidate was judged.
 
     The rows are the point. The advisor acts on ~4% of its calls, so grading
     only the pairs it took never accumulates a sample; every pair it CONSIDERED
@@ -273,6 +343,10 @@ def evaluate_switch_candidates(signals: AdvisorSignals, shelf_ideas,
     Pure: no I/O, no clock. Candidates are the top `max_candidates` ACTIVE
     ideas by conviction — a dropped or promoted idea was never a candidate and
     yields no row at all.
+
+    SA-003: a symbol in `blocked` that passes every other test is declined
+    with reason "data_gate" — checked last, so that reason means "would have
+    qualified but for the data gate".
     """
     own_weight = sector_weights.get(signals.sector, 0.0)
     excluded = set(held_symbols or ()) | {signals.symbol}
@@ -290,6 +364,8 @@ def evaluate_switch_candidates(signals: AdvisorSignals, shelf_ideas,
             reason = "sector_not_underweight"
         elif idea.conviction - signals.confidence < settings.ADVISOR_SWITCH_CONVICTION_GAP:
             reason = "conviction_gap_too_small"
+        elif idea.symbol in (blocked or {}):
+            reason = "data_gate"
         else:
             qualified.append(idea)
         rows.append({"candidate": idea.symbol,
@@ -317,9 +393,17 @@ def decide(
     shelf_ideas: list | None = None,
     sector_weights: dict[str, float] | None = None,
     held_symbols: set[str] | None = None,
+    *,
+    add_blocks: list[str] | None = None,
+    blocked_candidates: dict[str, str] | None = None,
 ) -> AdviceRecord:
+    """The verdict for one holding. `add_blocks` (reasons ADD may not fire) and
+    `blocked_candidates` (SWITCH destinations the data gate refuses) are SA-003
+    inputs; when either stops an action it would otherwise take, the note
+    DATA_GATE is added. Neither can block EXIT or TRIM."""
     triggers: list[str] = []
     notes: list[str] = []
+    data_gated = False
 
     # -- EXIT (spec §5.2, highest precedence) ------------------------------
     if signals.unrealised_pnl_pct <= -signals.atr_stop_pct:
@@ -360,8 +444,11 @@ def decide(
             and signals.position_weight_pct < settings.ADVISOR_MAX_POSITION_PCT
             and (signals.direction_accuracy_7d or 0.0) >= settings.ADVISOR_ADD_MIN_DIRECTION_ACCURACY
         ):
-            triggers.append("add_bullish_healthy")
-            add_fired = True
+            if add_blocks:
+                data_gated = True          # SA-003: no new risk on unverified data
+            else:
+                triggers.append("add_bullish_healthy")
+                add_fired = True
 
     # -- Precedence: EXIT > TRIM > ADD > HOLD -------------------------------
     if exit_fired:
@@ -376,12 +463,15 @@ def decide(
     # -- SWITCH: EXIT + stronger shelf idea in an underweight sector (§5.2) --
     switch_candidate = ""
     if verdict == "EXIT" and shelf_ideas:
-        cand = _best_switch_candidate(signals, shelf_ideas, sector_weights or {},
-                                      held_symbols)
+        cand, switch_rows = evaluate_switch_candidates(
+            signals, shelf_ideas, sector_weights or {}, held_symbols,
+            blocked=blocked_candidates)
         if cand is not None:
             verdict = "SWITCH"
             triggers.append("switch_candidate_available")
             switch_candidate = cand.symbol
+        elif any(r["reason"] == "data_gate" for r in switch_rows):
+            data_gated = True              # SA-003: plain EXIT, no buy leg
 
     # -- LTCG softening: TRIM only, NEVER EXIT (spec §5.2) ------------------
     if verdict == "TRIM" and signals.thesis_intact is not False:
@@ -399,6 +489,8 @@ def decide(
         notes.append("EARNINGS_GAP_PROTECTION")
     if signals.position_weight_pct >= settings.ADVISOR_SECTOR_CONCENTRATION_WARN_PCT:
         notes.append("SECTOR_CONCENTRATION_HIGH")
+    if data_gated:
+        notes.append("DATA_GATE")
 
     rationale = "|".join(sorted(triggers) + sorted(notes)) or "default_hold"
     return AdviceRecord(

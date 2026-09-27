@@ -212,12 +212,41 @@ class WeightedAgentScore(BaseModel):
     weighted: float = Field(ge=0.0, le=1.0)
 
 
+class DecisionGate(BaseModel):
+    """
+    SA-003: may this analysis act? See backend/shared/pipeline/decision_gate.py.
+
+    actionable  every essential section verified and fresh, enough dimensions
+                scored, nothing else missing
+    degraded    actionable, but an ordinary enrichment (news, macro, flows, ...)
+                or a dimension above the minimum share is missing
+    abstain     essential price/fundamental evidence unusable, too few
+                dimensions scored, or no structured provenance at all
+
+    `enforced` is True only when the gate ran in enforce mode and abstained:
+    the aggregator's verdict is then kept in `withheld_verdict` and the
+    report's verdict is INSUFFICIENT DATA. In record mode the verdict stands
+    and this object records what enforcement would have done.
+    """
+    status: str                                   # actionable | degraded | abstain
+    mode: str = "record"                          # record | enforce, when decided
+    enforced: bool = False
+    run_id: str = ""
+    reasons: list[str] = Field(default_factory=list)
+    essential_unusable: dict[str, str] = Field(default_factory=dict)
+    dimensions_scored: int = 0
+    dimensions_expected: int = 0
+    withheld_verdict: str | None = None
+
+
 class FinalReport(BaseModel):
     """Top-level output of the entire Automobile Agent pipeline."""
     ticker: str
     company_name: str
     final_score: float = Field(ge=0.0, le=1.0)
-    verdict: str  # STRONG BUY | BUY | NEUTRAL | SELL | STRONG SELL
+    # STRONG BUY | BUY | NEUTRAL | SELL | STRONG SELL, or INSUFFICIENT DATA when
+    # the SA-003 gate withheld the verdict (decision_gate.enforced).
+    verdict: str
     weighted_agent_scores: dict[str, WeightedAgentScore]
     conflicts_resolved: list[str] = Field(default_factory=list)
     conviction_drivers: list[str] = Field(default_factory=list)
@@ -241,6 +270,11 @@ class FinalReport(BaseModel):
     # verdict. See services/data/stores/data_health.py. None on the legacy
     # worker-pool path and whenever `observability.data_health_enabled` is off.
     data_health: dict[str, Any] | None = None
+
+    # SA-003: whether this analysis may act, why, and the run it came from.
+    # Computed whether or not the data-health row is recorded. None only on a
+    # report built outside the orchestrator.
+    decision_gate: DecisionGate | None = None
 
     def verdict_emoji(self) -> str:
         mapping = {

@@ -216,8 +216,8 @@
         "SA-024": "screens show final_score beside INSUFFICIENT DATA (implementation route)"
       },
       "production_verification": {
-        "status": "pending_deployment",
-        "evidence": "Accepted 2026-09-27; committed as 167f08b at the owner's word (about 09:05 IST; verify SA-003-manifest.json --rev 167f08b mismatches only the five status-edited docs, so every reviewed code/test/config byte is committed as reviewed); push pending at this record. Ships decision_gate.mode=record (a deploy changes no outcome). After commit and push (owner's word, 00:10-06:20 IST): read-only across one scheduled cohort, decision_gate.jsonl gains rows (reviews name stage forecast_row 'issued before the data gate existed' until the next monthly forecast), reports carry decision_gate, review weight/feedback behaviour unchanged. Enforcing is SA-039-P3's delegated decision."
+        "status": "pending_observation",
+        "evidence": "Accepted 2026-09-27; committed as 167f08b (KT bump a61fafe) at the owner's word; verify SA-003-manifest.json --rev 167f08b mismatches only the five status-edited docs, so every reviewed code/test/config byte is committed as reviewed. Pushed f1c7eba..a61fafe at 09:05:01 IST (Sunday; job-free until weekly_review 18:00). Deploy 0106fc89 SUCCESS 09:27:57 IST; boot log (read-only, filtered): startup complete, BackgroundScheduler started with 24 jobs registered at 09:27:56, 0 ERROR/WARNING lines; no job fell in the switch. The build was a full rebuild: the floating python:3.11-slim base digest changed (da047cb8 -> e41613d4), so pip re-resolved; versus the 2026-09-23 install 15 minor/patch changes and 1 added transitive, none in pandas/numpy/yfinance/nse (3.2.1)/openai/pydantic/fastapi/apscheduler (3.11.3)/torch/transformers (routed to SA-033). Ships decision_gate.mode=record (DECISION_GATE_MODE not set; a deploy changes no outcome). Pending (read-only, first cohort Mon 28 Sep 16:30 review): decision_gate.jsonl gains rows with mode record (reviews name stage forecast_row 'issued before the data gate existed' until the 1 Oct forecast); reports carry decision_gate; review weight/feedback behaviour unchanged (SA-039-P1 checks it anyway); 1 Oct envelopes carry data_gate. Enforcing is SA-039-P3's delegated decision."
       },
       "blocked_reason": null
     },
@@ -1160,6 +1160,10 @@
     }
   ],
   "history": [
+    {
+      "date": "2026-09-27",
+      "event": "Pushed f1c7eba..a61fafe at 09:05:01 IST at the owner's word (da90ee5, 167f08b, a61fafe); Sunday, job-free until weekly_review 18:00. Deploy 0106fc89 reached SUCCESS 09:27:57 IST after a full rebuild (~22 min): the floating python:3.11-slim base digest changed (da047cb8 -> e41613d4), invalidating every cached layer, so pip re-resolved the unpinned requirements. Installed set vs the 2026-09-23 build: 15 minor/patch changes (uvicorn 0.53->0.54, huggingface-hub 1.32->1.33, opentelemetry 1.44->1.45, langchain-core, pytz, others) and 1 added transitive; core libraries unchanged (pandas 3.0.6, yfinance 1.7.0, nse 3.2.1, apscheduler 3.11.3, torch 2.14.0). Routed to SA-033 (pin the base image digest too). Boot log (read-only): startup complete, 24 jobs registered at 09:27:56, 0 ERROR/WARNING lines. SA-003 production_verification: pending_observation (first cohort Mon 28 Sep 16:30). This record is committed locally and rides the next push."
+    },
     {
       "date": "2026-09-27",
       "event": "Owner said 'commit and push' (about 09:00 IST, Sunday). SA-003 committed as 167f08b (50 files); verify SA-003-manifest.json --rev 167f08b mismatches only the five status-edited docs. The next commit bumps the KT header to 167f08b (edition 2026-09-27), links decision_gate.py and changes the status lines to committed; PDF rebuilt, check_kt_docs errors []. Push window: Sunday after 09:05 IST is job-free until weekly_review at 18:00 (the weekday 07:25-09:05 block does not apply; ipo_refresh_am 08:00 already ran)."

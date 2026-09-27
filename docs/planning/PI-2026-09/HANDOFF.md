@@ -45,8 +45,8 @@ SA-005 is the first `todo` story with its dependencies done. It has no dependenc
 carries routed notes from every story so far. Read them first; the newest is I3 below.
 
 - **SA-004 was ACCEPTED on 2026-09-27 by a fresh-session review** (a new conversation, about
-  15:23–15:50 IST). Receipt: [SA-004-review.md](evidence/SA-004-review.md). SA-004 is `done`, and its
-  `production_verification` is `pending_deployment`. No SA-039 check was due. The review itself
+  15:23–15:50 IST). Receipt: [SA-004-review.md](evidence/SA-004-review.md). SA-004 is `done`. Its
+  `production_verification` is `pending_observation`: it was deployed at 16:06 (see below). No SA-039 check was due. The review itself
   committed, pushed and deployed nothing; the commit and push followed at the owner's word (below).
   - **Input verified:** `a5e77a74…` (13 files, 0 mismatches), and the diff `648b7b68…`, rebuilt
     with the reviewer's own script.
@@ -99,12 +99,25 @@ carries routed notes from every story so far. Read them first; the newest is I3 
     - **The next commit is the KT bump.** It declares `241c393`, links `review_outcomes.py`,
       changes the status lines to "committed as `241c393`", records `implementation_commit` in
       STATE and rebuilds the PDF.
-  - **Push window.** On a Sunday, nothing runs between 09:05 and the daily `ipo_refresh_pm` at
-    17:45 (then `weekly_review` at 18:00). A push before about 17:00 is clear of both, even with a
-    22-minute rebuild. The push carries `0a5bf9e` too.
-  - **After the deploy:** verify read-only across one scheduled session, as the receipt's "Rollout"
-    says. The first is Mon 28 Sep 16:30, alongside SA-039-P1 and the SA-003 cohort check. SA-004
-    is live before Fri 2 Oct, so Mon 5 Oct's record should read `runs: 2` for 1 Oct.
+  - **Pushed and deployed.** `a61fafe..90353f3` was pushed at 16:00:04 IST, and it also carried
+    `0a5bf9e`. On a Sunday nothing runs between 09:05 and the daily `ipo_refresh_pm` at 17:45.
+    - Deploy `b3fb00dd` reached SUCCESS at about 16:06 IST. The build was cached, about 6 minutes
+      from the push.
+    - The boot log (read-only, filtered) shows the scheduler started with 24 jobs registered and
+      startup complete at 16:05:52, with 0 error or warning lines. No job fell in the switch.
+    - SA-004's `production_verification` is now `pending_observation`.
+    - This record is committed locally and rides the next push.
+  - **Verify read-only across one scheduled session,** as the receipt's "Rollout" says. The first
+    is Mon 28 Sep 16:30, alongside SA-039-P1 and the SA-003 cohort check. In
+    `/scheduler/status` → `last_runs.daily_review`:
+    - `by_ticker` holds every enabled ticker once;
+    - the five counts add up to `required`;
+    - `produced` equals the tickers whose `feedback_log.last_date` is 2026-09-25.
+
+    Expect most outcomes to read `degraded` until the 1 Oct envelopes, because the rows were issued
+    before the data gate. A skip (for example `no_envelope`) now sends a partial-output alert,
+    which is intended. SA-004 is live before Fri 2 Oct, so Mon 5 Oct's record should read
+    `runs: 2` for 1 Oct.
 - **Backlog added at the owner's request (2026-09-27, after SA-004).** The owner reviewed the live
   portfolio screen: ₹9,99,611 equity, 81% cash, 2 holdings, a flat total return with nothing to
   compare it with. Four stories were added; the task order is unchanged, and they follow SA-047:

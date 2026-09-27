@@ -1,4 +1,4 @@
-# Current handoff - 2026-09-27 (updated about 03:45 IST)
+# Current handoff - 2026-09-27 (updated about 08:30 IST)
 
 ## START HERE — resume checklist, in order
 
@@ -36,6 +36,14 @@ a check is due by then. STATE: `active_task: null`, `next_task: SA-003`,
       test account. Confirm that `marked@12.0.2` and `dompurify@3.4.16` load with status 200 and no
       SRI error.
     - SA-002: read-only, across one scheduled cohort, as in the Rollout section of its receipt.
+
+**Proposed 2026-09-27, awaiting owner decisions D1–D6 (no story started, task order unchanged):
+[the Caretaker design](../../superpowers/specs/2026-09-27-caretaker-autonomous-maintenance-design.md).**
+Claude Code routines run a Sentinel, a Builder and a Reviewer as fresh cloud sessions on the owner's
+Pro plan, one phase per run, so nobody has to type "continue". Claude only opens PRs; the owner
+merges, because a merge deploys. It proposes new stories SA-048–SA-051 and amendments to SA-005,
+SA-033, SA-034, SA-041 and SA-042. D2 would move SA-005, SA-048 and the ops "eyes" (SA-036, SA-040
+and SA-041) ahead of SA-003. Until the owner decides, step 1 above stands.
 
 **2. SA-002 was ACCEPTED on 2026-09-26 by a fresh-session re-review** (a new conversation, about
 21:57–22:25 IST). Receipt: [SA-002-review.md](evidence/SA-002-review.md), under "Re-review". SA-002

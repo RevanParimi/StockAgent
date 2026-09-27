@@ -129,7 +129,7 @@ StockAgent-main/
 │   │   │   │                      #  resurrection), offmarket_fetcher.py (bulk/block off-market)
 │   │   │   ├── workflows/         # generate_forecast.py, daily_review.py (Step 8.5 = dossier
 │   │   │   │                      #  curator), preopen_check.py, month_end_validation.py,
-│   │   │   │                      #  sector_router.py
+│   │   │   │                      #  sector_router.py, review_outcomes.py (SA-004 job counts)
 │   │   │   ├── nse_calendar.py    # NSE trading day calendar
 │   │   │   └── calendar_updater.py
 │   │   ├── regime/                # Market regime detection
@@ -175,7 +175,8 @@ StockAgent-main/
 │   │   │                          #  + optional title/headline/status/next_step/docs (Inbox card)
 │   │   │                          #  and render_alerts_html for the email body
 │   │   ├── ops_alerts.py          # Job crashed / zero-output / partial-output / reconcile-drift
-│   │   │                          #  operational alerts (audit AUD-039/084/090)
+│   │   │                          #  operational alerts (audit AUD-039/084/090); SA-004 `detail`
+│   │   │                          #  names the missing tickers and why
 │   │   ├── brief.py               # Morning brief builder (08:50 IST job)
 │   │   ├── weekly.py              # Weekly review builder (Sun 18:00 IST job); switch
 │   │   │                          #  suggestions carry why-leave + the destination's thesis
@@ -380,7 +381,7 @@ Ticker path params are validated against the managed list *before* any store con
 | POST | `/scheduler/forecast?ticker=<sym>` | `X-Scheduler-Key` header | Generate 30-day prediction envelopes (full 9-agent pipeline). Returns 202, runs in background. |
 | POST | `/scheduler/daily-review?ticker=<sym>&review_date=<ISO>` | `X-Scheduler-Key` header | Run RL daily feedback loop for one date. Returns 202, runs in background. |
 | POST | `/scheduler/backfill?ticker=<sym>` | `X-Scheduler-Key` header | Backfill all past trading days this month. Returns 202, runs in background. |
-| GET | `/scheduler/status` | `X-Scheduler-Key` header | Full RL state for all configured tickers: envelope, feedback log, weight memory — plus `last_runs` (per-job last outcome from `data/scheduler_job_outcomes.json`: produced/expected counts, stragglers, pipeline result). |
+| GET | `/scheduler/status` | `X-Scheduler-Key` header | Full RL state for all configured tickers: envelope, feedback log, weight memory — plus `last_runs` (per-job last outcome from `data/scheduler_job_outcomes.json`: produced/expected counts, stragglers, pipeline result). SA-004 (accepted 2026-09-27, uncommitted): `daily_review` adds `status` (ok/partial/failed/empty), `required`/`attempted`, the five outcome counts (completed/degraded/data_gated/skipped/failed), `missing`, `by_ticker`, `retried`/`runs`, `excluded`, `duplicates` and `pipeline_status`; `produced` counts only reviews that wrote feedback. |
 
 ### Portfolio — Compass Phase A (`/portfolio/*`)
 
@@ -905,6 +906,7 @@ All paths verified to exist. Paths are relative to project root.
 | `src/backend/sectors/renewable_energy/pipeline/orchestrator.py` | RenewableAgentOrchestrator |
 | `core/intelligence/rl/workflows/generate_forecast.py` | Generate 30-day PredictionEnvelope (runs full pipeline); `regenerate_envelope()` re-runs the pipeline mid-cycle for the remaining days only (Living Envelope, RL_DESIGN §27.2) |
 | `core/intelligence/rl/workflows/daily_review.py` | Daily RL feedback: compare actual vs predicted, update weights; Step 8.5 dossier curator; post-Step-6 trigger block (external_shock/thesis_break/regime_flip) calls `regenerate_envelope()` and skips Step 7 on success (§27.2) |
+| `core/intelligence/rl/workflows/review_outcomes.py` | SA-004 (accepted 2026-09-27, uncommitted) — one outcome per required ticker for the scheduled daily review: `classify` (completed / degraded / data_gated / skipped / failed; unknown or malformed results fail closed), `summarize` (required vs attempted, `by_ticker`, merge with an earlier run of the same session), `with_pipeline` (job `status`, `pipeline_ok`), `missing_detail` for the alert text. Pure, no I/O |
 | `core/intelligence/rl/workflows/preopen_check.py` | Pre-open overnight shock check (1 Serper + 1 fast LLM, market-wide); contradicted tickers trigger `regenerate_envelope(trigger="preopen_shock")` (§27.3) |
 | `core/intelligence/regime/state.py` | Sticky market-wide regime hysteresis (`update_sticky_regime`, `data/predictions/_regime_state.json`) (§27.1) |
 | `core/intelligence/rl/stores/prediction_store.py` | JSON R/W for envelopes, feedback logs, weight memory, ledgers, ticker dossier; `archive_envelope()` copies the superseded envelope to `{ticker_dir}/archived_envelopes/{YYYY-MM}_v{n}.json` before a re-forecast overwrite (§27.2) |

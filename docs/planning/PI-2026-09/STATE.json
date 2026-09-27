@@ -9,7 +9,7 @@
     "production_modified": false
   },
   "active_task": null,
-  "next_task": "SA-004",
+  "next_task": "SA-005",
   "next_phase": "implementation",
   "scope": "One implementation or fresh-session review phase per conversation. Default queue is planned stories; stretch requires explicit promotion.",
   "pending_production_checks": [
@@ -229,16 +229,98 @@
       "points": 3,
       "priority": "P1",
       "scope": "planned",
-      "status": "todo",
+      "status": "done",
+      "implementation_started": "2026-09-27, a new conversation from about 11:45 IST; baseline 0a5bf9e (clean tree); no SA-039 check was due (P1 is Mon 28 Sep 17:00)",
       "depends_on": [],
-      "implementation_receipt": null,
-      "review_receipt": null,
-      "reviewed_revision": null,
-      "production_verification": {
-        "status": "not_started",
-        "evidence": null
+      "implementation_baseline": "0a5bf9e15b6d6a9c43ac9f66106a5583a9c75ea5",
+      "implementation_receipt": "docs/planning/PI-2026-09/evidence/SA-004-implementation.md",
+      "review_input_manifest": "docs/planning/PI-2026-09/evidence/SA-004-manifest.json",
+      "review_input_sha256": "5d9030e0ffe7cc997a5c2bc2100a8c046f443cdcd1672b698519e79853f8e661",
+      "diff_sha256": "e16a8e3f47de65b78a0deef5c641fba4377f5d11deb5b717259da359c25a0edc",
+      "payload_update_1": {
+        "date": "2026-09-27",
+        "reason": "owner-requested backlog SA-048..SA-051 (same conversation, after the implementation); check_kt_docs needs a KT row per STATE story",
+        "changed_files": [
+          "docs/TECHNICAL_DESIGN.md",
+          "docs/StockAgent-Three-Loops.pdf",
+          "docs/ARCHITECTURE.md",
+          "docs/TEAM_TESTING_GUIDE.md"
+        ],
+        "code_and_tests": "byte-identical to the first review input",
+        "previous_review_input_sha256": "a5e77a74ec7511e5d137c32a57e74929183f53680f43b4df82226dc230bb9e7e",
+        "previous_diff_sha256": "648b7b6833af4d6c26c0b397ef46d3cd53769d90bc3f6847401521636514f712",
+        "previous_blobs_stored": "KT a9c89010, PDF b54a6a5d, ARCHITECTURE 24a9d0f9, TEAM_TESTING_GUIDE 0ce916f6 (git hash-object -w in this checkout; each rebuild matched the first manifest)"
       },
-      "blocked_reason": null
+      "implementation": {
+        "date": "2026-09-27",
+        "context": "one implementation conversation, about 11:45-12:35 IST, including a same-conversation self-review (not the fresh review)",
+        "summary": "New core/intelligence/rl/workflows/review_outcomes.py gives every required ticker (each enabled managed ticker once) exactly one outcome: completed, degraded (completed with SA-003 record-mode data_gate rows), data_gated, skipped (no_envelope / no_forecast_row / no_actual_data) or failed (exception, malformed result: not a dict, unknown status, other ticker or date; timeout; not harvested). produced = completed + degraded (feedback written); the zero/partial-output alerts use produced vs required and carry a detail naming the missing tickers and why. Required vs attempted counted separately; disabled tickers listed as excluded; duplicate entries reviewed once; a second scheduled run of the same review_date merges with the first (attempts add, completion does not; by_ticker.this_run, from_earlier_run). Job status ok/partial/failed/empty; pipeline_status; pipeline_ok true only for a well-formed completed pipeline with no standing failed review. A finished-but-unyielded future is harvested after the harvest TimeoutError. Legacy fields kept. tests/conftest.py isolates data/scheduler_job_outcomes.json.",
+        "changed_files": [
+          "core/intelligence/rl/workflows/review_outcomes.py (new)",
+          "services/scheduler/python/scheduler.py",
+          "services/api/log_buffer.py",
+          "core/delivery/ops_alerts.py",
+          "tests/conftest.py",
+          "tests/unit/test_scheduler_portfolio_hook.py",
+          "tests/unit/test_daily_review_outcomes_sa004.py (new)",
+          "tests/unit/intelligence/rl/test_review_outcomes_feedback_sa004.py (new)",
+          "docs/TECHNICAL_DESIGN.md",
+          "docs/StockAgent-Three-Loops.pdf",
+          "docs/ARCHITECTURE.md",
+          "docs/TEAM_TESTING_GUIDE.md",
+          "CODEBASE.md"
+        ],
+        "tests": "New 2 files 61 passed, blocked 0; focused 36 existing + 2 new: 376 passed, 0 failed, blocked 182 (existing files only); 13 of 13 runtime mutations caught; 7-day sweep 27 Sep-3 Oct (91 tests): 6 of 7 days passed first time, Tue failed once on the known test_ops_alerts streak flake (untouched code) then 3 of 3 passed; full tests/unit 3503 passed, 5 skipped, 0 failed (8 min 38 s), nonet blocked the pre-existing 194; tracked data/ clean, key_registry unchanged; check_kt_docs errors [] (PDF source 3e4c64af, 23 pages). Windows, Python 3.13.11, pandas 3.0.2, RL_LEARNING_MODE=adapt, -p nonet.",
+        "routes": {
+          "SA-005": "job-outcome isolation added in conftest; managed_tickers.json read and ops_alerts_state.json written by unpatched tests; streak flake seen again",
+          "SA-015": "every weekday holiday reruns a session (Fri 2 Oct and Mon 5 Oct both review Thu 1 Oct); SA-004 counts it once, the learning writes are F10's",
+          "SA-034": "no watchdog check reads the daily_review record; read status/cohort_complete/missing, not produced",
+          "SA-036": "adopt the daily_review record fields into one contract; the pipeline's completed hides per-holding advisor failures; manual reruns record no outcome"
+        },
+        "at_commit": "link review_outcomes.py in the KT and bump the KT header past 167f08b"
+      },
+      "review_receipt": "docs/planning/PI-2026-09/evidence/SA-004-review.md",
+      "reviewed_revision": "uncommitted working tree on 0a5bf9e15b6d6a9c43ac9f66106a5583a9c75ea5, pinned by review input a5e77a74ec7511e5d137c32a57e74929183f53680f43b4df82226dc230bb9e7e (diff 648b7b6833af4d6c26c0b397ef46d3cd53769d90bc3f6847401521636514f712) and by the documentation-only payload update 1, 5d9030e0ffe7cc997a5c2bc2100a8c046f443cdcd1672b698519e79853f8e661 (diff e16a8e3f47de65b78a0deef5c641fba4377f5d11deb5b717259da359c25a0edc); both diffs rebuilt independently by the reviewer; code, tests and CODEBASE.md byte-identical between them",
+      "production_verification": {
+        "status": "pending_deployment",
+        "evidence": "Accepted 2026-09-27; uncommitted. After the owner's commit and push (KT link to review_outcomes.py and header bump past 167f08b), verify read-only across one scheduled session: by_ticker holds every enabled ticker once; the five counts add up to required; produced equals the tickers whose feedback_log.last_date is the review date. If deployed before Fri 2 Oct, Mon 5 Oct's record for 1 Oct should read runs 2 and attempted twice required."
+      },
+      "blocked_reason": null,
+      "review_outcomes": [
+        {
+          "date": "2026-09-27",
+          "verdict": "accepted",
+          "context": "fresh-session review (new conversation, about 15:23-15:50 IST); no SA-039 check was due; a concurrent owner-requested planning session regenerated the input as payload update 1 (docs only) during the review",
+          "reviewed_revision": "worktree on 0a5bf9e (uncommitted)",
+          "review_input_sha256": [
+            "a5e77a74ec7511e5d137c32a57e74929183f53680f43b4df82226dc230bb9e7e",
+            "5d9030e0ffe7cc997a5c2bc2100a8c046f443cdcd1672b698519e79853f8e661"
+          ],
+          "diff_sha256": [
+            "648b7b6833af4d6c26c0b397ef46d3cd53769d90bc3f6847401521636514f712",
+            "e16a8e3f47de65b78a0deef5c641fba4377f5d11deb5b717259da359c25a0edc"
+          ],
+          "findings": {
+            "F1": "Low, reproduced (probe R1): the unguarded summarize/missing_detail/log block (scheduler.py:893-897) merges the same-session record from scheduler_job_outcomes.json; a wrong-typed but valid-JSON record ('attempts': [1], 'runs': 'two'; review_outcomes.py:152, 171) raises, and the job crashes before the alerts, the portfolio pipeline and the outcome write (alert_job_crashed pages; that day's pipeline does not run). Only writer writes ints, so the trigger needs a hand edit or schema change plus a same-session rerun. Breaks AUD-084's 'tail must run regardless'.",
+            "I1": "Info: a symbol listed enabled and disabled is required and also in excluded (no double count; the add API rejects duplicates).",
+            "I2": "Info: with max_workers 1, not-yet-started reviews at a budget expiry read failed: timeout and are cancelled at shutdown; they never persist later. Count correct.",
+            "I3": "Info, predates SA-004, local only: test_api_auth_lockdown.py:82 toggles MARUTI in the checkout's real data/managed_tickers.json on every full run."
+          },
+          "decisions": "Agreed with all five implementer decisions (degraded is output; alerts use the merged cohort; pipeline_ok false on a failed review; empty is not an alert; one job only).",
+          "tests": "Focused (receipt's 36 existing + 2 new): 376 passed, 0 failed, nonet blocked 182 (existing files); reviewer mutations on the 2 new files: baseline scheduler (F09) 30, f09 classify 34, pipeline_ok 13, no-merge 4, late-harvest 1 failing (unmutated 61 passed); pinned Mon 28 Sep and Fri 2 Oct: 71 passed each; reviewer probes: 8 passed, nonet blocked 0; full tests/unit: 3502 passed, 1 failed, 5 skipped, nonet blocked the pre-existing 194 (the failure: test_delivery_api push-subscribe WinError 5 rename flake, 5 of 5 alone); tracked data/ clean, key_registry unchanged, scheduler_job_outcomes.json untouched; check_kt_docs errors [] after the status edits (PDF source bf3d73d3, 24 pages).",
+          "doc_edits": "Status wording only: KT sections 1, 5, 9, 11, 12; ARCHITECTURE; TEAM_TESTING_GUIDE 01-A, 01-F; CODEBASE.md (2 rows); SA-034 note; PDF rebuilt. verify SA-004-manifest.json now mismatches exactly KT, PDF, ARCHITECTURE, TEAM_TESTING_GUIDE and CODEBASE.md."
+        }
+      ],
+      "routed_follow_ups": {
+        "F1": "SA-036 (wrap the bookkeeping block; fall back to summarize(previous=None); add probe R1 as a test)",
+        "I1": "SA-036 (excluded vs enabled duplicate)",
+        "I2": "SA-036 (timeout vs not started in the unified vocabulary)",
+        "I3": "SA-005 (redirect _MANAGED_TICKERS_PATH in the isolation fixture)",
+        "SA-005": "job-outcome isolation; managed_tickers.json reads; ops_alerts_state.json writes; streak flake (implementation route)",
+        "SA-015": "Fri 2 Oct / Mon 5 Oct both review Thu 1 Oct (F10 rerun; implementation route)",
+        "SA-034": "no watchdog check reads the daily_review record; read status/cohort_complete/missing (implementation route)",
+        "SA-036": "one outcome contract on this record; pipeline's own completed hides per-holding failures; manual reruns unrecorded (implementation route)"
+      }
     },
     {
       "id": "SA-005",
@@ -1130,6 +1212,86 @@
       "blocked_reason": null
     },
     {
+      "id": "SA-048",
+      "title": "Charge realistic trading costs and tax in paper P&L",
+      "story": "docs/planning/PI-2026-09/stories/SA-048.md",
+      "sprint": 3,
+      "points": 3,
+      "priority": "P1",
+      "scope": "planned",
+      "status": "todo",
+      "depends_on": [],
+      "implementation_receipt": null,
+      "review_receipt": null,
+      "reviewed_revision": null,
+      "production_verification": {
+        "status": "not_started",
+        "evidence": null
+      },
+      "blocked_reason": null
+    },
+    {
+      "id": "SA-049",
+      "title": "Put idle cash to work in normal markets",
+      "story": "docs/planning/PI-2026-09/stories/SA-049.md",
+      "sprint": 3,
+      "points": 5,
+      "priority": "P1",
+      "scope": "planned",
+      "status": "todo",
+      "depends_on": [
+        "SA-050",
+        "SA-051"
+      ],
+      "owner_decision": "2026-09-27: in a normal market idle cash goes into the best available ideas; hold cash on purpose only in a crisis (MACRO_CRISIS) or when no idea passes the checks, with the reason recorded. Regime targets and the per-day buy limit are proposals the owner confirms at implementation; the switch ships off and the owner turns it on.",
+      "implementation_receipt": null,
+      "review_receipt": null,
+      "reviewed_revision": null,
+      "production_verification": {
+        "status": "not_started",
+        "evidence": null
+      },
+      "blocked_reason": null
+    },
+    {
+      "id": "SA-050",
+      "title": "Apply one sizing rule to every autopilot buy",
+      "story": "docs/planning/PI-2026-09/stories/SA-050.md",
+      "sprint": 2,
+      "points": 2,
+      "priority": "P1",
+      "scope": "planned",
+      "status": "todo",
+      "depends_on": [],
+      "implementation_receipt": null,
+      "review_receipt": null,
+      "reviewed_revision": null,
+      "production_verification": {
+        "status": "not_started",
+        "evidence": null
+      },
+      "blocked_reason": null
+    },
+    {
+      "id": "SA-051",
+      "title": "Show the portfolio against the Nifty, with honest labels",
+      "story": "docs/planning/PI-2026-09/stories/SA-051.md",
+      "sprint": 2,
+      "points": 3,
+      "priority": "P1",
+      "scope": "planned",
+      "status": "todo",
+      "depends_on": [],
+      "implementation_receipt": null,
+      "review_receipt": null,
+      "reviewed_revision": null,
+      "production_verification": {
+        "status": "not_started",
+        "evidence": null
+      },
+      "blocked_reason": null
+    },
+    {
       "id": "DOC-001",
       "title": "Refresh current-code KT documents and separate human testing duties",
       "story": "docs/planning/PI-2026-09/stories/DOC-001.md",
@@ -1160,6 +1322,20 @@
     }
   ],
   "history": [
+    {
+      "date": "2026-09-27",
+      "event": "SA-004 ACCEPTED by a fresh-session review (a new conversation, about 15:23-15:50 IST; no SA-039 check was due). Input a5e77a74... verified (0 mismatches) and diff 648b7b68... rebuilt independently; payload update 1 (5d9030e0..., docs only, arrived during the review from a concurrent planning session) re-verified, diff e16a8e3f... rebuilt, code/tests byte-identical. No critical/high/medium finding. F1 (low, reproduced): a wrong-typed same-session outcome record makes summarize raise before the portfolio pipeline -> SA-036; I1, I2 -> SA-036; I3 (test toggles the real managed_tickers.json) -> SA-005. Focused 376 passed; 5 reviewer mutations all caught (baseline F09: 30 failing); full tests/unit 3502 passed, 1 known rename flake, 5 skipped. Status wording updated, PDF rebuilt, check_kt_docs 0 errors. SA-004 done; production_verification pending_deployment. Nothing committed, pushed or deployed. Next: SA-005 implementation in a new conversation.",
+      "review_input_sha256": "5d9030e0ffe7cc997a5c2bc2100a8c046f443cdcd1672b698519e79853f8e661"
+    },
+    {
+      "date": "2026-09-27",
+      "event": "Owner-requested planning (no story started), after reviewing the live portfolio screen (Rs 9,99,611 equity, 81% cash, 2 holdings, flat total return): four stories added. SA-048 costs and tax in paper P&L (S3, 3 points); SA-049 put idle cash to work in normal markets (S3, 5 points; owner decision recorded: deploy in a normal market, hold cash only in a crisis; depends on SA-050, SA-051; switch ships off); SA-050 one sizing rule for every autopilot buy (S2, 2 points; SWITCH buys bypass the 10% position cap today); SA-051 portfolio vs the Nifty with honest labels (S2, 3 points; 'Invested' is capital_in). Totals: 48 planned stories, 171 points (Sprints 1-6: 41 / 35 / 31 / 29 / 24 / 11). Task order unchanged: the new stories follow SA-047; SA-004's fresh review is still next. KT section 12 rows, section 1 counts and the PDF were updated, so SA-004's review input was regenerated (payload update 1: code and tests unchanged)."
+    },
+    {
+      "date": "2026-09-27",
+      "event": "SA-004 implemented (a new conversation, about 11:45-12:35 IST, baseline 0a5bf9e; no SA-039 check was due): every required daily-review ticker gets one outcome (completed/degraded/data_gated/skipped/failed); produced counts only reviews that wrote feedback, so the zero/partial-output alerts see skips, gate stops, failures and timeouts and name them; required vs attempted separate; excluded and duplicates reported; a rerun of the same session merges. Tests: full tests/unit 3503 passed, 5 skipped, 0 failed; 13 of 13 mutations caught. Status review_required; review input a5e77a74..., diff 648b7b68.... Nothing committed, pushed or deployed. Routed: SA-005, SA-015 (Fri 2 Oct / Mon 5 Oct both review Thu 1 Oct), SA-034, SA-036.",
+      "review_input_sha256": "a5e77a74ec7511e5d137c32a57e74929183f53680f43b4df82226dc230bb9e7e"
+    },
     {
       "date": "2026-09-27",
       "event": "Pushed f1c7eba..a61fafe at 09:05:01 IST at the owner's word (da90ee5, 167f08b, a61fafe); Sunday, job-free until weekly_review 18:00. Deploy 0106fc89 reached SUCCESS 09:27:57 IST after a full rebuild (~22 min): the floating python:3.11-slim base digest changed (da047cb8 -> e41613d4), invalidating every cached layer, so pip re-resolved the unpinned requirements. Installed set vs the 2026-09-23 build: 15 minor/patch changes (uvicorn 0.53->0.54, huggingface-hub 1.32->1.33, opentelemetry 1.44->1.45, langchain-core, pytz, others) and 1 added transitive; core libraries unchanged (pandas 3.0.6, yfinance 1.7.0, nse 3.2.1, apscheduler 3.11.3, torch 2.14.0). Routed to SA-033 (pin the base image digest too). Boot log (read-only): startup complete, 24 jobs registered at 09:27:56, 0 ERROR/WARNING lines. SA-003 production_verification: pending_observation (first cohort Mon 28 Sep 16:30). This record is committed locally and rides the next push."

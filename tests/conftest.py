@@ -108,6 +108,16 @@ def _no_real_gate_writes(monkeypatch, tmp_path):
     )
 
 
+@pytest.fixture(autouse=True)
+def _no_real_job_outcome_writes(monkeypatch, tmp_path):
+    """Same rule for the scheduler's last-run outcomes: the daily-review job
+    tests wrote the repo's real data/scheduler_job_outcomes.json, and since
+    SA-004 the job also READS it (a second run for the same session merges
+    with the first), so a leftover record would leak between tests."""
+    from services.data.stores import job_outcomes as _outcomes
+    monkeypatch.setattr(_outcomes, "_OUTCOMES_PATH", tmp_path / "scheduler_job_outcomes.json")
+
+
 # ---------------------------------------------------------------------------
 # Stock query fixtures
 # ---------------------------------------------------------------------------

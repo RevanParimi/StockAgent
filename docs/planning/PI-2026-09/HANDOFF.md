@@ -1,4 +1,4 @@
-# Current handoff - 2026-09-27 (updated about 09:35 IST)
+# Current handoff - 2026-09-27 (updated about 15:50 IST)
 
 ## START HERE — resume checklist, in order
 
@@ -38,12 +38,135 @@ the [activation record](evidence/SA-039-activation-2026-09-26.md) and in STATE.
     SA-003's `production_verification`. The [SA-003 receipt](evidence/SA-003-implementation.md)
     has the steps, under "Rollout", and the [review](evidence/SA-003-review.md) has F1 and F2.
 
-**1. Next PI phase: implement [SA-004](stories/SA-004.md)** (count daily-review outcomes
-truthfully), in a new conversation. Opener: `Continue`. Run step 0 first if a check is due by then.
-STATE: `active_task: null`, `next_task: SA-004`, `next_phase: implementation`.
+**1. Next PI phase: implement [SA-005](stories/SA-005.md)** (test isolation and the network
+guard), in a new conversation. Opener: `Continue`. Run step 0 first if a check is due by then (P1 is
+Mon 28 Sep 17:00). STATE: `active_task: null`, `next_task: SA-005`, `next_phase: implementation`.
+SA-005 is the first `todo` story with its dependencies done. It has no dependencies. Its card
+carries routed notes from every story so far. Read them first; the newest is I3 below.
 
-- SA-004 has no dependencies. Its card carries SA-003's note: count `data_gated` separately from
-  produced.
+- **SA-004 was ACCEPTED on 2026-09-27 by a fresh-session review** (a new conversation, about
+  15:23–15:50 IST). Receipt: [SA-004-review.md](evidence/SA-004-review.md). SA-004 is `done`, and its
+  `production_verification` is `pending_deployment`. No SA-039 check was due. The review
+  committed, pushed and deployed nothing.
+  - **Input verified:** `a5e77a74…` (13 files, 0 mismatches), and the diff `648b7b68…`, rebuilt
+    with the reviewer's own script.
+    - Payload update 1 (`5d9030e0…`, diff `e16a8e3f…`) arrived during the review, from the
+      concurrent planning session (the backlog bullet below).
+    - The reviewer rebuilt it too. The code, tests and `CODEBASE.md` are byte-identical, and the
+      four doc changes are planning content only. The acceptance covers both inputs.
+  - **Traced:**
+    - `completed` implies a stored feedback entry, because a failed write raises;
+    - the ticker and date pass through unchanged, so `classify` cannot misread a real review;
+    - `/scheduler/status` is the only reader of the record;
+    - the HTTP task and the paper lane already counted only `completed`;
+    - no watchdog check reads review outcomes.
+  - **Hard review.** The five counts always add up to `required`. Within the counting, the zero-
+    and partial-output alerts fire for every `produced < required`.
+  - **F1 (low, reproduced), in one example.** Suppose Friday's record for 1 Oct had a wrong type
+    in it, for example `"attempts": [1]`. On Mon 5 Oct, `summarize` raises before the portfolio
+    pipeline:
+    - the crash pages;
+    - that day's advisor → autopilot → digest does not run.
+
+    The only writer writes integers, so this needs a hand edit. Routed to
+    [SA-036](stories/SA-036.md): wrap the block and fall back to no merge. I1 and I2 (info) are
+    routed there too.
+  - **I3 (info, predates SA-004).** `test_api_auth_lockdown.py:82` flips MARUTI's `enabled` flag
+    in the checkout's real `data/managed_tickers.json` on every full run. It now holds MARUTI
+    enabled, TCS and HDFCBANK disabled. This is local only. Routed to [SA-005](stories/SA-005.md).
+  - **The implementer's five decisions:** the review agreed with each.
+  - **Tests** (network guard on, `RL_LEARNING_MODE=adapt`):
+    - focused: 376 passed;
+    - the reviewer's 5 runtime mutations: all caught. The baseline scheduler, which is F09
+      itself, fails 30 of 61;
+    - pinned Mon 28 Sep and Fri 2 Oct: 71 passed each;
+    - the reviewer's probes: 8 passed;
+    - full `tests/unit`: 3502 passed, 5 skipped, 1 failed, the known `test_delivery_api` rename
+      flake (5 of 5 alone); the guard blocked the pre-existing 194;
+    - `check_kt_docs`: 0 errors.
+  - **Review edits (documentation only):**
+    - status wording in the KT (§1, §5, §9, §11, §12), ARCHITECTURE, 01-A and 01-F, `CODEBASE.md`
+      and the SA-034 note;
+    - the PDF rebuilt (source `bf3d73d3…`).
+
+    `verify SA-004-manifest.json` now mismatches exactly the KT, the PDF, ARCHITECTURE,
+    TEAM_TESTING_GUIDE and `CODEBASE.md`.
+  - **At commit (owner's word; safe window 00:10–06:20 IST for the push):**
+    - link `review_outcomes.py` in the KT and bump the KT header past `167f08b`;
+    - rebuild the PDF;
+    - `verify --rev <commit>` should mismatch only those five files.
+
+    After the deploy, verify read-only across one scheduled session, as the receipt's "Rollout"
+    says. If it is live before Fri 2 Oct, Mon 5 Oct's record should read `runs: 2` for 1 Oct.
+  - **Local commit `0a5bf9e`** (the SA-003 deploy record) is still unpushed and rides the next push.
+  - **Worktree, uncommitted:** the SA-004 implementation, this review's bookkeeping, and the
+    planning session's SA-048…SA-051 cards and PI README.
+- **Backlog added at the owner's request (2026-09-27, after SA-004).** The owner reviewed the live
+  portfolio screen: ₹9,99,611 equity, 81% cash, 2 holdings, a flat total return with nothing to
+  compare it with. Four stories were added; the task order is unchanged, and they follow SA-047:
+  - [SA-048](stories/SA-048.md) (S3, 3 points): costs and tax in paper P&L. ACMESOLAR's
+    +₹37,551 would be about ₹29,660 in hand.
+  - [SA-049](stories/SA-049.md) (S3, 5 points): put idle cash to work in normal markets. **Owner
+    decision:** deploy idle cash in a normal market, and hold it only in a crisis ("if it's some
+    war"). The regime targets and the per-day limit are proposals the owner confirms; the switch
+    ships off. It depends on SA-050 and SA-051.
+  - [SA-050](stories/SA-050.md) (S2, 2 points): one sizing rule for every autopilot buy. Today a
+    SWITCH buy spends all its proceeds, with no 10% cap.
+  - [SA-051](stories/SA-051.md) (S2, 3 points): the portfolio against the Nifty, with honest
+    labels ("Invested" is really capital added) and a closed-trade record.
+
+  Totals: 48 planned stories, 171 points (Sprints 1–6: 41 / 35 / 31 / 29 / 24 / 11). If the owner
+  wants these sooner, SA-050 and SA-051 have no dependencies and could come next instead of
+  SA-005; that resequencing needs the owner's word.
+- **SA-004 was implemented on 2026-09-27** (a conversation, about 11:45–12:35 IST, on baseline
+  `0a5bf9e`). Receipt: [SA-004-implementation.md](evidence/SA-004-implementation.md). No SA-039
+  check was due. Nothing was committed, pushed or deployed.
+  - **What it does, in one example.** The 8 Sep production record said `produced=20`,
+    `expected=20`, `pipeline_ok=true`, while WELCORP had no envelope and 19 feedback rows existed.
+    The same day now reads 19 of 20, `status: partial` and
+    `missing: {WELCORP: "skipped: no_envelope"}`. The partial-output alert says
+    "completed 19/20 — missing: skipped no_envelope: WELCORP".
+  - **Outcomes.** The new `core/intelligence/rl/workflows/review_outcomes.py` gives each enabled
+    ticker exactly one outcome:
+    - `completed`;
+    - `degraded`: completed on an input SA-003's record mode flags;
+    - `data_gated`;
+    - `skipped`: no envelope, no forecast row, or no close;
+    - `failed`: an exception, a malformed result, or a timeout.
+
+    Only completed and degraded (feedback written) are output.
+  - **Also:**
+    - required and attempted are counted separately;
+    - disabled tickers are `excluded`, and a duplicate entry is reviewed once;
+    - a second scheduled run of the same session merges: attempts add up, completion does not;
+    - job `status` is `ok`, `partial`, `failed` or `empty`;
+    - `pipeline_ok` is false for a malformed or raising pipeline, and when a review failed.
+  - **Decisions flagged for the reviewer:** 5, in the receipt. For example, `degraded` counts as
+    output, and the alerts use the merged cohort, not only this run.
+  - **Tests** (network guard on, `RL_LEARNING_MODE=adapt`):
+    - new files: 61 passed, including an integration test through the real `run_daily_review`
+      that checks the persisted record against the stored feedback rows;
+    - focused (36 existing files plus the 2 new): 376 passed;
+    - 13 runtime mutations, 13 caught;
+    - 7-day sweep: 91 passed each day, after one known `test_ops_alerts` flake on the Tuesday pin;
+    - full `tests/unit`: 3503 passed, 5 skipped, 0 failed; the guard blocked the pre-existing 194;
+    - `check_kt_docs`: 0 errors, and the PDF is rebuilt.
+  - **Docs:** KT §1, §5, §9 (a new "Daily-review outcomes" paragraph), §11 and §12; the PDF;
+    ARCHITECTURE; human cases 01-A and 01-B, plus a new 01-F (a rerun of the same session);
+    `CODEBASE.md`.
+  - **Routed:**
+    - [SA-005](stories/SA-005.md): the new job-outcome test isolation, and leaks still open;
+    - [SA-015](stories/SA-015.md): see the heads-up below;
+    - [SA-034](stories/SA-034.md): no watchdog check reads this record yet;
+    - [SA-036](stories/SA-036.md): one outcome contract; the pipeline's own `completed` hides
+      per-holding advisor failures.
+  - **Heads-up, pre-existing (F10, routed to SA-015).** The Mon–Fri 16:30 cron does not skip a
+    weekday holiday, so each weekday holiday reviews a session twice.
+    - Fri 2 Oct (NSE holiday) reviews Thu 1 Oct, and Mon 5 Oct reviews Thu 1 Oct again.
+    - Each ticker runs a full `run_daily_review` for 1 Oct twice.
+    - SA-004 would count that once; it does not stop the second run's learning writes.
+  - **At commit:** the KT names `review_outcomes.py` in code formatting. The commit that lands
+    SA-004 should link it and bump the KT header past `167f08b`.
 - Run every test with the network guard `-p nonet` and `RL_LEARNING_MODE=adapt` (see step 4).
 - **SA-003 is committed, pushed and deployed** at the owner's word ("commit and push", about
   09:00 IST on Sun 27 Sep).

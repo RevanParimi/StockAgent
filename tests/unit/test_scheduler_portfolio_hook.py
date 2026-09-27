@@ -100,14 +100,21 @@ def test_daily_review_job_survives_harvest_timeout(monkeypatch):
     the loop, skipping BOTH the alerts and the portfolio pipeline (13 reviews
     saved, 0 trades, no alert). The tail must run regardless."""
     import concurrent.futures as cf
+    import threading
     import services.scheduler.python.scheduler as sch
     import core.intelligence.rl.workflows.daily_review as dr
     import core.portfolio.pipeline as pl
     import core.delivery.ops_alerts as oa
 
     calls, partial = {}, {}
-    monkeypatch.setattr(dr, "run_daily_review",
-                        lambda t, d, sector=None: {"status": "completed"})
+    release = threading.Event()
+
+    def _review(t, d, sector=None):
+        if t == "INFY":             # the straggler: still running at the budget
+            release.wait(10)
+        return {"status": "completed"}
+
+    monkeypatch.setattr(dr, "run_daily_review", _review)
     monkeypatch.setattr(pl, "run_post_review_pipeline",
                         lambda d: calls.setdefault("pipeline", d) or {"status": "completed"})
     monkeypatch.setattr(sch, "get_active_tickers_with_sector",
@@ -115,17 +122,20 @@ def test_daily_review_job_survives_harvest_timeout(monkeypatch):
                                  {"sym": "INFY", "sector": "it_sector"}])
     monkeypatch.setattr(
         oa, "alert_job_partial_output",
-        lambda job, produced, expected: partial.update(produced=produced, expected=expected))
+        lambda job, produced, expected, **_: partial.update(produced=produced, expected=expected))
 
     def fake_as_completed(fs, timeout=None):
-        fs = list(fs)
-        cf.wait(fs)                 # deterministic: both futures finish instantly
-        yield fs[0]                 # harvest ONE result...
+        first = list(fs)[0]         # submission order: MARUTI
+        cf.wait([first])            # deterministic: MARUTI finishes...
+        yield first                 # ...and is harvested...
         raise cf.TimeoutError()     # ...then the aggregate budget "expires"
 
     monkeypatch.setattr(sch._cf, "as_completed", fake_as_completed)
 
-    sch.AutomobileScheduler()._daily_review_job()   # must not raise
+    try:
+        sch.AutomobileScheduler()._daily_review_job()   # must not raise
+    finally:
+        release.set()
 
     assert "pipeline" in calls, "TimeoutError skipped the portfolio pipeline"
     assert partial == {"produced": 1, "expected": 2}
@@ -147,7 +157,7 @@ def test_daily_review_job_partial_alert_silent_on_full_harvest(monkeypatch):
     monkeypatch.setattr(sch, "get_active_tickers_with_sector",
                         lambda: [{"sym": "MARUTI", "sector": "automobile"}])
     monkeypatch.setattr(oa, "alert_job_partial_output",
-                        lambda job, produced, expected: fired.append((produced, expected)))
+                        lambda job, produced, expected, **_: fired.append((produced, expected)))
 
     sch.AutomobileScheduler()._daily_review_job()
     assert fired == [(1, 1)]

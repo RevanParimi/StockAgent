@@ -71,11 +71,12 @@ Current read surface: `GET /scheduler/status`; see KT section 9 for the clock.
 
 | Case | Tester action | Expected result |
 |---|---|---|
-| 01-A | Compare a normal 16:30 review's expected tickers with feedback records and the resulting digest. | Review date is the previous exchange trading session. Each ticker is accounted for as completed, skipped or failed. The totals reconcile. **PI target: SA-004** repairs misleading success counts. |
-| 01-B | Inspect a prepared missing-envelope or provider-failure run. | Missing output is visible; a green overall status does not hide the failed ticker. **PI target: SA-002/SA-004.** |
+| 01-A | Compare a normal 16:30 review's expected tickers with feedback records and the resulting digest. | Review date is the previous exchange trading session. In `last_runs.daily_review`, each enabled ticker appears once in `by_ticker` as completed, degraded, data_gated, skipped or failed; the five counts add up to `required`; disabled tickers appear only in `excluded`. `produced` equals the number of tickers with a feedback entry dated the session, and exactly those tickers are completed or degraded. **SA-004 (accepted 2026-09-27, not yet deployed)** repairs misleading success counts. |
+| 01-B | Inspect a prepared missing-envelope or provider-failure run. | Missing output is visible: `status` is `partial` (or `failed` when nothing was produced), `missing` names the ticker and reason (for example `skipped: no_envelope`), and the partial- or zero-output alert names it too. A review that raised leaves `pipeline_ok` false. A green overall status does not hide the failed ticker. **SA-002/SA-004.** |
 | 01-C | Observe a prepared weekend/holiday case and a configured disabled job. | Documented calendar/gate behavior matches the run record; disabled or legitimately skipped work is not called successful output. |
 | 01-D | Compare the monthly job, daily learning review, nightly advice audit and watchdog outputs. | Four different functions have identifiable dates/results. A watchdog notice is not a completed financial review. |
 | 01-E | Observe an engineer-run restart/owner-loss scenario in test. | One effective background owner; missing/repeated work is detected and recovery is demonstrated. **PI target: SA-029.** |
+| 01-F | Rerun the same session: in an isolated test copy, run the daily-review job twice for one review date (as the day after a weekday holiday does), with one ticker failing on the second run only. | `runs` is 2 and `attempted` is twice `required`; `produced` does not grow. The ticker that failed on the second run stays completed, marked `from_earlier_run`, because its feedback entry from the first run stands. **SA-004 (accepted 2026-09-27, not yet deployed).** |
 
 **Deliverable:** one job-results table: job, scheduled time, actual start/end,
 review date, expected/produced/skipped/failed counts, output evidence and result.
@@ -188,9 +189,11 @@ action, reason, quantity and resulting transaction; no code inspection needed.
 | 07-C | Inspect SWITCH with an eligible replacement and with none eligible. | Origin and destination are explicit. Cash/eligibility determines execution; a replacement is not invented. |
 | 07-D | Disable virtual autopilot for the prepared account, then observe an advisory run. | Advice can exist without an automatic transaction. Research BUY is not treated as proof of a purchase. |
 | 07-E | Inspect the repeated-date and insufficient-cash scenarios. | No duplicate trades or negative-cash purchase; skipped execution remains explainable. |
+| 07-F | Inspect a SWITCH whose sale proceeds are larger than 10% of the portfolio. | The new position is at most 10% of the portfolio, and its sector stays within the sector cap. The rest stays in cash with a note saying how much was capped and why. **PI target: SA-050** (today a SWITCH buy spends all the proceeds). |
+| 07-G | With idle-cash deployment switched on, open a prepared portfolio that is mostly cash, first in a normal regime and then in `MACRO_CRISIS`. | Normal: new positions are bought from qualifying shelf ideas, at most the configured number per day, each within the caps, and each says why. Crisis: no new positions, and the run records "crisis". Whenever cash stays below the target, the reasons are listed. **PI target: SA-049** (owner decision 2026-09-27). |
 
 **Deliverable:** action matrix with advice, actual transaction (or skip reason)
-and before/after holdings. Related PI: SA-003, SA-014, SA-024. HT-08 separately
+and before/after holdings. Related PI: SA-003, SA-014, SA-024, SA-049, SA-050. HT-08 separately
 reconciles money; HT-09 judges later outcome quality.
 
 ## 10. HT-08 — Profit/loss and balances
@@ -211,10 +214,12 @@ Use this synthetic fixture, with no fees/corporate actions:
 | 08-C | Inspect missing-price and missing-history fixtures. | Unknown/stale valuation is visible. Current cost-basis fallback must not be mistaken for a verified market quote; flag misleading presentation. |
 | 08-D | Inspect an engineer-prepared split/bonus-adjusted holding. | Adjusted quantity/cost and P/L reconcile to the supplied corporate-action result; the mechanical adjustment does not create profit. |
 | 08-E | Compare a complete supplied ledger with its performance summary. | History limits/exclusions are disclosed. Current endpoint limits (2,000 transactions/400 history rows) are not mistaken for unlimited lifetime coverage. |
+| 08-F | Recompute one round trip's costs and tax by hand from the configured rates. For example, 509 shares bought at 372.88 and sold at 446.65. | Each charge and the total match to the paisa. Realized P/L shows gross and net of costs. The tax estimate is shown separately, and a year that nets to a loss shows no tax. **PI target: SA-048** (today paper P/L charges nothing). |
+| 08-G | Open the portfolio screen for a prepared account with two deposits and some closed trades. | "Capital added" (not "Invested"), "In stocks" and "Cash", with shares adding to 100%. A Nifty line shows what the same deposits would be worth in the index. The closed-trade record shows win rate, average win and loss, and expectancy. Every price shows its date. **PI target: SA-051.** |
 
 **Deliverable:** reconciliation sheet listing source date, cash, quantities,
 cost, market value, realized/unrealized P/L and any unexplained difference.
-Related PI: SA-003, SA-008, SA-024; a newly found accounting defect needs an
+Related PI: SA-003, SA-008, SA-024, SA-048, SA-051; a newly found accounting defect needs an
 explicit new finding, not an assumed existing PI fix.
 
 ## 11. HT-09 — Prediction and advice marksheets

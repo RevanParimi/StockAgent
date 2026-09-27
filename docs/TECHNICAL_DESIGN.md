@@ -22,7 +22,7 @@ it is not an implemented human-approval workflow.
 | Current code | Traced in this checkout. Flags, inputs and runtime data determine whether a path actually runs. |
 | Locally checked | Existing tests run in an isolated copy. Exact results and limits are in the [validation receipt](planning/PI-2026-09/evidence/DOC-001-implementation.md). |
 | Production observation | Dated evidence: the September 10 audit, section 10's 2026-09-21 email diagnosis, a September 15 deployment SUCCESS at `9a805878`, the 2026-09-23 read-only log inspection of learned weights, and the 2026-09-24 [SA-039 weight baseline](planning/PI-2026-09/evidence/SA-039-baseline-2026-09-24.md). Those logs came from deploy `d9c459ae` (commit `e8df088`). Deploys carrying the header revision's code were inspected read-only on 2026-09-25 (`7ebd06c5`: the 16:30 review ran in `adapt`) and on 2026-09-26 (`da9df6cf`: all 20 tickers in `observe`, per the [activation record](planning/PI-2026-09/evidence/SA-039-activation-2026-09-26.md)). |
-| PI target | Intended behavior, not completed functionality. SA-039 was accepted by its fresh review on 2026-09-25, and production has run `observe` since 2026-09-26 ([activation record](planning/PI-2026-09/evidence/SA-039-activation-2026-09-26.md); verification after the next reviews is pending). SA-001 (chat rendering) was accepted by its fresh review on 2026-09-26 ([review](planning/PI-2026-09/evidence/SA-001-review.md)); it is committed as `8413b59`, and its production verification is pending. SA-002 (data health) was accepted by its fresh re-review on 2026-09-26, after a rework of its test fixtures and one fundamentals case ([receipt](planning/PI-2026-09/evidence/SA-002-implementation.md), [review](planning/PI-2026-09/evidence/SA-002-review.md)); it is committed as `8413b59`, and its production verification is pending. SA-003 (the decision gate) was accepted by its fresh review on 2026-09-27 ([receipt](planning/PI-2026-09/evidence/SA-003-implementation.md), [review](planning/PI-2026-09/evidence/SA-003-review.md)); it is committed as `167f08b`, and its production verification is pending. It ships recording only (`decision_gate.mode: record`), and enforcing it is a separate decision, after SA-039's observation window and a measured record period. Every other story from SA-004 to SA-047 is `todo`. Three are stretch. |
+| PI target | Intended behavior, not completed functionality. SA-039 was accepted by its fresh review on 2026-09-25, and production has run `observe` since 2026-09-26 ([activation record](planning/PI-2026-09/evidence/SA-039-activation-2026-09-26.md); verification after the next reviews is pending). SA-001 (chat rendering) was accepted by its fresh review on 2026-09-26 ([review](planning/PI-2026-09/evidence/SA-001-review.md)); it is committed as `8413b59`, and its production verification is pending. SA-002 (data health) was accepted by its fresh re-review on 2026-09-26, after a rework of its test fixtures and one fundamentals case ([receipt](planning/PI-2026-09/evidence/SA-002-implementation.md), [review](planning/PI-2026-09/evidence/SA-002-review.md)); it is committed as `8413b59`, and its production verification is pending. SA-003 (the decision gate) was accepted by its fresh review on 2026-09-27 ([receipt](planning/PI-2026-09/evidence/SA-003-implementation.md), [review](planning/PI-2026-09/evidence/SA-003-review.md)); it is committed as `167f08b`, and its production verification is pending. It ships recording only (`decision_gate.mode: record`), and enforcing it is a separate decision, after SA-039's observation window and a measured record period. SA-004 (daily-review outcome counts) was accepted by its fresh review on 2026-09-27 ([receipt](planning/PI-2026-09/evidence/SA-004-implementation.md), [review](planning/PI-2026-09/evidence/SA-004-review.md)); it is uncommitted, and its production verification is pending. Every other story from SA-005 to SA-051 is `todo`. Three are stretch. |
 
 The [September audit](audit/2026-09-10-repository-production-review.md) records
 unresolved label, timing, health, weight-bound and operational defects.
@@ -371,7 +371,10 @@ what enforcement would have stopped. **Example:** a symbol is suspended on the
 review day, and both providers return the previous day's close of 99.0. That
 used to be graded as a flat day, a zero return that never happened. Now the
 close says it is from the previous day's bar, and enforcement skips the review.
-Scheduler counts still treat `data_gated` as produced; that is SA-004's.
+Since SA-004 (accepted 2026-09-27, uncommitted) the scheduler counts a
+`data_gated` review on its own: it is not output, so it cannot quiet the zero-
+or partial-output alert, and a completed review that lists `data_gate` inputs
+counts as `degraded` (section 9).
 
 ### Grading defect: an example everyone can follow
 
@@ -528,6 +531,18 @@ In `enforce` mode the executor also re-checks a SWITCH buy leg's own price:
 if its close is not from the session's bar, the sell executes and the buy is
 skipped, and the user gets the existing `switch_buy_skipped` alert.
 
+**Where cash goes (current code).** The autopilot opens a new position only
+through a SWITCH, putting one sale's proceeds into a shelf idea. ADD tops up a
+stock already held, capped at `advisor.max_position_pct` (10%) after the trade.
+A plain EXIT leaves its proceeds in cash, and nothing reinvests them. The SWITCH
+buy spends the whole proceeds, with no position or sector cap. **Example (the
+owner's screen, 27 Sep):** ₹8,09,297 of ₹9,99,611 was cash (81%), with two
+holdings. ACMESOLAR's `exit_full` alone moved about ₹2.27L to cash, and
+FEDERALBNK was 13.1% of the portfolio. **Planned:** one sizing rule for every
+autopilot buy (SA-050). In a normal market, idle cash goes into shelf ideas that
+pass the checks; cash is held on purpose only in a crisis (SA-049, the owner's
+decision of 2026-09-27, behind a switch that ships off).
+
 ## 7. Profit/loss and the different marksheets
 
 “Marksheet” covers several distinct reports. Each needs its own question,
@@ -546,6 +561,13 @@ transactions, advice, digest and `/portfolio/performance`.
 | Total equity | Remaining holdings' market value + deployable cash. |
 | Total return | `(total equity − capital_in) / capital_in`, when required values exist. |
 | As-of date | Date of the valuation, potentially different from page-open time. |
+
+The virtual P/L charges no brokerage, STT, stamp duty, exchange fee, DP
+charge or tax. A real round trip costs about 0.25% of the traded value, and
+short-term gains are taxed. For ACMESOLAR's +₹37,551, that is about ₹477 in
+costs and about ₹7,415 in tax (SA-048 plans both). The screen's "Invested" is
+`capital_in`, the mock money ever put in, not the money in stocks. The screen
+also has no benchmark (SA-051 plans a Nifty comparison and honest labels).
 
 **Example without fees/corporate actions:** start with 2,000 and buy ten units
 at 100. Cash is 1,000. At 110 the holding is 1,100, equity 2,100 and unrealized
@@ -680,11 +702,50 @@ Startup self-heal, the post-review portfolio/digest hook and the outbox drainer
 are **not additional cron jobs**. An 08:50 brief is not guaranteed to wait for
 an unfinished 08:45 shock check. Close clock times are not dependencies.
 
-Current review success counts can include returned failure/skip statuses,
-such as no envelope. A pipeline flag can mean the call returned, rather than
-every holding completed. HTTP 202 means accepted for background work, not
-finished. SA-004 repairs outcomes, SA-011 operational backlog and SA-029
-readiness/ownership recovery.
+**Daily-review outcomes (SA-004: implemented and accepted by its fresh review
+on 2026-09-27; uncommitted, not deployed).** Before SA-004 the job counted every
+review that did not raise as output. On 2026-09-08 it recorded `produced=20`,
+`expected=20` and `pipeline_ok=true`, while WELCORP returned `no_envelope` and
+19 feedback rows existed. Now `core/intelligence/rl/workflows/review_outcomes.py`
+gives each enabled ticker exactly one outcome:
+
+- `completed`: the review wrote its feedback entry;
+- `degraded`: it wrote its feedback entry on an input the data gate would have
+  stopped (SA-003 record mode lists them). Until the 1 Oct envelopes, most
+  reviews grade a row issued before the gate existed, and those read
+  `degraded`;
+- `data_gated`: the gate stopped it before any write (enforce mode);
+- `skipped`: no envelope, no forecast row for the session, or no close;
+- `failed`: it raised, returned a malformed result (an unknown status, or a
+  result for another ticker or date), or was still running when the harvest
+  budget ran out.
+
+Only `completed` and `degraded` are output (`produced`), so a skip, a gate stop
+or a failure fires the zero- or partial-output alert, which now names the
+tickers and why. **Example:** 20 tickers, and WELCORP has no envelope. The
+record reads 19 of 20, `status: partial` and
+`missing: {WELCORP: "skipped: no_envelope"}`. The alert says "completed 19/20 —
+missing: skipped no_envelope: WELCORP".
+
+- Required work (the distinct enabled tickers) and attempted work are counted
+  separately. Disabled tickers are listed as `excluded`, and a duplicate entry
+  is reviewed once and listed under `duplicates`.
+- The day after a weekday NSE holiday reviews the same session again: Fri 2 Oct
+  and Mon 5 Oct both review Thu 1 Oct. The second run merges with the first,
+  so attempts add up and completion does not. A ticker whose earlier run wrote
+  its feedback stays output even if the rerun fails.
+- `status` is `ok`, `partial`, `failed` or `empty` (every ticker disabled).
+  `pipeline_ok` is true only when the portfolio pipeline returned a well-formed
+  `completed` and no required review failed; `pipeline_status` says what the
+  pipeline itself did.
+- The record in `data/scheduler_job_outcomes.json` keeps the legacy fields and
+  adds `by_ticker`, with each ticker's outcome, reason and attempts.
+
+**Still open.** The pipeline's own `completed` does not count holdings whose
+advisor call failed inside it (routed to SA-036). The learning side of a rerun
+is F10's (SA-015). Nothing in the watchdog reads this record yet (SA-034). HTTP
+202 means accepted for background work, not finished. SA-011 covers the
+operational backlog, and SA-029 covers readiness and ownership recovery.
 
 ## 10. Delivery, interface, identity and operations
 
@@ -779,9 +840,9 @@ HTTP responses do not prove recovery or successful jobs.
 | Analysis | Unified scoring plus surviving legacy fallback. | Actual call accounting. A factor engine (computed factors, one text reader, code decides, LLM explains) proven in shadow, then the graphs and fallback retired (SA-044–SA-047, SA-027). |
 | Data health | Durable health/run records. Producer-typed section status and usable-data health (SA-002, accepted 2026-09-26, committed as `8413b59`). A decision gate on essential data across research, learning and portfolio (SA-003, accepted 2026-09-27, committed as `167f08b`), shipped recording only. | A measured record period, then the owner's decision to enforce; instrument lifecycles (SA-008). |
 | Verdict binding | Deterministic category enabled in YAML, raw model verdict logged. | Correct issue-time grading and final adaptive constraints. |
-| Portfolio | Per-user advice/execution, stops, switches and ledgers. | Stronger upstream evidence and report reconciliation. |
+| Portfolio | Per-user advice/execution, stops, switches and ledgers. | Stronger upstream evidence and report reconciliation; costs and tax in paper P&L (SA-048); idle cash put to work in normal markets (SA-049); one sizing rule for every autopilot buy (SA-050); the portfolio against the Nifty, with honest labels (SA-051). |
 | IPO | Calendar, history, snapshots, recent-listing screening, size-tiered brief lean, and the dark P3 model, deep dive, narrator and forward-grading lane (section 8). | Forward evidence for P3 and its `ipo_verdicts_visible_gate`; no verdict reaches a user; outside default September scope. |
-| Operations | TCP singleton, outcomes, watchdog, outbox with `last_error`, per-account recipients, SMTP/Resend transports and backup code. | Truthful counts, proven recovery, measured delivery, the recipient-fallback gap and readiness. The [observability design](superpowers/specs/2026-09-24-production-observability-design.md) adds planned job-run and source-health ledgers, post-job checks, a read-only status fetcher and an outside witness (SA-034–SA-036, SA-040–SA-042). |
+| Operations | TCP singleton, outcomes, watchdog, outbox with `last_error`, per-account recipients, SMTP/Resend transports and backup code. Truthful daily-review outcome counts (SA-004, accepted 2026-09-27, uncommitted). | Durable outcomes for every job (SA-036), proven recovery, measured delivery, the recipient-fallback gap and readiness. The [observability design](superpowers/specs/2026-09-24-production-observability-design.md) adds planned job-run and source-health ledgers, post-job checks, a read-only status fetcher and an outside witness (SA-034–SA-036, SA-040–SA-042). |
 | Frontend | JSX/PWA with live adapters and some fallback/demo paths. | Sanitization, honest unavailable states and optional build cleanup. |
 
 Historical [specifications](superpowers/specs/) retain what was intended at
@@ -795,8 +856,8 @@ The table below includes the planned destination now. **SA-039 is accepted
 (production `observe` since 2026-09-26). SA-001 and SA-002
 (after a rework) are accepted and committed as `8413b59`; their production
 verification is pending. SA-003 is accepted by its fresh review (2026-09-27)
-and committed as `167f08b`; its production verification is pending. Every other
-SA story is `todo`.** Accepted
+and committed as `167f08b`; its production verification is pending. SA-004 is
+accepted by its fresh review (2026-09-27) and uncommitted. Every other SA story is `todo`.** Accepted
 state/dependencies are in
 [STATE.json](planning/PI-2026-09/STATE.json). DOC-001 is this user-requested
 documentation refresh; it does not close SA-031 or any upstream remediation.
@@ -850,6 +911,10 @@ documentation refresh; it does not close SA-031 or any upstream remediation.
 | [SA-045](planning/PI-2026-09/stories/SA-045.md) | Compute the five universal factors deterministically | 4 Research | SA-026 |
 | [SA-046](planning/PI-2026-09/stories/SA-046.md) | Read text into dated events and a Catalyst factor | 4 Research | SA-026 |
 | [SA-047](planning/PI-2026-09/stories/SA-047.md) | Decide with the factor engine; switch when it is not worse | 4 Research; 5 Learning | SA-045, SA-046, SA-014, SA-020 |
+| [SA-048](planning/PI-2026-09/stories/SA-048.md) | Charge realistic trading costs and tax in paper P&L | 6 Portfolio; 7 Marksheets | None |
+| [SA-049](planning/PI-2026-09/stories/SA-049.md) | Put idle cash to work in normal markets | 6 Portfolio; 8 Discovery | SA-050, SA-051 |
+| [SA-050](planning/PI-2026-09/stories/SA-050.md) | Apply one sizing rule to every autopilot buy | 6 Portfolio | None |
+| [SA-051](planning/PI-2026-09/stories/SA-051.md) | Show the portfolio against the Nifty, with honest labels | 7 Marksheets; 10 Interface | None |
 
 ### Maintain documentation with each story
 

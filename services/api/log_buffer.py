@@ -224,3 +224,9 @@ def get_active_tickers_with_sector() -> list[dict]:
         for t in load_managed_tickers()
         if t.get("enabled", True)
     ]
+
+
+def get_disabled_tickers() -> list[str]:
+    """Managed tickers switched off on purpose (enabled: false). The daily
+    review reports them as excluded, not as required work (SA-004)."""
+    return [t["sym"] for t in load_managed_tickers() if not t.get("enabled", True)]

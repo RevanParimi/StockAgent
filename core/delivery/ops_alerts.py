@@ -85,37 +85,41 @@ def record_llm_result(success: bool) -> None:
         logger.debug("[ops_alerts] record_llm_result failed (non-fatal): %s", exc)
 
 
-def alert_job_zero_output(job: str, produced: int, expected: int) -> None:
+def alert_job_zero_output(job: str, produced: int, expected: int, detail: str = "") -> None:
     """A job that 'completed' with zero output against nonzero expected input
     is the silent-failure signature (AUD-039). Same-day repeats are deduped by
-    the alerts layer (date|kind key)."""
+    the alerts layer (date|kind key). `detail` names what is missing and why
+    (SA-004); without it the message guesses the usual cause."""
     try:
         if expected <= 0 or produced > 0:
             return
+        why = (f"missing: {detail}" if detail
+               else "likely a provider/key failure being swallowed")
         try:
             _emit(f"job_zero_output_{job}",
-                  f"Job '{job}' completed with 0/{expected} output — likely a "
-                  "provider/key failure being swallowed. Check logs.")
+                  f"Job '{job}' completed with 0/{expected} output — {why}. Check logs.")
         except Exception as exc:
             logger.warning("[ops_alerts] zero-output alert emit failed: %s", exc)
     except Exception as exc:
         logger.debug("[ops_alerts] alert_job_zero_output failed (non-fatal): %s", exc)
 
 
-def alert_job_partial_output(job: str, produced: int, expected: int) -> None:
+def alert_job_partial_output(job: str, produced: int, expected: int, detail: str = "") -> None:
     """A job that completed only PART of its input (e.g. 13/16 reviews after a
     harvest timeout, AUD-084/090b) is invisible to the zero-output alert.
     Warning severity — the day still ran; same-day repeats deduped by the
-    alerts layer (date|kind key)."""
+    alerts layer (date|kind key). `detail` names what is missing and why
+    (SA-004), e.g. a skipped no_envelope, which is neither timed out nor
+    failed."""
     try:
         if expected <= 0 or produced <= 0 or produced >= expected:
             return
+        why = f"missing: {detail}" if detail else "the rest timed out or failed"
         from core.delivery.alerts import AlertEvent, emit_alerts_broadcast
         emit_alerts_broadcast([AlertEvent(
             date=date.today().isoformat(),
             kind=f"job_partial_output_{job}", symbol="",
-            message=(f"Job '{job}' completed {produced}/{expected} — the rest "
-                     "timed out or failed. Check logs."),
+            message=f"Job '{job}' completed {produced}/{expected} — {why}. Check logs.",
             severity="warning")],
             title="StockAgent ops alert")
     except Exception as exc:

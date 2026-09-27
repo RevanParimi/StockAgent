@@ -105,7 +105,7 @@ Learning then tunes six weights pooled across all stocks.
 | Hard-bound categorical research verdict under current YAML | Immutable issuance, correct grading and retry-safe bounded adaptive updates |
 | Virtual advice, execution, P/L and outcome reports | Complete matched cohorts and prospective evidence of learning benefit; costs and tax in paper P/L, idle cash put to work in normal markets (hold cash only in a crisis), one sizing rule for every autopilot buy, and the portfolio shown against the Nifty (SA-048–SA-051) |
 | IPO calendar/history/capture and recent-listing heuristic | Future validated IPO modeling is not a completed September deliverable |
-| Job outcomes, watchdog, outbox and backups; truthful daily-review outcome counts (SA-004, accepted 2026-09-27, uncommitted) | Durable outcomes for every job, verified transport/recovery and background readiness |
+| Job outcomes, watchdog, outbox and backups; truthful daily-review outcome counts (SA-004, accepted 2026-09-27, committed as `241c393`) | Durable outcomes for every job, verified transport/recovery and background readiness |
 | JSX/PWA and live adapters | Safe rendering, honest unavailable/demo states and optional build cleanup |
 
 See KT section 12 for every SA story. Documentation changes with each

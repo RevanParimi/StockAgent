@@ -237,6 +237,7 @@
       "review_input_manifest": "docs/planning/PI-2026-09/evidence/SA-004-manifest.json",
       "review_input_sha256": "5d9030e0ffe7cc997a5c2bc2100a8c046f443cdcd1672b698519e79853f8e661",
       "diff_sha256": "e16a8e3f47de65b78a0deef5c641fba4377f5d11deb5b717259da359c25a0edc",
+      "implementation_commit": "241c393fa55e2981042eca77b093dd9454efe058",
       "payload_update_1": {
         "date": "2026-09-27",
         "reason": "owner-requested backlog SA-048..SA-051 (same conversation, after the implementation); check_kt_docs needs a KT row per STATE story",
@@ -283,7 +284,7 @@
       "reviewed_revision": "uncommitted working tree on 0a5bf9e15b6d6a9c43ac9f66106a5583a9c75ea5, pinned by review input a5e77a74ec7511e5d137c32a57e74929183f53680f43b4df82226dc230bb9e7e (diff 648b7b6833af4d6c26c0b397ef46d3cd53769d90bc3f6847401521636514f712) and by the documentation-only payload update 1, 5d9030e0ffe7cc997a5c2bc2100a8c046f443cdcd1672b698519e79853f8e661 (diff e16a8e3f47de65b78a0deef5c641fba4377f5d11deb5b717259da359c25a0edc); both diffs rebuilt independently by the reviewer; code, tests and CODEBASE.md byte-identical between them",
       "production_verification": {
         "status": "pending_deployment",
-        "evidence": "Accepted 2026-09-27; uncommitted. After the owner's commit and push (KT link to review_outcomes.py and header bump past 167f08b), verify read-only across one scheduled session: by_ticker holds every enabled ticker once; the five counts add up to required; produced equals the tickers whose feedback_log.last_date is the review date. If deployed before Fri 2 Oct, Mon 5 Oct's record for 1 Oct should read runs 2 and attempted twice required."
+        "evidence": "Accepted 2026-09-27; committed as 241c393 at the owner's word ('commit and push', about 15:55 IST Sun 27 Sep), with the owner-requested SA-048-SA-051 backlog in the same commit; verify SA-004-manifest.json --rev 241c393 mismatches only the five status-edited docs (KT, PDF, ARCHITECTURE, TEAM_TESTING_GUIDE, CODEBASE.md), so every reviewed code/test/config byte is committed as reviewed. The next commit bumps the KT header to 241c393 and links review_outcomes.py. After the push and deploy, verify read-only across one scheduled session: by_ticker holds every enabled ticker once; the five counts add up to required; produced equals the tickers whose feedback_log.last_date is the review date. If deployed before Fri 2 Oct, Mon 5 Oct's record for 1 Oct should read runs 2 and attempted twice required."
       },
       "blocked_reason": null,
       "review_outcomes": [

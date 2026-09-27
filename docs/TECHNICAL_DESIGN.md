@@ -2,7 +2,7 @@
 
 **Edition:** 2026-09-27 · **Audience:** engineers and teammates learning the product
 
-**Code inspected:** `167f08bc18414857a82f5c8828111ea0f6274b60`
+**Code inspected:** `241c393fa55e2981042eca77b093dd9454efe058`
 
 First edition 2026-09-15 at `9a805878`; maintained per story since. The revision
 above is the one the whole body describes. `check_kt_docs.py` fails if a linked
@@ -22,7 +22,7 @@ it is not an implemented human-approval workflow.
 | Current code | Traced in this checkout. Flags, inputs and runtime data determine whether a path actually runs. |
 | Locally checked | Existing tests run in an isolated copy. Exact results and limits are in the [validation receipt](planning/PI-2026-09/evidence/DOC-001-implementation.md). |
 | Production observation | Dated evidence: the September 10 audit, section 10's 2026-09-21 email diagnosis, a September 15 deployment SUCCESS at `9a805878`, the 2026-09-23 read-only log inspection of learned weights, and the 2026-09-24 [SA-039 weight baseline](planning/PI-2026-09/evidence/SA-039-baseline-2026-09-24.md). Those logs came from deploy `d9c459ae` (commit `e8df088`). Deploys carrying the header revision's code were inspected read-only on 2026-09-25 (`7ebd06c5`: the 16:30 review ran in `adapt`) and on 2026-09-26 (`da9df6cf`: all 20 tickers in `observe`, per the [activation record](planning/PI-2026-09/evidence/SA-039-activation-2026-09-26.md)). |
-| PI target | Intended behavior, not completed functionality. SA-039 was accepted by its fresh review on 2026-09-25, and production has run `observe` since 2026-09-26 ([activation record](planning/PI-2026-09/evidence/SA-039-activation-2026-09-26.md); verification after the next reviews is pending). SA-001 (chat rendering) was accepted by its fresh review on 2026-09-26 ([review](planning/PI-2026-09/evidence/SA-001-review.md)); it is committed as `8413b59`, and its production verification is pending. SA-002 (data health) was accepted by its fresh re-review on 2026-09-26, after a rework of its test fixtures and one fundamentals case ([receipt](planning/PI-2026-09/evidence/SA-002-implementation.md), [review](planning/PI-2026-09/evidence/SA-002-review.md)); it is committed as `8413b59`, and its production verification is pending. SA-003 (the decision gate) was accepted by its fresh review on 2026-09-27 ([receipt](planning/PI-2026-09/evidence/SA-003-implementation.md), [review](planning/PI-2026-09/evidence/SA-003-review.md)); it is committed as `167f08b`, and its production verification is pending. It ships recording only (`decision_gate.mode: record`), and enforcing it is a separate decision, after SA-039's observation window and a measured record period. SA-004 (daily-review outcome counts) was accepted by its fresh review on 2026-09-27 ([receipt](planning/PI-2026-09/evidence/SA-004-implementation.md), [review](planning/PI-2026-09/evidence/SA-004-review.md)); it is uncommitted, and its production verification is pending. Every other story from SA-005 to SA-051 is `todo`. Three are stretch. |
+| PI target | Intended behavior, not completed functionality. SA-039 was accepted by its fresh review on 2026-09-25, and production has run `observe` since 2026-09-26 ([activation record](planning/PI-2026-09/evidence/SA-039-activation-2026-09-26.md); verification after the next reviews is pending). SA-001 (chat rendering) was accepted by its fresh review on 2026-09-26 ([review](planning/PI-2026-09/evidence/SA-001-review.md)); it is committed as `8413b59`, and its production verification is pending. SA-002 (data health) was accepted by its fresh re-review on 2026-09-26, after a rework of its test fixtures and one fundamentals case ([receipt](planning/PI-2026-09/evidence/SA-002-implementation.md), [review](planning/PI-2026-09/evidence/SA-002-review.md)); it is committed as `8413b59`, and its production verification is pending. SA-003 (the decision gate) was accepted by its fresh review on 2026-09-27 ([receipt](planning/PI-2026-09/evidence/SA-003-implementation.md), [review](planning/PI-2026-09/evidence/SA-003-review.md)); it is committed as `167f08b`, and its production verification is pending. It ships recording only (`decision_gate.mode: record`), and enforcing it is a separate decision, after SA-039's observation window and a measured record period. SA-004 (daily-review outcome counts) was accepted by its fresh review on 2026-09-27 ([receipt](planning/PI-2026-09/evidence/SA-004-implementation.md), [review](planning/PI-2026-09/evidence/SA-004-review.md)); it is committed as `241c393`, and its production verification is pending. Every other story from SA-005 to SA-051 is `todo`. Three are stretch. |
 
 The [September audit](audit/2026-09-10-repository-production-review.md) records
 unresolved label, timing, health, weight-bound and operational defects.
@@ -371,7 +371,7 @@ what enforcement would have stopped. **Example:** a symbol is suspended on the
 review day, and both providers return the previous day's close of 99.0. That
 used to be graded as a flat day, a zero return that never happened. Now the
 close says it is from the previous day's bar, and enforcement skips the review.
-Since SA-004 (accepted 2026-09-27, uncommitted) the scheduler counts a
+Since SA-004 (accepted 2026-09-27, committed as `241c393`) the scheduler counts a
 `data_gated` review on its own: it is not output, so it cannot quiet the zero-
 or partial-output alert, and a completed review that lists `data_gate` inputs
 counts as `degraded` (section 9).
@@ -702,11 +702,11 @@ Startup self-heal, the post-review portfolio/digest hook and the outbox drainer
 are **not additional cron jobs**. An 08:50 brief is not guaranteed to wait for
 an unfinished 08:45 shock check. Close clock times are not dependencies.
 
-**Daily-review outcomes (SA-004: implemented and accepted by its fresh review
-on 2026-09-27; uncommitted, not deployed).** Before SA-004 the job counted every
+**Daily-review outcomes (SA-004: accepted 2026-09-27, committed as `241c393`,
+production verification pending).** Before SA-004 the job counted every
 review that did not raise as output. On 2026-09-08 it recorded `produced=20`,
 `expected=20` and `pipeline_ok=true`, while WELCORP returned `no_envelope` and
-19 feedback rows existed. Now `core/intelligence/rl/workflows/review_outcomes.py`
+19 feedback rows existed. Now [review_outcomes.py](../core/intelligence/rl/workflows/review_outcomes.py)
 gives each enabled ticker exactly one outcome:
 
 - `completed`: the review wrote its feedback entry;
@@ -842,7 +842,7 @@ HTTP responses do not prove recovery or successful jobs.
 | Verdict binding | Deterministic category enabled in YAML, raw model verdict logged. | Correct issue-time grading and final adaptive constraints. |
 | Portfolio | Per-user advice/execution, stops, switches and ledgers. | Stronger upstream evidence and report reconciliation; costs and tax in paper P&L (SA-048); idle cash put to work in normal markets (SA-049); one sizing rule for every autopilot buy (SA-050); the portfolio against the Nifty, with honest labels (SA-051). |
 | IPO | Calendar, history, snapshots, recent-listing screening, size-tiered brief lean, and the dark P3 model, deep dive, narrator and forward-grading lane (section 8). | Forward evidence for P3 and its `ipo_verdicts_visible_gate`; no verdict reaches a user; outside default September scope. |
-| Operations | TCP singleton, outcomes, watchdog, outbox with `last_error`, per-account recipients, SMTP/Resend transports and backup code. Truthful daily-review outcome counts (SA-004, accepted 2026-09-27, uncommitted). | Durable outcomes for every job (SA-036), proven recovery, measured delivery, the recipient-fallback gap and readiness. The [observability design](superpowers/specs/2026-09-24-production-observability-design.md) adds planned job-run and source-health ledgers, post-job checks, a read-only status fetcher and an outside witness (SA-034–SA-036, SA-040–SA-042). |
+| Operations | TCP singleton, outcomes, watchdog, outbox with `last_error`, per-account recipients, SMTP/Resend transports and backup code. Truthful daily-review outcome counts (SA-004, accepted 2026-09-27, committed as `241c393`). | Durable outcomes for every job (SA-036), proven recovery, measured delivery, the recipient-fallback gap and readiness. The [observability design](superpowers/specs/2026-09-24-production-observability-design.md) adds planned job-run and source-health ledgers, post-job checks, a read-only status fetcher and an outside witness (SA-034–SA-036, SA-040–SA-042). |
 | Frontend | JSX/PWA with live adapters and some fallback/demo paths. | Sanitization, honest unavailable states and optional build cleanup. |
 
 Historical [specifications](superpowers/specs/) retain what was intended at
@@ -857,7 +857,8 @@ The table below includes the planned destination now. **SA-039 is accepted
 (after a rework) are accepted and committed as `8413b59`; their production
 verification is pending. SA-003 is accepted by its fresh review (2026-09-27)
 and committed as `167f08b`; its production verification is pending. SA-004 is
-accepted by its fresh review (2026-09-27) and uncommitted. Every other SA story is `todo`.** Accepted
+accepted by its fresh review (2026-09-27) and committed as `241c393`; its
+production verification is pending. Every other SA story is `todo`.** Accepted
 state/dependencies are in
 [STATE.json](planning/PI-2026-09/STATE.json). DOC-001 is this user-requested
 documentation refresh; it does not close SA-031 or any upstream remediation.

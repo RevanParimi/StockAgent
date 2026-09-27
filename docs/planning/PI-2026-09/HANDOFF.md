@@ -46,8 +46,8 @@ carries routed notes from every story so far. Read them first; the newest is I3 
 
 - **SA-004 was ACCEPTED on 2026-09-27 by a fresh-session review** (a new conversation, about
   15:23–15:50 IST). Receipt: [SA-004-review.md](evidence/SA-004-review.md). SA-004 is `done`, and its
-  `production_verification` is `pending_deployment`. No SA-039 check was due. The review
-  committed, pushed and deployed nothing.
+  `production_verification` is `pending_deployment`. No SA-039 check was due. The review itself
+  committed, pushed and deployed nothing; the commit and push followed at the owner's word (below).
   - **Input verified:** `a5e77a74…` (13 files, 0 mismatches), and the diff `648b7b68…`, rebuilt
     with the reviewer's own script.
     - Payload update 1 (`5d9030e0…`, diff `e16a8e3f…`) arrived during the review, from the
@@ -91,16 +91,20 @@ carries routed notes from every story so far. Read them first; the newest is I3 
 
     `verify SA-004-manifest.json` now mismatches exactly the KT, the PDF, ARCHITECTURE,
     TEAM_TESTING_GUIDE and `CODEBASE.md`.
-  - **At commit (owner's word; safe window 00:10–06:20 IST for the push):**
-    - link `review_outcomes.py` in the KT and bump the KT header past `167f08b`;
-    - rebuild the PDF;
-    - `verify --rev <commit>` should mismatch only those five files.
-
-    After the deploy, verify read-only across one scheduled session, as the receipt's "Rollout"
-    says. If it is live before Fri 2 Oct, Mon 5 Oct's record should read `runs: 2` for 1 Oct.
-  - **Local commit `0a5bf9e`** (the SA-003 deploy record) is still unpushed and rides the next push.
-  - **Worktree, uncommitted:** the SA-004 implementation, this review's bookkeeping, and the
-    planning session's SA-048…SA-051 cards and PI README.
+  - **Committed at the owner's word** ("commit and push", about 15:55 IST on Sun 27 Sep).
+    - **`241c393`:** SA-004 and this review's bookkeeping. It also carries the planning session's
+      SA-048…SA-051 cards and PI README, because the docs interleave the two.
+    - `verify SA-004-manifest.json --rev 241c393` mismatches only the five status-edited docs, so
+      every reviewed code, test and config byte is committed as reviewed.
+    - **The next commit is the KT bump.** It declares `241c393`, links `review_outcomes.py`,
+      changes the status lines to "committed as `241c393`", records `implementation_commit` in
+      STATE and rebuilds the PDF.
+  - **Push window.** On a Sunday, nothing runs between 09:05 and the daily `ipo_refresh_pm` at
+    17:45 (then `weekly_review` at 18:00). A push before about 17:00 is clear of both, even with a
+    22-minute rebuild. The push carries `0a5bf9e` too.
+  - **After the deploy:** verify read-only across one scheduled session, as the receipt's "Rollout"
+    says. The first is Mon 28 Sep 16:30, alongside SA-039-P1 and the SA-003 cohort check. SA-004
+    is live before Fri 2 Oct, so Mon 5 Oct's record should read `runs: 2` for 1 Oct.
 - **Backlog added at the owner's request (2026-09-27, after SA-004).** The owner reviewed the live
   portfolio screen: ₹9,99,611 equity, 81% cash, 2 holdings, a flat total return with nothing to
   compare it with. Four stories were added; the task order is unchanged, and they follow SA-047:

@@ -90,17 +90,24 @@ independently recoverable; P1, sprint 1, no dependencies), in a new conversation
     `analysis_data/sa006/prod_probe_outbox.py`.
   - Then human cases 10-B, 10-C, 10-E and 10-F.
   - A real test email or push needs explicit messaging authorization.
-- **To commit (only on the owner's word):**
-  - the 18 manifest paths plus the SA-006 evidence files (receipt, review, both manifests);
-  - STATE and HANDOFF;
-  - this conversation's SA-039 P1 record (the activation record and the SA-001 carry-over box).
-  - Then `kt_manifest.py verify SA-006-manifest.json --rev <commit>` should mismatch only the 4
-    review-edited docs.
+- **Committed as `15dcda1`** at the owner's word ("commit and push with revan.datta132@gmail.com",
+  about 22:18 IST Mon 28 Sep). The author is `Revan <revan.datta132@gmail.com>`, the same as
+  earlier commits.
+  - `verify SA-006-manifest.json --rev 15dcda1` mismatches only the 4 review-edited docs, so every
+    reviewed code and test byte is committed as reviewed.
+  - A follow-up commit bumps the KT to `15dcda1` (§1, §10, §11 and §12 now say "committed"; PDF
+    26 pages, `check_kt_docs` errors `[]`) and records the commit in STATE.
 
-**The push is ON HOLD (owner, 08:46 IST Mon 28 Sep).** Local `main` is 3 commits ahead of
-`origin/main` (`7901f35`, `48143ed`, `9e65c7a`). The earlier plan to push after 09:05 is superseded: do not push until the owner says so, then only in a job-free window. After that
-push: check the deploy, read the Actions page and record CI's three jobs against SA-005 (human
-case 12-E). SA-006 is accepted but uncommitted on top of `9e65c7a`.
+**The push hold is lifted** (owner, about 22:18 IST Mon 28 Sep: "commit and push"). The push
+carries 5 commits: `7901f35`, `48143ed` (SA-005), `9e65c7a`, `15dcda1` (SA-006) and the KT bump.
+It is timed so the deploy lands before the 22:55–00:05 blocked window (23:00 atlas jobs, 23:30
+backup). **After the push:**
+
+- check the deploy with `railway deployment list`;
+- read the Actions page and record CI's three jobs against SA-005 (human case 12-E);
+- do SA-006's first read-only production read (`GET /delivery/outbox` or the owner probe).
+
+The push result is recorded below, and in the next commit.
 
 **SA-006 rework 1 was done on 2026-09-28** (a new conversation, about 15:38–16:25 IST, baseline
 `9e65c7a`). Receipt: [SA-006-implementation.md](evidence/SA-006-implementation.md), section

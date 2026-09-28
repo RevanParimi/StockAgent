@@ -376,7 +376,7 @@
       "review_input_manifest": "docs/planning/PI-2026-09/evidence/SA-006-manifest.json",
       "review_input_sha256": "b8273b2c0d0fc79a326aa688b2de50105189ecfecc0bf9bbb9e9019d29dcaf16",
       "diff_sha256": "e01c4913bce8d72b7e3fc152c3dcfda61df1ef42e30b59a2c4f3d2e9f4e1f5c9",
-      "implementation_commit": null,
+      "implementation_commit": "15dcda11068bcbdf2fad90f0f8e4614edbcb54bc",
       "routed_notes": {
         "SA-011": "dead letters as an operations-backlog source; nothing alerts the owner when one appears (ops_alerts broadcasts to every user)",
         "SA-031": "scripts/docs/run_kt_checks.py has not run since SA-005 (does not copy the tracked data/nse/key_registry.json that tests/hermetic.py seeds from; exit 4, then reports a stale 24 Sep pytest.xml); Windows WinError 5 rename flake in core/ipo/signals.py prune (not using replace_with_retry)",
@@ -391,7 +391,7 @@
       ],
       "production_verification": {
         "status": "pending_deployment",
-        "evidence": "Accepted 2026-09-28 by its fresh re-review; not committed, pushed or deployed (the owner's push hold stands); nothing sent. Implemented 2026-09-28. Read-only diagnosis: live deploy b3fb00dd (90353f3) logged 3 outbox enqueues, 0 dead letters, 0 email send failures and 0 Errno 101 from 27 Sep 16:05 to 28 Sep 12:01 IST (railway logs, counted only); the 23 Sep owner-run probe counted 8 email accepted / 0 dead since the 21 Sep Pro redeploy. SMTP works; SA-006 does not change transport selection. After acceptance and the owner's push: read GET /delivery/outbox (machine key) or run analysis_data/sa006/prod_probe_outbox.py (read-only, dry-run only so far); then human cases 10-C, 10-E, 10-F. A real test email/push or a dead-letter resend needs explicit messaging authorization."
+        "evidence": "Accepted 2026-09-28 by its fresh re-review; committed as 15dcda1 at the owner's word ('commit and push', about 22:18 IST Mon 28 Sep); verify SA-006-manifest.json --rev 15dcda1 mismatches only the 4 review-edited docs (KT, PDF, ARCHITECTURE, guide), so every reviewed code/test byte is committed as reviewed. Nothing sent. Implemented 2026-09-28. Read-only diagnosis: live deploy b3fb00dd (90353f3) logged 3 outbox enqueues, 0 dead letters, 0 email send failures and 0 Errno 101 from 27 Sep 16:05 to 28 Sep 12:01 IST (railway logs, counted only); the 23 Sep owner-run probe counted 8 email accepted / 0 dead since the 21 Sep Pro redeploy. SMTP works; SA-006 does not change transport selection. After acceptance and the owner's push: read GET /delivery/outbox (machine key) or run analysis_data/sa006/prod_probe_outbox.py (read-only, dry-run only so far); then human cases 10-C, 10-E, 10-F. A real test email/push or a dead-letter resend needs explicit messaging authorization."
       },
       "blocked_reason": null
     },

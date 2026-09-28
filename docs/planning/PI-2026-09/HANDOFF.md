@@ -83,12 +83,19 @@ was due. The review committed, pushed and deployed nothing.
   (§1, §10, §12, the §13 heading), the PDF rebuilt (source `f407a930…`), `tests/TEST_DOCUMENTATION.md` rule 4, and the SA-031 card. `verify
   SA-005-manifest.json` now mismatches exactly these four files. The code, test, CI and tooling
   bytes are as reviewed.
-- **Not committed.** The commit and the push wait for the owner's word. Every push redeploys
-  (the safe window is 00:10–06:20 IST, or a job-free gap). That push is also CI's
-  first run: afterwards, read the Actions page and record the three jobs against SA-005 (human
-  case 12-E). The receipt's "At commit" applies: the commit after the one that lands SA-005 links
-  the new files and bumps the KT header past `241c393`. `7901f35` is still unpushed and rides the
-  same push.
+- **Committed at the owner's word** ("commit and push now", about 07:58 IST Mon 28 Sep).
+  - **`48143ed`:** SA-005 and its review bookkeeping. `verify SA-005-manifest.json --rev 48143ed`
+    mismatches only the four review-edited docs, so every reviewed code, test and CI byte is
+    committed as reviewed.
+  - **The next commit is the KT bump:** it declares `48143ed`, links the five new or changed
+    files, changes the status lines to "committed as `48143ed`", records `implementation_commit`
+    and rebuilds the PDF (source `abec1a58…`; `check_kt_docs` errors `[]`).
+  - **The push was held for the window.** The word came at 07:58, inside the 07:25–09:05
+    morning-job window (`ipo_refresh_am` 08:00, `preopen_shock_check` 08:45, `morning_brief`
+    08:50, `macro_market_news` 09:00). A push then would have restarted the container about
+    08:06, during the IPO refresh. The push goes out after 09:05, in the gap before 11:55. It
+    carries `7901f35`, `48143ed` and the KT bump, and it is CI's first run: afterwards, read
+    the Actions page and record the three jobs against SA-005 (human case 12-E).
 
 **Earlier: the SA-005 implementation (27–28 Sep).**
 

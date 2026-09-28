@@ -1,8 +1,8 @@
 # StockAgent — Technical Design and Knowledge Transfer
 
-**Edition:** 2026-09-27 · **Audience:** engineers and teammates learning the product
+**Edition:** 2026-09-28 · **Audience:** engineers and teammates learning the product
 
-**Code inspected:** `241c393fa55e2981042eca77b093dd9454efe058`
+**Code inspected:** `48143ede4b6d8010d6c583ebb1b98e63bce2644a`
 
 First edition 2026-09-15 at `9a805878`; maintained per story since. The revision
 above is the one the whole body describes. `check_kt_docs.py` fails if a linked
@@ -22,7 +22,7 @@ it is not an implemented human-approval workflow.
 | Current code | Traced in this checkout. Flags, inputs and runtime data determine whether a path actually runs. |
 | Locally checked | Existing tests run in an isolated copy. Exact results and limits are in the [validation receipt](planning/PI-2026-09/evidence/DOC-001-implementation.md). |
 | Production observation | Dated evidence: the September 10 audit, section 10's 2026-09-21 email diagnosis, a September 15 deployment SUCCESS at `9a805878`, the 2026-09-23 read-only log inspection of learned weights, and the 2026-09-24 [SA-039 weight baseline](planning/PI-2026-09/evidence/SA-039-baseline-2026-09-24.md). Those logs came from deploy `d9c459ae` (commit `e8df088`). Deploys carrying the header revision's code were inspected read-only on 2026-09-25 (`7ebd06c5`: the 16:30 review ran in `adapt`) and on 2026-09-26 (`da9df6cf`: all 20 tickers in `observe`, per the [activation record](planning/PI-2026-09/evidence/SA-039-activation-2026-09-26.md)). |
-| PI target | Intended behavior, not completed functionality. SA-039 was accepted by its fresh review on 2026-09-25, and production has run `observe` since 2026-09-26 ([activation record](planning/PI-2026-09/evidence/SA-039-activation-2026-09-26.md); verification after the next reviews is pending). SA-001 (chat rendering) was accepted by its fresh review on 2026-09-26 ([review](planning/PI-2026-09/evidence/SA-001-review.md)); it is committed as `8413b59`, and its production verification is pending. SA-002 (data health) was accepted by its fresh re-review on 2026-09-26, after a rework of its test fixtures and one fundamentals case ([receipt](planning/PI-2026-09/evidence/SA-002-implementation.md), [review](planning/PI-2026-09/evidence/SA-002-review.md)); it is committed as `8413b59`, and its production verification is pending. SA-003 (the decision gate) was accepted by its fresh review on 2026-09-27 ([receipt](planning/PI-2026-09/evidence/SA-003-implementation.md), [review](planning/PI-2026-09/evidence/SA-003-review.md)); it is committed as `167f08b`, and its production verification is pending. It ships recording only (`decision_gate.mode: record`), and enforcing it is a separate decision, after SA-039's observation window and a measured record period. SA-004 (daily-review outcome counts) was accepted by its fresh review on 2026-09-27 ([receipt](planning/PI-2026-09/evidence/SA-004-implementation.md), [review](planning/PI-2026-09/evidence/SA-004-review.md)); it is committed as `241c393`, and its production verification is pending. SA-005 (a hermetic test suite and a CI workflow) was accepted by its fresh review on 2026-09-28 ([receipt](planning/PI-2026-09/evidence/SA-005-implementation.md), [review](planning/PI-2026-09/evidence/SA-005-review.md)); nothing of it is committed yet, and its CI workflow has not run. Every other story from SA-006 to SA-051 is `todo`. Three are stretch. |
+| PI target | Intended behavior, not completed functionality. SA-039 was accepted by its fresh review on 2026-09-25, and production has run `observe` since 2026-09-26 ([activation record](planning/PI-2026-09/evidence/SA-039-activation-2026-09-26.md); verification after the next reviews is pending). SA-001 (chat rendering) was accepted by its fresh review on 2026-09-26 ([review](planning/PI-2026-09/evidence/SA-001-review.md)); it is committed as `8413b59`, and its production verification is pending. SA-002 (data health) was accepted by its fresh re-review on 2026-09-26, after a rework of its test fixtures and one fundamentals case ([receipt](planning/PI-2026-09/evidence/SA-002-implementation.md), [review](planning/PI-2026-09/evidence/SA-002-review.md)); it is committed as `8413b59`, and its production verification is pending. SA-003 (the decision gate) was accepted by its fresh review on 2026-09-27 ([receipt](planning/PI-2026-09/evidence/SA-003-implementation.md), [review](planning/PI-2026-09/evidence/SA-003-review.md)); it is committed as `167f08b`, and its production verification is pending. It ships recording only (`decision_gate.mode: record`), and enforcing it is a separate decision, after SA-039's observation window and a measured record period. SA-004 (daily-review outcome counts) was accepted by its fresh review on 2026-09-27 ([receipt](planning/PI-2026-09/evidence/SA-004-implementation.md), [review](planning/PI-2026-09/evidence/SA-004-review.md)); it is committed as `241c393`, and its production verification is pending. SA-005 (a hermetic test suite and a CI workflow) was accepted by its fresh review on 2026-09-28 ([receipt](planning/PI-2026-09/evidence/SA-005-implementation.md), [review](planning/PI-2026-09/evidence/SA-005-review.md)); it is committed as `48143ed`, and its CI workflow has not run yet. Every other story from SA-006 to SA-051 is `todo`. Three are stretch. |
 
 The [September audit](audit/2026-09-10-repository-production-review.md) records
 unresolved label, timing, health, weight-bound and operational defects.
@@ -787,7 +787,7 @@ SA-006 without accepting it):
 - Resend's default shared sender (`RESEND_FROM`) delivers only to the Resend
   account owner's address. Per-account delivery needs a verified-domain sender.
 - Two outbox tests passed only when an ambient `DELIVERY_EMAIL_TO` was present.
-  SA-005 (accepted, not yet committed) seeds a throwaway account instead, so the recipient
+  SA-005 (committed as `48143ed`) seeds a throwaway account instead, so the recipient
   comes from the account row, as in production.
 
 SA-006/SA-007 address the remaining delivery and backup acceptance gaps.
@@ -859,7 +859,7 @@ The table below includes the planned destination now. **SA-039 is accepted
 verification is pending. SA-003 is accepted by its fresh review (2026-09-27)
 and committed as `167f08b`; its production verification is pending. SA-004 is
 accepted by its fresh review (2026-09-27) and committed as `241c393`; its
-production verification is pending. SA-005 is accepted by its fresh review (2026-09-28) but not yet committed; its CI workflow has not run. Every other SA story is `todo`.** Accepted
+production verification is pending. SA-005 is accepted by its fresh review (2026-09-28) and committed as `48143ed`; its CI workflow has not run yet. Every other SA story is `todo`.** Accepted
 state/dependencies are in
 [STATE.json](planning/PI-2026-09/STATE.json). DOC-001 is this user-requested
 documentation refresh; it does not close SA-031 or any upstream remediation.
@@ -950,9 +950,9 @@ subprocesses. It exercises a fixed selection of existing tests, not all
 independent financial invariants. The PDF builder needs Python
 `markdown2` and local Playwright/Chromium; it does not start the application.
 
-#### The suite's hermetic boundary (SA-005, accepted, not yet committed)
+#### The suite's hermetic boundary (SA-005, committed as `48143ed`)
 
-Every `pytest` run now passes through `tests/hermetic.py`, which
+Every `pytest` run now passes through [tests/hermetic.py](../tests/hermetic.py), which
 [tests/conftest.py](../tests/conftest.py) imports before any application code.
 The same four rules hold on a laptop with a `.env` and on a fresh CI checkout:
 
@@ -981,17 +981,17 @@ SQLite given a `file:` URI), a Windows short-name spelling of the checkout, or
 a numeric-IP connection on the Windows asyncio loop. The application builds one
 absolute checkout path, the startup calendar check, and the test fixture stubs
 it (SA-029). A Windows-only
-retry in `core/utils/atomic_io.py` absorbs the transient `PermissionError`
+retry in [core/utils/atomic_io.py](../core/utils/atomic_io.py) absorbs the transient `PermissionError`
 that made three tests flaky on Windows; Linux renames never retry.
 
-The CI workflow, `.github/workflows/ci.yml`, runs three jobs on Linux with
+The CI workflow, [.github/workflows/ci.yml](../.github/workflows/ci.yml), runs three jobs on Linux with
 Python 3.11 and no secrets: the whole `tests/` tree; the broad-exception guard
-(`scripts/ci/check_broad_except.py`) and `check_kt_docs.py`; and the SA-001
+([scripts/ci/check_broad_except.py](../scripts/ci/check_broad_except.py)) and `check_kt_docs.py`; and the SA-001
 browser suite in Chromium. The guard fails when new code catches every
 exception without logging, re-raising or using it. The 154 handlers that
 already did so are grandfathered in a burn-down list; they were not reviewed
 one by one. The list counts handlers per function, so a change that fixes one
-grandfathered handler and adds another in the same function passes. Test-only tools are pinned in `requirements-test.txt`. The runtime
+grandfathered handler and adds another in the same function passes. Test-only tools are pinned in [requirements-test.txt](../requirements-test.txt). The runtime
 packages still come from the unpinned `requirements.txt` until SA-033 adds
 a lock.
 

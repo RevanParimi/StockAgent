@@ -339,6 +339,7 @@
       "review_input_manifest": "docs/planning/PI-2026-09/evidence/SA-005-manifest.json",
       "review_input_sha256": "ef0e3a3114981160d94ac2c7ee637d42292ebf79f8abbde08a864c63dd0d72d5",
       "diff_sha256": "7274a199ecbb91e948257530cc6aa700af49f864cf4b25e8f6b2f5560ff22d5f",
+      "implementation_commit": "48143ede4b6d8010d6c583ebb1b98e63bce2644a",
       "routed_notes": {
         "SA-012": "pinned-date test runs (not done in SA-005; the SA-002 review's suggestion)",
         "SA-018": "synthetic generator gives cycles 0 and 1 the same month (shared cycle id)",
@@ -349,7 +350,7 @@
       "reviewed_revision": "uncommitted working tree on 7901f352c90ff265be9fa60166d93692d11b1a21, pinned by review input ef0e3a3114981160d94ac2c7ee637d42292ebf79f8abbde08a864c63dd0d72d5 (diff 7274a199ecbb91e948257530cc6aa700af49f864cf4b25e8f6b2f5560ff22d5f), both rebuilt independently by the reviewer; plus documentation-only review edits (KT section 13, PDF, tests/TEST_DOCUMENTATION.md, SA-031 card); code, test, CI and tooling bytes as reviewed",
       "production_verification": {
         "status": "pending_deployment",
-        "evidence": "Accepted 2026-09-28 by a fresh-session review. No runtime change on Linux (the atomic_io retry runs on Windows only; run_eval gains an optional flag). What remains is the CI workflow's first run on GitHub, which needs the owner's push (every push redeploys): record the three jobs' results (human case 12-E), then the witnessed drill 12-F. Not committed, pushed or deployed."
+        "evidence": "Accepted 2026-09-28 by a fresh-session review; committed as 48143ed at the owner's word ('commit and push now', about 07:58 IST Mon 28 Sep); verify SA-005-manifest.json --rev 48143ed mismatches only the four review-edited docs (KT, PDF, tests/TEST_DOCUMENTATION.md, SA-031 card), so every reviewed code/test/CI byte is committed as reviewed. KT bump commit declares 48143ed and links the new files (check_kt_docs errors []). The push was held for the job-free gap after 09:05 IST: the owner's word came inside the 07:25-09:05 morning-job window (ipo_refresh_am 08:00, preopen_shock_check 08:45, morning_brief 08:50, macro_market_news 09:00). No runtime change on Linux (the atomic_io retry runs on Windows only; run_eval gains an optional flag). What remains is the CI workflow's first run on GitHub, which needs the owner's push (every push redeploys): record the three jobs' results (human case 12-E), then the witnessed drill 12-F. Not committed, pushed or deployed."
       },
       "blocked_reason": null,
       "review_outcomes": [

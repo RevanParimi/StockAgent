@@ -107,7 +107,30 @@ backup). **After the push:**
 - read the Actions page and record CI's three jobs against SA-005 (human case 12-E);
 - do SA-006's first read-only production read (`GET /delivery/outbox` or the owner probe).
 
-The push result is recorded below, and in the next commit.
+**Pushed and deployed.**
+
+- **The push:** `90353f3..acf72d2` at 22:20:54 IST.
+- **The deploy:** Railway `00b94de9`, created 22:21:00, SUCCESS by 22:27:46 IST, before the
+  22:55 window. The 23:00–23:45 nightly jobs run on the new code; `atlas_retention` at 23:20 is
+  the first to keep dead letters for 180 days.
+- **After the deploy (read-only):**
+  - startup completed, with 0 tracebacks in its first 126 log lines;
+  - `/health` returns ok;
+  - the RL monitor is still `learning_mode=observe`;
+  - `GET /delivery/outbox` without credentials returns 401 (owner-only, as designed).
+- **CI's first run passed** (run `36453992259` on `acf72d2`, read via the public GitHub API):
+  - Python tests (Linux, 3.11): success, 2 min 30 s;
+  - the broad-except and KT guards: success;
+  - the Chromium browser suite: success.
+  - That is SA-005's human case 12-E, measured. What remains for SA-005 is the witnessed drill
+    12-F.
+- **SA-005 and SA-006 `production_verification`:** now `pending_observation`.
+- **Still to do for SA-006:**
+  - the first authenticated outbox read: the owner runs `analysis_data/sa006/prod_probe_outbox.py`
+    in the container, or uses a machine-key GET;
+  - then one observed retry or dead letter (case 10-C), and cases 10-B, 10-E and 10-F.
+- **Local `main` is 1 ahead** after the next commit (this record). It is not pushed, because every
+  push redeploys; it goes out with the next push.
 
 **SA-006 rework 1 was done on 2026-09-28** (a new conversation, about 15:38–16:25 IST, baseline
 `9e65c7a`). Receipt: [SA-006-implementation.md](evidence/SA-006-implementation.md), section

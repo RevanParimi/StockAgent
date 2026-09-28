@@ -22,7 +22,7 @@ it is not an implemented human-approval workflow.
 | Current code | Traced in this checkout. Flags, inputs and runtime data determine whether a path actually runs. |
 | Locally checked | Existing tests run in an isolated copy. Exact results and limits are in the [validation receipt](planning/PI-2026-09/evidence/DOC-001-implementation.md). |
 | Production observation | Dated evidence: the September 10 audit, section 10's 2026-09-21 email diagnosis, a September 15 deployment SUCCESS at `9a805878`, the 2026-09-23 read-only log inspection of learned weights, and the 2026-09-24 [SA-039 weight baseline](planning/PI-2026-09/evidence/SA-039-baseline-2026-09-24.md). Those logs came from deploy `d9c459ae` (commit `e8df088`). Deploys carrying the header revision's code were inspected read-only on 2026-09-25 (`7ebd06c5`: the 16:30 review ran in `adapt`) and on 2026-09-26 (`da9df6cf`: all 20 tickers in `observe`, per the [activation record](planning/PI-2026-09/evidence/SA-039-activation-2026-09-26.md)). |
-| PI target | Intended behavior, not completed functionality. SA-039 was accepted by its fresh review on 2026-09-25, and production has run `observe` since 2026-09-26 ([activation record](planning/PI-2026-09/evidence/SA-039-activation-2026-09-26.md); verification after the next reviews is pending). SA-001 (chat rendering) was accepted by its fresh review on 2026-09-26 ([review](planning/PI-2026-09/evidence/SA-001-review.md)); it is committed as `8413b59`, and its production verification is pending. SA-002 (data health) was accepted by its fresh re-review on 2026-09-26, after a rework of its test fixtures and one fundamentals case ([receipt](planning/PI-2026-09/evidence/SA-002-implementation.md), [review](planning/PI-2026-09/evidence/SA-002-review.md)); it is committed as `8413b59`, and its production verification is pending. SA-003 (the decision gate) was accepted by its fresh review on 2026-09-27 ([receipt](planning/PI-2026-09/evidence/SA-003-implementation.md), [review](planning/PI-2026-09/evidence/SA-003-review.md)); it is committed as `167f08b`, and its production verification is pending. It ships recording only (`decision_gate.mode: record`), and enforcing it is a separate decision, after SA-039's observation window and a measured record period. SA-004 (daily-review outcome counts) was accepted by its fresh review on 2026-09-27 ([receipt](planning/PI-2026-09/evidence/SA-004-implementation.md), [review](planning/PI-2026-09/evidence/SA-004-review.md)); it is committed as `241c393`, and its production verification is pending. SA-005 (a hermetic test suite and a CI workflow) was accepted by its fresh review on 2026-09-28 ([receipt](planning/PI-2026-09/evidence/SA-005-implementation.md), [review](planning/PI-2026-09/evidence/SA-005-review.md)); it is committed as `48143ed`, and its CI workflow has not run yet. Every other story from SA-006 to SA-051 is `todo`. Three are stretch. |
+| PI target | Intended behavior, not completed functionality. SA-039 was accepted by its fresh review on 2026-09-25, and production has run `observe` since 2026-09-26 ([activation record](planning/PI-2026-09/evidence/SA-039-activation-2026-09-26.md); verification after the next reviews is pending). SA-001 (chat rendering) was accepted by its fresh review on 2026-09-26 ([review](planning/PI-2026-09/evidence/SA-001-review.md)); it is committed as `8413b59`, and its production verification is pending. SA-002 (data health) was accepted by its fresh re-review on 2026-09-26, after a rework of its test fixtures and one fundamentals case ([receipt](planning/PI-2026-09/evidence/SA-002-implementation.md), [review](planning/PI-2026-09/evidence/SA-002-review.md)); it is committed as `8413b59`, and its production verification is pending. SA-003 (the decision gate) was accepted by its fresh review on 2026-09-27 ([receipt](planning/PI-2026-09/evidence/SA-003-implementation.md), [review](planning/PI-2026-09/evidence/SA-003-review.md)); it is committed as `167f08b`, and its production verification is pending. It ships recording only (`decision_gate.mode: record`), and enforcing it is a separate decision, after SA-039's observation window and a measured record period. SA-004 (daily-review outcome counts) was accepted by its fresh review on 2026-09-27 ([receipt](planning/PI-2026-09/evidence/SA-004-implementation.md), [review](planning/PI-2026-09/evidence/SA-004-review.md)); it is committed as `241c393`, and its production verification is pending. SA-005 (a hermetic test suite and a CI workflow) was accepted by its fresh review on 2026-09-28 ([receipt](planning/PI-2026-09/evidence/SA-005-implementation.md), [review](planning/PI-2026-09/evidence/SA-005-review.md)); it is committed as `48143ed`, and its CI workflow has not run yet. SA-006 (delivery transport and dead letters) was accepted by its fresh re-review on 2026-09-28, after a rework for two review findings ([receipt](planning/PI-2026-09/evidence/SA-006-implementation.md), [review](planning/PI-2026-09/evidence/SA-006-review.md)); it is not committed or deployed. Every other story from SA-007 to SA-051 is `todo`. Three are stretch. |
 
 The [September audit](audit/2026-09-10-repository-production-review.md) records
 unresolved label, timing, health, weight-bound and operational defects.
@@ -758,39 +758,98 @@ which uses Resend only when `RESEND_API_KEY` is set and SMTP otherwise;
 `resend` or `smtp` forces one. The repository's `delivery.email_enabled` is
 `false`; the `DELIVERY_EMAIL_ENABLED` environment variable overrides it.
 
-[outbox.py](../core/delivery/outbox.py) provides retry/dead-letter handling
-when its Atlas path is active (3 attempts, 1/5/30-minute backoff in
-`config.yaml`). Each email row's recipient comes from `resolve_recipient()`:
-the owning account's address in `users.db`, else `DELIVERY_EMAIL_TO`. A failed
-send stores its reason in `outbox.last_error`, which is cleared when a retry
-succeeds; an additive migration in
-[atlas_store.py](../services/data/stores/atlas_store.py) adds the column to
-existing databases. Stored, queued, provider-accepted, received and read are
-separate states. `last_error` explains a failure; an empty one does not prove
-receipt.
+When its Atlas path is active, [outbox.py](../core/delivery/outbox.py) holds
+one row per message and channel, and a drainer in the singleton owner sends
+each row. Stored, queued, transport-accepted, received and read are separate
+states; the code observes only the first three. A row's stored status
+`delivered` means the transport accepted it.
+
+**Delivery contract (SA-006: accepted by its fresh re-review 2026-09-28, after
+two review fixes made the same day; not committed or deployed).** Every
+transport now returns one result: whether it accepted the
+message, why not, whether a retry can help, and any wait the provider asked
+for. The drainer acts on it:
+
+- **Accepted is not received.** SMTP 250, a Resend 2xx and a push service's
+  201 are acceptance. The row records the transport in `accepted_by`, with
+  Resend's message id, which the owner can look up in the Resend dashboard.
+  No receipt, bounce or display is observed.
+- **Transient failures retry.** A network error before anything was sent (for
+  push, only a connection that was never made: refused, a failed DNS lookup or
+  a connect timeout), an SMTP 4xx reply, or HTTP 429 or 5xx: the row retries
+  after 1 and then 5
+  minutes (the configured backoff), or later if the provider's `Retry-After`
+  asks for more (capped at 6 hours). After 3 attempts it is dead-lettered as
+  "retries exhausted".
+- **Permanent failures stop at once.** A rejected login, an SMTP 5xx reply,
+  Resend 400/401/403/422, a disabled or unconfigured channel, no push
+  subscription, or no address for the account: one attempt, then a dead letter
+  whose reason names what to check. For example, a Gmail 535 reads "check
+  SMTP_USER and SMTP_PASSWORD (Gmail needs an app password)".
+- **At most once.** When the outcome is unknown, the row is dead-lettered as
+  "unknown outcome" and never re-sent: the SMTP connection dropped inside the
+  send; a push failed in any way other than an HTTP status or a connection
+  that was never made (a read timeout, or the connection dropping after the
+  request was sent, when the push service may already have stored it); or the
+  process stopped while the row was `sending`. SMTP and web push cannot
+  deduplicate a repeat. So if one of an account's phones gives an unknown
+  outcome, the row stops for all of them, and a phone whose push service
+  answered 5xx loses that notification, visibly, as a dead letter.
+  Email over Resend carries a per-row `Idempotency-Key`, which Resend keeps for
+  24 hours, so its timed-out requests do retry without a second email. A
+  `sending` row counts as abandoned after 60 minutes; a younger one may belong
+  to the old container during a deploy.
+- **Recipient isolation.** `resolve_recipient()` returns the owning account's
+  address from `users.db`. `DELIVERY_EMAIL_TO` is used only on the single-user
+  path: no user id, or the default portfolio id. For any other account, a
+  failed lookup retries and a missing address dead-letters; neither reaches the
+  owner. The inline path (Atlas off, or the outbox unreachable) follows the
+  same rule; before SA-006 it mailed every user's message to `DELIVERY_EMAIL_TO`.
+- **Redaction.** Reasons and log lines mask email addresses, URL paths (a push
+  endpoint is a bearer capability) and the configured secrets.
+- **Push TTL.** Pushes carry a 12-hour TTL (`delivery.push_ttl_seconds`).
+  pywebpush's default of 0 lets a push service drop a notification for a phone
+  that is offline when it arrives. This comes from reading the library; its
+  effect on what users saw was not measured.
+- **Visibility.** `GET /delivery/outbox` (owner session or machine key) returns
+  counts per channel and status, with `delivered` shown as `accepted`; the
+  newest dead letters and retrying rows with their reasons; and the last
+  acceptance per channel. It states that user receipt is not observable, and it
+  carries no payload, address or user id: a dead letter for an account with no
+  address reads "no email on file for this account", and its row id identifies
+  it.
+- **History.** Nightly retention deletes accepted rows after 30 days. Dead
+  letters stay for 180 days; after 30 days only their payload is cleared.
+
+The monthly Learning Evidence email, the watchdog heartbeat and the backup
+email are sent directly, not through the outbox, so they get no retry and no
+dead letter. A failure is now logged with its reason.
+[SA-007](planning/PI-2026-09/stories/SA-007.md) owns backups, and
+[SA-042](planning/PI-2026-09/stories/SA-042.md) adds a witness outside the app.
 
 **Dated production observation.** September 10 recorded email failures and no
 confirmed app-created off-site backup copy. The email cause was identified on
 2026-09-21: Railway disables outbound SMTP on its Hobby plan, and production
 had logged `[Errno 101] Network is unreachable` on every send since 2026-07-16.
 After a plan upgrade and redeploy, one triggered brief reached the inbox that
-day. That is a single observed delivery, not a measured delivery rate. Whether
-production sets `RESEND_API_KEY` was not inspected, and delivery was not
-remeasured for this edition.
+day. A read-only probe on 2026-09-23 counted, since that redeploy, 8 email rows
+accepted and 0 dead, and 11 push rows accepted. Before 21 Sep, 77 email rows
+were dead and 77 push rows accepted. Those counts are provider acceptance, not
+a measured receipt rate. Whether production sets `RESEND_API_KEY` was not
+inspected. The SA-006 code above has not been deployed.
 
-Known gaps in the shipped delivery code (`590bc9f`, which partially satisfies
-SA-006 without accepting it):
+Remaining limits:
 
-- `resolve_recipient()` also falls back to `DELIVERY_EMAIL_TO` when the
-  `users.db` lookup raises. A transient failure can therefore route a beta
-  tester's brief to the owner's inbox.
 - Resend's default shared sender (`RESEND_FROM`) delivers only to the Resend
-  account owner's address. Per-account delivery needs a verified-domain sender.
-- Two outbox tests passed only when an ambient `DELIVERY_EMAIL_TO` was present.
-  SA-005 (committed as `48143ed`) seeds a throwaway account instead, so the recipient
-  comes from the account row, as in production.
+  account owner's address. Per-account email over Resend needs a
+  verified-domain sender, which is an owner configuration step, not code.
+- When several push subscriptions exist, acceptance by one counts as
+  accepted; the others are not retried, so they cannot receive a duplicate.
+- Resend deduplicates a key for 24 hours. Retries end well inside that window
+  (two waits, each capped at 6 hours); a policy with longer waits would lose
+  that protection.
 
-SA-006/SA-007 address the remaining delivery and backup acceptance gaps.
+SA-007 addresses the backup acceptance gap.
 
 The frontend uses React JSX, runtime browser transformation and PWA assets.
 Chat uses a streaming tool loop with potentially paid provider calls. Prompt
@@ -843,7 +902,7 @@ HTTP responses do not prove recovery or successful jobs.
 | Verdict binding | Deterministic category enabled in YAML, raw model verdict logged. | Correct issue-time grading and final adaptive constraints. |
 | Portfolio | Per-user advice/execution, stops, switches and ledgers. | Stronger upstream evidence and report reconciliation; costs and tax in paper P&L (SA-048); idle cash put to work in normal markets (SA-049); one sizing rule for every autopilot buy (SA-050); the portfolio against the Nifty, with honest labels (SA-051). |
 | IPO | Calendar, history, snapshots, recent-listing screening, size-tiered brief lean, and the dark P3 model, deep dive, narrator and forward-grading lane (section 8). | Forward evidence for P3 and its `ipo_verdicts_visible_gate`; no verdict reaches a user; outside default September scope. |
-| Operations | TCP singleton, outcomes, watchdog, outbox with `last_error`, per-account recipients, SMTP/Resend transports and backup code. Truthful daily-review outcome counts (SA-004, accepted 2026-09-27, committed as `241c393`). | Durable outcomes for every job (SA-036), proven recovery, measured delivery, the recipient-fallback gap and readiness. The [observability design](superpowers/specs/2026-09-24-production-observability-design.md) adds planned job-run and source-health ledgers, post-job checks, a read-only status fetcher and an outside witness (SA-034–SA-036, SA-040–SA-042). |
+| Operations | TCP singleton, outcomes, watchdog, outbox with `last_error`, per-account recipients, SMTP/Resend transports and backup code. Truthful daily-review outcome counts (SA-004, accepted 2026-09-27, committed as `241c393`). SA-006 (accepted 2026-09-28, not committed or deployed): transient-versus-permanent retry, at-most-once sends, no owner fallback for accounts, and the `GET /delivery/outbox` dead-letter view. | Durable outcomes for every job (SA-036), proven recovery, measured receipt (only acceptance is observed), SA-006's deployment, and readiness. The [observability design](superpowers/specs/2026-09-24-production-observability-design.md) adds planned job-run and source-health ledgers, post-job checks, a read-only status fetcher and an outside witness (SA-034–SA-036, SA-040–SA-042). |
 | Frontend | JSX/PWA with live adapters and some fallback/demo paths. | Sanitization, honest unavailable states and optional build cleanup. |
 
 Historical [specifications](superpowers/specs/) retain what was intended at
@@ -859,7 +918,7 @@ The table below includes the planned destination now. **SA-039 is accepted
 verification is pending. SA-003 is accepted by its fresh review (2026-09-27)
 and committed as `167f08b`; its production verification is pending. SA-004 is
 accepted by its fresh review (2026-09-27) and committed as `241c393`; its
-production verification is pending. SA-005 is accepted by its fresh review (2026-09-28) and committed as `48143ed`; its CI workflow has not run yet. Every other SA story is `todo`.** Accepted
+production verification is pending. SA-005 is accepted by its fresh review (2026-09-28) and committed as `48143ed`; its CI workflow has not run yet. SA-006 is accepted by its fresh re-review (2026-09-28). Its first review asked for two fixes the same day: a push could reach a phone twice, and the owner report could show a user id. Both are made; it is not committed or deployed. Every other SA story is `todo`.** Accepted
 state/dependencies are in
 [STATE.json](planning/PI-2026-09/STATE.json). DOC-001 is this user-requested
 documentation refresh; it does not close SA-031 or any upstream remediation.
@@ -1001,7 +1060,7 @@ a lock.
 | Predictions/learning | Section 5: envelope row to feedback, weights and lessons; explain the grading gaps. |
 | Portfolio/marksheets | Sections 6–7: advice to transaction, the P/L example and different evaluation rules. |
 | IPO/discovery | Section 8: calendar to captured facts, history, post-listing candidates, and the dark P3 path from deep dive to a stored, narrated and graded verdict. |
-| Operations/roadmap | Sections 9–12: scheduled work to persisted output, outbox states and `last_error`, the dated email observation, and remaining PI changes. |
+| Operations/roadmap | Sections 9–12: scheduled work to persisted output, outbox states, `last_error` and the dead-letter view, the dated email observation, and remaining PI changes. |
 
 Practical, non-code-intensive duties are in the separate
 [Team Human Testing Guide](TEAM_TESTING_GUIDE.md). Testers should be able to

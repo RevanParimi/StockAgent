@@ -7,12 +7,21 @@ data/delivery/push_subscriptions.json per user. Dead subscriptions
 the TWA Android app gets it free.
 
 email: two transports behind one entry point (`send_email` / `send_email_result`).
-  - resend: HTTPS POST to the Resend API. Required on Railway Free/Trial/Hobby,
-    where outbound SMTP is disabled at the platform — every send fails with
-    `[Errno 101] Network is unreachable` (D6; production since 2026-07-16).
-  - smtp:   stdlib smtplib STARTTLS — the original path, kept for local runs
-    and for any host that permits outbound 587.
+  - smtp:   stdlib smtplib STARTTLS. Works on Railway Pro (upgraded and
+    redeployed 2026-09-21). On Free/Trial/Hobby the platform blocks outbound
+    SMTP and every send fails with `[Errno 101] Network is unreachable` (D6).
+  - resend: HTTPS POST to the Resend API — the supported path on a host that
+    blocks SMTP.
 `settings.EMAIL_TRANSPORT` selects; "auto" uses resend when an API key is set.
+
+SA-006 contract. Every transport returns a `SendResult`:
+  - `accepted` is the transport's ACCEPTANCE (SMTP 250, HTTP 2xx, push service
+    201). No transport here reports that a person received or saw the message,
+    so nothing may call an accepted message "received";
+  - `permanent` means a retry cannot help (auth, configuration, a disabled
+    channel, a rejected recipient) or cannot be made safely (an outcome we do
+    not know, where a retry could duplicate the message);
+  - `reason` is redacted (`redact`): no address, push endpoint or secret.
 
 EVERY send is non-fatal. deliver() is the only entry point callers need.
 """
@@ -21,13 +30,19 @@ from __future__ import annotations
 import base64
 import json
 import logging
+import re
 import smtplib
+from dataclasses import dataclass
+from datetime import datetime, timezone
 from email import encoders
 from email.mime.base import MIMEBase
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+from email.utils import parsedate_to_datetime
 from pathlib import Path
+from typing import NamedTuple
 
+from backend.shared.config.settings.loader import cfg
 from core.config import settings
 from core.utils.atomic_io import replace_with_retry
 
@@ -38,6 +53,8 @@ try:                                     # module-level so tests can monkeypatch
 except ImportError:                      # pragma: no cover — dep is in requirements
     webpush = None
     WebPushException = Exception
+
+_SEND_TIMEOUT_S = 20                     # per network operation, every transport
 
 
 class PushStore:
@@ -96,6 +113,74 @@ class PushStore:
         return sorted(uid for uid, subs in self._load().items() if subs)
 
 
+# ---------------------------------------------------------------------------
+# SA-006 — the send contract
+# ---------------------------------------------------------------------------
+
+@dataclass(frozen=True)
+class SendResult:
+    """One send attempt's outcome. See the module docstring for the contract.
+
+    `accepted_count` is how many recipients' transports accepted it (1 for
+    email; accepting push subscriptions for push). `accepted_by` names the
+    transport, the provider's message id when it returns one, or the push
+    fan-out ("webpush 2/3 subscriptions"). `retry_after_s` is the provider's
+    requested wait (HTTP 429/5xx `Retry-After`), else None."""
+    accepted_count: int = 0
+    reason: str = ""
+    permanent: bool = False
+    retry_after_s: float | None = None
+    accepted_by: str = ""
+
+    @property
+    def accepted(self) -> bool:
+        return self.accepted_count > 0
+
+
+def _refuse(reason: str) -> SendResult:
+    """A send that stops here and must not be retried."""
+    return SendResult(reason=reason, permanent=True)
+
+
+_EMAIL_RE = re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+")
+_URL_PATH_RE = re.compile(r"(https?://[^/\s'\"]+)/[^\s'\"]*")
+_URL_FIELD_RE = re.compile(r"(url: )\S+")
+
+
+def redact(text: object) -> str:
+    """Mask what must not reach a log line or `outbox.last_error`: configured
+    secrets, email addresses and URL paths (a push endpoint's path is a bearer
+    capability). Hosts and status codes stay — they are what a diagnosis
+    needs. Capped at 500 characters."""
+    out = str(text)
+    for name in ("RESEND_API_KEY", "SMTP_PASSWORD", "VAPID_PRIVATE_KEY"):
+        secret = getattr(settings, name, "") or ""
+        if len(secret) >= 6:
+            out = out.replace(secret, "<secret>")
+    out = _EMAIL_RE.sub("<email>", out)
+    out = _URL_PATH_RE.sub(r"\1/<redacted>", out)
+    out = _URL_FIELD_RE.sub(r"\1<redacted>", out)
+    return out.replace("\n", " ")[:500]
+
+
+def _retry_after_s(resp) -> float | None:
+    """Seconds from an HTTP `Retry-After` header (delta-seconds or HTTP-date).
+    None when absent or unparseable."""
+    headers = getattr(resp, "headers", None) or {}
+    raw = headers.get("Retry-After") or headers.get("retry-after")
+    if raw is None:
+        return None
+    try:
+        return max(0.0, float(raw))
+    except (TypeError, ValueError):
+        pass
+    try:
+        when = parsedate_to_datetime(str(raw))
+        return max(0.0, (when - datetime.now(timezone.utc)).total_seconds())
+    except (TypeError, ValueError):
+        return None
+
+
 def _with_app_link(body: str) -> str:
     """Append a footer that links back to the app, so every notification email
     is one tap from opening it. No-op when APP_PUBLIC_URL is unset or the link
@@ -106,24 +191,48 @@ def _with_app_link(body: str) -> str:
     return f"{body.rstrip()}\n\n----------\nOpen StockAgent → {url}/"
 
 
-def resolve_recipient(user_id: str | None) -> str:
-    """The email address that owns `user_id`, else the single-user fallback.
+class Recipient(NamedTuple):
+    """Where an account's email goes. `address` "" means do not send; then
+    `reason` says why and `permanent` whether a later retry could succeed."""
+    address: str
+    reason: str = ""
+    permanent: bool = True
 
-    Multi-user (beta): every account row in `users` carries its own address, so
-    a scheduled message must reach the account that owns the outbox row rather
-    than one global inbox. `DELIVERY_EMAIL_TO` stays the fallback for the
-    single-user/dev setup and for rows whose user cannot be resolved (e.g. the
-    default portfolio id, which is not a real account). Never raises."""
-    if user_id:
-        try:
-            from services.data.stores import user_store
-            user = user_store.get_user(user_id)
-            if user and user.get("email"):
-                return str(user["email"])
-        except Exception as exc:
-            logger.warning("[delivery] could not resolve an email for user '%s' "
-                           "(non-fatal, using fallback): %s", user_id, exc)
-    return getattr(settings, "DELIVERY_EMAIL_TO", "") or ""
+
+def resolve_recipient(user_id: str | None) -> Recipient:
+    """The email address that owns `user_id`. Never raises.
+
+    Multi-user (beta): each account row in `users` carries its own address, so
+    a message must reach the account that owns it rather than one global inbox.
+    `DELIVERY_EMAIL_TO` is the fallback ONLY for the single-user path — no
+    user id, or the default portfolio id, which is not a real account.
+
+    SA-006 recipient isolation: for any other account there is no fallback. A
+    failed lookup is transient (retry later); an account without an address is
+    permanent. Falling back would send one person's portfolio to the owner."""
+    fallback = (getattr(settings, "DELIVERY_EMAIL_TO", "") or "").strip()
+    single_user = not user_id or user_id == settings.PORTFOLIO_DEFAULT_USER_ID
+    no_fallback = "unconfigured: no recipient (account email and DELIVERY_EMAIL_TO both unset)"
+    if not user_id:
+        return Recipient(fallback, "" if fallback else no_fallback)
+    try:
+        from services.data.stores import user_store
+        user = user_store.get_user(user_id)
+    except Exception as exc:
+        if single_user:
+            return Recipient(fallback, "" if fallback else no_fallback)
+        logger.warning("[delivery] email lookup failed for user '%s'; not falling "
+                       "back to DELIVERY_EMAIL_TO, will retry: %s",
+                       user_id, redact(exc))
+        return Recipient("", f"transient: account email lookup failed "
+                             f"({type(exc).__name__}); will retry", permanent=False)
+    if user and user.get("email"):
+        return Recipient(str(user["email"]))
+    if single_user:
+        return Recipient(fallback, "" if fallback else no_fallback)
+    # No user id in the reason: it reaches the owner's report, which carries
+    # none (the row id identifies the account's row).
+    return Recipient("", "permanent: no email on file for this account")
 
 
 def _resolve_transport() -> str:
@@ -137,13 +246,48 @@ def _resolve_transport() -> str:
     return "resend" if getattr(settings, "RESEND_API_KEY", "") else "smtp"
 
 
+# ---------------------------------------------------------------------------
+# email — resend (HTTPS)
+# ---------------------------------------------------------------------------
+
+def _json_field(resp, name: str) -> str:
+    """One field of a JSON response body as text; "" when the body has none."""
+    try:
+        body = resp.json()
+    except ValueError:                    # not JSON (requests raises a ValueError subclass)
+        return ""
+    return str(body.get(name, "") or "") if isinstance(body, dict) else ""
+
+
+def _resend_failure(resp) -> SendResult:
+    """Classify a non-2xx Resend response (error names from Resend's API docs,
+    checked 2026-09-28). 429, 5xx and a concurrent same-key request retry;
+    everything else is a request or account problem that a retry repeats."""
+    code = resp.status_code
+    detail = redact((resp.text or "").strip())[:300]
+    name = _json_field(resp, "name")
+    if code == 429 or code >= 500 or (code == 409 and name != "invalid_idempotent_request"):
+        return SendResult(reason=f"transient: resend HTTP {code}: {detail}",
+                          retry_after_s=_retry_after_s(resp))
+    if code in (401, 403):
+        hint = ("check RESEND_API_KEY, and RESEND_FROM: the shared onboarding "
+                "sender reaches only the Resend account owner, so other "
+                "recipients need a verified-domain sender")
+    else:
+        hint = "the provider rejected this request; retrying repeats it"
+    return _refuse(f"permanent: resend HTTP {code}: {detail} — {hint}")
+
+
 def _send_via_resend(subject: str, body: str, attachments: list[Path] | None,
-                     html_body: str | None, recipient: str) -> tuple[bool, str]:
+                     html_body: str | None, recipient: str,
+                     idempotency_key: str | None) -> SendResult:
     """POST one message to the Resend API over HTTPS. Never raises.
 
-    Returns `(delivered, reason)`. A 2xx means Resend ACCEPTED the message for
-    delivery — it is not proof the recipient's mailbox received it, so callers
-    must not report it as confirmed receipt."""
+    A 2xx means Resend ACCEPTED the message — not that the mailbox received it.
+    `idempotency_key` (the outbox passes one per row) makes Resend drop a
+    repeat of the same request within 24 hours, which is what lets the drainer
+    retry a timed-out request without sending the message twice. A caller that
+    passes no key must not retry."""
     import requests
 
     payload: dict = {
@@ -162,51 +306,70 @@ def _send_via_resend(subject: str, body: str, attachments: list[Path] | None,
                 for p in attachments
             ]
         except Exception as exc:          # fail closed, same as the SMTP path
-            return False, f"attachment unreadable: {type(exc).__name__}: {exc}"[:500]
+            return _refuse(redact(f"permanent: attachment unreadable: "
+                                  f"{type(exc).__name__}: {exc}"))
+    headers = {"Authorization": f"Bearer {settings.RESEND_API_KEY}",
+               "Content-Type": "application/json"}
+    if idempotency_key:
+        headers["Idempotency-Key"] = idempotency_key
     try:
-        resp = requests.post(
-            "https://api.resend.com/emails",
-            headers={"Authorization": f"Bearer {settings.RESEND_API_KEY}",
-                     "Content-Type": "application/json"},
-            json=payload, timeout=20)
+        resp = requests.post("https://api.resend.com/emails", headers=headers,
+                             json=payload, timeout=_SEND_TIMEOUT_S)
     except Exception as exc:
-        logger.warning("[delivery] resend request failed (non-fatal): %s", exc)
-        return False, f"{type(exc).__name__}: {exc}"[:500]
+        reason = redact(f"transient: {type(exc).__name__}: {exc}")
+        logger.warning("[delivery] resend request failed (non-fatal): %s", reason)
+        return SendResult(reason=reason)
     if 200 <= resp.status_code < 300:
-        return True, ""
-    # Body is the provider's error JSON — no recipient data, safe to persist.
-    detail = (resp.text or "").strip().replace("\n", " ")[:300]
-    logger.warning("[delivery] resend rejected the message: HTTP %s %s",
-                   resp.status_code, detail)
-    return False, f"resend HTTP {resp.status_code}: {detail}"[:500]
+        msg_id = _json_field(resp, "id")
+        return SendResult(1, accepted_by=f"resend id={msg_id}" if msg_id else "resend")
+    result = _resend_failure(resp)
+    logger.warning("[delivery] resend did not accept the message: %s", result.reason)
+    return result
 
 
-def send_email_result(subject: str, body: str, attachments: list[Path] | None = None,
-                      html_body: str | None = None,
-                      to: str | None = None) -> tuple[bool, str]:
-    """`send_email` plus the reason it failed (SA-006). Never raises.
+# ---------------------------------------------------------------------------
+# email — smtp
+# ---------------------------------------------------------------------------
 
-    `to` is the recipient for THIS message — the outbox passes the address of
-    the account that owns the row, so multi-user beta mail reaches each account
-    rather than one global inbox. It falls back to `DELIVERY_EMAIL_TO`.
+def _smtp_failure(exc: Exception, phase: str) -> SendResult:
+    """Classify an SMTP failure. `phase` is where it happened: "connect"
+    (connect, STARTTLS, login — nothing sent yet) or "send" (inside sendmail).
 
-    Returns `(delivered, reason)`; `reason` is "" on success. The
-    disabled/unconfigured gates report DISTINCT reasons on purpose: previously
-    they all returned a bare False with no log line at all, so a dead-lettered
-    row was indistinguishable from a blocked one. The reason is persisted to
-    `outbox.last_error`, which is what makes a dead letter self-explaining
-    without the ephemeral container log. It carries no recipient or payload."""
-    if not settings.DELIVERY_EMAIL_ENABLED:
-        return False, "disabled: DELIVERY_EMAIL_ENABLED is false"
-    recipient = (to or getattr(settings, "DELIVERY_EMAIL_TO", "") or "").strip()
-    if not recipient:
-        return False, "unconfigured: no recipient (account email and DELIVERY_EMAIL_TO both unset)"
-    if _resolve_transport() == "resend":
-        if not settings.RESEND_API_KEY:
-            return False, "unconfigured: RESEND_API_KEY is unset"
-        return _send_via_resend(subject, body, attachments, html_body, recipient)
-    if not settings.SMTP_HOST:
-        return False, "unconfigured: SMTP_HOST is unset"
+    A reply code decides first: 4xx is the server saying "later" (retry), 5xx a
+    refusal (stop). With no code — a network, TLS or dropped-connection error —
+    a connect-phase failure retries; a send-phase one may have been accepted
+    before the connection died, so it is not retried (at most once)."""
+    base = redact(f"{type(exc).__name__}: {exc}")
+    code = getattr(exc, "smtp_code", None)
+    if isinstance(exc, smtplib.SMTPRecipientsRefused):
+        codes = [v[0] for v in exc.recipients.values() if isinstance(v, tuple) and v]
+        code = codes[0] if codes else None
+    code = code if isinstance(code, int) and 400 <= code < 600 else None
+    if isinstance(exc, smtplib.SMTPAuthenticationError) and not (code and code < 500):
+        return _refuse(f"permanent: SMTP login rejected ({base}) — check SMTP_USER "
+                       "and SMTP_PASSWORD (Gmail needs an app password)")
+    if isinstance(exc, smtplib.SMTPNotSupportedError):
+        return _refuse(f"permanent: {base} — SMTP_HOST:SMTP_PORT does not offer "
+                       "STARTTLS/AUTH; check the host and port (587 = STARTTLS)")
+    if code and code < 500:
+        return SendResult(reason=f"transient: SMTP {code}: {base}")
+    if code:
+        return _refuse(f"permanent: SMTP {code}: {base}")
+    if phase == "send":
+        return _refuse(f"unknown outcome: the connection failed during the send "
+                       f"({base}); the server may have accepted the message, so it "
+                       "is not retried — a retry could duplicate it")
+    hint = ""
+    if getattr(exc, "errno", None) == 101 or "Network is unreachable" in str(exc):
+        hint = (" — if every send fails like this, the host blocks outbound SMTP "
+                "(Railway Free/Trial/Hobby): set RESEND_API_KEY for the HTTPS transport")
+    return SendResult(reason=f"transient: {base}{hint}")
+
+
+def _send_via_smtp(subject: str, body: str, attachments: list[Path] | None,
+                   html_body: str | None, recipient: str) -> SendResult:
+    """stdlib smtplib STARTTLS. Never raises. A 250 to DATA is the relay's
+    acceptance, not the mailbox's receipt."""
     body = _with_app_link(body)
     try:
         alt: MIMEText | MIMEMultipart
@@ -231,27 +394,120 @@ def send_email_result(subject: str, body: str, attachments: list[Path] | None = 
         msg["Subject"] = subject
         msg["From"] = settings.SMTP_USER or "stockagent@localhost"
         msg["To"] = recipient
-        with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT, timeout=20) as s:
+    except Exception as exc:              # e.g. an unreadable attachment: fail closed
+        return _refuse(redact(f"permanent: could not build the message: "
+                              f"{type(exc).__name__}: {exc}"))
+    phase = "connect"
+    try:
+        with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT,
+                          timeout=_SEND_TIMEOUT_S) as s:
             s.starttls()
             if settings.SMTP_USER:
                 s.login(settings.SMTP_USER, settings.SMTP_PASSWORD)
+            phase = "send"
             s.sendmail(msg["From"], [recipient], msg.as_string())
-        return True, ""
+            phase = "sent"                # only QUIT remains
+        return SendResult(1, accepted_by="smtp")
     except Exception as exc:
-        logger.warning("[delivery] email send failed (non-fatal): %s", exc)
-        return False, f"{type(exc).__name__}: {exc}"[:500]
+        if phase == "sent":               # the relay already said 250
+            logger.info("[delivery] SMTP QUIT failed after acceptance: %s", redact(exc))
+            return SendResult(1, accepted_by="smtp")
+        result = _smtp_failure(exc, phase)
+        logger.warning("[delivery] email send failed (non-fatal): %s", result.reason)
+        return result
+
+
+def send_email_result(subject: str, body: str, attachments: list[Path] | None = None,
+                      html_body: str | None = None, to: str | None = None,
+                      idempotency_key: str | None = None) -> SendResult:
+    """`send_email` with the full `SendResult` (SA-006). Never raises.
+
+    `to` is the recipient for THIS message — the outbox passes the address of
+    the account that owns the row. It falls back to `DELIVERY_EMAIL_TO`, which
+    is right only for the owner's own reports (the direct callers).
+    `idempotency_key` is sent to Resend; SMTP has no equivalent.
+
+    The disabled/unconfigured gates report DISTINCT reasons and are permanent:
+    a retry cannot change a setting. The reason is persisted to
+    `outbox.last_error`, so a dead letter explains itself without the container
+    log. It carries no recipient, payload or secret."""
+    if not settings.DELIVERY_EMAIL_ENABLED:
+        return _refuse("disabled: DELIVERY_EMAIL_ENABLED is false")
+    recipient = (to or getattr(settings, "DELIVERY_EMAIL_TO", "") or "").strip()
+    if not recipient:
+        return _unconfigured("no recipient (account email and DELIVERY_EMAIL_TO both unset)")
+    if _resolve_transport() == "resend":
+        if not settings.RESEND_API_KEY:
+            return _unconfigured("RESEND_API_KEY is unset")
+        return _send_via_resend(subject, body, attachments, html_body, recipient,
+                                idempotency_key)
+    if not settings.SMTP_HOST:
+        return _unconfigured("SMTP_HOST is unset")
+    return _send_via_smtp(subject, body, attachments, html_body, recipient)
+
+
+def _unconfigured(what: str) -> SendResult:
+    """Email is enabled but cannot be sent. Logged, because the direct callers
+    (monthly report, watchdog heartbeat, backup) have no outbox row to hold
+    the reason."""
+    logger.warning("[delivery] email enabled but unconfigured: %s", what)
+    return _refuse(f"unconfigured: {what}")
 
 
 def send_email(subject: str, body: str, attachments: list[Path] | None = None,
                html_body: str | None = None, to: str | None = None) -> bool:
-    """Email send to `to`, defaulting to DELIVERY_EMAIL_TO. False when disabled/unconfigured
-    or on any failure — never raises. `attachments` (AUD-088): file paths to
-    attach; the whole send fails closed if any is unreadable. `html_body`
-    (2026-07-30): when set, the message is multipart/alternative — plain `body`
-    first, HTML last (clients prefer the last part).
+    """Email send to `to`, defaulting to DELIVERY_EMAIL_TO. True means the
+    transport accepted it; False when disabled/unconfigured or on any failure —
+    never raises. `attachments` (AUD-088): file paths to attach; the whole send
+    fails closed if any is unreadable. `html_body` (2026-07-30): when set, the
+    message is multipart/alternative — plain `body` first, HTML last (clients
+    prefer the last part).
 
     Thin wrapper over `send_email_result` — use that when you need the reason."""
-    return send_email_result(subject, body, attachments, html_body, to=to)[0]
+    return send_email_result(subject, body, attachments, html_body, to=to).accepted
+
+
+# ---------------------------------------------------------------------------
+# web push
+# ---------------------------------------------------------------------------
+
+def _push_ttl_s() -> int:
+    """How long the push service keeps an undelivered notification. pywebpush's
+    default is 0 — "deliver now or drop" — so a phone that is offline or dozing
+    when the service accepts the push never shows it (SA-006)."""
+    return int(cfg("delivery.push_ttl_seconds", fallback=43200))
+
+
+def _push_never_connected(exc: BaseException) -> bool:
+    """True only when a push failed while CONNECTING, so the request never
+    reached the push service: a connect timeout, a refused connection or a
+    failed DNS lookup. Only then is a retry safe (SA-006 review F1).
+
+    Decided by exception type, never message text. requests reports these as
+    `ConnectTimeout`, or as a `ConnectionError` wrapping urllib3's
+    `MaxRetryError` whose `reason` is a `NewConnectionError` (refused) or
+    `NameResolutionError` (DNS); all three are urllib3 `ConnectTimeoutError`s.
+    Anything else can follow the service storing the push: a connection
+    dropped after the request was written ("Connection aborted.", a
+    `ProtocolError`), a read timeout, a TLS error."""
+    try:
+        from requests.exceptions import ConnectTimeout
+        from urllib3.exceptions import ConnectTimeoutError
+    except ImportError:                  # pragma: no cover — pywebpush needs both
+        return False
+    seen: set[int] = set()
+    todo: list[object] = [exc]
+    while todo and len(seen) < 16:
+        node = todo.pop()
+        if not isinstance(node, BaseException) or id(node) in seen:
+            continue
+        seen.add(id(node))
+        if isinstance(node, (ConnectTimeout, ConnectTimeoutError)):
+            return True
+        # requests puts the urllib3 error in args[0]; MaxRetryError holds the
+        # connect error in `reason`; urllib3 raises it `from` the OSError.
+        todo.extend((getattr(node, "reason", None), node.__cause__, *node.args))
+    return False
 
 
 def send_push_result(
@@ -260,18 +516,23 @@ def send_push_result(
     url: str = "/",
     user_id: str | None = None,
     store: PushStore | None = None,
-) -> tuple[int, str]:
-    """`send_push` plus the reason nothing was delivered (SA-006). Never raises.
+) -> SendResult:
+    """`send_push` with the full `SendResult` (SA-006). Never raises.
 
-    Returns `(sent, reason)`; `reason` is "" whenever `sent > 0`. Endpoints are
-    never included — only the failure class — so `outbox.last_error` stays free
-    of recipient data."""
+    Accepted when at least one subscription's push service accepted it (201);
+    that is not proof the device showed it. Failures per subscription:
+    400/403/404/410 prune the subscription; 429 and 5xx are transient; so is a
+    failure to connect at all (`_push_never_connected`). Any other exception
+    — a read timeout, a connection dropped after the request was sent, a TLS
+    error — may follow the service storing the push, so it is an unknown
+    outcome and stops the row: a retry could show the notification twice.
+    Endpoints never appear in the reason."""
     if not settings.DELIVERY_PUSH_ENABLED:
-        return 0, "disabled: DELIVERY_PUSH_ENABLED is false"
+        return _refuse("disabled: DELIVERY_PUSH_ENABLED is false")
     if not settings.VAPID_PRIVATE_KEY:
-        return 0, "unconfigured: VAPID_PRIVATE_KEY is unset"
+        return _refuse("unconfigured: VAPID_PRIVATE_KEY is unset")
     if webpush is None:
-        return 0, "unavailable: pywebpush is not installed"
+        return _refuse("unavailable: pywebpush is not installed")
     store = store or PushStore()
     subs = store.list(user_id)
     if not subs:
@@ -280,10 +541,14 @@ def send_push_result(
             "[delivery] push enabled but 0 subscriptions registered for user "
             "'%s' — notification dropped (enable alerts in the PWA)",
             user_id or settings.PORTFOLIO_DEFAULT_USER_ID)
-        return 0, "no push subscriptions registered (enable alerts in the PWA)"
+        return _refuse("no push subscriptions registered (enable alerts in the PWA)")
     payload = json.dumps({"title": title, "body": body[:1500], "url": url})
+    ttl = _push_ttl_s()
     sent = 0
-    failures: list[str] = []
+    retry: list[str] = []
+    stop: list[str] = []
+    unknown: list[str] = []
+    retry_after: float | None = None
     for sub in subs:
         try:
             webpush(
@@ -291,22 +556,41 @@ def send_push_result(
                 data=payload,
                 vapid_private_key=settings.VAPID_PRIVATE_KEY,
                 vapid_claims={"sub": f"mailto:{settings.VAPID_CLAIM_EMAIL}"},
+                timeout=_SEND_TIMEOUT_S,
+                ttl=ttl,
             )
             sent += 1
         except Exception as exc:
-            code = getattr(getattr(exc, "response", None), "status_code", None)
+            resp = getattr(exc, "response", None)
+            code = getattr(resp, "status_code", None)
             if code in (400, 403, 404, 410):
                 # 404/410 = expired; 400/403 = malformed sub or VAPID-key
                 # mismatch (AUD-085 prod stale sub) — all permanent, prune.
                 store.remove(sub.get("endpoint", ""), user_id)
                 logger.info("[delivery] pruned dead push subscription (%s)", code)
-                failures.append(f"pruned dead subscription ({code})")
+                stop.append(f"pruned dead subscription ({code})")
+            elif code == 429 or (isinstance(code, int) and code >= 500):
+                retry.append(f"push service HTTP {code}")
+                wait = _retry_after_s(resp)
+                if wait is not None:
+                    retry_after = max(retry_after or 0.0, wait)
+            elif isinstance(code, int):
+                stop.append(f"push service HTTP {code}")
+            elif _push_never_connected(exc):
+                retry.append(f"{type(exc).__name__}: {exc}")
             else:
-                logger.warning("[delivery] push send failed (non-fatal): %s", exc)
-                failures.append(f"{type(exc).__name__}: {exc}")
+                unknown.append(f"{type(exc).__name__}: {exc}")
+            logger.warning("[delivery] push send failed (non-fatal): %s", redact(exc))
     if sent:
-        return sent, ""
-    return 0, ("; ".join(failures) or "no subscription accepted the push")[:500]
+        return SendResult(sent, accepted_by=f"webpush {sent}/{len(subs)} subscriptions")
+    if unknown:
+        return _refuse(redact(
+            "unknown outcome: " + "; ".join(unknown + retry + stop)
+            + " — the push service may have accepted it, so it is not retried"))
+    if retry:
+        return SendResult(reason=redact("transient: " + "; ".join(retry + stop)),
+                          retry_after_s=retry_after)
+    return _refuse(redact("permanent: " + "; ".join(stop)))
 
 
 def send_push(
@@ -317,10 +601,12 @@ def send_push(
     store: PushStore | None = None,
 ) -> int:
     """Fan one notification out to every stored subscription. Returns the
-    number delivered; prunes expired (404/410) subscriptions. Never raises.
+    number of subscriptions whose push service accepted it; prunes dead
+    subscriptions. Never raises.
 
     Thin wrapper over `send_push_result` — use that when you need the reason."""
-    return send_push_result(title, body, url=url, user_id=user_id, store=store)[0]
+    return send_push_result(title, body, url=url, user_id=user_id,
+                            store=store).accepted_count
 
 
 def deliver(
@@ -331,9 +617,11 @@ def deliver(
 
     Atlas C7 (BP2): when the relational plane is on, hand the message to the
     durable outbox (per-channel rows, atomic-claim drainer) instead of sending
-    inline — `delivered=True` then means *accepted for delivery*; the outbox
+    inline — `delivered=True` then means *queued for delivery*; the outbox
     owns retry/dead-letter. `kind` (brief|digest|weekly|alert) tags the queued
-    rows. The dormant path (flag off) below is byte-for-byte today's behaviour.
+    rows. On the inline path (flag off, or the outbox unreachable)
+    `delivered=True` means a transport accepted it. Neither is proof that a
+    person received it (SA-006).
     """
     if not settings.DELIVERY_ENABLED:
         return {"delivered": False, "reason": "delivery_disabled"}
@@ -355,7 +643,13 @@ def deliver(
     except Exception as exc:
         logger.warning("[delivery] push channel failed (non-fatal): %s", exc)
     try:
-        emailed = int(send_email(title, body, html_body=html_body))
+        # SA-006: the account's own address, never the owner's by fallback.
+        recipient = resolve_recipient(user_id)
+        if recipient.address:
+            emailed = int(send_email(title, body, html_body=html_body,
+                                     to=recipient.address))
+        elif settings.DELIVERY_EMAIL_ENABLED:
+            logger.warning("[delivery] %s — email skipped: %s", title, recipient.reason)
     except Exception as exc:
         logger.warning("[delivery] email channel failed (non-fatal): %s", exc)
     if pushed or emailed:

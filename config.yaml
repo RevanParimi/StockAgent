@@ -735,9 +735,10 @@ generic_graph:
 delivery:
   enabled: true                  # master gate: scheduler Jobs 13/14 + all channel sends
   data_dir: "data/delivery"      # push_subscriptions.json, alerts_sent.jsonl
-  # D6/SA-006: Railway disables outbound SMTP on Free/Trial/Hobby, so the SMTP
-  # path cannot work in prod on this plan ([Errno 101] Network is unreachable).
-  # Set RESEND_API_KEY in Railway and EMAIL_TRANSPORT stays "auto" -> resend.
+  # D6/SA-006: Railway blocks outbound SMTP on Free/Trial/Hobby ([Errno 101]
+  # Network is unreachable). Production moved to Pro and was redeployed on
+  # 2026-09-21, and SMTP has worked since. On a host that blocks SMTP, set
+  # RESEND_API_KEY and EMAIL_TRANSPORT stays "auto" -> resend (HTTPS).
   email_enabled: false           # flip once RESEND_API_KEY (or SMTP_*) is set in .env / Railway
   push_enabled: true             # degrades silently until VAPID_* secrets are set
   index_watch:                   # weekly constituent diff -> inclusion/exclusion alerts
@@ -747,10 +748,16 @@ delivery:
     - "NIFTY SMALLCAP 250"
   # Atlas C7 (BP2) durable outbox — active only when ATLAS_ENABLED. The drainer
   # runs in the singleton-lock owner and retries with backoff -> dead-letter.
-  outbox_max_attempts: 3         # sends before a row is dead-lettered
+  # SA-006: only TRANSIENT failures retry; auth/config/rejected-recipient
+  # failures dead-letter at once. GET /delivery/outbox shows dead letters.
+  outbox_max_attempts: 3         # sends before a transient failure is dead-lettered
   outbox_backoff_minutes: [1, 5, 30]   # per-attempt reschedule delay
+  outbox_retry_after_cap_minutes: 360  # longest provider Retry-After honoured
+  outbox_sending_stale_minutes: 60     # 'sending' older than this = stopped process -> dead, not re-sent
   outbox_poll_seconds: 30        # drainer loop interval
-  outbox_retention_days: 30      # C9 prunes delivered/dead rows older than this
+  outbox_retention_days: 30      # C9 prunes delivered rows older than this (dead rows: payload cleared)
+  outbox_dead_letter_retention_days: 180  # C9 deletes dead-letter rows older than this
+  push_ttl_seconds: 43200        # push service holds an undelivered push this long (pywebpush default 0 = drop)
   # Alert rendering (presentation 2026-08-20). false = plain-text email only;
   # the Inbox card is unaffected either way (it reads the structured fields
   # straight off the sent-log).

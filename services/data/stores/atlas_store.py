@@ -204,6 +204,8 @@ CREATE TABLE IF NOT EXISTS outbox (
   next_attempt_at TEXT,
   delivered_at    TEXT,
   last_error      TEXT,
+  accepted_by     TEXT,
+  claimed_at      TEXT,
   CHECK (channel IN ('push','email')),
   CHECK (kind    IN ('brief','digest','weekly','alert')),
   CHECK (status  IN ('queued','sending','delivered','failed','dead'))
@@ -236,7 +238,9 @@ def _migrate(conn: sqlite3.Connection) -> None:
     Each entry below is re-checked on every connect and added only when absent.
     """
     wanted = {
-        "outbox": [("last_error", "TEXT")],   # SA-006: why a row failed / dead-lettered
+        "outbox": [("last_error", "TEXT"),    # SA-006: why a row failed / dead-lettered
+                   ("accepted_by", "TEXT"),   # SA-006: transport / provider id that accepted it
+                   ("claimed_at", "TEXT")],   # SA-006: when the drainer claimed it (stale-send recovery)
     }
     for table, columns in wanted.items():
         try:

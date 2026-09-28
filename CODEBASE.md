@@ -683,7 +683,7 @@ Models are tiered (2026-06-03 benchmark, `scripts/model_bench.py`; bulk re-bench
 |---------|---------|-------------|
 | `delivery.enabled` | `true` (base.py fallback `false`) | Master gate: Jobs 13/14 + every channel send |
 | `delivery.data_dir` | `data/delivery` | `push_subscriptions.json`, `alerts_sent.jsonl` |
-| `delivery.email_enabled` | `false` | Needs `SMTP_HOST/PORT/USER/PASSWORD` + `DELIVERY_EMAIL_TO` in .env |
+| `delivery.email_enabled` | `false` | Needs `SMTP_HOST/PORT/USER/PASSWORD` (or `RESEND_API_KEY`) in .env; `DELIVERY_EMAIL_TO` is the single-user recipient only, never a fallback for an account (SA-006) |
 | `delivery.push_enabled` | `true` | Needs `VAPID_PRIVATE_KEY/PUBLIC_KEY/CLAIM_EMAIL` in .env (`scripts/gen_vapid_keys.py`) |
 | `audit.switch_min_n` | `30` | Independent (strided) pairs needed before the switch blocks give a verdict |
 | `audit.switch_horizon_td` | `10` | Horizon the switch blocks report on |
@@ -696,10 +696,14 @@ Models are tiered (2026-06-03 benchmark, `scripts/model_bench.py`; bulk re-bench
 | `advisor.switch_eval_max_candidates` | `5` | Top-N active shelf ideas by conviction evaluated per holding per run |
 | `delivery.alert_html_enabled` | `true` | HTML alert email body; `false` = plain text only (the Inbox card is unaffected) |
 | `delivery.index_watch` | NIFTY 50 / NEXT 50 / MIDCAP 150 / SMALLCAP 250 | Weekly constituent diff → inclusion/exclusion alerts |
-| `delivery.outbox_max_attempts` | `3` | BP2 outbox: sends before a row is dead-lettered (active only when `ATLAS_ENABLED`) |
+| `delivery.outbox_max_attempts` | `3` | BP2 outbox: sends before a TRANSIENT failure is dead-lettered; permanent failures stop after one (SA-006; active only when `ATLAS_ENABLED`) |
 | `delivery.outbox_backoff_minutes` | `[1, 5, 30]` | BP2 outbox: per-attempt reschedule delay |
+| `delivery.outbox_retry_after_cap_minutes` | `360` | Longest provider `Retry-After` the outbox honours (SA-006) |
+| `delivery.outbox_sending_stale_minutes` | `60` | A `sending` row older than this was left by a stopped process: dead-lettered as unknown outcome, never re-sent (SA-006) |
 | `delivery.outbox_poll_seconds` | `30` | BP2 outbox: drainer loop interval |
-| `delivery.outbox_retention_days` | `30` | Prune delivered/dead outbox rows older than this (Atlas C9) |
+| `delivery.outbox_retention_days` | `30` | Prune delivered outbox rows older than this; dead rows only lose their payload (Atlas C9, SA-006) |
+| `delivery.outbox_dead_letter_retention_days` | `180` | Prune dead-letter rows older than this (SA-006) |
+| `delivery.push_ttl_seconds` | `43200` | How long a push service holds an undelivered push (pywebpush default 0 drops it; SA-006) |
 | `discovery.ipo_enabled` | `true` (fallback `false`) | Stage-2 IPO tracker in the Saturday cycle |
 | `discovery.ipo_listing_window_days` | `90` | Listings younger than this are candidates |
 | `discovery.ipo_max_deep_dives` | `2` | Reserved Stage-3 slots (WITHIN `deep_dive_count`) |

@@ -1323,10 +1323,17 @@ class AutomobileScheduler:
             except Exception as audit_exc:
                 logger.warning("[Scheduler] audit section failed (non-fatal): %s",
                                audit_exc)
-            send_email(
+            sent = send_email(
                 subject=f"[StockAgent] Learning Evidence {month}: {report['verdict']}",
                 body=body,
             )
+            if not sent:
+                # SA-006: a direct send has no outbox row, retry or dead letter;
+                # this line is the only trace. The channel logged the reason.
+                logger.warning(
+                    "[Scheduler] Learning Evidence email for %s was NOT accepted by "
+                    "the email transport (see the [delivery] line for the reason); "
+                    "the report is saved at %s", month, json_path)
         except Exception as exc:
             logger.warning(
                 "[Scheduler] Learning evidence build failed for %s: %s", month, exc, exc_info=True

@@ -1,13 +1,23 @@
-# Current handoff - 2026-09-28 (updated about 07:30 IST)
+# Current handoff - 2026-09-28 (updated about 20:45 IST)
 
 ## START HERE — resume checklist, in order
 
 **0. Before any story work, check STATE `pending_production_checks`.** It holds the SA-039 `observe`
-verification: P1 due Mon 28 Sep 17:00 IST, P2 due Tue 29 Sep 17:00 and P3 due Thu 1 Oct 09:30. Run
-every check that is due and unrecorded (read-only; the steps are in the carry-over box on
-[SA-001](stories/SA-001.md), and [SA-003](stories/SA-003.md) carries a pointer to it). Record each in
-the [activation record](evidence/SA-039-activation-2026-09-26.md) and in STATE.
+verification. **P1 passed** (checked Mon 28 Sep 20:19 IST). P2 is due Tue 29 Sep 17:00 and P3 Thu
+1 Oct 09:30. Run every check that is due and unrecorded (read-only; the steps are in the carry-over
+box on [SA-001](stories/SA-001.md), and [SA-003](stories/SA-003.md) carries a pointer to it). Record
+each in the [activation record](evidence/SA-039-activation-2026-09-26.md) and in STATE.
 [SA-038](stories/SA-038.md) is the backstop.
+
+- **P1, in one example.** Monday's 16:30 review graded Friday's session for all 20 tickers in
+  `observe` mode. For SUZLON the adapter proposed v57 and it was not written: the stored version
+  stays v56, the same as the 26 Sep baseline. The same holds for all 19 tickers with weights, and
+  no `Weights → v` line was logged. WELCORP has no weights, as before SA-039.
+- **The P1 rule had the wrong date.** It expected observations dated 28 Sep, but a review grades
+  the previous session, so they say 25 Sep; they were recorded today (16:31–16:54 IST). P2 should
+  see `review_date` 2026-09-28.
+- **For P2:** `analysis_data/sa039/p1_probe.py 2026-09-29 <deploy id>` (ignored; read-only; prints
+  counts and versions only). Take the deploy id from `railway deployment list`.
 
 - **When P3 passes (Thu 1 Oct), make the SA-003 enforce decision.** On 2026-09-27 the owner
   delegated it to Claude: decide by the written rules, log the decision, and tell the owner. SA-039's
@@ -38,15 +48,158 @@ the [activation record](evidence/SA-039-activation-2026-09-26.md) and in STATE.
     SA-003's `production_verification`. The [SA-003 receipt](evidence/SA-003-implementation.md)
     has the steps, under "Rollout", and the [review](evidence/SA-003-review.md) has F1 and F2.
 
-**1. Next PI phase: implement [SA-006](stories/SA-006.md)** (repair delivery transport and expose
-dead letters), in a new conversation. Opener: `Continue`. Run step 0 first if a check is due by
-then (P1 is today, Mon 28 Sep, 17:00 IST). STATE: `active_task: null`, `next_task: SA-006`,
-`next_phase: implementation`.
+**1. Next PI phase: SA-007 implementation** ([SA-007](stories/SA-007.md), make backups
+independently recoverable; P1, sprint 1, no dependencies), in a new conversation. Opener:
+`Continue`. STATE: `active_task: null`, `next_task: SA-007`, `next_phase: implementation`.
+**Run step 0 first** if P2 is due by then (Tue 29 Sep 17:00 IST).
 
-- **Why SA-006:** it is the first planned `todo` story in STATE's order whose dependencies are done
-  (Sprint 2, P1, no dependencies). SA-007 and the other Sprint 1 cards (SA-033, SA-035, SA-036,
-  SA-038) come after it in the array; the owner may resequence. SA-005's acceptance also unblocks
-  [SA-012](stories/SA-012.md).
+- SA-007 is the first `todo` story in STATE order whose dependencies are all `done`. Its card:
+  recovery must not depend on the application volume or the email channel. That means a minimal
+  object-storage backup adapter with integrity metadata, and a restore into an isolated
+  directory. Provisioning paid resources is not allowed.
+- Routed input from SA-006: the backup email is still a direct send, with no outbox retry or dead
+  letter. Its failure reason is now logged (STATE `SA-006.routed_notes.SA-007`).
+
+**SA-006 was ACCEPTED by its fresh re-review on 2026-09-28** (this conversation, about
+19:40–20:45 IST, after P1). Receipt: [SA-006-review.md](evidence/SA-006-review.md), section
+"Re-review". Nothing was committed, pushed, deployed or sent.
+
+- **F1 is fixed, in one example.** A phone's push service stores the morning brief's push, then
+  drops the connection. The brief now shows once; the row dead-letters with the reason. A
+  refused connection is still retried and shows once.
+  - The rule matches urllib3's own "safe to retry" test (`Retry._is_connection_error`).
+  - Real-stack tests prove both cases.
+- **F2 is fixed:** the owner report carries no user id.
+- **D10, D11 and D12 are upheld:**
+  - D10: a TLS error is an unknown outcome;
+  - D11: one phone's unknown outcome stops the row;
+  - D12: no `sw.js` tag for now. It is revisited if guide case 10-C shows a double.
+- **Checks:**
+  - the input `b8273b2c…` verified, and the diffs `e01c4913…` and `713e1675…` rebuilt;
+  - focused tests 124 passed;
+  - full suite **3837 passed, 12 skipped, 0 failed** (7 min 12 s), `data/` unchanged;
+  - the reviewer's 8 of 8 mutations caught, and 7 of 7 probes as the contract requires;
+  - `check_kt_docs` errors `[]`.
+  - No findings.
+- **Review edits (docs only):** the SA-006 status wording in the KT (§1, §10, §11, §12), ARCHITECTURE
+  and guide 10-B/C/E/F; the PDF is rebuilt (26 pages, source `38ddf518…`). So `verify
+  SA-006-manifest.json` now mismatches exactly those 4 files.
+- **Production verification: `pending_deployment`.**
+  - It needs the owner's commit and push.
+  - After the deploy, read `GET /delivery/outbox` (machine key) or run the owner probe
+    `analysis_data/sa006/prod_probe_outbox.py`.
+  - Then human cases 10-B, 10-C, 10-E and 10-F.
+  - A real test email or push needs explicit messaging authorization.
+- **To commit (only on the owner's word):**
+  - the 18 manifest paths plus the SA-006 evidence files (receipt, review, both manifests);
+  - STATE and HANDOFF;
+  - this conversation's SA-039 P1 record (the activation record and the SA-001 carry-over box).
+  - Then `kt_manifest.py verify SA-006-manifest.json --rev <commit>` should mismatch only the 4
+    review-edited docs.
+
+**The push is ON HOLD (owner, 08:46 IST Mon 28 Sep).** Local `main` is 3 commits ahead of
+`origin/main` (`7901f35`, `48143ed`, `9e65c7a`). The earlier plan to push after 09:05 is superseded: do not push until the owner says so, then only in a job-free window. After that
+push: check the deploy, read the Actions page and record CI's three jobs against SA-005 (human
+case 12-E). SA-006 is accepted but uncommitted on top of `9e65c7a`.
+
+**SA-006 rework 1 was done on 2026-09-28** (a new conversation, about 15:38–16:25 IST, baseline
+`9e65c7a`). Receipt: [SA-006-implementation.md](evidence/SA-006-implementation.md), section
+"Rework 1". No SA-039 check was due. Nothing was committed, pushed, deployed or sent.
+
+- **F1 fixed, in one example.** A push service stores a brief's push, then the connection
+  drops before its 201.
+  - Before: the drainer retried it, so the phone showed it twice.
+  - Now: it is an unknown outcome and dead-letters after one attempt, so the phone shows it once
+    and the owner report says why.
+  - A push is retried only when its connection was never made: refused, a DNS failure or a
+    connect timeout. The check uses exception types, found along `args`, `reason` and
+    `__cause__`, never message text.
+- **F2 fixed.** The dead letter for an account with no address now reads "permanent: no email on
+  file for this account", with no user id.
+- **Two new decisions for the re-reviewer:**
+  - **D10:** TLS errors count as unknown outcomes, because their type cannot prove that nothing
+    was sent.
+  - **D11:** one phone's unknown outcome stops the row for all of that account's phones. A phone
+    whose service answered 5xx then loses that notification, visibly, as a dead letter.
+- **D12, decided by Claude on the owner's delegation:** no notification `tag` in the service
+  worker for now.
+  - Our own retries can no longer duplicate a push.
+  - A tag only merges a copy that is still on screen, so it makes no retry safe.
+  - It would change code on every phone, and no automated test covers that code.
+  - Revisit if a phone ever shows one notification twice (guide case 10-C).
+- **Tests:**
+  - 12 new tests. One is the review's R1, kept as a permanent test: the real pywebpush →
+    requests → urllib3 stack against a loopback push service. The service stores 1 copy and the
+    row dead-letters after 1 attempt; the reviewed code fails this test. Another uses a real
+    refused connection, which is retried and ends with 1 copy stored.
+  - A 9-case table of exception types, and I5 extended with an account that has no address.
+  - Focused: 124 passed. Full suite: **3837 passed, 12 skipped, 0 failed** (11 min 02 s).
+    `data/`, `logs/` and `outputs/` were unchanged.
+  - 5 of 5 rework mutations were caught, the broad-except guard is OK, and `check_kt_docs`
+    errors are `[]` (PDF 26 pages).
+- **Docs:** KT §10 (the transient, at-most-once and visibility bullets); the status lines in the
+  KT, ARCHITECTURE and the guide, which now say "re-review pending"; and guide case 10-C.
+
+**SA-006's fresh review requested changes on 2026-09-28** (a new conversation, about
+15:08–15:35 IST). Receipt: [SA-006-review.md](evidence/SA-006-review.md). The review input
+`516d2aec…` was verified (18 files, 0 mismatches) and the diff `79ec6b54…` rebuilt
+independently. No SA-039 check was due. The review edited no code or docs, and nothing was
+committed, pushed, deployed or sent.
+
+- **F1 (medium; an acceptance criterion is not met), in one example.** A push service receives
+  a brief's push, then the connection drops before it answers. The drainer calls that
+  transient and sends it again a minute later, so the phone shows the brief twice. This was
+  reproduced with the real pywebpush and requests stack against a loopback push service, which
+  stored 2 copies. Today only a `ReadTimeout` counts as an unknown outcome.
+  - **The fix:** retry a push only when the exception shows the connection was never made
+    (`ConnectTimeout`, `NewConnectionError`, `NameResolutionError`). Treat anything else as an
+    unknown outcome, which dead-letters.
+- **F2 (low).** The dead letter for an account with no address reads "no email on file for
+  user 'u_…'". So the owner report shows a user id, although its contract says it shows none.
+  The fix is to drop the id.
+- **Everything else holds.**
+  - 112 focused tests passed.
+  - Full suite: 3825 passed, 12 skipped, 0 failed (11 min 26 s), data/logs/outputs unchanged.
+  - 10 of 10 reviewer mutations were caught, including the `590bc9f` owner fallback.
+  - The broad-except guard is OK, and `check_kt_docs` errors are `[]`.
+
+**SA-006 was implemented on 2026-09-28** (one conversation, about 13:15–15:05 IST, baseline
+`9e65c7a`). Receipt: [SA-006-implementation.md](evidence/SA-006-implementation.md). No SA-039
+check was due. Nothing was committed, pushed, deployed or sent.
+
+- **What it does, in one example.** A beta account's brief meets a locked `users.db`: before, it
+  went to the owner's `DELIVERY_EMAIL_TO`; now it waits a minute and goes to the account's own
+  address, once. The owner's brief meets a rejected Gmail password: before, 3 tries and a raw
+  error; now one try and a dead letter saying "check SMTP_USER and SMTP_PASSWORD".
+- **The contract:** every transport returns a `SendResult`, meaning acceptance, never receipt.
+  Transient failures retry on the backoff or the provider's `Retry-After` (capped at 6 h).
+  Permanent ones dead-letter at once with a hint. Unknown outcomes (a drop inside the SMTP send,
+  a push read timeout, a process killed mid-send) dead-letter and are never re-sent. Resend gets
+  a per-row `Idempotency-Key`. Reasons and logs are redacted. `GET /delivery/outbox` (owner)
+  shows counts, dead letters and retrying rows, with `delivered` shown as `accepted`. Dead
+  letters are kept 180 days (payload cleared at 30). Pushes carry a 12 h TTL (pywebpush's default
+  0 lets a push service drop them).
+- **Production, read-only:** the live deploy `b3fb00dd` logged 3 outbox enqueues, 0 dead letters
+  and 0 send failures from 27 Sep 16:05 to 28 Sep 12:01. The 23 Sep probe had 8 email rows
+  accepted and 0 dead since the Pro redeploy. SMTP works; SA-006 does not change transport
+  selection. A read-only outbox probe for the owner is `analysis_data/sa006/prod_probe_outbox.py`
+  (not yet run in production).
+- **Tests:** full suite 3825 passed, 12 skipped, 0 failed (SA-005's 3800 plus 25 new), with
+  `data/`, `logs/` and `outputs/` unchanged; 22 new invariant tests at the network boundary
+  (fake relay, Resend and push service count what they accepted); 16 of 16 mutations caught,
+  including the `590bc9f` owner fallback; broad-except guard OK; `check_kt_docs` errors `[]`;
+  PDF rebuilt (26 pages).
+- **Found and routed to SA-031:** `scripts/docs/run_kt_checks.py` has not run since SA-005 (it
+  does not copy the tracked seed `data/nse/key_registry.json`, exits 4 and then prints a stale
+  24 Sep XML); a Windows rename flake in `core/ipo/signals.py`.
+- **Nine decisions for the reviewer,** in the receipt (D1 at most once; D3 stored status stays
+  `delivered`, reported as `accepted`; D5 dead-letter retention; D6 push TTL; D8 direct senders
+  stay direct).
+- **Open:** receipt is not observed (no webhooks); direct senders (monthly report, heartbeat,
+  backup) have no retry; no dead-letter alert (SA-011); CI never ran.
+
+- **Earlier plan note:** SA-006 was the first planned `todo` story in STATE's order whose
+  dependencies are done. SA-005's acceptance also unblocked [SA-012](stories/SA-012.md).
 
 **SA-005 was ACCEPTED on 2026-09-28 by a fresh-session review** (a new conversation, about
 07:25–07:55 IST). Receipt: [SA-005-review.md](evidence/SA-005-review.md). SA-005 is `done`. Its
@@ -93,7 +246,7 @@ was due. The review committed, pushed and deployed nothing.
   - **The push was held for the window.** The word came at 07:58, inside the 07:25–09:05
     morning-job window (`ipo_refresh_am` 08:00, `preopen_shock_check` 08:45, `morning_brief`
     08:50, `macro_market_news` 09:00). A push then would have restarted the container about
-    08:06, during the IPO refresh. The push goes out after 09:05, in the gap before 11:55. It
+    08:06, during the IPO refresh. (Superseded: the owner put the push on hold at 08:46 IST; see step 1.) It
     carries `7901f35`, `48143ed` and the KT bump, and it is CI's first run: afterwards, read
     the Actions page and record the three jobs against SA-005 (human case 12-E).
 

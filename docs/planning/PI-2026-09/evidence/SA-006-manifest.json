@@ -1,0 +1,110 @@
+{
+  "story": "SA-006",
+  "phase": "implementation, rework 1 (review F1 and F2)",
+  "baseline": "9e65c7a955c7c408191857ec556f697be7c34c89",
+  "previous_review_input": {
+    "manifest": "docs/planning/PI-2026-09/evidence/SA-006-manifest-review1.json",
+    "sha256": "516d2aec6ab365c08295e69fad0681f921edbba06810c810a73c870ceb14bb0d",
+    "verdict": "changes_requested"
+  },
+  "excluded": [
+    "docs/planning/PI-2026-09/STATE.json",
+    "docs/planning/PI-2026-09/HANDOFF.md",
+    "docs/planning/PI-2026-09/evidence/SA-006-implementation.md",
+    "docs/planning/PI-2026-09/evidence/SA-006-review.md",
+    "docs/planning/PI-2026-09/evidence/SA-006-manifest-review1.json"
+  ],
+  "hash_convention": "git blob bytes after .gitattributes normalization (CRLF->LF for text, binary unchanged); verify with scripts/docs/kt_manifest.py verify",
+  "files": [
+    {
+      "path": "CODEBASE.md",
+      "git_blob": "0dfd18fded7425c59d6e90e3fe625a0b8bec145d",
+      "sha256": "16e85505c9759bf6b95395f07765877e4096528b0d9831590a1992a0600a7ad5"
+    },
+    {
+      "path": "config.yaml",
+      "git_blob": "c9a807081b1edf67dd86766952fe124dee0c7060",
+      "sha256": "705853f0fc9e8add300bea9779649a2c44d213abfeaab2a9e7d44f94310cf27f"
+    },
+    {
+      "path": "core/delivery/channels.py",
+      "git_blob": "08b2dd307bbfccf7ecc2b4a76c171d67e632af38",
+      "sha256": "c420cd6ecd68e462544a50423961fa1bf6df3c11522d764fe9436ba8210ed5a7"
+    },
+    {
+      "path": "core/delivery/outbox.py",
+      "git_blob": "fc96eb87170ed8df59148dfb7510397a7a9f88cd",
+      "sha256": "c6200f807c990f3dbaac6d51c513702176b12b931dd37a674cfaeef51966a481"
+    },
+    {
+      "path": "core/portfolio/retention.py",
+      "git_blob": "ca61f760633c8a92e619590d5f7d44f5666bfd15",
+      "sha256": "18ea488fcdbb50e0132dde727aac8047930f845dbd312deab7ae2c62da9b02f8"
+    },
+    {
+      "path": "docs/ARCHITECTURE.md",
+      "git_blob": "2a3e6ade1de92e03150f9f9f4d4b6497595f6038",
+      "sha256": "8d96154dbf264a1a9a440c5353eff4c5bc12ddde893a48eb69436f2ce75d77f7"
+    },
+    {
+      "path": "docs/StockAgent-Three-Loops.pdf",
+      "git_blob": "44756c871da282bec62d9172165e89281e99f550",
+      "sha256": "478ba959818f51a1d06bf6ffa0a17e632b80752f547ada62bb21054abf50b504"
+    },
+    {
+      "path": "docs/TEAM_TESTING_GUIDE.md",
+      "git_blob": "fe8a81f51187fe3ec55d3df5f137d5cc2063f00b",
+      "sha256": "914456754196ae25cb83f2418fdbdfb13697212d9b1fcc8c6d1941f5781eeccb"
+    },
+    {
+      "path": "docs/TECHNICAL_DESIGN.md",
+      "git_blob": "95d4e668ce5f5ce9877528ae1f6ddec19fdcea03",
+      "sha256": "622c84378fae7c653fb5694045b1ff07590e6aaa4b329bc53e1c48d4f266ae30"
+    },
+    {
+      "path": "docs/planning/PI-2026-09/stories/SA-011.md",
+      "git_blob": "c7d24dc0e47cc1e606619cce8567b51aef5cb5ae",
+      "sha256": "b71766ece9dbe7451b37c68077e59fbff60681b85eee142bc1083f4387e327ab"
+    },
+    {
+      "path": "docs/planning/PI-2026-09/stories/SA-031.md",
+      "git_blob": "f9e4b876ff80c51718fd9580b130bba857068723",
+      "sha256": "c2a685504a9a79d34d485f9ad54dd9997d0a18806b86d1df3bccbd5675d9c2ed"
+    },
+    {
+      "path": "services/api/routes/delivery_api.py",
+      "git_blob": "bb7a747b26349c9a2414da73fb0bbcf8339e6b52",
+      "sha256": "22c9e0cd8d2e83957e82e543a260ca2a8f8641c19a4095c1c42192daa19631a5"
+    },
+    {
+      "path": "services/data/stores/atlas_store.py",
+      "git_blob": "f7f7c38f5a634f1afa39e97fd5d5fab2ed06c7c2",
+      "sha256": "08a3b075e9c513242d4de00ccd6da53daefbad8b5a0dd8f8a52dd3f42e7d7423"
+    },
+    {
+      "path": "services/scheduler/python/scheduler.py",
+      "git_blob": "fd7522e3b4028719d27c030fa67807c4a4d8bae0",
+      "sha256": "4f69e5cdb21fa6acc8651db8a7db9ea882628e667a330b9cd6c5a6945ef1a3b2"
+    },
+    {
+      "path": "tests/unit/test_atlas_outbox.py",
+      "git_blob": "253081f400ff5f1c37f9480c1c1fd1e549190bc5",
+      "sha256": "88e3666ca2f7f5e0a449e6320dab9a3f5ed1605402a4b54ba0bb934b5d37bc52"
+    },
+    {
+      "path": "tests/unit/test_atlas_retention.py",
+      "git_blob": "8f3e5c00e1a8f6b1e1e514cf960be5984808a572",
+      "sha256": "f3a43c8869c209d4188e1a2ab67206bc025e12b23e2fa263701b1afd6cb3251f"
+    },
+    {
+      "path": "tests/unit/test_delivery_channels.py",
+      "git_blob": "16fafce675b6703ca5ef318781882c44c627622f",
+      "sha256": "23544cacd54ca7e408c414d59f8ed086030e7fa2a46f18c0cb7010c3b234064e"
+    },
+    {
+      "path": "tests/unit/test_delivery_sa006_invariants.py",
+      "git_blob": "d315f8177bb2162d2ed0904e8ae10fe468f6dabb",
+      "sha256": "900d525b323f0616d02041b4f465109859d2b0cf4e798c6189dfe337952cd858"
+    }
+  ]
+}

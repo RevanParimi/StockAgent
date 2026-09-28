@@ -248,10 +248,11 @@ Use dedicated test recipients and a prepared delivery-failure scenario.
 | Case | Tester action | Expected result |
 |---|---|---|
 | 10-A | Compare the stored brief/digest with inbox/email/push versions. | Same date, symbol, advice and action reason. A shortened push still opens the intended detail. |
-| 10-B | Record queue/provider status and actual test-recipient receipt. | Stored or provider-accepted is not called received/read without corresponding evidence. |
-| 10-C | Observe engineering's failed-transport and retry scenario. | Failure and final undelivered state remain visible, each with a stated reason (not a bare "failed"); no unexplained duplicate message. **PI target: SA-006.** |
+| 10-B | Record queue/provider status and actual test-recipient receipt. | Stored or provider-accepted is not called received/read without corresponding evidence. The owner's outbox view (`GET /delivery/outbox`) shows `accepted`, never `delivered` or `received`, and states that receipt is not observed. **SA-006: accepted, not yet deployed.** |
+| 10-C | Observe engineering's failed-transport and retry scenario: one temporary failure (for example the mail server unreachable for a minute) and one permanent one (a wrong mail password on a test deployment). | The temporary failure is retried and arrives once. The permanent one is tried once and becomes a dead letter whose reason names what to fix ("check SMTP_USER and SMTP_PASSWORD"). Both stay visible in the outbox view with their reasons; no duplicate message, and no phone shows the same notification twice. **SA-006: accepted, not yet deployed.** |
 | 10-D | Check one portfolio escalation and one watchdog notice on desktop and phone. | Correct recipient/content, readable layout and relevant destination; operational notices are distinguishable from investment advice. |
-| 10-E | With two dedicated test accounts on different addresses, ask engineering to send each one scheduled brief. | Each address receives only its own account's brief. Nothing reaches the owner or fallback inbox, including when engineering simulates a failed account lookup. **PI target: SA-006.** |
+| 10-E | With two dedicated test accounts on different addresses, ask engineering to send each one scheduled brief. | Each address receives only its own account's brief. Nothing reaches the owner or fallback inbox, including when engineering simulates a failed account lookup. **SA-006: accepted, not yet deployed.** |
+| 10-F | Put a test phone with alerts enabled in airplane mode for ten minutes across a scheduled push, then reconnect it. | The notification arrives after reconnecting (pushes are held for up to 12 hours). Record the send and arrival times. **SA-006: accepted, not yet deployed; the effect was not measured before.** |
 
 **Deliverable:** message ID/date, content match, transport state, receipt time
 and screenshot. Related PI: SA-006, SA-011, SA-024. A delivered backup email

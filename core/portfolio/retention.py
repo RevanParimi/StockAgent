@@ -31,6 +31,10 @@ def _outbox_cap_days():
     return cfg("delivery.outbox_retention_days", fallback=30)
 
 
+def _dead_letter_cap_days():
+    return cfg("delivery.outbox_dead_letter_retention_days", fallback=180)
+
+
 def _value_history_cap():
     return cfg("atlas.retention.value_history_cap", fallback=400)
 
@@ -51,19 +55,35 @@ def _prune_ticker_verdicts() -> int:
 
 
 def _prune_outbox() -> int:
-    """Drop delivered/dead outbox rows older than the cap. Queued/sending rows are
-    never pruned regardless of age. Returns rows removed."""
-    days = _outbox_cap_days()
-    if not days or int(days) <= 0:
-        return 0
-    cutoff = (datetime.now(timezone.utc) - timedelta(days=int(days))).isoformat(timespec="seconds")
+    """Drop delivered outbox rows older than the outbox cap. Queued/sending rows
+    are never pruned regardless of age. Returns rows removed.
+
+    SA-006: dead letters are the delivery history, so they outlive delivered
+    rows. At the outbox cap only a dead row's payload is cleared (the message
+    content is private and stale by then); the row — channel, kind, attempts,
+    last_error — stays until the dead-letter cap."""
+    removed = 0
+    now = datetime.now(timezone.utc)
     conn = atlas_store._get_conn()
-    with atlas_store._lock:
-        cur = conn.execute(
-            "DELETE FROM outbox WHERE status IN ('delivered','dead') AND created_at < ?",
-            (cutoff,))
-        conn.commit()
-    return cur.rowcount or 0
+    days = _outbox_cap_days()
+    if days and int(days) > 0:
+        cutoff = (now - timedelta(days=int(days))).isoformat(timespec="seconds")
+        with atlas_store._lock:
+            cur = conn.execute(
+                "DELETE FROM outbox WHERE status='delivered' AND created_at < ?", (cutoff,))
+            removed += cur.rowcount or 0
+            conn.execute("UPDATE outbox SET payload_ref='{}' WHERE status='dead'"
+                         " AND created_at < ? AND payload_ref != '{}'", (cutoff,))
+            conn.commit()
+    dead_days = _dead_letter_cap_days()
+    if dead_days and int(dead_days) > 0:
+        cutoff = (now - timedelta(days=int(dead_days))).isoformat(timespec="seconds")
+        with atlas_store._lock:
+            cur = conn.execute(
+                "DELETE FROM outbox WHERE status='dead' AND created_at < ?", (cutoff,))
+            removed += cur.rowcount or 0
+            conn.commit()
+    return removed
 
 
 def _prune_value_history() -> int:

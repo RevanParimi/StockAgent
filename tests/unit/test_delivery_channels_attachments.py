@@ -32,6 +32,9 @@ def _enable_email(monkeypatch):
     monkeypatch.setattr(channels.settings, "SMTP_USER", "u@test")
     monkeypatch.setattr(channels.settings, "SMTP_PASSWORD", "pw")
     monkeypatch.setattr(channels.settings, "DELIVERY_EMAIL_TO", "to@test")
+    # No "Open StockAgent" footer: these tests compare the body exactly, and
+    # APP_PUBLIC_URL falls back to the production URL when unset (SA-005).
+    monkeypatch.setattr(channels.settings, "APP_PUBLIC_URL", "")
     monkeypatch.setattr(channels.smtplib, "SMTP", _FakeSMTP)
     _FakeSMTP.sent = []
 

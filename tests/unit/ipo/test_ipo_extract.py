@@ -18,7 +18,7 @@ from core.ipo.extract import (
 )
 from core.ipo.research import ResearchDoc, ResearchDossier
 
-FIX = Path("tests/fixtures/ipo_research")
+FIX = Path(__file__).resolve().parents[2] / "fixtures" / "ipo_research"
 CAPS = {"max_peers": 5, "max_anchors": 8, "max_proceeds": 5, "max_flags": 6}
 
 

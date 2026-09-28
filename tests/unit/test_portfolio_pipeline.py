@@ -55,6 +55,10 @@ def test_pipeline_skips_non_trading_day(monkeypatch, tmp_path):
 
 def test_pipeline_end_to_end(monkeypatch, tmp_path):
     # One user, one holding; every external surface faked.
+    # Atlas OFF, stated: the fan-out below is the directory scan. config.yaml
+    # ships atlas.enabled: true, and these passed only where a developer's
+    # .env said false, or by test order (SA-005).
+    monkeypatch.setenv("ATLAS_ENABLED", "false")
     store = PortfolioStore(user_id="u", base_dir=str(tmp_path))
     store.add_holding(_holding())
 
@@ -100,6 +104,10 @@ def test_pipeline_end_to_end(monkeypatch, tmp_path):
 
 
 def test_pipeline_holding_failure_is_non_fatal(monkeypatch, tmp_path):
+    # Atlas OFF, stated: the fan-out below is the directory scan. config.yaml
+    # ships atlas.enabled: true, and these passed only where a developer's
+    # .env said false, or by test order (SA-005).
+    monkeypatch.setenv("ATLAS_ENABLED", "false")
     store = PortfolioStore(user_id="u", base_dir=str(tmp_path))
     store.add_holding(_holding(symbol="GOODSTK"))
     store.add_holding(_holding(symbol="BADSTK"))

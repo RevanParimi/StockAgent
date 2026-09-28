@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "pi": "PI-2026-09",
-  "updated_at": "2026-09-27",
+  "updated_at": "2026-09-28",
   "baseline_commit": "9a805878ed19c0cda7833d5b897ac05ee407436d",
   "audit": {
     "status": "complete",
@@ -9,7 +9,7 @@
     "production_modified": false
   },
   "active_task": null,
-  "next_task": "SA-005",
+  "next_task": "SA-006",
   "next_phase": "implementation",
   "scope": "One implementation or fresh-session review phase per conversation. Default queue is planned stories; stretch requires explicit promotion.",
   "pending_production_checks": [
@@ -331,16 +331,31 @@
       "points": 5,
       "priority": "P1",
       "scope": "planned",
-      "status": "todo",
+      "status": "done",
+      "implementation_started": "2026-09-27, a new conversation from about 16:25 IST, resumed 2026-09-28 about 06:45-07:45 IST; baseline 7901f35 (clean tree); no SA-039 check was due (P1 is Mon 28 Sep 17:00)",
       "depends_on": [],
-      "implementation_receipt": null,
-      "review_receipt": null,
-      "reviewed_revision": null,
-      "production_verification": {
-        "status": "not_started",
-        "evidence": null
+      "implementation_baseline": "7901f352c90ff265be9fa60166d93692d11b1a21",
+      "implementation_receipt": "docs/planning/PI-2026-09/evidence/SA-005-implementation.md",
+      "review_input_manifest": "docs/planning/PI-2026-09/evidence/SA-005-manifest.json",
+      "review_input_sha256": "ef0e3a3114981160d94ac2c7ee637d42292ebf79f8abbde08a864c63dd0d72d5",
+      "diff_sha256": "7274a199ecbb91e948257530cc6aa700af49f864cf4b25e8f6b2f5560ff22d5f",
+      "routed_notes": {
+        "SA-012": "pinned-date test runs (not done in SA-005; the SA-002 review's suggestion)",
+        "SA-018": "synthetic generator gives cycles 0 and 1 the same month (shared cycle id)",
+        "SA-029": "startup calendar check reads _ROOT/data while the calendar uses the working directory; the singleton-lock port makes startup machine-dependent",
+        "SA-031": "removed the TypeScript-client timeout contract test; other contract tests name retired clients"
       },
-      "blocked_reason": null
+      "review_receipt": "docs/planning/PI-2026-09/evidence/SA-005-review.md",
+      "reviewed_revision": "uncommitted working tree on 7901f352c90ff265be9fa60166d93692d11b1a21, pinned by review input ef0e3a3114981160d94ac2c7ee637d42292ebf79f8abbde08a864c63dd0d72d5 (diff 7274a199ecbb91e948257530cc6aa700af49f864cf4b25e8f6b2f5560ff22d5f), both rebuilt independently by the reviewer; plus documentation-only review edits (KT section 13, PDF, tests/TEST_DOCUMENTATION.md, SA-031 card); code, test, CI and tooling bytes as reviewed",
+      "production_verification": {
+        "status": "pending_deployment",
+        "evidence": "Accepted 2026-09-28 by a fresh-session review. No runtime change on Linux (the atomic_io retry runs on Windows only; run_eval gains an optional flag). What remains is the CI workflow's first run on GitHub, which needs the owner's push (every push redeploys): record the three jobs' results (human case 12-E), then the witnessed drill 12-F. Not committed, pushed or deployed."
+      },
+      "blocked_reason": null,
+      "review_outcomes": [
+        {"date": "2026-09-28", "verdict": "accepted", "context": "fresh-session review (new conversation, about 07:25-07:55 IST); no SA-039 check was due (P1 is 17:00 today); 13 peer sessions idle, input unchanged during the review", "reviewed_revision": "worktree on 7901f35 (uncommitted)", "review_input_sha256": "ef0e3a3114981160d94ac2c7ee637d42292ebf79f8abbde08a864c63dd0d72d5", "diff_sha256": "7274a199ecbb91e948257530cc6aa700af49f864cf4b25e8f6b2f5560ff22d5f", "findings": {"L1": "Low, reproduced (probes P2, P4, P5, P7): the boundary is Python-level. Not refused: a numeric-IP asyncio connect on the Windows proactor loop (ConnectEx); the checkout via an 8.3 or \\\\?\\ spelling (13,159 bytes read); os.listdir/exists and native I/O (pyarrow read 2,698 rows of a checkout parquet); SQLite file: URIs. The application reaches none today (one absolute checkout path, server.py:298, stubbed by api_worker_app). KT section 13 said 'any access'; the hermetic.py docstring says 'whatever path spelling'.", "L2": "Low, reproduced: check_broad_except keys are path|function|ordinal, so fixing one grandfathered silent handler and adding a new one in the same function leaves the key set unchanged and the check passes. Mutation X4 (any call counts as handling) is caught only by the real-tree baseline test.", "I1": "Info: a background thread's refused attempt is charged to whichever test is running (labelled with the thread name); loud, as the receipt describes.", "I2": "Info: the implementer's fresh copy ran under the 8.3 temp spelling (REVANP~1); the reviewer's long-path fresh copy gave the same result."}, "decisions": "Agreed with D1-D9. D3 checked: no TypeScript client tracked, config.yaml 180 since 1b5fe27 (2026-07-06), no frontend analysis timeout. D4: on Linux replace_with_retry is one os.replace. D8: all 3 lifespan-entering tests use api_worker_app.", "tests": "Owner's checkout (.env present): 3800 passed, 12 skipped, 0 failed (5 min 14 s); data/, logs/, outputs/ 800 files, 0 changed/added/removed. Reviewer's fresh copy (git archive 7901f35 + 51 manifest files, long path, no .env): 3799 passed, 13 skipped, 0 failed (4 min 13 s); git status empty, logs/ and outputs/ never created. Reviewer mutations X1, X3, X4, X5 (original F22 test), X6 (original F5 tests), X9: 6 of 6 caught. Probes: P1 yfinance real path refused and failed (libcurl backstop not reached); P6 the owner's real .env does not reach settings. Action pins = upstream tag commits (git ls-remote). Tokenizer scan of 730 files: no PEP 701 / 3.12-only syntax. check_broad_except OK (154); check_kt_docs errors [] before and after the review edits (final PDF source f407a930, 25 pages). Windows 11, Python 3.13.11, pytest 9.0.3.", "doc_edits": "KT section 13: the boundary's reach (L1) and the guard key's blind spot (L2); SA-005 status wording in KT sections 1, 10, 12 and the 13 heading; PDF rebuilt (source f407a930); tests/TEST_DOCUMENTATION.md rule 4 (L1); SA-031 routed-input section. verify SA-005-manifest.json now mismatches exactly these four files."}
+      ],
+      "routed_follow_ups": {"L1": "SA-031 (correct the hermetic.py docstring; optional hardening: long-name and \\\\?\\ expansion and file: URI parsing in _checkout_path, guard BaseProactorEventLoop.sock_connect)", "L2": "SA-031 (fingerprint handlers in the broad-except key; add a direct non-logging-call case)", "I1": "none", "I2": "none", "SA-012": "pinned-date test runs (implementation route)", "SA-018": "synthetic generator cycle-id collision (implementation route)", "SA-029": "startup calendar path; singleton-lock-dependent startup (implementation route)", "SA-031": "retired-client contract tests (implementation route)"}
     },
     {
       "id": "SA-006",
@@ -1323,6 +1338,17 @@
     }
   ],
   "history": [
+    {
+      "date": "2026-09-28",
+      "event": "SA-005 ACCEPTED by a fresh-session review (a new conversation, about 07:25-07:55 IST; no SA-039 check was due). Input ef0e3a31... verified (51 files, 0 mismatches, no unlisted change) and diff 7274a199... rebuilt independently; action pins match upstream tags. No critical/high/medium finding. L1 (low, reproduced): the boundary is Python-level (Windows numeric-IP asyncio connect, 8.3/\\\\?\\ path spellings, listdir/exists, pyarrow and SQLite file: URIs not refused; none reached by the app today) -> docs fixed in review, docstring and hardening -> SA-031. L2 (low, reproduced): a fix plus a new swallow in one function passes the broad-except guard -> SA-031. Owner's checkout 3800 passed/12 skipped/0 failed with data/logs/outputs unchanged; fresh copy 3799/13/0; 6 of 6 reviewer mutations caught (incl. the original F22 and F5 tests). Review edits docs only: KT section 13, PDF, tests/TEST_DOCUMENTATION.md, SA-031 card. SA-005 done; production_verification pending_deployment (CI's first GitHub run needs the owner's push). Next: SA-006 implementation in a new conversation (first ready story in STATE order); SA-012 is unblocked. Nothing committed, pushed or deployed.",
+      "review_receipt": "docs/planning/PI-2026-09/evidence/SA-005-review.md",
+      "review_input_sha256": "ef0e3a3114981160d94ac2c7ee637d42292ebf79f8abbde08a864c63dd0d72d5"
+    },
+    {
+      "date": "2026-09-28",
+      "event": "SA-005 implemented (a new conversation, 2026-09-27 about 16:25-17:30 IST and 2026-09-28 about 06:45-07:45 IST, baseline 7901f35; no SA-039 check was due): tests/hermetic.py, imported by tests/conftest.py before any app code, disables .env and removes every application env var, refuses non-loopback sockets/DNS and curl_cffi (yfinance's transport, invisible to the old socket guard), runs each test in an empty working directory seeded with the three tracked files read by relative path, and refuses any access to the checkout's data/logs/outputs (audit hook); a swallowed refusal still fails the test. Measured before: 286 Yahoo, 178 OpenRouter and 124 NSE attempts per run under the new guard; the old suite wrote 149 checkout paths and changed 15 local data files. CI: .github/workflows/ci.yml (Linux 3.11 tests, broad-except ratchet + check_kt_docs, browser suite; contents: read, no secrets), requirements-test.txt, scripts/ci/check_broad_except.py (154 grandfathered, not reviewed). Windows-only os.replace retry in atomic_io, push store and portfolio store. Tests: owner's checkout 3800 passed, 12 skipped, 0 failed, data/ unchanged; fresh git checkout 3799 passed, 13 skipped, 0 failed; reverse order found one leak (fixed); 12/12 mutations caught; check_kt_docs 0 errors, PDF rebuilt. Review input ef0e3a31... (51 files), diff 7274a199.... Routed: SA-012, SA-018, SA-029, SA-031. CI has not run (needs the owner's push). Nothing committed, pushed or deployed. Next: the fresh-session review in a new conversation.",
+      "review_input_sha256": "ef0e3a3114981160d94ac2c7ee637d42292ebf79f8abbde08a864c63dd0d72d5"
+    },
     {
       "date": "2026-09-27",
       "event": "SA-004 ACCEPTED by a fresh-session review (a new conversation, about 15:23-15:50 IST; no SA-039 check was due). Input a5e77a74... verified (0 mismatches) and diff 648b7b68... rebuilt independently; payload update 1 (5d9030e0..., docs only, arrived during the review from a concurrent planning session) re-verified, diff e16a8e3f... rebuilt, code/tests byte-identical. No critical/high/medium finding. F1 (low, reproduced): a wrong-typed same-session outcome record makes summarize raise before the portfolio pipeline -> SA-036; I1, I2 -> SA-036; I3 (test toggles the real managed_tickers.json) -> SA-005. Focused 376 passed; 5 reviewer mutations all caught (baseline F09: 30 failing); full tests/unit 3502 passed, 1 known rename flake, 5 skipped. Status wording updated, PDF rebuilt, check_kt_docs 0 errors. SA-004 done; production_verification pending_deployment. Nothing committed, pushed or deployed. Next: SA-005 implementation in a new conversation.",

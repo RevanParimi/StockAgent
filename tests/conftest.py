@@ -9,6 +9,18 @@ valuation_catalyst.
 
 from __future__ import annotations
 
+# SA-005: the hermetic boundary (no .env, no network, no checkout data) must be
+# in place before the first application import below. See tests/hermetic.py.
+from tests.hermetic import (  # noqa: F401  (pytest hooks, registered from this namespace)
+    pytest_report_header,
+    pytest_runtest_makereport,
+    pytest_runtest_setup,
+    pytest_runtest_teardown,
+    pytest_sessionfinish,
+    pytest_sessionstart,
+    pytest_terminal_summary,
+)
+
 import json
 from datetime import date
 from unittest.mock import MagicMock
@@ -43,6 +55,10 @@ from core.schemas.pipeline import (
 
 # ---------------------------------------------------------------------------
 # Delivery isolation — no test may ever use a real transport
+#
+# Since SA-005 every test already runs in an empty working directory, so the
+# relative data/ paths below can no longer reach the checkout. These fixtures
+# stay because tests read their exact tmp_path targets.
 # ---------------------------------------------------------------------------
 
 @pytest.fixture(autouse=True)
@@ -116,6 +132,22 @@ def _no_real_job_outcome_writes(monkeypatch, tmp_path):
     with the first), so a leftover record would leak between tests."""
     from services.data.stores import job_outcomes as _outcomes
     monkeypatch.setattr(_outcomes, "_OUTCOMES_PATH", tmp_path / "scheduler_job_outcomes.json")
+
+
+@pytest.fixture
+def api_worker_app(monkeypatch):
+    """services.api.server's app, whose lifespan starts as an API-only worker.
+
+    The singleton owner also refreshes the NSE calendar over the network,
+    starts the scheduler and runs the RL self-heal thread, which rebuilds a
+    missing month's envelope for every managed ticker (LLM and market calls,
+    in the background, into whichever test runs next). In an empty working
+    directory every envelope is missing. Enter it with
+    `with TestClient(api_worker_app) as c:` (SA-005)."""
+    from services.api import server
+    monkeypatch.setattr(server, "_acquire_singleton_lock", lambda: False)
+    monkeypatch.setattr(server, "_ensure_calendar_file", lambda: None)
+    return server.app
 
 
 # ---------------------------------------------------------------------------

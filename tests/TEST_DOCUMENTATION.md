@@ -1,131 +1,133 @@
-# Test Documentation — Automobile Agent
+# Test documentation
 
-## Overview
+For engineers running or adding tests. Updated 2026-09-27 for SA-005; the
+April 2026 version of this page described a layout that no longer exists.
 
-This folder contains the full test suite for the Automobile Agent system.
-Tests are written with **pytest** and use mocking extensively so that
-**no real LLM API calls or network access** are needed to run them.
+## Layout
 
----
+| Path | What it holds |
+|---|---|
+| `tests/unit/` | Most of the suite, mirroring `core/`, `services/` and `src/backend/`. |
+| `tests/integration/` | Several modules together: API routes, fetchers with mocked transports, stores. |
+| `tests/contract/` | JSON shapes and settings other components rely on. |
+| `tests/test_*.py` | Older top-level tests, collected with the rest. |
+| `tests/frontend/` | The SA-001 browser suite (Node and Chromium), run by `npm run test:frontend`. |
+| `tests/fixtures/` | Captured payloads. Read them through `Path(__file__)`, never a relative path. |
+| `tests/hermetic.py` | The suite's hermetic boundary, described below. |
 
-## Test Files
+## Running
 
-| File | Phase | What it tests |
-|---|---|---|
-| `conftest.py` | 1 | Shared fixtures and mock JSON factories used by all tests |
-| `test_config.py` | 1 | Config validation — weights, thresholds, LLM settings, RAG defaults |
-| `test_schemas.py` | 1 | Pydantic model validation — field bounds, defaults, auto-normalisation |
-| `test_agents_unit.py` | 1 | Per-agent JSON parsing — mocked LLM, no API calls |
-| `test_signal_aggregator.py` | 1 | Weighted fusion, conflict detection, fallback on bad JSON |
-| `test_orchestrator.py` | 1 | End-to-end pipeline with fully mocked agents and LLM |
-| `test_prompts.py` | 1 | Prompt template formatting — all placeholders resolve correctly |
-| `test_data_fetchers.py` | 2 | yfinance RSI/MACD/BB math, Serper/NewsAPI parsing, ContextBuilder routing |
-| `test_rag.py` | 3 | Embedder, VectorStore, chunking, DocumentIngester, RAGRetriever |
-| `test_scheduler.py` | 4 | ScoreStore CRUD/delta/prune, AlertManager channels, Scheduler dispatch |
-
----
-
-## Running the Tests
-
-### Prerequisites
-
-```bash
-cd automobile_agent
-pip install -r requirements.txt
+```text
+pip install -r requirements.txt -r requirements-test.txt
+python -m pytest tests                       # the whole tree, as CI runs it
+python -m pytest tests/unit/test_atomic_io.py -q
+npm ci && npx playwright install chromium && npm run test:frontend
+python scripts/ci/check_broad_except.py      # the broad-exception guard
 ```
 
-### Run all tests
+On this Windows checkout, use the project virtual environment
+(`.stockai/Scripts/python.exe`). The whole tree takes about 7 minutes there.
 
-```bash
-pytest tests/ -v
+No `.env`, network flag or `RL_LEARNING_MODE` setting is needed. The suite
+ignores all three (next section).
+
+## The hermetic boundary
+
+`tests/conftest.py` imports `tests/hermetic.py` before any application code.
+Four rules then hold for every test, on a laptop and in CI alike:
+
+1. **No `.env`, no shell settings.** dotenv is off, and every environment
+   variable the application reads is removed. Settings come from
+   `config.yaml` and the code fallbacks. A test that needs a value sets it:
+   `monkeypatch.setenv("ATLAS_ENABLED", "false")` or
+   `monkeypatch.setattr(settings, ...)`. Do not rely on an unset variable
+   meaning "off": `config.yaml` may say otherwise (it ships
+   `atlas.enabled: true`).
+2. **No outbound network.** Non-loopback sockets and DNS lookups, and every
+   `curl_cffi` request (yfinance's transport), raise `OutboundNetworkBlocked`.
+   Application code often swallows that error, so the boundary also fails the
+   test itself and names the target and the application line that made the
+   call. Loopback stays open.
+3. **An empty working directory.** The application keeps runtime state under
+   `data/` and `outputs/`, relative to the working directory (`/app` on
+   Railway). Each test runs in its own empty temporary directory, seeded only
+   with `config/milestones.yaml`, `config/sector_toggles.json` and
+   `data/nse/key_registry.json`, the tracked files the application reads by
+   relative path.
+4. **The checkout is off limits.** Any access to the checkout's `data/`,
+   `logs/` or `outputs/`, and any write anywhere else in it, raises
+   `CheckoutAccessBlocked` and fails the test. The hook sees Python's file
+   calls only: a directory listing, an existence check, a native library's
+   own file access (pyarrow, SQLite given a `file:` URI) and a Windows
+   short-name spelling of the checkout are not refused. Build paths from the
+   working directory or `tmp_path`, never from the checkout.
+
+### When a test fails at the boundary
+
+The failure reads like this:
+
+```text
+hermetic boundary (call): the test reached outside the sandbox (see tests/hermetic.py)
+  outbound network to openrouter.ai:443, from core/intelligence/rl/agents/thesis_reviewer.py:223 in _call_llm
 ```
 
-### Run with coverage
+Stub the seam the message names, at the lowest level the test does not
+exercise, and give it the answer the application gives when that call fails.
+For example, `ThesisReviewer._call_llm` returns an intact thesis, and
+`OffMarketFetcher.__init__` opens no NSE session. If the call came from a
+background thread (the message says so), look for a thread the test started:
+`with TestClient(app)` runs the app's startup, so use the `api_worker_app`
+fixture, which boots it as an API-only worker.
 
-```bash
-pytest tests/ --cov=. --cov-report=term-missing -v
-```
+The boundary does not reach child processes. A test that runs a subprocess
+must point its outputs at `tmp_path`, as `test_run_eval_cli.py` does with
+`--output-dir`.
 
-### Run a specific file
+## CI
 
-```bash
-pytest tests/test_config.py -v
-pytest tests/test_agents_unit.py -v
-```
+`.github/workflows/ci.yml` runs on every push to `main`, on pull requests and
+on demand. It uses Linux, Python 3.11 (the production image's interpreter),
+read-only repository access and no secrets. It has three jobs:
 
-### Run a specific test
+- the whole `tests/` tree;
+- `scripts/ci/check_broad_except.py` and `scripts/docs/check_kt_docs.py`;
+- the SA-001 browser suite in Chromium.
 
-```bash
-pytest tests/test_signal_aggregator.py::TestConflictDetection::test_conflict_detected_when_delta_exceeds_threshold -v
-```
-
----
-
-## Test Strategy
-
-### Unit tests (no I/O)
-- `test_config.py` — Pure Python assertions on constant values
-- `test_schemas.py` — Pydantic model instantiation; validates constraints
-- `test_prompts.py` — String `.format()` calls; no external deps
-- `test_agents_unit.py` — Agent `_parse_output()` called directly with pre-built dicts; `Groq` is mocked when `run()` is tested
-
-### Integration tests (mocked LLM)
-- `test_signal_aggregator.py` — Full `SignalAggregator.run()` with `Groq` patched
-- `test_orchestrator.py` — Full `AutomobileAgentOrchestrator.analyse()` with all sub-agents and `Groq` patched
-
----
-
-## Mock Strategy
-
-All `Groq` client calls are patched via `unittest.mock.patch`.
+The broad-exception guard fails when new code catches every exception
+(`except:`, `Exception`, `BaseException`, `contextlib.suppress(Exception)`)
+and neither logs, re-raises nor uses the exception. The handlers that did so
+before SA-005 are listed in `scripts/ci/broad_except_baseline.txt`, a
+burn-down list that was not reviewed entry by entry. A deliberate new boundary
+carries its reason on the `except` line:
 
 ```python
-@patch("agents.base_agent.Groq")
-def test_run_calls_llm(self, mock_groq_cls, maruti_query):
-    mock_instance = MagicMock()
-    mock_groq_cls.return_value = mock_instance
-    mock_instance.chat.completions.create.return_value = _mock_groq_response(
-        make_sales_demand_json()
-    )
-    ...
+except Exception:  # swallow-ok: best-effort cache warm-up; a miss is harmless
 ```
 
-Mock JSON factories (in `conftest.py`):
-- `make_sales_demand_json(score)` → valid Sales & Demand LLM response
-- `make_fundamentals_json(score)` → valid Fundamentals LLM response
-- `make_pattern_json(score)` → valid Pattern Analysis LLM response
-- `make_sentiment_json(score)` → valid Sentiment LLM response
-- `make_risk_macro_json(score)` → valid Risk & Macro LLM response
-- `make_aggregator_json(score)` → valid Signal Aggregator LLM response
+Test-only tools are pinned in `requirements-test.txt`. The runtime packages
+come from `requirements.txt`, which is still mostly unpinned until SA-033
+adds a lock.
 
----
+## Windows
 
-## Test Results Log
+Local runs use Python 3.13 on Windows; CI and production use 3.11 on Linux.
 
-| Date | Run | Pass | Fail | Notes |
-|---|---|---|---|---|
-| 2026-04-03 | Initial implementation | TBD | TBD | First run after setup |
+- On Windows, `os.replace` can fail for a moment with `PermissionError` while
+  another handle (a reader, an antivirus scan) holds the target. The shared
+  writer in `core/utils/atomic_io.py` retries it briefly, on Windows only,
+  and the push-subscription and portfolio stores use the same step. This used
+  to fail `test_delivery_api`, `test_ops_alerts` and `test_portfolio_locking`
+  intermittently.
+- The browser suite skips inside pytest when Node or Chromium is missing. CI
+  runs it as a separate job, so there it cannot be skipped.
 
-> Update this table after each significant test run.
+## Adding a test
 
----
-
-## Adding New Tests
-
-1. Create a new file `tests/test_<feature>.py`
-2. Import fixtures from `conftest.py` where possible
-3. Use `@patch("agents.base_agent.Groq")` to prevent real API calls
-4. Add a row to the table above
-5. Update this document with what the new file covers
-
----
-
-## Known Gaps / Future Tests
-
-- [ ] Live integration test against real Groq API (requires `GROQ_API_KEY`; mark `@pytest.mark.integration`)
-- [ ] Real yfinance integration test (requires network; mark `@pytest.mark.integration`)
-- [ ] Rate limit retry logic (requires injecting `RateLimitError` from groq SDK)
-- [ ] Output file generation tests for `--save` flag in `main.py`
-- [ ] `--list-tickers` CLI flag test
-- [ ] `scripts/ingest_documents.py` CLI argument parsing tests
-- [ ] End-to-end RAG round-trip: ingest a real PDF → retrieve relevant chunks
+1. Put it under `tests/unit/`, next to the module it covers.
+2. Derive the expected result independently: by hand, from the input, or from
+   a second source. Do not read it back from the code under test.
+3. Build the files it needs in `tmp_path`. For store paths, use the same
+   recipe as the existing tests: repoint the module's path constant and give
+   it a fresh connection holder.
+4. Mock transports at the seam the test does not exercise. If you miss one,
+   the boundary fails the test and names it.

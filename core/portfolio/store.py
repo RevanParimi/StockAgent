@@ -22,6 +22,7 @@ from pathlib import Path
 from filelock import FileLock
 
 from core.config import settings
+from core.utils.atomic_io import replace_with_retry
 from backend.shared.schemas.portfolio import (
     AdviceRecord,
     Holding,
@@ -113,7 +114,7 @@ class PortfolioStore:
         tmp = path.with_suffix(".tmp")
         try:
             tmp.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
-            tmp.replace(path)
+            replace_with_retry(tmp, path)
         except OSError as exc:
             logger.error("[PortfolioStore] Write failed for %s: %s", path.name, exc)
             try:

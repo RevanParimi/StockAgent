@@ -116,6 +116,10 @@ def _make_llm_response(content: str) -> MagicMock:
 async def test_unified_e2e_final_report_contract_parity(monkeypatch, run_mode):
     monkeypatch.setattr(bo_mod.settings, "UNIFIED_ANALYST_SECTORS", "automobile")
     monkeypatch.setattr(bo_mod.settings, "UNIFIED_ANALYST_FALLBACK_LEGACY", True)
+    # The run log's live price lookup (yfinance) stays in-process: {} is the
+    # logger's own answer when the lookup fails (SA-005).
+    import services.data.stores.analysis_logger as analysis_logger_mod
+    monkeypatch.setattr(analysis_logger_mod, "_fetch_price", lambda ticker: {})
 
     from backend.sectors.automobile.pipeline.orchestrator import AutomobileAgentOrchestrator
 

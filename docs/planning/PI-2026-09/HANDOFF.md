@@ -1,4 +1,4 @@
-# Current handoff - 2026-09-27 (updated about 15:50 IST)
+# Current handoff - 2026-09-28 (updated about 07:30 IST)
 
 ## START HERE — resume checklist, in order
 
@@ -38,11 +38,96 @@ the [activation record](evidence/SA-039-activation-2026-09-26.md) and in STATE.
     SA-003's `production_verification`. The [SA-003 receipt](evidence/SA-003-implementation.md)
     has the steps, under "Rollout", and the [review](evidence/SA-003-review.md) has F1 and F2.
 
-**1. Next PI phase: implement [SA-005](stories/SA-005.md)** (test isolation and the network
-guard), in a new conversation. Opener: `Continue`. Run step 0 first if a check is due by then (P1 is
-Mon 28 Sep 17:00). STATE: `active_task: null`, `next_task: SA-005`, `next_phase: implementation`.
-SA-005 is the first `todo` story with its dependencies done. It has no dependencies. Its card
-carries routed notes from every story so far. Read them first; the newest is I3 below.
+**1. Next PI phase: implement [SA-006](stories/SA-006.md)** (repair delivery transport and expose
+dead letters), in a new conversation. Opener: `Continue`. Run step 0 first if a check is due by
+then (P1 is today, Mon 28 Sep, 17:00 IST). STATE: `active_task: null`, `next_task: SA-006`,
+`next_phase: implementation`.
+
+- **Why SA-006:** it is the first planned `todo` story in STATE's order whose dependencies are done
+  (Sprint 2, P1, no dependencies). SA-007 and the other Sprint 1 cards (SA-033, SA-035, SA-036,
+  SA-038) come after it in the array; the owner may resequence. SA-005's acceptance also unblocks
+  [SA-012](stories/SA-012.md).
+
+**SA-005 was ACCEPTED on 2026-09-28 by a fresh-session review** (a new conversation, about
+07:25–07:55 IST). Receipt: [SA-005-review.md](evidence/SA-005-review.md). SA-005 is `done`. Its
+`production_verification` stays `pending_deployment`: CI has never run on GitHub. No SA-039 check
+was due. The review committed, pushed and deployed nothing.
+
+- **Input verified:** `ef0e3a31…` (51 files, 0 mismatches). The completeness check found no
+  unlisted change, and the diff `7274a199…` was rebuilt with the reviewer's own script. The three
+  action pins are the upstream tags' commits (`git ls-remote`).
+- **Tests:**
+  - owner's checkout (`.env` present): 3800 passed, 12 skipped, 0 failed. `data/`, `logs/` and
+    `outputs/` were unchanged (800 files);
+  - reviewer's fresh copy (`git archive 7901f35` plus the manifest, run from the long temp path):
+    3799 passed, 13 skipped, 0 failed. `git status` was empty afterwards, and `logs/` and
+    `outputs/` were never created;
+  - reviewer's 6 mutations: all caught. They include the original F22 defect (the old MARUTI
+    test fails without local data) and the F5 defect (the old outbox tests fail without
+    `DELIVERY_EMAIL_TO`);
+  - probes: yfinance's real call path is refused and fails the test (P1); the owner's real `.env`
+    does not reach settings (P6);
+  - no Python 3.12-only syntax in 730 files (a tokenizer scan, since `ast` feature_version misses
+    PEP 701).
+- **Findings.** None critical, high or medium.
+  - **L1 (low), in one example.** A test that read
+    `C:\Users\REVANP~1\…\data\nse\key_registry.json` (the 8.3 spelling of the checkout) got the
+    file instead of a refusal. The same holds for `listdir`/`exists`, pyarrow reads, SQLite
+    `file:` URIs and a numeric-IP connection on Windows' asyncio loop. The application reaches
+    none of these today. The KT and `tests/TEST_DOCUMENTATION.md` now say so; the docstring and
+    optional hardening go to [SA-031](stories/SA-031.md).
+  - **L2 (low):** fixing one grandfathered broad `except` and adding a new silent one in the same
+    function passes the guard. Routed to SA-031, and the KT states it.
+  - I1 and I2 are info only.
+- **Review edits (documentation only):** KT §13 (two passages) and the SA-005 status wording
+  (§1, §10, §12, the §13 heading), the PDF rebuilt (source `f407a930…`), `tests/TEST_DOCUMENTATION.md` rule 4, and the SA-031 card. `verify
+  SA-005-manifest.json` now mismatches exactly these four files. The code, test, CI and tooling
+  bytes are as reviewed.
+- **Not committed.** The commit and the push wait for the owner's word. Every push redeploys
+  (the safe window is 00:10–06:20 IST, or a job-free gap). That push is also CI's
+  first run: afterwards, read the Actions page and record the three jobs against SA-005 (human
+  case 12-E). The receipt's "At commit" applies: the commit after the one that lands SA-005 links
+  the new files and bumps the KT header past `241c393`. `7901f35` is still unpushed and rides the
+  same push.
+
+**Earlier: the SA-005 implementation (27–28 Sep).**
+
+- **SA-005 was implemented** in one conversation (27 Sep about 16:25–17:30 IST and 28 Sep about
+  06:45–07:45 IST, baseline `7901f35`). Receipt:
+  [SA-005-implementation.md](evidence/SA-005-implementation.md). No SA-039 check was due. Nothing
+  was committed, pushed or deployed.
+  - **What it does, in one example.** Before, the owner's test run loaded `.env`, and yfinance's
+    requests went out unseen by the old socket guard. The first run under the new boundary refused
+    286 Yahoo requests, 178 OpenRouter attempts and 124 NSE session attempts. The old suite also
+    changed 15 files in the local `data/`, including the MARUTI toggle (I3). Now every test runs in
+    an empty working directory, with no `.env` and no network, and the final run left `data/`
+    byte-identical.
+  - **The boundary:** `tests/hermetic.py`, imported first by `tests/conftest.py`. A test that
+    reaches the network or the checkout's `data/`, `logs/` or `outputs/` fails, naming the target
+    and the application line, even when the application swallowed the error.
+  - **CI:** `.github/workflows/ci.yml` (the whole tree on Linux / Python 3.11, the broad-except
+    ratchet and `check_kt_docs`, the browser suite; `contents: read`, no secrets),
+    `requirements-test.txt`, `scripts/ci/check_broad_except.py` (154 handlers grandfathered, not
+    reviewed one by one).
+  - **Nine decisions for the reviewer,** in the receipt. For example: D1 one working-directory
+    sandbox instead of ~40 path redirects; D3 an obsolete TypeScript-client contract test removed;
+    D4 a Windows-only rename retry in three production writers; D6 the guard is a whole-tree
+    ratchet.
+  - **Tests:** owner's checkout 3800 passed, 12 skipped, 0 failed; a fresh git checkout outside
+    OneDrive 3799 passed, 13 skipped, 0 failed; the reverse-order run found one leak, now fixed;
+    12 of 12 mutations caught; `check_kt_docs` 0 errors; PDF rebuilt.
+  - **Open:** CI has never run (it needs a push, and every push redeploys); no pinned-date run
+    (routed to SA-012); child processes are outside the boundary; cached store connections are
+    shared between tests.
+  - **Routed:** [SA-012](stories/SA-012.md), [SA-018](stories/SA-018.md),
+    [SA-029](stories/SA-029.md), [SA-031](stories/SA-031.md).
+  - **Local data restored.** The old suite's measurement run changed 15 files in `data/`; they
+    were restored from the ignored `analysis_data/sa005/data_before` copy and are identical to it.
+  - **Running tests here:** plain `python -m pytest tests`. `-p nonet` and
+    `RL_LEARNING_MODE=adapt` are no longer needed in this checkout; a checkout without SA-005
+    still needs them.
+
+**Earlier: SA-004 accepted, committed and deployed (27 Sep).**
 
 - **SA-004 was ACCEPTED on 2026-09-27 by a fresh-session review** (a new conversation, about
   15:23–15:50 IST). Receipt: [SA-004-review.md](evidence/SA-004-review.md). SA-004 is `done`. Its
@@ -184,7 +269,8 @@ carries routed notes from every story so far. Read them first; the newest is I3 
     - SA-004 would count that once; it does not stop the second run's learning writes.
   - **At commit:** the KT names `review_outcomes.py` in code formatting. The commit that lands
     SA-004 should link it and bump the KT header past `167f08b`.
-- Run every test with the network guard `-p nonet` and `RL_LEARNING_MODE=adapt` (see step 4).
+- Before SA-005: run every test with the network guard `-p nonet` and `RL_LEARNING_MODE=adapt`
+  (see step 4). With SA-005 in the checkout, plain `python -m pytest tests` is enough.
 - **SA-003 is committed, pushed and deployed** at the owner's word ("commit and push", about
   09:00 IST on Sun 27 Sep).
   - **Commits.** SA-003 is `167f08b`; the KT bump is `a61fafe`, which declares `167f08b`, links

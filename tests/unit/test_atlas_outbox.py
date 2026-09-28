@@ -188,7 +188,35 @@ def test_enqueue_message_stores_full_body_and_html(monkeypatch):
     assert len(email_payload["body"]) == 4000          # full body stored (no 1500 clip)
 
 
-def test_send_row_caps_push_and_passes_html_to_email(monkeypatch):
+@pytest.fixture()
+def account_u1(tmp_path, monkeypatch):
+    """A real account row for u1 in a throwaway users.db (SA-005). The email
+    rows resolve their recipient from it, as in production; the global
+    DELIVERY_EMAIL_TO fallback is empty, so nothing depends on a developer's
+    .env address."""
+    from services.data.stores import user_store
+    monkeypatch.setattr(user_store, "_DB_PATH", tmp_path / "users.db")
+    monkeypatch.setattr(user_store, "_conn_holder", {"conn": None})
+    monkeypatch.setattr(settings, "DELIVERY_EMAIL_TO", "")
+    user_store.create_user("u1@example.invalid", "pw-for-tests", "U One", user_id="u1")
+    yield "u1@example.invalid"
+    user_store._conn_holder["conn"].close()
+
+
+def test_send_row_without_an_account_or_fallback_is_refused(monkeypatch, account_u1):
+    """The premise the next tests rely on: no account and no fallback address
+    means no email is attempted."""
+    sent = []
+    monkeypatch.setattr(channels, "send_email_result",
+                        lambda *a, **k: (sent.append(k), (True, ""))[1])
+    payload = json.dumps({"title": "t", "body": "b", "url": "/"})
+    ok, reason = outbox._send_row(
+        {"id": 9, "user_id": "u_nobody", "channel": "email", "payload_ref": payload})
+    assert (ok, sent) == (False, [])
+    assert "no email on file for user 'u_nobody'" in reason
+
+
+def test_send_row_caps_push_and_passes_html_to_email(monkeypatch, account_u1):
     calls = {}
     # SA-006: _send_row now calls the *_result variants and returns (ok, reason).
     monkeypatch.setattr(channels, "send_push_result",
@@ -196,16 +224,16 @@ def test_send_row_caps_push_and_passes_html_to_email(monkeypatch):
                         (calls.__setitem__("push", body), (1, ""))[1])
     monkeypatch.setattr(channels, "send_email_result",
                         lambda title, body, html_body=None, to=None:
-                        (calls.__setitem__("email", (len(body), html_body)), (True, ""))[1])
+                        (calls.__setitem__("email", (len(body), html_body, to)), (True, ""))[1])
 
     payload = json.dumps({"title": "t", "body": "y" * 4000, "url": "/", "html": "<i>h</i>"})
     assert outbox._send_row({"id": 1, "user_id": "u1", "channel": "push", "payload_ref": payload}) == (True, "")
     assert len(calls["push"]) == 1500                   # push capped at send time
     assert outbox._send_row({"id": 2, "user_id": "u1", "channel": "email", "payload_ref": payload}) == (True, "")
-    assert calls["email"] == (4000, "<i>h</i>")         # email gets full body + html
+    assert calls["email"] == (4000, "<i>h</i>", account_u1)   # full body + html, to the account
 
 
-def test_send_row_returns_transport_reason(monkeypatch):
+def test_send_row_returns_transport_reason(monkeypatch, account_u1):
     """The reason travels back so drain_once can persist it (SA-006)."""
     monkeypatch.setattr(channels, "send_email_result",
                         lambda title, body, html_body=None, to=None:

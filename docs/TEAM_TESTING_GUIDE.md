@@ -285,9 +285,11 @@ production or inspect raw databases.
 | 12-B | Witness restoring a named backup into an isolated environment; open restored sample records. | Backup date and contents are known; portfolios/predictions can be read and reconciled. An archive merely existing is insufficient. **PI target: SA-007.** |
 | 12-C | Compare restored authoritative advice with a secondary projection. | Missing/stale projection is visible; the team can identify which records to trust. **PI target: SA-009/SA-030.** |
 | 12-D | Inspect a prepared run-cost report with retry/fallback activity. | Actual provider calls and attempts reconcile to totals, not just bundle sections or successful model calls. **PI target: SA-025.** |
+| 12-E | Open the repository's Actions page for the latest push to `main`, then the "Python tests" job log. | Three jobs ran: Python tests, the broad-except and KT guards, and the browser suite, all green. The test log's header line starts `hermetic: .env disabled`, the installed set shows Python 3.11, and no step uses a secret. **PI target: SA-005** (not yet pushed). |
+| 12-F | Witness a drill: engineering opens a throwaway pull request whose new test calls a real website and ignores the error. | The Python tests job fails. Its message names the website and the file and line that made the call, and says the test reached outside the sandbox. Close the pull request unmerged. **PI target: SA-005.** |
 
 **Deliverable:** witnessed drill result, tested backup/revision/date, record
-counts, remaining gaps and cost comparison. Related PI: SA-007, SA-009,
+counts, remaining gaps and cost comparison. Related PI: SA-005, SA-007, SA-009,
 SA-011, SA-025, SA-029, SA-030 (stretch).
 
 ## 15. Shared result template and final human decision

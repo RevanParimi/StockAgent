@@ -31,7 +31,7 @@ from core.ipo.verdict import decide_verdict
 from core.ipo.verdicts import IpoVerdictStore
 from tests.unit.ipo.test_ipo_extract import ReplayClient
 
-FIX = Path("tests/fixtures/ipo_research")
+FIX = Path(__file__).resolve().parents[2] / "fixtures" / "ipo_research"
 
 
 @pytest.fixture(autouse=True)

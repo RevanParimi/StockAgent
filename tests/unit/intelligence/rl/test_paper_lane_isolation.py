@@ -67,6 +67,9 @@ def _patch_common(dr, monkeypatch, actual_close: float = 98.0):
     import core.intelligence.rl.stores.offmarket_fetcher as offmarket_mod
     monkeypatch.setattr(offmarket_mod.OffMarketFetcher, "fetch_all",
                         lambda self, t, d: OffMarketSignals(date=d, ticker=t))
+    # ...and the constructor opens no live NSE session (SA-005).
+    monkeypatch.setattr(offmarket_mod.OffMarketFetcher, "__init__",
+                        lambda self: setattr(self, "_nse", None))
     import core.intelligence.rl.algorithms.factor_regime as factor_regime_mod
     monkeypatch.setattr(factor_regime_mod, "get_factor_regime", lambda *a, **k: None)
     import core.intelligence.rl.workflows.month_end_validation as mev

@@ -1,0 +1,12 @@
+# Test-only tooling, pinned (SA-005). Install alongside the runtime set:
+#
+#   pip install -r requirements.txt -r requirements-test.txt
+#
+# Runtime packages come from requirements.txt, which is still mostly
+# lower-bound only: locking them is SA-033's job, and CI will take its lock
+# as a constraints file when it lands. requirements.txt also still lists
+# pytest and friends under "# Testing"; moving them out is SA-028's, because
+# any edit to requirements.txt makes the next production build re-resolve
+# every unpinned package.
+pytest==9.0.3
+pytest-asyncio==1.3.0

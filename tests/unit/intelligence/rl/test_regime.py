@@ -301,6 +301,15 @@ class TestRegimeSnapshotSchema:
 # ---------------------------------------------------------------------------
 
 class TestRegimeDetectorDetect:
+    @pytest.fixture(autouse=True)
+    def _neutral_global_context(self, monkeypatch):
+        """detect() also reads Brent, USD/INR and the S&P 500 live, and escalates
+        the label on stress. Unpatched, these tests fetched real prices, so their
+        labels depended on that day's markets (SA-005). None is the detector's
+        own neutral answer when a fetch fails."""
+        monkeypatch.setattr(RegimeDetector, "_get_5d_pct", lambda self, ticker: None)
+        monkeypatch.setattr(RegimeDetector, "_get_last_session_pct", lambda self, ticker: None)
+
     def _make_df(self, closes: list[float]) -> pd.DataFrame:
         return pd.DataFrame({"Close": closes})
 

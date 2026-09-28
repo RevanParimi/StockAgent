@@ -25,7 +25,7 @@ from core.ipo.signals import IpoSignalSnapshot, IpoSignalStore
 from core.ipo.verdicts import IpoVerdictStore
 from tests.unit.ipo.test_ipo_extract import ReplayClient
 
-FIX = Path("tests/fixtures/ipo_research")
+FIX = Path(__file__).resolve().parents[2] / "fixtures" / "ipo_research"
 ON = date(2026, 9, 23)                      # VARMORA closes 2026-09-24: T-1
 
 

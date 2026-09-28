@@ -29,6 +29,7 @@ from email.mime.text import MIMEText
 from pathlib import Path
 
 from core.config import settings
+from core.utils.atomic_io import replace_with_retry
 
 logger = logging.getLogger(__name__)
 
@@ -63,7 +64,7 @@ class PushStore:
     def _save(self, data: dict) -> None:
         tmp = self._path.with_suffix(".tmp")
         tmp.write_text(json.dumps(data, indent=2), encoding="utf-8")
-        tmp.replace(self._path)
+        replace_with_retry(tmp, self._path)
 
     def add(self, subscription: dict, user_id: str | None = None) -> int:
         uid = user_id or settings.PORTFOLIO_DEFAULT_USER_ID

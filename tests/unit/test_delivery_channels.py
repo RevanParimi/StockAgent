@@ -56,15 +56,17 @@ def test_send_email_smtp_flow(monkeypatch):
     assert "https://app.example/" in decoded
 
 
-def test_with_app_link_appends_once_and_respects_unset():
+def test_with_app_link_appends_once_and_respects_unset(monkeypatch):
+    # monkeypatch, not assignment: the assignments below used to outlive the
+    # test, and a later email test passed only because of it (SA-005).
     # Appends when set…
-    ch.settings.APP_PUBLIC_URL = "https://app.example"
+    monkeypatch.setattr(ch.settings, "APP_PUBLIC_URL", "https://app.example")
     body = ch._with_app_link("hello")
     assert body.endswith("Open StockAgent → https://app.example/")
     # …idempotent — a body that already has the link is unchanged.
     assert ch._with_app_link(body) == body
     # …and a no-op when APP_PUBLIC_URL is empty.
-    ch.settings.APP_PUBLIC_URL = ""
+    monkeypatch.setattr(ch.settings, "APP_PUBLIC_URL", "")
     assert ch._with_app_link("hello") == "hello"
 
 
@@ -149,6 +151,8 @@ def test_send_push_zero_subscriptions_warns(tmp_path, monkeypatch, caplog):
 def test_deliver_warns_when_nothing_delivered(monkeypatch, caplog):
     import logging
     monkeypatch.setattr(ch.settings, "DELIVERY_ENABLED", True)
+    # The inline path: Atlas OFF, stated (config.yaml ships it on; SA-005).
+    monkeypatch.setenv("ATLAS_ENABLED", "false")
     monkeypatch.setattr(ch, "send_push", lambda *a, **k: 0)
     monkeypatch.setattr(ch, "send_email", lambda *a, **k: False)
     with caplog.at_level(logging.WARNING, logger="core.delivery.channels"):

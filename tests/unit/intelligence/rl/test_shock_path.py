@@ -133,6 +133,17 @@ def _patch_common(dr, monkeypatch, tmp_path, actual_close: float = 98.0):
         control_lane_mod, "_call_llm",
         lambda *a, **k: (control_payload, "test-control-model"))
 
+    # SA-005 (T1): fetch_all is stubbed above, but the constructor opened a
+    # live NSE session, and the thesis reviewer called OpenRouter whenever a
+    # test did not replace review(). Both now stay in-process: no session, and
+    # an intact thesis (the reviewer's own answer when its LLM fails).
+    monkeypatch.setattr(offmarket_mod.OffMarketFetcher, "__init__",
+                        lambda self: setattr(self, "_nse", None))
+    from core.intelligence.rl.agents.thesis_reviewer import ThesisReviewer
+    monkeypatch.setattr(ThesisReviewer, "_call_llm",
+                        lambda self, prompt: json.dumps({"thesis_intact": True,
+                                                         "horizon_confidence_multiplier": 1.0}))
+
 
 def _fb_output(miss_type: str, primary_miss_agent: str = "risk_macro"):
     from core.schemas.feedback import FeedbackAgentOutput

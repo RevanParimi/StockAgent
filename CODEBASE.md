@@ -115,7 +115,9 @@ StockAgent-main/
 ├── core/                          # Core intelligence layer (shared across sectors)
 │   ├── config/                    # Settings (config.yaml is the tunables source of truth)
 │   ├── utils/
-│   │   └── atomic_io.py           # mkstemp + os.replace atomic JSON/text writes (audit AUD-057)
+│   │   └── atomic_io.py           # mkstemp + os.replace atomic JSON/text writes (audit AUD-057);
+│   │                              #  replace_with_retry: Windows-only retry of a transient
+│   │                              #  PermissionError on the rename (SA-005)
 │   ├── intelligence/
 │   │   ├── rl/                    # Reinforcement learning feedback loop
 │   │   │   ├── agents/            # feedback_agent (direction scoring: NEUTRAL correct only on
@@ -196,8 +198,14 @@ StockAgent-main/
 │   ├── reasoning_bench.py         # Reasoning-tier model benchmark
 │   ├── gen_vapid_keys.py          # One-time VAPID keypair generation (web-push)
 │   ├── clean_ledger_errors.py     # One-off ledger repair utility
-│   └── seed_autopilot.py          # One-time Autopilot seed: equal-weight holdings + autopilot=True
-├── tests/                         # Test suite
+│   ├── seed_autopilot.py          # One-time Autopilot seed: equal-weight holdings + autopilot=True
+│   └── ci/check_broad_except.py   # CI guard: no new unlogged broad except (SA-005); the
+│                                  #  grandfathered handlers are in broad_except_baseline.txt
+├── tests/                         # Test suite (how to run: tests/TEST_DOCUMENTATION.md)
+│   ├── conftest.py                # Shared fixtures; imports hermetic.py before any app code
+│   ├── hermetic.py                # SA-005 boundary: no .env, no outbound network (sockets,
+│   │                              #  DNS, curl_cffi), each test in an empty working directory,
+│   │                              #  checkout data/ logs/ outputs/ unreachable
 │   ├── api/                       # API-level tests
 │   ├── contract/                  # Cross-module contract tests (LLM migration, scheduler wiring)
 │   ├── fixtures/                  # Shared test fixtures
@@ -219,6 +227,8 @@ StockAgent-main/
 │                                  #  its COPY set is dead in prod by construction
 ├── docker-compose.yml
 ├── pyproject.toml
+├── .github/workflows/ci.yml       # CI (SA-005): tests, guards and browser suite on Linux 3.11
+├── requirements-test.txt          # Pinned test-only tools (runtime set: requirements.txt)
 └── requirements.txt
 ```
 

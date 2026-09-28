@@ -15,7 +15,7 @@ import pytest
 from services.data.fetchers.ipo_offer import parse_offer_split
 
 _FIXTURE = json.loads(
-    pathlib.Path("tests/fixtures/ipo_issue_info_shapes.json").read_text(encoding="utf-8")
+    (pathlib.Path(__file__).resolve().parents[1] / "fixtures" / "ipo_issue_info_shapes.json").read_text(encoding="utf-8")
 )
 
 

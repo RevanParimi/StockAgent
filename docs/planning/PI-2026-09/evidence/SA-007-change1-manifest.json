@@ -1,0 +1,53 @@
+{
+  "story": "SA-007",
+  "phase": "change 1 (owner request B: weekly reminder while no off-site target is configured)",
+  "baseline": "cd33fc4ece7ab421d0b0c0227056237d86e2d076",
+  "excluded": [
+    "docs/planning/PI-2026-09/STATE.json",
+    "docs/planning/PI-2026-09/HANDOFF.md",
+    "docs/planning/PI-2026-09/evidence/SA-007-implementation.md"
+  ],
+  "hash_convention": "git blob bytes after .gitattributes normalization (CRLF->LF for text, binary unchanged); verify with scripts/docs/kt_manifest.py verify",
+  "files": [
+    {
+      "path": "config/milestones.yaml",
+      "git_blob": "5907444041417b3833421ebbee00cf68199489bb",
+      "sha256": "e403ec188aa6ee163a75203d1e92b36aed7c52785647c294019fa5c85d796d37"
+    },
+    {
+      "path": "core/ops/watchdog/checks.py",
+      "git_blob": "461a6072b2fc56bc6ad40e0e9e3b961319772395",
+      "sha256": "bace0a54449755d1db497d2bfade5c518d0f9525086a10e8bd8e809274ae6c5b"
+    },
+    {
+      "path": "core/ops/watchdog/engine.py",
+      "git_blob": "ba7c75f28bd1d0b3efcbd0959b12c7022923be35",
+      "sha256": "b7016c6e1437dd7c07f61d2fb0ff7f560815ab94507c081b3695ee7e9f9af852"
+    },
+    {
+      "path": "docs/StockAgent-Three-Loops.pdf",
+      "git_blob": "0309ff27ff6616d8af31faed0bc715aceb83b56b",
+      "sha256": "19a73842c42f869180381474681868af004efca1d548147b5963b28219bd40ac"
+    },
+    {
+      "path": "docs/TEAM_TESTING_GUIDE.md",
+      "git_blob": "b152460406060c253fc0ec13779c891f95b1e0da",
+      "sha256": "43f26e8983340bbd4bd946b0218fc56584423e5cd3bb9dbe5a04e234bcd1dbe4"
+    },
+    {
+      "path": "docs/TECHNICAL_DESIGN.md",
+      "git_blob": "7dc698643b1ca32323f3ddbaa91c62d9717cf9b7",
+      "sha256": "dac34b10edcdc1159f3c48814a1df9ad7d43c597ff728bda9e5a5ef0b8f44c8f"
+    },
+    {
+      "path": "tests/unit/ops/test_watchdog_backup.py",
+      "git_blob": "bd30da5453ac2e64f40ada7fd68751195d97c40f",
+      "sha256": "930f18725d9498190a8358bf789fcca0c3e84dda78d7e3712f19e1ed5db23933"
+    },
+    {
+      "path": "tests/unit/ops/test_watchdog_engine.py",
+      "git_blob": "452456ebb4ffb3aef1f78bd658b7ea5d0f6667e5",
+      "sha256": "15991899d37d154f6c1cc7b0b9dba377bd07224ab42e992b6af2e8cf9eaa7f32"
+    }
+  ]
+}

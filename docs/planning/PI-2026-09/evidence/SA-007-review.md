@@ -1,5 +1,138 @@
 # SA-007 review receipt — make backups independently recoverable
 
+## Change 1 fresh-session review: ACCEPTED (2026-09-29)
+
+- **What was reviewed:** change 1, the owner's option B. While no off-site target is configured,
+  the watchdog repeats "No off-site copy has ever been confirmed" weekly, not daily. Every real
+  failure still warns daily. The implementation is in the
+  [receipt](SA-007-implementation.md), section "Change 1".
+- **Context:** a fresh-session review in a new conversation, 2026-09-29 about 12:33–12:55 IST. It
+  is not the conversation that implemented change 1. It read the receipt's change-1 section, the
+  diff, the code it touches and its consumers.
+- **SA-039:** no check was due. P2 is at 17:00 IST today.
+- **Peers:** 27 other sessions. Every StockAgent session was idle at the start and before the
+  bookkeeping.
+- **Nothing** was committed, pushed, deployed, configured or sent. No production state was read.
+- **Verdict: accepted.** The change does what the owner asked, and nothing else slows down. There
+  is one low documentation finding (L1) and one informational one (I1), both fixed by review
+  edits to docs. No critical, high or medium finding.
+
+### Review input verified
+
+- **Manifest:** [SA-007-change1-manifest.json](SA-007-change1-manifest.json). The SHA-256 of its
+  LF bytes is `4cda0408e1923cc647e99747a416a66fab5b132cd4f3e9b70f07ec37351717b6`, as the receipt
+  states. `kt_manifest.py verify` gave 8 files and 0 mismatches before the review edits.
+- **Diff:** rebuilt with the reviewer's own script, which also hashes every manifest path with
+  `git hash-object` (8 of 8 blob ids match). It gave 7 text files, 22,290 bytes and SHA-256
+  `18525515823583279f30248d19fde43bf14e0df0122468c4010c289ab9738443`, the receipt's digest.
+- **Completeness:** `git diff --name-only cd33fc4` plus the untracked files gives exactly the 8
+  manifest paths, the 3 excluded bookkeeping files and the manifest itself. `cd33fc4` is HEAD.
+
+### Contract checked
+
+- **Engine.** `_repeat_due` with `repeat_days <= 1` returns `not notified_today`, the exact
+  expression it replaced, so every existing entry keeps its daily ladder. The slow path counts
+  whole days since `last_notified_date`, whatever that notice said. The monthly, lapsed,
+  `unknown` and lead-in paths do not read `repeat_days`.
+- **Check.** `backup_recoverable` returns `repeat_days=7` only after the status exists, the run is
+  36 h old or less, the drill passed, no copy was ever confirmed, the drill has no warnings and
+  `offsite.target` is empty.
+- **Producer.** The real job writes `target: None` only when `BACKUP_OFFSITE_TARGET` is unset or
+  blank: `config_from_settings` strips it, and `push` returns `OffsiteResult(None, …)` only then.
+  A target with no key, an unknown target and a failing store all keep the target name, so they
+  stay daily.
+- **Consumers.** `run_check` returns the check's own result, so `repeat_days` reaches the engine
+  in production. The runner is the only production caller. The state file's shape is unchanged,
+  so a revert needs no migration. A failed delivery leaves the state unadvanced, so a weekly
+  notice is retried the next morning. The scheduler runs the watchdog only at 06:30, not at boot.
+
+### Independent adversarial examples
+
+The reviewer's probes are in `analysis_data/sa007/review_change1/probe_change1.py` (ignored). Each
+status file is written by the real nightly job: a real archive, drill and `offsite.push`, with
+only the email stubbed. Each notice goes through the real runner: the registry entry,
+`run_check`, `evaluate` and the JSON state file, with delivery captured. The expected days come
+from the owner's request, not from the code. **7 of 7 passed.**
+
+| Probe | Example | Expected and observed |
+|---|---|---|
+| E1 | No target; the watchdog runs each morning from Wed 30 Sep for 15 days | Notices on 30 Sep, 7 Oct and 14 Oct only. The Sunday heartbeat emails (4 and 11 Oct) still list the state |
+| E2 | The deployed daily code notified on Wed 30 Sep; change 1 lands before Thu 06:30 | Silent Thu 1 to Tue 6 Oct; notice Wed 7 Oct. This is the receipt's rollout claim |
+| E3 | `BACKUP_OFFSITE_TARGET=s3` and no key; the real push reason | Daily on 3 of 3 days |
+| E4 | Weekly notice on day 0; the ledger is rewritten; the real drill flags it | Notices on day 1 and day 2, naming the ledger |
+| E5 | Delivery fails on the weekly day | Retried on day 1; next notice day 8 |
+| E6 | A copy was confirmed to a `dir` target, then the target is unset (rollback) | Daily, "the newest confirmed copy is N h old" |
+| E7 | Weekly on day 0; a half-done setup on day 3; unconfigured again on day 4 | Notices on days 0, 3 and 10, as decision C4 says |
+
+### Decisions
+
+- **C1 upheld.** A slower `schedule` or `window` on the registry entry would slow every failure
+  it reports. The pace on the result is the smallest change that keeps them daily (E3, E4, E6).
+- **C2 upheld** (E3). **C3 upheld** (E6).
+- **C4 upheld.** Consequence: after any daily notice, a return to the deferred state is silent
+  for up to six days. The owner's last notice may then describe a problem that has since
+  cleared. Silence still means "no daily-worthy problem", because a real one repeats daily, and
+  the Sunday heartbeat email lists the current state every week (E1).
+
+### Tests
+
+- The new tests fail for the behaviour they guard: the reviewer's own runtime mutations
+  (`analysis_data/sa007/review_change1/mut_plugin_c1.py`, no file edited) were **5 of 5
+  caught**:
+  - X1: an 8-day pace, an off-by-one (2 failing);
+  - X2: no target means weekly for every state (5 failing);
+  - X3: weekly keyed on the message, so a half-done setup is weekly too (1 failing);
+  - X4: the first reminder is never sent (3 failing);
+  - X5: the deferred state asks for daily (2 failing).
+- The expected days are counted by hand from the dates; they do not come from the engine. The
+  fixtures use no network, SMTP or push. The one registry-level test reads the real
+  `config/milestones.yaml` entry.
+
+### Findings
+
+| ID | Severity | Location | Evidence | Disposition |
+|---|---|---|---|---|
+| L1 | Low (docs) | `docs/TEAM_TESTING_GUIDE.md` 12-G | The row said that if engineering makes "a test copy's drill fail", the next morning's watchdog reports it. `python -m services.data.restore drill` never writes `backup_status.json`. Only `run_backup_job` does, through `_write_status`. A tester following 12-G would wait for a notice that cannot come | **Fixed in review.** 12-G now says which problems still warn daily (a failed drill, a flagged ledger, a job that has not run for 36 h), and that a hand-run drill (12-H) does not reach the watchdog |
+| I1 | Info (docs) | KT §1, §10, §11, §12; ARCHITECTURE; guide 12-B, 12-G, 12-H; LEGAL | They said SA-007 was "not yet deployed". Deploy `26b442f4` reached SUCCESS at 12:19:54 IST | **Fixed in review**, for SA-007 only. The SA-005 and SA-006 wording from the earlier review's I2 stays routed to the next KT bump or SA-031 |
+
+No code defect was found.
+
+### Commands and results
+
+Environment: Windows 11, `.stockai` venv (Python 3.13), repository root.
+
+| Check | Command | Result |
+|---|---|---|
+| Manifest | `python scripts/docs/kt_manifest.py verify docs/planning/PI-2026-09/evidence/SA-007-change1-manifest.json` | 8 files, 0 mismatches, `4cda0408…` (before the review edits) |
+| Diff | the reviewer's own script (scratchpad) | `18525515…`, 22,290 bytes, 7 text files; 8 of 8 blob ids |
+| Focused | `python -m pytest -q -p no:cacheprovider tests/unit/ops/ tests/unit/test_backup_offsite.py tests/unit/test_backup_recovery.py` | 202 passed |
+| Probes | `python -m pytest -c pyproject.toml --rootdir . -p tests.hermetic analysis_data/sa007/review_change1/probe_change1.py` | 7 passed |
+| Mutations | `SA007C1_MUT=<name> PYTHONPATH=analysis_data/sa007/review_change1 python -m pytest -p mut_plugin_c1 tests/unit/ops/test_watchdog_engine.py tests/unit/ops/test_watchdog_backup.py` | 5 of 5 caught |
+| Full suite | `python -m pytest -q -rfEs -p no:cacheprovider tests` | **3911 passed, 12 skipped, 0 failed** (6 min 06 s, 12:44–12:50 IST), the implementer's count; tracked `data/`, `logs/` and `outputs/` unchanged. It ran before the review's doc edits, and no test reads those docs |
+| Broad-except guard | `python scripts/ci/check_broad_except.py` | OK (154 grandfathered) |
+| KT check | `python scripts/docs/check_kt_docs.py` | errors `[]`, 28 pages, source `dac34b10…` before the edits. After the edits and `build_kt_pdf.py`: errors `[]`, 28 pages, 391 links, source `70a321ef…`, PDF blob `ac4e8139…` |
+
+**Not exercised:** the real scheduler trigger, real delivery (`emit_alerts_broadcast` was
+stubbed), any production read, and human case 12-G itself. Its first production observation is
+the Wed 30 Sep 06:30 watchdog.
+
+### Acceptance and what remains
+
+- **Owner request B:** met. The reminder is weekly while no target is configured (E1, E2). Every
+  real failure stays daily (E3–E6, and the implementer's tests).
+- **Docs:** the KT §10 "Visibility" example, guide 12-G, the registry action text and the engine
+  docstring describe the reviewed behaviour. The PDF matches its source.
+- **Reviewed revision:** the uncommitted working tree on `cd33fc4`, pinned by input `4cda0408…`
+  and diff `18525515…`. The review edits touch docs only: the KT, the PDF and the guide (manifest
+  files), plus ARCHITECTURE and LEGAL. So `verify SA-007-change1-manifest.json` now mismatches
+  exactly the KT, the PDF and the guide.
+- **Next:** the owner's word to commit and push, in a safe window (00:10–06:20 IST, or another
+  job-free window). Landing before Thu 1 Oct 06:30 IST gives the same notices as shipping today.
+  SA-007 is `done`. Its `production_verification` stays `pending_observation`: tonight's 23:30
+  backup, then the Wed 06:30 watchdog. After change 1 deploys, its own check is a silent
+  watchdog on the morning after the first weekly notice.
+- **Next story:** SA-008, in a new conversation.
+
 ## Fresh-session review: ACCEPTED (2026-09-29)
 
 - **Story:** [SA-007](../stories/SA-007.md). Audit finding F17.

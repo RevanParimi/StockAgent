@@ -34,6 +34,10 @@ class CheckResult:
     state: CheckState
     detail: str
     evidence: dict = field(default_factory=dict)
+    # While the entry stays pending/blocked, notify at most once every this
+    # many days. 1 (the default) is the usual daily warning; a check raises it
+    # only for a state the owner has knowingly deferred.
+    repeat_days: int = 1
 
 
 CHECKS: dict[str, Callable[[], CheckResult]] = {}
@@ -410,6 +414,17 @@ def backup_recoverable() -> CheckResult:
         return CheckResult("pending", f"{status.get('archive')} FAILED its restore drill "
                            f"({first}), so it was not sent off-site.", evidence)
     if copy_age is None:
+        if not offsite.get("target"):
+            # No target configured: the owner deferred the bucket (2026-09-29),
+            # so remind weekly. Data the drill flagged still warns daily.
+            if drill.get("warnings"):
+                return CheckResult("pending", f"The backup's drill flagged: "
+                                   f"{drill['warnings'][0]} (and no off-site target is "
+                                   "configured).", evidence)
+            return CheckResult("pending", f"No off-site copy has ever been confirmed ({reason}). "
+                               "Every backup sits on the volume it protects. This reminder "
+                               "repeats weekly until a target is configured.", evidence,
+                               repeat_days=7)
         return CheckResult("pending", f"No off-site copy has ever been confirmed ({reason}). "
                            "Every backup sits on the volume it protects.", evidence)
     if not offsite.get("confirmed"):

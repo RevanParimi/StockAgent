@@ -13,6 +13,95 @@
 - **Review input:** [SA-007-manifest.json](SA-007-manifest.json). Its SHA-256 and the diff digest
   are under "Manifest and digests".
 
+## Change 1 — a weekly reminder while no off-site target is configured (2026-09-29)
+
+- **Why.** On 2026-09-29 the owner deferred the bucket to the last task of the PI, to avoid
+  another cloud account for now. Once SA-007 is deployed, the watchdog would therefore say "No
+  off-site copy has ever been confirmed" every morning for weeks. The owner chose option B: remind
+  weekly while no target is configured, and keep every real failure daily.
+- **Phase.** This change was implemented at about 12:00–12:40 IST, in the same conversation as
+  SA-007's fresh review, at the owner's explicit request ("ya go with B and then push it"). That
+  departs from one phase per conversation, and it is recorded. **It needs its own fresh-session
+  review before it is committed or pushed.** The accepted SA-007 (`165d152` and the KT bump
+  `cd33fc4`) was pushed at 12:12:57 IST without it.
+- **Baseline:** `cd33fc4` (pushed; Railway deploy `26b442f4`).
+
+**In one example.** SA-007 is deployed today, and tonight's backup finds no target.
+- Wednesday 06:30: the watchdog reminds once.
+- Thursday to the next Tuesday: silent.
+- The next Wednesday: it reminds again.
+- If Friday night's drill fails, the job-error alert fires that night and Saturday's watchdog warns
+  as usual. Likewise, a ledger rewritten on Friday is reported on Saturday, even with no bucket.
+
+**The contract.**
+
+- `CheckResult` gains `repeat_days` (default 1): "while pending or blocked, notify at most once
+  every this many days".
+- `engine._repeat_due` keeps the daily path exactly as it was (`repeat_days <= 1` means "not
+  notified today"). The slower path counts days since the entry's last notice, whatever that notice
+  said.
+  - So a real failure the day after a weekly reminder still warns that day, because its result
+    carries `repeat_days=1`.
+- `backup_recoverable` returns `repeat_days=7` in exactly one state: the drill passed, no copy was
+  ever confirmed, and no target is configured.
+  - Unconfigured with drill warnings now names the warning daily. Before, the "not configured"
+    message masked it.
+  - A failed drill, a stopped job, a configured target that never worked (for example a target
+    without a key) and a target unset after copies existed all stay daily.
+
+**Decisions for the reviewer.**
+
+- **C1. The pace lives on the check's result, not on the registry entry.** A weekly `schedule` or
+  `window` for the entry would slow its real failures too.
+- **C2. A half-done setup stays daily.** A target set without a working key is a fault, not a
+  deferral.
+- **C3. Unsetting the target after copies existed (the rollback) stays daily.** It reads "last
+  night's off-site copy was not confirmed; the newest confirmed copy is N h old", and that copy
+  keeps ageing.
+- **C4. The 7 days restart from the entry's last notice of any kind.** A daily failure notice on
+  Monday, followed by "unconfigured" again, makes the next reminder due the following Monday.
+- **Not changed:** review F1 (the 36-hour limit) stays routed to SA-034.
+
+**Tests.**
+
+- 9 new tests:
+  - `tests/unit/ops/test_watchdog_engine.py`: weekly reminders on day 0, 7 and 14 over 15 days; a
+    daily state the day after a weekly reminder warns; the default is daily;
+  - `tests/unit/ops/test_watchdog_backup.py`: a configured target that never worked is daily;
+    flagged data is daily with no target; 3 real failures with no target are daily; the registry
+    entry, the check and the engine together over 10 days warn on days 0, 7 and 8 (a failed drill
+    on day 8).
+- The existing "no copy ever confirmed" test also asserts `repeat_days == 7`.
+- Focused: `tests/unit/ops/`, `test_backup_recovery.py` and `test_backup_offsite.py`, 202 passed.
+- **Mutations: 4 of 4 caught.** Each was applied to the source, and the file was restored and
+  checked by SHA-256:
+  - M1: the engine ignores `repeat_days` (2 failing);
+  - M2: the slow pace sticks to the entry (5 failing);
+  - M3: the check asks for daily (2 failing);
+  - M4: drill warnings are hidden behind the weekly reminder (1 failing).
+- Full suite: **3911 passed, 12 skipped, 0 failed** (6 min 37 s, 12:14–12:20 IST). That is SA-007's 3902 plus exactly the 9 new tests. `data/`, `logs/` and `outputs/` were unchanged.
+- `check_kt_docs` errors `[]`.
+
+**Documentation.**
+
+- KT §1 and the §10 heading: status.
+- KT §10 "Visibility": the weekly reminder, with the example.
+- Guide 12-G: the notice comes weekly, and a failure the next morning still reports.
+- The `milestones.yaml` action text and the engine's ladder docstring.
+- PDF rebuilt.
+
+**Review input:** [SA-007-change1-manifest.json](SA-007-change1-manifest.json), SHA-256 of its LF
+bytes `4cda0408e1923cc647e99747a416a66fab5b132cd4f3e9b70f07ec37351717b6` (8 files). The diff against `cd33fc4` is `18525515823583279f30248d19fde43bf14e0df0122468c4010c289ab9738443` (22,290 bytes over 7 text files; PDF blob `0309ff27…`): take every manifest path except the PDF,
+sorted, and concatenate `git diff --no-color --no-ext-diff cd33fc4 -- PATH`.
+
+**Review:** accepted by its fresh-session review on 2026-09-29. See
+[SA-007-review.md](SA-007-review.md), section "Change 1 fresh-session review".
+
+**Rollout.** After acceptance and the owner's word, commit and push in a safe window. If it lands
+before Thursday 06:30 IST, the notices are the same as if it had shipped today. Wednesday's first
+reminder happens either way, and the engine then keeps Thursday to Tuesday silent. Rollback:
+revert the commit, which restores the daily reminder.
+
 ## What it does, in one example
 
 On a night with the owner's bucket configured, the job at 23:30 IST builds

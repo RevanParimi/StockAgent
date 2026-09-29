@@ -63,6 +63,68 @@ def test_pending_when_no_copy_was_ever_confirmed(tmp_path, monkeypatch):
                 offsite={"target": None, "confirmed": False, "reason": reason})
     assert r.state == "pending"
     assert "No off-site copy has ever been confirmed" in r.detail and reason in r.detail
+    # The owner deferred the bucket (2026-09-29): remind weekly, not daily.
+    assert r.repeat_days == 7 and "repeats weekly" in r.detail
+
+
+def test_a_configured_target_that_never_worked_warns_daily(tmp_path, monkeypatch):
+    """A half-done setup (target set, key missing) is a fault, not a deferral."""
+    r = _status(tmp_path, monkeypatch, last_offsite_confirmed_at=None,
+                offsite={"target": "s3", "confirmed": False,
+                         "reason": "BACKUP_ENCRYPTION_KEY is unset; an unencrypted off-site "
+                                   "copy is refused"})
+    assert r.state == "pending" and r.repeat_days == 1
+    assert "No off-site copy has ever been confirmed (BACKUP_ENCRYPTION_KEY is unset" in r.detail
+
+
+def test_flagged_data_warns_daily_even_without_a_target(tmp_path, monkeypatch):
+    """Deferring the bucket must not slow down a rewritten-ledger warning."""
+    warning = "ledger portfolio/primary/transactions.jsonl was rewritten since x.zip"
+    r = _status(tmp_path, monkeypatch, last_offsite_confirmed_at=None,
+                drill={"ok": True, "errors": [], "warnings": [warning]},
+                offsite={"target": None, "confirmed": False,
+                         "reason": "not configured: BACKUP_OFFSITE_TARGET is unset"})
+    assert r.state == "pending" and r.repeat_days == 1
+    assert warning in r.detail and "no off-site target is configured" in r.detail
+
+
+_NO_TARGET = {"target": None, "confirmed": False,
+              "reason": "not configured: BACKUP_OFFSITE_TARGET is unset"}
+
+
+@pytest.mark.parametrize("state", [
+    {"drill": {"ok": False, "errors": ["users.db: schema differs"], "warnings": []},
+     "last_offsite_confirmed_at": None},                          # the drill failed
+    {"last_run_at": _ago(40), "last_offsite_confirmed_at": None},  # the job stopped
+    {"last_offsite_confirmed_at": _ago(31)},                       # target unset after copies existed
+])
+def test_every_real_failure_stays_daily_without_a_target_too(tmp_path, monkeypatch, state):
+    r = _status(tmp_path, monkeypatch, offsite=_NO_TARGET, **state)
+    assert r.state == "pending" and r.repeat_days == 1, r.detail
+
+
+def test_weekly_reminder_through_the_real_registry_and_ladder(tmp_path, monkeypatch):
+    """The registry entry, the check and the engine together: with no target the
+    owner hears on day 0 and day 7; a failed drill on day 8 warns that day."""
+    from datetime import date as _date
+
+    from core.ops.watchdog.engine import evaluate
+    from zoneinfo import ZoneInfo
+    entry = next(e for e in load_registry("config/milestones.yaml") if e.id == "backup_recoverable")
+    unconfigured = {"last_offsite_confirmed_at": None,
+                    "offsite": {"target": None, "confirmed": False,
+                                "reason": "not configured: BACKUP_OFFSITE_TARGET is unset"}}
+    failed = dict(unconfigured, drill={"ok": False, "errors": ["users.db: schema differs"],
+                                       "warnings": []})
+    state, fired = {}, []
+    for day in range(10):
+        r = _status(tmp_path, monkeypatch, **(failed if day == 8 else unconfigured))
+        now = datetime.combine(_date(2026, 10, 1 + day), datetime.min.time(),
+                               tzinfo=ZoneInfo("Asia/Kolkata")).replace(hour=6, minute=30)
+        notes, state = evaluate([entry], {entry.id: r}, now, state)
+        if notes:
+            fired.append(day)
+    assert fired == [0, 7, 8]
 
 
 def test_pending_the_first_night_a_copy_is_missed(tmp_path, monkeypatch):

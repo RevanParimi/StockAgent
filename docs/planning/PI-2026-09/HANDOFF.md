@@ -1,4 +1,4 @@
-# Current handoff - 2026-09-29 (updated about 07:35 IST)
+# Current handoff - 2026-09-29 (updated about 12:55 IST)
 
 ## START HERE — resume checklist, in order
 
@@ -48,12 +48,53 @@ each in the [activation record](evidence/SA-039-activation-2026-09-26.md) and in
     SA-003's `production_verification`. The [SA-003 receipt](evidence/SA-003-implementation.md)
     has the steps, under "Rollout", and the [review](evidence/SA-003-review.md) has F1 and F2.
 
-**1. Next PI phase: implement SA-008** ([SA-008](stories/SA-008.md), quarantine unresolved
-securities with explicit lifecycle records), in a new conversation. Opener: `Continue`. STATE:
-`active_task: null`, `next_task: SA-008`, `next_phase: implementation`. Its dependency, SA-003,
-is done. By STATE file order it is the first ready story. Six Sprint-1 stories (SA-033, SA-035,
-SA-036, SA-038, SA-040, SA-042) come later in the file; taking one first needs the owner's word.
-**Run step 0 first** if P2 is due by then (Tue 29 Sep 17:00 IST).
+**1. SA-007 change 1 is ACCEPTED and uncommitted.** It needs the owner's word to commit and
+push, in a safe window (00:10–06:20 IST, or another job-free window). Landing before Thu 1 Oct
+06:30 IST gives exactly the notices it would have given if shipped today. The commit carries the
+change-1 files, the review edits (ARCHITECTURE, LEGAL) and this bookkeeping. A KT bump that
+declares the commit follows it, as usual; it should also fix the SA-005 and SA-006 status wording
+(the earlier review's I2).
+
+**2. Next PI phase: implement SA-008**, in a new conversation. Opener: `Continue`. STATE:
+`active_task: null`, `next_task: SA-008`, `next_phase: implementation`. Its dependency SA-003 is
+done. Six Sprint-1 stories (SA-033, SA-035, SA-036, SA-038, SA-040, SA-042) come later in the
+file; taking one first needs the owner's word. **Run step 0 first** if a SA-039 check is due.
+
+**SA-007 change 1 was ACCEPTED on 2026-09-29 by a fresh-session review** (a new conversation,
+about 12:33–12:55 IST). Receipt: [SA-007-review.md](evidence/SA-007-review.md), section "Change
+1 fresh-session review". SA-007 is `done` again. No SA-039 check was due. Nothing was committed,
+pushed, deployed, configured or sent.
+
+- **What it is, in one example.** The owner deferred the off-site bucket to the last task of the
+  PI and chose option B (about 12:00 IST).
+  - The watchdog reminds "No off-site copy has ever been confirmed" once a week, not every
+    morning: Wednesday 06:30, then silence until the next Wednesday.
+  - A failed drill, a stopped job, a flagged ledger or a half-done setup still warns daily.
+- **Input verified:** `4cda0408…` (8 files, 0 mismatches, no unlisted change). The diff
+  `18525515…` was rebuilt with the reviewer's own script, and 8 of 8 blob ids match.
+- **Traced:**
+  - the engine's daily path is exactly the expression it replaced;
+  - `repeat_days` reaches the engine through `run_check` and the runner;
+  - the real job writes `target: None` only when `BACKUP_OFFSITE_TARGET` is unset.
+- **Reviewer probes, 7 of 7**, through the real nightly job and the real runner:
+  - weekly notices on 30 Sep, 7 Oct and 14 Oct;
+  - the rollout claim (the deployed code warns Wed 30 Sep; change 1 then keeps Thu–Tue silent);
+  - a half-done setup, a flagged ledger and a rollback stay daily;
+  - a failed delivery is retried the next day.
+- **Decisions C1–C4 upheld.** C4's cost: after any daily notice, a return to the deferred state
+  is silent for up to six days. The Sunday heartbeat still lists the state weekly.
+- **Findings, both fixed by docs-only review edits:**
+  - **L1 (low):** guide 12-G said a drill failed by hand on a test copy would reach the watchdog.
+    `restore drill` never writes `backup_status.json`.
+  - **I1 (info):** SA-007's "not yet deployed" wording was stale since `26b442f4`.
+- **Checks:** focused 202 passed; reviewer mutations 5 of 5 caught; full suite **3911 passed, 12 skipped, 0 failed** (6 min 06 s), `data/` unchanged;
+  broad-except OK; `check_kt_docs` errors `[]` (PDF 28 pages, source `70a321ef…`).
+- **Review edits (docs only):** KT §1, §10, §11 and §12; the PDF; guide 12-B, 12-G and 12-H;
+  ARCHITECTURE; LEGAL. `verify SA-007-change1-manifest.json` now mismatches exactly the KT, the
+  PDF and the guide.
+- **Production verification** stays `pending_observation`: tonight's 23:30 backup, then the
+  Wed 06:30 watchdog. After change 1 deploys, its own check is a silent watchdog on the morning
+  after the first weekly notice.
 
 **SA-007 was ACCEPTED on 2026-09-29 by a fresh-session review** (a new conversation, about
 07:05–07:35 IST). Receipt: [SA-007-review.md](evidence/SA-007-review.md). SA-007 is `done`. No
@@ -107,20 +148,31 @@ SA-039 check was due. Nothing was committed, pushed, deployed, configured or sen
   - **The next commit is the KT bump.** It declares `165d152` and links `offsite.py` and
     `restore.py`. The SA-007 status lines now say "committed as `165d152`". It also records
     `implementation_commit` and rebuilds the PDF (28 pages, `check_kt_docs` errors `[]`).
-- **The push is held for the morning window.**
-  - **Why:** the word came at 07:37, inside the 07:25–09:05 window (`ipo_refresh_am` 08:00,
-    `preopen_shock_check` 08:45, `morning_brief` 08:50, `macro_market_news` 09:00). Also,
-    `requirements.txt` changed (`cryptography` declared), so the Docker pip layer rebuilds and every
-    unpinned package re-resolves. That is about a 20-minute build.
-  - **When:** proposed right after 09:05 IST. The next blocked window is 11:55–12:05. It carries
-    `cdec78f`, `165d152` and the KT bump. Ask the owner per push. Until then the owner should not
-    press Sync in VS Code.
-  - **After the push:**
-    - check `railway deployment list` and the boot log (read-only);
-    - diff the build's installed packages against the previous build (SA-033 risk);
-    - read CI's three jobs, which are the first Linux / Python 3.11 run of SA-007's tests;
-    - at 06:30 IST the next morning, the watchdog should warn "No off-site copy has ever been
-      confirmed". That is expected until the bucket exists.
+- **Pushed and deployed.** The 07:37 word waited out the morning-job window.
+  - **The push:** `acf72d2..cd33fc4` at 12:12:57 IST, carrying `cdec78f`, `165d152` and
+    `cd33fc4`.
+  - **The deploy:** Railway `26b442f4` reached SUCCESS by 12:19:54 IST.
+    - Boot log: 124 lines, 0 tracebacks and 0 error or warning lines; the scheduler started
+      with 24 jobs.
+    - `/health` returns 200 `ok`.
+  - **Packages:** the pip layer reinstalled. Against the 27 Sep full build `0106fc89`, 6
+    transitive packages changed:
+    - `oauthlib` 3.3.1 → 4.0.0, a major version. It comes through chromadb → kubernetes →
+      requests-oauthlib, and no app code imports it. For SA-033's pinning;
+    - `coverage`, `filelock`, `peewee`, `platformdirs` and `regex`, minor or patch versions.
+    - `cryptography` 50.0.1 and every core package are unchanged.
+    - The raw build logs are in the ignored `analysis_data/sa007/deploy/`.
+  - **CI:** run `36532524605` passed 3 of 3 jobs. Python tests on Linux / 3.11 took 2 min 50 s,
+    so SA-007's tests pass there.
+  - **SA-007 `production_verification`: `pending_observation`.**
+    - Tonight's 23:30 backup is the first with a manifest and a drill. Its continuity will read
+      "not checked" against the old-format archive, and `backup_status.json` will say "not
+      configured".
+    - At 06:30 on Wed 30 Sep the watchdog should say "No off-site copy has ever been confirmed".
+      That is expected. It repeats daily until change 1 lands, then weekly.
+    - Off-site recovery stays unverified until the bucket. The owner deferred it to the last task
+      of the PI.
+  - STATE and HANDOFF record this uncommitted. It rides with change 1's commit.
 
 **SA-007 was implemented on 2026-09-29** (about 03:20–04:10 IST). Receipt:
 [SA-007-implementation.md](evidence/SA-007-implementation.md). Review input

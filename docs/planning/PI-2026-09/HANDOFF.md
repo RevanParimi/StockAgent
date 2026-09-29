@@ -48,12 +48,19 @@ each in the [activation record](evidence/SA-039-activation-2026-09-26.md) and in
     SA-003's `production_verification`. The [SA-003 receipt](evidence/SA-003-implementation.md)
     has the steps, under "Rollout", and the [review](evidence/SA-003-review.md) has F1 and F2.
 
-**1. SA-007 change 1 is ACCEPTED and uncommitted.** It needs the owner's word to commit and
-push, in a safe window (00:10–06:20 IST, or another job-free window). Landing before Thu 1 Oct
-06:30 IST gives exactly the notices it would have given if shipped today. The commit carries the
-change-1 files, the review edits (ARCHITECTURE, LEGAL) and this bookkeeping. A KT bump that
-declares the commit follows it, as usual; it should also fix the SA-005 and SA-006 status wording
-(the earlier review's I2).
+**1. SA-007 change 1 is committed as `8663387`** at the owner's word ("ya commit and push",
+about 14:37 IST). `verify SA-007-change1-manifest.json --rev 8663387` mismatches only the 3
+review-edited docs, so every reviewed code and test byte is committed as reviewed.
+
+- **The KT bump follows it.** It declares `8663387` (`check_kt_docs` errors `[]`, no linked
+  source changed since it, PDF 28 pages).
+- **The bump also fixes the routed status wording (the earlier review's I2)** in the KT,
+  ARCHITECTURE and the guide:
+  - SA-004 was deployed as `b3fb00dd` on 27 Sep;
+  - SA-005's CI first ran on 28 Sep (`36453992259`, 3 of 3 jobs);
+  - SA-006 was deployed as `00b94de9` on 28 Sep.
+- **The push is planned for 15:05–16:25 IST**, a job-free window after the 14:55–15:05 jobs.
+  The push and deploy result is recorded below once done.
 
 **2. Next PI phase: implement SA-008**, in a new conversation. Opener: `Continue`. STATE:
 `active_task: null`, `next_task: SA-008`, `next_phase: implementation`. Its dependency SA-003 is

@@ -99,8 +99,28 @@ SA-039 check was due. Nothing was committed, pushed, deployed, configured or sen
     until a bucket exists;
   - the bucket, key and `BACKUP_*` variables (deferred owner setup);
   - a recorded `restore fetch` from outside Railway.
-  The plaintext backup email (D7) is still the owner's decision. At the commit, link
-  `offsite.py` and `restore.py` in the KT bump.
+  The plaintext backup email (D7) is still the owner's decision.
+- **Committed at the owner's word** ("ya go ahead commit and push", about 07:37 IST Tue 29 Sep).
+  - **`165d152`:** SA-007 and its review bookkeeping. `verify SA-007-manifest.json --rev 165d152`
+    mismatches only the 5 review-edited docs, so every reviewed code and test byte is committed as
+    reviewed.
+  - **The next commit is the KT bump.** It declares `165d152` and links `offsite.py` and
+    `restore.py`. The SA-007 status lines now say "committed as `165d152`". It also records
+    `implementation_commit` and rebuilds the PDF (28 pages, `check_kt_docs` errors `[]`).
+- **The push is held for the morning window.**
+  - **Why:** the word came at 07:37, inside the 07:25–09:05 window (`ipo_refresh_am` 08:00,
+    `preopen_shock_check` 08:45, `morning_brief` 08:50, `macro_market_news` 09:00). Also,
+    `requirements.txt` changed (`cryptography` declared), so the Docker pip layer rebuilds and every
+    unpinned package re-resolves. That is about a 20-minute build.
+  - **When:** proposed right after 09:05 IST. The next blocked window is 11:55–12:05. It carries
+    `cdec78f`, `165d152` and the KT bump. Ask the owner per push. Until then the owner should not
+    press Sync in VS Code.
+  - **After the push:**
+    - check `railway deployment list` and the boot log (read-only);
+    - diff the build's installed packages against the previous build (SA-033 risk);
+    - read CI's three jobs, which are the first Linux / Python 3.11 run of SA-007's tests;
+    - at 06:30 IST the next morning, the watchdog should warn "No off-site copy has ever been
+      confirmed". That is expected until the bucket exists.
 
 **SA-007 was implemented on 2026-09-29** (about 03:20–04:10 IST). Receipt:
 [SA-007-implementation.md](evidence/SA-007-implementation.md). Review input

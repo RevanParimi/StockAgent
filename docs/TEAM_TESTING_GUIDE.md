@@ -256,7 +256,8 @@ Use dedicated test recipients and a prepared delivery-failure scenario.
 
 **Deliverable:** message ID/date, content match, transport state, receipt time
 and screenshot. Related PI: SA-006, SA-011, SA-024. A delivered backup email
-does not replace HT-12's restore test.
+does not replace HT-12's restore test (12-B), and it does not count as the
+off-site copy.
 
 ## 13. HT-11 — User access, chat and screens
 
@@ -283,11 +284,14 @@ production or inspect raw databases.
 | Case | Tester action | Expected result |
 |---|---|---|
 | 12-A | Observe a test job failure and its watchdog/operations record. | Failed component, time, impact and next action are clear. A notice alone does not close the issue. **PI target: SA-011.** |
-| 12-B | Witness restoring a named backup into an isolated environment; open restored sample records. | Backup date and contents are known; portfolios/predictions can be read and reconciled. An archive merely existing is insufficient. **PI target: SA-007.** |
+| 12-B | Witness restoring a named backup into an isolated environment; open restored sample records. Engineering runs `python -m services.data.restore fetch --dest <empty folder>` against the off-site bucket, not the volume, and shares the printed result. | Backup date and contents are known; portfolios/predictions can be read and reconciled. The result says `"clean": true` and names the archive; its file and row counts are recorded. `restored/portfolio/<user>/transactions.jsonl` and one prediction envelope open and match the app. An archive merely existing is insufficient. **SA-007: accepted 2026-09-29, not yet deployed; needs the owner's bucket first.** |
 | 12-C | Compare restored authoritative advice with a secondary projection. | Missing/stale projection is visible; the team can identify which records to trust. **PI target: SA-009/SA-030.** |
 | 12-D | Inspect a prepared run-cost report with retry/fallback activity. | Actual provider calls and attempts reconcile to totals, not just bundle sections or successful model calls. **PI target: SA-025.** |
 | 12-E | Open the repository's Actions page for the latest push to `main`, then the "Python tests" job log. | Three jobs ran: Python tests, the broad-except and KT guards, and the browser suite, all green. The test log's header line starts `hermetic: .env disabled`, the installed set shows Python 3.11, and no step uses a secret. **PI target: SA-005** (not yet pushed). |
 | 12-F | Witness a drill: engineering opens a throwaway pull request whose new test calls a real website and ignores the error. | The Python tests job fails. Its message names the website and the file and line that made the call, and says the test reached outside the sandbox. Close the pull request unmerged. **PI target: SA-005.** |
+
+| 12-G | Read the morning watchdog notices after a deploy with no off-site bucket configured; later, after the owner configures one. | Before: the notice "Nightly backup passed its restore drill and is confirmed off-site" says no off-site copy has been confirmed and gives the reason (`not configured: BACKUP_OFFSITE_TARGET is unset`). It shows no key, password or secret. After: the next morning's check is satisfied and names the archive. **SA-007: accepted 2026-09-29, not yet deployed.** |
+| 12-H | Witness engineering flip one byte in a copy of a backup archive, then drill it. | The drill fails with "checksum mismatch — corrupt or truncated"; nothing is written into the data folder. An untouched copy of the same archive drills clean. **SA-007: accepted 2026-09-29, not yet deployed.** |
 
 **Deliverable:** witnessed drill result, tested backup/revision/date, record
 counts, remaining gaps and cost comparison. Related PI: SA-005, SA-007, SA-009,

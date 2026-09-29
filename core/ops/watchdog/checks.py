@@ -355,6 +355,74 @@ def users_mirrored() -> CheckResult:
         "fan-out set.", evidence)
 
 
+_BACKUP_STALE_HOURS = 36      # the backup is nightly; older means a run was missed
+
+
+def _backup_status() -> dict | None:
+    """data/backups/backup_status.json, written by every nightly backup run."""
+    try:
+        return json.loads((_data_dir() / "backups" / "backup_status.json")
+                          .read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return None
+
+
+def _hours_since(stamp: object) -> float | None:
+    try:
+        when = datetime.fromisoformat(str(stamp))
+    except ValueError:
+        return None
+    if when.tzinfo is None:
+        when = when.replace(tzinfo=timezone.utc)
+    return (datetime.now(timezone.utc) - when).total_seconds() / 3600.0
+
+
+@check("backup_recoverable")
+def backup_recoverable() -> CheckResult:
+    """SA-007. Is last night's archive restorable, and is a copy of it
+    confirmed somewhere the app volume does not host?
+
+    A zip beside the data it protects is not a recovery strategy (audit F17),
+    and before SA-007 its absence only reached a log line. Every miss is
+    reported: the job not running, the restore drill failing, no confirmed
+    off-site copy, and data the drill flagged (a rewritten ledger).
+    """
+    status = _backup_status()
+    if status is None:
+        return CheckResult("pending", "No backup status yet — the nightly backup "
+                           "(23:30 IST) has not completed since this check was deployed.")
+    drill = status.get("drill") or {}
+    offsite = status.get("offsite") or {}
+    run_age = _hours_since(status.get("last_run_at"))
+    copy_age = _hours_since(status.get("last_offsite_confirmed_at"))
+    reason = offsite.get("reason") or "no reason recorded"
+    evidence = {"archive": status.get("archive"),
+                "run_age_hours": None if run_age is None else round(run_age, 1),
+                "drill_ok": drill.get("ok"), "drill_warnings": len(drill.get("warnings") or []),
+                "offsite_target": offsite.get("target"),
+                "offsite_age_hours": None if copy_age is None else round(copy_age, 1),
+                "offsite_reason": offsite.get("reason")}
+    if run_age is None or run_age > _BACKUP_STALE_HOURS:
+        return CheckResult("pending", f"The nightly backup last ran at "
+                           f"{status.get('last_run_at')} — the job has stopped.", evidence)
+    if not drill.get("ok"):
+        first = (drill.get("errors") or ["no error recorded"])[0]
+        return CheckResult("pending", f"{status.get('archive')} FAILED its restore drill "
+                           f"({first}), so it was not sent off-site.", evidence)
+    if copy_age is None:
+        return CheckResult("pending", f"No off-site copy has ever been confirmed ({reason}). "
+                           "Every backup sits on the volume it protects.", evidence)
+    if not offsite.get("confirmed"):
+        return CheckResult("pending", f"Last night's off-site copy was not confirmed "
+                           f"({reason}); the newest confirmed copy is {copy_age:.0f}h old.",
+                           evidence)
+    if drill.get("warnings"):
+        return CheckResult("pending", f"The backup is off-site, but its drill flagged: "
+                           f"{drill['warnings'][0]}", evidence)
+    return CheckResult("satisfied", f"{status.get('archive')} passed its restore drill; "
+                       f"its encrypted copy is confirmed off-site.", evidence)
+
+
 @check("manual_confirmation")
 def manual_confirmation() -> CheckResult:
     """No programmatic signal exists; stays pending until the entry is removed

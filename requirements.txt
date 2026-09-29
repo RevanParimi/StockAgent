@@ -21,6 +21,7 @@ nsepython>=2.90           # FII/DII flows, bulk deals, earnings calendar (AUD-07
 python-dateutil>=2.8.0    # Defensive date parsing for NSE event ingestion (was transitive via pandas)
 pyarrow>=16.0.0           # Parquet EOD market cache (Compass Phase B discovery)
 pywebpush>=2.0.0          # M4 web-push delivery (Compass Phase C)
+cryptography>=41.0.0      # SA-007 off-site backup encryption (AES-256-GCM); already pulled in by pywebpush
 
 # Phase 4 – Python scheduler (kept as fallback; C# Quartz.NET is primary)
 apscheduler>=3.10.0       # Cron-based periodic trigger

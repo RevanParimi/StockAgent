@@ -1,0 +1,103 @@
+{
+  "story": "SA-007",
+  "phase": "implementation",
+  "baseline": "cdec78f3b8b6a488b5586b5419dfbe8292d9bf26",
+  "excluded": [
+    "docs/planning/PI-2026-09/STATE.json",
+    "docs/planning/PI-2026-09/HANDOFF.md",
+    "docs/planning/PI-2026-09/evidence/SA-007-implementation.md"
+  ],
+  "hash_convention": "git blob bytes after .gitattributes normalization (CRLF->LF for text, binary unchanged); verify with scripts/docs/kt_manifest.py verify",
+  "files": [
+    {
+      "path": "CODEBASE.md",
+      "git_blob": "97019803bea37559e80e97b7ae84fea124582edd",
+      "sha256": "60e5833bdb07e2287c0da3b959f926a4d28b89abb46088094129a7172e3d82b6"
+    },
+    {
+      "path": "config/milestones.yaml",
+      "git_blob": "26cefed9c2b9c13239a95b168b316ef8f87eb94b",
+      "sha256": "f3a7ee96acc61222af3bdb16b831050475293a559ecdc73fd8beaeee3ec600e1"
+    },
+    {
+      "path": "core/ops/watchdog/checks.py",
+      "git_blob": "e99e351013fd6d95bbdd8a3bdbfe1330692601af",
+      "sha256": "9a71912c1b789b2554f6b59b75e7b1f13fc2a215f1a286b4817ab65a7d53ba11"
+    },
+    {
+      "path": "docs/ARCHITECTURE.md",
+      "git_blob": "5dd00c288e518d25595b87a20a0dcaa11579441b",
+      "sha256": "6c3eaecaa7adc027393dd2a30758c722aad9202df836ca9efc79863b04bb9a8e"
+    },
+    {
+      "path": "docs/LEGAL_AND_COMPLIANCE.md",
+      "git_blob": "708e551d9d979de1f643a707912cf90506428878",
+      "sha256": "91d536c640f8ff3fce42030d59691e978425b9f94520730341de3ef626be1cbc"
+    },
+    {
+      "path": "docs/PRODUCT_MAP.md",
+      "git_blob": "e8c8fb2b1fa88bf4519654d8d36fd1d4c221e32d",
+      "sha256": "312de0221666f88dc52bbaeafa04a1511bb4fa82a1337944ebe8f9912c0435a7"
+    },
+    {
+      "path": "docs/StockAgent-Three-Loops.pdf",
+      "git_blob": "799e95960861eff40da57b55c21ebcd61bb52053",
+      "sha256": "1e8fc381996f89065088faccc04b0c85e317dcbd0a8a0e58aa7b840f16b96129"
+    },
+    {
+      "path": "docs/TEAM_TESTING_GUIDE.md",
+      "git_blob": "901359d14faa2289a8b3ed0d94e770053ffeb2bd",
+      "sha256": "ebad7d235b51cedeab24f72887e7a75d29988f81fe859e05422c6605efa14884"
+    },
+    {
+      "path": "docs/TECHNICAL_DESIGN.md",
+      "git_blob": "f5b4fdd314dca4815656a966bb34c461170d1991",
+      "sha256": "79aa0102ce7b55b96b82f72f419cb7d57b4b55b83c8dedf20dd5a3eafef1acaf"
+    },
+    {
+      "path": "requirements.txt",
+      "git_blob": "a1b4621b09d89e9558e0440500e9cc66dd099919",
+      "sha256": "b82e7df443190f2e45a1d1f7e68b36c46a02fb8c2b3734a412f178cd33452d92"
+    },
+    {
+      "path": "services/data/backup.py",
+      "git_blob": "4d6d40de298765dc596458024f03a4ae7d3d0e8d",
+      "sha256": "2adeaab5552ee33384b50bf776c1691121e0b207c49becb5361f0938312701d8"
+    },
+    {
+      "path": "services/data/offsite.py",
+      "git_blob": "5671d8eaede0f51724ad4fc6ebc2dfe7af21a858",
+      "sha256": "2a3ed5c5c48e890a36530ac6b80d86afbbaf34eb205436e5b534039430de27ae"
+    },
+    {
+      "path": "services/data/restore.py",
+      "git_blob": "62c6d03ad0f65ae8ff20cde7b25882e6d6f7f4e6",
+      "sha256": "6379575a272b6f785a497458aa129ec88e2b0698ada0369753e8ade6d92c0879"
+    },
+    {
+      "path": "services/scheduler/python/scheduler.py",
+      "git_blob": "cee3a88def426e54ee757bcfc0f3f8b5db9e4670",
+      "sha256": "65e96e93687a1aa9b9b1969479547b2a95b7e67cc76f60fc21d046a395e5ea6d"
+    },
+    {
+      "path": "src/backend/shared/config/settings/base.py",
+      "git_blob": "0ceb7d67a03b2a1f217ab0700dc2b29c976ad9d6",
+      "sha256": "891c508d9e1725e0868af1da4a9ebcdcba3e2d68d7ddfd415860c21b487a1f91"
+    },
+    {
+      "path": "tests/unit/ops/test_watchdog_backup.py",
+      "git_blob": "5368cbe2263b9a3885cef38ab0f381302d928720",
+      "sha256": "04c206271f80f43c6acc0124abef1968f9fc9aac6db277d805965c0d258184d4"
+    },
+    {
+      "path": "tests/unit/test_backup_offsite.py",
+      "git_blob": "91dfc95729012d1738d5d24b2e83b9705fc268d3",
+      "sha256": "d5fd6c23def5aa8a57d4260695a069fd7c0aff4be29ccb129a7152963d054aa4"
+    },
+    {
+      "path": "tests/unit/test_backup_recovery.py",
+      "git_blob": "717e8f9bfb5055ebe442255e842352d8b04dac60",
+      "sha256": "f843d23bb2afac40c5a120195388b57e85b8f3a6dfc679e02213cc64ebc8bab6"
+    }
+  ]
+}

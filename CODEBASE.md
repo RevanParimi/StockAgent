@@ -33,7 +33,9 @@ StockAgent-main/
 │   │   │                          #  JSON_MODE_EXTRA_BODY, retry/deadline helpers)
 │   │   └── tavily_fetcher.py      # Tavily full-page extraction client
 │   ├── data/                      # Data persistence
-│   │   ├── backup.py              # Nightly volume backup: zip + 7-copy rotation + email off-site
+│   │   ├── backup.py              # Nightly volume backup: zip + manifest + 7-copy rotation + email
+│   │   ├── offsite.py             # SA-007 encrypted off-site copy (S3-compatible or mounted dir)
+│   │   ├── restore.py             # SA-007 restore drill + CLI (never restores over data/)
 │   │   ├── verdict_store.py       # Atlas C2 — VerdictStore facade (the ONLY user-plane importer
 │   │   │                          #  of the intelligence plane; delegates PredictionStore reads +
 │   │   │                          #  publishes ticker_verdicts projections — plane boundary, R1)

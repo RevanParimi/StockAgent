@@ -352,6 +352,22 @@ invariants:
       Silent until atlas.enabled is true — pre-cutover users.db IS the store.
     docs: docs/superpowers/specs/2026-08-11-atlas-signup-user-mirror-design.md
 
+  - id: backup_recoverable
+    kind: invariant
+    title: "Nightly backup passed its restore drill and is confirmed off-site"
+    check: backup_recoverable
+    action: >
+      SA-007. Read data/backups/backup_status.json on the volume. A failed
+      drill names the file and check that failed; fix that before trusting the
+      archive. "not configured" means the off-site bucket and
+      BACKUP_ENCRYPTION_KEY were never set: the runbook is in KT section 10
+      (docs/TECHNICAL_DESIGN.md). Any other reason is the store's scrubbed
+      error. A ledger that shrank or was rewritten since the previous archive
+      means history was lost on the volume: older off-site copies still hold
+      it. Off-site recovery counts as verified only after a recorded
+      `python -m services.data.restore fetch` into an empty directory.
+    docs: docs/TECHNICAL_DESIGN.md
+
   - id: audit_graded_when_due
     kind: invariant
     title: "Auditor grades rows once they mature"

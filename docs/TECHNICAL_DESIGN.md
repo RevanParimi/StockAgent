@@ -1,6 +1,6 @@
 # StockAgent — Technical Design and Knowledge Transfer
 
-**Edition:** 2026-09-28 · **Audience:** engineers and teammates learning the product
+**Edition:** 2026-09-29 · **Audience:** engineers and teammates learning the product
 
 **Code inspected:** `15dcda11068bcbdf2fad90f0f8e4614edbcb54bc`
 
@@ -22,7 +22,7 @@ it is not an implemented human-approval workflow.
 | Current code | Traced in this checkout. Flags, inputs and runtime data determine whether a path actually runs. |
 | Locally checked | Existing tests run in an isolated copy. Exact results and limits are in the [validation receipt](planning/PI-2026-09/evidence/DOC-001-implementation.md). |
 | Production observation | Dated evidence: the September 10 audit, section 10's 2026-09-21 email diagnosis, a September 15 deployment SUCCESS at `9a805878`, the 2026-09-23 read-only log inspection of learned weights, and the 2026-09-24 [SA-039 weight baseline](planning/PI-2026-09/evidence/SA-039-baseline-2026-09-24.md). Those logs came from deploy `d9c459ae` (commit `e8df088`). Deploys carrying the header revision's code were inspected read-only on 2026-09-25 (`7ebd06c5`: the 16:30 review ran in `adapt`) and on 2026-09-26 (`da9df6cf`: all 20 tickers in `observe`, per the [activation record](planning/PI-2026-09/evidence/SA-039-activation-2026-09-26.md)). |
-| PI target | Intended behavior, not completed functionality. SA-039 was accepted by its fresh review on 2026-09-25, and production has run `observe` since 2026-09-26 ([activation record](planning/PI-2026-09/evidence/SA-039-activation-2026-09-26.md); verification after the next reviews is pending). SA-001 (chat rendering) was accepted by its fresh review on 2026-09-26 ([review](planning/PI-2026-09/evidence/SA-001-review.md)); it is committed as `8413b59`, and its production verification is pending. SA-002 (data health) was accepted by its fresh re-review on 2026-09-26, after a rework of its test fixtures and one fundamentals case ([receipt](planning/PI-2026-09/evidence/SA-002-implementation.md), [review](planning/PI-2026-09/evidence/SA-002-review.md)); it is committed as `8413b59`, and its production verification is pending. SA-003 (the decision gate) was accepted by its fresh review on 2026-09-27 ([receipt](planning/PI-2026-09/evidence/SA-003-implementation.md), [review](planning/PI-2026-09/evidence/SA-003-review.md)); it is committed as `167f08b`, and its production verification is pending. It ships recording only (`decision_gate.mode: record`), and enforcing it is a separate decision, after SA-039's observation window and a measured record period. SA-004 (daily-review outcome counts) was accepted by its fresh review on 2026-09-27 ([receipt](planning/PI-2026-09/evidence/SA-004-implementation.md), [review](planning/PI-2026-09/evidence/SA-004-review.md)); it is committed as `241c393`, and its production verification is pending. SA-005 (a hermetic test suite and a CI workflow) was accepted by its fresh review on 2026-09-28 ([receipt](planning/PI-2026-09/evidence/SA-005-implementation.md), [review](planning/PI-2026-09/evidence/SA-005-review.md)); it is committed as `48143ed`, and its CI workflow has not run yet. SA-006 (delivery transport and dead letters) was accepted by its fresh re-review on 2026-09-28, after a rework for two review findings ([receipt](planning/PI-2026-09/evidence/SA-006-implementation.md), [review](planning/PI-2026-09/evidence/SA-006-review.md)); it is committed as `15dcda1` and not yet deployed. Every other story from SA-007 to SA-051 is `todo`. Three are stretch. |
+| PI target | Intended behavior, not completed functionality. SA-039 was accepted by its fresh review on 2026-09-25, and production has run `observe` since 2026-09-26 ([activation record](planning/PI-2026-09/evidence/SA-039-activation-2026-09-26.md); verification after the next reviews is pending). SA-001 (chat rendering) was accepted by its fresh review on 2026-09-26 ([review](planning/PI-2026-09/evidence/SA-001-review.md)); it is committed as `8413b59`, and its production verification is pending. SA-002 (data health) was accepted by its fresh re-review on 2026-09-26, after a rework of its test fixtures and one fundamentals case ([receipt](planning/PI-2026-09/evidence/SA-002-implementation.md), [review](planning/PI-2026-09/evidence/SA-002-review.md)); it is committed as `8413b59`, and its production verification is pending. SA-003 (the decision gate) was accepted by its fresh review on 2026-09-27 ([receipt](planning/PI-2026-09/evidence/SA-003-implementation.md), [review](planning/PI-2026-09/evidence/SA-003-review.md)); it is committed as `167f08b`, and its production verification is pending. It ships recording only (`decision_gate.mode: record`), and enforcing it is a separate decision, after SA-039's observation window and a measured record period. SA-004 (daily-review outcome counts) was accepted by its fresh review on 2026-09-27 ([receipt](planning/PI-2026-09/evidence/SA-004-implementation.md), [review](planning/PI-2026-09/evidence/SA-004-review.md)); it is committed as `241c393`, and its production verification is pending. SA-005 (a hermetic test suite and a CI workflow) was accepted by its fresh review on 2026-09-28 ([receipt](planning/PI-2026-09/evidence/SA-005-implementation.md), [review](planning/PI-2026-09/evidence/SA-005-review.md)); it is committed as `48143ed`, and its CI workflow has not run yet. SA-006 (delivery transport and dead letters) was accepted by its fresh re-review on 2026-09-28, after a rework for two review findings ([receipt](planning/PI-2026-09/evidence/SA-006-implementation.md), [review](planning/PI-2026-09/evidence/SA-006-review.md)); it is committed as `15dcda1` and not yet deployed. SA-007 (independently recoverable backups) was accepted by its fresh review on 2026-09-29, with two low follow-ups routed to SA-034 and SA-036 ([receipt](planning/PI-2026-09/evidence/SA-007-implementation.md), [review](planning/PI-2026-09/evidence/SA-007-review.md)); it is not committed or deployed, and no off-site bucket exists yet. Every other story from SA-008 to SA-051 is `todo`. Three are stretch. |
 
 The [September audit](audit/2026-09-10-repository-production-review.md) records
 unresolved label, timing, health, weight-bound and operational defects.
@@ -158,7 +158,7 @@ Credentials and `.env` contents do not belong in KT or testing evidence.
 | `data/market_cache/ipo.json` and EOD parquet | Cached IPO information and exchange price history; date, source and stale state matter. |
 | SQLite score, log, user and Atlas stores | Historical scores, telemetry, sessions and relational indexes/outbox. Secondary tables may lag primary records. |
 | `data/scheduler_job_outcomes.json`; `data/watchdog_state.json` | Operational results and milestone state, not proof of financial performance. |
-| `data/backups/` | Local rotation, distinct from demonstrated off-site recovery. |
+| `data/backups/` | Local rotation of the last 7 archives, each with its manifest, and `backup_status.json` (the last restore drill and off-site result). SA-007 adds an encrypted copy outside the volume once the owner configures one; see section 10. A local archive is not off-site recovery. |
 
 PortfolioStore's JSONL ledger is the inspected advice source. September 10
 found incomplete/stale optional Atlas projections. An empty projection does
@@ -687,7 +687,7 @@ All times are **Asia/Kolkata (IST)** defaults.
 | `atlas_universe_recompute` | Daily 23:00 | Demand/cadence; no-op if Atlas disabled. |
 | `atlas_cost_rollup` | Daily 23:15 | Cost aggregation; Atlas gate in handler. |
 | `atlas_retention` | Daily 23:20 | Retention; Atlas gate in handler. |
-| `data_backup_nightly` | Daily 23:30 | Local archive/rotation and configured off-site attempt. |
+| `data_backup_nightly` | Daily 23:30 | Archive with manifest, restore drill, local rotation, encrypted off-site copy when configured, email copy; the status feeds the watchdog (SA-007). |
 | `audit_nightly` | Daily 23:45 | Matured outcome grading/breach reports; audit gate. |
 | `ledger_cleanup_weekly` | Monday 03:30 | Stale-lesson cleanup. |
 | `event_ingest_weekly` | Saturday 10:00 | Dossier events; event-ingest gate. |
@@ -823,8 +823,8 @@ for. The drainer acts on it:
 
 The monthly Learning Evidence email, the watchdog heartbeat and the backup
 email are sent directly, not through the outbox, so they get no retry and no
-dead letter. A failure is now logged with its reason.
-[SA-007](planning/PI-2026-09/stories/SA-007.md) owns backups, and
+dead letter. A failure is now logged with its reason. The backup email is no
+longer the only off-site copy (see "Backups and recovery" below), and
 [SA-042](planning/PI-2026-09/stories/SA-042.md) adds a witness outside the app.
 
 **Dated production observation.** September 10 recorded email failures and no
@@ -849,7 +849,116 @@ Remaining limits:
   (two waits, each capped at 6 hours); a policy with longer waits would lose
   that protection.
 
-SA-007 addresses the backup acceptance gap.
+**Backups and recovery (SA-007: accepted by its fresh review on 2026-09-29;
+not committed or deployed).** Before SA-007 the nightly
+[backup](../services/data/backup.py) zipped `data/` onto the volume it protects and
+emailed the zip. Only `telemetry.db` and `scores.db` went through SQLite's
+backup API. `users.db`, `atlas.db` and `chat_sessions.db` run in WAL mode and
+were copied as raw files, so rows still in their `-wal` files were lost:
+restored alone, a raw copy of a fresh WAL database has no tables at all.
+Measured 2026-09-23: the job built an 8.98 MB zip, the email failed, and the
+only copy stayed on the volume.
+
+Each night at 23:30 the job now runs these steps:
+
+1. **Build.** Every non-cache file under `data/` goes in. A file is treated as
+   SQLite by its header, not its name, and is copied through the backup API;
+   `-wal`, `-shm` and `-journal` files are never copied raw. Credential-shaped
+   files (`.env`, `*.pem`, `*.key`, `*secret*` and similar) are left out and
+   logged. Other files are read until one read sees no size or modification
+   change. `MANIFEST.json` inside the zip records each file's size and SHA-256.
+   For each database it records `integrity_check`, a schema digest and every
+   table's row count, and for each portfolio ledger its row count. A sidecar
+   `<archive>.manifest.json` records the zip's own size and SHA-256. The zip is
+   built under a `.part` name, so an interrupted run leaves no archive.
+2. **Drill.** `services/data/restore.py` restores the archive into a fresh
+   temporary directory and recomputes everything the manifest claims. Errors
+   mean the copy is not faithful: a missing manifest, a checksum mismatch, a
+   corrupt zip, an unexpected or unsafe member, a failed `integrity_check`, or
+   a schema or row-count difference. Warnings mean the copy is faithful but
+   the data is suspect. The drill also checks ledger continuity. For example,
+   Monday's archive holds `transactions.jsonl` at 1,200 bytes, so Tuesday's
+   must start with those same 1,200 bytes, because the four portfolio ledgers
+   are append-only. If a script rewrote row 3 overnight, Tuesday's drill
+   warns "was rewritten"; a ledger that shrank or disappeared warns the same
+   way. Older off-site copies still hold the earlier history.
+3. **Rotate** the local copies to the newest 7, each with its sidecar.
+4. **Off-site.** Only an archive that passed its drill leaves the volume. It
+   is encrypted with AES-256-GCM under `BACKUP_ENCRYPTION_KEY` and uploaded to
+   `BACKUP_OFFSITE_TARGET`. That is `s3` (any S3-compatible bucket, signed with
+   AWS Signature V4 using only the standard library and `requests`) or `dir`
+   (a separately mounted directory, refused when it overlaps `data/`). The
+   ciphertext goes first and the manifest last; each must read back at its
+   uploaded size. Only then is the copy "confirmed". An upload interrupted
+   halfway is never confirmed, and its leftover ciphertext is deleted once a
+   newer copy is confirmed. Retention keeps the newest
+   `BACKUP_OFFSITE_KEEP` confirmed copies (30 by default; 0 or less keeps
+   all). It never touches objects not named like a backup, and it deletes a
+   copy's manifest before its ciphertext.
+5. **Email** the plaintext zip as before, when it is under 20 MB. This is a
+   direct send; it does not count as off-site.
+6. **Record** `data/backups/backup_status.json`. A failed drill then raises,
+   so the scheduler's job-error alert fires.
+
+**Visibility.** The watchdog invariant `backup_recoverable` reads that status
+every morning. It warns when the job has not run for 36 hours, when the drill
+failed, when last night's copy was not confirmed (the reason is scrubbed of
+secrets), and when the drill flagged a ledger. Until the owner configures a
+target it warns every day: "No off-site copy has ever been confirmed". That
+warning is the acceptance criterion working, not noise. One gap remains
+(review F1, routed to SA-034): a night on which the job never runs, for
+example because the container restarted at 23:30, is not reported. At 06:30
+the newest status is then 31 hours old, under the 36-hour limit, so the check
+still reads the previous night's copy as confirmed. Two missed nights in a
+row are reported.
+
+A ledger rewrite is reported on one morning only, because the next night
+compares against the rewritten archive. The earlier history then survives
+only in the older off-site copies, for `BACKUP_OFFSITE_KEEP` nights.
+
+**Owner configuration (not provisioned by code).** Create a private bucket
+and an access key limited to it. The archive is about 9 MB, and several
+S3-compatible providers have a free tier at that size. Set these Railway
+variables:
+
+- `BACKUP_OFFSITE_TARGET=s3`;
+- `BACKUP_S3_ENDPOINT` (a bare `https://` URL), `BACKUP_S3_BUCKET`,
+  `BACKUP_S3_REGION` (`auto` by default) and optionally `BACKUP_S3_PREFIX`
+  (`stockagent/`);
+- `BACKUP_S3_ACCESS_KEY_ID` and `BACKUP_S3_SECRET_ACCESS_KEY`;
+- `BACKUP_ENCRYPTION_KEY`, from
+  `python -c "import os,base64;print(base64.b64encode(os.urandom(32)).decode())"`.
+
+Keep a second copy of the key outside Railway, for example in a password
+manager: without it no off-site copy can ever be read. Setting a Railway
+variable redeploys the service.
+
+**Restore runbook.** On a machine with the same variables set, run
+`python -m services.data.restore fetch --dest <empty directory>` from the
+repository root. It downloads the newest confirmed copy (or a named one),
+checks the ciphertext against its manifest and decrypts it; a wrong key or one
+flipped byte stops it. It then drills the result into `<dir>/restored`. Exit
+codes: 0 is clean, 2 is faithful with warnings, 1 is failed.
+`python -m services.data.restore drill <archive>` checks a local archive the
+same way. Neither ever writes into `data/`: a destination that overlaps it, or
+is not empty, is refused. Putting restored files back into a stopped
+deployment is a deliberate human step.
+
+**Limits.**
+
+- Each file is a point-in-time copy, but the archive is not one snapshot
+  across files. The job runs at 23:30, when no trading job writes.
+- One malformed SQLite file stops the whole archive (review F2, routed to
+  SA-036). The job raises, so the job-error alert fires each night. No new
+  archive, off-site copy or status is written until the database is repaired,
+  so the ledgers are not backed up in the meantime. Earlier archives and
+  off-site copies are kept.
+- The email copy is still an unencrypted direct send.
+- Credentials live in Railway variables and are not backed up.
+- A deleted account's data survives in off-site copies until retention
+  removes them (30 nightly copies by default).
+- Off-site recovery counts as verified only after a recorded `fetch` drill
+  against the real bucket. None has been run: no bucket exists yet.
 
 The frontend uses React JSX, runtime browser transformation and PWA assets.
 Chat uses a streaming tool loop with potentially paid provider calls. Prompt
@@ -890,7 +999,9 @@ call counters are not complete nested-provider/fallback cost accounting;
 SA-025 addresses this. The watchdog reads [milestones.yaml](../config/milestones.yaml),
 runs checks, persists state and may perform configured preparation. A sent
 milestone notice is not milestone completion. Local backup files and healthy
-HTTP responses do not prove recovery or successful jobs.
+HTTP responses do not prove recovery or successful jobs. The nightly drill
+proves that an archive restores; only a recorded off-site `fetch` proves
+recovery without the volume.
 
 ## 11. Changes already present and planned redesign
 
@@ -902,7 +1013,7 @@ HTTP responses do not prove recovery or successful jobs.
 | Verdict binding | Deterministic category enabled in YAML, raw model verdict logged. | Correct issue-time grading and final adaptive constraints. |
 | Portfolio | Per-user advice/execution, stops, switches and ledgers. | Stronger upstream evidence and report reconciliation; costs and tax in paper P&L (SA-048); idle cash put to work in normal markets (SA-049); one sizing rule for every autopilot buy (SA-050); the portfolio against the Nifty, with honest labels (SA-051). |
 | IPO | Calendar, history, snapshots, recent-listing screening, size-tiered brief lean, and the dark P3 model, deep dive, narrator and forward-grading lane (section 8). | Forward evidence for P3 and its `ipo_verdicts_visible_gate`; no verdict reaches a user; outside default September scope. |
-| Operations | TCP singleton, outcomes, watchdog, outbox with `last_error`, per-account recipients, SMTP/Resend transports and backup code. Truthful daily-review outcome counts (SA-004, accepted 2026-09-27, committed as `241c393`). SA-006 (accepted 2026-09-28, committed as `15dcda1`, not yet deployed): transient-versus-permanent retry, at-most-once sends, no owner fallback for accounts, and the `GET /delivery/outbox` dead-letter view. | Durable outcomes for every job (SA-036), proven recovery, measured receipt (only acceptance is observed), SA-006's deployment, and readiness. The [observability design](superpowers/specs/2026-09-24-production-observability-design.md) adds planned job-run and source-health ledgers, post-job checks, a read-only status fetcher and an outside witness (SA-034–SA-036, SA-040–SA-042). |
+| Operations | TCP singleton, outcomes, watchdog, outbox with `last_error`, per-account recipients, SMTP/Resend transports and backup code. Truthful daily-review outcome counts (SA-004, accepted 2026-09-27, committed as `241c393`). SA-006 (accepted 2026-09-28, committed as `15dcda1`, not yet deployed): transient-versus-permanent retry, at-most-once sends, no owner fallback for accounts, and the `GET /delivery/outbox` dead-letter view. SA-007 (accepted 2026-09-29, not committed): archive manifests, a nightly restore drill, an encrypted off-site adapter and the `backup_recoverable` watchdog check. | Durable outcomes for every job (SA-036), an off-site bucket configured by the owner and a recorded off-site restore (SA-007), measured receipt (only acceptance is observed), SA-006's deployment, and readiness. The [observability design](superpowers/specs/2026-09-24-production-observability-design.md) adds planned job-run and source-health ledgers, post-job checks, a read-only status fetcher and an outside witness (SA-034–SA-036, SA-040–SA-042). |
 | Frontend | JSX/PWA with live adapters and some fallback/demo paths. | Sanitization, honest unavailable states and optional build cleanup. |
 
 Historical [specifications](superpowers/specs/) retain what was intended at
@@ -918,7 +1029,7 @@ The table below includes the planned destination now. **SA-039 is accepted
 verification is pending. SA-003 is accepted by its fresh review (2026-09-27)
 and committed as `167f08b`; its production verification is pending. SA-004 is
 accepted by its fresh review (2026-09-27) and committed as `241c393`; its
-production verification is pending. SA-005 is accepted by its fresh review (2026-09-28) and committed as `48143ed`; its CI workflow has not run yet. SA-006 is accepted by its fresh re-review (2026-09-28). Its first review asked for two fixes the same day: a push could reach a phone twice, and the owner report could show a user id. Both are made; it is committed as `15dcda1` and not yet deployed. Every other SA story is `todo`.** Accepted
+production verification is pending. SA-005 is accepted by its fresh review (2026-09-28) and committed as `48143ed`; its CI workflow has not run yet. SA-006 is accepted by its fresh re-review (2026-09-28). Its first review asked for two fixes the same day: a push could reach a phone twice, and the owner report could show a user id. Both are made; it is committed as `15dcda1` and not yet deployed. SA-007 is accepted by its fresh review (2026-09-29), with two low follow-ups routed to SA-034 and SA-036; it is not committed. Every other SA story is `todo`.** Accepted
 state/dependencies are in
 [STATE.json](planning/PI-2026-09/STATE.json). DOC-001 is this user-requested
 documentation refresh; it does not close SA-031 or any upstream remediation.

@@ -1102,6 +1102,27 @@ VAPID_PRIVATE_KEY: str = os.getenv("VAPID_PRIVATE_KEY", "")
 VAPID_PUBLIC_KEY: str = os.getenv("VAPID_PUBLIC_KEY", "")
 VAPID_CLAIM_EMAIL: str = os.getenv("VAPID_CLAIM_EMAIL", "admin@stockagent.app")
 
+# SA-007 — independent off-site backup (services/data/offsite.py). Each nightly
+# archive that passes its restore drill is encrypted and pushed to storage the
+# app volume does not host. Nothing is provisioned by code: the owner creates
+# the bucket and a key scoped to it. Unset target = off, and the watchdog's
+# backup_recoverable check reports that every day.
+#   BACKUP_OFFSITE_TARGET: "s3" (any S3-compatible store: Backblaze B2,
+#   Cloudflare R2, AWS S3) or "dir" (a separately mounted directory).
+#   BACKUP_ENCRYPTION_KEY: base64 of 32 random bytes. Keep a copy OUTSIDE
+#   Railway (a password manager): without it no off-site copy can be read.
+#   BACKUP_OFFSITE_KEEP: confirmed copies kept off-site (<= 0 keeps all).
+BACKUP_OFFSITE_TARGET: str = os.getenv("BACKUP_OFFSITE_TARGET", "")
+BACKUP_ENCRYPTION_KEY: str = os.getenv("BACKUP_ENCRYPTION_KEY", "")
+BACKUP_OFFSITE_KEEP: str = os.getenv("BACKUP_OFFSITE_KEEP", "30")
+BACKUP_OFFSITE_DIR: str = os.getenv("BACKUP_OFFSITE_DIR", "")
+BACKUP_S3_ENDPOINT: str = os.getenv("BACKUP_S3_ENDPOINT", "")
+BACKUP_S3_BUCKET: str = os.getenv("BACKUP_S3_BUCKET", "")
+BACKUP_S3_REGION: str = os.getenv("BACKUP_S3_REGION", "auto")
+BACKUP_S3_PREFIX: str = os.getenv("BACKUP_S3_PREFIX", "stockagent/")
+BACKUP_S3_ACCESS_KEY_ID: str = os.getenv("BACKUP_S3_ACCESS_KEY_ID", "")
+BACKUP_S3_SECRET_ACCESS_KEY: str = os.getenv("BACKUP_S3_SECRET_ACCESS_KEY", "")
+
 _GENERIC_AGENT_WEIGHTS_FALLBACK: dict[str, float] = {
     "business": 0.14, "fundamentals": 0.18, "valuation": 0.14, "technical": 0.12,
     "macro": 0.12, "risk": 0.12, "management": 0.09, "earnings": 0.09,

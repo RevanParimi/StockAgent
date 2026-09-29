@@ -1,4 +1,4 @@
-# Current handoff - 2026-09-28 (updated about 20:45 IST)
+# Current handoff - 2026-09-29 (updated about 07:35 IST)
 
 ## START HERE — resume checklist, in order
 
@@ -48,17 +48,101 @@ each in the [activation record](evidence/SA-039-activation-2026-09-26.md) and in
     SA-003's `production_verification`. The [SA-003 receipt](evidence/SA-003-implementation.md)
     has the steps, under "Rollout", and the [review](evidence/SA-003-review.md) has F1 and F2.
 
-**1. Next PI phase: SA-007 implementation** ([SA-007](stories/SA-007.md), make backups
-independently recoverable; P1, sprint 1, no dependencies), in a new conversation. Opener:
-`Continue`. STATE: `active_task: null`, `next_task: SA-007`, `next_phase: implementation`.
+**1. Next PI phase: implement SA-008** ([SA-008](stories/SA-008.md), quarantine unresolved
+securities with explicit lifecycle records), in a new conversation. Opener: `Continue`. STATE:
+`active_task: null`, `next_task: SA-008`, `next_phase: implementation`. Its dependency, SA-003,
+is done. By STATE file order it is the first ready story. Six Sprint-1 stories (SA-033, SA-035,
+SA-036, SA-038, SA-040, SA-042) come later in the file; taking one first needs the owner's word.
 **Run step 0 first** if P2 is due by then (Tue 29 Sep 17:00 IST).
 
-- SA-007 is the first `todo` story in STATE order whose dependencies are all `done`. Its card:
-  recovery must not depend on the application volume or the email channel. That means a minimal
-  object-storage backup adapter with integrity metadata, and a restore into an isolated
-  directory. Provisioning paid resources is not allowed.
-- Routed input from SA-006: the backup email is still a direct send, with no outbox retry or dead
-  letter. Its failure reason is now logged (STATE `SA-006.routed_notes.SA-007`).
+**SA-007 was ACCEPTED on 2026-09-29 by a fresh-session review** (a new conversation, about
+07:05–07:35 IST). Receipt: [SA-007-review.md](evidence/SA-007-review.md). SA-007 is `done`. No
+SA-039 check was due. Nothing was committed, pushed, deployed, configured or sent.
+
+- **Input verified:** `7c1d43d9…` (18 files, 0 mismatches, no unlisted change). The diff
+  `2e0a5656…` was rebuilt with the reviewer's own script.
+- **The original defect, reproduced against the baseline module.** A WAL `chat_sessions.db` with
+  5 committed rows still in its `-wal`: the old zip restores to "no such table", and the new one
+  holds 5 rows. A writer committing during the build still gives a clean drill.
+- **Two low findings, both reproduced and routed. Neither blocks acceptance.**
+  - **F1 → [SA-034](stories/SA-034.md), in one example.** Sunday's backup is confirmed. On Monday
+    the container restarts at 23:30, so the job never runs and no error fires. At 06:30 on
+    Tuesday the status is 31 h old, under the check's 36 h limit, so the watchdog says
+    `satisfied`. If Tuesday's run works, the missed night is never reported. Fix: SA-034's
+    job-ran invariant, or a limit of about 30 h.
+  - **F2 → [SA-036](stories/SA-036.md), in one example.** `atlas.db` is malformed and
+    `transactions.jsonl` is healthy. Before SA-007 the zip held both. Now the job raises
+    `DatabaseError`, and no archive, off-site copy or status is written until the database is
+    repaired. The job-error alert fires each night, and earlier copies are kept. Fix: archive the
+    rest and record a `partial` outcome.
+  - **I1 (info) → the SA-036 card:** the local rotation ignores the drill. **I2 (info, predates
+    SA-007):** SA-004 and SA-006 still read "not yet deployed" in the KT, ARCHITECTURE and the
+    guide. For the next KT bump or SA-031.
+- **Decisions:** D1–D10 upheld, except D6 in part (F1). D4's cost is now in the KT: a ledger
+  rewrite is reported on one morning, then the history survives only in the older off-site
+  copies, for 30 nights by default.
+- **Checks:**
+  - focused 136 passed;
+  - reviewer probes: 7 passed, and 2 failed as the findings;
+  - reviewer mutations 9 of 9 caught;
+  - full suite alone **3902 passed, 12 skipped, 0 failed** (5 min 03 s), `data/` unchanged. An
+    earlier run beside the mutations hit a Windows rename flake in `core/ipo/history.py`, which
+    passes 5 of 5 alone; it is routed to SA-031 with the `signals.py` one;
+  - broad-except OK; `check_kt_docs` errors `[]`.
+  - The probes and the mutation plugin are in `analysis_data/sa007/review/` (ignored).
+- **Review edits (docs only):** SA-007 status wording in the KT (§1, §10, §11, §12),
+  ARCHITECTURE, guide 12-B/G/H and LEGAL. KT §10 now states F1 and F2. The PDF is rebuilt (28
+  pages, source `9efaf9da…`). Routed notes are on the SA-034 and SA-036 cards. `verify
+  SA-007-manifest.json` now mismatches exactly the KT, the PDF, ARCHITECTURE, the guide and LEGAL.
+- **Production verification: `pending_deployment`.** It needs:
+  - the owner's commit, push and deploy. A deploy alone makes the watchdog warn every morning
+    until a bucket exists;
+  - the bucket, key and `BACKUP_*` variables (deferred owner setup);
+  - a recorded `restore fetch` from outside Railway.
+  The plaintext backup email (D7) is still the owner's decision. At the commit, link
+  `offsite.py` and `restore.py` in the KT bump.
+
+**SA-007 was implemented on 2026-09-29** (about 03:20–04:10 IST). Receipt:
+[SA-007-implementation.md](evidence/SA-007-implementation.md). Review input
+**`7c1d43d9…`** (18 files); full diff `2e0a5656…` against `cdec78f`. Nothing was committed,
+pushed, deployed, configured or sent. No bucket exists.
+
+- **In one example.** Tonight's archive gets a `MANIFEST.json`, for example `users.db`:
+  integrity ok, `users: 2`, `transactions.jsonl`: 1,200 bytes and 3 rows. The job restores it into
+  a temporary directory and checks all of it. It also checks that the ledger still begins with
+  last night's 1,100 bytes. Only then does it encrypt the archive (AES-256-GCM) and send it
+  off-site, ciphertext first and manifest last, each read back at its size. With no bucket
+  configured, the watchdog says every morning: "No off-site copy has ever been confirmed".
+- **A real defect was fixed.** `users.db`, `atlas.db` and `chat_sessions.db` run in WAL mode and
+  were zipped as raw files with their `-wal`/`-shm` files. Rows still in the WAL were lost:
+  restored alone, a raw copy of a fresh WAL database has no tables at all. Now every SQLite file
+  goes through the backup API.
+- **For the reviewer:**
+  - D1–D10 are in the receipt. The contested ones are D3 (only a drill-passing archive leaves),
+    D4 (continuity breaks are warnings, not errors), D5 (what "confirmed" means) and D7 (the
+    email copy is unchanged).
+  - The S3 signer is from the standard library, checked against AWS's three published examples.
+  - A deploy alone makes the watchdog warn daily until the owner configures a bucket.
+- **Checks:**
+  - 65 new tests (27 recovery, 28 off-site, 10 watchdog);
+  - full suite **3902 passed, 12 skipped, 0 failed** (9 min 32 s), `data/` unchanged;
+  - 15 of 15 mutations caught;
+  - the broad-except guard OK, and `check_kt_docs` errors `[]` (PDF 28 pages);
+  - a local rehearsal on a copy of the dev data: 63 files, 5 databases and 77,540 rows drilled
+    clean, then recovered from the off-site copy alone.
+- **Docs:** KT §3, §9, §10 ("Backups and recovery": steps, runbook, owner configuration, limits)
+  and §11; guide 12-B, new 12-G and 12-H; ARCHITECTURE, PRODUCT_MAP, CODEBASE and LEGAL. New files
+  are not linked from the KT until the KT bump after a commit.
+- **Production verification: `pending_deployment`.** It needs:
+  - acceptance, then the owner's commit, push and deploy;
+  - the owner's bucket, key and `BACKUP_*` variables, set in a job-free window (each set
+    redeploys). This joins the deferred owner setup list;
+  - a recorded `python -m services.data.restore fetch --dest <empty dir>` from outside Railway.
+
+  Also for the owner to decide: retire or encrypt the plaintext backup email.
+- **After acceptance:** select the next ready story, but do not start it in the review chat. By
+  STATE file order that is **SA-008**. Six Sprint-1 stories (SA-033, SA-035, SA-036, SA-038,
+  SA-040, SA-042) come later in the file.
 
 **SA-006 was ACCEPTED by its fresh re-review on 2026-09-28** (this conversation, about
 19:40–20:45 IST, after P1). Receipt: [SA-006-review.md](evidence/SA-006-review.md), section

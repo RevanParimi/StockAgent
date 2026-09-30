@@ -1,4 +1,4 @@
-# Current handoff - 2026-09-30 (updated about 07:05 IST)
+# Current handoff - 2026-09-30 (updated about 12:55 IST)
 
 ## START HERE — resume checklist, in order
 
@@ -44,12 +44,15 @@ unrecorded (read-only; the steps are in the carry-over box on [SA-001](stories/S
   - **Also report two inputs to the owner.** The SA-003 review added them; they do not change the
     rules above:
     - **F1:** how many month-start envelopes carry `abstain`. Under `enforce`, each such ticker
-      would have no envelope for that month, because only a restart retries it;
+      would have no envelope for that month, because only a restart retries it. **SA-009 adds a
+      caveat:** until SA-009 is deployed, a restart retries only automobile tickers. For every
+      other ticker it writes an automobile-graph envelope into `automobile/<TICKER>`, which that
+      ticker's reviews never read, so under `enforce` nothing retries its month at all;
     - **F2:** how many `actual_close` gate rows name `source nse` with the previous session's bar
       (the close-verifier case);
     - count analyses by distinct `run_id` against the data-health rows, not by raw gate-log rows.
       A re-run review appends its rows again.
-  - **SA-008 interplay (accepted 30 Sep; not committed or deployed).** If it is deployed before
+  - **SA-008 interplay (accepted 30 Sep; committed as `02c43f6`, not deployed).** If it is deployed before
     the decision, two things follow:
     - its identity rows abstain by design on healthy data, so exclude them from the spot check.
       They are recognisable by the reason prefix `identity` and the review stage `identity`;
@@ -92,11 +95,21 @@ review-edited docs, so every reviewed code and test byte is committed as reviewe
     - Thu 1 Oct to Tue 6 Oct should be silent for this entry. The Thursday check is read-only.
   - This record (STATE and HANDOFF) is uncommitted. It rides with the next commit.
 
-**2. Next PI phase: SA-009's implementation**, in a new conversation. Opener: `Continue`.
-STATE: `active_task: null`, `next_task: SA-009`, `next_phase: implementation`. SA-009 is the
-first ready story in STATE order. **Run step 0 first:** P3 is due Thu 1 Oct 09:30.
+**2. Next PI phase: SA-010's implementation**, in a new conversation. Opener: `Continue`.
+STATE: `active_task: null`, `next_task: SA-010`, `next_phase: implementation`. SA-010 is the first
+planned `todo` story in STATE order whose dependencies are met (it has none). **Run step 0
+first:** P3 is due Thu 1 Oct 09:30. Two small follow-ups are also open, and neither is urgent:
+SA-008 change 1 and SA-009 change 1. Taking one before SA-010 needs the owner's word.
 
-**3. SA-008 is committed as `02c43f6`, with the KT bump after it. Neither is pushed.** The
+**3. SA-009 is ACCEPTED and uncommitted** (see "SA-009 was ACCEPTED" below). Its commit can
+follow SA-008's.
+Committing needs the owner's word. The landing commit's KT bump links `store_inventory.py` and
+`store_migration.py`. After the commit, `verify SA-009-manifest.json --rev <commit>` should
+mismatch exactly the 4 review-edited docs: the KT, the PDF, ARCHITECTURE and TEAM_TESTING_GUIDE.
+The push needs the owner's word, in a job-free window (00:10–06:20 IST is safest). Every push
+redeploys.
+
+**3a. SA-008 is committed as `02c43f6`, with the KT bump after it. Neither is pushed.** The
 owner chose to commit it first (about 06:55 IST 30 Sep), locally only, so that SA-009 starts on a
 clean baseline.
 - `verify SA-008-manifest.json --rev 02c43f6` mismatches exactly the 5 review-edited docs: the
@@ -110,6 +123,97 @@ clean baseline.
   push redeploys.
 - **Then the rollout:** the receipt's "Rollout", plus the review's read-only look at the volume's
   learned symbol cache (L2).
+
+**SA-009 was ACCEPTED on 2026-09-30 by a fresh-session review** (a new conversation, about
+12:25–12:55 IST). Receipt: [SA-009-review.md](evidence/SA-009-review.md). SA-009 is `done`, and
+its `production_verification` is `pending_deployment`. No SA-039 check was due. Nothing was
+committed, pushed, deployed, configured or sent, and no production state was read.
+
+- **Input verified:** `72923d91…` (14 files, 0 mismatches, no unlisted change). The diff
+  `c931b6c7…` was rebuilt with the reviewer's own script.
+- **Traced:**
+  - the owner rule against every scheduled writer (the scheduler, the self-heal, the pre-open
+    check, the event ingest, the RL monitor) and the add route;
+  - the readers: the orchestrator's weight read, the fallbacks, the evaluator walks, the backup
+    and the universe walk;
+  - the fixture's rosters equal the five real graphs'.
+- **Checks:**
+  - focused 35 passed;
+  - full suite **4016 passed, 12 skipped, 0 failed** (12 min 08 s), `data/` unchanged;
+  - reviewer probes: 12 passed, with the real wiring. R1 is SUZLON end to end: the plan moves only
+    `automobile/SUZLON`, the scorecard and learning-evidence walks list SUZLON once, and a rollback
+    is byte-identical;
+  - reviewer mutations: 4 of 8 caught, including each of the three pre-SA-009 writers. The 4
+    survivors are L3's untested rules, and each is covered by a probe;
+  - `check_kt_docs` errors `[]` after the review edits (409 links, PDF 33 pages).
+- **D1–D10 upheld.**
+- **Findings.** None is critical, high or medium.
+  - **L1 (low), in one example.** A quarantined file changes, so `rollback` refuses that store and
+    reports `partial`. The operator restores the bytes and retries. The retry skips the store,
+    which stays in quarantine, and reports `rolled_back` with exit 0.
+  - **L2 (low).** Any read that constructs the quarantined store's `PredictionStore` recreates an
+    empty live directory, and `rollback` then refuses. Removing it and retrying works.
+  - **L3 (low, tests).** No test pins the holds for a sectorless or conflicting managed entry, the
+    declared-sector conflict, or `apply` ignoring the plan file's items. The code is right; the
+    reviewer's probes verified it.
+  - **All three go to SA-009 change 1**, which is not required before the production apply. Until
+    then the rollback caveat is in KT section 3.
+  - **I1 → [SA-015](stories/SA-015.md).** The first restart of each month backfills yesterday for
+    all 20 tickers, and the 16:30 job grades it again. The adapter runs twice, which is inert in
+    `observe`.
+  - **I2 → [SA-017](stories/SA-017.md).** The eval harness groups `per_sector` by the log's label.
+  - **I3.** The rosters depend on the sector toggles; all four native sectors are enabled.
+  - **I4 → rollout step 3.** Check `owner_store_present` on every item before approving.
+- **Review edits (docs only):** status wording in the KT (§1, §3, §11, §12), ARCHITECTURE,
+  guide 01-G and 04-G; the rollback caveat in KT §3; the PDF rebuilt. Routed notes were added on
+  SA-015 and SA-017.
+
+**SA-009 was IMPLEMENTED on 2026-09-30** (this conversation, about 06:46–11:58 IST, with a
+pause). It is uncommitted and not reviewed. A same-conversation self-review was done; it is not
+the fresh review. No production check was due, and no production state was read.
+
+- **Sequencing.** SA-009 edits files SA-008 also changed, so the owner chose to commit SA-008
+  first (step 3). The SA-009 baseline is the clean tree at `f443cc7`.
+- **What it is, in one example.** SUZLON is managed as `renewable_energy`. The startup self-heal
+  looked for every managed ticker's envelope in `automobile/<TICKER>`. So on each month's first
+  deploy it ran the automobile graph into `automobile/SUZLON`: a second store with the automobile
+  dimensions, which SUZLON's reviews never read but every evaluator that walks the tree does. The
+  audit's 10 Sep capture found 15 such pairs, and all 58 feedback logs said `automobile` (the
+  schema default).
+- **What changed:**
+  - **The owner rule.** A ticker's history belongs to `<managed sector>/<TICKER>`. A ticker
+    without a managed entry has no owner, and nothing guesses one.
+  - **The writers.** The self-heal uses each managed entry's sector. The store stamps its own
+    sector on new logs, weights and ledgers, and leaves old files as they are. The daily review
+    rebuilds a missing weight file, live or paper, from its sector's graph.
+  - **The inventory.** `python -m core.intelligence.rl.stores.store_inventory` is read-only. Per
+    store it gives identity, sector evidence and ownership. `confirmed` needs a dimension roster
+    that matches the directory's graph; a directory name alone never confirms. It also lists
+    duplicate tickers, envelope ids and graded days, identical or conflicting.
+  - **The quarantine.** `python -m core.intelligence.rl.stores.store_migration plan|apply|rollback`.
+    `plan` is read-only and ends with a digest. `apply` needs that digest, re-hashes each store
+    just before moving it, and moves it by one rename into `data/prediction_quarantine/<id>/`.
+    `rollback` restores the tree byte for byte and never merges.
+- **Checks:**
+  - 35 new tests (35 passed);
+  - full suite on the final bytes: 4016 passed, 12 skipped, 0 failed (10 min 41 s; 3981 + the 35 new);
+  - mutations: 15 of 15 caught (unmutated 35 passed before and after; sources restored byte-identical by blob id);
+  - `check_kt_docs` errors `[]` (PDF 32 pages);
+  - local runs: on a July snapshot the plan moves exactly the 13 `automobile/<TICKER>` copies; the
+    dev tree was unchanged by the run.
+- **Decisions D1–D10 for the reviewer** are in the receipt. The biggest:
+  - D1: the owner is the managed sector;
+  - D2 and D3: the dimension roster is the evidence, judged against the directory and against the
+    owner separately;
+  - D5: quarantine moves a store by rename, not copy and delete;
+  - D8: the writer fixes are part of this story; without the self-heal fix the next month's
+    first deploy would recreate the copies.
+- **Routed:** the readers keyed by the graph sector, the `automobile` defaults and the directory
+  creation on read go to [SA-026](stories/SA-026.md). Row lineage goes to
+  [SA-017](stories/SA-017.md). A caveat for P3's F1 is in step 0.
+- **Rollout, after review, commit and push:** first deploy, then the owner runs the inventory and
+  plan read-only on the volume. The apply needs the owner's authorisation, by the plan's digest,
+  in a job-free window after the nightly backup. Receipt: "Rollout".
 
 **SA-008 was ACCEPTED on 2026-09-30 by a fresh-session review** (a new conversation, about
 06:16–06:50 IST). Receipt: [SA-008-review.md](evidence/SA-008-review.md). SA-008 is `done`,

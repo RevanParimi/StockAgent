@@ -72,6 +72,7 @@ from core.intelligence.regime.state import update_sticky_regime, _read_state, _s
 from core.schemas.feedback import RegimeSnapshot, ThesisReview
 from core.intelligence.rl.agents.thesis_reviewer import ThesisReviewer, THESIS_REVIEW_THRESHOLD
 from core.intelligence.rl.workflows.generate_forecast import regenerate_envelope
+from core.intelligence.rl.workflows.sector_router import get_sector_weights
 from services.data.stores.log_store import configure_logging
 
 # E1: one setup for every entry point. Idempotent, so importing this module
@@ -1216,6 +1217,11 @@ def run_daily_review(
     except Exception as exc:
         logger.debug("[daily_review] %s: Factor regime unavailable (non-fatal): %s", ticker, exc)
 
+    # SA-009: a missing (or unreadable) weight file is rebuilt from the
+    # dimensions of the graph this sector runs, as generate_forecast does.
+    # It used the automobile table for every sector, so a banking store
+    # gained automobile dimensions.
+    base_weights = get_sector_weights(sector)
     if paper:
         # PAPER-LANE ISOLATION: weight memory is never persisted for paper
         # ideas — get_or_init_weight_memory() would WRITE a fresh file into
@@ -1228,15 +1234,15 @@ def run_daily_review(
                 ticker=ticker,
                 last_updated=date.today().isoformat(),
                 weight_version=0,
-                current_weights=dict(settings.AGENT_WEIGHTS),
-                base_weights=dict(settings.AGENT_WEIGHTS),
+                current_weights=dict(base_weights),
+                base_weights=dict(base_weights),
                 adjustment_bounds={
                     "max_single_step": settings.WEIGHT_MAX_STEP,
                     "max_total_drift_from_base": settings.WEIGHT_MAX_DRIFT,
                 },
             )
     else:
-        wm = store.get_or_init_weight_memory(settings.AGENT_WEIGHTS)
+        wm = store.get_or_init_weight_memory(base_weights)
     # feedback_log was loaded above (before the external_shock rate-cap block);
     # reuse the same object here rather than reloading.
 

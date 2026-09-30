@@ -92,6 +92,11 @@ label/timing/final-bound problems. The SA-039 switch `rl.learning_mode`
 (accepted 2026-09-25; production runs `observe` since 2026-09-26 through the Railway variable `RL_LEARNING_MODE`) contains it: in `observe` mode,
 decisions use each sector's default weights, no weight file is written and
 lessons stop moving scores ([KT section 5](TECHNICAL_DESIGN.md#5-learning-forecast-review-and-memory)).
+Each ticker's learning lives in one store, `data/predictions/<managed sector>/<TICKER>/`.
+SA-009 (accepted 2026-09-30, not yet committed) fixes the writers that also created
+`automobile/<TICKER>` copies for other sectors' tickers. It adds a read-only
+store inventory and a reversible quarantine for such copies, which is not yet
+run in production ([KT section 3](TECHNICAL_DESIGN.md#3-runtime-configuration-and-storage)).
 The nightly auditor, monthly replay and
 weekly scoreboard are different measurements; none alone demonstrates the
 benefit of adaptation. The watchdog checks operational milestones, not stock
@@ -114,7 +119,7 @@ Learning then tunes six weights pooled across all stocks.
 
 | Already present | Planned in PI-2026-09 |
 |---|---|
-| Central graph routing, unified scoring, durable run/health logs; usable-data health semantics (SA-002, accepted, committed as `8413b59`); the essential-data decision gate, recording only (SA-003, accepted, committed as `167f08b`); security identity and lifecycle records (SA-008, accepted 2026-09-30, committed as `02c43f6`) | Enforcing the gate (owner decision after a measured record period), switching production from TATAMOTORS to TMPV, store lineage, sector lenses and the factor engine (one-engine design) |
+| Central graph routing, unified scoring, durable run/health logs; usable-data health semantics (SA-002, accepted, committed as `8413b59`); the essential-data decision gate, recording only (SA-003, accepted, committed as `167f08b`); security identity and lifecycle records (SA-008, accepted 2026-09-30, committed as `02c43f6`); prediction-store ownership, inventory and quarantine (SA-009, accepted 2026-09-30, not yet committed) | Enforcing the gate (owner decision after a measured record period), switching production from TATAMOTORS to TMPV, quarantining the stray stores in production, row-level store lineage, sector lenses and the factor engine (one-engine design) |
 | Hard-bound categorical research verdict under current YAML | Immutable issuance, correct grading and retry-safe bounded adaptive updates |
 | Virtual advice, execution, P/L and outcome reports | Complete matched cohorts and prospective evidence of learning benefit; costs and tax in paper P/L, idle cash put to work in normal markets (hold cash only in a crisis), one sizing rule for every autopilot buy, and the portfolio shown against the Nifty (SA-048–SA-051) |
 | IPO calendar/history/capture and recent-listing heuristic | Future validated IPO modeling is not a completed September deliverable |

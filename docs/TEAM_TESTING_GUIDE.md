@@ -77,10 +77,11 @@ Current read surface: `GET /scheduler/status`; see KT section 9 for the clock.
 | 01-D | Compare the monthly job, daily learning review, nightly advice audit and watchdog outputs. | Four different functions have identifiable dates/results. A watchdog notice is not a completed financial review. |
 | 01-E | Observe an engineer-run restart/owner-loss scenario in test. | One effective background owner; missing/repeated work is detected and recovery is demonstrated. **PI target: SA-029.** |
 | 01-F | Rerun the same session: in an isolated test copy, run the daily-review job twice for one review date (as the day after a weekday holiday does), with one ticker failing on the second run only. | `runs` is 2 and `attempted` is twice `required`; `produced` does not grow. The ticker that failed on the second run stays completed, marked `from_earlier_run`, because its feedback entry from the first run stands. **SA-004 (accepted 2026-09-27, committed as `241c393`, deployed 2026-09-27 as `b3fb00dd`).** |
+| 01-G | Observe an engineer-run restart in a test copy on a month's first trading day, after the monthly job skipped one managed `renewable_energy` ticker (for example SUZLON) and one `automobile` ticker. | The restart rebuilds each missing envelope in the ticker's own sector: `renewable_energy/SUZLON` gains the month's envelope, and no `automobile/SUZLON` directory appears. Before SA-009 the restart looked only in `automobile/`, so SUZLON got an automobile-graph forecast in a second store and its own store stayed empty. **PI target: SA-009** (accepted 2026-09-30, not yet committed). |
 
 **Deliverable:** one job-results table: job, scheduled time, actual start/end,
 review date, expected/produced/skipped/failed counts, output evidence and result.
-Related PI: SA-004, SA-011, SA-029.
+Related PI: SA-004, SA-009, SA-011, SA-029.
 
 ## 4. HT-02 — Research and data quality
 
@@ -135,10 +136,11 @@ learning-evidence report supplied by engineering.
 | 04-D | Open an empty/small-sample learning report. | Insufficient evidence is visible; changing weights or a successful model call is not advertised as demonstrated benefit. **PI target: SA-020–SA-024.** |
 | 04-E | Compare adapted and fixed-policy results for engineering's prepared cohort. | Same issue window, stock group, horizon and missing-case policy are stated. A retrospective replay is labelled retrospective. **PI target: SA-018/SA-022.** |
 | 04-F | With engineering's prepared store in `observe` learning mode, open RL Monitor → weights for a ticker whose stored weights differ from the defaults, then compare the weight file's version before and after a prepared review. | The page states `observe`; the weights in use are the sector defaults (for example `technical` 0.12 in the generic graph), shown apart from the stored ones. The stored version is unchanged after the review, and a dated observation record shows what the weights would have become. After switching back to `adapt`, the stored weights are in use again, unchanged. **SA-039: accepted 2026-09-25; production runs `observe` since 2026-09-26.** |
+| 04-G | In a test copy of a predictions tree (never production), SUZLON is managed as `renewable_energy` and also has an `automobile/SUZLON` store; ACME, which is not managed, has two stores. Engineering runs the store inventory and the quarantine plan, then applies the plan and rolls it back. Compare the outputs at each step. | The inventory marks `automobile/SUZLON` as a stray store whose dimensions are the automobile ones ("wrong roster" for its owner), and the two SUZLON envelopes for the same month as conflicting. The plan moves only the stray store and holds ACME, because nothing says which ACME store is right. After apply, the scorecard and analytics list SUZLON once, and the quarantined forecasts still open from the quarantine directory. After rollback, the tree's digest equals the one taken before. **PI target: SA-009** (accepted 2026-09-30, not yet committed). |
 
 **Deliverable:** a state-change/evidence summary. Evaluating statistical methods
 remains an engineering/specialist duty; this tester flags missing or misleading
-evidence. Related PI: SA-015–SA-018, SA-020–SA-024.
+evidence. Related PI: SA-009, SA-015–SA-018, SA-020–SA-024.
 
 ## 7. HT-05 — IPO information and outcomes
 

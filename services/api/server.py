@@ -137,19 +137,24 @@ def _self_heal_rl() -> None:
         logger.warning("[startup] RL imports failed — self-heal skipped: %s", exc)
         return
 
-    from services.api.log_buffer import get_active_tickers
+    from services.api.log_buffer import get_active_tickers_with_sector
     today = date.today()
     month_start = today.replace(day=1)
     # Use a cycle_id key so the checkpoint resets each month automatically
     _cycle_key = today.strftime("%Y-%m")
     _completed: set[str] = _load_self_heal_checkpoint(_cycle_key)
 
-    for ticker in get_active_tickers():
+    # SA-009: each ticker's own sector, the store the scheduled forecast and
+    # review use. This looked in automobile/<TICKER> for every ticker and ran
+    # the automobile graph into it, so each month's first deploy gave every
+    # non-automobile ticker a second, wrongly-dimensioned store.
+    for entry in get_active_tickers_with_sector():
+        ticker, sector = entry["sym"], entry["sector"]
         if ticker in _completed:
             logger.info("[startup] %s — already processed this cycle, skipping (checkpoint)", ticker)
             continue
         try:
-            store    = PredictionStore(ticker, sector="automobile")
+            store    = PredictionStore(ticker, sector=sector)
             cycle_id = store.current_cycle_id()
 
             # ── Step a: ensure forecast envelope exists ───────────────────
@@ -162,7 +167,7 @@ def _self_heal_rl() -> None:
                 try:
                     import time as _t
                     _t.sleep(3)   # brief stagger so yfinance isn't burst-hit for 5 tickers at once
-                    envelope = generate_forecast(ticker)
+                    envelope = generate_forecast(ticker, sector=sector)
                     logger.info(
                         "[startup] Envelope generated: %s horizon=%dd base=₹%.2f",
                         ticker, len(envelope.daily_forecasts), envelope.base_close,
@@ -189,7 +194,7 @@ def _self_heal_rl() -> None:
                 )
                 for review_date in missing:
                     try:
-                        summary = run_daily_review(ticker, review_date)
+                        summary = run_daily_review(ticker, review_date, sector=sector)
                         logger.info(
                             "[startup] Backfill %s %s — status=%s direction=%s",
                             ticker, review_date,

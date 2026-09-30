@@ -1,0 +1,85 @@
+{
+  "story": "SA-009",
+  "phase": "implementation",
+  "baseline": "f443cc7576f06a8ef9782d889aa0efe627abe783",
+  "excluded": [
+    "docs/planning/PI-2026-09/STATE.json",
+    "docs/planning/PI-2026-09/HANDOFF.md",
+    "docs/planning/PI-2026-09/evidence/SA-009-implementation.md",
+    "docs/planning/PI-2026-09/stories/SA-017.md (routed note)",
+    "docs/planning/PI-2026-09/stories/SA-026.md (routed note)"
+  ],
+  "hash_convention": "git blob bytes after .gitattributes normalization (CRLF->LF for text, binary unchanged); verify with scripts/docs/kt_manifest.py verify",
+  "files": [
+    {
+      "path": "CODEBASE.md",
+      "git_blob": "33f6bfe5d452dd8096edd56871673b6696479c83",
+      "sha256": "71320cc46a2934f0e73d508b65cee108624816ef6c08af79f6ef11ba843c31ac"
+    },
+    {
+      "path": "core/intelligence/rl/stores/prediction_store.py",
+      "git_blob": "3c1b9e55b8698111751f92c8127f93f3273a1ff7",
+      "sha256": "af18c03cf0cf8447f100713fc2ecd20e13e9bdca97ca2d45965bfad6bdba11b9"
+    },
+    {
+      "path": "core/intelligence/rl/stores/store_inventory.py",
+      "git_blob": "3b60a1ca7c9333904e24cf19175a15a37f003e27",
+      "sha256": "8cd086fd0cdd815ba83c83ccf763914c4343cb932c3d44c40362eac24945e6aa"
+    },
+    {
+      "path": "core/intelligence/rl/stores/store_migration.py",
+      "git_blob": "9645486d4a013b596992c4d3f5fc643df60c2f97",
+      "sha256": "bb0ac1c4ae6e2a2de0185ab93b51c19376724460074f911dc47dd7d7c1d3a253"
+    },
+    {
+      "path": "core/intelligence/rl/workflows/daily_review.py",
+      "git_blob": "f97b5c23de7fb86e229f0502783507d97280fc04",
+      "sha256": "d06240f42ba169da9b0c89a48b2851a4ab8a02ac6e4e6d053c6a9ad4a9f11ada"
+    },
+    {
+      "path": "docs/ARCHITECTURE.md",
+      "git_blob": "816275923b20ac1e9aef8e763965b6a712d1b7b6",
+      "sha256": "506f8829f54781a743414cc45ee3e72fbf1c1060107a060f86b8c26be79ee8b1"
+    },
+    {
+      "path": "docs/StockAgent-Three-Loops.pdf",
+      "git_blob": "453856ed9f98eb3417edce11ed4add46f93972bc",
+      "sha256": "f9269933ad24568a0fc45938c5f04c36fd1e2a08a1ac61b53984057484e39945"
+    },
+    {
+      "path": "docs/TEAM_TESTING_GUIDE.md",
+      "git_blob": "87d545f5a7de8488037bd771c93e6ffad90dd82f",
+      "sha256": "309b4c358f339e1a1761c70dfda065ee9ed25d5fc2db505046ff185a17712a93"
+    },
+    {
+      "path": "docs/TECHNICAL_DESIGN.md",
+      "git_blob": "29fc707c402028b77eeb2614e2ca78b09170c222",
+      "sha256": "46afd5dbee57260b11ca9a7046e74ed8accc6885ce178577cb64066ff919c9f3"
+    },
+    {
+      "path": "services/api/server.py",
+      "git_blob": "25e0a96abefe2443eb25a10b8e81b41cd809ca34",
+      "sha256": "88774c0d7cc65bf2e9d4950f56d262d14e3b03984f33b36311f393cad4823371"
+    },
+    {
+      "path": "tests/unit/intelligence/rl/store_tree_sa009.py",
+      "git_blob": "c794b35dafb940c8a105e8a4b4b439649c9ac7ea",
+      "sha256": "a662fffc99e911525fd5491f47e8147742782e00367d278855e06cfac36b1173"
+    },
+    {
+      "path": "tests/unit/intelligence/rl/test_store_inventory_sa009.py",
+      "git_blob": "2d94a55ca1285afc5e1d7009ed7454c5f29bc7c8",
+      "sha256": "a72ce062a9e41ccc41797e4d0ba34cb7c9a4817f348f4b54cfa68d4b01d7c1b6"
+    },
+    {
+      "path": "tests/unit/intelligence/rl/test_store_migration_sa009.py",
+      "git_blob": "fe9fd4e832d071a53cce5827ee39b98fd134c0b2",
+      "sha256": "5db58c69281ca853c1351fa53966aef813ed9b64ced8df5d9318de9df2c49fbb"
+    },
+    {
+      "path": "tests/unit/intelligence/rl/test_store_writers_sa009.py",
+      "git_blob": "bf9341108741c72cb8f1eb6075f5f1853395cb43",
+      "sha256": "a406df89fff2525a2b17e071a2ab1bbab4a88cc9260a80707d29435ba0bae8cd"
+    }
+  ]
+}

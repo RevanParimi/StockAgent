@@ -22,7 +22,7 @@ it is not an implemented human-approval workflow.
 | Current code | Traced in this checkout. Flags, inputs and runtime data determine whether a path actually runs. |
 | Locally checked | Existing tests run in an isolated copy. Exact results and limits are in the [validation receipt](planning/PI-2026-09/evidence/DOC-001-implementation.md). |
 | Production observation | Dated evidence: the September 10 audit, section 10's 2026-09-21 email diagnosis, a September 15 deployment SUCCESS at `9a805878`, the 2026-09-23 read-only log inspection of learned weights, and the 2026-09-24 [SA-039 weight baseline](planning/PI-2026-09/evidence/SA-039-baseline-2026-09-24.md). Those logs came from deploy `d9c459ae` (commit `e8df088`). Deploys carrying the header revision's code were inspected read-only on 2026-09-25 (`7ebd06c5`: the 16:30 review ran in `adapt`) and on 2026-09-26 (`da9df6cf`: all 20 tickers in `observe`, per the [activation record](planning/PI-2026-09/evidence/SA-039-activation-2026-09-26.md)). |
-| PI target | Intended behavior, not completed functionality. SA-039 was accepted by its fresh review on 2026-09-25, and production has run `observe` since 2026-09-26 ([activation record](planning/PI-2026-09/evidence/SA-039-activation-2026-09-26.md); verification after the next reviews is pending). SA-001 (chat rendering) was accepted by its fresh review on 2026-09-26 ([review](planning/PI-2026-09/evidence/SA-001-review.md)); it is committed as `8413b59`, and its production verification is pending. SA-002 (data health) was accepted by its fresh re-review on 2026-09-26, after a rework of its test fixtures and one fundamentals case ([receipt](planning/PI-2026-09/evidence/SA-002-implementation.md), [review](planning/PI-2026-09/evidence/SA-002-review.md)); it is committed as `8413b59`, and its production verification is pending. SA-003 (the decision gate) was accepted by its fresh review on 2026-09-27 ([receipt](planning/PI-2026-09/evidence/SA-003-implementation.md), [review](planning/PI-2026-09/evidence/SA-003-review.md)); it is committed as `167f08b`, and its production verification is pending. It ships recording only (`decision_gate.mode: record`), and enforcing it is a separate decision, after SA-039's observation window and a measured record period. SA-004 (daily-review outcome counts) was accepted by its fresh review on 2026-09-27 ([receipt](planning/PI-2026-09/evidence/SA-004-implementation.md), [review](planning/PI-2026-09/evidence/SA-004-review.md)); it is committed as `241c393`, and its production verification is pending. SA-005 (a hermetic test suite and a CI workflow) was accepted by its fresh review on 2026-09-28 ([receipt](planning/PI-2026-09/evidence/SA-005-implementation.md), [review](planning/PI-2026-09/evidence/SA-005-review.md)); it is committed as `48143ed`, and its CI workflow first ran on 2026-09-28 and passed all 3 jobs. SA-006 (delivery transport and dead letters) was accepted by its fresh re-review on 2026-09-28, after a rework for two review findings ([receipt](planning/PI-2026-09/evidence/SA-006-implementation.md), [review](planning/PI-2026-09/evidence/SA-006-review.md)); it is committed as `15dcda1` and was deployed on 2026-09-28 (`00b94de9`). SA-007 (independently recoverable backups) was accepted by its fresh review on 2026-09-29, with two low follow-ups routed to SA-034 and SA-036 ([receipt](planning/PI-2026-09/evidence/SA-007-implementation.md), [review](planning/PI-2026-09/evidence/SA-007-review.md)); it is committed as `165d152` and was deployed on 2026-09-29 (`26b442f4`). No off-site bucket exists yet (the owner deferred it to the end of the PI). Change 1, which makes the missing-bucket reminder weekly instead of daily, was accepted by its fresh review on 2026-09-29 and is committed as `8663387`. SA-008 (security identity: the instrument registry and quarantine) was accepted by its fresh review on 2026-09-30 ([review](planning/PI-2026-09/evidence/SA-008-review.md)), with change 1 to follow for two limits of the reconciliation tool (section 6); it is committed as `02c43f6` and not yet deployed. Every other story from SA-009 to SA-051 is `todo`. Three are stretch. |
+| PI target | Intended behavior, not completed functionality. SA-039 was accepted by its fresh review on 2026-09-25, and production has run `observe` since 2026-09-26 ([activation record](planning/PI-2026-09/evidence/SA-039-activation-2026-09-26.md); verification after the next reviews is pending). SA-001 (chat rendering) was accepted by its fresh review on 2026-09-26 ([review](planning/PI-2026-09/evidence/SA-001-review.md)); it is committed as `8413b59`, and its production verification is pending. SA-002 (data health) was accepted by its fresh re-review on 2026-09-26, after a rework of its test fixtures and one fundamentals case ([receipt](planning/PI-2026-09/evidence/SA-002-implementation.md), [review](planning/PI-2026-09/evidence/SA-002-review.md)); it is committed as `8413b59`, and its production verification is pending. SA-003 (the decision gate) was accepted by its fresh review on 2026-09-27 ([receipt](planning/PI-2026-09/evidence/SA-003-implementation.md), [review](planning/PI-2026-09/evidence/SA-003-review.md)); it is committed as `167f08b`, and its production verification is pending. It ships recording only (`decision_gate.mode: record`), and enforcing it is a separate decision, after SA-039's observation window and a measured record period. SA-004 (daily-review outcome counts) was accepted by its fresh review on 2026-09-27 ([receipt](planning/PI-2026-09/evidence/SA-004-implementation.md), [review](planning/PI-2026-09/evidence/SA-004-review.md)); it is committed as `241c393`, and its production verification is pending. SA-005 (a hermetic test suite and a CI workflow) was accepted by its fresh review on 2026-09-28 ([receipt](planning/PI-2026-09/evidence/SA-005-implementation.md), [review](planning/PI-2026-09/evidence/SA-005-review.md)); it is committed as `48143ed`, and its CI workflow first ran on 2026-09-28 and passed all 3 jobs. SA-006 (delivery transport and dead letters) was accepted by its fresh re-review on 2026-09-28, after a rework for two review findings ([receipt](planning/PI-2026-09/evidence/SA-006-implementation.md), [review](planning/PI-2026-09/evidence/SA-006-review.md)); it is committed as `15dcda1` and was deployed on 2026-09-28 (`00b94de9`). SA-007 (independently recoverable backups) was accepted by its fresh review on 2026-09-29, with two low follow-ups routed to SA-034 and SA-036 ([receipt](planning/PI-2026-09/evidence/SA-007-implementation.md), [review](planning/PI-2026-09/evidence/SA-007-review.md)); it is committed as `165d152` and was deployed on 2026-09-29 (`26b442f4`). No off-site bucket exists yet (the owner deferred it to the end of the PI). Change 1, which makes the missing-bucket reminder weekly instead of daily, was accepted by its fresh review on 2026-09-29 and is committed as `8663387`. SA-008 (security identity: the instrument registry and quarantine) was accepted by its fresh review on 2026-09-30 ([review](planning/PI-2026-09/evidence/SA-008-review.md)), with change 1 to follow for two limits of the reconciliation tool (section 6); it is committed as `02c43f6` and not yet deployed. SA-009 (prediction-store ownership: the owner rule, a read-only store inventory and a reversible quarantine) was accepted by its fresh review on 2026-09-30 ([receipt](planning/PI-2026-09/evidence/SA-009-implementation.md), [review](planning/PI-2026-09/evidence/SA-009-review.md)), with change 1 to follow for the rollback's retry path (section 3); it is not yet committed. Every other story from SA-010 to SA-051 is `todo`. Three are stretch. |
 
 The [September audit](audit/2026-09-10-repository-production-review.md) records
 unresolved label, timing, health, weight-bound and operational defects.
@@ -152,7 +152,7 @@ Credentials and `.env` contents do not belong in KT or testing evidence.
 
 | Records | Writer / consumers and scope |
 |---|---|
-| `data/predictions/<sector>/<ticker>/` | PredictionStore: envelopes, feedback, controls, weight memory, lessons and dossier, plus `<TICKER>_weight_observations.json` (SA-039 observe-mode proposals). RL writes; advisor, evaluation and UI read. SA-009/SA-017 still need to reconcile historical aliases and mixed stores. |
+| `data/predictions/<sector>/<ticker>/` | PredictionStore: envelopes, feedback, controls, weight memory, lessons and dossier, plus `<TICKER>_weight_observations.json` (SA-039 observe-mode proposals). RL writes; advisor, evaluation and UI read. The owner of a ticker's history is `<managed sector>/<ticker>` (SA-009, below). SA-017 still needs row-level lineage for mixed stores. |
 | `_shared_ledger.json` per sector; `_market_ledger.json` at prediction root | Shared lessons can affect more than one ticker; bad attribution can propagate. |
 | `data/portfolio/<user>/` | PortfolioStore: holdings/cash, advice and transaction JSONL, value history, dated digests, briefs and weekly reviews. |
 | `data/ipo/` | Historical issue facts and captured demand snapshots; reports derive from these records. |
@@ -164,6 +164,123 @@ Credentials and `.env` contents do not belong in KT or testing evidence.
 PortfolioStore's JSONL ledger is the inspected advice source. September 10
 found incomplete/stale optional Atlas projections. An empty projection does
 not prove no advice was issued.
+
+**Prediction-store ownership (SA-009: accepted by its fresh review on
+2026-09-30; not yet committed or deployed).** SUZLON is managed as `renewable_energy`,
+and its forecasts and reviews live in `renewable_energy/SUZLON`. Before SA-009
+the startup self-heal in the [server](../services/api/server.py) looked for
+every managed ticker's envelope in `automobile/<TICKER>`. For a
+non-automobile ticker it found none, so on the first deploy of each month it
+ran the automobile graph into that directory. `automobile/SUZLON` therefore
+held automobile-dimension forecasts and weights beside the real store. The
+10 September audit capture found 15 such pairs. It also found that all 58
+feedback logs said `automobile`, because the store created each new log with
+the schema default.
+
+**The owner rule.** A ticker's history belongs to `<managed sector>/<TICKER>`:
+the store the scheduled forecast and review use, taken from the managed
+entry's sector whether or not the ticker is enabled. Some tickers have no
+owner: one without a managed entry, one whose entry has no sector, and one
+whose entries disagree. Nothing guesses a sector.
+
+The writers now keep to that rule:
+- self-heal uses each managed entry's sector. A restart therefore rebuilds a
+  missing envelope in the ticker's own store; before, it did so only for
+  automobile tickers;
+- [PredictionStore](../core/intelligence/rl/stores/prediction_store.py)
+  stamps its own sector on the feedback logs, weight memory and ledgers it
+  creates. Files already on disk keep what they say, so a default can still
+  be told from a declared sector;
+- the daily review rebuilds a missing or unreadable weight file from its
+  sector's graph, as the forecast does. Before, it used the automobile table
+  for every sector.
+
+**The inventory** (`core/intelligence/rl/stores/store_inventory.py`).
+`python -m core.intelligence.rl.stores.store_inventory --out manifest.json` is
+read-only. It reads files directly and never constructs a PredictionStore,
+whose constructor creates its directory. For each store it records its
+identity (path, ticker, file count and one digest), its sector evidence, its
+ownership, its schema markers and the code that reaches it. The sector status
+says how far the store's own data supports its directory:
+
+| Status | Meaning |
+|---|---|
+| `confirmed` | Every file with a dimension roster names one graph, and it is the directory's graph. A directory name alone never confirms. |
+| `conflicting` | A file names another graph or several graphs, or declares another sector than its directory. |
+| `directory_only` | A sector directory whose files carry no roster: only the directory name. |
+| `roster_only`, `missing` | A legacy flat `<TICKER>/` store with, or without, a recognisable roster. |
+| `empty` | No files, typically a directory created by a read. |
+
+A dimension roster is the set of dimension keys in a file's rows or weights.
+It identifies the graph that produced them: the nine automobile dimensions
+differ from the six renewable-energy ones. `roster_vs_owner` compares the
+rosters with the owner's graph. `automobile/SUZLON` is `confirmed`, because
+the automobile graph did produce it, and `wrong_roster` for its owner. The
+`sector` fields of feedback logs, weight memory and ledgers are reported,
+never used as evidence.
+
+The manifest also lists duplicates, each marked identical or conflicting:
+- tickers with more than one non-empty store;
+- envelope cycle ids found in more than one store;
+- graded days (ticker and date) recorded more than once, in one store or
+  across stores.
+
+These are derived keys, not issuance identities (SA-013). The manifest holds
+paths, tickers, sector keys, counts, SHA-256 digests, dimension names and
+field names, and no prices, text or user data. Its digest excludes the
+generation time, so an unchanged tree always gives the same digest.
+
+**Who reads which store.** Each rule below picks a store for a ticker:
+
+| Class | Store it picks | Code |
+|---|---|---|
+| `managed` | `<managed sector>/<TICKER>` | The monthly forecast and daily review ([scheduler](../services/scheduler/python/scheduler.py)), pre-open check, event ingest, weekly ledger cleanup, RL monitor, scheduler API; startup self-heal since SA-009. |
+| `analysis_graph` | `<graph sector>/<TICKER>` | An analysis's learned-weight read ([base_orchestrator](../src/backend/shared/pipeline/base_orchestrator.py)) and its agents' prompt-enhancement and dossier reads. For a pharma ticker that is `generic/<TICKER>`, while its RL store is `pharma/<TICKER>`. |
+| `automobile_default` | `automobile/<TICKER>` when no sector is passed | Manual CLIs (`run_schedule forecast` and `daily-review`, `generate_forecast`'s own main), the bundle builder's and base agent's fallbacks, the UI's last fallback. |
+| `discovery` | every `<dir>/<dir>` pair | Scorecard, eval harness, learning evidence, analytics and universe walk the whole tree; the UI scans it for an unmanaged ticker. |
+| `flat_cli` | `<TICKER>/` | `run_schedule feedback-status`. Discovery misreads such a directory as a sector. |
+
+The last three classes, and the constructor's directory creation, stay as they
+are. They belong to SA-026's frozen `store_key`.
+
+**The quarantine** (`core/intelligence/rl/stores/store_migration.py`).
+It has three commands:
+- **`plan`** is read-only. It proposes to quarantine each non-empty store of a
+  managed ticker that is not the owner's store, including a legacy flat one.
+  It holds, and never moves, anything that needs a decision: duplicates of an
+  unmanaged ticker, an owner that disagrees with the ticker map, a managed
+  entry with no sector or two conflicting entries, and two owner directories
+  that differ only in case. It flags an owner's store
+  that carries another graph's roster; the lineage of those rows is SA-017's.
+  The plan lists every file's SHA-256 and ends with one digest.
+- **`apply --plan … --approve <digest>`** recomputes the plan and refuses
+  unless it is unchanged. It creates a new migration directory
+  `prediction_quarantine/<UTC time>-<digest>/` beside `data/predictions`. That
+  location is inside `data/`, so the nightly backup keeps it, and outside the
+  tree the evaluators walk. It writes the lineage record before the first
+  move. It re-hashes each store immediately before moving it and stops at the
+  first difference. A store moves by one directory rename: its bytes are
+  never copied, rewritten, merged or deleted, and they are hashed again after
+  the move. The quarantine keeps the live layout, so
+  `PredictionStore(ticker, sector, base_dir=<migration>/stores)` still reads it.
+- **`rollback --migration DIR`** renames each store back after checking its
+  bytes. It refuses a store whose live path exists again, so it never merges,
+  and a quarantined store whose bytes changed. After a complete apply, it
+  restores the live tree byte for byte. Two limits remain until SA-009
+  change 1. First, an empty directory created by a read counts as a live
+  path: remove it and run rollback again. Second, a store refused because its
+  quarantined bytes changed is not re-attempted, even when a later run reports
+  `rolled_back`. After any `partial` rollback, read each item's status in
+  `lineage.json`.
+
+For the 10 September production pairs: if each of those 15 tickers is managed
+under its other sector, and the ticker map agrees, the plan moves the
+`automobile/<TICKER>` copies and keeps the owners' stores. That is an inference
+from the audit's capture, which did not include the managed roster; the tool
+has not run on the volume. A production
+migration needs the owner's authorization, a read-only manifest from the
+volume, and the writer fixes deployed first. Run it in a job-free window,
+because a racing writer is detected, not prevented.
 
 ## 4. Research: input to recommendation
 
@@ -390,7 +507,9 @@ and regenerates nothing on a shock (the current envelope stays as it is).
 Nothing scheduled retries a withheld month-start envelope before the next
 month's run: only a restart's self-heal regenerates a missing envelope. Until
 then that ticker's reviews return `no_envelope` and its ADDs stay blocked.
-A same-month retry is routed to SA-036.
+Before SA-009 the self-heal did this only for automobile tickers, because it
+looked in `automobile/<TICKER>`; it now uses each ticker's own store
+(section 3). A same-month retry is routed to SA-036.
 
 **SA-008:** every row, and the envelope, also records the instrument its
 analysis priced (`instrument`: ticker, provider symbol, price basis, identity
@@ -1142,7 +1261,7 @@ recovery without the volume.
 
 | Topic | Current implementation | Still planned / unverified |
 |---|---|---|
-| Sector routing | Shared graph selection via registry. | Complete store lineage, and sector lenses resolved from NSE's industry field ([one-engine design](superpowers/specs/2026-09-26-one-engine-sector-lenses-design.md); SA-026). |
+| Sector routing | Shared graph selection via registry. Store ownership: `<managed sector>/<TICKER>`, with the writers that broke it fixed, a read-only store inventory and a reversible quarantine (SA-009, accepted 2026-09-30; not yet committed). | A quarantine applied in production, row-level lineage (SA-017), and sector lenses resolved from NSE's industry field ([one-engine design](superpowers/specs/2026-09-26-one-engine-sector-lenses-design.md); SA-026). |
 | Analysis | Unified scoring plus surviving legacy fallback. | Actual call accounting. A factor engine (computed factors, one text reader, code decides, LLM explains) proven in shadow, then the graphs and fallback retired (SA-044–SA-047, SA-027). |
 | Data health | Durable health/run records. Producer-typed section status and usable-data health (SA-002, accepted 2026-09-26, committed as `8413b59`). A decision gate on essential data across research, learning and portfolio (SA-003, accepted 2026-09-27, committed as `167f08b`), shipped recording only. Instrument identity and lifecycle records (SA-008, accepted 2026-09-30, committed as `02c43f6`, not yet deployed). | A measured record period, then the owner's decision to enforce; switching production from TATAMOTORS to TMPV (the owner's decision of 29 Sep, done at rollout). |
 | Verdict binding | Deterministic category enabled in YAML, raw model verdict logged. | Correct issue-time grading and final adaptive constraints. |
@@ -1164,7 +1283,7 @@ The table below includes the planned destination now. **SA-039 is accepted
 verification is pending. SA-003 is accepted by its fresh review (2026-09-27)
 and committed as `167f08b`; its production verification is pending. SA-004 is
 accepted by its fresh review (2026-09-27) and committed as `241c393`; its
-production verification is pending. SA-005 is accepted by its fresh review (2026-09-28) and committed as `48143ed`; its CI workflow first ran on 2026-09-28 and passed all 3 jobs. SA-006 is accepted by its fresh re-review (2026-09-28). Its first review asked for two fixes the same day: a push could reach a phone twice, and the owner report could show a user id. Both are made; it is committed as `15dcda1` and was deployed on 2026-09-28 (`00b94de9`). SA-007 is accepted by its fresh review (2026-09-29), with two low follow-ups routed to SA-034 and SA-036; it is committed as `165d152` and deployed as `26b442f4` (2026-09-29). Its change 1, a weekly missing-bucket reminder, is accepted and committed as `8663387`. SA-008 is accepted by its fresh review (2026-09-30), with change 1 to follow for the reconciliation tool; it is committed as `02c43f6` and not yet deployed. Every other SA story is `todo`.** Accepted
+production verification is pending. SA-005 is accepted by its fresh review (2026-09-28) and committed as `48143ed`; its CI workflow first ran on 2026-09-28 and passed all 3 jobs. SA-006 is accepted by its fresh re-review (2026-09-28). Its first review asked for two fixes the same day: a push could reach a phone twice, and the owner report could show a user id. Both are made; it is committed as `15dcda1` and was deployed on 2026-09-28 (`00b94de9`). SA-007 is accepted by its fresh review (2026-09-29), with two low follow-ups routed to SA-034 and SA-036; it is committed as `165d152` and deployed as `26b442f4` (2026-09-29). Its change 1, a weekly missing-bucket reminder, is accepted and committed as `8663387`. SA-008 is accepted by its fresh review (2026-09-30), with change 1 to follow for the reconciliation tool; it is committed as `02c43f6` and not yet deployed. SA-009 is accepted by its fresh review (2026-09-30), with change 1 to follow for the rollback's retry path; it is not yet committed. Every other SA story is `todo`.** Accepted
 state/dependencies are in
 [STATE.json](planning/PI-2026-09/STATE.json). DOC-001 is this user-requested
 documentation refresh; it does not close SA-031 or any upstream remediation.

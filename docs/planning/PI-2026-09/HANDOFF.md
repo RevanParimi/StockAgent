@@ -97,8 +97,8 @@ review-edited docs, so every reviewed code and test byte is committed as reviewe
 `active_task: null`, `next_task: SA-010`, `next_phase: implementation`. **Run step 0 first:** P3 is
 due Thu 1 Oct 09:30, then the SA-003 enforce decision.
 - **SA-009 change 1 was ACCEPTED** by its fresh review (about 17:50–18:15 IST; the block below).
-  It is uncommitted. Committing and pushing it need the owner's word, in a job-free window. The
-  landing commit's KT bump declares the change-1 commit.
+  At the owner's word ("ya commit and push", about 22:20 IST) it is committed as `9c626a5`, with
+  the KT bump after it (header `9c626a5`). The push and deploy are recorded in step 3.
 - SA-008 change 1 stays open. It must be accepted before any `successors` record.
 
 **3. SA-008 and SA-009 are pushed and deployed** (the owner's word, about 13:00 IST: "ya commit

@@ -1,4 +1,4 @@
-# Current handoff - 2026-09-30 (updated about 12:55 IST)
+# Current handoff - 2026-09-30 (updated about 18:15 IST)
 
 ## START HERE — resume checklist, in order
 
@@ -44,22 +44,20 @@ unrecorded (read-only; the steps are in the carry-over box on [SA-001](stories/S
   - **Also report two inputs to the owner.** The SA-003 review added them; they do not change the
     rules above:
     - **F1:** how many month-start envelopes carry `abstain`. Under `enforce`, each such ticker
-      would have no envelope for that month, because only a restart retries it. **SA-009 adds a
-      caveat:** until SA-009 is deployed, a restart retries only automobile tickers. For every
-      other ticker it writes an automobile-graph envelope into `automobile/<TICKER>`, which that
-      ticker's reviews never read, so under `enforce` nothing retries its month at all;
+      would have no envelope for that month, because only a restart retries it. **SA-009 is
+      deployed** (`650bb98c`, 30 Sep 13:13 IST), so a restart now retries every ticker in its
+      own store. Before that, it retried only automobile tickers;
     - **F2:** how many `actual_close` gate rows name `source nse` with the previous session's bar
       (the close-verifier case);
     - count analyses by distinct `run_id` against the data-health rows, not by raw gate-log rows.
       A re-run review appends its rows again.
-  - **SA-008 interplay (accepted 30 Sep; committed as `02c43f6`, not deployed).** If it is deployed before
-    the decision, two things follow:
+  - **SA-008 interplay (deployed 30 Sep 13:13 IST as `650bb98c`).** Two things follow:
     - its identity rows abstain by design on healthy data, so exclude them from the spot check.
-      They are recognisable by the reason prefix `identity` and the review stage `identity`;
-    - `enforce` would then also quarantine TATAMOTORS: no forecast, no learning, and a held
-      holding. Say so to the owner with the decision.
-
-    If it is not deployed, nothing changes.
+      They are recognisable by the reason prefix `identity` and the review stage `identity`.
+      They start with the 30 Sep 16:30 review, unless TATAMOTORS is disabled first;
+    - `enforce` would also quarantine TATAMOTORS (no forecast, no learning, a held holding) if it
+      is still enabled. The owner's rollout disables it (step 3). Say which holds with the
+      decision.
   - Log the decision in `evidence/SA-003-enforce-decision-<date>.md`, in STATE history and in
     SA-003's `production_verification`. The [SA-003 receipt](evidence/SA-003-implementation.md)
     has the steps, under "Rollout", and the [review](evidence/SA-003-review.md) has F1 and F2.
@@ -95,33 +93,113 @@ review-edited docs, so every reviewed code and test byte is committed as reviewe
     - Thu 1 Oct to Tue 6 Oct should be silent for this entry. The Thursday check is read-only.
   - This record (STATE and HANDOFF) is uncommitted. It rides with the next commit.
 
-**2. Next PI phase: SA-010's implementation**, in a new conversation. Opener: `Continue`.
-STATE: `active_task: null`, `next_task: SA-010`, `next_phase: implementation`. SA-010 is the first
-planned `todo` story in STATE order whose dependencies are met (it has none). **Run step 0
-first:** P3 is due Thu 1 Oct 09:30. Two small follow-ups are also open, and neither is urgent:
-SA-008 change 1 and SA-009 change 1. Taking one before SA-010 needs the owner's word.
+**2. Next PI phase: SA-010's implementation**, in a new conversation. Opener: `Continue`. STATE:
+`active_task: null`, `next_task: SA-010`, `next_phase: implementation`. **Run step 0 first:** P3 is
+due Thu 1 Oct 09:30, then the SA-003 enforce decision.
+- **SA-009 change 1 was ACCEPTED** by its fresh review (about 17:50–18:15 IST; the block below).
+  It is uncommitted. Committing and pushing it need the owner's word, in a job-free window. The
+  landing commit's KT bump declares the change-1 commit.
+- SA-008 change 1 stays open. It must be accepted before any `successors` record.
 
-**3. SA-009 is committed as `313e3f6`, with the KT bump after it** (the owner's word, about
-13:00 IST: "ya commit and push"; see "SA-009 was ACCEPTED" below). The KT bump links `store_inventory.py` and
-`store_migration.py`. `verify SA-009-manifest.json --rev 313e3f6` mismatches exactly the 4
-review-edited docs: the KT, the PDF, ARCHITECTURE and TEAM_TESTING_GUIDE.
-The push follows with SA-008's two commits, in the 12:05–14:55 IST job-free window. Every
-push redeploys.
+**3. SA-008 and SA-009 are pushed and deployed** (the owner's word, about 13:00 IST: "ya commit
+and push").
+- **The commits:** SA-009 is `313e3f6`, with its KT bump `e698c68`. `verify SA-009-manifest.json
+  --rev 313e3f6` mismatches exactly the 4 review-edited docs. SA-008 is `02c43f6`, with its bump
+  `f443cc7`.
+- **The push:** `e3bb6a3..e698c68` at 13:07:23 IST, in the 12:05–14:55 job-free window.
+- **The deploy:** Railway `650bb98c` reached SUCCESS at 13:13:09 IST, a cached build, because
+  `requirements.txt` did not change.
+  - Boot log: 127 lines, 0 tracebacks and 0 error or warning lines. The scheduler started with
+    24 jobs.
+  - The self-heal skipped all 20 tickers on September's checkpoint, as expected. The new
+    per-sector behaviour starts with October's first restart.
+  - `/health` returned Railway's edge 404 "Application not found" for about 4½ minutes after
+    SUCCESS, then 200 `ok` from 13:17:48.
+- **CI:** run `36684772155` on `e698c68` passed 3 of 3 jobs: guards 13 s, Python tests on Linux /
+  3.11 154 s, Chromium 112 s.
+- **The owner's rollout steps (not done yet):**
+  - **SA-008:**
+    - **Disable** TATAMOTORS with the toggle. **Never remove it:** removing deletes its history.
+    - Add TMPV: sector `automobile`, name "Tata Motors Passenger Vehicles Ltd". The add starts
+      its envelope in the background.
+    - Suggested timing: any time now, before Thu 09:00, so the monthly forecast includes TMPV and
+      skips TATAMOTORS. The 30 Sep 16:30 review already showed TATAMOTORS' `identity` stage once
+      in production.
+    - Also a read-only look at the volume's `data/yf_symbol_cache.json` (SA-008 review L2).
+  - **SA-009:** run the inventory and the plan read-only on the volume, and paste the summary
+    lines, the items and the holds. The commands are in the SA-009 receipt's "Rollout". Before
+    approving, check `owner_store_present` on every item (review I4). Apply only by the plan's
+    digest, in a job-free window after the 23:30 backup. It is best to wait until change 1 is
+    deployed, so the rollback has its fixes. Change 1 is accepted but not yet committed. A plan
+    made now keeps its digest after change 1 deploys (review Q6).
+- **Production checks after the deploy:**
+  - **today's 16:30 review, observed read-only at about 17:33 IST (the `650bb98c` log to 17:01).**
+    - It graded 29 Sep for all 20 tickers in `observe`. There were 19 proposals not applied, 0
+      `Weights → v` lines and 0 tracebacks.
+    - The outcome was 19/20. The missing one is WELCORP with `no_envelope`, which is known and
+      pre-existing.
+    - SA-008's `identity` lines name only TATAMOTORS, both "would skip (record mode)": once in the
+      analysis gate and twice for the review.
+    - The yfinance `^CNXAUTO` "possibly delisted" errors are pre-existing: 38 lines in the 29 Sep
+      review on `f2e23722`, 40 today. They belong to SA-010's benchmark work.
+    - The ERROR and WARNING totals are 67 and 79, against 88 and 87 the day before;
+  - still to observe: new October feedback logs carry their store's sector, and October's first
+    restart checks each ticker's own store.
 
-**3a. SA-008 is committed as `02c43f6`, with the KT bump after it. Neither is pushed.** The
-owner chose to commit it first (about 06:55 IST 30 Sep), locally only, so that SA-009 starts on a
-clean baseline.
-- `verify SA-008-manifest.json --rev 02c43f6` mismatches exactly the 5 review-edited docs: the
-  KT, the PDF, ARCHITECTURE, TEAM_TESTING_GUIDE and CODEBASE. So every reviewed code and test
-  byte is committed as reviewed.
-- The commit also carries the records made since `e3bb6a3`: SA-039 P2, and the first weekly
-  SA-007 notice.
-- The KT bump declares `02c43f6` (edition 2026-09-30) and links `config/instruments.yaml`,
-  `instruments.py` and `identity_reconcile.py`.
-- **The push needs the owner's word, in a job-free window** (00:10–06:20 IST is safest). Every
-  push redeploys.
-- **Then the rollout:** the receipt's "Rollout", plus the review's read-only look at the volume's
-  learned symbol cache (L2).
+**SA-009 change 1 was ACCEPTED on 2026-09-30 by a fresh-session review** (a new conversation,
+about 17:50–18:15 IST). Receipt: [SA-009-review.md](evidence/SA-009-review.md), section "Change 1
+fresh-session review". No SA-039 check was due. Nothing was committed, pushed, deployed,
+configured or sent, and no production state was read.
+
+- **Input verified:** `7f2a4a2a…` (9 files, 0 mismatches, no unlisted change). The diff
+  `e3a04386…` was rebuilt with the reviewer's own script.
+- **Traced:** `rollback` touches files in only two ways. It removes an empty live directory with
+  `rmdir`, and it renames back a store whose bytes equal the record. `PredictionStore` creates
+  only the store's own directory on a read.
+- **An example the change also fixes (probe Q1).** A rollback crashes after renaming
+  `automobile/SUZLON` back, before recording it.
+  - Before: every later run said `refused_quarantine_missing` and `partial`.
+  - Now: the next run finds the store live with its recorded bytes (`found_live`) and reports
+    `rolled_back`.
+- **Checks:**
+  - reviewer probes 8 of 8;
+  - reviewer mutations 4 of 6 caught (RA is L1, RD is telemetry);
+  - focused 45 passed;
+  - full suite **4026 passed, 12 skipped, 0 failed** (5 min 16 s), `data/` unchanged;
+  - broad-except OK, and `check_kt_docs` errors `[]`.
+- **C1–C4 upheld.**
+- **Findings.** None is critical, high or medium, and there is no code defect.
+  - **L1 (low, tests; predates change 1):** no test pins that a store restored with other bytes
+    (`rolled_back_changed`) keeps the run `partial`. Routed to [SA-031](stories/SA-031.md): add
+    probe Q2 as a test.
+  - **I1:** the KT did not state `found_live`. Fixed in KT §3.
+  - **I2:** a Windows-only `os.replace` flake in `_write_lineage`. Routed to SA-031.
+- **Review edits (docs only):** the status wording in the KT (§1, §3, §11, §12) and guide 04-G;
+  the `found_live` sentence in KT §3; the PDF rebuilt; the SA-031 card note. `verify
+  SA-009-change1-manifest.json` now mismatches exactly the KT, the PDF and the guide.
+
+**SA-009 change 1 was IMPLEMENTED on 2026-09-30** (this conversation, about 13:15–17:45 IST,
+with a pause). It is uncommitted and not reviewed. A same-conversation self-review was done; it is
+not the fresh review. The receipt is the "Change 1" section of
+[SA-009-implementation.md](evidence/SA-009-implementation.md).
+
+- **What it is, in one example.** A quarantined SUZLON file was changed, and a dashboard read
+  recreated an empty `automobile/SUZLON`.
+  - **Before:** rollback refused SUZLON. After the file was fixed, a retry skipped SUZLON yet
+    reported `rolled_back` (review L1). The empty directory alone would also have blocked it
+    (L2).
+  - **Now:** every run retries each store not back, after removing an empty live directory with
+    `rmdir`. It reports `rolled_back` only when every store is back with its recorded bytes.
+  - A store moved back by hand counts only with its recorded bytes (`found_live`).
+  - The inventory's summary gains `roster_collisions` (I3).
+- **Checks:**
+  - 10 new tests pin the review's probes R2, R3, R5 and R8–R10 (L3);
+  - focused 45 passed;
+  - mutations 11 of 11 caught, including the review's four survivors;
+  - full suite **4026 passed, 12 skipped, 0 failed** (4016 + 10), `data/` unchanged;
+  - `check_kt_docs` errors `[]`.
+- **Also recorded here:** SA-008 and SA-009 now read "deployed 2026-09-30 (`650bb98c`)" in the
+  KT, ARCHITECTURE, the guide and CODEBASE.
 
 **SA-009 was ACCEPTED on 2026-09-30 by a fresh-session review** (a new conversation, about
 12:25–12:55 IST). Receipt: [SA-009-review.md](evidence/SA-009-review.md). SA-009 is `done`, and

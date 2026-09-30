@@ -351,3 +351,129 @@ hermetic boundary: no network, and no access to the checkout's `data/`.
   re-read the sections that link `services/api/server.py` and `prediction_store.py`, which this
   story changes.
 - **After the commit:** `verify --rev <commit>` compares against the commit instead.
+
+## Change 1 — the rollback's retry path and the untested rules (2026-09-30)
+
+- **Request.** After SA-009 was accepted, committed as `313e3f6`, pushed and deployed (Railway
+  `650bb98c`), the owner said "take SA-008 or SA-009 change whichever is recommended" (about
+  13:00 IST).
+  - **SA-009 change 1 was chosen.** It is on the path of the next production action, the
+    quarantine apply, whose safety net is `rollback`. SA-008 change 1 stays gated behind a
+    `successors` record, which nothing plans.
+- **Context.** Change 1 was implemented in the **same conversation** as SA-009's fresh review,
+  commit and push, at the owner's explicit request. That is a recorded one-phase-per-conversation
+  deviation, as for SA-007 change 1. A same-conversation self-review was done. It is not the fresh
+  review, which is a new conversation. STATE: `change_1` `review_required`.
+- **Baseline:** `e698c68` (the clean tree after the push).
+- **Source:** [the SA-009 review](SA-009-review.md), findings L1, L2 and L3, and the optional I3
+  guard.
+
+### What changed, in one example
+
+After an apply, the operator runs `rollback`. Suppose one file in the quarantined
+`automobile/SUZLON` was changed, and a dashboard read recreated an empty `automobile/SUZLON`
+directory:
+
+- **Before:** the first run refuses SUZLON (`refused_quarantine_changed`) and reports `partial`.
+  The operator puts the file back and runs rollback again. The retry skips SUZLON, which stays in
+  quarantine, yet reports `rolled_back` and exits 0 (L1). Even with the file fixed, the empty
+  directory alone would have made rollback refuse (L2).
+- **Now:** every run retries each store that is not back. The empty directory is removed first,
+  with `rmdir`, which refuses any directory holding a file, so a writer's file is never lost.
+  The retry restores SUZLON, and the run reports `rolled_back`. A run reports `rolled_back` only
+  when no store is left in quarantine or refused and every restored store has its recorded
+  bytes. Otherwise it reports `partial` and the CLI exits 1.
+
+`core/intelligence/rl/stores/store_migration.py` `rollback`:
+- the retried states are `_NOT_BACK`: `moved`, `moved_changed`, `pending`,
+  `refused_live_path_exists`, `refused_quarantine_changed` and `refused_quarantine_missing`;
+- the run's status is derived from all items at the end. `rolled_back_changed`, a store back but
+  with other bytes, keeps it `partial`;
+- a live path that exists is emptied with `rmdir` if it is an empty directory; the item records
+  `removed_empty_live_dir`. A directory with files is still refused;
+- a store missing from quarantine but already live with its recorded bytes (moved back by hand)
+  is `found_live`, counted as restored. With other bytes it stays `refused_quarantine_missing`;
+- a stale `rollback_diff` is dropped once the store passes the check.
+
+`core/intelligence/rl/stores/store_inventory.py`: the summary gains `roster_collisions`, the
+graphs that share one dimension roster (I3). It is empty with the shipped toggles. If a native
+sector were switched off, the router would give it the generic roster, and its own files would
+read `unrecognized`. This field says why.
+
+### Tests
+
+The 10 new tests turn the review's probes R2, R3, R5 and R8–R10 into repository tests, plus
+two for the new behaviour:
+- `test_store_migration_sa009.py`: 8 new:
+  - an empty live directory recreated by a read (R2);
+  - a refused store retried, with the status never overstated, including the CLI's exit code 1
+    (R3);
+  - a store moved back by hand, with and without its recorded bytes;
+  - `apply` moves the fresh plan's items, not the file's (R5);
+  - a managed entry with no sector (absent, `""`, `"   "`; R8);
+  - conflicting managed entries (R9).
+- `test_store_inventory_sa009.py`: 2 new:
+  - a declared sector other than the directory's (R10);
+  - graphs sharing a roster (I3).
+  - The real-wiring test now also asserts that the shipped graphs have no collision.
+- **Focused:** the three SA-009 files, 45 passed (35 + 10).
+- **Mutations** (`mutate_c1.py` in the session scratchpad; each restores the source by SHA-256):
+  **11 of 11 caught.** They include the four the review saw survive (RM4, RM5, RM7, RM8) and:
+  - C1: `store_migration.py` as at `313e3f6`;
+  - C2: refused stores never retried;
+  - C3: the status ignores refused items;
+  - C4: an empty live directory still blocks;
+  - C5: a non-empty live directory is not refused;
+  - C6: a store found live is accepted whatever its bytes;
+  - C7: no roster collisions reported.
+- **Full suite:** `.stockai/Scripts/python.exe -m pytest tests -q -p no:cacheprovider` on the final bytes: 4026 passed, 12 skipped, 0 failed (7 min 59 s; 4016 + the 10 new). `data/` was unchanged.
+
+### Documentation
+
+- **KT section 3:**
+  - the `rollback` bullet now states the behaviour, and a new bullet names change 1;
+  - the inventory paragraph gains `roster_collisions`.
+- **KT sections 1, 11 and 12:** change 1's status. SA-008 and SA-009 now read "deployed
+  2026-09-30 (`650bb98c`)", in the KT, ARCHITECTURE, TEAM_TESTING_GUIDE (01-G, 02-D, 04-G, 07-H)
+  and CODEBASE.
+- **Guide 04-G:** the empty-directory and repaired-quarantine cases.
+- **The PDF** was rebuilt, and `check_kt_docs` gave errors `[]` (414 links, 33 pages).
+- **The landing commit's KT bump** declares the change 1 commit, because `store_migration.py` and
+  `store_inventory.py` change after `313e3f6`.
+
+### Decisions for the reviewer
+
+- **C1. The empty directory is removed with `rmdir`.** `rmdir` fails on any directory holding a
+  file, so a writer whose file lands first is never merged into or lost. A write after the rename
+  is detected by the re-hash (`rolled_back_changed`), as D7 accepts for `apply`.
+- **C2. The status is derived from every item.** A `rolled_back_changed` store keeps each later
+  run `partial`, because the tree is not byte-identical to the record. The operator reads it in
+  `lineage.json`.
+- **C3. `found_live` needs the recorded bytes.** A store moved back by hand with other bytes stays
+  refused, so rollback never vouches for bytes it did not check.
+- **C4. `roster_collisions` is added without a schema bump.** Nothing consumes the manifest yet
+  (SA-017 will), and the tool has not run on the volume.
+
+### Rollout (owner, read-only first)
+
+SA-009 is deployed (`650bb98c`). From Git Bash, in this folder:
+
+```text
+railway ssh "cd /app && python -m core.intelligence.rl.stores.store_inventory --out /tmp/sa009_manifest.json"
+railway ssh "cd /app && python -m core.intelligence.rl.stores.store_migration plan --out /tmp/sa009_plan.json && python -c \"import json; p=json.load(open('/tmp/sa009_plan.json')); print('digest', p['digest']); [print('ITEM', i['store_id'], 'owner', i['owner_store'], 'present', i['owner_store_present'], i['evidence']['roster_vs_owner']) for i in p['items']]; [print('HOLD', h['ticker'], h['reason'], h['stores']) for h in p['holds']]; [print('FLAG', f['store'], f['reason']) for f in p['flags']]\""
+```
+
+- **What to paste:** the one-line summary each command prints, and the `ITEM`, `HOLD` and `FLAG`
+  lines. They hold store paths, tickers and digests only.
+- **Timing:** it is best to apply after change 1 is accepted and deployed, so the rollback has
+  its fixes. The apply still needs the owner's authorisation by digest, in a job-free window
+  after the 23:30 backup.
+
+### Manifest and digests
+
+- **Review input:** [SA-009-change1-manifest.json](SA-009-change1-manifest.json). SHA-256 of its
+  LF bytes: **`7f2a4a2a776339dc0cbc002858df32c778d799e1699b19d41a5bc9f8b3fc9964`**, and `kt_manifest.py verify` gives 0 mismatches. It lists the 9 files changed since `e698c68`: 2 code files, 2 test
+  files, and 5 documentation files including the PDF.
+- **Excluded:** STATE.json, HANDOFF.md and this receipt.
+- **Full diff** against `e698c68`: **`e3a0438699d9f87de5dee6e418eefd96352723c486cea3b0734ab397b8c609c9`**, 63,325 bytes over 8 text files; the PDF is pinned by its blob, `eff03b88…`. To rebuild it, take every manifest path except the
+  PDF, sorted, and concatenate `git diff --no-color --no-ext-diff e698c68 -- PATH` for each.

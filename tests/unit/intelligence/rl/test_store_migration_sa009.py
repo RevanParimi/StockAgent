@@ -225,6 +225,121 @@ def test_rollback_refuses_a_quarantined_store_whose_bytes_changed(tree):
     assert (base / "bfsi" / "RBLBANK").is_dir() and (base / "MARUTI").is_dir()
 
 
+def test_rollback_removes_an_empty_live_directory_a_read_recreated(tree):
+    """Change 1 (review L2): after the apply, any read through PredictionStore's
+    constructor recreates an empty automobile/SUZLON. It holds nothing, so
+    rollback removes it and restores the store."""
+    base, managed, qroot = tree
+    before = fx.tree_state(base)
+    readable = _readable(base)
+    lineage = _apply(_plan(base, managed), base, managed, qroot)
+    PredictionStore("SUZLON", sector="automobile", base_dir=str(base))
+    assert list((base / "automobile" / "SUZLON").iterdir()) == []
+    back = sm.rollback(qroot / lineage["migration_id"])
+    assert back["status"] == "rolled_back"
+    item = next(i for i in back["items"] if i["store_id"] == "automobile/SUZLON")
+    assert item["status"] == "rolled_back"
+    assert item["removed_empty_live_dir"] is True
+    assert fx.tree_state(base) == before
+    assert _readable(base) == readable
+
+
+def test_a_refused_store_is_retried_and_the_status_never_overstates(tree):
+    """Change 1 (review L1): a quarantined file changes, so rollback refuses
+    that store. Retries before the repair stay partial (the CLI exits 1);
+    once the operator restores the bytes, a retry brings the store back."""
+    base, managed, qroot = tree
+    before = fx.tree_state(base)
+    lineage = _apply(_plan(base, managed), base, managed, qroot)
+    mig = qroot / lineage["migration_id"]
+    w = mig / "stores" / "automobile" / "SUZLON" / "SUZLON_agent_weight_memory.json"
+    original = w.read_bytes()
+    w.write_bytes(original + b"\n")
+    assert sm.rollback(mig)["status"] == "partial"
+    assert sm.rollback(mig)["status"] == "partial"
+    assert sm.main(["rollback", "--migration", str(mig)]) == 1
+    assert not (base / "automobile" / "SUZLON").exists()
+    w.write_bytes(original)
+    fixed = sm.rollback(mig)
+    assert fixed["status"] == "rolled_back"
+    item = next(i for i in fixed["items"] if i["store_id"] == "automobile/SUZLON")
+    assert item["status"] == "rolled_back"
+    assert "rollback_diff" not in item
+    assert fx.tree_state(base) == before
+
+
+def test_a_store_already_back_counts_only_with_its_recorded_bytes(tree):
+    """The operator moved automobile/SUZLON back by hand. With other bytes it
+    is refused; with the recorded bytes it counts as restored."""
+    base, managed, qroot = tree
+    before = fx.tree_state(base)
+    lineage = _apply(_plan(base, managed), base, managed, qroot)
+    mig = qroot / lineage["migration_id"]
+    live = base / "automobile" / "SUZLON"
+    (mig / "stores" / "automobile" / "SUZLON").rename(live)
+    w = live / "SUZLON_agent_weight_memory.json"
+    original = w.read_bytes()
+    w.write_bytes(original + b"\n")
+    back = sm.rollback(mig)
+    assert back["status"] == "partial"
+    status = {i["store_id"]: i["status"] for i in back["items"]}
+    assert status["automobile/SUZLON"] == "refused_quarantine_missing"
+    w.write_bytes(original)
+    back = sm.rollback(mig)
+    assert back["status"] == "rolled_back"
+    assert {i["store_id"]: i["status"] for i in back["items"]} == {
+        "MARUTI": "rolled_back", "automobile/SUZLON": "found_live", "bfsi/RBLBANK": "rolled_back"}
+    assert fx.tree_state(base) == before
+
+
+def test_apply_moves_the_fresh_plans_items_not_the_files(tree):
+    """The plan file is operator input: an item added to it, with its digest
+    left as it was, is never moved (review L3)."""
+    base, managed, qroot = tree
+    plan = _plan(base, managed)
+    edited = json.loads(json.dumps(plan))
+    edited["items"].append({**edited["items"][0], "store_id": "renewable_energy/SUZLON",
+                            "files": inv.list_store_files(base / "renewable_energy" / "SUZLON")})
+    lineage = _apply(edited, base, managed, qroot)
+    assert sorted(i["store_id"] for i in lineage["items"]) == MOVED
+    assert (base / "renewable_energy" / "SUZLON").is_dir()
+
+
+@pytest.mark.parametrize("suzlon", [
+    {"sym": "SUZLON", "enabled": True},
+    {"sym": "SUZLON", "sector": "", "enabled": True},
+    {"sym": "SUZLON", "sector": "   ", "enabled": True},
+], ids=["absent", "empty", "blank"])
+def test_a_managed_entry_without_a_sector_is_held_never_defaulted(tree, suzlon):
+    """The scheduler would default such an entry to automobile. The plan acts
+    on no default, whether the ticker has two stores or one (review L3)."""
+    base, managed, _ = tree
+    roster = [e for e in fx.MANAGED if e["sym"] not in ("SUZLON", "TCS")]
+    managed.write_bytes(json.dumps(
+        roster + [suzlon, {"sym": "TCS", "enabled": False}]).encode("utf-8"))
+    plan = _plan(base, managed)
+    holds = {(h["ticker"], h["reason"]) for h in plan["holds"]}
+    assert ("SUZLON", "managed_without_sector_duplicate") in holds
+    assert ("TCS", "managed_without_sector") in holds
+    assert not any(i["ticker"] in ("SUZLON", "TCS") for i in plan["items"])
+    manifest = inv.build_inventory(base, managed, **fx.inventory_kwargs())
+    assert {s["ownership"]["owner_sector"] for s in manifest["stores"]
+            if s["ticker"] in ("SUZLON", "TCS")} == {None}
+
+
+def test_conflicting_managed_entries_are_held(tree):
+    """Two entries for SUZLON disagree (the second differs only in spelling):
+    which store is the owner's is a decision, not a rule (review L3)."""
+    base, managed, _ = tree
+    managed.write_bytes(json.dumps(
+        fx.MANAGED + [{"sym": "suzlon ", "sector": "automobile", "enabled": False}]
+    ).encode("utf-8"))
+    plan = _plan(base, managed)
+    assert ("SUZLON", "managed_conflict_duplicate") in {(h["ticker"], h["reason"])
+                                                        for h in plan["holds"]}
+    assert not any(i["ticker"] == "SUZLON" for i in plan["items"])
+
+
 def test_a_migration_directory_is_never_reused(tree):
     base, managed, qroot = tree
     plan = _plan(base, managed)

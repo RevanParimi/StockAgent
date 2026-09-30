@@ -1,5 +1,193 @@
 # SA-009 review receipt — inventory and reconcile prediction-store ownership
 
+## Change 1 fresh-session review: ACCEPTED (2026-09-30)
+
+- **What was reviewed:** change 1, which settles the first review's L1, L2 and L3 and adds its
+  optional I3 guard. The implementation is in the [receipt](SA-009-implementation.md), section
+  "Change 1".
+  - `rollback` retries every store that is not back, and removes an empty live directory with
+    `rmdir` first. It reports `rolled_back` only when every store is back with its recorded
+    bytes.
+  - The inventory's summary gains `roster_collisions`.
+- **Context:** a fresh-session review in a new conversation, 2026-09-30 about 17:50–18:15 IST.
+  - It is not the conversation that implemented change 1, and it did not read that chat.
+  - It read the receipt's change-1 section, the diff and all of `store_migration.py`. It also
+    read the `PredictionStore` paths that create directories.
+- **SA-039:** no check was due. P3 is Thu 1 Oct 09:30.
+- **Peers:** 30 other sessions. Every StockAgent session was idle at the start and before the
+  bookkeeping. The one busy session belongs to another project.
+- **Nothing** was committed, pushed, deployed, configured or sent. No production state was read.
+- **Verdict: accepted.** There is no critical, high or medium finding and no code defect.
+  - One low test gap (L1) predates change 1. It is routed to SA-031.
+  - Two informational notes: I1 was fixed by a review edit to KT §3, and I2 is routed to SA-031.
+
+### Review input verified
+
+- **Manifest:** [SA-009-change1-manifest.json](SA-009-change1-manifest.json).
+  - The SHA-256 of its LF bytes is
+    `7f2a4a2a776339dc0cbc002858df32c778d799e1699b19d41a5bc9f8b3fc9964`, as the receipt states.
+  - `kt_manifest.py verify` gave 9 files and 0 mismatches at the start, and again after the
+    mutations. Each mutated source was restored and checked by SHA-256.
+- **Diff:** rebuilt with the reviewer's own script (`rebuild_diff.py` in the session scratchpad).
+  It gave 8 text files, 63,325 bytes and SHA-256
+  `e3a0438699d9f87de5dee6e418eefd96352723c486cea3b0734ab397b8c609c9`, the receipt's digest. The
+  PDF's blob is `eff03b88…`, as pinned.
+- **Completeness:** `git status --porcelain -uall` lists exactly these:
+  - the 9 manifest paths;
+  - the 3 excluded bookkeeping files;
+  - the manifest itself.
+
+  HEAD is `e698c68`.
+
+### Contract checked
+
+- **What `rollback` can do to files.** It does only two things: `rmdir` an empty live directory,
+  and rename a quarantined store back when its bytes equal the record. Every other branch only
+  changes an item's status. So a retry can never merge, delete or overwrite data.
+- **Which stores are retried.** `_NOT_BACK` holds every state whose store may still be in
+  quarantine, or whose rollback was refused. Every state it leaves out is a live store:
+  - `not_moved`, `not_attempted`, `refused_changed`, `refused_destination_exists` and `failed`
+    never moved. A rename either happens or it does not;
+  - `rolled_back`, `rolled_back_changed` and `found_live` are back.
+
+  Every branch sets a new status, so after a full run no item reads `moved` or `pending`.
+- **The outcome.** It is `rolled_back` exactly when no item is in `_NOT_BACK` or reads
+  `rolled_back_changed`. So it means that every store is at its live path, and every restored
+  store has its recorded bytes.
+- **The empty directory.** A read leaves exactly one empty directory, which `rmdir` removes:
+  - `PredictionStore.__init__` creates only the store's own directory (`prediction_store.py:121`);
+  - `archive_envelope` creates `archived_envelopes/` only after it finds an envelope;
+  - the ledger's `mkdir` runs on write.
+
+  `rmdir` is not recursive, so it refuses a directory holding only an empty subdirectory (Q4).
+- **`found_live`** needs `list_store_files(src)` to equal the recorded bytes (`after_files`, else
+  `files`). A `pending` item whose store is live is checked first and stays `not_moved`.
+- **`roster_collisions`** is in the manifest's summary. The plan's digest covers only the items,
+  holds, flags and managed roster.
+  - So a plan made on the deployed `650bb98c` code keeps its digest after change 1 deploys (Q6).
+  - The manifest's digest changes, and nothing consumes it yet (C4).
+- **A race (inference, not reproduced).** Suppose a writer recreates the live directory between
+  the `rmdir` and the rename.
+  - On Linux, the rename replaces an empty directory.
+  - If the directory holds a file, the rename raises. The item keeps its recorded status, and
+    the next run retries it.
+  - This is the racing-writer case that D7 accepts. Run rollback in a job-free window.
+
+### Independent adversarial examples
+
+The probes are `probes/test_c1_review_probes.py` in the session scratchpad; they are not
+tracked. They use the real `PredictionStore` and the SA-009 fixture tree.
+- The expected results come from the contract.
+- Each is measured against the tree before the apply (`fx.tree_state`), never against the
+  changed code's own output.
+
+**8 of 8 passed**, on 5 of 5 repeated runs.
+
+| Probe | Example | Expected and observed |
+|---|---|---|
+| Q1 | A rollback crashes after renaming `automobile/SUZLON` back, before recording it. Rollback runs again | Change 1: `found_live`, run `rolled_back`, tree byte-identical. The same probe on `e698c68`: `refused_quarantine_missing` and `partial` on every retry |
+| Q2 | A job writes a file into SUZLON right after it is renamed back | `rolled_back_changed` and run `partial`. A retry leaves it alone and stays `partial`, and the CLI exits 1. The job's file is kept |
+| Q3 | A writer's file blocks the rollback. The operator moves the file away and leaves the empty directory | The first run is `refused_live_path_exists`. The retry removes the empty directory and restores the store; tree byte-identical |
+| Q4 | The live path holds only an empty `archived_envelopes/` | Refused. Nothing under it is removed, and the store stays in quarantine |
+| Q5 | The receipt's example: a quarantined file changed, and a dashboard read recreated the empty directory | `partial`, and the empty directory is left alone while the store is refused. After the file is put back: `rolled_back`, CLI exit 0, tree byte-identical |
+| Q6 | The same fixture tree through the inventory at `e698c68` and now | The manifest digests differ (the new field). The store records and the plan digest are equal |
+| Q7 | The real `default_rosters()` with `renewable_energy` routed to the generic graph, as with its toggle off | `roster_collisions` names `["generic", "renewable_energy"]` |
+
+### Decisions
+
+- **C1 upheld** (Q3, Q4, mutation RB).
+- **C2 upheld** (Q2).
+  - The consequence: after one `rolled_back_changed` store, that migration never reports
+    `rolled_back`, and its CLI exits 1 for good. The store is live, and `lineage.json` names it.
+  - That is honest, because the tree is not the recorded one.
+- **C3 upheld** (Q1, and the implementer's hand-moved test).
+- **C4 upheld** (Q6).
+
+### Tests
+
+- **The 10 new tests** turn the first review's probes R2, R3, R5, R8, R9 and R10 into repository
+  tests, as the change's scope asked.
+  - Their expected results come from the tree before the apply and the fixture's design, not
+    from the changed code.
+  - They use temporary directories only: no network, SMTP or push.
+- **The reviewer's mutations** (`mutate_review.py` in the scratchpad) were **4 of 6 caught**:
+  - RB, `rmtree` in place of `rmdir`: caught by the never-merges test (1 failing);
+  - RC, `refused_quarantine_missing` never retried: 1 failing;
+  - RE, every roster reported as a collision: 1 failing;
+  - RF, the CLI exits 0 on `partial`: 1 failing;
+  - **RA survived:** `rolled_back_changed` no longer keeps the run `partial`. Probe Q2 fails on
+    it. This is L1;
+  - **RD survived:** the `restored` count in `migrations.jsonl` ignores `found_live`. It is
+    telemetry only, and `lineage.json` is the record. It goes with L1.
+
+### Findings
+
+| ID | Severity | Location | Evidence | Disposition |
+|---|---|---|---|---|
+| L1 | Low (tests; predates change 1) | `store_migration.py:347-348` | No repository test produces `rolled_back_changed`, so the rule that it keeps the run `partial` (C2) is not pinned. Mutation RA passes all 45 SA-009 tests, and probe Q2 fails on it. At `e698c68` the in-run rule (`if restored != expected: outcome = "partial"`) was untested too. Q2 shows the behaviour is right | Routed to [SA-031](../stories/SA-031.md) as a card note: add Q2 as a repository test. Pinning the `restored` count (RD) is optional |
+| I1 | Info (docs) | KT §3, the rollback bullets | The KT did not say that a store already back with its recorded bytes counts as restored (`found_live`). Nor did it say that this recovers a rollback interrupted before its record (Q1). Before change 1, that store read `refused_quarantine_missing` on every retry | **Fixed in review:** one sentence in KT §3 |
+| I2 | Info (Windows only) | `store_migration.py:163`, `_write_lineage` | One `PermissionError: [WinError 5]` from `os.replace`, in probe Q2, while the full suite ran alongside. It was clean on 5 of 5 runs alone. This is the known Windows rename flake; production runs on Linux. Q1 shows the next run recovers | Routed to SA-031's `replace_with_retry` check (card note) |
+
+No code defect was found.
+
+### Commands and results
+
+Environment: Windows 11, `.stockai` venv (Python 3.13), repository root.
+
+| Check | Command | Result |
+|---|---|---|
+| Manifest | `python scripts/docs/kt_manifest.py verify docs/planning/PI-2026-09/evidence/SA-009-change1-manifest.json` | 9 files, 0 mismatches, `7f2a4a2a…`, at the start and after the mutations |
+| Diff | the reviewer's `rebuild_diff.py` | `e3a04386…`, 63,325 bytes, 8 text files; PDF blob `eff03b88…`; no unlisted change |
+| Focused | `python -m pytest -q -p no:cacheprovider` on the 3 SA-009 test files | 45 passed (17 s) |
+| Full suite | `python -m pytest tests -q -p no:cacheprovider` | **4026 passed, 12 skipped, 0 failed** (5 min 16 s, about 17:54–17:59 IST), the implementer's count. `data/`, `logs/` and `outputs/` are unchanged: 800 files, the same digest before and after |
+| Probes | `python -m pytest <scratchpad>/probes/test_c1_review_probes.py --rootdir <scratchpad>/probes` (its conftest adds the repository paths and `tests.hermetic`) | 8 passed, on 5 of 5 repeated runs. One earlier run beside the full suite hit I2 |
+| Mutations | `mutate_review.py` | 4 of 6 caught (RA and RD survived) |
+| RA against Q2 | `mutate_probe_ra.py` | Q2 fails on RA (`'rolled_back' == 'partial'`); the source was restored (`fb0d625a…`) |
+| Broad-except guard | `python scripts/ci/check_broad_except.py` | OK (154 grandfathered) |
+| KT check | `python scripts/docs/check_kt_docs.py` | Before the edits: errors `[]`, 415 links, 33 pages, source `11199632…`, the manifest's KT. After the edits and `build_kt_pdf.py`: errors `[]`, 415 links, 33 pages, source `e90092fb…`, PDF blob `e7af1487…` |
+
+**Not exercised:**
+- Linux and Python 3.11 (CI runs after a push);
+- a real second process racing `rollback`;
+- a quarantine root on another device;
+- any production data. The CLIs have not run on the volume.
+
+### Review edits (documentation only)
+
+- **The KT:**
+  - the status wording in §1, §3, §11 and §12 now reads "accepted …, not yet committed";
+  - §3 gains the `found_live` sentence (I1).
+  - The PDF was rebuilt.
+- **Guide 04-G:** the status wording.
+- **The [SA-031](../stories/SA-031.md) card:** a routed note for L1 and I2.
+- **Manifest check:** `verify SA-009-change1-manifest.json` now mismatches exactly the KT, the
+  PDF and the guide. No code or test file was changed.
+
+### Acceptance and what remains
+
+- **Change 1's scope: met.**
+  - Rollback re-attempts refused stores (the R3 test, Q5).
+  - The run's status is derived from every item (R3, Q2).
+  - An empty live directory is treated as absent (the R2 test, Q3, Q5).
+  - Tests from R2, R3, R5, R8, R9 and R10 are in the repository.
+  - The I3 guard works through the real wiring (Q7).
+  - KT §3's rollback caveat is replaced by the behaviour.
+- **Reviewed revision:** the uncommitted working tree on `e698c68`, pinned by input `7f2a4a2a…`
+  and diff `e3a04386…`, plus the documentation-only review edits.
+- **Next:**
+  - **Commit and push** need the owner's word, in a job-free window. The landing commit's KT
+    bump declares the change-1 commit, because `store_migration.py` and `store_inventory.py`
+    changed after `313e3f6`.
+  - **Production:** change 1 has no effect until a rollback runs. SA-009's
+    `production_verification` stays `pending_observation`.
+  - **The owner's rollout is unchanged:** inventory and plan read-only, then apply by digest. A
+    plan made before change 1 deploys keeps its digest (Q6). Once change 1 is deployed, the
+    "until change 1" steps (remove an empty live directory by hand, and don't trust a later
+    `rolled_back`) are no longer needed. After any `partial`, `lineage.json` still gives each
+    store's state.
+- **Next story:** SA-010, in a new conversation, after P3 (Thu 1 Oct 09:30) and the SA-003
+  enforce decision. SA-008 change 1 stays open. It must come before any `successors` record.
+
 ## Fresh-session review: ACCEPTED (2026-09-30), with change 1 to follow
 
 - **What was reviewed:** SA-009 as the [implementation receipt](SA-009-implementation.md)

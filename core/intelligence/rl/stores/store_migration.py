@@ -30,9 +30,12 @@ hashed again after the move. The quarantine mirrors the live layout
 (<migration>/stores/<sector>/<TICKER>/), so PredictionStore(ticker, sector,
 base_dir=<migration>/stores) still reads it.
 
-`rollback` renames each moved store back after checking its bytes, and
-refuses a store whose live path exists again (it never merges). A rollback
-after a complete apply restores the live tree byte for byte.
+`rollback` renames each moved store back after checking its bytes. It
+refuses a live path that holds any file (it never merges); an empty directory
+there, which any read through PredictionStore creates, is removed first. A
+refused store is retried on the next run, and a run reports "rolled_back"
+only when every store is back with its recorded bytes. A rollback after a
+complete apply restores the live tree byte for byte.
 
 The quarantine root defaults to prediction_quarantine/ beside the
 predictions root: under data/, so the nightly backup keeps it, and outside
@@ -276,8 +279,32 @@ def apply_plan(plan: dict, approve: str, base_dir: str | Path,
     return lineage
 
 
+# Item states whose store is still in quarantine, or whose rollback was
+# refused. rollback retries every one of them on each run (SA-009 change 1:
+# a refused store used to be skipped for good once refused).
+_NOT_BACK = ("moved", "moved_changed", "pending", "refused_live_path_exists",
+             "refused_quarantine_changed", "refused_quarantine_missing")
+_RESTORED = ("rolled_back", "found_live")
+
+
+def _remove_empty_dir(path: Path) -> bool:
+    """Remove path if it is an empty directory. PredictionStore's constructor
+    creates its directory on every read, so a read after the apply leaves an
+    empty one at a quarantined store's live path. Removing it merges and
+    deletes nothing, and rmdir refuses a directory holding any file, so a
+    writer's file that lands first is never lost."""
+    try:
+        path.rmdir()
+        return True
+    except OSError:
+        return False
+
+
 def rollback(migration_dir: str | Path, now: datetime | None = None) -> dict:
-    """Return each quarantined store to its live path. Returns the lineage."""
+    """Return each quarantined store to its live path. Returns the lineage.
+
+    The run's status is "rolled_back" only when no store is left in
+    quarantine or refused, and every restored store has its recorded bytes."""
     mig = Path(migration_dir).resolve()
     lpath = mig / "lineage.json"
     lineage = json.loads(lpath.read_text(encoding="utf-8"))
@@ -285,40 +312,40 @@ def rollback(migration_dir: str | Path, now: datetime | None = None) -> dict:
         raise MigrationRefused(f"{lpath} is not an SA-009 migration lineage")
     base = Path(lineage["base_dir"])
     now = now or datetime.now(timezone.utc)
-    outcome = "rolled_back"
     for item in reversed(lineage["items"]):
-        if item["status"] not in ("moved", "moved_changed", "pending", "refused_live_path_exists"):
+        if item["status"] not in _NOT_BACK:
             continue
         src = base / item["store_id"]
         dst = mig / item["to"]
-        if not dst.is_dir():
-            if item["status"] in ("pending", "refused_live_path_exists") and src.is_dir():
-                if item["status"] == "pending":
-                    item["status"] = "not_moved"
-                continue
-            item["status"] = "refused_quarantine_missing"
-            outcome = "partial"
-            continue
         # After a crash between the rename and the lineage write, the item
         # still reads "pending" but its store is in quarantine.
         expected = item.get("after_files", item["files"])
+        if not dst.is_dir():
+            if item["status"] == "pending" and src.is_dir():
+                item["status"] = "not_moved"        # the crash came before its rename
+            elif src.is_dir() and inv.list_store_files(src) == expected:
+                item["status"] = "found_live"       # already back, byte for byte
+            else:
+                item["status"] = "refused_quarantine_missing"
+            continue
         held = inv.list_store_files(dst)
         if held != expected:
             item["status"] = "refused_quarantine_changed"
             item["rollback_diff"] = _diff(expected, held)
-            outcome = "partial"
             continue
+        item.pop("rollback_diff", None)
         if src.exists():
-            item["status"] = "refused_live_path_exists"
-            outcome = "partial"
-            continue
+            if not (src.is_dir() and _remove_empty_dir(src)):
+                item["status"] = "refused_live_path_exists"
+                continue
+            item["removed_empty_live_dir"] = True
         src.parent.mkdir(parents=True, exist_ok=True)
         dst.rename(src)
         restored = inv.list_store_files(src)
         item["status"] = "rolled_back" if restored == expected else "rolled_back_changed"
-        if restored != expected:
-            outcome = "partial"
         _write_lineage(lpath, lineage)
+    outcome = ("partial" if any(i["status"] in _NOT_BACK + ("rolled_back_changed",)
+                                for i in lineage["items"]) else "rolled_back")
     lineage["status"] = outcome
     lineage["events"].append({"event": "rollback", "at": now.isoformat(timespec="seconds"),
                               "status": outcome})
@@ -326,7 +353,7 @@ def rollback(migration_dir: str | Path, now: datetime | None = None) -> dict:
     _append_event(mig.parent, {"event": "rollback", "migration_id": lineage["migration_id"],
                                "status": outcome,
                                "restored": sum(1 for i in lineage["items"]
-                                               if i["status"] == "rolled_back")})
+                                               if i["status"] in _RESTORED)})
     return lineage
 
 

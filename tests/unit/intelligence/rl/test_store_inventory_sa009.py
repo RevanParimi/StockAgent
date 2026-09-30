@@ -202,6 +202,35 @@ def test_malformed_files_are_reported_not_fatal(tmp_path):
     assert s["schema"]["feedback_entries"] == 1
 
 
+def test_a_declared_sector_other_than_the_directory_is_not_confirmed(tmp_path):
+    """An automobile-roster envelope in automobile/FOO that declares
+    banking_bfsi. Its roster alone would confirm the directory; the
+    declaration conflicts. (The fixture's bfsi/RBLBANK conflicts on its roster
+    alone, so it does not pin this rule: review L3.)"""
+    d = tmp_path / "predictions" / "automobile" / "FOO"
+    d.mkdir(parents=True)
+    (d / "FOO_2026-07_prediction_envelope.json").write_bytes(json.dumps(
+        fx.envelope("FOO", "2026-07", fx.AUTO, ["2026-07-01"], sector="banking_bfsi")
+    ).encode("utf-8"))
+    (s,) = inv.build_inventory(tmp_path / "predictions", None, **fx.inventory_kwargs())["stores"]
+    assert s["files_by_roster"] == {"automobile": ["FOO_2026-07_prediction_envelope.json"]}
+    assert s["sector_evidence"]["status"] == "conflicting"
+
+
+def test_graphs_sharing_a_roster_are_reported(tree):
+    """A native sector switched off takes the generic roster (the router
+    degrades it), so its own files read unrecognized and the two graphs cannot
+    be told apart. The summary says so (change 1, review I3)."""
+    base, managed = tree
+    kwargs = fx.inventory_kwargs()
+    kwargs["rosters"] = {**fx.ROSTERS, "renewable_energy": fx.GENERIC}
+    m = inv.build_inventory(base, managed, **kwargs)
+    assert m["summary"]["roster_collisions"] == [["generic", "renewable_energy"]]
+    stores = _stores(m)
+    assert "unrecognized" in stores["renewable_energy/SUZLON"]["files_by_roster"]
+    assert _manifest(tree)["summary"]["roster_collisions"] == []
+
+
 def test_real_rosters_recognise_a_store_written_by_prediction_store(tmp_path):
     """The default wiring (the sector settings' own AGENT_WEIGHTS) confirms a
     banking store the store class wrote, and SA-009's store stamp shows in it."""
@@ -229,6 +258,8 @@ def test_real_rosters_recognise_a_store_written_by_prediction_store(tmp_path):
     assert set(s["files_by_roster"]) == {"banking_bfsi"}
     assert s["declared_sectors"]["feedback_log"] == {"banking_bfsi": 1}
     assert m["rosters"]["banking_bfsi"] == dims
+    # The shipped graphs: five distinct rosters.
+    assert m["summary"]["roster_collisions"] == []
 
 
 def test_cli_writes_the_manifest(tree, tmp_path, capsys):

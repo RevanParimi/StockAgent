@@ -168,7 +168,10 @@ def _keys(value) -> frozenset:
 # ---------------------------------------------------------------------------
 
 def default_rosters() -> dict[str, list[str]]:
-    """Each graph's current dimension roster: the keys of its AGENT_WEIGHTS."""
+    """Each graph's current dimension roster: the keys of its AGENT_WEIGHTS.
+    get_sector_weights routes through the sector toggles, so a native sector
+    switched off takes the generic roster; the manifest's summary then lists
+    the two under roster_collisions."""
     from backend.sectors.registry import GENERIC_SECTOR, NATIVE_SECTORS
     from core.intelligence.rl.workflows.sector_router import get_sector_weights
     return {g: sorted(get_sector_weights(g)) for g in sorted(NATIVE_SECTORS | {GENERIC_SECTOR})}
@@ -255,7 +258,8 @@ def owner_of(ticker: str, managed_index: dict[str, list[dict]]) -> tuple[str | N
 
 def _roster_graph(keys: Iterable[str], rosters: dict[str, frozenset]) -> str | None:
     """The graph whose roster equals this key set, "unrecognized", or None
-    when there are no keys (no evidence)."""
+    when there are no keys (no evidence). When two graphs share a roster the
+    first one wins; the summary's roster_collisions says so."""
     s = frozenset(keys)
     if not s:
         return None
@@ -495,6 +499,11 @@ def build_inventory(
     index = managed["index"]
     known |= {(e.get("sector") or "") for es in index.values() for e in es} - {""}
     roster_sets = {g: frozenset(r) for g, r in rosters.items()}
+    # Graphs with the same roster cannot be told apart by it (SA-009 change 1).
+    sharing: dict[frozenset, list[str]] = defaultdict(list)
+    for g, r in roster_sets.items():
+        sharing[r].append(g)
+    roster_collisions = sorted(sorted(gs) for gs in sharing.values() if len(gs) > 1)
 
     if not base.is_dir():
         raise FileNotFoundError(f"predictions root not found: {base}")
@@ -598,6 +607,7 @@ def build_inventory(
         "duplicate_envelopes": dict(sorted(Counter(d["status"] for d in dup_envelopes).items())),
         "duplicate_graded_days": dict(sorted(Counter(d["status"] for d in dup_days).items())),
         "unreadable_files": sum(len(r["unreadable_files"]) for r in records),
+        "roster_collisions": roster_collisions,
     }
     body = {
         "schema": SCHEMA,

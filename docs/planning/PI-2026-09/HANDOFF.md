@@ -1,4 +1,4 @@
-# Current handoff - 2026-09-30 (updated about 00:30 IST)
+# Current handoff - 2026-09-30 (updated about 07:05 IST)
 
 ## START HERE — resume checklist, in order
 
@@ -96,11 +96,18 @@ review-edited docs, so every reviewed code and test byte is committed as reviewe
 STATE: `active_task: null`, `next_task: SA-009`, `next_phase: implementation`. SA-009 is the
 first ready story in STATE order. **Run step 0 first:** P3 is due Thu 1 Oct 09:30.
 
-**3. SA-008 is accepted but uncommitted.** Commit and push need the owner's word, in a job-free
-window (00:10–06:20 IST is safest).
-- **Before any commit,** `verify SA-008-manifest.json` must mismatch exactly the 5 review-edited
-  docs: the KT, the PDF, ARCHITECTURE, TEAM_TESTING_GUIDE and CODEBASE.
-- **The landing commit** also bumps the KT header and links the new files, as SA-003's did.
+**3. SA-008 is committed as `02c43f6`, with the KT bump after it. Neither is pushed.** The
+owner chose to commit it first (about 06:55 IST 30 Sep), locally only, so that SA-009 starts on a
+clean baseline.
+- `verify SA-008-manifest.json --rev 02c43f6` mismatches exactly the 5 review-edited docs: the
+  KT, the PDF, ARCHITECTURE, TEAM_TESTING_GUIDE and CODEBASE. So every reviewed code and test
+  byte is committed as reviewed.
+- The commit also carries the records made since `e3bb6a3`: SA-039 P2, and the first weekly
+  SA-007 notice.
+- The KT bump declares `02c43f6` (edition 2026-09-30) and links `config/instruments.yaml`,
+  `instruments.py` and `identity_reconcile.py`.
+- **The push needs the owner's word, in a job-free window** (00:10–06:20 IST is safest). Every
+  push redeploys.
 - **Then the rollout:** the receipt's "Rollout", plus the review's read-only look at the volume's
   learned symbol cache (L2).
 

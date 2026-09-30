@@ -237,6 +237,9 @@ class DecisionGate(BaseModel):
     dimensions_scored: int = 0
     dimensions_expected: int = 0
     withheld_verdict: str | None = None
+    # SA-008: the instrument the analysis was made on (ticker, provider symbol,
+    # price basis, identity status). An unresolved identity abstains.
+    identity: dict = Field(default_factory=dict)
 
 
 class FinalReport(BaseModel):

@@ -1,0 +1,76 @@
+# SA-008 — security identity (src/backend/shared/data/instruments.py).
+#
+# One entry per app ticker whose identity is not simply "the NSE listing of
+# the same name". Tickers not listed here resolve to "{TICKER}.NS".
+# Evidence is required to RESOLVE an identity, never to quarantine one.
+#
+# segments: effective-dated, in order, not overlapping.
+#   from / until  ISO dates; `from` inclusive, `until` exclusive; omit = open
+#   status        active | unresolved | suspended | delisted
+#                 (only `active` resolves; the others quarantine the ticker:
+#                 no new-risk advice, no forecast, no learning — see the
+#                 decision gate, `decision_gate.mode` in config.yaml)
+#   symbol        the provider (Yahoo) symbol asked for data in this segment
+#   basis         price-basis id (default: the symbol's root). Prices on
+#                 different bases are never compared: a rename keeps the
+#                 basis, a demerger or relisting starts a new one.
+#   via           how an `active` symbol that is not the ticker's own listing
+#                 relates to it: alias | rename | demerger | relisting
+#   reason        required for an alias and for every non-active segment
+#   evidence      required for rename / demerger / relisting and successors:
+#                 [{source: ..., ref: ..., date: YYYY-MM-DD}] — primary
+#                 exchange or company documents (circular number, filing)
+#   successors    where holdings of the old basis go, for the operator's
+#                 reconciliation (python -m core.portfolio.identity_reconcile):
+#                 [{ticker: ..., ratio: new shares per old share,
+#                   cost_fraction: share of the old cost basis}], fractions sum to 1
+#
+# Example of a resolved rename (illustrative, not a real company):
+#   OLDCO:
+#     segments:
+#       - {until: 2026-03-02, status: active, symbol: OLDCO.NS, basis: OLDCO}
+#       - {from: 2026-03-02, status: active, symbol: NEWCO.NS, basis: OLDCO, via: rename,
+#          evidence: [{source: NSE circular, ref: "NSE/CML/2026/0000", date: 2026-02-20}]}
+
+version: 1
+instruments:
+  # Owner's decision, 2026-09-29 (option b): the passenger-vehicle company is tracked as
+  # its own listing, TMPV, which needs no record here. TATAMOTORS stays quarantined, so
+  # its history is never graded or advised against another company's prices.
+  TATAMOTORS:
+    name: Tata Motors Ltd (pre-demerger listing)
+    segments:
+      - status: unresolved
+        symbol: TMPV.NS
+        basis: TMPV
+        reason: >-
+          retired by the owner's decision of 2026-09-29: the passenger-vehicle company is
+          tracked as TMPV. Still priced from TMPV.NS, which the former YF_SYMBOL_OVERRIDES
+          entry described as the passenger-vehicles entity after the 2025 demerger; no
+          exchange evidence (effective date, successors, share ratio, cost split) is recorded
+  TVSMOTORS:
+    name: TVS Motor Company Ltd
+    segments:
+      - status: active
+        symbol: TVSMOTOR.NS
+        basis: TVSMOTOR
+        via: alias
+        reason: the NSE symbol is TVSMOTOR (no trailing S); the same listed security
+  CANARABANK:
+    name: Canara Bank
+    segments:
+      - status: active
+        symbol: CANBK.NS
+        basis: CANBK
+        via: alias
+        reason: NSE and Yahoo list Canara Bank as CANBK; the same listed security
+  HEXAWARE:
+    name: Hexaware Technologies Ltd
+    segments:
+      - status: unresolved
+        symbol: HEXT.NS
+        basis: HEXT
+        reason: >-
+          priced from HEXT.NS, the code the former YF_SYMBOL_OVERRIDES entry gave Hexaware;
+          whether HEXT is a relisting of the HEXAWARE listing (and from which date) is not
+          recorded with exchange evidence

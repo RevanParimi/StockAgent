@@ -27,6 +27,7 @@ from backend.shared.schemas.portfolio import (
 )
 from backend.shared.pipeline import decision_gate as dg
 from core.portfolio.store import PortfolioStore
+from core.portfolio.identity_reconcile import symbol_identity_issue
 from core.portfolio.pricing import session_close
 from core.portfolio.promotion import promote_symbol
 
@@ -200,6 +201,15 @@ def _execute_buys(portfolio: Portfolio, advice: list[AdviceRecord],
             logger.warning("[autopilot] SWITCH buy %s at a close from bar %s, not "
                            "session %s — the data gate would skip it (record mode)",
                            cand, bar, session)
+        # SA-008: never buy into an instrument whose identity is unresolved.
+        identity_issue = symbol_identity_issue(cand, session)
+        if identity_issue:
+            if dg.enforcing():
+                logger.warning("[autopilot] SWITCH buy %s skipped (data gate): %s",
+                               cand, identity_issue)
+                continue
+            logger.warning("[autopilot] SWITCH buy %s: %s — the data gate would skip it "
+                           "(record mode)", cand, identity_issue)
         closes[cand] = price                   # AUD-003: one price basis per run
         budget = min(proceeds, portfolio.cash_deployable - floor_cash)
         qty = float(math.floor(budget / price)) if price > 0 else 0.0

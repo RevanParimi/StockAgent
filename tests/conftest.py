@@ -23,6 +23,7 @@ from tests.hermetic import (  # noqa: F401  (pytest hooks, registered from this 
 
 import json
 from datetime import date
+from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
@@ -122,6 +123,17 @@ def _no_real_gate_writes(monkeypatch, tmp_path):
         _gate, "_path",
         lambda path=None: _orig_path(path or str(tmp_path / "decision_gate.jsonl")),
     )
+
+
+@pytest.fixture(autouse=True)
+def _isolated_instrument_registry(monkeypatch):
+    """SA-008: the suite reads an empty instrument registry unless a test
+    points INSTRUMENT_REGISTRY_PATH at its own or at the shipped
+    config/instruments.yaml. Suites that use TATAMOTORS as their healthy
+    example keep testing data health, not the shipped identity decisions,
+    and a registry edit cannot silently change unrelated tests."""
+    monkeypatch.setenv("INSTRUMENT_REGISTRY_PATH",
+                       str(Path(__file__).parent / "fixtures" / "instruments_empty.yaml"))
 
 
 @pytest.fixture(autouse=True)

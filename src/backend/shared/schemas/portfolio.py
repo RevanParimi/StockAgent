@@ -20,7 +20,10 @@ class AppliedCorpAction(BaseModel):
     """One corporate action already applied to a holding (idempotency record)."""
     key: str                       # dedupe key: "{symbol}|{ex_date}|{desc[:40]}"
     ex_date: str                   # ISO date
-    kind: Literal["split", "bonus", "dividend"]
+    # SA-008: rename/demerger/relisting are applied only by the operator's
+    # identity reconciliation (core/portfolio/identity_reconcile.py), never
+    # by the daily sync; ex_date is then the day the new price basis starts.
+    kind: Literal["split", "bonus", "dividend", "rename", "demerger", "relisting"]
     desc: str
     ratio: float = 1.0             # qty multiplier (2.0 for 1:1 bonus, 5.0 for 10→2 split)
     dividend_per_share: float = 0.0
@@ -125,6 +128,9 @@ class AdviceRecord(BaseModel):
     # on unverified data. {mode, enforced, blocked, reasons, source_run_ids,
     # price_bar_date}. None when the gate had nothing to say.
     data_gate: dict | None = None
+    # SA-008: the instrument `close` priced (ticker, provider symbol, price
+    # basis, identity status) on the advice date. {} = written before SA-008.
+    instrument: dict = Field(default_factory=dict)
     # DEPRECATED — never written by anything. See the class docstring.
     outcome_10td: float | None = None
     outcome_30td: float | None = None

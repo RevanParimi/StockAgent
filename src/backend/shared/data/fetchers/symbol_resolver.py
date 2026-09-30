@@ -5,14 +5,17 @@ Self-healing NSE ticker -> yfinance symbol resolution.
 
 Two tiers, cheapest first. The happy path makes ZERO network calls:
 
-  1. Curated overrides (settings.YF_SYMBOL_OVERRIDES) — authoritative, for the
-     handful of AMBIGUOUS demergers a machine cannot disambiguate (e.g. Tata
-     Motors -> TMCV vs TMPV). A human picks the entity once.
+  1. The instrument registry (config/instruments.yaml, SA-008) — authoritative
+     and effective-dated, for aliases, renames and demergers a machine cannot
+     decide (e.g. Tata Motors -> TMCV vs TMPV). A human records the entity,
+     with evidence, once. A registered ticker is never self-healed.
   2. Learned cache (data/yf_symbol_cache.json) — populated on demand for the
-     long tail of renames / typos / Yahoo code quirks (CANARABANK -> CANBK).
+     long tail of Yahoo code quirks.
 
-`resolve_yf_symbol(ticker)` is CHEAP: override -> cache -> naive "{TICKER}.NS".
-It never touches the network, so it is safe to call on every price fetch.
+`resolve_identity(ticker, on)` is CHEAP: registry -> cache -> naive
+"{TICKER}.NS", and says whether that identity is resolved (SA-008).
+`resolve_yf_symbol(ticker)` is its symbol. Neither touches the network, so
+both are safe to call on every price fetch.
 
 `heal_symbol(ticker, company_name)` is the EXPENSIVE lazy step: callers invoke
 it ONLY after a naive fetch came back empty. It searches Yahoo, validates that a
@@ -28,8 +31,11 @@ from __future__ import annotations
 import json
 import logging
 import threading
+from datetime import date
 from pathlib import Path
 
+from backend.shared.data import instruments
+from backend.shared.data.instruments import RESOLVED, UNRESOLVED, Identity
 from core.config import settings
 from core.utils.atomic_io import atomic_write_json
 
@@ -240,32 +246,88 @@ def learn_company_name(ticker: str, name: str) -> None:
 # Tier 1 + 2 — cheap resolution (no network)
 # ---------------------------------------------------------------------------
 
-def resolve_yf_symbol(ticker: str) -> str:
+def _is_provider_symbol(t: str) -> bool:
+    """Already a full yfinance symbol (MARUTI.NS, ^NSEI, SI=F, BRK-B)."""
+    return t.endswith(settings.YFINANCE_SUFFIX) or t.endswith(".BO") or "=" in t or t.startswith("^")
+
+
+def resolve_identity(ticker: str, on: date | None = None) -> Identity:
     """
-    Cheap, zero-network resolution: curated override -> learned cache ->
-    naive "{TICKER}.NS". Safe to call on every price fetch.
+    SA-008: what `ticker` is on `on` (default today). Cheap, zero-network.
+
+    Order: a full provider symbol passes through as itself; then the
+    instrument registry, which owns every ticker it lists; then the learned
+    cache; then the naive "{TICKER}.NS". A learned mapping to another code
+    (a fuzzy self-heal nobody reviewed) keeps being fetched, as before, but is
+    `unresolved`: a cached answer for another instrument is not this one.
     """
     t = _norm(ticker)
-    # Already a full yfinance symbol (MARUTI.NS, ^NSEI, SI=F, BRK-B) — pass through.
-    if t.endswith(settings.YFINANCE_SUFFIX) or t.endswith(".BO") or "=" in t or t.startswith("^"):
-        return t
-    override = settings.YF_SYMBOL_OVERRIDES.get(t)
-    if override:
-        return override
+    on = on or date.today()
+    if _is_provider_symbol(t):
+        return Identity(t, on, RESOLVED, t, instruments.symbol_root(t), via="symbol", source="symbol")
+    registered = instruments.registry_identity(t, on)
+    if registered is not None:
+        return registered
     cached = _load_cache().get(t)
     if cached:
-        if _is_safe_mapping(t, cached):
-            return cached
-        # Poisoned entry from before the guard existed (e.g. an old Railway
-        # volume) — prune it on read so production self-heals, and fall
-        # through to the naive symbol below.
-        logger.warning(
-            "[symbol_resolver] pruning poisoned cache entry %s -> %s "
-            "(wrong-company mapping for a known Indian ticker)",
-            t, cached,
-        )
-        _remove_from_cache_file(t)
-    return f"{t}{settings.YFINANCE_SUFFIX}"
+        if not _is_safe_mapping(t, cached):
+            # Poisoned entry from before the guard existed (e.g. an old Railway
+            # volume) — prune it on read so production self-heals, and fall
+            # through to the naive symbol below.
+            logger.warning(
+                "[symbol_resolver] pruning poisoned cache entry %s -> %s "
+                "(wrong-company mapping for a known Indian ticker)",
+                t, cached,
+            )
+            _remove_from_cache_file(t)
+        elif _symbol_root(cached) == t:
+            # The same listing on another exchange (SUZLON -> SUZLON.BO).
+            return Identity(t, on, RESOLVED, cached, t, via="listing", source="learned")
+        else:
+            return Identity(
+                t, on, UNRESOLVED, cached, _symbol_root(cached), via="learned", source="learned",
+                reasons=(f"learned mapping {t} -> {cached} was never reviewed; record it in "
+                         "config/instruments.yaml to resolve it",))
+    return Identity(t, on, RESOLVED, f"{t}{settings.YFINANCE_SUFFIX}", t,
+                    via="listing", source="default")
+
+
+def resolve_yf_symbol(ticker: str, on: date | None = None) -> str:
+    """
+    Cheap, zero-network resolution: registry -> learned cache -> naive
+    "{TICKER}.NS". Safe to call on every price fetch. Whether that symbol's
+    identity is resolved is `resolve_identity`'s answer, not this one's.
+    """
+    return resolve_identity(ticker, on).symbol
+
+
+def identity_break(ticker: str, since: date, until: date) -> str:
+    """
+    SA-008: why prices of `ticker` from `since` and from `until` are not
+    comparable ("" when they are). A demerger or relisting between the two
+    dates starts a new price basis; a rename does not.
+    """
+    a = resolve_identity(ticker, since)
+    b = resolve_identity(ticker, until)
+    bases = instruments.registry_bases(ticker, since, until) | {a.basis, b.basis}
+    if len(bases) > 1:
+        return (f"price basis changed between {since.isoformat()} and {until.isoformat()}: "
+                f"{a.basis} ({a.symbol}) then {b.basis} ({b.symbol})")
+    return ""
+
+
+def nse_symbol(ticker: str, on: date | None = None) -> str:
+    """
+    SA-008: the NSE code to cross-check `ticker`'s close with. A registry
+    alias or successor names the NSE code of the instrument it resolves to
+    (TVSMOTORS -> TVSMOTOR), so both close sources price the same security.
+    Anything else keeps the bare ticker, the independent check the close
+    verifier was built on.
+    """
+    ident = resolve_identity(ticker, on)
+    if ident.source == "registry" and ident.symbol.endswith(settings.YFINANCE_SUFFIX):
+        return instruments.symbol_root(ident.symbol)
+    return _norm(ticker)
 
 
 # ---------------------------------------------------------------------------
@@ -310,11 +372,14 @@ def heal_symbol(ticker: str, company_name: str | None = None) -> str | None:
     more than one candidate is valid (demerger -> needs a curated override).
     """
     t = _norm(ticker)
-    if t in _session_unresolved:
+    if t in _session_unresolved or _is_provider_symbol(t):
         return None
-    # Someone may have resolved it since (override added, or healed concurrently).
-    if t in settings.YF_SYMBOL_OVERRIDES:
-        return settings.YF_SYMBOL_OVERRIDES[t]
+    # SA-008: the registry owns a listed ticker's identity. An empty fetch is
+    # an outage or a lifecycle event, and neither is solved by a search that
+    # could swap in another company: the ticker keeps its registered symbol.
+    if instruments.is_registered(t):
+        logger.info("[symbol_resolver] %s is in the instrument registry — not self-healing", t)
+        return None
     cached = _load_cache().get(t)
     if cached:
         return cached
@@ -343,8 +408,8 @@ def heal_symbol(ticker: str, company_name: str | None = None) -> str | None:
             return valid[0]
         if len(valid) > 1:
             logger.warning(
-                "[symbol_resolver] %s is AMBIGUOUS (%s) — add a curated entry to "
-                "settings.YF_SYMBOL_OVERRIDES to pick the intended entity",
+                "[symbol_resolver] %s is AMBIGUOUS (%s) — record the intended entity, "
+                "with evidence, in config/instruments.yaml",
                 t, ", ".join(valid),
             )
             _session_unresolved.add(t)

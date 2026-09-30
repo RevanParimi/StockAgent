@@ -1,23 +1,28 @@
-# Current handoff - 2026-09-29 (updated about 12:55 IST)
+# Current handoff - 2026-09-30 (updated about 00:30 IST)
 
 ## START HERE — resume checklist, in order
 
 **0. Before any story work, check STATE `pending_production_checks`.** It holds the SA-039 `observe`
-verification. **P1 passed** (checked Mon 28 Sep 20:19 IST). P2 is due Tue 29 Sep 17:00 and P3 Thu
-1 Oct 09:30. Run every check that is due and unrecorded (read-only; the steps are in the carry-over
-box on [SA-001](stories/SA-001.md), and [SA-003](stories/SA-003.md) carries a pointer to it). Record
-each in the [activation record](evidence/SA-039-activation-2026-09-26.md) and in STATE.
+verification. **P1 passed** (checked Mon 28 Sep 20:19 IST). **P2 passed** (checked Tue 29 Sep
+17:01 IST, deploy `f2e23722`). P3 is due Thu 1 Oct 09:30. Run every check that is due and
+unrecorded (read-only; the steps are in the carry-over box on [SA-001](stories/SA-001.md), and
+[SA-003](stories/SA-003.md) carries a pointer to it). Record each in the
+[activation record](evidence/SA-039-activation-2026-09-26.md) and in STATE.
 [SA-038](stories/SA-038.md) is the backstop.
+
+- **P2, in one example.** Tuesday's 16:30 review graded Monday (28 Sep) for all 20 tickers in
+  `observe` mode. SUZLON's adapter again proposed v57 and it was not written: two reviews after
+  the 26 Sep baseline, the stored version is still v56. The same holds for every ticker, and no
+  `Weights → v` line was logged. One handled `JSONDecodeError` in LLM ticker resolution
+  (16:40:57) is pre-existing and noted for SA-008.
 
 - **P1, in one example.** Monday's 16:30 review graded Friday's session for all 20 tickers in
   `observe` mode. For SUZLON the adapter proposed v57 and it was not written: the stored version
   stays v56, the same as the 26 Sep baseline. The same holds for all 19 tickers with weights, and
   no `Weights → v` line was logged. WELCORP has no weights, as before SA-039.
 - **The P1 rule had the wrong date.** It expected observations dated 28 Sep, but a review grades
-  the previous session, so they say 25 Sep; they were recorded today (16:31–16:54 IST). P2 should
-  see `review_date` 2026-09-28.
-- **For P2:** `analysis_data/sa039/p1_probe.py 2026-09-29 <deploy id>` (ignored; read-only; prints
-  counts and versions only). Take the deploy id from `railway deployment list`.
+  the previous session, so they say 25 Sep; they were recorded 28 Sep (16:31–16:54 IST). P2 saw
+  `review_date` 2026-09-28, as corrected.
 
 - **When P3 passes (Thu 1 Oct), make the SA-003 enforce decision.** On 2026-09-27 the owner
   delegated it to Claude: decide by the written rules, log the decision, and tell the owner. SA-039's
@@ -44,6 +49,14 @@ each in the [activation record](evidence/SA-039-activation-2026-09-26.md) and in
       (the close-verifier case);
     - count analyses by distinct `run_id` against the data-health rows, not by raw gate-log rows.
       A re-run review appends its rows again.
+  - **SA-008 interplay (accepted 30 Sep; not committed or deployed).** If it is deployed before
+    the decision, two things follow:
+    - its identity rows abstain by design on healthy data, so exclude them from the spot check.
+      They are recognisable by the reason prefix `identity` and the review stage `identity`;
+    - `enforce` would then also quarantine TATAMOTORS: no forecast, no learning, and a held
+      holding. Say so to the owner with the decision.
+
+    If it is not deployed, nothing changes.
   - Log the decision in `evidence/SA-003-enforce-decision-<date>.md`, in STATE history and in
     SA-003's `production_verification`. The [SA-003 receipt](evidence/SA-003-implementation.md)
     has the steps, under "Rollout", and the [review](evidence/SA-003-review.md) has F1 and F2.
@@ -59,13 +72,135 @@ review-edited docs, so every reviewed code and test byte is committed as reviewe
   - SA-004 was deployed as `b3fb00dd` on 27 Sep;
   - SA-005's CI first ran on 28 Sep (`36453992259`, 3 of 3 jobs);
   - SA-006 was deployed as `00b94de9` on 28 Sep.
-- **The push is planned for 15:05–16:25 IST**, a job-free window after the 14:55–15:05 jobs.
-  The push and deploy result is recorded below once done.
+- **Pushed and deployed.** The push waited out the 14:55–15:05 jobs.
+  - **The push:** `cd33fc4..e3bb6a3` at 15:06:23 IST.
+  - **The deploy:** Railway `f2e23722` reached SUCCESS by 15:07:26 IST. It was a cached build,
+    because `requirements.txt` did not change.
+    - Boot log: 124 lines, 0 tracebacks and 0 error or warning lines; the scheduler started
+      with 24 jobs.
+    - `/health` returns 200 `ok`.
+  - **CI:** run `36550251651` on `e3bb6a3` passed 3 of 3 jobs. Python tests on Linux / 3.11
+    took 152 s, the guards 15 s and Chromium 60 s.
+  - **What production should now show.** Change 1 landed before the first production run of
+    `backup_recoverable`, which is Wed 30 Sep 06:30.
+    - That morning's "No off-site copy has ever been confirmed" is the first weekly notice.
+      **Observed Wed 30 Sep 06:30.** The owner pasted the alert: one warning, reading "…
+      repeats weekly until a target is configured". `checks.py` gives that wording only when
+      three things hold: the backup ran within 36 h, its restore drill passed with no warnings,
+      and no off-site target is set. So the 29 Sep 23:30 backup, the first in production with a
+      drill, passed it. That is inferred from the notice; `backup_status.json` was not read.
+    - Thu 1 Oct to Tue 6 Oct should be silent for this entry. The Thursday check is read-only.
+  - This record (STATE and HANDOFF) is uncommitted. It rides with the next commit.
 
-**2. Next PI phase: implement SA-008**, in a new conversation. Opener: `Continue`. STATE:
-`active_task: null`, `next_task: SA-008`, `next_phase: implementation`. Its dependency SA-003 is
-done. Six Sprint-1 stories (SA-033, SA-035, SA-036, SA-038, SA-040, SA-042) come later in the
-file; taking one first needs the owner's word. **Run step 0 first** if a SA-039 check is due.
+**2. Next PI phase: SA-009's implementation**, in a new conversation. Opener: `Continue`.
+STATE: `active_task: null`, `next_task: SA-009`, `next_phase: implementation`. SA-009 is the
+first ready story in STATE order. **Run step 0 first:** P3 is due Thu 1 Oct 09:30.
+
+**3. SA-008 is accepted but uncommitted.** Commit and push need the owner's word, in a job-free
+window (00:10–06:20 IST is safest).
+- **Before any commit,** `verify SA-008-manifest.json` must mismatch exactly the 5 review-edited
+  docs: the KT, the PDF, ARCHITECTURE, TEAM_TESTING_GUIDE and CODEBASE.
+- **The landing commit** also bumps the KT header and links the new files, as SA-003's did.
+- **Then the rollout:** the receipt's "Rollout", plus the review's read-only look at the volume's
+  learned symbol cache (L2).
+
+**SA-008 was ACCEPTED on 2026-09-30 by a fresh-session review** (a new conversation, about
+06:16–06:50 IST). Receipt: [SA-008-review.md](evidence/SA-008-review.md). SA-008 is `done`,
+and its `production_verification` is `pending_deployment`. No SA-039 check was due. Nothing was
+committed, pushed, deployed, configured or sent, and no production state was read.
+
+- **Input verified:** `9a2edfb2…` (37 files, 0 mismatches, no unlisted change). The diff
+  `bb7d0576…` was rebuilt with the reviewer's own script, and 37 of 37 blob ids match.
+- **Traced:**
+  - TATAMOTORS from the shipped registry through the analysis gate, the forecast stamp, the
+    review's `identity` stage, the close fallbacks, the advisor and the autopilot;
+  - the Dockerfile copies `config/` into `/app`, and no volume masks it, so production reads the
+    real registry and not the fail-closed path;
+  - the automobile `TICKERS` default only feeds the LLM lookup's short cut and the preopen
+    check's list, so deploying schedules no TMPV run. The owner's add does that.
+- **Checks:**
+  - focused 500 passed;
+  - full suite **3981 passed, 12 skipped, 0 failed** (5 min 14 s), `data/` unchanged;
+  - reviewer mutations 4 of 4 caught;
+  - reviewer probes 9: 7 passed, and 2 found M1 and L1;
+  - `check_kt_docs` errors `[]` before and after the review edits.
+- **D1–D9 upheld.**
+- **Findings.** None is critical or high.
+  - **M1 (medium) and L1 (low), in one example.** They are in the reconciliation tool's
+    `apply`, and both go to **SA-008 change 1**.
+    - **M1:** a user holds 100 PARENT, which demerged 60/40 into PARENTA and PARENTB, and the
+      operator approves the plan. If 50 are sold in the moment between `apply`'s last check and
+      its lock, the result is still 100 PARENTA + 100 PARENTB: shares and cost that were never
+      held.
+    - **L1:** if one user has two such holdings, the second backup overwrites the first, so no
+      file holds the portfolio from before the apply. The audit log still has each old holding.
+    - **Neither can happen today.** The shipped registry records no `successors`, so `apply`
+      applies nothing. Until change 1 is accepted, record no `successors` and run no `apply` in
+      production. KT §6 says so.
+  - **L2 (low):** the review's close now asks the learned symbol cache first. Before SA-008 it
+    used only the overrides dict. A ticker with a learned entry, such as SUZLON → SUZLON.BO, is
+    now graded against the same symbol its forecast was priced from. That is right, but the
+    receipt did not list it. The rollout adds a read-only look at the volume's cache.
+  - **L3 (low, pre-existing):** the fundamentals fetcher never used the dict or the registry.
+    TVSMOTORS' fundamentals ask `TVSMOTORS.NS`, while its prices come from `TVSMOTOR.NS`.
+    Routed to [SA-045](stories/SA-045.md).
+  - **I1 (info):** "different price bases are never compared" holds for grading and holdings. It
+    does not hold for the technicals after a future demerger in which the parent keeps its code.
+    Change 1's docs will state it.
+- **Review edits (docs only):** status wording in the KT (§1, §4, §11, §12), ARCHITECTURE,
+  TEAM_TESTING_GUIDE and CODEBASE; M1 and L1 in KT §6; the PDF rebuilt (30 pages, source
+  `97953dc0…`).
+- **SA-008 change 1** (M1, L1 and I1's wording) is in STATE as `change_1: todo`. It gets its own
+  implementation conversation and its own fresh review. It is not urgent under the shipped
+  registry, but it must come before any `successors` record.
+
+**SA-008 was IMPLEMENTED on 2026-09-29** (this conversation, about 16:38–17:50 IST, after P2), and
+was amended on 30 Sep, about 00:05–00:30, for the owner's decision below. It is uncommitted and not
+reviewed. A same-conversation self-review was done; it is not the fresh
+review.
+
+- **What it is, in one example.** TATAMOTORS (weights v85) was priced from TMPV.NS through an
+  undated `YF_SYMBOL_OVERRIDES` entry. TMPV is the passenger-vehicle company after the 2025
+  demerger, while "Tata Motors Limited" now names the commercial-vehicle company. With healthy
+  data its analysis was `actionable`.
+  - Now `config/instruments.yaml` records each non-trivial ticker's provider symbol, price basis
+    and identity status, with dates. Evidence resolves an identity; nothing is needed to
+    quarantine one.
+  - TATAMOTORS ships `unresolved`, still fetched from TMPV.NS. In `record` (the shipped mode)
+    nothing changes, and its gate rows start "identity unresolved: retired by the owner's decision".
+  - In `enforce` it reads INSUFFICIENT DATA, builds no envelope, stops its review at stage
+    `identity`, and a holding of it is held (note `IDENTITY`).
+- **Also:**
+  - forecast rows, envelopes and advice keep the instrument they priced;
+  - a row is graded only on its own price basis;
+  - a holding whose basis changed since purchase (a demerger) is held, exits included, until an
+    operator runs `python -m core.portfolio.identity_reconcile plan`, reviews it, and applies it
+    with the plan's digest;
+  - the close fallbacks and the NSE check price the resolved instrument.
+- **Checks:**
+  - 70 new tests;
+  - 22 of 22 runtime mutations caught;
+  - full suite **3981 passed, 12 skipped, 0 failed** (3911 + the 70 new, final bytes), `data/`
+    unchanged;
+  - `check_kt_docs` errors `[]` (PDF 30 pages).
+- **Decisions D1–D9 for the reviewer** are in the receipt. The biggest:
+  - D1: it uses SA-003's switch, not a new one;
+  - D3: the identity hold also holds EXIT and TRIM, a deliberate departure from SA-003's
+    "never blocked", because a demerged parent's price reads as a false 40% loss.
+- **Owner decision (29 Sep, delegated: "take whichever is recommended"): option (b).** The
+  passenger-vehicle company is tracked as its own ticker, TMPV; TATAMOTORS is retired and stays
+  quarantined, with its history kept. TMCV is not added.
+  - **The amendment it needed:** TMPV joins the automobile exact-match list, because the LLM
+    lookup's prompt lists TATAMOTORS and could rename TMPV back to it; TMPV is added to the
+    sector map; the registry's TATAMOTORS reason records the decision.
+  - **The owner's step at rollout,** after review, commit and deploy: add TMPV (automobile,
+    name "Tata Motors Passenger Vehicles Ltd"), then **disable** TATAMOTORS with the toggle.
+    **Never remove it:** removing deletes `data/predictions/automobile/TATAMOTORS` (its v85
+    weights, envelopes and feedback). Receipt "Rollout", step 4.
+- **Routed:** P2's ticker-resolution traceback goes to [SA-026](stories/SA-026.md).
+
+Six Sprint-1 stories (SA-033, SA-035, SA-036, SA-038, SA-040, SA-042) come later in the STATE
+file; taking one before SA-009 needs the owner's word.
 
 **SA-007 change 1 was ACCEPTED on 2026-09-29 by a fresh-session review** (a new conversation,
 about 12:33–12:55 IST). Receipt: [SA-007-review.md](evidence/SA-007-review.md), section "Change

@@ -2262,9 +2262,9 @@ _NSE_NAME_ALIASES: dict[str, str] = {
 
 
 # NSE ticker → correct yfinance symbol via the shared self-healing resolver
-# (curated overrides in settings.YF_SYMBOL_OVERRIDES + the learned cache).
+# (the instrument registry, config/instruments.yaml, + the learned cache).
 def _nse_yf(ticker: str) -> str:
-    """Map an NSE ticker to its yfinance symbol (override → learned cache → naive)."""
+    """Map an NSE ticker to its yfinance symbol (registry → learned cache → naive)."""
     from backend.shared.data.fetchers.symbol_resolver import resolve_yf_symbol
     return resolve_yf_symbol(ticker)
 

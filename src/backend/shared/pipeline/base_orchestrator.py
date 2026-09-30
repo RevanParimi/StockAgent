@@ -400,10 +400,15 @@ class BaseSectorOrchestrator(ABC):
         """
         Fetch yfinance `.info` for a ticker, applying the same symbol-override
         and exchange-suffix logic used everywhere else. Any failure -> {}.
+
+        Only the instrument registry's symbol or the naive listing: never the
+        learned symbol cache (a fuzzy match must not name the company).
         """
         import yfinance as yf
+        from backend.shared.data.instruments import registry_identity
         suffix = settings.YFINANCE_SUFFIX
-        yf_ticker = settings.YF_SYMBOL_OVERRIDES.get(ticker.upper()) or (
+        registered = registry_identity(ticker, date.today())
+        yf_ticker = registered.symbol if registered is not None else (
             ticker if ticker.endswith(suffix) else f"{ticker}{suffix}"
         )
         return yf.Ticker(yf_ticker).info or {}
@@ -639,8 +644,12 @@ class BaseSectorOrchestrator(ABC):
 
         Never raises. If the gate itself cannot be computed, the run abstains:
         an analysis nobody could check is not evidence.
+
+        SA-008: the ticker's identity for today joins the gate. An unresolved
+        identity, or price history fetched for another symbol, abstains.
         """
         from backend.shared.pipeline import decision_gate as dg
+        from backend.shared.data.fetchers.symbol_resolver import resolve_identity
         try:
             inputs = self._last_gate_inputs
             if inputs is None:
@@ -649,6 +658,9 @@ class BaseSectorOrchestrator(ABC):
                             "the legacy worker pool, which builds no data bundle")
             else:
                 gate = dg.assess_analysis(run_id=run_id, **inputs)
+            provenance = (inputs or {}).get("section_provenance") or {}
+            price_symbol = (provenance.get("technicals") or {}).get("symbol")
+            dg.apply_identity(gate, resolve_identity(ticker, date.today()), price_symbol)
         except Exception as exc:
             logger.error("[%s] decision gate failed for %s — abstaining: %s",
                          self.SECTOR_NAME, ticker, exc, exc_info=True)

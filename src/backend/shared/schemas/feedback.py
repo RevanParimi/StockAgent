@@ -79,6 +79,11 @@ class DailyForecast(BaseModel):
     # review and the advisor treat as unverified in enforce mode.
     data_gate: str = ""
     source_run_id: str = ""
+    # SA-008: the instrument the issuing run priced (ticker, provider symbol,
+    # price basis, identity status). A row is graded only against a close on
+    # the same basis. {} = issued before SA-008; the review then asks the
+    # instrument registry whether the basis changed since the envelope.
+    instrument: dict = Field(default_factory=dict)
 
 
 class ReforecastEvent(BaseModel):
@@ -111,6 +116,8 @@ class PredictionEnvelope(BaseModel):
     # SA-003: DecisionGate (as a dict) of the latest (re)generation's analysis.
     # Each row also carries its own issuing run's status in data_gate.
     decision_gate: dict | None = None
+    # SA-008: the instrument base_close and the latest (re)generation priced.
+    instrument: dict = Field(default_factory=dict)
     # Forecast profile from PriceInterpolator — stored for hindsight timing evaluation.
     # "front_loaded" means early move was expected; "back_loaded" means catalyst is 2+ weeks out.
     forecast_profile_shape: str = "linear"

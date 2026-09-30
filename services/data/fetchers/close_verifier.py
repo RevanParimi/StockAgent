@@ -100,9 +100,16 @@ def nse_session_close(ticker: str, target_date: date | None = None) -> tuple[flo
 
 
 def _fetch_nse_session(ticker: str, target_date: date | None = None) -> tuple[float | None, date | None]:
-    """The fetch behind `_fetch_nse_close`, also returning the row's session."""
-    from datetime import datetime as _dt
+    """The fetch behind `_fetch_nse_close`, also returning the row's session.
 
+    SA-008: NSE is asked for the code of the instrument the ticker resolves to
+    (a registry alias or successor: TVSMOTORS -> TVSMOTOR), so the two close
+    sources price the same security; the cache is keyed by that code.
+    """
+    from datetime import datetime as _dt
+    from backend.shared.data.fetchers.symbol_resolver import nse_symbol
+
+    ticker = nse_symbol(ticker, target_date)
     cache = _NSE_CLOSE_CACHE.setdefault(_today_key(), {})
     cache_key = f"{ticker}:{target_date.isoformat() if target_date else 'latest'}"
     if cache_key in cache:

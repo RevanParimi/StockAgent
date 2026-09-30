@@ -53,9 +53,13 @@ class FetchResult:
     source: str
     as_of: str | None = None      # ISO date (or datetime) of the newest underlying datum
     reason: str | None = None     # why the status is not a plain `ok`, or what is partial
+    symbol: str | None = None     # SA-008: the provider symbol the data was fetched for
 
     def provenance(self) -> dict[str, str | None]:
-        return {"source": self.source, "as_of": self.as_of, "reason": self.reason}
+        prov = {"source": self.source, "as_of": self.as_of, "reason": self.reason}
+        if self.symbol:
+            prov["symbol"] = self.symbol
+        return prov
 
 
 def failed_status(exc: BaseException) -> str:

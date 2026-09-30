@@ -56,12 +56,34 @@ still `b3fb00dd` (`90353f3`, 27 Sep 16:00 IST), which carries the variable. The 
   **2026-09-25**, which is correct. The rule was written with the wrong date; the `recorded_at`
   times prove these observations came from today's run. For P2, expect `review_date` 2026-09-28.
 
+## P2 — Tue 29 Sep review: PASSED (checked 17:01 IST)
+
+Read-only, as for P1: `railway logs f2e23722 -n 5000 --json` counted from 16:00 IST (nothing
+printed), and the same public GETs. The live deploy is `f2e23722` (`e3bb6a3`, 29 Sep 15:07 IST),
+which carries the variable. Output is saved next to the scripts, in ignored
+`analysis_data/sa039/p2_20260929.json` and `p2_recorded_at_20260929.json`.
+
+- **Logs, 16:30–16:56 IST:** 20 review headers, one per managed ticker, all
+  `learning_mode=observe`, all naming review date **2026-09-28** (the previous session, as the
+  corrected rule expects), with no duplicate. 19 `Proposal (not applied)` lines, 19 "not
+  applied; stored weights stay" lines, 19 `Complete —` lines. **0 `Weights → v` lines.**
+- **Versions, the card's two-review check:** all 20 tickers report the same `weight_version` as
+  the 26 Sep baseline, two reviews later. Every observation's `stored_version` equals it, and
+  `would_be_version` is one higher, so the adapter proposed again and nothing was written.
+- **Observations:** 19 new ones, `review_date` 2026-09-28, `mode: observe`, `applied: false`,
+  recorded 16:31–16:54 IST. WELCORP again has no weights or envelope, as before SA-039.
+- **One traceback, handled and unrelated to the learning mode.** At 16:40:57 the automobile
+  orchestrator's LLM ticker resolution returned text that was not JSON (`JSONDecodeError` in
+  `_resolve_ticker`). That path falls back to the input ticker and the review went on; it
+  predates SA-039. It is reached because some managed tickers are not in their sector's
+  `TICKERS` list, so they skip the exact-match short cut. Noted for SA-008, which owns
+  ticker identity.
+
 ## Still to verify (read-only)
 
 1. ~~Mon 28 Sep, after the 16:30 review.~~ Done: P1 above.
 2. ~~The same evening.~~ Done: P1 above.
-3. **Tue 29 Sep, after the review.** The versions are still unchanged, which is the card's "two
-   reviews" check. The new observations should say `review_date` 2026-09-28.
+3. ~~Tue 29 Sep, after the review.~~ Done: P2 above.
 4. **Thu 1 Oct, after the 09:00 monthly forecast.** The new envelopes carry `learning_mode: observe`.
    October is the first fully contained cohort.
 

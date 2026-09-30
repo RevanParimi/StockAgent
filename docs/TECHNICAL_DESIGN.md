@@ -22,7 +22,7 @@ it is not an implemented human-approval workflow.
 | Current code | Traced in this checkout. Flags, inputs and runtime data determine whether a path actually runs. |
 | Locally checked | Existing tests run in an isolated copy. Exact results and limits are in the [validation receipt](planning/PI-2026-09/evidence/DOC-001-implementation.md). |
 | Production observation | Dated evidence: the September 10 audit, section 10's 2026-09-21 email diagnosis, a September 15 deployment SUCCESS at `9a805878`, the 2026-09-23 read-only log inspection of learned weights, and the 2026-09-24 [SA-039 weight baseline](planning/PI-2026-09/evidence/SA-039-baseline-2026-09-24.md). Those logs came from deploy `d9c459ae` (commit `e8df088`). Deploys carrying the header revision's code were inspected read-only on 2026-09-25 (`7ebd06c5`: the 16:30 review ran in `adapt`) and on 2026-09-26 (`da9df6cf`: all 20 tickers in `observe`, per the [activation record](planning/PI-2026-09/evidence/SA-039-activation-2026-09-26.md)). |
-| PI target | Intended behavior, not completed functionality. SA-039 was accepted by its fresh review on 2026-09-25, and production has run `observe` since 2026-09-26 ([activation record](planning/PI-2026-09/evidence/SA-039-activation-2026-09-26.md); verification after the next reviews is pending). SA-001 (chat rendering) was accepted by its fresh review on 2026-09-26 ([review](planning/PI-2026-09/evidence/SA-001-review.md)); it is committed as `8413b59`, and its production verification is pending. SA-002 (data health) was accepted by its fresh re-review on 2026-09-26, after a rework of its test fixtures and one fundamentals case ([receipt](planning/PI-2026-09/evidence/SA-002-implementation.md), [review](planning/PI-2026-09/evidence/SA-002-review.md)); it is committed as `8413b59`, and its production verification is pending. SA-003 (the decision gate) was accepted by its fresh review on 2026-09-27 ([receipt](planning/PI-2026-09/evidence/SA-003-implementation.md), [review](planning/PI-2026-09/evidence/SA-003-review.md)); it is committed as `167f08b`, and its production verification is pending. It ships recording only (`decision_gate.mode: record`), and enforcing it is a separate decision, after SA-039's observation window and a measured record period. SA-004 (daily-review outcome counts) was accepted by its fresh review on 2026-09-27 ([receipt](planning/PI-2026-09/evidence/SA-004-implementation.md), [review](planning/PI-2026-09/evidence/SA-004-review.md)); it is committed as `241c393`, and its production verification is pending. SA-005 (a hermetic test suite and a CI workflow) was accepted by its fresh review on 2026-09-28 ([receipt](planning/PI-2026-09/evidence/SA-005-implementation.md), [review](planning/PI-2026-09/evidence/SA-005-review.md)); it is committed as `48143ed`, and its CI workflow first ran on 2026-09-28 and passed all 3 jobs. SA-006 (delivery transport and dead letters) was accepted by its fresh re-review on 2026-09-28, after a rework for two review findings ([receipt](planning/PI-2026-09/evidence/SA-006-implementation.md), [review](planning/PI-2026-09/evidence/SA-006-review.md)); it is committed as `15dcda1` and was deployed on 2026-09-28 (`00b94de9`). SA-007 (independently recoverable backups) was accepted by its fresh review on 2026-09-29, with two low follow-ups routed to SA-034 and SA-036 ([receipt](planning/PI-2026-09/evidence/SA-007-implementation.md), [review](planning/PI-2026-09/evidence/SA-007-review.md)); it is committed as `165d152` and was deployed on 2026-09-29 (`26b442f4`). No off-site bucket exists yet (the owner deferred it to the end of the PI). Change 1, which makes the missing-bucket reminder weekly instead of daily, was accepted by its fresh review on 2026-09-29 and is committed as `8663387`. Every other story from SA-008 to SA-051 is `todo`. Three are stretch. |
+| PI target | Intended behavior, not completed functionality. SA-039 was accepted by its fresh review on 2026-09-25, and production has run `observe` since 2026-09-26 ([activation record](planning/PI-2026-09/evidence/SA-039-activation-2026-09-26.md); verification after the next reviews is pending). SA-001 (chat rendering) was accepted by its fresh review on 2026-09-26 ([review](planning/PI-2026-09/evidence/SA-001-review.md)); it is committed as `8413b59`, and its production verification is pending. SA-002 (data health) was accepted by its fresh re-review on 2026-09-26, after a rework of its test fixtures and one fundamentals case ([receipt](planning/PI-2026-09/evidence/SA-002-implementation.md), [review](planning/PI-2026-09/evidence/SA-002-review.md)); it is committed as `8413b59`, and its production verification is pending. SA-003 (the decision gate) was accepted by its fresh review on 2026-09-27 ([receipt](planning/PI-2026-09/evidence/SA-003-implementation.md), [review](planning/PI-2026-09/evidence/SA-003-review.md)); it is committed as `167f08b`, and its production verification is pending. It ships recording only (`decision_gate.mode: record`), and enforcing it is a separate decision, after SA-039's observation window and a measured record period. SA-004 (daily-review outcome counts) was accepted by its fresh review on 2026-09-27 ([receipt](planning/PI-2026-09/evidence/SA-004-implementation.md), [review](planning/PI-2026-09/evidence/SA-004-review.md)); it is committed as `241c393`, and its production verification is pending. SA-005 (a hermetic test suite and a CI workflow) was accepted by its fresh review on 2026-09-28 ([receipt](planning/PI-2026-09/evidence/SA-005-implementation.md), [review](planning/PI-2026-09/evidence/SA-005-review.md)); it is committed as `48143ed`, and its CI workflow first ran on 2026-09-28 and passed all 3 jobs. SA-006 (delivery transport and dead letters) was accepted by its fresh re-review on 2026-09-28, after a rework for two review findings ([receipt](planning/PI-2026-09/evidence/SA-006-implementation.md), [review](planning/PI-2026-09/evidence/SA-006-review.md)); it is committed as `15dcda1` and was deployed on 2026-09-28 (`00b94de9`). SA-007 (independently recoverable backups) was accepted by its fresh review on 2026-09-29, with two low follow-ups routed to SA-034 and SA-036 ([receipt](planning/PI-2026-09/evidence/SA-007-implementation.md), [review](planning/PI-2026-09/evidence/SA-007-review.md)); it is committed as `165d152` and was deployed on 2026-09-29 (`26b442f4`). No off-site bucket exists yet (the owner deferred it to the end of the PI). Change 1, which makes the missing-bucket reminder weekly instead of daily, was accepted by its fresh review on 2026-09-29 and is committed as `8663387`. SA-008 (security identity: the instrument registry and quarantine) was accepted by its fresh review on 2026-09-30 ([review](planning/PI-2026-09/evidence/SA-008-review.md)), with change 1 to follow for two limits of the reconciliation tool (section 6); it is not committed, and sections 3–6 describe it as implemented in the working tree. Every other story from SA-009 to SA-051 is `todo`. Three are stretch. |
 
 The [September audit](audit/2026-09-10-repository-production-review.md) records
 unresolved label, timing, health, weight-bound and operational defects.
@@ -138,6 +138,7 @@ resolved at import, so editing a file does not imply live reconfiguration.
 | `rl.hard_bind_verdict_enabled: true` | Research category follows the composite; model `final_score` remains separate. |
 | `rl.learning_mode: adapt` | SA-039 switch, env `RL_LEARNING_MODE`. `adapt` keeps learned weights and lesson emphasis live; `observe` contains them (section 5). Any other value fails closed to `observe`. |
 | `decision_gate.mode: record` | SA-003 switch, env `DECISION_GATE_MODE`. `record` computes and records the essential-data gate everywhere and changes nothing; `enforce` withholds verdicts, forecasts, learning and new-risk buys that rest on unverified data (sections 4–6). Any other value fails closed to `enforce`. |
+| `config/instruments.yaml` (SA-008, not yet committed) | The instrument registry: effective-dated records of which provider symbol each listed ticker is priced from, its price basis, and whether its identity is resolved. It replaces the undated `YF_SYMBOL_OVERRIDES` dict. Evidence is needed to resolve an identity, never to quarantine one. It ships TATAMOTORS and HEXAWARE unresolved and two plain aliases resolved. By the owner's decision of 29 Sep, TMPV is tracked as its own listing in place of TATAMOTORS. Quarantine acts through the same `decision_gate.mode` switch (section 4). |
 | `rl.control_lane_enabled`, `rl.scorecard_enabled`: true | Control/evaluation paths configured; not proof of valid prospective comparison. |
 | `ipo.enabled: true`; `ipo.gmp_enabled: false` | IPO refresh and grey-market-price fetching have separate gates. |
 | `delivery.enabled: true`; `delivery.email_enabled: false`; `delivery.push_enabled: true` | Job scheduling, transport enablement and credentials are separate conditions. |
@@ -270,12 +271,70 @@ row saying what enforcement would have withheld; in `enforce` the user sees
 INSUFFICIENT DATA. The same run with its price source answering stays
 `actionable` and keeps STRONG BUY.
 
+**Instrument identity (SA-008: accepted by its fresh review on 2026-09-30, not
+committed).** The gate above checks that evidence arrived and is fresh, not that
+it belongs to the company the ticker names. Before SA-008 an undated
+`YF_SYMBOL_OVERRIDES` dict mapped TATAMOTORS to TMPV.NS, the passenger-vehicle
+company after the 2025 demerger, while the name "Tata Motors Limited" now
+belongs to the commercial-vehicle company. So the news and the prices could
+describe two companies, and with TMPV's data healthy the analysis was
+`actionable`.
+
+The instrument registry, `config/instruments.yaml`, replaces the dict. It is
+read by `symbol_resolver.resolve_identity`, and its parsing lives in
+`backend/shared/data/instruments.py`. For each listed ticker it holds
+effective-dated segments. Each segment names the provider symbol to ask, the
+**price basis** those prices are on, and a status:
+- only an `active` segment resolves. When its symbol is not the ticker's own
+  listing, it must say how the two relate. An `alias` needs a reason. A
+  `rename`, `demerger` or `relisting` needs evidence: an exchange or company
+  document with a reference and a date;
+- `unresolved`, `suspended` and `delisted` quarantine the ticker, and need
+  only a reason. Evidence resolves an identity; nothing is needed to
+  quarantine one;
+- the ticker is also quarantined by an invalid record, a date no segment
+  covers, or an unreadable registry (fail closed);
+- a ticker the registry does not list resolves to its own NSE listing. A
+  learned self-heal to another code (`data/yf_symbol_cache.json`) is still
+  fetched, as before, but is `unresolved` until someone records it;
+- a registered ticker is never self-healed. An empty fetch is an outage or a
+  lifecycle event, and a Yahoo search could swap in another company.
+
+A rename keeps the basis: the same company under a new code, and the provider
+moves its history to the new code. A demerger or a relisting starts a new
+basis, because the continuing company's price no longer includes what was spun
+off.
+
+The gate abstains when the ticker's identity for today is not resolved, or when
+the technicals' price history came from another symbol than the identity names
+(the section's provenance now records its `symbol`). Identity reasons come
+first, and the report's `decision_gate.identity` records the instrument
+(ticker, symbol, basis, status). The close fetchers ask for the resolved
+instrument, including the BSE fallback, which used to ask for
+"{TICKER}.BO". The NSE cross-check uses the registry's NSE code. **Example:**
+TATAMOTORS ships `unresolved`, still priced from TMPV.NS, so fetching is
+unchanged. With healthy data the analyst says STRONG BUY:
+- in `record` the user still sees STRONG BUY, and the gate log gains a row
+  starting "identity unresolved: retired by the owner's decision …";
+- in `enforce` the user sees INSUFFICIENT DATA.
+
+**The owner's decision (29 Sep): track the passenger-vehicle company as its
+own ticker, TMPV.** TMPV needs no registry record: its ticker, its name and
+its prices are one company, so it resolves as its own listing, and its
+learning starts fresh. TATAMOTORS stays quarantined, so its history (weights
+learned partly on the pre-demerger company) is never graded or advised against
+another company's prices. TMPV is in the automobile sector's exact-match list,
+so the LLM ticker lookup, whose prompt names "TATAMOTORS – Tata Motors Ltd", is
+never asked to "resolve" it. In production the swap is the owner's step at
+rollout: disable TATAMOTORS in the managed list rather than remove it, because
+removing deletes its prediction history; then add TMPV.
+
 **Current gap:** production records the gate only once SA-003 is deployed, and
 nothing is withheld until the owner switches to `enforce`. How often the gate
 would abstain is not yet measured: a blank newest quarter, for example, makes
 fundamentals `fallback` and so abstains, for weeks after each quarter end.
-SA-008 handles instrument lifecycles (renames, demergers, successors); SA-010
-corrects benchmark arguments. SA-025 measures calls before SA-026 consolidates
+SA-008's identity reasons share the same switch, so enforcing SA-003 also
+quarantines TATAMOTORS and HEXAWARE. SA-010 corrects benchmark arguments. SA-025 measures calls before SA-026 consolidates
 sector definitions and SA-027 retires only justified fallback duplication.
 
 **Planned redesign (adopted 2026-09-26, not implemented).** The
@@ -333,6 +392,12 @@ month's run: only a restart's self-heal regenerates a missing envelope. Until
 then that ticker's reviews return `no_envelope` and its ADDs stay blocked.
 A same-month retry is routed to SA-036.
 
+**SA-008:** every row, and the envelope, also records the instrument its
+analysis priced (`instrument`: ticker, provider symbol, price basis, identity
+status). A later registry change never rewrites it. A row issued before SA-008
+has `instrument: {}`; the review then asks the registry whether the basis
+changed between the envelope's issue date and the session.
+
 ### Daily review walkthrough
 
 1. The scheduler selects the previous exchange trading session.
@@ -349,9 +414,17 @@ A same-month retry is routed to SA-036.
 7. After harvesting reviews, the scheduler invokes the portfolio pipeline.
    Returning successfully does not establish that every ticker got feedback.
 
-**Decision gate in the review (SA-003).** The review checks three inputs, in
+**Decision gate in the review (SA-003).** The review checks these inputs, in
 order, before it writes anything:
 - the graded row came from an actionable analysis (not `abstain`, not unknown);
+- SA-008, stage `identity`: the ticker's identity on the review session is
+  resolved, and the row's price basis is the session's. A stamped row names its
+  basis. For an unstamped row, the registry is asked whether a demerger or
+  relisting lies between the envelope's issue date and the session; a rename
+  does not break the basis. **Example:** a row issued on 5 June predicts a
+  parent's close, and the parent demerges on 15 June. From then on the ticker's
+  close is the continuing company's alone, so a review on 20 June would grade a
+  "fall" that is really the spin-off. The review stops at `identity`;
 - the actual close is from the bar dated the review session. The close
   fetchers fall back to the newest earlier bar when the session has none (a
   suspended symbol, a provider lag), and that fallback is unchanged. What is
@@ -515,6 +588,54 @@ unchanged and `data_gate` says what enforcement would have withheld.
 points up. Unenforced, that gives ADD and a virtual buy of 2 shares. Enforced,
 it gives HOLD with `DATA_GATE`, and no buy.
 
+**Identity hold (SA-008).** A holding is held outright, EXIT and TRIM included,
+with the note `IDENTITY`, in two cases:
+- its symbol's identity is unresolved;
+- its price basis changed (a demerger or a relisting) since the basis its cost
+  was booked on: the buy date, or the latest identity reconciliation.
+
+This is the corporate-action rule again. The daily sync keeps a 1:1 bonus
+from looking like a 50% crash, and a demerger is the same trap. A SWITCH
+destination or an autopilot buy leg with an unresolved identity is refused.
+**Example:** 100 PARENT bought at ₹1,000; PARENT demerges into PARENTA (60% of
+the cost) and PARENTB (40%), and the ticker now trades as PARENTA at ₹600.
+Unreconciled, 600 against 1,000 reads −40%, a stop breach, and the advisor
+says EXIT, a sale on a loss that never happened. Enforced, it says HOLD with
+`IDENTITY`; in `record` it keeps EXIT, and `data_gate` names the identity. A
+rename keeps the basis, so a renamed holding is advised as before. Every advice
+record also keeps the instrument its close priced (`instrument`), which a later
+registry change does not rewrite.
+
+**Reconciliation is an operator's step.** `python -m
+core.portfolio.identity_reconcile plan` is read-only. It lists every held
+position the advisor would hold, with the registry's proposal. The proposal
+comes from a recorded, evidenced event with `successors` (ticker, shares per
+old share, share of the cost), or it says what must be recorded first. For
+the example it proposes PARENTA 100 @ ₹600 (₹60,000) and PARENTB 100 @ ₹400
+(₹40,000), so the cost is conserved. `apply --plan … --approve <digest>` has
+these safeguards:
+- it refuses unless a fresh plan has the approved digest, so nothing changed
+  since review;
+- it copies `portfolio.json` aside before writing;
+- it replaces the old holding with its successors under the user's lock, and
+  logs `identity_reconciliations.jsonl`;
+- a second apply is refused.
+
+The ledger reconciler treats the successors as `unverifiable`, as after a
+split. Nothing runs this on a schedule.
+
+**Two known limits of `apply` (SA-008 review, 2026-09-30).** Its first check
+compares digests before it takes each user's lock. Under the lock it does not
+look at the holding again. So a sale of the same holding in that short window
+still gets successors sized from the plan's figures: 50 PARENT left would
+become 100 PARENTA and 100 PARENTB. Also, one apply names every backup with
+the same timestamp. For a user with two reconciled holdings, the second copy
+overwrites the first, so the only backup holds the half-applied portfolio.
+The audit log's `before` records still hold each old holding. The shipped
+registry records no `successors`, so `apply` applies nothing today. SA-008
+change 1 fixes both. Until it is accepted, record no `successors` and run no
+`apply` in production.
+
 ### Execution and persistence
 
 The global gate, user's virtual-autopilot choice and cash-accounting state
@@ -624,6 +745,9 @@ bulk/block activity, optional recent-IPO candidates, screen, deep dives,
 conviction shelf and paper reviews. Failures can degrade individual stages.
 The Saturday job and manual discovery endpoint use this entry point.
 A shelf candidate, watchlist promotion and virtual purchase are separate steps.
+A deep dive runs the ordinary analysis, so its decision gate, including SA-008's
+identity check, is the shelf idea's `data_gate`. In `enforce` a candidate with
+an unresolved identity is never shelved, nor used as a SWITCH destination.
 
 ### IPO layers
 
@@ -1020,7 +1144,7 @@ recovery without the volume.
 |---|---|---|
 | Sector routing | Shared graph selection via registry. | Complete store lineage, and sector lenses resolved from NSE's industry field ([one-engine design](superpowers/specs/2026-09-26-one-engine-sector-lenses-design.md); SA-026). |
 | Analysis | Unified scoring plus surviving legacy fallback. | Actual call accounting. A factor engine (computed factors, one text reader, code decides, LLM explains) proven in shadow, then the graphs and fallback retired (SA-044–SA-047, SA-027). |
-| Data health | Durable health/run records. Producer-typed section status and usable-data health (SA-002, accepted 2026-09-26, committed as `8413b59`). A decision gate on essential data across research, learning and portfolio (SA-003, accepted 2026-09-27, committed as `167f08b`), shipped recording only. | A measured record period, then the owner's decision to enforce; instrument lifecycles (SA-008). |
+| Data health | Durable health/run records. Producer-typed section status and usable-data health (SA-002, accepted 2026-09-26, committed as `8413b59`). A decision gate on essential data across research, learning and portfolio (SA-003, accepted 2026-09-27, committed as `167f08b`), shipped recording only. Instrument identity and lifecycle records (SA-008, accepted 2026-09-30, not committed). | A measured record period, then the owner's decision to enforce; switching production from TATAMOTORS to TMPV (the owner's decision of 29 Sep, done at rollout). |
 | Verdict binding | Deterministic category enabled in YAML, raw model verdict logged. | Correct issue-time grading and final adaptive constraints. |
 | Portfolio | Per-user advice/execution, stops, switches and ledgers. | Stronger upstream evidence and report reconciliation; costs and tax in paper P&L (SA-048); idle cash put to work in normal markets (SA-049); one sizing rule for every autopilot buy (SA-050); the portfolio against the Nifty, with honest labels (SA-051). |
 | IPO | Calendar, history, snapshots, recent-listing screening, size-tiered brief lean, and the dark P3 model, deep dive, narrator and forward-grading lane (section 8). | Forward evidence for P3 and its `ipo_verdicts_visible_gate`; no verdict reaches a user; outside default September scope. |
@@ -1040,7 +1164,7 @@ The table below includes the planned destination now. **SA-039 is accepted
 verification is pending. SA-003 is accepted by its fresh review (2026-09-27)
 and committed as `167f08b`; its production verification is pending. SA-004 is
 accepted by its fresh review (2026-09-27) and committed as `241c393`; its
-production verification is pending. SA-005 is accepted by its fresh review (2026-09-28) and committed as `48143ed`; its CI workflow first ran on 2026-09-28 and passed all 3 jobs. SA-006 is accepted by its fresh re-review (2026-09-28). Its first review asked for two fixes the same day: a push could reach a phone twice, and the owner report could show a user id. Both are made; it is committed as `15dcda1` and was deployed on 2026-09-28 (`00b94de9`). SA-007 is accepted by its fresh review (2026-09-29), with two low follow-ups routed to SA-034 and SA-036; it is committed as `165d152` and deployed as `26b442f4` (2026-09-29). Its change 1, a weekly missing-bucket reminder, is accepted and committed as `8663387`. Every other SA story is `todo`.** Accepted
+production verification is pending. SA-005 is accepted by its fresh review (2026-09-28) and committed as `48143ed`; its CI workflow first ran on 2026-09-28 and passed all 3 jobs. SA-006 is accepted by its fresh re-review (2026-09-28). Its first review asked for two fixes the same day: a push could reach a phone twice, and the owner report could show a user id. Both are made; it is committed as `15dcda1` and was deployed on 2026-09-28 (`00b94de9`). SA-007 is accepted by its fresh review (2026-09-29), with two low follow-ups routed to SA-034 and SA-036; it is committed as `165d152` and deployed as `26b442f4` (2026-09-29). Its change 1, a weekly missing-bucket reminder, is accepted and committed as `8663387`. SA-008 is accepted by its fresh review (2026-09-30), with change 1 to follow for the reconciliation tool; it is not committed. Every other SA story is `todo`.** Accepted
 state/dependencies are in
 [STATE.json](planning/PI-2026-09/STATE.json). DOC-001 is this user-requested
 documentation refresh; it does not close SA-031 or any upstream remediation.
@@ -1054,7 +1178,7 @@ documentation refresh; it does not close SA-031 or any upstream remediation.
 | [SA-005](planning/PI-2026-09/stories/SA-005.md) | Establish a clean, isolated test and CI baseline | 13 Validation | None |
 | [SA-006](planning/PI-2026-09/stories/SA-006.md) | Repair delivery transport and expose dead letters | 10 Delivery | None |
 | [SA-007](planning/PI-2026-09/stories/SA-007.md) | Make backups independently recoverable | 3 Storage; 10 Recovery | None |
-| [SA-008](planning/PI-2026-09/stories/SA-008.md) | Quarantine unresolved securities with explicit lifecycle records | 4 Identity; 8 Discovery | SA-003 |
+| [SA-008](planning/PI-2026-09/stories/SA-008.md) | Quarantine unresolved securities with explicit lifecycle records | 3 Configuration; 4 Identity; 5 Learning; 6 Portfolio; 8 Discovery | SA-003 |
 | [SA-009](planning/PI-2026-09/stories/SA-009.md) | Inventory and reconcile prediction-store ownership | 3 Storage | None |
 | [SA-010](planning/PI-2026-09/stories/SA-010.md) | Pass sector benchmarks through technical-data calls | 4 Research | None |
 | [SA-011](planning/PI-2026-09/stories/SA-011.md) | Turn durable errors into a deterministic operations backlog | 9 Jobs; 10 Operations | SA-002, SA-004 |

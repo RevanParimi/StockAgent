@@ -61,6 +61,10 @@ class AdvisorSignals(BaseModel):
     # issued before the gate existed, NO_FORECAST when no row was read.
     forecast_gate: str = "none"
     forecast_run_ids: list[str] = Field(default_factory=list)
+    # SA-008: why `close` cannot be judged against this holding's cost basis
+    # ("" = it can): the symbol's identity is unresolved, or its price basis
+    # changed (a demerger, a relisting) since the basis the cost was booked on.
+    identity_issue: str = ""
 
 
 # ---------------------------------------------------------------------------
@@ -248,6 +252,7 @@ def data_gate_blocks(
     signals: AdvisorSignals,
     shelf_ideas: list | None = None,
     candidate_fresh: dict[str, bool] | None = None,
+    candidate_identity: dict[str, str] | None = None,
 ) -> tuple[list[str], dict[str, str]]:
     """
     What the data gate would stop for one holding. Pure.
@@ -258,6 +263,8 @@ def data_gate_blocks(
 
     A candidate whose price was never fetched here is not blocked at advice
     time; the autopilot checks its session price again before buying.
+    SA-008: `candidate_identity` maps a shelf symbol to why its identity is
+    not resolved; such a symbol is never a destination.
     """
     add_reasons: list[str] = []
     if not signals.price_fresh:
@@ -275,6 +282,8 @@ def data_gate_blocks(
         if not dg.is_actionable(status):
             blocked[idea.symbol] = (f"shelf idea data gate {status or 'unknown'} "
                                     "(deep dive not verified as actionable)")
+        elif (candidate_identity or {}).get(idea.symbol):
+            blocked[idea.symbol] = f"identity: {candidate_identity[idea.symbol]}"
         elif (candidate_fresh or {}).get(idea.symbol) is False:
             blocked[idea.symbol] = "no close dated the review session"
     return add_reasons, blocked
@@ -396,11 +405,28 @@ def decide(
     *,
     add_blocks: list[str] | None = None,
     blocked_candidates: dict[str, str] | None = None,
+    identity_hold: str | None = None,
 ) -> AdviceRecord:
     """The verdict for one holding. `add_blocks` (reasons ADD may not fire) and
     `blocked_candidates` (SWITCH destinations the data gate refuses) are SA-003
     inputs; when either stops an action it would otherwise take, the note
-    DATA_GATE is added. Neither can block EXIT or TRIM."""
+    DATA_GATE is added. Neither can block EXIT or TRIM.
+
+    SA-008: `identity_hold` (why the close is not this holding's price basis)
+    holds every verdict, EXIT and TRIM included, with the note IDENTITY. It is
+    the corp-action invariant again: a demerged parent's price is the
+    continuing entity's alone, so the unreconciled cost basis shows a loss
+    that never happened, and a stop fired on it would sell on a false signal.
+    An operator reconciles the holding (core/portfolio/identity_reconcile.py)."""
+    if identity_hold:
+        return AdviceRecord(
+            date=date.today().isoformat(), user_id="", symbol=signals.symbol,
+            verdict="HOLD", close=signals.close,
+            unrealised_pnl_pct=round(signals.unrealised_pnl_pct, 2),
+            stop_pct=signals.atr_stop_pct, triggers=[], notes=["IDENTITY"],
+            confidence=signals.confidence, switch_candidate="",
+            rationale_hash=hashlib.sha256(b"IDENTITY").hexdigest()[:16],
+        )
     triggers: list[str] = []
     notes: list[str] = []
     data_gated = False

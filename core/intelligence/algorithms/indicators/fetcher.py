@@ -66,7 +66,17 @@ def get_price_history(ticker: str, years: int = settings.PRICE_HISTORY_YEARS) ->
     -------
     pd.DataFrame with columns: Open, High, Low, Close, Volume
     Empty DataFrame on failure.
+
+    SA-008: `df.attrs["symbol"]` names the provider symbol the frame was
+    downloaded for (the resolved one, or a self-healed one), so a consumer can
+    check the prices belong to the instrument it meant.
     """
+    df, symbol = _price_history(ticker, years)
+    df.attrs["symbol"] = symbol
+    return df
+
+
+def _price_history(ticker: str, years: int) -> tuple[pd.DataFrame, str]:
     end = date.today()
     start = end - timedelta(days=years * 365)
 
@@ -96,10 +106,11 @@ def get_price_history(ticker: str, years: int = settings.PRICE_HISTORY_YEARS) ->
     yf_ticker = _nse_ticker(ticker)
     df, last_exc = _download(yf_ticker)
     if not df.empty:
-        return df
+        return df, yf_ticker
 
     # Still empty after retries → the symbol may be stale (rename / demerger /
     # Yahoo code quirk). Self-heal ONCE: search Yahoo, validate, cache, retry.
+    # SA-008: a ticker in the instrument registry is never healed.
     try:
         from backend.shared.data.fetchers.symbol_resolver import heal_symbol
         healed = heal_symbol(ticker)
@@ -107,13 +118,13 @@ def get_price_history(ticker: str, years: int = settings.PRICE_HISTORY_YEARS) ->
             logger.info("[yfinance] self-healed %s: %s → %s", ticker, yf_ticker, healed)
             df, last_exc = _download(healed)
             if not df.empty:
-                return df
+                return df, healed
     except Exception as exc:
         logger.debug("[yfinance] self-heal failed for %s: %s", ticker, exc)
 
     if last_exc is not None:
         logger.error("[yfinance] Price history failed for %s: %s", yf_ticker, last_exc)
-    return pd.DataFrame()
+    return pd.DataFrame(), yf_ticker
 
 
 # ---------------------------------------------------------------------------
@@ -639,6 +650,9 @@ def get_technical_result(ticker: str):
     )
 
     df = get_price_history(ticker, years=settings.PRICE_HISTORY_YEARS)
+    # SA-008: the symbol the bars were downloaded for; the decision gate checks
+    # it against the instrument the ticker resolves to.
+    symbol = (getattr(df, "attrs", None) or {}).get("symbol")
     tech = compute_technicals(df)
     seasonal = get_seasonal_pattern(df)
     corr = get_peer_correlation(ticker)
@@ -648,7 +662,7 @@ def get_technical_result(ticker: str):
             f"Technical data unavailable for {ticker}: {tech['error']}",
             STATUS_EMPTY, "yfinance",
             as_of=_last_bar_date(df) if not df.empty else None,
-            reason=f"{tech['error']} ({len(df)} bars)",
+            reason=f"{tech['error']} ({len(df)} bars)", symbol=symbol,
         )
 
     as_of = _last_bar_date(df)
@@ -661,6 +675,7 @@ def get_technical_result(ticker: str):
     return FetchResult(
         _format_technicals(ticker, tech, seasonal, corr),
         STATUS_STALE if stale else STATUS_OK, "yfinance", as_of=as_of, reason=reason,
+        symbol=symbol,
     )
 
 

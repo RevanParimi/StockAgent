@@ -189,6 +189,33 @@ def no_provenance_gate(run_id: str, reason: str) -> DecisionGate:
     return DecisionGate(status=ABSTAIN, run_id=run_id, reasons=[reason])
 
 
+IDENTITY_PREFIX = "identity"
+
+
+def apply_identity(gate: DecisionGate, identity, price_symbol: str | None = None) -> DecisionGate:
+    """
+    SA-008: an analysis acts only on the instrument its ticker resolves to.
+
+    Abstains when the identity is not resolved (an unreviewed successor, a
+    suspension, a delisting, a learned mapping nobody checked), or when the
+    price history the run used came from another symbol than the one the
+    identity names: evidence for another instrument cannot satisfy this one.
+    Identity reasons come first; a data abstention's own reasons follow them.
+    """
+    gate.identity = identity.stamp()
+    reasons: list[str] = []
+    if not identity.resolved:
+        reasons += [f"{IDENTITY_PREFIX} {identity.status}: {r}" for r in (identity.reasons or (identity.status,))]
+    if price_symbol and price_symbol.strip().upper() != identity.symbol.upper():
+        reasons.append(f"{IDENTITY_PREFIX}: price history came from {price_symbol}, not "
+                       f"{identity.symbol}, the instrument {identity.ticker} resolves to")
+    if reasons:
+        prior = list(gate.reasons) if gate.status == ABSTAIN else []
+        gate.status = ABSTAIN
+        gate.reasons = reasons + prior
+    return gate
+
+
 def apply_gate(report, gate: DecisionGate) -> DecisionGate:
     """Attach the gate to a FinalReport. In enforce mode an abstaining gate
     withholds the verdict: it moves to `withheld_verdict` and the report reads

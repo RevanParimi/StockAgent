@@ -1,0 +1,4 @@
+# SA-008: the instrument registry the test suite reads by default (tests/conftest.py).
+# Tests of the shipped identities point INSTRUMENT_REGISTRY_PATH at config/instruments.yaml.
+version: 1
+instruments: {}

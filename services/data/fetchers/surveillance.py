@@ -30,9 +30,12 @@ def _yf_info(ticker: str) -> dict:
     """yfinance .info with the repo's NSE suffix convention. {} on failure."""
     try:
         import yfinance as yf
+        from datetime import date
+        from backend.shared.data.instruments import registry_identity
         from core.config import settings
         suffix = settings.YFINANCE_SUFFIX
-        yf_ticker = settings.YF_SYMBOL_OVERRIDES.get(ticker.upper()) or (
+        registered = registry_identity(ticker, date.today())      # SA-008
+        yf_ticker = registered.symbol if registered is not None else (
             ticker if ticker.endswith(suffix) else f"{ticker}{suffix}"
         )
         return yf.Ticker(yf_ticker).info or {}

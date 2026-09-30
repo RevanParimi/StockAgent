@@ -172,16 +172,21 @@ def _fetch_session_close(ticker: str, target_date: date) -> SessionClose:
 
     SA-003: the selection is unchanged; the result also names the session of
     the bar the chosen close came from, so a carried-forward close is visible.
+
+    SA-008: every attempt prices the instrument the ticker resolves to on
+    `target_date` (the instrument registry's symbol for that day), including
+    the BSE and legacy fallbacks, which used to ask for "{TICKER}.BO" and the
+    self-healing fetcher: another instrument's close cannot stand in. Whether
+    that identity may be graded or traded is the caller's check
+    (symbol_resolver.resolve_identity), not this fetcher's.
     """
     import yfinance as yf
     from datetime import timedelta
-    from core.config import settings
+    from backend.shared.data.fetchers.symbol_resolver import resolve_identity
+    from backend.shared.data.instruments import symbol_root
     from services.data.fetchers.close_verifier import cross_check_close, nse_session_close
 
-    suffix = ".NS"
-    yf_sym = settings.YF_SYMBOL_OVERRIDES.get(ticker.upper()) or (
-        ticker if ticker.endswith(suffix) else f"{ticker}{suffix}"
-    )
+    yf_sym = resolve_identity(ticker, target_date).symbol
     # Fetch 7-day window to ensure we catch the target date even with holidays
     start = (target_date - timedelta(days=7)).isoformat()
     end   = (target_date + timedelta(days=1)).isoformat()
@@ -214,9 +219,10 @@ def _fetch_session_close(ticker: str, target_date: date) -> SessionClose:
     except Exception as exc:
         logger.warning("[daily_review] yf.download() failed for %s: %s", yf_sym, exc)
 
-    # Attempt 2: BSE fallback (.BO suffix) — Yahoo sometimes serves BSE when NSE is stale
+    # Attempt 2: BSE fallback (.BO suffix) — Yahoo sometimes serves BSE when NSE is stale.
+    # SA-008: the BSE listing of the SAME instrument (TMPV.BO, not TATAMOTORS.BO).
     if yf_close is None:
-        bse_sym = ticker if ticker.endswith(".BO") else f"{ticker}.BO"
+        bse_sym = f"{symbol_root(yf_sym)}.BO"
         try:
             df = yf.download(bse_sym, start=start, end=end, progress=False, auto_adjust=True)
             yf_close, yf_date = _extract(df)
@@ -225,10 +231,11 @@ def _fetch_session_close(ticker: str, target_date: date) -> SessionClose:
         except Exception as exc:
             logger.debug("[daily_review] BSE fallback failed for %s: %s", bse_sym, exc)
 
-    # Attempt 3: get_price_history() (C++ fetcher, 1-year window, legacy path)
+    # Attempt 3: get_price_history() (C++ fetcher, 1-year window, legacy path).
+    # SA-008: asked for the resolved symbol itself, which it never self-heals.
     if yf_close is None:
         try:
-            df = get_price_history(ticker, years=1)
+            df = get_price_history(yf_sym, years=1)
             yf_close, yf_date = _extract(df)
         except Exception as exc:
             logger.warning("[daily_review] get_price_history() failed for %s on %s: %s", ticker, target_date, exc)
@@ -264,6 +271,39 @@ def _review_gate(
         skipped=_GATED_REVIEW_SKIPS, status=status, reasons=reasons, run_id=run_id,
         enforced=dg.enforcing(), on_date=date_str, extra={"stage": stage},
     )
+
+
+def _identity_review_reasons(ticker: str, review_date: date, envelope, row) -> list[str]:
+    """
+    SA-008: why `row` may not be graded on `review_date`'s close ([] = it may).
+
+    The session's identity must be resolved, and the price basis the row was
+    issued on must be the session's. A row stamped with its instrument says
+    its basis; an older row is judged by the registry between the envelope's
+    issue date and the session (a demerger or relisting in between breaks it).
+    """
+    from backend.shared.data.fetchers.symbol_resolver import identity_break, resolve_identity
+
+    ident = resolve_identity(ticker, review_date)
+    reasons: list[str] = []
+    if not ident.resolved:
+        reasons.append(f"identity {ident.status} on {review_date.isoformat()}: {ident.reason_text()}")
+    stamp = getattr(row, "instrument", None) or {}
+    if stamp.get("basis"):
+        if stamp["basis"] != ident.basis:
+            reasons.append(
+                f"row issued on price basis {stamp['basis']} ({stamp.get('symbol') or '?'}); "
+                f"the session {review_date.isoformat()} is on {ident.basis} ({ident.symbol})")
+    else:
+        try:
+            issued = date.fromisoformat(str(getattr(envelope, "generated_at", ""))[:10])
+        except ValueError:
+            issued = None
+        if issued is not None and issued <= review_date:
+            broken = identity_break(ticker, issued, review_date)
+            if broken:
+                reasons.append(f"row issued {issued.isoformat()} carries no instrument: {broken}")
+    return reasons
 
 
 def _gated_summary(ticker: str, sector: str, date_str: str, mode: str,
@@ -604,6 +644,19 @@ def run_daily_review(
             reasons=[dg.row_gate_reason(today_forecast.data_gate,
                                         today_forecast.source_run_id)],
             run_id=today_forecast.source_run_id,
+        )
+        if row["enforced"]:
+            return _gated_summary(ticker, sector, date_str, mode, paper, row)
+        gate_rows.append(row)
+
+    # SA-008: the session's close must price the instrument the row was
+    # issued on. An unresolved identity grades nothing, and a row issued on
+    # one price basis is never graded against a close on another.
+    identity_reasons = _identity_review_reasons(ticker, review_date, envelope, today_forecast)
+    if identity_reasons:
+        row = _review_gate(
+            ticker, date_str, paper=paper, stage="identity", status="identity",
+            reasons=identity_reasons, run_id=today_forecast.source_run_id,
         )
         if row["enforced"]:
             return _gated_summary(ticker, sector, date_str, mode, paper, row)

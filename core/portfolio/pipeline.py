@@ -12,6 +12,7 @@ import logging
 from datetime import date
 
 from core.config import settings
+from backend.shared.data.fetchers.symbol_resolver import resolve_identity
 from core.intelligence.algorithms.indicators.fetcher import get_price_history
 from core.intelligence.rl.nse_calendar import is_trading_day
 from services.data.verdict_store import VerdictStore  # plane boundary (Atlas C2)
@@ -19,6 +20,7 @@ from backend.shared.pipeline import decision_gate as dg
 from core.portfolio.advisor import build_signals, data_gate_blocks, decide
 from core.portfolio.corp_actions import sync_corp_actions
 from core.portfolio.digest import build_digest
+from core.portfolio.identity_reconcile import holding_identity_issue, symbol_identity_issue
 from core.portfolio.narrator import narrate
 from core.portfolio.pricing import session_close
 from core.portfolio.store import PortfolioStore, active_user_ids
@@ -108,7 +110,7 @@ def advice_alert_fields(rec, shelf_index: dict) -> dict:
 
 
 def gated_decide(signals, holding, risk_profile, *, shelf_ideas, sector_weights,
-                 held_symbols, candidate_fresh):
+                 held_symbols, candidate_fresh, candidate_identity=None):
     """
     SA-003: `decide` with the data gate, plus what the gate did.
 
@@ -119,16 +121,22 @@ def gated_decide(signals, holding, risk_profile, *, shelf_ideas, sector_weights,
     verdict (EXIT/TRIM/SWITCH sell) resting on a stale close or an unverified
     forecast is kept and annotated, never blocked.
 
+    SA-008: a holding whose identity or price basis is not verified
+    (`signals.identity_issue`) is held outright in the gated decision, and
+    a destination whose identity is unresolved is blocked.
+
     Returns (record, blocked_candidates_passed_to_decide).
     """
-    add_reasons, blocked = data_gate_blocks(signals, shelf_ideas, candidate_fresh)
+    add_reasons, blocked = data_gate_blocks(signals, shelf_ideas, candidate_fresh,
+                                            candidate_identity)
+    identity = signals.identity_issue
     common = dict(shelf_ideas=shelf_ideas, sector_weights=sector_weights,
                   held_symbols=held_symbols)
     ungated = decide(signals, holding, risk_profile, **common)
-    if not add_reasons and not blocked:
+    if not add_reasons and not blocked and not identity:
         return ungated, None
     gated = decide(signals, holding, risk_profile, add_blocks=add_reasons,
-                   blocked_candidates=blocked, **common)
+                   blocked_candidates=blocked, identity_hold=identity or None, **common)
     enforced = dg.enforcing()
     rec = gated if enforced else ungated
     info = {
@@ -136,14 +144,22 @@ def gated_decide(signals, holding, risk_profile, *, shelf_ideas, sector_weights,
         "reasons": [], "source_run_ids": list(signals.forecast_run_ids),
         "price_bar_date": signals.price_bar_date or None,
     }
+    if identity:
+        info["identity"] = identity
     if (gated.verdict, gated.switch_candidate) != (ungated.verdict, ungated.switch_candidate):
         blocked_action = ungated.verdict
         reasons = list(add_reasons)
-        if ungated.verdict == "SWITCH":
+        if identity:
+            reasons = [f"identity: {identity}"]
+        elif ungated.verdict == "SWITCH":
             blocked_action = f"SWITCH buy leg {ungated.switch_candidate}"
             reasons = [f"{ungated.switch_candidate}: {blocked.get(ungated.switch_candidate, '?')}"]
         info.update(enforced=enforced, blocked=blocked_action, reasons=reasons,
                     gated_verdict=gated.verdict, ungated_verdict=ungated.verdict)
+        rec.data_gate = info
+    elif identity:
+        info.update(reasons=[f"identity: {identity}"],
+                    note="no action rests on this price until the holding is reconciled")
         rec.data_gate = info
     elif rec.verdict in ("EXIT", "TRIM", "SWITCH") and add_reasons:
         info.update(reasons=add_reasons,
@@ -197,6 +213,10 @@ def run_post_review_pipeline(review_date: date) -> dict:
         # stay outside the holding loop or it becomes N_holdings fetches each.
         candidate_closes: dict[str, float] = {}
         candidate_fresh: dict[str, bool] = {}      # SA-003: bar is the session
+        # SA-008: shelf symbols whose identity is not resolved (registry only,
+        # no network), whether or not switch evaluation fetches their prices.
+        candidate_identity = {i.symbol: why for i in shelf_ideas
+                              if (why := symbol_identity_issue(i.symbol, review_date))}
         switch_evals: list = []
         if _switch_eval_enabled():
             for idea in shelf_ideas:
@@ -237,13 +257,18 @@ def run_post_review_pipeline(review_date: date) -> dict:
                 # SA-003: the price freshness the gate needs.
                 signals.price_fresh = quote.fresh_for(session)
                 signals.price_bar_date = quote.bar_date.isoformat() if quote.bar_date else ""
+                # SA-008: is this close the holding's own price basis?
+                signals.identity_issue = holding_identity_issue(holding, review_date)
                 rec, gate_blocked = gated_decide(
                     signals, holding, portfolio.risk_profile,
                     shelf_ideas=shelf_ideas, sector_weights=sector_weights,
                     held_symbols={h.symbol for h in portfolio.holdings},
-                    candidate_fresh=candidate_fresh)
+                    candidate_fresh=candidate_fresh,
+                    candidate_identity=candidate_identity)
                 rec.user_id = user_id
                 rec.date = review_date.isoformat()
+                # SA-008: the advice keeps the instrument its close priced.
+                rec.instrument = resolve_identity(holding.symbol, review_date).stamp()
                 rec.narrative = narrate(rec, signals)
                 store.append_advice(rec)
                 advice.append(rec)

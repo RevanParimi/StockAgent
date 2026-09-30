@@ -195,6 +195,8 @@ def _build_daily_forecasts(
     base_confidence = min(1.0, max(0.1, report.final_score))
     # SA-003: every row names the run that issued it and that run's gate.
     gate_status, gate_run_id, _ = dg.report_gate(report)
+    # SA-008: and the instrument (price basis) that run priced.
+    instrument = _report_instrument(report)
 
     # Build the LLM-calibrated price path via interpolator (Monte Carlo GBM primary)
     interpolator = PriceInterpolator()
@@ -282,9 +284,16 @@ def _build_daily_forecasts(
             predicted_agent_catalysts=agent_predictions or {},
             data_gate=gate_status,
             source_run_id=gate_run_id,
+            instrument=dict(instrument),
         ))
 
     return forecasts
+
+
+def _report_instrument(report: FinalReport) -> dict:
+    """SA-008: the identity stamp the report's decision gate recorded ({} if none)."""
+    gate = getattr(report, "decision_gate", None)
+    return dict(getattr(gate, "identity", None) or {})
 
 
 # ---------------------------------------------------------------------------
@@ -591,6 +600,7 @@ def generate_forecast(
         weight_version_used=wm.weight_version,
         learning_mode=mode,
         decision_gate=report.decision_gate.model_dump() if report.decision_gate else None,
+        instrument=_report_instrument(report),
         forecast_profile_shape=forecast_profile.path_shape if forecast_profile else "linear",
         forecast_profile_monthly_pct=forecast_profile.monthly_return_pct if forecast_profile else 0.0,
         forecast_profile_source=forecast_profile.source if forecast_profile else "static",
@@ -766,6 +776,7 @@ def regenerate_envelope(
         envelope.learning_mode = mode
         envelope.decision_gate = (report.decision_gate.model_dump()
                                   if report.decision_gate else None)
+        envelope.instrument = _report_instrument(report)
 
         store.save_envelope(envelope)
         logger.info(

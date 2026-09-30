@@ -14,7 +14,9 @@ Three checks, run daily as a non-fatal pipeline step:
      since each row records its own delta).
   3. Per-symbol net quantity — Σ(BUY qty) − Σ(SELL qty) vs held adj_qty, for
      holdings with NO ratio-changing corp actions (split/bonus change adj_qty
-     without a ledger row; those symbols are reported "unverifiable").
+     without a ledger row; those symbols are reported "unverifiable"). SA-008:
+     an identity reconciliation (rename/demerger/relisting) moves a position
+     to a successor symbol without a ledger row, so it is unverifiable too.
 """
 from __future__ import annotations
 
@@ -26,6 +28,7 @@ from core.portfolio.store import PortfolioStore
 
 logger = logging.getLogger(__name__)
 
+_IDENTITY_KINDS = ("rename", "demerger", "relisting")   # SA-008
 _CHAIN_TOL = 0.05     # ₹ — rounding slack between consecutive rows
 _CASH_TOL = 1.00      # ₹ — final cash tolerance
 _QTY_TOL = 1e-6
@@ -84,7 +87,7 @@ def reconcile(store: PortfolioStore) -> dict:
                 net_qty[t.symbol] -= t.qty
         unverifiable: list[str] = []
         for h in portfolio.holdings:
-            if any(a.ratio != 1.0 for a in h.applied_actions):
+            if any(a.ratio != 1.0 or a.kind in _IDENTITY_KINDS for a in h.applied_actions):
                 unverifiable.append(h.symbol)
                 continue
             if abs(net_qty.get(h.symbol, 0.0) - h.adj_qty) > _QTY_TOL:

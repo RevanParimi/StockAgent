@@ -74,6 +74,19 @@ INSUFFICIENT DATA, and no forecast, learning update or new-risk buy (ADD, or
 a SWITCH's buy leg) rests on it. Exits and trims are never blocked
 ([KT sections 4–6](TECHNICAL_DESIGN.md#4-research-input-to-recommendation)).
 
+SA-008 (accepted by its fresh review on 2026-09-30, not committed) adds security
+identity to that gate. The instrument registry, `config/instruments.yaml`,
+replaces the undated `YF_SYMBOL_OVERRIDES` dict. It holds effective-dated
+records of which provider symbol a ticker is priced from, on which price basis,
+and whether its identity is resolved: evidence resolves an identity, and
+nothing is needed to quarantine one. An unresolved identity, or price history
+fetched for another symbol, abstains. A forecast row is graded only against a
+close on its own basis. A holding whose basis changed since purchase (a
+demerger) is held, exits included, until an operator reconciles it with
+`python -m core.portfolio.identity_reconcile`: a read-only plan, then an
+apply approved by the plan's digest. TATAMOTORS ships unresolved; by the owner's
+decision of 29 Sep, the passenger-vehicle company is tracked as its own ticker, TMPV.
+
 Learning persists feedback, weights and lessons. It currently has known
 label/timing/final-bound problems. The SA-039 switch `rl.learning_mode`
 (accepted 2026-09-25; production runs `observe` since 2026-09-26 through the Railway variable `RL_LEARNING_MODE`) contains it: in `observe` mode,
@@ -101,7 +114,7 @@ Learning then tunes six weights pooled across all stocks.
 
 | Already present | Planned in PI-2026-09 |
 |---|---|
-| Central graph routing, unified scoring, durable run/health logs; usable-data health semantics (SA-002, accepted, committed as `8413b59`); the essential-data decision gate, recording only (SA-003, accepted, committed as `167f08b`) | Enforcing the gate (owner decision after a measured record period), instrument lifecycles (SA-008), store lineage, sector lenses and the factor engine (one-engine design) |
+| Central graph routing, unified scoring, durable run/health logs; usable-data health semantics (SA-002, accepted, committed as `8413b59`); the essential-data decision gate, recording only (SA-003, accepted, committed as `167f08b`); security identity and lifecycle records (SA-008, accepted 2026-09-30, not committed) | Enforcing the gate (owner decision after a measured record period), switching production from TATAMOTORS to TMPV, store lineage, sector lenses and the factor engine (one-engine design) |
 | Hard-bound categorical research verdict under current YAML | Immutable issuance, correct grading and retry-safe bounded adaptive updates |
 | Virtual advice, execution, P/L and outcome reports | Complete matched cohorts and prospective evidence of learning benefit; costs and tax in paper P/L, idle cash put to work in normal markets (hold cash only in a crisis), one sizing rule for every autopilot buy, and the portfolio shown against the Nifty (SA-048–SA-051) |
 | IPO calendar/history/capture and recent-listing heuristic | Future validated IPO modeling is not a completed September deliverable |

@@ -1,4 +1,4 @@
-# Current handoff - 2026-09-30 (updated about 18:15 IST)
+# Current handoff - 2026-10-01 (updated about 00:35 IST)
 
 ## START HERE — resume checklist, in order
 
@@ -98,8 +98,20 @@ review-edited docs, so every reviewed code and test byte is committed as reviewe
 due Thu 1 Oct 09:30, then the SA-003 enforce decision.
 - **SA-009 change 1 was ACCEPTED** by its fresh review (about 17:50–18:15 IST; the block below).
   At the owner's word ("ya commit and push", about 22:20 IST) it is committed as `9c626a5`, with
-  the KT bump after it (header `9c626a5`). The push and deploy are recorded in step 3.
+  the KT bump after it (header `9c626a5`). **Pushed and deployed:** `e698c68..2c632e2` at
+  22:24:37 IST; Railway `14d13162` SUCCESS 22:26:11 (cached build); boot log 125 lines, 0
+  tracebacks, 0 error or warning lines, 24 jobs, self-heal complete in 10 s; `/health` 200 at
+  22:29. CI on `2c632e2` was not read here: the owner reads the Actions page.
 - SA-008 change 1 stays open. It must be accepted before any `successors` record.
+
+**2a. The 30 Sep audit alert ("audit_nightly completed 25/27"), diagnosed from the log.** Only the
+IPO lane missed: 2 listing-day rows (SWASTIKAIN, ADROITIND) got no close. The close lookup discards
+a one-bar Yahoo table (`squeeze()` turns it into a number, and `.dropna()` fails). The NSE fallback
+rescued ELEVATE and ARMEE, but not these two. The bug is pre-existing (1 May; also seen 29 Sep) and
+reproduced locally. `close_on` shares it, so a holding on its listing day has the same gap. The
+diagnosis and fix are in a note on the [SA-040](stories/SA-040.md) card; the fix waits for the
+owner's word. The 23:30 backup that night was clean (drill passed, emailed; off-site unset as
+expected).
 
 **3. SA-008 and SA-009 are pushed and deployed** (the owner's word, about 13:00 IST: "ya commit
 and push").
@@ -117,7 +129,55 @@ and push").
     SUCCESS, then 200 `ok` from 13:17:48.
 - **CI:** run `36684772155` on `e698c68` passed 3 of 3 jobs: guards 13 s, Python tests on Linux /
   3.11 154 s, Chromium 112 s.
-- **The owner's rollout steps (not done yet):**
+- **The owner's rollout steps (not done yet; the owner said "go ahead on the rollout recommended"
+  at about 22:20 IST).** Claude cannot do them: the dashboard steps need the owner's login, and
+  Claude's `railway ssh` was denied by the auto-mode classifier ("Production Reads"). So the
+  owner runs each step and pastes the output. Order matters: the dashboard steps first, because
+  the plan's digest pins the managed list. At the owner's request Claude wrote a helper the owner
+  runs from Git Bash (ignored, local): `bash analysis_data/sa009/rollout/run.sh check` (read-only:
+  TATAMOTORS/TMPV entries, learned symbols, inventory summary, plan digest with ITEM/HOLD/FLAG
+  lines), then `run.sh apply <digest>` (refuses unless the fresh plan has that digest and the IST
+  time is 00:10-06:20 or 12:05-14:55), and `run.sh rollback <migration id>`. It calls only the
+  SA-009 modules. Tested locally on the fixture tree with the real wiring: check wrote nothing,
+  apply moved the 3 strays, rollback was byte-identical.
+  - **First production check (owner, about 23:35 IST, read-only).** The dashboard step was not yet
+    done (TATAMOTORS enabled, TMPV absent). SA-008 L2: no managed ticker has a learned symbol, and
+    `AUTO_TICKERS` is unset. The plan (`ce3556d0…`) moves 16 stores and holds or flags none:
+    every `automobile/<TICKER>` copy of a ticker managed in another sector, each with its owner
+    store present. The copies now hold 19–21 files and 150 conflicting graded days, against
+    weights and 1–2 envelopes on 10 Sep (the writer is inferred, not verified).
+  - **Apply rule given to the owner:** after the dashboard step, re-run `check`. Apply its new
+    digest only if it shows `DASHBOARD STEP DONE`, `PLAN items 16 holds 0 flags 0`, and the same
+    16 `ITEM` lines with the same file counts. Otherwise paste the output and do not apply.
+  - **Second check (owner, about 23:55 IST) was identical:** inventory `974e6043…`, plan
+    `ce3556d0…`, the same 16 items and file counts, and the dashboard step still not done. So nothing
+    wrote to the 16 copies between the checks, which included the 23:45 audit.
+  - **Claude approved plan `ce3556d0…`** (delegated: "go ahead on the rollout recommended"). The
+    dashboard step touches none of the 16 stores, so the order can be: apply first, in 00:10–06:20,
+    before any dashboard change; then the dashboard step before 09:00; then a final `check`
+    (expect `DASHBOARD STEP DONE`, `PLAN items 0`, no `DUP` lines). If the dashboard step comes
+    first, the digest changes, apply refuses, and the earlier rule applies to a new check.
+  - **APPLIED 1 Oct 00:10:31 IST** (owner, `run.sh apply ce3556d0…`). Migration
+    `20260930T184031Z-ce3556d023d3`: 16 of 16 stores `moved`, with unchanged bytes. The inventory after
+    (`c1708d20…`) has 168 stores, 0 duplicate tickers, 0 duplicate envelopes or graded days (36
+    and 150 conflicting before) and 0 wrong-roster stores. The undo is `run.sh rollback 20260930T184031Z-ce3556d023d3`.
+    **The dashboard step as one command** (owner asked, about 00:20 IST): `run.sh dashboard` calls the
+    app's own routes on localhost, with the machine key from the container's environment, never
+    printed. It toggles TATAMOTORS off only if it is enabled, never calls remove, and adds TMPV
+    (automobile) only if absent. It is safe to run twice, and was tested locally against a fake app.
+    **Then to do (done, below):** the dashboard step before 09:00, then a final `check` (expect `DASHBOARD STEP
+    DONE`, `PLAN items 0`, no `DUP`). Later, a check after October's first restart should show no
+    new `automobile/<TICKER>` copy with files.
+  - **ROLLOUT COMPLETE (1 Oct 00:30–00:33 IST).**
+    - `run.sh dashboard`: TATAMOTORS is disabled (not removed) and TMPV is added (automobile).
+      TMPV's October envelope was done at 00:32:06 (weights v0). The log since 00:00 has 0 errors.
+    - Final check: `DASHBOARD STEP DONE`; 169 stores; 0 duplicates; 0 wrong-roster stores;
+      plan 0 items, 0 holds, 0 flags.
+    - **For P3 at 09:30:** no TATAMOTORS October envelope is expected (it is disabled). TMPV's
+      envelope came from the add route at 00:32, not the 09:00 job; check that it too says `observe`.
+    - **Left to observe:** October's first restart creates no `automobile/<TICKER>` copy with files
+      (a later `check`); new feedback logs carry their store's sector; the scorecard lists each
+      moved ticker once.
   - **SA-008:**
     - **Disable** TATAMOTORS with the toggle. **Never remove it:** removing deletes its history.
     - Add TMPV: sector `automobile`, name "Tata Motors Passenger Vehicles Ltd". The add starts

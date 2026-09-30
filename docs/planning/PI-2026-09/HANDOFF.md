@@ -101,13 +101,12 @@ planned `todo` story in STATE order whose dependencies are met (it has none). **
 first:** P3 is due Thu 1 Oct 09:30. Two small follow-ups are also open, and neither is urgent:
 SA-008 change 1 and SA-009 change 1. Taking one before SA-010 needs the owner's word.
 
-**3. SA-009 is ACCEPTED and uncommitted** (see "SA-009 was ACCEPTED" below). Its commit can
-follow SA-008's.
-Committing needs the owner's word. The landing commit's KT bump links `store_inventory.py` and
-`store_migration.py`. After the commit, `verify SA-009-manifest.json --rev <commit>` should
-mismatch exactly the 4 review-edited docs: the KT, the PDF, ARCHITECTURE and TEAM_TESTING_GUIDE.
-The push needs the owner's word, in a job-free window (00:10–06:20 IST is safest). Every push
-redeploys.
+**3. SA-009 is committed as `313e3f6`, with the KT bump after it** (the owner's word, about
+13:00 IST: "ya commit and push"; see "SA-009 was ACCEPTED" below). The KT bump links `store_inventory.py` and
+`store_migration.py`. `verify SA-009-manifest.json --rev 313e3f6` mismatches exactly the 4
+review-edited docs: the KT, the PDF, ARCHITECTURE and TEAM_TESTING_GUIDE.
+The push follows with SA-008's two commits, in the 12:05–14:55 IST job-free window. Every
+push redeploys.
 
 **3a. SA-008 is committed as `02c43f6`, with the KT bump after it. Neither is pushed.** The
 owner chose to commit it first (about 06:55 IST 30 Sep), locally only, so that SA-009 starts on a

@@ -1,8 +1,8 @@
 # StockAgent — Technical Design and Knowledge Transfer
 
-**Edition:** 2026-10-01 · **Audience:** engineers and teammates learning the product
+**Edition:** 2026-10-02 · **Audience:** engineers and teammates learning the product
 
-**Code inspected:** `0493f7c1d776fec4d42958bec551d239cecba6fb`
+**Code inspected:** `656ed71283228310a6da643806657dc66bad31d4`
 
 First edition 2026-09-15 at `9a805878`; maintained per story since. The revision
 above is the one the whole body describes. `check_kt_docs.py` fails if a linked
@@ -457,8 +457,8 @@ never asked to "resolve" it. In production the swap is the owner's step at
 rollout: disable TATAMOTORS in the managed list rather than remove it, because
 removing deletes its prediction history; then add TMPV.
 
-**Ticker resolution (FIX-002: accepted by its fresh review on 2026-10-01, not
-yet committed).** Before FIX-002 the resolver's short cut knew only each sector's
+**Ticker resolution (FIX-002: accepted by its fresh review on 2026-10-01,
+committed as `656ed71`).** Before FIX-002 the resolver's short cut knew only each sector's
 static `TICKERS` setting, and most production-managed tickers are not in it:
 the IT list holds TCS and INFY, but not TATAELXSI, KPITTECH, PERSISTENT or
 HAPPSTMNDS. So every scheduled forecast and review of those tickers asked an
@@ -592,7 +592,8 @@ order, before it writes anything:
   suspended symbol, a provider lag), and that fallback is unchanged. What is
   new is that the result names the bar it came from. A download that holds a
   single bar, as on a listing day, is read like any other (FIX-001,
-  accepted by its fresh review on 2026-10-01, committed as `0493f7c`). Before, it
+  committed as `0493f7c`, deployed, and confirmed by the 1 Oct nightly audit).
+  Before, it
   was discarded, and the close came
   only from NSE, if at all. A known case (routed to
   SA-012): when NSE has not yet listed the session and yfinance's session
@@ -900,8 +901,8 @@ listing-day rows (SWASTIKAIN, ADROITIND), which got no close. On a listing
 day a download holds one bar, and the close fetcher discarded a one-bar
 frame. So the one row per issue that can carry a mark was the one most likely
 to be skipped. A skipped row is not written, so the next nightly run retries
-it. FIX-001 (accepted by its fresh review on 2026-10-01, committed as `0493f7c`)
-reads the one bar. The audit prices every row through `close_on`, which
+it. FIX-001 (committed as `0493f7c` and deployed on 2026-10-01) reads the one
+bar: the 1 Oct audit graded 4 IPO rows and skipped none. The audit prices every row through `close_on`, which
 returns the close without its bar's date. So when a provider lags, a close
 carried forward from an earlier bar is stored as the session's (routed to
 SA-012). No bar precedes a listing, so the listing-day row is not exposed.

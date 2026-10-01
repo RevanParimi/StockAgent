@@ -1,12 +1,13 @@
-# Current handoff - 2026-10-01 (updated about 23:55 IST)
+# Current handoff - 2026-10-02 (updated about 00:40 IST)
 
 ## START HERE — resume checklist, in order
 
 **FIX-002 was ACCEPTED by its fresh-session review (1 Oct, about 21:20–21:50 IST, a new
-conversation). It is uncommitted.** STATE: `active_task: null`, FIX-002 `done`, `next_task:
-FIX-003`. Receipts: [implementation](evidence/FIX-002-implementation.md) and
-[review](evidence/FIX-002-review.md). Nothing was committed, pushed, deployed or configured, and
-no production state was read.
+conversation) and is COMMITTED as `656ed71`** at the owner's word ("ya commit and push FIX-002",
+about 00:30 IST 2 Oct), with the KT bump after it. `verify FIX-002-manifest.json --rev 656ed71`
+mismatches only the 3 review-edited docs, so every reviewed code and test byte is committed as
+reviewed. STATE: `active_task: null`, FIX-002 `done`, `next_task: FIX-003`. Receipts:
+[implementation](evidence/FIX-002-implementation.md) and [review](evidence/FIX-002-review.md).
 - **In one example.** At 09:16 on 1 Oct the monthly forecast asked the IT orchestrator for
   TATAELXSI. Its short cut knew only the IT built-in list, so an LLM was asked and answered
   TATAMOTORS. The run analysed Tata Motors, and it also used Tata Motors' learned weights in
@@ -30,11 +31,11 @@ no production state was read.
   guide 02-G's status, the PDF. `verify FIX-002-manifest.json` now mismatches exactly the KT, the
   PDF and the guide.
 - **Next, in order:**
-  1. **Commit and push need the owner's word,** in a job-free window (00:10–06:20 IST is
-     safest). The commit holds the 8 manifest paths, the 3 evidence files, STATE, HANDOFF and the
-     SA-026 and SA-031 cards. A KT bump follows it, declaring the FIX-002 commit. The bump can
-     also say, in KT §4 and §8 and guide 05-G, that FIX-001 is deployed (`e7a994a5`) and passed
-     its 1 Oct 23:45 check.
+  1. **DONE: committed and bumped.** `656ed71` holds the 8 manifest paths, the 3 evidence files,
+     STATE, HANDOFF and the SA-026 and SA-031 cards. The KT bump declares `656ed71` (edition
+     2026-10-02). It also marks FIX-001 deployed and confirmed by the 1 Oct audit (KT §4 and §8,
+     guide 05-G). PDF rebuilt (source `806b5894…`), `check_kt_docs` errors `[]`. The push follows
+     in the 00:10–06:20 IST window; its deploy record is below once it is done.
   2. **Production check (read-only), after the deploy:** the next 16:30 review logs
      `Resolved: X -> ticker='X'` for every managed ticker, with no `Serper fallback` line and no
      `ticker_resolution` call for them. Fri 2 Oct is an NSE holiday in the app's calendar, but

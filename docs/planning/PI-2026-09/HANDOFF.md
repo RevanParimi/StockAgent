@@ -1,4 +1,4 @@
-# Current handoff - 2026-10-01 (updated about 10:40 IST)
+# Current handoff - 2026-10-01 (updated about 15:35 IST)
 
 ## START HERE — resume checklist, in order
 
@@ -72,18 +72,43 @@ review-edited docs, so every reviewed code and test byte is committed as reviewe
     - Thu 1 Oct to Tue 6 Oct should be silent for this entry. The Thursday check is read-only.
   - This record (STATE and HANDOFF) is uncommitted. It rides with the next commit.
 
-**2. Next PI phase: FIX-001's fresh-session review**, in a new conversation (step 0 is done).
-STATE: `active_task: FIX-001` (`review_required`), `next_task: FIX-001`. After its acceptance, the
-recommended order is FIX-002, then FIX-003, then SA-010.
-- **How to review it:** follow [REVIEW.md](REVIEW.md), the [FIX-001 card](stories/FIX-001.md) and
-  the [receipt](evidence/FIX-001-implementation.md). `kt_manifest.py verify FIX-001-manifest.json`
-  must give 0 mismatches, digest `b0d12caf…`. Rebuild the diff `3dc30945…` (16,938 bytes, 7 text
-  files) against `290b3f7`.
-- **The push is pending.** `290b3f7` (the rollout records) is committed locally and not pushed.
-  The owner's word came at 00:38, but a 1 Oct restart before the 09:00 forecast would make the
-  self-heal generate October envelopes for all 20 tickers, and the 09:00 job regenerates them
-  all. So the push waits for the 1 Oct 12:05–14:55 window. FIX-001 stays uncommitted until its
-  review.
+**2. FIX-001 was ACCEPTED by its fresh-session review** (1 Oct, about 15:10–15:35 IST, a new
+conversation). It is **not committed**. See the [review receipt](evidence/FIX-001-review.md).
+- **In one example.** An issue lists at issue price 100, and its listing-day download holds one
+  bar, at 131.2. Before the fix, the audit skipped the row. Now it stores exit 131.2, a return of
+  +31.2% and `correct` True. The probe ran the real `close_on` and `grade_ipo_lane`.
+  - 3,000 random multi-bar frames give the same result as at `290b3f7`.
+  - Mutations: 4 of 4 caught.
+  - Full suite: 4036 passed, 12 skipped, 0 failed.
+- **Findings.** None is critical, high or medium.
+  - **L1, low**, routed to [SA-012](stories/SA-012.md). `close_on` drops the bar's date, so a
+    carried-forward close is stored as the session's. That predates FIX-001. FIX-001 adds one
+    route, which reaches only unmarked IPO rows at horizons 5 and later.
+  - **I1** was fixed in review: KT §8 no longer claims IPO grading on 29 Sep.
+  - **I2** is an inference and needs no action.
+- **Review edits** (documentation only): KT §4 and §8, the PDF, guide 05-G and an SA-012 card
+  note. `verify FIX-001-manifest.json` now mismatches exactly the KT, the PDF and the guide.
+- **Next, at the owner's word:** commit FIX-001, then a KT bump that declares that commit
+  (`daily_review.py` changed after `9c626a5`). Push in a job-free window.
+  - The commit holds the code, the tests, the KT, guide and PDF, the review receipt, the SA-012
+    note, STATE and HANDOFF.
+  - The production check comes after the deploy: the first nightly audit has no
+    `'numpy.float64' … 'dropna'` line, and the 30 Sep SWASTIKAIN and ADROITIND rows get graded.
+
+**2c. Next PI phase: FIX-002's implementation**, in a new conversation. Opener: `Continue`. STATE:
+`active_task: null`, `next_task: FIX-002`. Then FIX-003, then SA-010. Read the
+[FIX-002 card](stories/FIX-002.md) first.
+- **Pushed and deployed, 1 Oct.** At the owner's word ("go ahead and commit and push"), the
+  step 0 records were committed as `3deade8`. That commit also holds FIX-001's card, receipt and
+  manifest, because HANDOFF links them; its code, tests and KT/PDF edits are NOT committed.
+  - **The push:** `2c632e2..3deade8` (with `290b3f7`) at 11:32:38 IST, after the 09:00 forecast
+    and before the 11:55 job.
+  - **The deploy:** Railway `ccd6ca78` reached SUCCESS by 11:34:01. Boot log: 124 lines, 0
+    tracebacks, 0 error or warning lines, 24 jobs; the self-heal completed without generating
+    any envelope. `/health` returned 200 at 11:34.
+  - **CI on `3deade8`:** not read here. A clean worktree's `check_kt_docs` passed every link check;
+    its only errors were Windows "Filename too long" artifacts of the temp path.
+  - FIX-001 stays uncommitted until its review.
 
 **2b. Earlier plan, superseded by step 2: SA-010's implementation**, in a new conversation. Opener: `Continue`. STATE:
 `active_task: null`, `next_task: SA-010`, `next_phase: implementation`. **Run step 0 first:** P3 is
@@ -97,8 +122,8 @@ due Thu 1 Oct 09:30, then the SA-003 enforce decision.
 - SA-008 change 1 stays open. It must be accepted before any `successors` record.
 
 **FIX-001 was IMPLEMENTED on 2026-10-01** (about 00:40–01:00 IST, in this conversation at the
-owner's word: "The small price-lookup fix - go ahead as well"). It is uncommitted and not reviewed.
-A same-conversation self-review was done; it is not the fresh review.
+owner's word: "The small price-lookup fix - go ahead as well"). It is uncommitted. Its fresh
+review accepted it at about 15:35 IST (step 2 above); the bullets below are the pre-review record.
 - **In one example.** On a listing day the 7-day download holds one bar. `squeeze()` turned it into
   a number, and `.dropna()` raised, so SWASTIKAIN's and ADROITIND's listing-day closes were
   discarded on 30 Sep. Now the bar is read like any other, dated its session, and cross-checked

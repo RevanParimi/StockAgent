@@ -24,9 +24,9 @@ FRI = date(2026, 9, 25)
 THU = FRI - timedelta(days=1)
 WED = FRI - timedelta(days=2)
 SAT, SUN = FRI + timedelta(days=1), FRI + timedelta(days=2)
-# Frames hold at least two bars, as a 7-day download window does. (With one
-# row, `df["Close"].squeeze()` is a scalar and the unchanged selection code
-# finds no close at all — pre-existing, and conservative.)
+# Frames hold at least two bars, as a 7-day download window usually does. A
+# one-bar frame (a listing day) is covered by test_one_bar_close_fix001.py:
+# before FIX-001, `df["Close"].squeeze()` made it a scalar and no close was found.
 
 
 @pytest.fixture(autouse=True)

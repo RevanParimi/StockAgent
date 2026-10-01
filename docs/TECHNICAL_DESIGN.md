@@ -557,7 +557,11 @@ order, before it writes anything:
 - the actual close is from the bar dated the review session. The close
   fetchers fall back to the newest earlier bar when the session has none (a
   suspended symbol, a provider lag), and that fallback is unchanged. What is
-  new is that the result names the bar it came from. A known case (routed to
+  new is that the result names the bar it came from. A download that holds a
+  single bar, as on a listing day, is read like any other (FIX-001,
+  accepted by its fresh review on 2026-10-01, not yet committed). Before, it
+  was discarded, and the close came
+  only from NSE, if at all. A known case (routed to
   SA-012): when NSE has not yet listed the session and yfinance's session
   close differs from NSE's latest row by more than 1%, the cross-check still
   prefers NSE's earlier close. That close is now marked stale, not graded;
@@ -857,8 +861,17 @@ only when the verdict was taken after the book closed and its lean asserted a
 direction. Every other horizon is recorded with `correct` unset, so it enters
 no hit-rate. These rows are written to the same store and excluded from the
 rendered audit report: the P3 model remains dark until its visibility gate is
-met, and a displayed hit-rate would be that surface. No production IPO row has
-been graded yet.
+met, and a displayed hit-rate would be that surface. Production grades IPO
+rows: on 30 September 2026 the nightly audit graded two and skipped two
+listing-day rows (SWASTIKAIN, ADROITIND), which got no close. On a listing
+day a download holds one bar, and the close fetcher discarded a one-bar
+frame. So the one row per issue that can carry a mark was the one most likely
+to be skipped. A skipped row is not written, so the next nightly run retries
+it. FIX-001 (accepted by its fresh review on 2026-10-01, not yet committed)
+reads the one bar. The audit prices every row through `close_on`, which
+returns the close without its bar's date. So when a provider lags, a close
+carried forward from an earlier bar is stored as the session's (routed to
+SA-012). No bar precedes a listing, so the listing-day row is not exposed.
 
 **Example:** stock +5%, benchmark +8% means excess **−3 percentage points**.
 HOLD is incorrect under that relative-return rule despite a positive stock

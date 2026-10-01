@@ -195,7 +195,9 @@ def _fetch_session_close(ticker: str, target_date: date) -> SessionClose:
     def _extract(df) -> tuple[float | None, date | None]:
         if df is None or df.empty:
             return None, None
-        close = df["Close"].squeeze()
+        # FIX-001: no squeeze(). On a one-bar frame (a listing day) squeeze()
+        # gave a scalar, .dropna() raised, and the session's own close was lost.
+        close = df["Close"]
         if hasattr(close, "columns"):          # multi-level columns — take first
             close = close.iloc[:, 0]
         close = close.dropna()

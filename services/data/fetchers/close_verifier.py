@@ -71,8 +71,10 @@ def _fetch_yfinance_close(ticker: str) -> float | None:
         df = get_price_history(ticker, years=1)
         if df.empty:
             return None
-        close = df["Close"].squeeze()
-        return _sanitize(float(close.iloc[-1]))
+        close = df["Close"]                     # FIX-001: no squeeze() (one bar -> scalar)
+        if hasattr(close, "columns"):           # multi-level columns — take first
+            close = close.iloc[:, 0]
+        return _sanitize(float(close.iloc[-1]))  # a NaN last row stays a failure
     except Exception as exc:
         logger.debug("[close_verifier] yfinance close fetch failed for %s: %s", ticker, exc)
         return None

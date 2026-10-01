@@ -73,7 +73,11 @@ review-edited docs, so every reviewed code and test byte is committed as reviewe
   - This record (STATE and HANDOFF) is uncommitted. It rides with the next commit.
 
 **2. FIX-001 was ACCEPTED by its fresh-session review** (1 Oct, about 15:10–15:35 IST, a new
-conversation). It is **not committed**. See the [review receipt](evidence/FIX-001-review.md).
+conversation). See the [review receipt](evidence/FIX-001-review.md). At the owner's word ("go
+ahead commit and push FIX-001 now", about 18:00 IST) it is **committed as `0493f7c`**, with the
+KT bump after it (header `0493f7c`, edition 2026-10-01). `verify FIX-001-manifest.json --rev
+0493f7c` mismatches only the 3 review-edited docs, so every reviewed code and test byte is
+committed as reviewed.
 - **In one example.** An issue lists at issue price 100, and its listing-day download holds one
   bar, at 131.2. Before the fix, the audit skipped the row. Now it stores exit 131.2, a return of
   +31.2% and `correct` True. The probe ran the real `close_on` and `grade_ipo_lane`.
@@ -88,12 +92,11 @@ conversation). It is **not committed**. See the [review receipt](evidence/FIX-00
   - **I2** is an inference and needs no action.
 - **Review edits** (documentation only): KT §4 and §8, the PDF, guide 05-G and an SA-012 card
   note. `verify FIX-001-manifest.json` now mismatches exactly the KT, the PDF and the guide.
-- **Next, at the owner's word:** commit FIX-001, then a KT bump that declares that commit
-  (`daily_review.py` changed after `9c626a5`). Push in a job-free window.
-  - The commit holds the code, the tests, the KT, guide and PDF, the review receipt, the SA-012
-    note, STATE and HANDOFF.
-  - The production check comes after the deploy: the first nightly audit has no
-    `'numpy.float64' … 'dropna'` line, and the 30 Sep SWASTIKAIN and ADROITIND rows get graded.
+- **The commits.** `0493f7c` holds the code, the tests, the KT, guide and PDF, the review receipt,
+  the SA-012 note, STATE and HANDOFF. The KT bump after it declares `0493f7c`. The push is in the
+  18:00–18:55 IST job-free window.
+- **Production check, after the deploy:** the first nightly audit (23:45) has no
+  `'numpy.float64' … 'dropna'` line, and the 30 Sep SWASTIKAIN and ADROITIND rows get graded.
 
 **2c. Next PI phase: FIX-002's implementation**, in a new conversation. Opener: `Continue`. STATE:
 `active_task: null`, `next_task: FIX-002`. Then FIX-003, then SA-010. Read the

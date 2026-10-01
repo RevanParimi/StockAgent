@@ -1,66 +1,45 @@
-# Current handoff - 2026-10-01 (updated about 00:35 IST)
+# Current handoff - 2026-10-01 (updated about 10:40 IST)
 
 ## START HERE — resume checklist, in order
 
-**0. Before any story work, check STATE `pending_production_checks`.** It holds the SA-039 `observe`
-verification. **P1 passed** (checked Mon 28 Sep 20:19 IST). **P2 passed** (checked Tue 29 Sep
-17:01 IST, deploy `f2e23722`). P3 is due Thu 1 Oct 09:30. Run every check that is due and
-unrecorded (read-only; the steps are in the carry-over box on [SA-001](stories/SA-001.md), and
-[SA-003](stories/SA-003.md) carries a pointer to it). Record each in the
-[activation record](evidence/SA-039-activation-2026-09-26.md) and in STATE.
-[SA-038](stories/SA-038.md) is the backstop.
+**0. Step 0 is DONE (1 Oct, about 10:20–10:40 IST). SA-039 P3 passed, and the delegated SA-003
+enforce decision is NO-GO: the gate stays in `record`.** Nothing in production changed. Check
+STATE `pending_production_checks` again only if a new entry appears.
 
-- **P2, in one example.** Tuesday's 16:30 review graded Monday (28 Sep) for all 20 tickers in
-  `observe` mode. SUZLON's adapter again proposed v57 and it was not written: two reviews after
-  the 26 Sep baseline, the stored version is still v56. The same holds for every ticker, and no
-  `Weights → v` line was logged. One handled `JSONDecodeError` in LLM ticker resolution
-  (16:40:57) is pre-existing and noted for SA-008.
+- **P3, in one example.** The 09:00 monthly forecast made 20 October envelopes, one per enabled
+  ticker. Every one was made with `learning_mode=observe` (logs, deploy `14d13162`), including
+  TMPV's, which the job regenerated at 09:25:53. None was made for the disabled TATAMOTORS.
+  18 weight versions still equal the 26 Sep baseline. The stored field is inferred from code,
+  not read from the volume. See the [activation record](evidence/SA-039-activation-2026-09-26.md),
+  P3. SA-039's observation window is complete (P1 28 Sep and P2 29 Sep passed earlier).
+- **The SA-003 decision, in one example.** YES Bank's June-quarter results are on file, but a
+  bank's statement has no "operating income" line. The fetcher fills it with zero and marks
+  fundamentals `fallback`, so the gate abstains on every bank analysis. Under `enforce`, four
+  banks would get no October forecast and no learning, on fine data. The rules' measures:
+  - **(a) met:** 25 of 78 analyses (28 Sep–1 Oct) would abstain, 32%. The 4 banks alone are 22%;
+  - **(b) met:** 3 of 5 spot-checked abstentions had fine data (the banks);
+  - **wait condition (4) not met:** only 3 review days. Because the cause is structural, the
+    outcome is NO-GO rather than WAIT;
+  - **F1:** 6 of 20 October envelopes abstain. **F2:** 0 `actual_close` rows.
 
-- **P1, in one example.** Monday's 16:30 review graded Friday's session for all 20 tickers in
-  `observe` mode. For SUZLON the adapter proposed v57 and it was not written: the stored version
-  stays v56, the same as the 26 Sep baseline. The same holds for all 19 tickers with weights, and
-  no `Weights → v` line was logged. WELCORP has no weights, as before SA-039.
-- **The P1 rule had the wrong date.** It expected observations dated 28 Sep, but a review grades
-  the previous session, so they say 25 Sep; they were recorded 28 Sep (16:31–16:54 IST). P2 saw
-  `review_date` 2026-09-28, as corrected.
-
-- **When P3 passes (Thu 1 Oct), make the SA-003 enforce decision.** On 2026-09-27 the owner
-  delegated it to Claude: decide by the written rules, log the decision, and tell the owner. SA-039's
-  observation window ends with P3. The rules are in STATE, under P3's `then_decision`:
-  - **Wait** until all of these hold:
-    - SA-003 is deployed in record mode. **Met:** deploy `0106fc89`, 27 Sep 09:27 IST (step 1);
-    - P1–P3 have passed;
-    - the live envelopes carry `data_gate` (otherwise wait for the 1 Nov forecast);
-    - `decision_gate.jsonl` holds at least 5 scheduled review days of rows;
-    - no other policy flag changed in this window.
-  - **No-go**, and route a fix, if either of these holds:
-    - more than 20% of analyses would abstain, not counting forecast rows issued before the gate;
-    - a spot check of 5 abstain rows finds one whose data was actually fine.
-  - **Otherwise go:**
-    - set `DECISION_GATE_MODE=enforce` in a safe window (00:10–06:20 IST). If Claude cannot set
-      the Railway variable, give the owner the exact command;
-    - verify read-only after the next scheduled review;
-    - roll back to `record` if a verified run was withheld, or if skips far exceed the prediction.
-  - **Also report two inputs to the owner.** The SA-003 review added them; they do not change the
-    rules above:
-    - **F1:** how many month-start envelopes carry `abstain`. Under `enforce`, each such ticker
-      would have no envelope for that month, because only a restart retries it. **SA-009 is
-      deployed** (`650bb98c`, 30 Sep 13:13 IST), so a restart now retries every ticker in its
-      own store. Before that, it retried only automobile tickers;
-    - **F2:** how many `actual_close` gate rows name `source nse` with the previous session's bar
-      (the close-verifier case);
-    - count analyses by distinct `run_id` against the data-health rows, not by raw gate-log rows.
-      A re-run review appends its rows again.
-  - **SA-008 interplay (deployed 30 Sep 13:13 IST as `650bb98c`).** Two things follow:
-    - its identity rows abstain by design on healthy data, so exclude them from the spot check.
-      They are recognisable by the reason prefix `identity` and the review stage `identity`.
-      They start with the 30 Sep 16:30 review, unless TATAMOTORS is disabled first;
-    - `enforce` would also quarantine TATAMOTORS (no forecast, no learning, a held holding) if it
-      is still enabled. The owner's rollout disables it (step 3). Say which holds with the
-      decision.
-  - Log the decision in `evidence/SA-003-enforce-decision-<date>.md`, in STATE history and in
-    SA-003's `production_verification`. The [SA-003 receipt](evidence/SA-003-implementation.md)
-    has the steps, under "Rollout", and the [review](evidence/SA-003-review.md) has F1 and F2.
+  See the [decision record](evidence/SA-003-enforce-decision-2026-10-01.md). **Re-decide by the
+  same rules** after FIX-002 and FIX-003 are deployed and at least 5 review days have rows
+  issued after them: the 1 Nov forecast, or an owner-authorised regeneration of the affected
+  envelopes.
+- **Found at P3: TATAELXSI was analysed as TATAMOTORS.** The IT orchestrator sends managed
+  tickers that are missing from its static `TICKERS` list to an LLM. At 09:16 that LLM answered
+  TATAMOTORS, and TATAELXSI's October envelope was saved from a Tata Motors analysis.
+  SA-008's identity gate recorded it, in record mode. The same path resolved TVSMOTOR to
+  TVSMOTORS on 29 Sep, and named HAPPSTMNDS "Happy Smile Digital Ltd" today. SA-039 `observe`
+  keeps the stored weights unchanged meanwhile.
+- **Two routed fixes were added to the board as `todo`** (STATE, P1, 1 point each). They are
+  recommended next after FIX-001's review and before SA-010:
+  - [FIX-002](stories/FIX-002.md): a managed ticker resolves to itself, with no LLM call. After
+    its deploy, the owner authorises regenerating TATAELXSI's October envelope;
+  - [FIX-003](stories/FIX-003.md): a bank-shaped statement reads as complete, with no invented
+    zero.
+- **Raw diagnostics** are in ignored `analysis_data/sa039/` (`p3_*`, `gate_rows_2026092*`,
+  `review_gate_rows.py`). They hold counts, tickers, reasons and run ids only.
 
 **1. SA-007 change 1 is committed as `8663387`** at the owner's word ("ya commit and push",
 about 14:37 IST). `verify SA-007-change1-manifest.json --rev 8663387` mismatches only the 3
@@ -93,7 +72,20 @@ review-edited docs, so every reviewed code and test byte is committed as reviewe
     - Thu 1 Oct to Tue 6 Oct should be silent for this entry. The Thursday check is read-only.
   - This record (STATE and HANDOFF) is uncommitted. It rides with the next commit.
 
-**2. Next PI phase: SA-010's implementation**, in a new conversation. Opener: `Continue`. STATE:
+**2. Next PI phase: FIX-001's fresh-session review**, in a new conversation (step 0 is done).
+STATE: `active_task: FIX-001` (`review_required`), `next_task: FIX-001`. After its acceptance, the
+recommended order is FIX-002, then FIX-003, then SA-010.
+- **How to review it:** follow [REVIEW.md](REVIEW.md), the [FIX-001 card](stories/FIX-001.md) and
+  the [receipt](evidence/FIX-001-implementation.md). `kt_manifest.py verify FIX-001-manifest.json`
+  must give 0 mismatches, digest `b0d12caf…`. Rebuild the diff `3dc30945…` (16,938 bytes, 7 text
+  files) against `290b3f7`.
+- **The push is pending.** `290b3f7` (the rollout records) is committed locally and not pushed.
+  The owner's word came at 00:38, but a 1 Oct restart before the 09:00 forecast would make the
+  self-heal generate October envelopes for all 20 tickers, and the 09:00 job regenerates them
+  all. So the push waits for the 1 Oct 12:05–14:55 window. FIX-001 stays uncommitted until its
+  review.
+
+**2b. Earlier plan, superseded by step 2: SA-010's implementation**, in a new conversation. Opener: `Continue`. STATE:
 `active_task: null`, `next_task: SA-010`, `next_phase: implementation`. **Run step 0 first:** P3 is
 due Thu 1 Oct 09:30, then the SA-003 enforce decision.
 - **SA-009 change 1 was ACCEPTED** by its fresh review (about 17:50–18:15 IST; the block below).
@@ -103,6 +95,24 @@ due Thu 1 Oct 09:30, then the SA-003 enforce decision.
   tracebacks, 0 error or warning lines, 24 jobs, self-heal complete in 10 s; `/health` 200 at
   22:29. CI on `2c632e2` was not read here: the owner reads the Actions page.
 - SA-008 change 1 stays open. It must be accepted before any `successors` record.
+
+**FIX-001 was IMPLEMENTED on 2026-10-01** (about 00:40–01:00 IST, in this conversation at the
+owner's word: "The small price-lookup fix - go ahead as well"). It is uncommitted and not reviewed.
+A same-conversation self-review was done; it is not the fresh review.
+- **In one example.** On a listing day the 7-day download holds one bar. `squeeze()` turned it into
+  a number, and `.dropna()` raised, so SWASTIKAIN's and ADROITIND's listing-day closes were
+  discarded on 30 Sep. Now the bar is read like any other, dated its session, and cross-checked
+  against NSE.
+- **The change:** `daily_review._fetch_session_close._extract` and
+  `close_verifier._fetch_yfinance_close`. Frames with two or more bars take the same path as
+  before. A NaN last row stays a failure.
+- **Checks:**
+  - 10 new tests, and focused 24 passed;
+  - mutations 3 of 4 caught: the original defect fails 6 tests, and M4 is equivalent;
+  - full suite **4036 passed, 12 skipped, 0 failed**, `data/` unchanged;
+  - `check_kt_docs` errors `[]`.
+- **Docs:** KT §4 and §8 (the first production IPO rows; the skipped listing-day rows), guide
+  05-G, the PDF, and the [card](stories/FIX-001.md).
 
 **2a. The 30 Sep audit alert ("audit_nightly completed 25/27"), diagnosed from the log.** Only the
 IPO lane missed: 2 listing-day rows (SWASTIKAIN, ADROITIND) got no close. The close lookup discards

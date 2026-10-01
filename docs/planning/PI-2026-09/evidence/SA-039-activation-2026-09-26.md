@@ -79,13 +79,40 @@ which carries the variable. Output is saved next to the scripts, in ignored
   `TICKERS` list, so they skip the exact-match short cut. Noted for SA-008, which owns
   ticker identity.
 
+## P3 — Thu 1 Oct monthly forecast: PASSED (checked 10:25 IST)
+
+Read-only. `railway logs 14d13162 -n 5000 --json`, filtered to 08:55–12:00 IST, plus the P1
+probe's public GETs. The live deploy is `14d13162` (`2c632e2`, 30 Sep 22:26 IST), with no restart
+since, so the 09:00 job made the cohort and no self-heal did. The output is in ignored
+`analysis_data/sa039/p3_logs_20261001.json` and `p3_api_20261001.json`.
+
+- **Logs, 09:00:07–09:26:00 IST:** 20 `[generate_forecast] learning_mode=observe` lines and 20
+  `Saved envelope … 30 day forecasts` lines, one per enabled ticker, with no duplicate and 0
+  tracebacks. No TATAMOTORS envelope was made, as expected: it was disabled at 00:30:43.
+- **TMPV:** the 09:00 job regenerated TMPV's 00:32 add-route envelope at 09:25:53. The one now
+  stored was made in `observe`, so the rollout note's question is answered.
+- **The stored field is inferred from code, not read.** `generate_forecast` logs `mode` and
+  writes the same variable to `envelope.learning_mode` (`generate_forecast.py`, the
+  `learning_mode()` call and the `PredictionEnvelope(...)` constructor). The envelopes on the
+  volume were not read.
+- **Versions:** 18 tickers equal the 26 Sep baseline, three reviews later, all in `observe`.
+  WELCORP and TMPV are at v0 with no baseline entry, as expected: WELCORP never had weights,
+  and TMPV is new.
+- **Found while checking; not an SA-039 failure.** The IT orchestrator resolved TATAELXSI to
+  TATAMOTORS through its LLM ticker resolution. TATAELXSI's October envelope was therefore built
+  on another company's analysis. SA-008's identity gate recorded it, in record mode. The fix is
+  routed as [FIX-002](../stories/FIX-002.md); see the
+  [SA-003 enforce decision](SA-003-enforce-decision-2026-10-01.md).
+- **Ignore the `level` field.** The window's log `level` reads `error` on all 753 lines, which
+  is Railway's classification of the stream, not the app's level.
+
 ## Still to verify (read-only)
 
 1. ~~Mon 28 Sep, after the 16:30 review.~~ Done: P1 above.
 2. ~~The same evening.~~ Done: P1 above.
 3. ~~Tue 29 Sep, after the review.~~ Done: P2 above.
-4. **Thu 1 Oct, after the 09:00 monthly forecast.** The new envelopes carry `learning_mode: observe`.
-   October is the first fully contained cohort.
+4. ~~Thu 1 Oct, after the 09:00 monthly forecast.~~ Done: P3 above. SA-039's observation window
+   is complete; the SA-003 enforce decision followed (NO-GO).
 
 **Rollback:** delete the Railway variable (or set it to `adapt`) and redeploy. The stored weights
 resume unchanged.

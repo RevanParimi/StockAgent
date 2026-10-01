@@ -1,6 +1,60 @@
-# Current handoff - 2026-10-01 (updated about 15:35 IST)
+# Current handoff - 2026-10-01 (updated about 23:55 IST)
 
 ## START HERE — resume checklist, in order
+
+**FIX-002 was ACCEPTED by its fresh-session review (1 Oct, about 21:20–21:50 IST, a new
+conversation). It is uncommitted.** STATE: `active_task: null`, FIX-002 `done`, `next_task:
+FIX-003`. Receipts: [implementation](evidence/FIX-002-implementation.md) and
+[review](evidence/FIX-002-review.md). Nothing was committed, pushed, deployed or configured, and
+no production state was read.
+- **In one example.** At 09:16 on 1 Oct the monthly forecast asked the IT orchestrator for
+  TATAELXSI. Its short cut knew only the IT built-in list, so an LLM was asked and answered
+  TATAMOTORS. The run analysed Tata Motors, and it also used Tata Motors' learned weights in
+  place of the ones the forecast passed in. Now TATAELXSI is found in the managed list and
+  resolves to itself, with no LLM call, and keeps its own weights.
+- **What the review checked:**
+  - review input `98ed116a…` and diff `bc726da8…` verified;
+  - full suite **4056 passed, 12 skipped, 0 failed**, with `data/` unchanged;
+  - focused 162 passed;
+  - with the original defect put back in memory, 11 of the 20 new tests fail;
+  - 10 of 10 independent probes passed. They include production's 21 tickers in all 5
+    orchestrators, and the forecast traced through the real `analyse()`;
+  - broad-except OK, and `check_kt_docs` errors `[]`.
+- **Findings:** none in the change. Two follow-ups predate FIX-002 and are routed as card notes:
+  - **M1 → [SA-026](stories/SA-026.md).** The weekly discovery deep dive still sends candidate
+    symbols to the LLM. A renamed candidate can mint a shelf idea, a SWITCH destination, from
+    another company's analysis;
+  - **L1 → [SA-031](stories/SA-031.md).** `load_registry` raises on a registry file that is not
+    valid UTF-8.
+- **Review edits (docs only):** KT §4 (the status, the weights, and a sentence on discovery),
+  guide 02-G's status, the PDF. `verify FIX-002-manifest.json` now mismatches exactly the KT, the
+  PDF and the guide.
+- **Next, in order:**
+  1. **Commit and push need the owner's word,** in a job-free window (00:10–06:20 IST is
+     safest). The commit holds the 8 manifest paths, the 3 evidence files, STATE, HANDOFF and the
+     SA-026 and SA-031 cards. A KT bump follows it, declaring the FIX-002 commit. The bump can
+     also say, in KT §4 and §8 and guide 05-G, that FIX-001 is deployed (`e7a994a5`) and passed
+     its 1 Oct 23:45 check.
+  2. **Production check (read-only), after the deploy:** the next 16:30 review logs
+     `Resolved: X -> ticker='X'` for every managed ticker, with no `Serper fallback` line and no
+     `ticker_resolution` call for them. Fri 2 Oct is an NSE holiday in the app's calendar, but
+     the review still runs at 16:30 (Mon–Fri) and re-runs every ticker's analysis for the 1 Oct
+     session. So with a push tonight, 2 Oct 16:30 is the first full check.
+  3. **Containment needs the owner's authorisation, after the deploy.** Re-forecast TATAELXSI's
+     October envelope with the implementation receipt's "Rollout" command. The owner runs it
+     through `railway ssh`, because Claude's `railway ssh` is blocked. It is safe without a
+     pre-check: if re-forecasts are off or the monthly cap is reached, it prints `[SKIP]` and
+     changes nothing. It anchors on the newest close, so it works on the 2 Oct holiday too. Its
+     own log line `Resolved: TATAELXSI -> ticker='TATAELXSI'` is an early production check of
+     FIX-002. Record the archive name it prints and the new run id.
+  4. **FIX-003's implementation,** in a new conversation (opener `Continue`), then SA-010.
+- **FIX-001's production check PASSED** (read-only, 23:47 IST; step 2). The 23:45 audit had no
+  `dropna` error. It graded 27 rows, IPO 4, with 0 skipped in every lane, against IPO 2 graded
+  and 2 skipped on 30 Sep. It fetched SWASTIKAIN's and ADROITIND's 30 Sep closes (209.95 and
+  248.35) from Yahoo; NSE had no row.
+- **Seen, outside FIX-001, watch tomorrow:** the 23:30 backup's email copy failed
+  (`SMTPServerDisconnected`, `emailed=False`). The backup archive itself was written. Earlier
+  nights emailed it. If 2 Oct's 23:30 run fails the same way, look at it under SA-007.
 
 **0. Step 0 is DONE (1 Oct, about 10:20–10:40 IST). SA-039 P3 passed, and the delegated SA-003
 enforce decision is NO-GO: the gate stays in `record`.** Nothing in production changed. Check
@@ -78,6 +132,14 @@ ahead commit and push FIX-001 now", about 18:00 IST) it is **committed as `0493f
 KT bump after it (header `0493f7c`, edition 2026-10-01). `verify FIX-001-manifest.json --rev
 0493f7c` mismatches only the 3 review-edited docs, so every reviewed code and test byte is
 committed as reviewed.
+- **Production check: PASSED** (read-only, 1 Oct 23:47 IST, deploy `e7a994a5`). The 23:45 audit
+  had no `'numpy.float64' … 'dropna'` line. It graded 27 rows, with 0 skipped in any lane. The IPO
+  lane graded 4, against 2 graded and 2 skipped on 30 Sep. The daily review fetched SWASTIKAIN's
+  30 Sep close (209.95) and ADROITIND's (248.35) from Yahoo: the `.NS` download was empty, so the
+  bar came from the `.BO` or 1-year attempt, and NSE had no row.
+  - That the two 30 Sep rows are among the 4 graded is inferred from these lines; the stored rows
+    were not read.
+  - STATE `production_verification`: `verified`.
 - **In one example.** An issue lists at issue price 100, and its listing-day download holds one
   bar, at 131.2. Before the fix, the audit skipped the row. Now it stores exit 131.2, a return of
   +31.2% and `correct` True. The probe ran the real `close_on` and `grade_ipo_lane`.
@@ -93,13 +155,22 @@ committed as reviewed.
 - **Review edits** (documentation only): KT §4 and §8, the PDF, guide 05-G and an SA-012 card
   note. `verify FIX-001-manifest.json` now mismatches exactly the KT, the PDF and the guide.
 - **The commits.** `0493f7c` holds the code, the tests, the KT, guide and PDF, the review receipt,
-  the SA-012 note, STATE and HANDOFF. The KT bump after it declares `0493f7c`. The push is in the
-  18:00–18:55 IST job-free window.
-- **Production check, after the deploy:** the first nightly audit (23:45) has no
-  `'numpy.float64' … 'dropna'` line, and the 30 Sep SWASTIKAIN and ADROITIND rows get graded.
+  the SA-012 note, STATE and HANDOFF. The KT bump after it is `da66fee` and declares `0493f7c`.
+- **Pushed and deployed.**
+  - **The push:** `3deade8..da66fee` at 18:02:56 IST, in the 18:00–18:55 job-free window.
+  - **The deploy:** Railway `e7a994a5` reached SUCCESS by 18:04:16 (a cached build).
+    - Boot log: 124 lines, 0 tracebacks, 0 error or warning lines, 24 jobs; startup and the
+      self-heal completed.
+    - `/health` returned 200 at 18:05.
+  - **CI on `da66fee`:** not read here, because the `gh` CLI is not installed. The owner reads
+    the Actions page.
+  - This record is uncommitted. It rides with the next commit.
+- **Production check, still to do (FIX-001 `pending_observation`):** tonight's 23:45 nightly
+  audit should show no `'numpy.float64' … 'dropna'` line, and should grade the 30 Sep SWASTIKAIN
+  and ADROITIND rows if Yahoo or NSE has the bar.
 
-**2c. Next PI phase: FIX-002's implementation**, in a new conversation. Opener: `Continue`. STATE:
-`active_task: null`, `next_task: FIX-002`. Then FIX-003, then SA-010. Read the
+**2c. Done: FIX-002's implementation** (the block at the top). It was planned here as the next
+phase, in a new conversation, then FIX-003, then SA-010. Read the
 [FIX-002 card](stories/FIX-002.md) first.
 - **Pushed and deployed, 1 Oct.** At the owner's word ("go ahead and commit and push"), the
   step 0 records were committed as `3deade8`. That commit also holds FIX-001's card, receipt and

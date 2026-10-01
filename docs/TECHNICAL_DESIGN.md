@@ -300,8 +300,9 @@ because a racing writer is detected, not prevented.
 [unified analyst](../src/backend/shared/pipeline/unified_analyst.py) →
 [aggregator](../src/backend/shared/pipeline/signal_aggregator.py).
 
-1. Resolve input to a company, symbol and sector. Known managed symbols can
-   bypass model-based resolution.
+1. Resolve input to a company, symbol and sector. A ticker the app already
+   tracks resolves to itself with no model call (FIX-002, below); other text
+   goes to an LLM, with a web search when its answer cannot be verified.
 2. Select the graph. Automobile, banking/BFSI, IT and renewable energy have
    native implementations; other sectors use generic analysis. The RL router
    delegates graph selection to the central registry; August A1 is present.
@@ -455,6 +456,38 @@ so the LLM ticker lookup, whose prompt names "TATAMOTORS – Tata Motors Ltd", i
 never asked to "resolve" it. In production the swap is the owner's step at
 rollout: disable TATAMOTORS in the managed list rather than remove it, because
 removing deletes its prediction history; then add TMPV.
+
+**Ticker resolution (FIX-002: accepted by its fresh review on 2026-10-01, not
+yet committed).** Before FIX-002 the resolver's short cut knew only each sector's
+static `TICKERS` setting, and most production-managed tickers are not in it:
+the IT list holds TCS and INFY, but not TATAELXSI, KPITTECH, PERSISTENT or
+HAPPSTMNDS. So every scheduled forecast and review of those tickers asked an
+LLM which company the ticker was, and used its answer. **Example:** at 09:16
+on 1 Oct the monthly forecast for TATAELXSI (Tata Elxsi) was resolved to
+TATAMOTORS. The run analysed Tata Motors, with Tata Motors' learned weights
+rather than the ones the forecast passed in, and TATAELXSI's October envelope
+was saved from that analysis. The same path turned TVSMOTOR into TVSMOTORS on 29
+Sep and named HAPPSTMNDS "Happy Smile Digital Ltd".
+
+Now a ticker resolves to itself, with no LLM or web-search call, when it is in
+its sector's `TICKERS`, in the managed list (`data/managed_tickers.json`, any
+sector, enabled or not) or in the instrument registry:
+- the managed list and the registry are read on every resolution, so a ticker
+  the owner adds is known at once. Nothing writes the list on this path;
+- the company name comes from the curated or learned name, else yfinance for
+  the registry's symbol, else the ticker; never from the LLM;
+- a retired or unresolved ticker such as TATAMOTORS resolves to itself, and
+  the identity gate above decides whether it may act;
+- an unreadable registry quarantines every ticker but names none, so free text
+  is not mistaken for a ticker;
+- free text ("tata elxsi") still goes to the LLM, as before. So does a weekly
+  discovery candidate that no list holds, so its shelf idea can still rest on
+  another company's analysis. That is routed to SA-026.
+
+**Still to do:** after the deploy, the owner authorises regenerating
+TATAELXSI's October envelope. Until then its October reviews grade Tata
+Elxsi's closes against the Tata Motors analysis, and SA-003's gate rows mark
+them. [SA-026](planning/PI-2026-09/stories/SA-026.md) replaces the per-sector lists with one sector definition.
 
 **Current gap:** production records the gate only once SA-003 is deployed, and
 nothing is withheld until the owner switches to `enforce`. How often the gate

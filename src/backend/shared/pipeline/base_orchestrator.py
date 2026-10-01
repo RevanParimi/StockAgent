@@ -374,10 +374,13 @@ class BaseSectorOrchestrator(ABC):
 
     def _managed_tickers(self) -> set[str]:
         """
-        Return this sector's managed ticker symbols (uppercased), cached on
+        Return this sector's static TICKERS setting (uppercased), cached on
         the instance. Lazy-imports `backend.sectors.{SECTOR_NAME}.config.settings`
         and reads its TICKERS list. Any failure (missing module, missing
         attribute, bad shape) yields an empty set — never raises.
+
+        Most production-managed tickers are not in it; _tracked_tickers holds
+        those (FIX-002).
         """
         cached = getattr(self, "_managed_tickers_cache", None)
         if cached is not None:
@@ -395,6 +398,23 @@ class BaseSectorOrchestrator(ABC):
 
         self._managed_tickers_cache = tickers
         return tickers
+
+    def _tracked_tickers(self) -> set[str]:
+        """
+        FIX-002: every ticker the app already tracks under its own code, in
+        any sector — each managed-list entry (data/managed_tickers.json,
+        enabled or not) and each instrument-registry record. Read on every
+        call, so a ticker the owner adds is known at once; both reads are
+        read-only and never raise.
+
+        Before this, a managed ticker missing from its sector's TICKERS went
+        to the LLM: on 1 Oct the monthly forecast for TATAELXSI analysed
+        TATAMOTORS. A retired or unresolved ticker resolves to itself too;
+        SA-008's identity gate decides whether it may act.
+        """
+        from backend.shared.data.instruments import recorded_tickers
+        from services.api.log_buffer import managed_symbols
+        return managed_symbols() | recorded_tickers()
 
     def _yf_info(self, ticker: str) -> dict:
         """
@@ -440,7 +460,7 @@ class BaseSectorOrchestrator(ABC):
         self._last_resolve_usage = (0, 0)  # AUD-087: reset per run
 
         candidate = user_input.strip().upper()
-        if candidate in self._managed_tickers():
+        if candidate in self._managed_tickers() or candidate in self._tracked_tickers():
             return StockQuery(
                 ticker=candidate,
                 company_name=self._company_name_for(candidate),

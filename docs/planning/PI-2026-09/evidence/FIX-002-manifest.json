@@ -1,0 +1,53 @@
+{
+  "story": "FIX-002",
+  "phase": "implementation",
+  "baseline": "da66fee69e542a995941951bb5030f8a1754c62f",
+  "excluded": [
+    "docs/planning/PI-2026-09/STATE.json",
+    "docs/planning/PI-2026-09/HANDOFF.md",
+    "docs/planning/PI-2026-09/evidence/FIX-002-implementation.md"
+  ],
+  "hash_convention": "git blob bytes after .gitattributes normalization (CRLF->LF for text, binary unchanged); verify with scripts/docs/kt_manifest.py verify",
+  "files": [
+    {
+      "path": "docs/AGENTIC_DESIGN.md",
+      "git_blob": "41b276b8f91a5b5d4f8bb0f5d4047ecd56b9b726",
+      "sha256": "ca9fdca82871c2fd9f15dafb712ae56c61866083e4853597327d12dd7be01574"
+    },
+    {
+      "path": "docs/StockAgent-Three-Loops.pdf",
+      "git_blob": "a99a63509d67b459c50a69d7bf88f619526c98e5",
+      "sha256": "026b2b1e7ecf168f3c1a47a98baaee302d418c90eef56f93cba59862cff6b5ea"
+    },
+    {
+      "path": "docs/TEAM_TESTING_GUIDE.md",
+      "git_blob": "6308cb335fd30f99bc552f807ccdec9e22c766a7",
+      "sha256": "53235290d5984e3dc368df0eedfc43f9502566f29700cf0a425f8dbcd61b839d"
+    },
+    {
+      "path": "docs/TECHNICAL_DESIGN.md",
+      "git_blob": "4cd73d9f82bcdcea09483d569b37cf3e064c664e",
+      "sha256": "6ac7ccb48c60088f5f4adb4b2f386dfc310ccfe32f1eef87719c60e7f9946fc2"
+    },
+    {
+      "path": "services/api/log_buffer.py",
+      "git_blob": "f2301ff07e195eb3eedc79dd96e0c8608e7293a1",
+      "sha256": "a62a036b6367765ad37e0a2ec256e8a9616737323de58fa5bd3fb938ba0b68d7"
+    },
+    {
+      "path": "src/backend/shared/data/instruments.py",
+      "git_blob": "2f27fa450a65b9e8efd463827388c503797ab221",
+      "sha256": "f22b0f279c43d0f6e1de0272952f2a6776d837849379b64259303035e6414434"
+    },
+    {
+      "path": "src/backend/shared/pipeline/base_orchestrator.py",
+      "git_blob": "50bb27a665a42e7f1fe77687a5d8baae735785d5",
+      "sha256": "bbdf00f461499047a2b9e6e2c6e3c5a665c84e6a6b5b9a5ace41f7ea14c50958"
+    },
+    {
+      "path": "tests/unit/shared/test_managed_ticker_resolution_fix002.py",
+      "git_blob": "92cdeec24f64960191b435298e4695cdf43dc1d6",
+      "sha256": "e5127c0e234eacaddbcc9b55ba7f5002a5968ae494625d94d02ac53f0d64dfa3"
+    }
+  ]
+}

@@ -370,6 +370,14 @@ def is_registered(ticker: str) -> bool:
     return bool(registry.failure) or t in registry.entries or t in registry.errors
 
 
+def recorded_tickers() -> set[str]:
+    """The tickers the registry holds a record for, valid or not. Unlike
+    is_registered, an unusable registry names none: it quarantines every
+    ticker, but it is no evidence that a given text is a ticker."""
+    registry = load_registry()
+    return set(registry.entries) | set(registry.errors)
+
+
 # ---------------------------------------------------------------------------
 # Identity on a date
 # ---------------------------------------------------------------------------

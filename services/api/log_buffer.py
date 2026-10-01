@@ -204,6 +204,31 @@ def save_managed_tickers(tickers: list[dict]) -> None:
     )
 
 
+def managed_symbols() -> set[str]:
+    """
+    Every managed symbol, enabled or not, uppercased (FIX-002: the ticker
+    resolver's short cut). Read-only: unlike load_managed_tickers, a missing
+    or unreadable file gives an empty set and is never seeded, so resolving a
+    ticker cannot write the managed list.
+    """
+    try:
+        raw = json.loads(_MANAGED_TICKERS_PATH.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return set()
+    except (OSError, ValueError) as exc:
+        # The resolver then sends managed tickers to the LLM again: say so.
+        _log.warning("[managed_tickers] %s unreadable for symbols: %s", _MANAGED_TICKERS_PATH, exc)
+        return set()
+    if not isinstance(raw, list):
+        _log.warning("[managed_tickers] %s is not a list: no managed symbols", _MANAGED_TICKERS_PATH)
+        return set()
+    return {
+        str(t.get("sym") or "").strip().upper()
+        for t in raw
+        if isinstance(t, dict) and str(t.get("sym") or "").strip()
+    }
+
+
 def get_active_tickers() -> list[str]:
     """Return only the enabled ticker symbols from the managed list."""
     return [t["sym"] for t in load_managed_tickers() if t.get("enabled", True)]

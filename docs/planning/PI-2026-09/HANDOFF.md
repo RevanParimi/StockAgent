@@ -1,6 +1,102 @@
-# Current handoff - 2026-10-02 (updated about 00:40 IST)
+# Current handoff - 2026-10-02 (updated about 06:30 IST)
 
 ## START HERE — resume checklist, in order
+
+**FIX-003 was ACCEPTED by its fresh-session review** (2 Oct, about 06:12–06:30 IST, a new
+conversation opened with "continue"). Receipt: [review](evidence/FIX-003-review.md). STATE:
+`active_task: null`, FIX-003 `done`, `production_verification: pending_deployment`,
+`next_task: SA-010`. **It is not committed.** Nothing was committed, pushed, deployed or
+configured, and no production state was read.
+- **In one example.** On 1 Oct YES Bank's June quarter was on file, but its statement has no
+  operating-income line, so the gate abstained and the prompt said "EBITDA Margin: 0.0%". The
+  review ran YES Bank's real yfinance rows through the banking sector's own orchestrator. With
+  the original code it reproduced production's row: `essential fundamentals=fallback`, so the
+  gate abstained. With FIX-003, fundamentals read `ok` and the gate is `actionable`.
+- **What the review checked:**
+  - review input `ee46239f…` and diff `57e84772…`, rebuilt with the reviewer's own script;
+  - full suite **4111 passed, 12 skipped, 0 failed**, with `data/` unchanged; focused 327 passed;
+  - with the original code loaded in memory, 28 of the 55 new tests fail; reviewer mutations
+    9 of 9 caught;
+  - 6 reviewer probes passed:
+    - on the real row sets of the 14 listings the implementer probed, the 8 lenders go from
+      `fallback` to `ok` (HDFCBANK reads `stale`, because its newest yfinance quarter is a year
+      old), and the 6 others read exactly as before;
+    - 2,000 random statements: every non-bank shape is identical to the original code, and every
+      bank shape matches the reviewer's own rule;
+  - broad-except OK, and `check_kt_docs` errors `[]`.
+- **Findings.** None is critical, high or medium.
+  - **L1 (low), fixed in review.** Guide 02-H asked the tester to match the section's revenue with
+    the bank's published results. yfinance's "Total Revenue" for YES Bank (₹4,655.98 Cr) is below
+    its own interest income (₹8,054.49 Cr), so it cannot match a filing's total income. 02-H now
+    compares net interest income only, and KT §4 says why in one sentence.
+  - **I1 (info).** A bank whose statement also lists an operating row with no figures stays
+    `fallback`, by the card's row-presence rule. None of the 8 lenders does today. If a bank
+    still shows `fundamentals:fallback` after the deploy, look there first.
+- **Review edits (docs only):** KT §4 (the status and the revenue sentence), guide 02-H, the PDF
+  (source `8c60e10e…`). `verify FIX-003-manifest.json` now mismatches exactly the KT, the PDF and
+  the guide.
+- **Next, in order:**
+  1. **Commit, KT bump and push, at the owner's word,** in a job-free window recorded earlier:
+     12:05–14:55, 18:00–18:55 or 00:10–06:20 IST, never 16:25–17:15.
+     - The commit holds the 6 manifest paths, the 3 evidence files (implementation, manifest,
+       review), STATE and HANDOFF. HANDOFF also carries the uncommitted FIX-002 push record.
+     - The KT bump declares the new commit, because the KT links `fundamentals.py`. It says
+       "committed as …" in KT §4 and guide 02-H, rebuilds the PDF, and must give
+       `check_kt_docs` errors `[]`.
+  2. **Production check (read-only), after the deploy.** The next scheduled review's health lines
+     for YESBANK, IDFCFIRSTB, RBLBANK and FEDERALBNK show no
+     `essential unusable=fundamentals:fallback`, and their reason names "bank-format statement".
+     Their prompts then show net interest income, so their fundamentals scores may move. SA-039's
+     `observe` keeps the weights unchanged.
+  3. **Still open from FIX-002 (below):** the read-only check at today's 16:30 review, and the
+     owner-run containment re-forecast of TATAELXSI (the command is in FIX-002's step 3).
+     Neither depends on FIX-003.
+  4. **Then SA-010's implementation,** in a new conversation (opener `Continue`).
+
+**Previous: FIX-003's implementation** (2 Oct, about 01:25–02:00 IST, a new conversation;
+baseline `df34176`). Receipt: [implementation](evidence/FIX-003-implementation.md). Review input
+[FIX-003-manifest.json](evidence/FIX-003-manifest.json) `ee46239f…`; diff `57e84772…` (32,922
+bytes). Its record before the review:
+- **In one example.** On 1 Oct YES Bank's June-quarter figures were on file (revenue
+  ₹4,655.98 Cr), but a bank's statement has no operating-income line. The fetcher substituted
+  zeros, so fundamentals read `fallback`, the gate abstained, and the prompt said "EBITDA
+  Margin: 0.0%". Now a statement with interest income and net interest income and no operating
+  row is read as **bank-format**: it reads `ok`, the reason names the format, and the prompt
+  shows net interest income (₹2,785.48 Cr) and "Operating margin: not reported".
+- **The change:** one code file, `services/data/fetchers/fundamentals.py`. The shape decides,
+  never the ticker: PAYTM reports EBIT and stays standard. Revenue, freshness and SA-002's
+  blank-quarter rule still apply, with net interest income in the operating line's place.
+- **What was checked:**
+  - 55 new tests (`tests/unit/shared/test_bank_statement_fix003.py`): a hand-written table of 15
+    statement shapes × 3 tickers, the exact prompt text (bank and standard), and the gate end to
+    end for the 4 banks, with a counterpart that still abstains;
+  - with the original code put back, 28 of the 55 fail (every bank case); mutations 12 of 12
+    caught;
+  - focused 327 passed; full suite **4111 passed, 12 skipped, 0 failed** (6 min 11 s), with
+    `data/`, `logs/` and `outputs/` unchanged;
+  - broad-except OK, `check_kt_docs` errors `[]`, PDF rebuilt.
+- **Decisions for the reviewer (D1–D6 in the receipt):** the card's shape rule as written (a
+  read-only probe of 14 listings supports it); the prompt states operating margin is not
+  reported and shows net interest income, labelled; net interest income is held to SA-002's
+  blank-quarter rule; lenders such as BAJFINANCE count by shape; `get_peer_margins` leaves a
+  bank out; the KT's "Current gap" now cites the 1 Oct measurement.
+- **Docs:** KT §4 "Bank statements (FIX-003)" and "Current gap"; guide 02-H (new); an SA-045
+  routed-input note; the PDF. The landing commit needs a KT bump (the KT now links
+  `fundamentals.py`).
+- **Next, in order:**
+  1. **DONE: FIX-003's fresh review** (accepted 2 Oct, about 06:30 IST; the block above).
+  2. **Still open from FIX-002 (below):** the read-only check at the 2 Oct 16:30 review, and the
+     owner-run containment re-forecast of TATAELXSI (the command is in FIX-002's step 3). Neither
+     depends on FIX-003.
+  3. After FIX-003 is accepted: commit, KT bump and push at the owner's word, in a job-free
+     window. Production check (read-only): the next review's health lines for the four banks
+     show no `essential unusable=fundamentals:fallback`. Their October envelopes keep the gate
+     they were issued with; the next SA-003 decision needs the 1 Nov forecast or an
+     owner-authorised regeneration of those four envelopes.
+  4. Then SA-010.
+
+**Previous: FIX-002** (accepted, committed, pushed and deployed; its production checks above
+are still open):
 
 **FIX-002 was ACCEPTED by its fresh-session review (1 Oct, about 21:20–21:50 IST, a new
 conversation) and is COMMITTED as `656ed71`** at the owner's word ("ya commit and push FIX-002",
@@ -34,8 +130,12 @@ reviewed. STATE: `active_task: null`, FIX-002 `done`, `next_task: FIX-003`. Rece
   1. **DONE: committed and bumped.** `656ed71` holds the 8 manifest paths, the 3 evidence files,
      STATE, HANDOFF and the SA-026 and SA-031 cards. The KT bump declares `656ed71` (edition
      2026-10-02). It also marks FIX-001 deployed and confirmed by the 1 Oct audit (KT §4 and §8,
-     guide 05-G). PDF rebuilt (source `806b5894…`), `check_kt_docs` errors `[]`. The push follows
-     in the 00:10–06:20 IST window; its deploy record is below once it is done.
+     guide 05-G). PDF rebuilt (source `806b5894…`), `check_kt_docs` errors `[]`.
+     **PUSHED and DEPLOYED:** `da66fee..df34176` at 00:33:13 IST 2 Oct. Railway `8983ab80`
+     SUCCESS at 00:34:32 (cached build). The boot log has 124 lines, 0 tracebacks and 0
+     error or warning lines. The scheduler registered 24 jobs, and startup and self-heal
+     completed, with no ticker resolved at boot. `/health` 200. This push record is
+     uncommitted; it rides with the next commit.
   2. **Production check (read-only), after the deploy:** the next 16:30 review logs
      `Resolved: X -> ticker='X'` for every managed ticker, with no `Serper fallback` line and no
      `ticker_resolution` call for them. Fri 2 Oct is an NSE holiday in the app's calendar, but
@@ -47,7 +147,12 @@ reviewed. STATE: `active_task: null`, FIX-002 `done`, `next_task: FIX-003`. Rece
      pre-check: if re-forecasts are off or the monthly cap is reached, it prints `[SKIP]` and
      changes nothing. It anchors on the newest close, so it works on the 2 Oct holiday too. Its
      own log line `Resolved: TATAELXSI -> ticker='TATAELXSI'` is an early production check of
-     FIX-002. Record the archive name it prints and the new run id.
+     FIX-002. Record the archive name it prints and the new run id. It sends no email or push.
+     The owner runs it from Git Bash in a job-free window and pastes the filtered output:
+
+     ```bash
+     railway ssh "cd /app && python -m services.scheduler.run_schedule reforecast --ticker TATAELXSI --sector it_sector --reason 'FIX-002 containment: the 1 Oct envelope was built from a TATAMOTORS analysis' 2>&1 | grep -E 'Resolved:|Run [0-9a-f]+ started|\[OK\]|\[SKIP\]|Archived|reforecast_count|regenerate_envelope|Traceback|Error'"
+     ```
   4. **FIX-003's implementation,** in a new conversation (opener `Continue`), then SA-010.
 - **FIX-001's production check PASSED** (read-only, 23:47 IST; step 2). The 23:45 audit had no
   `dropna` error. It graded 27 rows, IPO 4, with 0 skipped in every lane, against IPO 2 graded

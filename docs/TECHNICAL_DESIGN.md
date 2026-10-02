@@ -366,6 +366,32 @@ flows answer. The analyst's prompt text is unchanged. The row now says
 `essential peers_valuation=fallback`, where it used to say `ok`. The decision
 gate below reads the same statuses.
 
+**Bank statements (FIX-003: accepted by its fresh review on 2026-10-02, not yet
+committed).** A
+bank's quarterly income statement has interest income and net interest income,
+and no operating-income, EBIT or gross-profit row. Before FIX-003 the
+fundamentals fetcher ([fundamentals.py](../services/data/fetchers/fundamentals.py)) substituted zeros for that line.
+So the section read `fallback`, the gate below abstained on every bank
+analysis, and the prompt showed an EBITDA margin of 0.0%. From 28 Sep to 1 Oct,
+YESBANK, IDFCFIRSTB, RBLBANK and FEDERALBNK abstained on 17 of 78 analyses
+(22%; production logs), although their June-quarter figures were on file. Now
+the statement's shape decides, never the ticker or its sector:
+- both interest rows and no operating row make a **bank-format** statement.
+  Its net interest income takes the operating line's place: the prompt shows
+  it per quarter, and a blank newest quarter in it still means `fallback`. The
+  prompt says operating margin is not reported, with no 0.0 figure, and the
+  section's reason names the format;
+- revenue is still required, and the 200-day freshness bound still applies.
+  A bank's revenue is yfinance's "Total Revenue", which is not the filing's
+  total income: YES Bank's is below its own interest income;
+- PAYTM reports EBIT beside its net interest income, so it stays a standard
+  statement. A non-bank statement without an operating row stays `fallback`.
+
+**Example:** YES Bank's June quarter (revenue ₹4,655.98 Cr, net interest income
+₹2,785.48 Cr) now reads `ok`, so the gate no longer abstains on its
+fundamentals. The October envelopes keep the gate they were issued with, so
+the next SA-003 enforce decision counts only rows issued after the fix.
+
 **Decision gate (SA-003: accepted 2026-09-27, committed as `167f08b`, production
 verification pending; ships recording only).** Before SA-003 the row was write-only, and production
 recorded BUY on 1 of 6 scored dimensions and STRONG BUY on 3 of 9: the
@@ -489,10 +515,13 @@ TATAELXSI's October envelope. Until then its October reviews grade Tata
 Elxsi's closes against the Tata Motors analysis, and SA-003's gate rows mark
 them. [SA-026](planning/PI-2026-09/stories/SA-026.md) replaces the per-sector lists with one sector definition.
 
-**Current gap:** production records the gate only once SA-003 is deployed, and
-nothing is withheld until the owner switches to `enforce`. How often the gate
-would abstain is not yet measured: a blank newest quarter, for example, makes
-fundamentals `fallback` and so abstains, for weeks after each quarter end.
+**Current gap:** production has recorded the gate since SA-003's deploy on 27
+Sep, and nothing is withheld until the owner switches to `enforce`. The
+1 Oct enforce decision ([record](planning/PI-2026-09/evidence/SA-003-enforce-decision-2026-10-01.md)) measured 25 of 78 analyses that would
+abstain (32%) and kept `record`. 17 of them were the banks above (FIX-003),
+and 2 were the resolution defect (FIX-002). A blank newest quarter still
+makes fundamentals `fallback` and so abstains, for weeks after each quarter
+end.
 SA-008's identity reasons share the same switch, so enforcing SA-003 also
 quarantines TATAMOTORS and HEXAWARE. SA-010 corrects benchmark arguments. SA-025 measures calls before SA-026 consolidates
 sector definitions and SA-027 retires only justified fallback duplication.

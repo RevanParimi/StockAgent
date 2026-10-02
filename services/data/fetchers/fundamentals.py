@@ -6,7 +6,8 @@ Covers quarterly P&L, margins, shareholding, and order book proxies.
 
 Public API
 ----------
-get_financials(ticker)      → dict   (revenue, EBITDA, margins, QoQ/YoY)
+get_financials(ticker)      → dict   (revenue, EBITDA or a bank's net interest income,
+                                      margins, QoQ/YoY)
 get_shareholding(ticker)    → dict   (promoter %, FII %, DII %)
 get_fundamentals_context(ticker) → str  (formatted for prompt injection)
 get_fundamentals_result(ticker)  → FetchResult (the same text + status/as-of, SA-002)
@@ -55,6 +56,20 @@ def _is_reported(val: Any) -> bool:
         return False
 
 
+# FIX-003: a bank's statement reports interest income and net interest income
+# and has no operating line at all. That is its format, not a gap. The shape
+# decides it, never the ticker or its sector: PAYTM reports EBIT beside its net
+# interest income and stays a standard statement.
+_OPERATING_ROWS = ("Operating Income", "EBIT", "Gross Profit")
+_BANK_ROWS = ("Interest Income", "Net Interest Income")
+
+
+def _is_bank_format(index: pd.Index) -> bool:
+    """Both bank rows present, and none of the rows operating income is read from."""
+    return (all(k in index for k in _BANK_ROWS)
+            and not any(k in index for k in _OPERATING_ROWS))
+
+
 # ---------------------------------------------------------------------------
 # Revenue & EBITDA
 # ---------------------------------------------------------------------------
@@ -72,6 +87,10 @@ def get_financials(ticker: str) -> dict:
       revenue_yoy_pct     : YoY revenue growth %
       ebitda_margin_pct   : latest EBITDA margin %
       peer_ebitda_margins : dict of peer → margin (requires separate calls)
+
+    A bank-format statement (FIX-003) has `statement_format` "bank", its
+    `quarterly_net_interest_income_cr` in place of an operating line, and
+    `quarterly_ebitda_cr` and `ebitda_margin_pct` None rather than zeros.
     """
     yf_ticker = _nse_ticker(ticker)
     try:
@@ -97,18 +116,22 @@ def get_financials(ticker: str) -> dict:
             return pd.Series([0.0] * len(df.columns), index=df.columns)
 
         revenue_row = get_row(q_income, "revenue", "Total Revenue", "Revenue")
-        op_income_row = get_row(q_income, "operating_income",
-                                "Operating Income", "EBIT", "Gross Profit")
+        # FIX-003: a bank's earnings line is its net interest income. It has
+        # no operating income, so none is substituted.
+        bank = _is_bank_format(q_income.index)
+        core_label, core_keys = (("net_interest_income", ("Net Interest Income",)) if bank
+                                 else ("operating_income", _OPERATING_ROWS))
+        core_row = get_row(q_income, core_label, *core_keys)
 
         revenues = [_safe_float(revenue_row[q]) / 1e7 for q in quarters]   # to Crores
-        ebitdas = [_safe_float(op_income_row[q]) / 1e7 for q in quarters]
+        core = [_safe_float(core_row[q]) / 1e7 for q in quarters]
         quarter_labels = [str(q)[:10] for q in quarters]
 
         # SA-002 review M2: a present row can still lack a figure for a
         # quarter. Name those cells, and date the statement by the newest
         # quarter in which every present row reported one.
         missing_values: dict[str, list[str]] = {}
-        for label, row in (("revenue", revenue_row), ("operating_income", op_income_row)):
+        for label, row in (("revenue", revenue_row), (core_label, core_row)):
             if label in missing_rows:
                 continue
             blank = [ql for q, ql in zip(quarters, quarter_labels) if not _is_reported(row[q])]
@@ -127,23 +150,29 @@ def get_financials(ticker: str) -> dict:
             if len(revenues) >= 4 and revenues[-1] != 0 else 0.0
         )
         ebitda_margin = (
-            ebitdas[0] / revenues[0] * 100
+            core[0] / revenues[0] * 100
             if revenues[0] != 0 else 0.0
         )
+        core_cr = list(zip(quarter_labels, [round(e, 2) for e in core]))
 
-        return {
+        result = {
             "quarterly_revenue_cr": list(zip(quarter_labels, [round(r, 2) for r in revenues])),
-            "quarterly_ebitda_cr":  list(zip(quarter_labels, [round(e, 2) for e in ebitdas])),
+            # FIX-003: a bank has no EBITDA line and no margin to show: None, not 0.0.
+            "quarterly_ebitda_cr":  None if bank else core_cr,
             "revenue_qoq_pct":  round(rev_qoq, 2),
             "revenue_yoy_pct":  round(rev_yoy, 2),
-            "ebitda_margin_pct": round(ebitda_margin, 2),
+            "ebitda_margin_pct": None if bank else round(ebitda_margin, 2),
             # SA-002 provenance, additive: the newest fully reported quarter
             # end, which statement rows were absent and replaced by zeros, and
             # which present rows had no figure (row -> quarter ends).
             "as_of": reported[0] if reported else None,
             "missing_rows": missing_rows,
             "missing_values": missing_values,
+            "statement_format": "bank" if bank else "standard",   # FIX-003, additive
         }
+        if bank:
+            result["quarterly_net_interest_income_cr"] = core_cr
+        return result
 
     except Exception as exc:
         logger.error("[fundamentals] get_financials failed for %s: %s", yf_ticker, exc)
@@ -157,7 +186,8 @@ def get_financials(ticker: str) -> dict:
 def get_peer_margins(peers: list[str] | None = None) -> dict[str, float]:
     """
     Fetch latest EBITDA margin for a list of peer OEM tickers.
-    Returns {ticker: ebitda_margin_pct}
+    Returns {ticker: ebitda_margin_pct}. A bank-format statement has no
+    margin (FIX-003) and is left out.
     """
     if peers is None:
         peers = settings.PEER_TICKERS[:5]  # limit to avoid rate limits
@@ -165,8 +195,8 @@ def get_peer_margins(peers: list[str] | None = None) -> dict[str, float]:
     result: dict[str, float] = {}
     for p in peers:
         fin = get_financials(p)
-        if "error" not in fin:
-            result[p] = fin.get("ebitda_margin_pct", 0.0)
+        if "error" not in fin and fin.get("ebitda_margin_pct") is not None:
+            result[p] = fin["ebitda_margin_pct"]
     return result
 
 
@@ -254,7 +284,9 @@ def get_fundamentals_result(ticker: str):
 
     - no statement (`error`): `empty`, or `failed:<Type>` when it raised;
     - a revenue or operating-income row absent, so zeros were substituted:
-      `fallback`;
+      `fallback`. A bank-format statement (FIX-003) has no operating line by
+      format; its net interest income stands in that rule's place, and
+      `reason` names the format;
     - the newest listed quarter without a figure in a present row (NaN, as
       yfinance lists an announced but unpopulated quarter): `fallback`, with
       `as_of` the newest fully reported quarter (review M2);
@@ -294,6 +326,8 @@ def get_fundamentals_result(ticker: str):
     newest_blank = [row for row, qs in blank.items() if newest in qs]
     older_blank = [f"{row} {q}" for row, qs in blank.items() for q in qs if q != newest]
     statement = [
+        ("bank-format statement (interest income and net interest income, no operating-income"
+         " row): operating margin not reported" if fin.get("statement_format") == "bank" else None),
         ("statement rows absent, zeros substituted: " + ", ".join(fin["missing_rows"])
          if fin.get("missing_rows") else None),
         (f"newest quarter {newest} has no figure for: " + ", ".join(newest_blank)
@@ -315,22 +349,34 @@ def get_fundamentals_result(ticker: str):
 
 
 def _format_fundamentals(ticker: str, fin: dict, sh: dict, info: dict) -> str:
-    """The prompt text, byte-identical to the pre-SA-002 context string."""
+    """The prompt text, byte-identical to the pre-SA-002 context string for a
+    standard statement. A bank-format statement (FIX-003) shows its net
+    interest income and says operating margin is not reported, never 0.0."""
     if "error" in fin:
         fin_block = f"Financial data unavailable: {fin['error']}"
     else:
         rev_table = " | ".join(
             f"{q}: ₹{r}Cr" for q, r in fin.get("quarterly_revenue_cr", [])
         )
-        ebitda_table = " | ".join(
-            f"{q}: ₹{e}Cr" for q, e in fin.get("quarterly_ebitda_cr", [])
-        )
+        if fin.get("statement_format") == "bank":
+            nii_table = " | ".join(
+                f"{q}: ₹{v}Cr" for q, v in fin.get("quarterly_net_interest_income_cr", [])
+            )
+            core_line = f"Net interest income (quarterly): {nii_table}"
+            margin = ("Operating margin: not reported "
+                      "(bank-format statement, no operating-income line)")
+        else:
+            ebitda_table = " | ".join(
+                f"{q}: ₹{e}Cr" for q, e in fin.get("quarterly_ebitda_cr", [])
+            )
+            core_line = f"EBITDA  (quarterly): {ebitda_table}"
+            margin = f"EBITDA Margin: {fin.get('ebitda_margin_pct', 0):.1f}%"
         fin_block = (
             f"Revenue (quarterly): {rev_table}\n"
-            f"EBITDA  (quarterly): {ebitda_table}\n"
+            f"{core_line}\n"
             f"Revenue QoQ: {fin.get('revenue_qoq_pct', 0):+.1f}% | "
             f"Revenue YoY: {fin.get('revenue_yoy_pct', 0):+.1f}% | "
-            f"EBITDA Margin: {fin.get('ebitda_margin_pct', 0):.1f}%"
+            f"{margin}"
         )
 
     sh_block = (

@@ -2,7 +2,7 @@
 
 **Edition:** 2026-10-02 · **Audience:** engineers and teammates learning the product
 
-**Code inspected:** `656ed71283228310a6da643806657dc66bad31d4`
+**Code inspected:** `110288ea00e5359465a1de17f4672472cde08e4a`
 
 First edition 2026-09-15 at `9a805878`; maintained per story since. The revision
 above is the one the whole body describes. `check_kt_docs.py` fails if a linked
@@ -366,8 +366,8 @@ flows answer. The analyst's prompt text is unchanged. The row now says
 `essential peers_valuation=fallback`, where it used to say `ok`. The decision
 gate below reads the same statuses.
 
-**Bank statements (FIX-003: accepted by its fresh review on 2026-10-02, not yet
-committed).** A
+**Bank statements (FIX-003: accepted by its fresh review on 2026-10-02,
+committed as `110288e`).** A
 bank's quarterly income statement has interest income and net interest income,
 and no operating-income, EBIT or gross-profit row. Before FIX-003 the
 fundamentals fetcher ([fundamentals.py](../services/data/fetchers/fundamentals.py)) substituted zeros for that line.

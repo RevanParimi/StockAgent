@@ -5,8 +5,9 @@
 **FIX-003 was ACCEPTED by its fresh-session review** (2 Oct, about 06:12–06:30 IST, a new
 conversation opened with "continue"). Receipt: [review](evidence/FIX-003-review.md). STATE:
 `active_task: null`, FIX-003 `done`, `production_verification: pending_deployment`,
-`next_task: SA-010`. **It is not committed.** Nothing was committed, pushed, deployed or
-configured, and no production state was read.
+`next_task: SA-010`. **Committed as `110288e`** at the owner's word ("commit and push", about
+06:58 IST), with the KT bump after it. The review itself committed, pushed, deployed and
+configured nothing, and read no production state.
 - **In one example.** On 1 Oct YES Bank's June quarter was on file, but its statement has no
   operating-income line, so the gate abstained and the prompt said "EBITDA Margin: 0.0%". The
   review ran YES Bank's real yfinance rows through the banking sector's own orchestrator. With
@@ -36,13 +37,13 @@ configured, and no production state was read.
   (source `8c60e10e…`). `verify FIX-003-manifest.json` now mismatches exactly the KT, the PDF and
   the guide.
 - **Next, in order:**
-  1. **Commit, KT bump and push, at the owner's word,** in a job-free window recorded earlier:
-     12:05–14:55, 18:00–18:55 or 00:10–06:20 IST, never 16:25–17:15.
-     - The commit holds the 6 manifest paths, the 3 evidence files (implementation, manifest,
-       review), STATE and HANDOFF. HANDOFF also carries the uncommitted FIX-002 push record.
-     - The KT bump declares the new commit, because the KT links `fundamentals.py`. It says
-       "committed as …" in KT §4 and guide 02-H, rebuilds the PDF, and must give
-       `check_kt_docs` errors `[]`.
+  1. **DONE: committed and bumped.** `110288e` holds the 6 manifest paths, the 3 evidence files
+     (implementation, manifest, review), STATE and HANDOFF (with FIX-002's push record).
+     `verify FIX-003-manifest.json --rev 110288e` mismatches only the 3 review-edited docs, so
+     every reviewed code and test byte is committed as reviewed. The KT bump declares `110288e`
+     and says "committed as `110288e`" in KT §4 and guide 02-H. PDF rebuilt (source
+     `cf990cb4…`), and `check_kt_docs` errors `[]`. The push is timed for the 06:30–07:25 IST
+     gap: the 06:30 watchdog has run, and `macro_daily_news` is at 07:30.
   2. **Production check (read-only), after the deploy.** The next scheduled review's health lines
      for YESBANK, IDFCFIRSTB, RBLBANK and FEDERALBNK show no
      `essential unusable=fundamentals:fallback`, and their reason names "bank-format statement".

@@ -1,12 +1,13 @@
-# Current handoff - 2026-10-05 (updated about 23:10 IST)
+# Current handoff - 2026-10-05 (updated about 23:40 IST)
 
 ## START HERE — resume checklist, in order
 
 **SA-010 was ACCEPTED by its fresh-session review** (5 Oct, about 22:32–23:10 IST, a new
 conversation opened with "continue"). Receipt: [review](evidence/SA-010-review.md). STATE:
 `active_task: null`, SA-010 `done`, `production_verification: pending_deployment`,
-`next_task: SA-038`. **Not committed.** The review committed, pushed, deployed and configured
-nothing, read no production state, and made no network call.
+`next_task: SA-038`. **Committed as `7efeafd`** at the owner's word (about 23:30 IST, "lets
+proceed"), with the KT bump after it. The review itself committed, pushed, deployed and
+configured nothing, read no production state, and made no network call.
 - **In one example.** On the baseline code, loaded in memory, HDFCBANK asked Yahoo for
   `^CNXAUTO`. With that index dead, it printed "Nifty Auto Correlation: 0.0 | Beta: 1.0". With
   SA-010 the same input asks for `^NSEBANK` and prints "Nifty Bank Correlation: 0.8384 | Beta:
@@ -35,22 +36,24 @@ nothing, read no production state, and made no network call.
   and the PDF (source `4f10be99…`). `verify SA-010-manifest.json` now mismatches exactly the KT,
   the PDF, the guide and SA-026.
 - **Next, in order:**
-  1. **At the owner's word: commit, KT bump and push.**
-     - Commit the 14 manifest paths, the SA-031 card, the three SA-010 evidence files
-       (implementation, manifest, review), STATE and HANDOFF.
-     - Then the KT bump: the KT links `fetcher.py`, which changes after the declared `110288e`.
-     - Push in a job-free window (00:10–06:20 IST is safest). Avoid 16:25–17:15. No configuration
-       change.
-  2. **After the deploy:** SA-010's read-only production check at the next 16:30 review (STATE
-     `after_deploy`).
+  1. **DONE: committed and bumped.** `7efeafd` holds the 14 manifest paths, the SA-031 card, the
+     three SA-010 evidence files, STATE and HANDOFF. `verify SA-010-manifest.json --rev 7efeafd`
+     mismatches only the 4 review-edited docs, so every reviewed code and test byte is committed
+     as reviewed. The KT bump declares `7efeafd` (edition 2026-10-05) and says "committed as
+     `7efeafd`" in KT §4 and guide 02-B. PDF source `5fc21698…`, and `check_kt_docs` errors `[]`.
+     - **Push: at 00:10 IST 6 Oct.** At 23:34 the 22:55–00:05 window was open (23:30 backup,
+       23:45 audit, 00:00 prompt publish). The owner said "lets proceed" and declined waiting up
+       for 00:10–06:20, so a timed job pushes at 00:10 if `origin/main` is still `5772536`.
+  2. **After the deploy:**
+     - The owner runs the TATAELXSI containment re-forecast (the command is in FIX-002's step 3
+       below). It now gets SA-010's Nifty IT index. Avoid the job windows.
+     - SA-010's read-only production check at the next 16:30 review (STATE `after_deploy`).
      - There is one `[technicals]` line per analysis, plus one for a legacy-fallback run.
      - Banking `^NSEBANK`, IT `^CNXIT` and generic `^NSEI`, each with a correlation.
      - Automobile and renewable energy read "unavailable".
      - `^CNXAUTO` ERROR lines fall from 54 to about 9, and about 12 `^CNXENERGY` lines appear.
   3. **SA-038**, by the owner's decision of 2 Oct, in a new conversation (opener `continue`).
-  4. **Still open from FIX-002:** the owner-run containment re-forecast of TATAELXSI. The command
-     is in FIX-002's step 3.
-  5. **For SA-026, later:** choose an index with data for automobile and renewable energy (D1).
+  4. **For SA-026, later:** choose an index with data for automobile and renewable energy (D1).
 
 **Previous: SA-010's implementation** (5 Oct, about 20:55–21:50 IST, a new conversation opened
 with "continue"; baseline `5772536`). Receipt: [implementation](evidence/SA-010-implementation.md).

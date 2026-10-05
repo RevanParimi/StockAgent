@@ -54,11 +54,14 @@ class FetchResult:
     as_of: str | None = None      # ISO date (or datetime) of the newest underlying datum
     reason: str | None = None     # why the status is not a plain `ok`, or what is partial
     symbol: str | None = None     # SA-008: the provider symbol the data was fetched for
+    benchmark: str | None = None  # SA-010: the index symbol a correlation was measured against
 
     def provenance(self) -> dict[str, str | None]:
         prov = {"source": self.source, "as_of": self.as_of, "reason": self.reason}
         if self.symbol:
             prov["symbol"] = self.symbol
+        if self.benchmark:
+            prov["benchmark"] = self.benchmark
         return prov
 
 

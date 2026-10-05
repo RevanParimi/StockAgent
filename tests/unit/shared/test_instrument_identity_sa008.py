@@ -503,6 +503,7 @@ def test_the_technicals_section_names_the_symbol_it_priced(registry, resolver, m
     registry(SHIPPED)
     monkeypatch.setattr(fetcher.yf, "download", lambda sym, **k: _bars(date.today()))
     monkeypatch.setattr(fetcher, "get_peer_correlation",
-                        lambda t: {"correlation": 0.5, "beta": 1.0})
-    res = fetcher.get_technical_result("TATAMOTORS")
+                        lambda t, index: {"benchmark": index, "correlation": 0.5, "beta": 1.0,
+                                          "sessions": 200})
+    res = fetcher.get_technical_result("TATAMOTORS", sector="automobile")
     assert res.provenance()["symbol"] == "TMPV.NS"

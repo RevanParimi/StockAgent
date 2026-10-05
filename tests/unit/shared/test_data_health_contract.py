@@ -275,10 +275,10 @@ class TestFixturesHoldOnEveryWeekday:
             get_technical_result, get_valuation_result,
         )
         with _run_on(market, day):
-            fresh = get_technical_result("TATAMOTORS")
+            fresh = get_technical_result("TATAMOTORS", sector="automobile")
             valuation = get_valuation_result("TATAMOTORS", peer_tickers=["MARUTI"])
             market.bars_last["TATAMOTORS"] = day - timedelta(days=30)
-            old = get_technical_result("TATAMOTORS")
+            old = get_technical_result("TATAMOTORS", sector="automobile")
         assert fresh.status == fr.STATUS_OK, fresh
         assert fresh.as_of == _last_session(day - timedelta(days=1)).isoformat()
         assert valuation.status == fr.STATUS_OK, valuation
@@ -303,7 +303,7 @@ class TestEssentialProducers:
         from core.intelligence.algorithms.indicators.fetcher import get_technical_result
         if "bars_last" in setup:
             market.bars_last["TATAMOTORS"] = setup["bars_last"]
-        res = get_technical_result("TATAMOTORS")
+        res = get_technical_result("TATAMOTORS", sector="automobile")
         assert res.status == expected, (case, res)
         assert res.text.strip()               # nonempty in every case, including the dead one
         if expected != fr.STATUS_OK:
@@ -438,7 +438,7 @@ class TestNoDataTextIsNeverHealthy:
     def test_technicals_unavailable_sentence(self, market):
         from core.intelligence.algorithms.indicators.fetcher import get_technical_result
         market.bars_last["TATAMOTORS"] = None
-        res = get_technical_result("TATAMOTORS")
+        res = get_technical_result("TATAMOTORS", sector="automobile")
         assert res.text.startswith("Technical data unavailable for TATAMOTORS")
         assert res.status not in LIVE
 

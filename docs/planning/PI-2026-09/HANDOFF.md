@@ -1,6 +1,111 @@
-# Current handoff - 2026-10-02 (updated about 06:30 IST)
+# Current handoff - 2026-10-05 (updated about 23:10 IST)
 
 ## START HERE — resume checklist, in order
+
+**SA-010 was ACCEPTED by its fresh-session review** (5 Oct, about 22:32–23:10 IST, a new
+conversation opened with "continue"). Receipt: [review](evidence/SA-010-review.md). STATE:
+`active_task: null`, SA-010 `done`, `production_verification: pending_deployment`,
+`next_task: SA-038`. **Not committed.** The review committed, pushed, deployed and configured
+nothing, read no production state, and made no network call.
+- **In one example.** On the baseline code, loaded in memory, HDFCBANK asked Yahoo for
+  `^CNXAUTO`. With that index dead, it printed "Nifty Auto Correlation: 0.0 | Beta: 1.0". With
+  SA-010 the same input asks for `^NSEBANK` and prints "Nifty Bank Correlation: 0.8384 | Beta:
+  1.0597". A dead `^CNXAUTO` now reads "unavailable" with its cause.
+- **What the review checked:**
+  - review input `911cc91e…` and diff `64bf34d6…` (62,942 bytes), rebuilt with the reviewer's own
+    script, with all 14 blobs re-hashed;
+  - full suite **4156 passed, 12 skipped, 0 failed**, with `data/` unchanged; focused 548 passed;
+  - with the original code in memory, 41 of the 45 new tests fail. The bundle and orchestrator
+    tests fail on the defect itself;
+  - reviewer mutations: 6 of 8 caught;
+  - 5 reviewer probes, 0 failures:
+    - 300 yfinance-shaped frames match a plain-Python oracle;
+    - the automobile text is byte-identical to the baseline on 60 seeds;
+    - edge shapes and 8 sector keys behave as specified;
+  - D1–D8 upheld. Broad-except OK, and `check_kt_docs` errors `[]`.
+- **Findings.** None is critical, high or medium.
+  - **L1 (low, tests).** Two behaviours are unpinned: the `[technicals]` line on the unavailable
+    path, and `benchmark` on an empty history. Routed to the SA-031 card.
+  - **I1 (info).** A legacy agent declaring `"bfsi"`, `"it"` or `"re"` would get `^NSEI`. None of
+    the technical agents does. Routed to the SA-026 card.
+  - **I2 (info).** A legacy-fallback run logs a second `[technicals]` line. Written into guide
+    02-B and the production check.
+  - **I3 (info).** A single-level frame would be reported as "no price data". No action.
+- **Review edits (docs only):** KT §4 status (3 places), guide 02-B, the SA-026 and SA-031 cards,
+  and the PDF (source `4f10be99…`). `verify SA-010-manifest.json` now mismatches exactly the KT,
+  the PDF, the guide and SA-026.
+- **Next, in order:**
+  1. **At the owner's word: commit, KT bump and push.**
+     - Commit the 14 manifest paths, the SA-031 card, the three SA-010 evidence files
+       (implementation, manifest, review), STATE and HANDOFF.
+     - Then the KT bump: the KT links `fetcher.py`, which changes after the declared `110288e`.
+     - Push in a job-free window (00:10–06:20 IST is safest). Avoid 16:25–17:15. No configuration
+       change.
+  2. **After the deploy:** SA-010's read-only production check at the next 16:30 review (STATE
+     `after_deploy`).
+     - There is one `[technicals]` line per analysis, plus one for a legacy-fallback run.
+     - Banking `^NSEBANK`, IT `^CNXIT` and generic `^NSEI`, each with a correlation.
+     - Automobile and renewable energy read "unavailable".
+     - `^CNXAUTO` ERROR lines fall from 54 to about 9, and about 12 `^CNXENERGY` lines appear.
+  3. **SA-038**, by the owner's decision of 2 Oct, in a new conversation (opener `continue`).
+  4. **Still open from FIX-002:** the owner-run containment re-forecast of TATAELXSI. The command
+     is in FIX-002's step 3.
+  5. **For SA-026, later:** choose an index with data for automobile and renewable energy (D1).
+
+**Previous: SA-010's implementation** (5 Oct, about 20:55–21:50 IST, a new conversation opened
+with "continue"; baseline `5772536`). Receipt: [implementation](evidence/SA-010-implementation.md).
+Review input: [SA-010-manifest.json](evidence/SA-010-manifest.json). Its record before the review:
+- **What was not done:** nothing was committed, pushed, deployed or configured, and no production
+  state was read.
+- **Local checks only:** a count of `^CNXAUTO` lines in the ignored 2 Oct review log, and one
+  read-only probe of public Yahoo data.
+- **In one example.** On 2 Oct every analysis asked Yahoo for the automobile index `^CNXAUTO`,
+  banks and IT included. Yahoo had no data, so by the code each prompt read "Nifty Auto
+  Correlation: 0.0 | Beta: 1.0". Now HDFCBANK asks for `^NSEBANK` and reads "Nifty Bank
+  Correlation: … | Beta: …".
+  - An index with no data now reads "unavailable" and gives the cause. It is never 0.0 / 1.0.
+  - The 5 Oct probe found no Yahoo data for `^CNXAUTO` or `^CNXENERGY`. So automobile and
+    renewable-energy stocks now say "unavailable".
+  - With data, the automobile text is byte-identical to before.
+- **The change:**
+  - `settings.SECTOR_BENCHMARKS` holds automobile `^CNXAUTO`, banking `^NSEBANK`, IT `^CNXIT`,
+    renewable energy `^CNXENERGY`, and generic `^NSEI` "Nifty 50 (broad market)". Any other or
+    empty sector gets generic.
+  - `get_peer_correlation` has no default index, and pairs returns over common sessions.
+  - `get_technical_result` and `get_technical_context` require `sector`.
+  - The bundle and the legacy builders pass the sector. The provenance names the `benchmark`, and
+    one `[technicals]` log line is written per call.
+- **What was checked:**
+  - 45 new tests (`tests/unit/shared/test_sector_benchmark_sa010.py`). With the original modules
+    loaded in memory, 41 of them fail. The 4 that pass are paths that were already right.
+  - Mutations: 9 of 9 caught.
+  - Automobile equivalence: 10 of 10 seeds identical, and the text byte-identical.
+  - Focused set: 548 passed. Full suite: **4156 passed, 12 skipped, 0 failed**,
+    with `data/` unchanged.
+  - Review input `911cc91e…`; diff `64bf34d6…` (62,942 bytes).
+  - Broad-except OK. `check_kt_docs` errors `[]`. PDF rebuilt.
+- **Decisions for the reviewer (D1–D8 in the receipt):**
+  - D1: no proxy index for the two dead ones; that is routed to SA-026.
+  - D2: the generic policy is Nifty 50, labelled as the broad market.
+  - D3: the technicals status stays the stock's own. Otherwise automobile and renewable energy
+    would abstain.
+  - D5: in the legacy pool only, an empty agent sector means automobile.
+- **Next, in order:**
+  1. **SA-010's fresh review,** in a new conversation (opener `continue`).
+  2. After acceptance: commit, KT bump (the KT now links `fetcher.py`) and push at the owner's
+     word, in a job-free window.
+     - Then the read-only production check at the next 16:30 review: one `[technicals]` line per
+       ticker; banking `^NSEBANK`, IT `^CNXIT` and generic `^NSEI`, each with a correlation.
+     - yfinance's `^CNXAUTO` ERROR lines should fall from 54 to about 9, with about 12
+       `^CNXENERGY` lines appearing.
+  3. **Still open from FIX-002:** the owner-run containment re-forecast of TATAELXSI. The command
+     is in FIX-002's step 3.
+  4. **Then SA-038, by the owner's decision** (2 Oct). It goes straight after SA-010's review.
+  5. **For SA-026, later:** choose an index with data for automobile and renewable energy. The
+     probe saw Nifty Auto ETFs listed, but none was evaluated.
+
+**Previous: FIX-003 — accepted, committed, deployed and verified** (2 Oct). The block below is its
+record as of the 2 Oct 16:30 check.
 
 **FIX-003 was ACCEPTED by its fresh-session review** (2 Oct, about 06:12–06:30 IST, a new
 conversation opened with "continue"). Receipt: [review](evidence/FIX-003-review.md). STATE:
@@ -42,17 +147,55 @@ configured nothing, and read no production state.
      `verify FIX-003-manifest.json --rev 110288e` mismatches only the 3 review-edited docs, so
      every reviewed code and test byte is committed as reviewed. The KT bump declares `110288e`
      and says "committed as `110288e`" in KT §4 and guide 02-H. PDF rebuilt (source
-     `cf990cb4…`), and `check_kt_docs` errors `[]`. The push is timed for the 06:30–07:25 IST
-     gap: the 06:30 watchdog has run, and `macro_daily_news` is at 07:30.
-  2. **Production check (read-only), after the deploy.** The next scheduled review's health lines
-     for YESBANK, IDFCFIRSTB, RBLBANK and FEDERALBNK show no
-     `essential unusable=fundamentals:fallback`, and their reason names "bank-format statement".
-     Their prompts then show net interest income, so their fundamentals scores may move. SA-039's
-     `observe` keeps the weights unchanged.
-  3. **Still open from FIX-002 (below):** the read-only check at today's 16:30 review, and the
-     owner-run containment re-forecast of TATAELXSI (the command is in FIX-002's step 3).
-     Neither depends on FIX-003.
+     `cf990cb4…`), and `check_kt_docs` errors `[]`.
+     **PUSHED and DEPLOYED:** `df34176..5772536` at 07:00:38 IST, in the 06:30–07:25 gap (the
+     06:30 watchdog had run; `macro_daily_news` is at 07:30). Railway `f4be41ef` SUCCESS at
+     about 07:06.
+     - It was a **full build**: the pip layer re-ran although `requirements.txt` did not change.
+       Against the 29 Sep full build `26b442f4` there are 13 minor or patch changes: fastapi
+       0.141.1 → 0.142.2, transformers 5.17.0 → 5.18.0, torch 2.14.0 → 2.14.1, cryptography
+       50.0.1 → 50.0.2, and 9 transitive packages. None is in pandas, numpy, yfinance, nse,
+       openai, pydantic, APScheduler or langgraph. This is for SA-033's pinning.
+     - Boot log: 124 lines, 0 tracebacks, 0 error or warning lines, 24 jobs. The self-heal
+       completed at 07:06:07 with 0 envelopes. `/health` 200.
+     - Raw logs are in the ignored `analysis_data/fix003/deploy/`. This push record is
+       uncommitted; it rides with the next commit.
+  2. **DONE: FIX-003's and FIX-002's production checks PASSED** (read-only, about 17:30 IST).
+     They used the `f4be41ef` logs of the 16:30–16:53 review, which graded 1 Oct: 1,146 lines,
+     and no fetch was capped. STATE `production_verification`: both `verified`.
+     - **FIX-003:** YESBANK, IDFCFIRSTB, RBLBANK and FEDERALBNK read `banking_bfsi ok`,
+       fallback 0, dimensions 6/6, with no essential section unusable. None of the 18 analysed
+       tickers has one. The analysis gate would abstain on 1 of 18: STARHEALTH, with 2 of 8
+       dimensions. The 1 Oct forecast abstained on 6 of 20, 4 of them the banks.
+       - The stored reason text and the prompt were not read. That the banks took the
+         bank-format path is inferred from their `ok` status, which only that path gives these
+         statements.
+     - **FIX-002:** all 18 analysed tickers resolved to themselves, with 0 `Serper fallback` and
+       0 `ticker_resolution` lines. TATAELXSI is "Tata Elxsi Limited", and HAPPSTMNDS is
+       "Happiest Minds Technologies Limited" (1 Oct: "Happy Smile Digital Ltd").
+       - WELCORP and TMPV were not analysed: they had no 1 Oct row, because neither had a
+         September envelope.
+     - **Seen, expected, and it matters for the next SA-003 decision.** The review gate says
+       "provenance unknown" on 17 of 18 rows.
+       - Why: 1 Oct is not in the October envelopes, so the review grades it from September's,
+         which predate SA-003. RBLBANK's September envelope was re-forecast on 28 Sep and
+         carries `abstain`.
+       - Under `enforce`, those gradings would be skipped. The rows the next decision counts
+         must come from envelopes issued after the fixes.
+     - **Errors:** all 54 ERROR lines are the known `^CNXAUTO` yfinance failure (SA-010).
+     - Raw log: the ignored `analysis_data/fix003/deploy/review_20261002.log`.
+  3. **Still open from FIX-002 (below):** the owner-run containment re-forecast of TATAELXSI (the
+     command is in FIX-002's step 3).
   4. **Then SA-010's implementation,** in a new conversation (opener `Continue`).
+  5. **Then SA-038, by the owner's decision** (2 Oct, about 16:30 IST: "keep as per
+     recommendation"). It goes straight after SA-010's review, ahead of its place in STATE.
+     - **Why:** the 06:30 ops alert "F3 provenance checkpoint … LAPSED, deadline 2026-09-04".
+       That entry is a date-only `manual_confirmation` reminder in `config/milestones.yaml`. It
+       re-sends a critical every 7 days until the entry is removed. It is not a production
+       failure.
+     - **Until then,** weekly "LAPSED" alerts for the old entries are expected.
+     - **What it needs:** F3, B1 and A1(b) each need one read-only volume probe, which the owner
+       runs.
 
 **Previous: FIX-003's implementation** (2 Oct, about 01:25–02:00 IST, a new conversation;
 baseline `df34176`). Receipt: [implementation](evidence/FIX-003-implementation.md). Review input

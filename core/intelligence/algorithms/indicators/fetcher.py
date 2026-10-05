@@ -8,9 +8,10 @@ Public API
 ----------
 get_price_history(ticker, years) → pd.DataFrame
 compute_technicals(df)           → dict
-get_peer_correlation(ticker, index_ticker, period) → float
+get_peer_correlation(ticker, index_ticker, period) → dict (SA-010: no default index)
+sector_benchmark(sector)         → (index symbol, label)
 get_price_summary(ticker)        → dict   (latest price + 52w range)
-get_technical_result(ticker) / get_valuation_result(ticker, peers)
+get_technical_result(ticker, sector=) / get_valuation_result(ticker, peers)
                                  → FetchResult (context text + status/as-of, SA-002)
 """
 
@@ -268,13 +269,39 @@ def get_seasonal_pattern(df: pd.DataFrame) -> dict:
 # Peer correlation
 # ---------------------------------------------------------------------------
 
+# Fewest paired daily returns a correlation or beta is measured from.
+MIN_CORRELATION_SESSIONS = 30
+
+
+def sector_benchmark(sector: str) -> tuple[str, str]:
+    """
+    SA-010: (symbol, label) of the index `sector`'s technicals are measured
+    against, from `settings.SECTOR_BENCHMARKS`. A sector without its own entry
+    ("generic", "", or any unregistered name) gets the generic policy: the
+    broad market, labelled as such. Never another sector's index.
+    """
+    benchmarks = settings.SECTOR_BENCHMARKS
+    return benchmarks.get(sector) or benchmarks["generic"]
+
+
 def get_peer_correlation(
     ticker: str,
-    index_ticker: str = settings.NIFTY_AUTO_TICKER,
+    index_ticker: str,
     period_days: int = 252,
-) -> dict[str, float]:
+) -> dict:
     """
-    Pearson correlation and beta of the stock vs Nifty Auto index.
+    Pearson correlation and beta of the stock's daily returns against
+    `index_ticker`. SA-010: the caller names the benchmark; there is no default.
+
+    Returns are paired over the sessions both series have a close for, so a
+    session missing from either one never pairs a one-day return with a
+    two-day one. With equal sessions this is the earlier calculation exactly.
+
+    Measured: {"benchmark", "correlation", "beta", "sessions"}, where
+    `sessions` counts the paired returns. Not measured (no data for either
+    symbol, fewer than MIN_CORRELATION_SESSIONS paired returns, a flat series,
+    or a failed download): correlation and beta are None and "unavailable"
+    says why. No neutral number stands in for a missing measurement.
     """
     yf_ticker = _nse_ticker(ticker)
     end = date.today()
@@ -287,25 +314,53 @@ def get_peer_correlation(
             end=end.isoformat(),
             progress=False,
             auto_adjust=True,
-        )["Close"]
-        returns = data.pct_change().dropna()
-        if returns.shape[1] < 2 or len(returns) < 30:
-            # SA-002: `default` marks these as a neutral substitute, not a measurement.
-            return {"correlation": 0.0, "beta": 1.0, "default": True}
-
-        stock_col = yf_ticker
-        index_col = index_ticker
-        corr = float(returns[stock_col].corr(returns[index_col]))
-        cov = float(returns[[stock_col, index_col]].cov().iloc[0, 1])
-        var_index = float(returns[index_col].var())
-        beta = cov / var_index if var_index != 0 else 1.0
-        return {
-            "correlation": round(corr, 4),
-            "beta": round(beta, 4),
-        }
+        )
+        close = data["Close"] if not data.empty else pd.DataFrame()
+        return _measure_correlation(close, yf_ticker, index_ticker)
     except Exception as exc:
-        logger.error("[yfinance] Correlation failed for %s: %s", yf_ticker, exc)
-        return {"correlation": 0.0, "beta": 1.0, "default": True}
+        logger.error("[yfinance] Correlation failed for %s vs %s: %s",
+                     yf_ticker, index_ticker, exc)
+        return _unmeasured(index_ticker, f"correlation failed ({type(exc).__name__})")
+
+
+def _unmeasured(index_ticker: str, why: str, sessions: int = 0) -> dict:
+    return {"benchmark": index_ticker, "correlation": None, "beta": None,
+            "sessions": sessions, "unavailable": why}
+
+
+def _measure_correlation(close: pd.DataFrame, stock: str, index: str) -> dict:
+    """`get_peer_correlation`'s measurement over a frame of closes, one column per symbol."""
+    absent = [
+        f"{who} {sym} returned no price data"
+        for who, sym in (("benchmark", index), ("stock", stock))
+        if not isinstance(close, pd.DataFrame) or sym not in close.columns
+        or not close[sym].notna().any()
+    ]
+    if absent:
+        return _unmeasured(index, "; ".join(absent))
+
+    paired = close[[stock, index]].dropna()
+    returns = paired.pct_change().replace([np.inf, -np.inf], np.nan).dropna()
+    sessions = len(returns)
+    if sessions < MIN_CORRELATION_SESSIONS:
+        return _unmeasured(
+            index, f"only {sessions} paired daily returns with {index} "
+                   f"(needs {MIN_CORRELATION_SESSIONS})", sessions)
+
+    stock_ret, index_ret = returns[stock], returns[index]
+    var_index = float(index_ret.var())
+    if var_index == 0 or float(stock_ret.var()) == 0:
+        return _unmeasured(index, "a flat price series has no return variance", sessions)
+    corr = float(stock_ret.corr(index_ret))
+    beta = float(returns[[stock, index]].cov().iloc[0, 1]) / var_index
+    if not (np.isfinite(corr) and np.isfinite(beta)):
+        return _unmeasured(index, "correlation is not a finite number", sessions)
+    return {
+        "benchmark": index,
+        "correlation": round(corr, 4),
+        "beta": round(beta, 4),
+        "sessions": sessions,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -625,14 +680,15 @@ def _last_bar_date(df: pd.DataFrame) -> str | None:
         return None
 
 
-def get_technical_context(ticker: str) -> str:
+def get_technical_context(ticker: str, *, sector: str) -> str:
     """
     Returns a formatted string summarising technical indicators for prompt injection.
+    `sector` chooses the benchmark index (SA-010; see `sector_benchmark`).
     """
-    return get_technical_result(ticker).text
+    return get_technical_result(ticker, sector=sector).text
 
 
-def get_technical_result(ticker: str):
+def get_technical_result(ticker: str, *, sector: str):
     """
     `get_technical_context` with its outcome (SA-002), from the structured
     `compute_technicals` result rather than the sentence it renders:
@@ -641,21 +697,33 @@ def get_technical_result(ticker: str):
       rendered "Technical data unavailable for ..." and was recorded `ok`;
     - newest bar older than the price freshness bound: `stale` (a delisted
       or frozen symbol still returns its last bars);
-    - otherwise `ok`, with `as_of` the newest bar. A neutral index
-      correlation substituted for a failed one is named in `reason`.
+    - otherwise `ok`, with `as_of` the newest bar.
+
+    SA-010: correlation and beta are measured against `sector`'s benchmark,
+    which `benchmark` in the provenance names. When they cannot be measured
+    the prompt says "unavailable" and `reason` says why; the status stays the
+    stock's own, because the benchmark is context for its price history.
     """
     from services.data.context.fetch_result import (
         STATUS_EMPTY, STATUS_OK, STATUS_STALE, FetchResult, is_stale, join_reasons,
         price_max_age_days,
     )
 
+    index_ticker, label = sector_benchmark(sector)
     df = get_price_history(ticker, years=settings.PRICE_HISTORY_YEARS)
     # SA-008: the symbol the bars were downloaded for; the decision gate checks
     # it against the instrument the ticker resolves to.
     symbol = (getattr(df, "attrs", None) or {}).get("symbol")
     tech = compute_technicals(df)
     seasonal = get_seasonal_pattern(df)
-    corr = get_peer_correlation(ticker)
+    corr = get_peer_correlation(ticker, index_ticker)
+    missing = corr.get("unavailable")
+    logger.info(
+        "[technicals] %s sector=%s benchmark=%s (%s): %s", ticker, sector or "-",
+        index_ticker, label,
+        f"unavailable — {missing}" if missing else
+        f"correlation {corr['correlation']} beta {corr['beta']} over {corr['sessions']} returns",
+    )
 
     if "error" in tech:
         return FetchResult(
@@ -663,6 +731,7 @@ def get_technical_result(ticker: str):
             STATUS_EMPTY, "yfinance",
             as_of=_last_bar_date(df) if not df.empty else None,
             reason=f"{tech['error']} ({len(df)} bars)", symbol=symbol,
+            benchmark=index_ticker,
         )
 
     as_of = _last_bar_date(df)
@@ -670,19 +739,27 @@ def get_technical_result(ticker: str):
     stale = is_stale(as_of, max_age)
     reason = join_reasons([
         f"last price bar {as_of} is older than {max_age} days" if stale else None,
-        "index correlation unavailable; neutral 0.0 / beta 1.0 shown" if corr.get("default") else None,
+        f"{label} correlation unavailable: {missing}" if missing else None,
     ])
     return FetchResult(
-        _format_technicals(ticker, tech, seasonal, corr),
+        _format_technicals(ticker, tech, seasonal, corr, label),
         STATUS_STALE if stale else STATUS_OK, "yfinance", as_of=as_of, reason=reason,
-        symbol=symbol,
+        symbol=symbol, benchmark=index_ticker,
     )
 
 
-def _format_technicals(ticker: str, tech: dict, seasonal: dict, corr: dict) -> str:
-    """The prompt text, byte-identical to the pre-SA-002 context string."""
+def _format_technicals(ticker: str, tech: dict, seasonal: dict, corr: dict,
+                       benchmark_label: str) -> str:
+    """The prompt text. With a measured Nifty Auto correlation it is
+    byte-identical to the pre-SA-010 string; any other benchmark is named by
+    its own label, and an unmeasured one reads "unavailable", not a number."""
     strong_months = [m for m, r in seasonal.items() if r > 1.0]
     weak_months = [m for m, r in seasonal.items() if r < -1.0]
+    if corr.get("unavailable"):
+        corr_line = (f"{benchmark_label} Correlation: unavailable | Beta: unavailable "
+                     f"({corr['unavailable']})")
+    else:
+        corr_line = f"{benchmark_label} Correlation: {corr['correlation']} | Beta: {corr['beta']}"
 
     return (
         f"=== Technical Data: {ticker} ===\n"
@@ -699,7 +776,7 @@ def _format_technicals(ticker: str, tech: dict, seasonal: dict, corr: dict) -> s
         f"({tech['support_resistance']['dist_to_support_pct']}% away) | "
         f"Resistance: ₹{tech['support_resistance']['resistance']} "
         f"({tech['support_resistance']['dist_to_resistance_pct']}% away)\n"
-        f"Nifty Auto Correlation: {corr['correlation']} | Beta: {corr['beta']}\n"
+        f"{corr_line}\n"
         f"Seasonally strong months: {strong_months or 'None'} | "
         f"Weak months: {weak_months or 'None'}"
     )

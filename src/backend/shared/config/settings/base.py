@@ -94,8 +94,18 @@ DEFAULT_CURRENCY: str = "INR"
 PRICE_HISTORY_YEARS: int = cfg("data_fetch.price_history_years", fallback=10)          # years of OHLCV history
 TECHNICAL_REFRESH_INTERVAL_MIN: int = cfg("data_fetch.technical_refresh_interval_min", fallback=15)
 
-# Nifty Auto index ticker used for peer correlation
-NIFTY_AUTO_TICKER: str = "^CNXAUTO"
+# SA-010: the index each sector's technicals measure correlation and beta
+# against, as (yfinance symbol, prompt label). The caller names the sector;
+# there is no default index. "generic" is the deliberate policy for a stock
+# with no sector index of its own, and for any sector not listed: the broad
+# market, labelled as such, never another sector's index.
+SECTOR_BENCHMARKS: dict[str, tuple[str, str]] = {
+    "automobile":       ("^CNXAUTO",   "Nifty Auto"),
+    "banking_bfsi":     ("^NSEBANK",   "Nifty Bank"),
+    "it_sector":        ("^CNXIT",     "Nifty IT"),
+    "renewable_energy": ("^CNXENERGY", "Nifty Energy"),
+    "generic":          ("^NSEI",      "Nifty 50 (broad market)"),
+}
 
 # ---------------------------------------------------------------------------
 # Agent execution

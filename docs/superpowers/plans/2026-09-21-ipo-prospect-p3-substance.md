@@ -213,6 +213,20 @@ broken in production.** Source: a read-only probe the user ran through `railway 
 **Before deleting the milestone:** read the production failure reason (the `[ipo_bids] fetch failed
 for …` warning), fix the fetch, and see VARMORA or the next open issue land ledger rows.
 
+**Ledger half MEASURED, and the owner decided to close (2026-10-06).**
+- **Measured.** PI-2026-09 SA-038's owner-run read-only probe (10:41 IST, deploy `8b97dab8`)
+  read `data/ipo/ipo_signals.jsonl`. It holds 198 rows; 54 are since 24 Sep, over 15 issues,
+  VARMORA among them (2 rows), all `open`, the last on 5 Oct. Capture resumed after `a2c19c9`.
+  With the 22 Sep brief half, both halves are now seen.
+- **Not done, and not needed here.** The `ipo_history.jsonl` cross-check in the checklist cannot be
+  done: the spine is still missing on the volume. That gap is `IPO-0e`'s and does not hold this
+  open.
+- **Owner decision** (2026-10-06, about 11:05 IST, "yup i agree"): delete
+  `ipo_p0_live_window_check` after SA-038's fresh review accepts it. Do it as a separate small
+  commit, with this evidence in the commit message, before the entry's lead window opens on
+  28 Oct. Then the owner removes the four `.claude/settings.local.json` allow rules that SA-038
+  needed for registry edits.
+
 ### `IPO-0b` — Size-tiered demand thresholds in `_ipo_lean`
 
 - **Chat opener:** `Work task IPO-0b from docs/superpowers/plans/2026-09-21-ipo-prospect-p3-substance.md`

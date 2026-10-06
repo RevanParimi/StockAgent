@@ -13,67 +13,33 @@
 #
 # Fields: id, kind, title, check are required. Optional: prep, window,
 # deadline, lead_days (default 3), schedule (daily|monthly), action, docs.
+#
+# A `manual_confirmation` entry stays pending until it is DELETED here, and once
+# its deadline passes it re-sends a critical alert every 7 days. Judge it, then
+# delete it with the evidence or the decision recorded where the work is tracked,
+# or re-date it with a dated reason at the head of its action text. Never delete
+# one just to silence it. SA-038 judged the entries that lapsed in Aug-Sep 2026:
+# docs/planning/PI-2026-09/evidence/SA-038-implementation.md.
 
 milestones:
-  - id: atlas_c11_cutover
-    kind: milestone
-    title: "Atlas C11 live cutover"
-    check: atlas_cutover_pending
-    prep: atlas_cutover_prep
-    window: {weekdays: [sat, sun]}
-    # LAST day of the final window, not its first. With 2026-08-15 (the
-    # Saturday) the Sunday of the very weekend you are meant to act on is
-    # classified as lapsed and silenced by the 7-day repeat gate.
-    # Re-armed 2026-08-17 after the 2026-08-16 window lapsed unused. Next
-    # weekend window is Sat 08-22 / Sun 08-23; this is its LAST day.
-    deadline: 2026-08-23
-    lead_days: 3
-    action: >
-      PRE-FLIGHT IS ALREADY DONE (verified on prod 2026-08-17): the ETL has run,
-      atlas.db holds the owner (`primary`, role owner) with 19 user_instruments
-      and 210 user_advice, and atlas_store.user_ids() == active_user_ids() ==
-      ['primary'] - so the flip is a fan-out no-op and the owner cannot drop out
-      of briefs. Remaining step: set atlas.enabled: true in config.yaml and push
-      (Railway NOT needed - the env var is only an override and prod does not set
-      it). Then watch the next trading day: 16:30 autopilot and 08:50 brief must
-      fan out to exactly ['primary'], with no SQLITE_BUSY.
-      Rollback: the same edit in reverse.
-      The atlas_cutover_pending check now resolves the flag the same way the code
-      does (cfg atlas.enabled, env override > yaml > false), so a config.yaml flip
-      closes this milestone on its own - no hand-clearing, no env var needed.
-    docs: docs/superpowers/plans/2026-07-26-atlas-user-data-program.md
-
-  - id: f3_checkpoint
-    kind: milestone
-    title: "F3 provenance checkpoint (20 trading days post-deploy)"
-    check: manual_confirmation
-    deadline: 2026-09-04
-    lead_days: 5
-    action: >
-      F3 deployed 2026-08-07. Check Lesson.evidence and
-      DossierObservation.source are populated on real rows.
-      Remove this entry once judged.
-    docs: docs/superpowers/plans/2026-07-31-intelligence-loop-fixes.md
-
-  - id: hard_bind_observation
-    kind: milestone
-    title: "Hard-bind post-enable observation window"
-    check: manual_confirmation
-    deadline: 2026-08-31
-    lead_days: 5
-    action: >
-      Hard-bind enabled 2026-08-03. Review direction_accuracy_7d for
-      hybrid-reward inflation and the forward-only accuracy break (AUD-060).
-      Remove this entry once judged.
-    docs: docs/superpowers/specs/2026-07-28-learning-evidence.md
-
   - id: ipo_p0_live_window_check
     kind: milestone
     title: "IPO P0 — verify a live window end-to-end"
     check: manual_confirmation
-    deadline: 2026-09-15
+    deadline: 2026-10-31
     lead_days: 3
     action: >
+      RE-DATED 2026-10-06 by SA-038 (was 2026-09-15, lapsed): kept open on
+      purpose until IPO-0a is closed in the IPO plan, which is paused (owner,
+      2026-09-22). The live brief half was seen in the 2026-09-22 08:50 brief
+      (NSE and SONA under 'bidding closed - awaiting listing' with real x).
+      The ledger half was measured on 2026-10-06 by the owner-run SA-038 probe:
+      after the a2c19c9 fix (live 23 Sep 22:44 IST), data/ipo/ipo_signals.jsonl
+      gained 54 rows over 15 issues from 24 Sep to 5 Oct, VARMORA among them
+      (2 rows). data/ipo/ipo_history.jsonl is absent on the volume (the P1
+      spine was never built there), so IPO-0a's history cross-check cannot be
+      done as written. Closing IPO-0a, and this entry with it, is the owner's
+      call.
       MOSTLY DONE 2026-08-18 against the live LALITHAA/HORIZONIND/SUNSHINE/
       SHANKESH windows. Confirmed: the brief renders real subscription x (not
       'data pending'), the window line is right ('closes tomorrow' / 'closes in
@@ -91,179 +57,6 @@ milestones:
       cached payload; this is the live observation of the same thing.
       Remove this entry once that is seen.
     docs: docs/superpowers/specs/2026-08-11-ipo-intelligence-design.md
-
-  - id: a1_routing_prod_verify
-    kind: milestone
-    title: "A1 single-router — confirm zero DIVERGE on prod after deploy"
-    check: manual_confirmation
-    deadline: 2026-09-08
-    lead_days: 5
-    action: >
-      A1 merged locally 2026-08-25: SectorRegistry is now the only resolver and
-      unknown tickers / disabled sectors route to `generic`, not `automobile`.
-      Verified on LOCAL only - 0 DIVERGE rows over 14 tickers and all 23 mapped
-      sectors, 201 literal TICKER_SECTOR entries == 201 distinct keys. It has
-      PART (a) IS NOW CLOSED. Deployed 2026-08-25 15:12 IST and checked on
-      prod at 15:44 via `railway ssh`: 0 DIVERGE over the 14-ticker table and
-      all 21 distinct TICKER_SECTOR sectors, 0 non-automobile sectors reaching
-      the automobile graph, 201 keys, generic_fallback_enabled=true.
-      STILL OPEN - part (b): no NEW `automobile` prediction-store stub appears
-      for a ticker whose real sector is not automobile. The 13 existing
-      duplicates are A2's job to migrate; this checks the bleed has stopped, and
-      it needs an observation window (at 30 minutes post-deploy the directory
-      counts were unchanged at 37/15/4/74/1/4/13/1/4/11 with no automobile write
-      since the deploy - a positive but far too short signal). Note briefs and daily reviews will start
-      running the GENERIC graph for the disabled-sector names the API path used
-      to hand to automobile, so a verdict shift on those names is expected, not
-      a regression.
-      Rollback: `sectors.generic_fallback_enabled: false` in config.yaml -
-      but note its SCOPE: it sends unknown tickers and unrecognised sector
-      keys back to automobile and does NOT move a known sector (pharma,
-      fmcg, realestate) off the generic graph. To revert A1 wholesale,
-      revert the commit.
-      Remove this entry once judged.
-    docs: docs/superpowers/specs/2026-08-24-three-loops-pi-design.md
-
-  - id: b1_run_history_prod_verify
-    kind: milestone
-    title: "B1 durable run history - confirm run_summaries survives a redeploy"
-    check: manual_confirmation
-    deadline: 2026-09-15
-    lead_days: 5
-    action: >
-      B1 moved every LOGS_DIR consumer onto the volume-backed data/logs and
-      mirrored log_run_summary into telemetry.db.run_summaries. Prod evidence
-      before the fix: /app/logs/run_summaries.jsonl held 13 rows after 53 days,
-      because run_logger and analysis_logger defaulted LOGS_DIR to the ephemeral
-      logs/ while api_usage defaulted to data/logs.
-      INTERIM RESULT 2026-08-25 17:48 (deploy 292396ac, SUCCESS) - the deploy
-      half is confirmed, the durability half is NOT. Verified: no LOGS_DIR env
-      var is set on Railway so the new default is what runs; all three paths
-      resolve under data/logs/; telemetry.db now carries run_summaries beside
-      app_logs/llm_calls/cost_by_user_day (0 rows at boot, llm_calls 5250); the
-      boot line printed the INFO branch, not the WARNING; /app/logs/ is now
-      empty, which is the ephemeral wipe behaving exactly as described.
-      What remains is ONLY (b) below - proving the count does not reset.
-      RESULT 2026-08-26 16:56 IST - (a) and (c) are now CLOSED. The 16:30 IST
-      rl_daily_review wrote 13 run_summaries rows and data/logs/*.jsonl now
-      exist and are growing. NOTE the daily writer is rl_daily_review
-      (FEEDBACK_CRON "30 16 * * mon-fri"), NOT the 08:50 morning brief - the
-      brief runs no orchestrator, so it can never write a row, and a
-      non-trading day writes nothing at all. Only (b) is left, and it now has
-      real data to survive the next redeploy.
-      After this deploys, AND AFTER AT LEAST ONE FURTHER REDEPLOY, confirm on
-      prod (`railway ssh`):
-      (a) /app/data/logs/run_summaries.jsonl exists and is growing;
-      (b) `sqlite3 /app/data/telemetry.db "SELECT COUNT(*) FROM run_summaries"`
-          is non-zero and its count did NOT reset across the redeploy;
-      (c) the boot line "[run_logger] run history at boot: N rows in
-          telemetry.db" appears in the deploy log, and NOT the
-          "durable mirror is behind or failing" WARNING.
-      A count that resets to 0 across a redeploy means data/ is not backing the
-      path and the fix did not land. Note the 13 pre-existing ephemeral rows are
-      deliberately NOT migrated - they are gone by design.
-      Rollback: revert the commit; the task performs no data migration.
-      Remove this entry once judged.
-    docs: docs/superpowers/specs/2026-08-24-three-loops-pi-design.md
-
-  - id: b2_data_health_prod_verify
-    kind: milestone
-    title: "B2 data-health record - confirm one prod run writes a row that matches the aggregator"
-    check: manual_confirmation
-    deadline: 2026-09-15
-    lead_days: 5
-    action: >
-      B2 emits one data-health row per unified run: the outcome of each of the
-      10 bundle sections (ok / cache_hit / empty / n/a / failed:<Type>), how
-      many of the sector's dimensions the analyst actually scored, and a
-      derived ok/degraded/hollow verdict. Written to
-      data/logs/data_health.jsonl and mirrored to telemetry.db.data_health.
-      Prod evidence that made it necessary (2026-08-24, spec section 2.3): a
-      SUZLON run lost 3 of its 6 dimensions, shipped a BUY, and logged
-      real_data=True - has_real_data is `live >= 3 of 10` and its only consumer
-      is a log line, so a degraded run and a healthy one left the same trace.
-      After this deploys, confirm on prod (`railway ssh`):
-      (a) /app/data/logs/data_health.jsonl exists and holds at least one row
-          from a scheduled brief or digest;
-      (b) `sqlite3 /app/data/telemetry.db "SELECT COUNT(*) FROM data_health"`
-          matches, i.e. the mirror is not silently failing;
-      (c) THE ACCEPTANCE THAT MATTERS - for one run_id, the row's
-          dimensions_scored equals (total dimensions minus the count in that
-          run's "[SignalAggregator] <TICKER>: N/M dimensions excluded from
-          composite" warning). The two numbers are derived from the same
-          `output.error` test and MUST agree; if they do not, the record is
-          measuring something other than what the composite saw and B5 must
-          not gate on it.
-      (d) at least one row is NOT health=ok - if 100% of rows are ok, check
-          that degraded runs are reaching this path at all before believing it.
-      NOTE the record is write-only: nothing branches on `health` until B5's
-      hollow-run gate. A wrong row cannot change a verdict today, which is why
-      it is safe to land ahead of the gate - and why it must be checked before
-      the gate arrives.
-      RESULT 2026-08-26 16:56 IST - all four acceptances MET. 13 rows,
-      health ok=12 / degraded=1; the mirror matches; and (c) matched exactly:
-      the SignalAggregator warning "ADANIGREEN: 5/6 dimensions excluded
-      (errored)" naming business, risk, sentiment_policy, technical, valuation
-      against a data_health row of dims 1/6 naming the same five.
-      DO NOT CLOSE THIS AS HEALTHY. Spec section 15.1: two TATAMOTORS runs on a
-      ticker returning HTTP 404 at the price source were ALSO recorded
-      health=ok, live=10, dims 9/9. _safe records "failed:" only on an
-      exception, so a fetcher that swallows its own error and returns an empty
-      payload reads "ok". The record works; its section half has never been
-      exercised by a real failure. New card B6 fixes it and BLOCKS B5.
-      Rollback: `observability.data_health_enabled: false` in config.yaml.
-      Remove this entry once judged.
-    docs: docs/superpowers/specs/2026-08-24-three-loops-pi-design.md
-
-  - id: e1_error_capture_prod_verify
-    kind: milestone
-    title: "E1 error capture - confirm run correlation, tracebacks and script coverage in prod"
-    check: manual_confirmation
-    deadline: 2026-09-15
-    lead_days: 5
-    action: >
-      E1 closed four gaps in the WARNING+ archive (telemetry.db.app_logs, 4,357
-      rows over 53 days, survives redeploys). It added nullable run_id/ticker
-      columns fed by a contextvars run context; exc_info=True at 14 hot-path
-      except handlers; one configure_logging() shared by the API server and
-      every standalone script entry point; and it stopped the archive storing a
-      duplicated "<IST ts> LEVEL [logger] " prefix inside every message.
-      After this deploys, confirm on prod (`railway ssh`):
-      (a) `PRAGMA table_info(app_logs)` lists run_id and ticker, and the rows
-          written BEFORE this deploy are still readable with the old
-          projection `SELECT id, ts, level, logger, message` - no history was
-          rewritten, old rows simply carry NULL;
-      (b) THE ACCEPTANCE THAT MATTERS - pick a run_id from run_summaries and
-          confirm the app_logs rows from that run carry it. If every new row is
-          NULL the context is not reaching the emitting thread and E2 has
-          nothing to correlate on;
-      (c) the traceback rate rises off its 18/4,254 (0.4%) baseline for the
-          hot-path loggers specifically - count rows where message LIKE
-          '%Traceback (most recent call last)%' and split before/after this
-          deploy's timestamp. State the number; do NOT claim tracebacks were
-          previously "lost" (spec section 2.0 records that as a wrong claim -
-          the handler always appended them, the call sites never asked);
-      (d) new rows carry NO timestamp prefix in `message`, while rows from
-          before the deploy still do. E2 fingerprints over both eras and must
-          handle the split - it cannot assume one shape;
-      (e) run one script under `railway ssh` (e.g. `python -m core.audit.cli`)
-          and confirm it produces app_logs rows. Before E1 the handler lived
-          only in server.py, so scripts archived nothing.
-      RESULT 2026-08-26 - (a), (b) and (d) CLOSED. (b), the one that matters,
-      is confirmed: 44 app_logs rows carry a real run_id and ticker from the
-      16:30 review, including rows emitted by yfinance's own logger inside the
-      run context. (d) is exact - 4,357 prefixed rows before the deploy and 0
-      unprefixed, 0 prefixed after and 114 unprefixed - so E2 can normalise on
-      a single timestamp cut rather than sniffing every row.
-      (c) WILL NOT CLOSE AS WRITTEN and should be judged on hot-path handlers
-      only, or marked not applicable: the 114 new rows added ZERO tracebacks
-      (18 before, 1 after - the probe's own). The loudest prod errors come from
-      yfinance's own logger, not from our except handlers, so E1's exc_info
-      work cannot reach them by construction.
-      Rollback: revert the commit. The columns are nullable and inert if
-      unused; no data is migrated or rewritten.
-      Remove this entry once judged.
-    docs: docs/superpowers/specs/2026-08-24-three-loops-pi-design.md
 
   - id: ipo_verdicts_visible_gate
     kind: milestone

@@ -4,8 +4,9 @@
 **What changed in production:** the owner set the Railway variable `RL_LEARNING_MODE=observe`
 and redeployed. The variable was set by the owner, not by Claude. `config.yaml` still checks in
 `adapt`; the variable overrides it (`cfg`: env > yaml, verified in the review).
-**`production_verification`:** `pending_observation`. Activation is verified below. The
-behaviour check waits for the next reviews.
+**`production_verification`:** `verified` (P3 passed 2026-10-01 10:25 IST; STATE updated
+2026-10-06 by SA-038, whose backstop found the status still `pending_observation`). Activation
+and all three behaviour checks are recorded below.
 
 ## Deploys (read-only `railway deployment list`)
 

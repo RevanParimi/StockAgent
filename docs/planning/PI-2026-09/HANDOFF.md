@@ -1,12 +1,127 @@
-# Current handoff - 2026-10-05 (updated about 23:40 IST)
+# Current handoff - 2026-10-06 (updated about 11:40 IST)
 
 ## START HERE — resume checklist, in order
 
-**SA-010 was ACCEPTED by its fresh-session review** (5 Oct, about 22:32–23:10 IST, a new
+**SA-038 was ACCEPTED by its fresh-session review** (6 Oct, about 11:14–11:40 IST, a new
+conversation opened with "continue"). Receipt: [review](evidence/SA-038-review.md). STATE:
+`active_task: null`, SA-038 `done`, `production_verification: pending_deployment`,
+`next_task: FIX-004`. **Not committed.** The review committed, pushed, deployed and configured
+nothing, and it read no production state.
+- **In one example.** The A1 entry asked whether A1 (deployed 25 Aug) stopped other sectors'
+  tickers from being written under `automobile/`. SA-009's production inventory of 30 Sep says it
+  did not: there were 16 such copies, and they were still gaining feedback rows. SA-009's fix and
+  its 1 Oct quarantine stopped the writes, and the 6 Oct probe saw none. So the entry stays
+  deleted, but as "superseded by SA-009", not "verified" (M1).
+- **What the review checked:**
+  - the review input `e3a251d5…` and diff `22196d37…`, re-verified with the reviewer's own script:
+    0 mismatches, both at the start and before the edits;
+  - each of the 9 entries against its evidence class and the deleted entries' own acceptance
+    text;
+  - the engine, the runner and `registry_is_current`, by code;
+  - 7 of 7 of the reviewer's own registry variants caught; the baseline registry fails 4 of 5;
+  - focused tests 207 passed; full suite **4161 passed, 12 skipped, 0 failed**, with `data/`
+    unchanged; `check_kt_docs` errors `[]`.
+- **Findings.** None is critical or high.
+  - **M1 (medium):** A1 was recorded as verified; fixed in the documentation, as above.
+  - **L1:** E1's acceptance (e) was never judged. Judged by code in the review; a note is on the
+    SA-031 card.
+  - **L2:** the F3 share among research rows was not counted. Added to FIX-004's count probe.
+  - **L3:** KT §1 still said SA-039's verification was pending; fixed.
+  - **I1–I4** are info; see the receipt.
+- **Review edits (docs only):** KT §1, §10 and §12, and the PDF (source `3bb23a99…`); guide 12-I;
+  the SA-031, SA-046 and FIX-004 cards; a pointer to M1 in the implementation receipt.
+  `verify SA-038-manifest.json` now mismatches exactly the KT, the PDF, the guide and SA-046.
+- **Next, in order:**
+  1. **At the owner's word, commit SA-038.** Include the 10 manifest paths, the SA-038 receipts
+     and manifest, the FIX-004, SA-031 and IPO-plan edits, STATE and HANDOFF. Never include
+     `.claude/settings.local.json`. Then bump the KT as usual.
+  2. **A separate commit deletes `ipo_p0_live_window_check`** (IPO-0a, the owner's decision), with
+     its measured evidence. The same commit must edit
+     `tests/unit/ops/test_milestones_judged_sa038.py`, or the suite goes red (review I2):
+     - add the id to `RETIRED`;
+     - delete the IPO assert in test 3 (line 94);
+     - delete the two IPO asserts in test 5 (lines 108 and 116).
+     Run that file and `tests/unit/ops`. The registry edit still relies on the owner's allow rule.
+  3. **Push in the 12:05–14:55 IST window**, at the owner's word. Afterwards the owner removes the
+     four allow rules. SA-038's production check, read-only, after the deploy: the next 06:30
+     watchdog run sends no critical for any deleted id, and the Sunday heartbeat lists only the
+     IPO milestone(s) and the invariants.
+  4. **SA-010's read-only production check** at today's 16:30 review (unchanged).
+  5. **FIX-004:** the owner-run count probe, now with the research split; then its implementation
+     in a new conversation; then its fresh review. Then the normal STATE queue resumes.
+
+**Previous: SA-038's implementation — the pre-review record.** SA-038 was `review_required` (`active_task: null`, `next_task: SA-038`). It was implemented on
+5–6 Oct in one new conversation: started about 23:44 IST, resumed 07:54 IST, and finished about
+11:00 IST after the owner's probe. Receipt: [implementation](evidence/SA-038-implementation.md).
+Review input: [SA-038-manifest.json](evidence/SA-038-manifest.json) **`e3a251d5…`** (10 files);
+diff **`22196d37…`** (34,650 bytes). Baseline `a502cf7`. Nothing is committed, pushed or
+deployed.
+- **In one example.** The 2 Oct 06:30 mail said "F3 provenance checkpoint … LAPSED", a
+  `critical`, although nothing was broken. The probe shows that 1,021 of 1,041 lessons written
+  since F3 carry their dated headlines, so the entry is deleted with that count recorded. After
+  SA-038, the real watchdog is run on 7 Oct from production's state, with every check forced to
+  `pending`. It sends no critical.
+- **The registry** (`config/milestones.yaml`): **7 entries deleted**, each with its evidence or a
+  recorded decision.
+  - Atlas: the flag is true.
+  - F3: 98% of post-F3 lessons carry evidence; 13 sourced research observations.
+  - Hard-bind: not judged, because it would grade a defective target. Folded into SA-012 and
+    SA-014.
+  - A1(b): no `automobile/` copy of another sector's ticker.
+  - B1: 888 `run_summaries` rows since 26 Aug, never reset over the last 20 deploys.
+  - B2: met on 26 Aug; the B6 half is on SA-002's pending check.
+  - E1: met on 26 Aug; (c) not applicable.
+  - **Kept open:** `ipo_p0_live_window_check`, re-dated to 2026-10-31 with the measured evidence.
+    The ledger is capturing again (54 rows over 15 issues since 24 Sep). Closing it means closing
+    IPO-0a, which is the **owner's call** (the IPO plan is paused).
+  - No milestone is past its deadline.
+- **SA-039 backstop, done.** P3 had passed on 1 Oct, so STATE now reads `verified`, with a note
+  naming SA-038 as the recorder.
+- **Found by the probe:** a dossier observation is dated **2026-10-24**, in the future. Event
+  ingestion stamps board-meeting dates (`event_ingestor.py:111`, `:239`). Finding F1, medium,
+  routed to the SA-046 card. The owner may promote it to a FIX story.
+- **Also from the probe:** SA-009's restart check is met (recorded in STATE). Its scorecard check
+  remains.
+- **Tests.**
+  - 5 new tests over the real registry. The baseline fails 4, and all 7 mutants are caught.
+  - Registry readers: 207 passed.
+  - Full suite on the final tree: **4161 passed, 12 skipped, 0 failed**, with `data/` unchanged.
+    The first run's single failure was the known Windows rename flake.
+- **Docs.** KT §10 (PDF source `8f89c401…`; `check_kt_docs` errors `[]`); guide 12-I, plus a fix
+  to section 12's split table; notes on the SA-002, SA-012, SA-014 and SA-046 cards; the SA-039
+  activation record.
+- **The registry edit needed the owner's permission.** The auto-mode classifier blocked it as
+  "audit tampering". The owner added four narrow allow rules to their own
+  `.claude/settings.local.json`. That file is excluded from SA-038's manifest and commit. The
+  owner may remove the rules after the review; the reviewer edits no registry entry.
+- **Owner decisions, taken 2026-10-06 (about 11:05 IST, "yup i agree"):**
+  - **IPO-0a: close it.** Delete `ipo_p0_live_window_check` after SA-038 is accepted, as a separate
+    small commit with the measured evidence, before its lead window opens on 28 Oct. The missing
+    history cross-check is IPO-0e's. This is recorded under IPO-0a in the IPO plan. Afterwards the
+    owner removes the four allow rules.
+  - **F1 becomes [FIX-004](stories/FIX-004.md)** (P1, 1 point): never date dossier knowledge after
+    the day it was learned. Its first step is an owner-run read-only count probe.
+  - **Commit SA-038 once accepted,** without `.claude/settings.local.json`, and push in the
+    12:05–14:55 IST window.
+- **Next, in order:**
+  1. **SA-038's fresh-session review,** in a new conversation (opener `continue`). Verify the
+     manifest and rebuild the diff with the receipt's recipe. Recheck each judgement against its
+     evidence class. The F3 dossier limit and the post-hoc denominator (I5) deserve a hard look.
+     The FIX-004 card, the IPO-plan note and these STATE/HANDOFF edits were made after the
+     manifest. None of them is a manifest file, so the review input is unchanged.
+  2. **SA-010's read-only production check at the 6 Oct 16:30 review** (below, item 3 of the
+     SA-010 list). It can run in any conversation; it is read-only.
+  3. **After acceptance, at the owner's word:** commit SA-038, then the IPO entry deletion as a
+     separate commit, then push at midday.
+  4. **FIX-004:** the owner's count probe, then implementation in a new conversation, then its
+     fresh review. Then the normal STATE queue resumes.
+
+**Previous: SA-010 was ACCEPTED by its fresh-session review** (5 Oct, about 22:32–23:10 IST, a new
 conversation opened with "continue"). Receipt: [review](evidence/SA-010-review.md). STATE:
-`active_task: null`, SA-010 `done`, `production_verification: pending_deployment`,
+`active_task: null`, SA-010 `done`, `production_verification: pending_observation`,
 `next_task: SA-038`. **Committed as `7efeafd`** at the owner's word (about 23:30 IST, "lets
-proceed"), with the KT bump after it. The review itself committed, pushed, deployed and
+proceed"), with the KT bump after it. **Pushed and deployed** at 00:10–00:16 IST on 6 Oct
+(Railway `8b97dab8`). The review itself committed, pushed, deployed and
 configured nothing, read no production state, and made no network call.
 - **In one example.** On the baseline code, loaded in memory, HDFCBANK asked Yahoo for
   `^CNXAUTO`. With that index dead, it printed "Nifty Auto Correlation: 0.0 | Beta: 1.0". With
@@ -41,19 +156,33 @@ configured nothing, read no production state, and made no network call.
      mismatches only the 4 review-edited docs, so every reviewed code and test byte is committed
      as reviewed. The KT bump declares `7efeafd` (edition 2026-10-05) and says "committed as
      `7efeafd`" in KT §4 and guide 02-B. PDF source `5fc21698…`, and `check_kt_docs` errors `[]`.
-     - **Push: at 00:10 IST 6 Oct.** At 23:34 the 22:55–00:05 window was open (23:30 backup,
-       23:45 audit, 00:00 prompt publish). The owner said "lets proceed" and declined waiting up
-       for 00:10–06:20, so a timed job pushes at 00:10 if `origin/main` is still `5772536`.
-  2. **After the deploy:**
-     - The owner runs the TATAELXSI containment re-forecast (the command is in FIX-002's step 3
-       below). It now gets SA-010's Nifty IT index. Avoid the job windows.
-     - SA-010's read-only production check at the next 16:30 review (STATE `after_deploy`).
+     - **PUSHED and DEPLOYED.** At 23:34 the 22:55–00:05 window was open (23:30 backup, 23:45
+       audit, 00:00 prompt publish). The owner said "lets proceed" and declined waiting up, so a
+       timed job pushed `5772536..a502cf7` at 00:10:07 IST 6 Oct. It was guarded on `origin/main`
+       still being `5772536`. Railway `8b97dab8` reached SUCCESS at about 00:16, and `/health`
+       returned 200.
+     - Boot log: 124 lines, 0 tracebacks, 0 error or warning lines, 24 jobs, and the self-heal
+       completed.
+     - It was a full build again: 10 patch changes against `f4be41ef`, including langgraph
+       1.2.12 → 1.2.13. pandas, numpy, yfinance, openai and nse are unchanged (for SA-033).
+     - Raw logs are in the ignored `analysis_data/sa010/deploy/`. This record is uncommitted; it
+       rides with the next commit.
+  2. **DONE: FIX-002's containment.** The owner re-forecast TATAELXSI at about 23:35 IST, before
+     the push, on deploy `f4be41ef`.
+     - Run `eac980a4` resolved TATAELXSI to "Tata Elxsi Limited", and 29 days were regenerated.
+     - `reforecast_count` is 1 of the month's 2. The Tata Motors-based envelope is archived as
+       `archived_envelopes/2026-10_v1.json`, and there was no error line.
+     - Inferred from code, not read: its technicals carry the old `^CNXAUTO` 0.0 / 1.0 line, like
+       the other October envelopes. It ran inside the 23:30 backup window, so 6 Oct's backup is
+       the first that surely holds it.
+  3. **Next: SA-010's read-only production check at the 6 Oct 16:30 review** (STATE
+     `after_deploy`; `production_verification: pending_observation`).
      - There is one `[technicals]` line per analysis, plus one for a legacy-fallback run.
      - Banking `^NSEBANK`, IT `^CNXIT` and generic `^NSEI`, each with a correlation.
      - Automobile and renewable energy read "unavailable".
      - `^CNXAUTO` ERROR lines fall from 54 to about 9, and about 12 `^CNXENERGY` lines appear.
-  3. **SA-038**, by the owner's decision of 2 Oct, in a new conversation (opener `continue`).
-  4. **For SA-026, later:** choose an index with data for automobile and renewable energy (D1).
+  4. **SA-038**, by the owner's decision of 2 Oct: started, see above.
+  5. **For SA-026, later:** choose an index with data for automobile and renewable energy (D1).
 
 **Previous: SA-010's implementation** (5 Oct, about 20:55–21:50 IST, a new conversation opened
 with "continue"; baseline `5772536`). Receipt: [implementation](evidence/SA-010-implementation.md).

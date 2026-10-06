@@ -1,0 +1,64 @@
+{
+  "story": "SA-038",
+  "phase": "implementation",
+  "baseline": "a502cf7433734577a5ed530d4667956f3e83c981",
+  "excluded": [
+    "docs/planning/PI-2026-09/STATE.json",
+    "docs/planning/PI-2026-09/HANDOFF.md",
+    "docs/planning/PI-2026-09/evidence/SA-038-implementation.md",
+    ".claude/settings.local.json"
+  ],
+  "hash_convention": "git blob bytes after .gitattributes normalization (CRLF->LF for text, binary unchanged); verify with scripts/docs/kt_manifest.py verify",
+  "files": [
+    {
+      "path": "config/milestones.yaml",
+      "git_blob": "f6098ead0b2da4b526b875ec78c2f1c352890494",
+      "sha256": "7a7c2601aeee3b5b774541bfe9dc9d3ffd91d576e89d8b66ae31fe93f085ae60"
+    },
+    {
+      "path": "docs/StockAgent-Three-Loops.pdf",
+      "git_blob": "17ae18b3825de0a7c3ee261ef830da7915b75d10",
+      "sha256": "8018ae8823783f4cf9a716b4557c62a147075dd82e7d82a19b39541b19041dff"
+    },
+    {
+      "path": "docs/TEAM_TESTING_GUIDE.md",
+      "git_blob": "7c24b9723d8d4a84488eb4f14cbfd958b23fa962",
+      "sha256": "f0136c6d6d7a4c803d213f8f713920a4e17a1e29243bde6602f537de494b0338"
+    },
+    {
+      "path": "docs/TECHNICAL_DESIGN.md",
+      "git_blob": "a0b54d7ebb62c88db778955348bb15cd71616cbb",
+      "sha256": "8f89c40101deab2a3628736da1b67a15679af66caa047caf8de91dc55585c653"
+    },
+    {
+      "path": "docs/planning/PI-2026-09/evidence/SA-039-activation-2026-09-26.md",
+      "git_blob": "286f87ac026f9ceee6c2f6bbf7534444191dde96",
+      "sha256": "96706923e65082b82cfb6630cbe3e7a465d11c0e53ae77f2ef86e414f1750925"
+    },
+    {
+      "path": "docs/planning/PI-2026-09/stories/SA-002.md",
+      "git_blob": "6432b0a04c5007f2a86e71fbdf171fb416d58a90",
+      "sha256": "4d468c8e22e7cfc014abe6b208f9ff728b2e75e802fbcbb53beac37b9807203e"
+    },
+    {
+      "path": "docs/planning/PI-2026-09/stories/SA-012.md",
+      "git_blob": "c98b7076a45ee6a18f6a3e74c42c3ef885438354",
+      "sha256": "1c681a853ce326ba6f24035343722d1e17f1027f0b808aa266096b1844efb2f5"
+    },
+    {
+      "path": "docs/planning/PI-2026-09/stories/SA-014.md",
+      "git_blob": "850d51a8ca61e70c8ff90949e4ada57c8318840e",
+      "sha256": "7aa4f1d7cec20d2edc603315a28c4b1c52680ed56b36732d49e159bb3232bd30"
+    },
+    {
+      "path": "docs/planning/PI-2026-09/stories/SA-046.md",
+      "git_blob": "fb82c0e61be9b55a81c54bda5fca909440b2d776",
+      "sha256": "39f284e43b123523e7e36b3d35154abc153567c7a7ee08e89e23c1faf8f0ba48"
+    },
+    {
+      "path": "tests/unit/ops/test_milestones_judged_sa038.py",
+      "git_blob": "f03d79f4c3f0dafa51597c0cbbcfe2a437966ce7",
+      "sha256": "10807bd87c33a86bce51e99074ee35090cd93fe6d81af5caf77335dfaf45cbd9"
+    }
+  ]
+}

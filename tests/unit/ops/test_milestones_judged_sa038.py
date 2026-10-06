@@ -37,6 +37,7 @@ RETIRED = {
     "f3_checkpoint",                 # probe 6 Oct: 98% of post-F3 lessons carry evidence
     "a1_routing_prod_verify",        # probe 6 Oct: no automobile copy of another sector's ticker
     "b1_run_history_prod_verify",    # probe 6 Oct: 888 rows since 26 Aug, never reset
+    "ipo_p0_live_window_check",      # IPO-0a closed 6 Oct (owner): brief 22 Sep, ledger 54 rows
 }
 
 REDATED_RE = re.compile(
@@ -86,12 +87,9 @@ def test_first_run_sends_no_critical_even_with_every_check_pending(tmp_path, mon
     assert set(saved) == ids
 
 
-def test_judged_entries_are_gone_and_the_ipo_window_check_stays():
+def test_judged_entries_are_gone():
     ids = {e.id for e in load_registry("config/milestones.yaml")}
     assert RETIRED.isdisjoint(ids)
-    # The card: open until IPO capture is verified in production (IPO-0a).
-    # Whoever closes IPO-0a deletes the entry and this line together.
-    assert "ipo_p0_live_window_check" in ids
 
 
 def test_every_manual_milestone_has_a_deadline():
@@ -105,7 +103,6 @@ def test_every_manual_milestone_has_a_deadline():
 
 def test_every_redated_entry_states_when_and_why():
     redated = [e for e in _milestones() if e.action.startswith("RE-DATED")]
-    assert redated, "SA-038 re-dated at least the IPO window check"
     for e in redated:
         m = REDATED_RE.match(e.action)
         assert m, f"{e.id}: re-date line must read 'RE-DATED <date> by <story> (was <date>'"
@@ -113,4 +110,3 @@ def test_every_redated_entry_states_when_and_why():
         assert was < on < e.deadline, f"{e.id}: was {was}, re-dated {on}, deadline {e.deadline}"
         reason = e.action[m.end():].split(".", 1)[0]
         assert len(reason.split()) >= 5, f"{e.id}: the reason is missing"
-    assert "ipo_p0_live_window_check" in {e.id for e in redated}

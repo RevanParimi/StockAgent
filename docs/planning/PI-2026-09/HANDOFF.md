@@ -1,12 +1,22 @@
-# Current handoff - 2026-10-06 (updated about 11:40 IST)
+# Current handoff - 2026-10-06 (updated about 12:02 IST)
 
 ## START HERE — resume checklist, in order
 
 **SA-038 was ACCEPTED by its fresh-session review** (6 Oct, about 11:14–11:40 IST, a new
 conversation opened with "continue"). Receipt: [review](evidence/SA-038-review.md). STATE:
 `active_task: null`, SA-038 `done`, `production_verification: pending_deployment`,
-`next_task: FIX-004`. **Not committed.** The review committed, pushed, deployed and configured
-nothing, and it read no production state.
+`next_task: FIX-004`. The review itself committed, pushed, deployed and configured nothing, and
+it read no production state.
+- **Committed at the owner's word** ("ya go ahead now", about 11:55 IST):
+  - `378479a` is SA-038: 18 files, never `.claude/settings.local.json`.
+    `verify SA-038-manifest.json --rev 378479a` mismatches only the 4 review-edited docs, so
+    the registry and test bytes are committed as reviewed.
+  - `70fce66` closes **IPO-0a**: `ipo_p0_live_window_check` is deleted, with its evidence in
+    the message, and the I2 test edits are in. Registry readers 207 passed; re-adding the
+    entry fails 2 of 5 tests. Guide 12-I and the IPO plan are updated.
+  - The KT bump follows: it declares `70fce66`, edition 2026-10-06, PDF source `77a16c4e…`,
+    `check_kt_docs` errors `[]`.
+  - **Push:** in the 12:05–14:55 IST window.
 - **In one example.** The A1 entry asked whether A1 (deployed 25 Aug) stopped other sectors'
   tickers from being written under `automobile/`. SA-009's production inventory of 30 Sep says it
   did not: there were 16 such copies, and they were still gaining feedback rows. SA-009's fix and
@@ -32,10 +42,10 @@ nothing, and it read no production state.
   the SA-031, SA-046 and FIX-004 cards; a pointer to M1 in the implementation receipt.
   `verify SA-038-manifest.json` now mismatches exactly the KT, the PDF, the guide and SA-046.
 - **Next, in order:**
-  1. **At the owner's word, commit SA-038.** Include the 10 manifest paths, the SA-038 receipts
+  1. **DONE (`378479a`).** ~~At the owner's word, commit SA-038.~~ Include the 10 manifest paths, the SA-038 receipts
      and manifest, the FIX-004, SA-031 and IPO-plan edits, STATE and HANDOFF. Never include
      `.claude/settings.local.json`. Then bump the KT as usual.
-  2. **A separate commit deletes `ipo_p0_live_window_check`** (IPO-0a, the owner's decision), with
+  2. **DONE (`70fce66`).** ~~A separate commit deletes `ipo_p0_live_window_check`~~ (IPO-0a, the owner's decision), with
      its measured evidence. The same commit must edit
      `tests/unit/ops/test_milestones_judged_sa038.py`, or the suite goes red (review I2):
      - add the id to `RETIRED`;

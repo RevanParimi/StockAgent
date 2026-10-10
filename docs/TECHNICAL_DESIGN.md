@@ -768,7 +768,17 @@ market observations remain necessary even after implementation acceptance.
 
 Event ingestion adds company observations; the curator maintains knowledge
 and questions; the research job attempts answers. These are knowledge tasks,
-not trades. Discovery paper tracking uses a separate store root with learning
+not trades. No writer dates a dossier row after the run that wrote it
+(FIX-004: accepted 2026-10-10 by its fresh review; not yet deployed). Event ingestion
+dates rows with the event's day and skips an event dated after the scan, such as a
+board meeting announced for later in the month, until a scan on or after that
+date. Before FIX-004 it stored such a meeting under its future date: on 7 Oct
+two production dossiers held 3 observations and 1 guidance item dated 24 and
+27 Oct ([probe](planning/PI-2026-09/evidence/FIX-004-probe-2026-10-06.md)).
+The digest the agents read leaves out observations and open guidance dated
+after its own date; stored rows are not rewritten. The morning brief's
+earnings-watch line still reads the newest open guidance without that date
+check (review L1; FIX-004 change 1 is planned). Discovery paper tracking uses a separate store root with learning
 writes disabled for that lane; it is not live investor performance.
 
 ## 6. Portfolio: advice and virtual execution

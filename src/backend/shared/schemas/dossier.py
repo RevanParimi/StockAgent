@@ -8,6 +8,8 @@ the chat `get_ticker_dossier` tool. See spec 2026-06-11.
 """
 from __future__ import annotations
 
+from datetime import date as _date
+
 from pydantic import BaseModel, Field
 
 
@@ -84,13 +86,24 @@ class TickerDossier(BaseModel):
     # Event-ingestion watermark — keys of NSE announcements already digested (cap 40 at merge site).
     ingested_event_keys: list[str] = Field(default_factory=list)
 
-    def to_digest(self, max_chars: int = 2500) -> str:
+    def to_digest(self, max_chars: int = 2500, as_of: str | None = None) -> str:
         """Markdown digest for prompt injection. Whole sections only, priority order.
 
         The header line is always included even if it alone exceeds max_chars —
         realistic budgets are far larger than a single header, so callers must
         not pass tiny budgets.
+
+        Observations and open guidance dated after `as_of` (ISO date; default:
+        the current date) are left out (FIX-004). Event ingestion before FIX-004
+        stamped rows with a future board-meeting date; listing them would
+        present a meeting that has not happened as the most recent observation.
+        Stored rows are not rewritten; such a row is listed once its date passes.
         """
+        as_of = as_of or _date.today().isoformat()
+
+        def _known(d: str) -> bool:
+            return d[:10] <= as_of
+
         sections: list[str] = []
         if self.business_summary:
             sections.append(f"## Business\n{self.business_summary}")
@@ -103,7 +116,7 @@ class TickerDossier(BaseModel):
             lines = [f"- [{', '.join(s.trigger_tags)}] {s.response}"
                      f" (seen {s.occurrences}x, conf {s.confidence:.2f})" for s in live]
             sections.append("## Response signatures\n" + "\n".join(lines))
-        open_g = [g for g in self.guidance if g.status == "open"][-5:]
+        open_g = [g for g in self.guidance if g.status == "open" and _known(g.date)][-5:]
         if open_g:
             sections.append("## Open guidance\n" + "\n".join(
                 f"- {g.date} ({g.source}): {g.guidance}" for g in open_g))
@@ -118,8 +131,9 @@ class TickerDossier(BaseModel):
         if open_q:
             sections.append("## Open questions\n" + "\n".join(
                 f"- {q.question} (since {q.raised_on})" for q in open_q))
-        if self.observations:
-            recent = sorted(self.observations, key=lambda o: o.date)[-5:]
+        recent = sorted((o for o in self.observations if _known(o.date)),
+                        key=lambda o: o.date)[-5:]
+        if recent:
             sections.append("## Recent observations\n" + "\n".join(
                 f"- {o.date}" + (f" ({o.source})" if o.source else "")
                 + f": {o.observation}" for o in recent))

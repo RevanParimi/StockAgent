@@ -69,7 +69,8 @@ def _parse_item_date(raw: str) -> _date | None:
 
 
 def find_qualifying_events(ticker: str, lookback_days: int,
-                            exclude_keys: set[str] | None = None) -> list[dict]:
+                            exclude_keys: set[str] | None = None,
+                            today: _date | None = None) -> list[dict]:
     """Scan NSE announcements + board meetings for qualifying events.
 
     Returns at most settings.EVENT_INGEST_MAX_EVENTS_PER_SCAN normalized dicts
@@ -78,10 +79,19 @@ def find_qualifying_events(ticker: str, lookback_days: int,
     as a convenience, but watermark filtering is primarily the caller's
     (run()) responsibility — this function stays store-free.
 
+    Only events dated on or before `today` (default: the current date) qualify
+    (FIX-004). A board meeting scheduled for a later date has not happened, and
+    run() stamps dossier rows with the event's date, so digesting it now would
+    store knowledge dated after the day it was learned. It is not watermarked,
+    so the first scan on or after its date picks it up (lookback 8 days, weekly
+    scan). The fundamentals/earnings agents still see upcoming meetings in the
+    live NSE feed (`format_nse_context`).
+
     Never raises: any prefetch/parsing failure yields an empty list.
     """
     exclude_keys = exclude_keys or set()
-    cutoff = _date.today() - timedelta(days=lookback_days)
+    today = today or _date.today()
+    cutoff = today - timedelta(days=lookback_days)
 
     try:
         nse_data = prefetch_nse_data(ticker)
@@ -108,7 +118,7 @@ def find_qualifying_events(ticker: str, lookback_days: int,
             item_date = _parse_item_date(dt_raw)
             if item_date is None:
                 continue  # unparseable date — skip defensively
-            if item_date < cutoff:
+            if item_date < cutoff or item_date > today:
                 continue
 
             date_iso = item_date.isoformat()
@@ -211,14 +221,18 @@ class EventIngestor:
         try:
             days = lookback_days if lookback_days is not None else settings.EVENT_INGEST_LOOKBACK_DAYS
             store = PredictionStore(ticker, sector=sector)
-            today_iso = _date.today().isoformat()
+            run_date = _date.today()
+            today_iso = run_date.isoformat()
 
             dossier = store.load_dossier() or TickerDossier(
                 ticker=ticker, sector=sector,
                 created_at=today_iso, last_updated=today_iso)
 
             exclude_keys = set(dossier.ingested_event_keys)
-            events = find_qualifying_events(ticker, days, exclude_keys=exclude_keys)
+            # Events are on or before run_date, so the event date that
+            # merge_curator_output stamps is never after the run (FIX-004).
+            events = find_qualifying_events(ticker, days, exclude_keys=exclude_keys,
+                                            today=run_date)
             events = [e for e in events if e["key"] not in exclude_keys]
 
             ingested = 0

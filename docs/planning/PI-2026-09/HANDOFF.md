@@ -1,8 +1,109 @@
-# Current handoff - 2026-10-06 (updated about 12:02 IST)
+# Current handoff - 2026-10-10 (updated about 15:05 IST)
 
 ## START HERE — resume checklist, in order
 
-**SA-038 was ACCEPTED by its fresh-session review** (6 Oct, about 11:14–11:40 IST, a new
+**FIX-004 was ACCEPTED by its fresh-session review** (10 Oct, about 14:36–15:05 IST, a new
+conversation opened with "continue"). Receipt: [review](evidence/FIX-004-review.md). STATE:
+`active_task: null`, FIX-004 `done`, `production_verification: pending_deployment`,
+`change_1: todo`. The verdict covers review input **`2f4cf482…`** and diff **`5550aab9…`**
+(worktree on `5ea49fe`, uncommitted), plus documentation-only review edits. Nothing was
+committed, pushed, deployed or configured, and no production state was read.
+- **In one example.** The reviewer's own trace takes a board meeting on 24 Oct through the
+  weekly scans. The 10 and 17 Oct scans skip it, and the 24 Oct scan stores it under 24 Oct.
+  On 23 Oct the agents' digest, the context bundle, the chat tool and the daily curator's
+  prompt show no 24 Oct row, even from a dossier that holds one, as old dossiers do.
+- **What the review checked:**
+  - the input, with the reviewer's own script, at the start and before the edits: 0 mismatches;
+  - every writer of a dossier date and every caller of the digest, by code;
+  - the old code fails the new tests (52, 4 and 51 failures, as the receipt says). Two of the
+    reviewer's variants are caught. One survives (I1), and three behave the same as the real
+    code in production;
+  - daily and weekly scan sweeps over 22 events: each digested once, on or after its date;
+  - focused 80 passed; full suite **4214 passed, 12 skipped, 0 failed**, with `data/`, `logs/`
+    and `outputs/` unchanged; `check_kt_docs` errors `[]`.
+- **Findings.** None is critical, high or medium.
+  - **L1 (low):** the morning brief's earnings-watch line (`core/delivery/brief.py:346`) shows
+    the newest open guidance with no date check. Only rows stored before the fix are affected:
+    STARHEALTH's one guidance item dated 27 Oct. It reaches the 22–26 Oct briefs only if
+    STARHEALTH is held. Routed to **FIX-004 change 1**.
+  - I1–I4 are info; see the receipt.
+- **Review edits (docs only):** KT §5 (the status, plus one L1 sentence) and the PDF (source
+  `2dcad25f…`); guide 04-H; the FIX-004 card (its "Fresh review" section defines change 1) and
+  the SA-046 card. `verify FIX-004-manifest.json` now mismatches exactly those 5 files.
+- **Next, in order:**
+  1. **At the owner's word, commit FIX-004.** Include the 11 manifest paths, the four FIX-004
+     receipts (probe, implementation, manifest, review), the SA-038 review's L2 note, STATE and
+     HANDOFF. Never include `.claude/settings.local.json`. Then bump the KT to that commit.
+  2. **Push only on the owner's word, in a job-free window** (safest 00:10–06:20 IST). The
+     10 Oct 10:00 IST scan ran on the old code. Each Saturday scan before the deploy can add
+     more future-dated rows.
+  3. **After the deploy** (read-only, by the owner): rerun the count probe after the first
+     Saturday scan on the new code, and sample IDFCFIRSTB's digest before 24 Oct (STATE
+     `after_deploy`).
+  4. **Then FIX-004 change 1**, in a new conversation ("continue"): apply the date rule in
+     `_earnings_watch`, then its own fresh review. It is worth landing before about 22 Oct. The
+     owner may drop it.
+  5. Still open: SA-038's Sunday 11 Oct heartbeat check. SA-010 was verified on 10 Oct (below).
+
+**Previous: FIX-004 was IMPLEMENTED and awaited its fresh-session review** (8 Oct, about
+15:33–17:35 IST, a new conversation opened with "continue"). Receipt:
+[implementation](evidence/FIX-004-implementation.md). STATE: `active_task: null`, FIX-004
+`review_required`, `next_task: FIX-004` (its review). Review input:
+[FIX-004-manifest.json](evidence/FIX-004-manifest.json) **`2f4cf482…`** (11 files); diff **`5550aab9…`** (36,266 bytes). Baseline `5ea49fe`.
+Nothing is committed, pushed, deployed or configured, and no production state was read.
+- **In one example.** On 7 Oct, 3 of the 5 "Recent observations" in IDFCFIRSTB's digest were
+  dated 24 Oct, a board meeting that had not happened. After FIX-004 the weekly scan skips an
+  event until its date, and the digest lists only rows dated today or earlier: IDFCFIRSTB's five
+  newest real notes.
+- **The rule chosen** (the card asked for a choice and its reasons):
+  - write time: skip an event dated after the run. It is not digested and not watermarked, and
+    the first scan on or after its date picks it up;
+  - read time: the digest leaves out observations and open guidance dated after its date. Stored
+    rows are not rewritten.
+  - Why: the ingestion prompt says the event "just happened"; the live NSE feed already shows
+    upcoming meetings; future meetings no longer take the 3-event scan cap. The reasons are in
+    the receipt and the card.
+- **Tests:**
+  - a new file of 53 tests: the event-date table against a pinned run date, an all-fields
+    invariant, the cap, one meeting from scan to digest, and 45 digest dates;
+  - focused 80 passed; the baseline code and 7 mutants are all caught;
+  - full suite **4214 passed, 12 skipped, 0 failed** (`data/`, `logs/` and `outputs/` unchanged);
+  - `check_kt_docs` errors `[]`.
+- **Self-review findings** (not the fresh review): none critical or high.
+  - L1: the old future rows come back on their date (24 and 27 Oct). No migration is authorised.
+  - L2: a skipped meeting relies on a later weekly scan and on NSE's first-5 list (unmeasured).
+  - L3: rows carry event dates, not learned dates. Routed to SA-013.
+  - I1–I3 are info.
+- **Docs:** KT §5 and the PDF (source `ae47071f…`), RL_DESIGN §23.1 and §26, guide case 04-H,
+  and the FIX-004, SA-046 and SA-013 cards.
+- **Next, in order:**
+  1. **FIX-004's fresh review, in a new conversation** ("continue"). Re-verify the manifest,
+     reconstruct one board-meeting event from scan to digest, and check every dossier date
+     writer (the receipt's table).
+  2. After acceptance, at the owner's word: commit the code, tests, docs, receipts (with the
+     7 Oct probe receipt and the SA-038 L2 note), STATE and HANDOFF; then bump the KT. Push only
+     on the owner's word, in a job-free window. Unless a deploy lands before it, the Sat 10 Oct
+     10:00 IST scan runs on the old code and may add more future-dated rows.
+  3. After a deploy, the owner reruns the count probe (read-only) after the first weekly scan on
+     the new code.
+  4. Still open: SA-038's Sunday 11 Oct heartbeat check. ~~SA-010's 16:30 log check (owner-run).~~
+     **SA-010 VERIFIED, 10 Oct:** the owner counted the `406ad444` logs, read-only. The 7, 8 and 9 Oct
+     runs are whole; 6 Oct is only partly in the window.
+     - Every `^CNXAUTO` and `^CNXENERGY` line says unavailable. No `^NSEBANK`, `^CNXIT` or
+       `^NSEI` line does.
+     - yfinance's `CNXAUTO` lines are 10, 8 and 10 a day, against 54 before SA-010.
+     - Every line pairs each sector with its own index on all three days, and others get
+       `^NSEI`.
+     - Stocks with two lines: 1 on 7 Oct, 1 on 8 Oct, 6 on 9 Oct.
+     - Every second line falls inside the 16:30 review, under 2 minutes after the first and
+       with the same sector. That fits the legacy fallback of review I2. 9 Oct had 6 such
+       pairs; 7 and 8 Oct had 1 each.
+     - The 9 Oct gap is explained: ACMESOLAR runs as `generic` in production, so it is measured
+       against Nifty 50 by design. Whether it belongs in renewable is a question for SA-026.
+     - Not observed: the data-health page's record of the index. STATE has the verified note.
+     - The full counts are in STATE, under SA-010 `production_verification`.
+
+**Previous: SA-038 was ACCEPTED by its fresh-session review** (6 Oct, about 11:14–11:40 IST, a new
 conversation opened with "continue"). Receipt: [review](evidence/SA-038-review.md). STATE:
 `active_task: null`, SA-038 `done`, `production_verification: pending_deployment`,
 `next_task: FIX-004`. The review itself committed, pushed, deployed and configured nothing, and
@@ -16,7 +117,17 @@ it read no production state.
     entry fails 2 of 5 tests. Guide 12-I and the IPO plan are updated.
   - The KT bump follows: it declares `70fce66`, edition 2026-10-06, PDF source `77a16c4e…`,
     `check_kt_docs` errors `[]`.
-  - **Push:** in the 12:05–14:55 IST window.
+  - **PUSHED** `a502cf7..5ea49fe` at 12:05:15 IST, at the owner's word. **The deploy is not
+    yet confirmed.** The live deployment before the push was `8b97dab8`. Claude's polling of
+    `railway deployment list` after the push was blocked by the auto-mode classifier.
+  - **DEPLOYED.** The owner's read-only `railway deployment list` shows **`406ad444` SUCCESS**,
+    created 12:05:15 IST, and `8b97dab8` REMOVED. `/health` returned ok at 20:01 IST (owner). SA-038's
+    `production_verification` is now `pending_observation`: the 7 Oct 06:30 watchdog mail should
+    carry no "LAPSED" critical for the 8 retired ids.
+  - **7 Oct 06:30: met.** The owner pasted the mail. Its only item is SA-007's weekly backup
+    reminder, which is expected: the off-site setup is deferred to the end of the PI. No
+    "LAPSED" critical appeared. Still to observe: the Sunday 11 Oct heartbeat lists only
+    `ipo_verdicts_visible_gate` and the invariants.
 - **In one example.** The A1 entry asked whether A1 (deployed 25 Aug) stopped other sectors'
   tickers from being written under `automobile/`. SA-009's production inventory of 30 Sep says it
   did not: there were 16 such copies, and they were still gaining feedback rows. SA-009's fix and
@@ -52,13 +163,27 @@ it read no production state.
      - delete the IPO assert in test 3 (line 94);
      - delete the two IPO asserts in test 5 (lines 108 and 116).
      Run that file and `tests/unit/ops`. The registry edit still relies on the owner's allow rule.
-  3. **Push in the 12:05–14:55 IST window**, at the owner's word. Afterwards the owner removes the
+  3. **PUSHED 12:05:15 IST; DEPLOYED as `406ad444` (SUCCESS).** ~~Push in the 12:05–14:55 IST window.~~ **The four allow rules were removed** at the owner's word (settings.local.json restored, about 12:15 IST). Afterwards the owner removes the
      four allow rules. SA-038's production check, read-only, after the deploy: the next 06:30
      watchdog run sends no critical for any deleted id, and the Sunday heartbeat lists only the
      IPO milestone(s) and the invariants.
-  4. **SA-010's read-only production check** at today's 16:30 review (unchanged).
-  5. **FIX-004:** the owner-run count probe, now with the research split; then its implementation
-     in a new conversation; then its fresh review. Then the normal STATE queue resumes.
+  4. **SA-010's read-only production check** of today's 16:30 review, which ran on `406ad444`.
+     **The owner runs it.** Claude's read-only `railway logs 406ad444 --json` fetch was denied
+     by the auto-mode classifier (Production Reads) at about 22:28 IST, and preparing a log
+     counter was denied with it. Neither was retried. What to look for is STATE SA-010
+     `production_verification.after_deploy`.
+  5. **FIX-004: the count probe RAN** (the owner, 7 Oct 11:43 IST, deploy `406ad444`). The
+     result is in the [probe receipt](evidence/FIX-004-probe-2026-10-06.md).
+     - **Measured:** 2 of 25 dossiers have future dates. IDFCFIRSTB has 3 observations
+       dated 24 Oct, all 3 in its digest's newest 5. STARHEALTH has 1 guidance item dated
+       27 Oct. Each has 2 watermark keys on that date.
+     - **Reading:** this is a pattern, and event ingestion explains every row. The card now
+       says the read-time rule covers "Open guidance" as well as "Recent observations".
+     - **SA-038 L2 is closed:** 12 of 17 research rows carry a source (71%), and none of the
+       406 other rows does. No fix is needed.
+     - **DONE 8 Oct (above): FIX-004's implementation, in a new conversation**, then its fresh review. Then
+       the normal STATE queue resumes. FIX-004 stays `todo` until the implementation starts.
+       The Sat 10 Oct 10:00 IST scan runs before any FIX-004 deploy and may add more rows.
 
 **Previous: SA-038's implementation — the pre-review record.** SA-038 was `review_required` (`active_task: null`, `next_task: SA-038`). It was implemented on
 5–6 Oct in one new conversation: started about 23:44 IST, resumed 07:54 IST, and finished about

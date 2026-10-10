@@ -1625,7 +1625,10 @@ forgetting), which ships separately.
 `to_digest(max_chars)` renders a markdown digest (whole sections, priority order:
 business → thesis → signatures → guidance → catalysts → flows → questions → last 5
 observations). A signature with `contradictions ≥ occurrences` is dead: excluded from
-digests, dropped at distillation.
+digests, dropped at distillation. Observations and open guidance dated after the digest's
+date (`as_of`, default today) are left out, and the last 5 observations are chosen from the
+rest (FIX-004): rows written before FIX-004 by event ingestion can carry a future
+board-meeting date. Stored rows are not rewritten.
 
 ### 23.2 DossierCurator — Step 8.5, EVERY day
 
@@ -1788,7 +1791,10 @@ The dossier learns from corporate *events*, not just the daily tape — the path
   announcements/board-meetings feed by keyword (results, concall, transcript, guidance,
   investor presentation, dividend, …) within `EVENT_INGEST_LOOKBACK_DAYS` (8). Watermark
   `TickerDossier.ingested_event_keys` ("{date}|{subject[:60]}", FIFO cap 40) prevents
-  re-ingestion.
+  re-ingestion. Only events dated on or before the scan date qualify (FIX-004): every row a
+  digest writes carries the event's date, so a board meeting announced for a later date is
+  skipped, left out of the watermark and the 3-event cap, and digested by the first scan on or
+  after its date. Fundamentals/earnings agents still see upcoming meetings in the live NSE feed.
 - **Enrich (capped)**: per event, the announcement text + ONE Tavily full-page extraction
   (cached client; silently skipped without `TAVILY_API_KEY`), bundle ≤
   `EVENT_INGEST_TEXT_MAX_CHARS` (6000). No Serper spend.

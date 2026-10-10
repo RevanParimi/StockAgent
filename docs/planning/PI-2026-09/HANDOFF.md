@@ -1,10 +1,56 @@
-# Current handoff - 2026-10-10 (updated about 15:05 IST)
+# Current handoff - 2026-10-10 (updated about 15:55 IST)
 
 ## START HERE — resume checklist, in order
 
-**FIX-004 was ACCEPTED by its fresh-session review** (10 Oct, about 14:36–15:05 IST, a new
+**FIX-004 change 1 was IMPLEMENTED and awaits its fresh-session review** (10 Oct, about
+15:28–15:55 IST, a new conversation opened with "continue"). Receipt:
+[implementation, section "Change 1"](evidence/FIX-004-implementation.md). STATE:
+`active_task: null`, FIX-004 `done` (deployed `0fa598ec`), `change_1: review_required`,
+`next_task: FIX-004` (meaning change 1's review). Review input:
+[FIX-004-change1-manifest.json](evidence/FIX-004-change1-manifest.json) **`146c7507…`** (11
+files); diff **`2ebe6299…`** (28,835 bytes), baseline `0ebd29b`. No production state was read.
+- **COMMITTED BEFORE ITS FRESH REVIEW, at the owner's word** ("go ahead commit and push", about
+  18:25 IST 10 Oct). This is a recorded deviation from REVIEW.md's order. Status stays
+  `review_required`. The fresh review reviews the committed bytes: `kt_manifest.py verify
+  FIX-004-change1-manifest.json --rev <commit>` must give 0 mismatches. Any requested change
+  lands as a follow-up commit. The commit and push details are under "Next" below.
+- **In one example.** A held stock has results on Tue 27 Oct. Its dossier holds open guidance
+  dated 15 Sep and a pre-FIX-004 item dated 27 Oct (STARHEALTH's shape). Before, the briefs of
+  Mon 26 and Tue 27 Oct, the two in the 3-day earnings window, showed the 27 Oct item as the
+  watch line. Now both show the 15 Sep item.
+- **Decision for the review (C1).** The scope said "on or before the brief's date". The code uses
+  **before** it:
+  - the brief goes out Mon–Fri at 08:50, before any weekday dossier writer (the curator at
+    16:30; event ingestion and research on Saturdays);
+  - the window includes the meeting day, so "on or before" would still show the 27 Oct row on
+    the 27 Oct morning;
+  - the cost: a brief triggered by hand after 16:30 leaves out that day's new guidance until
+    the next day.
+- **Design.** The dossier gains `open_guidance(as_of)`, which the digest (last 5) and the brief
+  (last 1, as of the day before) both use. The digest's behaviour is unchanged.
+- **Tests:**
+  - 51 new brief tests: a hand-written table, the review's L1 repro, a 36-date sweep, and an
+    end-to-end build and render;
+  - 2 for the review's I1 (7 known open items: the newest 5 listed);
+  - all 12 in-memory swaps are caught: the baseline and 11 mutants, including the literal
+    "on or before" (7 failures) and the review's G1;
+  - full suite **4267 passed, 12 skipped, 0 failed**, with `data/`, `logs/` and `outputs/`
+    unchanged; `check_kt_docs` errors `[]`.
+- **Self-review:** none critical, high or medium. L1 is the hand-triggered brief above. L2: the
+  rule rests on the schedule. I1: a morning reader of the digest, such as the chat tool, still
+  shows an old row on its own day, as reviewed. I2: the other raw readers are unchanged.
+- **Docs:** KT §5 and the PDF, RL_DESIGN §23.1, guide 04-H, and the FIX-004 and SA-046 cards.
+- **Next, in order:**
+  1. **Fresh review of change 1** in a new conversation ("continue"), by REVIEW.md. Landing it
+     before **Mon 26 Oct** (the first brief in STARHEALTH's window) needs the review, the
+     owner's word to commit and push, and a job-free window.
+  2. FIX-004's production check (owner, read-only): rerun the count probe after the 17 Oct
+     10:00 IST scan, and sample IDFCFIRSTB's digest before 24 Oct.
+  3. Still open: SA-038's Sunday 11 Oct heartbeat check.
+
+**Previous: FIX-004 was ACCEPTED by its fresh-session review** (10 Oct, about 14:36–15:05 IST, a new
 conversation opened with "continue"). Receipt: [review](evidence/FIX-004-review.md). STATE:
-`active_task: null`, FIX-004 `done`, `production_verification: pending_deployment`,
+`active_task: null`, FIX-004 `done`, deployed as `0fa598ec`, `production_verification: pending_observation`,
 `change_1: todo`. The verdict covers review input **`2f4cf482…`** and diff **`5550aab9…`**
 (worktree on `5ea49fe`, uncommitted), plus documentation-only review edits. Nothing was
 committed, pushed, deployed or configured, and no production state was read.
@@ -34,14 +80,18 @@ committed, pushed, deployed or configured, and no production state was read.
   1. **DONE (`ff95a51`, then the KT bump to it).** ~~At the owner's word, commit FIX-004.~~ Include the 11 manifest paths, the four FIX-004
      receipts (probe, implementation, manifest, review), the SA-038 review's L2 note, STATE and
      HANDOFF. Never include `.claude/settings.local.json`. Then bump the KT to that commit.
-  2. **Pushing now at the owner's word** ("dont worry commi and push now", about 15:07 IST,
-     inside the 15:05–16:25 IST window); the owner confirms the deploy. ~~Push only on the owner's word, in a job-free window~~ (safest 00:10–06:20 IST). The
+  2. **PUSHED `5ea49fe..0ebd29b` at 15:10:49 IST** at the owner's word ("dont worry commi and
+     push now"), inside the 15:05–16:25 IST window. **DEPLOYED:** the owner's read-only
+     `railway deployment list` shows **`0fa598ec` SUCCESS**, created 15:10:50 IST, and
+     `406ad444` REMOVED. `/health` is the owner's check. FIX-004's
+     `production_verification` is now `pending_observation` (step 3). This push note and the STATE entry are not committed yet; they go with the
+     next commit. ~~Push only on the owner's word, in a job-free window~~ (safest 00:10–06:20 IST). The
      10 Oct 10:00 IST scan ran on the old code. Each Saturday scan before the deploy can add
      more future-dated rows.
   3. **After the deploy** (read-only, by the owner): rerun the count probe after the first
      Saturday scan on the new code, and sample IDFCFIRSTB's digest before 24 Oct (STATE
      `after_deploy`).
-  4. **Then FIX-004 change 1**, in a new conversation ("continue"): apply the date rule in
+  4. **IMPLEMENTED 10 Oct (above); awaits its review.** ~~Then FIX-004 change 1~~, in a new conversation ("continue"): apply the date rule in
      `_earnings_watch`, then its own fresh review. It is worth landing before about 22 Oct. The
      owner may drop it.
   5. Still open: SA-038's Sunday 11 Oct heartbeat check. SA-010 was verified on 10 Oct (below).

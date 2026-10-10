@@ -11,7 +11,7 @@ import json
 import logging
 import re
 import time
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 from core.config import settings
@@ -343,19 +343,24 @@ def _load_ticker_dossier(ticker: str, sector: str):
     return PredictionStore(ticker, sector=sector).load_dossier()
 
 
-def _earnings_watch(symbol: str) -> str:
+def _earnings_watch(symbol: str, on: date) -> str:
     """Latest open-guidance one-liner from the ticker's dossier, else ''.
+
+    Only guidance dated before `on` (the brief's date) counts (FIX-004 change 1).
+    The brief goes out at 08:50, before any weekday dossier writer runs, so a
+    row dated `on` itself can only be one that event ingestion stamped with a
+    board meeting's future date before FIX-004: on the meeting's morning it
+    would describe results that are not out yet.
     Best-effort — any failure (no sector/dossier/guidance) yields ''. Never raises."""
     try:
         sector = _resolve_sector(symbol)
         dossier = _load_ticker_dossier(symbol, sector)
         if dossier is None:
             return ""
-        open_g = [g for g in getattr(dossier, "guidance", []) or []
-                  if getattr(g, "status", "") == "open"]
+        open_g = dossier.open_guidance((on - timedelta(days=1)).isoformat())
         if not open_g:
             return ""
-        return _trim_words(getattr(open_g[-1], "guidance", "") or "",
+        return _trim_words(open_g[-1].guidance or "",
                            settings.DELIVERY_BRIEF_EARNINGS_WATCH_MAXLEN)
     except Exception as exc:
         logger.debug("[brief] earnings watch failed for %s (non-fatal): %s", symbol, exc)
@@ -763,7 +768,7 @@ def build_morning_brief(
     }
     # Earnings "why": attach a best-effort dossier watch-line per held earnings.
     for e in brief["earnings_soon"]:
-        e["watch"] = _earnings_watch(e.get("symbol", ""))
+        e["watch"] = _earnings_watch(e.get("symbol", ""), on)
 
     # Headline + overnight relevance notes ride one narration call. Tolerate a
     # plain-str return (older monkeypatched callers/tests) as headline-only.

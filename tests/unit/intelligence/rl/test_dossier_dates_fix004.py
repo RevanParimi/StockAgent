@@ -333,3 +333,44 @@ def test_stored_rows_are_not_rewritten_by_the_digest():
     d.to_digest(10_000, as_of="2026-10-07")
 
     assert d.model_dump() == before
+
+
+# ---------------------------------------------------------------------------
+# Change 1 (the fresh review's I1): filter first, then take the newest 5
+# ---------------------------------------------------------------------------
+
+# Stored order, with future rows in the middle and at the end. Seven open items
+# are known on 7 Oct, so the digest has more than five to choose from.
+_MANY_GUIDANCE = ["2026-08-25", "2026-09-01", "2026-09-05", "2026-10-27", "2026-09-10",
+                  "2026-09-15", "2026-09-20", "2026-09-25", "2026-10-24", "2026-10-27"]
+
+
+def _many() -> TickerDossier:
+    return TickerDossier(
+        ticker="TESTB", sector=SECTOR, created_at="2026-08-01", last_updated="2026-10-07",
+        guidance=[GuidanceItem(date=d, source="s", guidance=f"item {i}")
+                  for i, d in enumerate(_MANY_GUIDANCE)]
+        + [GuidanceItem(date="2026-09-30", source="s", guidance="met item", status="met")])
+
+
+def test_digest_takes_the_newest_five_known_guidance_items():
+    digest = _many().to_digest(10_000, as_of="2026-10-07")
+
+    # Written by hand: the known open items are 0-2 and 4-7; the newest five are
+    # 2 and 4-7. Taking the stored last five first would leave only 5-7.
+    assert _section_dates(digest, "Open guidance") == [
+        "2026-09-05", "2026-09-10", "2026-09-15", "2026-09-20", "2026-09-25"]
+    for i in (2, 4, 5, 6, 7):
+        assert f"item {i}" in digest
+    assert "met item" not in digest
+
+
+def test_open_guidance_keeps_stored_order_and_drops_later_and_closed_rows(monkeypatch):
+    d = _many()
+
+    assert [g.guidance for g in d.open_guidance("2026-10-07")] == [
+        "item 0", "item 1", "item 2", "item 4", "item 5", "item 6", "item 7"]
+    assert [g.guidance for g in d.open_guidance("2026-10-24")][-1] == "item 8"   # same day: known
+    _pin_clock(monkeypatch, date(2026, 9, 10))
+    assert [g.guidance for g in d.open_guidance()] == [
+        "item 0", "item 1", "item 2", "item 4"]                                  # default: today

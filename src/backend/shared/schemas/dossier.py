@@ -86,6 +86,15 @@ class TickerDossier(BaseModel):
     # Event-ingestion watermark — keys of NSE announcements already digested (cap 40 at merge site).
     ingested_event_keys: list[str] = Field(default_factory=list)
 
+    def open_guidance(self, as_of: str | None = None) -> list[GuidanceItem]:
+        """Open guidance dated on or before `as_of` (ISO date; default: the
+        current date), in stored order, the latest learned last. The digest and
+        the morning brief's earnings watch both choose from this list (FIX-004),
+        so neither shows a pre-FIX-004 row stamped with a future meeting date.
+        """
+        as_of = as_of or _date.today().isoformat()
+        return [g for g in self.guidance if g.status == "open" and g.date[:10] <= as_of]
+
     def to_digest(self, max_chars: int = 2500, as_of: str | None = None) -> str:
         """Markdown digest for prompt injection. Whole sections only, priority order.
 
@@ -116,7 +125,7 @@ class TickerDossier(BaseModel):
             lines = [f"- [{', '.join(s.trigger_tags)}] {s.response}"
                      f" (seen {s.occurrences}x, conf {s.confidence:.2f})" for s in live]
             sections.append("## Response signatures\n" + "\n".join(lines))
-        open_g = [g for g in self.guidance if g.status == "open" and _known(g.date)][-5:]
+        open_g = self.open_guidance(as_of)[-5:]       # filter first, then the newest 5
         if open_g:
             sections.append("## Open guidance\n" + "\n".join(
                 f"- {g.date} ({g.source}): {g.guidance}" for g in open_g))

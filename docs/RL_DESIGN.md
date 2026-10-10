@@ -1628,7 +1628,11 @@ observations). A signature with `contradictions ≥ occurrences` is dead: exclud
 digests, dropped at distillation. Observations and open guidance dated after the digest's
 date (`as_of`, default today) are left out, and the last 5 observations are chosen from the
 rest (FIX-004): rows written before FIX-004 by event ingestion can carry a future
-board-meeting date. Stored rows are not rewritten.
+board-meeting date. Stored rows are not rewritten. Open guidance comes from
+`open_guidance(as_of)`: open items dated on or before `as_of`, in stored order; the
+digest lists the last 5. The morning brief's earnings-watch line takes the last item of
+`open_guidance` as of the day before the brief, because the brief goes out at 08:50,
+before any weekday dossier writer runs (FIX-004 change 1).
 
 ### 23.2 DossierCurator — Step 8.5, EVERY day
 

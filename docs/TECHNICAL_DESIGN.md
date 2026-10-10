@@ -777,8 +777,11 @@ two production dossiers held 3 observations and 1 guidance item dated 24 and
 27 Oct ([probe](planning/PI-2026-09/evidence/FIX-004-probe-2026-10-06.md)).
 The digest the agents read leaves out observations and open guidance dated
 after its own date; stored rows are not rewritten. The morning brief's
-earnings-watch line still reads the newest open guidance without that date
-check (review L1; FIX-004 change 1 is planned). Discovery paper tracking uses a separate store root with learning
+earnings-watch line takes the latest open guidance dated before the brief's
+own date (review L1; FIX-004 change 1, implemented 2026-10-10, awaiting its
+fresh review). The brief goes out at 08:50, before any weekday dossier writer
+runs, so a row dated that day can only be an old future-dated one, such as the
+27 Oct row on the 27 Oct meeting's morning. Discovery paper tracking uses a separate store root with learning
 writes disabled for that lane; it is not live investor performance.
 
 ## 6. Portfolio: advice and virtual execution

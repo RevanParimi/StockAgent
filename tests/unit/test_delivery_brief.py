@@ -572,23 +572,25 @@ def test_ipo_watch_carries_issue_size_to_the_row(monkeypatch):
 
 
 def test_earnings_watch_returns_open_guidance(monkeypatch):
-    class _G:
-        def __init__(self, status, guidance):
-            self.status, self.guidance = status, guidance
-
-    class _Dossier:
-        guidance = [_G("met", "old thing"),
-                    _G("open", "FY27 capex guidance of INR 42,000 crore")]
+    from backend.shared.schemas.dossier import GuidanceItem, TickerDossier
+    dossier = TickerDossier(
+        ticker="ACMESOLAR", sector="renewable_energy", created_at="2026-07-01",
+        last_updated="2026-07-20",
+        guidance=[GuidanceItem(date="2026-07-10", source="s", guidance="old thing",
+                               status="met"),
+                  GuidanceItem(date="2026-07-15", source="s",
+                               guidance="FY27 capex guidance of INR 42,000 crore")])
 
     monkeypatch.setattr(br, "_resolve_sector", lambda t: "renewable_energy")
-    monkeypatch.setattr(br, "_load_ticker_dossier", lambda t, s: _Dossier())
-    assert br._earnings_watch("ACMESOLAR") == "FY27 capex guidance of INR 42,000 crore"
+    monkeypatch.setattr(br, "_load_ticker_dossier", lambda t, s: dossier)
+    assert (br._earnings_watch("ACMESOLAR", date(2026, 7, 28))
+            == "FY27 capex guidance of INR 42,000 crore")
 
 
 def test_earnings_watch_empty_when_no_dossier(monkeypatch):
     monkeypatch.setattr(br, "_resolve_sector", lambda t: "x")
     monkeypatch.setattr(br, "_load_ticker_dossier", lambda t, s: None)
-    assert br._earnings_watch("FOO") == ""
+    assert br._earnings_watch("FOO", date(2026, 7, 28)) == ""
 
 
 def test_render_earnings_generic_and_watch():

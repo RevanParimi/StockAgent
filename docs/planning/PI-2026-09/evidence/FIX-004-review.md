@@ -198,3 +198,208 @@ The receipt's own self-review findings (L1–L3, I1–I3) are upheld as written.
 - **Next, at the owner's word:** commit FIX-004 together with the 7 Oct probe-phase bookkeeping,
   bump the KT, and push in a job-free window. Then **FIX-004 change 1** (L1), in its own
   conversation, then its own fresh review.
+
+## Change 1 fresh-session review: ACCEPTED (2026-10-10)
+
+- **What was reviewed:** FIX-004 change 1, the morning brief's earnings watch, as committed in
+  **`61c85d6`** ([implementation receipt](FIX-004-implementation.md), section "Change 1"):
+  - `TickerDossier.open_guidance(as_of)` (`dossier.py:89-96`); the digest lists
+    `open_guidance(as_of)[-5:]` (`:128`);
+  - `_earnings_watch(symbol, on)` takes the last item of `open_guidance(on - 1 day)`
+    (`brief.py:346-367`), and `build_morning_brief` passes the brief's date (`:771`);
+  - the new `test_brief_earnings_watch_fix004.py` (51), 2 tests added to
+    `test_dossier_dates_fix004.py`, 2 adapted in `test_delivery_brief.py`; KT §5 and the PDF,
+    RL_DESIGN §23.1, guide case 04-H, and the FIX-004 and SA-046 cards.
+- **Context:** a fresh-session review in a new conversation opened with "continue", 10 Oct 2026,
+  from about 20:14 IST. It is not the conversation that implemented change 1, and it did not
+  read that chat.
+  - It reviews committed bytes. At the owner's word, change 1 was committed and pushed before
+    this review (a recorded deviation from REVIEW.md's order). The owner reported the deploy
+    and `/health` good at about 20:10 IST.
+  - One StockAgent peer session (`stockagent-main-e5`) was busy throughout. It was rewriting the
+    living docs in the worktree (the KT, ARCHITECTURE, the PDF, RL_DESIGN and others;
+    uncommitted, owner-requested). The review input is the commit, so the rewrite does not
+    touch it. This review edited none of the peer's files (see "Review edits").
+- **Nothing** was committed, pushed, deployed or configured. No production state was read.
+  SA-005's hermetic boundary was active in every test run.
+
+### Review input verified
+
+- The reviewer's own script (`analysis_data/fix004/review_change1/rc_verify.py`, ignored), not
+  the implementer's `diff_digest.py`, checked the input:
+  - the manifest as committed at `61c85d6` has the LF SHA-256 **`146c7507…`**, as recorded;
+  - all 11 paths match their git blob id at `61c85d6`, and the 10 text files also match their
+    SHA-256 (the PDF by blob id; its body was read separately, below): **0 mismatches**;
+  - the diff `0ebd29b..61c85d6` over the 10 text paths, sorted, is 28,835 bytes, **`2ebe6299…`**,
+    as recorded. The commit-to-commit form gives the same bytes as the receipt's worktree
+    recipe.
+  - `kt_manifest.py verify … --rev 61c85d6` agrees: 0 mismatches.
+- **Drift.** At the start, the worktree differed from `61c85d6` on the manifest's paths in exactly
+  the KT, the PDF and the guide: the KT bump `47d49c9`, as recorded. Code and test bytes in the
+  worktree equal the commit. The peer's later rewrite of the KT and PDF adds to that drift only.
+  The re-check at the end gave the same code and test result.
+
+### Contract checked
+
+| Change 1 scope | Verdict | Evidence |
+|---|---|---|
+| `_earnings_watch` applies the digest's date rule | **Met**, with a stricter cutoff (C1, upheld) | `brief.py:360`, through `dossier.py:96` |
+| A future-dated item is never the watch line | **Met** | The 8-date table, the L1 reproduction, the 36-date sweep, end to end on 26 and 27 Oct (text and HTML), and the reviewer's trace (below) |
+| A digest with 6 or more open items filters, then takes the last 5 (review I1) | **Met** | `test_digest_takes_the_newest_five_known_guidance_items`. The digest's expression is the old one, moved. The reviewer's D1 (the oldest five) is caught. |
+| Docs: KT §5, and a guide case for the brief | **Met** | KT §5 at `61c85d6` and at the bump `47d49c9`, guide 04-H, RL_DESIGN §23.1, the cards |
+
+**Every writer of a guidance date**, checked by code at `61c85d6`:
+
+| Writer | When | Date it stamps | Can a row dated the brief's day exist at 08:50? |
+|---|---|---|---|
+| `DossierCurator._merge` → `merge_curator_output` | daily review, `FEEDBACK_CRON` 16:30 Mon–Fri | `entry.date` = the review date (`daily_review.py:119`, `:1582`; `dossier_curator.py:219`) | No: it is written at 16:30 that day |
+| `EventIngestor.run` → `merge_curator_output` | Sat 10:00 (`scheduler.py:297-310`) | the event's date, never after the run (`event_ingestor.py:121`, `:235`, `:253`) | No on a weekday. Monday's brief (as of Sunday) counts rows dated Saturday. |
+| `QuestionResearcher` | Sat 11:00 | none: it passes no `guidance_updates` (`question_researcher.py:315-319`) | n/a |
+| `distill_dossier` | weekly | none: only sets `withdrawn` (`dossier_curator.py:271-274`) | n/a |
+
+**Consumers.** `brief["earnings_soon"][i]["watch"]` goes to `save_brief`, which
+`/delivery/brief/latest` and the chat tool read back (`ui_data.py:2695`), and to
+`render_brief_text` and `render_brief_html`, which go to `deliver`. `_earnings_watch` has no
+other caller. `open_guidance` has two: the brief and `to_digest`.
+
+### Decisions
+
+- **C1 (before the brief's date, not on or before): upheld.**
+  - The window includes the meeting day: `next_results_event` keeps `ev_date >= on`
+    (`corporate_events.py:153`), and the brief keeps events at most 3 calendar days away
+    (`brief.py:512`). So the scope's literal rule would still show the pre-FIX-004 row on the
+    meeting's morning. The reviewer's R7 mutant (on or before) fails 7 of the implementer's
+    tests and 3 of the 4 trace tests.
+  - No weekday writer runs before 08:50, so "before" loses nothing at the scheduled time.
+  - Cost (self-review L1, confirmed by code): a brief triggered by hand after the 16:30 review
+    leaves out that day's new guidance until the next brief. It never shows a wrong line.
+  - A benefit the receipt does not claim: a replay (`run-brief?on=<past date>`,
+    `delivery_api.py:60-73`) no longer shows guidance dated after its brief (trace 3).
+- **C2 (one rule, in one place): upheld.** The digest's behaviour is unchanged. The old
+  expression was `[g … if open and _known(g.date)][-5:]`, where `_known` is `d[:10] <= as_of`,
+  which is exactly `open_guidance(as_of)[-5:]`.
+- **C3 (the latest stored, not the latest dated): upheld.** Guidance is append-only:
+  `merge_curator_output` appends and trims to the last 20, and status edits are in place. So
+  the latest stored is the latest learned. The reviewer's R5 (latest by date) is caught by
+  `test_latest_stored_wins_over_latest_dated`.
+
+### Independent adversarial examples
+
+The reviewer's own trace (`analysis_data/fix004/review_change1/test_rc_trace.py`, ignored; run
+under the suite's hermetic hooks). It runs in production order through:
+- the real `run_morning_brief`: the trading-day check, the saved brief, text and HTML, with the
+  delivery call captured;
+- a real `PredictionStore` under `tmp_path`;
+- the real writer, `merge_curator_output`.
+
+Results are on Tue 27 Oct. Tue 20 Oct is an NSE holiday. The expected lines were written by
+hand from "what had the system learned by 08:50 that morning".
+
+1. **Writers between briefs.** The store holds a 15 Sep item and a pre-FIX-004 row dated 27 Oct.
+   - 19, 21 and 23 Oct: no earnings line. 23 Oct is 4 days out.
+   - The Sat 24 Oct scan writes a row dated 24 Oct. The Mon 26 brief shows it.
+   - The Mon 16:30 curator writes a row dated 26 Oct. The Tue 27 brief shows it.
+   - 28 Oct: no window.
+   - The 27 Oct row is in no delivered text, HTML or saved brief.
+2. **Two pre-FIX-004 rows inside the window** (dated 26 and 27 Oct), no writers.
+   - Mon 26: the 15 Sep item. The 26 Oct row is dated the brief's own day.
+   - Tue 27: the 26 Oct row, dated the day before, and never the 27 Oct row.
+   - A row written before its date shows once that date has passed. That is FIX-004's accepted
+     behaviour: no migration is authorised.
+3. **Replay.** A `run-brief` for 26 Oct, after rows dated 26 and 27 Oct exist, shows the 15 Sep item.
+
+All 4 tests pass on `61c85d6`. The baseline `0ebd29b` fails 3 of the 4.
+
+### Reviewer mutations (in memory; repo files never written)
+
+`rc_swap_plugin.py` loads the baseline source, or a mutant of the reviewed source, into
+`sys.modules` before collection. Columns: the implementer's 3 files (172 tests), and the
+reviewer's trace (4).
+
+| Mode | What it does | Implementer tests | Trace |
+|---|---|---|---|
+| reviewed `61c85d6` | — | 172 passed | 4 passed |
+| base `0ebd29b` | the old brief and dossier | 53 failed | 3 failed |
+| R0 | no date check, new signature (the original defect) | 38 failed | 3 failed |
+| R1 | cutoff two days back | 5 failed | 2 failed |
+| R2 | cutoff anchored to the results date, not the brief's | **0 failed** | 2 failed |
+| R3 | cutoff = the previous trading session | 1 failed | 1 failed |
+| R4 | the oldest known item | 43 failed | 2 failed |
+| R5 | the latest dated item (a sort) | 1 failed | 0 failed |
+| R6 | status ignored in the brief | 2 failed | 0 failed |
+| R7 | the scope's literal "on or before" | 7 failed | 3 failed |
+| D1 | digest: the oldest five known items | 1 failed | 0 failed |
+| D2 | `open_guidance` compares the whole string (no `[:10]`) | 0 failed | 0 failed |
+| D3 | `open_guidance()` with no date: no filter | 1 failed | 0 failed |
+
+Every mutant that changes production behaviour is caught by one of the two sets. D2 is
+equivalent today: every writer stamps a plain `isoformat()` date.
+
+### Findings
+
+None is critical, high or medium.
+
+| ID | Severity | Location | Evidence | Disposition |
+|---|---|---|---|---|
+| L1 | low, product decision | `brief.py:360` | Self-review L1, confirmed by code. A brief triggered by hand after the 16:30 review omits that day's new guidance until the next brief. It shows the previous item or the generic line, never a wrong one. | Accepted with C1. No follow-up. |
+| I1 | info, tests | `tests/unit/test_brief_earnings_watch_fix004.py:153-196` | R2 passes all 172 implementer tests. The end-to-end fixture has no row dated the brief's own day inside the window, so a caller passing the results date instead of the brief's date goes unseen. The code is correct, and trace 2 catches R2. | Routed to the [SA-031](../stories/SA-031.md) card: add trace 2's 26 Oct row to the end-to-end fixture. |
+| I2 | info, receipt | implementation receipt, "Change 1", "Why (code)" | It names three guidance writers, the research loop among them. The research loop writes no guidance. The conclusion holds: it lists more writers than exist. | Recorded here. No action. |
+| I3 | info, scope | replay of a past brief | The rule uses the stored date. For an event row that is the event's date, not the day it was learned (FIX-004 L3, routed to SA-013). Status changes are not versioned. So a replay can count a row ingested after its brief but dated before it. The scheduled brief is unaffected. | Already routed (SA-013). No new action. |
+
+### Commands and results
+
+- Environment: Windows 11, `.stockai` venv (Python 3.13), with SA-005's hermetic boundary active.
+- `python analysis_data/fix004/review_change1/rc_verify.py 61c85d6`: 0 mismatches, `146c7507…`,
+  `2ebe6299…` (28,835 bytes); the same at the end.
+- `python -m pytest -q -p no:cacheprovider` on the 3 change-1 test files plus
+  `test_dossier_curator.py`, `test_event_ingestor.py` and `test_event_ingest_job.py`: **204 passed**.
+- `python analysis_data/fix004/review_change1/run_rc_mutants.py`: the mutation table above.
+- `PYTHONPATH="<repo>;<repo>/src;<review dir>" python -m pytest --rootdir <review dir> -p rc_swap_plugin
+  <review dir>/test_rc_trace.py`: 4 passed.
+- `python -u -m pytest -q -p no:cacheprovider -o console_output_style=count tests`: **4267 passed, 12 skipped, 0 failed** in 9 min 03 s (the receipt's count), on a worktree whose code and test bytes equal `61c85d6`. A fingerprint of `data/`, `logs/` and `outputs/` (the reviewer's own `rc_tree.py`: 798 files, `dec323a4…`) is the same before and after.
+- **The PDF against its source, at each commit.** The worktree's KT and PDF hold the peer's
+  rewrite, so `check_kt_docs` on the worktree would check that rewrite instead. The reviewer's
+  `rc_pdf_pair.py` reads each committed pair (`git show REV:…`) and runs `check_kt_docs`'s PDF
+  test on it:
+  - `61c85d6`: PDF blob `1d43620c`, KT source `6b1e4b5e…` printed in the PDF, 35 pages, no
+    chapter missing;
+  - `47d49c9`: PDF blob `f9e34256`, source `1fde0ed9…`, 35 pages, no chapter missing.
+- `PYTHONPATH=analysis_data/kt_docs_deps python scripts/docs/check_kt_docs.py`, after the review
+  edits, on the worktree: errors `[]`. That run checks the peer's KT, source `96fcf08a…`, and
+  this review's guide and card links.
+- **Not exercised:**
+  - production. Whether STARHEALTH is held on 26–27 Oct is the owner's read-only check;
+  - a real delivery (the delivery call was captured);
+  - the 08:50 job itself (code only);
+  - the container time zone (code: 08:50 IST is the same calendar date in UTC).
+
+### Review edits (documentation only)
+
+- Guide case 04-H: the status line ("accepted 2026-10-10, committed as `61c85d6`").
+- Cards: [FIX-004](../stories/FIX-004.md) "Change 1" (accepted). [SA-046](../stories/SA-046.md):
+  the status. [SA-031](../stories/SA-031.md): I1, routed.
+- STATE, HANDOFF and this receipt.
+- **Not edited: the KT, the PDF and RL_DESIGN.** The peer session told this review, by message,
+  what it changed: an owner-requested restructure of the living docs, uncommitted and docs only.
+  - It rewrote the KT as a design document, with the header still at `61c85d6`. The body no
+    longer carries commit, review or deploy status. Change 1's rule is in §5 with no status
+    wording, so the KT needs no edit for this verdict.
+  - It removed only the FIX-004 story tags from RL_DESIGN §23.1, leaving the rule's text
+    unchanged.
+  - It did not touch STATE, HANDOFF, the guide, or any evidence or story file.
+
+  So `verify FIX-004-change1-manifest.json` on the worktree now also mismatches RL_DESIGN, and
+  the guide after this edit. `--rev 61c85d6` is unaffected.
+- No code or test byte changed.
+
+### Acceptance and what remains
+
+- **Verdict: ACCEPTED** for `61c85d6` (review input `146c7507…`, diff `2ebe6299…`), plus the
+  documentation-only review edits above.
+- **Production verification: `pending_observation`.** It is deployed (the owner's report, about
+  20:10 IST 10 Oct; deployment id not recorded). Read-only, by the owner, and only if
+  STARHEALTH is held on Mon 26 or Tue 27 Oct: that morning's brief has no watch line from the
+  27 Oct row. If it is not held, the change is a guard with nothing to observe.
+- **Next:** FIX-004's own production check: the count probe after the 17 Oct 10:00 IST scan, and
+  IDFCFIRSTB's digest before 24 Oct. Also SA-038's Sunday 11 Oct heartbeat. Then the normal
+  queue resumes in STATE order, which is not started in this conversation.

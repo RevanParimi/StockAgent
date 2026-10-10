@@ -1,8 +1,83 @@
-# Current handoff - 2026-10-10 (updated about 15:55 IST)
+# Current handoff - 2026-10-10 (updated about 20:55 IST)
 
 ## START HERE — resume checklist, in order
 
-**FIX-004 change 1 was IMPLEMENTED and awaits its fresh-session review** (10 Oct, about
+**FIX-004 change 1 was ACCEPTED by its fresh-session review** (10 Oct, from about 20:14 IST, a new
+conversation opened with "continue"). Receipt: [review, section "Change 1 fresh-session
+review"](evidence/FIX-004-review.md). STATE: `active_task: null`, FIX-004 `done`,
+`change_1: accepted` with `production_verification: pending_observation`, and `next_task: SA-011`
+(not started). The verdict covers the **committed `61c85d6`**: input `146c7507…` and diff
+`2ebe6299…`, checked with the reviewer's own script, 0 mismatches. It was already deployed.
+Nothing was committed, pushed, deployed or configured in this phase, and no production state was
+read.
+- **In one example.** The reviewer's own trace runs the real brief job from 19 to 28 Oct, with
+  results on Tue 27 Oct.
+  - Between the briefs, the real writer adds a row from the Saturday 24 Oct scan and one from the
+    Monday 16:30 curator. The 26 Oct brief shows the Saturday row, and the 27 Oct brief the
+    Monday one.
+  - The pre-FIX-004 row dated 27 Oct is in no delivered text, HTML or saved brief.
+- **What the review checked:**
+  - every guidance writer, by code: the curator stamps the review date at 16:30; the Saturday
+    scan stamps event dates on or before its run; the research loop writes no guidance;
+    `distill_dossier` only withdraws items;
+  - every consumer: the saved brief (the API and the chat tool), and the text and HTML delivery;
+  - the reviewer's own mutations: every one that changes behaviour is caught. One, R2 (the
+    results date passed instead of the brief's date), survives the implementer's tests and is
+    caught only by the reviewer's trace (I1);
+  - the committed KT and PDF pairs at `61c85d6` and `47d49c9`;
+  - focused 204 passed; full suite **4267 passed, 12 skipped, 0 failed**, with `data/`, `logs/` and `outputs/` unchanged.
+- **Decisions.** C1 ("before the brief's date", not "on or before") is upheld: the window keeps
+  the meeting day, and with "on or before" the 27 Oct row shows on the meeting's morning. C2 and
+  C3 are upheld.
+- **Findings.** None is critical, high or medium. L1 (low; a brief triggered by hand after 16:30
+  omits that day's new guidance) is accepted with C1. I1 is routed to the SA-031 card. I2 (the
+  implementation receipt names the research loop as a guidance writer) and I3 (replays use
+  stored dates; already routed to SA-013) are info.
+- **Review edits (docs only):** guide 04-H's status; the FIX-004, SA-046 and SA-031 cards; the
+  review receipt; STATE; HANDOFF. **The KT, the PDF and RL_DESIGN were not edited.** A peer
+  session (`stockagent-main-e5`) restructured the living docs at the owner's request (block
+  below). Its KT body carries no review status, so it needs no edit for this verdict.
+- **COMMITTED at the owner's word** ("ya go ahead and commit", about 20:51 IST 10 Oct), in two
+  docs-only commits. **Not pushed.**
+  - **`b325ad2`:** the design-doc restructure (its 10 files);
+  - **the next commit** ("docs: record FIX-004 change 1's fresh-review acceptance"): this
+    review's 7 files. Its STATE and HANDOFF also carry the restructure's note and the earlier
+    push and deploy note.
+  - `.claude/settings.local.json` was not included.
+- **Next, in order:**
+  1. **Push only at the owner's word.** It is docs only, so a push only redeploys the code
+     production already runs, but the restart can still drop a job. Push in a job-free window
+     (safest 00:10–06:20 IST; avoid 22:55–00:05), or let these ride with the next code push.
+  2. FIX-004's production check (the owner, read-only): rerun the count probe after the 17 Oct
+     10:00 IST scan, and sample IDFCFIRSTB's digest before 24 Oct. For change 1, only if
+     STARHEALTH is held on 26 or 27 Oct: that brief's watch line is not the 27 Oct row.
+  3. Still open: SA-038's Sunday 11 Oct heartbeat check.
+  4. **SA-011**, the first ready planned story in STATE order (its dependencies SA-002 and SA-004
+     are done), in its own implementation conversation ("continue"). SA-008 change 1 stays
+     `todo`: it is gated, and not urgent.
+
+**Also 10 Oct: the design documents were restructured at the owner's request** (docs only, a
+separate conversation; committed as `b325ad2`, not pushed). The owner asked that design documents be updated as a whole,
+as proper design documents, not by appending per-story change notes.
+- **KT and ARCHITECTURE rewritten whole.** Sections 1–10 keep their headings and anchors.
+  Measured production state now lives in one dated table (KT section 1). Planned work is in
+  section 11. The roadmap is one table in section 12, with Status Done or Open. Commits, reviews
+  and deploys stay in STATE and the receipts, never in the design docs.
+- **Stale lines corrected in that table:** SA-006 and SA-007 change 1 are deployed; the TMPV
+  swap and TATAELXSI's regeneration are done; the SA-009 quarantine was applied on 1 Oct; and
+  IPO-lane rows are graded.
+- **Story tags removed** from CODEBASE.md, RL_DESIGN (FIX-004 wording only; the rule text is
+  unchanged), CHAT_ARCHITECTURE, PRODUCT_MAP, AGENTIC_DESIGN and LEGAL_AND_COMPLIANCE.
+  docs/README.md and KT section 12 now state the rule.
+- **Checks:** KT header still `61c85d6`; PDF rebuilt (source `96fcf08a…`, 37 pages);
+  `check_kt_docs` errors `[]`. No code, test or config changed.
+- **Changed files (10):** the KT, its PDF, ARCHITECTURE, CODEBASE.md, RL_DESIGN,
+  CHAT_ARCHITECTURE, PRODUCT_MAP, AGENTIC_DESIGN, LEGAL_AND_COMPLIANCE and docs/README.md.
+  Committed as `b325ad2` at the owner's word, before the review bookkeeping above.
+- **For every later story:** edit the affected section as current design, set the story's
+  Status in KT section 12, and put only measured production facts in section 1's table.
+
+**Previous: FIX-004 change 1 was IMPLEMENTED and awaited its fresh-session review** (10 Oct, about
 15:28–15:55 IST, a new conversation opened with "continue"). Receipt:
 [implementation, section "Change 1"](evidence/FIX-004-implementation.md). STATE:
 `active_task: null`, FIX-004 `done` (deployed `0fa598ec`), `change_1: review_required`,
@@ -15,7 +90,10 @@ files); diff **`2ebe6299…`** (28,835 bytes), baseline `0ebd29b`. No production
   FIX-004-change1-manifest.json --rev <commit>` must give 0 mismatches. Any requested change
   lands as a follow-up commit. Committed as **`61c85d6`** (15 files; `verify --rev 61c85d6`
   gives 0 mismatches), then the KT bump to it (KT §5, PDF source `1fde0ed9…`, guide 04-H).
-  Verify against `61c85d6`: later revisions differ in exactly those 3 docs. Push: see "Next".
+  Verify against `61c85d6`: later revisions differ in exactly those 3 docs. **PUSHED
+  `0ebd29b..47d49c9` at 18:28:06 IST** (17:55–18:55 window). **DEPLOYED:** the owner reported
+  about 20:10 IST that `railway deployment list` and `/health` are good (deployment id not
+  recorded). This push and deploy note is uncommitted and goes with the next commit.
 - **In one example.** A held stock has results on Tue 27 Oct. Its dossier holds open guidance
   dated 15 Sep and a pre-FIX-004 item dated 27 Oct (STARHEALTH's shape). Before, the briefs of
   Mon 26 and Tue 27 Oct, the two in the 3-day earnings window, showed the 27 Oct item as the

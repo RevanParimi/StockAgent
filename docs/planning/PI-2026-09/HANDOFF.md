@@ -31,10 +31,11 @@ committed, pushed, deployed or configured, and no production state was read.
   `2dcad25f…`); guide 04-H; the FIX-004 card (its "Fresh review" section defines change 1) and
   the SA-046 card. `verify FIX-004-manifest.json` now mismatches exactly those 5 files.
 - **Next, in order:**
-  1. **At the owner's word, commit FIX-004.** Include the 11 manifest paths, the four FIX-004
+  1. **DONE (`ff95a51`, then the KT bump to it).** ~~At the owner's word, commit FIX-004.~~ Include the 11 manifest paths, the four FIX-004
      receipts (probe, implementation, manifest, review), the SA-038 review's L2 note, STATE and
      HANDOFF. Never include `.claude/settings.local.json`. Then bump the KT to that commit.
-  2. **Push only on the owner's word, in a job-free window** (safest 00:10–06:20 IST). The
+  2. **Pushing now at the owner's word** ("dont worry commi and push now", about 15:07 IST,
+     inside the 15:05–16:25 IST window); the owner confirms the deploy. ~~Push only on the owner's word, in a job-free window~~ (safest 00:10–06:20 IST). The
      10 Oct 10:00 IST scan ran on the old code. Each Saturday scan before the deploy can add
      more future-dated rows.
   3. **After the deploy** (read-only, by the owner): rerun the count probe after the first

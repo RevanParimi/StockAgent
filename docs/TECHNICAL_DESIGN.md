@@ -2,7 +2,7 @@
 
 **Edition:** 2026-10-10 · **Audience:** engineers and teammates learning the product
 
-**Code inspected:** `ff95a51877a8c613f6ae9948aeb27690436ddce3`
+**Code inspected:** `61c85d6df9b3dae7eeebd875c70409a9d0d6a024`
 
 First edition 2026-09-15 at `9a805878`; maintained per story since. The revision
 above is the one the whole body describes. `check_kt_docs.py` fails if a linked
@@ -778,8 +778,8 @@ two production dossiers held 3 observations and 1 guidance item dated 24 and
 The digest the agents read leaves out observations and open guidance dated
 after its own date; stored rows are not rewritten. The morning brief's
 earnings-watch line takes the latest open guidance dated before the brief's
-own date (review L1; FIX-004 change 1, implemented 2026-10-10, awaiting its
-fresh review). The brief goes out at 08:50, before any weekday dossier writer
+own date (review L1; FIX-004 change 1, committed as `61c85d6` at the owner's
+word before its fresh review, which is pending). The brief goes out at 08:50, before any weekday dossier writer
 runs, so a row dated that day can only be an old future-dated one, such as the
 27 Oct row on the 27 Oct meeting's morning. Discovery paper tracking uses a separate store root with learning
 writes disabled for that lane; it is not live investor performance.

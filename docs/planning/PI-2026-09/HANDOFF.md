@@ -13,7 +13,9 @@ files); diff **`2ebe6299…`** (28,835 bytes), baseline `0ebd29b`. No production
   18:25 IST 10 Oct). This is a recorded deviation from REVIEW.md's order. Status stays
   `review_required`. The fresh review reviews the committed bytes: `kt_manifest.py verify
   FIX-004-change1-manifest.json --rev <commit>` must give 0 mismatches. Any requested change
-  lands as a follow-up commit. The commit and push details are under "Next" below.
+  lands as a follow-up commit. Committed as **`61c85d6`** (15 files; `verify --rev 61c85d6`
+  gives 0 mismatches), then the KT bump to it (KT §5, PDF source `1fde0ed9…`, guide 04-H).
+  Verify against `61c85d6`: later revisions differ in exactly those 3 docs. Push: see "Next".
 - **In one example.** A held stock has results on Tue 27 Oct. Its dossier holds open guidance
   dated 15 Sep and a pre-FIX-004 item dated 27 Oct (STARHEALTH's shape). Before, the briefs of
   Mon 26 and Tue 27 Oct, the two in the 3-day earnings window, showed the 27 Oct item as the
@@ -41,9 +43,10 @@ files); diff **`2ebe6299…`** (28,835 bytes), baseline `0ebd29b`. No production
   shows an old row on its own day, as reviewed. I2: the other raw readers are unchanged.
 - **Docs:** KT §5 and the PDF, RL_DESIGN §23.1, guide 04-H, and the FIX-004 and SA-046 cards.
 - **Next, in order:**
-  1. **Fresh review of change 1** in a new conversation ("continue"), by REVIEW.md. Landing it
-     before **Mon 26 Oct** (the first brief in STARHEALTH's window) needs the review, the
-     owner's word to commit and push, and a job-free window.
+  1. **Fresh review of change 1** in a new conversation ("continue"), by REVIEW.md, of the
+     committed `61c85d6`. The owner had it committed and pushed first, so it can be live before
+     **Mon 26 Oct** (the first brief in STARHEALTH's window). If the review asks for changes,
+     they land as a follow-up commit.
   2. FIX-004's production check (owner, read-only): rerun the count probe after the 17 Oct
      10:00 IST scan, and sample IDFCFIRSTB's digest before 24 Oct.
   3. Still open: SA-038's Sunday 11 Oct heartbeat check.

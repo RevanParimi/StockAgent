@@ -3,7 +3,7 @@
 Developer quick-reference for the StockAgent codebase. All entries verified against source files.
 Last full verification: **2026-07-18** (post audit Waves A–H — the Wave E deletion pass removed
 ~570 dead files, so trees you may remember from older commits are intentionally absent).
-For the system-level map (the three loops, all 16 scheduled jobs, data layout), start with
+For the system-level map (the three loops, the 24 scheduled job IDs, data layout), start with
 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ---
@@ -34,8 +34,8 @@ StockAgent-main/
 │   │   └── tavily_fetcher.py      # Tavily full-page extraction client
 │   ├── data/                      # Data persistence
 │   │   ├── backup.py              # Nightly volume backup: zip + manifest + 7-copy rotation + email
-│   │   ├── offsite.py             # SA-007 encrypted off-site copy (S3-compatible or mounted dir)
-│   │   ├── restore.py             # SA-007 restore drill + CLI (never restores over data/)
+│   │   ├── offsite.py             # Encrypted off-site copy (S3-compatible or mounted dir)
+│   │   ├── restore.py             # Restore drill + CLI (never restores over data/)
 │   │   ├── verdict_store.py       # Atlas C2 — VerdictStore facade (the ONLY user-plane importer
 │   │   │                          #  of the intelligence plane; delegates PredictionStore reads +
 │   │   │                          #  publishes ticker_verdicts projections — plane boundary, R1)
@@ -93,12 +93,12 @@ StockAgent-main/
 │   │       │   ├── settings/base.py   # Master settings file (all env vars)
 │   │       │   └── rag_config.py      # RAG-specific settings
 │   │       ├── data/              # Data helpers
-│   │       │   ├── instruments.py         # SA-008 instrument registry: dated identity + price basis
+│   │       │   ├── instruments.py         # Instrument registry: dated identity + price basis
 │   │       ├── pipeline/          # THE analysis engine:
 │   │       │   ├── base_orchestrator.py   # resolve → bundle → analyse → aggregate
 │   │       │   ├── unified_analyst.py     # Unified Sector Analyst — one-call dimension scoring
 │   │       │   ├── signal_aggregator.py   # learned weights + conflict detection + LLM verdict
-│   │       │   ├── decision_gate.py       # SA-003 essential-data gate: actionable/degraded/abstain,
+│   │       │   ├── decision_gate.py       # Essential-data gate: actionable/degraded/abstain,
 │   │       │   │                          #  decision_gate.mode record|enforce, skip log
 │   │       │   ├── verdict_shadow.py      # observe-only threshold(composite) lane
 │   │       │   │                          #  → data/rl/verdict_shadow.jsonl (audit Wave G)
@@ -111,7 +111,7 @@ StockAgent-main/
 │   └── frontend/
 │       └── prototypes/            # THE real frontend — vanilla-React JSX (Babel standalone),
 │                                  #  served statically at /app; PWA (sw.js + VAPID push).
-│                                  #  chat-markdown.js = the chat reply → HTML boundary (SA-001);
+│                                  #  chat-markdown.js = the chat reply → HTML boundary;
 │                                  #  browser test in tests/frontend/ (npm run test:frontend).
 │                                  #  (The old TypeScript/Vite src/frontend/web scaffold was
 │                                  #   deleted in audit Wave E — it was never the deployed UI.)
@@ -120,7 +120,7 @@ StockAgent-main/
 │   ├── utils/
 │   │   └── atomic_io.py           # mkstemp + os.replace atomic JSON/text writes (audit AUD-057);
 │   │                              #  replace_with_retry: Windows-only retry of a transient
-│   │                              #  PermissionError on the rename (SA-005)
+│   │                              #  PermissionError on the rename
 │   ├── intelligence/
 │   │   ├── rl/                    # Reinforcement learning feedback loop
 │   │   │   ├── agents/            # feedback_agent (direction scoring: NEUTRAL correct only on
@@ -132,10 +132,10 @@ StockAgent-main/
 │   │   │   ├── eval/              # Read-only evaluation harness (metrics, synthetic, run_eval CLI)
 │   │   │   ├── stores/            # prediction_store.py, ledger_propagator.py (archival +
 │   │   │   │                      #  resurrection), offmarket_fetcher.py (bulk/block off-market),
-│   │   │   │                      #  store_inventory.py + store_migration.py (SA-009 manifest, quarantine)
+│   │   │   │                      #  store_inventory.py + store_migration.py (store manifest, quarantine)
 │   │   │   ├── workflows/         # generate_forecast.py, daily_review.py (Step 8.5 = dossier
 │   │   │   │                      #  curator), preopen_check.py, month_end_validation.py,
-│   │   │   │                      #  sector_router.py, review_outcomes.py (SA-004 job counts)
+│   │   │   │                      #  sector_router.py, review_outcomes.py (daily-review job counts)
 │   │   │   ├── nse_calendar.py    # NSE trading day calendar
 │   │   │   └── calendar_updater.py
 │   │   ├── regime/                # Market regime detection
@@ -148,9 +148,9 @@ StockAgent-main/
 │   ├── portfolio/                 # Compass Phase A: per-user virtual portfolio (see below)
 │   │   ├── store.py               # PortfolioStore — per-user JSON holdings/ledger/digest
 │   │   ├── pricing.py             # close_on() — yfinance + NSE cross-check entry pricing;
-│   │   │                          #  session_close() also names the bar's session (SA-003)
+│   │   │                          #  session_close() also names the bar's session
 │   │   ├── corp_actions.py        # Corp-action sync (splits/bonuses) into holdings
-│   │   ├── identity_reconcile.py  # SA-008 operator plan/apply for demerged or unresolved holdings
+│   │   ├── identity_reconcile.py  # Operator plan/apply for demerged or unresolved holdings
 │   │   ├── promotion.py           # Auto-promotion into managed_tickers.json universe
 │   │   ├── advisor.py             # Deterministic HOLD/ADD/TRIM/EXIT verdicts, ATR-scaled stops
 │   │   │                          #  + explain_triggers() (codes -> plain English, shared by
@@ -182,7 +182,7 @@ StockAgent-main/
 │   │   │                          #  + optional title/headline/status/next_step/docs (Inbox card)
 │   │   │                          #  and render_alerts_html for the email body
 │   │   ├── ops_alerts.py          # Job crashed / zero-output / partial-output / reconcile-drift
-│   │   │                          #  operational alerts (audit AUD-039/084/090); SA-004 `detail`
+│   │   │                          #  operational alerts (audit AUD-039/084/090); `detail`
 │   │   │                          #  names the missing tickers and why
 │   │   ├── brief.py               # Morning brief builder (08:50 IST job)
 │   │   ├── weekly.py              # Weekly review builder (Sun 18:00 IST job); switch
@@ -204,11 +204,11 @@ StockAgent-main/
 │   ├── gen_vapid_keys.py          # One-time VAPID keypair generation (web-push)
 │   ├── clean_ledger_errors.py     # One-off ledger repair utility
 │   ├── seed_autopilot.py          # One-time Autopilot seed: equal-weight holdings + autopilot=True
-│   └── ci/check_broad_except.py   # CI guard: no new unlogged broad except (SA-005); the
+│   └── ci/check_broad_except.py   # CI guard: no new unlogged broad except; the
 │                                  #  grandfathered handlers are in broad_except_baseline.txt
 ├── tests/                         # Test suite (how to run: tests/TEST_DOCUMENTATION.md)
 │   ├── conftest.py                # Shared fixtures; imports hermetic.py before any app code
-│   ├── hermetic.py                # SA-005 boundary: no .env, no outbound network (sockets,
+│   ├── hermetic.py                # Hermetic boundary: no .env, no outbound network (sockets,
 │   │                              #  DNS, curl_cffi), each test in an empty working directory,
 │   │                              #  checkout data/ logs/ outputs/ unreachable
 │   ├── api/                       # API-level tests
@@ -217,7 +217,7 @@ StockAgent-main/
 │   ├── integration/               # Integration tests
 │   └── unit/                      # Unit tests
 ├── config/
-│   ├── instruments.yaml           # SA-008 instrument registry (ticker → symbol, basis, identity status)
+│   ├── instruments.yaml           # Instrument registry (ticker → symbol, basis, identity status)
 │   └── sector_toggles.json        # Enable/disable sectors at runtime
 ├── data/                          # Runtime data volume (see docs/ARCHITECTURE.md §11)
 │   └── logs/                      # THE log dir: every LOGS_DIR consumer defaults here
@@ -233,7 +233,7 @@ StockAgent-main/
 │                                  #  its COPY set is dead in prod by construction
 ├── docker-compose.yml
 ├── pyproject.toml
-├── .github/workflows/ci.yml       # CI (SA-005): tests, guards and browser suite on Linux 3.11
+├── .github/workflows/ci.yml       # CI: tests, guards and browser suite on Linux 3.11
 ├── requirements-test.txt          # Pinned test-only tools (runtime set: requirements.txt)
 └── requirements.txt
 ```
@@ -397,7 +397,7 @@ Ticker path params are validated against the managed list *before* any store con
 | POST | `/scheduler/forecast?ticker=<sym>` | `X-Scheduler-Key` header | Generate 30-day prediction envelopes (full 9-agent pipeline). Returns 202, runs in background. |
 | POST | `/scheduler/daily-review?ticker=<sym>&review_date=<ISO>` | `X-Scheduler-Key` header | Run RL daily feedback loop for one date. Returns 202, runs in background. |
 | POST | `/scheduler/backfill?ticker=<sym>` | `X-Scheduler-Key` header | Backfill all past trading days this month. Returns 202, runs in background. |
-| GET | `/scheduler/status` | `X-Scheduler-Key` header | Full RL state for all configured tickers: envelope, feedback log, weight memory — plus `last_runs` (per-job last outcome from `data/scheduler_job_outcomes.json`: produced/expected counts, stragglers, pipeline result). SA-004 (accepted 2026-09-27, committed as `241c393`): `daily_review` adds `status` (ok/partial/failed/empty), `required`/`attempted`, the five outcome counts (completed/degraded/data_gated/skipped/failed), `missing`, `by_ticker`, `retried`/`runs`, `excluded`, `duplicates` and `pipeline_status`; `produced` counts only reviews that wrote feedback. |
+| GET | `/scheduler/status` | `X-Scheduler-Key` header | Full RL state for all configured tickers: envelope, feedback log, weight memory — plus `last_runs` (per-job last outcome from `data/scheduler_job_outcomes.json`: produced/expected counts, stragglers, pipeline result). `daily_review` adds `status` (ok/partial/failed/empty), `required`/`attempted`, the five outcome counts (completed/degraded/data_gated/skipped/failed), `missing`, `by_ticker`, `retried`/`runs`, `excluded`, `duplicates` and `pipeline_status`; `produced` counts only reviews that wrote feedback. |
 
 ### Portfolio — Compass Phase A (`/portfolio/*`)
 
@@ -613,15 +613,13 @@ Models are tiered (2026-06-03 benchmark, `scripts/model_bench.py`; bulk re-bench
 | `UNIFIED_SECTION_MAX_CHARS` | `2500` | Per-section cap in `SectorDataBundle` |
 | `UNIFIED_BUNDLE_MAX_CHARS` | `18000` | Total cap on the rendered bundle text passed to the analyst prompt |
 
-**Data health (B2, `config.yaml` → `observability.*`).** `SectorDataBundle.has_real_data` is `live >= 3` of 10 sections and its only consumer is a log line, so a prod SUZLON run that lost 3 of its 6 dimensions shipped a BUY logging `real_data=True`. Every unified run now writes one `data_health` row describing what it actually received — see the module table below. `has_real_data` is deliberately unchanged (it counts an `n/a` section as live; the record does not). Rollback: `observability.data_health_enabled: false`.
+**Data health (`config.yaml` → `observability.*`).** Every unified run writes one `data_health` row describing what it actually received — see the module table below. Every `_fetch_<section>` returns a `FetchResult` (`services/data/context/fetch_result.py`) whose producer states the status — `ok` / `cache_hit` / `stale` / `fallback` / `empty` / `n/a` / `failed:<Type>`, or `unverified` for untyped text — plus source, as-of and reason; a status is never read from the section's text. The row is `ok` only with every dimension scored and every applicable section verified and fresh; `essential_unusable` lists the unusable essential sections (`observability.data_health_essential_sections`), and `health_reasons` says why. Freshness bounds: `data_health_price_max_age_days` (7), `data_health_fundamentals_max_age_days` (200). A newest listed quarter without figures (NaN) makes fundamentals `fallback`, dated by the newest quarter with figures (`get_financials` `missing_values`). A bank-format statement (interest income and net interest income, no operating row) reads net interest income in the operating line's place. Rows carry `contract_version: 2`; older rows stay as written, and `normalize_health_row` labels them unknown provenance. `SectorDataBundle.has_real_data` (`live >= 3` of 10 sections, counting `n/a` as live) only feeds a log line and is not evidence. Rollback: `observability.data_health_enabled: false`.
 
-**Data-health contract v2 (SA-002, accepted 2026-09-26 after a rework; committed as `8413b59`).** B2 took a section's status from its text, so "Technical data unavailable for TATAMOTORS" and "[No results for: …]" read `ok`, and `health` looked at dimensions only. Every `_fetch_<section>` now returns a `FetchResult` (`services/data/context/fetch_result.py`) whose producer states the status — `ok` / `cache_hit` / `stale` / `fallback` / `empty` / `n/a` / `failed:<Type>`, or `unverified` for untyped text — plus source, as-of and reason. The row is `ok` only with every dimension scored and every applicable section verified and fresh; `essential_unusable` lists the unusable essential sections (`observability.data_health_essential_sections`), and `health_reasons` says why. Freshness bounds: `data_health_price_max_age_days` (7), `data_health_fundamentals_max_age_days` (200). A newest listed quarter without figures (NaN) makes fundamentals `fallback`, dated by the newest quarter with figures (`get_financials` `missing_values`). The prompt text is byte-identical. v1 rows stay as written; `normalize_health_row` labels them unknown provenance.
+**Decision gate (`config.yaml` → `decision_gate.*`).** `src/backend/shared/pipeline/decision_gate.py` turns the same section statuses and dimension counts into a typed `FinalReport.decision_gate`: `abstain` when an essential section is not `ok`/`cache_hit`, fewer than `decision_gate.min_dimensions_fraction` (0.5) of the dimensions scored, or the run built no bundle (legacy fallback); `degraded` (actionable) when only ordinary enrichment is missing; else `actionable`. It is computed whether or not the health row is recorded. Switch `decision_gate.mode` (env `DECISION_GATE_MODE`): `record` (checked in) changes nothing and logs what enforcement would stop to `data/logs/decision_gate.jsonl` (ticker-level, no user id); `enforce` makes an abstaining verdict `INSUFFICIENT DATA` (original in `withheld_verdict`), and then `generate_forecast` raises `InsufficientDataError`, `regenerate_envelope` returns None, `run_daily_review` returns `data_gated` before any write (graded row not actionable, close not from the session's bar, or re-run not actionable), `run_deep_dives` shelves nothing, and the advisor withholds ADD and SWITCH buy legs (`DATA_GATE` note, `AdviceRecord.data_gate`). EXIT/TRIM are never blocked. Unknown values fail closed to `enforce`. Forecast rows carry `data_gate` + `source_run_id`; `daily_review._fetch_session_close` / `pricing.session_close` return a `SessionClose(close, bar_date, source)`.
 
-**Decision gate (SA-003, accepted by its fresh review 2026-09-27; committed as `167f08b`).** `src/backend/shared/pipeline/decision_gate.py` turns the same section statuses and dimension counts into a typed `FinalReport.decision_gate`: `abstain` when an essential section is not `ok`/`cache_hit`, fewer than `decision_gate.min_dimensions_fraction` (0.5) of the dimensions scored, or the run built no bundle (legacy fallback); `degraded` (actionable) when only ordinary enrichment is missing; else `actionable`. It is computed whether or not the health row is recorded. Switch `decision_gate.mode` (env `DECISION_GATE_MODE`): `record` (checked in) changes nothing and logs what enforcement would stop to `data/logs/decision_gate.jsonl` (ticker-level, no user id); `enforce` makes an abstaining verdict `INSUFFICIENT DATA` (original in `withheld_verdict`), and then `generate_forecast` raises `InsufficientDataError`, `regenerate_envelope` returns None, `run_daily_review` returns `data_gated` before any write (graded row not actionable, close not from the session's bar, or re-run not actionable), `run_deep_dives` shelves nothing, and the advisor withholds ADD and SWITCH buy legs (`DATA_GATE` note, `AdviceRecord.data_gate`). EXIT/TRIM are never blocked. Unknown values fail closed to `enforce`. Forecast rows carry `data_gate` + `source_run_id`; `daily_review._fetch_session_close` / `pricing.session_close` return a `SessionClose(close, bar_date, source)`.
+**Instrument identity.** `config/instruments.yaml` (parsed by `src/backend/shared/data/instruments.py`) holds, per ticker, effective-dated segments naming the provider symbol, the price basis (a rename keeps it, a demerger or relisting starts a new one) and a status (`active` resolves; `unresolved`/`suspended`/`delisted` quarantine). A symbol other than the ticker's own listing needs `via` (alias with a reason; rename/demerger/relisting with evidence). Invalid records, uncovered dates and an unreadable registry fail closed (unresolved). `symbol_resolver.resolve_identity(ticker, on)` = registry → learned cache (a different-code learned mapping is unresolved) → naive `.NS`; `resolve_yf_symbol` is its symbol; `identity_break` compares bases; `nse_symbol` gives the close verifier the registry's NSE code; `heal_symbol` never heals a registered ticker. The gate: `decision_gate.apply_identity` abstains on an unresolved identity or on technicals whose provenance `symbol` (from `get_price_history`'s `df.attrs["symbol"]`) is not the identity's; `DecisionGate.identity` stamps the instrument, and forecast rows, envelopes and advice records carry it as `instrument`. `run_daily_review` adds stage `identity` (identity resolved and the row's basis the session's). The advisor holds (`IDENTITY` note, EXIT/TRIM included) a holding whose identity is unresolved or whose basis changed since purchase; unresolved SWITCH destinations and autopilot buy legs are refused. All of it acts through `decision_gate.mode`. `python -m core.portfolio.identity_reconcile plan|apply` is the operator path (read-only plan with a digest; apply needs the digest, backs up `portfolio.json`, writes `identity_reconciliations.jsonl`). TMPV is tracked as its own listing by the owner's decision of 2026-09-29 (automobile `TICKERS`, so the exact-match short cut skips the LLM; `TICKER_SECTOR`), and TATAMOTORS stays quarantined. Tests read `tests/fixtures/instruments_empty.yaml` via `INSTRUMENT_REGISTRY_PATH` unless they point at the shipped file.
 
-**Instrument identity (SA-008, accepted 2026-09-30, committed as `02c43f6`, deployed as `650bb98c`).** `config/instruments.yaml` (parsed by `src/backend/shared/data/instruments.py`) replaces the undated `settings.YF_SYMBOL_OVERRIDES`: per ticker, effective-dated segments naming the provider symbol, the price basis (a rename keeps it, a demerger or relisting starts a new one) and a status (`active` resolves; `unresolved`/`suspended`/`delisted` quarantine). A symbol other than the ticker's own listing needs `via` (alias with a reason; rename/demerger/relisting with evidence). Invalid records, uncovered dates and an unreadable registry fail closed (unresolved). `symbol_resolver.resolve_identity(ticker, on)` = registry → learned cache (a different-code learned mapping is unresolved) → naive `.NS`; `resolve_yf_symbol` is its symbol; `identity_break` compares bases; `nse_symbol` gives the close verifier the registry's NSE code; `heal_symbol` never heals a registered ticker. The gate: `decision_gate.apply_identity` abstains on an unresolved identity or on technicals whose provenance `symbol` (from `get_price_history`'s `df.attrs["symbol"]`) is not the identity's; `DecisionGate.identity` stamps the instrument, and forecast rows, envelopes and advice records carry it as `instrument`. `run_daily_review` adds stage `identity` (identity resolved and the row's basis the session's). The advisor holds (`IDENTITY` note, EXIT/TRIM included) a holding whose identity is unresolved or whose basis changed since purchase; unresolved SWITCH destinations and autopilot buy legs are refused. All of it acts through `decision_gate.mode`. `python -m core.portfolio.identity_reconcile plan|apply` is the operator path (read-only plan with a digest; apply needs the digest, backs up `portfolio.json`, writes `identity_reconciliations.jsonl`). Owner decision 2026-09-29: TMPV is tracked as its own listing (automobile `TICKERS`, so the exact-match short cut skips the LLM; `TICKER_SECTOR`), and TATAMOTORS stays quarantined. Tests read `tests/fixtures/instruments_empty.yaml` via `INSTRUMENT_REGISTRY_PATH` unless they point at the shipped file.
-
-**Prediction-store ownership (SA-009, implemented; review pending).** A ticker's RL history belongs to `data/predictions/<managed sector>/<TICKER>/`, the store the scheduled forecast and review use; an unmanaged ticker has no owner. `services/api/server.py`'s startup self-heal now uses each managed entry's sector (it looked in `automobile/<TICKER>` for every ticker and ran the automobile graph there), and the daily review rebuilds a missing weight file from `sector_router.get_sector_weights(sector)`. `store_inventory` reports every store's evidence and duplicates; `store_migration` moves stray stores into `data/prediction_quarantine/` and back, by rename, after re-checking their SHA-256s. Not run on the production volume (KT section 3).
+**Prediction-store ownership.** A ticker's RL history belongs to `data/predictions/<managed sector>/<TICKER>/`, the store the scheduled forecast and review use; an unmanaged ticker has no owner. `services/api/server.py`'s startup self-heal uses each managed entry's sector, and the daily review rebuilds a missing weight file from `sector_router.get_sector_weights(sector)`. `store_inventory` reports every store's evidence and duplicates; `store_migration` moves stray stores into `data/prediction_quarantine/` and back, by rename, after re-checking their SHA-256s. Production's quarantine was applied on 2026-10-01 (KT section 1).
 
 ### Scheduler
 
@@ -693,7 +691,7 @@ Models are tiered (2026-06-03 benchmark, `scripts/model_bench.py`; bulk re-bench
 |---------|---------|-------------|
 | `delivery.enabled` | `true` (base.py fallback `false`) | Master gate: Jobs 13/14 + every channel send |
 | `delivery.data_dir` | `data/delivery` | `push_subscriptions.json`, `alerts_sent.jsonl` |
-| `delivery.email_enabled` | `false` | Needs `SMTP_HOST/PORT/USER/PASSWORD` (or `RESEND_API_KEY`) in .env; `DELIVERY_EMAIL_TO` is the single-user recipient only, never a fallback for an account (SA-006) |
+| `delivery.email_enabled` | `false` | Needs `SMTP_HOST/PORT/USER/PASSWORD` (or `RESEND_API_KEY`) in .env; `DELIVERY_EMAIL_TO` is the single-user recipient only, never a fallback for an account |
 | `delivery.push_enabled` | `true` | Needs `VAPID_PRIVATE_KEY/PUBLIC_KEY/CLAIM_EMAIL` in .env (`scripts/gen_vapid_keys.py`) |
 | `audit.switch_min_n` | `30` | Independent (strided) pairs needed before the switch blocks give a verdict |
 | `audit.switch_horizon_td` | `10` | Horizon the switch blocks report on |
@@ -706,14 +704,14 @@ Models are tiered (2026-06-03 benchmark, `scripts/model_bench.py`; bulk re-bench
 | `advisor.switch_eval_max_candidates` | `5` | Top-N active shelf ideas by conviction evaluated per holding per run |
 | `delivery.alert_html_enabled` | `true` | HTML alert email body; `false` = plain text only (the Inbox card is unaffected) |
 | `delivery.index_watch` | NIFTY 50 / NEXT 50 / MIDCAP 150 / SMALLCAP 250 | Weekly constituent diff → inclusion/exclusion alerts |
-| `delivery.outbox_max_attempts` | `3` | BP2 outbox: sends before a TRANSIENT failure is dead-lettered; permanent failures stop after one (SA-006; active only when `ATLAS_ENABLED`) |
+| `delivery.outbox_max_attempts` | `3` | BP2 outbox: sends before a TRANSIENT failure is dead-lettered; permanent failures stop after one (active only when `ATLAS_ENABLED`) |
 | `delivery.outbox_backoff_minutes` | `[1, 5, 30]` | BP2 outbox: per-attempt reschedule delay |
-| `delivery.outbox_retry_after_cap_minutes` | `360` | Longest provider `Retry-After` the outbox honours (SA-006) |
-| `delivery.outbox_sending_stale_minutes` | `60` | A `sending` row older than this was left by a stopped process: dead-lettered as unknown outcome, never re-sent (SA-006) |
+| `delivery.outbox_retry_after_cap_minutes` | `360` | Longest provider `Retry-After` the outbox honours |
+| `delivery.outbox_sending_stale_minutes` | `60` | A `sending` row older than this was left by a stopped process: dead-lettered as unknown outcome, never re-sent |
 | `delivery.outbox_poll_seconds` | `30` | BP2 outbox: drainer loop interval |
-| `delivery.outbox_retention_days` | `30` | Prune delivered outbox rows older than this; dead rows only lose their payload (Atlas C9, SA-006) |
-| `delivery.outbox_dead_letter_retention_days` | `180` | Prune dead-letter rows older than this (SA-006) |
-| `delivery.push_ttl_seconds` | `43200` | How long a push service holds an undelivered push (pywebpush default 0 drops it; SA-006) |
+| `delivery.outbox_retention_days` | `30` | Prune delivered outbox rows older than this; dead rows only lose their payload (Atlas C9) |
+| `delivery.outbox_dead_letter_retention_days` | `180` | Prune dead-letter rows older than this |
+| `delivery.push_ttl_seconds` | `43200` | How long a push service holds an undelivered push (pywebpush default 0 drops it) |
 | `discovery.ipo_enabled` | `true` (fallback `false`) | Stage-2 IPO tracker in the Saturday cycle |
 | `discovery.ipo_listing_window_days` | `90` | Listings younger than this are candidates |
 | `discovery.ipo_max_deep_dives` | `2` | Reserved Stage-3 slots (WITHIN `deep_dive_count`) |
@@ -875,9 +873,9 @@ All paths verified to exist. Paths are relative to project root.
 | `services/api/routes/scheduler_api.py` | POST/GET /scheduler/* — RL trigger and status endpoints; event-triggers the portfolio advisor pipeline after daily reviews |
 | `services/api/routes/portfolio_api.py` | /portfolio/* — Compass Phase A: holdings, watchlist, CSV import, advice ledger, EOD digest; Autopilot: transactions audit trail, performance (P&L + equity curve) |
 | `core/portfolio/pipeline.py` | `run_post_review_pipeline()` — corp-action sync → events refresh → advisor → ledger → digest, per user |
-| `core/portfolio/advisor.py` | Deterministic HOLD/ADD/TRIM/EXIT engine (EXIT>TRIM>ADD>HOLD), ATR-scaled stops, LTCG/earnings-gap notes, `explain_triggers()`; SA-003 `data_gate_blocks` / `decide(add_blocks=, blocked_candidates=)` withhold ADD and SWITCH destinations on a stale close or unverified forecast (never EXIT/TRIM); SA-008 `decide(identity_hold=)` holds every verdict (note `IDENTITY`) when the holding's identity is unresolved or its price basis changed since purchase |
-| `core/portfolio/identity_reconcile.py` | SA-008 — `holding_identity_issue` / `symbol_identity_issue` (registry only, for the advisor and autopilot); operator CLI `plan` (read-only, digest) and `apply --approve <digest>` (refuses a changed plan, backs up `portfolio.json`, replaces a demerged holding with its recorded successors, logs `identity_reconciliations.jsonl`) |
-| `src/backend/shared/data/instruments.py` | SA-008 — parses and validates `config/instruments.yaml` (fail closed); `registry_identity(ticker, on)` → `Identity(status, symbol, basis, via, source, reasons)`; `registry_bases`, `segment_on`; path `INSTRUMENT_REGISTRY_PATH` or `config/instruments.yaml` |
+| `core/portfolio/advisor.py` | Deterministic HOLD/ADD/TRIM/EXIT engine (EXIT>TRIM>ADD>HOLD), ATR-scaled stops, LTCG/earnings-gap notes, `explain_triggers()`; `data_gate_blocks` / `decide(add_blocks=, blocked_candidates=)` withhold ADD and SWITCH destinations on a stale close or unverified forecast (never EXIT/TRIM); `decide(identity_hold=)` holds every verdict (note `IDENTITY`) when the holding's identity is unresolved or its price basis changed since purchase |
+| `core/portfolio/identity_reconcile.py` | `holding_identity_issue` / `symbol_identity_issue` (registry only, for the advisor and autopilot); operator CLI `plan` (read-only, digest) and `apply --approve <digest>` (refuses a changed plan, backs up `portfolio.json`, replaces a demerged holding with its recorded successors, logs `identity_reconciliations.jsonl`) |
+| `src/backend/shared/data/instruments.py` | Parses and validates `config/instruments.yaml` (fail closed); `registry_identity(ticker, on)` → `Identity(status, symbol, basis, via, source, reasons)`; `registry_bases`, `segment_on`; path `INSTRUMENT_REGISTRY_PATH` or `config/instruments.yaml` |
 | `core/portfolio/autopilot.py` | `execute_advice()` — deterministic verdict executor (sells then buys, no LLM); `record_value_point()` — daily equity snapshot |
 | `services/data/fetchers/corporate_events.py` | NSE corp-actions feed + forward board-meetings calendar (degraded-mode safe) |
 | `data/portfolio/<user>/` | Per-user volume state: `portfolio.json`, `advice_ledger.jsonl`, `transactions.jsonl` (Autopilot audit trail), `value_history.jsonl` (daily equity curve), `digests/` |
@@ -917,10 +915,10 @@ All paths verified to exist. Paths are relative to project root.
 | `src/backend/shared/config/settings/base.py` | All environment variable definitions with defaults |
 | `src/backend/shared/config/rag_config.py` | RAG-specific env vars (mirrors `core/intelligence/rag/config.py`) |
 | `src/backend/shared/pipeline/base_orchestrator.py` | `BaseSectorOrchestrator` — ticker resolution (managed-ticker short-circuit, no LLM for exact `TICKERS` matches), RL weights, NSE prefetch, `_run_agents`/`_run_unified`/`_unified_enabled` dispatch, SignalAggregator |
-| `services/data/context/bundle_builder.py` | `build_sector_bundle()` — one-pass `SectorDataBundle` (10 labeled, char-capped sections), sector-aware via `_SECTOR_BUNDLE_CFG` (per-sector queries, deep-dive Tavily target, commodities applicability, peer lists); B2 adds `section_status` — one outcome per section; SA-002 takes it from each producer's `FetchResult` and adds `section_provenance` (source, as-of, reason) |
-| `services/data/context/fetch_result.py` | SA-002 — `FetchResult` (text, status, source, as_of, reason), the section status vocabulary, and the price/fundamentals freshness bounds |
-| `src/backend/shared/pipeline/decision_gate.py` | SA-003 — the essential-data gate: `assess_analysis` / `gate_from_health_row` (actionable/degraded/abstain), `apply_gate` (enforce → `INSUFFICIENT DATA`), `decision_gate.mode` record|enforce (unknown → enforce), `record_gate_decision` → `data/logs/decision_gate.jsonl` (ticker-level); SA-008 `apply_identity` (unresolved identity, or price history for another symbol → abstain; stamps `DecisionGate.identity`) |
-| `services/data/stores/data_health.py` | B2 — one row per unified run: section outcomes, dimensions scored vs expected, derived `ok`/`degraded`/`hollow`. SA-002 contract v2: `health_reasons`, `essential_unusable`, `section_provenance`, stale/fallback/unverified counts; `normalize_health_row` / `recent_health_rows` read v1 rows with unknown provenance. Writes `data/logs/data_health.jsonl` + `telemetry.db.data_health`, attaches to `FinalReport.data_health`. Never raises. Flag `observability.data_health_enabled` (the row only: SA-003's gate reads the same inputs and does not depend on it); `build_record` is also the gate's source |
+| `services/data/context/bundle_builder.py` | `build_sector_bundle()` — one-pass `SectorDataBundle` (10 labeled, char-capped sections), sector-aware via `_SECTOR_BUNDLE_CFG` (per-sector queries, deep-dive Tavily target, commodities applicability, peer lists); `section_status` holds one outcome per section, taken from each producer's `FetchResult`, and `section_provenance` (source, as-of, reason) |
+| `services/data/context/fetch_result.py` | `FetchResult` (text, status, source, as_of, reason), the section status vocabulary, and the price/fundamentals freshness bounds |
+| `src/backend/shared/pipeline/decision_gate.py` | The essential-data gate: `assess_analysis` / `gate_from_health_row` (actionable/degraded/abstain), `apply_gate` (enforce → `INSUFFICIENT DATA`), `decision_gate.mode` record|enforce (unknown → enforce), `record_gate_decision` → `data/logs/decision_gate.jsonl` (ticker-level); `apply_identity` (unresolved identity, or price history for another symbol → abstain; stamps `DecisionGate.identity`) |
+| `services/data/stores/data_health.py` | B2 — one row per unified run: section outcomes, dimensions scored vs expected, derived `ok`/`degraded`/`hollow`. Contract v2: `health_reasons`, `essential_unusable`, `section_provenance`, stale/fallback/unverified counts; `normalize_health_row` / `recent_health_rows` read v1 rows with unknown provenance. Writes `data/logs/data_health.jsonl` + `telemetry.db.data_health`, attaches to `FinalReport.data_health`. Never raises. Flag `observability.data_health_enabled` (the row only: the decision gate reads the same inputs and does not depend on it); `build_record` is also the gate's source |
 | `src/backend/shared/pipeline/unified_analyst.py` | `UnifiedAnalyst` — one reasoning-model call → all dimension `AgentOutput`s for a sector (9/6/8/6 per `SECTOR_SPECS`); never raises, falls back to legacy on total failure |
 | `src/backend/sectors/automobile/prompts/unified.py` | Unified Sector Analyst prompt for automobile (9 dimensions in one prompt) |
 | `src/backend/sectors/banking_bfsi/prompts/unified.py` | Unified Sector Analyst prompt for BFSI (6 dimensions) |
@@ -932,12 +930,12 @@ All paths verified to exist. Paths are relative to project root.
 | `src/backend/sectors/renewable_energy/pipeline/orchestrator.py` | RenewableAgentOrchestrator |
 | `core/intelligence/rl/workflows/generate_forecast.py` | Generate 30-day PredictionEnvelope (runs full pipeline); `regenerate_envelope()` re-runs the pipeline mid-cycle for the remaining days only (Living Envelope, RL_DESIGN §27.2) |
 | `core/intelligence/rl/workflows/daily_review.py` | Daily RL feedback: compare actual vs predicted, update weights; Step 8.5 dossier curator; post-Step-6 trigger block (external_shock/thesis_break/regime_flip) calls `regenerate_envelope()` and skips Step 7 on success (§27.2) |
-| `core/intelligence/rl/workflows/review_outcomes.py` | SA-004 (accepted 2026-09-27, committed as `241c393`) — one outcome per required ticker for the scheduled daily review: `classify` (completed / degraded / data_gated / skipped / failed; unknown or malformed results fail closed), `summarize` (required vs attempted, `by_ticker`, merge with an earlier run of the same session), `with_pipeline` (job `status`, `pipeline_ok`), `missing_detail` for the alert text. Pure, no I/O |
+| `core/intelligence/rl/workflows/review_outcomes.py` | One outcome per required ticker for the scheduled daily review: `classify` (completed / degraded / data_gated / skipped / failed; unknown or malformed results fail closed), `summarize` (required vs attempted, `by_ticker`, merge with an earlier run of the same session), `with_pipeline` (job `status`, `pipeline_ok`), `missing_detail` for the alert text. Pure, no I/O |
 | `core/intelligence/rl/workflows/preopen_check.py` | Pre-open overnight shock check (1 Serper + 1 fast LLM, market-wide); contradicted tickers trigger `regenerate_envelope(trigger="preopen_shock")` (§27.3) |
 | `core/intelligence/regime/state.py` | Sticky market-wide regime hysteresis (`update_sticky_regime`, `data/predictions/_regime_state.json`) (§27.1) |
-| `core/intelligence/rl/stores/prediction_store.py` | JSON R/W for envelopes, feedback logs, weight memory, ledgers, ticker dossier; `archive_envelope()` copies the superseded envelope to `{ticker_dir}/archived_envelopes/{YYYY-MM}_v{n}.json` before a re-forecast overwrite (§27.2). SA-009: the logs, weight memory and ledgers it creates carry its own sector (they took the schema default `automobile`) |
-| `core/intelligence/rl/stores/store_inventory.py` | SA-009 — read-only manifest of the predictions tree: per store its identity, sector evidence (a recognised dimension roster must agree with the directory's graph), owner (`<managed sector>/<TICKER>`), schema markers and consumer classes; duplicate tickers, envelope cycle ids and graded days, identical or conflicting. CLI `python -m core.intelligence.rl.stores.store_inventory` |
-| `core/intelligence/rl/stores/store_migration.py` | SA-009 — quarantine of stores no live writer owns: `plan` (read-only, digest), `apply --approve <digest>` (recomputes the plan, re-hashes each store before one directory rename into `prediction_quarantine/<id>/stores/`, lineage record), `rollback` (never merges into a live store that reappeared) |
+| `core/intelligence/rl/stores/prediction_store.py` | JSON R/W for envelopes, feedback logs, weight memory, ledgers, ticker dossier; `archive_envelope()` copies the superseded envelope to `{ticker_dir}/archived_envelopes/{YYYY-MM}_v{n}.json` before a re-forecast overwrite (§27.2). The feedback logs, weight memory and ledgers it creates carry its own sector; files already on disk keep what they say |
+| `core/intelligence/rl/stores/store_inventory.py` | Read-only manifest of the predictions tree: per store its identity, sector evidence (a recognised dimension roster must agree with the directory's graph), owner (`<managed sector>/<TICKER>`), schema markers and consumer classes; duplicate tickers, envelope cycle ids and graded days, identical or conflicting. CLI `python -m core.intelligence.rl.stores.store_inventory` |
+| `core/intelligence/rl/stores/store_migration.py` | Quarantine of stores no live writer owns: `plan` (read-only, digest), `apply --approve <digest>` (recomputes the plan, re-hashes each store before one directory rename into `prediction_quarantine/<id>/stores/`, lineage record), `rollback` (never merges into a live store that reappeared) |
 | `core/intelligence/rl/stores/ledger_propagator.py` | Propagate lessons to sector/market ledgers; stale-lesson archival + resurrection |
 | `core/intelligence/rl/agents/feedback_agent.py` | LLM-based miss classification and lesson generation (lessons carry trigger_tags) |
 | `core/intelligence/rl/agents/weight_adapter.py` | Agent weight adjustment with per-agent calibration reward (RL_CALIBRATION_REWARD_ENABLED) |
@@ -955,7 +953,7 @@ All paths verified to exist. Paths are relative to project root.
 | `src/backend/shared/schemas/scorecard.py` | ControlPrediction/ControlLog + MonthlyScorecard schemas |
 | `core/intelligence/rl/conviction/tracker.py` | Conviction streak tracking |
 | `core/intelligence/rl/nse_calendar.py` | NSE trading day calendar (holiday-aware) |
-| `core/intelligence/rl/learning_mode.py` | SA-039 switch `rl.learning_mode` (adapt/observe; unknown → observe): `decision_weights()` returns sector defaults in observe; `weight_observation()` builds the would-be-weights diagnostic |
+| `core/intelligence/rl/learning_mode.py` | Learning switch `rl.learning_mode` (adapt/observe; unknown → observe): `decision_weights()` returns sector defaults in observe; `weight_observation()` builds the would-be-weights diagnostic |
 | `core/intelligence/regime/detector.py` | Market regime detection (VIX/FII/RSI-based) |
 | `core/intelligence/prompt_enhancer/enhancer.py` | Injects RL lessons and regime context into agent prompts |
 | `core/intelligence/seasonal/calendar.py` | Seasonal pattern calendar |

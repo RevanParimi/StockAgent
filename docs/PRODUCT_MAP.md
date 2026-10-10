@@ -203,7 +203,7 @@ append-only ledgers, parquet for EOD panels.*
 | Job outcomes | `services/data/stores/job_outcomes.py` | Last-run result per cron job (AUD-090d) |
 | Fallback events | `services/data/stores/fallback_events.py` | Legacy-pool engagement record |
 | Verdict store facade | `services/data/verdict_store.py` | **The plane boundary** |
-| Backup | `services/data/backup.py`, `restore.py`, `offsite.py` | Nightly zip + manifest, restore drill, encrypted off-site copy (SA-007), email |
+| Backup | `services/data/backup.py`, `restore.py`, `offsite.py` | Nightly zip + manifest, restore drill, encrypted off-site copy, email |
 
 ### The RL file tree — memorise this
 
@@ -660,7 +660,7 @@ instantly. `ATLAS_ENABLED` unset makes the whole Atlas layer a dormant no-op.
   Each nightly archive is restore-drilled (`services/data/restore.py`) and,
   once the owner configures a bucket, pushed off-site encrypted
   (`services/data/offsite.py`). The watchdog's `backup_recoverable` check
-  reports a missing copy (SA-007; runbook in KT section 10).
+  reports a missing copy (runbook in KT section 10).
 - **Two-tier self-monitoring** — `ops_alerts.py` catches "job produced nothing
   or crashed"; `core/audit/thresholds.py` catches "job produced full output
   that is silently wrong". The second tier exists because the first structurally

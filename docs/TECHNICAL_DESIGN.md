@@ -4,30 +4,60 @@
 
 **Code inspected:** `61c85d6df9b3dae7eeebd875c70409a9d0d6a024`
 
-First edition 2026-09-15 at `9a805878`; maintained per story since. The revision
-above is the one the whole body describes. `check_kt_docs.py` fails if a linked
-source file or a documented job ID is absent at that revision.
-
 **PDF:** [StockAgent-Three-Loops.pdf](StockAgent-Three-Loops.pdf), generated from this Markdown.
 
-This is the current KT source, replacing the May technical reference. It explains
-the implementation and the changes planned in PI-2026-09. The separate
-[human testing guide](TEAM_TESTING_GUIDE.md) divides practical testing duties;
-it is not an implemented human-approval workflow.
+This document describes how StockAgent works at the revision above. It covers
+the three product loops, the contracts between components, the records they
+keep and the jobs that run them. Production state is dated and kept in one
+place (section 1), apart from the description of the code. Work planned in
+PI-2026-09 is collected in sections 11 and 12. Where another section mentions
+it, the text is labelled **Planned**. `check_kt_docs.py` fails if a linked
+source file or a documented job ID is absent at the inspected revision.
+
+The separate [human testing guide](TEAM_TESTING_GUIDE.md) divides practical
+testing duties among the team. It is not a human-approval workflow inside the
+product.
 
 ## 1. Reading the evidence
 
-| Label | Meaning in this edition |
+| Label | Meaning in this document |
 |---|---|
-| Current code | Traced in this checkout. Flags, inputs and runtime data determine whether a path actually runs. |
-| Locally checked | Existing tests run in an isolated copy. Exact results and limits are in the [validation receipt](planning/PI-2026-09/evidence/DOC-001-implementation.md). |
-| Production observation | Dated evidence: the September 10 audit, section 10's 2026-09-21 email diagnosis, a September 15 deployment SUCCESS at `9a805878`, the 2026-09-23 read-only log inspection of learned weights, and the 2026-09-24 [SA-039 weight baseline](planning/PI-2026-09/evidence/SA-039-baseline-2026-09-24.md). Those logs came from deploy `d9c459ae` (commit `e8df088`). Deploys carrying the header revision's code were inspected read-only on 2026-09-25 (`7ebd06c5`: the 16:30 review ran in `adapt`) and on 2026-09-26 (`da9df6cf`: all 20 tickers in `observe`, per the [activation record](planning/PI-2026-09/evidence/SA-039-activation-2026-09-26.md)). |
-| PI target | Intended behavior, not completed functionality. SA-039 was accepted by its fresh review on 2026-09-25, and production has run `observe` since 2026-09-26 ([activation record](planning/PI-2026-09/evidence/SA-039-activation-2026-09-26.md); its production verification was recorded `verified` on 2026-10-06, from checks P1-P3 that passed by 2026-10-01). SA-001 (chat rendering) was accepted by its fresh review on 2026-09-26 ([review](planning/PI-2026-09/evidence/SA-001-review.md)); it is committed as `8413b59`, and its production verification is pending. SA-002 (data health) was accepted by its fresh re-review on 2026-09-26, after a rework of its test fixtures and one fundamentals case ([receipt](planning/PI-2026-09/evidence/SA-002-implementation.md), [review](planning/PI-2026-09/evidence/SA-002-review.md)); it is committed as `8413b59`, and its production verification is pending. SA-003 (the decision gate) was accepted by its fresh review on 2026-09-27 ([receipt](planning/PI-2026-09/evidence/SA-003-implementation.md), [review](planning/PI-2026-09/evidence/SA-003-review.md)); it is committed as `167f08b`, and its production verification is pending. It ships recording only (`decision_gate.mode: record`), and enforcing it is a separate decision, after SA-039's observation window and a measured record period. SA-004 (daily-review outcome counts) was accepted by its fresh review on 2026-09-27 ([receipt](planning/PI-2026-09/evidence/SA-004-implementation.md), [review](planning/PI-2026-09/evidence/SA-004-review.md)); it is committed as `241c393`, and its production verification is pending. SA-005 (a hermetic test suite and a CI workflow) was accepted by its fresh review on 2026-09-28 ([receipt](planning/PI-2026-09/evidence/SA-005-implementation.md), [review](planning/PI-2026-09/evidence/SA-005-review.md)); it is committed as `48143ed`, and its CI workflow first ran on 2026-09-28 and passed all 3 jobs. SA-006 (delivery transport and dead letters) was accepted by its fresh re-review on 2026-09-28, after a rework for two review findings ([receipt](planning/PI-2026-09/evidence/SA-006-implementation.md), [review](planning/PI-2026-09/evidence/SA-006-review.md)); it is committed as `15dcda1` and was deployed on 2026-09-28 (`00b94de9`). SA-007 (independently recoverable backups) was accepted by its fresh review on 2026-09-29, with two low follow-ups routed to SA-034 and SA-036 ([receipt](planning/PI-2026-09/evidence/SA-007-implementation.md), [review](planning/PI-2026-09/evidence/SA-007-review.md)); it is committed as `165d152` and was deployed on 2026-09-29 (`26b442f4`). No off-site bucket exists yet (the owner deferred it to the end of the PI). Change 1, which makes the missing-bucket reminder weekly instead of daily, was accepted by its fresh review on 2026-09-29 and is committed as `8663387`. SA-008 (security identity: the instrument registry and quarantine) was accepted by its fresh review on 2026-09-30 ([review](planning/PI-2026-09/evidence/SA-008-review.md)), with change 1 to follow for two limits of the reconciliation tool (section 6); it is committed as `02c43f6` and was deployed on 2026-09-30 (`650bb98c`). SA-009 (prediction-store ownership: the owner rule, a read-only store inventory and a reversible quarantine) was accepted by its fresh review on 2026-09-30 ([receipt](planning/PI-2026-09/evidence/SA-009-implementation.md), [review](planning/PI-2026-09/evidence/SA-009-review.md)); it is committed as `313e3f6` and was deployed on 2026-09-30 (`650bb98c`); its quarantine was applied in production on 2026-10-01, moving 16 copies, and its production verification is pending. Its change 1, for the rollback's retry path, was accepted by its fresh review on 2026-09-30 and is committed as `9c626a5` (section 3). SA-010 (sector benchmarks for the technicals) was accepted by its fresh review on 2026-10-05 ([receipt](planning/PI-2026-09/evidence/SA-010-implementation.md), [review](planning/PI-2026-09/evidence/SA-010-review.md)); it is committed as `7efeafd` and was deployed on 2026-10-06 (`8b97dab8`); its production verification was recorded `verified` on 2026-10-10, from the logs of the 7-9 Oct reviews. SA-038 (judging the lapsed watchdog milestones) was accepted by its fresh review on 2026-10-06 ([receipt](planning/PI-2026-09/evidence/SA-038-implementation.md), [review](planning/PI-2026-09/evidence/SA-038-review.md)); it is committed as `378479a`, with IPO-0a's milestone closure as `70fce66`, and its production verification is pending. Every other story from SA-011 to SA-051 is `todo`. Three are stretch. |
+| Current code | Traced at the inspected revision. Flags, inputs and runtime data decide whether a path actually runs. |
+| Locally checked | Tests run in the hermetic suite or an isolated copy (section 13). A passing test describes code behaviour; on its own it does not establish a financial contract. |
+| Production observation | Dated, read-only evidence from the deployed service: logs, the RL monitor, the watchdog's mail, or the owner's checks. |
+| Planned | Intended behaviour in PI-2026-09 (sections 11 and 12). Not implemented. |
 
-The [September audit](audit/2026-09-10-repository-production-review.md) records
-unresolved label, timing, health, weight-bound and operational defects.
-Adaptive state exists; improved prediction performance has not been demonstrated.
-No production job, backfill or notification was triggered for this KT.
+The [September audit](audit/2026-09-10-repository-production-review.md) is the
+baseline record of the label, timing, health, weight-bound and operational
+defects that this design addresses. Adaptive state exists; improved
+prediction performance has not been demonstrated. Writing this document
+triggered no production job, backfill or notification.
+
+### Production state at this edition
+
+Production runs the inspected code. The deployment of 10 October 2026 carries
+it, confirmed by the owner's read-only check of the deployment list and
+`/health`. The table gives the configuration that differs from the repository
+and the state of each operational control.
+
+| Area | State in production | Evidence |
+|---|---|---|
+| Learning mode | `observe` since 2026-09-26, set by the Railway variable `RL_LEARNING_MODE`; the repository default is `adapt`. Weight versions stay unchanged across reviews, and every review records its proposal. Every envelope since the 2026-10-01 monthly forecast was issued in `observe`. | Verified 2026-10-01 ([activation record](planning/PI-2026-09/evidence/SA-039-activation-2026-09-26.md)) |
+| Decision gate | `record`, the repository default: computed and logged everywhere, nothing withheld. The 2026-10-01 decision kept `record`, because 25 of 78 analyses (32%) would have abstained, most for reasons since fixed. | [Enforce decision](planning/PI-2026-09/evidence/SA-003-enforce-decision-2026-10-01.md) |
+| Instrument identity | Since 2026-10-01, TATAMOTORS is disabled in the managed list, with its history kept, and TMPV is managed as its own automobile ticker. The registry lists TATAMOTORS and HEXAWARE as unresolved. | Owner's dashboard change, 2026-10-01 |
+| Prediction stores | The ownership quarantine was applied on 2026-10-01. It moved 16 stray `automobile/<TICKER>` copies, byte-identical, into `data/prediction_quarantine/20260930T184031Z-ce3556d023d3/`. Rollback remains available. | Apply record in [STATE.json](planning/PI-2026-09/STATE.json) |
+| Ticker resolution and bank statements | Managed tickers resolve to themselves, and the four banks' fundamentals read `ok`. TATAELXSI's October envelope, built on a wrong resolution, was regenerated on 2026-10-05. | Verified 2026-10-02 from review logs |
+| Sector benchmarks | Each sector's technicals are measured against its own index. Yahoo returns no data for `^CNXAUTO` or `^CNXENERGY`, so automobile and renewable-energy correlations read "unavailable". | Verified 2026-10-10 from the 7–9 Oct review logs |
+| Listing-day closes | The nightly audit grades listing-day IPO rows: 4 graded and none skipped on 2026-10-01. | Verified 2026-10-01 |
+| Delivery | Outbound SMTP has worked since a plan upgrade on 2026-09-21. The outbox records transport acceptance; user receipt is not observable. Whether `RESEND_API_KEY` is set was not inspected. | Section 10 |
+| Backups | The nightly archive and restore drill run. No off-site target is configured, because the owner deferred it to the end of the PI, so the watchdog sends a weekly reminder. | Watchdog mail, 2026-10-07 |
+| Watchdog milestones | The milestones that lapsed in August and September were judged and retired on 2026-10-06. The next morning's run sent no LAPSED notice. | Watchdog mail, 2026-10-07 |
+| CI | Three GitHub Actions jobs run on every push. The first run, on 2026-09-28, passed. | Section 13 |
+
+The rest of the deployed behaviour is live: chat sanitizing, data-health rows,
+review outcome counts, the delivery contract and dossier dates. Each still
+awaits its recorded production observation, and
+[STATE.json](planning/PI-2026-09/STATE.json) lists the pending checks.
 
 ### Vocabulary
 
@@ -40,10 +70,12 @@ No production job, backfill or notification was triggered for this KT.
 | Envelope | Stored forecasts for future trading sessions, including prices, verdicts and uncertainty information. |
 | Feedback / lesson / dossier | One review result / reusable knowledge / longer-lived company observations and questions. |
 | Advice / transaction | A portfolio recommendation / a recorded virtual buy or sell. They are separate records. |
+| Decision gate | The check that decides whether an analysis's evidence is good enough to act on: actionable, degraded or abstain. |
+| Price basis | The continuous price history a holding's cost and a forecast's closes are measured on. A demerger starts a new basis; a rename does not. |
 | Cohort / matured outcome | A defined group of predictions / an outcome whose observation period has finished. |
 | Idempotent | Repeating the same operation does not apply its effect twice. |
 | Cache / projection | A reusable fetched result / a secondary representation of another store. Neither guarantees freshness or authority. |
-| PI | Improvement plan; accepted story statuses are separate from features already present in the baseline. |
+| PI | The planned improvement program (PI-2026-09). Story status lives in its state file, apart from this design description. |
 
 ## 2. Product map and three loops
 
@@ -51,28 +83,26 @@ StockAgent combines listed-equity research, adaptive feedback, a virtual
 portfolio, discovery, IPO information and reports. Three connected product loops
 explain the main flow:
 
-1. **Research:** collect evidence, score dimensions, combine them and produce a report.
-2. **Learning:** compare forecasts with observations, record feedback, adjust
-   weights and maintain lessons and company knowledge.
+1. **Research:** collect evidence, score dimensions, combine them, check the
+   evidence and produce a report.
+2. **Learning:** compare forecasts with observations, record feedback, propose
+   or apply weight changes and maintain lessons and company knowledge.
 3. **Portfolio:** evaluate held positions, record advice, optionally execute it
    in a virtual account, then produce transactions, value history and summaries.
-
-The August **Three Loops PI** named an improvement program covering routing,
-data health and grading. Its proposed redesigns are not all implemented.
 
 ```text
 Prices, filings, news, macro data and caches
                     |
-              Sector data bundle
+     Sector data bundle (typed section statuses)
                     |
-     Unified analyst -> weighted aggregation -> research report
-                    |                               |
-                    |                         forecast envelope
-                    |                               |
-    learned weights + lessons <- daily review <- observed close
-                                    |
-                          post-review portfolio hook
-                                    |
+  Unified analyst -> weighted aggregation -> decision gate -> research report
+                    |                                              |
+                    |                                       forecast envelope
+                    |                                              |
+   learned weights + lessons <-------- daily review <------ observed close
+   (observe mode: proposals only)            |
+                                  post-review portfolio hook
+                                             |
                      advisor -> advice ledger -> virtual executor
                                     |                  |
                            outcome audit       transactions + equity
@@ -83,6 +113,15 @@ Discovery + IPO information -> shelf, paper tracking and brief context
 Watchdog + logs + backups -> operational visibility and recovery
 ```
 
+Three controls cut across the loops:
+
+- the **decision gate** (section 4) decides whether the evidence behind a
+  verdict, a forecast, a review or a buy is good enough to act on;
+- the **instrument registry** (section 4) decides which security a ticker
+  means on a given date, and on which price basis;
+- the **learning mode** (section 5) decides whether learned state may move
+  decisions or is only recorded.
+
 The nightly outcome auditor measures issued advice. The watchdog checks
 operational milestones. Neither is the daily feedback agent. There is no
 general human-approval queue between these components.
@@ -92,14 +131,14 @@ general human-approval queue between these components.
 | Location | Responsibility |
 |---|---|
 | [API server](../services/api/server.py) and [routes](../services/api/routes/) | FastAPI startup, API and streaming interfaces. |
-| [src/backend/shared](../src/backend/shared/) | Shared orchestration, canonical schemas, prompts and settings. |
+| [src/backend/shared](../src/backend/shared/) | Shared orchestration, canonical schemas, prompts, settings, the decision gate and the instrument registry parser. |
 | [src/backend/sectors](../src/backend/sectors/) | Native implementations, generic graph and sector registry. |
-| [services/data](../services/data/) | Fetchers, context assembly, caches, durable stores and backup. |
-| [core/intelligence](../core/intelligence/) | Forecasting, feedback, regimes, seasonal logic and company knowledge. |
-| [core/portfolio](../core/portfolio/), [core/discovery](../core/discovery/), [core/ipo](../core/ipo/) | Virtual money path, listed-stock discovery and IPO evidence. |
+| [services/data](../services/data/) | Fetchers, context assembly, caches, durable stores, backup, restore and off-site copy. |
+| [core/intelligence](../core/intelligence/) | Forecasting, feedback, learning mode, regimes, seasonal logic, company knowledge and prediction-store tools. |
+| [core/portfolio](../core/portfolio/), [core/discovery](../core/discovery/), [core/ipo](../core/ipo/) | Virtual money path, identity reconciliation, listed-stock discovery and IPO evidence. |
 | [core/audit](../core/audit/), [core/ops/watchdog](../core/ops/watchdog/), [core/delivery](../core/delivery/) | Outcome measurement, operational monitoring and delivery. |
-| [src/frontend/prototypes](../src/frontend/prototypes/) | Served React/JSX application, PWA and data adapters. |
-| [tests](../tests/) | Unit, integration and contract checks; their presence alone is not acceptance. |
+| [src/frontend/prototypes](../src/frontend/prototypes/) | Served React/JSX application, PWA, chat rendering and data adapters. |
+| [tests](../tests/) | Unit, integration and contract checks behind a hermetic boundary; their presence alone is not acceptance. |
 
 Some paths are compatibility re-exports. For example,
 `core/config/settings/base.py` forwards to
@@ -122,7 +161,8 @@ becomes the background owner. It starts RL self-heal, APScheduler, cleanup and
 the optional Atlas outbox drainer; the other serves API requests. This guard
 is container-local, not a distributed lock or continuous standby takeover.
 `GET /health` returns process-level `ok`; it does not verify background
-ownership, storage, jobs, data or delivery. SA-029 addresses that gap.
+ownership, storage, jobs, data or delivery. **Planned:** a readiness check and
+background-ownership recovery (SA-029).
 
 ### Configuration
 
@@ -136,47 +176,43 @@ resolved at import, so editing a file does not imply live reconfiguration.
 | `scheduler.enabled: false` | Local startup default; production overrides are separate. |
 | `scheduler.feedback_cron: "30 16 * * mon-fri"` | Daily review default, interpreted in Asia/Kolkata. |
 | `rl.hard_bind_verdict_enabled: true` | Research category follows the composite; model `final_score` remains separate. |
-| `rl.learning_mode: adapt` | SA-039 switch, env `RL_LEARNING_MODE`. `adapt` keeps learned weights and lesson emphasis live; `observe` contains them (section 5). Any other value fails closed to `observe`. |
-| `decision_gate.mode: record` | SA-003 switch, env `DECISION_GATE_MODE`. `record` computes and records the essential-data gate everywhere and changes nothing; `enforce` withholds verdicts, forecasts, learning and new-risk buys that rest on unverified data (sections 4–6). Any other value fails closed to `enforce`. |
-| [`config/instruments.yaml`](../config/instruments.yaml) (SA-008, committed as `02c43f6`; deployed 2026-09-30 as `650bb98c`) | The instrument registry: effective-dated records of which provider symbol each listed ticker is priced from, its price basis, and whether its identity is resolved. It replaces the undated `YF_SYMBOL_OVERRIDES` dict. Evidence is needed to resolve an identity, never to quarantine one. It ships TATAMOTORS and HEXAWARE unresolved and two plain aliases resolved. By the owner's decision of 29 Sep, TMPV is tracked as its own listing in place of TATAMOTORS. Quarantine acts through the same `decision_gate.mode` switch (section 4). |
+| `rl.learning_mode: adapt` | Learning switch, env `RL_LEARNING_MODE`. `adapt` lets learned weights and lesson emphasis move decisions; `observe` contains them (section 5). Any other value fails closed to `observe`. Production sets `observe`. |
+| `decision_gate.mode: record` | Essential-data gate switch, env `DECISION_GATE_MODE`. `record` computes and records the gate everywhere and changes nothing; `enforce` withholds verdicts, forecasts, learning and new-risk buys that rest on unverified data or an unresolved identity (sections 4–6). Any other value fails closed to `enforce`. |
+| [`config/instruments.yaml`](../config/instruments.yaml) | The instrument registry: effective-dated records of which provider symbol each listed ticker is priced from, on which price basis, and whether its identity is resolved (section 4). Evidence is needed to resolve an identity, never to quarantine one. It lists TATAMOTORS and HEXAWARE as unresolved and two plain aliases as resolved. Quarantine acts through `decision_gate.mode`. |
 | `rl.control_lane_enabled`, `rl.scorecard_enabled`: true | Control/evaluation paths configured; not proof of valid prospective comparison. |
 | `ipo.enabled: true`; `ipo.gmp_enabled: false` | IPO refresh and grey-market-price fetching have separate gates. |
 | `delivery.enabled: true`; `delivery.email_enabled: false`; `delivery.push_enabled: true` | Job scheduling, transport enablement and credentials are separate conditions. |
 | `watchdog.enabled: true`; `watchdog.prep_enabled: true` | Monitoring can perform configured prep as well as report results. |
 | `audit.enabled: true` | Nightly outcome grading configured. |
 
-These are repository values, not a fresh inventory of production variables.
-Credentials and `.env` contents do not belong in KT or testing evidence.
+These are repository values; section 1 lists where production differs.
+Credentials and `.env` contents do not belong in this document or in testing
+evidence.
 
 ### Persistent records
 
 | Records | Writer / consumers and scope |
 |---|---|
-| `data/predictions/<sector>/<ticker>/` | PredictionStore: envelopes, feedback, controls, weight memory, lessons and dossier, plus `<TICKER>_weight_observations.json` (SA-039 observe-mode proposals). RL writes; advisor, evaluation and UI read. The owner of a ticker's history is `<managed sector>/<ticker>` (SA-009, below). SA-017 still needs row-level lineage for mixed stores. |
+| `data/predictions/<sector>/<ticker>/` | PredictionStore: envelopes, feedback, controls, weight memory, lessons and dossier, plus `<TICKER>_weight_observations.json` (observe-mode proposals). RL writes; advisor, evaluation and UI read. A ticker's history belongs to `<managed sector>/<TICKER>` (below). |
 | `_shared_ledger.json` per sector; `_market_ledger.json` at prediction root | Shared lessons can affect more than one ticker; bad attribution can propagate. |
+| `data/managed_tickers.json` | The managed list: each scheduled ticker's sector and enabled flag. Disabling a ticker keeps its history; removing it deletes the history. |
+| `data/prediction_quarantine/<migration>/` | Stores moved out of the live tree by the ownership quarantine, with their `lineage.json`. Inside `data/`, so the nightly backup keeps them; outside the tree the evaluators walk. |
 | `data/portfolio/<user>/` | PortfolioStore: holdings/cash, advice and transaction JSONL, value history, dated digests, briefs and weekly reviews. |
 | `data/ipo/` | Historical issue facts and captured demand snapshots; reports derive from these records. |
 | `data/market_cache/ipo.json` and EOD parquet | Cached IPO information and exchange price history; date, source and stale state matter. |
+| `data/logs/data_health.jsonl`; `data/logs/decision_gate.jsonl` | One data-health row per analysis run, also written to `telemetry.db`; one gate row per consumer decision. The gate log never holds a user id. |
 | SQLite score, log, user and Atlas stores | Historical scores, telemetry, sessions and relational indexes/outbox. Secondary tables may lag primary records. |
-| `data/scheduler_job_outcomes.json`; `data/watchdog_state.json` | Operational results and milestone state, not proof of financial performance. |
-| `data/backups/` | Local rotation of the last 7 archives, each with its manifest, and `backup_status.json` (the last restore drill and off-site result). SA-007 adds an encrypted copy outside the volume once the owner configures one; see section 10. A local archive is not off-site recovery. |
+| `data/scheduler_job_outcomes.json`; `data/watchdog_state.json` | Operational results, including the daily review's per-ticker outcomes, and milestone state. Not proof of financial performance. |
+| `data/backups/` | Local rotation of the last 7 archives, each with its manifest, and `backup_status.json` (the last restore drill and off-site result). An encrypted copy goes outside the volume once a target is configured (section 10). A local archive is not off-site recovery. |
 
-PortfolioStore's JSONL ledger is the inspected advice source. September 10
-found incomplete/stale optional Atlas projections. An empty projection does
-not prove no advice was issued.
+PortfolioStore's JSONL ledger is the authoritative advice source. The
+September audit found incomplete or stale optional Atlas projections. An empty
+projection does not prove no advice was issued.
 
-**Prediction-store ownership (SA-009: accepted by its fresh review on
-2026-09-30; committed as `313e3f6` and deployed the same day as `650bb98c`; no quarantine has
-run in production).** SUZLON is managed as `renewable_energy`,
-and its forecasts and reviews live in `renewable_energy/SUZLON`. Before SA-009
-the startup self-heal in the [server](../services/api/server.py) looked for
-every managed ticker's envelope in `automobile/<TICKER>`. For a
-non-automobile ticker it found none, so on the first deploy of each month it
-ran the automobile graph into that directory. `automobile/SUZLON` therefore
-held automobile-dimension forecasts and weights beside the real store. The
-10 September audit capture found 15 such pairs. It also found that all 58
-feedback logs said `automobile`, because the store created each new log with
-the schema default.
+### Prediction-store ownership
+
+A ticker's forecasts, reviews and learned state must live in one store, or its
+history splits across graphs that score different dimensions.
 
 **The owner rule.** A ticker's history belongs to `<managed sector>/<TICKER>`:
 the store the scheduled forecast and review use, taken from the managed
@@ -184,17 +220,25 @@ entry's sector whether or not the ticker is enabled. Some tickers have no
 owner: one without a managed entry, one whose entry has no sector, and one
 whose entries disagree. Nothing guesses a sector.
 
-The writers now keep to that rule:
-- self-heal uses each managed entry's sector. A restart therefore rebuilds a
-  missing envelope in the ticker's own store; before, it did so only for
-  automobile tickers;
+**Why the rule exists.** SUZLON is managed as `renewable_energy`, and its
+forecasts and reviews live in `renewable_energy/SUZLON`. The startup self-heal
+in the [server](../services/api/server.py) once looked for every managed
+ticker's envelope in `automobile/<TICKER>`. For a non-automobile ticker it
+found none, so on the first deploy of each month it ran the automobile graph
+into that directory. The 10 September audit found 15 such pairs, and all 58
+feedback logs said `automobile`, because the store created each new log with
+the schema default.
+
+**Writers.** Every writer keeps to the owner rule:
+
+- self-heal uses each managed entry's sector, so a restart rebuilds a missing
+  envelope in the ticker's own store;
 - [PredictionStore](../core/intelligence/rl/stores/prediction_store.py)
   stamps its own sector on the feedback logs, weight memory and ledgers it
   creates. Files already on disk keep what they say, so a default can still
   be told from a declared sector;
 - the daily review rebuilds a missing or unreadable weight file from its
-  sector's graph, as the forecast does. Before, it used the automobile table
-  for every sector.
+  sector's graph, as the forecast does.
 
 **The inventory** ([store_inventory](../core/intelligence/rl/stores/store_inventory.py)).
 `python -m core.intelligence.rl.stores.store_inventory --out manifest.json` is
@@ -219,78 +263,70 @@ rosters with the owner's graph. `automobile/SUZLON` is `confirmed`, because
 the automobile graph did produce it, and `wrong_roster` for its owner. The
 `sector` fields of feedback logs, weight memory and ledgers are reported,
 never used as evidence. Each roster comes from the graph's weight table
-through the sector router. So if a native sector is switched off, it takes
-the generic roster, and its own files read `unrecognized`. The summary's
-`roster_collisions` then names the graphs whose files cannot be told apart
-(change 1).
+through the sector router. If a native sector is switched off, it takes the
+generic roster and its own files read `unrecognized`; the summary's
+`roster_collisions` then names the graphs whose files cannot be told apart.
 
 The manifest also lists duplicates, each marked identical or conflicting:
+
 - tickers with more than one non-empty store;
 - envelope cycle ids found in more than one store;
 - graded days (ticker and date) recorded more than once, in one store or
   across stores.
 
-These are derived keys, not issuance identities (SA-013). The manifest holds
-paths, tickers, sector keys, counts, SHA-256 digests, dimension names and
-field names, and no prices, text or user data. Its digest excludes the
-generation time, so an unchanged tree always gives the same digest.
+These are derived keys, not issuance identities. The manifest holds paths,
+tickers, sector keys, counts, SHA-256 digests, dimension names and field
+names, and no prices, text or user data. Its digest excludes the generation
+time, so an unchanged tree always gives the same digest.
 
 **Who reads which store.** Each rule below picks a store for a ticker:
 
 | Class | Store it picks | Code |
 |---|---|---|
-| `managed` | `<managed sector>/<TICKER>` | The monthly forecast and daily review ([scheduler](../services/scheduler/python/scheduler.py)), pre-open check, event ingest, weekly ledger cleanup, RL monitor, scheduler API; startup self-heal since SA-009. |
+| `managed` | `<managed sector>/<TICKER>` | The monthly forecast and daily review ([scheduler](../services/scheduler/python/scheduler.py)), startup self-heal, pre-open check, event ingest, weekly ledger cleanup, RL monitor and scheduler API. |
 | `analysis_graph` | `<graph sector>/<TICKER>` | An analysis's learned-weight read ([base_orchestrator](../src/backend/shared/pipeline/base_orchestrator.py)) and its agents' prompt-enhancement and dossier reads. For a pharma ticker that is `generic/<TICKER>`, while its RL store is `pharma/<TICKER>`. |
 | `automobile_default` | `automobile/<TICKER>` when no sector is passed | Manual CLIs (`run_schedule forecast` and `daily-review`, `generate_forecast`'s own main), the bundle builder's and base agent's fallbacks, the UI's last fallback. |
 | `discovery` | every `<dir>/<dir>` pair | Scorecard, eval harness, learning evidence, analytics and universe walk the whole tree; the UI scans it for an unmanaged ticker. |
 | `flat_cli` | `<TICKER>/` | `run_schedule feedback-status`. Discovery misreads such a directory as a sector. |
 
-The last three classes, and the constructor's directory creation, stay as they
-are. They belong to SA-026's frozen `store_key`.
+The last three classes, and the constructor's directory creation, remain.
+**Planned:** one frozen `store_key` replaces them (SA-026), and row-level
+lineage marks rows from another graph inside an owner's store (SA-017).
 
 **The quarantine** ([store_migration](../core/intelligence/rl/stores/store_migration.py)).
 It has three commands:
+
 - **`plan`** is read-only. It proposes to quarantine each non-empty store of a
   managed ticker that is not the owner's store, including a legacy flat one.
   It holds, and never moves, anything that needs a decision: duplicates of an
   unmanaged ticker, an owner that disagrees with the ticker map, a managed
   entry with no sector or two conflicting entries, and two owner directories
-  that differ only in case. It flags an owner's store
-  that carries another graph's roster; the lineage of those rows is SA-017's.
-  The plan lists every file's SHA-256 and ends with one digest.
+  that differ only in case. It flags an owner's store that carries another
+  graph's roster. The plan lists every file's SHA-256 and ends with one digest.
 - **`apply --plan … --approve <digest>`** recomputes the plan and refuses
   unless it is unchanged. It creates a new migration directory
-  `prediction_quarantine/<UTC time>-<digest>/` beside `data/predictions`. That
-  location is inside `data/`, so the nightly backup keeps it, and outside the
-  tree the evaluators walk. It writes the lineage record before the first
-  move. It re-hashes each store immediately before moving it and stops at the
-  first difference. A store moves by one directory rename: its bytes are
-  never copied, rewritten, merged or deleted, and they are hashed again after
-  the move. The quarantine keeps the live layout, so
-  `PredictionStore(ticker, sector, base_dir=<migration>/stores)` still reads it.
+  `prediction_quarantine/<UTC time>-<digest>/` beside `data/predictions` and
+  writes the lineage record before the first move. It re-hashes each store
+  immediately before moving it and stops at the first difference. A store
+  moves by one directory rename: its bytes are never copied, rewritten, merged
+  or deleted, and they are hashed again after the move. The quarantine keeps
+  the live layout, so `PredictionStore(ticker, sector, base_dir=<migration>/stores)`
+  still reads it.
 - **`rollback --migration DIR`** renames each store back after checking its
   bytes. It never merges: it refuses a live path that holds any file, and a
-  quarantined store whose bytes changed. After a complete apply, it restores
-  the live tree byte for byte.
-- **SA-009 change 1** (accepted by its fresh review on 2026-09-30; committed
-  as `9c626a5`) settles two findings from the review. First, an empty directory
-  at the live path, which any read through `PredictionStore` creates, is now
-  removed first. Second, a refused store is retried on the next run, so an
-  operator can repair it and run rollback again. A store already back at its
-  live path, moved by hand or by a rollback interrupted before it recorded
-  the move, counts as restored (`found_live`) only with its recorded bytes.
-  A run reports `rolled_back` only when every store is back with its recorded
-  bytes. Otherwise it reports `partial`, and `lineage.json` gives each store's
-  state.
+  quarantined store whose bytes changed. An empty directory at the live path,
+  which any read through `PredictionStore` creates, is removed first. A
+  refused store is retried on the next run, so an operator can repair it and
+  run rollback again. A store already back at its live path with its recorded
+  bytes counts as restored (`found_live`), whether it was moved by hand or by
+  a rollback interrupted before it recorded the move. A run reports
+  `rolled_back` only when every store is back with its recorded bytes;
+  otherwise it reports `partial`, and `lineage.json` gives each store's state.
+  After a complete apply, rollback restores the live tree byte for byte.
 
-For the 10 September production pairs: if each of those 15 tickers is managed
-under its other sector, and the ticker map agrees, the plan moves the
-`automobile/<TICKER>` copies and keeps the owners' stores. That is an inference
-from the audit's capture, which did not include the managed roster; the tool
-has not run on the volume. A production
-migration needs the owner's authorization, a read-only manifest from the
-volume, and the writer fixes deployed first. Run it in a job-free window,
-because a racing writer is detected, not prevented.
+A racing writer is detected, not prevented, so an apply runs in a job-free
+window and needs the owner's authorization. Production's one apply is in
+section 1.
 
 ## 4. Research: input to recommendation
 
@@ -298,17 +334,19 @@ because a racing writer is detected, not prevented.
 [base orchestrator](../src/backend/shared/pipeline/base_orchestrator.py) →
 [bundle builder](../services/data/context/bundle_builder.py) →
 [unified analyst](../src/backend/shared/pipeline/unified_analyst.py) →
-[aggregator](../src/backend/shared/pipeline/signal_aggregator.py).
+[aggregator](../src/backend/shared/pipeline/signal_aggregator.py) →
+[decision gate](../src/backend/shared/pipeline/decision_gate.py).
 
 1. Resolve input to a company, symbol and sector. A ticker the app already
-   tracks resolves to itself with no model call (FIX-002, below); other text
-   goes to an LLM, with a web search when its answer cannot be verified.
+   tracks resolves to itself with no model call (below); other text goes to an
+   LLM, with a web search when its answer cannot be verified.
 2. Select the graph. Automobile, banking/BFSI, IT and renewable energy have
    native implementations; other sectors use generic analysis. The RL router
-   delegates graph selection to the central registry; August A1 is present.
+   delegates graph selection to the central registry.
 3. Assemble company/sector news, fundamentals, technicals, macro, flows, peers
-   and company knowledge. NSE prefetch data is shared. Sections may be cached,
-   unavailable or not applicable.
+   and company knowledge. NSE prefetch data is shared. Each section reports a
+   typed status: it may be verified, cached, stale, a fallback, empty, not
+   applicable or failed.
 4. The preferred unified analyst scores the sector dimensions together. The
    legacy per-dimension pool remains a fallback. A whole research request can
    involve resolution, aggregation, retries and extra provider calls; it is
@@ -319,27 +357,27 @@ because a racing writer is detected, not prevented.
 6. With hard-bind enabled, configured score bands determine the categorical
    verdict. The raw model verdict is logged for comparison; its numeric
    `final_score` remains separate.
-7. Score history, run summaries, logs and data-health records support the
+7. The decision gate labels the report actionable, degraded or abstain before
+   anything logs or returns its verdict.
+8. Score history, run summaries, logs and the data-health row support the
    user report and later diagnosis.
-8. The decision gate (SA-003, below) labels the report actionable, degraded or
-   abstain before anything logs or returns its verdict.
 
 **Example:** scores 0.8 and 0.4 at weights 0.75 and 0.25 give composite
 `0.8 × 0.75 + 0.4 × 0.25 = 0.70`. The configured band containing 0.70 gives
 the bound verdict. A different LLM `final_score` is a different field, not
 necessarily an arithmetic error.
 
-**Data health (SA-002: accepted 2026-09-26 by its fresh re-review, after a
-rework; committed as `8413b59`; production verification pending).** Every unified run
-writes one data-health row, to `data/logs/data_health.jsonl` and `telemetry.db`.
-Before SA-002 a section's status was guessed from its text, so any nonempty
-sentence read `ok`, including "Technical data unavailable for TATAMOTORS" and
-"[No results for: …]". The row's `health` looked at dimension counts only. On
-2026-08-26 two TATAMOTORS runs against a price source answering HTTP 404 were
-recorded `ok`, with 10 live sections and 9/9 dimensions. Now every section
-producer returns a typed result ([fetch_result.py](../services/data/context/fetch_result.py)): a
-status, the source, the as-of date of its newest datum, and a reason. The
-producer decides the status from its structured data, not from its sentence.
+### Data health
+
+Every unified run writes one data-health row, to `data/logs/data_health.jsonl`
+and `telemetry.db`. Every section producer returns a typed result
+([fetch_result.py](../services/data/context/fetch_result.py)): a status, the
+source, the as-of date of its newest datum, and a reason. The producer decides
+the status from its structured data, never from its sentence. A sentence such
+as "Technical data unavailable for TATAMOTORS" or "[No results for: …]" is not
+evidence of data. A status read from such text once recorded two runs against
+a price source answering HTTP 404 as `ok`, with 10 live sections and 9/9
+dimensions (2026-08-26).
 
 - `ok` and `cache_hit` mean verified data. `stale` means older than the
   freshness bound: a newest price bar over 7 days old, or a newest reported
@@ -349,33 +387,29 @@ producer decides the status from its structured data, not from its sentence.
   filled in; `as_of` is then the newest quarter with figures). An older
   quarter without a figure is named in the reason only. `empty` means
   nothing came back; `n/a` means deliberately not fetched; `failed:<Type>`
-  means an exception.
-  `unverified` means plain text with no typed result.
+  means an exception. `unverified` means plain text with no typed result.
 - A row is `ok` only when every dimension scored and every applicable section
-  is verified and fresh. Otherwise it is `degraded`, or `hollow` (thresholds
-  unchanged), and `health_reasons` says why. Fundamentals, technicals and peers
-  valuation are also listed in `essential_unusable`; SA-003's gate reads them.
-- A Tavily month-cache entry now records how many results it held, so a cached
+  is verified and fresh. Otherwise it is `degraded` or `hollow`, and
+  `health_reasons` says why. Fundamentals, technicals and peers valuation are
+  also listed in `essential_unusable`, which the decision gate reads.
+- A Tavily month-cache entry records how many results it held, so a cached
   "no results" stays `empty` for the rest of the month.
-- New rows carry `contract_version: 2`. Older rows stay as written and are read
-  as version 1 with unknown provenance, not upgraded.
+- Rows carry `contract_version: 2`. Older rows stay as written and are read as
+  version 1 with unknown provenance, not upgraded.
 
 **Example:** the price source answers 404 for TATAMOTORS while news, macro and
-flows answer. The analyst's prompt text is unchanged. The row now says
-`degraded` with `essential technicals=empty`, `essential fundamentals=empty` and
-`essential peers_valuation=fallback`, where it used to say `ok`. The decision
-gate below reads the same statuses.
+flows answer. The analyst's prompt text is the same either way. The row says
+`degraded` with `essential technicals=empty`, `essential fundamentals=empty`
+and `essential peers_valuation=fallback`, and the decision gate reads the same
+statuses.
 
-**Bank statements (FIX-003: accepted by its fresh review on 2026-10-02,
-committed as `110288e`).** A
-bank's quarterly income statement has interest income and net interest income,
-and no operating-income, EBIT or gross-profit row. Before FIX-003 the
-fundamentals fetcher ([fundamentals.py](../services/data/fetchers/fundamentals.py)) substituted zeros for that line.
-So the section read `fallback`, the gate below abstained on every bank
-analysis, and the prompt showed an EBITDA margin of 0.0%. From 28 Sep to 1 Oct,
-YESBANK, IDFCFIRSTB, RBLBANK and FEDERALBNK abstained on 17 of 78 analyses
-(22%; production logs), although their June-quarter figures were on file. Now
-the statement's shape decides, never the ticker or its sector:
+### Bank income statements
+
+A bank's quarterly income statement has interest income and net interest
+income, and no operating-income, EBIT or gross-profit row. The
+[fundamentals fetcher](../services/data/fetchers/fundamentals.py) lets the
+statement's shape decide how it is read, never the ticker or its sector:
+
 - both interest rows and no operating row make a **bank-format** statement.
   Its net interest income takes the operating line's place: the prompt shows
   it per quarter, and a blank newest quarter in it still means `fallback`. The
@@ -387,27 +421,31 @@ the statement's shape decides, never the ticker or its sector:
 - PAYTM reports EBIT beside its net interest income, so it stays a standard
   statement. A non-bank statement without an operating row stays `fallback`.
 
-**Example:** YES Bank's June quarter (revenue ₹4,655.98 Cr, net interest income
-₹2,785.48 Cr) now reads `ok`, so the gate no longer abstains on its
-fundamentals. The October envelopes keep the gate they were issued with, so
-the next SA-003 enforce decision counts only rows issued after the fix.
+Substituting zeros for the missing line would make every bank `fallback`,
+show an EBITDA margin of 0.0% and make the gate abstain on every bank
+analysis. That is what happened from 28 Sep to 1 Oct: YESBANK, IDFCFIRSTB,
+RBLBANK and FEDERALBNK abstained on 17 of 78 analyses (22%), although their
+June-quarter figures were on file.
 
-**Sector benchmarks (SA-010: accepted by its fresh review on 2026-10-05,
-committed as `7efeafd`).** The technicals section shows the stock's correlation and beta
-against an index. Before SA-010 that was the automobile index for every
-sector: the bundle passed only a ticker, and `get_peer_correlation` in
-[fetcher.py](../core/intelligence/algorithms/indicators/fetcher.py) defaulted to `^CNXAUTO`. Yahoo had no data for
-`^CNXAUTO` in the 23 Sep and 2 Oct reviews (production logs), so by the code
-every analysis, banks and IT included, read "Nifty Auto Correlation: 0.0 |
-Beta: 1.0", a substitute shaped like a measurement. Now:
+**Example:** YES Bank's June quarter (revenue ₹4,655.98 Cr, net interest income
+₹2,785.48 Cr) reads `ok`, so the gate does not abstain on its fundamentals.
+Envelopes keep the gate they were issued with, so an enforce decision counts
+only rows issued after a reading rule changes.
+
+### Sector benchmarks
+
+The technicals section shows the stock's correlation and beta against an
+index chosen for its sector:
+
 - the bundle and the legacy agents pass the run's sector, and
   `settings.SECTOR_BENCHMARKS` names its index: automobile `^CNXAUTO` (Nifty
   Auto), banking/BFSI `^NSEBANK` (Nifty Bank), IT `^CNXIT` (Nifty IT) and
-  renewable energy `^CNXENERGY` (Nifty Energy). `get_peer_correlation` has no
+  renewable energy `^CNXENERGY` (Nifty Energy). `get_peer_correlation` in
+  [fetcher.py](../core/intelligence/algorithms/indicators/fetcher.py) has no
   default index;
-- the generic policy: a stock in any other sector, or with no sector, is
-  measured against the broad market, `^NSEI`, labelled "Nifty 50 (broad
-  market)". It is never measured against another sector's index;
+- a stock in any other sector, or with no sector, is measured against the
+  broad market, `^NSEI`, labelled "Nifty 50 (broad market)". It is never
+  measured against another sector's index;
 - returns are paired over the sessions both series have a close for. Fewer
   than 30 paired returns, no data for either symbol, a flat series or a failed
   download leave correlation and beta unmeasured. The prompt then says
@@ -416,62 +454,72 @@ Beta: 1.0", a substitute shaped like a measurement. Now:
 - the section's provenance names the index (`benchmark`), and each call logs
   one `[technicals] <ticker> sector=<sector> benchmark=<index>` line.
 
-**Example:** HDFCBANK's technicals read "Nifty Bank Correlation: … | Beta: …",
-measured against `^NSEBANK`. A read-only probe on 5 Oct found no Yahoo data
-for `^CNXAUTO` or `^CNXENERGY`, while `^NSEBANK`, `^CNXIT` and `^NSEI` each
-answered with 188 sessions. So an automobile stock reads "Nifty Auto
-Correlation: unavailable | Beta: unavailable (benchmark ^CNXAUTO returned no
-price data)", and a renewable-energy stock reads the same for Nifty Energy.
-With data, the automobile text is unchanged byte for byte. Choosing an index
-with data for those two sectors is left to SA-026's sector lenses.
+An unmeasured value is never shown as a measurement. A default of
+"Correlation: 0.0 | Beta: 1.0" looks like data; it once appeared on every
+analysis, banks and IT included, because a single automobile index served
+every sector and Yahoo had no data for it.
 
-**Decision gate (SA-003: accepted 2026-09-27, committed as `167f08b`, production
-verification pending; ships recording only).** Before SA-003 the row was write-only, and production
-recorded BUY on 1 of 6 scored dimensions and STRONG BUY on 3 of 9: the
-aggregator renormalises over whatever was scored, so one surviving dimension
-becomes the whole verdict. Every report now carries a typed `decision_gate`
-(module [decision_gate.py](../src/backend/shared/pipeline/decision_gate.py)), computed from the same
-section statuses and dimension counts as the health row, whether or not the row
-is recorded:
+**Example:** HDFCBANK's technicals read "Nifty Bank Correlation: … | Beta: …",
+measured against `^NSEBANK`. Yahoo has no data for `^CNXAUTO` or
+`^CNXENERGY`, while `^NSEBANK`, `^CNXIT` and `^NSEI` each answered with 188
+sessions on 5 Oct. So an automobile stock reads "Nifty Auto Correlation:
+unavailable | Beta: unavailable (benchmark ^CNXAUTO returned no price data)",
+and a renewable-energy stock reads the same for Nifty Energy. **Planned:**
+choosing an index with data for those two sectors belongs to the sector
+lenses (SA-026).
+
+### Decision gate
+
+Every report carries a typed `decision_gate`
+([decision_gate.py](../src/backend/shared/pipeline/decision_gate.py)), computed
+from the same section statuses and dimension counts as the health row, whether
+or not the row is recorded. The aggregator renormalises over whatever was
+scored, so without a gate one surviving dimension becomes the whole verdict:
+production once recorded BUY on 1 of 6 scored dimensions and STRONG BUY on 3
+of 9.
 
 - **abstain** when an essential section (`observability.data_health_essential_sections`)
   is not `ok`/`cache_hit`, when fewer than half the sector's dimensions were
-  scored (`decision_gate.min_dimensions_fraction: 0.5`), or when the run has
-  no bundle at all (the legacy worker-pool fallback has no provenance). An
-  unresolved symbol lands here too: no provider knows it, so its essential
-  sections are empty.
+  scored (`decision_gate.min_dimensions_fraction: 0.5`), when the run has no
+  bundle at all (the legacy worker-pool fallback has no provenance), or when
+  the ticker's identity fails (below). An unresolved symbol lands here too:
+  no provider knows it, so its essential sections are empty.
 - **degraded** when it may act but an ordinary enrichment (news, macro, flows,
   a dimension above the floor) is missing. Degraded is actionable.
 - **actionable** when nothing is missing.
 
-One switch, `decision_gate.mode` (env `DECISION_GATE_MODE`). `record`, the
-checked-in value, changes nothing: every consumer computes the gate and
-records what enforcement would stop, in `data/logs/decision_gate.jsonl`, on the
-report, on forecast rows and on advice. In `enforce` an abstaining report's
-verdict reads `INSUFFICIENT DATA` (the aggregator's verdict is kept as
+One switch, `decision_gate.mode` (env `DECISION_GATE_MODE`), governs every
+consumer. In `record`, every consumer computes the gate and records what
+enforcement would stop: in `data/logs/decision_gate.jsonl`, on the report, on
+forecast rows and on advice. Nothing else changes. In `enforce` an abstaining
+report's verdict reads `INSUFFICIENT DATA` (the aggregator's verdict is kept as
 `withheld_verdict`), and sections 5 and 6 describe what the learning and
 portfolio consumers then refuse. An unrecognised value fails closed to
-`enforce`. **Example:** the TATAMOTORS 404 run above scores 9 of 9 and the
-aggregator says STRONG BUY. Its gate is `abstain`, naming the three essential
-sections. In `record` the user still sees STRONG BUY and the gate log gains a
-row saying what enforcement would have withheld; in `enforce` the user sees
-INSUFFICIENT DATA. The same run with its price source answering stays
-`actionable` and keeps STRONG BUY.
+`enforce`.
 
-**Instrument identity (SA-008: accepted by its fresh review on 2026-09-30;
-committed as `02c43f6`, deployed 2026-09-30 as `650bb98c`).** The gate above checks that evidence arrived and is fresh, not that
-it belongs to the company the ticker names. Before SA-008 an undated
-`YF_SYMBOL_OVERRIDES` dict mapped TATAMOTORS to TMPV.NS, the passenger-vehicle
-company after the 2025 demerger, while the name "Tata Motors Limited" now
-belongs to the commercial-vehicle company. So the news and the prices could
-describe two companies, and with TMPV's data healthy the analysis was
-`actionable`.
+**Example:** the TATAMOTORS 404 run above scores 9 of 9 and the aggregator
+says STRONG BUY. Its gate is `abstain`, naming the three essential sections.
+In `record` the user still sees STRONG BUY and the gate log gains a row saying
+what enforcement would have withheld; in `enforce` the user sees INSUFFICIENT
+DATA. The same run with its price source answering stays `actionable` and
+keeps STRONG BUY.
 
-The instrument registry, [config/instruments.yaml](../config/instruments.yaml), replaces the dict. It is
-read by `symbol_resolver.resolve_identity`, and its parsing lives in
-[instruments.py](../src/backend/shared/data/instruments.py). For each listed ticker it holds
-effective-dated segments. Each segment names the provider symbol to ask, the
-**price basis** those prices are on, and a status:
+### Instrument identity
+
+The gate's section checks prove that evidence arrived and is fresh, not that
+it belongs to the company the ticker names. After the 2025 demerger, an
+undated override mapped TATAMOTORS to TMPV.NS, the passenger-vehicle company,
+while the name "Tata Motors Limited" passed to the commercial-vehicle company.
+The news and the prices could then describe two companies, and with TMPV's
+data healthy the analysis was `actionable`.
+
+The instrument registry, [config/instruments.yaml](../config/instruments.yaml),
+records identity explicitly. `symbol_resolver.resolve_identity` reads it, and
+its parsing lives in [instruments.py](../src/backend/shared/data/instruments.py).
+For each listed ticker it holds effective-dated segments. Each segment names
+the provider symbol to ask, the **price basis** those prices are on, and a
+status:
+
 - only an `active` segment resolves. When its symbol is not the ticker's own
   listing, it must say how the two relate. An `alias` needs a reason. A
   `rename`, `demerger` or `relisting` needs evidence: an exchange or company
@@ -483,7 +531,7 @@ effective-dated segments. Each segment names the provider symbol to ask, the
   covers, or an unreadable registry (fail closed);
 - a ticker the registry does not list resolves to its own NSE listing. A
   learned self-heal to another code (`data/yf_symbol_cache.json`) is still
-  fetched, as before, but is `unresolved` until someone records it;
+  fetched, but is `unresolved` until someone records it;
 - a registered ticker is never self-healed. An empty fetch is an outage or a
   lifecycle event, and a Yahoo search could swap in another company.
 
@@ -494,43 +542,36 @@ off.
 
 The gate abstains when the ticker's identity for today is not resolved, or when
 the technicals' price history came from another symbol than the identity names
-(the section's provenance now records its `symbol`). Identity reasons come
-first, and the report's `decision_gate.identity` records the instrument
-(ticker, symbol, basis, status). The close fetchers ask for the resolved
-instrument, including the BSE fallback, which used to ask for
-"{TICKER}.BO". The NSE cross-check uses the registry's NSE code. **Example:**
-TATAMOTORS ships `unresolved`, still priced from TMPV.NS, so fetching is
-unchanged. With healthy data the analyst says STRONG BUY:
+(the section's provenance records its `symbol`). Identity reasons come first,
+and the report's `decision_gate.identity` records the instrument (ticker,
+symbol, basis, status). The close fetchers ask for the resolved instrument,
+including the BSE fallback, and the NSE cross-check uses the registry's NSE
+code.
+
+**Example:** TATAMOTORS is `unresolved`, still priced from TMPV.NS. With
+healthy data the analyst says STRONG BUY:
+
 - in `record` the user still sees STRONG BUY, and the gate log gains a row
   starting "identity unresolved: retired by the owner's decision …";
 - in `enforce` the user sees INSUFFICIENT DATA.
 
-**The owner's decision (29 Sep): track the passenger-vehicle company as its
-own ticker, TMPV.** TMPV needs no registry record: its ticker, its name and
-its prices are one company, so it resolves as its own listing, and its
-learning starts fresh. TATAMOTORS stays quarantined, so its history (weights
-learned partly on the pre-demerger company) is never graded or advised against
-another company's prices. TMPV is in the automobile sector's exact-match list,
-so the LLM ticker lookup, whose prompt names "TATAMOTORS – Tata Motors Ltd", is
-never asked to "resolve" it. In production the swap is the owner's step at
-rollout: disable TATAMOTORS in the managed list rather than remove it, because
-removing deletes its prediction history; then add TMPV.
+**TMPV and TATAMOTORS.** The passenger-vehicle company is tracked as its own
+ticker, TMPV, by the owner's decision of 29 Sep. TMPV needs no registry record:
+its ticker, its name and its prices are one company, so it resolves as its own
+listing, and its learning starts fresh. TATAMOTORS stays quarantined, so its
+history (weights learned partly on the pre-demerger company) is never graded
+or advised against another company's prices. TMPV is in the automobile
+sector's exact-match list, so the LLM ticker lookup, whose prompt names
+"TATAMOTORS – Tata Motors Ltd", is never asked to resolve it. A retired ticker
+is disabled in the managed list, never removed, because removing it deletes
+its prediction history.
 
-**Ticker resolution (FIX-002: accepted by its fresh review on 2026-10-01,
-committed as `656ed71`).** Before FIX-002 the resolver's short cut knew only each sector's
-static `TICKERS` setting, and most production-managed tickers are not in it:
-the IT list holds TCS and INFY, but not TATAELXSI, KPITTECH, PERSISTENT or
-HAPPSTMNDS. So every scheduled forecast and review of those tickers asked an
-LLM which company the ticker was, and used its answer. **Example:** at 09:16
-on 1 Oct the monthly forecast for TATAELXSI (Tata Elxsi) was resolved to
-TATAMOTORS. The run analysed Tata Motors, with Tata Motors' learned weights
-rather than the ones the forecast passed in, and TATAELXSI's October envelope
-was saved from that analysis. The same path turned TVSMOTOR into TVSMOTORS on 29
-Sep and named HAPPSTMNDS "Happy Smile Digital Ltd".
+### Ticker resolution
 
-Now a ticker resolves to itself, with no LLM or web-search call, when it is in
-its sector's `TICKERS`, in the managed list (`data/managed_tickers.json`, any
+A ticker resolves to itself, with no LLM or web-search call, when it is in its
+sector's `TICKERS`, in the managed list (`data/managed_tickers.json`, any
 sector, enabled or not) or in the instrument registry:
+
 - the managed list and the registry are read on every resolution, so a ticker
   the owner adds is known at once. Nothing writes the list on this path;
 - the company name comes from the curated or learned name, else yfinance for
@@ -539,46 +580,31 @@ sector, enabled or not) or in the instrument registry:
   the identity gate above decides whether it may act;
 - an unreadable registry quarantines every ticker but names none, so free text
   is not mistaken for a ticker;
-- free text ("tata elxsi") still goes to the LLM, as before. So does a weekly
-  discovery candidate that no list holds, so its shelf idea can still rest on
-  another company's analysis. That is routed to SA-026.
+- free text ("tata elxsi") goes to the LLM. So does a weekly discovery
+  candidate that no list holds, so its shelf idea can still rest on another
+  company's analysis.
 
-**Still to do:** after the deploy, the owner authorises regenerating
-TATAELXSI's October envelope. Until then its October reviews grade Tata
-Elxsi's closes against the Tata Motors analysis, and SA-003's gate rows mark
-them. [SA-026](planning/PI-2026-09/stories/SA-026.md) replaces the per-sector lists with one sector definition.
+Asking an LLM which company a tracked ticker is lets it answer wrongly. At
+09:16 on 1 Oct the monthly forecast for TATAELXSI (Tata Elxsi) was resolved to
+TATAMOTORS: the run analysed Tata Motors, with Tata Motors' learned weights,
+and saved TATAELXSI's October envelope from that analysis. The same path
+turned TVSMOTOR into TVSMOTORS and named HAPPSTMNDS "Happy Smile Digital Ltd".
+**Planned:** one sector definition replaces the per-sector lists (SA-026).
 
-**Current gap:** production has recorded the gate since SA-003's deploy on 27
-Sep, and nothing is withheld until the owner switches to `enforce`. The
-1 Oct enforce decision ([record](planning/PI-2026-09/evidence/SA-003-enforce-decision-2026-10-01.md)) measured 25 of 78 analyses that would
-abstain (32%) and kept `record`. 17 of them were the banks above (FIX-003),
-and 2 were the resolution defect (FIX-002). A blank newest quarter still
-makes fundamentals `fallback` and so abstains, for weeks after each quarter
-end.
-SA-008's identity reasons share the same switch, so enforcing SA-003 also
-quarantines TATAMOTORS and HEXAWARE. SA-010 (above; committed as `7efeafd`) passes each sector's benchmark to the technicals. SA-025 measures calls before SA-026 consolidates
-sector definitions and SA-027 retires only justified fallback duplication.
+### Limits of the research path
 
-**Planned redesign (adopted 2026-09-26, not implemented).** The
-[one-engine design](superpowers/specs/2026-09-26-one-engine-sector-lenses-design.md) retires the per-sector graphs. Today all five
-graphs already run one bundle and one reasoning-model call; the LangGraph
-pool is only a fallback. They differ mainly in five scoring schemes (37
-dimension slots under 24 names), and the LLM re-scores numbers the code has
-already computed. Generic-graph stocks are valued against automobile peers,
-and missing data is scored 0.5. The plan has four parts:
-- sector knowledge becomes a lens YAML (peers, benchmark, KPIs, news terms and
-  macro drivers), resolved from NSE's industry field;
-- code computes five factors (Value, Quality, Growth, Momentum and Risk) as
-  percentiles against real peers and the stock's own history;
-- one LLM reader returns dated, sourced events, and code turns them into a
-  sixth factor, Catalyst;
-- code combines the six at equal weights and maps the result to the existing
-  bands. With fewer than 4 of 6 factors it gives no directional verdict. The
-  LLM explains the verdict but cannot change it.
-
-SA-044 fixes the peers first. SA-026, SA-045 and SA-046 run in shadow. SA-047
-switches only when the engine is right on at least 50% of disagreements with
-today's analyst, and SA-027 then deletes the sector packages.
+- The gate records only (section 1). In the 2026-10-01 measurement, 25 of 78
+  analyses would have abstained: 17 were the bank statements and 2 the
+  resolution defect above, both since fixed. A blank newest quarter still
+  makes fundamentals `fallback`, and so abstains, for weeks after each
+  quarter end. Identity reasons share the same switch, so enforcing the gate
+  also quarantines TATAMOTORS and HEXAWARE. The owner re-decides on rows
+  issued since those fixes ([record](planning/PI-2026-09/evidence/SA-003-enforce-decision-2026-10-01.md)).
+- Bundle call counters are not complete provider or fallback cost accounting.
+  **Planned:** SA-025 counts actual calls, before SA-026 consolidates sector
+  definitions and SA-027 retires only justified fallback duplication.
+- **Planned:** the one-engine redesign replaces the per-sector graphs with
+  sector lenses and a deterministic factor engine (section 11).
 
 ## 5. Learning: forecast, review and memory
 
@@ -599,68 +625,66 @@ forecast rows are not independent observed samples or guaranteed probabilities.
 
 The monthly trigger is the **calendar first at 09:00 IST**. The generated rows
 use exchange trading dates. Do not call that trigger the first trading day.
-Shocks, thesis changes and later evidence can revise/archive envelopes.
-SA-013 will define immutable issuance identity so revised knowledge does not
-replace the earlier decision's evidence.
+Shocks, thesis changes and later evidence can revise or archive envelopes.
 
-**SA-003:** every forecast row now names the analysis run that issued it
-(`source_run_id`) and that run's gate (`data_gate`); the envelope keeps the
-latest run's full `decision_gate`. A row issued before SA-003 has an empty
-`data_gate`, meaning provenance unknown. In `enforce` mode an abstained
-analysis builds no envelope (`InsufficientDataError`; the monthly job logs it)
-and regenerates nothing on a shock (the current envelope stays as it is).
-Nothing scheduled retries a withheld month-start envelope before the next
-month's run: only a restart's self-heal regenerates a missing envelope. Until
-then that ticker's reviews return `no_envelope` and its ADDs stay blocked.
-Before SA-009 the self-heal did this only for automobile tickers, because it
-looked in `automobile/<TICKER>`; it now uses each ticker's own store
-(section 3). A same-month retry is routed to SA-036.
+Each forecast row records where it came from:
 
-**SA-008:** every row, and the envelope, also records the instrument its
-analysis priced (`instrument`: ticker, provider symbol, price basis, identity
-status). A later registry change never rewrites it. A row issued before SA-008
-has `instrument: {}`; the review then asks the registry whether the basis
-changed between the envelope's issue date and the session.
+- `source_run_id`, the analysis run that issued it, and `data_gate`, that
+  run's gate. The envelope keeps the latest run's full `decision_gate`;
+- `instrument`, the instrument its analysis priced (ticker, provider symbol,
+  price basis, identity status). A later registry change never rewrites it;
+- the envelope's `learning_mode`.
+
+A row issued before these stamps existed has an empty `data_gate`, meaning
+provenance unknown, and `instrument: {}`. For such a row the review asks the
+registry whether the basis changed between the envelope's issue date and the
+session.
+
+In `enforce` mode an abstained analysis builds no envelope
+(`InsufficientDataError`; the monthly job logs it) and regenerates nothing on
+a shock (the current envelope stays as it is). Nothing scheduled retries a
+withheld month-start envelope before the next month's run: only a restart's
+self-heal, which checks each ticker's own store, regenerates a missing
+envelope. Until then that ticker's reviews return `no_envelope` and its ADDs
+stay blocked. **Planned:** a same-month retry (SA-036), and immutable
+issuance identity so that revised knowledge never replaces the earlier
+decision's evidence (SA-013).
 
 ### Daily review walkthrough
 
 1. The scheduler selects the previous exchange trading session.
 2. Daily review finds its envelope row and obtains the actual close, including
    the configured verification path.
-3. It computes price error and the current direction label. Some small,
+3. It checks the row's provenance, the ticker's identity and the close (below).
+   In `enforce` mode the first failure ends the review.
+4. It computes price error and the current direction label. Some small,
    correct misses skip a fresh analyst run.
-4. Otherwise it may rerun analysis. With hard-bind enabled, current code can
-   grade the old outcome against the fresh report's verdict.
-5. Feedback classifies misses and attributes them to dimensions; weights,
-   lessons and other learning state are updated.
-6. Conditional thesis review, reforecasting, dossier curation and shared
+5. Otherwise it may rerun analysis, and that run must be actionable too. With
+   hard-bind enabled, current code can grade the old outcome against the fresh
+   report's verdict.
+6. Feedback classifies misses and attributes them to dimensions. In `adapt`
+   mode weights change; in `observe` mode the change is recorded as a
+   proposal. Lessons and other learning state are updated.
+7. Conditional thesis review, reforecasting, dossier curation and shared
    knowledge updates can run under their feature gates.
-7. After harvesting reviews, the scheduler invokes the portfolio pipeline.
-   Returning successfully does not establish that every ticker got feedback.
+8. After harvesting reviews, the scheduler records one outcome per ticker
+   (section 9) and invokes the portfolio pipeline.
 
-**Decision gate in the review (SA-003).** The review checks these inputs, in
-order, before it writes anything:
+### Review input checks
+
+The review checks these inputs, in order, before it writes anything:
+
 - the graded row came from an actionable analysis (not `abstain`, not unknown);
-- SA-008, stage `identity`: the ticker's identity on the review session is
-  resolved, and the row's price basis is the session's. A stamped row names its
-  basis. For an unstamped row, the registry is asked whether a demerger or
-  relisting lies between the envelope's issue date and the session; a rename
-  does not break the basis. **Example:** a row issued on 5 June predicts a
-  parent's close, and the parent demerges on 15 June. From then on the ticker's
-  close is the continuing company's alone, so a review on 20 June would grade a
-  "fall" that is really the spin-off. The review stops at `identity`;
+- **identity:** the ticker's identity on the review session is resolved, and
+  the row's price basis is the session's. A stamped row names its basis. For
+  an unstamped row, the registry is asked whether a demerger or relisting lies
+  between the envelope's issue date and the session; a rename does not break
+  the basis;
 - the actual close is from the bar dated the review session. The close
   fetchers fall back to the newest earlier bar when the session has none (a
-  suspended symbol, a provider lag), and that fallback is unchanged. What is
-  new is that the result names the bar it came from. A download that holds a
-  single bar, as on a listing day, is read like any other (FIX-001,
-  committed as `0493f7c`, deployed, and confirmed by the 1 Oct nightly audit).
-  Before, it
-  was discarded, and the close came
-  only from NSE, if at all. A known case (routed to
-  SA-012): when NSE has not yet listed the session and yfinance's session
-  close differs from NSE's latest row by more than 1%, the cross-check still
-  prefers NSE's earlier close. That close is now marked stale, not graded;
+  suspended symbol, a provider lag), and the result names the bar it came
+  from. A download that holds a single bar, as on a listing day, is read like
+  any other;
 - the fresh re-run, when one happens, is actionable.
 
 In `enforce` mode the first failure ends the review as `data_gated`: no
@@ -668,15 +692,24 @@ grading, FeedbackAgent call, weight update or observe-mode proposal, lesson,
 envelope revision, streak, feedback entry, dossier or control-lane step. The
 skip is recorded with its stage, reason and source run id. The market-wide
 sticky regime, updated at the start of every review, is the one write that
-still happens. In `record` mode the review runs as before and its summary lists
-what enforcement would have stopped. **Example:** a symbol is suspended on the
-review day, and both providers return the previous day's close of 99.0. That
-used to be graded as a flat day, a zero return that never happened. Now the
-close says it is from the previous day's bar, and enforcement skips the review.
-Since SA-004 (accepted 2026-09-27, committed as `241c393`) the scheduler counts a
-`data_gated` review on its own: it is not output, so it cannot quiet the zero-
-or partial-output alert, and a completed review that lists `data_gate` inputs
-counts as `degraded` (section 9).
+still happens. In `record` mode the review runs and its summary lists what
+enforcement would have stopped. The scheduler counts a `data_gated` review on
+its own (section 9).
+
+**Example (identity):** a row issued on 5 June predicts a parent's close, and
+the parent demerges on 15 June. From then on the ticker's close is the
+continuing company's alone, so a review on 20 June would grade a "fall" that
+is really the spin-off. The review stops at `identity`.
+
+**Example (stale close):** a symbol is suspended on the review day, and both
+providers return the previous day's close of 99.0. Graded, that is a flat day,
+a zero return that never happened. The close says it is from the previous
+day's bar, and enforcement skips the review.
+
+**Known limit (planned for SA-012):** when NSE has not yet listed the session
+and yfinance's session close differs from NSE's latest row by more than 1%,
+the cross-check prefers NSE's earlier close. That close is marked stale, not
+graded.
 
 ### Grading defect: an example everyone can follow
 
@@ -688,8 +721,8 @@ A new verdict computed after observing the outcome can also become the graded
 verdict. Label definition and issue-time information are separate problems.
 
 Existing tests can describe those code paths without establishing the desired
-financial contract. SA-012 defines the target; SA-013/SA-014 freeze and grade
-information available when the decision was issued.
+financial contract. **Planned:** SA-012 defines the target; SA-013 and SA-014
+freeze and grade the information available when the decision was issued.
 
 ### What adaptation means here
 
@@ -699,17 +732,18 @@ feedback system; it does not demonstrate that adaptation beats a fixed policy.
 The audit also reproduced final weight-bound violations and repeated ensemble
 trend counts presented under different agent names.
 
-Production adapts live weights on every eligible review. On 2026-09-23,
-production logged `technical` at 0.0 for 5 of the 6 tickers that have that
-agent. The [2026-09-24 baseline](planning/PI-2026-09/evidence/SA-039-baseline-2026-09-24.md)
-reproduced it: the defaults are 0.12 in the generic graph and 0.10 in the
-renewable graph. Counting `pattern_analysis`, the chart agent of the other
-graphs, 9 of 18 tickers had a chart weight of 0.0 and 16 of 18 were below half
-their default. All 19 reviews that day wrote a new weight version.
+Unconstrained, the adapter drove chart weights toward zero. The
+[2026-09-24 baseline](planning/PI-2026-09/evidence/SA-039-baseline-2026-09-24.md)
+found `technical` at 0.0 for 5 of the 6 tickers that have that agent; the
+defaults are 0.12 in the generic graph and 0.10 in the renewable graph.
+Counting `pattern_analysis`, the chart agent of the other graphs, 9 of 18
+tickers had a chart weight of 0.0 and 16 of 18 were below half their default.
+All 19 reviews that day wrote a new weight version.
 
-**SA-039 (accepted 2026-09-25; production `observe` since 2026-09-26):** `rl.learning_mode` has
-two values. `adapt` is the checked-in value
-and the behaviour described above. `observe` contains learning:
+### Learning mode
+
+`rl.learning_mode` has two values. `adapt` lets the review update live weights
+on every eligible review, as described above. `observe` contains learning:
 
 - Forecasts, re-forecasts, public analysis, and the review's re-scoring and
   forecast revision aggregate with the sector's configured default table (the
@@ -721,68 +755,56 @@ and the behaviour described above. `observe` contains learning:
   agent scores. Lessons are still recorded, and `claims_fired` stays empty
   because no claim acted.
 
-Example: a ticker stores `technical = 0.0` at v41. In `observe` mode its
+**Example:** a ticker stores `technical = 0.0` at v41. In `observe` mode its
 forecast uses 0.12; after the review the file still says 0.0 at v41, and the
 observation record shows what v42 would have been. Switching back to `adapt`
-resumes the stored weights unchanged. An unrecognised value fails closed to
-`observe` with a warning. The mode is shown in the review's start and
-completion log lines, on each envelope (`learning_mode`), and by
-`/ui/rl/weights/{ticker}` (with the live `decision_weights`) and
-`/ui/rl/summary/{ticker}`. The paper lane still never trains or writes
-weights, and the absurd-price-error guard still skips the adapter. Like every
-other decision path, the paper lane uses the sector defaults in `observe`.
-SA-039 does not contain regime multipliers, thesis
-multipliers, the conviction streak, miss-counter prompt enhancements or dossier
-text. **Production has run `observe` since 2026-09-26 at about 06:40 IST.** The owner set the
-Railway variable `RL_LEARNING_MODE=observe`, which overrides the checked-in `adapt`
-([activation record](planning/PI-2026-09/evidence/SA-039-activation-2026-09-26.md)). Rollback is deleting the variable. Forecast rows issued
-before activation keep their verdicts and closes; the review re-weights only
-their confidence. The first fully contained cycle is therefore the next monthly
-forecast (the 1st, 09:00 IST).
+resumes the stored weights unchanged.
 
-**Leaving `observe` (planned, not implemented).** In the current code,
-`observe` re-proposes one step from the frozen stored file each night, so its
-records do not accumulate into a learner. [SA-043](planning/PI-2026-09/stories/SA-043.md)
-plans a shadow learner. It learns six factor weights pooled across all stocks
-([one-engine design](superpowers/specs/2026-09-26-one-engine-sector-lenses-design.md)), starting from the defaults and learning on the
-corrected target (SA-012 to SA-015). For each issued decision, it records the
-default verdict and the shadow verdict from the same factor scores.
-[SA-022](planning/PI-2026-09/stories/SA-022.md) then scores only the decisions
-where the two disagree. Learning may return only when all of these hold:
-- at least 100 effective disagreements, over at least 3 months and 3 lenses;
-- the shadow is right on at least 60% of them;
-- its wins are consistent month to month and robust to dropping its best lens;
-- no factor's weight has collapsed to its bound, or below half its default, for
-  4 weeks.
+An unrecognised value fails closed to `observe` with a warning. The mode is
+shown in the review's start and completion log lines, on each envelope
+(`learning_mode`), and by `/ui/rl/weights/{ticker}` (with the live
+`decision_weights`) and `/ui/rl/summary/{ticker}`. The paper lane never trains
+or writes weights, and the absurd-price-error guard skips the adapter; like
+every other decision path, the paper lane uses the sector defaults in
+`observe`. The mode does not contain regime multipliers, thesis multipliers,
+the conviction streak, miss-counter prompt enhancements or dossier text.
 
-The pass must hold at two consecutive monthly looks, and the owner still
-decides. `adapt` would then resume from the shadow's weights, never from the
-stored pre-fix weights. A reverse tally in the first month (below 45%) returns
-learning to `observe`.
+Production runs `observe` (section 1). Rollback is deleting the Railway
+variable. In this mode each night re-proposes one step from the frozen stored
+file, so the observation records do not accumulate into a learner.
+**Planned:** a shadow learner, and the conditions under which learning may
+return to `adapt` (section 11).
 
-SA-015 requires retry-safe updates and final bounds, SA-016 fixes attribution,
-and SA-017 records comparable history. SA-020/SA-021 address overlap,
-calibration and recovery evidence. SA-022 requires prospective comparisons
-against a frozen policy; SA-023 tests lessons on probation. Future matured
-market observations remain necessary even after implementation acceptance.
+### Company knowledge
 
 Event ingestion adds company observations; the curator maintains knowledge
 and questions; the research job attempts answers. These are knowledge tasks,
-not trades. No writer dates a dossier row after the run that wrote it
-(FIX-004: accepted 2026-10-10, committed as `ff95a51`). Event ingestion
-dates rows with the event's day and skips an event dated after the scan, such as a
-board meeting announced for later in the month, until a scan on or after that
-date. Before FIX-004 it stored such a meeting under its future date: on 7 Oct
-two production dossiers held 3 observations and 1 guidance item dated 24 and
-27 Oct ([probe](planning/PI-2026-09/evidence/FIX-004-probe-2026-10-06.md)).
-The digest the agents read leaves out observations and open guidance dated
-after its own date; stored rows are not rewritten. The morning brief's
-earnings-watch line takes the latest open guidance dated before the brief's
-own date (review L1; FIX-004 change 1, committed as `61c85d6` at the owner's
-word before its fresh review, which is pending). The brief goes out at 08:50, before any weekday dossier writer
-runs, so a row dated that day can only be an old future-dated one, such as the
-27 Oct row on the 27 Oct meeting's morning. Discovery paper tracking uses a separate store root with learning
+not trades. Discovery paper tracking uses a separate store root with learning
 writes disabled for that lane; it is not live investor performance.
+
+**Dates.** No writer dates a dossier row after the run that wrote it. Event
+ingestion dates rows with the event's day, and skips an event dated after the
+scan, such as a board meeting announced for later in the month, until a scan
+on or after that date. The digest the agents read leaves out observations and
+open guidance dated after its own date; stored rows are not rewritten. Older
+rows can still carry a future date: on 7 Oct two production dossiers held 3
+observations and 1 guidance item dated 24 and 27 Oct
+([probe](planning/PI-2026-09/evidence/FIX-004-probe-2026-10-06.md)).
+
+Open guidance is read through one rule, the dossier's `open_guidance(as_of)`:
+open items dated on or before `as_of`, in stored order. The digest lists the
+last 5. The morning brief's earnings-watch line takes the last item as of the
+day before the brief's date. The brief goes out at 08:50, before any weekday
+dossier writer runs (the curator runs inside the 16:30 review; event
+ingestion and research run on Saturdays). So a row dated the brief's own day can only be
+an old future-dated one, and the brief's earnings window includes the meeting
+day.
+
+**Example:** a held stock has results on Tue 27 Oct. Its dossier holds open
+guidance dated 15 Sep and an old item dated 27 Oct. The briefs of Mon 26 and
+Tue 27 Oct, the two in the 3-day earnings window, both show the 15 Sep item.
+The cost of the rule: a brief triggered by hand after the 16:30 review leaves
+out that day's new guidance until the next day.
 
 ## 6. Portfolio: advice and virtual execution
 
@@ -813,32 +835,38 @@ become SWITCH when an eligible replacement exists. A holding-age rule can
 soften certain TRIM actions to HOLD; it does not override EXIT. These are
 product rules, not individualized tax or investment advice.
 
-**Decision gate (SA-003).** ADD and a SWITCH's buy leg add risk, so in
-`enforce` mode they need two things: the holding's close must be from the
+### Data and identity checks on advice
+
+**New risk needs verified evidence.** ADD and a SWITCH's buy leg add risk, so
+in `enforce` mode they need two things: the holding's close must be from the
 review session's own bar, and the forecast rows behind the signal must come
 from an actionable analysis. A blocked ADD becomes HOLD. A blocked SWITCH
 destination falls back to the next eligible idea, or to a plain EXIT. A shelf
-idea shelved before SA-003, from an abstained deep dive, or priced from an
+idea without gate provenance, from an abstained deep dive, or priced from an
 earlier bar is not a destination. Either way the advice gains the note
 `DATA_GATE` and a `data_gate` record (what was withheld, why, and the source
 forecast runs). That record is on the user's own advice ledger; the shared
-gate log never holds a user id. EXIT and TRIM are never blocked: missing data
-must not trap a position. When they rest on a stale close or an unverified
-forecast, the advice records that. In `record` mode the decision is
+gate log never holds a user id. EXIT and TRIM are never blocked by data:
+missing data must not trap a position. When they rest on a stale close or an
+unverified forecast, the advice records that. In `record` mode the decision is
 unchanged and `data_gate` says what enforcement would have withheld.
+
 **Example:** a holding's envelope was built on an abstained STRONG BUY and
 points up. Unenforced, that gives ADD and a virtual buy of 2 shares. Enforced,
 it gives HOLD with `DATA_GATE`, and no buy.
 
-**Identity hold (SA-008).** A holding is held outright, EXIT and TRIM included,
-with the note `IDENTITY`, in two cases:
+**Identity hold.** A holding is held outright, EXIT and TRIM included, with
+the note `IDENTITY`, in two cases:
+
 - its symbol's identity is unresolved;
 - its price basis changed (a demerger or a relisting) since the basis its cost
   was booked on: the buy date, or the latest identity reconciliation.
 
-This is the corporate-action rule again. The daily sync keeps a 1:1 bonus
-from looking like a 50% crash, and a demerger is the same trap. A SWITCH
-destination or an autopilot buy leg with an unresolved identity is refused.
+This is the corporate-action rule applied to identity. The daily sync keeps a
+1:1 bonus from looking like a 50% crash, and a demerger is the same trap. A
+SWITCH destination or an autopilot buy leg with an unresolved identity is
+refused.
+
 **Example:** 100 PARENT bought at ₹1,000; PARENT demerges into PARENTA (60% of
 the cost) and PARENTB (40%), and the ticker now trades as PARENTA at ₹600.
 Unreconciled, 600 against 1,000 reads −40%, a stop breach, and the advisor
@@ -848,14 +876,18 @@ rename keeps the basis, so a renamed holding is advised as before. Every advice
 record also keeps the instrument its close priced (`instrument`), which a later
 registry change does not rewrite.
 
-**Reconciliation is an operator's step** ([identity_reconcile](../core/portfolio/identity_reconcile.py)). `python -m
-core.portfolio.identity_reconcile plan` is read-only. It lists every held
-position the advisor would hold, with the registry's proposal. The proposal
-comes from a recorded, evidenced event with `successors` (ticker, shares per
-old share, share of the cost), or it says what must be recorded first. For
-the example it proposes PARENTA 100 @ ₹600 (₹60,000) and PARENTB 100 @ ₹400
-(₹40,000), so the cost is conserved. `apply --plan … --approve <digest>` has
-these safeguards:
+### Identity reconciliation
+
+Reconciliation is an operator's step
+([identity_reconcile](../core/portfolio/identity_reconcile.py)).
+`python -m core.portfolio.identity_reconcile plan` is read-only. It lists every
+held position the advisor would hold, with the registry's proposal. The
+proposal comes from a recorded, evidenced event with `successors` (ticker,
+shares per old share, share of the cost), or it says what must be recorded
+first. For the example it proposes PARENTA 100 @ ₹600 (₹60,000) and PARENTB
+100 @ ₹400 (₹40,000), so the cost is conserved.
+`apply --plan … --approve <digest>` has these safeguards:
+
 - it refuses unless a fresh plan has the approved digest, so nothing changed
   since review;
 - it copies `portfolio.json` aside before writing;
@@ -866,17 +898,17 @@ these safeguards:
 The ledger reconciler treats the successors as `unverifiable`, as after a
 split. Nothing runs this on a schedule.
 
-**Two known limits of `apply` (SA-008 review, 2026-09-30).** Its first check
-compares digests before it takes each user's lock. Under the lock it does not
-look at the holding again. So a sale of the same holding in that short window
-still gets successors sized from the plan's figures: 50 PARENT left would
-become 100 PARENTA and 100 PARENTB. Also, one apply names every backup with
-the same timestamp. For a user with two reconciled holdings, the second copy
-overwrites the first, so the only backup holds the half-applied portfolio.
-The audit log's `before` records still hold each old holding. The shipped
-registry records no `successors`, so `apply` applies nothing today. SA-008
-change 1 fixes both. Until it is accepted, record no `successors` and run no
-`apply` in production.
+**Known limits of `apply`.** Its digest check runs before it takes each
+user's lock, and under the lock it does not look at the holding again. So a
+sale of the same holding in that short window still gets successors sized
+from the plan's figures: 50 PARENT left would become 100 PARENTA and 100
+PARENTB. Also, one apply names every backup with the same timestamp. For a
+user with two reconciled holdings, the second copy overwrites the first, so
+the only backup holds the half-applied portfolio; the audit log's `before`
+records still hold each old holding. The shipped registry records no
+`successors`, so `apply` applies nothing today. **Planned:** a fix for both
+(SA-008 change 1). Until it lands, record no `successors` and run no `apply`
+in production.
 
 ### Execution and persistence
 
@@ -894,17 +926,22 @@ In `enforce` mode the executor also re-checks a SWITCH buy leg's own price:
 if its close is not from the session's bar, the sell executes and the buy is
 skipped, and the user gets the existing `switch_buy_skipped` alert.
 
-**Where cash goes (current code).** The autopilot opens a new position only
-through a SWITCH, putting one sale's proceeds into a shelf idea. ADD tops up a
-stock already held, capped at `advisor.max_position_pct` (10%) after the trade.
-A plain EXIT leaves its proceeds in cash, and nothing reinvests them. The SWITCH
-buy spends the whole proceeds, with no position or sector cap. **Example (the
-owner's screen, 27 Sep):** ₹8,09,297 of ₹9,99,611 was cash (81%), with two
-holdings. ACMESOLAR's `exit_full` alone moved about ₹2.27L to cash, and
-FEDERALBNK was 13.1% of the portfolio. **Planned:** one sizing rule for every
-autopilot buy (SA-050). In a normal market, idle cash goes into shelf ideas that
-pass the checks; cash is held on purpose only in a crisis (SA-049, the owner's
-decision of 2026-09-27, behind a switch that ships off).
+### Cash deployment
+
+The autopilot opens a new position only through a SWITCH, putting one sale's
+proceeds into a shelf idea. ADD tops up a stock already held, capped at
+`advisor.max_position_pct` (10%) after the trade. A plain EXIT leaves its
+proceeds in cash, and nothing reinvests them. The SWITCH buy spends the whole
+proceeds, with no position or sector cap.
+
+**Example (the owner's screen, 27 Sep):** ₹8,09,297 of ₹9,99,611 was cash
+(81%), with two holdings. ACMESOLAR's `exit_full` alone moved about ₹2.27L to
+cash, and FEDERALBNK was 13.1% of the portfolio.
+
+**Planned:** one sizing rule for every autopilot buy (SA-050). In a normal
+market, idle cash goes into shelf ideas that pass the checks; cash is held on
+purpose only in a crisis (SA-049, the owner's decision of 2026-09-27, behind a
+switch that ships off).
 
 ## 7. Profit/loss and the different marksheets
 
@@ -928,9 +965,10 @@ transactions, advice, digest and `/portfolio/performance`.
 The virtual P/L charges no brokerage, STT, stamp duty, exchange fee, DP
 charge or tax. A real round trip costs about 0.25% of the traded value, and
 short-term gains are taxed. For ACMESOLAR's +₹37,551, that is about ₹477 in
-costs and about ₹7,415 in tax (SA-048 plans both). The screen's "Invested" is
-`capital_in`, the mock money ever put in, not the money in stocks. The screen
-also has no benchmark (SA-051 plans a Nifty comparison and honest labels).
+costs and about ₹7,415 in tax. The screen's "Invested" is `capital_in`, the
+mock money ever put in, not the money in stocks. The screen has no benchmark.
+**Planned:** costs and tax in paper P&L (SA-048), and a Nifty comparison with
+honest labels (SA-051).
 
 **Example without fees/corporate actions:** start with 2,000 and buy ten units
 at 100. Cash is 1,000. At 110 the holding is 1,100, equity 2,100 and unrealized
@@ -946,9 +984,9 @@ establish executable net returns after fees, spread, tax and slippage.
 
 ### Report families
 
-| Report | Present meaning | Limitation / PI work |
+| Report | Present meaning | Limitation / planned work |
 |---|---|---|
-| RL Monitor / analytics | Envelope, feedback, miss and weight records. | Inherits label/timing/history problems; SA-012–SA-017, SA-024. |
+| RL Monitor / analytics | Envelope, feedback, miss and weight records, with the learning mode and live decision weights. | Inherits label/timing/history problems; SA-012–SA-017, SA-024. |
 | Weekly scoreboard | 28-calendar-day lookback, non-HOLD calls at least five calendar days old, latest supplied closes. | Not fixed matured horizons; current-holding price selection can omit exited stocks. SA-018/SA-019. |
 | Monthly scorecard | Agent/control/simple-baseline lanes and previous-month comparisons. | Completeness, timing and denominators need repair. SA-018. |
 | Learning evidence | Retrospective adapted/base/uniform replay and lesson associations. | Not a prospective controlled experiment of the whole system. SA-020–SA-023. |
@@ -970,17 +1008,16 @@ only when the verdict was taken after the book closed and its lean asserted a
 direction. Every other horizon is recorded with `correct` unset, so it enters
 no hit-rate. These rows are written to the same store and excluded from the
 rendered audit report: the P3 model remains dark until its visibility gate is
-met, and a displayed hit-rate would be that surface. Production grades IPO
-rows: on 30 September 2026 the nightly audit graded two and skipped two
-listing-day rows (SWASTIKAIN, ADROITIND), which got no close. On a listing
-day a download holds one bar, and the close fetcher discarded a one-bar
-frame. So the one row per issue that can carry a mark was the one most likely
-to be skipped. A skipped row is not written, so the next nightly run retries
-it. FIX-001 (committed as `0493f7c` and deployed on 2026-10-01) reads the one
-bar: the 1 Oct audit graded 4 IPO rows and skipped none. The audit prices every row through `close_on`, which
-returns the close without its bar's date. So when a provider lags, a close
-carried forward from an earlier bar is stored as the session's (routed to
-SA-012). No bar precedes a listing, so the listing-day row is not exposed.
+met, and a displayed hit-rate would be that surface.
+
+On a listing day a download holds one bar, and the close fetcher reads it
+like any other. So the listing-day row, the one per issue that can carry a
+mark, gets its close. A row that gets no close is not written, so the next
+nightly run retries it. **Known limit (planned for SA-012):** the audit prices
+every row through `close_on`, which returns the close without its bar's date.
+When a provider lags, a close carried forward from an earlier bar is stored as
+the session's. No bar precedes a listing, so the listing-day row is not
+exposed.
 
 **Example:** stock +5%, benchmark +8% means excess **−3 percentage points**.
 HOLD is incorrect under that relative-return rule despite a positive stock
@@ -996,7 +1033,7 @@ bulk/block activity, optional recent-IPO candidates, screen, deep dives,
 conviction shelf and paper reviews. Failures can degrade individual stages.
 The Saturday job and manual discovery endpoint use this entry point.
 A shelf candidate, watchlist promotion and virtual purchase are separate steps.
-A deep dive runs the ordinary analysis, so its decision gate, including SA-008's
+A deep dive runs the ordinary analysis, so its decision gate, including the
 identity check, is the shelf idea's `data_gate`. In `enforce` a candidate with
 an unresolved identity is never shelved, nor used as a SWITCH destination.
 
@@ -1008,7 +1045,7 @@ an unresolved identity is never shelved, nor used as a SWITCH destination.
 | Captured snapshots | [signals.py](../core/ipo/signals.py): observed refresh facts with hour/content deduplication. [velocity.py](../core/ipo/velocity.py): demand changes derived on read. |
 | Historical evidence | [history.py](../core/ipo/history.py), [outcomes.py](../core/ipo/outcomes.py), [report.py](../core/ipo/report.py): facts, realized curves and subscription-bucket summaries. |
 | P3 model and deep dive (dark) | [research.py](../core/ipo/research.py), [extract.py](../core/ipo/extract.py): browsed, corroborated Substance facts with source URLs. [hype.py](../core/ipo/hype.py), [substance.py](../core/ipo/substance.py), [verdict.py](../core/ipo/verdict.py): deterministic indices and the §3 verdict grid over captured and browsed facts. [deep_dive.py](../core/ipo/deep_dive.py): the 19:00 `ipo_deep_dive` sweep (T−1 research run, post-close re-read from cache) that writes to the append-only store in [verdicts.py](../core/ipo/verdicts.py). [narrate.py](../core/ipo/narrate.py): a sourced research note stored on that row, written by the bulk model from the SAME structured findings the indices read — the verdict is never passed to it, every number in the prose must appear in the findings, an advice/verdict vocabulary rejects it, and a rejected or failed note falls back to a deterministic template. **Writes only:** no verdict, index or quadrant reaches any surface until the `ipo_verdicts_visible_gate` milestone is judged on forward rows. |
-| Forward grading of the P3 verdict (dark) | [listing.py](../core/ipo/listing.py) resolves the listing date and issue price from the P1 spine, then the NSE cache; [grade_ipo_lane](../core/audit/outcomes.py) grades the newest stored verdict per issue against the tape at 1/5/21/63/126/252 trading days from listing, entry price = issue price. Only the listing-day row of a post-close verdict with a directional lean can be scored; the rest carry the return and no claim. Rows land in the existing per-user audit store and are **excluded from the rendered audit report**. No production row exists yet: the job reaches production only on deploy, and grading also waits on the issue reaching the P1 spine, which `scripts/ipo_backfill.py` still rebuilds manually. |
+| Forward grading of the P3 verdict (dark) | [listing.py](../core/ipo/listing.py) resolves the listing date and issue price from the P1 spine, then the NSE cache; [grade_ipo_lane](../core/audit/outcomes.py) grades the newest stored verdict per issue against the tape at 1/5/21/63/126/252 trading days from listing, entry price = issue price. Only the listing-day row of a post-close verdict with a directional lean can be scored; the rest carry the return and no claim. Rows land in the existing per-user audit store and are **excluded from the rendered audit report**. `scripts/ipo_backfill.py` still rebuilds the P1 spine manually. |
 | Recent-listing ranking | [ipo_tracker.py](../core/discovery/ipo_tracker.py): listing evidence, delivery trend, bulk accumulation and optional subscription score discovery candidates. |
 | User surfaces | IPO-watch in briefs, weekly/discovery context and shelf. The brief's demand lean ([`_ipo_lean`](../core/delivery/brief.py)) judges subscription against size-tiered bands from `delivery.brief_ipo_size_tiers`; an issue whose size was not read uses the scale-free scalar thresholds, never the largest tier. The lean is a labelled heuristic, not the P3 verdict. Inspected routes do not provide a dedicated `/ipo/predict` API or complete standalone IPO prediction page. |
 
@@ -1032,11 +1069,13 @@ issue's contractual dates.
 
 The historical **Prospect** design planned further modeling after P0/P1/P2
 collection. Current code has collection, history, captured signals, heuristic
-candidate ranking and, since PI Prospect Sprints 2–4, the dark P3 model,
-deep-dive job, narrator and forward-grading lane in the table above. None of
-it reaches a user, and no production verdict row has been graded. A validated
-IPO application/allotment or listing-gain predictor is therefore still not
-established, and is not silently added to the September remediation scope.
+candidate ranking and the dark P3 model, deep-dive job, narrator and
+forward-grading lane in the table above. None of it reaches a user.
+Production's nightly audit grades IPO-lane rows (4 on 1 October 2026; section
+1), and they stay out of every rendered report until the visibility gate is
+judged. A validated IPO
+application/allotment or listing-gain predictor is therefore still not
+established, and is not part of the September remediation scope.
 
 ## 9. Scheduled jobs and event hooks
 
@@ -1062,7 +1101,7 @@ All times are **Asia/Kolkata (IST)** defaults.
 | `atlas_universe_recompute` | Daily 23:00 | Demand/cadence; no-op if Atlas disabled. |
 | `atlas_cost_rollup` | Daily 23:15 | Cost aggregation; Atlas gate in handler. |
 | `atlas_retention` | Daily 23:20 | Retention; Atlas gate in handler. |
-| `data_backup_nightly` | Daily 23:30 | Archive with manifest, restore drill, local rotation, encrypted off-site copy when configured, email copy; the status feeds the watchdog (SA-007). |
+| `data_backup_nightly` | Daily 23:30 | Archive with manifest, restore drill, local rotation, encrypted off-site copy when configured, email copy; the status feeds the watchdog (section 10). |
 | `audit_nightly` | Daily 23:45 | Matured outcome grading/breach reports; audit gate. |
 | `ledger_cleanup_weekly` | Monday 03:30 | Stale-lesson cleanup. |
 | `event_ingest_weekly` | Saturday 10:00 | Dossier events; event-ingest gate. |
@@ -1075,32 +1114,34 @@ All times are **Asia/Kolkata (IST)** defaults.
 
 Startup self-heal, the post-review portfolio/digest hook and the outbox drainer
 are **not additional cron jobs**. An 08:50 brief is not guaranteed to wait for
-an unfinished 08:45 shock check. Close clock times are not dependencies.
+an unfinished 08:45 shock check. Close clock times are not dependencies. HTTP
+202 from a manual trigger means accepted for background work, not finished.
 
-**Daily-review outcomes (SA-004: accepted 2026-09-27, committed as `241c393`,
-production verification pending).** Before SA-004 the job counted every
-review that did not raise as output. On 2026-09-08 it recorded `produced=20`,
-`expected=20` and `pipeline_ok=true`, while WELCORP returned `no_envelope` and
-19 feedback rows existed. Now [review_outcomes.py](../core/intelligence/rl/workflows/review_outcomes.py)
-gives each enabled ticker exactly one outcome:
+### Daily-review outcomes
+
+A review that does not raise has not necessarily produced feedback. Counting
+it as output once recorded `produced=20`, `expected=20` and `pipeline_ok=true`
+on a day when WELCORP returned `no_envelope` and only 19 feedback rows
+existed. [review_outcomes.py](../core/intelligence/rl/workflows/review_outcomes.py)
+therefore gives each enabled ticker exactly one outcome:
 
 - `completed`: the review wrote its feedback entry;
 - `degraded`: it wrote its feedback entry on an input the data gate would have
-  stopped (SA-003 record mode lists them). Until the 1 Oct envelopes, most
-  reviews grade a row issued before the gate existed, and those read
-  `degraded`;
-- `data_gated`: the gate stopped it before any write (enforce mode);
+  stopped, as `record` mode lists them. A graded row with unknown provenance
+  reads `degraded`;
+- `data_gated`: the gate stopped it before any write (`enforce` mode);
 - `skipped`: no envelope, no forecast row for the session, or no close;
 - `failed`: it raised, returned a malformed result (an unknown status, or a
   result for another ticker or date), or was still running when the harvest
   budget ran out.
 
 Only `completed` and `degraded` are output (`produced`), so a skip, a gate stop
-or a failure fires the zero- or partial-output alert, which now names the
-tickers and why. **Example:** 20 tickers, and WELCORP has no envelope. The
-record reads 19 of 20, `status: partial` and
-`missing: {WELCORP: "skipped: no_envelope"}`. The alert says "completed 19/20 —
-missing: skipped no_envelope: WELCORP".
+or a failure fires the zero- or partial-output alert, which names the tickers
+and why.
+
+**Example:** 20 tickers, and WELCORP has no envelope. The record reads 19 of
+20, `status: partial` and `missing: {WELCORP: "skipped: no_envelope"}`. The
+alert says "completed 19/20 — missing: skipped no_envelope: WELCORP".
 
 - Required work (the distinct enabled tickers) and attempted work are counted
   separately. Disabled tickers are listed as `excluded`, and a duplicate entry
@@ -1116,13 +1157,16 @@ missing: skipped no_envelope: WELCORP".
 - The record in `data/scheduler_job_outcomes.json` keeps the legacy fields and
   adds `by_ticker`, with each ticker's outcome, reason and attempts.
 
-**Still open.** The pipeline's own `completed` does not count holdings whose
-advisor call failed inside it (routed to SA-036). The learning side of a rerun
-is F10's (SA-015). Nothing in the watchdog reads this record yet (SA-034). HTTP
-202 means accepted for background work, not finished. SA-011 covers the
-operational backlog, and SA-029 covers readiness and ownership recovery.
+**Limits.** The pipeline's own `completed` does not count holdings whose
+advisor call failed inside it. The learning side of a rerun is not yet
+idempotent. Nothing in the watchdog reads this record. **Planned:** durable
+outcomes for every critical job (SA-036), idempotent learning updates
+(SA-015), silent-degradation checks in the watchdog (SA-034), an operations
+backlog (SA-011), and readiness and ownership recovery (SA-029).
 
 ## 10. Delivery, interface, identity and operations
+
+### Delivery
 
 [Briefs](../core/delivery/brief.py), [weekly reviews](../core/delivery/weekly.py)
 and digests persist independently of transport.
@@ -1139,12 +1183,11 @@ each row. Stored, queued, transport-accepted, received and read are separate
 states; the code observes only the first three. A row's stored status
 `delivered` means the transport accepted it.
 
-**Delivery contract (SA-006: accepted by its fresh re-review 2026-09-28, after
-two review fixes made the same day; committed as `15dcda1`; deployed on 2026-09-28
-as `00b94de9`).** Every
-transport now returns one result: whether it accepted the
-message, why not, whether a retry can help, and any wait the provider asked
-for. The drainer acts on it:
+### Delivery contract
+
+Every transport returns one result: whether it accepted the message, why not,
+whether a retry can help, and any wait the provider asked for. The drainer
+acts on it:
 
 - **Accepted is not received.** SMTP 250, a Resend 2xx and a push service's
   201 are acceptance. The row records the transport in `accepted_by`, with
@@ -1153,10 +1196,9 @@ for. The drainer acts on it:
 - **Transient failures retry.** A network error before anything was sent (for
   push, only a connection that was never made: refused, a failed DNS lookup or
   a connect timeout), an SMTP 4xx reply, or HTTP 429 or 5xx: the row retries
-  after 1 and then 5
-  minutes (the configured backoff), or later if the provider's `Retry-After`
-  asks for more (capped at 6 hours). After 3 attempts it is dead-lettered as
-  "retries exhausted".
+  after 1 and then 5 minutes (the configured backoff), or later if the
+  provider's `Retry-After` asks for more (capped at 6 hours). After 3 attempts
+  it is dead-lettered as "retries exhausted".
 - **Permanent failures stop at once.** A rejected login, an SMTP 5xx reply,
   Resend 400/401/403/422, a disabled or unconfigured channel, no push
   subscription, or no address for the account: one attempt, then a dead letter
@@ -1180,7 +1222,7 @@ for. The drainer acts on it:
   path: no user id, or the default portfolio id. For any other account, a
   failed lookup retries and a missing address dead-letters; neither reaches the
   owner. The inline path (Atlas off, or the outbox unreachable) follows the
-  same rule; before SA-006 it mailed every user's message to `DELIVERY_EMAIL_TO`.
+  same rule.
 - **Redaction.** Reasons and log lines mask email addresses, URL paths (a push
   endpoint is a bearer capability) and the configured secrets.
 - **Push TTL.** Pushes carry a 12-hour TTL (`delivery.push_ttl_seconds`).
@@ -1199,20 +1241,18 @@ for. The drainer acts on it:
 
 The monthly Learning Evidence email, the watchdog heartbeat and the backup
 email are sent directly, not through the outbox, so they get no retry and no
-dead letter. A failure is now logged with its reason. The backup email is no
-longer the only off-site copy (see "Backups and recovery" below), and
-[SA-042](planning/PI-2026-09/stories/SA-042.md) adds a witness outside the app.
+dead letter; a failure is logged with its reason. The backup email is not the
+off-site copy (below). **Planned:** a witness outside the app for missed jobs
+([SA-042](planning/PI-2026-09/stories/SA-042.md)).
 
-**Dated production observation.** September 10 recorded email failures and no
-confirmed app-created off-site backup copy. The email cause was identified on
-2026-09-21: Railway disables outbound SMTP on its Hobby plan, and production
-had logged `[Errno 101] Network is unreachable` on every send since 2026-07-16.
-After a plan upgrade and redeploy, one triggered brief reached the inbox that
-day. A read-only probe on 2026-09-23 counted, since that redeploy, 8 email rows
-accepted and 0 dead, and 11 push rows accepted. Before 21 Sep, 77 email rows
-were dead and 77 push rows accepted. Those counts are provider acceptance, not
-a measured receipt rate. Whether production sets `RESEND_API_KEY` was not
-inspected. The SA-006 code above has not been deployed.
+**Dated production observation.** The September audit recorded email
+failures. The cause was identified on 2026-09-21: Railway disables outbound
+SMTP on its Hobby plan, and production had logged `[Errno 101] Network is
+unreachable` on every send since 2026-07-16. After a plan upgrade and
+redeploy, a triggered brief reached the inbox that day. A read-only probe on
+2026-09-23 counted, since that redeploy, 8 email rows accepted and 0 dead, and
+11 push rows accepted; before 21 Sep, 77 email rows were dead and 77 push rows
+accepted. Those counts are provider acceptance, not a measured receipt rate.
 
 Remaining limits:
 
@@ -1225,19 +1265,17 @@ Remaining limits:
   (two waits, each capped at 6 hours); a policy with longer waits would lose
   that protection.
 
-**Backups and recovery (SA-007: accepted by its fresh review on 2026-09-29;
-committed as `165d152`; deployed on 2026-09-29 as `26b442f4`. Change 1, a weekly
-reminder while no target is configured, was accepted by its fresh review the
-same day and is committed as `8663387`).** Before SA-007 the nightly
-[backup](../services/data/backup.py) zipped `data/` onto the volume it protects and
-emailed the zip. Only `telemetry.db` and `scores.db` went through SQLite's
-backup API. `users.db`, `atlas.db` and `chat_sessions.db` run in WAL mode and
-were copied as raw files, so rows still in their `-wal` files were lost:
-restored alone, a raw copy of a fresh WAL database has no tables at all.
-Measured 2026-09-23: the job built an 8.98 MB zip, the email failed, and the
-only copy stayed on the volume.
+### Backups and recovery
 
-Each night at 23:30 the job now runs these steps:
+The Railway volume is the only home of the trade ledgers, the prediction tree
+and the SQLite stores, so a backup must leave the volume and must restore.
+Three SQLite stores (`users.db`, `atlas.db` and `chat_sessions.db`) run in WAL
+mode and cannot be copied as raw files: restored alone, a raw copy of a fresh
+WAL database has no tables at all. On 2026-09-23 the older job built an
+8.98 MB zip, its email failed, and the only copy stayed on the volume.
+
+Each night at 23:30 the [backup](../services/data/backup.py) job runs these
+steps:
 
 1. **Build.** Every non-cache file under `data/` goes in. A file is treated as
    SQLite by its header, not its name, and is copied through the backup API;
@@ -1263,40 +1301,31 @@ Each night at 23:30 the job now runs these steps:
 3. **Rotate** the local copies to the newest 7, each with its sidecar.
 4. **Off-site.** Only an archive that passed its drill leaves the volume.
    [offsite](../services/data/offsite.py) encrypts it with AES-256-GCM under
-   `BACKUP_ENCRYPTION_KEY` and uploads it to `BACKUP_OFFSITE_TARGET`. That is `s3` (any S3-compatible bucket, signed with
-   AWS Signature V4 using only the standard library and `requests`) or `dir`
-   (a separately mounted directory, refused when it overlaps `data/`). The
-   ciphertext goes first and the manifest last; each must read back at its
-   uploaded size. Only then is the copy "confirmed". An upload interrupted
-   halfway is never confirmed, and its leftover ciphertext is deleted once a
-   newer copy is confirmed. Retention keeps the newest
-   `BACKUP_OFFSITE_KEEP` confirmed copies (30 by default; 0 or less keeps
-   all). It never touches objects not named like a backup, and it deletes a
-   copy's manifest before its ciphertext.
-5. **Email** the plaintext zip as before, when it is under 20 MB. This is a
-   direct send; it does not count as off-site.
+   `BACKUP_ENCRYPTION_KEY` and uploads it to `BACKUP_OFFSITE_TARGET`. That is
+   `s3` (any S3-compatible bucket, signed with AWS Signature V4 using only the
+   standard library and `requests`) or `dir` (a separately mounted directory,
+   refused when it overlaps `data/`). The ciphertext goes first and the
+   manifest last; each must read back at its uploaded size. Only then is the
+   copy "confirmed". An upload interrupted halfway is never confirmed, and its
+   leftover ciphertext is deleted once a newer copy is confirmed. Retention
+   keeps the newest `BACKUP_OFFSITE_KEEP` confirmed copies (30 by default; 0
+   or less keeps all). It never touches objects not named like a backup, and
+   it deletes a copy's manifest before its ciphertext.
+5. **Email** the plaintext zip when it is under 20 MB. This is a direct send;
+   it does not count as off-site.
 6. **Record** `data/backups/backup_status.json`. A failed drill then raises,
    so the scheduler's job-error alert fires.
 
 **Visibility.** The watchdog invariant `backup_recoverable` reads that status
 every morning. It warns when the job has not run for 36 hours, when the drill
 failed, when last night's copy was not confirmed (the reason is scrubbed of
-secrets), and when the drill flagged a ledger. Until the owner configures a
-target it says "No off-site copy has ever been confirmed", **once a week**. On
-2026-09-29 the owner deferred the bucket to the end of the PI and chose a
-weekly reminder over a daily one (SA-007 change 1, accepted by its fresh review
-and committed as `8663387`; until it is deployed, production still warns daily).
-The check asks for that pace itself (`repeat_days=7` on its result), so
-everything else still warns daily: a failed drill, a stopped job, a flagged
-ledger even with no target, and a half-done setup such as a target without a
-key. For example, a reminder on Thursday is followed by silence until the
-next Thursday. If Friday's drill fails, Saturday's watchdog warns anyway.
-One gap remains
-(review F1, routed to SA-034): a night on which the job never runs, for
-example because the container restarted at 23:30, is not reported. At 06:30
-the newest status is then 31 hours old, under the 36-hour limit, so the check
-still reads the previous night's copy as confirmed. Two missed nights in a
-row are reported.
+secrets), and when the drill flagged a ledger. While no target is configured
+it says "No off-site copy has ever been confirmed", **once a week**: the check
+asks for that pace itself (`repeat_days=7` on its result). Everything else
+still warns daily: a failed drill, a stopped job, a flagged ledger even with
+no target, and a half-done setup such as a target without a key. For example,
+a reminder on Thursday is followed by silence until the next Thursday. If
+Friday's drill fails, Saturday's watchdog warns anyway.
 
 A ledger rewrite is reported on one morning only, because the next night
 compares against the rewritten archive. The earlier history then survives
@@ -1334,17 +1363,24 @@ deployment is a deliberate human step.
 
 - Each file is a point-in-time copy, but the archive is not one snapshot
   across files. The job runs at 23:30, when no trading job writes.
-- One malformed SQLite file stops the whole archive (review F2, routed to
-  SA-036). The job raises, so the job-error alert fires each night. No new
-  archive, off-site copy or status is written until the database is repaired,
-  so the ledgers are not backed up in the meantime. Earlier archives and
-  off-site copies are kept.
-- The email copy is still an unencrypted direct send.
+- A night on which the job never runs, for example because the container
+  restarted at 23:30, is not reported: at 06:30 the newest status is 31 hours
+  old, under the 36-hour limit, so the check still reads the previous night's
+  copy as confirmed. Two missed nights in a row are reported. **Planned:**
+  SA-034.
+- One malformed SQLite file stops the whole archive. The job raises, so the
+  job-error alert fires each night. No new archive, off-site copy or status is
+  written until the database is repaired, so the ledgers are not backed up in
+  the meantime; earlier archives and off-site copies are kept. **Planned:**
+  SA-036.
+- The email copy is an unencrypted direct send.
 - Credentials live in Railway variables and are not backed up.
 - A deleted account's data survives in off-site copies until retention
   removes them (30 nightly copies by default).
 - Off-site recovery counts as verified only after a recorded `fetch` drill
-  against the real bucket. None has been run: no bucket exists yet.
+  against the real bucket. None has been run, because no bucket exists yet.
+
+### Interface and chat rendering
 
 The frontend uses React JSX, runtime browser transformation and PWA assets.
 Chat uses a streaming tool loop with potentially paid provider calls. Prompt
@@ -1352,16 +1388,15 @@ editing can feed scheduled publishing. These are not inert testing screens.
 Bearer sessions, roles and machine-key authentication are implemented;
 portfolio identity comes from the authenticated user. Some intelligence read
 routes remain public. The RL client has demo/fallback paths on API failure,
-so populated charts alone do not prove live data. SA-024/SA-032 address
-evidence and public/demo policy.
+so populated charts alone do not prove live data. **Planned:** honest
+unavailable states (SA-024) and a public-read and demo-data policy (SA-032).
 
-**Chat rendering (SA-001: accepted by its fresh review on 2026-09-26;
-committed as `8413b59`; production verification pending).** Chat replies are untrusted text:
-the model quotes news snippets and tool output. Before SA-001,
-[sphere.jsx](../src/frontend/prototypes/sphere.jsx) passed them through marked
-straight into `dangerouslySetInnerHTML`, so a quoted `<img src=x onerror=…>`
-ran its handler in the browser (audit F01), next to the stored bearer token.
-Now `renderMd` delegates to a new plain script, [chat-markdown.js](../src/frontend/prototypes/chat-markdown.js). index.html
+Chat replies are untrusted text: the model quotes news snippets and tool
+output, and a quoted `<img src=x onerror=…>` passed to the browser as HTML
+would run its handler next to the stored bearer token (audit F01).
+`renderMd` in [sphere.jsx](../src/frontend/prototypes/sphere.jsx) therefore
+delegates to a plain script,
+[chat-markdown.js](../src/frontend/prototypes/chat-markdown.js). index.html
 loads it after marked 12.0.2 and DOMPurify 3.4.16, both exact versions with SRI
 hashes. There are two layers:
 
@@ -1371,135 +1406,295 @@ hashes. There are two layers:
   in a new tab with `noopener noreferrer`. Images, styles, classes and event
   attributes are dropped.
 
-For example, a reply quoting `<img src=x onerror=…>` now shows that string as
+For example, a reply quoting `<img src=x onerror=…>` shows that string as
 text; bold, lists, code fences, tables and https links still render. If either
 library fails to load, the reply is shown as escaped text. The raw parser is
-taken off `window`, so a pre-fix `sphere.jsx` still cached by the service worker
-also falls back to text; the worker's cache version moves to v8. That bubble is
-the client's only HTML sink, and a unit test keeps it so.
+taken off `window`, so an older `sphere.jsx` still cached by the service worker
+also falls back to text; the worker's cache version is v8. That bubble is the
+client's only HTML sink, and a unit test keeps it so.
 `npm run test:frontend` drives the real ChatOverlay in Chromium with hostile
 fixtures and no network.
 
+### Observability and the watchdog
+
 Durable logs connect run IDs, tickers, warnings, LLM usage and health. Bundle
-call counters are not complete nested-provider/fallback cost accounting;
-SA-025 addresses this. The watchdog reads [milestones.yaml](../config/milestones.yaml),
-runs checks, persists state and may perform configured preparation. A sent
-milestone notice is not milestone completion. A `manual_confirmation`
-milestone has no signal of its own: it stays pending until its entry is
-deleted, and after its deadline it re-sends a critical "LAPSED" notice every
-7 days. Each one is judged, then deleted with its evidence or decision
-recorded, or re-dated with a dated reason at the head of its action text.
-SA-038 (accepted 2026-10-06, committed as `378479a`) judged the entries that lapsed
-in August and September. A registry edit reaches production only on deploy.
-Local backup files and healthy
-HTTP responses do not prove recovery or successful jobs. The nightly drill
-proves that an archive restores; only a recorded off-site `fetch` proves
-recovery without the volume.
+call counters are not complete nested-provider/fallback cost accounting.
 
-## 11. Changes already present and planned redesign
+The watchdog reads [milestones.yaml](../config/milestones.yaml), runs checks,
+persists state and may perform configured preparation. A sent milestone
+notice is not milestone completion. A `manual_confirmation` milestone has no
+signal of its own: it stays pending until its entry is deleted, and after its
+deadline it re-sends a critical "LAPSED" notice every 7 days. Each lapsed
+milestone is judged, then deleted with its evidence or decision recorded, or
+re-dated with a dated reason at the head of its action text. A registry edit
+reaches production only on deploy.
 
-| Topic | Current implementation | Still planned / unverified |
-|---|---|---|
-| Sector routing | Shared graph selection via registry. Store ownership: `<managed sector>/<TICKER>`, with the writers that broke it fixed, a read-only store inventory and a reversible quarantine (SA-009, accepted 2026-09-30, committed as `313e3f6`, deployed as `650bb98c`; its change 1 is accepted, committed as `9c626a5`). | A quarantine applied in production, row-level lineage (SA-017), and sector lenses resolved from NSE's industry field ([one-engine design](superpowers/specs/2026-09-26-one-engine-sector-lenses-design.md); SA-026). |
-| Analysis | Unified scoring plus surviving legacy fallback. | Actual call accounting. A factor engine (computed factors, one text reader, code decides, LLM explains) proven in shadow, then the graphs and fallback retired (SA-044–SA-047, SA-027). |
-| Data health | Durable health/run records. Producer-typed section status and usable-data health (SA-002, accepted 2026-09-26, committed as `8413b59`). A decision gate on essential data across research, learning and portfolio (SA-003, accepted 2026-09-27, committed as `167f08b`), shipped recording only. Instrument identity and lifecycle records (SA-008, accepted 2026-09-30, committed as `02c43f6`, deployed 2026-09-30 as `650bb98c`). | A measured record period, then the owner's decision to enforce; switching production from TATAMOTORS to TMPV (the owner's decision of 29 Sep, done at rollout). |
-| Verdict binding | Deterministic category enabled in YAML, raw model verdict logged. | Correct issue-time grading and final adaptive constraints. |
-| Portfolio | Per-user advice/execution, stops, switches and ledgers. | Stronger upstream evidence and report reconciliation; costs and tax in paper P&L (SA-048); idle cash put to work in normal markets (SA-049); one sizing rule for every autopilot buy (SA-050); the portfolio against the Nifty, with honest labels (SA-051). |
-| IPO | Calendar, history, snapshots, recent-listing screening, size-tiered brief lean, and the dark P3 model, deep dive, narrator and forward-grading lane (section 8). | Forward evidence for P3 and its `ipo_verdicts_visible_gate`; no verdict reaches a user; outside default September scope. |
-| Operations | TCP singleton, outcomes, watchdog, outbox with `last_error`, per-account recipients, SMTP/Resend transports and backup code. Truthful daily-review outcome counts (SA-004, accepted 2026-09-27, committed as `241c393`). SA-006 (accepted 2026-09-28, committed as `15dcda1`, deployed 2026-09-28 as `00b94de9`): transient-versus-permanent retry, at-most-once sends, no owner fallback for accounts, and the `GET /delivery/outbox` dead-letter view. SA-007 (accepted 2026-09-29, committed as `165d152`, deployed 2026-09-29 as `26b442f4`): archive manifests, a nightly restore drill, an encrypted off-site adapter and the `backup_recoverable` watchdog check. | Durable outcomes for every job (SA-036), an off-site bucket configured by the owner and a recorded off-site restore (SA-007), measured receipt (only acceptance is observed), and readiness. The [observability design](superpowers/specs/2026-09-24-production-observability-design.md) adds planned job-run and source-health ledgers, post-job checks, a read-only status fetcher and an outside witness (SA-034–SA-036, SA-040–SA-042). |
-| Frontend | JSX/PWA with live adapters and some fallback/demo paths. | Sanitization, honest unavailable states and optional build cleanup. |
+Local backup files and healthy HTTP responses do not prove recovery or
+successful jobs. The nightly drill proves that an archive restores; only a
+recorded off-site `fetch` proves recovery without the volume. **Planned:** the
+[observability design](superpowers/specs/2026-09-24-production-observability-design.md)
+adds job-run and source-health ledgers, post-job checks, provider-credit
+alerts, a read-only status fetcher and an outside witness (section 11).
+
+## 11. Planned redesign
+
+Nothing in this section is implemented. Story cards define scope and
+acceptance, and [STATE.json](planning/PI-2026-09/STATE.json) holds status.
+Accepting code needs tests and a fresh review. Claiming a benefit needs matured
+production observations as well.
+
+### One engine with sector lenses
+
+All five graphs already run one bundle and one reasoning-model call; the
+LangGraph pool is only a fallback. They differ mainly in five scoring schemes
+(37 dimension slots under 24 names), and the LLM re-scores numbers the code
+has already computed. Generic-graph stocks are valued against automobile
+peers, and missing data is scored 0.5. The
+[one-engine design](superpowers/specs/2026-09-26-one-engine-sector-lenses-design.md),
+adopted on 2026-09-26, replaces the per-sector graphs in four parts:
+
+- sector knowledge becomes a lens YAML (peers, benchmark, KPIs, news terms and
+  macro drivers), resolved from NSE's industry field;
+- code computes five factors (Value, Quality, Growth, Momentum and Risk) as
+  percentiles against real peers and the stock's own history;
+- one LLM reader returns dated, sourced events, and code turns them into a
+  sixth factor, Catalyst;
+- code combines the six at equal weights and maps the result to the existing
+  bands. With fewer than 4 of 6 factors it gives no directional verdict. The
+  LLM explains the verdict but cannot change it.
+
+SA-044 fixes the peers first. SA-026, SA-045 and SA-046 run in shadow. SA-047
+switches only when the engine is right on at least 50% of disagreements with
+today's analyst, and SA-027 then deletes the sector packages. Each lens also
+names its sector's benchmark, which is where automobile and renewable energy
+get an index with data.
+
+### Learning on a corrected target
+
+SA-012 specifies and tests the learning target before anything changes it
+(the grading defect in section 5). SA-013 persists immutable, prospective
+forecast identities, and SA-014 grades frozen decisions with the information
+available at issue. SA-015 makes adaptive updates idempotent and keeps final
+weight bounds. SA-016 replaces blame-based shared credit with identifiable
+outcomes. SA-017 attaches lineage and quarantines incomparable feedback.
+SA-018 to SA-021 build complete matched cohorts, effective samples from
+session overlap, and calibration and weight-recovery checks.
+
+**Returning to `adapt`.** SA-043 runs a shadow learner while production stays
+in `observe`. It learns six factor weights pooled across all stocks, starting
+from the defaults and learning on the corrected target. For each issued
+decision it records the default verdict and the shadow verdict from the same
+factor scores. SA-022 then scores only the decisions where the two disagree.
+Learning may return only when all of these hold:
+
+- at least 100 effective disagreements, over at least 3 months and 3 lenses;
+- the shadow is right on at least 60% of them;
+- its wins are consistent month to month and robust to dropping its best lens;
+- no factor's weight has collapsed to its bound, or below half its default, for
+  4 weeks.
+
+The pass must hold at two consecutive monthly looks, and the owner still
+decides. `adapt` would then resume from the shadow's weights, never from the
+stored pre-fix weights. A reverse tally in the first month (below 45%) returns
+learning to `observe`. SA-023 puts learned lessons on measurable probation.
+
+### Portfolio economics
+
+- SA-048 charges realistic trading costs and tax in paper P&L.
+- SA-050 applies one sizing rule to every autopilot buy, including the SWITCH
+  buy, which today spends a whole sale's proceeds.
+- SA-049 puts idle cash into shelf ideas that pass the checks in a normal
+  market, and holds cash on purpose only in a crisis, behind a switch that
+  ships off.
+- SA-051 shows the portfolio against the Nifty, with honest labels for
+  "Invested" and returns.
+
+### Operations and observability
+
+The [observability design](superpowers/specs/2026-09-24-production-observability-design.md)
+makes failures visible without reading raw logs:
+
+- SA-036 records a durable outcome for every critical job, and SA-037 keeps
+  deploys from dropping scheduled jobs;
+- SA-040 records per-source fetch health and detects new error types;
+- SA-034 detects silent degradation in the watchdog, including a missed backup
+  night and the review outcome record;
+- SA-035 surfaces LLM and search provider credit exhaustion;
+- SA-041 provides a read-only production status fetcher, and SA-042 adds an
+  outside witness for missed jobs (Healthchecks.io → Telegram);
+- SA-011 turns durable errors into a deterministic operations backlog;
+- SA-029 verifies readiness and recovers background ownership;
+- SA-025 counts actual provider calls and fallback cost;
+- SA-033 locks reproducible runtime dependencies.
+
+### Interface and data policy
+
+SA-024 shows verifiable learning evidence and honest unavailable states. The
+stretch stories SA-028 (packaging and a compiled browser client), SA-030
+(stale Atlas projections) and SA-032 (the public-read and demo-data policy)
+need explicit promotion. SA-031 is the final cross-document consistency check.
+
+### Owner decisions and setup
+
+These need the owner, not code:
+
+- whether to enforce the decision gate, judged on rows issued since the bank
+  and resolution fixes (section 4);
+- an off-site backup bucket and key, then a recorded `fetch` drill
+  (section 10);
+- a verified-domain sender, if per-account email goes over Resend;
+- whether learning returns to `adapt`, under the conditions above.
 
 Historical [specifications](superpowers/specs/) retain what was intended at
 the time. The September audit supersedes unsupported August claims about
 correct learning, automatic security succession or unused fallback cost.
 Legacy code should only be retired with measured replacement coverage.
 
-## 12. PI changes included now
+## 12. PI-2026-09 roadmap
 
-The table below includes the planned destination now. **SA-039 is accepted
-(production `observe` since 2026-09-26). SA-001 and SA-002
-(after a rework) are accepted and committed as `8413b59`; their production
-verification is pending. SA-003 is accepted by its fresh review (2026-09-27)
-and committed as `167f08b`; its production verification is pending. SA-004 is
-accepted by its fresh review (2026-09-27) and committed as `241c393`; its
-production verification is pending. SA-005 is accepted by its fresh review (2026-09-28) and committed as `48143ed`; its CI workflow first ran on 2026-09-28 and passed all 3 jobs. SA-006 is accepted by its fresh re-review (2026-09-28). Its first review asked for two fixes the same day: a push could reach a phone twice, and the owner report could show a user id. Both are made; it is committed as `15dcda1` and was deployed on 2026-09-28 (`00b94de9`). SA-007 is accepted by its fresh review (2026-09-29), with two low follow-ups routed to SA-034 and SA-036; it is committed as `165d152` and deployed as `26b442f4` (2026-09-29). Its change 1, a weekly missing-bucket reminder, is accepted and committed as `8663387`. SA-008 is accepted by its fresh review (2026-09-30), with change 1 to follow for the reconciliation tool; it is committed as `02c43f6` and was deployed on 2026-09-30 (`650bb98c`). SA-009 is accepted by its fresh review (2026-09-30); it is committed as `313e3f6` and was deployed on 2026-09-30 (`650bb98c`). Its change 1 (the rollback's retry path) is accepted by its fresh review (2026-09-30) and committed as `9c626a5`. SA-010 is accepted by its fresh review (2026-10-05) and committed as `7efeafd`. SA-038 is accepted by its fresh review (2026-10-06) and committed as `378479a`. Every other SA story is `todo`.** Accepted
-state/dependencies are in
-[STATE.json](planning/PI-2026-09/STATE.json). DOC-001 is this user-requested
-documentation refresh; it does not close SA-031 or any upstream remediation.
+Each story card defines its scope, acceptance and dependencies, and
+[STATE.json](planning/PI-2026-09/STATE.json) holds its status. Evidence
+receipts under [evidence/](planning/PI-2026-09/evidence/README.md) record the
+tests, the reviewed revision and the production checks. The table maps each
+story to the sections of this document it changes. An implemented story's
+behaviour is described in those sections as current design. Its production
+verification is tracked separately (section 1).
 
-| Story | Planned change | KT sections | Dependencies |
-|---|---|---|---|
-| [SA-001](planning/PI-2026-09/stories/SA-001.md) | Sanitize every chat Markdown rendering boundary | 10 Interface | None |
-| [SA-002](planning/PI-2026-09/stories/SA-002.md) | Make data-health records describe usable evidence | 4 Research | None |
-| [SA-003](planning/PI-2026-09/stories/SA-003.md) | Gate recommendations and learning on essential data | 4 Research; 5 Learning; 6 Portfolio | SA-002 |
-| [SA-004](planning/PI-2026-09/stories/SA-004.md) | Count daily-review outcomes truthfully | 9 Jobs | None |
-| [SA-005](planning/PI-2026-09/stories/SA-005.md) | Establish a clean, isolated test and CI baseline | 13 Validation | None |
-| [SA-006](planning/PI-2026-09/stories/SA-006.md) | Repair delivery transport and expose dead letters | 10 Delivery | None |
-| [SA-007](planning/PI-2026-09/stories/SA-007.md) | Make backups independently recoverable | 3 Storage; 10 Recovery | None |
-| [SA-008](planning/PI-2026-09/stories/SA-008.md) | Quarantine unresolved securities with explicit lifecycle records | 3 Configuration; 4 Identity; 5 Learning; 6 Portfolio; 8 Discovery | SA-003 |
-| [SA-009](planning/PI-2026-09/stories/SA-009.md) | Inventory and reconcile prediction-store ownership | 3 Storage | None |
-| [SA-010](planning/PI-2026-09/stories/SA-010.md) | Pass sector benchmarks through technical-data calls | 4 Research | None |
-| [SA-011](planning/PI-2026-09/stories/SA-011.md) | Turn durable errors into a deterministic operations backlog | 9 Jobs; 10 Operations | SA-002, SA-004 |
-| [SA-012](planning/PI-2026-09/stories/SA-012.md) | Specify and test the learning target before changing it | 5 Learning; 7 Marksheets | SA-005 |
-| [SA-013](planning/PI-2026-09/stories/SA-013.md) | Persist immutable, genuinely prospective forecast identities | 3 Storage; 5 Learning | SA-012 |
-| [SA-014](planning/PI-2026-09/stories/SA-014.md) | Grade frozen decisions and issue controls before their outcomes | 5 Learning; 7 Marksheets | SA-003, SA-013 |
-| [SA-015](planning/PI-2026-09/stories/SA-015.md) | Make adaptive updates idempotent and preserve final weight bounds | 5 Learning | SA-014 |
-| [SA-016](planning/PI-2026-09/stories/SA-016.md) | Replace blame-based shared credit with identifiable outcomes | 5 Learning | SA-015 |
-| [SA-017](planning/PI-2026-09/stories/SA-017.md) | Attach historical lineage and quarantine incomparable feedback | 3 Storage; 5 Learning | SA-009, SA-013 |
-| [SA-018](planning/PI-2026-09/stories/SA-018.md) | Build complete, matched monthly evaluation cohorts | 7 Marksheets | SA-014, SA-017 |
-| [SA-019](planning/PI-2026-09/stories/SA-019.md) | Evaluate suggestions across weekly and fortnightly cohorts | 7 Marksheets | SA-018 |
-| [SA-020](planning/PI-2026-09/stories/SA-020.md) | Compute effective samples from trading-session overlap | 5 Learning; 7 Marksheets | SA-013 |
-| [SA-021](planning/PI-2026-09/stories/SA-021.md) | Validate calibration and weight recovery with minimum evidence | 5 Learning; 7 Marksheets | SA-016, SA-018, SA-020 |
-| [SA-022](planning/PI-2026-09/stories/SA-022.md) | Run prospective adapted and frozen-policy experiments | 5 Learning; 7 Marksheets | SA-016, SA-018, SA-020, SA-043, SA-047 |
-| [SA-023](planning/PI-2026-09/stories/SA-023.md) | Put learned lessons on measurable probation | 5 Learning | SA-022 |
-| [SA-024](planning/PI-2026-09/stories/SA-024.md) | Show verifiable learning evidence and honest unavailable states | 7 Marksheets; 10 Interface | SA-019, SA-020, SA-022 |
-| [SA-025](planning/PI-2026-09/stories/SA-025.md) | Count actual provider calls and fallback cost | 4 Research; 10 Cost | SA-011 |
-| [SA-026](planning/PI-2026-09/stories/SA-026.md) | Consolidate sector definitions into sector lenses | 2 Modules; 4 Research | SA-003, SA-009, SA-010 |
-| [SA-027](planning/PI-2026-09/stories/SA-027.md) | Retire redundant fallback only when measured replacements work | 4 Research; 11 Changes | SA-025, SA-026, SA-047 |
-| [SA-028 (stretch)](planning/PI-2026-09/stories/SA-028.md) | Repair packaging and compile the browser client | 3 Runtime; 10 Interface | SA-001, SA-005 |
-| [SA-029](planning/PI-2026-09/stories/SA-029.md) | Verify readiness and recover background ownership | 3 Runtime; 9 Jobs | SA-004, SA-007 |
-| [SA-030 (stretch)](planning/PI-2026-09/stories/SA-030.md) | Reconcile or retire stale Atlas projections | 3 Storage | SA-009, SA-013 |
-| [SA-031](planning/PI-2026-09/stories/SA-031.md) | Verify final architecture and operator-documentation consistency | All: final consistency check | SA-024, SA-027, SA-029 |
-| [SA-032 (stretch)](planning/PI-2026-09/stories/SA-032.md) | Define and enforce the public-read and demo-data policy | 10 Interface | SA-001, SA-024 |
-| [SA-033](planning/PI-2026-09/stories/SA-033.md) | Lock reproducible runtime dependencies | 3 Runtime; 13 Validation | None |
-| [SA-034](planning/PI-2026-09/stories/SA-034.md) | Detect silent degradation in the watchdog | 9 Jobs; 10 Operations | SA-036, SA-040 |
-| [SA-035](planning/PI-2026-09/stories/SA-035.md) | Surface LLM and search provider credit exhaustion | 10 Operations; 10 Cost | None |
-| [SA-036](planning/PI-2026-09/stories/SA-036.md) | Record durable outcomes for every critical job | 9 Jobs | None |
-| [SA-037](planning/PI-2026-09/stories/SA-037.md) | Keep deploys from dropping scheduled jobs | 3 Runtime; 9 Jobs | SA-036 |
-| [SA-038](planning/PI-2026-09/stories/SA-038.md) | Judge and retire lapsed production-verification milestones | 9 Jobs; 10 Operations | None |
-| [SA-039](planning/PI-2026-09/stories/SA-039.md) | Contain adaptive learning: observe-only, live weights back to defaults | 5 Learning | None |
-| [SA-040](planning/PI-2026-09/stories/SA-040.md) | Record per-source fetch health and detect new error types | 9 Jobs; 10 Operations | None |
-| [SA-041](planning/PI-2026-09/stories/SA-041.md) | Provide a read-only production status fetcher | 10 Operations; 13 Validation | SA-036, SA-040 |
-| [SA-042](planning/PI-2026-09/stories/SA-042.md) | Add an outside witness for missed jobs (Healthchecks.io → Telegram) | 9 Jobs; 10 Operations | SA-036 |
-| [SA-043](planning/PI-2026-09/stories/SA-043.md) | Run a shadow learner and record paired decisions in observe mode | 5 Learning | SA-015, SA-039, SA-045 |
-| [SA-044](planning/PI-2026-09/stories/SA-044.md) | Compare valuations only with same-industry peers | 4 Research | None |
-| [SA-045](planning/PI-2026-09/stories/SA-045.md) | Compute the five universal factors deterministically | 4 Research | SA-026 |
-| [SA-046](planning/PI-2026-09/stories/SA-046.md) | Read text into dated events and a Catalyst factor | 4 Research | SA-026 |
-| [SA-047](planning/PI-2026-09/stories/SA-047.md) | Decide with the factor engine; switch when it is not worse | 4 Research; 5 Learning | SA-045, SA-046, SA-014, SA-020 |
-| [SA-048](planning/PI-2026-09/stories/SA-048.md) | Charge realistic trading costs and tax in paper P&L | 6 Portfolio; 7 Marksheets | None |
-| [SA-049](planning/PI-2026-09/stories/SA-049.md) | Put idle cash to work in normal markets | 6 Portfolio; 8 Discovery | SA-050, SA-051 |
-| [SA-050](planning/PI-2026-09/stories/SA-050.md) | Apply one sizing rule to every autopilot buy | 6 Portfolio | None |
-| [SA-051](planning/PI-2026-09/stories/SA-051.md) | Show the portfolio against the Nifty, with honest labels | 7 Marksheets; 10 Interface | None |
+Four fixes outside the SA numbering are also part of the current design:
+listing-day closes (FIX-001, sections 5 and 7), ticker resolution (FIX-002,
+section 4), bank income statements (FIX-003, section 4) and dossier dates
+(FIX-004, section 5). DOC-001 produced this document's current-code edition.
+
+| Story | Change | Status | KT sections | Dependencies |
+|---|---|---|---|---|
+| [SA-001](planning/PI-2026-09/stories/SA-001.md) | Sanitize every chat Markdown rendering boundary | Done | 10 Interface | None |
+| [SA-002](planning/PI-2026-09/stories/SA-002.md) | Make data-health records describe usable evidence | Done | 4 Research | None |
+| [SA-003](planning/PI-2026-09/stories/SA-003.md) | Gate recommendations and learning on essential data | Done | 4 Research; 5 Learning; 6 Portfolio | SA-002 |
+| [SA-004](planning/PI-2026-09/stories/SA-004.md) | Count daily-review outcomes truthfully | Done | 9 Jobs | None |
+| [SA-005](planning/PI-2026-09/stories/SA-005.md) | Establish a clean, isolated test and CI baseline | Done | 13 Validation | None |
+| [SA-006](planning/PI-2026-09/stories/SA-006.md) | Repair delivery transport and expose dead letters | Done | 10 Delivery | None |
+| [SA-007](planning/PI-2026-09/stories/SA-007.md) | Make backups independently recoverable | Done | 3 Storage; 10 Recovery | None |
+| [SA-008](planning/PI-2026-09/stories/SA-008.md) | Quarantine unresolved securities with explicit lifecycle records | Done | 3 Configuration; 4 Identity; 5 Learning; 6 Portfolio; 8 Discovery | SA-003 |
+| [SA-009](planning/PI-2026-09/stories/SA-009.md) | Inventory and reconcile prediction-store ownership | Done | 3 Storage | None |
+| [SA-010](planning/PI-2026-09/stories/SA-010.md) | Pass sector benchmarks through technical-data calls | Done | 4 Research | None |
+| [SA-011](planning/PI-2026-09/stories/SA-011.md) | Turn durable errors into a deterministic operations backlog | Open | 9 Jobs; 10 Operations | SA-002, SA-004 |
+| [SA-012](planning/PI-2026-09/stories/SA-012.md) | Specify and test the learning target before changing it | Open | 5 Learning; 7 Marksheets | SA-005 |
+| [SA-013](planning/PI-2026-09/stories/SA-013.md) | Persist immutable, genuinely prospective forecast identities | Open | 3 Storage; 5 Learning | SA-012 |
+| [SA-014](planning/PI-2026-09/stories/SA-014.md) | Grade frozen decisions and issue controls before their outcomes | Open | 5 Learning; 7 Marksheets | SA-003, SA-013 |
+| [SA-015](planning/PI-2026-09/stories/SA-015.md) | Make adaptive updates idempotent and preserve final weight bounds | Open | 5 Learning | SA-014 |
+| [SA-016](planning/PI-2026-09/stories/SA-016.md) | Replace blame-based shared credit with identifiable outcomes | Open | 5 Learning | SA-015 |
+| [SA-017](planning/PI-2026-09/stories/SA-017.md) | Attach historical lineage and quarantine incomparable feedback | Open | 3 Storage; 5 Learning | SA-009, SA-013 |
+| [SA-018](planning/PI-2026-09/stories/SA-018.md) | Build complete, matched monthly evaluation cohorts | Open | 7 Marksheets | SA-014, SA-017 |
+| [SA-019](planning/PI-2026-09/stories/SA-019.md) | Evaluate suggestions across weekly and fortnightly cohorts | Open | 7 Marksheets | SA-018 |
+| [SA-020](planning/PI-2026-09/stories/SA-020.md) | Compute effective samples from trading-session overlap | Open | 5 Learning; 7 Marksheets | SA-013 |
+| [SA-021](planning/PI-2026-09/stories/SA-021.md) | Validate calibration and weight recovery with minimum evidence | Open | 5 Learning; 7 Marksheets | SA-016, SA-018, SA-020 |
+| [SA-022](planning/PI-2026-09/stories/SA-022.md) | Run prospective adapted and frozen-policy experiments | Open | 5 Learning; 7 Marksheets | SA-016, SA-018, SA-020, SA-043, SA-047 |
+| [SA-023](planning/PI-2026-09/stories/SA-023.md) | Put learned lessons on measurable probation | Open | 5 Learning | SA-022 |
+| [SA-024](planning/PI-2026-09/stories/SA-024.md) | Show verifiable learning evidence and honest unavailable states | Open | 7 Marksheets; 10 Interface | SA-019, SA-020, SA-022 |
+| [SA-025](planning/PI-2026-09/stories/SA-025.md) | Count actual provider calls and fallback cost | Open | 4 Research; 10 Cost | SA-011 |
+| [SA-026](planning/PI-2026-09/stories/SA-026.md) | Consolidate sector definitions into sector lenses | Open | 2 Repository; 4 Research | SA-003, SA-009, SA-010 |
+| [SA-027](planning/PI-2026-09/stories/SA-027.md) | Retire redundant fallback only when measured replacements work | Open | 4 Research; 11 Planned redesign | SA-025, SA-026, SA-047 |
+| [SA-028 (stretch)](planning/PI-2026-09/stories/SA-028.md) | Repair packaging and compile the browser client | Open | 3 Runtime; 10 Interface | SA-001, SA-005 |
+| [SA-029](planning/PI-2026-09/stories/SA-029.md) | Verify readiness and recover background ownership | Open | 3 Runtime; 9 Jobs | SA-004, SA-007 |
+| [SA-030 (stretch)](planning/PI-2026-09/stories/SA-030.md) | Reconcile or retire stale Atlas projections | Open | 3 Storage | SA-009, SA-013 |
+| [SA-031](planning/PI-2026-09/stories/SA-031.md) | Verify final architecture and operator-documentation consistency | Open | All: final consistency check | SA-024, SA-027, SA-029 |
+| [SA-032 (stretch)](planning/PI-2026-09/stories/SA-032.md) | Define and enforce the public-read and demo-data policy | Open | 10 Interface | SA-001, SA-024 |
+| [SA-033](planning/PI-2026-09/stories/SA-033.md) | Lock reproducible runtime dependencies | Open | 3 Runtime; 13 Validation | None |
+| [SA-034](planning/PI-2026-09/stories/SA-034.md) | Detect silent degradation in the watchdog | Open | 9 Jobs; 10 Operations | SA-036, SA-040 |
+| [SA-035](planning/PI-2026-09/stories/SA-035.md) | Surface LLM and search provider credit exhaustion | Open | 10 Operations; 10 Cost | None |
+| [SA-036](planning/PI-2026-09/stories/SA-036.md) | Record durable outcomes for every critical job | Open | 9 Jobs | None |
+| [SA-037](planning/PI-2026-09/stories/SA-037.md) | Keep deploys from dropping scheduled jobs | Open | 3 Runtime; 9 Jobs | SA-036 |
+| [SA-038](planning/PI-2026-09/stories/SA-038.md) | Judge and retire lapsed production-verification milestones | Done | 9 Jobs; 10 Operations | None |
+| [SA-039](planning/PI-2026-09/stories/SA-039.md) | Contain adaptive learning: observe-only, live weights back to defaults | Done | 5 Learning | None |
+| [SA-040](planning/PI-2026-09/stories/SA-040.md) | Record per-source fetch health and detect new error types | Open | 9 Jobs; 10 Operations | None |
+| [SA-041](planning/PI-2026-09/stories/SA-041.md) | Provide a read-only production status fetcher | Open | 10 Operations; 13 Validation | SA-036, SA-040 |
+| [SA-042](planning/PI-2026-09/stories/SA-042.md) | Add an outside witness for missed jobs (Healthchecks.io → Telegram) | Open | 9 Jobs; 10 Operations | SA-036 |
+| [SA-043](planning/PI-2026-09/stories/SA-043.md) | Run a shadow learner and record paired decisions in observe mode | Open | 5 Learning | SA-015, SA-039, SA-045 |
+| [SA-044](planning/PI-2026-09/stories/SA-044.md) | Compare valuations only with same-industry peers | Open | 4 Research | None |
+| [SA-045](planning/PI-2026-09/stories/SA-045.md) | Compute the five universal factors deterministically | Open | 4 Research | SA-026 |
+| [SA-046](planning/PI-2026-09/stories/SA-046.md) | Read text into dated events and a Catalyst factor | Open | 4 Research | SA-026 |
+| [SA-047](planning/PI-2026-09/stories/SA-047.md) | Decide with the factor engine; switch when it is not worse | Open | 4 Research; 5 Learning | SA-045, SA-046, SA-014, SA-020 |
+| [SA-048](planning/PI-2026-09/stories/SA-048.md) | Charge realistic trading costs and tax in paper P&L | Open | 6 Portfolio; 7 Marksheets | None |
+| [SA-049](planning/PI-2026-09/stories/SA-049.md) | Put idle cash to work in normal markets | Open | 6 Portfolio; 8 Discovery | SA-050, SA-051 |
+| [SA-050](planning/PI-2026-09/stories/SA-050.md) | Apply one sizing rule to every autopilot buy | Open | 6 Portfolio | None |
+| [SA-051](planning/PI-2026-09/stories/SA-051.md) | Show the portfolio against the Nifty, with honest labels | Open | 7 Marksheets; 10 Interface | None |
 
 ### Maintain documentation with each story
 
-Each implementation updates the affected current-code section, identifies
-which target behavior has landed, adjusts relevant human test cases and
-regenerates the PDF if this Markdown changed. Evidence records the tested
-revision and the difference between implemented and production-verified.
-SA-031 is the final cross-document consistency check, not a reason to postpone
-normal documentation until Sprint 6.
+Each implementation updates the affected sections so that they describe the
+new behaviour as current design. It does not add a change note. It also sets
+the story's status in the table above, adjusts the relevant human test cases and
+regenerates the PDF when this Markdown changes. Commits, reviews and deploys
+belong in STATE.json and the evidence receipts, not in this document. Measured
+production state belongs in section 1's table. SA-031 is the final
+cross-document consistency check, not a reason to postpone normal
+documentation.
 
 ## 13. Validation and KT sequence
 
-The [receipt](planning/PI-2026-09/evidence/DOC-001-implementation.md) records
-exact tests, source/path checks, PDF checks and limitations; the
-[review](planning/PI-2026-09/evidence/DOC-001-review.md) records what was
-verified independently and what was sent back. Local validation
-uses Python 3.13 on Windows; production Docker uses Python 3.11 on Linux.
-Focused checks do not imply full-suite or platform-parity acceptance.
+The DOC-001 [receipt](planning/PI-2026-09/evidence/DOC-001-implementation.md)
+and [review](planning/PI-2026-09/evidence/DOC-001-review.md) record how this
+document's first current-code edition was checked; each story's receipt
+records its own tests. Local validation uses Python 3.13 on Windows;
+production Docker and CI use Python 3.11 on Linux. Focused checks do not imply
+full-suite or platform-parity acceptance.
 
-Maintainer commands, with required local dependencies installed:
+### The test suite's hermetic boundary
+
+Every `pytest` run passes through [tests/hermetic.py](../tests/hermetic.py),
+which [tests/conftest.py](../tests/conftest.py) imports before any application
+code. The same four rules hold on a laptop with a `.env` and on a fresh CI
+checkout:
+
+| Rule | What it does | Example |
+|---|---|---|
+| No `.env`, no shell settings | dotenv is off, and every variable the application reads is removed, so settings come from `config.yaml` and the code fallbacks. | A developer's `.env` says `RL_LEARNING_MODE=observe`; the suite still runs the shipped `adapt`. |
+| No outbound network | Non-loopback sockets, DNS and `curl_cffi` (yfinance's transport, which bypasses Python sockets) raise `OutboundNetworkBlocked`. A test that triggers one fails, even if the application swallowed the error. | An unmocked thesis review would call OpenRouter; the test fails, naming `thesis_reviewer.py` and `openrouter.ai:443`. |
+| An empty working directory | The application keeps runtime state under `data/` and `outputs/` relative to the working directory, as under `/app` on Railway. Each test runs in its own empty temporary directory, seeded only with the three tracked files the application reads by relative path. | A test that toggles a managed ticker changes its sandbox copy, not the checkout's `data/managed_tickers.json`. |
+| The checkout is off limits | An audit hook refuses any access to the checkout's `data/`, `logs/` and `outputs/`, and any write elsewhere in it. | A test reading local MARUTI predictions fails; the discovery test builds its own predictions tree. |
+
+Why it is this strict: on 2026-09-27 a socket guard alone saw 74 blocked
+attempts, while yfinance's `curl_cffi` requests were invisible to it. The full
+boundary then found 286 Yahoo requests, 178 OpenRouter attempts and 124 NSE
+session attempts. The tests had also been writing 149 paths in the checkout
+(35 targets once temp files are grouped) and reading 24 untracked runtime
+files. Most network traffic came from tests that booted the full app, whose
+startup ran the RL self-heal thread; those tests boot the app as an API-only
+worker.
+
+The boundary does not reach child processes (the eval CLI smoke test and the
+browser suite); they inherit only the cleaned environment. It sees Python's own
+socket, DNS and file calls, and `curl_cffi`. It does not refuse a directory
+listing or existence check, a native library's own file access (pyarrow, or
+SQLite given a `file:` URI), a Windows short-name spelling of the checkout, or
+a numeric-IP connection on the Windows asyncio loop. The application builds one
+absolute checkout path, in the startup calendar check, and the test fixture
+stubs it. A Windows-only retry in
+[core/utils/atomic_io.py](../core/utils/atomic_io.py) absorbs the transient
+`PermissionError` of a rename on Windows; Linux renames never retry.
+
+### Continuous integration
+
+The CI workflow, [.github/workflows/ci.yml](../.github/workflows/ci.yml), runs
+three jobs on Linux with Python 3.11 and no secrets:
+
+- the whole `tests/` tree;
+- the broad-exception guard
+  ([scripts/ci/check_broad_except.py](../scripts/ci/check_broad_except.py))
+  and `check_kt_docs.py`;
+- the chat-rendering browser suite in Chromium.
+
+The guard fails when new code catches every exception without logging,
+re-raising or using it. The 154 handlers that already did so are grandfathered
+in a burn-down list; they were not reviewed one by one. The list counts
+handlers per function, so a change that fixes one grandfathered handler and
+adds another in the same function passes. Test-only tools are pinned in
+[requirements-test.txt](../requirements-test.txt). The runtime packages still
+come from the unpinned `requirements.txt`. **Planned:** a lock (SA-033).
+
+### KT documentation tools
+
+Maintainer commands, with the required local dependencies installed:
 
 ```text
 python scripts/docs/run_kt_checks.py
@@ -1510,61 +1705,21 @@ python scripts/docs/check_kt_docs.py
 The test runner copies tracked source to ignored `analysis_data/`, excludes
 `.env`/runtime stores, disables dotenv, and blocks external transports and test
 subprocesses. It exercises a fixed selection of existing tests, not all
-independent financial invariants. The PDF builder needs Python
-`markdown2` and local Playwright/Chromium; it does not start the application.
+independent financial invariants. The PDF builder needs Python `markdown2` and
+local Playwright/Chromium; it does not start the application. The checker
+validates links, the roadmap rows against STATE.json, the job table against
+the scheduler, selected repository config values, the header revision and the
+PDF's freshness.
 
-#### The suite's hermetic boundary (SA-005, committed as `48143ed`)
-
-Every `pytest` run now passes through [tests/hermetic.py](../tests/hermetic.py), which
-[tests/conftest.py](../tests/conftest.py) imports before any application code.
-The same four rules hold on a laptop with a `.env` and on a fresh CI checkout:
-
-| Rule | What it does | Example |
-|---|---|---|
-| No `.env`, no shell settings | dotenv is off, and every variable the application reads is removed, so settings come from `config.yaml` and the code fallbacks. | A developer's `.env` says `RL_LEARNING_MODE=observe`; the suite still runs the shipped `adapt`. |
-| No outbound network | Non-loopback sockets, DNS and `curl_cffi` (yfinance's transport, which bypasses Python sockets) raise `OutboundNetworkBlocked`. A test that triggers one fails, even if the application swallowed the error. | An unmocked thesis review used to call OpenRouter; the test now fails, naming `thesis_reviewer.py` and `openrouter.ai:443`. |
-| An empty working directory | The application keeps runtime state under `data/` and `outputs/` relative to the working directory, as under `/app` on Railway. Each test runs in its own empty temporary directory, seeded only with the three tracked files the application reads by relative path. | A test that toggles a managed ticker changes its sandbox copy, not the checkout's `data/managed_tickers.json`. |
-| The checkout is off limits | An audit hook refuses any access to the checkout's `data/`, `logs/` and `outputs/`, and any write elsewhere in it. | A test reading local MARUTI predictions fails; the discovery test now builds its own predictions tree. |
-
-Measured before the change (2026-09-27, the whole `tests/` tree): the old
-socket guard saw 74 blocked attempts, but yfinance's `curl_cffi` requests were
-invisible to it. With the new boundary, the first run found 286 Yahoo requests,
-178 OpenRouter attempts and 124 NSE session attempts. Before it, the tests wrote
-149 paths in the checkout (35 targets once temp files are grouped) and read 24
-untracked runtime files. Most network traffic came from one test that booted the
-full app: its startup ran the RL self-heal thread, which rebuilds every missing
-envelope in the background. Those tests now boot the app as an API-only worker.
-The receipt lists every fix.
-
-The boundary does not reach child processes (the eval CLI smoke test and the
-browser suite); they inherit only the cleaned environment. It sees Python's own
-socket, DNS and file calls, and `curl_cffi`. It does not refuse a directory
-listing or existence check, a native library's own file access (pyarrow, or
-SQLite given a `file:` URI), a Windows short-name spelling of the checkout, or
-a numeric-IP connection on the Windows asyncio loop. The application builds one
-absolute checkout path, the startup calendar check, and the test fixture stubs
-it (SA-029). A Windows-only
-retry in [core/utils/atomic_io.py](../core/utils/atomic_io.py) absorbs the transient `PermissionError`
-that made three tests flaky on Windows; Linux renames never retry.
-
-The CI workflow, [.github/workflows/ci.yml](../.github/workflows/ci.yml), runs three jobs on Linux with
-Python 3.11 and no secrets: the whole `tests/` tree; the broad-exception guard
-([scripts/ci/check_broad_except.py](../scripts/ci/check_broad_except.py)) and `check_kt_docs.py`; and the SA-001
-browser suite in Chromium. The guard fails when new code catches every
-exception without logging, re-raising or using it. The 154 handlers that
-already did so are grandfathered in a burn-down list; they were not reviewed
-one by one. The list counts handlers per function, so a change that fixes one
-grandfathered handler and adds another in the same function passes. Test-only tools are pinned in [requirements-test.txt](../requirements-test.txt). The runtime
-packages still come from the unpinned `requirements.txt` until SA-033 adds
-a lock.
+### KT sessions
 
 | KT session | Walkthrough |
 |---|---|
-| Product/data | Sections 1–4: a symbol, source dates, dimensions and research verdict. |
-| Predictions/learning | Section 5: envelope row to feedback, weights and lessons; explain the grading gaps. |
-| Portfolio/marksheets | Sections 6–7: advice to transaction, the P/L example and different evaluation rules. |
+| Product/data | Sections 1–4: production state, a symbol, its identity, source dates and statuses, dimensions, the decision gate and the research verdict. |
+| Predictions/learning | Section 5: envelope row to review checks, feedback, weights or proposals, lessons and dossier dates; explain the grading gaps and the learning mode. |
+| Portfolio/marksheets | Sections 6–7: advice to transaction, the data and identity holds, the P/L example and different evaluation rules. |
 | IPO/discovery | Section 8: calendar to captured facts, history, post-listing candidates, and the dark P3 path from deep dive to a stored, narrated and graded verdict. |
-| Operations/roadmap | Sections 9–12: scheduled work to persisted output, outbox states, `last_error` and the dead-letter view, the dated email observation, and remaining PI changes. |
+| Operations/roadmap | Sections 9–12: scheduled work to persisted output and per-ticker outcomes, outbox states and the dead-letter view, the backup drill and restore runbook, the watchdog, and the planned redesign. |
 
 Practical, non-code-intensive duties are in the separate
 [Team Human Testing Guide](TEAM_TESTING_GUIDE.md). Testers should be able to

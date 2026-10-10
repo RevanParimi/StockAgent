@@ -1,8 +1,8 @@
 # docs/ — Documentation Index
 
-**Current KT (2026-09-15):** [Technical Design](TECHNICAL_DESIGN.md) and its [PDF](StockAgent-Three-Loops.pdf) explain inspected code and every planned PI change. **Separate deliverable:** [Team Human Testing Guide](TEAM_TESTING_GUIDE.md), with 12 assignable functional duties; all cases start NOT RUN.
+**Current KT (2026-10-10):** [Technical Design](TECHNICAL_DESIGN.md) and its [PDF](StockAgent-Three-Loops.pdf) describe the current design, the dated production state and every planned PI change. **Separate deliverable:** [Team Human Testing Guide](TEAM_TESTING_GUIDE.md), with 12 assignable functional duties; all cases start NOT RUN.
 
-**Detailed production evidence (2026-09-10):** [repository and production audit](audit/2026-09-10-repository-production-review.md). For implementation work, use the [current PI and sprint stories](planning/PI-2026-09/README.md) and [next-task handoff](planning/PI-2026-09/HANDOFF.md). The audit distinguishes deployed behavior from older design claims; the PI state records what remains unimplemented. September 15 checked deployment revision/status only.
+**Detailed production evidence (2026-09-10):** [repository and production audit](audit/2026-09-10-repository-production-review.md). For implementation work, use the [current PI and sprint stories](planning/PI-2026-09/README.md) and [next-task handoff](planning/PI-2026-09/HANDOFF.md). The audit distinguishes deployed behavior from older design claims; the PI state records what remains unimplemented.
 
 Two kinds of documents live here. Know which kind you're reading.
 
@@ -22,7 +22,7 @@ Two kinds of documents live here. Know which kind you're reading.
 | [StockAgent-Three-Loops.pdf](StockAgent-Three-Loops.pdf) | Generated PDF edition of the technical KT; [original PDF archive](archive/README.md) retained | KT sessions and sharing |
 | [TEAM_TESTING_GUIDE.md](TEAM_TESTING_GUIDE.md) | Separate non-code-intensive duties, scenarios, expected results and evidence template | Human functional testers |
 
-Update affected living documentation with every implementation story and regenerate the PDF when its Markdown source changes. SA-031 is a final consistency check, not deferred documentation work. Each living deep-dive carries a **Status** banner under its title stating when
+Update affected living documentation with every implementation story, describing the new behaviour as current design rather than adding change notes (commits, reviews and deploys belong in the PI state and evidence receipts), and regenerate the PDF when its Markdown source changes. SA-031 is a final consistency check, not deferred documentation work. Each living deep-dive carries a **Status** banner under its title stating when
 it was last verified and which sections have drifted; trust the banner over the
 body text where they disagree.
 

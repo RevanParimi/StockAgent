@@ -1627,12 +1627,12 @@ business → thesis → signatures → guidance → catalysts → flows → ques
 observations). A signature with `contradictions ≥ occurrences` is dead: excluded from
 digests, dropped at distillation. Observations and open guidance dated after the digest's
 date (`as_of`, default today) are left out, and the last 5 observations are chosen from the
-rest (FIX-004): rows written before FIX-004 by event ingestion can carry a future
-board-meeting date. Stored rows are not rewritten. Open guidance comes from
+rest: older rows written by event ingestion can carry a future board-meeting date, and
+stored rows are not rewritten. Open guidance comes from
 `open_guidance(as_of)`: open items dated on or before `as_of`, in stored order; the
 digest lists the last 5. The morning brief's earnings-watch line takes the last item of
 `open_guidance` as of the day before the brief, because the brief goes out at 08:50,
-before any weekday dossier writer runs (FIX-004 change 1).
+before any weekday dossier writer runs.
 
 ### 23.2 DossierCurator — Step 8.5, EVERY day
 
@@ -1795,7 +1795,7 @@ The dossier learns from corporate *events*, not just the daily tape — the path
   announcements/board-meetings feed by keyword (results, concall, transcript, guidance,
   investor presentation, dividend, …) within `EVENT_INGEST_LOOKBACK_DAYS` (8). Watermark
   `TickerDossier.ingested_event_keys` ("{date}|{subject[:60]}", FIFO cap 40) prevents
-  re-ingestion. Only events dated on or before the scan date qualify (FIX-004): every row a
+  re-ingestion. Only events dated on or before the scan date qualify: every row a
   digest writes carries the event's date, so a board meeting announced for a later date is
   skipped, left out of the watermark and the 3-event cap, and digested by the first scan on or
   after its date. Fundamentals/earnings agents still see upcoming meetings in the live NSE feed.

@@ -812,7 +812,7 @@ ContextBuilder._build_risk_macro():
 |---|---|---|---|---|
 | `detect_sector(ticker)` | **STATIC** | `src/backend/sectors/__init__.py` | Hardcoded ticker sets | Default → automobile |
 | `CONTEXT_SEARCH_QUERIES` | **STATIC** | Each `prompts/{agent}.py` | Hardcoded keyword strings | Capped by `SERPER_MAX_QUERIES=3` |
-| `_resolve_ticker()` | **STATIC (managed ticker) / LLM (free text)** | `base_orchestrator.py` | Exact match in the sector's `TICKERS` (`_managed_tickers()`), the managed list or the instrument registry (`_tracked_tickers()`, FIX-002) → built directly via `_company_name_for()`/`_yf_info()`, no LLM; free text → qwen, temp=0.0 | Scheduled/managed runs: 0 resolution LLM calls (2 total/run); free-text chat: 1 resolution LLM call (3 total/run) |
+| `_resolve_ticker()` | **STATIC (managed ticker) / LLM (free text)** | `base_orchestrator.py` | Exact match in the sector's `TICKERS` (`_managed_tickers()`), the managed list or the instrument registry (`_tracked_tickers()`) → built directly via `_company_name_for()`/`_yf_info()`, no LLM; free text → qwen, temp=0.0 | Scheduled/managed runs: 0 resolution LLM calls (2 total/run); free-text chat: 1 resolution LLM call (3 total/run) |
 | `_load_learned_weights()` | **STATIC** | `base_orchestrator.py` | JSON file read | Returns None if no data yet |
 | `_unified_enabled()` / `_run_agents()` | **STATIC** | `base_orchestrator.py` | `UNIFIED_ANALYST_SECTORS` membership check | Branch: unified analyst vs legacy worker pool — all four sectors unified by default |
 | `UnifiedAnalyst.run()` (all 4 sectors) | **LLM** | `shared/pipeline/unified_analyst.py` | qwen REASONING tier, temp=0.2, json_object | ONE call → all dimension AgentOutputs for that sector (9/6/8/6 per `SECTOR_SPECS`); never raises |

@@ -90,9 +90,9 @@ position-sized personal instructions.
   - ⏳ **Still open:** access-control the nightly backup destination once user #2 exists
     (it becomes multi-user PII); the deletion path is gated on `ATLAS_ENABLED` for the
     `atlas.db` cascade but already erases the live `users.db`/portfolio/chat/telemetry paths.
-    SA-007 (deployed 2026-09-29; no bucket is configured yet) encrypts the off-site copy client-side
+    The nightly backup encrypts its off-site copy client-side
     (AES-256-GCM; the key stays with the owner) and needs a private bucket with a key scoped
-    to it. Two gaps remain: the emailed copy is still unencrypted, and an erased account
+    to it; none is configured yet. Two gaps remain: the emailed copy is still unencrypted, and an erased account
     survives in off-site copies until retention removes them (30 nightly copies by default).
 
 ---

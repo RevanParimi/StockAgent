@@ -30,9 +30,12 @@ production state was read.
   `AUTH_REQUIRED` both on, an anonymous `GET /ui/watchlist` reads the default user's watchlist.
   The owner should route it. I1–I3 are info.
 - **Next, in order:**
-  1. Commit and push at the owner's word ("later commit and push them"), before the review: a
-     recorded deviation, as for FIX-004 change 1. Then a KT bump to the new commit. Push in a
-     job-free window, then the owner confirms `railway deployment list` and `/health`.
+  1. **COMMITTED as `954305a`** at the owner's word ("later commit and push them"), before the
+     review: a recorded deviation, as for FIX-004 change 1. `verify --rev 954305a` gives 0
+     mismatches. Then the KT bump: header `954305a`, edition 2026-10-11, the five deep-dive
+     headers, guide 11-F; PDF source `971daaec…`; `check_kt_docs` errors `[]`. **Push** with
+     `04ee080` in a job-free window, then the owner confirms `railway deployment list` and
+     `/health`.
   2. **Fresh review of FIX-005** in a new conversation ("continue"), by REVIEW.md, of the
      committed bytes (`kt_manifest.py verify FIX-005-manifest.json --rev <commit>`).
   3. Then SA-011, as below.

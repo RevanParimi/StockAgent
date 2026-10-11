@@ -1,8 +1,8 @@
 # StockAgent — Technical Design and Knowledge Transfer
 
-**Edition:** 2026-10-10 · **Audience:** engineers and teammates learning the product
+**Edition:** 2026-10-11 · **Audience:** engineers and teammates learning the product
 
-**Code inspected:** `61c85d6df9b3dae7eeebd875c70409a9d0d6a024`
+**Code inspected:** `954305a37cd5ea191e9039f28d171f390e325906`
 
 **PDF:** [StockAgent-Three-Loops.pdf](StockAgent-Three-Loops.pdf), generated from this Markdown.
 
@@ -35,10 +35,11 @@ triggered no production job, backfill or notification.
 
 ### Production state at this edition
 
-Production runs the inspected code. The deployment of 10 October 2026 carries
-it, confirmed by the owner's read-only check of the deployment list and
-`/health`. The table gives the configuration that differs from the repository
-and the state of each operational control.
+Production runs the inspected code once the deployment of 11 October 2026 is
+confirmed by the owner's read-only check of the deployment list and `/health`.
+Until then it runs `61c85d6`, which differs only in chat's brief tool
+(section 10). The table gives the configuration that differs from the
+repository and the state of each operational control.
 
 | Area | State in production | Evidence |
 |---|---|---|

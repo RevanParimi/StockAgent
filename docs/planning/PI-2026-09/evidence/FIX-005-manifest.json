@@ -1,0 +1,59 @@
+{
+  "story": "FIX-005",
+  "phase": "implementation",
+  "baseline": "04ee080323cd9418e66fc7796cb423c01618d4ec",
+  "excluded": [
+    "docs/planning/PI-2026-09/STATE.json",
+    "docs/planning/PI-2026-09/HANDOFF.md",
+    "docs/planning/PI-2026-09/evidence/FIX-005-implementation.md"
+  ],
+  "note": "STATE.json and HANDOFF.md also carry the deep-dive rewrite notes and the earlier push note (commit 04ee080 and before).",
+  "hash_convention": "git blob bytes after .gitattributes normalization (CRLF->LF for text, binary unchanged); verify with scripts/docs/kt_manifest.py verify",
+  "files": [
+    {
+      "path": "docs/CHAT_ARCHITECTURE.md",
+      "git_blob": "cafeebe96144fd9881d4d6db7a98cdf425feae7b",
+      "sha256": "9df282bb3017bd95641d73bffc4afbf7033f3d2df7549e816c382bab5c47cd22"
+    },
+    {
+      "path": "docs/PRODUCT_MAP.md",
+      "git_blob": "a045580e2a345ab42fd8d728a7c10637e7a1264d",
+      "sha256": "4c4cadb8e668c3c72b47e35242fd15cf73288a8f08d7cf6a62925c051b321574"
+    },
+    {
+      "path": "docs/StockAgent-Three-Loops.pdf",
+      "git_blob": "f140b2b7cbe27c3459dd7b05c57eae702f00a183",
+      "sha256": "4b860ab7f63a400988c10708832ecdf4c0e93f8c4c81a58c9e0c4670b630b643"
+    },
+    {
+      "path": "docs/TEAM_TESTING_GUIDE.md",
+      "git_blob": "6b098f9766cd9c35b3a80dbd2e4424744e32627d",
+      "sha256": "233885e747134bf3101805d9604133a2a8676774182adbdc94bc0cf924226632"
+    },
+    {
+      "path": "docs/TECHNICAL_DESIGN.md",
+      "git_blob": "a0445d0a6ff78f8cecaa2d1b86063977fe41dcf5",
+      "sha256": "55d6c82ffb81d3215412366d43bd280395507a8073fd600241ac11a2802e984d"
+    },
+    {
+      "path": "docs/planning/PI-2026-09/stories/FIX-005.md",
+      "git_blob": "71f65756210a23f5334a17a0d172ea09846a607c",
+      "sha256": "9336526b110b1397fe0deb6376d54f6c94f5dbcd7d4cdf314f44fb671a5fb587"
+    },
+    {
+      "path": "services/api/routes/ui_data.py",
+      "git_blob": "c35dcea03fba60fb06867cf1e919ee5257365eba",
+      "sha256": "babbd8ad1e7db15566096213f0d2c480c9cd41338fce3050debad2e9cd378a76"
+    },
+    {
+      "path": "tests/unit/api/test_chat_brief_user_scope_fix005.py",
+      "git_blob": "393f97ffe240e32fa958bf53b170295d515d00f9",
+      "sha256": "7bff76ff912514f592f4744e1ed6b9b2cc8b85d406180e4146c365ad96923915"
+    },
+    {
+      "path": "tests/unit/test_chat_brief_tool.py",
+      "git_blob": "e7e7916db9ba03af232555c81630083818ba2c7f",
+      "sha256": "24022d1458f89998babe4c80054c56b69fb54eae69cdfacad7063c0023ded7c8"
+    }
+  ]
+}

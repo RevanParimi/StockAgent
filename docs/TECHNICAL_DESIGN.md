@@ -1393,9 +1393,10 @@ The frontend uses React JSX, runtime browser transformation and PWA assets.
 Chat uses a streaming tool loop with potentially paid provider calls. Prompt
 editing can feed scheduled publishing. These are not inert testing screens.
 Bearer sessions, roles and machine-key authentication are implemented;
-portfolio identity comes from the authenticated user, except in chat's
-`get_portfolio_brief` tool, which reads the default user's portfolio for every
-caller ([CHAT_ARCHITECTURE](CHAT_ARCHITECTURE.md) section 9). Some intelligence read
+portfolio identity comes from the authenticated user. Chat's tools follow the
+same rule: the brief tool reads only the caller's portfolio and refuses a
+request without a valid user id, rather than fall back to the default user
+([CHAT_ARCHITECTURE](CHAT_ARCHITECTURE.md) section 2). Some intelligence read
 routes remain public. The RL client has demo/fallback paths on API failure,
 so populated charts alone do not prove live data. **Planned:** honest
 unavailable states (SA-024) and a public-read and demo-data policy (SA-032).
@@ -1570,10 +1571,11 @@ story to the sections of this document it changes. An implemented story's
 behaviour is described in those sections as current design. Its production
 verification is tracked separately (section 1).
 
-Four fixes outside the SA numbering are also part of the current design:
+Five fixes outside the SA numbering are also part of the current design:
 listing-day closes (FIX-001, sections 5 and 7), ticker resolution (FIX-002,
-section 4), bank income statements (FIX-003, section 4) and dossier dates
-(FIX-004, section 5). DOC-001 produced this document's current-code edition.
+section 4), bank income statements (FIX-003, section 4), dossier dates
+(FIX-004, section 5) and the chat brief's user scope (FIX-005, section 10).
+DOC-001 produced this document's current-code edition.
 
 | Story | Change | Status | KT sections | Dependencies |
 |---|---|---|---|---|

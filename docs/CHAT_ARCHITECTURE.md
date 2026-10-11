@@ -53,6 +53,7 @@ POST /ui/chat/stream  {"message": "...", "session_id": "<uuid> or null"}
 | Concern | Behaviour |
 |---|---|
 | Who may chat | Any signed-in user (`get_current_user`). With `AUTH_REQUIRED` off, an anonymous request acts as the owner. |
+| User scope | Both routes pass the caller's user id to the tools. Session history and the one tool that reads personal data, `get_portfolio_brief`, see only the caller's records; a tool given no valid user id refuses rather than fall back to the default user. |
 | Quota | Members get `CHAT_DAILY_QUOTA` questions per IST day (30 by default; the `chat:` section of config.yaml does not set it). One message is one turn, whatever the tool fan-out. The owner is exempt. When the quota store fails, the turn is allowed and logged. An exhausted quota returns the reason as an ordinary assistant bubble on the stream, and HTTP 429 on `/ui/chat`. |
 | Models | The fast tier (`llm.model_fast`, `qwen/qwen3.6-flash` in the repository), then the reasoning tier (`z-ai/glm-5.2`) as the fallback. Provider-side reasoning is switched off: the reply is user-visible text, and `<think>` blocks are stripped anyway. |
 | Generation | Temperature 0.4; at most 700 output tokens per call on the stream, 600 on `/ui/chat`. |
@@ -103,7 +104,7 @@ Thirteen tools, each with a schema in `_CHAT_TOOLS` and a branch in
 | `get_ticker_dossier(ticker)` | The ticker's dossier | A 2,000-character digest (RL_DESIGN §23) |
 | `get_macro_news()` | Today's macro feed file | The feed the 07:30 and market-hours jobs write (AGENTIC_DESIGN §12) |
 | `search_market_news(query)` | News search, Tavily as fallback | 2–3 query variants, fused (section 5) |
-| `get_portfolio_brief()` | The latest morning brief, else the latest EOD digest | Reads the **default user's** portfolio, not the caller's (section 9) |
+| `get_portfolio_brief()` | The caller's latest morning brief, else their latest EOD digest | Opens the same store as `GET /portfolio`. A caller without a portfolio gets "no brief yet", and the read creates no folder; a request without a valid user id is refused |
 
 `run_agent_analysis` resolves the sector through the sector registry, so an
 unknown ticker runs the generic graph, and its result carries the decision
@@ -190,12 +191,6 @@ limit included, gets the canned demo reply.
 
 ## 9. Limits and planned work
 
-- **The brief tool reads the default user's portfolio.**
-  `get_portfolio_brief` builds `PortfolioStore()` with no user id, so it
-  reads the `primary` user's latest brief or digest whoever asks. A signed-in
-  member who asks chat for "my brief" receives the default user's holdings,
-  values and verdicts. Session history is isolated per user; this tool is
-  not. No story covers it yet.
 - **The canned demo reply.** `_mock_reply` answers a failed turn with fixed
   text that can name a stock and a reason ("TATAMOTORS is being driven by EV
   order book strength…"), shown as an ordinary reply. Nothing marks it as a

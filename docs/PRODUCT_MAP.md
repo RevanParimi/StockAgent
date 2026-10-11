@@ -611,9 +611,12 @@ and `scorecard`.
 | Account deletion | `DELETE /auth/account` | One cascade |
 
 **Two planes.** The intelligence plane is ticker-keyed and shared; the user
-plane is user-keyed and private; they join only through `verdict_store`. One
-exception today: chat's portfolio-brief tool reads the default user's
-portfolio for every caller (CHAT_ARCHITECTURE section 9).
+plane is user-keyed and private; they join only through `verdict_store`.
+User-plane reads take the caller's own user id, chat's tools included: the
+brief tool reads only the caller's portfolio, and refuses a request that
+carries no valid user id (CHAT_ARCHITECTURE section 2). One exception
+remains: with Atlas on and `AUTH_REQUIRED` on, an anonymous
+`GET /ui/watchlist` reads the default user's watchlist.
 
 **Switches.** With `AUTH_REQUIRED` off (the code default), anonymous requests
 act as the owner. With `ATLAS_ENABLED` off, the Atlas layer is a dormant

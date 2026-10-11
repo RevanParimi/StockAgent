@@ -1,8 +1,43 @@
-# Current handoff - 2026-10-11 (updated about 07:45 IST)
+# Current handoff - 2026-10-11 (updated about 08:10 IST)
 
 ## START HERE — resume checklist, in order
 
-**FIX-004 change 1 was ACCEPTED by its fresh-session review** (10 Oct, from about 20:14 IST, a new
+**FIX-005 was IMPLEMENTED and awaits its fresh-session review** (11 Oct, about 07:47–08:10 IST,
+in the same conversation as the deep-dive rewrite, at the owner's word). Receipt:
+[implementation](evidence/FIX-005-implementation.md); card: [FIX-005](stories/FIX-005.md). STATE:
+`active_task: null`, FIX-005 `review_required`, `next_task: FIX-005` (meaning its review). No
+production state was read.
+- **The defect.** Chat's `get_portfolio_brief` built `PortfolioStore()` with no user id, so every
+  signed-in caller got the default `primary` user's brief or digest (holdings, values, verdicts).
+- **The fix** (`services/api/routes/ui_data.py`). Both chat routes pass `user["user_id"]` through
+  `_execute_chat_tool` and `_dispatch_chat_tool`. The tool opens `PortfolioStore(user_id)`, the
+  store `GET /portfolio` opens. It refuses a missing or invalid id (never the default user; the
+  default argument is `None`), and returns "No brief yet" without creating a folder for a user
+  who has none.
+- **Tests:** 51 new invariant tests, in `tests/unit/api/test_chat_brief_user_scope_fix005.py`:
+  - no account sees another's marker, at 4 layers;
+  - 7 invalid ids are refused, and no folder is created;
+  - both real chat routes, with a stubbed model that calls the tool.
+  - Also: `test_chat_brief_tool.py` now names the default user. Focused chat set: 106 passed.
+    All 6 in-memory mutants are caught (the old behaviour fails 45).
+  - Full suite: **4318 passed, 12 skipped, 0 failed** on the second run. The first run had 1
+    failure, the known Windows rename flake in `test_store_migration_sa009` (it passes alone,
+    3 of 3). `data/`, `logs/` and `outputs/` were unchanged (800 files, `0f244752`).
+  - Review input `82d6c89c…`; diff `e28f1e61…` (27,443 bytes); baseline `04ee080`.
+- **Docs:** CHAT_ARCHITECTURE sections 2, 4 and 9; KT sections 10 and 12 (PDF rebuilt);
+  PRODUCT_MAP section 16; guide 11-F; the card.
+- **Self-review:** none critical, high or medium. **L1 (low, related, not fixed):** with Atlas and
+  `AUTH_REQUIRED` both on, an anonymous `GET /ui/watchlist` reads the default user's watchlist.
+  The owner should route it. I1–I3 are info.
+- **Next, in order:**
+  1. Commit and push at the owner's word ("later commit and push them"), before the review: a
+     recorded deviation, as for FIX-004 change 1. Then a KT bump to the new commit. Push in a
+     job-free window, then the owner confirms `railway deployment list` and `/health`.
+  2. **Fresh review of FIX-005** in a new conversation ("continue"), by REVIEW.md, of the
+     committed bytes (`kt_manifest.py verify FIX-005-manifest.json --rev <commit>`).
+  3. Then SA-011, as below.
+
+**Before that: FIX-004 change 1 was ACCEPTED by its fresh-session review** (10 Oct, from about 20:14 IST, a new
 conversation opened with "continue"). Receipt: [review, section "Change 1 fresh-session
 review"](evidence/FIX-004-review.md). STATE: `active_task: null`, FIX-004 `done`,
 `change_1: accepted` with `production_verification: pending_observation`, and `next_task: SA-011`

@@ -2670,28 +2670,53 @@ def _tool_cache_key(name: str, args: dict) -> str:
     return f"{name}({','.join(parts)})"
 
 
-async def _execute_chat_tool(name: str, args: dict, cache: dict | None = None) -> str:
+async def _execute_chat_tool(name: str, args: dict, cache: dict | None = None,
+                             user_id: str | None = None) -> str:
     """
     Dispatch a chat tool, with an optional per-turn memo cache. The model
     sometimes re-requests the same sector snapshot / news search inside its loop;
     caching identical (tool, args) calls for the duration of ONE chat turn avoids
     duplicate Serper credits and yfinance hits at zero behavioural cost.
+
+    `user_id` is the signed-in caller (FIX-005), passed to the tools that read a
+    user's own data. The memo cache lives for one turn of one request, so it
+    never holds another user's result.
     """
     if cache is not None:
         ckey = _tool_cache_key(name, args)
         if ckey in cache:
             return cache[ckey]
-        result = await _dispatch_chat_tool(name, args)
+        result = await _dispatch_chat_tool(name, args, user_id=user_id)
         cache[ckey] = result
         return result
-    return await _dispatch_chat_tool(name, args)
+    return await _dispatch_chat_tool(name, args, user_id=user_id)
 
 
-def _chat_tool_portfolio_brief() -> str:
-    """Latest morning brief; falls back to the latest EOD digest (Compass Phase C)."""
+_BRIEF_NOT_YET = ("No brief yet — the morning-brief job hasn't produced one. "
+                  "Add holdings via /portfolio, then POST /delivery/run-brief.")
+_BRIEF_NO_USER = ("Your brief is unavailable — this request is not tied to a "
+                  "signed-in account.")
+
+
+def _chat_tool_portfolio_brief(user_id: str | None) -> str:
+    """The caller's latest morning brief; falls back to their latest EOD digest.
+
+    FIX-005: reads only the signed-in caller's portfolio, the same store
+    GET /portfolio and GET /delivery/brief/latest open. It used to build
+    PortfolioStore() with no user id, so every chat caller got the default
+    user's brief. With no user id, or one that is not a valid portfolio id, it
+    refuses: it never falls back to another account. A user without a
+    portfolio directory gets "no brief yet", and the read creates none.
+    """
     try:
-        from core.portfolio.store import PortfolioStore
-        store = PortfolioStore()
+        from core.config import settings as _s
+        from core.portfolio.store import _USER_ID_RE, PortfolioStore
+        if not user_id or not _USER_ID_RE.fullmatch(str(user_id)):
+            logger.warning("[chat] portfolio brief refused: no valid user id on this request")
+            return _BRIEF_NO_USER
+        if not (Path(_s.PORTFOLIO_DATA_DIR) / user_id).is_dir():
+            return _BRIEF_NOT_YET
+        store = PortfolioStore(user_id=user_id)
         brief = store.load_latest_brief()
         if brief:
             from core.delivery.brief import render_brief_text
@@ -2707,14 +2732,13 @@ def _chat_tool_portfolio_brief() -> str:
                 pnl_s = f" ({pnl:+.1f}%)" if pnl is not None else ""
                 lines.append(f"{row['symbol']}: {row['verdict']}{pnl_s} — {row.get('reason', '')}")
             return "\n".join(lines)[:1800]
-        return ("No brief yet — the morning-brief job hasn't produced one. "
-                "Add holdings via /portfolio, then POST /delivery/run-brief.")
+        return _BRIEF_NOT_YET
     except Exception as exc:
         logger.warning("[chat] portfolio brief failed: %s", exc, exc_info=True)
         return "Brief unavailable right now — try again in a moment."
 
 
-async def _dispatch_chat_tool(name: str, args: dict) -> str:
+async def _dispatch_chat_tool(name: str, args: dict, user_id: str | None = None) -> str:
     if name == "get_live_price":
         return await _chat_tool_get_live_price(args.get("symbol", ""))
     if name == "get_macro_news":
@@ -2745,7 +2769,7 @@ async def _dispatch_chat_tool(name: str, args: dict) -> str:
     if name == "get_ticker_dossier":
         return await _chat_tool_ticker_dossier(args.get("ticker", ""))
     if name == "get_portfolio_brief":
-        return _chat_tool_portfolio_brief()
+        return _chat_tool_portfolio_brief(user_id)
     return f"Unknown tool: {name}"
 
 
@@ -3037,7 +3061,8 @@ async def chat(body: dict, user: dict = Depends(get_current_user)) -> dict:
             messages.append(assistant_entry)
 
             tool_results = await asyncio.gather(*[
-                _execute_chat_tool(tc.function.name, json.loads(tc.function.arguments or "{}"))
+                _execute_chat_tool(tc.function.name, json.loads(tc.function.arguments or "{}"),
+                                   user_id=user["user_id"])
                 for tc in tool_calls
             ])
             for tc, result in zip(tool_calls, tool_results):
@@ -3438,7 +3463,8 @@ async def chat_stream(body: dict, user: dict = Depends(get_current_user)):
                     except Exception:
                         parsed_args.append({})
                 results = await asyncio.gather(*[
-                    _execute_chat_tool(tc.function.name, a, _tool_cache)
+                    _execute_chat_tool(tc.function.name, a, _tool_cache,
+                                       user_id=user["user_id"])
                     for tc, a in zip(tcs, parsed_args)
                 ])
                 for tc, result in zip(tcs, results):

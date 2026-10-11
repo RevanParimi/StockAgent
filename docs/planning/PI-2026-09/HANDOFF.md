@@ -1,8 +1,59 @@
-# Current handoff - 2026-10-11 (updated about 08:10 IST)
+# Current handoff - 2026-10-11 (updated about 08:55 IST)
 
 ## START HERE — resume checklist, in order
 
-**FIX-005 was IMPLEMENTED and awaits its fresh-session review** (11 Oct, about 07:47–08:10 IST,
+**FIX-005 was ACCEPTED by its fresh-session review** (11 Oct, from about 08:23 IST, a new
+conversation opened with "continue"). Receipt: [review](evidence/FIX-005-review.md). STATE:
+`active_task: null`, FIX-005 `done` with `production_verification: pending_deployment`, and
+**`next_task: SA-011`** (not started). The verdict covers the **committed `954305a`**: input
+`82d6c89c…` and diff `e28f1e61…`, checked with the reviewer's own script, 0 mismatches. Nothing
+was committed, pushed, deployed or configured in this phase, and no production state was read.
+- **In one example.** The reviewer's trace drives the real HTTP stack with Atlas on, as in
+  `config.yaml`.
+  - The owner signs up (id `primary`), and the real brief job writes the owner's brief.
+  - A member joins by invite, with no portfolio, and asks chat "show my brief". The answer is
+    "No brief yet", with nothing of the owner's and no folder created. That holds also when the
+    model's tool arguments or the request body say `"user_id": "primary"`.
+  - Once both have briefs, each account's chat answer equals its own
+    `GET /delivery/brief/latest` text.
+  - The baseline `04ee080` fails all 3 trace tests: a member gets `primary`'s brief.
+- **What the review checked:**
+  - where the identity comes from: the session, the passthrough, or 401;
+  - that the owner made by signup is `primary`;
+  - that no other chat path reads personal data: the tools, the context builder, the
+    pre-router, and history keyed by user. The memo cache lives for one turn;
+  - the reviewer's own mutations (table in the receipt), and the committed KT and PDF pairs at
+    `954305a` and `304dcff`;
+  - full suite **4318 passed, 12 skipped, 0 failed** (9 min 45 s), with `data/`, `logs/` and
+    `outputs/` unchanged (800 files, `88a644fc…`).
+- **Findings.** None is critical, high or medium.
+  - **L1 (low, tests).** No test pins that the identity comes only from the session. Mutants
+    that take `user_id` from the model's tool arguments or from the request body pass all 54 of
+    the implementer's tests. The code is correct. Routed to the SA-031 card, with the fixture.
+  - **L2 (low, owner decision).** The implementer's L1, confirmed: with Atlas on (as in
+    `config.yaml`) and `AUTH_REQUIRED` on, an anonymous `GET /ui/watchlist` reads the default
+    user's watchlist (`ui_data.py:1043`). **The owner should route it**, for example as a FIX
+    card.
+  - **I1 (info, production data).** A brief a member received before the deploy stays in that
+    member's own chat history until a startup sweep at least 7 days later. Added to the
+    production check. I2 is info.
+- **Review edits (docs only):** guide 11-F's status; the SA-031 card; the review receipt; STATE;
+  HANDOFF. The KT, its PDF, CHAT_ARCHITECTURE and PRODUCT_MAP were not edited.
+- **Next, in order:**
+  1. **Commit** this review's docs at the owner's word. They are docs only; every push
+     redeploys, so push in a job-free window. The uncommitted 08:16 push note goes with them.
+  2. **The owner confirms the 11 Oct deploy:** `railway deployment list` shows SUCCESS, and
+     `/health` is 200. Then FIX-005's production check, read-only: as a member, or with
+     `AUTH_REQUIRED` on, "show my brief" shows none of the owner's holdings. With no member
+     account, record the cross-account case `not_applicable` and confirm the owner still gets
+     the owner's own brief. KT section 1's production line can then name `954305a` as live.
+  3. **The owner routes L2.**
+  4. Still open: FIX-004's production checks (the 17 Oct scan; IDFCFIRSTB before 24 Oct;
+     change 1 only if STARHEALTH is held on 26 or 27 Oct); SA-038's Sunday 11 Oct heartbeat.
+  5. **SA-011**, the first ready planned story in STATE order (its dependencies SA-002 and SA-004
+     are done), in its own implementation conversation ("continue").
+
+**Before that: FIX-005 was IMPLEMENTED** (11 Oct, about 07:47–08:10 IST,
 in the same conversation as the deep-dive rewrite, at the owner's word). Receipt:
 [implementation](evidence/FIX-005-implementation.md); card: [FIX-005](stories/FIX-005.md). STATE:
 `active_task: null`, FIX-005 `review_required`, `next_task: FIX-005` (meaning its review). No
@@ -33,9 +84,13 @@ production state was read.
   1. **COMMITTED as `954305a`** at the owner's word ("later commit and push them"), before the
      review: a recorded deviation, as for FIX-004 change 1. `verify --rev 954305a` gives 0
      mismatches. Then the KT bump: header `954305a`, edition 2026-10-11, the five deep-dive
-     headers, guide 11-F; PDF source `971daaec…`; `check_kt_docs` errors `[]`. **Push** with
-     `04ee080` in a job-free window, then the owner confirms `railway deployment list` and
-     `/health`.
+     headers, guide 11-F; PDF source `971daaec…`; `check_kt_docs` errors `[]`. **PUSHED
+     `ae855a4..304dcff` at 08:16:32 IST** at the owner's word ("its okay push now"). The owner
+     waived the 07:30–09:00 slot, in which only the daily 08:00 IPO refresh runs on a Sunday.
+     origin was checked as `ae855a4` first. requirements and the Dockerfile are unchanged.
+     **Deploy confirmation is the owner's:** `railway deployment list` should show the new
+     deployment SUCCESS, and `/health` should be 200. FIX-005 `production_verification` is
+     `pending_deployment`. This push note is uncommitted and goes with the next commit.
   2. **Fresh review of FIX-005** in a new conversation ("continue"), by REVIEW.md, of the
      committed bytes (`kt_manifest.py verify FIX-005-manifest.json --rev <commit>`).
   3. Then SA-011, as below.

@@ -35,11 +35,10 @@ triggered no production job, backfill or notification.
 
 ### Production state at this edition
 
-Production runs the inspected code once the deployment of 11 October 2026 is
-confirmed by the owner's read-only check of the deployment list and `/health`.
-Until then it runs `61c85d6`, which differs only in chat's brief tool
-(section 10). The table gives the configuration that differs from the
-repository and the state of each operational control.
+Production runs the inspected code. The deployment of 11 October 2026 carries
+it, confirmed by the owner's read-only check of the deployment list and
+`/health`. The table gives the configuration that differs from the repository
+and the state of each operational control.
 
 | Area | State in production | Evidence |
 |---|---|---|
@@ -50,6 +49,7 @@ repository and the state of each operational control.
 | Ticker resolution and bank statements | Managed tickers resolve to themselves, and the four banks' fundamentals read `ok`. TATAELXSI's October envelope, built on a wrong resolution, was regenerated on 2026-10-05. | Verified 2026-10-02 from review logs |
 | Sector benchmarks | Each sector's technicals are measured against its own index. Yahoo returns no data for `^CNXAUTO` or `^CNXENERGY`, so automobile and renewable-energy correlations read "unavailable". | Verified 2026-10-10 from the 7–9 Oct review logs |
 | Listing-day closes | The nightly audit grades listing-day IPO rows: 4 graded and none skipped on 2026-10-01. | Verified 2026-10-01 |
+| Chat brief scope | Chat's brief tool reads only the caller's portfolio. The owner gets the owner's brief; a member account with no holdings is told there is no brief yet and sees none of the owner's. | Verified 2026-10-11, the owner's check with a member account |
 | Delivery | Outbound SMTP has worked since a plan upgrade on 2026-09-21. The outbox records transport acceptance; user receipt is not observable. Whether `RESEND_API_KEY` is set was not inspected. | Section 10 |
 | Backups | The nightly archive and restore drill run. No off-site target is configured, because the owner deferred it to the end of the PI, so the watchdog sends a weekly reminder. | Watchdog mail, 2026-10-07 |
 | Watchdog milestones | The milestones that lapsed in August and September were judged and retired on 2026-10-06. The next morning's run sent no LAPSED notice. | Watchdog mail, 2026-10-07 |

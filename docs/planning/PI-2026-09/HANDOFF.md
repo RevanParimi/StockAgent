@@ -32,22 +32,35 @@ was committed, pushed, deployed or configured in this phase, and no production s
     the implementer's tests. The code is correct. Routed to the SA-031 card, with the fixture.
   - **L2 (low, owner decision).** The implementer's L1, confirmed: with Atlas on (as in
     `config.yaml`) and `AUTH_REQUIRED` on, an anonymous `GET /ui/watchlist` reads the default
-    user's watchlist (`ui_data.py:1043`). **The owner should route it**, for example as a FIX
-    card.
+    user's watchlist (`ui_data.py:1043`). **Routed by the owner as FIX-006, to be done last**
+    (item 3 below).
   - **I1 (info, production data).** A brief a member received before the deploy stays in that
     member's own chat history until a startup sweep at least 7 days later. Added to the
     production check. I2 is info.
 - **Review edits (docs only):** guide 11-F's status; the SA-031 card; the review receipt; STATE;
   HANDOFF. The KT, its PDF, CHAT_ARCHITECTURE and PRODUCT_MAP were not edited.
 - **Next, in order:**
-  1. **Commit** this review's docs at the owner's word. They are docs only; every push
-     redeploys, so push in a job-free window. The uncommitted 08:16 push note goes with them.
-  2. **The owner confirms the 11 Oct deploy:** `railway deployment list` shows SUCCESS, and
-     `/health` is 200. Then FIX-005's production check, read-only: as a member, or with
-     `AUTH_REQUIRED` on, "show my brief" shows none of the owner's holdings. With no member
-     account, record the cross-account case `not_applicable` and confirm the owner still gets
-     the owner's own brief. KT section 1's production line can then name `954305a` as live.
-  3. **The owner routes L2.**
+  1. **COMMITTED as `6266772` and PUSHED `304dcff..6266772` at 08:57:41 IST** at the owner's
+     word ("go ahead commit and push"). It holds this review's 5 files; STATE and HANDOFF also
+     carry the 08:16 push note. It is docs only, so the redeploy runs the same code as
+     `954305a`. origin was checked as `304dcff` first. requirements and the Dockerfile are
+     unchanged. On a Sunday, no job runs between 08:00 and the 17:45 IPO refresh.
+     `.claude/settings.local.json` was not included. This push note is uncommitted and goes
+     with the next commit.
+  2. **DEPLOYED, confirmed by the owner** (about 11:00 IST, read-only): `dda41574` SUCCESS at
+     08:57:41 IST (the `6266772` push; the code is `954305a`'s), `77feeddb` REMOVED, `/health`
+     good. **FIX-005 production VERIFIED** (about 11:10 IST, the owner's read-only checks):
+     - the owner's chat "show my brief" returns the owner's own 9 Oct brief;
+     - a member account, signed up with an invite for this check, is told there is no brief
+       yet (no holdings) and sees none of the owner's data. I1: nothing to purge.
+     - Heads-up: with Atlas on, the brief job runs for every account, so this member also gets
+       a morning brief from Monday's 08:50 run.
+     - KT section 1 says production runs the inspected code and gains a "Chat brief scope" row,
+       verified 2026-10-11. PDF rebuilt (source `5ea85416…`, 37 pages; `check_kt_docs` errors
+       `[]`).
+  3. **L2 is routed as [FIX-006](stories/FIX-006.md)** at the owner's word ("put that L2 for
+     last"): `todo`, P2, placed last in STATE. Select it only when every other planned story is
+     done. This note, the KT and PDF edit, and the card are uncommitted.
   4. Still open: FIX-004's production checks (the 17 Oct scan; IDFCFIRSTB before 24 Oct;
      change 1 only if STARHEALTH is held on 26 or 27 Oct); SA-038's Sunday 11 Oct heartbeat.
   5. **SA-011**, the first ready planned story in STATE order (its dependencies SA-002 and SA-004

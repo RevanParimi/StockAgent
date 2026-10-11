@@ -1,1999 +1,1456 @@
 # RL Design — Adaptive Prediction Loop
 
-> **Current authority (2026-09-15):** [Technical KT, section 5](TECHNICAL_DESIGN.md#5-learning-forecast-review-and-memory)
-> and the [September audit](audit/2026-09-10-repository-production-review.md)
-> supersede conflicting claims in this older deep dive. Hard-bind is enabled
-> in current YAML; its category binding leaves the model score separate.
-> Grading still compares actual close to predicted close and can use a fresh
-> verdict after the outcome. Weight bounds, attribution and matched evaluation
-> remain PI targets, not demonstrated learning benefit. The July notes below
-> are historical deltas, not the current acceptance state.
+**Edition:** 2026-10-10 · **Code inspected:** `61c85d6`, the code production runs
 
-> **Historical status (2026-07-19):** body verified through 2026-06-13; an older
-> internals reference, with these post-audit deltas (details in
-> [audit/LEDGER.md](audit/LEDGER.md), map in [ARCHITECTURE.md](ARCHITECTURE.md)):
-> **(1) Direction semantics changed 2026-07-17 (Wave G):** a NEUTRAL prediction now counts
-> correct only when the actual move was FLAT — accuracy series has a deliberate break at
-> that date. **(2) Verdict shadow lane added:** `threshold(composite)` is logged beside the
-> LLM verdict to `data/rl/verdict_shadow.jsonl` (observe-only; hard-bind decision pending).
-> **(3) Actual closes are integrity-gated** by `services/data/fetchers/close_verifier.py`
-> (yfinance×NSE cross-check + non-finite sanitizer). **(4) News context is date-filtered to
-> a 3-day window** (the "48h" label used to be aspirational). **(5)** The daily-review
-> harvest has a contained time budget; every run records an outcome to
-> `/scheduler/status last_runs`. **(6) The adaptive layer is under formal measurement
-> (AUD-116, 2026-07-19):** a monthly Learning Evidence Report (§25) replays decisions
-> under adapted vs frozen vs uniform weights; first verdict over May+Jun prod data was
-> **LEARNING_INERT** (0/87 days diverged) — read
-> [audit/ADAPTIVE_LEARNING_REVIEW.md](audit/ADAPTIVE_LEARNING_REVIEW.md) before
-> trusting this document's learning-efficacy claims.
+**Scope:** the learning loop in depth: forecast envelopes, the daily review,
+weights, lessons, company knowledge, measurement and the Living Envelope.
 
-> Complete reference for the self-learning RL feedback system.
-> Covers: 5 JSON memory files, full daily loop (Steps 0–9 incl. Step 8.5 dossier curator),
-> month-start forecast, all static formulas & multipliers, LLM contracts, schemas,
-> static-vs-LLM boundary, the Knowledge Layer (§23), and the Living Envelope (§27).
-> Updated: 2026-06-13 · Phases 5 + 6 + Evolution P1–P5 + Phase 8 complete.
-> Knowledge Layer (Ticker Dossier + executable claims, §23): **IMPLEMENTED 2026-06-11**
-> — plan: `docs/superpowers/plans/2026-06-11-ticker-dossier.md`.
-> Living Envelope (sticky regime + shock re-forecast + pre-open check, §27):
-> **IMPLEMENTED 2026-06-13** — spec: `docs/superpowers/specs/2026-06-13-living-envelope-design.md`.
+The [technical design](TECHNICAL_DESIGN.md) (the KT) summarises this loop in
+[section 5](TECHNICAL_DESIGN.md#5-learning-forecast-review-and-memory). It is
+also the reference for the decision gate, instrument identity and store
+ownership, which this document uses without repeating. Measured production
+state, including which learning mode production runs, lives only in
+[KT section 1](TECHNICAL_DESIGN.md#production-state-at-this-edition). Work
+planned in PI-2026-09 is labelled **Planned** with its story.
+
+Section numbers are stable: other documents cite sections 23 to 27.
+
+| Part | Sections |
+|---|---|
+| The loop and its records | 1 Purpose and limits · 2 Architecture · 3 Persistent memory and store ownership |
+| Forecast and review | 4 Month-start forecast · 5 Daily review · 6 Review input checks · 7 Learning mode · 8 Per-ticker outcomes |
+| Learning mechanics | 9 Weight adapter · 10 Miss taxonomy · 11 Lessons · 12 Conviction streak · 13 Regime · 14 Seasonal calendar · 15 Prompt enhancer · 16 Thesis review · 17 Market-structure signals |
+| Reference | 18 Schemas · 19 Configuration · 20 Jobs, CLI and API · 21 Static versus LLM · 22 Limits and planned work |
+| Components | 23 Knowledge layer · 24 Measurement harness · 25 Scorecard and learning evidence · 26 Event ingestion · 27 Living Envelope |
 
 ---
 
-## 1. System Purpose
+## 1. Purpose and limits
 
-StockAgent maintains per-ticker persistent memory across months. Every prediction is written down.
-Every miss is root-caused and used to update agent credibility weights. Every day — hit or miss —
-the knowledge layer (§23) distils the day's context into a living per-ticker dossier, so the system
-accumulates the stock's *story* (thesis, response signatures, guidance, flows), not just calibration
-numbers. After 6 months the system has a proprietary rulebook for how each specific stock responds
-to specific real-world events — and that rulebook is executable (lesson trigger tags) and visible
-to both the forecast agents and the chatbot.
+Each managed ticker gets a monthly **envelope**: a forecast row for each of
+the next 30 exchange sessions. Every weekday the loop grades the previous
+session's row against the actual close and asks an LLM why it missed. It
+then adjusts how much each analysis dimension counts (its weight), records
+reusable lessons, and keeps a per-ticker dossier of company knowledge. All of
+it is persistent JSON under `data/predictions/`.
 
+This is an adaptive feedback system. It is not shown to predict better than a
+fixed policy, and three defects limit what its records mean:
+
+- **The graded label is error direction.** `classify_direction` compares the
+  actual close with the *predicted* close, not with the previous close. A
+  stock that rose 5% but undershot a 10% forecast is graded DOWN. The KT's
+  [worked example](TECHNICAL_DESIGN.md#grading-defect-an-example-everyone-can-follow)
+  shows the effect.
+- **The graded verdict can be chosen after the outcome.** With hard-bind on,
+  a review that re-runs the analysis grades the session against that fresh
+  verdict, not the frozen one the row was issued with (section 5, step 4).
+- **Final weights can leave their bounds.** The adapter clamps each weight
+  and then renormalises, which can push a weight past its ceiling (section 9).
+
+**Why the switch exists.** Unconstrained, the adapter drove chart weights
+toward zero. The learning mode (section 7) lets production record what
+learning would do without letting it move decisions. **Planned:** a corrected
+target (SA-012), frozen issue-time grading (SA-013, SA-014), idempotent and
+bounded updates (SA-015), and a shadow learner with explicit conditions for
+returning to `adapt` (SA-043; KT
+[section 11](TECHNICAL_DESIGN.md#11-planned-redesign)).
+
+## 2. Architecture overview
+
+```text
+MONTH START (calendar 1st, 09:00 IST: rl_monthly_forecast)
+  generate_forecast(ticker, managed sector)
+    weights      decision_weights(): stored weights (adapt) or sector defaults (observe)
+    analysis     sector orchestrator -> report + decision gate        [LLM]
+    gate         enforce + abstain -> InsufficientDataError, no envelope
+    base close   verified close (yfinance x NSE cross-check)
+    enhancer     miss counter -> extra search queries, saved per cycle [STATIC, LLM fallback]
+    profile      ForecastProfile: monthly return %, band, shape        [LLM, static fallback]
+    paths        GBM Monte Carlo, 500 paths, P10/P50/P90 per session  [STATIC]
+    per day      seasonal deltas, lesson adjustments (adapt only)     [STATIC]
+    rows         each row stamped: data_gate, source_run_id, instrument
+    save         envelope with learning_mode, decision_gate, instrument
+
+PRE-OPEN (Mon-Fri 08:45 IST: preopen_shock_check)        section 27.3
+  1 news search + 1 fast-tier rating -> on a shock, re-forecast contradicted envelopes
+
+DAILY (Mon-Fri 16:30 IST: rl_daily_review, previous trading session)
+  run_daily_review(ticker, session, managed sector)       section 5
+    0    regime: raw detection + market-wide sticky label (written every run)
+    1    envelope row for the session (own month, else previous month)
+    gate row provenance and identity                      section 6
+    2    session close; stale-close check
+    3    error and direction
+    4    optional analysis re-run (gated), feedback agent  [LLM]
+    5    weight adapter: adapt writes, observe proposes   sections 7, 9
+    5.5  regime multipliers (ephemeral)
+    6    lessons merge + shared-ledger propagation         section 11
+    6.5  conviction streak                                 section 12
+    7a   thesis review on significant misses               [LLM] section 16
+    --   re-forecast trigger (external_shock / thesis_break / regime_flip)  section 27.2
+    7b   confidence-only revision of remaining rows (skipped after a re-forecast)
+    8    feedback entry (upsert by date)
+    8.5  dossier curator                                   [LLM] section 23.2
+    --   off-market signals saved for tomorrow
+    9    seasonal validation (last trading day of the month)
+    10   control lane: score yesterday's call, make tomorrow's  [LLM] section 25
+  scheduler: one outcome per ticker, then the portfolio pipeline   section 8
+
+WEEKLY
+  Sat 10:00 event_ingest_weekly   NSE events -> dossier            [LLM] section 26
+  Sat 11:00 research_loop_weekly  open questions -> searches       [LLM] section 23.2
+  Mon 03:30 ledger_cleanup_weekly stale-lesson cleanup + dossier distillation
+
+MONTHLY
+  1st 02:00 scorecard_monthly     scorecard + learning evidence report   section 25
 ```
-Month 1:  Forecasts from config defaults + pre-seeded seasonal patterns
-Month 3:  Weights earned from 60 days of real accuracy data
-Month 6:  Lessons accumulated, seasonal seeds validated, cross-ticker sector patterns active
-Month 12: Proprietary calendar + ledger; miss rate on known patterns approaches near-zero
-```
 
----
+Three switches decide what this flow may change:
 
-## 2. Architecture Overview
+- `rl.learning_mode` (section 7): whether learned weights and lesson emphasis
+  move decisions, or are only recorded;
+- `decision_gate.mode` (KT
+  [section 4](TECHNICAL_DESIGN.md#decision-gate)): whether forecasts and
+  reviews built on unverified data or an unresolved identity are withheld, or
+  only recorded;
+- per-component flags (section 19): each component can be switched off on its
+  own, and every off path skips that component's reads and writes.
 
-```
-MONTH START (1st trading day)
-  generate_forecast.py
-    ├── Load WeightMemory (or bootstrap from base weights)
-    ├── SeasonalCalendar → seasonal context per day         [STATIC: YAML + ledger]
-    ├── PromptEnhancer   → extra search queries per agent   [STATIC: template map]
-    ├── Run N-agent pipeline via sector orchestrator        [LLM: agents]
-    ├── price_interpolator → 30-day GBM MC paths (P10/P50/P90) [STATIC: formula + regime scale]
-    ├── confidence_decay  → 0.4% per day + MC band penalty     [STATIC: formula]
-    └── Save PredictionEnvelope
+**Invariants that hold in every mode:**
 
-DAILY (weekdays 4:30pm IST / 11:00 UTC)
-  daily_review.py
-    ├── Step 0   RegimeDetector   → classify market regime  [STATIC: VIX/FII/RSI]
-    │    └── update_sticky_regime() → market-wide sticky label (hysteresis) [STATIC, §27.1]
-    ├── Step 1   Load today's forecast from PredictionEnvelope
-    ├── Step 2   Fetch actual close via yfinance
-    ├── Step 3   Compute error metrics                      [STATIC: formulas]
-    ├── Step 4   FeedbackAgent    → miss analysis + lessons [LLM: qwen, temp=0.3]
-    │    ├── Inject streak warning if ConvictionStreak ≥ 8 [STATIC: threshold]
-    │    ├── Inject regime narrative (non-NORMAL only)      [STATIC: assembled]
-    │    ├── Inject tiered lessons summary (TIER 1/2/3)    [STATIC: assembled]
-    │    └── G8: Inject NSE market intelligence (FII/DII + bulk deals) [STATIC: nse_market.py]
-    ├── Step 5   WeightAdapter    → update weight_memory    [STATIC: deterministic]
-    │    └── factor_regime scale → lenient penalty for structurally-disadvantaged agents [STATIC: get_regime_penalty_scale]
-    ├── Step 5.5 Apply regime multipliers → ephemeral eff. weights [STATIC: NOT persisted]
-    ├── Step 6   LearningLedger  → merge lessons + propagate (P2) [STATIC: blend formula]
-    ├── Step 6.5 ConvictionTracker → update streak + reversion_prior [STATIC: formula]
-    ├── [Living Envelope] Shock-triggered re-forecast trigger check [STATIC check, §27.2]
-    │    └── first match of external_shock / thesis_break / regime_flip
-    │         → regenerate_envelope() [LLM: fresh pipeline + MC paths for
-    │            remaining days only, archives v_n, capped per month]
-    │         → On success: Step 7 confidence revision SKIPPED for this run
-    ├── Step 7   Revise remaining forecasts (skipped on a re-forecast day) [STATIC + eff. weights]
-    │    └── apply_lesson_emphasis → tagged lessons fire on today's event_tags [STATIC, §23]
-    ├── Step 8   Append FeedbackEntry to daily_feedback_log (+ event_tags)
-    ├── Step 8.5 DossierCurator → update {TICKER}_dossier.json [LLM, EVERY day, §23]
-    └── Step 9   SeasonalValidator → update seed validity  [STATIC: state machine]
+- regime multipliers are applied per day and never written to weight memory;
+- a review writes at most one feedback entry per ticker and date: a re-run
+  replaces it;
+- every JSON write goes to a `.tmp` file first and is then renamed, so a crash
+  never leaves a half-written file;
+- the paper lane (discovery ideas) never trains or writes weights, never
+  propagates lessons to shared ledgers, never writes the sticky regime, never
+  re-forecasts and never runs the control lane.
 
-PRE-OPEN (weekdays 08:45 IST, before 09:15 open)
-  preopen_check.py — run_preopen_check()                    [§27.3]
-    ├── 1 Serper search: overnight India-market / GIFT Nifty / global macro news
-    ├── 1 LLM_MODEL_FAST call → {severity, direction, headline}  [LLM, json_object]
-    └── severity ≥ RL_PREOPEN_SHOCK_SEVERITY (0.7) → per managed ticker, contradiction
-         (predicted UP in risk_off / DOWN in risk_on) → regenerate_envelope(
-         trigger="preopen_shock") — same monthly cap as the daily trigger block
-```
+## 3. Persistent memory and store ownership
 
-**Key invariant:** Regime multipliers (Step 5.5) are ephemeral — applied per-day, NEVER written to `weight_memory.json`. Learned weights drift slowly; regime multipliers are daily overlays only.
+### 3.1 Layout
 
-### 2.1 New Structured Data Sources (May 2026)
-
-Three zero-credential data sources integrated as pre-fetched enrichments:
-
-| Source | File | Scope | Cache | Serper calls saved |
-|---|---|---|---|---|
-| **NSE FII/DII + Bulk Deals** | `services/data/fetchers/nse_market.py` | Daily | In-process daily | ~3–4 per run |
-| **AMFI Sector ETF Herding** | `services/data/fetchers/mf_herding.py` | Weekly trend | In-process weekly | 0 (new signal) |
-| **IIMA 4-Factor Regime** | `core/intelligence/rl/algorithms/factor_regime.py` | Long-run prior | 30-day CSV + daily | 0 (new signal) |
-
-**Integration pattern** — all three follow the same pre-fetch-then-format architecture used by `nse_announcements.py`:
-- Fetcher module handles caching and graceful degradation (always returns, never raises)
-- `ContextBuilder` calls `format_*()` per relevant agent; returns `""` on failure (agents silently use Serper-only)
-- `daily_review.py` injects FII/DII into `market_context_today` before `FeedbackAgent` (Step 4, tagged G8)
-- `WeightAdapter.update()` accepts `factor_regime` dict; `get_regime_penalty_scale()` scales bias penalties for regime-disadvantaged agents (0.80× in REVERSAL for `pattern_analysis`/`competitive_intel`; 0.85× in MOMENTUM for `fundamentals`/`risk_macro`)
-
-**IIMA data staleness note:** Data ends March 2023. Use as a long-run structural prior (size/style/momentum background), NOT a live signal. RegimeDetector (`core/intelligence/regime/detector.py`) remains the authoritative live regime source.
-
----
-
-## 3. The 5 Persistent JSON Memory Files
-
-```
+```text
 data/predictions/
-  {sector}/
-    _shared_ledger.json          ← scope=sector_wide lessons (all tickers in sector) [NEW P2]
-  _market_ledger.json             ← scope=market_wide (all sectors) [NEW P2]
-  {sector}/{TICKER}/
-    {TICKER}_{YYYY-MM}_prediction_envelope.json   ← monthly, archived each cycle
-    {TICKER}_{YYYY-MM}_daily_feedback_log.json    ← monthly, archived each cycle
-    {TICKER}_{YYYY-MM}_prompt_enhancements.json   ← monthly, per-cycle [NEW P4]
-    {TICKER}_agent_weight_memory.json             ← PERMANENT across cycles
-    {TICKER}_learning_ledger.json                 ← PERMANENT across cycles
-    {TICKER}_dossier.json                         ← PERMANENT — knowledge layer (§23)
+  _market_ledger.json                 market-wide lessons (all sectors)
+  _regime_state.json                  sticky regime label (market-wide)
+  <sector>/
+    _shared_ledger.json               sector-wide lessons
+    _seasonal_validation.json         seed validation state (section 14)
+    <TICKER>/
+      <TICKER>_<YYYY-MM>_prediction_envelope.json   monthly forecast rows
+      <TICKER>_<YYYY-MM>_daily_feedback_log.json    one entry per graded session
+      <TICKER>_<YYYY-MM>_control_log.json           control-lane calls (section 25)
+      <TICKER>_<YYYY-MM>_prompt_enhancements.json   extra queries (section 15)
+      <TICKER>_agent_weight_memory.json             weights, permanent
+      <TICKER>_weight_observations.json             observe-mode proposals (section 7)
+      <TICKER>_learning_ledger.json                 lessons and miss counters, permanent
+      <TICKER>_archived_lessons.json                cold store (section 11)
+      <TICKER>_dossier.json                         company knowledge (section 23)
+      <TICKER>_<YYYY-MM-DD>_offmarket.json          deals and pre-open data (section 17)
+      archived_envelopes/<YYYY-MM>_v<n>.json        superseded envelopes (section 27.2)
+      thesis_calls.jsonl                            thesis-review telemetry (section 16)
+data/rl/paper/predictions/            paper-lane root, same layout (discovery ideas)
+data/prediction_quarantine/           stores moved out by the ownership quarantine
 ```
 
-### 3.1 `prediction_envelope.json` — Living 30-day Forecast
+A cycle id is `<TICKER>_<YYYY-MM>`, the calendar month the row's date falls
+in. Envelope rows run 30 trading days from the 1st, about six weeks, so early
+sessions of a month are also covered by the previous month's envelope.
+
+### 3.2 Ownership
+
+A ticker's forecasts, reviews and learned state belong to one store,
+`<managed sector>/<TICKER>`: the sector of its entry in
+`data/managed_tickers.json`, whether or not the ticker is enabled. The
+monthly forecast, the daily review, the startup self-heal and the weekly jobs
+all use that sector. The KT's
+[ownership section](TECHNICAL_DESIGN.md#prediction-store-ownership) gives the
+rule's history, the read-only inventory, the quarantine and the readers that
+still pick another store.
+
+Three behaviours of `PredictionStore` matter to every reader:
+
+- **Constructing a store creates its directory.** A read through
+  `PredictionStore` for a ticker that has no store leaves an empty directory
+  behind.
+- **New files carry the store's sector.** A feedback log, weight memory or
+  ledger created by a sectored store records that sector; files already on
+  disk keep what they say.
+- **Disabling keeps history; removing deletes it.** Toggling a managed ticker
+  off stops scheduling and keeps every file. Removing it from the list deletes
+  `data/predictions/<sector>/<TICKER>/` (section 20). Only the nightly backup
+  archives keep a copy.
+
+### 3.3 Envelope
 
 ```json
 {
   "ticker": "MARUTI",
-  "cycle_id": "MARUTI_2026-04",
   "sector": "automobile",
-  "generated_at": "2026-04-08",
-  "base_close": 10500.0,
-  "weight_version_used": 3,
-  "conviction_streak": {
-    "current_verdict": "BUY",
-    "streak_days": 5,
-    "streak_start_date": "2026-04-09",
-    "max_streak_seen": 8,
-    "reversion_prior": 0.025
-  },
-  // NEW — per-agent catalyst snapshot at forecast time (all 5 fields are optional, default {})
-  "agent_predictions": {
-    "sales_demand": {
-      "bull_case_if": "FADA dispatch +12% YoY if rural recovery holds",
-      "bear_case_if": "Crude >$90 compresses margin 100-150bps",
-      "ticker_vs_peers": "MARUTI dispatch +8% vs TATA -2% this month",
-      "what_changed": "FII inflow +₹2,000Cr; dealer inventory down 3 days",
-      "data_confidence": 0.82
-    }
-  },
+  "cycle_id": "MARUTI_2026-10",
+  "generated_at": "2026-10-01",
+  "base_close": 12850.0,
+  "weight_version_used": 41,
+  "learning_mode": "observe",
+  "decision_gate": {"status": "actionable", "run_id": "…", "identity": {"…": "…"}},
+  "instrument": {"ticker": "MARUTI", "symbol": "MARUTI.NS", "basis": "…", "status": "active"},
+  "forecast_profile_shape": "front_loaded",
+  "forecast_profile_monthly_pct": 3.2,
+  "forecast_profile_source": "llm",
+  "conviction_streak": {"current_verdict": "BUY", "streak_days": 6, "reversion_prior": 0.05},
+  "agent_predictions": {"sales_demand": {"bull_case_if": "…", "data_confidence": 0.8}},
+  "fno_snapshot": {"pcr": 1.1, "max_pain_price": 12700.0, "oi_buildup_direction": "NEUTRAL"},
+  "reforecast_count": 0,
+  "reforecast_history": [],
   "daily_forecasts": [{
     "day": 1,
-    "date": "2026-04-09",
-    "predicted_close": 10580.0,
-    "predicted_change_pct": 0.76,
+    "date": "2026-10-03",
+    "predicted_close": 12880.4,
+    "price_lower": 12610.2,
+    "price_upper": 13150.9,
     "predicted_verdict": "BUY",
-    "predicted_agent_scores": {
-      "sales_demand": 0.72, "fundamentals": 0.68, "pattern_analysis": 0.65,
-      "sentiment": 0.70, "risk_macro": 0.55
-    },
+    "predicted_agent_scores": {"sales_demand": 0.72, "fundamentals": 0.68},
     "confidence": 0.71,
-    "key_assumptions": ["crude stable ~$82", "FADA dispatch +6% MoM"],
+    "key_assumptions": ["…"],
     "revised": false,
     "revision_count": 0,
-    "predicted_agent_catalysts": {
-      "sales_demand": {"bull_case_if": "FADA +12%", "data_confidence": 0.7},
-      "risk_macro": {"bear_case_if": "Crude >$90", "data_confidence": 0.9}
-    }
+    "data_gate": "actionable",
+    "source_run_id": "…",
+    "instrument": {"ticker": "MARUTI", "symbol": "MARUTI.NS", "basis": "…", "status": "active"}
   }]
 }
 ```
 
-### 3.2 `daily_feedback_log.json` — Miss Diary
+Each row records where it came from. `data_gate` and `source_run_id` name
+the analysis run that issued the row and that run's gate status; `instrument`
+names the security its analysis priced. A later registry change never
+rewrites them. A row issued before these stamps existed has an empty
+`data_gate`, meaning provenance unknown, and `instrument: {}`. In `observe`
+mode, `weight_version_used` is only the stored version at that time: the
+forecast used the sector defaults.
+
+### 3.4 Feedback entry
 
 ```json
 {
-  "ticker": "MARUTI",
-  "cycle_id": "MARUTI_2026-04",
-  "sector": "automobile",
-  "entries": [{
-    "day": 1,
-    "date": "2026-04-09",
-    "predicted_close": 10580.0,
-    "actual_close": 10430.0,
-    "price_error_pct": -1.42,
-    "direction_correct": false,
-    "miss_analysis": {
-      "primary_miss_agent": "risk_macro",
-      "miss_type": "model_bias",
-      "missed_factors": ["RBI rate hold surprise", "FII single-day outflow ₹2200Cr"],
-      "over_weighted_factors": ["FADA dispatch optimism — market ignored it on policy day"],
-      "agent_score_drift": {"sales_demand": 0.04, "risk_macro": -0.18}
-    },
-    "timing": {
-      "predicted_peak_day": 7,
-      "actual_move_start_day": 4,
-      "lag_days": -3,
-      "assessment": "early"
-    },
-    "revised_context": {
-      "headline": "RBI policy day suppressed demand signals",
-      "risks_next_7_days": ["RBI follow-through commentary", "FII positioning"],
-      "catalysts_next_7_days": ["FADA data release in 5 days"],
-      "watch_signals": ["INR past 84", "crude past $85"],
-      "horizon_confidence_adjustment": -0.05
-    },
-    "lessons_generated": ["L003"],
-    "weight_adjustment_applied": "v4",
-    "predicted_catalysts_snapshot": {
-      "sales_demand": {"bull_case_if": "FADA +12%", "data_confidence": 0.75},
-      "risk_macro": {"bear_case_if": "Crude >$90", "data_confidence": 0.9}
-    }
-  }]
+  "day": 5, "date": "2026-10-09",
+  "predicted_close": 12920.0, "actual_close": 12790.0, "price_error_pct": -1.0062,
+  "predicted_verdict": "BUY", "graded_verdict": "BUY",
+  "actual_direction": "DOWN", "direction_correct": false,
+  "predicted_agent_scores": {"sales_demand": 0.72, "fundamentals": 0.68},
+  "regime_label": "NORMAL",
+  "event_tags": ["earnings_event", "fii_flow"],
+  "claims_fired": [],
+  "volume_vs_20d_avg": 1.4,
+  "miss_analysis": {"primary_miss_agent": "sales_demand", "miss_type": "magnitude",
+                    "missed_factors": ["…"], "agent_score_drift": {"sales_demand": -0.08}},
+  "timing": {"predicted_peak_day": 22, "actual_move_start_day": 5, "lag_days": -17,
+             "assessment": "no_move"},
+  "revised_context": {"headline": "…", "watch_signals": ["…"], "horizon_confidence_adjustment": -0.02},
+  "thesis_review": null,
+  "lessons_generated": ["L014"],
+  "weight_adjustment_applied": "v41",
+  "predicted_catalysts_snapshot": {"sales_demand": {"bull_case_if": "…"}},
+  "offmarket_context": ""
 }
 ```
 
-### 3.3 `agent_weight_memory.json` — Earned Credibility
+`miss_analysis` is written when the direction is wrong or the absolute error
+exceeds 1%. `weight_adjustment_applied` is the stored version after the
+review; in `observe` mode it never changes.
+
+### 3.5 Weight memory and observations
 
 ```json
 {
-  "ticker": "MARUTI",
-  "sector": "automobile",
-  "last_updated": "2026-04-15",
-  "weight_version": 4,
-  "current_weights": {
-    "sales_demand": 0.22, "fundamentals": 0.24, "pattern_analysis": 0.18,
-    "sentiment": 0.14, "risk_macro": 0.22
-  },
-  "base_weights": {
-    "sales_demand": 0.25, "fundamentals": 0.20, "pattern_analysis": 0.20,
-    "sentiment": 0.15, "risk_macro": 0.20
-  },
-  "adjustment_bounds": { "max_single_step": 0.05, "max_total_drift_from_base": 0.15 },
-  "agent_accuracy": {
-    "risk_macro": {"direction_hits": 6, "total": 7, "avg_error": 0.03}
-  },
-  "weight_history": [{
-    "version": 4, "date": "2026-04-15",
-    "weights": {"risk_macro": 0.22, "...": "..."},
-    "reason": "risk_macro hit 6/7 directions correctly; bumped +0.02. sales_demand over-optimistic 4/7; trimmed -0.03"
-  }]
+  "ticker": "MARUTI", "sector": "automobile", "weight_version": 41,
+  "current_weights": {"sales_demand": 0.22, "fundamentals": 0.24, "pattern_analysis": 0.0},
+  "base_weights":    {"sales_demand": 0.20, "fundamentals": 0.18, "pattern_analysis": 0.10},
+  "agent_accuracy": {"sales_demand": {"direction_hits": 5, "total": 7, "calibration_hits": 4, "calibration_total": 6}},
+  "weight_history": [{"version": 41, "date": "2026-09-25", "weights": {"…": 0.0},
+                      "reason": "sales_demand: Δ+0.02 (hits=6/7)", "deltas": {"sales_demand": 0.02},
+                      "accuracy_snapshot": {"sales_demand": 0.857}}]
 }
 ```
 
-### 3.4 `learning_ledger.json` — Pattern Knowledge
+`base_weights` is the graph's default table when the file was created, and
+the drift bounds are measured from it. A missing or unreadable weight file is
+recreated from the sector's graph at version 0, by the forecast and by the
+review, in either learning mode.
+
+`<TICKER>_weight_observations.json` holds one record per review date, the
+newest 260 (about a year):
+
+```json
+{"review_date": "2026-10-09", "mode": "observe", "mode_reason": "rl.learning_mode=observe",
+ "applied": false, "stored_version": 41, "stored_weights": {"…": 0.0},
+ "would_be_version": 42, "would_be_weights": {"…": 0.0}, "deltas": {"sales_demand": 0.02},
+ "adapter_reason": "sales_demand: Δ+0.02 (hits=6/7)",
+ "decision_weights": {"…": 0.0}, "recorded_at": "2026-10-09T11:12:30+00:00"}
+```
+
+### 3.6 Learning ledger
 
 ```json
 {
-  "ticker": "MARUTI",
-  "sector": "automobile",
-  "last_updated": "2026-04-15",
-  "confidence_decay_rate": 0.02,
+  "ticker": "MARUTI", "sector": "automobile",
   "lessons": [{
-    "lesson_id": "L001",
-    "date_learned": "2026-04-10",
-    "last_seen": "2026-04-15",
-    "category": "macro",
-    "scope": "sector_wide",
-    "pattern": "RBI_policy_day",
-    "observation": "On RBI policy announcement days, risk_macro score drop >0.15 predicts actual direction in 80% of cases",
-    "rule": "Prioritise risk_macro over demand signals on RBI event days — macro dominates",
-    "confidence": 0.80,
-    "occurrences": 3,
-    "still_valid": true,
-    "contributing_tickers": ["MARUTI", "TATAMOTORS"],
+    "lesson_id": "L014", "date_learned": "2026-09-12", "last_seen": "2026-10-09",
+    "category": "macro", "scope": "sector_wide", "pattern": "RBI_policy_day",
+    "observation": "…", "rule": "Prioritise risk_macro over demand signals on RBI days",
+    "confidence": 0.71, "occurrences": 3, "still_valid": true,
+    "contributing_tickers": ["MARUTI"],
     "trigger_tags": ["central_bank_event"],
-    "prioritise_agents": ["risk_macro"],
-    "discount_agents": ["sales_demand"]
+    "prioritise_agents": ["risk_macro"], "discount_agents": ["sales_demand"],
+    "evidence": ["2026-10-08 — RBI holds repo rate at …"]
   }],
-  "miss_counter": {
-    "RBI_policy_surprise": 3, "FII_outflow_spike": 5, "crude_oil_spot_price": 4
-  }
+  "miss_counter": {"fii_outflow_spike": 5},
+  "miss_events": {"fii_outflow_spike": [{"date": "2026-10-09", "miss_type": "model_bias", "cycle_id": "MARUTI_2026-10"}]}
 }
 ```
 
----
+A lesson's `rule` states intent, not a number: a stored delta would go stale
+as weights move. `evidence` keeps up to three dated headlines that were in
+the agent's context when the lesson was written or confirmed; a lesson
+learned on a day with no dated news has none, and none is invented.
 
-## 4. Step-by-Step Daily Review Flow
+## 4. Month-start forecast generation
 
-### Step 0 — Regime Detection *(STATIC — no LLM)*
+**Trigger.** `rl_monthly_forecast` runs on the **calendar first at 09:00
+IST**, not the first trading day, for each enabled managed ticker in its
+managed sector. Rows cover the 30 NSE trading days after the run date
+(`rl.forecast_horizon_days`). A restart's self-heal also generates a missing
+envelope (section 20).
 
+**Steps** ([generate_forecast.py](../core/intelligence/rl/workflows/generate_forecast.py)):
+
+1. **Weights.** `decision_weights()` returns the stored effective weights in
+   `adapt` mode and the sector's default table in `observe` mode.
+2. **Analysis.** The sector orchestrator runs with those weights injected
+   into its aggregator. Its report carries the decision gate.
+3. **Gate.** A non-actionable report is recorded in the gate log. In
+   `enforce` mode it stops here with `InsufficientDataError`, and no envelope
+   is written.
+4. **Base close.** The latest verified close (yfinance cross-checked with
+   NSE). One retry after 15 seconds; then the ticker fails for this run.
+5. **Prompt enhancements** from the ledger's miss counter (section 15).
+6. **Forecast profile.** One bulk-tier LLM call returns the expected monthly
+   return (bounded to ±20%), a daily uncertainty band (0.1% to 5%) and a path
+   shape. Its inputs are the verdict, the 14-day ATR as a percentage of
+   price, the regime label detected for the run date, the report's
+   conviction drivers and the median past return for the same verdict (same
+   regime first; recent cycles weighted more when forgetting is on). Any
+   failure uses the static fallback below.
+7. **Paths and rows** (below), the F&O snapshot (section 17) and each
+   dimension's catalyst predictions (`agent_predictions`).
+8. **Save** the envelope with its `learning_mode`, the report's
+   `decision_gate` and its `instrument`.
+
+**Price paths.** `build_monte_carlo_paths` simulates 500 geometric Brownian
+motion paths with a fixed seed of 42:
+
+```text
+mu_daily    = monthly_return_pct / 100 / n_days
+sigma_daily = confidence_band_daily_pct / 100 × REGIME_SIGMA_SCALE[regime]
+log return  = (mu − sigma²/2) + sigma × Z,  Z ~ N(0, 1)
+row i       : predicted_close = P50, price_lower = P10, price_upper = P90
+
+REGIME_SIGMA_SCALE: MACRO_CRISIS 1.50 · RISK_OFF 1.20 · OVERSOLD 1.10 · NORMAL 1.00
+                    MOMENTUM_EXTENDED 0.90 · RISK_ON 0.80
 ```
-RegimeDetector.detect(as_of_date, sector) → RegimeSnapshot
-  Signal 1: India VIX  ← yfinance ^INDIAVIX  (fallback: 17.0)
-  Signal 2: FII Proxy  ← Nifty 50 (^NSEI) 5-day momentum %  (fallback: 0.0)
-  Signal 3: Sector RSI ← sector index OHLCV via Wilder EWM RSI(14)  (fallback: 50.0)
+
+The drift is uniform. The profile's `path_shape` (`front_loaded`,
+`back_loaded`, `volatile`, `linear`) is stored on the envelope and described
+to the feedback agent, but the Monte Carlo path does not use it. The regime
+label here is the raw detection for the run date, not the sticky label.
+
+**Confidence per row:**
+
+```text
+base       = clamp(report.final_score, 0.10, 1.00)
+band_width = (P90 − P10) / P50 × 100
+confidence = clamp(base × (1 − 0.004 × i) − max(0, (band_width / 2 − 1) × 0.015), 0.05, 0.99)
+             i = 0 for the first row
 ```
 
-**Sector RSI tickers:**
+**Per-day adjustments**, in order:
 
-| Sector | Ticker |
-|---|---|
-| automobile | `^CNXAUTO` |
-| banking_bfsi | `^NSEBANK` |
-| it_sector | `^CNXIT` |
-| renewable_energy | `^CNXENERGY` |
-| fallback | `^NSEI` |
+- **Seasonal.** Active seasonal patterns add their agent deltas to that
+  row's agent scores and their confidence modifier to its confidence
+  (section 14). This applies in both learning modes.
+- **Lesson micro-adjustment.** Untagged lessons seen at least twice and
+  confirmed within 90 days add up to 0.01 each to the dimensions their
+  category maps to, capped at ±0.05 per dimension. A no-op in `observe`.
+- **Tagged-lesson emphasis.** Lessons whose trigger tags match the row's
+  calendar tags nudge scores (section 23.3). A no-op in `observe`.
 
-**Thresholds (all STATIC constants in settings.py):**
+Every row carries the same verdict, the report's. Agent scores differ by row
+only through these adjustments.
 
-| Constant | Value |
-|---|---|
-| `VIX_VOLATILE_THRESHOLD` | 22.0 |
-| `VIX_LOW_VOL_THRESHOLD` | 14.0 |
-| `FII_PROXY_THRESHOLD` | ±1.0% |
-| `RSI_OVERBOUGHT` | 70.0 |
-| `RSI_OVERSOLD` | 30.0 |
+**Static fallback.** When the profile call fails, the monthly return comes
+from the verdict, scaled by volatility:
 
-**Classification (first match wins, STATIC priority order):**
+```text
+STRONG BUY 8.0 · BUY 4.0 · NEUTRAL 0.5 · SELL −3.0 · STRONG SELL −7.0  (percent per month)
+scaled = base × clamp(ATR% / 1.5, 0.5, 2.5),  band = max(0.1, ATR% × 0.5)
+```
 
-| Priority | Regime | Condition |
+For example, a BUY on a stock with a 0.8% ATR gets 4.0 × 0.53 = 2.1%, and on
+a stock with a 3.5% ATR gets 4.0 × 2.33 = 9.3%.
+
+**In `enforce` mode** an abstained analysis builds no envelope and logs
+`InsufficientDataError`. Nothing scheduled retries it before the next
+month's run; only a restart's self-heal does. Until then that ticker's
+reviews return `no_envelope`. **Planned:** a same-month retry (SA-036).
+
+## 5. Daily review step by step
+
+[daily_review.py](../core/intelligence/rl/workflows/daily_review.py),
+`run_daily_review(ticker, session, sector, paper=False)`. The scheduler
+passes the previous NSE trading session, so the day after a weekday holiday
+reviews the session before the holiday again. The mode is read once, so a
+whole review runs under one learning mode.
+
+**Step 0 — regime.** `RegimeDetector` classifies the market (section 13).
+The market-wide sticky label is updated from it (section 27.1); outside the
+paper lane this write happens on every run, before anything can stop the
+review. The sticky label chooses the regime multipliers and is stored on the
+feedback entry.
+
+**Step 1 — the row.** The review loads the session's row from its own
+month's envelope, else from the previous month's. No envelope returns
+`no_envelope`; no row (a holiday) returns `no_forecast_row`.
+
+**Input checks.** The row's provenance and the ticker's identity are checked
+next (section 6).
+
+**Step 2 — the close.** `_fetch_session_close` asks yfinance for the
+resolved instrument's symbol over a 7-day window, then its BSE listing, then
+the one-year price history, and cross-checks the result with NSE's official
+close (more than 1% apart, NSE wins). The result names the date of the bar
+it came from. No close returns `no_actual_data`; a close from an earlier bar
+fails the stale-close check (section 6). The ratio of the session's volume
+to its 20-day average is computed for context.
+
+**Step 3 — error and direction.**
+
+```text
+price_error_pct   = (actual − predicted) / predicted × 100
+actual_direction  = UP if price_error_pct > 0.3, DOWN if < −0.3, else FLAT
+direction_correct = BUY/STRONG BUY → UP · SELL/STRONG SELL → DOWN · NEUTRAL → FLAT
+```
+
+`actual_direction` is measured against the predicted close (section 1). A
+NEUTRAL row is correct only on a FLAT session. The timing assessment
+compares the session's day number with the envelope's predicted peak (the
+highest predicted close for a bullish verdict, the lowest for a bearish one).
+
+**Step 4 — re-run and feedback agent.**
+
+- When the direction is correct and the absolute error is below 0.5%
+  (`rl.agent_rerun_threshold_pct`), the analysis is not re-run: the day's
+  scores are the row's own, and the agent is told so.
+- Otherwise the orchestrator re-runs with the decision weights. The re-run's
+  gate is checked (section 6). With `rl.hard_bind_verdict_enabled` on, the
+  session is graded against the re-run's verdict (`graded_verdict`) instead
+  of the row's.
+- The context for the feedback agent is assembled: company news from the
+  last 3 calendar days (dated headlines only); the market-wide macro feed,
+  labelled as such, when company news is missing; active seasonal patterns;
+  a streak warning at 8 or more days; the regime narrative when not NORMAL;
+  the three-tier lesson summary (section 11); recurring blind spots from the
+  cycle's prompt enhancements; the F&O snapshot during expiry week;
+  yesterday's off-market signals; and NSE institutional flows.
+- Event tags for the day come from a keyword map over that context plus
+  calendar tags (section 23.3).
+- `FeedbackAgent` (reasoning tier, temperature 0.3, JSON output) returns the
+  miss type, the blamed dimension, missed factors, score drifts, new lessons
+  and a forward outlook. If the call fails, the output is marked degraded
+  (`data_gap`, no lessons).
+- **External-shock cap.** When the agent says `external_shock` on a wrong
+  day, and more than 20% of at least 5 earlier entries this cycle were
+  already `external_shock`, the miss is reclassified `direction_flip`.
+- **Absurd-error guard.** An absolute error above 50%
+  (`rl.absurd_price_error_pct`) is a broken input, such as a stale envelope
+  across a split, not a model miss. The miss becomes `data_stale` and no
+  weight update runs.
+
+**Step 5 — weights.** The adapter (section 9) sees the cycle's log with
+today's provisional entry. In `adapt` mode it writes a new weight version.
+In `observe` mode it runs on a copy and records the proposal (section 7).
+The paper lane and the absurd-error guard skip it.
+
+**Step 5.5 — regime multipliers.** The decision weights are multiplied by
+the sticky regime's multipliers and renormalised (section 13). These
+effective weights are used for today's revision only.
+
+**Step 6 — lessons.** New lessons merge into the ticker's ledger, and
+sector-wide and market-wide ones propagate to the shared ledgers
+(section 11). The paper lane does not propagate.
+
+**Step 6.5 — conviction streak** (section 12).
+
+**Step 7a — thesis review** on significant misses (section 16).
+
+**Re-forecast check** (section 27.2). In the live cycle only, the first
+match of `external_shock` on a wrong day, `thesis_break` or `regime_flip`
+regenerates the remaining rows. On success, step 7b is skipped and the
+updated streak is saved onto the new envelope.
+
+**Step 7b — revision.** Each remaining row is marked revised and its
+confidence recomputed; its price and verdict are not changed:
+
+```text
+scores     = tagged-lesson emphasis on today's tags (adapt only)
+composite  = Σ score[a] × effective_weight[a] / Σ effective_weight
+confidence = 0.7 × confidence + 0.3 × composite + horizon_confidence_adjustment
+confidence = confidence × (1 − reversion_prior × 0.5)
+confidence = confidence × thesis multiplier      (only when below 1.0)
+confidence = clamp(confidence, 0.05, 0.99)
+```
+
+The feedback agent's headline becomes each row's leading assumption.
+
+**Step 8 — feedback entry.** One entry per date, replacing any earlier
+entry for that date. `claims_fired` lists the tagged lessons that matched
+today; it stays empty in `observe` mode, where no lesson acts.
+
+**Step 8.5 — dossier curator** (section 23.2), on hit days as well as misses.
+After it, today's block deals, bulk deals and pre-open price are saved for
+tomorrow's review (section 17).
+
+**Step 9 — seasonal validation**, on the last trading day of the month only
+(section 14).
+
+**Step 10 — control lane** (section 25), not in the paper lane.
+
+Finally the review records whether company news was available, and returns a
+summary with `status: completed`, the learning mode, the decision weights,
+the regime, the streak, any thesis or re-forecast result, and a `data_gate`
+list of what enforcement would have stopped.
+
+## 6. Review input checks
+
+The review checks four inputs, in this order, before it writes anything that
+depends on them. Each failure is one row in `data/logs/decision_gate.jsonl`
+(consumer `daily_review`, or `paper_review`), with its stage, reason and the
+row's source run id:
+
+| Stage | Passes when | Example of a failure |
 |---|---|---|
-| 1 | `MACRO_CRISIS` | VIX > 22 AND Nifty-5d < −1.0% |
-| 2 | `RISK_OFF` | VIX > 22 OR (14≤VIX≤22 AND Nifty-5d < −1.0%) |
-| 3 | `MOMENTUM_EXTENDED` | VIX < 14 AND Nifty-5d > +1.0% AND Sector RSI > 70 |
-| 4 | `RISK_ON` | VIX < 22 AND Nifty-5d > +1.0% AND Sector RSI < 70 |
-| 5 | `OVERSOLD` | Sector RSI < 30 (macro-independent) |
-| 6 | `NORMAL` | everything else — base learned weights, no adjustment |
+| `forecast_row` | The row's `data_gate` is actionable or degraded. | A row issued before stamps existed (`data_gate` empty): provenance unknown. |
+| `identity` | The ticker's identity on the session is resolved, and the row's price basis is the session's. | A row stamped on one basis, graded after a demerger started another. |
+| `actual_close` | The close comes from the bar dated the session. | A suspended symbol: both providers return the previous day's close. |
+| `rerun` | The fresh re-run, when one happens, is actionable. | The re-run's technicals came back empty. |
 
-### Steps 1–3 — Load, Fetch, Compute *(STATIC)*
+For an unstamped row, the identity check asks the instrument registry
+whether a demerger or relisting lies between the envelope's issue date and
+the session. A rename keeps the basis, so it passes. The KT's
+[review input checks](TECHNICAL_DESIGN.md#review-input-checks) give the
+identity and stale-close examples.
 
-```
-Step 1: PredictionStore.load_envelope(cycle_id) → today's forecast row
-Step 2: yfinance.download(ticker+".NS", period="5d")["Close"] → actual_close
-Step 3: STATIC formulas:
-  price_error_pct     = (actual - predicted) / predicted × 100
-  direction_correct   = classify_direction(predicted, actual) matches verdict direction
-  classify_direction():  UP/DOWN/FLAT based on RL_FLAT_THRESHOLD_PCT = 0.3%
-  timing_accuracy:    predicted_peak_day vs actual_move_start_day → lag_days, assessment
-```
+- **In `enforce` mode** the first failure ends the review with
+  `status: data_gated`: no grading, feedback agent, weight update or
+  proposal, lesson, revision, streak, feedback entry, dossier or control-lane
+  step. The sticky regime, written in step 0, is the one write that has
+  already happened.
+- **In `record` mode** the review runs and lists every failure in its
+  summary's `data_gate`. The scheduler then counts it as `degraded`
+  (section 8).
 
-### Step 4 — FeedbackAgent *(LLM)*
+**Why.** Learning from a row issued on missing data, or graded on another
+company's close, teaches the weights noise: a carried-forward close grades a
+day as flat, a zero return that never happened.
 
-**What the LLM receives:**
+## 7. Learning mode
 
-```json
-{
-  "ticker": "MARUTI",
-  "sector": "automobile",
-  "date": "2026-04-09",
-  "predicted_close": 10580.0,
-  "actual_close": 10430.0,
-  "price_error_pct": -1.42,
-  "direction_correct": false,
-  "predicted_agent_scores": {"sales_demand": 0.72, "risk_macro": 0.55, "...": "..."},
-  "todays_agent_scores": {"sales_demand": 0.76, "risk_macro": 0.37, "...": "..."},
-  "market_context_today": "RBI held rates unexpectedly; FII sold ₹2200Cr in auto sector; crude at $84",
-  "key_assumptions_that_were_made": ["crude stable ~$82", "no major policy announcement"],
-  "existing_lesson_ids": ["L001", "L002"],
-  "learning_ledger_summary": "T1: L001: RBI days → trust risk_macro more...\nT2: (sector) ...\nT3: (market) ...",
-  "streak_warning": "CONVICTION STREAK ALERT: 12 consecutive BUY days. Reversion prior: 20%...",
-  "regime_narrative": "MACRO_CRISIS: VIX=24.1, Nifty fell 1.8% over 5 days. Macro risk dominates."
-}
-```
+[learning_mode.py](../core/intelligence/rl/learning_mode.py) reads
+`rl.learning_mode` (env `RL_LEARNING_MODE`) at call time. The repository
+default is `adapt`; an unrecognised value fails closed to `observe` with one
+warning per process.
 
-**What the LLM returns (must be valid JSON):**
+| | `adapt` | `observe` |
+|---|---|---|
+| Weights decisions aggregate with | The ticker's stored weights | The sector's default table, whatever is stored |
+| Daily review's weight step | Writes a new weight version | Runs the adapter on a copy; records the proposal |
+| Tagged-lesson emphasis and lesson micro-adjustment | Move agent scores | No-ops |
+| `claims_fired` on the feedback entry | Matching tagged lessons | Empty |
+| Lessons, dossier, streak, revision, re-forecast | Run | Run |
 
-```json
-{
-  "primary_miss_agent": "risk_macro",
-  "miss_type": "model_bias",
-  "missed_factors": ["RBI rate hold surprise", "FII outflow ₹2200Cr"],
-  "over_weighted_factors": ["FADA dispatch optimism — market ignored it on policy day"],
-  "agent_score_drift": {"risk_macro": -0.18, "sales_demand": 0.04},
-  "new_lessons": [{
-    "category": "macro",
-    "scope": "sector_wide",
-    "pattern": "RBI_policy_day",
-    "observation": "When RBI makes a surprise decision, market ignores all fundamental signals",
-    "rule": "On RBI event days, trust risk_macro over demand-side signals",
-    "confidence": 0.75,
-    "trigger_tags": ["central_bank_event"],
-    "prioritise_agents": ["risk_macro"],
-    "discount_agents": ["sales_demand"]
-  }],
-  "revised_context": {
-    "headline": "RBI policy surprise suppressed demand signals",
-    "risks_next_7_days": ["RBI follow-through commentary", "FII positioning"],
-    "catalysts_next_7_days": ["FADA data release in 5 days"],
-    "watch_signals": ["INR past 84"],
-    "horizon_confidence_adjustment": -0.05
-  }
-}
-```
+"Decisions" means every place the decision weights are read: the monthly
+forecast, re-forecasts, the review's re-run, its regime-weighted revision,
+and public analysis that reads learned weights.
 
-**LLM rules (system prompt):**
-- Do NOT cite analyst ratings, broker targets, or EPS estimates as missed factors
-- Valid missed factors: price action, macro events, sector data, technical signals, fundamentals, policy, commodities, regulatory actions
-- Every new lesson MUST carry `trigger_tags` from the `EVENT_TAGS` vocabulary (§23) and may
-  name `prioritise_agents` / `discount_agents` from the live agent list — unknown tags and
-  agent names are dropped at parse time
-- Temperature: `0.3` (surfaces non-obvious cross-signal patterns)
-- `max_tokens: 1500`, `response_format: {"type": "json_object"}`
-- System prompt is dynamically built: `build_system_prompt(sector, agent_names)` — no hardcoded agent names
+**Example.** A ticker stores `technical = 0.0` at v41, and its sector default
+is 0.12. In `observe` mode its forecast aggregates with 0.12. After the
+review the file still says 0.0 at v41, and the observation record shows the
+v42 the adapter would have written. Switching back to `adapt` resumes v41
+unchanged.
 
-**Catalyst context (new in 2026-05):**
-`FeedbackAgentInput` now carries `predicted_catalysts_by_agent` — the bull/bear cases that were
-predicted for each agent at forecast time. The FeedbackAgent system prompt has a dedicated section:
+**Where the mode shows:** the review's start and completion log lines and
+its summary; each envelope's `learning_mode`; `/ui/rl/weights/{ticker}`,
+which returns the mode, the live `decision_weights` and the latest
+observation; and `/ui/rl/summary/{ticker}`.
 
-```
-[PREDICTED CATALYSTS FROM LAST CYCLE — did they materialise?]
-  sales_demand bull case: FADA dispatch +12% YoY if rural recovery holds
-  risk_macro bear case: Crude >$90 compresses margin 100-150bps (data_confidence: 0.90)
-```
+**What it does not contain:** regime multipliers, thesis multipliers, the
+conviction streak, the prompt enhancements and the dossier text all still
+act in `observe` mode.
 
-This enables catalyst-level miss attribution: instead of "sales_demand was wrong (unknown why)",
-the agent can reason "We predicted FADA +12%, actual came in at +8% — magnitude miss, not direction."
-Low-confidence predictions (`data_confidence < 0.5`) are flagged to penalise misses less.
+**Limit.** In `observe` mode each night proposes one step from the same
+frozen stored file, so the observation records do not accumulate into a
+learner. Rollback of `observe` is removing the environment variable.
+**Planned:** a shadow learner that does accumulate, and the conditions for
+returning to `adapt` (SA-043; KT section 11).
 
-### Step 5 — WeightAdapter *(STATIC — no LLM)*
+## 8. Per-ticker review outcomes
 
-Three sequential stages, all deterministic. All constants are now in `settings/base.py`
-and env-overridable (see settings reference table at end of this doc).
+The scheduler gives every enabled managed ticker exactly one outcome per run
+([review_outcomes.py](../core/intelligence/rl/workflows/review_outcomes.py)),
+from what `run_daily_review` returned:
 
----
+| Review result | Outcome | Counts as output |
+|---|---|---|
+| `completed`, empty `data_gate` | `completed` | Yes |
+| `completed`, non-empty `data_gate` (`record` mode) | `degraded` | Yes |
+| `data_gated` (`enforce` mode) | `data_gated` | No |
+| `no_envelope`, `no_forecast_row`, `no_actual_data` | `skipped` | No |
+| Raised, malformed, or unfinished when the harvest budget ran out | `failed` | No |
 
-**Stage 1 — Accuracy Computation** (`_compute_accuracy`)
+The harvest budget is 300 seconds per ticker, in aggregate; finished reviews
+stand and the portfolio pipeline still runs. A skip, a gate stop or a failure
+fires the partial-output alert, which names the ticker and the reason. A
+graded row with unknown provenance therefore reads `degraded` in `record`
+mode. The record in `data/scheduler_job_outcomes.json` keeps each ticker's
+outcome, reason and attempts; the KT's
+[daily-review outcomes](TECHNICAL_DESIGN.md#daily-review-outcomes) give the
+holiday merge rule and the limits.
 
-Window: last `WEIGHT_ACCURACY_WINDOW = 7` **trading days** (calendar-aware, weekends excluded).
+## 9. Weight adapter
 
-Hit-credit rules per entry:
-- `direction_correct = True` → **all agents** get a hit
-- `direction_correct = False` AND `miss_type ∈ NO_PENALTY_MISS_TYPES` → **all agents** get a hit (model not at fault)
-- `direction_correct = False` AND miss is penalisable → **non-primary agents** get a hit; **primary miss agent** does not
+[weight_adapter.py](../core/intelligence/rl/agents/weight_adapter.py) is
+deterministic. It needs at least 3 entries in the cycle's log
+(`rl.weight_min_observations`), counting today's.
 
-`NO_PENALTY_MISS_TYPES = {"data_gap", "data_stale", "external_shock"}`
+**Stage 1 — accuracy.** The window is the last 7 NSE trading days
+(`rl.weight_accuracy_window`), counted back from the date the review runs.
+For each entry in it, every dimension gets a hit, except the blamed dimension
+on a wrong day whose miss type is penalisable:
 
-Returns: `dict[agent_name → AgentAccuracy(direction_hits, total, avg_error)]`
+- correct day: every dimension gets a hit;
+- wrong day, miss type `data_gap`, `data_stale` or `external_shock`: every
+  dimension gets a hit;
+- otherwise: every dimension except the primary miss agent gets a hit.
 
----
+With the calibration reward on (`rl.calibration_reward_enabled`), each
+dimension also earns a calibration hit when its own score's lean (0.5 or more
+is bullish) matched the realised direction, on directional verdicts and UP or
+DOWN sessions only. The hit rate that drives stage 2 is then
+`0.5 × direction rate + 0.5 × calibration rate` (`rl.calibration_weight`).
 
-**Stage 2 — Delta Computation** (`_compute_deltas`)
+**Stage 2 — deltas.** Every delta is scaled by the dimension's weight
+relative to an equal share, `prop_scale = clamp(w / (1/n), 0.25, 2.0)`, so a
+heavy dimension gains and loses weight faster.
 
-Three independent mechanisms. All deltas accumulate on the same agent before Stage 3 bounds.
+- **Hit rate.** At or above 0.70, `+0.02 × prop_scale`; at or below 0.40,
+  `−0.03 × prop_scale`. Active seasonal patterns shift both thresholds per
+  dimension (section 14).
+- **Zero-weight recovery.** A dimension already at exactly 0.0, whose blended
+  rate sits between the thresholds but whose plain direction rate reaches
+  the boost threshold, gets the boost. Without it, a dimension at 0.0 has
+  nothing left to lose and no way back.
+- **Bias penalty**, for the blamed dimension on a penalisable miss only. A
+  weighted miss rate over 5, 10 and 21 trading days (weights 0.50, 0.30,
+  0.20) counts the share of penalisable misses blamed on it:
 
-#### Mechanism A — Hit-rate boost / penalty (every agent)
-
-```
-effective_boost_threshold   = WEIGHT_BOOST_HIT_RATE   + seasonal_delta  (default 0.70)
-effective_penalty_threshold = WEIGHT_PENALTY_HIT_RATE + seasonal_delta  (default 0.40)
-
-hit_rate = direction_hits / total   (from Stage 1, last 7 trading days)
-
-if hit_rate >= effective_boost_threshold:    delta += RL_BOOST   (+0.02)
-elif hit_rate <= effective_penalty_threshold: delta += RL_PENALTY (-0.03)
-else:                                         delta  = 0.0
+```text
+bias_score < 0.55         no penalty
+0.55 ≤ bias_score < 0.70  scale = (bias_score − 0.55) / 0.15
+bias_score ≥ 0.70         scale = 1.0
+penalty = −0.05 × scale × miss multiplier × prop_scale × factor-regime scale
 ```
 
-`seasonal_delta` shifts both thresholds by the same amount — raises the bar during easy periods
-(festive season), lowers it during structurally hard ones (budget week, earnings blackout).
-e.g. `sales_demand: +0.08` during festive → boost only if hit_rate ≥ 0.78 instead of 0.70.
+The miss multiplier comes from the taxonomy (section 10); for `timing` it is
+0 within 3 trading days of lag, 0.20 within 7, and 0.50 beyond. The
+factor-regime scale lightens the penalty for a dimension that the long-run
+IIMA factor regime disadvantages: 0.80 for `pattern_analysis` and
+`competitive_intel` in a reversal regime, 0.85 for `fundamentals` and
+`risk_macro` in a momentum regime, otherwise 1.0. That factor data ends in
+March 2023, so it is a static prior, not a live signal.
 
-#### Mechanism B — Bias penalty (primary miss agent only, penalisable miss types only)
+**Stage 3 — bounds and normalisation:**
 
-Replaces the old "2 consecutive days" streak. Uses a **weighted rolling miss rate** across
-three trading-day windows so one good day in a bad run doesn't zero out the penalty signal.
-
-```
-bias_score = Σ( window_weight × agent_miss_rate_in_window )
-             ────────────────────────────────────────────────
-                        Σ( window_weight )
-
-Windows and weights (settings-backed since Wave I: `rl.bias_windows` /
-`rl.bias_window_weights` in config.yaml → `RL_BIAS_WINDOWS` / `RL_BIAS_WINDOW_WEIGHTS`):
-  5 td  (~1 week)  → weight 0.50   ← recent performance dominates
-  10 td (~2 weeks) → weight 0.30
-  21 td (~1 month) → weight 0.20
-
-agent_miss_rate_in_window = penalisable_misses_blamed_on_agent / total_penalisable_entries
-
-if bias_score < RL_BIAS_TRIGGER (0.55):
-    bias_penalty = 0.0                               ← noise, no penalty
-
-if RL_BIAS_TRIGGER (0.55) ≤ bias_score < RL_BIAS_FULL (0.70):
-    scale        = (bias_score − 0.55) / (0.70 − 0.55)    ← linear 0→1
-    bias_penalty = RL_MISS_STREAK_PENALTY × scale × miss_type_multiplier
-
-if bias_score ≥ RL_BIAS_FULL (0.70):
-    scale        = 1.0                               ← capped at full penalty
-    bias_penalty = RL_MISS_STREAK_PENALTY × 1.0 × miss_type_multiplier
+```text
+delta     = clamp(delta, −0.05, +0.05)                 single step
+drift     = 0.15, or min(0.15 × 1.5, 0.35) after 14 consecutive correct entries
+weight    = clamp(weight + delta, max(0, base − drift), base + drift)
+weights   = weights / Σ weights                        renormalise
 ```
 
-Worked examples (no seasonal adjustment, miss_type = "direction_flip" → multiplier 1.0):
+The renormalisation runs after the clamp, so the final weights can leave
+their bounds. **Example:** a dimension with base 0.40 has a ceiling of 0.55
+and already sits there. Its boost is clamped to 0.55, and two other
+dimensions each lose 0.03, so the weights sum to 0.94. Renormalising lifts it
+to 0.55 / 0.94 = 0.585, above its ceiling. The floor is `max(0, base −
+0.15)`, so any dimension whose default is 0.15 or less can reach exactly 0.0.
+**Planned:** bounds that hold on the final weights (SA-015).
 
-| bias_score | scale | bias_penalty | what it means |
+Each update appends a history entry with the new weights, the structured
+deltas, the hit rates behind them and a readable reason.
+
+## 10. Miss taxonomy
+
+The feedback agent classifies each miss; the adapter applies the penalty.
+
+| Miss type | Meaning | Bias multiplier | Blamed dimension still gets a hit? |
 |---|---|---|---|
-| 0.40 | — | 0.000 | occasional miss, ignore |
-| 0.55 | 0.00 | 0.000 | just at trigger, no penalty yet |
-| 0.625 | 0.50 | −0.025 | consistent underperformer |
-| 0.70 | 1.00 | −0.050 | full penalty — badly miscalibrated |
-| 0.85 | 1.00 (capped) | −0.050 | full penalty — same cap |
+| `data_gap` | Data not yet published when the forecast was made | 0.0 | Yes |
+| `data_stale` | Outdated data used; also set by the absurd-error guard | 0.0 | Yes |
+| `external_shock` | Unforeseeable event; capped at 20% of a cycle's days | 0.0 | Yes |
+| `timing` | Right direction, wrong day | 0, 0.20 or 0.50 by lag | No |
+| `magnitude` | Right direction, wrong size | 0.25 | No |
+| `model_bias` | Systematic over- or under-estimate | 1.0 | No |
+| `direction_flip` | Wrong direction with no external cause | 1.0 | No |
 
-#### Mechanism C — Timing penalty multiplier
+A degraded agent output, when the LLM call failed, is `data_gap` and writes
+no lessons and no miss counts, so an outage is never learned as a market
+pattern.
 
-Applied to `bias_penalty` when `miss_type = "timing"`. Determines `miss_type_multiplier`:
+## 11. Lessons
 
-```
-abs_lag = |timing_lag_days|   (actual price peak − predicted peak, in trading days)
+**Merge into the ticker's ledger.** A lesson whose pattern is already live
+gains an occurrence; its confidence becomes the running mean of all its
+confirmations; its scope widens if the new one is broader; and it adopts
+trigger tags or agent lists it lacks. A new pattern first looks in the cold
+store, `<TICKER>_archived_lessons.json`; an archived lesson with that pattern
+is resurrected with its history instead of being duplicated. Missed factors
+increment the miss counter only when they look like a factor name
+(lower-case letters, digits and underscores, 3 to 40 characters), so an
+error message never becomes a factor.
 
-if abs_lag ≤ RL_TIMING_FREE_WINDOW (3):     multiplier = 0.00  → no bias penalty
-if abs_lag ≤ RL_TIMING_PARTIAL_WINDOW (7):  multiplier = 0.20  → light signal
-if abs_lag > RL_TIMING_PARTIAL_WINDOW (7):  multiplier = 0.50  → real timing failure
-```
+**Propagation.** A `sector_wide` lesson is also merged into
+`<sector>/_shared_ledger.json`, and a `market_wide` one into both shared
+ledgers. A shared lesson blends confidence as `0.7 × existing + 0.3 ×
+incoming`, and gains +0.05 the first time each new ticker confirms it, so a
+single active ticker cannot make a pattern look like sector truth.
 
-For non-timing miss types, `multiplier = MISS_TYPE_PENALTY_MULTIPLIER[miss_type]`:
+**What the feedback agent sees.** Three tiers, each sorted by effective
+confidence and excluding anything below 0.20: up to 6 stock-specific lessons,
+3 sector-wide and 2 market-wide.
 
-| miss_type | multiplier | Rationale |
-|---|---|---|
-| `direction_flip` | 1.00 | Full penalty — model called direction wrong |
-| `model_bias` | 1.00 | Full penalty — systematic miscalibration |
-| `magnitude` | 0.25 | Partial — direction right, size wrong |
-| `timing` | see tiers above | Depends on lag magnitude |
-| `data_gap` | 0.00 | Not model's fault — no data available |
-| `data_stale` | 0.00 | Not model's fault — stale input |
-| `external_shock` | 0.00 | Not model's fault — unpredictable event |
+**Decay.** A lesson's effective confidence decays with months since it was
+last seen:
 
-Final delta for primary miss agent = Mechanism A delta + bias_penalty
+```text
+rate       = max(0.002, category rate / sqrt(occurrences))
+confidence = max(0.10, stored × (1 − rate) ^ months_inactive)
 
----
-
-**Stage 3 — Bound Application + Normalization** (`_apply_deltas`)
-
-```
-For each agent:
-  1. Clamp delta to ±WEIGHT_MAX_STEP (0.05)           ← largest move in one day
-  2. proposed = current_weight + clamped_delta
-  3. lo = max(0.0, base_weight − WEIGHT_MAX_DRIFT)     ← floor: base − 0.15
-     hi = base_weight + WEIGHT_MAX_DRIFT               ← ceiling: base + 0.15
-  4. proposed = clamp(proposed, lo, hi)
-  5. Re-normalize all agents: weight /= Σ(all weights) ← always sums to 1.0
-```
-
-`WEIGHT_MAX_STEP = 0.05` prevents a single bad day from catastrophically shifting the model.
-`WEIGHT_MAX_DRIFT = 0.15` keeps weights within ±15 percentage points of the calibrated base.
-
-### Step 5.5 — Regime Multipliers Applied *(STATIC, EPHEMERAL)*
-
-```
-effective_weight[agent] = learned_weight[agent] × regime_multiplier[agent]
-                          ────────────────────────────────────────────────
-                            Σ(learned_weight[i] × regime_multiplier[i])
+category rate per month: seasonal 0 (exempt) · data_availability 0.005 · fundamental 0.008
+                         technical 0.015 · sentiment 0.020 · macro 0.030 · global_macro 0.040
 ```
 
-**Full Regime Multiplier Table:**
+**Example:** a macro lesson at 0.75, unseen for 3 months, confirmed once
+(rate 0.030) reads 0.75 × 0.97³ = 0.68; confirmed 9 times (rate 0.010) it
+reads 0.73. Repeated confirmation makes a pattern behave as structural.
 
-| Agent | MACRO_CRISIS | RISK_OFF | NORMAL | RISK_ON | MOMENTUM_EXT | OVERSOLD |
+**Weekly cleanup** (Mon 03:30, `ledger_cleanup_weekly`), for each enabled
+ticker:
+
+- a lesson confirmed by only one ticker is downgraded from market-wide to
+  sector-wide after 30 days unseen, and invalidated as sector-wide after 60;
+  lessons with several contributing tickers are never downgraded;
+- the ticker's own copies follow the shared ledgers' downgrades;
+- invalidated lessons that are also stale (60 days unseen) and weak
+  (effective confidence at or below 0.12) move to the cold store. The rule
+  also asks for effectiveness below 0.25, read from a correction counter
+  that nothing writes, so that test always passes;
+- the dossier is distilled (section 23.2).
+
+**How lessons act.** Free-text rules are context for the LLM only and are
+never parsed. Lessons move numbers in two places, both no-ops in `observe`
+mode: tagged lessons through emphasis (section 23.3), and untagged lessons
+through the month-start micro-adjustment (section 4).
+
+## 12. Conviction streak and reversion prior
+
+[tracker.py](../core/intelligence/rl/conviction/tracker.py). The streak
+counts consecutive reviewed sessions whose row verdict points the same way.
+NEUTRAL resets it to 0; a flip starts it again at 1. Because every row of an
+envelope carries the same verdict, the streak mostly measures how long the
+current envelope has been reviewed.
+
+```text
+base prior  = min(0.25, max(0, (streak_days − 4) × 0.025))
+amplifier   = 1.5 when streak_days ≥ 8 and the sector RSI contradicts the streak
+              (bullish streak with RSI > 70, bearish streak with RSI < 30), else 1.0
+final prior = min(0.30, base prior × amplifier)
+```
+
+| Streak days | 0–4 | 5 | 6 | 8 | 12 | 14+ |
 |---|---|---|---|---|---|---|
-| risk_macro | **1.40** | 1.20 | 1.00 | 0.90 | 0.85 | 1.10 |
-| fundamentals | 0.80 | 0.90 | 1.00 | **1.10** | 1.05 | 1.00 |
-| sales_demand | 0.70 | 0.85 | 1.00 | **1.10** | 0.95 | 1.00 |
-| sentiment | 0.80 | 0.90 | 1.00 | **1.15** | 0.80 | 0.90 |
-| pattern_analysis | 0.90 | 0.95 | 1.00 | 0.95 | **1.20** | **1.30** |
-| competitive_intel | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 |
+| Base prior | 0 | 0.025 | 0.05 | 0.10 | 0.20 | 0.25 |
+
+The final prior dampens remaining confidence by `× (1 − prior × 0.5)` in
+step 7b: a prior of 0.25 cuts it by 12.5%. From 8 days, a warning block asks
+the feedback agent to check for momentum exhaustion.
+
+## 13. Regime detection and multipliers
+
+[detector.py](../core/intelligence/regime/detector.py) uses three signals,
+each with a neutral fallback when the fetch fails:
+
+- India VIX (`^INDIAVIX`, fallback 17.0);
+- the Nifty 50's 5-session move as a proxy for foreign flows (`^NSEI`,
+  fallback 0.0);
+- the sector index's 14-day RSI (fallback 50.0): automobile `^CNXAUTO`,
+  banking/BFSI `^NSEBANK`, IT `^CNXIT`, renewable energy `^CNXENERGY`, any
+  other sector `^NSEI`. An index with no data falls back to `^NSEI`.
+
+The first matching rule wins:
+
+| Order | Label | Condition |
+|---|---|---|
+| 1 | `MACRO_CRISIS` | VIX > 22 and Nifty 5-session < −1.0% |
+| 2 | `RISK_OFF` | VIX > 22, or VIX 14–22 and Nifty 5-session < −1.0% |
+| 3 | `MOMENTUM_EXTENDED` | VIX < 14, Nifty 5-session > +1.0% and RSI > 70 |
+| 4 | `RISK_ON` | VIX < 22, Nifty 5-session > +1.0% and RSI < 70 |
+| 5 | `OVERSOLD` | RSI < 30 |
+| 6 | `NORMAL` | Anything else |
+
+**Global stress escalation.** Three more signals are checked: Brent's
+5-session move at or above +8%, USD/INR's at or above +1.5%, and the S&P 500's
+last session at or below −2%. When two or more fire, the label moves one
+notch toward crisis: `RISK_OFF` becomes `MACRO_CRISIS`, and any calm label
+becomes `RISK_OFF`. A single signal never escalates, and a failed fetch never
+counts.
+
+**Multipliers** (`regime_multipliers` in config.yaml) use the automobile
+dimension names. Other sectors map their dimensions to those names through
+`sector_agent_regime_role`; an unmapped dimension stays at 1.0.
+
+| Dimension | MACRO_CRISIS | RISK_OFF | NORMAL | RISK_ON | MOMENTUM_EXT | OVERSOLD |
+|---|---|---|---|---|---|---|
+| risk_macro | 1.40 | 1.20 | 1.00 | 0.90 | 0.85 | 1.10 |
+| fundamentals | 0.80 | 0.90 | 1.00 | 1.10 | 1.05 | 1.00 |
+| sales_demand | 0.70 | 0.85 | 1.00 | 1.10 | 0.95 | 1.00 |
+| sentiment | 0.80 | 0.90 | 1.00 | 1.15 | 0.80 | 0.90 |
+| pattern_analysis | 0.90 | 0.95 | 1.00 | 0.95 | 1.20 | 1.30 |
 | valuation_catalyst | 0.90 | 0.95 | 1.00 | 1.10 | 1.10 | 1.05 |
-| raw_materials | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 |
-| policy_regulatory | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 |
+| competitive_intel, raw_materials, policy_regulatory | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 |
 
-> Values > 1.0 = boost agent influence; < 1.0 = discount. NORMAL = passthrough (all 1.00).
-
-**NOT written to weight_memory.json.** Regime multipliers cannot corrupt long-run accuracy weights.
-
-### Step 6 — Learning Ledger Merge *(STATIC)*
-
-**Lesson routing (write path):**
-
-```
-FeedbackAgent output lesson → merge_lessons_into_ledger()
-  lesson.scope == "stock_specific"
-      └── write to TICKER_learning_ledger.json
-  lesson.scope == "sector_wide"
-      ├── write to TICKER_learning_ledger.json  (source record)
-      └── propagate → SECTOR/_shared_ledger.json
-  lesson.scope == "market_wide"
-      ├── write to TICKER_learning_ledger.json
-      ├── propagate → SECTOR/_shared_ledger.json
-      └── propagate → ROOT/_market_ledger.json
+```text
+effective[a] = weight[a] × multiplier[role(a)] / Σ (weight × multiplier)
 ```
 
-**Deduplication formula (STATIC):**
-```
-If same pattern already in shared_ledger:
-  new_confidence = 0.70 × existing + 0.30 × incoming
-  occurrences += 1
-  last_seen = today
-  contributing_tickers.append(source_ticker)
-Else:
-  add as new lesson
-```
+**Why ephemeral.** Weight memory tracks long-run accuracy; the regime can
+flip within days. Writing multipliers into the stored weights would mix the
+two, so they are applied to each day's revision and discarded.
 
-**Cross-ticker confidence boost (STATIC):**
-```
-Each NEW ticker that confirms a sector_wide lesson: confidence += 0.05
-After 3 independent tickers confirm: lesson marked "validated"
-```
+**Limit.** The detector reads the latest values, not values as of the
+reviewed session, so a backfill of an old session uses today's regime.
 
-**Tiered read for FeedbackAgent context:**
+## 14. Seasonal calendar
 
-| Tier | Source | Max lessons in prompt |
-|---|---|---|
-| T1 (most specific) | ticker_learning_ledger.json (stock_specific) | top 6 by eff_confidence |
-| T2 (sector) | _shared_ledger.json (sector_wide) | top 3 by eff_confidence |
-| T3 (market) | _market_ledger.json (market_wide) | top 2 by eff_confidence |
+[calendar.py](../core/intelligence/seasonal/calendar.py) merges two layers:
+patterns seeded by hand in `core/intelligence/seasonal/seeds/<sector>.yaml`,
+and lessons in the ticker's ledger with category `seasonal`. Only the four
+native sectors have seed files.
 
-### Step 6.5 — Conviction Streak *(STATIC)*
-
-**Reversion Prior Formula:**
-```
-streak_days 0–4  → reversion_prior = 0.00  (normal operation)
-streak_days 5–7  → reversion_prior = 0.05  (mild caution)
-streak_days 8–10 → reversion_prior = 0.10  (moderate)
-streak_days 11–14→ reversion_prior = 0.15  (elevated)
-streak_days 15–20→ reversion_prior = 0.20  (high risk)
-streak_days ≥21  → reversion_prior = 0.25  (max, capped)
-
-Formula: reversion_prior = min(0.25, max(0, (streak_days - 4) × 0.025))
-```
-
-**RSI Divergence Amplifier (STATIC):**
-```
-Condition A: verdict = "BUY"  AND pattern_analysis.rsi_macd_bb < 0.40
-Condition B: verdict = "SELL" AND pattern_analysis.rsi_macd_bb > 0.60
-If (streak ≥ 8) AND (A or B):
-    final_prior = min(0.30, reversion_prior × 1.5)
-```
-
-**Applied to confidence:**
-```
-adjusted_confidence = base_confidence × (1.0 - reversion_prior × 0.5)
-```
-
-**Streak warning injected into FeedbackAgent prompt when streak ≥ 8 (STATIC template):**
-```
-Explicitly assess: RSI divergence, declining volume on up days,
-delivery % drop on price rise, relative underperformance vs sector.
-```
-
-### Step 7 — Revise Remaining Forecasts *(STATIC)*
-
-```
-For each remaining day in PredictionEnvelope:
-  1. Re-run SignalAggregator with effective_weights (learned × regime multiplier)
-  2. apply_lesson_emphasis(scores, ledger, today_tags) — tagged lessons whose
-     trigger_tags match today's event_tags nudge agent scores ±0.03 (cap ±0.06) [§23]
-     (free-text lesson "rules" are context for the LLM only — they are never parsed)
-  3. Apply seasonal adjustments from SeasonalCalendar.get_context(day.date, ledger)
-  4. Apply revised_context.horizon_confidence_adjustment
-  5. Apply reversion_prior dampening: confidence × (1 - reversion_prior × 0.5)
-  6. Update day.revised = True, day.revision_count += 1
-```
-
-### Steps 8–9 — Persist + Validate *(STATIC)*
-
-```
-Step 8: PredictionStore.append_feedback_entry(entry, cycle_id)
-         Idempotent: replaces existing entry for same date before appending
-         Atomic write: .tmp → rename (never corrupts live file)
-
-Step 9: SeasonalValidator.validate_pattern(pattern_id, feedback_log)
-         If pattern fired correctly in log → increment reinforced/validated counter
-         If pattern did NOT fire ≥3 cycles → still_valid = False → removed from injection
-```
-
----
-
-## 5. Miss Taxonomy — 7 Types
-
-**Who classifies:** LLM (FeedbackAgent). **Who applies penalty:** STATIC WeightAdapter.
-
-| Miss Type | When to use | Penalty multiplier | Agent absolved? |
-|---|---|---|---|
-| `data_gap` | Data not yet published at forecast time (e.g. FADA releases on 10th, forecast on 5th) | **0.0×** | ✅ Yes |
-| `data_stale` | Hardcoded/outdated data used (e.g. RBI repo rate not updated after MPC) | **0.0×** | ✅ Yes |
-| `external_shock` | Unpredictable black-swan (circuit breaker, sudden tariff, geopolitical event) | **0.0×** | ✅ Yes |
-| `timing` | Direction was correct but move happened earlier/later than predicted | **0.5×** | Partial |
-| `magnitude` | Direction correct but size of move was wrong | **0.25×** | Partial |
-| `model_bias` | Agent consistently over/under-estimates a specific signal | **1.0×** | ❌ No |
-| `direction_flip` | Completely wrong direction, no valid external cause | **1.0×** | ❌ No |
-
-```python
-# Defined in core/schemas/feedback.py — SINGLE source of truth
-MISS_TYPE_PENALTY_MULTIPLIER = {
-    "data_gap": 0.0, "data_stale": 0.0, "external_shock": 0.0,
-    "timing": 0.5, "magnitude": 0.25,
-    "model_bias": 1.0, "direction_flip": 1.0,
-}
-NO_PENALTY_MISS_TYPES = frozenset({"data_gap", "data_stale", "external_shock"})
-```
-
----
-
-## 6. Lesson Confidence Decay — Formula *(STATIC)*
-
-```
-effective_confidence = stored_confidence × (1 - decay_rate) ^ months_inactive
-
-Default decay_rate = 0.02 per month (configurable on LearningLedger)
-Floor = 0.10 — lessons never fully discarded automatically
-
-Example: confidence=0.80, last_seen 6 months ago:
-  0.80 × (0.98^6) ≈ 0.71 (shown to LLM as eff_confidence)
-
-Seasonal lessons: decay_exempt = true → no decay applied
-```
-
-`active_lessons_summary()` injects `eff_confidence`, not stored confidence, so LLM naturally weights recent patterns higher.
-
----
-
-## 7. Seasonal Calendar (P1)
-
-Two-layer architecture:
-
-```
-Layer 1: Pre-seeded domain knowledge (human-authored YAML, per sector)
-         Written once. Never auto-deleted. Can be reinforced or invalidated by RL.
-
-Layer 2: RL-discovered seasonal lessons (auto-generated from FeedbackAgent misses)
-         Created when miss_type = seasonal. Reinforces or contradicts Layer 1.
-```
-
-**Seed state machine:**
-
-```
-SEEDED (confident=0.75, validated_by_rl=false)
-    ↓  FeedbackAgent detects same pattern
-REINFORCED (confidence += 0.05, occurrences++)
-    ↓  ≥2 full cycles confirm
-VALIDATED (validated_by_rl = true, confidence locked ≥0.75)
-    ↓  ≥3 cycles where pattern does NOT fire
-INVALIDATED (still_valid = false, no longer injected)
-```
-
-**Seed table — Automobile:**
-
-| ID | Name | Months | Bias | Confidence | agents_affected |
-|---|---|---|---|---|---|
-| SEA_AUTO_001 | december_model_clearance | Dec | Bearish (margin) | 0.75 | sales_demand −0.08, fundamentals −0.05 |
-| SEA_AUTO_002 | navratri_diwali_peak | Oct–Nov | Positive | 0.80 | sales_demand +0.10, sentiment +0.08 |
-| SEA_AUTO_003 | shravan_inauspicious | Jul–Aug | Negative | 0.65 | sales_demand −0.07 |
-| SEA_AUTO_004 | q4_march_wholesale_push | Mar | Deceptive positive | 0.70 | sales_demand −0.06 (discount FADA wholesale) |
-| SEA_AUTO_005 | budget_week_policy_wait | Jan week4–Feb week1 | Cautious | 0.60 | policy_regulatory −0.10, risk_macro −0.08 |
-| SEA_AUTO_006 | april_new_year_launch_hype | Apr | Positive sentiment | 0.65 | sentiment +0.06 |
-
-**Seed table — Banking/BFSI:**
-
-| ID | Name | Months | Bias | Confidence |
-|---|---|---|---|---|
-| SEA_BFSI_001 | march_year_end_credit_push | Mar | Positive | 0.75 |
-| SEA_BFSI_002 | rbi_mpc_meeting_week | Bimonthly | Cautious | 0.80 |
-| SEA_BFSI_003 | q1_npa_recognition_risk | Apr | Negative | 0.65 |
-| SEA_BFSI_004 | budget_banking_policy | Feb | Positive/Volatile | 0.70 |
-
-**Seed table — IT Sector:**
-
-| ID | Name | Months | Bias | Confidence |
-|---|---|---|---|---|
-| SEA_IT_001 | us_tech_earnings_spillover | Jan, Apr, Jul, Oct | Correlated | 0.75 |
-| SEA_IT_002 | q1_attrition_cost_peak | Apr–May | Negative margin | 0.65 |
-| SEA_IT_003 | us_budget_uncertainty | Sep–Oct | Cautious | 0.70 |
-| SEA_IT_004 | inr_weakening_tailwind | Any | Revenue positive | 0.60 |
-
-**Seed table — Renewable Energy:**
-
-| ID | Name | Months | Bias | Confidence |
-|---|---|---|---|---|
-| SEA_RE_001 | monsoon_solar_generation_dip | Jun–Sep | Output negative | 0.80 |
-| SEA_RE_002 | cop_climate_summit_hype | Oct–Nov | Sentiment positive | 0.65 |
-| SEA_RE_003 | year_end_capex_push | Oct–Dec | Order book positive | 0.70 |
-| SEA_RE_004 | tariff_revision_q1 | Jan–Feb | Policy risk | 0.60 |
-
----
-
-## 8. PromptEnhancer — miss_counter → Search Queries (P4)
-
-**When it runs:** Once per month-start in `generate_forecast.py`. Output cached per cycle.
-
-**Logic (STATIC — no LLM):**
-
-```
-1. Read miss_counter from LearningLedger
-2. Take top_n=3 most frequent missed factors
-3. Look up MISS_FACTOR_TO_QUERY_TEMPLATE[factor][agent_name]
-4. Save to {TICKER}_{cycle}_prompt_enhancements.json
-5. BaseAgent.run() loads enhancement file → appends extra_queries[:2] to base CONTEXT_SEARCH_QUERIES
-```
-
-**Miss Factor → Query Template Map (STATIC):**
-
-| Miss Factor | Agent | Query Template |
-|---|---|---|
-| `FII_outflow_spike` | risk_macro | `{ticker} FII DII net flows provisional {date}` |
-| `FII_outflow_spike` | sentiment | `FII selling India equity {month} {year}` |
-| `crude_oil_spot_price` | raw_materials | `Brent crude spot price today {date}` |
-| `crude_oil_spot_price` | risk_macro | `crude oil impact Indian automobile sector {month}` |
-| `RBI_policy_surprise` | risk_macro | `RBI MPC meeting upcoming schedule {year}` |
-| `RBI_policy_surprise` | fundamentals | `RBI repo rate decision impact auto loan rates` |
-| `INR_depreciation` | risk_macro | `USD INR exchange rate {date}` |
-| `INR_depreciation` | raw_materials | `INR depreciation impact import cost automobile {year}` |
-| `month_end_inventory_flush` | sales_demand | `{ticker} dealer inventory days channel check {month}` |
-
-**Self-regulating:** If queries successfully find the missing data, miss_count stops growing → factor falls out of top-N next cycle → deprioritized automatically. No manual reset.
-
----
-
-## 9. Month-Start Forecast Generation
-
-**Price Interpolator — Regime-Conditioned GBM Monte Carlo (Phase 8):**
-
-```
-Model: Geometric Brownian Motion with 500 simulations, seed=42
-  dlog(S) = (μ - σ²/2)dt + σ·dW
-
-  μ_daily     = monthly_return_pct/100 / n_days   (LLM-calibrated per ticker)
-  σ_daily     = confidence_band_daily_pct/100 × REGIME_SIGMA_SCALE[regime_label]
-
-REGIME_SIGMA_SCALE:
-  MACRO_CRISIS       1.50  ← elevated systemic fear, widen bands
-  RISK_OFF           1.20
-  OVERSOLD           1.10
-  NORMAL             1.00  ← base calibration
-  MOMENTUM_EXTENDED  0.90
-  RISK_ON            0.80  ← trending + broad participation, tightest bands
-
-Per-day output (P10, P50, P90 from 500 paths):
-  predicted_close  = P50  (median path)
-  price_lower      = P10  (pessimistic tail)
-  price_upper      = P90  (optimistic tail)
-  confidence       = base × (1 - 0.004×day) - band_width_penalty
-```
-
-**Confidence Decay (STATIC):**
-
-```
-decay_per_day ≈ 0.004 (0.4% per day further out)
-band_width_penalty = max(0, (band_width_pct/2 - 1.0) × 0.015)
-  → wider Monte Carlo band reduces stated confidence automatically
-base_confidence = FinalReport.final_score (from agent pipeline)
-DailyForecast[day].confidence = base_confidence × (1 - 0.004 × day) - band_penalty
-```
-
-**Envelope builder applies on top:** seasonal agent adjustments from SeasonalCalendar.
-
----
-
-## 10. All RL Schemas (`core/schemas/feedback.py`)
-
-| Schema | Purpose | Persistent? |
-|---|---|---|
-| `DailyForecast` | One row in prediction_envelope (predicted_close, verdict, confidence, revised) + `predicted_agent_catalysts` | Per cycle |
-| `PredictionEnvelope` | Full 30-day forecast sheet + conviction_streak + `agent_predictions` (catalyst snapshot at forecast time) | Per cycle |
-| `ConvictionStreak` | current_verdict, streak_days, reversion_prior (0–0.30) | In envelope |
-| `MissAnalysis` | Root cause: primary_miss_agent, miss_type, missed_factors, agent_score_drift | Per day |
-| `TimingAccuracy` | predicted_peak_day, actual_move_start_day, lag_days, assessment | Per day |
-| `RevisedContext` | headline, risks[], catalysts[], watch_signals[], horizon_confidence_adjustment | Per day |
-| `FeedbackEntry` | One day: actual close, miss_analysis, timing, revised_context, lessons_generated + `predicted_catalysts_snapshot` | Per cycle |
-| `DailyFeedbackLog` | All FeedbackEntry rows for one cycle | Per cycle |
-| `AgentAccuracy` | direction_hits, total, avg_error (rolling stats per agent) | In WeightMemory |
-| `WeightHistoryEntry` | Version, date, weights, reason (human-readable explanation) | In WeightMemory |
-| `WeightMemory` | current_weights, base_weights, bounds, agent_accuracy, weight_history | **PERMANENT** |
-| `Lesson` | pattern, rule, confidence, occurrences, scope, last_seen, contributing_tickers + `trigger_tags`, `prioritise_agents`, `discount_agents` (§23) | In ledger |
-| `LearningLedger` | lessons[], miss_counter, confidence_decay_rate | **PERMANENT** |
-| `TickerDossier` (§23) | business_summary, current_thesis, response_signatures[], guidance[], recurring_catalysts[], flow_notes, open_questions[], observations[] (30-cap episodic buffer) | **PERMANENT** |
-| `RegimeSnapshot` | regime_label, vix_value, fii_proxy, sector_rsi, multipliers, narrative | Ephemeral |
-| `FeedbackAgentInput` | Full LLM input: ticker, scores, context, existing_lesson_ids, streak, regime + `predicted_catalysts_by_agent` | Ephemeral |
-| `FeedbackAgentOutput` | Full LLM output: miss_type, missed_factors, new_lessons, revised_context | Ephemeral |
-| `SeasonalContext` | active_seeds, active_rl_lessons, agent_adjustments, narrative | Ephemeral |
-
-### What RL Currently Sees From Logs
-
-| Signal | Status | Storage location |
-|---|---|---|
-| `bull_case_if` / `bear_case_if` per agent | ✅ stored in `agent_predictions` + `predicted_agent_catalysts` | `PredictionEnvelope` + `DailyForecast` |
-| `data_confidence` per agent | ✅ stored alongside bull/bear; low-confidence penalised less | `PredictionEnvelope.agent_predictions` |
-| `what_changed` per agent | ✅ stored in `agent_predictions` per cycle | `PredictionEnvelope.agent_predictions` |
-| `predicted_catalysts_by_agent` in FeedbackAgent | ✅ injected for catalyst-level attribution | `FeedbackAgentInput.predicted_catalysts_by_agent` |
-| `predicted_catalysts_snapshot` in feedback log | ✅ stored for audit trail alongside `miss_analysis` | `FeedbackEntry.predicted_catalysts_snapshot` |
-
----
-
-## 11. RL Configuration Reference
-
-| Setting | Default | What it controls |
-|---|---|---|
-| `PREDICTION_DATA_DIR` | `data/predictions` | Root folder for all JSON memory files |
-| `FORECAST_HORIZON_DAYS` | 30 | Trading days to forecast on month-start |
-| `WEIGHT_MAX_STEP` | 0.05 | Max weight change per daily step |
-| `WEIGHT_MAX_DRIFT` | 0.15 | Max total drift from base weight |
-| `WEIGHT_MIN_OBSERVATIONS` | 3 | Days before weight adaptation activates |
-| `WEIGHT_ACCURACY_WINDOW` | 7 | Rolling window (days) for hit-rate calc |
-| `WEIGHT_BOOST_HIT_RATE` | 0.70 | Hit rate ≥ this → weight boost fires (Mechanism A threshold) |
-| `WEIGHT_PENALTY_HIT_RATE` | 0.40 | Hit rate ≤ this → weight penalty fires (Mechanism A threshold) |
-| `RL_BOOST` | +0.02 | Delta added when hit_rate ≥ boost threshold (Mechanism A magnitude) |
-| `RL_PENALTY` | −0.03 | Delta added when hit_rate ≤ penalty threshold (Mechanism A magnitude) |
-| `RL_MISS_STREAK_PENALTY` | −0.05 | Base bias penalty at full bias_score=1.0 (Mechanism B magnitude) |
-| `RL_BIAS_TRIGGER` | 0.55 | Weighted rolling miss rate at which bias penalty starts scaling (Mechanism B) |
-| `RL_BIAS_FULL` | 0.70 | Weighted rolling miss rate at which full `RL_MISS_STREAK_PENALTY` applies (Mechanism B) |
-| `RL_TIMING_FREE_WINDOW` | 3 | Lag ≤ N trading days → 0× timing penalty (within-week noise) (Mechanism C) |
-| `RL_TIMING_PARTIAL_WINDOW` | 7 | Lag ≤ N trading days → 0.20× timing penalty; lag > N → 0.50× (Mechanism C) |
-| `FEEDBACK_CRON` | `0 11 * * 1-5` | Daily review cron (11:00 UTC = 4:30pm IST) |
-| `RL_FLAT_THRESHOLD_PCT` | 0.3 | % change threshold for UP/DOWN/FLAT classification |
-| `VIX_VOLATILE_THRESHOLD` | 22.0 | VIX above = volatile macro |
-| `VIX_LOW_VOL_THRESHOLD` | 14.0 | VIX below = low-vol trending |
-| `FII_OUTFLOW_THRESHOLD` | −5000.0 | ₹Cr 5-day net outflow → MACRO_RISK flag |
-| `FII_INFLOW_THRESHOLD` | +5000.0 | ₹Cr 5-day net inflow → RISK_ON flag |
-| `RSI_OVERBOUGHT` | 70.0 | Sector RSI above = OVERBOUGHT |
-| `RSI_OVERSOLD` | 30.0 | Sector RSI below = OVERSOLD |
-| `RL_SCHEDULER_MAX_WORKERS` | 1 | ThreadPoolExecutor workers for parallel ticker review (P2-8) |
-| `RL_WEIGHT_DRIFT_ESCAPE_DAYS` | 14 | Consecutive correct days before drift ceiling expands (P2-11) |
-| `RL_WEIGHT_DRIFT_ESCAPE_MULTIPLIER` | 1.5 | Multiplier on WEIGHT_MAX_DRIFT when escape hatch fires (P2-11) |
-| `SECTOR_AGENT_REGIME_ROLE` | (dict) | Per-sector mapping: agent_name → canonical automobile regime role (P3-12) |
-| `RL_DOSSIER_ENABLED` | True | Knowledge layer: Step 8.5 curator + digest injection on/off (§23) |
-| `DOSSIER_MAX_OBSERVATIONS` | 30 | Episodic buffer cap on the dossier (§23) |
-| `DOSSIER_DIGEST_MAX_CHARS` | 2500 | Full digest budget — chat tool, curator input (§23) |
-| `DOSSIER_AGENT_DIGEST_CHARS` | 1500 | Digest budget inside the agents' system prompts (§23) |
-| `DOSSIER_MAX_NEW_OBS_PER_DAY` | 3 | Max curator observations merged per day (§23) |
-| `RL_CLAIMS_ENABLED` | True | Executable-claim application on/off — harness ablation key `executable_claims` (§23, §24) |
-| `RL_LESSON_EMPHASIS_DELTA` | 0.03 | Per-lesson agent-score nudge when a tagged lesson fires (§23) |
-| `RL_LESSON_EMPHASIS_CAP` | 0.06 | Per-agent total emphasis cap per day (§23) |
-| `RL_LESSON_MATCH_MIN_CONF` | 0.45 | Min effective confidence for a claim to fire (§23) |
-| `DOSSIER_DISTILL_INPUT_MAX_CHARS` | 20000 | Safety-net cap on dossier JSON size fed to weekly distillation LLM (§23) |
-| `RL_CALIBRATION_REWARD_ENABLED` | True | Per-agent calibration reward blend in WeightAdapter hit_rate — harness ablation key `calibration_reward` (§24) |
-| `RL_CALIBRATION_WEIGHT` | 0.5 | Blend weight for calibration-hit credit vs ensemble hit_rate (§24) |
-| `RL_FORGETTING_ENABLED` | True | Recency-weighted miss ranking, lesson archival w/ resurrection, recency-weighted feedback aggregation — harness ablation key `forgetting` (§24) |
-| `MISS_RECENCY_HALFLIFE_DAYS` | 21 | Half-life (days) for recency decay of miss events (§24) |
-| `MISS_PENALIZABLE_DISCOUNT` | 0.3 | Multiplier on non-penalizable miss types in recency-weighted miss scores (§24) |
-| `ARCHIVE_CONF_FLOOR` | 0.12 | Confidence floor for archiving a stale, invalidated lesson (§24) |
-| `ARCHIVE_EFFECTIVENESS_FLOOR` | 0.25 | Effectiveness floor for archiving a stale, invalidated lesson (§24) |
-| `ARCHIVE_STALE_DAYS` | 60 | Days a lesson must be stale (in addition to conf/effectiveness floors) before archival (§24) |
-| `FEEDBACK_HALFLIFE_MONTHS` | 3 | Half-life (months) for recency-weighted feedback cycle aggregation (§24) |
-
----
-
-## 12. Scheduler API Endpoints
-
-| Method | Path | Notes |
-|---|---|---|
-| `POST` | `/scheduler/forecast` | Generate monthly prediction envelopes. Optional `?ticker=`. Runs as background task (~2 min/ticker). |
-| `POST` | `/scheduler/daily-review` | Run daily RL feedback loop. Optional `?ticker=&date=YYYY-MM-DD`. Requires envelope to exist. |
-| `POST` | `/scheduler/backfill` | Catch-up: run daily reviews for all missing trading days this month. Used on fresh deployment. |
-| `GET` | `/scheduler/status` | Per-ticker RL state: envelope exists?, feedback entries count, weight version, direction accuracy, weight drifts vs base. |
-
-Auth: `X-Scheduler-Key` header must match `SCHEDULER_KEY` env var (open if not set).
-
-**CLI equivalents:**
-
-```bash
-python -m services.scheduler.run_schedule forecast --ticker MARUTI
-python -m services.scheduler.run_schedule forecast --sector banking_bfsi --ticker HDFCBANK SBIN
-python -m services.scheduler.run_schedule daily-review --ticker MARUTI
-python -m services.scheduler.run_schedule daily-review --sector it_sector --ticker TCS --date 2026-04-15
-python -m services.scheduler.run_schedule feedback-status --ticker MARUTI
-python -m services.scheduler.run_schedule start   # full daemon (all sectors)
-```
-
----
-
-## 13. Startup Self-Heal (Server Lifespan)
-
-Runs on every deployment — makes the system self-bootstrapping:
-
-```
-1. Calendar first-run:
-   if data/nse_holidays.json doesn't exist → calendar_updater.update_calendar()
-
-2. RL self-heal (background daemon thread — server accepts requests immediately):
-   For each SCHEDULER_TICKERS:
-     a. If no envelope for current cycle → run generate_forecast() (background, ~2 min/ticker)
-     b. Find missing trading-day reviews this month → run_daily_review() for each
-
-3. BackgroundScheduler start (3 jobs):
-   Job 1: rl_daily_review    — every weekday 4:30pm IST
-   Job 2: rl_monthly_forecast — 1st of each month 9am IST
-   Job 3: rl_calendar_update  — Dec 31 11pm IST (writes next year's NSE holidays)
-```
-
-**Multi-sector routing (added 2026-05):**
-`_daily_review_job()` and `_monthly_forecast_job()` now call `get_active_tickers_with_sector()`
-(from `services/api/log_buffer.py`) which returns `[{sym: str, sector: str}]`.
-Both jobs pass `sector=` to `run_daily_review()` and `generate_forecast()`.
-
-Result: BFSI, IT, and RE tickers are correctly routed to their sector orchestrators.
-Previously all tickers defaulted to "automobile" regardless of `managed_tickers.json` sector field.
-
-Per-ticker timeout: 180 seconds (ThreadPoolExecutor). ThesisReviewer LLM calls cannot block the loop.
-
----
-
-## Dynamic Ticker Management (No Redeploy Required)
-
-Tickers are managed at runtime via `data/managed_tickers.json` and the following API endpoints.
-The scheduler reads this file on every run — changes take effect immediately.
-
-### API Endpoints
-
-| Endpoint | Method | Behaviour |
-|---|---|---|
-| `/ui/tickers/managed` | GET | List all managed tickers with sector, enabled flag |
-| `/ui/tickers/managed` | PUT | Replace entire list (validates sectors) |
-| `/ui/tickers/managed/{sym}` | POST | Add ticker: auto-detect sector, validate on NSE, trigger envelope async |
-| `/ui/tickers/managed/{sym}` | DELETE | Remove ticker + clean up `data/predictions/{sector}/{sym}/` |
-| `/ui/tickers/managed/{sym}/toggle` | PATCH | Enable/disable (preserves all RL data) |
-| `/ui/tickers/managed/{sym}/generate-envelope` | POST | Trigger envelope generation immediately (mid-month adds) |
-
-### Sector Auto-Detection
-`SectorRegistry.resolve(ticker)` is the source of truth for sector assignment.
-If the user provides a sector that conflicts with the registry, the registry wins and a warning is logged.
-This prevents wrong orchestrator routing (e.g., HDFCBANK with sector="automobile" would use the wrong agents).
-
-### RL Data Lifecycle
-
-| Action | Effect |
+| Sector | Seeded patterns (months) |
 |---|---|
-| Add ticker | Envelope generated async in background. RL learning starts that night. |
-| Disable ticker | Stops scheduling. All prediction/feedback/ledger data preserved. |
-| Delete ticker | Removes from list AND deletes `data/predictions/{sector}/{sym}/` (shutil.rmtree). |
+| Automobile | December model clearance (12); Navratri–Diwali festive peak (10–11, lunar); Shravan demand dip (7–8, lunar); March wholesale push (3); Union Budget week (1); September pre-festive wait (9) |
+| Banking/BFSI | March year-end credit surge (3); RBI MPC meeting week (even months); Budget PSU-bank risk (2); Q1 NPA recognition and results (4–5) |
+| IT | US tech earnings spillover (1, 4, 7, 10); Q1 salary-hike margin pressure (4–5); Q1 client budget softness (4–6); H-1B result season (4) |
+| Renewable energy | Monsoon solar generation dip (6–9); peak irradiation season (4–5); year-end government project push (10–12); Q1 tariff orders (1–2) |
 
-### Valid Sectors
-`_get_valid_sectors()` reads from `SectorRegistry.enabled_sectors()` — dynamic, no hardcoding.
-Currently enabled: `automobile`, `banking_bfsi`, `it_sector`, `renewable_energy`.
+Each sector also has an F&O expiry-week pattern, which applies during the 5
+trading days up to the monthly expiry instead of by month.
 
-**NSE Calendar:** `nse_calendar.py` loads `data/nse_holidays.json` (dynamic) with hardcoded 2025-2026 fallback. `nse_calendar.reload_holidays()` hot-reloads after `calendar_updater.py` writes new data — no restart needed.
+**Rules:**
 
----
+- deltas of all active patterns are summed and capped at ±0.20 per dimension;
+  a lunar pattern counts at half weight, because its Gregorian dates move;
+- the confidence modifier is capped at ±0.10; expiry week adds −0.05, or
+  −0.08 on expiry day itself, within the same cap;
+- the same patterns shift the adapter's hit-rate thresholds per dimension
+  (section 9), and their narrative is given to the feedback agent with an
+  instruction not to rediscover them as lessons.
 
-## 14. Static vs LLM Boundary — Master Table
+**Validation.** On the last trading day of a month, each pattern active that
+day is compared with the month's feedback log. Two confirming cycles mark it
+validated; three contradicting cycles mark it invalidated. The state is
+written to `<sector>/_seasonal_validation.json`. A matching seasonal lesson in
+the ticker's ledger is then invalidated, or gains +0.05 confidence when
+validated. **Limit:** the calendar does not read the validation state, so an
+invalidated seed keeps applying its deltas.
 
-| Component | File | Type | Method | Notes |
-|---|---|---|---|---|
-| `RegimeDetector.detect()` | `core/intelligence/regime/detector.py` | **STATIC** | VIX/FII/RSI threshold rules | No LLM |
-| `WeightAdapter.update()` | `core/intelligence/rl/agents/weight_adapter.py` | **STATIC** | 3-stage formula | Fully deterministic |
-| `ConvictionTracker` | `core/intelligence/rl/conviction/tracker.py` | **STATIC** | streak formula | min(0.25, (days-4)×0.025) |
-| `PromptEnhancer.enhance()` | `core/intelligence/prompt_enhancer/enhancer.py` | **STATIC** | Template dict lookup | miss_counter → query strings |
-| `SeasonalCalendar.get_context()` | `core/intelligence/seasonal/calendar.py` | **STATIC** | YAML + ledger read | No LLM |
-| `SeasonalValidator.validate_pattern()` | `core/intelligence/seasonal/validator.py` | **STATIC** | State machine | SEEDED → VALIDATED |
-| `classify_direction()` | `core/intelligence/rl/agents/feedback_agent.py` | **STATIC** | RL_FLAT_THRESHOLD_PCT=0.3 | UP/DOWN/FLAT |
-| `MissType penalty multiplier` | `core/schemas/feedback.py` | **STATIC** | Dict lookup | `MISS_TYPE_PENALTY_MULTIPLIER` |
-| `Confidence decay` | `core/schemas/feedback.py` | **STATIC** | `conf×(0.98)^months` | Floor 0.10 |
-| `Lesson scope widening` | `core/intelligence/rl/agents/feedback_agent.py` | **STATIC** | Rule-based in merge | stock→sector auto-widen |
-| `Cross-ticker confidence boost` | `core/intelligence/rl/stores/ledger_propagator.py` | **STATIC** | +0.05 per new ticker | propagate_to_shared_ledger |
-| `Lesson tiered assembly` | `core/intelligence/rl/stores/ledger_propagator.py` | **STATIC** | T1 top-6, T2 top-3, T3 top-2 | For FeedbackAgent context |
-| `price_interpolator` | `core/intelligence/rl/algorithms/forecast/` | **STATIC** | verdict→monthly%→linear | Phase 5 extraction target |
-| `confidence_decay (forecast)` | `core/intelligence/rl/algorithms/forecast/` | **STATIC** | 0.5%/day formula | Phase 5 extraction target |
-| `FeedbackAgent.run()` | `core/intelligence/rl/agents/feedback_agent.py` | **LLM** | qwen, temp=0.3, 1500 tokens | Classifies miss, extracts lessons |
-| `merge_lessons_into_ledger()` | `core/intelligence/rl/agents/feedback_agent.py` | **STATIC** | After LLM returns | Dedup, blend, propagate |
-| `DossierCurator.run()` (§23) | `core/intelligence/rl/agents/dossier_curator.py` | **LLM** | qwen, temp=0.2, 900 tokens | Daily knowledge extraction; never fatal |
-| Dossier merge + bounds (§23) | `core/intelligence/rl/agents/dossier_curator.py` | **STATIC** | Caps, tag validation, dedup | LLM proposes, merge enforces |
-| `distill_dossier()` (§23) | `core/intelligence/rl/agents/dossier_curator.py` | **LLM + STATIC fallback** | Weekly consolidation | Episodic → semantic |
-| `tag_events()` (§23) | `src/backend/shared/schemas/feedback.py` | **STATIC** | Keyword → EVENT_TAGS map | Deterministic, LLM-independent |
-| `apply_lesson_emphasis()` (§23) | `core/intelligence/rl/algorithms/lesson_emphasis.py` | **STATIC** | Tag match → ±delta, capped | Makes lessons executable |
-| `to_digest()` (§23) | `src/backend/shared/schemas/dossier.py` | **STATIC** | Budgeted markdown render | Whole sections, priority order |
+## 15. Prompt enhancer
 
----
+[enhancer.py](../core/intelligence/prompt_enhancer/enhancer.py) runs once
+at month start. It takes the three most frequent factors in the ledger's
+miss counter. A recency-weighted ranking exists for structured miss events,
+but no writer records those events, so the raw counter decides. For each
+factor and
+dimension it looks up a query template: the sector's own map first (banking,
+IT and renewable energy each have about 10 factors), then the cross-sector
+map, then one bulk-tier LLM call. The queries are saved as the cycle's
+`prompt_enhancements.json`.
 
-## 15. Phase 6 — Sector-Agnostic Design
+Two consumers read them: the feedback agent's context, as "recurring blind
+spots", and the legacy per-dimension agents, which add up to 2 queries to
+their searches. The unified analyst, the preferred research path, does not
+read them. The loop is self-regulating: a factor that stops being missed
+falls out of the top three.
 
-Phase 6 removed all automobile-specific coupling from the RL feedback loop.
+## 16. Thesis review
 
-| Change | Old (Phase 5) | New (Phase 6) |
+[thesis_reviewer.py](../core/intelligence/rl/agents/thesis_reviewer.py)
+asks whether the envelope's key assumptions still hold after a significant
+miss. It fires when:
+
+- the direction was wrong and the miss is `direction_flip` or `model_bias`; or
+- the absolute error exceeds `max(1.5, 1.5 × ATR%)`, so a volatile stock
+  needs a larger miss.
+
+One reasoning-tier call (temperature 0.1) returns the invalidated and intact
+assumptions, whether the thesis is intact, and a
+`horizon_confidence_multiplier` between 0.3 and 1.0. Below 1.0, the multiplier
+cuts every remaining row's confidence (step 7b); at or below 0.5 it also
+triggers a re-forecast (section 27.2). Any failure returns an intact thesis
+with multiplier 1.0. Each review is stored on the feedback entry and appended
+to the store's `thesis_calls.jsonl`.
+
+**Example:** a remaining row at confidence 0.60, after a review that finds
+the low-input-cost assumption broken (multiplier 0.70), drops to 0.42.
+
+## 17. Market-structure signals
+
+| Signal | Source and rule | Where it is used |
 |---|---|---|
-| System prompt | Static `SYSTEM_PROMPT` string | `build_system_prompt(sector, agent_names)` — dynamic per sector |
-| Agent names in prompt | Hardcoded automobile list | Derived from `fb_input.predicted_agent_scores.keys()` at runtime |
-| `_run_todays_agent_scores()` | Hardcoded `AutomobileAgentOrchestrator` | Routes by sector: automobile → orchestrator; others → `importlib.import_module(f"graphs.{sector}.graph")` |
-| `run_daily_review()` | No sector parameter | Accepts `sector` param; CLI gains `--sector` flag |
-| Persistent JSON files | No `sector` field | All files (`WeightMemory`, `LearningLedger`, `PredictionEnvelope`, `DailyFeedbackLog`) carry `sector` field; old files without it default to `"automobile"` via Pydantic |
+| F&O expiry | The last Thursday of the month, moved back over NSE holidays; expiry week is the 5 trading days up to it | Seasonal overlay (section 14); calendar event tag |
+| Options snapshot | Near-month chain at month start: put-call ratio (below 0.7 reads bullish, above 1.5 bearish), max pain, and open-interest build-up (ATM calls or puts above 1.3× the other: LONG or SHORT) | Stored on the envelope; given to the feedback agent during expiry week |
+| Block and bulk deals, pre-open price | Fetched after each review and saved per date; the net institutional direction is BUY or SELL when one side's value exceeds 1.5× the other, else MIXED | Next day's feedback-agent context |
+| Institutional flows | NSE FII/DII net figures and bulk deals for the day | Feedback-agent context |
+| Volume ratio | The session's volume over its 20-day average | Feedback-agent context and the feedback entry |
 
-**Multi-sector CLI (Phase 6+):**
+## 18. Schemas
 
-```bash
-python -m services.scheduler.run_schedule daily-review --sector banking_bfsi --ticker HDFCBANK SBIN
-python -m services.scheduler.run_schedule daily-review --sector it_sector --ticker TCS INFY
-python -m services.scheduler.run_schedule daily-review --sector renewable_energy --ticker ADANIGREEN NTPC
-python -m services.scheduler.run_schedule forecast --sector renewable_energy --ticker ADANIGREEN NTPC
-```
+Pydantic models in
+[schemas/feedback.py](../src/backend/shared/schemas/feedback.py);
+`core/schemas/feedback.py` re-exports them.
 
----
+| Schema | Holds | Lifetime |
+|---|---|---|
+| `DailyForecast` | One row: closes and band, verdict, agent scores, confidence, assumptions, catalysts, `data_gate`, `source_run_id`, `instrument` | Per cycle |
+| `PredictionEnvelope` | The rows plus streak, `learning_mode`, `decision_gate`, `instrument`, profile, F&O snapshot, re-forecast history | Per cycle |
+| `ReforecastEvent` | Date, reason, trigger and archived file of one re-forecast | In envelope |
+| `ConvictionStreak` | Verdict, streak days and start, maximum seen, reversion prior | In envelope |
+| `FeedbackEntry` | One graded session (section 3.4) | Per cycle |
+| `MissAnalysis`, `TimingAccuracy`, `RevisedContext`, `ThesisReview` | Parts of a feedback entry | Per entry |
+| `WeightMemory`, `AgentAccuracy`, `WeightHistoryEntry` | Weights, accuracy, history (section 3.5) | Permanent |
+| `LearningLedger`, `Lesson`, `MissEvent` | Lessons, miss counters and structured miss events | Permanent |
+| `TickerDossier` and its parts | Company knowledge (section 23.1); in `schemas/dossier.py` | Permanent |
+| `ControlLog` | Control-lane calls (section 25); in `schemas/scorecard.py` | Per cycle |
+| `FeedbackAgentInput`, `FeedbackAgentOutput`, `RawLesson` | The feedback agent's contract | Per call |
+| `RegimeSnapshot`, `SeasonalPattern`, `SeasonalContext` | Regime and seasonal context | Per call |
+| `OffMarketSignals`, `FnOSnapshot` | Market-structure data (section 17) | Per date or cycle |
 
-## 16. Known Gaps in Current RL System
+## 19. Configuration reference
 
-| # | Gap | Impact | Status |
-|---|---|---|---|
-| G1 | Forecast path is linear interpolation | Constant drift, misrepresents uncertainty | ✅ **Closed Phase 8** — GBM Monte Carlo, P10/P50/P90 bands |
-| G2 | `max_total_drift_from_base` fixed at 0.15 forever | May be too tight after 6+ months of data | Open — revisit Month 6 with weight-history data |
-| G3 | Probability bands on forecasts (not single price) | Needs volatility modelling | ✅ **Closed Phase 8** — `price_lower` / `price_upper` on `DailyForecast` |
-| G4 | Off-market signals (block deals, pre-open) | Intraday complexity | ✅ **Closed Phase 8** — `OffMarketFetcher`, next-day leading signal |
-| G5 | Subscriber prediction feedback loop | Needs frontend + identity layer | Phase 9 target |
-| G6 | Backtesting on historical data | No historical envelope data yet | Available naturally after Month 6 |
-| G7a | F&O monthly expiry week calendar | Expiry-week volatility not modelled | ✅ **Closed Phase 8** — `fno_expiry_date()`, `is_fno_expiry_week()`, SeasonalCalendar overlay |
-| G7b | F&O options chain signals (PCR, max pain, OI) | Institutional positioning not used | ✅ **Closed Phase 8** — `FnOFetcher` + `FnOAnalyzer`, injected during expiry week |
-| G8 | Lesson scope narrowing (market→sector→stock) | Lessons only accumulate credibility, can't narrow scope | Open — design question (ticker sync partially addresses via weekly cleanup) |
-| G9 | Seasonal threshold deltas not structured in WeightMemory | In weight_history reason string only; not machine-readable | Open |
-| G10 | Lesson rules write-only (free text never parsed/applied) | Learned knowledge stored but never executed | ✅ **Closed (implemented 2026-06-11)** — §23: `trigger_tags` + `apply_lesson_emphasis` |
-| G11 | No learning on hit days | Positive patterns ("what worked") never captured | ✅ **Closed (implemented 2026-06-11)** — §23: DossierCurator runs every day |
-| G12 | No entity-level memory; chat blind to learned knowledge | No "stock story" accumulates; chat used stale defaults + had sector/attr bugs | ✅ **Closed (implemented 2026-06-11)** — §23: TickerDossier + agent/chat digest injection |
+The `rl:` and `regime:` sections of [config.yaml](../config.yaml), read by
+[settings](../src/backend/shared/config/settings/base.py). Most values are
+read at import, so a change needs a restart. The KT
+[section 3](TECHNICAL_DESIGN.md#configuration) explains precedence.
 
----
+| Key (env override) | Default | Controls |
+|---|---|---|
+| `rl.learning_mode` (`RL_LEARNING_MODE`) | `adapt` | Section 7 |
+| `rl.forecast_horizon_days` | 30 | Rows per envelope |
+| `rl.weight_max_step`, `rl.weight_max_drift` | 0.05, 0.15 | Stage 3 bounds |
+| `rl.weight_min_observations`, `rl.weight_accuracy_window` | 3, 7 | Stage 1 |
+| `rl.weight_boost_hit_rate`, `rl.weight_penalty_hit_rate` | 0.70, 0.40 | Stage 2 thresholds |
+| `rl.boost`, `rl.penalty`, `rl.miss_streak_penalty` | +0.02, −0.03, −0.05 | Stage 2 magnitudes |
+| `rl.bias_trigger`, `rl.bias_full`; `rl.bias_windows` / `rl.bias_window_weights` | 0.55, 0.70; [5, 10, 21] / [0.50, 0.30, 0.20] | Bias penalty |
+| `rl.timing_free_window`, `rl.timing_partial_window` | 3, 7 | Timing multiplier |
+| `rl.weight_drift_escape_days`, `rl.weight_drift_escape_multiplier` | 14, 1.5 | Drift escape |
+| `rl.calibration_reward_enabled`, `rl.calibration_weight` | true, 0.5 | Calibration blend |
+| `rl.zero_weight_recovery_enabled` | true | Zero-weight recovery |
+| `rl.hard_bind_verdict_enabled` | true | Grading against the re-run verdict |
+| `rl.flat_threshold_pct` | 0.3 | UP/DOWN/FLAT band |
+| `rl.agent_rerun_threshold_pct` | 0.5 | Skip the re-run below this error on a correct day (0 disables) |
+| `rl.absurd_price_error_pct` | 50.0 | Absurd-error guard |
+| `rl.macro_fallback_context_enabled`, `rl.macro_fallback_max_items` | true, 5 | Macro feed for news-blind reviews |
+| `rl.provenance_enabled`, `rl.lesson_evidence_max_items`, `rl.lesson_evidence_max_chars` | true, 3, 160 | Lesson and observation evidence |
+| `rl.streak_warning_threshold`, `rl.rsi_amplifier`, `rl.max_reversion_prior` | 8, 1.5, 0.30 | Section 12 |
+| `rl.atr_threshold_floor`, `rl.atr_threshold_multiplier` | 1.5, 1.5 | Thesis-review size trigger |
+| `rl.lesson_blend_existing`, `rl.lesson_blend_incoming`, `rl.cross_ticker_boost` | 0.70, 0.30, 0.05 | Shared-ledger merge |
+| `rl.forgetting_enabled`, `rl.miss_recency_halflife_days`, `rl.miss_penalizable_discount` | true, 21, 0.3 | Recency-weighted misses |
+| `rl.archive_conf_floor`, `rl.archive_effectiveness_floor`, `rl.archive_stale_days` | 0.12, 0.25, 60 | Lesson archiving |
+| `rl.feedback_halflife_months` | 3.0 | Weighting of past cycles' returns |
+| `rl.dossier_enabled`, `rl.claims_enabled` | true, true | Sections 23.2 and 23.3 |
+| `rl.dossier_max_observations`, `rl.dossier_max_new_obs_per_day` | 30, 3 | Observation buffer |
+| `rl.dossier_digest_max_chars`, `rl.dossier_agent_digest_chars`, `rl.dossier_distill_input_max_chars` | 2500, 1500, 20000 | Digest budgets |
+| `rl.lesson_emphasis_delta`, `rl.lesson_emphasis_cap`, `rl.lesson_match_min_conf` | 0.03, 0.06, 0.45 | Section 23.3 |
+| `rl.event_ingest_enabled`, `…_lookback_days`, `…_max_events_per_scan`, `…_text_max_chars` | true, 8, 3, 6000 | Section 26 |
+| `rl.research_loop_enabled`, `rl.research_max_questions_per_run`, `rl.research_max_attempts` | true, 2, 3 | Research loop |
+| `rl.control_lane_enabled`, `rl.control_lane_model`; `rl.scorecard_enabled` | true, "" (reasoning tier); true | Section 25 |
+| `rl.reforecast_enabled`, `rl.reforecast_max_per_month`, `rl.reforecast_thesis_mult_threshold` | true, 2, 0.5 | Section 27.2 |
+| `rl.regime_sticky_enabled`; `regime.calm_days` (`RL_REGIME_CALM_DAYS`) | true; 3 | Section 27.1 |
+| `rl.preopen_check_enabled`, `rl.preopen_shock_severity` | true, 0.7 | Section 27.3 |
+| `rl.close_verify_enabled`, `rl.close_verify_tolerance_pct` | true, 1.0 | NSE close cross-check |
+| `rl.scheduler_max_workers` (`RL_SCHEDULER_MAX_WORKERS`) | 1 | Parallel reviews |
+| `regime.vix_volatile_threshold`, `regime.vix_low_vol_threshold` | 22.0, 14.0 | Section 13 |
+| `regime.fii_proxy_threshold_pct`, `regime.rsi_overbought`, `regime.rsi_oversold` | 1.0, 70, 30 | Section 13 |
+| `scheduler.feedback_cron` (`FEEDBACK_CRON`) | `30 16 * * mon-fri` | Daily review time, IST |
 
-## 17. Before vs After Capability Map
+Storage roots: `PREDICTION_DATA_DIR` (`data/predictions`), the paper root
+`discovery.paper_data_dir` (`data/rl/paper/predictions`), `SCORECARD_DIR`
+(`data/eval/scorecards`) and `LEARNING_EVIDENCE_DIR`
+(`data/eval/learning_evidence`).
 
-| Dimension | LLM Browse Tools (Perplexity/GPT+web) | StockAgent P5+P6 | StockAgent + P1–P5 |
-|---|---|---|---|
-| Session memory | None | Per-ticker JSON, persistent | Same + shared sector/market ledgers |
-| Seasonal knowledge | One-shot if user asks | Reactive (discovered from misses) | **Pre-seeded** + RL-validated |
-| Agent weight adaptation | N/A | Accuracy-based (7-day rolling) | Accuracy × **regime multiplier** |
-| Cross-ticker learning | None | Schema ready; not propagated | **Active propagation**, 3-tier |
-| Momentum exhaustion | None | None | **Conviction streak** + reversion prior |
-| Search query self-improvement | None | None | **miss_counter → enhanced queries** |
-| Market regime awareness | Static | Static | **VIX + FII + RSI** regime detection |
-| Causal miss attribution | None | 7-type taxonomy + penalty weights | Same + **shared pattern library** |
-| Forecast uncertainty | Single point estimate | Linear confidence decay | **Streak-adjusted, regime-adjusted** |
-| Lesson confidence validity | N/A | Time decay (0.02/month) | Time decay + **seasonal exemption** |
+## 20. Jobs, CLI and API
 
-**Knowledge compounding timeline:**
+**Scheduled jobs.** The RL jobs are `rl_monthly_forecast`, `rl_daily_review`,
+`preopen_shock_check`, `event_ingest_weekly`, `research_loop_weekly`,
+`ledger_cleanup_weekly`, `scorecard_monthly` and `rl_calendar_update`
+(31 December, 23:00). The KT's
+[job table](TECHNICAL_DESIGN.md#9-scheduled-jobs-and-event-hooks) has every
+job and time. The daily review runs reviews one at a time by default.
 
-```
-Month 1:   Seasonal seeds active immediately (P1)
-           Base learned weights + regime detection (P5)
+**Startup self-heal** ([server.py](../services/api/server.py)), in the
+background owner worker. For each enabled managed ticker, in its managed
+sector, once per month (a checkpoint file per month records progress):
 
-Month 2:   First RL-confirmed seasonal reinforcements
-           Shared sector ledger accumulating from 3–5 tickers (P2)
-           Prompt enhancements from first month's miss_counter (P4)
+1. if the month's envelope is missing, generate it;
+2. review every trading day from the 1st to yesterday that has no feedback
+   entry.
 
-Month 3:   Conviction streaks trackable (P3 data accumulates)
-           Cross-ticker lessons start reinforcing sector ledger
-           Weight adaptation has enough observations to widen drift bounds
+A ticker that fails is retried on the next restart. A missing NSE holiday
+file is fetched at startup.
 
-Month 6:   Sector ledger has 50–80 validated patterns across all tickers
-           Seasonal seeds 70%+ validated by RL data
-           Enhanced search queries consistently reducing known blind spots
+**CLI** (`python -m services.scheduler.run_schedule <command>`):
+`start`, `run-now`, `status`, `history`, `latest`, `forecast`,
+`daily-review`, `feedback-status`, `reforecast`, `preopen-check`,
+`dossier-status`, `ingest-events`, `research` and `scorecard`. `forecast`
+and `daily-review` take no sector: they use the automobile graph and store
+(KT store class `automobile_default`), and default to `SCHEDULER_TICKERS`.
+For any other ticker, use the scheduler API, which takes each ticker's
+managed sector.
 
-Month 12:  Proprietary seasonal calendar + learned sector rulebook
-           Regime multipliers tunable from historical regime/accuracy data
-           Miss rate on known patterns (in ledger) should approach near-zero
-```
+**Scheduler API** (`/scheduler`), owner session or the `X-Scheduler-Key`
+header matching `SCHEDULER_KEY`:
 
----
-
-## 18. Key File Locations
-
-| Component | File |
+| Method and path | Effect |
 |---|---|
-| Regime detector | `core/intelligence/regime/detector.py` |
-| Regime multipliers (config) | `core/config/settings/base.py` → `REGIME_MULTIPLIERS` |
-| PromptEnhancer | `core/intelligence/prompt_enhancer/enhancer.py` |
-| Daily feedback loop | `core/intelligence/rl/workflows/daily_review.py` |
-| Generate forecast | `core/intelligence/rl/workflows/generate_forecast.py` |
-| Prediction store (JSON R/W) | `core/intelligence/rl/stores/prediction_store.py` |
-| Ledger propagator (P2) | `core/intelligence/rl/stores/ledger_propagator.py` |
-| Conviction tracker (P3) | `core/intelligence/rl/conviction/tracker.py` |
-| Seasonal calendar (P1) | `core/intelligence/seasonal/calendar.py` |
-| Seasonal validator (P1) | `core/intelligence/seasonal/validator.py` |
-| Seasonal seeds (P1) | `core/intelligence/seasonal/seeds/{sector}.yaml` |
-| FeedbackAgent | `core/intelligence/rl/agents/feedback_agent.py` |
-| WeightAdapter | `core/intelligence/rl/agents/weight_adapter.py` |
-| **ThesisReviewer** | `core/intelligence/rl/agents/thesis_reviewer.py` |
-| **DossierCurator + distill (§23)** | `core/intelligence/rl/agents/dossier_curator.py` |
-| **Dossier schema (§23)** | `src/backend/shared/schemas/dossier.py` |
-| **Lesson emphasis (§23)** | `core/intelligence/rl/algorithms/lesson_emphasis.py` |
-| **PriceInterpolator** | `core/intelligence/rl/algorithms/price_interpolator.py` |
-| All RL schemas | `core/schemas/feedback.py` (real) or `src/backend/shared/schemas/feedback.py` (src path) |
-| NSE calendar | `core/intelligence/rl/nse_calendar.py` |
+| `POST /scheduler/forecast` | Generate envelopes, optionally for one ticker. Accepted for background work (202). |
+| `POST /scheduler/daily-review` | Review one date, optionally one ticker, then run the portfolio pipeline. |
+| `POST /scheduler/backfill` | Review every past trading day of the current or a named month; `skip_existing` leaves reviewed dates alone. |
 
----
+Both review routes skip a watchlist-cadence ticker except on Fridays
+(`portfolio.weekly_review_weekday`); the scheduled 16:30 job reviews every
+enabled ticker every weekday.
+| `GET /scheduler/status` | Per-ticker RL state: envelope, entry count, weight version, accuracy, drift. |
 
-## 19. Section 6 — Category-Specific Lesson Confidence Decay
+**Managed tickers** (`/ui/tickers/managed`, owner only):
 
-### Problem with flat 0.02/month
-
-The previous uniform decay rate treated a macro lesson (volatile, half-life ~50 days) identically to a seasonal lesson (calendar-driven, repeats annually) and a fundamental pattern (earnings cycle, semi-structural). A macro lesson about "RBI surprise suppresses demand" would still appear at 70% confidence 18 months after it was last seen — in a completely different rate cycle — while a seasonal pattern about Shravan-period demand weakness was decaying at the same rate despite being calendar-invariant.
-
-### New decay model
-
-**Two factors multiply together:**
-
-```
-effective_rate = LESSON_DECAY_RATES[category] / sqrt(occurrences)
-decayed_confidence = stored_confidence × (1 - effective_rate) ^ months_inactive
-result = max(0.10, decayed_confidence)
-```
-
-**Rate table** — `src/backend/shared/schemas/feedback.py → LESSON_DECAY_RATES`:
-
-| Category | Base rate/month | Rationale |
-|---|---|---|
-| `seasonal` | 0.000 | Decay-exempt — calendar patterns repeat annually unchanged |
-| `data_availability` | 0.005 | Data release calendars rarely change (FADA publishes on 10th, always) |
-| `fundamental` | 0.008 | Earnings/business cycle patterns — semi-structural, quarter-to-quarter |
-| `technical` | 0.015 | Chart patterns shift with volatility regime but are reasonably persistent |
-| `sentiment` | 0.020 | Previous default; sentiment half-life ~50 days |
-| `macro` | 0.030 | Domestic macro regimes (RBI cycle, FII flow) are transitional |
-| `global_macro` | 0.040 | Global macro (Fed, crude, USD) moves fastest, least persistent |
-
-**Occurrence damping — why sqrt(n):**
-
-A macro lesson confirmed 9 independent times is not a transient regime pattern — it has become a structural behavioral observation. The sqrt formula gives diminishing returns: doubling confirmations halves the rate, but each additional confirmation matters less.
-
-```
-macro lesson, confidence=0.75, 3 months inactive:
-  1× confirmed:  rate=0.030, eff_conf = 0.75 × (0.970³) ≈ 0.683
-  4× confirmed:  rate=0.015, eff_conf = 0.75 × (0.985³) ≈ 0.717
-  9× confirmed:  rate=0.010, eff_conf = 0.75 × (0.990³) ≈ 0.728
-
-A macro lesson confirmed 25× reaches the structural band:
-  rate = 0.030/√25 = 0.006/month ≈ equivalent to a fundamental pattern (0.008)
-```
-
-**Floor = 0.10:** Lessons are never fully discarded automatically. A lesson at 0.10 is still injected into the FeedbackAgent prompt but as weak historical background, naturally deprioritised by the T1/T2/T3 effective-confidence ranking.
-
-**Test file:** `tests/unit/intelligence/rl/test_lesson_decay.py` — 28 tests covering all 7 categories, occurrence damping, floor enforcement, and numeric correctness.
-
----
-
-## 20. Step 7 — Conditional Thesis Review After Significant Miss
-
-### Problem with mechanical re-weighting
-
-After a >2% prediction miss, the existing system re-weights agents and revises remaining forecasts. But if the reason for the miss was a fundamentally broken underlying assumption (e.g., "crude oil stable ~$82" as a key assumption, but crude just spiked 8%), then every subsequent BUY forecast inherits a structurally wrong premise. Re-weighting only adjusts agent influence; it does not re-examine whether the original 30-day thesis is still valid.
-
-### Trigger conditions
-
-```
-ThesisReviewer fires when:
-  abs(price_error_pct) > 2.0%          → large absolute miss
-  OR
-  direction_correct = False             → called direction wrong
-  AND miss_type ∈ {direction_flip, model_bias}  → structural (not external shock)
-```
-
-Specifically NOT triggered by: `timing`, `magnitude`, `external_shock`, `data_gap`, `data_stale` below the 2% threshold. These are partial misses or fault-free events that don't invalidate the thesis.
-
-### LLM input and output
-
-The LLM receives (~250 tokens):
-- Original `key_assumptions` from the prediction envelope (e.g., `["crude stable ~$82", "FADA dispatch +6% MoM"]`)
-- Today's miss analysis: `miss_type`, `missed_factors`, `over_weighted_factors`
-- Current market context (first 400 chars)
-
-The LLM returns `ThesisReview` (~80 tokens):
-
-```json
-{
-  "assumptions_invalidated": ["crude stable ~$82"],
-  "assumptions_still_valid": ["FADA dispatch +6% MoM"],
-  "thesis_intact": false,
-  "revised_narrative": "RBI surprise + crude spike invalidated the low-cost thesis.",
-  "horizon_confidence_multiplier": 0.70
-}
-```
-
-### horizon_confidence_multiplier
-
-This is a global multiplier applied to ALL remaining forecast confidences, separate from `horizon_confidence_adjustment`:
-
-| Multiplier | Meaning | Example trigger |
-|---|---|---|
-| 1.00 | Thesis intact — minor re-weighting only | Small direction error, no assumption broken |
-| 0.85 | One assumption broken, recovery plausible | RBI rate hold (unexpected), but demand trend intact |
-| 0.70 | Core assumption invalidated, high uncertainty | Crude spike +8%, invalidating input-cost stability |
-| 0.50 | Thesis fundamentally wrong | Policy reversal making the entire sector thesis obsolete |
-| 0.30 (floor) | Deep uncertainty — forecasts are unreliable | Cannot go below this floor |
-
-The multiplier compounds with existing dampening: a forecast that was already at `confidence=0.60` after reversion prior and horizon decay becomes `0.60 × 0.70 = 0.42` — NEUTRAL territory. This accurately reflects that a broken-thesis BUY forecast is no longer a high-conviction call.
-
-### Safety contract
-
-`ThesisReviewer.review()` catches all exceptions and returns `ThesisReview(thesis_intact=True, horizon_confidence_multiplier=1.0)` on any failure. The daily review cycle is never blocked by a thesis review failure.
-
-**Schema:** `ThesisReview` in `src/backend/shared/schemas/feedback.py`. Persisted in `FeedbackEntry.thesis_review` — visible in the feedback log for audit.
-
-**Test file:** `tests/unit/intelligence/rl/test_thesis_reviewer.py` — 32 tests covering trigger conditions, schema bounds, JSON parse safety, and revision integration.
-
----
-
-## 21. Section 8 — PromptEnhancer: Sector Templates + LLM Fallback
-
-### Problem with the original single template map
-
-`MISS_FACTOR_TO_QUERY_TEMPLATE` had 5 entries, all automobile-specific. For Banking/BFSI, IT, and Renewable Energy, every miss factor fell through to "no template → skipped silently". The self-regulating miss_counter loop was effectively disabled for 3 of the 4 active sectors.
-
-### Resolution order (per factor per agent)
-
-```
-1. SECTOR_MISS_FACTOR_TEMPLATES[sector][factor]    ← sector-specific (takes priority)
-2. MISS_FACTOR_TO_QUERY_TEMPLATE[factor]           ← generic cross-sector fallback
-3. _generate_queries_llm(factor, ticker, sector)   ← LLM (only when both maps miss)
-```
-
-The LLM path fires at most once per (factor, agent) pair per month — and only for factors not covered by any template. For a banking ticker with `GNPA_slippage` in its miss_counter, step 1 fires (banking template exists). For a novel factor like `NPA_recognition_cycle_change` that no template covers, the LLM generates 2 date-qualified, sector-appropriate queries.
-
-### Sector template coverage
-
-| Sector | Miss factors covered | Example factor → agent |
-|---|---|---|
-| `banking_bfsi` | 10 factors | `GNPA_slippage` → fundamentals + risk |
-| `it_sector` | 10 factors | `attrition_spike` → fundamentals |
-| `renewable_energy` | 10 factors | `DISCOM_payment_delay` → risk + fundamentals |
-
-All templates include `{ticker}`, `{month}`, `{year}` placeholders substituted at runtime. Time-sensitive queries (dispatch data, NPA slippage) always embed current month/year to prevent Serper returning SEO-optimised 2022 articles.
-
-### _guess_primary_agent heuristic
-
-When the LLM path fires for an unknown factor, the heuristic resolves the primary agent from factor keyword patterns. Priority order (most specific first):
-
-```
-RE-sector policy keywords (mnre, fame, pli, subsidy, tariff) → sentiment_policy
-Banking fundamental keywords (gnpa, nim, npa, slippage, pcr) → fundamentals
-FII/DII/institutional keywords → institutional (banking) | risk_macro (others)
-RBI/rate/repo/mpc keywords → macro_policy (banking) | risk_macro (others)
-Revenue/margin/earnings/attrition/deal/capacity keywords → fundamentals
-DISCOM/curtailment/execution/pledge keywords → risk
-Technical/RSI/MACD/breakout keywords → pattern_analysis
-...
-Sector default → fundamentals (banking/IT/RE) | risk_macro (automobile)
-```
-
-Two bugs were found and fixed during testing: (1) `MNRE_policy_reversal` was routing to `risk_macro` because "policy" matched the generic RBI/policy check before the RE-specific MNRE check; (2) `_generate_queries_llm` exceptions were not caught at the `enhance()` level, allowing a failing monkey-patched function to propagate.
-
-**Test file:** `tests/unit/intelligence/rl/test_enhancer_v2.py` — 47 tests covering sector template structure, resolution priority, date substitution, agent routing, and LLM fallback safety.
-
----
-
-## 22. Phase 8 — Algorithm Reference
-
-### 22a. LLM-Calibrated Price Interpolator + GBM Monte Carlo
-
-#### Problem with static verdict_monthly_pct
-
-```python
-# Old: universal for every stock in every regime
-{"STRONG BUY": 8.0, "BUY": 4.0, "NEUTRAL": 0.5, "SELL": -3.0, "STRONG SELL": -7.0}
-```
-
-HDFC Bank (14-day ATR ~0.8%, low beta) and ADANIGREEN (14-day ATR ~3.5%, high beta, policy-driven) shared the same +4% BUY expectation. The static table is wrong for both in two ways: (1) wrong magnitude, (2) no uncertainty band.
-
-#### ForecastProfile (LLM output)
-
-```python
-class ForecastProfile:
-    monthly_return_pct: float          # [-20, 20] — LLM-calibrated to ATR and sector
-    path_shape: Literal[               # how the move distributes over 30 days
-        "linear",       # uniform drift (fallback)
-        "front_loaded", # 60% of move in first 10 days (near-term catalyst)
-        "back_loaded",  # 80% of move in days 11–30 (catalyst is 2+ weeks away)
-        "volatile",     # linear drift + ±ATR noise per day
-    ]
-    confidence_band_daily_pct: float   # [0.1, 5.0] — daily ±uncertainty width (=ATR×0.5 as guide)
-    source: Literal["llm", "static"]   # audit field
-```
-
-#### GBM Monte Carlo (Phase 8)
-
-```
-n_simulations = 500, seed = 42 (reproducible)
-
-For each simulation s, for each day t:
-  Z[s,t]        ~ N(0, 1)
-  log_return    = (μ - σ²/2) + σ·Z
-  cum_log[s,t]  = Σ_{τ=1}^{t} log_return[s,τ]
-  price[s,t]    = base_close × exp(cum_log[s,t])
-
-Per day output:
-  P50 = median(price[:, t])   → predicted_close
-  P10 = 10th percentile        → price_lower  (pessimistic tail)
-  P90 = 90th percentile        → price_upper  (optimistic tail)
-```
-
-#### Regime-conditioned volatility (REGIME_SIGMA_SCALE)
-
-```
-σ_effective = confidence_band_daily_pct/100 × REGIME_SIGMA_SCALE[regime_label]
-
-Regime               Scale   Effect on P10-P90 band
-──────────────────────────────────────────────────
-MACRO_CRISIS         1.50    +50% wider (systemic fear)
-RISK_OFF             1.20    +20% wider (defensive positioning)
-OVERSOLD             1.10    +10% wider (stretched technicals)
-NORMAL               1.00    Base calibration
-MOMENTUM_EXTENDED    0.90    -10% tighter (trend persists)
-RISK_ON              0.80    -20% tighter (broad participation)
-```
-
-#### LLM inputs (once per month-start per ticker, ~200 tokens)
-
-| Input | Source | Why it matters |
-|---|---|---|
-| `atr_pct` | yfinance 14-day ATR / price | Primary calibration — volatile stock needs wider return range |
-| `regime_label` | RegimeDetector | Determines σ scaling via REGIME_SIGMA_SCALE |
-| `conviction_drivers` | FinalReport.conviction_drivers | Near-term catalyst → front_loaded shape |
-| `historical_avg_return_pct` | Median of past FeedbackLog entries for same verdict | Ground truth after Month 3 |
-
-#### Static fallback (Month 1, LLM unavailable)
-
-The static dict is preserved but ATR-scaled, making even the fallback stock-specific:
-
-```
-scaled_pct = base_static_pct × max(0.5, min(2.5, atr_pct / 1.5))
-
-HDFC Bank  ATR=0.8%: BUY → 4.0 × (0.8/1.5=0.53) → 2.12%
-ADANIGREEN ATR=3.5%: BUY → 4.0 × (3.5/1.5=2.33, capped 2.5) → 10.0%
-```
-
-**Test files:**
-- `tests/unit/intelligence/rl/test_price_interpolator.py` — 67 tests (schema bounds, static fallback, path shapes, LLM parse safety, ATR, historical return)
-- `tests/unit/intelligence/rl/test_monte_carlo.py` — 19 tests (percentile invariants, regime band width, seed reproducibility, DailyForecast schema)
-
----
-
-### 22b. Algorithm Theory Table
-
-| Algorithm | Formula / Rule | Parameters | Where used |
-|---|---|---|---|
-| **GBM (Geometric Brownian Motion)** | `dS/S = μ dt + σ dW` | μ from LLM, σ from ATR×regime_scale | `build_monte_carlo_paths()` in `price_interpolator.py` |
-| **Regime-GBM** | σ_eff = σ_base × REGIME_SIGMA_SCALE | 6 regime labels, scale 0.8–1.50 | Same; σ widens/narrows based on market regime |
-| **Monte Carlo percentiles** | P10/P50/P90 from 500 paths, seed=42 | n=500, seed=42 | Per-day `price_lower`, `predicted_close`, `price_upper` in `DailyForecast` |
-| **Put-Call Ratio (PCR)** | total_put_OI / total_call_OI | <0.7 bullish, >1.5 bearish | `FnOAnalyzer._compute_pcr()` |
-| **Max Pain** | argmin_K Σ[max(0,K-s)×CE_OI + max(0,s-K)×PE_OI] | All strikes in near-month chain | `FnOAnalyzer._compute_max_pain()` |
-| **OI Buildup Direction** | call_atm / put_atm ratio at ±3% of spot | >1.3 → LONG, <0.77 → SHORT, else NEUTRAL | `FnOAnalyzer._compute_oi_buildup()` |
-| **F&O Expiry Calendar** | Last Thursday of month; walk back if NSE holiday | Max 3 walk-back steps | `nse_calendar.fno_expiry_date()` |
-| **Expiry Week Gate** | ≤5 trading days from (and including) expiry | 5-day window | `is_fno_expiry_week()` |
-
----
-
-### 22c. Market Microstructure Signals (Phase 8 — G4)
-
-| Signal | SEBI Definition | Fetch source | Architecture |
-|---|---|---|---|
-| **Block Deal** | ≥500,000 shares OR ≥₹10Cr in 9:15–9:50am window | `nse.blockDeals()` | Next-day leading signal |
-| **Bulk Deal** | Single-day quantity > 0.5% of company equity | `nse.bulkDeals()` | Next-day leading signal |
-| **Pre-Open Auction IEP** | Indicative Equilibrium Price at 9:00–9:08am | `nse.quote()` → `preOpenMarket.IEP` | Next-day leading signal |
-| **F&O Expiry Week** | ≤5 trading days from monthly last-Thursday expiry | `is_fno_expiry_week()` in `nse_calendar.py` | Seasonal overlay (conf_modifier −0.05 / −0.08 on expiry day) |
-
-**Next-day leading signal pattern:**
-```
-End of daily_review day T:
-  OffMarketFetcher.fetch_all(ticker, date_T) → save to {ticker}_{date_T}_offmarket.json
-
-Start of daily_review day T+1:
-  store.load_offmarket_signals(date_T-1) → inject as market_context_today
-  FeedbackAgent sees institutional activity from T BEFORE it evaluates T+1 miss
-```
-
-**Net direction logic (`_compute_summary`):**
-```
-buy_val  = Σ trade_value_cr for BUY  deals
-sell_val = Σ trade_value_cr for SELL deals
-
-buy_val > sell_val × 1.5  → "BUY"   (strong institutional accumulation)
-sell_val > buy_val × 1.5  → "SELL"  (strong institutional distribution)
-both > 0, ratio < 1.5     → "MIXED" (both sides active)
-no deals                  → "NONE"
-```
-
----
-
-### 22d. F&O Expiry Overlay (Phase 8 — G7a + G7b)
-
-**G7a — Seasonal calendar overlay:**
-```
-During expiry week (5 trading days):
-  SeasonalCalendar._get_fno_expiry_context(d) returns:
-    adjustments:  {"risk_macro": +0.04, "pattern_analysis": +0.03}
-    conf_modifier: -0.05  (or -0.08 on expiry day itself)
-
-fno_week_only: true patterns in sector YAMLs:
-  automobile  → SEA_AUTO_007  (risk_macro +0.04, pattern_analysis +0.03)
-  bfsi        → SEA_BFSI_005  (risk_macro +0.05, pattern_analysis +0.03)
-  it_sector   → SEA_IT_005    (risk_macro +0.03, pattern_analysis +0.04)
-  renewable   → SEA_RE_005    (risk_macro +0.03, pattern_analysis +0.02)
-```
-
-**G7b — Options chain context injection:**
-```
-Month-start generate_forecast.py:
-  FnOFetcher.fetch_option_chain(ticker)     → near-month rows only (sorted chronologically)
-  FnOAnalyzer.analyze(chain, price, ...)    → FnOSnapshot(pcr, max_pain, oi_buildup, atm_strike)
-  PredictionEnvelope.fno_snapshot = snap
-
-During expiry week in daily_review.py:
-  if is_fno_expiry_week(review_date):
-    fno_ctx_str = envelope.fno_snapshot.to_context_string()
-    market_context += fno_ctx_str   # injected into FeedbackAgent
-
-FnOSnapshot.to_context_string() example:
-  [F&O SNAPSHOT — 2026-05-01]
-    PCR: 1.82 → bearish (heavy put writing)
-    Max Pain: ₹1900 (current: ₹1950, deviation: +2.6%)
-    OI Buildup: SHORT
-```
-
-**Test files:**
-- `tests/unit/intelligence/rl/test_fno_expiry.py` — 25 tests (expiry date computation, expiry week boundary, SeasonalCalendar overlay)
-- `tests/unit/intelligence/fno/test_fno_analyzer.py` — 33 tests (PCR, max pain, OI buildup, ATM strike, to_context_string)
-- `tests/unit/intelligence/rl/test_offmarket.py` — 20 tests (block deal filtering, direction logic, context string format, store round-trip)
-
-| Calendar updater | `core/intelligence/rl/calendar_updater.py` |
-
----
-
-## RL Store Schemas — Quick Reference
-
-> Full schemas in `src/backend/shared/schemas/feedback.py`. Serialised by `core/intelligence/rl/stores/prediction_store.py`.
-
-### File layout
-```
-data/predictions/{sector}/{TICKER}/
-├── {TICKER}_{YYYY-MM}_prediction_envelope.json   ← monthly, reset each cycle
-├── {TICKER}_{YYYY-MM}_daily_feedback_log.json    ← monthly, reset each cycle
-├── {TICKER}_agent_weight_memory.json             ← persistent across all cycles
-├── {TICKER}_learning_ledger.json                 ← persistent across all cycles
-└── {TICKER}_dossier.json                         ← persistent — knowledge layer (§23)
-```
-
-### FeedbackEntry key fields (daily_feedback_log.json)
-
-| Field | Type | Purpose |
-|---|---|---|
-| `date` | `str` ISO | Trading day under review |
-| `predicted_close` / `actual_close` | `float` | Core comparison pair |
-| `price_error_pct` | `float` | `(actual - predicted) / predicted * 100` |
-| `direction_correct` | `bool` | Primary WeightAdapter hit-rate signal |
-| `regime_label` | `str` | Market regime at time of review (NORMAL / RISK_OFF / MACRO_CRISIS) |
-| `volume_vs_20d_avg` | `float \| None` | `>2.0` = institutional; `<0.5` = noise |
-| `miss_analysis` | `MissAnalysis \| None` | Root-cause from FeedbackAgent |
-| `revised_context` | `RevisedContext \| None` | Forward watch_signals, headline |
-| `thesis_review` | `ThesisReview \| None` | Set only on >2% error or direction_flip |
-| `lessons_generated` | `list[str]` | Lesson IDs added to ledger |
-| `event_tags` | `list[str]` | Static-tagger EVENT_TAGS for the day — drives same-day claim matching (§23) |
-
-### MissType penalty multipliers
-
-| Miss type | Penalty | Rationale |
-|---|---|---|
-| `data_gap` / `data_stale` / `external_shock` | 0.0× | Not model's fault |
-| `timing` | 0.5× lag-scaled | Right direction, wrong timing |
-| `magnitude` | 0.25× | Right direction, wrong size |
-| `model_bias` / `direction_flip` | 1.0× | Structural failure |
-| `llm_unavailable` | 0.0× | LLM down — degraded output, no penalty applied |
-
-### market_context_today — what FeedbackAgent receives (Step 4)
-
-As of 2026-05-21: combined from two sources per ticker per day:
-
-```
-Serper get_news_context(ticker, days=2)       → editorial reaction, market news
-NseIndiaApi announcements(ticker, days=2)     → official NSE filings (results, SEBI, actions)
-
-Combined → FeedbackAgentInput.market_context_today
-```
-
-Prior to fix (pre-2026-05-21): `get_news_context` import was broken — FeedbackAgent always received `"Market context unavailable."` → all lessons were generated without real context. Fixed in error-handling audit commit `fix(news): log DEBUG on date parse failure`.
-
-### ConvictionStreak
-
-After `RL_STREAK_WARNING_THRESHOLD` (default 8) consecutive same-direction verdicts: inject warning block into FeedbackAgent prompt. `reversion_prior` formula: `min(streak_days × 0.02, 0.30)` applied as confidence discount.
-
-### Error Handling (2026-05-21)
-
-| Issue | Fix |
+| Method and path | Effect |
 |---|---|
-| `_write_json()` OSError leaves orphaned `.tmp` | Cleaned up in `finally` block; raises `RuntimeError` |
-| `_read_json()` corrupt JSON | Narrowed to `JSONDecodeError\|OSError`; logs ERROR, returns `None` |
-| `FeedbackAgent.run()` LLM crash | Returns `FeedbackAgentOutput(miss_type="data_gap")` — daily review does not crash |
+| `GET` | The list, with sector and enabled flag. |
+| `PUT` | Replace the whole list; each sector must be an enabled sector. |
+| `POST /{sym}` | Add a ticker and generate its envelope in the background. The sector registry's answer wins over the requested sector, except when the registry only defaulted to automobile. |
+| `POST /{sym}/generate-envelope` | Generate an envelope now, for a mid-month addition. |
+| `PATCH /{sym}/toggle` | Enable or disable; history is kept. |
+| `DELETE /{sym}` | Remove and **delete** `data/predictions/<sector>/<sym>/`. |
+
+The scheduler reads the list on every run, so changes need no redeploy. A
+retired ticker is disabled, never removed, so its history survives.
+
+**RL monitor** (`/ui/rl`): `tickers`, `summary/{ticker}`,
+`predictions/{ticker}`, `weights/{ticker}` and `misses/{ticker}`. The
+summary and weights views show the learning mode; the weights view also
+shows the live decision weights and the latest observation.
+
+## 21. Static versus LLM boundary
+
+Model tiers come from `llm:` in config.yaml, each overridable by environment:
+fast `qwen/qwen3.6-flash`, reasoning `z-ai/glm-5.2`, bulk
+`deepseek/deepseek-v4-flash`. Production's values are not recorded here.
+
+| Component | File | Kind | Notes |
+|---|---|---|---|
+| `RegimeDetector.detect` | `core/intelligence/regime/detector.py` | Static | Section 13 |
+| `update_sticky_regime` | `core/intelligence/regime/state.py` | Static | Section 27.1 |
+| `WeightAdapter.update` | `core/intelligence/rl/agents/weight_adapter.py` | Static | Section 9 |
+| `classify_direction`, `is_direction_correct` | `core/intelligence/rl/agents/feedback_agent.py` | Static | Section 5, step 3 |
+| `merge_lessons_into_ledger`, propagation, decay, cleanup | `feedback_agent.py`, `stores/ledger_propagator.py` | Static | Section 11 |
+| Conviction streak | `core/intelligence/rl/conviction/tracker.py` | Static | Section 12 |
+| Seasonal calendar and validator | `core/intelligence/seasonal/` | Static | Section 14 |
+| Monte Carlo paths, confidence decay | `rl/algorithms/price_interpolator.py` | Static | Section 4 |
+| `tag_events`, `apply_lesson_emphasis` | `schemas/feedback.py`, `rl/algorithms/lesson_emphasis.py` | Static | Section 23.3 |
+| `to_digest`, `open_guidance` | `src/backend/shared/schemas/dossier.py` | Static | Section 23.1 |
+| `FeedbackAgent.run` | `rl/agents/feedback_agent.py` | LLM, reasoning tier, temperature 0.3 | Degraded output on failure |
+| `ThesisReviewer.review` | `rl/agents/thesis_reviewer.py` | LLM, reasoning tier, temperature 0.1 | Intact thesis on failure |
+| `PriceInterpolator.get_profile` | `rl/algorithms/price_interpolator.py` | LLM, bulk tier | Static fallback |
+| `PromptEnhancer` fallback queries | `core/intelligence/prompt_enhancer/enhancer.py` | LLM, bulk tier | Only when no template matches |
+| `DossierCurator.run`, `distill_dossier` | `rl/agents/dossier_curator.py` | LLM, bulk tier, temperature 0.2 | Static merge enforces every bound |
+| `EventIngestor` | `rl/agents/event_ingestor.py` | LLM, bulk tier | Same merge as the curator |
+| `QuestionResearcher` | `rl/agents/question_researcher.py` | LLM, bulk tier | Section 23.2 |
+| `run_control_lane_step` | `rl/agents/control_lane.py` | LLM, `rl.control_lane_model` or reasoning tier | Section 25 |
+| `run_preopen_check` | `rl/workflows/preopen_check.py` | LLM, fast tier | Section 27.3 |
+
+## 22. Limits and planned work
+
+- **Label and timing.** The graded direction is error direction; hard-bind
+  can grade against a verdict computed after the outcome; and a revised or
+  re-forecast row replaces the evidence behind the earlier decision.
+  **Planned:** SA-012, SA-013 and SA-014.
+- **Weight bounds and idempotency.** Final weights can leave their bounds,
+  and a second review of the same session updates learning state again.
+  **Planned:** SA-015.
+- **Credit assignment.** Blame goes to one dimension per miss, and shared
+  lessons inherit that attribution. **Planned:** SA-016, SA-017.
+- **Reference dates.** The adapter's windows count back from the run date,
+  and the regime and company news are current values, so a backfill of an
+  old session is graded with today's context.
+- **Coverage.** The pre-open check scans the four native sectors' built-in
+  ticker lists, not the managed list (section 27.3). The calendar ignores
+  seed validation (section 14). The unified analyst does not read prompt
+  enhancements, and no writer records the miss events that the
+  recency-weighted ranking reads (section 15).
+- **Control lane.** It is scored on the same error-direction label, so its
+  edge measures the same defect (section 25).
+- **Evidence of benefit.** No measurement here shows that adaptation beats
+  the defaults. **Planned:** matched cohorts, effective samples and
+  calibration checks (SA-018 to SA-021), prospective experiments (SA-022),
+  lessons on probation (SA-023) and a shadow learner (SA-043).
 
 ---
 
-## 23. Knowledge Layer — Ticker Dossier + Executable Claims
+## 23. Knowledge Layer — Ticker Dossier and Executable Claims
 
-> **Status: IMPLEMENTED 2026-06-11** — plan executed; see tests
-> `tests/unit/intelligence/rl/test_dossier_*.py`, `test_event_tags.py`,
-> `test_lesson_emphasis.py`, `test_forecast_emphasis.py`,
-> `tests/unit/pipeline/test_agent_dossier_injection.py`,
-> `tests/unit/api/test_chat_dossier_tool.py`.
-> Spec: `docs/superpowers/specs/2026-06-11-ticker-dossier-knowledge-layer-design.md`
-> Plan (18 TDD tasks): `docs/superpowers/plans/2026-06-11-ticker-dossier.md`
+The numeric loop calibrates weights. The knowledge layer keeps what the
+system learns about each company: its story, its guidance, how its price
+responds to recurring triggers, and open questions. It also gives lessons a
+way to act on matching days.
 
-### Why
+### 23.1 TickerDossier
 
-The numeric loop (Steps 0–9) calibrates *weights* but accumulated no usable *knowledge*:
-lesson `rule` text was never executed (G10), nothing was learned on hit days (G11), and no
-entity-level memory existed — the chatbot answered with none of what the RL loop had
-learned (G12). The knowledge layer fixes all three without touching the WeightAdapter
-math, regime multipliers, or the June-10 phase (eval harness / calibration reward /
-forgetting), which ships separately.
-
-### 23.1 TickerDossier — the 5th memory file
-
-`data/predictions/{sector}/{TICKER}/{TICKER}_dossier.json` (PERMANENT). Schema in
-`src/backend/shared/schemas/dossier.py`:
+`data/predictions/<sector>/<TICKER>/<TICKER>_dossier.json`, schema in
+[dossier.py](../src/backend/shared/schemas/dossier.py):
 
 | Section | Content | Maintained by |
 |---|---|---|
-| `business_summary` | 2–4 sentences | weekly distillation |
-| `current_thesis` / `thesis_since` | stance + why | daily curator (on real evidence only) |
-| `response_signatures[]` | quantified patterns: trigger_tags → "closes −1.5% to −2.5% within 2 sessions of crude > $90", occurrences/contradictions/confidence/evidence_dates | curator (confirm/create/contradict) |
-| `guidance[]` | management guidance with status open/met/missed/withdrawn | curator + distillation |
-| `recurring_catalysts[]` | e.g. "FADA dispatch ~10th monthly, ±1% same-day" + hit_rate | curator adds; distillation rates |
-| `flow_notes` | FII/DII/bulk-deal trend, 1–3 sentences | curator |
-| `open_questions[]` | raised/resolved analyst questions | curator |
-| `observations[]` | episodic buffer, max 30, max 3/day by materiality, each tagged + linked to hit/miss | curator |
+| `business_summary` | 2–4 sentences | Event ingestion, distillation |
+| `current_thesis`, `thesis_since` | Stance and reason | Curator |
+| `response_signatures[]` | Trigger tags → typical price response, with occurrences, contradictions, confidence and evidence dates | Curator (confirm, create, contradict), distillation |
+| `guidance[]` | Management guidance with date, source and status (open, met, missed, withdrawn); the newest 20 | Curator, event ingestion, distillation (withdraws) |
+| `recurring_catalysts[]` | Name, timing, effect and hit rate; up to 10 | Curator adds, distillation rates |
+| `flow_notes` | Institutional flow trend | Curator, distillation |
+| `open_questions[]` | Questions with research attempts and answers; the newest 12 | Curator raises, research loop answers |
+| `observations[]` | Dated facts with tags, materiality, hit/miss link and source; the newest 30 | Curator, event ingestion, research loop |
+| `ingested_event_keys[]` | Watermark of digested NSE events; the newest 40 | Event ingestion |
 
-`to_digest(max_chars)` renders a markdown digest (whole sections, priority order:
-business → thesis → signatures → guidance → catalysts → flows → questions → last 5
-observations). A signature with `contradictions ≥ occurrences` is dead: excluded from
-digests, dropped at distillation. Observations and open guidance dated after the digest's
-date (`as_of`, default today) are left out, and the last 5 observations are chosen from the
-rest: older rows written by event ingestion can carry a future board-meeting date, and
-stored rows are not rewritten. Open guidance comes from
-`open_guidance(as_of)`: open items dated on or before `as_of`, in stored order; the
-digest lists the last 5. The morning brief's earnings-watch line takes the last item of
-`open_guidance` as of the day before the brief, because the brief goes out at 08:50,
-before any weekday dossier writer runs.
+A signature is dead once its contradictions reach its occurrences: it leaves
+the digest and is dropped at distillation.
 
-### 23.2 DossierCurator — Step 8.5, EVERY day
+**Dates.** No writer dates a row after the run that wrote it. The curator
+dates rows with the reviewed session; event ingestion with the event's own
+day, and only for events on or before the scan (section 26). Older rows
+written before that rule can still carry a future board-meeting date, and
+stored rows are not rewritten. So every reader filters by date instead:
 
-LLM step (qwen, temp 0.2, json_object, ≤900 tokens) after Step 8 persist. Input: the
-day's full `market_context`, predicted vs actual, FeedbackAgent output, current digest.
-**Runs on hit days too** — prompt explicitly demands "record WHAT WORKED and which
-predicted catalysts materialised" on correct days.
+- `open_guidance(as_of)` returns open items dated on or before `as_of`, in
+  stored order, the latest learned last;
+- `to_digest(max_chars, as_of)` renders, in priority order and whole sections
+  only: business, thesis, the 8 most confident live signatures, the last 5 of
+  `open_guidance(as_of)`, up to 6 catalysts, flows, up to 4 open questions,
+  and the last 5 observations dated on or before `as_of`. `as_of` defaults to
+  today.
 
-LLM proposes; **static merge enforces every bound**: tag whitelist (EVENT_TAGS), 3
-observations/day cap, 30-observation buffer, confirm = occurrences+1 / confidence+0.05
-(cap 0.95), contradict = confidence−0.10, guidance/catalyst/question list caps.
-Contract: never raises — any failure leaves the dossier untouched (same safety model as
-ThesisReviewer).
+**The morning brief.** Its earnings-watch line for a holding with results in
+the next 3 trading days is the last item of `open_guidance` as of the day
+**before** the brief's date. The brief goes out at 08:50, before any weekday
+dossier writer runs (the curator runs inside the 16:30 review; event
+ingestion and research run on Saturdays). So a row dated the brief's own day
+can only be an old future-dated one, and the earnings window includes the
+meeting day.
 
-**Weekly distillation** (`distill_dossier`, hooked into the existing
-`ledger_cleanup_weekly` scheduler job): LLM pass folds observations older than 7 days
-into durable sections (episodic → semantic), fills catalyst hit rates, drops dead
-signatures, marks stale guidance, bumps `version`. Static fallback when the LLM is
-down: dead-signature drop + buffer cap only.
+**Example:** a held stock has results on Tue 27 Oct. Its dossier holds open
+guidance dated 15 Sep and an old item dated 27 Oct. The briefs of Mon 26 and
+Tue 27 Oct both show the 15 Sep item. The cost of the rule: a brief triggered
+by hand after the 16:30 review leaves out that day's new guidance until the
+next day.
 
-### 23.3 Executable claims — lessons that fire
+### 23.2 Curator, distillation and research
 
-`EVENT_TAGS` controlled vocabulary (17 tags: `central_bank_event, fii_flow, crude_price,
-currency, earnings_event, guidance_change, sector_policy, technical_pattern, seasonal,
-credit_event, supply_chain, regulatory, global_macro, expiry_week, block_deal, monsoon,
-budget_event`) in `src/backend/shared/schemas/feedback.py`.
+**Daily curator** (step 8.5, [dossier_curator.py](../core/intelligence/rl/agents/dossier_curator.py)).
+One bulk-tier call (temperature 0.2, at most 900 tokens) reads the session's
+outcome, the miss analysis, the day's context and the current digest. It runs
+on hit days too, and records what worked. The LLM proposes; a static merge
+enforces every bound:
 
+- at most 3 new observations a day, chosen by materiality, with tags from
+  `EVENT_TAGS` only; the buffer keeps the newest 30;
+- confirming a signature adds an occurrence and +0.05 confidence (cap 0.95);
+  contradicting it subtracts 0.10;
+- guidance, catalyst and question lists keep their caps (section 23.1);
+- any failure leaves the dossier unchanged.
+
+**Weekly distillation**, inside `ledger_cleanup_weekly` (Mon 03:30). One
+bulk-tier pass folds old observations into durable sections, refreshes the
+business summary and flows, rates catalysts, creates or drops signatures,
+withdraws stale guidance, marks resolved questions and bumps the version.
+Without the LLM, only dead signatures are dropped and the buffer is capped.
+
+**Research loop** (`research_loop_weekly`, Sat 11:00,
+[question_researcher.py](../core/intelligence/rl/agents/question_researcher.py)).
+Up to 2 open questions per ticker, fewest attempts first: one news search
+each, and one Tavily page per run as a fallback. One batched bulk-tier call
+judges them. An answered question is resolved and adds an observation whose
+source is the search result behind it; a partial finding adds an
+observation; anything else records an attempt. A question unanswered after
+3 attempts is closed as expired. The research loop writes no guidance.
+
+### 23.3 Executable claims
+
+`EVENT_TAGS` is a controlled vocabulary of 17 tags: `central_bank_event`,
+`fii_flow`, `crude_price`, `currency`, `earnings_event`, `guidance_change`,
+`sector_policy`, `technical_pattern`, `seasonal`, `credit_event`,
+`supply_chain`, `regulatory`, `global_macro`, `expiry_week`, `block_deal`,
+`monsoon` and `budget_event`.
+
+```text
+day tags = tag_events(context)        keyword map; short keywords match whole words only
+         ∪ calendar_day_tags(date)    monsoon (Jun–Sep), budget (25 Jan–7 Feb),
+                                      festive (Oct–Nov), expiry week
+
+a lesson fires when: still valid, trigger_tags ∩ day tags ≠ ∅,
+                     effective confidence ≥ 0.45
+each firing lesson:  +0.03 to its prioritise_agents, −0.03 to its discount_agents
+per dimension cap:   ±0.06 per day; scores stay within [0, 1]
 ```
-Day tags  = tag_events(market_context)          ← static keyword map, deterministic
-          ∪ calendar_day_tags(date)             ← monsoon / budget / festive / expiry_week
-Persisted on FeedbackEntry.event_tags (static tags only — LLM-independent).
 
-Lesson.trigger_tags ∩ day_tags ≠ ∅  AND  eff_confidence ≥ RL_LESSON_MATCH_MIN_CONF (0.45)
-  → prioritise_agents += RL_LESSON_EMPHASIS_DELTA (0.03)
-  → discount_agents   −= RL_LESSON_EMPHASIS_DELTA
-  capped at ±RL_LESSON_EMPHASIS_CAP (0.06) per agent per day
-```
+Emphasis applies to a row's agent scores in step 7b (today's tags) and at
+month start (each row's calendar tags). Tagged lessons skip the older
+category micro-adjustment, so nothing counts twice. Both are no-ops in
+`observe` mode. The feedback entry's `claims_fired` lists the firing lessons
+in `adapt` mode; the scorecard splits accuracy by it.
 
-Applied in Step-7 revision (day tags) and month-start `_build_daily_forecasts`
-(calendar tags per future day). Tagged lessons are EXCLUDED from the legacy
-category-based ±0.01 micro-adjustment (no double counting); untagged legacy lessons
-keep the old path. No numeric deltas are ever stored on a lesson — they'd go stale as
-weights evolve. Behind `RL_CLAIMS_ENABLED` (harness ablation key `executable_claims`).
+**Why tags, not text.** A lesson's free-text rule was never executed. A tag
+is deterministic and independent of the LLM, so the same day always fires the
+same lessons, and a stored number would go stale as weights move.
 
-### 23.4 Consumption — one brain
+### 23.4 Consumption
 
-| Surface | Mechanism |
+| Reader | What it gets |
 |---|---|
-| 8 forecast agents | `BaseAgent` lazily loads `to_digest(1500)` per ticker and appends `[ACCUMULATED TICKER KNOWLEDGE]` to the system prompt — applies to /analyse, chat `run_agent_analysis`, forecast and review paths alike |
-| Chat | new `get_ticker_dossier(ticker)` tool (digest ≤2000 chars); deep-dive routing includes it |
-| Learned weights | orchestrator weights scoped per ticker (`set_aggregator_weights` / `_resolve_weights_for`) — fixes instance-cache reuse across tickers |
-| Chat RL fixes | `_ctx_rl_learning` sector no longer hardcoded "automobile"; `wm.learned_weights` attr bug → `current_weights` |
-| Ops | `python -m services.scheduler.run_schedule dossier-status` — size/version/staleness per ticker |
+| Unified analyst | The bundle's `dossier` section: the 1,500-character digest, once per analysis, read from the analysis graph's store |
+| Legacy per-dimension agents | The same digest appended to each agent's system prompt |
+| Curator | The 2,500-character digest |
+| Chat | The `get_ticker_dossier(ticker)` tool: a 2,000-character digest from the first sector directory holding that ticker's dossier |
+| Morning brief | The earnings-watch line (section 23.1) |
+| Operators | `run_schedule dossier-status`: size, version and staleness per ticker |
 
-### 23.5 Cost & safety
+### 23.5 Cost and safety
 
-+1 LLM call/ticker/day (curator) and +1/ticker/week (distillation). All knowledge-layer
-steps are non-fatal and flag-gated; `RL_DOSSIER_ENABLED=False` + `RL_CLAIMS_ENABLED=False`
-is byte-identical to the pre-§23 system. All writes atomic via `_write_json`.
+The curator adds one LLM call per ticker per review, distillation one per
+ticker per week, and the research loop one per ticker per week. Every
+step is non-fatal and behind its flag; with `rl.dossier_enabled` and
+`rl.claims_enabled` off, the loop runs without the knowledge layer. All
+writes go through the store's atomic write.
 
-### 23.6 Explicitly out of scope
+### 23.6 Out of scope
 
-No embeddings/vector retrieval (tag matching first), no fine-tuning, no parametric RL,
-no WeightAdapter/regime/conviction changes, no dossier UI (chat tool only).
+No embeddings or vector retrieval (tag matching comes first), no
+fine-tuning, and no dossier screen: the dossier is read through the chat
+tool, the digest and the brief.
 
----
+## 24. Measurement harness
 
-## 24. Measurement Phase (June-10 spec) — IMPLEMENTED
+[core/intelligence/rl/eval/](../core/intelligence/rl/eval/) holds a
+read-only replay harness and two adapter extensions.
 
-> **Status: IMPLEMENTED 2026-06-11.**
-> Spec: `docs/superpowers/specs/2026-06-10-rl-intelligence-phase-design.md`
-> Code: `core/intelligence/rl/eval/` (`harness.py`, `synthetic.py`, `metrics.py`, `run_eval.py`)
+- **Eval harness:** `python -m core.intelligence.rl.eval.run_eval
+  [--synthetic]`. It replays recorded envelopes and feedback, or a synthetic
+  history, into direction accuracy, Brier score, a reliability table, band
+  coverage and mean absolute error, per ticker and per sector. It never
+  writes under `data/predictions`. Its ablation keys (`calibration_reward`,
+  `forgetting`, `executable_claims`) produce a before/after delta on
+  synthetic data only; recorded history cannot be re-run.
+- **Calibration reward** (section 9, stage 1): a dimension also earns credit
+  when its own lean was right, independent of the ensemble verdict.
+- **Forgetting:** lesson archiving with resurrection (section 11),
+  recency-weighted past returns for the forecast profile (half-life 3
+  months), and a recency-weighted miss ranking (half-life 21 days). The
+  ranking reads structured miss events, which no writer records, so it has
+  no effect (section 15).
 
-- **Eval harness — read-only CLI**: `python -m core.intelligence.rl.eval.run_eval --synthetic`
-  (or no flag for real recorded `data/predictions/` history) loads/replays/aggregates
-  prediction + feedback logs into `direction_accuracy`, `brier_score`,
-  `reliability_table`, `band_coverage`, and `mae_pct`, per-ticker and per-sector. Never
-  writes to `data/predictions`. `ABLATION_REGISTRY` covers `calibration_reward`,
-  `forgetting`, and `executable_claims` — synthetic runs report a before/after delta;
-  real runs log a no-op warning (recorded history can't be re-run).
-- **Per-agent calibration reward** (Component 2): blend flag `RL_CALIBRATION_REWARD_ENABLED`
-  (+ `RL_CALIBRATION_WEIGHT`) — an agent earns calibration credit when its own
-  `predicted_agent_scores` lean matches the realized direction, blended into the
-  WeightAdapter hit_rate. `False` is byte-identical to pre-Component-2 behavior.
-- **Forgetting trio** (Component 3): flag `RL_FORGETTING_ENABLED` gates (a) recency-weighted
-  miss ranking (`MISS_RECENCY_HALFLIFE_DAYS`, `MISS_PENALIZABLE_DISCOUNT`), (b) stale-lesson
-  archival with resurrection (`ARCHIVE_CONF_FLOOR`, `ARCHIVE_EFFECTIVENESS_FLOOR`,
-  `ARCHIVE_STALE_DAYS`), and (c) recency-weighted feedback cycle aggregation
-  (`FEEDBACK_HALFLIFE_MONTHS`). `False` falls back to the prior raw-counter / unweighted
-  behavior throughout.
+Each extension has a flag (section 19); switching one off restores the plain
+counters.
 
-See §11 for the full settings reference (rows tagged §24).
+## 25. Monthly Scorecard, Baseline Duel and Learning Evidence
 
----
+**Control lane** (step 10, [control_lane.py](../core/intelligence/rl/agents/control_lane.py)).
+A bare model gets the session's close and the same context string the review
+assembled: no dimensions, weights, lessons or dossier. It predicts the next
+session's direction (UP, DOWN or FLAT, with confidence). The next review
+scores yesterday's call. Calls are stored in the month they predict for, in
+`<TICKER>_<YYYY-MM>_control_log.json`. The control is scored against the
+feedback entry's `actual_direction`, which measures the actual close against
+StockAgent's *predicted* close. Its edge therefore inherits the grading
+defect: it is not a comparison of market-direction calls.
 
-## 25. Monthly Scorecard + Baseline Duel (Phase 1) — IMPLEMENTED
+**Naive baselines** ([baselines.py](../core/intelligence/rl/eval/baselines.py)):
+persistence (repeat the previous session's direction) and always-up, on the
+same label.
 
-> **Status: IMPLEMENTED 2026-06-12.**
-> Spec: `docs/superpowers/specs/2026-06-12-monthly-scorecard-baseline-duel-design.md`
-> Code: `core/intelligence/rl/eval/scorecard.py`, `eval/baselines.py`,
-> `core/intelligence/rl/agents/control_lane.py`, `core/config/prompts/shared/control_lane.py`
+**Monthly scorecard** ([scorecard.py](../core/intelligence/rl/eval/scorecard.py)),
+`scorecard_monthly` on the calendar first at 02:00 for the previous month,
+or `run_schedule scorecard [--month YYYY-MM] [--ticker …]`. Per ticker and
+pooled: agent, control, persistence and always-up lanes; edges over the
+control and persistence; band coverage; error; the claim-day split; dossier
+health; and deltas from the previous month. Saved to
+`data/eval/scorecards/<YYYY-MM>_scorecard.json`.
 
-Makes month-over-month improvement — and the edge over a bare frontier model — a measured
-number instead of a claim.
+**Learning evidence report** ([learning_evidence.py](../core/intelligence/rl/eval/learning_evidence.py)),
+run inside the same job, emailed, and saved under
+`data/eval/learning_evidence/`; on demand with
+`python -m core.intelligence.rl.eval.learning_evidence --month YYYY-MM
+[--months-back N] [--email]`. It replays each logged day's frozen agent
+scores under three weightings: the adapted weights in force before that day,
+the base weights and uniform weights. Each goes through the same
+composite-to-verdict map. It reports how often the verdicts diverge and the
+paired lift with an exact sign test, plus credit degeneracy, weight entropy,
+per-lesson lift and a Brier decomposition. The verdict is one of
+`LEARNING_INERT`, `LEARNING_ACTIVE_BENEFICIAL`, `LEARNING_ACTIVE_HARMFUL`,
+`LEARNING_ACTIVE_UNPROVEN` or `INSUFFICIENT_DATA`. This is a retrospective
+replay on the existing label, not a prospective experiment.
 
-- **Control lane (the duel)** — daily review **Step 10** (flag `RL_CONTROL_LANE_ENABLED`,
-  never fatal): a bare LLM (`CONTROL_LANE_MODEL`, empty → `LLM_MODEL_REASONING`) gets
-  yesterday's close + the same already-fetched `market_context` — no agents, no learned
-  weights, no lessons, no dossier — and predicts the next session (UP/DOWN/FLAT +
-  confidence, strict JSON). Yesterday's control call is scored against
-  `FeedbackEntry.actual_direction` in the same step. Stored per cycle:
-  `{TICKER}_{YYYY-MM}_control_log.json` (month-boundary predictions land in the predicted
-  date's cycle). Fairness invariant: the control predicts day D+1 during day D's review —
-  the same information and timing as the system's Step-7 revision, so the delta isolates
-  the architecture. Cost: +1 LLM call/ticker/day, zero new fetches.
-- **Naive baselines** (`eval/baselines.py`, pure, backfillable): persistence
-  (predict D = D−1's actual direction), always-up, always-down.
-- **Claim audit**: `FeedbackEntry.claims_fired` records the lesson_ids whose claims fired
-  in Step-7 revision (via `matching_lessons()`, the shared gate extraction that
-  `apply_lesson_emphasis` also uses) — the scorecard splits accuracy on claim-fired days
-  vs other days.
-- **Monthly scorecard** (`eval/scorecard.py`): per-ticker + pooled-aggregate lanes (agent /
-  control / persistence / always-up), edges (`agent − control`, `agent − persistence`),
-  band coverage, MAE, claim split, dossier health, and deltas vs the previous month's
-  persisted scorecard. Saved to `{SCORECARD_DIR}/{YYYY-MM}_scorecard.json` (PERMANENT time
-  series). On demand: `python -m services.scheduler.run_schedule scorecard
-  [--month YYYY-MM|current] [--ticker ...]`; scheduled: `scorecard_monthly` job
-  (1st, 02:00 IST, flag `SCORECARD_ENABLED`).
+## 26. Event-Driven Dossier Ingestion
 
-Settings: `RL_CONTROL_LANE_ENABLED` (True), `CONTROL_LANE_MODEL` (""), `SCORECARD_ENABLED`
-(True), `SCORECARD_DIR` (`data/eval/scorecards`). All flag-off paths byte-identical.
+[event_ingestor.py](../core/intelligence/rl/agents/event_ingestor.py),
+`event_ingest_weekly` (Sat 10:00) or `run_schedule ingest-events [--ticker …]
+[--days N]`.
 
-- **Learning Evidence Report** (`eval/learning_evidence.py`, 2026-07-19, AUD-116): the
-  self-ablation the scorecard never runs — replays every logged day's frozen
-  `predicted_agent_scores` under ADAPTED (weights active strictly before that date) vs
-  frozen BASE vs UNIFORM weights through the shadow-lane verdict map, and reports
-  divergence rate + paired lift with an exact sign test, plus credit-degeneracy index,
-  weight entropy / poverty-trap diagnostics, per-lesson fired-vs-unfired lift (harmful
-  flag), Brier decomposition, and shadow-lane actuation stats. Verdict:
-  `LEARNING_INERT / ACTIVE_BENEFICIAL / ACTIVE_HARMFUL / ACTIVE_UNPROVEN /
-  INSUFFICIENT_DATA`. Runs inside `scorecard_monthly` (saved to
-  `LEARNING_EVIDENCE_DIR` = `data/eval/learning_evidence`, emailed) and on demand:
-  `python -m core.intelligence.rl.eval.learning_evidence --month YYYY-MM
-  [--months-back N] [--email]`. First run over May+Jun 2026 prod data:
-  **LEARNING_INERT — 0/87 replayed days diverged**. Scientific context and the
-  fix roadmap live in `docs/audit/ADAPTIVE_LEARNING_REVIEW.md` (gaps G1–G10).
+- **Scan (static).** NSE announcements and board meetings within the last 8
+  days whose subject names results, a con-call, a transcript, guidance, an
+  investor presentation, a dividend or similar. Only events dated on or
+  before the scan qualify. An event announced for a later date is skipped,
+  left out of the watermark and the 3-event cap, and digested by the first
+  scan on or after its date. The watermark key is the event's date and the
+  first 60 characters of its description.
+- **Enrich.** The announcement text plus one Tavily page (skipped without a
+  key), at most 6,000 characters. No news-search spend.
+- **Digest.** One bulk-tier call per event returns the same contract as the
+  curator, applied through the same merge, dated with the event's day. An
+  optional `business_summary_update` refreshes the business summary. A
+  failed event is skipped; nothing raises.
 
----
+At most 3 LLM calls and 3 Tavily pages per ticker per week, usually none.
 
-## 26. Event-Driven Dossier Ingestion (Phase 3) — IMPLEMENTED
+## 27. Living Envelope
 
-> **Status: IMPLEMENTED 2026-06-12.**
-> Spec: `docs/superpowers/specs/2026-06-12-event-ingestion-design.md`
-> Code: `core/intelligence/rl/agents/event_ingestor.py`, `core/config/prompts/shared/event_ingestor.py`
+A monthly envelope built once on the 1st cannot react to a broken thesis or
+a market shock: step 7b changes confidence only, never prices or direction.
+The Living Envelope lets the loop re-underwrite the rest of the month,
+bounded and evidence-gated, while every graded session is still graded
+against the row that was active when it was predicted.
 
-The dossier learns from corporate *events*, not just the daily tape — the path to
-"knows the company like an employee."
+### 27.1 Sticky regime
 
-- **Scan (STATIC, free)**: `find_qualifying_events` filters the existing NSE
-  announcements/board-meetings feed by keyword (results, concall, transcript, guidance,
-  investor presentation, dividend, …) within `EVENT_INGEST_LOOKBACK_DAYS` (8). Watermark
-  `TickerDossier.ingested_event_keys` ("{date}|{subject[:60]}", FIFO cap 40) prevents
-  re-ingestion. Only events dated on or before the scan date qualify: every row a
-  digest writes carries the event's date, so a board meeting announced for a later date is
-  skipped, left out of the watermark and the 3-event cap, and digested by the first scan on or
-  after its date. Fundamentals/earnings agents still see upcoming meetings in the live NSE feed.
-- **Enrich (capped)**: per event, the announcement text + ONE Tavily full-page extraction
-  (cached client; silently skipped without `TAVILY_API_KEY`), bundle ≤
-  `EVENT_INGEST_TEXT_MAX_CHARS` (6000). No Serper spend.
-- **Digest (LLM)**: `EventIngestor` emits the SAME JSON contract as the daily curator and
-  applies it through the SAME `merge_curator_output` bounds (extracted from
-  `DossierCurator._merge` — one merge implementation). Extra key
-  `business_summary_update` refreshes the business summary (≤500 chars). Never raises;
-  per-event failures skip that event only.
-- **Surfaces**: weekly `event_ingest_weekly` job (Sat 10:00 IST, flag
-  `RL_EVENT_INGEST_ENABLED`) + CLI `python -m services.scheduler.run_schedule
-  ingest-events [--ticker ...] [--days N]`.
-- **Cost ceiling**: ≤3 LLM + ≤3 Tavily calls per ticker per week; typically 0 on
-  non-event weeks. Live-verified: 2 real MARUTI con-call events ingested with quantified
-  guidance ("~1% growth FY27"); rerun ingested 0 (watermark).
+[state.py](../core/intelligence/regime/state.py) keeps one market-wide
+label in `data/predictions/_regime_state.json`:
 
-Settings: `RL_EVENT_INGEST_ENABLED` (True), `EVENT_INGEST_LOOKBACK_DAYS` (8),
-`EVENT_INGEST_MAX_EVENTS_PER_SCAN` (3), `EVENT_INGEST_TEXT_MAX_CHARS` (6000).
+- only `RISK_OFF` (severity 1) and `MACRO_CRISIS` (2) are severe; every other
+  label is calm (0);
+- a severe label is entered immediately on its first detection;
+- while a severe label is sticky, each milder detection adds to a calm
+  streak, and 3 in a row (`regime.calm_days`) exit to the milder label; a
+  severe detection resets the streak;
+- a second call on the same day changes nothing;
+- with `rl.regime_sticky_enabled` off, the raw label passes through and
+  nothing is written. A missing or corrupt file starts fresh. Nothing raises.
 
----
+The daily review uses the sticky label for multipliers, the feedback entry
+and the `regime_flip` trigger. The paper lane reads the raw label and writes
+nothing. Forecast generation and re-forecasts use the raw detection for
+their Monte Carlo bands (section 4).
 
-## 27. Living Envelope (Phase 2.5) — IMPLEMENTED
+### 27.2 Shock-triggered re-forecast
 
-> **Status: IMPLEMENTED 2026-06-13.**
-> Spec: `docs/superpowers/specs/2026-06-13-living-envelope-design.md`
-> Code: `core/intelligence/regime/state.py`,
-> `core/intelligence/rl/workflows/generate_forecast.py` (`regenerate_envelope`),
-> `core/intelligence/rl/workflows/daily_review.py` (trigger block after Step 6),
-> `core/intelligence/rl/workflows/preopen_check.py`,
-> `core/intelligence/rl/stores/prediction_store.py` (`archive_envelope`)
+`regenerate_envelope(ticker, sector, reason, trigger, review_date)` in
+[generate_forecast.py](../core/intelligence/rl/workflows/generate_forecast.py):
 
-### Why
+- returns `None`, changing nothing, when the flag is off, the cycle has no
+  envelope, the month's cap (`rl.reforecast_max_per_month`, 2) is reached,
+  no rows remain after `review_date`, or any step fails;
+- copies the current envelope to `archived_envelopes/<YYYY-MM>_v<n>.json`
+  first;
+- runs a fresh analysis with the decision weights. An abstaining analysis is
+  recorded, and in `enforce` mode the re-forecast stops with the envelope
+  unchanged;
+- anchors new Monte Carlo paths on the latest close for the rows after
+  `review_date` only, keeping their dates and continuing the day numbers.
+  Rows on or before `review_date` are kept byte for byte;
+- updates the envelope's count, history, profile, learning mode, gate and
+  instrument. New rows carry their own stamps.
 
-The 30-day envelope was **frozen at month-start**: Monte Carlo price paths built once on
-the 1st with no mid-month regeneration trigger; Step-7 revision adjusted confidence only
-— never price path or direction, so a thesis broken by a macro shock (war, crude spike)
-limped to month-end as "NEUTRAL at 0.45" while the stock moved −6%; regime detection was
-ephemeral (a single calm day flipped MACRO_CRISIS straight back to NORMAL); and nothing
-inspected overnight news pre-open — the loop was entirely post-close. The weight layer
-(±0.05 step / ±0.15 drift caps, external_shock zero-penalty, calibration shock exclusion,
-20% rate-cap) was already shock-safe and is **unchanged**.
-
-Living Envelope makes the envelope a living document: an experienced analyst abandons a
-broken monthly thesis and re-underwrites. Bounded, evidence-gated, fully flag-gated;
-scoring honesty preserved — every prediction is scored against the envelope that was
-active when it was made.
-
-### 27.1 Component 1 — Sticky regime (market-level hysteresis)
-
-`core/intelligence/regime/state.py` adds a market-wide sticky layer on top of
-`RegimeDetector.detect()`'s raw daily label:
-
-```python
-@dataclass
-class RegimeState:
-    label: str           # NORMAL / RISK_OFF / MACRO_CRISIS / ...
-    since: str           # ISO date the sticky label was entered
-    calm_streak: int      # consecutive detections milder than the sticky label
-
-def update_sticky_regime(detected_label: str, today: str) -> RegimeState
-```
-
-- Persisted market-wide (one file, NOT per ticker): `data/predictions/_regime_state.json`.
-- Severity order: `NORMAL/RISK_ON/MOMENTUM_EXTENDED/OVERSOLD (0) < RISK_OFF (1) <
-  MACRO_CRISIS (2)` — only RISK_OFF/MACRO_CRISIS are "severe"; everything else is "calm".
-- A severe label is entered **immediately** on first detection (`since`/`calm_streak`
-  reset).
-- A milder detection while a severe label is sticky increments `calm_streak`; after
-  `RL_REGIME_CALM_DAYS` (default 3) consecutive milder detections the sticky label exits
-  to the milder detected label.
-- Any severe re-detection resets `calm_streak` to 0. Same-day repeat calls are
-  idempotent (tracked via an internal `_last_update` marker in the JSON, outside the
-  `RegimeState` dataclass contract).
-- Flag `RL_REGIME_STICKY_ENABLED` (default true). Disabled → raw label pass-through,
-  never touches disk. Corrupt/missing state file → start fresh from the detected label
-  (never raises).
-- Consumers: daily_review Step 0 now uses the STICKY label (not the raw daily one) for
-  regime-weight multipliers (Step 5.5); `regenerate_envelope` passes it through as
-  `regime_label` so Monte Carlo bands widen for the whole regenerated path.
-
-### 27.2 Component 2 — Shock-triggered re-forecast
-
-**Engine** — `regenerate_envelope(ticker, sector, reason, trigger, review_date=None) ->
-PredictionEnvelope | None` in `generate_forecast.py`:
-
-- Fresh full-pipeline run (same sector orchestrator + effective weights as the monthly
-  path) → new dimension scores/verdict → new `ForecastProfile` → new GBM Monte Carlo
-  paths anchored on **today's actual close**, for the remaining trading days of the
-  current cycle only.
-- Past days' forecasts (`date <= review_date`) and already-logged feedback entries are
-  **byte-identical** — only rows with `date > review_date` are replaced. Remaining
-  `day` numbers are renumbered to continue from the last preserved past day.
-- **Archive before overwrite**: `PredictionStore.archive_envelope(cycle_id)` copies the
-  superseded envelope to
-  `data/predictions/{sector}/{ticker}/archived_envelopes/{YYYY-MM}_v{n}.json` (n =
-  1 + existing archives for that month) before the new envelope is saved.
-- The regenerated envelope carries `reforecast_count` (incremented) and
-  `reforecast_history: [{date, reason, trigger, archived_file}]`.
-- **Hard cap**: `RL_REFORECAST_MAX_PER_MONTH` (default 2) per ticker per calendar month —
-  at cap, `regenerate_envelope` logs and returns `None` with no archive/save side
-  effects.
-- NEVER raises — returns `None` on: flag off, no envelope for the current cycle, cap
-  reached, no remaining days after `review_date`, or any pipeline/close-fetch failure
-  (original envelope left fully intact).
-
-**Triggers** (`daily_review.py`, after Step 6.5 (conviction streak), before Step 7 —
-checked in this order, first match wins and is recorded as `trigger`):
+**Triggers** in the daily review, after step 7a, live cycle only, first
+match wins:
 
 | Trigger | Condition |
 |---|---|
-| `external_shock` | FeedbackAgent `miss_type == "external_shock"` AND direction wrong, **after** the 20% external_shock rate-cap override (`daily_review.py:799-823`) — i.e. the classification survived the cap |
-| `thesis_break` | Step 7a `ThesisReviewer` ran and `horizon_confidence_multiplier <= RL_REFORECAST_THESIS_MULT_THRESHOLD` (default 0.5) |
-| `regime_flip` | Sticky regime TRANSITIONED into `MACRO_CRISIS` today (prior sticky label != `MACRO_CRISIS`, new == `MACRO_CRISIS`) — steady-state MACRO_CRISIS does not re-fire |
+| `external_shock` | The miss is `external_shock` on a wrong day, after the 20% cap |
+| `thesis_break` | The thesis review's multiplier is at or below 0.5 |
+| `regime_flip` | The sticky label entered `MACRO_CRISIS` today |
 
-- On a successful `regenerate_envelope()`, Step 7b's confidence-only revision is
-  **skipped** for that run — the fresh envelope already supersedes it. The conviction
-  streak computed in Step 6.5 is carried over onto the regenerated envelope and
-  persisted so streak state isn't lost on a re-forecast day.
-- On `None` (flag off / cap reached / pipeline failure), Step 7b proceeds exactly as
-  before.
-- Flag `RL_REFORECAST_ENABLED` (default true); off → today's behavior byte-identical,
-  no new file reads on the hot path.
+The pre-open check adds `preopen_shock` (section 27.3).
 
-**Scoring honesty** — `daily_review` reads "today's prediction" from the envelope file
-as of review time, and `regenerate_envelope` only replaces rows with `date >
-review_date`. Every scored day was therefore predicted by the envelope that was active
-when that prediction was made; scorecard/control-lane comparisons (§25) remain fair.
+**Scoring stays honest.** A review grades the row stored for its session,
+and a re-forecast replaces only later rows, so each graded row is the one
+that was active when it was predicted.
 
-### 27.3 Component 3 — Pre-open sanity check
+### 27.3 Pre-open sanity check
 
-New scheduler job `preopen_shock_check` (Mon–Fri, **08:45 IST**, before the 09:15 open),
-gated `RL_PREOPEN_CHECK_ENABLED` (default true), plus CLI `python -m
-services.scheduler.run_schedule preopen-check [--ticker ...] [--sector ...]`. Market-level,
-NOT per ticker — exactly **1 Serper + 1 `LLM_MODEL_FAST` call total** per invocation,
-implemented in `core/intelligence/rl/workflows/preopen_check.py`:
+`preopen_shock_check` (Mon–Fri 08:45 IST) or `run_schedule preopen-check`,
+[preopen_check.py](../core/intelligence/rl/workflows/preopen_check.py):
 
-1. **1 Serper search**: `fetch_news_context(["India stock market GIFT Nifty global
-   overnight macro news {date}"], max_queries=1)`.
-2. **1 `LLM_MODEL_FAST` call** (json_object, ≤300 tokens, temp 0.2): rates
-   `{"severity": 0.0-1.0, "direction": "risk_off|risk_on|neutral", "headline": "..."}`.
-   Parsed defensively — garbage JSON or LLM failure degrades to severity 0.0 / direction
-   "neutral" (never raises).
-3. `severity < RL_PREOPEN_SHOCK_SEVERITY` (default 0.7) → single log line, no per-ticker
-   work.
-4. `severity >= threshold` → for each (ticker, sector) across all managed sectors
-   (default: all four — automobile, banking_bfsi, it_sector, renewable_energy), load
-   today's envelope forecast direction via `PredictionStore`. A contradiction (predicted
-   UP while overnight `direction == "risk_off"`, or predicted DOWN while `direction ==
-   "risk_on"`) is flagged and triggers `regenerate_envelope(reason="pre-open shock:
-   {headline}", trigger="preopen_shock")` — subject to the same
-   `RL_REFORECAST_MAX_PER_MONTH` cap. Per-ticker failures are isolated; the loop
-   continues.
-5. Serper/LLM failures degrade to neutral and never block the open.
+1. one news search for overnight India-market, GIFT Nifty and global macro
+   headlines;
+2. one fast-tier call rating severity (0 to 1), direction (`risk_off`,
+   `risk_on` or `neutral`) and a headline. Any failure reads as severity 0;
+3. below `rl.preopen_shock_severity` (0.7): one log line and nothing else;
+4. at or above it: each scanned ticker whose row for today contradicts the
+   direction (UP in `risk_off`, DOWN in `risk_on`) is re-forecast with
+   `trigger="preopen_shock"`, under the same monthly cap. One ticker's
+   failure does not stop the others.
 
-**Cost ceiling**: ~$0.01/day market-wide (1 Serper + 1 fast-tier LLM call regardless of
-ticker count).
+**Coverage limit.** The scheduled job passes no ticker list, so on a shock
+morning the check scans the four native sectors' built-in ticker lists (29
+symbols in each sector's `config/settings.py`), not the managed list. A
+managed ticker outside those lists, such as a bank or energy stock added
+later, is never checked. A listed ticker with no store has an empty store
+directory created and is skipped.
 
-### 27.4 Settings (`src/backend/shared/config/settings/base.py`)
+### 27.4 Settings
 
-| Setting | Default | What it controls |
+| Setting | Default | Controls |
 |---|---|---|
-| `RL_REFORECAST_ENABLED` | `true` | Master flag for Component 2 (shock-triggered re-forecast) |
-| `RL_REFORECAST_MAX_PER_MONTH` | `2` | Hard cap on `regenerate_envelope()` calls per ticker per calendar month |
-| `RL_REFORECAST_THESIS_MULT_THRESHOLD` | `0.5` | `thesis_break` fires when `horizon_confidence_multiplier` drops to/below this |
-| `RL_REGIME_STICKY_ENABLED` | `true` | Master flag for Component 1 (sticky regime hysteresis) |
-| `RL_REGIME_CALM_DAYS` | `3` | Consecutive milder detections required before exiting a severe sticky regime |
-| `RL_PREOPEN_CHECK_ENABLED` | `true` | Master flag for Component 3 (pre-open sanity check) |
-| `RL_PREOPEN_SHOCK_SEVERITY` | `0.7` | Severity (0.0-1.0) above which contradicted tickers trigger `regenerate_envelope(reason="preopen_shock")` |
+| `rl.reforecast_enabled` | true | Section 27.2 |
+| `rl.reforecast_max_per_month` | 2 | Re-forecasts per ticker per calendar month |
+| `rl.reforecast_thesis_mult_threshold` | 0.5 | `thesis_break` trigger |
+| `rl.regime_sticky_enabled` | true | Section 27.1 |
+| `regime.calm_days` | 3 | Milder detections needed to leave a severe label |
+| `rl.preopen_check_enabled` | true | Section 27.3 |
+| `rl.preopen_shock_severity` | 0.7 | Severity that starts the per-ticker scan |
 
 ### 27.5 Safety
 
-- All three flags off → byte-identical to pre-Phase-2.5 behavior, no new file reads on
-  hot paths.
-- `regenerate_envelope`, `update_sticky_regime`, and `run_preopen_check` never raise.
-- Cost ceilings: re-forecast ≤2 full pipeline runs/ticker/month (~$0.08); pre-open check
-  1 Serper + 1 fast LLM/day market-wide (~$0.01/day).
-- Weight layer, dossier/lessons/calibration flows, and event ingestion (§26) untouched.
-
-### 27.6 Live verification (2026-06-13)
-
-Suite: **~1521 unit passed / 5 skipped**.
-
-- Forced `python -m services.scheduler.run_schedule reforecast --ticker MARUTI` against
-  the real pipeline/market data: archived the existing v1 envelope to
-  `archived_envelopes/2026-06_v1.json`, regenerated the 23 remaining trading days of the
-  current cycle from the real close (base_close ₹13,022 → new path anchored ~₹13,100),
-  `reforecast_count` incremented to 1, and the past 7 already-reviewed days were
-  byte-identical before and after.
-- Live `preopen-check` run detected a real **severity-0.75 risk_on** overnight shock
-  (GIFT Nifty +236 on Trump-Iran oil news) via the real Serper + fast-LLM pipeline, and
-  correctly flagged **nothing** — MARUTI's envelope predicted NEUTRAL for the day, which
-  does not contradict a `risk_on` direction (only predicted-DOWN-in-risk_on or
-  predicted-UP-in-risk_off contradict).
-
-### 27.7 Not in scope
-
-Weight adapter changes; intraday updates beyond the single pre-open check; shock-lesson
-faster decay; Phase 2 signature validation. Weight layer, dossier/lessons/calibration
-flows untouched.
+With the three flags off, none of these components reads or writes anything.
+`regenerate_envelope`, `update_sticky_regime` and `run_preopen_check` never
+raise. The cost ceilings are 2 full analyses per ticker per month for
+re-forecasts, and one search plus one fast-tier call per morning for the
+pre-open check. Weight memory, lessons and the dossier are not touched by any
+of them.

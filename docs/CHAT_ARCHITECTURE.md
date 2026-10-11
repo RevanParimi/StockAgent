@@ -1,278 +1,223 @@
-# Chat Architecture — Agentic Streaming Tool-Loop
+# Chat Architecture — Agentic Streaming Tool Loop
 
-> **Status (2026-07-19):** loop design unchanged; runtime contract tightened by the audit
-> waves: **FAST-tier default** (`qwen3.6-flash`) with reasoning disabled, **glm-5.2**
-> (REASONING tier) escalation on rate-limit/5xx, retries capped at 2/model (≤4 upstream
-> attempts per logical call), a **45-second per-turn wall-clock budget** with one
-> budget-free final synthesis, and **server-side session memory** on both routes
-> (`session_id` in the response; client-sent history is ignored). Wave I: session memory
-> is now **volume-backed SQLite** (`data/chat_sessions.db`) — shared across both uvicorn
-> workers, survives deploys, 7-day TTL.
+**Edition:** 2026-10-10 · **Code inspected:** `61c85d6`, the code production runs
 
-## Overview
+**Scope:** the assistant behind `POST /ui/chat/stream`: its runtime contract,
+tools, grounding, session memory and the sanitizing boundary that renders
+its replies.
 
-The chat assistant is an **agentic streaming tool-loop**: the LLM reasons, calls tools across
-several rounds, and streams a grounded answer. It is served at `POST /ui/chat/stream` (SSE),
-with a non-streaming twin at `POST /ui/chat` that runs the same loop.
-
-This replaced the earlier **3-node LangGraph pipeline** (`dispatch → executor → synthesize`,
-`chat_graph.py` — removed 2026-06-03). That fixed DAG had to plan *all* tools up front, before
-it knew (for example) which IT tickers existed, and could not take a follow-up step — so it
-fell back to generic answers. The loop reasons in steps instead, and a **deterministic
-pre-router** guarantees the right data is fetched for buy/sell/momentum questions regardless of
-the model's tool-routing reliability.
-
-The whole implementation lives in `services/api/routes/ui_data.py` — there is no separate graph
-module any more.
+The assistant is a tool loop: the model calls tools across several rounds and
+then answers from what they returned. A deterministic pre-router fetches the
+right data for buy, sell and momentum questions before the model starts, so
+those answers do not depend on the model choosing tools well. The whole
+server side lives in [ui_data.py](../services/api/routes/ui_data.py). The
+[technical design](TECHNICAL_DESIGN.md) summarises the rendering boundary in
+[section 10](TECHNICAL_DESIGN.md#interface-and-chat-rendering), and
+[AGENTIC_DESIGN](AGENTIC_DESIGN.md) places chat among the other LLM
+components. Work planned in PI-2026-09 is labelled **Planned** with its
+story.
 
 ---
 
-## Model Strategy (hybrid)
+## 1. Request flow
 
-| Role | Constant | Setting | Model (config.yaml) |
-|---|---|---|---|
-| Chat loop | `_CHAT_MODEL` | `LLM_MODEL_FAST` | `qwen/qwen3.6-flash` |
-| Fallback (rate-limit / 5xx) | `_CHAT_FALLBACK_MODEL` | `LLM_MODEL_REASONING` | `z-ai/glm-5.2` |
-
-Chosen from the **2026-06-03 model benchmark** (`scripts/model_bench.py`, 8 models × real
-queries through this exact pipeline): qwen3.6-flash produced the deepest answers, fastest
-(~12s), at low cost. `qwen3-235b` was **retired** (it broke JSON output and was a weak
-function-caller); Gemini 3.5 Flash was rejected (truncated output + 64× the cost); Kimi K2.6
-rejected (empty output + 68s latency).
-
-`_chat_completion()` wraps every call with retry + exponential backoff on transient
-rate-limit/5xx errors, then falls back to the reasoning model before giving up.
-
----
-
-## Request Flow
-
-```
-user message + session_id
-        │
-        ▼
-build prompt  ── _CHAT_SYSTEM_PROMPT  (grounding rules, step-back intent, tool guidance)
-              ├─ _nse_market_context()  (IST session: PRE_OPEN / OPEN / CLOSED / HOLIDAY)
-              └─ carried session history (chat_session_store, volume-backed)
-        │
-        ▼
-DETERMINISTIC PRE-ROUTER  ── _detect_invest_intent(message)
-   buy / sell / momentum + a screenable sector?
-   └─ YES → run screen_stocks(sector, mode) + search_market_news() ourselves,
-            inject BOTH into context, emit their tool_result events
-        │
-        ▼
-AGENTIC TOOL LOOP  (≤ _CHAT_MAX_TOOL_ROUNDS = 4)
-   model picks tools → _execute_chat_tool() in parallel → results fed back → repeat
-        │
-        ▼
-_sanitize_answer()  → stream as word-chunked `token` events → `done`
+```text
+POST /ui/chat/stream  {"message": "...", "session_id": "<uuid> or null"}
+  signed-in user required (or the owner passthrough when AUTH_REQUIRED is off)
+        |
+  daily quota check (members only)
+        |
+  emit `intent` (carries the session id, so the client keeps it)
+        |
+  prompt = system prompt
+         + IST market session and today's macro context
+         + this user's stored history for the session (last 12 messages)
+         + the message
+        |
+  PRE-ROUTER (static)  buy / sell / momentum + a screenable sector?
+     yes -> run screen_stocks + search_market_news now, inject both, emit `tool_result` x2
+        |
+  TOOL LOOP (fast tier, up to 4 rounds, 45-second budget)
+     model asks for tools -> run them concurrently -> emit `tool_result` each -> repeat
+     no tool calls -> that text is the answer
+        |
+  rounds or budget spent -> one final call without tools, no deadline
+        |
+  strip <think> blocks, scrub disclaimer labels, flatten tables
+        |
+  emit the answer as `token` chunks of 3 words -> store the turn -> emit `done`
 ```
 
----
+## 2. Runtime contract
 
-## 1. Deterministic Intent Pre-Router (plan-and-execute)
+| Concern | Behaviour |
+|---|---|
+| Who may chat | Any signed-in user (`get_current_user`). With `AUTH_REQUIRED` off, an anonymous request acts as the owner. |
+| Quota | Members get `CHAT_DAILY_QUOTA` questions per IST day (30 by default; the `chat:` section of config.yaml does not set it). One message is one turn, whatever the tool fan-out. The owner is exempt. When the quota store fails, the turn is allowed and logged. An exhausted quota returns the reason as an ordinary assistant bubble on the stream, and HTTP 429 on `/ui/chat`. |
+| Models | The fast tier (`llm.model_fast`, `qwen/qwen3.6-flash` in the repository), then the reasoning tier (`z-ai/glm-5.2`) as the fallback. Provider-side reasoning is switched off: the reply is user-visible text, and `<think>` blocks are stripped anyway. |
+| Generation | Temperature 0.4; at most 700 output tokens per call on the stream, 600 on `/ui/chat`. |
+| Retries | Two attempts per model on a rate limit or 5xx (waits of 0.8 s and 1.6 s), then the fallback model: at most four upstream attempts per call. Any other error is not retried. |
+| Turn budget | 45 seconds of wall clock for the tool rounds. A wait that would cross it gives up at once. The final no-tools answer always runs, so a long turn still ends grounded. |
+| Tool calls | Concurrent within a round. On the stream a per-turn memo stops the same tool being run twice with the same arguments. |
+| Failure replies | A rate limit that survives the retries gets "The market model is briefly rate-limited upstream. Please retry in a few seconds." Any other failure gets the canned demo reply (section 9). |
+| Telemetry | Every attempt is recorded with its model, tokens, latency and success. |
 
-`_detect_invest_intent(message)` classifies a screen-type intent from keywords — **buy / sell /
-momentum** — and the target sector. When both are present, the endpoint runs the plan itself
-(`screen_stocks` + `search_market_news`) and injects the results into the prompt **before** the
-model's loop.
+## 3. Deterministic pre-router
 
-This is a Tier-1 router (cf. the literature on separating routing from execution): it does not
-rely on the model reliably choosing the right tool. It is what makes *"which IT stocks should I
-buy now"* deterministically return **beaten-down value names** (near 1-month lows) with **real
-catalysts** — instead of today's random gainers, or fabricated headlines when the model skips
-the news search.
+`_detect_invest_intent` needs both an action and a sector:
 
-| Intent phrase | Action | screen_stocks mode |
+| Words in the message | Action | `screen_stocks` mode |
 |---|---|---|
-| invest / buy / accumulate / undervalued / oversold | buy | `value` (near 1-mo lows — buy-the-dip) |
-| book profit / trim / take profit / overbought | sell | `profit` (near 1-mo highs — trim) |
-| momentum / leaders / strongest / breakout | momentum | `momentum` (1-week leaders) |
+| book profit, trim, take profit, overbought, sell, exit | sell | `profit`: names near their 1-month highs |
+| momentum, leaders, strongest, breakout, outperform | momentum | `momentum`: 1-week leaders |
+| invest, buy, accumulate, undervalued, oversold, cheap | buy | `value`: names near their 1-month lows |
 
----
+Sell words are checked first, then momentum, then buy. The sector comes from
+plain words (auto, bank, IT, solar, …) and must be one of the four native
+sectors. The pre-router runs the screen and a dated news search for that
+sector concurrently, and injects both as system messages: base picks only on
+the screen, and cite only headlines that appear in the news, otherwise say
+"no specific catalyst in today's news".
 
-## 2. Agentic Tool Loop
+**Why.** Left to choose, the model answered "which IT stocks should I buy"
+with today's gainers, and sometimes cited headlines it had not fetched. The
+pre-router makes the candidate set and the evidence deterministic; the model
+only explains them.
 
-Up to 4 rounds. Each round: one `chat.completions.create` (model decides tool calls) →
-all tool calls executed concurrently via `asyncio.gather` → results appended → loop. When the
-model returns no tool calls, that content is the final answer; if rounds are exhausted with
-tools still pending, a final no-tools call composes the answer. The answer is streamed out as
-small word-grouped `token` chunks for a streaming feel.
+## 4. Tools
 
----
+Thirteen tools, each with a schema in `_CHAT_TOOLS` and a branch in
+`_dispatch_chat_tool`; a unit test fails when the two lists drift apart.
 
-## 3. Tool Catalogue (12 tools)
-
-| Tool | Source | Notes |
+| Tool | Reads | Notes |
 |---|---|---|
-| `screen_stocks(sector, mode)` | yfinance 1-mo windows | **The insight engine.** `value` = beaten-down near lows; `momentum` = leaders; `profit` = extended near highs. Surfaces non-obvious picks, not blue-chips |
-| `get_sector_snapshot(sector)` | yfinance + DB | Sector index **plus per-stock movers** (top gainers/losers, live %) + verdicts |
-| `get_live_price(symbol)` | yfinance | NSE-first resolution; freshness-labelled (`live` vs `last close <date>`) |
-| `get_historical_prices(symbol, days)` | yfinance | Last N days OHLCV + trend |
-| `get_stock_analysis(ticker)` | SQLite | Latest verdict + score |
-| `get_analysis_history(days)` | SQLite | Historical verdict trend |
-| `get_rl_prediction(ticker)` | prediction JSON | RL verdict + confidence + conviction |
-| `get_rl_insights()` | RL weight memory | Agent accuracy + learned weights + lessons |
-| `get_macro_news()` | daily macro cache → **live Serper fallback** | Self-heals when the cache is empty |
-| `get_ticker_dossier(ticker)` | `{TICKER}_dossier.json` digest | Accumulated thesis, response signatures, guidance, flow notes |
-| `search_market_news(query)` | Serper /news + RRF, Tavily fallback | Multi-query fusion (see §4) |
-| `run_agent_analysis(ticker)` | sector orchestrator | Full analysis run — all four sectors via the Unified Sector Analyst (~15-20s, one bundle + one LLM call); legacy per-agent pool only as automatic fallback |
+| `get_live_price(symbol)` | yfinance | Names resolve India-first; a price outside the open session is labelled as the last close |
+| `get_historical_prices(symbol, days)` | yfinance | Recent OHLCV and trend |
+| `screen_stocks(sector, mode)` | yfinance, 1-month windows | `value`, `momentum` or `profit` over the sector's tickers |
+| `get_sector_snapshot(sector)` | yfinance and the score store | The sector index, live movers and stored verdicts |
+| `get_stock_analysis(ticker)` | Score store | The latest stored verdict and score |
+| `get_analysis_history(days)` | Score store | Verdicts over up to 30 days |
+| `run_agent_analysis(ticker)` | Score store, else the research pipeline | Returns the latest stored analysis whatever its age; only with none stored does it run the pipeline, with a 45-second timeout |
+| `get_rl_prediction(ticker)` | The current month's envelope | Taken from the first sector directory that has one |
+| `get_rl_insights()` | Weight memory and lessons | Agent accuracy, learned weights, lessons |
+| `get_ticker_dossier(ticker)` | The ticker's dossier | A 2,000-character digest (RL_DESIGN §23) |
+| `get_macro_news()` | Today's macro feed file | The feed the 07:30 and market-hours jobs write (AGENTIC_DESIGN §12) |
+| `search_market_news(query)` | News search, Tavily as fallback | 2–3 query variants, fused (section 5) |
+| `get_portfolio_brief()` | The latest morning brief, else the latest EOD digest | Reads the **default user's** portfolio, not the caller's (section 9) |
 
-> Every dispatched tool — including `get_rl_prediction`, `get_macro_news`, and
-> `get_historical_prices` — now has a matching `_CHAT_TOOLS` schema, enforced by a
-> drift-guard test (previously these three were documented but uncallable).
+`run_agent_analysis` resolves the sector through the sector registry, so an
+unknown ticker runs the generic graph, and its result carries the decision
+gate like any other analysis. It counts as one chat turn; it is not charged
+against the separate analysis quota (`analyse.daily_quota`).
 
----
+## 5. Grounding
 
-## 4. Grounding Subsystems
+- **Market session.** The context names the current IST session
+  (`PRE_MARKET`, `PRE_OPEN`, `OPEN`, `CLOSED` or `HOLIDAY`) and the last
+  trading day, so a settled price is never presented as live.
+- **India-first symbols.** A bare name resolves through common aliases, then
+  the sector registry, then a yfinance search that prefers `.NS` and `.BO`, so
+  "reliance" is not the US ticker RS.
+- **News fusion.** `search_market_news` fires 2–3 fixed variants of the query
+  concurrently and merges them by reciprocal rank fusion, with a filter for
+  horoscope results.
+- **Prompt rules.** Prices only from `get_live_price` results; sources only
+  from fetched tool results, with their dates; no invented headline, source or
+  date; analyst opinion as one data point, never the conclusion; and a layout
+  for a phone-width bubble: short stacked lines, no tables.
+- **Scrubber.** `_sanitize_answer` removes blocks headed "Critical note",
+  "Important note", "Final note", "Revision note" or "Disclaimer", and turns
+  any Markdown table into one bullet per row. It formats text; it is not a
+  security control (section 7).
 
-**IST market session** — `_nse_market_context()` → `nse_calendar.market_session()` resolves the
-*current* session in IST (not just whether today is a trading day): `PRE_MARKET`, `PRE_OPEN`,
-`OPEN`, `CLOSED`, `HOLIDAY`. Prices fetched outside the OPEN session are explicitly labelled
-**last close** so a settled price is never passed off as live. This killed the old
-"market is OPEN at 9:16am" contradiction.
+## 6. Session memory
 
-**NSE-first symbol resolution** — `_resolve_yf_symbol()` resolves a bare name India-first:
-common-name aliases → registry tickers → India-preferred `yfinance.Search` (prefers `.NS`/`.BO`).
-Fixes "reliance" resolving to the US ticker "RS".
+[chat_session_store.py](../services/data/stores/chat_session_store.py) keeps
+history in `data/chat_sessions.db` (SQLite in WAL mode), shared by both API
+workers and kept across deploys. Rows are keyed by session id **and** user
+id, so one user cannot read another's history by reusing a session id. Each
+turn reads the last 12 messages. Turns older than 7 days are swept at
+startup. The client sends only `session_id`; history it sends is ignored. On
+a storage failure the turn runs without history.
 
-**Multi-query + Reciprocal Rank Fusion** — `_chat_tool_search_news()` fires 2–3 deterministic
-query variants and fuses the results with RRF (`_rrf_fuse`), surfacing relevant dated sources a
-single phrasing would miss. A noise filter drops horoscope/astrology results.
+## 7. Streaming events and the sanitizing boundary
 
-**Deterministic answer sanitizer** — `_sanitize_answer()` strips banned data-limitation
-disclaimer labels ("Critical Note", etc.) the model occasionally appends. (An LLM Reflexion
-self-critique gate was trialled and rejected — on qwen it hallucinated or misjudged; the
-grounded pre-router prevents fabrication at the source, which is more reliable.)
-
-**Anti-fabrication contract** — the prompt requires every cited source to come from a fetched
-tool result; with the pre-router injecting real screen + news, the model has no reason to invent.
-
----
-
-## 5. Session Memory
-
-Volume-backed SQLite (`data/chat_sessions.db`, WAL mode), capped at the last 12 messages
-per session, swept after 7 idle days on startup. The client sends only `session_id`; no
-client-side history.
-
-History: the LangGraph `MemorySaver` checkpointer was first replaced by an in-process
-dict (AUD-104), but uvicorn runs **2 workers** — consecutive turns of one session could
-land on different workers, silently losing history, and every deploy wiped all sessions.
-Wave I moved it to the shared store (`services/data/stores/chat_session_store.py`); on
-any storage failure a turn degrades to stateless instead of erroring.
-
----
-
-## SSE Event Stream (`POST /ui/chat/stream`)
-
-```
-Request:  {"message": "Which IT stocks should I buy now?", "session_id": null}
-Response: text/event-stream
-
-data: {"event":"intent",      "session_id":"<uuid>", "tier":"active", "query":"Which IT stocks..."}
-data: {"event":"tool_result", "tool":"screen_stocks",      "summary":"It Sector screen — VALUE / OVERSOLD..."}
-data: {"event":"tool_result", "tool":"search_market_news", "summary":"=== NEWS RESULTS (Serper + RRF) ..."}
-data: {"event":"token",       "text":"**TCS ₹2,242 ▼8.4% (at 1-month low)** — deep discount on quality..."}
+```text
+data: {"event":"intent", "session_id":"<uuid>", "tier":"active", "query":"Which IT stocks..."}
+data: {"event":"tool_result", "tool":"screen_stocks", "summary":"It Sector screen — VALUE ..."}
+data: {"event":"tool_result", "tool":"search_market_news", "summary":"=== NEWS RESULTS ..."}
+data: {"event":"token", "text":"**TCS** ₹2,242 ▼8.4% "}
 data: {"event":"done"}
 ```
 
-Events: `intent` (sets/persists session_id + tier badge) · `tool_result` · `token` · `done`.
-The frontend (`sphere.jsx`) reads `/ui/chat/stream` as a streaming `fetch`, falling back to the
-blocking `/ui/chat` only if the stream fails.
+`tool_result` summaries are the first 600 characters of each result. The
+frontend (`ChatOverlay` in [sphere.jsx](../src/frontend/prototypes/sphere.jsx))
+reads the stream with `fetch` and falls back to `/ui/chat` if the stream
+fails.
 
-Every reply, partial or complete, is untrusted text. `renderMd` passes it to
-`chat-markdown.js`. There, marked shows raw HTML as visible text, and DOMPurify
-keeps only Markdown tags and http(s) links, which open with `noopener noreferrer`. The
-result goes to the bubble's `dangerouslySetInnerHTML`, the client's only HTML sink. If
-marked or DOMPurify fails to load, the reply is shown as escaped text. `_sanitize_answer`
-on the server only formats the text; it is not a security control.
+**Every reply is untrusted text.** The model quotes news snippets and tool
+output, and a quoted `<img src=x onerror=…>` passed to the browser as HTML
+would run its handler next to the stored bearer token. So `renderMd` hands
+each reply to [chat-markdown.js](../src/frontend/prototypes/chat-markdown.js),
+which index.html loads after marked 12.0.2 and DOMPurify 3.4.16, both pinned
+with SRI hashes:
 
----
+- marked shows any raw HTML in the reply as visible text;
+- DOMPurify then keeps only Markdown's own tags. Links must be http(s) and
+  open in a new tab with `noopener noreferrer`; images, styles, classes and
+  event attributes are dropped.
 
-## Files
+**Example:** a reply quoting `<img src=x onerror=…>` shows that string as
+text, while bold, lists, code fences and https links still render. If either
+library fails to load, the reply is shown as escaped text. The raw parser is
+taken off `window`, so an older `sphere.jsx` still cached by the service
+worker (cache version v8) also falls back to text. The chat bubble is the
+client's only HTML sink, and a unit test keeps it so.
+`npm run test:frontend` drives the real `ChatOverlay` in Chromium with hostile
+fixtures and no network.
+
+The prompt's format rules describe Markdown output and never ask for HTML,
+but they do not forbid it either: the boundary above, not the prompt, is the
+control.
+
+## 8. The non-streaming route
+
+`POST /ui/chat` returns `{"reply", "session_id"}` and shares the tools, the
+models, the retries, the budget, the quota and the session store. It differs
+in four ways: it runs no pre-router, it does not strip `<think>` blocks or
+scrub the answer, it allows 600 output tokens, and every failure, a rate
+limit included, gets the canned demo reply.
+
+## 9. Limits and planned work
+
+- **The brief tool reads the default user's portfolio.**
+  `get_portfolio_brief` builds `PortfolioStore()` with no user id, so it
+  reads the `primary` user's latest brief or digest whoever asks. A signed-in
+  member who asks chat for "my brief" receives the default user's holdings,
+  values and verdicts. Session history is isolated per user; this tool is
+  not. No story covers it yet.
+- **The canned demo reply.** `_mock_reply` answers a failed turn with fixed
+  text that can name a stock and a reason ("TATAMOTORS is being driven by EV
+  order book strength…"), shown as an ordinary reply. Nothing marks it as a
+  fallback.
+- **Stale analyses.** `run_agent_analysis` returns the latest stored
+  analysis of any age before it would run a new one.
+- **Public reads and demo data.** Some intelligence read routes remain
+  public, and the frontend has demo fallbacks on API failure. **Planned:**
+  the public-read and demo-data policy (SA-032) and honest unavailable states
+  (SA-024).
+
+## 10. Files
 
 | File | Role |
 |---|---|
-| `services/api/routes/ui_data.py` | The whole chat loop: `chat_stream`/`chat` endpoints, pre-router, `_CHAT_TOOLS` + all tool implementations, `_chat_completion`, `_nse_market_context`, `_resolve_yf_symbol`, `_rrf_fuse`, `_sanitize_answer`, session memory |
-| `services/data/fetchers/news.py` | `search_serper_news(query, n, geo)` — Serper `/news` |
-| `core/intelligence/rl/nse_calendar.py` | `market_session()` — IST session resolver |
-| `scripts/model_bench.py` | Model-comparison harness (re-runnable; auto-scores fabrication / broken-output / latency / cost) |
-| `src/frontend/prototypes/sphere.jsx` | `ChatOverlay` — SSE reader, session_id state, tool-trace |
-| `src/frontend/prototypes/chat-markdown.js` | `saRenderChatMarkdown` — the Markdown → sanitized HTML boundary |
-| `tests/frontend/chat_markdown.test.mjs` | Real-browser test of that boundary through `ChatOverlay` (`npm run test:frontend`) |
-
-> `services/api/user_profile.py` (per-session tier detection) is currently **dormant** — it was
-> only used by the removed DAG. Retained for a future tier-adaptive verbosity feature.
-
----
-
-## Analysis Pipeline — API Calls Per Ticker
-
-(The full **analysis** pipeline below is separate from chat — `run_agent_analysis` just invokes it.
-As of the 2026-06-12/13 Unified Sector Analyst redesign, ALL FOUR sectors run a single
-shared data-fetch pass + one reasoning-model call instead of parallel per-agent LLM calls;
-the legacy LangGraph worker pool remains only as automatic fallback when the unified
-analyst call fails outright.)
-
-**Unified path (default for every sector — `build_sector_bundle()` + `UnifiedAnalyst`):**
-
-| Source | Calls | Cost | When |
-|---|---|---|---|
-| yfinance (technicals, fundamentals, commodities, peers) | a few | Free | Bundle build |
-| NseIndiaApi `announcements()` / `boardMeetings()` / `actions()` | 1 each | Free | Pre-fetch (once, before bundle) |
-| Serper (`company_news`, `sector_policy_news`, `macro_context`) | 0–2 | Credits | Bundle build (macro_context skipped on cache hit) |
-| Tavily (`policy_deep_dive`) | 0–1 | Credits | Bundle build |
-| LLM — Unified Analyst (REASONING: glm-5.2) | 1 | Paid | One call → all dimension scores (9/6/8/6 per sector) |
-| LLM — SignalAggregator (REASONING: glm-5.2) | 1 | Paid | Verdict synthesis |
-| **Total Serper (warm)** | **~2** | — | macro cache hit |
-| **Total Serper (cold)** | **~3** | — | macro cache miss |
-
-**Legacy fallback path (LangGraph worker pool — runs only on unified-analyst total failure; automobile 9-agent shape shown):**
-
-| Source | Calls | Cost | When |
-|---|---|---|---|
-| yfinance OHLCV (pattern_analysis) | 1 | Free | Pre-graph |
-| yfinance macro tickers (CL=F, INR=X, SLX…) | 3–4 | Free | risk_macro / raw_materials |
-| NseIndiaApi `announcements()` | 1 | Free | Pre-fetch (once, before fan-out) |
-| NseIndiaApi `boardMeetings()` | 1 | Free | Pre-fetch (once, before fan-out) |
-| NseIndiaApi `actions()` | 1 | Free | Pre-fetch (once, before fan-out) |
-| Serper (all agents combined, cache warm) | ~16 | Credits | During fan-out |
-| Tavily (policy_regulatory only, 96% cache hit) | ~0.08 | Credits | policy_regulatory |
-| LLM — 9 agents (BULK: deepseek-v4-flash) | 9 | Paid | During fan-out |
-| LLM — SignalAggregator (REASONING: glm-5.2) | 1 | Paid | Aggregate node |
-| **Total Serper (cold)** | **~19** | — | Risk_macro cache miss |
-| **Total Serper (warm)** | **~16** | — | Risk_macro cache hit |
-
-**Net reduction from NseIndiaApi pre-fetch:** 4–5 fewer Serper calls (~15%) on the legacy path because NseIndiaApi covers board meeting dates, dividend queries, and results filing queries that Serper previously handled.
-
-**RL daily review (per ticker, per day):**
-
-| Source | Calls | Purpose |
-|---|---|---|
-| Serper `get_news_context(ticker, days=2)` | 1 credit | Editorial market context for FeedbackAgent |
-| NseIndiaApi `announcements(ticker, days=2)` | Free | Official regulatory events for FeedbackAgent |
-| yfinance OHLCV (close + volume) | 1 | Actual close price + volume vs 20d avg |
-| LLM — FeedbackAgent (REASONING: glm-5.2) | 1 | Miss classification + lesson generation |
-| LLM — ThesisReviewer (REASONING, conditional) | 0–1 | Only on significant misses (~1–3×/month) |
-| LLM — DossierCurator (Step 8.5, qwen temp=0.2) | 1 | Updates ticker dossier — runs every day, hit or miss |
-
-**Weekly (per ticker):** `distill_dossier()` adds +1 LLM call/ticker/week, hooked into the
-`ledger_cleanup_weekly` scheduler job. See `RL_DESIGN.md` §23.5.
-
-**Monthly budget (worked example: 5 tickers, 21 trading days, automobile sector —
-prod runs 16 managed tickers on the unified path, so real Serper usage is far lower;
-these legacy-path numbers apply only when the fallback engages, now counted in
-`GET /scheduler/status fallback_events_today`):**
-
-| Usage type | Formula | Calls/month |
-|---|---|---|
-| Pre-market analysis (warm) | 16 × 5 × 21 | 1,680 Serper |
-| RL daily review (30% full rerun) | 0.3 × 16 × 5 × 21 | 504 Serper |
-| **Total Serper** | | **~2,184** |
-| Tavily (96% disk cache) | 2 × 0.04 × 5 × 21 | ~8 |
-| NseIndiaApi | Free | No limit (NSE website) |
-| RSS feeds | Free | No limit |
-
-> Single paid Serper key (50,000-credit top-up, valid 6 months, no monthly reset) serves all sectors. The macro cache is populated on-miss (no background pre-fetch loop).
+| `services/api/routes/ui_data.py` | Both chat routes, the quota, the pre-router, `_CHAT_TOOLS` and every tool, `_chat_completion`, market session, symbol resolution, news fusion, the scrubber |
+| `services/data/stores/chat_session_store.py` | Session history |
+| `services/data/fetchers/news.py` | News search |
+| `services/background/macro_news_cache.py` | The macro feed file read by `get_macro_news` |
+| `core/intelligence/rl/nse_calendar.py` | `market_session()` |
+| `src/frontend/prototypes/sphere.jsx` | `ChatOverlay`: stream reader, session id, tool trace |
+| `src/frontend/prototypes/chat-markdown.js` | The Markdown-to-sanitized-HTML boundary |
+| `tests/frontend/chat_markdown.test.mjs` | The browser test of that boundary |
+| `tests/unit/api/test_chat_dossier_tool.py` | The schema/dispatch drift guard |
+| `scripts/model_bench.py` | The model-comparison harness |

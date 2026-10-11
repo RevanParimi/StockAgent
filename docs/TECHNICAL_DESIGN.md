@@ -283,11 +283,17 @@ time, so an unchanged tree always gives the same digest.
 
 | Class | Store it picks | Code |
 |---|---|---|
-| `managed` | `<managed sector>/<TICKER>` | The monthly forecast and daily review ([scheduler](../services/scheduler/python/scheduler.py)), startup self-heal, pre-open check, event ingest, weekly ledger cleanup, RL monitor and scheduler API. |
+| `managed` | `<managed sector>/<TICKER>` | The monthly forecast and daily review ([scheduler](../services/scheduler/python/scheduler.py)), startup self-heal, event ingest, weekly ledger cleanup, RL monitor and scheduler API. |
 | `analysis_graph` | `<graph sector>/<TICKER>` | An analysis's learned-weight read ([base_orchestrator](../src/backend/shared/pipeline/base_orchestrator.py)) and its agents' prompt-enhancement and dossier reads. For a pharma ticker that is `generic/<TICKER>`, while its RL store is `pharma/<TICKER>`. |
 | `automobile_default` | `automobile/<TICKER>` when no sector is passed | Manual CLIs (`run_schedule forecast` and `daily-review`, `generate_forecast`'s own main), the bundle builder's and base agent's fallbacks, the UI's last fallback. |
 | `discovery` | every `<dir>/<dir>` pair | Scorecard, eval harness, learning evidence, analytics and universe walk the whole tree; the UI scans it for an unmanaged ticker. |
 | `flat_cli` | `<TICKER>/` | `run_schedule feedback-status`. Discovery misreads such a directory as a sector. |
+
+The pre-open shock check follows none of these rules: on a shock morning it
+scans the four native sectors' built-in ticker lists, not the managed list,
+and reads `<list sector>/<TICKER>`. A managed ticker outside those lists is
+not checked, and a listed ticker without a store gets an empty directory.
+The inventory's own reader table still files the check under `managed`.
 
 The last three classes, and the constructor's directory creation, remain.
 **Planned:** one frozen `store_key` replaces them (SA-026), and row-level
@@ -748,9 +754,10 @@ on every eligible review, as described above. `observe` contains learning:
 - Forecasts, re-forecasts, public analysis, and the review's re-scoring and
   forecast revision aggregate with the sector's configured default table (the
   table a ticker with no learning state gets), whatever the file stores.
-- The review never writes weight memory. The adapter runs on a copy, and its
-  would-be weights, deltas and reason go to `<TICKER>_weight_observations.json`,
-  one record per review date.
+- The review never writes adapted weights; a missing weight file is still
+  created from the defaults at version 0, as in `adapt`. The adapter runs on a
+  copy, and its would-be weights, deltas and reason go to
+  `<TICKER>_weight_observations.json`, one record per review date.
 - Tagged-lesson emphasis and the older category micro-adjustment stop moving
   agent scores. Lessons are still recorded, and `claims_fired` stays empty
   because no claim acted.
@@ -1386,7 +1393,9 @@ The frontend uses React JSX, runtime browser transformation and PWA assets.
 Chat uses a streaming tool loop with potentially paid provider calls. Prompt
 editing can feed scheduled publishing. These are not inert testing screens.
 Bearer sessions, roles and machine-key authentication are implemented;
-portfolio identity comes from the authenticated user. Some intelligence read
+portfolio identity comes from the authenticated user, except in chat's
+`get_portfolio_brief` tool, which reads the default user's portfolio for every
+caller ([CHAT_ARCHITECTURE](CHAT_ARCHITECTURE.md) section 9). Some intelligence read
 routes remain public. The RL client has demo/fallback paths on API failure,
 so populated charts alone do not prove live data. **Planned:** honest
 unavailable states (SA-024) and a public-read and demo-data policy (SA-032).
@@ -1400,8 +1409,9 @@ delegates to a plain script,
 loads it after marked 12.0.2 and DOMPurify 3.4.16, both exact versions with SRI
 hashes. There are two layers:
 
-- marked shows any raw HTML in a reply as visible text; the chat prompt asks
-  for Markdown only.
+- marked shows any raw HTML in a reply as visible text. The chat prompt's
+  format rules describe Markdown, but nothing in it forbids HTML, so this
+  boundary is the control.
 - DOMPurify then keeps only Markdown's own tags. Links must be http(s) and open
   in a new tab with `noopener noreferrer`. Images, styles, classes and event
   attributes are dropped.

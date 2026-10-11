@@ -1,1319 +1,455 @@
 # Agentic Design Reference
 
-> All agents, tasks, metrics, data sources, static vs LLM responsibilities.
-> Minimize plain text — prefer tables and trees.
-> Updated: 2026-06-12 · All four sectors (automobile, banking_bfsi, it_sector, renewable_energy) on the Unified Sector Analyst by default + RL + Chat (agentic tool-loop) + hybrid LLM tiers.
->
-> **Status (2026-07-18):** taxonomy still accurate. Post-audit deltas: REASONING tier is
-> `glm-5.2` (since 2026-07-06); the legacy per-dimension agent pool exists **only** as the
-> unified-analyst fallback (its dead graph shells were deleted in Wave E); a `generic`
-> sector graph serves discovery-promoted tickers; SignalAggregator now also logs an
-> observe-only threshold verdict (shadow lane, Wave G). Current map:
-> [ARCHITECTURE.md](ARCHITECTURE.md).
+**Edition:** 2026-10-10 · **Code inspected:** `61c85d6`, the code production runs
+
+**Scope:** every component that calls a language model, what it decides and
+what static code decides around it, with the data each one reads.
+
+The [technical design](TECHNICAL_DESIGN.md) (the KT) traces the research path
+in [section 4](TECHNICAL_DESIGN.md#4-research-input-to-recommendation); this
+document is the per-component reference behind it. The learning agents are
+specified in [RL_DESIGN](RL_DESIGN.md) and the chat loop in
+[CHAT_ARCHITECTURE](CHAT_ARCHITECTURE.md). Measured production state lives
+only in [KT section 1](TECHNICAL_DESIGN.md#production-state-at-this-edition).
+Work planned in PI-2026-09 is labelled **Planned** with its story.
 
 ---
 
-## 1. Agent Taxonomy
+## 1. Inventory
 
+```text
+Research (on demand, monthly forecast, daily-review re-runs, discovery deep dives)
+├── Ticker resolution         [STATIC for tracked tickers; LLM bulk for free text]   section 4
+├── Sector routing            [STATIC] registry: 4 native graphs + generic             section 5
+├── Sector data bundle        [STATIC] 10 typed sections, one fetch pass               section 6
+├── Unified analyst           [LLM reasoning] one call scores every dimension         section 7
+│   └── legacy per-dimension pool  [LLM bulk] fallback on total failure only         section 11
+├── Signal aggregator         [STATIC composite + LLM reasoning narrative]             section 9
+└── Decision gate             [STATIC] actionable / degraded / abstain                 section 10
+
+Learning (daily review and monthly forecast)                                           RL_DESIGN
+├── FeedbackAgent             [LLM reasoning] miss type, blame, lessons
+├── WeightAdapter             [STATIC] weights or observe-mode proposals
+├── ThesisReviewer            [LLM reasoning] conditional, after significant misses
+├── PriceInterpolator         [LLM bulk] forecast profile; static fallback
+├── PromptEnhancer            [STATIC templates; LLM bulk fallback]
+├── Control lane              [LLM reasoning or configured model] baseline duel
+└── Re-forecast, sticky regime, pre-open check   [STATIC + LLM fast for the pre-open rating]
+
+Company knowledge                                                                      RL_DESIGN §23, §26
+├── DossierCurator, distillation   [LLM bulk] daily and weekly
+├── EventIngestor                  [LLM bulk] weekly NSE events
+└── QuestionResearcher             [LLM bulk] weekly open questions
+
+Narration and feeds
+├── Macro news reviewer       [LLM bulk] severity and tags for the macro feed          section 12
+├── Portfolio narrator        [LLM bulk] explains a verdict already decided            section 12
+├── Brief and weekly headline [LLM bulk] one line each, with a fallback               section 12
+└── IPO extract and narrate   [LLM bulk] dark P3 path, never shown to users            section 12
+
+Chat (on demand, /ui/chat/stream)                                                      CHAT_ARCHITECTURE
+└── Agentic tool loop         [LLM fast, reasoning on failure] + static pre-router and sanitizer
 ```
-StockAgent Agents
-├── Analysis Agents  (sector-specific, run monthly + on-demand — ALL FOUR on Unified Sector Analyst)
-│   ├── Automobile       9 dimensions  ✅ UNIFIED (legacy 9-agent pool = fallback only)
-│   ├── Banking/BFSI     6 dimensions  ✅ UNIFIED (legacy 6-agent pool = fallback only)
-│   ├── IT Sector        8 dimensions  ✅ UNIFIED (legacy 8-agent pool = fallback only)
-│   └── Renewable Energy 6 dimensions  ✅ UNIFIED (legacy 6-agent pool = fallback only)
-│
-├── RL Agents  (cross-sector, run daily automated post-market)
-│   ├── FeedbackAgent     [LLM]    daily root-cause analysis
-│   ├── WeightAdapter     [STATIC] deterministic weight adjustment
-│   ├── ThesisReviewer    [LLM]    conditional post-miss thesis validation
-│   ├── DossierCurator    [LLM]    daily knowledge extraction → ticker dossier
-│   ├── update_sticky_regime [STATIC] market-wide regime hysteresis (Living Envelope, RL_DESIGN §27.1)
-│   └── regenerate_envelope [LLM]  shock-triggered mid-cycle re-forecast: external_shock /
-│                                  thesis_break / regime_flip / preopen_shock (RL_DESIGN §27.2)
-│
-├── Pre-Open Agent  (cross-sector, runs daily 08:45 IST before market open)
-│   └── run_preopen_check [LLM]    1 Serper + 1 fast-LLM market-level overnight shock
-│                                  rating → contradicted tickers trigger regenerate_envelope
-│                                  (Living Envelope, RL_DESIGN §27.3)
-│
-└── Chat Agent  (on-demand via /ui/chat/stream)  ✅ AGENTIC TOOL-LOOP
-    ├── IntentPreRouter   [STATIC] keyword intent → pre-run screen_stocks + news (plan-and-execute)
-    ├── AgenticLoop       [LLM]    model calls tools across ≤4 rounds (FAST tier: qwen3.6-flash)
-    └── Sanitizer         [STATIC] strip banned disclaimer labels → stream
-```
 
----
+The rule across all of them: **code decides, the model reads and explains.**
+Scores bind to verdicts through fixed bands, trades follow fixed rules, and
+every model output passes a parser and bounds before anything stores it.
 
-## 2. BaseAgent Architecture
+## 2. Model tiers
 
-All sector analysis agents inherit from `BaseAgent` (`src/backend/shared/pipeline/base_agent.py`).
+`llm:` in [config.yaml](../config.yaml); each tier has an environment
+override (`LLM_MODEL_FAST`, `LLM_MODEL_REASONING`, `LLM_MODEL_BULK`), so
+production can differ. All calls go through OpenRouter.
 
-**Three abstract methods each subclass must implement:**
-
-| Method | Signature | Purpose |
+| Tier | Repository model | Used by |
 |---|---|---|
-| `agent_name` | `@property → str` | snake_case id, matches key in `AGENT_WEIGHTS` |
-| `_build_prompt` | `(query, context) → (system_prompt, user_prompt)` | Assembles LLM prompt from template + context |
-| `_parse_output` | `(data: dict, ticker: str) → AgentOutput` | Parses LLM JSON → typed AgentOutput |
+| Fast | `qwen/qwen3.6-flash` | Chat tool loop; pre-open shock rating |
+| Reasoning | `z-ai/glm-5.2` | Unified analyst; aggregator narrative; FeedbackAgent; ThesisReviewer; control lane (unless `rl.control_lane_model` is set); chat retry after a rate limit or server error |
+| Bulk | `deepseek/deepseek-v4-flash` | Ticker resolution; legacy per-dimension agents; forecast profile; prompt-enhancer fallback; dossier curator and distillation; event ingestion; research loop; macro reviewer; portfolio narrator; brief and weekly headlines; IPO extraction and narration |
 
-**Context Priority Chain (STATIC — no LLM):**
+Shared defaults: temperature 0.2 (`llm.temperature`), 2,048 output tokens
+(`llm.max_tokens`) and a 60-second timeout. Components that set their own
+values say so below. Each call is logged with its tokens and an estimated
+cost from `llm.cost_rates`.
 
-```
-BaseAgent._gather_context(query)
-  ├── Check 1: RAG_ENABLED=true?
-  │   → YES: RAGRetriever.retrieve(search_query) → ChromaDB top-K + optional reranker
-  │          [DISABLED BY DEFAULT — set RAG_ENABLED=true in .env to activate]
-  ├── Check 2: ContextBuilder.build(agent_name, query) → live data from fetchers
-  └── FALLBACK: "Stock: MARUTI | Date: 2026-05-17 | Note: Live data unavailable."
-```
+## 3. The research pipeline
 
-**RAG System Status — implemented, disabled by default.**
+`BaseSectorOrchestrator.analyse` and `analyse_async`
+([base_orchestrator.py](../src/backend/shared/pipeline/base_orchestrator.py))
+run the same steps for every graph:
 
-| Setting | Default | Override via env var |
+1. **Resolve** the input to a ticker, company name and exchange (section 4).
+2. **Weights.** Explicitly injected weights win: the forecast and the review
+   pass their decision weights. Otherwise the ticker's stored learned weights
+   (version 1 or later) are used in `adapt` mode; in `observe` mode, or with
+   none stored, the graph's defaults (section 8).
+3. **NSE prefetch.** One NSE session fetches the ticker's announcements,
+   board meetings and corporate actions into `query.nse_data`, shared
+   read-only by everything after it. TATAMOTORS is skipped by a symbol
+   override, because the announcements endpoint returns nothing for it.
+4. **Score.** The unified analyst scores every dimension from one data bundle
+   (sections 6 and 7). On a total failure with
+   `unified_analyst.fallback_legacy` on, the legacy pool runs instead and the
+   fallback is counted (section 11).
+5. **Aggregate** into a composite, a bound verdict and a narrative
+   (section 9).
+6. **Gate** the report (section 10) before anything logs or returns its
+   verdict.
+7. **Record** the run summary, token cost, provider calls, the score history
+   row and the data-health row.
+
+**Example (call count):** a scheduled analysis of a managed ticker makes two
+LLM calls, the analyst and the aggregator, plus at most three news searches
+and one Tavily page. A free-text chat request adds one resolution call, or
+two when the first answer cannot be verified.
+
+## 4. Ticker resolution
+
+A ticker resolves to itself, with no LLM or web-search call, when it is in
+its sector's built-in `TICKERS`, in the managed list (any sector, enabled or
+not) or in the instrument registry:
+
+- the managed list and the registry are read on every resolution, so a ticker
+  the owner adds is known at once. Nothing writes the list on this path;
+- the company name comes from the curated or learned name, else yfinance for
+  the registry's symbol, else the ticker; never from the LLM;
+- a retired or unresolved ticker such as TATAMOTORS resolves to itself, and
+  the identity gate decides whether it may act;
+- an unreadable registry quarantines every ticker but names none, so free text
+  is not mistaken for a ticker.
+
+Free text ("tata elxsi") goes to one bulk-tier call (temperature 0, JSON).
+When that answer is incomplete, or yfinance has no price for it, a news
+search for the name is added to the prompt and the call is repeated. A
+weekly discovery candidate that no list holds also goes this way.
+
+**Why.** Asking a model which company a tracked ticker is lets it answer
+wrongly: the KT's [ticker resolution](TECHNICAL_DESIGN.md#ticker-resolution)
+section records a monthly forecast that analysed Tata Motors for TATAELXSI.
+
+## 5. Sector routing
+
+[registry.py](../src/backend/sectors/registry.py) is the single map, used by
+the API, the scheduler and the learning loop alike.
+
+- `SectorRegistry.resolve(ticker)` reads a map of 202 tickers, then
+  name fragments for free text. An input it cannot place resolves to
+  `generic` (`sectors.generic_fallback_enabled`, default on), never to
+  automobile.
+- Four sectors have native graphs: `automobile`, `banking_bfsi`, `it_sector`
+  and `renewable_energy`. Eighteen more sector keys are defined (pharma,
+  FMCG, metals, oil and gas, capital goods, power, chemicals, defence,
+  infrastructure, insurance, logistics, media, real estate, retail, agrochem,
+  hospitality, tech, telecom), all disabled. Each of them, and any other
+  well-formed sector key, is analysed by the **generic** graph.
+- The prediction store keeps the real sector name
+  (`data/predictions/pharma/SUNPHARMA/`); only the analysis graph is generic.
+
+The managed list, not the registry, decides which tickers are scheduled. Each
+native sector's built-in `TICKERS` list (29 symbols across the four) serves
+ticker resolution, the banking, IT and renewable peer lists, and the pre-open
+check (RL_DESIGN §27.3); it does not schedule anything.
+
+## 6. The sector data bundle
+
+[bundle_builder.py](../services/data/context/bundle_builder.py) fetches
+everything the analyst reads in one pass. Every section producer returns a
+typed result ([fetch_result.py](../services/data/context/fetch_result.py)):
+its text, a status, its source, the as-of date of its newest datum and a
+reason. A failing producer degrades its own section and never raises.
+
+| Section | Source | Notes |
 |---|---|---|
-| Feature flag | `RAG_ENABLED=false` | `RAG_ENABLED=true` |
-| Vector store | ChromaDB (local, persistent) | `VECTOR_STORE_PROVIDER` |
-| Collection name | `automobile_agent_kb` | `CHROMA_COLLECTION_NAME` |
-| Persist dir | `data/chroma_db` | `CHROMA_PERSIST_DIR` |
-| Embedding model | `nomic-embed-text-v1.5` (Groq) | `EMBEDDING_MODEL`, `EMBEDDING_PROVIDER` |
-| Top-K results | `5` | `RAG_TOP_K` |
-| Similarity threshold | `0.75` | `RAG_SIMILARITY_THRESHOLD` |
-| Reranker | disabled | `RERANKER_ENABLED=true` |
-| Reranker model | `cross-encoder/ms-marco-MiniLM-L-6-v2` | `RERANKER_MODEL` |
+| `company_news` | One news search (Serper) | Query terms per sector: results and guidance; NPA, NIM and deposits for banks; deal wins and attrition for IT; PPAs and commissioning for renewables |
+| `sector_policy_news` | One news search | A sector query for demand, policy and competition |
+| `macro_context` | yfinance INR/USD and crude, the factor regime, plus one news search | A missing core indicator makes the section unavailable. A hit on the in-process macro cache would skip the search and read `cache_hit`, but nothing writes that cache, so every run searches |
+| `policy_deep_dive` | One Tavily page, cached by month | Policy circulars for automobile and renewables; RBI impact for banks; earnings-call commentary for IT |
+| `fundamentals` | yfinance quarterly statements, plus NSE dates as context | Bank-format statements (below) |
+| `technicals` | yfinance price history and indicators | Correlation and beta against the sector's benchmark (below) |
+| `commodities` | yfinance commodity prices | Automobile only; `n/a` elsewhere |
+| `flows_sentiment` | NSE bulk deals and FII/DII flows; AMFI sector-ETF momentum | `empty` when none of the three answers |
+| `peers_valuation` | yfinance valuation for up to 5 peers | Peers from the sector's `TICKERS`; the automobile and generic graphs use the automobile peer list |
+| `dossier` | The ticker's dossier digest (1,500 characters) | `n/a` until a dossier exists (RL_DESIGN §23.4) |
 
-Key files: `core/intelligence/rag/config.py` (all settings), `core/intelligence/rag/core/retriever.py` (RAGRetriever), `core/intelligence/rag/core/vector_store.py` (ChromaDB wrapper), `core/intelligence/rag/ingestion/ingest_cli.py` (document ingestion CLI).
+Each section is capped at 2,500 characters and the rendered bundle at
+18,000 (`unified_analyst.section_max_chars`, `.bundle_max_chars`). A run
+makes at most three news searches and one Tavily page.
 
-To enable: set `RAG_ENABLED=true` in `.env`, then run the ingestion CLI to populate the vector store before starting the server.
+### 6.1 Typed section statuses
 
-**Retry logic (STATIC):** 3 attempts, exponential backoff on `APIError`, `RateLimitError`, `APITimeoutError`.
+| Status | Meaning |
+|---|---|
+| `ok`, `cache_hit` | Verified data, fresh |
+| `stale` | Older than the freshness bound: a newest price bar over 7 days old, or a newest reported quarter over 200 days old |
+| `fallback` | A core figure was replaced (search snippets, substituted zeros), or the newest listed quarter has no figure |
+| `empty` | The source answered with nothing |
+| `n/a` | Deliberately not fetched |
+| `failed:<Type>` | The producer raised |
+| `unverified` | Plain text with no typed result |
 
-**Failure fallback (STATIC):** `AgentOutput(overall_score=0.5, error=str(exc))` — pipeline never crashes.
+The producer decides the status from its structured data, never from its
+sentence: "Technical data unavailable for TATAMOTORS" is not evidence of
+data. Every unified run writes one data-health row with these statuses; the
+KT's [data health](TECHNICAL_DESIGN.md#data-health) section gives the row's
+contract and a worked example.
 
-**PromptEnhancer integration (P4):**
-```
-BaseAgent.run(query):
-  base_queries   = CONTEXT_SEARCH_QUERIES (static prompt file)
-  agent_extra    = PredictionStore.load_enhancements(ticker, cycle_id).get(agent_name, [])
-  all_queries    = base_queries + agent_extra[:2]  → passed to context fetchers
-```
+### 6.2 Bank-format statements
 
----
+A bank's quarterly statement has interest income and net interest income, and
+no operating-income, EBIT or gross-profit row. The
+[fundamentals fetcher](../services/data/fetchers/fundamentals.py) lets the
+statement's shape decide how it is read, never the ticker or its sector:
 
-## 3. Orchestrator Execution Architecture
+- both interest rows and no operating row make a **bank-format** statement.
+  Net interest income takes the operating line's place in the prompt, the
+  prompt says operating margin is not reported (no 0.0 figure), and the
+  section's reason names the format;
+- revenue is still required, and the 200-day bound still applies;
+- a statement with EBIT beside net interest income, such as PAYTM's, stays
+  standard. A non-bank statement without an operating row stays `fallback`.
 
-```
-BaseSectorOrchestrator.analyse / analyse_async(ticker)   [src/backend/shared/pipeline/base_orchestrator.py]
-  │
-  ▼
-_resolve_ticker()  [branch: managed ticker → STATIC; free text → LLM, temp=0.0]
-  Exact match against this sector's TICKERS (uppercased input)?
-    → YES: StockQuery built directly — company_name via yfinance, NO LLM call
-            (fixes a real bug: 'TATAPOWER' was previously LLM-"corrected" to TATAMOTORS)
-    → NO:  LLM resolution — "Tata Motors" → StockQuery(ticker="TATAMOTORS", company_name="Tata Motors Ltd", exchange="NSE")
-            Fallback: raw input used as ticker if LLM fails
-  │
-  ▼
-_load_learned_weights(ticker) / _resolve_weights_for(ticker)  [STATIC: reads agent_weight_memory.json]
-  Returns None if no RL data yet (uses settings.AGENT_WEIGHTS defaults)
-  Weights are scoped per ticker: reloads whenever the query ticker differs
-  from the cached _aggregator_weights_ticker
-  │
-  ▼
-_prefetch_nse_data(query)  [STATIC: one NseIndiaApi session, non-fatal]
-  Populates query.nse_data — shared read-only by both paths below
-  │
-  ▼
-_run_agents(query, run_id, progress_callback)   ← branch point: _unified_enabled()
-  │
-  ├── UNIFIED PATH (SECTOR_NAME in settings.UNIFIED_ANALYST_SECTORS — default ALL FOUR:
-  │   │             "automobile,banking_bfsi,it_sector,renewable_energy")
-  │   ▼
-  │   build_sector_bundle(query, sector)  [services/data/context/bundle_builder.py]
-  │     One fetch pass → SectorDataBundle: 10 labeled, individually char-capped
-  │     sections (company_news, sector_policy_news, macro_context, policy_deep_dive,
-  │     fundamentals, technicals, commodities, flows_sentiment, peers_valuation, dossier).
-  │     Sector-aware via _SECTOR_BUNDLE_CFG: per-sector news queries, policy_deep_dive
-  │     Tavily query (IT → earnings-transcript commentary, RE → MNRE auction policy),
-  │     commodities = "not_applicable" outside automobile, peers from sector TICKERS.
-  │     ≤3 dedicated Serper + ≤1 Tavily + free NSE/yfinance/dossier, for EVERY sector.
-  │     Every fetcher non-fatal — failure degrades that section to "unavailable", never raises.
-  │   │
-  │   ▼
-  │   UnifiedAnalyst().run(query, bundle, sector)  [src/backend/shared/pipeline/unified_analyst.py]
-  │     ONE LLM call (REASONING tier, temp=0.2, json_object, UNIFIED_ANALYST_MAX_TOKENS)
-  │     → all dimension AgentOutput subclasses for that sector (9/6/8/6 for
-  │       automobile/banking_bfsi/it_sector/renewable_energy — same schemas as the
-  │       legacy per-sector agents, per SECTOR_SPECS in unified_analyst.py).
-  │     Malformed/truncated JSON → salvage partial dimensions; missing dimension →
-  │     neutral 0.5 + error flag. NEVER raises — returns {} on total failure.
-  │   │
-  │   ├─ outputs non-empty → progress_callback(name, score) per dimension (batch)
-  │   │
-  │   └─ outputs == {} AND UNIFIED_ANALYST_FALLBACK_LEGACY=true
-  │        → falls through to LEGACY PATH below (same run)
-  │
-  └── LEGACY PATH (sector not in UNIFIED_ANALYST_SECTORS, or unified-analyst total failure
-                    — automatic fallback only; not the default for any sector)
-      │
-      ▼
-      LangGraph StateGraph worker pool (_build_worker_pool_graph)
-      ┌── input_rail  [STATIC: yfinance fast_info check, non-blocking]     ─────────┐
-      │                                                                             │
-      │   make_dispatch_fn → list[Send]  (conditional_edges, fan-out)               │
-      │   ┌─────┬─────┬─────┬────────────────────────────────────────────┐         │
-      │   ↓     ↓     ↓     ↓                                            │         │
-      │   run_agent × N  [parallel, RetryPolicy(max_attempts=2)]          │         │
-      │   │  Each agent: own data fetch (ContextBuilder) + own LLM call   │         │
-      │   │  (BULK tier). output_rail inside each: clamp score [0,1],     │         │
-      │   │  inject placeholder summary if empty.                         │         │
-      │   │  writes {agent_name: AgentOutput} via _merge_dicts reducer    │         │
-      │   └──────────────────────────────────────────────── fan-in ──────┘         │
-      └─────────────────────────────────────────────────────────────────────────────┘
-  │
-  ▼
-SignalAggregator.run(agent_outputs, learned_weights)
-  [conflict_rail: spread > 0.30 → LLM re-resolution] → FinalReport
-  │
-  ▼
-FinalReport  (verdict, final_score, weighted_agent_scores, agent_outputs, ...)
-```
+**Why.** Substituting zeros made every bank `fallback`, showed a 0.0% EBITDA
+margin and made the gate abstain on every bank analysis. The KT's
+[bank income statements](TECHNICAL_DESIGN.md#bank-income-statements)
+section has the measured effect and a worked example.
 
-**Unified path (default for all four sectors) vs legacy fallback path:** the diagram
-above is the same `analyse`/`analyse_async` entry point for every sector — only the
-branch taken inside `_run_agents` differs, and today every sector takes the unified
-branch by default. `FinalReport`, `weighted_agent_scores`, and `agent_outputs` are
-byte-identical in shape regardless of which branch produced them, so SignalAggregator,
-RL calibration/lessons/weight-adaptation, the UI, the chat tool, and the WebSocket
-stream need zero changes either way.
+### 6.3 Sector benchmarks
 
-**Three-Rail Safety Layer (all STATIC, all non-blocking — legacy fallback path only):**
+The technicals section measures the stock's correlation and beta against its
+sector's index: automobile `^CNXAUTO`, banking/BFSI `^NSEBANK`, IT `^CNXIT`,
+renewable energy `^CNXENERGY` (`settings.SECTOR_BENCHMARKS`). Any other
+sector, or none, is measured against the Nifty 50 (`^NSEI`), never against
+another sector's index. Fewer than 30 paired returns, missing data, a flat
+series or a failed download leave both values unmeasured, and the prompt says
+"unavailable" and why. The section's status stays the stock's own, and its
+provenance names the benchmark. **Example:** a bank reads "Nifty Bank
+Correlation: … | Beta: …"; an automobile stock reads "unavailable (benchmark
+^CNXAUTO returned no price data)" while Yahoo serves no data for that index
+(KT [sector benchmarks](TECHNICAL_DESIGN.md#sector-benchmarks)).
 
-| Rail | Where | Trigger | Action |
-|---|---|---|---|
-| `input_rail` | Before fan-out | Bad ticker / yfinance not found | Append to rail_errors; continue |
-| `output_rail` | Inside `run_agent` | Score out of [0,1], empty summary | Clamp; inject placeholder |
-| `conflict_rail` | Inside `aggregate` | Pairwise score spread > 0.30 | Trigger LLM re-resolution |
+## 7. Unified analyst
 
-The unified path has its own non-fatal degradation built in (bundle sections fall back
-to `"unavailable"`; the analyst never raises and degrades per-dimension or falls back
-to the legacy path entirely) — the three-rail layer applies only to the legacy
-worker-pool fallback, which now runs automatically only on unified-analyst total failure.
+[unified_analyst.py](../src/backend/shared/pipeline/unified_analyst.py) makes
+**one reasoning-tier call** per analysis (temperature 0.2, JSON output, up to
+6,000 tokens, `unified_analyst.max_tokens`) that scores every dimension of the
+sector's graph from the rendered bundle. Each graph's prompt module
+(`prompts/unified.py`) defines its dimensions, sub-scores and scoring anchors.
 
-**Sync vs Async paths:**
+- Each dimension comes back as the graph's own `AgentOutput` subclass, the
+  same shape the legacy agents produce, so the aggregator, the learning loop,
+  the UI and chat read either path alike.
+- A truncated response is salvaged: complete dimensions are kept.
+- A missing or unparseable dimension gets a neutral 0.5 with an `error`, which
+  the aggregator excludes and the data-health row counts as missing.
+- Total failure returns nothing and never raises. The health row still
+  records the hollow attempt; with the fallback on, the legacy pool then
+  scores the run, and that report carries no health row and no bundle
+  provenance, so its gate abstains (section 10).
 
-| Path | When | Mechanism | LLM client |
-|---|---|---|---|
-| Sync | CLI / APScheduler | `analyse()` — unified call by default, LangGraph with threading on fallback | `openai.OpenAI` (sync) |
-| Async | FastAPI / WebSocket | `analyse_async()` — unified call by default, `graph.astream_events()` on fallback | `AsyncOpenAI` coroutine |
+`unified_analyst.sectors` lists the graphs on this path; all five are on it.
 
-**Multi-sector comparison:**
+## 8. Dimensions and default weights
 
-| Sector | Dimensions | Path | Key weight | Unique signal / data |
-|---|---|---|---|---|
-| `automobile` | 9 | **Unified** (1 bundle + 1 analyst call) | fundamentals 0.18 | sales_demand (FADA/Vahan), competitive_intel (EV share) |
-| `banking_bfsi` | 6 | **Unified** (1 bundle + 1 analyst call) | fundamentals 0.25 | NPA/NIM/CASA, RBI MPC rate cycle |
-| `it_sector` | 8 | **Unified** (1 bundle + 1 analyst call) | fundamentals 0.25 | US tech spend, visa risk, transcript NLP |
-| `renewable_energy` | 6 | **Unified** (1 bundle + 1 analyst call) | fundamentals 0.30 | CUF/DSCR/EV-MW, MNRE auctions, DISCOM risk |
+Default weights come from each graph's weight table through
+[sector_router.py](../core/intelligence/rl/workflows/sector_router.py); each
+table sums to 1.0. In `observe` mode every decision uses these tables
+(RL_DESIGN §7).
 
-All four sectors are on the unified path by default (`UNIFIED_ANALYST_SECTORS`). The
-legacy per-sector worker pools (6/8/9 parallel agents) remain in the repo solely as the
-automatic fallback when `UNIFIED_ANALYST_FALLBACK_LEGACY=true` and the unified analyst
-call fails outright for a given run.
+| Graph | Dimensions and default weights |
+|---|---|
+| Automobile (9) | fundamentals 0.18 · sales_demand 0.15 · risk_macro 0.13 · valuation_catalyst 0.12 · pattern_analysis 0.11 · raw_materials 0.09 · policy_regulatory 0.09 · competitive_intel 0.09 · sentiment 0.04 |
+| Banking/BFSI (6) | fundamentals 0.25 · risk 0.20 · macro_policy 0.20 · institutional 0.15 · pattern_analysis 0.15 · universe_setup 0.05 |
+| IT (8) | fundamentals 0.25 · global_macro 0.20 · risk_macro 0.15 · peer_benchmark 0.15 · pattern_analysis 0.10 · sentiment 0.08 · transcript_nlp 0.04 · insider_smart_money 0.03 |
+| Renewable energy (6) | fundamentals 0.25 · business 0.25 · valuation 0.15 · sentiment_policy 0.15 · technical 0.10 · risk 0.10 |
+| Generic (8) | fundamentals 0.18 · business 0.14 · valuation 0.14 · technical 0.12 · macro 0.12 · risk 0.12 · management 0.09 · earnings 0.09 |
 
-**LangGraph known design weaknesses (backlog — legacy worker-pool fallback path only, all four sectors):**
+That is 37 dimension slots under 24 distinct names. Each dimension returns an
+overall score in [0, 1], five sub-scores, a summary, bull and bear cases, a
+peer comparison, what changed, and a data confidence. The automobile graph's
+`valuation_catalyst` also returns a price target, a fair value, the discount
+and its reason, recovery catalysts and a timeline, which the aggregator
+copies onto the report.
 
-| # | Issue | Severity | Fix |
-|---|---|---|---|
-| 1 | `ContextBuilder` not sector-aware (P0) | High | Add `_build_{sector}_{agent}` routing branches |
-| 2 | `BaseAgent._rag_retrieve` falls back to "automobile India" for unknown agents (P0) | High | Add `sector` parameter or override per-class |
-| 3 | `run_agent` calls sync `agent.run()` — threading, not asyncio (P1) | Medium | Switch to `agent.run_async()` + `async def run_agent` nodes |
-| 4 | `input_rail` makes blocking yfinance network call before fan-out (P1) | Medium | Wrap in `asyncio.to_thread` or skip on `FAST_MODE=true` |
-| 5 | Agent name collision across sectors (`"fundamentals"` in all 4) (P2) | Low | No immediate problem; prefix names if cross-sector reporting added |
-| 6 | No CLI / FastAPI entry point for non-automobile sectors (P1) | Medium | Add `--sector` flag on `main.py` + `POST /analyse/{sector}` route |
-| 7 | Usage logging skipped if JSON parse fails post-LLM call (P2) | Low | Move `log_llm_call` before `json.loads` in aggregate node |
+Several dimensions are proxies for data the system does not fetch: dealer
+inventory, Vahan registrations, FADA and SIAM figures, social-media
+sentiment, RBI and MNRE structured data, DISCOM payments and call
+transcripts reach the model only as news snippets, if at all.
 
----
+## 9. Signal aggregator
 
-## 4. Automobile Sector — 9 Dimensions ✅
+[signal_aggregator.py](../src/backend/shared/pipeline/signal_aggregator.py):
 
-**Base weights (must sum to 1.0), defined in `src/backend/sectors/automobile/config/settings.py`:**
+1. **Composite (static).** `Σ score × weight / Σ weight` over the dimensions
+   without an `error`; errored outputs are excluded and the surviving weights
+   renormalised. With nothing left, the composite is a neutral 0.5.
+2. **Conflicts (static).** Every pair of scored dimensions 0.30 or more apart
+   is flagged.
+3. **Narrative (LLM).** One reasoning-tier call receives the scores, weights,
+   composite, conflicts and each dimension's bull and bear cases, and returns
+   a verdict, a `final_score`, conviction drivers, top risks, an investment
+   thesis and how it resolved the conflicts.
+4. **Binding (static).** With `rl.hard_bind_verdict_enabled` on (the
+   repository value), the verdict is the composite's band, whatever the model
+   said. The model's verdict is logged beside the composite in
+   `data/rl/verdict_shadow.jsonl`. `final_score` stays the model's own and
+   sets the forecast's base confidence.
 
-| Agent key | Base weight | Class file | Prompt file |
-|---|---|---|---|
-| `fundamentals` | **0.18** | `agents/fundamentals.py` | `prompts/fundamentals.py` |
-| `sales_demand` | **0.16** | `agents/sales_demand.py` | `prompts/sales_demand.py` |
-| `risk_macro` | **0.13** | `agents/risk_macro.py` | `prompts/risk_macro.py` |
-| `pattern_analysis` | **0.12** | `agents/pattern_analysis.py` | `prompts/pattern_analysis.py` |
-| `valuation_catalyst` | **0.10** | `agents/valuation_catalyst.py` | `prompts/valuation_catalyst.py` |
-| `policy_regulatory` | **0.09** | `agents/policy_regulatory.py` | `prompts/policy_regulatory.py` |
-| `raw_materials` | **0.09** | `agents/raw_materials.py` | `prompts/raw_materials.py` |
-| `competitive_intel` | **0.09** | `agents/competitive_intel.py` | `prompts/competitive_intel.py` |
-| `sentiment` | **0.04** | `agents/sentiment.py` | `prompts/sentiment.py` |
+| Verdict | Composite band (`score_thresholds`) |
+|---|---|
+| STRONG BUY | 0.75 – 1.00 |
+| BUY | 0.55 – 0.75 |
+| NEUTRAL | 0.40 – 0.55 |
+| SELL | 0.20 – 0.40 |
+| STRONG SELL | 0.00 – 0.20 |
 
-All paths are under `src/backend/sectors/automobile/`. These weights, the 9 dimension
-keys, and their `AgentOutput`/`SubScores` schemas are unchanged by the unified-analyst
-redesign — they are still the contract `SignalAggregator` and the RL loop consume.
+Band edges resolve upward: 0.75 is STRONG BUY.
 
-**How these 9 dimensions get scored (automobile is in `UNIFIED_ANALYST_SECTORS` by
-default, along with all other sectors):** one `UnifiedAnalyst` call
-(`src/backend/shared/pipeline/unified_analyst.py`, REASONING tier) scores all 9 from a
-single `SectorDataBundle` (`services/data/context/bundle_builder.py`) and instantiates
-the SAME `*Output` classes shown per dimension below — `prompts/unified.py` distils
-each dimension's definition, sub-scores, and scoring anchors from the 9 prompt files
-referenced in the table above. The per-agent classes in `agents/*.py` and their
-individual `CONTEXT_SEARCH_QUERIES`/Serper/Tavily/yfinance calls described in 4.1–4.9
-below are the **legacy path** — still in the repo, used automatically only when
-`UNIFIED_ANALYST_SECTORS` excludes `automobile` or when the unified analyst call fails
-outright (`UNIFIED_ANALYST_FALLBACK_LEGACY=true`). The bundle sources the same
-underlying data each legacy agent used to fetch for itself, just once per run:
+**Example:** scores 0.8 and 0.4 at weights 0.75 and 0.25 give
+`0.8 × 0.75 + 0.4 × 0.25 = 0.70`, so the verdict is BUY. If the second
+dimension errored, the composite is 0.8 alone, STRONG BUY, which is why the
+decision gate counts scored dimensions (section 10).
 
-| Dimension(s) | Bundle section (unified path) | Legacy per-agent fetch (4.1–4.9 below) |
+## 10. Decision gate
+
+Every report carries a typed `decision_gate`
+([decision_gate.py](../src/backend/shared/pipeline/decision_gate.py)),
+computed from the same section statuses and dimension counts as the health
+row:
+
+- **abstain** when an essential section (fundamentals, technicals,
+  peers_valuation) is not `ok` or `cache_hit`; when fewer than half the
+  graph's dimensions were scored (`decision_gate.min_dimensions_fraction`);
+  when the run has no bundle (the legacy pool); or when the ticker's identity
+  for today is unresolved, or its price history came from another symbol;
+- **degraded** when it may act but an ordinary enrichment is missing;
+- **actionable** when nothing is missing.
+
+`decision_gate.mode` governs every consumer. In `record` (the repository
+value) everything is computed and logged, and nothing changes. In `enforce`
+an abstaining report's verdict reads `INSUFFICIENT DATA`, with the
+aggregator's verdict kept as `withheld_verdict`, and the forecast, review and
+portfolio consumers refuse what rests on it. An unrecognised value fails
+closed to `enforce`. The KT's [decision gate](TECHNICAL_DESIGN.md#decision-gate)
+and [instrument identity](TECHNICAL_DESIGN.md#instrument-identity) sections
+give the examples; RL_DESIGN §6 and the [autopilot guide](AUTOPILOT_GUIDE.md)
+section 4 describe what each consumer refuses.
+
+## 11. Legacy per-dimension fallback
+
+The pre-unified path remains as the fallback for a total analyst failure.
+
+- **Agents.** Automobile, banking, IT and renewables keep one `BaseAgent`
+  subclass per dimension, under `src/backend/sectors/<sector>/agents/`; the
+  generic graph builds eight `UniversalAgent`s from its dimension prompts.
+  Each agent makes its own bulk-tier call (default temperature and tokens,
+  three attempts with back-off on rate limits and timeouts) and, on failure,
+  returns a neutral 0.5 with an `error`.
+- **Context.** Each agent fetches its own context through
+  [ContextBuilder](../services/data/context/builder.py): a sector-specific
+  builder method when one exists, else a generic one. Its static search
+  queries can be extended by the cycle's prompt enhancements (RL_DESIGN §15),
+  and the dossier digest is appended to its system prompt.
+- **Graph.** A LangGraph fan-out runs the agents in parallel, with three
+  non-blocking rails: an input check, a clamp on each output, and a conflict
+  flag at aggregation.
+- **Retrieval.** A vector-store retrieval path exists behind `RAG_ENABLED`,
+  off by default, with no ingested corpus.
+
+A fallback run makes one search per agent query instead of at most three per
+run (the code estimates 6 to 8 times the news-search credits), and builds no
+bundle, so its report has no section provenance and its gate abstains. Each
+fallback is recorded in the fallback-event store, and `/scheduler/status`
+reports the day's count. **Planned:**
+measure actual provider calls (SA-025) and retire the fallback once the
+replacement is measured (SA-027).
+
+## 12. Narration and feed agents
+
+| Component | What the model does | What code does |
 |---|---|---|
-| `sales_demand`, `fundamentals`, `sentiment` | `company_news` (1 Serper) | each ran its own Serper news search |
-| `policy_regulatory`, `competitive_intel` | `sector_policy_news` (1 Serper) | each ran its own Serper news search |
-| `risk_macro` | `macro_context` (yfinance + macro cache, ≤1 Serper) | own Serper on cache miss |
-| `policy_regulatory` | `policy_deep_dive` (1 Tavily page) | 2 Tavily pages |
-| `fundamentals` | `fundamentals` (yfinance + NSE) | yfinance + Serper |
-| `pattern_analysis` | `technicals` (yfinance, cached) | yfinance only |
-| `raw_materials` | `commodities` (yfinance, cached) | yfinance + 1 Serper |
-| `sentiment`, `risk_macro` | `flows_sentiment` (NSE bulk deals, FII/DII, MF herding) | not previously fetched per-agent |
-| `valuation_catalyst` | `peers_valuation` (yfinance peers + NSE) | yfinance via ContextBuilder |
-| all 9 | `dossier` (injected once) | injected into all 9 prompts separately |
+| Macro news ([macro_news_fetcher.py](../services/background/macro_news_fetcher.py)) | Assigns each article a severity and impact tags, and says which topics are missing | Fetches news searches and NewsAPI headlines (07:30 policy and RBI; 09:00, 12:00 and 15:00 market), at most 2 rounds, and writes `data/macro_news/<date>_macro_feed.json`. On a model failure, articles are kept at low severity |
+| Portfolio narrator ([narrator.py](../core/portfolio/narrator.py)) | Explains the advisor's verdict in research tone | Decides the verdict first; a template replaces a failed narration |
+| Morning brief and weekly review ([brief.py](../core/delivery/brief.py), [weekly.py](../core/delivery/weekly.py)) | Writes one headline | Assembles every figure and section; a fallback headline on failure |
+| IPO extraction and narration ([extract.py](../core/ipo/extract.py), [narrate.py](../core/ipo/narrate.py)) | Pulls Substance facts from browsed pages; writes a sourced research note | Computes the indices and verdict; rejects a note with a number not in the findings or advice vocabulary; never shows either to users (KT section 8) |
 
----
+The macro feed file is read by the daily review when company news is
+missing (RL_DESIGN §5) and by chat's `get_macro_news` tool. The research
+bundle does not read it.
 
-### 4.1 FundamentalsAgent
+## 13. Chat agent
 
-| Dimension | Detail |
-|---|---|
-| **5 score dimensions (LLM)** | revenue_ebitda_delta, margin_vs_peers, deal_wins_order_book, attrition_headcount, promoter_fii_dii_flow |
-| **Context** | `get_fundamentals_context(ticker)` via yfinance quarterly P&L + Serper news |
-| **yfinance** | ✓ `quarterly_income_stmt`, `balance_sheet`, `institutional_holders` |
-| **Serper calls** | up to 3 |
-| **Schema** | `FundamentalsOutput` + `FundamentalsSubScores` |
-| **Known gap** | yfinance NSE returns annual snapshots, not QoQ deltas; screener.in needed for structured quarterly data |
-| **CONTEXT_SEARCH_QUERIES (STATIC)** | `"{ticker} quarterly results revenue EBITDA {quarter} {year}"`, `"{ticker} margin EBITDA comparison peers {year}"`, `"{company_name} order book pipeline deal wins {year}"`, `"{company_name} headcount attrition employees {year}"`, `"{ticker} promoter shareholding FII DII {quarter} {year}"` |
+`POST /ui/chat/stream` streams one answer per question
+([CHAT_ARCHITECTURE](CHAT_ARCHITECTURE.md)). A static pre-router detects buy,
+sell and momentum questions about a screenable sector and runs the screen
+and a news search first. The fast-tier model then calls tools for up to four
+rounds, with the reasoning tier as the retry after a rate limit or server
+error. The answer passes a static label scrubber, and the browser renders it
+only through the sanitizing Markdown boundary. Thirteen tools read prices,
+stored verdicts, the learning state, the dossier, news and the user's own
+portfolio; one of them, `run_agent_analysis`, runs the full research pipeline
+above.
 
----
+## 14. Static versus LLM
 
-### 4.2 SalesDemandAgent
-
-| Dimension | Detail |
-|---|---|
-| **5 score dimensions (LLM)** | fada_siam_dispatch, ev_segment_vahan, dealer_inventory, export_import, used_car_price_index |
-| **Context** | `fetch_news_context()` via Serper only |
-| **yfinance** | ✗ |
-| **Serper calls** | up to 3 (5 queries defined, capped by `SERPER_MAX_QUERIES=3`) |
-| **Schema** | `SalesDemandOutput` + `SalesDemandSubScores` |
-| **Known gap** | No direct FADA/SIAM/Vahan API — Serper search proxy only |
-| **CONTEXT_SEARCH_QUERIES (STATIC)** | `"{ticker} FADA monthly retail sales {month} {year}"`, `"{ticker} SIAM dispatch data {year}"`, `"{ticker} EV registration Vahan {year}"`, `"{company_name} dealer inventory channel check"`, `"India automobile export {ticker} DGFT {year}"`, `"used car price index Cars24 CarDekho {year}"` |
-
----
-
-### 4.3 RiskMacroAgent
-
-| Dimension | Detail |
-|---|---|
-| **5 score dimensions (LLM)** | inr_usd_crude_exposure, commodity_prices, rbi_repo_emi_impact, emission_policy_risk, global_geopolitical_risk |
-| **Global geopolitical risk sub-weights (LLM-judged)** | oil price shock 40%, FII outflow 30%, INR depreciation 20%, supply chain disruption 10% |
-| **Context** | `get_macro_context()` via yfinance (INR=X, CL=F, SLX, AA) + `macro_cache` OR Serper |
-| **yfinance tickers** | `INR=X` (INR/USD), `CL=F` (WTI crude), `BZ=F` (Brent), `SLX` (steel ETF), `AA` (aluminium proxy) |
-| **Serper calls** | 3 on cache MISS → 0 on cache HIT |
-| **Cache** | `get_macro_cache("automobile")` — TTL 2h, sector-level (shared across all auto tickers) |
-| **Schema** | `RiskMacroOutput` + `RiskMacroSubScores` |
-| **RBI repo rate** | Serper live fetch (regex from MPC news), 60-day thread-locked cache, fallback to settings.RBI_REPO_RATE_PCT=5.25% (2026-02-07, stance=neutral) | ✅ FIXED 2026-05-19 |
-| **CONTEXT_SEARCH_QUERIES (STATIC)** | `"INR USD exchange rate {date} India automobile exports"`, `"steel aluminium rubber prices India {month} {year}"`, `"RBI repo rate {year} auto loan EMI demand impact"`, `"India emission norms BS6 CAFE {company_name} compliance {year}"`, `"global geopolitical risk oil FII outflow India auto sector {year}"` |
-
----
-
-### 4.4 PatternAnalysisAgent
-
-| Dimension | Detail |
-|---|---|
-| **5 score dimensions (LLM)** | price_cycle_position, seasonal_sales_pattern, rsi_macd_bb, breakout_support_zone, peer_correlation |
-| **Context** | `get_technical_context(ticker)` → yfinance 10yr OHLCV → RSI(14), MACD(12,26,9), BB(20,2σ), support/resistance, Nifty Auto correlation |
-| **yfinance** | ✓ `period="10y"` OHLCV + `^CNXAUTO` |
-| **Serper calls** | **0** — yfinance only (most API-efficient agent) |
-| **C++ acceleration** | `stockindicators.pyd` via pybind11; fallback to pure Python if absent (`_USE_CPP=False`) |
-| **Schema** | `PatternAnalysisOutput` + `PatternAnalysisSubScores` |
-| **CONTEXT_SEARCH_QUERIES (STATIC)** | Defined but ContextBuilder uses yfinance only for this agent |
-
----
-
-### 4.5 SentimentAgent
-
-| Dimension | Detail |
-|---|---|
-| **5 score dimensions (LLM)** | news_nlp, management_tone, twitter_reddit_sentiment, youtube_view_spikes, dealer_consumer_feedback |
-| **Context** | `fetch_news_context()` via Serper |
-| **yfinance** | ✗ |
-| **Serper calls** | up to 3 |
-| **Schema** | `SentimentOutput` + `SentimentSubScores` |
-| **Known gap** | No Twitter/Reddit/YouTube API wired; Serper proxy only |
-| **CONTEXT_SEARCH_QUERIES (STATIC)** | `"{company_name} news sentiment {month} {year}"`, `"{ticker} earnings call transcript management tone {quarter} {year}"`, `"{company_name} Twitter Reddit investor sentiment {year}"`, `"{company_name} new model launch YouTube reviews views {year}"`, `"{company_name} dealer consumer feedback complaints {year}"` |
-
----
-
-### 4.6 PolicyRegulatoryAgent
-
-| Dimension | Detail |
-|---|---|
-| **5 score dimensions (LLM)** | fame_ev_subsidy, emission_norms, union_budget_duties, pli_scheme, state_ev_incentives |
-| **Context** | Tavily full-page (government circulars, PDFs) + Serper news |
-| **yfinance** | ✗ |
-| **Serper calls** | up to 3 |
-| **Tavily calls** | up to 2 (only agent that uses Tavily — reserved for full policy document depth) |
-| **Schema** | `PolicyRegulatoryOutput` + `PolicyRegulatorySubScores` |
-| **CONTEXT_SEARCH_QUERIES (STATIC)** | `"{company_name} FAME EV subsidy eligibility {year}"`, `"BS7 CAFE emission norms India automobile {year}"`, `"Union Budget import duties automobile PLI scheme {year}"`, `"{ticker} PLI incentive realization timeline {year}"`, `"state EV incentives registration waiver road tax {year}"` |
-
----
-
-### 4.7 RawMaterialsAgent
-
-| Dimension | Detail |
-|---|---|
-| **5 score dimensions (LLM)** | steel_aluminium, platinum_palladium, crude_polymer, power_tariff, commodity_trend_3m |
-| **Context** | `get_raw_materials_context()` via yfinance prices + `fetch_news_context(max_queries=1)` |
-| **yfinance tickers** | `SLX` (steel), `AA` (aluminium), `PPLT` (platinum), `PALL` (palladium), `CL=F` (crude), `BZ=F` (Brent) |
-| **Rubber** | ~~^TOCOM_RUBBER~~ (delisted). Now: Serper MCX news search via `_fetch_rubber_price_via_news()`, 4-hour module-level cache (`_RUBBER_CACHE`) | direction-based (up/down %), not absolute price |
-| **Serper calls** | 1 |
-| **Schema** | `RawMaterialsOutput` + `RawMaterialsSubScores` |
-| **CONTEXT_SEARCH_QUERIES (STATIC)** | `"steel aluminium commodity prices India automobile {month} {year}"` (1 query only) |
-
----
-
-### 4.8 CompetitiveIntelAgent
-
-| Dimension | Detail |
-|---|---|
-| **5 score dimensions (LLM)** | ev_market_share, new_model_pipeline, jv_acquisitions, adas_safety_ratings, competitive_position |
-| **Context** | `fetch_news_context()` via Serper |
-| **yfinance** | ✗ |
-| **Serper calls** | up to 3 |
-| **Schema** | `CompetitiveIntelOutput` + `CompetitiveIntelSubScores` |
-| **CONTEXT_SEARCH_QUERIES (STATIC)** | `"{company_name} EV market share India {year}"`, `"{company_name} new model launch pipeline {year}"`, `"{company_name} JV acquisition technology partnership {year}"`, `"{company_name} BNAP NCAP safety rating ADAS {year}"`, `"{company_name} competitive position market share {month} {year}"` |
-
----
-
-### 4.9 ValuationCatalystAgent
-
-| Dimension | Detail |
-|---|---|
-| **5 score dimensions (LLM)** | pe_vs_5yr_history, pe_vs_peer_median, discount_reason_clarity, catalyst_strength, price_target_confidence |
-| **Extra output fields (LLM)** | fair_value_estimate, current_discount_pct, discount_reason, recovery_catalysts[], price_target, recovery_timeline_quarters |
-| **Context** | `_build_valuation_catalyst` — implemented in ContextBuilder ✅ |
-| **yfinance** | ✓ (via context builder) |
-| **Serper calls** | per ContextBuilder routing |
-| **Schema** | `ValuationCatalystOutput` + `ValuationCatalystSubScores` |
-| **Output bubbles up** | 5 extra fields flow to `FinalReport` via SignalAggregator (price_target, recovery_timeline_quarters, undervalued_by_pct, discount_reason, recovery_catalysts) |
-
----
-
-### 4.10 Business Model Context Injection (legacy path, all 9 agents)
-
-In the legacy path, all 9 automobile agents receive `{business_model_context}` injected
-into their prompt via `get_business_model_context(ticker)` from
-`src/backend/sectors/automobile/config/settings.py`. The unified path
-(`prompts/unified.py`) does not currently inject this block — its `SYSTEM_PROMPT`
-covers the OEM universe generically; per-OEM business-model snapshots are a candidate
-addition to the bundle if the unified analyst needs sharper OEM-specific framing.
-
-| Tier | Source | Cache | Quality |
+| Component | Kind | File | Notes |
 |---|---|---|---|
-| Known OEM (8 tickers) | Curated `BUSINESS_MODEL_SNAPSHOTS` dict | In-memory (no API) | Highest — manually maintained |
-| Unknown ticker | Serper search: `"{ticker} business model revenue portfolio India automobile 2026"` | 30-day disk cache: `data/oem_profiles/{TICKER}.json` | Good — news-based |
-| Serper fails | `BUSINESS_MODEL_SNAPSHOT_DEFAULT` | N/A | Generic fallback |
+| Ticker resolution for tracked tickers | Static | `base_orchestrator.py` | Sector list, managed list, registry |
+| Ticker resolution for free text | LLM bulk, temperature 0 | `base_orchestrator.py` | One retry with search results |
+| Sector routing | Static | `sectors/registry.py` | Unknown → generic |
+| Bundle sections and statuses | Static | `services/data/context/bundle_builder.py` | Typed results |
+| Unified analyst | LLM reasoning, temperature 0.2 | `shared/pipeline/unified_analyst.py` | One call per analysis |
+| Legacy dimension agents | LLM bulk | `sectors/*/agents/`, `shared/agents/universal.py` | Fallback only |
+| Composite, conflicts, binding | Static | `shared/pipeline/signal_aggregator.py` | Bands from `score_thresholds` |
+| Aggregator narrative | LLM reasoning | same | Verdict overridden by binding |
+| Decision gate | Static | `shared/pipeline/decision_gate.py` | Section 10 |
+| Instrument identity | Static | `shared/data/instruments.py`, `symbol_resolver.py` | Registry |
+| Data-health row | Static | `services/data/stores/data_health.py` | One per unified run |
+| FeedbackAgent | LLM reasoning, temperature 0.3 | `rl/agents/feedback_agent.py` | RL_DESIGN §5 |
+| WeightAdapter, learning mode | Static | `rl/agents/weight_adapter.py`, `rl/learning_mode.py` | RL_DESIGN §7, §9 |
+| ThesisReviewer | LLM reasoning, temperature 0.1 | `rl/agents/thesis_reviewer.py` | RL_DESIGN §16 |
+| Forecast profile | LLM bulk, static fallback | `rl/algorithms/price_interpolator.py` | RL_DESIGN §4 |
+| Monte Carlo paths | Static | same | RL_DESIGN §4 |
+| Regime, sticky regime, streak, seasonal | Static | `regime/`, `rl/conviction/`, `seasonal/` | RL_DESIGN §12–14, §27.1 |
+| Prompt enhancer | Static, LLM bulk fallback | `prompt_enhancer/enhancer.py` | RL_DESIGN §15 |
+| Dossier curator, distillation, event ingestion, research loop | LLM bulk | `rl/agents/` | RL_DESIGN §23, §26 |
+| Dossier merge, digest, tags, lesson emphasis | Static | `rl/agents/dossier_curator.py`, `schemas/dossier.py`, `rl/algorithms/lesson_emphasis.py` | RL_DESIGN §23 |
+| Control lane | LLM reasoning or configured | `rl/agents/control_lane.py` | RL_DESIGN §25 |
+| Pre-open shock rating | LLM fast | `rl/workflows/preopen_check.py` | RL_DESIGN §27.3 |
+| Advisor and autopilot | Static | `core/portfolio/` | Autopilot guide |
+| Narrator, brief and weekly headlines | LLM bulk, fallback text | `core/portfolio/narrator.py`, `core/delivery/` | Section 12 |
+| Macro reviewer | LLM bulk | `services/background/macro_news_fetcher.py` | Section 12 |
+| IPO indices and verdict | Static | `core/ipo/hype.py`, `substance.py`, `verdict.py` | Dark |
+| IPO extraction and narration | LLM bulk | `core/ipo/extract.py`, `narrate.py` | Dark |
+| Chat pre-router, scrubber, tool dispatch | Static | `services/api/routes/ui_data.py` | CHAT_ARCHITECTURE |
+| Chat tool loop | LLM fast, reasoning retry | same | CHAT_ARCHITECTURE |
 
-**Curated OEMs:** MARUTI, TATAMOTORS, M&M, BAJAJ-AUTO, HEROMOTOCO, EICHERMOT, ASHOKLEY, TVSMOTORS
+## 15. External data sources
 
-**Margin anchors are RELATIVE descriptions** (not hardcoded %) to avoid stale data.
-Example: "Industry-leading margins vs peers; rubber/steel/crude are primary levers" not "~19% EBITDA".
-
-**Source tag in prompt:** `[source: curated]` | `[source: news-cache 2026-05-19]` | `[source: generic-default]`
-
----
-
-## 5. Banking/BFSI Sector — 6 Agents ✅
-
-All agents inherit BaseAgent. CONTEXT_SEARCH_QUERIES defined. ContextBuilder extended with 6 `_build_bfsi_*` routing methods. `rbi_data.py` + `npa_metrics.py` fetchers raise `NotImplementedError` (Phase 7 target).
-
-| Agent key | Base weight | 5 Score Dimensions (LLM) | Sub-score schema | Key gap |
-|---|---|---|---|---|
-| `fundamentals` | 0.25 | asset_quality, net_interest (NIM/CASA), capital_adequacy (CRAR), profitability (RoA/RoE), loan_mix | `BFSIFundamentalsAgentSubScores` | NPA/NIM structured data (RBI DBIE) not wired |
-| `risk` | 0.20 | credit_risk, market_risk, operational_risk, regulatory_risk, liquidity_risk | `BFSIRiskAgentSubScores` | RBI stress test data |
-| `macro_policy` | 0.20 | rbi_policy, liquidity_conditions, credit_growth, inflation_impact, forex_impact | `BFSIMacroPolicyAgentSubScores` | RBI press releases not scraped |
-| `institutional` | 0.15 | fii_dii_flows, promoter_holding, institutional_ownership, block_deals, shareholding_trend | `BFSIInstitutionalAgentSubScores` | NSE shareholding data (quarterly) |
-| `pattern_analysis` | 0.12 | price_cycle, rsi_macd_bb, support_resistance, sector_correlation, technical_trend | `BFSIPatternAgentSubScores` | yfinance OHLCV works; zero new wiring needed |
-| `universe_setup` | 0.08 | sector_overview, peer_positioning, valuation_relative, catalyst_pipeline, risk_reward | `BFSIUniverseAgentSubScores` | General research; LLM knowledge sufficient |
-
-**Supported tickers:** HDFCBANK, ICICIBANK, SBIN, KOTAKBANK, AXISBANK, INDUSINDBK, BANKBARODA, PNB, CANARABANK, FEDERALBNK, IDFCFIRSTB, BANDHANBNK, RBLBANK, YESBANK, HDFCAMC, BAJAJFINSV, BAJFINANCE, MUTHOOTFIN, CHOLAFIN
-
----
-
-## 6. IT Sector — 8 Agents ✅
-
-`deal_wins.py` + `transcript.py` fetchers raise `NotImplementedError` (Phase 7 target). ContextBuilder extended with 8 `_build_it_*` routing methods.
-
-| Agent key | Base weight | 5 Score Dimensions (LLM) | Sub-score schema |
-|---|---|---|---|
-| `fundamentals` | 0.25 | revenue_growth (CC), ebit_margins (8Q), deal_wins (TCV), attrition_headcount, fii_dii_valuation | `ITFundamentalsAgentSubScores` |
-| `global_macro` | 0.20 | us_tech_spending, client_sector_mix, currency_headwinds, global_it_demand, macro_sensitivity | `ITGlobalMacroAgentSubScores` |
-| `risk_macro` | 0.15 | visa_risk, pricing_pressure, client_concentration, regulatory_risk, margin_risk | `ITRiskMacroAgentSubScores` |
-| `peer_benchmark` | 0.12 | revenue_growth_vs_peers, margin_vs_peers, deal_win_rate, valuation_vs_peers, employee_metrics | `ITPeerBenchmarkAgentSubScores` |
-| `pattern_analysis` | 0.10 | price_cycle, rsi_macd_bb, support_resistance, sector_correlation, technical_trend | `ITPatternAgentSubScores` |
-| `sentiment` | 0.08 | news_nlp, management_tone, analyst_coverage, social_sentiment, client_feedback | `ITSentimentAgentSubScores` |
-| `transcript_nlp` | 0.06 | management_confidence, guidance_tone, client_commentary, margin_guidance, deal_pipeline_tone | `ITTranscriptNLPAgentSubScores` |
-| `insider_smart_money` | 0.04 | insider_buying, smart_money_flows, block_deals, institutional_positioning, promoter_activity | `ITInsiderAgentSubScores` |
-
-**Supported tickers:** TCS, INFY, WIPRO, HCLTECH, TECHM, LTIM, COFORGE, MPHASIS, PERSISTENT, LTTS, KPITTECH, TATAELXSI, NIIT, MASTEK, HEXAWARE
-
----
-
-## 7. Renewable Energy Sector — 6 Agents ✅
-
-`mnre_data.py` fetcher raises `NotImplementedError` (Phase 7 target). ContextBuilder extended with 6 `_build_re_*` routing methods.
-
-| Agent key | Base weight | 5 Score Dimensions (LLM) | Key metrics | Sub-score schema |
-|---|---|---|---|---|
-| `fundamentals` | 0.30 | revenue_growth, ebitda_margin, debt_service (DSCR), capacity_utilisation (CUF), fii_dii | DSCR, CUF | `REFundamentalsAgentSubScores` |
-| `business` | 0.25 | order_book, project_pipeline, auction_wins (MNRE), ppa_health, execution_risk | EV/MW, PPA | `REBusinessAgentSubScores` |
-| `valuation` | 0.20 | ev_mw, pe_vs_peers, price_to_book, dividend_yield, catalysts | EV/MW | `REValuationAgentSubScores` |
-| `sentiment_policy` | 0.10 | mnre_policy, renewable_targets, state_offtake, cop_sentiment, green_hydrogen | DISCOM health | `RESentimentPolicyAgentSubScores` |
-| `technical` | 0.10 | price_cycle, rsi_macd_bb, support_resistance, sector_correlation, volume | — | `RETechnicalAgentSubScores` |
-| `risk` | 0.05 | discom_payment_risk, regulatory_risk, weather_risk, financing_risk, competition | DISCOM delay | `RERiskAgentSubScores` |
-
-**Supported tickers:** ADANIGREEN, TATAPOWER, TORNTPOWER, CESC, SJVN, NHPC, NTPC, POWERGRID, ADANIPOWER, JSWENERGY, INOXGREEN, WAAREEENER
-
----
-
-## 8. SignalAggregator — Static + LLM Boundary
-
-**File:** `src/backend/shared/pipeline/signal_aggregator.py`
-
-```
-Step 1 [STATIC]:  composite = Σ(agent.overall_score × weight) / Σ(weights)
-                  Uses learned_weights if provided, else settings.AGENT_WEIGHTS
-
-Step 2 [STATIC]:  Conflict detection
-                  For every pair: if |score_A - score_B| ≥ 0.30 → conflict_flags
-                  WHY 0.30: meaningful disagreement (e.g. BUY vs NEUTRAL range)
-
-Step 3 [LLM]:     LLM call with all scores + weights + composite + conflict list
-                  Input: AGGREGATION_PROMPT
-                  Output (JSON): {verdict, final_score, conviction_drivers, top_risks,
-                                  investment_thesis, conflicts_resolved}
-                  Model: REASONING tier — qwen/qwen3.7-max via OpenRouter
-
-Step 4 [STATIC]:  Extract valuation fields from valuation_catalyst agent output
-                  → populate FinalReport.price_target, .recovery_timeline_quarters, etc.
-
-Step 5 [STATIC]:  Map final_score → verdict (if not explicitly returned by LLM)
-```
-
-**Verdict Thresholds (STATIC — from settings.SCORE_THRESHOLDS):**
-
-| Verdict | Score range |
-|---|---|
-| `STRONG BUY` | 0.75 – 1.00 |
-| `BUY` | 0.55 – 0.75 |
-| `NEUTRAL` | 0.40 – 0.55 |
-| `SELL` | 0.20 – 0.40 |
-| `STRONG SELL` | 0.00 – 0.20 |
-
-**Scoring example (automobile):**
-
-```
-Agent            Score   Weight   Weighted
-sales_demand     0.72  × 0.16  = 0.1152
-raw_materials    0.60  × 0.09  = 0.0540
-fundamentals     0.68  × 0.18  = 0.1224
-pattern_analysis 0.63  × 0.12  = 0.0756
-sentiment        0.70  × 0.04  = 0.0280
-policy_regulatory0.65  × 0.09  = 0.0585
-competitive_intel0.62  × 0.09  = 0.0558
-risk_macro       0.58  × 0.13  = 0.0754
-valuation_catal. 0.71  × 0.10  = 0.0710
-                          ──────────────
-composite = 0.6559 / 1.00 = 0.656  → BUY
-```
-
-**Weight priority chain:**
-
-```
-1. Explicitly injected by generate_forecast.py / daily_review.py
-   via set_aggregator_weights(weights, ticker) — pins weights to that ticker
-2. RL WeightMemory.effective_weights() — auto-loaded by _load_learned_weights(ticker)
-   via _resolve_weights_for(ticker), which reloads when the ticker changes
-3. settings.AGENT_WEIGHTS config defaults
-```
-
----
-
-## 9. RL Agents
-
-### 9.1 FeedbackAgent *(LLM)*
-
-**File:** `core/intelligence/rl/agents/feedback_agent.py`
-
-Not a subclass of BaseAgent — takes `FeedbackAgentInput` rather than `StockQuery`.
-
-| | Detail |
-|---|---|
-| **Model** | REASONING tier — qwen/qwen3.7-max via OpenRouter |
-| **Temperature** | 0.3 (surfaces non-obvious cross-signal patterns) |
-| **max_tokens** | 1500 (structured RevisedContext requires extra space) |
-| **response_format** | `{"type": "json_object"}` (guarantees parseable JSON) |
-| **System prompt** | Dynamically built: `build_system_prompt(sector, agent_names)` — no hardcoded agent names |
-
-**Two public methods:**
-
-```python
-run(fb_input: FeedbackAgentInput, ledger: LearningLedger) → FeedbackAgentOutput
-    # LLM call → classify miss type, identify missed factors, generate lessons
-
-merge_lessons_into_ledger(output: FeedbackAgentOutput, ledger: LearningLedger)
-    → (updated_ledger, lesson_ids)  [STATIC: dedup/blend/propagate]
-```
-
-**What is STATIC vs LLM in FeedbackAgent:**
-
-| Task | Type | Notes |
+| Source | Read by | Notes |
 |---|---|---|
-| `classify_direction()` | STATIC | UP/DOWN/FLAT via RL_FLAT_THRESHOLD_PCT=0.3 |
-| `is_direction_correct()` | STATIC | BUY→UP, SELL→DOWN, NEUTRAL→always ok |
-| `_parse()` output | STATIC | JSON → FeedbackAgentOutput, handles backward-compat |
-| LLM call itself | **LLM** | Determines miss_type, missed_factors, lessons, revised_context |
-| `merge_lessons_into_ledger()` | STATIC | Dedup by pattern, blend confidence 0.70×existing+0.30×incoming |
-| `propagate to shared/market ledger` | STATIC | Routing by lesson.scope |
-| `contributing_tickers boost +0.05` | STATIC | Per new confirming ticker |
-| Analyst distrust enforcement | STATIC | System prompt rule — never cite analyst targets |
-
-> `new_lessons` now also carry `trigger_tags` / `prioritise_agents` / `discount_agents` —
-> validated against the `EVENT_TAGS` controlled vocabulary and the live agent-name list
-> respectively (invalid entries dropped). See §9.4 and RL_DESIGN.md §23.3 for how these
-> executable claims fire.
-
-### 9.2 WeightAdapter *(STATIC — no LLM)*
-
-**File:** `core/intelligence/rl/agents/weight_adapter.py`
-
-```
-update(weight_memory, feedback_log, todays_primary_miss_agent, todays_miss_type)
-  → WeightMemory (new version)
-
-Three stages (all STATIC):
-  Stage 1: _compute_accuracy()
-    - Reads last WEIGHT_ACCURACY_WINDOW=7 entries from feedback_log
-    - For each agent: direction_hits / total (credits NO_PENALTY_MISS_TYPES on wrong days)
-    - Returns dict[agent, AgentAccuracy]
-
-  Stage 2: _compute_deltas()
-    - hit_rate ≥ 0.70 → +0.02
-    - hit_rate ≤ 0.40 → -0.03
-    - consecutive primary_miss_agent streak ≥ 2 → extra -0.05
-    - All deltas × MISS_TYPE_PENALTY_MULTIPLIER[miss_type]
-
-  Stage 3: _apply_deltas()
-    - clamp each delta to ±WEIGHT_MAX_STEP (0.05)
-    - clamp each weight to base ± WEIGHT_MAX_DRIFT (0.15)
-    - renormalize all weights to sum 1.0
-
-Result: WeightMemory gets new version number + WeightHistoryEntry with reason string
-```
-
-> **Per-agent calibration reward** (flag `RL_CALIBRATION_REWARD_ENABLED`, weight
-> `RL_CALIBRATION_WEIGHT`, default blend w=0.5): an agent's hit_rate in `_compute_accuracy()`
-> is blended with a calibration credit — did its own `predicted_agent_scores` lean match the
-> realized 3-way direction (FLAT/NEUTRAL excluded)? `False` is byte-identical to the prior
-> hit-rate-only behavior. See RL_DESIGN.md §24.
-
-### 9.3 ThesisReviewer *(LLM — conditional)*
-
-**File:** `core/intelligence/rl/agents/thesis_reviewer.py`
-
-| | Detail |
-|---|---|
-| **Trigger** | `should_review()`: `\|price_error\| > max(1.5%, 1.5 × atr_pct)` OR `direction_correct=False AND miss_type in {direction_flip, model_bias}` |
-| **ATR method** | `_compute_atr_pct(ticker)` — 14-day ATR as % via yfinance; returns 0.0 on failure (uses floor) |
-| **Model** | REASONING tier — qwen/qwen3.7-max via OpenRouter |
-| **Temperature** | 0.1 |
-| **max_tokens** | 300 |
-| **response_format** | `json_object` |
-| **Output** | `ThesisReview(thesis_intact, horizon_confidence_multiplier [0.3–1.0], assumptions_invalidated, revised_narrative)` |
-| **Safe default** | On any failure: `thesis_intact=True, multiplier=1.0` — never blocks daily review |
-| **Frequency** | ~1-3× per month per ticker (only on significant misses) |
-| **Telemetry** | Appends to `data/predictions/{sector}/{ticker}/thesis_calls.jsonl` |
-| **Calibration** | `multiplier` applied as global discount to all remaining 30-day forecasts |
-
-**Trigger decision tree:**
-
-```
-should_review(price_error_pct, atr_pct, direction_correct, miss_type)
-  ├── |price_error| > max(1.5%, 1.5 × atr_pct)  → True  (size trigger)
-  ├── direction_correct=False
-  │   AND miss_type in {direction_flip, model_bias}  → True  (structural trigger)
-  └── otherwise  → False  (skip — no LLM call)
-```
-
-### 9.4 DossierCurator *(LLM — every day)*
-
-**File:** `core/intelligence/rl/agents/dossier_curator.py`
-
-| | Detail |
-|---|---|
-| **Trigger** | Step 8.5 of `daily_review.py` — runs **every day**, hit or miss |
-| **Model** | qwen, temp=0.2, `json_object`, ≤900 tokens |
-| **Input** | Day's `market_context`, predicted vs actual, FeedbackAgent output, current dossier digest |
-| **Output** | Proposed updates to `current_thesis`, `response_signatures`, `guidance`, `recurring_catalysts`, `flow_notes`, `open_questions`, `observations` |
-| **Safety** | Never raises — any failure leaves the dossier untouched (same contract as ThesisReviewer) |
-| **Static merge** | LLM proposes; static code enforces tag whitelist (`EVENT_TAGS`), 3 obs/day cap, 30-obs buffer, confirm/contradict confidence math, list caps |
-| **Weekly distillation** | `distill_dossier()` — hooked into the `ledger_cleanup_weekly` scheduler job; folds observations >7 days old into durable sections, rates catalysts, drops dead signatures, bumps `version`. Static fallback (dead-signature drop + buffer cap) when the LLM is unavailable |
-| **File it owns** | `data/predictions/{sector}/{TICKER}/{TICKER}_dossier.json` (5th permanent memory file) |
-
-Full schema, merge bounds, and consumption surfaces: **RL_DESIGN.md §23 (Knowledge Layer)**.
-
----
-
-## 10. Chat Engine — Agentic Streaming Tool-Loop ✅
-
-**File:** `services/api/routes/ui_data.py` (no separate graph module). Full design in
-[`CHAT_ARCHITECTURE.md`](CHAT_ARCHITECTURE.md). Endpoints: `POST /ui/chat/stream` (primary, SSE) +
-`POST /ui/chat` (non-streaming twin).
-
-Replaced the old 3-node LangGraph DAG (`dispatch → executor → synthesize`, `chat_graph.py`, removed
-2026-06-03). That fixed pipeline planned all tools once and could not take a follow-up step; the loop
-reasons in steps and a deterministic pre-router guarantees the right data for buy/sell/momentum queries.
-
-**SSE event order:** `intent → tool_result → token → done`
-
-### 10.1 Flow
-
-```
-build prompt (strong system prompt + IST market context + session history)
-  → DETERMINISTIC PRE-ROUTER  [STATIC]  _detect_invest_intent()
-       buy/sell/momentum + screenable sector? → pre-run screen_stocks + search_market_news, inject both
-  → AGENTIC TOOL LOOP  [LLM]  ≤4 rounds: model picks tools → execute in parallel → feed back → repeat
-  → _sanitize_answer()  [STATIC]  → stream tokens
-```
-
-| Stage | Type | Detail |
-|---|---|---|
-| Pre-router | **STATIC** | `_detect_invest_intent` → keyword intent + sector → plan-and-execute screen+news |
-| Tool loop | **LLM** | FAST model (`qwen/qwen3.6-flash`), `_CHAT_TOOLS`, `_CHAT_MAX_TOOL_ROUNDS=4` |
-| Fallback | **STATIC** | `_chat_completion` retry/backoff → REASONING model on rate-limit/5xx |
-| Sanitizer | **STATIC** | `_sanitize_answer` strips banned disclaimer labels |
-| Session memory | **STATIC** | in-process `_SESSION_HISTORY` (replaced MemorySaver) |
-
-> A LangGraph DAG, a user-tier profiling system, and an LLM Reflexion self-critique were all trialled and
-> removed/rejected — see CHAT_ARCHITECTURE.md. `user_profile.py` is retained but **dormant**.
-
-### 10.2 Tool Catalogue (12 tools, all STATIC except `run_agent_analysis`)
-
-| Tool | Data source |
-|---|---|
-| `screen_stocks(sector, mode)` | yfinance 1-mo windows — value/momentum/profit screen (**the insight engine**) |
-| `get_sector_snapshot(sector)` | yfinance — index + per-stock movers (gainers/losers) + DB verdicts |
-| `get_live_price(symbol)` | yfinance — NSE-first resolution, freshness-labelled |
-| `get_historical_prices(symbol, days)` | yfinance OHLCV |
-| `get_stock_analysis(ticker)` | SQLite ScoreStore, latest verdict |
-| `get_analysis_history(days)` | SQLite ScoreStore |
-| `get_rl_prediction(ticker)` | `data/predictions/{sector}/{ticker}/` JSON |
-| `get_rl_insights()` | RL weight memory JSON |
-| `get_macro_news()` | macro cache → live Serper fallback when empty |
-| `get_ticker_dossier(ticker)` | `{TICKER}_dossier.json` digest — accumulated thesis, response signatures, guidance, flow notes |
-| `search_market_news(query)` | Serper /news + multi-query **RRF fusion**, Tavily fallback |
-| `run_agent_analysis(ticker)` **[LLM]** | Full 9-agent sector pipeline (~45s) |
-
-> All dispatched tools — including `get_rl_prediction`, `get_macro_news`, and
-> `get_historical_prices` — now have matching `_CHAT_TOOLS` schemas; a drift-guard test
-> enforces dispatch↔schema parity (previously these three were documented but uncallable).
-
----
-
-## 11. ContextBuilder Routing
-
-**File:** `services/data/context/builder.py`
-
-**Lookup precedence:** `_build_{sector}_{agent_name}` → `_build_{agent_name}` → `_build_generic`
-
-**Automobile methods (9 ✅):**
-
-| Method | Fetchers called | Serper calls |
-|---|---|---|
-| `_build_sales_demand` | `fetch_news_context(queries)` | up to 3 |
-| `_build_fundamentals` | `get_fundamentals_context(ticker)` + `fetch_news_context()` | up to 3 |
-| `_build_pattern_analysis` | `get_technical_context(ticker)` → RSI, MACD, BB, support/resistance | **0** |
-| `_build_sentiment` | `fetch_news_context(queries)` | up to 3 |
-| `_build_risk_macro` | `get_macro_context()` + `macro_cache` | 3 on miss, 0 on hit |
-| `_build_raw_materials` | `get_raw_materials_context()` + `fetch_news_context(max_queries=1)` | 1 |
-| `_build_policy_regulatory` | `fetch_tavily_context()` + `fetch_news_context()` | 3 + 2 Tavily |
-| `_build_competitive_intel` | `fetch_news_context(queries)` | up to 3 |
-| `_build_valuation_catalyst` | yfinance financials + `fetch_news_context()` | up to 3 |
-
-**BFSI methods (6 ✅):**
-
-| Method | Purpose |
-|---|---|
-| `_build_bfsi_fundamentals` | NIM/CASA/CRAR context via yfinance + Serper |
-| `_build_bfsi_risk` | Credit/liquidity risk context |
-| `_build_bfsi_pattern_analysis` | yfinance OHLCV technical context |
-| `_build_bfsi_institutional` | Shareholding + FII/DII flows |
-| `_build_bfsi_universe_setup` | Sector overview context |
-| `_build_macro_policy` | RBI policy news via Serper |
-
-**IT methods (8 ✅):**
-
-| Method | Purpose |
-|---|---|
-| `_build_it_fundamentals` | Revenue/deal wins/attrition context |
-| `_build_global_macro` | US tech spend + currency context |
-| `_build_it_risk_macro` | Visa/pricing/concentration risk context |
-| `_build_peer_benchmark` | Peer comparison via Serper |
-| `_build_it_pattern_analysis` | yfinance OHLCV technical context |
-| `_build_it_sentiment` | News/analyst coverage context |
-| `_build_transcript_nlp` | Management tone + guidance context |
-| `_build_insider_smart_money` | Insider + block deal context |
-
-**RE methods (6 ✅):**
-
-| Method | Purpose |
-|---|---|
-| `_build_re_fundamentals` | DSCR/CUF/revenue context |
-| `_build_business` | Order book + MNRE auction context |
-| `_build_valuation` | EV/MW + peer valuation context |
-| `_build_sentiment_policy` | MNRE policy + state offtake context |
-| `_build_technical` | yfinance OHLCV technical context |
-| `_build_re_risk` | DISCOM + regulatory risk context |
-
-**Fallback:**
-
-| Method | Fetchers called | Serper calls |
-|---|---|---|
-| `_build_generic` | Minimal stub: ticker + company name only | 0 |
-
-**Macro cache architecture (STATIC):**
-
-```
-Populated on-miss — set_macro_cache("automobile", text)
-                      TTL = MACRO_CACHE_TTL_HOURS (4h)
-
-ContextBuilder._build_risk_macro():
-  get_macro_cache("automobile")
-    HIT  → skip all 3 Serper calls for risk_macro
-    MISS → run 3 Serper calls, populate cache
-```
-
----
-
-## 12. Static vs LLM Classification — Master Table
-
-| Component | Type | File | Method | Key notes |
-|---|---|---|---|---|
-| `detect_sector(ticker)` | **STATIC** | `src/backend/sectors/__init__.py` | Hardcoded ticker sets | Default → automobile |
-| `CONTEXT_SEARCH_QUERIES` | **STATIC** | Each `prompts/{agent}.py` | Hardcoded keyword strings | Capped by `SERPER_MAX_QUERIES=3` |
-| `_resolve_ticker()` | **STATIC (managed ticker) / LLM (free text)** | `base_orchestrator.py` | Exact match in the sector's `TICKERS` (`_managed_tickers()`), the managed list or the instrument registry (`_tracked_tickers()`) → built directly via `_company_name_for()`/`_yf_info()`, no LLM; free text → qwen, temp=0.0 | Scheduled/managed runs: 0 resolution LLM calls (2 total/run); free-text chat: 1 resolution LLM call (3 total/run) |
-| `_load_learned_weights()` | **STATIC** | `base_orchestrator.py` | JSON file read | Returns None if no data yet |
-| `_unified_enabled()` / `_run_agents()` | **STATIC** | `base_orchestrator.py` | `UNIFIED_ANALYST_SECTORS` membership check | Branch: unified analyst vs legacy worker pool — all four sectors unified by default |
-| `UnifiedAnalyst.run()` (all 4 sectors) | **LLM** | `shared/pipeline/unified_analyst.py` | qwen REASONING tier, temp=0.2, json_object | ONE call → all dimension AgentOutputs for that sector (9/6/8/6 per `SECTOR_SPECS`); never raises |
-| Sector analysis agents (×9/8/6, legacy fallback path) | **LLM** | `sectors/{sector}/agents/*.py` | qwen BULK tier, temp=0.2 | Score 5 dimensions + overall; one call per agent; runs only on unified-analyst total failure |
-| `AgentOutput.ticker_vs_peers` | **String field** | `sectors/automobile/agents/*.py` | `_parse_output()` | Numeric peer comparison e.g. "MARUTI EBITDA 8.6% vs TATA 10.5% vs M&M 11.2%" |
-| `AgentOutput.bull_case_if` | **String field** | above | `_parse_output()` | Specific catalyst for +0.15 score: "e-Vitara 8% EV share by FY27" |
-| `AgentOutput.bear_case_if` | **String field** | above | `_parse_output()` | Specific risk for -0.15 score: "Crude >$90 compresses margin 100-150bps" |
-| `AgentOutput.what_changed` | **String field** | above | `_parse_output()` | Material cycle delta: "FII +120bps; attrition 2.8%→2.3%" |
-| `AgentOutput.data_confidence` | **STATIC** `float [0,1]` | above | `_parse_output()` | 0.3=sparse; 0.7=multiple data points; 1.0=direct verified |
-| `SignalAggregator._build_narrative_block()` | **STATIC** | `shared/pipeline/signal_aggregator.py` | Collates agent bull/bear/what_changed | Passed as `{agent_narratives}` to aggregation LLM prompt |
-| `SignalAggregator` weight fusion | **STATIC** | `shared/pipeline/signal_aggregator.py` | Weighted sum | `Σ(score × weight)` |
-| `SignalAggregator` conflict detection | **STATIC** | above | `delta ≥ 0.30` threshold | Fixed constant |
-| `SignalAggregator` verdict synthesis | **LLM** | above | qwen | After conflict detection |
-| `FeedbackAgent` miss classification | **LLM** | `rl/agents/feedback_agent.py` | qwen, temp=0.3 | Classifies into 7 miss types |
-| `classify_direction()` | **STATIC** | above | `RL_FLAT_THRESHOLD_PCT=0.3` | UP/DOWN/FLAT |
-| `merge_lessons_into_ledger()` | **STATIC** | above | Dedup/blend formula | After LLM returns |
-| `WeightAdapter.update()` | **STATIC** | `rl/agents/weight_adapter.py` | 3-stage math | Fully deterministic |
-| `MISS_TYPE_PENALTY_MULTIPLIER` | **STATIC** | `core/schemas/feedback.py` | Dict lookup | 0.0/0.25/0.5/1.0 |
-| `ThesisReviewer.should_review()` | **STATIC** | `rl/agents/thesis_reviewer.py` | ATR-relative threshold | Fires on structural miss or size trigger |
-| `ThesisReviewer._compute_atr_pct()` | **STATIC** | above | 14-day ATR via yfinance | Returns 0.0 on failure |
-| `ThesisReviewer.review()` | **LLM** | above | qwen, temp=0.1 | Post-miss thesis validation |
-| `DossierCurator.run()` | **LLM** | `rl/agents/dossier_curator.py` | qwen, temp=0.2, ≤900 tokens | Step 8.5, every day, never fatal |
-| Dossier merge bounds | **STATIC** | above | Tag whitelist, obs caps, confirm/contradict math | Enforces every bound on LLM proposal |
-| `distill_dossier()` | **LLM + static fallback** | above | Weekly, via `ledger_cleanup_weekly` | Static fallback: dead-signature drop + buffer cap |
-| `tag_events()` / `calendar_day_tags()` | **STATIC** | `src/backend/shared/schemas/feedback.py` | Keyword map + calendar lookup → `EVENT_TAGS` | Deterministic, LLM-independent; persisted on `FeedbackEntry.event_tags` |
-| `apply_lesson_emphasis()` | **STATIC** | `core/intelligence/rl/algorithms/lesson_emphasis.py` | ±`RL_LESSON_EMPHASIS_DELTA`, cap ±`RL_LESSON_EMPHASIS_CAP` | Step-7 revision + month-start forecast build |
-| `run_control_lane_step()` | **LLM** | `rl/agents/control_lane.py` | reasoning tier, temp=0.2, ≤300 tokens | Step 10 baseline duel: bare model, same info, no architecture (RL_DESIGN §25) |
-| Scorecard builder + baselines | **STATIC** | `rl/eval/scorecard.py`, `rl/eval/baselines.py` | Read-only over recorded logs | Monthly lanes: agent vs control vs persistence/always-up + MoM deltas |
-| Event scan + bundle | **STATIC** | `rl/agents/event_ingestor.py` | NSE keyword filter + 1 Tavily page/event | Weekly, watermarked, ≤3 events/scan (RL_DESIGN §26) |
-| `EventIngestor.run()` | **LLM** | above | qwen, temp=0.2, ≤900 tokens | Digests filings/concalls into dossier via the SAME curator merge |
-| `RegimeDetector.detect()` | **STATIC** | `regime/detector.py` | VIX/FII/RSI thresholds | No LLM |
-| `update_sticky_regime()` | **STATIC** | `regime/state.py` | Severity hysteresis (NORMAL/RISK_ON/.../OVERSOLD < RISK_OFF < MACRO_CRISIS), `RL_REGIME_CALM_DAYS` | Market-wide `_regime_state.json`; never raises (RL_DESIGN §27.1) |
-| Re-forecast trigger check | **STATIC** | `rl/workflows/daily_review.py` (post Step 6) | external_shock / thesis_break / regime_flip, first match wins | Skips Step 7 on success (RL_DESIGN §27.2) |
-| `regenerate_envelope()` | **LLM** | `rl/workflows/generate_forecast.py` | Same orchestrator + effective weights as month-start | Fresh MC paths for remaining days only; archives v_n; capped `RL_REFORECAST_MAX_PER_MONTH` (RL_DESIGN §27.2) |
-| `archive_envelope()` | **STATIC** | `rl/stores/prediction_store.py` | File copy to `archived_envelopes/{YYYY-MM}_v{n}.json` | Before every re-forecast overwrite (RL_DESIGN §27.2) |
-| `run_preopen_check()` | **LLM** | `rl/workflows/preopen_check.py` | 1 Serper + `LLM_MODEL_FAST` (json_object, temp=0.2, ≤300 tokens) | Market-level, 08:45 IST job + CLI; contradiction → `regenerate_envelope(trigger="preopen_shock")` (RL_DESIGN §27.3) |
-| Regime multiplier table | **STATIC** | `settings/base.py` | Config constant | Never persisted |
-| `ConvictionTracker` | **STATIC** | `rl/conviction/tracker.py` | `min(0.25,(days-4)×0.025)` | Formula |
-| RSI divergence amplifier | **STATIC** | above | ×1.5 when streak≥8 + RSI contrast | Cap 0.30 |
-| `PromptEnhancer.enhance()` | **STATIC** | `prompt_enhancer/enhancer.py` | Template dict lookup | miss_counter → query strings |
-| `SeasonalCalendar.get_context()` | **STATIC** | `seasonal/calendar.py` | YAML + ledger read | No LLM |
-| `SeasonalValidator.validate_pattern()` | **STATIC** | `seasonal/validator.py` | State machine | SEEDED→VALIDATED |
-| Confidence decay | **STATIC** | `core/schemas/feedback.py` | `conf×(0.98)^months` | Floor 0.10 |
-| Cross-ticker boost +0.05 | **STATIC** | `rl/stores/ledger_propagator.py` | Per confirming ticker | propagate_to_shared |
-| `input_rail` | **STATIC** | `shared/pipeline/graphs/rails.py` | yfinance fast_info | Non-blocking |
-| `output_rail` | **STATIC** | above | Clamp score [0,1] | Non-blocking |
-| `conflict_rail` | **STATIC** | above | Spread > 0.30 | Triggers LLM re-resolution |
-| `_detect_invest_intent()` (chat) | **STATIC** | `ui_data.py` | keyword intent + sector | Pre-router → plan-and-execute screen+news |
-| Agentic tool loop (chat) | **LLM** | `ui_data.py` | FAST tier (qwen3.6-flash) | Multi-round tool calls, then streamed answer |
-| `_sanitize_answer()` (chat) | **STATIC** | above | regex strip | Removes banned "Note"/disclaimer labels |
-| `_rrf_fuse()` (chat search) | **STATIC** | above | reciprocal rank fusion | Merges multi-query news results |
-| `_should_skip_agent_rerun()` | **STATIC** | `daily_review.py` | threshold 0.5% | Skip if direction correct + small error |
-| Tavily disk cache | **STATIC** | `tavily_fetcher.py` | MD5 hash + month | Cache key = sorted_queries + YYYY-MM |
-| `record_llm_call()` | **STATIC** | `llm_client.py` | JSONL append | `outputs/llm_log/{date}.jsonl` |
-| `run_month_end_validation()` | **STATIC** | `month_end_validation.py` | Last trading day only | Validates seasonal patterns vs feedback |
-
----
-
-## 13. Serper API Budget
-
-**Key & credit model (since 2026-06-13):** a single paid Serper key (50,000-credit
-top-up), `SERPER_API_KEY`, serves all sectors via `get_serper_key(sector)`. Serper
-credits are a **one-time purchase valid 6 months — there is NO monthly reset** (the old
-free tier was a one-time 2,500-credit signup grant per account, both now exhausted).
-Tavily is the opposite: its free 1,000 credits **reset monthly**, and current usage
-(~500/month) keeps Tavily at $0.
-
-**Per-run call count, unified path (default for ALL FOUR sectors):**
-
-`build_sector_bundle()` makes **≤3 dedicated Serper calls** total per run for every
-sector, regardless of how many dimensions are scored — one analyst call consumes all of them:
-
-| Bundle section | Serper calls | Notes |
-|---|---|---|
-| `company_news` | 1 | Company news/results/guidance — feeds sales_demand, fundamentals, sentiment |
-| `sector_policy_news` | 1 | Sector demand + policy/competitive — feeds policy_regulatory, competitive_intel |
-| `macro_context` | 0 (cache HIT) / 1 (MISS) | Skipped on `get_macro_cache("automobile")` hit — feeds risk_macro |
-| `policy_deep_dive` | 0 Serper, ≤1 Tavily | Down from 2 Tavily pages |
-| `technicals`, `commodities`, `fundamentals`, `flows_sentiment`, `peers_valuation`, `dossier` | 0 | yfinance / NSE / dossier, all free or cached |
-| **Total (cache warm)** | **2** | |
-| **Total (cache miss)** | **3** | |
-
-**Per-run call count, legacy multi-agent path (automatic fallback only — runs when the
-unified analyst call fails outright and `UNIFIED_ANALYST_FALLBACK_LEGACY` engages, or
-when a sector is removed from `UNIFIED_ANALYST_SECTORS`) — automobile shape shown:**
-
-| Agent | Serper calls | Notes |
-|---|---|---|
-| sales_demand | 3 | Per-ticker news |
-| fundamentals | 3 | Per-ticker news |
-| pattern_analysis | 0 | yfinance only |
-| sentiment | 3 | Per-ticker news |
-| risk_macro | 0 (warm) / 3 (cold) | Sector macro cache (2h TTL) |
-| rubber | 0 | Cached 4h in `_RUBBER_CACHE` — 1 Serper/4h shared across all tickers |
-| policy_regulatory | 3 | Per-ticker news + 2 Tavily (96% disk cache) |
-| raw_materials | 1 | 1 Serper + yfinance (CL=F, BZ=F cached daily in `_COMMODITY_CACHE`) |
-| competitive_intel | 3 | Per-ticker news |
-| valuation_catalyst | 0 | yfinance only (`_COMMODITY_CACHE`) |
-| **Total warm** | **16** | Risk_macro cache hit; rubber shared |
-| **Total cold** | **19** | Risk_macro cache miss |
-
-**RBI rate fetch:** 1 Serper/60 days (thread-locked `_RBI_CACHE`) — effectively 0/month.
-
-**Macro Cache Architecture (shared by both paths):**
-
-```
-Populated on-miss (no background loop):
-Unified path  — bundle_builder._fetch_macro_context():
-  get_macro_cache("automobile")
-    HIT  → skip macro_context's Serper call (TTL = MACRO_CACHE_TTL_HOURS = 4h)
-    MISS → run Serper call(s), populate cache via set_macro_cache()
-Legacy path   — ContextBuilder._build_risk_macro():
-  get_macro_cache("automobile")
-    HIT  → uses cached text, skips all 3 Serper calls for risk_macro
-    MISS → runs 3 Serper calls, populates cache
-```
-
-**Monthly budget (all four sectors on the unified path, ~5 active tickers/sector, 21 trading days):**
-
-| Usage | Formula | Calls/month |
-|---|---|---|
-| Pre-market orchestrator (unified, warm) | 2 × ~5 tickers × 4 sectors × 21 days | ~840 |
-| RL daily review (30% full rerun) | 0.3 × 2 × 5 × 21 (automobile RL tickers) | ~63 |
-| **Serper Total** | | **~900–1,700 / month** |
-| Tavily | 1 extract/run + event ingestion | **~500 / 1,000 free (resets monthly) → $0** |
-
-Against the paid 50,000-credit pool that is **~10–15k consumed over the 6-month credit
-validity** — the pool expires before it empties, so the effective external-data cost is
-~$8–9/month and re-upping ~twice a year is the steady state. Had the legacy 16–19/run
-shape still applied to all four sectors, the same workload would burn ~12k+/month.
-
----
-
-## 14. Known Gaps Per Sector
-
-**Automobile:**
-
-| Gap | Agent | Fix path | Status |
-|---|---|---|---|
-| RBI repo rate | risk_macro | Serper live fetch, 60-day cache, settings fallback | ✅ FIXED |
-| Rubber ticker ^TOCOM_RUBBER delisted | raw_materials | Serper MCX news proxy, 4h cache | ✅ FIXED |
-| `_build_valuation_catalyst` not implemented | valuation_catalyst | Added to ContextBuilder | ✅ FIXED |
-| Vahan/FADA/SIAM structured data | sales_demand | Serper proxy only | ❌ OPEN |
-| Nifty Auto peer correlation | pattern_analysis | 10 lines of yfinance | ❌ OPEN |
-| Emission query 4 skipped (SERPER_MAX=3) | risk_macro | Raise SERPER_MAX_QUERIES | ❌ OPEN |
-| `TATAMOTORS` NseIndiaApi announcements returns `[]` | all 9 agents | See NSE workaround note below | ⚠️ PERMANENT WORKAROUND |
-
-**NSE TATAMOTORS workaround — detail:**
-
-- **Affected tickers:** `TATAMOTORS` only (confirmed in `NSE_SYMBOL_OVERRIDES` in `services/data/fetchers/nse_announcements.py`).
-- **Root cause:** `NseIndiaApi.announcements(symbol="TATAMOTORS")` consistently returns an empty list `[]`. The exact server-side cause is not documented by NseIndiaApi; the debug script `tests/debug_nse_lookup.py` tested symbol variants (`TATAMOTORS`, `TATAMTRDVR`, `TATAMOTOR`, `TTM`) to determine whether the NSE `announcements()` endpoint silently rejects the symbol or routes to the DVR share class. No variant returned data. `boardMeetings()` and `actions()` may still return data for this ticker — only `announcements()` is observed to be empty.
-- **Current workaround (code-verified):** `prefetch_nse_data()` checks `NSE_SYMBOL_OVERRIDES` before calling NseIndiaApi. If the ticker is in the dict, it returns immediately with `{"announcements": [], "board_meetings": [], "actions": [], "error": "symbol_override"}`. `format_nse_context()` returns `""` when `error == "symbol_override"`, so all 9 agents fall back to Serper-only for TATAMOTORS. No NseIndiaApi calls are made for this ticker.
-- **Resolution path:** To fix properly, test `nse.boardMeetings("TATAMOTORS")` and `nse.actions("TATAMOTORS")` in isolation — if those return data, remove `TATAMOTORS` from `NSE_SYMBOL_OVERRIDES` and accept that only `announcements()` is empty (partial NSE data is still valuable). If the full NseIndiaApi endpoint resolves in a future library version, remove the override entirely and rerun `tests/debug_nse_lookup.py` to confirm. The override dict is designed to be extended if other tickers show the same symptom.
-- **Declared:** Permanent workaround until the NseIndiaApi library or NSE endpoint behaviour changes. Serper provides equivalent coverage for TATAMOTORS announcements.
-
-**Banking/BFSI:**
-
-| Gap | Agent | Fix path | Status |
-|---|---|---|---|
-| `rbi_data.py` stub | fundamentals, macro_policy | Serper news proxy | ❌ OPEN |
-| `npa_metrics.py` stub | fundamentals | Tavily NPA filings | ❌ OPEN |
-| ContextBuilder not extended | all 6 agents | — | ✅ FIXED |
-
-**IT Sector:**
-
-| Gap | Agent | Fix path | Status |
-|---|---|---|---|
-| `deal_wins.py` stub | fundamentals, transcript_nlp | Serper + Tavily | ❌ OPEN |
-| `transcript.py` stub | transcript_nlp | Tavily NSE IR pages | ❌ OPEN |
-| ContextBuilder not extended | all 8 agents | — | ✅ FIXED |
-
-**Renewable Energy:**
-
-| Gap | Agent | Fix path | Status |
-|---|---|---|---|
-| `mnre_data.py` stub | business, sentiment_policy | Tavily mnre.gov.in | ❌ OPEN |
-| DISCOM payment data | risk | PRAAPTI portal | ❌ OPEN |
-| ContextBuilder not extended | all 6 agents | — | ✅ FIXED |
-
----
-
-## 15. News Data Strategy — Layer A (Macro) + Layer B (Per-Ticker)
-
-### Layer A — RSS Macro Feed (background, scheduler-driven)
-
-**Purpose:** Continuously populated macro/policy news cache. Feeds risk_macro, sentiment, policy_regulatory agents and the chat pipeline automatically.
-
-**Sources (confirmed working 2026-05-21):**
-
-| RSS Feed | Fresh articles/48h | Categories covered |
-|---|---|---|
-| ET Top Stories | ~44 | economic policy, budget, RBI/SEBI, global macro |
-| LiveMint | ~35 | markets, economy, company news |
-| BusinessLine | ~60 | markets, sector, policy, commodities |
-| Investing.com India | ~10 | Nifty/Sensex, FII/DII, global signals |
-
-**Architecture:** `MacroNewsFetcher.fetch_and_review(query_type)` → `ReviewAgent` (LLM: severity + impact_tags) → `MacroNewsCache` (`data/macro_news/YYYY-MM-DD_macro_feed.json`)
-
-**Scheduler:** APScheduler inside FastAPI — market_hours runs (9am/12pm/3pm IST weekdays) use ET+LiveMint+BusinessLine; daily run (7:30am) includes all 4 feeds.
-
-**Current fetch method:** RSS via `feedparser` (free, no API key). Fallback to Serper /news if RSS returns 0 articles.
-
-**ReviewAgent (LLM):** Assigns `severity` (HIGH/MEDIUM/LOW) and `impact_tags` per article. `satisfied=False` on LLM failure — retry loop fires with refined queries (fixed 2026-05-21).
-
-**Coverage by category:**
-
-| Category | Articles/run | Status |
-|---|---|---|
-| rbi_policy | 4 | Covered |
-| nifty_sensex | 46 | Covered |
-| economy_budget | 11 | Covered |
-| fii_dii | 7 | Covered |
-| sector_news | 79 | Covered |
-
-**What Layer A cannot cover:** Company-specific news, per-ticker editorial, analyst views.
-
----
-
-### Layer B — Per-Ticker News (Serper + NseIndiaApi)
-
-**Purpose:** Company-specific context fed into each agent's prompt during analysis.
-
-#### Pre-fetch Architecture
-
-```
-analyse(ticker)
-    │
-    ▼  After _resolve_ticker(), before _run_via_graph()
-_prefetch_nse_data(query)   [new method in base_orchestrator.py]
-    ├── nse.announcements(ticker, days=7)    → regulatory filings, results filings
-    ├── nse.boardMeetings(ticker)            → board meeting dates + subjects
-    ├── nse.actions(ticker)                  → dividends, bonuses, splits with ex-dates
-    └── stored in query.nse_data (dict)      → shared read-only across all 8 parallel agents
-
-Each agent via ContextBuilder.build():
-    ├── reads query.nse_data  (NseIndiaApi — official events)
-    └── calls fetch_news_context(queries)   (Serper — editorial interpretation)
-```
-
-**NseIndiaApi session:** One NSE() instance per analysis run. `try/finally: nse.exit()`. Rate-limited to 3 req/sec — 0.4s sleep between each of the 3 calls. Async path uses `asyncio.to_thread`.
-
-**StockQuery schema addition:**
-```python
-nse_data: dict = Field(default_factory=dict)
-# Structure: {"announcements": [...], "board_meetings": [...], "actions": [...],
-#             "symbol_used": "HDFCBANK", "fetched_at": "...", "error": None}
-```
-
-#### Coverage Map Per Agent
-
-| Agent | NseIndiaApi provides | Serper provides | Serper queries removed | Permanent gap |
-|---|---|---|---|---|
-| **fundamentals** | Results filings (`attchmntText`), board meeting dates | Analyst reaction, revenue commentary, EPS vs estimate | 1–2 quarterly results queries | Analyst earnings models, broker reports |
-| **earnings** | Board meeting date, results filing timestamp | Earnings call tone, management guidance | 1 board meeting date query | Management call transcripts |
-| **valuation_catalyst** | Dividend ex-date, bonus ratio, stock split details | Analyst target prices, P/E commentary, buyback expectations | 1 dividend/bonus news query | DCF models, broker NAV |
-| **risk_macro** | SEBI disclosures, regulatory filings, ESOP allotments | Macro policy impact on company, sector risk headlines, debt news | 0 (supplements, not replaces) | Credit rating events, off-balance items |
-| **sentiment** | Nothing | Brand news, CEO quotes, consumer sentiment | 0 (Serper only) | Twitter/Reddit/YouTube |
-| **sales_demand** | Nothing | FADA dispatch, EV registrations, dealer inventory | 0 (Serper only) | Real-time Vahan portal |
-| **pattern_analysis** | Nothing | Nothing (yfinance only) | 0 | — |
-| **competitive_intel** | Nothing | Peer market share, EV competitors, deal wins | 0 (Serper only) | Proprietary market research |
-| **policy_regulatory** | Regulatory filings (supplement) | SEBI/RBI policy news, compliance updates | 0 (supplements) | SEBI circular PDFs full-text |
-
-#### Call Budget Per Ticker Analysis
-
-| Source | Calls | Cost | Timing |
-|---|---|---|---|
-| NseIndiaApi `announcements()` | 1 | Free | Pre-fetch, once |
-| NseIndiaApi `boardMeetings()` | 1 | Free | Pre-fetch, once |
-| NseIndiaApi `actions()` | 1 | Free | Pre-fetch, once |
-| Serper (after removing covered queries) | ~25–26 | Credits | Per agent, parallel |
-| **Net Serper reduction** | **~4–5 calls saved** | **~15%** | — |
-
-**RL daily review (per ticker per day):**
-
-| Source | Calls | Purpose |
-|---|---|---|
-| Serper `get_news_context(ticker, days=2)` | 1 credit | Editorial market reaction for yesterday |
-| NseIndiaApi `announcements(ticker, days=2)` | Free | Official regulatory events for yesterday |
-| Combined → `FeedbackAgentInput.market_context_today` | — | FeedbackAgent gets real data (not "unavailable") |
-| `DossierCurator.run()` (Step 8.5) | +1 LLM call | Updates ticker dossier — runs every day, hit or miss |
-| `run_control_lane_step()` (Step 10) | +1 LLM call | Baseline-duel control prediction for the next session (RL_DESIGN §25) |
-
-> Weekly: `distill_dossier()` adds +1 LLM call/ticker/week, hooked into the
-> `ledger_cleanup_weekly` scheduler job. See RL_DESIGN.md §23.5.
-
-#### Coverage Map — Banking/BFSI (pending NseIndiaApi integration)
-
-| Agent | NseIndiaApi provides | Serper provides | Permanent gap |
-|---|---|---|---|
-| **fundamentals** | Results filings, board meeting dates | NIM/CASA commentary, analyst NPA forecasts | RBI DBIE structured data |
-| **risk** | Regulatory disclosures, SEBI filings | Credit risk headlines, RBI stress test news | Internal stress test data |
-| **macro_policy** | Nothing (macro is sector-wide) | RBI MPC announcements, liquidity data | RBI press release structured feed |
-| **institutional** | Nothing (shareholding quarterly) | FII/DII block deal news | NSE shareholding data API |
-| **pattern_analysis** | Nothing | Nothing (yfinance only) | — |
-| **universe_setup** | Nothing | Peer valuation, sector overview | — |
-
-#### Coverage Map — IT Sector (pending NseIndiaApi integration)
-
-| Agent | NseIndiaApi provides | Serper provides | Permanent gap |
-|---|---|---|---|
-| **fundamentals** | Results filings, board meeting dates | Revenue/deal win commentary, attrition news | Structured deal TCV data |
-| **global_macro** | Nothing (macro is sector-wide) | US tech spend, Fed rate news | ISG/Gartner IT spend data |
-| **risk_macro** | Regulatory filings | Visa quota news, pricing pressure | USCIS H1B approval stats |
-| **peer_benchmark** | Nothing | Peer comparison headlines | Structured peer financials |
-| **pattern_analysis** | Nothing | Nothing (yfinance only) | — |
-| **sentiment** | Nothing | Analyst coverage, news NLP | Earnings call transcripts |
-| **transcript_nlp** | Nothing | Management tone proxy via news | Official earnings call audio/text |
-| **insider_smart_money** | ESOP allotments, promoter filings | Block deal news | Insider buy/sell structured data |
-
-#### Coverage Map — Renewable Energy (pending NseIndiaApi integration)
-
-| Agent | NseIndiaApi provides | Serper provides | Permanent gap |
-|---|---|---|---|
-| **fundamentals** | Results filings, board meeting dates | DSCR/CUF commentary | Structured PPA utilization data |
-| **business** | Project filings, regulatory approvals | MNRE auction news, order book news | PRAAPTI portal DISCOM data |
-| **valuation** | Dividend/split details | Analyst EV/MW commentary | DCF models, broker NAV |
-| **sentiment_policy** | Regulatory filings | MNRE policy news, COP sentiment | State DISCOMs payment history |
-| **technical** | Nothing | Nothing (yfinance only) | — |
-| **risk** | SEBI disclosures | DISCOM payment risk news | PRAAPTI structured payment data |
-
-#### Known Issues
-
-| Issue | Status |
-|---|---|
-| `TATAMOTORS` announcements returns empty `[]` | `NSE_SYMBOL_OVERRIDES = {"TATAMOTORS": None}` — fallback to Serper-only for this ticker |
-| NseIndiaApi down / NSE blocks session | `try/except` in `_prefetch_nse_data()` → `nse_data = {"error": str(exc), "announcements": [], ...}` → agents fall back to Serper-only |
-| UI news panel (`ui_data.py`) | Not changed — `search_serper_news()` kept for the frontend live news display |
-
-#### Permanent Gaps — Layer B (all sectors)
-
-- Real-time intraday push news (no confirmed India-native API for NSE at any tested price point)
-- Management call transcripts (no source)
-- Social media sentiment (paid APIs only — StockTwits covers Indian stocks but costs ~$200/mo)
-- Analyst research PDFs (Serper catches mentions only)
-- Historical news >7 days (agents only see last 7 days)
-- Vahan vehicle registration data (requires MoRTH authorization; Masters India offers paid proxy)
-- SIAM dispatch structured data (no public API — only monthly PDF press releases)
-- FADA retail sales (monthly PDF at fada.in — no API; requires PDF parser)
-- PRAAPTI DISCOM payment data (portal access, no structured API)
-
----
-
-### Layer C — May 2026 Structured Data Sources (NSE + AMFI + IIMA)
-
-Three structured data sources were added in May 2026. They are all free (no API key), integrated directly into ContextBuilder, and supplement or replace Serper queries. They are verified against the live code in `services/data/context/builder.py`.
-
-#### Source 1 — NSE Market Intelligence (`services/data/fetchers/nse_market.py`)
-
-**Library:** `nsepython` (no API key — reads NSE exchange directly)
-
-**Data provided:**
-- FII and DII daily net flows (in Crore Rs), plus a pre-computed sentiment signal string
-- NSE bulk/block deals: net institutional buyers and sellers (top 5 each), and per-ticker net quantity with side (BUY/SELL/MIXED)
-- Upcoming NSE corporate events: board meeting dates and purpose strings (up to 15 events)
-
-**Cache TTL:** In-process dict keyed by calendar date (`YYYY-MM-DD`). Single fetch per process per day — all subsequent ContextBuilder calls within one analysis session read from the dict.
-
-**Public functions used by ContextBuilder:**
-- `get_nse_market_data()` — returns the cached dict
-- `format_nse_market_context(data, focus, ticker)` — formats for prompt injection; `focus="fii_dii"` emits only the flows block; `focus="bulk_deals"` emits only the bulk deal block with optional per-ticker detail; `focus="all"` emits both plus the upcoming events list
-
-**ContextBuilder integration — verified call sites:**
-
-| Builder method | Sector | `focus=` | Agents that receive this context |
-|---|---|---|---|
-| `_build_sentiment` | automobile (all sectors via `self._sector`) | `"bulk_deals"` + per-ticker | `sentiment` (all sectors) |
-| `_build_risk_macro` | automobile | `"fii_dii"` | `risk_macro` (automobile) |
-| `_build_bfsi_risk` | banking_bfsi | `"fii_dii"` | `bfsi_risk` |
-| `_build_macro_policy` | banking_bfsi | `"fii_dii"` | `macro_policy` |
-| `_build_it_risk_macro` | it_sector | `"fii_dii"` | `it_risk_macro` |
-
-**Serper queries eliminated:**
-- `"{ticker} FII DII India net buying today"` (was in `risk_macro`)
-- `"{ticker} BSE bulk deal block trade"` (was in `institutional` / `bfsi_institutional`)
-- `"{company_name} next results date"` (upcoming earnings — available via `get_upcoming_earnings_for_ticker()`)
-
-**Graceful degradation:** Returns `""` if `nsepython` is not installed or any sub-fetch fails. All agents fall back to Serper-only context silently.
-
----
-
-#### Source 2 — AMFI MF Sector Herding (`services/data/fetchers/mf_herding.py`)
-
-**API:** `mfapi.in` community wrapper around AMFI (no API key — end-of-day NAV data)
-
-**Data provided:**
-- 30-day NAV momentum (%) across sector ETFs for a given sector
-- Aggregate `institutional_flow` signal: `INFLOW` (avg ≥ +0.5%), `OUTFLOW` (avg ≤ -0.3%), or `NEUTRAL`
-- Per-fund breakdown: scheme code, name, and individual momentum %
-- Coverage: 4 sectors — `automobile` (3 ETFs), `banking_bfsi` (3 ETFs), `it_sector` (3 ETFs), `renewable_energy` (2 ETFs)
-
-**Cache TTL:** In-process dict keyed by ISO week (`YYYY-WNN:sector`). Single fetch per sector per ISO week — NAV trend is stable across 7 days.
-
-**Public functions used by ContextBuilder:**
-- `get_sector_mf_herding(sector)` — returns the cached weekly dict
-- `format_mf_herding_context(data)` — formats for prompt injection; returns `""` on error or no data
-
-**ContextBuilder integration — verified call sites:**
-
-| Builder method | Sector resolved from | Agents that receive this context |
-|---|---|---|
-| `_build_sentiment` | `self._sector or "automobile"` | `sentiment` (all 4 sectors) |
-
-**Signal value:** Sector ETF NAV momentum reflects net redemption or accumulation pressure on the entire sector — a signal invisible to Serper news scraping. Example: -0.4% average NAV across 3 auto ETFs while Nifty is flat indicates institutional redemption pressure.
-
-**Graceful degradation:** Returns `""` if `mfapi.in` is unreachable or returns no data. Agents fall back to Serper-only context silently.
-
----
-
-#### Source 3 — IIMA Fama-French 4-Factor Regime (`core/intelligence/rl/algorithms/factor_regime.py`)
-
-**Source:** IIMA (IIM Ahmedabad) Indian Fama-French-Momentum dataset — `www.iimahd.ernet.in/~iffm/Indian-Fama-French-Momentum/`
-
-**Data vintage:** Monthly, October 1993 to March 2023 (last available as of May 2026). This is a structural prior, NOT a live signal.
-
-**Data provided:**
-- `regime`: `MOMENTUM` (avg WML > 0) or `REVERSAL` (avg WML < 0) over trailing 12 months
-- `strength`: `STRONG` / `MODERATE` / `WEAK` based on WML z-score (|z| > 1.5 = STRONG, > 0.5 = MODERATE)
-- `size_tilt`: `SMALL_CAP` or `LARGE_CAP` (sign of avg SMB factor)
-- `style_tilt`: `VALUE` or `GROWTH` (sign of avg HML factor)
-- `z_score`: standardised WML relative to its 12-month mean
-
-**Cache TTL:** In-process dict keyed by calendar date (`YYYY-MM-DD`) plus 30-day CSV file cache at `data/cache/iima_ff/`. CSV is re-downloaded only if > 30 days old or absent.
-
-**Public functions used by ContextBuilder:**
-- `get_factor_regime(lookback_months=12)` — returns cached regime dict, or `None` on failure
-- `format_factor_regime_context(regime)` — formats for prompt injection; returns `""` when `regime is None`
-
-**ContextBuilder integration — verified call sites:**
-
-| Builder method | Sector | Agents that receive this context |
-|---|---|---|
-| `_build_risk_macro` | automobile | `risk_macro` (automobile only) |
-
-**WeightAdapter integration (secondary use):** `get_regime_penalty_scale(agent_name, regime)` is called by `WeightAdapter._compute_deltas()` to modulate RL bias penalties:
-- REVERSAL regime + `{pattern_analysis, competitive_intel, sales_demand}` → 0.80× penalty (20% leniency — momentum agents face structural headwind in reversal)
-- MOMENTUM regime + `{fundamentals, risk_macro}` → 0.85× penalty (15% leniency — value agents lag in momentum markets)
-- WEAK regime or non-matching agent → 1.0× (no adjustment)
-
-**Limitation:** Data ends March 2023. Use as long-run structural background only. For live regime signals, use `core/intelligence/regime/detector.py` (RegimeDetector uses VIX/FII/RSI).
-
-**Graceful degradation:** Returns `None` on any network or parse failure. ContextBuilder and WeightAdapter both handle `None` without raising.
-
----
-
-#### Layer C — Summary Table
-
-| Source | File | Cache | ContextBuilder methods | Agents receiving context |
-|---|---|---|---|---|
-| NSE market (FII/DII + bulk deals) | `services/data/fetchers/nse_market.py` | Daily (in-process) | `_build_sentiment`, `_build_risk_macro`, `_build_bfsi_risk`, `_build_macro_policy`, `_build_it_risk_macro` | `sentiment` (all sectors), `risk_macro`, `bfsi_risk`, `macro_policy`, `it_risk_macro` |
-| AMFI MF herding | `services/data/fetchers/mf_herding.py` | Weekly ISO (in-process) | `_build_sentiment` | `sentiment` (all 4 sectors) |
-| IIMA factor regime | `core/intelligence/rl/algorithms/factor_regime.py` | Daily (in-process) + 30-day CSV | `_build_risk_macro` | `risk_macro` (automobile); WeightAdapter penalty scaling (all sectors via RL) |
-
----
-
-## 16. Sector Routing
-
-**Entry point:** `SectorRegistry.resolve(ticker)` → `SectorRegistry.get_handler(sector)` → orchestrator class
-
-```
-User ticker input
-    │
-    ▼
-SectorRegistry.resolve(ticker)   [TICKER_SECTOR map, ~200 tickers + name-fragment fallback]
-    │
-    ▼
-tier=backend → BackendOrchestratorClass   (Tier 1 — 4 production sectors)
-tier=core    → CoreSectorAdapter           (Tier 2 — 23 sectors, disabled by default)
-enabled=false → AutomobileAgentOrchestrator (safe degradation)
-```
-
-**Tier 1 — Production (always on):**
-
-| Sector | Key | Agents | Orchestrator |
-|---|---|---|---|
-| Automobile & Auto Ancillaries | `automobile` | 9 | `AutomobileAgentOrchestrator` |
-| Banking & BFSI | `banking_bfsi` | 6 | `BankingAgentOrchestrator` |
-| IT & Technology | `it_sector` | 8 | `ITAgentOrchestrator` |
-| Renewable Energy | `renewable_energy` | 6 | `RenewableAgentOrchestrator` |
-
-**Tier 2 — Core sectors (8-pillar framework, disabled by default):** pharma, fmcg, metals, oilgas, capgoods, chemicals, defence, infra, insurance, realestate, agrochem, hospitality, logistics, media, retail, tech, telecom (23 total). Enable individually via registry. Agents: `business · fundamentals · valuation · technical · macro · risk · management · earnings`.
-
-**Single source of truth for routing:** `TICKER_SECTOR` in `src/backend/sectors/registry.py` (~200 tickers). Sector `settings.TICKERS` (subset) is for scheduler load control only — it is intentionally smaller.
-
----
-
-## 17. Known Gaps & Technical Backlog
-
-| # | Item | File | Priority | Status |
-|---|---|---|---|---|
-| 1 | RBI repo rate live fetch | `macro.py` | CRITICAL | ✅ Fixed — env override `RBI_REPO_RATE_PCT`, 60-day staleness warning |
-| 2 | Regime thresholds uncalibrated to NSE | `settings/base.py:293–385` | HIGH | ⚠️ Partially done — env-overridable but `regime_config.json` + hot-update endpoint not built |
-| 3 | NSE holiday calendar ends 2026 | `nse_calendar.py` | HIGH | ⚠️ Monitor Dec 31 calendar_updater.py run |
-| 4 | Sector score thresholds identical across sectors | `settings/base.py` | MEDIUM | ⬜ Backlog — add per-sector `SCORE_THRESHOLDS` |
-| 5 | Technical indicator periods not backtested on NSE | `fetcher.py` | MEDIUM | ⬜ Backlog — 14 vs 9 RSI, 12/26 vs 8/17 MACD |
-| 6 | Scheduler reads SCHEDULER_TICKERS env var, not managed_tickers.json | `scheduler.py` | MEDIUM | ⚠️ Partially done — reads managed_tickers.json with fallback to env var |
-| 7 | Agent parse failure returns silent 0.5 | `base_agent.py` | MEDIUM | ✅ Fixed (Wave I, 2026-07-19) — `error` was already set on the output; the real defect was downstream: SignalAggregator now **excludes** errored/no-data outputs from the weighted composite (renormalized), marks them `EXCLUDED` in the aggregation prompt, and skips them in conflict detection. All-errored → composite 0.5 NEUTRAL |
-| 8 | `external_shock` miss type never penalises | `schemas/feedback.py` | LOW | ⬜ Backlog — after 3 consecutive: apply 0.1× penalty |
-| 9 | Feedback LLM temperature hardcoded 0.3 | `feedback_agent.py:56` | LOW | ⬜ Backlog — move to `settings.FEEDBACK_LLM_TEMPERATURE` |
-| 10 | Error handling: all external calls now guarded | All fetchers/stores | DONE | ✅ Fixed — 14-file audit complete 2026-05-21 |
-
-**Review schedule:**
-- Every deploy: verify RBI rate freshness (`RBI_REPO_RATE_PCT` after each MPC decision)
-- Monthly: review regime multiplier table vs actual VIX/FII behaviour
-- Dec 31: monitor `calendar_updater.py` for 2027 holiday fetch
+| yfinance (Yahoo) | Fundamentals, technicals, peers, macro and commodity prices, closes, chat prices | Free; the instrument registry names the symbol |
+| NSE (NseIndiaApi, nsepython, bhavcopy) | Prefetch of announcements, board meetings and actions; FII/DII and bulk deals; official closes for the cross-check; EOD cache for discovery | Free |
+| Serper (news and search) | Bundle news, macro feed, daily-review company news, ticker-resolution fallback, chat news, research loop | Paid credits; one key for all sectors |
+| Tavily | Bundle policy page, event ingestion, research-loop fallback, IPO research | Monthly cache by query |
+| NewsAPI | Macro feed headlines | Optional key |
+| AMFI (via mfapi.in) | Sector-ETF momentum in `flows_sentiment` | Weekly cache |
+| IIMA factor data | Factor regime in `macro_context` and the adapter's penalty scale | Ends March 2023: a static prior |
+| OpenRouter | Every LLM call | Section 2 |
+
+## 16. Limits and planned work
+
+- **The analyst re-scores numbers the code has computed**, and a missing
+  dimension still scores a neutral 0.5 inside its own output. The one-engine
+  redesign computes factors in code, lets the model read only dated events,
+  and gives no directional verdict with fewer than 4 of 6 factors.
+  **Planned:** SA-026, SA-045, SA-046, SA-047; KT
+  [section 11](TECHNICAL_DESIGN.md#11-planned-redesign).
+- **Peers.** Generic-graph stocks are valued against automobile peers.
+  **Planned:** same-industry peers (SA-044).
+- **Benchmarks.** Automobile and renewable energy have no index with data.
+  **Planned:** each sector lens names its benchmark (SA-026).
+- **Cost accounting.** Bundle call counters are estimates, not complete
+  provider or fallback accounting. **Planned:** SA-025, then SA-027.
+- **Sector lists.** Ticker lists live in several places: each sector's
+  `TICKERS`, the registry map, the managed list and the instrument registry.
+  **Planned:** one sector definition (SA-026).

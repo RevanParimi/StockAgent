@@ -1,4 +1,4 @@
-# Current handoff - 2026-10-10 (updated about 20:55 IST)
+# Current handoff - 2026-10-11 (updated about 07:45 IST)
 
 ## START HERE — resume checklist, in order
 
@@ -45,9 +45,14 @@ read.
     push and deploy note.
   - `.claude/settings.local.json` was not included.
 - **Next, in order:**
-  1. **Push only at the owner's word.** It is docs only, so a push only redeploys the code
-     production already runs, but the restart can still drop a job. Push in a job-free window
-     (safest 00:10–06:20 IST; avoid 22:55–00:05), or let these ride with the next code push.
+  1. **PUSHED `47d49c9..ae855a4` at 20:56:48 IST** at the owner's word, between the 19:00 and
+     23:00 jobs. It is docs only, so the redeploy runs the same code. **Deploy confirmation is
+     the owner's:** `railway deployment list` shows the new deployment SUCCESS, and `/health` is
+     200. The old local side branches (`chore/repo-hygiene-cleanup`, from 19 Aug, and
+     `feat/externalize-tunable-config-yaml`, from 20 Jun) were not pushed. The owner then had
+     them **deleted** "to avoid confusion"; they were never on GitHub. A backup bundle, with
+     restore steps, is in the ignored `analysis_data/branch_backups/`. This push note is
+     uncommitted and goes with the next commit.
   2. FIX-004's production check (the owner, read-only): rerun the count probe after the 17 Oct
      10:00 IST scan, and sample IDFCFIRSTB's digest before 24 Oct. For change 1, only if
      STARHEALTH is held on 26 or 27 Oct: that brief's watch line is not the 27 Oct row.
@@ -76,6 +81,39 @@ as proper design documents, not by appending per-story change notes.
   Committed as `b325ad2` at the owner's word, before the review bookkeeping above.
 - **For every later story:** edit the affected section as current design, set the story's
   Status in KT section 12, and put only measured production facts in section 1's table.
+- **Then the five deep-dives were rewritten whole** (docs only, a further conversation, 10 Oct
+  evening to about 07:45 IST 11 Oct; uncommitted when recorded). RL_DESIGN, AUTOPILOT_GUIDE,
+  AGENTIC_DESIGN, CHAT_ARCHITECTURE and PRODUCT_MAP each open with Edition 2026-10-10, Code
+  inspected `61c85d6` and a scope line. The Status and Historical banners are gone; still-true
+  deltas are folded into the body, and stale ones dropped.
+  - **Verified by tracing** every claim against the code at `61c85d6` (the working tree's code is
+    identical to it). RL_DESIGN keeps sections 23–27, which CODEBASE and AGENTIC_DESIGN cite, and
+    reorders 1–22. PRODUCT_MAP keeps all 22 headings that docs/README.md links; its counts were
+    recounted from `git ls-files` (28 config sections, 17 fetchers, 13 routers with 86 endpoints
+    and 1 WebSocket, 24 job IDs, 333 test files). docs/README.md's index rows now match.
+  - **KT corrections** (header still `61c85d6`): section 3 no longer files the pre-open check
+    under `managed`; section 5 says observe mode never writes *adapted* weights (a missing weight
+    file is still created at v0); section 10 names chat's `get_portfolio_brief` exception and
+    says the chat prompt does not forbid HTML. PDF rebuilt (source `bb210c0e…`, 37 pages).
+  - **Checks:** `check_kt_docs` errors `[]`; relative links, heading anchors and a blank line
+    before every list checked on all 7 rewritten files. No code, test or config changed.
+  - **New findings, documented and not fixed:**
+    1. Chat's `get_portfolio_brief` builds `PortfolioStore()` with no user id, so every signed-in
+       caller gets the default `primary` user's brief or digest. A cross-user exposure with no
+       story yet: **owner decision** (CHAT_ARCHITECTURE section 9).
+    2. On a shock morning the pre-open check scans the four native sectors' built-in `TICKERS`
+       lists, not the managed list (RL_DESIGN 27.3).
+    3. Nothing writes the in-process macro cache, `miss_events` or `correction_counter`: the
+       bundle's macro search never hits cache, the recency-weighted miss ranking is inert, and
+       the archive rule's effectiveness test always passes.
+    4. The Monte Carlo path ignores `path_shape`; forecasts and re-forecasts use the raw regime.
+    5. The control lane is scored on the error-direction label.
+    6. Promotion re-enables a disabled (retired) managed entry with no registry check; the
+       scheduled review ignores the watchlist cadence.
+    7. `/ui/chat` skips the pre-router and the scrubber, and both chat routes answer failures
+       with a canned demo reply.
+  - **Changed files:** the five deep-dives, docs/README.md, the KT, its PDF, STATE.json and
+    HANDOFF.md. They go with the earlier push note above in one commit.
 
 **Previous: FIX-004 change 1 was IMPLEMENTED and awaited its fresh-session review** (10 Oct, about
 15:28–15:55 IST, a new conversation opened with "continue"). Receipt:

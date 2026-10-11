@@ -1,478 +1,562 @@
-# Compass Autopilot — End-to-End Developer Guide
+# Compass Autopilot — Developer Guide
 
-> **Status (2026-07-18):** live in production since 2026-07-13 (first real auto-trades).
-> Post-audit hardening not yet folded into the body: pipeline-wide file lock with fresh
-> reload, dividend cash-credit `DIV` ledger rows, detect-only reconciler, harvest-timeout
-> containment so a slow review day can never silently skip the trading pipeline, per-run
-> outcomes in `/scheduler/status last_runs`, and nightly ledger backups. Details:
-> [audit/LEDGER.md](audit/LEDGER.md); map: [ARCHITECTURE.md](ARCHITECTURE.md) §6.
+**Edition:** 2026-10-10 · **Code inspected:** `61c85d6`, the code production runs
 
-> **One sentence:** every trading day, after the RL reviews finish, the Position
-> Advisor scores each holding and Autopilot *executes* those verdicts
-> (buy/sell/trim/exit/switch) on a **virtual** portfolio — mock money, real NSE
-> prices, full audit trail, zero human clicks.
->
-> **Three iron rules** (spec `docs/superpowers/specs/2026-07-10-compass-autopilot-design.md`):
-> 1. Virtual money only. **No broker calls, ever.**
-> 2. The **LLM never decides** a trade — it narrates. The executor is a pure,
->    deterministic function over `AdviceRecord`s.
-> 3. Autopilot **never writes** under `data/rl/paper/` or any PredictionStore
->    path (RL paper-lane isolation invariant).
+**Scope:** the virtual money path, from the advisor's verdict for each holding
+to the executed trade, the ledgers and the screens that show them.
 
----
+Every trading day, after the daily reviews finish, the advisor gives each
+holding a verdict and the autopilot executes it on a **virtual** portfolio:
+mock money, real NSE closes, a full audit trail, no human click. The
+[technical design](TECHNICAL_DESIGN.md) summarises this path in
+[section 6](TECHNICAL_DESIGN.md#6-portfolio-advice-and-virtual-execution) and
+its P/L measures in section 7. Measured production state lives only in
+[KT section 1](TECHNICAL_DESIGN.md#production-state-at-this-edition). Work
+planned in PI-2026-09 is labelled **Planned** with its story.
 
-## 1. The Big Picture
+Three rules hold throughout:
 
-```
-                         (C# scheduler / cron, Mon-Fri after market close)
-                                          |
-                                          v
-                              +------------------------+
-                              |  Daily RL reviews      |   per-ticker forecasts,
-                              |  (16 managed tickers)  |   envelopes, feedback
-                              +-----------+------------+
-                                          | event-triggered (never clock-raced)
-                                          v
-              run_post_review_pipeline(review_date)        core/portfolio/pipeline.py
-              ---------------------------------------------------------------
-  Step 1      sync_corp_actions()          <- FIRST, so adj_* prices are right
-  Step 2      refresh_events_calendar()
-  Step 3      for each user -> for each holding:
-                  close_on(sym) -> build_signals() -> decide() -> AdviceRecord
-                  narrate()  (LLM writes the "why", AFTER the decision)
-  Step 3.5    autopilot.execute_advice(...)   <- THE MONEY MOVES HERE
-              autopilot.record_value_point()  <- daily equity snapshot
-  Step 4      build_digest(..., transactions=txns) -> digests/YYYY-MM-DD.json
-  Step 5      AlertEvents (escalations + autopilot_trade + switch_buy_skipped)
-              -> emit_alerts() -> web-push;  deliver() EOD summary
-              ---------------------------------------------------------------
-                                          |
-                                          v
-        +---------------------------- data/portfolio/<user>/ ----------------+
-        |  portfolio.json  transactions.jsonl  value_history.jsonl  digests/ |
-        +---------------------+-----------------------------------+----------+
-                              |                                   |
-                              v                                   v
-                   FastAPI /portfolio/*                 portfolio.jsx (prototype UI)
-                   (transactions, performance,          hero equity, AUTOPILOT pill,
-                    holdings CRUD, advice, digest)      equity chart, activity feed
-```
-
-Every pipeline step is **non-fatal** (log + continue): a failure in Autopilot
-never kills the digest, and vice-versa.
+1. **Virtual money only.** There is no broker call anywhere in the code.
+2. **Rules decide, the LLM narrates.** The verdict and every trade are
+   deterministic; the narrator writes the explanation after the decision, and
+   a template replaces it when the call fails.
+3. **The money path stays in its own store.** The autopilot writes only under
+   `data/portfolio/<user>/`, plus one designed exception: a SWITCH buy promotes
+   the new symbol into the managed list (section 12). It never writes a
+   prediction store or the paper lane.
 
 ---
 
-## 2. Where Everything Lives
+## 1. The daily pipeline
 
-```
-StockAgent-main/
-├── core/portfolio/
-│   ├── autopilot.py        <- THE EXECUTOR. Start reading here.
-│   ├── advisor.py          <- build_signals() + decide() -> AdviceRecord
-│   ├── pipeline.py         <- daily orchestration (steps 1..5 above)
-│   ├── store.py            <- PortfolioStore: all reads/writes per user
-│   ├── digest.py           <- EOD digest dict (now includes "trades")
-│   ├── pricing.py          <- close_on(symbol, date) w/ trading-day walkback
-│   ├── promotion.py        <- promote_symbol() into the managed universe
-│   ├── narrator.py         <- LLM narration (flavour text only)
-│   └── corp_actions.py     <- split/bonus/dividend adjustment
-├── src/backend/shared/schemas/portfolio.py
-│                           <- Holding, Portfolio, AdviceRecord,
-│                              TransactionRecord, WatchlistItem
-├── src/backend/shared/config/settings/base.py   <- AUTOPILOT_* settings
-├── scripts/seed_autopilot.py                    <- one-time equal-weight seed
-├── services/api/routes/portfolio_api.py         <- /portfolio/* routes
-├── src/frontend/prototypes/portfolio.jsx        <- the UI (in-browser JSX)
-├── data/portfolio/<user_id>/                    <- ALL per-user state (below)
-└── tests/unit/test_autopilot_*.py               <- the test map (§11)
-```
-
-Per-user state (created lazily; `primary` is the default user):
-
-```
-data/portfolio/<user_id>/
-├── portfolio.json          # DERIVED state: holdings, watchlist, cash, flags
-├── transactions.jsonl      # APPEND-ONLY audit authority — every trade, ever
-├── value_history.jsonl     # one line per trading day: the equity curve
-├── advice_ledger.jsonl     # every AdviceRecord the advisor ever produced
-└── digests/
-    └── 2026-07-13.json     # what the user sees each evening
+```text
+ rl_daily_review (Mon–Fri 16:30 IST) reviews the previous session for every managed ticker
+        |  then, in the same job (not on a clock):
+        v
+ run_post_review_pipeline(review_date)                  core/portfolio/pipeline.py
+   skipped when advisor.enabled is false or review_date is not a trading day
+   for each active user with holdings:
+     1   sync_corp_actions        splits, bonuses, dividends BEFORE any rule
+     -   shelf ideas and their session closes (candidate prices, once per run)
+     2   refresh_events_calendar  results dates for held symbols (stale cache on failure)
+     3   for each holding:
+           session_close            the session's close and the bar it came from
+           build_signals            envelope, feedback log, ATR stop, earnings distance
+           identity check           is this close the holding's price basis?
+           gated_decide             verdict, with the data and identity checks (section 4)
+           instrument stamp, narrate, append to advice_ledger.jsonl
+           switch evaluations       how every shelf candidate was judged
+     3.5 autopilot.execute_advice   THE MONEY MOVES HERE (section 6)
+         record_value_point         one equity point per trading day
+     3.6 reconcile                  ledger versus portfolio, detect and alert only
+     4   build_digest               digests/<date>.json
+     5   alerts and EOD delivery    escalations, trades, switch_buy_skipped, digest notice
 ```
 
-> **Mental model:** `transactions.jsonl` is the book of record;
-> `portfolio.json` is a cache derived from it. If they ever disagree (§7),
-> trust the ledger.
+Every step is non-fatal: a failure is logged and the next step runs. A
+holding whose advisor call fails gets no advice that day and is not traded.
 
----
+**Other triggers.** `POST /portfolio/run-advisor` (owner only, optional
+`review_date`, accepted as background work) and the scheduler API's review
+task run the same pipeline. A future `review_date` is refused.
 
-## 3. Life of a Trading Day
+## 2. Where everything lives
 
-```
- IST timeline (trading day)
- ──────────────────────────────────────────────────────────────────────────
- 08:50   Morning brief push (Job 13)             "here's your day ahead"
- 15:30   NSE closes
- ~17:00  Scheduler daily reviews run             RL forecasts per ticker
-    |
-    +--> run_post_review_pipeline(today)
-           1. corp actions synced (adj_qty / adj_avg_price corrected FIRST)
-           2. events calendar refreshed
-           3. advisor: one AdviceRecord per holding
-                verdict ∈ {HOLD, ADD, TRIM, EXIT, SWITCH}
-           3.5 AUTOPILOT:
-                sells execute first  ->  cash freed
-                buys execute second  ->  cash spent
-                every trade appended to transactions.jsonl
-                equity snapshot appended to value_history.jsonl
-           4. digest written (holdings, verdicts, trades, escalations)
-           5. push alerts:  "SELL 2 MARUTI @ ₹12,340.00 (realized ₹1,220.00)"
- ──────────────────────────────────────────────────────────────────────────
- Weekend: Sat discovery screen (paper lane), Sun weekly review (Job 14).
- Non-trading days: pipeline no-ops (is_trading_day guard).
+```text
+core/portfolio/
+  pipeline.py            the daily orchestration above
+  advisor.py             build_signals(), data_gate_blocks(), decide()
+  autopilot.py           execute_advice(), record_value_point(): the executor
+  store.py               PortfolioStore: every per-user read and write, the lock
+  pricing.py             close_on() and session_close(), shared with the daily review
+  corp_actions.py        split, bonus and dividend adjustment
+  identity_reconcile.py  plan/apply for demergers, renames, relistings (section 5)
+  reconcile.py           ledger versus portfolio checks (section 8)
+  promotion.py           promote_symbol() into the managed list (section 12)
+  narrator.py            bulk-tier narration with a template fallback
+  digest.py              the EOD digest
+services/data/verdict_store.py      the advisor's read path into prediction stores
+src/backend/shared/schemas/portfolio.py   Holding, Portfolio, AdviceRecord, TransactionRecord, …
+services/api/routes/portfolio_api.py      /portfolio routes
+src/frontend/prototypes/portfolio.jsx     the portfolio screen
+scripts/seed_autopilot.py                 one-time equal-weight seed
 ```
 
----
+Per-user state, created on first use (`primary` is the default user):
 
-## 4. The Verdict Rules (what the executor actually does)
-
-Execution price is always **the close the advisor used**:
-`closes.get(symbol) or advice.close`. Whole shares only (`math.floor`), fees = 0.
-
-```
-+---------+--------------------------------------------------------------------+
-| Verdict | Autopilot action                                                   |
-+---------+--------------------------------------------------------------------+
-| HOLD    | Nothing. (Still stamps the run marker — see §6.)                   |
-+---------+--------------------------------------------------------------------+
-| EXIT    | SELL full adj_qty @ close. Holding removed. Symbol moved to        |
-|         | watchlist (source="autopilot", reason="autopilot_exit") so the     |
-|         | advisor keeps watching it.                                         |
-+---------+--------------------------------------------------------------------+
-| TRIM    | SELL max(1, floor(adj_qty × 25%)).                                 |
-|         | If < 1 share would remain -> sell everything (note="trim_to_zero").|
-+---------+--------------------------------------------------------------------+
-| ADD     | BUY floor(budget / price) where                                    |
-|         |   budget = min( 25% of current position value,                     |
-|         |                 weight headroom to the 10% position cap,           |
-|         |                 cash above the ₹10,000 floor )                     |
-|         | Skipped if a previous autopilot BUY of this symbol happened        |
-|         | < 5 trading days ago (cooldown), or budget < 1 share.              |
-|         | Only ADDs into EXISTING holdings (never opens new positions).      |
-+---------+--------------------------------------------------------------------+
-| SWITCH  | Two legs, sell first:                                              |
-|         |   1) SELL full position (EXIT semantics, incl. watchlist move)     |
-|         |   2) BUY the candidate with min(proceeds, cash - floor),           |
-|         |      priced via close_on(candidate, review_date).                  |
-|         | Resolvability gate: if the candidate can't be priced, the buy leg  |
-|         | is skipped (cash stays parked) and a "switch_buy_skipped" alert    |
-|         | fires. A successful buy also promote_symbol()s the candidate into  |
-|         | the managed universe (origin="held") — the ONE designed write      |
-|         | outside data/portfolio/.                                           |
-+---------+--------------------------------------------------------------------+
+```text
+data/portfolio/<user>/
+  portfolio.json                  derived state: holdings, watchlist, cash, flags
+  portfolio.lock                  the per-user file lock
+  transactions.jsonl              append-only book of record: every BUY, SELL and DIV
+  value_history.jsonl             one equity point per trading day
+  advice_ledger.jsonl             every advice record, with its data gate and instrument
+  switch_evaluations.jsonl        every shelf candidate considered, taken or declined
+  identity_reconciliations.jsonl  operator reconciliations (section 5)
+  digests/<date>.json, briefs/, weekly/
+  portfolio.json.corrupt-<time>   a corrupt file moved aside (section 8)
+  portfolio.json.pre-identity-<time>  copy taken before a reconciliation apply
 ```
 
-**Ordering inside one run is deterministic:**
+`transactions.jsonl` is the book of record and `portfolio.json` is derived
+from it. When they disagree, the ledger is right (section 8).
 
-```
-  SELLS first  : EXIT, SWITCH-sell, TRIM      — sorted by symbol asc
-  BUYS second  : SWITCH-buy legs, then ADDs    — ADDs by confidence desc,
-                                                 ties symbol asc
-  (sells free cash before buys consume it)
-```
+## 3. The advisor
 
-The post-trade weight cap uses the algebra `(pos + X)/(total_mv + X) ≤ cap`
-⇒ `X ≤ (cap·total_mv − pos)/(1 − cap)` — see `_execute_buys`.
+### 3.1 Signals
 
----
+`build_signals` assembles each holding's inputs. Every read is non-fatal;
+a missing artifact leaves a conservative default.
 
-## 5. Guardrails & Config
+| Signal | Source and rule |
+|---|---|
+| Close | `session_close`: the session's own close and the date of its bar; a carried-forward close is marked not fresh |
+| Stop | 3 × ATR(20) as % of price, clamped to the market-cap bucket: large 8–12%, mid 12–18%, small 15–22%. Unknown market cap reads as mid; a conservative profile tightens one bucket |
+| Unrealised P/L | Against `adj_avg_price`, dividends included |
+| Envelope direction | The last remaining forecast close against today's close: UP above +1%, DOWN below −1%, else FLAT |
+| Confidence, trend | Mean confidence of the remaining rows; last minus first |
+| Reversion prior | The envelope's conviction streak |
+| Regime, thesis | The latest feedback entry's regime; the latest thesis review |
+| Direction accuracy | Share of the cycle's last 7 feedback entries graded correct |
+| Position weight | The holding's share of the portfolio **at cost** (`adj_qty × adj_avg_price`) |
+| Earnings distance | Trading days to the next results event |
+| Peak close | The highest close since the buy date |
+| Forecast gate | The worst gate among the remaining rows, and their source run ids |
 
-All config-backed via `config.yaml` (absent key ⇒ fallback default). Settings
-live in `src/backend/shared/config/settings/base.py`.
+The envelope and feedback log are read from `<holding sector>/<TICKER>`
+through `VerdictStore`. Promotion files the managed entry under the
+holding's sector, so the advisor reads the store the review writes. A holding
+whose sector was edited away from its managed entry's reads a store with no
+envelope: no ADD or TRIM can fire, and only the stop rules can act on it.
 
-```
-+----------------------------+---------------------------+---------+----------------------------------+
-| settings.*                 | config.yaml key           | default | meaning                          |
-+----------------------------+---------------------------+---------+----------------------------------+
-| AUTOPILOT_ENABLED          | autopilot.enabled         | true    | global kill switch               |
-| AUTOPILOT_ADD_TRANCHE_PCT  | autopilot.add_tranche_pct | 25.0    | ADD buys 25% of position value   |
-| AUTOPILOT_TRIM_PCT         | autopilot.trim_pct        | 25.0    | TRIM sells 25% of qty            |
-| AUTOPILOT_MIN_CASH_FLOOR   | autopilot.min_cash_floor  | 10000.0 | never spend below ₹10k cash      |
-| AUTOPILOT_ADD_COOLDOWN_TD  | autopilot.add_cooldown_td | 5       | trading days between ADDs/symbol |
-| ADVISOR_MAX_POSITION_PCT   | advisor.max_position_pct  | 10.0    | post-trade position weight cap   |
-+----------------------------+---------------------------+---------+----------------------------------+
-```
+### 3.2 Verdict cascade
 
-**Gating — Autopilot is OFF when ANY of these hold:**
+The cascade is **EXIT → TRIM → ADD → HOLD**; the first that fires wins.
 
-```
-  settings.AUTOPILOT_ENABLED is False      (global)
-  portfolio.autopilot        is False      (per-user opt-in flag)
-  portfolio.cash_deployable  is None       (cash accounting never turned on)
-```
+| Verdict | Fires when |
+|---|---|
+| EXIT | Any of: unrealised loss at or beyond the stop; thesis broken and envelope DOWN; a re-forecast for `external_shock`, `thesis_break` or `preopen_shock` and envelope DOWN; `MACRO_CRISIS` and envelope DOWN; or a trailing stop: the peak was at least 10% above cost and the close has since fallen from it by at least the stop |
+| TRIM | Profit of at least 25%, and confidence falling by 0.05 or more, or a reversion prior of 0.20 or more |
+| ADD | Envelope UP, regime not `MACRO_CRISIS` or `RISK_OFF`, position weight below 10%, and at least 60% of the last 7 reviews correct |
+| HOLD | Nothing above |
+| SWITCH | An EXIT becomes SWITCH when an active shelf idea qualifies (below) |
 
-When OFF, a pipeline run leaves `portfolio.json` **byte-identical** — pinned by
-a `read_bytes()` test. When ON with zero trades, only the run marker is stamped.
+**SWITCH.** The top 5 active shelf ideas by conviction are judged. One
+qualifies when it is not already held, its sector is strictly underweight
+compared with the exiting holding's sector, and its conviction beats the
+holding's mean envelope confidence by at least 0.15. The data gate is checked
+last (section 4). The qualified idea with the highest conviction is the
+destination. Every candidate is recorded in `switch_evaluations.jsonl` with
+`taken` or the reason it was declined (`already_held`,
+`sector_not_underweight`, `conviction_gap_too_small`, `data_gate`,
+`not_best`), so the rule's precision can be measured on what it declined as
+well as what it took.
 
----
+**Holding-age softening.** A TRIM on a holding aged 10 to 12 months, whose
+thesis is not known to be broken, becomes HOLD with the note `WAIT_FOR_LTCG`.
+EXIT is never softened. This is a product rule, not individual tax advice.
 
-## 6. Idempotency — why re-runs are safe
+**Notes.** `EARNINGS_GAP_PROTECTION` marks a profitable holding with results
+within 3 trading days. `SECTOR_CONCENTRATION_HIGH` marks a single position at
+30% or more of the portfolio at cost. `DATA_GATE` and `IDENTITY` are
+section 4.
 
-Two independent layers:
+**Example (stop):** a large-cap holding with a 2.5% ATR gets 3 × 2.5 = 7.5%,
+below the large-cap floor, so its stop is 8%. Bought at ₹1,000, it exits when
+the close reaches ₹920.
 
-```
- Layer 1: run marker (cheap skip)
-   portfolio.last_autopilot_run = "2026-07-13"
-   execute_advice() returns [] for any review_date <= marker.
-   -> normal next-day runs proceed; STALE-DATE REPLAYS ARE BLOCKED
-      (a re-run for a past date would trade at stale prices — refused).
+## 4. Data and identity checks on advice
 
- Layer 2: transaction id (exact dedupe)
-   txn_id = sha256(f"{user}|{date}|{symbol}|{side}|{ref}")[:16]
-     ref (autopilot) = "<advice date>|<advice symbol>|<rationale_hash>"
-     ref (seed)      = "seed"
-     ref (manual)    = "manual-<utc timestamp>"
-   Before executing any trade, the id is checked against the ledger.
-   Same advice replayed -> same id -> skipped, money moves once.
-```
+`gated_decide` computes the verdict twice, with and without the checks, and
+`decision_gate.mode` picks one: `enforce` keeps the gated verdict, `record`
+keeps the ungated one. When they differ, the advice record's `data_gate` says
+what was, or would have been, withheld, why, and which forecast runs it
+rested on. That record lives on the user's own advice ledger; the shared gate
+log never holds a user id.
 
-`record_value_point()` is likewise idempotent: it refuses a point whose date
-is `<=` the last line of `value_history.jsonl`.
+**New risk needs verified evidence.** ADD and a SWITCH's buy leg add risk, so
+in `enforce` mode they need both:
 
----
+- the holding's close is from the review session's own bar; and
+- the forecast rows behind the signal come from an actionable analysis. No
+  rows, or rows issued before provenance stamps existed, do not count.
 
-## 7. Crash-Safety (read this before touching the executor)
+A blocked ADD becomes HOLD with the note `DATA_GATE`. A blocked SWITCH
+destination falls back to the next qualifying idea, or to a plain EXIT with
+`DATA_GATE`. A shelf idea is never a destination when its deep dive was not
+actionable (or carries no gate), its identity is unresolved, or its close is
+from an earlier bar.
 
-Write order inside `execute_advice`:
+**Risk reduction is never blocked by data.** EXIT and TRIM go ahead on a
+stale close or an unverified forecast, so missing data cannot trap a
+position. The advice records the weakness in `data_gate`.
 
-```
-   decide all trades in memory
-        |
-   append every TransactionRecord to transactions.jsonl     (1st)
-        |
-   save portfolio.json (holdings, cash, run marker, atomically) (2nd)
-```
+**Example:** a holding's envelope was built on an abstained STRONG BUY and
+points up. Unenforced, that gives ADD and a virtual buy. Enforced, it gives
+HOLD with `DATA_GATE`, and no buy.
 
-A crash **between (1) and (2)** cannot double-execute (Layer-2 dedupe), but it
-leaves the ledger *ahead* of `portfolio.json` — the ledger says SELL, the
-holding still exists. Thanks to the Layer-1 monotonic guard, hitting a dedupe
-skip is now *exactly* that divergence signature, so the executor logs:
+**Identity hold.** A holding is held outright, EXIT and TRIM included, with
+the note `IDENTITY`, when:
 
-```
-  WARNING [autopilot] txn <id> (SELL MARUTI) already in ledger but run marker
-  predates this run — possible ledger/portfolio divergence from a mid-run
-  crash; manual reconciliation may be needed.
-```
+- its symbol's identity is unresolved in the instrument registry; or
+- its price basis changed (a demerger or a relisting) since the basis its
+  cost was booked on: the buy date, or the latest identity reconciliation.
 
-If you ever see that warning: reconcile `portfolio.json` against the ledger by
-hand (a ledger-replay reconciler is on the backlog). **The ledger wins.**
+This is the corporate-action rule applied to identity. The daily sync keeps a
+1:1 bonus from looking like a 50% crash, and a demerger is the same trap. A
+rename keeps the basis, so a renamed holding is advised as before. Every
+advice record keeps the instrument its close priced (`instrument`), which a
+later registry change never rewrites.
 
----
+**Example:** 100 PARENT bought at ₹1,000; PARENT demerges into PARENTA (60%
+of the cost) and PARENTB (40%), and the ticker now trades as PARENTA at ₹600.
+Unreconciled, 600 against 1,000 reads −40%, a stop breach, and the advisor
+says EXIT: a sale on a loss that never happened. Enforced, it says HOLD with
+`IDENTITY`. In `record` it keeps EXIT, and `data_gate` names the identity.
 
-## 8. Money Math — raw vs adjusted fields
+## 5. Identity reconciliation
 
-`Holding` carries two parallel books:
+Reconciliation is an operator's step
+([identity_reconcile.py](../core/portfolio/identity_reconcile.py)); nothing
+runs it on a schedule.
 
-```
-+------------------+---------------------------+-------------------------------+
-| field            | meaning                   | who changes it                |
-+------------------+---------------------------+-------------------------------+
-| qty,             | "as entered" history —    | buys only (money actually     |
-| avg_buy_price    | what was ever put in      | put in); sells DON'T touch it |
-+------------------+---------------------------+-------------------------------+
-| adj_qty,         | the LIVE position after   | corp actions, sells, buys —   |
-| adj_avg_price    | splits/bonuses/trades     | ALL P&L math uses adj_*       |
-+------------------+---------------------------+-------------------------------+
-| dividends_       | ₹ credited, still         | corp actions add; sell()      |
-| received         | unrealized                | realizes a pro-rata slice out |
-+------------------+---------------------------+-------------------------------+
-```
+- `python -m core.portfolio.identity_reconcile plan` is read-only. It lists
+  every holding the advisor would hold for identity, with the registry's
+  proposal. The proposal comes from a recorded, evidenced event with
+  `successors` (ticker, shares per old share, share of the cost), or it says
+  what must be recorded first. For the example above it proposes PARENTA 100
+  @ ₹600 (₹60,000) and PARENTB 100 @ ₹400 (₹40,000), so the cost is conserved.
+- `apply --plan … --approve <digest>` refuses unless a fresh plan has the
+  approved digest. It copies `portfolio.json` aside, replaces the old holding
+  with its successors under the user's lock, and logs
+  `identity_reconciliations.jsonl`. A second apply is refused.
 
-`Holding.sell(qty, price)` returns realized P&L **including** the pro-rata
-dividend slice, and removes that slice from `dividends_received` so unrealized
-P&L never double-counts it. Buys merge with weighted averages on both books.
+The ledger reconciler treats the successors as `unverifiable`, as after a
+split: they arrive without ledger rows.
 
-Portfolio-level cash accounting:
+**Known limits of `apply`.** Its digest check runs before it takes each
+user's lock, and under the lock it does not look at the holding again. A sale
+of the same holding in that window still gets successors sized from the
+plan's figures: 50 PARENT left would become 100 PARENTA and 100 PARENTB. One
+apply also names every backup with the same timestamp, so for a user with two
+reconciled holdings the second copy overwrites the first and the only backup
+holds the half-applied portfolio; the audit log's `before` records still hold
+each old holding. The shipped registry records no `successors`, so `apply`
+applies nothing today. **Planned:** a fix for both (SA-008 change 1). Until
+it lands, record no `successors` and run no `apply` in production.
 
-```
-  capital_in       total mock money ever put in (seed pot + manual adds)
-  cash_deployable  spendable cash right now
-  total_equity     market_value(holdings) + cash
-  total P&L        total_equity - capital_in     (= realized + unrealized)
-```
+## 6. Execution rules
 
----
+[autopilot.py](../core/portfolio/autopilot.py). Whole shares only
+(`floor`); no fees, taxes or slippage (section 9). The price is the close the
+advisor used. Within one run, each symbol keeps one price: the first close
+used for it.
 
-## 9. The Ledgers (file formats)
+| Verdict | Action |
+|---|---|
+| HOLD | Nothing. The run marker is still stamped (section 8). |
+| EXIT | Sell the whole `adj_qty`. The holding is removed and the symbol joins the watchlist (`source="autopilot"`, reason `autopilot_exit`). |
+| TRIM | Sell `max(1, floor(adj_qty × 25%))`; when less than one share would remain, sell everything (`trim_to_zero`). |
+| ADD | Buy into an existing holding only. Budget = the smallest of 25% of the position's value, the headroom to a 10% weight after the trade, and cash above the ₹10,000 floor. Skipped within 5 trading days of the last autopilot buy of that symbol, or when the budget is under one share. |
+| SWITCH | Sell the whole position (EXIT rules), then buy the destination with the smallest of the sale proceeds and cash above the floor. |
 
-`transactions.jsonl` — one `TransactionRecord` per line:
+**The SWITCH buy leg re-checks its own inputs** before spending:
 
-```
-+-------------------+----------------------------------------------------------+
-| field             | notes                                                    |
-+-------------------+----------------------------------------------------------+
-| txn_id            | sha256(user|date|symbol|side|ref)[:16] — the dedupe key  |
-| date / ts         | trade (review) date / exact UTC timestamp                |
-| user_id, symbol   |                                                          |
-| side              | "BUY" | "SELL"                                           |
-| qty, price, value | whole shares; value = qty × price                        |
-| cash_before/after | cash bracketing this trade                              |
-| holding_qty_after | adj_qty after the trade (0.0 = position closed)          |
-| realized_pnl      | SELL only (incl. pro-rata dividends)                     |
-| source            | "autopilot" | "seed" | "manual"                          |
-| verdict           | originating advisor verdict ("" for seed/manual)         |
-| advice_ref        | "<date>|<symbol>|<rationale_hash>" — joins the advice    |
-|                   | ledger; this is Phase D's RL training hook               |
-| triggers, note    | advisor trigger codes; free-text ("trim_to_zero", ...)   |
-+-------------------+----------------------------------------------------------+
-```
+- the destination's close must come from the session's own bar; and
+- the destination's identity must be resolved.
 
-`value_history.jsonl` — one line per trading day:
+In `enforce` mode a failure skips the buy; in `record` mode it buys and logs
+that the gate would have skipped it. An unpriceable destination or a budget
+under one share also skips the buy. Whenever the sell executes and the buy
+does not, the user gets a `switch_buy_skipped` alert saying the proceeds
+stayed in cash. A completed buy promotes the destination into the managed
+list (section 12).
 
-```
-{"date": "2026-07-13", "market_value": 991200.5, "cash": 11389.96,
- "total_equity": 1002590.46, "capital_in": 1000000.0, "day_change_pct": 0.26}
-```
+**Order.** Sells first (EXIT, SWITCH sell legs and TRIM, by symbol), so cash
+is freed before it is spent. Then buys: SWITCH buy legs, then ADDs by
+confidence (highest first, ties by symbol).
 
-Both readers are **tolerant**: a torn/corrupt line is logged and skipped,
-never fatal. Both files are append-only — never rewrite them in place.
+**The weight cap.** A buy of X into a position worth `pos`, when all
+holdings are worth `total` (cash excluded), keeps
+`(pos + X) / (total + X) ≤ cap`, so `X ≤ (cap × total − pos) / (1 − cap)`.
+Holdings without a close that day are valued at cost.
 
----
+**Example:** a ₹20,000 position, holdings worth ₹5,00,000 in all, and
+₹60,000 cash. The tranche is ₹5,000; the headroom is (0.10 × 5,00,000 −
+20,000) / 0.9 = ₹33,333; cash above the floor is ₹50,000. The budget is
+₹5,000, which at ₹1,180 a share buys 4 shares.
 
-## 10. Seeding, API, UI
+## 7. Cash deployment
 
-### 10.1 Seed script (one-time per user)
+How cash moves today:
 
-```
-python scripts/seed_autopilot.py --user primary --pot 1000000      # local
-railway ssh "python scripts/seed_autopilot.py --user primary --pot 1000000"  # prod
-```
+- **A new position opens only through a SWITCH**, which puts one sale's
+  proceeds into a shelf idea.
+- **ADD tops up a stock already held**, capped at a 10% weight after the
+  trade (`advisor.max_position_pct`).
+- **A plain EXIT leaves its proceeds in cash.** Nothing reinvests them.
+- **The SWITCH buy spends the whole proceeds**, with no position or sector
+  cap, so a destination can exceed 10% of the portfolio on its first day.
+- **The seed** spreads the starting pot equally across the enabled managed
+  tickers (section 11).
 
-Equal-weight `pot / n_tickers` across the managed universe (via
-`get_active_tickers_with_sector()`), whole shares at the latest close, one
-`source="seed"` BUY per ticker, then `capital_in = pot`,
-`cash_deployable = pot − spent`, `autopilot = True`, day-0 value point.
-**Refuses to run** if the user already has holdings or transactions
-(recovery from a half-seed: delete `data/portfolio/<user>/`, re-run).
-Prod was seeded 2026-07-11: 16/16 tickers, ₹62.5k budget each.
+**Example:** a ₹10,00,000 portfolio exits two holdings worth ₹1,50,000 each
+on a day with no qualifying shelf idea. Cash rises by ₹3,00,000 and stays
+there; the remaining holdings can each take at most a 10% weight through
+ADDs, 25% of their own value at a time.
 
-### 10.2 API surface (`services/api/routes/portfolio_api.py`)
+**Planned:** one sizing rule for every autopilot buy, including the SWITCH
+buy (SA-050). In a normal market, idle cash goes into shelf ideas that pass
+the checks; cash is held on purpose only in a crisis (SA-049, behind a switch
+that ships off).
 
-```
-+--------+----------------------------------+-------------------------------------------+
-| method | route                            | returns / does                            |
-+--------+----------------------------------+-------------------------------------------+
-| GET    | /portfolio                       | holdings + watchlist w/ live marks        |
-| GET    | /portfolio/transactions?limit=N  | {"transactions":[...]} newest-first       |
-| GET    | /portfolio/performance           | {cash, capital_in, market_value,          |
-|        |                                  |  total_equity, realized_pnl,              |
-|        |                                  |  unrealized_pnl, total_return_pct,        |
-|        |                                  |  day_change_pct, autopilot, history[]}    |
-|        |                                  | (nulls only when cash accounting is OFF)  |
-| POST   | /portfolio/holdings              | manual BUY = FRESH capital:               |
-|        |                                  |  capital_in += qty×price, cash UNCHANGED, |
-|        |                                  |  source="manual" txn appended             |
-| DELETE | /portfolio/holdings/{symbol}     | manual SELL @ today's close (fallback     |
-|        |                                  |  adj_avg_price), cash credited,           |
-|        |                                  |  source="manual" txn appended             |
-| GET    | /portfolio/advice                | advice ledger tail                        |
-| GET    | /portfolio/digest/latest         | most recent digest                        |
-| POST   | /portfolio/run-advisor           | manual pipeline trigger (see §6 — stale   |
-|        |                                  |  dates cannot move money)                 |
-+--------+----------------------------------+-------------------------------------------+
-```
+## 8. Idempotency, locking and crash safety
 
-### 10.3 UI (`src/frontend/prototypes/portfolio.jsx`)
+**Gating.** The autopilot does nothing unless all three hold:
+`autopilot.enabled` (env `AUTOPILOT_ENABLED`, default true), the user's
+`portfolio.autopilot` flag, and cash accounting (`cash_deployable` is set).
+When it is off, a pipeline run leaves `portfolio.json` byte-identical.
 
-In-browser Babel JSX, no build step. `?demo=1` forces demo data (kept
-pixel-identical). When live **and** cash accounting is on:
+**Two layers stop a trade from executing twice:**
 
-```
-  hero        = total_equity from /performance   + "AUTOPILOT" pill
-  day badge   = day_change_pct (green/red)
-  stats row   = Invested (capital_in) | Total return | Cash | Realized P&L
-  chart       = equity curve from history[] (hidden until ≥ 2 points)
-  activity    = LiveActivityCard <- /transactions (10 recent + view-all)
-```
+- **The run marker.** `last_autopilot_run` holds the last executed review
+  date. A run for a date on or before it does nothing, so a retried past date
+  can never trade at stale prices against today's portfolio; a missed day
+  replayed forward still runs. A future date is refused without stamping the
+  marker.
+- **Transaction ids.** `txn_id = sha256(user|date|symbol|side|ref)[:16]`,
+  where `ref` is `<advice date>|<advice symbol>|<rationale hash>`. An id
+  already in the last 2,000 ledger rows is skipped.
 
----
+**The lock.** Every read-modify-write of a user's portfolio holds
+`portfolio.lock` (re-entrant, 30-second timeout), and the executor reloads
+`portfolio.json` under it, so a concurrent API change is never reverted by a
+stale snapshot.
 
-## 11. Testing Map
+**Write order.** All trades are decided in memory, then appended to
+`transactions.jsonl`, then `portfolio.json` is saved once. A crash between
+the two cannot double-execute, because the ids dedupe, but it leaves the
+ledger ahead of the portfolio. With the marker in place, a dedupe skip is
+exactly that signature, and the executor logs:
 
-Run everything with `python -m pytest` **from the repo root**.
-
-```
-+--------------------------------------------+-------------------------------------------+
-| tests/unit/...                             | pins                                      |
-+--------------------------------------------+-------------------------------------------+
-| test_autopilot_schemas.py                  | TransactionRecord, Holding.sell() math    |
-| test_autopilot_store.py                    | ledger append/tail-load, reduce_holding   |
-| test_autopilot_settings.py                 | AUTOPILOT_* defaults                      |
-| test_autopilot_executor_sells.py           | EXIT/TRIM, gating byte-identity, run      |
-|                                            | marker, dedupe, stale-date replay guard   |
-| test_autopilot_executor_adds.py            | tranche/weight-cap/floor/cooldown math    |
-| test_autopilot_executor_switch.py          | SWITCH two-leg, resolvability gate,       |
-|                                            | record_value_point idempotency            |
-| test_autopilot_pipeline.py                 | pipeline hook, digest "trades",           |
-|                                            | switch_buy_skipped alert                  |
-| test_seed_autopilot.py                     | equal-weight seed, refuse-non-empty       |
-| test_autopilot_api.py                      | routes + manual-trade accounting          |
-| test_autopilot_isolation.py                | THE INVARIANT: sell + buy paths write     |
-|                                            | only inside data/portfolio/<user>/        |
-+--------------------------------------------+-------------------------------------------+
+```text
+WARNING [autopilot] SELL MARUTI (EXIT) already in ledger but run marker predates this run —
+possible ledger/portfolio divergence from a mid-run crash; manual reconciliation may be needed
 ```
 
-Quick loop while developing: `python -m pytest tests/unit -k autopilot -q`
-(~35 tests, <5s). Known pre-existing failures that are NOT yours: see
-`CODEBASE.md` § test baseline.
+**The reconciler** ([reconcile.py](../core/portfolio/reconcile.py)) runs
+daily after the autopilot. It detects and alerts, and never repairs:
 
----
+- each row's `cash_before` matches the previous row's `cash_after` (within
+  ₹0.05);
+- the ledger's net cash matches `cash_deployable` (within ₹1);
+- each symbol's bought minus sold quantity matches `adj_qty`. Symbols with a
+  split, a bonus or an identity reconciliation are `unverifiable`, because
+  those change quantity without a ledger row.
 
-## 12. Ops Runbook & Gotchas
+Drift sends one critical alert. A human repairs `portfolio.json` from the
+ledger.
 
+**A corrupt `portfolio.json`** is moved aside as
+`portfolio.json.corrupt-<time>`, and one critical alert goes out. Reads
+return an empty portfolio so the API stays up, and every save is refused
+until a valid file is restored.
+
+## 9. Money math
+
+`Holding` keeps two books:
+
+| Fields | Meaning | Changed by |
+|---|---|---|
+| `qty`, `avg_buy_price` | Money actually put in | Buys only |
+| `adj_qty`, `adj_avg_price` | The live position after splits, bonuses and trades | Corporate actions, buys and sells; all P/L and stop math uses these |
+| `dividends_received` | Dividends credited and not yet realised | Dividend sync adds; a sale realises its pro-rata share |
+
+`Holding.sell(qty, price)` returns realised P/L including the pro-rata
+dividend share and removes that share, so unrealised P/L never counts it
+twice. A dividend also credits cash and writes a `DIV` ledger row when cash
+accounting is on.
+
+| Portfolio figure | Meaning |
+|---|---|
+| `capital_in` | Mock money ever put in: the seed pot plus manual adds. The screen calls it "Invested". |
+| `cash_deployable` | Cash available now |
+| Total equity | Market value of holdings plus cash |
+| Total return | `(total equity − capital_in) / capital_in` |
+
+**What the figures leave out.** No brokerage, STT, stamp duty, exchange fee,
+DP charge or tax is charged, and there is no benchmark. The KT's
+[section 7](TECHNICAL_DESIGN.md#virtual-pl) gives the cost of a real round
+trip and the report families. **Planned:** costs and tax in paper P&L
+(SA-048) and a Nifty comparison with honest labels (SA-051).
+
+## 10. Ledger formats
+
+`transactions.jsonl`, one `TransactionRecord` per line:
+
+| Field | Notes |
+|---|---|
+| `txn_id` | The dedupe key (section 8) |
+| `date`, `ts` | Review date; UTC timestamp |
+| `user_id`, `symbol`, `side` | `BUY`, `SELL` or `DIV` |
+| `qty`, `price`, `value` | Whole shares (0 for `DIV`, whose price is the dividend per share) |
+| `cash_before`, `cash_after` | Cash on either side of the row |
+| `holding_qty_after` | `adj_qty` afterwards; 0 when the position closed |
+| `realized_pnl`, `cost_basis`, `pnl_pct` | SELL only; the cost basis is `adj_avg_price` at the sale |
+| `source` | `autopilot`, `seed` or `manual` |
+| `verdict`, `advice_ref`, `triggers`, `note`, `reason` | The advice behind an autopilot row; `advice_ref` joins the advice ledger, and `reason` is the narrative at execution |
+
+`value_history.jsonl`, one point per trading day. A point dated on or before
+the last one is skipped, so re-runs and stale replays add nothing:
+
+```json
+{"date": "2026-10-09", "market_value": 742310.5, "cash": 263011.4, "total_equity": 1005321.9,
+ "capital_in": 1000000.0, "day_change_pct": 0.21, "change_span_days": 1}
 ```
- CHECK                          HOW
- ─────────────────────────────  ──────────────────────────────────────────────
- Did today's run execute?       GET /portfolio/digest/latest -> "trades": [...]
- What did it trade?             GET /portfolio/transactions?limit=20
- Equity curve growing?          GET /portfolio/performance -> history[]
- Turn autopilot off (one user)  edit portfolio.json: "autopilot": false
- Turn it off globally           config.yaml: autopilot.enabled: false + deploy
- Divergence warning in logs?    §7 — reconcile portfolio.json FROM the ledger
- Re-seed a user                 delete data/portfolio/<user>/ first (else the
-                                seed refuses) — prod: only with backup
+
+`change_span_days` is the gap behind `day_change_pct`: 3 after a weekend.
+
+`advice_ledger.jsonl` holds every `AdviceRecord`: verdict, close, stop,
+triggers, notes, confidence, narrative, SWITCH candidate, rationale hash,
+`data_gate` and `instrument`.
+
+Every reader skips a torn or corrupt line and logs it. All four files are
+append-only; never rewrite them in place. The nightly backup's drill warns
+when one shrinks or changes earlier bytes (KT section 10).
+
+## 11. Seeding, API and screen
+
+**Seed** (once per user):
+
+```text
+python scripts/seed_autopilot.py --user primary --pot 1000000
 ```
 
-**Gotchas for new developers**
+It splits the pot equally across the enabled managed tickers, buys whole
+shares at the latest close with one `source="seed"` BUY each, sets
+`capital_in` to the pot and `cash_deployable` to what is left, turns the
+autopilot on and records the day-0 value point. It refuses a user who already
+has holdings or transactions.
 
-1. `pytest` works from the repo root because `pyproject.toml` sets
-   `pythonpath = [".", "src"]`. Standalone scripts must add both roots
-   themselves — copy the `sys.path` block from `scripts/seed_autopilot.py`.
-2. `portfolio.json` writes go through a **`FileLock`** (`store.py` —
-   `data/portfolio/<user>/portfolio.lock`, re-entrant, 30s timeout); autopilot
-   mutations reload fresh state under the lock before writing. Always use
-   `store.locked()` / the locking helpers — never write the file directly.
-3. The digest values the portfolio with *pre-trade* closes; a switched-in
-   candidate shows NO_DATA on day one. Cosmetic, known.
-4. `manual` transactions use a timestamped ref — an HTTP retry writes a second
-   ledger row (pads the audit trail; never moves cash twice).
-5. Never "fix" the byte-identity or isolation tests to make code pass — they
-   encode the two constraints most likely to bite you silently.
-6. Weekend/holiday: `close_on` walks back to the last trading close;
-   `is_trading_day` gates the pipeline.
+**API** (`/portfolio`, for the signed-in user):
 
----
+| Method and path | Effect |
+|---|---|
+| `GET /portfolio` | Holdings and watchlist with live marks |
+| `POST /portfolio/holdings` | Manual BUY at the buy date's close. It is fresh capital: `capital_in` rises, cash does not change, and a `manual` row is written. An identical same-day resubmit is deduped. The symbol is promoted as held. |
+| `DELETE /portfolio/holdings/{symbol}` | Manual SELL at today's close (cost if no close), cash credited, `manual` row written. Unless the symbol is on the watchlist, its portfolio-origin managed entry is disabled |
+| `POST`, `DELETE /portfolio/watchlist…` | Watchlist changes; an added symbol is promoted as watchlist, a removed one demoted the same way |
+| `POST /portfolio/import-csv` | Bulk import of holdings |
+| `GET /portfolio/transactions?limit=N` | The ledger, newest first |
+| `GET /portfolio/performance` | Cash, `capital_in`, market value, equity, realised and unrealised P/L, total return, day change, the autopilot flag and the equity history (at most 2,000 transactions and 400 points read) |
+| `GET /portfolio/advice`, `GET /portfolio/digest/latest` | The advice ledger's tail; the latest digest |
+| `POST /portfolio/run-advisor` | Owner only: run the pipeline in the background |
 
-## 13. Where This Is Going (context for the code you'll read)
+**Screen** ([portfolio.jsx](../src/frontend/prototypes/portfolio.jsx),
+in-browser JSX, no build step). With live data and cash accounting on, it
+shows total equity with an AUTOPILOT pill, the day's change, a stats row
+(Invested, Total return, Cash, Realized P&L), the equity curve from two
+points on, and recent trades. `?demo=1` forces demo data.
 
-- **Phase D (advice RL):** every executed trade carries `advice_ref`, joining
-  outcome (realized P&L) back to the advisor decision that caused it — the
-  training signal for tuning the advisor. Data-gated, needs weeks of history.
-- **Backlog** (final-review triage, none load-bearing): ledger-replay
-  reconciler, delete-flow write consolidation, sell-side `price > 0` guard,
-  digest SWITCH-day valuation, misc lint/docs. See
-  `.superpowers/sdd/compass-autopilot-progress.md`.
+## 12. Promotion into the managed list
 
-*Doc created 2026-07-11 at Autopilot go-live (main @ 3d389f9). Spec and plan
-under `docs/superpowers/`; codebase map in `CODEBASE.md`.*
+[promotion.py](../core/portfolio/promotion.py). A symbol that becomes a
+holding (manual buy, CSV import, SWITCH buy) or a watchlist entry (manual, or
+a shelf idea) is added to `data/managed_tickers.json`, so the scheduled jobs
+give it envelopes, reviews and a dossier.
+
+- A sector outside the four native ones is analysed by the generic graph; a
+  malformed sector key is rejected.
+- The list is capped at 40 enabled entries (`portfolio.max_managed_tickers`).
+  At the cap, the oldest watchlist-origin entry is disabled to make room;
+  held and manual entries are never evicted. With nothing evictable, the
+  promotion is refused.
+- Each entry records a cadence, daily for held and weekly for watchlist. The
+  scheduler API's review and backfill routes honour it, reviewing watchlist
+  names only on Fridays (`portfolio.weekly_review_weekday`). The scheduled
+  16:30 job does not read it, so every enabled entry is reviewed every
+  weekday.
+- Removing a holding or watchlist entry demotes the symbol: a held or
+  watchlist-origin entry is disabled, with its history kept. The original,
+  manually managed entries are never touched.
+- Promoting a symbol whose entry is disabled re-enables it. Promotion does
+  not consult the instrument registry, so buying or watching a retired
+  ticker such as TATAMOTORS puts it back on the schedule. Its identity is
+  still unresolved, so in `enforce` mode its advice is held and its reviews
+  stop; in `record` mode both are only recorded.
+
+## 13. Configuration
+
+| Setting (config key) | Default | Meaning |
+|---|---|---|
+| `AUTOPILOT_ENABLED` (`autopilot.enabled`) | true | Global switch |
+| `AUTOPILOT_ADD_TRANCHE_PCT` (`autopilot.add_tranche_pct`) | 25.0 | ADD buys up to this share of the position's value |
+| `AUTOPILOT_TRIM_PCT` (`autopilot.trim_pct`) | 25.0 | TRIM sells this share of the quantity |
+| `AUTOPILOT_MIN_CASH_FLOOR` (`autopilot.min_cash_floor`) | 10000.0 | Cash never spent below this |
+| `AUTOPILOT_ADD_COOLDOWN_TD` (`autopilot.add_cooldown_td`) | 5 | Trading days between autopilot buys of one symbol |
+| `advisor.max_position_pct` | 10.0 | ADD eligibility and the post-trade weight cap |
+| `advisor.atr_period`, `advisor.stop_atr_mult`, `advisor.stop_buckets` | 20, 3.0, large [8, 12] · mid [12, 18] · small [15, 22] | Stops |
+| `advisor.trim_profit_pct`, `advisor.trail_arm_pct` | 25.0, 10.0 | TRIM threshold; trailing-stop arming |
+| `advisor.confidence_decline_threshold`, `advisor.reversion_prior_elevated` | 0.05, 0.20 | TRIM triggers |
+| `advisor.envelope_flat_band_pct`, `advisor.add_min_direction_accuracy` | 1.0, 0.60 | Envelope direction; ADD accuracy floor |
+| `advisor.switch_conviction_gap`, `advisor.switch_eval_max_candidates` | 0.15, 5 | SWITCH |
+| `advisor.ltcg_wait_min_months`, `advisor.earnings_gap_days`, `advisor.sector_concentration_warn_pct` | 10, 3, 30.0 | Notes |
+| `decision_gate.mode` | `record` | Section 4; production's value is in KT section 1 |
+
+The `autopilot.*` keys are not in config.yaml, so the code defaults apply.
+
+## 14. Tests
+
+Run from the repository root with the project's virtual environment; every
+run is hermetic (KT section 13). A quick loop:
+`python -m pytest tests/unit -k "autopilot or portfolio" -q`.
+
+| Tests (`tests/unit/`) | What they pin |
+|---|---|
+| `test_autopilot_schemas.py`, `test_autopilot_store.py`, `test_autopilot_settings.py` | Transaction records and `Holding.sell`, ledger append and read, defaults |
+| `test_autopilot_executor_sells.py`, `…_adds.py`, `…_switch.py` | Verdict rules, gating byte-identity, run marker, dedupe, stale-date refusal, sizing, SWITCH legs, value points |
+| `test_autopilot_pipeline.py`, `test_portfolio_pipeline.py`, `test_scheduler_portfolio_hook.py` | The pipeline steps, digest trades and the `switch_buy_skipped` alert |
+| `test_autopilot_isolation.py` | Executor writes stay inside `data/portfolio/<user>/` |
+| `test_autopilot_wave1.py`, `test_portfolio_locking.py`, `test_portfolio_reconcile.py` | Locking with a fresh reload, future-date refusal, reconciliation |
+| `test_portfolio_advisor.py`, `test_portfolio_advisor_switch.py`, `test_portfolio_store_switch_evals.py` | The cascade, SWITCH and candidate evaluation rows |
+| `test_decision_gate_portfolio_sa003.py`, `test_identity_portfolio_sa008.py`, `test_identity_chain_sa008.py` | The data and identity checks, and reconciliation |
+| `test_portfolio_corp_actions.py`, `test_portfolio_pricing.py`, `test_portfolio_promotion.py` | Corporate actions, closes, promotion |
+| `test_seed_autopilot.py`, `test_autopilot_api.py`, `test_portfolio_api.py` | Seeding and the routes' accounting |
+
+Never weaken the byte-identity or isolation tests to make a change pass: they
+encode the two constraints most likely to fail silently.
+
+## 15. Operations
+
+| Question | How to answer it |
+|---|---|
+| Did today's run trade? | `GET /portfolio/digest/latest` → `trades`, or `GET /portfolio/transactions?limit=20` |
+| Is the equity curve moving? | `GET /portfolio/performance` → `history` |
+| Why was an ADD or SWITCH not taken? | The advice ledger's `data_gate` and notes (`DATA_GATE`, `IDENTITY`) |
+| Was a holding held for identity? | Run `identity_reconcile plan` (read-only) |
+| Divergence warning or reconcile alert | Section 8: repair `portfolio.json` from the ledger, by hand |
+| Turn the autopilot off for one user | Set `"autopilot": false` in that user's `portfolio.json` |
+| Turn it off for everyone | Set `AUTOPILOT_ENABLED=false`; a Railway variable change redeploys |
+| Re-seed a user | Move `data/portfolio/<user>/` aside first, or the seed refuses |
+
+**Known quirks:**
+
+- The digest is built after the trades with the day's closes. A switched-in
+  symbol has no advice record yet, so it shows `NO_DATA` on its first day.
+- Manual trades use a ref built from the date, quantity and price, so an
+  identical retry on the same day is deduped; a different price is a new row.
+- `close_on` walks back over non-trading days, and the pipeline skips
+  non-trading review dates.
+- Standalone scripts must add the repository root and `src` to `sys.path`,
+  as `scripts/seed_autopilot.py` does; pytest gets both from `pyproject.toml`.
+
+## 16. Planned work
+
+- One sizing rule for every autopilot buy (SA-050), and idle cash deployed
+  in normal markets (SA-049).
+- Trading costs and tax in paper P&L (SA-048), and a Nifty comparison with
+  honest labels (SA-051).
+- A safe `identity_reconcile apply` (SA-008 change 1).
+- Learning from executed advice remains future work: every autopilot row
+  carries `advice_ref`, which joins its outcome to the advice that caused it,
+  and the nightly auditor already grades issued advice (KT section 7).

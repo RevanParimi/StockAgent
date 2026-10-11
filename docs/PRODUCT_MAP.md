@@ -1,533 +1,502 @@
 # StockAgent — Product Map
 
-> **September 15 KT update:** this detailed inventory was verified in August;
-> its counts and runtime/learning descriptions are historical. Use
-> [TECHNICAL_DESIGN.md](TECHNICAL_DESIGN.md) for the current code, IPO additions,
-> 24 possible scheduler job IDs and PI targets. Use the separate
-> [team testing guide](TEAM_TESTING_GUIDE.md) for assignable human duties.
+**Edition:** 2026-10-10 · **Code inspected:** `61c85d6`, the code production runs
 
-> **The study document.** Every major module and its minor modules, in one
-> place, with a suggested reading order. Where [ARCHITECTURE.md](ARCHITECTURE.md)
-> explains *how the system fits together* and the deep-dives explain *how one
-> subsystem works*, this document answers a different question: **"what are all
-> the parts, and in what order should I learn them?"**
->
-> Enumerated directly from the source tree — module lists, job counts and
-> endpoint counts here are counted, not remembered.
->
-> Verified against the code on **2026-08-08** (post verification-layer merge
-> `33956ae`, audit read-path `6ef3c42`).
+**Scope:** every major module and its parts, counted from the tracked tree,
+with a suggested order for learning them.
+
+[ARCHITECTURE.md](ARCHITECTURE.md) explains how the system fits together,
+the [technical design](TECHNICAL_DESIGN.md) (the KT) traces its contracts,
+and the deep-dives explain one subsystem each. This map answers a different
+question: **what are all the parts, and in what order should I learn them?**
+Counts here were taken from `git ls-files` at the revision above. Measured
+production state lives only in
+[KT section 1](TECHNICAL_DESIGN.md#production-state-at-this-edition); the
+[team testing guide](TEAM_TESTING_GUIDE.md) holds the human testing duties.
 
 ---
 
 ## 0. Orientation
 
-**What the product is:** one Python service (Docker starts two workers, with one background owner) — FastAPI plus an in-process
-APScheduler thread — that runs an Indian-equity research loop. It forms a
-monthly price forecast per stock, checks itself against reality every trading
-day, learns from the miss, manages a virtual portfolio off those signals,
-discovers new candidates weekly, delivers briefs and alerts to a PWA, and
-grades its own advice against NIFTY.
+**What the product is:** one Python service, FastAPI with an in-process
+APScheduler, run by Docker as two Uvicorn workers of which one owns the
+background jobs. It researches Indian listed equities: it issues a monthly
+forecast per managed stock, grades it against the actual close every trading
+day, records what it learns, manages a virtual portfolio from those signals,
+discovers new candidates weekly, tracks IPOs, delivers briefs and alerts to a
+PWA, and grades its own advice against the Nifty 50.
 
-**Scale (source, excluding tests and vendored deps):**
+**Size** (lines of Python, JavaScript and C++ in tracked files):
 
 | Area | Lines |
 |---|---|
-| `core/` | ~21,200 |
-| `services/` | ~17,800 |
-| `src/` | ~11,700 |
-| `scripts/` | ~1,500 |
-| `tests/` | ~38,000 |
+| `core/` | ~30,700 |
+| `services/` | ~22,600 |
+| `src/` (backend and the PWA) | ~22,500 |
+| `scripts/` | ~3,000 |
+| `tests/` | ~60,700 in 333 test files |
 
-**Surface:** 88 HTTP endpoints + 1 WebSocket across 13 routers · 20 scheduled
-jobs · 4 native sectors + 1 generic · 3 LLM tiers.
+**Surface:** 86 HTTP endpoints and 1 WebSocket across 13 routers, plus 3
+app-level routes · 24 possible scheduled job IDs · 4 native sector graphs and
+1 generic graph · 3 LLM tiers · 28 `config.yaml` sections.
+
+**Three switches change what the system may do** (KT section 2): the
+decision gate (`decision_gate.mode`), the instrument registry
+(`config/instruments.yaml`) and the learning mode (`rl.learning_mode`).
+Section 1 of the KT records how production sets them.
 
 ### The one structural trap
 
-The April-2026 restructure is **not finished**, and it stalled in *both*
-directions. There are **19 shim files in two families that point opposite
-ways** — so "follow the shim" is not a single rule (census verified
-2026-08-09).
+The April 2026 restructure stalled in two directions, so one module can be
+reached by two import paths. There are **19 shim files in two families that
+point opposite ways**:
 
-**Family A — `MIGRATION SHIM`, 9 files: `core/*` → `src/backend/*`.**
-The real code moved out of `core/`; the old import path is kept alive.
+- **`MIGRATION SHIM`, 9 files: `core/*` → `src/backend/*`.** The real code
+  moved out of `core/`; the old import path stays alive. Examples:
+  `core/schemas/feedback.py` → `src/backend/shared/schemas/feedback.py`,
+  `core/config/settings/base.py` → `src/backend/shared/config/settings/base.py`,
+  `core/pipeline/orchestrator.py` → the automobile orchestrator.
+- **`FORWARD SHIM`, 10 files: `src/backend/shared/*` → `services/*`.** The
+  real code lives in `services/`, and the `backend.shared.*` path stays alive.
+  Examples: `src/backend/shared/clients/llm_client.py` →
+  `services/clients/llm_client.py`, and the shared fetchers and stores.
 
-```
-core/schemas/feedback.py             40 → src/backend/shared/schemas/feedback.py  (1,079)
-core/schemas/pipeline.py             22 → src/backend/shared/schemas/pipeline.py
-core/pipeline/orchestrator.py         7 → src/backend/sectors/automobile/pipeline/orchestrator.py
-core/pipeline/signal_aggregator.py    4 → src/backend/shared/pipeline/signal_aggregator.py
-core/pipeline/base_agent.py           4 → src/backend/shared/pipeline/base_agent.py
-core/config/settings/base.py          4 → src/backend/shared/config/settings/base.py
-core/config/settings/__init__.py      5 → src/backend/shared/config/settings/base.py
-core/config/rag_config.py             3 → src/backend/shared/config/rag_config.py
-core/config/prompts/shared/signal_aggregator.py 3 → src/backend/shared/prompts/signal_aggregator.py
-```
-
-**Family B — `FORWARD SHIM`, 10 files: `src/backend/shared/*` → `services/*`.**
-The real code already lives in `services/`; the `backend.shared.*` path is kept
-alive for a "Phase 7" move that has no owner and is documented nowhere.
-
-```
-src/backend/shared/clients/llm_client.py        → services/clients/llm_client.py
-src/backend/shared/clients/tavily_fetcher.py    → services/clients/tavily_fetcher.py
-src/backend/shared/data/cache/macro_cache.py    → services/data/cache/macro_cache.py
-src/backend/shared/data/fetchers/{fundamentals,macro,news}.py
-                                                → services/data/fetchers/…
-src/backend/shared/data/stores/{analysis_logger,api_usage,run_logger,score_store}.py
-                                                → services/data/stores/…
-```
-
-**Corrected rule while studying: a file under ~10 lines is a shim — read its
-first line to learn which way it points.** `MIGRATION SHIM` sends you to
-`src/backend/`; `FORWARD SHIM` sends you to `services/`. The header comment
-always names the real module.
-
-**Why this matters beyond tidiness.** One module can be reached by two names,
-and the same file sometimes uses both. `src/backend/shared/pipeline/base_orchestrator.py`
-imports `llm_client` through the Family-B shim on line 47 and imports directly
-from `services.clients.llm_client` on line 48 — same underlying module, two
-paths, adjacent lines. Expect this when tracing imports.
+**Rule while studying:** a file of a few lines is a shim. Its header names the
+real module: `MIGRATION SHIM` sends you to `src/backend/`, `FORWARD SHIM` to
+`services/`. Several shims have no importer left; grep before deleting one.
 
 ---
 
 ## 1. Platform & Configuration Substrate
 
-*The plane everything else reads from. Study first — nothing else parses
-without it.*
+*The layer everything reads. Study it first.*
 
-| Minor module | Path | Owns |
+| Part | Path | Owns |
 |---|---|---|
-| Settings loader | `src/backend/shared/config/settings/loader.py` | The `cfg()` function and the precedence chain |
-| Settings base | `src/backend/shared/config/settings/base.py` | 984 lines of hardcoded fallback defaults |
-| Tunable config | `config.yaml` | 22 sections (below) |
-| Sector toggles | `config/sector_toggles.json` | Per-sector enable + tier |
-| Secrets | `.env` | API keys only |
-| Atomic writes | `core/utils/atomic_io.py` | temp+rename JSON writer (AUD-057) |
-| Prompt registry | `core/config/prompts/shared/` | 8 prompt modules for non-sector LLM agents |
+| Settings loader | `src/backend/shared/config/settings/loader.py` | `cfg()` and the precedence chain |
+| Settings | `src/backend/shared/config/settings/base.py` | 1,136 lines of resolved settings and code fallbacks |
+| Tunable config | `config.yaml` | 28 sections (below) |
+| Instrument registry | `config/instruments.yaml` | Which security each ticker means on a date, and on which price basis |
+| Milestones | `config/milestones.yaml` | The watchdog's checks and deadlines |
+| Sector toggles | `config/sector_toggles.json` | Per-sector enable flag and tier |
+| Secrets | `.env` locally, Railway variables in production | Keys only; never in documents or evidence |
+| Atomic writes | `core/utils/atomic_io.py` | Temp-file-and-rename JSON writes, with a Windows retry |
+| Shared prompts | `core/config/prompts/shared/` | 10 prompt modules for the non-sector LLM components |
 
-**Precedence:** environment variable **>** `config.yaml` **>** hardcoded
-fallback in `base.py`.
+**Precedence:** a declared environment override, then `config.yaml`, then
+the code fallback. Not every key has an environment override, and most
+settings are read at import, so a change needs a restart (and in production a
+Railway variable change redeploys).
 
 **`config.yaml` sections:** `llm`, `logging`, `agent_execution`,
 `agent_weights`, `score_thresholds`, `data_fetch`, `scheduler`, `chat`,
-`macro_news`, `regime`, `regime_multipliers`, `sector_agent_regime_role`, `rl`,
-`unified_analyst`, `portfolio`, `advisor`, `discovery`, `generic_graph`,
-`delivery`, `atlas`, `audit`, `universe`.
-
-**Product law.** All business tunables (quotas, tiers, prices, caps,
-thresholds, weights) go through `cfg()` / `config.yaml`, never hardcoded.
-Non-secret toggles must have **no** `env=` binding — `config.yaml` is the sole
-source, and flipping one means editing yaml and redeploying. Secrets, API keys
-and flags whose live value lives in Railway keep `env=`.
+`analyse`, `watchdog`, `macro_news`, `regime`, `regime_multipliers`,
+`sector_agent_regime_role`, `rl`, `unified_analyst`, `portfolio`, `advisor`,
+`discovery`, `ipo`, `observability`, `decision_gate`, `sectors`,
+`generic_graph`, `delivery`, `atlas`, `audit`, `universe`.
 
 ---
 
 ## 2. LLM & External Service Clients
 
-| Minor module | Path | Role |
+| Part | Path | Role |
 |---|---|---|
-| LLM client | `services/clients/llm_client.py` | OpenRouter wrapper, 3 tiers, sync + async, cost telemetry |
-| Tavily fetcher | `services/clients/tavily_fetcher.py` | Deep-page retrieval + disk cache (`data/tavily_cache/YYYY-MM/`) |
-| Quota counter | `services/data/stores/api_usage.py` | Persistent monthly counter (Serper 2500/mo), boot self-check |
+| LLM client | `services/clients/llm_client.py` | OpenRouter wrapper, sync and async, call logging and cost |
+| Tavily fetcher | `services/clients/tavily_fetcher.py` | Page retrieval with a monthly disk cache |
+| API usage counter | `services/data/stores/api_usage.py` | Monthly call counts per provider (Serper budget 2,500 a month by default), checked at boot |
 
-**Three tiers** (`config.yaml` → `llm`):
+**Three tiers** (`llm:` in config.yaml, each overridable by environment):
 
-| Tier | Model | Used for |
+| Tier | Repository model | Used for |
 |---|---|---|
-| `fast` | `qwen/qwen3.6-flash` | Chat tool-loop (tools + free text, no `json_object`) |
-| `reasoning` | `z-ai/glm-5.2` | Judgment: aggregator verdict, RL feedback, thesis review, unified analyst |
-| `bulk` | `deepseek/deepseek-v4-flash` | High-volume sector scoring, narration |
+| Fast | `qwen/qwen3.6-flash` | Chat tool loop, pre-open shock rating |
+| Reasoning | `z-ai/glm-5.2` | Unified analyst, aggregator narrative, FeedbackAgent, ThesisReviewer, control lane, chat retries |
+| Bulk | `deepseek/deepseek-v4-flash` | Ticker resolution, legacy agents, forecast profile, dossier and event agents, narration, macro reviewer, IPO extraction |
 
-**Hard rule.** Every `json_object` call site must pass
-`extra_body=JSON_MODE_EXTRA_BODY`. OpenRouter silently rolled several models to
-thinking-by-default snapshots that truncate JSON-mode output; this flag
-disables reasoning. Violating it is how models get silently retired.
+[AGENTIC_DESIGN](AGENTIC_DESIGN.md) section 2 lists every caller. **Hard
+rule:** every JSON-mode call passes `extra_body=JSON_MODE_EXTRA_BODY`, which
+switches provider-side reasoning off; thinking-by-default model snapshots
+otherwise truncate JSON output.
 
 ---
 
 ## 3. Data Acquisition Layer
 
-*15 fetchers plus context assembly. Every one follows the **non-fatal
-contract**: a fetch failure degrades its signal to "dark", never crashes the
-pipeline.*
+*17 fetchers plus context assembly. Each one is non-fatal: a failure degrades
+its own data, and the typed result says how (KT section 4).*
 
-| Minor module | Path | Source |
+| Part | Path | Source |
 |---|---|---|
-| NSE client factory | `services/data/fetchers/nse_client.py` | Guaranteed temp-dir cleanup (AUD-017) |
-| NSE key registry | `services/data/fetchers/nse_key_registry.py` | Learns NSE's field renames across report vintages |
-| Bhavcopy | `services/data/fetchers/bhavcopy.py` | EOD backbone incl. delivery % |
-| Close verifier | `services/data/fetchers/close_verifier.py` | Cross-checks yfinance close vs official NSE close |
-| Announcements | `services/data/fetchers/nse_announcements.py` | Per-ticker filings, one pre-fetch per run |
-| Corporate events | `services/data/fetchers/corporate_events.py` | Splits / bonus / dividend + board meetings |
-| Market intel | `services/data/fetchers/nse_market.py` | FII/DII flows via nsepython |
-| Bulk / block deals | `services/data/fetchers/bulk_block.py` | Institutional accumulation |
-| Surveillance | `services/data/fetchers/surveillance.py` | ASM/GSM, suspension, float mcap |
-| IPO feed | `services/data/fetchers/ipo.py` | Current / upcoming / past listings |
-| Fundamentals | `services/data/fetchers/fundamentals.py` | yfinance financials |
-| Macro | `services/data/fetchers/macro.py` | Rates, currency, commodities |
-| MF herding | `services/data/fetchers/mf_herding.py` | AMFI sector-ETF NAV momentum (no API key) |
-| News | `services/data/fetchers/news.py` | Serper + NewsAPI |
-| Symbol resolver | `src/backend/shared/data/fetchers/symbol_resolver.py` | Self-healing NSE→yfinance; zero-network happy path |
-| Macro news fetcher | `services/background/macro_news_fetcher.py` | Two-agent background fetcher |
-| Macro news cache | `services/background/macro_news_cache.py` | Daily JSON cache |
-| Context builder | `services/data/context/builder.py` | 861 lines — per-agent context |
-| Bundle builder | `services/data/context/bundle_builder.py` | 498 lines — one shared fetch pass for the unified analyst |
+| NSE client, key registry | `services/data/fetchers/nse_client.py`, `nse_key_registry.py` | NSE sessions; field renames across report vintages |
+| Bhavcopy | `services/data/fetchers/bhavcopy.py` | Official EOD, delivery % |
+| Close verifier | `services/data/fetchers/close_verifier.py` | yfinance close cross-checked with NSE's |
+| Announcements | `services/data/fetchers/nse_announcements.py` | Filings, board meetings, corporate actions; one prefetch per analysis |
+| Corporate events | `services/data/fetchers/corporate_events.py` | Results dates and actions for holdings |
+| Market intelligence | `services/data/fetchers/nse_market.py` | FII/DII flows, bulk deals |
+| Bulk and block deals | `services/data/fetchers/bulk_block.py` | Institutional accumulation for discovery |
+| Surveillance | `services/data/fetchers/surveillance.py` | ASM/GSM, suspension, free-float market cap |
+| IPO feeds | `services/data/fetchers/ipo.py`, `ipo_offer.py`, `ipo_bids.py`, `ipo_gmp.py` | Calendar, offer documents, bids; grey-market price behind its own switch |
+| Fundamentals | `services/data/fetchers/fundamentals.py` | yfinance statements, bank-format aware |
+| Macro | `services/data/fetchers/macro.py` | Currency, crude, commodities |
+| MF herding | `services/data/fetchers/mf_herding.py` | AMFI sector-ETF momentum |
+| News | `services/data/fetchers/news.py` | Serper news with recency bounds; NewsAPI |
+| Symbol resolver | `src/backend/shared/data/fetchers/symbol_resolver.py` | `resolve_identity`: the registry's symbol, else the NSE listing; a registered ticker is never self-healed |
+| Instrument registry parser | `src/backend/shared/data/instruments.py` | Effective-dated identity records |
+| Macro news feed | `services/background/macro_news_fetcher.py`, `macro_news_cache.py` | Market and policy headlines reviewed by the bulk model, one file a day |
+| Fetch result | `services/data/context/fetch_result.py` | The typed status every section producer returns |
+| Bundle builder | `services/data/context/bundle_builder.py` | One fetch pass for the unified analyst (595 lines) |
+| Context builder | `services/data/context/builder.py` | Per-agent context for the legacy fallback (868 lines) |
+| Technical indicators | `core/intelligence/algorithms/indicators/fetcher.py` | Price history, indicators, sector benchmarks |
 
-**The instructive failure in this layer.** News fetches lacked a `tbs` recency
-bound. Serper was never returning nothing — it returned months-old articles
-that the 3-day filter correctly dropped, producing a 75% news-blind rate that
-silently contaminated RL learning for weeks. Measured blind 0/12 before the fix
-vs 12/12 after. The lesson generalises: *a filter dropping everything looks
-identical to a source returning nothing.*
+**The instructive failure in this layer.** News searches once had no recency
+bound: the provider returned months-old articles, the 3-day filter correctly
+dropped them all, and most daily reviews ran news-blind for weeks. *A filter
+that drops everything looks identical to a source that returns nothing*,
+which is why every producer now reports a typed status and a reason.
 
 ---
 
 ## 4. Persistence Layer
 
-*Mixed storage by design: SQLite for queried data, JSON for state, JSONL for
-append-only ledgers, parquet for EOD panels.*
+*SQLite for queried data, JSON for state, JSONL for append-only ledgers,
+parquet for EOD panels. KT section 3 lists every record and its writer.*
 
-| Minor module | Path | Backing |
+| Part | Path | Backing |
 |---|---|---|
-| Score store | `services/data/stores/score_store.py` | SQLite — analysis history |
-| Log store | `services/data/stores/log_store.py` | SQLite telemetry archive (Railway logs rotate per deploy) |
-| User store | `services/data/stores/user_store.py` | SQLite `users.db` — users, sessions, invites, quota |
-| Atlas store | `services/data/stores/atlas_store.py` | SQLite `atlas.db` — user-plane relational core |
+| Prediction store | `core/intelligence/rl/stores/prediction_store.py` | The learning file tree (below) |
+| Store inventory and quarantine | `core/intelligence/rl/stores/store_inventory.py`, `store_migration.py` | Read-only ownership census; reversible quarantine of stray stores |
+| Portfolio store | `core/portfolio/store.py` | Per-user JSON and append-only JSONL, with a file lock |
+| Score store | `services/data/stores/score_store.py` | SQLite analysis history |
+| Log store | `services/data/stores/log_store.py` | SQLite telemetry archive |
+| Data health | `services/data/stores/data_health.py` | One row per analysis run (JSONL and `telemetry.db`) |
+| User store | `services/data/stores/user_store.py` | `users.db`: users, sessions, invites, quotas |
+| Atlas store | `services/data/stores/atlas_store.py` | `atlas.db`: the user-plane relational core and outbox |
 | EOD store | `services/data/stores/eod_store.py` | Parquet, one file per trading day |
-| Prediction store | `core/intelligence/rl/stores/prediction_store.py` | The RL file tree (below) |
-| Portfolio store | `core/portfolio/store.py` | Per-user JSON + append-only JSONL |
-| Chat sessions | `services/data/stores/chat_session_store.py` | Volume-backed chat memory |
-| Analysis logger | `services/data/stores/analysis_logger.py` | Per-run structured output |
-| Run logger | `services/data/stores/run_logger.py` | Every LLM call, JSONL |
-| Job outcomes | `services/data/stores/job_outcomes.py` | Last-run result per cron job (AUD-090d) |
-| Fallback events | `services/data/stores/fallback_events.py` | Legacy-pool engagement record |
-| Verdict store facade | `services/data/verdict_store.py` | **The plane boundary** |
-| Backup | `services/data/backup.py`, `restore.py`, `offsite.py` | Nightly zip + manifest, restore drill, encrypted off-site copy, email |
+| Chat sessions | `services/data/stores/chat_session_store.py` | `chat_sessions.db` |
+| Analysis and run loggers | `services/data/stores/analysis_logger.py`, `run_logger.py` | Per-run output; every LLM call |
+| Job outcomes, fallback events | `services/data/stores/job_outcomes.py`, `fallback_events.py` | Last result per job, with per-ticker review outcomes; legacy-pool engagements |
+| Verdict store | `services/data/verdict_store.py` | **The plane boundary**: the user plane's only read path into prediction stores |
+| Backup, restore, off-site | `services/data/backup.py`, `restore.py`, `offsite.py` | Nightly archive, restore drill, encrypted off-site copy |
 
 ### The RL file tree — memorise this
 
-`data/predictions/<sector>/<TICKER>/`:
+`data/predictions/<sector>/<TICKER>/` holds the monthly envelope, feedback
+log, control log and prompt enhancements; the permanent weight memory,
+observe-mode weight observations, learning ledger, archived lessons and
+dossier; dated off-market files; `archived_envelopes/`; and
+`thesis_calls.jsonl`. One level up are each sector's shared ledger and seed
+validation state; at the root, the market ledger and the sticky regime.
+[RL_DESIGN](RL_DESIGN.md) section 3 gives every file and its schema.
 
-```
-{TICKER}_YYYY-MM_prediction_envelope.json    30-day forecast path
-{TICKER}_YYYY-MM_daily_feedback_log.json     daily hit/miss records
-{TICKER}_YYYY-MM_control_log.json            bare-LLM duel opponent
-{TICKER}_YYYY-MM_prompt_enhancements.json    self-improving prompt deltas
-{TICKER}_agent_weight_memory.json            learned per-agent weights
-{TICKER}_learning_ledger.json                stock-specific lessons
-{TICKER}_dossier.json                        PERMANENT knowledge document
-{TICKER}_thesis_calls.jsonl                  thesis-review history
-{TICKER}_YYYY-MM-DD_offmarket.json           block/bulk/pre-open signals
-```
+The owner rule: a ticker's history belongs to `<managed sector>/<TICKER>`.
+Constructing a store creates its directory, so a read can leave an empty one
+behind (KT [prediction-store ownership](TECHNICAL_DESIGN.md#prediction-store-ownership)).
 
-Shared, one level up:
-
-```
-data/predictions/<sector>/_shared_ledger.json    sector-wide lessons
-data/predictions/_market_ledger.json             market-wide lessons
-data/predictions/_regime_state.json              sticky regime
-```
-
-Per-user portfolio plane:
-
-```
-data/portfolio/<user_id>/portfolio.json
-data/portfolio/<user_id>/advice_ledger.jsonl      APPEND-ONLY (test-enforced)
-data/portfolio/<user_id>/advice_outcomes.jsonl    graded rows (auditor)
-data/portfolio/<user_id>/digests/
-```
+Per-user portfolio plane, `data/portfolio/<user>/`: `portfolio.json`,
+`transactions.jsonl`, `advice_ledger.jsonl`, `value_history.jsonl`,
+`switch_evaluations.jsonl`, `identity_reconciliations.jsonl`, digests, briefs
+and weekly reviews ([AUTOPILOT_GUIDE](AUTOPILOT_GUIDE.md) section 2). The
+nightly auditor writes its graded rows to its own append-only store.
 
 ---
 
 ## 5. Analysis Engine — the verdict producer
 
-*Given a ticker, produce a `FinalReport` with score, verdict and thesis.*
+*Given a ticker, produce a `FinalReport` with a score, a verdict, a thesis
+and a decision gate.* Design: [AGENTIC_DESIGN](AGENTIC_DESIGN.md).
 
-### 5.1 Routing
+### 5.1 Routing and resolution
 
-- `src/backend/sectors/registry.py` — `TICKER_SECTOR` map, `detect_sector()`,
-  `get_orchestrator()`
-- Sectors: `automobile`, `banking_bfsi`, `it_sector`, `renewable_energy`, plus
-  `generic` for unmapped tickers
+- `src/backend/sectors/registry.py`: a map of 202 tickers, name fragments for
+  free text, sector toggles. Four native graphs; every other sector, and any
+  input it cannot place, runs the **generic** graph. The store keeps the real
+  sector name.
+- `base_orchestrator._resolve_ticker`: a tracked ticker (sector list, managed
+  list or instrument registry) resolves to itself with no model call; free
+  text goes to the bulk model.
 
 ### 5.2 The two execution paths — the critical distinction
 
 | Path | Entry | Cost |
 |---|---|---|
-| **Unified analyst** (live) | `src/backend/shared/pipeline/unified_analyst.py` | **ONE** reasoning call → all dimension outputs |
-| **Legacy worker pool** (fallback) | `src/backend/shared/pipeline/graphs/` | LangGraph fan-out, ~9 parallel bulk calls |
+| **Unified analyst** (live, all five graphs) | `src/backend/shared/pipeline/unified_analyst.py` | One data bundle, **one** reasoning call for every dimension |
+| **Legacy worker pool** (fallback) | `src/backend/shared/pipeline/graphs/`, `base_agent.py`, `shared/agents/universal.py` | LangGraph fan-out, one bulk call per dimension |
 
-Supporting:
-
-- `src/backend/shared/pipeline/base_orchestrator.py` — abstract base; chooses the path
-- `src/backend/shared/pipeline/base_agent.py` — per-agent contract
-- `src/backend/shared/agents/universal/agent.py` — one class replaces every
-  sector-specific agent class; behaviour comes entirely from the injected
-  prompts module
-- `graphs/nodes.py` (node factories), `graphs/rails.py` (guardrail validator),
-  `graphs/state.py` (merge-reducer state for parallel fan-out)
-
-Fallback engagements are recorded in `services/data/stores/fallback_events.py`
-— the analyst failing over used to be invisible.
+`base_orchestrator.py` chooses the path, records the data-health row and
+applies the decision gate. Fallback engagements are counted in
+`fallback_events.py`.
 
 ### 5.3 Per-sector dimensions
 
-Study one sector fully; the rest rhyme.
-
-| Sector | Dimensions |
+| Graph | Dimensions |
 |---|---|
-| `automobile` | fundamentals, sales_demand, raw_materials, competitive_intel, policy_regulatory, pattern_analysis, sentiment, risk_macro, valuation_catalyst |
-| `banking_bfsi` | fundamentals, macro_policy, risk, universe_setup |
-| `it_sector` | fundamentals, global_macro, peer_benchmark, transcript_nlp, sentiment, risk_macro |
-| `renewable_energy` | business, fundamentals, valuation, risk, sentiment_policy |
-| `generic` | `src/backend/sectors/generic/prompts/dimensions.py` |
+| `automobile` (9) | fundamentals, sales_demand, risk_macro, valuation_catalyst, pattern_analysis, raw_materials, policy_regulatory, competitive_intel, sentiment |
+| `banking_bfsi` (6) | fundamentals, risk, macro_policy, institutional, pattern_analysis, universe_setup |
+| `it_sector` (8) | fundamentals, global_macro, risk_macro, peer_benchmark, pattern_analysis, sentiment, transcript_nlp, insider_smart_money |
+| `renewable_energy` (6) | fundamentals, business, valuation, sentiment_policy, technical, risk |
+| `generic` (8) | fundamentals, business, valuation, technical, macro, risk, management, earnings |
 
-Cross-sector prompts (deduplicated): `src/backend/shared/agents/prompts/technical.py`,
-`.../institutional_flow.py`.
+37 slots under 24 names; AGENTIC_DESIGN section 8 gives the default weights.
 
-### 5.4 Fusion & scoring
+### 5.4 Fusion, gate and evidence checks
 
-- `src/backend/shared/pipeline/signal_aggregator.py` — weighted fusion +
-  conflict resolution → final verdict
-- `src/backend/shared/pipeline/verdict_shadow.py` — **AUD-077 shadow lane**.
-  The RL loop learns per-agent weights, but the final verdict was emitted by
-  the LLM; this observed the divergence until hard-bind was enabled
-  (2026-08-03). Both tests pass in either flag state so rollback stays green.
+| Part | Path | Role |
+|---|---|---|
+| Signal aggregator | `src/backend/shared/pipeline/signal_aggregator.py` | Composite over scored dimensions, conflicts, narrative; the verdict is bound to the composite's band |
+| Verdict shadow | `src/backend/shared/pipeline/verdict_shadow.py` | Logs the model's own verdict beside the bound one |
+| Decision gate | `src/backend/shared/pipeline/decision_gate.py` | Actionable, degraded or abstain; `record` or `enforce`; the gate log |
+| Instrument identity | `src/backend/shared/data/instruments.py`, `symbol_resolver.py` | Resolved, unresolved or quarantined; price basis |
 
 ### 5.5 Numeric sub-engines
 
-| Minor module | Path | Note |
+| Part | Path | Note |
 |---|---|---|
-| C++ indicators | `core/intelligence/algorithms/cpp/src/indicators.cpp` | RSI, MACD, Bollinger, adjusted/unadjusted EWM via pybind11 |
-| Indicator fetcher | `core/intelligence/algorithms/indicators/fetcher.py` | Python side |
-| FnO analyzer | `core/intelligence/fno/analyzer.py` | PCR, max-pain, OI shifts |
-| FnO fetcher | `core/intelligence/fno/fetcher.py` | NSE options chain |
-| Prompt enhancer | `core/intelligence/prompt_enhancer/enhancer.py` | Prompts that improve from feedback |
-| RAG | `core/intelligence/rag/` | **Stub, inactive** — forward-declared only |
+| C++ indicators | `core/intelligence/algorithms/cpp/src/indicators.cpp` | RSI, MACD, Bollinger via pybind11, with a Python fallback |
+| F&O analyzer and fetcher | `core/intelligence/fno/` | Put-call ratio, max pain, open-interest build-up |
+| Prompt enhancer | `core/intelligence/prompt_enhancer/enhancer.py` | Extra search queries from the miss counter |
+| Retrieval (RAG) | `core/intelligence/rag/` | Behind `RAG_ENABLED`, off, with no corpus |
 
 ---
 
 ## 6. Regime & Market-State Intelligence
 
-| Minor module | Path | What |
+| Part | Path | What |
 |---|---|---|
-| Regime detector | `core/intelligence/regime/detector.py` | 3 cheap yfinance signals → 6 labels. **No LLM.** |
-| Sticky regime | `core/intelligence/regime/state.py` | Hysteresis so the label does not flap daily |
-| Regime multipliers | `config.yaml` → `regime_multipliers`, `sector_agent_regime_role` | Which agent's weight is boosted in which regime |
-| Factor regime | `core/intelligence/rl/algorithms/factor_regime.py` | IIMA India Fama-French 4-factor signal |
-| Seasonal calendar | `core/intelligence/seasonal/calendar.py` | Pre-seeded YAML patterns ⊕ RL-discovered seasonal lessons |
-| Seasonal validator | `core/intelligence/seasonal/validator.py` | Tracks confirmation/contradiction of seeded patterns |
-| Conviction tracker | `core/intelligence/rl/conviction/tracker.py` | **P3** — long BUY/SELL streaks raise mean-reversion risk |
-| NSE calendar | `core/intelligence/rl/nse_calendar.py` | Trading-day math |
-| Calendar updater | `core/intelligence/rl/calendar_updater.py` | Dec 31 auto-refresh, three-layer fallback |
+| Regime detector | `core/intelligence/regime/detector.py` | VIX, Nifty 5-session move and sector RSI → six labels, with global-stress escalation. No LLM |
+| Sticky regime | `core/intelligence/regime/state.py` | Hysteresis so the label does not flap |
+| Regime multipliers | `config.yaml` → `regime_multipliers`, `sector_agent_regime_role` | Per-dimension weight overlays, never stored |
+| Factor regime | `core/intelligence/rl/algorithms/factor_regime.py` | IIMA four-factor data, a static prior ending March 2023 |
+| Seasonal calendar and validator | `core/intelligence/seasonal/` | Seeded patterns per native sector, and their month-end validation |
+| Conviction tracker | `core/intelligence/rl/conviction/tracker.py` | Long same-direction streaks raise a reversion prior |
+| NSE calendar and updater | `core/intelligence/rl/nse_calendar.py`, `calendar_updater.py` | Trading days, sessions, F&O expiry; the 31 December refresh |
 
-Regime labels: `MACRO_CRISIS`, `RISK_OFF`, `MOMENTUM_EXTENDED`, and three more
-— see the detector docstring.
+Labels: `MACRO_CRISIS`, `RISK_OFF`, `MOMENTUM_EXTENDED`, `RISK_ON`,
+`OVERSOLD`, `NORMAL` ([RL_DESIGN](RL_DESIGN.md) section 13).
 
 ---
 
 ## 7. The Adaptive Learning Loop (RL) — the heart
 
-*~6,000 lines. Budget the most study time here.* Full narrative:
-[RL_DESIGN.md](RL_DESIGN.md).
+*About 12,500 lines under `core/intelligence/rl/`. Budget the most study
+time here.* Full design:
+[RL_DESIGN.md](RL_DESIGN.md). Adaptive state exists; improved prediction
+has not been demonstrated, and production runs the `observe` learning mode
+(KT section 1).
 
 ### 7.1 Forecast generation (monthly)
 
-`core/intelligence/rl/workflows/generate_forecast.py` (760) — runs the analysis
-engine, then builds a **PredictionEnvelope**: a 30-day price path with per-day
-forecast and confidence.
+`core/intelligence/rl/workflows/generate_forecast.py` (834 lines) runs the
+analysis, then builds the **envelope**: forecast rows for the next 30 trading
+days, each stamped with its issuing run, gate and instrument. An abstained
+analysis builds no envelope in `enforce` mode.
 
-- `core/intelligence/rl/algorithms/price_interpolator.py` (623) — LLM-calibrated
-  path shape, replacing an old static dict
-- `core/intelligence/rl/workflows/sector_router.py` — shared routing so forecast
-  and review can never disagree about which orchestrator or weights apply
+- `core/intelligence/rl/algorithms/price_interpolator.py`: the forecast
+  profile (bulk model, static fallback) and the Monte Carlo paths;
+- `core/intelligence/rl/workflows/sector_router.py`: the weight tables, with
+  routing delegated to the registry.
 
-### 7.2 Daily review — the 11-step spine
+### 7.2 Daily review — the spine
 
-`core/intelligence/rl/workflows/daily_review.py` (1,572). **Read this file top
+`core/intelligence/rl/workflows/daily_review.py` (1,833 lines). **Read it top
 to bottom; it is the product.**
 
 | Step | What happens |
 |---|---|
-| 0 | Detect market regime (non-fatal → NORMAL) |
-| 1 | Load envelope, find today's forecast row |
-| 2 | Fetch actual close + volume context (NSE cross-checked) |
-| 3 | Compute error metrics + timing accuracy |
-| 4 | **FeedbackAgent** → miss_type, miss analysis, raw lessons |
-| 5 | **WeightAdapter** → adjust per-agent weights, miss_type-aware |
-| 5.5 | Apply regime multipliers to effective weights |
-| 6 | **LearningLedger** merge + propagate to sector/market ledgers |
-| 6.5 | Update conviction streak + compute reversion prior |
-| 7a | *Conditional:* **ThesisReviewer** on a significant miss |
-| 7b | Revise remaining forecast days with regime-adjusted weights |
-| 8 | Append the complete `FeedbackEntry` |
-| 8.5 | **DossierCurator** — runs every day, hit or miss |
-| 9 | Seasonal validation — month-end only |
-| 10 | **Control lane** — the bare-LLM duel |
+| 0 | Regime detection and the sticky label |
+| 1 | The envelope row for the session |
+| — | Input checks: row provenance, identity (`data_gated` in `enforce` mode) |
+| 2 | The session's close, cross-checked with NSE, and the stale-close check |
+| 3 | Error and direction (measured against the predicted close) |
+| 4 | Optional re-run (gated), context assembly, **FeedbackAgent** |
+| 5 | **WeightAdapter**: a new version in `adapt`, a recorded proposal in `observe` |
+| 5.5 | Regime multipliers on the decision weights |
+| 6 | Lessons merge and shared-ledger propagation |
+| 6.5 | Conviction streak and reversion prior |
+| 7a | **ThesisReviewer** on a significant miss |
+| — | Re-forecast trigger (Living Envelope) |
+| 7b | Confidence-only revision of the remaining rows |
+| 8 | The feedback entry |
+| 8.5 | **DossierCurator**, every day |
+| 9 | Seasonal validation, month end only |
+| 10 | **Control lane** |
 
-### 7.3 The learning agents
+`review_outcomes.py` then gives each enabled ticker one outcome:
+completed, degraded, data_gated, skipped or failed.
 
-| Agent | Path | Role |
+### 7.3 The learning agents and controls
+
+| Part | Path | Role |
 |---|---|---|
-| FeedbackAgent | `core/intelligence/rl/agents/feedback_agent.py` (600) | Classifies the miss, writes lessons. Carries the **evidence rule**: *absence of news is not evidence of model_bias*; 20% external_shock cap |
-| WeightAdapter | `core/intelligence/rl/agents/weight_adapter.py` (549) | Moves per-agent weights; derives the agent list from `WeightMemory`, so zero sector hardcoding |
-| ThesisReviewer | `core/intelligence/rl/agents/thesis_reviewer.py` | Fires when \|price_error_pct\| > max(1.5%, 1.5 × atr_pct) |
-| ControlLane | `core/intelligence/rl/agents/control_lane.py` | Bare LLM: same close + market context, **no** tools, memory, weights, lessons or dossier — the honest opponent |
+| FeedbackAgent | `core/intelligence/rl/agents/feedback_agent.py` | Classifies the miss and writes lessons |
+| WeightAdapter | `core/intelligence/rl/agents/weight_adapter.py` | Deterministic weight update; bounds applied before renormalising |
+| Learning mode | `core/intelligence/rl/learning_mode.py` | `adapt` or `observe`; decision weights; observation records |
+| ThesisReviewer | `core/intelligence/rl/agents/thesis_reviewer.py` | Fires when the error exceeds `max(1.5%, 1.5 × ATR%)` or on a structural miss |
+| Control lane | `core/intelligence/rl/agents/control_lane.py` | A bare model with the same close and context, the baseline opponent |
+| Review outcomes | `core/intelligence/rl/workflows/review_outcomes.py` | One outcome per ticker per run |
 
 ### 7.4 Lesson machinery
 
-| Minor module | Path | Role |
+| Part | Path | Role |
 |---|---|---|
-| Ledger propagator | `core/intelligence/rl/stores/ledger_propagator.py` (545) | **P2** — routes lessons to stock / sector / market ledger by scope |
-| Lesson emphasis | `core/intelligence/rl/algorithms/lesson_emphasis.py` | The **only** place tagged lessons act numerically on scores; deltas read from settings at call time so they never go stale |
-| Provenance | `core/intelligence/rl/provenance.py` | **F3** — every lesson and dossier observation keeps the date + headline that produced it |
-| Month-end validation | `core/intelligence/rl/workflows/month_end_validation.py` | Extracted from Step 9 |
+| Ledger propagator | `core/intelligence/rl/stores/ledger_propagator.py` | Routes lessons by scope; weekly downgrade and archiving |
+| Lesson emphasis | `core/intelligence/rl/algorithms/lesson_emphasis.py` | The only place tagged lessons move scores; a no-op in `observe` |
+| Provenance | `core/intelligence/rl/provenance.py` | Keeps the dated headlines behind a lesson or observation |
+| Month-end validation | `core/intelligence/rl/workflows/month_end_validation.py` | Step 9 |
 
-### 7.5 Living Envelope (Phase 2.5)
+### 7.5 Living Envelope
 
-- `core/intelligence/rl/workflows/preopen_check.py` — 08:45 IST market-level
-  overnight shock rating; can trigger an envelope re-forecast. Never fatal.
-- `core/intelligence/rl/stores/offmarket_fetcher.py` — block/bulk/pre-open
-  auction as a **next-day leading** signal, fetched at the end of the review
+- `preopen_check.py`: the 08:45 overnight shock rating; on a shock it
+  re-forecasts contradicted envelopes among the native sectors' built-in
+  ticker lists.
+- `regenerate_envelope` in `generate_forecast.py`: archives the current
+  envelope and replaces only the rows after the trigger date.
+- `stores/offmarket_fetcher.py`: block and bulk deals and the pre-open
+  price, saved after each review as the next day's context.
 
 ### 7.6 Schemas
 
-`src/backend/shared/schemas/feedback.py` — 1,079 lines, 30+ Pydantic v2 models.
-The four JSON memory structures: `PredictionEnvelope`, `DailyFeedbackLog`,
-`WeightMemory`, `LearningLedger`.
+`src/backend/shared/schemas/feedback.py` (1,099 lines): the envelope, the
+feedback log, weight memory and the learning ledger, among some thirty
+Pydantic models.
 
 ---
 
 ## 8. Knowledge Layer (Ticker Dossier)
 
-*Permanent per-ticker knowledge that survives forecast cycles.*
+*Permanent per-ticker knowledge that outlives forecast cycles.*
 
-| Minor module | Path | Cadence |
+| Part | Path | Cadence |
 |---|---|---|
-| Dossier schema | `src/backend/shared/schemas/dossier.py` | — |
-| DossierCurator | `core/intelligence/rl/agents/dossier_curator.py` | Daily (Step 8.5) + weekly distillation |
-| EventIngestor | `core/intelligence/rl/agents/event_ingestor.py` | Sat 10:00 — results, concalls, guidance, investor presentations, digested into the **same** JSON contract the curator emits |
-| QuestionResearcher | `core/intelligence/rl/agents/question_researcher.py` | Sat 11:00 — targeted search to resolve dossier `open_questions`, one batched judgment call per ticker |
+| Dossier schema | `src/backend/shared/schemas/dossier.py` | `open_guidance(as_of)` and the dated digest |
+| DossierCurator | `core/intelligence/rl/agents/dossier_curator.py` | Daily (step 8.5), plus weekly distillation on Mondays at 03:30 |
+| EventIngestor | `core/intelligence/rl/agents/event_ingestor.py` | Saturday 10:00: NSE results, con-calls, guidance and presentations dated on or before the scan |
+| QuestionResearcher | `core/intelligence/rl/agents/question_researcher.py` | Saturday 11:00: searches for open questions, one batched call per ticker |
 
-**Design principle.** The LLM *proposes* dossier updates; the merge code
-enforces every bound deterministically and **never raises** — any failure
-returns the dossier unchanged so the daily review is never blocked.
-
-Note for spec-readers: dossier observations are the `DossierObservation` model
-(`dossier.py`), not plain dicts.
+**Design principle.** The model *proposes* dossier updates; the merge code
+enforces every bound and never raises, so a failure leaves the dossier
+unchanged. No writer dates a row after the run that wrote it, and every
+reader filters by date ([RL_DESIGN](RL_DESIGN.md) section 23.1).
 
 ---
 
 ## 9. Portfolio & Advisory ("Compass")
 
-*Virtual money, real NSE prices.* Full narrative:
+*Virtual money, real NSE closes.* Full design:
 [AUTOPILOT_GUIDE.md](AUTOPILOT_GUIDE.md).
 
-| Minor module | Path | Role |
+| Part | Path | Role |
 |---|---|---|
-| Schemas | `src/backend/shared/schemas/portfolio.py` | `adj_avg_price` / `adj_qty` are corp-action-adjusted — **all** P&L and stop math uses these |
-| Store | `core/portfolio/store.py` | `data/portfolio/<user_id>/` — JSON + append-only JSONL |
-| Advisor | `core/portfolio/advisor.py` | Pure-Python decision engine. Precedence **EXIT > TRIM > ADD > HOLD**, non-negotiable |
-| Autopilot | `core/portfolio/autopilot.py` | Deterministic execution of verdicts. Virtual money only — no broker calls, ever |
-| Narrator | `core/portfolio/narrator.py` | BULK-tier phrasing. **The engine decides; the LLM only phrases.** Falls back to deterministic text from trigger codes |
-| Narrative cache | `core/portfolio/narrative_cache.py` | Day-scoped, keyed by verdict context — one LLM call per (symbol, verdict, …) across all users |
-| Pricing | `core/portfolio/pricing.py` | Reuses daily_review's NSE-verified close fetcher |
-| Corp actions | `core/portfolio/corp_actions.py` | Splits / bonus adjustment |
-| Promotion | `core/portfolio/promotion.py` | Held or watchlisted symbols auto-promoted into `managed_tickers.json` |
-| Pipeline | `core/portfolio/pipeline.py` | Post-review orchestration. **Order is load-bearing:** corp-action sync runs FIRST |
-| Digest | `core/portfolio/digest.py`, `digest_text.py` | EOD per-holding verdicts. **Event-triggered, never clock-scheduled** — at 40 tickers the review takes ~80 min |
-| Reconcile | `core/portfolio/reconcile.py` | Drift detection |
-| Retention | `core/portfolio/retention.py` | Nightly prune; every cap a `cfg()` tunable, `None` = keep-all |
-| Universe | `core/portfolio/universe.py` | Atlas C4 nightly demand-tier recompute |
+| Schemas | `src/backend/shared/schemas/portfolio.py` | `adj_avg_price` and `adj_qty` are adjusted; all P&L and stop math uses them |
+| Store | `core/portfolio/store.py` | Per-user files, lock, corrupt-file quarantine |
+| Advisor | `core/portfolio/advisor.py` | Precedence **EXIT > TRIM > ADD > HOLD**, SWITCH, the data and identity checks |
+| Autopilot | `core/portfolio/autopilot.py` | Deterministic execution; no broker call anywhere |
+| Identity reconcile | `core/portfolio/identity_reconcile.py` | Operator plan/apply for demergers and renames |
+| Narrator, narrative cache | `core/portfolio/narrator.py`, `narrative_cache.py` | Bulk-tier phrasing of a decided verdict, cached per day |
+| Pricing | `core/portfolio/pricing.py` | The daily review's verified close, with the bar's date |
+| Corporate actions | `core/portfolio/corp_actions.py` | Splits, bonuses, dividends (with `DIV` ledger rows) before any rule |
+| Promotion | `core/portfolio/promotion.py` | Held and watchlisted symbols join the managed list (cap 40) |
+| Pipeline | `core/portfolio/pipeline.py` | Post-review orchestration; corporate actions first |
+| Digest | `core/portfolio/digest.py`, `digest_text.py` | The EOD digest, event-triggered after the reviews |
+| Reconcile | `core/portfolio/reconcile.py` | Ledger versus portfolio, detect and alert |
+| Retention, universe | `core/portfolio/retention.py`, `universe.py` | Atlas pruning and nightly demand recompute |
 
 ---
 
 ## 10. Discovery Engine (Compass Phase B)
 
-*Weekly funnel: full universe → shortlist → deep dives → shelf → promotion.*
+*Weekly funnel: universe → signals → screen → guards → deep dives → shelf →
+promotion.* KT section 8.
 
 | Stage | Path | What |
 |---|---|---|
-| Universe | `core/discovery/universe.py` | Mainboard EQ series only, price floor |
-| Signals | `core/discovery/signals.py` | 7 pure-pandas signals, zero LLM. Returns `None` when **DARK** |
-| Screen | `core/discovery/screen.py` | Weighted percentile-rank composite, **renormalized over live signals only** |
-| Guards | `core/discovery/guards.py` | Free bhavcopy gates (liquidity, series, price, circuit streaks) then per-symbol gates (surveillance, float mcap) on the shortlist only |
-| Deep dive | `core/discovery/deep_dive.py` | ONE reasoning call per name + deterministic entry zone and ATR-scaled invalidation level |
-| Shelf | `core/discovery/shelf.py` | Capped; a stronger idea displaces the weakest; stale ideas rotate out |
-| Paper lane | `core/discovery/paper_lane.py` | Virtual position, real forecasts, **isolated store root, zero learning writes** |
-| IPO tracker | `core/discovery/ipo_tracker.py` | Research-calibrated: post-listing evidence outweighs subscription froth |
-| Schemas | `src/backend/shared/schemas/discovery.py` | `ScreenResult`, `DeepDiveResult`, shelf |
+| Universe | `core/discovery/universe.py` | Mainboard EQ series, price floor |
+| Signals | `core/discovery/signals.py` | Seven pandas signals, no LLM; `None` when dark |
+| Screen | `core/discovery/screen.py` | Percentile-rank composite over live signals only |
+| Guards | `core/discovery/guards.py` | Liquidity, series, price and circuit gates, then surveillance and float on the shortlist |
+| Deep dive | `core/discovery/deep_dive.py` | The ordinary analysis per name, so its decision gate is the idea's `data_gate`; entry zone and invalidation level |
+| Shelf | `core/discovery/shelf.py` | Capped; stronger ideas displace weaker ones; promotion to the watchlist |
+| Paper lane | `core/discovery/paper_lane.py` | Real forecasts under an isolated store root, with no learning writes |
+| IPO tracker | `core/discovery/ipo_tracker.py` | Recent listings ranked on listing evidence, delivery, accumulation and subscription |
+| Schemas | `src/backend/shared/schemas/discovery.py` | Screen, deep dive, shelf |
 
-**Pattern worth extracting: dark-signal renormalization.** Sub-scores normalise
-over whatever is actually available, so a missing feed degrades precision
-instead of poisoning the score with an implicit zero. The same pattern recurs
-in the screen, the IPO tracker and the advisor.
+**Pattern worth extracting: dark-signal renormalization.** A score is
+normalised over the signals actually available, so a missing feed costs
+precision instead of adding an implicit zero. The screen, the IPO tracker and
+the aggregator all do this.
+
+### IPO intelligence
+
+`core/ipo/` (16 modules) collects issue facts and demand snapshots
+(`calendar.py`, `signals.py`, `velocity.py`; `ledger.py` refuses any rewrite
+of its JSONL stores that would drop a line it cannot parse), builds the history
+and its report (`history.py`, `outcomes.py`, `report.py`), and runs the dark
+P3 model: browsed research (`research.py`, `extract.py`), deterministic
+indices and the verdict grid (`hype.py`, `substance.py`, `verdict.py`), the
+19:00 deep-dive sweep into the append-only verdict store (`deep_dive.py`,
+`verdicts.py`), a sourced narration (`narrate.py`) and forward grading from
+the listing day (`listing.py`). None of the P3 output reaches a user until
+its visibility milestone is judged.
 
 ---
 
 ## 11. Delivery Layer (Compass Phase C)
 
-| Minor module | Path | Trigger |
+| Part | Path | Trigger |
 |---|---|---|
-| Morning brief | `core/delivery/brief.py` (978) | Mon–Fri 08:50 IST. Deterministic assembly + **one** bulk narration call, fallback text on any failure. Styled HTML multipart/alternative |
-| Weekly review | `core/delivery/weekly.py` | Sun 18:00 — allocation vs risk profile, laggards, switch candidates from the shelf, advice-ledger scoreboard |
-| Alerts | `core/delivery/alerts.py` | Event-driven. Dedupe key `{user_id}\|{date}\|{kind}\|{symbol}` |
-| Channels | `core/delivery/channels.py` | web-push (pywebpush + VAPID) + email; prunes dead subscriptions on 400/403/404/410 |
-| Outbox | `core/delivery/outbox.py` | Atlas C7 durable queue when `ATLAS_ENABLED`; inline send otherwise |
-| Index watch | `core/delivery/index_watch.py` | Weekly constituent diff → inclusion/exclusion alerts for held + watchlist + shelf only. First snapshot never alerts |
-| Ops alerts | `core/delivery/ops_alerts.py` | **Self-monitoring.** Born from 2026-07-11: a dead OpenRouter key produced 887 silent 401s over 3 hours while every job logged "complete" |
+| Morning brief | `core/delivery/brief.py` (1,196 lines) | Mon–Fri 08:50. Deterministic assembly and one bulk headline call; HTML and text |
+| Weekly review | `core/delivery/weekly.py` | Sunday 18:00: allocation, laggards, switch candidates, scoreboard |
+| Alerts | `core/delivery/alerts.py` | Event-driven, deduplicated per user, date, kind and symbol |
+| Channels | `core/delivery/channels.py` | Web push and email (SMTP or Resend), one result contract |
+| Outbox | `core/delivery/outbox.py` | One durable row per message and channel when Atlas is on; retries, dead letters, at-most-once |
+| Index watch | `core/delivery/index_watch.py` | Weekly constituent changes for held, watchlisted and shelf names |
+| Ops alerts | `core/delivery/ops_alerts.py` | Job errors and zero-output alerts |
 
-**Compliance constraint threaded through all of it:** output is framed as
-research/analysis, never "advice" — see
-[LEGAL_AND_COMPLIANCE.md](LEGAL_AND_COMPLIANCE.md).
+KT section 10 gives the delivery contract. **Compliance runs through all of
+it:** output is framed as research, never advice
+([LEGAL_AND_COMPLIANCE.md](LEGAL_AND_COMPLIANCE.md)).
 
 ---
 
 ## 12. Verification Layer ("the auditor")
 
-*Deterministic, no LLM. Grades what the system actually told users, against
-`^NSEI`. Design:
-[superpowers/specs/2026-08-07-verification-layer-design.md](superpowers/specs/2026-08-07-verification-layer-design.md).*
+*Deterministic, no LLM. Grades what the system told users, against `^NSEI`.*
+Design: [verification layer](superpowers/specs/2026-08-07-verification-layer-design.md).
 
-| Minor module | Path | Role |
+| Part | Path | Role |
 |---|---|---|
-| Rules | `core/audit/rules.py` | **What "correct" means.** Pure functions, no I/O — the one file that cannot be quietly changed without invalidating accumulated history |
-| Outcomes | `core/audit/outcomes.py` | The recorder. Idempotent by `(ref, horizon_td)`; never raises — a bad row is counted and skipped |
-| Benchmark | `core/audit/benchmark.py` | NIFTY 50 close lookup — the only benchmark fetch in the codebase |
-| Metrics | `core/audit/metrics.py` | Pure. Every function reports its own `n` and returns `None`, never `0`, when there is nothing to compute |
-| Thresholds | `core/audit/thresholds.py` | Breach rules — catches jobs producing **full but silently wrong** output, which `ops_alerts` structurally cannot see |
-| Report | `core/audit/report.py` | One verdict word; vocabulary deliberately shared with the Learning Evidence report |
-| Store | `core/audit/store.py` | Separate append-only JSONL — never annotates the advice ledger |
-| CLI | `core/audit/cli.py` | `python -m core.audit.cli --report \| --backfill` |
-| Schema | `src/backend/shared/schemas/audit.py` | The graded-outcome row |
+| Rules | `core/audit/rules.py` | What "correct" means for each advice verb; pure functions |
+| Outcomes | `core/audit/outcomes.py` | The recorder, idempotent per reference and horizon; also the IPO lane |
+| Benchmark | `core/audit/benchmark.py` | Nifty 50 closes |
+| Metrics | `core/audit/metrics.py` | Each function reports its own `n` and returns `None`, never 0, with no data |
+| Thresholds | `core/audit/thresholds.py` | Breach rules for output that is complete but wrong |
+| Attribution, evidence | `core/audit/attribution.py`, `evidence.py` | Why switch decisions went wrong, as a distribution; which inputs a call had (for example, whether news was available) |
+| Report, store, CLI | `core/audit/report.py`, `store.py`, `cli.py` | One verdict word; its own append-only store; `python -m core.audit.cli` |
 
-**Study the failure, not just the code.** The layer graded 0/119 on its first
-production run: `_fetch_index_close` used a 1-day yfinance window, which
-returns empty for `^NSEI`. The function had been "isolated so tests can patch
-it" — so the one function that touched the network was the one function never
-tested against it. 84 green tests hid a bug that broke 100% of the feature.
+**Study the failure, not just the code.** On its first production run the
+layer graded nothing: the benchmark lookup used a one-day yfinance window,
+which returns empty for `^NSEI`. The one function that touched the network had
+been isolated so tests could patch it, so it was the one function no test
+exercised.
 
 ---
 
 ## 13. Measurement & Scientific Evidence
 
-*Distinct from the auditor: this measures whether **learning** works, not
-whether **advice** works.*
+*Distinct from the auditor: this asks whether **learning** works, not whether
+**advice** works.* [RL_DESIGN](RL_DESIGN.md) sections 24 and 25.
 
-| Minor module | Path | Question |
+| Part | Path | Question |
 |---|---|---|
-| Eval harness | `core/intelligence/rl/eval/harness.py` | load → replay → aggregate, **read-only** |
-| Metrics | `core/intelligence/rl/eval/metrics.py` | Pure functions over `FeedbackEntry` lists |
-| Baselines | `core/intelligence/rl/eval/baselines.py` | Naive predictors the system must beat |
-| Scorecard | `core/intelligence/rl/eval/scorecard.py` | Monthly baseline duel — StockAgent vs the control lane |
-| Learning evidence | `core/intelligence/rl/eval/learning_evidence.py` (727) | **Self-ablation:** does the learning machinery actually help? |
-| Synthetic | `core/intelligence/rl/eval/synthetic.py` | Deterministic fabricated logs so metrics run without real history |
-| Runner | `core/intelligence/rl/eval/run_eval.py` | CLI |
-| Schemas | `src/backend/shared/schemas/scorecard.py` | `ControlPrediction` / `ControlLog` |
+| Eval harness, metrics, runner | `core/intelligence/rl/eval/harness.py`, `metrics.py`, `run_eval.py` | Read-only replay of recorded history |
+| Synthetic | `core/intelligence/rl/eval/synthetic.py` | Fabricated logs so metrics run without history |
+| Baselines | `core/intelligence/rl/eval/baselines.py` | Persistence and always-up |
+| Scorecard | `core/intelligence/rl/eval/scorecard.py` | Monthly lanes: agent, control, baselines |
+| Learning evidence | `core/intelligence/rl/eval/learning_evidence.py` | Self-ablation: adapted versus base versus uniform weights |
+| Schemas | `src/backend/shared/schemas/scorecard.py` | Control-lane records |
 
-Read alongside [audit/ADAPTIVE_LEARNING_REVIEW.md](audit/ADAPTIVE_LEARNING_REVIEW.md)
-(gaps G1–G10).
+All of it grades the same label the daily review records, which measures
+error direction (KT [section 5](TECHNICAL_DESIGN.md#grading-defect-an-example-everyone-can-follow)).
+**Planned:** a corrected target and matched cohorts (SA-012 to SA-022).
 
 ---
 
@@ -535,152 +504,165 @@ Read alongside [audit/ADAPTIVE_LEARNING_REVIEW.md](audit/ADAPTIVE_LEARNING_REVIE
 
 ### 14.1 API — `services/api/server.py`
 
-13 routers, **85 router endpoints + 1 WebSocket + 3 app-level** (`/health`,
-`/tickers`, SPA catch-all).
+13 routers: **86 router endpoints and 1 WebSocket**, plus 3 app-level routes
+(`/health`, `/tickers` and the single-page fallback).
 
-| Router | Path | Surface |
+| Router | Path | Endpoints and surface |
 |---|---|---|
-| ui_data | `services/api/routes/ui_data.py` **(3,801 lines)** | 30 endpoints: bootstrap, market summary, trending, watchlist, categories, search, learnings, managed tickers, agent weights/tasks, logs — **plus the entire chat engine** |
-| portfolio | `services/api/routes/portfolio_api.py` | holdings, watchlist, CSV import, advice, digest, transactions, performance, run-advisor |
-| analytics | `services/api/routes/analytics.py` | rl-export, agent-accuracy, weight-drift, miss-breakdown, conviction-outcomes, sector-comparison, **Power BI OData feed** |
-| prompts | `services/api/routes/prompts.py` | Live prompt read/edit + GitHub deploy |
-| scheduler | `services/api/routes/scheduler_api.py` | status + HTTP job triggers |
-| rl_monitor | `services/api/routes/rl_monitor.py` | 5 read-only adapters over PredictionStore (AUD-100) |
-| delivery | `services/api/routes/delivery_api.py` | brief/weekly latest, manual runs, alert tail, push subscribe |
-| discovery | `services/api/routes/discovery_api.py` | shelf, screen, run, promote, drop |
-| auth | `services/api/routes/auth_api.py` | signup, login, logout, me, invites, **DPDP account delete** |
-| audit | `services/api/routes/audit_api.py` | summary, backfill |
-| analyse | `services/api/routes/analyse.py` | On-demand full pipeline run |
-| history | `services/api/routes/history.py` | SQLite score history |
-| stream | `services/api/routes/stream.py` | WebSocket `/ws/stream?ticker=` agent progress |
-| Auth gate | `services/api/auth.py` | session / owner / machine-key tiers |
-| Log buffer | `services/api/log_buffer.py` | In-memory ring buffer for live log streaming |
+| ui_data | `services/api/routes/ui_data.py` (3,801 lines) | 26: bootstrap, market summary, trending, watchlist, search, learnings, managed tickers, agent weights, logs, feedback, **and the chat engine** |
+| portfolio | `services/api/routes/portfolio_api.py` | 11: holdings, watchlist, CSV import, advice, digest, transactions, performance, run-advisor |
+| delivery | `services/api/routes/delivery_api.py` | 9: brief and weekly, manual runs, alerts, push subscriptions, the outbox view |
+| analytics | `services/api/routes/analytics.py` | 8: RL exports, accuracy, drift, misses, conviction, sector comparison, an OData feed |
+| auth | `services/api/routes/auth_api.py` | 7: signup, login, logout, me, invites, account deletion |
+| prompts | `services/api/routes/prompts.py` | 6: live prompt read and edit, publishing |
+| discovery | `services/api/routes/discovery_api.py` | 5: shelf, screen, run, promote, drop |
+| rl_monitor | `services/api/routes/rl_monitor.py` | 5: read-only learning views, with the learning mode |
+| scheduler | `services/api/routes/scheduler_api.py` | 4: status and job triggers (owner or machine key) |
+| audit, history | `services/api/routes/audit_api.py`, `history.py` | 2 each |
+| analyse | `services/api/routes/analyse.py` | 1: an on-demand analysis (member quota) |
+| stream | `services/api/routes/stream.py` | The WebSocket `/ws/stream` with agent progress |
+| Auth gate | `services/api/auth.py` | Session, owner and machine-key checks |
+| Log buffer | `services/api/log_buffer.py` | The managed list's readers and a live log ring buffer |
 
 ### 14.2 Chat sub-system
 
-Lives inside `ui_data.py` but is a module in its own right. Agentic streaming
-tool-loop; the old DAG is retired. Design:
-[CHAT_ARCHITECTURE.md](CHAT_ARCHITECTURE.md).
-
-- **5 tools:** `get_live_price`, `get_historical_prices`, `get_macro_news`,
-  `search_market_news`, `screen_stocks`
-- **Context builders:** `_build_chat_context`, `_nse_market_context`,
-  `_ctx_rl_learning`, `_ctx_current_verdicts`, `_ctx_recent_history`,
-  `_ctx_ticker_detail`
-- IST session awareness, NSE-first symbol resolution, sector movers,
-  result-age labelling
+Inside `ui_data.py`, but a module in its own right:
+[CHAT_ARCHITECTURE.md](CHAT_ARCHITECTURE.md). A static pre-router for buy,
+sell and momentum questions, a fast-tier tool loop with 13 tools, per-user
+session memory, a daily member quota, and a sanitizing Markdown boundary in
+the browser.
 
 ### 14.3 Frontend — `src/frontend/prototypes/`
 
-Single-page PWA, 21 JSX modules + a versioned service worker:
+A single-page PWA of 22 modules, transformed in the browser with no build
+step: `home`, `portfolio`, `brief-view`, `digest-view`, `weekly-view`,
+`inbox`, `analytics`, `agents-page`, `rl-monitor`, `rl-data`, `prompt-lab`,
+`settings`, `auth`, `learn`, `logs`, `data`, `sphere` (the chat overlay),
+`chat-markdown.js` (the sanitizing boundary), `tweaks-panel`, `hooks`,
+`icons` and the versioned service worker `sw.js`.
 
-`home` · `portfolio` · `brief-view` · `digest-view` · `weekly-view` · `inbox` ·
-`analytics` · `agents-page` · `rl-monitor` · `rl-data` · `prompt-lab` ·
-`settings` · `auth` · `learn` · `logs` · `data` · `sphere` · `tweaks-panel` ·
-`hooks` · `icons` · `sw.js`
-
-Responsive gate: `node scripts/ui_responsive_audit.mjs`. Android ships as a
-PWABuilder TWA wrapping this prototype (the React app under `src/prototypes/`
-is a stub).
+Responsive check: `node scripts/ui_responsive_audit.mjs`. The chat boundary
+has a browser test (`npm run test:frontend`). **Planned:** packaging and a
+compiled client (SA-028, stretch).
 
 ---
 
 ## 15. Time Orchestration
 
-`services/scheduler/python/scheduler.py` (1,254) — an APScheduler
-`BackgroundScheduler` thread inside the FastAPI process. **20 registered jobs.**
-This is the product's clock; study it as a module in its own right.
+`services/scheduler/python/scheduler.py` (1,531 lines): an APScheduler
+background thread in the process that owns the background work. **24 possible
+job IDs**; registration depends on feature gates and valid cron settings, and
+registration is not execution. The KT's
+[job table](TECHNICAL_DESIGN.md#9-scheduled-jobs-and-event-hooks) is the
+reference.
 
-| IST | Job id | Days |
+| IST | Job ID | Days |
 |---|---|---|
-| 00:00 | `prompt_daily_deploy` | daily |
+| 00:00 | `prompt_daily_deploy` | Daily |
 | 02:00 | `scorecard_monthly` | 1st |
-| 03:30 | `ledger_cleanup_weekly` | Mon |
+| 03:30 | `ledger_cleanup_weekly` | Monday |
+| 06:30 | `ops_watchdog` | Daily |
 | 07:30 | `macro_daily_news` | Mon–Fri |
+| 08:00 | `ipo_refresh_am` | Daily |
 | 08:45 | `preopen_shock_check` | Mon–Fri |
 | 08:50 | `morning_brief` | Mon–Fri |
 | 09:00 | `rl_monthly_forecast` | 1st |
-| 09/12/15 | `macro_market_news` | Mon–Fri |
-| 10:00 | `event_ingest_weekly` | Sat |
-| 11:00 | `research_loop_weekly` | Sat |
-| 12:30 | `discovery_weekly` | Sat |
-| `FEEDBACK_CRON` (16:30) | `rl_daily_review` | trading days |
-| 18:00 | `weekly_review` | Sun |
+| 09:00, 12:00, 15:00 | `macro_market_news` | Mon–Fri |
+| 10:00 | `event_ingest_weekly` | Saturday |
+| 11:00 | `research_loop_weekly` | Saturday |
+| 12:30 | `discovery_weekly` | Saturday |
+| 16:30 | `rl_daily_review` | Mon–Fri (`scheduler.feedback_cron`) |
+| 17:45 | `ipo_refresh_pm` | Daily |
+| 18:00 | `weekly_review` | Sunday |
+| 19:00 | `ipo_deep_dive` | Daily |
 | 19:00 | `bhavcopy_daily_sync` | Mon–Fri |
-| 23:00 | `atlas_universe_recompute` | daily |
-| 23:15 | `atlas_cost_rollup` | daily |
-| 23:20 | `atlas_retention` | daily |
-| 23:30 | `data_backup_nightly` | daily |
-| 23:45 | `audit_nightly` | daily |
-| Dec 31 23:00 | `rl_calendar_update` | yearly |
+| 23:00 | `atlas_universe_recompute` | Daily |
+| 23:15 | `atlas_cost_rollup` | Daily |
+| 23:20 | `atlas_retention` | Daily |
+| 23:30 | `data_backup_nightly` | Daily |
+| 23:45 | `audit_nightly` | Daily |
+| 31 Dec 23:00 | `rl_calendar_update` | Yearly |
 
-Not on this list because it is **event-triggered**: the EOD portfolio digest,
-fired by `scheduler_api._review_task` after the reviews finish.
+Not on this list because they are not cron jobs: the startup self-heal, the
+post-review portfolio pipeline and digest, and the outbox drainer.
 
-CLI surface — `services/scheduler/run_schedule.py`: `start`, `run-now`,
+CLI, `python -m services.scheduler.run_schedule`: `start`, `run-now`,
 `status`, `history`, `latest`, `forecast`, `daily-review`, `feedback-status`,
-`reforecast`, `preopen-check`, `scorecard`, `ingest-events`, `research`.
+`reforecast`, `preopen-check`, `dossier-status`, `ingest-events`, `research`
+and `scorecard`.
 
 ---
 
 ## 16. Identity, Multi-Tenancy & Data Governance
 
-*"M0" (auth) and "Atlas" (data architecture). Design:
-[SCALING_VISION.md](SCALING_VISION.md),
-[superpowers/specs/2026-07-26-m1-data-architecture-design.md](superpowers/specs/2026-07-26-m1-data-architecture-design.md).*
+*"M0" (authentication) and "Atlas" (data architecture).* Design:
+[SCALING_VISION.md](SCALING_VISION.md) and the
+[data architecture spec](superpowers/specs/2026-07-26-m1-data-architecture-design.md).
 
-| Minor module | Path | Role |
+| Part | Path | Role |
 |---|---|---|
-| Identity store | `services/data/stores/user_store.py` | scrypt hashing, sessions, invite-gated signup, chat quota counters |
-| Auth middleware | `services/api/auth.py` | `get_current_user`, `require_owner`, `get_current_user_or_machine` |
-| Atlas relational core | `services/data/stores/atlas_store.py` | FK-linked `data/atlas.db` |
-| Plane boundary | `services/data/verdict_store.py` | The user-plane read seam over ticker-keyed intelligence output |
-| Universe recompute | `core/portfolio/universe.py` | Writes **aggregate counts only** back to `instruments` — user identity never crosses into the intelligence plane |
-| Retention | `core/portfolio/retention.py` | Keeps user-plane stores bounded |
+| Identity store | `services/data/stores/user_store.py` | scrypt hashing, sessions, invite-gated signup, quota counters |
+| Auth middleware | `services/api/auth.py` | `get_current_user`, `require_owner`, machine key |
+| Atlas core | `services/data/stores/atlas_store.py` | `data/atlas.db`, foreign-key linked |
+| Plane boundary | `services/data/verdict_store.py` | The user plane's read seam over ticker-keyed output |
+| Universe recompute | `core/portfolio/universe.py` | Writes aggregate counts only; no user identity crosses into the intelligence plane |
+| Retention | `core/portfolio/retention.py` | Bounds the user-plane stores |
 | ETL | `scripts/atlas_etl.py` | Freeze-cutover migration |
-| DPDP delete | `DELETE /auth/account` | Single-cascade deletion |
+| Account deletion | `DELETE /auth/account` | One cascade |
 
-**Two planes.** Intelligence plane = ticker-keyed and shared across users. User
-plane = user-keyed and private. They join **only** through `verdict_store`.
+**Two planes.** The intelligence plane is ticker-keyed and shared; the user
+plane is user-keyed and private; they join only through `verdict_store`. One
+exception today: chat's portfolio-brief tool reads the default user's
+portfolio for every caller (CHAT_ARCHITECTURE section 9).
 
-**Escape hatches.** `AUTH_REQUIRED=false` reverts to anonymous-as-owner
-instantly. `ATLAS_ENABLED` unset makes the whole Atlas layer a dormant no-op.
+**Switches.** With `AUTH_REQUIRED` off (the code default), anonymous requests
+act as the owner. With `ATLAS_ENABLED` off, the Atlas layer is a dormant
+no-op and delivery sends inline.
 
 ---
 
 ## 17. Ops, Cost & Reliability
 
-- **Cost telemetry** — per-model rates in `config.yaml` → `llm.cost_rates`
-  (AUD-105); unknown models fall back to the flat bulk rate. Rolled up nightly
-  by `atlas_cost_rollup`.
-- **Quota** — `services/data/stores/api_usage.py`; Serper capped at 2500/month,
-  counter verified at every boot (`[api_usage] counter intact at boot …`).
-- **Backup** — `services/data/backup.py`. The Railway volume is the **only**
-  home of the trade ledgers, the RL prediction tree and the SQLite stores.
-  Each nightly archive is restore-drilled (`services/data/restore.py`) and,
-  once the owner configures a bucket, pushed off-site encrypted
-  (`services/data/offsite.py`). The watchdog's `backup_recoverable` check
-  reports a missing copy (runbook in KT section 10).
-- **Two-tier self-monitoring** — `ops_alerts.py` catches "job produced nothing
-  or crashed"; `core/audit/thresholds.py` catches "job produced full output
-  that is silently wrong". The second tier exists because the first structurally
-  cannot see the news-blind class of failure.
-- **Benches** — `scripts/model_bench.py`, `scripts/reasoning_bench.py`,
-  `scripts/aud098_thesis_tier_bench.py`.
-- **Deploy** — `Dockerfile`, `docker-compose.yml`, Railway.
+- **Watchdog** — `core/ops/watchdog/` (engine, registry, checks, prep,
+  runner) reads `config/milestones.yaml` at 06:30, runs its invariants
+  (`backup_recoverable` among them) and mails or pushes the result. A sent
+  notice is not completion (KT section 10).
+- **Backups** — `services/data/backup.py`: the Railway volume is the only
+  home of the ledgers, the prediction tree and the SQLite stores. Each nightly
+  archive is restore-drilled (`restore.py`) and, once the owner configures a
+  bucket, copied off-site encrypted (`offsite.py`).
+- **Self-monitoring in two tiers** — `ops_alerts.py` catches a job that
+  crashed or produced nothing (with per-ticker review outcomes), and
+  `core/audit/thresholds.py` catches output that is complete but wrong.
+- **Cost telemetry** — per-model rates in `llm.cost_rates`, rolled up nightly
+  by `atlas_cost_rollup`; provider counts in `api_usage.py`. Bundle counters
+  are estimates. **Planned:** actual call counts (SA-025).
+- **Benches** — `scripts/model_bench.py`, `reasoning_bench.py`,
+  `aud098_thesis_tier_bench.py`.
+- **Deploy** — `Dockerfile`, `docker-compose.yml`, Railway. Every push
+  redeploys.
+
+**Planned:** durable outcomes for every job, deploy-safe scheduling,
+source-health records, silent-degradation checks, credit alerts, a status
+fetcher and an outside witness (KT section 11).
 
 ---
 
 ## 18. Quality
 
-`tests/` — ~38,000 lines across `unit/` (136 files), `integration/`, `api/`,
-`contract/`, `fixtures/`. Baseline is fully green, so **any failure is a new
-failure**, not known rot.
+`tests/` holds 333 test files and about 3,500 test functions in `unit/`,
+`integration/`, `api/`, `contract/` and `frontend/`, with `fixtures/`. Every
+run passes through `tests/hermetic.py`: no `.env`, no outbound network, an
+empty working directory per test, and the checkout's `data/`, `logs/` and
+`outputs/` off limits (KT section 13). CI runs three jobs on every push: the
+test tree, the broad-exception guard with `check_kt_docs.py`, and the
+browser suite.
 
-Audit program artifacts: [audit/CHARTER.md](audit/CHARTER.md),
-[audit/LEDGER.md](audit/LEDGER.md) (every `AUD-###` finding — the "why is the
-code like this" record), [audit/MAP.md](audit/MAP.md) (LIVE / DARK / DEAD
-census).
+Documentation tools: `scripts/docs/` builds the KT's PDF, checks the KT
+against the code and STATE.json, and records review manifests. Audit
+history: the [September audit](audit/2026-09-10-repository-production-review.md)
+is the current baseline; [audit/LEDGER.md](audit/LEDGER.md) records every
+`AUD-###` finding from the earlier programme.
 
 ---
 
@@ -688,35 +670,13 @@ census).
 
 | Item | Status |
 |---|---|
-| `services/csharp/StockAgent.Scheduler/` | **DORMANT, not deleted** — see note below |
-| `new-product.py` | Old standalone script |
-| `core/intelligence/rag/` | Stub, never activated |
-| 19 shim files — 9 `MIGRATION SHIM` in `core/*`, 10 `FORWARD SHIM` in `src/backend/shared/*` | Half-finished restructure; see [§0](#0-orientation). **8 of the 19 have zero importers** and are deletable; the rest are load-bearing |
-| `src/backend/shared/prompts/feedback_agent.py` (227) | **Old copy.** Live one is `core/config/prompts/shared/feedback_agent.py` (347) |
-| Legacy LangGraph worker pool | Fallback only; engagements logged to `fallback_events.py` |
-| `src/prototypes/` React app | Stub — the live UI is `src/frontend/prototypes/` |
-
-### Note on the C# scheduler
-
-Superseded by `services/scheduler/python/scheduler.py`, but *not* fully
-unreferenced — do not assume it is safe to delete without checking these four
-facts (verified 2026-08-08):
-
-- 9 `.cs` files still present under `services/csharp/StockAgent.Scheduler/`
-  (`Program.cs`, 3 controllers, `AnalyseJob.cs`, `SchedulerDbContext.cs`, 3 DTOs)
-- `CSHARP_SCHEDULER_ENABLED` and `CSHARP_API_URL` still exist in
-  `src/backend/shared/config/settings/base.py` (lines ~302 / ~305). The flag is
-  env-gated and **defaults to `false`**
-- A live contract test still covers those settings:
-  `tests/contract/test_phase4_csharp.py`
-- **`docker-compose.yml` has a `csharp-scheduler` service that sets
-  `CSHARP_SCHEDULER_ENABLED: "true"` — with build context `csharp/StockAgent.Scheduler`,
-  a pre-restructure path that no longer exists.** That compose service would
-  fail to build today. It is a latent stale reference, not a working opt-in.
-
-Production is unaffected either way: the Railway image is built from
-`Dockerfile`, which never references the C# service, and no production Python
-imports it.
+| `services/csharp/StockAgent.Scheduler/` | Dormant: 9 `.cs` files, superseded by the Python scheduler. `CSHARP_SCHEDULER_ENABLED` defaults to false, a contract test still covers the settings, and `docker-compose.yml` keeps the service behind an opt-in `csharp` profile. The production image never references it |
+| `main.py`, `new-product.py` | Old standalone entry points |
+| `core/intelligence/rag/` | Retrieval stub, off, no corpus |
+| 19 shim files | The half-finished restructure ([§0](#0-orientation)) |
+| `src/backend/shared/prompts/feedback_agent.py` | An old copy; the live prompt is `core/config/prompts/shared/feedback_agent.py` |
+| Legacy LangGraph worker pool | Fallback only; engagements counted |
+| `services/data/cache/macro_cache.py` | Read by the bundle and legacy builders, but nothing writes it, so it never hits |
 
 ---
 
@@ -724,28 +684,30 @@ imports it.
 
 **Week 1 — the spine**
 
-1. [ARCHITECTURE.md](ARCHITECTURE.md) → [TECHNICAL_DESIGN.md](TECHNICAL_DESIGN.md) → [../CODEBASE.md](../CODEBASE.md)
-2. Module 1 (config substrate) → Module 2 (LLM tiers)
-3. Module 5 (analysis engine) — trace `POST /analyse` for a single ticker, end to end
-4. `src/backend/shared/schemas/pipeline.py` — the data contract everything speaks
+1. [ARCHITECTURE.md](ARCHITECTURE.md) → [TECHNICAL_DESIGN.md](TECHNICAL_DESIGN.md) sections 1–4 → [../CODEBASE.md](../CODEBASE.md)
+2. Module 1 (configuration) → module 2 (LLM tiers)
+3. Module 5 (analysis engine): trace `POST /analyse` for one ticker, from
+   resolution through the bundle to the decision gate
+4. `src/backend/shared/schemas/pipeline.py`, the contract everything speaks
 
 **Week 2 — the loop**
 
-5. [RL_DESIGN.md](RL_DESIGN.md), then Module 7 in this order: schemas →
-   `generate_forecast` → **`daily_review` steps 0–10** → `feedback_agent` →
-   `weight_adapter` → `ledger_propagator`
-6. Module 6 (regime) and Module 8 (dossier) — both hang off `daily_review`
+5. [RL_DESIGN.md](RL_DESIGN.md), then module 7 in this order: schemas →
+   `generate_forecast` → **`daily_review`, steps 0–10** → `feedback_agent` →
+   `weight_adapter` → `learning_mode` → `ledger_propagator`
+6. Module 6 (regime) and module 8 (dossier), both hung off the daily review
 
 **Week 3 — the product surface**
 
-7. Module 9 (portfolio) → Module 10 (discovery) → Module 11 (delivery)
-8. Module 15 (scheduler) — by now the 20 jobs read as a story, not a list
+7. Module 9 (portfolio) → module 10 (discovery and IPO) → module 11 (delivery)
+8. Module 15 (scheduler): by now the 24 jobs read as a story, not a list
 
 **Week 4 — the meta layers**
 
-9. Module 12 (auditor) + Module 13 (evidence) — the two things measuring
-   whether any of the rest works
-10. Module 14 (API + frontend), Module 16 (identity/Atlas), Module 17 (ops)
+9. Module 12 (auditor) and module 13 (evidence): the two things measuring
+   whether the rest works
+10. Module 14 (API and frontend), module 16 (identity and Atlas), module 17
+    (operations), module 18 (tests)
 
 ---
 
@@ -754,29 +716,35 @@ imports it.
 *These repeat in every module. Learn them once and the code stops surprising
 you.*
 
-1. **The LLM never decides.** Advisor, autopilot, discovery guards, auditor and
-   regime detector are all deterministic. The LLM scores dimensions, narrates,
-   and proposes — code decides.
+1. **Code decides; the model reads and explains.** Advisor, autopilot,
+   discovery guards, auditor, regime detector, decision gate and verdict
+   binding are deterministic. The model scores dimensions, narrates and
+   proposes.
 2. **Non-fatal by contract.** Every enrichment step is wrapped; a failure
-   degrades the signal and never blocks the pipeline. Curator, dossier, control
-   lane, offmarket, seasonal and alerts all state this explicitly.
-3. **Append-only ledgers are the audit authority.** `advice_ledger.jsonl`
-   append-only is *test-enforced* — which is why the auditor had to write to a
-   separate file rather than annotate rows in place.
-4. **Dark-signal renormalization.** A missing feed means drop the signal and
-   renormalize over what remains — never impute zero.
-5. **`n` travels with every number.** Metrics return `None`, not `0`, when
-   there is no data. A fresh install must read `INSUFFICIENT_DATA`, never
-   "0% hit rate".
-6. **Config over hardcode.** Every threshold is a `cfg()` lookup.
-7. **Two planes.** Intelligence (ticker-keyed, shared) vs user (user-keyed,
+   degrades its signal and never blocks the pipeline. The typed status says
+   which signal degraded and why.
+3. **Evidence before action.** An analysis whose essential data is missing,
+   or whose identity is unresolved, is recorded as such; in `enforce` mode
+   nothing builds on it.
+4. **Append-only ledgers are the audit authority.** Transactions, advice,
+   value history and switch evaluations are append-only, and the nightly
+   backup drill flags a rewritten one.
+5. **Dark-signal renormalization.** A missing feed means drop the signal and
+   renormalise over what remains; never impute zero.
+6. **`n` travels with every number.** Metrics return `None`, not 0, when
+   there is no data; a fresh install reads `INSUFFICIENT_DATA`.
+7. **Configuration over hardcoding, mostly.** Business tunables go through
+   `cfg()`. Some algorithm constants live in code: the aggregator's 0.30
+   conflict gap, the 20% external-shock cap, the Monte Carlo regime scales.
+8. **Two planes.** Intelligence (ticker-keyed, shared) and user (user-keyed,
    private), joined only through `verdict_store`.
-8. **A kill-switch per feature.** `ATLAS_ENABLED`, `AUTH_REQUIRED`,
-   `DISCOVERY_ENABLED`, `DELIVERY_ENABLED`, `brief_html_enabled`,
-   `audit.enabled`, `rl.hard_bind_verdict_enabled`,
-   `rl.macro_fallback_context_enabled`.
-9. **Idempotency where a job repeats.** Nightly grading, alert dedupe and
-   backfill are all keyed so a re-run is a no-op.
-10. **Isolation for anything that must not teach the system.** The paper lane
-    runs real forecasts under an isolated store root with every learning write
+9. **A switch per feature.** `rl.learning_mode`, `decision_gate.mode`,
+   `AUTH_REQUIRED`, `ATLAS_ENABLED`, `DISCOVERY_ENABLED`, `DELIVERY_ENABLED`,
+   `delivery.brief_html_enabled`, `audit.enabled`, `ipo.enabled`,
+   `rl.hard_bind_verdict_enabled`, `rl.macro_fallback_context_enabled`.
+10. **Idempotency where a job repeats.** Grading, alerts, transactions, value
+    points and observation records are keyed so a re-run adds nothing. The
+    learning update itself is not yet (**Planned:** SA-015).
+11. **Isolation for anything that must not teach the system.** The paper lane
+    runs real forecasts under its own store root with every learning write
     removed.

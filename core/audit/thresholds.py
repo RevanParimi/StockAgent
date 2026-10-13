@@ -14,7 +14,7 @@ import logging
 from datetime import date
 
 from backend.shared.config.settings.loader import cfg
-from core.delivery.alerts import AlertEvent, emit_alerts_broadcast
+from core.delivery.alerts import AlertEvent, emit_owner_alerts
 
 logger = logging.getLogger(__name__)
 
@@ -99,7 +99,7 @@ def emit_breaches(breaches: list[dict]) -> dict:
                        message=b["message"], severity=b["severity"])
             for b in breaches
         ]
-        return emit_alerts_broadcast(events, title="StockAgent verification")
+        return emit_owner_alerts(events, title="StockAgent verification")
     except Exception as exc:
         logger.warning("[audit] breach emit failed (non-fatal): %s", exc)
         return {"emitted": 0, "error": str(exc)}

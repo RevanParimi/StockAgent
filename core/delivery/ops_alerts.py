@@ -49,11 +49,11 @@ def _save_state(state: dict) -> None:
 
 
 def _emit(kind: str, message: str) -> None:
-    """One critical alert through the existing delivery layer, fanned to the
-    whole alert audience (AUD-015). Never raises from callers' perspective
-    (they wrap us anyway)."""
-    from core.delivery.alerts import AlertEvent, emit_alerts_broadcast
-    emit_alerts_broadcast(
+    """One critical alert through the existing delivery layer, to the owner
+    only (FIX-008). Never raises from callers' perspective (they wrap us
+    anyway)."""
+    from core.delivery.alerts import AlertEvent, emit_owner_alerts
+    emit_owner_alerts(
         [AlertEvent(date=date.today().isoformat(), kind=kind, symbol="",
                     message=message, severity="critical")],
         title="StockAgent ops alert")
@@ -115,8 +115,8 @@ def alert_job_partial_output(job: str, produced: int, expected: int, detail: str
         if expected <= 0 or produced <= 0 or produced >= expected:
             return
         why = f"missing: {detail}" if detail else "the rest timed out or failed"
-        from core.delivery.alerts import AlertEvent, emit_alerts_broadcast
-        emit_alerts_broadcast([AlertEvent(
+        from core.delivery.alerts import AlertEvent, emit_owner_alerts
+        emit_owner_alerts([AlertEvent(
             date=date.today().isoformat(),
             kind=f"job_partial_output_{job}", symbol="",
             message=f"Job '{job}' completed {produced}/{expected} — {why}. Check logs.",

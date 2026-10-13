@@ -148,10 +148,10 @@ class PortfolioStore:
     def _alert_quarantine(self, quarantine: Path) -> None:
         """One critical push alert per quarantine event (AUD-050/039). Never raises."""
         try:
-            # AUD-015: ops-severity event — broadcast to the whole alert
-            # audience (the affected user is named in the message).
-            from core.delivery.alerts import AlertEvent, emit_alerts_broadcast
-            emit_alerts_broadcast([AlertEvent(
+            # FIX-008: an operator notice, so the owner only — the message
+            # names the affected user, which no member may read.
+            from core.delivery.alerts import AlertEvent, emit_owner_alerts
+            emit_owner_alerts([AlertEvent(
                 date=datetime.now(timezone.utc).date().isoformat(),
                 kind="portfolio_corrupt", symbol="",
                 message=(f"portfolio.json for user '{self.user_id}' was corrupt and "

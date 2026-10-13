@@ -91,12 +91,14 @@ async def run_weekly_now(
     return {"status": "accepted", "monitor": "/delivery/weekly/latest"}
 
 
-@router.get("/alerts", summary="Recent emitted alerts (sent-log tail)")
+@router.get("/alerts", summary="The caller's recent alerts (sent-log tail)")
 async def alerts_tail(
     limit: int = Query(default=50, ge=1, le=500),
     user: dict = Depends(get_current_user),
 ) -> dict:
-    return {"alerts": load_recent_alerts(limit=limit)}
+    # FIX-008: the sent-log holds every account's records; a member must not
+    # read the owner's operator notices or another account's advisor alerts.
+    return {"alerts": load_recent_alerts(limit=limit, user_id=user["user_id"])}
 
 
 @router.get("/outbox", summary="Outbox counts, dead letters and retries (owner)")

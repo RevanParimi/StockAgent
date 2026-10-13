@@ -89,7 +89,7 @@ def scheduled(tmp_path, monkeypatch, no_network):  # noqa: F811
     monkeypatch.setattr(cal, "now_ist", lambda: TODAY)
     monkeypatch.setattr(pl, "run_post_review_pipeline", lambda d: {"status": "completed"})
     alerts: list = []
-    monkeypatch.setattr(al, "emit_alerts_broadcast",
+    monkeypatch.setattr(al, "emit_owner_alerts",
                         lambda events, **kw: alerts.extend(events) or {"emitted": len(events)})
     monkeypatch.setattr(sch, "get_active_tickers_with_sector",
                         lambda: [{"sym": t, "sector": SECTOR} for t in TICKERS])

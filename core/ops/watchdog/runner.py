@@ -23,8 +23,9 @@ _STATE_PATH = Path("data") / "watchdog_state.json"
 
 
 def _broadcast(events, title: str) -> None:
-    from core.delivery.alerts import emit_alerts_broadcast
-    emit_alerts_broadcast(events, title=title)
+    """Watchdog notices are operator notices: the owner only (FIX-008)."""
+    from core.delivery.alerts import emit_owner_alerts
+    emit_owner_alerts(events, title=title)
 
 
 def _load_state() -> dict:

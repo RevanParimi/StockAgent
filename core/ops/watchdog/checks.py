@@ -643,9 +643,10 @@ def error_backlog() -> CheckResult:
     or spiking and nobody has triaged it (GET /ops/errors).
 
     The detail names counts, loggers and fingerprints, never a template: a
-    watchdog notice is broadcast, and a log line's text belongs to the
-    owner-only endpoint. No milestones.yaml entry names this check yet, so it
-    sends nothing until the owner registers one."""
+    notice travels by push and email, and a log line's text stays behind the
+    owner-only endpoint. The `error_backlog_triaged` invariant in
+    milestones.yaml uses this check; its notices reach only the owner
+    (FIX-008)."""
     rep = _error_backlog_report()
     issues = rep.get("issues") or []
     n = int((rep.get("counts") or {}).get("attention") or 0)

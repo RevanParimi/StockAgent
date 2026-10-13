@@ -49,7 +49,7 @@ def test_news_blind_rate_none_is_not_a_breach():
 
 def test_emit_is_silenced_by_kill_switch():
     with patch.object(th, "_cfg", side_effect=lambda k, d: False if k == "audit.alerts_enabled" else d):
-        with patch.object(th, "emit_alerts_broadcast") as m:
+        with patch.object(th, "emit_owner_alerts") as m:
             out = th.emit_breaches([{"rule": "min_hit_rate_60d", "severity": "warning",
                                      "message": "m"}])
     assert m.call_count == 0 and out["emitted"] == 0
@@ -57,13 +57,13 @@ def test_emit_is_silenced_by_kill_switch():
 
 def test_emit_sends_one_batch():
     with patch.object(th, "_cfg", side_effect=lambda k, d: True if k == "audit.alerts_enabled" else d):
-        with patch.object(th, "emit_alerts_broadcast", return_value={"emitted": 1}) as m:
+        with patch.object(th, "emit_owner_alerts", return_value={"emitted": 1}) as m:
             out = th.emit_breaches([{"rule": "min_hit_rate_60d", "severity": "warning",
                                      "message": "m"}])
     assert m.call_count == 1 and out["emitted"] == 1
 
 
 def test_emit_nothing_when_no_breaches():
-    with patch.object(th, "emit_alerts_broadcast") as m:
+    with patch.object(th, "emit_owner_alerts") as m:
         assert th.emit_breaches([])["emitted"] == 0
     assert m.call_count == 0

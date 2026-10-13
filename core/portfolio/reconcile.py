@@ -37,10 +37,10 @@ _QTY_TOL = 1e-6
 def _alert(user_id: str, issues: list[str]) -> None:
     """One critical push alert per drift detection. Never raises."""
     try:
-        # AUD-015: ops-severity event — broadcast to the whole alert audience
-        # (the affected user is named in the message).
-        from core.delivery.alerts import AlertEvent, emit_alerts_broadcast
-        emit_alerts_broadcast([AlertEvent(
+        # FIX-008: an operator notice, so the owner only — the message names
+        # the affected user, which no member may read.
+        from core.delivery.alerts import AlertEvent, emit_owner_alerts
+        emit_owner_alerts([AlertEvent(
             date=date.today().isoformat(), kind="ledger_drift", symbol="",
             message="Ledger/portfolio reconciliation drift for user "
                     f"'{user_id}': " + " | ".join(issues[:5]),

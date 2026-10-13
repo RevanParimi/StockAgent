@@ -24,7 +24,8 @@ Invariants, each stated from the outside rather than read back from the code:
   retention never drops an active issue and never touches app_logs;
 - the digest is the same bytes for the same registry and clock;
 - only the owner (or the machine key) can read or triage the registry;
-- the watchdog check names no template, and no registry entry enables it.
+- the watchdog check names no template; one registry entry enables it, and
+  its notices reach only the owner.
 """
 from __future__ import annotations
 
@@ -1164,9 +1165,21 @@ def test_watchdog_check_names_no_template(monkeypatch):
     assert checks.run_check("error_backlog").state == "satisfied"
 
 
-def test_no_registry_entry_enables_the_check_yet():
-    # SA-011 sends no automatic message. Registering the check is the owner's
-    # rollout decision: update this test in the same commit that adds it.
+def test_one_registry_entry_enables_the_check_and_notifies_only_the_owner(monkeypatch):
+    # FIX-008 registered the check once operator notices reached the owner
+    # alone; test_operator_notices_owner_only_fix008.py drives it end to end.
+    from core.config import settings
+    from core.delivery import alerts
+    from core.ops.watchdog import runner
     doc = yaml.safe_load((REPO / "config" / "milestones.yaml").read_text(encoding="utf-8"))
-    used = {e.get("check") for key in ("milestones", "invariants") for e in (doc.get(key) or [])}
-    assert "error_backlog" not in used
+    using = [e["id"] for key in ("milestones", "invariants") for e in (doc.get(key) or [])
+             if e.get("check") == "error_backlog"]
+    assert len(using) == 1
+    emitted: list[str] = []
+    monkeypatch.setattr(alerts, "_owner_account_ids", lambda: [settings.PORTFOLIO_DEFAULT_USER_ID])
+    monkeypatch.setattr(alerts, "_audience_push_store", lambda: type(
+        "Subs", (), {"user_ids": lambda self: ["u_member01", settings.PORTFOLIO_DEFAULT_USER_ID]})())
+    monkeypatch.setattr(alerts, "emit_alerts",
+                        lambda events, user_id=None, **kw: emitted.append(user_id) or {})
+    runner._broadcast([], "StockAgent ops alert")
+    assert emitted == [settings.PORTFOLIO_DEFAULT_USER_ID]

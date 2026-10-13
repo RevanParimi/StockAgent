@@ -19,6 +19,14 @@ next_step/docs. The Inbox renders those as a card and the email body is
 rendered to HTML (`render_alerts_html`, kill-switch delivery.alert_html_
 enabled); push stays plain text, and so does every row written before the
 fields existed — both fall back to `message`. None of them affect key().
+
+Audiences (FIX-008): an OPERATOR notice — the system's own health — goes to
+the owner alone (`emit_owner_alerts`); a MARKET notice goes to everyone with
+a push subscription plus the default user (`emit_alerts_broadcast`); an
+account's own alert goes to that account (`emit_alerts`). The Inbox reads
+only the caller's own records (`load_recent_alerts(user_id=...)`).
+tests/unit/test_operator_notices_owner_only_fix008.py classifies
+every caller, so a new one fails until it is placed in one of these.
 """
 from __future__ import annotations
 
@@ -209,23 +217,41 @@ def _seen_keys(path: Path, tail: int = 2000) -> set[str]:
     return keys
 
 
-def load_recent_alerts(limit: int = 50, sent_log: str | None = None) -> list[dict]:
+def _record_user(rec: dict) -> str:
+    """The account a sent-log record belongs to. A record written without a
+    user id ("" or no key at all) belongs to the default user."""
+    return rec.get("user_id") or settings.PORTFOLIO_DEFAULT_USER_ID
+
+
+def load_recent_alerts(limit: int = 50, sent_log: str | None = None,
+                       user_id: str | None = None) -> list[dict]:
     """The newest `limit` alerts, NEWEST FIRST.
 
     The sent-log is append-only, so the file's own order is oldest-first. The
     Inbox renders this list top-to-bottom and a notification feed reads newest
     at the top, so the reversal belongs here rather than in every caller.
+
+    `user_id` keeps only that account's records (FIX-008). The log is shared:
+    without it, one account would read another's advisor alerts and the
+    owner's operator notices. Rotation keeps the file near 2,000 lines, so
+    filtering reads it whole.
     """
     path = _sent_log_path(sent_log)
     if not path.exists():
         return []
+    lines = path.read_text(encoding="utf-8").splitlines()
     out: list[dict] = []
-    for line in path.read_text(encoding="utf-8").splitlines()[-limit:]:
+    for line in reversed(lines if user_id is not None else lines[-limit:]):
         try:
-            out.append(json.loads(line))
+            rec = json.loads(line)
         except Exception:
             continue
-    out.reverse()
+        if user_id is not None and (not isinstance(rec, dict)
+                                    or _record_user(rec) != user_id):
+            continue
+        out.append(rec)
+        if len(out) >= limit:
+            break
     return out
 
 
@@ -307,9 +333,9 @@ def _audience_push_store():
 
 
 def alert_audience() -> list[str]:
-    """Every user who should receive SYSTEM-level alerts (AUD-015): all users
-    with a push subscription, plus the default portfolio user (the email
-    transport is a single global mailbox and rides the default user's emit)."""
+    """Every user who receives MARKET notices (AUD-015): all users with a push
+    subscription, plus the default portfolio user. Operator notices use
+    owner_audience() instead."""
     uids: set[str] = set()
     try:
         uids.update(_audience_push_store().user_ids())
@@ -319,20 +345,63 @@ def alert_audience() -> list[str]:
     return sorted(uids)
 
 
+def _owner_account_ids() -> list[str]:
+    """Seam for tests — the users.db accounts whose role is 'owner'."""
+    from services.data.stores import user_store
+    return user_store.owner_ids()
+
+
+def owner_audience() -> list[str]:
+    """Who receives OPERATOR notices (FIX-008): the owner account(s), never a
+    member, whatever push subscriptions exist.
+
+    The first signup becomes the owner under PORTFOLIO_DEFAULT_USER_ID
+    (auth_api.signup), so this is normally that one id: a push to the owner's
+    devices and one email to the owner's address (resolve_recipient: the
+    account's own, or DELIVERY_EMAIL_TO when no account exists). With no owner
+    account (AUTH off, before the first signup) the default user is the owner.
+    A failed lookup falls back to the default user too: it narrows to the
+    owner, never widens to everyone."""
+    try:
+        owners = sorted(set(_owner_account_ids()))
+    except Exception as exc:
+        logger.warning("[alerts] owner lookup failed, notifying the default "
+                       "user only (non-fatal): %s", exc)
+        owners = []
+    return owners or [settings.PORTFOLIO_DEFAULT_USER_ID]
+
+
+def _emit_to(audience: list[str], events: list[AlertEvent], title: str,
+             sent_log: str | None) -> dict:
+    """One emit_alerts per audience user: each gets its own push, email and
+    sent-log record. Never raises (emit_alerts does not)."""
+    results: dict[str, dict] = {}
+    for uid in audience:
+        results[uid] = emit_alerts(events, user_id=uid, title=title,
+                                   sent_log=sent_log)
+    return {"users": results,
+            "emitted": sum(r.get("emitted", 0) for r in results.values())}
+
+
+def emit_owner_alerts(
+    events: list[AlertEvent],
+    title: str = "StockAgent ops alert",
+    sent_log: str | None = None,
+) -> dict:
+    """OPERATOR notices — the system's own health: the watchdog, job and LLM
+    failures, audit breaches, ledger drift, a quarantined portfolio, the
+    universe budget, Atlas ETL — to owner_audience() only (FIX-008). Some name
+    a user's id, and none is a member's business. Never raises."""
+    return _emit_to(owner_audience(), events, title, sent_log)
+
+
 def emit_alerts_broadcast(
     events: list[AlertEvent],
     title: str = "StockAgent alerts",
     sent_log: str | None = None,
 ) -> dict:
-    """emit_alerts to every alert_audience() user (AUD-015). Never raises.
-
-    Note: with >1 audience user the single global mailbox receives one email
-    per user (deliver() sends email unconditionally); acceptable at the
-    current single-real-user scale, and per-user push still lands correctly.
+    """MARKET notices — index reconstitution, discovery shelf adds, the
+    pre-open re-forecast — to every alert_audience() user (AUD-015). Each
+    account's email goes to its own address (resolve_recipient). Never raises.
     """
-    results: dict[str, dict] = {}
-    for uid in alert_audience():
-        results[uid] = emit_alerts(events, user_id=uid, title=title,
-                                   sent_log=sent_log)
-    return {"users": results,
-            "emitted": sum(r.get("emitted", 0) for r in results.values())}
+    return _emit_to(alert_audience(), events, title, sent_log)

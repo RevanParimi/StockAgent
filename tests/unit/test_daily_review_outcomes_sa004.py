@@ -228,7 +228,7 @@ def job(monkeypatch):
 
     monkeypatch.setattr(cal, "now_ist", lambda: TODAY)
     alerts: list[tuple[str, str, str]] = []
-    monkeypatch.setattr(al, "emit_alerts_broadcast", lambda events, **kw: alerts.extend(
+    monkeypatch.setattr(al, "emit_owner_alerts", lambda events, **kw: alerts.extend(
         (e.kind, e.severity, e.message) for e in events) or {"emitted": len(events)})
     state: dict = {"pipeline": lambda d: {"status": "completed"}, "reviews": {}}
     monkeypatch.setattr(pl, "run_post_review_pipeline", lambda d: state["pipeline"](d))

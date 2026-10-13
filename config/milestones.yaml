@@ -148,3 +148,19 @@ invariants:
       stopped (advisor.switch_eval_enabled) or grading stopped
       (audit.switch_lane_enabled).
     docs: docs/superpowers/specs/2026-08-20-switch-validation-design.md
+
+  - id: error_backlog_triaged
+    kind: invariant
+    title: "Every new, regressed or spiking error is triaged"
+    check: error_backlog
+    action: >
+      Read the operations backlog: GET /ops/errors with an owner session or
+      the X-Scheduler-Key header, or python scripts/prod_errors.py --base
+      <app URL> with STOCKAGENT_TOKEN or SCHEDULER_KEY set. Mark each issue
+      acknowledged, fixed or wontfix: POST /ops/errors/<fingerprint>, or
+      prod_errors.py --triage <fingerprint> --status acknowledged, fixed or
+      wontfix. A fix also takes --fixed-at with its UTC offset, for example
+      2026-10-05T08:00+05:30 for 08:00 IST. This warns once a day while an
+      issue is untriaged and closes with one "resolved" notice; watchdog
+      notices reach the owner only.
+    docs: docs/TECHNICAL_DESIGN.md

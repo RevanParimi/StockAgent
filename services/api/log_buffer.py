@@ -5,7 +5,8 @@ Shared in-memory ring buffer for live server-log streaming.
 
 Imported by:
   - services/api/server.py            → registers _handler at startup
-  - services/api/routes/ui_data.py    → exposes GET /ui/logs and GET /ui/logs/stream
+  - services/api/routes/ui_data.py    → exposes GET /ui/logs and GET /ui/logs/stream,
+                                        to the owner or the machine key only (FIX-007)
 
 Thread model
 ------------

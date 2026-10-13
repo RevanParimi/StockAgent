@@ -154,7 +154,11 @@
         window.saClearToken();
         try { window.dispatchEvent(new Event('sa-auth-expired')); } catch (e) {}
       }
-      if (resp.status === 403 && sameOrigin && !window.__saKeyPrompting) {
+      /* An owner-only read passes { saNoKeyPrompt: true } and shows its own
+         message: its 403 means a member's session, and a member has no key
+         to type. */
+      if (resp.status === 403 && sameOrigin && !window.__saKeyPrompting
+          && !(init && init.saNoKeyPrompt)) {
         window.__saKeyPrompting = true;
         try {
           const entered = window.prompt('This action needs the API key. Enter it to unlock:');

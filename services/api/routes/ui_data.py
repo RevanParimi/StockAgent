@@ -3774,19 +3774,25 @@ async def toggle_managed_ticker(sym: str,
 
 # ---------------------------------------------------------------------------
 # Live log streaming — GET /ui/logs  and  GET /ui/logs/stream (SSE)
+#
+# FIX-007: owner session or machine key only. Log lines carry user ids, per-user
+# trade activity and error text, and the buffer redacts nothing. The dependency
+# runs before the handler, so a refused stream never subscribes or sends a line.
 # ---------------------------------------------------------------------------
 
 @router.get("/logs", summary="Return recent server log entries (polling fallback)")
-async def get_logs(level: str = "INFO", limit: int = 200) -> dict:
+async def get_logs(level: str = "INFO", limit: int = 200,
+                   _owner: dict = Depends(require_owner)) -> dict:
     from services.api.log_buffer import snapshot
     entries = snapshot(level=level, limit=min(limit, 1000))
     return {"entries": entries, "count": len(entries)}
 
 
 @router.get("/logs/stream", summary="Server-Sent Events stream of live log entries")
-async def stream_logs(level: str = "INFO"):
+async def stream_logs(level: str = "INFO", _owner: dict = Depends(require_owner)):
     """
-    Connect via EventSource('/ui/logs/stream').
+    Read with fetch() so the session header is sent (EventSource cannot send
+    one); see logs.jsx.
     Sends buffered history first, then live entries as they arrive.
     Keepalive comments are sent every 30 s to prevent proxy timeouts.
     """

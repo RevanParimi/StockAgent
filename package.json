@@ -4,7 +4,7 @@
   "type": "module",
   "description": "Dev-only tooling. The app itself has no build step and no runtime npm dependencies. The browser libraries here mirror index.html's CDN pins for the SA-001 browser tests.",
   "scripts": {
-    "test:frontend": "node --test tests/frontend/chat_markdown.test.mjs"
+    "test:frontend": "node --test tests/frontend/chat_markdown.test.mjs tests/frontend/logs_screen.test.mjs"
   },
   "devDependencies": {
     "@babel/standalone": "7.29.0",

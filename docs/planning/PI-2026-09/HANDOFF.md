@@ -1,8 +1,398 @@
-# Current handoff - 2026-10-11 (updated about 08:55 IST)
+# Current handoff - 2026-10-13 (updated about 00:20 IST)
+
+## Also 11 Oct (about 13:00–15:30 IST): product results review and new tasks (separate conversation)
+
+At the owner's request ("the stockagent product needs deeper analysis …"), a separate conversation
+(`stockagent-main-43`) reviewed trading results, explanations, models, breadth, the UI, the
+central intelligence and the morning brief. **Docs only:** nothing committed, pushed, deployed or
+configured, and no production state read. It did not touch SA-011 (in progress in another
+session), `active_task` or `next_task`.
+
+- **Review:** [docs/audit/2026-10-11-product-results-review.md](../../audit/2026-10-11-product-results-review.md).
+  Main findings:
+  - **Sales lose because the exit rule sells on weakness.** `thesis_break` fires after one day's
+    price-path miss. In the July snapshot it caused all 9 sales, held 4 to 17 days. Of the 8
+    measurable, 6 sold stocks beat the Nifty over the next 20 sessions (median +3.0 points).
+  - **Reasons are code-like** because the narrator gets only rule codes.
+  - **The portfolio shrank to 2 holdings** because new positions open only through a SWITCH.
+  - **The brief repeats** because freshness is judged by fetch date, not publish date.
+  - **The portfolio page shows a score × 10,000 as rupees**, and the home hero is hard-coded.
+- **Found on the way, privacy:** `GET /ui/logs` and `/ui/logs/stream` need no sign-in. This is
+  code inspection; the routes were not called. Routed as [FIX-007](stories/FIX-007.md), first
+  in the new block.
+- **New tasks** (cards in `stories/`):
+  - FIX-007;
+  - PR-001 to PR-012: invented figures, weekly scorecard, fresh news, idea supply, investment
+    case, company-event feed, explanations, the brief's company lane, exit-on-evidence shadow,
+    four-screen UI, new data, model bench.
+- **Moved forward:** SA-048 to SA-051. **SA-049 is amended** with the owner's breadth floor:
+  `portfolio.min_holdings: 10`, `max_holdings: 15`, `min_invested_inr: 1000000`, configurable
+  and per portfolio (7 points after the 12 Oct decisions below). SA-046 and SA-051 gain
+  one-schema and one-module notes.
+- **STATE order after SA-011, confirmed by the owner on 12 Oct** ("ya continue on the new
+  order"), with PR-011 moved up: FIX-007, PR-001, PR-002, PR-003, SA-050, SA-051, PR-004,
+  PR-006, **PR-011**, PR-009, SA-048, SA-049, PR-005, PR-007, PR-008, PR-010, PR-012. The
+  remaining SA stories follow as before. So **after SA-011 is accepted, "continue" selects
+  FIX-007.**
+
+**12 Oct (about 00:35–01:00 IST, same conversation): production baseline and owner decisions.**
+Docs only; nothing committed, pushed, deployed or configured.
+
+- **Baseline.** The owner ran the read-only probe
+  (`analysis_data/review_20261011/portfolio_results_probe.py`) on 11 Oct. The sanitized
+  figures are in review section 11:
+  - 2 holdings and 81% cash. Since 10 Jul the portfolio is −0.5% against the Nifty's −8.2%: the
+    cash, by accident, in a falling market.
+  - 8 sales since 1 Aug, 4 wins. Expectancy is −2.2% per trade: winners were cut at +7.5% on
+    average, losers ran to −11.9%.
+  - Auditor exits: right at 10 sessions (7 of 10), wrong at 30 (6 of 7 sold stocks then beat the
+    Nifty).
+  - Shelf ideas beat the Nifty 13 times in 21 at 30 sessions; the held stocks lagged.
+  - The brief repeated 32 of 57 items.
+- **Defects confirmed** (code plus data):
+  - weights are measured against the holdings, not equity, so ADD is locked;
+  - a SWITCH ignores the entry band (WELCORP was bought 34% above it);
+  - the shelf holds a liquid ETF (LIQUID1) and 7 ideas shelved before the gate existed.
+- **Owner decisions:**
+  - (1) The order above is confirmed.
+  - (2) "Do as per recommendation but I need more data and so as the stocks." SA-049 D1:
+    ₹2 L of paper capital through a new dated, owner-only DEPOSIT action, made at rollout. D2:
+    `portfolio.target_holdings: 12`, about ₹83,000 each, between 10 and 15. SA-049 is now 7
+    points. PR-011 becomes P1 and moves after PR-006.
+- **Cards amended:**
+  - SA-050 (3 points): equity denominator and one entry rule;
+  - PR-004: only companies, cap by real industry, re-dive the pre-gate ideas;
+  - PR-009: grade at 10 and 30 sessions; the gate needs both, with at least 15 matured
+    disagreements at 30 sessions over at least 8 weeks;
+  - PR-002: the red flag reads 30 sessions;
+  - SA-049 and PR-011 as above.
+- **The KT and PDF were deliberately NOT edited.** SA-011's review manifest covers them; the
+  implementing stories carry these facts into the KT as current design.
+- **Owner action, weekly until PR-002 ships:** re-run the same probe each Sunday evening with
+  the usual `railway ssh` pipe, and paste it into a fresh conversation for comparison with
+  section 11.
 
 ## START HERE — resume checklist, in order
 
-**FIX-005 was ACCEPTED by its fresh-session review** (11 Oct, from about 08:23 IST, a new
+**FIX-007 was ACCEPTED** by its fresh review (12 Oct about 23:17 IST to 13 Oct about 00:20 IST,
+a new conversation opened with "continue"). Receipt: [review](evidence/FIX-007-review.md).
+STATE: `active_task: null`, FIX-007 `done`, production verification `pending_deployment`, and
+**`next_task: FIX-008`** (not started). Nothing was committed, pushed, deployed or configured,
+and no production state was read.
+- **In one example.** A member is signed in on the app.
+  - On the Logs screen, its request carries the member's session and gets 403. The screen says
+    "Server logs are visible to the owner account only.", with no key prompt and no retry. The
+    server never reads the log buffer.
+  - The same member typing `/ui/logs` into the address bar gets 401, because a typed URL sends no
+    session. The guide expected 403 there; the review corrected it (L1).
+- **Checked:**
+  - input `ff6001e7` at the start; diff `910503e2` rebuilt from a base proved by blob ids;
+  - own trace through a real uvicorn server and real Chromium, 93 passed. 70 fail on the ungated
+    routes, and all six wrong-gate mutants are caught;
+  - 13 path spellings and a CORS preflight leak nothing, and markup in a log line stays text on
+    the owner's screen;
+  - the implementer's tests: 42 + 3 pass, and on the original code 33 and 3 fail;
+  - full suite **4471 passed, 12 skipped, 0 failed**; runtime data unchanged; PDF matches its
+    source.
+- **Findings:** no critical, high or medium.
+  - L1 (low, docs): guide 11-G and the implementation receipt's rollout step 3 expected 403 for a
+    member's direct visit; it is 401. Fixed in the guide.
+  - L2 (low, test gap): no test leaves the Logs screen; mutant F4 (no abort on leaving) passes
+    all of the implementer's tests. Routed to [SA-031](stories/SA-031.md).
+  - I1: CODEBASE's "(FIX-007)" tag removed. I2–I4 are infos with no action.
+- **Owner checks at rollout (corrected), read-only after the deploy:**
+  1. Without a session, `GET <app URL>/ui/logs?limit=1` returns 401. A 200 means `AUTH_REQUIRED`
+     is off; the 10 Sep audit recorded it on.
+  2. The owner's Logs screen shows lines arriving (`live`), after one reload.
+  3. The test member: the screen shows the owner-only message and no key prompt. An
+     address-bar visit gets 401, like anyone's.
+- **Still uncommitted:** FIX-007's and SA-011's files and the planning docs. Commit, push and
+  deploy only on the owner's word, in a job-free window (safest 00:10–06:20 IST). With the
+  commit:
+  - set KT section 12's rows for SA-011 and FIX-007 from `Open` to `Done`;
+  - bump the KT header's revision and rebuild the PDF.
+- **Next, in order:**
+  1. **FIX-008** (operator notices to the owner only, then register the backlog's watchdog
+     entry) in a new conversation ("continue"). It depends on SA-011, which is done.
+  2. Then PR-001. The open items listed below still stand.
+
+**Before that: FIX-007 was IMPLEMENTED** (12 Oct, about 14:06–15:00 IST, a new conversation opened with
+"continue"). Receipt: [implementation](evidence/FIX-007-implementation.md). STATE:
+`active_task: null`, FIX-007 `review_required`, and **`next_task: FIX-007`**, meaning its fresh
+**review**. Nothing was committed, pushed, deployed or configured, and no production state was
+read.
+- **In one example.** A member signed in on the app opens `/ui/logs?limit=1000`.
+  - Before: 200 with up to 1,000 recent log lines, user ids included, and `/ui/logs/stream`
+    kept sending new ones.
+  - Now: 403 `{"detail": "Owner only."}`; without a session, 401. The check runs before the
+    handler, so the buffer is never read and a refused stream never subscribes.
+  - The owner's Logs screen still shows live lines. It now reads the stream with `fetch`, which
+    sends the session header (`EventSource` cannot). A member there sees "Server logs are
+    visible to the owner account only." and no API-key prompt, and the screen stops retrying.
+- **Tests:**
+  - 42 server tests through the real app; 33 fail on the ungated code, and all 6 wrong-gate
+    mutants are caught;
+  - 3 browser tests; all 3 fail on the old screen, and 3 screen mutants are caught;
+    `npm run test:frontend` 17 passed;
+  - full suite **4471 passed, 12 skipped, 0 failed** on the second run. The first run had one
+    Windows rename flake in an IPO store test (23 of 23 alone; the class is on SA-031's card).
+    Runtime data unchanged.
+- **For the review:** input `FIX-007-manifest.json` (`ff6001e7…`, 13 files); diff `910503e2…`
+  from the worktree just before FIX-007. `analysis_data/fix007/base_snapshot.py` rebuilds that
+  base and proves it by SA-011's blob ids, and `diff_digest.py` makes the diff. Also in the
+  ignored folder: `swap_plugin.py` (`FIX007_SWAP=base|M1..M6`, `PYTHONPATH` that folder,
+  `-p swap_plugin`) and `fe_variants.sh` with `SA_FRONTEND_ROOT`.
+- **Owner checks at rollout:**
+  - I1: with `AUTH_REQUIRED` off, every anonymous request acts as the owner, logs included.
+    Production's value was not read. After the deploy, an anonymous `GET /ui/logs?limit=1` must
+    return 401; a 200 means `AUTH_REQUIRED` is off.
+  - I2: reload the Logs screen once after the deploy; the first visit may run the cached old
+    screen.
+- **Still uncommitted:** FIX-007's files and SA-011's. Commit, push and deploy only on the
+  owner's word, in a job-free window (safest 00:10–06:20 IST). With the commit, set KT section
+  12's rows `Open` → `Done` (SA-011; FIX-007 once accepted), bump the KT header's revision and
+  rebuild the PDF.
+- **Next, in order:**
+  1. **FIX-007's fresh review** in a new conversation ("continue").
+  2. Then **FIX-008**, added 12 Oct about 23:10 IST (block below), then PR-001. The open items
+     listed below still stand.
+
+**Also 12 Oct (about 23:10–23:30 IST): FIX-008 added** at the owner's request, in the SA-011
+re-review conversation, as a follow-up question. Planning only. FIX-007's review input
+(`ff6001e7`) is untouched: the KT, PDF, guide, CODEBASE and PRODUCT_MAP were not edited.
+- **Owner decision on SA-011's I7** (registering the backlog's watchdog entry): option 3.
+  Register it only after operator notices reach the owner alone.
+- **Why, in one example.** The 06:30 watchdog finds the backup not confirmed off-site.
+  - Today the owner and the test member each get a push, and the shared mailbox gets two
+    identical emails.
+  - A ledger-drift notice names a user's id and also reaches the member.
+  - This is code inspection: `alert_audience()` is every push-subscribed account plus the
+    default user, and seven operator callers broadcast to it.
+- **Card:** [FIX-008](stories/FIX-008.md), P1, 2 points, depends on SA-011.
+  - It sends operator notices to the owner only, one email per notice; market notices stay
+    with everyone.
+  - Then it registers `error_backlog` in `config/milestones.yaml` and changes SA-011's
+    pinning test.
+  - It is placed directly after FIX-007, before PR-001, under the privacy-first rule. The
+    product order is otherwise unchanged. PI README row 2.
+- **Rollout order:** deploy SA-011 and triage its first read before FIX-008's deploy.
+  Otherwise the first 06:30 run announces every recent issue at once.
+
+**Before that: SA-011 was ACCEPTED** by its fresh re-review of rework 2 (12 Oct, about
+08:06–08:35 IST, a new conversation opened with "continue"). Receipt: [review, section "Re-review of rework 2"](evidence/SA-011-review.md).
+STATE: `active_task: null`, SA-011 `done`, production verification `pending_deployment`, and
+**`next_task: FIX-007`** (not started). Nothing was committed, pushed, deployed or configured,
+and no production state was read.
+- **In one example.** A fix takes effect at 08:00 IST and the warning is back at 10:00 IST.
+  - The owner types `2026-10-05T08:00`, or any of 8 other notations without an offset: a space,
+    the hour alone, `20261005T0800`, a week date, a fraction, padding, a lower-case `t`, a date
+    alone. Each gets 422 with the form (`2026-10-05T08:00+05:30` for IST), and nothing is
+    written, not even a task sent with it.
+  - With `+05:30`, `+0530` or `Z`, the mark is refused: "last seen at …10:00:00+05:30 … that
+    fix did not hold".
+  - A recurrence in the same second as the fix gives the same result in both read orders, with
+    the real log writer's timestamps. The digest shows IST.
+- **Checked:**
+  - input `0323f2a8` at the start and the end; rework diff `ad35960c` rebuilt independently and
+    read in full;
+  - own HTTP trace 4 of 4 (all fail on the re-reviewed module); 11 story tests fail there, the
+    receipt's 11;
+  - 9 own mutants: 6 caught by the story file, 3 only by the reviewer's trace or probe;
+  - full suite **4429 passed, 12 skipped, 0 failed**; runtime data unchanged; PDF matches its
+    source.
+- **Follow-ups:**
+  - RR2-I1, a story-test gap at equality edges, is routed to [SA-031](stories/SA-031.md).
+  - RR2-I2 and RR2-I3 are infos with no change.
+  - RR-I2: watch after rollout. I7 (registering the watchdog entry) is the owner's decision.
+- **SA-011's files are uncommitted,** together with the peer's product-results docs (the
+  review, 13 cards, card and STATE edits). Commit, push and deploy only on the owner's word, in a
+  job-free window (safest 00:10–06:20 IST). With the commit, set KT section 12's SA-011 row
+  from `Open` to `Done`, bump the KT header's revision and rebuild the PDF. The review left the
+  KT unchanged so that the reviewed bytes stay as they are. After the deploy, run the read-only
+  production check in the [implementation receipt's "Rollout"](evidence/SA-011-implementation.md).
+- **Next, in order:**
+  1. **FIX-007** (server logs readable only by the owner) in a new conversation ("continue").
+  2. Then PR-001. The open items listed below still stand.
+
+**Before that: SA-011 rework 2 was IMPLEMENTED** (12 Oct, about 07:30–08:05 IST, a new conversation
+opened with "continue"). Receipt: [implementation, section "Rework 2"](evidence/SA-011-implementation.md).
+STATE: `active_task: null`, SA-011 `review_required`, and **`next_task: SA-011`**, meaning its
+fresh **re-review**. Nothing was committed, pushed, deployed or configured, and no production
+state was read.
+- **In one example (RR-M1).** A fix is deployed Monday 5 Oct at 08:00 IST and the warning is back
+  at 10:00 IST. On Wednesday the owner runs `--fixed-at 2026-10-05T08:00`, with no offset.
+  - Now the API answers 422: the time "has no UTC offset, so it could be IST or UTC: give
+    2026-10-05T08:00+05:30 for IST or 2026-10-05T08:00Z for UTC". Nothing about the issue
+    changes.
+  - With `+05:30` the mark is refused, naming the 10:00 IST recurrence: that fix did not hold.
+  - Before, the bare time was read as 08:00 UTC (13:30 IST), and a week later the issue read
+    `fixed, verified`.
+- **Also taken:** RR-I1, stored times keep the precision they were logged, so a recurrence in the
+  same second as the fix is judged the same whatever the read order; RR-I4, refusals and the
+  digest name times in IST. Comparing at whole seconds was tried first and rejected: it hid a
+  warning logged in the same second as a default-now mark (the first reviewer's trace caught it).
+- **Tests:** story file 111 passed; 11 fail on the re-reviewed revision;
+  mutants 12 of 12 (rework 2) and 16 of 16 (rework 1) caught; both reviewers'
+  trace files pass unchanged; the re-reviewer's probe 23 of 24 (RR-I3, agreed); full suite
+  **4429 passed, 12 skipped, 0 failed**; runtime data unchanged.
+- **For the re-review:** input `SA-011-manifest.json` (`0323f2a8…`, 13 files); rework
+  diff `ad35960c…` from the snapshot `analysis_data/sa011/rework2/base/` (=
+  `SA-011-manifest-review2.json`), recipe `rework2/rw2_diff_digest.py`; cumulative
+  `c8965571…` by `review/rv_digest.py` (restore `review/rv.diff` from
+  `analysis_data/sa011/sa011.diff` afterwards). In-memory swap: `PYTHONPATH=analysis_data/sa011/rework2`,
+  `-p rw2_plugin`, `SA011_RW2=base` or a mutant id.
+- **Next, in order:**
+  1. A fresh re-review in a new conversation ("continue").
+  2. After acceptance, FIX-007 and then PR-001. The open items listed below still stand.
+
+**Before that: SA-011's re-review requested changes again** (12 Oct, about 07:07–07:30 IST, a new conversation
+opened with "continue"). Receipt: [review, section "Re-review of rework 1"](evidence/SA-011-review.md).
+STATE: `active_task: null`, SA-011 `changes_requested`, and **`next_task: SA-011`**, meaning
+rework 2. Nothing was committed, pushed, deployed or configured, no production state was read, and
+no living document was edited.
+- **Every finding of the first review is fixed.** M1, L1 to L5 and I1 hold on the reviewer's own
+  examples, and 22 of the new tests fail on the reviewed module.
+- **In one example (RR-M1, medium).** A fix is deployed Monday at 08:00 IST and the warning is
+  back at 10:00 IST. On Wednesday the owner runs `--fixed-at 2026-10-05T08:00`: the deploy time
+  as the app shows it, with no offset.
+  - The server reads that as 08:00 UTC, which is 13:30 IST. The 10:00 recurrence then counts as
+    before the fix, and a week later the issue reads `fixed, verified`. This was reproduced
+    through the real app, in both read orders.
+  - With `2026-10-05T08:00+05:30` the same mark is refused, as it should be.
+- **Rework 2, in a new conversation ("continue"):**
+  1. Refuse a `fixed_at` that has no offset, a date alone included. The 422 shows the expected
+     form. Document the rule in the API field, the script's `--fixed-at` help, KT section 10 and
+     guide 12-J, and add tests through HTTP.
+  2. Optional: RR-I1, a recurrence in the same second as `fixed_at`; RR-I4, IST times in the
+     refusal and in the digest's first/last dates.
+  3. The input is preserved as `evidence/SA-011-manifest-review2.json` (`158479b4…`).
+     Regenerate `SA-011-manifest.json`, record a rework-2 diff and rerun the full suite. Both
+     reviewers' trace files should pass unchanged:
+     `analysis_data/sa011/review/test_rv_trace.py` and
+     `analysis_data/sa011/rereview1/test_rr_trace.py`.
+- **Tests here:** story file 96 passed; full suite **4414 passed, 12 skipped, 0 failed**; runtime data unchanged.
+- **Next, in order:**
+  1. Rework 2.
+  2. A fresh re-review in another new conversation.
+  3. After acceptance, FIX-007 and then PR-001. The open items listed below still stand.
+
+**Before that: SA-011 rework 1 is IMPLEMENTED** (12 Oct, about 06:28–07:10 IST, a new conversation opened with
+"continue"). Receipt: [implementation, section "Rework 1"](evidence/SA-011-implementation.md).
+STATE: `active_task: null`, SA-011 `review_required`, and **`next_task: SA-011`**, meaning its
+fresh **re-review**. Nothing was committed, pushed, deployed or configured, and no production
+state was read.
+- **In one example (M1).** A fix is deployed Monday 08:00; the warning is back at 20:00 and the
+  owner's Tuesday read records it. On Wednesday the owner marks it `fixed` "from Monday 08:00".
+  - Now the API answers 422, naming when the issue was last seen: that fix did not hold. Nothing
+    about the issue changes.
+  - Had nobody read on Tuesday, the mark is accepted and the Monday-evening row reopens the issue
+    as `regressed`. Either way it never reads `fixed, verified`.
+- **The other findings:**
+  - L1: a `fixed_at` more than 5 minutes in the future is refused;
+  - L2: a row's ticker column is masked as any ticker is (local corpus: 0 split causes, was 4);
+  - L3: any `Authorization:` value, a bare `Basic` credential and `%40` addresses are masked;
+  - L4: guide 12-J reworded;
+  - L5, decided: an acknowledged issue regresses only after 35 quiet days
+    (`error_backlog.ack_quiet_days`), so a weekly or monthly job's known warning stays with its
+    owner; a spike still needs attention;
+  - I1: `ops/` is an API namespace (unknown `/ops/` paths are a JSON 404).
+- **Tests:** story file 96 passed (66 before); 23 of the new tests fail on the reviewed revision;
+  16 of 16 rework mutants caught; the reviewer's `test_rv_trace.py` passes unchanged (3 of 3);
+  full suite **4414 passed, 12 skipped, 0 failed**; `data/`, `logs/` and `outputs/` unchanged.
+- **Input for the re-review:** `SA-011-manifest.json`, regenerated, 13 files, `158479b4…`.
+  Rework diff from the review1 input `13164cff…`; cumulative diff `36b27f3a…` (receipt).
+- **Next, in order:**
+  1. A **fresh re-review of SA-011** in a new conversation ("continue"), by REVIEW.md.
+  2. After acceptance, FIX-007, then PR-001. The open items listed below still stand.
+
+**Before that: SA-011's fresh review requested changes** (12 Oct, about 01:00–01:25 IST, a new conversation
+opened with "continue"). Receipt: [review](evidence/SA-011-review.md). STATE: `active_task: null`,
+SA-011 `changes_requested`, and **`next_task: SA-011`**, meaning rework 1. Nothing was committed,
+pushed, deployed or configured, no production state was read, and no living document was edited.
+- **In one example (M1, medium).**
+  1. A fix for the miss-factor warning is deployed on Monday at 08:00.
+  2. The warning comes back at 20:00, and the owner's Tuesday read records it.
+  3. On Wednesday the owner marks the issue `fixed` "from Monday 08:00".
+  4. A week later it reads **`fixed, verified`** and leaves the list. Had the owner not read on
+     Tuesday, the same row would have reopened it as `regressed`.
+  - Reproduced through the real app: the triage response itself says `verified`.
+  - This fails the criterion "pending verification reconciles against measured evidence". The
+    review confirmed the implementer's reading of that criterion.
+- **What held.** These were checked through `server.app`, with real signup and invite and the
+  real log handler:
+  - input `f4343eae` verified, and diff `b669cf36` rebuilt by the reviewer's own script;
+  - no model; nothing sent; `app_logs` only read;
+  - owner-only access: a member gets 403, anonymous gets 401;
+  - one issue per cause, with a regression that keeps its task;
+  - 0 of 535 local templates hit the leak detectors;
+  - story tests 66 passed; full suite **4384 passed, 12 skipped, 0 failed**; `data/`, `logs/`
+    and `outputs/` unchanged.
+- **Also for the rework:**
+  - L1: refuse a future `fixed_at`;
+  - L2: a row's ticker column splits one cause into two issues (local: 4 causes, 8 issues);
+  - L3: a Basic credential and a `%40` address stay unmasked;
+  - L4: guide 12-J's day-apart determinism step;
+  - L5: decide whether acknowledged periodic warnings reopen;
+  - I1 (optional): add `ops/` to the catch-all's API namespaces.
+  - L2 and L3 change fingerprints, so fix them before the first deploy.
+- **Next, in order:**
+  1. **Rework 1 of SA-011** in a new conversation ("continue"). The input is preserved as
+     `evidence/SA-011-manifest-review1.json`. Regenerate `SA-011-manifest.json`, record a rework
+     diff, and rerun the full suite. The reviewer's
+     `analysis_data/sa011/review/test_rv_trace.py` should pass unchanged.
+  2. A **fresh re-review** in another new conversation.
+  3. After acceptance, FIX-007, then PR-001. The open items listed below still stand.
+  - `docs/README.md` has a new `railway ssh` line (01:00:16 IST, the owner's). It is not
+    SA-011's and was not touched.
+
+**Before that: SA-011 was IMPLEMENTED** (11 Oct, about 14:44–16:00 IST, a new conversation opened with
+"continue"). Receipt: [implementation](evidence/SA-011-implementation.md); card:
+[SA-011](stories/SA-011.md). STATE: `active_task: null`, SA-011 `review_required`, and
+**`next_task: SA-011`**, meaning its fresh review. Nothing was committed, pushed, deployed or
+configured, and no production state was read. The peer session `stockagent-main-43` (block
+above) ran at the same time; the two agreed their writes by message.
+- **In one example.** Three `malformed miss factor` warnings for three tickers are **one**
+  issue at `GET /ops/errors`, with count 3 and state `new`.
+  - The owner marks it `acknowledged` with task SA-016, then `fixed`.
+  - A fourth warning reopens the same issue as `regressed`; it keeps its task.
+  - A member gets 403. Nothing is emailed or pushed.
+- **What it is:**
+  - `core/ops/error_backlog.py` groups `app_logs` WARNING+ rows by a deterministic fingerprint,
+    with no model;
+  - the severity is the row's own level, never Railway's stderr envelope;
+  - each issue has a lifecycle and triage. A fix is verified only by measured archive coverage,
+    and a recurrence reopens it;
+  - retention is bounded, and `app_logs` is never changed;
+  - the digest is deterministic;
+  - `/ops/errors` is owner-only, plus a watchdog check `error_backlog` that **no registry entry
+    uses yet**;
+  - `scripts/prod_errors.py` reads it with app credentials only.
+- **Tests:**
+  - 66 new invariant tests and 23 in-memory mutants, all caught;
+  - focused neighbours 341 passed;
+  - full suite **4384 passed, 12 skipped, 0 failed (6 min 27 s, final bytes)**;
+  - `data/`, `logs/` and `outputs/` unchanged.
+  - Review input `f4343eae…`, diff `b669cf36…`. The KT diff is taken from the peer's KT
+    version, blob `0155b79a`.
+- **Self-review:** none critical, high or medium. L1 (low): leak protection is pattern-based,
+  so unquoted free text in a log line stays in its template. I1–I7 are info; I7 is an owner
+  decision, below.
+- **Next, in order:**
+  1. **Fresh review of SA-011** in a new conversation ("continue"), by REVIEW.md, of these
+     uncommitted bytes (`kt_manifest.py verify SA-011-manifest.json`). It should confirm the
+     reading of "pending verification milestones reconcile against measured evidence" (receipt).
+  2. After acceptance, commit and deploy only on the owner's word, in a job-free window. The
+     production check (read-only) is in the receipt. The first owner read creates two derived
+     tables in production `telemetry.db`.
+  3. **Owner decision (I7), at rollout:** whether to register the `error_backlog` watchdog entry.
+     It would broadcast to every push-subscribed account, which now includes the test member.
+  4. After SA-011 is accepted, the next ready task in STATE order is **FIX-007**, then PR-001
+     (the peer's block above).
+  5. Still open: FIX-004's production checks (the 17 Oct scan; IDFCFIRSTB before 24 Oct; change
+     1 only if STARHEALTH is held on 26 or 27 Oct); SA-038's Sunday 11 Oct heartbeat. The b9cc851
+     push note is still uncommitted and goes with the next commit.
+
+**Before that: FIX-005 was ACCEPTED by its fresh-session review** (11 Oct, from about 08:23 IST, a new
 conversation opened with "continue"). Receipt: [review](evidence/FIX-005-review.md). STATE:
 `active_task: null`, FIX-005 `done` with `production_verification: pending_deployment`, and
 **`next_task: SA-011`** (not started). The verdict covers the **committed `954305a`**: input
@@ -60,7 +450,12 @@ was committed, pushed, deployed or configured in this phase, and no production s
        `[]`).
   3. **L2 is routed as [FIX-006](stories/FIX-006.md)** at the owner's word ("put that L2 for
      last"): `todo`, P2, placed last in STATE. Select it only when every other planned story is
-     done. This note, the KT and PDF edit, and the card are uncommitted.
+     done.
+     - **COMMITTED as `b9cc851` and PUSHED `6266772..b9cc851` at 11:12:41 IST** at the owner's
+       word ("commit the docs and push them"). It holds items 2 and 3: the KT, PDF, STATE,
+       HANDOFF and the FIX-006 card. It is docs only, and origin was checked as `6266772`
+       first. Deploy confirmation is the owner's. This push note is uncommitted and goes with
+       the next commit.
   4. Still open: FIX-004's production checks (the 17 Oct scan; IDFCFIRSTB before 24 Oct;
      change 1 only if STARHEALTH is held on 26 or 27 Oct); SA-038's Sunday 11 Oct heartbeat.
   5. **SA-011**, the first ready planned story in STATE order (its dependencies SA-002 and SA-004

@@ -1,0 +1,80 @@
+{
+  "story": "SA-011",
+  "phase": "implementation (rework 2, 2026-10-12)",
+  "baseline": "b9cc851f04f8f7c6e9dde77f513778c5137354e2",
+  "excluded": [
+    "docs/planning/PI-2026-09/STATE.json",
+    "docs/planning/PI-2026-09/HANDOFF.md",
+    "docs/planning/PI-2026-09/evidence/SA-011-implementation.md"
+  ],
+  "note": "docs/TECHNICAL_DESIGN.md and the PDF also carry the peer stockagent-main-43 product-results edits (KT diffed from its version, blob 0155b79a; see the receipt). The peer files (PI README, story cards, the dated audit) are not part of SA-011.",
+  "hash_convention": "git blob bytes after .gitattributes normalization (CRLF->LF for text, binary unchanged); verify with scripts/docs/kt_manifest.py verify",
+  "previous_input": "evidence/SA-011-manifest-review2.json (158479b48f00ac51f7f2227b69b15b2e2a061a7d135312a92431d311337ca4a3), the re-review's input",
+  "files": [
+    {
+      "path": "CODEBASE.md",
+      "git_blob": "f9bf175cdc0916be368aaf53d829d1f77987d8f9",
+      "sha256": "2d1ebd7fee7cfcd2da790fd387421dae483fa948846aca02dd632bfac2173140"
+    },
+    {
+      "path": "config.yaml",
+      "git_blob": "0345d79d05691453db6c1dc0dc122de52ab6112d",
+      "sha256": "04664c36be89bc478873c9a143bdda8f42912871e52a81353256f2677f2dc7fa"
+    },
+    {
+      "path": "core/ops/error_backlog.py",
+      "git_blob": "240a2ee722a29890c40074747684d0923aa8bf72",
+      "sha256": "823d559748e43d4917a2d5465df09ae0d031e4e95e2636bca07a14d14e1ddd5f"
+    },
+    {
+      "path": "core/ops/watchdog/checks.py",
+      "git_blob": "b208d55bf74c46ffe7895db175abd92ced68893c",
+      "sha256": "948680163c04f45b8f5771cb8dd074a862d1d0a6c8fe62b5cbbf91afbf05fbcb"
+    },
+    {
+      "path": "docs/ARCHITECTURE.md",
+      "git_blob": "64371702b9f87bad09b0306beaf70f3a357be1ef",
+      "sha256": "06f14b3cb81ebc2ff0f8f65dbca6cefb7ce37e1e959b62aa770a020936673021"
+    },
+    {
+      "path": "docs/PRODUCT_MAP.md",
+      "git_blob": "5e0e616137c38ca312ba57d0f592391e866c283c",
+      "sha256": "9dff347f0f4b95abcf55832a9a651f343b14525789769111fea7c22fdf6a8d37"
+    },
+    {
+      "path": "docs/StockAgent-Three-Loops.pdf",
+      "git_blob": "d18c2976fb10f07902860639286c89e604e8d7b7",
+      "sha256": "953929ed3a39bb1c3e9530b9a0b2b1a151da7c57642710593085ca09f5bdff3f"
+    },
+    {
+      "path": "docs/TEAM_TESTING_GUIDE.md",
+      "git_blob": "58fd754e76721b63b07a3399f0ed8378ad003694",
+      "sha256": "7e1090fde5f64c7c535ba54c0f444505a1309ce40397c1b01763e52f36a30a2b"
+    },
+    {
+      "path": "docs/TECHNICAL_DESIGN.md",
+      "git_blob": "88238a78d52dd799a9893c0dc45448d05b280c7e",
+      "sha256": "b4445b0af88fe545f291146d0e71fc68c4acc70668c65be329983e77a0f8dd3b"
+    },
+    {
+      "path": "scripts/prod_errors.py",
+      "git_blob": "02ce1e8cc012a6e0957d69821f967da9bb8effec",
+      "sha256": "e1c6687b4a12c347ac5235fecc726e7984f25a931520986af113b3a270246771"
+    },
+    {
+      "path": "services/api/routes/ops_api.py",
+      "git_blob": "7801a9ba95d2e0a65130024a80b742461ad6d820",
+      "sha256": "36d15bb9d962b59cab8534084d961111fa411da6461110bb98d59073caaafbf4"
+    },
+    {
+      "path": "services/api/server.py",
+      "git_blob": "e48ea5af4c2ce700788bd0e604cb4de529830ad3",
+      "sha256": "73d3f9955af58a42511ed4a551eea5fdc5d2ca9bf3ca996ee34a41dde3213bef"
+    },
+    {
+      "path": "tests/unit/ops/test_error_backlog_sa011.py",
+      "git_blob": "de5a8529b1f28dbf6253d9b8ad8d7597fdcd2dc8",
+      "sha256": "47d15229f1f8ceb2a0069713541439dd527fc62441a45929d087c1b0defb1872"
+    }
+  ]
+}

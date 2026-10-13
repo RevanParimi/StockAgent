@@ -184,6 +184,7 @@ resolved at import, so editing a file does not imply live reconfiguration.
 | `ipo.enabled: true`; `ipo.gmp_enabled: false` | IPO refresh and grey-market-price fetching have separate gates. |
 | `delivery.enabled: true`; `delivery.email_enabled: false`; `delivery.push_enabled: true` | Job scheduling, transport enablement and credentials are separate conditions. |
 | `watchdog.enabled: true`; `watchdog.prep_enabled: true` | Monitoring can perform configured prep as well as report results. |
+| `error_backlog.*` | The operations backlog's windows and bounds (section 10): new 2 days, quiet 7 (35 for an acknowledged issue), fix verification 7, retention 90, at most 2,000 issues. They send nothing. |
 | `audit.enabled: true` | Nightly outcome grading configured. |
 
 These are repository values; section 1 lists where production differs.
@@ -203,6 +204,7 @@ evidence.
 | `data/market_cache/ipo.json` and EOD parquet | Cached IPO information and exchange price history; date, source and stale state matter. |
 | `data/logs/data_health.jsonl`; `data/logs/decision_gate.jsonl` | One data-health row per analysis run, also written to `telemetry.db`; one gate row per consumer decision. The gate log never holds a user id. |
 | SQLite score, log, user and Atlas stores | Historical scores, telemetry, sessions and relational indexes/outbox. Secondary tables may lag primary records. |
+| `telemetry.db`: `app_logs`; `error_issues`, `error_backlog_cursor` | Every WARNING+ log record, with its run id and ticker when logged inside an analysis run, kept with no cap; and the operations backlog built from it (section 10). The backlog keeps message templates, never raw text, and prunes itself; it never changes `app_logs`. |
 | `data/scheduler_job_outcomes.json`; `data/watchdog_state.json` | Operational results, including the daily review's per-ticker outcomes, and milestone state. Not proof of financial performance. |
 | `data/backups/` | Local rotation of the last 7 archives, each with its manifest, and `backup_status.json` (the last restore drill and off-site result). An encrypted copy goes outside the volume once a target is configured (section 10). A local archive is not off-site recovery. |
 
@@ -823,7 +825,11 @@ out that day's new guidance until the next day.
 The pipeline loads active users' portfolios, obtains closes and signals,
 evaluates held positions, records advice and optionally executes it.
 The LLM narrates the rule-driven decision; triggers remain available when
-narration fails.
+narration fails. The [narrator](../core/portfolio/narrator.py) is given the
+verdict, symbol, close, regime label and rule codes only, on the bulk tier,
+so its text can restate the rule but not the company's facts. **Planned:** an
+investment case recorded per holding (PR-005) and explanations grounded in it
+and in company events (PR-006, PR-007).
 
 | Research verdict | Portfolio action |
 |---|---|
@@ -842,6 +848,20 @@ bullish, sufficiently healthy conditions and position headroom. EXIT may
 become SWITCH when an eligible replacement exists. A holding-age rule can
 soften certain TRIM actions to HOLD; it does not override EXIT. These are
 product rules, not individualized tax or investment advice.
+
+The thesis condition (`thesis_break`) needs two things: the month's latest
+thesis review said "not intact", and the remaining forecast path ends more than
+1% below the close. That review runs in the daily review (section 5, step 7)
+only after a price-path miss larger than `max(1.5%, 1.5 × ATR%)`
+([thesis_reviewer](../core/intelligence/rl/agents/thesis_reviewer.py)), and it
+fetches no new data. A company
+event therefore never triggers it, while one sharp down day can. **Example:** a
+stock falls 4% on a 2% market fall four days after purchase. The miss triggers
+a review, the review says "not intact", the re-forecast path ends lower, and
+EXIT sells at a 4% loss with nothing about the company changed. **Planned:**
+exits that need evidence (a material company event, an actionable SELL or the
+invalidation price), run in shadow and switched only on a predeclared gate
+(PR-009).
 
 ### Data and identity checks on advice
 
@@ -949,7 +969,11 @@ cash, and FEDERALBNK was 13.1% of the portfolio.
 **Planned:** one sizing rule for every autopilot buy (SA-050). In a normal
 market, idle cash goes into shelf ideas that pass the checks; cash is held on
 purpose only in a crisis (SA-049, the owner's decision of 2026-09-27, behind a
-switch that ships off).
+switch that ships off). The deployment also works toward a configurable floor
+of at least 10 holdings and ₹10 L invested (`portfolio.min_holdings`,
+`portfolio.min_invested_inr`, with a per-portfolio override), recording why
+whenever the floor cannot be met. A wider, sector-capped shelf supplies the
+ideas (PR-004).
 
 ## 7. Profit/loss and the different marksheets
 
@@ -1167,10 +1191,11 @@ alert says "completed 19/20 — missing: skipped no_envelope: WELCORP".
 
 **Limits.** The pipeline's own `completed` does not count holdings whose
 advisor call failed inside it. The learning side of a rerun is not yet
-idempotent. Nothing in the watchdog reads this record. **Planned:** durable
-outcomes for every critical job (SA-036), idempotent learning updates
-(SA-015), silent-degradation checks in the watchdog (SA-034), an operations
-backlog (SA-011), and readiness and ownership recovery (SA-029).
+idempotent. Nothing in the watchdog reads this record; the review's logged
+failures reach the operations backlog (section 10) as log lines. **Planned:**
+durable outcomes for every critical job (SA-036), idempotent learning updates
+(SA-015), silent-degradation checks in the watchdog (SA-034), and readiness
+and ownership recovery (SA-029).
 
 ## 10. Delivery, interface, identity and operations
 
@@ -1178,6 +1203,16 @@ backlog (SA-011), and readiness and ownership recovery (SA-029).
 
 [Briefs](../core/delivery/brief.py), [weekly reviews](../core/delivery/weekly.py)
 and digests persist independently of transport.
+
+The brief's overnight section reads only the macro cache's HIGH items, fed by
+four generic news searches. The macro reviewer rates company news MEDIUM, so a
+held company's news never appears there. "Last 24 hours" means fetched
+today or yesterday, and URLs are de-duplicated within one day's file only, so
+a story that keeps ranking returns each morning. **Planned:** freshness by
+publish date with no cross-day repeats and overnight market figures (PR-003),
+and a "your stocks" section from a daily company-event feed (PR-006, PR-008).
+The weekly review's 28-day advice scoreboard is to be replaced by the nightly
+auditor's matured grades and a closed-trade record (PR-002).
 [Channels](../core/delivery/channels.py) send email and web push. Email has two
 transports: SMTP (STARTTLS) and the HTTPS Resend API. `EMAIL_TRANSPORT` in
 [settings](../src/backend/shared/config/settings/base.py) defaults to `auto`,
@@ -1398,9 +1433,31 @@ portfolio identity comes from the authenticated user. Chat's tools follow the
 same rule: the brief tool reads only the caller's portfolio and refuses a
 request without a valid user id, rather than fall back to the default user
 ([CHAT_ARCHITECTURE](CHAT_ARCHITECTURE.md) section 2). Some intelligence read
-routes remain public. The RL client has demo/fallback paths on API failure,
-so populated charts alone do not prove live data. **Planned:** honest
-unavailable states (SA-024) and a public-read and demo-data policy (SA-032).
+routes remain public.
+
+The server-log routes `GET /ui/logs` and `/ui/logs/stream` are owner-only.
+Log lines carry user ids, per-user trade activity and error text, and the
+in-memory ring buffer behind both routes redacts nothing. Both therefore take
+`require_owner`: the owner's session or the machine key. For example, a member
+who opens `/ui/logs?limit=1000` gets 403, and a visitor without a session gets
+401. The check runs before the handler, so a refused request never reads the
+buffer, and a refused stream never subscribes or sends a line. With
+`AUTH_REQUIRED` off, an anonymous request acts as the owner, here as on every
+owner route; a member's session is still refused. A browser `EventSource`
+cannot send the session header, so the Logs screen
+([logs.jsx](../src/frontend/prototypes/logs.jsx)) reads the stream with
+`fetch`. On a 401 or 403 it shows a plain message and stops reconnecting, and
+it does not open the API-key prompt that other 403s trigger.
+
+The RL client has demo/fallback paths on API failure, so populated charts
+alone do not prove live data. Every signed-in member sees the operator screens
+(Prompt Lab, Analytics, RL Monitor, Logs, agent tuning). The server guards
+their writes and the Logs screen's reads. The home hero carries fixed demo
+text: a fixed greeting, an auto-sector move and a Nifty Auto figure. The
+portfolio page's "Missed gain" and "Avoided loss" are composite-score changes ×
+10,000 printed as rupees. **Planned:** real or absent figures and member-hidden
+operator tools (PR-001); four member screens (PR-010); honest unavailable
+states (SA-024); a public-read and demo-data policy (SA-032).
 
 Chat replies are untrusted text: the model quotes news snippets and tool
 output, and a quoted `<img src=x onerror=…>` passed to the browser as HTML
@@ -1440,6 +1497,77 @@ deadline it re-sends a critical "LAPSED" notice every 7 days. Each lapsed
 milestone is judged, then deleted with its evidence or decision recorded, or
 re-dated with a dated reason at the head of its action text. A registry edit
 reaches production only on deploy.
+
+### Operations backlog
+
+`app_logs` keeps every WARNING+ record, tens of thousands of rows, and logging
+a warning again does not close the defect behind it. The backlog
+(`core/ops/error_backlog.py`) groups those rows into issues, one per cause,
+that the owner can assign and close.
+
+- **Grouping.** Each message becomes a template. The old `<IST time> LEVEL
+  [logger]` prefix, timestamps, run, row and user ids, numbers, file paths,
+  URL paths and queries, quoted values, secrets and symbols (`MARUTI.NS`,
+  `^NSEI`, a bare upper-case ticker) become placeholders. Secrets include
+  bearer and Basic credentials, any `Authorization:` value and `key=`
+  values; an address is masked also when percent-encoded (`%40`). The
+  row's own ticker is masked as any ticker is, so a cause logged inside an
+  analysis run and outside one is one issue. A number after
+  `HTTP`, `status_code` or `Errno` stays, because it is the cause, and so
+  does a URL's host. A traceback is reduced to its exception type and
+  message; frames and line numbers are dropped. The fingerprint hashes the
+  source, the logger and the template. No model is involved. For example,
+  `$MARUTI.NS: possibly delisted; no price data found (period=1d)` and the
+  same line for `$INFY.BO` with `period=5d` are one issue, `<sym>: possibly
+  delisted; no price data found (period=<n>d)`, while HTTP 401 and HTTP 429
+  from one provider are two. Only templates are stored; the raw rows stay in
+  `app_logs`, unchanged.
+- **Severity** is the record's own level from `app_logs.level`. Railway
+  prints every stderr line, INFO included, under an `error` envelope; that
+  envelope is never an input.
+- **Dead letters.** The outbox logs one WARNING per dead-lettered row with
+  its channel, kind and redacted reason, so dead letters form one issue per
+  channel, kind and reason: every `email/brief` row refused for SMTP
+  authentication, say, with a count.
+- **Lifecycle.** An issue is *new* for 2 days after it first appears,
+  *ongoing* while seen within 7 days, then *quiet*. It is also *spiking*
+  when today's or yesterday's IST count exceeds its own trailing 14-day mean
+  by 3 standard deviations and is at least 10. The owner triages it as
+  `acknowledged`, `fixed` (with the time the fix took effect) or `wontfix`,
+  with an assignee, a task and a note. A fixed issue that recurs after its
+  fix reopens as *regressed*. An open issue that returns after 7 quiet days
+  is *regressed*; an acknowledged one only after 35, so the known warning of
+  a weekly or monthly job stays with its owner, and it still needs attention
+  if it spikes. A fix time carries its UTC offset:
+  `2026-10-05T08:00+05:30` for 08:00 IST, or `2026-10-05T02:30Z`. One
+  without, or a date alone, is refused with the form to give. The app shows
+  IST and a caller may mean UTC; an IST time read as UTC would file the fix
+  5.5 hours late, after any recurrence in that gap. A fix time later than
+  now (beyond 5 minutes of clock difference), or earlier than an occurrence
+  the registry already holds, is refused with the issue's last-seen time in
+  IST: that fix did not hold. Times are kept as precisely as they were
+  logged, so the same rows give the same outcome whether they were read
+  before the mark or after it, even within one second. A fix is *verified*
+  only after 7 days with no recurrence and once the archive holds rows from
+  after that window; silence from a stopped archive leaves it *unobserved*.
+- **Retention.** An issue keeps 30 days of daily counts and its last 20 run
+  ids and tickers. An issue unseen for 90 days is pruned unless it is
+  acknowledged, awaiting fix verification or needing attention. A cap of
+  2,000 issues removes the stalest quiet ones and never an active one.
+- **Access.** `GET /ops/errors` (ranked; `include=attention|active|all`),
+  `GET /ops/errors/digest` (plain text with times in IST, the same bytes for
+  the same registry and time) and `POST /ops/errors/{fingerprint}` (triage)
+  take an owner session or the machine key; a member gets 403. Each read
+  first folds new `app_logs` rows into the registry, 2,000 per transaction
+  and at most 20,000 per read; `refresh.caught_up` says whether it reached
+  the end.
+  `scripts/prod_errors.py` prints the digest with app credentials only, or
+  builds one offline from a copy of `telemetry.db` or a `railway logs --json`
+  export, by the app's own level.
+- **Watchdog.** The `error_backlog` check is pending while a new, regressed
+  or spiking issue is untriaged; its detail names counts, loggers and
+  fingerprints, never a template. No `milestones.yaml` entry uses it, so
+  the backlog sends no message.
 
 Local backup files and healthy HTTP responses do not prove recovery or
 successful jobs. The nightly drill proves that an archive restores; only a
@@ -1517,9 +1645,40 @@ learning to `observe`. SA-023 puts learned lessons on measurable probation.
   buy, which today spends a whole sale's proceeds.
 - SA-049 puts idle cash into shelf ideas that pass the checks in a normal
   market, and holds cash on purpose only in a crisis, behind a switch that
-  ships off.
+  ships off. It works toward a configurable floor of at least 10 holdings and
+  ₹10 L invested, fed by PR-004's wider shelf.
 - SA-051 shows the portfolio against the Nifty, with honest labels for
   "Invested" and returns.
+
+### Product results
+
+The [product results review](audit/2026-10-11-product-results-review.md)
+traced the owner's concerns to their mechanisms: losing sales, code-like
+reasons, a 2-stock portfolio, a repetitive brief and a jargon-heavy interface.
+The planned changes connect the research to the money:
+
+- **Measure weekly.** A Sunday scorecard gives closed trades, expectancy, the
+  share of sales whose stock beat the Nifty afterwards (from the nightly
+  auditor), exit reasons, breadth and the money-weighted Nifty comparison, with
+  predeclared red flags (PR-002).
+- **Know each company daily.** A typed, dated, sourced event feed covers held,
+  watched and shelf stocks (PR-006), widened with insider trades, pledges and
+  shareholding changes (PR-011).
+- **Own a stock for a reason.** Each holding gets a written investment case:
+  pillars with evidence, an expected range, an invalidation price and business
+  triggers, and the next check. Every number in it is checked against its
+  inputs (PR-005).
+- **Sell on evidence.** `case_broken` replaces `thesis_break`. Stops are
+  unchanged, and a minimum holding period applies. It runs in shadow and
+  switches only when the evidence rule is right on at least half of at least 15
+  matured disagreements over 6 weeks, at two consecutive looks (PR-009).
+- **Explain like an investor.** Explanations follow the pattern "what we did,
+  why, what would change our mind, what next", grounded and free of internal
+  words (PR-007). The brief opens with your stocks (PR-003, PR-008).
+- **Show only what is real.** Invented figures and fixed demo values go, and
+  members see four screens (PR-001, PR-010).
+- **Choose models on evidence.** Models are chosen per role from a bench on
+  stored bundles (PR-012).
 
 ### Operations and observability
 
@@ -1534,7 +1693,6 @@ makes failures visible without reading raw logs:
 - SA-035 surfaces LLM and search provider credit exhaustion;
 - SA-041 provides a read-only production status fetcher, and SA-042 adds an
   outside witness for missed jobs (Healthchecks.io → Telegram);
-- SA-011 turns durable errors into a deterministic operations backlog;
 - SA-029 verifies readiness and recovers background ownership;
 - SA-025 counts actual provider calls and fallback cost;
 - SA-033 locks reproducible runtime dependencies.
@@ -1572,11 +1730,14 @@ story to the sections of this document it changes. An implemented story's
 behaviour is described in those sections as current design. Its production
 verification is tracked separately (section 1).
 
-Five fixes outside the SA numbering are also part of the current design:
+Six fixes outside the SA numbering are also part of the current design:
 listing-day closes (FIX-001, sections 5 and 7), ticker resolution (FIX-002,
 section 4), bank income statements (FIX-003, section 4), dossier dates
-(FIX-004, section 5) and the chat brief's user scope (FIX-005, section 10).
-DOC-001 produced this document's current-code edition.
+(FIX-004, section 5), the chat brief's user scope (FIX-005, section 10) and
+owner-only server logs (FIX-007, section 10).
+DOC-001 produced this document's current-code edition. The PR stories are the
+product results track (section 11), ordered in STATE.json directly after
+SA-011.
 
 | Story | Change | Status | KT sections | Dependencies |
 |---|---|---|---|---|
@@ -1628,9 +1789,23 @@ DOC-001 produced this document's current-code edition.
 | [SA-046](planning/PI-2026-09/stories/SA-046.md) | Read text into dated events and a Catalyst factor | Open | 4 Research | SA-026 |
 | [SA-047](planning/PI-2026-09/stories/SA-047.md) | Decide with the factor engine; switch when it is not worse | Open | 4 Research; 5 Learning | SA-045, SA-046, SA-014, SA-020 |
 | [SA-048](planning/PI-2026-09/stories/SA-048.md) | Charge realistic trading costs and tax in paper P&L | Open | 6 Portfolio; 7 Marksheets | None |
-| [SA-049](planning/PI-2026-09/stories/SA-049.md) | Put idle cash to work in normal markets | Open | 6 Portfolio; 8 Discovery | SA-050, SA-051 |
+| [SA-049](planning/PI-2026-09/stories/SA-049.md) | Put idle cash to work in normal markets, with a 10-holding / ₹10 L floor | Open | 6 Portfolio; 8 Discovery | SA-050, SA-051 |
 | [SA-050](planning/PI-2026-09/stories/SA-050.md) | Apply one sizing rule to every autopilot buy | Open | 6 Portfolio | None |
 | [SA-051](planning/PI-2026-09/stories/SA-051.md) | Show the portfolio against the Nifty, with honest labels | Open | 7 Marksheets; 10 Interface | None |
+| [FIX-006](planning/PI-2026-09/stories/FIX-006.md) | An anonymous watchlist read never falls back to the owner | Open | 10 Interface | None |
+| [FIX-007](planning/PI-2026-09/stories/FIX-007.md) | Server logs are readable only by the owner | Open | 10 Interface | None |
+| [PR-001](planning/PI-2026-09/stories/PR-001.md) | Remove invented figures and fixed demo values; hide operator tools from members | Open | 10 Interface | None |
+| [PR-002](planning/PI-2026-09/stories/PR-002.md) | A weekly results scorecard with a "sold too early" check | Open | 7 Marksheets; 10 Delivery | None |
+| [PR-003](planning/PI-2026-09/stories/PR-003.md) | Fresh overnight news: no repeats, published-date freshness, global cues | Open | 10 Delivery | None |
+| [PR-004](planning/PI-2026-09/stories/PR-004.md) | Enough researched ideas to fill 10+ positions | Open | 8 Discovery | None |
+| [PR-005](planning/PI-2026-09/stories/PR-005.md) | An investment case for every position | Open | 6 Portfolio | PR-006 |
+| [PR-006](planning/PI-2026-09/stories/PR-006.md) | A daily company-event feed for held, watched and shelf stocks | Open | 4 Research; 9 Jobs | None |
+| [PR-007](planning/PI-2026-09/stories/PR-007.md) | Plain, fact-grounded buy and sell explanations | Open | 6 Portfolio | PR-005, PR-006 |
+| [PR-008](planning/PI-2026-09/stories/PR-008.md) | "Your stocks overnight" at the top of the morning brief | Open | 10 Delivery | PR-003, PR-006 |
+| [PR-009](planning/PI-2026-09/stories/PR-009.md) | Exit on evidence, not on a price-path miss (shadow, then switch) | Open | 6 Portfolio | PR-002, PR-006 |
+| [PR-010](planning/PI-2026-09/stories/PR-010.md) | Four screens for members; an Operator menu for the owner | Open | 10 Interface | PR-001 |
+| [PR-011](planning/PI-2026-09/stories/PR-011.md) | New data: promoter and insider trades, pledges, shareholding changes | Open | 4 Research; 8 Discovery | PR-006 |
+| [PR-012](planning/PI-2026-09/stories/PR-012.md) | Choose models by role, benched on our own data; refresh cost rates | Open | 3 Configuration | PR-007 |
 
 ### Maintain documentation with each story
 
@@ -1732,7 +1907,7 @@ PDF's freshness.
 | Predictions/learning | Section 5: envelope row to review checks, feedback, weights or proposals, lessons and dossier dates; explain the grading gaps and the learning mode. |
 | Portfolio/marksheets | Sections 6–7: advice to transaction, the data and identity holds, the P/L example and different evaluation rules. |
 | IPO/discovery | Section 8: calendar to captured facts, history, post-listing candidates, and the dark P3 path from deep dive to a stored, narrated and graded verdict. |
-| Operations/roadmap | Sections 9–12: scheduled work to persisted output and per-ticker outcomes, outbox states and the dead-letter view, the backup drill and restore runbook, the watchdog, and the planned redesign. |
+| Operations/roadmap | Sections 9–12: scheduled work to persisted output and per-ticker outcomes, outbox states and the dead-letter view, the backup drill and restore runbook, the watchdog and the operations backlog, and the planned redesign. |
 
 Practical, non-code-intensive duties are in the separate
 [Team Human Testing Guide](TEAM_TESTING_GUIDE.md). Testers should be able to

@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "pi": "PI-2026-09",
-  "updated_at": "2026-10-11",
+  "updated_at": "2026-10-13",
   "baseline_commit": "9a805878ed19c0cda7833d5b897ac05ee407436d",
   "audit": {
     "status": "complete",
@@ -9,8 +9,8 @@
     "production_modified": false
   },
   "active_task": null,
-  "next_task": "SA-011",
-  "next_phase": "FIX-005 ACCEPTED 2026-10-11 by its fresh-session review of the committed 954305a (receipt evidence/FIX-005-review.md; input 82d6c89c, diff e28f1e61, 0 mismatches). next_task SA-011: the first ready planned story in STATE order (deps SA-002, SA-004 done), NOT started; its implementation in a new conversation ('continue'). Review docs committed as 6266772 and pushed 08:57:41 IST (push note uncommitted). Deploy confirmed by the owner about 11:00 IST (dda41574 SUCCESS, /health good); FIX-005 production VERIFIED about 11:10 IST (owner case and a member account's case). Open, in order: review L2 routed by the owner as FIX-006, to be done LAST (select only when every other planned story is done); FIX-004 production checks (17 Oct scan, IDFCFIRSTB digest before 24 Oct; change_1 only if STARHEALTH is held on 26/27 Oct); SA-038's Sunday 11 Oct heartbeat; SA-008 change_1 todo (gated). Other owner items from the deep-dive rewrite are in HANDOFF.",
+  "next_task": "FIX-008",
+  "next_phase": "FIX-007 ACCEPTED by its fresh-session review (a new conversation opened with 'continue', 12 Oct about 23:17 IST to 13 Oct about 00:20 IST; receipt evidence/FIX-007-review.md). No critical/high/medium finding. L1 (low, docs) fixed in guide 11-G: a member's address-bar visit to /ui/logs is 401, not 403 (a typed URL sends no session). L2 (low, test gap: no test leaves the Logs screen; mutant F4 survives) routed to SA-031. CODEBASE '(FIX-007)' tag removed. FIX-007 done, production_verification pending_deployment. next_task FIX-008 (operator notices to the owner only, then register error_backlog; depends SA-011, done) = its implementation in a new conversation; then PR-001. Nothing committed, pushed or deployed: FIX-007's and SA-011's files are uncommitted; with the commit set KT section 12 rows SA-011 and FIX-007 Open -> Done, bump the KT header revision and rebuild the PDF.",
   "scope": "One implementation or fresh-session review phase per conversation. Default queue is planned stories; stretch requires explicit promotion.",
   "pending_production_checks": [
     {"id": "SA-039-P1", "story": "SA-039", "due_ist": "2026-09-28 17:00", "status": "passed", "checked_ist": "2026-09-28 20:19", "result": "Deploy b3fb00dd. Logs from 16:30: 20 review headers, all learning_mode=observe, no duplicate; 19 'Proposal (not applied)'; 19 Complete; 0 'Weights -> v'. All 19 weighted tickers equal the baseline versions; observations applied=false, recorded 16:31-16:54 IST. WELCORP has no weights (known, pre-SA-039). The rule's date was wrong: the review grades the previous session, so review_date is 2026-09-25, as expected.", "check": "After the Mon 16:30 review: logs show learning_mode=observe and '[WeightAdapter] Proposal (not applied)' (no 'Weights -> vN'); /ui/rl/summary weight_version for every managed ticker equals the analysis_data/sa039_activation_versions_20260926.json baseline; /ui/rl/weights latest_observation dated 2026-09-28.", "record_in": "docs/planning/PI-2026-09/evidence/SA-039-activation-2026-09-26.md"},
@@ -549,11 +549,462 @@
       "points": 3,
       "priority": "P2",
       "scope": "planned",
-      "status": "todo",
+      "status": "done",
+      "rereview_2_started": "2026-10-12, a new conversation from about 08:06 IST ('continue'); fresh-session re-review of rework 2, input evidence/SA-011-manifest.json (0323f2a8); ended about 08:35 IST: accepted",
+      "rework_2_started": "2026-10-12, a new conversation from about 07:30 IST ('continue'); input = evidence/SA-011-manifest-review2.json (158479b4); fixes RR-M1, takes the optional RR-I1 and RR-I4; ended about 08:05 IST: review_required",
+      "rereview_1_started": "2026-10-12, a new conversation from about 07:07 IST ('continue'); fresh-session re-review of rework 1, input evidence/SA-011-manifest.json (158479b4); ended about 07:30 IST: changes_requested",
+      "rework_1_started": "2026-10-12, a new conversation from about 06:28 IST ('continue'); input = evidence/SA-011-manifest-review1.json (f4343eae); fixes M1, L1-L4, decides L5, takes I1",
+      "implementation_started": "2026-10-11, a new conversation from about 14:44 IST ('continue'); baseline b9cc851 plus the uncommitted b9cc851 push note in STATE/HANDOFF; peer stockagent-main-43 doing a read-only product analysis (new files only) agreed not to touch SA-011",
       "depends_on": [
         "SA-002",
         "SA-004"
       ],
+      "implementation_baseline": "b9cc851f04f8f7c6e9dde77f513778c5137354e2 plus uncommitted planning notes (the b9cc851 push note; the peer stockagent-main-43 product-results review's STATE/HANDOFF/README/cards/KT/PDF edits)",
+      "review_input_manifest": "docs/planning/PI-2026-09/evidence/SA-011-manifest.json",
+      "review_input_sha256": "0323f2a893f76e18b09058fbfb2ddeea51e1ea2205afa93ce7f8efce704d59e1",
+      "diff_sha256": "c8965571f011cef84ec50698228976848e76053a3624e8c0a1b87bf486418c9c",
+      "implementation": {
+        "date": "2026-10-11",
+        "context": "one implementation conversation, about 14:44-16:00 IST, including a same-conversation self-review (not the fresh review); concurrent peer stockagent-main-43 (docs only) coordinated by message and finished its KT/PDF/STATE/HANDOFF writes before this phase's KT edit",
+        "summary": "core/ops/error_backlog.py groups telemetry.db app_logs WARNING+ rows into issues by a deterministic fingerprint (sha256 of source, logger and a normalised template: pre-E1 prefix, timestamps, ids incl. Atlas user ids, numbers (HTTP/status_code/Errno codes kept), paths, URL paths/queries (host kept), quoted values, secrets and symbols removed; tracebacks reduced to exception type and message; no LLM). Severity = app_logs.level; Railway's stderr envelope is never an input (railway_occurrences reads the app's own level offline). Lifecycle: new/ongoing/quiet/regressed + spiking flag; triage open/acknowledged/fixed/wontfix with assignee/task/note; fixed reopens on a later occurrence, acknowledged regresses after a 7-day quiet gap; a fix is verified only when archive coverage passes fixed_at+7d, else unobserved. Tables error_issues + error_backlog_cursor in telemetry.db on the module's own connection; cursor batches in BEGIN IMMEDIATE (no double count across workers) plus a process lock (shared connection in the thread pool); max 20,000 rows per read. Retention bounded (30 daily counts, 20 run ids/tickers, 90-day prune of unprotected issues, 2,000 cap that never drops an active issue); app_logs never changed. Deterministic digest. services/api/routes/ops_api.py: GET /ops/errors, GET /ops/errors/digest, POST /ops/errors/{fp} (require_owner). Watchdog check error_backlog registered in checks.py but in no milestones.yaml entry (sends nothing; test pins). Dead letters consumed via the outbox's per-row WARNING. scripts/prod_errors.py (app credentials only; offline --db / --railway-json). config.yaml error_backlog section.",
+        "changed_files": [
+          "CODEBASE.md",
+          "config.yaml",
+          "core/ops/error_backlog.py",
+          "core/ops/watchdog/checks.py",
+          "docs/ARCHITECTURE.md",
+          "docs/PRODUCT_MAP.md",
+          "docs/StockAgent-Three-Loops.pdf",
+          "docs/TEAM_TESTING_GUIDE.md",
+          "docs/TECHNICAL_DESIGN.md",
+          "scripts/prod_errors.py",
+          "services/api/routes/ops_api.py",
+          "services/api/server.py",
+          "tests/unit/ops/test_error_backlog_sa011.py"
+        ],
+        "tests": "new file tests/unit/ops/test_error_backlog_sa011.py 66 passed; focused neighbours 341 passed; 23 in-memory mutants all caught (analysis_data/sa011/mutants.py); full suite 4384 passed, 12 skipped, 0 failed (6 min 27 s, final bytes); data/logs/outputs digest 798 46d6c300 unchanged; check_kt_docs errors [] (PDF source c9a8e239, 40 pages). Windows 11, Python 3.13.11, pytest 9.0.3, .stockai venv, tests/hermetic.py.",
+        "local_measurement": "local reproduction, not production evidence: data/telemetry.db 67,462 rows (mostly local and test-run rows) -> 535 fingerprints, 20 singletons, deterministic, 0 templates with @ / 4+ digit runs / URL paths / sk- keys; analysis_data/telemetry.db 3,056 pre-E1 rows -> 211 fingerprints.",
+        "self_review": "none critical/high/medium. L1 low: leak protection is pattern-based; unquoted interpolated free text stays in a template (registry owner-only). I1 over-merge within a logger; I2 fingerprint stability (golden test); I3 catch-up needs several reads after deploy; I4 dead-letter counts are log lines; I5 the first read creates two tables in production telemetry.db (additive); I6 Railway JSON export shape unverified; I7 enabling the watchdog entry would broadcast to every push-subscribed account (owner decision).",
+        "acceptance_reading": "'pending verification milestones reconcile against measured evidence' implemented as the backlog's fix verification (verified only by archive coverage; recurrence reopens). SA-038 already judged the lapsed manual milestones; the fresh review should confirm this reading.",
+        "kt_diff_note": "the KT also holds the peer's product-results edits; the diff digest diffs it from the peer's version, blob 0155b79a (canonical source 87607728, the peer's recorded PDF source), stored with git hash-object -w; analysis_data/sa011/diff_digest.py"
+      },
+      "implementation_receipt": "docs/planning/PI-2026-09/evidence/SA-011-implementation.md",
+      "review_receipt": "docs/planning/PI-2026-09/evidence/SA-011-review.md",
+      "reviewed_revision": "uncommitted working tree on b9cc851f04f8f7c6e9dde77f513778c5137354e2, pinned by review input 0323f2a893f76e18b09058fbfb2ddeea51e1ea2205afa93ce7f8efce704d59e1 (rework-2 diff ad35960cf507d2264dd66fe5d8ad85e7b83b7e83dd2d4a08fceca0e496d50a0b, rebuilt independently by the reviewer; cumulative diff c8965571f011cef84ec50698228976848e76053a3624e8c0a1b87bf486418c9c)",
+      "review_outcomes": [
+        {"date": "2026-10-12", "verdict": "changes_requested", "context": "fresh-session review (new conversation opened with 'continue', about 01:00-01:25 IST; 31 peers idle)", "reviewed_revision": "uncommitted working tree on b9cc851f04f8f7c6e9dde77f513778c5137354e2", "review_input_sha256": "f4343eaec750e7cef8b93c9531b77dcb06f4044d67c621fa932a763edd473cfb", "review_input_manifest_copy": "docs/planning/PI-2026-09/evidence/SA-011-manifest-review1.json", "diff_sha256": "b669cf365c762f9ec710a6b4df0c2096b94b2013a7da4a62f438101dc364f94f", "required_changes": {"M1": "medium, unmet AC3 ('pending verification reconciles against measured evidence'): triage(status='fixed', fixed_at=T) ignores occurrences already in the registry after T, so the fix reads 'verified' after 7 days, leaves the active list and the digest says 'fixed, verified'; the same rows read after the triage reopen it (order-dependent). Refuse (422) a fixed_at earlier than last_seen, or reopen at once as regressed; classify never 'verified' while last_seen > fixed_at; order-independence invariant test (fixture: analysis_data/sa011/review/test_rv_trace.py).", "L1": "low: a fixed_at in the future is accepted and silences recurrences until then; refuse it (small clock tolerance).", "L2": "low, AC2 grouping: the row's ticker column becomes <id> while the symbol rules give <sym> ($<id>.NS vs <sym>), so one cause splits by run context (local corpus 4 causes -> 8 issues); mask the row's ticker as the symbol rules do; test inside vs outside a run. Before the first deploy (fingerprints become durable).", "L3": "low, privacy residual: 'Authorization: Basic <b64>' keeps the credential and 'name%40example.com' keeps the address; mask both and add them to the test's secrets. Before the first deploy.", "L4": "low, docs: guide 12-J expects a digest a day later to be identical except its time line, but states and 7-day counts depend on the clock; reword.", "L5": "low, design (decide and record): an acknowledged warning from a weekly job reopens when the gap reaches quiet_days (7), a monthly one every month; keep with guidance to use wontfix, or regress acknowledged only beyond its own cadence.", "I1": "optional: add 'ops/' to services/api/server.py _API_NAMESPACES (a GET on the POST-only triage path returns index.html 200)."}},
+        {"date": "2026-10-12", "verdict": "changes_requested", "context": "fresh-session re-review of rework 1 (new conversation opened with 'continue', about 07:07-07:30 IST; 33 peers idle)", "reviewed_revision": "uncommitted working tree on b9cc851f04f8f7c6e9dde77f513778c5137354e2", "review_input_sha256": "158479b48f00ac51f7f2227b69b15b2e2a061a7d135312a92431d311337ca4a3", "review_input_manifest_copy": "docs/planning/PI-2026-09/evidence/SA-011-manifest-review2.json", "rework_diff_sha256": "13164cffd3433cf2d4068e074b3345a8cf56a61fcbba13cc913f7351dce90336", "cumulative_diff_sha256": "36b27f3aeb933f6ffa0a6d8478a3b63befe1dcda25204f7b243439cfc61c0729", "checked": "manifest 0 mismatches and own git hash-object of 13 paths; review1 snapshot 13/13 by own hashing (rr_diff.py) and the rework diff read in full; both recorded digests reproduced; story tests 96 passed; 22 fail with the review1 module swapped in memory (rr_swap_plugin.py; server.py not swapped); first reviewer's test_rv_trace.py 3 passed unchanged; rr_probe.py 21/24; check_kt_docs errors [] (PDF source 65c2dd68, 40 pages); full suite 4414 passed, 12 skipped, 0 failed (8 min 39 s); runtime data 798 files d9fa2376 unchanged", "fixed_from_first_review": "M1 (for a fixed_at with an offset), L1, L2, L3, L4, L5 (decided 35 days), I1: all hold on the re-reviewer's own examples", "required_changes": {"RR-M1": "medium, AC3 (the M1 outcome by another input): a fixed_at without a UTC offset is read as UTC (parse_ts, core/ops/error_backlog.py:342; triage :816). An IST owner who types the deploy time as the app shows it stores a fix 5.5 h later than meant, so a recurrence within that gap counts as before the fix: 200, 'fixed, verified', absent from the default list, digest 'fixed, verified', in both read orders (analysis_data/sa011/rereview1/test_rr_trace.py through server.app; rr_probe.py). With +05:30 the same mark is refused. Refuse a fixed_at with no offset (a date alone too) with a 422 that shows the form (e.g. 2026-10-05T08:00+05:30); default now unchanged; say so in TriageBody's description, prod_errors.py --fixed-at help, KT section 10 and guide 12-J; HTTP tests; both reviewers' trace files pass unchanged.", "RR-I1": "optional: a recurrence in the same second as fixed_at verifies when read first and reopens when marked first (_iso keeps whole seconds, apply_occurrence compares the fractional time); compare at the stored precision.", "RR-I2": "info, no change: a monthly job's acknowledged burst of >= spike_min is a spike against its all-zero 14-day baseline, so it needs attention on the 1st and 2nd each month (status and task stay). Watch after rollout.", "RR-I3": "info, no change: a bare all-letter Basic credential outside a header or quotes stays (agreed trade-off).", "RR-I4": "optional: the digest prints first/last seen as UTC dates under an IST time line, and the refusal names last_seen in UTC; show IST."}},
+        {"date": "2026-10-12", "verdict": "accepted", "context": "fresh-session re-review of rework 2 (new conversation opened with 'continue', about 08:06-08:35 IST; 35 peers idle)", "reviewed_revision": "worktree on b9cc851 (uncommitted)", "review_input_sha256": "0323f2a893f76e18b09058fbfb2ddeea51e1ea2205afa93ce7f8efce704d59e1", "rework_diff_sha256": "ad35960cf507d2264dd66fe5d8ad85e7b83b7e83dd2d4a08fceca0e496d50a0b", "cumulative_diff_sha256": "c8965571f011cef84ec50698228976848e76053a3624e8c0a1b87bf486418c9c", "checked": "manifest 0 mismatches at start and end, own git hash-object of 13 paths; review2 snapshot 13/13 by own hashing (rr2_diff.py), own diff hunks identical to the implementer's, read in full; both recorded digests reproduced; story tests 111 passed; 11 fail with the review2 module swapped in memory (own rr2_swap_plugin.py), the same 11 as the receipt; own HTTP trace test_rr2_trace.py 4 passed (9 bare notations refused with the form and nothing written; offset forms refused naming last seen in IST; real SQLiteLogHandler same-second rows judged the same in both orders; digest IST around midnight; coverage/first/last with mixed precision and out-of-order ids), all 4 fail on base; own probe rr2_probe.py 6/6 (mixed-precision stored strings sort and max in time order over 20,000 times; IST refusal time round-trips; exact-equality same in both orders); first reviewer's test_rv_trace.py 3 and previous re-reviewer's test_rr_trace.py 2 pass unchanged; rr_probe.py 23/24 (RR-I3, agreed); own mutants X1-X12 (9): 6 caught by the story file, X1/X2/X3 caught only by own trace/probe; check_kt_docs errors [] (PDF source b4445b0a, 40 pages); full suite 4429 passed, 12 skipped, 0 failed (5 min 54 s); runtime data 798 files d9fa2376 unchanged", "fixed_from_rereview_1": "RR-M1 fixed; RR-I1 and RR-I4 taken and hold", "follow_ups": {"RR2-I1": "info, test gap -> SA-031 card: mutants X1 (fix time truncated to whole seconds at triage), X2 (an occurrence exactly at the fix time counts as after it at ingestion), X3 (triage refuses fixed_at == last_seen) pass all 111 story tests; code correct today; add a default-now mark after a same-second fractional last_seen (accepted) and an occurrence exactly at the fix time in both read orders (stays fixed)", "RR2-I2": "info, no change: an explicit offset is taken as given (+05 parses as +05:00; +0530 accepted)", "RR2-I3": "info, no change: a bare time with a fraction is refused with a form that drops the fraction (half a second earlier; conservative)", "RR-I2": "watch after rollout (agreed)", "RR-I3": "agreed residual", "I7": "owner decision at rollout (registering the watchdog entry broadcasts to every push-subscribed account)"}}
+      ],
+      "rework_1": {"date": "2026-10-12", "context": "a new conversation opened with 'continue', about 06:28-07:10 IST, including a same-conversation self-review (not the fresh review); 32 peers idle", "input": "docs/planning/PI-2026-09/evidence/SA-011-manifest-review1.json (f4343eae), snapshotted to ignored analysis_data/sa011/rework1/base/ and re-proved by blob id", "changes": {"M1": "triage refuses (TriageError -> 422) a fixed_at earlier than the issue's last_seen, naming last_seen, compared as stored; atomic (no field written); applies to a new fixed mark and to moving an existing fixed_at. Refusal chosen over reopen-at-once (no per-occurrence times; a 200 turning 'fixed' into 'open' would surprise). classify: verification 'recurred' (attention, listed, protected) whenever last_seen > fixed_at, never 'verified'.", "L1": "fixed_at more than 5 minutes after now is refused", "L2": "the row's ticker column ($, .NS/.BO stripped) is replaced by a stand-in symbol the symbol rules mask like any ticker; run id column unchanged (<id>; no WARNING+ call site interpolates a run id)", "L3": "any Authorization: value -> <secret>; standalone Basic <base64 with a digit, +, / or padding> -> Basic <secret>; %40 addresses -> <email>", "L4": "guide 12-J: two digests minutes apart with no new warning; a backdated mark refused", "L5": "decided: error_backlog.ack_quiet_days 35 (an acknowledged issue regresses only after 35 quiet days; open issues still 7); a spike still needs attention", "I1": "'ops/' added to services/api/server.py _API_NAMESPACES"}, "changed_files": ["CODEBASE.md", "config.yaml", "core/ops/error_backlog.py", "docs/ARCHITECTURE.md", "docs/PRODUCT_MAP.md", "docs/StockAgent-Three-Loops.pdf", "docs/TEAM_TESTING_GUIDE.md", "docs/TECHNICAL_DESIGN.md", "services/api/server.py", "tests/unit/ops/test_error_backlog_sa011.py"], "tests": "story file 96 passed (66 before); 23 of the new tests fail on the reviewed revision swapped in memory (SA011_RW=base); 16/16 rework mutants caught (analysis_data/sa011/rework1/rw_mutants.py); first-implementation mutants 22/23 caught as written, M18's anchor replaced by L2 and its re-anchored equivalent RW16 caught; reviewer's test_rv_trace.py 3 passed unchanged; review probes rerun 16/16 (rw_probe.py); focused neighbours tests/unit/ops + test_spa_catchall 256 passed; full suite 4414 passed, 12 skipped, 0 failed (8 min 18 s); data/logs/outputs unchanged (798 files, d9fa2376); check_kt_docs errors [] (PDF source 65c2dd68, 40 pages). Windows 11, Python 3.13.11, pytest 9.0.3, .stockai venv, tests/hermetic.py.", "local_measurement": "local reproduction, not production: rv_split.py on a copy of data/telemetry.db -> 530 issues, 0 causes split across run context (was 535 issues, 4 causes in 8)", "review_input_sha256": "158479b48f00ac51f7f2227b69b15b2e2a061a7d135312a92431d311337ca4a3", "rework_diff_sha256": "13164cffd3433cf2d4068e074b3345a8cf56a61fcbba13cc913f7351dce90336", "rework_diff_bytes": 46098, "rework_diff_recipe": "analysis_data/sa011/rework1/rw_diff_digest.py (git diff --no-index from analysis_data/sa011/rework1/base/PATH to PATH, review1 paths except the PDF, sorted)", "cumulative_diff_sha256": "36b27f3aeb933f6ffa0a6d8478a3b63befe1dcda25204f7b243439cfc61c0729", "cumulative_diff_bytes": 133594, "cumulative_diff_recipe": "analysis_data/sa011/review/rv_digest.py (b9cc851; KT from peer blob 0155b79a)", "self_review": "none critical/high/medium. I8 a row stamped after the server clock blocks a fixed mark until the clock passes it; I9 an occurrence within the 5-minute tolerance counts as before the fix; I10 'recurred' is a new verification value (only scripts/prod_errors.py --json prints it)."},
+      "rework_2": {"date": "2026-10-12", "context": "a new conversation opened with 'continue', about 07:30-08:05 IST, including a same-conversation self-review (not the fresh review); 34 peers idle", "input": "docs/planning/PI-2026-09/evidence/SA-011-manifest-review2.json (158479b4), snapshotted to ignored analysis_data/sa011/rework2/base/ and re-proved by blob id", "changes": {"RR-M1": "triage reads fixed_at with its own parser: a time with no UTC offset, or a date alone, is refused (TriageError -> 422) with the form to give built from the time sent (<time>+05:30 for IST, <time>Z for UTC); a non-ISO value is refused with an example from now in IST. Refusal, not 'read as IST' (a machine caller may mean UTC). Default now unchanged; parse_ts unchanged for stored times and archive rows. Documented in TriageBody.fixed_at, prod_errors.py --fixed-at help and usage, KT section 10, guide 12-J, CODEBASE.", "RR-I1": "taken: _iso keeps the precision a time was logged (microseconds when present), so triage (fixed_at vs stored last_seen) and ingestion (fixed_at vs the occurrence's time) compare at the same precision; a recurrence 0.4 s or 1 us after the fix is after it in every read order. Whole-second comparison of occurrences was tried first and rejected: it counted a warning logged in the same second as a default-now mark as before the fix (the first reviewer's test_rv_trace.py lifecycle test failed). UTC ISO strings with or without a fraction still sort in time order; no production registry exists yet.", "RR-I4": "taken: refusals name times in IST, exactly, in the form fixed_at accepts; the digest prints first seen as an IST date, last seen as IST date and minute, and a fixed issue's fix time ('status fixed since ... IST'); the JSON API keeps UTC ISO times.", "RR-I2": "no change (as the re-review says)", "RR-I3": "no change (agreed residual)"}, "changed_files": ["CODEBASE.md", "core/ops/error_backlog.py", "docs/StockAgent-Three-Loops.pdf", "docs/TEAM_TESTING_GUIDE.md", "docs/TECHNICAL_DESIGN.md", "scripts/prod_errors.py", "services/api/routes/ops_api.py", "tests/unit/ops/test_error_backlog_sa011.py"], "tests": "story file 111 passed (96 before); 11 fail on the re-reviewed revision swapped in memory (SA011_RW2=base); rework-2 mutants 12 of 12 caught (analysis_data/sa011/rework2/rw2_mutants.py); rework-1 mutants rerun 16 of 16 caught; both reviewers' trace files pass unchanged (test_rv_trace.py 3/3, test_rr_trace.py 2/2); the re-reviewer's rr_probe.py 23/24 (was 21; the failure is RR-I3, agreed); full suite 4429 passed, 12 skipped, 0 failed; runtime data 798 files, d9fa2376; check_kt_docs errors [] (PDF source b4445b0a, 40 pages). Windows 11, Python 3.13.11, pytest 9.0.3, .stockai venv, tests/hermetic.py.", "review_input_sha256": "0323f2a893f76e18b09058fbfb2ddeea51e1ea2205afa93ce7f8efce704d59e1", "rework_diff_sha256": "ad35960cf507d2264dd66fe5d8ad85e7b83b7e83dd2d4a08fceca0e496d50a0b", "rework_diff_bytes": 36162, "rework_diff_recipe": "analysis_data/sa011/rework2/rw2_diff_digest.py (git diff --no-index from analysis_data/sa011/rework2/base/PATH to PATH, review2 paths except the PDF, sorted)", "cumulative_diff_sha256": "c8965571f011cef84ec50698228976848e76053a3624e8c0a1b87bf486418c9c", "cumulative_diff_bytes": 145148, "cumulative_diff_recipe": "analysis_data/sa011/review/rv_digest.py (b9cc851; KT from peer blob 0155b79a; restore review/rv.diff afterwards)", "self_review": "none critical/high/medium. I11 JSON times carry microseconds when logged with them (only prod_errors.py --json prints them); I12 lenient ISO forms with an offset (space for T, +0530) are accepted, being unambiguous; I13 an occurrence at exactly the fix time, to the microsecond, counts as before it in every read order."},
+      "production_verification": {
+        "status": "pending_deployment",
+        "evidence": null,
+        "note": "Accepted 2026-10-12 for the uncommitted worktree (input 0323f2a8); not committed, pushed or deployed. After an owner-authorized commit and deploy in a job-free window: the read-only check in evidence/SA-011-implementation.md 'Rollout' (prod_errors.py --base until caught up; the malformed miss-factor warning is one issue with a count and the digest shows no address, token or URL path; a member gets 403 and no new watchdog/push notice; one railway logs --json export through --railway-json for I6 and the INFO-under-error count). Watch RR-I2 (an acknowledged monthly burst needs attention). I7 (registering the watchdog entry): decided by the owner 2026-10-12, register only after operator notices reach the owner alone; routed to FIX-008."
+      },
+      "blocked_reason": null
+    },
+    {
+      "id": "FIX-007",
+      "title": "Server logs are readable only by the owner",
+      "story": "docs/planning/PI-2026-09/stories/FIX-007.md",
+      "sprint": "routed",
+      "points": 1,
+      "priority": "P1",
+      "scope": "planned",
+      "status": "done",
+      "origin": "docs/audit/2026-10-11-product-results-review.md",
+      "depends_on": [],
+      "sequencing_note": "Privacy defect found during the 2026-10-11 product review (code inspection only; the route was not called). Ordered first in the product block under the PI rule that security/privacy findings take priority. Product results track, owner request 2026-10-11 (review docs/audit/2026-10-11-product-results-review.md): placed right after SA-011 in STATE order so 'continue' selects it ahead of the remaining SA reliability/learning stories. Order: FIX-007, PR-001, PR-002, PR-003, SA-050, SA-051, PR-004, PR-006, PR-011, PR-009, SA-048, SA-049, PR-005, PR-007, PR-008, PR-010, PR-012 (PR-011 moved up to follow PR-006 and made P1 on 2026-10-12, owner: 'I need more data'; order confirmed by the owner 2026-10-12: 'ya continue on the new order').",
+      "routed_from": "2026-10-11 product results review: services/api/routes/ui_data.py get_logs and stream_logs (GET /ui/logs, /ui/logs/stream) take no auth dependency and services/api/log_buffer.py redacts nothing, so any caller can read up to 1000 recent server log lines, live, including user ids",
+      "implementation_receipt": "docs/planning/PI-2026-09/evidence/FIX-007-implementation.md",
+      "implementation_note": "IMPLEMENTED 2026-10-12 (a new conversation opened with 'continue', about 14:06-15:00 IST; 35 peers idle; same-conversation self-review only). services/api/routes/ui_data.py: get_logs and stream_logs take _owner = Depends(require_owner). src/frontend/prototypes/logs.jsx: fetch + ReadableStream reader instead of EventSource; 401/403 -> plain message, status 'refused', no retry. src/frontend/prototypes/index.html: the global wrapper skips the API-key prompt for a request passing { saNoKeyPrompt: true } (only the Logs stream). Docs: KT section 10 Interface (current design) and section 12 fixes paragraph (row stays Open until the commit), PDF; PRODUCT_MAP 14.1 and 16; CODEBASE; guide 11-G. Self-review: none critical/high/medium; I1 AUTH_REQUIRED off makes anonymous the owner (require_owner's defined mode; production value not read; the rollout check settles it); I2 first load after deploy may run the cached EventSource screen until one reload.",
+      "review_input_manifest": "docs/planning/PI-2026-09/evidence/FIX-007-manifest.json",
+      "review_input_sha256": "ff6001e76333439d271d843d76e764aed173eae46dc1056de04c2bd4c0aa8411",
+      "diff_sha256": "910503e2b17cf51fb7f502b59cfe77c2107561540fbee891a86de020ab9b2113",
+      "diff_bytes": 42278,
+      "diff_recipe": "analysis_data/fix007/diff_digest.py: git diff --no-index from analysis_data/fix007/base/PATH (base_snapshot.py: SA-011's accepted blobs for CODEBASE/PRODUCT_MAP/KT/guide, proved by blob id; b9cc851 for the other six) to PATH, 12 paths sorted, PDF excluded",
+      "baseline": "b9cc851f04f8f7c6e9dde77f513778c5137354e2 plus SA-011's accepted uncommitted worktree (input 0323f2a8)",
+      "tests": "tests/unit/api/test_log_routes_owner_only_fix007.py 42 passed (fails on base 33; mutants M1-M6 17/19/17/21/7/22 failed, analysis_data/fix007/swap_plugin.py FIX007_SWAP); tests/frontend/logs_screen.test.mjs 3 passed (base 3 fail; F1/F2/F3 1/2/2 fail, fe_variants.sh + SA_FRONTEND_ROOT); npm run test:frontend 17 passed; neighbours 122 passed; full suite 4471 passed, 12 skipped, 0 failed (second run; the first had 1 Windows rename flake in test_ipo_verdicts_store.py, 23/23 alone, class routed to SA-031); runtime data 798 files unchanged across both runs; check_kt_docs errors [] (PDF source ce490484). Windows 11, Python 3.13.11, pytest 9.0.3, .stockai venv, tests/hermetic.py; Node + Playwright Chromium.",
+      "review_receipt": "docs/planning/PI-2026-09/evidence/FIX-007-review.md",
+      "reviewed_revision": "uncommitted working tree on b9cc851f04f8f7c6e9dde77f513778c5137354e2, pinned by review input ff6001e76333439d271d843d76e764aed173eae46dc1056de04c2bd4c0aa8411 (diff 910503e2b17cf51fb7f502b59cfe77c2107561540fbee891a86de020ab9b2113, rebuilt independently by the reviewer), plus the review's documentation edits: CODEBASE.md blob 13feb38a, docs/TEAM_TESTING_GUIDE.md blob b3f671bd",
+      "reviews": [
+        {"date": "2026-10-13", "verdict": "accepted", "context": "fresh-session review (a new conversation opened with 'continue', 12 Oct about 23:17 IST to 13 Oct about 00:20 IST; 36 peers idle)", "reviewed_revision": "worktree on b9cc851 (uncommitted), review input ff6001e7 with the review's two documentation edits", "review_input_sha256": "ff6001e76333439d271d843d76e764aed173eae46dc1056de04c2bd4c0aa8411", "diff_sha256": "910503e2b17cf51fb7f502b59cfe77c2107561540fbee891a86de020ab9b2113", "checked": "input ff6001e7 verified at start (0 mismatches); own rv_verify.py proved the implementer's base snapshot by blob ids computed in Python (4 docs = SA-011 accepted blobs, 6 files = b9cc851) and rebuilt diff 910503e2 (42,278 bytes); only other worktree change outside both manifests: docs/README.md (the owner's probe line). Implementer's tests 42 + 3 pass, 33 and 3 fail on base (re-run). Own trace through a REAL uvicorn server (lifespan off, hermetic) over real sockets and real Chromium (analysis_data/fix007/review/test_rv_trace.py 89, test_rv_navigate.py 3, test_rv_leave.py 1, all pass): refusals for 4 URLs x anonymous/invalid/Basic/wrong/empty key (401) and member incl. lower-case bearer and wrong key (403), AUTH_REQUIRED on and off, SCHEDULER_KEY unset; no entry, no data: line, no marker, buffer never read or subscribed; owner, machine key and member+right key read; stream history then live then release; 13 raw spellings/methods + CORS preflight leak nothing; browser: owner live + leaving releases the server subscription within 2 s with the page open, member refused with no prompt and one request, signed-out/expired asked to sign in, markup in a log line rendered as text, I2 stale EventSource screen gets 401 and retries; trace on base 70 failed, 23 passed (three files, final harness), M1-M6 31/26/24/33/6/41 failed (HTTP-only, -k 'not browser'); reviewer's F4 (cleanup without ctrl.abort) survives the implementer's tests, caught by test_rv_leave.py; check_kt_docs errors [] (PDF source ce490484, 41 pages, new section 10 text present); broad-except OK; full suite 4471 passed, 12 skipped, 0 failed (8 min 39 s); runtime data 798 files 6856c417 unchanged", "review_edits": "docs/TEAM_TESTING_GUIDE.md 11-G direct-URL expectation (L1), blob b3f671bd; CODEBASE.md:357 '(FIX-007)' tag removed (I1), blob 13feb38a; SA-031 card L2", "follow_ups": {"L1": "low, docs, FIXED by the review: guide 11-G and the implementation receipt's production check step 3 expected 403 for a member's direct URL visit; a typed URL sends no session, so it is 401 (fixture test_rv_navigate.py); rollout check restated in the review receipt", "L2": "low, test gap -> SA-031 card: no test leaves the Logs screen; mutant F4 (cleanup without ctrl.abort()) passes the implementer's 3 browser + 42 server tests; resource, not privacy; code correct today", "I1": "info: CODEBASE '(FIX-007)' story tag removed (owner's design-doc rule)", "I2": "info, no action: authorization is checked once per connection; an owner's open stream outlives a sign-out elsewhere until it drops", "I3": "info: the 2026-09-10 audit recorded production AUTH_REQUIRED=true and the machine key configured; the rollout check re-confirms", "I4": "info, no card change: README 'Logs Page' does not say owner-only"}}
+      ],
+      "production_verification": {
+        "status": "pending_deployment",
+        "evidence": null,
+        "note": "Accepted 2026-10-13 for the uncommitted worktree (input ff6001e7 + two documentation edits); not committed, pushed or deployed. After an owner-authorized commit and deploy in a job-free window, read-only (corrected, evidence/FIX-007-review.md): (1) anonymous GET /ui/logs?limit=1 returns 401 with only detail (a 200 with entries means AUTH_REQUIRED is off); (2) the owner's Logs screen shows lines arriving, status live, after one reload (I2); (3) the test member's Logs screen shows the owner-only message, no key prompt, its request 403; a typed URL is 401 like anyone's."
+      },
+      "blocked_reason": null
+    },
+    {
+      "id": "FIX-008",
+      "title": "Operator notices reach only the owner; then register the backlog's watchdog entry",
+      "story": "docs/planning/PI-2026-09/stories/FIX-008.md",
+      "sprint": "routed",
+      "points": 2,
+      "priority": "P1",
+      "scope": "planned",
+      "status": "todo",
+      "origin": "SA-011 open item I7 (registering the error_backlog watchdog entry); owner decision 2026-10-12 about 23:10 IST: option 3 ('yup': register only after operator notices go to the owner alone)",
+      "depends_on": ["SA-011"],
+      "sequencing_note": "Added 2026-10-12 at the owner's request, placed directly after FIX-007 (before PR-001) under the PI rule that newly found security/privacy issues take priority: by code inspection, emit_alerts_broadcast sends operator notices to every push-subscribed account plus the default user, and two of them (reconcile drift, portfolio quarantine) name a user's id. The confirmed product order (PR-001 onward) is otherwise unchanged; the owner may move it.",
+      "routed_from": "code inspection 2026-10-12: core/delivery/alerts.py alert_audience() = all push-subscribed users + PORTFOLIO_DEFAULT_USER_ID; seven operator callers (watchdog runner, ops_alerts, audit thresholds, portfolio reconcile, portfolio store quarantine, universe budget, atlas_etl) and three market callers (index_watch, discovery shelf, pre-open re-forecast); the shared mailbox gets one email per audience user",
+      "implementation_receipt": null,
+      "review_receipt": null,
+      "reviewed_revision": null,
+      "production_verification": {
+        "status": "not_started",
+        "evidence": null
+      },
+      "blocked_reason": null
+    },
+    {
+      "id": "PR-001",
+      "title": "Remove invented figures and fixed demo values; hide operator tools from members",
+      "story": "docs/planning/PI-2026-09/stories/PR-001.md",
+      "sprint": "product_track",
+      "points": 3,
+      "priority": "P0",
+      "scope": "planned",
+      "status": "todo",
+      "origin": "docs/audit/2026-10-11-product-results-review.md",
+      "depends_on": [],
+      "sequencing_note": "Product results track, owner request 2026-10-11 (review docs/audit/2026-10-11-product-results-review.md): placed right after SA-011 in STATE order so 'continue' selects it ahead of the remaining SA reliability/learning stories. Order: FIX-007, PR-001, PR-002, PR-003, SA-050, SA-051, PR-004, PR-006, PR-011, PR-009, SA-048, SA-049, PR-005, PR-007, PR-008, PR-010, PR-012 (PR-011 moved up to follow PR-006 and made P1 on 2026-10-12, owner: 'I need more data'; order confirmed by the owner 2026-10-12: 'ya continue on the new order').",
+      "implementation_receipt": null,
+      "review_receipt": null,
+      "reviewed_revision": null,
+      "production_verification": {
+        "status": "not_started",
+        "evidence": null
+      },
+      "blocked_reason": null
+    },
+    {
+      "id": "PR-002",
+      "title": "A weekly results scorecard with a 'sold too early' check",
+      "story": "docs/planning/PI-2026-09/stories/PR-002.md",
+      "sprint": "product_track",
+      "points": 3,
+      "priority": "P1",
+      "scope": "planned",
+      "status": "todo",
+      "origin": "docs/audit/2026-10-11-product-results-review.md",
+      "depends_on": [],
+      "sequencing_note": "Product results track, owner request 2026-10-11 (review docs/audit/2026-10-11-product-results-review.md): placed right after SA-011 in STATE order so 'continue' selects it ahead of the remaining SA reliability/learning stories. Order: FIX-007, PR-001, PR-002, PR-003, SA-050, SA-051, PR-004, PR-006, PR-011, PR-009, SA-048, SA-049, PR-005, PR-007, PR-008, PR-010, PR-012 (PR-011 moved up to follow PR-006 and made P1 on 2026-10-12, owner: 'I need more data'; order confirmed by the owner 2026-10-12: 'ya continue on the new order').",
+      "implementation_receipt": null,
+      "review_receipt": null,
+      "reviewed_revision": null,
+      "production_verification": {
+        "status": "not_started",
+        "evidence": null
+      },
+      "blocked_reason": null
+    },
+    {
+      "id": "PR-003",
+      "title": "Fresh overnight news: no repeats, published-date freshness, global cues",
+      "story": "docs/planning/PI-2026-09/stories/PR-003.md",
+      "sprint": "product_track",
+      "points": 2,
+      "priority": "P1",
+      "scope": "planned",
+      "status": "todo",
+      "origin": "docs/audit/2026-10-11-product-results-review.md",
+      "depends_on": [],
+      "sequencing_note": "Product results track, owner request 2026-10-11 (review docs/audit/2026-10-11-product-results-review.md): placed right after SA-011 in STATE order so 'continue' selects it ahead of the remaining SA reliability/learning stories. Order: FIX-007, PR-001, PR-002, PR-003, SA-050, SA-051, PR-004, PR-006, PR-011, PR-009, SA-048, SA-049, PR-005, PR-007, PR-008, PR-010, PR-012 (PR-011 moved up to follow PR-006 and made P1 on 2026-10-12, owner: 'I need more data'; order confirmed by the owner 2026-10-12: 'ya continue on the new order').",
+      "implementation_receipt": null,
+      "review_receipt": null,
+      "reviewed_revision": null,
+      "production_verification": {
+        "status": "not_started",
+        "evidence": null
+      },
+      "blocked_reason": null
+    },
+    {
+      "id": "SA-050",
+      "title": "Apply one sizing rule to every autopilot buy",
+      "story": "docs/planning/PI-2026-09/stories/SA-050.md",
+      "sprint": 2,
+      "points": 3,
+      "priority": "P1",
+      "scope": "planned",
+      "status": "todo",
+      "sequencing_note": "Moved forward 2026-10-11 into the product results block after SA-011 (owner request; docs/audit/2026-10-11-product-results-review.md). Amended 2026-10-12 from the production baseline (review section 11): weights against total equity, not the holdings (ADD was locked: FEDERALBNK about 13.4% of equity read as 72.9%), and one entry rule for every buy (WELCORP was switched into at 34% above its entry band); points 2 -> 3.",
+      "depends_on": [],
+      "implementation_receipt": null,
+      "review_receipt": null,
+      "reviewed_revision": null,
+      "production_verification": {
+        "status": "not_started",
+        "evidence": null
+      },
+      "blocked_reason": null
+    },
+    {
+      "id": "SA-051",
+      "title": "Show the portfolio against the Nifty, with honest labels",
+      "story": "docs/planning/PI-2026-09/stories/SA-051.md",
+      "sprint": 2,
+      "points": 3,
+      "priority": "P1",
+      "scope": "planned",
+      "status": "todo",
+      "sequencing_note": "Moved forward 2026-10-11 into the product results block after SA-011 (owner request; docs/audit/2026-10-11-product-results-review.md).",
+      "depends_on": [],
+      "implementation_receipt": null,
+      "review_receipt": null,
+      "reviewed_revision": null,
+      "production_verification": {
+        "status": "not_started",
+        "evidence": null
+      },
+      "blocked_reason": null
+    },
+    {
+      "id": "PR-004",
+      "title": "Enough researched ideas to fill 10+ positions",
+      "story": "docs/planning/PI-2026-09/stories/PR-004.md",
+      "sprint": "product_track",
+      "points": 3,
+      "priority": "P1",
+      "scope": "planned",
+      "status": "todo",
+      "origin": "docs/audit/2026-10-11-product-results-review.md",
+      "depends_on": [],
+      "sequencing_note": "Product results track, owner request 2026-10-11 (review docs/audit/2026-10-11-product-results-review.md): placed right after SA-011 in STATE order so 'continue' selects it ahead of the remaining SA reliability/learning stories. Order: FIX-007, PR-001, PR-002, PR-003, SA-050, SA-051, PR-004, PR-006, PR-011, PR-009, SA-048, SA-049, PR-005, PR-007, PR-008, PR-010, PR-012 (PR-011 moved up to follow PR-006 and made P1 on 2026-10-12, owner: 'I need more data'; order confirmed by the owner 2026-10-12: 'ya continue on the new order').",
+      "implementation_receipt": null,
+      "review_receipt": null,
+      "reviewed_revision": null,
+      "production_verification": {
+        "status": "not_started",
+        "evidence": null
+      },
+      "blocked_reason": null
+    },
+    {
+      "id": "PR-006",
+      "title": "A daily company-event feed for held, watched and shelf stocks",
+      "story": "docs/planning/PI-2026-09/stories/PR-006.md",
+      "sprint": "product_track",
+      "points": 3,
+      "priority": "P1",
+      "scope": "planned",
+      "status": "todo",
+      "origin": "docs/audit/2026-10-11-product-results-review.md",
+      "depends_on": [],
+      "sequencing_note": "Product results track, owner request 2026-10-11 (review docs/audit/2026-10-11-product-results-review.md): placed right after SA-011 in STATE order so 'continue' selects it ahead of the remaining SA reliability/learning stories. Order: FIX-007, PR-001, PR-002, PR-003, SA-050, SA-051, PR-004, PR-006, PR-011, PR-009, SA-048, SA-049, PR-005, PR-007, PR-008, PR-010, PR-012 (PR-011 moved up to follow PR-006 and made P1 on 2026-10-12, owner: 'I need more data'; order confirmed by the owner 2026-10-12: 'ya continue on the new order').",
+      "implementation_receipt": null,
+      "review_receipt": null,
+      "reviewed_revision": null,
+      "production_verification": {
+        "status": "not_started",
+        "evidence": null
+      },
+      "blocked_reason": null
+    },
+    {
+      "id": "PR-011",
+      "title": "New data: promoter and insider trades, pledges, shareholding changes",
+      "story": "docs/planning/PI-2026-09/stories/PR-011.md",
+      "sprint": "product_track",
+      "points": 3,
+      "priority": "P1",
+      "scope": "planned",
+      "status": "todo",
+      "origin": "docs/audit/2026-10-11-product-results-review.md",
+      "depends_on": [
+        "PR-006"
+      ],
+      "sequencing_note": "Product results track, owner request 2026-10-11 (review docs/audit/2026-10-11-product-results-review.md): placed right after SA-011 in STATE order so 'continue' selects it ahead of the remaining SA reliability/learning stories. Order: FIX-007, PR-001, PR-002, PR-003, SA-050, SA-051, PR-004, PR-006, PR-011, PR-009, SA-048, SA-049, PR-005, PR-007, PR-008, PR-010, PR-012 (PR-011 moved up to follow PR-006 and made P1 on 2026-10-12, owner: 'I need more data'; order confirmed by the owner 2026-10-12: 'ya continue on the new order').",
+      "implementation_receipt": null,
+      "review_receipt": null,
+      "reviewed_revision": null,
+      "production_verification": {
+        "status": "not_started",
+        "evidence": null
+      },
+      "blocked_reason": null
+    },
+    {
+      "id": "PR-009",
+      "title": "Exit on evidence, not on a price-path miss (shadow, then switch)",
+      "story": "docs/planning/PI-2026-09/stories/PR-009.md",
+      "sprint": "product_track",
+      "points": 5,
+      "priority": "P1",
+      "scope": "planned",
+      "status": "todo",
+      "origin": "docs/audit/2026-10-11-product-results-review.md",
+      "depends_on": [
+        "PR-002",
+        "PR-006"
+      ],
+      "sequencing_note": "Product results track, owner request 2026-10-11 (review docs/audit/2026-10-11-product-results-review.md): placed right after SA-011 in STATE order so 'continue' selects it ahead of the remaining SA reliability/learning stories. Order: FIX-007, PR-001, PR-002, PR-003, SA-050, SA-051, PR-004, PR-006, PR-011, PR-009, SA-048, SA-049, PR-005, PR-007, PR-008, PR-010, PR-012 (PR-011 moved up to follow PR-006 and made P1 on 2026-10-12, owner: 'I need more data'; order confirmed by the owner 2026-10-12: 'ya continue on the new order'). Ships in shadow; the owner switches only on the card's predeclared gate.",
+      "implementation_receipt": null,
+      "review_receipt": null,
+      "reviewed_revision": null,
+      "production_verification": {
+        "status": "not_started",
+        "evidence": null
+      },
+      "blocked_reason": null
+    },
+    {
+      "id": "SA-048",
+      "title": "Charge realistic trading costs and tax in paper P&L",
+      "story": "docs/planning/PI-2026-09/stories/SA-048.md",
+      "sprint": 3,
+      "points": 3,
+      "priority": "P1",
+      "scope": "planned",
+      "status": "todo",
+      "sequencing_note": "Moved forward 2026-10-11 into the product results block after SA-011 (owner request; docs/audit/2026-10-11-product-results-review.md).",
+      "depends_on": [],
+      "implementation_receipt": null,
+      "review_receipt": null,
+      "reviewed_revision": null,
+      "production_verification": {
+        "status": "not_started",
+        "evidence": null
+      },
+      "blocked_reason": null
+    },
+    {
+      "id": "SA-049",
+      "title": "Put idle cash to work in normal markets",
+      "story": "docs/planning/PI-2026-09/stories/SA-049.md",
+      "sprint": 3,
+      "points": 7,
+      "priority": "P1",
+      "scope": "planned",
+      "status": "todo",
+      "sequencing_note": "Moved forward 2026-10-11 into the product results block after SA-011 (owner request; docs/audit/2026-10-11-product-results-review.md); amended with the owner's breadth floor: portfolio.min_holdings 10, max_holdings 15, min_invested_inr 1000000, per-portfolio override, and the paper-capital decision (A: add 2 L, recommended; B: 9 L floor) for the owner at implementation; points 5 -> 6.",
+      "depends_on": [
+        "SA-050",
+        "SA-051"
+      ],
+      "owner_decision": "2026-09-27: in a normal market idle cash goes into the best available ideas; hold cash on purpose only in a crisis (MACRO_CRISIS) or when no idea passes the checks, with the reason recorded. Regime targets and the per-day buy limit are proposals the owner confirms at implementation; the switch ships off and the owner turns it on. 2026-10-12 owner decisions ('do as per recommendation but I need more data and so as the stocks'): D1 option A, add 2 L paper capital (12 L) through a new owner-only, dated DEPOSIT action (no deposit path exists today), made at rollout; D2 portfolio.target_holdings 12 (about 83,000 each), never fewer than 10 nor more than 15 in a normal market; regime still rules (RISK_OFF relaxes the floor). Points 6 -> 7.",
+      "implementation_receipt": null,
+      "review_receipt": null,
+      "reviewed_revision": null,
+      "production_verification": {
+        "status": "not_started",
+        "evidence": null
+      },
+      "blocked_reason": null
+    },
+    {
+      "id": "PR-005",
+      "title": "An investment case for every position",
+      "story": "docs/planning/PI-2026-09/stories/PR-005.md",
+      "sprint": "product_track",
+      "points": 5,
+      "priority": "P1",
+      "scope": "planned",
+      "status": "todo",
+      "origin": "docs/audit/2026-10-11-product-results-review.md",
+      "depends_on": [
+        "PR-006"
+      ],
+      "sequencing_note": "Product results track, owner request 2026-10-11 (review docs/audit/2026-10-11-product-results-review.md): placed right after SA-011 in STATE order so 'continue' selects it ahead of the remaining SA reliability/learning stories. Order: FIX-007, PR-001, PR-002, PR-003, SA-050, SA-051, PR-004, PR-006, PR-011, PR-009, SA-048, SA-049, PR-005, PR-007, PR-008, PR-010, PR-012 (PR-011 moved up to follow PR-006 and made P1 on 2026-10-12, owner: 'I need more data'; order confirmed by the owner 2026-10-12: 'ya continue on the new order').",
+      "implementation_receipt": null,
+      "review_receipt": null,
+      "reviewed_revision": null,
+      "production_verification": {
+        "status": "not_started",
+        "evidence": null
+      },
+      "blocked_reason": null
+    },
+    {
+      "id": "PR-007",
+      "title": "Plain, fact-grounded buy and sell explanations",
+      "story": "docs/planning/PI-2026-09/stories/PR-007.md",
+      "sprint": "product_track",
+      "points": 3,
+      "priority": "P1",
+      "scope": "planned",
+      "status": "todo",
+      "origin": "docs/audit/2026-10-11-product-results-review.md",
+      "depends_on": [
+        "PR-005",
+        "PR-006"
+      ],
+      "sequencing_note": "Product results track, owner request 2026-10-11 (review docs/audit/2026-10-11-product-results-review.md): placed right after SA-011 in STATE order so 'continue' selects it ahead of the remaining SA reliability/learning stories. Order: FIX-007, PR-001, PR-002, PR-003, SA-050, SA-051, PR-004, PR-006, PR-011, PR-009, SA-048, SA-049, PR-005, PR-007, PR-008, PR-010, PR-012 (PR-011 moved up to follow PR-006 and made P1 on 2026-10-12, owner: 'I need more data'; order confirmed by the owner 2026-10-12: 'ya continue on the new order').",
+      "implementation_receipt": null,
+      "review_receipt": null,
+      "reviewed_revision": null,
+      "production_verification": {
+        "status": "not_started",
+        "evidence": null
+      },
+      "blocked_reason": null
+    },
+    {
+      "id": "PR-008",
+      "title": "'Your stocks overnight' at the top of the morning brief",
+      "story": "docs/planning/PI-2026-09/stories/PR-008.md",
+      "sprint": "product_track",
+      "points": 3,
+      "priority": "P1",
+      "scope": "planned",
+      "status": "todo",
+      "origin": "docs/audit/2026-10-11-product-results-review.md",
+      "depends_on": [
+        "PR-003",
+        "PR-006"
+      ],
+      "sequencing_note": "Product results track, owner request 2026-10-11 (review docs/audit/2026-10-11-product-results-review.md): placed right after SA-011 in STATE order so 'continue' selects it ahead of the remaining SA reliability/learning stories. Order: FIX-007, PR-001, PR-002, PR-003, SA-050, SA-051, PR-004, PR-006, PR-011, PR-009, SA-048, SA-049, PR-005, PR-007, PR-008, PR-010, PR-012 (PR-011 moved up to follow PR-006 and made P1 on 2026-10-12, owner: 'I need more data'; order confirmed by the owner 2026-10-12: 'ya continue on the new order').",
+      "implementation_receipt": null,
+      "review_receipt": null,
+      "reviewed_revision": null,
+      "production_verification": {
+        "status": "not_started",
+        "evidence": null
+      },
+      "blocked_reason": null
+    },
+    {
+      "id": "PR-010",
+      "title": "Four screens for members; an Operator menu for the owner",
+      "story": "docs/planning/PI-2026-09/stories/PR-010.md",
+      "sprint": "product_track",
+      "points": 5,
+      "priority": "P1",
+      "scope": "planned",
+      "status": "todo",
+      "origin": "docs/audit/2026-10-11-product-results-review.md",
+      "depends_on": [
+        "PR-001"
+      ],
+      "sequencing_note": "Product results track, owner request 2026-10-11 (review docs/audit/2026-10-11-product-results-review.md): placed right after SA-011 in STATE order so 'continue' selects it ahead of the remaining SA reliability/learning stories. Order: FIX-007, PR-001, PR-002, PR-003, SA-050, SA-051, PR-004, PR-006, PR-011, PR-009, SA-048, SA-049, PR-005, PR-007, PR-008, PR-010, PR-012 (PR-011 moved up to follow PR-006 and made P1 on 2026-10-12, owner: 'I need more data'; order confirmed by the owner 2026-10-12: 'ya continue on the new order').",
+      "implementation_receipt": null,
+      "review_receipt": null,
+      "reviewed_revision": null,
+      "production_verification": {
+        "status": "not_started",
+        "evidence": null
+      },
+      "blocked_reason": null
+    },
+    {
+      "id": "PR-012",
+      "title": "Choose models by role, benched on our own data; refresh cost rates",
+      "story": "docs/planning/PI-2026-09/stories/PR-012.md",
+      "sprint": "product_track",
+      "points": 2,
+      "priority": "P2",
+      "scope": "planned",
+      "status": "todo",
+      "origin": "docs/audit/2026-10-11-product-results-review.md",
+      "depends_on": [
+        "PR-007"
+      ],
+      "sequencing_note": "Product results track, owner request 2026-10-11 (review docs/audit/2026-10-11-product-results-review.md): placed right after SA-011 in STATE order so 'continue' selects it ahead of the remaining SA reliability/learning stories. Order: FIX-007, PR-001, PR-002, PR-003, SA-050, SA-051, PR-004, PR-006, PR-011, PR-009, SA-048, SA-049, PR-005, PR-007, PR-008, PR-010, PR-012 (PR-011 moved up to follow PR-006 and made P1 on 2026-10-12, owner: 'I need more data'; order confirmed by the owner 2026-10-12: 'ya continue on the new order').",
       "implementation_receipt": null,
       "review_receipt": null,
       "reviewed_revision": null,
@@ -1328,86 +1779,6 @@
       "blocked_reason": null
     },
     {
-      "id": "SA-048",
-      "title": "Charge realistic trading costs and tax in paper P&L",
-      "story": "docs/planning/PI-2026-09/stories/SA-048.md",
-      "sprint": 3,
-      "points": 3,
-      "priority": "P1",
-      "scope": "planned",
-      "status": "todo",
-      "depends_on": [],
-      "implementation_receipt": null,
-      "review_receipt": null,
-      "reviewed_revision": null,
-      "production_verification": {
-        "status": "not_started",
-        "evidence": null
-      },
-      "blocked_reason": null
-    },
-    {
-      "id": "SA-049",
-      "title": "Put idle cash to work in normal markets",
-      "story": "docs/planning/PI-2026-09/stories/SA-049.md",
-      "sprint": 3,
-      "points": 5,
-      "priority": "P1",
-      "scope": "planned",
-      "status": "todo",
-      "depends_on": [
-        "SA-050",
-        "SA-051"
-      ],
-      "owner_decision": "2026-09-27: in a normal market idle cash goes into the best available ideas; hold cash on purpose only in a crisis (MACRO_CRISIS) or when no idea passes the checks, with the reason recorded. Regime targets and the per-day buy limit are proposals the owner confirms at implementation; the switch ships off and the owner turns it on.",
-      "implementation_receipt": null,
-      "review_receipt": null,
-      "reviewed_revision": null,
-      "production_verification": {
-        "status": "not_started",
-        "evidence": null
-      },
-      "blocked_reason": null
-    },
-    {
-      "id": "SA-050",
-      "title": "Apply one sizing rule to every autopilot buy",
-      "story": "docs/planning/PI-2026-09/stories/SA-050.md",
-      "sprint": 2,
-      "points": 2,
-      "priority": "P1",
-      "scope": "planned",
-      "status": "todo",
-      "depends_on": [],
-      "implementation_receipt": null,
-      "review_receipt": null,
-      "reviewed_revision": null,
-      "production_verification": {
-        "status": "not_started",
-        "evidence": null
-      },
-      "blocked_reason": null
-    },
-    {
-      "id": "SA-051",
-      "title": "Show the portfolio against the Nifty, with honest labels",
-      "story": "docs/planning/PI-2026-09/stories/SA-051.md",
-      "sprint": 2,
-      "points": 3,
-      "priority": "P1",
-      "scope": "planned",
-      "status": "todo",
-      "depends_on": [],
-      "implementation_receipt": null,
-      "review_receipt": null,
-      "reviewed_revision": null,
-      "production_verification": {
-        "status": "not_started",
-        "evidence": null
-      },
-      "blocked_reason": null
-    },
-    {
       "id": "DOC-001",
       "title": "Refresh current-code KT documents and separate human testing duties",
       "story": "docs/planning/PI-2026-09/stories/DOC-001.md",
@@ -1639,6 +2010,18 @@
     }
   ],
   "history": [
+    {"date": "2026-10-13", "event": "FIX-007 ACCEPTED by its fresh-session review (a new conversation opened with 'continue', 12 Oct about 23:17 IST to 13 Oct about 00:20 IST; 36 peers idle; receipt evidence/FIX-007-review.md). Input ff6001e7 and diff 910503e2 verified independently (base proved by blob ids). Own trace through a real uvicorn server and real Chromium: 93 passed; 70 fail on the ungated routes; M1-M6 all caught; 13 path spellings and a CORS preflight leak nothing; markup in a log line stays text. Findings: L1 low docs (guide 11-G expected 403 for a member's typed URL; it is 401) fixed by the review; L2 low test gap (no test leaves the screen; mutant F4) -> SA-031; I1 CODEBASE story tag removed; I2-I4 infos. Full suite 4471 passed, 12 skipped, 0 failed (8 min 39 s). active_task null, FIX-007 done (production pending_deployment), next_task FIX-008. Nothing committed, pushed, deployed or configured; no production state read."},
+    {"date": "2026-10-12", "event": "FIX-008 ADDED at the owner's request (about 23:10-23:30 IST, the SA-011 re-review conversation, follow-up question; planning only). SA-011 I7 decided by the owner: option 3, register the error_backlog watchdog entry only after operator notices reach the owner alone. By code inspection, emit_alerts_broadcast sends operator notices (watchdog, ops_alerts, audit thresholds, reconcile drift and portfolio quarantine naming a user's id, universe budget, atlas_etl) to every push-subscribed account plus the default user, and the shared mailbox gets one email per audience user. Card stories/FIX-008.md (P1, 2 points, depends on SA-011); placed directly after FIX-007, before PR-001, under the security/privacy-first rule; product order otherwise unchanged. active_task and next_task (FIX-007, its fresh review) unchanged; FIX-007's review input (ff6001e7) untouched: the KT, PDF, guide, CODEBASE and PRODUCT_MAP were not edited. Nothing committed, pushed, deployed, configured or sent; no production state read."},
+    {"date": "2026-10-12", "event": "FIX-007 implemented (a new conversation opened with 'continue', about 14:06-15:00 IST; 35 peers idle; receipt evidence/FIX-007-implementation.md). /ui/logs and /ui/logs/stream owner-only (require_owner); Logs screen reads the stream with fetch and shows a plain refusal without the key prompt. 42 server invariant tests through server.app + 3 browser tests; 7 server and 4 browser variants caught; full suite 4471 passed, 12 skipped, 0 failed (second run; the first had 1 Windows rename flake in test_ipo_verdicts_store.py, 23/23 alone, class routed to SA-031). Review input ff6001e7, diff 910503e2. next_task FIX-007 = fresh review. Nothing committed, pushed or deployed; no production state read.", "review_input_sha256": "ff6001e76333439d271d843d76e764aed173eae46dc1056de04c2bd4c0aa8411"},
+    {"date": "2026-10-12", "event": "SA-011 ACCEPTED by its fresh-session re-review of rework 2 (a new conversation opened with 'continue', about 08:06-08:35 IST; 35 peers idle; receipt evidence/SA-011-review.md section 'Re-review of rework 2'). Input 0323f2a8 verified at start and end (13 files, 0 mismatches; own git hash-object); rework diff ad35960c rebuilt independently (identical hunks) and read in full; cumulative c8965571 reproduced. RR-M1 fixed: 9 bare notations refused with the form through server.app, nothing written; offset forms refused naming last seen in IST. RR-I1 and RR-I4 hold (real log writer, both read orders within one second; IST digest around midnight). Story tests 111 passed, 11 fail on the review2 module; own trace 4/4 (all fail on base); own mutants 9: 6 caught by the story file, X1-X3 (equality/precision edges) only by own trace/probe -> RR2-I1 routed to SA-031. Full suite 4429 passed, 12 skipped, 0 failed (5 min 54 s); runtime data unchanged (798, d9fa2376); check_kt_docs errors []. SA-011 done; production_verification pending_deployment. active_task null, next_task FIX-007 (not started). Nothing committed, pushed, deployed or configured; no production state read.", "review_input_sha256": "0323f2a893f76e18b09058fbfb2ddeea51e1ea2205afa93ce7f8efce704d59e1"},
+    {"date": "2026-10-12", "event": "SA-011 REWORK 2 implemented (a new conversation opened with 'continue', about 07:30-08:05 IST; 34 peers idle; receipt evidence/SA-011-implementation.md section 'Rework 2'). Input 158479b4 verified (0 mismatches) and snapshotted. RR-M1: a fixed_at without a UTC offset (or a date alone) is refused with the form to give. RR-I1: times stored at logged precision (whole-second occurrence comparison tried and rejected: it broke the first reviewer's same-second trace). RR-I4: IST in refusals and the digest. Story tests 111 passed; 11 fail on the re-reviewed module; mutants 12 of 12 (rework 2) and 16 of 16 (rework 1) caught; both reviewers' traces pass unchanged; full suite 4429 passed, 12 skipped, 0 failed; runtime data 798 files, d9fa2376. New input 0323f2a8; rework diff ad35960c; cumulative c8965571. next_task SA-011 = fresh re-review. Nothing committed, pushed, deployed or configured."},
+    {"date": "2026-10-12", "event": "SA-011 fresh-session RE-REVIEW of rework 1: CHANGES REQUESTED (a new conversation opened with 'continue', about 07:07-07:30 IST; 33 peers idle; receipt evidence/SA-011-review.md). Input 158479b4 verified (13 files, 0 mismatches; own git hash-object), rework diff 13164cff and cumulative 36b27f3a reproduced, the review1 snapshot proven by own hashing. First-review findings all fixed. RR-M1 medium: a fixed_at without an offset is read as UTC, so an IST deploy time hides a recurrence within 5.5 h and the fix reads 'fixed, verified' (real app). Infos RR-I1..I4. Story tests 96 passed; 22 fail on the review1 module; full suite 4414 passed, 12 skipped, 0 failed (8 min 39 s); runtime data 798 files d9fa2376 unchanged. Input preserved as SA-011-manifest-review2.json. next_task SA-011 = rework 2. Nothing committed, pushed, deployed or configured."},
+    {"date": "2026-10-12", "event": "SA-011 rework 1 implemented (a new conversation opened with 'continue', about 06:28-07:10 IST): M1, L1-L4 fixed, L5 decided (ack_quiet_days 35), I1 taken; story tests 96 passed; full suite 4414 passed, 12 skipped, 0 failed (8 min 18 s); data/logs/outputs unchanged (798 files, d9fa2376); review_required, next_task SA-011 = its fresh re-review. Nothing committed, pushed, deployed or configured; no production state read.", "review_input_sha256": "158479b48f00ac51f7f2227b69b15b2e2a061a7d135312a92431d311337ca4a3"},
+    {"date": "2026-10-12", "event": "SA-011 fresh-session review: CHANGES REQUESTED (a new conversation opened with 'continue', about 01:00-01:25 IST; 31 peers idle; receipt evidence/SA-011-review.md). Input f4343eae verified (13 files, 0 mismatches, again at the end); diff b669cf36 rebuilt by the reviewer's own script (the KT from the peer blob 0155b79a at the receipt's path); input preserved as SA-011-manifest-review1.json. Contract: AC1 met (app level only; envelope a statistic); AC2 met with L2/L3 (0 of 535 local templates hit leak detectors; no WARNING+ call site logs chat text or a body unquoted); 'acknowledged can regress' met; the reading of 'pending verification reconciles against measured evidence' confirmed but NOT met: M1 (medium) a fix marked with a backdated fixed_at reads 'verified' despite a recurrence after it that the registry already holds; reproduced through the real app (triage response itself says verified; missing from GET /ops/errors; digest 'fixed, verified'). No LLM confirmed; nothing sent (runner.py:171 runs only registered checks); app_logs only read. Reviewer trace through server.app with real signup/invite and real SQLiteLogHandler: owner/member 403/anonymous 401, assign, fix, regress keeping the task, app_logs unchanged. Lows L1 future fixed_at, L2 ticker column splits a cause (local 4 causes -> 8 issues), L3 Basic credential and %40 address, L4 guide 12-J wording, L5 acknowledged periodic warnings reopen; I1 ops/ not in the SPA API namespaces; I2 batch holds the telemetry write lock 0.47-0.62 s locally; I3 pathological normalise 0.77 s. Story tests 66 passed; full suite 4384 passed, 12 skipped, 0 failed (8 min 54 s); data/logs/outputs unchanged (798 files, d9fa2376). Status changes_requested; next_task SA-011 (rework 1 in a new conversation, then a fresh re-review). No living document edited; nothing committed, pushed, deployed or configured; no production state read. docs/README.md's new railway ssh line (01:00:16 IST, the owner's) is not SA-011's and was not touched."},
+    {"date": "2026-10-12", "event": "Owner decisions and production baseline for the product results track (conversation stockagent-main-43, about 00:35-01:00 IST; docs only; nothing committed, pushed, deployed or configured). The owner ran the read-only probe analysis_data/review_20261011/portfolio_results_probe.py on 11 Oct and pasted the output (sanitized summary in docs/audit/2026-10-11-product-results-review.md section 11): 2 holdings, 81% cash; since 10 Jul the portfolio -0.5% vs the Nifty -8.2% (cash in a falling market, by accident of the rules); 8 sales since 1 Aug, 4 wins, expectancy -2.2% per trade (avg win +7.5%, avg loss -11.9%); auditor exits: 7/10 right at 10 sessions but 6/7 sold stocks beat the Nifty at 30 sessions; shelf ideas beat the Nifty 13/21 at 30 sessions while held stocks lagged; the brief repeated 32 of 57 items. Defects confirmed: weights measured against holdings not equity (ADD locked), SWITCH ignores the entry band (WELCORP +34% above band), shelf holds a liquid ETF and 7 pre-gate ideas. Owner decisions 2026-10-12: (1) the new order confirmed ('ya continue on the new order'); (2) capital option A and 'more data and so as the stocks' -> SA-049 D1 (2 L paper capital via a new dated DEPOSIT action, at rollout) and D2 (target_holdings 12; 10 to 15), points 6 -> 7; PR-011 P2 -> P1 and moved after PR-006. Card amendments: SA-050 (equity denominator, entry rule; 2 -> 3), PR-004 (only companies, real-industry cap, re-dive pre-gate ideas), PR-009 (grade at 10 and 30 sessions, gate needs both, >= 15 matured at 30 over >= 8 weeks), PR-002 (red flag at 30 sessions). KT/PDF deliberately NOT edited: SA-011's review manifest covers them; the implementing stories carry these facts into the KT. active_task/next_task untouched (SA-011 review_required)."},
+    {"date": "2026-10-11", "event": "SA-011 IMPLEMENTED (new conversation, about 14:44-16:00 IST; peer stockagent-main-43 coordinated by message): durable-error backlog (core/ops/error_backlog.py), owner-only /ops/errors routes, unregistered watchdog check error_backlog, scripts/prod_errors.py, config error_backlog section; KT sections 3, 9, 10, 11, 13 + PDF (source c9a8e239), ARCHITECTURE, CODEBASE, PRODUCT_MAP, TEAM_TESTING_GUIDE (12-A, new 12-J). Tests: 66 new, 23 mutants caught, full suite 4384 passed, 12 skipped, 0 failed (6 min 27 s, final bytes). status review_required; review input f4343eae, diff b669cf36. Nothing committed, pushed, deployed or configured; no production state read. next_task SA-011 (its fresh review)."},
+    {"date": "2026-10-11", "event": "Owner-requested product results review (separate conversation stockagent-main-43, about 13:00-15:30 IST; docs only, nothing committed, pushed, deployed or configured; no production state read). Findings in docs/audit/2026-10-11-product-results-review.md: sells come mostly from thesis_break, an EXIT fired by a thesis review after a daily price-path miss (July snapshot: 9/9 sales, held 4-17 days; 6 of 8 measurable sold stocks beat the Nifty over the next 20 sessions, median +3.0 points); the narrator gets only rule codes, so reasons cannot be company-specific; the autopilot opens positions only via SWITCH, so the portfolio shrank to 2 holdings; the brief's overnight section is 4 generic searches with fetch-date freshness (one RBI/rupee story in 8 consecutive July briefs); the portfolio page shows score x 10,000 as rupees ('Avoided loss'); the home hero is hard-coded ('Aditi', 'Auto sector +1.24%', 'Nifty Auto 22,847'); members see operator screens. Found on the way: GET /ui/logs and /ui/logs/stream need no sign-in (code inspection) -> FIX-007. New tasks FIX-007, PR-001..PR-012 (41 points); SA-048..SA-051 moved forward; SA-049 amended with the owner's breadth floor (10+ holdings, 10 L invested, configurable; points 5 -> 6); SA-046 and SA-051 cards gain one-schema/one-module notes. Read-only production probe for the owner: analysis_data/review_20261011/portfolio_results_probe.py (ignored). active_task/next_task untouched (SA-011 in progress in another session)."},
+    {"date": "2026-10-11", "event": "COMMITTED b9cc851 ('docs: record FIX-005's production verification and route L2 as FIX-006', 5 files: KT, PDF, STATE, HANDOFF, FIX-006 card) and PUSHED 6266772..b9cc851 at 11:12:41 IST at the owner's word ('commit the docs and push them'). origin/main checked as 6266772 first; docs only; requirements and Dockerfile unchanged; Sunday window clear until the 17:45 IPO refresh. Deploy not confirmed by Claude; the owner reads railway deployment list and /health. This note is uncommitted and goes with the next commit."},
     {"date": "2026-10-11", "event": "FIX-005 production_verification VERIFIED (about 11:10 IST, deployment dda41574, the owner's read-only checks): a member account the owner signed up with an invite asked chat 'show my brief' and was told no brief is available yet (no holdings), with none of the owner's data; the owner's own account gets the owner's 9 Oct brief. Review I1: nothing to purge (the member was created for this check). KT section 1 gains a 'Chat brief scope' row, verified 2026-10-11, and drops it from the 'awaits observation' list; PDF rebuilt (final source 5ea85416, 37 pages, replacing the uncommitted 865b6d4c build); check_kt_docs errors []. Note: with Atlas on, this member also gets a morning brief from the next weekday 08:50 run."},
     {"date": "2026-10-11", "event": "Owner's read-only checks, reported about 11:00 IST: railway deployment list shows dda41574 SUCCESS at 08:57:41 IST (the 6266772 push; code = 954305a), 77feeddb REMOVED; /health good. FIX-005 deployed: production_verification pending_observation. Owner case PASSED: chat 'show my brief' returns the owner's own brief (09 Oct). Cross-account case not yet observed (whether a member account exists is unknown; an invite with used_by set means one does). KT section 1: production runs the inspected code (954305a), confirmed, and the chat brief's user scope joins the deployed behaviour awaiting observation; PDF rebuilt (source 865b6d4c, 37 pages); check_kt_docs errors []. Owner routed review L2 ('put that L2 for last'): new task FIX-006 (todo, P2, card stories/FIX-006.md), placed last and to be selected only when every other planned story is done. next_task stays SA-011. Uncommitted."},
     {"date": "2026-10-11", "event": "COMMITTED 6266772 ('docs: record FIX-005's fresh-review acceptance', 5 files) and PUSHED 304dcff..6266772 at 08:57:41 IST at the owner's word ('go ahead commit and push'). origin/main checked as 304dcff first; docs only; requirements and Dockerfile unchanged; Sunday window clear until the 17:45 IPO refresh. Deploy not confirmed by Claude; the owner reads railway deployment list and /health. This note is uncommitted and goes with the next commit."},

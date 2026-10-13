@@ -354,7 +354,7 @@ acts as owner (single-user passthrough).
 | POST | `/ui/feedback` | session user | Atlas C8 (BP5) — record a user's accept/override/ignore on an advice card (`symbol`, `action`, optional `verdict_shown`/`override_direction`/`position_state`). Append-only to `feedback_events`; dormant no-op until `ATLAS_ENABLED`. |
 | POST | `/ui/chat/stream` | None | **Primary chat** — agentic streaming tool-loop (SSE). Deterministic intent pre-router pre-fetches screen+news for buy/sell/momentum queries; BULK-tier default with reasoning disabled, glm-5.2 escalation on failure; **45s per-turn wall-clock budget**, ≤4 upstream attempts per logical call, one budget-free final synthesis. Server-side session memory (`session_id`). Events: `intent`, `tool_result`, `token`, `done`. |
 | POST | `/ui/chat` | None | Non-streaming twin of the chat loop (blocking JSON reply; same server session memory — returns `session_id`, client-sent history is ignored). Frontend fallback. |
-| GET | `/ui/logs` · `/ui/logs/stream` | None | Recent server log lines (ring buffer) + SSE tail. |
+| GET | `/ui/logs` · `/ui/logs/stream` | owner or machine key | Recent server log lines (ring buffer) + SSE tail. Lines carry user ids and the buffer redacts nothing, so a member gets 403 and a caller without a session 401 before the buffer is read. The Logs screen reads the stream with `fetch` so the session header is sent. |
 
 ### Managed Tickers (`/ui/tickers/managed*`) — RL universe administration
 
@@ -644,6 +644,12 @@ Models are tiered (2026-06-03 benchmark, `scripts/model_bench.py`; bulk re-bench
 | `ANALYSE_DAILY_QUOTA` | `10` | Member daily on-demand pipeline runs (`POST /analyse` + `WS /ws/stream`); owner exempt; 0 = unlimited. **`config.yaml` key `analyse.daily_quota` only — no env override.** One run ≈ 8 LLM calls, hence tighter than chat |
 | `watchdog.enabled` | `true` | Master gate for the `ops_watchdog` job (06:30 IST daily). **`config.yaml` only — no env override.** |
 | `watchdog.prep_enabled` | `true` | Auto-run idempotent prep (e.g. the Atlas ETL) when a milestone's window is open. Set false for notify-only. |
+| `error_backlog.new_days` / `quiet_days` / `verify_days` | `2` / `7` / `7` | Operations backlog: an issue first seen (or back) this recently is new/regressed; absent this long is quiet, and an open issue's return after it regresses; a fix is verified after this long with no recurrence, once the archive covers the window |
+| `error_backlog.ack_quiet_days` | `35` | An acknowledged issue regresses only after this long quiet, longer than a monthly job's cadence |
+| `error_backlog.spike_baseline_days` / `spike_sigma` / `spike_min` | `14` / `3.0` / `10` | Spiking: today's or yesterday's count above the trailing mean + sigma·sd of its own baseline, and at least this many |
+| `error_backlog.retention_days` / `max_issues` | `90` / `2000` | Prune an inactive issue after this long unseen; table cap that never drops an active issue |
+| `error_backlog.daily_days` / `keep_ids` | `30` / `20` | Per-issue daily counts and run ids/tickers kept |
+| `error_backlog.batch_rows` / `max_rows_per_refresh` | `2000` / `20000` | `app_logs` rows per transaction / per read; the next read continues from the cursor |
 | `PORTFOLIO_MAX_MANAGED_TICKERS` | `40` | Auto-promotion cap — guards LLM spend; oldest watchlist-origin entry rotates out at cap |
 | `PORTFOLIO_WEEKLY_REVIEW_WEEKDAY` | `4` | Friday — watchlist-cadence names review this weekday only (held names review daily) |
 | `ADVISOR_ENABLED` | `true` | Master switch for the post-review advisor pipeline |
@@ -894,6 +900,7 @@ All paths verified to exist. Paths are relative to project root.
 | `core/delivery/weekly.py` | Weekly review builder (allocation, laggards, scoreboard) |
 | `core/delivery/index_watch.py` | Index constituent snapshot diff → alerts |
 | `services/api/routes/delivery_api.py` | /delivery/* — briefs, weekly, alerts, push subscriptions |
+| `services/api/routes/ops_api.py` | /ops/errors* — the operations backlog: ranked issues, plain-text digest, triage (owner or machine key) |
 | `scripts/gen_vapid_keys.py` | One-time VAPID keypair generation for web-push |
 | `services/data/stores/eod_store.py` | `EodStore` — per-day parquet EOD cache (canonical 12-column schema) |
 | `services/data/fetchers/bhavcopy.py` | NSE delivery-bhavcopy fetcher + resumable `sync_recent()` |
@@ -905,9 +912,10 @@ All paths verified to exist. Paths are relative to project root.
 | `data/rl/paper/predictions/` | ISOLATED paper-lane RL store — never mixed into real metrics |
 | `services/api/routes/prompts.py` | /ui/prompts/* — live prompt editing and GitHub deploy |
 | `services/api/routes/analytics.py` | /analytics/* — RL performance exports and Power BI feed |
-| `services/api/log_buffer.py` | In-memory ring buffer for real-time log streaming |
+| `services/api/log_buffer.py` | In-memory ring buffer for real-time log streaming (read only through the owner-only `/ui/logs` routes) |
 | `services/scheduler/python/scheduler.py` | APScheduler: daily RL review (4:30pm IST), monthly forecast (1st, 9am IST), calendar update (Dec 31), pre-open shock check (`preopen_shock_check`, Mon-Fri 08:45 IST, Living Envelope §27.3), Job 13 morning brief (Mon-Fri 08:50 IST) + Job 14 weekly review (Sun 18:00 IST, Compass Phase C), `ops_watchdog` (06:30 IST daily) |
 | `core/ops/watchdog/` | **The watchdog.** Reads `config/milestones.yaml` — the authoritative registry of dated milestones and standing invariants — runs named checks, and notifies on transitions via `ops_alerts`. `registry.py` loads/validates, `checks.py` probes state, `prep.py` auto-runs safe idempotent preparation, `engine.py` is the pure escalation ladder, `runner.py` wires it to state + delivery |
+| `core/ops/error_backlog.py` | **The operations backlog.** Groups `telemetry.db` `app_logs` rows into issues by a deterministic fingerprint (normalised template of source, logger, message), keeps first/last seen, counts, run ids and a lifecycle (new/regressed/spiking/quiet; acknowledged/fixed/wontfix, fix verified by archive coverage; a fix time the recorded occurrences already contradict, a future one, or one without a UTC offset is refused) in `error_issues`, with bounded retention. Read and triaged at `/ops/errors`; `scripts/prod_errors.py` prints it |
 | `services/data/stores/score_store.py` | SQLite score history (read/write/delta/range queries) |
 | `services/background/macro_news_cache.py` | Daily macro news cache read/write |
 | `services/clients/llm_client.py` | Async OpenRouter LLM client |

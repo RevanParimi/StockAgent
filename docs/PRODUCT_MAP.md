@@ -90,7 +90,7 @@ Railway variable change redeploys).
 
 **`config.yaml` sections:** `llm`, `logging`, `agent_execution`,
 `agent_weights`, `score_thresholds`, `data_fetch`, `scheduler`, `chat`,
-`analyse`, `watchdog`, `macro_news`, `regime`, `regime_multipliers`,
+`analyse`, `watchdog`, `error_backlog`, `macro_news`, `regime`, `regime_multipliers`,
 `sector_agent_regime_role`, `rl`, `unified_analyst`, `portfolio`, `advisor`,
 `discovery`, `ipo`, `observability`, `decision_gate`, `sectors`,
 `generic_graph`, `delivery`, `atlas`, `audit`, `universe`.
@@ -504,7 +504,7 @@ error direction (KT [section 5](TECHNICAL_DESIGN.md#grading-defect-an-example-ev
 
 ### 14.1 API — `services/api/server.py`
 
-13 routers: **86 router endpoints and 1 WebSocket**, plus 3 app-level routes
+14 routers: **89 router endpoints and 1 WebSocket**, plus 3 app-level routes
 (`/health`, `/tickers` and the single-page fallback).
 
 | Router | Path | Endpoints and surface |
@@ -518,11 +518,12 @@ error direction (KT [section 5](TECHNICAL_DESIGN.md#grading-defect-an-example-ev
 | discovery | `services/api/routes/discovery_api.py` | 5: shelf, screen, run, promote, drop |
 | rl_monitor | `services/api/routes/rl_monitor.py` | 5: read-only learning views, with the learning mode |
 | scheduler | `services/api/routes/scheduler_api.py` | 4: status and job triggers (owner or machine key) |
+| ops | `services/api/routes/ops_api.py` | 3: the operations backlog, its digest and triage (owner or machine key) |
 | audit, history | `services/api/routes/audit_api.py`, `history.py` | 2 each |
 | analyse | `services/api/routes/analyse.py` | 1: an on-demand analysis (member quota) |
 | stream | `services/api/routes/stream.py` | The WebSocket `/ws/stream` with agent progress |
 | Auth gate | `services/api/auth.py` | Session, owner and machine-key checks |
-| Log buffer | `services/api/log_buffer.py` | The managed list's readers and a live log ring buffer |
+| Log buffer | `services/api/log_buffer.py` | The managed list's readers and a live log ring buffer, read only by the owner or the machine key (`/ui/logs`) |
 
 ### 14.2 Chat sub-system
 
@@ -618,6 +619,11 @@ carries no valid user id (CHAT_ARCHITECTURE section 2). One exception
 remains: with Atlas on and `AUTH_REQUIRED` on, an anonymous
 `GET /ui/watchlist` reads the default user's watchlist.
 
+**Server logs.** Log lines name users and their trade activity, and the ring
+buffer redacts nothing, so `GET /ui/logs` and `/ui/logs/stream` take the
+owner session or the machine key. A member gets 403 and a caller without a
+session 401, before the buffer is read (KT section 10).
+
 **Switches.** With `AUTH_REQUIRED` off (the code default), anonymous requests
 act as the owner. With `ATLAS_ENABLED` off, the Atlas layer is a dormant
 no-op and delivery sends inline.
@@ -630,6 +636,11 @@ no-op and delivery sends inline.
   runner) reads `config/milestones.yaml` at 06:30, runs its invariants
   (`backup_recoverable` among them) and mails or pushes the result. A sent
   notice is not completion (KT section 10).
+- **Operations backlog** — `core/ops/error_backlog.py` groups the durable
+  WARNING+ log rows into issues, one per cause, that the owner reads and
+  triages at `/ops/errors` (or `scripts/prod_errors.py`). A fix is verified
+  by measured archive coverage, a recurrence reopens it, and a fix time the
+  recorded occurrences already contradict is refused (KT section 10).
 - **Backups** — `services/data/backup.py`: the Railway volume is the only
   home of the ledgers, the prediction tree and the SQLite stores. Each nightly
   archive is restore-drilled (`restore.py`) and, once the owner configures a

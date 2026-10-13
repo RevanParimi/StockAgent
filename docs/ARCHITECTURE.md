@@ -126,6 +126,13 @@ by directory rename, never copying or rewriting bytes
   `backup_recoverable` check reports a failed drill, a stopped job or a missing
   off-site copy. `python -m services.data.restore fetch` is the restore
   runbook.
+- **Operations backlog.** WARNING+ log records in `telemetry.db` are grouped
+  into issues by a deterministic fingerprint, one per cause, with first and
+  last seen, counts, runs and a lifecycle (new, regressed, spiking, quiet;
+  acknowledged, fixed, wontfix). A fix is verified only by measured archive
+  coverage, a recurrence reopens it, and a fix time that recorded
+  occurrences already contradict is refused. `GET /ops/errors` is owner-only and
+  sends nothing; the raw log rows are never changed.
 - **Watchdog.** Milestones and invariants are checked every morning. A lapsed
   milestone is judged, then retired with its evidence or re-dated with a
   reason.

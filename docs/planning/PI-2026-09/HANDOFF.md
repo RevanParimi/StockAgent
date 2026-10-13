@@ -1,4 +1,4 @@
-# Current handoff - 2026-10-13 (updated about 14:20 IST)
+# Current handoff - 2026-10-13 (updated about 14:45 IST)
 
 ## Also 11 Oct (about 13:00–15:30 IST): product results review and new tasks (separate conversation)
 
@@ -73,6 +73,23 @@ Docs only; nothing committed, pushed, deployed or configured.
   section 11.
 
 ## START HERE — resume checklist, in order
+
+**Committed 13 Oct about 14:40 IST, at the owner's word ("go ahead commit and push").** Push held
+to after 15:05 IST.
+- `1acb17b` FIX-008 code, config and tests (the reviewed bytes); `e85da94` the docs, evidence, the
+  FIX-009 card, STATE and HANDOFF; then the KT bump to `e85da94` (section 12's FIX-008 row `Done`;
+  section 1 says production runs the inspected code once this afternoon's deploy is confirmed;
+  PDF rebuilt; deep-dive headers; guide 10-G and 12-K status lines).
+- `docs/README.md` (the owner's own probe line) is left uncommitted.
+- **Why the push waits:** at 14:37 an 8-minute redeploy would reach the 14:55–15:05 window
+  (15:00 intraday macro news).
+- **Rollout order:** SA-011's 09:07 deploy is not yet confirmed and its first backlog read not
+  triaged. After this deploy the 06:30 watchdog warns the owner once a day (counts and the top
+  three issues) until the backlog is triaged; nothing reaches the member.
+- **After the deploy:** the owner confirms `railway deployment list` and `/health`, runs
+  FIX-007's and SA-011's rollout checks and FIX-008's (review receipt), and triages the backlog
+  (`GET /ops/errors` or `scripts/prod_errors.py`). Then KT section 1 goes back to "Production
+  runs the inspected code".
 
 **FIX-008 was ACCEPTED** by its fresh review (13 Oct, about 12:37–13:10 IST, a new conversation
 opened with "continue"). Receipt: [review](evidence/FIX-008-review.md). STATE: `active_task: null`,

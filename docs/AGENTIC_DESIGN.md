@@ -1,6 +1,6 @@
 # Agentic Design Reference
 
-**Edition:** 2026-10-10 · **Code inspected:** `dd7a158`, the code production runs
+**Edition:** 2026-10-10 · **Code inspected:** `e85da94`, the code production runs
 
 **Scope:** every component that calls a language model, what it decides and
 what static code decides around it, with the data each one reads.

@@ -2,7 +2,7 @@
 
 **Edition:** 2026-10-13 · **Audience:** engineers and teammates learning the product
 
-**Code inspected:** `dd7a1580bead3e2901b2ade0beeff447942cd254`
+**Code inspected:** `e85da9419acb263fe259f7e9971aa1a168273847`
 
 **PDF:** [StockAgent-Three-Loops.pdf](StockAgent-Three-Loops.pdf), generated from this Markdown.
 
@@ -35,12 +35,13 @@ triggered no production job, backfill or notification.
 
 ### Production state at this edition
 
-Production runs the inspected code once the deployment of 13 October 2026 is
-confirmed by the owner's read-only check of the deployment list and `/health`.
-Until then it runs `954305a`, which differs only in the operations backlog and
-the owner-only server logs with their screen (section 10). The table gives the
-configuration that differs from the repository and the state of each
-operational control.
+Production runs the inspected code once the afternoon deployment of 13 October
+2026 is confirmed by the owner's read-only check of the deployment list and
+`/health`. Until then it runs `954305a`, or `33ae170` if the morning deployment
+of that day is confirmed first. They differ only in the operations backlog, the
+owner-only server logs with their screen, and operator notices that reach only
+the owner (section 10). The table gives the configuration that differs from the
+repository and the state of each operational control.
 
 | Area | State in production | Evidence |
 |---|---|---|
@@ -1829,7 +1830,7 @@ SA-011.
 | [SA-051](planning/PI-2026-09/stories/SA-051.md) | Show the portfolio against the Nifty, with honest labels | Open | 7 Marksheets; 10 Interface | None |
 | [FIX-006](planning/PI-2026-09/stories/FIX-006.md) | An anonymous watchlist read never falls back to the owner | Open | 10 Interface | None |
 | [FIX-007](planning/PI-2026-09/stories/FIX-007.md) | Server logs are readable only by the owner | Done | 10 Interface | None |
-| [FIX-008](planning/PI-2026-09/stories/FIX-008.md) | Operator notices reach only the owner; register the backlog's watchdog entry | Open | 10 Delivery; 10 Operations | SA-011 |
+| [FIX-008](planning/PI-2026-09/stories/FIX-008.md) | Operator notices reach only the owner; register the backlog's watchdog entry | Done | 10 Delivery; 10 Operations | SA-011 |
 | [PR-001](planning/PI-2026-09/stories/PR-001.md) | Remove invented figures and fixed demo values; hide operator tools from members | Open | 10 Interface | None |
 | [PR-002](planning/PI-2026-09/stories/PR-002.md) | A weekly results scorecard with a "sold too early" check | Open | 7 Marksheets; 10 Delivery | None |
 | [PR-003](planning/PI-2026-09/stories/PR-003.md) | Fresh overnight news: no repeats, published-date freshness, global cues | Open | 10 Delivery | None |

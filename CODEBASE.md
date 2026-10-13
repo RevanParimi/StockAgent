@@ -178,7 +178,9 @@ StockAgent-main/
 │   │   ├── channels.py            # web-push (pywebpush+VAPID) + SMTP email; PushStore;
 │   │   │                          #  send-then-record delivered flag; stale-sub pruning
 │   │   ├── alerts.py              # AlertEvent + delivered-aware deduped emit (alerts_sent.jsonl)
-│   │   │                          #  + emit_alerts_broadcast (fan-out to all subscribed users)
+│   │   │                          #  + emit_owner_alerts (operator notices: the owner only),
+│   │   │                          #  emit_alerts_broadcast (market notices: every subscriber)
+│   │   │                          #  and a per-account Inbox read (load_recent_alerts)
 │   │   │                          #  + optional title/headline/status/next_step/docs (Inbox card)
 │   │   │                          #  and render_alerts_html for the email body
 │   │   ├── ops_alerts.py          # Job crashed / zero-output / partial-output / reconcile-drift
@@ -444,7 +446,7 @@ endpoints (`public-key` is public by design; `subscribe` carries no secrets).
 | GET | `/delivery/weekly/latest` | optional key | Latest weekly review (404 until one is built). |
 | POST | `/delivery/run-brief` | optional key | Build + deliver the morning brief now. 202, background. |
 | POST | `/delivery/run-weekly` | optional key | Build + deliver the weekly review now. 202, background. |
-| GET | `/delivery/alerts?limit=50` | optional key | Emitted-alert tail (deduped sent-log). |
+| GET | `/delivery/alerts?limit=50` | optional key | The caller's own alerts, newest first (deduped sent-log). |
 | GET | `/delivery/push/public-key` | none | VAPID application server key for the browser. |
 | POST | `/delivery/push/subscribe` | none | Store a web-push subscription (body = PushSubscription JSON). |
 | DELETE | `/delivery/push/subscribe?endpoint=` | none | Remove a web-push subscription. |
@@ -914,8 +916,8 @@ All paths verified to exist. Paths are relative to project root.
 | `services/api/routes/analytics.py` | /analytics/* — RL performance exports and Power BI feed |
 | `services/api/log_buffer.py` | In-memory ring buffer for real-time log streaming (read only through the owner-only `/ui/logs` routes) |
 | `services/scheduler/python/scheduler.py` | APScheduler: daily RL review (4:30pm IST), monthly forecast (1st, 9am IST), calendar update (Dec 31), pre-open shock check (`preopen_shock_check`, Mon-Fri 08:45 IST, Living Envelope §27.3), Job 13 morning brief (Mon-Fri 08:50 IST) + Job 14 weekly review (Sun 18:00 IST, Compass Phase C), `ops_watchdog` (06:30 IST daily) |
-| `core/ops/watchdog/` | **The watchdog.** Reads `config/milestones.yaml` — the authoritative registry of dated milestones and standing invariants — runs named checks, and notifies on transitions via `ops_alerts`. `registry.py` loads/validates, `checks.py` probes state, `prep.py` auto-runs safe idempotent preparation, `engine.py` is the pure escalation ladder, `runner.py` wires it to state + delivery |
-| `core/ops/error_backlog.py` | **The operations backlog.** Groups `telemetry.db` `app_logs` rows into issues by a deterministic fingerprint (normalised template of source, logger, message), keeps first/last seen, counts, run ids and a lifecycle (new/regressed/spiking/quiet; acknowledged/fixed/wontfix, fix verified by archive coverage; a fix time the recorded occurrences already contradict, a future one, or one without a UTC offset is refused) in `error_issues`, with bounded retention. Read and triaged at `/ops/errors`; `scripts/prod_errors.py` prints it |
+| `core/ops/watchdog/` | **The watchdog.** Reads `config/milestones.yaml` — the authoritative registry of dated milestones and standing invariants — runs named checks, and notifies the owner alone on transitions (`emit_owner_alerts`). `registry.py` loads/validates, `checks.py` probes state, `prep.py` auto-runs safe idempotent preparation, `engine.py` is the pure escalation ladder, `runner.py` wires it to state + delivery |
+| `core/ops/error_backlog.py` | **The operations backlog.** Groups `telemetry.db` `app_logs` rows into issues by a deterministic fingerprint (normalised template of source, logger, message), keeps first/last seen, counts, run ids and a lifecycle (new/regressed/spiking/quiet; acknowledged/fixed/wontfix, fix verified by archive coverage; a fix time the recorded occurrences already contradict, a future one, or one without a UTC offset is refused) in `error_issues`, with bounded retention. Read and triaged at `/ops/errors`; `scripts/prod_errors.py` prints it; the `error_backlog_triaged` watchdog invariant warns the owner daily while an issue needs triage |
 | `services/data/stores/score_store.py` | SQLite score history (read/write/delta/range queries) |
 | `services/background/macro_news_cache.py` | Daily macro news cache read/write |
 | `services/clients/llm_client.py` | Async OpenRouter LLM client |

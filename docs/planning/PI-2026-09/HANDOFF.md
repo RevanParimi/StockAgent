@@ -1,4 +1,4 @@
-# Current handoff - 2026-10-13 (updated about 08:15 IST)
+# Current handoff - 2026-10-13 (updated about 14:20 IST)
 
 ## Also 11 Oct (about 13:00–15:30 IST): product results review and new tasks (separate conversation)
 
@@ -74,15 +74,94 @@ Docs only; nothing committed, pushed, deployed or configured.
 
 ## START HERE — resume checklist, in order
 
-**Committed 13 Oct about 08:15 IST, at the owner's word ("commit and push"). Push HELD.**
+**FIX-008 was ACCEPTED** by its fresh review (13 Oct, about 12:37–13:10 IST, a new conversation
+opened with "continue"). Receipt: [review](evidence/FIX-008-review.md). STATE: `active_task: null`,
+FIX-008 `done`, production verification `pending_deployment`, and **`next_task: FIX-009`** (not
+started; see L2). Nothing was committed, pushed, deployed or configured, no production state was read and
+no notification was sent.
+- **In one example.** A member-named portfolio file is found corrupt at 02:10, and the 06:30
+  watchdog runs on the next three mornings.
+  - The quarantine notice reaches the owner's two devices once each and the owner's mailbox once.
+    The member gets nothing, and no outbox row is queued for the member.
+  - The archived error becomes a backlog issue. The owner gets one warning each morning until it is
+    triaged, then one "resolved", then silence. The member is refused (403) on both the read and
+    the triage.
+- **Checked:**
+  - input `a7a7b58e` and diff `48b3521d`, rebuilt;
+  - the implementer's tests on a true copy of `33ae170`: 19 of 22 fail, on behaviour;
+  - own trace with Atlas's real outbox and drainer, the real log archive, the scheduler's job and
+    the HTTP Inbox: passes here, fails on the base;
+  - full suite **4493 passed, 12 skipped, 0 failed (10 min 5 s)**; runtime data unchanged; the PDF matches its source.
+- **Findings:** no critical, high or medium.
+  - L1 (low, docs): guide 10-G said the member's Alerts tab shows no operator notice at all. By the
+    owner's I1 decision, copies from before the deploy stay. Fixed in 10-G.
+  - **L2 (low, privacy, pre-existing, outside this card): routed as [FIX-009](stories/FIX-009.md).** Example: only the
+    owner watches BBB. When BBB leaves the NIFTY 50, the test member's phone is told too, because
+    the index-watch notice is built from every account's holdings and watchlist and sent to all.
+    The owner delegated the call (about 14:15 IST, "do whichever is recommended"). FIX-009 (P2,
+    1 point) makes each account hear only about its own holdings and watchlist, plus shelf ideas.
+    It is ordered next, before PR-001, under the privacy-first rule, so FIX-008 and FIX-009 can
+    ship in one deploy with one rollout check. Today the only member is the owner's test account.
+    KT not edited: FIX-009's implementation adds its section 12 row, as FIX-008 did.
+  - L3 (low, test gap): no test pins the Inbox's per-account limit. Routed to SA-031, with I2 (a
+    stale Auth column in CODEBASE). I1 and I3 are infos.
+- **For the owner:**
+  1. Rollout, unchanged: confirm SA-011's and FIX-007's deploy and their checks, and triage
+     SA-011's first backlog read. Then commit and deploy FIX-008 (with FIX-009 once it is
+     accepted, if the owner prefers one deploy) at the owner's word, in a job-free window. With the commit: KT section 12's FIX-008 row `Open` to `Done`, the KT
+     header bump and a PDF rebuild. The production checks are in the review receipt.
+- **Next, in order:**
+  1. FIX-009 in a new conversation ("continue"), then its fresh review in another.
+  2. Then PR-001. The open items below still stand.
+
+**FIX-008 was IMPLEMENTED** (13 Oct, about 08:25–09:20 IST, a new conversation opened with
+"continue"). Receipt: [implementation](evidence/FIX-008-implementation.md). STATE:
+`active_task: null`, FIX-008 `review_required`, and **`next_task: FIX-008`**, meaning its fresh
+**review**. This phase committed, pushed and deployed nothing, read no production state and sent
+no notification.
+- **In one example.** The 06:30 watchdog finds the backup not confirmed off-site.
+  - Before: the owner's devices and the test member's phone each got a push, each account an
+    email, and the member's Inbox listed it.
+  - Now: the owner's devices and the owner's mailbox, once. The member gets nothing. A discovery
+    shelf add still reaches both.
+- **What changed:**
+  - `emit_owner_alerts()` for the seven operator callers. Its audience is the `users.db`
+    accounts with role `owner`, else the default user; a failed lookup also narrows to the
+    default user.
+  - The market callers are unchanged.
+  - The Inbox (`GET /delivery/alerts`) lists only the caller's records. This is a recorded
+    scope decision: without it the member still reads operator notices there.
+  - `config/milestones.yaml` gains `error_backlog_triaged`. The Edit tool worked for this
+    addition; the earlier registry allow rules are no longer in `.claude/settings.local.json`.
+- **Tests:** 22 new. On base `33ae170` 18 fail; 12 of 12 mutants and 4 of 4 guard plants are
+  caught. Neighbours 502 passed. Full suite **4493 passed, 12 skipped, 0 failed** (10 min
+  28 s) on the manifest's code and test bytes; runtime data unchanged. The KT wording and PDF
+  changed during the run (no test reads them), and `check_kt_docs` ran after.
+- **For the review:** input `FIX-008-manifest.json` (`a7a7b58e…`, 24 files); diff
+  `48b3521d…` from `33ae170` (`analysis_data/fix008/diff_digest.py`). Also in the ignored
+  folder: `swap_plugin.py` with `run_swaps.sh` (`FIX008_SWAP=base|M1..M12`), `guard_probe.py`,
+  `base_snapshot.py`.
+- **Owner decisions (13 Oct about 12:35 IST, "yup i agree"):**
+  - I1: leave the old copies in the test member's Inbox. Only that pre-fix account has them, and
+    they drop off its 20-item Alerts tab as new notices arrive. No production data change.
+  - The `milestones.yaml` allow rules stay off. The owner approves each registry deletion when
+    one is due (next: `ipo_verdicts_visible_gate`, by 31 Dec), shown the entry, the evidence and
+    the exact edit.
+- **For the owner:** rollout. SA-011 deployed first (pushed 09:07), and its first backlog read
+  is triaged before FIX-008 deploys.
+- **Next, in order:**
+  1. FIX-008's fresh review in a new conversation ("continue").
+  2. Then PR-001.
+
+**Committed 13 Oct about 08:15 IST, at the owner's word ("commit and push"). Pushed b9cc851..33ae170 at 09:07:07 IST 13 Oct; deploy confirmation pending (owner: railway deployment list + /health, then the FIX-007 and SA-011 rollout checks).** The push
+was made by peer session `stockagent-main-3d` at the owner's word.
 - `0bd6419` SA-011 code and tests; `672bc1d` FIX-007 code and tests; `dd7a158` the docs,
   evidence, cards, STATE and HANDOFF; then the KT bump to `dd7a158` (section 12 rows
   SA-011 and FIX-007 `Done`; section 1 says production runs `954305a` until this deploy is
   confirmed; PDF rebuilt; deep-dive headers; guide 11-G and 12-J status lines).
 - `docs/README.md` (the owner's own probe line) is left uncommitted.
-- **Not pushed:** 08:00 IST is inside the blocked 07:25–09:05 window (08:45 pre-open check,
-  08:50 brief), and every push redeploys. Push after 09:05 IST on the owner's confirmation.
-  Don't press Sync in VS Code before then.
+- **Pushed after the window:** 08:00 IST was inside the blocked 07:25–09:05 window, so the push
+  waited until 09:07:07 IST. Railway redeploys at about 09:15.
 - **After the deploy:** the owner confirms `railway deployment list` and `/health`, then runs
   FIX-007's three checks (review receipt) and SA-011's rollout check. Then KT section 1 is
   updated to "Production runs the inspected code".

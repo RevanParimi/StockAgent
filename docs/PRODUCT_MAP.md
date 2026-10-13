@@ -445,7 +445,7 @@ its visibility milestone is judged.
 |---|---|---|
 | Morning brief | `core/delivery/brief.py` (1,196 lines) | Mon–Fri 08:50. Deterministic assembly and one bulk headline call; HTML and text |
 | Weekly review | `core/delivery/weekly.py` | Sunday 18:00: allocation, laggards, switch candidates, scoreboard |
-| Alerts | `core/delivery/alerts.py` | Event-driven, deduplicated per user, date, kind and symbol |
+| Alerts | `core/delivery/alerts.py` | Event-driven, deduplicated per user, date, kind and symbol. Operator notices reach only the owner, market notices every account; the Inbox lists the caller's own |
 | Channels | `core/delivery/channels.py` | Web push and email (SMTP or Resend), one result contract |
 | Outbox | `core/delivery/outbox.py` | One durable row per message and channel when Atlas is on; retries, dead letters, at-most-once |
 | Index watch | `core/delivery/index_watch.py` | Weekly constituent changes for held, watchlisted and shelf names |
@@ -634,11 +634,13 @@ no-op and delivery sends inline.
 
 - **Watchdog** — `core/ops/watchdog/` (engine, registry, checks, prep,
   runner) reads `config/milestones.yaml` at 06:30, runs its invariants
-  (`backup_recoverable` among them) and mails or pushes the result. A sent
-  notice is not completion (KT section 10).
+  (`backup_recoverable` among them) and mails or pushes the result to the
+  owner alone. A sent notice is not completion (KT section 10).
 - **Operations backlog** — `core/ops/error_backlog.py` groups the durable
   WARNING+ log rows into issues, one per cause, that the owner reads and
-  triages at `/ops/errors` (or `scripts/prod_errors.py`). A fix is verified
+  triages at `/ops/errors` (or `scripts/prod_errors.py`). The watchdog's
+  `error_backlog_triaged` invariant warns the owner daily while one needs
+  triage. A fix is verified
   by measured archive coverage, a recurrence reopens it, and a fix time the
   recorded occurrences already contradict is refused (KT section 10).
 - **Backups** — `services/data/backup.py`: the Railway volume is the only

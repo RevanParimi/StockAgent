@@ -186,7 +186,7 @@ resolved at import, so editing a file does not imply live reconfiguration.
 | `ipo.enabled: true`; `ipo.gmp_enabled: false` | IPO refresh and grey-market-price fetching have separate gates. |
 | `delivery.enabled: true`; `delivery.email_enabled: false`; `delivery.push_enabled: true` | Job scheduling, transport enablement and credentials are separate conditions. |
 | `watchdog.enabled: true`; `watchdog.prep_enabled: true` | Monitoring can perform configured prep as well as report results. |
-| `error_backlog.*` | The operations backlog's windows and bounds (section 10): new 2 days, quiet 7 (35 for an acknowledged issue), fix verification 7, retention 90, at most 2,000 issues. They send nothing. |
+| `error_backlog.*` | The operations backlog's windows and bounds (section 10): new 2 days, quiet 7 (35 for an acknowledged issue), fix verification 7, retention 90, at most 2,000 issues. Notices come from the watchdog's `error_backlog_triaged` entry. |
 | `audit.enabled: true` | Nightly outcome grading configured. |
 
 These are repository values; section 1 lists where production differs.
@@ -1228,6 +1228,32 @@ each row. Stored, queued, transport-accepted, received and read are separate
 states; the code observes only the first three. A row's stored status
 `delivered` means the transport accepted it.
 
+[Alerts](../core/delivery/alerts.py) are sent as one bundled message per user,
+deduplicated by user, date, kind and symbol in one sent-log, and listed in the
+Inbox. Who receives an alert depends on what it is about:
+
+- **Operator notices** concern the system's own health: watchdog milestones
+  and invariants, an LLM failure streak, a job that crashed or produced too
+  little, a verification-audit breach, ledger drift, a quarantined portfolio
+  file, the universe budget governor and an Atlas ETL quarantine. Two of them
+  name a user's id. They go to the owner alone: every `users.db` account whose
+  role is `owner`, or the default user when there is no such account, and a
+  failed lookup also falls back to the default user. The first signup takes
+  the default portfolio id, so that is normally one account. For example, when
+  the 06:30 watchdog finds the backup not confirmed off-site, the owner's phone
+  and laptop each get a push and the owner's mailbox gets one email; an invited
+  member's phone gets nothing, and the member's Inbox does not list it.
+- **Market notices** (index reconstitution, discovery shelf adds and the
+  pre-open shock re-forecast) go to every account with a push subscription and
+  to the default user, each email to the account's own address.
+- **An account's own alerts**, such as advisor escalations and lock-in
+  expiries, go to that account.
+
+The Inbox's Alerts tab (`GET /delivery/alerts`) lists only the caller's own
+records; a record written without a user id belongs to the default user. A
+unit test classifies every caller of the alert functions into these three
+groups, so a new caller fails until it is placed.
+
 ### Delivery contract
 
 Every transport returns one result: whether it accepted the message, why not,
@@ -1492,8 +1518,9 @@ Durable logs connect run IDs, tickers, warnings, LLM usage and health. Bundle
 call counters are not complete nested-provider/fallback cost accounting.
 
 The watchdog reads [milestones.yaml](../config/milestones.yaml), runs checks,
-persists state and may perform configured preparation. A sent milestone
-notice is not milestone completion. A `manual_confirmation` milestone has no
+persists state and may perform configured preparation. Its notices are
+operator notices, so they reach only the owner (Delivery, above). A sent
+milestone notice is not milestone completion. A `manual_confirmation` milestone has no
 signal of its own: it stays pending until its entry is deleted, and after its
 deadline it re-sends a critical "LAPSED" notice every 7 days. Each lapsed
 milestone is judged, then deleted with its evidence or decision recorded, or
@@ -1567,9 +1594,14 @@ that the owner can assign and close.
   builds one offline from a copy of `telemetry.db` or a `railway logs --json`
   export, by the app's own level.
 - **Watchdog.** The `error_backlog` check is pending while a new, regressed
-  or spiking issue is untriaged; its detail names counts, loggers and
-  fingerprints, never a template. No `milestones.yaml` entry uses it, so
-  the backlog sends no message.
+  or spiking issue is untriaged. The `error_backlog_triaged` invariant in
+  `milestones.yaml` uses it. While anything needs triage, the owner gets one
+  warning a day with the steps: read `GET /ops/errors` or
+  `python scripts/prod_errors.py --base <app URL>`, then mark each issue
+  acknowledged, fixed or wontfix. When nothing does, one "resolved" notice
+  follows, then silence. The detail names counts, loggers and fingerprints,
+  never a template, so a log line's text stays behind the owner-only
+  endpoint.
 
 Local backup files and healthy HTTP responses do not prove recovery or
 successful jobs. The nightly drill proves that an archive restores; only a
@@ -1732,11 +1764,12 @@ story to the sections of this document it changes. An implemented story's
 behaviour is described in those sections as current design. Its production
 verification is tracked separately (section 1).
 
-Six fixes outside the SA numbering are also part of the current design:
+Seven fixes outside the SA numbering are also part of the current design:
 listing-day closes (FIX-001, sections 5 and 7), ticker resolution (FIX-002,
 section 4), bank income statements (FIX-003, section 4), dossier dates
-(FIX-004, section 5), the chat brief's user scope (FIX-005, section 10) and
-owner-only server logs (FIX-007, section 10).
+(FIX-004, section 5), the chat brief's user scope (FIX-005, section 10),
+owner-only server logs (FIX-007, section 10) and owner-only operator notices
+(FIX-008, section 10).
 DOC-001 produced this document's current-code edition. The PR stories are the
 product results track (section 11), ordered in STATE.json directly after
 SA-011.
@@ -1796,6 +1829,7 @@ SA-011.
 | [SA-051](planning/PI-2026-09/stories/SA-051.md) | Show the portfolio against the Nifty, with honest labels | Open | 7 Marksheets; 10 Interface | None |
 | [FIX-006](planning/PI-2026-09/stories/FIX-006.md) | An anonymous watchlist read never falls back to the owner | Open | 10 Interface | None |
 | [FIX-007](planning/PI-2026-09/stories/FIX-007.md) | Server logs are readable only by the owner | Done | 10 Interface | None |
+| [FIX-008](planning/PI-2026-09/stories/FIX-008.md) | Operator notices reach only the owner; register the backlog's watchdog entry | Open | 10 Delivery; 10 Operations | SA-011 |
 | [PR-001](planning/PI-2026-09/stories/PR-001.md) | Remove invented figures and fixed demo values; hide operator tools from members | Open | 10 Interface | None |
 | [PR-002](planning/PI-2026-09/stories/PR-002.md) | A weekly results scorecard with a "sold too early" check | Open | 7 Marksheets; 10 Delivery | None |
 | [PR-003](planning/PI-2026-09/stories/PR-003.md) | Fresh overnight news: no repeats, published-date freshness, global cues | Open | 10 Delivery | None |

@@ -117,9 +117,10 @@ by directory rename, never copying or rewriting bytes
 - **Delivery.** Briefs, weekly reviews and digests persist independently of
   transport. The outbox retries transient failures, dead-letters permanent
   ones at once, and never re-sends an unknown outcome. Each account's mail
-  goes only to that account. `GET /delivery/outbox` shows owner-only counts and
-  dead letters without payloads. The code observes transport acceptance, not
-  receipt.
+  goes only to that account. Notices about the system's own health reach only
+  the owner; market notices reach every account; the Inbox lists each account's
+  own alerts. `GET /delivery/outbox` shows owner-only counts and dead letters
+  without payloads. The code observes transport acceptance, not receipt.
 - **Backups.** Each night's archive carries a manifest, passes a restore drill
   with ledger-continuity checks, rotates locally (7 copies) and, once a target
   is configured, goes off-site encrypted (AES-256-GCM). The watchdog's
@@ -131,11 +132,12 @@ by directory rename, never copying or rewriting bytes
   last seen, counts, runs and a lifecycle (new, regressed, spiking, quiet;
   acknowledged, fixed, wontfix). A fix is verified only by measured archive
   coverage, a recurrence reopens it, and a fix time that recorded
-  occurrences already contradict is refused. `GET /ops/errors` is owner-only and
-  sends nothing; the raw log rows are never changed.
-- **Watchdog.** Milestones and invariants are checked every morning. A lapsed
-  milestone is judged, then retired with its evidence or re-dated with a
-  reason.
+  occurrences already contradict is refused. `GET /ops/errors` is owner-only,
+  and the watchdog warns the owner once a day while an issue needs triage; the
+  raw log rows are never changed.
+- **Watchdog.** Milestones and invariants are checked every morning, and the
+  notices reach only the owner. A lapsed milestone is judged, then retired with
+  its evidence or re-dated with a reason.
 - **Tests and CI.** Every test run is hermetic: no `.env`, no outbound network,
   no access to the checkout's runtime data. CI runs the suite, the
   broad-exception and documentation guards, and a browser security suite on

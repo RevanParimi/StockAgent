@@ -1,4 +1,4 @@
-# Current handoff - 2026-10-13 (updated about 00:20 IST)
+# Current handoff - 2026-10-13 (updated about 08:15 IST)
 
 ## Also 11 Oct (about 13:00–15:30 IST): product results review and new tasks (separate conversation)
 
@@ -73,6 +73,19 @@ Docs only; nothing committed, pushed, deployed or configured.
   section 11.
 
 ## START HERE — resume checklist, in order
+
+**Committed 13 Oct about 08:15 IST, at the owner's word ("commit and push"). Push HELD.**
+- `0bd6419` SA-011 code and tests; `672bc1d` FIX-007 code and tests; `dd7a158` the docs,
+  evidence, cards, STATE and HANDOFF; then the KT bump to `dd7a158` (section 12 rows
+  SA-011 and FIX-007 `Done`; section 1 says production runs `954305a` until this deploy is
+  confirmed; PDF rebuilt; deep-dive headers; guide 11-G and 12-J status lines).
+- `docs/README.md` (the owner's own probe line) is left uncommitted.
+- **Not pushed:** 08:00 IST is inside the blocked 07:25–09:05 window (08:45 pre-open check,
+  08:50 brief), and every push redeploys. Push after 09:05 IST on the owner's confirmation.
+  Don't press Sync in VS Code before then.
+- **After the deploy:** the owner confirms `railway deployment list` and `/health`, then runs
+  FIX-007's three checks (review receipt) and SA-011's rollout check. Then KT section 1 is
+  updated to "Production runs the inspected code".
 
 **FIX-007 was ACCEPTED** by its fresh review (12 Oct about 23:17 IST to 13 Oct about 00:20 IST,
 a new conversation opened with "continue"). Receipt: [review](evidence/FIX-007-review.md).

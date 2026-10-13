@@ -1,8 +1,8 @@
 # StockAgent — Technical Design and Knowledge Transfer
 
-**Edition:** 2026-10-11 · **Audience:** engineers and teammates learning the product
+**Edition:** 2026-10-13 · **Audience:** engineers and teammates learning the product
 
-**Code inspected:** `954305a37cd5ea191e9039f28d171f390e325906`
+**Code inspected:** `dd7a1580bead3e2901b2ade0beeff447942cd254`
 
 **PDF:** [StockAgent-Three-Loops.pdf](StockAgent-Three-Loops.pdf), generated from this Markdown.
 
@@ -35,10 +35,12 @@ triggered no production job, backfill or notification.
 
 ### Production state at this edition
 
-Production runs the inspected code. The deployment of 11 October 2026 carries
-it, confirmed by the owner's read-only check of the deployment list and
-`/health`. The table gives the configuration that differs from the repository
-and the state of each operational control.
+Production runs the inspected code once the deployment of 13 October 2026 is
+confirmed by the owner's read-only check of the deployment list and `/health`.
+Until then it runs `954305a`, which differs only in the operations backlog and
+the owner-only server logs with their screen (section 10). The table gives the
+configuration that differs from the repository and the state of each
+operational control.
 
 | Area | State in production | Evidence |
 |---|---|---|
@@ -1751,7 +1753,7 @@ SA-011.
 | [SA-008](planning/PI-2026-09/stories/SA-008.md) | Quarantine unresolved securities with explicit lifecycle records | Done | 3 Configuration; 4 Identity; 5 Learning; 6 Portfolio; 8 Discovery | SA-003 |
 | [SA-009](planning/PI-2026-09/stories/SA-009.md) | Inventory and reconcile prediction-store ownership | Done | 3 Storage | None |
 | [SA-010](planning/PI-2026-09/stories/SA-010.md) | Pass sector benchmarks through technical-data calls | Done | 4 Research | None |
-| [SA-011](planning/PI-2026-09/stories/SA-011.md) | Turn durable errors into a deterministic operations backlog | Open | 9 Jobs; 10 Operations | SA-002, SA-004 |
+| [SA-011](planning/PI-2026-09/stories/SA-011.md) | Turn durable errors into a deterministic operations backlog | Done | 9 Jobs; 10 Operations | SA-002, SA-004 |
 | [SA-012](planning/PI-2026-09/stories/SA-012.md) | Specify and test the learning target before changing it | Open | 5 Learning; 7 Marksheets | SA-005 |
 | [SA-013](planning/PI-2026-09/stories/SA-013.md) | Persist immutable, genuinely prospective forecast identities | Open | 3 Storage; 5 Learning | SA-012 |
 | [SA-014](planning/PI-2026-09/stories/SA-014.md) | Grade frozen decisions and issue controls before their outcomes | Open | 5 Learning; 7 Marksheets | SA-003, SA-013 |
@@ -1793,7 +1795,7 @@ SA-011.
 | [SA-050](planning/PI-2026-09/stories/SA-050.md) | Apply one sizing rule to every autopilot buy | Open | 6 Portfolio | None |
 | [SA-051](planning/PI-2026-09/stories/SA-051.md) | Show the portfolio against the Nifty, with honest labels | Open | 7 Marksheets; 10 Interface | None |
 | [FIX-006](planning/PI-2026-09/stories/FIX-006.md) | An anonymous watchlist read never falls back to the owner | Open | 10 Interface | None |
-| [FIX-007](planning/PI-2026-09/stories/FIX-007.md) | Server logs are readable only by the owner | Open | 10 Interface | None |
+| [FIX-007](planning/PI-2026-09/stories/FIX-007.md) | Server logs are readable only by the owner | Done | 10 Interface | None |
 | [PR-001](planning/PI-2026-09/stories/PR-001.md) | Remove invented figures and fixed demo values; hide operator tools from members | Open | 10 Interface | None |
 | [PR-002](planning/PI-2026-09/stories/PR-002.md) | A weekly results scorecard with a "sold too early" check | Open | 7 Marksheets; 10 Delivery | None |
 | [PR-003](planning/PI-2026-09/stories/PR-003.md) | Fresh overnight news: no repeats, published-date freshness, global cues | Open | 10 Delivery | None |

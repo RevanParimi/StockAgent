@@ -1,6 +1,6 @@
 # Chat Architecture — Agentic Streaming Tool Loop
 
-**Edition:** 2026-10-11 · **Code inspected:** `954305a`, the code production runs
+**Edition:** 2026-10-11 · **Code inspected:** `dd7a158`, the code production runs
 
 **Scope:** the assistant behind `POST /ui/chat/stream`: its runtime contract,
 tools, grounding, session memory and the sanitizing boundary that renders

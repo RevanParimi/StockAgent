@@ -1,6 +1,6 @@
 # StockAgent — Product Map
 
-**Edition:** 2026-10-11 · **Code inspected:** `954305a`, the code production runs
+**Edition:** 2026-10-13 · **Code inspected:** `dd7a158`, the code production runs
 
 **Scope:** every major module and its parts, counted from the tracked tree,
 with a suggested order for learning them.

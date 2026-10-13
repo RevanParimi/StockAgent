@@ -1,6 +1,6 @@
 # RL Design — Adaptive Prediction Loop
 
-**Edition:** 2026-10-10 · **Code inspected:** `954305a`, the code production runs
+**Edition:** 2026-10-10 · **Code inspected:** `dd7a158`, the code production runs
 
 **Scope:** the learning loop in depth: forecast envelopes, the daily review,
 weights, lessons, company knowledge, measurement and the Living Envelope.

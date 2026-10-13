@@ -1,6 +1,6 @@
 # Compass Autopilot — Developer Guide
 
-**Edition:** 2026-10-10 · **Code inspected:** `954305a`, the code production runs
+**Edition:** 2026-10-10 · **Code inspected:** `dd7a158`, the code production runs
 
 **Scope:** the virtual money path, from the advisor's verdict for each holding
 to the executed trade, the ledgers and the screens that show them.

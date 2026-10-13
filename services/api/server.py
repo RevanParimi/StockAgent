@@ -54,6 +54,7 @@ from services.api.routes.delivery_api import router as delivery_router
 from services.api.routes.audit_api import router as audit_router
 from services.api.routes.rl_monitor import router as rl_monitor_router
 from services.api.routes.auth_api import router as auth_router
+from services.api.routes.ops_api import router as ops_router
 from core.portfolio.store import QuarantinedPortfolioError
 
 
@@ -482,6 +483,7 @@ app.include_router(delivery_router,   tags=["Delivery"])
 app.include_router(rl_monitor_router, tags=["RL Monitor"])
 app.include_router(audit_router,     tags=["Audit"])
 app.include_router(auth_router,      tags=["Auth"])
+app.include_router(ops_router,       tags=["Ops"])
 
 
 # NOTE: "/" is served by the SPA catch-all at the bottom of this module
@@ -528,7 +530,7 @@ if _FRONTEND_DIR is not None:
     # (AUD-100) — fail loudly instead.
     _API_NAMESPACES = (
         "ui/", "api/", "scheduler/", "analytics/", "portfolio/", "discovery/",
-        "delivery/", "history/", "ws/", "analyse",
+        "delivery/", "history/", "ws/", "analyse", "ops/",
     )
 
     # Catch-all (registered last → all API/docs routes take precedence).

@@ -625,3 +625,45 @@ def switch_lane_has_sample() -> CheckResult:
         "pending",
         f"Switch lane has {n_eff} independent pair(s) of {floor} needed "
         f"({block.get('n')} raw rows). Still accruing.", evidence)
+
+
+# ---------------------------------------------------------------------------
+# SA-011 — the durable-error backlog
+# ---------------------------------------------------------------------------
+
+def _error_backlog_report() -> dict:
+    """Seam for tests — refresh the backlog and return what needs attention."""
+    from core.ops.error_backlog import report
+    return report(include="attention", limit=5)
+
+
+@check("error_backlog")
+def error_backlog() -> CheckResult:
+    """Pending while an issue in the durable-error backlog is new, regressed
+    or spiking and nobody has triaged it (GET /ops/errors).
+
+    The detail names counts, loggers and fingerprints, never a template: a
+    watchdog notice is broadcast, and a log line's text belongs to the
+    owner-only endpoint. No milestones.yaml entry names this check yet, so it
+    sends nothing until the owner registers one."""
+    rep = _error_backlog_report()
+    issues = rep.get("issues") or []
+    n = int((rep.get("counts") or {}).get("attention") or 0)
+    evidence = {"attention": n, "total": (rep.get("counts") or {}).get("total"),
+                "coverage": rep.get("coverage"),
+                "caught_up": (rep.get("refresh") or {}).get("caught_up")}
+    if n == 0:
+        return CheckResult("satisfied", "No new, regressed or spiking issue is untriaged.",
+                           evidence)
+    states: dict[str, int] = {}
+    for i in issues:
+        key = i["state"] + (" spiking" if i.get("spiking") else "")
+        states[key] = states.get(key, 0) + 1
+    top = "; ".join(f"{i['max_level']} {i['logger']} (fp {i['fingerprint']})"
+                    for i in issues[:3])
+    return CheckResult(
+        "pending",
+        f"{n} backlog issue(s) need triage ({', '.join(f'{v} {k}' for k, v in sorted(states.items()))}"
+        f"{' among the top 5' if n > len(issues) else ''}). Top: {top}. "
+        "Triage at GET /ops/errors; mark acknowledged, fixed or wontfix.",
+        evidence)

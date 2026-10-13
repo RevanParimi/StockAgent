@@ -126,6 +126,27 @@ watchdog:
   hour: 6                        # IST. Deliberately NOT the 23:xx cluster:
   minute: 30                     #   "your window is open today" at 23:45 is useless
 
+# SA-011: the durable-error backlog (core/ops/error_backlog.py). app_logs rows
+# are grouped into issues by a deterministic fingerprint and triaged at the
+# owner-only GET/POST /ops/errors. Nothing here sends a message: the watchdog
+# check `error_backlog` exists, but no milestones.yaml entry names it.
+error_backlog:
+  new_days: 2                    # an issue first seen (or back) this recently is new/regressed
+  quiet_days: 7                  # absent this long = quiet; a return after it is a regression
+  ack_quiet_days: 35             # an acknowledged issue regresses only after this long quiet
+                                 #   (longer than a monthly job's cadence)
+  verify_days: 7                 # a fix is verified after this long with no recurrence,
+                                 #   and only once the archive holds rows from after it
+  spike_baseline_days: 14        # spiking: today's/yesterday's count above the trailing
+  spike_sigma: 3.0               #   mean + sigma*sd of its own baseline days,
+  spike_min: 10                  #   and at least this many
+  retention_days: 90             # an inactive issue is pruned after this long unseen
+  max_issues: 2000               # table cap; never drops an active issue
+  daily_days: 30                 # per-issue daily counts kept
+  keep_ids: 20                   # per-issue run ids / tickers kept
+  batch_rows: 2000               # app_logs rows per transaction
+  max_rows_per_refresh: 20000    # per read; the next read continues from the cursor
+
 macro_news:
   enabled: true
   retain_days: 90

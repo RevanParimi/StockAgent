@@ -1,4 +1,4 @@
-# Current handoff - 2026-10-13 (updated about 14:45 IST)
+# Current handoff - 2026-10-15 (updated about 21:47 IST)
 
 ## Also 11 Oct (about 13:00–15:30 IST): product results review and new tasks (separate conversation)
 
@@ -74,15 +74,341 @@ Docs only; nothing committed, pushed, deployed or configured.
 
 ## START HERE — resume checklist, in order
 
-**Committed 13 Oct about 14:40 IST, at the owner's word ("go ahead commit and push").** Push held
-to after 15:05 IST.
+**FIX-010 was IMPLEMENTED and, with PR-001 and FIX-009, COMMITTED** (push at the owner's word follows; its note is added after) (15 Oct, about
+20:30–21:47 IST, in the same conversation as PR-001's re-review). The owner said: "ya go ahead on
+you suggestions and commit and push at the end". Receipt:
+[implementation](evidence/FIX-010-implementation.md). STATE: `active_task: null`, FIX-010
+`review_required`, and **`next_task: FIX-010`**, meaning its fresh **review** in a new
+conversation, of the committed code. No notification was sent, no production variable changed,
+and the backfill was not run.
+- **In one example.** The member holds DIXON, and the owner holds BEL; neither is managed or on
+  the shelf. The 16:30 analysis turns DIXON from BUY to SELL. Now:
+  - the row is written;
+  - Home shows DIXON's score and verdict, and Portfolio lists "DIXON: BUY → SELL";
+  - the chat's current verdicts include DIXON;
+  - none of those screens names BEL to the member.
+- **What changed:**
+  - **The write:** every analysis writes its score-history row at the orchestrator's single exit
+    (both paths), after the decision gate. A failed write is a warning.
+  - **Who sees which stock:** lists read from the store name only shared stocks (the built-in
+    universe, the managed list and active shelf ideas) plus the viewer's own holdings and
+    watchlist. That covers Portfolio, search, the chat, Home's market panes, the market summary
+    and the analytics sector comparison. An anonymous request owns nothing.
+  - **A crash avoided:** Home's "This month" votes read the writer's per-agent objects. They made
+    `/ui/bootstrap` fail (reproduced on the old code).
+  - **Watchlist:** a watched stock outside the 16 autos shows its analysis.
+  - **Portfolio:** the empty case is dated, and a sign-in re-fetches the list.
+  - **Backfill:** a dry-run-by-default script copies past runs from `run_summaries`.
+- **Checked:** 32 new tests (expected values from the fixtures; rows by the real writer); on the old code 28 fail, and mutants M1–M11 are caught; the browser suite 11/11 (incl. sign-in re-fetch); `npm run test:frontend` 28/28; full suite **4584 passed, 12 skipped, 0 failed**.
+- **Commits:** `a16b617` FIX-009, `9db8ba7` PR-001 (its accepted bytes), `ec3f336` FIX-010; then the docs commit and the KT bump.
+- **For the owner:**
+  1. **Confirm the deploy:** `railway deployment list` and `/health`, then the checks below.
+     After the deploy, close and reopen the app once (PR-001 L3).
+  2. **Backfill (your call):**
+     - Dry run first:
+       `railway ssh "cd /app && echo $(gzip -9c scripts/backfill_score_history.py | base64 -w0) | base64 -d | python -c 'import sys,zlib;exec(zlib.decompress(sys.stdin.buffer.read(),31))'"`.
+     - To write, the same command with `SCORE_BACKFILL=apply` placed before `python`.
+     - With it, Portfolio shows the last 30 days' changes the next morning. Without it, Home fills
+       after Friday's 16:30 review.
+  3. **After Friday's 16:30 review:** re-run the probe
+     (`analysis_data/pr001/rereview1/score_history_probe.py`). Rows should be above 0, and the
+     last run should be that day.
+- **Next, in order:**
+  1. FIX-010's fresh review in a new conversation ("continue").
+  2. Then PR-002.
+  3. The FIX-008 deploy confirmation and the FIX-007, SA-011 and FIX-008 rollout checks still
+     stand, now with this deploy.
+
+**FIX-010 was ADDED** (15 Oct, about 18:10 IST, same conversation as PR-001's re-review,
+planning only). The owner ran the read-only probe and chose "ya add the score-history fix before
+PR-002". Card: [FIX-010](stories/FIX-010.md) (P0, 3 points, no dependencies), placed directly
+before PR-002. STATE: `active_task: null`, **`next_task: FIX-010`** (implementation, not
+started). Nothing was committed, pushed or deployed and no notification was sent. The KT was not
+edited; the implementation adds its section 12 row.
+- **Measured in production** (15 Oct, 12:38 UTC, counts only):
+  - the score history holds **0 rows**;
+  - 1,082 analyses with a verdict were logged elsewhere (`run_summaries`): 83 stocks, from 26 Aug
+    to today;
+  - in the last 30 days, 747 analyses of 64 stocks, with **173 verdict changes**.
+  - So every member screen that reads analysis results shows none. This is recorded in the PR-001
+    review receipt, section "U1 routed".
+- **In one example.** The member holds WELCORP, and the 16:30 analysis turns it from BUY to SELL.
+  - Today, Home says "Not analysed" (a made-up 0.50 NEUTRAL before PR-001), and Portfolio shows
+    no change.
+  - After FIX-010, Home shows WELCORP's dated score, and Portfolio lists "WELCORP: BUY → SELL".
+  - A stock that only the owner asked the chat about never appears on the member's screens.
+- **What the card asks for:**
+  - every analysis saves its score row again, at the one exit that already logs `run_summaries`;
+  - screens that list stocks from the store name only the viewer's holdings and watchlist, the
+    managed tickers and shelf ideas. Without this, restoring the write would put every analysed
+    stock into every account's chat context;
+  - watchlist rows outside the 16 automobile stocks read the store;
+  - the empty case is dated;
+  - an optional backfill from `run_summaries`.
+- **For the owner, at rollout (later):** whether to run the backfill.
+  - With it: the morning after the deploy, Portfolio shows the newest of the last 30 days'
+    changes and Home shows scores.
+  - Without it: Home fills after the next 16:30 review, and a change shows only after a stock's
+    next differing analysis.
+  - Nothing else to decide now.
+  - PR-001 and FIX-009 can be committed whenever you say; shipping PR-001 first is fine.
+- **Next, in order:**
+  1. FIX-010's implementation in a new conversation ("continue"), then its fresh review in
+     another.
+  2. Then PR-002. The FIX-008 deploy confirmation and rollout checks below still stand.
+
+**PR-001's fresh re-review: ACCEPTED** (15 Oct, about 16:20–17:20 IST, a new conversation opened
+with "continue"). Receipt: [review](evidence/PR-001-review.md), section "Re-review of rework 1".
+STATE: `active_task: null`, PR-001 `done`, production verification `pending_deployment`, and
+**`next_task: PR-002`** (not started). Nothing was committed, pushed or deployed, no production
+state was read and no notification was sent. The re-review changed no reviewed file.
+- **In one example.** Sixteen stocks were analysed every weekday for six weeks, nearly always
+  with the same verdict, and twelve real changes happened.
+  - Portfolio reads "The 10 most recent changes in the analysed stocks", newest first, with the
+    two oldest left out, then "Latest forecast misses".
+  - No card repeats a verdict.
+  - The rows went through the real writer, server and browser. The expected cards come from the
+    re-reviewer's own oracle.
+- **Checked:**
+  - input `1c7ea945`; rework diff `0d8c3604`, rebuilt with the re-reviewer's own script;
+  - the re-reviewer's probe: rows written through the real `ScoreStore.save`; twelve random
+    histories, a deep history and misses all match its oracle. On the review-1 code all 14 fail;
+  - mutants S1–S7: each is caught by the probe or the story's tests;
+  - the first reviewer's trace passes unchanged (7), Learn included;
+  - `npm run test:frontend` 27/27; the layout audit passes;
+  - full suite **4552 passed, 12 skipped, 0 failed**.
+- **Findings:** no critical or high; the rework's M1, L1, L2 and I1 are fixed.
+  - **U1 (medium, pre-existing, outside PR-001): nothing writes the score history.**
+    - `ScoreStore.save` has had no caller since 21 Apr 2026: `ce1eeb5` removed it from the old
+      scheduler. Analyses are logged only in `run_summaries`.
+    - This is code inspection; production was not read.
+    - If production's store is empty or old:
+      - Portfolio's "Recent verdict changes" can list only changes from before 21 Apr, or none.
+        With only forecast misses, it says "No verdict changes in the analysed stocks".
+      - Home's watchlist says "Not analysed" for a stock analysed every day, and always for a
+        stock outside the 16 autos.
+      - Guide 11-J's change cards cannot appear.
+  - L1 (low, test gap): the story's tests do not pin three rules of the change list: same-day
+    order, same-second ties and the 90-run lookback. The code is correct. Routed to SA-031, with
+    fixtures.
+  - I1–I3 (info):
+    - a KT sentence to soften (routed to SA-031);
+    - forecast misses can be partial when one stock's feedback log is unreadable;
+    - two SQLite side files left by the probe's local dry run: `data/telemetry.db-wal` (0 bytes)
+      and `-shm`. My delete was blocked; they are safe to delete.
+- **For the owner:**
+  1. **Decide U1's route.** Recommended: a small FIX card before PR-002. It would save each
+     analysis's score row again (or read changes from `run_summaries`) and decide what Portfolio
+     says when only misses exist.
+     - Example: a stock flips BUY → SELL in the 16:30 analysis. With the fix, the next Portfolio
+       visit shows it. Without it, Portfolio never does, and Home keeps calling the stock "Not
+       analysed".
+  2. **Run the read-only probe** and paste the output. It prints counts and dates only:
+     `railway ssh "cd /app && echo $(gzip -9c analysis_data/pr001/rereview1/score_history_probe.py | base64 -w0) | base64 -d | python -c 'import sys,zlib;exec(zlib.decompress(sys.stdin.buffer.read(),31))'"`
+  3. Commit and push only at your word, in a job-free window. PR-001 and FIX-009 ship together.
+     - With the commit: KT section 12's PR-001 and FIX-009 rows go from `Open` to `Done`, with the
+       KT header bump, a PDF rebuild and guide 10-H's status line.
+     - After the deploy: close and reopen the app once (L3), then run guide 11-I.
+- **Next, in order:**
+  1. PR-002 in a new conversation ("continue"), unless you route U1 first.
+  2. The FIX-008 deploy confirmation and rollout checks below still stand.
+
+**PR-001 rework 1 was IMPLEMENTED** (15 Oct, about 10:35–14:45 IST, a new conversation opened
+with "continue"). Receipt: [implementation](evidence/PR-001-implementation.md), section "Rework 1".
+STATE: `active_task: null`, PR-001 `review_required`, and **`next_task: PR-001`**, meaning its
+fresh **re-review**. Nothing was committed, pushed or deployed, no production state was read and
+no notification was sent.
+- **In one example (M1).** MARUTI turned BUY on 9 Oct, TATAMOTORS SELL on 10 Oct and BOSCHLTD
+  BUY on 13 Oct; eight other stocks were re-analysed in July with the same verdict.
+  - Before: "Recent verdict changes · 10 changes", with eight "NEUTRAL → NEUTRAL" cards and no
+    BOSCHLTD.
+  - Now: "3 changes in the analysed stocks", BOSCHLTD first. Forecast misses are listed under
+    "Latest forecast misses" and not counted. A full list reads "The 10 most recent changes".
+- **What changed:**
+  - `ui_data.py`: a change is a verdict that differs from the run before it; every kept run is
+    read; all changes are sorted newest first, then cut to 10; misses follow, newest first, at
+    most 5; a failed read sends nothing rather than a partial list.
+  - `portfolio.jsx`: the heading counts the change cards only.
+  - `learn.jsx` (L1): no "Continue where you left off", no "Recommended next" (MARUTI and a false
+    reason), no progress percentage.
+  - The guard catches unformatted figures (L2). The Agents page shows no "0 agents" (I1).
+  - The moved agent-score parse catches `ValueError`, not every exception, and the broad-except
+    baseline loses its now-stale `get_learnings` line (154 to 153).
+- **Design calls (delegated, in the receipt, D7–D11):** no date window; every change listed,
+  several per stock included; misses stay in `{items}`; the full-list wording; no
+  universe-ticker guard.
+- **Tests:** story file 44 tests (was 25) and browser suite 10 (was 9); the review-1 code fails 7 and the review-1 screens 3; server mutants R1-R14 and frontend mutants G1-G8 all caught; the reviewer's own trace passes unchanged (its M1 probe now shows 3 changes, BOSCHLTD first); npm run test:frontend 27/27; layout audit (fixture mode) passes; full suite 4552 passed, 12 skipped, 0 failed; runtime data unchanged.
+- **For the re-review:** input `PR-001-manifest.json` (`1c7ea945…`, 23 files); rework diff
+  `0d8c3604…` (56,667 bytes) from `analysis_data/pr001/rework1/base/`; cumulative diff
+  `973ee2d5…` (271,308 bytes); both from `rework1/rw_digest.py`. Also there:
+  `rw_swap_plugin.py` + `run_swaps.sh` (`RW1_SWAP=base|R1..R14`), `rw_fe_mutants.py` (`base`, G1–G8).
+- **For the owner:** nothing to decide. The review's rollout note (L3) stands: on a device that
+  already has the app, the first open after the deploy can be blank or old; close and reopen it.
+- **Next, in order:**
+  1. PR-001's fresh re-review in a new conversation ("continue").
+  2. Then PR-002. The FIX-008 deploy confirmation and rollout checks below still stand.
+
+**PR-001's fresh review: CHANGES REQUESTED** (14 Oct, about 12:00–13:25 IST, a new conversation
+opened with "continue"). Receipt: [review](evidence/PR-001-review.md). STATE: `active_task: null`,
+PR-001 `changes_requested`, and **`next_task: PR-001`**, meaning **rework 1**. Nothing was
+committed, pushed or deployed, no production state was read and no notification was sent. The
+review changed no reviewed file. The review input is preserved as
+`evidence/PR-001-manifest-review1.json` (`a4b459b7…`).
+- **In one example (M1, must fix).** MARUTI and TATAMOTORS changed verdict this month and BOSCHLTD
+  turned BUY yesterday. Eight other stocks were re-analysed in July with no change.
+  - The Portfolio page says "Recent verdict changes · **10 changes**". It lists the two changes
+    and eight "NEUTRAL → NEUTRAL" cards from 2 July.
+  - Yesterday's BOSCHLTD change is missing, because the list keeps the first ten stocks in a
+    fixed order.
+  - Reproduced through the real server and browser.
+- **L1 (low, must fix).** With every market API down, the Learn page still shows "MARUTI". It
+  also tells the member "Picked because you finished 'Reading a verdict'" while every path now
+  shows 0% done.
+- **Recommended in the same rework:** L2, the guard misses `Nifty Auto 22847`, `+1%` and
+  `₹18420`; I1, "0 agents · automobile" while the agents are unavailable.
+- **Everything else the card asks for works** in the reviewer's own trace. It uses the real app
+  with sign-in, the real `/ui` routes and Chromium, and compares against figures computed from the
+  fixture market:
+  - "Good morning, Ravi." at 09:00 IST on a Los Angeles device;
+  - "Nifty 50 -0.03% on 13 Oct." and a dated index box;
+  - "—" for failed prices and "Not analysed" for unanalysed stocks;
+  - no invented figure with the APIs down;
+  - operator tools for the owner only, and member writes refused with 403.
+
+  The same trace fails on the original code.
+- **Test results:**
+  - the implementer's tests and `npm run test:frontend` (26) pass;
+  - base `ui_data.py` fails 13 of 13 server tests;
+  - reviewer mutants X1–X6 are all caught;
+  - full suite 4533 passed, 12 skipped, 0 failed (17 min 34 s).
+- **For the owner:** nothing to decide.
+  - Rollout note, firmer than before (L3): the first open after the deploy can be a **blank page**
+    on a device that already has the app. Close it and open it again before checking.
+- **Next, in order:**
+  1. PR-001 rework 1 in a new conversation ("continue"): M1 and L1, plus L2 and I1 if small. Then
+     a fresh re-review in another.
+  2. The FIX-008 deploy confirmation and rollout checks below still stand.
+
+**PR-001 was IMPLEMENTED** (13 Oct about 22:38 IST to 14 Oct about 01:00 IST, a new conversation
+opened with "continue"). Receipt: [implementation](evidence/PR-001-implementation.md). STATE:
+`active_task: null`, PR-001 `review_required`, and **`next_task: PR-001`**, meaning its fresh
+**review**. This phase committed, pushed and deployed nothing, read no production state and sent
+no notification.
+- **In one example.** The test member opens the app at 09:00 IST.
+  - Before: "Good afternoon, Aditi. Auto sector +1.24% today.", a fixed "Nifty Auto 22,847", a "Run
+    on MARUTI" button, the Prompt Lab, Analytics, Logs and RL Monitor chips, and on Portfolio
+    "Missed gain +₹18,420", which is a score change × 10,000.
+  - Now: "Good morning, <the member's name>." and "Nifty 50 −0.42% on 12 Oct." from the server;
+    the Nifty box shows its level and "as of" date; Portfolio lists dated verdict changes with no
+    rupee figure; no operator chip, menu entry, tuning control or Tweaks panel. If a request
+    fails, the screen says the data is unavailable instead of showing samples.
+- **What changed:**
+  - `ui_data.py`: `/ui/learnings` sends dated verdict changes only; `/ui/bootstrap` adds a dated
+    `NIFTY50` and drops every stand-in (random series, padded drivers, weights as votes, a 0.00%
+    failed sector); `/ui/nifty-ranges` is the Nifty 50 by calendar span with value and date.
+  - Frontend: samples only under `?demo=1` (`demo-fixtures.js`, a "Sample data" strip); the hero,
+    Nifty box, unavailable states, watchlist dashes; Portfolio unavailable instead of mock;
+    Agents read-only for members; operator tools only for the owner's `/auth/me` role (the
+    server guards are unchanged); `sw.js` v9; the layout audit runs on `?demo=1`.
+- **Design calls (delegated, in the receipt, D1–D6):** one sample switch (`?demo=1`); learnings
+  name the verdict move, not a user action; the same rule applied to the other stand-ins; gating
+  fails closed; the account helpers sit in `index.html` so the first open after a deploy (cached
+  old `.jsx`) still renders; a pre-existing Portfolio overflow at 360 px fixed (the audit met it
+  once it ran on the samples).
+- **Tests:** 34 new (25 Python incl. the browser wrapper, 9 browser). The base fails 13 of 13
+  server tests and 7 of the 8 browser behaviour tests; server mutants 15/15 and frontend mutants
+  16/16 are caught; the layout audit passes in fixture and live mode. Full suite **4533 passed, 12 skipped, 0 failed (7 min 50 s)**;
+  runtime data unchanged.
+- **For the review:** input `PR-001-manifest.json` (`a4b459b7…`, 21 files); diff
+  `ac0b7e75…` (237,159 bytes) from the snapshot `analysis_data/pr001/base/`
+  (`diff_digest.py` checks each base file against `4c85eec` or FIX-009's manifest). Also there:
+  `swap_plugin.py` + `run_swaps.sh` (`PR001_SWAP=base|M1..M15`), `fe_mutants.py` (F1–F16),
+  `base_frontend/`, `stale_jsx_check.mjs`, `overflow_probe.mjs`, `audit_server.py`.
+- **For the owner:** nothing to decide. Rollout note (L1): on a device that already has the app,
+  the first open after the deploy may still show the old screens; open it again. FIX-009's four
+  docs now also carry PR-001's edits (layered; its code and tests untouched), so the next docs
+  commit carries both.
+- **Next, in order:**
+  1. PR-001's fresh review in a new conversation ("continue").
+  2. Then PR-002. The FIX-008 deploy confirmation and rollout checks below still stand.
+
+**FIX-009 was ACCEPTED** by its fresh review (13 Oct, about 16:34–16:56 IST, a new conversation
+opened with "continue"). Receipt: [review](evidence/FIX-009-review.md). STATE: `active_task: null`,
+FIX-009 `done`, production verification `pending_deployment`, and **`next_task: PR-001`** (not
+started). Nothing was committed, pushed or deployed, no production state was read and no
+notification was sent. The review changed no reviewed file.
+- **In one example.** The owner watches QOWNWAT. Members A and B both hold QBOTHHLD. Member B also
+  holds the shelf idea QSHELFHD and has no push subscription. The Sunday 18:00 index check finds
+  that all of them changed.
+  - The owner hears about QOWNWAT and the shelf's ideas.
+  - Member A hears about its own stocks and the shelf's.
+  - Member B gets one email with QBOTHHLD and QSHELFHD, the shelf idea once.
+  - Nobody is told about another account's own stock.
+- **Checked:**
+  - input `11c2c620` and diff `57e5467f`, rebuilt with the reviewer's own commands;
+  - on a blob-checked copy of the base, 17 of the 40 related tests fail, 11 of the 15 new ones on
+    behaviour;
+  - the reviewer's own trace passes. It runs from the scheduler's Sunday job with Atlas's real
+    outbox and drainer, three accounts and each Inbox over HTTP. It fails on the base;
+  - full suite **4508 passed, 12 skipped, 0 failed (6 min 56 s)**; runtime data unchanged; the PDF
+    matches its source.
+- **Findings:** no critical, high or medium.
+  - L1 (low, test gap): no test pins that the accounts read after an unreadable one still get
+    their own notices. A `break` in place of `continue` passes all 40 tests, because the failing
+    member is read last. The code is correct. Routed to SA-031, with the fixture.
+  - I1 (info): with Atlas on, an account with no push subscription now gets its own index notice
+    by email; its push row is dead-lettered with a warning, as a brief to it is today. Both
+    production accounts have push on.
+  - I2 (info): guide 10-H gets its status line with the commit.
+- **For the owner:** nothing to decide. FIX-009 ships in a later commit and deploy, at the owner's
+  word, in a job-free window (not Sunday 17:50–18:30 IST). With the commit: KT section 12's FIX-009
+  row `Open` to `Done`, the KT header bump, a PDF rebuild and the 10-H status line. After the
+  deploy: guide 10-H at the next index change to a held or watched stock.
+- **Next, in order:**
+  1. PR-001 in a new conversation ("continue"), then its fresh review in another.
+  2. The FIX-008 deploy confirmation and rollout checks below still stand.
+
+**FIX-009 was IMPLEMENTED** (13 Oct, about 15:32–16:30 IST, a new conversation opened with
+"continue"). Receipt: [implementation](evidence/FIX-009-implementation.md). STATE:
+`active_task: null`, FIX-009 `review_required`, and **`next_task: FIX-009`**, meaning its fresh
+**review**. This phase committed, pushed and deployed nothing, read no production state and sent
+no notification.
+- **In one example.** The owner watches BBB, the test member holds DDD, and the discovery shelf
+  lists EEE. The Sunday index check finds that all three changed.
+  - Before: both accounts were told about BBB, DDD and EEE.
+  - Now: the owner hears about BBB and EEE, the member about DDD and EEE. An account's own stocks
+    come in one notice, the shelf idea in another.
+- **What changed:** `core/delivery/index_watch.py` (and one docstring in `alerts.py`).
+  - A change to a shelf idea goes to everyone, by `emit_alerts_broadcast`, as a shelf add does.
+  - Any other change goes only to the accounts that hold or watch the stock, by
+    `emit_alerts(..., user_id=)`, one bundle per account.
+  - An account whose portfolio cannot be read misses its own changes that run, with a warning;
+    they are never sent to anyone else.
+- **Design call (delegated, recorded in the receipt).** A shelf idea that an account also holds
+  reaches it once. An account with no push subscription is outside the shelf's audience, so it
+  gets that idea in its own notice instead of not at all.
+- **Tests:** 15 new. On base `4c85eec` 11 of them fail on behaviour; 11 of 11 mutants are caught.
+  Full suite **4508 passed, 12 skipped, 0 failed (14 min 12 s)**; runtime data unchanged.
+- **For the review:** input `FIX-009-manifest.json` (`11c2c620…`, 11 files); diff
+  `57e5467f…` from `4c85eec` (`analysis_data/fix009/diff_digest.py`). Also in the ignored
+  folder: `swap_plugin.py` with `run_swaps.sh` (`FIX009_SWAP=base|M1..M11`), `base_snapshot.py`,
+  `mutants.py`.
+- **For the owner:** nothing to decide. FIX-008 is already pushed (15:29), so FIX-009 ships in a
+  later commit and deploy, after its review is accepted and at the owner's word. KT section 12's
+  FIX-009 row stays `Open` until that commit.
+- **Next, in order:**
+  1. FIX-009's fresh review in a new conversation ("continue").
+  2. Then PR-001.
+
+**Committed 13 Oct about 14:40 IST, at the owner's word ("go ahead commit and push"). Pushed
+`33ae170..4c85eec` at 15:29:02 IST; deploy confirmation pending.** Railway redeploys at about 15:37.
 - `1acb17b` FIX-008 code, config and tests (the reviewed bytes); `e85da94` the docs, evidence, the
   FIX-009 card, STATE and HANDOFF; then the KT bump to `e85da94` (section 12's FIX-008 row `Done`;
   section 1 says production runs the inspected code once this afternoon's deploy is confirmed;
   PDF rebuilt; deep-dive headers; guide 10-G and 12-K status lines).
 - `docs/README.md` (the owner's own probe line) is left uncommitted.
-- **Why the push waits:** at 14:37 an 8-minute redeploy would reach the 14:55–15:05 window
-  (15:00 intraday macro news).
+- **Why the push waited:** at 14:37 an 8-minute redeploy would have reached the 14:55–15:05
+  window (15:00 intraday macro news).
 - **Rollout order:** SA-011's 09:07 deploy is not yet confirmed and its first backlog read not
   triaged. After this deploy the 06:30 watchdog warns the owner once a day (counts and the top
   three issues) until the backlog is triaged; nothing reaches the member.

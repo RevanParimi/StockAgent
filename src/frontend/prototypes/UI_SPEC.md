@@ -11,7 +11,11 @@
 styles.css          ← CSS variables, utility classes (.card, .mono, .eyebrow)
 marked + DOMPurify  ← CDN, exact versions with SRI (SA-001)
 chat-markdown.js    ← window.saRenderChatMarkdown: chat reply → sanitized HTML (plain script, not Babel)
-data.jsx            ← Populates window.* globals (no React)
+inline <script>     ← window.saUser / saSetUser / useSaUser / saIsOwner (the signed-in account)
+inline <script>     ← window.saDemoMode = (?demo=1)
+demo-fixtures.js    ← window.saDemoFixtures: sample data, defined ONLY when saDemoMode (plain script)
+data.jsx            ← Static catalogues + empty market globals; bootstrap fetch (no React)
+hooks.jsx           ← useIsMobile, useViewportWidth
 icons.jsx           ← window.Icon object
 sphere.jsx          ← window.Sphere, window.SphereOrb, window.ChatOverlay
 auth.jsx            ← window.AuthScreen
@@ -28,19 +32,24 @@ inline <script>     ← App(), NavChip(), ReactDOM.createRoot().render()
 ### Global state sharing
 No React context. All shared data is attached to `window.*` by data.jsx and read directly inside components. Agent/task mutable state is lifted into `AgentsPage` local state and initialized from `window.AGENTS` / `window.AGENT_TASKS`.
 
-### Live data bootstrap
-`data.jsx` defines mock data first (instant first render), then fires an async IIFE that calls `GET /ui/bootstrap`. On success, it overwrites the relevant `window.*` keys and calls `window.__onApiReady()`. `App` (index.html) sets that callback in a `useEffect` and calls `forceRender(n+1)` to trigger a re-render with live data.
+The signed-in account is `window.saUser` (from `/auth/me`, published by `App` with `saSetUser` at boot, sign-in and sign-out); components read it with `useSaUser()`. The helpers sit in an inline script in index.html, not a .jsx file: navigations are network-first but the service worker serves scripts from its cache first, so the first open after a deploy runs the new index.html with the previous .jsx files, which must still render. Operator tools render only when `saIsOwner(user)` (role `owner`): the Prompt Lab / Analytics / Logs / RL Monitor chips and menu entries, the agent tuning controls and the Tweaks panel. A member sent to an operator screen gets Home. The server routes keep their own guards.
+
+### Live data bootstrap (PR-001: real or unavailable, never a sample)
+`data.jsx` sets every market global empty (`[]` / `null`), then fires an async IIFE that calls `GET /ui/bootstrap`. On success it fills the `window.*` keys; on failure it leaves them empty. Either way it sets `window.__apiState` and calls `window.__onApiReady()`, and `App` re-renders. Screens show "Loading…" while `__apiState` is `'loading'` and "… is unavailable right now" after `'failed'`; no screen falls back to sample values.
 
 ```
 page load
-  → data.jsx: mock data set synchronously
-  → React renders with mock data (no flicker)
-  → data.jsx: fetch('/ui/bootstrap') fires in background
-  → on resolve: window.AGENTS/TICKERS/etc overwritten
-  → window.__onApiReady() → App forceRender() → React re-renders with live data
+  → data.jsx: market globals empty, __apiState = 'loading'
+  → React renders loading states
+  → data.jsx: fetch('/ui/bootstrap')
+  → ok:   window.AGENTS/TICKERS/NIFTY50/… filled, __apiState = 'ready'
+  → fail: globals stay empty,                __apiState = 'failed'
+  → window.__onApiReady() → App forceRender()
 ```
 
-Status flags: `window.__apiReady` (bool), `window.__apiLive` (bool — false if DB empty), `window.__apiFetchedAt` (ISO string).
+Demo mode: `?demo=1` sets `window.saDemoMode`; demo-fixtures.js then defines `window.saDemoFixtures`, data.jsx copies it onto `window`, sets `__apiState = 'demo'` and makes no market call. `App` shows a "Sample data — the market figures and portfolio here are not live" banner. `scripts/ui_responsive_audit.mjs` runs in this mode (`--live` to skip it).
+
+Status flags: `window.__apiState` (`'loading'|'ready'|'failed'|'demo'`), `window.__apiReady` (bool), `window.__apiLive` (bool — false if DB empty), `window.__apiFetchedAt` (ISO string; the hero shows it in IST).
 
 ### Routing model
 Single `screen` string in `App` state (index.html line 40):
@@ -72,31 +81,28 @@ Fixed floating panel (bottom-right, draggable, z-index 2147483646) defined in tw
 
 All variables are on `window`. No module exports.
 
-**Live status:** Variables marked ✅ are overwritten by `GET /ui/bootstrap` with real backend data. Variables marked ❌ remain mock-only (no backend source exists yet). Variables marked 〰️ are static content (no API needed).
+**Live status:** Variables marked ✅ come from an API answer and are empty until it arrives (and stay empty if it fails). Variables marked 🧪 exist only in demo mode (`?demo=1`, demo-fixtures.js). Variables marked 〰️ are static content (no API needed).
 
 | Variable | Shape | Live? | Consumed by | Notes |
 |---|---|---|---|---|
 | `AGENTS` | `Array<{key, name, icon, weight, desc, enabled, beginner}>` | ✅ bootstrap | AgentsPage (initial state), MonthPane | 9 items; `weight` custom-overridden via `PUT /ui/agents/weights` |
 | `TICKERS` | `Array<{sym, name, price, change, score, verdict, trend, hasData}>` | ✅ bootstrap | WatchlistPane, TrendingPane, SuggestCard | 8 NSE auto stocks; `hasData` false if no analysis run yet |
-| `WATCHLIST` | `string[]` | ✅ bootstrap | WatchlistPane | Default: `['MARUTI','TATAMOTORS','M&M','BAJAJ-AUTO','EICHERMOT']` |
-| `AGENT_TASKS` | `Record<agentKey, Array<{key,label,source,enabled,beginner}>>` | ❌ mock | AgentsPage (initial state), AgentDrawer | Toggle state is local React state only; not persisted |
-| `MARKET_TODAY` | `{pulse, oneLiner, autoChange, drivers[], sectorChange[]}` | ✅ bootstrap | TodayPane | `drivers[i]: {kind,label,impact,tickers[]}` |
-| `MARKET_MONTH` | `{pulse, oneLiner, drivers[], agentVotes[]}` | ✅ bootstrap | MonthPane | `agentVotes[i]: {n,v,k}` |
+| `WATCHLIST` | `string[]` | ✅ bootstrap | WatchlistPane | The pane re-reads the account's own list from `GET /ui/watchlist` |
+| `AGENT_TASKS` | `Record<agentKey, Array<{key,label,source,enabled,beginner}>>` | 〰️ static catalogue | AgentsPage (initial state), AgentDrawer | `enabled` overlaid from bootstrap `AGENT_TASK_FLAGS`; the owner's toggles persist via `PUT /ui/agents/tasks` |
+| `MARKET_TODAY` | `{pulse, oneLiner, autoChange, drivers[], sectorChange[], freshness}` | ✅ bootstrap | TodayPane, Hero | `null` until bootstrap; `drivers` only from analyses (may be empty); `sectorChange[i].pct` is `null` when that index failed |
+| `MARKET_MONTH` | `{pulse, oneLiner, drivers[], agentVotes[], freshness}` | ✅ bootstrap | MonthPane | `agentVotes` only agents with scores (no weight stand-in); the votes card is hidden when empty |
+| `NIFTY50` | `{name, value, changePct, asOf}` \| `null` | ✅ bootstrap | Hero market line | Last close, its change on the close before, that close's date |
 | `TRENDING` | `Array<{sym,delta,volume,why}>` | ✅ bootstrap | TrendingPane | Ranked by `abs(price change)` in bootstrap; use `GET /ui/trending` for score-delta ranking |
 | `SUGGESTIONS` | `Array<{sym,reason,score,why}>` | ✅ bootstrap | SuggestCard | Tickers not in watchlist with DB scores |
 | `CATEGORIES` | `Array<{key,icon,label,count,color}>` | 〰️ static | CategoryCard | 6 items; color is hex — no API needed |
-| `NIFTY_AUTO_HISTORY` | `number[]` (30 items) | ✅ bootstrap | (unused directly — feeds NIFTY_AUTO_RANGES) | Real yfinance `^CNXAUTO` 30-day closes |
-| `NIFTY_AUTO_RANGES` | `Record<'1W'|'1M'|'3M'|'6M'|'1Y', {points:number[], label, change}>` | ❌ mock | TodayPane → Sparkline via RangeTabs | Multi-range series not in bootstrap; only 1M via NIFTY_AUTO_HISTORY |
-| `PORTFOLIO_RANGES` | Same shape as NIFTY_AUTO_RANGES | ❌ mock | PortfolioPage → Sparkline | Demo mode only — live hero chart instead reads `GET /portfolio/performance` history (`liveHist`/`liveSlice`), hidden until ≥2 equity points exist |
-| `CHAT_SEEDS` | `string[]` (4 items) | ✅ bootstrap | ChatOverlay seed buttons when `msgs.length === 1` | Static strings from backend |
-| `PORTFOLIO` | `{totalValue, totalCost, dayChange, dayChangePct, cash, holdings[], recentActivity[], perfHistory[], alerts[]}` | ❌ mock | PortfolioPage and all sub-cards | Demo fallback only — live page fetches `GET /portfolio` + `GET /portfolio/performance` (cash/day-change/equity curve) + `GET /portfolio/transactions` (activity) (`?demo=1` forces demo; see §4 Portfolio) |
-| `PORTFOLIO.holdings` | `Array<{sym,qty,avgPrice,currentPrice,agentScore,verdict}>` | ❌ mock | HoldingsTable, AllocationCard | 5 items; demo only |
-| `PORTFOLIO.recentActivity` | `Array<{kind,sym,qty?,price?,text?,t}>` | ❌ mock | ActivityCard | `kind`: `'buy'|'sell'|'agent'`; demo only |
-| `PORTFOLIO.alerts` | `Array<{sym,kind,text}>` | ❌ mock | AlertsCard | `kind`: `'good'|'warn'`; demo only — live alerts come from the digest via `digestAlerts()` |
-| `PORTFOLIO_LEARNINGS` | `{summary, items[], patterns[]}` | ❌ mock | LearningsSection | No feedback/RL engine connected to UI yet |
-| `PORTFOLIO_LEARNINGS.items` | `Array<{id,kind,severity,sym,title,when,what,cost,costValue,lesson,agentSnapshot[],action}>` | ❌ mock | LessonCard | `kind`: `'missed-buy'|'missed-sell'|'sold-too-early'|'sizing'|'good-call'|'avoided-loss'` |
-| `PORTFOLIO_LEARNINGS.patterns` | `Array<{id,label,rate,kind,detail}>` | ❌ mock | PatternChip | `kind`: `'good'|'bad'`; `rate` 0–1 |
-| `LEARN_PATHS` | `Array<{key,title,sub,minutes,steps,progress,color,icon}>` | 〰️ static | PathCard, PathOverlay, LearnPage hero | 6 paths; content is curated — no DB needed |
+| `NIFTY_AUTO_HISTORY` | `number[]` | ✅ bootstrap | (unused by the screens) | `^CNXAUTO` closes; `[]` when the fetch failed |
+| `NIFTY50_RANGES` | `Record<'1W'…'1Y', /ui/nifty-ranges answer>` | 🧪 demo | NiftyBox (demo mode) | Live mode fetches `GET /ui/nifty-ranges?range=` per tab |
+| `PORTFOLIO_RANGES` | `Record<'1W'…'1Y', {points, label, change}>` | 🧪 demo | PortfolioPage → Sparkline | Live hero chart reads `GET /portfolio/performance` history (`liveHist`/`liveSlice`), hidden until ≥2 equity points exist |
+| `CHAT_SEEDS` | `string[]` (4 items) | ✅ bootstrap | ChatOverlay seed buttons when `msgs.length === 1` | Questions only, never a verdict or figure; data.jsx starts with the same list |
+| `PORTFOLIO` | `{totalValue, totalCost, dayChange, dayChangePct, cash, holdings[], recentActivity[], alerts[]}` | 🧪 demo | PortfolioPage and all sub-cards | Live page fetches `GET /portfolio` + `/portfolio/performance` + `/portfolio/transactions`; when `/portfolio` fails the page says the portfolio is unavailable |
+| `PORTFOLIO_LEARNINGS` | `{items[], since}` | ✅ `GET /ui/learnings` | LearningsSection ("Recent verdict changes") | Shown only when the API sent items (`__learningsLive`) or in demo mode. Fetched at load and again when `saSetToken` stores a sign-in (`saLoadLearnings` in data.jsx): the list depends on the viewer |
+| `PORTFOLIO_LEARNINGS.items` | `Array<{id,kind,severity,sym,title,when,what,detail,agentSnapshot[]}>` | ✅ | LessonCard | Only stocks the viewer may see (shared ones plus their own; `/ui/learnings` with the session). Verdict changes first (a verdict that differs from the run before it), newest first, at most 10 (`LEARNINGS_MAX_CHANGES` mirrors the server's cap); then forecast misses, newest first, at most 5. `kind`: `'turned-bullish'|'turned-bearish'|'bullish'|'bearish'|'neutral'` for a change, `'forecast-miss'` for a miss; no money figure, rate or advice text |
+| `LEARN_PATHS` | `Array<{key,title,sub,minutes,steps,progress,color,icon}>` | 〰️ static | PathCard, PathOverlay, LearnPage hero | 6 paths; `progress` is 0 (nothing records a user's progress, so the page claims none: no percentage, no "where you left off") |
 | `GLOSSARY` | `Array<{term,short,defn}>` | 〰️ static | GlossaryCard | 6 terms |
 | `LEARN_TIPS` | `Array<{title,body}>` | 〰️ static | TipsCard | 3 tips |
 | `AGENT_SOURCES` | `Record<agentKey, string[]>` | ✅ via bootstrap `AGENT_SOURCES` key | AgentDrawer "Data sources" | Defined in agents-page.jsx, also returned by bootstrap |
@@ -122,7 +128,7 @@ All icons are inline SVG, Lucide-style, exposed on `window.Icon`.
 |---|---|
 | `Search` | TopNav search box, Pipeline input node |
 | `Plus` | Watchlist "Add ticker", HoldingsTable "Add holding", ActivityCard buy icon |
-| `Star` | Home tab bar "Watchlist", Hero "Run on MARUTI" button |
+| `Star` | Home tab bar "Watchlist" |
 | `Trend` | Home tab "Today", DriverRow good kind, PatternChip good kind |
 | `TrendDown` | DriverRow bad kind, ActivityCard sell icon, PatternChip bad kind |
 | `Sparkles` | Logo, Hero CTA, SuggestCard, ChatOverlay header, AskAssistantCard |
@@ -138,7 +144,7 @@ All icons are inline SVG, Lucide-style, exposed on `window.Icon`.
 | `Check` | AgentCard task count, PathCard done badge, PathOverlay done steps |
 | `Eye` | Auth password show toggle |
 | `EyeOff` | Auth password hide toggle |
-| `ChevronR` | DriverRow, GlossaryCard ask link, RecCard CTA, PathOverlay CTA |
+| `ChevronR` | DriverRow, GlossaryCard ask link, PathOverlay CTA |
 | `ChevronL` | AgentsPage back button |
 | `ChevronD` | (available, unused) |
 | `Mic` | (available, unused) |
@@ -207,20 +213,20 @@ All icons are inline SVG, Lucide-style, exposed on `window.Icon`.
     ├── <Hero openChat/>                             ← dark gradient hero, Sphere inside
     ├── tab bar (Today / This month / Watchlist / Trending)
     ├── active tab pane (conditionally rendered)
-    ├── "Browse by category" → 6-col CategoryCard grid
-    └── "Suggested for you" → 3-col SuggestCard grid
+    ├── "Browse by category" → CategoryCard grid (hidden when CATEGORIES is empty)
+    └── "Suggested for you" → SuggestCard grid (hidden when SUGGESTIONS is empty)
 ```
 
 **Sub-components and data:**
 
 | Component | Props | window.* reads |
 |---|---|---|
-| `TopNav` | `active, onNav, search, setSearch` | None (layout only) |
-| `Hero` | `openChat` | `MARKET_TODAY.oneLiner` |
-| `TodayPane` | `data` (MARKET_TODAY) | `NIFTY_AUTO_RANGES` |
-| `MonthPane` | `data` (MARKET_MONTH) | Hardcoded agent vote list |
-| `WatchlistPane` | — | `WATCHLIST`, `TICKERS` |
-| `TrendingPane` | — | `TRENDING`, `TICKERS` |
+| `TopNav` | `active, onNav, search, setSearch` | `saUser` via `useSaUser` (avatar initials; RL Monitor tab and the menu's Prompt Lab / Analytics / Logs for the owner only) |
+| `Hero` | `openChat` | `saUser` (first name), `NIFTY50` ("Nifty 50 ±x.xx% on <date>", omitted when null), `MARKET_TODAY.oneLiner`, `__apiState` / `__apiFetchedAt` (badge). Greeting by the IST hour |
+| `TodayPane` | `data` (MARKET_TODAY) | `MarketUnavailable` when `data` is null; `NiftyBox` fetches `GET /ui/nifty-ranges?range=` (value, change, "as of <date>", or "Unavailable right now") |
+| `MonthPane` | `data` (MARKET_MONTH) | Votes card only when `agentVotes` is non-empty |
+| `WatchlistPane` | — | `WATCHLIST`, `TICKERS`, then `GET /ui/watchlist` (the account's list + prices). Price 0 → "—"; `hasData` false → "Not analysed" |
+| `TrendingPane` | — | `GET /ui/trending`, `TRENDING` on a network error; unavailable when both are empty |
 | `CategoryCard` | `c` (one CATEGORIES item) | — |
 | `SuggestCard` | `s` (one SUGGESTIONS item) | `TICKERS` (by sym) |
 
@@ -230,7 +236,7 @@ All icons are inline SVG, Lucide-style, exposed on `window.Icon`.
 |---|---|
 | `tab` ('today'|'month'|'watch'|'trend') | Which pane renders |
 | `search` (string) | TopNav search input (display only, no filter logic) |
-| `range` ('1W'…'1Y') inside TodayPane | Nifty Auto sparkline range |
+| `range` ('1W'…'1Y') inside NiftyBox | Nifty 50 range (`GET /ui/nifty-ranges`) |
 
 ---
 
@@ -261,7 +267,7 @@ All icons are inline SVG, Lucide-style, exposed on `window.Icon`.
 | `TaskRow` | `t, disabled, onToggle` | One task with toggle switch inside drawer |
 | `Section` | `title, children` | Eyebrow label + children grouping inside drawer |
 
-**window.* reads:** `AGENTS` (initial state only), `AGENT_TASKS` (initial state only), `AGENT_SOURCES` (in AgentDrawer data sources section).
+**window.* reads:** `AGENTS` (initial state only; when empty the page fetches `GET /ui/agents` itself), `AGENT_TASKS` (initial state only), `AGENT_SOURCES` (in AgentDrawer data sources section), `saUser` (`canTune` = owner). A member gets a read-only page: no plug toggles, task toggles, weight slider or save badge; the drawer shows the weight as a number.
 
 **Internal state:**
 
@@ -278,7 +284,7 @@ All icons are inline SVG, Lucide-style, exposed on `window.Icon`.
 
 **Entry component:** `PortfolioPage({ onNav, openChat })`
 
-**Live-wired (as of portfolio-live-wiring + autopilot):** `usePortfolioLive()` (portfolio.jsx:34) fetches `GET /portfolio` (holdings, mark-to-market), then in parallel `GET /portfolio/digest/latest` (advisor verdicts — optional, 404 until first advisor run), `GET /portfolio/performance` (cash/day-change/equity curve — optional, absent until cash accounting is on), and `GET /portfolio/transactions?limit=500` (Autopilot audit trail — optional). Status is `'loading' | 'live' | 'demo'`. Falls back to mock `window.PORTFOLIO` on any fetch failure, or unconditionally when `?demo=1` is in the URL (skips the live fetch entirely). A later reload failure never downgrades an already-live page back to demo (`wasLiveRef`) — it just keeps the last good data.
+**Live-wired (as of portfolio-live-wiring + autopilot):** `usePortfolioLive()` (portfolio.jsx:34) fetches `GET /portfolio` (holdings, mark-to-market), then in parallel `GET /portfolio/digest/latest` (advisor verdicts — optional, 404 until first advisor run), `GET /portfolio/performance` (cash/day-change/equity curve — optional, absent until cash accounting is on), and `GET /portfolio/transactions?limit=500` (Autopilot audit trail — optional). Status is `'loading' | 'live' | 'unavailable' | 'demo'`. When `GET /portfolio` fails the page shows "Your portfolio is unavailable right now" with a Try again button, never sample data (PR-001). Only demo mode (`?demo=1`) reads `window.PORTFOLIO` (skips the live fetch entirely). A later reload failure never downgrades an already-live page back to demo (`wasLiveRef`) — it just keeps the last good data.
 
 Cash/day-change/range-chart/activity are now live-wired via `/portfolio/performance` + `/portfolio/transactions` (no longer demo-only): the hero shows a real day-change badge, Cash + Realized P&L stats, and the range chart plots `perf.history` (`total_equity` per day, sliced to the selected range) once ≥2 equity points exist. An `AUTOPILOT` pill renders in the hero eyebrow when `perf.autopilot` is true. Demo mode is unchanged (still reads `window.PORTFOLIO`/`PORTFOLIO_RANGES`/`window.PORTFOLIO.recentActivity` unconditionally).
 
@@ -287,7 +293,7 @@ Cash/day-change/range-chart/activity are now live-wired via `/portfolio/performa
 <div> min-height:100vh
 ├── <TopNav active="portfolio" .../>
 └── <main> maxWidth:1280
-    ├── hero strip (dark gradient; DEMO DATA / AUTOPILOT pill in the eyebrow;
+    ├── hero strip (dark gradient; SAMPLE DATA (demo mode) / AUTOPILOT pill in the eyebrow;
     │   day-change badge + Cash + Realized P&L stats once /portfolio/performance
     │   has cash accounting on; Sparkline/DarkRangeTabs render once ≥2 equity points exist)
     └── grid 2fr / 1fr
@@ -337,12 +343,11 @@ Cash/day-change/range-chart/activity are now live-wired via `/portfolio/performa
 
 | State | Controls |
 |---|---|
-| `live.status` ('loading'\|'live'\|'demo') | Which layout renders (skeleton / live / demo) |
+| `live.status` ('loading'\|'live'\|'unavailable'\|'demo') | Which layout renders (skeleton / live / unavailable card / demo) |
 | `live.perf` / `live.txns` | `/portfolio/performance` response / `/portfolio/transactions` rows (live mode only) |
 | `range` ('1W'…'1Y') | Range chart selector — demo mode slices `PORTFOLIO_RANGES`, live mode slices `perf.history` to a trading-day window (5/22/66/132/252) |
 | `search` (string) | TopNav search input (display only) |
 | `addOpen` (bool) | AddHoldingModal visibility |
-| `filter` ('all'|'mistakes'|'wins') inside LearningsSection | LessonCard filter |
 
 **Add holding:** `AddHoldingModal` debounce-searches `GET /ui/search?q=` for ticker autocomplete, then `POST /portfolio/holdings` with `{symbol, qty, buy_date, price?}` — no `sector` sent; the backend resolves it via `SectorRegistry`. `price` omitted → backend prices at the real NSE close for `buy_date`. Success calls `onAdded()` → `live.reload()`.
 
@@ -359,14 +364,17 @@ Cash/day-change/range-chart/activity are now live-wired via `/portfolio/performa
 <div> min-height:100vh
 ├── <TopNav active="learn" .../>
 └── <main> maxWidth:1280
-    ├── hero (dark gradient, progress bar, Sphere)
-    ├── "Continue where you left off" → 3-col PathCard grid
+    ├── hero (dark gradient, "0/28 steps" bar with no percentage, Sphere)
+    ├── "Learning paths" → 3-col PathCard grid
     ├── grid 1.3fr/1fr
     │   ├── <GlossaryCard/>
     │   └── <TipsCard/>
-    ├── "Recommended next" → 2-col RecCard grid
     └── [conditional] <PathOverlay/>    ← right drawer, fixed z-55
 ```
+
+Nothing records a member's progress, so the page states none about them: no
+"where you left off", no "because you finished", and the overlay's button reads
+"Start from step 1" at step 0.
 
 **Sub-components:**
 
@@ -375,7 +383,6 @@ Cash/day-change/range-chart/activity are now live-wired via `/portfolio/performa
 | `PathCard` | `p, onClick` | — |
 | `GlossaryCard` | `openChat` | `GLOSSARY` |
 | `TipsCard` | `tips` | — (passed `LEARN_TIPS` directly) |
-| `RecCard` | `title, body, cta, kind` | — |
 | `PathOverlay` | `p, onClose` | — (uses `getStepTitle` helper) |
 
 **window.* reads (LearnPage):** `LEARN_PATHS`, `LEARN_TIPS`.
@@ -447,7 +454,7 @@ Cash/day-change/range-chart/activity are now live-wired via `/portfolio/performa
 | Name | File | Props | Visual |
 |---|---|---|---|
 | `HoldingsTable` | portfolio.jsx:126 | `holdings` | Card with 7-col table: Ticker, Qty, Avg buy, Current, Value, P/L, Agent take |
-| `LearningsSection` | portfolio.jsx:317 | `learnings, openChat` | Card: header (summary stats + filter tabs), pattern strip, lesson card list |
+| `LearningsSection` | portfolio.jsx | `learnings, openChat` | Card: "Recent verdict changes" header with the number of change cards ("3 changes in the analysed stocks"; "The 10 most recent changes …" at the server's cap; "No verdict changes since 16 Sept" from `PORTFOLIO_LEARNINGS.since` when only misses came, "No verdict changes recorded yet" without a date), one LessonCard per dated change, then "Latest forecast misses" with one LessonCard per miss (no summary figures, filters or pattern strip) |
 | `LessonCard` | portfolio.jsx:458 | `it, openChat` | 2-col card: ticker avatar left, title+what+impact+agent snapshot+lesson+CTA buttons right |
 | `PatternChip` | portfolio.jsx:429 | `p` | Compact card: icon, label, rate bar |
 | `ActivityCard` | portfolio.jsx:199 | `items` | Card with icon-labeled activity rows (buy/sell/agent events) |
@@ -459,11 +466,10 @@ Cash/day-change/range-chart/activity are now live-wired via `/portfolio/performa
 
 | Name | File | Props | Visual |
 |---|---|---|---|
-| `PathCard` | learn.jsx:97 | `p, onClick` | Card: 6px progress bar top, emoji icon, title, sub, steps/min footer |
-| `GlossaryCard` | learn.jsx:139 | `openChat` | Card: 2-col grid of term+defn mini-cards |
-| `TipsCard` | learn.jsx:166 | `tips` | Card: numbered tip list with gradient number badges |
-| `RecCard` | learn.jsx:191 | `title, body, cta, kind` | 2-col card: copy left, large emoji icon right |
-| `PathOverlay` | learn.jsx:219 | `p, onClose` | 560px right slide-in: colored header, step list, Continue button footer |
+| `PathCard` | learn.jsx:80 | `p, onClick` | Card: 6px progress bar top, emoji icon, title, sub, steps/min footer |
+| `GlossaryCard` | learn.jsx:122 | `openChat` | Card: 2-col grid of term+defn mini-cards |
+| `TipsCard` | learn.jsx:150 | `tips` | Card: numbered tip list with gradient number badges |
+| `PathOverlay` | learn.jsx:175 | `p, onClose` | 560px right slide-in: colored header, step list, Start/Continue button footer |
 
 ### TweaksPanel controls (tweaks-panel.jsx)
 
@@ -589,7 +595,7 @@ Fixed bottom-left, z-index 55, visible on all non-auth screens.
 Active chip: `background: var(--bg-tinted)`, color `var(--ink-1)`.
 
 ### ChatOverlay
-- **Opens:** `App.openChat` → `setChat(true)` — called from: Hero "Ask the assistant" button (home.jsx:148), Hero Sphere click (home.jsx:162), `SphereOrb.onOpen` (sphere.jsx:130), `AskAssistantCard` button (portfolio.jsx:302), Learn Sphere click (learn.jsx:52), GlossaryCard "Ask anything" (learn.jsx:144).
+- **Opens:** `App.openChat` → `setChat(true)` — called from: Hero "Ask the assistant" button (home.jsx:148), Hero Sphere click (home.jsx:162), `SphereOrb.onOpen` (sphere.jsx:130), `AskAssistantCard` button (portfolio.jsx:302), Learn Sphere click (learn.jsx:52), GlossaryCard "Ask anything" (learn.jsx:127).
 - **Closes:** `App.closeChat` → `setChat(false)` — called from `ChatOverlay.onClose` (Icon.X button, sphere.jsx:170).
 - **Renders:** Fixed bottom-right (right:24, bottom:104), 400×560, z-65. Slides up on mount.
 - **Seeds:** Shows `window.CHAT_SEEDS` buttons when `msgs.length === 1` (initial bot message only).
@@ -622,7 +628,7 @@ Active chip: `background: var(--bg-tinted)`, color `var(--ink-1)`.
 | **Change sphere mode default** | index.html | Line 33 (TWEAK_DEFAULTS) | Change `"sphereMode": "wireframe"` to `"liquid"` |
 | **Add a portfolio holding** | data.jsx | Lines 222–228 (PORTFOLIO.holdings) | Add `{sym, qty, avgPrice, currentPrice, agentScore, verdict}` — sym must exist in TICKERS |
 | **Add a learn path** | data.jsx | Lines 395–456 (LEARN_PATHS) | Add `{key, title, sub, minutes, steps, progress, color, icon}` |
-| | learn.jsx | Lines 316–323 (getStepTitle) | Add `mykey: ['Step 1 title', ...]` entry |
+| | learn.jsx | Lines 267–276 (getStepTitle) | Add `mykey: ['Step 1 title', ...]` entry |
 | **Add a TweaksPanel control** | index.html | Lines 79–105 (TweaksPanel JSX) | Add `<TweakXxx ... onChange={v=>setTweak('myKey', v)}/>` inside a `<TweakSection>` |
 | | index.html | Lines 32–36 (TWEAK_DEFAULTS) | Add `"myKey": defaultValue` |
 | **Change TopNav links** | home.jsx | Lines 80–85 (TopNav nav) | Edit the four `<NavLink>` calls; `active` is compared against the `active` prop passed by each screen |

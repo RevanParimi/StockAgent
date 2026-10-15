@@ -456,7 +456,9 @@ has holdings or transactions.
 in-browser JSX, no build step). With live data and cash accounting on, it
 shows total equity with an AUTOPILOT pill, the day's change, a stats row
 (Invested, Total return, Cash, Realized P&L), the equity curve from two
-points on, and recent trades. `?demo=1` forces demo data.
+points on, and recent trades. When the portfolio API does not answer, the
+screen says the portfolio is unavailable; only `?demo=1` shows sample data,
+under a "Sample data" banner.
 
 ## 12. Promotion into the managed list
 

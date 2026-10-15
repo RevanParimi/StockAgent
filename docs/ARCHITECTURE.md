@@ -118,9 +118,11 @@ by directory rename, never copying or rewriting bytes
   transport. The outbox retries transient failures, dead-letters permanent
   ones at once, and never re-sends an unknown outcome. Each account's mail
   goes only to that account. Notices about the system's own health reach only
-  the owner; market notices reach every account; the Inbox lists each account's
-  own alerts. `GET /delivery/outbox` shows owner-only counts and dead letters
-  without payloads. The code observes transport acceptance, not receipt.
+  the owner; market notices reach every account; an index change reaches only
+  the accounts that hold or watch the stock, unless it is a shelf idea; the
+  Inbox lists each account's own alerts. `GET /delivery/outbox` shows
+  owner-only counts and dead letters without payloads. The code observes
+  transport acceptance, not receipt.
 - **Backups.** Each night's archive carries a manifest, passes a restore drill
   with ledger-continuity checks, rotates locally (7 copies) and, once a target
   is configured, goes off-site encrypted (AES-256-GCM). The watchdog's

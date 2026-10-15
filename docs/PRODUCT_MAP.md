@@ -448,7 +448,7 @@ its visibility milestone is judged.
 | Alerts | `core/delivery/alerts.py` | Event-driven, deduplicated per user, date, kind and symbol. Operator notices reach only the owner, market notices every account; the Inbox lists the caller's own |
 | Channels | `core/delivery/channels.py` | Web push and email (SMTP or Resend), one result contract |
 | Outbox | `core/delivery/outbox.py` | One durable row per message and channel when Atlas is on; retries, dead letters, at-most-once |
-| Index watch | `core/delivery/index_watch.py` | Weekly constituent changes for held, watchlisted and shelf names |
+| Index watch | `core/delivery/index_watch.py` | Weekly constituent changes. Each account hears only about stocks it holds or watches; a change to a shelf idea reaches every account |
 | Ops alerts | `core/delivery/ops_alerts.py` | Job errors and zero-output alerts |
 
 KT section 10 gives the delivery contract. **Compliance runs through all of
@@ -509,7 +509,7 @@ error direction (KT [section 5](TECHNICAL_DESIGN.md#grading-defect-an-example-ev
 
 | Router | Path | Endpoints and surface |
 |---|---|---|
-| ui_data | `services/api/routes/ui_data.py` (3,801 lines) | 26: bootstrap, market summary, trending, watchlist, search, learnings, managed tickers, agent weights, logs, feedback, **and the chat engine** |
+| ui_data | `services/api/routes/ui_data.py` (3,973 lines) | 26: bootstrap, market summary, trending, watchlist, search, learnings, managed tickers, agent weights, logs, feedback, **and the chat engine** |
 | portfolio | `services/api/routes/portfolio_api.py` | 11: holdings, watchlist, CSV import, advice, digest, transactions, performance, run-advisor |
 | delivery | `services/api/routes/delivery_api.py` | 9: brief and weekly, manual runs, alerts, push subscriptions, the outbox view |
 | analytics | `services/api/routes/analytics.py` | 8: RL exports, accuracy, drift, misses, conviction, sector comparison, an OData feed |
@@ -535,16 +535,25 @@ the browser.
 
 ### 14.3 Frontend — `src/frontend/prototypes/`
 
-A single-page PWA of 22 modules, transformed in the browser with no build
+A single-page PWA of 23 modules, transformed in the browser with no build
 step: `home`, `portfolio`, `brief-view`, `digest-view`, `weekly-view`,
 `inbox`, `analytics`, `agents-page`, `rl-monitor`, `rl-data`, `prompt-lab`,
 `settings`, `auth`, `learn`, `logs`, `data`, `sphere` (the chat overlay),
-`chat-markdown.js` (the sanitizing boundary), `tweaks-panel`, `hooks`,
-`icons` and the versioned service worker `sw.js`.
+`chat-markdown.js` (the sanitizing boundary), `demo-fixtures.js` (sample data
+for `?demo=1` only), `tweaks-panel`, `hooks`, `icons` and the versioned
+service worker `sw.js`.
 
-Responsive check: `node scripts/ui_responsive_audit.mjs`. The chat boundary
-has a browser test (`npm run test:frontend`). **Planned:** packaging and a
-compiled client (SA-028, stretch).
+Every figure a member sees comes from an API answer, with its date, or the
+screen says it is unavailable; a failed request never shows sample data. The
+operator screens (Prompt Lab, Analytics, RL Monitor, Logs), agent tuning and
+the Tweaks panel show only for the owner's session (`/auth/me` role), and the
+server keeps its own guards ([KT section 10](TECHNICAL_DESIGN.md#10-delivery-interface-identity-and-operations)).
+
+Responsive check: `node scripts/ui_responsive_audit.mjs` (runs on the
+`?demo=1` samples; `--live` for the server's answers). Browser tests
+(`npm run test:frontend`) cover the chat boundary, the Logs screen and the
+real-figures and owner-only rules. **Planned:** packaging and a compiled
+client (SA-028, stretch).
 
 ---
 

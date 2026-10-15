@@ -53,6 +53,7 @@ repository and the state of each operational control.
 | Sector benchmarks | Each sector's technicals are measured against its own index. Yahoo returns no data for `^CNXAUTO` or `^CNXENERGY`, so automobile and renewable-energy correlations read "unavailable". | Verified 2026-10-10 from the 7–9 Oct review logs |
 | Listing-day closes | The nightly audit grades listing-day IPO rows: 4 graded and none skipped on 2026-10-01. | Verified 2026-10-01 |
 | Chat brief scope | Chat's brief tool reads only the caller's portfolio. The owner gets the owner's brief; a member account with no holdings is told there is no brief yet and sees none of the owner's. | Verified 2026-10-11, the owner's check with a member account |
+| Score history | Holds no row: nothing wrote it from 21 Apr 2026 (`ce1eeb5`) until this revision, while 1,082 analyses with a verdict were logged in `run_summaries` (83 stocks, 26 Aug to 15 Oct; 173 verdict changes in the last 30 days). So Home showed no analysed score and Portfolio no verdict change. Rows accrue from the first analysis after this revision is deployed; the backfill from the run log runs only at the owner's word. | Read-only probe, 2026-10-15 ([PR-001 review](planning/PI-2026-09/evidence/PR-001-review.md)) |
 | Delivery | Outbound SMTP has worked since a plan upgrade on 2026-09-21. The outbox records transport acceptance; user receipt is not observable. Whether `RESEND_API_KEY` is set was not inspected. | Section 10 |
 | Backups | The nightly archive and restore drill run. No off-site target is configured, because the owner deferred it to the end of the PI, so the watchdog sends a weekly reminder. | Watchdog mail, 2026-10-07 |
 | Watchdog milestones | The milestones that lapsed in August and September were judged and retired on 2026-10-06. The next morning's run sent no LAPSED notice. | Watchdog mail, 2026-10-07 |
@@ -206,7 +207,8 @@ evidence.
 | `data/ipo/` | Historical issue facts and captured demand snapshots; reports derive from these records. |
 | `data/market_cache/ipo.json` and EOD parquet | Cached IPO information and exchange price history; date, source and stale state matter. |
 | `data/logs/data_health.jsonl`; `data/logs/decision_gate.jsonl` | One data-health row per analysis run, also written to `telemetry.db`; one gate row per consumer decision. The gate log never holds a user id. |
-| SQLite score, log, user and Atlas stores | Historical scores, telemetry, sessions and relational indexes/outbox. Secondary tables may lag primary records. |
+| `scores.db`: `score_history` | One row per completed analysis, written at the orchestrator's exit after the decision gate; the newest 90 per stock. Home's scores, the watchlist, Portfolio's verdict changes and the chat read it; lists name only shared stocks and the viewer's own (section 10). `scripts/backfill_score_history.py` can copy past runs from `telemetry.db`'s `run_summaries`, marked so they can be removed. |
+| SQLite log, user and Atlas stores | Telemetry, sessions and relational indexes/outbox. Secondary tables may lag primary records. |
 | `telemetry.db`: `app_logs`; `error_issues`, `error_backlog_cursor` | Every WARNING+ log record, with its run id and ticker when logged inside an analysis run, kept with no cap; and the operations backlog built from it (section 10). The backlog keeps message templates, never raw text, and prunes itself; it never changes `app_logs`. |
 | `data/scheduler_job_outcomes.json`; `data/watchdog_state.json` | Operational results, including the daily review's per-ticker outcomes, and milestone state. Not proof of financial performance. |
 | `data/backups/` | Local rotation of the last 7 archives, each with its manifest, and `backup_status.json` (the last restore drill and off-site result). An encrypted copy goes outside the volume once a target is configured (section 10). A local archive is not off-site recovery. |
@@ -1244,11 +1246,21 @@ Inbox. Who receives an alert depends on what it is about:
   the 06:30 watchdog finds the backup not confirmed off-site, the owner's phone
   and laptop each get a push and the owner's mailbox gets one email; an invited
   member's phone gets nothing, and the member's Inbox does not list it.
-- **Market notices** (index reconstitution, discovery shelf adds and the
-  pre-open shock re-forecast) go to every account with a push subscription and
-  to the default user, each email to the account's own address.
-- **An account's own alerts**, such as advisor escalations and lock-in
-  expiries, go to that account.
+- **Market notices** (discovery shelf adds, an index change to a shelf idea
+  and the pre-open shock re-forecast) go to every account with a push
+  subscription and to the default user, each email to the account's own
+  address.
+- **An account's own alerts** go to that account: advisor escalations,
+  lock-in expiries, and an index change to a stock the account holds or
+  watches. The [weekly index check](../core/delivery/index_watch.py) sends
+  each account one notice with its own stocks and never names another
+  account's. A shelf idea that the account also holds arrives once: with the
+  shelf's notice, or in the account's own notice when the shelf's notice did
+  not include the account (it has no push subscription and is not the default
+  user). If an account's portfolio cannot be read, that run skips its index
+  changes rather than sending them to anyone else. For example, when a stock
+  that only the owner watches leaves the NIFTY 50, the owner is told and a
+  member is not; if the stock were a shelf idea, both would be.
 
 The Inbox's Alerts tab (`GET /delivery/alerts`) lists only the caller's own
 records; a record written without a user id belongs to the default user. A
@@ -1478,15 +1490,73 @@ cannot send the session header, so the Logs screen
 `fetch`. On a 401 or 403 it shows a plain message and stops reconnecting, and
 it does not open the API-key prompt that other 403s trigger.
 
-The RL client has demo/fallback paths on API failure, so populated charts
-alone do not prove live data. Every signed-in member sees the operator screens
-(Prompt Lab, Analytics, RL Monitor, Logs, agent tuning). The server guards
-their writes and the Logs screen's reads. The home hero carries fixed demo
-text: a fixed greeting, an auto-sector move and a Nifty Auto figure. The
-portfolio page's "Missed gain" and "Avoided loss" are composite-score changes ×
-10,000 printed as rupees. **Planned:** real or absent figures and member-hidden
-operator tools (PR-001); four member screens (PR-010); honest unavailable
-states (SA-024); a public-read and demo-data policy (SA-032).
+Every figure on a member's screen comes from an API answer and carries its
+date, or the screen says it is unavailable. For example, at 09:00 IST the home
+hero reads "Good morning, Ravi." for the signed-in account, whatever the
+phone's time zone. Below it is "Nifty 50 −0.42% on 12 Oct.", from
+`/ui/bootstrap`'s `NIFTY50`: the last close, its change on the close before,
+and that close's date. When that fetch fails the line is left out. The index
+box reads `/ui/nifty-ranges`, which returns the Nifty 50's closes over the
+named calendar span, the last value and its date. Rows show "—" for a price
+the server could not fetch (it arrives as 0), "Not analysed" for a stock with
+no analysis, and no move for a sector index that failed. The server sends no
+stand-ins: no random sparkline, no generic market drivers, no agent weight
+shown as a vote, and chat seeds are questions rather than claims.
+`/ui/learnings` returns dated records only. A verdict change is a run whose
+verdict differs from the run before it; a re-run with the same verdict is not
+one. The route looks through every kept run of each stock the viewer may see
+(below) and sends the changes newest first, at most ten, then the latest
+forecast misses, at most five. The Portfolio page counts only the changes and lists the misses under
+their own heading. For example, MARUTI turned BUY on 9 Oct, TATAMOTORS SELL on
+10 Oct and BOSCHLTD BUY on 13 Oct, and eight other stocks were re-analysed with
+the same verdict. The page reads "3 changes in the analysed stocks", BOSCHLTD
+first. A full list reads "The 10 most recent changes", because older ones may
+have been left out. With no change it reads "No verdict changes since 16 Sept":
+`since` is the date of the oldest kept run among those stocks. If the score
+history cannot be read, the route sends nothing rather than a partial list. A composite-score change is not rupees, so there is no
+gain, loss or agreement figure and no templated lesson; realized trade results
+are planned (SA-051, PR-002). The Learn page claims no progress for a member,
+because nothing records it. Sample data exists only in demo mode: `?demo=1` loads the invented
+values in `src/frontend/prototypes/demo-fixtures.js` under a "Sample data"
+banner and makes no market call, and the layout audit uses it.
+A failed request never falls back to a sample.
+
+**Score history and who sees which stock.** Every completed analysis writes
+one score-history row (`scores.db`) at the orchestrator's single exit, after
+the decision gate, with the verdict the run returns. Each entry point ends
+there: the 16:30 review, the monthly forecast, discovery deep dives,
+`/analyse`, the stream and the chat. A failed write is a warning and never
+fails the analysis. The store keeps the newest `SCORE_HISTORY_MAX_ROWS` (90)
+runs per stock, and each agent's score as its own reading (`raw`), which the
+"This month" votes average. Because the store also holds stocks that a member
+asked about by name, a screen that lists stocks out of it names only:
+
+- the shared stocks: the built-in universe, the managed list (which
+  `GET /ui/tickers/managed` serves to every account) and the shelf's active
+  ideas;
+- the viewer's own holdings and watchlist, on the screens that know the
+  viewer.
+
+Home's market panes, the market summary and the sector comparison name shared
+stocks only. Portfolio's verdict changes, search by thesis text and the chat's
+current verdicts and analysis history add the viewer's own. An anonymous
+request while sign-in is required owns nothing, and an unreadable portfolio
+adds nothing. A screen keyed by a stock the viewer names, such as a watchlist
+row or a ticker's history, needs no filter. A watched stock outside the
+built-in universe shows its analysis, without a price. For example, say the
+owner holds BEL and a member holds DIXON, and neither is managed or on the
+shelf. The member's Portfolio lists DIXON's verdict changes and never BEL's,
+and the chat answers the member with DIXON's verdict, not BEL's.
+
+Operator tools show only for a session whose `/auth/me` role is `owner`:
+Prompt Lab, Analytics, RL Monitor, Logs, agent tuning (the plug, task and
+weight controls) and the Tweaks panel. While the role is unknown none show,
+and a member sent to an operator screen lands on Home. Hiding is not the
+protection: the server keeps `require_owner` on every tuning write and on the
+log reads. The RL client still has demo/fallback paths on API failure, so
+populated operator charts alone do not prove live data. **Planned:** four
+member screens and an Operator menu (PR-010); honest unavailable states on the
+remaining screens (SA-024); a public-read and demo-data policy (SA-032).
 
 Chat replies are untrusted text: the model quotes news snippets and tool
 output, and a quoted `<img src=x onerror=…>` passed to the browser as HTML
@@ -1710,8 +1780,8 @@ The planned changes connect the research to the money:
 - **Explain like an investor.** Explanations follow the pattern "what we did,
   why, what would change our mind, what next", grounded and free of internal
   words (PR-007). The brief opens with your stocks (PR-003, PR-008).
-- **Show only what is real.** Invented figures and fixed demo values go, and
-  members see four screens (PR-001, PR-010).
+- **Show only what is real.** On top of section 10's real-figures rule,
+  members see four screens and the owner an Operator menu (PR-010).
 - **Choose models on evidence.** Models are chosen per role from a bench on
   stored bundles (PR-012).
 
@@ -1765,15 +1835,18 @@ story to the sections of this document it changes. An implemented story's
 behaviour is described in those sections as current design. Its production
 verification is tracked separately (section 1).
 
-Seven fixes outside the SA numbering are also part of the current design:
+Nine fixes outside the SA numbering are also part of the current design:
 listing-day closes (FIX-001, sections 5 and 7), ticker resolution (FIX-002,
 section 4), bank income statements (FIX-003, section 4), dossier dates
 (FIX-004, section 5), the chat brief's user scope (FIX-005, section 10),
-owner-only server logs (FIX-007, section 10) and owner-only operator notices
-(FIX-008, section 10).
+owner-only server logs (FIX-007, section 10), owner-only operator notices
+(FIX-008, section 10), index-change notices about the account's own stocks
+(FIX-009, section 10) and a score history that every analysis writes, listed
+only to the viewers who may see each stock (FIX-010, sections 3 and 10).
 DOC-001 produced this document's current-code edition. The PR stories are the
 product results track (section 11), ordered in STATE.json directly after
-SA-011.
+SA-011. Of them, real figures and owner-only operator tools (PR-001,
+section 10) are part of the current design.
 
 | Story | Change | Status | KT sections | Dependencies |
 |---|---|---|---|---|
@@ -1831,7 +1904,9 @@ SA-011.
 | [FIX-006](planning/PI-2026-09/stories/FIX-006.md) | An anonymous watchlist read never falls back to the owner | Open | 10 Interface | None |
 | [FIX-007](planning/PI-2026-09/stories/FIX-007.md) | Server logs are readable only by the owner | Done | 10 Interface | None |
 | [FIX-008](planning/PI-2026-09/stories/FIX-008.md) | Operator notices reach only the owner; register the backlog's watchdog entry | Done | 10 Delivery; 10 Operations | SA-011 |
+| [FIX-009](planning/PI-2026-09/stories/FIX-009.md) | Index-change notices name only the account's own stocks | Open | 10 Delivery | None |
 | [PR-001](planning/PI-2026-09/stories/PR-001.md) | Remove invented figures and fixed demo values; hide operator tools from members | Open | 10 Interface | None |
+| [FIX-010](planning/PI-2026-09/stories/FIX-010.md) | Every analysis writes the score history again; screens name only the viewer's stocks | Open | 3 Storage; 10 Interface | None |
 | [PR-002](planning/PI-2026-09/stories/PR-002.md) | A weekly results scorecard with a "sold too early" check | Open | 7 Marksheets; 10 Delivery | None |
 | [PR-003](planning/PI-2026-09/stories/PR-003.md) | Fresh overnight news: no repeats, published-date freshness, global cues | Open | 10 Delivery | None |
 | [PR-004](planning/PI-2026-09/stories/PR-004.md) | Enough researched ideas to fill 10+ positions | Open | 8 Discovery | None |

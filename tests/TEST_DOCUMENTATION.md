@@ -11,7 +11,7 @@ April 2026 version of this page described a layout that no longer exists.
 | `tests/integration/` | Several modules together: API routes, fetchers with mocked transports, stores. |
 | `tests/contract/` | JSON shapes and settings other components rely on. |
 | `tests/test_*.py` | Older top-level tests, collected with the rest. |
-| `tests/frontend/` | The SA-001 browser suite (Node and Chromium), run by `npm run test:frontend`. |
+| `tests/frontend/` | The browser suites (Node and Chromium), run by `npm run test:frontend`: the chat Markdown boundary, the Logs screen, and real figures with owner-only operator tools (`no_invented_figures.test.mjs`). Each serves the real prototype files and answers the API from the test's own plan; nothing reaches the network. |
 | `tests/fixtures/` | Captured payloads. Read them through `Path(__file__)`, never a relative path. |
 | `tests/hermetic.py` | The suite's hermetic boundary, described below. |
 
@@ -91,7 +91,7 @@ read-only repository access and no secrets. It has three jobs:
 
 - the whole `tests/` tree;
 - `scripts/ci/check_broad_except.py` and `scripts/docs/check_kt_docs.py`;
-- the SA-001 browser suite in Chromium.
+- the browser suites in Chromium (`npm run test:frontend`).
 
 The broad-exception guard fails when new code catches every exception
 (`except:`, `Exception`, `BaseException`, `contextlib.suppress(Exception)`)
@@ -118,8 +118,9 @@ Local runs use Python 3.13 on Windows; CI and production use 3.11 on Linux.
   and the push-subscription and portfolio stores use the same step. This used
   to fail `test_delivery_api`, `test_ops_alerts` and `test_portfolio_locking`
   intermittently.
-- The browser suite skips inside pytest when Node or Chromium is missing. CI
-  runs it as a separate job, so there it cannot be skipped.
+- The browser suites run inside pytest too (`test_chat_markdown_boundary.py`,
+  `test_ui_no_invented_figures_pr001.py`) and skip there when Node or Chromium
+  is missing. CI runs them as a separate job, so there they cannot be skipped.
 
 ## Adding a test
 

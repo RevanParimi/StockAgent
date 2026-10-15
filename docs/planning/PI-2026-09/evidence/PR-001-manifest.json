@@ -1,0 +1,134 @@
+{
+  "story": "PR-001",
+  "phase": "rework 1 (2026-10-15), after the fresh review's changes_requested",
+  "baseline": "4c85eec plus FIX-009 accepted, uncommitted (CODEBASE, PRODUCT_MAP, TEAM_TESTING_GUIDE, TECHNICAL_DESIGN, PDF carry both stories, layered)",
+  "previous_input": "docs/planning/PI-2026-09/evidence/PR-001-manifest-review1.json (a4b459b71ca64d6866a8a3639e0c27f683628eaa80182d59f03e046b190d24b1, 21 files)",
+  "excluded": [
+    "docs/planning/PI-2026-09/STATE.json",
+    "docs/planning/PI-2026-09/HANDOFF.md",
+    "docs/planning/PI-2026-09/evidence/PR-001-implementation.md",
+    "docs/planning/PI-2026-09/evidence/PR-001-review.md",
+    "docs/planning/PI-2026-09/stories/SA-031.md (routed I5 of the first implementation; bookkeeping)",
+    "docs/README.md (the owner probe line, not PR-001s)",
+    "FIX-009s own code, tests and evidence"
+  ],
+  "note": "Rework diff base: analysis_data/pr001/rework1/base (the review-1 input, plus learn.jsx and scripts/ci/broad_except_baseline.txt at 4c85eec; rw_digest.py proves each). Cumulative diff base: analysis_data/pr001/base plus those two at 4c85eec.",
+  "hash_convention": "git blob bytes after .gitattributes normalization (CRLF->LF for text, binary unchanged); verify with scripts/docs/kt_manifest.py verify",
+  "files": [
+    {
+      "path": "CODEBASE.md",
+      "git_blob": "bad4b3bfdbee2671712b91fadc861e38cfcb878f",
+      "sha256": "710aa88b9f1626184613cdcefd316a79662337cf0a8b29548062c53dcaa3728e"
+    },
+    {
+      "path": "docs/AUTOPILOT_GUIDE.md",
+      "git_blob": "79c37164470c4cb02b9d417c020679ca3c9a6013",
+      "sha256": "94d531e9ac2f2b4bd043f61199fcb2d249ed13ad0e892f1eaab21d2b2b602b83"
+    },
+    {
+      "path": "docs/PRODUCT_MAP.md",
+      "git_blob": "73683c410feb3688cce1ba0970b6d93e95d19f1c",
+      "sha256": "0ec6ce208f2fd1bf8e1cedb46745789036bae692a2fcbb616b99d94833748605"
+    },
+    {
+      "path": "docs/StockAgent-Three-Loops.pdf",
+      "git_blob": "3ff3a59a167a1df1d5d9530acb2f403f2bf8e207",
+      "sha256": "05c71472e19a0c9d68c79bd5d3d69e0afbfcc4e5d5437f0b8b6784a0fe4a9e59"
+    },
+    {
+      "path": "docs/TEAM_TESTING_GUIDE.md",
+      "git_blob": "384f66f63a96af0c1d0afbbb8673313f8b088d6a",
+      "sha256": "da9a19ae34728430e0af3a8c479db59c55a74944ee00e3775f595f943c2195c9"
+    },
+    {
+      "path": "docs/TECHNICAL_DESIGN.md",
+      "git_blob": "3ee994eb63aab3ac17ea3176bbba3bbbfebe4ec2",
+      "sha256": "cd034e1ef981cbc8721734594910cc1e9e5b920ce419ec74bf1ccb3ec8adc03a"
+    },
+    {
+      "path": "package.json",
+      "git_blob": "bc635b1195114a84bfb31d1a2bd9828dbcd7e081",
+      "sha256": "25f707d74698d7bc5c8fda8d640867f9e077e8ea229415e74a76e4adefc65075"
+    },
+    {
+      "path": "scripts/ci/broad_except_baseline.txt",
+      "git_blob": "561128d262e5551301bf5e23cc06a9c9c556f4f9",
+      "sha256": "6878728742838ba8ebce3d05267a9179c713cb55110324ddb3110a4b2d738d77"
+    },
+    {
+      "path": "scripts/ui_responsive_audit.mjs",
+      "git_blob": "c7480271f33d8501d08d69e39a4bbddeddf00725",
+      "sha256": "bb3190bb22cc182d3d3f9030f254f49465a84ac7a91ec1d7d5603213cbb7d961"
+    },
+    {
+      "path": "services/api/routes/ui_data.py",
+      "git_blob": "231bbbafe2311c6883cfbdcf9ef818902e3b469b",
+      "sha256": "84f9c1ca5a70376bc06ad7420faf105566390c0be6bb293f5c1ae5f568d5922d"
+    },
+    {
+      "path": "src/frontend/prototypes/UI_SPEC.md",
+      "git_blob": "eb52440cf6bca08534dc39644784117a129553ed",
+      "sha256": "138284d3ffd6faf4fa020797b17215fb3382c5d8999e033e8a04da7c6200cbf5"
+    },
+    {
+      "path": "src/frontend/prototypes/agents-page.jsx",
+      "git_blob": "5208cc4d561a75dba19c53c6a91ff39b16cd39e3",
+      "sha256": "596f144cbdf944a018a0d0672133ba68fffd56b7e9ca9050b58ec01857b35477"
+    },
+    {
+      "path": "src/frontend/prototypes/auth.jsx",
+      "git_blob": "62e7894860c32e4d22df3b0b58505b5520fe21a8",
+      "sha256": "1aab570ad91336446f8aee6edfe1aeb2285033af869dcf79f79bddfd7cd790d2"
+    },
+    {
+      "path": "src/frontend/prototypes/data.jsx",
+      "git_blob": "32a93be7835b68c7ccc6a94fc2073dedf1bdc887",
+      "sha256": "417cfd76cc8f4d6d1dd0a3e2e43ffe2494eabe6c2018e3a81a38d9dc9570bfb7"
+    },
+    {
+      "path": "src/frontend/prototypes/demo-fixtures.js",
+      "git_blob": "b6f54a5cfacc2ba84bd6b9fc0c73f83d01f55be0",
+      "sha256": "9ca71bd375c442165f5d1237de48467d991c4de56c2a92eb4060fc00a0cc5bcd"
+    },
+    {
+      "path": "src/frontend/prototypes/home.jsx",
+      "git_blob": "08691031d778606cbaa221bcdad536dc830983f8",
+      "sha256": "fd043a75c8f1d9a7a674053f701c229e3a01ed4ee074be950b535555b878b7aa"
+    },
+    {
+      "path": "src/frontend/prototypes/index.html",
+      "git_blob": "5255062f08aa75ed052b2ed8e7cac3ad5ea9bb70",
+      "sha256": "19ae3ff5d097e580f60270c0b4ba5beadb815d73b0e481619288c70f4b9e4e86"
+    },
+    {
+      "path": "src/frontend/prototypes/learn.jsx",
+      "git_blob": "c9b1d3fe73c67cb3de3236aaa56aae56d5fef54a",
+      "sha256": "42064dc0fb4fac70b612f21a20d710199d21efe05d681a1066a519228d502cbd"
+    },
+    {
+      "path": "src/frontend/prototypes/portfolio.jsx",
+      "git_blob": "98bab843a313d13cf9cfcad07e985583964dc13c",
+      "sha256": "c6c1bfe382452f8ff7c9db1e5b9fa5ca89a7bb681a34989093632c7588fb6244"
+    },
+    {
+      "path": "src/frontend/prototypes/sw.js",
+      "git_blob": "2a59b83d69a37f0e502c1d86d5879f858cf17775",
+      "sha256": "cee077927a2c4274381bbcfc31798affd6ab4ff01ab79d4f4c9e125dd9f3898a"
+    },
+    {
+      "path": "tests/TEST_DOCUMENTATION.md",
+      "git_blob": "08ba4e2958655ef4292e6b80f94fdd7b780f378f",
+      "sha256": "6481334a31fc071fde2296e521a0897641f208a63c68f1e2378398b51fad541e"
+    },
+    {
+      "path": "tests/frontend/no_invented_figures.test.mjs",
+      "git_blob": "9a1f296ca04c507ded3d1f5dcac9f8d68655fc25",
+      "sha256": "b65bf86f1c917608540207e9aed9653241869bd287849aed3a8a6818f3576392"
+    },
+    {
+      "path": "tests/unit/test_ui_no_invented_figures_pr001.py",
+      "git_blob": "7c9c1d23b5a4a6a58a50f71e74d2120b515bd1fd",
+      "sha256": "5e86de82f0a5a5dac48ed248b3dda8de67fa6d52adee9d299f18940d63cc74b1"
+    }
+  ]
+}

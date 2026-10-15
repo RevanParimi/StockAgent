@@ -112,7 +112,9 @@ StockAgent-main/
 │       └── prototypes/            # THE real frontend — vanilla-React JSX (Babel standalone),
 │                                  #  served statically at /app; PWA (sw.js + VAPID push).
 │                                  #  chat-markdown.js = the chat reply → HTML boundary;
-│                                  #  browser test in tests/frontend/ (npm run test:frontend).
+│                                  #  demo-fixtures.js = sample data for ?demo=1 only (no
+│                                  #  screen falls back to it); operator screens owner-only;
+│                                  #  browser tests in tests/frontend/ (npm run test:frontend).
 │                                  #  (The old TypeScript/Vite src/frontend/web scaffold was
 │                                  #   deleted in audit Wave E — it was never the deployed UI.)
 ├── core/                          # Core intelligence layer (shared across sectors)
@@ -189,7 +191,8 @@ StockAgent-main/
 │   │   ├── brief.py               # Morning brief builder (08:50 IST job)
 │   │   ├── weekly.py              # Weekly review builder (Sun 18:00 IST job); switch
 │   │   │                          #  suggestions carry why-leave + the destination's thesis
-│   │   ├── index_watch.py         # Index constituent diff -> inclusion/exclusion alerts
+│   │   ├── index_watch.py         # Index constituent diff -> inclusion/exclusion alerts: each
+│   │   │                          #  account's own stocks to it (emit_alerts), shelf ideas to all
 │   │   └── outbox.py              # Atlas C7 (BP2) — durable delivery outbox: deliver() enqueues
 │   │                              #  per-channel rows when ATLAS_ENABLED; singleton-owner drainer
 │   │                              #  claims each atomically (queued→sending CAS) → send + backoff
@@ -338,21 +341,21 @@ acts as owner (single-user passthrough).
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
-| GET | `/ui/bootstrap` | None | All UI data in one call: agents, tickers, market summary, trending, categories, watchlist. |
+| GET | `/ui/bootstrap` | None | All UI data in one call: agents, tickers, market summary, trending, categories, watchlist, and `NIFTY50` (last close, its change on the close before, and that close's date; `null` when the fetch failed). Nothing is invented: a failed price is 0 with `hasData` false, a failed sector move is `null`, drivers and agent votes come only from analyses. |
 | GET | `/ui/agents?sector=automobile` | None | Agent definitions + current weights for a sector. |
-| PUT | `/ui/agents/weights?sector=automobile` | None | Persist user-adjusted agent weights. Weights 0.00–0.30, sum must be 0.95–1.05. |
+| PUT | `/ui/agents/weights?sector=automobile` | owner or machine key | Persist owner-adjusted agent weights. Weights 0.00–0.30, sum must be 0.95–1.05. |
 | GET | `/ui/agents/tasks` | None | Get persisted agent task enabled/disabled flags. |
-| PUT | `/ui/agents/tasks` | None | Persist task toggle state to `data/agent_tasks.json`. |
+| PUT | `/ui/agents/tasks` | owner or machine key | Persist task toggle state to `data/agent_tasks.json`. |
 | GET | `/ui/tickers` | None | All tickers with latest score + live yfinance price. |
 | GET | `/ui/trending` | None | Tickers ranked by score delta between last two analysis runs. |
-| GET | `/ui/market/summary` | None | Market pulse, driver cards, sector index changes, Nifty Auto sparkline. |
-| GET | `/ui/nifty-ranges?range=1M` | None | Nifty Auto sparkline for a time range: `1W`, `1M`, `3M`, `6M`, `1Y`. |
+| GET | `/ui/market/summary` | None | Market pulse, driver cards, sector index changes, Nifty Auto sparkline. Built from shared stocks only. |
+| GET | `/ui/nifty-ranges?range=1M` | None | The Nifty 50 over a calendar span (`1W`, `1M`, `3M`, `6M`, `1Y`): closes, last `value`, its date `asOf`, and `change`; `value`/`asOf`/`change` are `null` when the fetch failed. |
 | GET | `/ui/watchlist` | None | User watchlist with live prices. When `ATLAS_ENABLED`, the session user's `Portfolio.watchlist` (per-user); else the global `data/watchlist.json` (Atlas C5). |
 | PUT | `/ui/watchlist` | None → owner | Persist watchlist. When `ATLAS_ENABLED`, writes the session user's `Portfolio.watchlist`; else owner-only global `data/watchlist.json` (Atlas C5). |
-| GET | `/ui/search?q=<term>` | None | Ticker + thesis text search (falls back to yfinance lookup). |
+| GET | `/ui/search?q=<term>` | session optional | Ticker + thesis text search (falls back to yfinance lookup). A thesis match names only stocks the caller may see. |
 | GET | `/ui/categories` | None | Categories (EV, mass-market, etc.) with ticker lists. |
-| PUT | `/ui/categories/{key}/tickers` | None | Add/remove tickers from a category (body: `{add: [], remove: []}`). |
-| GET | `/ui/learnings` | None | RL-derived lesson cards and portfolio learning summary. |
+| PUT | `/ui/categories/{key}/tickers` | owner or machine key | Add/remove tickers from a category (body: `{add: [], remove: []}`). |
+| GET | `/ui/learnings` | session optional | `{items, since}`: dated verdict changes (a verdict that differs from the run before it; `turned-bullish`, `turned-bearish`, …) across the kept runs of each stock the caller may see (shared stocks plus the caller's own holdings and watchlist; an anonymous caller with sign-in required gets shared stocks only), newest first, at most 10; then forecast misses (`forecast-miss`), newest first, at most 5. `since` is the date of the oldest kept run among those stocks (`null` with none). Empty if the score history cannot be read. No money figure, summary rate or advice text. |
 | POST | `/ui/feedback` | session user | Atlas C8 (BP5) — record a user's accept/override/ignore on an advice card (`symbol`, `action`, optional `verdict_shown`/`override_direction`/`position_state`). Append-only to `feedback_events`; dormant no-op until `ATLAS_ENABLED`. |
 | POST | `/ui/chat/stream` | None | **Primary chat** — agentic streaming tool-loop (SSE). Deterministic intent pre-router pre-fetches screen+news for buy/sell/momentum queries; BULK-tier default with reasoning disabled, glm-5.2 escalation on failure; **45s per-turn wall-clock budget**, ≤4 upstream attempts per logical call, one budget-free final synthesis. Server-side session memory (`session_id`). Events: `intent`, `tool_result`, `token`, `done`. |
 | POST | `/ui/chat` | None | Non-streaming twin of the chat loop (blocking JSON reply; same server session memory — returns `session_id`, client-sent history is ignored). Frontend fallback. |
@@ -464,7 +467,7 @@ pipeline, the 08:45 pre-open check, and the Saturday discovery cycle.
 | GET | `/analytics/weight-drift` | None | Agent weight history time-series (WeightMemory snapshots) per ticker. |
 | GET | `/analytics/miss-breakdown` | None | Miss type counts per ticker and aggregated; includes chart colors. |
 | GET | `/analytics/conviction-outcomes` | None | Conviction streak bucketed accuracy + scatter points. |
-| GET | `/analytics/sector-comparison` | None | Cross-sector verdict distribution, avg score, best/worst ticker per sector. |
+| GET | `/analytics/sector-comparison` | None | Cross-sector verdict distribution, avg score, best/worst ticker per sector, over shared stocks only. |
 | GET | `/analytics/powerbi-feed` | None | OData v4 JSON feed for Power BI Web connector. |
 | GET | `/analytics/powerbi-feed/$metadata` | None | EDMX XML schema for Power BI OData connector. |
 
@@ -900,7 +903,7 @@ All paths verified to exist. Paths are relative to project root.
 | `core/delivery/alerts.py` | Deduped alert engine (`data/delivery/alerts_sent.jsonl`) |
 | `core/delivery/brief.py` | Morning brief builder/renderer/runner |
 | `core/delivery/weekly.py` | Weekly review builder (allocation, laggards, scoreboard) |
-| `core/delivery/index_watch.py` | Index constituent snapshot diff → alerts |
+| `core/delivery/index_watch.py` | Index constituent snapshot diff → alerts: an account's held or watched stocks to that account only, shelf ideas as market notices |
 | `services/api/routes/delivery_api.py` | /delivery/* — briefs, weekly, alerts, push subscriptions |
 | `services/api/routes/ops_api.py` | /ops/errors* — the operations backlog: ranked issues, plain-text digest, triage (owner or machine key) |
 | `scripts/gen_vapid_keys.py` | One-time VAPID keypair generation for web-push |
@@ -918,13 +921,13 @@ All paths verified to exist. Paths are relative to project root.
 | `services/scheduler/python/scheduler.py` | APScheduler: daily RL review (4:30pm IST), monthly forecast (1st, 9am IST), calendar update (Dec 31), pre-open shock check (`preopen_shock_check`, Mon-Fri 08:45 IST, Living Envelope §27.3), Job 13 morning brief (Mon-Fri 08:50 IST) + Job 14 weekly review (Sun 18:00 IST, Compass Phase C), `ops_watchdog` (06:30 IST daily) |
 | `core/ops/watchdog/` | **The watchdog.** Reads `config/milestones.yaml` — the authoritative registry of dated milestones and standing invariants — runs named checks, and notifies the owner alone on transitions (`emit_owner_alerts`). `registry.py` loads/validates, `checks.py` probes state, `prep.py` auto-runs safe idempotent preparation, `engine.py` is the pure escalation ladder, `runner.py` wires it to state + delivery |
 | `core/ops/error_backlog.py` | **The operations backlog.** Groups `telemetry.db` `app_logs` rows into issues by a deterministic fingerprint (normalised template of source, logger, message), keeps first/last seen, counts, run ids and a lifecycle (new/regressed/spiking/quiet; acknowledged/fixed/wontfix, fix verified by archive coverage; a fix time the recorded occurrences already contradict, a future one, or one without a UTC offset is refused) in `error_issues`, with bounded retention. Read and triaged at `/ops/errors`; `scripts/prod_errors.py` prints it; the `error_backlog_triaged` watchdog invariant warns the owner daily while an issue needs triage |
-| `services/data/stores/score_store.py` | SQLite score history (read/write/delta/range queries) |
+| `services/data/stores/score_store.py` | SQLite score history (read/write/delta/range queries). One row per completed analysis, written only by `BaseSectorOrchestrator._record_score_history`; `agent_scores` holds `{raw, weight, weighted}` per agent. List-shaped readers filter with `ui_data._only_visible` (`_shared_symbols`: built-in universe, managed list, active shelf ideas; `_visible_symbols`: plus the viewer's holdings and watchlist) |
 | `services/background/macro_news_cache.py` | Daily macro news cache read/write |
 | `services/clients/llm_client.py` | Async OpenRouter LLM client |
 | `src/backend/sectors/registry.py` | `TICKER_SECTOR` dict + `SectorRegistry` singleton (resolve, get_graph_sector, get_handler, is_enabled) — the single resolution point for both the API and RL paths |
 | `src/backend/shared/config/settings/base.py` | All environment variable definitions with defaults |
 | `src/backend/shared/config/rag_config.py` | RAG-specific env vars (mirrors `core/intelligence/rag/config.py`) |
-| `src/backend/shared/pipeline/base_orchestrator.py` | `BaseSectorOrchestrator` — ticker resolution (managed-ticker short-circuit, no LLM for exact `TICKERS` matches), RL weights, NSE prefetch, `_run_agents`/`_run_unified`/`_unified_enabled` dispatch, SignalAggregator |
+| `src/backend/shared/pipeline/base_orchestrator.py` | `BaseSectorOrchestrator` — ticker resolution (managed-ticker short-circuit, no LLM for exact `TICKERS` matches), RL weights, NSE prefetch, `_run_agents`/`_run_unified`/`_unified_enabled` dispatch, SignalAggregator; at both exits (`analyse`, `analyse_async`), after the decision gate, logs `run_summaries` and writes the score-history row (a failed write is a warning) |
 | `services/data/context/bundle_builder.py` | `build_sector_bundle()` — one-pass `SectorDataBundle` (10 labeled, char-capped sections), sector-aware via `_SECTOR_BUNDLE_CFG` (per-sector queries, deep-dive Tavily target, commodities applicability, peer lists); `section_status` holds one outcome per section, taken from each producer's `FetchResult`, and `section_provenance` (source, as-of, reason) |
 | `services/data/context/fetch_result.py` | `FetchResult` (text, status, source, as_of, reason), the section status vocabulary, and the price/fundamentals freshness bounds |
 | `src/backend/shared/pipeline/decision_gate.py` | The essential-data gate: `assess_analysis` / `gate_from_health_row` (actionable/degraded/abstain), `apply_gate` (enforce → `INSUFFICIENT DATA`), `decision_gate.mode` record|enforce (unknown → enforce), `record_gate_decision` → `data/logs/decision_gate.jsonl` (ticker-level); `apply_identity` (unresolved identity, or price history for another symbol → abstain; stamps `DecisionGate.identity`) |
@@ -969,7 +972,7 @@ All paths verified to exist. Paths are relative to project root.
 | `core/intelligence/seasonal/calendar.py` | Seasonal pattern calendar |
 | `core/schemas/feedback.py` | Canonical RL schemas: FeedbackEntry, WeightMemory, PredictionEnvelope, LearningLedger |
 | `config/sector_toggles.json` | Runtime sector enable/disable toggles |
-| `data/scores.db` | SQLite: score history per ticker (created at runtime) |
+| `data/scores.db` | SQLite: score history per ticker (created at runtime); `scripts/backfill_score_history.py` copies past `run_summaries` runs into it at the owner's word (dry run by default; marked rows, removable) |
 | `data/predictions/` | RL prediction JSON files: `{sector}/{ticker}/{cycle_id}/` |
 | `data/macro_news/` | Daily macro news feed JSON files: `{YYYY-MM-DD}_macro_feed.json` |
 | `data/agent_weights.json` | Persisted user weight overrides (created at runtime) |

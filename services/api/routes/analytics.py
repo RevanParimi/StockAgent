@@ -106,7 +106,9 @@ def _build_score_index() -> dict[str, list[dict]]:
     if store is None:
         return {}
     try:
-        rows = store.get_all_latest() or []
+        # Open routes name only shared stocks, never an account's own (FIX-010)
+        from services.api.routes.ui_data import _only_visible, _shared_symbols
+        rows = _only_visible(store.get_all_latest() or [], _shared_symbols())
         index: dict[str, list[dict]] = {}
         for row in rows:
             ticker = row.get("ticker", "")
@@ -561,7 +563,9 @@ async def sector_comparison():
     Also includes RL direction accuracy per sector (from WeightMemory).
     """
     store = _try_import_score_store()
-    rows = store.get_all_latest() if store else []
+    # An open route: shared stocks only, never an account's own (FIX-010)
+    from services.api.routes.ui_data import _only_visible, _shared_symbols
+    rows = _only_visible(store.get_all_latest(), _shared_symbols()) if store else []
 
     # Group scores by sector using detect_sector
     sector_scores: dict[str, list[dict]] = {}

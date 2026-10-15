@@ -788,12 +788,21 @@ const LEARNING_KINDS = {
   'forecast-miss':  { label:'Forecast miss',  fg:'var(--neutral)',     bg:'var(--neutral-soft)', icon:<Icon.Compass size={13}/> },
 };
 
+// '2026-10-16' (the date of the oldest kept run) -> '16 Oct'
+function fmtLearningsSince(isoDate) {
+  const d = new Date(isoDate + 'T12:00:00Z');
+  return isNaN(d) ? '' : d.toLocaleDateString('en-IN', { timeZone: 'UTC', day: 'numeric', month: 'short' });
+}
+
 function LearningsSection({ learnings, openChat }) {
   const items = learnings.items || [];
   const changes = items.filter(it => it.kind !== 'forecast-miss');
   const misses = items.filter(it => it.kind === 'forecast-miss');
   const n = changes.length;
-  const countLine = n === 0 ? 'No verdict changes in the analysed stocks'
+  // With no change, say since when the analyses have been looking (the
+  // server's `since`), never a bare "no changes" (FIX-010).
+  const since = learnings.since ? fmtLearningsSince(learnings.since) : '';
+  const countLine = n === 0 ? (since ? `No verdict changes since ${since}` : 'No verdict changes recorded yet')
     : n >= LEARNINGS_MAX_CHANGES ? `The ${n} most recent changes in the analysed stocks`
     : `${n} ${n === 1 ? 'change' : 'changes'} in the analysed stocks`;
   return (

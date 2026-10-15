@@ -29,6 +29,7 @@ import asyncio
 import json
 import logging
 import re
+import sqlite3
 import time
 import uuid
 from abc import ABC, abstractmethod
@@ -200,6 +201,7 @@ class BaseSectorOrchestrator(ABC):
                 agent_scores={n: o.overall_score for n, o in agent_outputs.items()},
                 errors=errors,
             )
+            self._record_score_history(report)
             log_run_api_usage(run_id, query.ticker, api_snapshot)
             log_analysis(
                 report=report, run_id=run_id,
@@ -278,6 +280,7 @@ class BaseSectorOrchestrator(ABC):
                 agent_scores={n: o.overall_score for n, o in agent_outputs.items()},
                 errors=errors,
             )
+            self._record_score_history(report)
             log_run_api_usage(run_id, query.ticker, api_snapshot)
             log_analysis(
                 report=report, run_id=run_id,
@@ -290,6 +293,24 @@ class BaseSectorOrchestrator(ABC):
                 report.verdict, report.final_score,
             )
             return report
+
+    def _record_score_history(self, report: FinalReport) -> None:
+        """One score-history row per completed analysis, with the verdict the
+        run returns (after the decision gate).
+
+        Member screens read it: dated scores on Home and the watchlist, the
+        verdict changes on Portfolio, and the chat's current verdicts. Every
+        entry point (the 16:30 review, the monthly forecast, discovery deep
+        dives, /analyse, the stream and the chat) ends here, so this is the one
+        writer. A failed write is a warning; it never fails the analysis."""
+        from services.data.stores.score_store import ScoreStore
+        try:
+            ScoreStore().save(report)
+        # The store's own failures, and a report that will not serialize
+        # (pydantic's serialization error is a ValueError).
+        except (sqlite3.Error, OSError, ValueError, TypeError) as exc:
+            logger.warning("[%s] score history not written for %s: %s",
+                           self.SECTOR_NAME, report.ticker, exc, exc_info=True)
 
     # ------------------------------------------------------------------
     # RL learned weights

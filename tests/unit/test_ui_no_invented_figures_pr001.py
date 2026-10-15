@@ -174,7 +174,8 @@ def test_learnings_send_dated_verdict_changes_and_no_money_rate_or_advice(client
     }))
 
     body = client.get("/ui/learnings").json()
-    assert set(body) == {"items"}, "no summary block, no pattern strip"
+    assert set(body) == {"items", "since"}, "no summary block, no pattern strip"
+    assert body["since"] == "2026-10-01", "the oldest kept run among the listed stocks (FIX-010)"
     for path, key, value in walk(body):
         assert not MONEY_KEY.search(key), f"{path}.{key}: a money-shaped field"
         assert key not in {"lesson", "action", "accuracyVsAgent", "rate"}, f"{path}.{key}"
@@ -202,7 +203,7 @@ def test_learnings_send_dated_verdict_changes_and_no_money_rate_or_advice(client
 def test_learnings_with_no_history_send_nothing(client, store, monkeypatch):
     from core.intelligence.rl.stores import prediction_store
     monkeypatch.setattr(prediction_store, "PredictionStore", _fake_prediction_store({}))
-    assert client.get("/ui/learnings").json() == {"items": []}
+    assert client.get("/ui/learnings").json() == {"items": [], "since": None}
 
 
 # --- Rework 1 (review M1): only a verdict that differs from the run before it
@@ -305,7 +306,7 @@ def test_a_missing_or_differently_cased_verdict_is_not_a_change(client, store, n
     add_run(store, "MARUTI", "2026-10-09T11:00:00", 0.7, "BUY")
     add_run(store, "TATAMOTORS", "2026-10-02T11:00:00", 0.7, "buy")
     add_run(store, "TATAMOTORS", "2026-10-10T11:00:00", 0.7, "BUY ")
-    assert client.get("/ui/learnings").json() == {"items": []}
+    assert client.get("/ui/learnings").json() == {"items": [], "since": "2026-10-01"}
 
 
 def test_forecast_misses_follow_the_changes_newest_first_and_are_not_changes(client, store, monkeypatch):
@@ -338,7 +339,7 @@ def test_learnings_send_nothing_when_the_score_history_cannot_be_read(client, st
             raise sqlite3.OperationalError("database is locked")
         return real(ticker, limit)
     monkeypatch.setattr(store, "get_history", flaky)
-    assert client.get("/ui/learnings").json() == {"items": []}
+    assert client.get("/ui/learnings").json() == {"items": [], "since": None}
 
 
 def test_the_portfolio_page_knows_the_server_s_cap():
@@ -396,7 +397,8 @@ def test_bootstrap_month_votes_are_the_scores_analyses_gave(client, store, monke
             agent_scores={"fundamentals": 0.71})
     # make every recent row "this month" for the server's 31-day window
     from services.api.routes import ui_data
-    monkeypatch.setattr(ui_data, "_rows_since", lambda s, hours: s.get_all_latest())
+    monkeypatch.setattr(ui_data, "_rows_since",
+                        lambda s, hours, visible: ui_data._only_visible(s.get_all_latest(), visible))
 
     votes = client.get("/ui/bootstrap").json()["MARKET_MONTH"]["agentVotes"]
     assert {v["n"]: v["v"] for v in votes} == {"Fundamentals": round((0.61 + 0.71) / 2, 2), "Sentiment": 0.40}

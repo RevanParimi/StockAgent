@@ -282,6 +282,74 @@ def _score_store():
     return ScoreStore()
 
 
+# Every analysis writes the score history, including one a member asked for by
+# name (FIX-010). So a screen that lists stocks out of it names only stocks the
+# viewer may see: the shared ones below, plus the viewer's own holdings and
+# watchlist. A stock another account holds, watches or asked about is never
+# named to anyone else (FIX-009's rule). A screen keyed by a stock the viewer
+# names (a watchlist row, a ticker's history) needs no filter.
+
+def _shared_symbols() -> set[str]:
+    """Stocks any account may see named: the built-in universe, the managed
+    tickers (GET /ui/tickers/managed is open to every account) and the shelf's
+    active ideas. A failed read narrows the set; it never widens it."""
+    syms = {t["sym"] for t in _ALL_TICKERS}
+    try:
+        syms |= {str(t.get("sym") or "").strip().upper()
+                 for t in _load_mt() if isinstance(t, dict)} - {""}
+    except Exception as exc:
+        logger.warning("[ui_data] managed tickers unreadable, left out of the shared stocks: %s", exc)
+    try:
+        from core.discovery.shelf import ShelfStore
+        syms |= {i.symbol.upper() for i in ShelfStore().load().ideas if i.status == "active"}
+    except Exception as exc:
+        logger.warning("[ui_data] shelf unreadable, left out of the shared stocks: %s", exc)
+    return syms
+
+
+def _own_symbols(user_id: str | None) -> set[str]:
+    """The viewer's own holdings and watchlist; empty when unreadable.
+
+    With Atlas on, the account's portfolio; dormant, also the global watchlist
+    (one user). No user id means an anonymous request while sign-in is
+    required (with AUTH off the owner passthrough has an id): it owns nothing,
+    and never stands in for the default user. Like the chat's brief (FIX-005),
+    it reads only a portfolio that exists: the read never creates an
+    account's folder."""
+    from core.config import settings
+    from core.portfolio.store import _USER_ID_RE, PortfolioStore
+    if not user_id:
+        return set()
+    uid = str(user_id)
+    own: set[str] = set()
+    if not atlas_store.enabled():
+        own |= {str(s).upper() for s in _load_watchlist()}
+    if not _USER_ID_RE.fullmatch(uid) or not (Path(settings.PORTFOLIO_DATA_DIR) / uid).is_dir():
+        return own
+    try:
+        p = PortfolioStore(user_id=uid).load()
+    except Exception as exc:
+        logger.warning("[ui_data] portfolio unreadable for the viewer, own stocks left out: %s", exc)
+        return own
+    return own | {h.symbol.upper() for h in p.holdings} | {w.symbol.upper() for w in p.watchlist}
+
+
+def _visible_symbols(user_id: str | None) -> set[str]:
+    return _shared_symbols() | _own_symbols(user_id)
+
+
+def _agent_score(value) -> float | None:
+    """An agent's score from a score-history row's `agent_scores`. The writer
+    stores {"raw", "weight", "weighted"} per agent (ScoreStore.save); the raw
+    score is the agent's own reading. A plain number is taken as it is."""
+    if isinstance(value, dict):
+        value = value.get("raw")
+    try:
+        return float(value) if value is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
 def _fetch_yf_price(yf_ticker: str) -> tuple[float, float]:
     """
     Return (current_price, change_pct). Sync — call via asyncio.to_thread.
@@ -542,12 +610,17 @@ def _build_ticker_row(
     }
 
 
-def _rows_since(store, hours: int) -> list[dict]:
-    """Return all DB rows from the last N hours, falling back to all-time latest if empty."""
+def _rows_since(store, hours: int, visible: set[str]) -> list[dict]:
+    """The rows of the visible stocks from the last N hours, falling back to
+    their all-time latest if there are none."""
     from datetime import datetime, timezone, timedelta
     since = (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat()
-    rows = store.get_by_date_range(since_iso=since)
-    return rows if rows else store.get_all_latest()
+    rows = _only_visible(store.get_by_date_range(since_iso=since), visible)
+    return rows if rows else _only_visible(store.get_all_latest(), visible)
+
+
+def _only_visible(rows: list[dict], visible: set[str]) -> list[dict]:
+    return [r for r in rows if str(r.get("ticker") or "").upper() in visible]
 
 
 def _freshness_label(rows: list[dict]) -> dict:
@@ -627,7 +700,9 @@ def _build_month_agent_scores(latest_rows: list[dict]) -> list[dict]:
         except Exception:
             scores = {}
         for agent, val in scores.items():
-            agg.setdefault(agent, []).append(float(val))
+            v = _agent_score(val)
+            if v is not None:
+                agg.setdefault(agent, []).append(v)
 
     result = []
     for meta in _AGENT_META:
@@ -815,7 +890,8 @@ async def get_tickers() -> dict:
 @router.get("/market/summary", summary="Market pulse, drivers, sector changes, sparkline")
 async def get_market_summary() -> dict:
     store     = _score_store()
-    db_latest = store.get_all_latest()
+    # Market-wide figures name no account's own stock (FIX-010): shared stocks only
+    db_latest = _only_visible(store.get_all_latest(), _shared_symbols())
 
     market_data_pre = await _gather_market_data(db_latest)
     scores = [float(r["final_score"]) for r in db_latest if r.get("final_score") is not None]
@@ -865,6 +941,9 @@ async def bootstrap() -> dict:
     """
     store = _score_store()
     ticker_rows, db_latest = await _gather_ticker_data()
+    # Market-wide figures name no account's own stock (FIX-010): shared stocks only
+    shared = _shared_symbols()
+    db_latest = _only_visible(db_latest, shared)
     market_data = await _gather_market_data(db_latest)
 
     scores    = [float(r["final_score"]) for r in db_latest if r.get("final_score")]
@@ -874,8 +953,8 @@ async def bootstrap() -> dict:
     )
 
     # Date-filtered row sets for Today (24h) and This Month (current calendar month)
-    today_rows = _rows_since(store, hours=24)
-    month_rows = _rows_since(store, hours=24 * 31)
+    today_rows = _rows_since(store, hours=24, visible=shared)
+    month_rows = _rows_since(store, hours=24 * 31, visible=shared)
     today_freshness = _freshness_label(today_rows)
     month_freshness = _freshness_label(month_rows)
 
@@ -924,7 +1003,8 @@ async def bootstrap() -> dict:
         reason = drivers[0][:90] if drivers else r["name"]
         # Pull top agent score for the "why" line
         try:
-            agent_scores = json.loads(db_row.get("agent_scores") or "{}")
+            agent_scores = {k: s for k, v in json.loads(db_row.get("agent_scores") or "{}").items()
+                            if (s := _agent_score(v)) is not None}
             top_agent_key = max(agent_scores, key=agent_scores.get)
             top_agent_name = next((m["name"] for m in _AGENT_META if m["key"] == top_agent_key), top_agent_key)
             top_score = agent_scores[top_agent_key]
@@ -1098,8 +1178,11 @@ async def get_watchlist(
     async def _fetch_one(sym: str) -> dict:
         ticker_def = next((t for t in _ALL_TICKERS if t["sym"] == sym), None)
         if not ticker_def:
-            return {"sym": sym, "name": sym, "price": 0.0, "change": 0.0,
-                    "score": 0.5, "verdict": "NEUTRAL", "trend": "flat", "hasData": False}
+            # A stock outside the built-in universe: its analysis comes from the
+            # score history like any other (FIX-010); no price is fetched for it.
+            row = db_map.get(str(sym).upper())
+            return _build_ticker_row({"sym": sym, "name": (row or {}).get("company_name") or sym},
+                                     row, 0.0, 0.0)
         price, change = await asyncio.to_thread(_fetch_yf_price, ticker_def["yf"])
         return _build_ticker_row(ticker_def, db_map.get(sym), price, change)
 
@@ -1230,7 +1313,8 @@ async def _yf_lookup(sym: str) -> dict | None:
 
 
 @router.get("/search", summary="Search tickers by name/symbol and recent thesis text")
-async def search(q: str = Query(default="")) -> dict:
+async def search(q: str = Query(default=""),
+                 user: dict | None = Depends(get_current_user_optional)) -> dict:
     q_raw = q.strip()
     q = q_raw.lower()
     if len(q) < 2:
@@ -1245,10 +1329,12 @@ async def search(q: str = Query(default="")) -> dict:
             results.append({"sym": t["sym"], "name": t["name"], "type": "ticker"})
             known_syms.add(t["sym"])
 
-    # Search recent investment theses from DB
+    # Search recent investment theses from DB: a text match names stocks the
+    # caller did not, so only the stocks they may see (FIX-010)
     try:
         store = _score_store()
-        db_latest = store.get_all_latest()
+        visible = await asyncio.to_thread(_visible_symbols, (user or {}).get("user_id"))
+        db_latest = _only_visible(store.get_all_latest(), visible)
         for row in db_latest:
             thesis = (row.get("investment_thesis") or "").lower()
             sym = row.get("ticker", "")
@@ -1350,32 +1436,39 @@ def _verdict_change_record(sym: str, newest: dict, prev: dict) -> tuple[str, int
 
 
 @router.get("/learnings", summary="Recent verdict changes and forecast misses for the analysed stocks")
-async def get_learnings() -> dict:
+async def get_learnings(user: dict | None = Depends(get_current_user_optional)) -> dict:
     """
     Reads the score history DB (and the RL feedback log, when present) and
-    returns dated records: the verdict changes in the analysed stocks' kept
-    runs (a verdict that differs from the run before it), newest first, at
-    most _LEARNINGS_MAX_CHANGES; then the latest forecast misses, kind
-    "forecast-miss", newest first, at most _LEARNINGS_MAX_MISSES.
+    returns dated records: the verdict changes in the kept runs of the stocks
+    the viewer may see (a verdict that differs from the run before it),
+    newest first, at most _LEARNINGS_MAX_CHANGES; then the latest forecast
+    misses, kind "forecast-miss", newest first, at most _LEARNINGS_MAX_MISSES.
+    `since` is the date of the oldest kept run among those stocks (None with
+    no runs), so an empty list can say since when nothing changed.
 
-    Every field is read from those stores. There is deliberately no money
-    figure (a composite-score change is not rupees), no summary rate and no
-    advice text: the realized results of trades come from SA-051 and PR-002.
-    Empty when no data exists, and when the score history cannot be read
-    (a partial list would misstate the newest changes).
+    The stocks are _visible_symbols(): the shared ones and the viewer's own,
+    never another account's (FIX-010). Every field is read from those stores.
+    There is deliberately no money figure (a composite-score change is not
+    rupees), no summary rate and no advice text: the realized results of
+    trades come from SA-051 and PR-002. Empty when no data exists, and when
+    the score history cannot be read (a partial list would misstate the
+    newest changes).
     """
     from core.config import settings
 
     changes: list[tuple[str, int, dict]] = []
     misses: list[tuple[str, dict]] = []
+    oldest: list[str] = []
 
     try:
         store = _score_store()
+        visible = await asyncio.to_thread(_visible_symbols, (user or {}).get("user_id"))
 
         # Every kept run per ticker: a change can be any pair of runs in it
-        for ticker_def in _ALL_TICKERS:
-            sym = ticker_def["sym"]
+        for sym in sorted(visible):
             history = await asyncio.to_thread(store.get_history, sym, settings.SCORE_HISTORY_MAX_ROWS)
+            if history:
+                oldest.append(history[-1].get("run_at") or "")
             for newest, prev in _verdict_changes(history):
                 changes.append(_verdict_change_record(sym, newest, prev))
 
@@ -1409,23 +1502,26 @@ async def get_learnings() -> dict:
 
     except Exception as exc:
         logger.warning("[ui/learnings] DB read failed: %s", exc)
-        return {"items": []}
+        return {"items": [], "since": None}
 
     # Newest first, then cut: the cap keeps the latest, whichever stock they are in.
     # Same-second runs fall back to the row id (insertion order).
     changes.sort(key=lambda c: (c[0], c[1]), reverse=True)
     misses.sort(key=lambda m: m[0], reverse=True)
+    since = min((o for o in oldest if o), default="")[:10] or None
     return {"items": [c[2] for c in changes[:_LEARNINGS_MAX_CHANGES]]
-                     + [m[1] for m in misses[:_LEARNINGS_MAX_MISSES]]}
+                     + [m[1] for m in misses[:_LEARNINGS_MAX_MISSES]],
+            "since": since}
 
 
 # ---------------------------------------------------------------------------
 # Chat context builders — each fetches one slice of relevant data
 # ---------------------------------------------------------------------------
 
-def _ctx_current_verdicts() -> str:
+def _ctx_current_verdicts(user_id: str | None = None) -> str:
+    """The latest verdict of each stock the caller may see (FIX-010)."""
     try:
-        rows = _score_store().get_all_latest()
+        rows = _only_visible(_score_store().get_all_latest(), _visible_symbols(user_id))
         if not rows:
             return ""
         lines = [
@@ -1437,11 +1533,12 @@ def _ctx_current_verdicts() -> str:
         return ""
 
 
-def _ctx_recent_history(days: int = 14) -> str:
+def _ctx_recent_history(days: int = 14, user_id: str | None = None) -> str:
+    """The analyses of the last N days, of the stocks the caller may see (FIX-010)."""
     try:
         from datetime import datetime, timedelta
         since = (datetime.utcnow() - timedelta(days=days)).isoformat()
-        rows = _score_store().get_by_date_range(since)
+        rows = _only_visible(_score_store().get_by_date_range(since), _visible_symbols(user_id))
         if not rows:
             return f"HISTORY (last {days} days): No analyses run in this window."
         lines = [
@@ -1699,15 +1796,17 @@ async def _chat_tool_get_macro_news() -> str:
             "returned nothing. Use search_market_news for a specific topic.")
 
 
-def _build_chat_context(_message: str, intent_type: str = "GENERAL") -> str:
+def _build_chat_context(_message: str, intent_type: str = "GENERAL",
+                        user_id: str | None = None) -> str:
     """
     Always-available lightweight context: date/market status, optional macro trending
-    news (broad intents only), and current ticker verdicts.
+    news (broad intents only), and current ticker verdicts of the stocks the
+    caller may see (FIX-010).
     History and RL data are fetched on-demand via get_analysis_history / get_rl_insights tools.
     """
     market_ctx = _nse_market_context()
     macro_ctx  = _get_macro_context_for_intent(intent_type)
-    cv         = _ctx_current_verdicts()
+    cv         = _ctx_current_verdicts(user_id)
     db_line    = cv or "No analysis data yet — run a ticker analysis from the Home screen first."
     parts = [market_ctx]
     if macro_ctx:
@@ -2792,7 +2891,7 @@ async def _dispatch_chat_tool(name: str, args: dict, user_id: str | None = None)
         return result or f"No analysis for {ticker} yet — run it from the Home screen first."
     if name == "get_analysis_history":
         days = int(args.get("days", 14))
-        return _ctx_recent_history(days=min(days, 30)) or "No analysis history found."
+        return _ctx_recent_history(days=min(days, 30), user_id=user_id) or "No analysis history found."
     if name == "get_rl_insights":
         return _ctx_rl_learning() or "No RL data yet — needs at least one full analysis cycle."
     if name == "get_sector_snapshot":
@@ -3057,7 +3156,7 @@ async def chat(body: dict, user: dict = Depends(get_current_user)) -> dict:
     if quota_block:
         return JSONResponse(status_code=429, content=quota_block)
 
-    context = _build_chat_context(message)
+    context = _build_chat_context(message, user_id=user["user_id"])
     system_prompt = _CHAT_SYSTEM_PROMPT.format(context=context)
 
     messages: list[dict] = [{"role": "system", "content": system_prompt}]
@@ -3409,7 +3508,7 @@ async def chat_stream(body: dict, user: dict = Depends(get_current_user)):
         yield f'data: {_json.dumps({"event": "intent", "session_id": session_id, "tier": "active", "query": message[:80]})}\n\n'
 
         # Strong system prompt (IST market context + grounding rules) + carried history.
-        context = _build_chat_context(message)
+        context = _build_chat_context(message, user_id=user["user_id"])
         system_prompt = _CHAT_SYSTEM_PROMPT.format(context=context)
         messages: list[dict] = [{"role": "system", "content": system_prompt}]
         messages.extend(_session_history_get(session_id, user["user_id"]))

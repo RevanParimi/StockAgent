@@ -386,19 +386,27 @@ if (window.saDemoMode && window.saDemoFixtures) {
       saApiSettled('failed');
     }
 
-    // T2.5 — recent verdict changes, fetched separately (not in bootstrap to keep it fast)
-    try {
-      const lr = await fetch('/ui/learnings');
-      if (lr.ok) {
-        const learnings = await lr.json();
-        if (learnings.items?.length > 0) {
-          window.PORTFOLIO_LEARNINGS = learnings;
-          window.__learningsLive = true;
-          if (typeof window.__onApiReady === 'function') window.__onApiReady();
-        }
-      }
-    } catch {
-      // no section: there is nothing real to show
-    }
+    await saLoadLearnings();
   })();
 }
+
+// T2.5 — recent verdict changes, fetched separately (not in bootstrap to keep it
+// fast). They depend on the viewer: the viewer's own stocks join the shared ones
+// (FIX-010). So a sign-in after this page loaded fetches them again
+// (window.saSetToken in index.html calls this).
+async function saLoadLearnings() {
+  if (window.saDemoMode) return;
+  try {
+    const lr = await fetch('/ui/learnings');
+    if (lr.ok) {
+      const learnings = await lr.json();
+      const live = (learnings.items?.length || 0) > 0;
+      window.PORTFOLIO_LEARNINGS = live ? learnings : null;
+      window.__learningsLive = live;
+      if (typeof window.__onApiReady === 'function') window.__onApiReady();
+    }
+  } catch {
+    // no section: there is nothing real to show
+  }
+}
+window.saLoadLearnings = saLoadLearnings;

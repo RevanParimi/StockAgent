@@ -80,7 +80,7 @@ async function openApp(browser, plan = {}) {
           unplanned.push(u.pathname);
           return route.fulfill(json({ detail: 'not in this test plan' }, 503));
         }
-        return route.fulfill(typeof answer === 'function' ? await answer(u) : answer);
+        return route.fulfill(typeof answer === 'function' ? await answer(u, route.request()) : answer);
       }
       const name = decodeURIComponent(u.pathname.slice(1));
       const file = path.join(FRONTEND, name);
@@ -97,13 +97,16 @@ async function openApp(browser, plan = {}) {
     }
     return route.abort('blockedbyclient');   // fonts and anything else outside
   });
-  await context.addInitScript(() => { localStorage.setItem('sa_auth_token', 'test-session'); });
+  if (!plan.signedOut) {
+    await context.addInitScript(() => { localStorage.setItem('sa_auth_token', 'test-session'); });
+  }
   const page = await context.newPage();
   const errors = [];
   page.on('pageerror', (e) => errors.push(String(e)));
   page.on('dialog', (d) => d.dismiss());
   await page.goto(`${ORIGIN}/${plan.query || ''}`);
-  await page.locator('h1').first().waitFor({ timeout: 30000 });   // the hero: React and Babel are up
+  if (plan.signedOut) await page.getByPlaceholder('you@example.com').waitFor({ timeout: 30000 });
+  else await page.locator('h1').first().waitFor({ timeout: 30000 });   // the hero: React and Babel are up
   return { context, page, calls, unplanned, errors };
 }
 
@@ -453,9 +456,9 @@ const fMiss = (sym, when) => ({
   detail: 'Miss type: model_bias', agentSnapshot: [] });
 const QSYMS = ['QALPHA', 'QBRAVO', 'QCHARLIE', 'QDELTA', 'QECHO', 'QFOXTROT', 'QGOLF', 'QHOTEL', 'QINDIA', 'QJULIET'];
 
-async function learningsSection(items) {
+async function learningsSection(items, since = null) {
   const { context, page, errors } = await openApp(browser, {
-    user: MEMBER, api: liveApi({ '/ui/learnings': json({ items }), '/portfolio': json({ holdings: [] }) }) });
+    user: MEMBER, api: liveApi({ '/ui/learnings': json({ items, since }), '/portfolio': json({ holdings: [] }) }) });
   try {
     await settled(page);
     await page.waitForFunction(() => window.__learningsLive === true);
@@ -493,10 +496,47 @@ test('the verdict-changes heading counts the change cards it lists, never a fore
   assert.match(one.text, /1 change in the analysed stocks/);
   assert.equal(one.changeCards.length, 1);
 
-  const missesOnly = await learningsSection([fMiss('QDELTA', '2026-10-11'), fMiss('QECHO', '2026-10-08')]);
-  assert.match(missesOnly.text, /No verdict changes in the analysed stocks/);
+  // With no change the heading says since when the analyses have been looking (FIX-010)
+  const missesOnly = await learningsSection([fMiss('QDELTA', '2026-10-11'), fMiss('QECHO', '2026-10-08')],
+                                            '2026-09-16');
+  assert.match(missesOnly.text, /No verdict changes since 16 Sept?/);
+  assert.ok(!/in the analysed stocks/.test(missesOnly.text), 'no bare claim about every analysed stock');
   assert.equal(missesOnly.changeCards.length, 0);
   assert.equal(missesOnly.missCards.length, 2);
+  const noHistory = await learningsSection([fMiss('QDELTA', '2026-10-11')]);
+  assert.match(noHistory.text, /No verdict changes recorded yet/);
+});
+
+// The verdict changes depend on the viewer (FIX-010): signed out, the page
+// loads the shared stocks' changes; signing in fetches them again as the
+// member, whose own holding then appears without a reload.
+test('signing in fetches the verdict changes again as the new viewer', async () => {
+  const shared = vChange('QSHARED', 'SELL', 'BUY', '2026-10-12', 'turned-bullish');
+  const own = vChange('QMYOWN', 'BUY', 'SELL', '2026-10-13', 'turned-bearish');
+  const asked = [];
+  const { context, page, errors } = await openApp(browser, { user: MEMBER, signedOut: true, api: liveApi({
+    '/auth/login': json({ token: 'fresh-session', user: MEMBER }),
+    '/portfolio': json({ holdings: [] }),
+    '/ui/learnings': (_u, req) => {
+      const signedIn = /^Bearer fresh-session$/.test(req.headers()['authorization'] || '');
+      asked.push(signedIn);
+      return json({ items: signedIn ? [own, shared] : [shared], since: '2026-09-16' });
+    } }) });
+  try {
+    await page.getByPlaceholder('you@example.com').fill(MEMBER.email);
+    await page.locator('input[type=password]').first().fill('pw-for-the-test');
+    await page.locator('form button[type=submit]').first().click();
+    await page.locator('h1').first().waitFor({ timeout: 30000 });
+    await settled(page);
+    await page.waitForFunction(() => (window.PORTFOLIO_LEARNINGS?.items || []).length === 2, null,
+                               { timeout: 8000 });
+    await goTo(page, 'portfolio');
+    const text = await page.locator('.sa-learnings').innerText();
+    assert.match(text, /QMYOWN: BUY → SELL/, 'the member\'s own change, after sign-in');
+    assert.match(text, /2 changes in the analysed stocks/);
+    assert.deepEqual(asked, [false, true], 'once signed out at load, once as the member');
+    assert.deepEqual(errors, []);
+  } finally { await context.close(); }
 });
 
 test('demo mode is explicit: ?demo=1 shows the samples under a banner and asks no market API', async () => {

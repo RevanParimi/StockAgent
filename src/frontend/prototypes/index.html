@@ -127,6 +127,9 @@
     window.saSetToken = function (tok, remember) {
       (remember ? localStorage : sessionStorage).setItem('sa_auth_token', tok);
       (remember ? sessionStorage : localStorage).removeItem('sa_auth_token');
+      /* The verdict changes depend on the viewer (FIX-010): fetch them again
+         as this account. data.jsx defines it; absent in demo mode. */
+      if (typeof window.saLoadLearnings === 'function') window.saLoadLearnings();
     };
     window.saClearToken = function () {
       localStorage.removeItem('sa_auth_token');

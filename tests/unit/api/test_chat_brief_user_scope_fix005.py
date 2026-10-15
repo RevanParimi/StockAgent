@@ -149,7 +149,7 @@ def chat_env(portfolios, tmp_path, monkeypatch):
         return types.SimpleNamespace(choices=[types.SimpleNamespace(message=msg)], usage=None)
 
     monkeypatch.setattr(ui, "_chat_completion", fake_completion)
-    monkeypatch.setattr(ui, "_build_chat_context", lambda m: "ctx")
+    monkeypatch.setattr(ui, "_build_chat_context", lambda m, **kw: "ctx")  # kw: the caller's user_id (FIX-010)
     monkeypatch.setattr(ui, "check_chat_quota", lambda user: None)
     monkeypatch.setattr("services.clients.llm_client.get_async_llm_client", lambda: object())
     yield calls

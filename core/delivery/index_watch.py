@@ -5,6 +5,16 @@ Weekly snapshot of DELIVERY_INDEX_WATCH constituents via the nse pkg;
 diff vs the previous snapshot -> inclusion/exclusion AlertEvents for
 held + watchlist + shelf symbols only. First snapshot never alerts;
 per-index fetch failures keep the stale snapshot (degraded mode).
+
+Audience (FIX-009): an event about an active shelf idea is a market notice,
+because the shelf is shared, so it goes to everyone as a shelf add does
+(`emit_alerts_broadcast`). Every other event goes only to the accounts that
+hold or watch that stock, one bundle each (`emit_alerts`), so no account
+learns another's holdings or watchlist. A stock that is both reaches an
+account once: with the shelf's notice, or in the account's own bundle when
+the shelf's notice did not include the account (no push subscription). An
+account whose portfolio cannot be read misses its own events; nothing is
+broadcast in their place.
 """
 from __future__ import annotations
 
@@ -15,7 +25,7 @@ import tempfile
 from datetime import date, datetime, timezone
 
 from core.config import settings
-from core.delivery.alerts import AlertEvent, emit_alerts_broadcast
+from core.delivery.alerts import AlertEvent, emit_alerts, emit_alerts_broadcast
 
 logger = logging.getLogger(__name__)
 
@@ -27,23 +37,41 @@ def _make_nse_client():
     return NSE(download_folder=pathlib.Path(tempfile.mkdtemp()))
 
 
-def _watched_symbols() -> set[str]:
-    """held + watchlist + active shelf. Never raises."""
-    watched: set[str] = set()
-    try:
-        from core.portfolio.store import PortfolioStore, active_user_ids
-        for uid in active_user_ids() or [settings.PORTFOLIO_DEFAULT_USER_ID]:
-            p = PortfolioStore(user_id=uid).load()
-            watched |= {h.symbol for h in p.holdings}
-            watched |= {w.symbol for w in p.watchlist}
-    except Exception as exc:
-        logger.warning("[index_watch] portfolio read failed (non-fatal): %s", exc)
+def _shelf_symbols() -> set[str]:
+    """The shared discovery shelf's active ideas. Never raises."""
     try:
         from core.discovery.shelf import ShelfStore
-        watched |= {i.symbol for i in ShelfStore().load().ideas if i.status == "active"}
+        return {i.symbol for i in ShelfStore().load().ideas if i.status == "active"}
     except Exception as exc:
         logger.warning("[index_watch] shelf read failed (non-fatal): %s", exc)
-    return watched
+        return set()
+
+
+def _account_symbols() -> dict[str, set[str]]:
+    """Held + watchlist symbols for each account, by user id. Never raises.
+
+    Accounts are active_user_ids(), or the default user when there are none.
+    An account whose portfolio cannot be read is left out, and a failed
+    account lookup leaves every account out: their events are skipped, never
+    sent to anyone else."""
+    try:
+        from core.portfolio.store import PortfolioStore, active_user_ids
+        users = active_user_ids() or [settings.PORTFOLIO_DEFAULT_USER_ID]
+    except Exception as exc:
+        logger.warning("[index_watch] account lookup failed, account notices "
+                       "skipped (non-fatal): %s", exc)
+        return {}
+    accounts: dict[str, set[str]] = {}
+    for uid in users:
+        try:
+            p = PortfolioStore(user_id=uid).load()
+        except Exception as exc:
+            logger.warning("[index_watch] portfolio read failed for %s, its "
+                           "notices skipped (non-fatal): %s", uid, exc)
+            continue
+        accounts[uid] = ({h.symbol for h in p.holdings}
+                         | {w.symbol for w in p.watchlist})
+    return accounts
 
 
 def run_index_watch(on: date | None = None, cache_path: str | None = None) -> dict:
@@ -55,7 +83,9 @@ def run_index_watch(on: date | None = None, cache_path: str | None = None) -> di
     except Exception:
         cache = {}
 
-    watched = _watched_symbols()
+    shelf = _shelf_symbols()
+    accounts = _account_symbols()
+    watched = shelf.union(*accounts.values())
     events: list[AlertEvent] = []
     degraded: list[str] = []
 
@@ -100,7 +130,17 @@ def run_index_watch(on: date | None = None, cache_path: str | None = None) -> di
     except OSError as exc:
         logger.error("[index_watch] cache write failed (non-fatal): %s", exc)
 
-    if events:
-        emit_alerts_broadcast(events, title=f"Index reconstitution — {on}")   # AUD-015
+    title = f"Index reconstitution — {on}"
+    market = [e for e in events if e.symbol in shelf]
+    reached: set[str] = set()
+    if market:                                       # the shelf is shared (AUD-015)
+        reached = set(emit_alerts_broadcast(market, title=title).get("users", {}))
+    for uid, symbols in accounts.items():            # FIX-009: the account's own only
+        # A shelf idea the account also holds came with the shelf's notice,
+        # unless the account is outside that audience (no push subscription).
+        own = [e for e in events if e.symbol in symbols
+               and (e.symbol not in shelf or uid not in reached)]
+        if own:
+            emit_alerts(own, user_id=uid, title=title)
     return {"indices": len(settings.DELIVERY_INDEX_WATCH),
             "events": len(events), "degraded": degraded}

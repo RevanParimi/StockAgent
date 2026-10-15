@@ -23,10 +23,12 @@ def test_first_snapshot_never_alerts(tmp_path, monkeypatch):
     monkeypatch.setattr(iw.settings, "DELIVERY_INDEX_WATCH", ["NIFTY 50"])
     monkeypatch.setattr(iw, "_make_nse_client",
                         lambda: _FakeNSE({"NIFTY 50": ["AAA", "BBB"]}))
-    monkeypatch.setattr(iw, "_watched_symbols", lambda: {"AAA"})
-    with patch.object(iw, "emit_alerts_broadcast") as m:
+    monkeypatch.setattr(iw, "_shelf_symbols", lambda: {"AAA"})
+    monkeypatch.setattr(iw, "_account_symbols", lambda: {"u1": {"BBB"}})
+    with patch.object(iw, "emit_alerts_broadcast") as m, \
+            patch.object(iw, "emit_alerts") as own:
         out = iw.run_index_watch(on=date(2026, 7, 5), cache_path=cache)
-    assert out["events"] == 0 and not m.called
+    assert out["events"] == 0 and not m.called and not own.called
     assert set(json.loads(open(cache).read())["NIFTY 50"]["symbols"]) == {"AAA", "BBB"}
 
 
@@ -37,13 +39,15 @@ def test_diff_alerts_only_watched_symbols(tmp_path, monkeypatch):
     monkeypatch.setattr(iw.settings, "DELIVERY_INDEX_WATCH", ["NIFTY 50"])
     monkeypatch.setattr(iw, "_make_nse_client",
                         lambda: _FakeNSE({"NIFTY 50": ["AAA", "CCC", "DDD"]}))
-    monkeypatch.setattr(iw, "_watched_symbols", lambda: {"BBB", "CCC"})
-    with patch.object(iw, "emit_alerts_broadcast") as m:
+    monkeypatch.setattr(iw, "_shelf_symbols", lambda: {"BBB"})
+    monkeypatch.setattr(iw, "_account_symbols", lambda: {"u1": {"CCC"}})
+    with patch.object(iw, "emit_alerts_broadcast") as m, \
+            patch.object(iw, "emit_alerts") as own:
         out = iw.run_index_watch(on=date(2026, 7, 5), cache_path=cache)
     assert out["events"] == 2                       # CCC included, BBB excluded (DDD unwatched)
-    events = m.call_args.args[0]
-    kinds = {(e.symbol, e.kind) for e in events}
-    assert kinds == {("CCC", "index_inclusion"), ("BBB", "index_exclusion")}
+    assert {(e.symbol, e.kind) for e in m.call_args.args[0]} == {("BBB", "index_exclusion")}
+    assert {(e.symbol, e.kind) for e in own.call_args.args[0]} == {("CCC", "index_inclusion")}
+    assert own.call_args.kwargs["user_id"] == "u1"
 
 
 def test_fetch_failure_keeps_stale_and_no_alerts(tmp_path, monkeypatch):
@@ -55,7 +59,11 @@ def test_fetch_failure_keeps_stale_and_no_alerts(tmp_path, monkeypatch):
     def _boom():
         raise RuntimeError("NSE down")
     monkeypatch.setattr(iw, "_make_nse_client", _boom)
-    with patch.object(iw, "emit_alerts_broadcast") as m:
+    monkeypatch.setattr(iw, "_shelf_symbols", lambda: {"AAA"})
+    monkeypatch.setattr(iw, "_account_symbols", lambda: {"u1": {"AAA"}})
+    with patch.object(iw, "emit_alerts_broadcast") as m, \
+            patch.object(iw, "emit_alerts") as own:
         out = iw.run_index_watch(on=date(2026, 7, 5), cache_path=cache)
     assert out["events"] == 0 and "NIFTY 50" in out["degraded"] and not m.called
+    assert not own.called
     assert json.loads(open(cache).read())["NIFTY 50"]["symbols"] == ["AAA"]

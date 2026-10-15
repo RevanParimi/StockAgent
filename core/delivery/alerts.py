@@ -400,8 +400,9 @@ def emit_alerts_broadcast(
     title: str = "StockAgent alerts",
     sent_log: str | None = None,
 ) -> dict:
-    """MARKET notices — index reconstitution, discovery shelf adds, the
-    pre-open re-forecast — to every alert_audience() user (AUD-015). Each
-    account's email goes to its own address (resolve_recipient). Never raises.
+    """MARKET notices — discovery shelf adds, an index change to a shelf
+    idea, the pre-open re-forecast — to every alert_audience() user (AUD-015).
+    Each account's email goes to its own address (resolve_recipient). Never
+    raises.
     """
     return _emit_to(alert_audience(), events, title, sent_log)

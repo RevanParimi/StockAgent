@@ -238,13 +238,17 @@ class _FakeNSE:
 
 
 def _index_reconstitution(tmp_path, monkeypatch):
+    """Both symbols are shelf ideas: the shelf is shared, so the change is a
+    market notice. A stock only some account holds or watches goes to that
+    account alone (FIX-009, test_index_watch_own_accounts_fix009.py)."""
     import core.delivery.index_watch as iw
     cache = tmp_path / "idx.json"
     cache.write_text(json.dumps({"NIFTY 50": {"fetched_at": "old", "symbols": ["AAA", "BBB"]}}),
                      encoding="utf-8")
     monkeypatch.setattr(iw.settings, "DELIVERY_INDEX_WATCH", ["NIFTY 50"])
     monkeypatch.setattr(iw, "_make_nse_client", lambda: _FakeNSE())
-    monkeypatch.setattr(iw, "_watched_symbols", lambda: {"BBB", "CCC"})
+    monkeypatch.setattr(iw, "_shelf_symbols", lambda: {"BBB", "CCC"})
+    monkeypatch.setattr(iw, "_account_symbols", lambda: {})
     assert iw.run_index_watch(on=date(2026, 10, 12), cache_path=str(cache))["events"] == 2
 
 
@@ -504,7 +508,7 @@ OPERATOR_SITES = {
     ("scripts/atlas_etl.py", "_emit_ops_alert"),
 }
 MARKET_SITES = {
-    ("core/delivery/index_watch.py", "run_index_watch"),
+    ("core/delivery/index_watch.py", "run_index_watch"),     # shelf ideas only (FIX-009)
     ("core/discovery/__init__.py", "run_discovery_cycle"),
     ("services/scheduler/python/scheduler.py",
      "AutomobileScheduler._preopen_shock_check_job"),
@@ -512,6 +516,7 @@ MARKET_SITES = {
 OWN_ACCOUNT_SITES = {           # an account's alert about its own portfolio
     ("core/delivery/brief.py", "run_morning_brief"),
     ("core/portfolio/pipeline.py", "run_post_review_pipeline"),
+    ("core/delivery/index_watch.py", "run_index_watch"),     # held or watched (FIX-009)
 }
 _ENTRY_POINTS = {"emit_owner_alerts", "emit_alerts_broadcast", "emit_alerts",
                  "owner_audience", "alert_audience", "_emit_to"}

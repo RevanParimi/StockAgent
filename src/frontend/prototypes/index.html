@@ -204,6 +204,40 @@
     if (stored) document.documentElement.setAttribute('data-theme', stored);
   })();
 </script>
+<script>
+  /* PR-001: the signed-in account ({user_id, display_name, role, …} from
+     /auth/me), or null while unknown or signed out. App() publishes it with
+     saSetUser (boot, sign-in, sign-out); screens read it with useSaUser().
+     Operator tools render only when saIsOwner(user), so an unknown account
+     sees none; the server's guards stay. These live here, not in a .jsx
+     file: navigations are network-first but scripts are served from the
+     service worker's cache first, so the first open after a deploy runs this
+     file with the previous version's .jsx files, which must still render. */
+  window.saUser = null;
+  window.saSetUser = function (user) {
+    window.saUser = user || null;
+    try { window.dispatchEvent(new Event('sa-user')); } catch (e) {}
+  };
+  window.useSaUser = function () {
+    const [user, setUser] = React.useState(function () { return window.saUser; });
+    React.useEffect(function () {
+      const on = function () { setUser(window.saUser); };
+      window.addEventListener('sa-user', on);
+      on();
+      return function () { window.removeEventListener('sa-user', on); };
+    }, []);
+    return user;
+  };
+  window.saIsOwner = function (user) { return !!user && user.role === 'owner'; };
+</script>
+<script>
+  /* PR-001: sample data is explicit. Only ?demo=1 installs the invented values
+     in demo-fixtures.js, under a "Sample data" banner (the layout audit uses
+     it). Otherwise every figure comes from the API or is shown as
+     unavailable; a failed request never falls back to a sample. */
+  window.saDemoMode = new URLSearchParams(location.search).get('demo') === '1';
+</script>
+<script src="demo-fixtures.js"></script>
 </head>
 <body>
 <div id="root"></div>
@@ -246,7 +280,13 @@ function saConsumeDeepLink() {
   return { screen: 'inbox', tab: m[1] || 'brief' };
 }
 
+// Operator tools: owner accounts only. A member never sees their chips, menu
+// entries or screens (PR-001); the server routes keep their own guards.
+const OPERATOR_SCREENS = ['prompt-lab', 'analytics', 'logs', 'rl-monitor'];
+
 function App() {
+  const user = useSaUser();
+  const isOwner = saIsOwner(user);
   // Seed the theme from localStorage so it survives a reload; TWEAK_DEFAULTS
   // still supplies it (and everything else) when nothing was ever stored.
   const [tweaks, setTweak] = useTweaks({
@@ -309,14 +349,19 @@ function App() {
 
   // M0: validate a stored session at boot. An expired/revoked token makes
   // /auth/me 401 → the fetch wrapper clears it and fires 'sa-auth-expired'.
+  // The answer is also who is signed in: the greeting's name and the role
+  // that decides whether operator tools show.
   useEffect(() => {
     if (!(window.saGetToken && window.saGetToken())) return;
-    fetch('/auth/me').then(r => { if (!r.ok) setScreen('auth'); }).catch(() => {});
+    fetch('/auth/me')
+      .then(r => { if (!r.ok) { setScreen('auth'); return null; } return r.json(); })
+      .then(d => { if (d && d.user) window.saSetUser(d.user); })
+      .catch(() => {});
   }, []);
 
   // M0: session expiry mid-use → back to the login screen.
   useEffect(() => {
-    const onExpired = () => setScreen('auth');
+    const onExpired = () => { window.saSetUser(null); setScreen('auth'); };
     window.addEventListener('sa-auth-expired', onExpired);
     return () => window.removeEventListener('sa-auth-expired', onExpired);
   }, []);
@@ -326,6 +371,7 @@ function App() {
       try { fetch('/auth/logout', { method: 'POST' }); } catch (e) {}
       if (window.saClearToken) window.saClearToken();
       localStorage.removeItem('sa_remembered');
+      window.saSetUser(null);
     }
     setScreen(s);
   };
@@ -336,9 +382,10 @@ function App() {
 
   const goHome = () => nav('home');
   const goAgents = () => nav('agents');
-  const onAuthed = (user, remember) => {
+  const onAuthed = (signedIn, remember) => {
     // auth.jsx has already stored the token via saSetToken; keep sa_remembered
     // as a legacy hint for any code still reading it.
+    window.saSetUser(signedIn);
     if (remember) localStorage.setItem('sa_remembered', '1');
     else localStorage.removeItem('sa_remembered');
     if (pendingDest) {
@@ -351,26 +398,34 @@ function App() {
   };
   const openChat = () => setChat(true);
   const closeChat = () => setChat(false);
+  // A member never lands on an operator screen, however `screen` was set.
+  const shown = OPERATOR_SCREENS.includes(screen) && !isOwner ? 'home' : screen;
 
   return <>
-    {screen === 'auth' && <AuthScreen onAuthed={onAuthed}/>}
-    {screen === 'home' && <Home onNav={nav} openChat={openChat}/>}
-    {screen === 'agents' && <AgentsPage onNav={nav} openChat={openChat}/>}
-    {screen === 'portfolio' && <PortfolioPage onNav={nav} openChat={openChat}/>}
-    {screen === 'learn' && <LearnPage onNav={nav} openChat={openChat}/>}
-    {screen === 'prompt-lab' && <PromptLabPage onNav={nav}/>}
-    {screen === 'analytics' && <AnalyticsPage onNav={nav}/>}
-    {screen === 'logs'      && <LogsPage onNav={nav}/>}
-    {screen === 'rl-monitor' && <RLMonitorPage onNav={nav}/>}
-    {screen === 'inbox' && <InboxPage onNav={nav} tab={inboxTab} setTab={setInboxTab}/>}
-    {screen === 'settings' && <SettingsPage onNav={nav} theme={tweaks.theme}
+    {window.saDemoMode && screen !== 'auth' && (
+      <div className="sa-demo-banner" role="status" style={{
+        padding:'6px 16px', background:'rgba(217,119,6,.92)', color:'#fff', fontSize:11,
+        fontWeight:700, letterSpacing:'.04em', textAlign:'center'
+      }}>Sample data — the market figures and portfolio here are not live</div>
+    )}
+    {shown === 'auth' && <AuthScreen onAuthed={onAuthed}/>}
+    {shown === 'home' && <Home onNav={nav} openChat={openChat}/>}
+    {shown === 'agents' && <AgentsPage onNav={nav} openChat={openChat}/>}
+    {shown === 'portfolio' && <PortfolioPage onNav={nav} openChat={openChat}/>}
+    {shown === 'learn' && <LearnPage onNav={nav} openChat={openChat}/>}
+    {shown === 'prompt-lab' && <PromptLabPage onNav={nav}/>}
+    {shown === 'analytics' && <AnalyticsPage onNav={nav}/>}
+    {shown === 'logs'      && <LogsPage onNav={nav}/>}
+    {shown === 'rl-monitor' && <RLMonitorPage onNav={nav}/>}
+    {shown === 'inbox' && <InboxPage onNav={nav} tab={inboxTab} setTab={setInboxTab}/>}
+    {shown === 'settings' && <SettingsPage onNav={nav} theme={tweaks.theme}
       setTheme={v => setTweak('theme', v)}/>}
 
     {/* Floating orb on non-auth screens */}
     {screen !== 'auth' && !chat && <SphereOrb onOpen={openChat} mode={tweaks.sphereMode}/>}
     <ChatOverlay open={chat} onClose={closeChat} mode={tweaks.sphereMode}/>
 
-    {/* Secondary nav — Prompt Lab / Analytics / Logs / Sign out */}
+    {/* Secondary nav — the owner's Prompt Lab / Analytics / Logs / RL Monitor, and Sign out */}
     {/* Desktop: fixed pill bottom-left. Mobile: hidden here, accessible via hamburger menu. */}
     {screen !== 'auth' && (
       <div className="proto-nav" style={{
@@ -378,15 +433,17 @@ function App() {
         display:'flex', gap:6, padding:6, background:'var(--bg-surface)',
         border:'1px solid var(--border)', borderRadius:999, boxShadow:'var(--shadow-md)'
       }}>
-        <NavChip active={screen==='prompt-lab'} onClick={()=>nav('prompt-lab')} icon={<Icon.Settings size={14}/>} label="Prompt Lab"/>
-        <NavChip active={screen==='analytics'} onClick={()=>nav('analytics')} icon={<Icon.Trend size={14}/>} label="Analytics"/>
-        <NavChip active={screen==='logs'} onClick={()=>nav('logs')} icon={<Icon.Layers size={14}/>} label="Logs"/>
-        <NavChip active={screen==='rl-monitor'} onClick={()=>nav('rl-monitor')} icon={<Icon.Activity size={14}/>} label="RL Monitor"/>
+        {isOwner && <>
+          <NavChip active={screen==='prompt-lab'} onClick={()=>nav('prompt-lab')} icon={<Icon.Settings size={14}/>} label="Prompt Lab"/>
+          <NavChip active={screen==='analytics'} onClick={()=>nav('analytics')} icon={<Icon.Trend size={14}/>} label="Analytics"/>
+          <NavChip active={screen==='logs'} onClick={()=>nav('logs')} icon={<Icon.Layers size={14}/>} label="Logs"/>
+          <NavChip active={screen==='rl-monitor'} onClick={()=>nav('rl-monitor')} icon={<Icon.Activity size={14}/>} label="RL Monitor"/>
+        </>}
         <NavChip onClick={()=>nav('auth')} icon={<Icon.User size={14}/>} label="Sign out"/>
       </div>
     )}
 
-    <TweaksPanel title="Tweaks">
+    {isOwner && <TweaksPanel title="Tweaks">
       <TweakSection title="Sphere style">
         <TweakRadio value={tweaks.sphereMode} options={[
           {value:'wireframe', label:'Wireframe'},
@@ -405,7 +462,7 @@ function App() {
         <TweakButton onClick={()=>nav('rl-monitor')}>Open RL Monitor</TweakButton>
         <TweakButton onClick={()=>nav('settings')}>Open settings</TweakButton>
       </TweakSection>
-    </TweaksPanel>
+    </TweaksPanel>}
   </>;
 }
 

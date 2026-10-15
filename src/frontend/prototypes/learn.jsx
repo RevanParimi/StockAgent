@@ -43,7 +43,7 @@ function LearnPage({ onNav, openChat }) {
                   background:'linear-gradient(90deg,#22d3ee,#a78bfa)' }}/>
               </div>
               <span className="mono" style={{ fontSize:13, fontWeight:700 }}>
-                {completedSteps}/{totalSteps} steps · {Math.round(totalProgress*100)}%
+                {completedSteps}/{totalSteps} steps
               </span>
             </div>
           </div>
@@ -55,8 +55,9 @@ function LearnPage({ onNav, openChat }) {
           </div>
         </section>
 
-        {/* Continue learning */}
-        <SectionHead title="Continue where you left off"
+        {/* Paths. Nothing records a member's progress yet, so nothing here
+            claims what they finished or where they left off. */}
+        <SectionHead title="Learning paths"
           subtitle="Pick a path and finish in one sitting"/>
         <div style={{ display:'grid', gridTemplateColumns:'var(--grid-paths)', gap:16, marginTop:16, marginBottom:36 }}>
           {window.LEARN_PATHS.map(p => (
@@ -68,24 +69,6 @@ function LearnPage({ onNav, openChat }) {
         <div style={{ display:'grid', gridTemplateColumns:'var(--grid-2col)', gap:20 }}>
           <GlossaryCard openChat={openChat}/>
           <TipsCard tips={window.LEARN_TIPS}/>
-        </div>
-
-        {/* Recommended next */}
-        <div style={{ marginTop:36 }}>
-          <SectionHead title="Recommended next"
-            subtitle="Picked because you finished 'Reading a verdict'"/>
-          <div style={{ display:'grid', gridTemplateColumns:'var(--grid-suggestions)', gap:16, marginTop:16 }}>
-            <RecCard
-              title="Watch a real verdict happen"
-              body="See the 9 agents stream live for MARUTI. 12 seconds, real signals."
-              cta="Run a demo analysis"
-              kind="demo"/>
-            <RecCard
-              title="Quiz: Spot the strong buy"
-              body="3 stocks. 9 agent scores each. Pick the strong-buy. See why."
-              cta="Start quiz · 4 min"
-              kind="quiz"/>
-          </div>
         </div>
       </main>
 
@@ -189,34 +172,6 @@ function TipsCard({ tips }) {
   );
 }
 
-function RecCard({ title, body, cta, kind }) {
-  const isDemo = kind === 'demo';
-  return (
-    <div className="card" style={{ padding:24, display:'grid', gridTemplateColumns:'1fr auto', gap:20, alignItems:'center' }}>
-      <div>
-        <div className="eyebrow" style={{ marginBottom:8, color: isDemo ? 'var(--cyan)' : 'var(--violet)' }}>
-          {isDemo ? 'Live demo' : 'Quiz'}
-        </div>
-        <div style={{ fontSize:15, fontWeight:700, marginBottom:6 }}>{title}</div>
-        <div style={{ fontSize:13, color:'var(--ink-2)', lineHeight:1.5, marginBottom:14 }}>{body}</div>
-        <button style={{
-          padding:'9px 14px', borderRadius:10, border:'none',
-          background: isDemo ? 'var(--cyan)' : 'var(--violet)',
-          color:'#fff', fontSize:12, fontWeight:700,
-          display:'flex', alignItems:'center', gap:6
-        }}>{cta} <Icon.ChevronR size={13}/></button>
-      </div>
-      <div style={{
-        width:96, height:96, borderRadius:18, fontSize:40,
-        background: isDemo
-          ? 'linear-gradient(135deg, var(--cyan-soft), var(--violet-soft))'
-          : 'linear-gradient(135deg, var(--violet-soft), var(--cyan-soft))',
-        display:'grid', placeItems:'center'
-      }}>{isDemo ? '⚡' : '🎲'}</div>
-    </div>
-  );
-}
-
 function PathOverlay({ p, onClose }) {
   const stepsDone = Math.round(p.progress * p.steps);
   // Mock the step content
@@ -299,7 +254,8 @@ function PathOverlay({ p, onClose }) {
             background: p.color, color:'#fff', fontSize:13, fontWeight:700,
             display:'flex', alignItems:'center', justifyContent:'center', gap:8
           }}>
-            {stepsDone === p.steps ? 'Path complete · 🎉' : `Continue from step ${stepsDone+1}`}
+            {stepsDone === p.steps ? 'Path complete · 🎉'
+              : stepsDone === 0 ? 'Start from step 1' : `Continue from step ${stepsDone+1}`}
             <Icon.ChevronR size={14}/>
           </button>
         </div>

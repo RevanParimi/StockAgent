@@ -143,7 +143,7 @@ function AuthScreen({ onAuthed }) {
           <form onSubmit={submitAuth} style={{ display:'flex', flexDirection:'column', gap:14 }}>
             {tab==='signup' && (
               <Field icon={<Icon.User size={16}/>} label="Full name">
-                <input value={name} onChange={e=>setName(e.target.value)} placeholder="Aditi Sharma" className="auth-input"
+                <input value={name} onChange={e=>setName(e.target.value)} placeholder="Your name" className="auth-input"
                   style={inputStyle}/>
               </Field>
             )}

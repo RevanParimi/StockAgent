@@ -25,6 +25,12 @@
  *   PORTFOLIO_DATA_DIR=.uidev-data python -m uvicorn services.api.server:app --port 8001
  *   node scripts/ui_responsive_audit.mjs --out .uidev-data/shots
  *
+ * Fixture mode (PR-001): the app is opened with ?demo=1, so Home, Agents and
+ * Portfolio render demo-fixtures.js's sample data whatever the server holds,
+ * and the screenshots are the same run to run. Pass --live to audit the
+ * server's real answers instead (screens with no data then show their
+ * "unavailable" states). The app never falls back to samples on its own.
+ *
  * Auth note: the SPA login gate is client-side on a stored bearer token
  * (index.html's saGetToken/saSetToken), independent of AUTH_REQUIRED. To
  * reach the authenticated screens this script logs in against the dev owner
@@ -42,6 +48,7 @@ const arg = (k, d) => {
 };
 const BASE = arg('--base', 'http://localhost:8001');
 const OUT = arg('--out', '.uidev-data/shots');
+const APP_URL = process.argv.includes('--live') ? BASE : `${BASE}/?demo=1`;
 
 const WIDTHS = [360, 390, 768, 1280];
 // A screen entry is either a bare name, or { name, tabs } where `tabs` is the
@@ -116,7 +123,7 @@ for (const width of WIDTHS) {
   };
 
   for (const { name: screen, tabs } of NORMALIZED_SCREENS) {
-    await page.goto(BASE, { waitUntil: 'networkidle' });
+    await page.goto(APP_URL, { waitUntil: 'networkidle' });
     // The prototype does no URL routing — drive it through the Tweaks quick-jump
     // by calling the app's own nav via a synthetic hash the App() reads, falling
     // back to clicking the nav entry.
@@ -176,7 +183,7 @@ for (const width of WIDTHS) {
   const ctx = await browser.newContext({ viewport: { width: 390, height: 900 } });
   await ctx.addInitScript(tok => { localStorage.setItem('sa_auth_token', tok); }, token);
   const page = await ctx.newPage();
-  await page.goto(BASE, { waitUntil: 'networkidle' });
+  await page.goto(APP_URL, { waitUntil: 'networkidle' });
   const navigated = await page.evaluate(() => {
     if (typeof window.__auditNav !== 'function') return false;
     window.__auditNav('inbox');
@@ -218,7 +225,7 @@ for (const width of WIDTHS) {
   const ctx = await browser.newContext({ viewport: { width: 390, height: 900 } });
   await ctx.addInitScript(tok => { localStorage.setItem('sa_auth_token', tok); }, token);
   const page = await ctx.newPage();
-  await page.goto(BASE, { waitUntil: 'networkidle' });
+  await page.goto(APP_URL, { waitUntil: 'networkidle' });
   const navigated = await page.evaluate(() => {
     if (typeof window.__auditNav !== 'function') return false;
     window.__auditNav('inbox');

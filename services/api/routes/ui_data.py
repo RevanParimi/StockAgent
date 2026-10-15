@@ -262,11 +262,14 @@ _CATEGORIES = [
     },
 ]
 
+# Suggested first questions in the chat overlay. Questions only: a seed that
+# states a verdict or a figure ("Why is X rated STRONG BUY today?") would show
+# a claim that no analysis made.
 _CHAT_SEEDS = [
-    "Why is MARUTI rated STRONG BUY today?",
-    "What does the Sales & Demand agent see this week?",
-    "Compare Tata Motors vs M&M for EV exposure",
-    "Which agent should I trust most for short-term moves?",
+    "How is my portfolio doing?",
+    "What moved the market today?",
+    "What should I watch in my holdings this week?",
+    "Explain the latest verdict on one of my stocks",
 ]
 
 
@@ -337,12 +340,43 @@ def _fetch_yf_series(yf_ticker: str, days: int = 30) -> list[float]:
 
 
 def _fetch_sector_changes() -> list[dict]:
-    """Return sector daily % changes from NSE indices. Sync."""
+    """Return sector daily % changes from NSE indices. Sync.
+
+    A failed fetch comes back from _fetch_yf_price as (0.0, 0.0); its pct is
+    None here, so the UI shows "—" rather than a flat "+0.00%" day."""
     results = []
     for sector in _SECTOR_INDICES:
         price, pct = _fetch_yf_price(sector["yf"])
-        results.append({"name": sector["name"], "pct": pct})
+        results.append({"name": sector["name"], "pct": pct if price else None})
     return results
+
+
+def _fetch_index_history(yf_ticker: str, calendar_days: int) -> list[tuple[str, float]]:
+    """An index's daily closes over a little more than the last `calendar_days`
+    days, as (ISO date, close), oldest first. Sync; [] when the fetch fails.
+
+    The date is the bar's own exchange date, so the UI can say which day a
+    value belongs to. During market hours the last bar is today's, still moving."""
+    try:
+        import yfinance as yf
+        hist = yf.Ticker(yf_ticker).history(period=f"{calendar_days + 10}d", auto_adjust=True)
+    except Exception as exc:
+        logger.debug("[ui_data] index history fetch failed for %s: %s", yf_ticker, exc)
+        return []
+    if hist is None or hist.empty or "Close" not in hist:
+        return []
+    closes = hist["Close"].dropna()
+    return [(ts.date().isoformat(), round(float(v), 2)) for ts, v in closes.items()]
+
+
+def _index_quote(history: list[tuple[str, float]]) -> dict | None:
+    """Last value, its change on the bar before, and that bar's date; None
+    when there are not two closes to compare."""
+    if len(history) < 2 or not history[-2][1]:
+        return None
+    (_, prev), (as_of, last) = history[-2], history[-1]
+    return {"name": "Nifty 50", "value": last,
+            "changePct": round((last - prev) / prev * 100, 2), "asOf": as_of}
 
 
 def _verdict_to_trend(verdict: str) -> str:
@@ -365,13 +399,12 @@ def _pulse_from_scores(scores: list[float], sector_changes: list[dict] | None = 
             return "Mixed signals"
         return "Caution ahead"
 
-    # No DB data — derive from live sector % changes
-    if sector_changes:
-        positives = sum(1 for s in sector_changes if s.get("pct", 0) > 0)
-        negatives = sum(1 for s in sector_changes if s.get("pct", 0) < 0)
-        total = len(sector_changes)
-        if total == 0:
-            return "Market closed"
+    # No DB data — derive from the sector % changes that were fetched
+    known = [s["pct"] for s in (sector_changes or []) if s.get("pct") is not None]
+    if known:
+        positives = sum(1 for p in known if p > 0)
+        negatives = sum(1 for p in known if p < 0)
+        total = len(known)
         if positives >= total * 0.7:
             return "Mostly green"
         if positives >= total * 0.5:
@@ -380,7 +413,8 @@ def _pulse_from_scores(scores: list[float], sector_changes: list[dict] | None = 
             return "Caution ahead"
         return "Mixed signals"
 
-    return "Market closed"
+    # Neither scores nor sector data: say so, not "Market closed".
+    return "No recent data"
 
 
 def _load_watchlist() -> list[str]:
@@ -573,22 +607,17 @@ def _build_drivers_from_db(rows: list[dict]) -> list[dict]:
             if len(drivers) >= 4:
                 return drivers
 
-    # Always return 4 drivers; pad with generic ones if DB sparse
-    fallback = [
-        {"kind": "good", "label": "Auto sector broadly positive — EV registrations growing", "impact": "Sales & Demand", "tickers": ["TATAMOTORS", "M&M"]},
-        {"kind": "good", "label": "Crude oil stable — raw material cost relief",              "impact": "Raw Materials",   "tickers": ["MARUTI", "BAJAJ-AUTO"]},
-        {"kind": "mid",  "label": "INR mildly weak vs USD — watch import cost creep",         "impact": "Risk & Macro",   "tickers": ["MARUTI"]},
-        {"kind": "bad",  "label": "Global macro uncertainty — monitor FII flows",             "impact": "Sentiment",      "tickers": []},
-    ]
-    while len(drivers) < 4:
-        drivers.append(fallback[len(drivers)])
-    return drivers[:4]
+    # Up to 4, and only drivers an analysis actually named: no generic padding
+    # when the DB is sparse (the UI says there are none yet).
+    return drivers
 
 
 def _build_month_agent_scores(latest_rows: list[dict]) -> list[dict]:
-    """Aggregate agent sub-scores across recent analyses for the 'This month' pane."""
+    """Aggregate agent sub-scores across recent analyses for the 'This month' pane.
+
+    Only agents with at least one score appear. An agent's configured weight is
+    not a vote, so it is never shown in place of a missing score."""
     import json
-    from core.config import settings
 
     agg: dict[str, list[float]] = {}
     for row in latest_rows:
@@ -601,11 +630,12 @@ def _build_month_agent_scores(latest_rows: list[dict]) -> list[dict]:
             agg.setdefault(agent, []).append(float(val))
 
     result = []
-    weights = settings.AGENT_WEIGHTS
     for meta in _AGENT_META:
         key = meta["key"]
         vals = agg.get(key, [])
-        avg = round(sum(vals) / len(vals), 2) if vals else round(weights.get(key, 0.5), 2)
+        if not vals:
+            continue
+        avg = round(sum(vals) / len(vals), 2)
         kind = "good" if avg >= 0.60 else "bad" if avg < 0.45 else "mid"
         result.append({"n": meta["name"], "v": avg, "k": kind})
     return result
@@ -635,12 +665,14 @@ async def _gather_ticker_data() -> tuple[list[dict], list[dict]]:
 
 
 async def _gather_market_data(db_latest: list[dict]) -> dict:
-    """Fetch sector changes + Nifty Auto sparkline concurrently."""
-    sector_changes, nifty_history = await asyncio.gather(
+    """Fetch sector changes, the Nifty Auto sparkline and the Nifty 50 concurrently."""
+    sector_changes, nifty_history, nifty50_history = await asyncio.gather(
         asyncio.to_thread(_fetch_sector_changes),
         asyncio.to_thread(_fetch_yf_series, "^CNXAUTO", 30),
+        asyncio.to_thread(_fetch_index_history, "^NSEI", 5),
     )
-    return {"sector_changes": sector_changes, "nifty_history": nifty_history}
+    return {"sector_changes": sector_changes, "nifty_history": nifty_history,
+            "nifty50": _index_quote(nifty50_history)}
 
 
 # ---------------------------------------------------------------------------
@@ -794,16 +826,16 @@ async def get_market_summary() -> dict:
         "Auto sector data will appear here after your first analysis runs."
     )
     one_liner_month = (
-        "EV momentum + PLI benefits flowing through margins. Watch crude & INR."
+        "No analyses this month yet."
         if not db_latest else
         "Multiple analyses available — check agent verdicts for the full picture."
     )
 
     market_data = market_data_pre  # already fetched above
 
-    # Auto sector 1-day change for the hero
+    # Auto sector 1-day change; None when it could not be fetched
     auto_change = next(
-        (s["pct"] for s in market_data["sector_changes"] if s["name"] == "Auto"), 0.0
+        (s["pct"] for s in market_data["sector_changes"] if s["name"] == "Auto"), None
     )
 
     return {
@@ -838,7 +870,7 @@ async def bootstrap() -> dict:
     scores    = [float(r["final_score"]) for r in db_latest if r.get("final_score")]
     pulse     = _pulse_from_scores(scores, market_data["sector_changes"])
     auto_chg  = next(
-        (s["pct"] for s in market_data["sector_changes"] if s["name"] == "Auto"), 0.0
+        (s["pct"] for s in market_data["sector_changes"] if s["name"] == "Auto"), None
     )
 
     # Date-filtered row sets for Today (24h) and This Month (current calendar month)
@@ -945,14 +977,19 @@ async def bootstrap() -> dict:
         "MARKET_MONTH": {
             "pulse":      _pulse_from_scores([float(r["final_score"]) for r in month_rows if r.get("final_score")]),
             "oneLiner":   (month_rows[0].get("investment_thesis", "")[:160] if month_rows
-                           else "EV momentum + PLI benefits flowing through margins. Watch crude & INR."),
+                           else "No analyses this month yet."),
             "drivers":    _build_drivers_from_db(month_rows),
             "agentVotes": _build_month_agent_scores(month_rows),
             "freshness":  month_freshness,
         },
 
-        # Nifty Auto sparkline — window.NIFTY_AUTO_HISTORY
-        "NIFTY_AUTO_HISTORY": market_data["nifty_history"] or _fallback_sparkline(),
+        # Nifty 50's last value, its change on the bar before and that bar's
+        # date (window.NIFTY50; the home hero's market line) — None when the
+        # fetch failed, and the hero then leaves the line out.
+        "NIFTY50": market_data["nifty50"],
+
+        # Nifty Auto closes — window.NIFTY_AUTO_HISTORY; empty when the fetch failed
+        "NIFTY_AUTO_HISTORY": market_data["nifty_history"],
 
         # Trending — window.TRENDING (score-delta movers, not price movers)
         "TRENDING": trending,
@@ -972,33 +1009,43 @@ async def bootstrap() -> dict:
 
 
 # ---------------------------------------------------------------------------
-# T2.1  GET /ui/nifty-ranges — multi-timeframe Nifty Auto sparkline
+# T2.1  GET /ui/nifty-ranges — the Nifty 50 over a time range (home index box)
 # ---------------------------------------------------------------------------
 
+# Calendar days per range, so "1 year" covers a year of trading days.
 _RANGE_CONFIG = {
-    "1W": {"period": "1mo",  "days": 7,   "label": "1 week"},
-    "1M": {"period": "1mo",  "days": 30,  "label": "1 month"},
-    "3M": {"period": "3mo",  "days": 63,  "label": "3 months"},
-    "6M": {"period": "6mo",  "days": 126, "label": "6 months"},
-    "1Y": {"period": "1y",   "days": 252, "label": "1 year"},
+    "1W": {"days": 7,   "label": "1 week"},
+    "1M": {"days": 30,  "label": "1 month"},
+    "3M": {"days": 91,  "label": "3 months"},
+    "6M": {"days": 182, "label": "6 months"},
+    "1Y": {"days": 365, "label": "1 year"},
 }
 
 
-@router.get("/nifty-ranges", summary="Nifty Auto sparkline for a given time range")
+@router.get("/nifty-ranges", summary="Nifty 50 closes, last value and its date for a time range")
 async def get_nifty_ranges(range: str = Query(default="1M")) -> dict:
-    cfg = _RANGE_CONFIG.get(range.upper(), _RANGE_CONFIG["1M"])
-    series = await asyncio.to_thread(_fetch_yf_series, "^CNXAUTO", cfg["days"] + 20)
-    series = series[-cfg["days"]:]   # trim to exact count
-
-    change = 0.0
-    if len(series) >= 2:
-        change = round((series[-1] - series[0]) / series[0] * 100, 2)
+    """The Nifty 50's closes over the range, its last value and that close's
+    date. `value`, `asOf` and `change` are None when the fetch failed (no
+    points) and the home index box then says the Nifty 50 is unavailable."""
+    key = range.upper() if range.upper() in _RANGE_CONFIG else "1M"
+    cfg = _RANGE_CONFIG[key]
+    history = await asyncio.to_thread(_fetch_index_history, "^NSEI", cfg["days"])
+    if history:
+        start = date.fromordinal(date.fromisoformat(history[-1][0]).toordinal() - cfg["days"])
+        history = [(d, v) for d, v in history if d >= start.isoformat()]
+    points = [v for _, v in history]
+    change = (round((points[-1] - points[0]) / points[0] * 100, 2)
+              if len(points) >= 2 and points[0] else None)
 
     return {
-        "range":  range.upper(),
-        "points": series,
+        "index":  "Nifty 50",
+        "range":  key,
         "label":  cfg["label"],
+        "points": points,
         "change": change,
+        "value":  points[-1] if points else None,
+        "asOf":   history[-1][0] if history else None,
+        "from":   history[0][0] if history else None,
     }
 
 
@@ -1222,7 +1269,7 @@ async def search(q: str = Query(default="")) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# T2.5  GET /ui/learnings — RL feedback → lesson cards
+# T2.5  GET /ui/learnings — recent verdict changes and forecast misses
 # ---------------------------------------------------------------------------
 
 def _severity_from_score(score: float) -> str:
@@ -1232,81 +1279,105 @@ def _severity_from_score(score: float) -> str:
 
 
 def _kind_from_verdict_change(prev: str, cur: str) -> str:
+    """Name the verdict move itself. It says nothing about what anyone did:
+    no trade is attached to a verdict change, so "missed buy" or "good call"
+    would be a claim this data cannot support."""
     bullish = {"STRONG BUY", "BUY"}
     bearish = {"STRONG SELL", "SELL"}
-    if prev in bullish and cur in bearish: return "missed-sell"
-    if prev in bearish and cur in bullish: return "missed-buy"
-    if cur in bullish: return "good-call"
-    if cur in bearish: return "avoided-loss"
-    return "sizing"
+    if prev in bullish and cur in bearish: return "turned-bearish"
+    if prev in bearish and cur in bullish: return "turned-bullish"
+    if cur in bullish: return "bullish"
+    if cur in bearish: return "bearish"
+    return "neutral"
 
 
-@router.get("/learnings", summary="Derive lesson cards from RL feedback logs and score history")
+# "Recent verdict changes" lists at most this many, newest first. The Portfolio
+# page's LEARNINGS_MAX_CHANGES mirrors it: a full list is the newest N, not all.
+_LEARNINGS_MAX_CHANGES = 10
+# Forecast misses follow under their own heading, newest first.
+_LEARNINGS_MAX_MISSES = 5
+
+
+def _verdict_of(run: dict) -> str:
+    return (run.get("verdict") or "").strip().upper()
+
+
+def _verdict_changes(history: list[dict]) -> list[tuple[dict, dict]]:
+    """The (run, run before it) pairs where the verdict changed, from one
+    stock's runs newest first (as ScoreStore.get_history returns them).
+
+    A re-run that gives the same verdict is not a change, and a pair with a
+    missing verdict proves nothing either way."""
+    return [(newer, older) for newer, older in zip(history, history[1:])
+            if _verdict_of(newer) and _verdict_of(older) and _verdict_of(newer) != _verdict_of(older)]
+
+
+def _verdict_change_record(sym: str, newest: dict, prev: dict) -> tuple[str, int, dict]:
+    """(run_at, row id, item) for one verdict change, dated by the run that made it."""
+    kind = _kind_from_verdict_change(_verdict_of(prev), _verdict_of(newest))
+    score = float(newest.get("final_score", 0.5))
+    prev_score = float(prev.get("final_score", 0.5))
+    score_delta = round(score - prev_score, 2)
+
+    # Parse agent scores
+    try:
+        agent_scores_raw = newest.get("agent_scores") or "{}"
+        agent_scores = json.loads(agent_scores_raw) if isinstance(agent_scores_raw, str) else agent_scores_raw
+    except ValueError:   # malformed JSON (json.JSONDecodeError)
+        agent_scores = {}
+
+    top_agents = sorted(agent_scores.items(), key=lambda x: x[1], reverse=True)[:3]
+    agent_snapshot = [
+        {"n": next((m["name"] for m in _AGENT_META if m["key"] == k), k), "v": round(v, 2)}
+        for k, v in top_agents
+    ]
+
+    run_at = newest.get("run_at") or ""
+    thesis = (newest.get("investment_thesis") or "")[:160]
+    verdict_label = newest.get("verdict","NEUTRAL")
+
+    return run_at, int(newest.get("id") or 0), {
+        "id":            f"{kind}-{sym.lower()}-{newest.get('id')}",
+        "kind":          kind,
+        "severity":      _severity_from_score(score),
+        "sym":           sym,
+        "title":         f"{sym}: {prev.get('verdict','NEUTRAL')} → {verdict_label}",
+        "when":          run_at[:10] or "Recent",
+        "what":          thesis or f"Composite score {score:.2f}, verdict {verdict_label}",
+        "detail":        f"Score moved {'+' if score_delta >= 0 else ''}{score_delta:.2f} → now {verdict_label}",
+        "agentSnapshot": agent_snapshot,
+    }
+
+
+@router.get("/learnings", summary="Recent verdict changes and forecast misses for the analysed stocks")
 async def get_learnings() -> dict:
     """
-    Reads from the RL prediction store (if available) and the score history DB
-    to generate actionable lesson cards matching the PORTFOLIO_LEARNINGS shape.
-    Falls back to an empty set if no data exists.
+    Reads the score history DB (and the RL feedback log, when present) and
+    returns dated records: the verdict changes in the analysed stocks' kept
+    runs (a verdict that differs from the run before it), newest first, at
+    most _LEARNINGS_MAX_CHANGES; then the latest forecast misses, kind
+    "forecast-miss", newest first, at most _LEARNINGS_MAX_MISSES.
+
+    Every field is read from those stores. There is deliberately no money
+    figure (a composite-score change is not rupees), no summary rate and no
+    advice text: the realized results of trades come from SA-051 and PR-002.
+    Empty when no data exists, and when the score history cannot be read
+    (a partial list would misstate the newest changes).
     """
-    items = []
-    patterns = []
+    from core.config import settings
+
+    changes: list[tuple[str, int, dict]] = []
+    misses: list[tuple[str, dict]] = []
 
     try:
         store = _score_store()
-        db_latest   = store.get_all_latest()
-        db_latest_m = {r["ticker"]: r for r in db_latest}
 
-        # Pull up-to-3 historical records per ticker to spot verdict changes
+        # Every kept run per ticker: a change can be any pair of runs in it
         for ticker_def in _ALL_TICKERS:
             sym = ticker_def["sym"]
-            history = await asyncio.to_thread(store.get_history, sym, 3)
-            if len(history) < 2:
-                continue
-            newest, prev = history[0], history[1]
-
-            kind = _kind_from_verdict_change(prev.get("verdict","NEUTRAL"), newest.get("verdict","NEUTRAL"))
-            score = float(newest.get("final_score", 0.5))
-            prev_score = float(prev.get("final_score", 0.5))
-            score_delta = round(score - prev_score, 2)
-
-            # Parse agent scores
-            try:
-                agent_scores_raw = newest.get("agent_scores") or "{}"
-                agent_scores = json.loads(agent_scores_raw) if isinstance(agent_scores_raw, str) else agent_scores_raw
-            except Exception:
-                agent_scores = {}
-
-            top_agents = sorted(agent_scores.items(), key=lambda x: x[1], reverse=True)[:3]
-            agent_snapshot = [
-                {"n": next((m["name"] for m in _AGENT_META if m["key"] == k), k), "v": round(v, 2)}
-                for k, v in top_agents
-            ]
-
-            thesis = (newest.get("investment_thesis") or "")[:160]
-            when   = newest.get("run_at", "")[:10] if newest.get("run_at") else "Recent"
-            verdict_label = newest.get("verdict","NEUTRAL")
-
-            cost_text = (
-                f"Score moved {'+' if score_delta >= 0 else ''}{score_delta:.2f} → now {verdict_label}"
-            )
-
-            items.append({
-                "id":            f"{kind}-{sym.lower()}",
-                "kind":          kind,
-                "severity":      _severity_from_score(score),
-                "sym":           sym,
-                "title":         f"{sym}: {prev.get('verdict','NEUTRAL')} → {verdict_label}",
-                "when":          when,
-                "what":          thesis or f"Composite score {score:.2f}, verdict {verdict_label}",
-                "cost":          cost_text,
-                "costValue":     round(score_delta * 10000),
-                "lesson":        (
-                    f"When score crosses 0.70+, {sym} has shown sustained upside. Watch agent weights." if score >= 0.70
-                    else f"Score below 0.50 on {sym} — tighten stop-loss or reduce position."
-                ),
-                "agentSnapshot": agent_snapshot,
-                "action":        "Review agent details",
-            })
+            history = await asyncio.to_thread(store.get_history, sym, settings.SCORE_HISTORY_MAX_ROWS)
+            for newest, prev in _verdict_changes(history):
+                changes.append(_verdict_change_record(sym, newest, prev))
 
         # Also try reading RL feedback logs from prediction store
         try:
@@ -1319,63 +1390,33 @@ async def get_learnings() -> dict:
                 fb_log = ps.load_feedback_log(cycle)
                 for entry in (fb_log.entries if fb_log else [])[-5:]:
                     mt = entry.miss_type if hasattr(entry, "miss_type") else None
-                    if mt and str(mt) not in ("MissType.data_gap", "MissType.external_shock"):
-                        items.append({
+                    # MissType is a Literal: the value is the bare name ("data_gap").
+                    # Data gaps and outside shocks are not the model's misses.
+                    if mt and str(mt).replace("MissType.", "") not in ("data_gap", "external_shock"):
+                        misses.append((str(entry.date), {
                             "id":            f"rl-{sym.lower()}-{entry.date}",
-                            "kind":          "missed-sell" if str(mt) in ("MissType.model_bias", "MissType.direction_flip") else "sizing",
+                            "kind":          "forecast-miss",
                             "severity":      "high" if entry.direction_correct is False else "low",
                             "sym":           sym,
                             "title":         f"RL flag: {str(mt).replace('MissType.','').replace('_',' ')} on {sym}",
                             "when":          str(entry.date),
                             "what":          f"Agent {entry.primary_miss_agent or 'unknown'} flagged as primary miss. Direction correct: {entry.direction_correct}",
-                            "cost":          f"Miss type: {str(mt).replace('MissType.','')}",
-                            "costValue":     0,
-                            "lesson":        "Review this agent's weight if it consistently misses direction.",
+                            "detail":        f"Miss type: {str(mt).replace('MissType.','')}",
                             "agentSnapshot": [],
-                            "action":        "Tune agent weight",
-                        })
+                        }))
         except Exception as exc:
             logger.debug("[ui/learnings] RL store read skipped: %s", exc)
 
     except Exception as exc:
         logger.warning("[ui/learnings] DB read failed: %s", exc)
+        return {"items": []}
 
-    # Summarise
-    score_changes = [it["costValue"] for it in items]
-    summary = {
-        "missedGain":      sum(v for v in score_changes if v > 0),
-        "avoidedLoss":     sum(-v for v in score_changes if v < 0),
-        "realizedLoss":    0,
-        "accuracyVsAgent": round(len([i for i in items if i["kind"] == "good-call"]) / max(len(items), 1), 2),
-        "actionsReviewed": len(items),
-    }
-
-    # Simple patterns from items
-    good_count = len([i for i in items if i["kind"] in ("good-call", "avoided-loss")])
-    bad_count  = len([i for i in items if i["kind"] in ("missed-buy", "missed-sell", "missed-sell")])
-    total = max(good_count + bad_count, 1)
-    if items:
-        patterns = [
-            {"id":"p1", "label": "Correct verdict calls this period", "rate": round(good_count/total, 2), "kind": "good" if good_count > bad_count else "bad",
-             "detail": f"{good_count} of {total} verdict changes were in the right direction."},
-        ]
-
-    return {
-        "summary": summary,
-        "items":   items[:10],
-        "patterns": patterns,
-    }
-
-
-def _fallback_sparkline() -> list[float]:
-    """Generate a plausible-looking 30-point series if yfinance is unavailable."""
-    import math, random
-    v = 22_000
-    out = []
-    for i in range(30):
-        v += math.sin(i / 3) * 60 + (random.random() - 0.45) * 90
-        out.append(round(v, 2))
-    return out
+    # Newest first, then cut: the cap keeps the latest, whichever stock they are in.
+    # Same-second runs fall back to the row id (insertion order).
+    changes.sort(key=lambda c: (c[0], c[1]), reverse=True)
+    misses.sort(key=lambda m: m[0], reverse=True)
+    return {"items": [c[2] for c in changes[:_LEARNINGS_MAX_CHANGES]]
+                     + [m[1] for m in misses[:_LEARNINGS_MAX_MISSES]]}
 
 
 # ---------------------------------------------------------------------------

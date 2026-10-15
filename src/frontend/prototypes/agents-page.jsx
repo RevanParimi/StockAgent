@@ -9,13 +9,29 @@ const _SECTOR_LABELS = {
 };
 
 function AgentsPage({ onNav, openChat }) {
+  // Tuning (plug toggles, task toggles, weight slider) is the owner's: a member
+  // sees the agents read-only (PR-001). The server's require_owner on the weight
+  // and task routes stays the real guard.
+  const canTune = saIsOwner(useSaUser());
   const [activeSector, setActiveSectorState] = useStateAg('automobile');
   const [agents, setAgents] = useStateAg(window.AGENTS);
+  const [agentsFailed, setAgentsFailed] = useStateAg(false);
   const [tasks, setTasks] = useStateAg(window.AGENT_TASKS);
   const [drawerKey, setDrawerKey] = useStateAg(null);
   const [search, setSearch] = useStateAg('');
   const [saveStatus, setSaveStatus] = useStateAg(null); // null | 'saving' | 'saved' | {error}
   const [sectorLoading, setSectorLoading] = useStateAg(false);
+
+  // Bootstrap failed or has not answered: read the agents from their own route.
+  useEffectAg(() => {
+    if (agents.length || window.saDemoMode) return;
+    let alive = true;
+    fetch('/ui/agents?sector=automobile')
+      .then(r => r.ok ? r.json() : Promise.reject(new Error('agents HTTP ' + r.status)))
+      .then(d => { if (alive) setAgents(d.agents || []); })
+      .catch(() => { if (alive) setAgentsFailed(true); });
+    return () => { alive = false; };
+  }, []);
 
   const switchSector = async (sector) => {
     if (sector === activeSector) return;
@@ -126,13 +142,15 @@ function AgentsPage({ onNav, openChat }) {
               Your AI agents
             </h1>
             <p style={{ color:'var(--ink-2)', fontSize:14, margin:0, maxWidth:600 }}>
-              Each agent is a specialist. Plug them in to add a viewpoint, unplug to silence one. Tap a card to tune its weight.
+              {canTune
+                ? 'Each agent is a specialist. Plug them in to add a viewpoint, unplug to silence one. Tap a card to tune its weight.'
+                : 'Each agent is a specialist that looks at one side of a stock. Tap a card to see what it watches.'}
             </p>
           </div>
 
           <div className="agents-stats" style={{ display:'flex', gap:12, alignItems:'flex-start' }}>
             {/* Save status badge */}
-            {saveStatus && (
+            {canTune && saveStatus && (
               <div style={{
                 padding:'8px 14px', borderRadius:8, fontSize:12, fontWeight:600,
                 background: saveStatus==='saving' ? 'var(--bg-tinted)' :
@@ -148,9 +166,12 @@ function AgentsPage({ onNav, openChat }) {
                  '⚠ ' + (saveStatus.error || 'Error')}
               </div>
             )}
-            <Stat label="Plugged in"   value={enabled.length}    max={agents.length}/>
-            <Stat label="Active tasks" value={enabledTasks}      max={allTasks.length} hint="Across all agents"/>
-            <Stat label="Total weight" value={(totalWeight*100).toFixed(0)+'%'} hint="Should be ~100%"/>
+            {/* Counts only once the agents are known: 0 of 0 would be a figure about nothing. */}
+            {agents.length > 0 && <>
+              <Stat label="Plugged in"   value={enabled.length}    max={agents.length}/>
+              <Stat label="Active tasks" value={enabledTasks}      max={allTasks.length} hint="Across all agents"/>
+              <Stat label="Total weight" value={(totalWeight*100).toFixed(0)+'%'} hint={canTune ? 'Should be ~100%' : undefined}/>
+            </>}
           </div>
         </div>
 
@@ -172,25 +193,38 @@ function AgentsPage({ onNav, openChat }) {
               </button>
             );
           })}
-          <span style={{ fontSize:11, color:'var(--ink-3)', alignSelf:'center', marginLeft:4 }}>
-            {agents.length} agents · {activeSector.replace('_',' ')}
-          </span>
+          {/* Like the counts above: no "0 agents" while the agents are not known. */}
+          {agents.length > 0 && (
+            <span style={{ fontSize:11, color:'var(--ink-3)', alignSelf:'center', marginLeft:4 }}>
+              {agents.length} agents · {activeSector.replace('_',' ')}
+            </span>
+          )}
         </div>
 
+        {agents.length === 0 && (
+          <div className="card sa-unavailable" style={{ padding:24, color:'var(--ink-3)', fontSize:13, marginBottom:24 }}>
+            {agentsFailed || window.__apiState === 'failed'
+              ? 'The agents are unavailable right now. Try again in a few minutes.'
+              : 'Loading the agents…'}
+          </div>
+        )}
+
         {/* Pipeline visual — hidden on mobile via CSS */}
-        <div className="pipeline-section">
-          <Pipeline agents={enabled} onOpenAgent={setDrawerKey}/>
-        </div>
+        {agents.length > 0 && (
+          <div className="pipeline-section">
+            <Pipeline agents={enabled} onOpenAgent={setDrawerKey} canTune={canTune}/>
+          </div>
+        )}
 
         {/* Agent grid */}
         <div style={{ marginTop:32 }}>
           <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:14 }}>
             <h2 style={{ fontSize:18, fontWeight:700, margin:0 }}>All agents</h2>
-            <div style={{ fontSize:12, color:'var(--ink-3)' }}>Click any card to tune</div>
+            <div style={{ fontSize:12, color:'var(--ink-3)' }}>{canTune ? 'Click any card to tune' : 'Click any card for details'}</div>
           </div>
           <div style={{ display:'grid', gridTemplateColumns:'var(--grid-agents)', gap:16 }}>
             {agents.map(a => (
-              <AgentCard key={a.key} a={a} tasks={tasks[a.key]||[]}
+              <AgentCard key={a.key} a={a} tasks={tasks[a.key]||[]} canTune={canTune}
                 onToggle={()=>toggle(a.key)} onOpen={()=>setDrawerKey(a.key)}/>
             ))}
           </div>
@@ -201,6 +235,7 @@ function AgentsPage({ onNav, openChat }) {
         <AgentDrawer
           a={agents.find(x => x.key === drawerKey)}
           tasks={tasks[drawerKey] || []}
+          canTune={canTune}
           onClose={()=>setDrawerKey(null)}
           onToggle={()=>toggle(drawerKey)}
           onWeight={(w)=>setWeight(drawerKey, w)}
@@ -227,15 +262,15 @@ function Stat({ label, value, max, hint }) {
   );
 }
 
-function Pipeline({ agents, onOpenAgent }) {
+function Pipeline({ agents, onOpenAgent, canTune }) {
   return (
     <div className="card" style={{ padding:24, position:'relative', overflow:'hidden' }}>
       <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:18 }}>
         <div className="eyebrow">Live pipeline</div>
-        <span style={{ fontSize:11, color:'var(--ink-3)' }}>How a ticker flows through your agents · <strong style={{color:'var(--cyan)'}}>Click any agent to tune</strong></span>
+        <span style={{ fontSize:11, color:'var(--ink-3)' }}>How a ticker flows through your agents{canTune && <> · <strong style={{color:'var(--cyan)'}}>Click any agent to tune</strong></>}</span>
       </div>
       <div style={{ display:'grid', gridTemplateColumns:'auto 1fr auto', alignItems:'center', gap:24 }}>
-        <PipelineNode icon={<Icon.Search size={18}/>} title="Ticker" sub={localStorage.getItem('sa_last_ticker') || 'MARUTI'} color="var(--ink-2)"/>
+        <PipelineNode icon={<Icon.Search size={18}/>} title="Ticker" sub={localStorage.getItem('sa_last_ticker') || 'Any stock'} color="var(--ink-2)"/>
         <div style={{ position:'relative', minHeight:120 }}>
           <div style={{ display:'grid', gridTemplateColumns:`repeat(${Math.max(agents.length,1)}, 1fr)`, gap:8 }}>
             {agents.map((a,i) => (
@@ -288,7 +323,7 @@ function PipelineNode({ icon, title, sub, color, highlight }) {
   );
 }
 
-function AgentCard({ a, tasks=[], onToggle, onOpen }) {
+function AgentCard({ a, tasks=[], canTune, onToggle, onOpen }) {
   const activeTasks = tasks.filter(t => t.enabled).length;
   return (
     <div className="card" style={{
@@ -312,17 +347,20 @@ function AgentCard({ a, tasks=[], onToggle, onOpen }) {
           color: a.enabled ? 'var(--buy-strong)' : 'var(--ink-3)' }}>
           {a.enabled ? 'Plugged in' : 'Unplugged'}
         </span>
-        <button onClick={(e)=>{e.stopPropagation(); onToggle();}} style={{
-          marginLeft:'auto', width:36, height:20, borderRadius:999, border:'none', padding:0,
-          background: a.enabled ? 'var(--cyan)' : 'var(--border-strong)',
-          position:'relative', cursor:'pointer', transition:'background .2s'
-        }}>
-          <span style={{
-            position:'absolute', top:2, left: a.enabled ? 18 : 2, width:16, height:16,
-            background:'#fff', borderRadius:'50%', boxShadow:'0 1px 3px rgba(0,0,0,.2)',
-            transition:'left .2s'
-          }}/>
-        </button>
+        {canTune && (
+          <button className="sa-tune-control" aria-label={`Plug ${a.name} in or out`}
+            onClick={(e)=>{e.stopPropagation(); onToggle();}} style={{
+            marginLeft:'auto', width:36, height:20, borderRadius:999, border:'none', padding:0,
+            background: a.enabled ? 'var(--cyan)' : 'var(--border-strong)',
+            position:'relative', cursor:'pointer', transition:'background .2s'
+          }}>
+            <span style={{
+              position:'absolute', top:2, left: a.enabled ? 18 : 2, width:16, height:16,
+              background:'#fff', borderRadius:'50%', boxShadow:'0 1px 3px rgba(0,0,0,.2)',
+              transition:'left .2s'
+            }}/>
+          </button>
+        )}
       </div>
 
       <div style={{ padding:18 }}>
@@ -376,7 +414,7 @@ function AgentCard({ a, tasks=[], onToggle, onOpen }) {
 
         <div style={{ marginTop:10, paddingTop:10, borderTop:'1px solid var(--border)',
           display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-          <span style={{ fontSize:11, color:'var(--cyan)', fontWeight:600 }}>Tap to tune weight & tasks</span>
+          <span style={{ fontSize:11, color:'var(--cyan)', fontWeight:600 }}>{canTune ? 'Tap to tune weight & tasks' : 'Tap for details'}</span>
           <Icon.ChevronR size={13} c="var(--cyan)"/>
         </div>
       </div>
@@ -396,7 +434,7 @@ function _timeAgo(isoStr) {
   return `${days} day${days > 1 ? 's' : ''} ago`;
 }
 
-function AgentDrawer({ a, tasks=[], onClose, onToggle, onWeight, onWeightSave, onToggleTask, saveStatus }) {
+function AgentDrawer({ a, tasks=[], canTune, onClose, onToggle, onWeight, onWeightSave, onToggleTask, saveStatus }) {
   const activeCount = tasks.filter(t => t.enabled).length;
   const [recentRuns, setRecentRuns] = useStateAg([]);
   const [runsLoading, setRunsLoading] = useStateAg(true);
@@ -404,7 +442,7 @@ function AgentDrawer({ a, tasks=[], onClose, onToggle, onWeight, onWeightSave, o
   // Fetch history for all watchlist tickers on mount / agent change
   useEffectAg(() => {
     setRunsLoading(true);
-    const tickers = window.WATCHLIST || ['MARUTI','TATAMOTORS','M&M','BAJAJ-AUTO','EICHERMOT'];
+    const tickers = window.WATCHLIST || [];
     Promise.all(
       tickers.map(sym =>
         fetch(`/history/${sym}?limit=5`)
@@ -475,20 +513,24 @@ function AgentDrawer({ a, tasks=[], onClose, onToggle, onWeight, onWeightSave, o
                 {a.enabled ? 'It contributes to every verdict.' : 'Verdicts ignore this agent until plugged in.'}
               </div>
             </div>
-            <button onClick={onToggle} style={{
-              padding:'8px 14px', borderRadius:8, border:'1px solid var(--border-strong)',
-              background:'var(--bg-surface)', fontSize:12, fontWeight:600, color:'var(--ink-1)'
-            }}>{a.enabled ? 'Unplug' : 'Plug in'}</button>
+            {canTune && (
+              <button className="sa-tune-control" onClick={onToggle} style={{
+                padding:'8px 14px', borderRadius:8, border:'1px solid var(--border-strong)',
+                background:'var(--bg-surface)', fontSize:12, fontWeight:600, color:'var(--ink-1)'
+              }}>{a.enabled ? 'Unplug' : 'Plug in'}</button>
+            )}
           </div>
 
           {/* Tasks */}
           <Section title={`Tasks · ${activeCount} of ${tasks.length} active`}>
             <p style={{ fontSize:12, color:'var(--ink-3)', lineHeight:1.5, margin:'0 0 14px' }}>
-              Each task is one specific signal this agent watches. Toggle off any you don't care about — the agent skips them on its next run.
+              {canTune
+                ? "Each task is one specific signal this agent watches. Toggle off any you don't care about — the agent skips them on its next run."
+                : 'Each task is one specific signal this agent watches.'}
             </p>
             <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
               {tasks.map(t => (
-                <TaskRow key={t.key} t={t} disabled={!a.enabled} onToggle={()=>onToggleTask(t.key)}/>
+                <TaskRow key={t.key} t={t} disabled={!a.enabled} canTune={canTune} onToggle={()=>onToggleTask(t.key)}/>
               ))}
             </div>
           </Section>
@@ -503,13 +545,22 @@ function AgentDrawer({ a, tasks=[], onClose, onToggle, onWeight, onWeightSave, o
             </p>
           </Section>
 
-          {/* Weight slider */}
+          {/* Weight: a slider for the owner, the value for everyone else */}
+          {!canTune && (
+            <Section title="Weight in the verdict">
+              <p style={{ fontSize:12, color:'var(--ink-3)', lineHeight:1.5, margin:'0 0 10px' }}>
+                How much this agent's view counts in the final score.
+              </p>
+              <span className="mono" style={{ fontWeight:700, fontSize:14 }}>{(a.weight*100).toFixed(0)}%</span>
+            </Section>
+          )}
+          {canTune && (
           <Section title="Weight in the verdict">
             <p style={{ fontSize:12, color:'var(--ink-3)', lineHeight:1.5, margin:'0 0 16px' }}>
               How much this agent's view counts in the final score. Drag and release to save — all weights must sum to ~100%.
             </p>
             <div style={{ display:'flex', alignItems:'center', gap:14 }}>
-              <input type="range" min="0" max="0.30" step="0.01" value={a.weight}
+              <input className="sa-tune-control" type="range" min="0" max="0.30" step="0.01" value={a.weight}
                 onChange={e => onWeight(parseFloat(e.target.value))}
                 onMouseUp={e => onWeightSave(parseFloat(e.target.value))}
                 onTouchEnd={e => onWeightSave(parseFloat(e.target.value))}
@@ -540,6 +591,7 @@ function AgentDrawer({ a, tasks=[], onClose, onToggle, onWeight, onWeightSave, o
               </div>
             )}
           </Section>
+          )}
 
           {/* Recent runs — live from /history/{ticker} */}
           <Section title="Recent runs">
@@ -585,7 +637,7 @@ function AgentDrawer({ a, tasks=[], onClose, onToggle, onWeight, onWeightSave, o
   );
 }
 
-function TaskRow({ t, disabled, onToggle }) {
+function TaskRow({ t, disabled, canTune, onToggle }) {
   return (
     <div style={{
       display:'grid', gridTemplateColumns:'1fr auto', gap:12, alignItems:'center',
@@ -600,17 +652,23 @@ function TaskRow({ t, disabled, onToggle }) {
         <div style={{ fontSize:11, color:'var(--ink-3)', marginTop:2, lineHeight:1.4 }}>{t.beginner}</div>
         <div className="mono" style={{ fontSize:10, color:'var(--ink-3)', marginTop:6 }}>{t.source}</div>
       </div>
-      <button onClick={onToggle} disabled={disabled} style={{
-        width:34, height:20, borderRadius:999, border:'none', padding:0,
-        background: t.enabled ? 'var(--cyan)' : 'var(--border-strong)',
-        position:'relative', cursor: disabled ? 'not-allowed' : 'pointer', transition:'background .2s'
-      }}>
-        <span style={{
-          position:'absolute', top:2, left: t.enabled ? 16 : 2, width:16, height:16,
-          background:'#fff', borderRadius:'50%', boxShadow:'0 1px 3px rgba(0,0,0,.2)',
-          transition:'left .2s'
-        }}/>
-      </button>
+      {canTune ? (
+        <button className="sa-tune-control" onClick={onToggle} disabled={disabled} style={{
+          width:34, height:20, borderRadius:999, border:'none', padding:0,
+          background: t.enabled ? 'var(--cyan)' : 'var(--border-strong)',
+          position:'relative', cursor: disabled ? 'not-allowed' : 'pointer', transition:'background .2s'
+        }}>
+          <span style={{
+            position:'absolute', top:2, left: t.enabled ? 16 : 2, width:16, height:16,
+            background:'#fff', borderRadius:'50%', boxShadow:'0 1px 3px rgba(0,0,0,.2)',
+            transition:'left .2s'
+          }}/>
+        </button>
+      ) : (
+        <span style={{ fontSize:11, fontWeight:600, color: t.enabled ? 'var(--cyan)' : 'var(--ink-3)' }}>
+          {t.enabled ? 'On' : 'Off'}
+        </span>
+      )}
     </div>
   );
 }

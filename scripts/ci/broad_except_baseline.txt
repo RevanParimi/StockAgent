@@ -116,7 +116,6 @@ services/api/routes/ui_data.py | add_managed_ticker | #0
 services/api/routes/ui_data.py | bootstrap._build_suggestion | #0
 services/api/routes/ui_data.py | bootstrap._build_suggestion | #1
 services/api/routes/ui_data.py | chat_stream.generate | #0
-services/api/routes/ui_data.py | get_learnings | #0
 services/api/routes/ui_data.py | stream_logs.generate | #0
 services/api/server.py | _load_self_heal_checkpoint | #0
 services/api/server.py | lifespan | #0

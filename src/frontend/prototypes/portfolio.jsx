@@ -2,8 +2,9 @@
 const { useState: useStatePf, useEffect: useEffectPf, useRef: useRefPf } = React;
 
 // ── Live data ──────────────────────────────────────────────────────────────
-// GET /portfolio (+ digest). status: 'loading' | 'live' | 'demo'.
-// Demo (mock) data renders ONLY when the API is unreachable, or with ?demo=1.
+// GET /portfolio (+ digest). status: 'loading' | 'live' | 'unavailable' | 'demo'.
+// Sample data renders ONLY in demo mode (?demo=1, demo-fixtures.js). When the
+// API is unreachable the page says the portfolio is unavailable (PR-001).
 
 function fmtIST(ts, dateStr) {
   try {
@@ -49,8 +50,8 @@ function usePortfolioLive() {
   const wasLiveRef = useRefPf(false); // once true, a later reload failure must not downgrade live -> demo
 
   const load = async () => {
-    if (new URLSearchParams(location.search).get('demo') === '1') {
-      if (aliveRef.current) setState({ status: 'demo', forced: true, holdings: window.PORTFOLIO.holdings, digest: null });
+    if (window.saDemoMode && window.PORTFOLIO) {
+      if (aliveRef.current) setState({ status: 'demo', holdings: window.PORTFOLIO.holdings, digest: null });
       return;
     }
     try {
@@ -78,8 +79,8 @@ function usePortfolioLive() {
         console.warn('[Portfolio] reload failed — keeping last live data.', e);
         return;
       }
-      console.warn('[Portfolio] live fetch failed — demo fallback.', e);
-      if (aliveRef.current) setState({ status: 'demo', forced: false, holdings: window.PORTFOLIO.holdings, digest: null });
+      console.warn('[Portfolio] live fetch failed — shown as unavailable.', e);
+      if (aliveRef.current) setState({ status: 'unavailable', holdings: [], digest: null, perf: null, txns: [] });
     }
   };
 
@@ -228,8 +229,8 @@ function PortfolioPage({ onNav, openChat }) {
   const isLive = live.status === 'live';
   const holdings = live.holdings;
 
-  // Demo keeps the mock aggregates; live computes from marked rows only.
-  const demo = window.PORTFOLIO;
+  // Demo keeps the sample aggregates; live computes from marked rows only.
+  const demo = isDemo ? window.PORTFOLIO : null;
   const marked = holdings.filter(h => h.currentPrice != null);
   const invested = isDemo ? demo.totalCost
     : marked.reduce((s, h) => s + h.qty * h.avgPrice, 0);
@@ -237,8 +238,7 @@ function PortfolioPage({ onNav, openChat }) {
     : marked.reduce((s, h) => s + h.qty * h.currentPrice, 0);
   const totalReturn = totalValue - invested;
   const totalReturnPct = invested > 0 ? (totalReturn / invested) * 100 : 0;
-  const ranges = window.PORTFOLIO_RANGES;
-  const r = ranges[range];
+  const r = isDemo ? (window.PORTFOLIO_RANGES || {})[range] : null;
   const alerts = isDemo ? demo.alerts : digestAlerts(live.digest);
   const perf = isLive ? live.perf : null;
   const cashLive = perf && perf.cash != null;
@@ -257,6 +257,25 @@ function PortfolioPage({ onNav, openChat }) {
         <main style={{ maxWidth:1280, margin:'0 auto', padding:'var(--main-py) var(--main-px) 96px' }}>
           <div style={{ height:180, borderRadius:24, marginBottom:24, background:'var(--bg-tinted)', animation:'pulse 1.4s ease-in-out infinite' }}/>
           <div style={{ height:320, borderRadius:16, background:'var(--bg-tinted)', animation:'pulse 1.4s ease-in-out infinite' }}/>
+        </main>
+      </div>
+    );
+  }
+
+  if (live.status === 'unavailable') {
+    return (
+      <div style={{ minHeight:'100vh', background:'var(--bg-base)' }}>
+        <TopNav active="portfolio" onNav={onNav} search={search} setSearch={setSearch}/>
+        <main style={{ maxWidth:1280, margin:'0 auto', padding:'var(--main-py) var(--main-px) 96px' }}>
+          <div className="card sa-unavailable" style={{ padding:'40px 24px', textAlign:'center' }}>
+            <div style={{ fontSize:17, fontWeight:700, marginBottom:6 }}>Your portfolio is unavailable right now</div>
+            <p style={{ fontSize:13, color:'var(--ink-3)', margin:'0 auto 18px', maxWidth:380, lineHeight:1.6 }}>
+              The server did not answer. Nothing is shown rather than an old or sample figure.
+            </p>
+            <button onClick={live.reload} style={{ padding:'10px 18px', border:'none', borderRadius:10,
+              background:'linear-gradient(135deg, var(--cyan), var(--violet))', color:'#fff',
+              fontSize:13, fontWeight:700, cursor:'pointer' }}>Try again</button>
+          </div>
         </main>
       </div>
     );
@@ -287,7 +306,7 @@ function PortfolioPage({ onNav, openChat }) {
               {isDemo && (
                 <span style={{ fontSize:10, fontWeight:700, padding:'3px 8px', borderRadius:999,
                   background:'rgba(217,119,6,.25)', color:'#fcd34d', letterSpacing:'.06em' }}>
-                  {live.forced ? 'DEMO DATA' : 'DEMO DATA — API UNREACHABLE'}
+                  SAMPLE DATA
                 </span>
               )}
               {isLive && perf?.autopilot && (
@@ -352,15 +371,16 @@ function PortfolioPage({ onNav, openChat }) {
         </section>
 
         <div style={{ display:'grid', gridTemplateColumns:'var(--grid-portfolio)', gap:20 }}>
-          {/* Holdings + learnings column */}
-          <div style={{ display:'flex', flexDirection:'column', gap:20 }}>
+          {/* Holdings + learnings column. minWidth 0: a grid item's min-width is auto,
+              so the holdings table's 640px would otherwise widen the page on a phone. */}
+          <div style={{ display:'flex', flexDirection:'column', gap:20, minWidth:0 }}>
             {isLive && holdings.length === 0 ? (
               <EmptyPortfolio onAdd={()=>setAddOpen(true)}/>
             ) : (
               <HoldingsTable holdings={holdings} digest={live.digest} isLive={isLive}
                 onAdd={()=>setAddOpen(true)} onRemoved={live.reload}/>
             )}
-            {(isDemo || window.__learningsLive) && (
+            {(isDemo || window.__learningsLive) && window.PORTFOLIO_LEARNINGS && (
               <LearningsSection learnings={window.PORTFOLIO_LEARNINGS} openChat={openChat}/>
             )}
             {isDemo && <ActivityCard items={demo.recentActivity}/>}
@@ -368,7 +388,7 @@ function PortfolioPage({ onNav, openChat }) {
           </div>
 
           {/* Right rail */}
-          <div style={{ display:'flex', flexDirection:'column', gap:20 }}>
+          <div style={{ display:'flex', flexDirection:'column', gap:20, minWidth:0 }}>
             {alerts.length > 0 && <AlertsCard alerts={alerts}/>}
             {holdings.length > 0 && <AllocationCard holdings={holdings}/>}
             <AskAssistantCard openChat={openChat}/>
@@ -746,168 +766,71 @@ function AskAssistantCard({ openChat }) {
 }
 
 // ============================================================
-// LearningsSection — what the user can learn from their own history.
-// Grounded in actual holdings + activity, not theory. Filterable.
+// LearningsSection — recent verdict changes on the analysed stocks, from
+// GET /ui/learnings. Dated records only: no money figure (a score change is
+// not rupees), no summary rate and no advice text (PR-001). The realized
+// results of trades come with SA-051 and PR-002.
+// The server sends the verdict changes newest first, then the latest
+// forecast misses (kind 'forecast-miss'), which are not changes and are
+// neither counted nor listed as such.
 // ============================================================
 
-function LearningsSection({ learnings, openChat }) {
-  const [filter, setFilter] = useStatePf('all');
-  const items = learnings.items.filter(it => {
-    if (filter === 'all')      return true;
-    if (filter === 'mistakes') return ['missed-buy','missed-sell','sold-too-early','sizing'].includes(it.kind);
-    if (filter === 'wins')     return ['good-call','avoided-loss'].includes(it.kind);
-    return true;
-  });
+// The server's cap on verdict changes (ui_data._LEARNINGS_MAX_CHANGES): a
+// full list is the newest ones, so the heading must not call it all of them.
+const LEARNINGS_MAX_CHANGES = 10;
 
+const LEARNING_KINDS = {
+  'turned-bullish': { label:'Turned bullish', fg:'var(--buy-strong)',  bg:'var(--buy-soft)',     icon:<Icon.Trend size={13}/> },
+  'turned-bearish': { label:'Turned bearish', fg:'var(--sell-strong)', bg:'var(--sell-soft)',    icon:<Icon.TrendDown size={13}/> },
+  'bullish':        { label:'Bullish',        fg:'var(--buy-strong)',  bg:'var(--buy-soft)',     icon:<Icon.Trend size={13}/> },
+  'bearish':        { label:'Bearish',        fg:'var(--sell-strong)', bg:'var(--sell-soft)',    icon:<Icon.TrendDown size={13}/> },
+  'neutral':        { label:'Neutral',        fg:'var(--neutral)',     bg:'var(--neutral-soft)', icon:<Icon.Compass size={13}/> },
+  'forecast-miss':  { label:'Forecast miss',  fg:'var(--neutral)',     bg:'var(--neutral-soft)', icon:<Icon.Compass size={13}/> },
+};
+
+function LearningsSection({ learnings, openChat }) {
+  const items = learnings.items || [];
+  const changes = items.filter(it => it.kind !== 'forecast-miss');
+  const misses = items.filter(it => it.kind === 'forecast-miss');
+  const n = changes.length;
+  const countLine = n === 0 ? 'No verdict changes in the analysed stocks'
+    : n >= LEARNINGS_MAX_CHANGES ? `The ${n} most recent changes in the analysed stocks`
+    : `${n} ${n === 1 ? 'change' : 'changes'} in the analysed stocks`;
   return (
-    <div className="card" style={{ overflow:'hidden' }}>
-      {/* Header — title + summary stats + filter */}
+    <div className="card sa-learnings" style={{ overflow:'hidden' }}>
       <div style={{
         padding:'20px 24px',
         background:'linear-gradient(180deg, var(--bg-tinted) 0%, transparent 100%)',
         borderBottom:'1px solid var(--border)'
       }}>
-        <div className="learnings-header" style={{ display:'flex', alignItems:'center', gap:12, marginBottom:14 }}>
+        <div className="learnings-header" style={{ display:'flex', alignItems:'center', gap:12 }}>
           <span style={{
             width:34, height:34, borderRadius:10,
             background:'linear-gradient(135deg, var(--violet-soft), var(--cyan-soft))',
             color:'var(--violet)', display:'grid', placeItems:'center', flexShrink:0
           }}><Icon.Sparkles size={16}/></span>
           <div style={{ flex:1, minWidth:0 }}>
-            <div className="eyebrow" style={{ marginBottom:2 }}>Lessons from your history</div>
+            <div className="eyebrow" style={{ marginBottom:2 }}>Recent verdict changes</div>
             <div style={{ fontSize:18, fontWeight:700, letterSpacing:'-0.01em' }}>
-              {learnings.summary.actionsReviewed} actions reviewed · agent agreement {(learnings.summary.accuracyVsAgent*100).toFixed(0)}%
+              {countLine}
             </div>
           </div>
-          <FilterTabs value={filter} onChange={setFilter}/>
-        </div>
-
-        <div style={{ display:'grid', gridTemplateColumns:'var(--grid-agents)', gap:10 }}>
-          <SummaryStat
-            label="Missed gain"
-            value={'+₹'+learnings.summary.missedGain.toLocaleString('en-IN')}
-            sub="Trades you didn't take"
-            tone="warn"
-          />
-          <SummaryStat
-            label="Avoided loss"
-            value={'+₹'+learnings.summary.avoidedLoss.toLocaleString('en-IN')}
-            sub="Smart skips & exits"
-            tone="good"
-          />
-          <SummaryStat
-            label="Realized loss"
-            value={'-₹'+Math.abs(learnings.summary.realizedLoss).toLocaleString('en-IN')}
-            sub="Booked drawdowns"
-            tone="bad"
-          />
         </div>
       </div>
 
-      {/* Pattern strip — short rules derived from full history */}
-      <div style={{
-        padding:'16px 24px', borderBottom:'1px solid var(--border)',
-        background:'var(--bg-base)'
-      }}>
-        <div className="eyebrow" style={{ marginBottom:10 }}>Your patterns</div>
-        <div style={{ display:'grid', gridTemplateColumns:'var(--grid-suggestions)', gap:10 }}>
-          {learnings.patterns.map(p => <PatternChip key={p.id} p={p}/>)}
-        </div>
-      </div>
-
-      {/* Lesson cards */}
       <div style={{ padding:'20px 24px', display:'flex', flexDirection:'column', gap:12 }}>
-        {items.length === 0 && (
-          <div style={{ textAlign:'center', padding:'40px 0', color:'var(--ink-3)', fontSize:13 }}>
-            No lessons in this filter yet.
-          </div>
+        {changes.map(it => <LessonCard key={it.id} it={it} openChat={openChat}/>)}
+        {misses.length > 0 && (
+          <div className="eyebrow" style={{ marginTop: n ? 8 : 0 }}>Latest forecast misses</div>
         )}
-        {items.map(it => <LessonCard key={it.id} it={it} openChat={openChat}/>)}
-      </div>
-    </div>
-  );
-}
-
-function FilterTabs({ value, onChange }) {
-  const opts = [
-    { k:'all',      label:'All' },
-    { k:'mistakes', label:'Mistakes' },
-    { k:'wins',     label:'Wins' },
-  ];
-  return (
-    <div className="learnings-filter" style={{ display:'flex', gap:2, padding:3, background:'var(--bg-base)', borderRadius:9, border:'1px solid var(--border)' }}>
-      {opts.map(o => (
-        <button key={o.k} onClick={()=>onChange(o.k)} style={{
-          padding:'5px 11px', borderRadius:6, border:'none',
-          fontSize:12, fontWeight:600,
-          background: value===o.k ? 'var(--bg-surface)' : 'transparent',
-          color: value===o.k ? 'var(--ink-1)' : 'var(--ink-3)',
-          boxShadow: value===o.k ? 'var(--shadow-sm)' : 'none',
-          cursor:'pointer', transition:'all .15s'
-        }}>{o.label}</button>
-      ))}
-    </div>
-  );
-}
-
-function SummaryStat({ label, value, sub, tone }) {
-  const fg = tone==='good' ? 'var(--buy-strong)' : tone==='bad' ? 'var(--sell-strong)' : 'var(--neutral)';
-  const bg = tone==='good' ? 'var(--buy-soft)'   : tone==='bad' ? 'var(--sell-soft)'   : 'var(--neutral-soft)';
-  return (
-    <div style={{ padding:'12px 14px', borderRadius:10, background: bg, borderLeft:`3px solid ${fg}` }}>
-      <div style={{ fontSize:10, color:'var(--ink-3)', textTransform:'uppercase', letterSpacing:'.12em', fontWeight:700, marginBottom:4 }}>{label}</div>
-      <div className="mono" style={{ fontSize:18, fontWeight:800, color: fg, letterSpacing:'-0.01em' }}>{value}</div>
-      <div style={{ fontSize:11, color:'var(--ink-3)', marginTop:2 }}>{sub}</div>
-    </div>
-  );
-}
-
-function PatternChip({ p }) {
-  const fg = p.kind==='good' ? 'var(--buy-strong)' : 'var(--sell-strong)';
-  return (
-    <div style={{
-      padding:'10px 12px', borderRadius:9, background:'var(--bg-surface)',
-      border:'1px solid var(--border)', display:'flex', alignItems:'center', gap:10
-    }} title={p.detail}>
-      <span style={{
-        width:30, height:30, flexShrink:0, borderRadius:8,
-        background: p.kind==='good' ? 'var(--buy-soft)' : 'var(--sell-soft)',
-        color: fg, display:'grid', placeItems:'center'
-      }}>
-        {p.kind==='good' ? <Icon.Trend size={14}/> : <Icon.TrendDown size={14}/>}
-      </span>
-      <div style={{ flex:1, minWidth:0 }}>
-        <div style={{ fontSize:12, fontWeight:600, color:'var(--ink-1)', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{p.label}</div>
-        <div style={{ display:'flex', alignItems:'center', gap:6, marginTop:3 }}>
-          <div style={{ flex:1, height:4, background:'var(--bg-tinted)', borderRadius:999, overflow:'hidden' }}>
-            <div style={{ width:(p.rate*100)+'%', height:'100%', background: fg, borderRadius:999 }}/>
-          </div>
-          <span className="mono" style={{ fontSize:11, fontWeight:700, color: fg, minWidth:32, textAlign:'right' }}>
-            {(p.rate*100).toFixed(0)}%
-          </span>
-        </div>
+        {misses.map(it => <LessonCard key={it.id} it={it} openChat={openChat}/>)}
       </div>
     </div>
   );
 }
 
 function LessonCard({ it, openChat }) {
-  const kindMeta = {
-    'missed-buy':     { label:'Missed buy',       fg:'var(--sell-strong)', bg:'var(--sell-soft)',     icon:<Icon.TrendDown size={13}/> },
-    'missed-sell':    { label:'Missed sell',      fg:'var(--sell-strong)', bg:'var(--sell-soft)',     icon:<Icon.TrendDown size={13}/> },
-    'sold-too-early': { label:'Sold too early',   fg:'var(--neutral)',     bg:'var(--neutral-soft)',  icon:<Icon.Compass size={13}/> },
-    'sizing':         { label:'Concentration',    fg:'var(--neutral)',     bg:'var(--neutral-soft)',  icon:<Icon.Compass size={13}/> },
-    'good-call':      { label:'Good call',        fg:'var(--buy-strong)',  bg:'var(--buy-soft)',      icon:<Icon.Trend size={13}/> },
-    'avoided-loss':   { label:'Avoided loss',     fg:'var(--buy-strong)',  bg:'var(--buy-soft)',      icon:<Icon.Trend size={13}/> },
-  }[it.kind];
-
-  const isPositive = it.costValue > 0 && (it.kind==='good-call' || it.kind==='avoided-loss');
-  const costColor = isPositive ? 'var(--buy-strong)'
-                  : it.costValue < 0 ? 'var(--sell-strong)'
-                  : it.kind==='missed-buy' ? 'var(--sell-strong)'
-                  : it.kind==='sold-too-early' ? 'var(--neutral)'
-                  : 'var(--ink-2)';
-
+  const kindMeta = LEARNING_KINDS[it.kind] || LEARNING_KINDS.neutral;
   return (
     <div style={{
       padding:'16px 18px', borderRadius:12,
@@ -915,7 +838,7 @@ function LessonCard({ it, openChat }) {
       border:'1px solid var(--border)',
       display:'grid', gridTemplateColumns:'auto 1fr', gap:14
     }}>
-      {/* Left rail — ticker + kind chip */}
+      {/* Left rail — ticker */}
       <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:8, paddingTop:2 }}>
         <div style={{
           width:44, height:44, borderRadius:10,
@@ -926,7 +849,7 @@ function LessonCard({ it, openChat }) {
       </div>
 
       <div style={{ minWidth:0 }}>
-        {/* Header line */}
+        {/* Header line — what moved and when */}
         <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap', marginBottom:6 }}>
           <span style={{
             display:'inline-flex', alignItems:'center', gap:5,
@@ -949,19 +872,20 @@ function LessonCard({ it, openChat }) {
           {it.what}
         </div>
 
-        <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:12, fontSize:12 }}>
-          <span style={{ color:'var(--ink-3)' }}>Impact:</span>
-          <span className="mono" style={{ fontWeight:700, color: costColor }}>{it.cost}</span>
-        </div>
+        {it.detail && (
+          <div className="mono" style={{ fontSize:12, fontWeight:700, color:'var(--ink-2)', marginBottom:12 }}>
+            {it.detail}
+          </div>
+        )}
 
-        {/* Agent snapshot — what the agents looked like at decision time */}
+        {/* The run's strongest agent scores */}
         {it.agentSnapshot && it.agentSnapshot.length > 0 && (
           <div style={{
             padding:'10px 12px', background:'var(--bg-tinted)', borderRadius:9,
             display:'flex', alignItems:'center', gap:14, flexWrap:'wrap', marginBottom:12
           }}>
             <span style={{ fontSize:10, color:'var(--ink-3)', textTransform:'uppercase', letterSpacing:'.1em', fontWeight:700 }}>
-              At decision
+              Strongest agents
             </span>
             {it.agentSnapshot.map((a,i) => (
               <span key={i} style={{ display:'flex', alignItems:'center', gap:6, fontSize:11 }}>
@@ -975,36 +899,14 @@ function LessonCard({ it, openChat }) {
           </div>
         )}
 
-        {/* Lesson body */}
-        <div style={{
-          padding:'12px 14px', borderRadius:10,
-          background:'linear-gradient(135deg, var(--violet-soft) 0%, var(--cyan-soft) 100%)',
-          borderLeft:'3px solid var(--violet)',
-          display:'flex', alignItems:'flex-start', gap:10, marginBottom:12
+        <button onClick={openChat} style={{
+          padding:'7px 12px', borderRadius:8,
+          border:'1px solid var(--border)', background:'transparent',
+          fontSize:12, fontWeight:600, color:'var(--ink-2)',
+          display:'flex', alignItems:'center', gap:6, cursor:'pointer'
         }}>
-          <Icon.Sparkles size={14} c="var(--violet)" style={{ flexShrink:0, marginTop:3 }}/>
-          <div style={{ fontSize:13, color:'var(--ink-1)', lineHeight:1.55 }}>{it.lesson}</div>
-        </div>
-
-        {/* Actions */}
-        <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
-          <button style={{
-            padding:'7px 12px', borderRadius:8,
-            border:'1px solid var(--border-strong)', background:'var(--bg-surface)',
-            fontSize:12, fontWeight:600, color:'var(--ink-1)',
-            display:'flex', alignItems:'center', gap:6, cursor:'pointer'
-          }}>
-            <Icon.Compass size={13}/> {it.action}
-          </button>
-          <button onClick={openChat} style={{
-            padding:'7px 12px', borderRadius:8,
-            border:'1px solid var(--border)', background:'transparent',
-            fontSize:12, fontWeight:600, color:'var(--ink-2)',
-            display:'flex', alignItems:'center', gap:6, cursor:'pointer'
-          }}>
-            <Icon.Sparkles size={13}/> Ask why
-          </button>
-        </div>
+          <Icon.Sparkles size={13}/> Ask why
+        </button>
       </div>
     </div>
   );

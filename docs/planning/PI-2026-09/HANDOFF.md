@@ -100,7 +100,7 @@ and the backfill was not run.
   - **Portfolio:** the empty case is dated, and a sign-in re-fetches the list.
   - **Backfill:** a dry-run-by-default script copies past runs from `run_summaries`.
 - **Checked:** 32 new tests (expected values from the fixtures; rows by the real writer); on the old code 28 fail, and mutants M1–M11 are caught; the browser suite 11/11 (incl. sign-in re-fetch); `npm run test:frontend` 28/28; full suite **4584 passed, 12 skipped, 0 failed**.
-- **Commits:** `a16b617` FIX-009, `9db8ba7` PR-001 (its accepted bytes), `ec3f336` FIX-010; then the docs commit and the KT bump.
+- **Commits:** `a16b617` FIX-009, `9db8ba7` PR-001 (its accepted bytes), `ec3f336` FIX-010; `445d7fa` docs; then the KT bump that records them.
 - **For the owner:**
   1. **Confirm the deploy:** `railway deployment list` and `/health`, then the checks below.
      After the deploy, close and reopen the app once (PR-001 L3).

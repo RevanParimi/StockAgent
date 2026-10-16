@@ -2,7 +2,7 @@
 
 **Edition:** 2026-10-16 · **Audience:** engineers and teammates learning the product
 
-**Code inspected:** `3df1f6e4b9cd82f0a63ef02ded375acff4693624`
+**Code inspected:** `b4007470e9e91c427719325016088607848b8e01`
 
 **PDF:** [StockAgent-Three-Loops.pdf](StockAgent-Three-Loops.pdf), generated from this Markdown.
 
@@ -203,7 +203,7 @@ evidence.
 | `_shared_ledger.json` per sector; `_market_ledger.json` at prediction root | Shared lessons can affect more than one ticker; bad attribution can propagate. |
 | `data/managed_tickers.json` | The managed list: each scheduled ticker's sector and enabled flag. Disabling a ticker keeps its history; removing it deletes the history. |
 | `data/prediction_quarantine/<migration>/` | Stores moved out of the live tree by the ownership quarantine, with their `lineage.json`. Inside `data/`, so the nightly backup keeps them; outside the tree the evaluators walk. |
-| `data/portfolio/<user>/` | PortfolioStore: holdings/cash, advice and transaction JSONL, value history, dated digests, briefs and weekly reviews. |
+| `data/portfolio/<user>/` | PortfolioStore: holdings/cash, advice and transaction JSONL, value history, dated digests, briefs and weekly reviews, and `weekly_scorecard.jsonl` (one results row per ISO week, written once; section 7). The nightly auditor's `advice_outcomes.jsonl` sits beside them. |
 | `data/ipo/` | Historical issue facts and captured demand snapshots; reports derive from these records. |
 | `data/market_cache/ipo.json` and EOD parquet | Cached IPO information and exchange price history; date, source and stale state matter. |
 | `data/logs/data_health.jsonl`; `data/logs/decision_gate.jsonl` | One data-health row per analysis run, also written to `telemetry.db`; one gate row per consumer decision. The gate log never holds a user id. |
@@ -1003,9 +1003,10 @@ The virtual P/L charges no brokerage, STT, stamp duty, exchange fee, DP
 charge or tax. A real round trip costs about 0.25% of the traded value, and
 short-term gains are taxed. For ACMESOLAR's +₹37,551, that is about ₹477 in
 costs and about ₹7,415 in tax. The screen's "Invested" is `capital_in`, the
-mock money ever put in, not the money in stocks. The screen has no benchmark.
-**Planned:** costs and tax in paper P&L (SA-048), and a Nifty comparison with
-honest labels (SA-051).
+mock money ever put in, not the money in stocks. The screen has no benchmark;
+the weekly results scorecard (below) compares the account with the same
+deposits in the Nifty. **Planned:** costs and tax in paper P&L (SA-048), and
+the Nifty comparison on the portfolio screen with honest labels (SA-051).
 
 **Example without fees/corporate actions:** start with 2,000 and buy ten units
 at 100. Cash is 1,000. At 110 the holding is 1,100, equity 2,100 and unrealized
@@ -1024,7 +1025,7 @@ establish executable net returns after fees, spread, tax and slippage.
 | Report | Present meaning | Limitation / planned work |
 |---|---|---|
 | RL Monitor / analytics | Envelope, feedback, miss and weight records, with the learning mode and live decision weights. | Inherits label/timing/history problems; SA-012–SA-017, SA-024. |
-| Weekly scoreboard | 28-calendar-day lookback, non-HOLD calls at least five calendar days old, latest supplied closes. | Not fixed matured horizons; current-holding price selection can omit exited stocks. SA-018/SA-019. |
+| Weekly results scorecard | One row per ISO week from the user's own ledgers: closed round trips, the auditor's grade of every advisor sale at 10 and 30 sessions, exit reasons, a money-weighted Nifty comparison, breadth, holding period and five predeclared red flags (below). | Before costs (SA-048). Forecast-suggestion cohorts are SA-019's. |
 | Monthly scorecard | Agent/control/simple-baseline lanes and previous-month comparisons. | Completeness, timing and denominators need repair. SA-018. |
 | Learning evidence | Retrospective adapted/base/uniform replay and lesson associations. | Not a prospective controlled experiment of the whole system. SA-020–SA-023. |
 | Nightly advice auditor | Issued advice, alert, shelf, switch and IPO lanes; default 10/30/60 trading-session horizons, and 1/5/21/63/126/252 from listing on the IPO lane. | Separate from weekly heuristics and actual account P/L. IPO rows are excluded from the rendered report. |
@@ -1060,6 +1061,55 @@ exposed.
 HOLD is incorrect under that relative-return rule despite a positive stock
 return. Every marksheet should identify its rule, horizon, matured sample
 count, missing data and excluded cases.
+
+### Weekly results scorecard
+
+[results.py](../core/portfolio/results.py) answers, once a week and in plain
+words, whether the portfolio is making money, whether its sales were good and
+whether anything crossed a red line. The Sunday weekly review builds the row
+for each user from that user's ledgers only, stores it once in
+`weekly_scorecard.jsonl` and opens with it. `GET /portfolio/scorecard` returns
+the caller's own rows. A run on a weekday covers the week before, so a
+mid-week run never stores half a week. A stored week is never rewritten, and a
+week whose sessions are not over is never stored.
+
+| Line | Definition |
+|---|---|
+| Closed trades | Round trips from `transactions.jsonl`. A position counts once, when its last share is sold, with every sale of it (TRIMs included): realized P/L over the cost of the shares sold. Count, win rate, average win, average loss and expectancy (the mean result per trade), this week and since the start, before costs. A sale with no recorded cost is counted as unknown, never guessed. |
+| Sold too early | Every advisor sale (EXIT, SWITCH or TRIM), held or not, joined to the auditor's grade by its advice ref: the share of sold stocks that beat the Nifty 10 and 30 sessions later. A sale whose horizon has not ended is pending; one whose horizon ended with no grade is counted as missing. |
+| Why we sold | Sales per trigger, in the advisor's plain words, over the last 4 weeks. Your own sales appear as "sold by you". |
+| You vs the Nifty | Money-weighted. Each rise in `capital_in` between value points is a deposit, and the same deposit buys Nifty units at that day's close. Both sides use the same flows, so idle cash counts against the portfolio. This week, the last 4 weeks and since the start. |
+| Breadth | Holdings (for the latest week) and the invested share at the week's last valuation. |
+| Holding period | Median exchange sessions held by the positions closed this week. |
+
+The red flags are fixed constants in the module, set before any result was
+seen. A flag reports; it changes no decision.
+
+| Flag | Fires when |
+|---|---|
+| Money per trade | The since-start expectancy is below 0 at the end of each of the last 3 weeks. |
+| Selling too early | More than 60% of sold stocks beat the Nifty over the next 30 sessions, among sales whose 30 sessions ended in the last 8 weeks, with at least 8 such sales. The 10-session share is shown beside it. |
+| Selling on the price path | `thesis_break` caused more than 50% of the advisor's sales in the last 4 weeks. |
+| Behind the Nifty | The portfolio is more than 3 points behind the same money in the Nifty over the last 4 weeks. |
+| Selling too fast | The positions closed this week were held a median of under 10 sessions. |
+
+Missing data never reads as clear. A flag fires only if it is crossed with
+every missing member counted in the portfolio's favour. It reads clear only
+if it holds with all of them counted against the portfolio. Otherwise the
+email says "could not check", above everything but the red flags. A missing
+Nifty close or a week with no valuation reads "unavailable", never a flat 0%.
+
+**Example:** 10 sales reached 30 sessions in the last 8 weeks. After 4 the
+stock beat the Nifty, after 3 it did not, and 3 have no grade. Skipping the 3
+would read 4 of 7 (57%), clear. Counted as beating it they make 7 of 10 (70%);
+counted as not, 4 of 10 (40%). The email says "Selling too early: could not
+check … between 40% and 70%".
+
+Horizons count exchange sessions on the NSE calendar, as the auditor's do.
+Nifty closes come from the auditor's benchmark series, so the known limit
+above on carried-forward closes applies. The nightly auditor grades the
+default user's calls only. Members' sales are their own, so they appear under
+"Why we sold" and are not graded.
 
 ## 8. Discovery and IPO functionality
 
@@ -1144,7 +1194,7 @@ All times are **Asia/Kolkata (IST)** defaults.
 | `event_ingest_weekly` | Saturday 10:00 | Dossier events; event-ingest gate. |
 | `research_loop_weekly` | Saturday 11:00 | Open company questions; research-loop gate. |
 | `discovery_weekly` | Saturday 12:30 | Screen/deep dives/shelf/paper; discovery gate. |
-| `weekly_review` | Sunday 18:00 | Portfolio summary/index watch; delivery gate. |
+| `weekly_review` | Sunday 18:00 | Results scorecard, portfolio summary, index watch; delivery gate. |
 | `scorecard_monthly` | Calendar first 02:00 | Previous-month scorecard/evidence; scorecard gate. |
 | `rl_monthly_forecast` | Calendar first 09:00 | Forecast envelopes. |
 | `rl_calendar_update` | December 31 23:00 | Holiday calendar refresh. |
@@ -1216,8 +1266,10 @@ today or yesterday, and URLs are de-duplicated within one day's file only, so
 a story that keeps ranking returns each morning. **Planned:** freshness by
 publish date with no cross-day repeats and overnight market figures (PR-003),
 and a "your stocks" section from a daily company-event feed (PR-006, PR-008).
-The weekly review's 28-day advice scoreboard is to be replaced by the nightly
-auditor's matured grades and a closed-trade record (PR-002).
+The weekly review opens with the week's results scorecard (section 7): red
+flags first, then closed trades, sales graded by the nightly auditor, exit
+reasons, the Nifty comparison, breadth and holding period. The email is plain
+text; the Inbox weekly screen renders the same sentences.
 [Channels](../core/delivery/channels.py) send email and web push. Email has two
 transports: SMTP (STARTTLS) and the HTTPS Resend API. `EMAIL_TRANSPORT` in
 [settings](../src/backend/shared/config/settings/base.py) defaults to `auto`,
@@ -1772,10 +1824,10 @@ traced the owner's concerns to their mechanisms: losing sales, code-like
 reasons, a 2-stock portfolio, a repetitive brief and a jargon-heavy interface.
 The planned changes connect the research to the money:
 
-- **Measure weekly.** A Sunday scorecard gives closed trades, expectancy, the
-  share of sales whose stock beat the Nifty afterwards (from the nightly
-  auditor), exit reasons, breadth and the money-weighted Nifty comparison, with
-  predeclared red flags (PR-002).
+- **Measure weekly.** The Sunday results scorecard (section 7) is the yardstick
+  for every change below: closed trades, expectancy, the share of sales whose
+  stock beat the Nifty afterwards, exit reasons, breadth and the money-weighted
+  Nifty comparison, with predeclared red flags.
 - **Know each company daily.** A typed, dated, sourced event feed covers held,
   watched and shelf stocks (PR-006), widened with insider trades, pledges and
   shareholding changes (PR-011).

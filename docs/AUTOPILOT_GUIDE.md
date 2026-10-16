@@ -93,6 +93,9 @@ data/portfolio/<user>/
   advice_ledger.jsonl             every advice record, with its data gate and instrument
   switch_evaluations.jsonl        every shelf candidate considered, taken or declined
   identity_reconciliations.jsonl  operator reconciliations (section 5)
+  advice_outcomes.jsonl           the nightly auditor's graded rows
+  weekly_scorecard.jsonl          one results row per ISO week, written once
+  weekly_scorecard.lock           guards its write-once append
   digests/<date>.json, briefs/, weekly/
   portfolio.json.corrupt-<time>   a corrupt file moved aside (section 8)
   portfolio.json.pre-identity-<time>  copy taken before a reconciliation apply
@@ -444,12 +447,13 @@ has holdings or transactions.
 |---|---|
 | `GET /portfolio` | Holdings and watchlist with live marks |
 | `POST /portfolio/holdings` | Manual BUY at the buy date's close. It is fresh capital: `capital_in` rises, cash does not change, and a `manual` row is written. An identical same-day resubmit is deduped. The symbol is promoted as held. |
-| `DELETE /portfolio/holdings/{symbol}` | Manual SELL at today's close (cost if no close), cash credited, `manual` row written. Unless the symbol is on the watchlist, its portfolio-origin managed entry is disabled |
+| `DELETE /portfolio/holdings/{symbol}` | Manual SELL at today's close (cost if no close), cash credited, `manual` row written with its `cost_basis` and `pnl_pct`, so the weekly scorecard counts its result. Unless the symbol is on the watchlist, its portfolio-origin managed entry is disabled |
 | `POST`, `DELETE /portfolio/watchlist…` | Watchlist changes; an added symbol is promoted as watchlist, a removed one demoted the same way |
 | `POST /portfolio/import-csv` | Bulk import of holdings |
 | `GET /portfolio/transactions?limit=N` | The ledger, newest first |
 | `GET /portfolio/performance` | Cash, `capital_in`, market value, equity, realised and unrealised P/L, total return, day change, the autopilot flag and the equity history (at most 2,000 transactions and 400 points read) |
 | `GET /portfolio/advice`, `GET /portfolio/digest/latest` | The advice ledger's tail; the latest digest |
+| `GET /portfolio/scorecard?limit=N` | The caller's own weekly results rows, newest week first, as the Sunday weekly review stored them ([KT section 7](TECHNICAL_DESIGN.md#weekly-results-scorecard)) |
 | `POST /portfolio/run-advisor` | Owner only: run the pipeline in the background |
 
 **Screen** ([portfolio.jsx](../src/frontend/prototypes/portfolio.jsx),

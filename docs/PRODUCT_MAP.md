@@ -194,9 +194,10 @@ behind (KT [prediction-store ownership](TECHNICAL_DESIGN.md#prediction-store-own
 
 Per-user portfolio plane, `data/portfolio/<user>/`: `portfolio.json`,
 `transactions.jsonl`, `advice_ledger.jsonl`, `value_history.jsonl`,
-`switch_evaluations.jsonl`, `identity_reconciliations.jsonl`, digests, briefs
-and weekly reviews ([AUTOPILOT_GUIDE](AUTOPILOT_GUIDE.md) section 2). The
-nightly auditor writes its graded rows to its own append-only store.
+`switch_evaluations.jsonl`, `identity_reconciliations.jsonl`,
+`weekly_scorecard.jsonl`, digests, briefs and weekly reviews
+([AUTOPILOT_GUIDE](AUTOPILOT_GUIDE.md) section 2). The nightly auditor writes
+its graded rows to its own append-only store, `advice_outcomes.jsonl`.
 
 ---
 
@@ -390,6 +391,7 @@ reader filters by date ([RL_DESIGN](RL_DESIGN.md) section 23.1).
 | Store | `core/portfolio/store.py` | Per-user files, lock, corrupt-file quarantine |
 | Advisor | `core/portfolio/advisor.py` | Precedence **EXIT > TRIM > ADD > HOLD**, SWITCH, the data and identity checks |
 | Autopilot | `core/portfolio/autopilot.py` | Deterministic execution; no broker call anywhere |
+| Results scorecard | `core/portfolio/results.py` | One row per ISO week from the user's own ledgers: closed round trips, sales graded by the auditor, exit reasons, the money-weighted Nifty comparison, five predeclared red flags. Stored once per week; `GET /portfolio/scorecard` |
 | Identity reconcile | `core/portfolio/identity_reconcile.py` | Operator plan/apply for demergers and renames |
 | Narrator, narrative cache | `core/portfolio/narrator.py`, `narrative_cache.py` | Bulk-tier phrasing of a decided verdict, cached per day |
 | Pricing | `core/portfolio/pricing.py` | The daily review's verified close, with the bar's date |
@@ -444,7 +446,7 @@ its visibility milestone is judged.
 | Part | Path | Trigger |
 |---|---|---|
 | Morning brief | `core/delivery/brief.py` (1,196 lines) | Mon–Fri 08:50. Deterministic assembly and one bulk headline call; HTML and text |
-| Weekly review | `core/delivery/weekly.py` | Sunday 18:00: allocation, laggards, switch candidates, scoreboard |
+| Weekly review | `core/delivery/weekly.py` | Sunday 18:00: the results scorecard first (red flags at the top), then allocation, laggards, switch calls and shelf candidates. Text email; the Inbox screen renders the same sentences |
 | Alerts | `core/delivery/alerts.py` | Event-driven, deduplicated per user, date, kind and symbol. Operator notices reach only the owner, market notices every account; the Inbox lists the caller's own |
 | Channels | `core/delivery/channels.py` | Web push and email (SMTP or Resend), one result contract |
 | Outbox | `core/delivery/outbox.py` | One durable row per message and channel when Atlas is on; retries, dead letters, at-most-once |

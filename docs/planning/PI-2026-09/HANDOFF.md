@@ -1,4 +1,4 @@
-# Current handoff - 2026-10-16 (updated about 12:25 IST)
+# Current handoff - 2026-10-16 (updated about 18:00 IST)
 
 ## Also 11 Oct (about 13:00–15:30 IST): product results review and new tasks (separate conversation)
 
@@ -74,6 +74,59 @@ Docs only; nothing committed, pushed, deployed or configured.
 
 ## START HERE — resume checklist, in order
 
+**PR-002 is IMPLEMENTED** (16 Oct, about 16:35–18:00 IST, session stockagent-main-a9, a new
+conversation opened with "continue"; peers idle). Receipt:
+[implementation](evidence/PR-002-implementation.md). STATE: `active_task: null`, PR-002
+`review_required`, **`next_task: PR-002`**, meaning its **fresh review** in a new conversation
+("continue"), then PR-003. No production state was read and no message was sent.
+**Committed at the owner's word** ("ya commit and push", about 18:20 IST), before its fresh
+review, as FIX-010's first review read committed code. The commits are `b400747` (code, the 9
+code and test files) and the docs commit (KT header to `b400747` with the `results.py` link,
+PDF, guide 09-G status line, receipt, manifests, STATE, HANDOFF). **The fresh review reads the
+committed code**; its input is [PR-002-manifest.json](evidence/PR-002-manifest.json)
+`98df10d0…`. The implementation-time input `8e03a051…` is kept as
+`PR-002-manifest-implementation.json`, identical for every code and test file. The push
+follows in a job-free window; its note is added after. The owner's line in `docs/README.md`
+stays uncommitted.
+- **In one example.** The account's money sat in cash for four weeks while the Nifty rose
+  10%, and 3 of its last 10 sales have no grade yet. Sunday's email now opens
+  "RED FLAG: Behind the Nifty … +0.0% against +10.0%", then "COULD NOT CHECK: Selling too
+  early … between 40% and 70%", then closed trades, sales graded against the Nifty, exit
+  reasons, breadth and holding period. It used to end with "Scoreboard: 7/9 judged calls
+  right", a figure that dropped every stock the portfolio had sold.
+- **What changed:**
+  - `core/portfolio/results.py` (new) builds one row per ISO week from the user's own
+    ledgers. It is stored once in `weekly_scorecard.jsonl`; a re-run changes nothing, and an
+    unfinished week is never stored.
+  - The weekly review opens with it, in the email text and on the Inbox screen, and the old
+    scoreboard is gone.
+  - `GET /portfolio/scorecard` returns the caller's own rows.
+  - A manual sale now records its cost, so its result counts.
+- **Rules:** the five red flags are fixed constants. Missing data can neither fire nor clear
+  a flag: the email says "could not check". A missing Nifty close reads "unavailable", never
+  a flat line. Decisions D1–D14 are in the receipt for the reviewer, chiefly D1 (sales that
+  happened, not raw auditor rows), D3 (since-start expectancy at three week ends) and D4
+  (trades with no recorded cost are counted, not bounded).
+- **Checked:**
+  - story tests 365 passed;
+  - 24 of 25 mutants caught, the 25th equivalent;
+  - `npm run test:frontend` 32/32; the 2 new browser tests fail on HEAD's screen;
+  - `check_kt_docs` `[]`; broad-except OK;
+  - full suite 4,946 passed, 12 skipped, 1 failed. The failure is SA-009's store-migration
+    rollback test: a transient Windows `WinError 5` in `%TEMP%`, untouched code; it passes
+    alone 3 of 3.
+
+  Review input [PR-002-manifest.json](evidence/PR-002-manifest.json) `8e03a051…` (15 files,
+  0 mismatches); diff `3daee1a4…` (127,546 bytes, 14 paths, `analysis_data/pr002/digest.py`).
+- **For the owner, once it is deployed:**
+  - close and reopen the app once;
+  - on the first Sunday (18 Oct, 18:00 IST), read the email and `GET /portfolio/scorecard`,
+    record the first row, and run guide case 09-G.
+
+  If the fresh review requests changes, they come as a rework commit.
+
+  The after-16:30 score-history probe from FIX-010 is unchanged.
+
 **FIX-010 is ACCEPTED** by the fresh re-review of rework 1 (16 Oct, about 11:35–12:25 IST, session
 stockagent-main-88, a new conversation opened with "continue"; peers idle). Receipt:
 [review, "Re-review of rework 1"](evidence/FIX-010-review.md). STATE: `active_task: null`, FIX-010
@@ -81,7 +134,10 @@ stockagent-main-88, a new conversation opened with "continue"; peers idle). Rece
 production state was read and no notification was sent. **Committed at the owner's word**
 ("ya commit and push", about 13:20 IST): `4686150` (code), `3df1f6e` (docs: RR1's wording,
 KT section 12's FIX-010 row `Done`, guide 11-K's status line, receipts), then the KT bump to
-`3df1f6e` (edition 2026-10-16; section 1 states the owner's backfill); the push follows.
+`3df1f6e` (`b67f972`; edition 2026-10-16; section 1 states the owner's backfill). **Pushed**
+`c31136b..b67f972` at 13:26:52 IST, a job-free window; the deployment list showed `b67f972`
+BUILDING at 13:26:54 IST. Owner: confirm SUCCESS and `/health`, then close and reopen the app
+once and run guide 11-K. This push note is uncommitted.
 - **In one example.** On a Monday at 09:00 IST, Home's "Market pulse · today" reads "Last
   analysis 2 days ago" with the stale dot when Friday's 16:30 review was the last analysis of a
   shared stock. After a Saturday on which discovery shelved a stock it had just analysed, it reads

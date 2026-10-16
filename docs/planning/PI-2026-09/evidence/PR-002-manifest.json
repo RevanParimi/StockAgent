@@ -1,0 +1,89 @@
+{
+  "story": "PR-002",
+  "phase": "committed at the owner's word (2026-10-16): the implementation input PR-002-manifest-implementation.json (8e03a051) with the commit-time edits (KT header to b400747 and the results.py link, PDF rebuilt, guide 09-G status line)",
+  "baseline": "code commit b400747 (parent b67f972); code and test blobs identical to the implementation input",
+  "excluded": [
+    "docs/planning/PI-2026-09/STATE.json",
+    "docs/planning/PI-2026-09/HANDOFF.md",
+    "docs/planning/PI-2026-09/evidence/*",
+    "docs/README.md (the owner's probe line)"
+  ],
+  "hash_convention": "git blob bytes after .gitattributes normalization (CRLF->LF for text, binary unchanged); verify with scripts/docs/kt_manifest.py verify",
+  "files": [
+    {
+      "path": "core/delivery/weekly.py",
+      "git_blob": "5f8651a7f890e82d90d2d8b6a7f9c0aa02598e2c",
+      "sha256": "b3f623d4e62e7d25d764dc17b598cc2de95e5fbe0850e29e639a4f50c8b13d42"
+    },
+    {
+      "path": "core/portfolio/results.py",
+      "git_blob": "862641c004250b958b795d1aa4ef5522e917121d",
+      "sha256": "da9ca4b3b1b6c6124497ebf4e8e45b212b5ef51f90f548430d16a3f80b37c448"
+    },
+    {
+      "path": "core/portfolio/store.py",
+      "git_blob": "6c41f178b2b1689b5c1880ad763dddfa3d1c617a",
+      "sha256": "549e00b93ad4075296c2586f316a8127d547062cce82336cd42903fa6c0f9c2f"
+    },
+    {
+      "path": "docs/ARCHITECTURE.md",
+      "git_blob": "c67a6d62088bcd436b8b00a5194879e278142cc1",
+      "sha256": "456f57f294bdd7e475465480771387943ae80015f96c296528b679e2b6cbea8d"
+    },
+    {
+      "path": "docs/AUTOPILOT_GUIDE.md",
+      "git_blob": "6284ade5c004900667e4435370f74cf672d54e80",
+      "sha256": "e0f43c06e820727a220860fc65c85a9cc9bc79dbfb8f635f14f08c5c41648701"
+    },
+    {
+      "path": "docs/PRODUCT_MAP.md",
+      "git_blob": "aaf246532251ac54de4efa8c423c21ce3070e8c8",
+      "sha256": "a2fbb7ad5d606e066742ed57afcbe1ecc33b9bd5ce38979dcbc6322dadcb3bc9"
+    },
+    {
+      "path": "docs/StockAgent-Three-Loops.pdf",
+      "git_blob": "ecd5d8399704d32254b19e264fa1d332cb6d2791",
+      "sha256": "f8b7275af344791ca217226c48b31a01582498e00011c7983ed2dac97923d5cd"
+    },
+    {
+      "path": "docs/TEAM_TESTING_GUIDE.md",
+      "git_blob": "3cce41fade30378ce662e3b4c3778ee4669b8a53",
+      "sha256": "dd9f1b02208219ed975de248e5b6ee02bebc513e1e52b7d6f70d90cf186d9827"
+    },
+    {
+      "path": "docs/TECHNICAL_DESIGN.md",
+      "git_blob": "4f89d14d8a12a4ba666cdae0b345780cf753dcb7",
+      "sha256": "d1a86e533d6361caed06e257a7e1439be28153194bc60b5018b6f9e1130f6aa6"
+    },
+    {
+      "path": "scripts/seed_fixture_ui.py",
+      "git_blob": "661526821b8d18f318e57438823002f6ee27eddb",
+      "sha256": "8f505681c32163a8481568a7a5001c69e0873c88700afd53b76ebfeda2de073d"
+    },
+    {
+      "path": "services/api/routes/portfolio_api.py",
+      "git_blob": "aeed53c2e61e4351c11373af32f699b93480d93a",
+      "sha256": "c84150c27112a218e5da14fa4b4f720e850835bb755c121a04dd6e8c11b8427c"
+    },
+    {
+      "path": "src/frontend/prototypes/weekly-view.jsx",
+      "git_blob": "e51587b12b0196692df518a63ae77f97edeb777d",
+      "sha256": "6e6793d8375b79a9e12701c401867aadab475270435c0daae451efabb2ebdd48"
+    },
+    {
+      "path": "tests/frontend/no_invented_figures.test.mjs",
+      "git_blob": "2d3ed532ed5ddc6a0e061a218627a7e0052ce5b3",
+      "sha256": "9b36ef7b7625974ac4aaa2f9140a6f21b31fe98460666a82994aa495ac5be778"
+    },
+    {
+      "path": "tests/unit/test_delivery_weekly.py",
+      "git_blob": "76784e1850f0e26bb8b7af456f13bbf44cb19b11",
+      "sha256": "e7406ee2d746fb604a4a7a67702db35849e9ac6039f3a2f17a200c834c1fe6ed"
+    },
+    {
+      "path": "tests/unit/test_weekly_scorecard_pr002.py",
+      "git_blob": "f017f29db95df8ae7c5683d091786c62a518ff90",
+      "sha256": "95a7b3cba0d08dec664213b169ecf86b6b10b9230e2070370a1cb2e148b5dda7"
+    }
+  ]
+}

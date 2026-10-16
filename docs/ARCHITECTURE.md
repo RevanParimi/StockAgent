@@ -182,8 +182,10 @@ decision gate in `record`. No off-site backup target is configured yet. The
 dated table, with each control's evidence, is
 [KT section 1](TECHNICAL_DESIGN.md#1-reading-the-evidence).
 
-The nightly auditor, the monthly replay and the weekly scoreboard are different
-measurements, and none alone demonstrates the benefit of adaptation. The
+The nightly auditor, the monthly replay and the weekly results scorecard are
+different measurements, and none alone demonstrates the benefit of adaptation.
+The scorecard reads the auditor's grades and the account's own ledgers; it
+reports and changes no decision. The
 watchdog checks operational milestones, not stock prediction correctness.
 
 ## Planned architecture

@@ -19,7 +19,10 @@
  *    one the API sent, formatted the way any reader would;
  *  - the greeting follows the IST clock even on a device in another zone;
  *  - the verdict-changes heading states the number of change cards it lists,
- *    and Learn claims nothing about the member's progress.
+ *    and Learn claims nothing about the member's progress;
+ *  - the weekly review opens with its results scorecard (PR-002): red flags,
+ *    then what could not be checked, then the lines, every figure one the row
+ *    sent, and never the scoreboard it replaced.
  */
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
@@ -632,4 +635,66 @@ test('demo mode is explicit: ?demo=1 shows the samples under a banner and asks n
     assert.equal(await plain.page.evaluate(() => window.saDemoFixtures), undefined);
     assert.equal(await plain.page.locator('.sa-demo-banner').count(), 0);
   } finally { await plain.context.close(); }
+});
+
+// -- PR-002: the weekly review opens with the results scorecard ------------------
+
+// A real row's sessions and sentences, printed by the Python builder
+// (core/portfolio/results.py) for idle cash in a rising Nifty, ten sales of
+// which three have no grade, and one sale this week; one line of each kind.
+const SCORECARD = {
+  week: '2026-W10', sessions: { count: 5, first: '2026-03-02', last: '2026-03-06' },
+  lines: [
+    { kind: 'red_flag', text: 'Behind the Nifty: over the last 4 weeks the portfolio made +0.0% against +10.0% for the same money in the Nifty (10.0 points behind; red line 3).' },
+    { kind: 'unchecked', text: 'Selling too early: could not check. 3 of 10 sales have no 30-session grade; the share is between 40% and 70% (red line 60%).' },
+    { kind: 'line', label: 'Closed trades', text: 'This week: 1 trade · 1 won (100%) · average win +12.0% · expectancy +12.0% per trade, before costs.' },
+    { kind: 'check', status: 'clear', text: 'Holding period: positions closed this week were held a median of 12 sessions (red line: under 10).' },
+  ],
+};
+const WEEKLY = {
+  date: '2026-03-08', kind: 'weekly_review', headline: 'Idle cash cost ten points against the Nifty.',
+  allocation: [], concentration_flags: [], laggards: [], switch_candidates: [], switch_suggestions: [],
+  scoreboard: { counts: { EXIT: 2 }, checked: 9, correct: 7 },   // the replaced scoreboard: never shown
+  scorecard: SCORECARD,
+};
+
+async function openWeekly(review) {
+  const app = await openApp(browser, { user: MEMBER,
+                                       api: { '/delivery/weekly/latest': json(review) } });
+  await settled(app.page);
+  await goTo(app.page, 'inbox');
+  await app.page.getByRole('button', { name: 'Weekly', exact: true }).click();
+  await app.page.getByText(review.headline).waitFor({ timeout: 10000 });
+  return app;
+}
+
+test('the weekly review opens with its scorecard: red flags, then what could not be checked', async () => {
+  const { context, page, errors } = await openWeekly(WEEKLY);
+  try {
+    const text = await visibleText(page);
+    const at = (s) => { const i = text.indexOf(s); assert.ok(i >= 0, `missing "${s}" in:\n${text}`); return i; };
+    assert.ok(at('Red flag · Behind the Nifty') < at('Could not check · Selling too early'));
+    assert.ok(at('Could not check · Selling too early') < at('This week: 1 trade'));
+    assert.ok(at('This week: 1 trade') < at(WEEKLY.headline), 'the results come before the headline');
+    assert.ok(at('red line: under 10') > at('This week: 1 trade'), 'clear checks come last');
+    assert.ok(!/judged calls right|7\/9/.test(text), 'the old scoreboard is not shown');
+    const sent = JSON.stringify(SCORECARD);
+    for (const m of text.match(PCT) || []) assert.ok(sent.includes(m), `${m} was not sent`);
+    assert.deepEqual(errors, []);
+  } finally { await context.close(); }
+});
+
+test('a weekly review whose scorecard failed says so; one stored before it shows none', async () => {
+  let app = await openWeekly({ ...WEEKLY, scorecard: null });
+  try {
+    assert.match(await visibleText(app.page), /Results could not be computed this week\./);
+  } finally { await app.context.close(); }
+  const before = { ...WEEKLY };
+  delete before.scorecard;
+  app = await openWeekly(before);
+  try {
+    const text = await visibleText(app.page);
+    assert.ok(!/results ·|could not be computed|judged calls right/i.test(text), text);
+    assert.deepEqual(app.errors, []);
+  } finally { await app.context.close(); }
 });

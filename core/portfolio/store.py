@@ -407,6 +407,48 @@ class PortfolioStore:
     def load_latest_weekly(self) -> dict | None:
         return self._load_latest_dated("weekly")
 
+    # ------------------------------------------------------------------
+    # Weekly results scorecard (append-only JSONL, one row per ISO week)
+    # ------------------------------------------------------------------
+    @property
+    def base_dir(self) -> str:
+        """The directory holding every user's folder (this one's parent)."""
+        return str(self._dir.parent)
+
+    def _scorecard_path(self) -> Path:
+        return self._dir / "weekly_scorecard.jsonl"
+
+    def load_scorecards(self) -> list[dict]:
+        """Every stored row, file order. A corrupt line is skipped and logged."""
+        path = self._scorecard_path()
+        if not path.exists():
+            return []
+        rows: list[dict] = []
+        for line in path.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                rows.append(json.loads(line))
+            except Exception as exc:
+                logger.warning("[PortfolioStore] skipping bad scorecard line: %s", exc)
+        return rows
+
+    def load_scorecard(self, week: str) -> dict | None:
+        return next((r for r in self.load_scorecards() if r.get("week") == week), None)
+
+    def append_scorecard_once(self, row: dict) -> tuple[dict, bool]:
+        """Append `row` unless its week is already stored; the stored row wins.
+        Returns (the stored row, whether this call appended). The check and the
+        append share one lock, so two concurrent runs cannot both append."""
+        with FileLock(str(self._dir / "weekly_scorecard.lock"), timeout=30):
+            existing = self.load_scorecard(row["week"])
+            if existing is not None:
+                return existing, False
+            with open(self._scorecard_path(), "a", encoding="utf-8") as fh:
+                fh.write(json.dumps(row, ensure_ascii=False) + "\n")
+            return row, True
+
 
 # ---------------------------------------------------------------------------
 # CSV import (spec §4.2): symbol,sector,qty,avg_buy_price,buy_date

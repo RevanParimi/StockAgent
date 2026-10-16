@@ -1,8 +1,9 @@
 """
-Compass Phase C — Weekly Review (spec §7): Sun 18:00 IST. Allocation vs risk
-profile, laggard analysis, switch candidates from the shelf, advice-ledger
-scoreboard ("last month: 7/9 calls right"). Deterministic assembly; ONE
-BULK-tier headline call (fallback text on failure).
+Compass Phase C — Weekly Review (spec §7): Sun 18:00 IST. Opens with the
+week's results scorecard (core/portfolio/results.py: closed trades, sold too
+early, exit reasons, you vs the Nifty, breadth, holding period, red flags),
+then allocation vs risk profile, laggards, switch calls and shelf candidates.
+Deterministic assembly; ONE BULK-tier headline call (fallback text on failure).
 """
 from __future__ import annotations
 
@@ -10,27 +11,28 @@ import json
 import logging
 import time
 from datetime import date, datetime, timedelta, timezone
+from typing import Callable
 
 from core.config import settings
 from core.delivery.channels import deliver
 from core.portfolio.advisor import explain_triggers
+from core.portfolio.results import render_scorecard_text, weekly_scorecard
 from core.portfolio.store import PortfolioStore, active_user_ids
 
 logger = logging.getLogger(__name__)
 
-_SCOREBOARD_WINDOW_DAYS = 28
-_SCOREBOARD_MIN_AGE_DAYS = 5           # advice younger than this (calendar days) isn't judged
+_SWITCH_WINDOW_DAYS = 28               # switch calls listed from the last 4 weeks
 _LAGGARD_COUNT = 3
 _SWITCH_CANDIDATE_COUNT = 3
 
 _PROMPT = """You are the narration layer of a personal stock-research tool.
 Write a 2-4 sentence weekly portfolio review headline (research tone; NEVER
-the word "advice").
+the word "advice"). Use only figures given below.
 
 Allocation: {allocation}
 Concentration flags: {concentration}
 Laggards: {laggards}
-Advice scoreboard (last 4 weeks): {scoreboard}
+Results scorecard: {results}
 
 Respond with JSON: {{"headline": "<2-4 sentences>"}}"""
 
@@ -104,6 +106,16 @@ def _safe_weekly_ipos(on: date) -> list[dict]:
         return []
 
 
+def _scorecard_summary(review: dict) -> str:
+    """The scorecard's own sentences: red flags, unchecked flags, then the
+    closed-trade and sold-too-early lines. Never re-derived figures."""
+    row = review.get("scorecard") or {}
+    picked = [l["text"] for l in row.get("lines") or []
+              if l["kind"] in ("red_flag", "unchecked")
+              or l.get("label") in ("Closed trades", "Sold too early")]
+    return " ".join(picked) or "not available this week"
+
+
 def _narrate_weekly(review: dict) -> str:
     fallback = _fallback_headline(review)
     started = time.time()
@@ -112,7 +124,6 @@ def _narrate_weekly(review: dict) -> str:
             JSON_MODE_EXTRA_BODY, get_llm_client, record_llm_call,
             salvage_truncated_json,
         )
-        sb = review["scoreboard"]
         resp = get_llm_client().chat.completions.create(
             model=settings.LLM_MODEL_BULK,
             messages=[{"role": "user", "content": _PROMPT.format(
@@ -121,8 +132,7 @@ def _narrate_weekly(review: dict) -> str:
                 concentration=", ".join(review["concentration_flags"]) or "none",
                 laggards="; ".join(f"{l['symbol']} {l['pnl_pct']:+.1f}%"
                                    for l in review["laggards"]) or "none",
-                scoreboard=f"{sb['correct']}/{sb['checked']} judged calls right; "
-                           f"counts {sb['counts']}",
+                results=_scorecard_summary(review),
             )}],
             temperature=settings.LLM_TEMPERATURE,
             max_tokens=300,
@@ -156,20 +166,40 @@ def _narrate_weekly(review: dict) -> str:
 
 
 def _fallback_headline(review: dict) -> str:
-    sb = review["scoreboard"]
+    row = review.get("scorecard") or {}
+    fired = [f for f in row.get("red_flags") or [] if f.get("status") == "fired"]
     parts = []
-    if sb["checked"]:
-        parts.append(f"Last 4 weeks: {sb['correct']}/{sb['checked']} judged calls right.")
+    if fired:
+        parts.append(f"{len(fired)} red flag{'s' if len(fired) != 1 else ''} this week: "
+                     + "; ".join(f["sentence"].split(":")[0] for f in fired) + ".")
     if review["concentration_flags"]:
         parts.append("Concentration above the comfort band in: "
                      + ", ".join(review["concentration_flags"]) + ".")
     return " ".join(parts) or "Weekly review generated."
 
 
+def _safe_scorecard(user_id: str, on: date, store: PortfolioStore,
+                    close_on: Callable[[date], float] | None) -> dict | None:
+    """The week's results row; None (said so in the text) if it cannot be built."""
+    try:
+        return weekly_scorecard(user_id, on, store=store, close_on=close_on)
+    except Exception as exc:
+        logger.warning("[weekly] scorecard failed for %s (non-fatal): %s", user_id, exc)
+        return None
+
+
+def _benchmark_close_fn() -> Callable[[date], float]:
+    """One memoised Nifty series per weekly run, shared by every user."""
+    from core.audit.benchmark import BenchmarkSeries
+    return BenchmarkSeries().close_on
+
+
 def build_weekly_review(
-    user_id: str, on: date, store: PortfolioStore | None = None
+    user_id: str, on: date, store: PortfolioStore | None = None,
+    close_on: Callable[[date], float] | None = None,
 ) -> dict:
     store = store or PortfolioStore(user_id=user_id)
+    scorecard = _safe_scorecard(user_id, on, store, close_on)
     portfolio = store.load()
     symbols = [h.symbol for h in portfolio.holdings]
     closes = _latest_closes(symbols, on)
@@ -212,16 +242,16 @@ def build_weekly_review(
         key=lambda c: -c["conviction"],
     )[:_SWITCH_CANDIDATE_COUNT]
 
-    # advice-ledger scoreboard (deterministic; Phase D owns real outcome RL)
-    counts: dict[str, int] = {}
+    # Switch calls of the last 4 weeks. Whether calls and sales were right is
+    # the scorecard's job: it reads the auditor's matured grades. The old
+    # 28-day scoreboard priced only current holdings, so it dropped every
+    # stock the portfolio had sold, and is gone.
     switch_suggestions: list[dict] = []
     shelf_index = _shelf_by_symbol()
-    checked = correct = 0
-    window_start = (on - timedelta(days=_SCOREBOARD_WINDOW_DAYS)).isoformat()
+    window_start = (on - timedelta(days=_SWITCH_WINDOW_DAYS)).isoformat()
     for rec in store.load_advice(limit=500):
         if rec.date < window_start or rec.date > on.isoformat():
             continue
-        counts[rec.verdict] = counts.get(rec.verdict, 0) + 1
         # SWITCH is an EXIT with a replacement suggestion — surface the
         # advisor's actual pick, not just an anonymous tally (spec §5.2), and
         # both halves of the case: why you are leaving, and why there.
@@ -240,32 +270,19 @@ def build_weekly_review(
                 "confidence": rec.confidence,
                 "candidate": _candidate_detail(shelf_index.get(rec.switch_candidate)),
             })
-        if rec.verdict in ("HOLD",):
-            continue
-        age_days = (on - date.fromisoformat(rec.date)).days
-        if age_days < _SCOREBOARD_MIN_AGE_DAYS:
-            continue
-        now = closes.get(rec.symbol)
-        if now is None or rec.close <= 0:
-            continue
-        move = now / rec.close - 1.0
-        checked += 1
-        if (rec.verdict in ("EXIT", "TRIM", "SWITCH") and move < 0) or \
-           (rec.verdict == "ADD" and move > 0):
-            correct += 1
 
     review = {
         "date": on.isoformat(),
         "user_id": user_id,
         "kind": "weekly_review",
         "generated_at": datetime.now(timezone.utc).isoformat(),
+        "scorecard": scorecard,
         "allocation": allocation,
         "concentration_flags": concentration_flags,
         "risk_profile": portfolio.risk_profile,
         "laggards": laggards,
         "switch_candidates": switch_candidates,
         "switch_suggestions": switch_suggestions,
-        "scoreboard": {"counts": counts, "checked": checked, "correct": correct},
         "paper_shelf": [
             {"symbol": i.symbol, "conviction": i.conviction,
              "last_paper_review": getattr(i, "last_paper_review", "")}
@@ -278,7 +295,13 @@ def build_weekly_review(
 
 
 def render_weekly_text(review: dict) -> str:
-    lines = [f"Weekly review — {review['date']}", review.get("headline", ""), ""]
+    lines = [f"Weekly review — {review['date']}"]
+    # The results lead. A review stored before the scorecard existed carries
+    # no key at all and renders as it always did; a key holding None means
+    # this week's build failed, and the text says so.
+    if "scorecard" in review:
+        lines += render_scorecard_text(review.get("scorecard")) + ["-" * 24]
+    lines.append(review.get("headline", ""))
     for a in review.get("allocation", []):
         flag = "  ⚠ over-concentrated" if a["sector"] in review["concentration_flags"] else ""
         lines.append(f"{a['sector']}: {a['weight_pct']:.1f}%{flag}")
@@ -317,9 +340,6 @@ def render_weekly_text(review: dict) -> str:
             demand = _ipo_demand(w) if lean not in ("data pending", "not open yet") else ""
             bits = [b for b in (window, f"Lean: {lean}", demand) if b]
             lines.append(f"  • {w['symbol']} {w.get('company', '')} — " + " · ".join(bits))
-    sb = review.get("scoreboard", {})
-    if sb.get("checked"):
-        lines.append(f"Scoreboard: {sb['correct']}/{sb['checked']} judged calls right")
     return "\n".join(x for x in lines if x != "").strip()
 
 
@@ -327,11 +347,12 @@ def run_weekly_review(on: date | None = None) -> dict:
     """Scheduler Job 14 / POST /delivery/run-weekly entry point. Never raises."""
     on = on or date.today()
     users = active_user_ids() or [settings.PORTFOLIO_DEFAULT_USER_ID]
+    close_on = _benchmark_close_fn()
     built = 0
     for user_id in users:
         try:
             store = PortfolioStore(user_id=user_id)
-            review = build_weekly_review(user_id, on, store=store)
+            review = build_weekly_review(user_id, on, store=store, close_on=close_on)
             store.save_weekly(review)
             deliver(f"Weekly review — {on}", render_weekly_text(review),
                     url="/#/inbox/weekly", user_id=user_id, kind="weekly")

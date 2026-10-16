@@ -7,6 +7,52 @@ const WV_LABEL = {
   textTransform: 'uppercase', color: 'var(--ink-3)',
 };
 
+/* The week's results (core/portfolio/results.py). It renders the row's own
+ * sentences, the same ones the email sends, so the two cannot disagree. Red
+ * flags first, then flags that could not be checked: missing data is said. */
+const WV_FLAG = { padding: '8px 10px', borderRadius: 8, marginBottom: 6,
+  fontSize: 12.5, lineHeight: 1.45 };
+
+function WVScorecard({ sc }) {
+  if (sc === null) {
+    return <div style={{ ...WV_NOTE, marginBottom: 10 }}>
+      Results could not be computed this week.</div>;
+  }
+  const lines = (sc && sc.lines) || [];
+  if (!lines.length) return null;
+  const s = sc.sessions || {};
+  const of = (kind) => lines.filter((l) => l.kind === kind);
+  const checks = of('check');
+  return (
+    <div style={{ marginBottom: 12 }}>
+      <div style={{ ...WV_LABEL, marginBottom: 6 }}>
+        Results{s.first && s.last ? ` · ${bvShortDate(s.first)} – ${bvShortDate(s.last)}` : ''}
+      </div>
+      {of('red_flag').map((l, i) => (
+        <div key={'f' + i} style={{ ...WV_FLAG, background: 'rgba(185,28,28,.08)',
+          color: '#b91c1c' }}><b>Red flag · </b>{l.text}</div>
+      ))}
+      {of('unchecked').map((l, i) => (
+        <div key={'u' + i} style={{ ...WV_FLAG, background: 'rgba(180,83,9,.08)',
+          color: '#b45309' }}><b>Could not check · </b>{l.text}</div>
+      ))}
+      {of('line').map((l, i) => (
+        <div key={'l' + i} style={{ ...WV_WHY, color: 'var(--ink-1)' }}>
+          <span style={WV_LABEL}>{l.label} </span>{l.text}
+        </div>
+      ))}
+      {checks.length > 0 && (
+        <div style={{ ...WV_WHY, color: 'var(--ink-3)' }}>
+          {checks.map((l, i) => <div key={'c' + i}>✓ {l.text}</div>)}
+        </div>
+      )}
+      <div style={{ ...WV_NOTE, marginTop: 8 }}>
+        A flag reports; it changes no decision. Figures are before costs and taxes.
+      </div>
+    </div>
+  );
+}
+
 function WeeklyView({ data }) {
   const d = data || {};
   const alloc = d.allocation || [];
@@ -14,7 +60,6 @@ function WeeklyView({ data }) {
   const laggards = d.laggards || [];
   const cands = d.switch_candidates || [];
   const sugg = d.switch_suggestions || [];
-  const sb = d.scoreboard || {};
 
   return (
     <div>
@@ -24,19 +69,9 @@ function WeeklyView({ data }) {
           textTransform: 'uppercase', color: 'var(--ink-3)', marginBottom: 8 }}>
           Weekly review · {bvLongDate(d.date)}
         </div>
+        {'scorecard' in d ? <WVScorecard sc={d.scorecard} /> : null}
         {d.headline ? <div style={{ fontSize: 14, lineHeight: 1.5, color: 'var(--ink-1)' }}>
           {d.headline}</div> : null}
-        {typeof sb.checked === 'number' && sb.checked > 0
-          && typeof sb.correct === 'number' ? (
-          <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--border)' }}>
-            <span style={{ font: '800 19px/1 Inter, sans-serif', color: 'var(--ink-1)' }}>
-              {sb.correct}/{sb.checked}
-            </span>
-            <span style={{ color: 'var(--ink-3)', fontSize: 12, marginLeft: 8 }}>
-              judged calls right
-            </span>
-          </div>
-        ) : null}
       </div>
 
       {alloc.length > 0 && (

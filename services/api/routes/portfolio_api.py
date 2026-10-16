@@ -14,6 +14,7 @@ DELETE /portfolio/watchlist/{symbol}
 POST   /portfolio/import-csv           Raw CSV body: symbol,sector,qty,avg_buy_price,buy_date
 GET    /portfolio/advice               Advice-ledger tail
 GET    /portfolio/digest/latest
+GET    /portfolio/scorecard            Weekly results scorecard rows (own rows only)
 POST   /portfolio/run-advisor          Manual pipeline trigger (202, background)
 
 Authentication (M0.1): bearer session on all user routes; run-advisor is
@@ -201,6 +202,9 @@ async def delete_holding(
                                     detail=f"No holding {symbol.upper()}")
             qty = h.adj_qty
             cash_before = p.cash_deployable
+            # Stamped like an autopilot sale, so the weekly scorecard can
+            # count this round trip's result rather than report it unknown.
+            cost_basis = round(h.adj_avg_price, 4)
             realized = h.sell(qty, price)
             p.holdings = [x for x in p.holdings if x.symbol != h.symbol]
             p.cash_deployable = round(p.cash_deployable + qty * price, 2)
@@ -212,7 +216,10 @@ async def delete_holding(
                 user_id=p.user_id, symbol=h.symbol, side="SELL", qty=qty, price=price,
                 value=round(qty * price, 2), cash_before=cash_before,
                 cash_after=p.cash_deployable, holding_qty_after=0.0,
-                realized_pnl=realized, source="manual", note="manual delete")
+                realized_pnl=realized, source="manual", note="manual delete",
+                cost_basis=cost_basis,
+                pnl_pct=(round(realized / (cost_basis * qty) * 100, 2)
+                         if cost_basis > 0 and qty > 0 else None))
             if txn.txn_id not in {t.txn_id for t in store.load_transactions(limit=2000)}:
                 store.append_transaction(txn)
             store.save(p)
@@ -369,6 +376,18 @@ async def get_performance(
         "autopilot": p.autopilot,
         "history": history,
     }
+
+
+@router.get("/scorecard", summary="Weekly results scorecard rows (newest week first)")
+async def get_scorecard(
+    user: dict = Depends(get_current_user),
+    limit: int = Query(default=12, ge=1, le=520),
+) -> dict:
+    """The signed-in user's stored rows only, written by the Sunday weekly
+    review (core/portfolio/results.py). Nothing is computed here."""
+    rows = _store(user["user_id"]).load_scorecards()
+    rows.sort(key=lambda r: str(r.get("week", "")), reverse=True)
+    return {"rows": rows[:limit]}
 
 
 @router.post("/run-advisor", status_code=202, summary="Manually trigger the post-review pipeline")

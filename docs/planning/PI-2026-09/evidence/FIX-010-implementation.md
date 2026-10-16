@@ -16,6 +16,187 @@ FIX-009 work (manifest `11c2c620`). FIX-010 layers on five PR-001 files and five
 KT and UI_SPEC. Their pre-FIX-010 bytes were snapshotted to the ignored
 `analysis_data/fix010/base/` before any edit, each checked against PR-001's manifest or `HEAD`.
 
+**The fresh review requested changes (16 Oct). Rework 1 (16 Oct) is the next section; the first
+implementation's record follows it.**
+
+## Rework 1 — 16 Oct 2026 (implementation, after the review's `changes_requested`)
+
+**Phase:** implementation (rework 1), a new conversation opened with "continue" on 16 Oct 2026,
+from about 09:20 IST to about 11:00 IST (session stockagent-main-5f). It is not the reviewing
+conversation. Same-conversation self-review only. **Status after this phase:** `review_required`;
+a fresh re-review happens in another new conversation. The ten listed peer sessions were idle
+at the start.
+
+- **Input:** the reviewed code, committed as `ec3f336` and unchanged at `HEAD` (`c31136b`), with
+  the review's input preserved as [FIX-010-manifest-review1.json](FIX-010-manifest-review1.json)
+  (`900c8f27…`). `kt_manifest.py verify … --rev HEAD`: 15 of 18 files match; the KT, its PDF and
+  the guide differ only by the commit-time KT bump and status lines the review accounted for.
+  The rework diff is therefore taken against `HEAD`.
+- **Findings addressed:** [the review](FIX-010-review.md) M1 is fixed; the recommended L1, L2
+  and L3 are taken; the optional I5 is fixed. I1 to I3 need no change here (I3 is for SA-031).
+- Nothing was committed, pushed, deployed or configured, no production state was read and no
+  notification was sent.
+- **Superseded statements in the sections below:** "32 tests" and "11 browser tests": see Tests
+  below. Self-review's I5 ("a cut-off at the earliest live row … less a margin would avoid it"):
+  done, per stock (I5 below).
+
+### In one example (M1)
+
+The test member opens Home. The newest analysis of a shared stock (managed, shelf or built-in)
+is the one in the left column; the member's own stock was analysed half an hour ago.
+
+| Newest shared analysis | Before this rework | Now |
+|---|---|---|
+| 2.5 hours old | "Updated recently" | "Updated 2h ago" |
+| 13.5 hours old (the next morning) | "Updated recently", no dot | "Updated 13h ago", stale dot |
+| 64 hours old (Monday 09:00 IST after Friday's 16:30 review) | "Updated recently", no dot | "Last analysis 2 days ago", stale dot |
+| an unreadable time | "Updated recently", no dot | "Analysis time unknown", stale dot |
+
+Both "Today" and "This month" panes follow the same rule; the member's own stock never makes
+them look fresh.
+
+### Changes, by finding
+
+- **M1 (medium): Home's time labels never stated an age** (`services/api/routes/ui_data.py`,
+  `_freshness_label`). A `run_at` without an offset (the writer's and the backfill's naive UTC)
+  is read as UTC before the age is taken. The two identical branches (under 6 h, under 24 h) are
+  one. The `except Exception` that turned every `TypeError` into "Updated recently", not stale,
+  is narrowed to the parse (`ValueError`), whose answer is now "Analysis time unknown", stale; its
+  entry leaves `scripts/ci/broad_except_baseline.txt` (the guard requires the baseline exact).
+- **L1 (test gap): the async exit with enforce.**
+  `test_the_row_holds_the_verdict_after_the_decision_gate` runs both exits (`sync-exit`,
+  `async-exit`), with a missing price and the gate on `enforce`.
+- **L2 (sign-out kept the previous viewer's list)** (`src/frontend/prototypes/data.jsx`,
+  `index.html`). `saForgetLearnings` drops `PORTFOLIO_LEARNINGS` and `__learningsLive`, re-renders,
+  and moves a viewer counter on. `saClearToken` calls it, and every change of account passes
+  through `saClearToken`: the Sign out button, an expired session (the fetch wrapper's 401) and a
+  deleted account. `saLoadLearnings` notes the counter when it asks and discards an answer that
+  arrives after a sign-out. Demo mode keeps its samples. The call in `index.html` is guarded, so
+  an old cached `data.jsx` still renders (I6 below).
+- **L3 (guide 11-K).** The third stock is a managed one outside the 16 automobile stocks (the
+  16:30 review analyses only managed stocks). The owner analyses the held stock once on request,
+  so it has a row to hide; the owner's own check is added (search and current verdicts show it,
+  not the member's). The case also checks the panes' time labels (evening, next morning, Monday)
+  and an account switch on one tab.
+- **I5 (backfill cut-off)** (`scripts/backfill_score_history.py`). Nothing is copied from
+  `SAME_RUN_SECONDS` (60) before a stock's first live row onward. An analysis logs its run a few
+  milliseconds before it writes its live row, so the log's copy of that analysis sat just before
+  the old cut-off and was copied once more. This matters once live rows exist, for example an
+  `apply` after a `remove` (the documented undo). Production's 16 Oct apply found no live row, so
+  it is unaffected. The count keeps its key, `skipped_at_or_after_live_rows`.
+
+### Design decisions (delegated, recorded)
+
+- **An unreadable time is "Analysis time unknown", stale,** not the old "Updated recently", not
+  stale: the label never claims recency it cannot date (PR-001's rule).
+- **One drop point for the list (sign-out), plus the late-answer check,** rather than also
+  clearing before every fetch: every account change already passes through `saClearToken`, and
+  clearing on each fetch would blank the list on any future same-account re-fetch. The browser
+  tests show each half is needed (variants `noclear`, `nogen` below).
+- **I5 by a one-minute margin, not by refusing `apply` when a live row exists:** refusing would
+  block re-applying after a `remove`, the one time live rows exist. The cost: another analysis of
+  the same stock logged in the minute before its first live row is not copied, one past row
+  fewer and never a false change.
+- **"Live" for an analysis under an hour old is unchanged** (I7 below).
+
+### Tests
+
+- **Story file** `tests/unit/test_score_history_fix010.py`: 32 → 45 tests.
+  - the gate test on both exits (+1, L1);
+  - `test_home_states_the_age_of_the_newest_shared_analysis`: rows written by the real
+    `ScoreStore.save` (clock faked) for the managed stock at 2.5, 8.5, 13.5, 30 and 64 hours, the
+    shelf stock 30 hours earlier and the member's own stock half an hour ago; through
+    `/ui/bootstrap` as the member, with Atlas off and on (+10). Expected values worked by hand from
+    the rule: label, `runAt` = the managed row's stored `run_at` (read with plain SQL), `isStale`;
+  - `test_the_label_reads_a_time_with_or_without_an_offset_and_never_invents_an_age`: naive,
+    `+00:00` and `Z` forms 3.5 hours old all read "Updated 3h ago"; an unreadable time; no rows
+    (+1);
+  - `test_a_mid_day_backfill_records_each_analysis_once`: runs logged two days and 90 seconds
+    before, and the live analysis's own log 4 ms before its live row (written by the real
+    writer); dry run 2 to insert and 1 cut; after apply, three rows for three analyses (+1).
+- **Browser** `tests/frontend/no_invented_figures.test.mjs`: 11 → 13 tests.
+  - "signing out drops the verdict changes; a failed fetch for the next account shows none": the
+    member's own change is on Portfolio; Sign out (the real button); the list is `null` at the
+    login screen; a second member signs in and that account's `/ui/learnings` answers 503; no
+    QMYOWN anywhere and no section;
+  - "an answer for the previous viewer that arrives after the next sign-in is discarded": the
+    first viewer's answer is held 4 seconds, over a sign-out and a second sign-in.
+- **The new tests fail on the reviewed code** (in-memory or copied variants, no repo file
+  written; `analysis_data/fix010/rework1/`):
+  - `RW_SWAP=base` (`rw_swap_plugin.py`, `HEAD`'s `_freshness_label`): 11 of 11 freshness tests
+    fail;
+  - `RW_SWAP=base-backfill` (`HEAD`'s script): the mid-day test fails, `(3, 0) != (2, 1)`; the
+    original backfill test passes on both;
+  - the reviewer's `RV_SWAP=X1` (async exit writes before the gate): the `async-exit` case fails,
+    `sync-exit` passes;
+  - browser variants (`fe_variants.py`, `fe_variants.txt`): `base` fails both new tests;
+    `noclear` (no drop at sign-out) fails both; `nogen` (no late-answer check) fails the
+    late-answer test only; `stalejsx` (this `index.html`, the reviewed `data.jsx`) renders with
+    no page error and passes the three existing learnings tests, and fails the sign-out test, as
+    expected until the new `data.jsx` loads (I6).
+- **The reviewer's tooling on the rework:** `test_rv_trace.py` and `test_rv_async_gate.py`, 13
+  passed (the review had 9 of 12 and 1; M1 twice and I5 now pass).
+- The review's story set (`test_score_history_fix010.py`, `test_ui_no_invented_figures_pr001.py`,
+  `api/test_chat_brief_user_scope_fix005.py`, `test_chat_session_memory.py`) plus
+  `test_broad_except_guard.py`: 170 passed (the review's 134, 13 new, the guard's 23); the story
+  file alone 45 passed.
+- `npm run test:frontend`: 30 of 30 (was 28).
+- `check_kt_docs.py`: errors `[]`; PDF 43 pages, source `b67626c1…` = the KT's SHA-256.
+- Full suite (`pytest -q -p no:cacheprovider -o console_output_style=count`): **4597 passed, 12
+  skipped, 0 failed**, 19 min 47 s (10:28–10:48 IST, alongside browser runs). The working tree
+  was unchanged after it.
+- Environment: Windows 11, the project venv `.stockai` (Python 3.13), the hermetic boundary.
+
+### Documentation
+
+- KT section 10 (and the PDF): Home's panes state the age of the newest shared analysis, read as
+  UTC, stale past 12 hours, with the Monday example; the verdict changes never outlive their
+  viewer in the browser. Section 3's `score_history` row: the backfill's one-minute cut-off. The
+  KT header and section 12's FIX-010 row are unchanged until the commit.
+- UI_SPEC: `MARKET_TODAY`/`MARKET_MONTH` `freshness`; `PORTFOLIO_LEARNINGS` dropped at sign-out.
+- Guide 11-K (L3, M1 and L2 checks; status line).
+- PRODUCT_MAP: `ui_data.py` 3,975 lines.
+
+### Manifest and digest
+
+- **Review input:** [FIX-010-manifest.json](FIX-010-manifest.json),
+  `89787068969160313e1ad59458bdc3b15aa1929540c2be2b27c2208124aa8e05`, 19 files: the first review's
+  18 plus `scripts/ci/broad_except_baseline.txt`. `kt_manifest.py verify`: 0 mismatches. The
+  first input stays preserved as [FIX-010-manifest-review1.json](FIX-010-manifest-review1.json).
+- **Rework diff:** `279ccf94f99fc5cd71f565d39241e5f3ac423bf914618f28c00912400778c85e` (38,024
+  bytes, 11 paths), `git diff HEAD` (`c31136b`) over the rework's payload paths, sorted, PDF
+  excluded (`analysis_data/fix010/rework1/rw_digest.py`, writes `rw_code.diff`). The reviewed
+  code diff stays `77cac0bd…` (`9db8ba7..ec3f336`).
+- **Changed by the rework (12):** `services/api/routes/ui_data.py`,
+  `scripts/backfill_score_history.py`, `scripts/ci/broad_except_baseline.txt`,
+  `src/frontend/prototypes/data.jsx`, `index.html`, `UI_SPEC.md`,
+  `tests/unit/test_score_history_fix010.py`, `tests/frontend/no_invented_figures.test.mjs`,
+  `docs/TECHNICAL_DESIGN.md`, `docs/StockAgent-Three-Loops.pdf`, `docs/TEAM_TESTING_GUIDE.md`,
+  `docs/PRODUCT_MAP.md`. Bookkeeping: STATE, HANDOFF, this receipt.
+
+### Self-review
+
+No critical, high or medium finding.
+
+- **I6 (info, rollout).** The service worker serves cached `.jsx` first, so the first open after
+  the deploy runs this `index.html` with the old `data.jsx`: the page works, and the sign-out
+  drop starts from the second open (variant `stalejsx`). The rollout note stays "close and reopen
+  the app once".
+- **I7 (info, pre-existing).** An analysis under an hour old reads "Live". It is dated by
+  `runAt` but not by the label; left as it is (SA-024 owns honest states on the remaining
+  screens).
+- **I8 (info, pre-existing).** `_rows_since` compares an offset-carrying `since` string with the
+  naive `run_at` strings. Both share the format up to the microseconds, so the window is right
+  except at the exact same microsecond. Not changed.
+
+### Next
+
+A fresh re-review in a new conversation ("continue"). Then PR-002. Production: the code is live
+without this rework; the M1 fix needs its own deploy at the owner's word, after acceptance. The
+after-16:30 probe of FIX-010's writer is unchanged.
+
+## First implementation (15 Oct)
+
 ## In one example
 
 The member holds DIXON, the owner holds BEL, and neither is managed or on the shelf.
@@ -232,6 +413,8 @@ No critical, high or medium finding.
 - **I4 (info).** An analysis that the chat runs for a stock nobody holds is stored, and named only
   when a viewer asks for it by name. The store does not record who asked, so not even the asker's
   own lists show it (the card's privacy case).
+
+- **I5 (low, found after the commit).** The backfill's cut-off is per stock, at the first live row. An analysis logs `run_summaries` a few milliseconds before `ScoreStore.save`. So a run made between the deploy and the backfill is copied too, a second row for one analysis with the same verdict: no false change, but slightly double-weighted votes. A cut-off at the earliest live row across all stocks, less a margin, would avoid it. The production dry run of 16 Oct found no live row, so applying before the first post-deploy analysis is unaffected. For the fresh review.
 
 ## Production check (after an owner-authorized deploy, read-only)
 

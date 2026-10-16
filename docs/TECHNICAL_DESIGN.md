@@ -208,7 +208,7 @@ evidence.
 | `data/ipo/` | Historical issue facts and captured demand snapshots; reports derive from these records. |
 | `data/market_cache/ipo.json` and EOD parquet | Cached IPO information and exchange price history; date, source and stale state matter. |
 | `data/logs/data_health.jsonl`; `data/logs/decision_gate.jsonl` | One data-health row per analysis run, also written to `telemetry.db`; one gate row per consumer decision. The gate log never holds a user id. |
-| `scores.db`: `score_history` | One row per completed analysis, written at the orchestrator's exit after the decision gate; the newest 90 per stock. Home's scores, the watchlist, Portfolio's verdict changes and the chat read it; lists name only shared stocks and the viewer's own (section 10). `scripts/backfill_score_history.py` can copy past runs from `telemetry.db`'s `run_summaries`, marked so they can be removed. |
+| `scores.db`: `score_history` | One row per completed analysis, written at the orchestrator's exit after the decision gate; the newest 90 per stock. Home's scores, the watchlist, Portfolio's verdict changes and the chat read it; lists name only shared stocks and the viewer's own (section 10). `scripts/backfill_score_history.py` can copy past runs from `telemetry.db`'s `run_summaries`, marked so they can be removed; it copies nothing from a minute before a stock's first live row on, because that run is already recorded. |
 | SQLite log, user and Atlas stores | Telemetry, sessions and relational indexes/outbox. Secondary tables may lag primary records. |
 | `telemetry.db`: `app_logs`; `error_issues`, `error_backlog_cursor` | Every WARNING+ log record, with its run id and ticker when logged inside an analysis run, kept with no cap; and the operations backlog built from it (section 10). The backlog keeps message templates, never raw text, and prunes itself; it never changes `app_logs`. |
 | `data/scheduler_job_outcomes.json`; `data/watchdog_state.json` | Operational results, including the daily review's per-ticker outcomes, and milestone state. Not proof of financial performance. |
@@ -1498,7 +1498,14 @@ phone's time zone. Below it is "Nifty 50 −0.42% on 12 Oct.", from
 `/ui/bootstrap`'s `NIFTY50`: the last close, its change on the close before,
 and that close's date. When that fetch fails the line is left out. The index
 box reads `/ui/nifty-ranges`, which returns the Nifty 50's closes over the
-named calendar span, the last value and its date. Rows show "—" for a price
+named calendar span, the last value and its date. The Today and This month
+panes state the age of the newest analysis of a shared stock, read as UTC
+(the score history stores times without an offset): "Updated 5h ago", then
+"Last analysis 2 days ago", with a stale dot past 12 hours. So on a Monday at
+09:00 IST, when Friday's 16:30 review made the newest analysis of a shared
+stock, Today reads "Last analysis 2 days ago", marked stale; after a Saturday
+on which discovery shelved a stock it had just analysed, it reads "Last
+analysis 1 day ago". Rows show "—" for a price
 the server could not fetch (it arrives as 0), "Not analysed" for a stock with
 no analysis, and no move for a sector index that failed. The server sends no
 stand-ins: no random sparkline, no generic market drivers, no agent weight
@@ -1542,8 +1549,11 @@ Home's market panes, the market summary and the sector comparison name shared
 stocks only. Portfolio's verdict changes, search by thesis text and the chat's
 current verdicts and analysis history add the viewer's own. An anonymous
 request while sign-in is required owns nothing, and an unreadable portfolio
-adds nothing. A screen keyed by a stock the viewer names, such as a watchlist
-row or a ticker's history, needs no filter. A watched stock outside the
+adds nothing. In the browser, the verdict changes never outlive their viewer:
+signing out (or an expired session) drops the list, so the next account on
+the same tab sees none of them even if its own fetch fails, and an answer
+that arrives after a sign-out is discarded. A screen keyed by a stock the
+viewer names, such as a watchlist row or a ticker's history, needs no filter. A watched stock outside the
 built-in universe shows its analysis, without a price. For example, say the
 owner holds BEL and a member holds DIXON, and neither is managed or on the
 shelf. The member's Portfolio lists DIXON's verdict changes and never BEL's,
@@ -1907,7 +1917,7 @@ section 10) are part of the current design.
 | [FIX-008](planning/PI-2026-09/stories/FIX-008.md) | Operator notices reach only the owner; register the backlog's watchdog entry | Done | 10 Delivery; 10 Operations | SA-011 |
 | [FIX-009](planning/PI-2026-09/stories/FIX-009.md) | Index-change notices name only the account's own stocks | Done | 10 Delivery | None |
 | [PR-001](planning/PI-2026-09/stories/PR-001.md) | Remove invented figures and fixed demo values; hide operator tools from members | Done | 10 Interface | None |
-| [FIX-010](planning/PI-2026-09/stories/FIX-010.md) | Every analysis writes the score history again; screens name only the viewer's stocks | Open | 3 Storage; 10 Interface | None |
+| [FIX-010](planning/PI-2026-09/stories/FIX-010.md) | Every analysis writes the score history again; screens name only the viewer's stocks | Done | 3 Storage; 10 Interface | None |
 | [PR-002](planning/PI-2026-09/stories/PR-002.md) | A weekly results scorecard with a "sold too early" check | Open | 7 Marksheets; 10 Delivery | None |
 | [PR-003](planning/PI-2026-09/stories/PR-003.md) | Fresh overnight news: no repeats, published-date freshness, global cues | Open | 10 Delivery | None |
 | [PR-004](planning/PI-2026-09/stories/PR-004.md) | Enough researched ideas to fill 10+ positions | Open | 8 Discovery | None |

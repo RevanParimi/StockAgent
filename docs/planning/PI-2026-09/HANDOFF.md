@@ -1,4 +1,4 @@
-# Current handoff - 2026-10-15 (updated about 21:47 IST)
+# Current handoff - 2026-10-16 (updated about 12:25 IST)
 
 ## Also 11 Oct (about 13:00–15:30 IST): product results review and new tasks (separate conversation)
 
@@ -73,6 +73,122 @@ Docs only; nothing committed, pushed, deployed or configured.
   section 11.
 
 ## START HERE — resume checklist, in order
+
+**FIX-010 is ACCEPTED** by the fresh re-review of rework 1 (16 Oct, about 11:35–12:25 IST, session
+stockagent-main-88, a new conversation opened with "continue"; peers idle). Receipt:
+[review, "Re-review of rework 1"](evidence/FIX-010-review.md). STATE: `active_task: null`, FIX-010
+`done`, **`next_task: PR-002`**, meaning its implementation in a new conversation ("continue"). No
+production state was read and no notification was sent. **Committed at the owner's word**
+("ya commit and push", about 13:20 IST): `4686150` (code), then a docs commit with RR1's
+wording, KT section 12's FIX-010 row `Done` and guide 11-K's status line, then the KT bump;
+the push follows.
+- **In one example.** On a Monday at 09:00 IST, Home's "Market pulse · today" reads "Last
+  analysis 2 days ago" with the stale dot when Friday's 16:30 review was the last analysis of a
+  shared stock. After a Saturday on which discovery shelved a stock it had just analysed, it reads
+  "Last analysis 1 day ago". Before the rework it read "Updated recently", always.
+- **What was accepted:** the uncommitted working tree on `c31136b` (input
+  [FIX-010-manifest.json](evidence/FIX-010-manifest.json) `89787068…`, 19 files, 0 mismatches
+  before and after; rework diff `279ccf94…` rebuilt by the re-reviewer), together with the
+  committed `ec3f336`.
+- **One low finding, RR1 (docs).** The KT's section 10 and guide 11-K promise "2 days ago" on
+  every Monday. Saturday's discovery makes it "1 day ago" whenever it shelves a stock. The code
+  is right. The fix is a wording change in FIX-010's commit; the receipt gives the exact text.
+  Info items I9 and I10 need no change.
+- **Checked:**
+  - the review's story set, 170 passed;
+  - the first review's trace, 13 of 13;
+  - the re-reviewer's own 17 cases: Monday with and without a Saturday shelf dive, the label
+    boundaries, and a backfill apply → remove → apply with live rows;
+  - the old code fails 14 of 14 of those label cases, and the old backfill leaves 8 rows for 6
+    analyses;
+  - mutant X1 is caught;
+  - in a real browser, an expired session drops the list; the old frontend fails that case;
+  - `npm run test:frontend` 30/30, `check_kt_docs` `[]`, full suite 4597 passed, 12 skipped, 0 failed.
+- **For the owner, at your word:**
+  - Commit the rework. With it go RR1's wording, KT section 12's FIX-010 row `Open` → `Done`,
+    the KT header bump, the PDF rebuild and guide 11-K's status line.
+  - Push in a job-free window, never 16:25–17:15 IST.
+  - After the deploy, close and reopen the app once, then run guide 11-K.
+  - Unchanged: after today's 16:30 review, re-run
+    `analysis_data/pr001/rereview1/score_history_probe.py` (rows above 1,082, `last_run_at`
+    today). KT section 1's "Score history" row is updated with the next docs commit.
+- **Next:** PR-002, the weekly results scorecard, in a new conversation.
+
+**FIX-010 REWORK 1 is IMPLEMENTED** (16 Oct, about 09:20–11:00 IST, session stockagent-main-5f, a
+new conversation opened with "continue"; ten peers idle). Receipt:
+[implementation, "Rework 1"](evidence/FIX-010-implementation.md). STATE: `active_task: null`,
+FIX-010 `review_required`, **`next_task: FIX-010`**, meaning its fresh **re-review** in a new
+conversation, then PR-002. Nothing was committed, pushed or deployed; no production state was read
+and no notification was sent. The rework is uncommitted on `c31136b`.
+- **In one example.** On Monday at 09:00 IST, after Friday's 16:30 review, Home's "Market pulse ·
+  today" now reads "Last analysis 2 days ago" with the stale dot, not "Updated recently". Runs
+  2.5 hours old read "Updated 2h ago".
+- **What changed:**
+  - **M1:** `_freshness_label` reads a naive `run_at` as UTC; an unreadable time reads "Analysis
+    time unknown", stale; its broad `except` left the guard's baseline.
+  - **L1:** the gate test runs both exits with enforce.
+  - **L2:** sign-out (`saClearToken`, also on expiry and account deletion) drops the verdict
+    changes, and an answer that arrives after a sign-out is discarded.
+  - **L3:** guide 11-K rewritten (a managed stock outside the 16; the owner's held stock analysed
+    on request first; the owner's own check; time labels; an account switch).
+  - **I5:** the backfill copies nothing from a minute before a stock's first live row on.
+- **Checked:** 13 new Python tests and 2 browser tests, all failing on the reviewed code or the
+  matching variant; the reviewer's trace 13 of 13; the review's story set 170 passed;
+  `npm run test:frontend` 30/30; `check_kt_docs` `[]` (PDF rebuilt); full suite **4597 passed,
+  12 skipped, 0 failed**. Review input [FIX-010-manifest.json](evidence/FIX-010-manifest.json)
+  `89787068…` (19 files; the first input stays as `FIX-010-manifest-review1.json`); rework diff
+  `279ccf94…` (38,024 bytes, 11 paths, `git diff c31136b`). Tooling in the ignored
+  `analysis_data/fix010/rework1/` (`rw_swap_plugin.py`, `fe_variants.py`, `rw_digest.py`).
+- **Next, in order:** FIX-010's fresh re-review in a new conversation ("continue"); then PR-002.
+  Unchanged: after today's 16:30 review, the owner re-runs
+  `analysis_data/pr001/rereview1/score_history_probe.py` (rows above 1,082, `last_run_at` today);
+  KT section 1's "Score history" row is updated with the next docs commit.
+- **For the owner:** nothing to do now. After the re-review accepts it, the fix needs a commit
+  and deploy at your word; then close and reopen the app once.
+
+**FIX-010's fresh review: CHANGES REQUESTED** (16 Oct, about 08:30–09:05 IST, session
+stockagent-main-0d, a new conversation opened with "continue"; peers idle). Receipt:
+[review](evidence/FIX-010-review.md). STATE: `active_task: null`, FIX-010 `changes_requested`,
+**`next_task: FIX-010`**, meaning **rework 1** in a new conversation, then a fresh re-review in
+another, then PR-002. Production verification stays `pending_observation`: the code is live, and
+the probe after today's 16:30 review still checks the writer. Nothing was committed, pushed or
+deployed; no production state was read.
+- **In one example.** On Monday at 09:00 IST, the newest analyses are Friday's. Home's "Market
+  pulse · today" reads "Updated recently", with no stale dot. The truth is "Last analysis 2 days
+  ago", stale. The label never states an age: runs 5.5 hours old also read "Updated recently",
+  not "Updated 5h ago".
+- **Must fix, M1 (medium).** `_freshness_label` (`services/api/routes/ui_data.py:633-647`)
+  subtracts the writer's naive UTC `run_at` from an aware "now". The `TypeError` falls through to
+  a fixed "Updated recently", not stale. FIX-010 made this code reachable (it never met a real
+  row before). Fix: read a naive `run_at` as UTC. Test through the writer's rows for under 6 h,
+  6–24 h and over 24 h, and stale over 12 h. The reviewer's variant X2 shows the trace passing
+  with that one line.
+- **Recommended in the same rework:**
+  - L1: an async-exit test with enforce (mutant X1 survives the story file; the reviewer's
+    `analysis_data/fix010/review/test_rv_async_gate.py` catches it);
+  - L2: clear the learnings list on sign-out or before the re-fetch (a failed re-fetch keeps the
+    previous viewer's list);
+  - L3: guide 11-K (the 16:30 review analyses managed tickers only, so the owner's held stock
+    needs an analysis on request first).
+  - Optional: I5, the backfill's per-stock cut-off (reproduced; production's run is unaffected).
+- **What holds:** the writer at both exits after the gate; every entry point, through both
+  registries; every store reader classified; the privacy rule for the owner, two members and an
+  anonymous caller through the real server with Atlas on; the watchlist row; the dated empty
+  case; the backfill, including screens on backfilled rows only (today's production state).
+- **Checked:** input `900c8f27` at `445d7fa` (guide after its five commit-time status lines),
+  preserved as `FIX-010-manifest-review1.json`; code diff `77cac0bd` (`9db8ba7..ec3f336`); story
+  tests 134 passed; reviewer's trace 9 of 12 (M1 twice, I5); `npm run test:frontend` 28/28;
+  `check_kt_docs` `[]`; full suite 4584 passed, 12 skipped, 0 failed. Reviewer tooling in the ignored
+  `analysis_data/fix010/review/` (`rv_verify.py`, `test_rv_trace.py`, `test_rv_async_gate.py`,
+  `rv_swap_plugin.py` with `RV_SWAP=base|X1|X2`, `conftest.py` for the hermetic boundary).
+- **For the owner:** nothing new today. The after-16:30 probe stays as planned. The M1 fix needs
+  a deploy at your word after its re-review.
+
+**Backfill APPLIED** (owner, 16 Oct 08:23:59 IST, production, counts only). It inserted 1,082 rows (83 stocks, 26 Aug to 15 Oct) and skipped nothing. No live row existed yet, so there is no double copy (I5). The backup is `scores.db.bak-20261016T025359Z`, and `SCORE_BACKFILL=remove` undoes it. The probe at 08:25 IST confirmed it: `score_history` holds 1,082 rows (83 stocks, 26 Aug 11:03 to 15 Oct 11:16 UTC), exactly the run log. No live row exists yet. FIX-010 production verification is now `pending_observation`. **Next check:** after today's 16:30 review, re-run `analysis_data/pr001/rereview1/score_history_probe.py`; rows should be above 1,082, with `last_run_at` today. Then update KT section 1's "Score history" row with the next docs commit. Uncommitted.
+
+**PUSHED** `4c85eec..c31136b` at 21:48:34 IST on 15 Oct, at the owner's word, in the job-free window before the 23:00 jobs. Railway redeploys on push; `railway deployment list` (read-only) showed `c31136b` SUCCESS at about 21:54 IST, and the 13 Oct deployment of `4c85eec` (FIX-008) SUCCESS. The owner checks `/health`, closes and reopens the app once, then runs the checks in the block below. This push note is uncommitted; it goes with the next commit.
+
+**Backfill dry run** (owner, 16 Oct about 08:20 IST, production, counts only): it would insert 1,082 rows (83 stocks, 26 Aug to 15 Oct). Nothing was skipped, and no live row exists yet. **For FIX-010's review (I5):** the cut-off is per stock, at the first live row. An analysis logs its `run_summaries` row a few milliseconds before its score row, so a run made after the deploy but before the backfill would be copied once more, with the same verdict. That means no false change, but one extra row. Applying before the first post-deploy analysis avoids it.
 
 **FIX-010 was IMPLEMENTED and, with PR-001 and FIX-009, COMMITTED** (push at the owner's word follows; its note is added after) (15 Oct, about
 20:30–21:47 IST, in the same conversation as PR-001's re-review). The owner said: "ya go ahead on

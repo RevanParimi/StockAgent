@@ -509,7 +509,7 @@ error direction (KT [section 5](TECHNICAL_DESIGN.md#grading-defect-an-example-ev
 
 | Router | Path | Endpoints and surface |
 |---|---|---|
-| ui_data | `services/api/routes/ui_data.py` (3,973 lines) | 26: bootstrap, market summary, trending, watchlist, search, learnings, managed tickers, agent weights, logs, feedback, **and the chat engine** |
+| ui_data | `services/api/routes/ui_data.py` (3,975 lines) | 26: bootstrap, market summary, trending, watchlist, search, learnings, managed tickers, agent weights, logs, feedback, **and the chat engine** |
 | portfolio | `services/api/routes/portfolio_api.py` | 11: holdings, watchlist, CSV import, advice, digest, transactions, performance, run-advisor |
 | delivery | `services/api/routes/delivery_api.py` | 9: brief and weekly, manual runs, alerts, push subscriptions, the outbox view |
 | analytics | `services/api/routes/analytics.py` | 8: RL exports, accuracy, drift, misses, conviction, sector comparison, an OData feed |

@@ -1,18 +1,14 @@
 {
   "story": "FIX-010",
-  "phase": "implementation (2026-10-15), in the same conversation as PR-001's re-review, at the owner's word",
-  "baseline": "4c85eec plus the accepted, uncommitted PR-001 (manifest 1c7ea945) and FIX-009 (11c2c620) work; FIX-010 layers on PR-001's ui_data.py, portfolio.jsx, data.jsx, index.html, its two test files and five docs",
+  "phase": "rework 1 (2026-10-16), a new conversation opened with 'continue', after the first fresh review's changes_requested",
+  "baseline": "c31136b (HEAD): FIX-010's reviewed code ec3f336, unchanged at HEAD; the docs as committed in 445d7fa plus the KT bump c31136b. Review input of the first review: FIX-010-manifest-review1.json (900c8f27)",
   "excluded": [
     "docs/planning/PI-2026-09/STATE.json",
     "docs/planning/PI-2026-09/HANDOFF.md",
-    "docs/planning/PI-2026-09/README.md",
-    "docs/planning/PI-2026-09/stories/FIX-010.md",
-    "docs/planning/PI-2026-09/stories/SA-031.md",
     "docs/planning/PI-2026-09/evidence/*",
-    "docs/README.md (the owner's probe line)",
-    "PR-001's and FIX-009's own files"
+    "docs/README.md (the owner's probe line, not FIX-010's)"
   ],
-  "note": "Diff base: analysis_data/fix010/base (PR-001's accepted bytes or HEAD, SHA-256 checked) and HEAD for analytics.py; new files against /dev/null; analysis_data/fix010/manifest_and_digest.py.",
+  "note": "Cumulative: the first review's 18 paths plus scripts/ci/broad_except_baseline.txt. Rework diff: git diff HEAD over the rework's payload paths, PDF excluded (analysis_data/fix010/rework1/rw_digest.py, writes rw_code.diff).",
   "hash_convention": "git blob bytes after .gitattributes normalization (CRLF->LF for text, binary unchanged); verify with scripts/docs/kt_manifest.py verify",
   "files": [
     {
@@ -22,28 +18,33 @@
     },
     {
       "path": "docs/PRODUCT_MAP.md",
-      "git_blob": "80dff5df0d648c26a2eeaa0e0e1df0fadc3acb67",
-      "sha256": "0679d296e90ba1bba0e69716c8adb2dc1e440c34b42ad60d8ec3821b227e214c"
+      "git_blob": "268caad59a13f8eb8259abd25351bd48de4878b9",
+      "sha256": "ad1b5c7cd312effcdadf7172aff3cc95b54aa113e9516f8912884840eab74eb2"
     },
     {
       "path": "docs/StockAgent-Three-Loops.pdf",
-      "git_blob": "2fc590e5f344a820b2be30e0025b88e1e7ff4bc5",
-      "sha256": "353fad4429699c1338b940987bfdd2d092d429ceb8dffdc26233a8bc62428798"
+      "git_blob": "522d762efa8457d5810837e52fd9c98512b3b24d",
+      "sha256": "48ddf1337f6487e4b11d3c2604a31b14308c84bb0338c235d86310837d929c73"
     },
     {
       "path": "docs/TEAM_TESTING_GUIDE.md",
-      "git_blob": "35d5d9fed075800180a1563332da9acf27927b7b",
-      "sha256": "31bb7a99bceddd93baaf9d9c4a9a00de26c9e365c2683a25c6fa0a2796fca212"
+      "git_blob": "e866403256c2519b98e8e0df463b688d1e75d728",
+      "sha256": "171da0684945e4d21640481ec0f078f6b08fb55da3b031b42d33043574f9d04f"
     },
     {
       "path": "docs/TECHNICAL_DESIGN.md",
-      "git_blob": "755e739eb3cd1ab0f190287ed88023ab49616e57",
-      "sha256": "0ced16a2b3f013c35ed4f2823e46540f72f2c295b087438afde1c0254332a10d"
+      "git_blob": "9ea8c65bbd3b2e810b83688edc39586f97f262fe",
+      "sha256": "b67626c190b313ce0acdf1459bb6d8c3874ffe9f11e878492b3ce0c8e2dcc760"
     },
     {
       "path": "scripts/backfill_score_history.py",
-      "git_blob": "b9a65d08ad5577cd55f1c1bd964c5e7e986ce7bb",
-      "sha256": "1daa96dd62642fa2a816e29149beef491844e4810e8847ac3e2193a04d8c44d5"
+      "git_blob": "d1c53aac0fff1c84bbd43ae6fc12bac988939e0c",
+      "sha256": "4d662644a9db42320d25943740933c3df4dbf981eb60046823c2af522da451b6"
+    },
+    {
+      "path": "scripts/ci/broad_except_baseline.txt",
+      "git_blob": "b5483a2e109c29a2f24764504ce6bedbf63875dc",
+      "sha256": "428fae11acd79854813c0e7e9d7aca6ceb3a6744c87b67d24c58ffba162c574e"
     },
     {
       "path": "services/api/routes/analytics.py",
@@ -52,8 +53,8 @@
     },
     {
       "path": "services/api/routes/ui_data.py",
-      "git_blob": "9c229355255c501e51102938420154f7028929e8",
-      "sha256": "f4f093a4a3a595c9bf4fe8aec591d616937e8f288ad655a28b4af0b5aa60520b"
+      "git_blob": "ffa0b60901338861a76d45d6ceca01b921e02ded",
+      "sha256": "b2c6bdb5c4b6f07659924af49d4f443f638f6b810f062c9bec02b25d2a5e80dd"
     },
     {
       "path": "src/backend/shared/pipeline/base_orchestrator.py",
@@ -62,18 +63,18 @@
     },
     {
       "path": "src/frontend/prototypes/UI_SPEC.md",
-      "git_blob": "cf08e6dc4b50e33249fe3ea0772d90830cf91afd",
-      "sha256": "1bc99d21274e3128eb1c3436580557f72dbf90aa2824caf59c6ac4aa3ea59a93"
+      "git_blob": "be908e026eefe2f121fa1750bb42b93d4d4d28f7",
+      "sha256": "c3f6d7f6f5a28ec99acff3c8de8e03e156027115bb0e1e5bbfd2e8de1be5c3a5"
     },
     {
       "path": "src/frontend/prototypes/data.jsx",
-      "git_blob": "025e498e6562dd848d9d3d80eabb65398d3b22fa",
-      "sha256": "98d030c6f53666f911c41992cd62a3043e081fe30b668d558baf2a36412d9969"
+      "git_blob": "4fee92d8c2b08b6d92d681fe19b2fef6e7d234f2",
+      "sha256": "70232517307cff22ce9aa6bc1566778c4bf8cda564998f0614e7bdf0c20bb9a6"
     },
     {
       "path": "src/frontend/prototypes/index.html",
-      "git_blob": "781e1d3845ee97cf65d2aec39d31015f0720a7e9",
-      "sha256": "cee8e18a12f321a2142b4a1fa3ff86df8ad6af7ceb3e3cd7e5a619cc11a21f41"
+      "git_blob": "63a18f252242d182d07c55f445743839a9807d0d",
+      "sha256": "5c4d3b5b863a9a008a052de18dbb0bbaac3423dda6b73e570cb57b3267d971e3"
     },
     {
       "path": "src/frontend/prototypes/portfolio.jsx",
@@ -82,8 +83,8 @@
     },
     {
       "path": "tests/frontend/no_invented_figures.test.mjs",
-      "git_blob": "d3c77aa59a822f9c0bfae1978ff3f9b918073902",
-      "sha256": "853afe267e2f3a724dd58005de7b1584ef0b7fb64baa224e39e568c49783d0f5"
+      "git_blob": "0431282061a68d1270883386149a89241fbad0b8",
+      "sha256": "0a312dfc1615783fb39c2d16bd9c9291b42b5572d70e8cb44d748c667ee97512"
     },
     {
       "path": "tests/unit/api/test_chat_brief_user_scope_fix005.py",
@@ -97,8 +98,8 @@
     },
     {
       "path": "tests/unit/test_score_history_fix010.py",
-      "git_blob": "3e333c73e521dd5840a2996f2c6544e3861938c9",
-      "sha256": "24e6b917b822a3f441d5e884958501a1be24108fe794cdbe805916873d3819c6"
+      "git_blob": "e6a55f785a00cce49b775970556063cf59b01a20",
+      "sha256": "76d5091690883b5ce745c98c787babe7ae9c47701d38f652246951dd40dc1981"
     },
     {
       "path": "tests/unit/test_ui_no_invented_figures_pr001.py",

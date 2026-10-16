@@ -79,9 +79,9 @@ stockagent-main-88, a new conversation opened with "continue"; peers idle). Rece
 [review, "Re-review of rework 1"](evidence/FIX-010-review.md). STATE: `active_task: null`, FIX-010
 `done`, **`next_task: PR-002`**, meaning its implementation in a new conversation ("continue"). No
 production state was read and no notification was sent. **Committed at the owner's word**
-("ya commit and push", about 13:20 IST): `4686150` (code), then a docs commit with RR1's
-wording, KT section 12's FIX-010 row `Done` and guide 11-K's status line, then the KT bump;
-the push follows.
+("ya commit and push", about 13:20 IST): `4686150` (code), `3df1f6e` (docs: RR1's wording,
+KT section 12's FIX-010 row `Done`, guide 11-K's status line, receipts), then the KT bump to
+`3df1f6e` (edition 2026-10-16; section 1 states the owner's backfill); the push follows.
 - **In one example.** On a Monday at 09:00 IST, Home's "Market pulse · today" reads "Last
   analysis 2 days ago" with the stale dot when Friday's 16:30 review was the last analysis of a
   shared stock. After a Saturday on which discovery shelved a stock it had just analysed, it reads

@@ -1,8 +1,8 @@
 # StockAgent — Technical Design and Knowledge Transfer
 
-**Edition:** 2026-10-15 · **Audience:** engineers and teammates learning the product
+**Edition:** 2026-10-16 · **Audience:** engineers and teammates learning the product
 
-**Code inspected:** `445d7fa3633b2656fb19a17a2bf91503dae8a823`
+**Code inspected:** `3df1f6e4b9cd82f0a63ef02ded375acff4693624`
 
 **PDF:** [StockAgent-Three-Loops.pdf](StockAgent-Three-Loops.pdf), generated from this Markdown.
 
@@ -35,13 +35,12 @@ triggered no production job, backfill or notification.
 
 ### Production state at this edition
 
-Production runs the inspected code once the evening deployment of 15 October
-2026 is confirmed by the owner's read-only check of the deployment list and
-`/health`. Until then it runs the code of 13 October (`4c85eec`), whose own
-deployment awaits the same check. They differ in index-change notices about
-each account's own stocks, real figures and owner-only operator tools on the
-member screens, and a score history that every analysis writes, listed only
-to the viewers who may see each stock (section 10). The table gives the configuration that differs from the
+Production runs the inspected code once the deployment of 16 October 2026 is
+confirmed by the owner's read-only check of the deployment list and `/health`.
+Until then it runs the code of 15 October (`c31136b`; the deployment list showed
+it live that evening). They differ in Home's analysis time labels, which now
+state the age of the newest shared analysis, the verdict changes that a browser
+drops at sign-out, and the backfill's one-minute cut-off (sections 3 and 10). The table gives the configuration that differs from the
 repository and the state of each operational control.
 
 | Area | State in production | Evidence |
@@ -54,7 +53,7 @@ repository and the state of each operational control.
 | Sector benchmarks | Each sector's technicals are measured against its own index. Yahoo returns no data for `^CNXAUTO` or `^CNXENERGY`, so automobile and renewable-energy correlations read "unavailable". | Verified 2026-10-10 from the 7–9 Oct review logs |
 | Listing-day closes | The nightly audit grades listing-day IPO rows: 4 graded and none skipped on 2026-10-01. | Verified 2026-10-01 |
 | Chat brief scope | Chat's brief tool reads only the caller's portfolio. The owner gets the owner's brief; a member account with no holdings is told there is no brief yet and sees none of the owner's. | Verified 2026-10-11, the owner's check with a member account |
-| Score history | Holds no row: nothing wrote it from 21 Apr 2026 (`ce1eeb5`) until this revision, while 1,082 analyses with a verdict were logged in `run_summaries` (83 stocks, 26 Aug to 15 Oct; 173 verdict changes in the last 30 days). So Home showed no analysed score and Portfolio no verdict change. Rows accrue from the first analysis after this revision is deployed; the backfill from the run log runs only at the owner's word. | Read-only probe, 2026-10-15 ([PR-001 review](planning/PI-2026-09/evidence/PR-001-review.md)) |
+| Score history | Nothing wrote it from 21 Apr 2026 (`ce1eeb5`) to 15 Oct, while 1,082 analyses with a verdict were logged in `run_summaries`. On 2026-10-16 at 08:24 IST the owner ran the backfill: 1,082 rows, 83 stocks, runs 26 Aug to 15 Oct, each marked as copied and removable, with a backup next to `scores.db`. No live row existed then. Rows written by live analyses await the probe after the 16 Oct 16:30 review. | Owner's backfill run, 2026-10-16 (counts only); read-only probe, 2026-10-15 ([PR-001 review](planning/PI-2026-09/evidence/PR-001-review.md)) |
 | Delivery | Outbound SMTP has worked since a plan upgrade on 2026-09-21. The outbox records transport acceptance; user receipt is not observable. Whether `RESEND_API_KEY` is set was not inspected. | Section 10 |
 | Backups | The nightly archive and restore drill run. No off-site target is configured, because the owner deferred it to the end of the PI, so the watchdog sends a weekly reminder. | Watchdog mail, 2026-10-07 |
 | Watchdog milestones | The milestones that lapsed in August and September were judged and retired on 2026-10-06. The next morning's run sent no LAPSED notice. | Watchdog mail, 2026-10-07 |

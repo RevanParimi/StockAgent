@@ -539,6 +539,79 @@ test('signing in fetches the verdict changes again as the new viewer', async () 
   } finally { await context.close(); }
 });
 
+// The verdict changes name the viewer's own holdings (FIX-010), so they never
+// outlive the viewer on a shared tab: not after sign-out, not when the next
+// account's own fetch fails, not when the previous viewer's answer comes late.
+const SECOND = { user_id: 'u-second', email: 'second@example.test', display_name: 'Second Member', role: 'member' };
+
+async function signOutThenIn(page, user) {
+  await page.getByRole('button', { name: 'Sign out' }).first().click();
+  await page.getByPlaceholder('you@example.com').waitFor({ timeout: 30000 });
+  const atLogin = await page.evaluate(() => window.PORTFOLIO_LEARNINGS);
+  await page.getByPlaceholder('you@example.com').fill(user.email);
+  await page.locator('input[type=password]').first().fill('pw-for-the-test');
+  await page.locator('form button[type=submit]').first().click();
+  await page.locator('h1').first().waitFor({ timeout: 30000 });
+  return atLogin;
+}
+
+test('signing out drops the verdict changes; a failed fetch for the next account shows none', async () => {
+  const own = vChange('QMYOWN', 'BUY', 'SELL', '2026-10-13', 'turned-bearish');
+  const asked = [];
+  const { context, page, errors } = await openApp(browser, { user: MEMBER, api: liveApi({
+    '/auth/logout': json({ ok: true }),
+    '/auth/login': json({ token: 'second-session', user: SECOND }),
+    '/portfolio': json({ holdings: [] }),
+    '/ui/learnings': (_u, req) => {
+      const first = (req.headers()['authorization'] || '') === 'Bearer test-session';
+      asked.push(first ? 'first viewer' : 'next viewer');
+      return first ? json({ items: [own], since: '2026-09-16' }) : json({ detail: 'unavailable' }, 503);
+    } }) });
+  try {
+    await settled(page);
+    await page.waitForFunction(() => window.__learningsLive === true);
+    await goTo(page, 'portfolio');
+    assert.match(await page.locator('.sa-learnings').innerText(), /QMYOWN: BUY → SELL/);
+    const atLogin = await signOutThenIn(page, SECOND);
+    assert.equal(atLogin, null, 'the list is dropped at sign-out');
+    for (let i = 0; i < 40 && asked.length < 2; i++) await page.waitForTimeout(100);
+    await page.waitForTimeout(400);
+    await goTo(page, 'portfolio');
+    assert.ok(!(await visibleText(page)).includes('QMYOWN'), 'the previous viewer\'s holding is not shown');
+    assert.equal(await page.locator('.sa-learnings').count(), 0);
+    assert.deepEqual(asked, ['first viewer', 'next viewer']);
+    assert.deepEqual(errors, []);
+  } finally { await context.close(); }
+});
+
+test('an answer for the previous viewer that arrives after the next sign-in is discarded', async () => {
+  const own = vChange('QMYOWN', 'BUY', 'SELL', '2026-10-13', 'turned-bearish');
+  let lateAnswerSent = false;
+  const { context, page, errors } = await openApp(browser, { user: MEMBER, api: liveApi({
+    '/auth/logout': json({ ok: true }),
+    '/auth/login': json({ token: 'second-session', user: SECOND }),
+    '/portfolio': json({ holdings: [] }),
+    '/ui/learnings': async (_u, req) => {
+      if ((req.headers()['authorization'] || '') !== 'Bearer test-session') {
+        return json({ detail: 'unavailable' }, 503);
+      }
+      await new Promise(r => setTimeout(r, 4000));   // still in flight at sign-out and sign-in
+      lateAnswerSent = true;
+      return json({ items: [own], since: '2026-09-16' });
+    } }) });
+  try {
+    await settled(page);
+    await signOutThenIn(page, SECOND);
+    for (let i = 0; i < 80 && !lateAnswerSent; i++) await page.waitForTimeout(100);
+    assert.ok(lateAnswerSent, 'the slow answer was delivered during the test');
+    await page.waitForTimeout(800);
+    await goTo(page, 'portfolio');
+    assert.equal(await page.evaluate(() => window.PORTFOLIO_LEARNINGS), null);
+    assert.ok(!(await visibleText(page)).includes('QMYOWN'), 'the previous viewer\'s holding is not shown');
+    assert.deepEqual(errors, []);
+  } finally { await context.close(); }
+});
+
 test('demo mode is explicit: ?demo=1 shows the samples under a banner and asks no market API', async () => {
   const { context, page, calls, errors } = await openApp(browser, { user: MEMBER, query: '?demo=1' });
   try {

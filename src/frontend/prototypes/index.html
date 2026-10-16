@@ -134,6 +134,9 @@
     window.saClearToken = function () {
       localStorage.removeItem('sa_auth_token');
       sessionStorage.removeItem('sa_auth_token');
+      /* The verdict changes name the signed-out viewer's own stocks (FIX-010):
+         drop them, so the next account never sees them. */
+      if (typeof window.saForgetLearnings === 'function') window.saForgetLearnings();
     };
     window.fetch = async function (input, init) {
       const url = typeof input === 'string' ? input : ((input && input.url) || '');

@@ -394,19 +394,35 @@ if (window.saDemoMode && window.saDemoFixtures) {
 // fast). They depend on the viewer: the viewer's own stocks join the shared ones
 // (FIX-010). So a sign-in after this page loaded fetches them again
 // (window.saSetToken in index.html calls this).
+//
+// The list names the viewer's own holdings, so it never outlives its viewer:
+// every change of account passes through sign-out (window.saClearToken: the
+// button, an expired session, a deleted account), which drops it, so the next
+// account's failed fetch shows no list; and an answer that arrives after a
+// sign-out is discarded.
+let saLearningsViewer = 0;
+function saForgetLearnings() {
+  if (window.saDemoMode) return;
+  saLearningsViewer += 1;
+  window.PORTFOLIO_LEARNINGS = null;
+  window.__learningsLive = false;
+  if (typeof window.__onApiReady === 'function') window.__onApiReady();
+}
 async function saLoadLearnings() {
   if (window.saDemoMode) return;
+  const viewer = saLearningsViewer;
   try {
     const lr = await fetch('/ui/learnings');
-    if (lr.ok) {
-      const learnings = await lr.json();
-      const live = (learnings.items?.length || 0) > 0;
-      window.PORTFOLIO_LEARNINGS = live ? learnings : null;
-      window.__learningsLive = live;
-      if (typeof window.__onApiReady === 'function') window.__onApiReady();
-    }
+    if (!lr.ok) return;
+    const learnings = await lr.json();
+    if (viewer !== saLearningsViewer) return;   // signed out meanwhile
+    const live = (learnings.items?.length || 0) > 0;
+    window.PORTFOLIO_LEARNINGS = live ? learnings : null;
+    window.__learningsLive = live;
+    if (typeof window.__onApiReady === 'function') window.__onApiReady();
   } catch {
     // no section: there is nothing real to show
   }
 }
 window.saLoadLearnings = saLoadLearnings;
+window.saForgetLearnings = saForgetLearnings;

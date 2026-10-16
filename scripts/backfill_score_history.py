@@ -20,8 +20,13 @@ exactly these rows.
 
 Rules:
 - a run with no verdict or no score is skipped;
-- nothing at or after a stock's first live (non-backfilled) row is copied, so
-  a run is never recorded twice;
+- nothing at or after a stock's first live (non-backfilled) row, less
+  SAME_RUN_SECONDS, is copied, so a run is never recorded twice: an analysis
+  logs its run a few milliseconds before it writes its live row, so the log's
+  copy of a stock's first live analysis sits just before that row (this
+  matters once live rows exist, e.g. an `apply` after a `remove`). Another
+  analysis of the same stock logged in that minute is not copied either: one
+  past row fewer, never a false change;
 - a run already present (same stock and run_at) is skipped: a second apply
   adds nothing;
 - a stock keeps at most SCORE_HISTORY_MAX_ROWS rows (the newest), as the
@@ -39,9 +44,10 @@ import json
 import os
 import sqlite3
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 MARKER = "run_summaries"
+SAME_RUN_SECONDS = 60
 
 
 def _paths() -> tuple[str, str, int]:
@@ -68,6 +74,14 @@ def _naive_utc(ts: str) -> str | None:
     if dt.tzinfo is not None:
         dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
     return dt.isoformat()
+
+
+def _before(run_at: str, seconds: int) -> str:
+    """A stored run_at less `seconds`, in the same format; unchanged if unreadable."""
+    at = _naive_utc(run_at)
+    if at is None:
+        return run_at
+    return (datetime.fromisoformat(at) - timedelta(seconds=seconds)).isoformat()
 
 
 def _agent_scores(raw) -> str:
@@ -104,6 +118,7 @@ def plan(score_db: str, tele_db: str, max_rows: int) -> tuple[list[tuple], dict]
         if not _is_backfilled(report_json) and (t not in live_first or run_at < live_first[t]):
             live_first[t] = run_at
     sc.close()
+    cut_off = {t: _before(at, SAME_RUN_SECONDS) for t, at in live_first.items()}
 
     tc = sqlite3.connect(f"file:{os.path.abspath(tele_db)}?mode=ro", uri=True)
     runs = tc.execute("SELECT run_id, ts, ticker, company_name, final_score, verdict, agent_scores "
@@ -122,7 +137,7 @@ def plan(score_db: str, tele_db: str, max_rows: int) -> tuple[list[tuple], dict]
         if run_at is None:
             counts["skipped_bad_time"] += 1
             continue
-        if t in live_first and run_at >= live_first[t]:
+        if t in cut_off and run_at >= cut_off[t]:
             counts["skipped_at_or_after_live_rows"] += 1
             continue
         if (t, run_at) in existing:

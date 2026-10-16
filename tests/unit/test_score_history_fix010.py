@@ -6,9 +6,10 @@ tests pin the repair and what restoring the write would otherwise expose:
 
 1. The write: one real orchestrator.analyse() (real aggregator and decision
    gate; LLM, analyst and providers stubbed, as in the SA-003 tests) leaves
-   exactly one row with the verdict the run returns. A failed write is a
-   warning, never a failed analysis. Every sector orchestrator inherits that
-   exit, and it is the only writer.
+   exactly one row with the verdict the run returns, at both exits (sync and
+   async) after the gate. A failed write is a warning, never a failed
+   analysis. Every sector orchestrator inherits that exit, and it is the only
+   writer.
 2. Who sees which stocks: the owner holds QOWNHOLD, the member holds QMEMHOLD,
    QASKED was analysed only because someone asked, QMANAGED is a managed
    ticker and QSHELF a shelf idea. Every one changed verdict. The expected
@@ -18,11 +19,14 @@ tests pin the repair and what restoring the write would otherwise expose:
    Checked on /ui/learnings, /ui/search, the chat's context and history tool,
    /ui/bootstrap, /ui/market/summary and /analytics/sector-comparison.
 3. The writer's agent scores ({"raw", "weight", "weighted"} per agent) no
-   longer break Home's "This month" votes (they made /ui/bootstrap fail).
+   longer break Home's "This month" votes (they made /ui/bootstrap fail), and
+   Home's freshness labels state the age of the writer's rows (its naive UTC
+   run_at once fell through to a fixed "Updated recently").
 4. A watched stock outside the built-in universe shows its analysis.
 5. The empty case is dated (`since`).
-6. The backfill script: dry run, apply, idempotence, the live-row cut-off,
-   the cap, the marker, remove.
+6. The backfill script: dry run, apply, idempotence, the live-row cut-off
+   (also mid-day, where the live analysis's own log sits 4 ms before its
+   row), the cap, the marker, remove.
 
 The score rows are written by the real writer (ScoreStore.save). Nothing
 leaves the process (tests/hermetic.py; yfinance replaced by a module that
@@ -37,7 +41,7 @@ import logging
 import sqlite3
 import sys
 import types
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -143,14 +147,16 @@ def test_the_async_exit_writes_its_row_too(market, fresh_db, monkeypatch, tmp_pa
     assert no_network == []
 
 
+@pytest.mark.parametrize("run_async", [False, True], ids=["sync-exit", "async-exit"])
 def test_the_row_holds_the_verdict_after_the_decision_gate(
-        market, fresh_db, monkeypatch, tmp_path, gate_mode, no_network):
+        market, fresh_db, monkeypatch, tmp_path, gate_mode, no_network, run_async):
     _price_source_404(market)
     gate_mode("enforce")
-    report = _analyse(monkeypatch, tmp_path)
+    report = _analyse(monkeypatch, tmp_path, run_async=run_async)
     assert report.verdict == "INSUFFICIENT DATA"
     assert [r["verdict"] for r in _rows("TATAMOTORS")] == ["INSUFFICIENT DATA"], \
         "the withheld STRONG BUY is never recorded as the run's verdict"
+    assert no_network == []
 
 
 def test_a_failed_write_is_a_warning_and_never_fails_the_analysis(
@@ -411,6 +417,45 @@ def test_market_wide_screens_name_only_shared_stocks_and_survive_the_writer_s_ag
     assert _named(json.dumps(comparison)) <= shared
 
 
+# Home's "today" and "This month" panes state the age of the newest shared
+# analysis. Rows come from the writer (naive UTC run_at). The expected labels
+# are the rule worked by hand: under 24 h "Updated Nh ago", then "Last analysis
+# N day(s) ago"; stale over 12 h. QSHELF ran 30 h before QMANAGED; the member's
+# own QMEMHOLD, half an hour ago, must not make the market panes look fresh.
+@pytest.mark.parametrize("hours, label, stale", [
+    (2.5, "Updated 2h ago", False),
+    (8.5, "Updated 8h ago", False),
+    (13.5, "Updated 13h ago", True),
+    (30, "Last analysis 1 day ago", True),
+    (64, "Last analysis 2 days ago", True),   # Monday 09:00 IST after Friday's 16:30 review
+])
+def test_home_states_the_age_of_the_newest_shared_analysis(world, monkeypatch, hours, label, stale):
+    from services.data.stores import score_store
+    with sqlite3.connect(world.store._db_path) as c:
+        c.execute("DELETE FROM score_history")
+    real_now = datetime.now(timezone.utc).replace(tzinfo=None)
+    monkeypatch.setattr(score_store, "datetime", _FakeDT)
+    for sym, ago in ((MANAGED, hours), (SHELF, hours + 30), (MEMBER_OWN, 0.5)):
+        _Clock.now = real_now - timedelta(hours=ago)
+        world.store.save(_report(sym, "BUY", 0.6, 0.6))
+    monkeypatch.setattr(score_store, "datetime", datetime)
+    with sqlite3.connect(world.store._db_path) as c:
+        newest_shared = c.execute("SELECT run_at FROM score_history WHERE ticker = ?", (MANAGED,)).fetchone()[0]
+    boot = world.client.get("/ui/bootstrap", headers=world.headers["member"]).json()
+    for pane in ("MARKET_TODAY", "MARKET_MONTH"):
+        assert boot[pane]["freshness"] == {"label": label, "runAt": newest_shared, "isStale": stale}, pane
+
+
+def test_the_label_reads_a_time_with_or_without_an_offset_and_never_invents_an_age():
+    from services.api.routes.ui_data import _freshness_label
+    t = datetime.now(timezone.utc) - timedelta(hours=3, minutes=30)
+    for run_at in (t.replace(tzinfo=None).isoformat(), t.isoformat(), t.isoformat().replace("+00:00", "Z")):
+        assert _freshness_label([{"run_at": run_at}])["label"] == "Updated 3h ago", run_at
+    assert _freshness_label([{"run_at": "not a time"}]) == {
+        "label": "Analysis time unknown", "runAt": "not a time", "isStale": True}
+    assert _freshness_label([]) == {"label": "No data yet", "runAt": None, "isStale": True}
+
+
 def test_a_watched_stock_outside_the_built_in_universe_shows_its_analysis(world):
     rows = {t["sym"]: t for t in world.client.get("/ui/watchlist", headers=world.headers["member"]).json()["tickers"]}
     assert rows["QMEMWATCH"]["hasData"] is True
@@ -549,3 +594,26 @@ def test_backfill_dry_run_apply_idempotence_cut_off_cap_and_remove(backfill_dbs)
     removed = mod.run("remove")
     assert removed["removed"] == 93
     assert _history(score_db) == before, "remove deletes exactly the backfilled rows"
+
+
+def test_a_mid_day_backfill_records_each_analysis_once(backfill_dbs, monkeypatch):
+    # Production order: an analysis logs its run, then the writer saves its live
+    # row 4 ms later. Then the backfill runs (an apply after a remove, say).
+    from services.data.stores import score_store
+    from services.data.stores.score_store import ScoreStore
+    score_db, tele_db = backfill_dbs
+    mod = _backfill_module()
+    _log_run(tele_db, 1, "2026-10-14T11:00:00+00:00", "QD", "BUY", 0.7)       # two days before
+    _log_run(tele_db, 2, "2026-10-16T10:58:30+00:00", "QD", "NEUTRAL", 0.5)   # 90 s before: another analysis
+    _log_run(tele_db, 3, "2026-10-16T11:00:00+00:00", "QD", "SELL", 0.3)      # the live analysis's own log
+    monkeypatch.setattr(score_store, "datetime", _FakeDT)
+    _Clock.now = datetime(2026, 10, 16, 11, 0, 0, 4000)
+    ScoreStore(db_path=str(score_db)).save(_report("QD", "SELL", 0.3, 0.3))
+    monkeypatch.setattr(score_store, "datetime", datetime)
+
+    dry = mod.run("dry-run")
+    assert (dry["would_insert"], dry["skipped_at_or_after_live_rows"]) == (2, 1)
+    mod.run("apply")
+    assert [(r[1], r[2]) for r in _history(score_db)] == [
+        ("2026-10-14T11:00:00", "BUY"), ("2026-10-16T10:58:30", "NEUTRAL"), ("2026-10-16T11:00:00.004000", "SELL")], \
+        "three analyses, three rows: the live analysis is not copied again from its own log"

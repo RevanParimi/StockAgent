@@ -100,7 +100,6 @@ services/api/routes/ui_data.py | _ctx_rl_learning | #0
 services/api/routes/ui_data.py | _ctx_rl_learning | #1
 services/api/routes/ui_data.py | _ctx_ticker_detail | #0
 services/api/routes/ui_data.py | _fetch_yf_price._try | #0
-services/api/routes/ui_data.py | _freshness_label | #0
 services/api/routes/ui_data.py | _get_macro_context_for_intent | #0
 services/api/routes/ui_data.py | _get_valid_sectors | #0
 services/api/routes/ui_data.py | _known_nse_tickers | #0

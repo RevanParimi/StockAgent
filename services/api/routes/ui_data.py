@@ -624,27 +624,29 @@ def _only_visible(rows: list[dict], visible: set[str]) -> list[dict]:
 
 
 def _freshness_label(rows: list[dict]) -> dict:
-    """Return {label, runAt, isStale} based on the most recent run_at in the row set."""
+    """Return {label, runAt, isStale} based on the most recent run_at in the row set.
+
+    The score history stores run_at as naive UTC (ScoreStore.save and the
+    backfill), so a time without an offset is read as UTC. A time that cannot
+    be read states no age and counts as stale."""
     if not rows:
         return {"label": "No data yet", "runAt": None, "isStale": True}
     latest_run = max(r["run_at"] for r in rows)
     try:
-        from datetime import datetime, timezone
-        run_dt = datetime.fromisoformat(latest_run.replace("Z", "+00:00"))
-        now = datetime.now(timezone.utc)
-        age_hours = (now - run_dt).total_seconds() / 3600
-        if age_hours < 1:
-            label = "Live"
-        elif age_hours < 6:
-            label = f"Updated {int(age_hours)}h ago"
-        elif age_hours < 24:
-            label = f"Updated {int(age_hours)}h ago"
-        else:
-            days = int(age_hours / 24)
-            label = f"Last analysis {days} day{'s' if days > 1 else ''} ago"
-        return {"label": label, "runAt": latest_run, "isStale": age_hours > 12}
-    except Exception:
-        return {"label": "Updated recently", "runAt": latest_run, "isStale": False}
+        run_dt = datetime.fromisoformat(str(latest_run).replace("Z", "+00:00"))
+    except ValueError:
+        return {"label": "Analysis time unknown", "runAt": latest_run, "isStale": True}
+    if run_dt.tzinfo is None:
+        run_dt = run_dt.replace(tzinfo=timezone.utc)
+    age_hours = (datetime.now(timezone.utc) - run_dt).total_seconds() / 3600
+    if age_hours < 1:
+        label = "Live"
+    elif age_hours < 24:
+        label = f"Updated {int(age_hours)}h ago"
+    else:
+        days = int(age_hours / 24)
+        label = f"Last analysis {days} day{'s' if days > 1 else ''} ago"
+    return {"label": label, "runAt": latest_run, "isStale": age_hours > 12}
 
 
 def _build_drivers_from_db(rows: list[dict]) -> list[dict]:

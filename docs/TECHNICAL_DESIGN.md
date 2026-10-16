@@ -1078,7 +1078,7 @@ week whose sessions are not over is never stored.
 | Closed trades | Round trips from `transactions.jsonl`. A position counts once, when its last share is sold, with every sale of it (TRIMs included): realized P/L over the cost of the shares sold. Count, win rate, average win, average loss and expectancy (the mean result per trade), this week and since the start, before costs. A sale with no recorded cost is counted as unknown, never guessed. |
 | Sold too early | Every advisor sale (EXIT, SWITCH or TRIM), held or not, joined to the auditor's grade by its advice ref: the share of sold stocks that beat the Nifty 10 and 30 sessions later. A sale whose horizon has not ended is pending; one whose horizon ended with no grade is counted as missing. |
 | Why we sold | Sales per trigger, in the advisor's plain words, over the last 4 weeks. Your own sales appear as "sold by you". |
-| You vs the Nifty | Money-weighted. Each rise in `capital_in` between value points is a deposit, and the same deposit buys Nifty units at that day's close. Both sides use the same flows, so idle cash counts against the portfolio. This week, the last 4 weeks and since the start. |
+| You vs the Nifty | Money-weighted. Each rise in `capital_in` between value points is a deposit, and the same deposit buys Nifty units at that day's close. Both sides use the same flows, so idle cash counts against the portfolio. This week, the last 4 weeks and since the start. A holding added with an earlier buy date or a typed price, or imported from a CSV, enters `capital_in` at its cost, so its gain before it arrived counts as the portfolio's in that period. **Planned:** it is valued on the day it arrives (SA-051). |
 | Breadth | Holdings (for the latest week) and the invested share at the week's last valuation. |
 | Holding period | Median exchange sessions held by the positions closed this week. |
 
@@ -1969,7 +1969,7 @@ section 10) are part of the current design.
 | [FIX-009](planning/PI-2026-09/stories/FIX-009.md) | Index-change notices name only the account's own stocks | Done | 10 Delivery | None |
 | [PR-001](planning/PI-2026-09/stories/PR-001.md) | Remove invented figures and fixed demo values; hide operator tools from members | Done | 10 Interface | None |
 | [FIX-010](planning/PI-2026-09/stories/FIX-010.md) | Every analysis writes the score history again; screens name only the viewer's stocks | Done | 3 Storage; 10 Interface | None |
-| [PR-002](planning/PI-2026-09/stories/PR-002.md) | A weekly results scorecard with a "sold too early" check | Open | 7 Marksheets; 10 Delivery | None |
+| [PR-002](planning/PI-2026-09/stories/PR-002.md) | A weekly results scorecard with a "sold too early" check | Done | 7 Marksheets; 10 Delivery | None |
 | [PR-003](planning/PI-2026-09/stories/PR-003.md) | Fresh overnight news: no repeats, published-date freshness, global cues | Open | 10 Delivery | None |
 | [PR-004](planning/PI-2026-09/stories/PR-004.md) | Enough researched ideas to fill 10+ positions | Open | 8 Discovery | None |
 | [PR-005](planning/PI-2026-09/stories/PR-005.md) | An investment case for every position | Open | 6 Portfolio | PR-006 |

@@ -1,4 +1,4 @@
-# Current handoff - 2026-10-16 (updated about 18:00 IST)
+# Current handoff - 2026-10-16 (updated about 19:20 IST)
 
 ## Also 11 Oct (about 13:00–15:30 IST): product results review and new tasks (separate conversation)
 
@@ -74,6 +74,62 @@ Docs only; nothing committed, pushed, deployed or configured.
 
 ## START HERE — resume checklist, in order
 
+**PR-002 is ACCEPTED** by its fresh review (16 Oct, about 18:45–19:20 IST, session
+stockagent-main-43, a new conversation opened with "continue"; peers idle). Receipt:
+[review](evidence/PR-002-review.md). STATE: `active_task: null`, PR-002 `done`,
+**`next_task: PR-003`**, which is ready (no dependencies) and not started. The review read the
+committed code `b400747` and docs `4027d4a`, input
+[PR-002-manifest.json](evidence/PR-002-manifest.json) `98df10d0…`, with 0 mismatches at the
+start and the end. The code diff is `git diff b67f972 b400747`, SHA-256 `015a5155…`. Nothing
+was committed, pushed or deployed, no production state was read and no message was sent.
+- **In one example (finding F1, medium).** The owner's ₹10 L sits in cash while the Nifty
+  rises 10%, and the scorecard rightly says "RED FLAG: Behind the Nifty". Then, mid-window,
+  the owner adds 1,000 shares through "Add holding" with a buy date a year back. They were
+  bought at ₹50 and are worth ₹150 now. The add records ₹50,000 of capital, but ₹1,50,000 of
+  stock arrives. The ₹1,00,000 gap counts as the portfolio's gain, and the flag reads clear
+  (+9.5% against +9.8%). Valued on its arrival day it would still fire (0.0% against +9.3%).
+  Only accounts with valuations are affected (today, the owner's autopilot account). The
+  form's default, today's date with no typed price, is not.
+- **Findings:**
+  - F1 (medium) → [SA-051](stories/SA-051.md), which reuses the same Nifty function for its
+    chart; card note added.
+  - F2 (low, latent until about 2028) → SA-051: the 400-point value-history prune re-dates
+    the opening deposit and moves "since the start".
+  - F3 (low) → [PR-010](stories/PR-010.md): the weekly screen ticks "too few to judge"
+    checks; card note added.
+  - Info I1–I4 need no change.
+
+  No critical or high finding; every acceptance criterion is met. The implementer's
+  decisions D1, D3, D4, D5 and D8 are accepted.
+- **Checked:**
+  - story and related API tests, 411 passed;
+  - the reviewer's 4 probes, all passed: the real advice → autopilot → auditor →
+    scorecard join, a backdated add through the real route, and the real retention prune;
+  - 5 of the implementer's mutants re-run, with the receipt's failure counts;
+  - `npm run test:frontend` 32/32;
+  - `check_kt_docs` `[]` (the PDF matches its source); broad-except OK;
+  - full suite 4,947 passed, 12 skipped, 0 failed (13 min 35 s).
+- **Bookkeeping fix:** PR-002's STATE entry carried `implementation_receipt` twice, and the
+  later `null` won on parse. The receipt path now stands.
+- **Commit-time edits**, applied in the acceptance commit:
+  - KT section 12, PR-002 `Done`;
+  - KT section 7, "You vs the Nifty", gains F1's limit with a Planned pointer to SA-051; then
+    rebuild the PDF and run `check_kt_docs`;
+  - guide 09-G status line: "accepted 2026-10-16, committed as `b400747`; production
+    verification pending".
+
+  **Committed at the owner's word** ("commit and push", about 20:05 IST) in one docs
+  commit, with the review receipt, the two card notes, STATE and HANDOFF. The PDF source
+  is `ec5ab870…` and `check_kt_docs` reports `[]`. The owner's line in `docs/README.md`
+  stays uncommitted. The push follows in the job-free window between 19:20 and 22:55 IST.
+- **For the owner, Sunday 18 Oct after 18:00 IST:** read the weekly email and
+  `GET /portfolio/scorecard`, and record the first row in the implementation receipt's
+  production section. Then run guide 09-G.
+  - Expect "Losing money per trade" among the red flags. The flag reads the since-start
+    expectancy, which was −2.2% on 11 Oct (I2).
+  - Did you add a holding in the last 4 weeks with an earlier buy date, a typed price or a
+    CSV? If so, the "You vs the Nifty" lines include that stock's earlier gain or loss (F1).
+
 **PR-002 is IMPLEMENTED** (16 Oct, about 16:35–18:00 IST, session stockagent-main-a9, a new
 conversation opened with "continue"; peers idle). Receipt:
 [implementation](evidence/PR-002-implementation.md). STATE: `active_task: null`, PR-002
@@ -85,9 +141,12 @@ code and test files) and the docs commit (KT header to `b400747` with the `resul
 PDF, guide 09-G status line, receipt, manifests, STATE, HANDOFF). **The fresh review reads the
 committed code**; its input is [PR-002-manifest.json](evidence/PR-002-manifest.json)
 `98df10d0…`. The implementation-time input `8e03a051…` is kept as
-`PR-002-manifest-implementation.json`, identical for every code and test file. The push
-follows in a job-free window; its note is added after. The owner's line in `docs/README.md`
-stays uncommitted.
+`PR-002-manifest-implementation.json`, identical for every code and test file. The docs
+commit is `4027d4a`. **Pushed** `b67f972..4027d4a` at 18:27:16 IST, in the job-free window
+before 18:55. The read-only `railway deployment list` showed `4027d4a` BUILDING at 18:27:17 and
+SUCCESS by 18:34:30 IST, and `/health` returned 200. The FIX-010 rework (`b67f972`) had
+already deployed SUCCESS. This push note is uncommitted, and the owner's line in
+`docs/README.md` stays uncommitted.
 - **In one example.** The account's money sat in cash for four weeks while the Nifty rose
   10%, and 3 of its last 10 sales have no grade yet. Sunday's email now opens
   "RED FLAG: Behind the Nifty … +0.0% against +10.0%", then "COULD NOT CHECK: Selling too

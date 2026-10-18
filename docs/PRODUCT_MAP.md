@@ -137,7 +137,7 @@ its own data, and the typed result says how (KT section 4).*
 | Surveillance | `services/data/fetchers/surveillance.py` | ASM/GSM, suspension, free-float market cap |
 | IPO feeds | `services/data/fetchers/ipo.py`, `ipo_offer.py`, `ipo_bids.py`, `ipo_gmp.py` | Calendar, offer documents, bids; grey-market price behind its own switch |
 | Fundamentals | `services/data/fetchers/fundamentals.py` | yfinance statements, bank-format aware |
-| Macro | `services/data/fetchers/macro.py` | Currency, crude, commodities |
+| Macro | `services/data/fetchers/macro.py` | Currency, crude, commodities; the brief's "Before the open" figures |
 | MF herding | `services/data/fetchers/mf_herding.py` | AMFI sector-ETF momentum |
 | News | `services/data/fetchers/news.py` | Serper news with recency bounds; NewsAPI |
 | Symbol resolver | `src/backend/shared/data/fetchers/symbol_resolver.py` | `resolve_identity`: the registry's symbol, else the NSE listing; a registered ticker is never self-healed |
@@ -445,7 +445,7 @@ its visibility milestone is judged.
 
 | Part | Path | Trigger |
 |---|---|---|
-| Morning brief | `core/delivery/brief.py` (1,196 lines) | Mon–Fri 08:50. Deterministic assembly and one bulk headline call; HTML and text |
+| Morning brief | `core/delivery/brief.py` (1,395 lines) | Mon–Fri 08:50. Deterministic assembly, the overnight market figures from Yahoo and one bulk headline call; overnight news is what was published since the previous brief and not shown in the last 5; HTML and text |
 | Weekly review | `core/delivery/weekly.py` | Sunday 18:00: the results scorecard first (red flags at the top), then allocation, laggards, switch calls and shelf candidates. Text email; the Inbox screen renders the same sentences |
 | Alerts | `core/delivery/alerts.py` | Event-driven, deduplicated per user, date, kind and symbol. Operator notices reach only the owner, market notices every account; the Inbox lists the caller's own |
 | Channels | `core/delivery/channels.py` | Web push and email (SMTP or Resend), one result contract |

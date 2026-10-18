@@ -372,9 +372,12 @@ replacement is measured (SA-027).
 | Morning brief and weekly review ([brief.py](../core/delivery/brief.py), [weekly.py](../core/delivery/weekly.py)) | Writes one headline | Assembles every figure and section; a fallback headline on failure |
 | IPO extraction and narration ([extract.py](../core/ipo/extract.py), [narrate.py](../core/ipo/narrate.py)) | Pulls Substance facts from browsed pages; writes a sourced research note | Computes the indices and verdict; rejects a note with a number not in the findings or advice vocabulary; never shows either to users (KT section 8) |
 
-The macro feed file is read by the daily review when company news is
-missing (RL_DESIGN §5) and by chat's `get_macro_news` tool. The research
-bundle does not read it.
+The macro feed files are read by the morning brief's overnight section, by
+the daily review when company news is missing (RL_DESIGN §5), and by chat's
+macro context and `get_macro_news` tool. Every reader judges recency by each
+article's IST publish date, never by the day it was fetched. An article whose
+date could not be read is stored with an empty date and is never recent (KT
+section 10). The research bundle does not read it.
 
 ## 13. Chat agent
 

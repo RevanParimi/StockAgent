@@ -1,8 +1,8 @@
 # StockAgent — Technical Design and Knowledge Transfer
 
-**Edition:** 2026-10-16 · **Audience:** engineers and teammates learning the product
+**Edition:** 2026-10-18 · **Audience:** engineers and teammates learning the product
 
-**Code inspected:** `b4007470e9e91c427719325016088607848b8e01`
+**Code inspected:** `b6d24707606251711b18cb87bb69dc17a39f9e3f`
 
 **PDF:** [StockAgent-Three-Loops.pdf](StockAgent-Three-Loops.pdf), generated from this Markdown.
 
@@ -35,12 +35,13 @@ triggered no production job, backfill or notification.
 
 ### Production state at this edition
 
-Production runs the inspected code once the deployment of 16 October 2026 is
+Production runs the inspected code once the deployment of 18 October 2026 is
 confirmed by the owner's read-only check of the deployment list and `/health`.
-Until then it runs the code of 15 October (`c31136b`; the deployment list showed
-it live that evening). They differ in Home's analysis time labels, which now
-state the age of the newest shared analysis, the verdict changes that a browser
-drops at sign-out, and the backfill's one-minute cut-off (sections 3 and 10). The table gives the configuration that differs from the
+Until then it runs the code of 16 October (`b400747`; the deployment list showed
+it live that evening). They differ in the morning brief: overnight news judged
+by publish date with no repeats across the last five briefs, the "Before the
+open" market figures, and the same publish-date rule in chat and the daily
+review (section 10). The table gives the configuration that differs from the
 repository and the state of each operational control.
 
 | Area | State in production | Evidence |
@@ -1261,11 +1262,54 @@ and digests persist independently of transport.
 
 The brief's overnight section reads only the macro cache's HIGH items, fed by
 four generic news searches. The macro reviewer rates company news MEDIUM, so a
-held company's news never appears there. "Last 24 hours" means fetched
-today or yesterday, and URLs are de-duplicated within one day's file only, so
-a story that keeps ranking returns each morning. **Planned:** freshness by
-publish date with no cross-day repeats and overnight market figures (PR-003),
-and a "your stocks" section from a daily company-event feed (PR-006, PR-008).
+held company's news never appears there. An item is overnight news only if it
+was **published** on or after the previous brief's date. The publish date is
+the IST calendar date, so 20:00 UTC on Tuesday counts as Wednesday. The floor
+is the previous trading day for a user's first brief, and never more than 4
+days back after a gap. The [fetcher](../services/background/macro_news_fetcher.py)
+stores an unreadable or future date as empty, never as today, and such an
+item is never shown.
+
+Each shown item stores a story key: its URLs (normalised, including those of
+items merged into it), and the salient entities and figures of its headline.
+A candidate
+that matches anything in the user's last 5 briefs is suppressed: the same URL
+always matches. A different URL matches when it shares at least 3 entities,
+no more than a third of its own entities are new, and it carries no figure the
+shown one lacked ("6.0%" and "6%" are one figure). So a reworded copy is
+dropped, but a follow-up is shown when it names new entities or a new figure:
+a rate cut after a hold, a notification after an announcement, or the rupee at
+97.2 after 96.5.
+
+The known limits: a follow-up that changes only the action of an otherwise
+identical headline, with no new figure, reads as a repeat for up to 5 briefs
+("approves" to "withdraws", or "plans to cut" to "cuts"). And after 24 hours
+Google gives an article's age in whole days, which the fetcher dates at the
+newest day that age allows, so an article first seen at "1 day ago" can be up
+to two days old; it is shown once. Briefs dated the run's
+own day are not history, so a same-day rerun shows the same items. The newest
+items fill the 3 places. The brief JSON's `overnight_filter` records the floor
+and the counts of candidates, undated, stale, repeated and shown items.
+Chat's macro context, its `get_macro_news` tool and the daily review's macro
+fallback apply the same publish-date rule (today or yesterday; the reviewed
+day or the day before).
+
+"Before the open" lists S&P 500, Nasdaq Composite, Nikkei 225, Hang Seng,
+Brent, USD/INR and the US 10-year yield from Yahoo daily bars
+([get_overnight_markets](../services/data/fetchers/macro.py), fetched once per
+run). Each figure shows its change on the previous session and its as-of date
+in the exchange's own zone:
+
+- a US figure is the last session before the brief's day;
+- Nikkei and Hang Seng appear only when they traded that day;
+- nothing dated after the brief is used, and no weekend-dated bar (Yahoo
+  carries weekend quotes for USD/INR, which does not trade then).
+
+A failed, stale (over 4 days) or implausible figure is named "unavailable"
+and shows no number. GIFT Nifty is not shown: no reliable free source. The
+Inbox renders the server's sentences. **Planned:** a "your stocks" section
+from a daily company-event feed (PR-006, PR-008).
+
 The weekly review opens with the week's results scorecard (section 7): red
 flags first, then closed trades, sales graded by the nightly auditor, exit
 reasons, the Nifty comparison, breadth and holding period. The email is plain
@@ -1841,7 +1885,7 @@ The planned changes connect the research to the money:
   matured disagreements over 6 weeks, at two consecutive looks (PR-009).
 - **Explain like an investor.** Explanations follow the pattern "what we did,
   why, what would change our mind, what next", grounded and free of internal
-  words (PR-007). The brief opens with your stocks (PR-003, PR-008).
+  words (PR-007). The brief opens with your stocks (PR-008).
 - **Show only what is real.** On top of section 10's real-figures rule,
   members see four screens and the owner an Operator menu (PR-010).
 - **Choose models on evidence.** Models are chosen per role from a bench on
@@ -1970,7 +2014,7 @@ section 10) are part of the current design.
 | [PR-001](planning/PI-2026-09/stories/PR-001.md) | Remove invented figures and fixed demo values; hide operator tools from members | Done | 10 Interface | None |
 | [FIX-010](planning/PI-2026-09/stories/FIX-010.md) | Every analysis writes the score history again; screens name only the viewer's stocks | Done | 3 Storage; 10 Interface | None |
 | [PR-002](planning/PI-2026-09/stories/PR-002.md) | A weekly results scorecard with a "sold too early" check | Done | 7 Marksheets; 10 Delivery | None |
-| [PR-003](planning/PI-2026-09/stories/PR-003.md) | Fresh overnight news: no repeats, published-date freshness, global cues | Open | 10 Delivery | None |
+| [PR-003](planning/PI-2026-09/stories/PR-003.md) | Fresh overnight news: no repeats, published-date freshness, global cues | Done | 10 Delivery | None |
 | [PR-004](planning/PI-2026-09/stories/PR-004.md) | Enough researched ideas to fill 10+ positions | Open | 8 Discovery | None |
 | [PR-005](planning/PI-2026-09/stories/PR-005.md) | An investment case for every position | Open | 6 Portfolio | PR-006 |
 | [PR-006](planning/PI-2026-09/stories/PR-006.md) | A daily company-event feed for held, watched and shelf stocks | Open | 4 Research; 9 Jobs | None |

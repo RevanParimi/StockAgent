@@ -1,4 +1,4 @@
-# Current handoff - 2026-10-16 (updated about 19:20 IST)
+# Current handoff - 2026-10-18 (updated about 12:30 IST)
 
 ## Also 11 Oct (about 13:00–15:30 IST): product results review and new tasks (separate conversation)
 
@@ -74,6 +74,118 @@ Docs only; nothing committed, pushed, deployed or configured.
 
 ## START HERE — resume checklist, in order
 
+**Reminder for Monday 19 Oct (the owner's request): run the PR-003 Yahoo probe,
+check `PR-003-P1` in STATE's `pending_production_checks`.**
+- **When.** In Monday's 4th "continue" conversation: one that starts when STATE already records
+  3 phases started on 19 Oct, between 07:00 and 12:00 IST. Run it before that conversation's
+  own phase. Outside that window, or if Monday passes, use the next weekday morning's first
+  conversation inside the window.
+- **What.** `PYTHONPATH="src;." .stockai/Scripts/python.exe analysis_data/pr003/yahoo_probe.py`. It reads public Yahoo data from this checkout only: no production access,
+  no deploy, no message.
+- **Pass.** In the brief dated that day, Nikkei 225 is `ok` "as of" that day, so Yahoo gives the
+  live level during the Tokyo session. Hong Kong is closed on Monday (the day after Chung
+  Yeung, a public holiday), so Hang Seng `closed` is correct that day; check Hang Seng on
+  Tuesday 20 Oct in the same window. USD/INR's "as of" must be a weekday.
+- **Then.** Record the result in the PR-003 receipt's L4 (or its review receipt), mark the check
+  in STATE, and tell the owner in one line. If Nikkei reads `closed` mid-session, bring the
+  owner one example and a recommendation; change nothing in production.
+
+**PR-003 is ACCEPTED** by its fresh review (18 Oct, about 11:30–12:30 IST, session
+stockagent-main-d3, a new conversation opened with "continue"; peers idle). Receipt:
+[review](evidence/PR-003-review.md). STATE: `active_task: null`, PR-003 `done`, production
+verification `pending_deployment`, **`next_task: SA-050`**, which is ready (no dependencies)
+and not started. The review read the uncommitted working tree on `86a3a60`, input
+[PR-003-manifest.json](evidence/PR-003-manifest.json) `78f2a9eb…`, with 0 mismatches at the
+start and the end; its own rebuild of the diff gives `8030c1dc…` (111,286 bytes). Nothing was
+committed, pushed or deployed, no production state was read and no message was sent.
+- **In one example (finding R1, low).** Monday's brief shows "Govt plans to cut excise duty
+  on petrol and diesel". On Wednesday, "Govt cuts excise duty on petrol and diesel" is
+  dropped as a repeat: the two name the same things ("plan" is a stopword) and the newer one
+  has no new figure. **Ruled acceptable** as a documented limit: it needs the same words, the
+  same figures and only a changed action, and it lasts at most 5 briefs. The KT and guide
+  10-I wording is widened in PR-003's commit. PR-008's card has a note: company events change
+  stage this way more often ("proposes dividend", then "declares dividend").
+- **Other findings:**
+  - R2 (low, wording at commit): after 24 hours Google gives ages in whole days, so an
+    article first seen at "1 day ago" can be up to two days old and is shown once. No code
+    change: the next morning it is stale, and before PR-003 it came back every day.
+  - T1 (low test gap) → [SA-031](stories/SA-031.md): no story test pins that readers keep
+    an article's first fetch (mutant X1 passes them; the reviewer's probe catches it).
+  - Info I1–I4 need no change.
+- **Checked:**
+  - the reviewer's own trace, 20 tests: a real Mon 19 – Fri 23 Oct week with the Tue 20
+    holiday, Google-style ages through the real reader at a UTC clock, the real cache
+    writer, and the real 08:50 job for the owner (with a brief stored before PR-003) and a
+    member. Every shown list and every `overnight_filter` count matched the hand-worked
+    table. The old code fails 17 of its first 18 tests;
+  - story and reader tests 200 passed, 1 strict xfail;
+  - `npm run test:frontend` 34/34; `check_kt_docs` `[]`; broad-except OK;
+  - full suite 5,007 passed, 12 skipped, 1 xfailed (the known limit), 0 failed in 18 min 28 s.
+- **For the owner, at your word:** commit PR-003 with the receipt's commit-time edits (KT
+  section 10 limits wording, KT section 12 `Done`, header bump, PDF, guide 10-I wording and
+  status line), then push in a job-free window, not 08:30–09:20 or 16:25–17:15 IST. The
+  Monday Yahoo probe (`PR-003-P1`, above) is unchanged. In the first week after the deploy,
+  read `overnight_filter` and run guide 10-I.
+
+  **Committed at the owner's word** ("commit and push", about 15:10 IST): `b6d2470`
+  (code, the 13 reviewed files, identical by blob), then one docs commit with the
+  commit-time edits: KT header to `b6d2470` (edition 2026-10-18), section 1's production
+  paragraph, section 10's limits wording, section 12's PR-003 row `Done`; PDF source
+  `05f5c16c…`, `check_kt_docs` `[]`; guide 10-I's wording and status line. It also
+  carries the receipts, STATE, HANDOFF and the PR-008 and SA-031 notes. The owner's line
+  in `docs/README.md` stays uncommitted. The push follows.
+
+**PR-003 is IMPLEMENTED** (17 Oct, about 16:15–17:30 IST, session stockagent-main-9a, a
+new conversation opened with "continue"; peers idle). Receipt:
+[implementation](evidence/PR-003-implementation.md). STATE: `active_task: null`, PR-003
+`review_required`, **`next_task: PR-003`**, meaning its **fresh review** in a new conversation
+("continue"), then SA-050. Nothing was committed, pushed or deployed, no production state was
+read and no message was sent. The owner's line in `docs/README.md` stays uncommitted.
+- **In one example.** Thursday's brief, with the previous one on Wednesday. Google keeps
+  ranking three articles: Monday's SEBI story (already shown Monday), a June GDP article and
+  one whose date cannot be read. All three used to count as "the last 24 hours", because they
+  sat in a recent fetch file, and the unreadable one was stamped with today. Now an item must
+  have been **published** on or after Wednesday by its IST date, so all three are dropped.
+  A Fed story published Wednesday but fetched only today is shown. Friday drops another
+  outlet's rewording of it but shows "Crude oil falls 4% as US-Iran ceasefire announced",
+  which has new entities and a new figure.
+- **What changed:**
+  - publish-date freshness: the fetcher stores the IST date, or empty when unreadable;
+  - a story-key repeat check over the user's last 5 briefs;
+  - an `overnight_filter` record in the brief JSON;
+  - chat and the daily review use the same rule;
+  - a new **"Before the open"** section: S&P 500, Nasdaq, Nikkei, Hang Seng, Brent, USD/INR
+    and the US 10-year, from Yahoo, each with its change and as-of date. A failed figure is
+    named "unavailable" with no number. There is no GIFT Nifty.
+- **For the reviewer:** decisions D1–D14 and limits L1–L7 are in the receipt. **L1** is a
+  strict xfail: a follow-up that reverses one verb of an otherwise identical headline, with
+  the same figures, reads as a repeat. Rule on it. Self-review fixed two problems: a new
+  figure (the rupee at 97.2 after 96.5) read as a repeat, and an overflowing relative age.
+- **Checked:**
+  - story tests 60 passed and 1 strict xfail;
+  - mutants 33 of 33 caught;
+  - `npm run test:frontend` 34/34; the new fold test fails on HEAD's screen;
+  - `check_kt_docs` `[]`; broad-except OK;
+  - full suite 5,007 passed, 12 skipped, 1 xfailed (the known limit), 0 failed in 12 min 35 s.
+
+  Review input [PR-003-manifest.json](evidence/PR-003-manifest.json) `78f2a9eb…`; diff
+  `8030c1dc…` (111,286 bytes, 19 paths, `analysis_data/pr003/digest.py`).
+- **18 Oct, about 09:00–10:00 IST (same session): the Yahoo probe.** The owner asked whether
+  the live Nikkei and Hang Seng behaviour could be checked through the logs. It cannot: PR-003
+  is not deployed, and the code logs only failures. So `analysis_data/pr003/yahoo_probe.py`
+  read Yahoo directly (public data, no production access).
+  - Confirmed: all 7 tickers in their zones; the 10-year yield is in percent.
+  - Found and fixed: Yahoo has a **Sunday** USD/INR bar (94.96 after Friday's 94.52). Monday's
+    brief would have said "USD/INR 94.96 (+0.46%), as of Sun 18 Oct". Weekend-dated bars are
+    now ignored; the probe reads "USD/INR 94.52 (-0.66%), as of Fri 16 Oct".
+  - Still open (L4): whether Yahoo gives that day's level *during* the Tokyo and Hong Kong
+    sessions. Run the probe on a weekday between 07:00 and 12:00 IST: the Monday reminder
+    at the top of START HERE (`PR-003-P1`).
+- **For the owner, after acceptance:** commit and push in a job-free window, not 08:30–09:20
+  or 16:25–17:15 IST. For the first week, read `overnight_filter` in
+  `GET /delivery/brief/latest` and the Sunday probe's repeat count (expected near 0), and run
+  guide case 10-I. Fewer overnight items on quiet days is correct.
+
 **PR-002 is ACCEPTED** by its fresh review (16 Oct, about 18:45–19:20 IST, session
 stockagent-main-43, a new conversation opened with "continue"; peers idle). Receipt:
 [review](evidence/PR-002-review.md). STATE: `active_task: null`, PR-002 `done`,
@@ -121,7 +233,11 @@ was committed, pushed or deployed, no production state was read and no message w
   **Committed at the owner's word** ("commit and push", about 20:05 IST) in one docs
   commit, with the review receipt, the two card notes, STATE and HANDOFF. The PDF source
   is `ec5ab870…` and `check_kt_docs` reports `[]`. The owner's line in `docs/README.md`
-  stays uncommitted. The push follows in the job-free window between 19:20 and 22:55 IST.
+  stays uncommitted. The commit is `86a3a60`. **Pushed** `4027d4a..86a3a60` at 20:05:16
+  IST, in the job-free window between 19:20 and 22:55. The read-only deployment list
+  showed `86a3a60` BUILDING at 20:05:17 IST. It is docs only: no code changed since
+  `4027d4a`. The owner confirmed SUCCESS on 18 Oct, and `/health` returned 200 at 09:02 IST
+  (read-only). This push note is uncommitted.
 - **For the owner, Sunday 18 Oct after 18:00 IST:** read the weekly email and
   `GET /portfolio/scorecard`, and record the first row in the implementation receipt's
   production section. Then run guide 09-G.

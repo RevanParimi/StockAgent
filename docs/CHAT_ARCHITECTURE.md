@@ -102,7 +102,7 @@ Thirteen tools, each with a schema in `_CHAT_TOOLS` and a branch in
 | `get_rl_prediction(ticker)` | The current month's envelope | Taken from the first sector directory that has one |
 | `get_rl_insights()` | Weight memory and lessons | Agent accuracy, learned weights, lessons |
 | `get_ticker_dossier(ticker)` | The ticker's dossier | A 2,000-character digest (RL_DESIGN §23) |
-| `get_macro_news()` | Today's macro feed file | The feed the 07:30 and market-hours jobs write (AGENTIC_DESIGN §12) |
+| `get_macro_news()` | Macro feed items published today or yesterday (IST), all severities | The feed the 07:30 and market-hours jobs write (AGENTIC_DESIGN §12); an older article fetched today, or one without a readable date, is left out |
 | `search_market_news(query)` | News search, Tavily as fallback | 2–3 query variants, fused (section 5) |
 | `get_portfolio_brief()` | The caller's latest morning brief, else their latest EOD digest | Opens the same store as `GET /portfolio`. A caller without a portfolio gets "no brief yet", and the read creates no folder; a request without a valid user id is refused |
 

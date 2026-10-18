@@ -459,7 +459,9 @@ highest predicted close for a bullish verdict, the lowest for a bearish one).
   of the row's.
 - The context for the feedback agent is assembled: company news from the
   last 3 calendar days (dated headlines only); the market-wide macro feed,
-  labelled as such, when company news is missing; active seasonal patterns;
+  labelled as such, when company news is missing (HIGH and MEDIUM items
+  published on the reviewed day or the day before, from files fetched by the
+  reviewed day); active seasonal patterns;
   a streak warning at 8 or more days; the regime narrative when not NORMAL;
   the three-tier lesson summary (section 11); recurring blind spots from the
   cycle's prompt enhancements; the F&O snapshot during expiry week;

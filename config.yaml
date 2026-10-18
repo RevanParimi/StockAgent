@@ -813,6 +813,23 @@ delivery:
     with, from, up, its, into, over, without, amid, new, plan, move, step, measure,
     raise, boost, increase, hike, support, ease, rbi, govt, government, india, indian,
     market, stock, share, sensex, nifty]
+  # PR-003: overnight = PUBLISHED since the previous brief, not shown recently
+  brief_overnight_max_lookback_days: 4        # never older than this, even after a gap in briefs
+  brief_overnight_repeat_lookback_briefs: 5   # the user's last N briefs count as "shown"
+  brief_overnight_repeat_min_shared: 3        # a different-URL story is a repeat only if it shares >= this many salient entities
+  brief_overnight_repeat_max_new_share: 0.34  # ...at most this share of its salient entities is new, and no new figure
+  # PR-003 "Before the open" (Yahoo daily bars). session: us_close = last session
+  # before the brief's day; asia_live = shown only when it traded on the brief's
+  # day; 24h = latest bar up to the brief's day. [] removes the section.
+  brief_markets:
+    - {label: "S&P 500", ticker: "^GSPC", session: us_close, unit: index}
+    - {label: "Nasdaq Composite", ticker: "^IXIC", session: us_close, unit: index}
+    - {label: "Nikkei 225", ticker: "^N225", session: asia_live, unit: index}
+    - {label: "Hang Seng", ticker: "^HSI", session: asia_live, unit: index}
+    - {label: "Brent crude", ticker: "BZ=F", session: "24h", unit: usd}
+    - {label: "USD/INR", ticker: "INR=X", session: "24h", unit: inr}
+    - {label: "US 10-year yield", ticker: "^TNX", session: us_close, unit: yield}
+  brief_market_max_age_days: 4                # an older figure is "unavailable", not shown
 
 # =============================================================================
 # Atlas M1 — user-plane relational core (data/atlas.db). Ships DORMANT: the whole

@@ -27,6 +27,13 @@ def _isolated_ipo_ledger(tmp_path, monkeypatch):
     return store
 
 
+@pytest.fixture(autouse=True)
+def _no_market_fetch(monkeypatch):
+    """PR-003: the brief's "Before the open" figures come from Yahoo. No test
+    here may reach it; the market line has its own fixture-frame tests."""
+    monkeypatch.setattr(br, "_before_the_open", lambda on: [])
+
+
 def _digest():
     return {"date": "2026-07-08", "user_id": "u1", "portfolio_value": 110000.0,
             "cost_basis": 100000.0, "total_pnl_pct": 10.0,
@@ -50,8 +57,8 @@ def test_build_brief_assembles_sections(tmp_path, monkeypatch):
     store = _mk_store(tmp_path)
     monkeypatch.setattr(br, "_narrate_brief", lambda b: "Deterministic headline.")
     monkeypatch.setattr(br, "_read_regime", lambda: {"label": "RISK_OFF"})
-    monkeypatch.setattr(br, "_overnight_items", lambda: [
-        {"headline": "Fed shock", "severity": "HIGH"}])
+    monkeypatch.setattr(br, "_overnight_items", lambda on, recent: (
+        [{"headline": "Fed shock", "severity": "HIGH"}], {}))
     monkeypatch.setattr(br, "_shelf_events_since", lambda since: [
         {"event": "added", "symbol": "NEWCO", "detail": "conviction=0.72"}])
     monkeypatch.setattr(br, "_earnings_soon", lambda symbols, on: [
@@ -87,7 +94,7 @@ def test_build_brief_survives_missing_everything(tmp_path, monkeypatch):
     # Collectors backed by hardcoded module-level cache paths (no settings
     # attribute to redirect) must be stubbed directly to avoid touching real
     # repo data (data/macro_news, data/market_cache/*).
-    monkeypatch.setattr(br, "_overnight_items", lambda *a, **k: [])
+    monkeypatch.setattr(br, "_overnight_items", lambda *a, **k: ([], {}))
     monkeypatch.setattr(br, "_earnings_soon", lambda *a, **k: [])
     monkeypatch.setattr(br, "_ipo_watch", lambda *a, **k: [])
     monkeypatch.setattr(br, "upcoming_lockin_alerts", lambda on, symbols=None: [])
@@ -110,7 +117,7 @@ def test_run_builds_saves_delivers(tmp_path, monkeypatch):
     monkeypatch.setattr(br.settings, "DISCOVERY_DATA_DIR", str(tmp_path / "discovery"))
     _mk_store(tmp_path)
     monkeypatch.setattr(br, "_narrate_brief", lambda b: "h")
-    monkeypatch.setattr(br, "_overnight_items", lambda *a, **k: [])
+    monkeypatch.setattr(br, "_overnight_items", lambda *a, **k: ([], {}))
     monkeypatch.setattr(br, "_earnings_soon", lambda *a, **k: [])
     monkeypatch.setattr(br, "_ipo_watch", lambda *a, **k: [])
     monkeypatch.setattr(br, "upcoming_lockin_alerts",
@@ -128,21 +135,20 @@ def test_overnight_items_read_cache_title_field(monkeypatch):
     # brief rendered three blank "Overnight:" lines because the collector
     # read a nonexistent "headline" key. Empty/missing titles are dropped.
     class _FakeCache:
-        def get_high_severity(self, hours_back=24):
+        def entries_fetched(self, start, end, severities):
             return [
-                {"title": "Fed shock", "severity": "HIGH"},
-                {"title": "", "severity": "HIGH"},
-                {"severity": "HIGH"},
-                {"title": "RBI policy surprise", "severity": "HIGH"},
+                {"title": "Fed shock", "severity": "HIGH", "published_date": "2026-07-17"},
+                {"title": "", "severity": "HIGH", "published_date": "2026-07-17"},
+                {"severity": "HIGH", "published_date": "2026-07-17"},
+                {"title": "RBI policy surprise", "severity": "HIGH",
+                 "published_date": "2026-07-17"},
             ]
 
     import services.background.macro_news_cache as mnc
     monkeypatch.setattr(mnc, "MacroNewsCache", _FakeCache)
-    items = br._overnight_items()
-    assert items == [
-        {"headline": "Fed shock", "severity": "HIGH"},
-        {"headline": "RBI policy surprise", "severity": "HIGH"},
-    ]
+    items, _ = br._overnight_items(date(2026, 7, 17), [])
+    assert [(i["headline"], i["severity"]) for i in items] == [
+        ("Fed shock", "HIGH"), ("RBI policy surprise", "HIGH")]
 
 
 def test_run_brief_delivers_inbox_deeplink(tmp_path, monkeypatch):
@@ -151,7 +157,7 @@ def test_run_brief_delivers_inbox_deeplink(tmp_path, monkeypatch):
     monkeypatch.setattr(br, "is_trading_day", lambda on: True)
     monkeypatch.setattr(br, "active_user_ids", lambda: ["u1"])
     monkeypatch.setattr(br, "build_morning_brief",
-                        lambda uid, on, store=None: {"date": on.isoformat(),
+                        lambda uid, on, store=None, markets=None: {"date": on.isoformat(),
                                                      "kind": "morning_brief",
                                                      "lockin_flags": []})
     monkeypatch.setattr(br, "render_brief_text", lambda b: "text")
@@ -206,27 +212,30 @@ def test_regime_and_verdict_maps():
 
 def test_overnight_prefers_summary_over_truncated_title(monkeypatch):
     class _Fake:
-        def get_high_severity(self, hours_back=24):
+        def entries_fetched(self, start, end, severities):
             return [{"title": "Rupee rallies amid Middle East con",
                      "summary": "The rupee rallied after the RBI eased rules for foreign investors.",
-                     "severity": "HIGH"}]
+                     "severity": "HIGH", "published_date": "2026-07-20"}]
     import services.background.macro_news_cache as mnc
     monkeypatch.setattr(mnc, "MacroNewsCache", _Fake)
-    items = br._overnight_items()
+    items, _ = br._overnight_items(date(2026, 7, 20), [])
     assert items[0]["headline"] == "The rupee rallied after the RBI eased rules for foreign investors."
 
 
 def test_overnight_dedups_same_story(monkeypatch):
     class _Fake:
-        def get_high_severity(self, hours_back=24):
+        def entries_fetched(self, start, end, severities):
             return [
-                {"summary": "RBI raised equity investment limits for NRIs and OCIs.", "severity": "HIGH"},
-                {"summary": "RBI raised equity investment limits for NRIs and OCIs, boosting inflows.", "severity": "HIGH"},
-                {"summary": "SEBI to launch corporate bond index derivatives.", "severity": "HIGH"},
+                {"summary": "RBI raised equity investment limits for NRIs and OCIs.",
+                 "severity": "HIGH", "published_date": "2026-07-20"},
+                {"summary": "RBI raised equity investment limits for NRIs and OCIs, boosting inflows.",
+                 "severity": "HIGH", "published_date": "2026-07-20"},
+                {"summary": "SEBI to launch corporate bond index derivatives.",
+                 "severity": "HIGH", "published_date": "2026-07-20"},
             ]
     import services.background.macro_news_cache as mnc
     monkeypatch.setattr(mnc, "MacroNewsCache", _Fake)
-    items = br._overnight_items()
+    items, _ = br._overnight_items(date(2026, 7, 20), [])
     heads = [i["headline"] for i in items]
     assert len(heads) == 2
     assert "RBI raised equity investment limits for NRIs and OCIs, boosting inflows." in heads
@@ -626,7 +635,8 @@ def test_build_attaches_overnight_notes(tmp_path, monkeypatch):
     store = _mk_store(tmp_path)
     monkeypatch.setattr(br, "_narrate_brief", lambda b: ("Head.", ["note-A"]))
     monkeypatch.setattr(br, "_read_regime", lambda: {"label": "RISK_OFF"})
-    monkeypatch.setattr(br, "_overnight_items", lambda: [{"headline": "X", "severity": "HIGH"}])
+    monkeypatch.setattr(br, "_overnight_items",
+                        lambda on, recent: ([{"headline": "X", "severity": "HIGH"}], {}))
     monkeypatch.setattr(br, "_shelf_events_since", lambda since: [])
     monkeypatch.setattr(br, "_earnings_soon", lambda symbols, on: [])
     monkeypatch.setattr(br, "_ipo_watch", lambda on=None: [])
@@ -754,7 +764,7 @@ def test_run_brief_renders_html_when_enabled(tmp_path, monkeypatch):
     monkeypatch.setattr(br.settings, "DELIVERY_BRIEF_HTML_ENABLED", True)
     _mk_store(tmp_path)
     monkeypatch.setattr(br, "_narrate_brief", lambda b: ("h", []))
-    monkeypatch.setattr(br, "_overnight_items", lambda *a, **k: [])
+    monkeypatch.setattr(br, "_overnight_items", lambda *a, **k: ([], {}))
     monkeypatch.setattr(br, "_earnings_soon", lambda *a, **k: [])
     monkeypatch.setattr(br, "_ipo_watch", lambda *a, **k: [])
     monkeypatch.setattr(br, "upcoming_lockin_alerts", lambda on, symbols=None: [])
@@ -782,7 +792,7 @@ def test_build_morning_brief_computes_ipo_state_from_the_brief_date(tmp_path, mo
     store = _mk_store(tmp_path)
     monkeypatch.setattr(br, "_narrate_brief", lambda b: "h")
     monkeypatch.setattr(br, "_read_regime", lambda: None)
-    monkeypatch.setattr(br, "_overnight_items", lambda *a, **k: [])
+    monkeypatch.setattr(br, "_overnight_items", lambda *a, **k: ([], {}))
     monkeypatch.setattr(br, "_shelf_events_since", lambda since: [])
     monkeypatch.setattr(br, "_earnings_soon", lambda symbols, on: [])
     monkeypatch.setattr(br, "upcoming_lockin_alerts", lambda on, symbols=None: [])

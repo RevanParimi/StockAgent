@@ -16,7 +16,7 @@ import json
 import logging
 import re
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 
 from filelock import FileLock
@@ -398,6 +398,22 @@ class PortfolioStore:
 
     def load_latest_brief(self) -> dict | None:
         return self._load_latest_dated("briefs")
+
+    def load_recent_briefs(self, before: date, n: int) -> list[dict]:
+        """The last `n` briefs dated strictly before `before`, oldest first. A
+        rerun on the same day therefore sees the same history; an unreadable
+        file is skipped with a warning."""
+        d = self._dir / "briefs"
+        if n <= 0 or not d.exists():
+            return []
+        cutoff = f"{before.isoformat()}.json"
+        out: list[dict] = []
+        for f in [f for f in sorted(d.glob("*.json")) if f.name < cutoff][-n:]:
+            try:
+                out.append(json.loads(f.read_text(encoding="utf-8")))
+            except Exception as exc:
+                logger.warning("[PortfolioStore] skipping unreadable brief %s: %s", f, exc)
+        return out
 
     def save_weekly(self, review: dict) -> Path:
         path = self._dated_dir("weekly") / f"{review['date']}.json"

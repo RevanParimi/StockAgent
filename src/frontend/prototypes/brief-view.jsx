@@ -108,6 +108,10 @@ function BriefView({ data, onNav }) {
   const p = d.portfolio;
   const flags = d.advisor_flags || [];
   const overnight = d.overnight || [];
+  // PR-003: server-written sentences, one per figure, each with its as-of
+  // date; a figure that failed is only named, never shown as a number.
+  const marketLines = d.before_the_open_lines || [];
+  const marketMissing = d.before_the_open_unavailable || [];
   const earnings = d.earnings_soon || [];
   const ideas = d.discovery_adds || [];
   const ipos = d.ipo_watch || [];
@@ -161,6 +165,18 @@ function BriefView({ data, onNav }) {
       )}
 
       {/* ── Folded sections — each hidden entirely when empty ── */}
+      {(marketLines.length > 0 || marketMissing.length > 0) && (
+        <BVFold title="Before the open" summary={marketLines.length}>
+          <div style={{ ...BV_WHY, marginBottom: 4 }}>
+            Latest level; change on the previous session.
+          </div>
+          {marketLines.map((s, i) => <div key={i} style={BV_ROW}>{s}</div>)}
+          {marketMissing.length > 0 ? (
+            <div style={{ ...BV_ROW, ...BV_WHY }}>Unavailable: {marketMissing.join(', ')}.</div>
+          ) : null}
+        </BVFold>
+      )}
+
       {overnight.length > 0 && (
         <BVFold title="Overnight news" summary={overnight.length}>
           {overnight.map((o, i) => (

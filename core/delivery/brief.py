@@ -1,8 +1,9 @@
 """
 Compass Phase C — Morning Brief (spec §7): 08:50 IST, right after the 08:45
-pre-open shock check. Deterministic assembly from existing artifacts; ONE
-BULK-tier narration call for the headline (fallback text on any failure).
-Research tone, never "advice" (spec §2).
+pre-open shock check. Deterministic assembly from existing artifacts plus the
+overnight market figures from Yahoo (PR-003); ONE BULK-tier narration call for
+the headline (fallback text on any failure). Research tone, never "advice"
+(spec §2).
 """
 from __future__ import annotations
 
@@ -18,7 +19,7 @@ from core.config import settings
 from core.delivery.alerts import AlertEvent, emit_alerts
 from core.delivery.channels import deliver
 from core.discovery.ipo_tracker import upcoming_lockin_alerts
-from core.intelligence.rl.nse_calendar import is_trading_day
+from core.intelligence.rl.nse_calendar import is_trading_day, trading_days_ago
 from core.portfolio.store import PortfolioStore, active_user_ids
 from services.data.fetchers.corporate_events import (
     load_events_calendar,
@@ -157,17 +158,20 @@ def _dedup_overnight(items: list[dict], threshold: float, max_items: int,
                      min_shared: int = 0, stopwords: frozenset = frozenset()) -> list[dict]:
     """Collapse near-duplicate stories and keep the longest headline per cluster.
     Two items merge when they share a headline prefix, Jaccard>=threshold, OR (when
-    min_shared>0) share >= min_shared salient entities. First-seen order, capped."""
+    min_shared>0) share >= min_shared salient entities. First-seen order, capped.
+    Items carrying "urls" pass the whole cluster's URLs on to the kept one."""
     kept: list[dict] = []
     kept_norm: list[str] = []
     kept_tok: list[set] = []
     kept_sal: list[set] = []
+    kept_urls: list[set] = []
     for it in items:
         norm = _norm_text(it["headline"])
         toks = set(norm.split())
         if not toks:
             continue
         sal = _salient_tokens(it["headline"], stopwords) if min_shared else set()
+        urls = set(it.get("urls") or [])
         dup = None
         for i, kn in enumerate(kept_norm):
             inter = len(toks & kept_tok[i])
@@ -178,9 +182,105 @@ def _dedup_overnight(items: list[dict], threshold: float, max_items: int,
                 break
         if dup is None:
             kept.append(it); kept_norm.append(norm); kept_tok.append(toks); kept_sal.append(sal)
-        elif len(it["headline"]) > len(kept[dup]["headline"]):
+            kept_urls.append(urls)
+            continue
+        kept_urls[dup] |= urls
+        if len(it["headline"]) > len(kept[dup]["headline"]):
             kept[dup] = it; kept_norm[dup] = norm; kept_tok[dup] = toks; kept_sal[dup] = sal
-    return kept[:max_items]
+    out = [{**k, "urls": sorted(u)} if u else k for k, u in zip(kept, kept_urls)]
+    return out[:max_items]
+
+
+# -- PR-003: overnight = published since the previous brief, not shown lately --
+
+def _norm_url(url: str) -> str:
+    """Same-article key for a URL: no scheme, fragment or utm_* parameters, the
+    host lower-cased without a leading www./m./amp., no trailing slash."""
+    from urllib.parse import parse_qsl, urlencode, urlsplit
+    u = (url or "").strip()
+    if not u:
+        return ""
+    try:
+        p = urlsplit(u)
+    except ValueError:
+        return u.lower()
+    host = (p.hostname or "").lower()
+    for prefix in ("www.", "m.", "amp."):
+        if host.startswith(prefix):
+            host = host[len(prefix):]
+            break
+    query = urlencode([(k, v) for k, v in parse_qsl(p.query, keep_blank_values=True)
+                       if not k.lower().startswith("utm_")])
+    return host + p.path.rstrip("/") + (f"?{query}" if query else "")
+
+
+_NUMBER = re.compile(r"\d[\d,]*(?:\.\d+)?")
+
+
+def _headline_numbers(headline: str) -> set[str]:
+    """The figures in a headline, canonical: "1,00,000" -> "100000",
+    "6.0%" -> "6", "96.50" -> "96.5"."""
+    out: set[str] = set()
+    for raw in _NUMBER.findall(headline or ""):
+        n = raw.replace(",", "")
+        if "." in n:
+            n = n.rstrip("0").rstrip(".")
+        out.add(n)
+    return out
+
+
+def _story_key(headline: str, urls: list[str], stopwords: frozenset) -> dict:
+    """What a shown overnight item is remembered by: its URLs, the salient
+    entities of the headline the reader saw, and that headline's figures."""
+    return {"urls": sorted({u for u in urls if u}),
+            "tokens": sorted(_salient_tokens(headline, stopwords)),
+            "numbers": sorted(_headline_numbers(headline))}
+
+
+def _repeats(key: dict, shown: dict, min_shared: int, max_new_share: float) -> bool:
+    """Is `key` a story `shown` already told? The same URL always is. A
+    different URL is only when it shares >= min_shared salient entities, at
+    most max_new_share of its own entities are new, and it carries no figure
+    the shown one did not. A follow-up that names new entities (a rate cut
+    after a hold, a notification after an announcement) or a new figure (the
+    rupee at 97.2 after 96.5) is a new development and is shown."""
+    if set(key.get("urls") or []) & set(shown.get("urls") or []):
+        return True
+    tokens, seen = set(key.get("tokens") or []), set(shown.get("tokens") or [])
+    if not tokens or set(key.get("numbers") or []) - set(shown.get("numbers") or []):
+        return False
+    return (len(tokens & seen) >= min_shared
+            and len(tokens - seen) / len(tokens) <= max_new_share)
+
+
+def _shown_keys(brief: dict, stopwords: frozenset) -> list[dict]:
+    """The story keys of the overnight items a stored brief showed. A brief
+    stored before PR-003 has none; its headlines still give the entity part."""
+    out: list[dict] = []
+    for item in brief.get("overnight") or []:
+        if not isinstance(item, dict):
+            continue
+        key = item.get("story_key")
+        if isinstance(key, dict):
+            out.append(key)
+        elif item.get("headline"):
+            out.append(_story_key(str(item["headline"]), [], stopwords))
+    return out
+
+
+def _overnight_since(on: date, recent: list[dict]) -> date:
+    """The publish-date floor for `on`'s overnight news: the previous brief's
+    date, else the previous trading day, and never more than
+    DELIVERY_BRIEF_OVERNIGHT_MAX_LOOKBACK_DAYS before `on`."""
+    floor = None
+    if recent:
+        try:
+            floor = date.fromisoformat(str(recent[-1].get("date", ""))[:10])
+        except ValueError:
+            floor = None
+    if floor is None or floor >= on:
+        floor = trading_days_ago(on, 1)
+    return max(floor, on - timedelta(days=settings.DELIVERY_BRIEF_OVERNIGHT_MAX_LOOKBACK_DAYS))
 
 
 def _dedupe_notes(notes: list[str]) -> list[str]:
@@ -432,29 +532,107 @@ def _read_regime() -> dict | None:
     return None
 
 
-def _overnight_items(max_items: int | None = None) -> list[dict]:
+def _overnight_items(on: date, recent: list[dict],
+                     max_items: int | None = None) -> tuple[list[dict], dict]:
+    """HIGH macro items PUBLISHED on or after the previous brief's date (PR-003)
+    that none of `recent` — the user's last briefs, oldest first — showed.
+    Newest first, near-duplicates merged, capped. An item with no readable
+    publish date, or one dated after `on`, is never shown.
+
+    Returns (items, counts). Each item carries the story_key later briefs
+    compare against; counts records the floor and why candidates were dropped
+    (candidates - undated - stale - repeats - shown = merged or over the cap).
+    """
+    stop = frozenset(settings.DELIVERY_BRIEF_OVERNIGHT_STOPWORDS)
+    counts = {"since": "", "candidates": 0, "undated": 0, "stale": 0,
+              "repeats": 0, "shown": 0}
     try:
-        from services.background.macro_news_cache import MacroNewsCache
+        from services.background.macro_news_cache import MacroNewsCache, published_on
         mi = max_items if max_items is not None else settings.DELIVERY_BRIEF_MAX_OVERNIGHT
-        raw = MacroNewsCache().get_high_severity(hours_back=24)
-        items: list[dict] = []
-        for i in raw:
+        since = _overnight_since(on, recent)
+        counts["since"] = since.isoformat()
+        shown = [k for b in recent for k in _shown_keys(b, stop)]
+        fresh: list[dict] = []
+        # Files are named by fetch day: one before the floor can hold an item
+        # published on it. Nothing fetched after `on` is read.
+        for i in MacroNewsCache().entries_fetched(since - timedelta(days=1), on, ("HIGH",)):
             # Prefer the clean one-sentence LLM summary; the raw title is often
             # a source-truncated snippet ("…Middle East con"). Title is fallback.
             text = (i.get("summary") or i.get("title") or "").strip()
             if not text:
                 continue
-            items.append({
-                "headline": _clean_headline(text, settings.DELIVERY_BRIEF_OVERNIGHT_MAXLEN),
-                "severity": i.get("severity", "HIGH"),
-            })
-        return _dedup_overnight(
-            items, settings.DELIVERY_BRIEF_OVERNIGHT_DEDUP_THRESHOLD, mi,
+            counts["candidates"] += 1
+            published = published_on(i)
+            if published is None or published > on:
+                counts["undated"] += 1
+                continue
+            if published < since:
+                counts["stale"] += 1
+                continue
+            headline = _clean_headline(text, settings.DELIVERY_BRIEF_OVERNIGHT_MAXLEN)
+            key = _story_key(headline, [_norm_url(i.get("url", ""))], stop)
+            if any(_repeats(key, s, settings.DELIVERY_BRIEF_OVERNIGHT_REPEAT_MIN_SHARED,
+                            settings.DELIVERY_BRIEF_OVERNIGHT_REPEAT_MAX_NEW_SHARE)
+                   for s in shown):
+                counts["repeats"] += 1
+                continue
+            fresh.append({"headline": headline, "severity": i.get("severity", "HIGH"),
+                          "published_date": published.isoformat(), "urls": key["urls"]})
+        fresh.sort(key=lambda it: it["published_date"], reverse=True)   # stable
+        merged = _dedup_overnight(
+            fresh, settings.DELIVERY_BRIEF_OVERNIGHT_DEDUP_THRESHOLD, mi,
             min_shared=settings.DELIVERY_BRIEF_OVERNIGHT_DEDUP_MIN_SHARED,
-            stopwords=frozenset(settings.DELIVERY_BRIEF_OVERNIGHT_STOPWORDS))
+            stopwords=stop)
+        items = [{"headline": it["headline"], "severity": it["severity"],
+                  "published_date": it["published_date"],
+                  "story_key": _story_key(it["headline"], it.get("urls") or [], stop)}
+                 for it in merged]
+        counts["shown"] = len(items)
+        return items, counts
     except Exception as exc:
         logger.warning("[brief] macro feed read failed (non-fatal): %s", exc)
+        return [], counts
+
+
+def _before_the_open(on: date) -> list[dict]:
+    """The overnight market figures (PR-003). Never raises: if the fetch as a
+    whole fails, every configured figure is named unavailable."""
+    if not settings.DELIVERY_BRIEF_MARKETS:
         return []
+    try:
+        from services.data.fetchers.macro import get_overnight_markets
+        return get_overnight_markets(on)
+    except Exception as exc:
+        logger.warning("[brief] overnight market figures failed (non-fatal): %s", exc)
+        return [{"label": m.get("label", ""), "ticker": m.get("ticker", ""),
+                 "status": "unavailable", "reason": "fetch failed"}
+                for m in settings.DELIVERY_BRIEF_MARKETS if isinstance(m, dict)]
+
+
+def _market_lines(rows) -> tuple[list[str], list[str]]:
+    """(one sentence per available figure, the labels that are unavailable).
+    A market that is simply closed today is neither."""
+    lines: list[str] = []
+    missing: list[str] = []
+    for r in rows or []:
+        if not isinstance(r, dict):
+            continue
+        if r.get("status") == "unavailable":
+            missing.append(str(r.get("label", "")))
+            continue
+        if r.get("status") != "ok":
+            continue
+        try:
+            v = float(r["value"])
+            if r.get("unit") == "yield":
+                value, change = f"{v:.2f}%", f"{float(r['change_bp']):+.0f} bp"
+            else:
+                prefix = "$" if r.get("unit") == "usd" else ""
+                value, change = f"{prefix}{v:,.2f}", f"{float(r['change_pct']):+.2f}%"
+            lines.append(f"{r['label']} {value} ({change}), as of {_fmt_date(r['as_of'])}")
+        except (KeyError, TypeError, ValueError):
+            missing.append(str(r.get("label", "")))
+    return lines, missing
 
 
 def _shelf_events_since(since_iso: str) -> list[dict]:
@@ -713,8 +891,11 @@ def _fallback_headline(brief: dict) -> str:
 # -- builder + renderer + runner --------------------------------------------
 
 def build_morning_brief(
-    user_id: str, on: date, store: PortfolioStore | None = None
+    user_id: str, on: date, store: PortfolioStore | None = None,
+    markets: list[dict] | None = None,
 ) -> dict:
+    """`markets` is the "Before the open" rows, fetched once per run by
+    run_morning_brief; None fetches them here."""
     store = store or PortfolioStore(user_id=user_id)
     digest = store.load_latest_digest()
     portfolio = None
@@ -750,6 +931,15 @@ def build_morning_brief(
     except Exception as exc:
         logger.debug("[brief] shelf read for lock-in scan failed (non-fatal): %s", exc)
 
+    # PR-003: what the user's last briefs showed, and so what not to repeat.
+    try:
+        recent = store.load_recent_briefs(
+            on, settings.DELIVERY_BRIEF_OVERNIGHT_REPEAT_LOOKBACK_BRIEFS)
+    except Exception as exc:
+        logger.warning("[brief] recent briefs unreadable, no repeat check (non-fatal): %s", exc)
+        recent = []
+    overnight, overnight_filter = _overnight_items(on, recent)
+
     brief = {
         "date": on.isoformat(),
         "user_id": user_id,
@@ -758,7 +948,9 @@ def build_morning_brief(
         "portfolio": portfolio,
         "advisor_flags": advisor_flags,
         "regime": _read_regime(),
-        "overnight": _overnight_items(),
+        "before_the_open": _before_the_open(on) if markets is None else markets,
+        "overnight": overnight,
+        "overnight_filter": overnight_filter,
         "earnings_soon": _earnings_soon(held, on),
         "discovery_adds": _enrich_discovery_adds(_shelf_events_since(since)),
         "ipo_watch": _ipo_watch(on=on),
@@ -839,6 +1031,14 @@ def render_brief_text(brief: dict) -> str:
         word, gloss = _REGIME_PLAIN.get(regime, (regime.title(), ""))
         L += ["MARKET CONDITIONS",
               f"  {word} ({regime})" + (f" — {gloss}" if gloss else ""), ""]
+
+    lines, missing = _market_lines(brief.get("before_the_open"))
+    if lines or missing:
+        L.append("BEFORE THE OPEN   (latest level; change on the previous session)")
+        L += [f"  • {s}" for s in lines]
+        if missing:
+            L.append(f"  Unavailable: {', '.join(missing)}.")
+        L.append("")
 
     overnight = brief.get("overnight", []) or []
     if overnight:
@@ -930,6 +1130,9 @@ def enrich_brief_for_api(brief: dict) -> dict:
         word, gloss = _REGIME_PLAIN.get(regime["label"],
                                         (str(regime["label"]).title(), ""))
         out["regime"] = {**regime, "label_plain": word, "gloss": gloss}
+    if brief.get("before_the_open"):
+        out["before_the_open_lines"], out["before_the_open_unavailable"] = \
+            _market_lines(brief["before_the_open"])
     return out
 
 
@@ -1042,6 +1245,18 @@ def _render_brief_html_inner(brief: dict, H: dict) -> str:
             f'color:{H["pill_ink"]};font:700 13px {_FONT};padding:6px 12px;border-radius:999px">{_esc(word)} · {_esc(regime)}</span>'
             + (f'<p class="sa-muted" style="margin:10px 0 0;font:400 13.5px/1.5 {_FONT};color:{H["muted"]}">{_esc(gloss)}</p>' if gloss else ""))
         rows.append(_section("Market conditions", inner, H))
+
+    # BEFORE THE OPEN (overnight market figures, PR-003)
+    lines, missing = _market_lines(brief.get("before_the_open"))
+    if lines or missing:
+        trs = [f'<tr><td class="sa-ink" style="padding:8px 0;border-top:1px solid {H["hair_soft"]};'
+               f'font:500 14px/1.45 {_FONT};color:{H["ink"]}">{_esc(s)}</td></tr>' for s in lines]
+        if missing:
+            trs.append(f'<tr><td class="sa-muted" style="padding:8px 0;border-top:1px solid {H["hair_soft"]};'
+                       f'font:400 13px/1.5 {_FONT};color:{H["muted"]}">'
+                       f'Unavailable: {_esc(", ".join(missing))}.</td></tr>')
+        rows.append(_section("Before the open · change on the previous session",
+                             _html_rows("".join(trs)), H))
 
     # OVERNIGHT (table with severity chip)
     overnight = brief.get("overnight", []) or []
@@ -1165,11 +1380,12 @@ def run_morning_brief(on: date | None = None) -> dict:
     if not is_trading_day(on):
         return {"status": "not_trading_day"}
     users = active_user_ids() or [settings.PORTFOLIO_DEFAULT_USER_ID]
+    markets = _before_the_open(on)          # market-wide: fetched once per run
     built = 0
     for user_id in users:
         try:
             store = PortfolioStore(user_id=user_id)
-            brief = build_morning_brief(user_id, on, store=store)
+            brief = build_morning_brief(user_id, on, store=store, markets=markets)
             store.save_brief(brief)
             text = render_brief_text(brief)
             html_body = None

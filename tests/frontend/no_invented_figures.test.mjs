@@ -22,7 +22,10 @@
  *    and Learn claims nothing about the member's progress;
  *  - the weekly review opens with its results scorecard (PR-002): red flags,
  *    then what could not be checked, then the lines, every figure one the row
- *    sent, and never the scoreboard it replaced.
+ *    sent, and never the scoreboard it replaced;
+ *  - the brief's "Before the open" (PR-003) shows each market figure the
+ *    server wrote with its as-of date, names the failed ones and gives them
+ *    no number.
  */
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
@@ -697,4 +700,61 @@ test('a weekly review whose scorecard failed says so; one stored before it shows
     assert.ok(!/results ·|could not be computed|judged calls right/i.test(text), text);
     assert.deepEqual(app.errors, []);
   } finally { await app.context.close(); }
+});
+
+// -- PR-003: the brief's "Before the open" ---------------------------------------
+
+// The sentences core.delivery.brief writes for the fixture Yahoo frames in
+// tests/unit/test_overnight_freshness_pr003.py (brief of Tue 13 Oct): Nasdaq's
+// fetch failed and USD/INR had one session, so both are only named.
+const BRIEF = {
+  date: '2026-10-13', kind: 'morning_brief', headline: 'Markets steady before the open.',
+  advisor_flags: [], overnight: [], earnings_soon: [], discovery_adds: [], ipo_watch: [], lockin_flags: [],
+  before_the_open: [
+    { label: 'Nasdaq Composite', ticker: '^IXIC', status: 'unavailable', reason: 'fetch failed' },
+    { label: 'Hang Seng', ticker: '^HSI', status: 'closed', as_of: '2026-10-12' },
+  ],
+  before_the_open_lines: [
+    'S&P 500 5,829.00 (+0.50%), as of Mon 12 Oct',
+    'Nikkei 225 38,805.00 (-0.50%), as of Tue 13 Oct',
+    'Brent crude $75.11 (+1.50%), as of Tue 13 Oct',
+    'US 10-year yield 4.13% (+3 bp), as of Mon 12 Oct',
+  ],
+  before_the_open_unavailable: ['Nasdaq Composite', 'USD/INR'],
+};
+
+async function openBrief(brief) {
+  const app = await openApp(browser, { user: MEMBER,
+                                       api: { '/delivery/brief/latest': json(brief) } });
+  await settled(app.page);
+  await goTo(app.page, 'inbox');
+  await app.page.getByText(brief.headline).waitFor({ timeout: 10000 });
+  return app;
+}
+
+test('the brief lists each overnight market figure with its date and names the failed ones', async () => {
+  const { context, page, errors } = await openBrief(BRIEF);
+  try {
+    await page.getByRole('button', { name: /Before the open/ }).click();
+    const text = await visibleText(page);
+    for (const line of BRIEF.before_the_open_lines) assert.ok(text.includes(line), `missing "${line}" in:\n${text}`);
+    assert.match(text, /Unavailable: Nasdaq Composite, USD\/INR\./);
+    assert.ok(!/Hang Seng/.test(text), 'a market closed today is neither shown nor called unavailable');
+    assert.ok(!/(Nasdaq Composite|USD\/INR)[^\n,.]*\d/.test(text), 'no number for a failed figure');
+    const sent = JSON.stringify(BRIEF.before_the_open_lines);
+    for (const m of text.match(PCT) || []) assert.ok(sent.includes(m), `${m} was not sent`);
+    assert.deepEqual(errors, []);
+  } finally { await context.close(); }
+});
+
+test('a brief stored before the market line shows no "Before the open"', async () => {
+  const before = { ...BRIEF };
+  delete before.before_the_open;
+  delete before.before_the_open_lines;
+  delete before.before_the_open_unavailable;
+  const { context, page, errors } = await openBrief(before);
+  try {
+    assert.ok(!/Before the open/.test(await visibleText(page)));
+    assert.deepEqual(errors, []);
+  } finally { await context.close(); }
 });

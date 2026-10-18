@@ -1058,6 +1058,32 @@ DELIVERY_BRIEF_OVERNIGHT_STOPWORDS: list = list(cfg("delivery.brief_overnight_st
     "rbi", "govt", "government", "india", "indian", "market", "stock", "share",
     "sensex", "nifty",
 ]))
+# PR-003: overnight news is what was PUBLISHED since the previous brief (never
+# further back than max_lookback_days) and was not shown in the user's last
+# repeat_lookback_briefs briefs. A different-URL story counts as shown when it
+# shares >= repeat_min_shared salient entities with a shown one, at most
+# repeat_max_new_share of its own salient entities are new, and it carries no
+# figure the shown one lacked.
+DELIVERY_BRIEF_OVERNIGHT_MAX_LOOKBACK_DAYS: int = int(cfg("delivery.brief_overnight_max_lookback_days", fallback=4))
+DELIVERY_BRIEF_OVERNIGHT_REPEAT_LOOKBACK_BRIEFS: int = int(cfg("delivery.brief_overnight_repeat_lookback_briefs", fallback=5))
+DELIVERY_BRIEF_OVERNIGHT_REPEAT_MIN_SHARED: int = int(cfg("delivery.brief_overnight_repeat_min_shared", fallback=3))
+DELIVERY_BRIEF_OVERNIGHT_REPEAT_MAX_NEW_SHARE: float = float(cfg("delivery.brief_overnight_repeat_max_new_share", fallback=0.34))
+# PR-003 "Before the open": Yahoo daily bars per instrument. session: us_close
+# = the last session dated before the brief; asia_live = only a session dated
+# the brief's day (otherwise "closed"); 24h = the latest bar up to the brief's
+# day. unit: index | usd | inr | yield (yield change in basis points). Bars
+# dated Saturday or Sunday are ignored: list no weekend-trading market here.
+# An empty list removes the section.
+DELIVERY_BRIEF_MARKETS: list = list(cfg("delivery.brief_markets", fallback=[
+    {"label": "S&P 500", "ticker": "^GSPC", "session": "us_close", "unit": "index"},
+    {"label": "Nasdaq Composite", "ticker": "^IXIC", "session": "us_close", "unit": "index"},
+    {"label": "Nikkei 225", "ticker": "^N225", "session": "asia_live", "unit": "index"},
+    {"label": "Hang Seng", "ticker": "^HSI", "session": "asia_live", "unit": "index"},
+    {"label": "Brent crude", "ticker": "BZ=F", "session": "24h", "unit": "usd"},
+    {"label": "USD/INR", "ticker": "INR=X", "session": "24h", "unit": "inr"},
+    {"label": "US 10-year yield", "ticker": "^TNX", "session": "us_close", "unit": "yield"},
+]))
+DELIVERY_BRIEF_MARKET_MAX_AGE_DAYS: int = int(cfg("delivery.brief_market_max_age_days", fallback=4))
 DELIVERY_BRIEF_MAX_IDEAS: int = int(cfg("delivery.brief_max_ideas", fallback=5))
 DELIVERY_BRIEF_IDEA_REASON_MAXLEN: int = int(cfg("delivery.brief_idea_reason_maxlen", fallback=180))
 DELIVERY_BRIEF_MAX_IPOS: int = int(cfg("delivery.brief_max_ipos", fallback=3))

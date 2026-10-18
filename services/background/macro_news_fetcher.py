@@ -22,7 +22,9 @@ Two query modes (called by separate APScheduler jobs):
 CRITICAL (from live testing):
   - Do NOT append date strings to Serper queries — returns zero results
   - Serper /news returns key "news" (not "organic")
-  - Dates from Serper are relative ("5 hours ago") — normalised to ISO here
+  - Dates from Serper are relative ("5 hours ago") — normalised here to the
+    IST calendar date of publication; a date that cannot be read is stored
+    as "" (with the raw string in published_raw) and never counts as recent
   - NewsAPI NEWSAPI_KEY is optional — graceful skip if not set
 """
 
@@ -32,12 +34,15 @@ import json
 import logging
 import re
 import time
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import requests
 
 logger = logging.getLogger(__name__)
+
+_IST = ZoneInfo("Asia/Kolkata")
 
 _MAX_ITERATIONS = 2
 _SERPER_NEWS_URL = "https://google.serper.dev/news"
@@ -69,29 +74,64 @@ DAILY_QUERIES: list[str] = [
 # Date normalisation
 # ---------------------------------------------------------------------------
 
-def _normalize_serper_date(date_str: str) -> str:
+_RELATIVE_UNITS: dict[str, timedelta] = {
+    "second": timedelta(seconds=1), "sec": timedelta(seconds=1),
+    "minute": timedelta(minutes=1), "min": timedelta(minutes=1),
+    "hour": timedelta(hours=1), "hr": timedelta(hours=1),
+    "day": timedelta(days=1), "week": timedelta(weeks=1),
+    "month": timedelta(days=30), "year": timedelta(days=365),
+}
+_RELATIVE_AGE = re.compile(
+    r"(\d+|an?)\s+(" + "|".join(_RELATIVE_UNITS) + r")s?\s+ago")
+
+
+def _normalize_serper_date(date_str: str, now: datetime | None = None) -> str:
     """
-    Convert Serper's relative date strings to ISO YYYY-MM-DD.
-    Serper returns: "5 hours ago", "1 day ago", "2 days ago", "Apr 10, 2026"
+    The IST calendar date (YYYY-MM-DD) on which a Serper result was published,
+    or "" when the string cannot be read.
+
+    Serper returns "5 hours ago", "1 day ago", "2 weeks ago", "Apr 10, 2026".
+    A relative age counts back from `now` (the fetch time) and the result is
+    taken in IST, so "10 hours ago" at 07:30 IST is yesterday. An unreadable
+    or future date is "" — never today — because the brief, chat and the daily
+    review treat a missing date as not recent.
     """
-    if not date_str:
-        return date.today().isoformat()
-    today = date.today()
+    if not date_str or not date_str.strip():
+        return ""
+    now = (now or datetime.now(timezone.utc)).astimezone(_IST)
     s = date_str.strip().lower()
 
-    if re.search(r"\d+\s+(hour|minute|second)s?\s+ago", s):
-        return today.isoformat()
-    m = re.match(r"(\d+)\s+days?\s+ago", s)
+    if s in ("just now", "now", "today"):
+        return now.date().isoformat()
+    if s == "yesterday":
+        return (now - timedelta(days=1)).date().isoformat()
+    m = _RELATIVE_AGE.fullmatch(s)
     if m:
-        return (today - timedelta(days=int(m.group(1)))).isoformat()
-    m = re.match(r"(\d+)\s+weeks?\s+ago", s)
-    if m:
-        return (today - timedelta(weeks=int(m.group(1)))).isoformat()
+        n = 1 if m.group(1) in ("a", "an") else int(m.group(1))
+        try:
+            return (now - n * _RELATIVE_UNITS[m.group(2)]).date().isoformat()
+        except OverflowError:           # "99999 years ago": unreadable, not fatal
+            return ""
     try:
         from dateutil import parser as _dp
-        return _dp.parse(date_str).date().isoformat()
+        parsed = _dp.parse(date_str.strip())
     except Exception:
-        return today.isoformat()
+        return ""
+    if parsed.tzinfo is not None:
+        parsed = parsed.astimezone(_IST)
+    day = parsed.date()
+    return "" if day > now.date() else day.isoformat()
+
+
+def _newsapi_date(published_at: str) -> str:
+    """NewsAPI publishedAt ("2026-05-12T21:00:00Z") as its IST date, or ""."""
+    try:
+        ts = datetime.fromisoformat((published_at or "").strip().replace("Z", "+00:00"))
+    except ValueError:
+        return ""
+    if ts.tzinfo is None:
+        ts = ts.replace(tzinfo=timezone.utc)
+    return ts.astimezone(_IST).date().isoformat()
 
 
 # ---------------------------------------------------------------------------
@@ -213,6 +253,7 @@ class MacroNewsFetcher:
                     "snippet":        item.get("snippet", ""),
                     "url":            item.get("link", ""),
                     "published_date": _normalize_serper_date(item.get("date", "")),
+                    "published_raw":  item.get("date", ""),
                     "query_used":     query,
                 }
                 for item in items
@@ -262,7 +303,8 @@ class MacroNewsFetcher:
                     "title":          a.get("title", ""),
                     "snippet":        a.get("description", "") or "",
                     "url":            a.get("url", ""),
-                    "published_date": (a.get("publishedAt", "") or "")[:10],
+                    "published_date": _newsapi_date(a.get("publishedAt", "") or ""),
+                    "published_raw":  a.get("publishedAt", "") or "",
                     "query_used":     "top_headlines_india_business",
                 }
                 for a in articles
@@ -297,7 +339,7 @@ class MacroNewsFetcher:
 
         today = date.today().isoformat()
         articles_text = "\n".join(
-            f"{i}. [{r.get('published_date', 'unknown')}] {r.get('title', '')} — "
+            f"{i}. [{r.get('published_date') or 'unknown'}] {r.get('title', '')} — "
             f"{(r.get('snippet', '') or '')[:120]}"
             for i, r in enumerate(raw_results[:15], 1)
         )

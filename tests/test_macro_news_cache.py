@@ -150,8 +150,9 @@ def test_daily_review_context_reads_yesterday_too(tmp_path, monkeypatch):
     """A 16:30 IST review must still see last night's macro event."""
     import services.background.macro_news_cache as mod
     monkeypatch.setattr(mod, "_DATA_DIR", tmp_path)
-    _seed_feed(tmp_path, date.today() - timedelta(days=1), [
-        _entry("Fed signals a pause", "HIGH"),
+    yesterday = date.today() - timedelta(days=1)
+    _seed_feed(tmp_path, yesterday, [
+        _entry("Fed signals a pause", "HIGH", published_date=yesterday.isoformat()),
     ])
 
     assert "Fed signals a pause" in mod.MacroNewsCache().get_for_daily_review()
@@ -161,8 +162,9 @@ def test_daily_review_context_ignores_older_days(tmp_path, monkeypatch):
     """Two-day-old macro is not context for today's move."""
     import services.background.macro_news_cache as mod
     monkeypatch.setattr(mod, "_DATA_DIR", tmp_path)
-    _seed_feed(tmp_path, date.today() - timedelta(days=4), [
-        _entry("Old budget headline", "HIGH"),
+    old = date.today() - timedelta(days=4)
+    _seed_feed(tmp_path, old, [
+        _entry("Old budget headline", "HIGH", published_date=old.isoformat()),
     ])
 
     assert mod.MacroNewsCache().get_for_daily_review() == ""
@@ -202,7 +204,8 @@ def test_daily_review_context_reads_the_reviewed_date_not_today(tmp_path, monkey
     import services.background.macro_news_cache as mod
     monkeypatch.setattr(mod, "_DATA_DIR", tmp_path)
     past = date.today() - timedelta(days=10)
-    _seed_feed(tmp_path, past, [_entry("Budget day selloff", "HIGH")])
+    _seed_feed(tmp_path, past, [_entry("Budget day selloff", "HIGH",
+                                       published_date=past.isoformat())])
     _seed_feed(tmp_path, date.today(), [_entry("Todays unrelated macro", "HIGH")])
 
     block = mod.MacroNewsCache().get_for_daily_review(for_date=past)
@@ -216,7 +219,9 @@ def test_daily_review_context_for_past_date_includes_its_previous_day(tmp_path, 
     import services.background.macro_news_cache as mod
     monkeypatch.setattr(mod, "_DATA_DIR", tmp_path)
     past = date.today() - timedelta(days=10)
-    _seed_feed(tmp_path, past - timedelta(days=1), [_entry("Overnight Fed move", "HIGH")])
+    _seed_feed(tmp_path, past - timedelta(days=1), [
+        _entry("Overnight Fed move", "HIGH",
+               published_date=(past - timedelta(days=1)).isoformat())])
 
     block = mod.MacroNewsCache().get_for_daily_review(for_date=past)
 
@@ -238,11 +243,12 @@ def test_daily_review_context_carries_date_and_severity(tmp_path, monkeypatch):
     """Provenance the FeedbackAgent can reason about: when, and how big."""
     import services.background.macro_news_cache as mod
     monkeypatch.setattr(mod, "_DATA_DIR", tmp_path)
+    published = (date.today() - timedelta(days=1)).isoformat()
     _seed_feed(tmp_path, date.today(), [
-        _entry("RBI holds repo rate", "HIGH", published_date="2026-07-31"),
+        _entry("RBI holds repo rate", "HIGH", published_date=published),
     ])
 
     block = mod.MacroNewsCache().get_for_daily_review()
 
-    assert "2026-07-31" in block
+    assert published in block
     assert "HIGH" in block

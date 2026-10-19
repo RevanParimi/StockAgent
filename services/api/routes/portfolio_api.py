@@ -36,14 +36,20 @@ from core.config import settings
 from services.api.auth import get_current_user, require_owner
 from backend.sectors.registry import SectorRegistry
 from backend.shared.schemas.portfolio import Holding, TransactionRecord, WatchlistItem
+from core.portfolio import results
 from core.portfolio.autopilot import make_txn_id
 from core.portfolio.pipeline import run_post_review_pipeline
-from core.portfolio.pricing import PriceUnavailableError, close_on
+from core.portfolio.pricing import PriceUnavailableError, close_on, session_close
 from core.portfolio.promotion import demote_symbol, is_valid_sector, promote_symbol
 from core.portfolio.store import PortfolioStore, import_csv
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/portfolio", tags=["Portfolio"])
+
+# The value chart's ranges, in value points (one per review day). The screen
+# slices its chart by these and shows the server's figures for each.
+RANGE_POINTS = {"1W": 5, "1M": 22, "3M": 66, "6M": 132, "1Y": 252}
+HISTORY_SHOWN = 400          # value points sent for the chart
 
 
 def _store(user_id: str | None) -> PortfolioStore:
@@ -82,13 +88,17 @@ async def get_portfolio(
     p = store.load()
     holdings = []
     for h in p.holdings:
-        last_close, pnl = None, None
+        last_close, last_close_date, pnl = None, None, None
         try:
-            last_close = await asyncio.to_thread(close_on, h.symbol, date.today())
+            quote, _session = await asyncio.to_thread(session_close, h.symbol, date.today())
+            last_close = quote.close
+            # The date of the bar the price came from, shown beside it (SA-051).
+            last_close_date = quote.bar_date.isoformat() if quote.bar_date else None
             pnl = round(h.unrealised_pnl_pct(last_close), 2)
         except Exception as exc:
             logger.warning("[portfolio_api] mark failed for %s: %s", h.symbol, exc)
-        holdings.append({**h.model_dump(), "last_close": last_close, "pnl_pct": pnl})
+        holdings.append({**h.model_dump(), "last_close": last_close,
+                         "last_close_date": last_close_date, "pnl_pct": pnl})
     return {
         "user_id": p.user_id,
         "risk_profile": p.risk_profile,
@@ -326,14 +336,56 @@ async def get_transactions(
     return {"transactions": [r.model_dump() for r in reversed(records)]}
 
 
+def _equity_shares(market_value, cash) -> tuple[float | None, float | None]:
+    """(in stocks %, cash %) of total equity (the two together), to one
+    decimal, adding to 100."""
+    if cash is None or market_value is None or market_value + cash <= 0:
+        return None, None
+    cash_pct = round(cash / (market_value + cash) * 100.0, 1)
+    return round(100.0 - cash_pct, 1), cash_pct
+
+
+def _benchmark():
+    """The Nifty series (a seam: tests answer it without the network)."""
+    from core.audit.benchmark import BenchmarkSeries
+    return BenchmarkSeries()
+
+
+def _stock_closes():
+    """The NSE close an added holding is valued at (a seam, as above)."""
+    return results.stock_close_fn()
+
+
+def _nifty_comparison(points: list[dict], txns: list) -> dict:
+    """results.portfolio_vs_nifty with one Nifty download for every value
+    point's date. Never raises: a failure reads as unavailable."""
+    try:
+        days = sorted(d for d in (results._day(p.get("date")) for p in points) if d)
+        series = _benchmark()
+        if days:
+            series.preload(days[0], days[-1])
+        return results.portfolio_vs_nifty(
+            points, txns, close_on=series.close_on,
+            stock_close_on=_stock_closes(), ranges=RANGE_POINTS)
+    except Exception as exc:
+        logger.warning("[portfolio_api] Nifty comparison failed: %s", exc)
+        return {"line": [], "ranges": {},
+                "since_start": {"available": False, "reason": "could not be computed"}}
+
+
 @router.get("/performance", summary="P&L summary + daily equity curve")
 async def get_performance(
     user: dict = Depends(get_current_user),
 ) -> dict:
     store = _store(user["user_id"])
     p = store.load()
-    history = store.load_value_history(limit=400)
-    realized = round(sum(t.realized_pnl for t in store.load_transactions(limit=2000)), 2)
+    # Every point and row: the deposits and closed trades span the account's
+    # whole life (retention keeps each point where capital_in changed); the
+    # chart gets the last HISTORY_SHOWN points.
+    points = store.load_value_history(limit=1_000_000)
+    txns = store.load_transactions(limit=1_000_000)
+    history = points[-HISTORY_SHOWN:]
+    realized = round(sum(t.realized_pnl for t in txns), 2)
     cash = p.cash_deployable
     if history:
         last = history[-1]
@@ -362,11 +414,22 @@ async def get_performance(
         if market_value is not None else None
     total_pnl = round(total_equity - p.capital_in, 2) \
         if total_equity is not None and p.capital_in > 0 else None
+    in_stocks_pct, cash_pct = _equity_shares(market_value, cash)
+    # The comparison and the trade record need cash accounting: without it
+    # no deposit or sale is recorded.
+    comparison = closed = None
+    if cash is not None:
+        closed = results.trade_stats(results.closed_trades(txns))
+        if points:
+            comparison = await asyncio.to_thread(_nifty_comparison, points, txns)
+    line = {pt["date"]: pt["nifty_value"] for pt in (comparison or {}).get("line", [])}
     return {
         "cash": cash,
         "capital_in": p.capital_in,
         "market_value": market_value,
         "total_equity": total_equity,
+        "in_stocks_pct": in_stocks_pct,
+        "cash_pct": cash_pct,
         "realized_pnl": realized,
         "unrealized_pnl": round(total_pnl - realized, 2) if total_pnl is not None else None,
         "total_return_pct": round(total_pnl / p.capital_in * 100, 2)
@@ -374,7 +437,13 @@ async def get_performance(
         "day_change_pct": day_change_pct,
         "as_of": as_of,
         "autopilot": p.autopilot,
-        "history": history,
+        "history": [{**pt, "nifty_value": line.get(pt.get("date"))} for pt in history],
+        "benchmark": "Nifty 50",
+        "vs_nifty": (comparison or {}).get("since_start")
+            or {"available": False, "reason": "no valuation recorded yet"},
+        "ranges": (comparison or {}).get("ranges", {}),
+        "range_points": RANGE_POINTS,
+        "closed_trades": closed,
     }
 
 

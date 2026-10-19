@@ -8,12 +8,16 @@ from fastapi.testclient import TestClient
 import services.api.routes.portfolio_api as papi
 from backend.shared.schemas.portfolio import Holding
 from core.portfolio.store import PortfolioStore
+from core.intelligence.rl.workflows.daily_review import SessionClose
 
 
 @pytest.fixture
 def client(tmp_path, monkeypatch):
     monkeypatch.setattr(papi.settings, "PORTFOLIO_DATA_DIR", str(tmp_path))
     monkeypatch.setattr(papi, "close_on", lambda sym, d: 12000.0)
+    # GET /portfolio reads the close with the date of its bar (SA-051).
+    monkeypatch.setattr(papi, "session_close", lambda sym, d: (
+        SessionClose(12000.0, date(2026, 10, 16), "test"), date(2026, 10, 16)))
     monkeypatch.setattr(papi, "promote_symbol",
                         lambda symbol, sector, origin: {"status": "promoted", "symbol": symbol})
     monkeypatch.setattr(papi, "demote_symbol", lambda symbol: True)
@@ -65,6 +69,7 @@ def test_get_portfolio_marks_to_market(client):
     assert resp.status_code == 200
     row = resp.json()["holdings"][0]
     assert row["last_close"] == 12000.0
+    assert row["last_close_date"] == "2026-10-16"   # the bar's own date
     assert row["pnl_pct"] == pytest.approx(20.0)
 
 

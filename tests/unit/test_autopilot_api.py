@@ -10,6 +10,14 @@ from backend.shared.schemas.portfolio import Holding, TransactionRecord
 from core.portfolio.store import PortfolioStore
 
 
+class _FlatNifty:
+    def preload(self, start, end):
+        return True
+
+    def close_on(self, d):
+        return 100.0
+
+
 @pytest.fixture
 def client(tmp_path, monkeypatch):
     # Same pattern as tests/unit/test_portfolio_api.py: patch the module-level
@@ -20,6 +28,10 @@ def client(tmp_path, monkeypatch):
     # keep promotion machinery away from the real data/managed_tickers.json
     monkeypatch.setattr(papi, "promote_symbol", lambda *a, **k: {"status": "test"})
     monkeypatch.setattr(papi, "demote_symbol", lambda *a, **k: False)
+    # /portfolio/performance compares with the Nifty (SA-051): a flat index
+    # and flat stock closes, never the network.
+    monkeypatch.setattr(papi, "_benchmark", _FlatNifty)
+    monkeypatch.setattr(papi, "_stock_closes", lambda: (lambda symbol, d: 100.0))
     app = FastAPI()
     app.include_router(papi.router)
     return TestClient(app)

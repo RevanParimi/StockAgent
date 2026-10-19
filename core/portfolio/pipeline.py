@@ -317,7 +317,10 @@ def run_post_review_pipeline(review_date: date) -> dict:
                            user_id, exc)
         try:
             from core.portfolio import autopilot
-            autopilot.record_value_point(store, store.load(), closes, review_date)
+            # Under the user's lock, as every add is: the point then holds a
+            # manual add whole or not at all, and its recorded_at says which.
+            with store.locked():
+                autopilot.record_value_point(store, store.load(), closes, review_date)
         except Exception as exc:
             logger.warning("[portfolio_pipeline] value point failed for %s (non-fatal): %s",
                            user_id, exc)

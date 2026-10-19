@@ -18,6 +18,19 @@ function fmtIST(ts, dateStr) {
   return dateStr || '';
 }
 
+// '2026-10-17' -> '17 Oct' ('17 Oct 2025' with the year); '' when unreadable.
+function fmtDay(isoDate, withYear) {
+  const d = new Date(String(isoDate || '').slice(0, 10) + 'T12:00:00Z');
+  return isNaN(d) ? '' : d.toLocaleDateString('en-IN', { timeZone: 'UTC', day: 'numeric', month: 'short',
+                                                        ...(withYear ? { year: 'numeric' } : {}) });
+}
+
+const fmtInr = (v) => '₹' + Math.round(Math.abs(v)).toLocaleString('en-IN');
+const fmtSigned = (v, digits = 1) => {
+  const r = Number(v.toFixed(digits));     // a tiny negative rounds to zero, signed '+'
+  return (r >= 0 ? '+' : '-') + Math.abs(r).toFixed(digits) + '%';
+};
+
 function adaptHolding(h) {
   return {
     sym: h.symbol,
@@ -25,6 +38,7 @@ function adaptHolding(h) {
     qty: h.adj_qty,               // corp-action-adjusted — all math uses adj_*
     avgPrice: h.adj_avg_price,
     currentPrice: h.last_close,   // null when mark-to-market failed
+    closeDate: h.last_close_date, // the date of that price's bar (SA-051)
     pnlPct: h.pnl_pct,            // null when mark-to-market failed
     buyDate: h.buy_date,
   };
@@ -245,10 +259,13 @@ function PortfolioPage({ onNav, openChat }) {
   const heroValue = cashLive && perf.total_equity != null ? perf.total_equity : totalValue;
   const liveHist = (perf?.history || []).filter(pt => pt.total_equity != null);
   const showChart = isDemo || liveHist.length > 1;
-  const histWindow = { '1W': 5, '1M': 22, '3M': 66, '6M': 132, '1Y': 252 }[range] || 22;
+  // The server's ranges (value points per tab) and each range's money-weighted
+  // return beside the Nifty's: a deposit is never read as a gain (SA-051).
+  const rangePoints = perf?.range_points || { '1W': 5, '1M': 22, '3M': 66, '6M': 132, '1Y': 252 };
+  const histWindow = rangePoints[range] || 22;
   const liveSlice = liveHist.slice(-histWindow);
-  const liveChange = liveSlice.length > 1 && liveSlice[0].total_equity > 0
-    ? (liveSlice[liveSlice.length - 1].total_equity / liveSlice[0].total_equity - 1) * 100 : 0;
+  const rangeFig = perf?.ranges?.[range];
+  const benchmark = perf?.benchmark || 'Nifty 50';
 
   if (live.status === 'loading') {
     return (
@@ -339,10 +356,24 @@ function PortfolioPage({ onNav, openChat }) {
                 </span>
               )}
             </div>
+            {isLive && (
+              <div className="pf-hero-asof" style={{ fontSize:12, color:'#94a3b8', margin:'-6px 0 12px' }}>
+                {cashLive && perf.as_of ? `Valued as of ${fmtDay(perf.as_of, true)}`
+                  : 'At each holding’s latest price; the table gives each price’s date'}
+              </div>
+            )}
             <div className="pf-hero-stats" style={{ display:'flex', gap:24, color:'#cbd5e1', fontSize:13, flexWrap:'wrap' }}>
-              <Stat2 label="Invested"      value={'₹'+Math.round(cashLive && perf.capital_in > 0 ? perf.capital_in : invested).toLocaleString('en-IN')}/>
+              {/* "Capital added" is capital_in: the money put in, which trades never
+                  move. "In stocks" and "Cash" are shares of total equity (SA-051). */}
+              {cashLive ? (<>
+                <Stat2 label="Capital added" value={fmtInr(perf.capital_in)}/>
+                <Stat2 label="In stocks" value={perf.market_value != null ? fmtInr(perf.market_value) : '—'} share={perf.in_stocks_pct}/>
+                <Stat2 label="Cash" value={fmtInr(perf.cash)} share={perf.cash_pct}/>
+              </>) : (
+                <Stat2 label="Bought for" value={'₹'+Math.round(invested).toLocaleString('en-IN')}/>
+              )}
               <Stat2 label="Total return"  value={((cashLive ? (perf.total_equity - perf.capital_in) : totalReturn)>=0?'+':'-')+'₹'+Math.abs(Math.round(cashLive ? (perf.total_equity - perf.capital_in) : totalReturn)).toLocaleString('en-IN')} pct={perf?.total_return_pct ?? totalReturnPct}/>
-              {(isDemo || cashLive) && <Stat2 label="Cash" value={'₹'+(isDemo ? demo.cash : Math.round(perf.cash)).toLocaleString('en-IN')}/>}
+              {isDemo && <Stat2 label="Cash" value={'₹'+demo.cash.toLocaleString('en-IN')}/>}
               {cashLive && perf.realized_pnl != null && (
                 <Stat2 label="Realized P&L"
                   value={(perf.realized_pnl>=0?'+':'-')+'₹'+Math.abs(Math.round(perf.realized_pnl)).toLocaleString('en-IN')}/>
@@ -352,20 +383,27 @@ function PortfolioPage({ onNav, openChat }) {
                 <Stat2 label="Unpriced" value={(holdings.length - marked.length)+' awaiting close'}/>
               )}
             </div>
+            {isLive && cashLive && <VsNiftyLine v={perf.vs_nifty} benchmark={benchmark}/>}
           </div>
 
           {showChart && (
             <div className="pf-hero-chart" style={{ position:'relative', zIndex:2 }}>
               <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:10, marginBottom:8 }}>
                 <div>
-                  <div style={{ fontSize:11, color:'#94a3b8' }}>Value over {isDemo ? r.label : range}</div>
-                  <div style={{ fontSize:13, fontWeight:700, color: (isDemo ? r.change : liveChange) >= 0 ? '#86efac' : '#fca5a5' }}>
-                    {(isDemo ? r.change : liveChange) >= 0 ? '+' : ''}{(isDemo ? r.change : liveChange).toFixed(2)}%
-                  </div>
+                  <div style={{ fontSize:11, color:'#94a3b8' }}>{isDemo ? `Value over ${r.label}` : `Return over ${range}`}</div>
+                  {isDemo ? (
+                    <div style={{ fontSize:13, fontWeight:700, color: r.change >= 0 ? '#86efac' : '#fca5a5' }}>
+                      {r.change >= 0 ? '+' : ''}{r.change.toFixed(2)}%
+                    </div>
+                  ) : <RangeFigure fig={rangeFig} benchmark={benchmark}/>}
                 </div>
                 <DarkRangeTabs value={range} onChange={setRange}/>
               </div>
-              <Sparkline values={isDemo ? r.points : liveSlice.map(pt => pt.total_equity)} height={92} color="#22d3ee"/>
+              {isDemo ? <Sparkline values={r.points} height={92} color="#22d3ee"/> : (
+                <ValueChart values={liveSlice.map(pt => pt.total_equity)}
+                  nifty={liveSlice.map(pt => (typeof pt.nifty_value === 'number' ? pt.nifty_value : null))}
+                  benchmark={benchmark} height={92}/>
+              )}
             </div>
           )}
         </section>
@@ -380,6 +418,7 @@ function PortfolioPage({ onNav, openChat }) {
               <HoldingsTable holdings={holdings} digest={live.digest} isLive={isLive}
                 onAdd={()=>setAddOpen(true)} onRemoved={live.reload}/>
             )}
+            {isLive && cashLive && perf.closed_trades && <TradeRecordCard stats={perf.closed_trades}/>}
             {(isDemo || window.__learningsLive) && window.PORTFOLIO_LEARNINGS && (
               <LearningsSection learnings={window.PORTFOLIO_LEARNINGS} openChat={openChat}/>
             )}
@@ -389,7 +428,7 @@ function PortfolioPage({ onNav, openChat }) {
 
           {/* Right rail */}
           <div style={{ display:'flex', flexDirection:'column', gap:20, minWidth:0 }}>
-            {alerts.length > 0 && <AlertsCard alerts={alerts}/>}
+            {alerts.length > 0 && <AlertsCard alerts={alerts} reviewDate={isLive ? live.digest?.date : null}/>}
             {holdings.length > 0 && <AllocationCard holdings={holdings}/>}
             <AskAssistantCard openChat={openChat}/>
           </div>
@@ -445,17 +484,161 @@ function DarkRangeTabs({ value, onChange, options=['1W','1M','3M','6M','1Y'] }) 
   );
 }
 
-function Stat2({ label, value, pct }) {
+// pct: a gain or loss (coloured); share: a part of total equity (plain).
+function Stat2({ label, value, pct, share }) {
   return (
     <div>
       <div style={{ fontSize:10, color:'#94a3b8', textTransform:'uppercase', letterSpacing:'.12em', marginBottom:4 }}>{label}</div>
       <div className="mono" style={{ fontSize:15, fontWeight:700, color:'#f1f5f9' }}>
-        {value} {pct !== undefined && (
+        {value} {pct !== undefined && pct !== null && (
           <span style={{ marginLeft:6, color: pct>=0 ? '#86efac' : '#fca5a5', fontSize:12 }}>
             ({pct>=0?'+':''}{pct.toFixed(1)}%)
           </span>
         )}
+        {typeof share === 'number' && (
+          <span style={{ marginLeft:6, color:'#cbd5e1', fontSize:12 }}>({share.toFixed(1)}%)</span>
+        )}
       </div>
+    </div>
+  );
+}
+
+// Server reasons in the screen's words.
+function plainReason(reason) {
+  return reason === 'younger' ? 'the portfolio is newer than that' : reason;
+}
+
+// One range's money-weighted return beside the Nifty's (results.vs_nifty).
+function RangeFigure({ fig, benchmark }) {
+  if (!fig || !fig.available) {
+    return (
+      <div className="pf-range-figure" style={{ fontSize:13, fontWeight:700, color:'#94a3b8' }}>
+        unavailable{fig?.reason ? ` (${plainReason(fig.reason)})` : ''}
+      </div>
+    );
+  }
+  return (
+    <div className="pf-range-figure" style={{ fontSize:13, fontWeight:700 }}>
+      <span style={{ color: fig.portfolio_pct >= 0 ? '#86efac' : '#fca5a5' }}>{fmtSigned(fig.portfolio_pct)}</span>
+      <span style={{ color:'#94a3b8', fontWeight:600 }}> · {benchmark} {fmtSigned(fig.nifty_pct)}</span>
+    </div>
+  );
+}
+
+// "If this had been in the Nifty": the same deposits, each buying the index
+// at its own day's close, against the portfolio, cash included (SA-051).
+function VsNiftyLine({ v, benchmark }) {
+  const box = { marginTop:14, fontSize:12, color:'#cbd5e1', lineHeight:1.6, maxWidth:560 };
+  if (!v || !v.available || v.nifty_value == null) {
+    return (
+      <div className="pf-vs-nifty" style={box}>
+        If this had been in the {benchmark}: unavailable{v?.reason ? ` (${plainReason(v.reason)})` : ''}.
+      </div>
+    );
+  }
+  const gap = v.gap_inr != null ? v.gap_inr : v.portfolio_value - v.nifty_value;
+  const level = Math.abs(v.gap_points) < 0.05;
+  return (
+    <div className="pf-vs-nifty" style={box}>
+      <div>
+        If this had been in the {benchmark}: <b className="mono" style={{ color:'#f1f5f9' }}>{fmtInr(v.nifty_value)}</b>.
+        {' '}The portfolio: <b className="mono" style={{ color:'#f1f5f9' }}>{fmtInr(v.portfolio_value)}</b>,
+        {' '}{level ? 'level with it' : (
+          <span style={{ color: gap >= 0 ? '#86efac' : '#fca5a5', fontWeight:700 }}>
+            {fmtInr(gap)} {gap >= 0 ? 'ahead' : 'behind'} ({Math.abs(v.gap_points).toFixed(1)} points)
+          </span>
+        )}.
+      </div>
+      <div style={{ color:'#94a3b8' }}>
+        {v.first_deposit ? `Since ${fmtDay(v.first_deposit, true)}: ` : ''}the portfolio {fmtSigned(v.portfolio_pct)},
+        {' '}the {benchmark} {fmtSigned(v.nifty_pct)}, for the same deposits on the same days. Cash counts.
+      </div>
+    </div>
+  );
+}
+
+// The value chart: the portfolio's equity and, dashed, the same deposits in
+// the Nifty, on one scale. The Nifty line is drawn only through points with a
+// value; a missing one leaves a gap, never a flat or carried-forward line.
+function ValueChart({ values, nifty, benchmark, height=92 }) {
+  if (!values || values.length < 2) return null;
+  const known = nifty.filter(v => v != null);
+  const all = values.concat(known);
+  const min = Math.min(...all), max = Math.max(...all);
+  const span = max - min || 1;
+  const w = 100;
+  const x = (i) => (i / (values.length - 1)) * w;
+  const y = (v) => height - ((v - min) / span) * height;
+  const pts = values.map((v, i) => `${x(i)},${y(v)}`).join(' ');
+  const runs = [];
+  let run = [];
+  nifty.forEach((v, i) => {
+    if (v == null) { if (run.length) runs.push(run); run = []; }
+    else run.push(`${x(i)},${y(v)}`);
+  });
+  if (run.length) runs.push(run);
+  const drawn = runs.filter(r => r.length > 1);
+  return (
+    <div>
+      <svg width="100%" height={height} viewBox={`0 0 ${w} ${height}`} preserveAspectRatio="none">
+        <defs><linearGradient id="pf-value-grad" x1="0" x2="0" y1="0" y2="1">
+          <stop offset="0%" stopColor="#22d3ee" stopOpacity=".25"/>
+          <stop offset="100%" stopColor="#22d3ee" stopOpacity="0"/>
+        </linearGradient></defs>
+        <polygon points={`0,${height} ${pts} ${w},${height}`} fill="url(#pf-value-grad)"/>
+        <polyline className="pf-value-line" points={pts} fill="none" stroke="#22d3ee" strokeWidth="1.6" vectorEffect="non-scaling-stroke"/>
+        {drawn.map((r, k) => (
+          <polyline key={k} className="pf-nifty-line" points={r.join(' ')} fill="none" stroke="#fbbf24"
+            strokeWidth="1.4" strokeDasharray="4 3" vectorEffect="non-scaling-stroke"/>
+        ))}
+      </svg>
+      <div style={{ display:'flex', gap:14, flexWrap:'wrap', fontSize:11, color:'#94a3b8', marginTop:6 }}>
+        <span><span style={{ color:'#22d3ee' }}>━</span> Portfolio</span>
+        <span className="pf-nifty-legend">
+          <span style={{ color:'#fbbf24' }}>┅</span> {drawn.length ? `Same money in the ${benchmark}` : `${benchmark}: unavailable`}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+// The closed-trade record (results.trade_stats over the whole ledger).
+function TradeRecordCard({ stats }) {
+  const s = stats || {};
+  const fig = (label, value, sub) => (
+    <div key={label} style={{ minWidth:96 }}>
+      <div style={{ fontSize:10, color:'var(--ink-3)', textTransform:'uppercase', letterSpacing:'.1em', fontWeight:700 }}>{label}</div>
+      <div className="mono" style={{ fontSize:18, fontWeight:800, color:'var(--ink-1)' }}>{value}</div>
+      {sub && <div style={{ fontSize:11, color:'var(--ink-3)' }}>{sub}</div>}
+    </div>
+  );
+  let body;
+  if (!s.count) {
+    body = <div style={{ fontSize:13, color:'var(--ink-2)' }}>No closed trades yet. A trade counts once its last share is sold.</div>;
+  } else if (!s.known) {
+    body = <div style={{ fontSize:13, color:'var(--ink-2)' }}>{s.count} closed, none with a recorded cost.</div>;
+  } else {
+    body = (
+      <>
+        <div style={{ display:'flex', gap:22, flexWrap:'wrap', marginBottom:12 }}>
+          {fig('Trades', String(s.known))}
+          {fig('Win rate', `${s.win_rate_pct.toFixed(0)}%`, `${s.wins} won, ${s.losses} lost`)}
+          {fig('Average win', s.avg_win_pct != null ? fmtSigned(s.avg_win_pct) : '—')}
+          {fig('Average loss', s.avg_loss_pct != null ? fmtSigned(s.avg_loss_pct) : '—')}
+          {fig('Expectancy', fmtSigned(s.expectancy_pct), 'per trade')}
+        </div>
+        <p style={{ fontSize:12, color:'var(--ink-3)', lineHeight:1.55, margin:0 }}>
+          Expectancy is the average result per closed trade: win rate × average win − loss rate × average loss.
+          A majority of winning trades can still lose money, so both are shown.
+          {s.unknown > 0 && ` ${s.unknown} earlier trade${s.unknown === 1 ? '' : 's'} with no recorded cost not counted.`}
+        </p>
+      </>
+    );
+  }
+  return (
+    <div className="card pf-card-body sa-trade-record">
+      <div className="eyebrow" style={{ marginBottom:14 }}>Closed trades · {s.basis || 'before costs'}</div>
+      {body}
     </div>
   );
 }
@@ -547,8 +730,18 @@ function HoldingsTable({ holdings, digest, isLive, onAdd, onRemoved }) {
                   </div>
                 </td>
                 <td style={pfTd}><span className="mono">{h.qty}</span></td>
-                <td style={pfTd}><span className="mono">{fmt(h.avgPrice)}</span></td>
-                <td style={pfTd}><span className="mono">{fmt(h.currentPrice)}</span></td>
+                {/* Every price with its date (SA-051): the average cost from the
+                    first purchase, the current price from its bar's session. */}
+                <td style={pfTd}>
+                  <span className="mono">{fmt(h.avgPrice)}</span>
+                  {isLive && h.buyDate && <div className="pf-price-date" style={pfDate}>first bought {fmtDay(h.buyDate, true)}</div>}
+                </td>
+                <td style={pfTd}>
+                  <span className="mono">{fmt(h.currentPrice)}</span>
+                  {isLive && h.currentPrice != null && (
+                    <div className="pf-price-date" style={pfDate}>{h.closeDate ? `on ${fmtDay(h.closeDate, true)}` : 'date not known'}</div>
+                  )}
+                </td>
                 <td style={pfTd}><span className="mono" style={{ fontWeight:700 }}>{fmt(value, 0)}</span></td>
                 <td style={pfTd}>
                   {pl == null ? <span className="mono" style={{ color:'var(--ink-3)' }}>—</span> : (
@@ -560,7 +753,8 @@ function HoldingsTable({ holdings, digest, isLive, onAdd, onRemoved }) {
                 </td>
                 <td style={pfTd}>
                   {take ? (
-                    <div style={{ display:'flex', alignItems:'center', gap:8 }} title={take.reason || undefined}>
+                    <div style={{ display:'flex', alignItems:'center', gap:8 }}
+                      title={take.reason ? (isLive && digest?.date ? `Review of ${fmtDay(digest.date, true)}: ` : '') + take.reason : undefined}>
                       {take.score != null && <span className="mono" style={{ fontWeight:700 }}>{take.score.toFixed(2)}</span>}
                       <span style={{ display:'inline-block', padding:'3px 8px', borderRadius:999, fontSize:10, fontWeight:700,
                         background:`color-mix(in oklab, ${verdictColor} 14%, transparent)`, color: verdictColor, letterSpacing:'.04em' }}>
@@ -592,6 +786,7 @@ function HoldingsTable({ holdings, digest, isLive, onAdd, onRemoved }) {
 
 const pfTh = { textAlign:'left', padding:'12px 24px', fontSize:11, fontWeight:600, borderBottom:'1px solid var(--border)' };
 const pfTd = { padding:'14px 24px', fontSize:13, borderBottom:'1px solid var(--border)' };
+const pfDate = { fontSize:10, color:'var(--ink-3)', marginTop:2, whiteSpace:'nowrap' };
 
 function ActivityCard({ items }) {
   const [openIdx, setOpenIdx] = useStatePf(null);
@@ -618,7 +813,8 @@ function ActivityCard({ items }) {
                   {m.label} <span className="mono">{it.sym}</span>
                   {it.qty && <span style={{ color:'var(--ink-3)', fontWeight:500 }}>
                     {' · '}{it.qty} @ ₹{it.price.toLocaleString('en-IN', {minimumFractionDigits:2})}
-                    {it.buyPx != null && ` (bought @ ${it.approx ? '≈' : ''}₹${it.buyPx.toLocaleString('en-IN', {maximumFractionDigits:2})})`}
+                    {it.priceDate && ` on ${fmtDay(it.priceDate, true)}`}
+                    {it.buyPx != null && ` (${it.priceDate ? 'average cost' : 'bought @'} ${it.approx ? '≈' : ''}₹${it.buyPx.toLocaleString('en-IN', {maximumFractionDigits:2})})`}
                   </span>}
                 </div>
                 {it.text && <div style={{ fontSize:12, color:'var(--ink-3)', marginTop:2 }}>{it.text}</div>}
@@ -662,6 +858,7 @@ function LiveActivityCard({ txns }) {
     return {
       kind: isSell ? 'sell' : 'buy',
       sym: t.symbol, qty: t.qty, price: t.price,
+      priceDate: t.date,          // the trade's price is that day's (SA-051)
       buyPx, approx,
       text: [t.verdict || t.source,
              isSell && t.realized_pnl != null
@@ -687,10 +884,15 @@ function LiveActivityCard({ txns }) {
   );
 }
 
-function AlertsCard({ alerts }) {
+function AlertsCard({ alerts, reviewDate }) {
   return (
     <div className="card pf-card-body">
-      <div className="eyebrow" style={{ marginBottom:14 }}>What your agents are flagging</div>
+      <div className="eyebrow" style={{ marginBottom: reviewDate ? 4 : 14 }}>What your agents are flagging</div>
+      {reviewDate && (
+        <div className="pf-review-date" style={{ fontSize:11, color:'var(--ink-3)', marginBottom:14 }}>
+          From the review of {fmtDay(reviewDate, true)}: its prices are that day's closes.
+        </div>
+      )}
       <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
         {alerts.map((a, i) => {
           const colors = a.kind === 'good'
@@ -710,6 +912,9 @@ function AlertsCard({ alerts }) {
   );
 }
 
+// Each holding's share of the holdings at their current prices. The share of
+// total equity in stocks and in cash is the hero's (SA-051), so the label
+// says which whole these parts are of.
 function AllocationCard({ holdings }) {
   const total = holdings.reduce((s,h) => s + h.qty * (h.currentPrice || 0), 0);
   const segments = holdings.map(h => ({
@@ -720,7 +925,7 @@ function AllocationCard({ holdings }) {
 
   return (
     <div className="card pf-card-body">
-      <div className="eyebrow" style={{ marginBottom:14 }}>Allocation</div>
+      <div className="eyebrow" style={{ marginBottom:14 }}>Allocation · share of the holdings</div>
       <div style={{ display:'flex', height:8, borderRadius:999, overflow:'hidden', marginBottom:14 }}>
         {segments.map((s, i) => (
           <span key={s.sym} style={{ width: s.pct + '%', background: colors[i % colors.length] }}/>
@@ -769,7 +974,7 @@ function AskAssistantCard({ openChat }) {
 // LearningsSection — recent verdict changes on the analysed stocks, from
 // GET /ui/learnings. Dated records only: no money figure (a score change is
 // not rupees), no summary rate and no advice text (PR-001). The realized
-// results of trades come with SA-051 and PR-002.
+// results of trades are the closed-trade card's (SA-051).
 // The server sends the verdict changes newest first, then the latest
 // forecast misses (kind 'forecast-miss'), which are not changes and are
 // neither counted nor listed as such.

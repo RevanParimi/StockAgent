@@ -25,7 +25,11 @@
  *    sent, and never the scoreboard it replaced;
  *  - the brief's "Before the open" (PR-003) shows each market figure the
  *    server wrote with its as-of date, names the failed ones and gives them
- *    no number.
+ *    no number;
+ *  - the portfolio screen (SA-051) says "Capital added", "In stocks" and
+ *    "Cash" with shares adding to 100, dates every share price it shows, and
+ *    draws the same money in the Nifty only through values the server sent:
+ *    a missing one breaks the line, and an unavailable Nifty reads so.
  */
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
@@ -786,6 +790,133 @@ test('a brief stored before the market line shows no "Before the open"', async (
   const { context, page, errors } = await openBrief(before);
   try {
     assert.ok(!/Before the open/.test(await visibleText(page)));
+    assert.deepEqual(errors, []);
+  } finally { await context.close(); }
+});
+
+// -- SA-051: the portfolio against the Nifty, with honest labels -------------------
+
+// /portfolio/performance for the card's two-deposit example
+// (tests/unit/test_portfolio_vs_nifty_sa051.py): ₹10,00,000 on 5 Jan at Nifty
+// 100, ₹2,00,000 on 19 Jan at 125, valued on 6 Feb at Nifty 110.
+const SINCE = { available: true, from: null, to: '2026-02-06', portfolio_pct: 3.33, nifty_pct: 6.33,
+                gap_points: -3.0, portfolio_value: 1240000.0, nifty_value: 1276000.0, deposits: 1200000.0,
+                first_deposit: '2026-01-05', gap_inr: -36000.0 };
+const PERF = {
+  cash: 1009600.0, capital_in: 1200000.0, market_value: 230400.0, total_equity: 1240000.0,
+  in_stocks_pct: 18.6, cash_pct: 81.4, realized_pnl: 0.0, unrealized_pnl: 40000.0, total_return_pct: 3.33,
+  day_change_pct: 0.25, as_of: '2026-02-06', autopilot: true, benchmark: 'Nifty 50',
+  history: [
+    { date: '2026-01-05', total_equity: 1000000.0, capital_in: 1000000.0, nifty_value: 1000000.0 },
+    { date: '2026-01-19', total_equity: 1210000.0, capital_in: 1200000.0, nifty_value: 1450000.0 },
+    { date: '2026-02-06', total_equity: 1240000.0, capital_in: 1200000.0, nifty_value: 1276000.0 },
+  ],
+  vs_nifty: SINCE,
+  ranges: Object.fromEntries(['1W', '1M', '3M', '6M', '1Y'].map(k => [k, { ...SINCE, from: '2026-01-05' }])),
+  range_points: { '1W': 5, '1M': 22, '3M': 66, '6M': 132, '1Y': 252 },
+  closed_trades: { count: 10, known: 10, unknown: 0, wins: 6, losses: 4, win_rate_pct: 60.0,
+                   avg_win_pct: 3.0, avg_loss_pct: -10.0, expectancy_pct: -2.2, basis: 'before costs' },
+};
+const HELD = { symbol: 'WELCORP', sector: 'metals', qty: 80, adj_qty: 80, avg_buy_price: 2600.0,
+               adj_avg_price: 2600.0, buy_date: '2026-01-19', last_close: 2880.0,
+               last_close_date: '2026-02-06', pnl_pct: 10.77 };
+const DIGEST = { date: '2026-02-06', escalations: [],
+                 holdings: [{ symbol: 'WELCORP', verdict: 'HOLD', reason: 'WELCORP closed at ₹2,880.00, inside its band.' }] };
+const BOUGHT = { txn_id: 'b1', date: '2026-01-19', ts: '2026-01-19T11:10:00+00:00', user_id: 'primary',
+                 symbol: 'WELCORP', side: 'BUY', qty: 80, price: 2600.0, value: 208000.0, cash_before: 1217600.0,
+                 cash_after: 1009600.0, holding_qty_after: 80, source: 'autopilot', verdict: 'ADD' };
+
+async function openPortfolio(perf) {
+  const app = await openApp(browser, { user: OWNER, api: {
+    '/portfolio': json({ holdings: [HELD], watchlist: [] }),
+    '/portfolio/digest/latest': json(DIGEST),
+    '/portfolio/performance': json(perf),
+    '/portfolio/transactions': json({ transactions: [BOUGHT] }),
+  } });
+  await settled(app.page);
+  await goTo(app.page, 'portfolio');
+  await app.page.getByText(/Your holdings/i).first().waitFor({ timeout: 10000 });
+  return app;
+}
+
+test('the portfolio labels capital, stocks and cash, and draws the same money in the Nifty', async () => {
+  const { context, page, errors } = await openPortfolio(PERF);
+  try {
+    const text = await visibleText(page);
+    assert.ok(!/Invested/i.test(text), 'no "Invested"');
+    assert.match(text, /Capital added\s*₹12,00,000/i);
+    assert.match(text, /In stocks\s*₹2,30,400\s*\(18\.6%\)/i);
+    assert.match(text, /Cash\s*₹10,09,600\s*\(81\.4%\)/i);
+    // the comparison, cash included, in rupees and points
+    assert.match(text, /If this had been in the Nifty 50: ₹12,76,000\. The portfolio: ₹12,40,000, ₹36,000 behind \(3\.0 points\)\./);
+    assert.match(text, /Since 5 Jan 2026: the portfolio \+3\.3%, the Nifty 50 \+6\.3%, for the same deposits on the same days\. Cash counts\./);
+    assert.match(text, /Return over 1M\s*\+3\.3% · Nifty 50 \+6\.3%/i);
+    assert.equal(await page.locator('polyline.pf-nifty-line').count(), 1);
+    assert.match(text, /Same money in the Nifty 50/);
+    // the closed-trade record: a majority of winners and a negative expectancy
+    assert.match(text, /Closed trades · before costs/i);
+    assert.match(text, /Win rate\s*60%\s*6 won, 4 lost/i);
+    assert.match(text, /Average win\s*\+3\.0%/i);
+    assert.match(text, /Average loss\s*-10\.0%/i);
+    assert.match(text, /Expectancy\s*-2\.2%\s*per trade/i);
+    assert.deepEqual(errors, []);
+  } finally { await context.close(); }
+});
+
+test('every price on the portfolio screen shows its date', async () => {
+  const { context, page, errors } = await openPortfolio(PERF);
+  try {
+    const text = await visibleText(page);
+    assert.match(text, /Valued as of 6 Feb 2026/);
+    const row = await page.locator('tr', { hasText: 'WELCORP' }).innerText();
+    assert.match(row, /₹2,600\.00\s*first bought 19 Jan 2026/);
+    assert.match(row, /₹2,880\.00\s*on 6 Feb 2026/);
+    assert.match(text, /From the review of 6 Feb 2026: its prices are that day's closes\./);
+    assert.match(text, /80 @ ₹2,600\.00 on 19 Jan 2026/);
+    // every share price shown (₹ with paise) is dated on its own line or the
+    // one under it, or sits in the review card its date heads
+    const dated = /\d{1,2} [A-Z][a-z]{2} 20\d\d|review of/;
+    const lines = text.split('\n');
+    for (const [i, line] of lines.entries()) {
+      if (!/₹[\d,]+\.\d\d/.test(line)) continue;
+      const near = lines.slice(Math.max(0, i - 3), i + 2).join(' ');
+      assert.ok(dated.test(near), `undated price: ${line}`);
+    }
+    assert.deepEqual(errors, []);
+  } finally { await context.close(); }
+});
+
+test('an unavailable Nifty reads unavailable: no line, no gap, no figure', async () => {
+  const perf = { ...PERF,
+    history: PERF.history.map(p => ({ ...p, nifty_value: null })),
+    vs_nifty: { available: false, reason: 'no Nifty close for a needed day', first_deposit: '2026-01-05' },
+    ranges: Object.fromEntries(Object.keys(PERF.ranges).map(k => [k,
+      { available: false, reason: 'no Nifty close for a needed day', to: '2026-02-06' }])) };
+  const { context, page, errors } = await openPortfolio(perf);
+  try {
+    const text = await visibleText(page);
+    assert.match(text, /If this had been in the Nifty 50: unavailable \(no Nifty close for a needed day\)\./);
+    assert.match(text, /Return over 1M\s*unavailable \(no Nifty close for a needed day\)/i);
+    assert.match(text, /Nifty 50: unavailable/);
+    assert.equal(await page.locator('polyline.pf-nifty-line').count(), 0);
+    assert.equal(await page.locator('polyline.pf-value-line').count(), 1);
+    assert.ok(!/behind|ahead|level with it|12,76,000|6\.3%/.test(text), text);
+    assert.deepEqual(errors, []);
+  } finally { await context.close(); }
+});
+
+test('a missing Nifty value breaks the line; it is never bridged', async () => {
+  const days = ['2026-01-05', '2026-01-12', '2026-01-19', '2026-01-26', '2026-02-02'];
+  const nifty = [1000000.0, 1010000.0, null, 1030000.0, 1040000.0];
+  const perf = { ...PERF, history: days.map((d, i) => ({ date: d, total_equity: 1000000.0 + i * 1000,
+                                                         capital_in: 1000000.0, nifty_value: nifty[i] })) };
+  const { context, page, errors } = await openPortfolio(perf);
+  try {
+    const lines = page.locator('polyline.pf-nifty-line');
+    assert.equal(await lines.count(), 2);
+    const xs = async (k) => (await lines.nth(k).getAttribute('points')).split(' ').map(p => Number(p.split(',')[0]));
+    assert.deepEqual(await xs(0), [0, 25]);       // up to the 2nd point
+    assert.deepEqual(await xs(1), [75, 100]);     // from the 4th: no segment over the gap
     assert.deepEqual(errors, []);
   } finally { await context.close(); }
 });

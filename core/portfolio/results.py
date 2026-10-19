@@ -14,7 +14,11 @@ red line? Every figure comes from a ledger the system already keeps:
 - **You vs the Nifty** from value_history.jsonl. Every rise in capital_in is a
   deposit, and the same deposit buys Nifty units at that day's close. Cash the
   portfolio leaves idle therefore counts against it, as it would for a
-  person who kept it in an index fund.
+  person who kept it in an index fund. A holding that arrives without cash
+  (Add holding, a CSV import) raises capital_in by its cost, so it is valued
+  instead at its close on the date of the first valuation that holds it: its
+  gain before it arrived is not the portfolio's. The portfolio screen draws
+  the same comparison as a line (`portfolio_vs_nifty`).
 
 The red-flag rules below were predeclared on 11-12 Oct 2026, before any
 scorecard existed. Changing one is a reviewed code change, never a setting
@@ -34,10 +38,11 @@ from __future__ import annotations
 
 import logging
 import statistics
-from collections import Counter
+from collections import Counter, defaultdict
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
-from typing import Callable, Iterable
+from functools import lru_cache
+from typing import Callable, Iterable, NamedTuple
 
 from core.intelligence.rl.nse_calendar import trading_dates, trading_days_after
 
@@ -320,13 +325,139 @@ def deposits_from_values(points: Iterable[dict]) -> list[tuple[date, float]]:
     return out
 
 
-def nifty_equivalent(deposits: Iterable[tuple[date, float]],
+class Flow(NamedTuple):
+    """Money in (or out) at a value point, dated at the first point that
+    shows it. `amount` is None when part of it could not be valued; `note`
+    then says why, in words for the screen and the scorecard."""
+    day: date
+    amount: float | None
+    note: str = ""
+
+
+IST = timezone(timedelta(hours=5, minutes=30))
+
+
+@dataclass(frozen=True)
+class Arrival:
+    """A holding that arrived without cash: Add holding or a CSV import on an
+    account with cash accounting. Its ledger row is a BUY by "manual" whose
+    cash did not move; `cost` (qty × the buy-date close or a typed price) is
+    what capital_in rose by."""
+    txn_id: str
+    at: datetime | None       # when it was recorded (the row's ts), aware
+    day: date                 # that moment's IST date
+    symbol: str
+    qty: float
+    cost: float
+
+
+def _instant(value) -> datetime | None:
+    try:
+        dt = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return None
+    return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+
+
+def in_kind_arrivals(txns: Iterable) -> list[Arrival]:
+    """Every holding that arrived without cash, once per ledger row."""
+    out: list[Arrival] = []
+    seen: set[str] = set()
+    for t in txns:
+        if t.side != "BUY" or t.source != "manual" or t.txn_id in seen:
+            continue
+        if abs(float(t.cash_after) - float(t.cash_before)) > 0.005 or t.qty <= 0:
+            continue
+        seen.add(t.txn_id)
+        at = _instant(t.ts)
+        day = at.astimezone(IST).date() if at else _day(t.date)
+        if day is None:
+            continue
+        out.append(Arrival(t.txn_id, at, day, t.symbol, float(t.qty), float(t.value)))
+    return sorted(out, key=lambda a: (a.day, a.at or datetime.min.replace(tzinfo=timezone.utc)))
+
+
+def _arrival_point(a: Arrival, pts: list[dict]) -> tuple[int | None, bool]:
+    """(index of the first value point that holds the arrival, ambiguous).
+    The index is None when no point holds it yet. Ambiguous: a point written
+    before value points recorded their time is dated the arrival's own day,
+    so it may have been taken before the holding arrived, or after."""
+    for i, p in enumerate(pts):
+        taken = _instant(p.get("recorded_at")) if p.get("recorded_at") else None
+        if taken is not None and a.at is not None:
+            if taken > a.at:
+                return i, False
+            continue
+        if p["_day"] > a.day:
+            return i, False
+        if p["_day"] == a.day:
+            return i, True
+    return None, False
+
+
+def capital_flows(points: Iterable[dict], txns: Iterable = (),
+                  stock_close_on: Callable[[str, date], float] | None = None) -> list[Flow]:
+    """Each change in capital_in between value points, dated at the point
+    that first shows it (the first point's capital_in is the opening
+    deposit), with every holding that arrived in it valued at the stock's
+    close on that point's date instead of its cost: a backdated add of shares
+    bought at ₹50 and worth ₹150 brings ₹150 of money in, not ₹50.
+
+    A flow is unknown (amount None) when an arrival in it has no close that
+    day, or when it cannot be told which point first held the arrival."""
+    pts = _value_points(points)
+    adjust: dict[int, float] = defaultdict(float)
+    unknown: dict[int, str] = {}
+    for a in in_kind_arrivals(txns):
+        i, ambiguous = _arrival_point(a, pts)
+        if i is None:
+            continue
+        if ambiguous:
+            # Its cost is in this point's rise in capital_in or the next
+            # one's. Any period that holds the next rise also holds this
+            # unknown flow or follows it with money moving, so vs_nifty
+            # reads it unavailable as well.
+            unknown.setdefault(i, f"could not tell whether {a.symbol}, added on "
+                                  f"{_short_day(a.day.isoformat())}, was in that day's valuation")
+            continue
+        on = pts[i]["_day"]
+        try:
+            close = float(stock_close_on(a.symbol, on)) if stock_close_on else 0.0
+        except Exception as exc:
+            logger.info("[results] no close for %s on %s: %s", a.symbol, on, exc)
+            close = 0.0
+        if close <= 0:
+            unknown.setdefault(i, f"no close for {a.symbol} on "
+                                  f"{_short_day(on.isoformat())}, the day it was added")
+            continue
+        adjust[i] += a.qty * close - a.cost
+    out: list[Flow] = []
+    previous = 0.0
+    for i, p in enumerate(pts):
+        cap = p.get("capital_in")
+        if not isinstance(cap, (int, float)):
+            continue
+        delta = float(cap) - previous
+        previous = float(cap)
+        if i in unknown:
+            out.append(Flow(p["_day"], None, unknown[i]))
+            continue
+        amount = delta + adjust.get(i, 0.0)
+        if abs(amount) > 0.005:
+            out.append(Flow(p["_day"], amount))
+    return out
+
+
+def nifty_equivalent(deposits: Iterable[tuple],
                      close_on: Callable[[date], float], on: date) -> float:
     """What the same deposits are worth at `on`'s close, had each bought the
-    Nifty at its own day's close. Raises if any close is missing."""
+    Nifty at its own day's close. Raises if any close is missing, or a
+    deposit up to `on` could not be valued."""
     units = 0.0
-    for d, amount in deposits:
+    for d, amount, *_ in deposits:
         if d <= on:
+            if amount is None:
+                raise ValueError(f"a deposit on {d} could not be valued")
             close = float(close_on(d))
             if close <= 0:
                 raise ValueError(f"non-positive Nifty close on {d}")
@@ -338,16 +469,25 @@ def nifty_equivalent(deposits: Iterable[tuple[date, float]],
 
 
 def vs_nifty(points: Iterable[dict], close_on: Callable[[date], float], *,
-             end: date, start: date | None = None) -> dict:
+             end: date, start: date | None = None,
+             flows: Iterable[Flow] | None = None) -> dict:
     """The portfolio against the same money in the Nifty, from the last value
     point before `start` (None: from the first deposit) to the last one on or
-    before `end`.
+    before `end`. `flows` defaults to the changes in capital_in at cost; the
+    callers pass `capital_flows`, which values arrivals on their day.
 
     Both returns use the same flows: (end − start − deposits) / (start +
     deposits). The portfolio's figure includes its idle cash; the Nifty's
-    holds none."""
+    holds none.
+
+    A flow that could not be valued makes the comparison unavailable when it
+    falls in the period, or when it falls before it and money moved in the
+    period (the Nifty side's weights then depend on it). Before a period with
+    no flow at all, the Nifty side's units are constant, so its return is
+    the index's own move and is still known."""
     pts = _value_points(points)
-    deposits = deposits_from_values(pts)
+    deposits = (list(flows) if flows is not None
+                else [Flow(d, a) for d, a in deposits_from_values(pts)])
     end_pt = next((p for p in reversed(pts) if p["_day"] <= end), None)
     if end_pt is None:
         return {"available": False, "reason": "no valuation recorded yet"}
@@ -365,27 +505,113 @@ def vs_nifty(points: Iterable[dict], close_on: Callable[[date], float], *,
                     "to": end_pt["_day"].isoformat()}
         start_day, start_equity = start_pt["_day"], float(start_pt["total_equity"])
     end_day, end_equity = end_pt["_day"], float(end_pt["total_equity"])
-    flows = sum(a for d, a in deposits
-                if (start_day is None or d > start_day) and d <= end_day)
+    inside = [f for f in deposits
+              if (start_day is None or f.day > start_day) and f.day <= end_day]
+    unvalued = [f for f in deposits if f.amount is None and f.day <= end_day]
+    if unvalued and (start_day is None or inside):
+        return {"available": False, "reason": unvalued[0].note or "a deposit could not be valued",
+                "to": end_day.isoformat()}
+    flows_in = sum(f.amount for f in inside)
     try:
-        nifty_start = nifty_equivalent(deposits, close_on, start_day) if start_day else 0.0
-        nifty_end = nifty_equivalent(deposits, close_on, end_day)
+        if unvalued:
+            # Units unknown but constant over the period: the index's move.
+            nifty_start = nifty_end = None
+            nifty_pct = (float(close_on(end_day)) / float(close_on(start_day)) - 1.0) * 100.0
+        else:
+            nifty_start = nifty_equivalent(deposits, close_on, start_day) if start_day else 0.0
+            nifty_end = nifty_equivalent(deposits, close_on, end_day)
     except Exception as exc:
         logger.info("[results] Nifty comparison unavailable: %s", exc)
         return {"available": False, "reason": "no Nifty close for a needed day",
                 "to": end_day.isoformat()}
-    if start_equity + flows <= 0 or nifty_start + flows <= 0:
+    if start_equity + flows_in <= 0 or (nifty_start is not None
+                                        and nifty_start + flows_in <= 0):
         return {"available": False, "reason": "no money invested yet",
                 "to": end_day.isoformat()}
-    portfolio_pct = (end_equity - start_equity - flows) / (start_equity + flows) * 100.0
-    nifty_pct = (nifty_end - nifty_start - flows) / (nifty_start + flows) * 100.0
+    portfolio_pct = (end_equity - start_equity - flows_in) / (start_equity + flows_in) * 100.0
+    if nifty_start is not None:
+        nifty_pct = (nifty_end - nifty_start - flows_in) / (nifty_start + flows_in) * 100.0
     return {"available": True,
             "from": start_day.isoformat() if start_day else None,
             "to": end_day.isoformat(),
             "portfolio_pct": portfolio_pct, "nifty_pct": nifty_pct,
             "gap_points": portfolio_pct - nifty_pct,
             "portfolio_value": end_equity, "nifty_value": nifty_end,
-            "deposits": flows}
+            "deposits": flows_in}
+
+
+def nifty_line(points: Iterable[dict], flows: Iterable[Flow],
+               close_on: Callable[[date], float]) -> list[float | None]:
+    """For each value point (ascending, one per date), what the deposits made
+    up to it would be worth in the Nifty at its close. None where that is not
+    known: before any deposit, with no close that day, or from the first flow
+    that could not be valued on. Never a carried-forward or flat value."""
+    pts = _value_points(points)
+    flows = sorted(flows, key=lambda f: f.day)
+    out: list[float | None] = []
+    units, k, broken = 0.0, 0, False
+    for p in pts:
+        while k < len(flows) and flows[k].day <= p["_day"]:
+            f = flows[k]
+            k += 1
+            if broken:
+                continue
+            try:
+                close = float(close_on(f.day)) if f.amount is not None else 0.0
+            except Exception as exc:
+                logger.debug("[results] no Nifty close for the deposit on %s: %s", f.day, exc)
+                close = 0.0
+            if close <= 0:
+                broken = True      # units unknown from here on
+                continue
+            units += f.amount / close
+        if broken or units <= 0:
+            out.append(None)
+            continue
+        try:
+            close = float(close_on(p["_day"]))
+        except Exception as exc:
+            logger.debug("[results] no Nifty close on %s: %s", p["_day"], exc)
+            close = 0.0
+        out.append(units * close if close > 0 else None)
+    return out
+
+
+def portfolio_vs_nifty(points: Iterable[dict], txns: Iterable, *,
+                       close_on: Callable[[date], float],
+                       stock_close_on: Callable[[str, date], float] | None,
+                       ranges: dict[str, int]) -> dict:
+    """The portfolio screen's comparison: the Nifty line under each value
+    point, the gap at the last one (since the first deposit, in rupees and in
+    points of return), and each range's money-weighted return beside the
+    Nifty's. A range of n points runs from the n-th last point to the last,
+    as the chart shows it. The same functions as the weekly scorecard."""
+    pts = _value_points(points)
+    flows = capital_flows(pts, txns, stock_close_on)
+    line = nifty_line(pts, flows, close_on)
+    first = next((f.day for f in flows if f.amount is None or f.amount > 0), None)
+    if not pts:
+        since = {"available": False, "reason": "no valuation recorded yet"}
+    else:
+        since = vs_nifty(pts, close_on, end=pts[-1]["_day"], flows=flows)
+    since["first_deposit"] = first.isoformat() if first else None
+    if since.get("available") and since.get("nifty_value") is not None:
+        since["gap_inr"] = since["portfolio_value"] - since["nifty_value"]
+    windows: dict[str, dict] = {}
+    for key, n in ranges.items():
+        if len(pts) < 2:
+            windows[key] = {"available": False, "reason": "not enough valuations yet"}
+            continue
+        i = max(0, len(pts) - int(n))
+        windows[key] = vs_nifty(pts, close_on, end=pts[-1]["_day"],
+                                start=pts[i + 1]["_day"], flows=flows)
+    return _rounded({
+        "line": [{"date": p["_day"].isoformat(), "nifty_value": v} for p, v in zip(pts, line)],
+        "since_start": since,
+        "ranges": windows,
+        "flows": [{"date": f.day.isoformat(), "amount": f.amount, "note": f.note or None}
+                  for f in flows],
+    })
 
 
 # -- Breadth and holding period --------------------------------------------------
@@ -582,12 +808,16 @@ def _rounded(value):
 def build_row(*, week: Week, txns: Iterable, points: Iterable[dict],
               audit_rows: Iterable, close_on: Callable[[date], float],
               holdings: int | None, floor: dict | None = None,
-              computed_at: str | None = None) -> dict:
+              computed_at: str | None = None,
+              stock_close_on: Callable[[str, date], float] | None = None) -> dict:
     """The scorecard row for `week` from the user's own ledgers. Facts dated
-    after the week are ignored, so a late rebuild describes the week as it was."""
+    after the week are ignored, so a late rebuild describes the week as it was.
+    `stock_close_on(symbol, day)` values the holdings that arrived without
+    cash (capital_flows)."""
     end = week.sunday
     txns = [t for t in txns if (_day(t.date) or date.max) <= end]
     points = [p for p in points if (_day(p.get("date")) or date.max) <= end]
+    flows = capital_flows(points, txns, stock_close_on)
     trades = closed_trades(txns)
     all_sales = sales(txns)
     grades = advice_grades(audit_rows)
@@ -607,10 +837,10 @@ def build_row(*, week: Week, txns: Iterable, points: Iterable[dict],
     last_valuation = valued[-1]["_day"] if valued else None
     stale = last_valuation is not None and last_valuation < week.monday
     money = {
-        "week": vs_nifty(points, close_on, end=end, start=week.monday),
+        "week": vs_nifty(points, close_on, end=end, start=week.monday, flows=flows),
         "last_4_weeks": vs_nifty(points, close_on, end=end,
-                                 start=week.window_start(NIFTY_WINDOW_WEEKS)),
-        "since_start": vs_nifty(points, close_on, end=end),
+                                 start=week.window_start(NIFTY_WINDOW_WEEKS), flows=flows),
+        "since_start": vs_nifty(points, close_on, end=end, flows=flows),
         "stale": stale,
     }
     held = holding_period(trades, week.monday, end)
@@ -818,9 +1048,29 @@ def _today() -> date:
     return now_ist().date()
 
 
+@lru_cache(maxsize=1024)
+def _cached_stock_close(symbol: str, on: date) -> float:
+    from core.portfolio.pricing import close_on
+    return close_on(symbol, on)
+
+
+def stock_close_fn() -> Callable[[str, date], float]:
+    """The NSE close an arrival is valued at: the same fetch and walkback as
+    the portfolio's marks. A past day's close does not change, so a found one
+    is kept for the life of the process; today's (which may not be final)
+    and a miss are not kept."""
+    def lookup(symbol: str, on: date) -> float:
+        if on < _today():
+            return _cached_stock_close(symbol, on)
+        from core.portfolio.pricing import close_on
+        return close_on(symbol, on)
+    return lookup
+
+
 def weekly_scorecard(user_id: str, on: date, *, store=None, audit_store=None,
                      close_on: Callable[[date], float] | None = None,
-                     today: date | None = None) -> dict:
+                     today: date | None = None,
+                     stock_close_on: Callable[[str, date], float] | None = None) -> dict:
     """The row for the week `on` covers, stored once per week key.
 
     An existing row for the week is returned untouched: a re-run rewrites
@@ -849,6 +1099,7 @@ def weekly_scorecard(user_id: str, on: date, *, store=None, audit_store=None,
         close_on=close_on,
         holdings=len(store.load().holdings) if latest else None,
         floor=_floor(),
+        stock_close_on=stock_close_on or stock_close_fn(),
     )
     if today < week.saturday:
         row["provisional"] = True

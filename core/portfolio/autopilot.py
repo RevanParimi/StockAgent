@@ -422,9 +422,11 @@ def record_value_point(store: PortfolioStore, portfolio: Portfolio,
                 change_span_days = (review_date - date.fromisoformat(prev_date)).days
             except ValueError:
                 pass
+    # recorded_at: when the point was taken, so the Nifty comparison can tell
+    # whether a holding added that day is in it (results.capital_flows).
     point = {"date": day, "market_value": mv,
              "cash": round(portfolio.cash_deployable, 2), "total_equity": total,
              "capital_in": portfolio.capital_in, "day_change_pct": day_change_pct,
-             "change_span_days": change_span_days}
+             "change_span_days": change_span_days, "recorded_at": _now_iso()}
     store.append_value_point(point)
     return point

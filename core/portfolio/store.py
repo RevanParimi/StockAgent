@@ -478,9 +478,14 @@ def import_csv(
     base_dir: str | None = None,
     price_lookup=None,
 ) -> dict:
+    from core.portfolio.autopilot import make_txn_id
+
     store = PortfolioStore(user_id=user_id, base_dir=base_dir)
-    imported, errors, total_value = 0, [], 0.0
+    imported, errors = 0, []
+    rows: list[tuple[int, Holding]] = []
     reader = csv.DictReader(io.StringIO(text))
+    # Parse and price every row first: the price lookup is a network call,
+    # and the user's lock below must stay milliseconds wide (AUD-001/007).
     for i, row in enumerate(reader, start=2):   # row 1 = header
         try:
             symbol = (row["symbol"] or "").strip().upper()
@@ -494,23 +499,49 @@ def import_csv(
                 price = float(price_lookup(symbol, buy_date))
             else:
                 raise ValueError("avg_buy_price blank and no price_lookup available")
-            store.add_holding(Holding(
+            rows.append((i, Holding(
                 symbol=symbol, sector=sector, qty=qty, avg_buy_price=price,
                 adj_avg_price=price, adj_qty=qty, buy_date=buy_date,
-            ))
-            imported += 1
-            total_value += qty * price
+            )))
         except Exception as exc:
             errors.append({"row": i, "error": str(exc)})
-    # Fresh capital in, matching POST /holdings (AUD-007 parity): imported
-    # positions raise capital_in when cash accounting is on, so total_pnl
-    # (= equity − capital_in) isn't inflated by the import.
-    if imported and total_value > 0:
-        with store.locked():
+    # One critical section for the holdings, their ledger rows and the fresh
+    # capital, as for POST /holdings (AUD-007 parity): with cash accounting on,
+    # each imported position raises capital_in by its cost (so total_pnl =
+    # equity − capital_in isn't inflated) and gets the same "manual" BUY row
+    # with no cash moved. The ledger then nets every held quantity
+    # (reconcile), and the Nifty comparison values the position on the day
+    # it arrived (results.capital_flows), not at its cost.
+    with store.locked():
+        cash_on = store.load().cash_deployable is not None
+        txns: list[TransactionRecord] = []
+        total_value = 0.0
+        for i, h in rows:
+            try:
+                p = store.add_holding(h)
+            except Exception as exc:
+                errors.append({"row": i, "error": str(exc)})
+                continue
+            imported += 1
+            value = round(h.qty * h.avg_buy_price, 2)
+            total_value += value
+            if cash_on:
+                ts = datetime.now(timezone.utc).isoformat()
+                txns.append(TransactionRecord(
+                    txn_id=make_txn_id(store.user_id, h.buy_date, h.symbol, "BUY",
+                                       f"csv-import|{ts}|{i}|{h.qty:g}|{h.avg_buy_price:g}"),
+                    date=h.buy_date, ts=ts, user_id=store.user_id, symbol=h.symbol,
+                    side="BUY", qty=h.qty, price=h.avg_buy_price, value=value,
+                    cash_before=p.cash_deployable, cash_after=p.cash_deployable,
+                    holding_qty_after=next((x.adj_qty for x in p.holdings
+                                            if x.symbol == h.symbol), h.qty),
+                    source="manual", note="csv import (fresh capital)"))
+        if cash_on and imported and total_value > 0:
             p = store.load()
-            if p.cash_deployable is not None:
-                p.capital_in = round(p.capital_in + total_value, 2)
-                store.save(p)
+            p.capital_in = round(p.capital_in + total_value, 2)
+            for txn in txns:
+                store.append_transaction(txn)
+            store.save(p)
     return {"imported": imported, "errors": errors}
 
 

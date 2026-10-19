@@ -1,4 +1,4 @@
-# Current handoff - 2026-10-18 (updated about 12:30 IST)
+# Current handoff - 2026-10-19 (updated about 12:00 IST)
 
 ## Also 11 Oct (about 13:00–15:30 IST): product results review and new tasks (separate conversation)
 
@@ -90,6 +90,113 @@ check `PR-003-P1` in STATE's `pending_production_checks`.**
   in STATE, and tell the owner in one line. If Nikkei reads `closed` mid-session, bring the
   owner one example and a recommendation; change nothing in production.
 
+**SA-050 is ACCEPTED** by its fresh review (18 Oct, about 17:05–17:40 IST, session
+stockagent-main-68, a new conversation opened with "continue"; peers idle). Receipt:
+[review](evidence/SA-050-review.md). STATE: `active_task: null`, SA-050 `done`, production
+verification `pending_deployment`, **`next_task: SA-051`**, which is ready (no dependencies)
+and not started. The review read the uncommitted working tree on `85e447b`, input
+[SA-050-manifest.json](evidence/SA-050-manifest.json) `d2c13ba8…`, with 0 mismatches at the
+start and the end. Its own rebuild of the diff, from `git status`, gives `c4b58a22…` (118,037
+bytes, 24 paths). Nothing was committed, pushed or deployed, no production state was read and
+no message was sent. The owner's line in `docs/README.md` and the PR-003 push note stay
+uncommitted.
+- **In one example (the reviewer's trace RT1).** ACMESOLAR (₹2,27,000) and BETA (₹1,70,000)
+  both breach their stops on one day, and both pick NEWPHARMA at ₹530.
+  - The old code bought 428 + 320 shares, 39.6% of equity.
+  - Now the first switch buys 188 shares (the 10% cap). The second buys nothing, and its SELL
+    says "the 10% position cap leaves room for less than one share at ₹530; ₹1,70,000 stays in
+    cash".
+  - The one gap is R2, below.
+- **Findings, all low:**
+  - R1: `size_buy`'s float guard buys one share short when the request is exactly a whole
+    number of shares. An ADD of 144 at ₹6,358.80 buys 35, not 36. That is 0.21% of ADDs on top
+    of HEAD's own 2.11% float shortfall, and never over a cap. Routed to
+    [SA-049](stories/SA-049.md).
+  - R2: when two switches the same day pick one destination, the skipped second leg gets no
+    `switch_buy_skipped` alert; only its SELL's note says why. Routed to SA-049, with wording
+    at commit.
+  - R3: guide 07-J expects the weekly view's pre-trade figures (5.6%, cash 81.0%). After the
+    run's ADD they are 6.9% and 79.7%. Wording at commit.
+  - R4: a manual portfolio with no cash on record gets `POSITION_LARGE` on every holding over
+    10% of its holdings, whose text mentions the autopilot. Verdicts are unchanged. Routed to
+    [PR-007](stories/PR-007.md).
+  - Rulings: D2, D7/L1, D8 and D10 accepted, with the rest.
+- **Checked:**
+  - story and affected tests 180 passed;
+  - the reviewer's trace 6 passed (`analysis_data/sa050_review/test_rv_trace.py`): two
+    switches into one stock; the 11 Oct shape through the real pipeline, ledger and weekly
+    review; 400 random runs matched trade by trade against an exact-arithmetic model of the
+    card's rule; the cash-off probe. The old modules fail 4 of the 6;
+  - `npm run test:frontend` 35/35, and the new weekly test fails on HEAD's screen;
+  - `check_kt_docs` `[]`; broad-except OK;
+  - full suite 5,037 passed, 12 skipped, 1 xfailed (the known PR-003 limit), 0 failed in 11 min 51 s.
+- **For the owner, at your word:** commit SA-050 with the receipts' commit-time edits:
+  - KT: header, the `sizing.py` link, section 12 `Done`, the PDF;
+  - the AUTOPILOT_GUIDE header;
+  - R2's alert wording in the KT and AUTOPILOT_GUIDE;
+  - R3's 07-J figures, and the guide status lines.
+
+  Then push in a job-free window, not 08:30–09:20 or 16:25–17:15 IST. In the first week, read
+  the transactions' notes and run guide cases 07-F, 07-I and 07-J.
+
+  **Committed at the owner's word** ("commit and push", 19 Oct about 11:52 IST): `dbdcc81`
+  (code, the 18 reviewed code and test files, identical by blob), then one docs commit with
+  the commit-time edits:
+  - KT: header to `dbdcc81` (edition 2026-10-19), section 1's production paragraph, the
+    `sizing.py` link, R2's alert wording in section 6, section 12's SA-050 row `Done`; PDF
+    source `d9e5804e…` (46 pages), `check_kt_docs` `[]`;
+  - AUTOPILOT_GUIDE: header and R2's wording;
+  - guide: 07-J's figures (R3) and the three status lines.
+
+  It also carries the receipts and manifest, STATE, HANDOFF and the SA-049 and PR-007 card
+  notes. The owner's line in `docs/README.md` stays uncommitted. The push waits for 12:05
+  IST: 11:52 fell in the 11:55–12:05 job window.
+
+**SA-050 is IMPLEMENTED** (18 Oct, about 15:25–16:35 IST, session stockagent-main-e7, a
+new conversation opened with "continue"; peers idle). Receipt:
+[implementation](evidence/SA-050-implementation.md). STATE: `active_task: null`, SA-050
+`review_required`, **`next_task: SA-050`**, meaning its **fresh review** in a new conversation
+("continue"), then SA-051. Nothing was committed, pushed or deployed, no production state was
+read and no message was sent. The owner's line in `docs/README.md` stays uncommitted, and so
+does the PR-003 push note in STATE/HANDOFF.
+- **In one example.** The 11 Oct portfolio: FEDERALBNK ₹1,33,980, WELCORP ₹55,448 and
+  ₹8,09,297 cash. The advisor divided by the holdings' cost, so FEDERALBNK read 72.9% and
+  WELCORP 27.1%, and neither could ADD. Against total equity (₹9,98,725) they are 13.4% and
+  5.6%: FEDERALBNK gets `POSITION_LARGE`, and a healthy WELCORP may ADD 5 shares. A ₹2.27 L
+  switch in a ₹10 L portfolio now buys at most ₹1,00,000 (188 shares at ₹530). The BUY says
+  "capped by the 10% position cap: ₹1,27,360 of the ₹2,27,000 proceeds stay in cash". A
+  destination 33.6% above its entry band is not bought, and the SELL says why.
+- **What changed:**
+  - new pure `core/portfolio/sizing.py`, used by the advisor, the pipeline, the autopilot and
+    the weekly review;
+  - every buy is capped after the trade: position 10% and sector 30% of total equity
+    (`advisor.max_sector_pct` replaces `advisor.sector_concentration_warn_pct`), and the
+    cash floor kept;
+  - a SWITCH buy is made only inside its shelf idea's band;
+  - the note splits into `POSITION_LARGE` and `SECTOR_CONCENTRATION_HIGH`;
+  - the weekly allocation shows shares of equity and a cash line.
+- **For the reviewer:** decisions D1–D14 and limits L1–L5 are in the receipt. Worth a hard
+  look:
+  - D2: the key is named `advisor.max_sector_pct`, not the card's `autopilot.*`;
+  - D7/L1: an ADD the rule skips is only logged;
+  - D10: the SWITCH underweight test now reads market shares.
+
+  Self-review fixed the weekly view's double rounding (5.552% shown as "5.5%") and rounded
+  advisor weights.
+- **Checked:**
+  - story tests 30 passed;
+  - mutants 21 of 21 caught;
+  - `npm run test:frontend` 35/35; the new weekly test fails on HEAD's screen;
+  - `check_kt_docs` `[]`;
+  - full suite 5,037 passed, 12 skipped, 1 xfailed (the known PR-003 limit), 0 failed in 9 min 52 s.
+
+  Review input [SA-050-manifest.json](evidence/SA-050-manifest.json) `d2c13ba8…`; diff
+  `c4b58a22…` (118,037 bytes, 24 paths, `analysis_data/sa050/digest.py`).
+- **For the owner, after acceptance:** commit and push in a job-free window, not 08:30–09:20
+  or 16:25–17:15 IST. Afterwards a healthy WELCORP may start adding (about ₹13,900 at most
+  once every 5 trading days, up to 10% of equity). For the first week, read the transactions'
+  notes and run guide cases 07-F, 07-I and 07-J.
+
 **PR-003 is ACCEPTED** by its fresh review (18 Oct, about 11:30–12:30 IST, session
 stockagent-main-d3, a new conversation opened with "continue"; peers idle). Receipt:
 [review](evidence/PR-003-review.md). STATE: `active_task: null`, PR-003 `done`, production
@@ -133,7 +240,15 @@ committed, pushed or deployed, no production state was read and no message was s
   paragraph, section 10's limits wording, section 12's PR-003 row `Done`; PDF source
   `05f5c16c…`, `check_kt_docs` `[]`; guide 10-I's wording and status line. It also
   carries the receipts, STATE, HANDOFF and the PR-008 and SA-031 notes. The owner's line
-  in `docs/README.md` stays uncommitted. The push follows.
+  in `docs/README.md` stays uncommitted. The docs commit is `85e447b`.
+
+  **Pushed** `86a3a60..85e447b` at about 15:15 IST, in the job-free window before the
+  17:45 and 18:00 jobs. The first attempt (15:11) was refused with HTTP 403, because Git's
+  credential manager offered the `harishaparimi` account. At the owner's instruction (use
+  the revan.datta132@gmail.com account) the push ran with `credential.username=RevanParimi`.
+  The read-only deployment list showed `85e447b` BUILDING at 15:15:24 IST and SUCCESS by 15:17:17 IST; /health returned 200 at 15:17 IST (read-only). This push note is
+  uncommitted. Production verification is now `pending_observation`. Monday's 08:50 brief is the
+  first with PR-003; the Yahoo probe (`PR-003-P1`, above) is unchanged.
 
 **PR-003 is IMPLEMENTED** (17 Oct, about 16:15–17:30 IST, session stockagent-main-9a, a
 new conversation opened with "continue"; peers idle). Receipt:

@@ -1,8 +1,8 @@
 # StockAgent — Technical Design and Knowledge Transfer
 
-**Edition:** 2026-10-18 · **Audience:** engineers and teammates learning the product
+**Edition:** 2026-10-19 · **Audience:** engineers and teammates learning the product
 
-**Code inspected:** `b6d24707606251711b18cb87bb69dc17a39f9e3f`
+**Code inspected:** `dbdcc81fec2b2fb0dd64923eb815dae79a9eb3a3`
 
 **PDF:** [StockAgent-Three-Loops.pdf](StockAgent-Three-Loops.pdf), generated from this Markdown.
 
@@ -35,13 +35,13 @@ triggered no production job, backfill or notification.
 
 ### Production state at this edition
 
-Production runs the inspected code once the deployment of 18 October 2026 is
+Production runs the inspected code once the deployment of 19 October 2026 is
 confirmed by the owner's read-only check of the deployment list and `/health`.
-Until then it runs the code of 16 October (`b400747`; the deployment list showed
-it live that evening). They differ in the morning brief: overnight news judged
-by publish date with no repeats across the last five briefs, the "Before the
-open" market figures, and the same publish-date rule in chat and the daily
-review (section 10). The table gives the configuration that differs from the
+Until then it runs the code of 18 October (`b6d2470`; the deployment list showed
+it live that afternoon). They differ in the autopilot's sizing: every buy
+capped at 10% of total equity per position and 30% per sector, a switch bought
+only inside its shelf idea's entry band, the position and sector notes measured
+against total equity, and the weekly review's cash share (section 6). The table gives the configuration that differs from the
 repository and the state of each operational control.
 
 | Area | State in production | Evidence |
@@ -850,7 +850,9 @@ not mean a flat forecast.
 The cascade is **EXIT → TRIM → ADD → HOLD**. EXIT includes stop breach,
 bearish thesis/shock conditions, crisis conditions and an armed trailing stop.
 TRIM considers profit with declining confidence/reversion. ADD requires
-bullish, sufficiently healthy conditions and position headroom. EXIT may
+bullish, sufficiently healthy conditions and position headroom: the holding
+below `advisor.max_position_pct` (10%) of total equity (see "Sizing every
+buy" below). EXIT may
 become SWITCH when an eligible replacement exists. A holding-age rule can
 soften certain TRIM actions to HOLD; it does not override EXIT. These are
 product rules, not individualized tax or investment advice.
@@ -956,24 +958,80 @@ Transactions are appended before saving holdings/cash. A crash in between can
 leave the ledger ahead of the portfolio; deduplication is not an atomic
 multi-file transaction. Reconciliation handles this gap. Corporate actions
 affect adjusted quantities and cost. No broker-order execution path was found.
-In `enforce` mode the executor also re-checks a SWITCH buy leg's own price:
-if its close is not from the session's bar, the sell executes and the buy is
-skipped, and the user gets the existing `switch_buy_skipped` alert.
+The executor re-checks a SWITCH buy leg before spending: in `enforce` mode
+its close must be from the session's bar and its identity resolved, and in
+every mode its price must sit inside the shelf idea's entry band (below). If
+any check fails, the sell executes and the buy is skipped. The SELL's note
+records why ("buy leg skipped: …; ₹2,27,000 stays in cash"), and the
+`switch_buy_skipped` alert repeats that reason (when another switch that day
+bought the same stock, only the SELL's note says why).
+
+### Sizing every buy
+
+[`core/portfolio/sizing.py`](../core/portfolio/sizing.py) holds one rule for every autopilot buy. Weights
+are shares of **total equity**: every holding at the review's close (at
+adjusted cost when it has none) plus deployable cash. The advisor's
+ADD check, its notes, the executor's caps and the weekly review's allocation
+all use this one denominator. A buy paid from cash leaves total equity
+unchanged, so the room under a cap is `cap × equity − current value`.
+
+A buy takes the smallest of four amounts:
+
+- the amount asked for: the ADD tranche (25% of the position) or the SWITCH
+  sale's proceeds;
+- the position's room under `advisor.max_position_pct` (10%);
+- its sector's room under `advisor.max_sector_pct` (30%), summed across
+  holdings with the same sector label;
+- cash above `autopilot.min_cash_floor` (₹10,000).
+
+Only whole shares are bought, so under one share means no buy. What a cap
+leaves unspent stays in cash, and the BUY's note names the limit and the
+amount. A manual add is the user's own choice and is not capped. Nothing is
+force-sold: a holding already over a cap is left to the TRIM rules.
+
+A SWITCH buy opens a position, so it must also sit inside its shelf idea's
+band: at or below `entry_high` and above `invalidation_level`. Below
+`entry_low` it is allowed (cheaper than planned), and the note says so. Above
+the band, at or below invalidation, or with no shelf idea or band, it is
+skipped with that reason. An ADD tops up a stock already held and is not
+judged against an old shelf band.
+
+Two notes mark weights over the caps: `POSITION_LARGE` (one holding over 10%)
+and `SECTOR_CONCENTRATION_HIGH` (one sector's holdings together over 30%).
+The weekly review lists each sector's share and the cash share, and flags a
+sector over the cap.
+
+**Example (the production shape of 11 Oct):** FEDERALBNK 406 at ₹330
+(₹1,33,980), WELCORP 21 at ₹2,640.40 (₹55,448) and ₹8,09,297 cash make
+₹9,98,725 of equity.
+
+- FEDERALBNK is 13.4%, over the cap. It gets `POSITION_LARGE` and no ADD.
+- WELCORP is 5.6%. A bullish, healthy WELCORP may ADD: its ₹13,862 tranche
+  buys 5 shares.
+- Measured against the holdings alone, they read 72.9% and 27.1%. Then no ADD
+  could fire, and banking was noted as concentrated in a portfolio that was
+  81% cash.
+
+**Example (a switch):** in a ₹10 L portfolio, a ₹2.27 L holding is sold for a
+shelf idea priced at ₹530, inside its band. The new position may be at most
+₹1,00,000: 188 shares (₹99,640). The BUY's note reads "capped by the 10%
+position cap: ₹1,27,360 of the ₹2,27,000 proceeds stay in cash". Suppose
+instead the idea was shelved at ₹1,817–₹1,911 and now trades at ₹2,553.60,
+as WELCORP did on 1 Sep. Then nothing is bought, and the SELL says "33.6%
+above entry band (₹1,817–₹1,911); needs a fresh deep dive".
 
 ### Cash deployment
 
-The autopilot opens a new position only through a SWITCH, putting one sale's
-proceeds into a shelf idea. ADD tops up a stock already held, capped at
-`advisor.max_position_pct` (10%) after the trade. A plain EXIT leaves its
-proceeds in cash, and nothing reinvests them. The SWITCH buy spends the whole
-proceeds, with no position or sector cap.
+The autopilot opens a new position only through a SWITCH. A plain EXIT's
+proceeds, and whatever a cap or a skipped buy leg leaves, stay in cash, and
+nothing reinvests them.
 
 **Example (the owner's screen, 27 Sep):** ₹8,09,297 of ₹9,99,611 was cash
 (81%), with two holdings. ACMESOLAR's `exit_full` alone moved about ₹2.27L to
-cash, and FEDERALBNK was 13.1% of the portfolio.
+cash.
 
-**Planned:** one sizing rule for every autopilot buy (SA-050). In a normal
-market, idle cash goes into shelf ideas that pass the checks; cash is held on
+**Planned:** in a normal market, idle cash goes into shelf ideas that pass the
+checks, each sized by the rule above; cash is held on
 purpose only in a crisis (SA-049, the owner's decision of 2026-09-27, behind a
 switch that ships off). The deployment also works toward a configurable floor
 of at least 10 holdings and ₹10 L invested (`portfolio.min_holdings`,
@@ -1852,8 +1910,6 @@ learning to `observe`. SA-023 puts learned lessons on measurable probation.
 ### Portfolio economics
 
 - SA-048 charges realistic trading costs and tax in paper P&L.
-- SA-050 applies one sizing rule to every autopilot buy, including the SWITCH
-  buy, which today spends a whole sale's proceeds.
 - SA-049 puts idle cash into shelf ideas that pass the checks in a normal
   market, and holds cash on purpose only in a crisis, behind a switch that
   ships off. It works toward a configurable floor of at least 10 holdings and
@@ -2005,7 +2061,7 @@ section 10) are part of the current design.
 | [SA-047](planning/PI-2026-09/stories/SA-047.md) | Decide with the factor engine; switch when it is not worse | Open | 4 Research; 5 Learning | SA-045, SA-046, SA-014, SA-020 |
 | [SA-048](planning/PI-2026-09/stories/SA-048.md) | Charge realistic trading costs and tax in paper P&L | Open | 6 Portfolio; 7 Marksheets | None |
 | [SA-049](planning/PI-2026-09/stories/SA-049.md) | Put idle cash to work in normal markets, with a 10-holding / ₹10 L floor | Open | 6 Portfolio; 8 Discovery | SA-050, SA-051 |
-| [SA-050](planning/PI-2026-09/stories/SA-050.md) | Apply one sizing rule to every autopilot buy | Open | 6 Portfolio | None |
+| [SA-050](planning/PI-2026-09/stories/SA-050.md) | Apply one sizing rule to every autopilot buy | Done | 6 Portfolio | None |
 | [SA-051](planning/PI-2026-09/stories/SA-051.md) | Show the portfolio against the Nifty, with honest labels | Open | 7 Marksheets; 10 Interface | None |
 | [FIX-006](planning/PI-2026-09/stories/FIX-006.md) | An anonymous watchlist read never falls back to the owner | Open | 10 Interface | None |
 | [FIX-007](planning/PI-2026-09/stories/FIX-007.md) | Server logs are readable only by the owner | Done | 10 Interface | None |

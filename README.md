@@ -309,7 +309,7 @@ The decision engine is **pure Python — deterministic, testable, cheap**. The L
 |---|---|---|
 | 🟥 **EXIT** | Loss breaches the volatility-scaled stop, **or** thesis assessed broken with a bearish envelope, **or** a shock re-forecast moved against you, **or** `MACRO_CRISIS` regime + bearish envelope | `stop_breach`, `thesis_break`, `shock_reforecast`, `crisis_regime_bearish` |
 | 🟧 **TRIM** | Profit ≥ 25% **and** envelope confidence is fading or the mean-reversion prior is elevated | `trim_profit_confidence_decline`, `trim_profit_reversion_elevated` |
-| 🟩 **ADD** | Envelope bullish + supportive regime + position under its 10% weight cap + recent direction accuracy ≥ 60% | `add_bullish_healthy` |
+| 🟩 **ADD** | Envelope bullish + supportive regime + position under 10% of total equity (holdings at market plus cash) + recent direction accuracy ≥ 60% | `add_bullish_healthy` |
 | ⬜ **HOLD** | Default — thesis intact, nothing above fired | `default_hold` |
 
 Two tax/event refinements ride on top:
@@ -318,7 +318,8 @@ Two tax/event refinements ride on top:
 |---|---|
 | `WAIT_FOR_LTCG` | A TRIM on a position aged 10–12 months with an intact thesis is softened to HOLD — selling a few weeks early would pay 20% STCG instead of 12.5% LTCG. **This never softens an EXIT** — capital protection outranks tax optimisation, always. |
 | `EARNINGS_GAP_PROTECTION` | Profitable position with results due within 3 trading days — flags the profit-protection question before the gap risk, fed by a live NSE corporate-events calendar. |
-| `SECTOR_CONCENTRATION_HIGH` | Position weight has crossed the 30% concentration comfort band. |
+| `POSITION_LARGE` | One holding is over the 10% position cap of total equity, so the autopilot will not add to it. |
+| `SECTOR_CONCENTRATION_HIGH` | One sector's holdings together are over the 30% sector cap of total equity, so the autopilot will not buy more in it. |
 
 ### Stops that respect volatility
 

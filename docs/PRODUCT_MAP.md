@@ -391,6 +391,7 @@ reader filters by date ([RL_DESIGN](RL_DESIGN.md) section 23.1).
 | Store | `core/portfolio/store.py` | Per-user files, lock, corrupt-file quarantine |
 | Advisor | `core/portfolio/advisor.py` | Precedence **EXIT > TRIM > ADD > HOLD**, SWITCH, the data and identity checks |
 | Autopilot | `core/portfolio/autopilot.py` | Deterministic execution; no broker call anywhere |
+| Sizing | `core/portfolio/sizing.py` | One rule for every autopilot buy: position and sector caps of total equity after the trade, the cash floor, and a new position only inside its shelf idea's entry band |
 | Results scorecard | `core/portfolio/results.py` | One row per ISO week from the user's own ledgers: closed round trips, sales graded by the auditor, exit reasons, the money-weighted Nifty comparison, five predeclared red flags. Stored once per week; `GET /portfolio/scorecard` |
 | Identity reconcile | `core/portfolio/identity_reconcile.py` | Operator plan/apply for demergers and renames |
 | Narrator, narrative cache | `core/portfolio/narrator.py`, `narrative_cache.py` | Bulk-tier phrasing of a decided verdict, cached per day |

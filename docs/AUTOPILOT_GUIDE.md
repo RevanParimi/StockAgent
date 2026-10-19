@@ -1,6 +1,6 @@
 # Compass Autopilot — Developer Guide
 
-**Edition:** 2026-10-10 · **Code inspected:** `e85da94`, the code production runs
+**Edition:** 2026-10-19 · **Code inspected:** `dbdcc81`
 
 **Scope:** the virtual money path, from the advisor's verdict for each holding
 to the executed trade, the ledgers and the screens that show them.
@@ -121,7 +121,8 @@ a missing artifact leaves a conservative default.
 | Reversion prior | The envelope's conviction streak |
 | Regime, thesis | The latest feedback entry's regime; the latest thesis review |
 | Direction accuracy | Share of the cycle's last 7 feedback entries graded correct |
-| Position weight | The holding's share of the portfolio **at cost** (`adj_qty × adj_avg_price`) |
+| Position weight | The holding's share of **total equity**: every holding at the review's close (at cost when it has none) plus cash ([sizing.py](../core/portfolio/sizing.py)) |
+| Sector weight | The same share for all holdings with the holding's sector label |
 | Earnings distance | Trading days to the next results event |
 | Peak close | The highest close since the buy date |
 | Forecast gate | The worst gate among the remaining rows, and their source run ids |
@@ -140,13 +141,13 @@ The cascade is **EXIT → TRIM → ADD → HOLD**; the first that fires wins.
 |---|---|
 | EXIT | Any of: unrealised loss at or beyond the stop; thesis broken and envelope DOWN; a re-forecast for `external_shock`, `thesis_break` or `preopen_shock` and envelope DOWN; `MACRO_CRISIS` and envelope DOWN; or a trailing stop: the peak was at least 10% above cost and the close has since fallen from it by at least the stop |
 | TRIM | Profit of at least 25%, and confidence falling by 0.05 or more, or a reversion prior of 0.20 or more |
-| ADD | Envelope UP, regime not `MACRO_CRISIS` or `RISK_OFF`, position weight below 10%, and at least 60% of the last 7 reviews correct |
+| ADD | Envelope UP, regime not `MACRO_CRISIS` or `RISK_OFF`, position weight below 10% of total equity, and at least 60% of the last 7 reviews correct |
 | HOLD | Nothing above |
 | SWITCH | An EXIT becomes SWITCH when an active shelf idea qualifies (below) |
 
 **SWITCH.** The top 5 active shelf ideas by conviction are judged. One
-qualifies when it is not already held, its sector is strictly underweight
-compared with the exiting holding's sector, and its conviction beats the
+qualifies when it is not already held, its sector's share of total equity is
+strictly below the exiting holding's sector's share, and its conviction beats the
 holding's mean envelope confidence by at least 0.15. The data gate is checked
 last (section 4). The qualified idea with the highest conviction is the
 destination. Every candidate is recorded in `switch_evaluations.jsonl` with
@@ -160,9 +161,11 @@ thesis is not known to be broken, becomes HOLD with the note `WAIT_FOR_LTCG`.
 EXIT is never softened. This is a product rule, not individual tax advice.
 
 **Notes.** `EARNINGS_GAP_PROTECTION` marks a profitable holding with results
-within 3 trading days. `SECTOR_CONCENTRATION_HIGH` marks a single position at
-30% or more of the portfolio at cost. `DATA_GATE` and `IDENTITY` are
-section 4.
+within 3 trading days. `POSITION_LARGE` marks a holding over
+`advisor.max_position_pct` (10%) of total equity, and
+`SECTOR_CONCENTRATION_HIGH` a sector whose holdings together are over
+`advisor.max_sector_pct` (30%). At a cap is allowed, so exactly 10% carries no
+note. `DATA_GATE` and `IDENTITY` are section 4.
 
 **Example (stop):** a large-cap holding with a 2.5% ATR gets 3 × 2.5 = 7.5%,
 below the large-cap floor, so its stop is 8%. Bought at ₹1,000, it exits when
@@ -260,58 +263,77 @@ used for it.
 | HOLD | Nothing. The run marker is still stamped (section 8). |
 | EXIT | Sell the whole `adj_qty`. The holding is removed and the symbol joins the watchlist (`source="autopilot"`, reason `autopilot_exit`). |
 | TRIM | Sell `max(1, floor(adj_qty × 25%))`; when less than one share would remain, sell everything (`trim_to_zero`). |
-| ADD | Buy into an existing holding only. Budget = the smallest of 25% of the position's value, the headroom to a 10% weight after the trade, and cash above the ₹10,000 floor. Skipped within 5 trading days of the last autopilot buy of that symbol, or when the budget is under one share. |
-| SWITCH | Sell the whole position (EXIT rules), then buy the destination with the smallest of the sale proceeds and cash above the floor. |
+| ADD | Buy into an existing holding only, asking for 25% of the position's value, sized by the shared rule below. Skipped within 5 trading days of the last autopilot buy of that symbol, or when the rule allows under one share (logged). |
+| SWITCH | Sell the whole position (EXIT rules), then buy the destination, asking for the sale proceeds, sized by the shared rule below, and only inside its shelf idea's entry band. |
 
 **The SWITCH buy leg re-checks its own inputs** before spending:
 
-- the destination's close must come from the session's own bar; and
-- the destination's identity must be resolved.
+- the destination's close must come from the session's own bar;
+- the destination's identity must be resolved; and
+- its price must be at or below the idea's `entry_high` and above its
+  `invalidation_level`. Below `entry_low` it is allowed (cheaper than
+  planned) and the BUY's note says so. A destination with no active shelf
+  idea, or no band, is not bought.
 
-In `enforce` mode a failure skips the buy; in `record` mode it buys and logs
-that the gate would have skipped it. An unpriceable destination or a budget
-under one share also skips the buy. Whenever the sell executes and the buy
-does not, the user gets a `switch_buy_skipped` alert saying the proceeds
-stayed in cash. A completed buy promotes the destination into the managed
-list (section 12).
+For the first two, `enforce` mode skips the buy, and `record` mode buys and
+logs that the gate would have skipped it. The band applies in every mode. An
+unpriceable destination, or a size under one share, also skips the buy.
+Whenever the sell executes and the buy does not, the SELL's note records why,
+for example `exit_full; buy leg skipped: WELCORP: 33.6% above entry band
+(₹1,817–₹1,911); needs a fresh deep dive; ₹1,00,000 stays in cash`. The
+`switch_buy_skipped` alert repeats that reason (when another switch that day
+bought the same stock, only the SELL's note says why). A completed buy promotes the
+destination into the managed list (section 12).
 
 **Order.** Sells first (EXIT, SWITCH sell legs and TRIM, by symbol), so cash
 is freed before it is spent. Then buys: SWITCH buy legs, then ADDs by
 confidence (highest first, ties by symbol).
 
-**The weight cap.** A buy of X into a position worth `pos`, when all
-holdings are worth `total` (cash excluded), keeps
-`(pos + X) / (total + X) ≤ cap`, so `X ≤ (cap × total − pos) / (1 − cap)`.
-Holdings without a close that day are valued at cost.
+**The shared sizing rule** ([sizing.py](../core/portfolio/sizing.py)). Total
+equity E is every holding at the run's close (at cost without one) plus cash.
+A buy paid from cash moves money into a holding, so E does not change. A buy
+of X is the smallest of:
 
-**Example:** a ₹20,000 position, holdings worth ₹5,00,000 in all, and
-₹60,000 cash. The tranche is ₹5,000; the headroom is (0.10 × 5,00,000 −
-20,000) / 0.9 = ₹33,333; cash above the floor is ₹50,000. The budget is
-₹5,000, which at ₹1,180 a share buys 4 shares.
+- the amount asked for (the ADD tranche, or the SWITCH proceeds);
+- `0.10 × E − pos`, the position's room (`advisor.max_position_pct`);
+- `0.30 × E − sector`, its sector's room (`advisor.max_sector_pct`);
+- `cash − 10,000`, the cash above the floor.
+
+Whole shares only. When a cap or the floor is the limit, the BUY's note names
+it and the amount left in cash, for example `add_tranche; capped by the 10%
+position cap: ₹1,250 of the ₹2,250 tranche stay in cash`. When nothing but
+the request limits it, the note is plain (`add_tranche`, `switch from X`).
+
+**Example:** a ₹20,000 position in a sector holding ₹50,000, total equity
+₹5,60,000 (holdings ₹5,00,000, cash ₹60,000). The tranche is ₹5,000. The
+position's room is 0.10 × 5,60,000 − 20,000 = ₹36,000, the sector's is
+0.30 × 5,60,000 − 50,000 = ₹1,18,000, and cash above the floor is ₹50,000.
+The budget is ₹5,000, which at ₹1,180 a share buys 4 shares.
 
 ## 7. Cash deployment
 
 How cash moves today:
 
 - **A new position opens only through a SWITCH**, which puts one sale's
-  proceeds into a shelf idea.
-- **ADD tops up a stock already held**, capped at a 10% weight after the
-  trade (`advisor.max_position_pct`).
-- **A plain EXIT leaves its proceeds in cash.** Nothing reinvests them.
-- **The SWITCH buy spends the whole proceeds**, with no position or sector
-  cap, so a destination can exceed 10% of the portfolio on its first day.
+  proceeds into a shelf idea, inside the idea's entry band.
+- **ADD tops up a stock already held.**
+- **Every buy is sized by the shared rule** (section 6): each position at
+  most 10% and each sector at most 30% of total equity after the trade, and
+  the ₹10,000 floor kept.
+- **A plain EXIT leaves its proceeds in cash**, as does whatever a cap or a
+  skipped buy leg leaves. Nothing reinvests them.
 - **The seed** spreads the starting pot equally across the enabled managed
   tickers (section 11).
 
-**Example:** a ₹10,00,000 portfolio exits two holdings worth ₹1,50,000 each
-on a day with no qualifying shelf idea. Cash rises by ₹3,00,000 and stays
-there; the remaining holdings can each take at most a 10% weight through
-ADDs, 25% of their own value at a time.
+**Example:** a ₹10,00,000 portfolio switches a ₹2,27,000 holding into a
+shelf idea at ₹530. The new position may be at most ₹1,00,000: 188 shares,
+₹99,640. The other ₹1,27,360 stays in cash, and the BUY's note says so.
+On a day with no qualifying shelf idea, two EXITs of ₹1,50,000 each raise
+cash by ₹3,00,000, and it stays there.
 
-**Planned:** one sizing rule for every autopilot buy, including the SWITCH
-buy (SA-050). In a normal market, idle cash goes into shelf ideas that pass
-the checks; cash is held on purpose only in a crisis (SA-049, behind a switch
-that ships off).
+**Planned:** in a normal market, idle cash goes into shelf ideas that pass
+the checks, sized by the same rule; cash is held on purpose only in a crisis
+(SA-049, behind a switch that ships off).
 
 ## 8. Idempotency, locking and crash safety
 
@@ -500,13 +522,14 @@ give it envelopes, reviews and a dossier.
 | `AUTOPILOT_TRIM_PCT` (`autopilot.trim_pct`) | 25.0 | TRIM sells this share of the quantity |
 | `AUTOPILOT_MIN_CASH_FLOOR` (`autopilot.min_cash_floor`) | 10000.0 | Cash never spent below this |
 | `AUTOPILOT_ADD_COOLDOWN_TD` (`autopilot.add_cooldown_td`) | 5 | Trading days between autopilot buys of one symbol |
-| `advisor.max_position_pct` | 10.0 | ADD eligibility and the post-trade weight cap |
+| `advisor.max_position_pct` | 10.0 | ADD eligibility, the `POSITION_LARGE` note and every buy's post-trade position cap, of total equity |
+| `advisor.max_sector_pct` | 30.0 | The `SECTOR_CONCENTRATION_HIGH` note, the weekly flag and every buy's post-trade sector cap, of total equity |
 | `advisor.atr_period`, `advisor.stop_atr_mult`, `advisor.stop_buckets` | 20, 3.0, large [8, 12] · mid [12, 18] · small [15, 22] | Stops |
 | `advisor.trim_profit_pct`, `advisor.trail_arm_pct` | 25.0, 10.0 | TRIM threshold; trailing-stop arming |
 | `advisor.confidence_decline_threshold`, `advisor.reversion_prior_elevated` | 0.05, 0.20 | TRIM triggers |
 | `advisor.envelope_flat_band_pct`, `advisor.add_min_direction_accuracy` | 1.0, 0.60 | Envelope direction; ADD accuracy floor |
 | `advisor.switch_conviction_gap`, `advisor.switch_eval_max_candidates` | 0.15, 5 | SWITCH |
-| `advisor.ltcg_wait_min_months`, `advisor.earnings_gap_days`, `advisor.sector_concentration_warn_pct` | 10, 3, 30.0 | Notes |
+| `advisor.ltcg_wait_min_months`, `advisor.earnings_gap_days` | 10, 3 | Notes |
 | `decision_gate.mode` | `record` | Section 4; production's value is in KT section 1 |
 
 The `autopilot.*` keys are not in config.yaml, so the code defaults apply.
@@ -521,6 +544,7 @@ run is hermetic (KT section 13). A quick loop:
 |---|---|
 | `test_autopilot_schemas.py`, `test_autopilot_store.py`, `test_autopilot_settings.py` | Transaction records and `Holding.sell`, ledger append and read, defaults |
 | `test_autopilot_executor_sells.py`, `…_adds.py`, `…_switch.py` | Verdict rules, gating byte-identity, run marker, dedupe, stale-date refusal, sizing, SWITCH legs, value points |
+| `test_sizing_rule_sa050.py` | The shared sizing and entry rule: hand-worked caps, floor and band cases, the 11 Oct weights, a random-portfolio property test and a switch through the pipeline |
 | `test_autopilot_pipeline.py`, `test_portfolio_pipeline.py`, `test_scheduler_portfolio_hook.py` | The pipeline steps, digest trades and the `switch_buy_skipped` alert |
 | `test_autopilot_isolation.py` | Executor writes stay inside `data/portfolio/<user>/` |
 | `test_autopilot_wave1.py`, `test_portfolio_locking.py`, `test_portfolio_reconcile.py` | Locking with a fresh reload, future-date refusal, reconciliation |
@@ -558,8 +582,7 @@ encode the two constraints most likely to fail silently.
 
 ## 16. Planned work
 
-- One sizing rule for every autopilot buy (SA-050), and idle cash deployed
-  in normal markets (SA-049).
+- Idle cash deployed in normal markets (SA-049).
 - Trading costs and tax in paper P&L (SA-048), and a Nifty comparison with
   honest labels (SA-051).
 - A safe `identity_reconcile apply` (SA-008 change 1).

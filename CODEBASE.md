@@ -667,8 +667,8 @@ Models are tiered (2026-06-03 benchmark, `scripts/model_bench.py`; bulk re-bench
 | `ADVISOR_CONFIDENCE_DECLINE_THRESHOLD` | `0.05` | Remaining-envelope confidence drop that counts as declining (TRIM trigger) |
 | `ADVISOR_ENVELOPE_FLAT_BAND_PCT` | `1.0` | Remaining-forecast drift within ±this% = FLAT (neither ADD nor EXIT signal) |
 | `ADVISOR_ADD_MIN_DIRECTION_ACCURACY` | `0.60` | Last-7-reviews hit rate required for ADD |
-| `ADVISOR_MAX_POSITION_PCT` | `10.0` | Position weight cap gating ADD |
-| `ADVISOR_SECTOR_CONCENTRATION_WARN_PCT` | `30.0` | Weight threshold for the `SECTOR_CONCENTRATION_HIGH` note |
+| `ADVISOR_MAX_POSITION_PCT` | `10.0` | Position cap, of total equity: gates ADD, marks `POSITION_LARGE`, caps every autopilot buy after the trade |
+| `ADVISOR_MAX_SECTOR_PCT` | `30.0` | Sector cap, of total equity: marks `SECTOR_CONCENTRATION_HIGH` and the weekly flag, caps every autopilot buy after the trade |
 | `ADVISOR_LTCG_WAIT_MIN_MONTHS` | `10` | TRIM at age 10–12 months with intact thesis → `WAIT_FOR_LTCG` note (never softens EXIT) |
 | `ADVISOR_EARNINGS_GAP_DAYS` | `3` | Profitable + results within N trading days → `EARNINGS_GAP_PROTECTION` note |
 
@@ -884,10 +884,11 @@ All paths verified to exist. Paths are relative to project root.
 | `services/api/routes/scheduler_api.py` | POST/GET /scheduler/* — RL trigger and status endpoints; event-triggers the portfolio advisor pipeline after daily reviews |
 | `services/api/routes/portfolio_api.py` | /portfolio/* — Compass Phase A: holdings, watchlist, CSV import, advice ledger, EOD digest; Autopilot: transactions audit trail, performance (P&L + equity curve) |
 | `core/portfolio/pipeline.py` | `run_post_review_pipeline()` — corp-action sync → events refresh → advisor → ledger → digest, per user |
-| `core/portfolio/advisor.py` | Deterministic HOLD/ADD/TRIM/EXIT engine (EXIT>TRIM>ADD>HOLD), ATR-scaled stops, LTCG/earnings-gap notes, `explain_triggers()`; `data_gate_blocks` / `decide(add_blocks=, blocked_candidates=)` withhold ADD and SWITCH destinations on a stale close or unverified forecast (never EXIT/TRIM); `decide(identity_hold=)` holds every verdict (note `IDENTITY`) when the holding's identity is unresolved or its price basis changed since purchase |
+| `core/portfolio/advisor.py` | Deterministic HOLD/ADD/TRIM/EXIT engine (EXIT>TRIM>ADD>HOLD), ATR-scaled stops, LTCG/earnings-gap notes, `POSITION_LARGE` / `SECTOR_CONCENTRATION_HIGH` against total equity, `explain_triggers()`; `data_gate_blocks` / `decide(add_blocks=, blocked_candidates=)` withhold ADD and SWITCH destinations on a stale close or unverified forecast (never EXIT/TRIM); `decide(identity_hold=)` holds every verdict (note `IDENTITY`) when the holding's identity is unresolved or its price basis changed since purchase |
 | `core/portfolio/identity_reconcile.py` | `holding_identity_issue` / `symbol_identity_issue` (registry only, for the advisor and autopilot); operator CLI `plan` (read-only, digest) and `apply --approve <digest>` (refuses a changed plan, backs up `portfolio.json`, replaces a demerged holding with its recorded successors, logs `identity_reconciliations.jsonl`) |
 | `src/backend/shared/data/instruments.py` | Parses and validates `config/instruments.yaml` (fail closed); `registry_identity(ticker, on)` → `Identity(status, symbol, basis, via, source, reasons)`; `registry_bases`, `segment_on`; path `INSTRUMENT_REGISTRY_PATH` or `config/instruments.yaml` |
-| `core/portfolio/autopilot.py` | `execute_advice()` — deterministic verdict executor (sells then buys, no LLM); `record_value_point()` — daily equity snapshot |
+| `core/portfolio/autopilot.py` | `execute_advice()` — deterministic verdict executor (sells then buys, no LLM; every buy sized by `sizing`, a SWITCH buy only inside its shelf idea's entry band, a skipped buy leg's reason on the SELL's note); `record_value_point()` — daily equity snapshot |
+| `core/portfolio/sizing.py` | One sizing and entry rule for every autopilot buy: `weights()` (shares of total equity: holdings at their marks plus cash), `size_buy()` (position and sector caps after the trade, cash floor), `entry_check()` (at or below `entry_high`, above `invalidation_level`) |
 | `services/data/fetchers/corporate_events.py` | NSE corp-actions feed + forward board-meetings calendar (degraded-mode safe) |
 | `data/portfolio/<user>/` | Per-user volume state: `portfolio.json`, `advice_ledger.jsonl`, `transactions.jsonl` (Autopilot audit trail), `value_history.jsonl` (daily equity curve), `digests/` |
 | `scripts/seed_autopilot.py` | One-time Autopilot seed: equal-weight virtual holdings from managed tickers + `autopilot=True`; idempotent |

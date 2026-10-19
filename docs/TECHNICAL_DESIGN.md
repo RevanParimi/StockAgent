@@ -2,7 +2,7 @@
 
 **Edition:** 2026-10-19 · **Audience:** engineers and teammates learning the product
 
-**Code inspected:** `dbdcc81fec2b2fb0dd64923eb815dae79a9eb3a3`
+**Code inspected:** `84eefda046825e37b8f8eb188f37ba382da883f6`
 
 **PDF:** [StockAgent-Three-Loops.pdf](StockAgent-Three-Loops.pdf), generated from this Markdown.
 
@@ -35,13 +35,14 @@ triggered no production job, backfill or notification.
 
 ### Production state at this edition
 
-Production runs the inspected code once the deployment of 19 October 2026 is
-confirmed by the owner's read-only check of the deployment list and `/health`.
-Until then it runs the code of 18 October (`b6d2470`; the deployment list showed
-it live that afternoon). They differ in the autopilot's sizing: every buy
-capped at 10% of total equity per position and 30% per sector, a switch bought
-only inside its shelf idea's entry band, the position and sector notes measured
-against total equity, and the weekly review's cash share (section 6). The table gives the configuration that differs from the
+Production runs the inspected code once the evening deployment of 19 October
+2026 is confirmed by the owner's read-only check of the deployment list and
+`/health`. Until then it runs the code deployed that midday (`bb9969e`; the
+deployment list showed it live at 12:08 IST). They differ in the portfolio's
+figures: the portfolio screen's labels, the Nifty comparison and the
+closed-trade card, value points that record when they were taken, retention
+that keeps every change in `capital_in`, and CSV imports that write ledger rows
+(section 7). The table gives the configuration that differs from the
 repository and the state of each operational control.
 
 | Area | State in production | Evidence |
@@ -1057,22 +1058,60 @@ transactions, advice, digest and `/portfolio/performance`.
 | Total equity | Remaining holdings' market value + deployable cash. |
 | Total return | `(total equity − capital_in) / capital_in`, when required values exist. |
 | As-of date | Date of the valuation, potentially different from page-open time. |
+| In stocks / Cash | Market value and deployable cash at the last valuation, each as a share of total equity, to one decimal. The cash share is rounded and the stock share is 100 minus it, so the two always add to 100. |
 
 The virtual P/L charges no brokerage, STT, stamp duty, exchange fee, DP
 charge or tax. A real round trip costs about 0.25% of the traded value, and
 short-term gains are taxed. For ACMESOLAR's +₹37,551, that is about ₹477 in
-costs and about ₹7,415 in tax. The screen's "Invested" is `capital_in`, the
-mock money ever put in, not the money in stocks. The screen has no benchmark;
-the weekly results scorecard (below) compares the account with the same
-deposits in the Nifty. **Planned:** costs and tax in paper P&L (SA-048), and
-the Nifty comparison on the portfolio screen with honest labels (SA-051).
+costs and about ₹7,415 in tax. **Planned:** costs and tax in paper P&L
+(SA-048).
+
+**The portfolio screen** answers "is this good?" as well as "how much?". With
+cash accounting on, the hero shows "Capital added" (`capital_in`, the money put
+in, which trades never move), "In stocks" and "Cash" with their shares, the
+total return and the valuation date ("Valued as of 6 Feb 2026"). The value
+chart draws, dashed, what the same deposits would be worth in the Nifty 50,
+and each range tab shows the range's money-weighted return beside the Nifty's.
+Under the hero, "If this had been in the Nifty 50" gives the gap at the last
+valuation in rupees and in points of return since the first deposit. All of
+it comes from `/portfolio/performance`, which uses the weekly scorecard's
+functions in [results.py](../core/portfolio/results.py) (`capital_flows`,
+`vs_nifty`, `nifty_line`, `portfolio_vs_nifty`): one implementation.
+
+- **Example (two deposits).** ₹10,00,000 arrives on 5 Jan with the Nifty at 100
+  and buys 10,000 units. ₹2,00,000 arrives on 19 Jan at 125 and buys 1,600. On 6
+  Feb the Nifty is 110, so the line reads 11,600 × 110 = ₹12,76,000. The
+  portfolio, at ₹12,40,000, is ₹36,000 behind: +3.3% against +6.3% since 5 Jan,
+  3.0 points.
+- **Missing data.** The Nifty line is drawn only through points with a value. A
+  day with no Nifty close leaves a gap; a deposit that cannot buy units ends the
+  line there. An unavailable benchmark reads "unavailable", with no line and no
+  gap.
+- **One download.** The route preloads the Nifty for every value point's date
+  in one request (`BenchmarkSeries.preload` in
+  [benchmark.py](../core/audit/benchmark.py)). Each day gets the close the
+  per-date lookup would choose: the session's own, else the last one before it
+  within the walkback, never a later one. A range stays cached for an hour.
+- **Closed trades.** A card shows the closed-trade record from the whole
+  ledger (`closed_trades` and `trade_stats`, as in the scorecard): trades, win
+  rate, average win, average loss and expectancy per trade, before costs. A
+  partly sold position is not a closed trade.
+- **Every price has its date.** The holdings table dates the current price by
+  its bar (`last_close_date` from `GET /portfolio`) and the average cost by the
+  first purchase. Each trade's price shows its trade date, and the agents'
+  card names the review whose closes its reasons quote.
+- **Without cash accounting** no deposit or sale is recorded, so the screen
+  shows "Bought for" (the holdings' cost) and has no comparison or trade card.
 
 **Example without fees/corporate actions:** start with 2,000 and buy ten units
 at 100. Cash is 1,000. At 110 the holding is 1,100, equity 2,100 and unrealized
 P/L 100. Sell four at 110: cash becomes 1,440, remaining holding value 660,
 realized P/L 40 and remaining unrealized P/L 60. Equity stays 2,100.
 
-Current performance reads at most 2,000 transactions and 400 history rows.
+`/portfolio/performance` reads every transaction and every value point; the
+chart receives the last 400 points. "Total return" counts a holding added with
+an earlier buy date from its cost, so it includes that stock's gain before it
+arrived; the Nifty comparison does not (below).
 With no history, a failed price lookup may fall back to adjusted purchase cost.
 The digest sums priced holdings only, and its `portfolio_value` excludes cash.
 These scope differences need interpretation; a displayed total is not proof
@@ -1137,9 +1176,43 @@ week whose sessions are not over is never stored.
 | Closed trades | Round trips from `transactions.jsonl`. A position counts once, when its last share is sold, with every sale of it (TRIMs included): realized P/L over the cost of the shares sold. Count, win rate, average win, average loss and expectancy (the mean result per trade), this week and since the start, before costs. A sale with no recorded cost is counted as unknown, never guessed. |
 | Sold too early | Every advisor sale (EXIT, SWITCH or TRIM), held or not, joined to the auditor's grade by its advice ref: the share of sold stocks that beat the Nifty 10 and 30 sessions later. A sale whose horizon has not ended is pending; one whose horizon ended with no grade is counted as missing. |
 | Why we sold | Sales per trigger, in the advisor's plain words, over the last 4 weeks. Your own sales appear as "sold by you". |
-| You vs the Nifty | Money-weighted. Each rise in `capital_in` between value points is a deposit, and the same deposit buys Nifty units at that day's close. Both sides use the same flows, so idle cash counts against the portfolio. This week, the last 4 weeks and since the start. A holding added with an earlier buy date or a typed price, or imported from a CSV, enters `capital_in` at its cost, so its gain before it arrived counts as the portfolio's in that period. **Planned:** it is valued on the day it arrives (SA-051). |
+| You vs the Nifty | Money-weighted. Each rise in `capital_in` between value points is a deposit, dated at the first point that shows it, and the same deposit buys Nifty units at that day's close. Both sides use the same flows, so idle cash counts against the portfolio. A holding that arrived without cash is valued on the day it arrives (below). This week, the last 4 weeks and since the start. |
 | Breadth | Holdings (for the latest week) and the invested share at the week's last valuation. |
 | Holding period | Median exchange sessions held by the positions closed this week. |
+
+**Holdings that arrive without cash.** "Add holding" and a CSV import, on an
+account with cash accounting, raise `capital_in` by the holding's cost (the
+quantity × the buy date's close or a typed price) and write a "manual" BUY row
+whose cash does not move. `capital_flows` finds those rows and values each one
+at the stock's NSE close on the date of the first value point that holds it,
+on both sides, so a stock's gain before it arrived is not the portfolio's.
+
+- **Example.** ₹10 L sits in cash while the Nifty goes 100 → 110 over four
+  weeks. In the middle, with the Nifty at 105, 1,000 shares bought a year
+  earlier at ₹50 and now worth ₹150 are added. Valued at ₹1,50,000, the four
+  weeks read 0.0% against +9.3%, and "Behind the Nifty" fires. At their
+  ₹50,000 cost they read +9.5% against +9.8%, and the flag stayed clear.
+- **Which valuation holds it.** Each value point records `recorded_at`, and
+  the pipeline writes it under the user's lock, as every add is written. A
+  point recorded after the add's ledger time holds it. An add made after the
+  16:30 review therefore arrives in the next valuation, at that day's close.
+- **When it cannot be valued**, the flow is unknown: no close for the stock
+  that day, or a point written before points recorded their time and dated
+  the add's own day. A period that holds an unknown flow, or follows one with
+  money moving in it, reads "could not check (…)", naming the stock and day.
+  A period with no money moving is still compared, by the index's own move.
+- **Deposits keep their dates.** Nightly retention keeps the last
+  `value_history_cap` (400) points, the first point with a `capital_in`, and
+  every older point where `capital_in` changed
+  ([retention.py](../core/portfolio/retention.py)). Without them, the first
+  kept point's capital would read as an opening deposit on a later day.
+- **Limit.** A holding added while the 16:30 pipeline runs, or one whose close
+  fails in that run, is in that day's valuation at its cost while the comparison
+  values it at the day's close. Until the next valuation marks it to market,
+  that day reads the difference, quantity × (close − cost), as a loss or a gain
+  that is not the portfolio's. A weekly scorecard whose week ends on that
+  valuation keeps it. Example: 1,000 shares bought at ₹50, worth ₹150 and added
+  at 16:35 read ₹1,00,000 behind that day. **Planned:** SA-049.
 
 The red flags are fixed constants in the module, set before any result was
 seen. A flag reports; it changes no decision.
@@ -1676,7 +1749,7 @@ have been left out. With no change it reads "No verdict changes since 16 Sept":
 `since` is the date of the oldest kept run among those stocks. If the score
 history cannot be read, the route sends nothing rather than a partial list. A composite-score change is not rupees, so there is no
 gain, loss or agreement figure and no templated lesson; realized trade results
-are planned (SA-051, PR-002). The Learn page claims no progress for a member,
+are in the portfolio's closed-trade card and the weekly scorecard (section 7). The Learn page claims no progress for a member,
 because nothing records it. Sample data exists only in demo mode: `?demo=1` loads the invented
 values in `src/frontend/prototypes/demo-fixtures.js` under a "Sample data"
 banner and makes no market call, and the layout audit uses it.
@@ -1914,8 +1987,6 @@ learning to `observe`. SA-023 puts learned lessons on measurable probation.
   market, and holds cash on purpose only in a crisis, behind a switch that
   ships off. It works toward a configurable floor of at least 10 holdings and
   ₹10 L invested, fed by PR-004's wider shelf.
-- SA-051 shows the portfolio against the Nifty, with honest labels for
-  "Invested" and returns.
 
 ### Product results
 
@@ -2062,7 +2133,7 @@ section 10) are part of the current design.
 | [SA-048](planning/PI-2026-09/stories/SA-048.md) | Charge realistic trading costs and tax in paper P&L | Open | 6 Portfolio; 7 Marksheets | None |
 | [SA-049](planning/PI-2026-09/stories/SA-049.md) | Put idle cash to work in normal markets, with a 10-holding / ₹10 L floor | Open | 6 Portfolio; 8 Discovery | SA-050, SA-051 |
 | [SA-050](planning/PI-2026-09/stories/SA-050.md) | Apply one sizing rule to every autopilot buy | Done | 6 Portfolio | None |
-| [SA-051](planning/PI-2026-09/stories/SA-051.md) | Show the portfolio against the Nifty, with honest labels | Open | 7 Marksheets; 10 Interface | None |
+| [SA-051](planning/PI-2026-09/stories/SA-051.md) | Show the portfolio against the Nifty, with honest labels | Done | 7 Marksheets; 10 Interface | None |
 | [FIX-006](planning/PI-2026-09/stories/FIX-006.md) | An anonymous watchlist read never falls back to the owner | Open | 10 Interface | None |
 | [FIX-007](planning/PI-2026-09/stories/FIX-007.md) | Server logs are readable only by the owner | Done | 10 Interface | None |
 | [FIX-008](planning/PI-2026-09/stories/FIX-008.md) | Operator notices reach only the owner; register the backlog's watchdog entry | Done | 10 Delivery; 10 Operations | SA-011 |

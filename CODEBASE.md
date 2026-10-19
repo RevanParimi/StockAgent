@@ -415,12 +415,12 @@ All endpoints take an optional `user_id` query param (default `portfolio.default
 | DELETE | `/portfolio/holdings/{symbol}` | optional key | Remove holding; demotes from managed universe unless watchlisted. 404 if absent. |
 | POST | `/portfolio/watchlist` | optional key | Add watchlist symbol `{symbol, sector?, reason?}` — `sector` omitted → resolved via `SectorRegistry`; promotes with weekly cadence. |
 | DELETE | `/portfolio/watchlist/{symbol}` | optional key | Remove watchlist symbol; demotes unless held. |
-| POST | `/portfolio/import-csv` | optional key | Raw CSV body `symbol,sector,qty,avg_buy_price,buy_date`; blank price → real close on buy date; per-row errors reported. |
+| POST | `/portfolio/import-csv` | optional key | Raw CSV body `symbol,sector,qty,avg_buy_price,buy_date`; blank price → real close on buy date; per-row errors reported. With cash accounting on, each row is fresh capital like a manual add: `capital_in` rises by its cost and a `manual` BUY ledger row is written with no cash moved. |
 | GET | `/portfolio/advice?limit=<1-500>` | optional key | Advice-ledger tail (append-only JSONL of every verdict). |
 | GET | `/portfolio/digest/latest` | optional key | Latest EOD digest (404 until the advisor has run). |
 | POST | `/portfolio/run-advisor?review_date=<ISO>` | optional key | Manually trigger the post-review pipeline (corp-action sync → events → advisor → ledger → digest). 202, background. |
 | GET | `/portfolio/transactions?limit=<1-1000>` | optional key | Transaction audit trail, newest first — every Autopilot trade (source, verdict, qty/price, realized P&L). |
-| GET | `/portfolio/performance` | optional key | P&L summary + daily equity curve: cash, market value, total equity, day-change %, realized P&L, sourced from `value_history.jsonl` (falls back to a live mark when history is empty). |
+| GET | `/portfolio/performance` | optional key | P&L summary + daily equity curve: cash, market value, total equity, the in-stocks and cash shares of it, day-change %, realized P&L, sourced from `value_history.jsonl` (falls back to a live mark when history is empty). With cash accounting on, also the same deposits in the Nifty 50 under each value point, the gap since the first deposit, each chart range's money-weighted return beside the Nifty's, and the closed-trade record (`core/portfolio/results.py`). |
 
 The pipeline also runs automatically: `scheduler_api._review_task` event-triggers `core.portfolio.pipeline.run_post_review_pipeline` after every daily-review job completes (never clock-scheduled).
 

@@ -1,4 +1,4 @@
-# Current handoff - 2026-10-19 (updated about 12:00 IST)
+# Current handoff - 2026-10-19 (updated about 17:45 IST)
 
 ## Also 11 Oct (about 13:00–15:30 IST): product results review and new tasks (separate conversation)
 
@@ -86,9 +86,126 @@ check `PR-003-P1` in STATE's `pending_production_checks`.**
   live level during the Tokyo session. Hong Kong is closed on Monday (the day after Chung
   Yeung, a public holiday), so Hang Seng `closed` is correct that day; check Hang Seng on
   Tuesday 20 Oct in the same window. USD/INR's "as of" must be a weekday.
+- **Not run on Monday:** the only "continue" conversation on 19 Oct began at 12:11 IST, after
+  the window (the SA-050 commit conversation was not a "continue" one). Run it in **Tuesday
+  20 Oct's first conversation between 07:00 and 12:00 IST**; Hong Kong is open that day, so
+  Nikkei 225 and Hang Seng are both checked then.
 - **Then.** Record the result in the PR-003 receipt's L4 (or its review receipt), mark the check
   in STATE, and tell the owner in one line. If Nikkei reads `closed` mid-session, bring the
   owner one example and a recommendation; change nothing in production.
+
+**SA-051 is ACCEPTED** by its fresh review (19 Oct, about 15:26–16:15 IST, session
+stockagent-main-db, a new conversation opened with "continue"; stockagent-main-da, the
+implementer, was idle from 15:35 and no peer was busy after). Receipt:
+[review](evidence/SA-051-review.md).
+
+- **STATE:** `active_task: null`; SA-051 `done`; production verification
+  `pending_deployment`; **`next_task: PR-004`**, which is ready (no dependencies) and not
+  started.
+- **What was reviewed:** the uncommitted working tree on `bb9969e`.
+  - Input [SA-051-manifest.json](evidence/SA-051-manifest.json) `fb29bbda…`, with 0
+    mismatches at the start and the end.
+  - Its own rebuild of the diff, from the manifest's paths: `fb7c36da…` (136,285 bytes, 17
+    paths).
+- **Nothing else changed:** nothing was committed, pushed or deployed, no production state
+  was read and no message was sent. The owner's line in `docs/README.md` and the SA-050 push
+  note stay uncommitted.
+- **In one example (the reviewer's trace RV3, through the real 16:30 pipeline).** While the
+  run is narrating, the owner adds 1,000 shares bought at ₹50 and worth ₹150.
+  - The day's value point holds them but marks them at cost, because the run took its closes
+    before the add. The comparison takes them in at ₹150.
+  - Their week reads −8.70% against +2.56%; the truth is 0.0%.
+  - Typed in at ₹150 and worth ₹50, the same week reads +9.52%: ahead when the portfolio is
+    behind.
+  - The next valuation reverses it, but a weekly row is stored once. This is R1.
+- **Findings, both low:**
+  - R1, above. Routed to [SA-049](stories/SA-049.md), which adds the dated `DEPOSIT`. The KT's
+    limit sentence gets corrected wording at commit; the implementation receipt's L2 called it
+    "a small loss".
+  - R2: `src/frontend/prototypes/UI_SPEC.md` still describes the old hero and the old
+    `/portfolio/performance` fields. Edit at commit.
+  - Info: the hero mixes the last valuation's market value with live cash and capital. This
+    is pre-existing. Card note in [PR-010](stories/PR-010.md).
+  - Rulings: D1 (with R1), D2–D10, L1 and L3–L6 accepted.
+- **Checked:**
+  - the reviewer's trace `analysis_data/sa051_review/test_rv_trace.py`, 457 passed:
+    - 300 random histories match an exact-arithmetic model of the card's rule (line,
+      since-start, four ranges, a pruned copy);
+    - 150 histories always in the Nifty read level, where HEAD's at-cost rule does not;
+    - the real `BenchmarkSeries` through the route: a holiday and a missing Yahoo bar take
+      the session before, never a later bar; one download, then cached;
+    - real threads on one lock file: a value point holds an add whole or not at all;
+  - story and affected tests 1,088 passed; `npm run test:frontend` 39/39;
+  - `check_kt_docs` `[]`; broad-except OK;
+  - full suite 5,332 passed, 12 skipped, 1 xfailed (the known PR-003 limit), 0 failed in 19 min 28 s.
+- **For the owner, at your word:** commit SA-051 with both receipts' commit-time edits:
+  - KT: header, section 12 `Done`, R1's limit wording in section 7, the PDF;
+  - the AUTOPILOT_GUIDE header; the guide's 08-G and 08-H status lines;
+  - UI_SPEC (R2); the L2 pointer.
+
+  Push in a job-free window, not 08:30–09:20 or 16:25–17:15 IST. After the deploy, open the
+  portfolio screen and run guide 08-G and 08-H in a test copy.
+
+  **Committed at the owner's word** ("commit and push", 19 Oct about 17:33 IST): `84eefda`
+  (code: the 12 reviewed code and test files, identical by blob), then one docs commit with
+  the commit-time edits:
+  - KT: header to `84eefda`, section 1's production paragraph, R1's limit wording in
+    section 7, section 12's SA-051 row `Done`; PDF source `732e34c7…` (47 pages),
+    `check_kt_docs` `[]`;
+  - AUTOPILOT_GUIDE: the header, and sections 9 and 16, which still said there is no
+    benchmark and listed the comparison as planned (found at commit, part of R2);
+  - guide: the 08-G and 08-H status lines;
+  - UI_SPEC (R2); the implementation receipt's L2 pointer.
+
+  It also carries the receipts and manifest, STATE, HANDOFF and the SA-049 and PR-010 card
+  notes. The owner's line in `docs/README.md` stays uncommitted. The push waits for 17:55
+  IST (the 17:40–17:55 job window) and goes before 18:40, so the deploy is up before the
+  18:55 jobs.
+
+**SA-051 is IMPLEMENTED** (19 Oct, about 12:15–13:30 IST, session stockagent-main-da, a
+new conversation opened with "continue"; peers idle). Receipt:
+[implementation](evidence/SA-051-implementation.md). STATE: `active_task: null`, SA-051
+`review_required`, **`next_task: SA-051`**, meaning its **fresh review** in a new conversation
+("continue"), then PR-004. Nothing was committed, pushed or deployed, no production state was
+read and no message was sent. The owner's line in `docs/README.md` and the SA-050 push note in
+STATE/HANDOFF stay uncommitted.
+- **In one example.** ₹10,00,000 on 5 Jan (Nifty 100) and ₹2,00,000 on 19 Jan (Nifty 125),
+  valued at ₹12,40,000 on 6 Feb (Nifty 110). The screen now reads "Capital added ₹12,00,000 ·
+  In stocks ₹2,30,400 (18.6%) · Cash ₹10,09,600 (81.4%)" and "If this had been in the Nifty
+  50: ₹12,76,000. The portfolio: ₹12,40,000, ₹36,000 behind (3.0 points)", with the Nifty
+  dashed on the chart. "Return over 1M" no longer reads the deposit as a 24% gain.
+- **PR-002's follow-ups, both fixed for the screen and the scorecard:**
+  - F1: a backdated add (shares bought at ₹50, worth ₹150) is ₹1,50,000 of money in on the
+    day it arrives, not its ₹50,000 cost. The card's acceptance reads 0.0% against +9.3%, and
+    "Behind the Nifty" fires. Which valuation holds an add comes from the new `recorded_at`,
+    written under the user's lock.
+  - F2: retention keeps the first value point and every capital change, so deposits keep
+    their dates.
+- **Also:** a CSV import now writes the same ledger rows as Add holding (before, `reconcile`
+  reported imports as drift), and the Nifty is downloaded once per range.
+- **For the reviewer:** decisions D1–D10 and limits L1–L6 are in the receipt. Worth a hard
+  look:
+  - D1/D2: an arrival is valued at the close of the first valuation that holds it; a legacy
+    point dated the add's own day reads "could not check" (L1);
+  - D3: the unknown-flow rule in `vs_nifty`;
+  - D5/L3: "Total return" still counts a backdated add's earlier gain; the comparison does not.
+- **Checked:**
+  - story tests 295 passed;
+  - 26 of 26 code mutants and 8 of 8 screen mutants caught;
+  - `npm run test:frontend` 39/39; the 4 new browser tests fail on HEAD's screen;
+  - `check_kt_docs` `[]`; broad-except OK;
+  - full suite 5,331 passed, 12 skipped, 1 xfailed, 1 failed in 15 min 5 s (PR-001's guard on a code comment that gave a percentage as its example; reworded, then its file 44 passed).
+
+  Review input [SA-051-manifest.json](evidence/SA-051-manifest.json) `fb29bbda…`; diff
+  `fb7c36da…` (136,285 bytes, 17 paths, `analysis_data/sa051/digest.py`).
+- **Production (read-only, about 13:40 IST, at the owner's request):** the probe
+  `analysis_data/sa051/arrivals_probe.py` ran once via `railway ssh` against `bb9969e`. It found
+  1 account with cash accounting, 67 value points from 11 Jul, `capital_in` never raised after
+  the seed, and 0 holdings that arrived without cash. So F1 changes no past figure and L1 does
+  not apply.
+- **For the owner:** after acceptance, commit and push in a job-free window,
+  not 08:30–09:20 or 16:25–17:15 IST; then open the portfolio screen and run guide 08-G and
+  08-H in a test copy.
 
 **SA-050 is ACCEPTED** by its fresh review (18 Oct, about 17:05–17:40 IST, session
 stockagent-main-68, a new conversation opened with "continue"; peers idle). Receipt:
@@ -149,8 +266,18 @@ uncommitted.
   - guide: 07-J's figures (R3) and the three status lines.
 
   It also carries the receipts and manifest, STATE, HANDOFF and the SA-049 and PR-007 card
-  notes. The owner's line in `docs/README.md` stays uncommitted. The push waits for 12:05
-  IST: 11:52 fell in the 11:55–12:05 job window.
+  notes. The owner's line in `docs/README.md` stays uncommitted. The docs commit is
+  `bb9969e`.
+
+  **Pushed** `85e447b..bb9969e` at 12:06:18 IST, after the 11:55–12:05 job window (11:52, when
+  the owner said it, fell just before it), as `RevanParimi`. The read-only deployment list
+  showed `bb9969e` BUILDING from 12:06:20 IST and SUCCESS by 12:08:05 IST; /health returned 200
+  at 12:08 IST (read-only). This push note is uncommitted. Production verification is now
+  `pending_observation`:
+  - today's 16:30 review is the first autopilot run with the rule;
+  - in the first week, read the transactions' notes and any `switch_buy_skipped` alert, and run
+    guide 07-F, 07-I and 07-J;
+  - Sunday 25 Oct's weekly review is the first with the cash line.
 
 **SA-050 is IMPLEMENTED** (18 Oct, about 15:25–16:35 IST, session stockagent-main-e7, a
 new conversation opened with "continue"; peers idle). Receipt:

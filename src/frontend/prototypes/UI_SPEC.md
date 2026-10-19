@@ -284,9 +284,9 @@ All icons are inline SVG, Lucide-style, exposed on `window.Icon`.
 
 **Entry component:** `PortfolioPage({ onNav, openChat })`
 
-**Live-wired (as of portfolio-live-wiring + autopilot):** `usePortfolioLive()` (portfolio.jsx:34) fetches `GET /portfolio` (holdings, mark-to-market), then in parallel `GET /portfolio/digest/latest` (advisor verdicts — optional, 404 until first advisor run), `GET /portfolio/performance` (cash/day-change/equity curve — optional, absent until cash accounting is on), and `GET /portfolio/transactions?limit=500` (Autopilot audit trail — optional). Status is `'loading' | 'live' | 'unavailable' | 'demo'`. When `GET /portfolio` fails the page shows "Your portfolio is unavailable right now" with a Try again button, never sample data (PR-001). Only demo mode (`?demo=1`) reads `window.PORTFOLIO` (skips the live fetch entirely). A later reload failure never downgrades an already-live page back to demo (`wasLiveRef`) — it just keeps the last good data.
+**Live-wired (as of portfolio-live-wiring + autopilot):** `usePortfolioLive()` (portfolio.jsx:34) fetches `GET /portfolio` (holdings, mark-to-market), then in parallel `GET /portfolio/digest/latest` (advisor verdicts — optional, 404 until first advisor run), `GET /portfolio/performance` (cash, capital added, the equity shares, day change, the equity curve with the Nifty line, the range figures and the closed-trade record — optional, absent until cash accounting is on), and `GET /portfolio/transactions?limit=500` (Autopilot audit trail — optional). Status is `'loading' | 'live' | 'unavailable' | 'demo'`. When `GET /portfolio` fails the page shows "Your portfolio is unavailable right now" with a Try again button, never sample data (PR-001). Only demo mode (`?demo=1`) reads `window.PORTFOLIO` (skips the live fetch entirely). A later reload failure never downgrades an already-live page back to demo (`wasLiveRef`) — it just keeps the last good data.
 
-Cash/day-change/range-chart/activity are now live-wired via `/portfolio/performance` + `/portfolio/transactions` (no longer demo-only): the hero shows a real day-change badge, Cash + Realized P&L stats, and the range chart plots `perf.history` (`total_equity` per day, sliced to the selected range) once ≥2 equity points exist. An `AUTOPILOT` pill renders in the hero eyebrow when `perf.autopilot` is true. Demo mode is unchanged (still reads `window.PORTFOLIO`/`PORTFOLIO_RANGES`/`window.PORTFOLIO.recentActivity` unconditionally).
+Cash/day-change/range-chart/activity are now live-wired via `/portfolio/performance` + `/portfolio/transactions` (no longer demo-only): the hero shows a real day-change badge, "Valued as of" (`perf.as_of`), the stats Capital added, In stocks and Cash with their shares of total equity (`in_stocks_pct`, `cash_pct`, adding to 100), Total return and Realized P&L, and "If this had been in the Nifty 50" (`VsNiftyLine` from `perf.vs_nifty`: the gap since the first deposit in rupees and points, or "unavailable"). `ValueChart` plots `perf.history` (`total_equity` per day, sliced to `perf.range_points[range]`) with the same money in the Nifty dashed (`nifty_value`, drawn only through known values; a gap is never bridged) once ≥2 equity points exist, and `RangeFigure` shows the range's money-weighted return beside the Nifty's (`perf.ranges[range]`). Without cash accounting the hero shows "Bought for" and no comparison. An `AUTOPILOT` pill renders in the hero eyebrow when `perf.autopilot` is true. Demo mode is unchanged (still reads `window.PORTFOLIO`/`PORTFOLIO_RANGES`/`window.PORTFOLIO.recentActivity` unconditionally).
 
 **Layout (live):**
 ```
@@ -294,11 +294,14 @@ Cash/day-change/range-chart/activity are now live-wired via `/portfolio/performa
 ├── <TopNav active="portfolio" .../>
 └── <main> maxWidth:1280
     ├── hero strip (dark gradient; SAMPLE DATA (demo mode) / AUTOPILOT pill in the eyebrow;
-    │   day-change badge + Cash + Realized P&L stats once /portfolio/performance
-    │   has cash accounting on; Sparkline/DarkRangeTabs render once ≥2 equity points exist)
+    │   day-change badge, Valued as of, Capital added / In stocks / Cash (shares) /
+    │   Total return / Realized P&L and <VsNiftyLine/> once /portfolio/performance has
+    │   cash accounting on; <ValueChart/> (Sparkline in demo) + <RangeFigure/> +
+    │   DarkRangeTabs render once ≥2 equity points exist)
     └── grid 2fr / 1fr
         ├── LEFT column (flex column, gap:20)
         │   ├── <HoldingsTable/> (or <EmptyPortfolio/> when live with 0 holdings)
+        │   ├── <TradeRecordCard/>   — live with cash accounting (perf.closed_trades)
         │   ├── <LearningsSection/>  — demo only, or window.__learningsLive
         │   ├── <ActivityCard/>      — demo only (window.PORTFOLIO.recentActivity)
         │   └── <LiveActivityCard/>  — live only, when live.txns.length > 0 (/portfolio/transactions)
@@ -319,15 +322,19 @@ Cash/day-change/range-chart/activity are now live-wired via `/portfolio/performa
 | `LearningsSection` | `learnings, openChat` | `PORTFOLIO_LEARNINGS` |
 | `ActivityCard` | `items` | — (demo activity, or fed by `LiveActivityCard`'s mapped `items`) |
 | `LiveActivityCard` | `txns` | — wraps `ActivityCard`; maps `/portfolio/transactions` rows to activity items (BUY→buy, SELL→sell, text = verdict/source + realized P&L + note), "View all N" toggle past the first 10 |
-| `AlertsCard` | `alerts` | — |
-| `AllocationCard` | `holdings` | — |
+| `AlertsCard` | `alerts, reviewDate?` | — (live: "From the review of …" dates the prices its reasons quote) |
+| `AllocationCard` | `holdings` | — (each holding's share of the holdings, not of equity) |
+| `TradeRecordCard` | `stats` | — (`perf.closed_trades`: trades, win rate, average win and loss, expectancy, "before costs") |
+| `ValueChart` | `values, nifty, benchmark, height?` | — (equity line, and the Nifty dashed through known values only) |
+| `RangeFigure` | `fig, benchmark` | — (one range's return beside the Nifty's, or "unavailable (reason)") |
+| `VsNiftyLine` | `v, benchmark` | — ("If this had been in the Nifty 50", the gap, or "unavailable") |
 | `AskAssistantCard` | `openChat` | — (renders Sphere inline) |
 | `LessonCard` | `it, openChat` | — |
 | `PatternChip` | `p` | — |
 | `FilterTabs` | `value, onChange` | — |
 | `SummaryStat` | `label, value, sub, tone` | — |
 | `DarkRangeTabs` | `value, onChange, options?` | — |
-| `Stat2` | `label, value, pct?` | — |
+| `Stat2` | `label, value, pct?, share?` | — (`pct` a coloured gain or loss; `share` a plain part of total equity) |
 
 **Live data helpers (module-level functions, not window.*):**
 
@@ -453,7 +460,8 @@ Nothing records a member's progress, so the page states none about them: no
 
 | Name | File | Props | Visual |
 |---|---|---|---|
-| `HoldingsTable` | portfolio.jsx:126 | `holdings` | Card with 7-col table: Ticker, Qty, Avg buy, Current, Value, P/L, Agent take |
+| `HoldingsTable` | portfolio.jsx:126 | `holdings` | Card with 7-col table: Ticker, Qty, Avg buy, Current, Value, P/L, Agent take; live, the average cost is dated "first bought …" and the current price "on …" (its bar's date) |
+| `TradeRecordCard` | portfolio.jsx | `stats` | Card "Closed trades · before costs": trades, win rate (won/lost), average win, average loss, expectancy per trade |
 | `LearningsSection` | portfolio.jsx | `learnings, openChat` | Card: "Recent verdict changes" header with the number of change cards ("3 changes in the analysed stocks"; "The 10 most recent changes …" at the server's cap; "No verdict changes since 16 Sept" from `PORTFOLIO_LEARNINGS.since` when only misses came, "No verdict changes recorded yet" without a date), one LessonCard per dated change, then "Latest forecast misses" with one LessonCard per miss (no summary figures, filters or pattern strip) |
 | `LessonCard` | portfolio.jsx:458 | `it, openChat` | 2-col card: ticker avatar left, title+what+impact+agent snapshot+lesson+CTA buttons right |
 | `PatternChip` | portfolio.jsx:429 | `p` | Compact card: icon, label, rate bar |
@@ -654,11 +662,11 @@ FastAPI server at `http://localhost:8001`. Frontend served at `/app` via `Static
 | `GET` | `/history/{ticker}/latest` | history.py | Single most-recent record or 404 | — |
 | `GET` | `/health` | server.py | `{status:'ok', timestamp}` | — |
 | `GET` | `/tickers` | server.py | `{tickers: [...]}` — scheduler tickers list | — |
-| `GET` | `/portfolio` | portfolio_api.py | `{user_id, risk_profile, holdings[], watchlist[]}` — holdings marked to market (`last_close`, `pnl_pct`) | `window.PORTFOLIO.holdings` (PortfolioPage live mode) |
+| `GET` | `/portfolio` | portfolio_api.py | `{user_id, risk_profile, holdings[], watchlist[]}` — holdings marked to market (`last_close`, `last_close_date` = the date of the bar the price came from, `pnl_pct`) | `window.PORTFOLIO.holdings` (PortfolioPage live mode) |
 | `GET` | `/portfolio/digest/latest` | portfolio_api.py | Latest EOD digest `{holdings[{symbol,verdict,reason,...}], escalations[]}`; 404 until first advisor run | `window.PORTFOLIO.alerts` (AlertsCard) + Agent-take column |
 | `POST` | `/portfolio/holdings` | portfolio_api.py | `{holding, promotion}` — body `{symbol, qty, buy_date, price?}`; sector resolved server-side | AddHoldingModal submit |
 | `DELETE` | `/portfolio/holdings/{symbol}` | portfolio_api.py | `{removed, demoted}` | HoldingsTable row delete |
-| `GET` | `/portfolio/performance` | portfolio_api.py | `{cash, market_value, total_equity, capital_in, realized_pnl, unrealized_pnl, day_change_pct, total_return_pct, autopilot, history[{date, market_value, cash, total_equity, day_change_pct}]}` — sourced from `value_history.jsonl`, falls back to a live mark when history is empty | Hero cash/day-change/AUTOPILOT-pill stats + range chart (`live.perf`) |
+| `GET` | `/portfolio/performance` | portfolio_api.py | `{cash, market_value, total_equity, capital_in, in_stocks_pct, cash_pct, realized_pnl, unrealized_pnl, day_change_pct, total_return_pct, as_of, autopilot, history[{date, market_value, cash, total_equity, capital_in, day_change_pct, recorded_at, nifty_value}], benchmark, vs_nifty, ranges, range_points, closed_trades}` — reads every value point and transaction; `history` is the last 400 points; sourced from `value_history.jsonl`, falls back to a live mark when history is empty; `vs_nifty`, `ranges` and `closed_trades` need cash accounting (core/portfolio/results.py) | Hero stats, the Nifty comparison, the range chart and figure, the closed-trade card (`live.perf`) |
 | `GET` | `/portfolio/transactions?limit=` | portfolio_api.py | `{transactions: [{txn_id, date, symbol, side, qty, price, realized_pnl, source, verdict, note, ...}]}` — newest first | `LiveActivityCard` (`live.txns`) |
 | `GET` | `/ui/search?q=` | ui_data.py | `{results: [{sym, name, type, snippet?}], query}` — ticker + thesis text search, max 8 | AddHoldingModal autocomplete |
 

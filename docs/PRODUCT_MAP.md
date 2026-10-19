@@ -392,7 +392,7 @@ reader filters by date ([RL_DESIGN](RL_DESIGN.md) section 23.1).
 | Advisor | `core/portfolio/advisor.py` | Precedence **EXIT > TRIM > ADD > HOLD**, SWITCH, the data and identity checks |
 | Autopilot | `core/portfolio/autopilot.py` | Deterministic execution; no broker call anywhere |
 | Sizing | `core/portfolio/sizing.py` | One rule for every autopilot buy: position and sector caps of total equity after the trade, the cash floor, and a new position only inside its shelf idea's entry band |
-| Results scorecard | `core/portfolio/results.py` | One row per ISO week from the user's own ledgers: closed round trips, sales graded by the auditor, exit reasons, the money-weighted Nifty comparison, five predeclared red flags. Stored once per week; `GET /portfolio/scorecard` |
+| Results scorecard | `core/portfolio/results.py` | One row per ISO week from the user's own ledgers: closed round trips, sales graded by the auditor, exit reasons, the money-weighted Nifty comparison (a holding that arrived without cash valued on its arrival day), five predeclared red flags. Stored once per week; `GET /portfolio/scorecard`. The same comparison and closed-trade record feed the portfolio screen through `/portfolio/performance` |
 | Identity reconcile | `core/portfolio/identity_reconcile.py` | Operator plan/apply for demergers and renames |
 | Narrator, narrative cache | `core/portfolio/narrator.py`, `narrative_cache.py` | Bulk-tier phrasing of a decided verdict, cached per day |
 | Pricing | `core/portfolio/pricing.py` | The daily review's verified close, with the bar's date |

@@ -1,6 +1,6 @@
 # Compass Autopilot — Developer Guide
 
-**Edition:** 2026-10-19 · **Code inspected:** `dbdcc81`
+**Edition:** 2026-10-19 · **Code inspected:** `84eefda`
 
 **Scope:** the virtual money path, from the advisor's verdict for each holding
 to the executed trade, the ledgers and the screens that show them.
@@ -404,16 +404,17 @@ accounting is on.
 
 | Portfolio figure | Meaning |
 |---|---|
-| `capital_in` | Mock money ever put in: the seed pot plus manual adds. The screen calls it "Invested". |
+| `capital_in` | Mock money ever put in: the seed pot plus manual adds and CSV imports at their cost. The screen calls it "Capital added". |
 | `cash_deployable` | Cash available now |
 | Total equity | Market value of holdings plus cash |
 | Total return | `(total equity − capital_in) / capital_in` |
 
 **What the figures leave out.** No brokerage, STT, stamp duty, exchange fee,
-DP charge or tax is charged, and there is no benchmark. The KT's
+DP charge or tax is charged. The KT's
 [section 7](TECHNICAL_DESIGN.md#virtual-pl) gives the cost of a real round
-trip and the report families. **Planned:** costs and tax in paper P&L
-(SA-048) and a Nifty comparison with honest labels (SA-051).
+trip, the report families and the Nifty comparison: the same deposits in the
+Nifty 50, on the portfolio screen and in the weekly scorecard.
+**Planned:** costs and tax in paper P&L (SA-048).
 
 ## 10. Ledger formats
 
@@ -432,11 +433,18 @@ trip and the report families. **Planned:** costs and tax in paper P&L
 | `verdict`, `advice_ref`, `triggers`, `note`, `reason` | The advice behind an autopilot row; `advice_ref` joins the advice ledger, and `reason` is the narrative at execution |
 
 `value_history.jsonl`, one point per trading day. A point dated on or before
-the last one is skipped, so re-runs and stale replays add nothing:
+the last one is skipped, so re-runs and stale replays add nothing. The
+pipeline writes it under the user's lock, and `recorded_at` says when: a
+manual add recorded before that moment is in the point, one after it is not
+(the Nifty comparison values an add at the close of the first point that
+holds it; [KT section 7](TECHNICAL_DESIGN.md#7-profitloss-and-the-different-marksheets)).
+Nightly retention keeps the last 400 points, the first point and every older
+point where `capital_in` changed, so each deposit keeps its date:
 
 ```json
 {"date": "2026-10-09", "market_value": 742310.5, "cash": 263011.4, "total_equity": 1005321.9,
- "capital_in": 1000000.0, "day_change_pct": 0.21, "change_span_days": 1}
+ "capital_in": 1000000.0, "day_change_pct": 0.21, "change_span_days": 1,
+ "recorded_at": "2026-10-09T11:21:07.512301+00:00"}
 ```
 
 `change_span_days` is the gap behind `day_change_pct`: 3 after a weekend.
@@ -471,18 +479,21 @@ has holdings or transactions.
 | `POST /portfolio/holdings` | Manual BUY at the buy date's close. It is fresh capital: `capital_in` rises, cash does not change, and a `manual` row is written. An identical same-day resubmit is deduped. The symbol is promoted as held. |
 | `DELETE /portfolio/holdings/{symbol}` | Manual SELL at today's close (cost if no close), cash credited, `manual` row written with its `cost_basis` and `pnl_pct`, so the weekly scorecard counts its result. Unless the symbol is on the watchlist, its portfolio-origin managed entry is disabled |
 | `POST`, `DELETE /portfolio/watchlist…` | Watchlist changes; an added symbol is promoted as watchlist, a removed one demoted the same way |
-| `POST /portfolio/import-csv` | Bulk import of holdings |
+| `POST /portfolio/import-csv` | Bulk import of holdings. Rows are priced first, then added in one locked section; with cash accounting on, each is fresh capital like a manual add: `capital_in` rises by its cost and a `manual` BUY row is written with no cash moved |
 | `GET /portfolio/transactions?limit=N` | The ledger, newest first |
-| `GET /portfolio/performance` | Cash, `capital_in`, market value, equity, realised and unrealised P/L, total return, day change, the autopilot flag and the equity history (at most 2,000 transactions and 400 points read) |
+| `GET /portfolio/performance` | Cash, `capital_in`, market value, equity, the in-stocks and cash shares of equity (adding to 100), realised and unrealised P/L, total return, day change, the autopilot flag, the last 400 value points each with `nifty_value`, `vs_nifty` (the gap since the first deposit), `ranges` (each chart range's money-weighted return beside the Nifty's) and `closed_trades`. It reads every transaction and value point |
 | `GET /portfolio/advice`, `GET /portfolio/digest/latest` | The advice ledger's tail; the latest digest |
 | `GET /portfolio/scorecard?limit=N` | The caller's own weekly results rows, newest week first, as the Sunday weekly review stored them ([KT section 7](TECHNICAL_DESIGN.md#weekly-results-scorecard)) |
 | `POST /portfolio/run-advisor` | Owner only: run the pipeline in the background |
 
 **Screen** ([portfolio.jsx](../src/frontend/prototypes/portfolio.jsx),
 in-browser JSX, no build step). With live data and cash accounting on, it
-shows total equity with an AUTOPILOT pill, the day's change, a stats row
-(Invested, Total return, Cash, Realized P&L), the equity curve from two
-points on, and recent trades. When the portfolio API does not answer, the
+shows total equity with an AUTOPILOT pill, its valuation date, the day's
+change, a stats row (Capital added, In stocks and Cash with their shares,
+Total return, Realized P&L), what the same deposits would be worth in the
+Nifty 50, the equity curve from two points on with the Nifty line dashed,
+the closed-trade record and recent trades. Every share price carries its
+date. When the portfolio API does not answer, the
 screen says the portfolio is unavailable; only `?demo=1` shows sample data,
 under a "Sample data" banner.
 
@@ -583,8 +594,7 @@ encode the two constraints most likely to fail silently.
 ## 16. Planned work
 
 - Idle cash deployed in normal markets (SA-049).
-- Trading costs and tax in paper P&L (SA-048), and a Nifty comparison with
-  honest labels (SA-051).
+- Trading costs and tax in paper P&L (SA-048).
 - A safe `identity_reconcile apply` (SA-008 change 1).
 - Learning from executed advice remains future work: every autopilot row
   carries `advice_ref`, which joins its outcome to the advice that caused it,

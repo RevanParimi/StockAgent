@@ -188,7 +188,8 @@ def test_the_autopilot_never_buys_an_unresolved_destination(
                           close=88.0, unrealised_pnl_pct=-12.0, stop_pct=8.0, confidence=0.3,
                           switch_candidate="LIMBO", triggers=["stop_breach"], rationale_hash="sw")
     txns = ap.execute_advice(s, s.load(), [switch], {"OLDCO": 88.0}, review,
-                             sector_lookup={"LIMBO": "realty"})
+                             sector_lookup={"LIMBO": "realty"},
+                             shelf_index={"LIMBO": ShelfIdea(symbol="LIMBO", sector="realty", added="2026-07-01", conviction=0.8, entry_low=190.0, entry_high=210.0, invalidation_level=170.0)})
     sides = [(t.side, t.symbol) for t in txns]
     assert ("SELL", "OLDCO") in sides                            # the exit always executes
     assert (("BUY", "LIMBO") in sides) is bought

@@ -428,8 +428,11 @@ advisor:
   confidence_decline_threshold: 0.05  # remaining-envelope confidence drop that counts as declining
   envelope_flat_band_pct: 1.0    # remaining-forecast drift within ±this% = FLAT
   add_min_direction_accuracy: 0.60    # last-7-entries hit rate needed for ADD
+  # Caps on total equity (holdings at market + cash), after the trade, for
+  # every autopilot buy; the same numbers drive POSITION_LARGE and
+  # SECTOR_CONCENTRATION_HIGH (SA-050, core/portfolio/sizing.py)
   max_position_pct: 10.0
-  sector_concentration_warn_pct: 30.0
+  max_sector_pct: 30.0
   ltcg_wait_min_months: 10       # TRIM in month 10-12 with intact thesis -> WAIT_FOR_LTCG note
   earnings_gap_days: 3           # profitable + earnings within N trading days -> protection flag
   switch_conviction_gap: 0.15    # SWITCH: shelf idea must beat holding envelope confidence by this (spec §5.2)

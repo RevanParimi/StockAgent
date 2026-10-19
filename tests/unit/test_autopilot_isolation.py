@@ -5,6 +5,7 @@ from datetime import date
 from pathlib import Path
 from unittest.mock import patch
 
+from backend.shared.schemas.discovery import ShelfIdea
 from backend.shared.schemas.portfolio import AdviceRecord, Holding
 from core.portfolio.autopilot import execute_advice
 from core.portfolio.pricing import SessionClose
@@ -73,7 +74,8 @@ def test_executor_buy_paths_stay_inside_user_dir(mock_close, mock_promote,
     ]
     txns = execute_advice(s, s.load(), advice,
                           {"MARUTI": 110.0, "TATAMOTORS": 110.0}, D,
-                          sector_lookup={"LODHA": "realty"})
+                          sector_lookup={"LODHA": "realty"},
+                          shelf_index={"LODHA": ShelfIdea(symbol="LODHA", sector="realty", added="2026-07-01", conviction=0.8, entry_low=190.0, entry_high=210.0, invalidation_level=170.0)})
     buys = [t for t in txns if t.side == "BUY"]
     assert {t.symbol for t in buys} == {"LODHA", "MARUTI"}  # both buy paths really ran
     mock_promote.assert_called_once_with("LODHA", "realty", origin="held")

@@ -25,6 +25,7 @@ from pydantic import BaseModel, Field
 from core.config import settings
 from backend.shared.pipeline import decision_gate as dg
 from backend.shared.schemas.portfolio import AdviceRecord, Holding, Portfolio
+from core.portfolio import sizing
 from services.data.verdict_store import VerdictStore  # plane boundary (Atlas C2)
 from services.data.fetchers.corporate_events import next_results_event
 
@@ -48,7 +49,10 @@ class AdvisorSignals(BaseModel):
     confidence_trend: float = 0.0          # last remaining conf − first remaining conf
     reversion_prior: float = 0.0
     direction_accuracy_7d: float | None = None
+    # SA-050: shares of total equity (holdings at market plus cash), the
+    # denominator every cap uses (core/portfolio/sizing.py)
     position_weight_pct: float = 0.0
+    sector_weight_pct: float = 0.0
     earnings_in_days: int | None = None    # trading-day distance to next results event
     confidence: float = 0.5                # mean remaining envelope confidence
     peak_close_since_entry: float | None = None   # max close since buy_date (trailing stop)
@@ -142,10 +146,14 @@ def build_signals(
     close: float,
     ohlcv_df=None,
     market_cap_inr: float | None = None,
+    marks: dict[str, float] | None = None,
 ) -> AdvisorSignals:
     """Assemble the advisor's inputs from PredictionStore artifacts + the
     events calendar. Every sub-read is non-fatal — missing artifacts leave
-    conservative defaults in place."""
+    conservative defaults in place.
+
+    `marks` are the review's closes for every holding; the weights are shares
+    of total equity at those marks (a holding without one at its cost)."""
     sig = AdvisorSignals(
         symbol=holding.symbol,
         sector=holding.sector,
@@ -160,13 +168,12 @@ def build_signals(
     )
     sig.peak_close_since_entry = peak_close_since(
         ohlcv_df, date.fromisoformat(holding.buy_date))
-    # Position weight vs portfolio market value
+    # SA-050: position and sector weight against total equity
     try:
-        total = sum(h.adj_qty * h.adj_avg_price for h in portfolio.holdings)
-        if total > 0:
-            sig.position_weight_pct = round(
-                holding.adj_qty * holding.adj_avg_price / total * 100, 2
-            )
+        # unrounded, so the notes compare exactly what the caps compare
+        w = sizing.weights(portfolio, {**(marks or {}), holding.symbol: close})
+        sig.position_weight_pct = w.position_pct.get(holding.symbol, 0.0)
+        sig.sector_weight_pct = w.sector_pct.get(holding.sector, 0.0)
     except Exception:
         pass
     # Envelope state
@@ -513,7 +520,11 @@ def decide(
         and signals.earnings_in_days <= settings.ADVISOR_EARNINGS_GAP_DAYS
     ):
         notes.append("EARNINGS_GAP_PROTECTION")
-    if signals.position_weight_pct >= settings.ADVISOR_SECTOR_CONCENTRATION_WARN_PCT:
+    # SA-050: both against total equity; "over" the cap, as the caps allow
+    # a weight up to and including it
+    if signals.position_weight_pct > settings.ADVISOR_MAX_POSITION_PCT:
+        notes.append("POSITION_LARGE")
+    if signals.sector_weight_pct > settings.ADVISOR_MAX_SECTOR_PCT:
         notes.append("SECTOR_CONCENTRATION_HIGH")
     if data_gated:
         notes.append("DATA_GATE")

@@ -15,6 +15,7 @@ from typing import Callable
 
 from core.config import settings
 from core.delivery.channels import deliver
+from core.portfolio import sizing
 from core.portfolio.advisor import explain_triggers
 from core.portfolio.results import render_scorecard_text, weekly_scorecard
 from core.portfolio.store import PortfolioStore, active_user_ids
@@ -127,8 +128,10 @@ def _narrate_weekly(review: dict) -> str:
         resp = get_llm_client().chat.completions.create(
             model=settings.LLM_MODEL_BULK,
             messages=[{"role": "user", "content": _PROMPT.format(
-                allocation="; ".join(f"{a['sector']} {a['weight_pct']:.0f}%"
-                                     for a in review["allocation"]) or "empty",
+                allocation="; ".join(
+                    [f"{a['sector']} {a['weight_pct']:.0f}%" for a in review["allocation"]]
+                    + ([f"cash {review['cash_pct']:.0f}%"]
+                       if review.get("cash_pct") is not None else [])) or "empty",
                 concentration=", ".join(review["concentration_flags"]) or "none",
                 laggards="; ".join(f"{l['symbol']} {l['pnl_pct']:+.1f}%"
                                    for l in review["laggards"]) or "none",
@@ -173,8 +176,8 @@ def _fallback_headline(review: dict) -> str:
         parts.append(f"{len(fired)} red flag{'s' if len(fired) != 1 else ''} this week: "
                      + "; ".join(f["sentence"].split(":")[0] for f in fired) + ".")
     if review["concentration_flags"]:
-        parts.append("Concentration above the comfort band in: "
-                     + ", ".join(review["concentration_flags"]) + ".")
+        parts.append(f"Over the {sizing.sector_cap_pct():g}% sector cap of the whole "
+                     "portfolio: " + ", ".join(review["concentration_flags"]) + ".")
     return " ".join(parts) or "Weekly review generated."
 
 
@@ -204,20 +207,16 @@ def build_weekly_review(
     symbols = [h.symbol for h in portfolio.holdings]
     closes = _latest_closes(symbols, on)
 
-    # allocation by sector (market value; cost fallback when no close)
-    values: dict[str, float] = {}
-    total = 0.0
-    for h in portfolio.holdings:
-        v = h.adj_qty * closes.get(h.symbol, h.adj_avg_price)
-        values[h.sector] = values.get(h.sector, 0.0) + v
-        total += v
-    allocation = sorted(
-        ({"sector": s, "weight_pct": round(v / total * 100.0, 2)}
-         for s, v in values.items()),
-        key=lambda a: -a["weight_pct"],
-    ) if total > 0 else []
-    warn = settings.ADVISOR_SECTOR_CONCENTRATION_WARN_PCT
-    concentration_flags = [a["sector"] for a in allocation if a["weight_pct"] > warn]
+    # SA-050: allocation by sector as shares of total equity (holdings at
+    # market, cost fallback when no close, plus cash), flagged over the same
+    # sector cap the autopilot sizes against. The flags and the switch-
+    # candidate test read exact shares; the stored figures are rounded once,
+    # to the one decimal the screens show.
+    w = sizing.weights(portfolio, closes)
+    by_weight = sorted(w.sector_pct.items(), key=lambda kv: -kv[1])
+    allocation = [{"sector": s, "weight_pct": round(pct, 1)} for s, pct in by_weight]
+    cash_pct = round(w.cash_pct, 1) if w.cash_pct is not None and w.equity > 0 else None
+    concentration_flags = [s for s, pct in by_weight if pct > sizing.sector_cap_pct()]
 
     # laggards: bottom holdings by unrealised P&L (needs a close)
     perf = [
@@ -231,7 +230,7 @@ def build_weekly_review(
     # case for each. A symbol already held is excluded — offering it as a
     # "switch idea" is a top-up dressed as a rotation.
     held = {h.symbol for h in portfolio.holdings}
-    sector_weights = {a["sector"]: a["weight_pct"] for a in allocation}
+    sector_weights = dict(w.sector_pct)
     max_weight = max(sector_weights.values(), default=0.0)
     switch_candidates = sorted(
         ({"symbol": i.symbol, **_candidate_detail(i)}
@@ -278,6 +277,7 @@ def build_weekly_review(
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "scorecard": scorecard,
         "allocation": allocation,
+        "cash_pct": cash_pct,
         "concentration_flags": concentration_flags,
         "risk_profile": portfolio.risk_profile,
         "laggards": laggards,
@@ -305,6 +305,8 @@ def render_weekly_text(review: dict) -> str:
     for a in review.get("allocation", []):
         flag = "  ⚠ over-concentrated" if a["sector"] in review["concentration_flags"] else ""
         lines.append(f"{a['sector']}: {a['weight_pct']:.1f}%{flag}")
+    if review.get("cash_pct") is not None:
+        lines.append(f"cash: {review['cash_pct']:.1f}%")
     for l in review.get("laggards", []):
         lines.append(f"Laggard: {l['symbol']} {l['pnl_pct']:+.1f}%")
     # Calls the advisor actually made come first, and each says why. The shelf

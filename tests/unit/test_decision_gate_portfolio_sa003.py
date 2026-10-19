@@ -220,7 +220,8 @@ def test_switch_buy_leg_needs_the_sessions_close(tmp_path, monkeypatch, gate_mod
                           rationale_hash="sw1")
 
     txns = ap.execute_advice(s, s.load(), [switch], {"TATAMOTORS": 110.0}, review,
-                             sector_lookup={"LODHA": "realty"})
+                             sector_lookup={"LODHA": "realty"},
+                             shelf_index={"LODHA": ShelfIdea(symbol="LODHA", sector="realty", added="2026-07-01", conviction=0.8, entry_low=190.0, entry_high=210.0, invalidation_level=170.0)})
 
     sides = [(t.side, t.symbol) for t in txns]
     assert ("SELL", "TATAMOTORS") in sides                     # the exit always executes
@@ -283,7 +284,10 @@ def _chain(market, monkeypatch, tmp_path, *, tatamotors_bar=None, then_mode=None
     # 5-6. the user, the pipeline and the executor
     user = PortfolioStore(user_id="u", base_dir=str(port_dir))
     p = user.load()
-    p.holdings = [_holding(qty=10.0, price=100.0), _holding(BIG, qty=50.0, price=1000.0)]
+    # BIGCO sits in its own sector: in automobile it would put the sector at
+    # 51% of equity, and the SA-050 sector cap, not the gate, would stop the ADD.
+    p.holdings = [_holding(qty=10.0, price=100.0),
+                  _holding(BIG, qty=50.0, price=1000.0, sector="banking")]
     p.cash_deployable, p.capital_in, p.autopilot = 50000.0, 100000.0, True
     user.save(p)
     bars = {"TATAMOTORS": tatamotors_bar or TODAY, BIG: TODAY}

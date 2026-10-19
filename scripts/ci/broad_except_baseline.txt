@@ -64,7 +64,6 @@ core/portfolio/advisor.py | build_signals | #0
 core/portfolio/autopilot.py | _execute_buys | #0
 core/portfolio/narrative_cache.py | _load_disk | #0
 core/portfolio/narrator.py | narrate | #0
-core/portfolio/pipeline.py | run_post_review_pipeline | #0
 core/portfolio/promotion.py | promote_symbol | #0
 core/portfolio/universe.py | _days_since | #0
 core/portfolio/universe.py | _no_intelligence_history | #0

@@ -22,6 +22,7 @@ from core.portfolio.corp_actions import sync_corp_actions
 from core.portfolio.digest import build_digest
 from core.portfolio.identity_reconcile import holding_identity_issue, symbol_identity_issue
 from core.portfolio.narrator import narrate
+from core.portfolio import sizing
 from core.portfolio.pricing import session_close
 from core.portfolio.store import PortfolioStore, active_user_ids
 from services.data.fetchers.corporate_events import (
@@ -197,16 +198,17 @@ def run_post_review_pipeline(review_date: date) -> dict:
             shelf_ideas = [i for i in ShelfStore().load().ideas if i.status == "active"]
         except Exception as exc:
             logger.debug("[portfolio_pipeline] shelf unavailable (non-fatal): %s", exc)
-        sector_weights: dict[str, float] = {}
-        try:
-            total = sum(h.adj_qty * h.adj_avg_price for h in portfolio.holdings)
-            if total > 0:
-                for h in portfolio.holdings:
-                    sector_weights[h.sector] = sector_weights.get(h.sector, 0.0) + (
-                        h.adj_qty * h.adj_avg_price / total * 100.0
-                    )
-        except Exception:
-            pass
+        # SA-050: every holding's close first, so each weight is a share of
+        # total equity at the review's marks (a holding without one at cost).
+        quotes: dict[str, tuple] = {}
+        for holding in portfolio.holdings:
+            try:
+                quotes[holding.symbol] = session_close(holding.symbol, review_date)
+            except Exception as exc:
+                logger.warning("[portfolio_pipeline] no close for %s/%s, not advised "
+                               "(non-fatal): %s", user_id, holding.symbol, exc)
+        marks = {sym: quote.close for sym, (quote, _session) in quotes.items()}
+        sector_weights = dict(sizing.weights(portfolio, marks).sector_pct)
 
         # Switch-validation capture (design 2026-08-20). ONE price per
         # candidate per run: candidates repeat across holdings, so this must
@@ -239,8 +241,10 @@ def run_post_review_pipeline(review_date: date) -> dict:
         # Step 3 — advise each holding.
         advice, closes = [], {}
         for holding in portfolio.holdings:
+            if holding.symbol not in quotes:
+                continue
             try:
-                quote, session = session_close(holding.symbol, review_date)
+                quote, session = quotes[holding.symbol]
                 close = quote.close
                 closes[holding.symbol] = close
                 ohlcv = None
@@ -252,7 +256,7 @@ def run_post_review_pipeline(review_date: date) -> dict:
                 pred_store = VerdictStore(holding.symbol, sector=holding.sector)
                 signals = build_signals(
                     holding, portfolio, review_date, pred_store, calendar, close,
-                    ohlcv_df=ohlcv,
+                    ohlcv_df=ohlcv, marks=marks,
                 )
                 # SA-003: the price freshness the gate needs.
                 signals.price_fresh = quote.fresh_for(session)
@@ -302,7 +306,8 @@ def run_post_review_pipeline(review_date: date) -> dict:
                              if getattr(i, "sector", "")}
             txns = autopilot.execute_advice(
                 store, portfolio, advice, closes, review_date,
-                sector_lookup=shelf_sectors)
+                sector_lookup=shelf_sectors,
+                shelf_index={i.symbol: i for i in shelf_ideas})
             if txns:
                 portfolio = store.load()          # digest sees post-trade state
                 logger.info("[portfolio_pipeline] autopilot executed %d trade(s) for %s",
@@ -366,23 +371,29 @@ def run_post_review_pipeline(review_date: date) -> dict:
                 for t in txns
             )
             # SWITCH sold but the buy leg didn't land (unpriceable candidate,
-            # budget < 1 share, or dedupe) — the user gets a SELL alert and
-            # otherwise silence, which reads as a position vanishing into cash
-            # with no explanation (spec §4).
+            # above its entry band, a cap, or dedupe) — the user gets a SELL
+            # alert and otherwise silence, which reads as a position vanishing
+            # into cash with no explanation (spec §4). SA-050: the SELL's note
+            # carries the executor's reason; the alert repeats it.
+            from core.portfolio.autopilot import switch_skip_reason
             for a in advice:
                 if a.verdict != "SWITCH" or not a.switch_candidate.strip():
                     continue
                 candidate = a.switch_candidate.strip().upper()
-                sold = any(t.side == "SELL" and t.symbol == a.symbol for t in txns)
+                sell = next((t for t in txns if t.side == "SELL" and t.symbol == a.symbol),
+                            None)
                 bought = any(t.side == "BUY" and t.symbol == candidate for t in txns)
-                if sold and not bought:
+                if sell is not None and not bought:
+                    why = switch_skip_reason(sell.note)
                     events.append(AlertEvent(
                         date=review_date.isoformat(),
                         kind="switch_buy_skipped",
                         symbol=candidate,
-                        message=f"SWITCH {a.symbol}→{candidate}: sold but buy leg "
-                                "skipped (unpriceable, no close dated the session, "
-                                "or budget) — proceeds remain in cash",
+                        message=(f"SWITCH {a.symbol}→{candidate}: sold but the buy leg "
+                                 f"was skipped: {why}" if why else
+                                 f"SWITCH {a.symbol}→{candidate}: sold but buy leg "
+                                 "skipped (unpriceable, no close dated the session, "
+                                 "or budget) — proceeds remain in cash"),
                         severity="warning",
                     ))
             if events:

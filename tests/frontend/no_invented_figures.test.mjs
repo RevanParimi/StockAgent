@@ -702,6 +702,37 @@ test('a weekly review whose scorecard failed says so; one stored before it shows
   } finally { await app.context.close(); }
 });
 
+// -- SA-050: the weekly allocation is a share of total equity, cash included ------
+
+test('the weekly allocation shows each sector and cash as shares of total equity', async () => {
+  // core.delivery.weekly for the 11 Oct shape (tests/unit/test_sizing_rule_sa050.py)
+  const review = { ...WEEKLY, cash_pct: 81.0,
+                   allocation: [{ sector: 'banking', weight_pct: 13.4 },
+                                { sector: 'capital_goods', weight_pct: 5.6 }] };
+  const openFold = async (app) => {
+    await app.page.getByRole('button', { name: /Sector allocation/ }).click();
+    return visibleText(app.page);
+  };
+  let app = await openWeekly(review);
+  try {
+    const text = await openFold(app);
+    assert.match(text, /banking\s*13\.4%/);
+    assert.match(text, /capital_goods\s*5\.6%/);
+    assert.match(text, /cash\s*81\.0%/);
+    assert.ok(!/over-concentrated/.test(text), text);
+    assert.deepEqual(app.errors, []);
+  } finally { await app.context.close(); }
+  const before = { ...review };              // stored before SA-050: no cash share
+  delete before.cash_pct;
+  app = await openWeekly(before);
+  try {
+    const text = await openFold(app);
+    assert.match(text, /banking\s*13\.4%/);
+    assert.ok(!/cash\s*\d/.test(text), text);
+    assert.deepEqual(app.errors, []);
+  } finally { await app.context.close(); }
+});
+
 // -- PR-003: the brief's "Before the open" ---------------------------------------
 
 // The sentences core.delivery.brief writes for the fixture Yahoo frames in

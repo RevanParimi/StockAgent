@@ -75,10 +75,11 @@ def test_add_skipped_when_floor_leaves_under_one_share(tmp_path):
 
 
 def test_add_respects_position_weight_cap(tmp_path):
-    # MARUTI 5000 of 50000 total = 10% already at ADVISOR_MAX_POSITION_PCT cap
+    # SA-050: MARUTI 5,000 of total equity 50,000 (holdings 35,000 + cash
+    # 15,000) = 10%, already at the ADVISOR_MAX_POSITION_PCT cap
     holdings = [_h(qty=50, price=100.0),
-                _h(sym="OTHER", qty=450, price=100.0, sector="banking")]
-    s = _store(tmp_path, holdings, cash=100000.0)
+                _h(sym="OTHER", qty=300, price=100.0, sector="banking")]
+    s = _store(tmp_path, holdings, cash=15000.0)
     txns = execute_advice(s, s.load(), [_add(close=100.0)],
                           {"MARUTI": 100.0, "OTHER": 100.0}, D)
     assert txns == []

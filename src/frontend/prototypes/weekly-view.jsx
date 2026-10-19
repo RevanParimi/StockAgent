@@ -90,6 +90,13 @@ function WeeklyView({ data }) {
               </div>
             );
           })}
+          {d.cash_pct != null ? (
+            <div style={{ padding: '9px 0', borderTop: '1px solid var(--border)' }}>
+              <span style={{ color: 'var(--ink-1)', fontWeight: 600 }}>cash</span>
+              <span style={{ float: 'right', font: '700 12px "JetBrains Mono", monospace',
+                color: 'var(--ink-2)' }}>{Number(d.cash_pct).toFixed(1)}%</span>
+            </div>
+          ) : null}
         </BVFold>
       )}
 

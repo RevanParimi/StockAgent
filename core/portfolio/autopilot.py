@@ -9,6 +9,12 @@ audit authority; portfolio.json is derived state.
 Trade ordering per run (deterministic): sells first (EXIT, SWITCH sell leg,
 TRIM — symbol asc), then buys (SWITCH buy legs, then ADDs by confidence
 desc, ties symbol asc). Sells free cash before buys consume it.
+
+SA-050: every buy is sized by core/portfolio/sizing.py (position and sector
+caps of total equity, after the trade, and the cash floor), and a SWITCH
+buy, which opens a position, must also sit inside its shelf idea's entry
+band. What a cap leaves unspent stays in cash; the BUY's note says how much
+and why. A skipped SWITCH buy leg says why on its SELL's note.
 """
 from __future__ import annotations
 
@@ -26,6 +32,7 @@ from backend.shared.schemas.portfolio import (
     WatchlistItem,
 )
 from backend.shared.pipeline import decision_gate as dg
+from core.portfolio import sizing
 from core.portfolio.store import PortfolioStore
 from core.portfolio.identity_reconcile import symbol_identity_issue
 from core.portfolio.pricing import session_close
@@ -75,11 +82,29 @@ def _find(portfolio: Portfolio, symbol: str) -> Holding | None:
     return next((h for h in portfolio.holdings if h.symbol == symbol), None)
 
 
+SwitchLeg = tuple[float, AdviceRecord, TransactionRecord]   # proceeds, advice, its SELL
+
+_SKIP_MARK = "; buy leg skipped: "
+
+
+def _note_skipped_buy(sell: TransactionRecord, candidate: str, proceeds: float,
+                      reason: str) -> None:
+    """SA-050: a SWITCH whose buy leg did not land says why on its SELL, the
+    transaction the user sees; the pipeline's alert repeats it."""
+    sell.note = (f"{sell.note}{_SKIP_MARK}{candidate}: {reason}; "
+                 f"{sizing.inr(proceeds)} stays in cash")
+
+
+def switch_skip_reason(sell_note: str) -> str:
+    """The skipped-buy reason written by `_note_skipped_buy`, or ""."""
+    return sell_note.split(_SKIP_MARK, 1)[1] if _SKIP_MARK in sell_note else ""
+
+
 def _execute_sells(portfolio: Portfolio, advice: list[AdviceRecord],
                    closes: dict[str, float], existing_ids: set[str],
-                   ) -> tuple[list[TransactionRecord], list[tuple[float, AdviceRecord]]]:
+                   ) -> tuple[list[TransactionRecord], list[SwitchLeg]]:
     txns: list[TransactionRecord] = []
-    switch_proceeds: list[tuple[float, AdviceRecord]] = []
+    switch_proceeds: list[SwitchLeg] = []
     sells = sorted((a for a in advice if a.verdict in ("EXIT", "SWITCH", "TRIM")),
                    key=lambda a: a.symbol)
     for rec in sells:
@@ -119,12 +144,13 @@ def _execute_sells(portfolio: Portfolio, advice: list[AdviceRecord],
                 portfolio.watchlist.append(WatchlistItem(
                     symbol=h.symbol, sector=h.sector, added=rec.date,
                     reason="autopilot_exit", source="autopilot"))
-        txns.append(_txn(portfolio, rec, side="SELL", qty=qty, price=price,
-                         cash_before=cash_before,
-                         holding_qty_after=(h.adj_qty if h.adj_qty > 1e-9 else 0.0),
-                         realized=realized, note=note, cost_basis=cost_basis))
+        sell = _txn(portfolio, rec, side="SELL", qty=qty, price=price,
+                    cash_before=cash_before,
+                    holding_qty_after=(h.adj_qty if h.adj_qty > 1e-9 else 0.0),
+                    realized=realized, note=note, cost_basis=cost_basis)
+        txns.append(sell)
         if rec.verdict == "SWITCH" and rec.switch_candidate:
-            switch_proceeds.append((qty * price, rec))
+            switch_proceeds.append((qty * price, rec, sell))
     return txns, switch_proceeds
 
 
@@ -136,11 +162,6 @@ def _trading_days_between(start: date, end: date) -> int:
         if is_trading_day(d):
             n += 1
     return n
-
-
-def _portfolio_market_value(portfolio: Portfolio, closes: dict[str, float]) -> float:
-    return sum(h.adj_qty * closes.get(h.symbol, h.adj_avg_price)
-               for h in portfolio.holdings)
 
 
 def _last_add_date(store: PortfolioStore, symbol: str) -> date | None:
@@ -172,13 +193,14 @@ def _buy_into_holding(portfolio: Portfolio, symbol: str, sector: str,
 
 def _execute_buys(portfolio: Portfolio, advice: list[AdviceRecord],
                   closes: dict[str, float], existing_ids: set[str],
-                  switch_proceeds: list[tuple[float, AdviceRecord]],
+                  switch_proceeds: list[SwitchLeg],
                   review_date: date, store: PortfolioStore,
-                  sector_lookup: dict[str, str] | None) -> list[TransactionRecord]:
+                  sector_lookup: dict[str, str] | None,
+                  shelf_index: dict | None = None) -> list[TransactionRecord]:
     txns: list[TransactionRecord] = []
     floor_cash = settings.AUTOPILOT_MIN_CASH_FLOOR
 
-    for proceeds, rec in switch_proceeds:
+    for proceeds, rec, sell in switch_proceeds:
         cand = rec.switch_candidate.strip().upper()
         if not cand:
             continue
@@ -188,6 +210,7 @@ def _execute_buys(portfolio: Portfolio, advice: list[AdviceRecord],
         except Exception as exc:
             logger.warning("[autopilot] SWITCH buy %s skipped: unpriceable (%s)",
                            cand, exc)
+            _note_skipped_buy(sell, cand, proceeds, "no price for the review session")
             continue
         if not quote.fresh_for(session):
             # SA-003: a buy needs the session's own close. The pipeline's
@@ -197,6 +220,8 @@ def _execute_buys(portfolio: Portfolio, advice: list[AdviceRecord],
                 logger.warning("[autopilot] SWITCH buy %s skipped (data gate): close "
                                "%.2f is from bar %s, not session %s",
                                cand, price, bar, session)
+                _note_skipped_buy(sell, cand, proceeds,
+                                  f"its close is from bar {bar}, not the review session")
                 continue
             logger.warning("[autopilot] SWITCH buy %s at a close from bar %s, not "
                            "session %s — the data gate would skip it (record mode)",
@@ -207,23 +232,16 @@ def _execute_buys(portfolio: Portfolio, advice: list[AdviceRecord],
             if dg.enforcing():
                 logger.warning("[autopilot] SWITCH buy %s skipped (data gate): %s",
                                cand, identity_issue)
+                _note_skipped_buy(sell, cand, proceeds, f"identity: {identity_issue}")
                 continue
             logger.warning("[autopilot] SWITCH buy %s: %s — the data gate would skip it "
                            "(record mode)", cand, identity_issue)
         closes[cand] = price                   # AUD-003: one price basis per run
-        budget = min(proceeds, portfolio.cash_deployable - floor_cash)
-        qty = float(math.floor(budget / price)) if price > 0 else 0.0
-        if qty < 1:
-            logger.info("[autopilot] SWITCH buy %s skipped: budget %.2f < 1 share",
-                        cand, budget)
-            continue
-        ref = f"{rec.date}|{rec.symbol}|{rec.rationale_hash}"
-        if make_txn_id(portfolio.user_id, rec.date, cand, "BUY", ref) in existing_ids:
-            logger.warning(
-                "[autopilot] SWITCH BUY %s (from %s) already in ledger but run "
-                "marker predates this run — possible ledger/portfolio divergence "
-                "from a mid-run crash; manual reconciliation may be needed",
-                cand, rec.symbol)
+        # SA-050: a new position is bought only inside its idea's entry band.
+        allowed, band_note = sizing.entry_check(price, (shelf_index or {}).get(cand))
+        if not allowed:
+            logger.info("[autopilot] SWITCH buy %s skipped: %s", cand, band_note)
+            _note_skipped_buy(sell, cand, proceeds, band_note)
             continue
         sector = (sector_lookup or {}).get(cand, "")
         if not sector:
@@ -232,14 +250,33 @@ def _execute_buys(portfolio: Portfolio, advice: list[AdviceRecord],
                 sector = SectorRegistry.resolve(cand).strip().lower()
             except Exception:
                 sector = "generic"
+        size = sizing.size_buy(portfolio, closes, symbol=cand, sector=sector,
+                               price=price, wanted=proceeds, floor_cash=floor_cash)
+        if size.qty < 1:
+            why = sizing.under_one_share_note(size, price, "proceeds")
+            logger.info("[autopilot] SWITCH buy %s skipped: %s", cand, why)
+            _note_skipped_buy(sell, cand, proceeds, why)
+            continue
+        qty = size.qty
+        ref = f"{rec.date}|{rec.symbol}|{rec.rationale_hash}"
+        if make_txn_id(portfolio.user_id, rec.date, cand, "BUY", ref) in existing_ids:
+            logger.warning(
+                "[autopilot] SWITCH BUY %s (from %s) already in ledger but run "
+                "marker predates this run — possible ledger/portfolio divergence "
+                "from a mid-run crash; manual reconciliation may be needed",
+                cand, rec.symbol)
+            _note_skipped_buy(sell, cand, proceeds,
+                              "already in the ledger; needs manual reconciliation")
+            continue
+        note = "; ".join(n for n in (f"switch from {rec.symbol}", band_note,
+                                     sizing.capped_note(size, price, "proceeds")) if n)
         cash_before = portfolio.cash_deployable
         portfolio.cash_deployable = round(portfolio.cash_deployable - qty * price, 2)
         qty_after = _buy_into_holding(portfolio, cand, sector, qty, price,
                                       review_date.isoformat())
         txns.append(_txn(portfolio, rec, side="BUY", qty=qty, price=price,
                          cash_before=cash_before, holding_qty_after=qty_after,
-                         realized=0.0, note=f"switch from {rec.symbol}",
-                         symbol=cand))
+                         realized=0.0, note=note, symbol=cand))
         try:
             promote_symbol(cand, sector, origin="held")
         except Exception as exc:
@@ -248,7 +285,6 @@ def _execute_buys(portfolio: Portfolio, advice: list[AdviceRecord],
 
     adds = sorted((a for a in advice if a.verdict == "ADD"),
                   key=lambda a: (-a.confidence, a.symbol))
-    cap = settings.ADVISOR_MAX_POSITION_PCT / 100.0
     for rec in adds:
         h = _find(portfolio, rec.symbol)
         if h is None:
@@ -262,19 +298,14 @@ def _execute_buys(portfolio: Portfolio, advice: list[AdviceRecord],
                 last_add, review_date) < settings.AUTOPILOT_ADD_COOLDOWN_TD:
             logger.info("[autopilot] ADD %s skipped: cooldown", rec.symbol)
             continue
-        position_value = h.adj_qty * price
-        tranche = position_value * settings.AUTOPILOT_ADD_TRANCHE_PCT / 100.0
-        total_mv = _portfolio_market_value(portfolio, closes)
-        # post-trade weight cap: (pos + X)/(total + X) <= cap
-        weight_headroom = (cap * total_mv - position_value) / (1 - cap) \
-            if cap < 1 else float("inf")
-        budget = min(tranche, max(0.0, weight_headroom),
-                     portfolio.cash_deployable - floor_cash)
-        qty = float(math.floor(budget / price))
-        if qty < 1:
-            logger.info("[autopilot] ADD %s skipped: budget %.2f < 1 share @ %.2f",
-                        rec.symbol, budget, price)
+        tranche = h.adj_qty * price * settings.AUTOPILOT_ADD_TRANCHE_PCT / 100.0
+        size = sizing.size_buy(portfolio, closes, symbol=rec.symbol, sector=h.sector,
+                               price=price, wanted=tranche, floor_cash=floor_cash)
+        if size.qty < 1:
+            logger.info("[autopilot] ADD %s skipped: %s", rec.symbol,
+                        sizing.under_one_share_note(size, price, "tranche"))
             continue
+        qty = size.qty
         ref = f"{rec.date}|{rec.symbol}|{rec.rationale_hash}"
         if make_txn_id(portfolio.user_id, rec.date, rec.symbol, "BUY", ref) in existing_ids:
             logger.warning(
@@ -286,9 +317,11 @@ def _execute_buys(portfolio: Portfolio, advice: list[AdviceRecord],
         portfolio.cash_deployable = round(portfolio.cash_deployable - qty * price, 2)
         qty_after = _buy_into_holding(portfolio, rec.symbol, h.sector, qty, price,
                                       review_date.isoformat())
+        note = "; ".join(n for n in ("add_tranche",
+                                     sizing.capped_note(size, price, "tranche")) if n)
         txns.append(_txn(portfolio, rec, side="BUY", qty=qty, price=price,
                          cash_before=cash_before, holding_qty_after=qty_after,
-                         realized=0.0, note="add_tranche"))
+                         realized=0.0, note=note))
     return txns
 
 
@@ -296,6 +329,7 @@ def execute_advice(store: PortfolioStore, portfolio: Portfolio,
                    advice: list[AdviceRecord], closes: dict[str, float],
                    review_date: date,
                    sector_lookup: dict[str, str] | None = None,
+                   shelf_index: dict | None = None,
                    ) -> list[TransactionRecord]:
     """Execute one review-day's verdicts. Appends transactions FIRST, then
     saves the portfolio — a crash between the two cannot double-execute
@@ -308,7 +342,9 @@ def execute_advice(store: PortfolioStore, portfolio: Portfolio,
     only — the actual mutation reloads FRESH state under the store lock so a
     concurrent API mutation is never silently reverted.
     AUD-044: a future review_date is refused outright (no trades, no marker
-    stamp) — stamping a future marker would brick the monotonic guard."""
+    stamp) — stamping a future marker would brick the monotonic guard.
+    SA-050: `shelf_index` maps a symbol to its active shelf idea; a SWITCH
+    destination missing from it has no entry band and is not bought."""
     if not settings.AUTOPILOT_ENABLED:
         return []
     day = review_date.isoformat()
@@ -335,7 +371,8 @@ def execute_advice(store: PortfolioStore, portfolio: Portfolio,
                                                     existing_ids)
         existing_ids |= {t.txn_id for t in sell_txns}
         buy_txns = _execute_buys(portfolio, advice, closes, existing_ids,
-                                 switch_proceeds, review_date, store, sector_lookup)
+                                 switch_proceeds, review_date, store, sector_lookup,
+                                 shelf_index)
         txns = sell_txns + buy_txns
         if not txns:
             # Still stamp the run marker so re-triggered pipelines skip cheaply,
@@ -371,7 +408,7 @@ def record_value_point(store: PortfolioStore, portfolio: Portfolio,
             logger.info("[autopilot] skipping out-of-order value point %s "
                         "(history tail is %s)", day, hist[-1].get("date"))
         return None
-    mv = round(_portfolio_market_value(portfolio, closes), 2)
+    mv = round(sizing.holdings_value(portfolio, closes), 2)
     total = round(mv + portfolio.cash_deployable, 2)
     day_change_pct = None
     change_span_days = None   # AUD-089: gap behind day_change_pct, calendar days

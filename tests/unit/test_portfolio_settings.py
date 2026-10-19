@@ -22,7 +22,7 @@ def test_advisor_settings_present():
     assert settings.ADVISOR_CONFIDENCE_DECLINE_THRESHOLD == 0.05
     assert settings.ADVISOR_ENVELOPE_FLAT_BAND_PCT == 1.0
     assert settings.ADVISOR_ADD_MIN_DIRECTION_ACCURACY == 0.60
-    assert settings.ADVISOR_SECTOR_CONCENTRATION_WARN_PCT == 30.0
+    assert settings.ADVISOR_MAX_SECTOR_PCT == 30.0
 
 
 def test_advisor_stop_buckets_are_tuples():

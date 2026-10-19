@@ -38,7 +38,8 @@ _TRIGGER_TEXT = {
 _NOTE_TEXT = {
     "WAIT_FOR_LTCG": "the position crosses the 12-month LTCG boundary soon, so the trim signal is noted rather than acted on",
     "EARNINGS_GAP_PROTECTION": "results are due within days — a profit-protection review is flagged",
-    "SECTOR_CONCENTRATION_HIGH": "position weight is above the concentration comfort band",
+    "POSITION_LARGE": "this holding is above the position cap of the whole portfolio, so the autopilot will not add to it",
+    "SECTOR_CONCENTRATION_HIGH": "this sector's holdings together are above the sector cap of the whole portfolio, so the autopilot will not buy more in it",
     "DATA_GATE": "an add or switch was withheld because the price or the forecast behind it is not verified",
     "IDENTITY": "every action is held because the price is not verified as this holding's own: the listing's identity is unresolved, or it changed (a demerger or relisting) since purchase, and the holding needs reconciling",
 }

@@ -28,6 +28,11 @@ def test_infer_sector_falls_back_generic(monkeypatch):
     assert dd.infer_sector("MYSTERYCO") == "generic"
 
 
+def _companies(*symbols):
+    """A listing in which every symbol is a company's shares (ISIN INE...)."""
+    return {s: {"series": "EQ", "isin": "INE000000000"} for s in symbols}
+
+
 class _FakeReport:
     final_score = 0.72
     verdict = "BUY"
@@ -61,6 +66,10 @@ def test_run_deep_dives_skips_managed_and_builds_result(monkeypatch):
     monkeypatch.setattr(dd, "EodStore", lambda: _FakeStore())
 
     monkeypatch.setattr(dd, "infer_sector", lambda s: "pharma")
+    monkeypatch.setattr(dd, "load_listing",
+                        lambda: _companies("MANAGED", "SHELVED", "NEWCO", "EXTRA"))
+    monkeypatch.setattr(dd, "market_classification",
+                        lambda s: {"sector": "Healthcare", "industry": "Drug Manufacturers"})
     monkeypatch.setattr(dd, "get_orchestrator",
                         lambda sector: type("O", (), {"analyse": lambda self, t: _FakeReport()})())
 
@@ -76,6 +85,7 @@ def test_run_deep_dives_skips_managed_and_builds_result(monkeypatch):
     assert r.entry_low == pytest.approx(97.0) and r.entry_high == pytest.approx(102.0)
     assert r.invalidation_level < r.close         # ATR-scaled stop below close
     assert r.dive_date == "2026-07-04"
+    assert r.market_sector == "Healthcare" and r.industry == "Drug Manufacturers"
 
 
 def test_run_deep_dives_orchestrator_failure_is_nonfatal(monkeypatch):
@@ -92,6 +102,7 @@ def test_run_deep_dives_orchestrator_failure_is_nonfatal(monkeypatch):
             return _window()
     monkeypatch.setattr(dd, "EodStore", lambda: _FakeStore())
     monkeypatch.setattr(dd, "infer_sector", lambda s: "generic")
+    monkeypatch.setattr(dd, "load_listing", lambda: _companies("NEWCO"))
 
     class _Boom:
         def analyse(self, t):
@@ -99,4 +110,8 @@ def test_run_deep_dives_orchestrator_failure_is_nonfatal(monkeypatch):
     monkeypatch.setattr(dd, "get_orchestrator", lambda sector: _Boom())
 
     cands = [DiscoveryCandidate(symbol="NEWCO", close=100.0, composite=0.9)]
+    calls = []
+    monkeypatch.setattr(dd, "get_orchestrator",
+                        lambda sector: calls.append(sector) or _Boom())
     assert dd.run_deep_dives(cands, on=date(2026, 7, 4)) == []
+    assert calls == ["generic"]                   # the analyst was reached, then failed

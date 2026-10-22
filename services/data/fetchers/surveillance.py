@@ -100,6 +100,18 @@ def get_symbol_meta(symbol: str) -> dict:
     return result
 
 
+def market_classification(symbol: str) -> dict:
+    """The company's market sector and industry from Yahoo Finance, e.g.
+    {"sector": "Healthcare", "industry": "Drug Manufacturers - General"};
+    "" for either when unknown (Yahoo gives a fund neither). NSE's
+    equity-meta-info, the industry source `get_symbol_meta` reads, answers 404
+    (probed 2026-10-20), and its quote API refused this machine (403). Never
+    raises."""
+    info = _yf_info(symbol)
+    return {"sector": str(info.get("sector") or "").strip(),
+            "industry": str(info.get("industry") or "").strip()}
+
+
 def float_mcap_cr(symbol: str) -> float | None:
     """Free-float market cap in ₹ crore via yfinance; None when unknown."""
     info = _yf_info(symbol)

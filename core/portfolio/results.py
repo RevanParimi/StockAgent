@@ -19,6 +19,9 @@ red line? Every figure comes from a ledger the system already keeps:
   instead at its close on the date of the first valuation that holds it: its
   gain before it arrived is not the portfolio's. The portfolio screen draws
   the same comparison as a line (`portfolio_vs_nifty`).
+- **Idea quality** from the auditor's shelf-lane grades: how discovery's
+  ideas did against the Nifty 10 and 30 sessions after they were shelved,
+  whether or not the portfolio bought them. It measures the idea supply.
 
 The red-flag rules below were predeclared on 11-12 Oct 2026, before any
 scorecard existed. Changing one is a reviewed code change, never a setting
@@ -60,6 +63,8 @@ THESIS_WINDOW_WEEKS = 4
 NIFTY_GAP_POINTS = 3.0          # behind the money-weighted Nifty by MORE than this
 NIFTY_WINDOW_WEEKS = 4
 MIN_HOLD_SESSIONS = 10          # median sessions held, positions closed this week
+
+IDEA_QUALITY_TD = (10, 30)      # shelf ideas against the Nifty (a line, not a flag; PR-004)
 
 SELL_VERDICTS = ("EXIT", "SWITCH", "TRIM")
 _FLAT_QTY = 1e-9
@@ -221,6 +226,25 @@ def sales(txns: Iterable) -> list[Sale]:
                         verdict=t.verdict or "", triggers=tuple(t.triggers or ()),
                         source=t.source))
     return out
+
+
+def idea_quality(rows: Iterable, horizon: int, *, as_of: date) -> dict:
+    """How shelf ideas did against the Nifty `horizon` sessions after they
+    were shelved: the auditor's shelf-lane grades that matured by `as_of`.
+    `beat` counts excess over the Nifty above zero. A shelf idea is research,
+    not a call, so this measures the idea supply, not the portfolio."""
+    excess: dict[str, float] = {}
+    for r in rows:
+        if r.lane != "shelf" or int(r.horizon_td) != horizon:
+            continue
+        if (_day(r.graded_on) or date.max) > as_of:
+            continue
+        excess.setdefault(r.ref, float(r.excess_pct))
+    values = list(excess.values())
+    beat = sum(1 for v in values if v > 0)
+    return {"horizon_td": horizon, "graded": len(values), "beat": beat,
+            "share_pct": (beat / len(values) * 100.0) if values else None,
+            "median_excess_pct": statistics.median(values) if values else None}
 
 
 def advice_grades(rows: Iterable) -> dict[tuple[str, int], float]:
@@ -817,6 +841,7 @@ def build_row(*, week: Week, txns: Iterable, points: Iterable[dict],
     end = week.sunday
     txns = [t for t in txns if (_day(t.date) or date.max) <= end]
     points = [p for p in points if (_day(p.get("date")) or date.max) <= end]
+    audit_rows = list(audit_rows)
     flows = capital_flows(points, txns, stock_close_on)
     trades = closed_trades(txns)
     all_sales = sales(txns)
@@ -871,6 +896,7 @@ def build_row(*, week: Week, txns: Iterable, points: Iterable[dict],
         "vs_nifty": money,
         "breadth": breadth(points, holdings, end, floor),
         "holding_period": held,
+        "idea_quality": [idea_quality(audit_rows, h, as_of=end) for h in IDEA_QUALITY_TD],
     }
     row = _rounded(row)
     row["lines"] = scorecard_lines(row)
@@ -932,6 +958,19 @@ def _sold_line(rows: list[dict]) -> str:
     return line
 
 
+def _ideas_line(rows: list[dict]) -> str:
+    if not any(r["graded"] for r in rows):
+        return "No shelf idea has been graded against the Nifty yet."
+    bits = []
+    for r in sorted(rows, key=lambda r: -r["horizon_td"]):
+        if r["graded"]:
+            bits.append(f"at {r['horizon_td']} sessions {r['beat']} of {r['graded']} beat it "
+                        f"({r['share_pct']:.0f}%, median {r['median_excess_pct']:+.1f} points)")
+        else:
+            bits.append(f"at {r['horizon_td']} sessions none graded yet")
+    return "Shelf ideas against the Nifty after they were shelved: " + "; ".join(bits) + "."
+
+
 def _money_part(label: str, m: dict) -> str:
     if not m.get("available"):
         reason = m.get("reason")
@@ -960,6 +999,9 @@ def scorecard_lines(row: dict) -> list[dict]:
                   + _trades_line("Since the start", ct["since_start"])})
     lines.append({"kind": "line", "label": "Sold too early",
                   "text": _sold_line(row["sold_too_early"]["since_start"])})
+    if row.get("idea_quality"):
+        lines.append({"kind": "line", "label": "Idea quality",
+                      "text": _ideas_line(row["idea_quality"])})
     reasons = row["exit_reasons"]["last_4_weeks"]
     if reasons["sales"]:
         text = (f"{_plural(reasons['sales'], 'sale')} in the last {THESIS_WINDOW_WEEKS} "

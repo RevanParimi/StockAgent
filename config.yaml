@@ -449,7 +449,7 @@ discovery:
   enabled: true
   history_days: 550              # rolling EOD window (~2.2yr; 12m momentum needs 252 tds)
   bhavcopy_dir: "data/market_cache/bhavcopy"
-  data_dir: "data/discovery"     # screens/, shelf.json, shelf_events.jsonl
+  data_dir: "data/discovery"     # screens/, shelf.json, shelf_events.jsonl, listing.json
   paper_data_dir: "data/rl/paper/predictions"   # ISOLATED paper-lane store root (spec §6.3)
   liquidity_floor_cr: 5.0        # median daily traded value ≥ ₹5 cr
   float_mcap_floor_cr: 500.0     # free-float mcap ≥ ₹500 cr (thin float = operator bait)
@@ -458,9 +458,12 @@ discovery:
   circuit_streak_max: 3          # > N trailing upper-circuit days = operator pattern
   shortlist_size: 80             # bhavcopy-ranked names that get per-symbol guard checks
   max_candidates: 40             # ScreenResult size after guards
-  deep_dive_count: 10            # weekly unified-analyst calls (LLM cost cap)
-  shelf_size: 10                 # max active shelf ideas
-  stale_days: 60                 # idea age without trigger -> rotate out
+  deep_dive_count: 20            # weekly analyst calls, re-dives and IPO slots included (LLM cost cap)
+  shelf_size: 20                 # max active shelf ideas: 12 holdings plus rotation
+  max_ideas_per_sector: 3        # active ideas per market sector; 0 = no cap
+  redive_after_days: 30          # an idea's deep dive older than this is re-dived before it can be bought; 0 = off
+  watchlist_buys: true           # a user's watchlist BUY (actionable, fresh) is a buy candidate too
+  stale_days: 60                 # latest deep dive older than this -> rotate out
   min_conviction: 0.55           # deep-dive final_score floor to reach the shelf (= BUY threshold)
   include_sme: false             # SME platform excluded by default (spec §6.2)
   signal_weights:                # composite rank blend; renormalized over LIVE signals

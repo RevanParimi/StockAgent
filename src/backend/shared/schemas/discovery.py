@@ -47,12 +47,19 @@ class DeepDiveResult(BaseModel):
     composite: float
     dive_date: str                         # ISO
     data_gate: str = ""                    # SA-003 gate status of the dive's run
+    # The company's market sector and industry (Yahoo Finance's classification).
+    # `sector` above routes the analysis graph and is often "generic"; the
+    # shelf's per-sector cap counts `market_sector`. "" = unknown.
+    market_sector: str = ""
+    industry: str = ""
 
 
 class ShelfIdea(BaseModel):
     symbol: str
     sector: str
     graph: Literal["native", "generic"] = "generic"
+    market_sector: str = ""                # what max_ideas_per_sector counts; "" = unknown
+    industry: str = ""
     added: str                             # ISO date
     conviction: float
     verdict: str = ""
@@ -65,9 +72,18 @@ class ShelfIdea(BaseModel):
     paper_cycle_id: str = ""
     last_paper_review: str = ""            # ISO date of last paper review
     source_screen_date: str = ""
-    # SA-003: gate status of the deep dive that shelved this idea; "" = shelved
+    # SA-003: gate status of the latest deep dive of this idea; "" = shelved
     # before the gate existed (unverified: not a SWITCH destination in enforce).
     data_gate: str = ""
+    # ISO date of the latest deep dive; "" = the one that shelved it
+    # (source_screen_date). A re-dive refreshes the conviction, band and gate
+    # in place and restarts the rotation clock (stale_days counts from here).
+    # `added` stays, so the auditor's shelf grades count from the day the idea
+    # was shelved.
+    dived: str = ""
+    # "watchlist": a user's own watchlist BUY offered as a buy candidate for
+    # that user's portfolio. Built per review, never stored on the shelf.
+    source: Literal["discovery", "watchlist"] = "discovery"
 
 
 class Shelf(BaseModel):

@@ -447,11 +447,18 @@ def _gated_report(status: str) -> FinalReport:
     ("record", "abstain", True),
 ])
 def test_deep_dive_gate(monkeypatch, tmp_path, gate_mode, mode, status, shelved):
+    """The dive returns every answer (PR-004: the dive memo must remember an
+    abstained one too); the shelf, where an idea is minted, refuses an
+    abstained dive under enforce."""
     import core.discovery.deep_dive as dd
     from backend.shared.schemas.discovery import DiscoveryCandidate, Shelf
+    from core.config import settings
+    from core.discovery.shelf import ShelfStore
     from tests.unit.test_discovery_deep_dive import _window
 
     gate_mode(mode)
+    monkeypatch.setattr(settings, "DISCOVERY_DATA_DIR", str(tmp_path / "disc"))
+    monkeypatch.setattr(settings, "DISCOVERY_MIN_CONVICTION", 0.55)
     monkeypatch.setattr(dd, "load_managed_tickers", lambda: [])
     monkeypatch.setattr(dd, "ShelfStore", lambda: type("S", (), {"load": lambda self: Shelf()})())
     monkeypatch.setattr(dd, "EodStore", lambda: type(
@@ -459,13 +466,20 @@ def test_deep_dive_gate(monkeypatch, tmp_path, gate_mode, mode, status, shelved)
     monkeypatch.setattr(dd, "infer_sector", lambda s: "pharma")
     monkeypatch.setattr(dd, "get_orchestrator", lambda sector: type(
         "O", (), {"analyse": lambda self, t: _gated_report(status)})())
+    # PR-004: only a symbol NSE lists as a company is dived.
+    monkeypatch.setattr(dd, "load_listing",
+                        lambda: {"NEWCO": {"series": "EQ", "isin": "INE000000001"}})
+    monkeypatch.setattr(dd, "market_classification",
+                        lambda s: {"sector": "Healthcare", "industry": ""})
 
     results = dd.run_deep_dives([DiscoveryCandidate(symbol="NEWCO", close=100.0, composite=0.9)],
                                 on=date(2026, 7, 4), max_n=1)
 
-    assert [r.symbol for r in results] == (["NEWCO"] if shelved else [])
-    if shelved:
-        assert results[0].data_gate == status          # carried onto the shelf idea
+    assert [(r.symbol, r.data_gate) for r in results] == [("NEWCO", status)]
+    shelf = ShelfStore()
+    shelf.apply_deep_dives(results, on=date(2026, 7, 4))
+    ideas = [i for i in shelf.load().ideas if i.status == "active"]
+    assert [(i.symbol, i.data_gate) for i in ideas] == ([("NEWCO", status)] if shelved else [])
     rows = _gate_rows(tmp_path)
     if status == "abstain":
         assert len(rows) == 1 and rows[0]["consumer"] == "discovery"

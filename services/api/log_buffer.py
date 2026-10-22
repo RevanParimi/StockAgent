@@ -230,6 +230,31 @@ def managed_symbols() -> set[str]:
     }
 
 
+def managed_sectors() -> dict[str, str]:
+    """
+    {symbol: sector} for every managed ticker, enabled or not, read-only like
+    managed_symbols. The sector is read as the daily review and the monthly
+    forecast read it (get_active_tickers_with_sector: `sector`, default
+    "automobile"), so it is the key a managed stock's predictions are written
+    under; promote_symbol keeps it when the stock is promoted again (PR-004).
+    """
+    try:
+        raw = json.loads(_MANAGED_TICKERS_PATH.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return {}
+    except (OSError, ValueError) as exc:
+        _log.warning("[managed_tickers] %s unreadable for sectors: %s", _MANAGED_TICKERS_PATH, exc)
+        return {}
+    if not isinstance(raw, list):
+        _log.warning("[managed_tickers] %s is not a list: no managed sectors", _MANAGED_TICKERS_PATH)
+        return {}
+    return {
+        str(t.get("sym") or "").strip().upper(): str(t.get("sector", "automobile") or "")
+        for t in raw
+        if isinstance(t, dict) and str(t.get("sym") or "").strip()
+    }
+
+
 def get_active_tickers() -> list[str]:
     """Return only the enabled ticker symbols from the managed list."""
     return [t["sym"] for t in load_managed_tickers() if t.get("enabled", True)]

@@ -14,6 +14,8 @@ def test_run_discovery_cycle_happy_path(monkeypatch):
     monkeypatch.setattr(disc, "refresh_bulk_block",
                         lambda weeks=4: calls.append("bulk") or {"degraded": False, "deals": []})
     monkeypatch.setattr(disc, "refresh_ipo_cache", lambda: {})
+    monkeypatch.setattr(disc, "refresh_listing",
+                        lambda end=None: {"as_of": None, "fresh": False, "securities": 0})
     monkeypatch.setattr(disc, "build_ipo_candidates", lambda on: [])
 
     class _Screen:
@@ -49,6 +51,8 @@ def test_run_discovery_cycle_stage_failure_is_contained(monkeypatch):
                         lambda days_back=7: (_ for _ in ()).throw(RuntimeError("NSE down")))
     monkeypatch.setattr(disc, "refresh_bulk_block", lambda weeks=4: {"degraded": True, "deals": []})
     monkeypatch.setattr(disc, "refresh_ipo_cache", lambda: {})
+    monkeypatch.setattr(disc, "refresh_listing",
+                        lambda end=None: {"as_of": None, "fresh": False, "securities": 0})
     monkeypatch.setattr(disc, "build_ipo_candidates", lambda on: [])
 
     class _Empty:

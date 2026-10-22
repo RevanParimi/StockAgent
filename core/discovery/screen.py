@@ -1,7 +1,7 @@
 """
 Compass Phase B — Stage-1 weekly quant screen (spec §6.1).
 
-Funnel: EOD window -> universe (EQ, price floor) -> 7 signal slots ->
+Funnel: EOD window -> universe (EQ, price floor, companies only) -> 7 signal slots ->
 weighted percentile-rank composite (renormalized over LIVE signals) ->
 top shortlist_size -> per-symbol guards -> top max_candidates.
 
@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import logging
+from collections import Counter
 from datetime import date
 from pathlib import Path
 
@@ -21,7 +22,8 @@ from core.config import settings
 from backend.shared.schemas.discovery import DiscoveryCandidate, ScreenResult
 from core.discovery.guards import apply_guards
 from core.discovery.signals import compute_signals
-from core.discovery.universe import build_universe
+from core.discovery.universe import build_universe, companies_only
+from services.data.fetchers.bhavcopy import load_listing
 from services.data.fetchers.bulk_block import load_bulk_block
 from services.data.stores.eod_store import EodStore
 
@@ -49,6 +51,17 @@ def run_screen(on: date | None = None) -> ScreenResult:
         return result
 
     universe = build_universe(window)
+    # PR-004: only companies are ranked. Without a listing the screen keeps
+    # every EQ symbol and says so; the deep dive then refuses any symbol it
+    # cannot verify as a company, so no fund reaches the analyst either way.
+    listing = load_listing()
+    listing_checks: list[str] = []
+    if listing is None:
+        listing_checks.append("instrument_listing")
+    else:
+        universe, excluded = companies_only(universe, listing)
+        logger.info("[discovery.screen] %d EQ symbols excluded as not companies (%s)",
+                    len(excluded), dict(Counter(excluded.values())))
 
     bulk_cache = load_bulk_block()
     if bulk_cache.get("degraded") and not bulk_cache.get("deals"):
@@ -61,7 +74,8 @@ def run_screen(on: date | None = None) -> ScreenResult:
     if not live:
         logger.warning("[discovery.screen] ALL signals dark — screen degraded to empty")
         result = ScreenResult(screen_date=screen_date, universe_size=len(universe),
-                              shortlist_size=0, dark_signals=dark)
+                              shortlist_size=0, dark_signals=dark,
+                              degraded_checks=listing_checks)
         _persist(result)
         return result
 
@@ -102,7 +116,7 @@ def run_screen(on: date | None = None) -> ScreenResult:
         candidates=candidates,
         rejected=rejected,
         dark_signals=dark,
-        degraded_checks=degraded,
+        degraded_checks=listing_checks + degraded,
     )
     _persist(result)
     logger.info(

@@ -21,6 +21,7 @@ def _ipo_cands(n=2):
             for i in range(n)]
 
 
+@patch.object(disc, "refresh_listing", return_value={"as_of": None, "fresh": False, "securities": 0})
 @patch.object(disc, "run_paper_reviews", return_value={"reviewed": [], "failed": [], "skipped": []})
 @patch.object(disc, "run_deep_dives", return_value=[])
 @patch.object(disc, "run_screen", return_value=_screen())
@@ -29,7 +30,8 @@ def _ipo_cands(n=2):
 @patch.object(disc, "refresh_bulk_block", return_value={})
 @patch.object(disc, "sync_recent", return_value={})
 def test_ipo_candidates_prepended_within_budget(
-        m_sync, m_bulk, m_ipo_refresh, m_ipo_build, m_screen, m_dives, m_paper, monkeypatch, tmp_path):
+        m_sync, m_bulk, m_ipo_refresh, m_ipo_build, m_screen, m_dives, m_paper, m_listing,
+        monkeypatch, tmp_path):
     monkeypatch.setattr(disc.settings, "DISCOVERY_IPO_ENABLED", True)
     monkeypatch.setattr(disc.settings, "DISCOVERY_IPO_MAX_DEEP_DIVES", 2)
     # ShelfStore.apply_deep_dives() saves unconditionally — redirect off the
@@ -42,6 +44,7 @@ def test_ipo_candidates_prepended_within_budget(
     assert [c.symbol for c in passed[2:]] == ["SCR0", "SCR1", "SCR2"]
 
 
+@patch.object(disc, "refresh_listing", return_value={"as_of": None, "fresh": False, "securities": 0})
 @patch.object(disc, "run_paper_reviews", return_value={"reviewed": [], "failed": [], "skipped": []})
 @patch.object(disc, "run_deep_dives", return_value=[])
 @patch.object(disc, "run_screen", return_value=_screen())
@@ -50,7 +53,8 @@ def test_ipo_candidates_prepended_within_budget(
 @patch.object(disc, "refresh_bulk_block", return_value={})
 @patch.object(disc, "sync_recent", return_value={})
 def test_ipo_stage_failure_is_non_fatal(
-        m_sync, m_bulk, m_ipo_refresh, m_ipo_build, m_screen, m_dives, m_paper, monkeypatch, tmp_path):
+        m_sync, m_bulk, m_ipo_refresh, m_ipo_build, m_screen, m_dives, m_paper, m_listing,
+        monkeypatch, tmp_path):
     monkeypatch.setattr(disc.settings, "DISCOVERY_IPO_ENABLED", True)
     monkeypatch.setattr(disc.settings, "DISCOVERY_DATA_DIR", str(tmp_path))
     result = disc.run_discovery_cycle(on=date(2026, 7, 4))
@@ -59,6 +63,7 @@ def test_ipo_stage_failure_is_non_fatal(
     assert m_dives.called                                        # cycle continued
 
 
+@patch.object(disc, "refresh_listing", return_value={"as_of": None, "fresh": False, "securities": 0})
 @patch.object(disc, "run_paper_reviews", return_value={"reviewed": [], "failed": [], "skipped": []})
 @patch.object(disc, "run_deep_dives", return_value=[])
 @patch.object(disc, "run_screen", return_value=_screen())
@@ -67,7 +72,8 @@ def test_ipo_stage_failure_is_non_fatal(
 @patch.object(disc, "refresh_bulk_block", return_value={})
 @patch.object(disc, "sync_recent", return_value={})
 def test_ipo_stage_gated_off(
-        m_sync, m_bulk, m_ipo_refresh, m_ipo_build, m_screen, m_dives, m_paper, monkeypatch, tmp_path):
+        m_sync, m_bulk, m_ipo_refresh, m_ipo_build, m_screen, m_dives, m_paper, m_listing,
+        monkeypatch, tmp_path):
     monkeypatch.setattr(disc.settings, "DISCOVERY_IPO_ENABLED", False)
     monkeypatch.setattr(disc.settings, "DISCOVERY_DATA_DIR", str(tmp_path))
     result = disc.run_discovery_cycle(on=date(2026, 7, 4))

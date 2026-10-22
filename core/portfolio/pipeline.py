@@ -191,13 +191,26 @@ def run_post_review_pipeline(review_date: date) -> dict:
         if not portfolio.holdings:
             continue
 
-        # Phase C context for SWITCH: active shelf ideas + sector weights.
+        # Phase C context for SWITCH: the ideas this portfolio may buy + sector
+        # weights. PR-004: shelf ideas whose deep dive is fresh, plus the
+        # user's own watchlist BUYs (core/discovery/candidates.py).
         shelf_ideas: list = []
         try:
             from core.discovery.shelf import ShelfStore
             shelf_ideas = [i for i in ShelfStore().load().ideas if i.status == "active"]
         except Exception as exc:
             logger.debug("[portfolio_pipeline] shelf unavailable (non-fatal): %s", exc)
+        try:
+            from core.discovery.candidates import buy_candidates
+            shelf_ideas, not_offered = buy_candidates(portfolio, review_date, shelf_ideas)
+            if not_offered:
+                logger.info("[portfolio_pipeline] %s: %d buy candidate(s), %d not offered: %s",
+                            user_id, len(shelf_ideas), len(not_offered),
+                            dict(list(not_offered.items())[:5]))
+        except Exception as exc:
+            logger.warning("[portfolio_pipeline] buy candidates unavailable for %s, none "
+                           "offered (non-fatal): %s", user_id, exc)
+            shelf_ideas = []
         # SA-050: every holding's close first, so each weight is a share of
         # total equity at the review's marks (a holding without one at cost).
         quotes: dict[str, tuple] = {}

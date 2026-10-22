@@ -1,11 +1,11 @@
-# Current handoff - 2026-10-22 (updated about 14:40 IST)
+# Current handoff - 2026-10-23 (updated about 00:50 IST)
 
 ## Also 22 Oct (about 22:30 IST to 00:30 IST 23 Oct): FIX-013, LLM tier switch, committed and pushed (separate conversation)
 
 The owner asked to replace the LLMs, with cost and efficiency first and any provider allowed, and
 said to commit and push without asking again. **This is a recorded deviation:** research, benches,
-implementation, commit and push ran in one conversation. Its fresh review is still due. Take it
-after FIX-012's.
+implementation, commit and push ran in one conversation. Its fresh review is still due. It is
+next: FIX-012's review was accepted on 23 Oct (START HERE).
 
 - **Change:**
   - fast: `qwen/qwen3.6-flash` -> `deepseek/deepseek-v4.1-flash-1017`;
@@ -105,6 +105,206 @@ Docs only; nothing committed, pushed, deployed or configured.
   section 11.
 
 ## START HERE — resume checklist, in order
+
+**FIX-012 is ACCEPTED** by its fresh review (23 Oct, about 00:04–00:50 IST, session
+stockagent-main-a4, a new conversation opened with "continue"). Receipt:
+[FIX-012-review](evidence/FIX-012-review.md). STATE: FIX-012 `done`, production verification
+`pending_deployment` (test-only; what remains is CI's Linux job on the push), `active_task:
+null`, **`next_task: FIX-013`**. Nothing was committed, pushed or deployed; no production state
+was read.
+
+- **Next "continue", in a new conversation: FIX-013's fresh review** from [REVIEW.md](REVIEW.md)
+  (`review_required`; already committed and pushed as `560d18f` at the owner's word, a recorded
+  deviation; receipt [FIX-013-implementation](evidence/FIX-013-implementation.md), diff
+  `156a0b84…` by `analysis_data/fix013/digest.py`). **Then PR-011** (ready: PR-006 is done).
+- **Committed at the owner's word** ("commit and push", 23 Oct about 04:00 IST, this
+  conversation): `d6f8510` holds only the story file (blob `902a89b9`, the reviewed one). The docs
+  commit after it sets the KT edition to 2026-10-23 and its "Code inspected" to `d6f8510`, the
+  section 12 FIX-012 row to `Done`, and rebuilds the PDF; `check_kt_docs` errors `[]`. The
+  owner's `docs/README.md` line stays uncommitted. After the push, read the push commit's check
+  runs from the public GitHub API: "Python tests (Linux, 3.11)" must pass; name anything else
+  that fails. The SA-009 store-migration test is known to fail intermittently (found during
+  FIX-013, not routed).
+- **Review input verified start and end:** manifest `db64de1c…`, blob `902a89b9…`, diff
+  `3bc40d5a…` (recomputed with `git diff HEAD | sha256sum`), on `HEAD` `560d18f`; no review edit.
+- **The reviewer's own cases** (`analysis_data/fix012_review/rv_plugin.py`, applied to the live app
+  after collection, so no tracked file was touched), in the same five environments:
+  - caught on both FastAPI structures: a new router included with a prefix (X1, X2), a websocket
+    reader on the app (X3), a route added to a mounted router after the include (X5), a nested
+    router (X6), a reader on the app hidden from the schema (X7);
+  - R0, FIX-007's walk, reproduces CI's failure on 0.137+ only;
+  - **L1 (low, inherited from FIX-007), routed to SA-031:** a plain Starlette route
+    (`app.add_route`) that reads the buffer is not walked, on either structure (X4);
+  - I2 (info): X8, two unusual edits at once with both routes hidden, is missed on 0.137+ and
+    caught on 0.136.1.
+- **Tests:** the story file 43 passed in all five environments. The full suite under Python
+  3.11.9 and FastAPI 0.160.0 on the reviewed tree (`560d18f` plus the diff): 5,562 passed, 12
+  skipped, 1 xfailed, 0 failed. `check_kt_docs` errors `[]`; broad-except OK.
+
+**FIX-012's implementation, for reference** (22 Oct, about 22:32–23:40 IST, session
+stockagent-main-a6). Receipt: [FIX-012-implementation](evidence/FIX-012-implementation.md).
+
+- **What changed (test only):** `tests/unit/api/test_log_routes_owner_only_fix007.py`. The guard
+  now walks the app's own routes plus every router `server.py` mounts, reading only public
+  interfaces. Before checking anything, it proves the walk is complete:
+  - the app entries it cannot read into number exactly one per router it read;
+  - FastAPI's published OpenAPI operations equal the walked routes that are in the schema.
+- **Example:** on CI's FastAPI, a new ungated `log_buffer.snapshot(` route used to be hidden
+  behind the guard's standing failure, since the guard found no route at all. Now it fails by
+  name, and the guard passes when the gate is there.
+- **Checked:**
+  - the story file: 43 passed under FastAPI 0.136.1, 0.137.0, 0.159.1 and 0.160.0 (the newest);
+    before the change, the last three failed;
+  - mutants M1–M7 (an ungated reader of each kind) and W1/W4 (an empty or partial walk) are
+    caught in all five environments; W2/W3 are caught on the new structure and equivalent on
+    0.136.1;
+  - the full suite: 5,560 passed, 0 failed, both locally and under Python 3.11.9 with FastAPI
+    0.160.0.
+- **Review input:** [FIX-012-manifest.json](evidence/FIX-012-manifest.json) `db64de1c…`, 1 file;
+  diff `3bc40d5a…` (`analysis_data/fix012/digest.py`). The five-environment runner
+  (`analysis_data/fix012/run_envs.py`) needs two `subst` drives (in its docstring).
+**PRODUCTION AI KEY FIXED; a real AI answer is still to be seen** (verified read-only on 22 Oct
+about 22:26–22:29 IST, session stockagent-main-a6, at the owner's request).
+
+- **What the owner did.** About 22:20 IST, created a new OpenRouter key and set
+  `OPENROUTER_API_KEY` in Railway and in the local `.env`.
+- **Deploy.** The variable change redeployed: `0c7ca4f4`, SUCCESS, commit `0a798e1` (no new
+  code), created 22:22:50 IST. The old `452562d4` is REMOVED. The container started at
+  22:24:16 IST.
+- **Logs to 22:28 IST**, filtered to markers: no openrouter.ai call yet (0 OK, 0 × 401), and no
+  job ran or was reported missed. No job is due between the 19:00 IPO deep dive and the 23:00
+  atlas job, so the restart cut nothing off.
+- **Key check, no credit spent.** `GET https://openrouter.ai/api/v1/key` from inside the
+  container, with the app's key: HTTP **200**, no spend limit on the key, usage 0, not free
+  tier. The local `.env` key: HTTP 200. The probe prints the status and non-secret fields only:
+  `analysis_data/openrouter_fix_20261022/key_probe.py`.
+- **Watch on 23 Oct** (Friday). The first AI job should be 07:30 `macro_daily_news`.
+  - 07:30 macro news: `openrouter.ai … 200 OK` lines, no 401.
+  - 08:15 `company_events_am`: events stored > 0 and `llm_failed` 0. It retries 22 Oct's 89
+    items.
+  - 08:50 brief: delivered, with no 401 lines around it.
+  - 16:30 review: lessons non-empty, no "degraded" FeedbackAgent lines.
+- **Also:** the new key has no spend limit. Setting one is on the owner's deferred setup list.
+
+**Before the fix, every OpenRouter call answered 401 "User not found."** (found on 22 Oct
+about 20:45 IST from the review-recovery output and the saved deployment logs).
+
+- **When it broke.** The 16:30 review used the AI successfully on 20 Oct (14 calls OK) and on
+  21 Oct (16 OK). On 22 Oct it was already failing at 12:00 and 15:00 (the market-news runs) and
+  at 16:30 (126 failures, 0 OK). Since the deploy, 58 more failures and 0 OK. So it began
+  between 21 Oct about 16:33 and 22 Oct 12:00, **before** the PR-004/PR-006 push, on the old
+  code. Railway's log API errored on the windows in between.
+- **What it breaks.**
+  - The AI analysts: every dimension errors, so analyses come out empty.
+  - The daily review's lessons and thesis review: grades are recorded "degraded", with no
+    lessons.
+  - The company-event classifier: 22 Oct 18:30 found 89 new items and stored **0** events, with
+    22 of 22 calls failed. The items are retried next run, since nothing was marked seen.
+  - Also, as code inspection suggests, the brief's narration, chat, monthly forecasts and
+    Saturday's deep dives.
+- **Owner action (secrets; Claude does not handle keys). Steps 1–2 done about 22:20 IST;
+  step 3 is the watch list above.**
+  1. Sign in at openrouter.ai and check that the account and the key still exist ("User not
+     found" points to a deleted or revoked key or account), and the credits.
+  2. Create a key and set Railway's `OPENROUTER_API_KEY`. A variable change redeploys, so use
+     `railway variable set OPENROUTER_API_KEY=… --skip-deploys`, then `railway redeploy` (no
+     rebuild) in a job-free window. Ideally before 08:15 (the event feed), 08:50 (the brief)
+     and 16:30 (the review).
+  3. Confirm afterwards: a log line `openrouter.ai … 200 OK`.
+- **Also seen** (secondary):
+  - Yahoo answers `401 Invalid Crumb` to some yfinance calls; closing prices still arrive.
+  - Serper's month count is **2,192 of 2,500** (22 Oct 18:32), so the credit may run out before
+    31 Oct. The event feed uses up to 60 a day.
+- **Review recovery: DONE.** The owner ran
+  `analysis_data/pr006_commit/review_recovery/rr_run.py` about 20:30 IST. A read-only re-probe
+  then showed all 21 stocks with a 2026-10-21 feedback entry. The 11 recovered grades are
+  degraded (AI down), like the 10 graded at 16:30.
+
+**FIX-012 added and ordered first** (22 Oct, about 19:30 IST, session stockagent-main-a8, at the
+owner's word "ya go ahead"). Card: [FIX-012](stories/FIX-012.md). It was ordered before PR-011.
+**Implemented on 22 Oct and accepted on 23 Oct (top of START HERE).**
+
+- **Why:** CI's Linux suite has failed on every push since 13 Oct. The cause is reproduced and
+  is in the test, not GitHub: FIX-007's route guard walks `app.routes`, and FastAPI 0.137.0
+  and later wrap included routers, so the guard sees no route. The logs stay owner-only.
+- **Scope:** test-only (1 point). Evidence: `analysis_data/ci_linux_failure/FINDINGS.md`.
+  Pinning FastAPI stays in SA-033, whose card gained a note.
+- KT section 12 gained the row, and the PDF was rebuilt. Uncommitted, with the push note
+  below.
+
+**PR-004 and PR-006: PUSHED** at the owner's word ("commit and push"), 25fae38..0a798e1 at
+15:06:43 IST on 22 Oct, after the 14:55–15:05 job window, as RevanParimi. Session
+stockagent-main-a8. This note is uncommitted.
+
+- **Commits:**
+  - `020d3c2` PR-004 code (equal by blob to its accepted input) and `30cab14` PR-004 docs (its
+    commit-time edits), both built from `analysis_data/pr006/base/` in a temporary worktree;
+  - `3378246` PR-006 code (equal by blob to its accepted input) and `0a798e1` PR-006 docs (its
+    commit-time edits).
+  - `check_kt_docs` gives no error at either docs commit. The owner's line in
+    `docs/README.md` stays uncommitted.
+- **Deploy:**
+  - **Live by 18:12 IST.** Read-only public probes: `GET /events/MARUTI` answers 401 JSON and
+    an unknown `/events/...` path 404 JSON, which only the new code does; `/health` 200.
+  - At 15:27 it still served the old code. The laptop then slept until about 18:10, so the
+    exact switch time is unknown.
+  - **Deployment list** (read at 19:46 IST, after the owner's `railway login`): deployment
+    `452562d4` for `0a798e1` is SUCCESS, created at 15:06:44 IST. `25fae38`'s is REMOVED. The
+    list gives no finish time, so when the new code began serving (after 15:27, by 18:12) and
+    whether the 16:30 review ran were then read from the deployment's logs (next bullet).
+  - **Deployment logs** (read once at the owner's word, ~19:50 IST; raw in the ignored
+    `analysis_data/pr006_commit/deploy_logs/`, only markers printed):
+    - **The build waited 69 minutes:** it ran 16:15:41–16:33:30 (cause not visible). The
+      package step was **not cached** (344 downloads), so production now runs the newest
+      release of every unpinned dependency (SA-033's risk).
+    - The new container started at **16:34:55**.
+    - **The 16:30 daily review was cut off.** The old container started "RL Daily Review —
+      2026-10-21 (21 tickers)" at 16:30:01 and was stopped at 16:34:53.
+      - 10 of 21 were graded: SUZLON, INOXWIND, WAAREEENER, ADANIGREEN, YESBANK, IDFCFIRSTB,
+        RBLBANK, PAYTM, OLAELEC, OLECTRA. The other 11 were not.
+      - The post-review portfolio pipeline (autopilot decisions, the day's value point) and
+        the job outcome did **not** run on 22 Oct. Nothing re-runs a missed job.
+    - The 18:30 `company_events_pm` ran from 18:30:00 to 18:32:00.
+    - **Recovery, decided** (the owner delegated it, 22 Oct about 20:00 IST): grade the
+      2026-10-21 session for the 11 ungraded stocks through the server's own
+      `_run_reviews(..., skip_existing=True)`. Already-graded stocks are skipped, and there is
+      no portfolio pipeline (the autopilot waits for 23 Oct's normal 16:30 run).
+      - **Probe (read-only, 20:07 IST, `review_recovery/rr_probe.py`):** 10 stocks have a
+        21 Oct feedback entry. The 11 without one are TVSMOTOR, KPITTECH, PERSISTENT,
+        TATAELXSI, HAPPSTMNDS, ACMESOLAR, STARHEALTH, FEDERALBNK, WELCORP, TMPV and
+        REDINGTON. All are due.
+      - **Run: PENDING, for the owner.** Claude's `railway ssh` of
+        `analysis_data/pr006_commit/review_recovery/rr_run.py` was blocked ("Remote Shell
+        Writes"), so the owner runs it. Expected output: 10 `skipped_existing`, 11 graded,
+        `errors []`. Run it before 22:55 IST if possible. The review re-runs the analysts on
+        the day's data, so 22 Oct is closest to the missed run.
+- **GitHub CI on `0a798e1`:** "Python tests (Linux, 3.11)" failed, and the KT and broad-except
+  guards and the browser suite passed.
+  - The Linux suite has failed on **every push since `33ae170` (13 Oct)**; the last pass was
+    `b9cc851` (11 Oct). It does not block Railway deploys.
+  - **Cause, reproduced (22 Oct, evidence in ignored `analysis_data/ci_linux_failure/FINDINGS.md`):**
+    FIX-007's guard test
+    `test_log_routes_owner_only_fix007.py::test_every_route_reading_the_log_buffer_requires_the_owner`
+    walks `app.routes` for `APIRoute`s.
+    - FastAPI 0.137.0 (14 Jun) and later keep included routers as `_IncludedRouter` wrappers,
+      so the test finds no log route and fails. CI installs the latest FastAPI; the local venv
+      has 0.136.1, so it passes here.
+    - Under CPython 3.11 with CI's fresh dependencies the suite gives 2 failed and 5,557
+      passed. One failure is this test; the other is a Windows-only rename flake that passes
+      alone.
+    - With only FastAPI pinned to 0.136.1 the file passes (42 passed).
+    - The logs stay owner-only under the new FastAPI: the file's HTTP tests pass (anonymous
+      401, member 403). Only the completeness guard broke.
+    - Not seen: the CI log itself, which needs sign-in; it should name this test.
+- **Production verification, now `pending_observation`:**
+  - **PR-006:** tonight's 18:30 `company_events_pm` and tomorrow's 08:15 run lines in
+    `data/events/runs.jsonl`. Expect `status` `ok` or `partial` with named causes,
+    `nse_rows_ahead` 0, `fetched_at` spread across the run, and at most 30 searches a run.
+    Also the Serper count, and the owner's five-day sample (02-I).
+  - **PR-004:** Saturday 24 Oct 12:30's discovery line (`listing`, `hygiene`, `redived`, at
+    most 20 dives) and 06-E to 06-H.
+- **New push windows:** also avoid 08:10–08:35 and 18:25–18:50 IST (the feed's runs).
+- **Next:** unchanged, `next_task: PR-011` in a new conversation ("continue").
 
 **PR-006: ACCEPTED** by the fresh re-review of rework 1 (22 Oct, about 13:39–14:40 IST, session
 stockagent-main-a8, a new conversation opened with "continue"; peers -1c, -2c, -3c, -46, -48,

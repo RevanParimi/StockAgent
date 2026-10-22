@@ -1,0 +1,20 @@
+{
+  "story": "FIX-012",
+  "phase": "implementation (2026-10-22), a conversation opened with continue after a read-only production key check",
+  "baseline": "0a798e1 (HEAD); the story file unchanged at HEAD before the phase (blob a78d15d5)",
+  "excluded": [
+    "docs/planning/PI-2026-09/STATE.json",
+    "docs/planning/PI-2026-09/HANDOFF.md",
+    "docs/planning/PI-2026-09/evidence/*",
+    "the planning session uncommitted docs (FIX-012 card, KT row and PDF, SA-033 note, PI README, docs/README.md)"
+  ],
+  "note": "Diff: analysis_data/fix012/digest.py (git diff HEAD over the payload path).",
+  "hash_convention": "git blob bytes after .gitattributes normalization (CRLF->LF for text, binary unchanged); verify with scripts/docs/kt_manifest.py verify",
+  "files": [
+    {
+      "path": "tests/unit/api/test_log_routes_owner_only_fix007.py",
+      "git_blob": "902a89b9bcf486dd2eaf91b19be3b91304f770ea",
+      "sha256": "a230b16ea30803de1c77423b517a9c1087f511646bbde9554b8c89e623988a0e"
+    }
+  ]
+}

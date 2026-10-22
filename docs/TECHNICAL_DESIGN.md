@@ -1,8 +1,8 @@
 # StockAgent — Technical Design and Knowledge Transfer
 
-**Edition:** 2026-10-22 · **Audience:** engineers and teammates learning the product
+**Edition:** 2026-10-23 · **Audience:** engineers and teammates learning the product
 
-**Code inspected:** `3378246cc03e7b4af4030e1d4323059a0b447143`
+**Code inspected:** `d6f8510ec51ec526c8febcc822eaf3859ef8eba4`
 
 **PDF:** [StockAgent-Three-Loops.pdf](StockAgent-Three-Loops.pdf), generated from this Markdown.
 
@@ -2400,6 +2400,7 @@ section 10) are part of the current design.
 | [PR-011](planning/PI-2026-09/stories/PR-011.md) | New data: promoter and insider trades, pledges, shareholding changes | Open | 4 Research; 8 Discovery | PR-006 |
 | [PR-012](planning/PI-2026-09/stories/PR-012.md) | Choose models by role, benched on our own data; refresh cost rates | Open | 3 Configuration | PR-007 |
 | [FIX-011](planning/PI-2026-09/stories/FIX-011.md) | NSE's per-symbol meta API is gone: restore the surveillance and suspension guards and an industry source | Open | 4 Research; 8 Discovery | None |
+| [FIX-012](planning/PI-2026-09/stories/FIX-012.md) | CI is red since 13 Oct: make FIX-007's log-route guard work on any FastAPI | Done | 13 Validation | None |
 
 ### Maintain documentation with each story
 

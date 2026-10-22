@@ -54,6 +54,11 @@ the owner on 2026-10-13), comes directly before SA-049. NSE's per-symbol meta AP
 probed on 2026-10-20, so the screen's surveillance (ASM/GSM) and suspension guards test nothing,
 and no stock outside the registry gets a real sector. SA-049 buys shelf ideas with idle
 cash, so the guards should work first.
+FIX-012, added on 2026-10-22 after the PR-004 and PR-006 push (the owner: "ya go ahead"),
+comes first in the remaining queue. CI's Linux suite has failed on every push since 13 Oct:
+FIX-007's route guard walks `app.routes`, and FastAPI 0.137.0 and later keep included routers
+as wrappers, so the guard finds no route. While CI is red, a new regression cannot be told
+apart from the known failure. It is test-only; pinning FastAPI belongs to SA-033.
 
 | Order | Story | Priority | Points | Result | Dependencies |
 |---:|---|---|---:|---|---|
@@ -68,16 +73,17 @@ cash, so the guards should work first.
 | 9 | [SA-051](stories/SA-051.md) | P1 | 3 | The portfolio against the Nifty, with honest labels | — |
 | 10 | [PR-004](stories/PR-004.md) | P1 | 3 | Enough researched ideas to fill 10+ positions | — |
 | 11 | [PR-006](stories/PR-006.md) | P1 | 3 | A daily company-event feed for held, watched and shelf stocks | — |
-| 12 | [PR-011](stories/PR-011.md) | P1 | 3 | New data: promoter and insider trades, pledges, shareholding changes | PR-006 |
-| 13 | [PR-009](stories/PR-009.md) | P1 | 5 | Exit on evidence, not on a price-path miss (shadow, then switch) | PR-002, PR-006 |
-| 14 | [SA-048](stories/SA-048.md) | P1 | 3 | Costs and tax in paper P&L | — |
-| 15 | [FIX-011](stories/FIX-011.md) | P1 | 2 | NSE's per-symbol meta API is gone: restore the surveillance and suspension guards and an industry source | — |
-| 16 | [SA-049](stories/SA-049.md) | P1 | 7 | Idle cash to work, with the breadth floor (12 target holdings) and the ₹2 L top-up | SA-050, SA-051 |
-| 17 | [PR-005](stories/PR-005.md) | P1 | 5 | An investment case for every position | PR-006 |
-| 18 | [PR-007](stories/PR-007.md) | P1 | 3 | Plain, fact-grounded buy and sell explanations | PR-005, PR-006 |
-| 19 | [PR-008](stories/PR-008.md) | P1 | 3 | "Your stocks overnight" at the top of the brief | PR-003, PR-006 |
-| 20 | [PR-010](stories/PR-010.md) | P1 | 5 | Four screens for members; an Operator menu for the owner | PR-001 |
-| 21 | [PR-012](stories/PR-012.md) | P2 | 2 | Models chosen by role, benched on our own data; cost rates refreshed | PR-007 |
+| 12 | [FIX-012](stories/FIX-012.md) | P1 | 1 | CI is red since 13 Oct: make FIX-007's log-route guard work on any FastAPI | — |
+| 13 | [PR-011](stories/PR-011.md) | P1 | 3 | New data: promoter and insider trades, pledges, shareholding changes | PR-006 |
+| 14 | [PR-009](stories/PR-009.md) | P1 | 5 | Exit on evidence, not on a price-path miss (shadow, then switch) | PR-002, PR-006 |
+| 15 | [SA-048](stories/SA-048.md) | P1 | 3 | Costs and tax in paper P&L | — |
+| 16 | [FIX-011](stories/FIX-011.md) | P1 | 2 | NSE's per-symbol meta API is gone: restore the surveillance and suspension guards and an industry source | — |
+| 17 | [SA-049](stories/SA-049.md) | P1 | 7 | Idle cash to work, with the breadth floor (12 target holdings) and the ₹2 L top-up | SA-050, SA-051 |
+| 18 | [PR-005](stories/PR-005.md) | P1 | 5 | An investment case for every position | PR-006 |
+| 19 | [PR-007](stories/PR-007.md) | P1 | 3 | Plain, fact-grounded buy and sell explanations | PR-005, PR-006 |
+| 20 | [PR-008](stories/PR-008.md) | P1 | 3 | "Your stocks overnight" at the top of the brief | PR-003, PR-006 |
+| 21 | [PR-010](stories/PR-010.md) | P1 | 5 | Four screens for members; an Operator menu for the owner | PR-001 |
+| 22 | [PR-012](stories/PR-012.md) | P2 | 2 | Models chosen by role, benched on our own data; cost rates refreshed | PR-007 |
 
 The new stories add 41 points. SA-049 grows from 5 to 7 points and SA-050 from 2 to 3. On 2026-10-12 the owner confirmed this order, chose the ₹2 L paper-capital top-up with 12 target holdings, and moved PR-011 up as P1 ("I need more data"); the production baseline is section 11 of the review. The track makes results
 visible, makes the portfolio broad enough to learn from, and stops one identified source of

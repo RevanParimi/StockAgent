@@ -109,8 +109,8 @@ Railway variable change redeploys).
 
 | Tier | Repository model | Used for |
 |---|---|---|
-| Fast | `qwen/qwen3.6-flash` | Chat tool loop, pre-open shock rating |
-| Reasoning | `z-ai/glm-5.2` | Unified analyst, aggregator narrative, FeedbackAgent, ThesisReviewer, control lane, chat retries |
+| Fast | `deepseek/deepseek-v4.1-flash-1017` | Chat tool loop, pre-open shock rating |
+| Reasoning | `xiaomi/mimo-v2.6-pro` | Unified analyst, aggregator narrative, FeedbackAgent, ThesisReviewer, control lane, chat retries |
 | Bulk | `deepseek/deepseek-v4-flash` | Ticker resolution, legacy agents, forecast profile, dossier and event agents, narration, macro reviewer, IPO extraction |
 
 [AGENTIC_DESIGN](AGENTIC_DESIGN.md) section 2 lists every caller. **Hard

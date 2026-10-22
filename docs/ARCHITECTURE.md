@@ -19,7 +19,7 @@ baseline evidence that the current design responds to, and the
 | Background ownership | One worker binds a localhost TCP port and runs the scheduler, RL self-heal, cleanup and the optional outbox drainer. A container-local guard; no standby takeover. |
 | Scheduler | In-process APScheduler: up to 24 job IDs, registered by gates and valid cron, all in IST ([KT section 9](TECHNICAL_DESIGN.md#9-scheduled-jobs-and-event-hooks)). |
 | Storage | JSON/JSONL, parquet and SQLite under `data/`, on one Railway volume mounted at `/app/data`. |
-| LLM tiers | OpenRouter, three tiers in `config.yaml`: fast `qwen/qwen3.6-flash` for the chat tool loop; reasoning `z-ai/glm-5.2` for judgment calls (unified analyst, aggregator verdict, RL feedback and thesis); bulk `deepseek/deepseek-v4-flash` for high-volume JSON scoring. |
+| LLM tiers | OpenRouter, three tiers in `config.yaml`: fast `deepseek/deepseek-v4.1-flash-1017` for the chat tool loop and the pre-open shock rating; reasoning `xiaomi/mimo-v2.6-pro` for judgment calls (unified analyst, aggregator verdict, RL feedback and thesis) and the chat fallback; bulk `deepseek/deepseek-v4-flash` for high-volume JSON scoring. |
 | External services | Market data (yfinance, NSE), search (Tavily, Serper), email over SMTP or Resend, web push, and an optional S3-compatible off-site bucket. |
 | Frontend | Served `src/frontend/prototypes/` JSX/PWA with runtime browser transformation; no compiled build. |
 | Health | `/health` is process liveness, not scheduler, data or delivery readiness. |

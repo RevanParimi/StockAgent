@@ -28,8 +28,8 @@ OPENROUTER_API_KEY: str = os.getenv("OPENROUTER_API_KEY", "your-openrouter-api-k
 OPENROUTER_BASE_URL: str = "https://openrouter.ai/api/v1"
 
 # Hybrid model tiers — rationale + retirement history documented in config.yaml.
-LLM_MODEL_FAST: str      = cfg("llm.model_fast",      env="LLM_MODEL_FAST",      fallback="qwen/qwen3.6-flash")
-LLM_MODEL_REASONING: str = cfg("llm.model_reasoning", env="LLM_MODEL_REASONING", fallback="qwen/qwen3.7-max")
+LLM_MODEL_FAST: str      = cfg("llm.model_fast",      env="LLM_MODEL_FAST",      fallback="deepseek/deepseek-v4.1-flash-1017")
+LLM_MODEL_REASONING: str = cfg("llm.model_reasoning", env="LLM_MODEL_REASONING", fallback="xiaomi/mimo-v2.6-pro")
 LLM_MODEL_BULK: str      = cfg("llm.model_bulk",      env="LLM_MODEL_BULK",      fallback="deepseek/deepseek-v4-flash")
 LLM_TEMPERATURE: float = cfg("llm.temperature", env="LLM_TEMPERATURE", fallback=0.2)
 LLM_MAX_TOKENS: int = cfg("llm.max_tokens", env="LLM_MAX_TOKENS", fallback=2048)
@@ -44,8 +44,10 @@ LLM_OUTPUT_COST_PER_M: float = cfg("llm.output_cost_per_m", env="LLM_OUTPUT_COST
 # fallback. Values: (input_usd_per_m, output_usd_per_m). Source of truth is
 # config.yaml llm.cost_rates; this dict is the shipped default.
 _DEFAULT_COST_RATES = {
+    "deepseek/deepseek-v4.1-flash-1017": (0.15, 0.60),
+    "xiaomi/mimo-v2.6-pro": (0.435, 0.87),
+    "deepseek/deepseek-v4-flash": (0.091, 0.182),
     "z-ai/glm-5.2": (1.218, 3.828),
-    "deepseek/deepseek-v4-flash": (0.098, 0.196),
     "qwen/qwen3.6-flash": (0.1875, 1.125),
 }
 LLM_COST_RATES: dict[str, tuple[float, float]] = {

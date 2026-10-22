@@ -1,5 +1,37 @@
 # Current handoff - 2026-10-22 (updated about 14:40 IST)
 
+## Also 22 Oct (about 22:30 IST to 00:30 IST 23 Oct): FIX-013, LLM tier switch, committed and pushed (separate conversation)
+
+The owner asked to replace the LLMs, with cost and efficiency first and any provider allowed, and
+said to commit and push without asking again. **This is a recorded deviation:** research, benches,
+implementation, commit and push ran in one conversation. Its fresh review is still due. Take it
+after FIX-012's.
+
+- **Change:**
+  - fast: `qwen/qwen3.6-flash` -> `deepseek/deepseek-v4.1-flash-1017`;
+  - reasoning: `z-ai/glm-5.2` -> `xiaomi/mimo-v2.6-pro`;
+  - bulk: unchanged.
+  Config, fallbacks, cost rates, one test, bench price lists, 7 living docs and guide case
+  11-L were updated. Receipt:
+  [evidence/FIX-013-implementation.md](evidence/FIX-013-implementation.md).
+- **Why:**
+  - An analyst call costs about $0.0058 instead of $0.0204.
+  - Chat turns averaged 14.0 s instead of 20.6 s at half the cost, with no fabricated source,
+    skipped tool or broken answer.
+  - Both models returned strict JSON 6/6 with reasoning off.
+  - Claude Haiku 5.5 was rejected: 1/6 parseable JSON with reasoning off. Qwen3.8 Flash was
+    rejected: a preview, 33.8 s a turn.
+- **Production verification is pending:**
+  - The owner confirms that no Railway variable named `LLM_MODEL_*` overrides `config.yaml`.
+    The pasted list began at `PREDICTION_DATA_DIR`.
+  - On the first trading morning, run guide case 11-L.
+- **Not done:** PR-012's role bench (stored bundles, grounding, blind scoring, bulk tier). It
+  stays `todo`.
+- **Found on the way:** `test_store_migration_sa009.py::test_a_refused_store_is_retried_and_the_status_never_overstates`
+  fails intermittently with a `FileNotFoundError` in its temp quarantine folder. It failed 1 run
+  in 6 on untouched `0a798e1`, and it was 1 failure in FIX-013's 5,562-test run. It is not
+  routed yet.
+
 ## Also 11 Oct (about 13:00–15:30 IST): product results review and new tasks (separate conversation)
 
 At the owner's request ("the stockagent product needs deeper analysis …"), a separate conversation

@@ -1077,8 +1077,8 @@ shows the live decision weights and the latest observation.
 ## 21. Static versus LLM boundary
 
 Model tiers come from `llm:` in config.yaml, each overridable by environment:
-fast `qwen/qwen3.6-flash`, reasoning `z-ai/glm-5.2`, bulk
-`deepseek/deepseek-v4-flash`. Production's values are not recorded here.
+fast `deepseek/deepseek-v4.1-flash-1017`, reasoning `xiaomi/mimo-v2.6-pro`,
+bulk `deepseek/deepseek-v4-flash`. Production's values are not recorded here.
 
 | Component | File | Kind | Notes |
 |---|---|---|---|

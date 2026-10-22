@@ -10,11 +10,22 @@ def test_known_model_uses_its_own_rate():
     assert cost == pytest.approx(1.218 + 3.828)
 
 
-def test_reasoning_call_no_longer_costed_at_bulk_rate():
+def test_reasoning_call_costed_at_its_own_rate_not_the_bulk_rate():
     reasoning = settings.llm_cost_usd(settings.LLM_MODEL_REASONING, 7440, 2957)
     bulk_flat = (7440 * settings.LLM_INPUT_COST_PER_M
                  + 2957 * settings.LLM_OUTPUT_COST_PER_M) / 1_000_000
-    assert reasoning > 5 * bulk_flat  # the AUD-105 ~10x undercount is gone
+    rate_in, rate_out = settings.LLM_COST_RATES[settings.LLM_MODEL_REASONING]
+    assert reasoning == pytest.approx((7440 * rate_in + 2957 * rate_out) / 1_000_000)
+    assert reasoning != pytest.approx(bulk_flat)  # the AUD-105 undercount is gone
+
+
+@pytest.mark.parametrize("model, expected", [
+    # OpenRouter list prices 2026-10-22, worked by hand for a 7,440-in / 2,957-out call
+    ("xiaomi/mimo-v2.6-pro", 0.00580899),               # 7440*0.435 + 2957*0.87
+    ("deepseek/deepseek-v4.1-flash-1017", 0.0028902),   # 7440*0.15 + 2957*0.60
+])
+def test_current_tier_models_cost_their_list_price(model, expected):
+    assert settings.llm_cost_usd(model, 7440, 2957) == pytest.approx(expected)
 
 
 def test_unknown_model_falls_back_to_flat_rate():

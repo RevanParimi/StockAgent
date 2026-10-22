@@ -10,7 +10,7 @@
   },
   "active_task": null,
   "next_task": "PR-011",
-  "next_phase": "PR-006 ACCEPTED by the fresh re-review of rework 1 (22 Oct about 13:39-14:40 IST, session stockagent-main-a8, a new conversation opened with 'continue'; receipt evidence/PR-006-review.md top section): status done, production pending_deployment. next_task PR-011 (ready: its only dependency PR-006 is done; not started) in a new conversation ('continue'). Reviewed input PR-006-manifest.json ec6eaf86 (23 files, 0 mismatches start and end); rework diff 44ebfddb and cumulative bfafe107 rebuilt by analysis_data/pr006_rereview/rr_digest.py. R1 and L1 resolved; RW-D1..D3 accepted (review 1's RV1a unmodified stays xfailed: a fixed now is a replay by contract; its scenario passes through the scheduler's call shape in RR1); I3 info (a meeting's later same-day row after the fetch is never typed, D4, no change). Re-reviewer trace analysis_data/pr006_rereview/rr_trace 69 passed; mutants story 11/11, trace 10/11 (X8 by arithmetic); story 138 passed; full suite 5,559 passed, 12 skipped, 1 xfailed, 0 failed in 17 min 6 s. Nothing committed, pushed or deployed; no production read; no message sent. Commit at the owner's word: PR-004 first from analysis_data/pr006/base, then PR-006 with the implementation receipt's commit-time edits (KT header bump, s12 Done, s1, PDF; guide 02-I..02-K status).",
+  "next_phase": "PR-006 ACCEPTED by the fresh re-review of rework 1 (22 Oct about 13:39-14:40 IST, session stockagent-main-a8, a new conversation opened with 'continue'; receipt evidence/PR-006-review.md top section): status done, production pending_deployment. next_task PR-011 (ready: its only dependency PR-006 is done; not started) in a new conversation ('continue'). Reviewed input PR-006-manifest.json ec6eaf86 (23 files, 0 mismatches start and end); rework diff 44ebfddb and cumulative bfafe107 rebuilt by analysis_data/pr006_rereview/rr_digest.py. R1 and L1 resolved; RW-D1..D3 accepted (review 1's RV1a unmodified stays xfailed: a fixed now is a replay by contract; its scenario passes through the scheduler's call shape in RR1); I3 info (a meeting's later same-day row after the fetch is never typed, D4, no change). Re-reviewer trace analysis_data/pr006_rereview/rr_trace 69 passed; mutants story 11/11, trace 10/11 (X8 by arithmetic); story 138 passed; full suite 5,559 passed, 12 skipped, 1 xfailed, 0 failed in 17 min 6 s. Nothing committed, pushed or deployed; no production read; no message sent. Commit at the owner's word: PR-004 first from analysis_data/pr006/base, then PR-006 with the implementation receipt's commit-time edits (KT header bump, s12 Done, s1, PDF; guide 02-I..02-K status). ALSO: FIX-013 (owner-requested LLM tier switch, committed and pushed 22-23 Oct before review at the owner's word) is review_required; take its fresh review after FIX-012's (receipt evidence/FIX-013-implementation.md, diff 156a0b84).",
   "scope": "One implementation or fresh-session review phase per conversation. Default queue is planned stories; stretch requires explicit promotion.",
   "pending_production_checks": [
     {"id": "SA-039-P1", "story": "SA-039", "due_ist": "2026-09-28 17:00", "status": "passed", "checked_ist": "2026-09-28 20:19", "result": "Deploy b3fb00dd. Logs from 16:30: 20 review headers, all learning_mode=observe, no duplicate; 19 'Proposal (not applied)'; 19 Complete; 0 'Weights -> v'. All 19 weighted tickers equal the baseline versions; observations applied=false, recorded 16:31-16:54 IST. WELCORP has no weights (known, pre-SA-039). The rule's date was wrong: the review grades the previous session, so review_date is 2026-09-25, as expected.", "check": "After the Mon 16:30 review: logs show learning_mode=observe and '[WeightAdapter] Proposal (not applied)' (no 'Weights -> vN'); /ui/rl/summary weight_version for every managed ticker equals the analysis_data/sa039_activation_versions_20260926.json baseline; /ui/rl/weights latest_observation dated 2026-09-28.", "record_in": "docs/planning/PI-2026-09/evidence/SA-039-activation-2026-09-26.md"},
@@ -1066,6 +1066,29 @@
       "production_verification": {
         "status": "pending_deployment",
         "evidence": null
+      },
+      "blocked_reason": null
+    },
+    {
+      "id": "FIX-013",
+      "title": "Move the fast and reasoning LLM tiers to cheaper current models",
+      "story": "docs/planning/PI-2026-09/stories/FIX-013.md",
+      "sprint": "user_requested",
+      "points": 1,
+      "priority": "P2",
+      "scope": "user_requested",
+      "status": "review_required",
+      "request": "owner, 22 Oct about 22:30-23:35 IST: 'the LLMs we are using seems very old ... cost and efficiency are priority', any provider; chose 'Split vendors (Recommended)' after Haiku 5.5 and Qwen3.8 Flash failed the benches; 'Once you update it, go ahead with commit and push, dont wait for me to say yes again'",
+      "depends_on": [],
+      "sequencing_note": "Owner-requested, done out of order beside FIX-012 (session stockagent-main-a6), whose 'clear' at 23:40 IST it waited for. Does not change active_task/next_task: FIX-012's fresh review stays next; FIX-013's fresh review follows. Does not satisfy PR-012 (role bench on stored bundles, grounding, blind scoring, bulk tier), which stays todo with its 'Today' table updated.",
+      "implementation_note": "IMPLEMENTED, COMMITTED AND PUSHED 2026-10-22/23 in ONE conversation with its research and benches (recorded deviation at the owner's word; same-conversation self-review only). config.yaml fast deepseek/deepseek-v4.1-flash-1017, reasoning xiaomi/mimo-v2.6-pro, bulk unchanged; base.py fallbacks + cost rates; ui_data.py's two import-failure chat fallbacks; test_llm_cost AUD-105 test asserts own-rate pricing with hand-worked values; bench PRICES; 7 living docs; guide case 11-L. Benches: reasoning_bench JSON 6/6 for both (Haiku 1/6), chat bench 0 fabricated/skipped/broken, 14.0 s vs 20.6 s a turn, half the cost; analyst call $0.0058 vs $0.0204. Review input 16 paths, diff 156a0b84 (analysis_data/fix013/digest.py, baseline 0a798e1).",
+      "implementation_receipt": "docs/planning/PI-2026-09/evidence/FIX-013-implementation.md",
+      "review_receipt": null,
+      "reviewed_revision": null,
+      "production_verification": {
+        "status": "not_started",
+        "evidence": null,
+        "steps": "owner confirms no Railway LLM_MODEL_* variable (the pasted list started at PREDICTION_DATA_DIR); first trading morning: guide case 11-L, telemetry rows with the new ids for the 08:45 pre-open check, chat and the analyst, and no 'LLM shock rating failed' log line"
       },
       "blocked_reason": null
     },
@@ -2294,6 +2317,7 @@
     }
   ],
   "history": [
+    {"date": "2026-10-22", "event": "FIX-013 (owner-requested) implemented, committed and pushed in one conversation at the owner's word, before its fresh review: fast tier qwen/qwen3.6-flash -> deepseek/deepseek-v4.1-flash-1017, reasoning z-ai/glm-5.2 -> xiaomi/mimo-v2.6-pro, bulk unchanged. Chosen by scripts/reasoning_bench.py (JSON 6/6 with reasoning off) and scripts/model_bench.py (real chat pipeline, 0 fabricated/skipped/broken) after Haiku 5.5 (1/6 JSON) and Qwen3.8 Flash (33.8 s a turn) failed; OpenRouter spend about $0.064. Status review_required; production verification not started. active_task/next_task unchanged (FIX-012's fresh review first)."},
     {"date": "2026-10-22", "event": "PR-006 ACCEPTED by the fresh re-review of rework 1 (about 13:39-14:40 IST, session stockagent-main-a8): R1 and L1 resolved, RW-D1..D3 accepted, I3 info (no change). Input ec6eaf86, rework diff 44ebfddb, cumulative bfafe107; trace 69 passed; mutants story 11/11, trace 10/11; full suite 5,559 passed, 12 skipped, 1 xfailed, 0 failed in 17 min 6 s. Production pending_deployment. next_task PR-011."},
     {"date": "2026-10-22", "event": "PR-006 rework 1 (about 12:19-13:10 IST, session stockagent-main-46): R1 fixed (the clock is read per stock when its fetches return; an NSE row timed after the fetch waits for a later run instead of being stored undated; board-meeting id from the row's own filing day), L1 done (KT s4 limits). review_required; manifest ec6eaf86, rework diff 44ebfddb, cumulative bfafe107; story 138 passed, mutants 56/56, full suite 5,559 passed, 12 skipped, 1 xfailed, 0 failed in 11 min 18 s."},
     {"date": "2026-10-20", "event": "PR-004 ACCEPTED by the fresh re-review of rework 1 (about 18:56-19:45 IST, session stockagent-main-53): R1/R2 resolved, RW-D1..D4 accepted, RR-L1 low (CEATLTD/TIINDIA outside the registry; commit-time FIX-011 note + receipt sentences). full suite 5,421 passed, 12 skipped, 1 xfailed, 0 failed in 20 min 36 s. next_task PR-006."},

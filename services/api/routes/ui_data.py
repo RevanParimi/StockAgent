@@ -3246,11 +3246,11 @@ def _mock_reply(q: str) -> str:
 
 try:
     from backend.shared.config import settings as _chat_cfg
-    _CHAT_MODEL = _chat_cfg.LLM_MODEL_FAST            # fast tool-loop model (qwen3.6-flash)
+    _CHAT_MODEL = _chat_cfg.LLM_MODEL_FAST            # fast tool-loop model
     _CHAT_FALLBACK_MODEL = _chat_cfg.LLM_MODEL_REASONING  # escalate on rate-limit/5xx
 except Exception:
-    _CHAT_MODEL = "qwen/qwen3.6-flash"
-    _CHAT_FALLBACK_MODEL = "z-ai/glm-5.2"
+    _CHAT_MODEL = "deepseek/deepseek-v4.1-flash-1017"
+    _CHAT_FALLBACK_MODEL = "xiaomi/mimo-v2.6-pro"
 _CHAT_MAX_TOOL_ROUNDS = 4              # max tool rounds before forcing a final answer
 _CHAT_RETRIES_PER_MODEL = 2            # AUD-101: was 3 — caps the retry x model product at 4
 _CHAT_TURN_BUDGET_S = 45.0             # AUD-101: soft wall-clock budget per user turn

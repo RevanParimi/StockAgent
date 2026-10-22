@@ -63,8 +63,8 @@ production can differ. All calls go through OpenRouter.
 
 | Tier | Repository model | Used by |
 |---|---|---|
-| Fast | `qwen/qwen3.6-flash` | Chat tool loop; pre-open shock rating |
-| Reasoning | `z-ai/glm-5.2` | Unified analyst; aggregator narrative; FeedbackAgent; ThesisReviewer; control lane (unless `rl.control_lane_model` is set); chat retry after a rate limit or server error |
+| Fast | `deepseek/deepseek-v4.1-flash-1017` | Chat tool loop; pre-open shock rating |
+| Reasoning | `xiaomi/mimo-v2.6-pro` | Unified analyst; aggregator narrative; FeedbackAgent; ThesisReviewer; control lane (unless `rl.control_lane_model` is set); chat retry after a rate limit or server error |
 | Bulk | `deepseek/deepseek-v4-flash` | Ticker resolution; legacy per-dimension agents; forecast profile; prompt-enhancer fallback; dossier curator and distillation; event ingestion; research loop; macro reviewer; portfolio narrator; brief and weekly headlines; IPO extraction and narration |
 
 Shared defaults: temperature 0.2 (`llm.temperature`), 2,048 output tokens

@@ -524,7 +524,7 @@ A surprise government order, a sudden exchange circuit breaker, or a geopolitica
 
 | Layer | Technology |
 |---|---|
-| AI models (3 tiers, via OpenRouter) | `glm-5.2` (REASONING) for the Unified Sector Analyst, verdict synthesis, RL feedback, and discovery deep-dives · `deepseek-v4-flash` (BULK) for all narration (briefs, digests, advice text) and the chat default · `qwen3.6-flash` (FAST) for ticker resolution and cheap classification. Tier map lives in `config.yaml`; every call is telemetered with per-model cost rates |
+| AI models (3 tiers, via OpenRouter) | `mimo-v2.6-pro` (REASONING) for the Unified Sector Analyst, verdict synthesis, RL feedback, discovery deep-dives and the chat fallback · `deepseek-v4-flash` (BULK) for all narration (briefs, digests, advice text), ticker resolution and event reading · `deepseek-v4.1-flash-1017` (FAST) for the chat tool loop and the pre-open shock rating. Tier map lives in `config.yaml`; every call is telemetered with per-model cost rates |
 | Analysis framework | Single unified-analyst call per run (all sectors, generic included); the legacy per-dimension parallel agent pool survives only as the automatic fallback |
 | Backend | Python FastAPI |
 | Data — prices & OHLCV | yfinance (NSE/BSE prices, 10-year OHLCV, sector indices, commodities) |

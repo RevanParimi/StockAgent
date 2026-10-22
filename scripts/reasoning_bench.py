@@ -42,18 +42,16 @@ except Exception:
 from services.clients.llm_client import JSON_MODE_EXTRA_BODY, get_async_llm_client
 from core.intelligence.rl.agents.feedback_agent import VALID_MISS_FACTOR_RE
 
-# OpenRouter ids + live price ($/1M in, out) — verified 2026-07-03/06 via /api/v1/models
+# OpenRouter ids + list price ($/1M in, out) — verified 2026-10-22 via /api/v1/models
 PRICES: dict[str, tuple[float, float]] = {
-    "qwen/qwen3.7-max":          (1.25, 3.75),    # current REASONING tier (baseline)
-    "qwen/qwen3.7-plus":         (0.32, 1.28),
-    "deepseek/deepseek-v4-pro":  (0.435, 0.87),
-    "minimax/minimax-m3":        (0.30, 1.20),
-    "z-ai/glm-4.7":              (0.40, 1.75),
-    "minimax/minimax-m2.7":      (0.18, 0.72),
-    "deepseek/deepseek-v4-flash": (0.089, 0.18),  # BULK tier — floor reference
-    "z-ai/glm-5.2":              (0.686, 2.156),  # AA index 51 (> max's 46), reasoning-on
-    "z-ai/glm-5":                (0.60, 1.92),
-    "stepfun/step-3.7-flash":    (0.20, 1.15),    # AA 43 reasoning-on, ~30 off
+    "xiaomi/mimo-v2.6-pro":              (0.435, 0.87),   # current REASONING tier
+    "deepseek/deepseek-v4.1-flash-1017": (0.30, 1.20),    # current FAST tier (weekday IST peak rate)
+    "deepseek/deepseek-v4-flash":        (0.091, 0.182),  # BULK tier — floor reference
+    "z-ai/glm-5.2":                      (1.218, 3.828),  # REASONING until 2026-10-22
+    "qwen/qwen3.6-flash":                (0.1875, 1.125), # FAST until 2026-10-22
+    "anthropic/claude-haiku-5.5":        (0.10, 0.50),    # rejected: prose before JSON, 1/6
+    "qwen/qwen3.8-flash":                (0.15, 0.47),
+    "inclusionai/ling-3.1-flash":        (0.075, 0.225),  # rejected: 15 s per call
 }
 # Pass model ids as argv to bench a subset; default = all in PRICES.
 MODELS = [m for m in sys.argv[1:] if m in PRICES] or list(PRICES)

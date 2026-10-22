@@ -130,8 +130,9 @@ its own data, and the typed result says how (KT section 4).*
 | NSE client, key registry | `services/data/fetchers/nse_client.py`, `nse_key_registry.py` | NSE sessions; field renames across report vintages |
 | Bhavcopy | `services/data/fetchers/bhavcopy.py` | Official EOD, delivery % |
 | Close verifier | `services/data/fetchers/close_verifier.py` | yfinance close cross-checked with NSE's |
-| Announcements | `services/data/fetchers/nse_announcements.py` | Filings, board meetings, corporate actions; one prefetch per analysis |
+| Announcements | `services/data/fetchers/nse_announcements.py` | Filings, board meetings, corporate actions; one prefetch per analysis, and the company-event feed's dated filings |
 | Corporate events | `services/data/fetchers/corporate_events.py` | Results dates and actions for holdings |
+| Company-event feed | `core/events/feed.py` | Twice each trading day, what happened to every held, watched and shelf stock: NSE filings and company news, typed and dated by source, in `data/events/` (KT section 4) |
 | Market intelligence | `services/data/fetchers/nse_market.py` | FII/DII flows, bulk deals |
 | Bulk and block deals | `services/data/fetchers/bulk_block.py` | Institutional accumulation for discovery |
 | Surveillance | `services/data/fetchers/surveillance.py` | ASM/GSM, suspension, free-float market cap |
@@ -166,6 +167,7 @@ parquet for EOD panels. KT section 3 lists every record and its writer.*
 | Prediction store | `core/intelligence/rl/stores/prediction_store.py` | The learning file tree (below) |
 | Store inventory and quarantine | `core/intelligence/rl/stores/store_inventory.py`, `store_migration.py` | Read-only ownership census; reversible quarantine of stray stores |
 | Portfolio store | `core/portfolio/store.py` | Per-user JSON and append-only JSONL, with a file lock |
+| Event store | `core/events/store.py` | `data/events/`: one append-only JSONL per stock, a state file and a run log, with a file lock; no user in it |
 | Score store | `services/data/stores/score_store.py` | SQLite analysis history |
 | Log store | `services/data/stores/log_store.py` | SQLite telemetry archive |
 | Data health | `services/data/stores/data_health.py` | One row per analysis run (JSONL and `telemetry.db`) |
@@ -370,7 +372,7 @@ Pydantic models.
 |---|---|---|
 | Dossier schema | `src/backend/shared/schemas/dossier.py` | `open_guidance(as_of)` and the dated digest |
 | DossierCurator | `core/intelligence/rl/agents/dossier_curator.py` | Daily (step 8.5), plus weekly distillation on Mondays at 03:30 |
-| EventIngestor | `core/intelligence/rl/agents/event_ingestor.py` | Saturday 10:00: NSE results, con-calls, guidance and presentations dated on or before the scan |
+| EventIngestor | `core/intelligence/rl/agents/event_ingestor.py` | Saturday 10:00: NSE results, con-calls, guidance and presentations dated on or before the scan; also the same day, when the company-event feed stores a new such filing for an enabled managed stock |
 | QuestionResearcher | `core/intelligence/rl/agents/question_researcher.py` | Saturday 11:00: searches for open questions, one batched call per ticker |
 
 **Design principle.** The model *proposes* dossier updates; the merge code
@@ -509,7 +511,7 @@ error direction (KT [section 5](TECHNICAL_DESIGN.md#grading-defect-an-example-ev
 
 ### 14.1 API — `services/api/server.py`
 
-14 routers: **89 router endpoints and 1 WebSocket**, plus 3 app-level routes
+15 routers: **90 router endpoints and 1 WebSocket**, plus 3 app-level routes
 (`/health`, `/tickers` and the single-page fallback).
 
 | Router | Path | Endpoints and surface |
@@ -526,6 +528,7 @@ error direction (KT [section 5](TECHNICAL_DESIGN.md#grading-defect-an-example-ev
 | ops | `services/api/routes/ops_api.py` | 3: the operations backlog, its digest and triage (owner or machine key) |
 | audit, history | `services/api/routes/audit_api.py`, `history.py` | 2 each |
 | analyse | `services/api/routes/analyse.py` | 1: an on-demand analysis (member quota) |
+| events | `services/api/routes/events_api.py` | 1: one stock's company events (a member's own stocks and the shelf; the owner any) |
 | stream | `services/api/routes/stream.py` | The WebSocket `/ws/stream` with agent progress |
 | Auth gate | `services/api/auth.py` | Session, owner and machine-key checks |
 | Log buffer | `services/api/log_buffer.py` | The managed list's readers and a live log ring buffer, read only by the owner or the machine key (`/ui/logs`) |
@@ -579,6 +582,7 @@ reference.
 | 06:30 | `ops_watchdog` | Daily |
 | 07:30 | `macro_daily_news` | Mon–Fri |
 | 08:00 | `ipo_refresh_am` | Daily |
+| 08:15 | `company_events_am` | Mon–Fri trading days |
 | 08:45 | `preopen_shock_check` | Mon–Fri |
 | 08:50 | `morning_brief` | Mon–Fri |
 | 09:00 | `rl_monthly_forecast` | 1st |
@@ -589,6 +593,7 @@ reference.
 | 16:30 | `rl_daily_review` | Mon–Fri (`scheduler.feedback_cron`) |
 | 17:45 | `ipo_refresh_pm` | Daily |
 | 18:00 | `weekly_review` | Sunday |
+| 18:30 | `company_events_pm` | Mon–Fri trading days |
 | 19:00 | `ipo_deep_dive` | Daily |
 | 19:00 | `bhavcopy_daily_sync` | Mon–Fri |
 | 23:00 | `atlas_universe_recompute` | Daily |

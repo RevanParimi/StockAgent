@@ -2,7 +2,7 @@
 
 **Edition:** 2026-10-22 · **Audience:** engineers and teammates learning the product
 
-**Code inspected:** `020d3c28b121ce6bc498291929e5fcc774a41204`
+**Code inspected:** `3378246cc03e7b4af4030e1d4323059a0b447143`
 
 **PDF:** [StockAgent-Three-Loops.pdf](StockAgent-Three-Loops.pdf), generated from this Markdown.
 
@@ -38,11 +38,14 @@ triggered no production job, backfill or notification.
 Production runs the inspected code once the deployment of 22 October 2026 is
 confirmed by the owner's read-only check of the deployment list and `/health`.
 Until then it runs the code deployed on the evening of 19 October (`25fae38`;
-the deployment list showed it live by 18:00 IST). They differ in discovery:
-only companies are ranked and dived, the shelf holds 20 ideas with at most 3 per
-market sector, ideas are re-dived after 30 days, and the 16:30 review buys only
-from the buy candidates (section 8). The table gives the configuration that
-differs from the repository and the state of each operational control.
+the deployment list showed it live by 18:00 IST). They differ in discovery and
+in company events. Discovery ranks and dives only companies, the shelf holds 20
+ideas with at most 3 per market sector, ideas are re-dived after 30 days, and
+the 16:30 review buys only from the buy candidates (section 8). The
+company-event feed runs at 08:15 and 18:30 IST on trading days and stores
+dated, typed events for every tracked stock; nothing trades on them (section 4).
+The table gives the configuration that differs from the repository and the
+state of each operational control.
 
 | Area | State in production | Evidence |
 |---|---|---|
@@ -142,6 +145,7 @@ general human-approval queue between these components.
 | [services/data](../services/data/) | Fetchers, context assembly, caches, durable stores, backup, restore and off-site copy. |
 | [core/intelligence](../core/intelligence/) | Forecasting, feedback, learning mode, regimes, seasonal logic, company knowledge and prediction-store tools. |
 | [core/portfolio](../core/portfolio/), [core/discovery](../core/discovery/), [core/ipo](../core/ipo/) | Virtual money path, identity reconciliation, listed-stock discovery and IPO evidence. |
+| `core/events` | The daily company-event feed: filings and news for every tracked stock, typed and stored (section 4). Outside `core/intelligence`, because it reads users' holdings. |
 | [core/audit](../core/audit/), [core/ops/watchdog](../core/ops/watchdog/), [core/delivery](../core/delivery/) | Outcome measurement, operational monitoring and delivery. |
 | [src/frontend/prototypes](../src/frontend/prototypes/) | Served React/JSX application, PWA, chat rendering and data adapters. |
 | [tests](../tests/) | Unit, integration and contract checks behind a hermetic boundary; their presence alone is not acceptance. |
@@ -207,6 +211,7 @@ evidence.
 | `data/portfolio/<user>/` | PortfolioStore: holdings/cash, advice and transaction JSONL, value history, dated digests, briefs and weekly reviews, and `weekly_scorecard.jsonl` (one results row per ISO week, written once; section 7). The nightly auditor's `advice_outcomes.jsonl` sits beside them. |
 | `data/ipo/` | Historical issue facts and captured demand snapshots; reports derive from these records. |
 | `data/market_cache/ipo.json` and EOD parquet | Cached IPO information and exchange price history; date, source and stale state matter. |
+| `data/events/` | The company-event feed (section 4): `<SYMBOL>.jsonl`, one event per source item, append-only; `state.json`, the day's news-search count and the items judged not about their company; `runs.jsonl`, one line per run. Market facts only, with no user in them. The feed writes; `GET /events/{symbol}` reads. |
 | `data/logs/data_health.jsonl`; `data/logs/decision_gate.jsonl` | One data-health row per analysis run, also written to `telemetry.db`; one gate row per consumer decision. The gate log never holds a user id. |
 | `scores.db`: `score_history` | One row per completed analysis, written at the orchestrator's exit after the decision gate; the newest 90 per stock. Home's scores, the watchlist, Portfolio's verdict changes and the chat read it; lists name only shared stocks and the viewer's own (section 10). `scripts/backfill_score_history.py` can copy past runs from `telemetry.db`'s `run_summaries`, marked so they can be removed; it copies nothing from a minute before a stock's first live row on, because that run is already recorded. |
 | SQLite log, user and Atlas stores | Telemetry, sessions and relational indexes/outbox. Secondary tables may lag primary records. |
@@ -606,6 +611,130 @@ and saved TATAELXSI's October envelope from that analysis. The same path
 turned TVSMOTOR into TVSMOTORS and named HAPPSTMNDS "Happy Smile Digital Ltd".
 **Planned:** one sector definition replaces the per-sector lists (SA-026).
 
+### Company events
+
+An analysis run reads NSE filings and company news only for itself. The
+company-event feed (`core/events/feed.py`) keeps a daily record of what
+happened to every stock a user holds or watches and to every active shelf
+idea: results, guidance, orders, ratings, management changes, regulatory
+action, corporate actions and deals. Each event is typed, dated and cites the
+item it came from. Two jobs run it on trading days, at 08:15 and 18:30 IST
+(section 9). Nothing trades or advises on it yet; the investment case, the
+explanations, the brief's company lane and the exit rule are to read it
+(**Planned:** PR-005, PR-007, PR-008, PR-009).
+
+A run:
+
+1. **Stocks.** Holdings first, then watchlists, then shelf ideas, each stock
+   once, at most `events.max_symbols` (60). A stock whose identity the registry
+   does not resolve that day (above) is skipped and named in the run record.
+   NSE is asked for the registry's NSE code, so TVSMOTORS is fetched as
+   TVSMOTOR, and its events are stored under TVSMOTORS.
+2. **Items.** NSE announcements filed in the last `events.lookback_days` (7),
+   board-meeting intimations filed in that window, and one Serper news search
+   (the daily review's company query, the past 24 hours, 5 articles). Searches
+   are capped at `events.news_queries_per_day` (60), half per run, in stock
+   order; a spent credit stops the run's searches. Each run logs its searches
+   with the month's Serper count.
+3. **New items only.** An item already stored, or judged not about the
+   company in the last `events.seen_days` (30), is not sent again. At most 24
+   per stock per run, newest first.
+4. **Typed** by one bulk-tier call per 12 items. The model answers per item:
+   whether it is about the company, one sentence, a category (results,
+   guidance, order, rating, management, regulatory, corporate_action, deal,
+   other), a direction (positive, negative, neutral) and a materiality (high,
+   medium, low).
+5. **Stored** once per item in `data/events/<SYMBOL>.jsonl`, keyed by NSE's
+   announcement id or the article's URL without tracking parameters.
+
+The record (`src/backend/shared/schemas/events.py`) is `{id, symbol, what,
+category, direction, materiality, source, source_url, announcement_id,
+title, publisher, published_at, published_raw, fetched_at, classifier}`.
+**Planned:** the text reader emits the same record (SA-046).
+
+**Dates.** `published_at` comes from the source and never from the fetch:
+
+- an announcement's NSE filing time, as an IST date-time;
+- a board meeting's filing time, never its meeting day, which is often weeks
+  later;
+- an article's Serper date, read by the brief's rule: "10 hours ago" at 08:15
+  counts back to 22:15 the day before, and that IST day is kept.
+
+`fetched_at` is the moment that stock's own fetches returned. A run of 50
+stocks can last more than 10 minutes, so the clock is read once per stock,
+not once per run. If a stock's turn comes at 18:42 and NSE shows its filing of
+18:41:20, the event keeps 18:41:20; an article's age counts back from that
+stock's fetch. An NSE time more than 10 minutes after the fetch is not stored
+yet: the run counts it (`nse_rows_ahead`), and a later run, inside the 7-day
+window, stores it with its own time. The 10 minutes allow for NSE's clock
+running ahead of ours, so within them `published_at` can be a little later
+than `fetched_at`. A board meeting's identity uses its own filing day, never
+the clock.
+
+So `null` means the source gave no readable date (or, for an article, a date
+in the future). Such an event is stored but never returned for a `since`
+query, so it never counts as new. `published_raw` keeps the source's own
+string, so either date can be checked.
+
+**The company.** An event is filed under the stock the feed asked about; the
+model never names the stock. An NSE row must carry the code that was asked
+for. An article must mention the company: its ticker or NSE code in capitals,
+its name without legal suffixes ("Maruti Suzuki" for Maruti Suzuki India
+Limited), or the first two words of a longer name ("Adani Ports"). So an
+article about Tata Motors is never filed under Tata Elxsi. The model can still
+answer "not about this company", for example for a market roundup.
+
+**Grounding.** An answer is dropped and counted when it cites no item it was
+given, states a figure its item does not contain ("profit up 15%" for an item
+that says 12%, "Rs 35 billion" for "Rs 3,500 crore"), or has an unknown
+category, direction or materiality. A failed call or malformed output stores
+nothing, and the next run asks again; so does a failed NSE or news fetch. The
+run never raises.
+
+**Same-day dossier knowledge.** A newly stored NSE announcement whose subject
+the event ingestor qualifies (results, earnings call, guidance, analyst meet,
+investor presentation, dividend) runs the ingestor for that stock in the same
+run, under its managed sector (section 5), instead of on Saturday. A
+board-meeting intimation does not, because the meeting has not happened. A
+stock that is not an enabled managed stock has no dossier, so its event is
+only stored.
+
+**Who reads it.** Events hold no user. But the feed covers only the stocks
+someone tracks, so `GET /events/{symbol}` gives a member the events of their
+own holdings and watchlist and of the shelf. Any other symbol gets the same
+404, whether or not it has events; the owner reads any.
+
+**Example:** at 08:15 on Thu 22 Oct, MARUTI is held. NSE lists two filings in
+the window: 21 Oct 15:39, an analyst-meet schedule, and 15 Oct 19:13,
+"Action(s) taken or orders passed". Serper returns five articles, and the one about
+Tata Motors is dropped before the model sees it. The 21 Oct filing is stored
+with `published_at` 2026-10-21T15:39:05+05:30 and `fetched_at` a few seconds
+after 08:15, when MARUTI's fetches returned, and as an analyst-meet filing it
+runs MARUTI's dossier ingestion under automobile.
+At 18:30 the same items are fetched again, and none is sent to the model.
+
+**Limits.**
+
+- An article that names the company only by a short form ("Maruti", "L&T")
+  and not by its ticker in capitals is dropped.
+- The reverse: a short code or a two-word name prefix can pass for another
+  company. "LT Foods" passes for L&T (code LT), "Indian Railway Finance
+  Corporation" for IRCTC ("Indian Railway"), "HDFC Life Insurance" for LIC
+  ("Life Insurance"). The model's "not about this company" answer is then the
+  only guard.
+- News is searched over the past 24 hours (`events.news_recency`, `qdr:d`).
+  So Monday's 08:15 run misses articles published between Friday 18:30 and
+  Sunday 08:15, and the first run after an NSE holiday misses in the same way.
+  Filings are not affected: the 7-day window covers them.
+- An NSE row whose time stays in the future (a wrong timestamp) is never
+  stored; every run counts it in `nse_rows_ahead`.
+- One story told by several outlets gives several events. **Planned:** the
+  brief groups them by company, category and day (PR-008).
+- A relative age gives a day, not a time; "1 month ago" counts as 30 days.
+- NSE's field names were recorded from its live responses on 22 Oct 2026. A
+  renamed field gives undated or missing items, which the run counts.
+- The store has no retention yet; it grows by a few events per stock per day.
+
 ### Limits of the research path
 
 - The gate records only (section 1). In the 2026-10-01 measurement, 25 of 78
@@ -810,17 +939,19 @@ observations and 1 guidance item dated 24 and 27 Oct
 Open guidance is read through one rule, the dossier's `open_guidance(as_of)`:
 open items dated on or before `as_of`, in stored order. The digest lists the
 last 5. The morning brief's earnings-watch line takes the last item as of the
-day before the brief's date. The brief goes out at 08:50, before any weekday
-dossier writer runs (the curator runs inside the 16:30 review; event
-ingestion and research run on Saturdays). So a row dated the brief's own day can only be
-an old future-dated one, and the brief's earnings window includes the meeting
-day.
+day before the brief's date. The brief goes out at 08:50. The curator runs
+inside the 16:30 review and research on Saturdays. Event ingestion runs on
+Saturdays and, for a stock with a new results or concall filing, in the
+company-event feed's 08:15 and 18:30 runs (section 4). So a row dated the
+brief's own day is either an old future-dated one or a filing made that
+morning, and the brief's earnings window includes the meeting day.
 
 **Example:** a held stock has results on Tue 27 Oct. Its dossier holds open
 guidance dated 15 Sep and an old item dated 27 Oct. The briefs of Mon 26 and
 Tue 27 Oct, the two in the 3-day earnings window, both show the 15 Sep item.
-The cost of the rule: a brief triggered by hand after the 16:30 review leaves
-out that day's new guidance until the next day.
+The cost of the rule: guidance from a results filing made before 08:15 on the
+brief's day, or new guidance seen by a brief triggered by hand after the 16:30
+review, reaches the earnings-watch line the next day.
 
 ## 6. Portfolio: advice and virtual execution
 
@@ -835,7 +966,7 @@ narration fails. The [narrator](../core/portfolio/narrator.py) is given the
 verdict, symbol, close, regime label and rule codes only, on the bulk tier,
 so its text can restate the rule but not the company's facts. **Planned:** an
 investment case recorded per holding (PR-005) and explanations grounded in it
-and in company events (PR-006, PR-007).
+and in the company events of section 4 (PR-007).
 
 | Research verdict | Portfolio action |
 |---|---|
@@ -1411,7 +1542,7 @@ established, and is not part of the September remediation scope.
 
 Source: [scheduler.py](../services/scheduler/python/scheduler.py).
 These are in-process APScheduler jobs, not separate OS cron jobs. There are
-**24 possible job IDs**, including three IPO jobs. Registration depends on gates
+**26 possible job IDs**, including three IPO jobs. Registration depends on gates
 and valid cron configuration; registration alone is not execution.
 All times are **Asia/Kolkata (IST)** defaults.
 
@@ -1421,11 +1552,13 @@ All times are **Asia/Kolkata (IST)** defaults.
 | `ops_watchdog` | Daily 06:30 | Milestones/checks/configured prep; watchdog gate. |
 | `macro_daily_news` | Mon–Fri 07:30 | Policy/RBI feed; macro-news gate. |
 | `ipo_refresh_am` | Daily 08:00 | Calendar/bids/snapshots; IPO gate. |
+| `company_events_am` | Mon–Fri 08:15 | Company-event feed (section 4): overnight filings and news; events gate; skips NSE holidays. |
 | `preopen_shock_check` | Mon–Fri 08:45 | Shock/reforecast; feature/calendar checks in handler. |
 | `morning_brief` | Mon–Fri 08:50 | Brief assembly/delivery; delivery gate. |
 | `macro_market_news` | Mon–Fri 09:00, 12:00, 15:00 | Intraday macro feed; macro-news gate. |
 | `rl_daily_review` | Mon–Fri 16:30 | Previous trading session; configured feedback cron. |
 | `ipo_refresh_pm` | Daily 17:45 | Evening IPO update before Sunday weekly review; IPO gate. |
+| `company_events_pm` | Mon–Fri 18:30 | Company-event feed: the day's filings and news, after the close and the 16:30 review; events gate; skips NSE holidays. |
 | `ipo_deep_dive` | Daily 19:00 | T−1 IPO research + post-close re-read into the dark verdict store; IPO gate. |
 | `bhavcopy_daily_sync` | Mon–Fri 19:00 | Official EOD cache; discovery gate. |
 | `atlas_universe_recompute` | Daily 23:00 | Demand/cadence; no-op if Atlas disabled. |
@@ -1550,7 +1683,7 @@ in the exchange's own zone:
 A failed, stale (over 4 days) or implausible figure is named "unavailable"
 and shows no number. GIFT Nifty is not shown: no reliable free source. The
 Inbox renders the server's sentences. **Planned:** a "your stocks" section
-from a daily company-event feed (PR-006, PR-008).
+from the company-event feed of section 4 (PR-008).
 
 The weekly review opens with the week's results scorecard (section 7): red
 flags first, then closed trades, sales graded by the nightly auditor, exit
@@ -2113,9 +2246,10 @@ The planned changes connect the research to the money:
   for every change below: closed trades, expectancy, the share of sales whose
   stock beat the Nifty afterwards, exit reasons, breadth and the money-weighted
   Nifty comparison, with predeclared red flags.
-- **Know each company daily.** A typed, dated, sourced event feed covers held,
-  watched and shelf stocks (PR-006), widened with insider trades, pledges and
-  shareholding changes (PR-011).
+- **Know each company daily.** The company-event feed (section 4) records what
+  happened to each held, watched and shelf stock, and the changes below read
+  it. It is widened with insider trades, pledges and shareholding changes
+  (PR-011).
 - **Own a stock for a reason.** Each holding gets a written investment case:
   pillars with evidence, an expected range, an invalidation price and business
   triggers, and the next check. Every number in it is checked against its
@@ -2258,7 +2392,7 @@ section 10) are part of the current design.
 | [PR-003](planning/PI-2026-09/stories/PR-003.md) | Fresh overnight news: no repeats, published-date freshness, global cues | Done | 10 Delivery | None |
 | [PR-004](planning/PI-2026-09/stories/PR-004.md) | Enough researched ideas to fill 10+ positions | Done | 8 Discovery | None |
 | [PR-005](planning/PI-2026-09/stories/PR-005.md) | An investment case for every position | Open | 6 Portfolio | PR-006 |
-| [PR-006](planning/PI-2026-09/stories/PR-006.md) | A daily company-event feed for held, watched and shelf stocks | Open | 4 Research; 9 Jobs | None |
+| [PR-006](planning/PI-2026-09/stories/PR-006.md) | A daily company-event feed for held, watched and shelf stocks | Done | 4 Research; 9 Jobs | None |
 | [PR-007](planning/PI-2026-09/stories/PR-007.md) | Plain, fact-grounded buy and sell explanations | Open | 6 Portfolio | PR-005, PR-006 |
 | [PR-008](planning/PI-2026-09/stories/PR-008.md) | "Your stocks overnight" at the top of the morning brief | Open | 10 Delivery | PR-003, PR-006 |
 | [PR-009](planning/PI-2026-09/stories/PR-009.md) | Exit on evidence, not on a price-path miss (shadow, then switch) | Open | 6 Portfolio | PR-002, PR-006 |

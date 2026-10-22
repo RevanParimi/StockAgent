@@ -176,6 +176,14 @@ StockAgent-main/
 │   │   ├── shelf.py               # Discovery Shelf (cap/displace, stale rotation, promote)
 │   │   ├── paper_lane.py          # Paper envelopes + weekly paper reviews (ISOLATED lane)
 │   │   └── ipo_tracker.py         # Stage-2 IPO/new-listing scoring + lock-in calendar
+│   ├── events/                    # Daily company-event feed (Jobs company_events_am/_pm; KT §4).
+│   │   │                          #  Outside intelligence/: it reads users' holdings (R1)
+│   │   ├── feed.py                # run_event_feed(): tracked stocks → NSE filings + news →
+│   │   │                          #  classifier → store; caps, identity, same-day ingestion
+│   │   ├── sources.py             # NSE rows / Serper results → cited items (id, source date,
+│   │   │                          #  company mention check)
+│   │   ├── classify.py            # One bulk-tier call per batch + grounding (cited item, figures)
+│   │   └── store.py               # EventStore: data/events/<SYMBOL>.jsonl, state.json, runs.jsonl
 │   ├── delivery/                  # Compass Phase C: M4 proactive delivery (see below)
 │   │   ├── channels.py            # web-push (pywebpush+VAPID) + SMTP email; PushStore;
 │   │   │                          #  send-then-record delivered flag; stale-sub pruning
@@ -435,6 +443,12 @@ Auth mirrors the portfolio pattern (optional `X-Scheduler-Key`; lockdown deferre
 | POST | `/discovery/run` | optional key | Trigger a full discovery cycle now (sync → screen → dives → shelf → paper reviews). 202, background. |
 | POST | `/discovery/shelf/{symbol}/promote` | optional key | One-command promote a shelf idea to the watchlist (`source="discovery"`, weekly cadence). 404 if not an active idea. |
 | DELETE | `/discovery/shelf/{symbol}` | optional key | Drop a shelf idea (`reason="manual_api"`). 404 if not an active idea. |
+
+### Company events (`/events/*`)
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| GET | `/events/{symbol}?since=<ISO day>&limit=<1-500>` | session | The company-event feed's stored events for one stock, newest first; `since` keeps events published on or after that IST day (an undated event never). A member reads only their own holdings and watchlist and the active shelf, and gets the same 404 for any other symbol whether or not it has events; the owner reads any. 422 for anything that is not an NSE symbol. |
 
 The cycle also runs automatically: scheduler Job 12 (`discovery_weekly`, Sat 12:30 IST) calls `core.discovery.run_discovery_cycle()`; Job 11 (`bhavcopy_daily_sync`, Mon-Fri 19:00 IST) keeps the EOD parquet cache topped up. Both are gated on `discovery.enabled`.
 
@@ -812,6 +826,25 @@ the plane and flag-off is the instant-rollback lever.
 | `EVENT_INGEST_MAX_EVENTS_PER_SCAN` | `3` | LLM/Tavily call cap per ticker per scan |
 | `EVENT_INGEST_TEXT_MAX_CHARS` | `6000` | Per-event text bundle truncation |
 
+A results or concall filing found by the company-event feed also runs this ingestor for its stock in the feed's run (below).
+
+### Company-event feed (`config.yaml` → `events.*`)
+
+| Name | Default | Description |
+|------|---------|-------------|
+| `EVENTS_ENABLED` | `true` (base.py fallback `false`) | Registers `company_events_am`/`_pm`; `false` is the rollback |
+| `EVENTS_DATA_DIR` | `data/events` | Event store root |
+| `EVENTS_MORNING` / `EVENTS_EVENING` | `08:15` / `18:30` | IST run times, Mon–Fri; NSE holidays skipped |
+| `EVENTS_MAX_SYMBOLS` | `60` | Stocks per run: held, then watched, then shelf |
+| `EVENTS_NEWS_QUERIES_PER_DAY` | `60` | Serper `/news` searches per IST day; each run may use half |
+| `EVENTS_NEWS_ARTICLES_PER_QUERY` | `5` | Articles per search |
+| `EVENTS_NEWS_RECENCY` | `qdr:d` | Serper recency bound (past 24 hours) |
+| `EVENTS_LOOKBACK_DAYS` | `7` | NSE filing window per run |
+| `EVENTS_MAX_ITEMS_PER_SYMBOL` | `24` | New items per stock per run, newest first |
+| `EVENTS_MAX_ITEMS_PER_CALL` | `12` | Items per classifier call (bulk tier) |
+| `EVENTS_SEEN_DAYS` | `30` | How long an item judged "not about this company" is not asked again |
+| `EVENTS_INGEST_ON_RESULTS` | `true` | A new qualifying NSE announcement runs the dossier ingestor that run |
+
 ### Living Envelope (RL Phase 2.5)
 
 | Name | Default | Description |
@@ -893,6 +926,10 @@ All paths verified to exist. Paths are relative to project root.
 | `core/portfolio/autopilot.py` | `execute_advice()` — deterministic verdict executor (sells then buys, no LLM; every buy sized by `sizing`, a SWITCH buy only inside its shelf idea's entry band, a skipped buy leg's reason on the SELL's note); `record_value_point()` — daily equity snapshot |
 | `core/portfolio/sizing.py` | One sizing and entry rule for every autopilot buy: `weights()` (shares of total equity: holdings at their marks plus cash), `size_buy()` (position and sector caps after the trade, cash floor), `entry_check()` (at or below `entry_high`, above `invalidation_level`) |
 | `services/data/fetchers/corporate_events.py` | NSE corp-actions feed + forward board-meetings calendar (degraded-mode safe) |
+| `services/data/fetchers/nse_announcements.py` | Per-analysis NSE prefetch (`prefetch_nse_data`, agent context) and the event feed's lean `fetch_company_filings` (dated announcements + board meetings, no key-registry writes) |
+| `core/events/feed.py` | `run_event_feed()` — the daily company-event feed (08:15 + 18:30 IST): every held, watched and shelf stock, NSE filings and one news search each, typed by the bulk tier, stored once per item; caps, identity skips and same-day dossier ingestion |
+| `src/backend/shared/schemas/events.py` | `CompanyEvent` — the one event schema (source date vs fetch time, cited source) |
+| `services/api/routes/events_api.py` | `GET /events/{symbol}` — a member's own stocks and the shelf; the owner any |
 | `data/portfolio/<user>/` | Per-user volume state: `portfolio.json`, `advice_ledger.jsonl`, `transactions.jsonl` (Autopilot audit trail), `value_history.jsonl` (daily equity curve), `digests/` |
 | `scripts/seed_autopilot.py` | One-time Autopilot seed: equal-weight virtual holdings from managed tickers + `autopilot=True`; idempotent |
 | `services/api/routes/discovery_api.py` | /discovery/* — Compass Phase B: shelf, latest screen, manual run, promote/drop |
@@ -920,6 +957,7 @@ All paths verified to exist. Paths are relative to project root.
 | `src/backend/sectors/generic/pipeline/orchestrator.py` | GenericSectorOrchestrator — sector-agnostic 8-dimension graph (unified primary, UniversalAgent fallback pool) |
 | `data/market_cache/bhavcopy/` | Per-day parquet EOD cache, ~550 sessions rolling |
 | `data/discovery/` | `screens/`, `shelf.json`, `shelf_events.jsonl` |
+| `data/events/` | Company events: `<SYMBOL>.jsonl` (one per source item), `state.json` (the day's search count, items judged unrelated), `runs.jsonl` (one line per run). No user id |
 | `data/rl/paper/predictions/` | ISOLATED paper-lane RL store — never mixed into real metrics |
 | `services/api/routes/prompts.py` | /ui/prompts/* — live prompt editing and GitHub deploy |
 | `services/api/routes/analytics.py` | /analytics/* — RL performance exports and Power BI feed |

@@ -1,4 +1,4 @@
-# Current handoff - 2026-10-20 (updated about 19:45 IST)
+# Current handoff - 2026-10-22 (updated about 14:40 IST)
 
 ## Also 11 Oct (about 13:00–15:30 IST): product results review and new tasks (separate conversation)
 
@@ -74,7 +74,211 @@ Docs only; nothing committed, pushed, deployed or configured.
 
 ## START HERE — resume checklist, in order
 
-**PR-004 is ACCEPTED** by the fresh re-review of rework 1 (20 Oct, about 18:56–19:45 IST,
+**PR-006: ACCEPTED** by the fresh re-review of rework 1 (22 Oct, about 13:39–14:40 IST, session
+stockagent-main-a8, a new conversation opened with "continue"; peers -1c, -2c, -3c, -46, -48,
+-53, -95 and -bb idle). Receipt: [review, top section](evidence/PR-006-review.md).
+
+STATE: `active_task: null`, PR-006 `done`, production `pending_deployment`, **`next_task:
+PR-011`** (ready: its only dependency, PR-006, is done). That means PR-011's implementation in
+a new conversation ("continue"). Nothing was committed, pushed or deployed, no production state
+was read, no message was sent and no outside endpoint was called. PR-004 and PR-006 (both
+accepted) and the owner's line in `docs/README.md` stay uncommitted.
+
+- **In one example** (the re-reviewer's own trace, RR1).
+  - The 18:30 run, called exactly as the scheduler calls it, tracks 50 stocks; MARUTI is
+    last and asks NSE at 18:44:37.
+  - NSE shows MARUTI's results filing and a board-meeting intimation, both filed at 18:41:20.
+  - Both are stored with 18:41:20 and `fetched_at` 18:44:47. A `since` read returns them, and
+    MARUTI's ingestion runs once. The next morning stores nothing again.
+- **Checked:**
+  - the input `ec6eaf86…`: 0 mismatches at the start and the end;
+  - both diffs rebuilt independently (`44ebfddb…`, `bfafe107…`);
+  - the re-reviewer's trace `analysis_data/pr006_rereview/rr_trace`: 69 passed, including 65
+    random timetables with NSE's clock from 2 min behind to 25 min ahead;
+  - 11 mutants aimed at the rework: the story's tests catch 11, the trace 10 (X8 for an
+    arithmetic reason, explained in the receipt);
+  - story file 138 passed; review 1's trace as predicted;
+  - full suite: 5,559 passed, 12 skipped, 1 xfailed, 0 failed in 17 min 6 s;
+  - the KT, guide and PDF match the code; `check_kt_docs` gives exactly the 2 expected errors.
+- **Findings:**
+  - R1 and L1 resolved; RW-D1 to RW-D3 accepted.
+  - I3 (info, no change): if a meeting's second row is filed the same day after the stock's
+    fetch, it is merged under the stored id and never typed (D4).
+- **For the owner, at your word:**
+  - commit PR-004 first, from its own bytes in `analysis_data/pr006/base/`, with its
+    commit-time edits;
+  - then PR-006 with its commit-time edits: the KT header bump, section 12 `Done`, section 1,
+    the PDF, and guide 02-I to 02-K status.
+  - After the deploy, pushes also avoid 08:10–08:35 and 18:25–18:50.
+  - In the first week, read five held stocks' events each day (02-I). Rollback:
+    `EVENTS_ENABLED=false`.
+
+**Before that: PR-006 rework 1 was IMPLEMENTED** (22 Oct, about 12:19–13:10 IST, session stockagent-main-46, a
+new conversation opened with "continue"; peers -1c, -2c, -3c, -48, -53, -95 and -bb idle).
+Receipt: [implementation, section "Rework 1"](evidence/PR-006-implementation.md).
+
+STATE: `active_task: null`, PR-006 `review_required`, **`next_task: PR-006`**. That means its
+**fresh re-review** in a new conversation ("continue"), then PR-011. Nothing was committed,
+pushed or deployed, no production state was read, no message was sent and no outside endpoint
+was called. PR-004 (accepted) and the owner's line in `docs/README.md` stay uncommitted
+underneath.
+
+- **In one example (R1).** The 18:30 run tracks 50 stocks; MARUTI's fetches return at 18:42:30,
+  and NSE shows its results filing and a board-meeting intimation filed at 18:41:20.
+  - Before: both stored undated (the bound was the run's start plus 10 minutes); the intimation
+    again, dated, the next morning.
+  - Now: the clock is read for each stock when its fetches return. Both are stored with
+    18:41:20 and `fetched_at` 18:42:30, a `since` read returns them, and the ingestion runs that
+    evening. The next morning stores nothing again.
+- **What changed:**
+  - `core/events/feed.py`: a clock seam `_clock()` and a `clock` argument; one read per stock,
+    after its fetches (the NSE bound, news ages, `fetched_at`). A replay at a fixed `now` keeps
+    that time for every stock (RW-D1).
+  - `core/events/sources.py`: an NSE time more than 10 minutes after the fetch is not stored
+    undated; the row waits for a later run and is counted (`nse_rows_ahead`) (RW-D2). A board
+    meeting's id takes its filing day from the row itself.
+  - L1: KT section 4 limits (short codes and name prefixes; the weekend news gap), the "Dates"
+    paragraph, D9, guide 02-I, the PDF.
+- **Checked:**
+  - story file 138 passed (was 105): the long-run example, news ages, the scheduler's
+    call, NSE's clock ahead, and 25 random multi-run timetables;
+  - mutants: 56 of 56 caught;
+  - the reviewer's trace as it is: 105 passed, 2 failed, 1 xfailed, as expected (RV1b XPASS,
+    the observation fails, RV1a stays xfailed at a fixed `now`). The unmarked copy, which passes
+    the fake NSE's clock: 107 passed, only the observation failing. The reviewer's 10 mutants:
+    9 of 10, the same as in the review;
+  - full suite: 5,559 passed, 12 skipped, 1 xfailed, 0 failed in 11 min 18 s;
+  - broad-except OK; `check_kt_docs` exactly the 2 expected errors; PDF 51 pages.
+- **For the re-reviewer:**
+  - Input [PR-006-manifest.json](evidence/PR-006-manifest.json) `ec6eaf86…`, 23 files, 0
+    mismatches. The reviewed input stays as `PR-006-manifest-review1.json` (`d2e35f72…`).
+  - Rework diff `44ebfddb…` (50,719 bytes, 5 paths) against
+    `analysis_data/pr006/rework1/base/`; cumulative `bfafe107…` (180,813 bytes, 22
+    paths), both by `analysis_data/pr006/rework1/rw_digest.py`.
+  - Tooling in `analysis_data/pr006/rework1/`: `rw_swap_plugin.py` (`RW_SWAP=<name>`),
+    `run_mutants.py`, `make_rv_unmarked.py` and `rv_unmarked/`, `run_rv_mutants.py`.
+  - Worth a hard look: RW-D1 (a `clock` argument; a replay at a fixed `now` keeps a fixed
+    clock, so the unmarked RV1 copy passes `clock=`), RW-D2 (a row timed after the fetch waits;
+    a permanently future row is never stored, a KT limit).
+- **For the owner, at your word** (unchanged): commit PR-004 first from its own bytes in
+  `analysis_data/pr006/base/`, then PR-006 after its re-review, with the implementation
+  receipt's commit-time edits. Pushes also avoid 08:10–08:35 and 18:25–18:50 once deployed.
+
+**Before that: PR-006 got CHANGES REQUESTED** by its fresh review (22 Oct, about 11:33–12:30 IST, session
+stockagent-main-2c, a new conversation opened with "continue"; peers -1c, -3c, -48, -53, -95
+and -bb idle). Receipt: [review](evidence/PR-006-review.md).
+
+STATE: `active_task: null`, PR-006 `changes_requested`, **`next_task: PR-006`**. That means
+**rework 1** in a new conversation ("continue"), then a fresh re-review, then PR-011. Nothing
+was committed, pushed or deployed, no production state was read and no message was sent.
+PR-004 (accepted) and the owner's line in `docs/README.md` stay uncommitted underneath.
+
+- **In one example (R1, medium, must fix).** It is Tue 27 Oct and the 18:30 run tracks 50
+  stocks. MARUTI's turn comes at 18:42, and NSE now shows its results filing of 18:41:20.
+  - The feed checks every NSE time against the run's **start** plus 10 minutes
+    (`feed.py:181` → `sources.py:108`), so the filing is stored with `published_at: null`.
+  - The next run can't fix it, because the id is NSE's `seq_id`. A `since` read never returns
+    it, and no same-day ingestion runs.
+  - A board-meeting filing in the same case is stored twice: undated that evening, dated the
+    next morning (the id includes the filing day only when the time was accepted,
+    `sources.py:180`, `:194`).
+  - Acceptance criteria 2 and 3 fail in that case. That a run lasts more than 10 minutes is
+    inference (local bulk-tier latency median 4.3 s for short answers); it is not measured.
+- **The fix, the implementer's choice:**
+  - read the clock per stock at the fetch, through a seam, for the bound and `fetched_at`;
+  - make a row's id independent of whether its time was accepted: leave a future-timed NSE
+    row for the next run, or key board meetings by the raw filing day;
+  - add a feed-level test of a long run.
+- **L1 (low, docs, same rework):** KT section 4 Limits gain two bullets:
+  - the weekend and holiday news gap: `qdr:d` means Monday 08:15 misses Fri 18:30–Sun 08:15;
+  - short-code and name-prefix matches: "LT Foods" for L&T, "Indian Railway Finance" for
+    IRCTC, "HDFC Life Insurance" for LIC.
+
+  Then the PDF. I1 and I2 are info only.
+- **Checked:**
+  - the input `d2e35f72…`: 0 mismatches at the start and the end;
+  - the diff `403fb28b…`, rebuilt independently; the base holds 33 of 33 PR-004 blobs;
+  - NSE's `to_date` includes that day (one public read);
+  - the reviewer's trace: 106 passed and 2 strict xfails (RV1a, RV1b = R1). Its RV2 runs 40
+    random multi-day histories against a separate model, and RV3 60 cap cases;
+  - mutants: 9 of 10 caught;
+  - story file 105 passed;
+  - full suite: 5,526 passed, 12 skipped, 1 xfailed, 0 failed in 13 min 32 s;
+  - broad-except OK, and `check_kt_docs` exactly the 2 expected errors.
+
+  D1–D14 accepted (D4 and D9 with R1, D5 with L1). The three hard-review questions are
+  answered in the receipt.
+- **For rework 1:**
+  - keep this input as `PR-006-manifest-review1.json` before rewriting the manifest;
+  - remove the xfail marks from `analysis_data/pr006_review/rv_trace/test_rv_trace.py`
+    RV1a/RV1b; RV1's observation test then records the old behaviour and should fail;
+  - rewrite D9 and the KT "Dates" paragraph so the bound is the fetch.
+
+  The implementation receipt's commit-time edits still apply after acceptance.
+
+**Before that: PR-006 was IMPLEMENTED** (22 Oct, about 08:19–11:25 IST, session stockagent-main-bb, a new
+conversation opened with "continue"; peers stockagent-main-1c, -3c, -48, -53 and -95 idle).
+Receipt: [implementation](evidence/PR-006-implementation.md).
+
+STATE: `active_task: null`, PR-006 `review_required`, **`next_task: PR-006`**. That means its
+**fresh review** in a new conversation ("continue"), then PR-011. Nothing was committed,
+pushed or deployed, no production state was read and no message was sent. PR-004 (accepted,
+below) and the owner's line in `docs/README.md` stay uncommitted underneath it.
+
+- **In one example.** At 08:15 on Thu 22 Oct MARUTI is held.
+  1. NSE lists two filings in the 7-day window: 21 Oct 15:39, an analyst-meet schedule, and
+     15 Oct 19:13, "Action(s) taken or orders passed".
+  2. Serper's five articles include one about Tata Motors; it never reaches the model.
+  3. One bulk-tier call types the rest. Each event is filed under MARUTI with its item's own
+     date: `2026-10-21T15:39:05+05:30`; "10 hours ago" becomes `2026-10-21`; no date stays
+     `null`. `fetched_at` is 08:15 on all of them.
+  4. The analyst-meet filing runs MARUTI's dossier ingestion now, not on Saturday.
+  5. At 18:30 the same items come back, and none is sent to the model again.
+- **What it is:** `core/events/` (feed, sources, classifier, store), `GET /events/{symbol}`,
+  jobs `company_events_am` (08:15) and `company_events_pm` (18:30) on trading days, `events.*`
+  config. It is on and stores only; nothing trades or advises on it. Rollback:
+  `EVENTS_ENABLED=false`.
+- **Decisions D1–D14** (delegated). Worth a hard look:
+  - D2: a member reads events only for their own holdings and watchlist and the shelf. Any
+    other symbol gets the same 404; otherwise "INFY has events" would tell a member that
+    someone holds INFY.
+  - D5 and D6: an article must mention the company before the model sees it, and a sentence
+    stating a figure its item lacks is dropped. The story's own test found that a first,
+    substring version let "Rs 35 billion" through for "Rs 3,500 crore".
+  - D7: 60 Serper searches a day, half per run; at most about 1,300 a month.
+  - D8: same-day ingestion only for a new qualifying NSE announcement of an enabled managed
+    stock.
+- **Measured** (public NSE endpoints, MARUTI, local): with no date range NSE returns a
+  symbol's whole history (2,017 rows), so the feed always sends one; the board-meeting date
+  filter is on the meeting day, so the feed filters by filing time itself. Recorded as the
+  fixture. The news fixture is constructed: recording one spends credit.
+- **Checked:**
+  - story file 105 passed; 45 of 45 in-memory mutants caught (the first run timed out while
+    the laptop slept 09:11–10:55; the last 18 were re-run);
+  - 57 affected files plus the story file: 1,081 passed;
+  - full suite: 5,526 passed, 12 skipped, 1 xfailed, 0 failed in 13 min 26 s;
+  - broad-except OK; PDF 50 pages, source `60368f58…`.
+- **For the reviewer:**
+  - Input [PR-006-manifest.json](evidence/PR-006-manifest.json) `d2e35f72…`, 23 files, 0
+    mismatches.
+  - Diff `403fb28b…` (161,569 bytes, 22 paths) by `analysis_data/pr006/digest.py`, against
+    the base snapshot (`base_snapshot.py`: 41 paths, each PR-004 path proved by its manifest
+    blob).
+  - Mutants: `swap_plugin.py`, `PR006_SWAP=<name>` with `-p swap_plugin`.
+  - `check_kt_docs` reports exactly 2 errors: the two new job IDs are absent at the KT's
+    declared revision `84eefda`. The commit-time header bump clears them (D14).
+  - `PR-004-manifest.json` now shows 7 mismatches: exactly the 7 shared files PR-006
+    changed. PR-004's own bytes for them are in `analysis_data/pr006/base/`.
+- **For the owner, at your word:**
+  - Commit PR-004 first, with its commit-time edits (below), from its own bytes of the 7
+    shared files in `analysis_data/pr006/base/`.
+  - Then commit PR-006 after its fresh review: the KT header bump, section 12 `Done`, section
+    1, the PDF, and the guide's 02-I to 02-K status lines.
+  - The deploy adds jobs at 08:15 and 18:30 IST, so pushes should also avoid 08:10–08:35 and
+    18:25–18:50. For the first week, run guide 02-I: read five held stocks' events each day
+    and record whether they are right. Watch the Serper count in the run log line.
+
+**Before that: PR-004 was ACCEPTED** by the fresh re-review of rework 1 (20 Oct, about 18:56–19:45 IST,
 session stockagent-main-53, a new conversation opened with "continue"; peers
 stockagent-main-3c, the rework, and -48 and -95 idle). Receipt:
 [review, section "Re-review of rework 1"](evidence/PR-004-review.md).

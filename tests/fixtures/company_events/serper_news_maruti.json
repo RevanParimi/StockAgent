@@ -1,0 +1,33 @@
+{
+ "_note": "Constructed, not recorded: a live Serper query spends search credit. It has the shape of Serper's /news response (the fields services/data/fetchers/news.py reads: news[].title, link, snippet, date, source) and covers the cases the feed must handle: an article about the company, one about another company, a roundup, a duplicate URL with tracking parameters, an absolute date, an article without a link and one without a date. Links use the reserved example.com domain.",
+ "news": [
+  {"title": "Maruti Suzuki Q2 results: net profit rises 12% to Rs 3,500 crore",
+   "link": "https://news.example.com/markets/maruti-suzuki-q2-results?utm_source=feed",
+   "snippet": "Maruti Suzuki India reported a 12% rise in second-quarter net profit to Rs 3,500 crore on higher exports.",
+   "date": "10 hours ago", "source": "Example Business Daily", "position": 1},
+  {"title": "Tata Motors shares slip after JLR wholesales update",
+   "link": "https://news.example.com/markets/tata-motors-jlr-update",
+   "snippet": "Tata Motors fell 2% after Jaguar Land Rover reported lower wholesales for the quarter.",
+   "date": "3 hours ago", "source": "Example Markets", "position": 2},
+  {"title": "Stocks to watch: Maruti Suzuki, Infosys, HDFC Bank and 7 others",
+   "link": "https://news.example.com/markets/stocks-to-watch-22-oct",
+   "snippet": "Here are the stocks that are likely to be in focus in Thursday's session.",
+   "date": "5 hours ago", "source": "Example Markets", "position": 3},
+  {"title": "Maruti Suzuki Q2 results: net profit rises 12% to Rs 3,500 crore",
+   "link": "https://news.example.com/markets/maruti-suzuki-q2-results/?utm_medium=social",
+   "snippet": "Maruti Suzuki India reported a 12% rise in second-quarter net profit.",
+   "date": "9 hours ago", "source": "Example Business Daily", "position": 4},
+  {"title": "Maruti Suzuki raises prices across models from November",
+   "link": "https://news.example.com/auto/maruti-suzuki-price-increase",
+   "snippet": "Maruti Suzuki will increase prices by up to 2% from 1 November, citing input costs.",
+   "date": "Oct 20, 2026", "source": "Example Auto", "position": 5},
+  {"title": "Maruti Suzuki to expand Kharkhoda plant capacity",
+   "link": "",
+   "snippet": "The company plans to add 2.5 lakh units of capacity.",
+   "date": "1 day ago", "source": "Example Auto", "position": 6},
+  {"title": "Maruti Suzuki EV launch: what we know so far",
+   "link": "https://news.example.com/auto/maruti-suzuki-ev-launch",
+   "snippet": "Maruti Suzuki's first electric SUV is expected to reach showrooms soon.",
+   "date": "", "source": "Example Auto", "position": 7}
+ ]
+}

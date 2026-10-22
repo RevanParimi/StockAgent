@@ -149,11 +149,28 @@ def search_serper_news(
 
     Returns list of dicts: {title, snippet, link, date, source}
     """
+    return search_serper_news_status(query, n=n, api_key=api_key, geo=geo, tbs=tbs)[0]
+
+
+def search_serper_news_status(
+    query: str,
+    n: int = 5,
+    api_key: str | None = None,
+    geo: str | None = "in",
+    tbs: str | None = None,
+) -> tuple[list[dict], str]:
+    """
+    `search_serper_news` and why it returned what it did: (results, status).
+    status is "ok" (one or more articles), "empty" (none), "no_key",
+    "exhausted" (HTTP 400, the key's credit), "http_<code>" or "error". A
+    caller that must stop when the credit runs out, such as the company-event
+    feed, reads it; everyone else calls `search_serper_news`.
+    """
     from backend.shared.config import settings as _s
     key = api_key or _s.SERPER_API_KEY
     if not key:
         logger.debug("[news] No Serper key for /news search — skipping")
-        return []
+        return [], "no_key"
 
     params: dict = {"q": query, "num": n, "hl": "en"}
     if geo:
@@ -180,17 +197,17 @@ def search_serper_news(
                 "source":  item.get("source", ""),
             })
         record_call("serper")   # counts against same Serper quota as /search calls
-        return results
+        return results, ("ok" if results else "empty")
     except requests.HTTPError as exc:
         code = exc.response.status_code if exc.response is not None else "?"
         if code == 400:
             logger.warning("[news] Serper /news key exhausted for '%s' — will fall back", query)
-        else:
-            logger.warning("[news] Serper /news HTTP %s for '%s': %s", code, query, exc)
-        return []
+            return [], "exhausted"
+        logger.warning("[news] Serper /news HTTP %s for '%s': %s", code, query, exc)
+        return [], f"http_{code}"
     except Exception as exc:
         logger.warning("[news] Serper /news failed for '%s': %s", query, exc)
-        return []
+        return [], "error"
 
 
 # ---------------------------------------------------------------------------
@@ -380,6 +397,15 @@ def _company_name_for_news(ticker: str) -> str:
     return ""
 
 
+def company_news_query(ticker: str) -> tuple[str, str]:
+    """(the Serper query for one company's news, the company name or "").
+    The daily review's `get_news_context` and the company-event feed send
+    the same query: the name when known, then the ticker."""
+    company = _company_name_for_news(ticker)
+    prefix = f"{company} " if company and company.upper() != ticker.upper() else ""
+    return f"{prefix}{ticker} NSE India company news", company
+
+
 def _recent_article_lines(
     results: list[dict], max_articles: int, window_days: int
 ) -> tuple[list[str], int]:
@@ -458,14 +484,11 @@ def get_news_context(ticker: str, max_articles: int = 5, window_days: int = 3) -
             logger.debug("[news] get_news_context: no Serper key configured")
             return "Market context unavailable."
 
-        company = _company_name_for_news(ticker)
-
         # Company-specific query — geo=in keeps results India-relevant, and tbs
         # bounds Google to recent articles (without it the top hits are stale
         # "Q3/Q4 results" roundups that the window filter then throws away).
+        query, company = company_news_query(ticker)
         recency = getattr(_s, "NEWS_CONTEXT_RECENCY", "qdr:w") or None
-        prefix  = f"{company} " if company and company.upper() != ticker.upper() else ""
-        query   = f"{prefix}{ticker} NSE India company news"
         results = search_serper_news(query, n=max_articles, api_key=key, geo="in",
                                      tbs=recency)
         lines, dropped = _recent_article_lines(results, max_articles, window_days)

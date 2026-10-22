@@ -50,6 +50,7 @@ from services.api.routes.prompts import router as prompts_router
 from services.api.routes.analytics import router as analytics_router
 from services.api.routes.portfolio_api import router as portfolio_router
 from services.api.routes.discovery_api import router as discovery_router
+from services.api.routes.events_api import router as events_router
 from services.api.routes.delivery_api import router as delivery_router
 from services.api.routes.audit_api import router as audit_router
 from services.api.routes.rl_monitor import router as rl_monitor_router
@@ -479,6 +480,7 @@ app.include_router(prompts_router,   tags=["Prompts"])
 app.include_router(analytics_router, tags=["Analytics"])
 app.include_router(portfolio_router,  tags=["Portfolio"])
 app.include_router(discovery_router,  tags=["Discovery"])
+app.include_router(events_router,     tags=["Events"])
 app.include_router(delivery_router,   tags=["Delivery"])
 app.include_router(rl_monitor_router, tags=["RL Monitor"])
 app.include_router(audit_router,     tags=["Audit"])
@@ -530,7 +532,7 @@ if _FRONTEND_DIR is not None:
     # (AUD-100) — fail loudly instead.
     _API_NAMESPACES = (
         "ui/", "api/", "scheduler/", "analytics/", "portfolio/", "discovery/",
-        "delivery/", "history/", "ws/", "analyse", "ops/",
+        "events/", "delivery/", "history/", "ws/", "analyse", "ops/",
     )
 
     # Catch-all (registered last → all API/docs routes take precedence).

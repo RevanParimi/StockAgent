@@ -482,6 +482,26 @@ discovery:
   ipo_lockin_warn_days: 7        # flag anchor/pre-IPO lock-in expiries within N days
   ipo_qib_weight: 3.0            # QIB subscription weighted 3x retail (spec §6.2)
 
+# ── Company-event feed (core/events; KT sections 4 and 9) ──────────────────
+# Twice each trading day, what happened to every stock a user holds or watches
+# and every active shelf idea: NSE filings and one news search per stock, typed
+# by one bulk-tier call, stored in data/events/<SYMBOL>.jsonl. Store only:
+# nothing reads it yet except the route and the same-day dossier ingestion.
+events:
+  enabled: true                  # base.py fallback false; rollback = false (EVENTS_ENABLED)
+  data_dir: "data/events"
+  morning: "08:15"               # IST, before the 08:45 pre-open check
+  evening: "18:30"               # IST, after the close and the 16:30 review
+  max_symbols: 60                # held first, then watched, then shelf
+  news_queries_per_day: 60       # Serper /news; each run may use half
+  news_articles_per_query: 5
+  news_recency: "qdr:d"          # past 24 hours; NSE filings cover longer gaps
+  lookback_days: 7               # NSE filing window, covers long weekends
+  max_items_per_symbol: 24       # new items per stock per run (newest first)
+  max_items_per_call: 12         # items per classifier call
+  seen_days: 30                  # how long an "unrelated" answer is remembered
+  ingest_on_results: true        # a results or concall filing runs the dossier ingestion that run
+
 # ── PI Prospect — IPO intelligence (spec 2026-08-11) ────────────────────────
 ipo:
   enabled: true

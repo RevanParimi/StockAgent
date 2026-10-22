@@ -966,6 +966,23 @@ DISCOVERY_SIGNAL_WEIGHTS: dict[str, float] = {
 }
 
 # ---------------------------------------------------------------------------
+# Company-event feed (config.yaml events.*; core/events)
+# ---------------------------------------------------------------------------
+EVENTS_ENABLED: bool = bool(cfg("events.enabled", env="EVENTS_ENABLED", fallback=False))
+EVENTS_DATA_DIR: str = cfg("events.data_dir", fallback="data/events")
+EVENTS_MORNING: str = str(cfg("events.morning", fallback="08:15"))
+EVENTS_EVENING: str = str(cfg("events.evening", fallback="18:30"))
+EVENTS_MAX_SYMBOLS: int = int(cfg("events.max_symbols", fallback=60))
+EVENTS_NEWS_QUERIES_PER_DAY: int = int(cfg("events.news_queries_per_day", fallback=60))
+EVENTS_NEWS_ARTICLES_PER_QUERY: int = int(cfg("events.news_articles_per_query", fallback=5))
+EVENTS_NEWS_RECENCY: str = str(cfg("events.news_recency", fallback="qdr:d"))
+EVENTS_LOOKBACK_DAYS: int = int(cfg("events.lookback_days", fallback=7))
+EVENTS_MAX_ITEMS_PER_SYMBOL: int = int(cfg("events.max_items_per_symbol", fallback=24))
+EVENTS_MAX_ITEMS_PER_CALL: int = int(cfg("events.max_items_per_call", fallback=12))
+EVENTS_SEEN_DAYS: int = int(cfg("events.seen_days", fallback=30))
+EVENTS_INGEST_ON_RESULTS: bool = bool(cfg("events.ingest_on_results", fallback=True))
+
+# ---------------------------------------------------------------------------
 # Compass Phase C — IPO tracker + M4 proactive delivery (spec §6.2 / §7)
 # ---------------------------------------------------------------------------
 DISCOVERY_IPO_ENABLED: bool = bool(cfg("discovery.ipo_enabled", fallback=False))

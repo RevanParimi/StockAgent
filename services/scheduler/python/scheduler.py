@@ -344,6 +344,32 @@ class AutomobileScheduler:
         )
         logger.info("[Scheduler] Pre-open shock check job: 8:45 am IST weekdays")
 
+        # ── Job 10b: Company-event feed (Mon–Fri 08:15 + 18:30 IST) ─────────
+        # Before the 08:45 pre-open check, and after the close and the 16:30
+        # review. The job skips NSE holidays. Store only (core/events).
+        if getattr(settings, "EVENTS_ENABLED", False):
+            for slot, hhmm in (("am", settings.EVENTS_MORNING), ("pm", settings.EVENTS_EVENING)):
+                try:
+                    hour, minute = (int(part) for part in str(hhmm).split(":"))
+                    scheduler.add_job(
+                        func=self._company_events_job,
+                        args=[slot],
+                        trigger=CronTrigger(day_of_week="mon-fri", hour=hour, minute=minute,
+                                            timezone="Asia/Kolkata"),
+                        id=f"company_events_{slot}",
+                        name=f"Company-event feed ({slot})",
+                        misfire_grace_time=1800,
+                        coalesce=True,
+                        replace_existing=True,
+                    )
+                except ValueError as exc:
+                    logger.warning("[Scheduler] Invalid events time %r — company_events_%s "
+                                   "NOT scheduled: %s", hhmm, slot, exc)
+            logger.info("[Scheduler] Company-event feed jobs: %s and %s IST weekdays",
+                        settings.EVENTS_MORNING, settings.EVENTS_EVENING)
+        else:
+            logger.info("[Scheduler] Company-event feed disabled (EVENTS_ENABLED=false)")
+
         # ── Job 11: Daily bhavcopy sync (19:00 IST weekdays — EOD data settles ~18:30) ──
         if getattr(settings, "DISCOVERY_ENABLED", False):
             scheduler.add_job(
@@ -1416,6 +1442,43 @@ class AutomobileScheduler:
             "[Scheduler] Weekly research loop complete — answered=%d expired=%d",
             answered, expired)
         _job_banner("Weekly Research Loop", done=True)
+
+    def _company_events_job(self, slot: str) -> None:
+        """
+        Company-event feed run: NSE filings and company news for every held,
+        watched and shelf stock, typed and stored (core/events). Weekdays at
+        08:15 and 18:30 IST; skips NSE holidays. run_event_feed never raises,
+        so this job is non-fatal by construction.
+        """
+        from core.events.feed import run_event_feed
+        from core.intelligence.rl.nse_calendar import is_trading_day, now_ist
+
+        today = now_ist().date()
+        if not is_trading_day(today):
+            logger.info("[Scheduler] Company events %s skipped: %s is not a trading day",
+                        slot, today)
+            return
+        _job_banner(f"Company Events ({slot})")
+        rec = run_event_feed(slot)
+        from services.data.stores.job_outcomes import record_job_outcome
+        record_job_outcome(
+            f"company_events_{slot}",
+            status=rec.get("status"),
+            symbols_tracked=rec.get("symbols_tracked"),
+            symbols_used=rec.get("symbols_used"),
+            symbols_over_cap=rec.get("symbols_over_cap"),
+            identity_skipped=len(rec.get("identity_skipped") or {}),
+            news_queries_used=rec.get("news_queries_used"),
+            news_run_budget=rec.get("news_run_budget"),
+            news_failed=len(rec.get("news_failed") or {}),
+            items_new=rec.get("items_new"),
+            events_stored=rec.get("events_stored"),
+            llm_calls=rec.get("llm_calls"),
+            llm_failed=rec.get("llm_failed"),
+            ingest=rec.get("ingest"),
+            error=rec.get("error"),
+        )
+        _job_banner(f"Company Events ({slot})", done=True)
 
     def _preopen_shock_check_job(self) -> None:
         """

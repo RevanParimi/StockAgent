@@ -1,6 +1,6 @@
 # Compass Autopilot — Developer Guide
 
-**Edition:** 2026-10-19 · **Code inspected:** `84eefda`
+**Edition:** 2026-10-22 · **Code inspected:** `020d3c2`
 
 **Scope:** the virtual money path, from the advisor's verdict for each holding
 to the executed trade, the ledgers and the screens that show them.
@@ -128,8 +128,10 @@ a missing artifact leaves a conservative default.
 | Forecast gate | The worst gate among the remaining rows, and their source run ids |
 
 The envelope and feedback log are read from `<holding sector>/<TICKER>`
-through `VerdictStore`. Promotion files the managed entry under the
-holding's sector, so the advisor reads the store the review writes. A holding
+through `VerdictStore`. The review writes `<managed entry's sector>/<TICKER>`.
+Promotion files a new managed entry under the holding's sector and keeps an
+existing entry's sector, and a buy candidate carries an existing entry's
+sector (below), so the advisor reads the store the review writes. A holding
 whose sector was edited away from its managed entry's reads a store with no
 envelope: no ADD or TRIM can fire, and only the stop rules can act on it.
 
@@ -143,9 +145,39 @@ The cascade is **EXIT → TRIM → ADD → HOLD**; the first that fires wins.
 | TRIM | Profit of at least 25%, and confidence falling by 0.05 or more, or a reversion prior of 0.20 or more |
 | ADD | Envelope UP, regime not `MACRO_CRISIS` or `RISK_OFF`, position weight below 10% of total equity, and at least 60% of the last 7 reviews correct |
 | HOLD | Nothing above |
-| SWITCH | An EXIT becomes SWITCH when an active shelf idea qualifies (below) |
+| SWITCH | An EXIT becomes SWITCH when a buy candidate qualifies (below) |
 
-**SWITCH.** The top 5 active shelf ideas by conviction are judged. One
+**Buy candidates.** At each review the autopilot may buy only from this
+portfolio's candidates
+(`core/discovery/candidates.py`):
+
+- active shelf ideas whose latest deep dive is at most 30 days old
+  (`discovery.redive_after_days`). An older idea waits for Saturday's re-dive.
+- the user's own watchlist stocks whose latest analysis is a BUY or STRONG BUY
+  with an actionable data gate, conviction 0.55 or more, at most 30 days old,
+  for a stock NSE lists as a company (`discovery.watchlist_buys`). The entry
+  band is 97–102% of the close on the analysis day, as a deep dive sets it. A
+  stock the autopilot sold onto the watchlist (`source="autopilot"`) does not
+  qualify.
+
+Each candidate carries the sector it is bought and held under, which is
+what the sizing rule's sector cap (section 6) and the SWITCH's sector test
+count:
+
+- a managed stock: its managed entry's sector, enabled or not, because the
+  review and the monthly forecast write its predictions there;
+- otherwise a shelf idea's own sector (the deep dive's `infer_sector`), and a
+  watchlist stock's item sector when it is a well-formed key, else
+  `infer_sector`. Never a fixed `generic`.
+
+**Example:** on Tuesday 20 Oct a shelf idea last dived on 12 Sep is not a
+candidate. A watchlist stock analysed on 17 Oct as a BUY at 0.68, actionable,
+with a ₹500 close that day, is a candidate with a band of ₹485–₹510. The home
+page saves watchlist stocks with no sector; HEROMOTOCO added there is a
+candidate under its managed `automobile`, so with MARUTI and M&M already at
+28% of total equity it is capped at 30%.
+
+**SWITCH.** The top 5 buy candidates by conviction are judged. One
 qualifies when it is not already held, its sector's share of total equity is
 strictly below the exiting holding's sector's share, and its conviction beats the
 holding's mean envelope confidence by at least 0.15. The data gate is checked
@@ -191,7 +223,8 @@ A blocked ADD becomes HOLD with the note `DATA_GATE`. A blocked SWITCH
 destination falls back to the next qualifying idea, or to a plain EXIT with
 `DATA_GATE`. A shelf idea is never a destination when its deep dive was not
 actionable (or carries no gate), its identity is unresolved, or its close is
-from an earlier bar.
+from an earlier bar. A watchlist stock needs an actionable analysis in either
+mode: without one it is not a candidate at all.
 
 **Risk reduction is never blocked by data.** EXIT and TRIM go ahead on a
 stale close or an unverified forecast, so missing data cannot trap a
@@ -315,7 +348,8 @@ The budget is ₹5,000, which at ₹1,180 a share buys 4 shares.
 How cash moves today:
 
 - **A new position opens only through a SWITCH**, which puts one sale's
-  proceeds into a shelf idea, inside the idea's entry band.
+  proceeds into a buy candidate (section 3: a fresh shelf idea or the user's
+  own watchlist BUY), inside its entry band.
 - **ADD tops up a stock already held.**
 - **Every buy is sized by the shared rule** (section 6): each position at
   most 10% and each sector at most 30% of total equity after the trade, and
@@ -328,7 +362,7 @@ How cash moves today:
 **Example:** a ₹10,00,000 portfolio switches a ₹2,27,000 holding into a
 shelf idea at ₹530. The new position may be at most ₹1,00,000: 188 shares,
 ₹99,640. The other ₹1,27,360 stays in cash, and the BUY's note says so.
-On a day with no qualifying shelf idea, two EXITs of ₹1,50,000 each raise
+On a day with no qualifying candidate, two EXITs of ₹1,50,000 each raise
 cash by ₹3,00,000, and it stays there.
 
 **Planned:** in a normal market, idle cash goes into shelf ideas that pass

@@ -222,9 +222,20 @@ docs commit that follows (PDF source `05f5c16c…`, `check_kt_docs` `[]`).
 
 `pending_deployment`: the code is accepted, uncommitted. After the deploy:
 
-- `PR-003-P1` (STATE `pending_production_checks`): the Yahoo probe on a weekday morning
-  between 07:00 and 12:00 IST (Monday 19 Oct for the Nikkei, Tuesday 20 Oct for the Hang
-  Seng). It decides whether the Asian figures can appear at 08:50 at all (L4).
+- `PR-003-P1` (STATE `pending_production_checks`): **passed, 20 Oct 09:57 IST.** The Yahoo
+  probe ran locally on public Yahoo data (`analysis_data/pr003/yahoo_probe.py`, the committed
+  PR-003 code; no production access) in the first "continue" conversation inside the 07:00–12:00
+  window. Monday's run was missed. In the brief dated Tue 20 Oct:
+  - Nikkei 225 `ok`, 64,176.09 (−1.14%), "as of Tue 20 Oct" (13:27 JST, afternoon session);
+  - Hang Seng `ok`, 23,956.93 (−0.95%), "as of Tue 20 Oct" (12:27 HKT, lunch break). Its
+    Monday bar is absent, which is correct: Hong Kong was closed on Mon 19 Oct;
+  - USD/INR `ok`, "as of Tue 20 Oct", a weekday.
+
+  So Yahoo returns the in-progress daily bar during both sessions, and L4's premise holds.
+  Inference, not measured: at 08:50 IST, Tokyo is in its lunch break (12:20 JST) and Hong Kong
+  is in its morning session (11:20 HKT). Both have opened, so the bar exists then too. The
+  deployed 08:50 brief itself is checked by the first week's 10-I run. Raw output:
+  `analysis_data/pr003/yahoo_probe_20261020_0956.txt`.
 - The first week: `overnight_filter` in `GET /delivery/brief/latest`, the Sunday probe's
   repeat count (expected near 0), and guide case 10-I. Fewer items on quiet days is correct.
 

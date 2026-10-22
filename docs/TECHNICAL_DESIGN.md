@@ -1,8 +1,8 @@
 # StockAgent — Technical Design and Knowledge Transfer
 
-**Edition:** 2026-10-19 · **Audience:** engineers and teammates learning the product
+**Edition:** 2026-10-22 · **Audience:** engineers and teammates learning the product
 
-**Code inspected:** `84eefda046825e37b8f8eb188f37ba382da883f6`
+**Code inspected:** `020d3c28b121ce6bc498291929e5fcc774a41204`
 
 **PDF:** [StockAgent-Three-Loops.pdf](StockAgent-Three-Loops.pdf), generated from this Markdown.
 
@@ -35,15 +35,14 @@ triggered no production job, backfill or notification.
 
 ### Production state at this edition
 
-Production runs the inspected code once the evening deployment of 19 October
-2026 is confirmed by the owner's read-only check of the deployment list and
-`/health`. Until then it runs the code deployed that midday (`bb9969e`; the
-deployment list showed it live at 12:08 IST). They differ in the portfolio's
-figures: the portfolio screen's labels, the Nifty comparison and the
-closed-trade card, value points that record when they were taken, retention
-that keeps every change in `capital_in`, and CSV imports that write ledger rows
-(section 7). The table gives the configuration that differs from the
-repository and the state of each operational control.
+Production runs the inspected code once the deployment of 22 October 2026 is
+confirmed by the owner's read-only check of the deployment list and `/health`.
+Until then it runs the code deployed on the evening of 19 October (`25fae38`;
+the deployment list showed it live by 18:00 IST). They differ in discovery:
+only companies are ranked and dived, the shelf holds 20 ideas with at most 3 per
+market sector, ideas are re-dived after 30 days, and the 16:30 review buys only
+from the buy candidates (section 8). The table gives the configuration that
+differs from the repository and the state of each operational control.
 
 | Area | State in production | Evidence |
 |---|---|---|
@@ -1037,8 +1036,9 @@ purpose only in a crisis (SA-049, the owner's decision of 2026-09-27, behind a
 switch that ships off). The deployment also works toward a configurable floor
 of at least 10 holdings and ₹10 L invested (`portfolio.min_holdings`,
 `portfolio.min_invested_inr`, with a per-portfolio override), recording why
-whenever the floor cannot be met. A wider, sector-capped shelf supplies the
-ideas (PR-004).
+whenever the floor cannot be met. The ideas come from the buy candidates of
+section 8: fresh shelf ideas from a 20-idea, sector-capped shelf, and the
+user's own watchlist BUYs.
 
 ## 7. Profit/loss and the different marksheets
 
@@ -1179,6 +1179,7 @@ week whose sessions are not over is never stored.
 | You vs the Nifty | Money-weighted. Each rise in `capital_in` between value points is a deposit, dated at the first point that shows it, and the same deposit buys Nifty units at that day's close. Both sides use the same flows, so idle cash counts against the portfolio. A holding that arrived without cash is valued on the day it arrives (below). This week, the last 4 weeks and since the start. |
 | Breadth | Holdings (for the latest week) and the invested share at the week's last valuation. |
 | Holding period | Median exchange sessions held by the positions closed this week. |
+| Idea quality | From the auditor's shelf lane: how many shelf ideas beat the Nifty 10 and 30 sessions after they were shelved, whether bought or not, with the median gap in points. Only grades matured by the week's end count. It measures the idea supply, not the portfolio, and it is a line, not a flag. |
 
 **Holdings that arrive without cash.** "Add holding" and a CSV import, on an
 account with cash accounting, raise `capital_in` by the holding's cost (the
@@ -1248,13 +1249,123 @@ default user's calls only. Members' sales are their own, so they appear under
 ### Discovery
 
 [run_discovery_cycle](../core/discovery/__init__.py) connects EOD sync,
-bulk/block activity, optional recent-IPO candidates, screen, deep dives,
-conviction shelf and paper reviews. Failures can degrade individual stages.
-The Saturday job and manual discovery endpoint use this entry point.
-A shelf candidate, watchlist promotion and virtual purchase are separate steps.
-A deep dive runs the ordinary analysis, so its decision gate, including the
-identity check, is the shelf idea's `data_gate`. In `enforce` a candidate with
-an unresolved identity is never shelved, nor used as a SWITCH destination.
+bulk/block activity, NSE's instrument listing, optional recent-IPO candidates,
+shelf upkeep, screen, deep dives, conviction shelf and paper reviews. Failures
+can degrade individual stages. The Saturday job and manual discovery endpoint
+use this entry point. A shelf candidate, watchlist promotion and virtual
+purchase are separate steps. A deep dive runs the ordinary analysis, so its
+decision gate, including the identity check, is the shelf idea's `data_gate`.
+In `enforce` a candidate with an unresolved identity is never shelved, nor
+used as a SWITCH destination.
+
+The shelf exists to supply enough checked, varied ideas to fill and keep about
+12 holdings. The weekly run, in order:
+
+1. **Instrument listing.** [bhavcopy.py](../services/data/fetchers/bhavcopy.py)
+   reads the latest UDiFF bhavcopy from NSE's archive and caches each symbol's
+   series and ISIN in `data/discovery/listing.json`. A failed fetch keeps the
+   last good listing.
+2. **Only companies.** [universe.py](../core/discovery/universe.py) reads a
+   symbol's kind from its series and ISIN, never its name. An ISIN that begins
+   `INE` is a company's shares. One that begins `INF` is a mutual-fund scheme's units: every
+   ETF, index fund and liquid fund trades in the EQ series, so the series
+   alone cannot tell. Series RR and IV are REIT and InvIT units. The screen
+   ranks companies only. The deep dive makes no analyst call for any other
+   kind, or for a symbol the listing does not know. With no listing at all,
+   nothing is dived that week, and the run says why.
+3. **Shelf upkeep.** An idea NSE lists as a fund, REIT or InvIT is dropped,
+   with its series and ISIN in the reason. An idea without a market sector
+   gets one (below).
+4. **Re-dives first.** Ideas shelved before the decision gate existed (no
+   `data_gate`) are re-dived first, then ideas whose latest dive is older than
+   `discovery.redive_after_days` (30), oldest first. Re-dives take the budget
+   first but leave the IPO slots free. A re-dive refreshes the idea in place:
+   conviction, verdict, thesis, entry band, invalidation, gate and `dived`
+   date. `added` and `close_at_add` stay, so the auditor's shelf grades keep
+   their start. A re-dive whose analysis is not actionable, or whose
+   conviction falls below the floor, drops the idea with the reason.
+5. **Deep dives.** `discovery.deep_dive_count` (20) bounds the analyst calls
+   a week: re-dives, IPO slots and screen ranks together, a failed call
+   included. A screen or IPO candidate dived in the last 30 days and not on
+   the shelf already has its answer (below the floor, abstained or
+   outranked), so the dive memo (`dives.json`) keeps it from taking the
+   budget again. The memo keeps every answered dive, an abstained one too,
+   in either gate mode; a failed call is not an answer and is tried again.
+6. **Shelf.** Up to `discovery.shelf_size` (20) active ideas at conviction
+   0.55 or more, strongest first. Under the enforced data gate only an
+   actionable or degraded dive becomes an idea; in `record` mode an abstained
+   one is shelved, as the mode's "nothing withheld" says. At most `discovery.max_ideas_per_sector` (3)
+   share a market sector. A newcomer to a full sector replaces that sector's
+   weakest idea only if it is stronger, and the drop event says so. Otherwise,
+   when the shelf is full, a stronger newcomer displaces the weakest idea.
+   An idea whose latest dive is more than `stale_days` (60) old rotates out.
+   The monthly re-dive is the check that matters, so an idea that keeps
+   passing it stays, one that fails is dropped, and one that cannot be
+   re-dived ages out. Example: an idea shelved on 5 Sep and re-dived on
+   24 Oct stays past 4 Nov; without passing another re-dive it rotates out
+   after 23 Dec.
+
+**Market sector.** Each idea carries `market_sector` and `industry` from
+Yahoo Finance's classification (for example "Healthcare" and "Drug
+Manufacturers - General"). The idea's `sector` field is a routing key, set by
+the deep dive's `infer_sector`. It picks the analysis graph and, after a buy,
+is the holding's `sector`: the advisor reads the holding's predictions under
+it, and SA-050's sector cap counts it. The daily review and the monthly
+forecast write a managed stock's predictions under its managed-ticker
+record's sector, which promotion keeps once it exists. So a buy candidate
+carries its managed record's sector when the stock is managed (below).
+Re-keying `sector` belongs to the sector-lens work (SA-026), so it stays as
+it was. For most screened stocks it reads `generic`, which is not a sector,
+so the shelf's cap counts `market_sector`. An idea with no known market
+sector is not capped, rather than lumped with other unknowns.
+
+**Example.** A week's best dives include four Healthcare ideas at 0.80, 0.70,
+0.65 and 0.60. The first three take the sector's places and 0.60 is turned
+away. A later Healthcare idea at 0.75 replaces the 0.65 idea. One at 0.62
+does not get in.
+
+**Buy candidates.** The autopilot buys only from
+[core/discovery/candidates.py](../core/discovery/candidates.py)'s list, built at each 16:30
+review (today a buy is a SWITCH destination):
+
+- shelf ideas whose latest dive is at most 30 days old. An older idea waits for
+  Saturday's re-dive, because its band and conviction describe a month-old
+  price;
+- the user's own watchlist BUYs (`discovery.watchlist_buys`). The stock's
+  latest analysis in the score history must be a BUY or STRONG BUY, with an
+  actionable data gate, conviction at the floor or above, at most 30 days old,
+  for a stock NSE lists as a company. Its entry band and invalidation level
+  come from its close on the analysis day, as a deep dive sets them, so the
+  SA-050 entry rule applies unchanged. A stock the autopilot itself sold onto
+  the watchlist does not qualify: buying it back needs a new deep dive. The
+  record-mode gate keeps an unverified shelf idea as a possible destination
+  (section 4). A watchlist stock gets no such allowance: an unqualified one is
+  not offered at all.
+
+Each candidate carries the sector it will be held under, the key its
+forecasts are written under: a managed stock's managed-record sector,
+whether the record is enabled or not (promotion re-enables it as it is). A
+watchlist stock that is not managed takes the item's own well-formed
+sector, else `infer_sector`, never a fixed `generic`. A shelf idea whose
+stock is managed under another sector is offered under the managed one; the
+shelf keeps its own record. Example: the home page saves a watchlist stock
+with no sector. HEROMOTOCO added there is managed under `automobile`, so a
+SWITCH buys it as `automobile`. With MARUTI and M&M at 28% of ₹10 L, the
+30% sector cap then allows 4 shares at ₹5,000, not the 20 a `generic` label
+would let through (38%).
+
+**Limits.**
+
+- NSE's per-symbol meta API (`equity-meta-info`), which
+  `get_symbol_meta` reads, answered 404 for every symbol tried on
+  2026-10-20. NSE's quote API refused this machine. This machine's meta
+  cache, from July, is all `degraded`. So the screen's surveillance (ASM/GSM) and
+  suspension guards record a degraded check for every symbol instead of
+  testing it, and `infer_sector` never sees an industry. **Planned:** FIX-011.
+- Yahoo's `quoteType` calls an Indian ETF "EQUITY", so it cannot tell a fund
+  from a company; the ISIN can.
+- A capped-out idea waits 30 days for its next dive, even if its sector frees
+  a place sooner.
 
 ### IPO layers
 
@@ -1986,7 +2097,10 @@ learning to `observe`. SA-023 puts learned lessons on measurable probation.
 - SA-049 puts idle cash into shelf ideas that pass the checks in a normal
   market, and holds cash on purpose only in a crisis, behind a switch that
   ships off. It works toward a configurable floor of at least 10 holdings and
-  ₹10 L invested, fed by PR-004's wider shelf.
+  ₹10 L invested, fed by section 8's buy candidates. Its sizing rule must
+  count real sectors: today the sector cap reads each holding's routing
+  `sector`, which is `generic` for most screened stocks, so a fourth such
+  holding hits the 30% cap at about 8% each.
 
 ### Product results
 
@@ -2142,7 +2256,7 @@ section 10) are part of the current design.
 | [FIX-010](planning/PI-2026-09/stories/FIX-010.md) | Every analysis writes the score history again; screens name only the viewer's stocks | Done | 3 Storage; 10 Interface | None |
 | [PR-002](planning/PI-2026-09/stories/PR-002.md) | A weekly results scorecard with a "sold too early" check | Done | 7 Marksheets; 10 Delivery | None |
 | [PR-003](planning/PI-2026-09/stories/PR-003.md) | Fresh overnight news: no repeats, published-date freshness, global cues | Done | 10 Delivery | None |
-| [PR-004](planning/PI-2026-09/stories/PR-004.md) | Enough researched ideas to fill 10+ positions | Open | 8 Discovery | None |
+| [PR-004](planning/PI-2026-09/stories/PR-004.md) | Enough researched ideas to fill 10+ positions | Done | 8 Discovery | None |
 | [PR-005](planning/PI-2026-09/stories/PR-005.md) | An investment case for every position | Open | 6 Portfolio | PR-006 |
 | [PR-006](planning/PI-2026-09/stories/PR-006.md) | A daily company-event feed for held, watched and shelf stocks | Open | 4 Research; 9 Jobs | None |
 | [PR-007](planning/PI-2026-09/stories/PR-007.md) | Plain, fact-grounded buy and sell explanations | Open | 6 Portfolio | PR-005, PR-006 |
@@ -2151,6 +2265,7 @@ section 10) are part of the current design.
 | [PR-010](planning/PI-2026-09/stories/PR-010.md) | Four screens for members; an Operator menu for the owner | Open | 10 Interface | PR-001 |
 | [PR-011](planning/PI-2026-09/stories/PR-011.md) | New data: promoter and insider trades, pledges, shareholding changes | Open | 4 Research; 8 Discovery | PR-006 |
 | [PR-012](planning/PI-2026-09/stories/PR-012.md) | Choose models by role, benched on our own data; refresh cost rates | Open | 3 Configuration | PR-007 |
+| [FIX-011](planning/PI-2026-09/stories/FIX-011.md) | NSE's per-symbol meta API is gone: restore the surveillance and suspension guards and an industry source | Open | 4 Research; 8 Discovery | None |
 
 ### Maintain documentation with each story
 

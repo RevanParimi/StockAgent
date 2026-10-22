@@ -688,9 +688,12 @@ Models are tiered (2026-06-03 benchmark, `scripts/model_bench.py`; bulk re-bench
 | `discovery.circuit_streak_max` | `3` | > N trailing upper-circuit days = operator pattern, rejected |
 | `discovery.shortlist_size` | `80` | Ranked names that get per-symbol guard checks |
 | `discovery.max_candidates` | `40` | ScreenResult size after guards |
-| `discovery.deep_dive_count` | `10` | Weekly unified-analyst calls (LLM cost cap) |
-| `discovery.shelf_size` | `10` | Max active shelf ideas (stronger idea displaces weakest) |
-| `discovery.stale_days` | `60` | Idea age without trigger → rotate out |
+| `discovery.deep_dive_count` | `20` | Weekly analyst calls, re-dives and IPO slots included, a failed call counted (LLM cost cap) |
+| `discovery.shelf_size` | `20` | Max active shelf ideas (stronger idea displaces weakest): 12 holdings plus rotation |
+| `discovery.max_ideas_per_sector` | `3` | Active ideas per market sector (Yahoo's classification); a 4th replaces the sector's weakest only if stronger; `0` = no cap |
+| `discovery.redive_after_days` | `30` | An idea whose latest dive is older is re-dived on Saturday and is not a buy candidate until then; also how long the dive memo keeps a rejected candidate from the budget; `0` = off |
+| `discovery.watchlist_buys` | `true` | A user's own watchlist stock whose latest analysis is a fresh, actionable BUY or STRONG BUY is a buy candidate for that user |
+| `discovery.stale_days` | `60` | An idea whose latest deep dive is older rotates out (a passed re-dive restarts the clock) |
 | `discovery.min_conviction` | `0.55` | Deep-dive final_score floor to reach the shelf |
 | `discovery.include_sme` | `false` | SME platform excluded (spec §6.2) |
 | `discovery.signal_weights` | momentum 0.30, delivery_surge 0.15, volume_breakout 0.15, bulk_block 0.15, high_52wk_rs 0.10, insider_buying 0.10, mf_holding 0.05 | Composite blend; **insider_buying + mf_holding are DARK in v1** — the screen renormalizes over live signals and reports dark ones in `ScreenResult.dark_signals` |
@@ -895,8 +898,10 @@ All paths verified to exist. Paths are relative to project root.
 | `services/api/routes/discovery_api.py` | /discovery/* — Compass Phase B: shelf, latest screen, manual run, promote/drop |
 | `core/discovery/__init__.py` | `run_discovery_cycle()` — weekly funnel orchestration (every stage non-fatal) |
 | `core/discovery/screen.py` | Stage-1 quant screen: composite rank over live signals, guards, `ScreenResult` persistence |
-| `core/discovery/deep_dive.py` | Stage-3 LLM dives (≤`discovery.deep_dive_count`/wk) + `infer_sector()` (registry → NSE industry → generic) |
-| `core/discovery/shelf.py` | `ShelfStore` — cap/displacement, stale rotation, promote-to-watchlist, `shelf_events.jsonl` |
+| `core/discovery/deep_dive.py` | Stage-3 LLM dives (≤`discovery.deep_dive_count` calls/wk, companies only, re-dives flagged `redive`), `entry_levels()` (band + invalidation) + `infer_sector()` (registry → NSE industry → generic) |
+| `core/discovery/shelf.py` | `ShelfStore` — size cap and displacement, under `enforce` only actionable dives become ideas, the per-market-sector cap, re-dives (`redive_due`, `apply_redives`), non-company drops, sector backfill, the dive memo (`dives.json`), stale rotation, promote-to-watchlist, `shelf_events.jsonl` |
+| `core/discovery/universe.py` | The EQ/price-floor universe and the instrument rule: `instrument_kind()` from series and ISIN (company, fund, trust), `companies_only()` |
+| `core/discovery/candidates.py` | `buy_candidates()` — what one portfolio's autopilot may buy at a review: shelf ideas dived in the last 30 days plus the user's own fresh, actionable watchlist BUYs, each under the sector it will be held under (`holding_sector()`: a managed stock's managed-record sector first) |
 | `core/discovery/paper_lane.py` | Paper envelopes + weekly paper reviews via `paper=True` RL workflows |
 | `services/data/fetchers/ipo.py` | NSE IPO lists (current/upcoming/past) + degraded-mode cache |
 | `core/discovery/ipo_tracker.py` | IPO candidate scoring (QIB 3×, post-listing evidence) + lock-in calendar |
@@ -909,16 +914,16 @@ All paths verified to exist. Paths are relative to project root.
 | `services/api/routes/ops_api.py` | /ops/errors* — the operations backlog: ranked issues, plain-text digest, triage (owner or machine key) |
 | `scripts/gen_vapid_keys.py` | One-time VAPID keypair generation for web-push |
 | `services/data/stores/eod_store.py` | `EodStore` — per-day parquet EOD cache (canonical 12-column schema) |
-| `services/data/fetchers/bhavcopy.py` | NSE delivery-bhavcopy fetcher + resumable `sync_recent()` |
+| `services/data/fetchers/bhavcopy.py` | NSE delivery-bhavcopy fetcher + resumable `sync_recent()`; the instrument listing (series and ISIN per symbol from the UDiFF bhavcopy): `refresh_listing()`, `load_listing()`, cached in `data/discovery/listing.json` |
 | `services/data/fetchers/bulk_block.py` | Bulk/block deals cache (degraded-mode keeps stale deals) |
-| `services/data/fetchers/surveillance.py` | Per-symbol NSE meta (ASM/GSM, suspension, industry) + yfinance float mcap |
+| `services/data/fetchers/surveillance.py` | Per-symbol NSE meta (ASM/GSM, suspension, industry; the endpoint answered 404 on 2026-10-20, so every lookup degrades) + yfinance float mcap and `market_classification()` (Yahoo sector and industry) |
 | `src/backend/sectors/generic/pipeline/orchestrator.py` | GenericSectorOrchestrator — sector-agnostic 8-dimension graph (unified primary, UniversalAgent fallback pool) |
 | `data/market_cache/bhavcopy/` | Per-day parquet EOD cache, ~550 sessions rolling |
 | `data/discovery/` | `screens/`, `shelf.json`, `shelf_events.jsonl` |
 | `data/rl/paper/predictions/` | ISOLATED paper-lane RL store — never mixed into real metrics |
 | `services/api/routes/prompts.py` | /ui/prompts/* — live prompt editing and GitHub deploy |
 | `services/api/routes/analytics.py` | /analytics/* — RL performance exports and Power BI feed |
-| `services/api/log_buffer.py` | In-memory ring buffer for real-time log streaming (read only through the owner-only `/ui/logs` routes) |
+| `services/api/log_buffer.py` | In-memory ring buffer for real-time log streaming (read only through the owner-only `/ui/logs` routes); the managed-ticker file's readers (`load_managed_tickers`, which seeds a missing file, and the read-only `managed_symbols`, `managed_sectors`) |
 | `services/scheduler/python/scheduler.py` | APScheduler: daily RL review (4:30pm IST), monthly forecast (1st, 9am IST), calendar update (Dec 31), pre-open shock check (`preopen_shock_check`, Mon-Fri 08:45 IST, Living Envelope §27.3), Job 13 morning brief (Mon-Fri 08:50 IST) + Job 14 weekly review (Sun 18:00 IST, Compass Phase C), `ops_watchdog` (06:30 IST daily) |
 | `core/ops/watchdog/` | **The watchdog.** Reads `config/milestones.yaml` — the authoritative registry of dated milestones and standing invariants — runs named checks, and notifies the owner alone on transitions (`emit_owner_alerts`). `registry.py` loads/validates, `checks.py` probes state, `prep.py` auto-runs safe idempotent preparation, `engine.py` is the pure escalation ladder, `runner.py` wires it to state + delivery |
 | `core/ops/error_backlog.py` | **The operations backlog.** Groups `telemetry.db` `app_logs` rows into issues by a deterministic fingerprint (normalised template of source, logger, message), keeps first/last seen, counts, run ids and a lifecycle (new/regressed/spiking/quiet; acknowledged/fixed/wontfix, fix verified by archive coverage; a fix time the recorded occurrences already contradict, a future one, or one without a UTC offset is refused) in `error_issues`, with bounded retention. Read and triaged at `/ops/errors`; `scripts/prod_errors.py` prints it; the `error_backlog_triaged` watchdog invariant warns the owner daily while an issue needs triage |

@@ -1,4 +1,4 @@
-# Current handoff - 2026-10-19 (updated about 17:45 IST)
+# Current handoff - 2026-10-20 (updated about 19:45 IST)
 
 ## Also 11 Oct (about 13:00–15:30 IST): product results review and new tasks (separate conversation)
 
@@ -74,6 +74,152 @@ Docs only; nothing committed, pushed, deployed or configured.
 
 ## START HERE — resume checklist, in order
 
+**PR-004 is ACCEPTED** by the fresh re-review of rework 1 (20 Oct, about 18:56–19:45 IST,
+session stockagent-main-53, a new conversation opened with "continue"; peers
+stockagent-main-3c, the rework, and -48 and -95 idle). Receipt:
+[review, section "Re-review of rework 1"](evidence/PR-004-review.md).
+
+STATE: `active_task: null`, PR-004 `done`, production verification `pending_deployment`,
+**`next_task: PR-006`**, which is ready (no dependencies) and not started. Nothing was
+committed, pushed or deployed, no production state was read and no message was sent. The
+owner's line in `docs/README.md` and the SA-051 push note stay uncommitted.
+
+- **In one example (RW-D1, through the real 16:30 pipeline).**
+  1. The deep dive shelved S as `generic`.
+  2. The user had once added S on the portfolio screen under `pharma`; that record was
+     later evicted.
+  3. A SWITCH buys S as `pharma`. Promotion re-enables the record, and the daily review then
+     writes S's forecasts where the advisor reads them. The shelf still says `generic`.
+  4. With a larger pharma holding already in the portfolio, S is no longer in an underweight
+     sector, so the run is a plain EXIT. The reviewed code would have switched into it.
+- **What was checked:**
+  - **R1 (the first review's high):** fixed. 400 random cases go through the real promotion
+    and the scheduler's reader, and every buy candidate's sector is the store its forecasts
+    are written to.
+  - **R2:** fixed. The first review's trace, made strict for both gate modes, finds 0 repeat
+    dives in 80 random 12-week runs (92 passed).
+  - **RW-D1 to RW-D4:** accepted.
+  - **Bite:** the re-reviewer's trace (7 passed) fails 4 of its tests on the reviewed code,
+    loaded in memory.
+  - story and affected tests 286 passed; broad-except OK; `check_kt_docs` `[]`;
+  - full suite: 5,421 passed, 12 skipped, 1 xfailed, 0 failed in 20 min 36 s;
+  - the manifest `aec91b8f…`: 0 mismatches at the start and the end. Both diffs were rebuilt
+    independently (rework `82fa5b55…`, cumulative `d09d4bbb…`).
+- **Finding RR-L1 (low).** Two of the home page's 16 stocks, CEATLTD and TIINDIA, are not in
+  the sector registry. If a user buys one through the home-page watchlist and it is not a
+  managed ticker, it is labelled `generic`, so SA-050's sector cap does not count it as
+  automobile (in RR4: 33 shares, automobile about 38%). The forecasts stay in one place. This
+  is FIX-011's known limitation; the rework's receipt had said it could not happen. No code
+  change. At commit: one note on FIX-011's card and two corrected receipt sentences (exact text
+  in the review receipt). Info: I1 and I2.
+- **For the owner, at your word:** commit PR-004 with the commit-time edits:
+  - the FIX-011 note and the two receipt sentences;
+  - KT: section 12 `Done`, the header, section 1, the PDF;
+  - the AUTOPILOT_GUIDE header;
+  - the guide's 06-E to 06-H status lines.
+
+  Push in a job-free window, not 08:30–09:20, 16:25–17:15 or Saturday 12:25–14:00 IST. After
+  the first Saturday, read the "weekly cycle complete" line, then run guide 06-E to 06-H; 06-F's
+  fifth run is the home-page case.
+
+**PR-004 REWORK 1 is IMPLEMENTED** (20 Oct, about 18:04–18:55 IST, session
+stockagent-main-3c, a new conversation opened with "continue"; peers stockagent-main-48 and
+-95 idle). Receipt: [implementation, section "Rework 1"](evidence/PR-004-implementation.md).
+
+STATE: `active_task: null`, PR-004 `review_required`, **`next_task: PR-004`**. That means
+its **fresh re-review** in a new conversation ("continue"), then PR-006. Nothing was
+committed, pushed or deployed, no production state was read and no message was sent.
+
+- **In one example (R1, fixed).** HEROMOTOCO added on the home page is saved with no sector,
+  but it is managed under `automobile`. With MARUTI and M&M at 28% of ₹10 L, its SWITCH buy
+  is now an `automobile` candidate: the 30% cap allows 4 shares at ₹5,000 (not 20, which gave
+  38%). The holding and its managed record agree, so the advisor reads the forecasts the daily
+  review writes.
+- **Changes:**
+  - **R1:** a buy candidate carries its managed record's sector (enabled or not, through the
+    new read-only `log_buffer.managed_sectors()`), else the item's own well-formed sector,
+    else `infer_sector`. Shelf ideas follow the same rule (RW-D1).
+  - **R2 taken:** every answered dive is returned and remembered for 30 days. Under `enforce`,
+    the shelf refuses a dive that is not actionable (`shelf.gated`); SA-003's rule moved there
+    (RW-D2).
+  - **R3 not taken** (RW-D3): at 20 calls and 2 IPO slots, re-dives always have at least 18
+    slots.
+  - R4 (the PDF hash), R5 (the rollback sentence in the card and receipt), T1 (the harness
+    takes a managed file and the real `promote_symbol`).
+- **For the re-reviewer:**
+  - Review input [PR-004-manifest.json](evidence/PR-004-manifest.json) `aec91b8f…`, 33 files,
+    0 mismatches (review 1's 31, plus `services/api/log_buffer.py` and the card).
+  - Rework diff `82fa5b55…` (52,151 bytes, 11 paths); cumulative `d09d4bbb…` (205,963 bytes,
+    32 paths). The reviewer's own `rev_digest.py` gives the same cumulative digest.
+  - The reviewer's trace now fails exactly 4 tests: its 3 strict xfails (XPASS: R1 twice, R2)
+    and the RV4 R2-frequency check (now 0). A copy with those marks removed gives 92 passed.
+    Remove the marks and flip that assertion.
+  - Worth a hard look: RW-D1 to RW-D4.
+- **Checked:**
+  - story tests 89 (was 69) and SA-003's file 58: 147 passed;
+  - on the reviewed code (in memory): 18 failed;
+  - mutants: 13 of 13 caught;
+  - affected files: 327 passed;
+  - full suite: 5,421 passed, 12 skipped, 1 xfailed, 0 failed in 11 min 39 s;
+  - broad-except OK; `check_kt_docs` `[]`, PDF source `ec058a64…`.
+- **Docs:** KT section 8, the PDF, AUTOPILOT_GUIDE 3.1 and 3.2, guide 06-F (a fifth run) and
+  the 06-E to 06-H status lines, CODEBASE, the card's rollback.
+
+**PR-004's fresh review: CHANGES REQUESTED** (20 Oct, from 09:56 IST, session
+stockagent-main-95, a new conversation opened with "continue"; peer stockagent-main-48 idle).
+Receipt: [review](evidence/PR-004-review.md).
+
+STATE: `active_task: null`, PR-004 `changes_requested`, **`next_task: PR-004`**. That means
+**rework 1** in a new conversation ("continue"), then a fresh re-review in another, then PR-006.
+Nothing was committed, pushed or deployed, no production state was read and no message was
+sent. The reviewed input is kept as `evidence/PR-004-manifest-review1.json` (`215be4b9…`; diff
+`5c6c392d…`, rebuilt by the reviewer).
+
+- **In one example (R1, high).**
+  1. A member adds HEROMOTOCO to the home-page watchlist. `PUT /ui/watchlist` stores it with
+     no sector (Atlas is on). It is a managed ticker under `automobile`.
+  2. The portfolio holds MARUTI and M&M at 28% of ₹10 L. A holding EXITs, and HEROMOTOCO's
+     fresh BUY at 0.80 becomes the SWITCH destination.
+  3. `candidates.py:127` labels it `generic`. So SA-050's 30% sector cap does not count the
+     two automobile holdings: it buys 20 shares and automobile reaches **38%**. Under its real
+     sector the cap allows 4 shares (30%).
+  4. The holding is then `generic` while its managed record stays `automobile`. From the next
+     day the advisor reads `predictions/generic/HEROMOTOCO`, but the daily review writes
+     `predictions/automobile/…`. The position is advised without its own forecasts.
+- **Rework 1:**
+  - **R1, must fix.** The candidate's sector is the managed record's, else the item's, else
+    `infer_sector`. Test with the real `promote_symbol` and a managed file. Docs: KT section 8,
+    AUTOPILOT_GUIDE section 3, guide 06-F.
+  - **R2, recommended (low).** In `enforce`, an abstained new dive is not written to
+    `dives.json`, so it is re-dived every Saturday.
+  - Also: R3 (optional, IPO room), R4 (the receipt's PDF hash), R5 (the rollback note: config
+    does not undo the company rule or the fail-closed listing), T1 (the test harness).
+- **What holds:**
+  - the budget, companies only, the sector cap, the shelf size, rotation from the latest dive,
+    re-dive drops and priority, IPO slots and the memo in record mode. These come from 80
+    random 12-week runs of the real Saturday cycle;
+  - watchlist BUYs never skip the data gate (checked through the real score history);
+  - the measured cost;
+  - all five acceptance criteria as written;
+  - D1–D13 and L1–L10 accepted.
+- **Checked:**
+  - the reviewer's trace `analysis_data/pr004_review/test_rv_trace.py`: 89 passed, 3 strict
+    xfailed (R1 twice, R2);
+  - story and affected tests: 163 passed;
+  - broad-except OK; `check_kt_docs` `[]`;
+  - full suite: 5,400 passed, 12 skipped, 1 xfailed, 1 failed in 12 min 49 s. The failure
+    was a Windows `WinError 5` rename in SA-009's migration test (code PR-004 does not
+    touch). Its file re-run alone: 22 passed;
+  - the manifest: 0 mismatches at the start and at the end.
+
+**PR-003-P1 PASSED** (20 Oct 09:57 IST, same conversation, before the review). The Yahoo probe
+ran locally on public data. In the brief dated Tue 20 Oct, Nikkei 225 (64,176.09, −1.14%) and
+Hang Seng (23,956.93, −0.95%) both read `ok` "as of Tue 20 Oct", so Yahoo returns the
+in-progress bar during the Tokyo and Hong Kong sessions (L4). Hang Seng's Monday holiday bar is
+correctly absent, and USD/INR is "as of" Tuesday. Recorded in
+[PR-003's review receipt](evidence/PR-003-review.md) and STATE. The first week's 10-I run still
+checks the deployed 08:50 brief. The original reminder follows, for the record.
+
 **Reminder for Monday 19 Oct (the owner's request): run the PR-003 Yahoo probe,
 check `PR-003-P1` in STATE's `pending_production_checks`.**
 - **When.** In Monday's 4th "continue" conversation: one that starts when STATE already records
@@ -90,9 +236,57 @@ check `PR-003-P1` in STATE's `pending_production_checks`.**
   the window (the SA-050 commit conversation was not a "continue" one). Run it in **Tuesday
   20 Oct's first conversation between 07:00 and 12:00 IST**; Hong Kong is open that day, so
   Nikkei 225 and Hang Seng are both checked then.
+  The PR-004 implementation conversation began at 23:04 IST on 19 Oct, outside the window,
+  so it did not run the probe either.
 - **Then.** Record the result in the PR-003 receipt's L4 (or its review receipt), mark the check
   in STATE, and tell the owner in one line. If Nikkei reads `closed` mid-session, bring the
   owner one example and a recommendation; change nothing in production.
+
+**PR-004 is IMPLEMENTED** (20 Oct, about 04:15–05:41 IST, session stockagent-main-71, a new
+conversation opened with "continue" at 23:04 IST on 19 Oct; peers idle). Receipt:
+[implementation](evidence/PR-004-implementation.md). STATE: `active_task: null`, PR-004
+`review_required`, **`next_task: PR-004`**, meaning its **fresh review** in a new conversation
+("continue"). Nothing was committed, pushed or deployed, no production state was read and no
+message was sent. Public NSE and Yahoo endpoints were read once from this machine to choose the
+data sources. The owner's line in `docs/README.md` and the SA-051 push note stay uncommitted.
+- **In one example.** On the first Saturday after a deploy, LIQUID1 is dropped ("not a company:
+  NSE lists it as fund (series EQ, ISIN INF174KA1LV5)"). The ideas shelved before the data gate
+  are re-dived first, and the rest of the 20 calls go to IPO slots and new screen names. The
+  shelf grows towards 20 ideas, at most 3 per market sector. At each 16:30 review the autopilot
+  may buy only a shelf idea dived in the last 30 days, or the user's own watchlist stock whose
+  latest analysis is a fresh, actionable BUY.
+- **For the reviewer:** decisions D1–D12 and limits L1–L8 are in the receipt. Worth a hard look:
+  - D3/D4: the cap counts Yahoo's market sector, not `sector`; SA-050's sizing still counts
+    `sector` (the card's own hard-review question; routed to SA-049);
+  - D2/D8: fail closed (no listing, no dive; no candidate list, no buy);
+  - D9: watchlist BUYs (actionable in either gate mode; autopilot exits excluded);
+  - D10: the dive memo, added after the fill test showed week 2 re-diving week 1's rejects.
+  - D13: rotation counts from the latest deep dive (decided after the owner delegated it).
+- **Checked (final, after D13):** story tests 69 passed; full suite 5,401 passed, 12 skipped, 1 xfailed, 0 failed in 12 min 2 s; 17 of 17
+  mutants killed; broad-except OK; `check_kt_docs` `[]` (49 pages). Review input
+  [PR-004-manifest.json](evidence/PR-004-manifest.json) `215be4b9…`; diff
+  `5c6c392d…` (179179 bytes, 30 paths,
+  `analysis_data/pr004/digest.py`).
+- **Found on the way:** NSE's `equity-meta-info` answers 404, so the screen's ASM/GSM and
+  suspension gates test nothing, and no stock outside the registry gets a real sector. New card
+  [FIX-011](stories/FIX-011.md), ordered before SA-049; notes on SA-049, SA-044 and SA-026.
+- **Owner, same conversation (about 06:00 IST):**
+  - **Watchlist BUYs confirmed:** "do as per recommendation", so they stay on (receipt D9).
+  - **Cost measured:** the owner ran `analysis_data/pr004/dive_cost_probe.py` (read-only). One
+    analysis run costs a median $0.019 (139 Saturday runs since 29 Aug). 20 dives a week is
+    $1.65 a month. The paper lane re-runs the analyst once per shelf idea, so with 20 ideas the
+    whole Saturday job goes from about $1.43 to $3.70 a month. Receipt section "Measured cost".
+  - **Production shelf today:** 6 ideas. REDINGTON, DEEPINDS and MARKSANS have no gate and dives
+    38–45 days old, so after a deploy they wait for Saturday's re-dive. AUROPHARMA and SAMBHV
+    are actionable. LIQUID1 (abstain) stays a possible SWITCH destination until the first
+    Saturday drops it, as today (receipt L10; dropping it sooner is the owner's call).
+  - **Rotation, delegated** ("do as per recommendation, i trust your technical expertise"):
+    decided as receipt D13. An idea now rotates 60 days after its latest deep dive, not after
+    it was shelved, so one that keeps passing its monthly re-dive stays. Example: REDINGTON,
+    shelved 5 Sep and re-dived 24 Oct, no longer rotates out on 7 Nov. Without re-dives
+    nothing changes. This changed code, so the review input above is the new one.
+- **For the owner, after acceptance:** commit and push in a job-free window (not 08:30–09:20,
+  16:25–17:15, or Saturday 12:25–14:00 IST).
 
 **SA-051 is ACCEPTED** by its fresh review (19 Oct, about 15:26–16:15 IST, session
 stockagent-main-db, a new conversation opened with "continue"; stockagent-main-da, the
@@ -161,6 +355,12 @@ implementer, was idle from 15:35 and no peer was busy after). Receipt:
   notes. The owner's line in `docs/README.md` stays uncommitted. The push waits for 17:55
   IST (the 17:40–17:55 job window) and goes before 18:40, so the deploy is up before the
   18:55 jobs.
+
+  **Pushed** `bb9969e..25fae38` at 17:56:17 IST, after the 17:40–17:55 job window, as
+  RevanParimi. The read-only deployment list showed 25fae38 BUILDING from 17:56:18 IST and SUCCESS by 18:00 IST; /health returned 200 at 18:00 IST (read-only). This push note is uncommitted. SA-051's production
+  verification is `pending_observation`: value points carry `recorded_at` from tomorrow's
+  16:30 run. Open the portfolio screen, run guide 08-G and 08-H in a test copy, and read
+  Sunday 25 Oct's scorecard.
 
 **SA-051 is IMPLEMENTED** (19 Oct, about 12:15–13:30 IST, session stockagent-main-da, a
 new conversation opened with "continue"; peers idle). Receipt:

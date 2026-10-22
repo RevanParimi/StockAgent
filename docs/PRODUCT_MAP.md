@@ -407,17 +407,19 @@ reader filters by date ([RL_DESIGN](RL_DESIGN.md) section 23.1).
 
 ## 10. Discovery Engine (Compass Phase B)
 
-*Weekly funnel: universe → signals → screen → guards → deep dives → shelf →
-promotion.* KT section 8.
+*Weekly funnel: listing → universe → signals → screen → guards → re-dives and
+deep dives → shelf → promotion; each review then offers the buy candidates.*
+KT section 8.
 
 | Stage | Path | What |
 |---|---|---|
-| Universe | `core/discovery/universe.py` | Mainboard EQ series, price floor |
+| Universe | `core/discovery/universe.py` | Mainboard EQ series, price floor, companies only (series and ISIN from NSE's listing, never the name) |
 | Signals | `core/discovery/signals.py` | Seven pandas signals, no LLM; `None` when dark |
 | Screen | `core/discovery/screen.py` | Percentile-rank composite over live signals only |
 | Guards | `core/discovery/guards.py` | Liquidity, series, price and circuit gates, then surveillance and float on the shortlist |
-| Deep dive | `core/discovery/deep_dive.py` | The ordinary analysis per name, so its decision gate is the idea's `data_gate`; entry zone and invalidation level |
-| Shelf | `core/discovery/shelf.py` | Capped; stronger ideas displace weaker ones; promotion to the watchlist |
+| Deep dive | `core/discovery/deep_dive.py` | The ordinary analysis per name, so its decision gate is the idea's `data_gate`; entry zone and invalidation level; at most 20 analyst calls a week, re-dives first |
+| Shelf | `core/discovery/shelf.py` | 20 ideas, at most 3 per market sector; stronger ideas displace weaker ones; re-dives refresh or drop an idea; non-companies dropped; promotion to the watchlist |
+| Buy candidates | `core/discovery/candidates.py` | Per portfolio, per review: shelf ideas dived in the last 30 days plus the user's own fresh, actionable watchlist BUYs |
 | Paper lane | `core/discovery/paper_lane.py` | Real forecasts under an isolated store root, with no learning writes |
 | IPO tracker | `core/discovery/ipo_tracker.py` | Recent listings ranked on listing evidence, delivery, accumulation and subscription |
 | Schemas | `src/backend/shared/schemas/discovery.py` | Screen, deep dive, shelf |

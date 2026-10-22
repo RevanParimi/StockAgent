@@ -49,6 +49,11 @@ before PR-002"), comes directly before PR-002. In production the score history h
 (nothing has written it since April), while 1,082 analyses were logged elsewhere, so member
 screens show no real analysis state. Every analysis writes it again, and screens that list
 stocks name only the viewer's own, the managed tickers and shelf ideas.
+FIX-011, added on 2026-10-20 from PR-004's implementation (found on the way; routing delegated by
+the owner on 2026-10-13), comes directly before SA-049. NSE's per-symbol meta API answered 404 when
+probed on 2026-10-20, so the screen's surveillance (ASM/GSM) and suspension guards test nothing,
+and no stock outside the registry gets a real sector. SA-049 buys shelf ideas with idle
+cash, so the guards should work first.
 
 | Order | Story | Priority | Points | Result | Dependencies |
 |---:|---|---|---:|---|---|
@@ -66,12 +71,13 @@ stocks name only the viewer's own, the managed tickers and shelf ideas.
 | 12 | [PR-011](stories/PR-011.md) | P1 | 3 | New data: promoter and insider trades, pledges, shareholding changes | PR-006 |
 | 13 | [PR-009](stories/PR-009.md) | P1 | 5 | Exit on evidence, not on a price-path miss (shadow, then switch) | PR-002, PR-006 |
 | 14 | [SA-048](stories/SA-048.md) | P1 | 3 | Costs and tax in paper P&L | — |
-| 15 | [SA-049](stories/SA-049.md) | P1 | 7 | Idle cash to work, with the breadth floor (12 target holdings) and the ₹2 L top-up | SA-050, SA-051 |
-| 16 | [PR-005](stories/PR-005.md) | P1 | 5 | An investment case for every position | PR-006 |
-| 17 | [PR-007](stories/PR-007.md) | P1 | 3 | Plain, fact-grounded buy and sell explanations | PR-005, PR-006 |
-| 18 | [PR-008](stories/PR-008.md) | P1 | 3 | "Your stocks overnight" at the top of the brief | PR-003, PR-006 |
-| 19 | [PR-010](stories/PR-010.md) | P1 | 5 | Four screens for members; an Operator menu for the owner | PR-001 |
-| 20 | [PR-012](stories/PR-012.md) | P2 | 2 | Models chosen by role, benched on our own data; cost rates refreshed | PR-007 |
+| 15 | [FIX-011](stories/FIX-011.md) | P1 | 2 | NSE's per-symbol meta API is gone: restore the surveillance and suspension guards and an industry source | — |
+| 16 | [SA-049](stories/SA-049.md) | P1 | 7 | Idle cash to work, with the breadth floor (12 target holdings) and the ₹2 L top-up | SA-050, SA-051 |
+| 17 | [PR-005](stories/PR-005.md) | P1 | 5 | An investment case for every position | PR-006 |
+| 18 | [PR-007](stories/PR-007.md) | P1 | 3 | Plain, fact-grounded buy and sell explanations | PR-005, PR-006 |
+| 19 | [PR-008](stories/PR-008.md) | P1 | 3 | "Your stocks overnight" at the top of the brief | PR-003, PR-006 |
+| 20 | [PR-010](stories/PR-010.md) | P1 | 5 | Four screens for members; an Operator menu for the owner | PR-001 |
+| 21 | [PR-012](stories/PR-012.md) | P2 | 2 | Models chosen by role, benched on our own data; cost rates refreshed | PR-007 |
 
 The new stories add 41 points. SA-049 grows from 5 to 7 points and SA-050 from 2 to 3. On 2026-10-12 the owner confirmed this order, chose the ₹2 L paper-capital top-up with 12 target holdings, and moved PR-011 up as P1 ("I need more data"); the production baseline is section 11 of the review. The track makes results
 visible, makes the portfolio broad enough to learn from, and stops one identified source of

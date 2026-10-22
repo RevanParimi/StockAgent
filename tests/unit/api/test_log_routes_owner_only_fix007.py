@@ -21,10 +21,13 @@ import json
 import logging
 
 import pytest
-from fastapi.routing import APIRoute
+from fastapi.openapi.utils import get_openapi
+from fastapi.routing import APIRoute, APIRouter, APIWebSocketRoute
+from starlette.routing import Mount, Route, WebSocketRoute
+from starlette.staticfiles import StaticFiles
 
 from core.config import settings
-from services.api import log_buffer
+from services.api import log_buffer, server
 from services.api.auth import require_owner
 from services.api.server import app
 from services.data.stores import user_store
@@ -236,11 +239,60 @@ def test_owner_and_machine_key_get_history_then_live_lines(world, monkeypatch, a
 # Every route that reads the ring buffer carries the gate
 # ---------------------------------------------------------------------------
 
+_ENDPOINT_ROUTES = (APIRoute, APIWebSocketRoute)
+_HTTP_METHODS = {"get", "put", "post", "delete", "options", "head", "patch", "trace"}
+
+
+def _served_routes() -> list:
+    """Every endpoint route the app serves, read through public interfaces only,
+    once the walk has proved it saw the whole app.
+
+    FastAPI before 0.137 copies each included route into app.routes; from 0.137
+    app.routes holds one opaque entry per include_router call and the routes
+    stay on the router (FIX-012). So the walk reads the app's own endpoint
+    routes plus the routes of every router server.py mounts; on the old
+    structure the copies and the originals coincide."""
+    routers = list({id(r): r for r in vars(server).values() if isinstance(r, APIRouter)}.values())
+    for router in routers:
+        unreadable = [r for r in router.routes if not isinstance(r, _ENDPOINT_ROUTES)]
+        assert not unreadable, f"a mounted router holds routes the walk cannot read: {unreadable}"
+
+    # Each app entry the walk cannot read into is a router it read, one for one.
+    opaque = [r for r in app.routes if not isinstance(r, (Route, WebSocketRoute, Mount))]
+    assert len(opaque) in (0, len(routers)), \
+        f"{len(opaque)} app entries the walk cannot read into, {len(routers)} routers read"
+    for mount in (r for r in app.routes if isinstance(r, Mount)):
+        assert isinstance(mount.app, StaticFiles), \
+            f"{mount.path} mounts an app the walk cannot read"
+
+    routes, seen = [], set()
+    for route in [*app.routes, *(r for router in routers for r in router.routes)]:
+        if not isinstance(route, _ENDPOINT_ROUTES):
+            continue
+        key = (route.path, frozenset(getattr(route, "methods", None) or ()), route.endpoint)
+        if key not in seen:
+            seen.add(key)
+            routes.append(route)
+
+    # The routes the app publishes are exactly the published routes walked.
+    schema = get_openapi(title=app.title, version=app.version, routes=app.routes)
+    published = {(path, method.upper()) for path, item in schema["paths"].items()
+                 for method in item if method in _HTTP_METHODS}
+    walked = {(r.path_format, method) for r in routes
+              if isinstance(r, APIRoute) and r.include_in_schema for method in r.methods}
+    assert walked == published, (f"published, not walked: {sorted(published - walked)}; "
+                                 f"walked, not published: {sorted(walked - published)}")
+    return routes
+
+
+def test_the_route_walk_sees_every_route_the_app_serves():
+    paths = {r.path for r in _served_routes()}
+    assert {"/health", "/ui/logs", "/ui/logs/stream", "/ws/stream"} <= paths
+
+
 def test_every_route_reading_the_log_buffer_requires_the_owner():
     readers = []
-    for route in app.routes:
-        if not isinstance(route, APIRoute):
-            continue
+    for route in _served_routes():
         source = inspect.getsource(route.endpoint)
         if "log_buffer" in source and ("snapshot(" in source or "subscribe(" in source):
             readers.append(route.path)

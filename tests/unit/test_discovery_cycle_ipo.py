@@ -37,6 +37,7 @@ def test_ipo_candidates_prepended_within_budget(
     # ShelfStore.apply_deep_dives() saves unconditionally — redirect off the
     # real checkout data dir so this test never touches data/discovery/shelf.json.
     monkeypatch.setattr(disc.settings, "DISCOVERY_DATA_DIR", str(tmp_path))
+    monkeypatch.setattr(disc, "refresh_insider_trades", lambda on=None: {})
     result = disc.run_discovery_cycle(on=date(2026, 7, 4))
     assert result["ipo_candidates"] == 2
     passed = m_dives.call_args.args[0]
@@ -57,6 +58,7 @@ def test_ipo_stage_failure_is_non_fatal(
         monkeypatch, tmp_path):
     monkeypatch.setattr(disc.settings, "DISCOVERY_IPO_ENABLED", True)
     monkeypatch.setattr(disc.settings, "DISCOVERY_DATA_DIR", str(tmp_path))
+    monkeypatch.setattr(disc, "refresh_insider_trades", lambda on=None: {})
     result = disc.run_discovery_cycle(on=date(2026, 7, 4))
     assert result["ipo_candidates"] == 0
     assert any("ipo" in e for e in result["errors"])
@@ -76,6 +78,7 @@ def test_ipo_stage_gated_off(
         monkeypatch, tmp_path):
     monkeypatch.setattr(disc.settings, "DISCOVERY_IPO_ENABLED", False)
     monkeypatch.setattr(disc.settings, "DISCOVERY_DATA_DIR", str(tmp_path))
+    monkeypatch.setattr(disc, "refresh_insider_trades", lambda on=None: {})
     result = disc.run_discovery_cycle(on=date(2026, 7, 4))
     assert result["ipo_candidates"] == 0
     assert not m_ipo_build.called

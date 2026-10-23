@@ -7,6 +7,9 @@ The company-event store: market facts, with no user in them.
                                  classifier judged not about the company (kept
                                  events.seen_days days, so they are not asked again)
     data/events/runs.jsonl       one line per feed run: what it used and stored
+    data/events/ownership/<SYMBOL>.json
+                                 FII, DII and mutual-fund % read from each quarter's
+                                 shareholding XBRL, so each document is fetched once
 
 Nothing here records who holds or watches a stock. Writes take one file lock
 (`.lock`); the feed is the only writer and the route only reads. A reader
@@ -136,6 +139,29 @@ class EventStore:
         with self._lock:
             atomic_write_json(self._dir / "state.json",
                               {"queries": state.get("queries") or {}, "seen": seen},
+                              indent=1, sort_keys=True)
+
+    # -- shareholding snapshots ------------------------------------------------
+
+    def load_ownership(self, symbol: str) -> dict[str, dict]:
+        """{quarter end: {"fii", "dii", "mf", "read"}} for `symbol`; {} when none."""
+        path = self._dir / "ownership" / self.path(symbol).name.replace(".jsonl", ".json")
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except FileNotFoundError:
+            return {}
+        except (OSError, ValueError) as exc:
+            logger.warning("[events] %s unreadable, read again: %s", path.name, exc)
+            return {}
+        return {q: dict(v) for q, v in data.items() if isinstance(v, dict)} if isinstance(data, dict) else {}
+
+    def save_ownership(self, symbol: str, quarters: dict[str, dict], keep: int = 8) -> None:
+        """Keep the latest `keep` quarters."""
+        folder = self._dir / "ownership"
+        folder.mkdir(parents=True, exist_ok=True)
+        kept = dict(sorted(quarters.items(), reverse=True)[:max(1, keep)])
+        with self._lock:
+            atomic_write_json(folder / self.path(symbol).name.replace(".jsonl", ".json"), kept,
                               indent=1, sort_keys=True)
 
     def append_run(self, record: dict) -> None:

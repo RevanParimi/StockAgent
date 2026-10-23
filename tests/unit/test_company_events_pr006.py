@@ -142,7 +142,10 @@ def feed_env(tmp_path, monkeypatch):
                         ("EVENTS_MAX_SYMBOLS", 60), ("EVENTS_NEWS_QUERIES_PER_DAY", 60),
                         ("EVENTS_LOOKBACK_DAYS", 7), ("EVENTS_MAX_ITEMS_PER_SYMBOL", 24),
                         ("EVENTS_MAX_ITEMS_PER_CALL", 12), ("EVENTS_SEEN_DAYS", 30),
-                        ("EVENTS_INGEST_ON_RESULTS", True)):
+                        ("EVENTS_INGEST_ON_RESULTS", True),
+                        # NSE disclosures are PR-011's (test_disclosures_pr011.py)
+                        ("EVENTS_DISCLOSE_INSIDER", False), ("EVENTS_DISCLOSE_SAST", False),
+                        ("EVENTS_DISCLOSE_PLEDGE", False), ("EVENTS_DISCLOSE_OWNERSHIP", False)):
         monkeypatch.setattr(settings, name, value)
     monkeypatch.setattr(nse_announcements, "_SLEEP_BETWEEN_CALLS", 0)
     env = {

@@ -31,11 +31,11 @@ def patched(tmp_path, monkeypatch):
     monkeypatch.setattr(scr, "build_universe", lambda w: ["AAA", "BBB", "CCC"])
     monkeypatch.setattr(
         scr, "compute_signals",
-        lambda w, u, c: {
+        lambda w, u, c, insider_cache=None: {
             "momentum": pd.Series({"AAA": 3.0, "BBB": 2.0, "CCC": 1.0}),
             "delivery_surge": pd.Series({"AAA": 1.0, "BBB": 3.0, "CCC": 2.0}),
             "volume_breakout": None, "bulk_block": None,
-            "high_52wk_rs": None, "insider_buying": None, "mf_holding": None,
+            "high_52wk_rs": None, "insider_buying": None,
         })
     monkeypatch.setattr(
         scr, "apply_guards",
@@ -57,8 +57,9 @@ def test_run_screen_ranks_guards_and_persists(patched):
     assert result.candidates[0].symbol == "AAA"
     assert result.rejected == {"CCC": ["low_liquidity"]}
     assert set(result.dark_signals) == {"volume_breakout", "bulk_block",
-                                        "high_52wk_rs", "insider_buying", "mf_holding"}
+                                        "high_52wk_rs", "insider_buying"}
     assert "promoter_pledge" in result.degraded_checks
+    assert "insider_buying: no insider-trade cache" in result.degraded_checks
     assert (patched / "screens" / "2026-07-03_screen.json").exists()
 
     latest = scr.load_latest_screen()

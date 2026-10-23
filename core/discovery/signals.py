@@ -3,15 +3,15 @@ Compass Phase B — quant screen signals (spec §6.1). Pure pandas, zero LLM.
 
 Each sig_* returns a pd.Series indexed by symbol (higher = better, raw
 values — screen.py converts to percentile ranks) or None when the signal is
-DARK (insufficient history / feed unavailable). Dark signals are reported in
-ScreenResult.dark_signals and the composite renormalizes over live ones
-(spec §8 degraded mode).
+unavailable (insufficient history / feed unavailable). Unavailable signals
+are reported in ScreenResult.dark_signals and the composite renormalizes over
+the available ones (spec §8 degraded mode); none is scored neutral.
 
-v1 live signals: momentum (6m+12m vol-adjusted, NSE Momentum-50 style),
-delivery_surge, volume_breakout, bulk_block, high_52wk_rs.
-v1 dark signals: insider_buying, mf_holding — their data sources (NSE
-insider-trading disclosures, AMC portfolio parsing) are sub-projects of
-their own; config weights are reserved so they plug in without re-tuning.
+Signals: momentum (6m+12m vol-adjusted, NSE Momentum-50 style),
+delivery_surge, volume_breakout, bulk_block, high_52wk_rs and insider_buying
+(promoter and director open-market net buying from NSE's insider-trade
+filings, core/discovery/insider.py). There is no mutual-fund signal: no source
+for it is built, so it has no weight either.
 """
 from __future__ import annotations
 
@@ -96,20 +96,23 @@ def sig_high_52wk_rs(window: pd.DataFrame) -> pd.Series | None:
     return (proximity + rs).dropna()
 
 
-def sig_insider_buying(window: pd.DataFrame) -> pd.Series | None:
-    """DARK in v1 — NSE insider-trading (corporates-pit) fetcher not built yet."""
-    return None
-
-
-def sig_mf_holding(window: pd.DataFrame) -> pd.Series | None:
-    """DARK in v1 — AMC monthly portfolio parsing is its own sub-project."""
-    return None
+def sig_insider_buying(window: pd.DataFrame, insider_cache: dict | None) -> pd.Series | None:
+    """Promoter and director open-market net buying over the insider window,
+    ₹ crore, for every symbol in `window` (0 without a filing). None when
+    `insider_cache` is None: screen.py passes it only when every listed
+    filing was read (core/discovery/insider.py)."""
+    from core.discovery.insider import net_by_symbol
+    symbols = sorted(window["symbol"].unique()) if not window.empty else []
+    if not symbols:
+        return None
+    return net_by_symbol(insider_cache, symbols)
 
 
 def compute_signals(
-    window: pd.DataFrame, universe: list[str], bulk_cache: dict | None
+    window: pd.DataFrame, universe: list[str], bulk_cache: dict | None,
+    insider_cache: dict | None = None,
 ) -> dict[str, pd.Series | None]:
-    """All 7 signal slots, restricted to `universe` symbols. None = dark."""
+    """All 6 signal slots, restricted to `universe` symbols. None = unavailable."""
     win = window[window["symbol"].isin(universe)]
     out: dict[str, pd.Series | None] = {
         "momentum": sig_momentum(win),
@@ -117,10 +120,9 @@ def compute_signals(
         "volume_breakout": sig_volume_breakout(win),
         "bulk_block": sig_bulk_block(win, bulk_cache),
         "high_52wk_rs": sig_high_52wk_rs(win),
-        "insider_buying": sig_insider_buying(win),
-        "mf_holding": sig_mf_holding(win),
+        "insider_buying": sig_insider_buying(win, insider_cache),
     }
     dark = [k for k, v in out.items() if v is None]
     if dark:
-        logger.info("[discovery.signals] dark signals: %s", dark)
+        logger.info("[discovery.signals] unavailable signals: %s", dark)
     return out

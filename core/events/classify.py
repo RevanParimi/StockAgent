@@ -16,7 +16,8 @@ An answer is dropped and counted when it:
   Figures of two or more digits are compared as numbers, commas ignored;
   "Q2" is not a figure;
 - has an unknown category, direction or materiality, or no sentence
-  (`invalid`);
+  (`invalid`). The disclosure categories (insider, pledge, ownership) are
+  not the model's to answer: only core/events/disclosures.py writes them;
 - answers an item already answered in the same call (`duplicate`).
 
 An item answered "not about this company" is `unrelated`: no event, and the
@@ -32,7 +33,9 @@ import re
 import time
 from dataclasses import dataclass, field
 
-from backend.shared.schemas.events import CATEGORIES, DIRECTIONS, MATERIALITIES, CompanyEvent
+from backend.shared.schemas.events import (
+    CLASSIFIER_CATEGORIES, DIRECTIONS, MATERIALITIES, CompanyEvent,
+)
 from core.config import settings
 from core.config.prompts.shared.company_events import (
     COMPANY_EVENTS_SYSTEM_PROMPT, COMPANY_EVENTS_USER_TEMPLATE,
@@ -182,7 +185,7 @@ def classify_items(symbol: str, company: str, items: list[SourceItem], *,
         direction = str(entry.get("direction") or "").strip().lower()
         materiality = str(entry.get("materiality") or "").strip().lower()
         what = " ".join(str(entry.get("what") or "").split())[:MAX_WHAT_CHARS]
-        if (category not in CATEGORIES or direction not in DIRECTIONS
+        if (category not in CLASSIFIER_CATEGORIES or direction not in DIRECTIONS
                 or materiality not in MATERIALITIES or not what):
             out.invalid += 1
             continue

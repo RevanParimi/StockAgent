@@ -37,11 +37,11 @@ def test_get_latest_screen(monkeypatch):
                           shortlist_size=80,
                           candidates=[DiscoveryCandidate(symbol="AAA", close=100.0,
                                                          composite=0.9)],
-                          dark_signals=["mf_holding"])
+                          dark_signals=["insider_buying"])
     monkeypatch.setattr(dapi, "load_latest_screen", lambda: result)
     body = client.get("/discovery/screen/latest").json()
     assert body["screen_date"] == "2026-07-03"
-    assert body["dark_signals"] == ["mf_holding"]
+    assert body["dark_signals"] == ["insider_buying"]
 
 
 def test_post_run_returns_202(monkeypatch):

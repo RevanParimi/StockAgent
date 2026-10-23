@@ -53,6 +53,7 @@ StockAgent-main/
 │   │   │                          # (Unified Sector Analyst — one-pass SectorDataBundle)
 │   │   └── fetchers/              # Market/news data fetchers (+ bhavcopy.py, bulk_block.py,
 │   │                              #  surveillance.py — discovery guard data; ipo.py — IPO lists;
+│   │                              #  nse_disclosures.py — insider, SAST, pledge, shareholding rows;
 │   │                              #  close_verifier.py — yfinance×NSE close cross-check +
 │   │                              #  poisoning detector + non-finite sanitizer, the RL loop's
 │   │                              #  price-integrity gate)
@@ -169,8 +170,10 @@ StockAgent-main/
 │   ├── discovery/                 # Compass Phase B: weekly discovery funnel (see below)
 │   │   ├── __init__.py            # run_discovery_cycle() — single orchestration entry point
 │   │   ├── universe.py            # EQ-series + price-floor universe from the EOD window
-│   │   ├── guards.py              # Threshold gates (liquidity, T2T, circuits, ASM/GSM, float)
-│   │   ├── signals.py             # 5 live + 2 dark quant signals (pure pandas, zero LLM)
+│   │   ├── guards.py              # Threshold gates (liquidity, T2T, circuits, ASM/GSM, float,
+│   │   │                          #  promoter pledge)
+│   │   ├── signals.py             # 6 quant signals (pure pandas, zero LLM); None = unavailable
+│   │   ├── insider.py             # insider_buying: every company's NSE insider filings, cached
 │   │   ├── screen.py              # Weighted percentile-rank composite → ScreenResult persistence
 │   │   ├── deep_dive.py           # Stage-3 LLM one-call dives + sector inference
 │   │   ├── shelf.py               # Discovery Shelf (cap/displace, stale rotation, promote)
@@ -183,7 +186,9 @@ StockAgent-main/
 │   │   ├── sources.py             # NSE rows / Serper results → cited items (id, source date,
 │   │   │                          #  company mention check)
 │   │   ├── classify.py            # One bulk-tier call per batch + grounding (cited item, figures)
-│   │   └── store.py               # EventStore: data/events/<SYMBOL>.jsonl, state.json, runs.jsonl
+│   │   ├── disclosures.py         # NSE insider/SAST/pledge/shareholding rows → events, by rules
+│   │   └── store.py               # EventStore: data/events/<SYMBOL>.jsonl, state.json, runs.jsonl,
+│   │                              #  ownership/<SYMBOL>.json (shareholding XBRL figures)
 │   ├── delivery/                  # Compass Phase C: M4 proactive delivery (see below)
 │   │   ├── channels.py            # web-push (pywebpush+VAPID) + SMTP email; PushStore;
 │   │   │                          #  send-then-record delivered flag; stale-sub pruning
@@ -696,12 +701,13 @@ tier, and `config.yaml` is the only place models are chosen.
 | `discovery.enabled` | `true` (base.py fallback `false`) | Master gate for scheduler Jobs 11/12 and the discovery funnel |
 | `discovery.history_days` | `550` | Rolling EOD window (~2.2yr; 12m momentum needs 252 sessions) |
 | `discovery.bhavcopy_dir` | `data/market_cache/bhavcopy` | Per-day parquet EOD cache root |
-| `discovery.data_dir` | `data/discovery` | `screens/`, `shelf.json`, `shelf_events.jsonl` |
+| `discovery.data_dir` | `data/discovery` | `screens/`, `shelf.json`, `shelf_events.jsonl`, `insider_trades.json` |
 | `discovery.paper_data_dir` | `data/rl/paper/predictions` | ISOLATED paper-lane store root (spec §6.3) |
 | `discovery.liquidity_floor_cr` | `5.0` | Median daily traded value floor (₹ cr) |
 | `discovery.float_mcap_floor_cr` | `500.0` | Free-float mcap floor (₹ cr) |
 | `discovery.min_price` | `20.0` | No penny stocks |
-| `discovery.max_promoter_pledge_pct` | `25.0` | Guard ships DARK in v1 (no free data source yet) |
+| `discovery.max_promoter_pledge_pct` | `25.0` | Promoter shares pledged, % of the promoter holding (NSE pledge data), above which a shortlisted stock is rejected (`promoter_pledge_high`) |
+| `discovery.pledge_guard` | `true` (base.py fallback `false`) | The pledge guard on; `false` records the one degraded check `promoter_pledge` |
 | `discovery.circuit_streak_max` | `3` | > N trailing upper-circuit days = operator pattern, rejected |
 | `discovery.shortlist_size` | `80` | Ranked names that get per-symbol guard checks |
 | `discovery.max_candidates` | `40` | ScreenResult size after guards |
@@ -713,7 +719,9 @@ tier, and `config.yaml` is the only place models are chosen.
 | `discovery.stale_days` | `60` | An idea whose latest deep dive is older rotates out (a passed re-dive restarts the clock) |
 | `discovery.min_conviction` | `0.55` | Deep-dive final_score floor to reach the shelf |
 | `discovery.include_sme` | `false` | SME platform excluded (spec §6.2) |
-| `discovery.signal_weights` | momentum 0.30, delivery_surge 0.15, volume_breakout 0.15, bulk_block 0.15, high_52wk_rs 0.10, insider_buying 0.10, mf_holding 0.05 | Composite blend; **insider_buying + mf_holding are DARK in v1** — the screen renormalizes over live signals and reports dark ones in `ScreenResult.dark_signals` |
+| `discovery.signal_weights` | momentum 0.30, delivery_surge 0.15, volume_breakout 0.15, bulk_block 0.15, high_52wk_rs 0.10, insider_buying 0.10 | Relative weights of the composite; the screen renormalises over the available signals and names an unavailable one in `ScreenResult.dark_signals` (its reason in `degraded_checks`), never scoring it neutral. No mutual-fund signal (no source) |
+| `discovery.insider_window_days` | `28` | insider_buying: promoter and director open-market net buying over this window, from every company's NSE insider-trade filings |
+| `discovery.insider_max_documents` | `600` | New insider-filing XBRL documents read per discovery run; more leaves the signal unavailable that week |
 | `generic_graph.agent_weights` | business 0.14, fundamentals 0.18, valuation 0.14, technical 0.12, macro 0.12, risk 0.12, management 0.09, earnings 0.09 | Neutral 8-dimension weights for sectors without a native graph (sum 1.0) |
 
 ### Delivery + IPO Tracker — Compass Phase C (`config.yaml` → `delivery.*` / `discovery.ipo_*`)
@@ -847,6 +855,9 @@ A results or concall filing found by the company-event feed also runs this inges
 | `EVENTS_MAX_ITEMS_PER_CALL` | `12` | Items per classifier call (bulk tier) |
 | `EVENTS_SEEN_DAYS` | `30` | How long an item judged "not about this company" is not asked again |
 | `EVENTS_INGEST_ON_RESULTS` | `true` | A new qualifying NSE announcement runs the dossier ingestor that run |
+| `EVENTS_DISCLOSE_INSIDER` / `_SAST` / `_PLEDGE` / `_OWNERSHIP` | `true` (base.py fallbacks `false`) | `events.disclosures.*`: NSE insider trades, SAST Reg 29 filings, Reg 31 pledge events and the quarterly shareholding pattern, typed by rules; `false` switches one off |
+| `EVENTS_OWNERSHIP_MOVE_POINTS` | `1.0` | A promoter, FII, DII or mutual-fund share moving this many points quarter on quarter makes an `ownership` event |
+| `EVENTS_MAX_DOCUMENTS_PER_SYMBOL` | `10` | Insider-filing XBRL documents read per stock per run, newest first |
 
 ### Living Envelope (RL Phase 2.5)
 
@@ -930,14 +941,17 @@ All paths verified to exist. Paths are relative to project root.
 | `core/portfolio/sizing.py` | One sizing and entry rule for every autopilot buy: `weights()` (shares of total equity: holdings at their marks plus cash), `size_buy()` (position and sector caps after the trade, cash floor), `entry_check()` (at or below `entry_high`, above `invalidation_level`) |
 | `services/data/fetchers/corporate_events.py` | NSE corp-actions feed + forward board-meetings calendar (degraded-mode safe) |
 | `services/data/fetchers/nse_announcements.py` | Per-analysis NSE prefetch (`prefetch_nse_data`, agent context) and the event feed's lean `fetch_company_filings` (dated announcements + board meetings, no key-registry writes) |
-| `core/events/feed.py` | `run_event_feed()` — the daily company-event feed (08:15 + 18:30 IST): every held, watched and shelf stock, NSE filings and one news search each, typed by the bulk tier, stored once per item; caps, identity skips and same-day dossier ingestion |
-| `src/backend/shared/schemas/events.py` | `CompanyEvent` — the one event schema (source date vs fetch time, cited source) |
+| `core/events/feed.py` | `run_event_feed()` — the daily company-event feed (08:15 + 18:30 IST): every held, watched and shelf stock, NSE filings and one news search each, typed by the bulk tier, and its NSE disclosures typed by rules, stored once per item; caps, identity skips and same-day dossier ingestion |
+| `core/events/disclosures.py` | NSE disclosures as events, by fixed rules: `parse_pit_xml` + `insider_event` (insider trades), `sast_events` (deal), `pledge_events` (pledge), `parse_shareholding_xbrl` + `ownership_event` (quarter-on-quarter ownership); dated by NSE dissemination, trade days in `occurred_*`; a filing NSE lists as a revision (`is_revision`) is neutral and low and says so |
+| `services/data/fetchers/nse_disclosures.py` | NSE disclosure endpoints as raw rows (`corporates-pit-gg`, `corporate-sast-reg29`, `corporate-pledgedata-sast3132`, `corporate-pledgedata`, `corporate-share-holdings-master`) and archive-only `fetch_document`; never raises |
+| `src/backend/shared/schemas/events.py` | `CompanyEvent` — the one event schema (publication time vs fetch time vs a disclosure's `occurred_*` days, cited source, `facts`) |
 | `services/api/routes/events_api.py` | `GET /events/{symbol}` — a member's own stocks and the shelf; the owner any |
 | `data/portfolio/<user>/` | Per-user volume state: `portfolio.json`, `advice_ledger.jsonl`, `transactions.jsonl` (Autopilot audit trail), `value_history.jsonl` (daily equity curve), `digests/` |
 | `scripts/seed_autopilot.py` | One-time Autopilot seed: equal-weight virtual holdings from managed tickers + `autopilot=True`; idempotent |
 | `services/api/routes/discovery_api.py` | /discovery/* — Compass Phase B: shelf, latest screen, manual run, promote/drop |
 | `core/discovery/__init__.py` | `run_discovery_cycle()` — weekly funnel orchestration (every stage non-fatal) |
-| `core/discovery/screen.py` | Stage-1 quant screen: composite rank over live signals, guards, `ScreenResult` persistence |
+| `core/discovery/screen.py` | Stage-1 quant screen: composite rank over the available signals, guards, `ScreenResult` persistence |
+| `core/discovery/insider.py` | The insider_buying signal: `refresh_insider_trades()` (every company's insider filings over the window, each XBRL read once and its trades kept, the promoter share read for each company with a promoter-group sale, `data/discovery/insider_trades.json`), `counted_trades()` (each trade once, a revision's trades replacing their closest earlier match, only trades whose last day is in the window), `symbol_net()` (a promoter-group sale counts nothing above 75% promoter holding), `usable_insider_trades()` (only when every listed filing and needed promoter share was read), `net_by_symbol()` (₹ crore) |
 | `core/discovery/deep_dive.py` | Stage-3 LLM dives (≤`discovery.deep_dive_count` calls/wk, companies only, re-dives flagged `redive`), `entry_levels()` (band + invalidation) + `infer_sector()` (registry → NSE industry → generic) |
 | `core/discovery/shelf.py` | `ShelfStore` — size cap and displacement, under `enforce` only actionable dives become ideas, the per-market-sector cap, re-dives (`redive_due`, `apply_redives`), non-company drops, sector backfill, the dive memo (`dives.json`), stale rotation, promote-to-watchlist, `shelf_events.jsonl` |
 | `core/discovery/universe.py` | The EQ/price-floor universe and the instrument rule: `instrument_kind()` from series and ISIN (company, fund, trust), `companies_only()` |
@@ -959,8 +973,8 @@ All paths verified to exist. Paths are relative to project root.
 | `services/data/fetchers/surveillance.py` | Per-symbol NSE meta (ASM/GSM, suspension, industry; the endpoint answered 404 on 2026-10-20, so every lookup degrades) + yfinance float mcap and `market_classification()` (Yahoo sector and industry) |
 | `src/backend/sectors/generic/pipeline/orchestrator.py` | GenericSectorOrchestrator — sector-agnostic 8-dimension graph (unified primary, UniversalAgent fallback pool) |
 | `data/market_cache/bhavcopy/` | Per-day parquet EOD cache, ~550 sessions rolling |
-| `data/discovery/` | `screens/`, `shelf.json`, `shelf_events.jsonl` |
-| `data/events/` | Company events: `<SYMBOL>.jsonl` (one per source item), `state.json` (the day's search count, items judged unrelated), `runs.jsonl` (one line per run). No user id |
+| `data/discovery/` | `screens/`, `shelf.json`, `shelf_events.jsonl`, `insider_trades.json` |
+| `data/events/` | Company events: `<SYMBOL>.jsonl` (one per source item), `state.json` (the day's search count, items judged unrelated), `runs.jsonl` (one line per run), `ownership/<SYMBOL>.json` (each quarter's FII, DII and mutual-fund % from its shareholding XBRL). No user id |
 | `data/rl/paper/predictions/` | ISOLATED paper-lane RL store — never mixed into real metrics |
 | `services/api/routes/prompts.py` | /ui/prompts/* — live prompt editing and GitHub deploy |
 | `services/api/routes/analytics.py` | /analytics/* — RL performance exports and Power BI feed |

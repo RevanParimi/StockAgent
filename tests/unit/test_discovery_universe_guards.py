@@ -45,6 +45,7 @@ def test_guards_liquidity_and_circuit(monkeypatch):
                         lambda s: {"surveillance": None, "suspended": False,
                                    "industry": "X", "degraded": False})
     monkeypatch.setattr(g, "float_mcap_cr", lambda s: 2000.0)
+    monkeypatch.setattr(g, "pledge_snapshots", lambda symbols: {})    # NSE unavailable
 
     win = _window(
         _sessions("LIQCO", 70)
@@ -55,7 +56,7 @@ def test_guards_liquidity_and_circuit(monkeypatch):
     assert passed == ["LIQCO"]
     assert "low_liquidity" in rejected["THINCO"]
     assert "upper_circuit_streak" in rejected["PUMPCO"]
-    assert "promoter_pledge" in degraded            # dark guard always reported
+    assert "promoter_pledge" in degraded            # no pledge data: one degraded check
 
 
 def test_guards_surveillance_and_float(monkeypatch):
@@ -67,6 +68,7 @@ def test_guards_surveillance_and_float(monkeypatch):
         "DARKCO": {"surveillance": None, "suspended": False, "industry": None, "degraded": True},
     }
     monkeypatch.setattr(g, "get_symbol_meta", lambda s: metas[s])
+    monkeypatch.setattr(g, "pledge_snapshots", lambda symbols: {})
     monkeypatch.setattr(g, "float_mcap_cr",
                         lambda s: {"ASMCO": 900.0, "SUSPCO": 900.0,
                                    "TINYCO": 100.0, "DARKCO": None}[s])

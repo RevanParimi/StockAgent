@@ -269,6 +269,7 @@ def _discovery_shelf_add(tmp_path, monkeypatch):
     monkeypatch.setattr(disc.settings, "DISCOVERY_IPO_ENABLED", False)
     monkeypatch.setattr(disc, "sync_recent", lambda **kw: {})
     monkeypatch.setattr(disc, "refresh_bulk_block", lambda **kw: {})
+    monkeypatch.setattr(disc, "refresh_insider_trades", lambda on=None: {})
     monkeypatch.setattr(disc, "refresh_listing", lambda **kw: {})
     monkeypatch.setattr(disc, "run_screen", lambda on: ScreenResult(
         screen_date="2026-10-10", universe_size=1, shortlist_size=1, candidates=[]))

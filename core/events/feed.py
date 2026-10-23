@@ -20,7 +20,16 @@ A run (08:15 and 18:30 IST on trading days, `run_event_feed`):
    sent again. At most `events.max_items_per_symbol` per stock, newest first.
 4. **Typed** in calls of `events.max_items_per_call` (core/events/classify.py),
    and stored once per id (core/events/store.py).
-5. **Same-day dossier knowledge.** A newly stored NSE announcement whose
+5. **Disclosures.** The stock's NSE insider-trade filings, substantial-
+   acquisition filings and promoter pledge events in the same window, and its
+   quarterly shareholding list, each switched by `events.disclosures.*`. They
+   are typed by fixed rules, not the model (core/events/disclosures.py). A new
+   insider filing's XBRL is read for its trades, at most
+   `events.max_documents_per_symbol` per stock, newest first; a quarter's
+   shareholding XBRL is read once and kept (EventStore.load_ownership). When
+   the shareholding list fails, the stock's insider filings wait for the next
+   run: a promoter sale above the 75% cap cannot be told apart without it.
+6. **Same-day dossier knowledge.** A newly stored NSE announcement whose
    subject the event ingestor qualifies (results, concall, guidance, investor
    presentation) runs that ingestor for the stock in this run, under its
    managed sector, instead of waiting for Saturday. Only enabled managed
@@ -56,9 +65,10 @@ import math
 from datetime import datetime, timedelta
 
 from core.config import settings
+from core.events import disclosures as dz
 from core.events.classify import classify_items
 from core.events.sources import (
-    IST, NSE_ANNOUNCEMENT, announcement_items, board_meeting_items, mentions_company,
+    IST, NSE_ANNOUNCEMENT, announcement_items, board_meeting_items, is_ahead, mentions_company,
     name_phrases, news_items,
 )
 from core.events.store import EventStore, valid_symbol
@@ -135,6 +145,32 @@ def _fetch_filings(nse, code: str, since, until) -> dict:
     return fetch_company_filings(nse, code, since, until)
 
 
+def _fetch_disclosures(nse, code: str, since, until, sources: tuple[str, ...]) -> dict:
+    from services.data.fetchers.nse_disclosures import fetch_company_disclosures
+    return fetch_company_disclosures(nse, code, since, until, sources)
+
+
+def _fetch_document(nse, url) -> tuple[str | None, str | None]:
+    from services.data.fetchers.nse_disclosures import fetch_document
+    return fetch_document(nse, url)
+
+
+def _disclosure_sources() -> tuple[str, ...]:
+    """The disclosure endpoints this run asks, in order. The shareholding
+    list is also read for insider trades: a promoter sale above the 75% cap
+    is told apart by it."""
+    out = []
+    if settings.EVENTS_DISCLOSE_INSIDER:
+        out.append("insider")
+    if settings.EVENTS_DISCLOSE_SAST:
+        out.append("sast")
+    if settings.EVENTS_DISCLOSE_PLEDGE:
+        out.append("pledge")
+    if settings.EVENTS_DISCLOSE_OWNERSHIP or settings.EVENTS_DISCLOSE_INSIDER:
+        out.append("shareholding")
+    return tuple(out)
+
+
 def _news_query(symbol: str) -> tuple[str, str]:
     from services.data.fetchers.news import company_news_query
     return company_news_query(symbol)
@@ -183,6 +219,10 @@ def _new_record(slot: str, now: datetime) -> dict:
         "items_fetched": 0, "items_new": 0, "items_over_cap": 0,
         "llm_calls": 0, "llm_failed": 0, "events_stored": 0, "events_ungrounded": 0,
         "events_invalid": 0, "events_duplicate": 0, "items_unrelated": 0,
+        "disclosure_sources": list(_disclosure_sources()), "disclosures_stored": {
+            "insider": 0, "deal": 0, "pledge": 0, "ownership": 0},
+        "disclosures_failed": {}, "documents_fetched": 0, "documents_failed": 0,
+        "documents_unreadable": 0, "documents_over_cap": 0, "ownership_mismatch": 0,
         "ingest": {}, "ingest_not_managed": [], "error": None,
     }
 
@@ -268,7 +308,7 @@ def _run(rec: dict, now: datetime, clock, store: EventStore) -> None:
 
     if trigger and settings.EVENTS_INGEST_ON_RESULTS:
         _trigger_ingest(sorted(trigger), rec)
-    if rec["nse_failed"] or rec["news_failed"] or rec["llm_failed"]:
+    if rec["nse_failed"] or rec["news_failed"] or rec["llm_failed"] or rec["disclosures_failed"]:
         rec["status"] = "partial"
     try:
         usage = _search_usage()
@@ -279,9 +319,11 @@ def _run(rec: dict, now: datetime, clock, store: EventStore) -> None:
     except Exception as exc:
         logger.warning("[events] search usage unreadable: %s", exc)
     logger.info("[events] %s run: %d of %d stocks, %d new items, %d events stored, "
-                "%d classifier calls (%d failed), status %s", rec["slot"], rec["symbols_used"],
-                rec["symbols_tracked"], rec["items_new"], rec["events_stored"], rec["llm_calls"],
-                rec["llm_failed"], rec["status"])
+                "%d classifier calls (%d failed), disclosures stored %s (%d documents, %d failed), "
+                "status %s", rec["slot"], rec["symbols_used"], rec["symbols_tracked"],
+                rec["items_new"], rec["events_stored"], rec["llm_calls"], rec["llm_failed"],
+                rec["disclosures_stored"], rec["documents_fetched"], rec["documents_failed"],
+                rec["status"])
 
 
 def _one_symbol(symbol: str, on, since, clock, nse, store: EventStore, state: dict,
@@ -290,10 +332,14 @@ def _one_symbol(symbol: str, on, since, clock, nse, store: EventStore, state: di
     stored NSE announcement qualifies for the dossier ingestor."""
     code = _nse_code(symbol, on)
     filings = None
+    disclosed = None
     if nse is not None:
         filings = _fetch_filings(nse, code, since, on)
         if filings.get("error"):
             rec["nse_failed"][symbol] = str(filings["error"])[:200]
+        sources = _disclosure_sources()
+        if sources:
+            disclosed = _fetch_disclosures(nse, code, since, on, sources)
     query, company = _news_query(symbol)
     results = None
     if rec["news_queries_used"] < rec["news_run_budget"] and not rec["news_exhausted"]:
@@ -366,7 +412,116 @@ def _one_symbol(symbol: str, on, since, clock, nse, store: EventStore, state: di
                 qualifies = True
     if not seen:
         state["seen"].pop(symbol, None)
+    if disclosed is not None:
+        events = _disclosure_events(symbol, code, disclosed, nse, now, since, store, rec)
+        for event in store.append_new(symbol, events):
+            rec["disclosures_stored"][event.category] += 1
     return qualifies
+
+
+def _disclosure_events(symbol: str, code: str, disclosed: dict, nse, now: datetime, since,
+                       store: EventStore, rec: dict) -> list:
+    """The stock's new disclosure events (core/events/disclosures.py). A
+    failed endpoint or document is named in `disclosures_failed` and asked
+    again next run; nothing failed is stored."""
+    fetched_at = now.isoformat(timespec="seconds")
+    known = store.known_ids(symbol)
+    failed = dict(disclosed.get("errors") or {})
+    events = []
+    quarters = dz.quarters_from_list(disclosed.get("shareholding") or [], code)
+    latest = quarters[0] if quarters else None
+    holding = ((latest["promoter"], latest["quarter_end"])
+               if latest and latest["promoter"] is not None else None)
+
+    if "insider" in disclosed and "shareholding" in failed:
+        # The 75% rule needs the latest pattern: without it a sale cannot be
+        # told apart, so the stock's insider filings wait for the next run.
+        failed["insider"] = "waiting for the shareholding list"
+    elif "insider" in disclosed:
+        rows, foreign, ahead = dz.insider_rows(disclosed["insider"], code, now)
+        rec["nse_rows_foreign"] += foreign
+        rec["nse_rows_ahead"] += ahead
+        new = [r for r in rows if dz.insider_id(r) not in known]
+        cap = max(0, settings.EVENTS_MAX_DOCUMENTS_PER_SYMBOL)
+        rec["documents_over_cap"] += max(0, len(new) - cap)
+        for row in new[:cap]:
+            text, error = _fetch_document(nse, row.get("xmlFileName"))
+            rec["documents_fetched"] += 1
+            if error:
+                rec["documents_failed"] += 1
+                failed.setdefault("insider", error)
+                continue
+            filing = dz.parse_pit_xml(text)
+            if filing is None:
+                rec["documents_unreadable"] += 1
+                continue
+            if filing.symbol != code.upper():
+                rec["nse_rows_foreign"] += 1
+                continue
+            events.append(dz.insider_event(row, filing, symbol, fetched_at, holding))
+    for source, parse in (("sast", dz.sast_events), ("pledge", dz.pledge_events)):
+        if source in disclosed:
+            found, foreign, ahead = parse(disclosed[source], code, symbol, now, fetched_at, since)
+            rec["nse_rows_foreign"] += foreign
+            rec["nse_rows_ahead"] += ahead
+            events += [e for e in found if e.id not in known]
+    if settings.EVENTS_DISCLOSE_OWNERSHIP and "shareholding" in disclosed and len(quarters) >= 2:
+        event = _ownership_event(symbol, code, quarters, nse, now, store, known, rec, failed)
+        if event is not None:
+            events.append(event)
+    if failed:
+        rec["disclosures_failed"][symbol] = "; ".join(
+            f"{k}: {v}" for k, v in sorted(failed.items()))[:300]
+    return events
+
+
+def _ownership_event(symbol: str, code: str, quarters: list[dict], nse, now: datetime,
+                     store: EventStore, known: set, rec: dict, failed: dict):
+    """The latest quarter against the one before: promoter % from NSE's list,
+    FII, DII and mutual-fund % from each quarter's XBRL, read once and kept.
+    A document that could not be fetched is asked again next run; one that
+    cannot be read, or whose promoter figure disagrees with the list by more
+    than half a point, gives no institutional figures for that quarter."""
+    latest, before = quarters[0], quarters[1]
+    if f"nseshp:{latest['quarter_end']}" in known:
+        return None
+    published = latest.get("published_at")
+    if published and is_ahead(datetime.fromisoformat(published), now):
+        rec["nse_rows_ahead"] += 1
+        return None
+    cache = store.load_ownership(symbol)
+    changed = False
+    pair = []
+    for quarter in (latest, before):
+        snap = cache.get(quarter["quarter_end"])
+        if snap is None:
+            snap = {"fii": None, "dii": None, "mf": None, "read": False}
+            if quarter.get("xbrl"):
+                text, error = _fetch_document(nse, quarter["xbrl"])
+                rec["documents_fetched"] += 1
+                if error:
+                    rec["documents_failed"] += 1
+                    failed.setdefault("shareholding", error)
+                    if changed:
+                        store.save_ownership(symbol, cache)
+                    return None
+                parsed = dz.parse_shareholding_xbrl(text)
+                if (parsed is None or parsed["quarter_end"] != quarter["quarter_end"]
+                        or (parsed["symbol"] and parsed["symbol"] != code.upper())):
+                    rec["documents_unreadable"] += 1
+                elif (quarter["promoter"] is not None and parsed["promoter"] is not None
+                      and abs(parsed["promoter"] - quarter["promoter"]) > 0.5):
+                    rec["ownership_mismatch"] += 1
+                else:
+                    snap = {"fii": parsed["fii"], "dii": parsed["dii"], "mf": parsed["mf"],
+                            "read": True}
+            cache[quarter["quarter_end"]] = snap
+            changed = True
+        pair.append({**quarter, **{k: snap.get(k) for k in ("fii", "dii", "mf")}})
+    if changed:
+        store.save_ownership(symbol, cache)
+    return dz.ownership_event(pair[0], pair[1], symbol, now.isoformat(timespec="seconds"),
+                              settings.EVENTS_OWNERSHIP_MOVE_POINTS)
 
 
 def _nse_names(filings: dict, code: str) -> list[str]:

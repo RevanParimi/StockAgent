@@ -141,7 +141,7 @@ general human-approval queue between these components.
 | [services/data](../services/data/) | Fetchers, context assembly, caches, durable stores, backup, restore and off-site copy. |
 | [core/intelligence](../core/intelligence/) | Forecasting, feedback, learning mode, regimes, seasonal logic, company knowledge and prediction-store tools. |
 | [core/portfolio](../core/portfolio/), [core/discovery](../core/discovery/), [core/ipo](../core/ipo/) | Virtual money path, identity reconciliation, listed-stock discovery and IPO evidence. |
-| `core/events` | The daily company-event feed: filings and news for every tracked stock, typed and stored (section 4). Outside `core/intelligence`, because it reads users' holdings. |
+| `core/events` | The daily company-event feed: filings, disclosures and news for every tracked stock, typed and stored (section 4). Outside `core/intelligence`, because it reads users' holdings. |
 | [core/audit](../core/audit/), [core/ops/watchdog](../core/ops/watchdog/), [core/delivery](../core/delivery/) | Outcome measurement, operational monitoring and delivery. |
 | [src/frontend/prototypes](../src/frontend/prototypes/) | Served React/JSX application, PWA, chat rendering and data adapters. |
 | [tests](../tests/) | Unit, integration and contract checks behind a hermetic boundary; their presence alone is not acceptance. |
@@ -207,7 +207,7 @@ evidence.
 | `data/portfolio/<user>/` | PortfolioStore: holdings/cash, advice and transaction JSONL, value history, dated digests, briefs and weekly reviews, and `weekly_scorecard.jsonl` (one results row per ISO week, written once; section 7). The nightly auditor's `advice_outcomes.jsonl` sits beside them. |
 | `data/ipo/` | Historical issue facts and captured demand snapshots; reports derive from these records. |
 | `data/market_cache/ipo.json` and EOD parquet | Cached IPO information and exchange price history; date, source and stale state matter. |
-| `data/events/` | The company-event feed (section 4): `<SYMBOL>.jsonl`, one event per source item, append-only; `state.json`, the day's news-search count and the items judged not about their company; `runs.jsonl`, one line per run. Market facts only, with no user in them. The feed writes; `GET /events/{symbol}` reads. |
+| `data/events/` | The company-event feed (section 4): `<SYMBOL>.jsonl`, one event per source item, append-only; `state.json`, the day's news-search count and the items judged not about their company; `runs.jsonl`, one line per run; `ownership/<SYMBOL>.json`, each quarter's FII, DII and mutual-fund share read from its shareholding XBRL. Market facts only, with no user in them. The feed writes; `GET /events/{symbol}` reads. |
 | `data/logs/data_health.jsonl`; `data/logs/decision_gate.jsonl` | One data-health row per analysis run, also written to `telemetry.db`; one gate row per consumer decision. The gate log never holds a user id. |
 | `scores.db`: `score_history` | One row per completed analysis, written at the orchestrator's exit after the decision gate; the newest 90 per stock. Home's scores, the watchlist, Portfolio's verdict changes and the chat read it; lists name only shared stocks and the viewer's own (section 10). `scripts/backfill_score_history.py` can copy past runs from `telemetry.db`'s `run_summaries`, marked so they can be removed; it copies nothing from a minute before a stock's first live row on, because that run is already recorded. |
 | SQLite log, user and Atlas stores | Telemetry, sessions and relational indexes/outbox. Secondary tables may lag primary records. |
@@ -613,8 +613,10 @@ An analysis run reads NSE filings and company news only for itself. The
 company-event feed (`core/events/feed.py`) keeps a daily record of what
 happened to every stock a user holds or watches and to every active shelf
 idea: results, guidance, orders, ratings, management changes, regulatory
-action, corporate actions and deals. Each event is typed, dated and cites the
-item it came from. Two jobs run it on trading days, at 08:15 and 18:30 IST
+action, corporate actions and deals, and from NSE's disclosures, insider
+trades, substantial acquisitions, promoter pledges and shareholding changes.
+Each event is typed, dated and cites the item it came from. Two jobs run it on
+trading days, at 08:15 and 18:30 IST
 (section 9). Nothing trades or advises on it yet; the investment case, the
 explanations, the brief's company lane and the exit rule are to read it
 (**Planned:** PR-005, PR-007, PR-008, PR-009).
@@ -631,7 +633,8 @@ A run:
    (the daily review's company query, the past 24 hours, 5 articles). Searches
    are capped at `events.news_queries_per_day` (60), half per run, in stock
    order; a spent credit stops the run's searches. Each run logs its searches
-   with the month's Serper count.
+   with the month's Serper count. The stock's NSE disclosures in the same
+   window are read too (below).
 3. **New items only.** An item already stored, or judged not about the
    company in the last `events.seen_days` (30), is not sent again. At most 24
    per stock per run, newest first.
@@ -639,13 +642,17 @@ A run:
    whether it is about the company, one sentence, a category (results,
    guidance, order, rating, management, regulatory, corporate_action, deal,
    other), a direction (positive, negative, neutral) and a materiality (high,
-   medium, low).
+   medium, low). Disclosures are typed by fixed rules instead, and the model
+   may not answer their categories (insider, pledge, ownership).
 5. **Stored** once per item in `data/events/<SYMBOL>.jsonl`, keyed by NSE's
-   announcement id or the article's URL without tracking parameters.
+   announcement id, a disclosure's NSE id, or the article's URL without
+   tracking parameters.
 
 The record (`src/backend/shared/schemas/events.py`) is `{id, symbol, what,
 category, direction, materiality, source, source_url, announcement_id,
-title, publisher, published_at, published_raw, fetched_at, classifier}`.
+title, publisher, published_at, published_raw, occurred_from, occurred_to,
+facts, fetched_at, classifier}`. `occurred_*` and `facts` are filled for a
+disclosure only, and its `classifier` is `rules`.
 **Planned:** the text reader emits the same record (SA-046).
 
 **Dates.** `published_at` comes from the source and never from the fetch:
@@ -695,6 +702,89 @@ board-meeting intimation does not, because the meeting has not happened. A
 stock that is not an enabled managed stock has no dossier, so its event is
 only stored.
 
+**Disclosures.** The same run reads four NSE disclosure feeds for each stock
+(`services/data/fetchers/nse_disclosures.py`) and types
+them by fixed rules, with no model call
+(`core/events/disclosures.py`). Each source is switched by
+`events.disclosures.*`.
+
+| Source | Event | What it records |
+|---|---|---|
+| Insider trades (SEBI PIT), filed in the window | `insider` | Who (the promoter group, directors and key managers, or others), bought or sold, in the market or off it, shares and rupees |
+| Substantial acquisitions (SAST Regulation 29) | `deal` | Who acquired or sold what share of the company, and what they hold after |
+| Promoter encumbrance (SAST Regulation 31) | `pledge` | A pledge created, released or invoked, and its share of the company |
+| Shareholding pattern, each quarter | `ownership` | Promoter, FII, DII and mutual-fund share against the quarter before, when one moved `events.ownership_move_points` (1) or more |
+
+`published_at` is when NSE disseminated the filing: when we could have known.
+The trade, pledge or quarter-end days are kept apart in `occurred_from` and
+`occurred_to`. A promoter who sells on 21 Oct and files on 22 Oct is news on
+22 Oct. `facts` keeps the figures (rupees, shares, percentage points), so a
+reader can check `what`. No person is named: an insider is "the promoter
+group" or "directors and key managers", a pledger "a promoter". A substantial
+acquirer is named, because that holder (usually an institution) is the news.
+
+A direction is claimed only where the data supports one:
+
+- An insider filing is positive when the promoter group and directors bought
+  more than they sold in the market, negative when they sold more.
+  Employees' trades and off-market moves (gift, inheritance, inter-se
+  transfer, ESOP allotment) are neutral and low. Materiality is the
+  open-market net: ₹10 crore or more high, ₹1 crore or more medium.
+- A promoter-group sale while promoters hold more than 75% of the company
+  (the latest pattern) is neutral, at most medium. The sentence says the sale
+  may be to meet the rule that a listed company keeps 25% public. Any other
+  net sale says "The filing gives no reason for the sale": a sale to pay tax
+  or repay a loan looks the same.
+- An insider filing NSE lists as a revision (`typeOfSubmission` "Revision",
+  or the XBRL's revised flag) is neutral and low, whatever its trades. Its
+  sentence says it revises an earlier filing, so the trades may have been
+  reported before and are not read as new trading. NSE gives a revision its
+  own `appId` and rarely names the filing it corrects: in the 28 days to 23
+  Oct 2026, 6 of 308 filings were revisions, and the 2 that named an earlier
+  filing named one not on the list. So the revision is stored as its own
+  event, and the event of the filing it corrects is left as it was.
+- A substantial acquisition or sale is positive or negative only for a
+  promoter. A fund crossing 5% is neutral: the filing does not say why.
+- A pledge created or invoked is negative, a release positive and at most
+  medium.
+- An ownership move is positive when every moved category rose, negative
+  when all fell, and neutral when mixed. When the promoter share fell, the
+  sentence says the pattern does not tell a sale from dilution by new shares.
+
+An insider filing's trades are in its XBRL file. The feed reads it once, for
+a filing not stored yet, at most `events.max_documents_per_symbol` (10) per
+stock per run, newest first. A quarter's shareholding XBRL (about 0.6 MB) is
+read once; its FII, DII and mutual-fund figures are kept in
+`data/events/ownership/<SYMBOL>.json`. A document is fetched only from NSE's
+archive host. If its promoter figure differs from NSE's quarterly list by
+more than half a point, its other figures are not used. A failed endpoint or
+document gives no event and is named in the run's `disclosures_failed`; the
+next run asks again. When the shareholding list fails, the stock's insider
+filings wait for the next run too, since the 75% test needs it. The run line counts `disclosures_stored` by kind and the
+documents fetched, failed, unreadable and over the cap.
+
+**Example:** at 08:15 on Fri 23 Oct, KARURVYSYA is held. NSE lists one
+insider filing, disseminated on 22 Oct at 19:29:01. Its XBRL shows three
+promoter-group members, each selling 2,000 shares for ₹7,69,230 in the market
+on 21 Oct. The event reads "The promoter group sold 6,000 shares worth ₹23.1
+lakh in the market on 21 Oct 2026. Filed with NSE on 22 Oct 2026. The filing
+gives no reason for the sale." It is `insider`, negative and low (under ₹1
+crore), with `published_at` 2026-10-22T19:29:01+05:30 and `occurred_from`
+2026-10-21. MARUTI's 30 Sep pattern moved less than a point in every category
+(FII 12.82% to 12.42%, mutual funds 15.33% to 14.77%), so it gives no
+ownership event.
+
+**Example of a revision:** at 18:30 on Thu 1 Oct, PATINTLOG is held. NSE lists
+filing 3886 (17:11:45): the promoter group bought 2,63,832 shares for ₹36.6
+lakh and sold 2,63,832 for ₹35.9 lakh in the market, 23 to 29 Sep. It also
+lists 3893 (18:23:57), a revision with the same two trades; NSE's remark says
+only the filing date was corrected. 3886 is stored positive and low (net
++₹71,214). 3893 is stored neutral and low, and its sentence ends "It revises
+an earlier filing, so these trades may have been reported before and are not
+read as new trading." Likewise NAUKRI's revision 3962 (8 Oct) of a director's
+₹68.0 crore sale traded on 18 to 20 Aug is neutral and low, not a new
+negative, high sale.
+
 **Who reads it.** Events hold no user. But the feed covers only the stocks
 someone tracks, so `GET /events/{symbol}` gives a member the events of their
 own holdings and watchlist and of the shelf. Any other symbol gets the same
@@ -727,8 +817,20 @@ At 18:30 the same items are fetched again, and none is sent to the model.
 - One story told by several outlets gives several events. **Planned:** the
   brief groups them by company, category and day (PR-008).
 - A relative age gives a day, not a time; "1 month ago" counts as 30 days.
-- NSE's field names were recorded from its live responses on 22 Oct 2026. A
-  renamed field gives undated or missing items, which the run counts.
+- NSE's field names were recorded from its live responses on 22 Oct 2026 (the
+  disclosure feeds on 23 Oct). A renamed field gives undated or missing items,
+  which the run counts.
+- NSE's older insider endpoint (`corporates-pit`) has had no rows since late
+  April 2026; the feed reads its replacement (`corporates-pit-gg`).
+- The 75% test reads the latest quarter's promoter share, up to three months
+  old.
+- A revision does not change the stored event of the filing it corrects.
+  When a revision moves a trade to another person's category (for example
+  from promoter to a relative), the original's event keeps its direction.
+- A revised shareholding pattern for a quarter already compared is not
+  compared again.
+- More than 10 new insider filings for one stock in a run wait for the next
+  run; any that leave the 7-day window by then are missed.
 - The store has no retention yet; it grows by a few events per stock per day.
 
 ### Limits of the research path
@@ -1432,6 +1534,77 @@ The shelf exists to supply enough checked, varied ideas to fill and keep about
    24 Oct stays past 4 Nov; without passing another re-dive it rotates out
    after 23 Dec.
 
+**Screen signals.** The screen ([screen.py](../core/discovery/screen.py))
+ranks every company on six signals by percentile and blends the ranks by
+`discovery.signal_weights`: momentum 0.30, delivery surge 0.15, volume
+breakout 0.15, bulk and block buying 0.15, nearness to the 52-week high with
+relative strength 0.10, and insider buying 0.10. The weights are relative:
+the blend is renormalised over the signals available that week. An
+unavailable signal is left out and named in the screen's `dark_signals`, with
+its reason in `degraded_checks`; it is never scored neutral. There is no
+mutual-fund signal, because no source for it (monthly scheme portfolios) is
+built, so it has no weight either.
+
+**Insider buying** (`core/discovery/insider.py`) is the rupees
+each company's promoter group and directors bought minus sold in the market
+over the last `discovery.insider_window_days` (28), from every company's NSE
+insider-trade filings (section 4). Each Saturday run lists the window's
+filings and reads the XBRL of each filing not read before, at most
+`discovery.insider_max_documents` (600) a run. It keeps each filing's trades,
+without names, in `data/discovery/insider_trades.json`, and each company's
+net. Each trade counts once, and only when its last trade day falls in the
+window, so a trade counts for 28 days after it was made, not after it was
+filed:
+
+- NSE lists a corrected filing (a revision) as a new filing and rarely says
+  which one it corrects. So filings are taken in the order NSE disseminated
+  them. An original's trades are all kept, since two persons can make the
+  same trade on the same day. Each trade of a revision replaces the closest
+  earlier trade of the same company with the same action and share count;
+  revisions correct values, days and categories, so those may differ. A
+  revision's trade that matches none is new.
+- So PATINTLOG's revision of 1 Oct, which repeats its original's two promoter
+  trades, counts once (+₹71,214, 0.0071 crore). HTEL's revision of 6 Oct
+  repeats its original's four purchases and adds a fifth: five trades. A
+  revision disseminated on 8 Oct of NAUKRI's director sale of ₹68.0 crore,
+  traded on 18 to 20 Aug, counts nothing in the 28 days to 23 Oct.
+- A company whose promoters hold more than 75% must sell to keep 25%
+  public, and section 4's event calls such a sale neutral. So for each
+  company with a counted promoter-group market sale, the run reads the
+  latest promoter share from NSE's shareholding list. Above 75%, those
+  sales count nothing; directors' trades still count. When NSE gives no
+  promoter share, the sale counts, as the event's does.
+
+The signal is used only when every listed filing and every needed promoter
+share was read, the list is at most 7 days old and not newer than the screen
+day, and no more than a tenth of the documents were unreadable. A document
+whose promoter or director market trade has no day is unreadable. Otherwise
+a missed buyer would rank as a company nobody traded. Example: in the 28
+days to 23 Oct NSE listed 351 filings for 177 companies. Promoters who bought
+₹4.2 crore score 4.2, directors who sold ₹1.1 crore score -1.1, and a company
+with no filing scores 0. A first run reads up to 600 documents, a few minutes
+of NSE calls; later runs read only the new filings, and the promoter shares
+again.
+
+**Promoter pledge.** For each of the 80 shortlisted stocks, NSE's pledge data
+gives the promoter shares pledged as a % of the promoter holding, at the
+latest quarter filed. More than `discovery.max_promoter_pledge_pct` (25%)
+rejects the stock (`promoter_pledge_high`): when the price falls, a lender
+can sell pledged shares. A stock NSE has no row for, or more than one (the
+rows name the company, not the symbol), or whose call failed, is kept and
+recorded as `promoter_pledge:<SYMBOL>`. So is a stock whose row is for a
+quarter that ended more than 200 days before the screen's latest session.
+A quarter's pattern is due within 21 days of its end, so the latest due
+quarter is at most about 112 days old, and 200 days allows one late quarter.
+On 23 Oct a row for 30 Jun (115 days) is used and one for 31 Mar (206 days)
+is not. With `discovery.pledge_guard` off or no NSE client, the screen
+records the one check `promoter_pledge`. On 22 Oct NSE's list had 1,558
+companies and 181 above 25%; A2Z Infra's promoters had pledged 99.68% of
+their shares, Maruti's 0%. On 23 Oct, 93 of the 1,558 rows were for a
+quarter before 30 Sep 2026, and 79 were more than 200 days old (10 from
+before 2015). 35 of those 79 showed more than 25% pledged; such a stock is
+kept as unknown, not rejected.
+
 **Market sector.** Each idea carries `market_sector` and `industry` from
 Yahoo Finance's classification (for example "Healthcare" and "Drug
 Manufacturers - General"). The idea's `sector` field is a routing key, set by
@@ -1493,6 +1666,19 @@ would let through (38%).
   from a company; the ISIN can.
 - A capped-out idea waits 30 days for its next dive, even if its sector frees
   a place sooner.
+- Insider buying counts rupees, not a share of the company: ₹5 crore bought
+  in a large company outranks ₹2 crore in a small one, though the second may
+  weigh more on its price.
+- A revision that leaves out a trade its original reported leaves that trade
+  counted, and one that changes a trade's share count adds the corrected
+  trade to the original's: NSE does not say which filing a revision corrects.
+  In the 28 days to 23 Oct, no revision whose original was also listed did
+  either.
+- Two originals with the same trade count twice. SARLAPOLY filed two
+  originals, each a 10,000-share sale on 25 Sep, and the filings do not say
+  whether they are one person or two.
+- A pledge row names the company, not its symbol, so the guard relies on
+  NSE's symbol filter.
 
 ### IPO layers
 
@@ -1548,13 +1734,13 @@ All times are **Asia/Kolkata (IST)** defaults.
 | `ops_watchdog` | Daily 06:30 | Milestones/checks/configured prep; watchdog gate. |
 | `macro_daily_news` | Mon–Fri 07:30 | Policy/RBI feed; macro-news gate. |
 | `ipo_refresh_am` | Daily 08:00 | Calendar/bids/snapshots; IPO gate. |
-| `company_events_am` | Mon–Fri 08:15 | Company-event feed (section 4): overnight filings and news; events gate; skips NSE holidays. |
+| `company_events_am` | Mon–Fri 08:15 | Company-event feed (section 4): overnight filings, disclosures and news; events gate; skips NSE holidays. |
 | `preopen_shock_check` | Mon–Fri 08:45 | Shock/reforecast; feature/calendar checks in handler. |
 | `morning_brief` | Mon–Fri 08:50 | Brief assembly/delivery; delivery gate. |
 | `macro_market_news` | Mon–Fri 09:00, 12:00, 15:00 | Intraday macro feed; macro-news gate. |
 | `rl_daily_review` | Mon–Fri 16:30 | Previous trading session; configured feedback cron. |
 | `ipo_refresh_pm` | Daily 17:45 | Evening IPO update before Sunday weekly review; IPO gate. |
-| `company_events_pm` | Mon–Fri 18:30 | Company-event feed: the day's filings and news, after the close and the 16:30 review; events gate; skips NSE holidays. |
+| `company_events_pm` | Mon–Fri 18:30 | Company-event feed: the day's filings, disclosures and news, after the close and the 16:30 review; events gate; skips NSE holidays. |
 | `ipo_deep_dive` | Daily 19:00 | T−1 IPO research + post-close re-read into the dark verdict store; IPO gate. |
 | `bhavcopy_daily_sync` | Mon–Fri 19:00 | Official EOD cache; discovery gate. |
 | `atlas_universe_recompute` | Daily 23:00 | Demand/cadence; no-op if Atlas disabled. |
@@ -1565,7 +1751,7 @@ All times are **Asia/Kolkata (IST)** defaults.
 | `ledger_cleanup_weekly` | Monday 03:30 | Stale-lesson cleanup. |
 | `event_ingest_weekly` | Saturday 10:00 | Dossier events; event-ingest gate. |
 | `research_loop_weekly` | Saturday 11:00 | Open company questions; research-loop gate. |
-| `discovery_weekly` | Saturday 12:30 | Screen/deep dives/shelf/paper; discovery gate. |
+| `discovery_weekly` | Saturday 12:30 | Insider trades/screen/deep dives/shelf/paper; discovery gate. |
 | `weekly_review` | Sunday 18:00 | Results scorecard, portfolio summary, index watch; delivery gate. |
 | `scorecard_monthly` | Calendar first 02:00 | Previous-month scorecard/evidence; scorecard gate. |
 | `rl_monthly_forecast` | Calendar first 09:00 | Forecast envelopes. |

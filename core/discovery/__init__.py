@@ -24,6 +24,7 @@ from core.discovery.shelf import ShelfStore
 from services.data.fetchers.bhavcopy import load_listing, refresh_listing, sync_recent
 from services.data.fetchers.bulk_block import refresh_bulk_block
 from services.data.fetchers.surveillance import market_classification
+from core.discovery.insider import refresh_insider_trades
 from core.config import settings
 from core.discovery.ipo_tracker import build_ipo_candidates, upcoming_lockin_alerts
 from services.data.fetchers.ipo import refresh_ipo_cache
@@ -34,7 +35,7 @@ __all__ = [
     "run_discovery_cycle", "run_deep_dives", "run_paper_reviews",
     "run_screen", "load_latest_screen", "ShelfStore",
     "sync_recent", "refresh_bulk_block", "refresh_listing", "load_listing",
-    "market_classification",
+    "market_classification", "refresh_insider_trades",
     "refresh_ipo_cache", "build_ipo_candidates", "upcoming_lockin_alerts",
     "settings",
 ]
@@ -60,6 +61,17 @@ def run_discovery_cycle(on: date | None = None) -> dict:
     except Exception as exc:
         logger.warning("[discovery] bulk/block refresh failed (non-fatal): %s", exc)
         errors.append(f"bulk_block failed: {exc}")
+
+    # PR-011: every company's insider-trade filings for insider_buying. The
+    # screen leaves the signal out, and says why, unless all were read.
+    insider: dict = {}
+    try:
+        insider = refresh_insider_trades(on)
+        if insider.get("error"):
+            errors.append(f"insider trades failed: {insider['error']}"[:200])
+    except Exception as exc:
+        logger.warning("[discovery] insider trades refresh failed (non-fatal): %s", exc)
+        errors.append(f"insider trades failed: {exc}")
 
     # PR-004: what NSE lists each symbol as. Without any listing no symbol can
     # be verified as a company, and the deep dives refuse to run blind.
@@ -172,6 +184,8 @@ def run_discovery_cycle(on: date | None = None) -> dict:
         "candidates": len(screen.candidates),
         "ipo_candidates": len(ipo_cands),
         "dark_signals": screen.dark_signals,
+        "insider_trades": {k: insider.get(k) for k in (
+            "listed", "read_now", "unread", "failed", "complete")},
         "listing": listing_info,
         "hygiene": hygiene,
         "deep_dives": len(dives),

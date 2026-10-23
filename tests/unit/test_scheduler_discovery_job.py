@@ -13,6 +13,7 @@ def test_run_discovery_cycle_happy_path(monkeypatch):
                         {"synced": 1, "skipped": 4, "failed": [], "pruned": 0})
     monkeypatch.setattr(disc, "refresh_bulk_block",
                         lambda weeks=4: calls.append("bulk") or {"degraded": False, "deals": []})
+    monkeypatch.setattr(disc, "refresh_insider_trades", lambda on=None: {})
     monkeypatch.setattr(disc, "refresh_ipo_cache", lambda: {})
     monkeypatch.setattr(disc, "refresh_listing",
                         lambda end=None: {"as_of": None, "fresh": False, "securities": 0})
@@ -20,7 +21,7 @@ def test_run_discovery_cycle_happy_path(monkeypatch):
 
     class _Screen:
         candidates = ["c1", "c2"]
-        dark_signals = ["mf_holding"]
+        dark_signals = ["insider_buying"]
         universe_size = 1500
         def model_dump(self):
             return {}
@@ -43,13 +44,14 @@ def test_run_discovery_cycle_happy_path(monkeypatch):
     assert calls == ["sync", "bulk", "screen", "dives", "shelf", "paper"]
     assert result["shelf"]["added"] == ["AAA"]
     assert result["paper"]["reviewed"] == ["AAA"]
-    assert result["dark_signals"] == ["mf_holding"]
+    assert result["dark_signals"] == ["insider_buying"]
 
 
 def test_run_discovery_cycle_stage_failure_is_contained(monkeypatch):
     monkeypatch.setattr(disc, "sync_recent",
                         lambda days_back=7: (_ for _ in ()).throw(RuntimeError("NSE down")))
     monkeypatch.setattr(disc, "refresh_bulk_block", lambda weeks=4: {"degraded": True, "deals": []})
+    monkeypatch.setattr(disc, "refresh_insider_trades", lambda on=None: {})
     monkeypatch.setattr(disc, "refresh_ipo_cache", lambda: {})
     monkeypatch.setattr(disc, "refresh_listing",
                         lambda end=None: {"as_of": None, "fresh": False, "securities": 0})

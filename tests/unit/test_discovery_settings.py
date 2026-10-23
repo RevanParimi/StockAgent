@@ -25,11 +25,14 @@ def test_discovery_settings_present():
     assert settings.DISCOVERY_INCLUDE_SME is False
 
 
-def test_discovery_signal_weights_sum_to_one():
+def test_discovery_signal_weights_are_relative():
+    """PR-011 deleted mf_holding's 0.05 without re-tuning the others: the
+    screen renormalises over the available signals, so the weights are
+    relative and sum to 0.95."""
     w = settings.DISCOVERY_SIGNAL_WEIGHTS
     assert set(w) == {"momentum", "delivery_surge", "volume_breakout",
-                      "bulk_block", "high_52wk_rs", "insider_buying", "mf_holding"}
-    assert abs(sum(w.values()) - 1.0) < 1e-9
+                      "bulk_block", "high_52wk_rs", "insider_buying"}
+    assert abs(sum(w.values()) - 0.95) < 1e-9
     assert w["momentum"] == 0.30
 
 

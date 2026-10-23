@@ -960,12 +960,17 @@ DISCOVERY_INCLUDE_SME: bool = bool(cfg("discovery.include_sme", fallback=False))
 _DISCOVERY_SIGNAL_WEIGHTS_FALLBACK: dict[str, float] = {
     "momentum": 0.30, "delivery_surge": 0.15, "volume_breakout": 0.15,
     "bulk_block": 0.15, "high_52wk_rs": 0.10, "insider_buying": 0.10,
-    "mf_holding": 0.05,
 }
 DISCOVERY_SIGNAL_WEIGHTS: dict[str, float] = {
     str(k): float(v)
     for k, v in cfg("discovery.signal_weights", fallback=_DISCOVERY_SIGNAL_WEIGHTS_FALLBACK).items()
 }
+# PR-011: insider_buying reads every company's insider-trade filings over this
+# window (core/discovery/insider.py), at most this many new documents a run;
+# the pledge guard is switched off with discovery.pledge_guard false.
+DISCOVERY_INSIDER_WINDOW_DAYS: int = int(cfg("discovery.insider_window_days", fallback=28))
+DISCOVERY_INSIDER_MAX_DOCUMENTS: int = int(cfg("discovery.insider_max_documents", fallback=600))
+DISCOVERY_PLEDGE_GUARD: bool = bool(cfg("discovery.pledge_guard", fallback=False))
 
 # ---------------------------------------------------------------------------
 # Company-event feed (config.yaml events.*; core/events)
@@ -983,6 +988,14 @@ EVENTS_MAX_ITEMS_PER_SYMBOL: int = int(cfg("events.max_items_per_symbol", fallba
 EVENTS_MAX_ITEMS_PER_CALL: int = int(cfg("events.max_items_per_call", fallback=12))
 EVENTS_SEEN_DAYS: int = int(cfg("events.seen_days", fallback=30))
 EVENTS_INGEST_ON_RESULTS: bool = bool(cfg("events.ingest_on_results", fallback=True))
+# PR-011: NSE disclosures typed by rules (core/events/disclosures.py); each
+# source is switched off on its own (rollback).
+EVENTS_DISCLOSE_INSIDER: bool = bool(cfg("events.disclosures.insider", fallback=False))
+EVENTS_DISCLOSE_SAST: bool = bool(cfg("events.disclosures.sast", fallback=False))
+EVENTS_DISCLOSE_PLEDGE: bool = bool(cfg("events.disclosures.pledge", fallback=False))
+EVENTS_DISCLOSE_OWNERSHIP: bool = bool(cfg("events.disclosures.ownership", fallback=False))
+EVENTS_OWNERSHIP_MOVE_POINTS: float = float(cfg("events.ownership_move_points", fallback=1.0))
+EVENTS_MAX_DOCUMENTS_PER_SYMBOL: int = int(cfg("events.max_documents_per_symbol", fallback=10))
 
 # ---------------------------------------------------------------------------
 # Compass Phase C — IPO tracker + M4 proactive delivery (spec §6.2 / §7)

@@ -229,7 +229,7 @@ def screen_env(tmp_path, monkeypatch):
     monkeypatch.setattr(scr, "EodStore", _Store)
     seen = {}
 
-    def _signals(win, universe, bulk):
+    def _signals(win, universe, bulk, insider=None):
         seen["universe"] = list(universe)
         return {"momentum": pd.Series({s: float(i) for i, s in enumerate(universe)})}
     monkeypatch.setattr(scr, "compute_signals", _signals)
@@ -809,6 +809,7 @@ def _cycle_env(tmp_path, monkeypatch, *, screen, ipo=(), listing=None, sector_of
         return {"as_of": "2026-07-03", "fresh": True, "securities": len(listing)}
     monkeypatch.setattr(disc, "sync_recent", lambda **kw: {})
     monkeypatch.setattr(disc, "refresh_bulk_block", lambda **kw: {})
+    monkeypatch.setattr(disc, "refresh_insider_trades", lambda on=None: {})
     monkeypatch.setattr(disc, "refresh_listing", _refresh)
     monkeypatch.setattr(disc, "refresh_ipo_cache", lambda: {})
     monkeypatch.setattr(disc, "build_ipo_candidates", lambda on: list(ipo))

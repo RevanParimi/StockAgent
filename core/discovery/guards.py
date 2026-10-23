@@ -8,19 +8,37 @@ the shortlist. A gate whose data source is unavailable DEGRADES (symbol kept,
 check recorded in degraded_checks) rather than silently passing or failing —
 spec §8: "the brief says which signals are dark".
 
-Promoter-pledge (< DISCOVERY_MAX_PLEDGE_PCT) has no free data source yet and
-ships DARK: always reported in degraded_checks, never evaluated (v1).
+Promoter pledge: NSE's pledge data (services/data/fetchers/nse_disclosures.py)
+gives each company's promoter shares pledged as a % of the promoter holding,
+for the latest quarter filed. More than DISCOVERY_MAX_PLEDGE_PCT (25) rejects
+the symbol (`promoter_pledge_high`): a lender can sell pledged shares when the
+price falls. A symbol NSE has no pledge row for, more than one row for (the
+rows carry a company name, not a symbol, so which is which cannot be told),
+whose row is for a quarter that ended more than 200 days before the screen's
+latest session, or whose call failed, is kept and recorded as
+`promoter_pledge:<SYMBOL>`. A quarter's pattern is due within 21 days of its
+end, so the latest due quarter is at most about 112 days old; 200 days allows
+one late quarter more. With no NSE client, or the guard off
+(`discovery.pledge_guard`), the one check `promoter_pledge` is recorded.
+Example: A2Z Infra's promoters had pledged 99.68% of their shares at 30 Sep
+2026, so it is rejected; Maruti's 0.00% passes. On 23 Oct 2026 a row for 31
+Mar 2026 (206 days) is unknown, one for 30 Jun 2026 (115 days) is used.
 """
 from __future__ import annotations
 
 import logging
+from datetime import date, timedelta
 
 import pandas as pd
 
 from core.config import settings
+from core.events.disclosures import pledged_share_of_promoter
+from services.data.fetchers.nse_disclosures import pledge_snapshots
 from services.data.fetchers.surveillance import float_mcap_cr, get_symbol_meta
 
 logger = logging.getLogger(__name__)
+
+_PLEDGE_MAX_AGE_DAYS = 200
 
 
 def _upper_circuit_streak(sym_win: pd.DataFrame) -> int:
@@ -47,9 +65,15 @@ def apply_guards(
     """Returns (passed_in_input_order, rejected {sym: [gates]}, degraded_checks)."""
     passed: list[str] = []
     rejected: dict[str, list[str]] = {}
-    degraded: list[str] = ["promoter_pledge"]     # dark guard, v1 (spec §6.1)
+    degraded: list[str] = []
+    pledges = pledge_snapshots(list(shortlist)) if settings.DISCOVERY_PLEDGE_GUARD else {}
+    if not pledges:
+        degraded.append("promoter_pledge")
 
     by_symbol = {s: g for s, g in window.groupby("symbol")} if not window.empty else {}
+    oldest_quarter = ((pd.to_datetime(window["date"]).max().date()
+                       - timedelta(days=_PLEDGE_MAX_AGE_DAYS)).isoformat()
+                      if not window.empty else date.max.isoformat())
 
     for sym in shortlist:
         gates: list[str] = []
@@ -87,6 +111,16 @@ def apply_guards(
             degraded.append(f"float_mcap:{sym}")
         elif fmcap < settings.DISCOVERY_FLOAT_MCAP_FLOOR_CR:
             gates.append("low_float_mcap")
+
+        if pledges:
+            rows = pledges.get(sym) or []
+            # NSE answers one row for a listed company and none for anything
+            # else; more than one cannot be told apart (rows carry no symbol).
+            pledged = pledged_share_of_promoter(rows) if len(rows) == 1 else None
+            if pledged is None or (pledged[1] or "") < oldest_quarter:
+                degraded.append(f"promoter_pledge:{sym}")
+            elif pledged[0] > settings.DISCOVERY_MAX_PLEDGE_PCT:
+                gates.append("promoter_pledge_high")
 
         if gates:
             rejected[sym] = gates

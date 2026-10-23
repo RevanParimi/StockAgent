@@ -45,7 +45,7 @@ from core.intelligence.rl.agents.feedback_agent import VALID_MISS_FACTOR_RE
 # OpenRouter ids + list price ($/1M in, out) — verified 2026-10-22 via /api/v1/models
 PRICES: dict[str, tuple[float, float]] = {
     "xiaomi/mimo-v2.6-pro":              (0.435, 0.87),   # current REASONING tier
-    "deepseek/deepseek-v4.1-flash-1017": (0.30, 1.20),    # current FAST tier (weekday IST peak rate)
+    "deepseek/deepseek-v4.1-flash-1017": (0.15, 0.60),    # current FAST tier (base list price, as config.yaml)
     "deepseek/deepseek-v4-flash":        (0.091, 0.182),  # BULK tier — floor reference
     "z-ai/glm-5.2":                      (1.218, 3.828),  # REASONING until 2026-10-22
     "qwen/qwen3.6-flash":                (0.1875, 1.125), # FAST until 2026-10-22

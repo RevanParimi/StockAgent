@@ -365,7 +365,7 @@ acts as owner (single-user passthrough).
 | PUT | `/ui/categories/{key}/tickers` | owner or machine key | Add/remove tickers from a category (body: `{add: [], remove: []}`). |
 | GET | `/ui/learnings` | session optional | `{items, since}`: dated verdict changes (a verdict that differs from the run before it; `turned-bullish`, `turned-bearish`, …) across the kept runs of each stock the caller may see (shared stocks plus the caller's own holdings and watchlist; an anonymous caller with sign-in required gets shared stocks only), newest first, at most 10; then forecast misses (`forecast-miss`), newest first, at most 5. `since` is the date of the oldest kept run among those stocks (`null` with none). Empty if the score history cannot be read. No money figure, summary rate or advice text. |
 | POST | `/ui/feedback` | session user | Atlas C8 (BP5) — record a user's accept/override/ignore on an advice card (`symbol`, `action`, optional `verdict_shown`/`override_direction`/`position_state`). Append-only to `feedback_events`; dormant no-op until `ATLAS_ENABLED`. |
-| POST | `/ui/chat/stream` | None | **Primary chat** — agentic streaming tool-loop (SSE). Deterministic intent pre-router pre-fetches screen+news for buy/sell/momentum queries; BULK-tier default with reasoning disabled, glm-5.2 escalation on failure; **45s per-turn wall-clock budget**, ≤4 upstream attempts per logical call, one budget-free final synthesis. Server-side session memory (`session_id`). Events: `intent`, `tool_result`, `token`, `done`. |
+| POST | `/ui/chat/stream` | None | **Primary chat** — agentic streaming tool-loop (SSE). Deterministic intent pre-router pre-fetches screen+news for buy/sell/momentum queries; runs on the FAST tier (`llm.model_fast`) with reasoning disabled, and after two tries that hit a rate limit or 5xx escalates to the REASONING tier (`llm.model_reasoning`, a different vendor); **45s per-turn wall-clock budget**, ≤4 upstream attempts per logical call, one budget-free final synthesis. Server-side session memory (`session_id`). Events: `intent`, `tool_result`, `token`, `done`. |
 | POST | `/ui/chat` | None | Non-streaming twin of the chat loop (blocking JSON reply; same server session memory — returns `session_id`, client-sent history is ignored). Frontend fallback. |
 | GET | `/ui/logs` · `/ui/logs/stream` | owner or machine key | Recent server log lines (ring buffer) + SSE tail. Lines carry user ids and the buffer redacts nothing, so a member gets 403 and a caller without a session 401 before the buffer is read. The Logs screen reads the stream with `fetch` so the session header is sent. |
 
@@ -570,16 +570,19 @@ invisible to them. `CONFIG_FILE` env var points at an alternate YAML.
 
 ### LLM / OpenRouter (`config.yaml` → `llm.*`)
 
-Models are tiered (2026-06-03 benchmark, `scripts/model_bench.py`; bulk re-benchmarked
-2026-07-02). Retired: `qwen3-235b` (broke `json_object`), `qwen-2.5-72b` (2-4× cost of deepseek).
+Models are tiered: FAST, REASONING and BULK. Every call site disables provider reasoning, so a
+tier model must work with reasoning off, returning strict JSON where the call asks for it, and
+OpenRouter must report its reasoning as optional. Candidates are compared with `scripts/reasoning_bench.py` (the JSON battery) and
+`scripts/model_bench.py` (the real chat pipeline). `config.yaml` lists the rejected and retired
+models with the reason for each. There is no single `LLM_MODEL` setting: every call site names a
+tier, and `config.yaml` is the only place models are chosen.
 
 | Name | Default | Description |
 |------|---------|-------------|
 | `OPENROUTER_API_KEY` | `""` (required) | OpenRouter API key (.env only) |
-| `LLM_MODEL_FAST` | `deepseek/deepseek-v4.1-flash-1017` | **FAST tier** — the agentic chat tool-loop and the pre-open shock rating (`json_object`); a dated snapshot slug |
+| `LLM_MODEL_FAST` | `deepseek/deepseek-v4.1-flash-1017` | **FAST tier** — the agentic chat tool-loop and the pre-open shock rating (`json_object`, with `provider.require_parameters` so only a host that honours every parameter sent can serve it); a dated snapshot slug |
 | `LLM_MODEL_REASONING` | `xiaomi/mimo-v2.6-pro` | **REASONING tier** — SignalAggregator verdict, RL FeedbackAgent / ThesisReviewer, control lane, the Unified Sector Analyst for all four sectors (JSON-validated), and the chat fallback; a different vendor from FAST, so the fallback survives a provider-wide fault. Candidates are compared with `scripts/reasoning_bench.py` and `scripts/model_bench.py` |
 | `LLM_MODEL_BULK` | `deepseek/deepseek-v4-flash` | **BULK tier** — high-volume `json_object` scoring; $0.091/$0.182 per M, reasoning disabled via `JSON_MODE_EXTRA_BODY` |
-(The old `LLM_MODEL` back-compat alias was **deleted** in the 2026-07-16 cost wave — every call site names an explicit tier; `config.yaml` is the sole model-selection source.)
 | `LLM_TEMPERATURE` | `0.2` | LLM sampling temperature |
 | `LLM_MAX_TOKENS` | `2048` | Max output tokens per LLM call |
 | `LLM_TIMEOUT_SECONDS` | `60` | Per-call LLM timeout |

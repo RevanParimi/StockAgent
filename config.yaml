@@ -16,8 +16,10 @@ llm:
   #               0 fabricated sources / skipped tools / broken answers, 14.0 s a turn
   #               vs 20.6 s and half the cost of qwen3.6-flash; JSON 6/6. Dated
   #               snapshot slug, so OpenRouter cannot roll it silently. Of its ~30
-  #               hosts, DeepSeek's and Alibaba's double their price on weekdays
-  #               06:30-09:30 and 11:30-15:30 IST.
+  #               hosts, DeepSeek's own doubles its price on weekdays 06:30-09:30
+  #               and 11:30-15:30 IST, and Alibaba's every day 05:30-19:30 IST. One
+  #               host ignores response_format, so the pre-open call sets
+  #               provider.require_parameters (preopen_check.py).
   #   reasoning – judgment calls (unified analyst, aggregator verdict, RL feedback
   #               and thesis, control lane, chat fallback): xiaomi/mimo-v2.6-pro —
   #               $0.435/$0.87 per M vs glm-5.2's $1.218/$3.828 (~72% cheaper for a
@@ -60,7 +62,10 @@ llm:
     "deepseek/deepseek-v4.1-flash-1017": [0.15, 0.60]
     "xiaomi/mimo-v2.6-pro": [0.435, 0.87]
     "deepseek/deepseek-v4-flash": [0.091, 0.182]
-    # Previous tiers keep their rates, so a rollback through LLM_MODEL_* is still priced.
+    # Previous tiers keep their rates, so a rollback through LLM_MODEL_* is still priced:
+    # qwen3.6-flash at its 2026-10-22 list price; glm-5.2 at its last measured rate
+    # (2026-07-17). Its 35 hosts' 2026-10-22 prices vary widely (first party
+    # $1.40/$4.40 per M), so after a rollback run costs are approximate.
     "z-ai/glm-5.2": [1.218, 3.828]
     "qwen/qwen3.6-flash": [0.1875, 1.125]
 

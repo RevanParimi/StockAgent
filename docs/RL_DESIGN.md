@@ -1422,7 +1422,11 @@ that was active when it was predicted.
 1. one news search for overnight India-market, GIFT Nifty and global macro
    headlines;
 2. one fast-tier call rating severity (0 to 1), direction (`risk_off`,
-   `risk_on` or `neutral`) and a headline. Any failure reads as severity 0;
+   `risk_on` or `neutral`) and a headline. Any failure reads as severity 0.
+   The call asks for JSON mode with `provider.require_parameters`, so
+   OpenRouter routes it only to a host that supports every parameter sent: a
+   host that ignored JSON mode could wrap the reply, and it would read as
+   severity 0;
 3. below `rl.preopen_shock_severity` (0.7): one log line and nothing else;
 4. at or above it: each scanned ticker whose row for today contradicts the
    direction (UP in `risk_off`, DOWN in `risk_on`) is re-forecast with

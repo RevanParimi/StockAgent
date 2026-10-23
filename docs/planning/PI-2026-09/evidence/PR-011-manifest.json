@@ -1,0 +1,217 @@
+{
+  "story": "PR-011",
+  "phase": "rework 1 (2026-10-23), a new conversation opened with continue, session stockagent-main-b1, after the fresh review's CHANGES REQUESTED (session stockagent-main-5b, evidence/PR-011-review.md)",
+  "baseline": "16e31b5 (FIX-013 rework 1 docs commit); the working tree then held only planning bookkeeping (STATE, HANDOFF) and the owner's docs/README.md line",
+  "review_input": "manifest sha256 2b264207fb61f5d354b98acb68034c70876c0e82a72e24c2ea8dd71317c09c09 (33 files), diff 939890c3065256de7c91b21eb689b693b1062942420ec6470cd857765d47eccd",
+  "excluded": [
+    "docs/planning/PI-2026-09/STATE.json",
+    "docs/planning/PI-2026-09/HANDOFF.md",
+    "docs/planning/PI-2026-09/evidence/PR-011-implementation.md",
+    "docs/planning/PI-2026-09/evidence/PR-011-review.md",
+    "docs/README.md (the owner probe line)"
+  ],
+  "note": "Diffs: analysis_data/pr011_rework1/rw_digest.py. Rework diff: each path except the PDF, sorted, against the review input rebuilt from HEAD + analysis_data/pr011/pr011.diff (every rebuilt file checked against the review manifest), or /dev/null for a new path. Cumulative diff: git diff HEAD -- PATH for a tracked path, git diff --no-index /dev/null PATH for a new file",
+  "hash_convention": "git blob bytes after .gitattributes normalization (CRLF->LF for text, binary unchanged); verify with scripts/docs/kt_manifest.py verify",
+  "files": [
+    {
+      "path": "CODEBASE.md",
+      "git_blob": "d7c8921444208b098b55c283b9d94589870e6a75",
+      "sha256": "7e344962988d74128e9413c44ebaa41e446961f9fed0105e716a70aba26cf8fb"
+    },
+    {
+      "path": "config.yaml",
+      "git_blob": "43df028ff2ec40dacfbcf2c549f5e3b6e0ee4be3",
+      "sha256": "3418d4dbaa6df6043b18fda45c4f9780f39dd8c36c3086b3cac79b8f4ca863f0"
+    },
+    {
+      "path": "core/discovery/__init__.py",
+      "git_blob": "a8e917730d71ccd06768eb3c1684b3a6c267be83",
+      "sha256": "1be42f8bb4b3b22dad6ee8b0a25f6fa6c7cfdb449d1cba72498b71769041463d"
+    },
+    {
+      "path": "core/discovery/guards.py",
+      "git_blob": "ad423b2bab7f512133dc14dbbcbc7917723feb41",
+      "sha256": "bcdef3b1403ee9d8a59cbf1ddef529106b47e28380ac43eb45d9d815c7f805b1"
+    },
+    {
+      "path": "core/discovery/insider.py",
+      "git_blob": "ffafe63a3cba4fbebe403801075cbfc8f2a583ce",
+      "sha256": "60f9e3148aeb50b18cc1a2d4975b087cb64a96348563b7f547461c5e75ecf9ce"
+    },
+    {
+      "path": "core/discovery/screen.py",
+      "git_blob": "e5eb1d55818160c938e5fc9d16bdd1d453b22fa4",
+      "sha256": "034c5473c4c194c52328bb3d3522d56bd821ecedd68362b2e368bc0e4bded3d5"
+    },
+    {
+      "path": "core/discovery/signals.py",
+      "git_blob": "e0339e14df4d94204a723aca3441e417ff726735",
+      "sha256": "7cc3fc75f93448f177eee8687ca2b1d08db6c41ecf1f6071ad20fcedaaa1da12"
+    },
+    {
+      "path": "core/events/classify.py",
+      "git_blob": "bb05808a442ec3326eb6d6fc963f56bef6b32675",
+      "sha256": "5ffc003f9d87db40a5b3d72326a5d9290cc1c5b2ca6095a78cf6c8b0786619cd"
+    },
+    {
+      "path": "core/events/disclosures.py",
+      "git_blob": "71b1eb77d91bf350db93c0b494682f4e4477cb62",
+      "sha256": "218f3c5ef9c532b0c9f0e562037e43bb0b9303bad886f634ea2dee46b7e35edd"
+    },
+    {
+      "path": "core/events/feed.py",
+      "git_blob": "e84a3e18857c256beaf60653f2f6703b547bbeed",
+      "sha256": "ee7ba952c7977f0f4797ffd6f54a10ebd6a6018e9dfe82082f44c5f3f52a3c90"
+    },
+    {
+      "path": "core/events/store.py",
+      "git_blob": "c548155ebea9813c0791ab75eab5736fedeb3a2c",
+      "sha256": "a32fc6c8945ad978fb5e86ac30070851011ba0870b801b7eeb4ad58ff16edeec"
+    },
+    {
+      "path": "docs/StockAgent-Three-Loops.pdf",
+      "git_blob": "6884c27b233113618554d1568bed3668fa048948",
+      "sha256": "d2ed12adf962ade656fa23611f1c2161c2ce0ccabdda09003851f011d412e027"
+    },
+    {
+      "path": "docs/TEAM_TESTING_GUIDE.md",
+      "git_blob": "245c6d5cf40578c138df2f7b4675e4165939e064",
+      "sha256": "a676e5b213828d1ab124a86f3d088f76ffc53c73afae1ea62eac5c33fb49827f"
+    },
+    {
+      "path": "docs/TECHNICAL_DESIGN.md",
+      "git_blob": "eafa66c9a6cf907b12de0f4e6c9abc659738b584",
+      "sha256": "6e9645ae91e31e03cf486d964476f6322e5b4282268c3d3f678f49316294607b"
+    },
+    {
+      "path": "services/data/fetchers/nse_disclosures.py",
+      "git_blob": "96f12dd93f96537866286e8fbd969d0a268c44d0",
+      "sha256": "29664c978139c1fc3197597e42883319ab5a38b0e4f9ebc893d5cc0778cd7483"
+    },
+    {
+      "path": "src/backend/shared/config/settings/base.py",
+      "git_blob": "bcd49eaf4dff37b5c3f4af87529c4a114486fdce",
+      "sha256": "22d24000e9e2f38e9a59bdea6932650c7d8b5b9917afa8e7638d4fef8e366bcb"
+    },
+    {
+      "path": "src/backend/shared/schemas/events.py",
+      "git_blob": "50dd6bcafb8b66e149d29415b59801fc249fb499",
+      "sha256": "b521b90993cdaf2bd9f629a41a54add37e99764fba2e076f36f6275ddde6a41c"
+    },
+    {
+      "path": "tests/fixtures/company_events/nse_disclosures_20261023.json",
+      "git_blob": "0d32e9e9d9f21ef66fa6af71fadd2a0c3791ebdb",
+      "sha256": "bb03253c1cd48a8a5d545f896be770405335018eab45b7baa03267e6567be33b"
+    },
+    {
+      "path": "tests/fixtures/company_events/nse_pit_revisions_20261023.json",
+      "git_blob": "2e363d7e1ab29b745eba41a50c688e1924715873",
+      "sha256": "5131cfb27dea55c2034674bc342ff7dc684773bfd991e1de1fa2c98f5273304a"
+    },
+    {
+      "path": "tests/fixtures/company_events/pit_htel_3762.xml",
+      "git_blob": "6b822e057cf8defbc365523e56770c6c8bf2386c",
+      "sha256": "9b145ec20fe0c27d941d182e6c6c9c4b4f5914cbe8404eb346f4d2523c3bcd45"
+    },
+    {
+      "path": "tests/fixtures/company_events/pit_htel_3922.xml",
+      "git_blob": "8c52174a45f465cc45c3274c9094595a09ab0cba",
+      "sha256": "d9d26ba7e343c6c2198bb4694ecc0643a5550142f31da2b226bc2c4b60ab9fda"
+    },
+    {
+      "path": "tests/fixtures/company_events/pit_htel_3945.xml",
+      "git_blob": "5df2143fbee5a00f1e172033d11c478e019f72a2",
+      "sha256": "6a0bb7a66f74b636404885c36c02bcbda87888d02f17bb90096c14bed367cbef"
+    },
+    {
+      "path": "tests/fixtures/company_events/pit_karurvysya_20261022.xml",
+      "git_blob": "e9bf0af6d9ad1ad692d74d2902a1e373dc386a93",
+      "sha256": "95fd816f26fdf73d19dba5ec18e9fe0cceb5f7e23148fdbb39138824f40ec01f"
+    },
+    {
+      "path": "tests/fixtures/company_events/pit_naukri_3962.xml",
+      "git_blob": "3e2482449a98f30d30a82a1ab0d78ba8f4a02c9e",
+      "sha256": "0e76ae11bff68d5e9d6695fdeae1b851620a166b10defbb2d9af5fc8a86f1d43"
+    },
+    {
+      "path": "tests/fixtures/company_events/pit_patintlog_3886.xml",
+      "git_blob": "25f07b57cd7701823d9adc83352a88cbec9f14ff",
+      "sha256": "98f4239041f6ef37b5c7521a7dfb0b987c2ab740c8cd9cdd8e9353ea77b6781e"
+    },
+    {
+      "path": "tests/fixtures/company_events/pit_patintlog_3893.xml",
+      "git_blob": "fadbff89602aaf9399031f75f0d0356ba8f504c0",
+      "sha256": "221b8d26cf4a60ca7c29f171fe7c71840aa3da95cdf096a14781e2c80c304411"
+    },
+    {
+      "path": "tests/fixtures/company_events/pit_reliance_20260522.xml",
+      "git_blob": "76c0ebabda008a483ff1d6046fd16082298144b5",
+      "sha256": "889f0255a5a26a8c264ec898cfc16a09a33d0c1b58fb7a26a8253da11955ffde"
+    },
+    {
+      "path": "tests/fixtures/company_events/shp_maruti_20260630.xml",
+      "git_blob": "b615d0573e3f27f85146dbfa5656ca58b5c6952e",
+      "sha256": "eb8cc22c0eab1d15a332b80f19f6e6c9f4acba5a57b5bdc7c93b6d28b1a2ae41"
+    },
+    {
+      "path": "tests/fixtures/company_events/shp_maruti_20260930.xml",
+      "git_blob": "e6c8bc6bf8c2c211f08154f4e1678646a2c82fce",
+      "sha256": "2909781bd6f50320aca37d72f124ecd1cce3aee74a4a5be38568b8e003ec699b"
+    },
+    {
+      "path": "tests/unit/test_company_events_pr006.py",
+      "git_blob": "1c8a68a287dc4a6e1359c24a8b512cc31cbff169",
+      "sha256": "8376ca1a9055986dd0c1a83cb879b37332365dd9c2186f8d63deed4937b1c209"
+    },
+    {
+      "path": "tests/unit/test_disclosures_pr011.py",
+      "git_blob": "dcafd9e31be11baeb5c1d12f477fbe4b53f48b4c",
+      "sha256": "60120607fb932ac752604a792c70603b942b0cddb3d5c98feaa6547735542032"
+    },
+    {
+      "path": "tests/unit/test_discovery_api.py",
+      "git_blob": "1c3095819da896b56addc9384df005a0d3e4de09",
+      "sha256": "f70653f751ea095d1155fd02518b1ed04640fe128c05495e04882eb8abcbf69e"
+    },
+    {
+      "path": "tests/unit/test_discovery_cycle_ipo.py",
+      "git_blob": "ae5bc7f9db3fe7153e6b7617cf69f66dfc3fae23",
+      "sha256": "45ff0c6b39eadfc3197955302ede7dd2d0e74402f8ee7087e25ac37ea75ccdcc"
+    },
+    {
+      "path": "tests/unit/test_discovery_screen.py",
+      "git_blob": "a29074eb76d22585bfc2a08dd474d7c8e1d3c552",
+      "sha256": "fc9016562b3bb3081bb4ce2a33b0dc5ce14a6dbea0543b0c0bc36f7592ce515f"
+    },
+    {
+      "path": "tests/unit/test_discovery_settings.py",
+      "git_blob": "005cb6a8803d5e2d3a3022706ec78b677524247b",
+      "sha256": "ddfd1be0cbb7e8f745386a9736b21ca0b06bf2d5e23149d15a506660f6989777"
+    },
+    {
+      "path": "tests/unit/test_discovery_signals.py",
+      "git_blob": "9ad3825c90c647b355074d845a607390a85c080a",
+      "sha256": "ce570661d0ca0ffbb8472a88fa8d69de50f5560dc5afffda95a9c72f2525f85f"
+    },
+    {
+      "path": "tests/unit/test_discovery_universe_guards.py",
+      "git_blob": "9130b993bd994f148f2c884ef4613ad940deaa2d",
+      "sha256": "f36947c9fbeec6554c22baeebb009cfafc1bb2cfc90c9535eb334881aa7a6dca"
+    },
+    {
+      "path": "tests/unit/test_idea_supply_pr004.py",
+      "git_blob": "053316d26b1a837f07f6e0e395cf75c46a3fc5f4",
+      "sha256": "f34ef1ffad28b14e86b4f9d367916a85693fb3a3533e4677744b273e523bd272"
+    },
+    {
+      "path": "tests/unit/test_operator_notices_owner_only_fix008.py",
+      "git_blob": "86801b7ed06506abccdf40bdf4ee5a7efad8e94a",
+      "sha256": "8ec595e98c2e9df5a2e8fef3d8d0302f21e9b403b06dfecc7402c7b519fb9e46"
+    },
+    {
+      "path": "tests/unit/test_scheduler_discovery_job.py",
+      "git_blob": "64db73173cb64a672afc04b69decc902394e1d1b",
+      "sha256": "5e4dfe847bcb9afe3ff8ddea5a43f6cae97eb0abe1affd4a75b1ba6823b3a9b2"
+    }
+  ]
+}

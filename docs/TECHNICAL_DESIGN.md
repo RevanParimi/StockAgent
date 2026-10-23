@@ -2,7 +2,7 @@
 
 **Edition:** 2026-10-23 · **Audience:** engineers and teammates learning the product
 
-**Code inspected:** `e47cd13fc84ec9af2cfb4b8f58a4131141bc95ee`
+**Code inspected:** `ffa012b4046869536372190e4fc0cda6bb2e86e2`
 
 **PDF:** [StockAgent-Three-Loops.pdf](StockAgent-Three-Loops.pdf), generated from this Markdown.
 
@@ -35,13 +35,14 @@ triggered no production job, backfill or notification.
 
 ### Production state at this edition
 
-Production runs the inspected code once the midday deployment of 23 October
+Production runs the inspected code once the evening deployment of 23 October
 2026 is confirmed by a read-only check of the deployment list and `/health`.
-Until then it runs `8c5afed`, deployed at 04:07 IST that day (the deployment
-list showed it SUCCESS and `/health` answered 200). The two differ only in the
-08:45 pre-open shock rating's model request, which now asks OpenRouter for a
-host that supports every parameter sent. The table gives the configuration that differs from the repository and the
-state of each operational control.
+Until then it runs `e47cd13`, deployed at 12:13 IST that day (the deployment
+list showed it SUCCESS and `/health` answered 200). The two differ in NSE's
+disclosures: the event feed's insider, deal, pledge and ownership events, the
+discovery signal `insider_buying` and the promoter pledge guard (sections 4
+and 8). The table gives the configuration that differs from the repository and
+the state of each operational control.
 
 | Area | State in production | Evidence |
 |---|---|---|
@@ -1677,6 +1678,16 @@ would let through (38%).
 - Two originals with the same trade count twice. SARLAPOLY filed two
   originals, each a 10,000-share sale on 25 Sep, and the filings do not say
   whether they are one person or two.
+- A revision's trade replaces an earlier trade with the same action and share
+  count even when nothing else agrees. So a revision of an old trade can
+  replace an unrelated trade in the window, which then stops counting. On 23
+  Oct, 9 revision trades replaced an earlier one; 8 agreed on person group,
+  market, value and days, and the ninth, an employee's off-market move,
+  changed no net.
+- Above 75%, a promoter-group sale counts nothing even when the group also
+  bought in the window, so a purchase and a sale through the market (an
+  inter-se transfer, say) score as the purchase alone. On 23 Oct no company
+  with both was above 75%. **Planned:** FIX-014.
 - A pledge row names the company, not its symbol, so the guard relies on
   NSE's symbol filter.
 
@@ -2430,8 +2441,7 @@ The planned changes connect the research to the money:
   Nifty comparison, with predeclared red flags.
 - **Know each company daily.** The company-event feed (section 4) records what
   happened to each held, watched and shelf stock, and the changes below read
-  it. It is widened with insider trades, pledges and shareholding changes
-  (PR-011).
+  it, including insider trades, deals, pledges and shareholding changes.
 - **Own a stock for a reason.** Each holding gets a written investment case:
   pillars with evidence, an expected range, an invalidation price and business
   triggers, and the next check. Every number in it is checked against its
@@ -2579,11 +2589,12 @@ section 10) are part of the current design.
 | [PR-008](planning/PI-2026-09/stories/PR-008.md) | "Your stocks overnight" at the top of the morning brief | Open | 10 Delivery | PR-003, PR-006 |
 | [PR-009](planning/PI-2026-09/stories/PR-009.md) | Exit on evidence, not on a price-path miss (shadow, then switch) | Open | 6 Portfolio | PR-002, PR-006 |
 | [PR-010](planning/PI-2026-09/stories/PR-010.md) | Four screens for members; an Operator menu for the owner | Open | 10 Interface | PR-001 |
-| [PR-011](planning/PI-2026-09/stories/PR-011.md) | New data: promoter and insider trades, pledges, shareholding changes | Open | 4 Research; 8 Discovery | PR-006 |
+| [PR-011](planning/PI-2026-09/stories/PR-011.md) | New data: promoter and insider trades, pledges, shareholding changes | Done | 4 Research; 8 Discovery | PR-006 |
 | [PR-012](planning/PI-2026-09/stories/PR-012.md) | Choose models by role, benched on our own data; refresh cost rates | Open | 3 Configuration | PR-007 |
 | [FIX-011](planning/PI-2026-09/stories/FIX-011.md) | NSE's per-symbol meta API is gone: restore the surveillance and suspension guards and an industry source | Open | 4 Research; 8 Discovery | None |
 | [FIX-012](planning/PI-2026-09/stories/FIX-012.md) | CI is red since 13 Oct: make FIX-007's log-route guard work on any FastAPI | Done | 13 Validation | None |
 | [FIX-013](planning/PI-2026-09/stories/FIX-013.md) | Move the fast and reasoning LLM tiers to cheaper current models | Done | 3 Configuration | None |
+| [FIX-014](planning/PI-2026-09/stories/FIX-014.md) | Above the 75% cap, a promoter wash must not score as insider buying | Open | 8 Discovery | PR-011 |
 
 ### Maintain documentation with each story
 

@@ -59,6 +59,10 @@ comes first in the remaining queue. CI's Linux suite has failed on every push si
 FIX-007's route guard walks `app.routes`, and FastAPI 0.137.0 and later keep included routers
 as wrappers, so the guard finds no route. While CI is red, a new regression cannot be told
 apart from the known failure. It is test-only; pinning FastAPI belongs to SA-033.
+FIX-014, added on 2026-10-23 from PR-011’s fresh re-review (routing delegated by the owner on
+2026-10-13), comes after PR-012. Above 75% promoter holding, discovery drops promoter-group sales
+but keeps purchases, so a purchase and a sale through the market score as a purchase. No company
+showed this on 23 Oct; it moves ahead if guide case 06-I finds one.
 
 | Order | Story | Priority | Points | Result | Dependencies |
 |---:|---|---|---:|---|---|
@@ -84,6 +88,7 @@ apart from the known failure. It is test-only; pinning FastAPI belongs to SA-033
 | 20 | [PR-008](stories/PR-008.md) | P1 | 3 | "Your stocks overnight" at the top of the brief | PR-003, PR-006 |
 | 21 | [PR-010](stories/PR-010.md) | P1 | 5 | Four screens for members; an Operator menu for the owner | PR-001 |
 | 22 | [PR-012](stories/PR-012.md) | P2 | 2 | Models chosen by role, benched on our own data; cost rates refreshed | PR-007 |
+| 23 | [FIX-014](stories/FIX-014.md) | P2 | 1 | Above the 75% cap, a promoter wash must not score as insider buying | PR-011 |
 
 The new stories add 41 points. SA-049 grows from 5 to 7 points and SA-050 from 2 to 3. On 2026-10-12 the owner confirmed this order, chose the ₹2 L paper-capital top-up with 12 target holdings, and moved PR-011 up as P1 ("I need more data"); the production baseline is section 11 of the review. The track makes results
 visible, makes the portfolio broad enough to learn from, and stops one identified source of

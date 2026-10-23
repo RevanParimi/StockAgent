@@ -1,4 +1,4 @@
-# Current handoff - 2026-10-23 (updated about 12:05 IST)
+# Current handoff - 2026-10-23 (updated about 20:00 IST)
 
 ## Also 22 Oct (about 22:30 IST to 00:30 IST 23 Oct): FIX-013, LLM tier switch, committed and pushed (separate conversation)
 
@@ -105,6 +105,182 @@ Docs only; nothing committed, pushed, deployed or configured.
   section 11.
 
 ## START HERE — resume checklist, in order
+
+**PR-011 COMMITTED** at the owner's word ("go ahead commit and push", 23 Oct about 20:10-20:25 IST, session
+stockagent-main-62).
+
+- **`ffa012b`** holds exactly the 40 reviewed files; the review manifest `0e1ba470…` verifies at it
+  (0 mismatches).
+- **The docs commit after it** applies the commit-time edits:
+  - KT: "Code inspected" `ffa012b`; section 1 says production runs `e47cd13` until this deploy is
+    confirmed; section 8 gains the RR-L2 and RR-L1 limits (the latter "**Planned:** FIX-014");
+    section 11's feed line in present tense; section 12's PR-011 row Done and a FIX-014 row (Open);
+  - guide 02-L and 06-I status lines; the PI README's FIX-014 row and paragraph;
+  - PDF rebuilt (54 pages); `check_kt_docs` `[]`, no linked source changed since `ffa012b`;
+    broad-except OK.
+
+  It also adds the receipts, the manifest, the FIX-014 card, STATE and this file.
+- **Not committed:** the owner's `docs/README.md` line.
+- **The push** follows at once: 20:xx IST is clear until the 22:55 window (no job from 19:20 to
+  23:00). Its record is the next note (uncommitted).
+
+**PR-011 ACCEPTED** by its fresh re-review of rework 1 (23 Oct, about 19:23–20:00 IST, session
+stockagent-main-62, a new conversation opened with "continue"). Receipt:
+[PR-011-review](evidence/PR-011-review.md), top section. STATE: PR-011 `done`,
+`production_verification` `pending_deployment`, `active_task: null`, **`next_task: PR-009`**.
+Nothing was committed, pushed, deployed or configured. No production state was read, no model was
+called, no message was sent and no NSE call was made (recorded fixtures and the implementer's local
+cache of NSE's public list only).
+
+- **Next "continue", in a new conversation: PR-009** (exit on evidence, not on a price-path miss),
+  the first planned `todo` whose dependencies are done.
+- **PR-011 is uncommitted on `16e31b5`.** Commit and push only at the owner's word, in a job-free
+  window (00:10–06:20 IST is safest; every push redeploys). With the commit, make the
+  implementation's commit-time edits (KT header "Code inspected" bump, KT section 12's PR-011 row
+  Done, PDF, guide 02-L and 06-I status lines) **and the re-review's**: two KT section 8 limit
+  bullets (RR-L2; RR-L1 with "**Planned:** FIX-014") and a KT section 12 row for FIX-014 (Open),
+  then rebuild the PDF and run `check_kt_docs`. The exact text is in the receipt. After the deploy:
+  guide 02-L for five trading days, 06-I after the first Saturday.
+- **F1 resolved, by example:** in Saturday's 28 days to 23 Oct, NAUKRI's revision of an 18–20 Aug
+  ₹68.0 crore director sale now scores 0 (was −68.0, the lowest); PATINTLOG's identical revision
+  counts once (+₹71,214); HTEL's revision that repeats four trades and adds one gives six trades;
+  KARURVYSYA's three identical sales still count three. The feed stores a revision as a neutral,
+  low event whose sentence says it revises an earlier filing. F2, L1 and I1 are resolved too.
+- **New, low, both latent on 23 Oct:**
+  - **RR-L1 → new card [FIX-014](stories/FIX-014.md)** (P2, 1 point, after PR-012; routing
+    delegated). Above 75%, discovery drops promoter-group sales but keeps purchases, so a purchase
+    and sale through the market score as the purchase alone. Example: PATINTLOG's pair at a
+    supposed 78% scores +₹36.6 lakh while its event says +₹71,214. DALBHARAT's same-day ₹17.0 crore
+    buy and sale would score +17.0, the top of the signal. On 23 Oct no company with both was above
+    75%. Move FIX-014 ahead if guide 06-I's export shows one.
+  - **RR-L2 → a KT section 8 limit at commit:** a revision of an old trade can replace an unrelated
+    trade in the window with the same action and share count. On the live list, 1 of 9
+    replacements agreed only on group and market (an employee's off-market move, no net change).
+  - **T1 (test gap, code correct) → FIX-014's acceptance:** the story file does not pin a trade
+    on the window's last day or a revision's identical new trades; the re-reviewer's RR5 and RR6 do.
+- **Verified:** input `0e1ba470…` (40 files, 0 mismatches start and end); rework `145b5337…` and
+  cumulative `c9f16799…` recomputed by `analysis_data/pr011_rereview/rr_digest.py`; the 6 recorded
+  filings equal review 1's own NSE extraction. Re-reviewer cases 6 passed; re-reviewer mutants 7 of 9 caught by the story file; X02 (a trade on the window's last day dropped) and X03 (a revision's second identical new trade replaces the first) survive it and are caught by the reviewer's RR5 and RR6 (test gap T1, routed to FIX-014);
+  review 1's repro 3 of 4 now fail on their defect lines with the CONTRACT values (BUYERCO 4.5; the revision not positive; neutral and low), the fixture check passes; story and changed files 386 passed; full suite 5,672 passed, 12 skipped, 1 xfailed, 0 failed in 20 min 5 s (no data/ change);
+  broad-except OK; `check_kt_docs` `[]`.
+
+**PR-011 REWORK 1 IMPLEMENTED** (23 Oct, about 17:30–18:30 IST, session
+stockagent-main-b1, a new conversation opened with "continue"). Receipt:
+[PR-011-implementation](evidence/PR-011-implementation.md), section "Rework 1". STATE: PR-011
+`review_required`, `active_task: null`, **`next_task: PR-011` (its fresh re-review)**. Nothing
+was committed, pushed, deployed or configured. No production state was read, no model was called
+and no message was sent. NSE's public insider list and archive were read from this laptop: the
+review's live cases for fixtures, then one real discovery refresh into an ignored folder.
+
+- **Done 23 Oct (accepted, above): PR-011's fresh re-review** from [REVIEW.md](REVIEW.md).
+  Input [PR-011-manifest.json](evidence/PR-011-manifest.json) `0e1ba470…` (40 files: the
+  review's 33 and 7 recorded revision fixtures). Rework diff `145b5337…` (138,494 B, 14 paths)
+  against the review's input, rebuilt from HEAD plus `analysis_data/pr011/pr011.diff`; cumulative
+  `c9f16799…` (328,750 B, 39 paths) against HEAD `16e31b5`; both by
+  `analysis_data/pr011_rework1/rw_digest.py`. Do not push PR-011 before the re-review accepts it
+  and the owner gives the word.
+- **F1, by example:** NSE's revision of 8 Oct of NAUKRI's director sale of ₹68.0 crore, traded on
+  18–20 Aug, now scores 0 in the 28 days to 23 Oct (was −68.0, the lowest). As an event it is
+  neutral and low, and its sentence says it revises an earlier filing. PATINTLOG's identical
+  revision counts once. Discovery counts each trade once and only when its last trade day is in
+  the window. A revision's trades replace the closest earlier trade with the same action and
+  share count; an original is never deduplicated.
+- **Also done:** F2, a promoter sale above 75% counts nothing in discovery (the latest promoter
+  share is read for each company with a promoter sale: 17 on 23 Oct, none above 75%). L1, a pledge
+  row more than 200 days old is unknown (79 of NSE's 1,558 rows on 23 Oct; 35 of them above 25%,
+  so they are now kept as unknown instead of rejected). I1, a cache newer than the screen day is
+  not used.
+- **Measured on NSE's live list** (local, 17:56 IST): 357 filings, 7 revisions, all read in 125 s,
+  `complete`. 31 companies' nets changed: 1 by the revision rule, 30 by the trade-day window
+  (62 of the 70 left-out trades were made 1–3 days before the window and filed inside it).
+- **Tests:** story file 108 passed (28 new); with the other changed test files 386; rework mutants
+  29 of 29 caught; the implementation's mutants 31 caught (M21 re-expressed as R29); full suite
+  5,672 passed, 12 skipped, 1 xfailed, 0 failed in 14 min 29 s (no data/ change); broad-except OK; `check_kt_docs` `[]`, PDF 54 pages.
+
+**PR-011 FRESH REVIEW: CHANGES REQUESTED** (23 Oct, about 16:17–16:40 IST, session
+stockagent-main-5b, a new conversation opened with "continue"). Receipt:
+[PR-011-review](evidence/PR-011-review.md). STATE: PR-011 `changes_requested`,
+`active_task: null`, **`next_task: PR-011` (rework 1)**. Nothing was committed, pushed,
+deployed or configured. No production state was read, no model was called and no message was
+sent. NSE's public insider list (3 calls) and 21 public XBRLs were read from this laptop to
+measure revisions.
+
+- **Done 23 Oct (above): PR-011 rework 1.** Its fresh re-review runs in a new conversation.
+  Do not push PR-011 before that re-review accepts it.
+- **Required, F1 (high): a revised insider filing is read as a new trade.** For example, NAUKRI's
+  filing `3962` is a revision disseminated on 8 Oct. It holds a director's ₹68.0 crore market sale
+  traded on **18 Aug**, so Saturday's `insider_buying` gives NAUKRI −68.0 in a 28-day window. A
+  feed run would store it as a negative, high event dated 8 Oct, and the sentence never says
+  "revision". PATINTLOG's revision `3893` repeats its original `3886`'s trades, so they are counted
+  twice. In the 28 days to 23 Oct there were 6 revisions in 308 filings, and only 2 named their
+  original (`prevAppId`). The rework must make each trade count once and only in the window of its
+  trade day. The feed must not store a revision as a second, unqualified event. The review lists
+  the fixtures to pin.
+- **Recommended, F2 (medium):** discovery counts a promoter sale above the 75% cap as negative,
+  while the event calls it neutral. **Optional:** L1 (the pledge guard ignores how old NSE's
+  pledge row is) and I1 (a cache newer than the screen day).
+- **Verified:** input `2b264207…` / `939890c3…` at the start and the end, on HEAD `16e31b5`; no
+  review edit touched a reviewed path. 358 focused tests passed. The reviewer's repro
+  (`analysis_data/pr011_review/test_review_repro.py`) passed 4 of 4, asserting today's wrong
+  results. `check_broad_except` OK; `check_kt_docs` `[]`.
+
+**PR-011 IMPLEMENTED** (23 Oct, about 12:20–15:35 IST, session stockagent-main-74, a new
+conversation opened with "continue"). Receipt:
+[PR-011-implementation](evidence/PR-011-implementation.md). STATE: PR-011 `review_required`,
+`active_task: null`, **`next_task: PR-011` (its fresh review)**. Nothing was committed, pushed,
+deployed or configured. No production state was read and no message was sent. NSE's public
+disclosure endpoints and archive were read from this laptop to record their shapes.
+
+- **Done 23 Oct (changes requested, above): PR-011's fresh review** from [REVIEW.md](REVIEW.md).
+  Input [PR-011-manifest.json](evidence/PR-011-manifest.json) `2b264207…` (33 files); diff
+  `939890c3…` (228,612 B, 32 paths, `analysis_data/pr011/digest.py` against HEAD `16e31b5`).
+- **What it adds, by example:** KARURVYSYA's promoters sold 6,000 shares (₹23.1 lakh) in the
+  market on 21 Oct, and NSE disseminated the filing on 22 Oct at 19:29. The feed stores one
+  `insider` event: negative, low, dated 22 Oct 19:29:01, with the trade day 21 Oct kept apart.
+  The sentence says the filing gives no reason; it would call the sale neutral if promoters held
+  more than 75%. The feed also stores SAST deals, Reg 31 pledge events, and an `ownership`
+  event when promoter, FII, DII or MF share moves 1 point quarter on quarter. All are typed by
+  rules, never by the model.
+- **Discovery:** `insider_buying` now reads every company's insider filings (28 days, each
+  XBRL read once). It is used only when all were read, else it is left out and named, never
+  neutral. `mf_holding` is deleted. The pledge guard rejects more than 25% of the promoter
+  holding pledged.
+- **Found on the way:** NSE's old insider endpoint (`corporates-pit`) has had no rows since early
+  May 2026; its replacement is `corporates-pit-gg` (from NSE's own page code).
+- **PR-011-P1 PASSED** (23 Oct 15:42 IST, the owner ran the read-only production probe): 8 of 8
+  checks answered from the production container, matching the local dry run (insider list
+  19 and 351 rows, SAST 35, Reg 31 12, MARUTI pledge 1 and shareholding 22, both XBRLs read).
+  No source is switched off; the push still waits for the fresh review and the owner's word.
+  The command, for the record:
+  `railway ssh "cd /app && echo $(gzip -9c analysis_data/pr011/prod_probe.py | base64 -w0) | base64 -d | python -c 'import sys,zlib;exec(zlib.decompress(sys.stdin.buffer.read(),31))'"`.
+- **Tests:** story file 80 passed; mutants 32/32 caught; full suite 5,644 passed, 12 skipped, 1 xfailed, 0 failed (15 min 19 s); broad-except OK;
+  `check_kt_docs` `[]`; PDF 53 pages.
+- **Commit-time edits** (with the commit, after the review): KT header "Code inspected" bump and
+  section 12's PR-011 row set to Done, PDF rebuild; guide 02-L and 06-I status lines.
+
+**FIX-013 rework 1 PUSHED AND DEPLOYED; CI IS GREEN** (23 Oct, this session; this note is
+uncommitted). `8c5afed..16e31b5` was pushed at 12:07:43 IST as RevanParimi.
+
+- **Deploy `90873603`:**
+  - building at 12:07:44, without queueing;
+  - deploying at 12:13:27;
+  - SUCCESS at 12:13:59. `6abaa44c` was removed.
+
+  The public `/health` answered 200 at 12:14. No job was due during the switch.
+- **CI on `16e31b5`:** all three jobs succeeded:
+  - "Python tests (Linux, 3.11)";
+  - "Browser security suite (Chromium)";
+  - "Broad-except and KT document guards".
+- **Next "continue": PR-011.**
+- **Owner checks, still due:**
+  - today after 16:30: the analyst on `xiaomi/mimo-v2.6-pro`; none of the three analyst lines;
+    every `data_health` row of that run with `dimensions_scored` equal to
+    `dimensions_expected`; no degraded FeedbackAgent line;
+  - guide 11-L's chat questions;
+  - **Monday 26 Oct, 08:45:** the pin's first live run should show `preopen_check` with
+    `success` 1 and no "LLM shock rating failed" line.
+- **KT section 1** still says production runs `e47cd13` once this deploy is confirmed. It now is;
+  the next docs commit can state it plainly.
 
 **FIX-013 rework 1 COMMITTED** at the owner's word ("commit and push", 23 Oct about 12:03 IST,
 this session).

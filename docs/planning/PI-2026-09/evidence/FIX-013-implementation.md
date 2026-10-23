@@ -18,6 +18,117 @@
 - **Production:** the push redeploys Railway. No Railway variable was read or changed.
   Production verification is pending (below).
 
+## Rework 1 (23 Oct 2026, about 10:57–11:30 IST)
+
+**Context.** Session `stockagent-main-48`, a new conversation opened with "continue". Peers were
+idle at the start; session `stockagent-main-62` last wrote its own ignored `analysis_data/fix013/`
+files at 10:27. It answers the fresh review's CHANGES REQUESTED
+([review receipt](FIX-013-review.md)). It includes a same-conversation self-review, which is not
+the fresh re-review. **Status after:** `review_required`. Nothing was committed, pushed, deployed
+or configured. No production state was read, no LLM or outside endpoint was called, and no
+message was sent.
+
+**Input.** The reviewed revision `560d18f` (diff `156a0b84…`); `HEAD` `8c5afed` touches none of
+its paths. The rework is the working tree on top of it.
+
+### In one example (L2)
+
+A weekday at 08:45 IST. The pre-open check sends one fast-tier request with JSON mode on.
+OpenRouter may serve DeepSeek V4.1 Flash 1017 from any of 33 hosts, and one of them (BaseTen) does
+not support `response_format`.
+
+- **Reviewed code:** that host could serve the request without JSON mode. If it answered
+  `` ```json {"severity": 0.8, "direction": "risk_off", …} ``` ``, the strict parse failed, and the
+  morning was recorded as "neutral, no shock" with a successful telemetry row and one warning line.
+  No contradicted forecast was re-run.
+- **Now:** the request carries `provider.require_parameters`, so OpenRouter serves it only from
+  the 32 hosts that support every parameter sent (DeepSeek's own among them). The 0.8 risk-off
+  rating is read. If no such host is available, OpenRouter refuses the request: the telemetry row
+  is a failure and the "LLM shock rating failed" line appears, instead of a quiet neutral.
+
+### Changes
+
+| Finding | Change |
+|---|---|
+| **R-AC6** (required) | `CODEBASE.md`: the `/ui/chat/stream` row describes the current design (the fast tier with reasoning off; after two tries that hit a rate limit or 5xx, the reasoning tier, a different vendor). The section intro is rewritten without bench dates: the three tiers, the reasoning-off requirement, the two harnesses, and that `config.yaml` lists rejected and retired models. The stray `LLM_MODEL` history line, which sat inside the table and split it in two, became one sentence of that intro. |
+| **M1** | Guide 11-L: engineering also shows the 16:30 run's log lines, and the expected result requires no `unified analyst failed -> legacy fallback`, `[UnifiedAnalyst] run() failed` or `response truncated` line, with the reason (the analyst's row is written before its reply is read). This receipt's production step 2 gains the same check. STATE's steps already had it (the review's edit). |
+| **L1** | `config.yaml`'s `cost_rates` comment, D2 below and the PR-012 card: `z-ai/glm-5.2` keeps its last measured rate (17 Jul), not a 22 Oct price; its hosts' prices vary widely, so a rollback's run costs are approximate. The rate itself is unchanged (RW-D2). PR-012 also records that the analyst's own prompt was not benched on the new reasoning model. |
+| **I1** | `config.yaml` and the caveat below: DeepSeek's own host doubles on weekdays 06:30–09:30 and 11:30–15:30 IST, Alibaba's every day 05:30–19:30 IST (both read from the saved endpoint data). The Gate 2 table's restraint column is 3/3, the FeedbackAgent task only (recounted from the raw files). `scripts/reasoning_bench.py` now prices DeepSeek V4.1 at the base rate, as `config.yaml` and `model_bench.py` do, and the table shows $0.00067 with a note on the recorded $0.00135. |
+| **L2** (recommended) | `core/intelligence/rl/workflows/preopen_check.py`: the call's `extra_body` is `JSON_MODE_EXTRA_BODY` plus `"provider": {"require_parameters": True}`; docstring and comment say why. `docs/RL_DESIGN.md` section 27.3, `CODEBASE.md`'s FAST row and `config.yaml`'s fast-tier comment describe it. Two tests (below). |
+
+### Decisions (delegated, recorded)
+
+- **RW-D1. L2 is taken, with `require_parameters` rather than a fence strip.** A fence strip
+  would still lose a prose-first reply, and it would hide the cause. The pin removes the host that
+  ignores JSON mode. Its cost: when none of the 32 eligible hosts is up, the morning's rating
+  fails visibly instead of being served without JSON mode. The pin is scoped to the pre-open call,
+  the only fast-tier JSON call. The reasoning and bulk tiers' hosts all support
+  `response_format`, so `JSON_MODE_EXTRA_BODY` itself is unchanged.
+- **RW-D2. glm-5.2's rate keeps its 17 Jul value; only the wording changes.** Its 35 hosts range
+  from $0.03 to $2.31 per M in, so no single price is right. A rollback is unlikely, and changing
+  the rate would also change a tracked test's hand-worked value for no production benefit.
+
+### Tests
+
+- **New** (`tests/unit/intelligence/rl/test_preopen_check.py`): the real OpenAI SDK over an
+  in-memory `httpx.MockTransport`, answered by a fake OpenRouter that follows its documented rule.
+  Without `require_parameters` it serves the first host listed, which does not support
+  `response_format` and fences its JSON. With it, only hosts that support every parameter in the
+  request body are eligible, and with none it answers OpenRouter's 404.
+  - `test_shock_is_rated_from_a_host_that_honours_json_mode`: a 0.8 risk-off night is rated 0.8
+    risk-off; one request, carrying the fast-tier id, `json_object`, reasoning off and the pin;
+    one successful telemetry row.
+  - `test_no_eligible_host_is_a_recorded_failure_not_a_quiet_neutral`: with only the host that
+    lacks `response_format`, the result is neutral, the telemetry row is a failure, and the
+    warning line is logged.
+- **Bite** (`analysis_data/fix013/rework1/rw_swap_plugin.py`, `RW_SWAP`, in memory only): HEAD's
+  file fails both new tests. Mutants M1 (the pin set false), M3 (`allow_fallbacks` instead) and M4
+  (`response_format` dropped) fail both; M2 (reasoning-off dropped, pin kept) fails the first. The
+  other 15 tests pass in every variant.
+- **Targeted run** (the original receipt's six files): **77 passed, 1 failed**, the known
+  `test_orchestrator_instantiates_openai` (review I5: fails alone, identically on `0a798e1`).
+- **The reviewer's cases** (`analysis_data/fix013_review/test_rv_fix013.py`, hermetic) on the
+  rework: 17 passed, 1 failed. The failure is R5, at its assertion that the pre-open request's
+  `extra_body` is exactly reasoning-off with no `provider` key (its lines 237–238, written to show
+  L2 in the reviewed code). That is the L2 change. R5's parse cases (plain, `<think>`, fenced,
+  prose-first) are unchanged: the parser is unchanged.
+- `scripts/ci/check_broad_except.py`: OK (151 grandfathered). `scripts/docs/check_kt_docs.py`:
+  errors `[]`.
+- **Full suite:** `.stockai/Scripts/python.exe -m pytest -q -p no:cacheprovider`, 11:07–11:18 IST: **5,564 passed, 12 skipped, 1 xfailed, 0 failed** (613 s). That is FIX-012's 5,562 plus the 2 new tests; the SA-009 store-migration flake did not recur. The suite left no `data/` change.
+
+**Not exercised:** no live call with the pin. The first 08:45 run after this rework is deployed
+shows it: telemetry `success` 1 and no "LLM shock rating failed" line.
+
+### Review input for the fresh re-review
+
+- **Manifest:** [FIX-013-manifest.json](FIX-013-manifest.json), 18 files (FIX-013's 16 plus
+  `preopen_check.py` and its test file), review-input sha256
+  `d16cfe2ca3fcfb094cb04be88283b76a8ef63aa71c2bb0d7dcc1340b627a410b`, 0 mismatches. Against
+  `560d18f`, exactly the 8 rework paths differ.
+- **Rework diff:** `git diff 560d18f` over the 8 paths, 25,079 bytes, sha256
+  `3d6d3a005e7377584e462023113fc5d622705f4b67fa81c4300cd6892a45293f`.
+- **Cumulative diff:** the original recipe (baseline `0a798e1`) over the 18 paths, 47,653 bytes,
+  sha256 `4645aa6e3fe17d3c8239ff2e00fdbf0fa74fd02c668b010ab850d8e15078f5cd`. Both are written by
+  `analysis_data/fix013/rework1/rw_digest.py`.
+- **Excluded bookkeeping:** this receipt, STATE, HANDOFF, the review receipt, and the owner's
+  `docs/README.md` line.
+- **Not changed:** `src/backend/shared/config/settings/base.py`, `tests/unit/test_llm_cost.py`
+  and the other FIX-013 paths. The KT names no model, so the PDF is unchanged.
+
+### Production, measured so far (read-only, not by this conversation)
+
+Session `stockagent-main-62` ran a read-only probe at the owner's "also check prod", 23 Oct
+10:26 IST (counts only; summary in the ignored `analysis_data/fix013/prod_probe_2026-10-23_1026IST.txt`):
+
+- the owner listed Railway's variables: no `LLM_MODEL_*` (production step 1 done);
+- since the 00:10 deploy: 41 LLM calls, 41 successful, including the 08:45 pre-open check on
+  `deepseek/deepseek-v4.1-flash-1017` (1 of 1); in the 24 h before, 148 calls and 0 successful
+  (the dead key, fixed on 22 Oct);
+- no `LLM shock rating failed`, `legacy fallback`, `run() failed`, `response truncated`, JSON
+  parse, 429, 401 or degraded-FeedbackAgent line;
+- not yet seen: any `xiaomi/mimo-v2.6-pro` call (no analysis run since the deploy) and any chat
+  turn. The 16:30 run and 11-L's chat questions remain.
+
 ## What it does, in one example
 
 A unified-analyst call reads about 7,440 tokens and writes 2,957.
@@ -35,8 +146,8 @@ source, skipped tool or broken answer.
   - `model_fast` is `deepseek/deepseek-v4.1-flash-1017`, `model_reasoning` is
     `xiaomi/mimo-v2.6-pro`, and bulk is unchanged.
   - The tier rationale is rewritten as current design, with the rejected candidates listed.
-  - `cost_rates` uses the 22 Oct list prices, and the previous tiers are kept for rollback
-    pricing.
+  - `cost_rates` uses the 22 Oct list prices for the current tiers, and the previous tiers keep
+    their rates for rollback pricing (D2).
 - **`src/backend/shared/config/settings/base.py`:** the same fallbacks and `_DEFAULT_COST_RATES`.
   The reasoning fallback had still named `qwen/qwen3.7-max`.
 - **`services/api/routes/ui_data.py`:** the two chat fallback literals used when settings fail to
@@ -76,15 +187,20 @@ temperature 0.1, 1,200 tokens and `json_object`. It runs 2 tasks × 3 trials: th
 post-mortem and the aggregator verdict, with schema, slug, verdict, top-driver, range and restraint
 checks.
 
-| Model | JSON parsed | Verdict / drivers | Restraint | Avg latency | Cost (6 calls) |
+| Model | JSON parsed | Verdict / drivers | Restraint (FeedbackAgent task) | Avg latency | Cost (6 calls) |
 |---|---|---|---|---|---|
-| z-ai/glm-5.2 (old reasoning) | 6/6 | 3/3, 2/3 | 6/6 | 2.3 s | $0.00512 |
-| **xiaomi/mimo-v2.6-pro** | **6/6** | **3/3, 3/3** | **6/6** | 3.2 s | $0.00162 |
-| deepseek/deepseek-v4.1-flash-1017 | 6/6 | 3/3, 2/3 | 6/6 | 1.1 s | $0.00135 |
-| inclusionai/ling-3.1-flash | 6/6 | 3/3, 3/3 | 6/6 | 15.4 s | $0.00035 |
+| z-ai/glm-5.2 (old reasoning) | 6/6 | 3/3, 2/3 | 3/3 | 2.3 s | $0.00512 |
+| **xiaomi/mimo-v2.6-pro** | **6/6** | **3/3, 3/3** | **3/3** | 3.2 s | $0.00162 |
+| deepseek/deepseek-v4.1-flash-1017 | 6/6 | 3/3, 2/3 | 3/3 | 1.1 s | $0.00067* |
+| inclusionai/ling-3.1-flash | 6/6 | 3/3, 3/3 | 3/3 | 15.4 s | $0.00035 |
 | anthropic/claude-haiku-5.5 | **1/6** | — | 1/1 | 2.4 s | $0.00164 |
-| qwen/qwen3.6-flash (old fast) | 6/6 | 3/3, 1/3 | 6/6 | 2.1 s | $0.00116 |
-| qwen/qwen3.8-flash | 6/6 | 3/3, 0/3 | 6/6 | 3.1 s | $0.00070 |
+| qwen/qwen3.6-flash (old fast) | 6/6 | 3/3, 1/3 | 3/3 | 2.1 s | $0.00116 |
+| qwen/qwen3.8-flash | 6/6 | 3/3, 0/3 | 3/3 | 3.1 s | $0.00070 |
+
+\* At the base list price, $0.15/$0.60. The raw file records $0.00135: at the time,
+`reasoning_bench.py` priced this model at its host's weekday peak rate, $0.30/$1.20, though the run
+was off-peak. Restraint is checked only on the FeedbackAgent task (3 runs per model); Haiku's 1/1 is
+its one parseable FeedbackAgent reply. (Both corrected in rework 1.)
 
 - **Haiku:** in 4 of 6 runs it wrote its working before the JSON, and in 1 it fenced the JSON.
   The aggregator, thesis reviewer and control lane parse after only a fence strip, so those
@@ -119,8 +235,9 @@ sanitiser), 4 questions per model, run 23:16–23:22 IST.
 - The chat runs saw live news minutes apart.
 - Nothing here measures forecast accuracy. Successful calls are not evidence of better verdicts.
 - List prices are not billed prices, because OpenRouter routes across hosts that charge
-  differently. DeepSeek's and Alibaba's endpoints for V4.1 Flash 1017 double their price on
-  weekdays 06:30–09:30 and 11:30–15:30 IST.
+  differently. For V4.1 Flash 1017, DeepSeek's own endpoint doubles its price on weekdays
+  06:30–09:30 and 11:30–15:30 IST, and Alibaba's every day 05:30–19:30 IST (corrected in
+  rework 1).
 - OpenRouter `:batch` slugs are the 24-hour asynchronous Batch API, so none of these tiers can
   use them.
 
@@ -178,7 +295,9 @@ LLM-failure owner alert were patched off for the chat bench.
 - **D1:** split vendors, the owner's choice, rather than all-DeepSeek. All-DeepSeek costs less
   for reasoning, but it removes the chat fallback's vendor independence.
 - **D2:** retired tiers keep their `cost_rates` entries, so an `LLM_MODEL_*` rollback is still
-  priced correctly.
+  priced: `qwen/qwen3.6-flash` at its 22 Oct list price, `z-ai/glm-5.2` at its last measured rate
+  (17 Jul, $1.218/$3.828). glm-5.2's 22 Oct hosts vary widely (first party $1.40/$4.40), so run
+  costs after a rollback are approximate. (Wording corrected in rework 1; the rate is unchanged.)
 - **D3:** the fast tier's rate is recorded at the base list price ($0.15/$0.60), not the
   peak-hour price ($0.30/$1.20).
 - **D4:** the AUD-105 test asserts the invariant (the call is priced at its own rate, not the bulk
@@ -193,7 +312,14 @@ LLM-failure owner alert were patched off for the chat bench.
 2. **On the first trading morning,** run guide case 11-L:
    - telemetry rows carry the new ids, with successful calls for the 08:45 pre-open check, chat
      and the analyst;
-   - the pre-open log has no "LLM shock rating failed" line.
+   - the pre-open log has no "LLM shock rating failed" line;
+   - after the first 16:30 run, the log has no `unified analyst failed -> legacy fallback`,
+     `[UnifiedAnalyst] run() failed` or `response truncated` line. The analyst's telemetry row is
+     written before its reply is parsed, so a successful row alone does not show that the reply
+     was usable; an unparseable one sends the stock back to the bulk-tier legacy agents (added in
+     rework 1, review M1). Every `data_health` row from that run also shows `dimensions_scored`
+     equal to `dimensions_expected`. A JSON reply without the dimensions logs none of those lines
+     (re-review RR-L2).
 3. **Rollback:** revert the `config.yaml` tier lines, or set `LLM_MODEL_FAST` /
    `LLM_MODEL_REASONING` on Railway to `qwen/qwen3.6-flash` / `z-ai/glm-5.2`. Either one
    redeploys.

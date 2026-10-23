@@ -1,11 +1,11 @@
-# Current handoff - 2026-10-23 (updated about 00:50 IST)
+# Current handoff - 2026-10-23 (updated about 12:05 IST)
 
 ## Also 22 Oct (about 22:30 IST to 00:30 IST 23 Oct): FIX-013, LLM tier switch, committed and pushed (separate conversation)
 
 The owner asked to replace the LLMs, with cost and efficiency first and any provider allowed, and
 said to commit and push without asking again. **This is a recorded deviation:** research, benches,
-implementation, commit and push ran in one conversation. Its fresh review is still due. It is
-next: FIX-012's review was accepted on 23 Oct (START HERE).
+implementation, commit and push ran in one conversation. Its fresh review asked for changes, and
+rework 1 was accepted on 23 Oct (START HERE).
 
 - **Change:**
   - fast: `qwen/qwen3.6-flash` -> `deepseek/deepseek-v4.1-flash-1017`;
@@ -105,6 +105,167 @@ Docs only; nothing committed, pushed, deployed or configured.
   section 11.
 
 ## START HERE — resume checklist, in order
+
+**FIX-013 rework 1 COMMITTED** at the owner's word ("commit and push", 23 Oct about 12:03 IST,
+this session).
+
+- **`e47cd13`** holds exactly the 8 rework paths. The review manifest's 18 blobs verify at it.
+- **The docs commit after it** applies the re-review's three commit-time edits:
+  - guide 11-L, with RR-L1 and RR-L2 and its status line;
+  - the implementation receipt's step 2;
+  - KT section 12's FIX-013 row, set to Done.
+
+  It also moves the KT's "Code inspected" to `e47cd13`, and section 1 now says production runs
+  `8c5afed` until this deploy is confirmed. The PDF is rebuilt; `check_kt_docs` reports `[]`
+  errors and broad-except is OK. The commit also adds the review receipt and manifest, STATE and
+  this file.
+- **Not committed:** the owner's `docs/README.md` line.
+- **The push** goes after 12:05 IST. The next blocked window is 14:55–15:05, and the 16:30 review
+  has a wide margin.
+
+**FIX-013 ACCEPTED** by its fresh re-review of rework 1 (23 Oct, about 11:41–12:05 IST, session
+stockagent-main-f8, a new conversation opened with "continue"). Receipt:
+[FIX-013-review](evidence/FIX-013-review.md), top section.
+
+- **STATE:**
+  - FIX-013 is `done`;
+  - `active_task` is null;
+  - **`next_task` is PR-011**;
+  - production verification is `pending_observation`.
+- **Nothing was committed, pushed, deployed or configured.** No production state was read, and no
+  LLM or outside endpoint was called.
+
+- **Next "continue", in a new conversation: PR-011.** It is ready, since PR-006 is done, and it
+  has not been started.
+- **Rework 1 is still uncommitted** on `8c5afed`. Commit and push only at the owner's word, in a
+  job-free window. The push deploys the pre-open pin (L2). Apply these commit-time edits with it;
+  the exact text is in the receipt:
+  1. **Guide 11-L:**
+     - a `response truncated` line means a cut-off reply whose missing dimensions were scored
+       neutral, not a re-score by the legacy agents (RR-L1);
+     - engineering also shows that run's `data_health` rows, and each must have
+       `dimensions_scored` equal to `dimensions_expected` (RR-L2);
+     - update the status line.
+  2. **The implementation receipt's production step 2:** the same `data_health` sentence.
+  3. **KT section 12:** add the FIX-013 row as Done (RR-L3), bump the KT header, rebuild the PDF,
+     and check that `check_kt_docs` reports `[]`.
+- **What the rework fixes, by example:** a 0.85 risk-off morning, with MARUTI forecast UP.
+  - **The reviewed code:** the request could be served by the one host without JSON mode. Its
+    reply read as "neutral, no shock", telemetry said success, and MARUTI's forecast was not
+    redone.
+  - **With the pin:** 32 of the 33 real hosts are eligible, never that one, and MARUTI is
+    re-forecast.
+- **RR-L2, by example:** suppose the analyst's reply reads as JSON but holds none of the nine
+  dimensions, or is empty. All nine dimensions are scored neutral, and none of the three watched
+  log lines appears. Only the run's `data_health` row shows it, with `dimensions_scored` 0.
+- **Checked:**
+  - the input `d16cfe2c…`, the rework diff `3d6d3a00…` and the cumulative diff `4645aa6e…`,
+    recomputed at the start and at the end;
+  - the reviewer's cases: 8 passed (`analysis_data/fix013_rereview/test_rr_fix013.py`, with a
+    fake OpenRouter built from the saved 33-host listing). The implementer's variants were all
+    caught;
+  - the targeted files: 77 passed, 1 failed (the known I5). Broad-except OK; `check_kt_docs`
+    `[]`;
+  - the full suite: 5,564 passed, 12 skipped, 1 xfailed, 0 failed (10 min 18 s), with no
+    `data/` change.
+- **Owner checks, today after 16:30** (FIX-013 has been live since 00:10):
+  - the analyst and aggregator rows show `xiaomi/mimo-v2.6-pro`;
+  - no `unified analyst failed -> legacy fallback`, `[UnifiedAnalyst] run() failed` or
+    `response truncated` line;
+  - every `data_health` row from that run has `dimensions_scored` equal to
+    `dimensions_expected`;
+  - no degraded FeedbackAgent line;
+  - then guide 11-L's chat questions.
+
+  After the push, the first 08:45 run should show `preopen_check` with `success` 1.
+
+**FIX-013 REWORK 1: IMPLEMENTED** (23 Oct, about 10:57–11:30 IST, session
+stockagent-main-48, a new conversation opened with "continue"). Receipt:
+[FIX-013-implementation](evidence/FIX-013-implementation.md), section "Rework 1". STATE: FIX-013
+`review_required`, `active_task: null`, `next_task: FIX-013`, production verification
+`pending_observation`. Nothing was committed, pushed, deployed or configured; no production state
+was read and no LLM was called.
+
+- **Next "continue", in a new conversation: FIX-013's fresh re-review**, then PR-011.
+- **What changed** (uncommitted, on `8c5afed`):
+  - **R-AC6:** `CODEBASE.md`'s chat row now says the fast tier with reasoning off, escalating to
+    the reasoning tier (a different vendor). The LLM section intro has no bench dates.
+  - **M1:** guide 11-L and the receipt's production step 2 now require, after the 16:30 run, no
+    `unified analyst failed -> legacy fallback`, `[UnifiedAnalyst] run() failed` or
+    `response truncated` line.
+  - **L1/I1 (wording):** glm-5.2 keeps its last measured rate (17 Jul), which is unchanged.
+    Alibaba's host doubles every day 05:30–19:30 IST. Restraint is 3/3.
+    `reasoning_bench.py` now prices DeepSeek V4.1 at the base rate.
+  - **L2 taken:** the 08:45 pre-open call sends `provider.require_parameters`. Example: a
+    fenced reply from the one host that ignores JSON mode used to read as "no shock". Now that
+    host is never used. If no eligible host is up, the call fails visibly ("LLM shock rating
+    failed", a failed telemetry row). There are 2 new tests, which use the real OpenAI SDK
+    against a fake OpenRouter. HEAD and 4 mutants are caught.
+- **Review input:** [FIX-013-manifest.json](evidence/FIX-013-manifest.json) `d16cfe2c…`
+  (18 files, 0 mismatches). Rework diff `3d6d3a00…` (25,079 B, 8 paths, `git diff 560d18f`).
+  Cumulative `4645aa6e…` (47,653 B). Both come from `analysis_data/fix013/rework1/rw_digest.py`.
+- **Tests:** the pre-open file 17 passed. The targeted six files: 77 passed, 1 failed (the known
+  I5). Broad-except OK; `check_kt_docs` `[]`. Full suite: 5,564 passed, 12 skipped, 1 xfailed,
+  0 failed (10 min 13 s). The KT names no model, so there is no PDF change.
+- **Commit and push** only at the owner's word, in a job-free window. The push deploys L2. The
+  first 08:45 run after it should show `success` 1 and no "LLM shock rating failed" line.
+- **Production so far** (session stockagent-main-62's read-only probe, 10:26 IST, at the owner's
+  word): no `LLM_MODEL_*` variable; 41 of 41 LLM calls OK since the 00:10 deploy, including the
+  08:45 pre-open check on the new fast model; no failure line of any watched kind. Still to see:
+  the 16:30 analyst run on `xiaomi/mimo-v2.6-pro` (the M1 check) and a chat turn (11-L).
+
+**FIX-013's fresh review: CHANGES REQUESTED** (23 Oct, about 09:18–09:55 IST, session
+stockagent-main-7e, a new conversation opened with "continue"). Receipt:
+[FIX-013-review](evidence/FIX-013-review.md). STATE: FIX-013 `changes_requested`, `active_task`
+and `next_task` FIX-013, production verification `pending_observation`. Nothing was committed,
+pushed, deployed or configured, and no production state was read. Two public OpenRouter catalogue
+reads were made; no LLM was called.
+
+- **Next "continue", in a new conversation: FIX-013 rework 1**, then its fresh re-review, then
+  PR-011. The rework is documentation and wording, with one optional line of code:
+  1. **Required (AC6 unmet):** `CODEBASE.md:368` still says chat is a "BULK-tier default …
+     glm-5.2 escalation on failure". It should say: the fast tier, reasoning off, escalating to the
+     reasoning tier. The intro at `:573-574` carries out-of-date bench dates. Rewrite both as
+     current design.
+  2. **M1:** an unparseable analyst reply still leaves a successful-looking `xiaomi/mimo-v2.6-pro`
+     telemetry row, and the stock reruns on the legacy bulk agents. Guide 11-L and the
+     implementation receipt's production step 2 must add: no
+     `unified analyst failed -> legacy fallback`, `[UnifiedAnalyst] run() failed` or
+     `response truncated` line after the first 16:30 run.
+  3. **L1 and I1 (wording):**
+     - glm-5.2's kept rate is its 17 Jul one, not "refreshed" (`config.yaml:63`, receipt D2,
+       PR-012 card);
+     - Alibaba's host doubles every day 05:30–19:30 IST (`config.yaml:18-19`);
+     - restraint is 3/3, not 6/6.
+  4. **L2, recommended:** add `provider.require_parameters` (or a fence strip) to the pre-open
+     call, with a test. One of DeepSeek V4.1's 33 hosts ignores `response_format`, and a fenced
+     reply silently reads as "no shock". Otherwise route it to PR-012.
+- **What held up:**
+  - the ids are consistent in all four places;
+  - reasoning is optional for both models, and they return JSON 6/6 by plain `json.loads`;
+  - the chat bench reproduces: 0/0/0, 14.0 s against 20.6 s;
+  - the costs are hand-worked and every cost-table mutant is caught;
+  - a 429 escalates to the other vendor, while a 401 does not escalate.
+  Reviewer cases: `analysis_data/fix013_review/` (18 passed, hermetic).
+- **Owner checks, now** (FIX-013 has been live since 00:10 IST today):
+  1. no Railway variable `LLM_MODEL_FAST`, `LLM_MODEL_REASONING` or `LLM_MODEL_BULK`;
+  2. today's logs since 08:45: no `LLM shock rating failed`;
+  3. after 16:30: no `legacy fallback` or `run() failed` lines, and no degraded FeedbackAgent
+     line.
+  These sit alongside the AI-key watch below.
+
+**FIX-012 PUSHED; CI IS GREEN** (23 Oct, session stockagent-main-a4, at the owner's word "commit
+and push"; this note is uncommitted). `560d18f..8c5afed` at 04:07:06 IST, as RevanParimi:
+`d6f8510` (the test file, the reviewed blob) and `8c5afed` (its docs).
+
+- **CI on `8c5afed`** (public GitHub API, 04:20 IST): "Python tests (Linux, 3.11)" **success**,
+  the first green Linux job since 11 Oct (3 min 00 s; the failing run on `560d18f` took 3 min
+  43 s). "Broad-except and KT document guards" and "Browser security suite (Chromium)" also
+  passed. Nothing failed. FIX-012's verification is `verified`.
+- **Deploy:** `6abaa44c` created 04:07:07 IST, SUCCESS by 04:21; `f51ef44c` REMOVED; `/health`
+  200. No job is due before 06:20, and the change is test-only.
+- **Next "continue": FIX-013's fresh review**, then PR-011. The 23 Oct AI-key watch below still
+  stands (07:30 macro news first).
 
 **FIX-012 is ACCEPTED** by its fresh review (23 Oct, about 00:04–00:50 IST, session
 stockagent-main-a4, a new conversation opened with "continue"). Receipt:

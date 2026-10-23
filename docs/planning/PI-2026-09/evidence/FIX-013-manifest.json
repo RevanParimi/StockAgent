@@ -1,0 +1,105 @@
+{
+  "story": "FIX-013",
+  "phase": "rework 1 (2026-10-23), a conversation opened with continue after the fresh review CHANGES REQUESTED",
+  "baseline": "560d18f (FIX-013 reviewed revision, committed and pushed; HEAD 8c5afed touches none of these paths). The 16 FIX-013 paths plus the 2 rework paths preopen_check.py and its test file.",
+  "excluded": [
+    "docs/planning/PI-2026-09/STATE.json",
+    "docs/planning/PI-2026-09/HANDOFF.md",
+    "docs/planning/PI-2026-09/evidence/*",
+    "docs/README.md (the owner line, uncommitted)"
+  ],
+  "note": "Diffs: analysis_data/fix013/rework1/rw_digest.py (rework against 560d18f over 8 paths; cumulative against 0a798e1 over these 18 paths, the story card against /dev/null).",
+  "hash_convention": "git blob bytes after .gitattributes normalization (CRLF->LF for text, binary unchanged); verify with scripts/docs/kt_manifest.py verify",
+  "files": [
+    {
+      "path": "CODEBASE.md",
+      "git_blob": "d1b8a91aa73aff5928f4d2307b26a8638df749fe",
+      "sha256": "5f8df135c99099fbbaf3c384d4d4eb50cf55ca9fed3275e5d111b2cf29f257ca"
+    },
+    {
+      "path": "README.md",
+      "git_blob": "6bf044f0e33d3e32050332195ec2c5e16b5babf5",
+      "sha256": "541e0efac70335cf16540edb9b03a1beec17026da6e90ef46e5a002f4c2b875e"
+    },
+    {
+      "path": "config.yaml",
+      "git_blob": "a7ac69021449d52c35f80433b139e9a22836f399",
+      "sha256": "abc6cbe942bb3989506b0ae73e0c081b32cbc43858c0613c1fa49915eb328834"
+    },
+    {
+      "path": "core/intelligence/rl/workflows/preopen_check.py",
+      "git_blob": "2f9533af0394241a9008c33df2fb49423d85a663",
+      "sha256": "e2e967af2a8eadd3bcca72c694a6280a24d3d4e55ec20d5e1d4cb84ea068fe9b"
+    },
+    {
+      "path": "docs/AGENTIC_DESIGN.md",
+      "git_blob": "34972879edc882b2b6f5be38328f9379d64040b1",
+      "sha256": "13444f486aeee690efd50ff95f240dfd2b06fcf3cbe759c3bc8c9d63abc0481e"
+    },
+    {
+      "path": "docs/ARCHITECTURE.md",
+      "git_blob": "2073f908e34aa7d0f2ccc1e818f118ea98f198fb",
+      "sha256": "3b95063b3f6855b3af54cd4b01dabcd86c132f86dc09d0d4ae7bd160a45c6ad2"
+    },
+    {
+      "path": "docs/CHAT_ARCHITECTURE.md",
+      "git_blob": "712d6e274328c88949691eaf5f883742b7894f1e",
+      "sha256": "5e6d7bdd8c2e5e2c79818f221ff03e550b0f45945720b6fc3382b93a0a3f60ff"
+    },
+    {
+      "path": "docs/PRODUCT_MAP.md",
+      "git_blob": "84503d5849d0e35b65bb39ae2a9e341284d80400",
+      "sha256": "c9f012bae99d56c4bdcb7824163721b42cac13e925846010da00d7a190a3b76f"
+    },
+    {
+      "path": "docs/RL_DESIGN.md",
+      "git_blob": "60d2b30ffe9bd0d34bcd84a7499ef2fc71f07550",
+      "sha256": "b3395f80fd1192c7ce54e2226da6f5e1318ae3d8e699f47e76044c9e6ee3dca0"
+    },
+    {
+      "path": "docs/TEAM_TESTING_GUIDE.md",
+      "git_blob": "cadc408ab2da9f03a9c15823e4c32634486763db",
+      "sha256": "4b02219ca0b940e5806987cbd80993913781064c6567e0a1ecb3ac9fc0d9f59c"
+    },
+    {
+      "path": "docs/planning/PI-2026-09/stories/FIX-013.md",
+      "git_blob": "4efd8793411f65ed25bca77a4757038faa69a231",
+      "sha256": "e90f1f68c60105434ea5f2836ea4f379dc152df7cbdfee2222e6e8d079f9d3a7"
+    },
+    {
+      "path": "docs/planning/PI-2026-09/stories/PR-012.md",
+      "git_blob": "736f5e8ba5f14395f0d370261ea63eb45eb73b25",
+      "sha256": "e5206cb7818763b8a77e811f29d60857aacec9fdc0c71f94c6bb8069c6a6a802"
+    },
+    {
+      "path": "scripts/model_bench.py",
+      "git_blob": "c68e36837b2b651a33242f844c41b005cb18bbbc",
+      "sha256": "83e925929366a4fd95a5f6470f868a43087d0f540c391564175a4da31cf335c4"
+    },
+    {
+      "path": "scripts/reasoning_bench.py",
+      "git_blob": "b189c5e1b6dced713a7294b3b39b403ed94660f9",
+      "sha256": "7871392a1c65c2e0c8954d4087084c8ebcabbff00d527f7ed71c478051245cf5"
+    },
+    {
+      "path": "services/api/routes/ui_data.py",
+      "git_blob": "2001c139a751a78545cf21dbdab9b4799ac6bdb0",
+      "sha256": "73ed5642bfb77d4f047a8ef51115a377dff8b18ea3799dbb26cdb4a69b96f12a"
+    },
+    {
+      "path": "src/backend/shared/config/settings/base.py",
+      "git_blob": "23e33200bbd1f434508e2a099cb7dee7db90a9be",
+      "sha256": "4412ff1f396eb67d919d6b3fd8e843b7dfd9a7b75bd9f5ace947aa55007a5140"
+    },
+    {
+      "path": "tests/unit/intelligence/rl/test_preopen_check.py",
+      "git_blob": "357eaf5638e761d78ac1396472ac501c4c3a1210",
+      "sha256": "066701c66e1c6cadcd79ab833642d95b89263d7a459acd8b7d7171fc566cb8c0"
+    },
+    {
+      "path": "tests/unit/test_llm_cost.py",
+      "git_blob": "ba9b294c4acde7fc5bb3355f19348611c6750a4a",
+      "sha256": "a4133898b69ff6de7a0a1e47128acb11ea5bad651b852419df7f47c3420cfcbc"
+    }
+  ]
+}

@@ -2,7 +2,7 @@
 
 **Edition:** 2026-10-23 · **Audience:** engineers and teammates learning the product
 
-**Code inspected:** `d6f8510ec51ec526c8febcc822eaf3859ef8eba4`
+**Code inspected:** `e47cd13fc84ec9af2cfb4b8f58a4131141bc95ee`
 
 **PDF:** [StockAgent-Three-Loops.pdf](StockAgent-Three-Loops.pdf), generated from this Markdown.
 
@@ -35,16 +35,12 @@ triggered no production job, backfill or notification.
 
 ### Production state at this edition
 
-Production runs the inspected code once the deployment of 22 October 2026 is
-confirmed by the owner's read-only check of the deployment list and `/health`.
-Until then it runs the code deployed on the evening of 19 October (`25fae38`;
-the deployment list showed it live by 18:00 IST). They differ in discovery and
-in company events. Discovery ranks and dives only companies, the shelf holds 20
-ideas with at most 3 per market sector, ideas are re-dived after 30 days, and
-the 16:30 review buys only from the buy candidates (section 8). The
-company-event feed runs at 08:15 and 18:30 IST on trading days and stores
-dated, typed events for every tracked stock; nothing trades on them (section 4).
-The table gives the configuration that differs from the repository and the
+Production runs the inspected code once the midday deployment of 23 October
+2026 is confirmed by a read-only check of the deployment list and `/health`.
+Until then it runs `8c5afed`, deployed at 04:07 IST that day (the deployment
+list showed it SUCCESS and `/health` answered 200). The two differ only in the
+08:45 pre-open shock rating's model request, which now asks OpenRouter for a
+host that supports every parameter sent. The table gives the configuration that differs from the repository and the
 state of each operational control.
 
 | Area | State in production | Evidence |
@@ -2401,6 +2397,7 @@ section 10) are part of the current design.
 | [PR-012](planning/PI-2026-09/stories/PR-012.md) | Choose models by role, benched on our own data; refresh cost rates | Open | 3 Configuration | PR-007 |
 | [FIX-011](planning/PI-2026-09/stories/FIX-011.md) | NSE's per-symbol meta API is gone: restore the surveillance and suspension guards and an industry source | Open | 4 Research; 8 Discovery | None |
 | [FIX-012](planning/PI-2026-09/stories/FIX-012.md) | CI is red since 13 Oct: make FIX-007's log-route guard work on any FastAPI | Done | 13 Validation | None |
+| [FIX-013](planning/PI-2026-09/stories/FIX-013.md) | Move the fast and reasoning LLM tiers to cheaper current models | Done | 3 Configuration | None |
 
 ### Maintain documentation with each story
 

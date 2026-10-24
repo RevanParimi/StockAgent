@@ -269,6 +269,50 @@ class PortfolioStore:
                 logger.warning("[PortfolioStore] skipping bad switch-eval line: %s", exc)
         return out
 
+    def _exit_shadow_path(self) -> Path:
+        return self._dir / "exit_shadow.jsonl"
+
+    def append_exit_shadow_once(self, rows: list) -> int:
+        """PR-009: append the rows whose (date, symbol) is not stored yet; a
+        stored row wins, so a re-run of the pipeline adds nothing. The check
+        and the append share one lock. Returns how many were appended."""
+        if not rows:
+            return 0
+        with FileLock(str(self._dir / "exit_shadow.lock"), timeout=30):
+            seen = {(r.get("date"), r.get("symbol")) for r in self.load_exit_shadow()}
+            new = []
+            for rec in rows:
+                key = (rec.date, rec.symbol)
+                if key in seen:
+                    continue
+                seen.add(key)
+                new.append(rec)
+            if new:
+                with open(self._exit_shadow_path(), "a", encoding="utf-8") as fh:
+                    for rec in new:
+                        fh.write(json.dumps(rec.model_dump(), ensure_ascii=False) + "\n")
+            return len(new)
+
+    def load_exit_shadow(self) -> list[dict]:
+        """Every stored exit-shadow row, file order. A corrupt line is skipped
+        and logged."""
+        path = self._exit_shadow_path()
+        if not path.exists():
+            return []
+        rows: list[dict] = []
+        for line in path.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                row = json.loads(line)
+            except ValueError as exc:
+                logger.warning("[PortfolioStore] skipping bad exit-shadow line: %s", exc)
+                continue
+            if isinstance(row, dict):
+                rows.append(row)
+        return rows
+
     def append_advice(self, rec: AdviceRecord) -> None:
         with open(self._ledger_path(), "a", encoding="utf-8") as fh:
             fh.write(json.dumps(rec.model_dump(), ensure_ascii=False) + "\n")

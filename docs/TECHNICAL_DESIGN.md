@@ -186,6 +186,7 @@ resolved at import, so editing a file does not imply live reconfiguration.
 | `rl.learning_mode: adapt` | Learning switch, env `RL_LEARNING_MODE`. `adapt` lets learned weights and lesson emphasis move decisions; `observe` contains them (section 5). Any other value fails closed to `observe`. Production sets `observe`. |
 | `decision_gate.mode: record` | Essential-data gate switch, env `DECISION_GATE_MODE`. `record` computes and records the gate everywhere and changes nothing; `enforce` withholds verdicts, forecasts, learning and new-risk buys that rest on unverified data or an unresolved identity (sections 4–6). Any other value fails closed to `enforce`. |
 | [`config/instruments.yaml`](../config/instruments.yaml) | The instrument registry: effective-dated records of which provider symbol each listed ticker is priced from, on which price basis, and whether its identity is resolved (section 4). Evidence is needed to resolve an identity, never to quarantine one. It lists TATAMOTORS and HEXAWARE as unresolved and two plain aliases as resolved. Quarantine acts through `decision_gate.mode`. |
+| `advisor.exit_rule: shadow` | Which exit rule sells (section 6). `legacy`: the price-path rule acts and nothing is compared. `shadow`: it still acts, and both rules' verdicts are recorded. `evidence`: the evidence rule acts. Any other value reads as `shadow`. The owner switches only on the weekly scorecard's gate; `legacy` is the rollback. |
 | `rl.control_lane_enabled`, `rl.scorecard_enabled`: true | Control/evaluation paths configured; not proof of valid prospective comparison. |
 | `ipo.enabled: true`; `ipo.gmp_enabled: false` | IPO refresh and grey-market-price fetching have separate gates. |
 | `delivery.enabled: true`; `delivery.email_enabled: false`; `delivery.push_enabled: true` | Job scheduling, transport enablement and credentials are separate conditions. |
@@ -205,7 +206,7 @@ evidence.
 | `_shared_ledger.json` per sector; `_market_ledger.json` at prediction root | Shared lessons can affect more than one ticker; bad attribution can propagate. |
 | `data/managed_tickers.json` | The managed list: each scheduled ticker's sector and enabled flag. Disabling a ticker keeps its history; removing it deletes the history. |
 | `data/prediction_quarantine/<migration>/` | Stores moved out of the live tree by the ownership quarantine, with their `lineage.json`. Inside `data/`, so the nightly backup keeps them; outside the tree the evaluators walk. |
-| `data/portfolio/<user>/` | PortfolioStore: holdings/cash, advice and transaction JSONL, value history, dated digests, briefs and weekly reviews, and `weekly_scorecard.jsonl` (one results row per ISO week, written once; section 7). The nightly auditor's `advice_outcomes.jsonl` sits beside them. |
+| `data/portfolio/<user>/` | PortfolioStore: holdings/cash, advice and transaction JSONL, value history, dated digests, briefs and weekly reviews, `weekly_scorecard.jsonl` (one results row per ISO week, written once; section 7) and `exit_shadow.jsonl` (both exit rules' verdicts, one row per holding per review day, written once; section 6). The nightly auditor's `advice_outcomes.jsonl` sits beside them. |
 | `data/ipo/` | Historical issue facts and captured demand snapshots; reports derive from these records. |
 | `data/market_cache/ipo.json` and EOD parquet | Cached IPO information and exchange price history; date, source and stale state matter. |
 | `data/events/` | The company-event feed (section 4): `<SYMBOL>.jsonl`, one event per source item, append-only; `state.json`, the day's news-search count and the items judged not about their company; `runs.jsonl`, one line per run; `ownership/<SYMBOL>.json`, each quarter's FII, DII and mutual-fund share read from its shareholding XBRL. Market facts only, with no user in them. The feed writes; `GET /events/{symbol}` reads. |
@@ -618,9 +619,10 @@ action, corporate actions and deals, and from NSE's disclosures, insider
 trades, substantial acquisitions, promoter pledges and shareholding changes.
 Each event is typed, dated and cites the item it came from. Two jobs run it on
 trading days, at 08:15 and 18:30 IST
-(section 9). Nothing trades or advises on it yet; the investment case, the
-explanations, the brief's company lane and the exit rule are to read it
-(**Planned:** PR-005, PR-007, PR-008, PR-009).
+(section 9). The evidence exit rule reads its high-materiality negative
+events (section 6); with `advisor.exit_rule: shadow` it only records what it
+would do. The investment case, the explanations and the brief's company lane
+are to read it (**Planned:** PR-005, PR-007, PR-008).
 
 A run:
 
@@ -1078,7 +1080,8 @@ not mean a flat forecast.
 ### Advisor precedence
 
 The cascade is **EXIT → TRIM → ADD → HOLD**. EXIT includes stop breach,
-bearish thesis/shock conditions, crisis conditions and an armed trailing stop.
+the acting exit rule's reason test (below), shock and crisis conditions and an
+armed trailing stop.
 TRIM considers profit with declining confidence/reversion. ADD requires
 bullish, sufficiently healthy conditions and position headroom: the holding
 below `advisor.max_position_pct` (10%) of total equity (see "Sizing every
@@ -1087,19 +1090,146 @@ become SWITCH when an eligible replacement exists. A holding-age rule can
 soften certain TRIM actions to HOLD; it does not override EXIT. These are
 product rules, not individualized tax or investment advice.
 
-The thesis condition (`thesis_break`) needs two things: the month's latest
-thesis review said "not intact", and the remaining forecast path ends more than
-1% below the close. That review runs in the daily review (section 5, step 7)
-only after a price-path miss larger than `max(1.5%, 1.5 × ATR%)`
-([thesis_reviewer](../core/intelligence/rl/agents/thesis_reviewer.py)), and it
-fetches no new data. A company
-event therefore never triggers it, while one sharp down day can. **Example:** a
-stock falls 4% on a 2% market fall four days after purchase. The miss triggers
-a review, the review says "not intact", the re-forecast path ends lower, and
-EXIT sells at a 4% loss with nothing about the company changed. **Planned:**
-exits that need evidence (a material company event, an actionable SELL or the
-invalidation price), run in shadow and switched only on a predeclared gate
-(PR-009).
+### Two exit rules
+
+Two rules can sell a holding whose reason to own may have gone, and
+`advisor.exit_rule` decides which one acts. The rest of the cascade, the stops
+included, is the same code under both
+([advisor](../core/portfolio/advisor.py), [exit_shadow](../core/portfolio/exit_shadow.py)).
+
+- **The price-path rule (`thesis_break`)** needs two things: the month's latest
+  thesis review said "not intact", and the remaining forecast path ends more
+  than 1% below the close. That review runs in the daily review (section 5,
+  step 7) only after a price-path miss larger than `max(1.5%, 1.5 × ATR%)`
+  ([thesis_reviewer](../core/intelligence/rl/agents/thesis_reviewer.py)), and
+  it fetches no new data. A company event therefore never triggers it, while
+  one sharp down day can.
+- **The evidence rule (`case_broken`)** needs one of three things, as of the
+  review day:
+  1. a high-materiality negative company event about the stock (section 4),
+     published in the last 5 sessions;
+  2. the latest analysis in the score history with an actionable or degraded
+     gate says SELL or STRONG SELL;
+  3. the close is at or below the invalidation level of the stock's latest
+     shelf idea, where the entry rule refuses to buy, compared in the close's
+     own price basis (below).
+
+  It fires only once the holding has been held `advisor.min_hold_sessions`
+  (10) exchange sessions; the stops never wait. An event published after the
+  review day, another company's event, an event with no publication time, an
+  analysis run after the review day and an abstained analysis never count.
+  **Planned:** with an investment case, only an event that contradicts one of
+  its pillars, and the case's own invalidation price (PR-005).
+
+**Example.** A stock is bought at ₹500 for its order book. On day 4 the market
+falls 2% and the stock 4%, to ₹480. The miss triggers a review, the review
+says "not intact", and the re-forecast path ends at ₹470, so the price-path
+rule EXITs at a 4% loss. The evidence rule finds no negative event, a BUY as
+the latest analysis, ₹480 above the ₹455 invalidation level and 4 sessions
+held, so it HOLDs. A path ending at ₹478 would not have fired the price-path
+rule: that is within 1% of ₹480.
+
+**The invalidation level's price basis.** The level is a rupee price set from
+the deep dive's close. A bonus or split changes what a rupee of price means: a
+1:1 bonus halves the share price. So the level is divided by the ratio of every
+bonus or split that went ex after the dive and on or before the review day
+(`level_in_basis`). The ratios come from two records, each for its own days:
+
+- after the buy, the holding's applied actions: the record its cost basis and
+  the stops use, written by the corp-action sync, which runs first;
+- from the dive day to the buy day, NSE's corporate-action list for the
+  symbol, which the same sync fetches each review day. The holding has no
+  record before its buy, so this list must reach back to the dive day: its
+  earliest row, of any kind, must be on or before it.
+
+When the basis cannot be established, the level is not used, and the row's
+`gaps` say why: the list does not reach back to the dive (an empty list, NSE's
+answer or a failed fetch, reads the same), a bonus or split went ex on the dive
+day itself (the dive's close may be on either side of it), or NSE lists a split
+or bonus row from the dive day on that cannot be parsed. The row keeps the
+level as dived (`invalidation_level_at_dive`) beside the one used.
+
+**Example.** A stock is dived at about ₹500, with the level ₹455, and bought at
+₹500. A 1:1 bonus then goes ex. The sync makes the holding 20 shares at ₹250,
+and the level is ₹227.50. A close of ₹245 (₹490 in the old shares, down 2%)
+fires nothing. ₹225 (₹450, down 10%, inside a 12% stop) is at the level.
+
+**Modes.**
+
+- `legacy`: the price-path rule acts, and nothing is compared.
+- `shadow`, the shipped setting: the price-path rule acts. Both verdicts, with
+  the evidence rule's reasons and inputs (event ids, the analysis and its run
+  time, the invalidation level and its source, any source it could not read),
+  go to `exit_shadow.jsonl`, one row per holding per review day; a re-run adds
+  nothing. The row names the holding (symbol and buy date) and the session the
+  close came from. The advice and trades are the price-path rule's, byte for
+  byte.
+- `evidence`: the evidence rule acts, and the price-path verdict is still
+  recorded beside it.
+
+**Decisions.** A disagreement is a row where exactly one rule sells the whole
+position (EXIT or SWITCH). A holding is one **decision**: its first review day
+of disagreement. From that day one rule has sold the holding and the other
+kept it, so the two no longer hold the same position, and the holding's later
+disagreeing days stay in the file without being counted again, whichever rule
+they favour. A stock bought again later is a new holding. Example: a standing
+SELL that the price-path rule ignores for 5 review days is one decision, not 5.
+
+**Grading.** The weekly scorecard (section 7) grades each decision on the
+stock's excess return over the Nifty 10 and 30 sessions after the review day,
+from the close both rules saw, with the auditor's rules and benchmark series.
+The Nifty is read from that close's own session, so a carried-forward close is
+graded from the day of its bar. The evidence rule was right if it sold and the
+stock then trailed the Nifty, or kept it and the stock did not. A horizon that
+has not ended is pending, never scored. A sold stock stays in the count.
+
+**The switch gate** is fixed in code, set before any row existed. The
+population is the decisions whose 30 sessions have ended, and a missing close
+counts against the evidence rule.
+
+| Condition | Required |
+|---|---|
+| Decisions past 30 sessions | at least 15 |
+| Span of their review days | at least 8 weeks |
+| Evidence rule right | at least 50%, at 10 sessions and at 30 |
+| One stock's share of them | at most 30% |
+| Weekly looks that pass | 2 in a row |
+
+**When it can first pass** (arithmetic, not a measurement): at two new
+decisions a week, about 15 weeks after the shadow starts (the 8-week span, 6
+weeks for the last decision to reach 30 sessions, one more look); at one a
+week, about 21 weeks (14 weeks to reach 15 decisions, then 6 and 1).
+
+**Why two horizons.** The production baseline in the
+[product results review](audit/2026-10-11-product-results-review.md) (its
+section 11) found the auditor's exits right at 10 sessions (7 of 10: the stock
+kept falling) and wrong at 30 (6 of 7 sold stocks then beat the Nifty). One
+horizon would flatter one rule. The scorecard recommends; the owner switches
+(`advisor.exit_rule: evidence`), and `legacy` is the rollback. A result of
+"no difference" is valid too; the owner may then still choose the simpler
+rule. **Planned, after a switch:** the price-path verdict stays recorded for
+one month, then the thesis-review exit path is retired (PR-009's rollout).
+
+**Limits.**
+
+- `shock_reforecast` compares the latest re-forecast's stored `reason`, which
+  is a sentence ("pre-open shock: …"), with trigger keys such as
+  `preopen_shock`, so it never fires under either rule. The key is in the
+  event's `trigger` field. **Planned:** FIX-015.
+- A holding bought from a watchlist BUY has no stored shelf idea, so the
+  invalidation test cannot fire for it.
+- For a holding dived before its buy, the invalidation test needs NSE's list to
+  reach back to the dive day. The sync asks NSE for the symbol's actions
+  without dates, and how far back that list reaches has not been measured. If
+  it holds only recent and forthcoming actions, the level is unused for most
+  holdings, and each row's `gaps` says so.
+- Under `evidence`, a sale's alert and narrative name the three kinds of reason,
+  not the one that fired; `exit_shadow.jsonl` has it. **Planned:** PR-007.
+- The TRIM-to-HOLD tax softening still reads the thesis review under both
+  rules.
+- Each Sunday the scorecard fetches every graded decision's closes again. A
+  past close is cached for the rest of that process, but the run grows with the
+  number of decisions.
 
 ### Data and identity checks on advice
 
@@ -1410,6 +1540,7 @@ week whose sessions are not over is never stored.
 | Breadth | Holdings (for the latest week) and the invested share at the week's last valuation. |
 | Holding period | Median exchange sessions held by the positions closed this week. |
 | Idea quality | From the auditor's shelf lane: how many shelf ideas beat the Nifty 10 and 30 sessions after they were shelved, whether bought or not, with the median gap in points. Only grades matured by the week's end count. It measures the idea supply, not the portfolio, and it is a line, not a flag. |
+| Exit rule test | From `exit_shadow.jsonl` (section 6): on how many decisions the price-path rule and the evidence rule disagreed (one per holding, on its first disagreeing day), in how many holding-days reviewed, and how many later days of the same disagreements were not counted; how often the evidence rule was right at 10 and 30 sessions, what is still pending, and this week's look at the switch gate. The row stores the look, so the next week can tell whether the gate passed twice in a row. Shown once a row exists. |
 
 **Holdings that arrive without cash.** "Add holding" and a CSV import, on an
 account with cash accounting, raise `capital_in` by the holding's cost (the
@@ -2446,10 +2577,10 @@ The planned changes connect the research to the money:
   pillars with evidence, an expected range, an invalidation price and business
   triggers, and the next check. Every number in it is checked against its
   inputs (PR-005).
-- **Sell on evidence.** `case_broken` replaces `thesis_break`. Stops are
-  unchanged, and a minimum holding period applies. It runs in shadow and
-  switches only when the evidence rule is right on at least half of at least 15
-  matured disagreements over 6 weeks, at two consecutive looks (PR-009).
+- **Sell on evidence.** Both exit rules run, the price-path rule acting and
+  the evidence rule recorded beside it (section 6). The switch to
+  `case_broken` is the owner's, on the predeclared gate the weekly scorecard
+  reports (PR-009).
 - **Explain like an investor.** Explanations follow the pattern "what we did,
   why, what would change our mind, what next", grounded and free of internal
   words (PR-007). The brief opens with your stocks (PR-008).
@@ -2595,6 +2726,7 @@ section 10) are part of the current design.
 | [FIX-012](planning/PI-2026-09/stories/FIX-012.md) | CI is red since 13 Oct: make FIX-007's log-route guard work on any FastAPI | Done | 13 Validation | None |
 | [FIX-013](planning/PI-2026-09/stories/FIX-013.md) | Move the fast and reasoning LLM tiers to cheaper current models | Done | 3 Configuration | None |
 | [FIX-014](planning/PI-2026-09/stories/FIX-014.md) | Above the 75% cap, a promoter wash must not score as insider buying | Open | 8 Discovery | PR-011 |
+| [FIX-015](planning/PI-2026-09/stories/FIX-015.md) | The shock exit reads the re-forecast's trigger, not its sentence | Open | 6 Portfolio | PR-009 |
 
 ### Maintain documentation with each story
 

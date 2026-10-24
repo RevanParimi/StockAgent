@@ -18,6 +18,7 @@ from core.intelligence.rl.nse_calendar import is_trading_day
 from services.data.verdict_store import VerdictStore  # plane boundary (Atlas C2)
 from backend.shared.pipeline import decision_gate as dg
 from core.portfolio.advisor import build_signals, data_gate_blocks, decide
+from core.portfolio import exit_shadow
 from core.portfolio.corp_actions import sync_corp_actions
 from core.portfolio.digest import build_digest
 from core.portfolio.identity_reconcile import holding_identity_issue, symbol_identity_issue
@@ -111,9 +112,11 @@ def advice_alert_fields(rec, shelf_index: dict) -> dict:
 
 
 def gated_decide(signals, holding, risk_profile, *, shelf_ideas, sector_weights,
-                 held_symbols, candidate_fresh, candidate_identity=None):
+                 held_symbols, candidate_fresh, candidate_identity=None,
+                 exit_rule="legacy", evidence=None):
     """
-    SA-003: `decide` with the data gate, plus what the gate did.
+    SA-003: `decide` with the data gate, plus what the gate did. PR-009:
+    `exit_rule` and `evidence` pass through to every `decide` call.
 
     Both decisions are computed — with the blocks and without — and the mode
     picks one: enforce keeps the gated one, record keeps the ungated one. When
@@ -132,7 +135,7 @@ def gated_decide(signals, holding, risk_profile, *, shelf_ideas, sector_weights,
                                             candidate_identity)
     identity = signals.identity_issue
     common = dict(shelf_ideas=shelf_ideas, sector_weights=sector_weights,
-                  held_symbols=held_symbols)
+                  held_symbols=held_symbols, exit_rule=exit_rule, evidence=evidence)
     ungated = decide(signals, holding, risk_profile, **common)
     if not add_reasons and not blocked and not identity:
         return ungated, None
@@ -178,12 +181,19 @@ def run_post_review_pipeline(review_date: date) -> dict:
 
     users = active_user_ids()          # Atlas C3: users-table when enabled, dir-scan when not
     total_advice, escalations = 0, []
+    # PR-009: which exit rule acts, and whether both are recorded.
+    exit_mode = exit_shadow.exit_rule_mode()
+    exit_rule = exit_shadow.acting_rule(exit_mode)
 
     for user_id in users:
         store = PortfolioStore(user_id=user_id)
         # Step 1 — corp-action sync BEFORE any advisor rule (invariant).
+        # PR-009: what NSE listed per symbol, for the invalidation level's basis.
+        corp_records: dict = {}
         try:
-            sync_corp_actions(store, review_date)
+            synced = sync_corp_actions(store, review_date)
+            if isinstance(synced, dict) and isinstance(synced.get("records"), dict):
+                corp_records = synced["records"]
         except Exception as exc:
             logger.warning("[portfolio_pipeline] corp-action sync failed for %s: %s",
                            user_id, exc)
@@ -195,9 +205,11 @@ def run_post_review_pipeline(review_date: date) -> dict:
         # weights. PR-004: shelf ideas whose deep dive is fresh, plus the
         # user's own watchlist BUYs (core/discovery/candidates.py).
         shelf_ideas: list = []
+        all_ideas: list = []          # PR-009: any status, for a holding's invalidation level
         try:
             from core.discovery.shelf import ShelfStore
-            shelf_ideas = [i for i in ShelfStore().load().ideas if i.status == "active"]
+            all_ideas = list(ShelfStore().load().ideas)
+            shelf_ideas = [i for i in all_ideas if i.status == "active"]
         except Exception as exc:
             logger.debug("[portfolio_pipeline] shelf unavailable (non-fatal): %s", exc)
         try:
@@ -253,6 +265,9 @@ def run_post_review_pipeline(review_date: date) -> dict:
 
         # Step 3 — advise each holding.
         advice, closes = [], {}
+        evidence_reader = (exit_shadow.EvidenceReader(all_ideas, corp_actions=corp_records)
+                           if exit_mode != "legacy" else None)
+        shadow_rows: list = []
         for holding in portfolio.holdings:
             if holding.symbol not in quotes:
                 continue
@@ -276,12 +291,37 @@ def run_post_review_pipeline(review_date: date) -> dict:
                 signals.price_bar_date = quote.bar_date.isoformat() if quote.bar_date else ""
                 # SA-008: is this close the holding's own price basis?
                 signals.identity_issue = holding_identity_issue(holding, review_date)
-                rec, gate_blocked = gated_decide(
-                    signals, holding, portfolio.risk_profile,
+                evidence = None
+                if evidence_reader is not None:
+                    try:
+                        evidence = evidence_reader.read(holding, review_date)
+                    except Exception as exc:
+                        logger.warning("[portfolio_pipeline] exit evidence failed for %s "
+                                       "(non-fatal): %s", holding.symbol, exc)
+                decide_inputs = dict(
                     shelf_ideas=shelf_ideas, sector_weights=sector_weights,
                     held_symbols={h.symbol for h in portfolio.holdings},
                     candidate_fresh=candidate_fresh,
                     candidate_identity=candidate_identity)
+                rec, gate_blocked = gated_decide(
+                    signals, holding, portfolio.risk_profile,
+                    exit_rule=exit_rule, evidence=evidence, **decide_inputs)
+                # PR-009: the other rule's verdict, recorded and never acted on.
+                if evidence_reader is not None:
+                    try:
+                        other_rule = "legacy" if exit_rule == "evidence" else "evidence"
+                        other, _ = gated_decide(
+                            signals, holding, portfolio.risk_profile,
+                            exit_rule=other_rule, evidence=evidence, **decide_inputs)
+                        legacy, by_evidence = ((other, rec) if exit_rule == "evidence"
+                                               else (rec, other))
+                        shadow_rows.append(exit_shadow.shadow_row(
+                            on=review_date, user_id=user_id, mode=exit_mode, close=close,
+                            legacy=legacy, evidence_rec=by_evidence, evidence=evidence,
+                            buy_date=holding.buy_date, price_bar_date=signals.price_bar_date))
+                    except Exception as exc:
+                        logger.warning("[portfolio_pipeline] exit shadow failed for %s "
+                                       "(non-fatal): %s", holding.symbol, exc)
                 rec.user_id = user_id
                 rec.date = review_date.isoformat()
                 # SA-008: the advice keeps the instrument its close priced.
@@ -308,6 +348,15 @@ def run_post_review_pipeline(review_date: date) -> dict:
         except Exception as exc:
             logger.warning("[portfolio_pipeline] switch-eval write failed "
                            "(non-fatal): %s", exc)
+        if shadow_rows:
+            try:
+                written = store.append_exit_shadow_once(shadow_rows)
+                logger.info("[portfolio_pipeline] exit rule %s for %s: %d holding(s), "
+                            "%d disagreement(s), %s new row(s)", exit_mode, user_id,
+                            len(shadow_rows), sum(r.disagree for r in shadow_rows), written)
+            except Exception as exc:
+                logger.warning("[portfolio_pipeline] exit-shadow write failed "
+                               "(non-fatal): %s", exc)
         total_advice += len(advice)
         escalations.extend(a.symbol for a in advice if a.verdict in ("TRIM", "EXIT", "SWITCH"))
 

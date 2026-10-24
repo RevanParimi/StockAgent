@@ -201,3 +201,34 @@ class SwitchEvaluation(BaseModel):
     decision: Literal["taken", "rejected"]
     reason: str = ""               # "" when taken; else the declining branch
     rationale_hash: str = ""       # joins back to the origin's AdviceRecord
+
+
+class ExitShadowRow(BaseModel):
+    """One holding on one review day under both exit rules (PR-009).
+
+    `legacy_*` is the price-path rule (`thesis_break`), `evidence_*` the
+    evidence rule (`case_broken`); `mode` says which one acted. One row per
+    (date, symbol), written once (core/portfolio/exit_shadow.py). The weekly
+    scorecard grades a holding's first disagreeing row only, on the stock's
+    excess over the Nifty 10 and 30 sessions after `date`, from `close`.
+    """
+    date: str                      # the review day (ISO)
+    user_id: str
+    symbol: str
+    buy_date: str                  # with `symbol`, names the holding: one decision per holding
+    mode: Literal["shadow", "evidence"]   # shadow: legacy acted; evidence: evidence acted
+    close: float                   # the review session's close both rules used
+    price_bar_date: str = ""       # the session that close came from; earlier = carried forward
+    legacy_verdict: str
+    legacy_triggers: list[str] = Field(default_factory=list)
+    evidence_verdict: str
+    evidence_triggers: list[str] = Field(default_factory=list)
+    # Exactly one of the two sells the whole position (EXIT or SWITCH).
+    disagree: bool
+    # Why the reason to own it broke, whether or not case_broken fired (it
+    # waits out advisor.min_hold_sessions); [] when nothing broke.
+    case_broken_reasons: list[str] = Field(default_factory=list)
+    sessions_held: int | None = None
+    # The inputs read: event ids, the research verdict and its run time, the
+    # invalidation level and its source, and any source that could not be read.
+    evidence: dict = Field(default_factory=dict)

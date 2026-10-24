@@ -26,6 +26,7 @@ logger = logging.getLogger(__name__)
 _TRIGGER_TEXT = {
     "stop_breach": "the position has breached its volatility-scaled stop",
     "thesis_break": "the original thesis is assessed as broken while the forecast points down",
+    "case_broken": "the reason to own the stock broke: a material negative company event, an actionable SELL research verdict, or the price at its invalidation level",
     "shock_reforecast": "a shock re-forecast moved against the position",
     "crisis_regime_bearish": "the regime is MACRO_CRISIS with a bearish envelope",
     "trailing_stop_breach": "the position gave back its volatility budget from the peak, so profit is being booked",

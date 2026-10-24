@@ -13,6 +13,13 @@ dated the review session and a forecast issued on actionable data. `decide`
 takes the blocks explicitly (`add_blocks`, `blocked_candidates`); the
 pipeline decides whether to pass them (enforce) or only record them (record).
 EXIT and TRIM are never blocked: missing data must not trap a position.
+
+PR-009 exit rule: `decide(exit_rule="legacy")` sells on `thesis_break` (a
+price-path miss judged "not intact" with a falling path); `exit_rule="evidence"`
+sells on `case_broken` instead (`case_broken_reasons`: a material negative
+company event, an actionable SELL, or the invalidation price), and only after
+ADVISOR_MIN_HOLD_SESSIONS. Every other rule, the stops included, is the same
+code under both. The pipeline picks the acting rule (core/portfolio/exit_shadow.py).
 """
 from __future__ import annotations
 
@@ -69,6 +76,24 @@ class AdvisorSignals(BaseModel):
     # ("" = it can): the symbol's identity is unresolved, or its price basis
     # changed (a demerger, a relisting) since the basis the cost was booked on.
     identity_issue: str = ""
+
+
+class ExitEvidence(BaseModel):
+    """What the evidence exit rule reads for one holding on one review day
+    (PR-009). `core/portfolio/exit_shadow.exit_evidence` assembles it and keeps
+    only what was published for this symbol on or before the review day."""
+    sessions_held: int | None = None       # exchange sessions after the buy, up to the review day
+    # High-materiality negative company events published in the last
+    # CASE_EVENT_SESSIONS sessions: {"id", "published_at", "category", "what"}.
+    negative_events: list[dict] = Field(default_factory=list)
+    research_verdict: str = ""             # latest actionable analysis on or before the review day
+    research_run_at: str = ""              # its run time, naive UTC as the score history keeps it
+    # In the review day's price basis, the close's; 0.0 = none known, or a
+    # level whose basis could not be established (the gap names why).
+    invalidation_level: float = 0.0
+    invalidation_level_at_dive: float = 0.0   # the shelf idea's level, in its deep dive's rupees
+    invalidation_source: str = ""          # which shelf idea, and any bonus or split applied to it
+    gaps: list[str] = Field(default_factory=list)   # a source that could not be read
 
 
 # ---------------------------------------------------------------------------
@@ -307,6 +332,7 @@ TRIGGER_PLAIN = {
     "stop_breach": "the stop was breached",
     "trailing_stop_breach": "the trailing stop was breached",
     "thesis_break": "the thesis broke",
+    "case_broken": "the reason to own it broke",
     "shock_reforecast": "a shock forced a reforecast",
     "crisis_regime_bearish": "a crisis regime turned the forecast down",
     "trim_profit_confidence_decline":
@@ -402,6 +428,50 @@ def evaluate_switch_candidates(signals: AdvisorSignals, shelf_ideas,
     return best, rows
 
 
+EXIT_RULES = ("legacy", "evidence")
+SELL_RESEARCH_VERDICTS = ("SELL", "STRONG SELL")
+
+
+def case_broken_reasons(evidence: ExitEvidence | None, close: float) -> list[str]:
+    """Why the reason to own a holding broke, in plain words; [] when it did not.
+
+    Any one is enough:
+      1. a high-materiality negative company event published in the last
+         CASE_EVENT_SESSIONS sessions (already filtered into the evidence).
+         No holding has an investment case yet, so any such event counts;
+         PR-005's case will narrow it to one that contradicts a pillar;
+      2. the latest actionable research verdict is SELL or STRONG SELL;
+      3. the close is at or below the invalidation level: the entry rule
+         (core/portfolio/sizing.py) refuses a buy there for the same reason.
+
+    Pure. The minimum holding period is applied by `decide`, not here, so the
+    shadow record can show a reason that broke while the rule still waited."""
+    if evidence is None:
+        return []
+    reasons = []
+    for event in evidence.negative_events:
+        day = str(event.get("published_at") or "")[:10]
+        reasons.append(f"negative {event.get('category', '')} event of {day}: "
+                       f"{event.get('what', '')}".strip())
+    verdict = evidence.research_verdict.strip().upper()
+    if verdict in SELL_RESEARCH_VERDICTS:
+        reasons.append(f"research verdict {verdict} ({evidence.research_run_at[:10]})")
+    level = evidence.invalidation_level
+    if level > 0 and close <= level:
+        reasons.append(f"close {close:.2f} at or below the invalidation level {level:.2f}"
+                       + (f" ({evidence.invalidation_source})"
+                          if evidence.invalidation_source else ""))
+    return reasons
+
+
+def case_broken_fires(evidence: ExitEvidence | None, close: float) -> bool:
+    """`case_broken` fires: a reason broke and the holding has been held at
+    least ADVISOR_MIN_HOLD_SESSIONS. An unknown holding period waits."""
+    return (evidence is not None and evidence.sessions_held is not None
+            and evidence.sessions_held >= settings.ADVISOR_MIN_HOLD_SESSIONS
+            and bool(case_broken_reasons(evidence, close)))
+
+
 def decide(
     signals: AdvisorSignals,
     holding: Holding,
@@ -413,8 +483,12 @@ def decide(
     add_blocks: list[str] | None = None,
     blocked_candidates: dict[str, str] | None = None,
     identity_hold: str | None = None,
+    exit_rule: str = "legacy",
+    evidence: ExitEvidence | None = None,
 ) -> AdviceRecord:
-    """The verdict for one holding. `add_blocks` (reasons ADD may not fire) and
+    """The verdict for one holding. `exit_rule` "legacy" sells on
+    `thesis_break`; "evidence" sells on `case_broken` (from `evidence`) in its
+    place. Nothing else differs between them. `add_blocks` (reasons ADD may not fire) and
     `blocked_candidates` (SWITCH destinations the data gate refuses) are SA-003
     inputs; when either stops an action it would otherwise take, the note
     DATA_GATE is added. Neither can block EXIT or TRIM.
@@ -425,6 +499,8 @@ def decide(
     continuing entity's alone, so the unreconciled cost basis shows a loss
     that never happened, and a stop fired on it would sell on a false signal.
     An operator reconciles the holding (core/portfolio/identity_reconcile.py)."""
+    if exit_rule not in EXIT_RULES:
+        raise ValueError(f"unknown exit rule {exit_rule!r}; expected one of {EXIT_RULES}")
     if identity_hold:
         return AdviceRecord(
             date=date.today().isoformat(), user_id="", symbol=signals.symbol,
@@ -441,7 +517,10 @@ def decide(
     # -- EXIT (spec §5.2, highest precedence) ------------------------------
     if signals.unrealised_pnl_pct <= -signals.atr_stop_pct:
         triggers.append("stop_breach")
-    if signals.thesis_intact is False and signals.envelope_direction == "DOWN":
+    if exit_rule == "evidence":
+        if case_broken_fires(evidence, signals.close):
+            triggers.append("case_broken")
+    elif signals.thesis_intact is False and signals.envelope_direction == "DOWN":
         triggers.append("thesis_break")
     if signals.reforecast_reason in ("external_shock", "thesis_break", "preopen_shock") \
             and signals.envelope_direction == "DOWN":

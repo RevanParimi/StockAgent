@@ -459,6 +459,15 @@ advisor:
   ltcg_wait_min_months: 10       # TRIM in month 10-12 with intact thesis -> WAIT_FOR_LTCG note
   earnings_gap_days: 3           # profitable + earnings within N trading days -> protection flag
   switch_conviction_gap: 0.15    # SWITCH: shelf idea must beat holding envelope confidence by this (spec §5.2)
+  # Which exit rule sells a holding whose reason may have broken (KT section 6,
+  # core/portfolio/exit_shadow.py). legacy: the price-path thesis_break decides.
+  # shadow: legacy decides, and both verdicts are recorded per holding per review
+  # day in data/portfolio/<user>/exit_shadow.jsonl. evidence: case_broken decides
+  # (a material negative event, an actionable SELL, or the invalidation price),
+  # switched only by the owner on the weekly scorecard's predeclared gate.
+  # Rollback = legacy. An unknown value reads as shadow.
+  exit_rule: shadow
+  min_hold_sessions: 10          # case_broken waits this many sessions after the buy; stops never wait
 
 # =============================================================================
 # Compass Phase B — Discovery funnel + generic sector graph (spec 2026-07-06 §6/§8)

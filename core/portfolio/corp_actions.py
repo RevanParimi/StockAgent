@@ -5,11 +5,17 @@ Adjusts adj_avg_price / adj_qty / dividends_received BEFORE any advisor rule
 runs. Without this, a 1:1 bonus looks like a −50% crash and fires a false
 EXIT. Raw qty/avg_buy_price are NEVER mutated. Idempotent via applied-action
 keys stored on the holding.
+
+PR-009: the sync also returns what NSE listed for each held symbol
+(`ActionRecord`), so the evidence exit rule can carry a shelf idea's
+invalidation level, set in the rupees of its deep dive, into the review
+day's price basis.
 """
 from __future__ import annotations
 
 import logging
 import re
+from dataclasses import dataclass
 from datetime import date, datetime
 
 from backend.shared.schemas.portfolio import AppliedCorpAction, Holding
@@ -37,22 +43,32 @@ def _parse_date(raw: str) -> str | None:
     return None
 
 
-def parse_action(row: dict) -> AppliedCorpAction | None:
-    """Parse one raw NSE actions() row into an AppliedCorpAction.
-    Returns None for unrecognised or non-financial rows (AGM/EGM/rights…)."""
-    desc = ""
+def _row_desc(row: dict) -> str:
     for key in ("subject", "desc", "purpose"):
         v = row.get(key)
         if isinstance(v, str) and v.strip():
-            desc = v.strip()
-            break
-    ex_raw = ""
+            return v.strip()
+    return ""
+
+
+def _row_ex_date(row: dict) -> str | None:
     for key in ("exDate", "ex_date", "date", "exdate"):
         v = row.get(key)
         if isinstance(v, str) and v.strip():
-            ex_raw = v.strip()
-            break
-    ex_date = _parse_date(ex_raw)
+            return _parse_date(v.strip())
+    return None
+
+
+def _changes_share_count(desc: str) -> bool:
+    low = desc.lower()
+    return "split" in low or "bonus" in low or "sub-division" in low
+
+
+def parse_action(row: dict) -> AppliedCorpAction | None:
+    """Parse one raw NSE actions() row into an AppliedCorpAction.
+    Returns None for unrecognised or non-financial rows (AGM/EGM/rights…)."""
+    desc = _row_desc(row)
+    ex_date = _row_ex_date(row)
     if not desc or not ex_date:
         return None
 
@@ -95,11 +111,42 @@ def parse_action(row: dict) -> AppliedCorpAction | None:
                 key=key, ex_date=ex_date, kind="dividend", desc=desc,
                 dividend_per_share=float(m.group(1)), applied_on=today_iso,
             )
-    if "split" in low or "bonus" in low or "sub-division" in low:
+    if _changes_share_count(desc):
         logger.warning(
             "[corp_actions] unparseable split/bonus row (manual review needed): %s", desc[:80]
         )
     return None
+
+
+@dataclass(frozen=True)
+class ActionRecord:
+    """What NSE listed for one symbol in one sync (PR-009).
+
+    `actions`: its bonus and split rows, parsed. `covers_from`: the earliest
+    ex-date of any row it returned, whatever the kind, so every bonus or split
+    with a later ex-date is in `actions`; "" when it returned nothing (NSE's
+    answer, or a failed fetch: `fetch_corp_actions` returns [] for both).
+    `unparsed`: ex-dates of split or bonus rows that could not be parsed."""
+    actions: tuple[AppliedCorpAction, ...] = ()
+    covers_from: str = ""
+    unparsed: tuple[str, ...] = ()
+
+
+def action_record(rows: list[dict], symbol: str) -> ActionRecord:
+    """The ActionRecord of one symbol's raw NSE actions() rows."""
+    actions, unparsed, days = [], [], []
+    for row in rows:
+        ex = _row_ex_date(row)
+        if ex is None:
+            continue
+        days.append(ex)
+        action = parse_action(dict(row, symbol=symbol))
+        if action is not None and action.kind in ("bonus", "split") and action.ratio > 0:
+            actions.append(action)
+        elif _changes_share_count(_row_desc(row)):
+            unparsed.append(ex)
+    return ActionRecord(actions=tuple(actions), covers_from=min(days) if days else "",
+                        unparsed=tuple(sorted(unparsed)))
 
 
 def apply_actions_to_holding(
@@ -144,24 +191,29 @@ def sync_corp_actions(store: PortfolioStore, today: date, fetch=fetch_corp_actio
     Two phases (AUD-001): network fetches run OUTSIDE the store lock (seconds
     per symbol), then apply + dividend cash credit + save run in one short
     critical section against a FRESH load. Dividends credit cash_deployable
-    and append a DIV ledger row when cash accounting is on (AUD-045)."""
+    and append a DIV ledger row when cash accounting is on (AUD-045).
+
+    The result's `records` maps each symbol whose fetch did not raise to its
+    ActionRecord (PR-009); applying is unaffected by it."""
     from datetime import datetime, timezone
 
     # Phase 1 — network, lock-free, keyed by symbol from a snapshot.
     snapshot = store.load()
     actions_by_symbol: dict[str, list] = {}
+    records: dict[str, ActionRecord] = {}
     for holding in snapshot.holdings:
         try:
             rows = fetch(holding.symbol)
             actions_by_symbol[holding.symbol] = [
                 parse_action(dict(r, symbol=holding.symbol)) for r in rows
             ]
+            records[holding.symbol] = action_record(rows, holding.symbol)
         except Exception as exc:
             logger.warning(
                 "[corp_actions] sync failed for %s (non-fatal): %s", holding.symbol, exc
             )
     if not any(actions_by_symbol.values()):
-        return {"applied": 0, "symbols": []}
+        return {"applied": 0, "symbols": [], "records": records}
 
     # Phase 2 — locked apply + credit + save on fresh state.
     from core.portfolio.autopilot import make_txn_id   # lazy: avoids import cycle
@@ -206,5 +258,5 @@ def sync_corp_actions(store: PortfolioStore, today: date, fetch=fetch_corp_actio
                     "[corp_actions] portfolio save failed after %d applied actions (non-fatal): %s",
                     total, exc,
                 )
-                return {"applied": 0, "symbols": [], "save_failed": True}
-        return {"applied": total, "symbols": touched}
+                return {"applied": 0, "symbols": [], "save_failed": True, "records": records}
+        return {"applied": total, "symbols": touched, "records": records}

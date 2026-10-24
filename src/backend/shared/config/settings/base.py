@@ -912,6 +912,10 @@ ADVISOR_MAX_POSITION_PCT: float = cfg("advisor.max_position_pct", fallback=10.0)
 ADVISOR_MAX_SECTOR_PCT: float = cfg("advisor.max_sector_pct", fallback=30.0)
 ADVISOR_LTCG_WAIT_MIN_MONTHS: int = cfg("advisor.ltcg_wait_min_months", fallback=10)
 ADVISOR_EARNINGS_GAP_DAYS: int = cfg("advisor.earnings_gap_days", fallback=3)
+# PR-009: case_broken (the evidence exit rule) waits this many exchange
+# sessions after the buy; stops never wait. The rule's mode, advisor.exit_rule,
+# is read per run (core/portfolio/exit_shadow.py).
+ADVISOR_MIN_HOLD_SESSIONS: int = int(cfg("advisor.min_hold_sessions", fallback=10))
 
 # ---------------------------------------------------------------------------
 # M0 — Multi-user foundation (spec 2026-07-26)

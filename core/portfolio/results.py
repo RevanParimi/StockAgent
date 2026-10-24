@@ -833,11 +833,18 @@ def build_row(*, week: Week, txns: Iterable, points: Iterable[dict],
               audit_rows: Iterable, close_on: Callable[[date], float],
               holdings: int | None, floor: dict | None = None,
               computed_at: str | None = None,
-              stock_close_on: Callable[[str, date], float] | None = None) -> dict:
+              stock_close_on: Callable[[str, date], float] | None = None,
+              exit_shadow_rows: Iterable[dict] | None = None,
+              previous_exit_look: dict | None = None) -> dict:
     """The scorecard row for `week` from the user's own ledgers. Facts dated
     after the week are ignored, so a late rebuild describes the week as it was.
     `stock_close_on(symbol, day)` values the holdings that arrived without
-    cash (capital_flows)."""
+    cash (capital_flows) and grades the exit-rule disagreements.
+
+    PR-009: with `exit_shadow_rows`, the row gains `exit_rule`, the two exit
+    rules' tally and this week's look at the switch gate
+    (core/portfolio/exit_shadow.py); `previous_exit_look` is the look stored
+    with the week before."""
     end = week.sunday
     txns = [t for t in txns if (_day(t.date) or date.max) <= end]
     points = [p for p in points if (_day(p.get("date")) or date.max) <= end]
@@ -898,6 +905,11 @@ def build_row(*, week: Week, txns: Iterable, points: Iterable[dict],
         "holding_period": held,
         "idea_quality": [idea_quality(audit_rows, h, as_of=end) for h in IDEA_QUALITY_TD],
     }
+    if exit_shadow_rows is not None:
+        from core.portfolio.exit_shadow import scorecard_block
+        row["exit_rule"] = scorecard_block(
+            exit_shadow_rows, as_of=end, stock_close_on=stock_close_on,
+            bench_close_on=close_on, previous_look=previous_exit_look)
     row = _rounded(row)
     row["lines"] = scorecard_lines(row)
     return row
@@ -1010,6 +1022,11 @@ def scorecard_lines(row: dict) -> list[dict]:
     else:
         text = f"No sales in the last {THESIS_WINDOW_WEEKS} weeks."
     lines.append({"kind": "line", "label": "Why we sold", "text": text})
+    exit_rule = row.get("exit_rule")
+    if isinstance(exit_rule, dict) and exit_rule.get("rows"):
+        from core.portfolio.exit_shadow import scorecard_text
+        lines.append({"kind": "line", "label": "Exit rule test",
+                      "text": scorecard_text(exit_rule)})
     money = row["vs_nifty"]
     text = ("Same deposits on the same days, cash included: "
             + "; ".join([_money_part("this week", money["week"]),
@@ -1133,6 +1150,7 @@ def weekly_scorecard(user_id: str, on: date, *, store=None, audit_store=None,
         close_on = BenchmarkSeries().close_on
     today = today or _today()
     latest = covered_week(today).key == week.key
+    from core.portfolio.exit_shadow import previous_week_look
     row = build_row(
         week=week,
         txns=store.load_transactions(limit=1_000_000),
@@ -1142,6 +1160,8 @@ def weekly_scorecard(user_id: str, on: date, *, store=None, audit_store=None,
         holdings=len(store.load().holdings) if latest else None,
         floor=_floor(),
         stock_close_on=stock_close_on or stock_close_fn(),
+        exit_shadow_rows=store.load_exit_shadow(),
+        previous_exit_look=previous_week_look(store.load_scorecards(), week.monday),
     )
     if today < week.saturday:
         row["provisional"] = True

@@ -1,0 +1,105 @@
+{
+  "story": "PR-009",
+  "phase": "rework 1",
+  "head": "d7c1411",
+  "date": "2026-10-24",
+  "review_input_before": "5afb4aa1028bccc2b6d8fb9744879c0e4e2b7423eec10bf2def89b1c79df370c",
+  "hash_convention": "git blob bytes after .gitattributes normalization (CRLF->LF for text, binary unchanged); verify with scripts/docs/kt_manifest.py verify",
+  "files": [
+    {
+      "path": "CODEBASE.md",
+      "git_blob": "8a9ce7a1c17a42a532bdb085ac6c9a5691c9f2d7",
+      "sha256": "27658ccd55677224ecaabd5e727a02bcf7d8edbd08ce142339a2422e4f404ab4"
+    },
+    {
+      "path": "config.yaml",
+      "git_blob": "eb8ba1956c0502e3d1f8c1d8814e3da1fa27a430",
+      "sha256": "b07ddcdd4bb03c62025491db069a1fefc82c3aaed3dc4567f94a3d4151485106"
+    },
+    {
+      "path": "core/portfolio/advisor.py",
+      "git_blob": "3e32ce5bda882c27ca4165a704d24884aeaff798",
+      "sha256": "fa787f38d231382785c97caca8f77a30323fd26d6bd9435ab14e5c9c27abf9ac"
+    },
+    {
+      "path": "core/portfolio/corp_actions.py",
+      "git_blob": "fd7b3dcacbd72cef79fadfc840c68740e256d440",
+      "sha256": "8238a9e05135bd7852b6a7b0cf32dd708a5622e256f7b034a2000f2268eeb412"
+    },
+    {
+      "path": "core/portfolio/exit_shadow.py",
+      "git_blob": "e205dd1c288f4817c6261ef22bb0b574de1a544a",
+      "sha256": "b6857f2beec230b3580c6197f8c5c5d5bbc66960edff1e2e608ed407b1fb4c94"
+    },
+    {
+      "path": "core/portfolio/narrator.py",
+      "git_blob": "b4c3c66db2eba313c2782207ab53210983782025",
+      "sha256": "1ec0aff3835418d87f70cd1587f0d93a06cad10f22a3e88600d143241980501a"
+    },
+    {
+      "path": "core/portfolio/pipeline.py",
+      "git_blob": "4d2eddeeb2d48d300a4f248366fd7c76696c1003",
+      "sha256": "135660bb11c1dbc9e45c4a4075c4572f16b4ea27a9afdd16d680c92014cb4851"
+    },
+    {
+      "path": "core/portfolio/results.py",
+      "git_blob": "0b5ba8f905e8ad6133a09c1bcaf1273bea3abfa2",
+      "sha256": "ca09d5d731a43ad4709d11585b8b66e9e13462e8f5cc872ffec143e916d37738"
+    },
+    {
+      "path": "core/portfolio/store.py",
+      "git_blob": "2f9e959c10d80055491ec63e39764cbf6fe6dec0",
+      "sha256": "dd0a7ace2903b11fc98b683c127ca05d7bc92a511f58e835b6cefd313e7bc77f"
+    },
+    {
+      "path": "docs/StockAgent-Three-Loops.pdf",
+      "git_blob": "2f30a505650a4e5792d04b92249cd262df0465d9",
+      "sha256": "422a16d0b524bace4d35a27567d00e0c5fd4d45e502d3a914dfb32996f59c252"
+    },
+    {
+      "path": "docs/TEAM_TESTING_GUIDE.md",
+      "git_blob": "0ceec27e0242efeed6bab7e2ed0a4ec79e8ce4b8",
+      "sha256": "9f5d68d88da6ed15e7c1ffebb474377753a3ffc85fa674303d8de9593a1802f6"
+    },
+    {
+      "path": "docs/TECHNICAL_DESIGN.md",
+      "git_blob": "c4f60586be076e59643b1e8536edb57a15996209",
+      "sha256": "3f51e3dd5ae841b7bacff010fe524e5bea4a6613b0fdff427b81a9e51181df6d"
+    },
+    {
+      "path": "docs/planning/PI-2026-09/README.md",
+      "git_blob": "4929f0400a2e93e946965fd025d16576621d3809",
+      "sha256": "a4b7a6d0ce7d50965cdf7828912f0e0cd6ea58b17653a2f1c39c32a71151fc8d"
+    },
+    {
+      "path": "docs/planning/PI-2026-09/stories/FIX-015.md",
+      "git_blob": "f89d164386c3717579e7857622f3fcd95e0e7edc",
+      "sha256": "caafa21c5d7ee1c3db3ec7239f4695b33b8b6b2c36517c653f8f0c8ab4bfc5fb"
+    },
+    {
+      "path": "docs/planning/PI-2026-09/stories/PR-007.md",
+      "git_blob": "82760d341ac37136fabdda86d2599c52656dac07",
+      "sha256": "e1732a5d2411614ca29cf55279af7bbb93c269ccdb701f63c31df7ef2477d003"
+    },
+    {
+      "path": "services/data/stores/score_store.py",
+      "git_blob": "de9672a4cf8de08555488a8c77a96c5686e3045a",
+      "sha256": "882c70900088113d3fcc9efd630ee4bb35a7281a95b9d2648c7dc736a22c9e3e"
+    },
+    {
+      "path": "src/backend/shared/config/settings/base.py",
+      "git_blob": "b5b6c8232bb748fef5735267cee1c5154edc6e60",
+      "sha256": "6862142582c051cf92dd2ee185b7fbb46ef77de194e5ab7cb44473c2cdd59f56"
+    },
+    {
+      "path": "src/backend/shared/schemas/portfolio.py",
+      "git_blob": "18d4a8c9fd450d43ccb12acb61edc978d6b88366",
+      "sha256": "62f4086a90c18fc162dd4ff63b642ce3f7529ac9b415f4d7640cbf4eac98c36d"
+    },
+    {
+      "path": "tests/unit/test_exit_evidence_pr009.py",
+      "git_blob": "0182b04e157b45db114e83af8014f8ae0f58f22c",
+      "sha256": "561d34f79965337708124f95c5128892dc9c5655daadd4cfd8eba89fd933c9b9"
+    }
+  ]
+}

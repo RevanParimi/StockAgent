@@ -1,4 +1,4 @@
-# Current handoff - 2026-10-23 (updated about 20:00 IST)
+# Current handoff - 2026-10-24 (updated about 09:35 IST)
 
 ## Also 22 Oct (about 22:30 IST to 00:30 IST 23 Oct): FIX-013, LLM tier switch, committed and pushed (separate conversation)
 
@@ -105,6 +105,189 @@ Docs only; nothing committed, pushed, deployed or configured.
   section 11.
 
 ## START HERE — resume checklist, in order
+
+**PR-009 ACCEPTED** (24 Oct, about 08:50–09:35 IST, session stockagent-main-87, a new
+conversation opened with "continue": the fresh re-review of rework 1). Receipt:
+[PR-009-review](evidence/PR-009-review.md), top section. STATE: PR-009 `done`, production
+`pending_deployment`, `active_task: null`, **`next_task: SA-048`** (not started). Nothing was
+committed, pushed, deployed or configured. No production state was read, no model was called and no
+message was sent. One public NSE read per probed symbol (12) measured the corporate-action list.
+
+- **Next "continue", in a new conversation: SA-048** (charge realistic trading costs and tax in
+  paper P&L), implementation.
+- **PR-009 is committed** at the owner's word ("go ahead commit and push", about 09:40 IST).
+  - `2d290d5` holds exactly the 19 reviewed files (`kt_manifest verify --rev HEAD`, 0 mismatches).
+  - The docs commit on top carries the commit-time edits: the KT's Code inspected `2d290d5` and
+    edition 2026-10-24, section 1's production paragraph, section 6's two limits (NSE's measured
+    reach; the demerger limit), section 12's PR-009 row Done; the PDF (56 pages,
+    `check_kt_docs` errors `[]`); guide 07-K, 07-L and 09-H status lines. It also carries the
+    receipts, the manifest, PR-005's routed input, STATE and HANDOFF.
+  - **The push waits for a job-free window.** Saturday has jobs at 10:00, 11:00 and 12:30, and a
+    push needs about 2 hours of runway, so it is planned for about 14:07 IST. It deploys in
+    `shadow` (shipped).
+- **Resolved:**
+  - **F1, by example:** FFF is dived at about ₹1,000 with the level ₹900, a 10→2 split goes ex,
+    and FFF is bought after it at ₹200. The level is 900 / 5 = ₹180, so ₹185 fires nothing.
+    Checked through the real sync and pipeline, and over 6,000 random histories.
+  - **F2:** one decision per holding; 400 random portfolios agree with an independent oracle.
+  - L1 is done; L2 is routed to PR-007.
+- **NSE's reach, measured:** the undated list holds the symbol's latest 20 actions. 7 of 12
+  symbols returned exactly 20 rows, reaching back to 2005–2018; recent listings returned fewer,
+  and 2 symbols none. So the invalidation test can run for most holdings.
+- **New low items:**
+  - **RR-L1:** a demerger between the dive and the buy leaves the level in old rupees, so a 3.2%
+    fall can fire.
+  - **T1:** a split that goes ex on the buy day is not pinned by the story file (the code is
+    right).
+
+  Both are routed to [PR-005](stories/PR-005.md)'s card. RR-L2 is the KT text above.
+- **Before any switch to `evidence`:** FIX-015, PR-007's L2, and PR-005's RR-L1 and T1.
+- **After the deploy:** guide 07-L on the first five review days, including the gap count; the
+  first "Exit rule test" line the Sunday after.
+- **Tests:**
+  - story file and 13 related files: 918 passed;
+  - full suite: 5,711 passed, 12 skipped, 1 xfailed, 0 failed in 9 min 41 s (no data/ change);
+  - the re-reviewer's cases (`analysis_data/pr009_rereview/`): 6 passed;
+  - mutants: 16 of 18 caught by the story file, 17 of 18 by the re-reviewer's cases (one is
+    equivalent);
+  - review 1's repro fails on its two defect lines;
+  - broad-except OK; `check_kt_docs` gives the one expected error.
+- **Not this session's:** the untracked `docs/START_HERE.md` (peer `stockagent-main-cb`).
+
+**PR-009 REWORK 1 DONE** (24 Oct, about 06:40–07:50 IST, session stockagent-main-c4, a new
+conversation opened with "continue"). Receipt: [PR-009-implementation](evidence/PR-009-implementation.md),
+section "Rework 1". STATE: PR-009 `review_required`, `active_task: null`, **`next_task: PR-009`
+(its fresh re-review)**. Nothing was committed, pushed, deployed or configured. No production
+state was read, no model was called, no message was sent and no network call was made.
+
+- **Next "continue", in a new conversation: PR-009's fresh re-review** from [REVIEW.md](REVIEW.md).
+  Input: [PR-009-manifest.json](evidence/PR-009-manifest.json) `0c6057e9…` (19 files); rework diff
+  `4afc909a…` (91,569 B) against review 1's input (`5afb4aa1…`, diff `9ef8fdba…`), cumulative
+  `86aac81b…` (163,305 B), both by `analysis_data/pr009_rework1/rw_digest.py` on HEAD `d7c1411`.
+  Do not push PR-009 before a re-review accepts it and the owner gives the word.
+- **F1, by example:** EEE dived at about ₹500 (level ₹455), bought at ₹500, then a 1:1 bonus. The
+  level is now 455 / 2 = ₹227.50, so ₹245 (down 2%) fires nothing and ₹225 does.
+  - `level_in_basis` divides by every bonus or split ex after the dive. After the buy the ratios
+    come from the holding's applied actions. From the dive to the buy they come from the sync's
+    NSE `ActionRecord`, which must reach back to the dive day.
+  - Otherwise the level is unused, with a named gap. The review's exact R1 (a list holding only
+    the bonus) leaves it unused, so nothing fires.
+  - Decision D12, with the rejected alternatives.
+- **F2:** a holding (symbol and buy date) is one decision, on its first disagreeing day
+  (`first_disagreements`). Later days stay in the file and are never counted. R2's five days are
+  one decision; the four-episode gate says "not yet (4 of the 15 decisions …)".
+- **L1 done** (graded from the close's own session). **L2 routed** to [PR-007](stories/PR-007.md)'s
+  card, before any switch to `evidence`. D4′: first pass about 15 weeks at two decisions a week,
+  about 21 at one (arithmetic).
+- **New limit for the re-reviewer and 07-L:** how far back NSE's undated list reaches is
+  unmeasured. If it is short, the invalidation test cannot run for holdings dived before the buy,
+  and each row's `gaps` says so.
+- **Tests:**
+  - story file 39 passed (26 + 13); with the corp-action, fetcher and the review's 11 related
+    files, 918 passed;
+  - full suite 5,711 passed, 12 skipped, 1 xfailed, 0 failed (no `data/` change);
+  - rework mutants 31 of 31 caught; the implementation's 36 re-run, 35 caught, plus M27
+    re-expressed (caught);
+  - the reviewer's repro: R1 and R2-gate fail on their defect lines;
+  - broad-except OK; `check_kt_docs` gives the one expected error; PDF 56 pages.
+- **Not this session's:** an untracked `docs/START_HERE.md` appeared at 07:35 IST, when peer
+  `stockagent-main-cb` started. It is outside the manifest and was left untouched.
+
+**PR-009 FRESH REVIEW: CHANGES REQUESTED** (23 Oct, about 21:50–22:15 IST, session
+stockagent-main-da, a new conversation opened with "continue"). Receipt:
+[PR-009-review](evidence/PR-009-review.md). STATE: PR-009 `changes_requested`, `active_task: null`,
+**`next_task: PR-009` (rework 1)**. Nothing was committed, pushed, deployed or configured. No
+production state was read, no model was called, no message was sent and no network call was made.
+
+- **Next "continue", in a new conversation: PR-009 rework 1**, from the receipt's "Rework 1"
+  list. Then a fresh re-review in another new conversation. Do not push PR-009 before a re-review
+  accepts it and the owner gives the word.
+- **F1 (high, required): a bonus or split makes the evidence rule sell on a 2% fall.**
+  - The setup: EEE was dived at about ₹500, with its invalidation level set at ₹455, and bought at
+    ₹500. A 1:1 bonus then goes ex. The sync correctly halves the basis to ₹250, and EEE closes at
+    ₹245.
+  - The stop rule is silent, which is right. But `case_broken` fires on "close 245.00 at or below
+    the invalidation level 455.00".
+  - In `shadow` the result is a false disagreement every day. In `evidence` the autopilot sells
+    (repro R1).
+  - The cause: only active ideas are re-dived, and the sync adjusts only the holding. The level
+    must be in the same price basis as the close (₹227.50 here), and the test must never fire on a
+    basis it cannot establish.
+- **F2 (high, required): one continuing disagreement counts once per review day.**
+  - A standing SELL that the price-path rule ignores gives a disagreement on each of 5 days (repro
+    R2).
+  - Four such episodes read as 20 matured disagreements. The gate passes and recommends the switch
+    two weeks running, on 4 decisions, where the card asks for 15.
+  - The fix: each holding (symbol and buy date) contributes at most one graded disagreement, on
+    the first day the two rules part ways. The row needs a holding identity; no production row
+    exists yet.
+  - It must be settled before the deploy: the gate is predeclared.
+- **L1, L2 (low, optional):** the row keeps a carried-forward close with no bar date; under
+  `evidence` the narrative does not say which reason fired (else a PR-007 follow-up).
+- **Held:**
+  - the stops are one code path, and `shadow` is the default and byte-identical to `legacy`;
+  - events and analyses are taken as of the day, for the right symbol (R3 runs the real writers);
+  - grading reads nothing past the horizon, and there is one row per holding per day;
+  - the `shock_reforecast` finding (FIX-015) is confirmed in all three writers.
+- **Tests:** story file and 11 related files, 883 passed; the reviewer's repro, 4 passed;
+  broad-except OK; `check_kt_docs` gives only the expected header error, and the PDF matches its
+  source. The full suite and the mutants were not re-run.
+
+**PR-009 IMPLEMENTED** (23 Oct, about 20:22–21:30 IST, session stockagent-main-af, a new
+conversation opened with "continue"). Receipt:
+[PR-009-implementation](evidence/PR-009-implementation.md). STATE: PR-009 `review_required`,
+`active_task: null`, **`next_task: PR-009` (its fresh review)**. Nothing was committed, pushed,
+deployed or configured. No production state was read, no model was called, no message was sent
+and no network call was made.
+
+- **Next "continue", in a new conversation: PR-009's fresh review** from [REVIEW.md](REVIEW.md).
+  Input [PR-009-manifest.json](evidence/PR-009-manifest.json) `5afb4aa1…` (17 files);
+  diff `9ef8fdba…` (116,287 B, 16 paths, `analysis_data/pr009/digest.py` against HEAD
+  `d7c1411`). Do not push PR-009 before the review accepts it and the owner gives the word.
+- **What it adds, by example:** bought at ₹500, four sessions later at ₹480 after a 2% market
+  fall, a "not intact" review and a path ending at ₹470. The price-path rule (`thesis_break`)
+  sells; the evidence rule (`case_broken`) holds: no high negative event in 5 sessions, the latest
+  actionable analysis a BUY, ₹480 above the ₹455 invalidation level, 4 of the 10 sessions it
+  waits. With `advisor.exit_rule: shadow` (shipped) the price-path rule still acts, byte for
+  byte, and `data/portfolio/<user>/exit_shadow.jsonl` records both, once per holding per day. The
+  Sunday scorecard grades each disagreement at 10 and 30 sessions and reports the predeclared
+  gate (15 past 30 sessions over 8 weeks, right on half at both, no stock over 30%, two weeks
+  running). The owner switches; `legacy` is the rollback.
+- **Decisions** D1–D11 in the receipt; the ones a reviewer may rule on: D2 "at or below" the
+  invalidation level (the card says "below"; the entry rule says "at or below"); D4 "over 8 weeks"
+  is the span of the disagreements' days, so the first pass is about 14–15 weeks out, not 10–12;
+  D8 grading in the scorecard, not in the auditor's store.
+- **Found on the way → [FIX-015](stories/FIX-015.md)** (P2, 1 point, after FIX-014; moves ahead
+  before any switch): `shock_reforecast` compares a stored sentence with trigger keys, so it has
+  never fired. Its fix must not count a `thesis_break` re-forecast.
+- **Tests:** story file 26 passed (new); with the advisor, pipeline, scorecard and gate files
+  866 passed; mutants 36 of 36 caught; full suite 5,698 passed, 12 skipped, 1 xfailed, 0 failed in 23 min 20 s (no data/ change); broad-except OK; `check_kt_docs` one
+  expected error (the KT links the new `exit_shadow.py`, absent at the header's `ffa012b`; the
+  commit-time header bump clears it), PDF 56 pages.
+- **Commit-time edits** (with the commit, after the review): KT header "Code inspected" bump and
+  section 12's PR-009 row Done; PDF; guide 07-K, 07-L and 09-H status lines.
+- **After the deploy:** guide 07-L on the first five review days; the first scorecard line the
+  Sunday after.
+
+**PR-011 PUSHED AND DEPLOYED; CI IS GREEN** (23 Oct, session stockagent-main-62; this note is
+uncommitted). `16e31b5..d7c1411` was pushed at 20:14:58 IST as RevanParimi. No job falls between
+19:20 and 23:00, and the next blocked window was 22:55.
+
+- **Deploy `3507a779`:** created at 20:15:03 (not queued), building at 20:15:20, deploying at
+  20:18:18, SUCCESS at 20:18:42. `90873603` was removed. The public `/health` answered 200 at
+  20:19:16.
+- **CI on `d7c1411`:** "Broad-except and KT document guards", "Browser security suite (Chromium)"
+  and "Python tests (Linux, 3.11)" all succeeded.
+- **PR-011 production verification: `pending_observation`.**
+  - **Saturday 24 Oct, discovery run (12:30 IST):** `insider_buying`'s first live refresh. It
+    reads every filing of the 28 days (about 360, about two minutes of NSE calls locally). Then run
+    guide case 06-I: the "weekly cycle complete" line's `insider_trades`, `complete` true, and
+    `insider_buying` not in `dark_signals`.
+  - **The next five trading days, from Monday 26 Oct 08:15** (the feed runs Mon–Fri 08:15 and
+    18:30): guide case 02-L on the stored insider, deal, pledge and ownership events.
+- **KT section 1** says production runs `e47cd13` until this deploy is confirmed. It now is; the
+  next docs commit can say so plainly.
+- **Next "continue": PR-009.**
 
 **PR-011 COMMITTED** at the owner's word ("go ahead commit and push", 23 Oct about 20:10-20:25 IST, session
 stockagent-main-62).

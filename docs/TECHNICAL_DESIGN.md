@@ -1,8 +1,8 @@
 # StockAgent — Technical Design and Knowledge Transfer
 
-**Edition:** 2026-10-23 · **Audience:** engineers and teammates learning the product
+**Edition:** 2026-10-24 · **Audience:** engineers and teammates learning the product
 
-**Code inspected:** `ffa012b4046869536372190e4fc0cda6bb2e86e2`
+**Code inspected:** `2d290d57043b65eb13385381f6a70bbec5f70c0d`
 
 **PDF:** [StockAgent-Three-Loops.pdf](StockAgent-Three-Loops.pdf), generated from this Markdown.
 
@@ -35,14 +35,14 @@ triggered no production job, backfill or notification.
 
 ### Production state at this edition
 
-Production runs the inspected code once the evening deployment of 23 October
-2026 is confirmed by a read-only check of the deployment list and `/health`.
-Until then it runs `e47cd13`, deployed at 12:13 IST that day (the deployment
-list showed it SUCCESS and `/health` answered 200). The two differ in NSE's
-disclosures: the event feed's insider, deal, pledge and ownership events, the
-discovery signal `insider_buying` and the promoter pledge guard (sections 4
-and 8). The table gives the configuration that differs from the repository and
-the state of each operational control.
+Production runs the inspected code once its deployment on 24 October 2026 is
+confirmed by a read-only check of the deployment list and `/health`. Until
+then it runs `ffa012b`, deployed at 20:18 IST on 23 October (the deployment
+list showed it SUCCESS and `/health` answered 200). The two differ in the exit
+rules: the evidence rule recorded beside the price-path rule in `shadow`, its
+grading and switch gate in the weekly scorecard, and the corp-action sync's
+per-symbol record (sections 6 and 7). The table gives the configuration that
+differs from the repository and the state of each operational control.
 
 | Area | State in production | Evidence |
 |---|---|---|
@@ -1220,9 +1220,17 @@ one month, then the thesis-review exit path is retired (PR-009's rollout).
   invalidation test cannot fire for it.
 - For a holding dived before its buy, the invalidation test needs NSE's list to
   reach back to the dive day. The sync asks NSE for the symbol's actions
-  without dates, and how far back that list reaches has not been measured. If
-  it holds only recent and forthcoming actions, the level is unused for most
-  holdings, and each row's `gaps` says so.
+  without dates, and NSE returns its latest 20 actions of any kind, which for
+  a large company reaches back years (12 symbols read in October 2026). The
+  level is unused when the stock's earliest listed action is after the dive,
+  or it has none, and each row's `gaps` says so.
+- The level follows bonuses and splits only. A demerger, a capital reduction
+  or a rights issue that goes ex between the dive and the buy lowers the price
+  but not the level, so the test fires early: dived at ₹500 with the level
+  ₹455, a demerger takes the price to ₹470, the stock is bought there, and a
+  3.2% fall to ₹455 is at the level. The entry rule reads the same unadjusted
+  level; after the buy, the identity hold covers a registered demerger.
+  **Planned:** PR-005.
 - Under `evidence`, a sale's alert and narrative name the three kinds of reason,
   not the one that fired; `exit_shadow.jsonl` has it. **Planned:** PR-007.
 - The TRIM-to-HOLD tax softening still reads the thesis review under both
@@ -2718,7 +2726,7 @@ section 10) are part of the current design.
 | [PR-006](planning/PI-2026-09/stories/PR-006.md) | A daily company-event feed for held, watched and shelf stocks | Done | 4 Research; 9 Jobs | None |
 | [PR-007](planning/PI-2026-09/stories/PR-007.md) | Plain, fact-grounded buy and sell explanations | Open | 6 Portfolio | PR-005, PR-006 |
 | [PR-008](planning/PI-2026-09/stories/PR-008.md) | "Your stocks overnight" at the top of the morning brief | Open | 10 Delivery | PR-003, PR-006 |
-| [PR-009](planning/PI-2026-09/stories/PR-009.md) | Exit on evidence, not on a price-path miss (shadow, then switch) | Open | 6 Portfolio | PR-002, PR-006 |
+| [PR-009](planning/PI-2026-09/stories/PR-009.md) | Exit on evidence, not on a price-path miss (shadow, then switch) | Done | 6 Portfolio | PR-002, PR-006 |
 | [PR-010](planning/PI-2026-09/stories/PR-010.md) | Four screens for members; an Operator menu for the owner | Open | 10 Interface | PR-001 |
 | [PR-011](planning/PI-2026-09/stories/PR-011.md) | New data: promoter and insider trades, pledges, shareholding changes | Done | 4 Research; 8 Discovery | PR-006 |
 | [PR-012](planning/PI-2026-09/stories/PR-012.md) | Choose models by role, benched on our own data; refresh cost rates | Open | 3 Configuration | PR-007 |

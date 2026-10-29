@@ -67,6 +67,28 @@ FIX-015, added on 2026-10-23 while implementing PR-009 (routing delegated), come
 The advisor's `shock_reforecast` exit compares a stored sentence with trigger keys, so it has never
 fired. Fixing it must not count a thesis-break re-forecast, or the price-path exit would return
 inside the evidence rule. It moves ahead before the owner switches `advisor.exit_rule` to evidence.
+FIX-016 and PR-013, added on 2026-10-24 from the owner's walkthrough of PR-009 (the owner: "i go
+with the recommendations"), close weaknesses of the evidence exit. FIX-016 comes directly after
+PR-009, and PR-009's push waits for it, so the switch gate is still fixed before any shadow row
+exists. A SELL verdict counts only when it is fresh and after the buy, a news article never sells
+alone, each decision is graded against where the money went (cash or the Nifty), and the gate adds
+a money check: "not worse" in count and in money. PR-013 follows PR-005 and reports the average
+loss by exit reason, the fall the evidence rule sits through and the decision pace. PR-005 (5 → 6
+points: the invalidation price's basis and bounds) and PR-012 (2 → 3 points: label accuracy for
+event reading) grew with routed inputs, and SA-049 gained a routed note.
+FIX-017, added on 2026-10-29 from FIX-016's fresh re-review of rework 2 (routing delegated),
+comes after FIX-015. The live holding sync reads some of NSE's own rows wrongly: a bonus of
+preference shares or debentures as an equity bonus, a bonus-and-split row as its bonus alone,
+a split in NSE's short wording not at all, and it asks NSE under the app's code, so two
+registry aliases get no row. A holding can then show a false gain or a false fall, and a stop
+can sell it. It moves ahead if a held stock lists such a row.
+FIX-018 and FIX-019, added on 2026-10-29 from the owner's decision on FIX-016's open question
+RW2-D6 ("go ahead on your recommendation"). FIX-018 comes directly after FIX-016, and PR-009's
+push now waits for both. A decision whose result can never be known, such as a demerger between
+its closes or a stock NSE lists nothing for, would otherwise fail the switch gate for good. It is
+set aside and named on the scorecard; at most 2 decisions and 10% may be set aside before the
+gate says "cannot judge". FIX-019 follows: 14 configured codes got an empty NSE
+corporate-action list on 29 Oct, and the stale ones are mapped with evidence.
 
 | Order | Story | Priority | Points | Result | Dependencies |
 |---:|---|---|---:|---|---|
@@ -84,16 +106,21 @@ inside the evidence rule. It moves ahead before the owner switches `advisor.exit
 | 12 | [FIX-012](stories/FIX-012.md) | P1 | 1 | CI is red since 13 Oct: make FIX-007's log-route guard work on any FastAPI | — |
 | 13 | [PR-011](stories/PR-011.md) | P1 | 3 | New data: promoter and insider trades, pledges, shareholding changes | PR-006 |
 | 14 | [PR-009](stories/PR-009.md) | P1 | 5 | Exit on evidence, not on a price-path miss (shadow, then switch) | PR-002, PR-006 |
-| 15 | [SA-048](stories/SA-048.md) | P1 | 3 | Costs and tax in paper P&L | — |
-| 16 | [FIX-011](stories/FIX-011.md) | P1 | 2 | NSE's per-symbol meta API is gone: restore the surveillance and suspension guards and an industry source | — |
-| 17 | [SA-049](stories/SA-049.md) | P1 | 7 | Idle cash to work, with the breadth floor (12 target holdings) and the ₹2 L top-up | SA-050, SA-051 |
-| 18 | [PR-005](stories/PR-005.md) | P1 | 5 | An investment case for every position | PR-006 |
-| 19 | [PR-007](stories/PR-007.md) | P1 | 3 | Plain, fact-grounded buy and sell explanations | PR-005, PR-006 |
-| 20 | [PR-008](stories/PR-008.md) | P1 | 3 | "Your stocks overnight" at the top of the brief | PR-003, PR-006 |
-| 21 | [PR-010](stories/PR-010.md) | P1 | 5 | Four screens for members; an Operator menu for the owner | PR-001 |
-| 22 | [PR-012](stories/PR-012.md) | P2 | 2 | Models chosen by role, benched on our own data; cost rates refreshed | PR-007 |
-| 23 | [FIX-014](stories/FIX-014.md) | P2 | 1 | Above the 75% cap, a promoter wash must not score as insider buying | PR-011 |
-| 24 | [FIX-015](stories/FIX-015.md) | P2 | 1 | The shock exit reads the re-forecast's trigger, not its sentence | PR-009 |
+| 15 | [FIX-016](stories/FIX-016.md) | P1 | 3 | Fix the evidence exit's inputs and its switch gate before the shadow starts | PR-009 |
+| 16 | [FIX-018](stories/FIX-018.md) | P1 | 2 | The switch gate sets aside a decision whose result can never be known: named, and within a cap | FIX-016 |
+| 17 | [FIX-019](stories/FIX-019.md) | P2 | 1 | Find out why NSE lists no corporate action for 14 configured codes, and map the stale ones | — |
+| 18 | [SA-048](stories/SA-048.md) | P1 | 3 | Costs and tax in paper P&L | — |
+| 19 | [FIX-011](stories/FIX-011.md) | P1 | 2 | NSE's per-symbol meta API is gone: restore the surveillance and suspension guards and an industry source | — |
+| 20 | [SA-049](stories/SA-049.md) | P1 | 7 | Idle cash to work, with the breadth floor (12 target holdings) and the ₹2 L top-up | SA-050, SA-051 |
+| 21 | [PR-005](stories/PR-005.md) | P1 | 6 | An investment case for every position | PR-006 |
+| 22 | [PR-013](stories/PR-013.md) | P2 | 2 | Show where losses come from and what waiting costs | PR-002, PR-009 |
+| 23 | [PR-007](stories/PR-007.md) | P1 | 3 | Plain, fact-grounded buy and sell explanations | PR-005, PR-006 |
+| 24 | [PR-008](stories/PR-008.md) | P1 | 3 | "Your stocks overnight" at the top of the brief | PR-003, PR-006 |
+| 25 | [PR-010](stories/PR-010.md) | P1 | 5 | Four screens for members; an Operator menu for the owner | PR-001 |
+| 26 | [PR-012](stories/PR-012.md) | P2 | 3 | Models chosen by role, benched on our own data; cost rates refreshed | PR-007 |
+| 27 | [FIX-014](stories/FIX-014.md) | P2 | 1 | Above the 75% cap, a promoter wash must not score as insider buying | PR-011 |
+| 28 | [FIX-015](stories/FIX-015.md) | P2 | 1 | The shock exit reads the re-forecast's trigger, not its sentence | PR-009 |
+| 29 | [FIX-017](stories/FIX-017.md) | P2 | 2 | The holding sync reads every NSE corporate-action row it is given, under NSE's code | — |
 
 The new stories add 41 points. SA-049 grows from 5 to 7 points and SA-050 from 2 to 3. On 2026-10-12 the owner confirmed this order, chose the ₹2 L paper-capital top-up with 12 target holdings, and moved PR-011 up as P1 ("I need more data"); the production baseline is section 11 of the review. The track makes results
 visible, makes the portfolio broad enough to learn from, and stops one identified source of

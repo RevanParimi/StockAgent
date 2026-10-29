@@ -1,0 +1,70 @@
+{
+  "story": "FIX-016",
+  "phase": "rework 1",
+  "head": "8cb626c",
+  "date": "2026-10-24",
+  "previous_input": "FIX-016-manifest-review1.json (72268ff3, the fresh review's input)",
+  "hash_convention": "git blob bytes after .gitattributes normalization (CRLF->LF for text, binary unchanged); verify with scripts/docs/kt_manifest.py verify",
+  "files": [
+    {
+      "path": "CODEBASE.md",
+      "git_blob": "5e74bb3434559852a13001e652a1b5f91690004e",
+      "sha256": "db3e5cd1db720e702e2adae3dc56e0631479012012e824ca47064405e51d6d3e"
+    },
+    {
+      "path": "config.yaml",
+      "git_blob": "6e18a61f3cfd32e5567b445a10f00ad5260e3022",
+      "sha256": "bdccde9502dbec52f490c09c69f05a6e5ffd6cc0a9746749db19bdc5dc36f025"
+    },
+    {
+      "path": "core/portfolio/advisor.py",
+      "git_blob": "90c0b9b523b6feada54d02763f1560eaea6b8598",
+      "sha256": "50e878c5666cfe8bb26fcc5f571b7b927db4d4993ab973114935acabc132d185"
+    },
+    {
+      "path": "core/portfolio/exit_shadow.py",
+      "git_blob": "9400b43363f62be94f70acf4cc58f38ce02d70ab",
+      "sha256": "6016d1676cde726a52aa3401be29bb1dcc6485c3d1ac57117d21a667346ee941"
+    },
+    {
+      "path": "core/portfolio/pipeline.py",
+      "git_blob": "f0abaca2a050940b717e9d709a2a5056fc1c39b1",
+      "sha256": "b046cf2a72566aaa1adda9b0f9256894eed092f076bdccf829f94eb7d434bd4a"
+    },
+    {
+      "path": "core/portfolio/results.py",
+      "git_blob": "d803764fa0840c1cf09a464ae5ef6ab7ac5410be",
+      "sha256": "0219b16a3fc1240e9ec772e9efecd06dd1d8a0296e18677746e072b44e2f0bfe"
+    },
+    {
+      "path": "docs/StockAgent-Three-Loops.pdf",
+      "git_blob": "b4281f45e98ac1e0af8609674bacb85c6fe7a95a",
+      "sha256": "766d413bc07e9ccc6de66228733289cd4a89de6d710a38162307c85fc3b9d435"
+    },
+    {
+      "path": "docs/TEAM_TESTING_GUIDE.md",
+      "git_blob": "1f6b39dcf1d8ac1ad6f30c58b6b1900988360d3e",
+      "sha256": "7cfe6f875010e74d416a063c3986ca915105f747034ec7c0be2d91d62887e68f"
+    },
+    {
+      "path": "docs/TECHNICAL_DESIGN.md",
+      "git_blob": "1be381a8aa31bd84a56ec3c5c24adaa6f6baf851",
+      "sha256": "edd5f1305a60712f40c17dc0ae3fe1bf27719f8d3407e89a4c306f12be81d442"
+    },
+    {
+      "path": "src/backend/shared/schemas/portfolio.py",
+      "git_blob": "9919b08f9c7ff9ecab0d7fed471e2dec3e6df9a0",
+      "sha256": "a0aaa7d2d26bd40a090b331040478ecf592036d0f3f094789738adea5493beb5"
+    },
+    {
+      "path": "tests/unit/test_exit_evidence_pr009.py",
+      "git_blob": "842d89f71d666ca48bec8a4dae873b44a1f517f2",
+      "sha256": "e3addc5c0075af1c1e4d315d13804caebd0ee0c5ec4f522c9172284499259516"
+    },
+    {
+      "path": "tests/unit/test_exit_fix016.py",
+      "git_blob": "1a68b644a9d73d39f8bc006b99eb58ecff998086",
+      "sha256": "45220321f55bff52f05025e84c22ac69676645ccc461dbf7a57a7487992393cf"
+    }
+  ]
+}

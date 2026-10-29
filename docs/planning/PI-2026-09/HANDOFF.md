@@ -1,4 +1,4 @@
-# Current handoff - 2026-10-24 (updated about 09:35 IST)
+# Current handoff - 2026-10-29 (updated about 20:15 IST)
 
 ## Also 22 Oct (about 22:30 IST to 00:30 IST 23 Oct): FIX-013, LLM tier switch, committed and pushed (separate conversation)
 
@@ -105,6 +105,348 @@ Docs only; nothing committed, pushed, deployed or configured.
   section 11.
 
 ## START HERE — resume checklist, in order
+
+**FIX-016 COMMITTED, NOT PUSHED** (29 Oct, 20:03 IST, the same conversation as the
+re-review below, at the owner's word: "can we commit and push now?").
+
+- **Code commit `aa29f69`:** exactly the 13 reviewed files (`kt_manifest verify
+  FIX-016-manifest.json --rev HEAD`: 0 mismatches, `28039abf`).
+- **Docs commit** (the next one): the commit-time edits (KT Code inspected `aa29f69`, edition
+  2026-10-29, section 1's push sentence, section 12 rows; PDF 59 pages; `check_kt_docs` errors
+  `[]`; guide 07-L, 07-M and 09-H status lines), the FIX-016 receipts and manifests, the
+  owner-decision docs (cards FIX-016 to FIX-019 and PR-013, the PR-005, PR-012 and SA-049 notes,
+  the PI README, `docs/README.md`, `docs/START_HERE.md`), STATE and this handoff.
+- **Not pushed.** The owner's hold keeps PR-009 and FIX-016 unpushed until FIX-018 is accepted,
+  so the switch gate is final before any shadow row exists. The owner was asked whether to
+  override it. `main` is 4 commits ahead of `origin`. A push needs the owner's word and a
+  job-free window with about 2 hours of runway (safest 00:10–06:20 IST).
+- **Next "continue" is unchanged:** FIX-018's implementation, in a new conversation.
+
+**FIX-016 FRESH RE-REVIEW OF REWORK 3 → ACCEPTED** (29 Oct, about 17:43–18:15 IST,
+session stockagent-main-4f [48a88a], a new conversation opened with "continue"; not re-review 1's
+`-4f` of 25 Oct). Receipt: [FIX-016-review](evidence/FIX-016-review.md), top section. STATE: FIX-016
+`done` with a `rereview_3` record, production `pending_deployment`; `active_task` null;
+`next_task` **FIX-018**. Nothing was committed, pushed, deployed or configured. No production state
+or NSE list was read, no model was called and no message was sent.
+
+- **Next "continue", in a new conversation: FIX-018's implementation**
+  ([card](stories/FIX-018.md)). Its fresh review follows in another conversation.
+- **RR2-F1, fixed: each NSE row is read in full or not at all.** On rework 3's saved rows for all
+  202 configured symbols (3,215 rows, matching re-review 2's own read of the same lists):
+  - every row read as a ratio is a standard equity bonus or face-value split (110), and my own
+    parser gives the same ratios;
+  - every row read as neutral is a dividend, a meeting, a vote, a buy back, interest, a redemption
+    or a registrar change (97 shapes, read by eye).
+
+  49 wordings of my own, run through the real price path, are each graded at 0 or have no result,
+  never another number. An example: a 1:1 bonus worded "Capitalisation Issue 1:1" can no longer
+  pass a rule that loses 1.27% a decision. Rework 2 would have passed it at +2.23.
+- **RR2-M1, fixed:** with the shipped registry, CANARABANK is graded across CANBK's split, and NSE
+  is asked only for CANBK. **RR2-L1, done** (KT limit).
+- **T1, low, a test gap, routed to [FIX-018](stories/FIX-018.md):** no test pins that a bonus may
+  use only a bonus's words. My mutant that pools the bonus and split words survives the story file.
+  Under it, "Bonus 1:1 And Face Value From Rs 10 To Rs 2" would read as a bonus of 2 alone. The
+  reviewed code reads it as unparsed. One table row pins it.
+- **Evidence:**
+  - input `28039abf` / `657ff368` / `9b4fdecd` verified at the start and at the end;
+  - story 164 passed;
+  - my cases 51 passed, and 20 of them fail on re-review 2's input;
+  - re-review 2's Q3, Q3 gate, Q5, Q5 gate and Q6 fail at their defect assertions;
+  - the implementer's mutants: 18 of 18 caught, baseline clean (164 passed);
+  - full suite 5,835 passed / 12 skipped / 1 xfailed / 1 failed (14m09s, beside the mutants): the one failure is the known Windows flake test_store_migration_sa009.py::test_a_refused_store_is_retried_and_the_status_never_overstates (PermissionError WinError 5 on os.replace in its own temp folder; outside the review input, unchanged from HEAD); re-run alone 3 of 3 passed, its file 22 passed;
+  - `check_kt_docs` errors `[]`; PDF 59 pages `ee857f74`.
+- **Commit-time edits** (docs only, in the commit that carries FIX-016):
+  - the guide status lines 07-L, 07-M and 09-H ("FIX-016: accepted 2026-10-29; it ships with PR-009
+    and FIX-018.");
+  - the KT header;
+  - section 1's push sentence, which now waits for FIX-016 and FIX-018;
+  - section 12: FIX-016 Done, and Open rows for FIX-017, FIX-018 and FIX-019;
+  - the PDF and `check_kt_docs`.
+- **PR-009's push stays held** until FIX-018 is accepted (owner, 29 Oct). Then PR-009, FIX-016 and
+  FIX-018 go out in one push, at the owner's word, in a job-free window. FIX-016 is uncommitted on
+  `8cb626c`; commit only at the owner's word.
+
+**OWNER DECISION ON RW2-D6 → FIX-018 AND FIX-019 ADDED** (29 Oct, about 16:05–16:16 IST,
+session stockagent-main-8a, the same conversation as rework 3, after its bookkeeping). Docs only:
+two cards, STATE, this handoff and the PI README. Nothing was committed, pushed, deployed or
+configured, and no production state was read. FIX-016's review input (`28039abf`, 13 files) is
+untouched.
+
+- **Decision** (the owner: "go ahead on your recommendation"):
+  - A decision whose result can never be known is set aside from the switch gate and named on the
+    scorecard. Examples: a demerger between its closes, an unread bonus or split, a registry basis
+    change, a stock NSE lists nothing for.
+  - At most 2 decisions and 10% of those past 30 sessions may be set aside. Beyond that, the gate
+    says "cannot judge", never a pass.
+  - Temporary gaps still count as not right and fail the week. Examples: a failed read of NSE's
+    list, a missing close, a Yahoo-only close.
+  - The 15-decision minimum counts the decisions not set aside.
+  - For lasting gaps, "a missing grade never helps" becomes "a missing grade is set aside, by
+    name, within a cap".
+- **[FIX-018](stories/FIX-018.md)** (P1, 2 points, depends on FIX-016):
+  - the gate rule, plus grading telling a failed NSE fetch from an empty list (both are `[]`
+    today);
+  - placed directly after FIX-016. **PR-009's push now waits for FIX-016 and FIX-018**, and the
+    three go out in one push at the owner's word.
+  - It was offered as about 1 point. Writing the card made it 2, because of the fetch distinction.
+- **[FIX-019](stories/FIX-019.md)** (P2, 1 point, no dependency):
+  - the 14 codes with an empty NSE list on 29 Oct; stale codes are mapped with evidence;
+  - it comes after FIX-018 and ahead of SA-048, and does not hold the push.
+  - ETERNAL also returned none, so a mapping does not always help.
+- **Hard-review point recorded in FIX-018:** the evidence rule reads NSE filings, so it may sell on a
+  scheme announcement, the same event that sets the decision aside. The cap bounds this.
+- **Next "continue", in a new conversation: still FIX-016's fresh re-review** (input `28039abf`).
+  After FIX-016 is accepted, "continue" selects FIX-018.
+
+**FIX-016 REWORK 3 IMPLEMENTED → `review_required`** (29 Oct, about 10:53–12:15 IST, session
+stockagent-main-8a, a new conversation opened with "continue"). Receipt:
+[FIX-016-implementation](evidence/FIX-016-implementation.md), top section "Rework 3". STATE: FIX-016
+`review_required` with a `rework_3` record, `active_task` and `next_task` FIX-016. Nothing was
+committed, pushed, deployed or configured, no production state was read, no model was called and no
+message was sent. One read-only probe read NSE's public corporate-action lists for all 202
+configured symbols.
+
+- **Next "continue", in a new conversation: FIX-016's fresh re-review** ([REVIEW.md](REVIEW.md)).
+- **RR2-F1, fixed: each NSE row is read in full or not at all.**
+  - A row is a ratio only when it is an equity bonus or a face-value split and every word in it
+    is known.
+  - It is neutral only when every word is of a dividend, a meeting, a vote, a buy back, interest
+    or a redemption, or a registrar change.
+  - Anything else is not read, and a decision whose closes span it has no result, named. That
+    covers ZEEL's "Bonus Preference Shares 21:1", JSWSTEEL's "Fv Splt", "Rhs", "Arangement" and
+    any wording never seen.
+  - RW2-D1 is re-decided as fail closed (RW3-D1). The cost, measured on the 202 lists
+    (3,215 rows): 27 rows of no known kind and 13 unread bonus or split rows, all from 2008 to
+    2021 except TVSMOTOR's 2025 NCRPS bonus. Of the 849 rows dated from 2024, none is of no known
+    kind.
+  - The holding sync is unchanged (FIX-017).
+- **RR2-M1, fixed:** grading reads NSE's list under `nse_symbol`, so TVSMOTORS and CANARABANK are
+  graded. The story's market model answers only NSE's codes.
+- **RR2-L1, done:** KT limit for undated rows.
+- **Evidence:**
+  - story 164 (125 in test_exit_fix016 + PR-009's 39) passed (58 new);
+  - re-review 2's Q3, Q3 gate, Q5, Q5 gate and Q6 now fail on their defect assertions, and its
+    other 5 pass;
+  - mutants: 18 of 18 caught on the final tree (each new rule and word list, and the alias code), baseline clean (164 passed); the first run, before the last two table rows, caught 17 (`splt_not_share_count` survived; pinned); earlier 81 of 81 caught: 80 in the first run, and the 5 re-pointed (rework 2's demerger, scheme, rights, change-beside-a-ratio and bonus-and-split mutants, rewritten for the new text) re-run on the final tree, including `bonus_and_split_read_as_bonus`, which survived the first run (pinned);
+  - full suite 5,836 passed / 12 skipped / 1 xfailed / 0 failed on the final tree (15m08s, beside the mutants); the two earlier runs, one and two table rows short, gave 5,834 and 5,835 passed, 0 failed;
+  - PDF 59 pages `ee857f74`, `check_kt_docs` errors `[]`.
+- **Review input:** manifest 13 files, mismatches `[]`, `28039abf…`; rework diff `657ff368107be963e742c7aa98dd27f9bf1bdaa23b3fa24fd946cf5171a8175f` (76,211 bytes, 12 paths) against the kept input
+  (`FIX-016-manifest-review3.json`, `5bdb5496`); cumulative `9b4fdecdd7597bf3f582e3bc18a6fce8deb57ae8a84909f143c859ce075e262c` (236,583 bytes) against HEAD
+  (`analysis_data/fix016_rework3/rw3_digest.py`, ignored).
+- **PR-009's push stays held** until FIX-016 is accepted (owner); then one push, at the owner's word,
+  in a job-free window.
+
+**FIX-016 FRESH RE-REVIEW OF REWORK 2 → CHANGES REQUESTED** (29 Oct, about 08:57–09:45 IST,
+session stockagent-main-f0, a new conversation opened with "continue"). Receipt:
+[FIX-016-review](evidence/FIX-016-review.md), top section. STATE: FIX-016 `changes_requested` with
+a `rereview_2` record, `active_task` and `next_task` FIX-016 (rework 3); new card
+[FIX-017](stories/FIX-017.md). Nothing was committed, pushed, deployed or configured, no model
+was called and no message was sent. NSE's public corporate-action lists
+were read (read-only) for every configured symbol.
+
+- **Next "continue", in a new conversation: FIX-016 rework 3**, then a fresh re-review in another.
+- **What holds:** RR-F1 for NSE's standard wording (demerger, scheme, consolidation, capital
+  reduction, rights; a bonus-and-split row; a registry basis change), RR-L1 and I1.
+- **RR2-F1, high, required.** Grading's record misreads rows that the configured stocks' own NSE
+  lists hold. Measured on 25 and 29 Oct across all 202 symbols (3,171 rows):
+  - ZEEL's "Bonus Preference Shares 21:1" becomes a 22-for-1 equity bonus, so the horizon close is
+    multiplied by 22;
+  - JSWSTEEL's "Fv Splt Frm Rs 10 To Re 1" split is not seen;
+  - HINDALCO's "Rhs" rights row and BRITANNIA's "Scheme Of Arangement" are missed by the word
+    list.
+
+  One ZEEL-worded row lets a rule that loses 1.27% a decision pass at a mean above +100% and be
+  recommended the next week (Q5). RW2-D1 (unknown wording is neutral) is overturned; failing
+  closed is recommended. Pin Q3 and Q5 (`analysis_data/fix016_rereview2/test_rr2_fix016.py`).
+- **RR2-M1, medium, required.** Grading asks NSE for the app's code, while the close asks for the
+  registry's. `TVSMOTORS` and `CANARABANK` get 0 rows, against 20 under TVSMOTOR and CANBK, so
+  every decision on them has no result for good. The story's fixture answers any code.
+- **RR2-L1, low, docs:** undated scheme rows are ignored.
+- **Routed: FIX-017** (P2, 2 points, after FIX-015). The live holding sync makes the same misreadings
+  on holdings, and a stop can sell on them. It moves ahead if a held stock lists such a row, or if
+  a production holding is TVSMOTORS or CANARABANK.
+- **Production, read once after the verdict at the owner's go-ahead** (about 10:42 IST,
+  read-only): 1 account holds 2 stocks, REDINGTON (bought 9 Oct) and WELCORP (bought
+  1 Sep). Neither is an alias, no bonus or split was applied, and NSE lists no row for
+  either after its buy. FIX-017's trigger is not met.
+- **Evidence:** input `5bdb5496` / `44143f54` / `dd54d848` verified at the start and at the end.
+  Story 106 passed; re-review 1's cases RR1–RR3 now fail on their defect values, 9 pass; reviewer
+  cases 10 passed; rework 2 mutants 19 of 19 caught, baseline clean (106 passed); full suite 5,778 passed / 12 skipped / 1 xfailed / 0 failed (28m40s, beside the NSE probe and the mutants).
+- **The rework keeps this input** as `FIX-016-manifest-review3.json` before changing anything.
+- **PR-009's push stays held** until FIX-016 is accepted (owner); then one push, at the owner's
+  word, in a job-free window.
+
+**FIX-016 REWORK 2 IMPLEMENTED → `review_required`** (25 Oct, about 08:47–09:45 IST; bookkeeping 26 Oct about 17:10 IST, session
+stockagent-main-1f, a new conversation opened with "continue"). Receipt:
+[FIX-016-implementation](evidence/FIX-016-implementation.md), top section "Rework 2". STATE: FIX-016
+`review_required` with a `rework_2` record, `active_task` and `next_task` FIX-016. Nothing was
+committed, pushed, deployed or configured, no production state was read, no model was called and no
+message was sent. One read-only probe read NSE's public corporate-action lists (22 symbols).
+
+- **Next "continue", in a new conversation: FIX-016's fresh re-review** ([REVIEW.md](REVIEW.md)).
+- **RR-F1, fixed.** A demerger, a scheme (arrangement, amalgamation, merger), a consolidation, a
+  capital reduction or a rights issue that NSE lists between a decision's close and its horizon has
+  no ratio to apply, so the decision has no result, named. The same for a row naming a bonus and a
+  split, and for a new basis the instrument registry records (a rename keeps the basis and is
+  graded). RR1–RR3 are pinned; the re-review's own cases now fail on their defect assertions.
+- **RR-L1, done** (KT section 6 limit). **I1, done:** any failed destination fetch is a refused buy.
+- **Evidence:** story 106 (67 + PR-009's 39; 11 new) passed; mutants 81 of 81 caught (19 new + every earlier FIX-016 mutant), baseline clean; the re-review's cases
+  3 failed on their defect assertions (RR1, RR2 demerger, RR3), 9 passed; full suite 5,778 passed / 12 skipped / 1 xfailed / 0 failed (12m49s).
+- **Found on the way, not routed:** the holding sync reads a bonus-and-split row (BAJFINANCE's 2016
+  wording) as its bonus alone, so a holding would show about −80% and its stop would fire. It needs
+  a story (owner).
+- **For the owner, not blocking:** a decision whose basis can never be known (a demerger between its
+  closes, a stock NSE lists nothing for) keeps the money check failing for good, because the gate
+  counts every decision ever made. The rule is the owner's ("a missing grade never helps"); the KT
+  states the consequence (RW2-D6).
+- **Review input:** manifest `5bdb5496` (13 files: the re-review's 12
+  plus `core/portfolio/corp_actions.py`); rework diff `44143f54` against the kept
+  input; cumulative `dd54d848` against HEAD
+  (`analysis_data/fix016_rework2/rw2_digest.py`, ignored).
+- **PR-009's push stays held** until FIX-016 is accepted (owner); then one push, at the owner's word,
+  in a job-free window.
+
+**FIX-016 FRESH RE-REVIEW OF REWORK 1 → CHANGES REQUESTED** (25 Oct, about 07:59–08:40 IST,
+session stockagent-main-4f, a new conversation opened with "continue"). Receipt:
+[FIX-016-review](evidence/FIX-016-review.md), top section. STATE: FIX-016 `changes_requested` with
+a `rereview_1` record, `active_task` and `next_task` FIX-016 (rework 2). Nothing was committed,
+pushed, deployed or configured, no production state was read, no model was called and no message
+was sent.
+
+- **Next "continue", in a new conversation: FIX-016 rework 2**, then a fresh re-review in another.
+- **RR-F1, high, required.** A demerger between a decision and its horizon is still graded as a
+  fall. The basis rule reads only bonus and split rows. A flat stock that demerges 40% grades at
+  −40, and one such demerger lets a rule that loses 1.27% a decision pass the gate and be
+  recommended the next week (RR2). A demerger the registry records as a new basis is graded across
+  the two bases (RR3). NSE's lists hold demerger rows for RELIANCE and TMPV (measured on 24 Oct):
+  rarer than a bonus, with the same consequence. The fix: such a row, or a registry basis change,
+  between the closes means no result, named. Pin RR1–RR3
+  (`analysis_data/fix016_rereview/test_rr_fix016.py`).
+- **RR-L1, low, docs.** The KT says an empty NSE list is a recent listing. ETERNAL, listed in
+  2021, returned none, and such a decision can keep the gate failing for good.
+- **I1, info, optional** (`switch_lands` catches only `PriceUnavailableError`).
+- **What holds:** F1 as asked (bonus and split), F2, F3, I1 and I2; RW-D1 to RW-D5 upheld. Input
+  `9b8e7457` / `e0efc6ba` / `fc0cab4b` verified at the start and at the end. Story 95 passed;
+  reviewer cases 12 passed; mutants re-run 9 of 9 caught; full suite 5,767 passed / 12 skipped / 1 xfailed / 0 failed (11m28s).
+- **The rework keeps this input** as `FIX-016-manifest-review2.json` before changing anything.
+- **PR-009's push stays held** until FIX-016 is accepted (owner); then one push, at the owner's
+  word, in a job-free window.
+
+**FIX-016 REWORK 1 IMPLEMENTED → `review_required`** (24 Oct, about 16:35–17:55 IST, session
+stockagent-main-e2, a new conversation opened with "continue"). Receipt:
+[FIX-016-implementation](evidence/FIX-016-implementation.md), top section "Rework 1". STATE: FIX-016
+`review_required` with a `rework_1` record, `active_task` and `next_task` FIX-016. Nothing was
+committed, pushed, deployed or configured, no production state was read, no model was called and no
+message was sent.
+
+- **Next "continue", in a new conversation: FIX-016's fresh re-review** ([REVIEW.md](REVIEW.md)).
+- **F1, fixed.** Grading reads the horizon close with its bar and source, and the symbol's NSE action
+  list once per stock per scorecard. The horizon close is multiplied by every bonus or split ratio ex
+  after the decision close's bar and on or before its own bar. When that basis cannot be established
+  (the list empty, unread or too short; an unreadable row; an action between the close's bar and the
+  review day; a Yahoo-only close with a later action), the decision has no result that week, which
+  fails the money check and is named in the line. RV1 and RV2 are pinned through the real price path.
+- **F2, fixed.** When the row is written, a SWITCH whose buy the executor would refuse (no close, the
+  entry band; a stale close or unresolved identity under enforce) records `cash`. The executor's own
+  failed re-fetch, a buy under one share and a ledger duplicate are a KT limit (the review's RV3 is
+  the first, and still records `nifty`).
+- **F3, I1, I2 done.** Docs: KT section 6 (one price basis, an example, limits) and 7, PDF, CODEBASE,
+  guide 07-L, 07-M, 09-H.
+- **Evidence:** story 95 (test_exit_fix016 56, 19 new; test_exit_evidence_pr009 39) passed; mutants 62/62 caught (FIX-016's 33 + 29 rework; analysis_data/fix016_rework1/rw_mutants.py); the review's repros adapted to the
+  new contract: RV1 and RV2's defect assertions now fail, their controls and RV3 pass (RV3 is the executor re-fetch limit); full suite 5,767 passed / 12 skipped / 1 xfailed / 0 failed (12m38s).
+- **Review input:** manifest `9b8e7457` (12 files: the review's 10
+  plus `core/portfolio/results.py` and `core/portfolio/pipeline.py`); rework diff
+  `e0efc6ba` against the kept review input; cumulative `fc0cab4b` against
+  HEAD (`analysis_data/fix016_rework1/rw_digest.py`, ignored).
+- **PR-009's push stays held** until FIX-016 is accepted (owner); then one push, at the owner's word,
+  in a job-free window.
+
+**FIX-016 FRESH REVIEW → CHANGES REQUESTED** (24 Oct, about 12:58–13:30 IST, session
+stockagent-main-f7, a new conversation opened with "continue"). Receipt:
+[FIX-016-review](evidence/FIX-016-review.md). STATE: FIX-016 `changes_requested`, `active_task` and
+`next_task` FIX-016 (rework 1). Nothing was committed, pushed, deployed or configured, no
+production state was read, no model was called and no message was sent.
+
+- **Next "continue", in a new conversation: FIX-016 rework 1**, then a fresh re-review in another.
+- **F1, high, required.** Grading compares the row's stored close with a later close in another
+  price basis. A 1:1 bonus three sessions after a decision grades a flat stock at −50%, and the
+  money check adds that result. With one such bonus, the card's own failing example (8 of 15 right,
+  −3.6% a decision) passes the gate and is recommended two weeks running (RV2). The fix: put the
+  horizon close in the decision's basis, using the ratios of every bonus or split from the symbol's
+  NSE record read at grading. A basis that cannot be established must never help the evidence rule.
+  Pin RV1 and RV2.
+- **F2, medium, recommended.** A SWITCH whose buy leg the executor skips (entry band, price, data
+  gate) leaves the money in cash, but its row says `nifty`. Apply the executor's entry check at row
+  time, or state it as a KT limit.
+- **F3, low, docs.** NSE filings are typed by the same bulk-tier model as news; KT section 6 should
+  say so and name PR-012's label bench.
+- **Accepted as written:** every acceptance criterion; D1–D10 upheld. Input `72268ff3` / `dd35017d`
+  / `c583962e` verified start and end. Story 76 passed; reviewer cases 5 passed
+  (`analysis_data/fix016_review/`); full suite 5,748 passed / 12 skipped / 1 xfailed / 0 failed (13m12s).
+- **The rework keeps this input** as `FIX-016-manifest-review1.json` before changing anything.
+- **PR-009's push stays held** until FIX-016 is accepted (owner); then one push, at the owner's
+  word, in a job-free window.
+
+**FIX-016 IMPLEMENTED → `review_required`** (24 Oct, about 11:15–12:25 IST, session
+stockagent-main-a6, a new conversation opened with "continue"). Receipt:
+[FIX-016-implementation](evidence/FIX-016-implementation.md). STATE: FIX-016 `review_required`,
+`active_task: FIX-016`, `next_task: FIX-016`. Nothing was committed, pushed, deployed or configured,
+no production state was read, no model was called and no message was sent.
+
+- **Next "continue", in a new conversation: FIX-016's fresh review** ([REVIEW.md](REVIEW.md)).
+- **What it does:**
+  - a SELL verdict counts only when its analysis ran on a later IST day than the buy and is at
+    most 22 sessions old;
+  - only an NSE filing or a rule-typed disclosure can sell; a news article is a watch item
+    (`watch_event_ids`), and `case_broken_reasons` checks the source too;
+  - each disagreement stores its benchmark on the decision day (`cash` for a plain EXIT, `nifty`
+    for a SWITCH), and grading reads it from the row;
+  - the gate adds a money check (mean result at least 0 at 10 and at 30 sessions; a missing result
+    fails it). A pass reads "not worse"; "better" is a label at 70% with a positive mean.
+- **Evidence:** story tests 76 passed (37 new + PR-009's 39); full suite 5,748 passed / 12 skipped / 1 xfailed / 0 failed (16m12s); mutants 33 of 33, the 6 constant mutants
+  also caught by behaviour tests; an exact-fraction oracle over 2,000 random populations.
+- **Review input:** manifest `72268ff3` (10 files); FIX-016's own diff `dd35017d`
+  (105,082 B; the KT diffed against its copy saved before the first edit, because session -cb's
+  edits were already in it); cumulative against HEAD `c583962e` (106,562 B). Rebuild with
+  `analysis_data/fix016/digest.py` (ignored).
+- **Changed PR-009 test helpers** (contracts named in the receipt): `_row` gains a benchmark,
+  `_random_case`'s event a source, `_grades` a result; two exact scorecard lines.
+- **PR-009's push stays held** until FIX-016 is accepted (owner). Then `2d290d5`, `8cb626c` and
+  FIX-016's commits go out in one push, at the owner's word, in a job-free window.
+- **Commit-time edits after acceptance:** the KT's Code inspected revision and edition, section 1's
+  production paragraph, section 12's FIX-016 row Done, the PDF, and the guide status lines
+  (07-L, 07-M, 09-H).
+
+**OWNER DECISION: FIX-016 NEXT, PR-009 PUSH HELD** (24 Oct, about 09:45 IST, session
+stockagent-main-cb). This was a learning walkthrough of PR-009 with the owner (`docs/START_HERE.md`),
+not a "continue" phase. It reviewed eight weaknesses of the evidence exit, and the owner said "i go
+with the recommendations". STATE: **`next_task: FIX-016`** (not started), `active_task: null`. No
+code changed. Nothing was committed, pushed, deployed or configured, and no production state was read.
+
+- **Next "continue", in a new conversation: [FIX-016](stories/FIX-016.md)** (P1, 3 pts),
+  implementation. It makes four corrections:
+  - a SELL verdict counts only if the analysis ran after the buy and within 22 sessions;
+  - a `news` event never sells on its own;
+  - each decision is graded against where the money went, fixed on the decision day: cash for a
+    plain EXIT without cash deployment, the Nifty for a SWITCH;
+  - the gate adds a money check (mean result at least 0 at 10 and 30 sessions). A pass reads "not
+    worse"; "better" is only a label.
+- **PR-009's push is HELD until FIX-016 is accepted** (owner). This supersedes the 14:07 IST plan
+  below, and session -87 was messaged. `2d290d5` and `8cb626c` stay local (main is 2 ahead of
+  origin). They go out with FIX-016 in one push, at the owner's word, in a job-free window, so the
+  gate is still fixed before any shadow row exists. FIX-016 builds on the committed PR-009.
+- **Also added or amended:**
+  - [PR-013](stories/PR-013.md) (P2, 2 pts, after PR-005): average loss by exit reason, what
+    waiting cost, decision pace;
+  - [PR-005](stories/PR-005.md) 5 → 6 pts: the invalidation price is stored in the buy day's
+    basis, used only above the stop and at least 1.5 × ATR% below entry, and news cannot sell
+    through a pillar;
+  - [PR-012](stories/PR-012.md) 2 → 3 pts: a label-accuracy bench for event reading, with zero
+    routine items allowed as "high negative";
+  - [SA-049](stories/SA-049.md): a routed note to record the Nifty benchmark once deployment is on.
+- **Docs:** PI README order (FIX-016 at 15, PR-013 at 20). KT §1: production stays on `ffa012b`
+  until the held deploy. KT §6 has a "Planned, before the shadow starts (FIX-016)" paragraph, and
+  KT §12 has the two rows. PDF regenerated (57 pages); `check_kt_docs` errors `[]`.
 
 **PR-009 ACCEPTED** (24 Oct, about 08:50–09:35 IST, session stockagent-main-87, a new
 conversation opened with "continue": the fresh re-review of rework 1). Receipt:

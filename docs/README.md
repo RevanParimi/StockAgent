@@ -1,5 +1,8 @@
 # docs/ — Documentation Index
 
+# railway ssh "cd /app && echo $(gzip -9c analysis_data/review_20261011/portfolio_results_probe.py | base64 -w0) | base64 -d | python -c 'import sys,zlib;exec(zlib.decompress(sys.stdin.buffer.read(),31))'"
+
+
 **Current KT (2026-10-10):** [Technical Design](TECHNICAL_DESIGN.md) and its [PDF](StockAgent-Three-Loops.pdf) describe the current design, the dated production state and every planned PI change. **Separate deliverable:** [Team Human Testing Guide](TEAM_TESTING_GUIDE.md), with 12 assignable functional duties; all cases start NOT RUN.
 
 **Detailed production evidence (2026-09-10):** [repository and production audit](audit/2026-09-10-repository-production-review.md). For implementation work, use the [current PI and sprint stories](planning/PI-2026-09/README.md) and [next-task handoff](planning/PI-2026-09/HANDOFF.md). The audit distinguishes deployed behavior from older design claims; the PI state records what remains unimplemented.

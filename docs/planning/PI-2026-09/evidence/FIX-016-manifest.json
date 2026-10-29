@@ -1,0 +1,75 @@
+{
+  "story": "FIX-016",
+  "phase": "rework 3",
+  "head": "8cb626c",
+  "date": "2026-10-29",
+  "previous_input": "FIX-016-manifest-review3.json (5bdb5496, the fresh re-review 2 input)",
+  "hash_convention": "git blob bytes after .gitattributes normalization (CRLF->LF for text, binary unchanged); verify with scripts/docs/kt_manifest.py verify",
+  "files": [
+    {
+      "path": "CODEBASE.md",
+      "git_blob": "7723e5d2ff17c1eb20b0bcc4b9dabc471bd85dab",
+      "sha256": "32e40b6839e3c170390c41ca177c668cb3adf593c83d26d252b16c947b09c6ea"
+    },
+    {
+      "path": "config.yaml",
+      "git_blob": "6e18a61f3cfd32e5567b445a10f00ad5260e3022",
+      "sha256": "bdccde9502dbec52f490c09c69f05a6e5ffd6cc0a9746749db19bdc5dc36f025"
+    },
+    {
+      "path": "core/portfolio/advisor.py",
+      "git_blob": "90c0b9b523b6feada54d02763f1560eaea6b8598",
+      "sha256": "50e878c5666cfe8bb26fcc5f571b7b927db4d4993ab973114935acabc132d185"
+    },
+    {
+      "path": "core/portfolio/corp_actions.py",
+      "git_blob": "e0d6ed2fdb814eec3e071e0a47da99cb692b9204",
+      "sha256": "d324f0b75bc4b0cdbf35cf52fcd8ab7ae0af224248c60c669242b2c13e467869"
+    },
+    {
+      "path": "core/portfolio/exit_shadow.py",
+      "git_blob": "efad338e9201cc03562e9e6ff2ba0b64c5838563",
+      "sha256": "ca03a2c5094fa80095991c290e173051e94f88601fe254d31145c648fa9dd31b"
+    },
+    {
+      "path": "core/portfolio/pipeline.py",
+      "git_blob": "2dde9b098e565c3ecfe69bfe572a5427e0a50a93",
+      "sha256": "cf57f3f935a2a058906351cace4ef6690d78c40abf4efedfe979f14cb864e262"
+    },
+    {
+      "path": "core/portfolio/results.py",
+      "git_blob": "10faa0a136e510658d74c27954f2109eebeebff7",
+      "sha256": "c1605343c54b7bd89945327dc6835a7427671ab0295e8e3b520b05773d69774c"
+    },
+    {
+      "path": "docs/StockAgent-Three-Loops.pdf",
+      "git_blob": "f767d57c5338e0bf648b7a2f8250374a75ce8965",
+      "sha256": "25c362061d5d84303eaa4901af4a30b4dcb6dbbe14dad04b34cda4fcd95f11cf"
+    },
+    {
+      "path": "docs/TEAM_TESTING_GUIDE.md",
+      "git_blob": "f5b2bfb7d12c650ab9c447820a9b3c7e3fac1a30",
+      "sha256": "87b76bcd88fd05b6d6148f9bcf3fb57eae0d1667973fb2808682ae64284c9045"
+    },
+    {
+      "path": "docs/TECHNICAL_DESIGN.md",
+      "git_blob": "35441b56a79dfe021a791a530fc4c542a3107532",
+      "sha256": "ee857f747b8646f1b87e503a3d8f8f7927000c1da6fb1444e18795a794204889"
+    },
+    {
+      "path": "src/backend/shared/schemas/portfolio.py",
+      "git_blob": "9919b08f9c7ff9ecab0d7fed471e2dec3e6df9a0",
+      "sha256": "a0aaa7d2d26bd40a090b331040478ecf592036d0f3f094789738adea5493beb5"
+    },
+    {
+      "path": "tests/unit/test_exit_evidence_pr009.py",
+      "git_blob": "842d89f71d666ca48bec8a4dae873b44a1f517f2",
+      "sha256": "e3addc5c0075af1c1e4d315d13804caebd0ee0c5ec4f522c9172284499259516"
+    },
+    {
+      "path": "tests/unit/test_exit_fix016.py",
+      "git_blob": "24977982e92fd9afb067df492fb4dc4676b51aaa",
+      "sha256": "6e0ed73be1f840caba5de03cd388b1427ce757a0623e544f5d7cd36ccfa558b4"
+    }
+  ]
+}

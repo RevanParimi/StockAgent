@@ -1,0 +1,59 @@
+{
+  "story": "FIX-016",
+  "phase": "implementation",
+  "head": "8cb626c",
+  "date": "2026-10-24",
+  "hash_convention": "git blob bytes after .gitattributes normalization (CRLF->LF for text, binary unchanged); verify with scripts/docs/kt_manifest.py verify",
+  "files": [
+    {
+      "path": "CODEBASE.md",
+      "git_blob": "1584f1e175b8e3a24c1808edb5e7e69db5519694",
+      "sha256": "3bd9547a99a1c03c6fdc6c963fed64c91d002258ebd7b411195a94f752e7b13f"
+    },
+    {
+      "path": "config.yaml",
+      "git_blob": "6e18a61f3cfd32e5567b445a10f00ad5260e3022",
+      "sha256": "bdccde9502dbec52f490c09c69f05a6e5ffd6cc0a9746749db19bdc5dc36f025"
+    },
+    {
+      "path": "core/portfolio/advisor.py",
+      "git_blob": "75ea4eb8ceb46b23583cee59a8dc142e1983cf93",
+      "sha256": "6a6b8d9812df2136bef0bc5bda40478707e8b5e7bea83805b55808ac10ebd169"
+    },
+    {
+      "path": "core/portfolio/exit_shadow.py",
+      "git_blob": "a7fb0533f58d8c8470daf1adbe3365c145903002",
+      "sha256": "b508255a867c5c1233f84277e3b4afde31be54823286778e4f875ff9f33bf392"
+    },
+    {
+      "path": "docs/StockAgent-Three-Loops.pdf",
+      "git_blob": "12f285e91e26abf87b6170c735c626f67c41919b",
+      "sha256": "910ade1994c36b875e32e109eec363e16723a5cca652a3d1e717409a285c7c7a"
+    },
+    {
+      "path": "docs/TEAM_TESTING_GUIDE.md",
+      "git_blob": "9d669c9fa497611b80a1ab457679a7e4c477ae86",
+      "sha256": "2ee10ef63ae7eb7a10bf4f57506fb04c34040885aac95ebaabd12084cce780b0"
+    },
+    {
+      "path": "docs/TECHNICAL_DESIGN.md",
+      "git_blob": "bb555f9e4f07420963397f18ea6538c920073bb8",
+      "sha256": "3608dff5c85f0740aa40f67e238483b16340a975790d8b6ee6148a391c3bdba3"
+    },
+    {
+      "path": "src/backend/shared/schemas/portfolio.py",
+      "git_blob": "9919b08f9c7ff9ecab0d7fed471e2dec3e6df9a0",
+      "sha256": "a0aaa7d2d26bd40a090b331040478ecf592036d0f3f094789738adea5493beb5"
+    },
+    {
+      "path": "tests/unit/test_exit_evidence_pr009.py",
+      "git_blob": "90305fac64e298c303232601a672058066c740b6",
+      "sha256": "cbc75b2d44aac85908c827484a29a94f8ead6a7bedafd5a9c48e87fb2a9fa646"
+    },
+    {
+      "path": "tests/unit/test_exit_fix016.py",
+      "git_blob": "85be3b347ecd792060e61a6dde399b306c256dd9",
+      "sha256": "5e5136518c1a5f425cdf52f8596099971bacf6b1973b65a9df248eb6d1341822"
+    }
+  ]
+}

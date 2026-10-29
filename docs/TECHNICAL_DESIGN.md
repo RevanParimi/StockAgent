@@ -35,11 +35,12 @@ triggered no production job, backfill or notification.
 
 ### Production state at this edition
 
-Production runs the inspected code once its deployment on 24 October 2026 is
-confirmed by a read-only check of the deployment list and `/health`. Until
-then it runs `ffa012b`, deployed at 20:18 IST on 23 October (the deployment
-list showed it SUCCESS and `/health` answered 200). The two differ in the exit
-rules: the evidence rule recorded beside the price-path rule in `shadow`, its
+Production runs `ffa012b`, deployed at 20:18 IST on 23 October 2026 (the
+deployment list showed it SUCCESS and `/health` answered 200). The inspected
+code is committed but not deployed: the owner held its push on 24 October
+until FIX-016 is accepted, so both go out together. It counts as running only
+once a read-only check of the deployment list and `/health` confirms that
+deploy. The two differ in the exit rules: the evidence rule recorded beside the price-path rule in `shadow`, its
 grading and switch gate in the weekly scorecard, and the corp-action sync's
 per-symbol record (sections 6 and 7). The table gives the configuration that
 differs from the repository and the state of each operational control.
@@ -1107,9 +1108,12 @@ included, is the same code under both
 - **The evidence rule (`case_broken`)** needs one of three things, as of the
   review day:
   1. a high-materiality negative company event about the stock (section 4),
-     published in the last 5 sessions;
+     published in the last 5 sessions, from an NSE filing (an announcement or
+     a board-meeting intimation) or from a disclosure typed by fixed rules (an
+     insider trade, a pledge, a substantial acquisition, an ownership change);
   2. the latest analysis in the score history with an actionable or degraded
-     gate says SELL or STRONG SELL;
+     gate says SELL or STRONG SELL, run on a later IST day than the buy and at
+     most 22 sessions before the review day;
   3. the close is at or below the invalidation level of the stock's latest
      shelf idea, where the entry rule refuses to buy, compared in the close's
      own price basis (below).
@@ -1117,9 +1121,27 @@ included, is the same code under both
   It fires only once the holding has been held `advisor.min_hold_sessions`
   (10) exchange sessions; the stops never wait. An event published after the
   review day, another company's event, an event with no publication time, an
-  analysis run after the review day and an abstained analysis never count.
-  **Planned:** with an investment case, only an event that contradicts one of
-  its pillars, and the case's own invalidation price (PR-005).
+  analysis run after the review day, an abstained analysis, and an analysis
+  run on or before the buy day never count. A news article never sells on its
+  own: it is a secondary report, and one mislabelled headline would sell a
+  holding. A high-negative news event is recorded in the row as a watch item
+  instead, and the stops still protect the position. An NSE filing's direction
+  and materiality are the same bulk-tier model's reading (section 4); only the
+  disclosures are typed by fixed rules. A filing may sell because it is the
+  company's own primary disclosure, so a routine filing the model labels high
+  negative still sells. **Planned:** PR-012's label-accuracy bench measures
+  that reading (no routine filing may read as high negative); with an
+  investment case, only an event that
+  contradicts one of its pillars, and the case's own invalidation price; a
+  news event can then mark a pillar challenged, never sell (PR-005).
+
+**Example: a fresh verdict.** A stock is added by hand on 8 October although
+its analysis of 24 September said SELL. On 23 October, ten sessions later, the
+evidence rule keeps it: that SELL was known when the stock was bought. A SELL
+from an analysis on 9 October would sell it, until that analysis is 22
+sessions old or a newer one says otherwise. Every held stock is managed, and
+the 1st-of-month forecast re-analyses each managed stock, so a holding has a
+fresh verdict each month.
 
 **Example.** A stock is bought at ₹500 for its order book. On day 4 the market
 falls 2% and the stock 4%, to ₹480. The miss triggers a review, the review
@@ -1146,8 +1168,12 @@ When the basis cannot be established, the level is not used, and the row's
 `gaps` say why: the list does not reach back to the dive (an empty list, NSE's
 answer or a failed fetch, reads the same), a bonus or split went ex on the dive
 day itself (the dive's close may be on either side of it), or NSE lists a split
-or bonus row from the dive day on that cannot be parsed. The row keeps the
-level as dived (`invalidation_level_at_dive`) beside the one used.
+or bonus row from the dive day on that is not read as a ratio of equity shares
+(One price basis, below): one that cannot be parsed, a bonus of other
+securities, a split in short words, or one row naming both a bonus and a split
+(read as its bonus alone, a 1:1 bonus with a ₹10-to-₹2 split would halve the
+level where the price fell to a tenth). The row keeps the level as dived
+(`invalidation_level_at_dive`) beside the one used.
 
 **Example.** A stock is dived at about ₹500, with the level ₹455, and bought at
 ₹500. A 1:1 bonus then goes ex. The sync makes the holding 20 shares at ₹250,
@@ -1158,11 +1184,12 @@ fires nothing. ₹225 (₹450, down 10%, inside a 12% stop) is at the level.
 
 - `legacy`: the price-path rule acts, and nothing is compared.
 - `shadow`, the shipped setting: the price-path rule acts. Both verdicts, with
-  the evidence rule's reasons and inputs (event ids, the analysis and its run
-  time, the invalidation level and its source, any source it could not read),
-  go to `exit_shadow.jsonl`, one row per holding per review day; a re-run adds
-  nothing. The row names the holding (symbol and buy date) and the session the
-  close came from. The advice and trades are the price-path rule's, byte for
+  the evidence rule's reasons and inputs (event ids, news watch items, the
+  analysis and its run time, the invalidation level and its source, any source
+  it could not read), go to `exit_shadow.jsonl`, one row per holding per review
+  day; a re-run adds nothing. The row names the holding (symbol and buy date),
+  the session the close came from and, on a disagreement, the decision's
+  benchmark (below). The advice and trades are the price-path rule's, byte for
   byte.
 - `evidence`: the evidence rule acts, and the price-path verdict is still
   recorded beside it.
@@ -1175,25 +1202,136 @@ disagreeing days stay in the file without being counted again, whichever rule
 they favour. A stock bought again later is a new holding. Example: a standing
 SELL that the price-path rule ignores for 5 review days is one decision, not 5.
 
-**Grading.** The weekly scorecard (section 7) grades each decision on the
-stock's excess return over the Nifty 10 and 30 sessions after the review day,
-from the close both rules saw, with the auditor's rules and benchmark series.
-The Nifty is read from that close's own session, so a carried-forward close is
-graded from the day of its bar. The evidence rule was right if it sold and the
-stock then trailed the Nifty, or kept it and the stock did not. A horizon that
-has not ended is pending, never scored. A sold stock stays in the count.
+**Grading.** The weekly scorecard (section 7) grades each decision 10 and 30
+sessions after the review day, from the close both rules saw, against where
+the sale put the money. That benchmark is stored in the row on the decision
+day, and grading reads it from there, never from the configuration:
+
+- `cash` when the selling rule's verdict is a plain EXIT, whose proceeds wait
+  in cash (Cash deployment, below), or a SWITCH whose buy leg the executor
+  would refuse. The row is written before the autopilot runs, so the
+  destination's close is checked then as the executor checks it before
+  sizing: a close for the session; under `enforce`, the session's own bar and
+  a resolved identity; a price inside the idea's entry band. It is graded on
+  the stock's own return.
+- `nifty` for a SWITCH whose buy leg lands: the proceeds bought another stock.
+  It is graded on the excess over the Nifty, with the auditor's benchmark
+  series read from the close's own session, so a carried-forward close is
+  graded from the day of its bar.
+
+**One price basis.** A bonus or split cuts the raw price by its ratio and
+leaves the company's value alone. The stored close is the raw close of its
+bar, so the horizon close is multiplied by the ratio of every bonus or split
+that went ex after that bar and on or before the horizon close's own bar (an
+ex day's close is already in the new shares) (`horizon_in_basis`). The ratios
+come from NSE's corporate-action list for the symbol, read once per stock when
+the scorecard runs, under the NSE code its close is read under (a registry
+alias such as TVSMOTORS is listed as TVSMOTOR): a stock the acting rule sold has
+no holding, and so no applied actions.
+
+**Each row is read in full or not at all** (`corp_actions.action_record`). NSE
+words one action many ways, so a row is judged by every word in it. It is a
+ratio only when it is an equity bonus or a face-value split and every word is
+known: "Bonus 1:3" is 4 shares for 3, and "Face Value Split (Sub-Division) -
+From Rs 10/- Per Share To Rs 2/- Per Share" is 5 for 1. It leaves the basis
+alone only when every word is one of a dividend, a meeting, a vote, a buy back,
+interest or a redemption, or a registrar change, in the spellings NSE uses
+("Interim Dividend - Rs 20 Per Share (Purpose Revised)"). Any other row is not
+read: a bonus of preference shares, debentures or NCRPS ("Bonus Preference
+Shares 21:1" is not 22 equity shares for one), a split in short words ("Fv Splt
+Frm Rs 10 To Re 1"), a misspelt dividend, or wording never seen before. A row is
+neutral only when it is known to be, so a new wording can cost a decision its
+result but never decides one.
+
+When the basis cannot be established, the decision has **no result** at that
+horizon that week. That fails the money check, as a missing close does, and the
+scorecard line names the stock. The causes:
+
+- the list is empty or was not read, or its earliest row is after the
+  decision's close, so a bonus, split or demerger between cannot be ruled out;
+- NSE lists a split or bonus row after the close that is not read as a ratio of
+  equity shares, one row naming both a bonus and a split, or two ratios for one
+  day;
+- one went ex after the close's bar and by the review day, so the stored close
+  may be on either side of it;
+- NSE lists, after the close's bar and by the horizon close's bar or the review
+  day, a change that no ratio in its row converts: a demerger (part of the
+  company's value leaves for another listing, and NSE's row says only
+  "Demerger"), a scheme of arrangement, amalgamation or merger (also "Sch Of
+  Arrang" and "Arangement"), a consolidation, a capital reduction or return of
+  capital, a rights issue (also "Rhs"), or a row of no known kind;
+- the instrument registry records a new price basis for the symbol between the
+  decision's close and the horizon's day (a demerger or a relisting, section 4),
+  which NSE's list may not show; a rename keeps the basis and is graded;
+- the horizon close is undated or older than the decision's close;
+- the horizon close is Yahoo's alone (NSE's did not answer) and a bonus, split
+  or one of those changes went ex after its bar: Yahoo's series is adjusted
+  for every action up to the day it is read.
+
+A later week's read can resolve the list and the Yahoo cases; a demerger or a
+registry basis change between the closes never resolves.
+
+**Example: a bonus after a decision.** The evidence rule sells a stock at ₹190
+on Friday 23 October as a plain EXIT, and the price-path rule keeps it. A 1:1
+bonus goes ex on Wednesday 28 October; the company's value does not change,
+and the horizon close is ₹95. That is ₹190 in the old shares: a return of 0,
+so the sale saved nothing and was wrong, with a result of 0. Read without the
+basis it would be a 50% fall and a result of +50; one such bonus would let the
+failing example below (right on 8 of 15, −3.6%) pass the gate.
+
+**Example: a demerger after a decision.** The same sale, but on 28 October 40%
+of the company's value is demerged into a new listing, and the horizon close is
+₹114. The stock is flat in real terms, yet read as prices it fell 40%, a result
+of +40. NSE's row gives no fraction, so the decision has no result at either
+horizon, and the scorecard names the stock.
+
+**Example: a bonus of other securities.** The evidence rule keeps a stock at
+₹280 that the price-path rule sold. Three sessions later the company issues 21
+bonus preference shares of ₹1 for each equity share, worded as ZEEL's 2014 row
+"Bonus Preference Shares 21:1". The equity trades at ₹259 and the number of
+equity shares does not change. Read as a 22-for-1 equity bonus, ₹259 would be
+₹5,698 in the old shares: a +1,935% keep, which alone would pass the money
+check against a hundred honest decisions. The row names preference shares, so
+it is not read, and the decision has no result.
+
+The evidence rule was right if it sold and the stock then fell short of the
+benchmark, or kept it and the stock did not. Its **result** is that gap:
+positive when it kept the stock, negative when it sold. A horizon that has not
+ended is pending, never scored. A sold stock stays in the count, and a row
+without a benchmark is never graded. **Planned:** once cash deployment is on
+for a portfolio, its plain EXITs record `nifty` as well; stored rows keep
+theirs (SA-049).
+
+**Example.** The stock falls 3% and the Nifty 5%. After a plain EXIT, selling
+saved 3%: the evidence rule that sold was right, with a result of +3. After a
+SWITCH the money went into a market that lost 5%, so keeping the stock was 2
+points better: wrong, −2.
 
 **The switch gate** is fixed in code, set before any row existed. The
-population is the decisions whose 30 sessions have ended, and a missing close
-counts against the evidence rule.
+population is the decisions whose 30 sessions have ended. A decision with no
+close at a horizon counts as not right, and its result is unknown, so the
+money check at that horizon fails: no stand-in value could be guaranteed not
+to flatter the evidence rule.
 
 | Condition | Required |
 |---|---|
 | Decisions past 30 sessions | at least 15 |
 | Span of their review days | at least 8 weeks |
 | Evidence rule right | at least 50%, at 10 sessions and at 30 |
+| Its mean result | at least 0, at 10 sessions and at 30 |
 | One stock's share of them | at most 30% |
 | Weekly looks that pass | 2 in a row |
+
+**What a pass means: not worse.** Counting hits alone can pass a rule that
+loses money: right on 8 of 15, where the 8 saved 2% each and the 7 wrong ones
+cost 10% each, is (8 × 2 − 7 × 10) / 15 = −3.6% a decision, and the money
+check fails it. Right on half is also what a rule with no skill reaches about
+half the time. So a pass says the evidence rule is no worse than the
+price-path rule in count and in money, and the switch is recommended on that,
+because the evidence rule is simpler and explains itself (the owner's
+decision of 24 October 2026). The scorecard adds the label **better** when a
+pass is also right on at least 70% at both horizons with a positive mean (11
+of 15, unlikely by chance); the label changes nothing.
 
 **When it can first pass** (arithmetic, not a measurement): at two new
 decisions a week, about 15 weeks after the shadow starts (the 8-week span, 6
@@ -1210,6 +1348,9 @@ horizon would flatter one rule. The scorecard recommends; the owner switches
 rule. **Planned, after a switch:** the price-path verdict stays recorded for
 one month, then the thesis-review exit path is retired (PR-009's rollout).
 
+**Planned:** PR-013 adds the average loss by exit reason, the fall the evidence rule sits
+through and the decision pace to the scorecard.
+
 **Limits.**
 
 - `shock_reforecast` compares the latest re-forecast's stored `reason`, which
@@ -1224,20 +1365,57 @@ one month, then the thesis-review exit path is retired (PR-009's rollout).
   a large company reaches back years (12 symbols read in October 2026). The
   level is unused when the stock's earliest listed action is after the dive,
   or it has none, and each row's `gaps` says so.
-- The level follows bonuses and splits only. A demerger, a capital reduction
-  or a rights issue that goes ex between the dive and the buy lowers the price
-  but not the level, so the test fires early: dived at ₹500 with the level
-  ₹455, a demerger takes the price to ₹470, the stock is bought there, and a
-  3.2% fall to ₹455 is at the level. The entry rule reads the same unadjusted
-  level; after the buy, the identity hold covers a registered demerger.
-  **Planned:** PR-005.
+- The level follows bonuses and splits only. A demerger, a capital reduction,
+  a rights issue or a row of no known kind that goes ex between the dive and
+  the buy lowers the price but not the level, so the test fires early: dived
+  at ₹500 with the level ₹455, a demerger takes the price to ₹470, the stock is
+  bought there, and a 3.2% fall to ₹455 is at the level. The entry rule reads
+  the same unadjusted level; after the buy, the identity hold covers a
+  registered demerger. **Planned:** PR-005.
 - Under `evidence`, a sale's alert and narrative name the three kinds of reason,
   not the one that fired; `exit_shadow.jsonl` has it. **Planned:** PR-007.
 - The TRIM-to-HOLD tax softening still reads the thesis review under both
   rules.
-- Each Sunday the scorecard fetches every graded decision's closes again. A
-  past close is cached for the rest of that process, but the run grows with the
-  number of decisions.
+- Each Sunday the scorecard fetches every graded decision's closes again, and
+  NSE's corporate-action list once per stock. A past close is cached for the
+  rest of that process when it is that day's own bar in NSE's raw basis, but
+  the run grows with the number of decisions.
+- A decision whose close stays missing (a stock suspended or delisted after
+  the decision) fails the money check every week for as long as it is
+  missing; the scorecard line names how many have no price, and nothing
+  substitutes a value for it.
+- A decision whose price basis stays unknown does the same, and the line
+  names the stock: a stock NSE lists no corporate action for at all (14 of the
+  202 configured symbols on 29 October 2026, among them LTIM, STARHEALTH and
+  ZOMATO; ETERNAL, listed in 2021, returned none either), one with a bonus or
+  split ex between its close's bar and its review day (a carried-forward close
+  on the ex day), or one with a row between its two closes that is a change no
+  ratio converts or is not read. The population has no window, so one such
+  decision keeps the money check failing for as long as it lasts, which for
+  these is for good. NSE's lists for the 202 configured symbols, read under
+  NSE's codes on 29 October 2026 (3,215 rows, each list its latest 20 actions or
+  fewer), held 3,011 neutral rows and 110 ratios; 50 changes no ratio converts
+  (14 demergers, 27 rights issues, 9 schemes, 5 of those naming a bonus of
+  debentures or NCRPS); 8 more bonus or split rows not read as ratios; 27 rows
+  of no known kind; and 9 undated rows. Every row not read is from 2008 to
+  2021, mostly misspelt dividends, except TVSMOTOR's "Scheme Of Arrangement -
+  Bonus Ncrps 4:1" of August 2025. Of the 849 rows dated from 2024, none was of
+  no known kind.
+- A row without an ex-date is not read. NSE listed 9 on 29 October 2026:
+  interest payments, a nil dividend, INOXLEISUR's "Merger" and NIIT's
+  "Agm/Div-50%/Sch Of Arrang". Whether NSE dates such a row once it goes ex was
+  not measured, so a change listed only undated between a decision's closes
+  would be graded across. The instrument registry (section 4) is where a
+  merger's or a demerger's new basis is recorded, and grading asks it.
+- The return leaves out a dividend that went ex in the window (often 1–2%),
+  which slightly favours a sale over keeping.
+- A SWITCH whose buy leg the executor skips for a reason the row's check does
+  not see is graded against the Nifty, though the money stayed in cash: the
+  executor's own re-fetch of the destination's close fails, the buy comes to
+  under one share after sizing, or it is already in the ledger. The SELL's
+  note names the skip.
+- A holding whose monthly re-analysis did not run has no research verdict
+  after 22 sessions; events, the invalidation level and the stops still apply.
 
 ### Data and identity checks on advice
 
@@ -1548,7 +1726,7 @@ week whose sessions are not over is never stored.
 | Breadth | Holdings (for the latest week) and the invested share at the week's last valuation. |
 | Holding period | Median exchange sessions held by the positions closed this week. |
 | Idea quality | From the auditor's shelf lane: how many shelf ideas beat the Nifty 10 and 30 sessions after they were shelved, whether bought or not, with the median gap in points. Only grades matured by the week's end count. It measures the idea supply, not the portfolio, and it is a line, not a flag. |
-| Exit rule test | From `exit_shadow.jsonl` (section 6): on how many decisions the price-path rule and the evidence rule disagreed (one per holding, on its first disagreeing day), in how many holding-days reviewed, and how many later days of the same disagreements were not counted; how often the evidence rule was right at 10 and 30 sessions, what is still pending, and this week's look at the switch gate. The row stores the look, so the next week can tell whether the gate passed twice in a row. Shown once a row exists. |
+| Exit rule test | From `exit_shadow.jsonl` (section 6): on how many decisions the price-path rule and the evidence rule disagreed (one per holding, on its first disagreeing day), in how many holding-days reviewed, and how many later days of the same disagreements were not counted; how often the evidence rule was right at 10 and 30 sessions and its mean result a decision against where the money went (how many against cash, how many against the Nifty), with the mean against the Nifty alone beside it; what is still pending, has no price, or has no result because a corporate action could not be ruled out or allowed for (naming those stocks); and this week's look at the switch gate ("not worse" on a pass, plus "better" when it applies). The row stores the look, so the next week can tell whether the gate passed twice in a row. Shown once a row exists. |
 
 **Holdings that arrive without cash.** "Add holding" and a CSV import, on an
 account with cash accounting, raise `capital_in` by the holding's cost (the
@@ -2735,6 +2913,8 @@ section 10) are part of the current design.
 | [FIX-013](planning/PI-2026-09/stories/FIX-013.md) | Move the fast and reasoning LLM tiers to cheaper current models | Done | 3 Configuration | None |
 | [FIX-014](planning/PI-2026-09/stories/FIX-014.md) | Above the 75% cap, a promoter wash must not score as insider buying | Open | 8 Discovery | PR-011 |
 | [FIX-015](planning/PI-2026-09/stories/FIX-015.md) | The shock exit reads the re-forecast's trigger, not its sentence | Open | 6 Portfolio | PR-009 |
+| [FIX-016](planning/PI-2026-09/stories/FIX-016.md) | Fix the evidence exit's inputs and its switch gate before the shadow starts | Open | 6 Portfolio; 7 Marksheets | PR-009 |
+| [PR-013](planning/PI-2026-09/stories/PR-013.md) | Show where losses come from and what waiting costs | Open | 7 Marksheets | PR-002, PR-009 |
 
 ### Maintain documentation with each story
 

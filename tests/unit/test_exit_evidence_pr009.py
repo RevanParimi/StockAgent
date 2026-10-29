@@ -298,7 +298,8 @@ def _random_case(rnd: random.Random):
     ev = ExitEvidence(
         sessions_held=rnd.choice([None, rnd.randint(0, 40)]),
         negative_events=rnd.choice([[], [{"id": "e", "published_at": "2026-10-22",
-                                          "category": "results", "what": "w"}]]),
+                                          "category": "results", "what": "w",
+                                          "source": "nse_announcement"}]]),
         research_verdict=rnd.choice(["", "BUY", "SELL", "STRONG SELL", "NEUTRAL"]),
         research_run_at="2026-10-22T10:00:00",
         invalidation_level=rnd.choice([0.0, close * rnd.uniform(0.8, 1.2)]))
@@ -480,13 +481,31 @@ def test_a_failing_evidence_read_never_changes_the_acting_decision(monkeypatch, 
 # -- Grading ---------------------------------------------------------------------------------
 
 def _row(day: date, symbol="AAA", evidence_verdict="HOLD", legacy_verdict="EXIT",
-         close=100.0, disagree=True, buy_date="2026-05-04", price_bar_date=""):
+         close=100.0, disagree=True, buy_date="2026-05-04", price_bar_date="",
+         benchmark="nifty"):
     """A stored row, as the pipeline writes it. Rows of one symbol are one
-    holding (one decision) unless `buy_date` says it was bought again."""
+    holding (one decision) unless `buy_date` says it was bought again. These
+    tests grade against the Nifty (FIX-016's benchmark field, as for a
+    SWITCH); tests/unit/test_exit_fix016.py covers the cash benchmark."""
     return {"date": day.isoformat(), "symbol": symbol, "close": close, "mode": "shadow",
             "buy_date": buy_date, "price_bar_date": price_bar_date,
             "legacy_verdict": legacy_verdict, "evidence_verdict": evidence_verdict,
-            "disagree": disagree}
+            "disagree": disagree, "benchmark": benchmark if disagree else ""}
+
+
+def _nse(price):
+    """A grading price source (FIX-016 rework 1: grading reads the close with its bar and
+    source): NSE's close `price(symbol, day)`, or a constant, dated the day asked."""
+    from core.portfolio.pricing import SessionClose
+    fn = price if callable(price) else (lambda symbol, day: price)
+    return lambda symbol, day: SessionClose(fn(symbol, day), day, "nse")
+
+
+def _no_actions(symbol):
+    """NSE's list of the symbol's corporate actions read at grading (FIX-016 rework 1):
+    rows since 2000, no bonus or split, so every close is in one price basis."""
+    from core.portfolio.corp_actions import ActionRecord
+    return ActionRecord(covers_from="2000-01-01")
 
 
 def test_grading_by_hand_and_only_from_prices_up_to_the_horizon():
@@ -510,8 +529,8 @@ def test_grading_by_hand_and_only_from_prices_up_to_the_horizon():
 
     rows = [_row(decided, "AAA", "HOLD"), _row(decided, "BBB", "EXIT", "HOLD"),
             _row(decided, "CCC", "HOLD", "HOLD", disagree=False)]
-    grades = xs.grade_disagreements(rows, as_of=d30, stock_close_on=stock_close,
-                                    bench_close_on=bench_close)
+    grades = xs.grade_disagreements(rows, as_of=d30, stock_quote_on=_nse(stock_close),
+                                    bench_close_on=bench_close, corp_actions=_no_actions)
     got = {(g["symbol"], g["horizon_td"]): (g["status"], g["excess_pct"], g["right"])
            for g in grades}
     assert got == {("AAA", 10): ("graded", -4.0, False), ("AAA", 30): ("graded", 10.0, True),
@@ -525,21 +544,22 @@ def test_grading_by_hand_and_only_from_prices_up_to_the_horizon():
     # nothing at or after its day is read.
     asked.clear()
     early = xs.grade_disagreements(rows[:1], as_of=d30 - timedelta(days=1),
-                                   stock_close_on=stock_close, bench_close_on=bench_close)
+                                   stock_quote_on=_nse(stock_close), bench_close_on=bench_close,
+                                   corp_actions=_no_actions)
     assert [(g["horizon_td"], g["status"], g["right"]) for g in early] == [
         (10, "graded", False), (30, "pending", None)]
     assert asked and all(d < d30 for _kind, *_, d in asked)
     # A row decided after the look is not graded at all.
-    assert xs.grade_disagreements([_row(d30)], as_of=d10, stock_close_on=stock_close,
-                                  bench_close_on=bench_close) == []
+    assert xs.grade_disagreements([_row(d30)], as_of=d10, stock_quote_on=_nse(stock_close),
+                                  bench_close_on=bench_close, corp_actions=_no_actions) == []
 
 
 def test_a_missing_price_is_ungraded_never_a_result():
     decided = date(2026, 9, 1)
     grades = xs.grade_disagreements(
         [_row(decided)], as_of=date(2026, 12, 1),
-        stock_close_on=lambda s, d: (_ for _ in ()).throw(LookupError("no close")),
-        bench_close_on=lambda d: 1000.0)
+        stock_quote_on=_nse(lambda s, d: (_ for _ in ()).throw(LookupError("no close"))),
+        bench_close_on=lambda d: 1000.0, corp_actions=_no_actions)
     assert [(g["status"], g["right"]) for g in grades] == [("ungraded", None)] * 2
 
 
@@ -549,7 +569,8 @@ def _grades(n=16, right10=8, right30=8, symbols=8, span_days=60, ungraded10=0):
     """`n` matured disagreements over `symbols` stocks, review days spread
     over `span_days`; the evidence rule right on the first `right10` at 10
     sessions and the first `right30` at 30. `ungraded10` of the wrong ones at
-    10 sessions have no grade instead."""
+    10 sessions have no grade instead. Every graded result is 0.0, so the
+    money check (FIX-016) neither passes nor fails a look on its own here."""
     out = []
     start = date(2026, 6, 1)
     for i in range(n):
@@ -561,7 +582,8 @@ def _grades(n=16, right10=8, right30=8, symbols=8, span_days=60, ungraded10=0):
                 status = "ungraded"
             out.append({"date": day, "symbol": sym, "horizon_td": h, "status": status,
                         "right": right if status == "graded" else None,
-                        "excess_pct": 0.0, "evidence_sold": False, "matures": day})
+                        "excess_pct": 0.0, "evidence_sold": False, "matures": day,
+                        "result_pct": 0.0 if status == "graded" else None})
     return out
 
 
@@ -656,21 +678,26 @@ def test_the_scorecard_shows_the_tally_and_recommends_only_on_two_passing_weeks(
             fh.write(json.dumps({**r, "user_id": "u1"}) + "\n")
     # Every sold stock then trailed the Nifty by 5 points: the evidence rule was right.
     kw = dict(store=store, audit_store=type("A", (), {"load_all": lambda self: []})(),
-              close_on=lambda d: 1000.0, stock_close_on=lambda s, d: 95.0)
+              close_on=lambda d: 1000.0, stock_close_on=lambda s, d: 95.0,
+              stock_quote_on=_nse(95.0), corp_actions=_no_actions)
 
     first = R.weekly_scorecard("u1", date(2026, 11, 14), today=date(2026, 11, 14), **kw)
     block = first["exit_rule"]
     assert (block["rows"], block["decisions"], block["repeat_days"]) == (18, 17, 0)
-    assert block["tally"] == [
-        {"horizon_td": 10, "graded": 16, "right": 16, "ungraded": 0, "pending": 1},
-        {"horizon_td": 30, "graded": 16, "right": 16, "ungraded": 0, "pending": 1}]
+    counts = {"graded": 16, "right": 16, "ungraded": 0, "no_basis": 0, "no_basis_symbols": [],
+              "pending": 1, "vs_cash": 0, "vs_nifty": 16, "mean_result_pct": 5.0,
+              "mean_nifty_result_pct": 5.0}
+    assert block["tally"] == [{"horizon_td": 10, **counts}, {"horizon_td": 30, **counts}]
     assert block["gate"]["status"] == xs.PASS and block["recommend"] is False
     line = next(l["text"] for l in first["lines"] if l.get("label") == "Exit rule test")
     assert line == (
         "The price-path rule and the evidence rule disagreed on 17 decisions in 18 "
-        "holding-days reviewed; at 10 sessions it was right on 16 of 16; at 30 sessions it "
-        "was right on 16 of 16. 1 short of 10 sessions; 1 short of 30 sessions. "
-        "Switch gate: passed this week; it must pass again next week.")
+        "holding-days reviewed; at 10 sessions it was right on 16 of 16, averaging +5.00% a "
+        "decision against the Nifty; at 30 sessions it was right on 16 of 16, averaging "
+        "+5.00% a decision against the Nifty. 1 short of 10 sessions; 1 short of 30 sessions. "
+        "Switch gate: passed this week (not worse than the price-path rule in count and "
+        "money; better: right on at least 70% with a positive mean); it must pass again "
+        "next week.")
 
     second = R.weekly_scorecard("u1", date(2026, 11, 21), today=date(2026, 11, 21), **kw)
     assert second["exit_rule"]["recommend"] is True
@@ -940,8 +967,8 @@ def test_r2_a_standing_sell_over_five_days_is_one_decision(monkeypatch, tmp_path
         (d.isoformat(), "2026-09-23", d.isoformat(), True) for d in days]
     decisions, later = xs.first_disagreements(rows)
     assert [r["date"] for r in decisions] == ["2026-10-26"] and later == 4
-    block = xs.scorecard_block(rows, as_of=date(2026, 11, 1), stock_close_on=None,
-                               bench_close_on=lambda d: 1000.0)
+    block = xs.scorecard_block(rows, as_of=date(2026, 11, 1), stock_quote_on=None,
+                               bench_close_on=lambda d: 1000.0, corp_actions=_no_actions)
     assert (block["rows"], block["decisions"], block["repeat_days"]) == (5, 1, 4)
     assert [t["pending"] for t in block["tally"]] == [1, 1]
 
@@ -968,7 +995,8 @@ def test_r2_four_five_day_episodes_are_four_decisions_and_the_gate_says_not_yet(
             fh.write(json.dumps({**r, "user_id": "u1"}) + "\n")
     price = {"S0": 95.0, "S1": 95.0, "S2": 105.0, "S3": 105.0}
     kw = dict(store=store, audit_store=type("A", (), {"load_all": lambda self: []})(),
-              close_on=lambda d: 1000.0, stock_close_on=lambda s, d: price[s])
+              close_on=lambda d: 1000.0, stock_close_on=lambda s, d: price[s],
+              stock_quote_on=_nse(lambda s, d: price[s]), corp_actions=_no_actions)
     for sunday in (date(2026, 11, 14), date(2026, 11, 21)):
         card = R.weekly_scorecard("u1", sunday, today=sunday, **kw)
         block, look = card["exit_rule"], card["exit_rule"]["gate"]
@@ -981,8 +1009,10 @@ def test_r2_four_five_day_episodes_are_four_decisions_and_the_gate_says_not_yet(
             "The price-path rule and the evidence rule disagreed on 4 decisions in 20 "
             "holding-days reviewed (a holding counts once, on the first day the rules "
             "differed; 16 later days of the same disagreements are not counted); at 10 "
-            "sessions it was right on 2 of 4; at 30 sessions it was right on 2 of 4. "
-            "Switch gate: not yet (4 of the 15 decisions it needs have reached 30 sessions).")
+            "sessions it was right on 2 of 4, averaging +0.00% a decision against the Nifty; "
+            "at 30 sessions it was right on 2 of 4, averaging +0.00% a decision against the "
+            "Nifty. Switch gate: not yet (4 of the 15 decisions it needs have reached 30 "
+            "sessions).")
 
 
 def test_a_stock_bought_again_later_is_a_second_decision():
@@ -994,8 +1024,8 @@ def test_a_stock_bought_again_later_is_a_second_decision():
     assert [(r["date"], r["buy_date"]) for r in decisions] == [
         ("2026-06-01", "2026-05-04"), ("2026-06-22", "2026-06-15")]
     assert later == 2
-    grades = xs.grade_disagreements(rows, as_of=date(2026, 12, 31), stock_close_on=lambda s, d: 95.0,
-                                    bench_close_on=lambda d: 1000.0)
+    grades = xs.grade_disagreements(rows, as_of=date(2026, 12, 31), stock_quote_on=_nse(95.0),
+                                    bench_close_on=lambda d: 1000.0, corp_actions=_no_actions)
     assert sorted({(g["date"], g["buy_date"]) for g in grades}) == [
         ("2026-06-01", "2026-05-04"), ("2026-06-22", "2026-06-15")]
 
@@ -1034,7 +1064,8 @@ def test_later_days_never_reach_the_gate_count_span_or_share():
         s0 = rows[0]
         rows += [{**s0, "date": (start + timedelta(days=o)).isoformat()} for o in later_days]
         block = xs.scorecard_block(rows, as_of=date(2026, 12, 31),
-                                   stock_close_on=lambda s, d: 95.0, bench_close_on=lambda d: 1000.0)
+                                   stock_quote_on=_nse(95.0), bench_close_on=lambda d: 1000.0,
+                                   corp_actions=_no_actions)
         return block["gate"], block["repeat_days"]
 
     fourteen = [(f"S{i}", round(i * 60 / 13)) for i in range(14)]
@@ -1066,12 +1097,13 @@ def test_a_carried_forward_close_is_graded_from_its_own_session():
         asked.append(d)
         return nifty[d]
     rows = [_row(decided, "AAA", "HOLD", price_bar_date=bar.isoformat())]
-    grades = xs.grade_disagreements(rows, as_of=d30, stock_close_on=lambda s, d: 95.0,
-                                    bench_close_on=bench)
+    grades = xs.grade_disagreements(rows, as_of=d30, stock_quote_on=_nse(95.0),
+                                    bench_close_on=bench, corp_actions=_no_actions)
     assert [(g["horizon_td"], g["priced"], g["excess_pct"]) for g in grades] == [
         (10, "2026-09-01", -4.0), (30, "2026-09-01", -4.0)]
     assert set(asked) == {bar, d10, d30}
     # A bar date after the review day is not a session the close could come from.
     odd = [_row(decided, "AAA", "HOLD", price_bar_date="2026-09-03")]
     assert {g["priced"] for g in xs.grade_disagreements(
-        odd, as_of=d30, stock_close_on=lambda s, d: 95.0, bench_close_on=bench)} == {"2026-09-02"}
+        odd, as_of=d30, stock_quote_on=_nse(95.0), bench_close_on=bench,
+        corp_actions=_no_actions)} == {"2026-09-02"}

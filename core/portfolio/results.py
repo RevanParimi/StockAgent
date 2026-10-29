@@ -835,16 +835,20 @@ def build_row(*, week: Week, txns: Iterable, points: Iterable[dict],
               computed_at: str | None = None,
               stock_close_on: Callable[[str, date], float] | None = None,
               exit_shadow_rows: Iterable[dict] | None = None,
-              previous_exit_look: dict | None = None) -> dict:
+              previous_exit_look: dict | None = None,
+              stock_quote_on: Callable[[str, date], object] | None = None,
+              corp_actions: Callable[[str], object] | None = None) -> dict:
     """The scorecard row for `week` from the user's own ledgers. Facts dated
     after the week are ignored, so a late rebuild describes the week as it was.
     `stock_close_on(symbol, day)` values the holdings that arrived without
-    cash (capital_flows) and grades the exit-rule disagreements.
+    cash (capital_flows).
 
     PR-009: with `exit_shadow_rows`, the row gains `exit_rule`, the two exit
     rules' tally and this week's look at the switch gate
     (core/portfolio/exit_shadow.py); `previous_exit_look` is the look stored
-    with the week before."""
+    with the week before. The disagreements are graded at
+    `stock_quote_on(symbol, day)` (the close with its bar and source) in the
+    price basis `corp_actions(symbol)` establishes (FIX-016)."""
     end = week.sunday
     txns = [t for t in txns if (_day(t.date) or date.max) <= end]
     points = [p for p in points if (_day(p.get("date")) or date.max) <= end]
@@ -908,8 +912,9 @@ def build_row(*, week: Week, txns: Iterable, points: Iterable[dict],
     if exit_shadow_rows is not None:
         from core.portfolio.exit_shadow import scorecard_block
         row["exit_rule"] = scorecard_block(
-            exit_shadow_rows, as_of=end, stock_close_on=stock_close_on,
-            bench_close_on=close_on, previous_look=previous_exit_look)
+            exit_shadow_rows, as_of=end, stock_quote_on=stock_quote_on,
+            bench_close_on=close_on, corp_actions=corp_actions,
+            previous_look=previous_exit_look)
     row = _rounded(row)
     row["lines"] = scorecard_lines(row)
     return row
@@ -1126,10 +1131,58 @@ def stock_close_fn() -> Callable[[str, date], float]:
     return lookup
 
 
+_SETTLED_QUOTES: dict[tuple[str, date], object] = {}
+_SETTLED_QUOTES_MAX = 4096
+
+
+def stock_quote_fn() -> Callable[[str, date], object]:
+    """The close an exit-rule decision's horizon is graded at, with its bar
+    and source (pricing.session_close, the same fetch as stock_close_fn). A
+    past day's quote is kept for the life of the process only when it is
+    that day's own bar in NSE's raw basis (NSE's close, or Yahoo's agreeing
+    with it): a Yahoo-only close may be adjusted for a later bonus or split,
+    and the next read may get NSE's."""
+    def lookup(symbol: str, on: date):
+        from core.portfolio.exit_shadow import RAW_CLOSE_SOURCES
+        from core.portfolio.pricing import session_close
+        key = (symbol, on)
+        if key in _SETTLED_QUOTES:
+            return _SETTLED_QUOTES[key]
+        quote, _session = session_close(symbol, on)
+        if on < _today() and quote.bar_date == on and quote.source in RAW_CLOSE_SOURCES:
+            if len(_SETTLED_QUOTES) >= _SETTLED_QUOTES_MAX:
+                _SETTLED_QUOTES.clear()
+            _SETTLED_QUOTES[key] = quote
+        return quote
+    return lookup
+
+
+def corp_actions_fn() -> Callable[[str], object]:
+    """What NSE lists of a symbol's bonuses and splits, and of the changes no
+    ratio converts (corp_actions.action_record over fetch_corp_actions), read once per
+    symbol for one scorecard: the exit-rule grading puts each horizon close
+    into its decision's price basis with it. NSE is asked for the code its
+    close is read under (symbol_resolver.nse_symbol: a registry alias such as
+    TVSMOTORS is listed as TVSMOTOR). An empty or failed fetch reads as not
+    read, so that basis is unknown."""
+    records: dict[str, object] = {}
+
+    def lookup(symbol: str):
+        if symbol not in records:
+            from backend.shared.data.fetchers.symbol_resolver import nse_symbol
+            from core.portfolio import corp_actions
+            records[symbol] = corp_actions.action_record(
+                corp_actions.fetch_corp_actions(nse_symbol(symbol)), symbol)
+        return records[symbol]
+    return lookup
+
+
 def weekly_scorecard(user_id: str, on: date, *, store=None, audit_store=None,
                      close_on: Callable[[date], float] | None = None,
                      today: date | None = None,
-                     stock_close_on: Callable[[str, date], float] | None = None) -> dict:
+                     stock_close_on: Callable[[str, date], float] | None = None,
+                     stock_quote_on: Callable[[str, date], object] | None = None,
+                     corp_actions: Callable[[str], object] | None = None) -> dict:
     """The row for the week `on` covers, stored once per week key.
 
     An existing row for the week is returned untouched: a re-run rewrites
@@ -1162,6 +1215,8 @@ def weekly_scorecard(user_id: str, on: date, *, store=None, audit_store=None,
         stock_close_on=stock_close_on or stock_close_fn(),
         exit_shadow_rows=store.load_exit_shadow(),
         previous_exit_look=previous_week_look(store.load_scorecards(), week.monday),
+        stock_quote_on=stock_quote_on or stock_quote_fn(),
+        corp_actions=corp_actions or corp_actions_fn(),
     )
     if today < week.saturday:
         row["provisional"] = True

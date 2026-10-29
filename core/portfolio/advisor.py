@@ -17,9 +17,10 @@ EXIT and TRIM are never blocked: missing data must not trap a position.
 PR-009 exit rule: `decide(exit_rule="legacy")` sells on `thesis_break` (a
 price-path miss judged "not intact" with a falling path); `exit_rule="evidence"`
 sells on `case_broken` instead (`case_broken_reasons`: a material negative
-company event, an actionable SELL, or the invalidation price), and only after
-ADVISOR_MIN_HOLD_SESSIONS. Every other rule, the stops included, is the same
-code under both. The pipeline picks the acting rule (core/portfolio/exit_shadow.py).
+NSE filing or rule-typed disclosure, a recent actionable SELL run after the
+buy, or the invalidation price), and only after ADVISOR_MIN_HOLD_SESSIONS.
+Every other rule, the stops included, is the same code under both. The
+pipeline picks the acting rule (core/portfolio/exit_shadow.py).
 """
 from __future__ import annotations
 
@@ -84,9 +85,14 @@ class ExitEvidence(BaseModel):
     only what was published for this symbol on or before the review day."""
     sessions_held: int | None = None       # exchange sessions after the buy, up to the review day
     # High-materiality negative company events published in the last
-    # CASE_EVENT_SESSIONS sessions: {"id", "published_at", "category", "what"}.
+    # CASE_EVENT_SESSIONS sessions from a source in CASE_EVENT_SOURCES:
+    # {"id", "published_at", "category", "what", "source"}.
     negative_events: list[dict] = Field(default_factory=list)
-    research_verdict: str = ""             # latest actionable analysis on or before the review day
+    # The same, from any other source (a news article): watched, never a sale.
+    watch_events: list[dict] = Field(default_factory=list)
+    # The latest actionable analysis run on a later IST day than the buy and
+    # within RESEARCH_VERDICT_SESSIONS sessions up to the review day.
+    research_verdict: str = ""
     research_run_at: str = ""              # its run time, naive UTC as the score history keeps it
     # In the review day's price basis, the close's; 0.0 = none known, or a
     # level whose basis could not be established (the gap names why).
@@ -430,6 +436,16 @@ def evaluate_switch_candidates(signals: AdvisorSignals, shelf_ideas,
 
 EXIT_RULES = ("legacy", "evidence")
 SELL_RESEARCH_VERDICTS = ("SELL", "STRONG SELL")
+# The event sources that can break the case on their own: an NSE filing, or a
+# disclosure typed by fixed rules (core/events/disclosures.py). A news article
+# never can: it is a secondary report of what may have happened. An NSE
+# filing's direction and materiality are the bulk-tier classifier's reading
+# too (core/events/classify.py), as a news article's are; a filing may sell
+# because the item itself is the company's primary disclosure. PR-012's
+# label-accuracy bench measures that reading (no routine filing may read as
+# high negative).
+CASE_EVENT_SOURCES = ("nse_announcement", "nse_board_meeting",
+                      "nse_insider", "nse_sast", "nse_pledge", "nse_shareholding")
 
 
 def case_broken_reasons(evidence: ExitEvidence | None, close: float) -> list[str]:
@@ -437,10 +453,13 @@ def case_broken_reasons(evidence: ExitEvidence | None, close: float) -> list[str
 
     Any one is enough:
       1. a high-materiality negative company event published in the last
-         CASE_EVENT_SESSIONS sessions (already filtered into the evidence).
-         No holding has an investment case yet, so any such event counts;
-         PR-005's case will narrow it to one that contradicts a pillar;
-      2. the latest actionable research verdict is SELL or STRONG SELL;
+         CASE_EVENT_SESSIONS sessions (already filtered into the evidence)
+         from a source in CASE_EVENT_SOURCES. An event from any other source
+         never counts here, whichever list it arrives in: a news article is a
+         watch item. No holding has an investment case yet, so any such event
+         counts; PR-005's case will narrow it to one that contradicts a pillar;
+      2. the latest actionable research verdict is SELL or STRONG SELL (only a
+         run after the buy and recent enough is in the evidence);
       3. the close is at or below the invalidation level: the entry rule
          (core/portfolio/sizing.py) refuses a buy there for the same reason.
 
@@ -450,12 +469,19 @@ def case_broken_reasons(evidence: ExitEvidence | None, close: float) -> list[str
         return []
     reasons = []
     for event in evidence.negative_events:
+        if event.get("source") not in CASE_EVENT_SOURCES:
+            continue
         day = str(event.get("published_at") or "")[:10]
         reasons.append(f"negative {event.get('category', '')} event of {day}: "
                        f"{event.get('what', '')}".strip())
     verdict = evidence.research_verdict.strip().upper()
     if verdict in SELL_RESEARCH_VERDICTS:
-        reasons.append(f"research verdict {verdict} ({evidence.research_run_at[:10]})")
+        # The run's IST day, the day the freshness rule compares with the buy
+        # (`research_run_at` is naive UTC: 00:01 IST on 9 Oct is 8 Oct there).
+        from core.discovery.candidates import _ist_day
+        run_day = _ist_day(evidence.research_run_at)
+        reasons.append(f"research verdict {verdict} "
+                       f"({run_day.isoformat() if run_day else 'run time unknown'})")
     level = evidence.invalidation_level
     if level > 0 and close <= level:
         reasons.append(f"close {close:.2f} at or below the invalidation level {level:.2f}"

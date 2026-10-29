@@ -24,7 +24,7 @@ from core.portfolio.digest import build_digest
 from core.portfolio.identity_reconcile import holding_identity_issue, symbol_identity_issue
 from core.portfolio.narrator import narrate
 from core.portfolio import sizing
-from core.portfolio.pricing import session_close
+from core.portfolio.pricing import PriceUnavailableError, session_close
 from core.portfolio.store import PortfolioStore, active_user_ids
 from services.data.fetchers.corporate_events import (
     load_events_calendar,
@@ -268,6 +268,28 @@ def run_post_review_pipeline(review_date: date) -> dict:
         evidence_reader = (exit_shadow.EvidenceReader(all_ideas, corp_actions=corp_records)
                            if exit_mode != "legacy" else None)
         shadow_rows: list = []
+        shelf_index = {i.symbol: i for i in shelf_ideas}
+        buy_legs: dict[str, bool] = {}
+
+        def switch_lands(destination: str) -> bool:
+            """FIX-016: would a SWITCH's buy of `destination` land? Asked when
+            the shadow row is written, before the autopilot runs; a refused
+            buy leaves the money in cash, and the row's benchmark says so. A
+            fetch that fails in any way is a refused buy, as in the executor."""
+            if destination not in buy_legs:
+                try:
+                    quote, session = session_close(destination, review_date)
+                    issue = symbol_identity_issue(destination, session)
+                except PriceUnavailableError:
+                    quote, session, issue = None, review_date, ""
+                except Exception as exc:
+                    logger.warning("[portfolio_pipeline] %s: switch destination %s unread, "
+                                   "its buy counted as refused: %s", user_id, destination, exc)
+                    quote, session, issue = None, review_date, ""
+                buy_legs[destination] = exit_shadow.switch_buy_lands(
+                    quote, session, shelf_index.get(destination), identity_issue=issue,
+                    enforcing=dg.enforcing())
+            return buy_legs[destination]
         for holding in portfolio.holdings:
             if holding.symbol not in quotes:
                 continue
@@ -318,7 +340,8 @@ def run_post_review_pipeline(review_date: date) -> dict:
                         shadow_rows.append(exit_shadow.shadow_row(
                             on=review_date, user_id=user_id, mode=exit_mode, close=close,
                             legacy=legacy, evidence_rec=by_evidence, evidence=evidence,
-                            buy_date=holding.buy_date, price_bar_date=signals.price_bar_date))
+                            buy_date=holding.buy_date, price_bar_date=signals.price_bar_date,
+                            switch_lands=switch_lands))
                     except Exception as exc:
                         logger.warning("[portfolio_pipeline] exit shadow failed for %s "
                                        "(non-fatal): %s", holding.symbol, exc)
@@ -369,7 +392,7 @@ def run_post_review_pipeline(review_date: date) -> dict:
             txns = autopilot.execute_advice(
                 store, portfolio, advice, closes, review_date,
                 sector_lookup=shelf_sectors,
-                shelf_index={i.symbol: i for i in shelf_ideas})
+                shelf_index=shelf_index)
             if txns:
                 portfolio = store.load()          # digest sees post-trade state
                 logger.info("[portfolio_pipeline] autopilot executed %d trade(s) for %s",

@@ -209,8 +209,8 @@ class ExitShadowRow(BaseModel):
     `legacy_*` is the price-path rule (`thesis_break`), `evidence_*` the
     evidence rule (`case_broken`); `mode` says which one acted. One row per
     (date, symbol), written once (core/portfolio/exit_shadow.py). The weekly
-    scorecard grades a holding's first disagreeing row only, on the stock's
-    excess over the Nifty 10 and 30 sessions after `date`, from `close`.
+    scorecard grades a holding's first disagreeing row only, 10 and 30
+    sessions after `date`, from `close`, against the row's `benchmark`.
     """
     date: str                      # the review day (ISO)
     user_id: str
@@ -225,6 +225,10 @@ class ExitShadowRow(BaseModel):
     evidence_triggers: list[str] = Field(default_factory=list)
     # Exactly one of the two sells the whole position (EXIT or SWITCH).
     disagree: bool
+    # Where a disagreement's sale put the money, fixed on this day: "cash" for
+    # a plain EXIT whose proceeds wait in cash, "nifty" for a SWITCH or once
+    # the portfolio deploys its cash; "" when the rules agree. Never re-derived.
+    benchmark: Literal["", "cash", "nifty"] = ""
     # Why the reason to own it broke, whether or not case_broken fired (it
     # waits out advisor.min_hold_sessions); [] when nothing broke.
     case_broken_reasons: list[str] = Field(default_factory=list)

@@ -9,7 +9,8 @@ keys stored on the holding.
 PR-009: the sync also returns what NSE listed for each held symbol
 (`ActionRecord`), so the evidence exit rule can carry a shelf idea's
 invalidation level, set in the rupees of its deep dive, into the review
-day's price basis.
+day's price basis. FIX-016: the exit rule's grading reads the same record for
+a sold stock, with the rows no ratio converts (`basis_changes`).
 """
 from __future__ import annotations
 
@@ -29,6 +30,47 @@ _SPLIT_RE = re.compile(
     r"from\s+r[se]\.?\s*(\d+(?:\.\d+)?).{0,40}?to\s+r[se]\.?\s*(\d+(?:\.\d+)?)", re.I
 )
 _DIV_RE = re.compile(r"dividend[^0-9]*(\d+(?:\.\d+)?)", re.I)
+# FIX-016: rows that change the price basis by an amount the row does not give. A demerger
+# or a scheme moves part of the company's value elsewhere; a consolidation, a capital
+# reduction or a rights issue changes the price by a ratio this parser does not read.
+# First match names the kind. A buy back, a dividend or a meeting leaves the basis alone.
+_BASIS_CHANGE_KINDS = (
+    ("demerger", re.compile(r"de[\s-]?merger|spin[\s-]?off|hive[\s-]?off", re.I)),
+    ("scheme of arrangement", re.compile(r"\bsch(?:eme)?\b|amalgamation|\bmerger", re.I)),
+    ("consolidation", re.compile(r"consolidat", re.I)),
+    ("capital reduction",
+     re.compile(r"capital\s+reduction|reduction\s+(?:of|in)\s+(?:share\s+)?capital"
+                r"|return\s+of\s+capital", re.I)),
+    ("rights issue", re.compile(r"\brights?\b|\brhs\b", re.I)),
+)
+# FIX-016 rework 3: the record fails closed. NSE words one action many ways ("Fv Splt Frm Rs 10
+# To Re 1", "Bonus Preference Shares 21:1"), so a row is judged by every word in it. It is a
+# ratio only when each word is one of an equity bonus or a face-value split, or of a part that
+# leaves the price basis alone; neutral only when each word is one of such a part. Any other
+# row is not read, and grading gives no result across it. The words are those of NSE's lists
+# for the configured symbols, read in October 2026.
+_NEUTRAL_WORDS = frozenset({
+    # dividends, in NSE's spellings
+    "dividend", "div", "divided", "interim", "final", "fin", "special", "spl", "int", "second",
+    # meetings and votes
+    "annual", "general", "meeting", "agm", "egm", "extra", "ordinary", "e", "voting",
+    # buy backs, interest and redemption
+    "buy", "back", "buyback", "interest", "payment", "redemption",
+    # amounts, dates, NSE's notes on a revised row, and joining words
+    "rs", "re", "per", "share", "shares", "sh", "equity", "and", "of", "plus", "including",
+    "record", "date", "dates", "book", "closure", "purpose", "revised",
+    "jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec",
+})
+# A registrar change, removed before the words are read ("change" and "transfer" alone are not
+# neutral words).
+_NEUTRAL_PHRASE_RE = re.compile(r"change\s+in\s+registrar(?:\s+and\s+transfer\s+agent)?", re.I)
+_RATIO_WORDS = {
+    "bonus": frozenset({"bonus", "issue", "eq"}),
+    "split": frozenset({"face", "value", "split", "sub", "division", "from", "to"}),
+}
+# Words that name a change in the share count (a bonus or a face-value change), read or not.
+_SHARE_COUNT_RE = re.compile(r"bonus|split|splt|sub-?\s*div|\bfv\b|face\s*value", re.I)
+_WORD_RE = re.compile(r"[a-z]+")
 
 _NSE_DATE_FMTS = ("%d-%b-%Y", "%d-%m-%Y", "%Y-%m-%d")
 
@@ -62,6 +104,45 @@ def _row_ex_date(row: dict) -> str | None:
 def _changes_share_count(desc: str) -> bool:
     low = desc.lower()
     return "split" in low or "bonus" in low or "sub-division" in low
+
+
+def _bonus_and_split(desc: str) -> bool:
+    """A row naming a bonus and a split ("Bonus 1:1/Face Value Split (Sub-Division) -
+    From Rs 10/- Per Share To Rs 2/- Per Share", BAJFINANCE 2016): parse_action reads
+    its bonus alone, a ratio of 2 where the price fell to a tenth."""
+    low = desc.lower()
+    return "bonus" in low and ("split" in low or "sub-division" in low)
+
+
+def basis_change_kind(desc: str) -> str:
+    """The kind of price-basis change a row names that no ratio in it
+    converts ("" when it names none): demerger, scheme of arrangement,
+    consolidation, capital reduction or rights issue."""
+    return next((kind for kind, pattern in _BASIS_CHANGE_KINDS if pattern.search(desc)), "")
+
+
+def _words(text: str) -> set[str]:
+    return set(_WORD_RE.findall(_NEUTRAL_PHRASE_RE.sub(" ", text).lower()))
+
+
+def _read_ratio(desc: str, action: AppliedCorpAction | None,
+                beside_change: bool) -> AppliedCorpAction | None:
+    """`action` when grading may apply it as a ratio: a bonus or split
+    parse_action read, in a row naming not both, whose words are all of an
+    equity bonus or a face-value split or of a neutral part ("Bonus 1:1",
+    "Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 2/- Per
+    Share"). Beside a change no ratio converts, only the bonus or split's own
+    words are read: that change already leaves the row's day without a
+    result. Else None: "Bonus Preference Shares 21:1" is not 22 equity shares
+    for one."""
+    if (action is None or action.kind not in ("bonus", "split") or action.ratio <= 0
+            or _bonus_and_split(desc)):
+        return None
+    text = desc
+    if beside_change:
+        match = (_BONUS_RE if action.kind == "bonus" else _SPLIT_RE).search(desc)
+        text = match.group(0) if match else desc
+    return action if _words(text) <= _NEUTRAL_WORDS | _RATIO_WORDS[action.kind] else None
 
 
 def parse_action(row: dict) -> AppliedCorpAction | None:
@@ -122,31 +203,49 @@ def parse_action(row: dict) -> AppliedCorpAction | None:
 class ActionRecord:
     """What NSE listed for one symbol in one sync (PR-009).
 
-    `actions`: its bonus and split rows, parsed. `covers_from`: the earliest
-    ex-date of any row it returned, whatever the kind, so every bonus or split
-    with a later ex-date is in `actions`; "" when it returned nothing (NSE's
-    answer, or a failed fetch: `fetch_corp_actions` returns [] for both).
-    `unparsed`: ex-dates of split or bonus rows that could not be parsed."""
+    `actions`: its bonus and split rows, parsed and read in full
+    (`_read_ratio`). `covers_from`: the earliest ex-date of any row it
+    returned, whatever the kind, so every bonus or split with a later ex-date
+    is in `actions` or `unparsed`; "" when it returned nothing (NSE's answer,
+    or a failed fetch: `fetch_corp_actions` returns [] for both).
+    `unparsed`: ex-dates of rows naming a bonus or a face-value change that
+    are not read as a ratio: one that could not be parsed, one naming both
+    (FIX-016: parse_action reads only the bonus), a bonus of other securities
+    or one in words the record does not know ("Fv Splt Frm Rs 10 To Re 1").
+    `basis_changes` (FIX-016): (ex-date, kind) of rows that change the price
+    basis by an amount they do not give (`basis_change_kind`), whatever else
+    the row also says, and of any other row with a word that is not of a
+    neutral part, as a corporate action of no known kind (rework 3)."""
     actions: tuple[AppliedCorpAction, ...] = ()
     covers_from: str = ""
     unparsed: tuple[str, ...] = ()
+    basis_changes: tuple[tuple[str, str], ...] = ()
 
 
 def action_record(rows: list[dict], symbol: str) -> ActionRecord:
-    """The ActionRecord of one symbol's raw NSE actions() rows."""
-    actions, unparsed, days = [], [], []
+    """The ActionRecord of one symbol's raw NSE actions() rows. A row
+    without an ex-date is not read."""
+    actions, unparsed, changes, days = [], [], [], []
     for row in rows:
         ex = _row_ex_date(row)
         if ex is None:
             continue
         days.append(ex)
-        action = parse_action(dict(row, symbol=symbol))
-        if action is not None and action.kind in ("bonus", "split") and action.ratio > 0:
+        desc = _row_desc(row)
+        kind = basis_change_kind(desc)
+        action = _read_ratio(desc, parse_action(dict(row, symbol=symbol)), bool(kind))
+        words = _words(desc)
+        if action is not None:
             actions.append(action)
-        elif _changes_share_count(_row_desc(row)):
+        elif _SHARE_COUNT_RE.search(desc):
             unparsed.append(ex)
+        elif not kind and not (words and words <= _NEUTRAL_WORDS):
+            kind = f"corporate action of no known kind ({desc[:60]!r})"
+        if kind:
+            changes.append((ex, kind))
     return ActionRecord(actions=tuple(actions), covers_from=min(days) if days else "",
-                        unparsed=tuple(sorted(unparsed)))
+                        unparsed=tuple(sorted(unparsed)),
+                        basis_changes=tuple(sorted(set(changes))))
 
 
 def apply_actions_to_holding(

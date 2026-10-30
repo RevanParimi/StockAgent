@@ -1159,20 +1159,26 @@ def stock_quote_fn() -> Callable[[str, date], object]:
 
 def corp_actions_fn() -> Callable[[str], object]:
     """What NSE lists of a symbol's bonuses and splits, and of the changes no
-    ratio converts (corp_actions.action_record over fetch_corp_actions), read once per
+    ratio converts (corp_actions.action_record over read_corp_actions), read once per
     symbol for one scorecard: the exit-rule grading puts each horizon close
     into its decision's price basis with it. NSE is asked for the code its
     close is read under (symbol_resolver.nse_symbol: a registry alias such as
-    TVSMOTORS is listed as TVSMOTOR). An empty or failed fetch reads as not
-    read, so that basis is unknown."""
+    TVSMOTORS is listed as TVSMOTOR). A list that could not be read is None,
+    a gap a later week's read may close; an empty answer is a record of no
+    rows (FIX-018)."""
     records: dict[str, object] = {}
 
     def lookup(symbol: str):
         if symbol not in records:
             from backend.shared.data.fetchers.symbol_resolver import nse_symbol
             from core.portfolio import corp_actions
-            records[symbol] = corp_actions.action_record(
-                corp_actions.fetch_corp_actions(nse_symbol(symbol)), symbol)
+            from services.data.fetchers import corporate_events
+            try:
+                records[symbol] = corp_actions.action_record(
+                    corporate_events.read_corp_actions(nse_symbol(symbol)), symbol)
+            except Exception as exc:
+                logger.warning("[results] corporate actions unread for %s: %s", symbol, exc)
+                records[symbol] = None
         return records[symbol]
     return lookup
 

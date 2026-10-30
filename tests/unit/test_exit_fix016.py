@@ -648,7 +648,8 @@ class _Market:
       action's row.
 
     `nse_down`: days NSE's close does not answer. `unlisted`: symbols whose NSE action list
-    comes back empty. NSE knows only the codes in `value`; any other code's list is empty.
+    comes back empty. `nse_fails` (FIX-018): symbols whose NSE action list cannot be read (the
+    request fails). NSE knows only the codes in `value`; any other code's list is empty.
 
     Rework 2: `demergers[symbol]` is (ex, kept, row): from `ex` the stock trades at `kept` of
     its value, the rest having left for another listing, so NSE's raw close is the value times
@@ -663,6 +664,7 @@ class _Market:
         self.rows: dict = {}
         self.nse_down: set = set()
         self.unlisted: set = set()
+        self.nse_fails: set = set()
         self.yahoo_adjusts_demergers = False
 
     def _factor(self, symbol: str, counts) -> float:
@@ -727,6 +729,8 @@ class _Market:
 
         class Client:
             def actions(self, symbol):
+                if symbol in market.nse_fails:
+                    raise ConnectionError(f"corporates-corporateActions 503: {symbol}")
                 # NSE answers only a code it lists (rework 3): an app code such as a registry
                 # alias's TVSMOTORS gets nothing, as NSE answered on 29 Oct 2026.
                 if symbol in market.unlisted or symbol not in market.value:
@@ -867,44 +871,61 @@ def test_the_price_basis_rule_by_hand():
         (listed(_nse_row("unreadable", nov2)), nse, 100.0, ""),
     ]
     for record, quote, close, note in cases:
-        assert xs.horizon_in_basis(quote, record, start, decided) == (close, note, ""), (
+        assert xs.horizon_in_basis(quote, record, start, decided) == (close, note, "", ""), (
             record, quote)
 
+    # FIX-018: each gap's kind, by hand: lasting when no later read of NSE's close or list can
+    # change it, temporary when one may (a list not read, or Yahoo's close where NSE's would be
+    # graded), and a quote that is undated or from before the decision's close.
+    lasting, temporary = xs.LASTING, xs.TEMPORARY
     unknown = [
-        (None, nse, "NSE's list of its corporate actions is empty or was not read, so one "
-                    "since 2026-10-01 cannot be ruled out"),
-        (action_record([], "AAA"), nse, "NSE's list of its corporate actions is empty or was "
-                                        "not read, so one since 2026-10-01 cannot be ruled out"),
+        (None, nse, "NSE's list of its corporate actions could not be read, so one since "
+                    "2026-10-01 cannot be ruled out", temporary),
+        (action_record([], "AAA"), nse, "NSE's list of its corporate actions is empty, so one "
+                                        "since 2026-10-01 cannot be ruled out", lasting),
+        (action_record([{"subject": "Demerger", "exDate": ""}], "AAA"), nse,
+         "NSE's list of its corporate actions holds no dated row, so one since 2026-10-01 cannot "
+         "be ruled out", temporary),
         (action_record([_nse_row("bonus", d20)], "AAA"), nse,
          "NSE's list of its corporate actions starts 2026-10-20, after the decision's close "
-         "(2026-10-01)"),
+         "(2026-10-01)", lasting),
         (listed(_nse_row("unreadable", d20)), nse,
-         "NSE lists a split or bonus on 2026-10-20 that could not be read"),
+         "NSE lists a split or bonus on 2026-10-20 that could not be read", lasting),
+        (listed(_nse_row("unreadable", d20)), yahoo,
+         "NSE lists a split or bonus on 2026-10-20 that could not be read", lasting),
         (listed(_nse_row("unreadable", nov2)), yahoo,
-         "NSE lists a split or bonus on 2026-11-02 that could not be read"),
+         "NSE lists a split or bonus on 2026-11-02 that could not be read", temporary),
         (listed(_nse_row("bonus", d20), _nse_row("bonus", d20, "1:2")), nse,
-         "NSE lists two bonus ratios ex 2026-10-20 (2 and 1.5)"),
+         "NSE lists two bonus ratios ex 2026-10-20 (2 and 1.5)", lasting),
         (listed(_nse_row("bonus", decided)), nse,
          "a bonus or split went ex on 2026-10-05, after the close's bar (2026-10-01) and by the "
-         "review day (2026-10-05), so the stored close may be on either side of it"),
+         "review day (2026-10-05), so the stored close may be on either side of it", lasting),
         (listed(_nse_row("bonus", nov2)), yahoo,
          "the horizon close is Yahoo's alone (NSE's did not answer), and Yahoo adjusts it for "
-         "the bonus or split ex 2026-11-02"),
-        (listed(), SessionClose(100.0, None, "nse"), "the horizon close is undated"),
+         "the bonus or split ex 2026-11-02", temporary),
+        (listed(), SessionClose(100.0, None, "nse"), "the horizon close is undated", temporary),
         (listed(), SessionClose(100.0, date(2026, 9, 30), "nse"),
-         "the horizon close is from 2026-09-30, before the decision's close (2026-10-01)"),
+         "the horizon close is from 2026-09-30, before the decision's close (2026-10-01)",
+         temporary),
+        # a quote that is undated or too early is temporary even beside a lasting cause
+        (action_record([], "AAA"), SessionClose(100.0, None, "nse"),
+         "the horizon close is undated", temporary),
+        (listed(_nse_row("bonus", decided)), SessionClose(100.0, date(2026, 9, 30), "nse"),
+         "the horizon close is from 2026-09-30, before the decision's close (2026-10-01)",
+         temporary),
     ]
-    for record, quote, gap in unknown:
-        assert xs.horizon_in_basis(quote, record, start, decided) == (None, "", gap), gap
+    for record, quote, gap, kind in unknown:
+        assert xs.horizon_in_basis(quote, record, start, decided) == (None, "", gap, kind), gap
 
 
 def test_a_basis_that_cannot_be_established_is_no_result_and_never_helps(monkeypatch):
     """Through the real price path. 8 sales right at +5 each (the stocks fell 5%) and 8 keeps
     wrong at -1 each (they fell 1%): (8 x 5 - 8 x 1) / 16 = +2.00, a pass ("not worse"). Then
-    NSE's action list for S15, a keep that was wrong, comes back empty: whether a bonus or
-    split moved its price cannot be ruled out, so S15 has no result at either horizon; the
-    count is unchanged (it was not right), and the money check, missing one result, fails.
-    The line names S15."""
+    NSE's action list for S15, a keep that was wrong, cannot be read that Sunday (FIX-018: an
+    empty list is set aside instead, tests/unit/test_exit_fix018.py): whether a bonus or split
+    moved its price cannot be ruled out, so S15 has no result at either horizon; the count is
+    unchanged (it was not right), and the money check, missing one result, fails. The line
+    names S15."""
     spec = [(True, -5.0)] * 8 + [(False, -1.0)] * 8
     market = _Market()
     rows = _real_rows(market, spec)
@@ -915,7 +936,7 @@ def test_a_basis_that_cannot_be_established_is_no_result_and_never_helps(monkeyp
 
     market = _Market()
     rows = _real_rows(market, spec)
-    market.unlisted.add("S15")
+    market.nse_fails.add("S15")
     quotes, actions = market.install(monkeypatch)
     block = xs.scorecard_block(rows, as_of=date(2026, 12, 31), stock_quote_on=quotes,
                                bench_close_on=lambda d: 1000.0, corp_actions=actions)
@@ -935,6 +956,7 @@ def test_a_basis_that_cannot_be_established_is_no_result_and_never_helps(monkeyp
            if g["symbol"] == "S15"]
     assert [(g["status"], g["result_pct"], g["right"], g["no_basis"][:30]) for g in s15] == [
         ("ungraded", None, None, "NSE's list of its corporate ac")] * 2
+    assert [g["no_result"] for g in s15] == [xs.TEMPORARY] * 2 and look["set_aside"] == []
 
 
 def test_a_yahoo_only_close_after_a_later_bonus_has_no_result_until_nse_answers(monkeypatch):
@@ -981,14 +1003,15 @@ def test_the_scorecard_reads_nse_once_per_stock_and_keeps_only_settled_closes(mo
     """The weekly scorecard's lookups: one NSE action list per stock for the whole scorecard,
     however many horizons; a past day's close is kept for later weeks only when it is that
     day's own bar in NSE's raw basis (here NSE's, then Yahoo's alone, which is not kept)."""
-    from core.portfolio import corp_actions, results
+    from core.portfolio import results
+    from services.data.fetchers import corporate_events
     market = _Market()
     rows = _real_rows(market, [(True, -2.0), (False, 3.0)])
     reads = []
     quotes, actions = market.install(monkeypatch)
-    real_fetch = corp_actions.fetch_corp_actions
-    monkeypatch.setattr(corp_actions, "fetch_corp_actions",
-                        lambda s: reads.append(s) or real_fetch(s))
+    real_read = corporate_events.read_corp_actions
+    monkeypatch.setattr(corporate_events, "read_corp_actions",
+                        lambda s: reads.append(s) or real_read(s))
     xs.grade_disagreements(rows, as_of=date(2026, 12, 31), stock_quote_on=quotes,
                            bench_close_on=lambda d: 1000.0, corp_actions=actions)
     assert sorted(reads) == ["S0", "S1"]
@@ -1226,7 +1249,8 @@ def test_rr2_one_demerger_no_longer_passes_a_losing_rule(monkeypatch, demerger):
     a decision, right on 8 of 15, so it fails. Then S14 demerges 40% three sessions after its
     decision: its raw close at both horizons is 105 x 3/5 = ₹63, still +5% in real terms. With
     the defect it read -37%, right, +37: 9 of 15 at +23/15 = +1.53%, a pass two weeks running.
-    Now S14 has no result: still 8 right, the money check cannot pass, and the week after
+    Now S14 has no result, for good: FIX-018 sets it aside (1 of 15), and the 14 left are short
+    of the 15 the gate needs, still 8 right at (8 x 2 - 6 x 5) / 14 = -1.00%; the week after
     nothing is recommended."""
     market = _Market()
     rows = _real_rows(market, [(True, -2.0)] * 8 + [(True, 5.0)] * 7)
@@ -1235,14 +1259,16 @@ def test_rr2_one_demerger_no_longer_passes_a_losing_rule(monkeypatch, demerger):
     quotes, actions = market.install(monkeypatch)
     prices = dict(stock_quote_on=quotes, bench_close_on=lambda d: 1000.0, corp_actions=actions)
     look = xs.scorecard_block(rows, as_of=date(2026, 12, 31), **prices)["gate"]
-    assert (look["status"], look["right"]) == (xs.FAIL, {"10": 8, "30": 8})
+    assert look["right"] == {"10": 8, "30": 8}
     if demerger:
+        assert (look["status"], look["matured"], look["judged"]) == (xs.NOT_ENOUGH, 15, 14)
         assert (look["mean_result_pct"], look["unknown_result"]) == (
-            {"10": None, "30": None}, {"10": 1, "30": 1})
+            {"10": -1.0, "30": -1.0}, {"10": 0, "30": 0})
+        assert [a["symbol"] for a in look["set_aside"]] == ["S14"]
         assert look["reasons"] == [
-            "1 decision with no result at 10 sessions, so the money check cannot pass",
-            "1 decision with no result at 30 sessions, so the money check cannot pass"]
+            "14 of the 15 decisions it needs have reached 30 sessions, not counting 1 set aside"]
     else:
+        assert look["status"] == xs.FAIL
         mean = float(Fraction(-19, 15))
         assert look["mean_result_pct"] == {"10": pytest.approx(mean), "30": pytest.approx(mean)}
         assert look["reasons"] == [
@@ -1250,7 +1276,8 @@ def test_rr2_one_demerger_no_longer_passes_a_losing_rule(monkeypatch, demerger):
             "its mean result at 30 sessions is -1.27% (needs at least +0.00%)"]
     again = xs.scorecard_block(rows, as_of=date(2026, 12, 31) + timedelta(days=7),
                                previous_look=look, **prices)
-    assert again["recommend"] is False and again["gate"]["status"] == xs.FAIL
+    assert again["recommend"] is False
+    assert again["gate"]["status"] == (xs.NOT_ENOUGH if demerger else xs.FAIL)
     assert "passed" not in xs.scorecard_text(again)
 
 
@@ -1332,31 +1359,34 @@ def test_a_change_no_ratio_converts_is_no_result_by_hand():
     nse = SessionClose(100.0, bar, "nse")
     agree = SessionClose(100.0, bar, "agree")
     yahoo = SessionClose(100.0, bar, "yfinance")
+    lasting, temporary = xs.LASTING, xs.TEMPORARY      # FIX-018: each gap's kind, by hand
     for subject, kind in NSE_WORDING + OTHER_WORDING:
         assert xs.horizon_in_basis(nse, listed(subject, d20), start, decided) == (
-            None, "", _no_ratio(kind, "2026-10-20", "2026-10-01")), subject
+            None, "", _no_ratio(kind, "2026-10-20", "2026-10-01"), lasting), subject
     for subject in NEUTRAL_WORDING:
         assert xs.horizon_in_basis(nse, listed(subject, d20), start, decided) == (
-            100.0, "", ""), subject
+            100.0, "", "", ""), subject
     assert xs.horizon_in_basis(nse, listed(BONUS_AND_SPLIT, d20), start, decided) == (
-        None, "", "NSE lists a split or bonus on 2026-10-20 that could not be read")
+        None, "", "NSE lists a split or bonus on 2026-10-20 that could not be read", lasting)
 
     def demerger(ex, quote):
         return xs.horizon_in_basis(quote, listed("Demerger", ex), start, decided)
     def gone(ex: str) -> str:
         return _no_ratio("demerger", ex, "2026-10-01")
     # ex on the close's own bar: both closes are after it, in one basis
-    assert demerger(start, nse) == (100.0, "", "")
-    # ex by the review day, or on the horizon's bar: one close on each side
-    assert demerger(decided, nse) == (None, "", gone("2026-10-05"))
-    assert demerger(bar, nse) == (None, "", gone("2026-10-30"))
+    assert demerger(start, nse) == (100.0, "", "", "")
+    # ex by the review day, or on the horizon's bar: one close on each side, for good
+    assert demerger(decided, nse) == (None, "", gone("2026-10-05"), lasting)
+    assert demerger(bar, nse) == (None, "", gone("2026-10-30"), lasting)
+    assert demerger(bar, yahoo) == (None, "", gone("2026-10-30"), lasting)
     # ex after the horizon's bar: NSE's raw close (or Yahoo's agreeing) is still before it
-    assert demerger(nov2, nse) == (100.0, "", "")
-    assert demerger(nov2, agree) == (100.0, "", "")
-    # ... but Yahoo's alone may be scaled for it
-    assert demerger(nov2, yahoo) == (None, "", gone("2026-11-02"))
+    assert demerger(nov2, nse) == (100.0, "", "", "")
+    assert demerger(nov2, agree) == (100.0, "", "", "")
+    # ... but Yahoo's alone may be scaled for it, until NSE's close answers
+    assert demerger(nov2, yahoo) == (None, "", gone("2026-11-02"), temporary)
     # a horizon close carried forward from the decision's own bar, a demerger by the review day
-    assert demerger(decided, SessionClose(100.0, start, "nse")) == (None, "", gone("2026-10-05"))
+    assert demerger(decided, SessionClose(100.0, start, "nse")) == (
+        None, "", gone("2026-10-05"), lasting)
 
 
 def test_a_row_naming_a_bonus_and_a_split_leaves_the_invalidation_level_unused():
@@ -1549,6 +1579,11 @@ OTHER_ROWS = [
     # to a tenth), even where only the bonus's own words are read
     ("Bonus 1:1/Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 2/- Per Share"
      "/Rights 1:5 @ Premium Rs 100/-", ((), True, ("rights issue",))),
+    # a bonus is read with a bonus's own words, never a split's: read as a bonus of 2 alone,
+    # either row would be a false -80% where the face value also fell to a fifth (FIX-016's
+    # re-review 3, T1, routed to FIX-018)
+    ("Bonus 1:1 And Face Value From Rs 10 To Rs 2", UNREAD),
+    ("Bonus 1:1 (Face Value Rs 10 To Rs 2)", UNREAD),
     ("", ((), False, ("unknown",))),
 ]
 
@@ -1571,7 +1606,7 @@ def test_rr2_q5_a_bonus_of_preference_shares_no_longer_passes_a_losing_rule(monk
     its price, worded as ZEEL's row: the equity trades at 92.5% of what one old share is worth,
     and the number of equity shares does not change. By hand S14 is still wrong (-5 in real
     terms). NSE's row gives no ratio of equity shares, so S14 has no result at both horizons,
-    named; the gate fails (right on 8, the money check cannot pass) and the week after
+    named; it is set aside (FIX-018), the 14 left are not enough, and the week after
     recommends nothing. With the defect the record read a 22-for-1 bonus: 95 x 0.925 x 22, a
     +1,833% keep, right, and a mean above +100%: a pass."""
     market = _Market()
@@ -1586,12 +1621,16 @@ def test_rr2_q5_a_bonus_of_preference_shares_no_longer_passes_a_losing_rule(monk
     s14 = xs.grade_disagreements(rows[14:], as_of=date(2026, 12, 31), **prices)
     assert [(g["status"], g["result_pct"], g["no_basis"]) for g in s14] == [
         ("ungraded", None, _not_read(ex.isoformat()))] * 2
+    # FIX-018: S14's gap is for good, so it is set aside (1 of 15) and the 14 left are not
+    # enough: (8 x 2 - 6 x 5) / 14 = -1.00%.
     look = xs.scorecard_block(rows, as_of=date(2026, 12, 31), **prices)["gate"]
     assert (look["status"], look["right"], look["mean_result_pct"], look["unknown_result"]) == (
-        xs.FAIL, {"10": 8, "30": 8}, {"10": None, "30": None}, {"10": 1, "30": 1})
+        xs.NOT_ENOUGH, {"10": 8, "30": 8}, {"10": -1.0, "30": -1.0}, {"10": 0, "30": 0})
+    assert look["set_aside"] == [{"date": rows[14]["date"], "symbol": "S14",
+                                  "reason": _not_read(ex.isoformat())}]
     again = xs.scorecard_block(rows, as_of=date(2026, 12, 31) + timedelta(days=7),
                                previous_look=look, **prices)
-    assert again["recommend"] is False and again["gate"]["status"] == xs.FAIL
+    assert again["recommend"] is False and again["gate"]["status"] == xs.NOT_ENOUGH
 
 
 @pytest.mark.parametrize("subject, reason", [
@@ -1607,8 +1646,9 @@ def test_rr2_q3_a_demerger_in_wording_the_record_does_not_know_passes_no_losing_
     record has never seen. The RR2 population: 15 sales by the evidence rule, S0-S7 then fell 2%
     (right, +2) and S8-S14 rose 5% (wrong, -5): -19/15, a fail. Three sessions after its
     decision S14 demerges 40% of its worth, worded `subject`: ₹105 x 0.6 = ₹63, still +5% in
-    real terms, so still wrong with -5. S14 has no result at both horizons, named; the gate
-    fails and the week after recommends nothing. With the defect S14 read a 37% fall, right,
+    real terms, so still wrong with -5. S14 has no result at both horizons, named; it is set
+    aside (FIX-018), the 14 left are not enough, and the week after recommends nothing. With
+    the defect S14 read a 37% fall, right,
     +37: 9 of 15 at +1.53%, a pass."""
     market = _Market()
     rows = _real_rows(market, [(True, -2.0)] * 8 + [(True, 5.0)] * 7)
@@ -1621,9 +1661,12 @@ def test_rr2_q3_a_demerger_in_wording_the_record_does_not_know_passes_no_losing_
     s14 = xs.grade_disagreements(rows[14:], as_of=date(2026, 12, 31), **prices)
     assert [(g["status"], g["result_pct"], g["no_basis"]) for g in s14] == [
         ("ungraded", None, reason(ex.isoformat(), decided.isoformat()))] * 2
+    # FIX-018: set aside for good (1 of 15); the 14 left are not enough.
     look = xs.scorecard_block(rows, as_of=date(2026, 12, 31), **prices)["gate"]
     assert (look["status"], look["right"], look["unknown_result"]) == (
-        xs.FAIL, {"10": 8, "30": 8}, {"10": 1, "30": 1})
+        xs.NOT_ENOUGH, {"10": 8, "30": 8}, {"10": 0, "30": 0})
+    assert [(a["symbol"], a["reason"]) for a in look["set_aside"]] == [
+        ("S14", reason(ex.isoformat(), decided.isoformat()))]
     again = xs.scorecard_block(rows, as_of=date(2026, 12, 31) + timedelta(days=7),
                                previous_look=look, **prices)
     assert again["recommend"] is False
@@ -1670,6 +1713,7 @@ def test_rr2_m1_a_registry_alias_reads_nses_list_under_nses_code(monkeypatch, al
     grades it; with the defect it asked for the alias, got nothing, and had no result for
     good."""
     from core.portfolio import corp_actions
+    from services.data.fetchers import corporate_events
     monkeypatch.setenv("INSTRUMENT_REGISTRY_PATH",
                        str(Path(__file__).resolve().parents[2] / "config" / "instruments.yaml"))
     market = _Market()
@@ -1681,8 +1725,9 @@ def test_rr2_m1_a_registry_alias_reads_nses_list_under_nses_code(monkeypatch, al
     quotes, actions = market.install(monkeypatch)
     reads = []
     real_fetch = corp_actions.fetch_corp_actions
-    monkeypatch.setattr(corp_actions, "fetch_corp_actions",
-                        lambda s: reads.append(s) or real_fetch(s))
+    real_read = corporate_events.read_corp_actions
+    monkeypatch.setattr(corporate_events, "read_corp_actions",
+                        lambda s: reads.append(s) or real_read(s))
     assert quotes(alias, trading_days_after(decided, 10)).close == 500.0
     grades = xs.grade_disagreements(rows, as_of=date(2026, 12, 31), stock_quote_on=quotes,
                                     bench_close_on=lambda d: 1000.0, corp_actions=actions)

@@ -55,23 +55,31 @@ def _first_str(item: dict, *keys: str) -> str:
     return ""
 
 
-def fetch_corp_actions(symbol: str) -> list[dict]:
-    """Raw NSE actions() rows for a symbol. [] on any failure — never raises."""
-    try:
-        nse = _make_nse_client()
-    except Exception as exc:
-        logger.warning("[corporate_events] NSE client unavailable: %s", exc)
-        return []
+def read_corp_actions(symbol: str) -> list[dict]:
+    """Raw NSE actions() rows for a symbol; [] only when NSE answers with an
+    empty list. Raises when the list could not be read: no client, a failed
+    request, or an answer that is neither a list nor {"data": [...]}
+    (FIX-018: the exit rule's grading sets aside a decision whose stock NSE
+    lists nothing for, and only that)."""
+    nse = _make_nse_client()
     try:
         raw = nse.actions(symbol=symbol)
-        items = raw if isinstance(raw, list) else raw.get("data", [])
-        return items if isinstance(items, list) else []
-    except Exception as exc:
-        logger.warning("[corporate_events] actions() failed for %s: %s", symbol, exc)
-        return []
+        items = raw.get("data") if isinstance(raw, dict) else raw
+        if not isinstance(items, list):
+            raise ValueError(f"unexpected actions() answer: {type(raw).__name__}")
+        return items
     finally:
         from services.data.fetchers.nse_client import close_nse
         close_nse(nse)  # exit() + rmtree(download_folder) — AUD-017
+
+
+def fetch_corp_actions(symbol: str) -> list[dict]:
+    """Raw NSE actions() rows for a symbol. [] on any failure — never raises."""
+    try:
+        return read_corp_actions(symbol)
+    except Exception as exc:
+        logger.warning("[corporate_events] actions() failed for %s: %s", symbol, exc)
+        return []
 
 
 def refresh_events_calendar(symbols: list[str], cache_path: str | None = None) -> dict:

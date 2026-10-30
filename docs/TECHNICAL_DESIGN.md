@@ -1245,16 +1245,19 @@ neutral only when it is known to be, so a new wording can cost a decision its
 result but never decides one.
 
 When the basis cannot be established, the decision has **no result** at that
-horizon that week. That fails the money check, as a missing close does, and the
-scorecard line names the stock. The causes:
+horizon that week, and the scorecard line names the stock. Each gap is one of
+two kinds, and the switch gate (below) treats them differently.
 
-- the list is empty or was not read, or its earliest row is after the
-  decision's close, so a bonus, split or demerger between cannot be ruled out;
-- NSE lists a split or bonus row after the close that is not read as a ratio of
-  equity shares, one row naming both a bonus and a split, or two ratios for one
-  day;
-- one went ex after the close's bar and by the review day, so the stored close
-  may be on either side of it;
+**Lasting: no later read can change it.**
+
+- NSE's list was read and is empty (NSE lists nothing for the symbol), or its
+  earliest row is after the decision's close, so a bonus, split or demerger
+  between cannot be ruled out;
+- a bonus or split went ex after the close's bar and by the review day, so the
+  stored close may be on either side of it;
+- NSE lists, after the close and by the horizon close's bar, a split or bonus
+  row that is not read as a ratio of equity shares (or one row naming both a
+  bonus and a split), or two ratios for one day;
 - NSE lists, after the close's bar and by the horizon close's bar or the review
   day, a change that no ratio in its row converts: a demerger (part of the
   company's value leaves for another listing, and NSE's row says only
@@ -1263,14 +1266,26 @@ scorecard line names the stock. The causes:
   capital, a rights issue (also "Rhs"), or a row of no known kind;
 - the instrument registry records a new price basis for the symbol between the
   decision's close and the horizon's day (a demerger or a relisting, section 4),
-  which NSE's list may not show; a rename keeps the basis and is graded;
-- the horizon close is undated or older than the decision's close;
+  which NSE's list may not show; a rename keeps the basis and is graded.
+
+**Temporary: a later week's read may resolve it.**
+
+- NSE's list could not be read (no client, a failed request, an answer of no
+  known shape), or it holds rows but none with an ex-date. Grading reads the
+  list with `read_corp_actions`, which raises on a failed read and returns
+  `[]` only for an empty answer; the holding sync's `fetch_corp_actions` still
+  returns `[]` for both;
+- the horizon close is missing, undated or older than the decision's close,
+  or the row names no benchmark;
 - the horizon close is Yahoo's alone (NSE's did not answer) and a bonus, split
   or one of those changes went ex after its bar: Yahoo's series is adjusted
-  for every action up to the day it is read.
+  for every action up to the day it is read, and NSE's raw close would be
+  graded.
 
-A later week's read can resolve the list and the Yahoo cases; a demerger or a
-registry basis change between the closes never resolves.
+The checks run in a fixed order and the first cause found names the gap: the
+close (present, dated, not older than the decision's close), then whether
+NSE's list was read, then the list's rows. So a decision is found lasting only
+on a close and a list that were both read.
 
 **Example: a bonus after a decision.** The evidence rule sells a stock at ₹190
 on Friday 23 October as a plain EXIT, and the price-path rule keeps it. A 1:1
@@ -1284,7 +1299,7 @@ failing example below (right on 8 of 15, −3.6%) pass the gate.
 of the company's value is demerged into a new listing, and the horizon close is
 ₹114. The stock is flat in real terms, yet read as prices it fell 40%, a result
 of +40. NSE's row gives no fraction, so the decision has no result at either
-horizon, and the scorecard names the stock.
+horizon, for good: the switch gate sets it aside, and the scorecard names it.
 
 **Example: a bonus of other securities.** The evidence rule keeps a stock at
 ₹280 that the price-path rule sold. Three sessions later the company issues 21
@@ -1308,20 +1323,51 @@ saved 3%: the evidence rule that sold was right, with a result of +3. After a
 SWITCH the money went into a market that lost 5%, so keeping the stock was 2
 points better: wrong, −2.
 
-**The switch gate** is fixed in code, set before any row existed. The
-population is the decisions whose 30 sessions have ended. A decision with no
-close at a horizon counts as not right, and its result is unknown, so the
-money check at that horizon fails: no stand-in value could be guaranteed not
-to flatter the evidence rule.
+**The switch gate** is fixed in code, set before any row existed. It looks at
+the decisions whose 30 sessions have ended.
+
+- **Set aside, named.** A decision with a lasting gap (above) at 10 sessions,
+  at 30 or at both can never be graded, so it is set aside at both horizons.
+  The look stores each one with its stock, decision day and reason, and the
+  scorecard line names it: "Set aside, as its result can never be known: XYZ,
+  decided 2026-11-03: NSE lists a demerger ex 2026-11-12, …". The gate judges
+  the rest.
+- **A temporary gap never helps.** A judged decision with no result at a
+  horizon counts as not right, and its result is unknown, so the money check
+  at that horizon fails that week: no stand-in value could be guaranteed not
+  to flatter the evidence rule.
+- **A cap.** At most 2 decisions, and at most 10% of those past 30 sessions,
+  may be set aside. Beyond the cap a look that would pass reads **cannot
+  judge** instead; a look that fails or has too few keeps that status.
+  "Cannot judge" is never a pass, so it breaks the two-week run.
 
 | Condition | Required |
 |---|---|
-| Decisions past 30 sessions | at least 15 |
+| Decisions past 30 sessions, not counting those set aside | at least 15 |
 | Span of their review days | at least 8 weeks |
 | Evidence rule right | at least 50%, at 10 sessions and at 30 |
 | Its mean result | at least 0, at 10 sessions and at 30 |
 | One stock's share of them | at most 30% |
+| Decisions set aside | at most 2, and at most 10% of those past 30 sessions |
 | Weekly looks that pass | 2 in a row |
+
+**Why set aside, and why a cap** (the owner's decision of 29 October 2026). The
+population has no window, so without setting aside one decision whose result
+can never be known would fail the money check every week from then on: a sale
+of a stock that demerges three sessions later would block the gate for good,
+whatever the other 19 decisions showed. Setting a decision aside can help the
+evidence rule (it might have been a wrong one), so the cap bounds how much.
+Examples, each judged population right on at least 50% with a mean of about
++0.8% at both horizons:
+
+| Decisions past 30 sessions | Set aside | The gate |
+|---|---|---|
+| 15 graded + 1 demerger | 1 of 16 (6%) | judged on 15: passes, "not worse" |
+| 15 graded + 2 set aside | 2 of 17 (12%) | cannot judge (above 10%) |
+| 18 graded + 2 set aside | 2 of 20 (10%) | judged on 18: passes |
+| 14 graded + 1 set aside | 1 of 15 | not yet (14 of the 15 it needs) |
+| 15 graded + 1 set aside + 1 with no NSE close this Sunday | 1 of 17 | fails this week |
+| 17, 27 or 47 graded + 3 set aside | 3 | cannot judge (more than 2) |
 
 **What a pass means: not worse.** Counting hits alone can pass a rule that
 loses money: right on 8 of 15, where the 8 saved 2% each and the 7 wrong ones
@@ -1382,18 +1428,22 @@ through and the decision pace to the scorecard.
   rest of that process when it is that day's own bar in NSE's raw basis, but
   the run grows with the number of decisions.
 - A decision whose close stays missing (a stock suspended or delisted after
-  the decision) fails the money check every week for as long as it is
-  missing; the scorecard line names how many have no price, and nothing
-  substitutes a value for it.
-- A decision whose price basis stays unknown does the same, and the line
-  names the stock: a stock NSE lists no corporate action for at all (14 of the
-  202 configured symbols on 29 October 2026, among them LTIM, STARHEALTH and
-  ZOMATO; ETERNAL, listed in 2021, returned none either), one with a bonus or
-  split ex between its close's bar and its review day (a carried-forward close
-  on the ex day), or one with a row between its two closes that is a change no
-  ratio converts or is not read. The population has no window, so one such
-  decision keeps the money check failing for as long as it lasts, which for
-  these is for good. NSE's lists for the 202 configured symbols, read under
+  the decision) is a temporary gap: it fails the money check every week for
+  as long as it is missing; the scorecard line names how many have no price,
+  and nothing substitutes a value for it. When the instrument registry
+  records the stock's new basis, its close is read under the new code, and
+  once it is read the decision is set aside.
+- The population has no window, so a decision set aside stays set aside, and
+  beyond the cap the gate cannot judge for as long as those decisions stay in
+  it. With 15 to 19 decisions past 30 sessions, 2 set aside is already above
+  10%. The common lasting gaps: a stock NSE lists no corporate action for at
+  all (14 of the 202 configured symbols on 29 October 2026, among them LTIM,
+  STARHEALTH and ZOMATO; ETERNAL, listed in 2021, returned none either; some
+  may be stale codes, **Planned:** FIX-019), one with a bonus or split ex
+  between its close's bar and its review day (a carried-forward close on the
+  ex day), or one with a row between its two closes that is a change no ratio
+  converts or is not read. An empty list is taken as lasting although NSE
+  could list a row later. NSE's lists for the 202 configured symbols, read under
   NSE's codes on 29 October 2026 (3,215 rows, each list its latest 20 actions or
   fewer), held 3,011 neutral rows and 110 ratios; 50 changes no ratio converts
   (14 demergers, 27 rights issues, 9 schemes, 5 of those naming a bonus of
@@ -1402,6 +1452,11 @@ through and the decision pace to the scorecard.
   2021, mostly misspelt dividends, except TVSMOTOR's "Scheme Of Arrangement -
   Bonus Ncrps 4:1" of August 2025. Of the 849 rows dated from 2024, none was of
   no known kind.
+- The evidence rule reads NSE filings, so it may sell on a scheme or demerger
+  announcement, the very event that later sets the decision aside: a sale it
+  made can leave the count that way. Which decisions are set aside depends
+  only on the stock's prices, NSE's list and the registry, never on which rule
+  sold, and the cap is the only bound on how often this helps.
 - A row without an ex-date is not read. NSE listed 9 on 29 October 2026:
   interest payments, a nil dividend, INOXLEISUR's "Merger" and NIIT's
   "Agm/Div-50%/Sch Of Arrang". Whether NSE dates such a row once it goes ex was
@@ -1727,7 +1782,7 @@ week whose sessions are not over is never stored.
 | Breadth | Holdings (for the latest week) and the invested share at the week's last valuation. |
 | Holding period | Median exchange sessions held by the positions closed this week. |
 | Idea quality | From the auditor's shelf lane: how many shelf ideas beat the Nifty 10 and 30 sessions after they were shelved, whether bought or not, with the median gap in points. Only grades matured by the week's end count. It measures the idea supply, not the portfolio, and it is a line, not a flag. |
-| Exit rule test | From `exit_shadow.jsonl` (section 6): on how many decisions the price-path rule and the evidence rule disagreed (one per holding, on its first disagreeing day), in how many holding-days reviewed, and how many later days of the same disagreements were not counted; how often the evidence rule was right at 10 and 30 sessions and its mean result a decision against where the money went (how many against cash, how many against the Nifty), with the mean against the Nifty alone beside it; what is still pending, has no price, or has no result because a corporate action could not be ruled out or allowed for (naming those stocks); and this week's look at the switch gate ("not worse" on a pass, plus "better" when it applies). The row stores the look, so the next week can tell whether the gate passed twice in a row. Shown once a row exists. |
+| Exit rule test | From `exit_shadow.jsonl` (section 6): on how many decisions the price-path rule and the evidence rule disagreed (one per holding, on its first disagreeing day), in how many holding-days reviewed, and how many later days of the same disagreements were not counted; how often the evidence rule was right at 10 and 30 sessions and its mean result a decision against where the money went (how many against cash, how many against the Nifty), with the mean against the Nifty alone beside it; what is still pending, has no price, or has no result because a corporate action could not be ruled out or allowed for (naming those stocks); this week's look at the switch gate ("not worse" on a pass, plus "better" when it applies, or "cannot judge" when more decisions are set aside than the cap allows); and each decision set aside from the gate, with its decision day and why its result can never be known. The row stores the look, so the next week can tell whether the gate passed twice in a row. Shown once a row exists. |
 
 **Holdings that arrive without cash.** "Add holding" and a CSV import, on an
 account with cash accounting, raise `capital_in` by the holding's cost (the

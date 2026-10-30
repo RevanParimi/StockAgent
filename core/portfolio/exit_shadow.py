@@ -57,7 +57,9 @@ the old shares, a return of 0, not -50%. A demerger, a scheme, a
 consolidation, a capital reduction or a rights issue NSE lists between the
 two closes, or a new basis the instrument registry records, has no ratio to
 apply. When that basis cannot be established the decision has no result
-that week, which never helps the evidence rule (`gate_look`).
+that week. A cause no later read can change sets the decision aside from
+the gate, named and within a cap; any other never helps the evidence rule
+(`gate_look`).
 
 **The switch gate** is fixed here, before any result. It recommends the
 switch; the owner makes it (`advisor.exit_rule: evidence`). Rollback: legacy.
@@ -108,8 +110,14 @@ GATE_MIN_MEAN_RESULT_PCT = 0.0     # and its mean result at least this, at 10 AN
 GATE_MAX_STOCK_PCT = 30.0          # no stock more than this share of them
 GATE_LOOKS = 2                     # the pass holds at this many consecutive weekly looks
 BETTER_RIGHT_PCT = 70.0            # a pass is labelled "better" at this share with a positive mean
+# A decision whose result can never be known is set aside, named (fixed 29 Oct 2026, before any
+# shadow row existed); past either cap a pass becomes "cannot judge".
+GATE_MAX_SET_ASIDE = 2             # decisions set aside
+GATE_MAX_SET_ASIDE_PCT = 10.0      # of the decisions past 30 sessions
 
-PASS, FAIL, NOT_ENOUGH = "pass", "fail", "not_enough"
+PASS, FAIL, NOT_ENOUGH, CANNOT_JUDGE = "pass", "fail", "not_enough", "cannot_judge"
+# Why a grade has no result: a cause no later read can change, or one it may (`horizon_in_basis`).
+LASTING, TEMPORARY = "lasting", "temporary"
 _RESULT_UNITS = 10_000             # results are kept to 4 decimals; summed exactly in these units
 
 
@@ -464,52 +472,69 @@ def first_disagreements(rows: Iterable[dict]) -> tuple[list[dict], int]:
     return decisions, later
 
 
-def horizon_in_basis(quote, record, start: date, decided: date) -> tuple[float | None, str, str]:
+def horizon_in_basis(quote, record, start: date,
+                     decided: date) -> tuple[float | None, str, str, str]:
     """The horizon close `quote` (a pricing.SessionClose) in the price basis
     of the decision's close: the raw close of its bar `start`, taken on the
     review day `decided`. A bonus or split cuts the raw price by its ratio
     and leaves the company's value alone, so the horizon close is multiplied
     by the ratio of every one that went ex after `start` and on or before the
     quote's bar (an ex day's close is already in the new shares). Returns
-    (close, note, gap); the note names each ratio applied.
+    (close, note, gap, kind); the note names each ratio applied.
 
     The ratios come from `record`, what NSE lists for the symbol read at
-    grading (corp_actions.ActionRecord): a stock the acting rule sold has no
-    holding, so no applied actions. When the basis cannot be established the
-    close is None and the gap says why:
-      - the list was not read, is empty, or starts after `start` (a bonus or
-        split between could be missing);
+    grading (corp_actions.ActionRecord; None when it could not be read): a
+    stock the acting rule sold has no holding, so no applied actions. When
+    the basis cannot be established the close is None, the gap says why, and
+    the kind says whether a later read could change it (TEMPORARY) or not
+    (LASTING). Checked in this order, the first cause found decides:
+      - temporary: the quote is undated or its bar is before `start`; the
+        list was not read, or holds rows but none dated;
+      - lasting: the list is empty (NSE lists nothing for the symbol) or
+        starts after `start` (a bonus or split between could be missing);
+      - lasting: a bonus or split went ex after `start` and on or before
+        `decided`: the stored close was fetched on the review day and may be
+        in either basis;
       - a split or bonus row from after `start` was not read as a ratio (it
         could not be parsed, names other securities or words the record does
-        not know), or two rows give one day two ratios;
-      - one went ex after `start` and on or before `decided`: the stored close
-        was fetched on the review day and may be in either basis;
+        not know), lasting when it is ex on or before the quote's bar,
+        temporary after it when the quote is Yahoo's alone (NSE's close did
+        not answer): Yahoo's series is adjusted for every action up to the
+        day it is read, and NSE's raw close would be graded;
       - NSE lists a change no ratio converts (a demerger, a scheme, a
         consolidation, a capital reduction, a rights issue, or a row of no
-        known kind: the record's `basis_changes`) ex after `start` and on or
-        before the quote's bar or `decided`, or after the bar when the quote
-        is Yahoo's alone;
-      - the quote is undated, its bar is before `start`, or it is Yahoo's
-        alone (NSE's close did not answer) with one ex after its bar: Yahoo's
-        series is adjusted for every action up to the day it is read.
+        known kind: the record's `basis_changes`) ex after `start`: lasting
+        on or before the quote's bar or `decided`, temporary after them when
+        the quote is Yahoo's alone;
+      - temporary: the quote is Yahoo's alone with a bonus or split ex after
+        its bar;
+      - lasting: two rows give one day two ratios.
 
     Example: decided at ₹190 on 23 Oct; a 1:1 bonus (ratio 2) goes ex on
     28 Oct; the horizon's raw close is ₹95, which is ₹190 in the old shares.
     Had 40% of the company been demerged instead, ₹114 is not a fall of 40%,
-    and no ratio in NSE's row says what the part that left is worth."""
+    and no ratio in NSE's row says what the part that left is worth: no
+    re-read changes that, so it is lasting."""
     bar = getattr(quote, "bar_date", None)
-    if record is None or not record.covers_from:
-        return None, "", ("NSE's list of its corporate actions is empty or was not read, so "
-                          f"one since {start.isoformat()} cannot be ruled out")
-    if record.covers_from > start.isoformat():
-        return None, "", (f"NSE's list of its corporate actions starts {record.covers_from}, "
-                          f"after the decision's close ({start.isoformat()})")
+    since = start.isoformat()
     if bar is None:
-        return None, "", "the horizon close is undated"
+        return None, "", "the horizon close is undated", TEMPORARY
     if bar < start:
         return None, "", (f"the horizon close is from {bar.isoformat()}, before the "
-                          f"decision's close ({start.isoformat()})")
-    after, review, last = start.isoformat(), decided.isoformat(), bar.isoformat()
+                          f"decision's close ({since})"), TEMPORARY
+    if record is None:
+        return None, "", ("NSE's list of its corporate actions could not be read, so one "
+                          f"since {since} cannot be ruled out"), TEMPORARY
+    if not record.covers_from:
+        if record.rows:
+            return None, "", ("NSE's list of its corporate actions holds no dated row, so "
+                              f"one since {since} cannot be ruled out"), TEMPORARY
+        return None, "", ("NSE's list of its corporate actions is empty, so one since "
+                          f"{since} cannot be ruled out"), LASTING
+    if record.covers_from > since:
+        return None, "", (f"NSE's list of its corporate actions starts {record.covers_from}, "
+                          f"after the decision's close ({since})"), LASTING
+    after, review, last = since, decided.isoformat(), bar.isoformat()
     raw = str(getattr(quote, "source", "") or "") in RAW_CLOSE_SOURCES
     actions = [a for a in record.actions if a.kind in SHARE_COUNT_KINDS and a.ratio > 0]
     ex_days = sorted({a.ex_date for a in actions} | set(record.unparsed))
@@ -517,23 +542,25 @@ def horizon_in_basis(quote, record, start: date, decided: date) -> tuple[float |
     if stored:
         return None, "", (f"a bonus or split went ex on {stored[0]}, after the close's bar "
                           f"({after}) and by the review day ({review}), so the stored close "
-                          "may be on either side of it")
+                          "may be on either side of it"), LASTING
     unread = [d for d in record.unparsed if after < d and (d <= last or not raw)]
     if unread:
-        return None, "", (f"NSE lists a split or bonus on {min(unread)} that could not be "
-                          "read")
+        first = min(unread)
+        return (None, "", f"NSE lists a split or bonus on {first} that could not be read",
+                LASTING if first <= last else TEMPORARY)
     changed = sorted((d, kind) for d, kind in record.basis_changes
                      if after < d and (d <= last or d <= review or not raw))
     if changed:
         ex, kind = changed[0]
         return None, "", (f"NSE lists a {kind} ex {ex}, after the decision's close ({after}), "
                           "and no ratio puts the horizon close in the decision's price basis "
-                          "across it")
+                          "across it"), LASTING if ex <= max(last, review) else TEMPORARY
     if not raw:
         later = [d for d in ex_days if d > last]
         if later:
             return None, "", (f"the horizon close is Yahoo's alone (NSE's did not answer), "
-                              f"and Yahoo adjusts it for the bonus or split ex {later[0]}")
+                              f"and Yahoo adjusts it for the bonus or split ex {later[0]}"
+                              ), TEMPORARY
     used: dict[tuple[str, str], float] = {}
     for a in sorted(actions, key=lambda a: a.ex_date):
         if not after < a.ex_date <= last:
@@ -541,12 +568,12 @@ def horizon_in_basis(quote, record, start: date, decided: date) -> tuple[float |
         ratio = used.setdefault((a.ex_date, a.kind), a.ratio)
         if abs(ratio - a.ratio) > 1e-9:
             return None, "", (f"NSE lists two {a.kind} ratios ex {a.ex_date} "
-                              f"({ratio:g} and {a.ratio:g})")
+                              f"({ratio:g} and {a.ratio:g})"), LASTING
     factor = 1.0
     for ratio in used.values():
         factor *= ratio
     note = ", ".join(f"×{ratio:g} for the {kind} ex {ex}" for (ex, kind), ratio in used.items())
-    return float(quote.close) * factor, note, ""
+    return float(quote.close) * factor, note, "", ""
 
 
 def grade_disagreements(rows: Iterable[dict], *, as_of: date,
@@ -559,8 +586,10 @@ def grade_disagreements(rows: Iterable[dict], *, as_of: date,
     after `as_of` (no price is read); "ungraded" when the row names no
     benchmark (`decision_benchmark`), a close the benchmark needs is missing,
     or the horizon close's price basis cannot be established
-    (`horizon_in_basis`, or `registry_break`; `no_basis` says why); else
-    "graded" with:
+    (`horizon_in_basis`, or `registry_break`; `no_basis` says why). An
+    ungraded grade's `no_result` is LASTING when no later read can change
+    its cause (`horizon_in_basis`'s kind, or a registry basis change), else
+    TEMPORARY. Else "graded" with:
 
     - `return_pct`: the stock's own return, in one price basis
       (`horizon_in_basis`; `basis` names the ratios applied);
@@ -598,7 +627,7 @@ def grade_disagreements(rows: Iterable[dict], *, as_of: date,
                      "evidence_sold": evidence_sold, "benchmark": benchmark,
                      "status": "pending", "return_pct": None, "excess_pct": None,
                      "gap_pct": None, "result_pct": None, "nifty_result_pct": None,
-                     "right": None, "basis": "", "no_basis": ""}
+                     "right": None, "basis": "", "no_basis": "", "no_result": ""}
             if matured > as_of:
                 out.append(grade)
                 continue
@@ -610,15 +639,16 @@ def grade_disagreements(rows: Iterable[dict], *, as_of: date,
                 quote = stock_quote_on(symbol, matured)
                 if getattr(quote, "close", None) is None:
                     raise ValueError("no close")
-                horizon_close, grade["basis"], grade["no_basis"] = horizon_in_basis(
+                horizon_close, grade["basis"], grade["no_basis"], kind = horizon_in_basis(
                     quote, _actions(corp_actions, symbol), start, decided)
                 broken = "" if horizon_close is None else registry_break(symbol, start, matured)
                 if broken:
-                    horizon_close, grade["basis"], grade["no_basis"] = None, "", broken
+                    horizon_close, grade["basis"], grade["no_basis"], kind = (
+                        None, "", broken, LASTING)
                 if horizon_close is None:
-                    logger.info("[exit_shadow] %s %s @%dtd: no result: %s", symbol, decided,
-                                horizon, grade["no_basis"])
-                    grade["status"] = "ungraded"
+                    logger.info("[exit_shadow] %s %s @%dtd: no result (%s): %s", symbol, decided,
+                                horizon, kind, grade["no_basis"])
+                    grade.update(status="ungraded", no_result=kind)
                     out.append(grade)
                     continue
                 ret = pct_change(float(row["close"]), horizon_close)
@@ -632,7 +662,7 @@ def grade_disagreements(rows: Iterable[dict], *, as_of: date,
             except Exception as exc:
                 logger.debug("[exit_shadow] %s %s @%dtd ungraded: %s", symbol, decided,
                              horizon, exc)
-                grade["status"] = "ungraded"
+                grade.update(status="ungraded", no_result=TEMPORARY)
                 out.append(grade)
                 continue
             gap = ret if benchmark == "cash" else over
@@ -697,18 +727,24 @@ def tally(grades: Iterable[dict], horizon: int) -> dict:
 
 
 def gate_look(grades: Iterable[dict]) -> dict:
-    """This week's look at the switch gate. The population is the decisions
-    (one per holding) whose 30 sessions have ended. A missing grade never
+    """This week's look at the switch gate. The decisions (one per holding)
+    whose 30 sessions have ended are `matured`. One with a LASTING gap at 10
+    sessions, at 30 or at both (`grade_disagreements`: its result can never
+    be known) is set aside at both horizons and named in `set_aside` with
+    its reason; the gate judges the rest. Any other missing grade never
     helps the evidence rule: it counts as not right, and it fails the money
     check at its horizon, because its result is unknown and no stand-in value
     could be guaranteed not to flatter the rule.
 
-    - not_enough: fewer than GATE_MIN_MATURED of them, or their review days
+    - not_enough: fewer than GATE_MIN_MATURED judged, or their review days
       span less than GATE_MIN_SPAN_DAYS;
     - fail: at 10 or at 30 sessions, the evidence rule right on less than
       GATE_MIN_RIGHT_PCT, or its mean result (`grade_disagreements`) below
       GATE_MIN_MEAN_RESULT_PCT or unknown; or one stock more than
       GATE_MAX_STOCK_PCT of them;
+    - cannot_judge: none of these, but more than GATE_MAX_SET_ASIDE set
+      aside, or more than GATE_MAX_SET_ASIDE_PCT of `matured`. Only a pass
+      becomes it, and it is never a pass (`recommends`);
     - pass: none of these. A pass means "not worse": at least as often right
       as the price-path rule, and no money lost against it. Half right is
       what a rule with no skill reaches about half the time, so a pass is
@@ -717,12 +753,17 @@ def gate_look(grades: Iterable[dict]) -> dict:
       positive mean (11 of 15, unlikely by chance); it is a label only.
 
     Example: right on 8 of 15. The 8 saved 2% each, the 7 wrong ones cost
-    10% each: (8 x 2 - 7 x 10) / 15 = -3.6% a decision. It fails."""
+    10% each: (8 x 2 - 7 x 10) / 15 = -3.6% a decision. It fails. Add a
+    16th, a sale of a stock that demerged three sessions later: it is set
+    aside (1 of 16), and the 15 still fail."""
     by_key: dict[tuple[str, str], dict[int, dict]] = {}
     for g in grades:
         by_key.setdefault((g["date"], g["symbol"]), {})[g["horizon_td"]] = g
-    population = sorted(k for k, hs in by_key.items()
-                        if GATE_HORIZON_TD in hs and hs[GATE_HORIZON_TD]["status"] != "pending")
+    matured = sorted(k for k, hs in by_key.items()
+                     if GATE_HORIZON_TD in hs and hs[GATE_HORIZON_TD]["status"] != "pending")
+    aside = [k for k in matured
+             if any(by_key[k].get(h, {}).get("no_result") == LASTING for h in GRADE_HORIZONS_TD)]
+    population = [k for k in matured if k not in aside]
     n = len(population)
     right = {h: sum(1 for k in population if by_key[k].get(h, {}).get("right") is True)
              for h in GRADE_HORIZONS_TD}
@@ -738,7 +779,10 @@ def gate_look(grades: Iterable[dict]) -> dict:
     days = [date.fromisoformat(d) for d, _ in population]
     span = (max(days) - min(days)).days if days else 0
     top_symbol, top_count = (Counter(s for _, s in population).most_common(1) or [("", 0)])[0]
-    look = {"matured": n, "right": {str(h): right[h] for h in GRADE_HORIZONS_TD},
+    look = {"matured": len(matured), "judged": n,
+            "set_aside": [{"date": d, "symbol": s, "reason": _lasting_reason(by_key[(d, s)])}
+                          for d, s in aside],
+            "right": {str(h): right[h] for h in GRADE_HORIZONS_TD},
             "mean_result_pct": {str(h): (None if unknown[h] or not n
                                          else total[h] / n / _RESULT_UNITS)
                                 for h in GRADE_HORIZONS_TD},
@@ -748,7 +792,8 @@ def gate_look(grades: Iterable[dict]) -> dict:
     if n < GATE_MIN_MATURED or span < GATE_MIN_SPAN_DAYS:
         if n < GATE_MIN_MATURED:
             look["reasons"].append(f"{n} of the {GATE_MIN_MATURED} decisions it needs "
-                                   f"have reached {GATE_HORIZON_TD} sessions")
+                                   f"have reached {GATE_HORIZON_TD} sessions"
+                                   + (f", not counting {len(aside)} set aside" if aside else ""))
         if span < GATE_MIN_SPAN_DAYS:
             look["reasons"].append(f"they span {span} days of the {GATE_MIN_SPAN_DAYS} "
                                    "(8 weeks) it needs")
@@ -771,10 +816,26 @@ def gate_look(grades: Iterable[dict]) -> dict:
     if top_count * 100 > GATE_MAX_STOCK_PCT * n:
         look["reasons"].append(f"{top_symbol} is {top_count} of the {n} "
                                f"(more than {GATE_MAX_STOCK_PCT:.0f}%)")
-    look["status"] = FAIL if look["reasons"] else PASS
+    if look["reasons"]:
+        look["status"] = FAIL
+        return look
+    # The cap, in whole numbers: 2 of 20 is exactly 10%, which it allows.
+    if len(aside) > GATE_MAX_SET_ASIDE:
+        look["reasons"].append(f"{len(aside)} of the {len(matured)} decisions are set aside "
+                               f"(at most {GATE_MAX_SET_ASIDE} may be)")
+    elif len(aside) * 100 > GATE_MAX_SET_ASIDE_PCT * len(matured):
+        look["reasons"].append(f"{len(aside)} of the {len(matured)} decisions are set aside "
+                               f"(more than {GATE_MAX_SET_ASIDE_PCT:.0f}%)")
+    look["status"] = CANNOT_JUDGE if look["reasons"] else PASS
     look["better"] = look["status"] == PASS and all(
         right[h] * 100 >= BETTER_RIGHT_PCT * n and total[h] > 0 for h in GRADE_HORIZONS_TD)
     return look
+
+
+def _lasting_reason(by_horizon: dict[int, dict]) -> str:
+    """The reason of a set-aside decision's first lasting grade, by horizon."""
+    return next(by_horizon[h].get("no_basis") or "" for h in GRADE_HORIZONS_TD
+                if by_horizon.get(h, {}).get("no_result") == LASTING)
 
 
 def recommends(look: dict, previous_look: dict | None) -> bool:
@@ -860,8 +921,16 @@ def scorecard_text(block: dict) -> str:
                  "next week.")
     elif look["status"] == FAIL:
         text += " Switch gate: fails (" + "; ".join(look["reasons"]) + ")."
+    elif look["status"] == CANNOT_JUDGE:
+        text += " Switch gate: cannot judge (" + "; ".join(look["reasons"]) + ")."
     else:
         text += " Switch gate: not yet (" + "; ".join(look["reasons"]) + ")."
+    aside = look.get("set_aside") or []
+    if aside:
+        text += (" Set aside, as " + ("its result" if len(aside) == 1 else "their results")
+                 + " can never be known: "
+                 + "; ".join(f"{a['symbol']}, decided {a['date']}: {a['reason']}" for a in aside)
+                 + ".")
     return text
 
 

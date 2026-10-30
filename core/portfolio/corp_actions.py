@@ -206,8 +206,10 @@ class ActionRecord:
     `actions`: its bonus and split rows, parsed and read in full
     (`_read_ratio`). `covers_from`: the earliest ex-date of any row it
     returned, whatever the kind, so every bonus or split with a later ex-date
-    is in `actions` or `unparsed`; "" when it returned nothing (NSE's answer,
-    or a failed fetch: `fetch_corp_actions` returns [] for both).
+    is in `actions` or `unparsed`; "" when it returned no dated row (NSE's
+    answer, or a failed fetch: `fetch_corp_actions` returns [] for both).
+    `rows` (FIX-018): how many rows it returned, dated or not, so 0 with an
+    answer read by `read_corp_actions` means NSE lists nothing for the symbol.
     `unparsed`: ex-dates of rows naming a bonus or a face-value change that
     are not read as a ratio: one that could not be parsed, one naming both
     (FIX-016: parse_action reads only the bonus), a bonus of other securities
@@ -220,6 +222,7 @@ class ActionRecord:
     covers_from: str = ""
     unparsed: tuple[str, ...] = ()
     basis_changes: tuple[tuple[str, str], ...] = ()
+    rows: int = 0
 
 
 def action_record(rows: list[dict], symbol: str) -> ActionRecord:
@@ -245,7 +248,7 @@ def action_record(rows: list[dict], symbol: str) -> ActionRecord:
             changes.append((ex, kind))
     return ActionRecord(actions=tuple(actions), covers_from=min(days) if days else "",
                         unparsed=tuple(sorted(unparsed)),
-                        basis_changes=tuple(sorted(set(changes))))
+                        basis_changes=tuple(sorted(set(changes))), rows=len(rows))
 
 
 def apply_actions_to_holding(

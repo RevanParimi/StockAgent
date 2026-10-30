@@ -1,8 +1,8 @@
 # StockAgent — Technical Design and Knowledge Transfer
 
-**Edition:** 2026-10-29 · **Audience:** engineers and teammates learning the product
+**Edition:** 2026-10-30 · **Audience:** engineers and teammates learning the product
 
-**Code inspected:** `aa29f697fba3bf68cebf4ad86270713baa00b81a`
+**Code inspected:** `53e3f0e60fbfd695c27db04164443ad6834cc10c`
 
 **PDF:** [StockAgent-Three-Loops.pdf](StockAgent-Three-Loops.pdf), generated from this Markdown.
 
@@ -37,9 +37,8 @@ triggered no production job, backfill or notification.
 
 Production runs `ffa012b`, deployed at 20:18 IST on 23 October 2026 (the
 deployment list showed it SUCCESS and `/health` answered 200). The inspected
-code is committed but not deployed: the owner held its push until FIX-016
-and FIX-018 are accepted (24 and 29 October), so the three go out together.
-It counts as running only
+code (PR-009, FIX-016 and FIX-018) is committed but not yet deployed: the
+three go out together in one push, at the owner's word. It counts as running only
 once a read-only check of the deployment list and `/health` confirms that
 deploy. The two differ in the exit rules: the evidence rule recorded beside the price-path rule in `shadow`, its
 grading and switch gate in the weekly scorecard, and the corp-action sync's
@@ -2972,7 +2971,7 @@ section 10) are part of the current design.
 | [FIX-016](planning/PI-2026-09/stories/FIX-016.md) | Fix the evidence exit's inputs and its switch gate before the shadow starts | Done | 6 Portfolio; 7 Marksheets | PR-009 |
 | [PR-013](planning/PI-2026-09/stories/PR-013.md) | Show where losses come from and what waiting costs | Open | 7 Marksheets | PR-002, PR-009 |
 | [FIX-017](planning/PI-2026-09/stories/FIX-017.md) | The holding sync reads every NSE corporate-action row it is given, under NSE's code | Open | 6 Portfolio | None |
-| [FIX-018](planning/PI-2026-09/stories/FIX-018.md) | The switch gate sets aside a decision whose result can never be known: named, and within a cap | Open | 6 Portfolio; 7 Marksheets | FIX-016 |
+| [FIX-018](planning/PI-2026-09/stories/FIX-018.md) | The switch gate sets aside a decision whose result can never be known: named, and within a cap | Done | 6 Portfolio; 7 Marksheets | FIX-016 |
 | [FIX-019](planning/PI-2026-09/stories/FIX-019.md) | Find out why NSE lists no corporate action for 14 configured codes, and map the stale ones | Open | 4 Research; 6 Portfolio | None |
 
 ### Maintain documentation with each story

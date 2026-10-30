@@ -1,4 +1,4 @@
-# Current handoff - 2026-10-29 (updated about 20:15 IST)
+# Current handoff - 2026-10-30 (updated about 08:30 IST)
 
 ## Also 22 Oct (about 22:30 IST to 00:30 IST 23 Oct): FIX-013, LLM tier switch, committed and pushed (separate conversation)
 
@@ -105,6 +105,91 @@ Docs only; nothing committed, pushed, deployed or configured.
   section 11.
 
 ## START HERE — resume checklist, in order
+
+**FIX-018 COMMITTED; ONE PUSH HELD TO ABOUT 09:10 IST** (30 Oct, 08:18 IST, session
+stockagent-main-f2 [16b4d4], at the owner's word: "ya commit and push"). This supersedes the
+"Commit and push" step of the block below.
+
+- **Code commit `53e3f0e`:** exactly the 10 reviewed files.
+  `kt_manifest.py verify FIX-018-manifest.json --rev HEAD` gives 0 mismatches (`c2e15877`).
+- **Docs commit:** the commit-time edits from the review receipt, plus the FIX-018 receipts and
+  manifest, the FIX-019 card's note, STATE and HANDOFF.
+  - KT: `Code inspected` 53e3f0e, edition 2026-10-30, section 1's push sentence, section 12's
+    FIX-018 row `Done`.
+  - PDF rebuilt: 60 pages, source `27c6489b`; `check_kt_docs` errors `[]`.
+  - Guide 07-L and 09-H status lines.
+- **Push:** PR-009, FIX-016 and FIX-018 go out together. The owner asked at 08:17 IST, inside
+  the 07:25–09:05 blocked window. The push is held to about 09:10 IST, which leaves runway to the
+  12:00 job.
+- **After the deploy:**
+  - a read-only check of the deployment list and `/health`, at the owner's word;
+  - guide 07-L on the first five trading days;
+  - the first Sunday scorecards' gate line.
+- **Next "continue", in a new conversation:** FIX-019's implementation.
+
+**FIX-018 FRESH REVIEW → ACCEPTED** (29 Oct, about 22:35–23:15 IST, session
+stockagent-main-f2 [16b4d4], a new conversation opened with "continue"). Receipt:
+[FIX-018-review](evidence/FIX-018-review.md). STATE: FIX-018 `done`, production
+`pending_deployment`; `active_task` null; `next_task` **FIX-019**. Nothing was committed, pushed,
+deployed or configured. No production state, NSE list or model was read and no message was sent.
+
+- **Next "continue", in a new conversation: FIX-019's implementation**
+  ([card](stories/FIX-019.md)). The card now carries FIX-018's two routed test gaps (T1, T2).
+- **Commit and push, at the owner's word:**
+  - FIX-018 is uncommitted on `466a907`. The code commit is exactly the 10 reviewed files
+    (`kt_manifest.py verify FIX-018-manifest.json --rev HEAD`: 0 mismatches).
+  - The docs commit carries the commit-time edits listed in the review receipt: the KT header,
+    section 1's push sentence, section 12's FIX-018 row, the guide 07-L and 09-H status lines, and
+    the PDF.
+  - PR-009, FIX-016 and FIX-018 then go out in one push, in a job-free window (safest
+    00:10–06:20 IST). `main` is 4 commits ahead of `origin`.
+- **What the review established:**
+  - every rule on the card holds;
+  - a failed read never sets a decision aside: through the real stored weekly scorecard, it
+    fails its week and is graded the next Sunday;
+  - within the cap, a set-aside decision is as if absent for every check, and beyond the cap
+    only a pass changes, to "cannot judge";
+  - "cannot judge" never counts toward the two-week run;
+  - the decisions F18-D1 to F18-D7 are upheld.
+- **Findings:** low only.
+  - T1: no test pins that a list starting on the decision's close day is graded. A `>=` there
+    would set such a decision aside.
+  - T2: no test pins that a decision set aside is named with its lasting reason.
+  - Both are routed to FIX-019 as one test each. I1 to I3 are informational.
+- **Evidence:**
+  - input `c2e15877` / `6769cab1`, verified at the start and at the end;
+  - story files plus the fetcher's: 208 passed; the reviewer's cases: 8 passed;
+  - the reviewer's mutants: 9 of 11 caught, and the 2 survivors are caught by the reviewer's
+    cases;
+  - full suite 5,875 passed / 12 skipped / 1 xfailed / 0 failed (26m03s);
+  - `check_broad_except` OK; `check_kt_docs` errors `[]`.
+
+**FIX-018 IMPLEMENTED → REVIEW REQUIRED** (29 Oct, about 20:23–21:50 IST, session
+stockagent-main-49 [cd5405], a new conversation opened with "continue"). Receipt:
+[FIX-018-implementation](evidence/FIX-018-implementation.md). STATE: FIX-018 `review_required`;
+`active_task` and `next_task` FIX-018. Nothing was committed, pushed, deployed or configured. No
+production state, NSE list or model was read and no message was sent.
+
+- **Next "continue", in a new conversation: FIX-018's fresh review** per [REVIEW.md](REVIEW.md):
+  input manifest [FIX-018-manifest.json](evidence/FIX-018-manifest.json) `c2e15877` (10 files),
+  diff `6769cab1` (130,281 B, 9 paths) against HEAD `466a907`, uncommitted.
+- **What it does:**
+  - each grade with no result is `lasting` (no later read can change it: an empty NSE list, a
+    change or unread row between the closes, a registry basis change) or `temporary` (a failed
+    read, a missing or Yahoo-only close);
+  - the gate sets aside a decision with a lasting gap at 10 or 30 sessions, at both horizons,
+    named on the scorecard; it judges the rest; temporary gaps fail the week as before;
+  - more than 2 set aside, or more than 10% of the decisions past 30 sessions: a pass reads
+    "cannot judge", never a pass;
+  - grading's `read_corp_actions` raises on a failed read and returns `[]` only for an empty
+    list; the holding sync's `fetch_corp_actions` still returns `[]` for both (FIX-017).
+- **For the reviewer:** decisions F18-D1 to F18-D7 and the changed contracts of FIX-016's story
+  file are in the receipt. The close is now checked before the list (F18-D2).
+- **Evidence:** story 203 passed (37 new); mutants 43 of 43 caught, baseline clean; full suite
+  5,875 passed / 12 skipped / 1 xfailed / 0 failed (18m53s); `check_broad_except` OK (151); `check_kt_docs` errors `[]`; PDF 60 pages.
+- **Push still held:** PR-009, FIX-016 and FIX-018 go out in one push only after FIX-018 is
+  accepted, at the owner's word, in a job-free window (safest 00:10–06:20 IST). `main` is 4
+  commits ahead of `origin`.
 
 **FIX-016 COMMITTED, NOT PUSHED** (29 Oct, 20:03 IST, the same conversation as the
 re-review below, at the owner's word: "can we commit and push now?").

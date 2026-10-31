@@ -89,6 +89,18 @@ its closes or a stock NSE lists nothing for, would otherwise fail the switch gat
 set aside and named on the scorecard; at most 2 decisions and 10% may be set aside before the
 gate says "cannot judge". FIX-019 follows: 14 configured codes got an empty NSE
 corporate-action list on 29 Oct, and the stale ones are mapped with evidence.
+FIX-020, added on 2026-10-30 from the owner's answer to FIX-019's question Q2 ("do as per
+recommendation"; routing delegated), comes after FIX-017. Seven configured codes are not NSE
+codes, so the app has never priced them. NIIT, in the enabled IT sector, is one of them. FIX-020
+corrects them in the sector list. APL is APL Apollo Tubes, decided the same day under the
+owner's delegation, by its configured sector (metals). FIX-020 also moves AAVAS, a
+housing-finance company, out of chemicals.
+FIX-021, added on 2026-10-31 from Serper's email of 30 Oct (routing delegated), comes directly
+before SA-048. Since 30 Oct, Serper returns every link after a search's top 3 as a google.com
+redirect, `/news` included: 5 of the 31 news events stored on 30 Oct carry one. A news event is
+keyed by its link, so an article at rank 2 one run and rank 4 the next would be stored twice.
+FIX-021 drops a redirect link where Serper is read, so the article is skipped and counted. It
+goes first because every run until then can store such rows, and they stay.
 
 | Order | Story | Priority | Points | Result | Dependencies |
 |---:|---|---|---:|---|---|
@@ -109,18 +121,20 @@ corporate-action list on 29 Oct, and the stale ones are mapped with evidence.
 | 15 | [FIX-016](stories/FIX-016.md) | P1 | 3 | Fix the evidence exit's inputs and its switch gate before the shadow starts | PR-009 |
 | 16 | [FIX-018](stories/FIX-018.md) | P1 | 2 | The switch gate sets aside a decision whose result can never be known: named, and within a cap | FIX-016 |
 | 17 | [FIX-019](stories/FIX-019.md) | P2 | 1 | Find out why NSE lists no corporate action for 14 configured codes, and map the stale ones | — |
-| 18 | [SA-048](stories/SA-048.md) | P1 | 3 | Costs and tax in paper P&L | — |
-| 19 | [FIX-011](stories/FIX-011.md) | P1 | 2 | NSE's per-symbol meta API is gone: restore the surveillance and suspension guards and an industry source | — |
-| 20 | [SA-049](stories/SA-049.md) | P1 | 7 | Idle cash to work, with the breadth floor (12 target holdings) and the ₹2 L top-up | SA-050, SA-051 |
-| 21 | [PR-005](stories/PR-005.md) | P1 | 6 | An investment case for every position | PR-006 |
-| 22 | [PR-013](stories/PR-013.md) | P2 | 2 | Show where losses come from and what waiting costs | PR-002, PR-009 |
-| 23 | [PR-007](stories/PR-007.md) | P1 | 3 | Plain, fact-grounded buy and sell explanations | PR-005, PR-006 |
-| 24 | [PR-008](stories/PR-008.md) | P1 | 3 | "Your stocks overnight" at the top of the brief | PR-003, PR-006 |
-| 25 | [PR-010](stories/PR-010.md) | P1 | 5 | Four screens for members; an Operator menu for the owner | PR-001 |
-| 26 | [PR-012](stories/PR-012.md) | P2 | 3 | Models chosen by role, benched on our own data; cost rates refreshed | PR-007 |
-| 27 | [FIX-014](stories/FIX-014.md) | P2 | 1 | Above the 75% cap, a promoter wash must not score as insider buying | PR-011 |
-| 28 | [FIX-015](stories/FIX-015.md) | P2 | 1 | The shock exit reads the re-forecast's trigger, not its sentence | PR-009 |
-| 29 | [FIX-017](stories/FIX-017.md) | P2 | 2 | The holding sync reads every NSE corporate-action row it is given, under NSE's code | — |
+| 18 | [FIX-021](stories/FIX-021.md) | P2 | 1 | A Google redirect link is not an article's identity: the event feed skips it and counts it | — |
+| 19 | [SA-048](stories/SA-048.md) | P1 | 3 | Costs and tax in paper P&L | — |
+| 20 | [FIX-011](stories/FIX-011.md) | P1 | 2 | NSE's per-symbol meta API is gone: restore the surveillance and suspension guards and an industry source | — |
+| 21 | [SA-049](stories/SA-049.md) | P1 | 7 | Idle cash to work, with the breadth floor (12 target holdings) and the ₹2 L top-up | SA-050, SA-051 |
+| 22 | [PR-005](stories/PR-005.md) | P1 | 6 | An investment case for every position | PR-006 |
+| 23 | [PR-013](stories/PR-013.md) | P2 | 2 | Show where losses come from and what waiting costs | PR-002, PR-009 |
+| 24 | [PR-007](stories/PR-007.md) | P1 | 3 | Plain, fact-grounded buy and sell explanations | PR-005, PR-006 |
+| 25 | [PR-008](stories/PR-008.md) | P1 | 3 | "Your stocks overnight" at the top of the brief | PR-003, PR-006 |
+| 26 | [PR-010](stories/PR-010.md) | P1 | 5 | Four screens for members; an Operator menu for the owner | PR-001 |
+| 27 | [PR-012](stories/PR-012.md) | P2 | 3 | Models chosen by role, benched on our own data; cost rates refreshed | PR-007 |
+| 28 | [FIX-014](stories/FIX-014.md) | P2 | 1 | Above the 75% cap, a promoter wash must not score as insider buying | PR-011 |
+| 29 | [FIX-015](stories/FIX-015.md) | P2 | 1 | The shock exit reads the re-forecast's trigger, not its sentence | PR-009 |
+| 30 | [FIX-017](stories/FIX-017.md) | P2 | 2 | The holding sync reads every NSE corporate-action row it is given, under NSE's code | — |
+| 31 | [FIX-020](stories/FIX-020.md) | P2 | 1 | Correct the configured codes NSE does not list, and AAVAS's sector | — |
 
 The new stories add 41 points. SA-049 grows from 5 to 7 points and SA-050 from 2 to 3. On 2026-10-12 the owner confirmed this order, chose the ₹2 L paper-capital top-up with 12 target holdings, and moved PR-011 up as P1 ("I need more data"); the production baseline is section 11 of the review. The track makes results
 visible, makes the portfolio broad enough to learn from, and stops one identified source of

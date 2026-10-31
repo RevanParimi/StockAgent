@@ -1,8 +1,8 @@
 # StockAgent — Technical Design and Knowledge Transfer
 
-**Edition:** 2026-10-30 · **Audience:** engineers and teammates learning the product
+**Edition:** 2026-10-31 · **Audience:** engineers and teammates learning the product
 
-**Code inspected:** `53e3f0e60fbfd695c27db04164443ad6834cc10c`
+**Code inspected:** `4aa4c837ce8907c873b5dca0426009ec52020c96`
 
 **PDF:** [StockAgent-Three-Loops.pdf](StockAgent-Three-Loops.pdf), generated from this Markdown.
 
@@ -35,14 +35,12 @@ triggered no production job, backfill or notification.
 
 ### Production state at this edition
 
-Production runs `ffa012b`, deployed at 20:18 IST on 23 October 2026 (the
-deployment list showed it SUCCESS and `/health` answered 200). The inspected
-code (PR-009, FIX-016 and FIX-018) is committed but not yet deployed: the
-three go out together in one push, at the owner's word. It counts as running only
-once a read-only check of the deployment list and `/health` confirms that
-deploy. The two differ in the exit rules: the evidence rule recorded beside the price-path rule in `shadow`, its
-grading and switch gate in the weekly scorecard, and the corp-action sync's
-per-symbol record (sections 6 and 7). The table gives the configuration that
+Production runs `53e3f0e` (PR-009, FIX-016 and FIX-018), deployed at about
+09:20 IST on 30 October 2026 (the deployment list showed it SUCCESS and
+`/health` answered 200). The inspected code adds FIX-019's instrument-registry
+records (section 4). It is committed but not yet deployed, and counts as running
+only once a read-only check of the deployment list and `/health` confirms that
+deploy. The table gives the configuration that
 differs from the repository and the state of each operational control.
 
 | Area | State in production | Evidence |
@@ -566,8 +564,9 @@ ZOMATO (ETERNAL, April 2025), LTIM (LTM, February 2026) and ICICIPRULI
 equity list gives the new code today, so each is the same security. Each ticker keeps its name and its
 basis, and is priced and cross-checked under the new code on every date, so a
 forecast issued under the old code is graded against a close under the new
-one. Without the record, the app asked for the old code, which Yahoo and NSE
-no longer answer.
+one. Without the record, the app asked for the old code: Yahoo no longer
+prices it, and NSE lists no corporate action under it, although NSE's close
+still answers it with the new code's rows.
 
 Two configured codes no longer trade. The registry records each as `delisted`
 from the first day NSE suspended it for an amalgamation:
@@ -580,10 +579,12 @@ Each keeps its one basis and names no successor: neither has a price, and
 nothing is held. The gate abstains on either.
 
 The registry maps a code only on exchange evidence, never on a company name.
-So it does not map the configured codes NSE has never listed: ACCCEMENT, APL,
+So it does not map the configured codes NSE does not list: ACCCEMENT, APL,
 BAYER, DEEPAKNITRI, MAHINDHOTEL, MTAR and NIIT. None appears in NSE's equity
 list or its symbol-change history, and Yahoo has no price for any, so none can
-be bought or graded. **Planned:** FIX-020 corrects them in the sector list.
+be bought or graded. Five were never NSE codes. BAYER and NIIT once were, for
+Bayer India and NIIT (NSE lists their rows from 2002–2003), under ISINs other
+than those of today's BAYERCROP and NIITLTD. **Planned:** FIX-020 corrects them in the sector list.
 
 Yahoo moves a renamed code's history over gradually: on 30 October 2026,
 ICICILIFE.NS held only the sessions since 14 October, so ICICIPRULI's
@@ -3003,7 +3004,7 @@ section 10) are part of the current design.
 | [PR-013](planning/PI-2026-09/stories/PR-013.md) | Show where losses come from and what waiting costs | Open | 7 Marksheets | PR-002, PR-009 |
 | [FIX-017](planning/PI-2026-09/stories/FIX-017.md) | The holding sync reads every NSE corporate-action row it is given, under NSE's code | Open | 6 Portfolio | None |
 | [FIX-018](planning/PI-2026-09/stories/FIX-018.md) | The switch gate sets aside a decision whose result can never be known: named, and within a cap | Done | 6 Portfolio; 7 Marksheets | FIX-016 |
-| [FIX-019](planning/PI-2026-09/stories/FIX-019.md) | Find out why NSE lists no corporate action for 14 configured codes, and map the stale ones | Open | 4 Research; 6 Portfolio | None |
+| [FIX-019](planning/PI-2026-09/stories/FIX-019.md) | Find out why NSE lists no corporate action for 14 configured codes, and map the stale ones | Done | 4 Research; 6 Portfolio | None |
 | [FIX-020](planning/PI-2026-09/stories/FIX-020.md) | Correct the configured codes NSE does not list, and AAVAS's sector | Open | 4 Research | None |
 
 ### Maintain documentation with each story

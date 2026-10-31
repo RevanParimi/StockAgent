@@ -1,4 +1,4 @@
-# Current handoff - 2026-10-30 (updated about 08:30 IST)
+# Current handoff - 2026-10-31 (updated about 09:35 IST)
 
 ## Also 22 Oct (about 22:30 IST to 00:30 IST 23 Oct): FIX-013, LLM tier switch, committed and pushed (separate conversation)
 
@@ -105,6 +105,210 @@ Docs only; nothing committed, pushed, deployed or configured.
   section 11.
 
 ## START HERE — resume checklist, in order
+
+**FIX-019 COMMITTED** (31 Oct, about 09:25–09:35 IST, session stockagent-main-39 [a379a3], at
+the owner's "we need to commit and push unless it requires review"). FIX-021 needs its fresh
+review, so only FIX-019, accepted on 30 Oct, was committed.
+
+- **Code commit `4aa4c83`:** exactly FIX-019's 8 reviewed files, built from the copy in
+  `analysis_data/fix021/start/` (`kt_manifest.py verify FIX-019-manifest.json --rev HEAD`: 0
+  mismatches, `9f3de76f`). The working tree held FIX-021's edits to the KT, the guide and the PDF.
+- **Docs commit:** the review's commit-time edits (KT header `4aa4c83`, edition 2026-10-31;
+  section 1's production paragraph; L1's two section 4 sentences; section 12 FIX-019 `Done`; guide
+  02-M, 07-L, 07-M and 09-H status; PDF 61 pages, `check_kt_docs` `[]`). With them: FIX-019's
+  receipts and manifest, the FIX-019, FIX-020 and FIX-021 cards, the PI README, STATE and HANDOFF
+  (with the 30 Oct deploy record), and FIX-021's implementation receipt and manifest.
+- **FIX-021 stays uncommitted:** its code and test, and its KT, guide and PDF edits put back on top
+  of the docs commit. Its review input was re-recorded before any review: manifest `086378d8`,
+  diff `d5c07e7f`, all against HEAD.
+- **Push:** planned at once, before the 10:00 Saturday job (`event_ingest_weekly`); the record
+  follows, uncommitted. After the deploy: guide 02-M.
+
+**FIX-021 IMPLEMENTED → REVIEW REQUIRED** (31 Oct, about 08:48–09:30 IST, session
+stockagent-main-39 [a379a3], a new conversation opened with "continue"). Receipt:
+[FIX-021-implementation](evidence/FIX-021-implementation.md). STATE: FIX-021 `review_required`;
+`active_task` and `next_task` FIX-021. Nothing was committed, pushed, deployed or configured; no
+production state was read and no Serper endpoint was called.
+
+- **Rule:** where a Serper response is parsed (`search_serper` and `search_serper_news_status` in
+  `services/data/fetchers/news.py`), a link on google.com or a subdomain is "" and the row says
+  `redirect: True`.
+  - The event feed drops such an article and counts it: `news_redirect_links`, beside the new
+    `news_results` (articles returned), both in the run line and the run's log.
+  - Macro headlines leave it out and log how many.
+  - Chat's news search merges a link-less result with the result of the same title and keeps the
+    linked one. The card's title fallback alone would have listed the article twice.
+  - The IPO grey-market check never counts it as a source (no change needed).
+- **Evidence:** story file 14 passed (the two-run invariant in both orders, from literal Serper
+  JSON); mutants 20 of 20; neighbouring files 538 passed / 1 xfailed; full suite 5,904 passed / 12 skipped / 1 xfailed / 0 failed (11m48s);
+  `check_broad_except` OK (151); `check_kt_docs` `[]`; PDF 61 pages.
+- **Docs:** KT section 4 step 5, Delivery, IPO and section 12's FIX-021 row (`Open`); the PDF; guide
+  case 02-N (new).
+- **FIX-019's reviewed bytes were kept.** The KT, the guide and the PDF are in both stories. All 8
+  of FIX-019's reviewed files were copied to `analysis_data/fix021/start/` before any edit (0
+  mismatches against `9f3de76f`); FIX-019's code commit `4aa4c83` was built from that copy (entry
+  above).
+- **Production data unchanged:** the 5 news events of 30 Oct, and any stored until the deploy, stay
+  under their redirect links.
+- **Next "continue", in a new conversation: FIX-021's fresh review** per [REVIEW.md](REVIEW.md):
+  input manifest [FIX-021-manifest.json](evidence/FIX-021-manifest.json) `086378d8` (9
+  files), diff `d5c07e7f` (41,345 B, 8 paths, all against HEAD: FIX-019's docs commit), from
+  `analysis_data/fix021/digest.py`. It was re-recorded after FIX-019's commit, before any review,
+  and supersedes `8ab98d70` / `d0ae40df`. Then SA-048.
+
+**FIX-021 ADDED, next** (31 Oct, about 08:10–08:40 IST, session stockagent-main-6b [a00b82]; the
+owner pasted Serper's email of 30 Oct). Card: [FIX-021](stories/FIX-021.md). STATE: FIX-021
+`todo`, directly before SA-048; `next_task` **FIX-021** (was SA-048; routing delegated by the owner
+on 2026-10-13). Nothing was committed, pushed, deployed or configured.
+
+- **Serper's change:** since about 01:30 UTC on 30 Oct, links after a search's top 3 come back as
+  `google.com/goto` links.
+- **Measured:** the owner's read-only probe (31 Oct 08:22 IST, counts only;
+  `analysis_data/serper_goto_2026-10-31/`, ignored) found 5 of 31 news events fetched on 30 Oct
+  with a google.com link, none on 26–29 Oct, and no repeat yet. So `/news` is affected.
+- **Why it matters:** a news event is keyed by its link, so one article at rank 2 in one run and
+  rank 4 in the next is stored twice. A news event cannot sell (NSE sources only), so the harm
+  is a doubled article in the dossier and the exit's watch list.
+- **Next "continue", in a new conversation: FIX-021's implementation**, then SA-048.
+- **Commit:** the FIX-021 card and its README, STATE and HANDOFF lines go with FIX-019's docs
+  commit below. The planned KT sentence and section 12 row once listed here for that commit are
+  superseded: FIX-021's implementation (above) edits the KT as current design, so FIX-019's docs
+  commit adds no FIX-021 line.
+
+**FIX-019 ACCEPTED by its fresh review** (30 Oct about 22:49-23:40 IST, session
+stockagent-main-e0 [d1136d], a new conversation opened with "continue"). Receipt:
+[FIX-019-review](evidence/FIX-019-review.md). STATE: FIX-019 `done`, production
+`pending_deployment`; `active_task` null; `next_task` **SA-048**. Nothing was committed, pushed,
+deployed or configured, and no production state was read. Public NSE lists and closes were read,
+read-only.
+
+- **Input verified** at the start and the end: manifest `9f3de76f` (8 files, 0 mismatches) and
+  diff `7fd9ac2f` (36,860 B, 7 paths) against HEAD `48db226`.
+- **Independent checks:**
+  - NSE's own symbol-change and equity lists confirm all six renames (codes, dates and ISINs),
+    and each circular traces to the company's filing.
+  - Reviewer cases (`analysis_data/fix019_review/test_rv_fix019.py`): 14 passed, and all 14 fail
+    on HEAD's registry. They cover rows issued before the record (still graded), the review's
+    close and an analysis under the new code, holdings, the registry against NSE's lists, the
+    delisting days and the feed.
+  - KT section 6's count, re-read: 9 empty lists, 4 of them with a price.
+  - FIX-018's T1 and T2 survivors: 2 of 2 caught.
+  - Story files 253 passed; full suite 5,890 passed / 12 skipped / 1 xfailed / 0 failed (24m55s); `check_broad_except` OK; `check_kt_docs` `[]`.
+- **L1 (low, docs):** two KT section 4 sentences overstate what NSE no longer answers. NSE's close
+  API still answers the old codes, and BAYER and NIIT were NSE codes in 2002–2003. It is a
+  commit-time edit (exact text in the receipt), with a routed note on FIX-020's card. I1–I3 are
+  informational.
+- **Next "continue", in a new conversation: SA-048's implementation** (superseded 31 Oct: FIX-021
+  first, above).
+- **Commit, only at the owner's word and in a job-free window:**
+  - code commit: exactly the 8 reviewed files (`kt_manifest.py verify --rev HEAD`, 0 mismatches);
+  - docs commit: the receipt's commit-time edits (KT header; section 1's production paragraph,
+    `53e3f0e` deployed about 09:20 IST on 30 Oct; L1's two sentences; section 12 FIX-019 Done;
+    guide 02-M, 07-L, 07-M and 09-H status; the PDF; `check_kt_docs` `[]`), with the receipts,
+    manifest, FIX-019 and FIX-020 cards, PI README, STATE and HANDOFF (and the uncommitted deploy
+    record).
+  - A push deploys FIX-019: never on the 1st before the 09:00 monthly forecast.
+- **Still open from the 30 Oct deploy:** guide 07-L's first five trading days; the first Sunday
+  scorecards' gate line (1 Nov).
+
+**FIX-019 AMENDMENT 1 → REVIEW REQUIRED** (30 Oct, about 19:47–20:20 IST, session
+stockagent-main-6e [9d0264], at the owner's word on Q1 and Q2: "on the 2 open questions, do as
+per recommendation"). Receipt: [FIX-019-implementation](evidence/FIX-019-implementation.md),
+section "Amendment 1". STATE: FIX-019 `review_required`; `active_task` and `next_task` FIX-019;
+FIX-020 added as `todo`. Nothing was committed, pushed, deployed or configured. Public NSE and
+Yahoo data were read for GATI and INOXLEISUR only.
+
+- **Next "continue", in a new conversation: FIX-019's fresh review** per [REVIEW.md](REVIEW.md):
+  input manifest [FIX-019-manifest.json](evidence/FIX-019-manifest.json) `9f3de76f` (8
+  files), diff `7fd9ac2f` (36,860 B, 7 paths) against HEAD
+  `48db226`, uncommitted. This supersedes `97abf4b3` / `160834f8`.
+- **Q1, applied:** `config/instruments.yaml` records GATI and INOXLEISUR as codes that no longer
+  trade.
+  - GATI: a `rename` to ACLGATI from 30 Nov 2023 (NSE/CML/59502), then `delisted` from
+    12 Nov 2025, the first day NSE's notice says trading stopped.
+  - INOXLEISUR: `delisted` from 17 Feb 2023.
+  - Each cites NSE's suspension notice, keeps one basis and has no successors. The gate abstains
+    on either; both sectors are disabled and neither has a price.
+  - GATI's NSE list is now read under ACLGATI (20 historical rows), so 9 lists stay empty, 5 of
+    them for codes without a price (KT section 6).
+- **Q2, routed:** new card [FIX-020](stories/FIX-020.md) (P2, 1 point, `todo`), placed after
+  FIX-017 at the end of the routed queue. It corrects the seven configured codes NSE never listed
+  in the sector list and moves AAVAS out of `chemicals`. APL is APL Apollo Tubes (APLAPOLLO),
+  decided about 21:10 IST under the owner's delegation ("i trust your expertise, do as per
+  recommendation"). The reason is its configured sector, `metals`, beside two steel-pipe
+  makers. The card records it.
+- **Evidence:**
+  - test_registry_fix019.py +3 (13); story files 253 passed on the final bytes; registry mutants 19 of 19 caught (8 new, among them a delisting a day early or late and a gate that passes a delisted identity); full suite 5,890 passed / 12 skipped / 1 xfailed / 0 failed (16m37s).
+  - `check_broad_except` OK (151); `check_kt_docs` errors `[]`; PDF 61 pages.
+
+**DEPLOYED: PR-009, FIX-016 and FIX-018** (30 Oct, confirmed about 14:01–14:04 IST, session
+stockagent-main-6e [9d0264], read-only, at the owner's word: "ya railway login is done"). STATE:
+the three stories' production verification is `pending_observation`; `active_task` and
+`next_task` stay FIX-019.
+
+- **Deploy:** Railway `65d03daf` (`48db226`) created 09:10:30 IST, 6 s after the push; build log
+  09:10:38–09:17:54; the new container's first log line 09:20:02; status SUCCESS; `3507a779`
+  removed. Public `/health` 200 at 14:01:58 IST.
+- **CI on `48db226`:** the Linux tests, the browser security suite and the broad-except and KT
+  guards all passed (09:10:29–09:14:29 IST).
+- **What was read:** the deployment list, `/health`, and the build and deploy logs' first and
+  last timestamps and line counts. No log text was read. Any job from 12:00 on ran the new code;
+  that is inferred from the times, and no job's run was read.
+- **Railway CLI:** the folder had lost its link. It was re-linked to carefree-renewal /
+  production / StockAgent (local CLI config only).
+- **Now stale, left for FIX-019's docs commit:** KT section 1 ("Production runs `ffa012b` … not
+  yet deployed") and the guide's 07-L and 09-H status lines ("ships with"). Both files are in
+  FIX-019's review input (amendment 1, above), so they become commit-time edits: KT section 1 says
+  production runs `53e3f0e`, deployed about 09:20 IST on 30 October 2026, and the PDF is rebuilt.
+- **Still open:** guide 07-L on the first five trading days after the deploy; the first Sunday
+  scorecards' gate line (1 Nov).
+- **Next "continue", in a new conversation:** FIX-019's fresh review (the block above).
+
+**FIX-019 IMPLEMENTED → REVIEW REQUIRED** (30 Oct, about 11:00–12:05 IST, session
+stockagent-main-6e [9d0264], a new conversation opened with "continue"). Receipt:
+[FIX-019-implementation](evidence/FIX-019-implementation.md). STATE: FIX-019 `review_required`;
+`active_task` and `next_task` FIX-019. Nothing was committed, pushed, deployed or configured. No
+production state or model was read and no message was sent. Public NSE and Yahoo data were read,
+read-only.
+
+- **Review input `97abf4b3` / `160834f8`:** superseded by amendment 1 (the top block).
+- **What it found:** NSE's 14 empty lists were true empty answers (the strict reader, twice each).
+  - 6 codes NSE renamed: PVR → PVRINOX (May 2023), MCDOWELL-N → UNITDSPR (June 2024), ZOMATO →
+    ETERNAL (April 2025), LTIM → LTM (February 2026), ICICIPRULI → ICICILIFE (23 Oct 2026), and
+    GATI → ACLGATI (November 2023), which was then suspended on 12 Nov 2025 for its amalgamation.
+  - 5 codes NSE never listed: ACCCEMENT, APL, DEEPAKNITRI, MAHINDHOTEL, MTAR. None has a price.
+  - 3 listed companies NSE lists nothing for: AAVAS, IDEAFORGE, STARHEALTH.
+- **What it does:**
+  - five dated `rename` records in `config/instruments.yaml`, each citing NSE's circular. Each
+    ticker keeps its basis and is priced and cross-checked under the new code on every date;
+  - LTIM, in the enabled IT sector, had no price since February 2026 and is now priced from
+    LTM.NS;
+  - ten lists stayed empty (nine after amendment 1). Only 4 of those stocks have a price (AAVAS, IDEAFORGE, STARHEALTH,
+    ZOMATO), so only they can carry a decision and use FIX-018's cap;
+  - FIX-018's routed T1 and T2 are pinned, and both of its surviving mutants are now caught.
+- **Owner questions** (answered about 19:45 IST, "do as per recommendation": Q1 applied, Q2
+  routed to FIX-020; the top block):
+  - **Q1:** record GATI and INOXLEISUR as delisted? INOXLEISUR merged into PVR in February 2023
+    and was found on the way. Recommended. Neither has a price, so nothing else changes.
+  - **Q2:** one small card to correct the configured codes NSE does not list (DEEPAKNTR,
+    MTARTECH, ACC, MHRIL, BAYERCROP and NIITLTD; and which company APL means) and to move AAVAS
+    out of `chemicals`? Recommended. NIIT is in the enabled IT sector.
+- **For the reviewer:**
+  - ICICIPRULI is mapped although Yahoo's ICICILIFE.NS holds only 12 sessions (F19-D2);
+  - no code is mapped on a name match (F19-D3);
+  - SA-008's shipped-registry test is widened, a changed contract.
+- **Evidence:**
+  - story files 250 passed on the final bytes;
+  - registry and resolver mutants 11 of 11 caught;
+  - FIX-018's two survivors caught;
+  - full suite 5,887 passed / 12 skipped / 1 xfailed / 0 failed (23m53s);
+  - `check_broad_except` OK (151); `check_kt_docs` errors `[]`; PDF 61 pages.
+- **This morning's push:** deployed; confirmed about 14:03 IST (the block above).
+
+**PUSHED 09:10:24 IST 30 Oct (`d7c1411..48db226`): PR-009, FIX-016 and FIX-018 in one push.**
+A fetch just before showed `origin` unchanged. The deploy was confirmed at about 14:03 IST (the
+DEPLOYED block at the top). This note and STATE's push record are in the working tree, for the
+next docs commit.
 
 **FIX-018 COMMITTED; ONE PUSH HELD TO ABOUT 09:10 IST** (30 Oct, 08:18 IST, session
 stockagent-main-f2 [16b4d4], at the owner's word: "ya commit and push"). This supersedes the

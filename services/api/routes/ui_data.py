@@ -1789,7 +1789,8 @@ async def _chat_tool_get_macro_news() -> str:
             for r in raw[:6]:
                 iso = _normalize_date(r.get("date", ""))
                 age = _result_age_label(iso) if iso else "recent"
-                lines.append(f"[{age}] {r.get('title', '')} — {r.get('source', '')} | {r.get('link', '')}")
+                link = f" | {r['link']}" if r.get("link") else ""
+                lines.append(f"[{age}] {r.get('title', '')} — {r.get('source', '')}{link}")
             return "\n".join(lines)
     except Exception as exc:
         logger.debug("[macro] live fallback failed: %s", exc)
@@ -2564,21 +2565,43 @@ def _rrf_fuse(result_lists: list[list[dict]], k: int = 60) -> list[dict]:
     Reciprocal Rank Fusion: merge several ranked result lists into one. A doc's
     score = Σ 1/(k + rank) across lists, so items that rank high in MULTIPLE
     queries float to the top — more robust than any single query's ranking.
-    Dedupes by link/url.
+    Dedupes by link/url. A result without a link is one doc with the result of
+    the same title (case and spacing ignored): Serper gives an article's link
+    only in a search's top 3 and "" below (FIX-021), so one article can come
+    back with its link in one variant and without it in another. The doc keeps
+    the result that has its link; two results with different links stay two.
     """
-    def _key(r: dict) -> str:
-        return r.get("link") or r.get("url") or r.get("title", "")
+    def _link(r: dict) -> str:
+        return r.get("link") or r.get("url") or ""
+
+    def _title(r: dict) -> str:
+        return " ".join(str(r.get("title") or "").lower().split())
 
     scores: dict[str, float] = {}
     items: dict[str, dict] = {}
+    key_of_link: dict[str, str] = {}
+    key_of_title: dict[str, str] = {}
     for lst in result_lists:
         for rank, r in enumerate(lst):
-            key = _key(r)
+            link, title = _link(r), _title(r)
+            if link:
+                key = key_of_link.get(link)
+                held = key_of_title.get(title) if title else None
+                if key is None and held is not None and not _link(items[held]):
+                    key = held
+                key = key or link
+            else:
+                key = key_of_title.get(title) or (f"title:{title}" if title else "")
             if not key:
                 continue
             scores[key] = scores.get(key, 0.0) + 1.0 / (k + rank)
-            items.setdefault(key, r)
-    return sorted(items.values(), key=lambda r: scores[_key(r)], reverse=True)
+            if key not in items or (link and not _link(items[key])):
+                items[key] = r
+            if link:
+                key_of_link.setdefault(link, key)
+            if title:
+                key_of_title.setdefault(title, key)
+    return [items[key] for key in sorted(items, key=scores.__getitem__, reverse=True)]
 
 
 async def _chat_tool_search_news(query: str) -> str:
@@ -2651,10 +2674,11 @@ async def _chat_tool_search_news(query: str) -> str:
             iso_date  = _normalize_date(r.get("date", ""))
             age_label = _result_age_label(iso_date)
             snippet   = (r.get("snippet") or "")[:300]
+            link      = f" | {r['link']}" if r.get("link") else ""
             lines.append(
                 f"[Result {i} — published: {age_label}]\n"
                 f"Title: {r['title']}\n"
-                f"Source: {r.get('source','')} | {r['link']}\n"
+                f"Source: {r.get('source','')}{link}\n"
                 f"Snippet: {snippet}\n"
             )
         return "\n".join(lines)

@@ -681,7 +681,13 @@ A run:
    may not answer their categories (insider, pledge, ownership).
 5. **Stored** once per item in `data/events/<SYMBOL>.jsonl`, keyed by NSE's
    announcement id, a disclosure's NSE id, or the article's URL without
-   tracking parameters.
+   tracking parameters. Serper returns the links after a search's top 3 as
+   `google.com/goto` redirects, so the [fetcher](../services/data/fetchers/news.py)
+   reads a link on google.com, or a subdomain of it, as no link. Such an
+   article is dropped and counted (`news_redirect_links`, beside `news_results`,
+   the articles Serper returned). So an article that is result 2 in the
+   morning and result 4 in the evening is stored once, under its own address,
+   and an article seen only as a redirect is not stored.
 
 The record (`src/backend/shared/schemas/events.py`) is `{id, symbol, what,
 category, direction, materiality, source, source_url, announcement_id,
@@ -2121,7 +2127,8 @@ renormalized over available components. It can fall back to first cached close
 when issue price is absent; that differs from historical-outcome calculation.
 
 GMP fetching exists behind a separate disabled-by-default gate. Missing GMP
-does not mean zero. Lock-in alert dates use fixed 30/90/180-calendar-day offsets
+does not mean zero. A reading needs `ipo.gmp_min_sources` distinct sites, and
+a Google redirect link is never one. Lock-in alert dates use fixed 30/90/180-calendar-day offsets
 from listing; these are software heuristics, not verification of an individual
 issue's contractual dates.
 
@@ -2240,7 +2247,9 @@ the IST calendar date, so 20:00 UTC on Tuesday counts as Wednesday. The floor
 is the previous trading day for a user's first brief, and never more than 4
 days back after a gap. The [fetcher](../services/background/macro_news_fetcher.py)
 stores an unreadable or future date as empty, never as today, and such an
-item is never shown.
+item is never shown. It leaves out a headline whose link is a Google redirect
+(event feed, step 5), because the cache tells items apart by URL, and logs
+how many.
 
 Each shown item stores a story key: its URLs (normalised, including those of
 items merged into it), and the salient entities and figures of its headline.
@@ -3006,6 +3015,7 @@ section 10) are part of the current design.
 | [FIX-018](planning/PI-2026-09/stories/FIX-018.md) | The switch gate sets aside a decision whose result can never be known: named, and within a cap | Done | 6 Portfolio; 7 Marksheets | FIX-016 |
 | [FIX-019](planning/PI-2026-09/stories/FIX-019.md) | Find out why NSE lists no corporate action for 14 configured codes, and map the stale ones | Done | 4 Research; 6 Portfolio | None |
 | [FIX-020](planning/PI-2026-09/stories/FIX-020.md) | Correct the configured codes NSE does not list, and AAVAS's sector | Open | 4 Research | None |
+| [FIX-021](planning/PI-2026-09/stories/FIX-021.md) | A Google redirect link is not an article's identity | Open | 4 Research | None |
 
 ### Maintain documentation with each story
 

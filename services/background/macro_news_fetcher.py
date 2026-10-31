@@ -229,9 +229,14 @@ class MacroNewsFetcher:
     def _serper_news(self, query: str) -> list[dict]:
         """
         Hit Serper /news endpoint using the single configured Serper key.
+
+        A headline whose link is a Google redirect (`is_google_link`) is left
+        out and counted in the log: it names no article, and the cache tells
+        entries apart by URL, so it would be stored again on every run.
         """
         try:
             from backend.shared.config import settings as _s
+            from services.data.fetchers.news import is_google_link
             key = _s.SERPER_API_KEY
             if not key:
                 logger.debug("[MacroFetcher] No Serper key configured — skipping")
@@ -246,6 +251,10 @@ class MacroNewsFetcher:
             resp.raise_for_status()
             data  = resp.json()
             items = data.get("news", [])  # key is "news" not "organic"
+            redirects = sum(1 for item in items if is_google_link(item.get("link")))
+            if redirects:
+                logger.info("[MacroFetcher] %d of %d results for '%s' left out: Google redirect link",
+                            redirects, len(items), query)
             return [
                 {
                     "source":         "serper_news",
@@ -257,7 +266,7 @@ class MacroNewsFetcher:
                     "query_used":     query,
                 }
                 for item in items
-                if item.get("title")
+                if item.get("title") and not is_google_link(item.get("link"))
             ]
         except requests.HTTPError as exc:
             status = exc.response.status_code if exc.response is not None else "?"

@@ -14,7 +14,9 @@ A run (08:15 and 18:30 IST on trading days, `run_event_feed`):
    board meetings filed in that window (core/events/sources.py), then one
    company-news search while the day's budget lasts. Each run may use half of
    `events.news_queries_per_day`, in stock order; a spent Serper credit stops
-   the run's searches.
+   the run's searches. An article Serper returns under a Google redirect link
+   comes without a link and is dropped (`news_redirect_links` counts them):
+   the link is an article's identity.
 3. **New items only.** An item whose id is stored, or which the classifier
    judged "not about this company" in the last `events.seen_days`, is not
    sent again. At most `events.max_items_per_symbol` per stock, newest first.
@@ -215,7 +217,8 @@ def _new_record(slot: str, now: datetime) -> dict:
         "nse_failed": {}, "nse_rows_foreign": 0, "nse_rows_ahead": 0,
         "news_cap_today": settings.EVENTS_NEWS_QUERIES_PER_DAY, "news_queries_before": 0,
         "news_run_budget": 0, "news_queries_used": 0, "news_not_searched": 0,
-        "news_failed": {}, "news_exhausted": False, "news_unmatched": 0,
+        "news_failed": {}, "news_exhausted": False, "news_results": 0,
+        "news_redirect_links": 0, "news_unmatched": 0,
         "items_fetched": 0, "items_new": 0, "items_over_cap": 0,
         "llm_calls": 0, "llm_failed": 0, "events_stored": 0, "events_ungrounded": 0,
         "events_invalid": 0, "events_duplicate": 0, "items_unrelated": 0,
@@ -320,10 +323,11 @@ def _run(rec: dict, now: datetime, clock, store: EventStore) -> None:
         logger.warning("[events] search usage unreadable: %s", exc)
     logger.info("[events] %s run: %d of %d stocks, %d new items, %d events stored, "
                 "%d classifier calls (%d failed), disclosures stored %s (%d documents, %d failed), "
-                "status %s", rec["slot"], rec["symbols_used"], rec["symbols_tracked"],
+                "%d news articles (%d dropped for a Google redirect link), status %s",
+                rec["slot"], rec["symbols_used"], rec["symbols_tracked"],
                 rec["items_new"], rec["events_stored"], rec["llm_calls"], rec["llm_failed"],
                 rec["disclosures_stored"], rec["documents_fetched"], rec["documents_failed"],
-                rec["status"])
+                rec["news_results"], rec["news_redirect_links"], rec["status"])
 
 
 def _one_symbol(symbol: str, on, since, clock, nse, store: EventStore, state: dict,
@@ -367,6 +371,8 @@ def _one_symbol(symbol: str, on, since, clock, nse, store: EventStore, state: di
     if company:
         names.insert(0, company)
     if results is not None:
+        rec["news_results"] += len(results)
+        rec["news_redirect_links"] += sum(1 for r in results if isinstance(r, dict) and r.get("redirect"))
         news = news_items(results, now)
         phrases = name_phrases(names)
         kept = [n for n in news if mentions_company(n, phrases, {symbol, code})]

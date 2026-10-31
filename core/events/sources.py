@@ -10,7 +10,9 @@ source's own publication time. Pure functions: the feed passes the rows.
   Results" for one meeting, and those rows become one item. The filing day is
   read from the row's own timestamp, so the clock never enters an identity;
 - a news article is `news:<hash of its URL>`, without tracking parameters. An
-  article without a URL is dropped: it cannot be cited.
+  article without a URL is dropped: it cannot be cited. Serper's Google
+  redirect links arrive without a URL (services/data/fetchers/news.py), so one
+  article ranked higher in one run and lower in the next is one item.
 
 **Publication time** comes from the source, never from the fetch:
 

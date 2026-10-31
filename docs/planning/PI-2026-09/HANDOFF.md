@@ -1,4 +1,4 @@
-# Current handoff - 2026-10-31 (updated about 09:35 IST)
+# Current handoff - 2026-10-31 (updated about 17:10 IST)
 
 ## Also 22 Oct (about 22:30 IST to 00:30 IST 23 Oct): FIX-013, LLM tier switch, committed and pushed (separate conversation)
 
@@ -106,7 +106,91 @@ Docs only; nothing committed, pushed, deployed or configured.
 
 ## START HERE — resume checklist, in order
 
-**FIX-019 COMMITTED** (31 Oct, about 09:25–09:35 IST, session stockagent-main-39 [a379a3], at
+**FIX-021 COMMITTED** (31 Oct, about 17:00–17:10 IST, session stockagent-main-5c [539204], at
+the owner's "commit and push"). Asked what and when, the owner chose FIX-021 only (SA-048 waits
+for its fresh review), pushed right after committing, accepting that the restart may skip the
+17:45 IPO refresh or the 19:00 IPO deep dive.
+
+- **Code commit `e7e3165`:** exactly FIX-021's 9 reviewed files, built from the copy in
+  `analysis_data/sa048/start/` (`kt_manifest.py verify FIX-021-manifest.json --rev HEAD`: 0
+  mismatches, `086378d8`). The working tree held SA-048's edits to the KT, the guide and the PDF.
+- **Docs commit:** the review's commit-time edits (KT header `e7e3165`, edition 2026-10-31;
+  section 1's production paragraph, `4aa4c83` deployed about 09:31 IST on 31 Oct; section 12
+  FIX-021 `Done`; guide 02-N status; L1 in `docs/CHAT_ARCHITECTURE.md`; PDF 61 pages,
+  `check_kt_docs` `[]`). With them: FIX-021's review receipt, PR-012's routed note, STATE and
+  HANDOFF (with the FIX-019 push and deploy record), and SA-048's implementation receipt and
+  re-recorded manifest.
+- **SA-048 stays uncommitted:** its code and tests, and its KT, guide and PDF edits put back on
+  top of the docs commit (`compare_lines.py`: the added and removed lines are equal). Its review
+  input was re-recorded before any review: manifest `6e473449`, diff `ed6d086b`, all against
+  HEAD.
+- **Push:** at once; the record follows, uncommitted. After the deploy: the owner's probe and
+  guide 02-N for FIX-021 (receipt FIX-021-review, "Production verification").
+
+**SA-048 IMPLEMENTED → REVIEW REQUIRED** (31 Oct, about 15:03–16:20 IST, session
+stockagent-main-5c [539204], a new conversation opened with "continue"). Receipt:
+[SA-048-implementation](evidence/SA-048-implementation.md). STATE: SA-048 `review_required`;
+`active_task` and `next_task` SA-048. Nothing was committed, pushed, deployed or configured; no
+production state was read.
+
+- **Change:** every paper BUY and SELL pays an NSE delivery trade's charges at a zero-brokerage
+  broker (rates in `config.yaml` `portfolio.costs`, dated 31 Oct, sources in comments), on its own
+  ledger row and out of cash. Realized P&L shows gross, costs and net; a per-financial-year tax
+  estimate is shown, never taken from cash. Old rows read with estimated costs, labelled.
+  - ACMESOLAR 509 @ ₹372.88 → ₹446.65: costs ₹225.57 + ₹250.85; realized +₹37,548.93 is
+    +₹37,072.51 net; tax ₹7,797.82; about ₹29,275 in hand.
+  - A manual add's or CSV import's buy charges go into `capital_in`; sizing keeps the floor and the
+    caps after charges; a SWITCH asks for the net proceeds.
+  - Decided against the card's wording (SA48-D7): a long-term loss never offsets a short-term gain,
+    so a year that nets to a loss can still owe short-term tax. Pinned by a test.
+- **Evidence:** story file 22 passed; mutants 32/32 caught on the final bytes (first pass on earlier tests 28/30; the 2 gaps closed); portfolio neighbours
+  1,000 passed (36 files); frontend 24/24 (2 new); full suite 5,927 passed / 12 skipped / 1 xfailed / 0 failed (13m17s); `check_broad_except`
+  OK (151); `check_kt_docs` 1 expected error (KT links core/portfolio/costs.py, absent at the declared revision 4aa4c837; the commit-time header bump clears it); PDF 62 pages, source ea8702f5.
+- **Rates for the reviewer to check against primary sources:** the NSE circular NSE/FA/73061 PDF
+  timed out and the Finance Act text was not read (receipt, "Rate sources").
+- **FIX-021's reviewed bytes were kept:** all 9 copied to `analysis_data/sa048/start/` before any
+  edit (0 mismatches against `086378d8`); FIX-021's code commit `e7e3165` was built from that copy
+  (entry above).
+- **Next "continue", in a new conversation: SA-048's fresh review** per [REVIEW.md](REVIEW.md):
+  input manifest [SA-048-manifest.json](evidence/SA-048-manifest.json) `6e473449`
+  (24 files), diff `ed6d086b` (143,587 B, 23 paths, all against HEAD: FIX-021's docs commit),
+  from `analysis_data/sa048/digest.py`. It was re-recorded after FIX-021's commit, before any
+  review, and supersedes `3a4ea0e9` / `e867d409`.
+
+**FIX-021 ACCEPTED by its fresh review** (31 Oct about 09:37-09:55 IST, session
+stockagent-main-b4 [3d6058], a new conversation opened with "continue"). Receipt:
+[FIX-021-review](evidence/FIX-021-review.md). STATE: FIX-021 `done`, production
+`pending_deployment`; `active_task` null; `next_task` **SA-048**. Nothing was committed, pushed,
+deployed or configured; no production state was read and no Serper endpoint was called.
+
+- **Input verified** at the start and the end: manifest `086378d8` (9 files, 0 mismatches) and
+  diff `d5c07e7f` (41,345 B, 8 paths) against HEAD `0fdaee6`.
+- **Independent checks** (`analysis_data/fix021_review/test_rv_fix021.py`, 6 passed; with HEAD's
+  code 4 fail):
+  - RV1: one negative article over four runs on two days (ranks 5, 4, 1, 4) is classified once,
+    stored once under its own address and listed once on the holding's exit watch list; each run
+    line reads 5 results, 2 redirects.
+  - RV2: the host rule agrees with a separately written parser on 1,200 link shapes.
+  - RV3: chat lists each article once over 400 seeded random variant lists.
+  - Story 14; neighbours 271 + 1 xfailed; full suite 5,904 passed / 12 skipped / 1 xfailed / 0 failed (13m01s); `check_broad_except` OK;
+    `check_kt_docs` `[]`.
+- **Findings, all low or info:** L1 docs, `docs/CHAT_ARCHITECTURE.md`'s News fusion bullet = a
+  commit-time edit (exact text in the receipt). T1, a third chat variant is not pinned by the story
+  file = routed to [PR-012](stories/PR-012.md). I1: the rule and the probe see google.com only. I2:
+  with 5 results a search and 3 resolved, the card's `/resolve` trigger is likely to fire.
+- **Next "continue", in a new conversation: SA-048's implementation.**
+- **Commit, only at the owner's word and in a job-free window:**
+  - code commit: exactly the 9 reviewed files (`kt_manifest.py verify FIX-021-manifest.json --rev
+    HEAD`, 0 mismatches);
+  - docs commit: the receipt's commit-time edits (KT header; section 1's production paragraph,
+    `4aa4c83` deployed about 09:31 IST on 31 Oct; section 12 FIX-021 Done; guide 02-N status; L1;
+    the PDF; `check_kt_docs` `[]`), with the receipts, PR-012's note, STATE and HANDOFF (and the
+    uncommitted FIX-019 push and deploy record).
+  - A push deploys FIX-021: never on the 1st before the 09:00 monthly forecast.
+- **After the deploy:** re-run the owner's probe (no google.com, nor any other Google domain, in a
+  news event fetched after it) and guide 02-N's five trading days.
+
+**FIX-019 COMMITTED, PUSHED AND DEPLOYED** (31 Oct, about 09:25–09:35 IST, session stockagent-main-39 [a379a3], at
 the owner's "we need to commit and push unless it requires review"). FIX-021 needs its fresh
 review, so only FIX-019, accepted on 30 Oct, was committed.
 
@@ -121,8 +205,13 @@ review, so only FIX-019, accepted on 30 Oct, was committed.
 - **FIX-021 stays uncommitted:** its code and test, and its KT, guide and PDF edits put back on top
   of the docs commit. Its review input was re-recorded before any review: manifest `086378d8`,
   diff `d5c07e7f`, all against HEAD.
-- **Push:** planned at once, before the 10:00 Saturday job (`event_ingest_weekly`); the record
-  follows, uncommitted. After the deploy: guide 02-M.
+- **Pushed and deployed** (record uncommitted, for the next docs commit): `48db226..0fdaee6` at
+  09:29:16 IST, origin unchanged by a fetch just before. Railway deploy `8bdcdae1` was SUCCESS by
+  09:31:22 and `65d03daf` REMOVED (read-only `railway deployment list`); public `/health` 200 at
+  09:31:23. So the 10:00 Saturday job and every later one run FIX-019 (inferred from the times).
+  GitHub CI on `0fdaee6`: all 3 jobs success. FIX-019 production: `pending_observation`; next,
+  guide 02-M. KT section 1 still says FIX-019 is "committed but not yet deployed": correct it in
+  the next docs commit.
 
 **FIX-021 IMPLEMENTED → REVIEW REQUIRED** (31 Oct, about 08:48–09:30 IST, session
 stockagent-main-39 [a379a3], a new conversation opened with "continue"). Receipt:

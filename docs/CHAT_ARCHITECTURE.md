@@ -121,7 +121,11 @@ against the separate analysis quota (`analyse.daily_quota`).
   "reliance" is not the US ticker RS.
 - **News fusion.** `search_market_news` fires 2–3 fixed variants of the query
   concurrently and merges them by reciprocal rank fusion, with a filter for
-  horoscope results.
+  horoscope results. Serper gives a result's own link only in a search's top 3,
+  and a link below that is a Google redirect, which the fetcher reads as no
+  link. A result without a link joins the result of the same title, and the
+  merged result keeps the link. A result seen only without one is shown with
+  its source and no link.
 - **Prompt rules.** Prices only from `get_live_price` results; sources only
   from fetched tool results, with their dates; no invented headline, source or
   date; analyst opinion as one data point, never the conclusion; and a layout

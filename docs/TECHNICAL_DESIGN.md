@@ -2,7 +2,7 @@
 
 **Edition:** 2026-10-31 · **Audience:** engineers and teammates learning the product
 
-**Code inspected:** `4aa4c837ce8907c873b5dca0426009ec52020c96`
+**Code inspected:** `e7e316573f59d325d3dc0f9a52dcbb7d182f9cc7`
 
 **PDF:** [StockAgent-Three-Loops.pdf](StockAgent-Three-Loops.pdf), generated from this Markdown.
 
@@ -35,10 +35,10 @@ triggered no production job, backfill or notification.
 
 ### Production state at this edition
 
-Production runs `53e3f0e` (PR-009, FIX-016 and FIX-018), deployed at about
-09:20 IST on 30 October 2026 (the deployment list showed it SUCCESS and
-`/health` answered 200). The inspected code adds FIX-019's instrument-registry
-records (section 4). It is committed but not yet deployed, and counts as running
+Production runs `4aa4c83` (FIX-019), deployed at about 09:31 IST on 31
+October 2026 (the deployment list showed it SUCCESS and `/health` answered
+200). The inspected code adds FIX-021's reading of Google redirect links
+(section 4). It is committed but not yet deployed, and counts as running
 only once a read-only check of the deployment list and `/health` confirms that
 deploy. The table gives the configuration that
 differs from the repository and the state of each operational control.
@@ -3015,7 +3015,7 @@ section 10) are part of the current design.
 | [FIX-018](planning/PI-2026-09/stories/FIX-018.md) | The switch gate sets aside a decision whose result can never be known: named, and within a cap | Done | 6 Portfolio; 7 Marksheets | FIX-016 |
 | [FIX-019](planning/PI-2026-09/stories/FIX-019.md) | Find out why NSE lists no corporate action for 14 configured codes, and map the stale ones | Done | 4 Research; 6 Portfolio | None |
 | [FIX-020](planning/PI-2026-09/stories/FIX-020.md) | Correct the configured codes NSE does not list, and AAVAS's sector | Open | 4 Research | None |
-| [FIX-021](planning/PI-2026-09/stories/FIX-021.md) | A Google redirect link is not an article's identity | Open | 4 Research | None |
+| [FIX-021](planning/PI-2026-09/stories/FIX-021.md) | A Google redirect link is not an article's identity | Done | 4 Research | None |
 
 ### Maintain documentation with each story
 

@@ -74,3 +74,66 @@ instruments:
           priced from HEXT.NS, the code the former YF_SYMBOL_OVERRIDES entry gave Hexaware;
           whether HEXT is a relisting of the HEXAWARE listing (and from which date) is not
           recorded with exchange evidence
+
+  # Codes NSE renamed. Each NSE circular changes only the name and the trading symbol, and the
+  # notice carries the ISIN NSE's equity list gives the new code today. NSE answers only the
+  # new code, and Yahoo prices it (ICICILIFE.NS from 14 Oct 2026 so far). So the basis is kept,
+  # and the code asked for the close and the corporate-action list is the new one on every date.
+  PVR:
+    name: PVR INOX Ltd (PVR Ltd until 2023; INOX Leisure merged into it)
+    segments:
+      - {until: 2023-05-12, status: active, symbol: PVR.NS, basis: PVR}
+      - {from: 2023-05-12, status: active, symbol: PVRINOX.NS, basis: PVR, via: rename,
+         evidence: [{source: NSE circular, ref: NSE/CML/56638, date: 2023-05-08}]}
+  MCDOWELL-N:
+    name: United Spirits Ltd
+    segments:
+      - {until: 2024-06-07, status: active, symbol: MCDOWELL-N.NS, basis: MCDOWELL-N}
+      - {from: 2024-06-07, status: active, symbol: UNITDSPR.NS, basis: MCDOWELL-N, via: rename,
+         evidence: [{source: NSE circular, ref: NSE/CML/62353, date: 2024-06-06}]}
+  ZOMATO:
+    name: Eternal Ltd (Zomato Ltd until 2025)
+    segments:
+      - {until: 2025-04-09, status: active, symbol: ZOMATO.NS, basis: ZOMATO}
+      - {from: 2025-04-09, status: active, symbol: ETERNAL.NS, basis: ZOMATO, via: rename,
+         evidence: [{source: NSE circular, ref: NSE/CML/67420, date: 2025-04-03}]}
+  LTIM:
+    name: LTM Ltd (LTIMindtree Ltd until 2026)
+    segments:
+      - {until: 2026-02-27, status: active, symbol: LTIM.NS, basis: LTIM}
+      - {from: 2026-02-27, status: active, symbol: LTM.NS, basis: LTIM, via: rename,
+         evidence: [{source: NSE circular, ref: NSE/CML/72948, date: 2026-02-23}]}
+  ICICIPRULI:
+    name: ICICI Life Insurance Ltd (ICICI Prudential Life Insurance Company Ltd until 2026)
+    segments:
+      - {until: 2026-10-23, status: active, symbol: ICICIPRULI.NS, basis: ICICIPRULI}
+      - {from: 2026-10-23, status: active, symbol: ICICILIFE.NS, basis: ICICIPRULI, via: rename,
+         evidence: [{source: NSE circular, ref: NSE/CML/76967, date: 2026-10-16}]}
+
+  # Codes that no longer trade. NSE suspended each "on account of the Scheme of Amalgamation"
+  # and lists neither today, and Yahoo has no price for either. Nothing is held, so no
+  # successors are recorded.
+  GATI:
+    name: Allcargo Gati Ltd (GATI Ltd until 2023; amalgamated in 2025)
+    segments:
+      - {until: 2023-11-30, status: active, symbol: GATI.NS, basis: GATI}
+      - {from: 2023-11-30, until: 2025-11-12, status: active, symbol: ACLGATI.NS, basis: GATI,
+         via: rename, evidence: [{source: NSE circular, ref: NSE/CML/59502, date: 2023-11-24}]}
+      - from: 2025-11-12
+        status: delisted
+        basis: GATI
+        reason: >-
+          NSE suspended trading in Allcargo Gati from 12 Nov 2025 on account of its scheme of
+          amalgamation; the code no longer trades
+        evidence: [{source: NSE notice, ref: Suspension of Trading (ACLGATI), date: 2025-11-06}]
+  INOXLEISUR:
+    name: INOX Leisure Ltd (merged into PVR Ltd in 2023)
+    segments:
+      - {until: 2023-02-17, status: active, symbol: INOXLEISUR.NS, basis: INOXLEISUR}
+      - from: 2023-02-17
+        status: delisted
+        basis: INOXLEISUR
+        reason: >-
+          NSE suspended trading in INOX Leisure from 17 Feb 2023 on account of its amalgamation
+          into PVR Ltd; the code no longer trades
+        evidence: [{source: NSE notice, ref: Suspension of Trading (INOXLEISUR), date: 2023-02-14}]

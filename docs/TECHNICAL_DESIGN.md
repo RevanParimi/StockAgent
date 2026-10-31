@@ -186,7 +186,7 @@ resolved at import, so editing a file does not imply live reconfiguration.
 | `rl.hard_bind_verdict_enabled: true` | Research category follows the composite; model `final_score` remains separate. |
 | `rl.learning_mode: adapt` | Learning switch, env `RL_LEARNING_MODE`. `adapt` lets learned weights and lesson emphasis move decisions; `observe` contains them (section 5). Any other value fails closed to `observe`. Production sets `observe`. |
 | `decision_gate.mode: record` | Essential-data gate switch, env `DECISION_GATE_MODE`. `record` computes and records the gate everywhere and changes nothing; `enforce` withholds verdicts, forecasts, learning and new-risk buys that rest on unverified data or an unresolved identity (sections 4–6). Any other value fails closed to `enforce`. |
-| [`config/instruments.yaml`](../config/instruments.yaml) | The instrument registry: effective-dated records of which provider symbol each listed ticker is priced from, on which price basis, and whether its identity is resolved (section 4). Evidence is needed to resolve an identity, never to quarantine one. It lists TATAMOTORS and HEXAWARE as unresolved and two plain aliases as resolved. Quarantine acts through `decision_gate.mode`. |
+| [`config/instruments.yaml`](../config/instruments.yaml) | The instrument registry: effective-dated records of which provider symbol each listed ticker is priced from, on which price basis, and whether its identity is resolved (section 4). Evidence is needed to resolve an identity, never to quarantine one. It lists TATAMOTORS and HEXAWARE as unresolved, GATI and INOXLEISUR as delisted, and two plain aliases and five NSE renames as resolved. Quarantine acts through `decision_gate.mode`. |
 | `advisor.exit_rule: shadow` | Which exit rule sells (section 6). `legacy`: the price-path rule acts and nothing is compared. `shadow`: it still acts, and both rules' verdicts are recorded. `evidence`: the evidence rule acts. Any other value reads as `shadow`. The owner switches only on the weekly scorecard's gate; `legacy` is the rollback. |
 | `rl.control_lane_enabled`, `rl.scorecard_enabled`: true | Control/evaluation paths configured; not proof of valid prospective comparison. |
 | `ipo.enabled: true`; `ipo.gmp_enabled: false` | IPO refresh and grey-market-price fetching have separate gates. |
@@ -558,6 +558,36 @@ A rename keeps the basis: the same company under a new code, and the provider
 moves its history to the new code. A demerger or a relisting starts a new
 basis, because the continuing company's price no longer includes what was spun
 off.
+
+The registry records five configured codes NSE has renamed, each from NSE's
+circular: PVR (PVRINOX from May 2023), MCDOWELL-N (UNITDSPR, June 2024),
+ZOMATO (ETERNAL, April 2025), LTIM (LTM, February 2026) and ICICIPRULI
+(ICICILIFE, October 2026). Each change notice carries the ISIN that NSE's
+equity list gives the new code today, so each is the same security. Each ticker keeps its name and its
+basis, and is priced and cross-checked under the new code on every date, so a
+forecast issued under the old code is graded against a close under the new
+one. Without the record, the app asked for the old code, which Yahoo and NSE
+no longer answer.
+
+Two configured codes no longer trade. The registry records each as `delisted`
+from the first day NSE suspended it for an amalgamation:
+
+- GATI, which traded as ACLGATI from November 2023 and was suspended from
+  12 November 2025;
+- INOXLEISUR, merged into PVR and suspended from 17 February 2023.
+
+Each keeps its one basis and names no successor: neither has a price, and
+nothing is held. The gate abstains on either.
+
+The registry maps a code only on exchange evidence, never on a company name.
+So it does not map the configured codes NSE has never listed: ACCCEMENT, APL,
+BAYER, DEEPAKNITRI, MAHINDHOTEL, MTAR and NIIT. None appears in NSE's equity
+list or its symbol-change history, and Yahoo has no price for any, so none can
+be bought or graded. **Planned:** FIX-020 corrects them in the sector list.
+
+Yahoo moves a renamed code's history over gradually: on 30 October 2026,
+ICICILIFE.NS held only the sessions since 14 October, so ICICIPRULI's
+history-based analysis rests on a few weeks until Yahoo carries the rest.
 
 The gate abstains when the ticker's identity for today is not resolved, or when
 the technicals' price history came from another symbol than the identity names
@@ -1436,9 +1466,10 @@ through and the decision pace to the scorecard.
   beyond the cap the gate cannot judge for as long as those decisions stay in
   it. With 15 to 19 decisions past 30 sessions, 2 set aside is already above
   10%. The common lasting gaps: a stock NSE lists no corporate action for at
-  all (14 of the 202 configured symbols on 29 October 2026, among them LTIM,
-  STARHEALTH and ZOMATO; ETERNAL, listed in 2021, returned none either; some
-  may be stale codes, **Planned:** FIX-019), one with a bonus or split ex
+  all (on 30 October 2026, 4 of the 202 configured symbols with a price:
+  AAVAS, IDEAFORGE, STARHEALTH and ZOMATO, which is ETERNAL on NSE; 5 codes
+  without a price have an empty list too and carry no decision, section 4),
+  one with a bonus or split ex
   between its close's bar and its review day (a carried-forward close on the
   ex day), or one with a row between its two closes that is a change no ratio
   converts or is not read. An empty list is taken as lasting although NSE
@@ -2973,6 +3004,7 @@ section 10) are part of the current design.
 | [FIX-017](planning/PI-2026-09/stories/FIX-017.md) | The holding sync reads every NSE corporate-action row it is given, under NSE's code | Open | 6 Portfolio | None |
 | [FIX-018](planning/PI-2026-09/stories/FIX-018.md) | The switch gate sets aside a decision whose result can never be known: named, and within a cap | Done | 6 Portfolio; 7 Marksheets | FIX-016 |
 | [FIX-019](planning/PI-2026-09/stories/FIX-019.md) | Find out why NSE lists no corporate action for 14 configured codes, and map the stale ones | Open | 4 Research; 6 Portfolio | None |
+| [FIX-020](planning/PI-2026-09/stories/FIX-020.md) | Correct the configured codes NSE does not list, and AAVAS's sector | Open | 4 Research | None |
 
 ### Maintain documentation with each story
 

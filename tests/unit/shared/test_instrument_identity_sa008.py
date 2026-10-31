@@ -22,7 +22,9 @@ status, symbol and basis below is written by hand from the registry rules
   another code is not served.
 - The shipped registry: every former YF_SYMBOL_OVERRIDES entry is registered
   with the same provider symbol (fetching is unchanged), TATAMOTORS and
-  HEXAWARE are unresolved, the two plain aliases resolve.
+  HEXAWARE are unresolved, the two plain aliases resolve. FIX-019's five NSE
+  renames and two delisted codes are the only other entries
+  (tests/unit/test_registry_fix019.py).
 """
 from __future__ import annotations
 
@@ -138,13 +140,15 @@ FORMER_OVERRIDES = {          # settings.YF_SYMBOL_OVERRIDES before SA-008, by h
     "TATAMOTORS": "TMPV.NS", "TVSMOTORS": "TVSMOTOR.NS",
     "CANARABANK": "CANBK.NS", "HEXAWARE": "HEXT.NS",
 }
+NSE_RENAMES = {"PVR", "MCDOWELL-N", "ZOMATO", "LTIM", "ICICIPRULI"}    # FIX-019, by hand
+NSE_DELISTED = {"GATI", "INOXLEISUR"}                                  # FIX-019, by hand
 
 
 def test_the_shipped_registry_is_valid(registry):
     registry(SHIPPED)
     loaded = instruments.load_registry()
     assert loaded.failure is None and loaded.errors == {}
-    assert set(loaded.entries) == set(FORMER_OVERRIDES)
+    assert set(loaded.entries) == set(FORMER_OVERRIDES) | NSE_RENAMES | NSE_DELISTED
 
 
 def test_every_former_override_is_registered_with_the_same_symbol(registry, resolver):

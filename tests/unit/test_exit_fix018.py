@@ -189,6 +189,23 @@ def test_the_lines_name_each_decision_set_aside_and_cannot_judge_breaks_the_run(
     assert xs.recommends(one, {"status": xs.CANNOT_JUDGE}) is False
 
 
+def test_a_decision_set_aside_is_named_with_its_lasting_reason_not_a_temporary_one():
+    """FIX-018's review, T2. S15 has no result at both horizons: at 10 sessions for a reason a
+    later read may remove (temporary), at 30 for one no read can (lasting). It is set aside, so
+    the temporary gap does not fail the week, and the scorecard names the reason that set it
+    aside, the lasting one. 15 judged, 9 right: (9 x 2 - 6 x 1) / 15 = +0.80, a pass."""
+    decisions = _population(15, aside=1, aside_at=(30,))
+    decisions[15][10] = TEMPORARY
+    look = xs.gate_look(_as_grades(decisions))
+    day = decisions[15]["day"].isoformat()
+    assert (look["status"], look["judged"], look["set_aside"]) == (
+        xs.PASS, 15, [{"date": day, "symbol": "S15", "reason": "lasting cause of S15 at 30"}])
+    rows_block = {"rows": 16, "decisions": 16, "repeat_days": 0, "tally": []}
+    assert xs.scorecard_text(dict(rows_block, gate=look, recommend=False)).endswith(
+        f"Set aside, as its result can never be known: S15, decided {day}: lasting cause of S15 "
+        "at 30.")
+
+
 # -- The oracle --------------------------------------------------------------------------------------
 
 def _oracle(decisions) -> tuple[str, bool]:
@@ -494,6 +511,27 @@ def test_a_missing_close_a_missing_benchmark_or_an_unread_list_is_temporary():
     graded = xs.grade_disagreements([row], as_of=AS_OF, stock_quote_on=nse,
                                     bench_close_on=lambda d: 1000.0, corp_actions=_no_actions)
     assert [(g["status"], g["no_result"], g["right"]) for g in graded] == [("graded", "", True)] * 2
+
+
+def test_a_list_starting_on_the_close_day_is_graded_and_one_starting_later_is_lasting():
+    """FIX-018's review, T1, with the card's example. A decision's close is the raw close of
+    1 Sep 2026, and NSE's list (its latest actions) begins with a dividend. Ex 1 Sep: every row
+    ex after the close is in the list, and one ex that day is already in the close, so the
+    horizon close stands as it is (x1) and is graded. Ex 2 Sep: an action the list no longer
+    holds may lie between, and no later read brings it back, so it is lasting."""
+    from core.portfolio.corp_actions import action_record
+    from core.portfolio.pricing import SessionClose
+    close_day = date(2026, 9, 1)
+    quote = SessionClose(97.0, trading_days_after(close_day, 10), "nse")
+
+    def starting(first: date):
+        record = action_record([{"subject": "Dividend - Rs 5 Per Share",
+                                 "exDate": first.strftime("%d-%b-%Y")}], "AAA")
+        return xs.horizon_in_basis(quote, record, close_day, close_day)
+    assert starting(date(2026, 9, 1)) == (97.0, "", "", "")
+    assert starting(date(2026, 9, 2)) == (
+        None, "", "NSE's list of its corporate actions starts 2026-09-02, after the decision's "
+                  "close (2026-09-01)", LASTING)
 
 
 # -- Random markets: what is set aside, and what stays so ---------------------------------------------

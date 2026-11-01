@@ -1,29 +1,55 @@
 """
-Compass Phase B — per-symbol surveillance/meta + float-mcap guard data
-(spec §6.1 threshold gates: ASM/GSM, suspension, free-float mcap floor).
+Compass Phase B — guard data for the post-rank shortlist (spec §6.1 threshold
+gates: ASM/GSM, suspension, free-float mcap floor) and a company's market
+classification.
 
-Called only for the post-rank SHORTLIST (~80 symbols), never the full
-universe — per-symbol NSE calls at 0.5s spacing stay under a minute.
-Per-day JSON cache so a re-run within the day is free.
+Surveillance and suspension come from NSE's daily "Surveillance Indicator"
+report (CM segment; `REG1_IND<ddmmyy>.csv` in the archive). It has one row
+per listed security: its stage under each surveillance measure, "100" meaning
+not under it, and its status, "A" active or "S" suspended. One file covers
+every symbol, so a run fetches it once. NSE's per-symbol equity-meta-info API,
+read before, answers 404 (probed 2026-10-20). Example: the report for 29 Oct
+2026 lists 3,216 securities, 16 of them suspended; its GSM, long-term ASM and
+short-term ASM members match NSE's own lists of 30 Oct, a day later (the
+reportASM and reportGSM APIs), but for 2 long-term ASM and 3 GSM symbols.
+
+Float mcap and classification come from Yahoo Finance, per symbol.
 """
 from __future__ import annotations
 
+import io
 import json
 import logging
 import pathlib
-import tempfile
 import time
-from datetime import date
+from datetime import date, timedelta
+
+import pandas as pd
+
+from core.config import settings
+from core.intelligence.rl.nse_calendar import is_trading_day
+from services.data.fetchers.nse_client import close_nse, make_nse
 
 logger = logging.getLogger(__name__)
 
-_CACHE_PATH_DEFAULT = "data/market_cache/symbol_meta.json"
+_SURVEILLANCE_URL = "https://nsearchives.nseindia.com/content/cm/REG1_IND{:%d%m%y}.csv"
+# Report column -> the measure's short name. Any value but "100" is a stage.
+_MEASURES = {
+    "GSM": "GSM",
+    "Long_Term_Additional_Surveillance_Measure (Long Term ASM)": "LT-ASM",
+    "Short_Term_Additional_Surveillance_Measure (Short Term ASM)": "ST-ASM",
+}
+_NOT_UNDER = "100"
+_ACTIVE = "A"
+# A report older than this, counted back from the screen's latest session,
+# no longer says who is under surveillance now.
+SURVEILLANCE_MAX_AGE_DAYS = 7
 _SLEEP_BETWEEN_CALLS = 0.5
 
 
 def _make_nse_client():
-    from nse import NSE
-    return NSE(download_folder=pathlib.Path(tempfile.mkdtemp()))
+    """Isolated factory so tests can monkeypatch it."""
+    return make_nse()
 
 
 def _yf_info(ticker: str) -> dict:
@@ -44,69 +70,134 @@ def _yf_info(ticker: str) -> dict:
         return {}
 
 
-def _load_cache(path: pathlib.Path) -> dict:
-    if not path.exists():
-        return {}
+def parse_surveillance(text: str) -> dict[str, dict] | None:
+    """{symbol: {"status": "A" | "S" | …, "measures": ["GSM", "LT-ASM", …]}}
+    from the report's CSV text, "measures" naming those the symbol is under.
+    None when a column it needs is missing (a format change)."""
+    raw = pd.read_csv(io.StringIO(text), dtype=str, skipinitialspace=True)
+    raw.columns = [str(c).strip() for c in raw.columns]
+    missing = [c for c in ("Symbol", "Status", *_MEASURES) if c not in raw.columns]
+    if missing:
+        logger.warning("[surveillance] report lacks columns %s", missing)
+        return None
+    out: dict[str, dict] = {}
+    columns = [raw[c].fillna("").str.strip() for c in _MEASURES]
+    for i, (sym, status) in enumerate(zip(raw["Symbol"].fillna(""), raw["Status"].fillna(""))):
+        sym = sym.strip().upper()
+        if not sym:
+            continue
+        row = {"status": status.strip().upper(),
+               "measures": [name for name, col in zip(_MEASURES.values(), columns)
+                            if col.iloc[i] not in ("", _NOT_UNDER)]}
+        held = out.get(sym)
+        if held is not None:          # never seen; keep the stricter reading
+            row = {"status": held["status"] if held["status"] != _ACTIVE else row["status"],
+                   "measures": sorted(set(held["measures"]) | set(row["measures"]))}
+        out[sym] = row
+    return out or None
+
+
+def _client_or_none():
     try:
-        return json.loads(path.read_text(encoding="utf-8"))
-    except Exception:
-        return {}
+        return _make_nse_client()
+    except Exception as exc:
+        logger.warning("[surveillance] NSE client unavailable: %s", exc)
+        return None
 
 
-def _save_cache(path: pathlib.Path, cache: dict) -> None:
+def _fetch_report(nse, day: date) -> dict[str, dict] | None:
+    """The day's report, parsed. None on any failure (holiday, not yet
+    published, archive down, format change)."""
+    try:
+        resp = nse._req(_SURVEILLANCE_URL.format(day))
+        return parse_surveillance(resp.content.decode("utf-8", errors="replace"))
+    except Exception as exc:
+        logger.warning("[surveillance] report for %s unavailable: %s", day, exc)
+        return None
+
+
+def _surveillance_path() -> pathlib.Path:
+    return pathlib.Path(settings.DISCOVERY_DATA_DIR) / "surveillance.json"
+
+
+def _load_cached() -> tuple[dict | None, str | None]:
+    path = _surveillance_path()
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return None, None
+    except (OSError, ValueError) as exc:
+        logger.warning("[surveillance] cache unreadable %s: %s", path, exc)
+        return None, None
+    securities = data.get("securities") if isinstance(data, dict) else None
+    as_of = data.get("as_of") if isinstance(data, dict) else None
+    if isinstance(securities, dict) and securities and isinstance(as_of, str):
+        return securities, as_of
+    return None, None
+
+
+def _save(securities: dict, as_of: str) -> None:
+    path = _surveillance_path()
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
         tmp = path.with_suffix(".tmp")
-        tmp.write_text(json.dumps(cache, indent=2), encoding="utf-8")
+        tmp.write_text(json.dumps({"as_of": as_of, "securities": securities}), encoding="utf-8")
         tmp.replace(path)
     except OSError as exc:
         logger.error("[surveillance] cache write failed %s: %s", path, exc)
 
 
-def get_symbol_meta(symbol: str) -> dict:
-    """NSE meta for one symbol: surveillance flag, suspension, industry.
-    Cached per (symbol, day). Never raises — degraded=True on failure."""
-    symbol = symbol.strip().upper()
-    path = pathlib.Path(_CACHE_PATH_DEFAULT)
-    cache = _load_cache(path)
-    key = f"{symbol}|{date.today().isoformat()}"
-    if key in cache:
-        return cache[key]
+def surveillance_list(session: date, tries: int = 5) -> tuple[dict[str, dict] | None, str | None]:
+    """(securities, as_of): the newest Surveillance Indicator report dated on
+    or before `session`, the screen's latest EOD session, and at most
+    SURVEILLANCE_MAX_AGE_DAYS before it. Trading days are taken newest first:
+    the cached report serves for its own day, any other is fetched (at most
+    `tries` fetches) and cached. A report dated after `session` is never used,
+    so a replay of a past screen sees only what was published by then.
+    (None, None) when no report qualifies: the gate is dark for the run.
+    Never raises.
 
-    result = {"surveillance": None, "suspended": False, "industry": None,
-              "degraded": False}
+    Example: a screen whose latest session is Friday 30 Oct, run before NSE
+    has published that day's report, uses Thursday 29 Oct's. When NSE does
+    not answer, a cached 30 Oct report serves a screen of 6 Nov but not one
+    of 9 Nov."""
+    oldest = session - timedelta(days=SURVEILLANCE_MAX_AGE_DAYS)
+    cached, cached_as_of = _load_cached()
+    nse, fetched = None, 0
     try:
-        nse = _make_nse_client()
-        try:
-            meta = nse.equityMetaInfo(symbol) or {}
-        finally:
-            from services.data.fetchers.nse_client import close_nse
-            close_nse(nse)  # exit() + rmtree(download_folder) — AUD-017
-        surv_block = meta.get("surveillance") or {}
-        surv = surv_block.get("surv") if isinstance(surv_block, dict) else None
-        result["surveillance"] = (str(surv).strip() or None) if surv else None
-        status = str((meta.get("metadata") or {}).get("status", "")).lower()
-        result["suspended"] = "suspend" in status or "delist" in status
-        info = meta.get("info") or {}
-        industry = info.get("industry") or meta.get("industry")
-        result["industry"] = str(industry).strip() if industry else None
-    except Exception as exc:
-        logger.warning("[surveillance] meta fetch failed for %s: %s", symbol, exc)
-        result["degraded"] = True
-
-    cache[key] = result
-    _save_cache(path, cache)
-    time.sleep(_SLEEP_BETWEEN_CALLS)
-    return result
+        day = session
+        while day >= oldest:
+            if is_trading_day(day):
+                if cached is not None and cached_as_of == day.isoformat():
+                    return cached, cached_as_of
+                if fetched < tries:
+                    fetched += 1
+                    if nse is None:
+                        nse = _client_or_none()
+                    if nse is None:
+                        fetched = tries           # NSE unreachable: only the cache can answer
+                    else:
+                        securities = _fetch_report(nse, day)
+                        if securities:
+                            _save(securities, day.isoformat())
+                            logger.info("[surveillance] report as of %s: %d securities",
+                                        day, len(securities))
+                            return securities, day.isoformat()
+                        time.sleep(_SLEEP_BETWEEN_CALLS)
+            day -= timedelta(days=1)
+    finally:
+        close_nse(nse)
+    logger.warning("[surveillance] no report from %s to %s (cached as of %s): the "
+                   "ASM/GSM and suspension gates are dark", oldest, session, cached_as_of)
+    return None, None
 
 
 def market_classification(symbol: str) -> dict:
     """The company's market sector and industry from Yahoo Finance, e.g.
     {"sector": "Healthcare", "industry": "Drug Manufacturers - General"};
     "" for either when unknown (Yahoo gives a fund neither). NSE's
-    equity-meta-info, the industry source `get_symbol_meta` reads, answers 404
-    (probed 2026-10-20), and its quote API refused this machine (403). Never
-    raises."""
+    equity-meta-info answers 404 (probed 2026-10-20) and its quote API refused
+    this machine (403). Never raises."""
     info = _yf_info(symbol)
     return {"sector": str(info.get("sector") or "").strip(),
             "industry": str(info.get("industry") or "").strip()}

@@ -18,6 +18,7 @@ from datetime import date
 # Re-exported collaborators — tests and callers patch these names HERE.
 from backend.shared.schemas.discovery import DiscoveryCandidate
 from core.discovery.deep_dive import run_deep_dives
+from core.discovery.guards import GUARD_SOURCES
 from core.discovery.paper_lane import run_paper_reviews
 from core.discovery.screen import load_latest_screen, run_screen
 from core.discovery.shelf import ShelfStore
@@ -184,6 +185,11 @@ def run_discovery_cycle(on: date | None = None) -> dict:
         "candidates": len(screen.candidates),
         "ipo_candidates": len(ipo_cands),
         "dark_signals": screen.dark_signals,
+        # Checks dark for the whole run (a guard source that answered for no
+        # symbol, no listing, the insider filings), not one symbol's
+        # (`float_mcap:ACME`).
+        "dark_checks": [c for c in screen.degraded_checks
+                        if ":" not in c or c.split(":", 1)[0] not in GUARD_SOURCES],
         "insider_trades": {k: insider.get(k) for k in (
             "listed", "read_now", "unread", "failed", "complete")},
         "listing": listing_info,

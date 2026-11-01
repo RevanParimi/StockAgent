@@ -22,6 +22,7 @@ def test_run_discovery_cycle_happy_path(monkeypatch):
     class _Screen:
         candidates = ["c1", "c2"]
         dark_signals = ["insider_buying"]
+        degraded_checks = ["surveillance", "float_mcap:ACME"]
         universe_size = 1500
         def model_dump(self):
             return {}
@@ -45,6 +46,7 @@ def test_run_discovery_cycle_happy_path(monkeypatch):
     assert result["shelf"]["added"] == ["AAA"]
     assert result["paper"]["reviewed"] == ["AAA"]
     assert result["dark_signals"] == ["insider_buying"]
+    assert result["dark_checks"] == ["surveillance"]       # not float_mcap:ACME (FIX-011)
 
 
 def test_run_discovery_cycle_stage_failure_is_contained(monkeypatch):
@@ -60,6 +62,7 @@ def test_run_discovery_cycle_stage_failure_is_contained(monkeypatch):
     class _Empty:
         candidates = []
         dark_signals = []
+        degraded_checks = []
         universe_size = 0
         def model_dump(self):
             return {}

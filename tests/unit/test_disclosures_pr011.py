@@ -1208,8 +1208,11 @@ def _guard_window(symbols, start=date(2026, 7, 1)) -> pd.DataFrame:
 
 @pytest.fixture()
 def guard_env(monkeypatch):
-    monkeypatch.setattr(guards, "get_symbol_meta", lambda s: {
-        "surveillance": None, "suspended": False, "industry": None, "degraded": False})
+    class _NoneUnderSurveillance(dict):          # NSE's report: every symbol active, clear
+        def get(self, symbol, default=None):
+            return {"status": "A", "measures": []}
+    monkeypatch.setattr(guards, "surveillance_list",
+                        lambda session: (_NoneUnderSurveillance(), session.isoformat()))
     monkeypatch.setattr(guards, "float_mcap_cr", lambda s: 2000.0)
     monkeypatch.setattr(settings, "DISCOVERY_PLEDGE_GUARD", True)
     monkeypatch.setattr(settings, "DISCOVERY_MAX_PLEDGE_PCT", 25.0)

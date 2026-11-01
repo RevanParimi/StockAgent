@@ -168,7 +168,9 @@ count:
   review and the monthly forecast write its predictions there;
 - otherwise a shelf idea's own sector (the deep dive's `infer_sector`), and a
   watchlist stock's item sector when it is a well-formed key, else
-  `infer_sector`. Never a fixed `generic`.
+  `infer_sector`. Never a fixed `generic`. `infer_sector` takes the
+  registry's ticker map, else Yahoo's industry mapped to a registry sector
+  ("Auto Parts" is `automobile`), else `generic`.
 
 **Example:** on Tuesday 20 Oct a shelf idea last dived on 12 Sep is not a
 candidate. A watchlist stock analysed on 17 Oct as a BUY at 0.68, actionable,

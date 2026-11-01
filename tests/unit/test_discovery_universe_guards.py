@@ -41,9 +41,9 @@ def test_build_universe_filters_series_and_price():
 
 def test_guards_liquidity_and_circuit(monkeypatch):
     import core.discovery.guards as g
-    monkeypatch.setattr(g, "get_symbol_meta",
-                        lambda s: {"surveillance": None, "suspended": False,
-                                   "industry": "X", "degraded": False})
+    monkeypatch.setattr(g, "surveillance_list", lambda session: (
+        {s: {"status": "A", "measures": []} for s in ("LIQCO", "THINCO", "PUMPCO")},
+        "2026-06-09"))
     monkeypatch.setattr(g, "float_mcap_cr", lambda s: 2000.0)
     monkeypatch.setattr(g, "pledge_snapshots", lambda symbols: {})    # NSE unavailable
 
@@ -62,12 +62,13 @@ def test_guards_liquidity_and_circuit(monkeypatch):
 def test_guards_surveillance_and_float(monkeypatch):
     import core.discovery.guards as g
     metas = {
-        "ASMCO":  {"surveillance": "ASM ST1", "suspended": False, "industry": None, "degraded": False},
-        "SUSPCO": {"surveillance": None, "suspended": True, "industry": None, "degraded": False},
-        "TINYCO": {"surveillance": None, "suspended": False, "industry": None, "degraded": False},
-        "DARKCO": {"surveillance": None, "suspended": False, "industry": None, "degraded": True},
+        "ASMCO":  {"status": "A", "measures": ["ST-ASM"]},
+        "SUSPCO": {"status": "S", "measures": []},
+        "TINYCO": {"status": "A", "measures": []},
+        "DARKCO": None,                         # not in NSE's report
     }
-    monkeypatch.setattr(g, "get_symbol_meta", lambda s: metas[s])
+    monkeypatch.setattr(g, "surveillance_list", lambda session: (
+        {s: m for s, m in metas.items() if m is not None}, "2026-06-09"))
     monkeypatch.setattr(g, "pledge_snapshots", lambda symbols: {})
     monkeypatch.setattr(g, "float_mcap_cr",
                         lambda s: {"ASMCO": 900.0, "SUSPCO": 900.0,

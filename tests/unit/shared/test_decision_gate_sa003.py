@@ -463,7 +463,7 @@ def test_deep_dive_gate(monkeypatch, tmp_path, gate_mode, mode, status, shelved)
     monkeypatch.setattr(dd, "ShelfStore", lambda: type("S", (), {"load": lambda self: Shelf()})())
     monkeypatch.setattr(dd, "EodStore", lambda: type(
         "E", (), {"load_window": lambda self, end, sessions: _window()})())
-    monkeypatch.setattr(dd, "infer_sector", lambda s: "pharma")
+    monkeypatch.setattr(dd, "infer_sector", lambda s, c=None: "pharma")
     monkeypatch.setattr(dd, "get_orchestrator", lambda sector: type(
         "O", (), {"analyse": lambda self, t: _gated_report(status)})())
     # PR-004: only a symbol NSE lists as a company is dived.

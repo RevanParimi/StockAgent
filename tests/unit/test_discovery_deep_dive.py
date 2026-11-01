@@ -14,17 +14,15 @@ def test_infer_sector_exact_registry_hit():
 
 
 def test_infer_sector_industry_keyword(monkeypatch):
-    monkeypatch.setattr(dd, "get_symbol_meta",
-                        lambda s: {"surveillance": None, "suspended": False,
-                                   "industry": "Pharmaceuticals & Biotech",
-                                   "degraded": False})
+    monkeypatch.setattr(dd, "market_classification",
+                        lambda s: {"sector": "Healthcare",
+                                   "industry": "Drug Manufacturers - Specialty & Generic"})
     assert dd.infer_sector("NEWPHARMACO") == "pharma"
 
 
 def test_infer_sector_falls_back_generic(monkeypatch):
-    monkeypatch.setattr(dd, "get_symbol_meta",
-                        lambda s: {"surveillance": None, "suspended": False,
-                                   "industry": None, "degraded": True})
+    monkeypatch.setattr(dd, "market_classification",
+                        lambda s: {"sector": "", "industry": ""})     # Yahoo has nothing
     assert dd.infer_sector("MYSTERYCO") == "generic"
 
 
@@ -65,7 +63,7 @@ def test_run_deep_dives_skips_managed_and_builds_result(monkeypatch):
             return _window()
     monkeypatch.setattr(dd, "EodStore", lambda: _FakeStore())
 
-    monkeypatch.setattr(dd, "infer_sector", lambda s: "pharma")
+    monkeypatch.setattr(dd, "infer_sector", lambda s, c=None: "pharma")
     monkeypatch.setattr(dd, "load_listing",
                         lambda: _companies("MANAGED", "SHELVED", "NEWCO", "EXTRA"))
     monkeypatch.setattr(dd, "market_classification",
@@ -101,7 +99,8 @@ def test_run_deep_dives_orchestrator_failure_is_nonfatal(monkeypatch):
         def load_window(self, end, sessions):
             return _window()
     monkeypatch.setattr(dd, "EodStore", lambda: _FakeStore())
-    monkeypatch.setattr(dd, "infer_sector", lambda s: "generic")
+    monkeypatch.setattr(dd, "infer_sector", lambda s, c=None: "generic")
+    monkeypatch.setattr(dd, "market_classification", lambda s: {"sector": "", "industry": ""})
     monkeypatch.setattr(dd, "load_listing", lambda: _companies("NEWCO"))
 
     class _Boom:

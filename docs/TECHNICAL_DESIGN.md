@@ -2096,19 +2096,68 @@ quarter before 30 Sep 2026, and 79 were more than 200 days old (10 from
 before 2015). 35 of those 79 showed more than 25% pledged; such a stock is
 kept as unknown, not rejected.
 
+**Surveillance and suspension.** NSE's daily Surveillance Indicator report
+([surveillance.py](../services/data/fetchers/surveillance.py);
+`REG1_IND<ddmmyy>.csv` in NSE's archive) lists every security with its stage
+under each surveillance measure ("100" means not under it) and its status,
+"A" active or "S" suspended. The screen reads it once a run, dated on the
+window's latest session or up to 7 days before it, never after, and caches it
+in `data/discovery/surveillance.json`; a run fetches at most five days'
+files. A shortlisted stock under GSM or long- or short-term ASM, at any
+stage, is rejected (`surveillance_asm_gsm`), and one that is not active is
+rejected (`suspended`). A stock the report does not list is kept and recorded
+as `surveillance:<SYMBOL>`. With no report, the screen records the one check
+`surveillance` and every stock passes those two gates. On 29 Oct 2026 the
+report listed 3,216 securities: 74 under GSM, 143 under long-term ASM, 47
+under short-term ASM and 16 suspended. Its members matched NSE's own ASM and
+GSM lists of 30 Oct, a day later, but for 2 long-term ASM and 3 GSM symbols.
+A2Z Infra was under long-term ASM stage I, so it is rejected; Maruti was
+under no measure.
+
+**One check per dark source.** A per-symbol source (the report's listing,
+Yahoo's float, NSE's pledge rows) that answers for none of the stocks reaching
+the per-symbol gates is recorded once, as `surveillance`, `float_mcap` or
+`promoter_pledge`, not once per stock. The weekly run's summary lists such
+run-wide checks as `dark_checks`, and the scheduler's Discovery log line
+repeats them. The watchdog's `discovery_guard_sources_live` invariant
+([checks.py](../core/ops/watchdog/checks.py)) is pending while one of these
+sources has been dark in every screen for 7 days or more, which is two weekly
+screens in a row, and tells the owner which gate has passed every stock. The
+pledge source is not judged while `discovery.pledge_guard` is off. Example:
+`surveillance` dark in the screens of 23 and 30 Oct warns; dark on 30 Oct
+alone does not yet.
+
 **Market sector.** Each idea carries `market_sector` and `industry` from
 Yahoo Finance's classification (for example "Healthcare" and "Drug
 Manufacturers - General"). The idea's `sector` field is a routing key, set by
-the deep dive's `infer_sector`. It picks the analysis graph and, after a buy,
-is the holding's `sector`: the advisor reads the holding's predictions under
-it, and SA-050's sector cap counts it. The daily review and the monthly
-forecast write a managed stock's predictions under its managed-ticker
-record's sector, which promotion keeps once it exists. So a buy candidate
-carries its managed record's sector when the stock is managed (below).
-Re-keying `sector` belongs to the sector-lens work (SA-026), so it stays as
-it was. For most screened stocks it reads `generic`, which is not a sector,
-so the shelf's cap counts `market_sector`. An idea with no known market
-sector is not capped, rather than lumped with other unknowns.
+the deep dive's `infer_sector` ([deep_dive.py](../core/discovery/deep_dive.py)):
+the registry's ticker map, else that classification mapped to a registry
+sector (an industry table, then the Yahoo sector for Healthcare, Financial
+Services, Real Estate and Energy), else `generic`. Yahoo is the one industry
+source because it answers for nearly every NSE company and tells an insurer
+from a bank and a defence maker from other capital goods. NSE gives an
+industry only in its index lists (750 companies), in coarser classes. Over the
+registry's 202 tickers on 1 Nov, Yahoo classified 193 and the table agreed
+with the curated map for 184 (BEL and HAL read `defence`, the map says
+`capgoods`); the map still wins for its own tickers. Of 150 Nifty Total
+Market companies outside the registry, sampled that day, 146 were classified
+and 4 of those read `generic`.
+
+The key picks the analysis graph: automobile, banking_bfsi, it_sector and
+renewable_energy have native graphs, and every other key runs the generic
+graph, so for those the key changes only the prediction-store directory and
+the sector ledger. After a buy it is the holding's `sector`: the advisor
+reads the holding's predictions under it, and SA-050's sector cap counts it.
+The daily review and the monthly forecast write a managed stock's predictions
+under its managed-ticker record's sector, which promotion keeps once it
+exists. So a buy candidate carries its managed record's sector when the stock
+is managed (below), and the deep dive skips managed stocks. A re-dive
+refreshes an idea's `market_sector` and `industry` but never its `sector`, so
+an idea keeps the sector it was shelved under, `generic` included, and with
+it its paper-lane store. Re-keying an existing `sector` belongs to the
+sector-lens work (SA-026). The shelf's cap counts `market_sector`. An idea
+with no known market sector is not capped, rather than lumped with other
+unknowns.
 
 **Example.** A week's best dives include four Healthcare ideas at 0.80, 0.70,
 0.65 and 0.60. The first three take the sector's places and 0.60 is turned
@@ -2147,12 +2196,21 @@ would let through (38%).
 
 **Limits.**
 
-- NSE's per-symbol meta API (`equity-meta-info`), which
-  `get_symbol_meta` reads, answered 404 for every symbol tried on
-  2026-10-20. NSE's quote API refused this machine. This machine's meta
-  cache, from July, is all `degraded`. So the screen's surveillance (ASM/GSM) and
-  suspension guards record a degraded check for every symbol instead of
-  testing it, and `infer_sector` never sees an industry. **Planned:** FIX-011.
+- Without a Surveillance Indicator report of the last 7 days, a stock under
+  ASM or GSM passes the screen. The screen, the weekly summary and, after a
+  week, the watchdog say so. IPO candidates and re-dives never pass through
+  the screen's guards, so a shelf idea that comes under ASM later stays on
+  the shelf.
+- The report's ESM and insolvency (IRP) columns are not gated. On 29 Oct
+  every ESM stock and all but 2 of the 56 IRP stocks were in a
+  trade-for-trade series (BE, BZ, SZ) or on the SME platform, which the
+  universe leaves out.
+- Yahoo names an industry in its own taxonomy. One the table does not name,
+  under a Yahoo sector that maps to no key (Industrials or Basic Materials,
+  for example), reads `generic`. TIINDIA reads `capgoods` (Yahoo:
+  Conglomerates) where NSE says automobile components.
+- NSE's per-symbol meta API (`equity-meta-info`) answers 404 (2026-10-20) and
+  its quote API refused this machine, so neither is read.
 - Yahoo's `quoteType` calls an Indian ETF "EQUITY", so it cannot tell a fund
   from a company; the ISIN can.
 - A capped-out idea waits 30 days for its next dive, even if its sector frees
@@ -2866,7 +2924,8 @@ peers, and missing data is scored 0.5. The
 adopted on 2026-09-26, replaces the per-sector graphs in four parts:
 
 - sector knowledge becomes a lens YAML (peers, benchmark, KPIs, news terms and
-  macro drivers), resolved from NSE's industry field;
+  macro drivers), resolved from the stock's industry (Yahoo's classification,
+  the one industry source; section 8);
 - code computes five factors (Value, Quality, Growth, Momentum and Risk) as
   percentiles against real peers and the stock's own history;
 - one LLM reader returns dated, sourced events, and code turns them into a

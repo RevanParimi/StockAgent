@@ -164,3 +164,19 @@ invariants:
       issue is untriaged and closes with one "resolved" notice; watchdog
       notices reach the owner only.
     docs: docs/TECHNICAL_DESIGN.md
+
+  - id: discovery_guard_sources_live
+    kind: invariant
+    title: "The discovery screen's guard sources answer"
+    check: discovery_guard_sources
+    action: >
+      A source of the weekly screen's guards has answered for no symbol in two
+      screens a week apart, so its gate has passed every symbol since:
+      surveillance is NSE's daily Surveillance Indicator report
+      (nsearchives.nseindia.com/content/cm/REG1_IND<ddmmyy>.csv), float_mcap
+      is Yahoo Finance's floatShares, promoter_pledge is NSE's pledge data.
+      The screen file (data/discovery/screens/<date>_screen.json) lists the
+      dark checks, and the scheduler's "Discovery" log line repeats them as
+      dark_checks. Fetch the source by hand from the server; a changed file
+      name or column fails the same way as an outage.
+    docs: docs/TECHNICAL_DESIGN.md

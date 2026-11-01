@@ -27,38 +27,100 @@ from core.discovery.universe import COMPANY, instrument_kind
 from core.intelligence.rl.workflows.sector_router import NATIVE_SECTORS, get_orchestrator
 from services.api.log_buffer import load_managed_tickers
 from services.data.fetchers.bhavcopy import load_listing
-from services.data.fetchers.surveillance import get_symbol_meta, market_classification
+from services.data.fetchers.surveillance import market_classification
 from services.data.stores.eod_store import EodStore
 
 logger = logging.getLogger(__name__)
 
-# NSE meta "industry" keyword -> our sector key (lowercase substring match,
-# first hit wins). Keys must satisfy promotion._SECTOR_RE.
-_INDUSTRY_SECTOR_KEYWORDS: list[tuple[str, str]] = [
-    ("pharma", "pharma"), ("healthcare", "pharma"), ("hospital", "pharma"),
-    ("bank", "banking_bfsi"), ("financ", "banking_bfsi"), ("nbfc", "banking_bfsi"),
-    ("software", "it_sector"), ("information technology", "it_sector"), ("it services", "it_sector"),
-    ("power", "renewable_energy"), ("renewable", "renewable_energy"), ("electric utilit", "renewable_energy"),
-    ("auto", "automobile"), ("tyre", "automobile"),
-    ("fmcg", "fmcg"), ("consumer", "fmcg"), ("food", "fmcg"), ("beverage", "fmcg"),
-    ("steel", "metals"), ("metal", "metals"), ("mining", "metals"), ("aluminium", "metals"),
-    ("oil", "oilgas"), ("gas", "oilgas"), ("petro", "oilgas"), ("refin", "oilgas"),
-    ("cement", "infra"), ("construction", "infra"), ("infrastructure", "infra"),
-    ("chemical", "chemicals"), ("fertil", "agrochem"), ("agro", "agrochem"),
-    ("defence", "defence"), ("aerospace", "defence"),
-    ("insurance", "insurance"), ("logistic", "logistics"), ("transport", "logistics"),
-    ("media", "media"), ("entertainment", "media"),
-    ("realty", "realestate"), ("real estate", "realestate"),
-    ("retail", "retail"), ("e-commerce", "retail"),
-    ("hotel", "hospitality"), ("tourism", "hospitality"),
-    ("telecom", "telecom"),
-    ("capital goods", "capgoods"), ("electrical equipment", "capgoods"), ("engineering", "capgoods"),
-]
+# The one industry source (FIX-011) is Yahoo Finance's classification, the
+# one PR-004's shelf sector cap stores: it answers for nearly every NSE
+# company, and its industries tell an insurer from a bank and a defence maker
+# from other capital goods. NSE's own industry is in its index lists only
+# (750 companies) and is coarser; its per-symbol meta API answers 404.
+# Probed 2026-11-01 over the registry's 202 tickers: Yahoo classified 193,
+# NSE's Nifty Total Market list held 176.
+#
+# Yahoo industry -> our sector key, exact match; then Yahoo sector -> key for
+# the sectors that name one key whatever the industry. Anything else is
+# "generic". The keys follow the registry's curated map, so power utilities
+# are "renewable_energy" and coal is "metals"; every key is a registry sector.
+_YAHOO_INDUSTRY_SECTOR: dict[str, str] = {
+    **dict.fromkeys(("Auto Manufacturers", "Auto Parts", "Auto & Truck Dealerships",
+                     "Recreational Vehicles", "Farm & Heavy Construction Machinery"),
+                    "automobile"),
+    **dict.fromkeys(("Insurance - Life", "Insurance - Diversified",
+                     "Insurance - Property & Casualty", "Insurance - Reinsurance",
+                     "Insurance - Specialty", "Insurance Brokers"), "insurance"),
+    **dict.fromkeys(("Information Technology Services", "Software - Application",
+                     "Software - Infrastructure"), "it_sector"),
+    **dict.fromkeys(("Consumer Electronics", "Electronic Components", "Semiconductors",
+                     "Semiconductor Equipment & Materials", "Computer Hardware",
+                     "Communication Equipment", "Scientific & Technical Instruments",
+                     "Electronics & Computer Distribution",
+                     "Furnishings, Fixtures & Appliances"), "tech"),
+    **dict.fromkeys(("Solar", "Utilities - Renewable", "Utilities - Independent Power Producers",
+                     "Utilities - Regulated Electric", "Utilities - Diversified"),
+                    "renewable_energy"),
+    "Utilities - Regulated Gas": "oilgas",
+    **dict.fromkeys(("Steel", "Aluminum", "Copper", "Other Industrial Metals & Mining", "Gold",
+                     "Silver", "Other Precious Metals & Mining", "Thermal Coal", "Coking Coal"),
+                    "metals"),
+    **dict.fromkeys(("Specialty Chemicals", "Chemicals"), "chemicals"),
+    "Agricultural Inputs": "agrochem",
+    **dict.fromkeys(("Building Materials", "Engineering & Construction",
+                     "Infrastructure Operations"), "infra"),
+    "Residential Construction": "realestate",
+    "Aerospace & Defense": "defence",
+    **dict.fromkeys(("Specialty Industrial Machinery", "Electrical Equipment & Parts",
+                     "Industrial Distribution", "Building Products & Equipment", "Conglomerates",
+                     "Tools & Accessories", "Metal Fabrication",
+                     "Pollution & Treatment Controls"), "capgoods"),
+    **dict.fromkeys(("Integrated Freight & Logistics", "Railroads", "Marine Shipping",
+                     "Airlines", "Airports & Air Services", "Trucking"), "logistics"),
+    "Telecom Services": "telecom",
+    **dict.fromkeys(("Broadcasting", "Entertainment", "Electronic Gaming & Multimedia",
+                     "Publishing", "Advertising Agencies"), "media"),
+    **dict.fromkeys(("Lodging", "Resorts & Casinos", "Restaurants", "Travel Services"),
+                    "hospitality"),
+    **dict.fromkeys(("Apparel Retail", "Apparel Manufacturing", "Department Stores",
+                     "Internet Retail", "Specialty Retail", "Home Improvement Retail",
+                     "Luxury Goods", "Footwear & Accessories", "Discount Stores",
+                     "Grocery Stores"), "retail"),
+    **dict.fromkeys(("Household & Personal Products", "Packaged Foods",
+                     "Beverages - Non-Alcoholic", "Beverages - Brewers",
+                     "Beverages - Wineries & Distilleries", "Tobacco", "Confectioners",
+                     "Farm Products", "Food Distribution"), "fmcg"),
+}
+_YAHOO_SECTOR_SECTOR: dict[str, str] = {
+    "Healthcare": "pharma", "Financial Services": "banking_bfsi",
+    "Real Estate": "realestate", "Energy": "oilgas",
+}
 
 
-def infer_sector(symbol: str) -> str:
-    """Best-effort sector key: registry exact hit -> NSE meta industry
-    keyword -> 'generic'. Never raises."""
+def sector_from_classification(classification: dict | None) -> str:
+    """Our sector key for a Yahoo classification ({"sector", "industry"}),
+    "generic" when neither names one. Example: {"sector": "Healthcare",
+    "industry": "Drug Manufacturers - Specialty & Generic"} is "pharma";
+    {"sector": "Industrials", "industry": "Aerospace & Defense"} is "defence";
+    {"sector": "Industrials", "industry": "Staffing & Employment Services"}
+    is "generic"."""
+    classification = classification or {}
+    industry = str(classification.get("industry") or "").strip()
+    sector = str(classification.get("sector") or "").strip()
+    return (_YAHOO_INDUSTRY_SECTOR.get(industry)
+            or _YAHOO_SECTOR_SECTOR.get(sector) or "generic")
+
+
+def infer_sector(symbol: str, classification: dict | None = None) -> str:
+    """Best-effort sector key: the registry's ticker map, else the market
+    classification (`classification` when the caller has it, else Yahoo's,
+    fetched here), else "generic". Never raises.
+
+    A key decides the graph (automobile, banking_bfsi, it_sector and
+    renewable_energy have native graphs; every other key runs the generic
+    graph) and the prediction-store directory. It is read only for a stock
+    with no managed record: a managed stock's own sector always wins
+    (`candidates.holding_sector`), and the deep dive skips managed stocks."""
     symbol = symbol.strip().upper()
     try:
         from backend.sectors.registry import TICKER_SECTOR
@@ -68,14 +130,11 @@ def infer_sector(symbol: str) -> str:
         logger.debug("[deep_dive] registry lookup failed for %s: %s", symbol, exc)
 
     try:
-        meta = get_symbol_meta(symbol)
-        industry = (meta.get("industry") or "").lower()
-        for keyword, sector in _INDUSTRY_SECTOR_KEYWORDS:
-            if keyword in industry:
-                return sector
+        if classification is None:
+            classification = market_classification(symbol)
+        return sector_from_classification(classification)
     except Exception as exc:
-        logger.debug("[deep_dive] meta industry lookup failed for %s: %s", symbol, exc)
-
+        logger.debug("[deep_dive] classification lookup failed for %s: %s", symbol, exc)
     return "generic"
 
 
@@ -172,7 +231,8 @@ def run_deep_dives(
             continue
         attempted.add(cand.symbol)
         try:
-            sector = infer_sector(cand.symbol)
+            classified = market_classification(cand.symbol)
+            sector = infer_sector(cand.symbol, classified)
             report = get_orchestrator(sector).analyse(cand.symbol)
             # SA-003: a shelf idea is a future SWITCH destination (a buy), so
             # it must not be minted from an abstained analysis. The shelf
@@ -185,7 +245,6 @@ def run_deep_dives(
                     enforced=dg.enforcing(), on_date=on.isoformat(),
                 )
             entry_low, entry_high, invalidation = entry_levels(close, sym_win)
-            classified = market_classification(cand.symbol)
             results.append(DeepDiveResult(
                 symbol=cand.symbol,
                 sector=sector,

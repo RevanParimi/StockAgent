@@ -170,8 +170,9 @@ StockAgent-main/
 │   ├── discovery/                 # Compass Phase B: weekly discovery funnel (see below)
 │   │   ├── __init__.py            # run_discovery_cycle() — single orchestration entry point
 │   │   ├── universe.py            # EQ-series + price-floor universe from the EOD window
-│   │   ├── guards.py              # Threshold gates (liquidity, T2T, circuits, ASM/GSM, float,
-│   │   │                          #  promoter pledge)
+│   │   ├── guards.py              # Threshold gates (liquidity, T2T, circuits, ASM/GSM and
+│   │   │                          #  suspension, float, promoter pledge); a source dark for
+│   │   │                          #  every symbol is one degraded check, not one per symbol
 │   │   ├── signals.py             # 6 quant signals (pure pandas, zero LLM); None = unavailable
 │   │   ├── insider.py             # insider_buying: every company's NSE insider filings, cached
 │   │   ├── screen.py              # Weighted percentile-rank composite → ScreenResult persistence
@@ -954,7 +955,7 @@ All paths verified to exist. Paths are relative to project root.
 | `core/discovery/__init__.py` | `run_discovery_cycle()` — weekly funnel orchestration (every stage non-fatal) |
 | `core/discovery/screen.py` | Stage-1 quant screen: composite rank over the available signals, guards, `ScreenResult` persistence |
 | `core/discovery/insider.py` | The insider_buying signal: `refresh_insider_trades()` (every company's insider filings over the window, each XBRL read once and its trades kept, the promoter share read for each company with a promoter-group sale, `data/discovery/insider_trades.json`), `counted_trades()` (each trade once, a revision's trades replacing their closest earlier match, only trades whose last day is in the window), `symbol_net()` (a promoter-group sale counts nothing above 75% promoter holding), `usable_insider_trades()` (only when every listed filing and needed promoter share was read), `net_by_symbol()` (₹ crore) |
-| `core/discovery/deep_dive.py` | Stage-3 LLM dives (≤`discovery.deep_dive_count` calls/wk, companies only, re-dives flagged `redive`), `entry_levels()` (band + invalidation) + `infer_sector()` (registry → NSE industry → generic) |
+| `core/discovery/deep_dive.py` | Stage-3 LLM dives (≤`discovery.deep_dive_count` calls/wk, companies only, re-dives flagged `redive`), `entry_levels()` (band + invalidation) + `infer_sector()` (registry → Yahoo industry via `sector_from_classification()` → generic) |
 | `core/discovery/shelf.py` | `ShelfStore` — size cap and displacement, under `enforce` only actionable dives become ideas, the per-market-sector cap, re-dives (`redive_due`, `apply_redives`), non-company drops, sector backfill, the dive memo (`dives.json`), stale rotation, promote-to-watchlist, `shelf_events.jsonl` |
 | `core/discovery/universe.py` | The EQ/price-floor universe and the instrument rule: `instrument_kind()` from series and ISIN (company, fund, trust), `companies_only()` |
 | `core/discovery/candidates.py` | `buy_candidates()` — what one portfolio's autopilot may buy at a review: shelf ideas dived in the last 30 days plus the user's own fresh, actionable watchlist BUYs, each under the sector it will be held under (`holding_sector()`: a managed stock's managed-record sector first) |
@@ -972,7 +973,7 @@ All paths verified to exist. Paths are relative to project root.
 | `services/data/stores/eod_store.py` | `EodStore` — per-day parquet EOD cache (canonical 12-column schema) |
 | `services/data/fetchers/bhavcopy.py` | NSE delivery-bhavcopy fetcher + resumable `sync_recent()`; the instrument listing (series and ISIN per symbol from the UDiFF bhavcopy): `refresh_listing()`, `load_listing()`, cached in `data/discovery/listing.json` |
 | `services/data/fetchers/bulk_block.py` | Bulk/block deals cache (degraded-mode keeps stale deals) |
-| `services/data/fetchers/surveillance.py` | Per-symbol NSE meta (ASM/GSM, suspension, industry; the endpoint answered 404 on 2026-10-20, so every lookup degrades) + yfinance float mcap and `market_classification()` (Yahoo sector and industry) |
+| `services/data/fetchers/surveillance.py` | `surveillance_list()`: NSE's daily Surveillance Indicator report (GSM, long/short-term ASM stage and status per security), read once a run and cached in `data/discovery/surveillance.json`, never dated after the screen's session nor more than 7 days before it + yfinance float mcap and `market_classification()` (Yahoo sector and industry, the one industry source) |
 | `src/backend/sectors/generic/pipeline/orchestrator.py` | GenericSectorOrchestrator — sector-agnostic 8-dimension graph (unified primary, UniversalAgent fallback pool) |
 | `data/market_cache/bhavcopy/` | Per-day parquet EOD cache, ~550 sessions rolling |
 | `data/discovery/` | `screens/`, `shelf.json`, `shelf_events.jsonl`, `insider_trades.json` |

@@ -124,7 +124,6 @@ services/data/fetchers/fundamentals.py | get_shareholding | #0
 services/data/fetchers/macro.py | _fetch_rubber_price_via_news | #0
 services/data/fetchers/macro.py | get_rbi_repo_rate | #0
 services/data/fetchers/macro.py | get_rbi_repo_rate | #1
-services/data/fetchers/surveillance.py | _load_cache | #0
 services/data/stores/analysis_logger.py | _fetch_price | #0
 services/data/stores/atlas_store.py | _reset_for_tests | #0
 services/data/stores/chat_session_store.py | _reset_for_tests | #0

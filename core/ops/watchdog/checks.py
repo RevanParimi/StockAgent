@@ -668,3 +668,76 @@ def error_backlog() -> CheckResult:
         f"{' among the top 5' if n > len(issues) else ''}). Top: {top}. "
         "Triage at GET /ops/errors; mark acknowledged, fixed or wontfix.",
         evidence)
+
+
+# ---------------------------------------------------------------------------
+# FIX-011 — the sources behind the discovery screen's guards
+# ---------------------------------------------------------------------------
+
+_GUARD_DARK_DAYS = 7
+_GUARD_DARK_EFFECT = {
+    "surveillance": "the ASM/GSM and suspension gates pass every symbol",
+    "float_mcap": "the free-float market-cap floor passes every symbol",
+    "promoter_pledge": "the promoter-pledge gate passes every symbol",
+}
+
+
+def _screen_records() -> list[dict]:
+    """Seam for tests — the persisted screens that ran the guards (a
+    non-empty shortlist), oldest first."""
+    from core.config import settings
+    out = []
+    for path in (Path(settings.DISCOVERY_DATA_DIR) / "screens").glob("*_screen.json"):
+        try:
+            rec = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            logger.warning("[watchdog] screen %s unreadable: %s", path.name, exc)
+            continue
+        if isinstance(rec, dict) and rec.get("shortlist_size") and rec.get("screen_date"):
+            out.append(rec)
+    return sorted(out, key=lambda r: str(r["screen_date"]))
+
+
+@check("discovery_guard_sources")
+def discovery_guard_sources() -> CheckResult:
+    """Pending while a source of the screen's per-symbol guards (NSE's
+    surveillance report, Yahoo's float mcap, NSE's pledge rows) has answered
+    for no symbol in every screen for 7 days or more: two weekly screens in a
+    row. The screen records such a source as one check (`surveillance`,
+    `float_mcap`, `promoter_pledge`), keeps every symbol and says so; this
+    makes the outage loud before it lasts for months, as NSE's per-symbol meta
+    API's did (every cached answer degraded from 11 Jul 2026; found on 20 Oct).
+    The pledge source is not judged while `discovery.pledge_guard` is off.
+    Example: `surveillance` in the screens of 23 and 30 Oct is pending; in
+    the screen of 30 Oct only, it is not yet."""
+    from core.config import settings
+    from core.discovery.guards import GUARD_SOURCES
+
+    screens = _screen_records()
+    if not screens:
+        return CheckResult("satisfied", "No screen has run the guards yet.")
+    latest = screens[-1]["screen_date"]
+    dark_since: dict[str, str] = {}
+    for source in GUARD_SOURCES:
+        if source == "promoter_pledge" and not settings.DISCOVERY_PLEDGE_GUARD:
+            continue
+        for rec in reversed(screens):
+            if source not in (rec.get("degraded_checks") or []):
+                break
+            dark_since[source] = str(rec["screen_date"])
+    evidence = {"latest_screen": latest, "screens": len(screens), "dark_since": dark_since}
+    long_dark = {s: d for s, d in dark_since.items()
+                 if (date.fromisoformat(latest) - date.fromisoformat(d)).days >= _GUARD_DARK_DAYS}
+    if not long_dark:
+        if not dark_since:
+            return CheckResult("satisfied",
+                               f"Every guard source answered in the screen of {latest}.", evidence)
+        return CheckResult(
+            "satisfied",
+            f"{', '.join(sorted(dark_since))} dark in the screen of {latest}, for under "
+            f"{_GUARD_DARK_DAYS} days so far.", evidence)
+    return CheckResult(
+        "pending",
+        "; ".join(f"{s} dark in every screen from {d} to {latest}: {_GUARD_DARK_EFFECT[s]}"
+                  for s, d in sorted(long_dark.items())) + ".",
+        evidence)

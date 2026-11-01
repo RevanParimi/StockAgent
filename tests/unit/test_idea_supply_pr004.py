@@ -295,7 +295,7 @@ def dive_env(tmp_path, monkeypatch):
         def load_window(self, end, sessions):
             return state["window"]
     monkeypatch.setattr(dd, "EodStore", _Store)
-    monkeypatch.setattr(dd, "infer_sector", lambda s: "generic")
+    monkeypatch.setattr(dd, "infer_sector", lambda s, c=None: "generic")
     monkeypatch.setattr(dd, "market_classification",
                         lambda s: {"sector": state["sector_of"].get(s, ""), "industry": ""})
     analyst = Analyst()
@@ -823,7 +823,7 @@ def _cycle_env(tmp_path, monkeypatch, *, screen, ipo=(), listing=None, sector_of
     monkeypatch.setattr(disc, "market_classification", classify)
     monkeypatch.setattr(dd, "market_classification", classify)
     monkeypatch.setattr(dd, "load_managed_tickers", lambda: [])
-    monkeypatch.setattr(dd, "infer_sector", lambda s: "generic")
+    monkeypatch.setattr(dd, "infer_sector", lambda s, c=None: "generic")
     window = _eod_window(symbols, days=25, end=date(2026, 7, 3))
 
     class _Store:

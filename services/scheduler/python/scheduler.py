@@ -640,11 +640,11 @@ class AutomobileScheduler:
             result = run_discovery_cycle()
             logger.info(
                 "[Scheduler] Discovery — universe=%s candidates=%s dives=%s "
-                "shelf_added=%s paper_reviewed=%s dark=%s errors=%s",
+                "shelf_added=%s paper_reviewed=%s dark=%s dark_checks=%s errors=%s",
                 result.get("universe_size"), result.get("candidates"),
                 result.get("deep_dives"), result.get("shelf", {}).get("added"),
                 result.get("paper", {}).get("reviewed"),
-                result.get("dark_signals"), result.get("errors"),
+                result.get("dark_signals"), result.get("dark_checks"), result.get("errors"),
             )
             try:
                 from core.delivery.ops_alerts import alert_job_zero_output

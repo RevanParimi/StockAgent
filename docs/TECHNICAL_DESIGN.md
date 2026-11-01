@@ -2,7 +2,7 @@
 
 **Edition:** 2026-11-01 · **Audience:** engineers and teammates learning the product
 
-**Code inspected:** `30bf8fcec1fd14a6bfba5c7ed50d252cf5e3bc39`
+**Code inspected:** `866eae5107b3e418f0bc13e42f53da88afedde99`
 
 **PDF:** [StockAgent-Three-Loops.pdf](StockAgent-Three-Loops.pdf), generated from this Markdown.
 
@@ -35,10 +35,11 @@ triggered no production job, backfill or notification.
 
 ### Production state at this edition
 
-Production runs `c1d5b18` (FIX-021, code `e7e3165`), deployed at about 17:17
-IST on 31 October 2026 (the deployment list showed it SUCCESS and `/health`
-answered 200). The inspected code adds SA-048's trading costs and tax estimate
-(sections 6 and 7). It is committed but not yet deployed, and counts as running
+Production runs `2e14e04` (SA-048, code `30bf8fc`), deployed at about 16:42
+IST on 1 November 2026 (the deployment list showed it SUCCESS and `/health`
+answered 200). The inspected code adds FIX-011's surveillance report, the
+one check per dark guard source and Yahoo's sector (section 8). It is
+committed but not yet deployed, and counts as running
 only once a read-only check of the deployment list and `/health` confirms that
 deploy. The table gives the configuration that
 differs from the repository and the state of each operational control.
@@ -2111,6 +2112,10 @@ as `surveillance:<SYMBOL>`. With no report, the screen records the one check
 report listed 3,216 securities: 74 under GSM, 143 under long-term ASM, 47
 under short-term ASM and 16 suspended. Its members matched NSE's own ASM and
 GSM lists of 30 Oct, a day later, but for 2 long-term ASM and 3 GSM symbols.
+NSE publishes the report dated a session on that session's evening, and it
+lists the measures in force from the next session: the 30 Oct report no
+longer had DCMSRIND under short-term ASM, though NSE's list of 30 Oct did. So
+a Saturday screen gates on the measures of the Monday after.
 A2Z Infra was under long-term ASM stage I, so it is rejected; Maruti was
 under no measure.
 
@@ -2209,6 +2214,13 @@ would let through (38%).
   under a Yahoo sector that maps to no key (Industrials or Basic Materials,
   for example), reads `generic`. TIINDIA reads `capgoods` (Yahoo:
   Conglomerates) where NSE says automobile components.
+- The morning brief's earnings watch-line and a holding added by hand without
+  a sector take the sector from the registry's ticker map
+  (`SectorRegistry.resolve`), so a stock outside the map reads `generic`
+  there, whatever its managed record says. For a stock shelved under another
+  key (a chemicals maker as `chemicals`), the brief's line finds no dossier,
+  and a second portfolio's manual add holds it under `generic`, where its
+  predictions are not. **Planned:** SA-026's one `store_key`.
 - NSE's per-symbol meta API (`equity-meta-info`) answers 404 (2026-10-20) and
   its quote API refused this machine, so neither is read.
 - Yahoo's `quoteType` calls an Indian ETF "EQUITY", so it cannot tell a fund
@@ -3142,7 +3154,7 @@ section 10) are part of the current design.
 | [PR-010](planning/PI-2026-09/stories/PR-010.md) | Four screens for members; an Operator menu for the owner | Open | 10 Interface | PR-001 |
 | [PR-011](planning/PI-2026-09/stories/PR-011.md) | New data: promoter and insider trades, pledges, shareholding changes | Done | 4 Research; 8 Discovery | PR-006 |
 | [PR-012](planning/PI-2026-09/stories/PR-012.md) | Choose models by role, benched on our own data; refresh cost rates | Open | 3 Configuration | PR-007 |
-| [FIX-011](planning/PI-2026-09/stories/FIX-011.md) | NSE's per-symbol meta API is gone: restore the surveillance and suspension guards and an industry source | Open | 4 Research; 8 Discovery | None |
+| [FIX-011](planning/PI-2026-09/stories/FIX-011.md) | NSE's per-symbol meta API is gone: restore the surveillance and suspension guards and an industry source | Done | 4 Research; 8 Discovery | None |
 | [FIX-012](planning/PI-2026-09/stories/FIX-012.md) | CI is red since 13 Oct: make FIX-007's log-route guard work on any FastAPI | Done | 13 Validation | None |
 | [FIX-013](planning/PI-2026-09/stories/FIX-013.md) | Move the fast and reasoning LLM tiers to cheaper current models | Done | 3 Configuration | None |
 | [FIX-014](planning/PI-2026-09/stories/FIX-014.md) | Above the 75% cap, a promoter wash must not score as insider buying | Open | 8 Discovery | PR-011 |

@@ -93,7 +93,7 @@ def _managed_sectors() -> dict[str, str]:
 def holding_sector(symbol: str, own_sector: str, managed: dict[str, str]) -> str:
     """The sector a bought candidate is held under: the managed record's when
     the stock is managed, else its own well-formed sector, else
-    `infer_sector` (the registry, NSE's industry, "generic")."""
+    `infer_sector` (the registry's ticker map, Yahoo's classification, "generic")."""
     symbol = symbol.strip().upper()
     if managed.get(symbol):
         return managed[symbol]

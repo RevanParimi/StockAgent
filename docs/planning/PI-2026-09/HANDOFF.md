@@ -1,4 +1,4 @@
-# Current handoff - 2026-11-01 (updated about 16:45 IST)
+# Current handoff - 2026-11-01 (updated about 22:30 IST)
 
 ## Also 22 Oct (about 22:30 IST to 00:30 IST 23 Oct): FIX-013, LLM tier switch, committed and pushed (separate conversation)
 
@@ -106,7 +106,91 @@ Docs only; nothing committed, pushed, deployed or configured.
 
 ## START HERE — resume checklist, in order
 
-**SA-048 COMMITTED, NOT PUSHED** (1 Nov, about 16:30–16:45 IST, the same session
+**FIX-011 COMMITTED** (1 Nov, about 22:15–22:30 IST, the same session stockagent-main-e7
+[4cb8e3], at the owner's "ya commit and push"; peers idle):
+
+- **Code `866eae5`** is exactly the 24 reviewed files: `kt_manifest.py verify
+  FIX-011-manifest.json --rev HEAD` gives 0 mismatches (`509d3921`).
+- **The docs commit** holds the commit-time edits: the KT header (`866eae5`, edition
+  2026-11-01), section 1 (`2e14e04` deployed about 16:42 IST on 1 Nov), the review's edits 1–6
+  (KT section 8's report-day sentence and the L1 limit, guide 06-J's comparison day and status,
+  the `candidates.py` docstring, the SA-026 and SA-049 notes), section 12 FIX-011 Done, and the
+  PDF (64 pages, `check_kt_docs` errors `[]`). With them go both receipts, the manifest, and
+  STATE and HANDOFF with the SA-048 push and deploy record.
+- **Push held.** At 22:20 IST on Sunday the nightly jobs (23:00 Atlas recompute, 23:30 backup,
+  which feeds the watchdog, 23:45 audit, 00:00 prompt deploy) fall inside the ~2 h a push
+  needs. Planned for about 00:12 IST Monday 2 Nov, after a fetch shows origin unchanged; then
+  record the deploy (uncommitted, for the next docs commit).
+- **FIX-011 production `pending_deployment`:** after the deploy, guide 06-J (amended) on the
+  Saturday 7 Nov discovery run, read-only, counts and fields only.
+- Next `continue`, in a new conversation: **SA-049**'s implementation.
+
+**FIX-011 ACCEPTED by its fresh review** (1 Nov, about 19:43–20:40 IST, session
+stockagent-main-e7 [4cb8e3], a new conversation opened with "continue"). Receipt:
+[FIX-011-review](evidence/FIX-011-review.md). STATE: FIX-011 `done`, production
+`pending_deployment`; `active_task` null; `next_task` **SA-049**. Nothing was committed, pushed,
+deployed or configured; no production state was read.
+
+- **Input verified** at the start and the end: manifest `509d3921` (24 files, 0 mismatches) and
+  diff `e8bc2ad9` (94,571 B, 23 paths) against HEAD `2e14e04`.
+- **Independent checks:**
+  - NSE's real 29 and 30 Oct reports, read by column position: `parse_surveillance` agrees on
+    every row.
+  - Every security in them goes through the gates as its cells say.
+  - The real `run_screen` and the real watchdog, with the archive down: the cache gates for 7
+    days, then one `surveillance` check, then the warning after two dark screens.
+  - Reviewer cases `analysis_data/fix011_review/test_rv_fix011.py`: 8 passed + 1 strict xfail
+    (L1).
+  - Full suite 5,973 passed / 12 skipped / 1 xfailed / 0 failed (19m30s).
+- **Measured:** NSE publishes the report dated D that evening, and it lists the measures from the
+  next session. NSE's live lists of 30 Oct match the 29 Oct file. So the Saturday screen gates on
+  Monday's measures.
+- **Findings, low only:**
+  - **L1:** the brief's earnings line and a manual add without a sector resolve the sector
+    through the ticker map. For a new stock outside the map, managed under its Yahoo key, they
+    read `generic`. Routed to SA-026; KT limit.
+  - **L2:** guide 06-J compares with NSE's list of the wrong day.
+  - **L3:** a stale docstring in `candidates.py`.
+  - **T1:** three fetcher rules unpinned by the story file. Routed to SA-049.
+  - L1–L3 and the routed notes are **commit-time edits**, with exact text in the receipt: the
+    cards and KT are in the reviewed manifest.
+- **Commit** only at the owner's word, in a job-free window. The code commit is the 24 reviewed
+  files. The docs commit carries the implementation's and the review's commit-time edits, the
+  receipts, STATE and HANDOFF, and the uncommitted SA-048 deploy record. A push deploys; then run
+  guide 06-J (amended) on the first Saturday discovery run.
+- **Next `continue`, in a new conversation: SA-049's implementation.** It is the first ready
+  `todo` by STATE order. It carries owner decisions: the regime targets and per-day buy limit,
+  the DEPOSIT action, and whether a buy checks the surveillance report, IPO lane included.
+
+**FIX-011 IMPLEMENTED → REVIEW REQUIRED** (1 Nov, about 16:46–18:00 IST, session
+stockagent-main-3c [f7fa15], a new conversation opened with "continue"). Receipt:
+[FIX-011-implementation](evidence/FIX-011-implementation.md). STATE: FIX-011 `review_required`;
+`active_task` and `next_task` FIX-011. Nothing was committed, pushed, deployed or configured; no
+production state was read.
+
+- **Change:**
+  - The screen's ASM/GSM and suspension gates read NSE's daily Surveillance Indicator report
+    (`REG1_IND<ddmmyy>.csv` in the archive), once a run, dated on or up to 7 days before the
+    screen's session and never after. On 29 Oct it listed 3,216 securities; A2Z Infra (long-term
+    ASM) is now rejected, where every stock used to pass.
+  - A guard source that answers for no stock is one check (`surveillance`, `float_mcap`,
+    `promoter_pledge`), named in the weekly summary's `dark_checks`; the watchdog's
+    `discovery_guard_sources_live` warns after two dark weekly screens.
+  - `infer_sector` reads Yahoo's classification, the one industry source: a stock outside the
+    ticker map gets a real key (CEATLTD `automobile`). Nothing is re-keyed: managed records and
+    shelved ideas keep their sector and stores.
+- **Evidence:** story file 48 passed (an oracle reading NSE's columns by position; graph-routing
+  characterization; store paths); mutants 33/33 caught; full suite 5,973 passed / 12 skipped / 1 xfailed / 0 failed (18m36s);
+  `check_broad_except` OK (150 grandfathered); `check_kt_docs` []; PDF 64 pages.
+- **Found on the way:** IPO candidates and re-dives never meet the surveillance gate, so an idea
+  that comes under ASM after it is shelved stays buyable: routed to SA-049 (the IPO lane is the
+  owner's call). Stale registry symbols and AAVAS keyed `chemicals`: routed to SA-026.
+- **Next "continue", in a new conversation: FIX-011's fresh review** per [REVIEW.md](REVIEW.md):
+  input manifest [FIX-011-manifest.json](evidence/FIX-011-manifest.json) `509d3921`
+  (24 files), diff `e8bc2ad9` (94,571 B, 23 paths) against
+  HEAD `2e14e04`, from `analysis_data/fix011/digest.py`.
+
+**SA-048 COMMITTED AND DEPLOYED** (1 Nov, about 16:30–16:45 IST, the same session
 stockagent-main-23 [ac9d57], at the owner's "commit and push"):
 
 - **Code `30bf8fc`** is exactly the 24 reviewed files: `kt_manifest.py verify
@@ -116,11 +200,14 @@ stockagent-main-23 [ac9d57], at the owner's "commit and push"):
   section 7 and the autopilot guide, section 12 (SA-048 Done, a FIX-022 row), guide 08-F and
   07-F, and the PDF (`check_kt_docs` errors `[]`). STATE and HANDOFF carry the FIX-021 push and
   deploy record.
-- **Push held.** At 16:30 IST on Sunday 1 Nov, the 17:45 IPO refresh, the 18:00 weekly review
-  and the 19:00 IPO deep dive fall inside the ~2 h a push needs. The next window with that
-  runway is 19:20–22:55 IST, then 00:10–06:20 Monday. Push at the owner's word with
-  `git -c credential.username=RevanParimi push origin main`, then record the deploy (the
-  deployment list and `/health`) and run guide 08-F on the first trading day with a trade.
+- **Pushed and deployed.** At 16:33 IST the push was held for the evening jobs (17:45 IPO
+  refresh, 18:00 weekly review, 19:00 IPO deep dive); the owner said "its fine push it". Pushed
+  `c1d5b18..2e14e04` at 16:41:33 IST; Railway `7bb0c859` SUCCESS by 16:42:54; `/health` 200 at
+  16:43:13, before the evening jobs. This record is uncommitted, for the next docs commit.
+- **SA-048 production `pending_observation`:** guide 08-F on the first trading day with a
+  trade, read-only, counts and fields only (the row's `costs` with `rates_as_of` 2026-10-31,
+  cash moved by value ± and − costs, the screen's realized net with its costs line, the tax
+  estimate).
 - Next `continue`, in a new conversation: **FIX-011**'s implementation.
 
 **SA-048 ACCEPTED by its fresh review** (31 Oct, about 17:24–18:05 IST, session

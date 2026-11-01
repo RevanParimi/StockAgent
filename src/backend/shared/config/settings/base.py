@@ -887,6 +887,10 @@ PORTFOLIO_DATA_DIR: str = cfg("portfolio.data_dir", env="PORTFOLIO_DATA_DIR", fa
 PORTFOLIO_DEFAULT_USER_ID: str = cfg("portfolio.default_user_id", env="PORTFOLIO_DEFAULT_USER_ID", fallback="primary")
 PORTFOLIO_MAX_MANAGED_TICKERS: int = cfg("portfolio.max_managed_tickers", env="PORTFOLIO_MAX_MANAGED_TICKERS", fallback=40)
 PORTFOLIO_WEEKLY_REVIEW_WEEKDAY: int = cfg("portfolio.weekly_review_weekday", fallback=4)
+# SA-048: trading-cost and tax rates, dated. No fallback rates: a missing key
+# fails the trade loudly (core/portfolio/costs.py) instead of charging nothing.
+PORTFOLIO_COSTS: dict = cfg("portfolio.costs", fallback={})
+PORTFOLIO_TAX: dict = cfg("portfolio.tax", fallback={})
 
 ADVISOR_ENABLED: bool = bool(cfg("advisor.enabled", env="ADVISOR_ENABLED", fallback=True))
 ADVISOR_NARRATE: bool = bool(cfg("advisor.narrate", fallback=True))

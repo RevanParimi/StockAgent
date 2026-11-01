@@ -26,6 +26,7 @@ import core.intelligence.rl.nse_calendar as cal
 import services.api.routes.portfolio_api as papi
 from backend.shared.schemas.portfolio import Holding, TransactionRecord
 from core.audit import benchmark as B
+from core.config import settings
 from core.portfolio import autopilot, retention
 from core.portfolio import results as R
 from core.portfolio.reconcile import reconcile
@@ -37,6 +38,13 @@ W10 = date(2026, 3, 8)        # Sunday; week 2026-W10 is Mon 2 Mar - Sun 8 Mar
 
 @pytest.fixture(autouse=True)
 def _pinned(monkeypatch):
+    # The figures here are the comparison's arithmetic before trading costs.
+    # SA-048's tests put a manual add's charges into capital_in and the
+    # Nifty's money in (test_trading_costs_sa048.py).
+    monkeypatch.setattr(settings, "PORTFOLIO_COSTS", {
+        **settings.PORTFOLIO_COSTS, "brokerage_pct": 0.0, "stt_pct": 0.0,
+        "stamp_duty_buy_pct": 0.0, "exchange_fee_pct": 0.0, "sebi_fee_pct": 0.0,
+        "dp_charge_inr": 0.0})
     monkeypatch.setattr(cal, "_NSE_HOLIDAYS", frozenset())
     B._range_cache.clear()
     yield

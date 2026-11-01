@@ -137,6 +137,24 @@ class AdviceRecord(BaseModel):
     outcome_60td: float | None = None
 
 
+class TradeCosts(BaseModel):
+    """What one virtual BUY or SELL paid on top of its price, in rupees
+    (SA-048, core/portfolio/costs.py). Written on the trade's own ledger row,
+    so a later rate change never alters it."""
+    brokerage: float = 0.0
+    stt: float = 0.0               # securities transaction tax, to the rupee
+    exchange_fee: float = 0.0      # the exchange's transaction charge
+    sebi_fee: float = 0.0
+    stamp_duty: float = 0.0        # BUY only
+    gst: float = 0.0               # on brokerage + exchange fee + SEBI fee
+    dp_charge: float = 0.0         # SELL only, per scrip, GST included
+    total: float = 0.0
+    rates_as_of: str = ""          # the config's portfolio.costs.as_of
+    # True: worked out when read, for a trade made before costs were charged.
+    # Such costs were never taken from cash.
+    estimated: bool = False
+
+
 class TransactionRecord(BaseModel):
     """One executed virtual trade (append-only transactions.jsonl —
     Autopilot spec §3.2). The ledger is the audit authority; portfolio.json
@@ -153,7 +171,7 @@ class TransactionRecord(BaseModel):
     cash_before: float
     cash_after: float
     holding_qty_after: float
-    realized_pnl: float = 0.0      # SELL only
+    realized_pnl: float = 0.0      # SELL only; before costs
     source: Literal["autopilot", "seed", "manual"] = "autopilot"
     verdict: str = ""              # originating advisor verdict, "" for seed/manual
     advice_ref: str = ""           # "<date>|<symbol>|<rationale_hash>"
@@ -164,6 +182,10 @@ class TransactionRecord(BaseModel):
     cost_basis: float | None = None   # SELL: holding adj_avg_price at sale
     pnl_pct: float | None = None      # SELL: realized P&L % vs cost_basis
     reason: str = ""                  # advice narrative at execution time
+    # SA-048: the trade's charges, taken from cash with it. None on a row
+    # written before costs were charged (core/portfolio/costs.py estimates
+    # those when read) and on a DIV.
+    costs: TradeCosts | None = None
 
 
 class CorporateEvent(BaseModel):

@@ -57,12 +57,26 @@ def test_add_respects_cash_floor(tmp_path):
     # padding keeps MARUTI far below the 10% weight cap so only cash binds
     holdings = [_h(qty=100, price=100.0),
                 _h(sym="PADDING", qty=100.0, price=4000.0, sector="banking")]
-    s = _store(tmp_path, holdings, cash=10100.0)
-    # tranche = 2500 but only 100 above the 10k floor -> qty 1
+    # tranche = 2500 but only 100.02 above the 10k floor -> qty 1. SA-048: the
+    # floor holds after the buy's charges, on ₹100 STT ₹0.10 -> ₹0, stamp
+    # ₹0.02 (0.015 rounds up), NSE/SEBI/GST ₹0.00: ₹0.02.
+    s = _store(tmp_path, holdings, cash=10100.02)
     txns = execute_advice(s, s.load(), [_add(close=100.0)],
                           {"MARUTI": 100.0, "PADDING": 4000.0}, D)
     assert len(txns) == 1 and txns[0].qty == 1
-    assert s.load().cash_deployable == pytest.approx(10000.0)
+    assert s.load().cash_deployable == pytest.approx(10000.0, abs=0.001)
+
+
+def test_add_floor_counts_the_buy_charges(tmp_path):
+    """SA-048: ₹100 above the floor no longer buys a ₹100 share, because its
+    ₹0.02 of charges would take cash below the floor."""
+    holdings = [_h(qty=100, price=100.0),
+                _h(sym="PADDING", qty=100.0, price=4000.0, sector="banking")]
+    s = _store(tmp_path, holdings, cash=10100.0)
+    txns = execute_advice(s, s.load(), [_add(close=100.0)],
+                          {"MARUTI": 100.0, "PADDING": 4000.0}, D)
+    assert txns == []
+    assert s.load().cash_deployable == pytest.approx(10100.0)
 
 
 def test_add_skipped_when_floor_leaves_under_one_share(tmp_path):
@@ -102,10 +116,13 @@ def test_buys_ordered_by_confidence_when_cash_constrained(tmp_path):
     holdings = [_h(sym="AAA", qty=100, price=100.0),
                 _h(sym="BBB", qty=100, price=100.0, sector="banking"),
                 _h(sym="PADDING", qty=200.0, price=4000.0, sector="pharma")]
-    s = _store(tmp_path, holdings, cash=12000.0)   # only 2000 above floor
+    # Only 2002.37 above the floor: 20 shares (₹2,000) and their charges
+    # (SA-048: STT ₹2, stamp ₹0.30, NSE ₹0.06, SEBI ₹0.00, GST ₹0.01 = ₹2.37).
+    s = _store(tmp_path, holdings, cash=12002.37)
     advice = [_add(sym="AAA", confidence=0.5), _add(sym="BBB", confidence=0.9)]
     txns = execute_advice(s, s.load(), advice,
                           {"AAA": 100.0, "BBB": 100.0, "PADDING": 4000.0}, D)
     # BBB (higher confidence) fills its 20-share tranche... capped by cash to 20
     assert [t.symbol for t in txns] == ["BBB"]
     assert txns[0].qty == 20                       # floor(2000/100)
+    assert s.load().cash_deployable == pytest.approx(10000.0, abs=0.001)

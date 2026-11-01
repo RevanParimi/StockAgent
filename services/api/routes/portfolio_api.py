@@ -36,7 +36,7 @@ from core.config import settings
 from services.api.auth import get_current_user, require_owner
 from backend.sectors.registry import SectorRegistry
 from backend.shared.schemas.portfolio import Holding, TransactionRecord, WatchlistItem
-from core.portfolio import results
+from core.portfolio import costs, results
 from core.portfolio.autopilot import make_txn_id
 from core.portfolio.pipeline import run_post_review_pipeline
 from core.portfolio.pricing import PriceUnavailableError, close_on, session_close
@@ -141,6 +141,7 @@ async def add_holding(
         symbol=symbol, sector=sector, qty=body.qty, avg_buy_price=price,
         adj_avg_price=price, adj_qty=body.qty, buy_date=body.buy_date,
     )
+    charges = costs.trade_costs("BUY", round(body.qty * price, 2))
     store = _store(user["user_id"])
     txn = None
     # One critical section for the whole read-modify-write (AUD-001/007).
@@ -164,7 +165,9 @@ async def add_holding(
         p = store.load()
         if p.cash_deployable is not None:
             value = round(holding.qty * price, 2)
-            p.capital_in = round(p.capital_in + value, 2)   # fresh money in
+            # Fresh money in: the shares and what buying them cost (SA-048).
+            # No cash moves, so the charges are in capital_in, not cash.
+            p.capital_in = round(p.capital_in + value + charges.total, 2)
             txn = TransactionRecord(
                 txn_id=tid,
                 date=body.buy_date, ts=datetime.now(timezone.utc).isoformat(),
@@ -173,7 +176,7 @@ async def add_holding(
                 cash_after=p.cash_deployable,
                 holding_qty_after=next((h.adj_qty for h in p.holdings
                                         if h.symbol == symbol), body.qty),
-                source="manual", note="manual add (fresh capital)")
+                source="manual", note="manual add (fresh capital)", costs=charges)
             store.append_transaction(txn)
             store.save(p)
     promotion = promote_symbol(symbol, sector, origin="held")
@@ -215,9 +218,10 @@ async def delete_holding(
             # Stamped like an autopilot sale, so the weekly scorecard can
             # count this round trip's result rather than report it unknown.
             cost_basis = round(h.adj_avg_price, 4)
+            charges = costs.trade_costs("SELL", round(qty * price, 2))
             realized = h.sell(qty, price)
             p.holdings = [x for x in p.holdings if x.symbol != h.symbol]
-            p.cash_deployable = round(p.cash_deployable + qty * price, 2)
+            p.cash_deployable = round(p.cash_deployable + qty * price - charges.total, 2)
             today = date.today().isoformat()
             txn = TransactionRecord(
                 txn_id=make_txn_id(p.user_id, today, h.symbol, "SELL",
@@ -227,7 +231,7 @@ async def delete_holding(
                 value=round(qty * price, 2), cash_before=cash_before,
                 cash_after=p.cash_deployable, holding_qty_after=0.0,
                 realized_pnl=realized, source="manual", note="manual delete",
-                cost_basis=cost_basis,
+                cost_basis=cost_basis, costs=charges,
                 pnl_pct=(round(realized / (cost_basis * qty) * 100, 2)
                          if cost_basis > 0 and qty > 0 else None))
             if txn.txn_id not in {t.txn_id for t in store.load_transactions(limit=2000)}:
@@ -333,7 +337,15 @@ async def get_transactions(
     limit: int = Query(default=50, ge=1, le=1000),
 ) -> dict:
     records = _store(user["user_id"]).load_transactions(limit=limit)
-    return {"transactions": [r.model_dump() for r in reversed(records)]}
+    # A trade from before costs were charged shows its costs estimated, never
+    # as none (SA-048); a dividend has none.
+    rates = costs.cost_rates()
+    out = []
+    for r in reversed(records):
+        row, c = r.model_dump(), costs.costs_of(r, rates)
+        row["costs"] = c.model_dump() if c is not None else None
+        out.append(row)
+    return {"transactions": out}
 
 
 def _equity_shares(market_value, cash) -> tuple[float | None, float | None]:
@@ -415,13 +427,18 @@ async def get_performance(
     total_pnl = round(total_equity - p.capital_in, 2) \
         if total_equity is not None and p.capital_in > 0 else None
     in_stocks_pct, cash_pct = _equity_shares(market_value, cash)
-    # The comparison and the trade record need cash accounting: without it
-    # no deposit or sale is recorded.
-    comparison = closed = None
+    # The comparison, the trade record, the costs and the tax estimate need
+    # cash accounting: without it no deposit or sale is recorded.
+    comparison = closed = paid = tax = None
     if cash is not None:
         closed = results.trade_stats(results.closed_trades(txns))
+        paid = costs.cost_summary(txns)
+        tax = costs.tax_estimate(txns)
         if points:
             comparison = await asyncio.to_thread(_nifty_comparison, points, txns)
+    # Charged costs are already out of cash, so out of total_pnl; adding them
+    # back keeps unrealized P&L the open holdings' price gain (SA-048).
+    charged = paid["costs"]["charged"] if paid else 0.0
     line = {pt["date"]: pt["nifty_value"] for pt in (comparison or {}).get("line", [])}
     return {
         "cash": cash,
@@ -430,8 +447,12 @@ async def get_performance(
         "total_equity": total_equity,
         "in_stocks_pct": in_stocks_pct,
         "cash_pct": cash_pct,
-        "realized_pnl": realized,
-        "unrealized_pnl": round(total_pnl - realized, 2) if total_pnl is not None else None,
+        "realized_pnl": realized,      # before costs, as always; `realized` splits it
+        "realized": (paid or {}).get("realized"),
+        "costs": (paid or {}).get("costs"),
+        "tax_estimate": tax,
+        "unrealized_pnl": round(total_pnl - realized + charged, 2)
+            if total_pnl is not None else None,
         "total_return_pct": round(total_pnl / p.capital_in * 100, 2)
             if total_pnl is not None else None,
         "day_change_pct": day_change_pct,

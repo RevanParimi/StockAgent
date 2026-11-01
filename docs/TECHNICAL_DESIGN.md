@@ -1595,8 +1595,11 @@ prevent a recommended action from becoming a transaction.
 
 Transactions are appended before saving holdings/cash. A crash in between can
 leave the ledger ahead of the portfolio; deduplication is not an atomic
-multi-file transaction. Reconciliation handles this gap. Corporate actions
-affect adjusted quantities and cost. No broker-order execution path was found.
+multi-file transaction. Reconciliation handles this gap. Each BUY and SELL
+pays its trading costs (section 7), written on its own ledger row and taken
+from cash with it, so the same transaction ID that stops a re-run trading
+twice stops it charging twice. Corporate actions affect adjusted quantities
+and cost. No broker-order execution path was found.
 The executor re-checks a SWITCH buy leg before spending: in `enforce` mode
 its close must be from the session's bar and its identity resolved, and in
 every mode its price must sit inside the shelf idea's entry band (below). If
@@ -1612,20 +1615,22 @@ are shares of **total equity**: every holding at the review's close (at
 adjusted cost when it has none) plus deployable cash. The advisor's
 ADD check, its notes, the executor's caps and the weekly review's allocation
 all use this one denominator. A buy paid from cash leaves total equity
-unchanged, so the room under a cap is `cap × equity − current value`.
+unchanged but for its trading costs, so the room under a cap is
+`cap × equity − current value`.
 
 A buy takes the smallest of four amounts:
 
 - the amount asked for: the ADD tranche (25% of the position) or the SWITCH
-  sale's proceeds;
+  sale's proceeds, net of the sale's costs;
 - the position's room under `advisor.max_position_pct` (10%);
 - its sector's room under `advisor.max_sector_pct` (30%), summed across
   holdings with the same sector label;
 - cash above `autopilot.min_cash_floor` (₹10,000).
 
-Only whole shares are bought, so under one share means no buy. What a cap
-leaves unspent stays in cash, and the BUY's note names the limit and the
-amount. A manual add is the user's own choice and is not capped. Nothing is
+Only whole shares are bought, so under one share means no buy. The buy's own
+costs leave cash and equity too, so each limit is checked again after them
+and a share at a time is dropped until all hold. What a cap leaves unspent
+stays in cash, and the BUY's note names the limit and the amount. A manual add is the user's own choice and is not capped. Nothing is
 force-sold: a holding already over a cap is left to the TRIM rules.
 
 A SWITCH buy opens a position, so it must also sit inside its shelf idea's
@@ -1652,9 +1657,11 @@ sector over the cap.
   81% cash.
 
 **Example (a switch):** in a ₹10 L portfolio, a ₹2.27 L holding is sold for a
-shelf idea priced at ₹530, inside its band. The new position may be at most
-₹1,00,000: 188 shares (₹99,640). The BUY's note reads "capped by the 10%
-position cap: ₹1,27,360 of the ₹2,27,000 proceeds stay in cash". Suppose
+shelf idea priced at ₹530, inside its band. The sale's costs (₹250.84) leave
+₹2,26,749 of proceeds and ₹9,99,749 of equity, so the new position may be at
+most ₹99,975: 188 shares (₹99,640, plus ₹118.68 of costs). The BUY's note
+reads "capped by the 10% position cap: ₹1,27,109 of the ₹2,26,749 proceeds
+stay in cash". Suppose
 instead the idea was shelved at ₹1,817–₹1,911 and now trades at ₹2,553.60,
 as WELCORP did on 1 Sep. Then nothing is bought, and the SELL says "33.6%
 above entry band (₹1,817–₹1,911); needs a fresh deep dive".
@@ -1693,22 +1700,83 @@ transactions, advice, digest and `/portfolio/performance`.
 |---|---|
 | Holding market value | Adjusted quantity × marked price. |
 | Unrealized holding P/L | Adjusted quantity × (marked price − adjusted average cost). |
-| Realized P/L | Ledger gain/loss on quantities actually sold virtually. |
+| Realized P/L | Ledger gain/loss on quantities actually sold virtually, before costs (`realized_pnl`). `realized` gives it gross, the costs those sales and the shares they sold paid, and net of costs. |
+| Trading costs | What each BUY and SELL paid, on its ledger row and taken from cash (below). |
+| Tax estimate | The capital-gains tax the sales would owe per financial year; shown, never taken from cash. |
 | Total equity | Remaining holdings' market value + deployable cash. |
 | Total return | `(total equity − capital_in) / capital_in`, when required values exist. |
 | As-of date | Date of the valuation, potentially different from page-open time. |
 | In stocks / Cash | Market value and deployable cash at the last valuation, each as a share of total equity, to one decimal. The cash share is rounded and the stock share is 100 minus it, so the two always add to 100. |
 
-The virtual P/L charges no brokerage, STT, stamp duty, exchange fee, DP
-charge or tax. A real round trip costs about 0.25% of the traded value, and
-short-term gains are taxed. For ACMESOLAR's +₹37,551, that is about ₹477 in
-costs and about ₹7,415 in tax. **Planned:** costs and tax in paper P&L
-(SA-048).
+**Trading costs and the tax estimate.**
+[costs.py](../core/portfolio/costs.py) charges every virtual BUY and SELL what
+an NSE equity delivery trade pays at a zero-brokerage broker. The rates are in
+`config.yaml` (`portfolio.costs`), each with its source and the date it was
+checked:
+
+| Charge | Basis | Rounding |
+|---|---|---|
+| STT | 0.1% of the buy and of the sale | value and tax to the rupee (STT Rules, rule 4) |
+| Stamp duty | 0.015% of the buy | paisa |
+| NSE transaction charge | 0.00307% of each side | paisa |
+| SEBI fee | 0.0001% (₹10 a crore) of each side | paisa |
+| GST | 18% of brokerage + NSE charge + SEBI fee | paisa |
+| DP charge | ₹15.34 per scrip sold, GST included | — |
+| Brokerage | 0 for delivery (a percentage and a per-order cap are configurable) | paisa |
+
+The charges are written on the trade's own ledger row (`costs`, with the
+`rates_as_of` they were charged at) and leave cash with it. So a rate change
+never alters a past trade, and the transaction ID that stops a re-run trading
+twice stops it charging twice. A manual add or CSV import moves no cash: its
+buy charges go into `capital_in` with its cost, and the Nifty comparison takes
+them in as money. A missing rate fails the trade rather than charging nothing.
+A trade from before costs were charged has none recorded. It is read with
+costs estimated at the configured rates and labelled "estimated", never as
+free. Those costs were never taken from cash, so the performance view lists
+them apart from the charged ones.
+
+`realized_pnl` keeps its meaning, the price difference. Each sale's net result
+subtracts its own charges and the share of its position's buy charges that the
+sold shares carried: a sale of a quarter of the shares carries a quarter of the
+pool, so a split in between changes nothing. Unrealized P/L stays the open
+holdings' price gain: `total_pnl − realized_pnl + charged costs`.
+
+The tax estimate (`portfolio.tax`) is per financial year, April to March, for
+a resident individual:
+
+- a sale's gain is its value less its charges and its shares' cost (the
+  position's adjusted average) and their share of the buy charges; STT is not
+  deductible;
+- shares held 12 months or less, taken oldest purchase first, are short-term
+  (20%); the rest are long-term (12.5% above ₹1,25,000, applied once a year);
+- a short-term loss offsets short-term gains, then long-term gains; a
+  long-term loss offsets long-term gains only;
+- a 4% cess is added to the tax.
+
+So a year that nets to a loss owes nothing, except when a long-term loss
+exceeds a short-term gain: the law still taxes the short-term gain. Losses
+carried to later years, surcharge and the basic-exemption shortfall are not
+modelled. A sale with no purchase on record counts as short-term, the higher
+rate, and is counted.
+
+**Example (ACMESOLAR, the owner's screen of 27 Sep):** 509 shares bought at
+₹372.88 (₹1,89,795.92) and sold at ₹446.65 (₹2,27,344.85).
+
+- The buy pays STT ₹190, stamp ₹28.47, NSE ₹5.83, SEBI ₹0.19 and GST ₹1.08:
+  ₹225.57.
+- The sale pays STT ₹227, NSE ₹6.98, SEBI ₹0.23, GST ₹1.30 and DP ₹15.34:
+  ₹250.85.
+- The realized +₹37,548.93 is +₹37,072.51 net of the ₹476.42.
+- The taxable gain is ₹37,489.51 (STT not deducted). 20% is ₹7,497.90, and
+  the cess ₹299.92, so the tax is ₹7,797.82.
+- About ₹29,275 is left in hand.
 
 **The portfolio screen** answers "is this good?" as well as "how much?". With
 cash accounting on, the hero shows "Capital added" (`capital_in`, the money put
 in, which trades never move), "In stocks" and "Cash" with their shares, the
-total return and the valuation date ("Valued as of 6 Feb 2026"). The value
+total return, "Realized P&L" net of costs (with the gain before costs and the
+costs under it), the latest financial year's "Tax estimate" (marked not taken
+from cash) and the valuation date ("Valued as of 6 Feb 2026"). The value
 chart draws, dashed, what the same deposits would be worth in the Nifty 50,
 and each range tab shows the range's money-weighted return beside the Nifty's.
 Under the hero, "If this had been in the Nifty 50" gives the gap at the last
@@ -1739,6 +1807,8 @@ functions in [results.py](../core/portfolio/results.py) (`capital_flows`,
   its bar (`last_close_date` from `GET /portfolio`) and the average cost by the
   first purchase. Each trade's price shows its trade date, and the agents'
   card names the review whose closes its reasons quote.
+- **Every trade shows its costs**, in whole rupees: "costs ₹251", or "costs
+  ₹15 (estimated)" for a trade from before costs were charged.
 - **Without cash accounting** no deposit or sale is recorded, so the screen
   shows "Bought for" (the holdings' cost) and has no comparison or trade card.
 
@@ -1754,15 +1824,17 @@ arrived; the Nifty comparison does not (below).
 With no history, a failed price lookup may fall back to adjusted purchase cost.
 The digest sums priced holdings only, and its `portfolio_value` excludes cash.
 These scope differences need interpretation; a displayed total is not proof
-all prices are fresh or all history is included. These virtual results do not
-establish executable net returns after fees, spread, tax and slippage.
+all prices are fresh or all history is included. Costs are charged and tax is
+estimated, but the bid-ask spread, slippage and market impact are not
+modelled, so these virtual results still do not establish executable net
+returns.
 
 ### Report families
 
 | Report | Present meaning | Limitation / planned work |
 |---|---|---|
 | RL Monitor / analytics | Envelope, feedback, miss and weight records, with the learning mode and live decision weights. | Inherits label/timing/history problems; SA-012–SA-017, SA-024. |
-| Weekly results scorecard | One row per ISO week from the user's own ledgers: closed round trips, the auditor's grade of every advisor sale at 10 and 30 sessions, exit reasons, a money-weighted Nifty comparison, breadth, holding period and five predeclared red flags (below). | Before costs (SA-048). Forecast-suggestion cohorts are SA-019's. |
+| Weekly results scorecard | One row per ISO week from the user's own ledgers: closed round trips, the auditor's grade of every advisor sale at 10 and 30 sessions, exit reasons, a money-weighted Nifty comparison, breadth, holding period and five predeclared red flags (below). | Closed-trade results are before costs; the portfolio screen's realized P/L is net of them. Forecast-suggestion cohorts are SA-019's. |
 | Monthly scorecard | Agent/control/simple-baseline lanes and previous-month comparisons. | Completeness, timing and denominators need repair. SA-018. |
 | Learning evidence | Retrospective adapted/base/uniform replay and lesson associations. | Not a prospective controlled experiment of the whole system. SA-020–SA-023. |
 | Nightly advice auditor | Issued advice, alert, shelf, switch and IPO lanes; default 10/30/60 trading-session horizons, and 1/5/21/63/126/252 from listing on the IPO lane. | Separate from weekly heuristics and actual account P/L. IPO rows are excluded from the rendered report. |
@@ -1823,10 +1895,12 @@ week whose sessions are not over is never stored.
 
 **Holdings that arrive without cash.** "Add holding" and a CSV import, on an
 account with cash accounting, raise `capital_in` by the holding's cost (the
-quantity × the buy date's close or a typed price) and write a "manual" BUY row
-whose cash does not move. `capital_flows` finds those rows and values each one
-at the stock's NSE close on the date of the first value point that holds it,
-on both sides, so a stock's gain before it arrived is not the portfolio's.
+quantity × the buy date's close or a typed price) and its buy charges, and
+write a "manual" BUY row whose cash does not move. `capital_flows` finds those
+rows and values each one at the stock's NSE close on the date of the first
+value point that holds it, on both sides, so a stock's gain before it arrived
+is not the portfolio's. The buy charges stay money in: the Nifty gets them
+too, and the portfolio has to earn them back.
 
 - **Example.** ₹10 L sits in cash while the Nifty goes 100 → 110 over four
   weeks. In the middle, with the Nifty at 105, 1,000 shares bought a year
@@ -2832,7 +2906,6 @@ learning to `observe`. SA-023 puts learned lessons on measurable probation.
 
 ### Portfolio economics
 
-- SA-048 charges realistic trading costs and tax in paper P&L.
 - SA-049 puts idle cash into shelf ideas that pass the checks in a normal
   market, and holds cash on purpose only in a crisis, behind a switch that
   ships off. It works toward a configurable floor of at least 10 holdings and

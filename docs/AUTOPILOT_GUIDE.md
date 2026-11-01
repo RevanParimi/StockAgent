@@ -297,7 +297,7 @@ used for it.
 | EXIT | Sell the whole `adj_qty`. The holding is removed and the symbol joins the watchlist (`source="autopilot"`, reason `autopilot_exit`). |
 | TRIM | Sell `max(1, floor(adj_qty × 25%))`; when less than one share would remain, sell everything (`trim_to_zero`). |
 | ADD | Buy into an existing holding only, asking for 25% of the position's value, sized by the shared rule below. Skipped within 5 trading days of the last autopilot buy of that symbol, or when the rule allows under one share (logged). |
-| SWITCH | Sell the whole position (EXIT rules), then buy the destination, asking for the sale proceeds, sized by the shared rule below, and only inside its shelf idea's entry band. |
+| SWITCH | Sell the whole position (EXIT rules), then buy the destination, asking for the sale proceeds net of the sale's charges, sized by the shared rule below, and only inside its shelf idea's entry band. |
 
 **The SWITCH buy leg re-checks its own inputs** before spending:
 
@@ -324,15 +324,17 @@ confidence (highest first, ties by symbol).
 
 **The shared sizing rule** ([sizing.py](../core/portfolio/sizing.py)). Total
 equity E is every holding at the run's close (at cost without one) plus cash.
-A buy paid from cash moves money into a holding, so E does not change. A buy
-of X is the smallest of:
+A buy paid from cash moves money into a holding, so E does not change but for
+the buy's charges (section 9). A buy of X is the smallest of:
 
 - the amount asked for (the ADD tranche, or the SWITCH proceeds);
 - `0.10 × E − pos`, the position's room (`advisor.max_position_pct`);
 - `0.30 × E − sector`, its sector's room (`advisor.max_sector_pct`);
 - `cash − 10,000`, the cash above the floor.
 
-Whole shares only. When a cap or the floor is the limit, the BUY's note names
+Whole shares only, and each limit must still hold after the buy's charges
+leave cash and equity: a share at a time is dropped until it does. When a cap
+or the floor is the limit, the BUY's note names
 it and the amount left in cash, for example `add_tranche; capped by the 10%
 position cap: ₹1,250 of the ₹2,250 tranche stay in cash`. When nothing but
 the request limits it, the note is plain (`add_tranche`, `switch from X`).
@@ -360,8 +362,10 @@ How cash moves today:
   tickers (section 11).
 
 **Example:** a ₹10,00,000 portfolio switches a ₹2,27,000 holding into a
-shelf idea at ₹530. The new position may be at most ₹1,00,000: 188 shares,
-₹99,640. The other ₹1,27,360 stays in cash, and the BUY's note says so.
+shelf idea at ₹530. The sale pays ₹250.84 of costs, leaving ₹2,26,749 of
+proceeds. The new position may be at most 10% of the ₹9,99,749 equity: 188
+shares, ₹99,640, plus ₹118.68 of costs. The other ₹1,27,109 stays in cash,
+and the BUY's note says so.
 On a day with no qualifying candidate, two EXITs of ₹1,50,000 each raise
 cash by ₹3,00,000, and it stays there.
 
@@ -438,17 +442,45 @@ accounting is on.
 
 | Portfolio figure | Meaning |
 |---|---|
-| `capital_in` | Mock money ever put in: the seed pot plus manual adds and CSV imports at their cost. The screen calls it "Capital added". |
+| `capital_in` | Mock money ever put in: the seed pot plus manual adds and CSV imports at their cost and their buy charges. The screen calls it "Capital added". |
 | `cash_deployable` | Cash available now |
 | Total equity | Market value of holdings plus cash |
 | Total return | `(total equity − capital_in) / capital_in` |
 
-**What the figures leave out.** No brokerage, STT, stamp duty, exchange fee,
-DP charge or tax is charged. The KT's
-[section 7](TECHNICAL_DESIGN.md#virtual-pl) gives the cost of a real round
-trip, the report families and the Nifty comparison: the same deposits in the
-Nifty 50, on the portfolio screen and in the weekly scorecard.
-**Planned:** costs and tax in paper P&L (SA-048).
+**Trading costs** ([costs.py](../core/portfolio/costs.py)). Every BUY and SELL
+pays what an NSE equity delivery trade pays at a zero-brokerage broker. The
+rates are in `config.yaml` under `portfolio.costs`, with the date they were
+checked:
+
+- STT, 0.1% of each side, to the rupee;
+- stamp duty, 0.015% of the buy;
+- the NSE transaction charge (0.00307%) and the SEBI fee (0.0001%) on each side;
+- 18% GST on the brokerage, NSE and SEBI charges;
+- a ₹15.34 DP charge per scrip sold.
+
+The charges are written on the trade's own ledger row (`costs`) and leave cash
+with it, so the txn_id dedupe that stops a re-run trading twice also stops it
+charging twice, and a later rate change never alters a past trade. A manual
+add or CSV import moves no cash, so its buy charges go into `capital_in` with
+its cost. A row written before costs were charged is estimated when read, at
+the configured rates, and labelled `estimated`; those costs were never taken
+from cash. `realized_pnl` stays the price difference, before costs.
+
+**The tax estimate** (`portfolio.tax`) is shown and never taken from cash. Per
+financial year (April to March), each sale's gain is short-term if its shares
+(oldest first) were held 12 months or less (20%), long-term otherwise (12.5%
+above ₹1,25,000 a year), plus a 4% cess. A short-term loss offsets short-term
+gains, then long-term gains; a long-term loss offsets long-term gains only.
+STT is not deductible; the other charges are. Surcharge, the basic-exemption
+shortfall and losses carried to later years are not modelled.
+
+**Example (ACMESOLAR):** 509 shares bought at ₹372.88 and sold at ₹446.65 pay
+₹225.57 and ₹250.85. The realized +₹37,548.93 is +₹37,072.51 net of costs,
+and the short-term tax estimate is ₹7,797.82: about ₹29,275 in hand.
+
+The KT's [section 7](TECHNICAL_DESIGN.md#virtual-pl) gives the report families
+and the Nifty comparison: the same deposits in the Nifty 50, on the portfolio
+screen and in the weekly scorecard.
 
 ## 10. Ledger formats
 
@@ -462,7 +494,8 @@ Nifty 50, on the portfolio screen and in the weekly scorecard.
 | `qty`, `price`, `value` | Whole shares (0 for `DIV`, whose price is the dividend per share) |
 | `cash_before`, `cash_after` | Cash on either side of the row |
 | `holding_qty_after` | `adj_qty` afterwards; 0 when the position closed |
-| `realized_pnl`, `cost_basis`, `pnl_pct` | SELL only; the cost basis is `adj_avg_price` at the sale |
+| `realized_pnl`, `cost_basis`, `pnl_pct` | SELL only, before costs; the cost basis is `adj_avg_price` at the sale |
+| `costs` | BUY and SELL: each charge, `total`, the `rates_as_of` it was charged with and `estimated` (false). Absent on a row written before costs were charged, and on a `DIV` |
 | `source` | `autopilot`, `seed` or `manual` |
 | `verdict`, `advice_ref`, `triggers`, `note`, `reason` | The advice behind an autopilot row; `advice_ref` joins the advice ledger, and `reason` is the narrative at execution |
 
@@ -510,12 +543,12 @@ has holdings or transactions.
 | Method and path | Effect |
 |---|---|
 | `GET /portfolio` | Holdings and watchlist with live marks |
-| `POST /portfolio/holdings` | Manual BUY at the buy date's close. It is fresh capital: `capital_in` rises, cash does not change, and a `manual` row is written. An identical same-day resubmit is deduped. The symbol is promoted as held. |
-| `DELETE /portfolio/holdings/{symbol}` | Manual SELL at today's close (cost if no close), cash credited, `manual` row written with its `cost_basis` and `pnl_pct`, so the weekly scorecard counts its result. Unless the symbol is on the watchlist, its portfolio-origin managed entry is disabled |
+| `POST /portfolio/holdings` | Manual BUY at the buy date's close. It is fresh capital: `capital_in` rises by its cost and its buy charges, cash does not change, and a `manual` row is written with the charges. An identical same-day resubmit is deduped. The symbol is promoted as held. |
+| `DELETE /portfolio/holdings/{symbol}` | Manual SELL at today's close (cost if no close), cash credited net of the sale's charges, `manual` row written with its `cost_basis`, `pnl_pct` and charges, so the weekly scorecard counts its result. Unless the symbol is on the watchlist, its portfolio-origin managed entry is disabled |
 | `POST`, `DELETE /portfolio/watchlist…` | Watchlist changes; an added symbol is promoted as watchlist, a removed one demoted the same way |
-| `POST /portfolio/import-csv` | Bulk import of holdings. Rows are priced first, then added in one locked section; with cash accounting on, each is fresh capital like a manual add: `capital_in` rises by its cost and a `manual` BUY row is written with no cash moved |
-| `GET /portfolio/transactions?limit=N` | The ledger, newest first |
-| `GET /portfolio/performance` | Cash, `capital_in`, market value, equity, the in-stocks and cash shares of equity (adding to 100), realised and unrealised P/L, total return, day change, the autopilot flag, the last 400 value points each with `nifty_value`, `vs_nifty` (the gap since the first deposit), `ranges` (each chart range's money-weighted return beside the Nifty's) and `closed_trades`. It reads every transaction and value point |
+| `POST /portfolio/import-csv` | Bulk import of holdings. Rows are priced first, then added in one locked section; with cash accounting on, each is fresh capital like a manual add: `capital_in` rises by its cost and its buy charges, and a `manual` BUY row is written with the charges and no cash moved |
+| `GET /portfolio/transactions?limit=N` | The ledger, newest first. A trade written before costs were charged shows them estimated (`estimated: true`); a `DIV` shows none |
+| `GET /portfolio/performance` | Cash, `capital_in`, market value, equity, the in-stocks and cash shares of equity (adding to 100), realised P/L before costs (`realized_pnl`) and split as `realized` (`gross`, `costs`, `net_of_costs`, `estimated_costs`), `costs` (`charged` from cash, `estimated` for old trades, `on_open_positions`, `rates_as_of`), `tax_estimate` (per financial year), unrealised P/L (the open holdings' price gain), total return, day change, the autopilot flag, the last 400 value points each with `nifty_value`, `vs_nifty` (the gap since the first deposit), `ranges` (each chart range's money-weighted return beside the Nifty's) and `closed_trades`. It reads every transaction and value point |
 | `GET /portfolio/advice`, `GET /portfolio/digest/latest` | The advice ledger's tail; the latest digest |
 | `GET /portfolio/scorecard?limit=N` | The caller's own weekly results rows, newest week first, as the Sunday weekly review stored them ([KT section 7](TECHNICAL_DESIGN.md#weekly-results-scorecard)) |
 | `POST /portfolio/run-advisor` | Owner only: run the pipeline in the background |
@@ -628,7 +661,6 @@ encode the two constraints most likely to fail silently.
 ## 16. Planned work
 
 - Idle cash deployed in normal markets (SA-049).
-- Trading costs and tax in paper P&L (SA-048).
 - A safe `identity_reconcile apply` (SA-008 change 1).
 - Learning from executed advice remains future work: every autopilot row
   carries `advice_ref`, which joins its outcome to the advice that caused it,

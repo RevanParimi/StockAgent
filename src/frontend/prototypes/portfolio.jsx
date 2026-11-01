@@ -26,6 +26,7 @@ function fmtDay(isoDate, withYear) {
 }
 
 const fmtInr = (v) => '₹' + Math.round(Math.abs(v)).toLocaleString('en-IN');
+const fmtSignedInr = (v) => (Math.round(v) >= 0 ? '+' : '-') + fmtInr(v);
 const fmtSigned = (v, digits = 1) => {
   const r = Number(v.toFixed(digits));     // a tiny negative rounds to zero, signed '+'
   return (r >= 0 ? '+' : '-') + Math.abs(r).toFixed(digits) + '%';
@@ -256,6 +257,8 @@ function PortfolioPage({ onNav, openChat }) {
   const alerts = isDemo ? demo.alerts : digestAlerts(live.digest);
   const perf = isLive ? live.perf : null;
   const cashLive = perf && perf.cash != null;
+  const taxYears = (perf && perf.tax_estimate && perf.tax_estimate.years) || [];
+  const taxYear = taxYears.length ? taxYears[taxYears.length - 1] : null;   // the latest year with a sale
   const heroValue = cashLive && perf.total_equity != null ? perf.total_equity : totalValue;
   const liveHist = (perf?.history || []).filter(pt => pt.total_equity != null);
   const showChart = isDemo || liveHist.length > 1;
@@ -374,9 +377,18 @@ function PortfolioPage({ onNav, openChat }) {
               )}
               <Stat2 label="Total return"  value={((cashLive ? (perf.total_equity - perf.capital_in) : totalReturn)>=0?'+':'-')+'₹'+Math.abs(Math.round(cashLive ? (perf.total_equity - perf.capital_in) : totalReturn)).toLocaleString('en-IN')} pct={perf?.total_return_pct ?? totalReturnPct}/>
               {isDemo && <Stat2 label="Cash" value={'₹'+demo.cash.toLocaleString('en-IN')}/>}
-              {cashLive && perf.realized_pnl != null && (
-                <Stat2 label="Realized P&L"
-                  value={(perf.realized_pnl>=0?'+':'-')+'₹'+Math.abs(Math.round(perf.realized_pnl)).toLocaleString('en-IN')}/>
+              {/* SA-048: realized P&L net of trading costs, with the price gain
+                  and the costs under it; the tax estimate is never taken from cash. */}
+              {cashLive && perf.realized_pnl != null && (perf.realized ? (
+                <Stat2 label="Realized P&L" value={fmtSignedInr(perf.realized.net_of_costs)}
+                  sub={`${fmtSignedInr(perf.realized.gross)} before ${fmtInr(perf.realized.costs)} of costs`
+                       + (perf.realized.estimated_costs > 0 ? ', partly estimated' : '')}/>
+              ) : (
+                <Stat2 label="Realized P&L" value={fmtSignedInr(perf.realized_pnl)}/>
+              ))}
+              {cashLive && taxYear && (
+                <Stat2 label="Tax estimate" value={fmtInr(taxYear.total)}
+                  sub={`FY ${taxYear.year}, not taken from cash`}/>
               )}
               <Stat2 label="Holdings"      value={holdings.length+' stocks'}/>
               {isLive && marked.length < holdings.length && (
@@ -485,7 +497,7 @@ function DarkRangeTabs({ value, onChange, options=['1W','1M','3M','6M','1Y'] }) 
 }
 
 // pct: a gain or loss (coloured); share: a part of total equity (plain).
-function Stat2({ label, value, pct, share }) {
+function Stat2({ label, value, pct, share, sub }) {
   return (
     <div>
       <div style={{ fontSize:10, color:'#94a3b8', textTransform:'uppercase', letterSpacing:'.12em', marginBottom:4 }}>{label}</div>
@@ -499,6 +511,7 @@ function Stat2({ label, value, pct, share }) {
           <span style={{ marginLeft:6, color:'#cbd5e1', fontSize:12 }}>({share.toFixed(1)}%)</span>
         )}
       </div>
+      {sub && <div style={{ fontSize:11, color:'#94a3b8', marginTop:2 }}>{sub}</div>}
     </div>
   );
 }
@@ -865,6 +878,10 @@ function LiveActivityCard({ txns }) {
                ? `realized ${t.realized_pnl >= 0 ? '+' : ''}₹${Math.abs(t.realized_pnl).toLocaleString('en-IN')}`
                  + (pnlPct != null ? ` (${pnlPct >= 0 ? '+' : ''}${pnlPct.toFixed(1)}%)` : '')
                : '',
+             // SA-048: the trade's charges; a trade from before they were
+             // charged shows them estimated, never as none.
+             t.costs && t.costs.total > 0
+               ? `costs ${fmtInr(t.costs.total)}${t.costs.estimated ? ' (estimated)' : ''}` : '',
              t.note].filter(Boolean).join(' · '),
       reason: t.reason || '',
       t: fmtIST(t.ts, t.date),

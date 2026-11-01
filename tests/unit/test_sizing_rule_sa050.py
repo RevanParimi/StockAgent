@@ -29,12 +29,21 @@ from core.portfolio.store import PortfolioStore
 from tests.unit.test_decision_gate_portfolio_sa003 import gate_mode  # noqa: F401 — fixture
 
 D = date(2026, 7, 13)                       # a Monday
+CONFIGURED_COSTS = dict(settings.PORTFOLIO_COSTS)
+# The worked examples here are the sizing rule's arithmetic, before trading
+# costs. SA-048's charges are pinned by test_trading_costs_sa048.py; the
+# property test below runs on the configured rates.
+NO_COSTS = {**CONFIGURED_COSTS, "brokerage_pct": 0.0, "stt_pct": 0.0,
+            "stamp_duty_buy_pct": 0.0, "exchange_fee_pct": 0.0, "sebi_fee_pct": 0.0,
+            "dp_charge_inr": 0.0}
 
 
 @pytest.fixture(autouse=True)
 def _pinned(monkeypatch, tmp_path):
-    """The caps this file's arithmetic assumes, a frozen clock, no managed-
-    ticker writes, and an empty instrument registry (every symbol resolves)."""
+    """The caps this file's arithmetic assumes, no trading costs, a frozen
+    clock, no managed-ticker writes, and an empty instrument registry (every
+    symbol resolves)."""
+    monkeypatch.setattr(settings, "PORTFOLIO_COSTS", NO_COSTS)
     monkeypatch.setattr(settings, "ADVISOR_MAX_POSITION_PCT", 10.0)
     monkeypatch.setattr(settings, "ADVISOR_MAX_SECTOR_PCT", 30.0)
     monkeypatch.setattr(settings, "AUTOPILOT_MIN_CASH_FLOOR", 10000.0)
@@ -389,9 +398,13 @@ def test_property_random_portfolios_never_breach_caps_floor_or_band(tmp_path, mo
       - when anything was bought, cash is at or above the floor;
       - every buy that opened a position has a shelf idea, and its price is at
         or below entry_high and above invalidation_level;
-      - total equity at the run's marks is unchanged by the run (sales and
-        buys happen at the marks; cash is rounded to the paisa).
+      - total equity at the run's marks falls by exactly the run's trading
+        costs (sales and buys happen at the marks; cash is rounded to the
+        paisa), and every trade's costs are positive.
+    The caps and the floor are checked after those costs: the configured
+    rates are on (SA-048).
     The counters prove the cases were exercised, not vacuously true."""
+    monkeypatch.setattr(settings, "PORTFOLIO_COSTS", CONFIGURED_COSTS)
     floor = 10_000.0
     seen = {"buys": 0, "capped": 0, "band_skips": 0, "new_positions": 0}
     for seed in range(300):
@@ -432,7 +445,9 @@ def test_property_random_portfolios_never_breach_caps_floor_or_band(tmp_path, mo
         run_marks = {**closes, **prices}
         eq_before = _equity(before.holdings, before.cash_deployable, run_marks)
         eq_after = _equity(after.holdings, after.cash_deployable, run_marks)
-        assert eq_after == pytest.approx(eq_before, abs=0.01 * (len(txns) + 1)), seed
+        charged = sum(t.costs.total for t in txns)
+        assert all(t.costs.total > 0 for t in txns), seed
+        assert eq_after == pytest.approx(eq_before - charged, abs=0.01 * (len(txns) + 1)), seed
 
         held_before = {h.symbol for h in before.holdings}
         idea_of = {i.symbol: i for i in ideas}

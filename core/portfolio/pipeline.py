@@ -453,7 +453,10 @@ def run_post_review_pipeline(review_date: date) -> dict:
                     kind="autopilot_trade",
                     symbol=t.symbol,
                     message=f"{t.side} {int(t.qty)} {t.symbol} @ ₹{t.price:,.2f}"
-                            + (f" (realized ₹{t.realized_pnl:,.2f})" if t.side == "SELL" else ""),
+                            + (f" (realized ₹{t.realized_pnl:,.2f} before costs)"
+                               if t.side == "SELL" else "")
+                            # SA-048: the trade's own charges, taken from cash
+                            + (f"; costs ₹{t.costs.total:,.2f}" if t.costs else ""),
                     severity="warning" if t.side == "SELL" else "info",
                 )
                 for t in txns

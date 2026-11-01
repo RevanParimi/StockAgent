@@ -210,8 +210,6 @@ These items are planned, not implemented
   adds durable outcomes for every job, source-health ledgers, silent-degradation
   checks, provider-credit alerts, a read-only status fetcher and an outside
   witness for missed jobs.
-- **Portfolio economics.** Costs and tax in paper P/L, one sizing rule for
-  every autopilot buy, idle cash put to work in normal markets, and the
-  portfolio shown against the Nifty.
+- **Portfolio economics.** Idle cash put to work in normal markets.
 - **Interface.** Verifiable learning evidence and honest unavailable or demo
   states.

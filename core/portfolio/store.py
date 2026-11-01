@@ -523,6 +523,7 @@ def import_csv(
     price_lookup=None,
 ) -> dict:
     from core.portfolio.autopilot import make_txn_id
+    from core.portfolio.costs import trade_costs
 
     store = PortfolioStore(user_id=user_id, base_dir=base_dir)
     imported, errors = 0, []
@@ -552,14 +553,15 @@ def import_csv(
     # One critical section for the holdings, their ledger rows and the fresh
     # capital, as for POST /holdings (AUD-007 parity): with cash accounting on,
     # each imported position raises capital_in by its cost (so total_pnl =
-    # equity − capital_in isn't inflated) and gets the same "manual" BUY row
-    # with no cash moved. The ledger then nets every held quantity
+    # equity − capital_in isn't inflated) and what buying it cost (SA-048), and
+    # gets the same "manual" BUY row, with those costs, and no cash moved.
+    # The ledger then nets every held quantity
     # (reconcile), and the Nifty comparison values the position on the day
     # it arrived (results.capital_flows), not at its cost.
     with store.locked():
         cash_on = store.load().cash_deployable is not None
         txns: list[TransactionRecord] = []
-        total_value = 0.0
+        fresh_capital = 0.0
         for i, h in rows:
             try:
                 p = store.add_holding(h)
@@ -568,8 +570,10 @@ def import_csv(
                 continue
             imported += 1
             value = round(h.qty * h.avg_buy_price, 2)
-            total_value += value
+            fresh_capital += value
             if cash_on:
+                charges = trade_costs("BUY", value)
+                fresh_capital += charges.total
                 ts = datetime.now(timezone.utc).isoformat()
                 txns.append(TransactionRecord(
                     txn_id=make_txn_id(store.user_id, h.buy_date, h.symbol, "BUY",
@@ -579,10 +583,10 @@ def import_csv(
                     cash_before=p.cash_deployable, cash_after=p.cash_deployable,
                     holding_qty_after=next((x.adj_qty for x in p.holdings
                                             if x.symbol == h.symbol), h.qty),
-                    source="manual", note="csv import (fresh capital)"))
-        if cash_on and imported and total_value > 0:
+                    source="manual", note="csv import (fresh capital)", costs=charges))
+        if cash_on and imported and fresh_capital > 0:
             p = store.load()
-            p.capital_in = round(p.capital_in + total_value, 2)
+            p.capital_in = round(p.capital_in + fresh_capital, 2)
             for txn in txns:
                 store.append_transaction(txn)
             store.save(p)

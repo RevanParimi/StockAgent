@@ -15,6 +15,11 @@ caps of total equity, after the trade, and the cash floor), and a SWITCH
 buy, which opens a position, must also sit inside its shelf idea's entry
 band. What a cap leaves unspent stays in cash; the BUY's note says how much
 and why. A skipped SWITCH buy leg says why on its SELL's note.
+
+SA-048: every BUY and SELL pays its trading costs (core/portfolio/costs.py),
+written on its own ledger row and taken from cash with it, so the txn_id
+dedupe that stops a re-run trading twice also stops it charging twice. A
+SWITCH buy leg asks for the sale's proceeds net of the sale's costs.
 """
 from __future__ import annotations
 
@@ -28,11 +33,12 @@ from backend.shared.schemas.portfolio import (
     AdviceRecord,
     Holding,
     Portfolio,
+    TradeCosts,
     TransactionRecord,
     WatchlistItem,
 )
 from backend.shared.pipeline import decision_gate as dg
-from core.portfolio import sizing
+from core.portfolio import costs, sizing
 from core.portfolio.store import PortfolioStore
 from core.portfolio.identity_reconcile import symbol_identity_issue
 from core.portfolio.pricing import session_close
@@ -58,7 +64,8 @@ def _today_ist() -> date:
 
 def _txn(portfolio: Portfolio, rec: AdviceRecord, *, side: str, qty: float,
          price: float, cash_before: float, holding_qty_after: float,
-         realized: float, note: str, symbol: str | None = None,
+         realized: float, note: str, charges: TradeCosts,
+         symbol: str | None = None,
          cost_basis: float | None = None) -> TransactionRecord:
     sym = symbol or rec.symbol
     ref = f"{rec.date}|{rec.symbol}|{rec.rationale_hash}"
@@ -75,6 +82,7 @@ def _txn(portfolio: Portfolio, rec: AdviceRecord, *, side: str, qty: float,
         source="autopilot", verdict=rec.verdict, advice_ref=ref,
         triggers=list(rec.triggers), note=note,
         cost_basis=cost_basis, pnl_pct=pnl_pct, reason=rec.narrative,
+        costs=charges,
     )
 
 
@@ -134,9 +142,12 @@ def _execute_sells(portfolio: Portfolio, advice: list[AdviceRecord],
                 "crash; manual reconciliation may be needed", rec.symbol, rec.verdict)
             continue
         cost_basis = round(h.adj_avg_price, 4)
+        charges = costs.trade_costs("SELL", round(qty * price, 2))
         cash_before = portfolio.cash_deployable
         realized = h.sell(qty, price)
-        portfolio.cash_deployable = round(portfolio.cash_deployable + qty * price, 2)
+        # SA-048: the sale's charges leave cash with it, on its own ledger row.
+        portfolio.cash_deployable = round(
+            portfolio.cash_deployable + qty * price - charges.total, 2)
         if h.adj_qty <= 1e-9:
             portfolio.holdings = [x for x in portfolio.holdings if x.symbol != h.symbol]
             if rec.verdict in ("EXIT", "SWITCH") and not any(
@@ -147,10 +158,10 @@ def _execute_sells(portfolio: Portfolio, advice: list[AdviceRecord],
         sell = _txn(portfolio, rec, side="SELL", qty=qty, price=price,
                     cash_before=cash_before,
                     holding_qty_after=(h.adj_qty if h.adj_qty > 1e-9 else 0.0),
-                    realized=realized, note=note, cost_basis=cost_basis)
+                    realized=realized, note=note, charges=charges, cost_basis=cost_basis)
         txns.append(sell)
         if rec.verdict == "SWITCH" and rec.switch_candidate:
-            switch_proceeds.append((qty * price, rec, sell))
+            switch_proceeds.append((qty * price - charges.total, rec, sell))
     return txns, switch_proceeds
 
 
@@ -251,7 +262,8 @@ def _execute_buys(portfolio: Portfolio, advice: list[AdviceRecord],
             except Exception:
                 sector = "generic"
         size = sizing.size_buy(portfolio, closes, symbol=cand, sector=sector,
-                               price=price, wanted=proceeds, floor_cash=floor_cash)
+                               price=price, wanted=proceeds, floor_cash=floor_cash,
+                               charge=costs.buy_charge)
         if size.qty < 1:
             why = sizing.under_one_share_note(size, price, "proceeds")
             logger.info("[autopilot] SWITCH buy %s skipped: %s", cand, why)
@@ -270,13 +282,15 @@ def _execute_buys(portfolio: Portfolio, advice: list[AdviceRecord],
             continue
         note = "; ".join(n for n in (f"switch from {rec.symbol}", band_note,
                                      sizing.capped_note(size, price, "proceeds")) if n)
+        charges = costs.trade_costs("BUY", round(qty * price, 2))
         cash_before = portfolio.cash_deployable
-        portfolio.cash_deployable = round(portfolio.cash_deployable - qty * price, 2)
+        portfolio.cash_deployable = round(
+            portfolio.cash_deployable - qty * price - charges.total, 2)
         qty_after = _buy_into_holding(portfolio, cand, sector, qty, price,
                                       review_date.isoformat())
         txns.append(_txn(portfolio, rec, side="BUY", qty=qty, price=price,
                          cash_before=cash_before, holding_qty_after=qty_after,
-                         realized=0.0, note=note, symbol=cand))
+                         realized=0.0, note=note, charges=charges, symbol=cand))
         try:
             promote_symbol(cand, sector, origin="held")
         except Exception as exc:
@@ -300,7 +314,8 @@ def _execute_buys(portfolio: Portfolio, advice: list[AdviceRecord],
             continue
         tranche = h.adj_qty * price * settings.AUTOPILOT_ADD_TRANCHE_PCT / 100.0
         size = sizing.size_buy(portfolio, closes, symbol=rec.symbol, sector=h.sector,
-                               price=price, wanted=tranche, floor_cash=floor_cash)
+                               price=price, wanted=tranche, floor_cash=floor_cash,
+                               charge=costs.buy_charge)
         if size.qty < 1:
             logger.info("[autopilot] ADD %s skipped: %s", rec.symbol,
                         sizing.under_one_share_note(size, price, "tranche"))
@@ -313,15 +328,17 @@ def _execute_buys(portfolio: Portfolio, advice: list[AdviceRecord],
                 "this run — possible ledger/portfolio divergence from a mid-run "
                 "crash; manual reconciliation may be needed", rec.symbol)
             continue
+        charges = costs.trade_costs("BUY", round(qty * price, 2))
         cash_before = portfolio.cash_deployable
-        portfolio.cash_deployable = round(portfolio.cash_deployable - qty * price, 2)
+        portfolio.cash_deployable = round(
+            portfolio.cash_deployable - qty * price - charges.total, 2)
         qty_after = _buy_into_holding(portfolio, rec.symbol, h.sector, qty, price,
                                       review_date.isoformat())
         note = "; ".join(n for n in ("add_tranche",
                                      sizing.capped_note(size, price, "tranche")) if n)
         txns.append(_txn(portfolio, rec, side="BUY", qty=qty, price=price,
                          cash_before=cash_before, holding_qty_after=qty_after,
-                         realized=0.0, note=note))
+                         realized=0.0, note=note, charges=charges))
     return txns
 
 

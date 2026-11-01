@@ -8,8 +8,9 @@ position in a ₹10 L portfolio that is 81% cash read as 72.9%, so ADD could
 never fire and every review noted a concentration that was not there.
 
 A buy paid from cash moves money from cash into a holding, so it leaves total
-equity unchanged. The room under a cap after the trade is therefore
-`cap × equity − current value`, in rupees.
+equity unchanged but for its charges (SA-048, about 0.12% of the value). The
+room under a cap after the trade is therefore `cap × equity − current value`,
+in rupees; the cash floor is kept after the charges.
 
 Every autopilot buy, ADD and SWITCH alike (and SA-049's new positions), goes
 through `size_buy`: the position at most `advisor.max_position_pct`, its
@@ -22,6 +23,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
+from typing import Callable
 
 from core.config import settings
 
@@ -107,15 +109,17 @@ class BuySize:
 
 
 def size_buy(portfolio, marks: dict[str, float], *, symbol: str, sector: str,
-             price: float, wanted: float, floor_cash: float) -> BuySize:
+             price: float, wanted: float, floor_cash: float,
+             charge: Callable[[float], float] | None = None) -> BuySize:
     """
     How many whole shares of `symbol` (in `sector`) at `price` one autopilot
     buy may take when it asks for `wanted` rupees.
 
     After the trade the position is at most the position cap and the sector
     at most the sector cap, both of total equity, and cash stays at or above
-    `floor_cash`. The tightest limit wins; on a tie the order is the request,
-    then position cap, sector cap, cash floor.
+    `floor_cash`; when `charge` (trade value -> its charges, SA-048) is given,
+    all three hold after the buy's charges. The tightest limit wins; on a tie
+    the order is the request, then position cap, sector cap, cash floor.
     """
     equity = total_equity(portfolio, marks)
     position = sum(marked_value(h, marks) for h in portfolio.holdings if h.symbol == symbol)
@@ -132,6 +136,21 @@ def size_buy(portfolio, marks: dict[str, float], *, symbol: str, sector: str,
     qty = float(math.floor(budget / price)) if price > 0 else 0.0
     if qty > 0 and qty * price > budget:                 # float guard: never over budget
         qty -= 1.0
+    if charge is not None:
+        # The charges come out of cash and so out of equity: re-check each
+        # limit after them, a share at a time (they are about 0.12% of value).
+        cash = portfolio.cash_deployable or 0.0
+        while qty > 0:
+            spend = qty * price
+            fee = charge(round(spend, 2))
+            after = equity - fee
+            over = ("cash floor" if cash - spend - fee < floor_cash else
+                    "position cap" if position + spend > pos_cap / 100.0 * after + 1e-6 else
+                    "sector cap" if in_sector + spend > sec_cap / 100.0 * after + 1e-6 else "")
+            if not over:
+                break
+            qty -= 1.0
+            binding = over
     limit = {
         "": "",
         "position cap": f"the {pos_cap:g}% position cap",

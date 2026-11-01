@@ -432,6 +432,35 @@ portfolio:
   default_user_id: "primary"     # single-user launch; per-user layout from day one
   max_managed_tickers: 40        # auto-promotion cap — guards LLM spend (~$19/mo at 40)
   weekly_review_weekday: 4       # Friday: watchlist-cadence names review this weekday only
+  # Charges on every paper BUY and SELL, taken from cash with the trade
+  # (core/portfolio/costs.py): an NSE equity delivery trade at a zero-brokerage
+  # broker. Rates are percentages of the trade value. A ledger row keeps the
+  # charges and the as_of it was charged with, so changing a rate never alters
+  # a past trade; rows from before costs were charged are estimated when read
+  # with these rates, labelled "estimated". All checked on as_of:
+  costs:
+    as_of: "2026-10-31"
+    brokerage_pct: 0.0           # Zerodha equity delivery: zero brokerage (zerodha.com/charges)
+    brokerage_max_inr: 0.0       # a per-order cap for a percentage broker; 0 = none
+    stt_pct: 0.1                 # buy and sell, delivery, to the nearest rupee (STT Rules 2004, rule 4); Budget 2026 raised only F&O STT
+    stamp_duty_buy_pct: 0.015    # buy side only (Indian Stamp Act, collected via the exchange since 1 Jul 2020)
+    exchange_fee_pct: 0.00307    # NSE cash market, each side, from 1 Mar 2026 (NSE/FA/73061, 27 Feb 2026); IPFT ₹0.01/crore left out
+    sebi_fee_pct: 0.0001         # ₹10 per crore, each side
+    gst_pct: 18.0                # on brokerage + exchange fee + SEBI fee
+    dp_charge_inr: 15.34         # per scrip per SELL, GST included: ₹3.5 CDSL + ₹9.5 Zerodha + ₹2.34 GST
+  # The capital-gains tax estimate on paper sales (core/portfolio/costs.py),
+  # per financial year (April-March), for a resident individual. Shown, never
+  # taken from cash. Rates in force for transfers from 23 Jul 2024 (Finance
+  # (No. 2) Act 2024, sections 111A and 112A of the 1961 Act; carried into the
+  # Income-tax Act 2025 in force from 1 Apr 2026). Not modelled: surcharge,
+  # the basic-exemption shortfall and losses carried to later years.
+  tax:
+    as_of: "2026-10-31"
+    short_term_pct: 20.0         # listed equity held 12 months or less, STT paid
+    long_term_pct: 12.5          # held more than 12 months, above the exemption
+    long_term_exemption_inr: 125000   # per financial year, once
+    long_term_after_months: 12
+    cess_pct: 4.0                # health and education cess on the tax
 
 advisor:
   enabled: true

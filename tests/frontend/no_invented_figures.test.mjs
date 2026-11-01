@@ -826,12 +826,12 @@ const BOUGHT = { txn_id: 'b1', date: '2026-01-19', ts: '2026-01-19T11:10:00+00:0
                  symbol: 'WELCORP', side: 'BUY', qty: 80, price: 2600.0, value: 208000.0, cash_before: 1217600.0,
                  cash_after: 1009600.0, holding_qty_after: 80, source: 'autopilot', verdict: 'ADD' };
 
-async function openPortfolio(perf) {
+async function openPortfolio(perf, txns = [BOUGHT]) {
   const app = await openApp(browser, { user: OWNER, api: {
     '/portfolio': json({ holdings: [HELD], watchlist: [] }),
     '/portfolio/digest/latest': json(DIGEST),
     '/portfolio/performance': json(perf),
-    '/portfolio/transactions': json({ transactions: [BOUGHT] }),
+    '/portfolio/transactions': json({ transactions: txns }),
   } });
   await settled(app.page);
   await goTo(app.page, 'portfolio');
@@ -917,6 +917,44 @@ test('a missing Nifty value breaks the line; it is never bridged', async () => {
     const xs = async (k) => (await lines.nth(k).getAttribute('points')).split(' ').map(p => Number(p.split(',')[0]));
     assert.deepEqual(await xs(0), [0, 25]);       // up to the 2nd point
     assert.deepEqual(await xs(1), [75, 100]);     // from the 4th: no segment over the gap
+    assert.deepEqual(errors, []);
+  } finally { await context.close(); }
+});
+
+// -- SA-048: realized P&L net of trading costs, and the tax estimate apart ---------
+
+// The ACMESOLAR round trip of tests/unit/test_trading_costs_sa048.py: +₹37,548.93
+// before ₹476.42 of costs, +₹37,072.51 after; tax ₹7,797.82 for FY 2026-27.
+const PERF_COSTS = { ...PERF, realized_pnl: 37548.93,
+  realized: { gross: 37548.93, costs: 476.42, net_of_costs: 37072.51, estimated_costs: 15.35 },
+  costs: { charged: 476.42, estimated: 15.35, on_open_positions: 0.0, rates_as_of: '2026-10-31' },
+  tax_estimate: { years: [{ year: '2026-27', tax: 7497.9, cess: 299.92, total: 7797.82 }],
+                  total: 7797.82, rates_as_of: '2026-10-31', basis: 'estimate' } };
+const TRIMMED = { txn_id: 's1', date: '2026-01-26', ts: '2026-01-26T10:00:00+00:00', user_id: 'primary',
+                  symbol: 'WELCORP', side: 'SELL', qty: 10, price: 2700.0, value: 27000.0,
+                  cash_before: 1009600.0, cash_after: 1036584.65, holding_qty_after: 80,
+                  realized_pnl: 1000.0, cost_basis: 2600.0, pnl_pct: 3.85, source: 'autopilot',
+                  verdict: 'TRIM', costs: { total: 15.35, estimated: true } };
+
+test('realized P&L reads after costs, with the gain before them and the tax estimate apart', async () => {
+  const bought = { ...BOUGHT, costs: { total: 246.68, estimated: false } };
+  const { context, page, errors } = await openPortfolio(PERF_COSTS, [TRIMMED, bought]);
+  try {
+    const text = await visibleText(page);
+    assert.match(text, /Realized P&L\s*\+₹37,073\s*\+₹37,549 before ₹476 of costs, partly estimated/i);
+    assert.match(text, /Tax estimate\s*₹7,798\s*FY 2026-27, not taken from cash/i);
+    assert.match(text, /costs ₹15 \(estimated\)/);
+    assert.match(text, /costs ₹247(?! \(estimated\))/);
+    assert.deepEqual(errors, []);
+  } finally { await context.close(); }
+});
+
+test('a performance answer from before costs still shows its realized P&L and no tax', async () => {
+  const { context, page, errors } = await openPortfolio({ ...PERF, realized_pnl: 1200.0 });
+  try {
+    const text = await visibleText(page);
+    assert.match(text, /Realized P&L\s*\+₹1,200/i);
+    assert.ok(!/Tax estimate|before ₹/i.test(text), text);
     assert.deepEqual(errors, []);
   } finally { await context.close(); }
 });

@@ -110,7 +110,10 @@ def test_manual_add_records_txn_and_capital(client, tmp_path):
     assert r.json()["transaction"]["source"] == "manual"
     s = PortfolioStore(user_id="primary", base_dir=str(tmp_path))
     p = s.load()
-    assert p.capital_in == pytest.approx(11000.0 + 600.0)
+    # SA-048: fresh money pays for the shares and their buy charges. On
+    # ₹600: STT ₹0.60 -> ₹1 (to the rupee), stamp ₹0.09, NSE 0.00307% ₹0.02,
+    # SEBI ₹0.00, GST 18% of ₹0.02 = ₹0.00: ₹1.11.
+    assert p.capital_in == pytest.approx(11000.0 + 600.0 + 1.11, abs=0.001)
     assert p.cash_deployable == pytest.approx(10000.0)   # unchanged — fresh money
 
 
@@ -124,7 +127,10 @@ def test_manual_delete_sells_and_credits_cash(client, tmp_path, monkeypatch):
     s = PortfolioStore(user_id="primary", base_dir=str(tmp_path))
     p = s.load()
     assert p.holdings == []
-    assert p.cash_deployable == pytest.approx(10000.0 + 1300.0)
+    # SA-048: the sale's charges leave cash with it. On ₹1,300: STT ₹1.30 ->
+    # ₹1, NSE ₹0.04, SEBI ₹0.00, GST ₹0.01, DP ₹15.34: ₹16.39.
+    assert p.cash_deployable == pytest.approx(10000.0 + 1300.0 - 16.39, abs=0.001)
+    assert t["costs"]["total"] == pytest.approx(16.39, abs=0.001)
 
 
 def test_scheduler_daily_review_future_date_422():
@@ -155,7 +161,8 @@ def test_manual_delete_is_idempotent_and_atomic(client, tmp_path, monkeypatch):
     assert len(sells) == 1
     p = s.load()
     assert p.holdings == []
-    assert p.cash_deployable == pytest.approx(10000.0 + 10 * 120.0)
+    # Charged once (SA-048): on ₹1,200, STT ₹1, NSE ₹0.04, GST ₹0.01, DP ₹15.34.
+    assert p.cash_deployable == pytest.approx(10000.0 + 10 * 120.0 - 16.39, abs=0.001)
 
 
 def test_manual_add_identical_retry_dedupes(client, tmp_path, monkeypatch):
@@ -179,4 +186,6 @@ def test_import_csv_credits_capital_in(client, tmp_path):
     resp = client.post("/portfolio/import-csv", content=csv_text)
     assert resp.status_code == 200 and resp.json()["imported"] == 1
     p = PortfolioStore(user_id="primary", base_dir=str(tmp_path)).load()
-    assert p.capital_in == pytest.approx(11000.0 + 4 * 1500.0)
+    # With the buy charges (SA-048). On ₹6,000: STT ₹6, stamp ₹0.90, NSE
+    # ₹0.18, SEBI ₹0.01, GST 18% of ₹0.19 = ₹0.03: ₹7.12.
+    assert p.capital_in == pytest.approx(11000.0 + 4 * 1500.0 + 7.12, abs=0.001)

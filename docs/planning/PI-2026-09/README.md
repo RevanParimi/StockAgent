@@ -101,6 +101,12 @@ redirect, `/news` included: 5 of the 31 news events stored on 30 Oct carry one. 
 keyed by its link, so an article at rank 2 one run and rank 4 the next would be stored twice.
 FIX-021 drops a redirect link where Serper is read, so the article is skipped and counted. It
 goes first because every run until then can store such rows, and they stay.
+FIX-022, added on 2026-10-31 from SA-048's fresh review (routing delegated), comes after
+FIX-020 at the end of the routed queue. The tax estimate takes a position's average cost where
+the law takes each lot's own, so a sale of long-term and short-term shares bought at different
+prices can read ₹0 where the law gives ₹4,160. FIX-022 takes each lot at its own cost, makes a
+CSV import with a missing rate write nothing, and lets a renamed position keep its buy charges
+and dates.
 
 | Order | Story | Priority | Points | Result | Dependencies |
 |---:|---|---|---:|---|---|
@@ -135,6 +141,7 @@ goes first because every run until then can store such rows, and they stay.
 | 29 | [FIX-015](stories/FIX-015.md) | P2 | 1 | The shock exit reads the re-forecast's trigger, not its sentence | PR-009 |
 | 30 | [FIX-017](stories/FIX-017.md) | P2 | 2 | The holding sync reads every NSE corporate-action row it is given, under NSE's code | — |
 | 31 | [FIX-020](stories/FIX-020.md) | P2 | 1 | Correct the configured codes NSE does not list, and AAVAS's sector | — |
+| 32 | [FIX-022](stories/FIX-022.md) | P2 | 2 | The tax estimate at each lot's own cost, and SA-048's loose ends | — |
 
 The new stories add 41 points. SA-049 grows from 5 to 7 points and SA-050 from 2 to 3. On 2026-10-12 the owner confirmed this order, chose the ₹2 L paper-capital top-up with 12 target holdings, and moved PR-011 up as P1 ("I need more data"); the production baseline is section 11 of the review. The track makes results
 visible, makes the portfolio broad enough to learn from, and stops one identified source of

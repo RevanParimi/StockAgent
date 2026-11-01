@@ -1,8 +1,8 @@
 # StockAgent — Technical Design and Knowledge Transfer
 
-**Edition:** 2026-10-31 · **Audience:** engineers and teammates learning the product
+**Edition:** 2026-11-01 · **Audience:** engineers and teammates learning the product
 
-**Code inspected:** `e7e316573f59d325d3dc0f9a52dcbb7d182f9cc7`
+**Code inspected:** `30bf8fcec1fd14a6bfba5c7ed50d252cf5e3bc39`
 
 **PDF:** [StockAgent-Three-Loops.pdf](StockAgent-Three-Loops.pdf), generated from this Markdown.
 
@@ -35,10 +35,10 @@ triggered no production job, backfill or notification.
 
 ### Production state at this edition
 
-Production runs `4aa4c83` (FIX-019), deployed at about 09:31 IST on 31
-October 2026 (the deployment list showed it SUCCESS and `/health` answered
-200). The inspected code adds FIX-021's reading of Google redirect links
-(section 4). It is committed but not yet deployed, and counts as running
+Production runs `c1d5b18` (FIX-021, code `e7e3165`), deployed at about 17:17
+IST on 31 October 2026 (the deployment list showed it SUCCESS and `/health`
+answered 200). The inspected code adds SA-048's trading costs and tax estimate
+(sections 6 and 7). It is committed but not yet deployed, and counts as running
 only once a read-only check of the deployment list and `/health` confirms that
 deploy. The table gives the configuration that
 differs from the repository and the state of each operational control.
@@ -1757,7 +1757,13 @@ So a year that nets to a loss owes nothing, except when a long-term loss
 exceeds a short-term gain: the law still taxes the short-term gain. Losses
 carried to later years, surcharge and the basic-exemption shortfall are not
 modelled. A sale with no purchase on record counts as short-term, the higher
-rate, and is counted.
+rate, and is counted. The shares' cost is the position's average, while the
+law takes each lot's own cost, oldest first (section 45(2A) of the 1961 Act).
+So a sale that takes long-term and short-term shares bought at different
+prices can read higher or lower than the law's figure. 200 shares bought at
+₹1,500 more than a year earlier and 50 at ₹1,000 a month earlier, all sold at
+₹1,400, read ₹0 where the law gives ₹4,160. **Planned:** FIX-022 takes each
+lot at its own cost.
 
 **Example (ACMESOLAR, the owner's screen of 27 Sep):** 509 shares bought at
 ₹372.88 (₹1,89,795.92) and sold at ₹446.65 (₹2,27,344.85).
@@ -3056,7 +3062,7 @@ section 10) are part of the current design.
 | [SA-045](planning/PI-2026-09/stories/SA-045.md) | Compute the five universal factors deterministically | Open | 4 Research | SA-026 |
 | [SA-046](planning/PI-2026-09/stories/SA-046.md) | Read text into dated events and a Catalyst factor | Open | 4 Research | SA-026 |
 | [SA-047](planning/PI-2026-09/stories/SA-047.md) | Decide with the factor engine; switch when it is not worse | Open | 4 Research; 5 Learning | SA-045, SA-046, SA-014, SA-020 |
-| [SA-048](planning/PI-2026-09/stories/SA-048.md) | Charge realistic trading costs and tax in paper P&L | Open | 6 Portfolio; 7 Marksheets | None |
+| [SA-048](planning/PI-2026-09/stories/SA-048.md) | Charge realistic trading costs and tax in paper P&L | Done | 6 Portfolio; 7 Marksheets | None |
 | [SA-049](planning/PI-2026-09/stories/SA-049.md) | Put idle cash to work in normal markets, with a 10-holding / ₹10 L floor | Open | 6 Portfolio; 8 Discovery | SA-050, SA-051 |
 | [SA-050](planning/PI-2026-09/stories/SA-050.md) | Apply one sizing rule to every autopilot buy | Done | 6 Portfolio | None |
 | [SA-051](planning/PI-2026-09/stories/SA-051.md) | Show the portfolio against the Nifty, with honest labels | Done | 7 Marksheets; 10 Interface | None |
@@ -3089,6 +3095,7 @@ section 10) are part of the current design.
 | [FIX-019](planning/PI-2026-09/stories/FIX-019.md) | Find out why NSE lists no corporate action for 14 configured codes, and map the stale ones | Done | 4 Research; 6 Portfolio | None |
 | [FIX-020](planning/PI-2026-09/stories/FIX-020.md) | Correct the configured codes NSE does not list, and AAVAS's sector | Open | 4 Research | None |
 | [FIX-021](planning/PI-2026-09/stories/FIX-021.md) | A Google redirect link is not an article's identity | Done | 4 Research | None |
+| [FIX-022](planning/PI-2026-09/stories/FIX-022.md) | The tax estimate at each lot's own cost, and SA-048's loose ends | Open | 7 Marksheets | None |
 
 ### Maintain documentation with each story
 

@@ -1,4 +1,4 @@
-# Current handoff - 2026-10-31 (updated about 17:10 IST)
+# Current handoff - 2026-11-01 (updated about 16:45 IST)
 
 ## Also 22 Oct (about 22:30 IST to 00:30 IST 23 Oct): FIX-013, LLM tier switch, committed and pushed (separate conversation)
 
@@ -106,7 +106,68 @@ Docs only; nothing committed, pushed, deployed or configured.
 
 ## START HERE — resume checklist, in order
 
-**FIX-021 COMMITTED** (31 Oct, about 17:00–17:10 IST, session stockagent-main-5c [539204], at
+**SA-048 COMMITTED, NOT PUSHED** (1 Nov, about 16:30–16:45 IST, the same session
+stockagent-main-23 [ac9d57], at the owner's "commit and push"):
+
+- **Code `30bf8fc`** is exactly the 24 reviewed files: `kt_manifest.py verify
+  SA-048-manifest.json --rev HEAD` gives 0 mismatches (`6e473449`).
+- **The docs commit** holds the receipt's commit-time edits: the KT header (`30bf8fc`, edition
+  2026-11-01), section 1 (`c1d5b18` deployed about 17:17 IST on 31 Oct), the M1 sentences in KT
+  section 7 and the autopilot guide, section 12 (SA-048 Done, a FIX-022 row), guide 08-F and
+  07-F, and the PDF (`check_kt_docs` errors `[]`). STATE and HANDOFF carry the FIX-021 push and
+  deploy record.
+- **Push held.** At 16:30 IST on Sunday 1 Nov, the 17:45 IPO refresh, the 18:00 weekly review
+  and the 19:00 IPO deep dive fall inside the ~2 h a push needs. The next window with that
+  runway is 19:20–22:55 IST, then 00:10–06:20 Monday. Push at the owner's word with
+  `git -c credential.username=RevanParimi push origin main`, then record the deploy (the
+  deployment list and `/health`) and run guide 08-F on the first trading day with a trade.
+- Next `continue`, in a new conversation: **FIX-011**'s implementation.
+
+**SA-048 ACCEPTED by its fresh review** (31 Oct, about 17:24–18:05 IST, session
+stockagent-main-23 [ac9d57], a new conversation opened with "continue"). Receipt:
+[SA-048-review](evidence/SA-048-review.md). STATE: SA-048 `done`, production
+`pending_deployment`; `active_task` null; `next_task` **FIX-011**. Nothing was committed, pushed,
+deployed or configured; no production state was read.
+
+- **Input verified** at the start and the end: manifest `6e473449` (24 files, 0 mismatches) and
+  diff `ed6d086b` (143,587 B, 23 paths) against HEAD `c1d5b18`.
+- **Independent checks** (`analysis_data/sa048_review/test_rv_sa048.py`, 16 passed + 1 strict
+  xfail, which is L1):
+  - RV2: one account by hand through a manual add, an ADD, a TRIM, an EXIT and `/performance`.
+    Net ₹29,843.03 = equity − `capital_in`, and the tax is ₹1,060.94.
+  - RV1: a `Fraction` oracle for every charge on 4,010 values.
+  - RV3: the Act's set-off order on 400 random ledgers, and the 12-month line.
+  - Reviewer mutants: 11 of 11 caught.
+- **Rates against primary sources:** NSE/FA/73061 read (₹306.99 + ₹0.01 IPFT = ₹307 a crore =
+  0.00307%); Income-tax Act 2025 s.196 and s.198 (20%; 12.5% above ₹1,25,000).
+- **Tests and checks:**
+  - Story + changed files 371 passed; frontend 24/24.
+  - Full suite 5,927 passed / 12 skipped / 1 xfailed / 0 failed (17m50s).
+  - `check_broad_except` OK; `check_kt_docs` gives the one expected error; the PDF (62 pages)
+    is the reviewed KT.
+- **Findings:**
+  - **M1, medium:** the tax estimate takes the position's average cost, where the law takes each
+    lot's own. A sale of long-term and short-term shares bought at different prices reads ₹0
+    where the law gives ₹4,160, or ₹3,120 where it gives ₹0.
+  - **L1, low:** a CSV import with a missing rate saves half an import. **L2, low:** a renamed
+    position loses its buy charges and dates. **I1:** the config comment on IPFT.
+  - All four go to the new card [FIX-022](stories/FIX-022.md) (P2, 2 points, after FIX-020;
+    routing delegated). M1 also gets commit-time sentences in KT section 7 and the autopilot
+    guide. I2 and I3 are info only.
+- **Next "continue", in a new conversation: FIX-011's implementation** (after SA-048, before
+  SA-049).
+- **Commit, only at the owner's word and in a job-free window:**
+  - code commit: exactly the 24 reviewed files (`kt_manifest.py verify SA-048-manifest.json
+    --rev HEAD`, 0 mismatches);
+  - docs commit: the receipt's commit-time edits. They are the KT header; section 1's production
+    paragraph (`c1d5b18`, deployed about 17:17 IST on 31 Oct); the M1 sentences; section 12
+    (SA-048 Done, FIX-022's row); guide 08-F and 07-F status; the autopilot guide; the PDF; and
+    `check_kt_docs` `[]`. With them go the receipt, the FIX-022 card, the README, STATE, HANDOFF
+    and the uncommitted FIX-021 deploy record.
+  - A push deploys SA-048: never on 1 Nov before the 09:00 monthly forecast.
+- **After the deploy:** guide 08-F on the first trading day with a trade.
+
+**FIX-021 COMMITTED, PUSHED AND DEPLOYED** (31 Oct, about 17:00–17:10 IST, session stockagent-main-5c [539204], at
 the owner's "commit and push"). Asked what and when, the owner chose FIX-021 only (SA-048 waits
 for its fresh review), pushed right after committing, accepting that the restart may skip the
 17:45 IPO refresh or the 19:00 IPO deep dive.
@@ -124,8 +185,12 @@ for its fresh review), pushed right after committing, accepting that the restart
   top of the docs commit (`compare_lines.py`: the added and removed lines are equal). Its review
   input was re-recorded before any review: manifest `6e473449`, diff `ed6d086b`, all against
   HEAD.
-- **Push:** at once; the record follows, uncommitted. After the deploy: the owner's probe and
-  guide 02-N for FIX-021 (receipt FIX-021-review, "Production verification").
+- **Pushed and deployed** (record uncommitted, for the next docs commit): `0fdaee6..c1d5b18` at
+  17:07:03 IST, origin unchanged by a fetch just before. Railway deploy `dedb39a2` was BUILDING at
+  17:07:13 (not queued), SUCCESS by 17:17:23, and `8bdcdae1` REMOVED (read-only `railway
+  deployment list`); public `/health` 200 at 17:17:27. So the 17:45 IPO refresh and the 19:00 IPO
+  deep dive run FIX-021 (inferred from the times). FIX-021 production: `pending_observation`;
+  next, the owner's probe and guide 02-N (receipt FIX-021-review, "Production verification").
 
 **SA-048 IMPLEMENTED → REVIEW REQUIRED** (31 Oct, about 15:03–16:20 IST, session
 stockagent-main-5c [539204], a new conversation opened with "continue"). Receipt:

@@ -471,8 +471,11 @@ financial year (April to March), each sale's gain is short-term if its shares
 (oldest first) were held 12 months or less (20%), long-term otherwise (12.5%
 above ₹1,25,000 a year), plus a 4% cess. A short-term loss offsets short-term
 gains, then long-term gains; a long-term loss offsets long-term gains only.
-STT is not deductible; the other charges are. Surcharge, the basic-exemption
-shortfall and losses carried to later years are not modelled.
+STT is not deductible; the other charges are. The shares' cost is the
+position's average, not each lot's own cost as the law takes it, so a sale
+that mixes long-term and short-term shares bought at different prices can read
+high or low (**Planned:** FIX-022). Surcharge, the basic-exemption shortfall
+and losses carried to later years are not modelled.
 
 **Example (ACMESOLAR):** 509 shares bought at ₹372.88 and sold at ₹446.65 pay
 ₹225.57 and ₹250.85. The realized +₹37,548.93 is +₹37,072.51 net of costs,
@@ -661,6 +664,7 @@ encode the two constraints most likely to fail silently.
 ## 16. Planned work
 
 - Idle cash deployed in normal markets (SA-049).
+- The tax estimate at each lot's own cost (FIX-022).
 - A safe `identity_reconcile apply` (SA-008 change 1).
 - Learning from executed advice remains future work: every autopilot row
   carries `advice_ref`, which joins its outcome to the advice that caused it,

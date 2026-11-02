@@ -146,6 +146,27 @@ def _no_real_job_outcome_writes(monkeypatch, tmp_path):
     monkeypatch.setattr(_outcomes, "_OUTCOMES_PATH", tmp_path / "scheduler_job_outcomes.json")
 
 
+class SurveillanceAllClear(dict):
+    """NSE's surveillance report listing every symbol as active and under no
+    measure."""
+
+    def get(self, key, default=None):
+        return {"status": "A", "measures": []}
+
+
+@pytest.fixture(autouse=True)
+def _surveillance_all_clear(monkeypatch):
+    """SA-049: every autopilot buy that opens a position (a SWITCH buy leg, an
+    idle-cash buy) reads NSE's surveillance report, which is the NSE archive
+    and data/discovery on the Railway volume. The suite's buys see a report
+    that clears every symbol unless a test answers
+    `core.portfolio.autopilot.surveillance_report` itself, as the SA-049
+    tests do."""
+    from core.portfolio import autopilot as _autopilot
+    monkeypatch.setattr(_autopilot, "surveillance_report",
+                        lambda session: (SurveillanceAllClear(), "2000-01-01"))
+
+
 @pytest.fixture
 def api_worker_app(monkeypatch):
     """services.api.server's app, whose lifespan starts as an API-only worker.

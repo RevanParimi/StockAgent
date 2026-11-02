@@ -16,9 +16,11 @@ GET    /portfolio/advice               Advice-ledger tail
 GET    /portfolio/digest/latest
 GET    /portfolio/scorecard            Weekly results scorecard rows (own rows only)
 POST   /portfolio/run-advisor          Manual pipeline trigger (202, background)
+POST   /portfolio/deposit              Add paper capital: one dated DEPOSIT (owner only)
 
-Authentication (M0.1): bearer session on all user routes; run-advisor is
-owner-or-machine (require_owner) — browsers never need X-Scheduler-Key.
+Authentication (M0.1): bearer session on all user routes; run-advisor and
+deposit are owner-or-machine (require_owner) — browsers never need
+X-Scheduler-Key.
 USER DECISION 2026-07-06: hard lockdown deferred while portfolio is virtual.
 All output is research/analysis, never "advice". No auto-trading, ever.
 """
@@ -30,7 +32,7 @@ from datetime import date, datetime, timezone
 
 from fastapi import (APIRouter, BackgroundTasks, Depends, HTTPException,
                      Query, Request)
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from core.config import settings
 from services.api.auth import get_current_user, require_owner
@@ -78,6 +80,11 @@ class WatchlistIn(BaseModel):
     symbol: str
     sector: str | None = None          # omitted -> SectorRegistry.resolve(symbol)
     reason: str = ""
+
+
+class DepositIn(BaseModel):
+    amount: float = Field(gt=0, le=1e9)    # rupees
+    reference: str = Field(min_length=1, max_length=80)   # the owner's label for it
 
 
 @router.get("", summary="Portfolio with mark-to-market P&L")
@@ -511,3 +518,56 @@ async def run_advisor(
 
     background_tasks.add_task(_task)
     return {"status": "accepted", "review_date": target.isoformat()}
+
+
+def _deposit_day() -> date:
+    """The IST calendar date a deposit is recorded on (a seam for tests)."""
+    from core.intelligence.rl.nse_calendar import now_ist
+    return now_ist().date()
+
+
+@router.post("/deposit", summary="Add paper capital (owner only)")
+async def deposit(
+    body: DepositIn,
+    owner: dict = Depends(require_owner),
+) -> dict:
+    """SA-049: paper capital into the caller's own portfolio (the machine key
+    acts as the default user), as one DEPOSIT row dated today (IST). Cash and
+    capital_in both rise by the amount, so the Nifty comparison buys the same
+    money's Nifty units at the close of the session the first valuation
+    holding it reviews (results.capital_flows): a deposit made before the
+    16:30 run on day T at the previous session's close (the run reviews it),
+    one made after it at T's close. Idempotent on (date, amount, reference):
+    a retry writes nothing and says so."""
+    amount = round(float(body.amount), 2)
+    reference = body.reference.strip()
+    if not reference:
+        raise HTTPException(status_code=422, detail="A deposit needs a reference.")
+    day = _deposit_day().isoformat()
+    store = _store(owner["user_id"])
+    ref = f"deposit|{amount:.2f}|{reference}"
+    tid = make_txn_id(store.user_id, day, "CASH", "DEPOSIT", ref)
+    with store.locked():
+        p = store.load()
+        if p.cash_deployable is None:
+            raise HTTPException(status_code=409,
+                                detail="Cash accounting is off for this portfolio: "
+                                       "there is no cash to add to.")
+        if any(t.txn_id == tid for t in store.load_transactions(limit=1_000_000)):
+            logger.info("[portfolio_api] duplicate deposit ignored: %s", ref)
+            return {"duplicate": True, "transaction": None,
+                    "cash": p.cash_deployable, "capital_in": p.capital_in}
+        cash_before = p.cash_deployable
+        p.cash_deployable = round(cash_before + amount, 2)
+        p.capital_in = round(p.capital_in + amount, 2)
+        txn = TransactionRecord(
+            txn_id=tid, date=day, ts=datetime.now(timezone.utc).isoformat(),
+            user_id=p.user_id, symbol="CASH", side="DEPOSIT", qty=0.0, price=0.0,
+            value=amount, cash_before=cash_before, cash_after=p.cash_deployable,
+            holding_qty_after=0.0, source="manual", advice_ref=ref,
+            note=f"paper capital added: {reference}")
+        store.append_transaction(txn)
+        store.save(p)
+    logger.info("[portfolio_api] deposit of %.2f into %s on %s", amount, store.user_id, day)
+    return {"duplicate": False, "transaction": txn.model_dump(),
+            "cash": p.cash_deployable, "capital_in": p.capital_in}

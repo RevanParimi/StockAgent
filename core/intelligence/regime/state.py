@@ -188,6 +188,22 @@ def update_sticky_regime(detected_label: str, today: str) -> RegimeState:
         return RegimeState(label=detected_label, since=today, calm_streak=0)
 
 
+def label_recorded_for(today: str) -> str | None:
+    """The sticky label as updated for `today` (ISO date) by the daily review,
+    or None when the state was not updated for that day (missing, corrupt,
+    stale, or written for a later day). Read-only. Idle-cash deployment
+    (core/portfolio/deployment.py) buys only on a label of its own review day.
+
+    A state written fresh (no `_last_update` marker yet) counts for the day it
+    was entered (`since`)."""
+    path = _state_path()
+    state = _read_state(path)
+    if state is None:
+        return None
+    last = _read_last_update(path)
+    return state.label if (last or state.since) == today else None
+
+
 # ---------------------------------------------------------------------------
 # Internal: same-day idempotence marker
 # ---------------------------------------------------------------------------

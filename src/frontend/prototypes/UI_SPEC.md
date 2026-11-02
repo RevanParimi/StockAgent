@@ -321,7 +321,7 @@ Cash/day-change/range-chart/activity are now live-wired via `/portfolio/performa
 | `HoldingsTable` | `holdings, digest, isLive, onAdd, onRemoved` | — verdict/reason come from `digest`, not window.* |
 | `LearningsSection` | `learnings, openChat` | `PORTFOLIO_LEARNINGS` |
 | `ActivityCard` | `items` | — (demo activity, or fed by `LiveActivityCard`'s mapped `items`) |
-| `LiveActivityCard` | `txns` | — wraps `ActivityCard`; maps `/portfolio/transactions` rows to activity items (BUY→buy, SELL→sell, text = verdict/source + realized P&L + the trade's costs in whole rupees, "(estimated)" for a trade from before costs were charged + note), "View all N" toggle past the first 10 |
+| `LiveActivityCard` | `txns` | — wraps `ActivityCard`; maps `/portfolio/transactions` rows to activity items (BUY→buy, SELL→sell, DEPOSIT→"Paper capital added" with the amount and its note, text = verdict/source + realized P&L + the trade's costs in whole rupees, "(estimated)" for a trade from before costs were charged + note), "View all N" toggle past the first 10 |
 | `AlertsCard` | `alerts, reviewDate?` | — (live: "From the review of …" dates the prices its reasons quote) |
 | `AllocationCard` | `holdings` | — (each holding's share of the holdings, not of equity) |
 | `TradeRecordCard` | `stats` | — (`perf.closed_trades`: trades, win rate, average win and loss, expectancy, "before costs") |

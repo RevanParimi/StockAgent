@@ -18,7 +18,11 @@ def build_digest(
     portfolio: Portfolio,
     closes: dict[str, float],
     transactions: list | None = None,
+    deployment: dict | None = None,
 ) -> dict:
+    """`deployment` is the autopilot's idle-cash record for the day
+    (core/portfolio/deployment.py `run_record`), present only when deployment
+    is on for the portfolio: what it bought and why any idle cash stayed."""
     value = 0.0
     cost = 0.0
     rows = []
@@ -45,7 +49,7 @@ def build_digest(
             "switch_candidate": rec.switch_candidate if rec else "",
         })
     escalations = sorted(a.symbol for a in advice if a.verdict in ("TRIM", "EXIT", "SWITCH"))
-    return {
+    digest = {
         "date": review_date.isoformat(),
         "user_id": user_id,
         "generated_at": datetime.now(timezone.utc).isoformat(),
@@ -56,3 +60,6 @@ def build_digest(
         "escalations": escalations,
         "trades": [t.model_dump() for t in (transactions or [])],
     }
+    if deployment is not None:
+        digest["deployment"] = deployment
+    return digest

@@ -461,6 +461,43 @@ portfolio:
     long_term_exemption_inr: 125000   # per financial year, once
     long_term_after_months: 12
     cess_pct: 4.0                # health and education cess on the tax
+  # The breadth idle-cash deployment works toward in a calm market
+  # (autopilot.deploy_idle_cash; core/portfolio/deployment.py). Each new
+  # position asks for min_invested_inr / target_holdings (₹83,333), always
+  # within advisor.max_position_pct, the sector cap and the cash floor. In
+  # RISK_OFF the floor relaxes to the regime's target share; in MACRO_CRISIS
+  # nothing new is bought. A floor that cannot be reached is recorded, never
+  # forced.
+  min_holdings: 10               # at least, not exactly
+  target_holdings: 12            # what deployment aims for (owner, 12 Oct 2026)
+  max_holdings: 15               # stops over-dilution
+  min_invested_inr: 1000000      # ₹10 L working in a calm market
+  # Per portfolio (user id): any of the four keys above, and deploy_idle_cash.
+  # Example: {primary: {deploy_idle_cash: true}} switches deployment on for
+  # one portfolio only.
+  overrides: {}
+
+# Compass Autopilot: executes the advisor's verdicts on the paper portfolio
+# (core/portfolio/autopilot.py).
+autopilot:
+  enabled: true
+  add_tranche_pct: 25.0          # an ADD buys this % of the holding's value
+  trim_pct: 25.0                 # a TRIM sells this % of the holding
+  min_cash_floor: 10000.0        # ₹ every buy leaves in cash, after its charges
+  add_cooldown_td: 5             # exchange sessions between two buys of one stock
+  # Idle-cash deployment (SA-049): after sells and switches, open new positions
+  # from the day's buy candidates until the invested share reaches the sticky
+  # market regime's target (the daily review's label). Off until the owner
+  # switches it on; portfolio.overrides can switch it per portfolio.
+  deploy_idle_cash: false
+  deploy_max_new_per_day: 2      # new positions a day, so cash goes in over days
+  deploy_target_invested_pct:    # % of total equity in stocks (owner, 1 Nov 2026)
+    NORMAL: 80
+    RISK_ON: 80
+    MOMENTUM_EXTENDED: 80
+    OVERSOLD: 80
+    RISK_OFF: 50
+    MACRO_CRISIS: 0              # no new positions: cash is held on purpose
 
 advisor:
   enabled: true

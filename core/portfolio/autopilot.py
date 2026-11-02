@@ -8,13 +8,24 @@ audit authority; portfolio.json is derived state.
 
 Trade ordering per run (deterministic): sells first (EXIT, SWITCH sell leg,
 TRIM — symbol asc), then buys (SWITCH buy legs, then ADDs by confidence
-desc, ties symbol asc). Sells free cash before buys consume it.
+desc, ties symbol asc), then idle-cash deployment (new positions by
+conviction desc, ties symbol asc). Sells free cash before buys consume it.
 
 SA-050: every buy is sized by core/portfolio/sizing.py (position and sector
-caps of total equity, after the trade, and the cash floor), and a SWITCH
-buy, which opens a position, must also sit inside its shelf idea's entry
-band. What a cap leaves unspent stays in cash; the BUY's note says how much
-and why. A skipped SWITCH buy leg says why on its SELL's note.
+caps of total equity, after the trade, and the cash floor), and a buy that
+opens a position (a SWITCH buy leg, a deployment buy) must also sit inside
+its shelf idea's entry band. What a cap leaves unspent stays in cash; the
+BUY's note says how much and why. A skipped SWITCH buy leg says why on its
+SELL's note.
+
+SA-049: a buy that opens a position also needs NSE's daily surveillance
+report to list the stock as active and under no ASM or GSM stage
+(`sizing.surveillance_issue`; owner, 1 Nov 2026). With idle-cash deployment
+on (core/portfolio/deployment.py), the run then opens new positions from the
+day's buy candidates up to the market regime's target invested share, at
+most `autopilot.deploy_max_new_per_day` a day. Each BUY's note starts
+`deploy_idle_cash`; the run's record, with why every other idea and any
+idle cash below the target was not used, goes into the day's digest.
 
 SA-048: every BUY and SELL pays its trading costs (core/portfolio/costs.py),
 written on its own ledger row and taken from cash with it, so the txn_id
@@ -27,6 +38,7 @@ import hashlib
 import logging
 import math
 from datetime import date, datetime, timedelta, timezone
+from typing import Callable
 
 from core.config import settings
 from backend.shared.schemas.portfolio import (
@@ -38,7 +50,7 @@ from backend.shared.schemas.portfolio import (
     WatchlistItem,
 )
 from backend.shared.pipeline import decision_gate as dg
-from core.portfolio import costs, sizing
+from core.portfolio import costs, deployment, sizing
 from core.portfolio.store import PortfolioStore
 from core.portfolio.identity_reconcile import symbol_identity_issue
 from core.portfolio.pricing import session_close
@@ -60,6 +72,35 @@ def _today_ist() -> date:
     Module-level seam so tests can freeze 'today'."""
     from core.intelligence.rl.nse_calendar import now_ist
     return now_ist().date()
+
+
+Report = tuple[dict | None, str | None]     # (securities, as_of) from NSE's report
+
+
+def surveillance_report(session: date) -> Report:
+    """NSE's Surveillance Indicator report a buy on `session` is checked
+    against: the newest dated on or before it, at most 7 days old, cached
+    (services/data/fetchers/surveillance.py); (None, None) when there is none,
+    or when reading it fails, so the run goes on and no new position opens.
+    A seam: the tests answer it."""
+    try:
+        from services.data.fetchers.surveillance import surveillance_list
+        return surveillance_list(session)
+    except Exception as exc:
+        logger.warning("[autopilot] surveillance report unreadable for %s, so no new "
+                       "position opens: %s", session, exc)
+        return None, None
+
+
+def _once(read: Callable[[], Report]) -> Callable[[], Report]:
+    """`read`, called at most once."""
+    held: list[Report] = []
+
+    def get() -> Report:
+        if not held:
+            held.append(read())
+        return held[0]
+    return get
 
 
 def _txn(portfolio: Portfolio, rec: AdviceRecord, *, side: str, qty: float,
@@ -202,14 +243,32 @@ def _buy_into_holding(portfolio: Portfolio, symbol: str, sector: str,
     return h.adj_qty
 
 
+def _sector_of(symbol: str, sector_lookup: dict[str, str] | None) -> str:
+    """The sector a new position is held under: its candidate's, else the
+    registry's, else "generic"."""
+    sector = (sector_lookup or {}).get(symbol, "")
+    if not sector:
+        try:
+            from backend.sectors.registry import SectorRegistry
+            sector = SectorRegistry.resolve(symbol).strip().lower()
+        except Exception as exc:
+            logger.debug("[autopilot] no registry sector for %s, held as generic: %s",
+                         symbol, exc)
+            sector = "generic"
+    return sector
+
+
 def _execute_buys(portfolio: Portfolio, advice: list[AdviceRecord],
                   closes: dict[str, float], existing_ids: set[str],
                   switch_proceeds: list[SwitchLeg],
                   review_date: date, store: PortfolioStore,
                   sector_lookup: dict[str, str] | None,
-                  shelf_index: dict | None = None) -> list[TransactionRecord]:
+                  shelf_index: dict | None = None,
+                  surveillance: Callable[[], Report] | None = None,
+                  ) -> list[TransactionRecord]:
     txns: list[TransactionRecord] = []
     floor_cash = settings.AUTOPILOT_MIN_CASH_FLOOR
+    surveillance = surveillance or _once(lambda: surveillance_report(review_date))
 
     for proceeds, rec, sell in switch_proceeds:
         cand = rec.switch_candidate.strip().upper()
@@ -247,6 +306,12 @@ def _execute_buys(portfolio: Portfolio, advice: list[AdviceRecord],
                 continue
             logger.warning("[autopilot] SWITCH buy %s: %s — the data gate would skip it "
                            "(record mode)", cand, identity_issue)
+        # SA-049: never into a stock under ASM/GSM or suspended (owner, 1 Nov).
+        watched = sizing.surveillance_issue(cand, surveillance())
+        if watched:
+            logger.info("[autopilot] SWITCH buy %s skipped: %s", cand, watched)
+            _note_skipped_buy(sell, cand, proceeds, watched)
+            continue
         closes[cand] = price                   # AUD-003: one price basis per run
         # SA-050: a new position is bought only inside its idea's entry band.
         allowed, band_note = sizing.entry_check(price, (shelf_index or {}).get(cand))
@@ -254,13 +319,7 @@ def _execute_buys(portfolio: Portfolio, advice: list[AdviceRecord],
             logger.info("[autopilot] SWITCH buy %s skipped: %s", cand, band_note)
             _note_skipped_buy(sell, cand, proceeds, band_note)
             continue
-        sector = (sector_lookup or {}).get(cand, "")
-        if not sector:
-            try:
-                from backend.sectors.registry import SectorRegistry
-                sector = SectorRegistry.resolve(cand).strip().lower()
-            except Exception:
-                sector = "generic"
+        sector = _sector_of(cand, sector_lookup)
         size = sizing.size_buy(portfolio, closes, symbol=cand, sector=sector,
                                price=price, wanted=proceeds, floor_cash=floor_cash,
                                charge=costs.buy_charge)
@@ -342,11 +401,178 @@ def _execute_buys(portfolio: Portfolio, advice: list[AdviceRecord],
     return txns
 
 
+def _last_sales(store: PortfolioStore, this_run: list[TransactionRecord]) -> dict[str, date]:
+    """Each symbol's latest sale, from the ledger and this run's own sells."""
+    out: dict[str, date] = {}
+    for t in [*store.load_transactions(limit=2000), *this_run]:
+        if t.side == "SELL":
+            try:
+                day = date.fromisoformat(t.date)
+            except ValueError:
+                continue
+            out[t.symbol] = max(day, out.get(t.symbol, day))
+    return out
+
+
+def _deploy_check(idea, symbol: str, portfolio: Portfolio, sold: dict[str, date],
+                  quotes: dict, review_date: date,
+                  surveillance: Callable[[], Report]) -> tuple[str, str, dict]:
+    """(outcome, why, the buy's inputs) for one candidate before sizing; the
+    outcome is "" when it may be bought. Mirrors a SWITCH buy leg's checks,
+    plus the deep dive's own data gate and the re-buy rule."""
+    from core.discovery.shelf import last_dived
+    if _find(portfolio, symbol) is not None:
+        return "held", "already held", {}
+    sale, dived = sold.get(symbol), last_dived(idea)
+    if sale is not None and (dived is None or sale >= dived):
+        return "sold", (f"sold on {sale.isoformat()}, after its deep dive of "
+                        f"{dived.isoformat() if dived else 'unknown date'}; waits for a new "
+                        "deep dive"), {}
+    withheld = []
+    status = getattr(idea, "data_gate", dg.UNKNOWN)
+    if not dg.is_actionable(status):
+        withheld.append(f"its deep dive's data gate is {status or 'unknown'} "
+                        "(not verified as actionable)")
+    try:
+        quote, session = quotes[symbol] if symbol in quotes else session_close(
+            symbol, review_date)
+    except Exception as exc:
+        logger.info("[autopilot] deploy %s: unpriceable (%s)", symbol, exc)
+        return "price", "no close for the review session", {}
+    price = quote.close
+    if price is None or price <= 0:
+        return "price", "no close for the review session", {}
+    if not quote.fresh_for(session):
+        bar = quote.bar_date.isoformat() if quote.bar_date else "undated"
+        withheld.append(f"its close is from bar {bar}, not the review session")
+    identity_issue = symbol_identity_issue(symbol, session)
+    if identity_issue:
+        withheld.append(f"identity: {identity_issue}")
+    if withheld and dg.enforcing():
+        return "gate", "withheld by the data gate: " + "; ".join(withheld), {}
+    watched = sizing.surveillance_issue(symbol, surveillance())
+    if watched:
+        return "surveillance", watched, {}
+    allowed, band_note = sizing.entry_check(price, idea)
+    if not allowed:
+        return ("invalidated" if "invalidation" in band_note else "band"), band_note, {}
+    return "", "", {"price": float(price), "band_note": band_note, "withheld": withheld}
+
+
+def _deploy_idle_cash(portfolio: Portfolio, closes: dict[str, float],
+                      existing_ids: set[str], review_date: date, store: PortfolioStore,
+                      ideas: list, quotes: dict, surveillance: Callable[[], Report],
+                      sold: dict[str, date]) -> tuple[list[TransactionRecord], dict]:
+    """SA-049: open new positions with idle cash, best conviction first, up
+    to the regime's target (core/portfolio/deployment.py). Returns the BUYs
+    and the run's record."""
+    b = deployment.breadth(portfolio.user_id)
+    floor_cash = settings.AUTOPILOT_MIN_CASH_FLOOR
+    max_new = max(0, int(settings.AUTOPILOT_DEPLOY_MAX_NEW_PER_DAY))
+    day = review_date.isoformat()
+    equity = sizing.total_equity(portfolio, closes)
+    invested_before = invested = sizing.holdings_value(portfolio, closes)
+    holdings_before = len(portfolio.holdings)
+    t = deployment.target(deployment.recorded_regime(review_date), equity, b, floor_cash)
+    txns: list[TransactionRecord] = []
+    outcomes: list[dict] = []
+
+    def stop() -> str:
+        return deployment.stop_reason(
+            t, b, equity=sizing.total_equity(portfolio, closes), invested=invested,
+            holdings=len(portfolio.holdings), opened=len(txns), max_new=max_new)
+
+    # Nothing to evaluate when nothing may open: a crisis, no regime, the
+    # target already met or the maximum held.
+    ranked = [] if stop() else sorted(
+        ideas, key=lambda i: (-float(getattr(i, "conviction", 0.0) or 0.0), i.symbol))
+    seen: set[str] = set()
+    for idea in ranked:
+        symbol = idea.symbol.strip().upper()
+        if symbol in seen:
+            continue
+        seen.add(symbol)
+        row = {"symbol": symbol, "conviction": round(float(idea.conviction or 0.0), 2),
+               "source": getattr(idea, "source", "discovery")}
+        outcome, why, ctx = _deploy_check(idea, symbol, portfolio, sold, quotes,
+                                          review_date, surveillance)
+        if not outcome:
+            price = ctx["price"]
+            sector = idea.sector or _sector_of(symbol, None)
+            size = sizing.size_buy(portfolio, closes, symbol=symbol, sector=sector,
+                                   price=price, wanted=b.position_inr, floor_cash=floor_cash,
+                                   charge=costs.buy_charge)
+            if size.qty < 1:
+                outcome = "size"
+                why = sizing.under_one_share_note(size, price, "a new position's budget")
+        if not outcome:
+            halt = stop()
+            ref = f"{day}|{symbol}|deploy_idle_cash"
+            txn_id = make_txn_id(portfolio.user_id, day, symbol, "BUY", ref)
+            if halt:
+                outcome, why = "waiting", f"qualifies; not bought: {halt}"
+            elif txn_id in existing_ids:
+                logger.warning("[autopilot] deploy BUY %s already in ledger but run marker "
+                               "predates this run — manual reconciliation may be needed",
+                               symbol)
+                outcome, why = "ledger", "already in the ledger; needs manual reconciliation"
+        if outcome:
+            outcomes.append({**row, "outcome": outcome, "why": why})
+            continue
+        qty = size.qty
+        closes[symbol] = price                 # AUD-003: one price basis per run
+        before_pct = invested / equity * 100.0 if equity > 0 else 0.0
+        charges = costs.trade_costs("BUY", round(qty * price, 2))
+        cash_before = portfolio.cash_deployable
+        portfolio.cash_deployable = round(
+            portfolio.cash_deployable - qty * price - charges.total, 2)
+        qty_after = _buy_into_holding(portfolio, symbol, sector, qty, price, day)
+        invested = sizing.holdings_value(portfolio, closes)
+        now_equity = sizing.total_equity(portfolio, closes)
+        after_pct = invested / now_equity * 100.0 if now_equity > 0 else 0.0
+        withheld = ctx["withheld"]
+        note = "; ".join(n for n in (
+            (f"deploy_idle_cash: {row['source']} idea, conviction {row['conviction']:.2f}; "
+             f"regime {t.regime}, target {t.invested_inr / equity * 100:.1f}% invested "
+             f"({sizing.inr(t.invested_inr)}); invested {before_pct:.1f}% before, "
+             f"{after_pct:.1f}% after"),
+            ctx["band_note"],
+            (f"capped by {size.limit} at {sizing.inr(qty * price)} of the "
+             f"{sizing.inr(size.wanted)} a new position asks for") if size.binding else "",
+            ("record mode: the data gate would withhold it: " + "; ".join(withheld))
+            if withheld else "",
+        ) if n)
+        txns.append(TransactionRecord(
+            txn_id=txn_id, date=day, ts=_now_iso(), user_id=portfolio.user_id, symbol=symbol,
+            side="BUY", qty=qty, price=price, value=round(qty * price, 2),
+            cash_before=round(cash_before, 2), cash_after=round(portfolio.cash_deployable, 2),
+            holding_qty_after=qty_after, realized_pnl=0.0, source="autopilot",
+            verdict="DEPLOY", advice_ref=ref, triggers=["deploy_idle_cash"], note=note,
+            reason=str(getattr(idea, "thesis", "") or ""), costs=charges))
+        existing_ids.add(txn_id)
+        outcomes.append({**row, "outcome": "bought", "why": note})
+        try:
+            promote_symbol(symbol, sector, origin="held")
+        except Exception as exc:
+            logger.warning("[autopilot] promotion failed for %s (non-fatal): %s", symbol, exc)
+    record = deployment.run_record(
+        on=review_date, t=t, b=b, equity=equity, invested_before=invested_before,
+        invested_after=invested, holdings_before=holdings_before,
+        holdings_after=len(portfolio.holdings), cash_after=portfolio.cash_deployable,
+        outcomes=outcomes, stop=stop())
+    logger.info("[autopilot] %s deploy for %s: bought %s; %s", day, portfolio.user_id,
+                record["bought"] or "nothing", "; ".join(record["reasons"]))
+    return txns, record
+
+
 def execute_advice(store: PortfolioStore, portfolio: Portfolio,
                    advice: list[AdviceRecord], closes: dict[str, float],
                    review_date: date,
                    sector_lookup: dict[str, str] | None = None,
                    shelf_index: dict | None = None,
+                   candidate_quotes: dict | None = None,
+                   surveillance: Callable[[], Report] | None = None,
+                   report: dict | None = None,
                    ) -> list[TransactionRecord]:
     """Execute one review-day's verdicts. Appends transactions FIRST, then
     saves the portfolio — a crash between the two cannot double-execute
@@ -361,7 +587,14 @@ def execute_advice(store: PortfolioStore, portfolio: Portfolio,
     AUD-044: a future review_date is refused outright (no trades, no marker
     stamp) — stamping a future marker would brick the monotonic guard.
     SA-050: `shelf_index` maps a symbol to its active shelf idea; a SWITCH
-    destination missing from it has no entry band and is not bought."""
+    destination missing from it has no entry band and is not bought.
+    SA-049: `shelf_index` holds the day's buy candidates, which idle-cash
+    deployment buys from when it is on for the portfolio;
+    `candidate_quotes` maps a candidate to its (SessionClose, session),
+    fetched before the lock (one missing is fetched here); `surveillance`
+    returns NSE's surveillance report, read once (default: read here when a
+    buy first needs it); `report`, when given, receives the deployment
+    record under "deployment"."""
     if not settings.AUTOPILOT_ENABLED:
         return []
     day = review_date.isoformat()
@@ -383,14 +616,37 @@ def execute_advice(store: PortfolioStore, portfolio: Portfolio,
         if portfolio.last_autopilot_run and day <= portfolio.last_autopilot_run:
             return []
         existing_ids = {t.txn_id for t in store.load_transactions(limit=2000)}
+        surveillance = surveillance or _once(lambda: surveillance_report(review_date))
 
         sell_txns, switch_proceeds = _execute_sells(portfolio, advice, closes,
                                                     existing_ids)
         existing_ids |= {t.txn_id for t in sell_txns}
         buy_txns = _execute_buys(portfolio, advice, closes, existing_ids,
                                  switch_proceeds, review_date, store, sector_lookup,
-                                 shelf_index)
+                                 shelf_index, surveillance)
         txns = sell_txns + buy_txns
+        if deployment.active(portfolio):
+            existing_ids |= {t.txn_id for t in buy_txns}
+            # On a copy, kept only when it completes: a failure here never
+            # costs the day's sells and switches.
+            trial, trial_closes = portfolio.model_copy(deep=True), dict(closes)
+            try:
+                deploy_txns, record = _deploy_idle_cash(
+                    trial, trial_closes, set(existing_ids), review_date, store,
+                    list((shelf_index or {}).values()), candidate_quotes or {}, surveillance,
+                    _last_sales(store, sell_txns))
+            except Exception as exc:
+                logger.error("[autopilot] idle-cash deployment failed for %s, nothing "
+                             "bought: %s", portfolio.user_id, exc)
+                deploy_txns, record = [], {"date": day, "bought": [],
+                                           "error": f"deployment failed: {exc}",
+                                           "reasons": [f"deployment failed: {exc}"]}
+            else:
+                portfolio = trial
+                closes.update(trial_closes)
+            txns += deploy_txns
+            if report is not None:
+                report["deployment"] = record
         if not txns:
             # Still stamp the run marker so re-triggered pipelines skip cheaply,
             # but avoid rewriting portfolio.json when nothing happened at all.
@@ -445,5 +701,10 @@ def record_value_point(store: PortfolioStore, portfolio: Portfolio,
              "cash": round(portfolio.cash_deployable, 2), "total_equity": total,
              "capital_in": portfolio.capital_in, "day_change_pct": day_change_pct,
              "change_span_days": change_span_days, "recorded_at": _now_iso()}
+    # The holdings this point valued at their cost, having no close: the
+    # comparison cannot value an arrival among them (results.capital_flows).
+    at_cost = sorted(h.symbol for h in portfolio.holdings if h.symbol not in closes)
+    if at_cost:
+        point["at_cost"] = at_cost
     store.append_value_point(point)
     return point

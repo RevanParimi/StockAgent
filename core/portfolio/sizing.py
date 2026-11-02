@@ -12,10 +12,11 @@ equity unchanged but for its charges (SA-048, about 0.12% of the value). The
 room under a cap after the trade is therefore `cap × equity − current value`,
 in rupees; the cash floor is kept after the charges.
 
-Every autopilot buy, ADD and SWITCH alike (and SA-049's new positions), goes
-through `size_buy`: the position at most `advisor.max_position_pct`, its
-sector at most `advisor.max_sector_pct`, and the cash floor kept. A buy that
-opens a position must also pass `entry_check` against its shelf idea's band.
+Every autopilot buy (ADD, SWITCH and idle-cash deployment) goes through
+`size_buy`: the position at most `advisor.max_position_pct`, its sector at
+most `advisor.max_sector_pct`, and the cash floor kept. A buy that opens a
+position must also pass `entry_check` against its shelf idea's band and
+`surveillance_issue` against NSE's daily surveillance report.
 
 Pure: no I/O, no clock, no settings reads beyond the caps.
 """
@@ -98,6 +99,22 @@ def sector_cap_pct() -> float:
 # Sizing
 # ---------------------------------------------------------------------------
 
+def whole_shares(budget: float, price: float) -> float:
+    """Whole shares of `price` that `budget` pays for, counted in paisa, so a
+    budget of an exact number of shares buys all of them. An ADD of 144
+    shares at ₹6,358.80 (a 25% tranche) asks for ₹2,28,916.80, exactly 36
+    shares; in floating point 36 × 6358.8 is 228916.80000000002, more than
+    the budget, and a rupee comparison bought 35. The budget is floored to
+    the paisa, so the shares never cost more than it (a price with more than
+    two decimals is checked again in rupees)."""
+    if price <= 0 or budget <= 0:
+        return 0.0
+    qty = math.floor(round(budget * 100, 4)) // max(1, round(price * 100))
+    while qty > 0 and qty * price > budget + 1e-6:
+        qty -= 1
+    return float(qty)
+
+
 @dataclass(frozen=True)
 class BuySize:
     qty: float              # whole shares; 0 = no buy
@@ -133,9 +150,7 @@ def size_buy(portfolio, marks: dict[str, float], *, symbol: str, sector: str,
     ]
     binding, room = min(limits, key=lambda kv: kv[1])   # min keeps the first on ties
     budget = max(0.0, room)
-    qty = float(math.floor(budget / price)) if price > 0 else 0.0
-    if qty > 0 and qty * price > budget:                 # float guard: never over budget
-        qty -= 1.0
+    qty = whole_shares(budget, price)
     if charge is not None:
         # The charges come out of cash and so out of equity: re-check each
         # limit after them, a share at a time (they are about 0.12% of value).
@@ -207,3 +222,30 @@ def entry_check(price: float, idea) -> tuple[bool, str]:
         return True, (f"{(1 - price / lo) * 100:.1f}% below entry band ({band}): "
                       "cheaper than planned")
     return True, ""
+
+
+def surveillance_issue(symbol: str, report: tuple[dict | None, str | None]) -> str:
+    """Why a position may not be opened in `symbol` under NSE's daily
+    Surveillance Indicator report, or "" when it may (owner, 1 Nov 2026).
+
+    `report` is (securities, as_of) as services/data/fetchers/surveillance
+    `surveillance_list` returns it. The stock must be listed as active ("A")
+    and under no GSM or long- or short-term ASM stage. No report from the
+    last 7 days refuses every new position: the check cannot be made, and
+    cash can wait. A stock the report does not list (a listing newer than
+    the report) waits for the next one. Example: under long-term ASM stage I
+    on 29 Oct 2026, A2Z Infra is refused: "under LT-ASM in NSE's surveillance
+    report of 2026-10-29"."""
+    securities, as_of = report if report else (None, None)
+    if securities is None:
+        return "NSE's surveillance report is unavailable (none from the last 7 days)"
+    row = securities.get(symbol.strip().upper())
+    if row is None:
+        return f"not listed in NSE's surveillance report of {as_of}"
+    if row.get("measures"):
+        return (f"under {', '.join(row['measures'])} in NSE's surveillance report "
+                f"of {as_of}")
+    if row.get("status") != "A":
+        return (f"status {row.get('status') or 'unknown'}, not active, in NSE's "
+                f"surveillance report of {as_of}")
+    return ""

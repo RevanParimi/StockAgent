@@ -164,10 +164,13 @@ class TransactionRecord(BaseModel):
     ts: str                        # UTC timestamp (ISO)
     user_id: str
     symbol: str
-    side: Literal["BUY", "SELL", "DIV"]   # DIV = dividend cash credit (qty 0)
-    qty: float                     # whole shares (0 for DIV)
+    # DIV = dividend cash credit (qty 0). DEPOSIT = paper capital added by the
+    # owner (SA-049): symbol "CASH", qty 0, value the amount; cash and
+    # capital_in both rise by it.
+    side: Literal["BUY", "SELL", "DIV", "DEPOSIT"]
+    qty: float                     # whole shares (0 for DIV and DEPOSIT)
     price: float
-    value: float                   # qty × price
+    value: float                   # qty × price; a DEPOSIT's amount
     cash_before: float
     cash_after: float
     holding_qty_after: float
@@ -184,7 +187,7 @@ class TransactionRecord(BaseModel):
     reason: str = ""                  # advice narrative at execution time
     # SA-048: the trade's charges, taken from cash with it. None on a row
     # written before costs were charged (core/portfolio/costs.py estimates
-    # those when read) and on a DIV.
+    # those when read), on a DIV and on a DEPOSIT.
     costs: TradeCosts | None = None
 
 

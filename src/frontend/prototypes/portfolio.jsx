@@ -807,6 +807,7 @@ function ActivityCard({ items }) {
     buy:   { icon:<Icon.Plus size={14}/>,   bg:'var(--buy-soft)',     fg:'var(--buy-strong)',  label:'Bought' },
     sell:  { icon:<Icon.TrendDown size={14}/>, bg:'var(--sell-soft)', fg:'var(--sell-strong)', label:'Sold' },
     agent: { icon:<Icon.Sparkles size={14}/>, bg:'var(--violet-soft)', fg:'var(--violet)',     label:'Agent' },
+    cash:  { icon:<Icon.Plus size={14}/>,   bg:'var(--violet-soft)',  fg:'var(--violet)',      label:'Paper capital added' },
   };
   return (
     <div className="card pf-card-body">
@@ -858,6 +859,11 @@ function ActivityCard({ items }) {
 function LiveActivityCard({ txns }) {
   const [showAll, setShowAll] = useStatePf(false);
   const items = (showAll ? txns : txns.slice(0, 10)).map(t => {
+    // SA-049: paper capital the owner added; cash and capital in rose by it.
+    if (t.side === 'DEPOSIT') {
+      return { kind: 'cash', sym: fmtInr(t.value), qty: null, price: null,
+               text: t.note, reason: '', t: fmtIST(t.ts, t.date) };
+    }
     const isSell = t.side === 'SELL';
     const buyPx = isSell
       ? (t.cost_basis != null ? t.cost_basis

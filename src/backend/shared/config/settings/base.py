@@ -891,6 +891,14 @@ PORTFOLIO_WEEKLY_REVIEW_WEEKDAY: int = cfg("portfolio.weekly_review_weekday", fa
 # fails the trade loudly (core/portfolio/costs.py) instead of charging nothing.
 PORTFOLIO_COSTS: dict = cfg("portfolio.costs", fallback={})
 PORTFOLIO_TAX: dict = cfg("portfolio.tax", fallback={})
+# SA-049: the breadth idle-cash deployment works toward in a calm market
+# (core/portfolio/deployment.py). `overrides` maps a portfolio's user id to its
+# own values of these four keys and of autopilot.deploy_idle_cash.
+PORTFOLIO_MIN_HOLDINGS: int = int(cfg("portfolio.min_holdings", fallback=10))
+PORTFOLIO_TARGET_HOLDINGS: int = int(cfg("portfolio.target_holdings", fallback=12))
+PORTFOLIO_MAX_HOLDINGS: int = int(cfg("portfolio.max_holdings", fallback=15))
+PORTFOLIO_MIN_INVESTED_INR: float = float(cfg("portfolio.min_invested_inr", fallback=1_000_000.0))
+PORTFOLIO_OVERRIDES: dict = dict(cfg("portfolio.overrides", fallback={}) or {})
 
 ADVISOR_ENABLED: bool = bool(cfg("advisor.enabled", env="ADVISOR_ENABLED", fallback=True))
 ADVISOR_NARRATE: bool = bool(cfg("advisor.narrate", fallback=True))
@@ -942,6 +950,19 @@ AUTOPILOT_ADD_TRANCHE_PCT: float = cfg("autopilot.add_tranche_pct", fallback=25.
 AUTOPILOT_TRIM_PCT: float = cfg("autopilot.trim_pct", fallback=25.0)
 AUTOPILOT_MIN_CASH_FLOOR: float = cfg("autopilot.min_cash_floor", fallback=10000.0)
 AUTOPILOT_ADD_COOLDOWN_TD: int = int(cfg("autopilot.add_cooldown_td", fallback=5))
+# SA-049: idle cash goes into the day's buy candidates up to the market
+# regime's target invested share; off until the owner switches it on.
+AUTOPILOT_DEPLOY_IDLE_CASH: bool = bool(cfg("autopilot.deploy_idle_cash", fallback=False))
+AUTOPILOT_DEPLOY_MAX_NEW_PER_DAY: int = int(cfg("autopilot.deploy_max_new_per_day", fallback=2))
+_DEPLOY_TARGET_FALLBACK: dict[str, float] = {
+    "NORMAL": 80.0, "RISK_ON": 80.0, "MOMENTUM_EXTENDED": 80.0, "OVERSOLD": 80.0,
+    "RISK_OFF": 50.0, "MACRO_CRISIS": 0.0,
+}
+AUTOPILOT_DEPLOY_TARGET_PCT: dict[str, float] = {
+    str(k).strip().upper(): float(v)
+    for k, v in (cfg("autopilot.deploy_target_invested_pct",
+                     fallback=_DEPLOY_TARGET_FALLBACK) or {}).items()
+}
 
 DISCOVERY_BHAVCOPY_DIR: str = cfg("discovery.bhavcopy_dir", fallback="data/market_cache/bhavcopy")
 DISCOVERY_DATA_DIR: str = cfg("discovery.data_dir", fallback="data/discovery")

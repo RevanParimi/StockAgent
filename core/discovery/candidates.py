@@ -1,13 +1,17 @@
 """
 The ideas one portfolio's autopilot may buy on a review day (PR-004).
 
-Today the autopilot buys an idea only as a SWITCH destination; SA-049 will
-also buy with idle cash. Either way it buys only from this list, which has
-two sources:
+The autopilot buys an idea as a SWITCH destination, or with idle cash when
+deployment is on (core/portfolio/deployment.py). Either way it buys only
+from this list, which has two sources:
 
-- **Shelf ideas whose deep dive is fresh** (`shelf.dive_is_fresh`). An idea
-  whose latest deep dive is older than DISCOVERY_REDIVE_AFTER_DAYS waits for
-  Saturday's re-dive: its band and conviction describe a month-old price.
+- **Shelf ideas whose deep dive is fresh** (`shelf.dive_is_fresh`) **and on
+  or before the review session.** An idea whose latest deep dive is older
+  than DISCOVERY_REDIVE_AFTER_DAYS waits for Saturday's re-dive: its band and
+  conviction describe a month-old price. An idea whose latest deep dive is
+  after the review session waits for a review of a later session: the run
+  books its trades at the review session's close, and the dive read news
+  that came after it.
 - **The user's own watchlist BUYs** (DISCOVERY_WATCHLIST_BUYS). A stock the
   user added, or promoted from the shelf, qualifies when its latest analysis
   in the score history is a BUY or STRONG BUY, passed the data gate as
@@ -20,7 +24,9 @@ two sources:
   and buying it back needs a new deep dive.
 
 Example: on Tuesday 20 Oct, a shelf idea last dived on 12 Sep (38 days ago)
-is not a candidate until Saturday's re-dive. A stock the user added to the
+is not a candidate until Saturday's re-dive. An idea Saturday 31 Oct's run
+dived is not a candidate on Monday 2 Nov, whose 16:30 run reviews Friday 30
+Oct; Tuesday's run, reviewing Monday, offers it. A stock the user added to the
 watchlist, analysed on 17 Oct as a BUY at 0.68 with an actionable gate, is a
 candidate whose band is 97-102% of its 17 Oct close.
 
@@ -29,7 +35,9 @@ must be the key its forecasts are written under. A managed stock keeps its
 managed record's sector: the daily review and the monthly forecast write its
 predictions there, and `promote_symbol` keeps that record when the
 autopilot buys it. So a fresh shelf idea whose stock is managed under
-another sector is offered under the managed one. A watchlist stock that is
+another sector is offered under the managed one. A shelf idea that is not
+managed keeps its own key, except "generic", which yields to the key its
+stored Yahoo classification maps to (`shelf_sector`). A watchlist stock that is
 not managed takes the item's own sector, else the deep dive's
 `infer_sector`; never a fixed "generic". Example: HEROMOTOCO added on the
 home page is stored with no sector, but it is managed under "automobile",
@@ -51,7 +59,7 @@ import pandas as pd
 from backend.shared.pipeline import decision_gate as dg
 from backend.shared.schemas.discovery import ShelfIdea
 from core.config import settings
-from core.discovery.deep_dive import entry_levels, infer_sector
+from core.discovery.deep_dive import entry_levels, infer_sector, sector_from_classification
 from core.discovery.shelf import dive_is_fresh, last_dived
 from core.discovery.universe import COMPANY, instrument_kind
 from core.portfolio.promotion import is_valid_sector
@@ -101,6 +109,21 @@ def holding_sector(symbol: str, own_sector: str, managed: dict[str, str]) -> str
     if own and is_valid_sector(own):
         return own
     return infer_sector(symbol)
+
+
+def shelf_sector(idea) -> str:
+    """A shelf idea's sector key: its own, or, when that is "generic", the key
+    its stored market classification maps to (`sector_from_classification`),
+    still "generic" when the classification names none. Example: an idea
+    shelved in September as "generic" with market sector "Healthcare" and
+    industry "Drug Manufacturers - Specialty & Generic" is "pharma", so
+    SA-050's sector cap counts it with the other drug makers, not with every
+    other stock outside the ticker map."""
+    sector = (idea.sector or "").strip().lower()
+    if sector != "generic":
+        return idea.sector
+    return sector_from_classification({"sector": getattr(idea, "market_sector", ""),
+                                       "industry": getattr(idea, "industry", "")})
 
 
 def watchlist_window_days() -> int:
@@ -176,9 +199,12 @@ def buy_candidates(portfolio, on: date, shelf_ideas: list, *,
                    managed: dict[str, str] | None = None) -> tuple[list, dict[str, str]]:
     """(the ideas this portfolio may buy on `on`, {excluded symbol: why}).
 
-    Shelf ideas keep their order; watchlist candidates follow. A symbol
-    already held, or active on the shelf, is not offered from the watchlist
-    (the shelf idea, fresh or not, is the record of it). Each carries the
+    `on` is the review session, whose close the trades are booked at: a shelf
+    idea is offered only when its latest deep dive is on or before it, as a
+    watchlist analysis must be. Shelf ideas keep their order; watchlist
+    candidates follow. A symbol already held, or active on the shelf, is not
+    offered from the watchlist (the shelf idea, fresh or not, is the record of
+    it). Each carries the
     sector it will be held under: a shelf idea whose stock is managed under
     another sector is offered as a copy under that one; a watchlist stock
     takes `holding_sector`.
@@ -190,16 +216,24 @@ def buy_candidates(portfolio, on: date, shelf_ideas: list, *,
     excluded: dict[str, str] = {}
     active = [i for i in shelf_ideas if getattr(i, "status", "active") == "active"]
     for idea in active:
-        if dive_is_fresh(idea, on):
+        dived = last_dived(idea)
+        if dived is not None and dived > on:
+            excluded[idea.symbol] = (
+                f"deep dive of {dived} is after the review session {on}; waits for a "
+                "review of a session on or after it")
+        elif dive_is_fresh(idea, on):
             if managed is None:
                 managed = _managed_sectors()
-            # Its own sector came from the deep dive's infer_sector.
-            sector = managed.get(idea.symbol.strip().upper()) or idea.sector
+            # Its own sector came from the deep dive's infer_sector; one
+            # shelved as "generic" before infer_sector read Yahoo's
+            # classification takes the key the classification stored on it
+            # (a re-dive refreshes market_sector and industry, never sector).
+            sector = managed.get(idea.symbol.strip().upper()) or shelf_sector(idea)
             out.append(idea if sector == idea.sector
                        else idea.model_copy(update={"sector": sector}))
         else:
             excluded[idea.symbol] = (
-                f"deep dive of {last_dived(idea)} is older than "
+                f"deep dive of {dived} is older than "
                 f"{settings.DISCOVERY_REDIVE_AFTER_DAYS} days; waits for its re-dive")
     if not settings.DISCOVERY_WATCHLIST_BUYS:
         return out, excluded

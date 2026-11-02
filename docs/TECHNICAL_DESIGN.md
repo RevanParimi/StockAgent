@@ -1351,9 +1351,10 @@ The evidence rule was right if it sold and the stock then fell short of the
 benchmark, or kept it and the stock did not. Its **result** is that gap:
 positive when it kept the stock, negative when it sold. A horizon that has not
 ended is pending, never scored. A sold stock stays in the count, and a row
-without a benchmark is never graded. **Planned:** once cash deployment is on
-for a portfolio, its plain EXITs record `nifty` as well; stored rows keep
-theirs (SA-049).
+without a benchmark is never graded. Once idle-cash deployment is on for a
+portfolio (section 6, Cash deployment), a plain EXIT's proceeds are
+reinvested, so its decisions from that day record `nifty` as well; stored rows
+keep theirs.
 
 **Example.** The stock falls 3% and the Nifty 5%. After a plain EXIT, selling
 saved 3%: the evidence rule that sold was right, with a result of +3. After a
@@ -1603,11 +1604,24 @@ twice stops it charging twice. Corporate actions affect adjusted quantities
 and cost. No broker-order execution path was found.
 The executor re-checks a SWITCH buy leg before spending: in `enforce` mode
 its close must be from the session's bar and its identity resolved, and in
-every mode its price must sit inside the shelf idea's entry band (below). If
-any check fails, the sell executes and the buy is skipped. The SELL's note
-records why ("buy leg skipped: …; ₹2,27,000 stays in cash"), and the
-`switch_buy_skipped` alert repeats that reason (when another switch that day
-bought the same stock, only the SELL's note says why).
+every mode NSE's surveillance report must clear the stock and its price must
+sit inside the shelf idea's entry band (below). If any check fails, the sell
+executes and the buy is skipped. The SELL's note records why ("buy leg
+skipped: …; ₹2,27,000 stays in cash"), and the `switch_buy_skipped` alert
+repeats that reason. Each buy leg is matched to its own SELL by the advice
+they share, so a second switch into the same stock that day, or an idle-cash
+buy of it, never hides a skipped leg.
+
+**Surveillance at buy time.** Every buy that opens a position, a SWITCH leg
+or an idle-cash buy, reads NSE's daily Surveillance Indicator report
+(section 8; the newest on or before the review day, at most 7 days old, read
+once a run before any lock). The stock must be listed as active and under no
+GSM or long- or short-term ASM stage; IPO ideas are checked the same way, so a
+new listing under short-term ASM waits until it leaves it. With no report from
+the last 7 days, no new position opens and the reason is recorded: cash can
+wait. Example: "buy leg skipped: NEWIPO: under ST-ASM in NSE's surveillance
+report of 2026-10-29; ₹1,00,000 stays in cash". An ADD tops up a stock already
+held and is not checked.
 
 ### Sizing every buy
 
@@ -1621,14 +1635,19 @@ unchanged but for its trading costs, so the room under a cap is
 
 A buy takes the smallest of four amounts:
 
-- the amount asked for: the ADD tranche (25% of the position) or the SWITCH
-  sale's proceeds, net of the sale's costs;
+- the amount asked for: the ADD tranche (25% of the position), the SWITCH
+  sale's proceeds net of the sale's costs, or a new idle-cash position's
+  budget (`portfolio.min_invested_inr / portfolio.target_holdings`, ₹83,333);
 - the position's room under `advisor.max_position_pct` (10%);
 - its sector's room under `advisor.max_sector_pct` (30%), summed across
   holdings with the same sector label;
 - cash above `autopilot.min_cash_floor` (₹10,000).
 
-Only whole shares are bought, so under one share means no buy. The buy's own
+Only whole shares are bought, so under one share means no buy. Shares are
+counted in paisa, so an amount that is an exact number of shares buys all of
+them: a 25% ADD of 144 shares at ₹6,358.80 asks for ₹2,28,916.80 and buys 36,
+where a rupee comparison in floating point (36 × 6358.8 = 228916.80000000002)
+bought 35. The buy's own
 costs leave cash and equity too, so each limit is checked again after them
 and a share at a time is dropped until all hold. What a cap leaves unspent
 stays in cash, and the BUY's note names the limit and the amount. A manual add is the user's own choice and is not capped. Nothing is
@@ -1669,23 +1688,96 @@ above entry band (₹1,817–₹1,911); needs a fresh deep dive".
 
 ### Cash deployment
 
-The autopilot opens a new position only through a SWITCH. A plain EXIT's
-proceeds, and whatever a cap or a skipped buy leg leaves, stay in cash, and
-nothing reinvests them.
+Without deployment the autopilot opens a new position only through a SWITCH:
+a plain EXIT's proceeds, and whatever a cap or a skipped buy leg leaves, stay
+in cash for good. On the owner's screen on 27 Sep, ₹8,09,297 of ₹9,99,611 was
+cash (81%) in two holdings; ACMESOLAR's `exit_full` alone had moved about
+₹2.27 L to cash. In a normal market idle cash should go into the best ideas
+that pass the checks; cash is held on purpose only in a crisis, or when no
+idea passes, and then the run says why (the owner, 27 Sep).
 
-**Example (the owner's screen, 27 Sep):** ₹8,09,297 of ₹9,99,611 was cash
-(81%), with two holdings. ACMESOLAR's `exit_full` alone moved about ₹2.27L to
-cash.
+[`core/portfolio/deployment.py`](../core/portfolio/deployment.py) decides how
+much may be invested; the executor (`_deploy_idle_cash` in
+[`autopilot.py`](../core/portfolio/autopilot.py)) buys, after the day's sells,
+switches and ADDs. It runs only when `autopilot.deploy_idle_cash` is on for
+the portfolio (it ships off; `portfolio.overrides.<user id>` can switch one
+portfolio on or off and give it its own breadth below).
 
-**Planned:** in a normal market, idle cash goes into shelf ideas that pass the
-checks, each sized by the rule above; cash is held on
-purpose only in a crisis (SA-049, the owner's decision of 2026-09-27, behind a
-switch that ships off). The deployment also works toward a configurable floor
-of at least 10 holdings and ₹10 L invested (`portfolio.min_holdings`,
-`portfolio.min_invested_inr`, with a per-portfolio override), recording why
-whenever the floor cannot be met. The ideas come from the buy candidates of
-section 8: fresh shelf ideas from a 20-idea, sector-capped shelf, and the
-user's own watchlist BUYs.
+**The regime sets the target.** The daily review's sticky regime label for the
+review day (`label_recorded_for` in
+[`state.py`](../core/intelligence/regime/state.py)) maps to a target share of
+total equity in stocks (`autopilot.deploy_target_invested_pct`; the owner, 1
+Nov 2026): 80% in NORMAL, RISK_ON, MOMENTUM_EXTENDED and OVERSOLD (calm); 50%
+in RISK_OFF; no new positions in MACRO_CRISIS. A day with no label recorded
+for it opens nothing. Until FIX-023, a regime label built on a fallback input
+(Yahoo's India VIX or Nifty not answering) is read like any other; turn
+deployment on after FIX-023.
+
+**The breadth floor (calm regimes).** Deployment works toward at least
+`portfolio.min_holdings` (10) holdings and `portfolio.min_invested_inr` (₹10 L)
+invested, aims for `portfolio.target_holdings` (12) and never holds more than
+`portfolio.max_holdings` (15). In RISK_OFF the floor relaxes to the regime's
+share. Each new position asks for `min_invested_inr / target_holdings`
+(₹83,333) and is sized by the rule above. At most
+`autopilot.deploy_max_new_per_day` (2) open a day, so cash goes in over days.
+Another position opens while the holdings are below the floor in force, or
+while invested is below the target, unless the target number of holdings is
+held and the regime's own share is met. At or above the holdings floor, a buy
+can pass the target by at most one position; below it, buying continues
+toward the floor within the caps and the cash floor (from 9 holdings at 86% in
+₹12 L, a tenth position takes invested to 93%). A floor that cannot be met is
+recorded, never forced, and no cap is breached to meet it.
+
+**Example (the 12 Oct decisions).** With the owner's ₹2 L paper deposit
+(section 7) the 27 Sep portfolio is ₹12 L: ₹1.9 L in two holdings, ₹10.1 L
+cash. 80% would be ₹9.6 L, so the ₹10 L floor governs. With 12 qualifying ideas
+at ₹1,000, each buy is 83 shares (₹83,000); two a day make 4, 6, 8, 10 and 12
+holdings in five review days, ₹10.2 L (85%) invested, then "target reached".
+In RISK_OFF the same portfolio stops opening positions at 50% (₹6 L) and never
+sells to get there. Without the deposit, ₹10 L invested would leave no cash, so
+the run records "invested floor unreachable: equity ₹9,99,611 is below the
+₹10,00,000 floor plus the ₹10,000 cash floor" and works toward ₹9.9 L.
+
+**Which ideas.** The day's buy candidates (section 8: fresh shelf ideas and
+the user's own watchlist BUYs), highest conviction first. A candidate's deep
+dive or analysis is on or before the review session, because the 16:30 run on
+day T reviews the previous session and books its trades at that session's
+close. So an idea Saturday's discovery run dives is first offered by
+Tuesday's run, which reviews Monday; Monday's run reviews Friday. Each must:
+
+- not be held, and not have been sold on or after its latest deep dive
+  (buying a stock back after a sale needs a new dive);
+- pass SA-003's gate: an actionable deep dive and a close dated the review
+  session, with its identity resolved. In `enforce` mode anything else is
+  withheld; in `record` mode it is bought and the note says what enforce
+  would have withheld;
+- be cleared by NSE's surveillance report (above);
+- sit inside its entry band and above its invalidation level;
+- leave room for at least one share under the caps and the cash floor.
+
+**Every buy and every idle rupee says why.** A deployment BUY's verdict is
+`DEPLOY`, its reason is the idea's thesis, and its note starts
+`deploy_idle_cash`: "deploy_idle_cash: discovery idea, conviction 0.90; regime
+NORMAL, target 83.3% invested (₹10,00,000); invested 15.8% before, 22.8%
+after". The run's record goes into the day's digest (`deployment`): the
+regime, the target, the invested share before and after, what was bought, each
+other idea's outcome and why, and why buying stopped ("2 new positions today,
+the daily limit of 2"; "regime RISK_OFF, target reached: 55.3% invested
+against a target of 50.0% (₹6,00,000)"; "holdings floor unreachable: 6
+qualifying ideas, 6 holdings against at least 10"; "3 ideas above entry
+band"). The digest's text names the buys and the reasons. A portfolio with no
+holdings is reviewed when it deploys. The step runs on a copy of the
+portfolio and is kept only when it completes, so a failure in it buys nothing
+and never costs the day's sells; the record then says "deployment failed: …".
+
+**What it does not change.** It changes how much of the portfolio works, not
+the picks: a bad idea bought with idle cash is still a bad idea. The Nifty
+comparison (section 7) judges deployed cash against the index, not against the
+cash it replaced. A new holding can still be sold within days by a stop or by
+the price-path rule once it has forecasts; the weekly scorecard's holding
+period and the exit test (section 6) measure that churn. Rollback is the
+switch: positions already bought stay, and the normal EXIT and TRIM rules
+manage them.
 
 ## 7. Profit/loss and the different marksheets
 
@@ -1708,6 +1800,21 @@ transactions, advice, digest and `/portfolio/performance`.
 | Total return | `(total equity − capital_in) / capital_in`, when required values exist. |
 | As-of date | Date of the valuation, potentially different from page-open time. |
 | In stocks / Cash | Market value and deployable cash at the last valuation, each as a share of total equity, to one decimal. The cash share is rounded and the stock share is 100 minus it, so the two always add to 100. |
+
+**Adding paper capital.** `POST /portfolio/deposit` (`amount`, `reference`;
+owner session or the machine key, into the caller's own portfolio) writes one
+`DEPOSIT` ledger row dated that IST day (symbol `CASH`, quantity 0, value the
+amount) and raises cash and `capital_in` by exactly the amount. It needs cash
+accounting, and it is idempotent on (date, amount, reference): a retry writes
+nothing and says so. The Nifty comparison buys the same money's Nifty units at
+the close of the session the first valuation holding it reviews: a deposit
+made before the 16:30 run on day T is bought at the previous session's close
+(the run reviews it), one made after it at T's close. A deposit pays no
+trading costs and is not a trade. Example: ₹2,00,000 deposited on a Monday
+morning into ₹10 L bought at a Nifty of 100 is first held by the point
+Monday's run writes for Friday, so it adds 1,600 units at Friday's 125, and
+that point reads 0.0% for the portfolio, not +20%. The activity list shows it as "Paper capital
+added".
 
 **Trading costs and the tax estimate.**
 [costs.py](../core/portfolio/costs.py) charges every virtual BUY and SELL what
@@ -1894,7 +2001,7 @@ week whose sessions are not over is never stored.
 | Closed trades | Round trips from `transactions.jsonl`. A position counts once, when its last share is sold, with every sale of it (TRIMs included): realized P/L over the cost of the shares sold. Count, win rate, average win, average loss and expectancy (the mean result per trade), this week and since the start, before costs. A sale with no recorded cost is counted as unknown, never guessed. |
 | Sold too early | Every advisor sale (EXIT, SWITCH or TRIM), held or not, joined to the auditor's grade by its advice ref: the share of sold stocks that beat the Nifty 10 and 30 sessions later. A sale whose horizon has not ended is pending; one whose horizon ended with no grade is counted as missing. |
 | Why we sold | Sales per trigger, in the advisor's plain words, over the last 4 weeks. Your own sales appear as "sold by you". |
-| You vs the Nifty | Money-weighted. Each rise in `capital_in` between value points is a deposit, dated at the first point that shows it, and the same deposit buys Nifty units at that day's close. Both sides use the same flows, so idle cash counts against the portfolio. A holding that arrived without cash is valued on the day it arrives (below). This week, the last 4 weeks and since the start. |
+| You vs the Nifty | Money-weighted. Each rise in `capital_in` between value points is a deposit (the owner's paper `DEPOSIT`, section 7, or a holding that arrived without cash), dated at the first point that shows it, and the same deposit buys Nifty units at that day's close. Both sides use the same flows, so idle cash counts against the portfolio. A holding that arrived without cash is valued on the day it arrives (below). This week, the last 4 weeks and since the start. |
 | Breadth | Holdings (for the latest week) and the invested share at the week's last valuation. |
 | Holding period | Median exchange sessions held by the positions closed this week. |
 | Idea quality | From the auditor's shelf lane: how many shelf ideas beat the Nifty 10 and 30 sessions after they were shelved, whether bought or not, with the median gap in points. Only grades matured by the week's end count. It measures the idea supply, not the portfolio, and it is a line, not a flag. |
@@ -1928,13 +2035,16 @@ too, and the portfolio has to earn them back.
   every older point where `capital_in` changed
   ([retention.py](../core/portfolio/retention.py)). Without them, the first
   kept point's capital would read as an opening deposit on a later day.
-- **Limit.** A holding added while the 16:30 pipeline runs, or one whose close
-  fails in that run, is in that day's valuation at its cost while the comparison
-  values it at the day's close. Until the next valuation marks it to market,
-  that day reads the difference, quantity × (close − cost), as a loss or a gain
-  that is not the portfolio's. A weekly scorecard whose week ends on that
-  valuation keeps it. Example: 1,000 shares bought at ₹50, worth ₹150 and added
-  at 16:35 read ₹1,00,000 behind that day. **Planned:** SA-049.
+- **An add during the 16:30 run.** The pipeline fetches a close, outside the
+  lock, for every holding without one just before the value point, so a
+  holding added while the run was under way is valued at its close in the
+  point as in the comparison. Example: 1,000 shares bought at ₹50, worth ₹150
+  and added at 16:35 read 0.0% for that week, not ₹1,00,000 behind. A holding
+  still without a close is valued at its cost and named in the point's
+  `at_cost`; an arrival among them cannot be valued as money in, so the flow
+  at that point, and at the first later point that values it at a close, is
+  unknown: those periods read "could not check", never the jump from cost to
+  close as a gain.
 
 The red flags are fixed constants in the module, set before any result was
 seen. A flag reports; it changes no decision.
@@ -2160,7 +2270,15 @@ is managed (below), and the deep dive skips managed stocks. A re-dive
 refreshes an idea's `market_sector` and `industry` but never its `sector`, so
 an idea keeps the sector it was shelved under, `generic` included, and with
 it its paper-lane store. Re-keying an existing `sector` belongs to the
-sector-lens work (SA-026). The shelf's cap counts `market_sector`. An idea
+sector-lens work (SA-026). When an idea that is not managed is offered for
+purchase, though, a stored `generic` yields to the key its stored
+classification maps to (`shelf_sector` in candidates.py), so the buy is held,
+and SA-050's sector cap counts it, under a real sector. Example: an idea
+shelved in September as `generic`, later classified Healthcare / "Drug
+Manufacturers - Specialty & Generic", is bought as `pharma`. Without that,
+twelve ₹83,000 positions mostly from the screen would share `generic`, and the
+fourth would be cut by the 30% cap though they are a pharma, a cable maker
+and others. The shelf's cap counts `market_sector`. An idea
 with no known market sector is not capped, rather than lumped with other
 unknowns.
 
@@ -2171,11 +2289,15 @@ does not get in.
 
 **Buy candidates.** The autopilot buys only from
 [core/discovery/candidates.py](../core/discovery/candidates.py)'s list, built at each 16:30
-review (today a buy is a SWITCH destination):
+review, whether as a SWITCH destination or with idle cash (section 6):
 
-- shelf ideas whose latest dive is at most 30 days old. An older idea waits for
-  Saturday's re-dive, because its band and conviction describe a month-old
-  price;
+- shelf ideas whose latest dive is at most 30 days old and on or before the
+  review session. An older idea waits for Saturday's re-dive, because its band
+  and conviction describe a month-old price. A dive after the review session
+  waits for a run that reviews a session on or after it ("deep dive of
+  2026-10-31 is after the review session 2026-10-30; waits for a review of a
+  session on or after it"): the run books at the review session's close, and
+  a Saturday dive reads news from after Friday's close;
 - the user's own watchlist BUYs (`discovery.watchlist_buys`). The stock's
   latest analysis in the score history must be a BUY or STRONG BUY, with an
   actionable data gate, conviction at the floor or above, at most 30 days old,
@@ -2205,7 +2327,8 @@ would let through (38%).
   ASM or GSM passes the screen. The screen, the weekly summary and, after a
   week, the watchdog say so. IPO candidates and re-dives never pass through
   the screen's guards, so a shelf idea that comes under ASM later stays on
-  the shelf.
+  the shelf; the autopilot's buy-time check (section 6) keeps it from being
+  bought.
 - The report's ESM and insolvency (IRP) columns are not gated. On 29 Oct
   every ESM stock and all but 2 of the 56 IRP stocks were in a
   trade-for-trade series (BE, BZ, SZ) or on the SME platform, which the
@@ -2983,13 +3106,11 @@ learning to `observe`. SA-023 puts learned lessons on measurable probation.
 
 ### Portfolio economics
 
-- SA-049 puts idle cash into shelf ideas that pass the checks in a normal
-  market, and holds cash on purpose only in a crisis, behind a switch that
-  ships off. It works toward a configurable floor of at least 10 holdings and
-  ₹10 L invested, fed by section 8's buy candidates. Its sizing rule must
-  count real sectors: today the sector cap reads each holding's routing
-  `sector`, which is `generic` for most screened stocks, so a fourth such
-  holding hits the 30% cap at about 8% each.
+- Idle-cash deployment (section 6, Cash deployment) ships off. **Planned:**
+  after FIX-023 (a regime label built on a fallback input opens no position),
+  the owner deposits ₹2 L of paper capital, reads the paper lane's record of
+  shelf ideas against the Nifty, and switches it on; a month later the Nifty
+  comparison (section 7) judges the deployed cash (SA-049's rollout).
 
 ### Product results
 
@@ -3135,6 +3256,7 @@ section 10) are part of the current design.
 | [SA-047](planning/PI-2026-09/stories/SA-047.md) | Decide with the factor engine; switch when it is not worse | Open | 4 Research; 5 Learning | SA-045, SA-046, SA-014, SA-020 |
 | [SA-048](planning/PI-2026-09/stories/SA-048.md) | Charge realistic trading costs and tax in paper P&L | Done | 6 Portfolio; 7 Marksheets | None |
 | [SA-049](planning/PI-2026-09/stories/SA-049.md) | Put idle cash to work in normal markets, with a 10-holding / ₹10 L floor | Open | 6 Portfolio; 8 Discovery | SA-050, SA-051 |
+| [FIX-023](planning/PI-2026-09/stories/FIX-023.md) | Deployment buys only on a regime read from live inputs, as of the review session | Open | 6 Portfolio; 5 Learning | SA-049 |
 | [SA-050](planning/PI-2026-09/stories/SA-050.md) | Apply one sizing rule to every autopilot buy | Done | 6 Portfolio | None |
 | [SA-051](planning/PI-2026-09/stories/SA-051.md) | Show the portfolio against the Nifty, with honest labels | Done | 7 Marksheets; 10 Interface | None |
 | [FIX-006](planning/PI-2026-09/stories/FIX-006.md) | An anonymous watchlist read never falls back to the owner | Open | 10 Interface | None |

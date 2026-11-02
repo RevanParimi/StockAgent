@@ -76,7 +76,7 @@ statuses and labels every report:
 One switch, `decision_gate.mode`, governs every consumer. In `record`, the
 default, the gate is computed and logged and nothing changes. In `enforce`, an
 abstaining report reads INSUFFICIENT DATA, and no forecast, learning update or
-new-risk buy (ADD, or a SWITCH's buy leg) rests on it. Exits and trims are
+new-risk buy (ADD, a SWITCH's buy leg or an idle-cash buy) rests on it. Exits and trims are
 never blocked by missing data
 ([KT sections 4–6](TECHNICAL_DESIGN.md#4-research-input-to-recommendation)).
 
@@ -210,6 +210,7 @@ These items are planned, not implemented
   adds durable outcomes for every job, source-health ledgers, silent-degradation
   checks, provider-credit alerts, a read-only status fetcher and an outside
   witness for missed jobs.
-- **Portfolio economics.** Idle cash put to work in normal markets.
+- **Portfolio economics.** Idle-cash deployment is built and ships off; the
+  owner switches it on after a ₹2 L paper deposit.
 - **Interface.** Verifiable learning evidence and honest unavailable or demo
   states.

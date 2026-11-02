@@ -428,7 +428,14 @@ def capital_flows(points: Iterable[dict], txns: Iterable = (),
     bought at ₹50 and worth ₹150 brings ₹150 of money in, not ₹50.
 
     A flow is unknown (amount None) when an arrival in it has no close that
-    day, or when it cannot be told which point first held the arrival."""
+    day, or when it cannot be told which point first held the arrival.
+
+    A point lists in `at_cost` the holdings it valued at their cost for want
+    of a close. An arrival its first point valued so cannot be valued as
+    money in: that flow is unknown, and so is the one at the first later
+    point that values it at a close (its jump from cost to that close is not
+    a gain). The pipeline fetches a close for every holding before the point,
+    so this happens only when the stock's close cannot be found."""
     pts = _value_points(points)
     adjust: dict[int, float] = defaultdict(float)
     unknown: dict[int, str] = {}
@@ -443,6 +450,15 @@ def capital_flows(points: Iterable[dict], txns: Iterable = (),
             # reads it unavailable as well.
             unknown.setdefault(i, f"could not tell whether {a.symbol}, added on "
                                   f"{_short_day(a.day.isoformat())}, was in that day's valuation")
+            continue
+        if a.symbol in (pts[i].get("at_cost") or ()):
+            why = (f"no close for {a.symbol} on {_short_day(pts[i]['_day'].isoformat())}, "
+                   "the day it was added: valued at its cost")
+            unknown.setdefault(i, why)
+            j = next((k for k in range(i + 1, len(pts))
+                      if a.symbol not in (pts[k].get("at_cost") or ())), None)
+            if j is not None:
+                unknown.setdefault(j, why)
             continue
         on = pts[i]["_day"]
         try:

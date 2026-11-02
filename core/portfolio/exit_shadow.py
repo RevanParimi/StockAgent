@@ -44,8 +44,9 @@ benchmark, or when it kept and the stock did not. Its result is that gap,
 falls 3% and the Nifty 5%. After a plain EXIT, selling saved 3%: the evidence
 rule that sold was right (result +3.0). After a SWITCH the money went into
 the market, which lost 5%, so keeping was 2 points better: wrong (-2.0). A
-SWITCH whose buy leg the executor would refuse (no close, the idea's entry
-band) leaves the money in cash, so its row says cash. The weekly scorecard
+SWITCH whose buy leg the executor would refuse (no close, NSE's surveillance
+report, the idea's entry band) leaves the money in cash, so its row says
+cash, unless the portfolio deploys its cash. The weekly scorecard
 grades the rows with its own price functions (the auditor's Nifty series); a
 horizon that has not ended is pending, never scored.
 
@@ -372,9 +373,10 @@ def decision_benchmark(legacy_verdict: str, evidence_verdict: str, *,
     whose buy the executor refuses, wait in cash). "" when the two rules
     agree: there is no decision to grade.
 
-    `deploys_cash` is false for every portfolio until SA-049 turns cash
-    deployment on; from that day its decisions record "nifty". A stored row
-    keeps the benchmark it was written with."""
+    `deploys_cash` is true from the day idle-cash deployment is on for the
+    portfolio (core/portfolio/deployment.py `active`): a plain EXIT's
+    proceeds are then reinvested, so its decisions record "nifty". A stored
+    row keeps the benchmark it was written with."""
     if sells(legacy_verdict) == sells(evidence_verdict):
         return ""
     selling = legacy_verdict if sells(legacy_verdict) else evidence_verdict
@@ -384,14 +386,15 @@ def decision_benchmark(legacy_verdict: str, evidence_verdict: str, *,
 
 
 def switch_buy_lands(quote, session: date, idea, *, identity_issue: str = "",
-                     enforcing: bool = False) -> bool:
+                     enforcing: bool = False, surveillance_issue: str = "") -> bool:
     """Whether a SWITCH's buy leg passes the checks the executor makes before
     sizing it (core/portfolio/autopilot.py `_execute_buys`), at the
     destination's close `quote` (a pricing.SessionClose for `session`; None
     when it has none): a close; under the data gate's enforce, the session's
-    own bar and a resolved identity (`identity_issue` empty); and a price
-    inside its shelf idea's entry band (sizing.entry_check). Pure. False means
-    the proceeds stay in cash.
+    own bar and a resolved identity (`identity_issue` empty); NSE's
+    surveillance report clearing the stock (`surveillance_issue` empty,
+    sizing.surveillance_issue); and a price inside its shelf idea's entry
+    band (sizing.entry_check). Pure. False means the proceeds stay in cash.
 
     Not checked here: the executor's own re-fetch of the close, a buy of under
     one share after sizing, a buy already in the ledger."""
@@ -399,6 +402,8 @@ def switch_buy_lands(quote, session: date, idea, *, identity_issue: str = "",
     if close is None or close <= 0:
         return False
     if enforcing and (not quote.fresh_for(session) or identity_issue):
+        return False
+    if surveillance_issue:
         return False
     return entry_check(float(close), idea)[0]
 

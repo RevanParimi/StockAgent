@@ -61,7 +61,6 @@ core/ops/watchdog/checks.py | _atlas_prep_record | #0
 core/ops/watchdog/checks.py | _local_registry_text | #0
 core/ops/watchdog/runner.py | _load_state | #0
 core/portfolio/advisor.py | build_signals | #0
-core/portfolio/autopilot.py | _execute_buys | #0
 core/portfolio/narrative_cache.py | _load_disk | #0
 core/portfolio/narrator.py | narrate | #0
 core/portfolio/promotion.py | promote_symbol | #0

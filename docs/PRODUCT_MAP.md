@@ -393,7 +393,8 @@ reader filters by date ([RL_DESIGN](RL_DESIGN.md) section 23.1).
 | Store | `core/portfolio/store.py` | Per-user files, lock, corrupt-file quarantine |
 | Advisor | `core/portfolio/advisor.py` | Precedence **EXIT > TRIM > ADD > HOLD**, SWITCH, the data and identity checks |
 | Autopilot | `core/portfolio/autopilot.py` | Deterministic execution; no broker call anywhere |
-| Sizing | `core/portfolio/sizing.py` | One rule for every autopilot buy: position and sector caps of total equity after the trade and its costs, the cash floor, and a new position only inside its shelf idea's entry band |
+| Idle-cash deployment | `core/portfolio/deployment.py` | Off unless switched on: new positions from the day's buy candidates up to the sticky regime's target invested share (80% calm, 50% RISK_OFF, none in MACRO_CRISIS), toward at least 10 holdings and ₹10 L invested in a calm market, 2 a day; the run's record of what was bought and why the rest was not goes into the digest |
+| Sizing | `core/portfolio/sizing.py` | One rule for every autopilot buy: position and sector caps of total equity after the trade and its costs, the cash floor, whole shares counted in paisa, and a new position only inside its shelf idea's entry band and cleared by NSE's surveillance report |
 | Trading costs and tax | `core/portfolio/costs.py` | Each BUY and SELL's charges (STT, stamp, NSE, SEBI, GST, DP) from dated `portfolio.costs` rates, on its ledger row and out of cash; realized P&L gross and net; the per-financial-year capital-gains tax estimate, never taken from cash |
 | Results scorecard | `core/portfolio/results.py` | One row per ISO week from the user's own ledgers: closed round trips, sales graded by the auditor, exit reasons, the money-weighted Nifty comparison (a holding that arrived without cash valued on its arrival day), five predeclared red flags. Stored once per week; `GET /portfolio/scorecard`. The same comparison and closed-trade record feed the portfolio screen through `/portfolio/performance` |
 | Identity reconcile | `core/portfolio/identity_reconcile.py` | Operator plan/apply for demergers and renames |
@@ -422,7 +423,7 @@ KT section 8.
 | Guards | `core/discovery/guards.py` | Liquidity, series, price and circuit gates, then surveillance and float on the shortlist |
 | Deep dive | `core/discovery/deep_dive.py` | The ordinary analysis per name, so its decision gate is the idea's `data_gate`; entry zone and invalidation level; at most 20 analyst calls a week, re-dives first |
 | Shelf | `core/discovery/shelf.py` | 20 ideas, at most 3 per market sector; stronger ideas displace weaker ones; re-dives refresh or drop an idea; non-companies dropped; promotion to the watchlist |
-| Buy candidates | `core/discovery/candidates.py` | Per portfolio, per review: shelf ideas dived in the last 30 days plus the user's own fresh, actionable watchlist BUYs |
+| Buy candidates | `core/discovery/candidates.py` | Per portfolio, per review: shelf ideas dived in the last 30 days and on or before the review session (Saturday's dives first from Tuesday's run, which reviews Monday) plus the user's own fresh, actionable watchlist BUYs |
 | Paper lane | `core/discovery/paper_lane.py` | Real forecasts under an isolated store root, with no learning writes |
 | IPO tracker | `core/discovery/ipo_tracker.py` | Recent listings ranked on listing evidence, delivery, accumulation and subscription |
 | Schemas | `src/backend/shared/schemas/discovery.py` | Screen, deep dive, shelf |

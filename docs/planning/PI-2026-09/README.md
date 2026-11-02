@@ -107,6 +107,14 @@ the law takes each lot's own, so a sale of long-term and short-term shares bough
 prices can read ₹0 where the law gives ₹4,160. FIX-022 takes each lot at its own cost, makes a
 CSV import with a missing rate write nothing, and lets a renamed position keep its buy charges
 and dates.
+FIX-023, added on 2026-11-02 from SA-049's fresh review (routing delegated), comes directly
+after SA-049 and must be accepted before deployment is switched on. When Yahoo's India VIX
+does not answer, the regime detector uses 17.0, so a crisis (VIX 30, Nifty down 3% in five
+sessions) is recorded as RISK_OFF and idle cash is invested toward 50%. With the Nifty dark
+too, the label is NORMAL. FIX-023 opens no position on a label built on a fallback, and
+decides which session's bars the label is read from. SA-049's re-review (2 Nov) added one
+item: when the review session's bar is missing and an earlier close is carried forward, record
+mode can buy an idea dived after that close. FIX-023 refuses such a buy (3 points).
 
 | Order | Story | Priority | Points | Result | Dependencies |
 |---:|---|---|---:|---|---|
@@ -131,17 +139,18 @@ and dates.
 | 19 | [SA-048](stories/SA-048.md) | P1 | 3 | Costs and tax in paper P&L | — |
 | 20 | [FIX-011](stories/FIX-011.md) | P1 | 2 | NSE's per-symbol meta API is gone: restore the surveillance and suspension guards and an industry source | — |
 | 21 | [SA-049](stories/SA-049.md) | P1 | 7 | Idle cash to work, with the breadth floor (12 target holdings) and the ₹2 L top-up | SA-050, SA-051 |
-| 22 | [PR-005](stories/PR-005.md) | P1 | 6 | An investment case for every position | PR-006 |
-| 23 | [PR-013](stories/PR-013.md) | P2 | 2 | Show where losses come from and what waiting costs | PR-002, PR-009 |
-| 24 | [PR-007](stories/PR-007.md) | P1 | 3 | Plain, fact-grounded buy and sell explanations | PR-005, PR-006 |
-| 25 | [PR-008](stories/PR-008.md) | P1 | 3 | "Your stocks overnight" at the top of the brief | PR-003, PR-006 |
-| 26 | [PR-010](stories/PR-010.md) | P1 | 5 | Four screens for members; an Operator menu for the owner | PR-001 |
-| 27 | [PR-012](stories/PR-012.md) | P2 | 3 | Models chosen by role, benched on our own data; cost rates refreshed | PR-007 |
-| 28 | [FIX-014](stories/FIX-014.md) | P2 | 1 | Above the 75% cap, a promoter wash must not score as insider buying | PR-011 |
-| 29 | [FIX-015](stories/FIX-015.md) | P2 | 1 | The shock exit reads the re-forecast's trigger, not its sentence | PR-009 |
-| 30 | [FIX-017](stories/FIX-017.md) | P2 | 2 | The holding sync reads every NSE corporate-action row it is given, under NSE's code | — |
-| 31 | [FIX-020](stories/FIX-020.md) | P2 | 1 | Correct the configured codes NSE does not list, and AAVAS's sector | — |
-| 32 | [FIX-022](stories/FIX-022.md) | P2 | 2 | The tax estimate at each lot's own cost, and SA-048's loose ends | — |
+| 22 | [FIX-023](stories/FIX-023.md) | P1 | 3 | Deployment buys only on a regime read from live inputs, as of the review session | SA-049 |
+| 23 | [PR-005](stories/PR-005.md) | P1 | 6 | An investment case for every position | PR-006 |
+| 24 | [PR-013](stories/PR-013.md) | P2 | 2 | Show where losses come from and what waiting costs | PR-002, PR-009 |
+| 25 | [PR-007](stories/PR-007.md) | P1 | 3 | Plain, fact-grounded buy and sell explanations | PR-005, PR-006 |
+| 26 | [PR-008](stories/PR-008.md) | P1 | 3 | "Your stocks overnight" at the top of the brief | PR-003, PR-006 |
+| 27 | [PR-010](stories/PR-010.md) | P1 | 5 | Four screens for members; an Operator menu for the owner | PR-001 |
+| 28 | [PR-012](stories/PR-012.md) | P2 | 3 | Models chosen by role, benched on our own data; cost rates refreshed | PR-007 |
+| 29 | [FIX-014](stories/FIX-014.md) | P2 | 1 | Above the 75% cap, a promoter wash must not score as insider buying | PR-011 |
+| 30 | [FIX-015](stories/FIX-015.md) | P2 | 1 | The shock exit reads the re-forecast's trigger, not its sentence | PR-009 |
+| 31 | [FIX-017](stories/FIX-017.md) | P2 | 2 | The holding sync reads every NSE corporate-action row it is given, under NSE's code | — |
+| 32 | [FIX-020](stories/FIX-020.md) | P2 | 1 | Correct the configured codes NSE does not list, and AAVAS's sector | — |
+| 33 | [FIX-022](stories/FIX-022.md) | P2 | 2 | The tax estimate at each lot's own cost, and SA-048's loose ends | — |
 
 The new stories add 41 points. SA-049 grows from 5 to 7 points and SA-050 from 2 to 3. On 2026-10-12 the owner confirmed this order, chose the ₹2 L paper-capital top-up with 12 target holdings, and moved PR-011 up as P1 ("I need more data"); the production baseline is section 11 of the review. The track makes results
 visible, makes the portfolio broad enough to learn from, and stops one identified source of

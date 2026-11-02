@@ -1,4 +1,4 @@
-# Current handoff - 2026-11-01 (updated about 22:30 IST)
+# Current handoff - 2026-11-02 (updated about 16:10 IST)
 
 ## Also 22 Oct (about 22:30 IST to 00:30 IST 23 Oct): FIX-013, LLM tier switch, committed and pushed (separate conversation)
 
@@ -105,6 +105,160 @@ Docs only; nothing committed, pushed, deployed or configured.
   section 11.
 
 ## START HERE — resume checklist, in order
+
+**SA-049 COMMITTED** (2 Nov, about 15:55–16:10 IST, the same session stockagent-main-15
+[59b0c2], at the owner's "commit and push"; peers idle):
+
+- **Code `f064010`** is exactly the 26 reviewed files: `kt_manifest.py verify
+  SA-049-manifest.json --rev HEAD` gives 0 mismatches (`64b81d4f`).
+- **The docs commit** holds the commit-time edits:
+  - the KT header (`f064010`, edition 2026-11-02);
+  - section 1 (`f47d246` deployed about 00:14 IST on 2 Nov; SA-049 committed, not yet
+    deployed);
+  - section 6's RR-L1 sentence and section 12 SA-049 Done;
+  - guide 07-G/N/O status lines ("accepted 2026-11-02, committed as `f064010`");
+  - the PDF (65 pages, `check_kt_docs` errors `[]`).
+  With them go the receipts, both manifests, the FIX-023 card, the PI README, and STATE and
+  HANDOFF with session -e7's FIX-011 deploy record.
+- **Push held.** At 15:53 IST on Monday, the 16:30 daily review fell inside the ~2 h a push
+  needs. It runs about 80 minutes, then the portfolio pipeline this change touches. So did the
+  17:45, 18:30 and 19:00 jobs. The push is planned for about 20:10 IST, after a fetch shows
+  origin unchanged, with runway to the 23:00 jobs. Then record the deploy (uncommitted, for the
+  next docs commit). The switch stays off.
+- **SA-049 production `pending_deployment`.** The rollout's switch-on waits for FIX-023.
+- Next `continue`, in a new conversation: **FIX-023**'s implementation.
+
+**SA-049 fresh re-review of rework 1 → ACCEPTED** (2 Nov, about 13:40–14:25 IST,
+session stockagent-main-15 [59b0c2], a new conversation opened with "continue"; all 18 peers
+idle). Receipt: [SA-049-review](evidence/SA-049-review.md), top section. STATE: SA-049 `done`
+with a `rereview_1` entry, production `pending_deployment`; `active_task` null; `next_task`
+FIX-023. Nothing was committed, pushed, deployed or configured; no production state or network
+was read.
+
+- **Input verified** at the start and the end: manifest `64b81d4f` (26 files, 0 mismatches),
+  rework diff `1acfdc88` (54,656 B) against the kept input `55b642be`, cumulative `02707570`
+  (237,273 B) against HEAD `f47d246` (`analysis_data/sa049_rereview1/rr_digest.py`).
+- **H1 fixed for every lane that opens a position.** Shelf ideas (IPO ideas included),
+  watchlist BUYs, SWITCH destinations and legs, deployment and the shadow's switch test all
+  read the one list `buy_candidates(on=review_date)`. Reviewer RR1: over Monday and Tuesday,
+  every BUY is dated on or after its idea's dive (an invariant from the case's own table). RR2:
+  a stop-loss SWITCH through the real advisor. RV1 now fails only at its defect line.
+- **T1, L1, L2, T2 and the FIX-023 docs** are done as asked. Each FIX-011 mutant is caught by
+  its own new case through the real reader.
+- **Low, routed to [FIX-023](stories/FIX-023.md)** (now 3 points, still the precondition for
+  the switch-on):
+  - **RR-L1:** when the review session's bar is missing, or a manual run comes before the
+    close, record mode buys at a close carried forward from before the dive (RR3).
+  - **RR-T1:** the watchlist's own bound is not pinned by the tracked tests.
+- **Evidence:** reviewer cases `analysis_data/sa049_rereview1/test_rr_sa049.py` 4 passed;
+  reviewer mutants in `rr_mutants.txt`; full suite 6,023 passed / 12 skipped / 1 xfailed / 0 failed (16m56s); `check_broad_except` OK
+  (149); `check_kt_docs` only the expected header error; PDF 65 pages, matches the KT.
+- **Commit only at the owner's word.** The code commit is the 26 reviewed files. The docs commit
+  carries the receipt's commit-time edits: the KT section 6 RR-L1 sentence, the header, section
+  12 `Done`, section 1 (FIX-011 deployed 00:14 IST 2 Nov), guide 07-G/N/O, and the PDF. It also
+  carries session -e7's FIX-011 deploy record. Push in a job-free window; the switch stays off.
+- **Next `continue`, in a new conversation: FIX-023 implementation.**
+
+**SA-049 REWORK 1 -> `review_required`** (2 Nov, about 10:13–11:05 IST, session
+stockagent-main-f6 [f075f4], a new conversation opened with "continue"; all 17 peers idle).
+Receipt: [SA-049-implementation](evidence/SA-049-implementation.md), top section "Rework 1".
+STATE: SA-049 `review_required` with a `rework_1` entry; `active_task` and `next_task` SA-049
+(the fresh re-review). Nothing was committed, pushed, deployed or configured; no production
+state or network was read; the switch ships off.
+
+- **Input kept first:** the review's input (`55b642be`, 26 files, 0 mismatches) as
+  [SA-049-manifest-review1.json](evidence/SA-049-manifest-review1.json), its files copied to
+  `analysis_data/sa049_rework1/review_input/` before any edit.
+- **H1 fixed:** `buy_candidates` offers a shelf idea only when its latest deep dive is on or
+  before the review session; otherwise "deep dive of 2026-10-31 is after the review session
+  2026-10-30; waits for a review of a session on or after it". So Monday's run (reviewing
+  Friday) no longer buys a Saturday dive at Friday's close; Tuesday's run buys it at Monday's.
+  SWITCH destinations, deployment and the shadow read the same list. With the switch off this
+  also changes SWITCH destinations (rollout step 1).
+- **T1:** the three routed FIX-011 tests through the real reader and FIX-011's fake archive.
+  **L1, L2:** the review's sentences in the KT, docstrings, AUTOPILOT_GUIDE and guide 07-N.
+  **FIX-023:** KT section 12 row, the section 6 sentence, and FIX-023 first in the rollout.
+  **T2:** three cases. Guide status lines 07-G/N/O updated.
+- **Evidence:** story file 50 passed (9 new); RV1 now fails only at its defect line (1 failed /
+  151 passed with the PR-004 and FIX-011 files); in-memory mutants 11/11 in memory (the review's 8 + 3 on the bound) and the implementer's 23/23 in place caught; full suite
+  6,023 passed / 12 skipped / 1 xfailed / 0 failed (18m51s); `check_broad_except` OK (149); `check_kt_docs` only the expected header error; PDF
+  65 pages.
+- **Review input:** manifest [SA-049-manifest.json](evidence/SA-049-manifest.json)
+  `64b81d4f` (26 files); rework diff `1acfdc8857e1525886acdfee6741bf23b2b0f8da70c4e3fffab70e0b44508854 (54,656 B, 25 paths, 9 changed)` against the kept input; cumulative
+  `0270757038675a854265d253230a266c9fee043e1e1b724ba487761f4adce09b (237,273 B, 25 paths)` against HEAD `f47d246` (`analysis_data/sa049_rework1/rw_digest.py`).
+- **Next `continue`, in a new conversation: SA-049's fresh re-review** (REVIEW.md). Then FIX-023.
+  Commit only at the owner's word; the next docs commit also carries session -e7's FIX-011
+  deploy record and KT section 1's production paragraph (FIX-011 deployed 00:14 IST 2 Nov).
+
+**SA-049 fresh review → CHANGES REQUESTED** (2 Nov, about 09:08–09:55 IST, session
+stockagent-main-2c [c85206], a new conversation opened with "continue"). Receipt:
+[SA-049-review](evidence/SA-049-review.md). STATE: SA-049 `changes_requested`; `active_task`
+and `next_task` SA-049 (rework 1). New card [FIX-023](stories/FIX-023.md). Nothing was
+committed, pushed, deployed or configured; no production state was read.
+
+- **Input verified** at the start and the end: manifest `55b642be` (26 files, 0 mismatches) and
+  diff `45a56c30` (214,039 B, 25 paths) against HEAD `f47d246`.
+- **H1, high (issue time).** The 16:30 job reviews the previous session, and trades are booked
+  at that session's close. The Saturday discovery run dates its dives Saturday, and
+  `dive_is_fresh` has no lower bound. So Monday's run buys a Saturday idea at Friday's close.
+  The real pipeline did so in RV1: 83 × ₹1,000 dated 30 Oct for an idea dived 31 Oct. The
+  watchlist lane already refuses this timing. Fix: one rule for every new-position buy, the
+  latest dive on or before the review session.
+- **M1, medium → FIX-023.** When Yahoo's India VIX does not answer, the detector uses 17.0. A
+  crisis is then recorded RISK_OFF, and the real executor buys toward 50%; with the Nifty dark
+  too, NORMAL. FIX-023 (P1, 2 points, directly after SA-049) is a **precondition for switching
+  deployment on**.
+- **Low:**
+  - **L1:** the docs claim "at most one position past the target"; below the holdings floor it
+    can be more (T3, upheld).
+  - **L2:** the docs say a deposit is bought at the deposit day's close; it is bought at the
+    close of the session the next run reviews.
+  - **T1:** FIX-011's routed tests are missing.
+  - **T2:** three rules are unpinned.
+  - **L3:** the regime is read from the run day's bar; routed to FIX-023.
+- **Upheld:** T1–T11, the deposit route, the copy-and-keep safety, the routed fixes, and the
+  card's other acceptance. Positive controls RV5–RV8 pass.
+- **Evidence:** reviewer cases `analysis_data/sa049_review/test_rv_sa049.py` 15 passed;
+  8 reviewer mutants; full suite 6,014 passed / 12 skipped / 1 xfailed / 0 failed (21m55s); checks as the implementation recorded them.
+- **Next `continue`, in a new conversation: SA-049 rework 1.** First copy the input to
+  `SA-049-manifest-review1.json`. Required: H1, T1, L1, L2, the KT section 12 FIX-023 row and
+  the section 6 sentence. Recommended: T2. Then a fresh re-review.
+
+**SA-049 IMPLEMENTED -> `review_required`** (1 Nov about 22:40 IST to 2 Nov about 00:30 IST,
+session stockagent-main-a1 [c4bf3b], a new conversation opened with "continue"). Receipt:
+[SA-049-implementation](evidence/SA-049-implementation.md). STATE: SA-049 `review_required`,
+`active_task` SA-049. **Nothing committed, pushed, deployed or configured for SA-049; no
+production state read; the switch ships off.**
+
+- **Owner decisions at the start (all as recommended):** targets 80% in calm regimes, 50% in
+  RISK_OFF, none in MACRO_CRISIS, 2 new positions a day; NSE's surveillance report checked on
+  every buy that opens a position (SWITCH legs too, IPO ideas included; no report within 7 days
+  means no new position); the DEPOSIT as an owner-only API action run at rollout.
+- **Built:** `core/portfolio/deployment.py` and `_deploy_idle_cash` (after sells, switches and
+  ADDs; candidates by conviction; held, re-buy only after a newer dive, SA-003's gate, the
+  report, the band, `size_buy` asking for ₹83,333; verdict `DEPLOY`; run on a copy, so a failure
+  never costs the day's sells; the run's record in the digest); `POST /portfolio/deposit`; the
+  routed fixes SA-050 R1 (shares in paisa) and R2 (the alert by `advice_ref`), SA-051 R1 (closes
+  before the point, `at_cost`), FIX-016's `deploys_cash`, and generic shelf keys from the stored
+  classification. Technical decisions T1-T11 are in the receipt for the reviewer to rule on.
+- **Evidence:** story file 41 passed; mutants 23/23 caught on the final bytes; full suite
+  6,014 passed / 12 skipped / 1 xfailed / 0 failed (25m50s); `check_broad_except` OK (149);
+  `check_kt_docs` one expected error (`deployment.py` absent at the header's `866eae5`, cleared
+  by the commit-time bump); PDF 65 pages. Docs: KT sections 6, 7, 8, 11; AUTOPILOT_GUIDE;
+  testing guide 07-G (rewritten), 07-N, 07-O; CODEBASE, PRODUCT_MAP, ARCHITECTURE, UI_SPEC.
+- **Review input:** manifest [SA-049-manifest.json](evidence/SA-049-manifest.json) `55b642be`
+  (26 files, verify 0 mismatches); diff `45a56c30` (214,039 B, 25 paths) against HEAD
+  `f47d246` via `analysis_data/sa049/digest.py`.
+- Next `continue`, in a new conversation: **SA-049's fresh review** (REVIEW.md; the card's
+  hard-review questions are answered in the receipt for the reviewer to test). Commit only at
+  the owner's word; the next docs commit also carries session -e7's FIX-011 deploy record below.
+
+**FIX-011 PUSHED AND DEPLOYED** (2 Nov, session stockagent-main-e7 [4cb8e3]): pushed
+`2e14e04..f47d246` at 00:12:42 IST, after the hold for the nightly jobs; origin unchanged by a
+fetch just before, and only the two FIX-011 commits (SA-049's uncommitted work untouched).
+Railway `298fb42d` SUCCESS by 00:14:34; `/health` 200 at 00:14:46. FIX-011 production
+`pending_observation`: guide 06-J (amended) on the Saturday 7 Nov discovery run, read-only,
+counts and fields only. This record is uncommitted, for the next docs commit.
 
 **FIX-011 COMMITTED** (1 Nov, about 22:15–22:30 IST, the same session stockagent-main-e7
 [4cb8e3], at the owner's "ya commit and push"; peers idle):

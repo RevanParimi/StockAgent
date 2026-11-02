@@ -1,8 +1,8 @@
 # StockAgent — Technical Design and Knowledge Transfer
 
-**Edition:** 2026-11-01 · **Audience:** engineers and teammates learning the product
+**Edition:** 2026-11-02 · **Audience:** engineers and teammates learning the product
 
-**Code inspected:** `866eae5107b3e418f0bc13e42f53da88afedde99`
+**Code inspected:** `f064010dcc7535faf2ea32966f172c3522a51c26`
 
 **PDF:** [StockAgent-Three-Loops.pdf](StockAgent-Three-Loops.pdf), generated from this Markdown.
 
@@ -35,10 +35,12 @@ triggered no production job, backfill or notification.
 
 ### Production state at this edition
 
-Production runs `2e14e04` (SA-048, code `30bf8fc`), deployed at about 16:42
-IST on 1 November 2026 (the deployment list showed it SUCCESS and `/health`
-answered 200). The inspected code adds FIX-011's surveillance report, the
-one check per dark guard source and Yahoo's sector (section 8). It is
+Production runs `f47d246` (FIX-011, code `866eae5`), deployed at about 00:14
+IST on 2 November 2026 (the deployment list showed it SUCCESS and `/health`
+answered 200). The inspected code adds SA-049's idle-cash deployment behind a
+switch that ships off, NSE's surveillance report checked on every buy that
+opens a position, buy candidates bounded by the review session, and the
+paper-capital deposit (sections 6, 7 and 8). It is
 committed but not yet deployed, and counts as running
 only once a read-only check of the deployment list and `/health` confirms that
 deploy. The table gives the configuration that
@@ -1743,7 +1745,10 @@ the user's own watchlist BUYs), highest conviction first. A candidate's deep
 dive or analysis is on or before the review session, because the 16:30 run on
 day T reviews the previous session and books its trades at that session's
 close. So an idea Saturday's discovery run dives is first offered by
-Tuesday's run, which reviews Monday; Monday's run reviews Friday. Each must:
+Tuesday's run, which reviews Monday; Monday's run reviews Friday. Until
+FIX-023, record mode can still buy an idea at a close carried forward from
+before its dive, when the review session's bar is missing or a manual run
+comes before the close; the buy's note names the bar. Each must:
 
 - not be held, and not have been sold on or after its latest deep dive
   (buying a stock back after a sale needs a new dive);
@@ -3255,7 +3260,7 @@ section 10) are part of the current design.
 | [SA-046](planning/PI-2026-09/stories/SA-046.md) | Read text into dated events and a Catalyst factor | Open | 4 Research | SA-026 |
 | [SA-047](planning/PI-2026-09/stories/SA-047.md) | Decide with the factor engine; switch when it is not worse | Open | 4 Research; 5 Learning | SA-045, SA-046, SA-014, SA-020 |
 | [SA-048](planning/PI-2026-09/stories/SA-048.md) | Charge realistic trading costs and tax in paper P&L | Done | 6 Portfolio; 7 Marksheets | None |
-| [SA-049](planning/PI-2026-09/stories/SA-049.md) | Put idle cash to work in normal markets, with a 10-holding / ₹10 L floor | Open | 6 Portfolio; 8 Discovery | SA-050, SA-051 |
+| [SA-049](planning/PI-2026-09/stories/SA-049.md) | Put idle cash to work in normal markets, with a 10-holding / ₹10 L floor | Done | 6 Portfolio; 8 Discovery | SA-050, SA-051 |
 | [FIX-023](planning/PI-2026-09/stories/FIX-023.md) | Deployment buys only on a regime read from live inputs, as of the review session | Open | 6 Portfolio; 5 Learning | SA-049 |
 | [SA-050](planning/PI-2026-09/stories/SA-050.md) | Apply one sizing rule to every autopilot buy | Done | 6 Portfolio | None |
 | [SA-051](planning/PI-2026-09/stories/SA-051.md) | Show the portfolio against the Nifty, with honest labels | Done | 7 Marksheets; 10 Interface | None |

@@ -1,8 +1,8 @@
 # StockAgent — Technical Design and Knowledge Transfer
 
-**Edition:** 2026-11-05 · **Audience:** engineers and teammates learning the product
+**Edition:** 2026-11-02 · **Audience:** engineers and teammates learning the product
 
-**Code inspected:** `898f5c55d3d465eafd783b27722f011ce1782431`
+**Code inspected:** `f064010dcc7535faf2ea32966f172c3522a51c26`
 
 **PDF:** [StockAgent-Three-Loops.pdf](StockAgent-Three-Loops.pdf), generated from this Markdown.
 
@@ -35,15 +35,16 @@ triggered no production job, backfill or notification.
 
 ### Production state at this edition
 
-Production runs `c5165a1` (SA-049, code `f064010`), deployed at about 20:12
+Production runs `f47d246` (FIX-011, code `866eae5`), deployed at about 00:14
 IST on 2 November 2026 (the deployment list showed it SUCCESS and `/health`
-answered 200), with idle-cash deployment off. The inspected code adds FIX-023:
-a regime label counts only when live inputs establish it, read as of the review
-session, and no buy that opens a position takes a close from before its idea's
-latest dive (section 6). It is committed but not yet deployed, and counts as
-running only once a read-only check of the deployment list and `/health`
-confirms that deploy. The table gives the configuration that differs from the
-repository and the state of each operational control.
+answered 200). The inspected code adds SA-049's idle-cash deployment behind a
+switch that ships off, NSE's surveillance report checked on every buy that
+opens a position, buy candidates bounded by the review session, and the
+paper-capital deposit (sections 6, 7 and 8). It is
+committed but not yet deployed, and counts as running
+only once a read-only check of the deployment list and `/health` confirms that
+deploy. The table gives the configuration that
+differs from the repository and the state of each operational control.
 
 | Area | State in production | Evidence |
 |---|---|---|
@@ -1133,7 +1134,13 @@ armed trailing stop.
 TRIM considers profit with declining confidence/reversion. ADD requires
 bullish, sufficiently healthy conditions and position headroom: the holding
 below `advisor.max_position_pct` (10%) of total equity (see "Sizing every
-buy" below). EXIT may
+buy" below). ADD also needs a regime label established for the review day.
+On a day the live inputs left it open (Cash deployment, below), the review's
+feedback entry says why its label was kept, and the advisor holds the ADD
+in either gate mode with the note `REGIME_UNAVAILABLE`: "an add was
+withheld: market regime unavailable for 2026-10-30: India VIX did not
+answer". The crisis exit still reads the kept label, since a sale is never
+blocked by a missing input. EXIT may
 become SWITCH when an eligible replacement exists. A holding-age rule can
 soften certain TRIM actions to HOLD; it does not override EXIT. These are
 product rules, not individualized tax or investment advice.
@@ -1736,20 +1743,22 @@ detector failed"). Such a day never counts as a calm day, so a crisis
 already entered survives any run of dark days; it enters only a severer
 label the live inputs establish on their own (VIX 30 with the Nifty dark is
 at least RISK_OFF). The first established detection of the same day
-replaces the mark. With India VIX dark and the Nifty down 3%, the old
+replaces the mark, and a later dark detection never undoes an established
+day, the first day of a new state file included. The advisor holds ADD on
+such a day (Advisor precedence, above): the money stays in cash, and the
+Nifty comparison counts it against the portfolio like any idle cash
+(section 7). With India VIX dark and the Nifty down 3%, the old
 fallback (VIX 17.0) recorded RISK_OFF and bought two positions in a market
 the live VIX would have called MACRO_CRISIS. A missing input that cannot
 change the severity does not close the day: with VIX 30 and the Nifty down
 3%, MACRO_CRISIS holds whatever Brent did. A real VIX of 17.0 is a live
-reading. Three limits:
+reading. Two limits:
 
 - The sector RSI only chooses among the calm labels. All four have the same
   target (80%), so a missing RSI never closes the day. A different target
   per calm label would need it to.
 - How often an input goes dark is not measured. Yahoo answered all six for
   30 Oct and 2 Nov in a read-only probe on 2 Nov.
-- The advisor's ADD gate reads the kept label on such a day, so an ADD can go
-  ahead in a market the live inputs that answered may call a crisis (FIX-024).
 
 **The breadth floor (calm regimes).** Deployment works toward at least
 `portfolio.min_holdings` (10) holdings and `portfolio.min_invested_inr` (₹10 L)
@@ -1777,31 +1786,37 @@ the run records "invested floor unreachable: equity ₹9,99,611 is below the
 ₹10,00,000 floor plus the ₹10,000 cash floor" and works toward ₹9.9 L.
 
 **Which ideas.** The day's buy candidates (section 8: fresh shelf ideas and
-the user's own watchlist BUYs), highest conviction first. A candidate's deep
-dive or analysis is on or before the review session, because the 16:30 run on
-day T reviews the previous session and books its trades at that session's
-close. So an idea Saturday's discovery run dives is first offered by
-Tuesday's run, which reviews Monday; Monday's run reviews Friday. The bound
-compares days: a watchlist analysis made on the review session's day after its
-15:30 close, or the owner's manual deep dive that evening, is offered for that
-session and bought at that close, so it can act on news from after its price
-(FIX-024). Each must:
+the user's own watchlist BUYs), highest conviction first. A candidate was
+decided before the review session's close: the 16:30 run on day T reviews
+the previous session and books its trades at that session's 15:30 IST
+close, and an idea decided after it read news from after its price. A
+watchlist analysis keeps its time; a deep dive keeps only its day, so it
+counts as made after that day's close. So an idea Saturday's discovery run
+dives is first offered by Tuesday's run, which reviews Monday (Monday's run
+reviews Friday). A watchlist BUY analysed on Monday at 20:00 IST, after
+results filed that evening, is first offered by Wednesday's run, at
+Tuesday's close; one analysed at 11:00 IST is offered by Tuesday's run, at
+Monday's close. A dive from the owner's manual discovery run on a weekday
+evening waits for the next session the same way. Each must:
 
 - not be held, and not have been sold on or after its latest deep dive
   (buying a stock back after a sale needs a new dive);
-- be priced at a close whose bar is on or after its latest deep dive (for a
-  watchlist BUY, its analysis day), in either gate mode
-  (`close_before_dive` in [`shelf.py`](../core/discovery/shelf.py)). When
-  the review session's bar is missing, or a manual run comes before the
-  close, the close is carried forward from an earlier bar. If that bar is
-  before the dive, the buy would act on a decision made after its price:
-  "close of 2026-10-30 is before the deep dive of 2026-10-31". A SWITCH's
-  buy leg and the exit shadow's switch test apply the same rule. An undated
-  bar is refused too;
+- be priced at a close struck after its latest deep dive or analysis, by
+  the same rule, in either gate mode (`close_before_dive` in
+  [`shelf.py`](../core/discovery/shelf.py)). When the review session's bar
+  is missing, the close is carried forward from an earlier bar; one struck
+  before the decision would book the buy at a price from before the news the
+  decision read: "close of 2026-10-30 is before the deep dive of 2026-10-31", or
+  "analysis of 2026-11-02 20:00 IST is after the close of 2026-11-02". A
+  SWITCH's buy leg and the exit shadow's switch test apply the same rule. An
+  undated bar is refused too. A manual run of a session that has not
+  closed (`POST /portfolio/run-advisor`, or `POST /scheduler/daily-review`
+  with that date) is refused, since every close it read would be the
+  session before's;
 - pass SA-003's gate: an actionable deep dive and a close dated the review
   session, with its identity resolved. In `enforce` mode anything else is
   withheld; in `record` mode it is bought and the note says what enforce
-  would have withheld (a carried-forward bar on or after the dive);
+  would have withheld (a carried-forward bar from after the decision);
 - be cleared by NSE's surveillance report (above);
 - sit inside its entry band and above its invalidation level;
 - leave room for at least one share under the caps and the cash floor.
@@ -2342,19 +2357,24 @@ does not get in.
 [core/discovery/candidates.py](../core/discovery/candidates.py)'s list, built at each 16:30
 review, whether as a SWITCH destination or with idle cash (section 6):
 
-- shelf ideas whose latest dive is at most 30 days old and on or before the
-  review session. An older idea waits for Saturday's re-dive, because its band
-  and conviction describe a month-old price. A dive after the review session
-  waits for a run that reviews a session on or after it ("deep dive of
-  2026-10-31 is after the review session 2026-10-30; waits for a review of a
-  session on or after it"): the run books at the review session's close, and
-  a Saturday dive reads news from after Friday's close;
+- shelf ideas whose latest dive is at most 30 days old and made before the
+  review session's 15:30 IST close. An older idea waits for Saturday's
+  re-dive, because its band and conviction describe a month-old price. A dive
+  keeps only its day, so it counts as made after that day's close, and waits
+  for a run that reviews a later session ("close of 2026-10-30 is before the
+  deep dive of 2026-10-31; waits for a review of a later session"): the run
+  books at the review session's close, and a Saturday dive reads news from
+  after Friday's close;
 - the user's own watchlist BUYs (`discovery.watchlist_buys`). The stock's
   latest analysis in the score history must be a BUY or STRONG BUY, with an
   actionable data gate, conviction at the floor or above, at most 30 days old,
-  for a stock NSE lists as a company. Its entry band and invalidation level
-  come from its close on the analysis day, as a deep dive sets them, so the
-  SA-050 entry rule applies unchanged. A stock the autopilot itself sold onto
+  run before the review session's close, for a stock NSE lists as a company
+  ("analysis of 2026-11-02 20:00 IST is after the close of 2026-11-02; waits
+  for a review of a later session"). Its entry band and invalidation level
+  come from the last close the analysis could have read (its own day's once
+  that session has closed, else the one before), as a deep dive sets them
+  from the close it read, so the SA-050 entry rule applies unchanged. A
+  stock the autopilot itself sold onto
   the watchlist does not qualify: buying it back needs a new deep dive. The
   record-mode gate keeps an unverified shelf idea as a possible destination
   (section 4). A watchlist stock gets no such allowance: an unqualified one is
@@ -3158,11 +3178,10 @@ learning to `observe`. SA-023 puts learned lessons on measurable probation.
 ### Portfolio economics
 
 - Idle-cash deployment (section 6, Cash deployment) ships off. **Planned:**
-  after FIX-023 (a regime label built on a fallback input opens no position)
-  and FIX-024 (an idea analysed after a session's close is not bought at that
-  close), the owner deposits ₹2 L of paper capital, reads the paper lane's
-  record of shelf ideas against the Nifty, and switches it on; a month later
-  the Nifty comparison (section 7) judges the deployed cash (SA-049's rollout).
+  after FIX-023 (a regime label built on a fallback input opens no position),
+  the owner deposits ₹2 L of paper capital, reads the paper lane's record of
+  shelf ideas against the Nifty, and switches it on; a month later the Nifty
+  comparison (section 7) judges the deployed cash (SA-049's rollout).
 
 ### Product results
 
@@ -3308,8 +3327,7 @@ section 10) are part of the current design.
 | [SA-047](planning/PI-2026-09/stories/SA-047.md) | Decide with the factor engine; switch when it is not worse | Open | 4 Research; 5 Learning | SA-045, SA-046, SA-014, SA-020 |
 | [SA-048](planning/PI-2026-09/stories/SA-048.md) | Charge realistic trading costs and tax in paper P&L | Done | 6 Portfolio; 7 Marksheets | None |
 | [SA-049](planning/PI-2026-09/stories/SA-049.md) | Put idle cash to work in normal markets, with a 10-holding / ₹10 L floor | Done | 6 Portfolio; 8 Discovery | SA-050, SA-051 |
-| [FIX-023](planning/PI-2026-09/stories/FIX-023.md) | Deployment buys only on a regime read from live inputs, as of the review session | Done | 6 Portfolio; 5 Learning | SA-049 |
-| [FIX-024](planning/PI-2026-09/stories/FIX-024.md) | A buy waits for an analysis made before its close; an unknown regime adds nothing | Open | 6 Portfolio; 8 Discovery | FIX-023 |
+| [FIX-023](planning/PI-2026-09/stories/FIX-023.md) | Deployment buys only on a regime read from live inputs, as of the review session | Open | 6 Portfolio; 5 Learning | SA-049 |
 | [SA-050](planning/PI-2026-09/stories/SA-050.md) | Apply one sizing rule to every autopilot buy | Done | 6 Portfolio | None |
 | [SA-051](planning/PI-2026-09/stories/SA-051.md) | Show the portfolio against the Nifty, with honest labels | Done | 7 Marksheets; 10 Interface | None |
 | [FIX-006](planning/PI-2026-09/stories/FIX-006.md) | An anonymous watchlist read never falls back to the owner | Open | 10 Interface | None |

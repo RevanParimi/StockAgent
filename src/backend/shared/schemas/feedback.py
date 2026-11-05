@@ -305,6 +305,12 @@ class FeedbackEntry(BaseModel):
     # Market regime active at time of review — critical for regime-stratified accuracy analysis.
     # Enables: "risk_macro is 71% accurate in NORMAL but only 44% in MACRO_CRISIS"
     regime_label: str = "NORMAL"
+    # FIX-024: why regime_label is not established for this entry's day ("India
+    # VIX did not answer"): the live inputs left its severity open and the day
+    # had no established label, so regime_label is the kept sticky label (the
+    # raw one with no sticky state). The advisor holds ADD on such an entry.
+    # "" when established, and for entries written before the field existed.
+    regime_unavailable: str = ""
     # Static-tagger event tags for the review day (deterministic; see tag_events()).
     event_tags: list[str] = Field(default_factory=list)
     # lesson_ids whose claims fired in Step-7 revision today (see matching_lessons()).

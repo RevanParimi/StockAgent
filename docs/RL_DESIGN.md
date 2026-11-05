@@ -418,7 +418,8 @@ whole review runs under one learning mode.
 The market-wide sticky label is updated from it (section 27.1); outside the
 paper lane this write happens on every run, before anything can stop the
 review. The sticky label chooses the regime multipliers and is stored on the
-feedback entry.
+feedback entry, with `regime_unavailable` saying why when the day's label
+was kept rather than established.
 
 **Step 1 — the row.** The review loads the session's row from its own
 month's envelope, else from the previous month's. No envelope returns
@@ -1388,21 +1389,27 @@ label in `data/predictions/_regime_state.json`:
 - while a severe label is sticky, each milder detection adds to a calm
   streak, and 3 in a row (`regime.calm_days`) exit to the milder label; a
   severe detection resets the streak;
-- a second call on the same day changes nothing;
+- a second call on the same day changes nothing; a state written fresh
+  (the first run, or after a corrupt file) counts as updated for the day it
+  was entered, so a later call that day changes nothing either;
 - a day whose label the live signals do not establish (section 13), or whose
   detection raised, goes through `record_unavailable_day`: the label and
   calm streak stay, except that a severer label the live signals establish
   on their own is entered; the day is marked unavailable with the reason, so
   `label_recorded_for` gives no label for it and idle-cash deployment opens
   nothing. Such a day never counts as calm, so a crisis survives any run of
-  them. The first established detection of the same day replaces the mark;
+  them. The first established detection of the same day replaces the mark,
+  and a dark detection after an established one that day changes nothing;
 - with `rl.regime_sticky_enabled` off, the raw label passes through and
   nothing is written. A missing or corrupt file starts fresh (an unavailable
   day writes nothing then). Nothing raises.
 
 The daily review uses the sticky label for multipliers, the feedback entry
-and the `regime_flip` trigger; on an unavailable day, the label kept. The
-paper lane reads the raw label and writes nothing. Forecast generation and re-forecasts use the raw detection for
+and the `regime_flip` trigger; on an unavailable day, the label kept. Its
+feedback entry then says why in `regime_unavailable` ("India VIX did not
+answer"; empty when an earlier review established the day), and the
+portfolio advisor holds an ADD on such an entry. The paper lane reads the
+raw label and writes nothing. Forecast generation and re-forecasts use the raw detection for
 their Monte Carlo bands (section 4).
 
 ### 27.2 Shock-triggered re-forecast

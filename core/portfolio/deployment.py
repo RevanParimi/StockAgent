@@ -77,7 +77,7 @@ OUTCOME_WORDS = {
     "sold": "sold after the latest deep dive",
     "gate": "withheld by the data gate",
     "price": "without a close for the review session",
-    "before_dive": "priced at a close from before its latest deep dive",
+    "before_dive": "priced at a close from before its latest deep dive or analysis",
     "surveillance": "not cleared by NSE's surveillance report",
     "band": "above entry band",
     "invalidated": "at or below invalidation",

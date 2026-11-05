@@ -39,6 +39,7 @@ from pathlib import Path
 from typing import Callable
 
 from core.config import settings
+from core.intelligence.rl.nse_calendar import IST, session_close_at
 from backend.shared.pipeline import decision_gate as dg
 from backend.shared.schemas.discovery import DeepDiveResult, Shelf, ShelfIdea
 from backend.shared.schemas.portfolio import WatchlistItem
@@ -91,25 +92,57 @@ def dive_is_fresh(idea, on: date) -> bool:
     return dived is not None and (on - dived).days <= days
 
 
+def decision_time(idea) -> tuple[datetime, bool] | None:
+    """(when the idea's band, conviction and case were decided, whether that
+    time is known to the minute), or None when undatable (FIX-024). A
+    watchlist analysis keeps its own time (`analysed_at`). A deep dive keeps
+    only its day, so it counts as made at that day's close: after the close
+    of a trading day, before the next session's."""
+    stamp = str(getattr(idea, "analysed_at", "") or "")
+    if stamp:
+        try:
+            at = datetime.fromisoformat(stamp)
+        except ValueError:
+            at = None
+        if at is not None and at.tzinfo is not None:
+            return at.astimezone(IST), True
+    dived = last_dived(idea)
+    return (session_close_at(dived), False) if dived else None
+
+
+def close_before_decision(bar: date | None, at: datetime, timed: bool, what: str) -> str:
+    """Why a close from bar `bar` cannot price a buy decided at `at` (the
+    `what` of an idea: "deep dive" or "analysis"), or "" when it can: the
+    close must be struck after the decision, or the buy would be booked at a
+    price from before the news the decision read. An undated bar cannot be
+    shown to be after it. Examples: an analysis of Mon 2 Nov 20:00 IST is not
+    bought at Monday's 15:30 close, but is at Tuesday's; one of 11:00 IST is
+    bought at Monday's close; a deep dive dated Fri 30 Oct is bought at
+    Monday's close, never Friday's."""
+    when = f"{at:%Y-%m-%d %H:%M} IST" if timed else at.date().isoformat()
+    if bar is None:
+        return f"close from an undated bar; cannot be placed after the {what} of {when}"
+    if bar < at.date():
+        return f"close of {bar} is before the {what} of {when}"
+    if session_close_at(bar) > at:
+        return ""
+    if timed:
+        return f"{what} of {when} is after the close of {bar}"
+    return f"{what} of {when} has no time, so it counts as made after that day's close"
+
+
 def close_before_dive(bar: date | None, idea) -> str:
     """Why a close from bar `bar` cannot price a buy that opens a position in
-    `idea`, or "" when it can (FIX-023). The idea's band, conviction and case
-    come from its latest deep dive (for a watchlist idea, its analysis day),
-    which read news and prices up to that day, so a close from an earlier
-    bar would buy on a decision made after it. An undated bar cannot be shown
-    to be on or after the dive. Applies in either data-gate mode. Example:
-    the review session is Mon 2 Nov, its bar is missing, and the close comes
-    from Fri 30 Oct, while the idea was dived on Sat 31 Oct: "close of
-    2026-10-30 is before the deep dive of 2026-10-31"."""
-    dived = last_dived(idea) if idea is not None else None
-    if dived is None:
+    `idea`, or "" when it can (FIX-023, FIX-024): `close_before_decision` at
+    the idea's `decision_time`. Applies in either data-gate mode. Example: the
+    review session is Mon 2 Nov, its bar is missing, and the close comes from
+    Fri 30 Oct, while the idea was dived on Sat 31 Oct: "close of 2026-10-30
+    is before the deep dive of 2026-10-31"."""
+    decided = decision_time(idea) if idea is not None else None
+    if decided is None:
         return ""
     what = "analysis" if getattr(idea, "source", "") == "watchlist" else "deep dive"
-    if bar is None:
-        return f"close from an undated bar; cannot be placed on or after the {what} of {dived}"
-    if bar < dived:
-        return f"close of {bar} is before the {what} of {dived}"
-    return ""
+    return close_before_decision(bar, decided[0], decided[1], what)
 
 
 class ShelfStore:

@@ -462,16 +462,19 @@ def test_a_close_carried_forward_from_before_the_dive_opens_nothing(tmp_path, mo
     record = store.load_latest_digest()["deployment"]
     assert story._outcomes(record)["NEWX"] == (
         "before_dive", "close of 2026-10-30 is before the deep dive of 2026-10-31")
-    assert "1 idea priced at a close from before its latest deep dive" in record["reasons"]
+    assert ("1 idea priced at a close from before its latest deep dive or analysis"
+            in record["reasons"])
 
 
-def test_a_carried_forward_bar_on_the_dive_day_keeps_record_mode(tmp_path, monkeypatch):
-    """FRIX was dived on Fri 30 Oct; Monday's bar is missing, so its close is
-    Friday's: on the dive's day, so SA-003's record mode buys as before
-    (83 × ₹1,000, dated 2 Nov) and notes the bar."""
+def test_a_carried_forward_bar_after_the_dive_keeps_record_mode(tmp_path, monkeypatch):
+    """THUX was dived on Thu 29 Oct; Monday's bar is missing, so its close is
+    Friday's: after the dive, so SA-003's record mode buys as before
+    (83 × ₹1,000, dated 2 Nov) and notes the bar. (FIX-024: a dive dated
+    Friday itself counts as made after Friday's close, so it is refused:
+    tests/unit/test_analysis_time_fix024.py.)"""
     store, _ = story._pipeline_world(tmp_path, monkeypatch, [], 1_200_000.0,
-                                     [_idea("FRIX", 1000.0, 0.95, "pharma", FRI)],
-                                     {"FRIX": 1000.0})
+                                     [_idea("THUX", 1000.0, 0.95, "pharma", THU)],
+                                     {"THUX": 1000.0})
     carried = lambda sym, d: (SessionClose(1000.0, FRI, "agree"), d)  # noqa: E731
     monkeypatch.setattr(pipeline, "session_close", carried)
     monkeypatch.setattr(ap, "session_close", carried)
@@ -480,7 +483,7 @@ def test_a_carried_forward_bar_on_the_dive_day_keeps_record_mode(tmp_path, monke
     pipeline.run_post_review_pipeline(MON)
     buys = [t for t in store.load_transactions() if t.side == "BUY"]
     assert [(t.date, t.symbol, t.qty, t.price) for t in buys] == \
-        [("2026-11-02", "FRIX", 83.0, 1000.0)]
+        [("2026-11-02", "THUX", 83.0, 1000.0)]
     assert "its close is from bar 2026-10-30, not the review session" in buys[0].note
 
 
@@ -514,8 +517,10 @@ def test_the_close_and_dive_rule():
     assert close_before_dive(FRI, shelf) == "close of 2026-10-30 is before the deep dive of 2026-10-31"
     assert close_before_dive(FRI, watch) == "close of 2026-10-30 is before the analysis of 2026-10-31"
     assert close_before_dive(MON, shelf) == ""
-    assert close_before_dive(SAT, shelf) == ""                    # the dive's own day
-    assert close_before_dive(None, shelf) == ("close from an undated bar; cannot be placed on or "
+    # FIX-024: a dive keeps only its day, so it counts as made at that day's close
+    assert close_before_dive(SAT, shelf) == ("deep dive of 2026-10-31 has no time, so it counts "
+                                             "as made after that day's close")
+    assert close_before_dive(None, shelf) == ("close from an undated bar; cannot be placed "
                                               "after the deep dive of 2026-10-31")
     assert close_before_dive(FRI, None) == ""                     # no idea: the band check refuses
     undatable = shelf.model_copy(update={"dived": "", "source_screen_date": "", "added": ""})
@@ -542,7 +547,9 @@ def test_a_watchlist_buy_analysed_after_the_review_session_waits_for_the_next_ru
                                         latest_analysis=lambda s: rec, window=window,
                                         listing=pr004.companies("W"), managed={})
     out, excluded = offered(FRI)
-    assert out == [] and excluded == {"W": "latest analysis of 2026-10-31 is -1 days old (limit 30)"}
+    assert out == [] and excluded == {"W": (    # FIX-024: the reason names both times
+        "close of 2026-10-30 is before the analysis of 2026-10-31 12:30 IST; waits for a "
+        "review of a later session")}
     out, excluded = offered(MON)
     assert excluded == {}
     assert [(i.symbol, i.dived, i.entry_low, i.entry_high) for i in out] == \

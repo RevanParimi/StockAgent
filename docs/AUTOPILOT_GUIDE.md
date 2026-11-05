@@ -61,7 +61,9 @@ holding whose advisor call fails gets no advice that day and is not traded.
 
 **Other triggers.** `POST /portfolio/run-advisor` (owner only, optional
 `review_date`, accepted as background work) and the scheduler API's review
-task run the same pipeline. A future `review_date` is refused.
+task run the same pipeline. A future `review_date` is refused, and so is a
+session that has not closed yet (today before 15:30 IST): every close the run
+read would be the previous session's, booked under decisions made today.
 
 ## 2. Where everything lives
 
@@ -148,7 +150,7 @@ The cascade is **EXIT → TRIM → ADD → HOLD**; the first that fires wins.
 |---|---|
 | EXIT | Any of: unrealised loss at or beyond the stop; thesis broken and envelope DOWN; a re-forecast for `external_shock`, `thesis_break` or `preopen_shock` and envelope DOWN; `MACRO_CRISIS` and envelope DOWN; or a trailing stop: the peak was at least 10% above cost and the close has since fallen from it by at least the stop |
 | TRIM | Profit of at least 25%, and confidence falling by 0.05 or more, or a reversion prior of 0.20 or more |
-| ADD | Envelope UP, regime not `MACRO_CRISIS` or `RISK_OFF`, position weight below 10% of total equity, and at least 60% of the last 7 reviews correct |
+| ADD | Envelope UP, regime not `MACRO_CRISIS` or `RISK_OFF`, position weight below 10% of total equity, and at least 60% of the last 7 reviews correct; and the review day's regime established from live inputs: on a day it was not (India VIX did not answer, say), the ADD is held in either gate mode with the note `REGIME_UNAVAILABLE`, "an add was withheld: market regime unavailable for 2026-10-30: India VIX did not answer". The crisis EXIT still reads the kept label |
 | HOLD | Nothing above |
 | SWITCH | An EXIT becomes SWITCH when a buy candidate qualifies (below) |
 
@@ -157,17 +159,22 @@ portfolio's candidates
 (`core/discovery/candidates.py`):
 
 - active shelf ideas whose latest deep dive is at most 30 days old
-  (`discovery.redive_after_days`) and on or before the review session. An
-  older idea waits for Saturday's re-dive. A dive after the review session
-  waits for a run that reviews a session on or after it: the 16:30 run on
-  day T reviews the previous session and books at its close, so Saturday's
-  dives are first offered by Tuesday's run, which reviews Monday.
+  (`discovery.redive_after_days`) and made before the review session's close.
+  An older idea waits for Saturday's re-dive. The 16:30 run on day T reviews
+  the previous session and books at its 15:30 IST close, so an idea decided
+  after that close waits for a later session's review. A deep dive keeps
+  only its day and counts as made after that day's close: Saturday's dives
+  are first offered by Tuesday's run, which reviews Monday, and a dive from a
+  manual discovery run on Monday evening by Wednesday's.
 - the user's own watchlist stocks whose latest analysis is a BUY or STRONG BUY
   with an actionable data gate, conviction 0.55 or more, at most 30 days old,
-  for a stock NSE lists as a company (`discovery.watchlist_buys`). The entry
-  band is 97–102% of the close on the analysis day, as a deep dive sets it. A
-  stock the autopilot sold onto the watchlist (`source="autopilot"`) does not
-  qualify.
+  run before the review session's close, for a stock NSE lists as a company
+  (`discovery.watchlist_buys`). An analysis on Monday at 20:00 IST is first
+  offered for Tuesday's close; one at 11:00 IST for Monday's. The entry band
+  is 97–102% of the last close the analysis could have read (its own day's
+  once that session has closed, else the one before), as a deep dive sets it
+  from the close it read. A stock the autopilot sold onto the watchlist
+  (`source="autopilot"`) does not qualify.
 
 Each candidate carries the sector it is bought and held under, which is
 what the sizing rule's sector cap (section 6) and the SWITCH's sector test
@@ -182,8 +189,9 @@ count:
   ("Auto Parts" is `automobile`), else `generic`.
 
 **Example:** on Tuesday 20 Oct a shelf idea last dived on 12 Sep is not a
-candidate. A watchlist stock analysed on 17 Oct as a BUY at 0.68, actionable,
-with a ₹500 close that day, is a candidate with a band of ₹485–₹510. The home
+candidate. A watchlist stock analysed on 17 Oct at 18:00 IST as a BUY at
+0.68, actionable, with a ₹500 close that day, is a candidate from the review
+of 20 Oct with a band of ₹485–₹510. The home
 page saves watchlist stocks with no sector; HEROMOTOCO added there is a
 candidate under its managed `automobile`, so with MARUTI and M&M already at
 28% of total equity it is capped at 30%.
@@ -417,12 +425,13 @@ The steps, after the day's sells, switch legs and ADDs:
    `autopilot.deploy_max_new_per_day` (2) today. Otherwise while holdings are
    below the floor in force, or invested is below the target, unless
    `portfolio.target_holdings` (12) are held and the regime's own share is met.
-3. **Candidates**, the day's buy candidates (section 3: each dive on or
-   before the review session), highest conviction first: not held; not sold
-   on or after its latest deep dive; a close whose bar is on or after its
+3. **Candidates**, the day's buy candidates (section 3: each decided
+   before the review session's close), highest conviction first: not held;
+   not sold on or after its latest deep dive; a close struck after its
    latest deep dive or watchlist analysis, in either gate mode
    (`shelf.close_before_dive`: "close of 2026-10-30 is before the deep dive
-   of 2026-10-31"; a SWITCH's buy leg applies it too); SA-003's gate (an
+   of 2026-10-31", "analysis of 2026-11-02 20:00 IST is after the close of
+   2026-11-02"; a SWITCH's buy leg applies it too); SA-003's gate (an
    actionable deep dive, a close dated the session, a resolved identity:
    `enforce` withholds, `record` buys and notes it); NSE's surveillance
    report; inside the entry

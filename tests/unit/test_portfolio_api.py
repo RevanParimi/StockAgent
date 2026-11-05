@@ -107,10 +107,34 @@ def test_advice_and_digest_empty_ok(client):
     assert client.get("/portfolio/digest/latest").status_code == 404
 
 
+def _ist_now(monkeypatch, hour, minute):
+    """The route's clock: today (the default review_date) at hour:minute IST."""
+    from datetime import datetime, time
+    import core.intelligence.rl.nse_calendar as cal
+    monkeypatch.setattr(cal, "now_ist",
+                        lambda: datetime.combine(date.today(), time(hour, minute), cal.IST))
+
+
 def test_run_advisor_returns_202(client, monkeypatch):
+    _ist_now(monkeypatch, 16, 0)       # FIX-024: today's session has closed
     monkeypatch.setattr(papi, "run_post_review_pipeline", lambda d: {"status": "completed"})
     resp = client.post("/portfolio/run-advisor")
     assert resp.status_code == 202
+
+
+@pytest.mark.parametrize("hour, minute", [(11, 0), (15, 29)])
+def test_run_advisor_refuses_a_session_that_has_not_closed(client, monkeypatch, hour, minute):
+    """FIX-024: before 15:30 IST, today's close does not exist; the run would
+    book its trades at the session before's closes, dated today."""
+    _ist_now(monkeypatch, hour, minute)
+    ran = []
+    monkeypatch.setattr(papi, "run_post_review_pipeline", lambda d: ran.append(d))
+    resp = client.post(f"/portfolio/run-advisor?review_date={date.today().isoformat()}")
+    assert resp.status_code == 422 and ran == []
+    assert "has not closed yet (15:30 IST)" in resp.json()["detail"]
+    _ist_now(monkeypatch, 15, 30)      # struck at 15:30: reviewable
+    assert client.post(f"/portfolio/run-advisor?review_date={date.today().isoformat()}"
+                       ).status_code == 202
 
 
 def test_add_holding_bad_date_422(client):

@@ -69,7 +69,7 @@ from core.intelligence.algorithms.indicators.fetcher import get_price_history
 from core.intelligence.seasonal.calendar import SeasonalCalendar
 from core.intelligence.regime.detector import RegimeDetector, apply_regime_multipliers
 from core.intelligence.regime.state import (
-    record_unavailable_day, update_sticky_regime, _read_state, _state_path)
+    label_recorded_for, record_unavailable_day, update_sticky_regime, _read_state, _state_path)
 from core.schemas.feedback import RegimeSnapshot, ThesisReview
 from core.intelligence.rl.agents.thesis_reviewer import ThesisReviewer, THESIS_REVIEW_THRESHOLD
 from core.intelligence.rl.workflows.generate_forecast import regenerate_envelope
@@ -621,6 +621,15 @@ def run_daily_review(
                 "[daily_review] %s: sticky regime update failed — using raw label (non-fatal): %s",
                 ticker, exc,
             )
+    # FIX-024: why the label this review writes to the feedback log is not
+    # established for its day ("" when it is): the inputs left its severity
+    # open and no review established the day, so the label is the kept sticky
+    # one (the raw one with no sticky state, or in the paper lane). The
+    # advisor holds ADD on such an entry; the crisis exit still reads it.
+    regime_kept_why = ""
+    if regime_snapshot.unavailable and (
+            paper or label_recorded_for(review_date.isoformat()) is None):
+        regime_kept_why = regime_snapshot.unavailable
 
     # Sticky-label-driven regime multipliers: recompute from settings using the
     # STICKY label (not the raw one) so the weight adjustment reflects the
@@ -1609,6 +1618,7 @@ def run_daily_review(
         direction_correct=direction_correct,
         graded_verdict=graded_verdict,
         regime_label=sticky_regime_label,
+        regime_unavailable=regime_kept_why,
         event_tags=today_tags,
         claims_fired=claims_fired,
         volume_vs_20d_avg=volume_vs_20d_avg,

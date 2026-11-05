@@ -131,6 +131,10 @@ class AdviceRecord(BaseModel):
     # SA-008: the instrument `close` priced (ticker, provider symbol, price
     # basis, identity status) on the advice date. {} = written before SA-008.
     instrument: dict = Field(default_factory=dict)
+    # FIX-024: "market regime unavailable for 2026-10-30: India VIX did not
+    # answer" when the review day's regime was not established (an ADD it
+    # would allow is held, note REGIME_UNAVAILABLE); "" when it was.
+    regime_unavailable: str = ""
     # DEPRECATED — never written by anything. See the class docstring.
     outcome_10td: float | None = None
     outcome_30td: float | None = None

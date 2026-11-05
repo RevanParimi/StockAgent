@@ -209,8 +209,11 @@ def test_a_switch_spends_the_sale_net_of_its_costs_and_pays_the_buy_costs(tmp_pa
     monkeypatch.setattr(ap, "session_close",
                         lambda sym, day: (SessionClose(50.0, day, "agree"), day))
     monkeypatch.setattr(ap, "symbol_identity_issue", lambda sym, session: "")
+    # Shelved the day before: FIX-024 counts a dive dated the review session
+    # itself as made after that session's close, so its close cannot buy it.
     idea = ShelfIdea(symbol="NEW", sector="it_sector", conviction=0.9, entry_low=45.0,
-                     entry_high=55.0, invalidation_level=40.0, thesis="t", added=D.isoformat())
+                     entry_high=55.0, invalidation_level=40.0, thesis="t",
+                     added=(D - timedelta(days=1)).isoformat())
     s = _account(tmp_path, cash=990_000.0, holdings=[_h("OLD", 100, 100.0)])
     rec = _advice("OLD", "SWITCH", 100.0)
     rec.switch_candidate = "NEW"

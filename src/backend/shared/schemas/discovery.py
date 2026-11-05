@@ -84,6 +84,10 @@ class ShelfIdea(BaseModel):
     # "watchlist": a user's own watchlist BUY offered as a buy candidate for
     # that user's portfolio. Built per review, never stored on the shelf.
     source: Literal["discovery", "watchlist"] = "discovery"
+    # FIX-024: a watchlist idea's analysis time (ISO, IST offset), so a buy
+    # at a session's close counts it only when it was made before that close.
+    # "" for a deep dive, which keeps only its day (shelf.decision_time).
+    analysed_at: str = ""
 
 
 class Shelf(BaseModel):

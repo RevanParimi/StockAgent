@@ -5,30 +5,33 @@ The autopilot buys an idea as a SWITCH destination, or with idle cash when
 deployment is on (core/portfolio/deployment.py). Either way it buys only
 from this list, which has two sources:
 
-- **Shelf ideas whose deep dive is fresh** (`shelf.dive_is_fresh`) **and on
-  or before the review session.** An idea whose latest deep dive is older
-  than DISCOVERY_REDIVE_AFTER_DAYS waits for Saturday's re-dive: its band and
-  conviction describe a month-old price. An idea whose latest deep dive is
-  after the review session waits for a review of a later session: the run
-  books its trades at the review session's close, and the dive read news
-  that came after it.
+- **Shelf ideas whose deep dive is fresh** (`shelf.dive_is_fresh`) **and
+  made before the review session's close.** An idea whose latest deep dive is
+  older than DISCOVERY_REDIVE_AFTER_DAYS waits for Saturday's re-dive: its
+  band and conviction describe a month-old price. The run books its trades
+  at the review session's 15:30 IST close, so an idea decided after that
+  close waits for a review of a later session: it read news that came after
+  the price (`shelf.close_before_dive`). A deep dive keeps only its day, so
+  it counts as made after that day's close.
 - **The user's own watchlist BUYs** (DISCOVERY_WATCHLIST_BUYS). A stock the
   user added, or promoted from the shelf, qualifies when its latest analysis
   in the score history is a BUY or STRONG BUY, passed the data gate as
   actionable, reaches the shelf's conviction floor, is fresh by the same
-  rule (and within DISCOVERY_STALE_DAYS), and NSE lists it as a company. It
-  gets an entry band and an invalidation level from its close on the
-  analysis day, exactly as a deep dive sets them, so SA-050's entry rule
-  applies to it unchanged. A stock the autopilot sold onto the watchlist
+  rule (and within DISCOVERY_STALE_DAYS), was run before the review
+  session's close, and NSE lists it as a company. It gets an entry band and
+  an invalidation level from the last close the analysis could have read,
+  exactly as a deep dive sets them from the close it read, so SA-050's entry
+  rule applies to it unchanged. A stock the autopilot sold onto the watchlist
   (source "autopilot") does not qualify: the exit rule has just sold it,
   and buying it back needs a new deep dive.
 
 Example: on Tuesday 20 Oct, a shelf idea last dived on 12 Sep (38 days ago)
 is not a candidate until Saturday's re-dive. An idea Saturday 31 Oct's run
 dived is not a candidate on Monday 2 Nov, whose 16:30 run reviews Friday 30
-Oct; Tuesday's run, reviewing Monday, offers it. A stock the user added to the
-watchlist, analysed on 17 Oct as a BUY at 0.68 with an actionable gate, is a
-candidate whose band is 97-102% of its 17 Oct close.
+Oct; Tuesday's run, reviewing Monday, offers it. A watchlist BUY analysed on
+Mon 2 Nov at 20:00 IST is not offered for Monday's close (Tuesday's run) but
+is for Tuesday's (Wednesday's run), its band 97-102% of Monday's close; one
+analysed at 11:00 IST is offered for Monday's close, its band from Friday's.
 
 **The sector a candidate carries** is the one it will be held under, so it
 must be the key its forecasts are written under. A managed stock keeps its
@@ -60,8 +63,10 @@ from backend.shared.pipeline import decision_gate as dg
 from backend.shared.schemas.discovery import ShelfIdea
 from core.config import settings
 from core.discovery.deep_dive import entry_levels, infer_sector, sector_from_classification
-from core.discovery.shelf import dive_is_fresh, last_dived
+from core.discovery.shelf import (
+    close_before_decision, close_before_dive, dive_is_fresh, last_dived)
 from core.discovery.universe import COMPANY, instrument_kind
+from core.intelligence.rl.nse_calendar import session_close_at
 from core.portfolio.promotion import is_valid_sector
 
 logger = logging.getLogger(__name__)
@@ -72,15 +77,21 @@ BUY_VERDICTS = ("BUY", "STRONG BUY")
 _NOT_QUALIFYING_SOURCES = ("autopilot",)
 
 
-def _ist_day(stamp) -> date | None:
-    """The IST calendar day of a score-history `run_at` (naive UTC ISO)."""
+def _ist_time(stamp) -> datetime | None:
+    """A score-history `run_at` (naive UTC ISO) in IST."""
     try:
         dt = datetime.fromisoformat(str(stamp).replace("Z", "+00:00"))
     except ValueError:
         return None
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=timezone.utc)
-    return dt.astimezone(IST).date()
+    return dt.astimezone(IST)
+
+
+def _ist_day(stamp) -> date | None:
+    """The IST calendar day of a score-history `run_at` (naive UTC ISO)."""
+    dt = _ist_time(stamp)
+    return dt.date() if dt is not None else None
 
 
 def _gate_status(record: dict) -> str:
@@ -151,12 +162,16 @@ def watchlist_idea(item, on: date, latest_analysis: Callable[[str], dict | None]
     verdict = str(record.get("verdict") or "").strip().upper()
     if verdict not in BUY_VERDICTS:
         return None, f"latest analysis is {verdict or 'without a verdict'}"
-    analysed = _ist_day(record.get("run_at"))
-    if analysed is None:
+    analysed_at = _ist_time(record.get("run_at"))
+    if analysed_at is None:
         return None, "latest analysis is undated"
+    analysed = analysed_at.date()
     age, limit = (on - analysed).days, watchlist_window_days()
-    if age < 0 or age > limit:
+    if age > limit:
         return None, f"latest analysis of {analysed} is {age} days old (limit {limit})"
+    late = close_before_decision(on, analysed_at, True, "analysis")
+    if late:
+        return None, f"{late}; waits for a review of a later session"
     gate = _gate_status(record)
     if not dg.is_actionable(gate):
         return None, f"latest analysis data gate {gate or 'missing'}"
@@ -170,14 +185,19 @@ def watchlist_idea(item, on: date, latest_analysis: Callable[[str], dict | None]
     kind = instrument_kind(symbol, listing)
     if kind != COMPANY:
         return None, f"NSE listing says {kind}, not a company"
+    # The band comes from the last close the analysis could have read: its
+    # own day's once that day's session has closed, else the day before's.
+    known = (analysed if session_close_at(analysed) <= analysed_at
+             else analysed - timedelta(days=1))
     sym_win = (window[(window["symbol"] == symbol)
-                      & (pd.to_datetime(window["date"]).dt.date <= analysed)]
+                      & (pd.to_datetime(window["date"]).dt.date <= known)]
                if window is not None and not window.empty else pd.DataFrame())
+    no_close = f"no close before the analysis of {analysed_at:%Y-%m-%d %H:%M} IST"
     if sym_win.empty:
-        return None, f"no close on or before {analysed}"
+        return None, no_close
     close = float(sym_win.sort_values("date")["close"].iloc[-1])
     if close <= 0:
-        return None, f"no close on or before {analysed}"
+        return None, no_close
     entry_low, entry_high, invalidation = entry_levels(close, sym_win)
     day = analysed.isoformat()
     if managed is None:
@@ -188,7 +208,7 @@ def watchlist_idea(item, on: date, latest_analysis: Callable[[str], dict | None]
         thesis=str(record.get("investment_thesis") or "")[:800],
         entry_low=entry_low, entry_high=entry_high, invalidation_level=invalidation,
         close_at_add=close, source_screen_date=day, data_gate=gate, dived=day,
-        source="watchlist",
+        source="watchlist", analysed_at=analysed_at.isoformat(),
     ), ""
 
 
@@ -199,9 +219,11 @@ def buy_candidates(portfolio, on: date, shelf_ideas: list, *,
                    managed: dict[str, str] | None = None) -> tuple[list, dict[str, str]]:
     """(the ideas this portfolio may buy on `on`, {excluded symbol: why}).
 
-    `on` is the review session, whose close the trades are booked at: a shelf
-    idea is offered only when its latest deep dive is on or before it, as a
-    watchlist analysis must be. Shelf ideas keep their order; watchlist
+    `on` is the review session, whose close the trades are booked at: an
+    idea is offered only when it was decided before that close
+    (`shelf.close_before_dive`): a watchlist analysis by its own time, a
+    deep dive, which keeps only its day, on a day before the session (FIX-024).
+    Shelf ideas keep their order; watchlist
     candidates follow. A symbol already held, or active on the shelf, is not
     offered from the watchlist (the shelf idea, fresh or not, is the record of
     it). Each carries the
@@ -216,11 +238,9 @@ def buy_candidates(portfolio, on: date, shelf_ideas: list, *,
     excluded: dict[str, str] = {}
     active = [i for i in shelf_ideas if getattr(i, "status", "active") == "active"]
     for idea in active:
-        dived = last_dived(idea)
-        if dived is not None and dived > on:
-            excluded[idea.symbol] = (
-                f"deep dive of {dived} is after the review session {on}; waits for a "
-                "review of a session on or after it")
+        late = close_before_dive(on, idea)
+        if late:
+            excluded[idea.symbol] = f"{late}; waits for a review of a later session"
         elif dive_is_fresh(idea, on):
             if managed is None:
                 managed = _managed_sectors()
@@ -233,7 +253,7 @@ def buy_candidates(portfolio, on: date, shelf_ideas: list, *,
                        else idea.model_copy(update={"sector": sector}))
         else:
             excluded[idea.symbol] = (
-                f"deep dive of {dived} is older than "
+                f"deep dive of {last_dived(idea)} is older than "
                 f"{settings.DISCOVERY_REDIVE_AFTER_DAYS} days; waits for its re-dive")
     if not settings.DISCOVERY_WATCHLIST_BUYS:
         return out, excluded

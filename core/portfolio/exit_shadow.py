@@ -391,13 +391,13 @@ def switch_buy_lands(quote, session: date, idea, *, identity_issue: str = "",
     """Whether a SWITCH's buy leg passes the checks the executor makes before
     sizing it (core/portfolio/autopilot.py `_execute_buys`), at the
     destination's close `quote` (a pricing.SessionClose for `session`; None
-    when it has none): a close; a bar on or after the idea's latest deep dive
-    (shelf.close_before_dive, either gate mode); under the data gate's
-    enforce, the session's own bar and a resolved identity (`identity_issue`
-    empty); NSE's surveillance report clearing the stock (`surveillance_issue`
-    empty, sizing.surveillance_issue); and a price inside its shelf idea's
-    entry band (sizing.entry_check). Pure. False means the proceeds stay in
-    cash.
+    when it has none): a close; a close struck after the idea's latest deep
+    dive or analysis (shelf.close_before_dive, either gate mode); under the
+    data gate's enforce, the session's own bar and a resolved identity
+    (`identity_issue` empty); NSE's surveillance report clearing the stock
+    (`surveillance_issue` empty, sizing.surveillance_issue); and a price
+    inside its shelf idea's entry band (sizing.entry_check). Pure. False
+    means the proceeds stay in cash.
 
     Not checked here: the executor's own re-fetch of the close, a buy of under
     one share after sizing, a buy already in the ledger."""

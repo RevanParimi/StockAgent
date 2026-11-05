@@ -51,6 +51,10 @@ class AdvisorSignals(BaseModel):
     unrealised_pnl_pct: float              # vs adj_avg_price, dividend-inclusive
     holding_age_days: int
     regime_label: str = "NORMAL"
+    # FIX-024: why regime_label is not established for its review day, as the
+    # deployment record says it ("market regime unavailable for 2026-10-30:
+    # India VIX did not answer"); "" when it is. Holds ADD in either gate mode.
+    regime_unavailable: str = ""
     thesis_intact: bool | None = None      # latest ThesisReview outcome, None = never reviewed
     reforecast_reason: str = ""            # latest reforecast event reason this cycle
     envelope_direction: str = "FLAT"       # UP | DOWN | FLAT remaining-forecast drift
@@ -237,6 +241,9 @@ def build_signals(
         entries = log.entries if log else []
         if entries:
             sig.regime_label = entries[-1].regime_label
+            if entries[-1].regime_unavailable:
+                sig.regime_unavailable = (f"market regime unavailable for {entries[-1].date}: "
+                                          f"{entries[-1].regime_unavailable}")
             last7 = entries[-7:]
             sig.direction_accuracy_7d = round(
                 sum(1 for e in last7 if e.direction_correct) / len(last7), 4
@@ -519,6 +526,12 @@ def decide(
     inputs; when either stops an action it would otherwise take, the note
     DATA_GATE is added. Neither can block EXIT or TRIM.
 
+    FIX-024: on a day whose regime the live inputs did not establish
+    (`signals.regime_unavailable`), an ADD the kept label would allow is held
+    with the note REGIME_UNAVAILABLE, in either gate mode: the label is the
+    last one established, not the day's. The crisis exit still reads the
+    kept label, since a sale is never blocked by a missing input.
+
     SA-008: `identity_hold` (why the close is not this holding's price basis)
     holds every verdict, EXIT and TRIM included, with the note IDENTITY. It is
     the corp-action invariant again: a demerged parent's price is the
@@ -582,9 +595,11 @@ def decide(
             and signals.position_weight_pct < settings.ADVISOR_MAX_POSITION_PCT
             and (signals.direction_accuracy_7d or 0.0) >= settings.ADVISOR_ADD_MIN_DIRECTION_ACCURACY
         ):
+            if signals.regime_unavailable:
+                notes.append("REGIME_UNAVAILABLE")   # FIX-024: no new risk on a kept label
             if add_blocks:
                 data_gated = True          # SA-003: no new risk on unverified data
-            else:
+            if not signals.regime_unavailable and not add_blocks:
                 triggers.append("add_bullish_healthy")
                 add_fired = True
 
@@ -648,4 +663,5 @@ def decide(
         confidence=signals.confidence,
         switch_candidate=switch_candidate,
         rationale_hash=hashlib.sha256(rationale.encode()).hexdigest()[:16],
+        regime_unavailable=signals.regime_unavailable,
     )

@@ -148,9 +148,11 @@ def update_sticky_regime(detected_label: str, today: str) -> RegimeState:
       (since=today, calm_streak=0).
     - Same-day repeat calls (same `today` as the persisted state's last
       update) are idempotent: state is returned unchanged without
-      incrementing calm_streak again or re-writing the file. A day
-      `record_unavailable_day` marked is not yet updated: the first call for
-      it applies the transition and clears the mark.
+      incrementing calm_streak again or re-writing the file. A state written
+      fresh (no `_last_update` marker yet) counts as updated for the day it
+      was entered (`since`). A day `record_unavailable_day` marked is not yet
+      updated: the first call for it applies the transition and clears the
+      mark.
     """
     try:
         if not getattr(settings, "RL_REGIME_STICKY_ENABLED", True):
@@ -173,8 +175,7 @@ def update_sticky_regime(detected_label: str, today: str) -> RegimeState:
         # `today` already. To keep this robust and simple, we persist an
         # internal `_last_update` marker in the JSON (not part of the
         # dataclass contract) so repeat calls for the same date are no-ops.
-        last_update = _read_last_update(path)
-        if last_update == today and not _read_unavailable(path):
+        if _established_for(path, current, today):
             return current
 
         detected_sev = severity(detected_label)
@@ -213,7 +214,10 @@ def record_unavailable_day(today: str, why: str, floor_label: str = "") -> Regim
     layer off, or no readable state: nothing is written, and the caller keeps
     the raw label). Never raises.
 
-    - The day is already established (updated for `today`, not marked): no-op.
+    - The day is already established (`_established_for`: updated for
+      `today`, or written fresh on it, and not marked): no-op. Example (FIX-024):
+      with no state file, Friday's first review writes a fresh NORMAL; a later
+      review the same day that finds India VIX empty leaves Friday NORMAL.
     - Otherwise the state is kept, except that a `floor_label` severer than
       the sticky label is entered (since=today, calm_streak=0). calm_streak is
       neither incremented nor reset. The day is marked unavailable with `why`.
@@ -225,7 +229,7 @@ def record_unavailable_day(today: str, why: str, floor_label: str = "") -> Regim
         current = _read_state(path)
         if current is None:
             return None
-        if _read_last_update(path) == today and not _read_unavailable(path):
+        if _established_for(path, current, today):
             return current
         new_state = current
         if floor_label and severity(floor_label) > severity(current.label):
@@ -248,10 +252,7 @@ def label_recorded_for(today: str) -> str | None:
     was entered (`since`)."""
     path = _state_path()
     state = _read_state(path)
-    if state is None:
-        return None
-    last = _read_last_update(path)
-    if (last or state.since) != today or _read_unavailable(path):
+    if state is None or not _established_for(path, state, today):
         return None
     return state.label
 
@@ -290,6 +291,15 @@ def _read_marker(path: Path, key: str) -> str | None:
 
 def _read_last_update(path: Path) -> str | None:
     return _read_marker(path, "_last_update")
+
+
+def _established_for(path: Path, state: RegimeState, today: str) -> bool:
+    """Whether `state` (read from `path`) holds an established label for
+    `today`: updated for that day, a state written fresh (no `_last_update`
+    marker yet) counting for the day it was entered (`since`), and the day
+    not marked unavailable. The one test `update_sticky_regime`,
+    `record_unavailable_day` and `label_recorded_for` share (FIX-024)."""
+    return (_read_last_update(path) or state.since) == today and not _read_unavailable(path)
 
 
 def _read_unavailable(path: Path) -> str:

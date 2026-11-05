@@ -147,6 +147,30 @@ def test_scheduler_daily_review_future_date_422():
     assert "future" in resp.json()["detail"].lower()
 
 
+@pytest.mark.parametrize("hour, minute, status", [(11, 0, 422), (15, 29, 422), (15, 30, 202)])
+def test_scheduler_daily_review_refuses_a_session_that_has_not_closed(monkeypatch, hour, minute,
+                                                                     status):
+    """FIX-024: today before 15:30 IST has no close to grade, and the pipeline
+    after the reviews would book trades at the session before's closes."""
+    import core.intelligence.rl.nse_calendar as cal
+    import services.api.routes.scheduler_api as sapi
+    monkeypatch.setattr(cal, "now_ist", lambda: datetime.combine(
+        date.today(), datetime.min.time().replace(hour=hour, minute=minute), cal.IST))
+    ran = []
+
+    async def no_reviews(tickers, dates, skip_existing=False):
+        ran.append(dates)
+    monkeypatch.setattr(sapi, "_review_task", no_reviews)
+    app = FastAPI()
+    app.include_router(sapi.router)
+    resp = TestClient(app).post(f"/scheduler/daily-review?review_date={date.today().isoformat()}")
+    assert resp.status_code == status
+    if status == 422:
+        assert "has not closed yet (15:30 IST)" in resp.json()["detail"] and ran == []
+    else:
+        assert ran == [[date.today()]]
+
+
 def test_manual_delete_is_idempotent_and_atomic(client, tmp_path, monkeypatch):
     """AUD-007: delete = ONE critical section; repeating it must 404 and must
     not double-record the SELL in the ledger."""

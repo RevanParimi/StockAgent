@@ -720,6 +720,7 @@ def test_a_sale_on_the_day_of_the_latest_dive_waits_for_a_newer_dive(tmp_path, m
 # Issue time: the 16:30 run books at the close of the session it reviews
 # ---------------------------------------------------------------------------
 
+THU = date(2026, 10, 29)
 FRI, SAT, MON, TUE = (date(2026, 10, 30), date(2026, 10, 31), date(2026, 11, 2),
                       date(2026, 11, 3))
 
@@ -735,8 +736,10 @@ def test_an_idea_dived_after_the_review_session_is_not_offered(monkeypatch):
     """Monday 2 Nov's 16:30 run reviews Friday 30 Oct. NEWX (first dived
     Sat 31 Oct) and OLDX (on the shelf since 3 Oct, re-dived Sat 31 Oct)
     carry what Saturday's dives read, so neither is offered for Friday's
-    close; FRIX, dived on Friday itself, is. With re-dives off the bound
-    still holds. Tuesday's run, reviewing Monday, offers all three."""
+    close. FIX-024: nor is FRIX, dived on Friday itself, since a deep dive
+    keeps only its day and so counts as made after that day's 15:30 close.
+    With re-dives off the bound still holds. Tuesday's run, reviewing
+    Monday, offers all three."""
     from core.discovery.candidates import buy_candidates
     from core.intelligence.rl.nse_calendar import trading_days_ago
     assert trading_days_ago(MON, 1) == FRI and trading_days_ago(TUE, 1) == MON
@@ -744,13 +747,15 @@ def test_an_idea_dived_after_the_review_session_is_not_offered(monkeypatch):
     old = _first_dived("OLDX", 100.0, date(2026, 10, 3)).model_copy(
         update={"dived": SAT.isoformat()})
     portfolio = SimpleNamespace(holdings=[], watchlist=[])
-    why = ("deep dive of 2026-10-31 is after the review session 2026-10-30; waits for a "
-           "review of a session on or after it")
+    why = ("close of 2026-10-30 is before the deep dive of 2026-10-31; waits for a "
+           "review of a later session")
+    same_day = ("deep dive of 2026-10-30 has no time, so it counts as made after that day's "
+                "close; waits for a review of a later session")
     for redive_days in (30, 0):
         monkeypatch.setattr(settings, "DISCOVERY_REDIVE_AFTER_DAYS", redive_days)
         out, excluded = buy_candidates(portfolio, FRI, [new, old, fri], managed={})
-        assert [i.symbol for i in out] == ["FRIX"], redive_days
-        assert excluded == {"NEWX": why, "OLDX": why}, redive_days
+        assert out == [], redive_days
+        assert excluded == {"NEWX": why, "OLDX": why, "FRIX": same_day}, redive_days
         out, excluded = buy_candidates(portfolio, MON, [new, old, fri], managed={})
         assert [i.symbol for i in out] == ["NEWX", "OLDX", "FRIX"] and excluded == {}
 
@@ -770,8 +775,8 @@ def test_mondays_run_waits_for_a_saturday_dive_and_tuesdays_buys_it_at_mondays_c
     caplog.set_level(logging.INFO, logger="core.portfolio.pipeline")
     pipeline.run_post_review_pipeline(FRI)
     assert [t for t in store.load_transactions() if t.side == "BUY"] == []
-    assert ("'NEWX': 'deep dive of 2026-10-31 is after the review session 2026-10-30; "
-            "waits for a review of a session on or after it'") in caplog.text
+    assert ("'NEWX': 'close of 2026-10-30 is before the deep dive of 2026-10-31; "
+            "waits for a review of a later session'") in caplog.text
     pipeline.run_post_review_pipeline(MON)
     assert [(t.date, t.symbol, t.qty, t.price, t.verdict) for t in store.load_transactions()
             if t.side == "BUY"] == [("2026-11-02", "NEWX", 83.0, 1000.0, "DEPLOY")]
@@ -779,17 +784,18 @@ def test_mondays_run_waits_for_a_saturday_dive_and_tuesdays_buys_it_at_mondays_c
 
 def test_a_saturday_dive_is_no_switch_destination_on_mondays_run(tmp_path, monkeypatch):
     """The advisor chooses a SWITCH destination from the same candidates:
-    for the held AAA, Monday's run (review Friday) offers only FRIX, dived
-    Friday; Tuesday's run (review Monday) offers NEWX, dived Saturday, too.
+    for the held AAA, Monday's run (review Friday) offers only THUX, dived
+    Thursday (FIX-024: a dive dated Friday would count as made after Friday's
+    close); Tuesday's run (review Monday) offers NEWX, dived Saturday, too.
     Deployment is off here, so the advisor is the only buyer."""
     import core.portfolio.pipeline as pipeline
     monkeypatch.setattr(settings, "DISCOVERY_REDIVE_AFTER_DAYS", 30)
     monkeypatch.setattr(settings, "AUTOPILOT_DEPLOY_IDLE_CASH", False)
     monkeypatch.setattr(ap, "_today_ist", lambda: TUE)
-    ideas = [_first_dived("NEWX", 100.0, SAT, 0.95), _first_dived("FRIX", 100.0, FRI, 0.9,
+    ideas = [_first_dived("NEWX", 100.0, SAT, 0.95), _first_dived("THUX", 100.0, THU, 0.9,
                                                                    "metals")]
     _pipeline_world(tmp_path, monkeypatch, [_h("AAA", 1000, 100.0, "it_sector")], 900_000.0,
-                    ideas, {"AAA": 100.0, "NEWX": 100.0, "FRIX": 100.0})
+                    ideas, {"AAA": 100.0, "NEWX": 100.0, "THUX": 100.0})
     offered: dict = {}
     real = pipeline.gated_decide
 
@@ -799,7 +805,7 @@ def test_a_saturday_dive_is_no_switch_destination_on_mondays_run(tmp_path, monke
     monkeypatch.setattr(pipeline, "gated_decide", spy)
     for run in ([FRI], [MON]):
         pipeline.run_post_review_pipeline(run[0])
-    assert offered == {FRI: {("FRIX",)}, MON: {("NEWX", "FRIX")}}
+    assert offered == {FRI: {("THUX",)}, MON: {("NEWX", "THUX")}}
 
 
 # ---------------------------------------------------------------------------

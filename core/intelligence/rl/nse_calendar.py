@@ -213,6 +213,11 @@ def now_ist() -> datetime:
     return datetime.now(IST)
 
 
+def session_close_at(day: date) -> datetime:
+    """When session `day`'s close is struck: 15:30 IST that day."""
+    return datetime.combine(day, _MARKET_CLOSE, IST)
+
+
 def market_session(now: datetime | None = None) -> dict:
     """
     Resolve the NSE equity-market session state for a given moment, in IST.

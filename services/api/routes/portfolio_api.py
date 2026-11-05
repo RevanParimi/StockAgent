@@ -503,13 +503,23 @@ async def run_advisor(
             )
     else:
         target = date.today()
-    from core.intelligence.rl.nse_calendar import now_ist
-    if target > now_ist().date():
+    from core.intelligence.rl.nse_calendar import now_ist, session_close_at
+    now = now_ist()
+    if target > now.date():
         # AUD-044: a future date would stamp last_autopilot_run forward and
         # brick the executor's monotonic guard until that date passes.
         raise HTTPException(
             status_code=422,
             detail=f"review_date {target} is in the future (IST) — refusing.",
+        )
+    if session_close_at(target) > now:
+        # FIX-024: the run books its trades at the review session's close;
+        # before 15:30 IST that close does not exist, and every price would be
+        # carried forward from the session before, under decisions made today.
+        raise HTTPException(
+            status_code=422,
+            detail=(f"review_date {target} has not closed yet (15:30 IST); review the "
+                    "previous session, or run after the close — refusing."),
         )
 
     async def _task() -> None:

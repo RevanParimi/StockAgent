@@ -423,7 +423,7 @@ KT section 8.
 | Guards | `core/discovery/guards.py` | Liquidity, series, price and circuit gates, then surveillance and float on the shortlist |
 | Deep dive | `core/discovery/deep_dive.py` | The ordinary analysis per name, so its decision gate is the idea's `data_gate`; entry zone and invalidation level; at most 20 analyst calls a week, re-dives first |
 | Shelf | `core/discovery/shelf.py` | 20 ideas, at most 3 per market sector; stronger ideas displace weaker ones; re-dives refresh or drop an idea; non-companies dropped; promotion to the watchlist |
-| Buy candidates | `core/discovery/candidates.py` | Per portfolio, per review: shelf ideas dived in the last 30 days and on or before the review session (Saturday's dives first from Tuesday's run, which reviews Monday) plus the user's own fresh, actionable watchlist BUYs |
+| Buy candidates | `core/discovery/candidates.py` | Per portfolio, per review: shelf ideas dived in the last 30 days and before the review session's 15:30 IST close (a dive keeps only its day, so Saturday's dives first from Tuesday's run, which reviews Monday) plus the user's own fresh, actionable watchlist BUYs run before that close |
 | Paper lane | `core/discovery/paper_lane.py` | Real forecasts under an isolated store root, with no learning writes |
 | IPO tracker | `core/discovery/ipo_tracker.py` | Recent listings ranked on listing evidence, delivery, accumulation and subscription |
 | Schemas | `src/backend/shared/schemas/discovery.py` | Screen, deep dive, shelf |

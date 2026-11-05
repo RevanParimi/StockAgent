@@ -283,8 +283,8 @@ def _execute_buys(portfolio: Portfolio, advice: list[AdviceRecord],
                            cand, exc)
             _note_skipped_buy(sell, cand, proceeds, "no price for the review session")
             continue
-        # FIX-023: never at a close from before the idea's latest deep dive,
-        # whatever the data gate's mode.
+        # FIX-023, FIX-024: only at a close struck after the idea was decided
+        # (its deep dive or analysis), whatever the data gate's mode.
         early = close_before_dive(quote.bar_date, (shelf_index or {}).get(cand))
         if early:
             logger.warning("[autopilot] SWITCH buy %s skipped: %s", cand, early)

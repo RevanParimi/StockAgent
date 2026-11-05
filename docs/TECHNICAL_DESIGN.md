@@ -1,8 +1,8 @@
 # StockAgent — Technical Design and Knowledge Transfer
 
-**Edition:** 2026-11-02 · **Audience:** engineers and teammates learning the product
+**Edition:** 2026-11-05 · **Audience:** engineers and teammates learning the product
 
-**Code inspected:** `f064010dcc7535faf2ea32966f172c3522a51c26`
+**Code inspected:** `898f5c55d3d465eafd783b27722f011ce1782431`
 
 **PDF:** [StockAgent-Three-Loops.pdf](StockAgent-Three-Loops.pdf), generated from this Markdown.
 
@@ -35,16 +35,15 @@ triggered no production job, backfill or notification.
 
 ### Production state at this edition
 
-Production runs `f47d246` (FIX-011, code `866eae5`), deployed at about 00:14
+Production runs `c5165a1` (SA-049, code `f064010`), deployed at about 20:12
 IST on 2 November 2026 (the deployment list showed it SUCCESS and `/health`
-answered 200). The inspected code adds SA-049's idle-cash deployment behind a
-switch that ships off, NSE's surveillance report checked on every buy that
-opens a position, buy candidates bounded by the review session, and the
-paper-capital deposit (sections 6, 7 and 8). It is
-committed but not yet deployed, and counts as running
-only once a read-only check of the deployment list and `/health` confirms that
-deploy. The table gives the configuration that
-differs from the repository and the state of each operational control.
+answered 200), with idle-cash deployment off. The inspected code adds FIX-023:
+a regime label counts only when live inputs establish it, read as of the review
+session, and no buy that opens a position takes a close from before its idea's
+latest dive (section 6). It is committed but not yet deployed, and counts as
+running only once a read-only check of the deployment list and `/health`
+confirms that deploy. The table gives the configuration that differs from the
+repository and the state of each operational control.
 
 | Area | State in production | Evidence |
 |---|---|---|
@@ -1742,13 +1741,15 @@ fallback (VIX 17.0) recorded RISK_OFF and bought two positions in a market
 the live VIX would have called MACRO_CRISIS. A missing input that cannot
 change the severity does not close the day: with VIX 30 and the Nifty down
 3%, MACRO_CRISIS holds whatever Brent did. A real VIX of 17.0 is a live
-reading. Two limits:
+reading. Three limits:
 
 - The sector RSI only chooses among the calm labels. All four have the same
   target (80%), so a missing RSI never closes the day. A different target
   per calm label would need it to.
 - How often an input goes dark is not measured. Yahoo answered all six for
   30 Oct and 2 Nov in a read-only probe on 2 Nov.
+- The advisor's ADD gate reads the kept label on such a day, so an ADD can go
+  ahead in a market the live inputs that answered may call a crisis (FIX-024).
 
 **The breadth floor (calm regimes).** Deployment works toward at least
 `portfolio.min_holdings` (10) holdings and `portfolio.min_invested_inr` (₹10 L)
@@ -1780,7 +1781,11 @@ the user's own watchlist BUYs), highest conviction first. A candidate's deep
 dive or analysis is on or before the review session, because the 16:30 run on
 day T reviews the previous session and books its trades at that session's
 close. So an idea Saturday's discovery run dives is first offered by
-Tuesday's run, which reviews Monday; Monday's run reviews Friday. Each must:
+Tuesday's run, which reviews Monday; Monday's run reviews Friday. The bound
+compares days: a watchlist analysis made on the review session's day after its
+15:30 close, or the owner's manual deep dive that evening, is offered for that
+session and bought at that close, so it can act on news from after its price
+(FIX-024). Each must:
 
 - not be held, and not have been sold on or after its latest deep dive
   (buying a stock back after a sale needs a new dive);
@@ -3153,10 +3158,11 @@ learning to `observe`. SA-023 puts learned lessons on measurable probation.
 ### Portfolio economics
 
 - Idle-cash deployment (section 6, Cash deployment) ships off. **Planned:**
-  after FIX-023 (a regime label built on a fallback input opens no position),
-  the owner deposits ₹2 L of paper capital, reads the paper lane's record of
-  shelf ideas against the Nifty, and switches it on; a month later the Nifty
-  comparison (section 7) judges the deployed cash (SA-049's rollout).
+  after FIX-023 (a regime label built on a fallback input opens no position)
+  and FIX-024 (an idea analysed after a session's close is not bought at that
+  close), the owner deposits ₹2 L of paper capital, reads the paper lane's
+  record of shelf ideas against the Nifty, and switches it on; a month later
+  the Nifty comparison (section 7) judges the deployed cash (SA-049's rollout).
 
 ### Product results
 
@@ -3302,7 +3308,8 @@ section 10) are part of the current design.
 | [SA-047](planning/PI-2026-09/stories/SA-047.md) | Decide with the factor engine; switch when it is not worse | Open | 4 Research; 5 Learning | SA-045, SA-046, SA-014, SA-020 |
 | [SA-048](planning/PI-2026-09/stories/SA-048.md) | Charge realistic trading costs and tax in paper P&L | Done | 6 Portfolio; 7 Marksheets | None |
 | [SA-049](planning/PI-2026-09/stories/SA-049.md) | Put idle cash to work in normal markets, with a 10-holding / ₹10 L floor | Done | 6 Portfolio; 8 Discovery | SA-050, SA-051 |
-| [FIX-023](planning/PI-2026-09/stories/FIX-023.md) | Deployment buys only on a regime read from live inputs, as of the review session | Open | 6 Portfolio; 5 Learning | SA-049 |
+| [FIX-023](planning/PI-2026-09/stories/FIX-023.md) | Deployment buys only on a regime read from live inputs, as of the review session | Done | 6 Portfolio; 5 Learning | SA-049 |
+| [FIX-024](planning/PI-2026-09/stories/FIX-024.md) | A buy waits for an analysis made before its close; an unknown regime adds nothing | Open | 6 Portfolio; 8 Discovery | FIX-023 |
 | [SA-050](planning/PI-2026-09/stories/SA-050.md) | Apply one sizing rule to every autopilot buy | Done | 6 Portfolio | None |
 | [SA-051](planning/PI-2026-09/stories/SA-051.md) | Show the portfolio against the Nifty, with honest labels | Done | 7 Marksheets; 10 Interface | None |
 | [FIX-006](planning/PI-2026-09/stories/FIX-006.md) | An anonymous watchlist read never falls back to the owner | Open | 10 Interface | None |

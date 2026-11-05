@@ -115,6 +115,20 @@ too, the label is NORMAL. FIX-023 opens no position on a label built on a fallba
 decides which session's bars the label is read from. SA-049's re-review (2 Nov) added one
 item: when the review session's bar is missing and an earlier close is carried forward, record
 mode can buy an idea dived after that close. FIX-023 refuses such a buy (3 points).
+FIX-024, added on 2026-11-04 from FIX-023's fresh review (routing delegated), comes directly
+after FIX-023 and is recommended before deployment is switched on. A watchlist analysis made on
+a session's day after its 15:30 close is offered for that session and bought at that close, so
+it can act on news from after its price. On a day whose regime is unavailable, ADD still reads
+the last established label. And a fresh regime state can lose its own day to a later dark
+review (2 points).
+FIX-025 and FIX-026, added on 2026-11-04 from the owner's decisions on SA-049's design
+choices, come after FIX-024. FIX-025 drops the hard 10 holdings: the analysis's BUY ideas
+decide how many stocks are held (up to 15, with 10 a soft minimum), and each position is a
+share of equity (80% ÷ 12), so it grows when the user adds money. A top-up now checks NSE's
+surveillance report, and a stock the autopilot sold is re-analysed the next Saturday. It must
+be accepted before deployment is switched on (3 points). FIX-026 lets the deep dive's own
+LLM call name a new stock's sector from our list instead of fixed Yahoo tables, and flags an
+empty, unknown or disputed reading in the weekly summary and the watchdog (3 points).
 
 | Order | Story | Priority | Points | Result | Dependencies |
 |---:|---|---|---:|---|---|
@@ -140,17 +154,20 @@ mode can buy an idea dived after that close. FIX-023 refuses such a buy (3 point
 | 20 | [FIX-011](stories/FIX-011.md) | P1 | 2 | NSE's per-symbol meta API is gone: restore the surveillance and suspension guards and an industry source | — |
 | 21 | [SA-049](stories/SA-049.md) | P1 | 7 | Idle cash to work, with the breadth floor (12 target holdings) and the ₹2 L top-up | SA-050, SA-051 |
 | 22 | [FIX-023](stories/FIX-023.md) | P1 | 3 | Deployment buys only on a regime read from live inputs, as of the review session | SA-049 |
-| 23 | [PR-005](stories/PR-005.md) | P1 | 6 | An investment case for every position | PR-006 |
-| 24 | [PR-013](stories/PR-013.md) | P2 | 2 | Show where losses come from and what waiting costs | PR-002, PR-009 |
-| 25 | [PR-007](stories/PR-007.md) | P1 | 3 | Plain, fact-grounded buy and sell explanations | PR-005, PR-006 |
-| 26 | [PR-008](stories/PR-008.md) | P1 | 3 | "Your stocks overnight" at the top of the brief | PR-003, PR-006 |
-| 27 | [PR-010](stories/PR-010.md) | P1 | 5 | Four screens for members; an Operator menu for the owner | PR-001 |
-| 28 | [PR-012](stories/PR-012.md) | P2 | 3 | Models chosen by role, benched on our own data; cost rates refreshed | PR-007 |
-| 29 | [FIX-014](stories/FIX-014.md) | P2 | 1 | Above the 75% cap, a promoter wash must not score as insider buying | PR-011 |
-| 30 | [FIX-015](stories/FIX-015.md) | P2 | 1 | The shock exit reads the re-forecast's trigger, not its sentence | PR-009 |
-| 31 | [FIX-017](stories/FIX-017.md) | P2 | 2 | The holding sync reads every NSE corporate-action row it is given, under NSE's code | — |
-| 32 | [FIX-020](stories/FIX-020.md) | P2 | 1 | Correct the configured codes NSE does not list, and AAVAS's sector | — |
-| 33 | [FIX-022](stories/FIX-022.md) | P2 | 2 | The tax estimate at each lot's own cost, and SA-048's loose ends | — |
+| 23 | [FIX-024](stories/FIX-024.md) | P1 | 2 | A buy waits for an analysis made before its close; an unknown regime adds nothing | FIX-023 |
+| 24 | [FIX-025](stories/FIX-025.md) | P1 | 3 | Deployment follows the money and the ideas; a top-up checks NSE's report too | FIX-024 |
+| 25 | [FIX-026](stories/FIX-026.md) | P1 | 3 | The analysis names a new stock's sector from our list; an empty or unknown sector is flagged | FIX-024 |
+| 26 | [PR-005](stories/PR-005.md) | P1 | 6 | An investment case for every position | PR-006 |
+| 27 | [PR-013](stories/PR-013.md) | P2 | 2 | Show where losses come from and what waiting costs | PR-002, PR-009 |
+| 28 | [PR-007](stories/PR-007.md) | P1 | 3 | Plain, fact-grounded buy and sell explanations | PR-005, PR-006 |
+| 29 | [PR-008](stories/PR-008.md) | P1 | 3 | "Your stocks overnight" at the top of the brief | PR-003, PR-006 |
+| 30 | [PR-010](stories/PR-010.md) | P1 | 5 | Four screens for members; an Operator menu for the owner | PR-001 |
+| 31 | [PR-012](stories/PR-012.md) | P2 | 3 | Models chosen by role, benched on our own data; cost rates refreshed | PR-007 |
+| 32 | [FIX-014](stories/FIX-014.md) | P2 | 1 | Above the 75% cap, a promoter wash must not score as insider buying | PR-011 |
+| 33 | [FIX-015](stories/FIX-015.md) | P2 | 1 | The shock exit reads the re-forecast's trigger, not its sentence | PR-009 |
+| 34 | [FIX-017](stories/FIX-017.md) | P2 | 2 | The holding sync reads every NSE corporate-action row it is given, under NSE's code | — |
+| 35 | [FIX-020](stories/FIX-020.md) | P2 | 1 | Correct the configured codes NSE does not list, and AAVAS's sector | — |
+| 36 | [FIX-022](stories/FIX-022.md) | P2 | 2 | The tax estimate at each lot's own cost, and SA-048's loose ends | — |
 
 The new stories add 41 points. SA-049 grows from 5 to 7 points and SA-050 from 2 to 3. On 2026-10-12 the owner confirmed this order, chose the ₹2 L paper-capital top-up with 12 target holdings, and moved PR-011 up as P1 ("I need more data"); the production baseline is section 11 of the review. The track makes results
 visible, makes the portfolio broad enough to learn from, and stops one identified source of

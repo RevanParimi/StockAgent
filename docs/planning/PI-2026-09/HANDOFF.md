@@ -1,4 +1,4 @@
-# Current handoff - 2026-11-02 (updated about 16:10 IST)
+# Current handoff - 2026-11-05 (updated about 14:02 IST)
 
 ## Also 22 Oct (about 22:30 IST to 00:30 IST 23 Oct): FIX-013, LLM tier switch, committed and pushed (separate conversation)
 
@@ -105,6 +105,130 @@ Docs only; nothing committed, pushed, deployed or configured.
   section 11.
 
 ## START HERE — resume checklist, in order
+
+**FIX-023 COMMITTED** (5 Nov, session stockagent-main-31, at the owner's "ya commit and
+push"):
+
+- **Code `898f5c5`** is exactly the 19 reviewed files, from tree `194bb6f7`: `kt_manifest.py verify
+  FIX-023-manifest.json --rev 898f5c5` gives 0 mismatches (`211735f4`).
+- **This docs commit** holds the receipt's commit-time edits 1–8 (the KT header, section 1, section
+  6's two limit sentences, section 11, section 12, guide 07-G/N/O, the PDF), with both receipts, the
+  manifest, the FIX-024, FIX-025 and FIX-026 cards, the PI README, and STATE and HANDOFF with SA-049's
+  deploy record.
+- **FIX-024's two commits follow directly**, and their handoff replaces this entry.
+
+**Owner decisions on SA-049's design choices → FIX-025 and FIX-026 added** (4 Nov, about
+21:40–22:00 IST, session stockagent-main-9b [e55bfb], a question-and-answer chat, not a
+`continue` phase; peer -35 was implementing FIX-024 and agreed to wait for these board writes).
+Docs only: two new cards, two STATE task entries after FIX-024, a history line, the PI README.
+`active_task`, `next_task` (FIX-024) and `next_phase` are unchanged.
+
+- **FIX-025** (P1, 3 points, directly after FIX-024; a **precondition for switching deployment
+  on**, with FIX-023 and FIX-024).
+  - No hard 10 holdings: the analysis's BUY ideas decide how many (up to 15; 10 a soft
+    minimum, reported, never forcing a buy).
+  - Each position asks for a share of equity (80% ÷ 12 ≈ 6.7%), so it grows with deposits; the
+    ₹10 L floor no longer raises the target.
+  - A top-up checks NSE's surveillance report.
+  - A stock the autopilot sold is re-analysed on the next Saturday.
+- **FIX-026** (P1, 3 points, after FIX-025; recommended before the switch-on).
+  - The deep dive's own LLM call names a new stock's sector from our keys, with Yahoo's labels
+    as evidence; no fixed tables.
+  - An empty, unknown or disputed reading is flagged in the weekly summary and the watchdog.
+  - A stock's key is decided once.
+- **Point 9** (the deposit's Nifty date) was already fixed in SA-049's rework.
+- **For FIX-023's docs commit (commit-time, with its receipt's edits 1–8):**
+  - KT section 12: after the FIX-024 row, add two rows in the same form, each linking its card
+    under `planning/PI-2026-09/stories/`. FIX-025: "Deployment follows the money and the ideas;
+    a top-up checks NSE's report too", Open, sections "6 Portfolio; 8 Discovery", FIX-024.
+    FIX-026: "The analysis names a new stock's sector from our list; an empty or unknown sector
+    is flagged", Open, section "8 Discovery", FIX-024.
+  - Guide 07-G's switch-on wording: "turn it on only after FIX-023 and FIX-024" becomes "turn it
+    on only after FIX-023, FIX-024 and FIX-025".
+  - KT section 11's portfolio-economics sentence adds FIX-025.
+  - Then rebuild the PDF.
+
+**FIX-023 fresh review → ACCEPTED** (4 Nov, about 20:05–20:45 IST, session
+stockagent-main-18 [3b53f6], a new conversation opened with "continue"; peers -d7 and -9b idle).
+Receipt: [FIX-023-review](evidence/FIX-023-review.md). STATE: FIX-023 `done` with a `review`
+entry, production `pending_deployment`; new [FIX-024](stories/FIX-024.md) `todo`; `active_task`
+null; `next_task` FIX-024. Nothing was committed, pushed, deployed or configured; no production
+state, log or network was read.
+
+- **Input verified** at the start and the end: manifest `211735f4` (19 files, 0 mismatches),
+  diff `672f6c60` (115,078 B, 18 paths) against HEAD `c5165a1`
+  (`analysis_data/fix023_review/rv_digest.py`).
+- **Independent checks** (`analysis_data/fix023_review/`, not tracked):
+  - RV1, a brute force over 1,728 detections: a day is established exactly when every value
+    the missing inputs could take gives one severity.
+  - RV2, 60 random sessions through the real review and state file: the recorded label is never
+    milder than the day's live truth.
+  - 6 of 6 in-memory mutants caught; SA-049's RV2/RV2b and RR3 fail at their defect lines.
+- **Findings, routed to [FIX-024](stories/FIX-024.md)** (P1, 2 points, directly after FIX-023,
+  recommended before deployment's switch-on):
+  - **M1, medium, pre-existing:** a watchlist analysis made on the review session's day after
+    the 15:30 close is booked at that close (RV5). SWITCH legs are live.
+  - **L1, low:** on an unavailable day ADD reads the kept label, so India VIX dark with the
+    Nifty down 3% ADDs where the old fallback blocked it (RV6).
+  - **L2, low, fails closed:** a fresh state file loses its established day to a later dark
+    review the same day (RV3).
+- **Evidence:** story file and neighbours 146 passed; reviewer cases 7 passed + 1 strict xfail;
+  full suite 6,045 passed / 12 skipped / 1 xfailed / 0 failed (18m18s); `check_kt_docs` errors `[]`; PDF 66 pages, matches the KT.
+- **Commit only at the owner's word.** The code commit is the 19 reviewed files. The docs
+  commit carries the receipt's commit-time edits 1–8: the KT header, section 1 (SA-049
+  deployed 20:12 IST 2 Nov), section 6's M1 and L1 limits, section 11, section 12 (FIX-023
+  `Done`, the FIX-024 row), guide 07-G/N/O, and the PDF. It also carries the receipts, the
+  FIX-024 card, the README, and STATE and HANDOFF with SA-049's deploy record. Push in a
+  job-free window; the switch stays off.
+- **Next `continue`, in a new conversation: FIX-024's implementation.**
+
+**FIX-023 IMPLEMENTED -> `review_required`** (2 Nov, about 16:10–18:05 IST, session
+stockagent-main-79 [5ee8a5], a new conversation opened with "continue"; all 19 peers idle).
+Receipt: [FIX-023-implementation](evidence/FIX-023-implementation.md). STATE: FIX-023
+`review_required` with an `implementation` entry; `active_task` and `next_task` FIX-023 (the
+fresh review). Nothing was committed, pushed, deployed or configured; no production state was
+read (one read-only probe of public Yahoo data).
+
+- **M1:** a regime input that does not answer has no value (no VIX 17.0). A label counts only
+  when the inputs that answered fix its severity; otherwise the review records the day
+  unavailable (the sticky state keeps its label and calm streak, entering only a severer label
+  the live inputs establish), and deployment opens nothing: "market regime unavailable for
+  2026-10-30: India VIX did not answer; no new positions". A detector exception likewise.
+- **L3:** India VIX, the Nifty and the sector index are read on or before the review session;
+  Brent, USD/INR and the S&P 500 before it. An input with no close in 7 days has not answered.
+- **RR-L1:** a deployment buy, a SWITCH leg and the shadow's switch test refuse a close whose
+  bar is before the idea's latest dive or watchlist analysis, in either gate mode.
+  **RR-T1** pinned by a tracked case.
+- **Evidence:** story file 22 passed; mutants 23/23; neighbours 1,567 passed; full suite
+  6,045 passed / 12 skipped / 1 xfailed / 0 failed (25m58s); `check_broad_except` OK (148); `check_kt_docs` errors `[]`; PDF
+  66 pages. Decisions F23-D1..D7 in the receipt (the learning loop's raw label unchanged;
+  the main lane keeps the sticky label on dark days).
+- **Review input:** manifest [FIX-023-manifest.json](evidence/FIX-023-manifest.json)
+  `211735f4` (19 files); diff `672f6c60` (115,078 B, 18 paths) against HEAD
+  `c5165a1` (`analysis_data/fix023/digest.py`).
+- **SA-049's push** is still session -15's waiter (20:10–21:00 IST, else 00:10–05:30 3 Nov);
+  it pushes commits only, so this working tree does not affect it. After it pushes, record
+  the deploy (uncommitted).
+- **Next `continue`, in a new conversation: FIX-023's fresh review** (REVIEW.md).
+
+**SA-049 PUSHED AND DEPLOYED** (2 Nov, 20:10–20:13 IST, session stockagent-main-15's waiter, at
+the owner's "commit and push"; this record is uncommitted):
+
+- Pushed `f47d246..c5165a1` at 20:10:30 IST, after a fetch showed origin unchanged and HEAD
+  `c5165a1`. Only the two SA-049 commits went; session -79's FIX-023 work in the working tree
+  was not pushed.
+- Railway deploy `ff5e8b2e` was created at 20:10:30 and reached SUCCESS by 20:12:29; `298fb42d`
+  is REMOVED. The public `/health` answered 200 at 20:12:35.
+- **The switch is off.** Production changes only by the switch-off list: NSE's report on SWITCH
+  legs, the dive-date bound on SWITCH destinations, SA-050 R1/R2, SA-051 R1, the generic key, and
+  the deposit route. SA-049 production is `pending_observation`.
+  - First read-only look: the 3 Nov 16:30 run's "not offered" log line.
+  - The rollout's switch-on waits for FIX-023.
+- **Commit-time edits for the next docs commit.** These files are in FIX-023's review input, so
+  they were not edited now:
+  - KT section 1: production runs `c5165a1` (SA-049, code `f064010`), deployed about 20:12 IST
+    on 2 Nov.
+  - Guide 07-G, 07-N and 07-O status lines: "deployed 2 Nov 2026 (the switch is off)".
 
 **SA-049 COMMITTED** (2 Nov, about 15:55–16:10 IST, the same session stockagent-main-15
 [59b0c2], at the owner's "commit and push"; peers idle):

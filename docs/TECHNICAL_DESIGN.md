@@ -1015,6 +1015,14 @@ freeze and grade the information available when the decision was issued.
 Weights, accuracy history, lessons and dossier records change over time.
 Regime and lesson modifiers affect research inputs. This is an adaptive
 feedback system; it does not demonstrate that adaptation beats a fixed policy.
+
+The regime modifier multiplies weights by the sticky regime label's factors.
+Its inputs are read as of the reviewed session (section 6, Cash deployment).
+On a day whose label the live inputs do not establish, the review keeps the
+sticky label of the last established day. The raw label, which the paper
+lane and the monthly forecast read, still treats a missing input as its
+neutral value (VIX 17.0, Nifty 0%, RSI 50). The review's summary records the
+missing inputs (`regime_dark_inputs`), with no value for any of them.
 The audit also reproduced final weight-bound violations and repeated ensemble
 trend counts presented under different agent names.
 
@@ -1711,9 +1719,36 @@ review day (`label_recorded_for` in
 total equity in stocks (`autopilot.deploy_target_invested_pct`; the owner, 1
 Nov 2026): 80% in NORMAL, RISK_ON, MOMENTUM_EXTENDED and OVERSOLD (calm); 50%
 in RISK_OFF; no new positions in MACRO_CRISIS. A day with no label recorded
-for it opens nothing. Until FIX-023, a regime label built on a fallback input
-(Yahoo's India VIX or Nifty not answering) is read like any other; turn
-deployment on after FIX-023.
+for it opens nothing.
+
+**A label counts only when live inputs establish it.** The detector
+([`detector.py`](../core/intelligence/regime/detector.py)) reads the India
+VIX, the Nifty's 5-session move and the sector index's RSI from bars on or
+before the review session, and Brent, USD/INR and the S&P 500 from sessions
+before it, since their bar for that date closes after India's. So the label
+for Friday is Friday's, even though Monday's 16:30 run already has Monday's
+bars. An input with no close in the 7 days up to its cut has not answered: it
+has no value, never a midpoint. The detector then asks whether the inputs
+that answered fix the label's severity whatever the missing ones are. If not,
+the daily review records the day without a label, and deployment opens
+nothing: "market regime unavailable for 2026-10-30: India VIX did not
+answer; no new positions". A detector exception does the same ("the regime
+detector failed"). Such a day never counts as a calm day, so a crisis
+already entered survives any run of dark days; it enters only a severer
+label the live inputs establish on their own (VIX 30 with the Nifty dark is
+at least RISK_OFF). The first established detection of the same day
+replaces the mark. With India VIX dark and the Nifty down 3%, the old
+fallback (VIX 17.0) recorded RISK_OFF and bought two positions in a market
+the live VIX would have called MACRO_CRISIS. A missing input that cannot
+change the severity does not close the day: with VIX 30 and the Nifty down
+3%, MACRO_CRISIS holds whatever Brent did. A real VIX of 17.0 is a live
+reading. Two limits:
+
+- The sector RSI only chooses among the calm labels. All four have the same
+  target (80%), so a missing RSI never closes the day. A different target
+  per calm label would need it to.
+- How often an input goes dark is not measured. Yahoo answered all six for
+  30 Oct and 2 Nov in a read-only probe on 2 Nov.
 
 **The breadth floor (calm regimes).** Deployment works toward at least
 `portfolio.min_holdings` (10) holdings and `portfolio.min_invested_inr` (₹10 L)
@@ -1745,17 +1780,23 @@ the user's own watchlist BUYs), highest conviction first. A candidate's deep
 dive or analysis is on or before the review session, because the 16:30 run on
 day T reviews the previous session and books its trades at that session's
 close. So an idea Saturday's discovery run dives is first offered by
-Tuesday's run, which reviews Monday; Monday's run reviews Friday. Until
-FIX-023, record mode can still buy an idea at a close carried forward from
-before its dive, when the review session's bar is missing or a manual run
-comes before the close; the buy's note names the bar. Each must:
+Tuesday's run, which reviews Monday; Monday's run reviews Friday. Each must:
 
 - not be held, and not have been sold on or after its latest deep dive
   (buying a stock back after a sale needs a new dive);
+- be priced at a close whose bar is on or after its latest deep dive (for a
+  watchlist BUY, its analysis day), in either gate mode
+  (`close_before_dive` in [`shelf.py`](../core/discovery/shelf.py)). When
+  the review session's bar is missing, or a manual run comes before the
+  close, the close is carried forward from an earlier bar. If that bar is
+  before the dive, the buy would act on a decision made after its price:
+  "close of 2026-10-30 is before the deep dive of 2026-10-31". A SWITCH's
+  buy leg and the exit shadow's switch test apply the same rule. An undated
+  bar is refused too;
 - pass SA-003's gate: an actionable deep dive and a close dated the review
   session, with its identity resolved. In `enforce` mode anything else is
   withheld; in `record` mode it is bought and the note says what enforce
-  would have withheld;
+  would have withheld (a carried-forward bar on or after the dive);
 - be cleared by NSE's surveillance report (above);
 - sit inside its entry band and above its invalidation level;
 - leave room for at least one share under the caps and the cash floor.

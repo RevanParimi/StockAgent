@@ -84,6 +84,7 @@ from backend.shared.data.fetchers.symbol_resolver import identity_break
 from backend.shared.pipeline import decision_gate as dg
 from backend.shared.schemas.portfolio import ExitShadowRow
 from core.audit.rules import excess, is_correct, pct_change
+from core.discovery.shelf import close_before_dive
 from core.intelligence.rl.nse_calendar import trading_days_after, trading_days_ago
 from core.portfolio.advisor import CASE_EVENT_SOURCES, ExitEvidence, case_broken_reasons
 from core.portfolio.results import sessions_held
@@ -390,16 +391,20 @@ def switch_buy_lands(quote, session: date, idea, *, identity_issue: str = "",
     """Whether a SWITCH's buy leg passes the checks the executor makes before
     sizing it (core/portfolio/autopilot.py `_execute_buys`), at the
     destination's close `quote` (a pricing.SessionClose for `session`; None
-    when it has none): a close; under the data gate's enforce, the session's
-    own bar and a resolved identity (`identity_issue` empty); NSE's
-    surveillance report clearing the stock (`surveillance_issue` empty,
-    sizing.surveillance_issue); and a price inside its shelf idea's entry
-    band (sizing.entry_check). Pure. False means the proceeds stay in cash.
+    when it has none): a close; a bar on or after the idea's latest deep dive
+    (shelf.close_before_dive, either gate mode); under the data gate's
+    enforce, the session's own bar and a resolved identity (`identity_issue`
+    empty); NSE's surveillance report clearing the stock (`surveillance_issue`
+    empty, sizing.surveillance_issue); and a price inside its shelf idea's
+    entry band (sizing.entry_check). Pure. False means the proceeds stay in
+    cash.
 
     Not checked here: the executor's own re-fetch of the close, a buy of under
     one share after sizing, a buy already in the ledger."""
     close = getattr(quote, "close", None)
     if close is None or close <= 0:
+        return False
+    if close_before_dive(quote.bar_date, idea):
         return False
     if enforcing and (not quote.fresh_for(session) or identity_issue):
         return False

@@ -33,7 +33,6 @@ core/discovery/deep_dive.py | run_deep_dives | #1
 core/discovery/ipo_tracker.py | build_ipo_candidates | #0
 core/intelligence/algorithms/indicators/fetcher.py | _last_bar_date | #0
 core/intelligence/fno/fetcher.py | FnOFetcher.get_underlying_price | #0
-core/intelligence/regime/state.py | _read_last_update | #0
 core/intelligence/rl/agents/event_ingestor.py | _parse_item_date | #0
 core/intelligence/rl/agents/question_researcher.py | QuestionResearcher.run | #0
 core/intelligence/rl/agents/thesis_reviewer.py | ThesisReviewer._compute_atr_pct | #0

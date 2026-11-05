@@ -68,7 +68,8 @@ from core.intelligence.rl.conviction.tracker import (
 from core.intelligence.algorithms.indicators.fetcher import get_price_history
 from core.intelligence.seasonal.calendar import SeasonalCalendar
 from core.intelligence.regime.detector import RegimeDetector, apply_regime_multipliers
-from core.intelligence.regime.state import update_sticky_regime, _read_state, _state_path
+from core.intelligence.regime.state import (
+    record_unavailable_day, update_sticky_regime, _read_state, _state_path)
 from core.schemas.feedback import RegimeSnapshot, ThesisReview
 from core.intelligence.rl.agents.thesis_reviewer import ThesisReviewer, THESIS_REVIEW_THRESHOLD
 from core.intelligence.rl.workflows.generate_forecast import regenerate_envelope
@@ -556,17 +557,23 @@ def run_daily_review(
     try:
         regime_snapshot = RegimeDetector().detect(review_date, sector)
         logger.info(
-            "[daily_review] Regime detected: %s (VIX=%.1f, FII_proxy=%+.2f%%, RSI=%.1f)",
+            "[daily_review] Regime detected: %s (VIX=%s, FII_proxy=%s%%, RSI=%s)%s",
             regime_snapshot.regime_label,
             regime_snapshot.vix_value,
             regime_snapshot.fii_proxy_5d_pct,
             regime_snapshot.sector_rsi,
+            f"; unavailable: {regime_snapshot.unavailable}" if regime_snapshot.unavailable else "",
         )
     except Exception as exc:
         logger.warning(
             "[daily_review] %s: RegimeDetector failed — using NORMAL regime (non-fatal): %s",
             ticker, exc,
         )
+        # FIX-023: the NORMAL default is the learning loop's neutral, never
+        # the day's regime: the sticky layer records the day unavailable.
+        regime_snapshot = RegimeSnapshot(vix_value=None, fii_proxy_5d_pct=None,
+                                         sector_rsi=None,
+                                         unavailable="the regime detector failed")
 
     # ------------------------------------------------------------------ #
     # Living Envelope, Component 1: sticky regime label (hysteresis).
@@ -577,6 +584,12 @@ def run_daily_review(
     # after RL_REGIME_CALM_DAYS milder detections). The STICKY label drives
     # regime weight multipliers and the cycle-log/feedback regime field
     # below. Never fatal — falls back to the raw detected label.
+    #
+    # FIX-023: a day whose label the live inputs do not establish
+    # (regime_snapshot.unavailable) never moves the hysteresis on a guess:
+    # record_unavailable_day keeps the sticky label (entering only a severer
+    # one the live inputs establish) and marks the day, so idle-cash
+    # deployment opens nothing on it. Its multipliers come from that kept label.
     # ------------------------------------------------------------------ #
     sticky_regime_label = regime_snapshot.regime_label
     prior_sticky_label: str | None = None
@@ -589,9 +602,16 @@ def run_daily_review(
         try:
             prior_state = _read_state(_state_path())
             prior_sticky_label = prior_state.label if prior_state else None
-            new_regime_state = update_sticky_regime(regime_snapshot.regime_label, review_date.isoformat())
-            sticky_regime_label = new_regime_state.label
-            if sticky_regime_label != regime_snapshot.regime_label:
+            if regime_snapshot.unavailable:
+                new_regime_state = record_unavailable_day(
+                    review_date.isoformat(), regime_snapshot.unavailable,
+                    regime_snapshot.floor_label)
+            else:
+                new_regime_state = update_sticky_regime(regime_snapshot.regime_label,
+                                                        review_date.isoformat())
+            if new_regime_state is not None:
+                sticky_regime_label = new_regime_state.label
+            if new_regime_state is not None and sticky_regime_label != regime_snapshot.regime_label:
                 logger.info(
                     "[daily_review] Sticky regime: raw=%s sticky=%s (calm_streak=%d)",
                     regime_snapshot.regime_label, sticky_regime_label, new_regime_state.calm_streak,
@@ -1395,7 +1415,8 @@ def run_daily_review(
         streak_days=updated_streak.streak_days,
         verdict=today_forecast.predicted_verdict,
         todays_agent_scores=todays_scores,
-        sector_rsi=regime_snapshot.sector_rsi,
+        sector_rsi=(settings.RSI_FALLBACK if regime_snapshot.sector_rsi is None
+                    else regime_snapshot.sector_rsi),    # FIX-023: no RSI, no amplifier
     )
     logger.info(
         "[daily_review] Conviction streak: '%s' %d day(s) | "
@@ -1745,6 +1766,8 @@ def run_daily_review(
         "regime_vix":               regime_snapshot.vix_value,
         "regime_fii_proxy_pct":     regime_snapshot.fii_proxy_5d_pct,
         "regime_sector_rsi":        regime_snapshot.sector_rsi,
+        "regime_dark_inputs":       regime_snapshot.dark_inputs,
+        "regime_unavailable":       regime_snapshot.unavailable,
         "regime_effective_weights": regime_effective_weights,
         # Living Envelope, Component 2: re-forecast trigger/outcome for this run.
         "reforecast_trigger":       reforecast_trigger,

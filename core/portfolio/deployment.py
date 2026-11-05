@@ -17,7 +17,12 @@ equity (`autopilot.deploy_target_invested_pct`; owner, 1 Nov 2026):
   RISK_OFF                                              50%
   MACRO_CRISIS                                          no new positions
 
-A day with no label recorded for it opens nothing.
+A day with no label recorded for it opens nothing, and so does a day the
+review recorded without a label because the inputs that answered do not
+establish one (FIX-023): "market regime unavailable for 2026-10-30: India VIX
+did not answer; no new positions". A label made of fallback values, or the
+detector's NORMAL default after an exception, is never recorded as a day's
+regime.
 
 **The breadth floor (calm regimes only).** Deployment works toward at least
 `portfolio.min_holdings` holdings and `portfolio.min_invested_inr` invested,
@@ -48,7 +53,8 @@ unreachable: equity ₹9,99,611 is below the ₹10,00,000 floor plus the ₹10,0
 cash floor"; "holdings floor unreachable: 6 qualifying ideas". No cap is
 breached to meet it.
 
-Pure apart from `recorded_regime`, which reads the regime state file.
+Pure apart from `recorded_regime` and `regime_gap`, which read the regime
+state file.
 """
 from __future__ import annotations
 
@@ -71,6 +77,7 @@ OUTCOME_WORDS = {
     "sold": "sold after the latest deep dive",
     "gate": "withheld by the data gate",
     "price": "without a close for the review session",
+    "before_dive": "priced at a close from before its latest deep dive",
     "surveillance": "not cleared by NSE's surveillance report",
     "band": "above entry band",
     "invalidated": "at or below invalidation",
@@ -134,6 +141,14 @@ def recorded_regime(on: date) -> str | None:
     return label_recorded_for(on.isoformat())
 
 
+def regime_gap(on: date) -> str:
+    """Why `recorded_regime(on)` is None (a seam): "market regime unavailable
+    for 2026-10-30: India VIX did not answer", or "no market regime recorded
+    for 2026-10-30"."""
+    from core.intelligence.regime.state import unrecorded_reason
+    return unrecorded_reason(on.isoformat())
+
+
 @dataclass(frozen=True)
 class Target:
     regime: str | None
@@ -144,11 +159,14 @@ class Target:
     notes: tuple[str, ...]     # a floor that cannot be reached
 
 
-def target(regime: str | None, equity: float, b: Breadth, floor_cash: float) -> Target:
-    """What deployment works toward today, at `equity` (total equity)."""
+def target(regime: str | None, equity: float, b: Breadth, floor_cash: float,
+           gap: str = "") -> Target:
+    """What deployment works toward today, at `equity` (total equity). `gap`
+    says why there is no `regime` (`regime_gap`)."""
     if not regime:
         return Target(None, None, 0.0, 0,
-                      "no market regime recorded for the review day: no new positions", ())
+                      f"{gap or 'no market regime recorded for the review day'}; "
+                      "no new positions", ())
     share = settings.AUTOPILOT_DEPLOY_TARGET_PCT.get(regime)
     if share is None:
         return Target(regime, None, 0.0, 0,

@@ -264,10 +264,11 @@ def test_in_a_crisis_nothing_new_is_bought_and_an_exit_still_sells(tmp_path, mon
 
 def test_with_no_regime_recorded_for_the_day_nothing_is_bought(tmp_path, monkeypatch):
     s, ideas = _sep27(tmp_path, monkeypatch)
+    monkeypatch.setattr(settings, "PREDICTION_DATA_DIR", str(tmp_path / "pred"))  # no state file
     _regime(monkeypatch, None)
     txns, rec = _run(s, ideas, {"AAA": 100.0, "BBB": 100.0})
     assert txns == []
-    assert rec["reasons"] == ["no market regime recorded for the review day: no new positions"]
+    assert rec["reasons"] == [f"no market regime recorded for {D.isoformat()}; no new positions"]
 
 
 def test_target_reached_buys_nothing_and_says_so(tmp_path, monkeypatch):

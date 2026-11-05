@@ -1004,9 +1004,9 @@ class RegimeSnapshot(BaseModel):
     Not written to weight_memory.json.
     """
     regime_label: str = "NORMAL"           # one of 6 labels: MACRO_CRISIS, RISK_OFF, NORMAL, RISK_ON, MOMENTUM_EXTENDED, OVERSOLD
-    vix_value: float = 17.0
-    fii_proxy_5d_pct: float = 0.0          # Nifty 50 5-day return % (proxy for FII direction)
-    sector_rsi: float = 50.0
+    vix_value: float | None = 17.0         # None: India VIX did not answer (FIX-023)
+    fii_proxy_5d_pct: float | None = 0.0   # Nifty 50 5-day return % (proxy for FII direction); None: did not answer
+    sector_rsi: float | None = 50.0        # None: did not answer
     multipliers: dict[str, float] = Field(default_factory=dict)   # per-agent regime multipliers
     narrative: str = ""                    # one-sentence context for LLM injection
     as_of_date: str = ""                   # ISO date
@@ -1015,6 +1015,13 @@ class RegimeSnapshot(BaseModel):
     usdinr_5d_pct: float | None = None
     spx_last_pct: float | None = None
     global_stress_signals: list[str] = Field(default_factory=list)
+    # FIX-023: inputs that did not answer, by name ("India VIX"); and, when they
+    # leave the label's severity open, why ("India VIX did not answer") and the
+    # mildest label the inputs that answered allow. A day with `unavailable`
+    # set is recorded without a regime (core/intelligence/regime/state.py).
+    dark_inputs: list[str] = Field(default_factory=list)
+    unavailable: str = ""
+    floor_label: str = ""
 
 
 # ---------------------------------------------------------------------------

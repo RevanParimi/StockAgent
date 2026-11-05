@@ -266,6 +266,7 @@ def _execute_buys(portfolio: Portfolio, advice: list[AdviceRecord],
                   shelf_index: dict | None = None,
                   surveillance: Callable[[], Report] | None = None,
                   ) -> list[TransactionRecord]:
+    from core.discovery.shelf import close_before_dive
     txns: list[TransactionRecord] = []
     floor_cash = settings.AUTOPILOT_MIN_CASH_FLOOR
     surveillance = surveillance or _once(lambda: surveillance_report(review_date))
@@ -281,6 +282,13 @@ def _execute_buys(portfolio: Portfolio, advice: list[AdviceRecord],
             logger.warning("[autopilot] SWITCH buy %s skipped: unpriceable (%s)",
                            cand, exc)
             _note_skipped_buy(sell, cand, proceeds, "no price for the review session")
+            continue
+        # FIX-023: never at a close from before the idea's latest deep dive,
+        # whatever the data gate's mode.
+        early = close_before_dive(quote.bar_date, (shelf_index or {}).get(cand))
+        if early:
+            logger.warning("[autopilot] SWITCH buy %s skipped: %s", cand, early)
+            _note_skipped_buy(sell, cand, proceeds, early)
             continue
         if not quote.fresh_for(session):
             # SA-003: a buy needs the session's own close. The pipeline's
@@ -420,7 +428,7 @@ def _deploy_check(idea, symbol: str, portfolio: Portfolio, sold: dict[str, date]
     """(outcome, why, the buy's inputs) for one candidate before sizing; the
     outcome is "" when it may be bought. Mirrors a SWITCH buy leg's checks,
     plus the deep dive's own data gate and the re-buy rule."""
-    from core.discovery.shelf import last_dived
+    from core.discovery.shelf import close_before_dive, last_dived
     if _find(portfolio, symbol) is not None:
         return "held", "already held", {}
     sale, dived = sold.get(symbol), last_dived(idea)
@@ -442,6 +450,9 @@ def _deploy_check(idea, symbol: str, portfolio: Portfolio, sold: dict[str, date]
     price = quote.close
     if price is None or price <= 0:
         return "price", "no close for the review session", {}
+    early = close_before_dive(quote.bar_date, idea)       # FIX-023: either gate mode
+    if early:
+        return "before_dive", early, {}
     if not quote.fresh_for(session):
         bar = quote.bar_date.isoformat() if quote.bar_date else "undated"
         withheld.append(f"its close is from bar {bar}, not the review session")
@@ -473,7 +484,9 @@ def _deploy_idle_cash(portfolio: Portfolio, closes: dict[str, float],
     equity = sizing.total_equity(portfolio, closes)
     invested_before = invested = sizing.holdings_value(portfolio, closes)
     holdings_before = len(portfolio.holdings)
-    t = deployment.target(deployment.recorded_regime(review_date), equity, b, floor_cash)
+    regime = deployment.recorded_regime(review_date)
+    t = deployment.target(regime, equity, b, floor_cash,
+                          gap="" if regime else deployment.regime_gap(review_date))
     txns: list[TransactionRecord] = []
     outcomes: list[dict] = []
 

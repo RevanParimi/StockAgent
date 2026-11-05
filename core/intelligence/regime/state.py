@@ -24,6 +24,19 @@ This module adds a market-wide sticky layer on top of the raw label:
   - Same-day repeat calls are idempotent — calling update_sticky_regime twice
     for the same `today` does not double-count calm_streak.
 
+**A day whose label the live inputs do not establish** (FIX-023:
+RegimeSnapshot.unavailable, e.g. India VIX did not answer, or the detector
+failed) goes through `record_unavailable_day` instead. It moves nothing, except
+that it enters a severer label the inputs that answered establish on their
+own (`floor_label`); it never counts as a calm day, nor breaks a calm streak.
+The day is marked unavailable, so `label_recorded_for` gives no label for it
+and idle-cash deployment opens nothing. The first established detection of the
+same day replaces the mark. Example: sticky NORMAL; on 30 Oct Yahoo's India
+VIX is empty and the Nifty fell 3% in 5 sessions, so the label could be
+anything from NORMAL to MACRO_CRISIS: the state stays NORMAL, marked "India VIX
+did not answer", and deployment reads "market regime unavailable for
+2026-10-30: India VIX did not answer".
+
 Persisted market-wide (NOT per ticker): data/predictions/_regime_state.json
 (path follows PredictionStore's PREDICTION_DATA_DIR convention).
 
@@ -61,7 +74,7 @@ _SEVERITY = {
 _DEFAULT_SEVERITY = 0  # NORMAL, RISK_ON, MOMENTUM_EXTENDED, OVERSOLD, and unknowns
 
 
-def _severity(label: str) -> int:
+def severity(label: str) -> int:
     return _SEVERITY.get(label, _DEFAULT_SEVERITY)
 
 
@@ -135,7 +148,9 @@ def update_sticky_regime(detected_label: str, today: str) -> RegimeState:
       (since=today, calm_streak=0).
     - Same-day repeat calls (same `today` as the persisted state's last
       update) are idempotent: state is returned unchanged without
-      incrementing calm_streak again or re-writing the file.
+      incrementing calm_streak again or re-writing the file. A day
+      `record_unavailable_day` marked is not yet updated: the first call for
+      it applies the transition and clears the mark.
     """
     try:
         if not getattr(settings, "RL_REGIME_STICKY_ENABLED", True):
@@ -159,11 +174,11 @@ def update_sticky_regime(detected_label: str, today: str) -> RegimeState:
         # internal `_last_update` marker in the JSON (not part of the
         # dataclass contract) so repeat calls for the same date are no-ops.
         last_update = _read_last_update(path)
-        if last_update == today:
+        if last_update == today and not _read_unavailable(path):
             return current
 
-        detected_sev = _severity(detected_label)
-        current_sev = _severity(current.label)
+        detected_sev = severity(detected_label)
+        current_sev = severity(current.label)
 
         if detected_sev > current_sev:
             # Enter the severer regime immediately.
@@ -188,10 +203,45 @@ def update_sticky_regime(detected_label: str, today: str) -> RegimeState:
         return RegimeState(label=detected_label, since=today, calm_streak=0)
 
 
+def record_unavailable_day(today: str, why: str, floor_label: str = "") -> RegimeState | None:
+    """Record `today` (ISO date) as a day whose label the live inputs do not
+    establish (FIX-023): `why` says which inputs did not answer, or that the
+    detector failed; `floor_label` is the label the inputs that answered
+    establish on their own ("" when none).
+
+    Returns the sticky state, or None when there is none to carry (the sticky
+    layer off, or no readable state: nothing is written, and the caller keeps
+    the raw label). Never raises.
+
+    - The day is already established (updated for `today`, not marked): no-op.
+    - Otherwise the state is kept, except that a `floor_label` severer than
+      the sticky label is entered (since=today, calm_streak=0). calm_streak is
+      neither incremented nor reset. The day is marked unavailable with `why`.
+    """
+    try:
+        if not getattr(settings, "RL_REGIME_STICKY_ENABLED", True):
+            return None
+        path = _state_path()
+        current = _read_state(path)
+        if current is None:
+            return None
+        if _read_last_update(path) == today and not _read_unavailable(path):
+            return current
+        new_state = current
+        if floor_label and severity(floor_label) > severity(current.label):
+            new_state = RegimeState(label=floor_label, since=today, calm_streak=0)
+        _write_state_with_marker(path, new_state, today, unavailable=why or "unavailable")
+        return new_state
+    except Exception as exc:
+        logger.error("[RegimeState] record_unavailable_day failed: %s", exc)
+        return None
+
+
 def label_recorded_for(today: str) -> str | None:
     """The sticky label as updated for `today` (ISO date) by the daily review,
     or None when the state was not updated for that day (missing, corrupt,
-    stale, or written for a later day). Read-only. Idle-cash deployment
+    stale, or written for a later day) or the day was recorded unavailable
+    (`record_unavailable_day`). Read-only. Idle-cash deployment
     (core/portfolio/deployment.py) buys only on a label of its own review day.
 
     A state written fresh (no `_last_update` marker yet) counts for the day it
@@ -201,7 +251,21 @@ def label_recorded_for(today: str) -> str | None:
     if state is None:
         return None
     last = _read_last_update(path)
-    return state.label if (last or state.since) == today else None
+    if (last or state.since) != today or _read_unavailable(path):
+        return None
+    return state.label
+
+
+def unrecorded_reason(today: str) -> str:
+    """Why `label_recorded_for(today)` is None, as the deployment record
+    says it: "market regime unavailable for 2026-10-30: India VIX did not
+    answer" for a day recorded unavailable, else "no market regime recorded
+    for 2026-10-30"."""
+    path = _state_path()
+    why = _read_unavailable(path) if _read_last_update(path) == today else ""
+    if why:
+        return f"market regime unavailable for {today}: {why}"
+    return f"no market regime recorded for {today}"
 
 
 # ---------------------------------------------------------------------------
@@ -210,24 +274,36 @@ def label_recorded_for(today: str) -> str | None:
 # RegimeState (per spec) only has {label, since, calm_streak}. To make
 # same-day repeat calls idempotent without changing the public dataclass, we
 # persist one extra "_last_update" field in the JSON file and ignore it when
-# constructing RegimeState from disk.
+# constructing RegimeState from disk. A day recorded unavailable also carries
+# "_unavailable" (why); it always describes the `_last_update` day.
 
-def _read_last_update(path: Path) -> str | None:
+def _read_marker(path: Path, key: str) -> str | None:
     try:
         if not path.exists():
             return None
         data = json.loads(path.read_text(encoding="utf-8"))
-        val = data.get("_last_update")
+        val = data.get(key)
         return str(val) if val is not None else None
-    except Exception:
+    except Exception:  # swallow-ok: an unreadable marker reads as none; _read_state logs the corrupt file
         return None
 
 
-def _write_state_with_marker(path: Path, state: RegimeState, today: str) -> None:
+def _read_last_update(path: Path) -> str | None:
+    return _read_marker(path, "_last_update")
+
+
+def _read_unavailable(path: Path) -> str:
+    return _read_marker(path, "_unavailable") or ""
+
+
+def _write_state_with_marker(path: Path, state: RegimeState, today: str,
+                             unavailable: str = "") -> None:
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
         payload = asdict(state)
         payload["_last_update"] = today
+        if unavailable:
+            payload["_unavailable"] = unavailable
         tmp = path.with_suffix(".tmp")
         tmp.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
         tmp.replace(path)

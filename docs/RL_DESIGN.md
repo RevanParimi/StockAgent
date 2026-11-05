@@ -801,14 +801,27 @@ the feedback agent to check for momentum exhaustion.
 ## 13. Regime detection and multipliers
 
 [detector.py](../core/intelligence/regime/detector.py) uses three signals,
-each with a neutral fallback when the fetch fails:
+each read from bars on or before the session it classifies (the reviewed
+session; today for the monthly forecast):
 
-- India VIX (`^INDIAVIX`, fallback 17.0);
-- the Nifty 50's 5-session move as a proxy for foreign flows (`^NSEI`,
-  fallback 0.0);
-- the sector index's 14-day RSI (fallback 50.0): automobile `^CNXAUTO`,
-  banking/BFSI `^NSEBANK`, IT `^CNXIT`, renewable energy `^CNXENERGY`, any
-  other sector `^NSEI`. An index with no data falls back to `^NSEI`.
+- India VIX (`^INDIAVIX`);
+- the Nifty 50's 5-session move as a proxy for foreign flows (`^NSEI`);
+- the sector index's 14-day RSI: automobile `^CNXAUTO`, banking/BFSI
+  `^NSEBANK`, IT `^CNXIT`, renewable energy `^CNXENERGY`, any other sector
+  `^NSEI`. An index with no data falls back to `^NSEI`.
+
+**A signal that does not answer** (an error, no close, or none in the 7 days
+up to its cut) has no value: the snapshot's value is None and its name is in
+`dark_inputs`. The label is still classified with a neutral value in its
+place (VIX 17.0, Nifty 0.0%, RSI 50.0), as the learning loop always was. The
+detector also reports whether the signals that answered **establish** the
+label's severity: each missing one read at its mildest, then its severest,
+must give the same severity. If not, `unavailable` names them ("India VIX did
+not answer"), and `floor_label` is the mildest label they allow. The sticky
+layer records such a day without a label (section 27.1). Example: VIX
+missing with the Nifty down 3% could be NORMAL (VIX 12) or MACRO_CRISIS (VIX
+30), so the day is unavailable. VIX 30 and the Nifty down 3% give
+MACRO_CRISIS whatever Brent did.
 
 The first matching rule wins:
 
@@ -826,7 +839,10 @@ The first matching rule wins:
 last session at or below −2%. When two or more fire, the label moves one
 notch toward crisis: `RISK_OFF` becomes `MACRO_CRISIS`, and any calm label
 becomes `RISK_OFF`. A single signal never escalates, and a failed fetch never
-counts.
+fires; it leaves the label unavailable only when it could have tipped the
+escalation (one signal firing and one missing). These three are read from
+sessions before the classified one, since their bar for that date closes
+after India's (the S&P 500's at 02:30 IST the next day).
 
 **Multipliers** (`regime_multipliers` in config.yaml) use the automobile
 dimension names. Other sectors map their dimensions to those names through
@@ -850,8 +866,9 @@ effective[a] = weight[a] × multiplier[role(a)] / Σ (weight × multiplier)
 flip within days. Writing multipliers into the stored weights would mix the
 two, so they are applied to each day's revision and discarded.
 
-**Limit.** The detector reads the latest values, not values as of the
-reviewed session, so a backfill of an old session uses today's regime.
+**Limit.** The detector fetches a month of history (three for the RSI), so
+a review of a session more than about 16 sessions back finds the Nifty's
+move missing (it needs 6 closes up to the session), and the day unavailable.
 
 ## 14. Seasonal calendar
 
@@ -1372,12 +1389,20 @@ label in `data/predictions/_regime_state.json`:
   streak, and 3 in a row (`regime.calm_days`) exit to the milder label; a
   severe detection resets the streak;
 - a second call on the same day changes nothing;
+- a day whose label the live signals do not establish (section 13), or whose
+  detection raised, goes through `record_unavailable_day`: the label and
+  calm streak stay, except that a severer label the live signals establish
+  on their own is entered; the day is marked unavailable with the reason, so
+  `label_recorded_for` gives no label for it and idle-cash deployment opens
+  nothing. Such a day never counts as calm, so a crisis survives any run of
+  them. The first established detection of the same day replaces the mark;
 - with `rl.regime_sticky_enabled` off, the raw label passes through and
-  nothing is written. A missing or corrupt file starts fresh. Nothing raises.
+  nothing is written. A missing or corrupt file starts fresh (an unavailable
+  day writes nothing then). Nothing raises.
 
 The daily review uses the sticky label for multipliers, the feedback entry
-and the `regime_flip` trigger. The paper lane reads the raw label and writes
-nothing. Forecast generation and re-forecasts use the raw detection for
+and the `regime_flip` trigger; on an unavailable day, the label kept. The
+paper lane reads the raw label and writes nothing. Forecast generation and re-forecasts use the raw detection for
 their Monte Carlo bands (section 4).
 
 ### 27.2 Shock-triggered re-forecast

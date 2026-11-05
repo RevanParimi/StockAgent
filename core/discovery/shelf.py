@@ -91,6 +91,27 @@ def dive_is_fresh(idea, on: date) -> bool:
     return dived is not None and (on - dived).days <= days
 
 
+def close_before_dive(bar: date | None, idea) -> str:
+    """Why a close from bar `bar` cannot price a buy that opens a position in
+    `idea`, or "" when it can (FIX-023). The idea's band, conviction and case
+    come from its latest deep dive (for a watchlist idea, its analysis day),
+    which read news and prices up to that day, so a close from an earlier
+    bar would buy on a decision made after it. An undated bar cannot be shown
+    to be on or after the dive. Applies in either data-gate mode. Example:
+    the review session is Mon 2 Nov, its bar is missing, and the close comes
+    from Fri 30 Oct, while the idea was dived on Sat 31 Oct: "close of
+    2026-10-30 is before the deep dive of 2026-10-31"."""
+    dived = last_dived(idea) if idea is not None else None
+    if dived is None:
+        return ""
+    what = "analysis" if getattr(idea, "source", "") == "watchlist" else "deep dive"
+    if bar is None:
+        return f"close from an undated bar; cannot be placed on or after the {what} of {dived}"
+    if bar < dived:
+        return f"close of {bar} is before the {what} of {dived}"
+    return ""
+
+
 class ShelfStore:
     def __init__(self, path: str | None = None) -> None:
         base = Path(settings.DISCOVERY_DATA_DIR)

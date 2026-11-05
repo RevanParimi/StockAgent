@@ -26,22 +26,55 @@ RSI:
   Wilder smoothing (EWM alpha=1/14) on sector index closing prices.
   No ta-lib — pure pandas.
 
-All errors fall back to safe defaults so a network failure never breaks
-the core feedback loop.
+The session read (FIX-023). `detect(as_of_date)` describes the market at the
+close of `as_of_date`: the India VIX, the Nifty and the sector index are read
+from bars on or before it; Brent, USD/INR and the S&P 500 from bars before
+it, because their bar for that date closes after the Indian session (the S&P
+500's at 02:30 IST the next day). So the 16:30 job on Tuesday, reviewing
+Monday, reads Monday's VIX and Nifty and Friday's S&P 500 session, not
+Tuesday's. An input with no close in the 7 days up to its cut has not
+answered.
+
+A missing input has no value (FIX-023). Its snapshot value is None and its
+name is in `dark_inputs`; a missing global input never fires. A failed fetch
+never breaks the feedback loop: the learning loop's label is classified with
+the neutral values (VIX 17.0, Nifty 0%, RSI 50) in place of the missing ones,
+as before. But that label is trusted as the day's regime only when its
+severity is **established**: the inputs that answered give the same severity
+whatever the missing ones are (each read at its mildest, then its severest).
+Otherwise `unavailable` says why ("India VIX did not answer") and
+`floor_label` is the mildest label they allow. The sticky layer
+(regime/state.py) then records the day without a label. Example: Nifty -3%
+in 5 sessions with India VIX missing could be NORMAL (VIX 12) or
+MACRO_CRISIS (VIX 30): unavailable. With VIX 30 and Nifty -3% answering and
+Brent missing, the label is MACRO_CRISIS whatever Brent did: established.
 """
 
 from __future__ import annotations
 
 import logging
-from datetime import date
+import math
+from datetime import date, timedelta
 
 import pandas as pd
 
 from core.config import settings
+from core.intelligence.regime.state import severity
 from core.schemas.feedback import RegimeSnapshot
 
 logger = logging.getLogger(__name__)
 
+# FIX-023: an input with no close in this many days up to its cut has not answered.
+_MAX_INPUT_AGE_DAYS = 7
+
+
+def _num(value: float | None, spec: str) -> str:
+    return "n/a" if value is None else format(value, spec)
+
+
+def _names(missing: list[str]) -> str:
+    """'India VIX', 'India VIX and Nifty 50', 'India VIX, Nifty 50 and S&P 500'."""
+    return missing[0] if len(missing) == 1 else ", ".join(missing[:-1]) + " and " + missing[-1]
 
 
 def _compute_rsi(prices: pd.Series, period: int = settings.RSI_PERIOD) -> float:
@@ -77,24 +110,29 @@ class RegimeDetector:
         Parameters
         ----------
         as_of_date : date
-            The trading date to classify (typically today).
+            The session to classify: the review session for the daily
+            review, today for the monthly forecast. No bar after it is read.
         sector : str
             Sector name used to pick the sector RSI ticker.
 
         Returns
         -------
-        RegimeSnapshot with regime_label, raw signal values, per-agent
-        multipliers from settings.REGIME_MULTIPLIERS, and a narrative string.
+        RegimeSnapshot with regime_label, raw signal values (None for an input
+        that did not answer), per-agent multipliers from
+        settings.REGIME_MULTIPLIERS, a narrative string, and whether the
+        label's severity is established (`unavailable` empty).
         """
         vix        = self._get_vix(as_of_date)
         fii_proxy  = self._get_fii_proxy(as_of_date)
         sector_rsi = self._get_sector_rsi(sector, as_of_date)
+        brent = self._get_5d_pct(settings.REGIME_BRENT_TICKER, as_of_date)
+        usdinr = self._get_5d_pct(settings.REGIME_USDINR_TICKER, as_of_date)
+        spx = self._get_last_session_pct(settings.REGIME_SPX_TICKER, as_of_date)
 
-        label = self._classify(vix, fii_proxy, sector_rsi)
-
-        brent = self._get_5d_pct(settings.REGIME_BRENT_TICKER)
-        usdinr = self._get_5d_pct(settings.REGIME_USDINR_TICKER)
-        spx = self._get_last_session_pct(settings.REGIME_SPX_TICKER)
+        label = self._classify(
+            settings.VIX_FALLBACK if vix is None else vix,
+            settings.FII_PROXY_FALLBACK if fii_proxy is None else fii_proxy,
+            settings.RSI_FALLBACK if sector_rsi is None else sector_rsi)
         stress = self._global_stress_signals(brent, usdinr, spx)
         escalated = self._escalate_label(label, len(stress))
         if escalated != label:
@@ -102,9 +140,23 @@ class RegimeDetector:
                         stress, label, escalated)
         label = escalated
 
+        missing = [name for name, value in (
+            ("India VIX", vix), ("Nifty 50", fii_proxy), ("sector index", sector_rsi),
+            ("Brent crude", brent), ("USD/INR", usdinr), ("S&P 500", spx)) if value is None]
+        mildest, severest = self._label_bounds(
+            vix, fii_proxy, len(stress),
+            sum(value is None for value in (brent, usdinr, spx)))
+        unavailable = ""
+        if severity(mildest) != severity(severest):
+            unavailable = f"{_names(missing)} did not answer"
+            logger.warning("[RegimeDetector] %s: %s; the label lies between %s and %s",
+                           as_of_date, unavailable, mildest, severest)
+
         multipliers = dict(settings.REGIME_MULTIPLIERS.get(
             label, settings.REGIME_MULTIPLIERS["NORMAL"]))
         narrative = self._build_narrative(label, vix, fii_proxy, sector_rsi)
+        if missing:
+            narrative += f" Not answered: {_names(missing)}."
         if stress:
             parts = []
             if brent is not None:
@@ -128,10 +180,14 @@ class RegimeDetector:
             usdinr_5d_pct     = usdinr,
             spx_last_pct      = spx,
             global_stress_signals = stress,
+            dark_inputs       = missing,
+            unavailable       = unavailable,
+            floor_label       = mildest if unavailable else "",
         )
         logger.info(
-            "[RegimeDetector] %s | VIX=%.1f | FII_proxy=%.2f%% | RSI=%.1f → %s",
-            as_of_date, vix, fii_proxy, sector_rsi, label,
+            "[RegimeDetector] %s | VIX=%s | FII_proxy=%s%% | RSI=%s → %s",
+            as_of_date, _num(vix, ".1f"), _num(fii_proxy, ".2f"), _num(sector_rsi, ".1f"),
+            label,
         )
         return snap
 
@@ -139,93 +195,84 @@ class RegimeDetector:
     # Signal fetchers
     # ------------------------------------------------------------------
 
-    def _get_vix(self, as_of_date: date) -> float:
-        """
-        India VIX from yfinance ^INDIAVIX.
-        Falls back to VIX_FALLBACK (17.0 — NORMAL regime midpoint) on error.
-        """
+    def _closes(self, ticker: str, period: str, last_day: date) -> pd.Series | None:
+        """`ticker`'s daily closes from Yahoo up to and including `last_day`
+        (each bar's own exchange date), oldest first; None when Yahoo errs,
+        returns no dated close, or none in the _MAX_INPUT_AGE_DAYS up to
+        `last_day`. A close that is not a number is dropped."""
         try:
             import yfinance as yf
-            df = yf.Ticker(settings.REGIME_VIX_TICKER).history(period="1mo")
-            if df.empty:
-                return settings.VIX_FALLBACK
-            return round(float(df["Close"].iloc[-1]), 2)
+            df = yf.Ticker(ticker).history(period=period)
         except Exception as exc:
-            logger.warning("[RegimeDetector] VIX fetch failed (fallback %.1f): %s",
-                           settings.VIX_FALLBACK, exc)
-            return settings.VIX_FALLBACK
+            logger.warning("[RegimeDetector] %s fetch failed: %s", ticker, exc)
+            return None
+        if df is None or df.empty or "Close" not in df or not isinstance(
+                df.index, pd.DatetimeIndex):
+            logger.warning("[RegimeDetector] %s: no dated closes", ticker)
+            return None
+        close = pd.to_numeric(df["Close"], errors="coerce")
+        close = close[[math.isfinite(v) for v in close]]
+        close = close[[ts.date() <= last_day for ts in close.index]]
+        if close.empty or (last_day - close.index[-1].date()).days > _MAX_INPUT_AGE_DAYS:
+            logger.warning("[RegimeDetector] %s: no close in the %d days up to %s",
+                           ticker, _MAX_INPUT_AGE_DAYS, last_day)
+            return None
+        return close
 
-    def _get_fii_proxy(self, as_of_date: date) -> float:
+    def _get_vix(self, as_of_date: date) -> float | None:
         """
-        Nifty 50 (^NSEI) 5-day momentum as proxy for FII net flow direction.
-        Returns (close[-1] - close[-6]) / close[-6] * 100.
-        Falls back to FII_PROXY_FALLBACK (0.0 — neutral) on error.
+        India VIX (^INDIAVIX) at the close of `as_of_date`, or the newest
+        session before it. None when it did not answer: never a midpoint.
         """
-        try:
-            import yfinance as yf
-            df = yf.Ticker(settings.REGIME_FII_PROXY_TICKER).history(period="1mo")
-            if df.empty or len(df) < 6:
-                return settings.FII_PROXY_FALLBACK
-            close = df["Close"]
-            pct   = (close.iloc[-1] - close.iloc[-6]) / close.iloc[-6] * 100.0
-            return round(float(pct), 4)
-        except Exception as exc:
-            logger.warning("[RegimeDetector] FII proxy fetch failed (fallback 0.0): %s", exc)
-            return settings.FII_PROXY_FALLBACK
+        close = self._closes(settings.REGIME_VIX_TICKER, "1mo", as_of_date)
+        return None if close is None else round(float(close.iloc[-1]), 2)
 
-    def _get_sector_rsi(self, sector: str, as_of_date: date) -> float:
+    def _get_fii_proxy(self, as_of_date: date) -> float | None:
         """
-        RSI(14) of the sector index using Wilder smoothing (pure pandas, no ta-lib).
-        Sector index tickers from settings.REGIME_SECTOR_TICKERS; falls back to ^NSEI.
-        Falls back to RSI_FALLBACK (50.0) on error.
+        Nifty 50 (^NSEI) 5-day momentum as proxy for FII net flow direction,
+        to the close of `as_of_date`: (close[-1] - close[-6]) / close[-6] * 100.
+        None when it did not answer (fewer than 6 closes).
+        """
+        close = self._closes(settings.REGIME_FII_PROXY_TICKER, "1mo", as_of_date)
+        if close is None or len(close) < 6:
+            return None
+        pct = (close.iloc[-1] - close.iloc[-6]) / close.iloc[-6] * 100.0
+        return round(float(pct), 4)
+
+    def _get_sector_rsi(self, sector: str, as_of_date: date) -> float | None:
+        """
+        RSI(14) of the sector index using Wilder smoothing (pure pandas, no ta-lib),
+        to the close of `as_of_date`. Sector index tickers from
+        settings.REGIME_SECTOR_TICKERS; falls back to ^NSEI. None when neither
+        has enough closes.
         """
         ticker_sym = settings.REGIME_SECTOR_TICKERS.get(
             sector, settings.REGIME_SECTOR_FALLBACK_TICKER
         )
-        try:
-            import yfinance as yf
-            df = yf.Ticker(ticker_sym).history(period="3mo")
-            if df.empty or len(df) < settings.RSI_PERIOD + 1:
-                # Try fallback ticker if sector ticker gave insufficient data
-                if ticker_sym != settings.REGIME_SECTOR_FALLBACK_TICKER:
-                    df = yf.Ticker(settings.REGIME_SECTOR_FALLBACK_TICKER).history(period="3mo")
-                if df.empty or len(df) < settings.RSI_PERIOD + 1:
-                    return settings.RSI_FALLBACK
-            return _compute_rsi(df["Close"])
-        except Exception as exc:
-            logger.warning(
-                "[RegimeDetector] Sector RSI fetch failed for %s (fallback 50.0): %s",
-                ticker_sym, exc,
-            )
-            return settings.RSI_FALLBACK
-
-    def _get_5d_pct(self, ticker: str) -> float | None:
-        """5-session % change for a global ticker. None on any failure."""
-        try:
-            import yfinance as yf
-            df = yf.Ticker(ticker).history(period="1mo")
-            if df.empty or len(df) < 6:
-                return None
-            close = df["Close"]
-            return round(float((close.iloc[-1] - close.iloc[-6]) / close.iloc[-6] * 100.0), 4)
-        except Exception as exc:
-            logger.warning("[RegimeDetector] 5d fetch failed for %s (neutral): %s",
-                           ticker, exc)
+        close = self._closes(ticker_sym, "3mo", as_of_date)
+        if (close is None or len(close) < settings.RSI_PERIOD + 1) and \
+                ticker_sym != settings.REGIME_SECTOR_FALLBACK_TICKER:
+            # Try fallback ticker if sector ticker gave insufficient data
+            close = self._closes(settings.REGIME_SECTOR_FALLBACK_TICKER, "3mo", as_of_date)
+        if close is None or len(close) < settings.RSI_PERIOD + 1:
             return None
+        return _compute_rsi(close)
 
-    def _get_last_session_pct(self, ticker: str) -> float | None:
-        """Last completed session % move. None on any failure."""
-        try:
-            import yfinance as yf
-            df = yf.Ticker(ticker).history(period="5d")
-            if df.empty or len(df) < 2:
-                return None
-            close = df["Close"]
-            return round(float((close.iloc[-1] - close.iloc[-2]) / close.iloc[-2] * 100.0), 4)
-        except Exception as exc:
-            logger.warning("[RegimeDetector] last-session fetch failed for %s (neutral): %s",
-                           ticker, exc)
+    def _get_5d_pct(self, ticker: str, as_of_date: date) -> float | None:
+        """5-session % change for a global ticker, over the sessions before
+        `as_of_date`. None when it did not answer."""
+        close = self._closes(ticker, "1mo", as_of_date - timedelta(days=1))
+        if close is None or len(close) < 6:
             return None
+        return round(float((close.iloc[-1] - close.iloc[-6]) / close.iloc[-6] * 100.0), 4)
+
+    def _get_last_session_pct(self, ticker: str, as_of_date: date) -> float | None:
+        """% move of the last session completed before `as_of_date`. None when
+        it did not answer."""
+        close = self._closes(ticker, "1mo", as_of_date - timedelta(days=1))
+        if close is None or len(close) < 2:
+            return None
+        return round(float((close.iloc[-1] - close.iloc[-2]) / close.iloc[-2] * 100.0), 4)
 
     # ------------------------------------------------------------------
     # Classification
@@ -263,6 +310,22 @@ class RegimeDetector:
 
         return "NORMAL"
 
+    @classmethod
+    def _label_bounds(cls, vix: float | None, fii_proxy: float | None,
+                      n_stress: int, n_dark_global: int) -> tuple[str, str]:
+        """(mildest, severest) label the inputs that answered allow (FIX-023):
+        a missing VIX read as 0 then as unbounded, a missing Nifty move as
+        unbounded rise then fall, each missing global input as not firing then
+        firing. The sector RSI never changes a label's severity."""
+        rsi = settings.RSI_FALLBACK
+        mildest = cls._escalate_label(cls._classify(
+            0.0 if vix is None else vix,
+            math.inf if fii_proxy is None else fii_proxy, rsi), n_stress)
+        severest = cls._escalate_label(cls._classify(
+            math.inf if vix is None else vix,
+            -math.inf if fii_proxy is None else fii_proxy, rsi), n_stress + n_dark_global)
+        return mildest, severest
+
     @staticmethod
     def _global_stress_signals(
         brent_5d_pct: float | None,
@@ -294,34 +357,36 @@ class RegimeDetector:
 
     @staticmethod
     def _build_narrative(
-        label: str, vix: float, fii_proxy: float, sector_rsi: float
+        label: str, vix: float | None, fii_proxy: float | None, sector_rsi: float | None
     ) -> str:
+        """A missing value reads "n/a"."""
+        v, f, r = _num(vix, ".1f"), _num(fii_proxy, "+.2f"), _num(sector_rsi, ".1f")
         narratives = {
             "MACRO_CRISIS": (
-                f"MACRO CRISIS regime detected: India VIX {vix:.1f} (above 22) with "
-                f"Nifty 5-day return {fii_proxy:+.2f}% indicating FII outflow pressure; "
+                f"MACRO CRISIS regime detected: India VIX {v} (above 22) with "
+                f"Nifty 5-day return {f}% indicating FII outflow pressure; "
                 "risk_macro weight elevated, growth signals discounted."
             ),
             "RISK_OFF": (
-                f"RISK-OFF regime: elevated VIX ({vix:.1f}) or FII outflow proxy "
-                f"({fii_proxy:+.2f}% 5-day Nifty); risk_macro carries higher weight today."
+                f"RISK-OFF regime: elevated VIX ({v}) or FII outflow proxy "
+                f"({f}% 5-day Nifty); risk_macro carries higher weight today."
             ),
             "RISK_ON": (
-                f"RISK-ON regime: VIX {vix:.1f} (calm), Nifty 5-day {fii_proxy:+.2f}% "
-                "(FII inflow proxy), sector RSI {:.1f}; fundamentals and sentiment elevated.".format(sector_rsi)
+                f"RISK-ON regime: VIX {v} (calm), Nifty 5-day {f}% "
+                f"(FII inflow proxy), sector RSI {r}; fundamentals and sentiment elevated."
             ),
             "MOMENTUM_EXTENDED": (
-                f"MOMENTUM EXTENDED: VIX {vix:.1f} low, Nifty {fii_proxy:+.2f}% inflow, "
-                f"sector RSI {sector_rsi:.1f} (overbought > 70); "
+                f"MOMENTUM EXTENDED: VIX {v} low, Nifty {f}% inflow, "
+                f"sector RSI {r} (overbought > 70); "
                 "pattern_analysis elevated for mean-reversion detection."
             ),
             "OVERSOLD": (
-                f"OVERSOLD regime: sector RSI {sector_rsi:.1f} (below 30); "
+                f"OVERSOLD regime: sector RSI {r} (below 30); "
                 "pattern_analysis weight elevated for mean-reversion opportunity detection."
             ),
             "NORMAL": (
-                f"NORMAL regime: VIX {vix:.1f}, Nifty 5-day {fii_proxy:+.2f}%, "
-                f"sector RSI {sector_rsi:.1f}; base learned weights apply."
+                f"NORMAL regime: VIX {v}, Nifty 5-day {f}%, "
+                f"sector RSI {r}; base learned weights apply."
             ),
         }
         return narratives.get(label, f"Regime: {label}")

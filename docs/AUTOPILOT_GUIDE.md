@@ -401,7 +401,11 @@ invested; `_deploy_idle_cash` in autopilot.py buys. Off unless
 The steps, after the day's sells, switch legs and ADDs:
 
 1. **Target.** The daily review's sticky regime label recorded for the review
-   day (`state.label_recorded_for`; none recorded: nothing opens). Its share
+   day (`state.label_recorded_for`; none recorded: nothing opens). A day
+   whose label its live inputs do not establish (an input did not answer
+   and could change the label's severity, or the detector failed) is
+   recorded without one, and the run says "market regime unavailable for
+   <day>: India VIX did not answer; no new positions" (FIX-023). Its share
    of total equity, `autopilot.deploy_target_invested_pct`: 80% in NORMAL,
    RISK_ON, MOMENTUM_EXTENDED and OVERSOLD; 50% in RISK_OFF; 0 in MACRO_CRISIS
    (no new positions). In a calm regime the target is at least
@@ -415,9 +419,13 @@ The steps, after the day's sells, switch legs and ADDs:
    `portfolio.target_holdings` (12) are held and the regime's own share is met.
 3. **Candidates**, the day's buy candidates (section 3: each dive on or
    before the review session), highest conviction first: not held; not sold
-   on or after its latest deep dive; SA-003's gate (an actionable deep dive,
-   a close dated the session, a resolved identity: `enforce` withholds,
-   `record` buys and notes it); NSE's surveillance report; inside the entry
+   on or after its latest deep dive; a close whose bar is on or after its
+   latest deep dive or watchlist analysis, in either gate mode
+   (`shelf.close_before_dive`: "close of 2026-10-30 is before the deep dive
+   of 2026-10-31"; a SWITCH's buy leg applies it too); SA-003's gate (an
+   actionable deep dive, a close dated the session, a resolved identity:
+   `enforce` withholds, `record` buys and notes it); NSE's surveillance
+   report; inside the entry
    band; at least one share under the shared rule, asking for
    `min_invested_inr / target_holdings` (₹83,333).
 4. **The buy.** A `BUY` with verdict `DEPLOY`, `advice_ref`
@@ -429,8 +437,8 @@ The steps, after the day's sells, switch legs and ADDs:
    pipeline puts it in the day's digest as `deployment`: regime, target (share,
    rupees and % of equity), invested before and after, holdings before and
    after, what was bought, each other idea's `outcome` (`held`, `sold`, `gate`,
-   `price`, `surveillance`, `band`, `invalidated`, `size`, `ledger`,
-   `waiting`) and `why`, and `reasons`: why buying stopped, any unreachable
+   `price`, `before_dive`, `surveillance`, `band`, `invalidated`, `size`,
+   `ledger`, `waiting`) and `why`, and `reasons`: why buying stopped, any unreachable
    floor, and the counts ("3 ideas above entry band"). The digest's text adds
    an "Idle cash:" line.
 6. **Failure.** The step runs on a deep copy of the portfolio and the closes,
@@ -720,6 +728,7 @@ run is hermetic (KT section 13). A quick loop:
 | `test_autopilot_executor_sells.py`, `…_adds.py`, `…_switch.py` | Verdict rules, gating byte-identity, run marker, dedupe, stale-date refusal, sizing, SWITCH legs, value points |
 | `test_sizing_rule_sa050.py` | The shared sizing and entry rule: hand-worked caps, floor and band cases, the 11 Oct weights, a random-portfolio property test and a switch through the pipeline |
 | `test_deploy_idle_cash_sa049.py` | Idle-cash deployment: the 27 Sep shape over two days, a crisis, no regime, target reached, every non-buy reason, SA-003 in both modes, re-runs, the switch off, the breadth floor (₹2 L deposit to 12 holdings, 14 and 16 ideas, 6 ideas, RISK_OFF, config and per-portfolio overrides), churn, surveillance, the sector key, a random-day property test, whole shares in paisa, the switch alert's matching, a holding added during the run, the DEPOSIT route, the exit benchmark, a failing deployment step that keeps the day's sells, and the pipeline end to end |
+| `test_regime_inputs_fix023.py` | The regime deployment trusts: inputs read as of the review session, a missing input with no value, a day whose label the live inputs do not establish opening nothing (the reason names the inputs), the hysteresis on dark days, a detector exception; and no position opened at a close from before its idea's latest dive, in either gate mode |
 | `test_autopilot_pipeline.py`, `test_portfolio_pipeline.py`, `test_scheduler_portfolio_hook.py` | The pipeline steps, digest trades and the `switch_buy_skipped` alert |
 | `test_autopilot_isolation.py` | Executor writes stay inside `data/portfolio/<user>/` |
 | `test_autopilot_wave1.py`, `test_portfolio_locking.py`, `test_portfolio_reconcile.py` | Locking with a fresh reload, future-date refusal, reconciliation |

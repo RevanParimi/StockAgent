@@ -1,8 +1,8 @@
 # StockAgent — Technical Design and Knowledge Transfer
 
-**Edition:** 2026-11-02 · **Audience:** engineers and teammates learning the product
+**Edition:** 2026-11-05 · **Audience:** engineers and teammates learning the product
 
-**Code inspected:** `f064010dcc7535faf2ea32966f172c3522a51c26`
+**Code inspected:** `e6b037a2a49cae95017a68b76329dd11df6dd587`
 
 **PDF:** [StockAgent-Three-Loops.pdf](StockAgent-Three-Loops.pdf), generated from this Markdown.
 
@@ -35,16 +35,16 @@ triggered no production job, backfill or notification.
 
 ### Production state at this edition
 
-Production runs `f47d246` (FIX-011, code `866eae5`), deployed at about 00:14
+Production runs `c5165a1` (SA-049, code `f064010`), deployed at about 20:12
 IST on 2 November 2026 (the deployment list showed it SUCCESS and `/health`
-answered 200). The inspected code adds SA-049's idle-cash deployment behind a
-switch that ships off, NSE's surveillance report checked on every buy that
-opens a position, buy candidates bounded by the review session, and the
-paper-capital deposit (sections 6, 7 and 8). It is
-committed but not yet deployed, and counts as running
+answered 200), with idle-cash deployment off. The inspected code adds FIX-023
+and FIX-024: a regime label counts only when live inputs establish it, read as
+of the review session; an ADD is held on a day no label was established; and no
+buy that opens a position takes a close struck before its idea was decided
+(section 6). They are committed but not yet deployed, and count as running
 only once a read-only check of the deployment list and `/health` confirms that
-deploy. The table gives the configuration that
-differs from the repository and the state of each operational control.
+deploy. The table gives the configuration that differs from the repository and
+the state of each operational control.
 
 | Area | State in production | Evidence |
 |---|---|---|
@@ -1137,13 +1137,24 @@ below `advisor.max_position_pct` (10%) of total equity (see "Sizing every
 buy" below). ADD also needs a regime label established for the review day.
 On a day the live inputs left it open (Cash deployment, below), the review's
 feedback entry says why its label was kept, and the advisor holds the ADD
-in either gate mode with the note `REGIME_UNAVAILABLE`: "an add was
-withheld: market regime unavailable for 2026-10-30: India VIX did not
-answer". The crisis exit still reads the kept label, since a sale is never
-blocked by a missing input. EXIT may
+in either gate mode with the note `REGIME_UNAVAILABLE`. The record's
+`regime_unavailable` says "market regime unavailable for 2026-10-30: India
+VIX did not answer", and so does the fallback narrative; the LLM's line gets
+only the code (**Planned:** PR-007). The crisis exit still reads the kept
+label, since a sale is never blocked by a missing input. EXIT may
 become SWITCH when an eligible replacement exists. A holding-age rule can
 soften certain TRIM actions to HOLD; it does not override EXIT. These are
 product rules, not individualized tax or investment advice.
+
+**Limit.** The advisor reads the envelope as it stands when the run starts,
+and a re-forecast made after the review session's close is in it: the review's
+own (a thesis break, a shock, a flip into crisis) or that morning's pre-open
+check. Its analysis reads news up to that moment, and the review's re-forecast
+anchors its path on the most recent close. So an ADD or a sale booked at the
+review session's close can rest on what happened after that close: with
+Monday's close at ₹1,000 and Tuesday's at ₹1,100, Tuesday's run can ADD at
+₹1,000. A stock has at most 2 re-forecasts a month; how often this has happened
+is not measured. **Planned:** FIX-027.
 
 ### Two exit rules
 
@@ -1797,7 +1808,9 @@ reviews Friday). A watchlist BUY analysed on Monday at 20:00 IST, after
 results filed that evening, is first offered by Wednesday's run, at
 Tuesday's close; one analysed at 11:00 IST is offered by Tuesday's run, at
 Monday's close. A dive from the owner's manual discovery run on a weekday
-evening waits for the next session the same way. Each must:
+evening waits for the next session the same way. The list reads only the
+latest analysis, so one made after the close that is no longer a BUY takes the
+stock off that close's offer. Each must:
 
 - not be held, and not have been sold on or after its latest deep dive
   (buying a stock back after a sale needs a new dive);
@@ -3179,9 +3192,11 @@ learning to `observe`. SA-023 puts learned lessons on measurable probation.
 
 - Idle-cash deployment (section 6, Cash deployment) ships off. **Planned:**
   after FIX-023 (a regime label built on a fallback input opens no position),
-  the owner deposits ₹2 L of paper capital, reads the paper lane's record of
-  shelf ideas against the Nifty, and switches it on; a month later the Nifty
-  comparison (section 7) judges the deployed cash (SA-049's rollout).
+  FIX-024 (an idea analysed after a session's close is not bought at that
+  close) and FIX-025 (deployment follows the money and the ideas), the owner
+  deposits ₹2 L of paper capital, reads the paper lane's record of shelf ideas
+  against the Nifty, and switches it on; a month later the Nifty comparison
+  (section 7) judges the deployed cash (SA-049's rollout).
 
 ### Product results
 
@@ -3327,7 +3342,9 @@ section 10) are part of the current design.
 | [SA-047](planning/PI-2026-09/stories/SA-047.md) | Decide with the factor engine; switch when it is not worse | Open | 4 Research; 5 Learning | SA-045, SA-046, SA-014, SA-020 |
 | [SA-048](planning/PI-2026-09/stories/SA-048.md) | Charge realistic trading costs and tax in paper P&L | Done | 6 Portfolio; 7 Marksheets | None |
 | [SA-049](planning/PI-2026-09/stories/SA-049.md) | Put idle cash to work in normal markets, with a 10-holding / ₹10 L floor | Done | 6 Portfolio; 8 Discovery | SA-050, SA-051 |
-| [FIX-023](planning/PI-2026-09/stories/FIX-023.md) | Deployment buys only on a regime read from live inputs, as of the review session | Open | 6 Portfolio; 5 Learning | SA-049 |
+| [FIX-023](planning/PI-2026-09/stories/FIX-023.md) | Deployment buys only on a regime read from live inputs, as of the review session | Done | 6 Portfolio; 5 Learning | SA-049 |
+| [FIX-024](planning/PI-2026-09/stories/FIX-024.md) | A buy waits for an analysis made before its close; an unknown regime adds nothing | Done | 6 Portfolio; 8 Discovery | FIX-023 |
+| [FIX-027](planning/PI-2026-09/stories/FIX-027.md) | A decision booked at a session's close reads nothing from after that close | Open | 6 Portfolio | FIX-024 |
 | [SA-050](planning/PI-2026-09/stories/SA-050.md) | Apply one sizing rule to every autopilot buy | Done | 6 Portfolio | None |
 | [SA-051](planning/PI-2026-09/stories/SA-051.md) | Show the portfolio against the Nifty, with honest labels | Done | 7 Marksheets; 10 Interface | None |
 | [FIX-006](planning/PI-2026-09/stories/FIX-006.md) | An anonymous watchlist read never falls back to the owner | Open | 10 Interface | None |

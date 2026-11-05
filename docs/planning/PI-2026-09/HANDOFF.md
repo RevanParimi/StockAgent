@@ -106,16 +106,93 @@ Docs only; nothing committed, pushed, deployed or configured.
 
 ## START HERE — resume checklist, in order
 
-**FIX-023 COMMITTED** (5 Nov, session stockagent-main-31, at the owner's "ya commit and
-push"):
+**FIX-023 and FIX-024 COMMITTED** (5 Nov, about 14:02-14:02 IST, session stockagent-main-31, at the owner's
+"ya commit and push"; peer -64 idle). Built in a temporary worktree, so the working tree was not
+touched until the end:
 
-- **Code `898f5c5`** is exactly the 19 reviewed files, from tree `194bb6f7`: `kt_manifest.py verify
-  FIX-023-manifest.json --rev 898f5c5` gives 0 mismatches (`211735f4`).
-- **This docs commit** holds the receipt's commit-time edits 1–8 (the KT header, section 1, section
-  6's two limit sentences, section 11, section 12, guide 07-G/N/O, the PDF), with both receipts, the
-  manifest, the FIX-024, FIX-025 and FIX-026 cards, the PI README, and STATE and HANDOFF with SA-049's
-  deploy record.
-- **FIX-024's two commits follow directly**, and their handoff replaces this entry.
+- **`898f5c5`, FIX-023's code:** exactly its 19 reviewed files, from tree `194bb6f7`: `kt_manifest.py
+  verify FIX-023-manifest.json --rev 898f5c5` gives 0 mismatches (`211735f4`). Its docs commit follows,
+  with the receipt's edits 1–8.
+- **`e6b037a`, FIX-024's code:** exactly its 28 reviewed files: `verify FIX-024-manifest.json --rev
+  e6b037a` gives 0 mismatches (`ff32663c`).
+- **The last docs commit:** FIX-023's edits 1, 2, 4, 5, 6, 7 re-applied (not 3) and FIX-024's edits
+  1–10, with both FIX-024 receipts, its manifest, the routed sections on FIX-025 and PR-007, the FIX-027
+  card, the PI README, STATE and HANDOFF. **Beyond the receipts, docs only:** KT section 11 and
+  AUTOPILOT_GUIDE section 16 name FIX-025 among the switch-on's preconditions, as its card and edit 7
+  do; the AUTOPILOT_GUIDE example's first date moves off 20 Oct, an NSE holiday.
+- **Pushed right after these commits**, about 14:05 IST on Thursday, inside the 12:05–14:55 window:
+  about 2 h 20 min of runway to the 16:25 review window, with only the 15:00 macro feed inside it,
+  after a fetch shows origin unchanged. The deploy record follows (uncommitted, for the next docs
+  commit).
+- **FIX-023 and FIX-024 production `pending_deployment`.** Deployment's switch stays off: it waits for
+  FIX-025 as well.
+- Next `continue`, in a new conversation: **FIX-025**'s implementation.
+
+**FIX-024 fresh review → ACCEPTED** (5 Nov, about 08:14–09:02 IST, session
+stockagent-main-31 [fa7ce5], a new conversation opened with "continue"; peers idle). Receipt:
+[FIX-024-review](evidence/FIX-024-review.md). STATE: FIX-024 `done` with a `review` entry, production
+`pending_deployment`; new [FIX-027](stories/FIX-027.md) `todo`; `active_task` null; `next_task`
+FIX-025. Nothing was committed, pushed, deployed or configured; no production state, log or network
+was read.
+
+- **Input verified** at the start and the end: manifest `ff32663c` (28 files, 0 mismatches), diff
+  `f5c80f07` (121,545 B, 27 paths) against FIX-023's tree `194bb6f7`
+  (`analysis_data/fix024_review/rv_digest.py`).
+- **Independent checks** (`analysis_data/fix024_review/`, not tracked): 40 passed + 4 strict xfail.
+  - At the ledger, 216 real pipeline runs: a BUY exists exactly when its close is struck after the
+    analysis, and the band's close is the newest one the analysis could read.
+  - A real SWITCH with no hand-made advice, at 20:00 and at 11:00.
+  - `decide` over 20,736 shapes: the reason can only turn ADD into HOLD.
+  - 23 of 23 in-memory mutants caught; FIX-023's RV3 and RV5 now fail at their defect lines.
+- **M1, medium, pre-existing, found on the card's first hard-review question → new
+  [FIX-027](stories/FIX-027.md)** (P1, 3 points, after FIX-026, before PR-005; not a switch-on
+  precondition). The 16:30 run on day T can re-forecast before it advises: a live analysis, anchored
+  on the most recent close, T's. Monday ₹1,000, Tuesday ₹1,100: the path reads UP against Monday's
+  close and ADDs at ₹1,000. Tuesday ₹900 with the thesis not intact: EXIT at ₹1,000, before a fall
+  the run had read. Reproduced with the real `regenerate_envelope`, advisor and executor. At most 2
+  re-forecasts per ticker a month; **how often it has happened is not measured**, and the card's
+  first step measures it. The sale's handling is an owner decision.
+- **Low:** L1, the LLM's line names no day or reason (the record and fallback do) → PR-007. L2, a
+  holding with no review entry on a dark day still ADDs (two faults) → FIX-025. L3, wrong dates in an
+  AUTOPILOT_GUIDE example → commit-time edit. T1–T3, test gaps → FIX-025.
+- **Evidence:** full suite 6,066 passed / 12 skipped / 1 xfailed / 0 failed (13m05s);
+  `check_kt_docs` errors `[]`; `check_broad_except` OK (148); PDF 67 pages, matches the KT.
+- **Commit FIX-023 and FIX-024 only at the owner's word, FIX-023 first.** FIX-023: its 19 blobs from
+  tree `194bb6f7`, then its receipt's edits 1–8. FIX-024: all 28 reviewed files byte-exact (`verify
+  --rev HEAD` 0 mismatches), then a docs commit re-applying FIX-023's edits 1, 2, 4, 5, 6, 7 (not 3)
+  plus FIX-024's receipt's edits 1–10. Push in a job-free window; the switch stays off.
+- **Next `continue`, in a new conversation: FIX-025's implementation.**
+
+**FIX-024 IMPLEMENTED -> `review_required`** (4 Nov, about 21:40–23:25 IST, session
+stockagent-main-35 [c2a52d], a new conversation opened with "continue"; it waited for -9b's
+FIX-025/FIX-026 board writes before its first bookkeeping write). Receipt:
+[FIX-024-implementation](evidence/FIX-024-implementation.md). STATE: FIX-024 `review_required`
+with an `implementation` entry; `active_task` and `next_task` FIX-024 (the fresh review).
+Nothing was committed, pushed, deployed or configured; no production state or network was read.
+
+- **M1:** a close prices a buy only when it is struck after the idea was decided. A watchlist
+  analysis keeps its time; a deep dive keeps only its day and counts as made after that day's
+  15:30 IST close. W analysed Mon 20:00 IST: not offered for Monday's close ("analysis of
+  2026-11-02 20:00 IST is after the close of 2026-11-02"), bought at Tuesday's; at 11:00 IST,
+  bought at Monday's close, its band from Friday's. One rule for the candidate list, the SWITCH
+  leg, deployment and the shadow's switch test.
+- **L1:** on a day whose regime was kept, not established, ADD is held in either gate mode:
+  "an add was withheld: market regime unavailable for 2026-10-30: India VIX did not answer".
+  The crisis exit still reads the kept label.
+- **L2:** a fresh state file is established for its own day; a later dark review leaves it.
+- **Hard-review lane:** `POST /portfolio/run-advisor` and `POST /scheduler/daily-review` refuse
+  a session that has not closed (before 15:30 IST).
+- **Evidence:** story file 16 passed; mutants 23/23 caught; full suite 6,066 passed / 12 skipped / 1 xfailed / 0 failed (29m13s; a first run found one SA-048 fixture dated the review day, fixed);
+  `check_broad_except` OK (148); `check_kt_docs` errors `[]`; PDF 67 pages.
+  Decisions F24-D1..D10 in the receipt; one sell-lane look-ahead found, not changed
+  (`invalidation_for`).
+- **Review input (stacked on FIX-023's uncommitted tree):** manifest
+  [FIX-024-manifest.json](evidence/FIX-024-manifest.json) `ff32663c` (28 files); diff `f5c80f07`
+  (121,545 B, 27 paths) between tree `194bb6f7` (FIX-023's accepted
+  tree, written at the start) and `726f1876` (`analysis_data/fix024/digest.py`).
+- **Commit order, only at the owner's word:** FIX-023 first from its reviewed bytes, then
+  FIX-024 after its review (the receipt's commit section: KT section 6 from FIX-024's copy).
+- **Next `continue`, in a new conversation: FIX-024's fresh review** (REVIEW.md).
 
 **Owner decisions on SA-049's design choices → FIX-025 and FIX-026 added** (4 Nov, about
 21:40–22:00 IST, session stockagent-main-9b [e55bfb], a question-and-answer chat, not a

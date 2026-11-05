@@ -150,7 +150,7 @@ The cascade is **EXIT → TRIM → ADD → HOLD**; the first that fires wins.
 |---|---|
 | EXIT | Any of: unrealised loss at or beyond the stop; thesis broken and envelope DOWN; a re-forecast for `external_shock`, `thesis_break` or `preopen_shock` and envelope DOWN; `MACRO_CRISIS` and envelope DOWN; or a trailing stop: the peak was at least 10% above cost and the close has since fallen from it by at least the stop |
 | TRIM | Profit of at least 25%, and confidence falling by 0.05 or more, or a reversion prior of 0.20 or more |
-| ADD | Envelope UP, regime not `MACRO_CRISIS` or `RISK_OFF`, position weight below 10% of total equity, and at least 60% of the last 7 reviews correct; and the review day's regime established from live inputs: on a day it was not (India VIX did not answer, say), the ADD is held in either gate mode with the note `REGIME_UNAVAILABLE`, "an add was withheld: market regime unavailable for 2026-10-30: India VIX did not answer". The crisis EXIT still reads the kept label |
+| ADD | Envelope UP, regime not `MACRO_CRISIS` or `RISK_OFF`, position weight below 10% of total equity, and at least 60% of the last 7 reviews correct; and the review day's regime established from live inputs: on a day it was not (India VIX did not answer, say), the ADD is held in either gate mode with the note `REGIME_UNAVAILABLE`; the record's `regime_unavailable` says "market regime unavailable for 2026-10-30: India VIX did not answer". The crisis EXIT still reads the kept label |
 | HOLD | Nothing above |
 | SWITCH | An EXIT becomes SWITCH when a buy candidate qualifies (below) |
 
@@ -188,10 +188,10 @@ count:
   registry's ticker map, else Yahoo's industry mapped to a registry sector
   ("Auto Parts" is `automobile`), else `generic`.
 
-**Example:** on Tuesday 20 Oct a shelf idea last dived on 12 Sep is not a
-candidate. A watchlist stock analysed on 17 Oct at 18:00 IST as a BUY at
+**Example:** on Friday 16 Oct a shelf idea last dived on 12 Sep is not a
+candidate. A watchlist stock analysed on Thu 15 Oct at 18:00 IST as a BUY at
 0.68, actionable, with a ₹500 close that day, is a candidate from the review
-of 20 Oct with a band of ₹485–₹510. The home
+of Fri 16 Oct with a band of ₹485–₹510. The home
 page saves watchlist stocks with no sector; HEROMOTOCO added there is a
 candidate under its managed `automobile`, so with MARUTI and M&M already at
 28% of total equity it is capped at 30%.
@@ -775,8 +775,10 @@ encode the two constraints most likely to fail silently.
 
 ## 16. Planned work
 
-- Switching idle-cash deployment on: FIX-023 first (a regime label built on
-  a fallback input opens no position), then the owner's ₹2 L deposit, a read
+- Switching idle-cash deployment on: FIX-023 (a regime label built on a
+  fallback input opens no position), FIX-024 (an idea analysed after a
+  session's close is not bought at that close) and FIX-025 (deployment follows
+  the money and the ideas) first, then the owner's ₹2 L deposit, a read
   of the paper lane's record, then `portfolio.overrides.primary.deploy_idle_cash`
   (SA-049's rollout).
 - The tax estimate at each lot's own cost (FIX-022).

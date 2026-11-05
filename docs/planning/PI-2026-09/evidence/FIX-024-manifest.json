@@ -1,0 +1,151 @@
+{
+  "story": "FIX-024",
+  "phase": "implementation",
+  "head": "c5165a1",
+  "base_tree": "194bb6f7cf000f4dbbcf27827e9b479d2ec02768",
+  "base_note": "FIX-023 accepted, uncommitted working tree written as a git tree at the start (analysis_data/fix024/base_tree.txt)",
+  "date": "2026-11-04",
+  "hash_convention": "git blob bytes after .gitattributes normalization (CRLF->LF for text, binary unchanged); verify with scripts/docs/kt_manifest.py verify",
+  "files": [
+    {
+      "path": "CODEBASE.md",
+      "git_blob": "63945def12dfa2815476b47b5bfabec473dd0509",
+      "sha256": "d1fe691705c4194471f8e85b5c0348de4183aada3e8151d521dd773b050df813"
+    },
+    {
+      "path": "core/discovery/candidates.py",
+      "git_blob": "7f5ec9e6f89bb08221493a724b5bd79511e462f8",
+      "sha256": "af40d6ff40c1b8a8d85226ba4e955662b977fb103adfec7df0435b460c6af7d3"
+    },
+    {
+      "path": "core/discovery/shelf.py",
+      "git_blob": "e42e2749534522ba8e98fc2db7de4f0bee158e39",
+      "sha256": "87786ac30c7e097c6bf70fd42ae6bc4b5b3059797a714996bcd8fd0ab03bece5"
+    },
+    {
+      "path": "core/intelligence/regime/state.py",
+      "git_blob": "01b6526139b158753d8c3a02577133eda10010d3",
+      "sha256": "c3a1d28db48975ed6ca9198f1e10f227ab3f068583abdaf50f02f9c2b094349a"
+    },
+    {
+      "path": "core/intelligence/rl/nse_calendar.py",
+      "git_blob": "cd30c5a27993e241ad7804a16c3a43603e192fd1",
+      "sha256": "4e294556cb509cf506e27e8fd2d28435b0a4fb1544b346a6d188a778ec6e9581"
+    },
+    {
+      "path": "core/intelligence/rl/workflows/daily_review.py",
+      "git_blob": "52099a89af7dc9c253fc3426eb615c82a31421ef",
+      "sha256": "04afa5629fae6bd60c5302deaa39f76b7c398d92eda5faacaa84ce7e4620a595"
+    },
+    {
+      "path": "core/portfolio/advisor.py",
+      "git_blob": "452c8ac98d8b64abcc6e43c2325b41b300a14d0b",
+      "sha256": "a5d204e1dfc6e347a5e84e8c86af757f8c7ccae61b6433b5fe9fb6529a8caa83"
+    },
+    {
+      "path": "core/portfolio/autopilot.py",
+      "git_blob": "718293a46bd0526a6451c682637eb312e9eafe9b",
+      "sha256": "8d2cccdd22888049f1c70015a34988844508015048a691e3bf436fec3d28d301"
+    },
+    {
+      "path": "core/portfolio/deployment.py",
+      "git_blob": "e1fa7b272d89facb693388167f8d3eaf594dccfe",
+      "sha256": "4242a327414b2b109209a024c11d27a028f87e3a4e9ca12fd2f0e32e839fda00"
+    },
+    {
+      "path": "core/portfolio/exit_shadow.py",
+      "git_blob": "381322ec561c13be1f7308a299869524b9af4ae9",
+      "sha256": "a539d62d3c0f4f7061859171d7884ff1172daf135aece1b0e242de5899eb52f8"
+    },
+    {
+      "path": "core/portfolio/narrator.py",
+      "git_blob": "103eff0c8cb2c343db5ed1c24ad6e982fbd992e1",
+      "sha256": "fafaa11367c802982f8b9d7ebd025067662786853c67fee5047904d2eb700356"
+    },
+    {
+      "path": "docs/AUTOPILOT_GUIDE.md",
+      "git_blob": "10066df6afd9c096b3867a05ea8c8ca09985f97d",
+      "sha256": "98b12ce30ecac5c471428bcaec3644dcd1fc827beb830858b90d32d223fb6b62"
+    },
+    {
+      "path": "docs/PRODUCT_MAP.md",
+      "git_blob": "32ce39e06541a848c236cbbcf2727668ca8ba5e8",
+      "sha256": "2ce0afbec80a3d0d2ad16ee62257cddde585a7b864f02283d3d1fbc1fe5826d9"
+    },
+    {
+      "path": "docs/RL_DESIGN.md",
+      "git_blob": "ed1256d6a8dfcc4b28bcbf5f28985478c1f2c479",
+      "sha256": "cdf3c6844eecf3c46132dcfd34803b78ec3cb6b0b65cd0fb326604d9013251d1"
+    },
+    {
+      "path": "docs/StockAgent-Three-Loops.pdf",
+      "git_blob": "93430eae45d8a79db46d5e9f2a790889fe8cf7d0",
+      "sha256": "b3f8e59630294bc600e0aaff08065f8906658bc839054baa668acc9acdc30cef"
+    },
+    {
+      "path": "docs/TEAM_TESTING_GUIDE.md",
+      "git_blob": "f0d734ed302882916c6f87935e6661650a308916",
+      "sha256": "7382e78fb19334cb12ad9773aa5d708710988c2ade94f31116e23927b9ffb660"
+    },
+    {
+      "path": "docs/TECHNICAL_DESIGN.md",
+      "git_blob": "eeac640e3c2ca2b65d8c53b92d73e7daba8cc55d",
+      "sha256": "5ffe709caeccaf4d0b78f35e49a2bf456bcd6182dbc845e8e0e15f967915bcbc"
+    },
+    {
+      "path": "services/api/routes/portfolio_api.py",
+      "git_blob": "1f54a7b80a0045924af3e54f19fb220b763a1e41",
+      "sha256": "d44ef8b3ab8e31392f4293e46fb06b952494b28825b42b214eba4e0ceb9c70b8"
+    },
+    {
+      "path": "services/api/routes/scheduler_api.py",
+      "git_blob": "20b77f28093a9ae05e0675fc27d999649b25d91a",
+      "sha256": "264b661d17d7ebaadea7a445c11a24e0800314db0e6ce586a596f8edf6b4ae8d"
+    },
+    {
+      "path": "src/backend/shared/schemas/discovery.py",
+      "git_blob": "a73abf76b02fe82d3abc5e05834e20e1588559e0",
+      "sha256": "7191ecd2988eef60808a70d2b722c4ab0935645f1791aa36e167ee5cc52b655d"
+    },
+    {
+      "path": "src/backend/shared/schemas/feedback.py",
+      "git_blob": "7884075abd7840f053dfde942ca08a8caf1de707",
+      "sha256": "c198f98e08cc0f978b41d9d7d4d975e0a7fc010f36221b31dea23fcb6709a7a1"
+    },
+    {
+      "path": "src/backend/shared/schemas/portfolio.py",
+      "git_blob": "8e33e7ee7753315cd19afe38899ceff84f0a77a2",
+      "sha256": "acf61652b383904a67eb22f826a428e05be0ab771da630e47fa5536a3b5c330a"
+    },
+    {
+      "path": "tests/unit/test_analysis_time_fix024.py",
+      "git_blob": "15586728b3533a2d090442532171cc45cad07dc3",
+      "sha256": "801cab819338e5262cd57c6f4c8787460fb99d6fd8d573e512ce20b918e03c69"
+    },
+    {
+      "path": "tests/unit/test_autopilot_api.py",
+      "git_blob": "86e525fb78cbb11d6f14e867afbd7c7d734c58d6",
+      "sha256": "b2fd91b3be675c617ef6037960af99c936b234b873f384548e2167681d8f2353"
+    },
+    {
+      "path": "tests/unit/test_deploy_idle_cash_sa049.py",
+      "git_blob": "798bdfb26e461a8e140e23a78abeb1f470903038",
+      "sha256": "a039c691baf0084c9b7daab21d2ed97114bc62de6c3cd4434df8910593aef79e"
+    },
+    {
+      "path": "tests/unit/test_portfolio_api.py",
+      "git_blob": "32cd8799465b48ffdc4b994c01751ad06d93ffe0",
+      "sha256": "173386bcf8552a3bb3df93a05b13f25da5bde3a0dc93e1d82df678669369f0cc"
+    },
+    {
+      "path": "tests/unit/test_regime_inputs_fix023.py",
+      "git_blob": "5a29123c8032716c335a24001090277d3dd34830",
+      "sha256": "911527621b1a11b8946df0679dcbf20d99a7ed7b6581d091935ff1b75036dcce"
+    },
+    {
+      "path": "tests/unit/test_trading_costs_sa048.py",
+      "git_blob": "2d1080dbc1aa1e3ee64425312c5d236ea2e51bc4",
+      "sha256": "4e4ef0af0fd2082757fa1c5814e5fac0809d2aba910403bb703abd3f102b45e2"
+    }
+  ]
+}
